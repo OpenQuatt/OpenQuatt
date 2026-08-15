@@ -1,0 +1,295 @@
+name: PR Test Firmware Publish
+
+on:
+  workflow_run:
+    workflows: [PR Test Firmware Build]
+    types: [completed]
+  pull_request_target:
+    types: [unlabeled, closed]
+
+permissions: {}
+
+jobs:
+  validate-pr-test-build:
+    runs-on: ubuntu-latest
+    if: >-
+      ${{
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.event == 'pull_request' &&
+        github.event.workflow_run.conclusion == 'success'
+      }}
+    permissions:
+      actions: read
+      pull-requests: read
+    outputs:
+      base_sha: ${{ steps.gate.outputs.base_sha }}
+      head_sha: ${{ steps.gate.outputs.head_sha }}
+      pr_number: ${{ steps.gate.outputs.pr_number }}
+      should_publish: ${{ steps.metadata.outputs.found }}
+      short_sha: ${{ steps.gate.outputs.short_sha }}
+      version: ${{ steps.gate.outputs.version }}
+    steps:
+      - name: Find build metadata artifact
+        id: metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          ARTIFACT_COUNT="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/artifacts?per_page=100" \
+            --jq '[.artifacts[] | select(.name == "pr-test-firmware-meta")] | length')"
+          if [[ "${ARTIFACT_COUNT}" == "0" ]]; then
+            echo "No test-firmware metadata found; publication was not requested."
+            echo "found=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [[ "${ARTIFACT_COUNT}" != "1" ]]; then
+            echo "Expected one test-firmware metadata artifact; found ${ARTIFACT_COUNT}." >&2
+            exit 1
+          fi
+          echo "found=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Download build metadata
+        if: ${{ steps.metadata.outputs.found == 'true' }}
+        uses: actions/download-artifact@v7
+        with:
+          name: pr-test-firmware-meta
+          path: ${{ runner.temp }}/metadata
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Validate build and current PR state
+        if: ${{ steps.metadata.outputs.found == 'true' }}
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          META_FILE: ${{ runner.temp }}/metadata/pr-test-firmware-meta.json
+          SOURCE_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          SOURCE_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          SOURCE_WORKFLOW_PATH: ${{ github.event.workflow_run.path }}
+        run: |
+          if [[ ! -f "${META_FILE}" ]]; then
+            echo "Missing build metadata." >&2
+            exit 1
+          fi
+
+          PR_NUMBER="$(jq -er '.pr_number | select(type == "number" and . > 0 and floor == .)' "${META_FILE}")"
+          HEAD_SHA="$(jq -er '.head_sha | select(type == "string")' "${META_FILE}")"
+          HEAD_REPOSITORY="$(jq -er '.head_repository | select(type == "string")' "${META_FILE}")"
+          BASE_VERSION="$(jq -er '.base_version | select(type == "string")' "${META_FILE}")"
+          BUILD_RUN_NUMBER="$(jq -er '.run_number | select(type == "number" and . > 0 and floor == .)' "${META_FILE}")"
+          VERSION="$(jq -er '.version | select(type == "string")' "${META_FILE}")"
+
+          if [[ "${SOURCE_WORKFLOW_PATH}" != ".github/workflows/pr-test-firmware.yml" &&
+                "${SOURCE_WORKFLOW_PATH}" != ".github/workflows/pr-test-firmware.yml@"* ]]; then
+            echo "Unexpected triggering workflow path: ${SOURCE_WORKFLOW_PATH}" >&2
+            exit 1
+          fi
+          if [[ ! "${SOURCE_HEAD_SHA}" =~ ^[0-9a-f]{40}$ || "${HEAD_SHA}" != "${SOURCE_HEAD_SHA}" ]]; then
+            echo "Metadata head SHA does not match the triggering workflow." >&2
+            exit 1
+          fi
+          if [[ ! "${SOURCE_HEAD_REPOSITORY}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ||
+                "${HEAD_REPOSITORY}" != "${SOURCE_HEAD_REPOSITORY}" ]]; then
+            echo "Metadata head repository does not match the triggering workflow." >&2
+            exit 1
+          fi
+          if [[ ! "${BASE_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z]+)*$ ]]; then
+            echo "Metadata contains an invalid base version." >&2
+            exit 1
+          fi
+          if [[ "${BUILD_RUN_NUMBER}" != "${SOURCE_RUN_NUMBER}" ]]; then
+            echo "Metadata run number does not match the triggering workflow." >&2
+            exit 1
+          fi
+
+          SHORT_SHA="${HEAD_SHA::7}"
+          EXPECTED_VERSION="${BASE_VERSION}-pr.${PR_NUMBER}.${SOURCE_RUN_NUMBER}+${SHORT_SHA}"
+          if [[ "${VERSION}" != "${EXPECTED_VERSION}" ]]; then
+            echo "Metadata version does not match the triggering workflow." >&2
+            exit 1
+          fi
+
+          PR_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          BASE_SHA="$(jq -er '.base.sha | select(type == "string")' <<< "${PR_JSON}")"
+          if [[ ! "${BASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "PR #${PR_NUMBER} has an invalid base SHA." >&2
+            exit 1
+          fi
+          if [[ "$(jq -r '.state' <<< "${PR_JSON}")" != "open" ]]; then
+            echo "PR #${PR_NUMBER} is no longer open." >&2
+            exit 1
+          fi
+          if ! jq -e '.labels | any(.name == "test-firmware")' <<< "${PR_JSON}" >/dev/null; then
+            echo "PR #${PR_NUMBER} no longer has the test-firmware label." >&2
+            exit 1
+          fi
+          if [[ "$(jq -r '.head.sha' <<< "${PR_JSON}")" != "${HEAD_SHA}" ]]; then
+            echo "PR #${PR_NUMBER} has moved since this firmware was built." >&2
+            exit 1
+          fi
+          if [[ "$(jq -r '.head.repo.full_name' <<< "${PR_JSON}")" != "${HEAD_REPOSITORY}" ]]; then
+            echo "PR #${PR_NUMBER} head repository does not match the build metadata." >&2
+            exit 1
+          fi
+          if [[ "$(jq -r '.base.repo.full_name' <<< "${PR_JSON}")" != "${GITHUB_REPOSITORY}" ]]; then
+            echo "PR #${PR_NUMBER} does not target this repository." >&2
+            exit 1
+          fi
+
+          echo "base_sha=${BASE_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "head_sha=${HEAD_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "pr_number=${PR_NUMBER}" >> "${GITHUB_OUTPUT}"
+          echo "short_sha=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+  publish-pr-test-release:
+    runs-on: ubuntu-latest
+    needs: validate-pr-test-build
+    if: ${{ needs.validate-pr-test-build.outputs.should_publish == 'true' }}
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: read
+    concurrency:
+      group: pr-test-firmware-${{ needs.validate-pr-test-build.outputs.pr_number }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout trusted base code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-pr-test-build.outputs.base_sha }}
+          fetch-depth: 0
+
+      - name: Download firmware artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: openquatt-*-pr-${{ needs.validate-pr-test-build.outputs.pr_number }}
+          path: ${{ runner.temp }}/firmware
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Prepare PR test firmware assets
+        env:
+          ARTIFACT_ROOT: ${{ runner.temp }}/firmware
+          HEAD_SHA: ${{ needs.validate-pr-test-build.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.validate-pr-test-build.outputs.pr_number }}
+          VERSION: ${{ needs.validate-pr-test-build.outputs.version }}
+        run: |
+          TAG="pr-${PR_NUMBER}"
+          BASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          RELEASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+          python3 scripts/build_targets.py prepare-pr-test-assets \
+            "${PR_NUMBER}" "${VERSION}" "${HEAD_SHA}" "${BASE_URL}" "${RELEASE_URL}" \
+            --artifact-root "${ARTIFACT_ROOT}"
+
+      - name: Publish current PR test release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ needs.validate-pr-test-build.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.validate-pr-test-build.outputs.pr_number }}
+          SHORT_SHA: ${{ needs.validate-pr-test-build.outputs.short_sha }}
+          VERSION: ${{ needs.validate-pr-test-build.outputs.version }}
+        run: |
+          PR_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          if [[ "$(jq -r '.state' <<< "${PR_JSON}")" != "open" ]] || \
+             ! jq -e '.labels | any(.name == "test-firmware")' <<< "${PR_JSON}" >/dev/null || \
+             [[ "$(jq -r '.head.sha' <<< "${PR_JSON}")" != "${HEAD_SHA}" ]]; then
+            echo "PR publication gate changed while assets were prepared." >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head"
+          if [[ "$(git rev-parse FETCH_HEAD)" != "${HEAD_SHA}" ]]; then
+            echo "Fetched PR head does not match the built commit." >&2
+            exit 1
+          fi
+
+          TAG="pr-${PR_NUMBER}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if gh release view "${TAG}" >/dev/null 2>release-view.err; then
+            gh release delete "${TAG}" --yes --cleanup-tag
+          elif ! grep -qi "not found" release-view.err; then
+            cat release-view.err >&2
+            exit 1
+          fi
+
+          PUBLISH_COMPLETE=false
+          cleanup_partial_publish() {
+            if [[ "${PUBLISH_COMPLETE}" != "true" ]]; then
+              echo "Removing incomplete PR test release ${TAG}." >&2
+              gh release delete "${TAG}" --yes --cleanup-tag >/dev/null 2>&1 ||
+                git push origin ":refs/tags/${TAG}" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup_partial_publish EXIT
+
+          git tag -fa "${TAG}" -m "PR ${PR_NUMBER} test firmware" "${HEAD_SHA}"
+          git push origin "refs/tags/${TAG}" --force
+
+          NOTES=$(cat <<EOF
+          Mutable test-firmware release for PR #${PR_NUMBER}.
+
+          PR: https://github.com/${GITHUB_REPOSITORY}/pull/${PR_NUMBER}
+          Commit: \`${HEAD_SHA}\`
+          Version: \`${VERSION}\`
+
+          Add or keep the \`test-firmware\` label on the PR to rebuild this release after new commits.
+          EOF
+          )
+
+          gh release create "${TAG}" \
+            --title "PR #${PR_NUMBER} Test Firmware (${SHORT_SHA})" \
+            --notes "${NOTES}" \
+            --prerelease
+
+          gh release upload "${TAG}" \
+            dist/*.firmware.ota.bin \
+            dist/*.firmware.ota.bin.md5 \
+            dist/pr-firmware.json \
+            --clobber
+
+          EXPECTED_ASSET_COUNT="$(find dist -maxdepth 1 -type f \
+            \( -name '*.firmware.ota.bin' -o -name '*.firmware.ota.bin.md5' -o -name 'pr-firmware.json' \) \
+            | wc -l | tr -d ' ')"
+          PUBLISHED_ASSET_COUNT="$(gh release view "${TAG}" --json assets --jq '.assets | length')"
+          if [[ "${PUBLISHED_ASSET_COUNT}" != "${EXPECTED_ASSET_COUNT}" ]]; then
+            echo "Published ${PUBLISHED_ASSET_COUNT} assets; expected ${EXPECTED_ASSET_COUNT}." >&2
+            exit 1
+          fi
+
+          PUBLISH_COMPLETE=true
+
+  delete-pr-test-release:
+    runs-on: ubuntu-latest
+    if: >-
+      ${{
+        github.event_name == 'pull_request_target' &&
+        (
+          github.event.action == 'closed' ||
+          (github.event.action == 'unlabeled' && github.event.label.name == 'test-firmware')
+        )
+      }}
+    permissions:
+      contents: write
+    concurrency:
+      group: pr-test-firmware-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - name: Delete PR test release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          TAG="pr-${PR_NUMBER}"
+          if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>release-view.err; then
+            gh release delete "${TAG}" --repo "${GITHUB_REPOSITORY}" --yes --cleanup-tag
+          elif grep -qi "not found" release-view.err; then
+            echo "No PR test release ${TAG} found."
+          else
+            cat release-view.err >&2
+            exit 1
+          fi
