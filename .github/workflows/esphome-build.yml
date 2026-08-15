@@ -6,6 +6,18 @@ on:
       artifact_suffix:
         required: true
         type: string
+      checkout_ref:
+        required: false
+        type: string
+        default: ""
+      checkout_repository:
+        required: false
+        type: string
+        default: ""
+      checkout_persist_credentials:
+        required: false
+        type: boolean
+        default: true
       include_firmware_bin:
         required: false
         type: boolean
@@ -35,6 +47,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.checkout_repository || github.repository }}
+          ref: ${{ inputs.checkout_ref }}
+          persist-credentials: ${{ inputs.checkout_persist_credentials }}
 
       - name: Build target matrix
         id: targets
@@ -53,6 +69,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.checkout_repository || github.repository }}
+          ref: ${{ inputs.checkout_ref }}
+          persist-credentials: ${{ inputs.checkout_persist_credentials }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v6

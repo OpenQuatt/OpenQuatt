@@ -80,9 +80,13 @@ def md5sum(path: Path) -> str:
 def find_artifact_dir(dist_dir: Path, artifact_name: str) -> Path:
     direct = dist_dir / artifact_name
     if direct.is_dir():
+        if direct.is_symlink():
+            raise SystemExit(f"Artifact directory must not be a symlink: {direct}")
         return direct
 
-    matches = sorted(path for path in dist_dir.glob(f"{artifact_name}-*") if path.is_dir())
+    matches = sorted(
+        path for path in dist_dir.glob(f"{artifact_name}-*") if path.is_dir() and not path.is_symlink()
+    )
     if len(matches) == 1:
         return matches[0]
     if not matches:
@@ -130,17 +134,25 @@ def prepare_release_assets(version: str, base_url: str, release_url: str) -> Non
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
 
-def prepare_pr_test_assets(pr_number: str, version: str, head_sha: str, base_url: str, release_url: str) -> None:
+def prepare_pr_test_assets(
+    pr_number: str,
+    version: str,
+    head_sha: str,
+    base_url: str,
+    release_url: str,
+    artifact_root: Path | None = None,
+) -> None:
     dist_dir = REPO_ROOT / "dist"
     dist_dir.mkdir(parents=True, exist_ok=True)
+    artifact_root = artifact_root or dist_dir
     short_sha = head_sha[:7] if head_sha else ""
     assets: list[dict[str, str]] = []
 
     for target in filter_targets(load_targets(), "enabled"):
         artifact_name = target["artifact_name"]
-        artifact_dir = find_artifact_dir(dist_dir, artifact_name)
+        artifact_dir = find_artifact_dir(artifact_root, artifact_name)
         ota_source = artifact_dir / "firmware.ota.bin"
-        if not ota_source.is_file():
+        if ota_source.is_symlink() or not ota_source.is_file():
             raise SystemExit(f"Artifact {artifact_name} is missing firmware.ota.bin")
 
         ota_name = f"{artifact_name}.firmware.ota.bin"
@@ -200,7 +212,14 @@ def command_prepare_release_assets(args: argparse.Namespace) -> int:
 
 
 def command_prepare_pr_test_assets(args: argparse.Namespace) -> int:
-    prepare_pr_test_assets(args.pr_number, args.version, args.head_sha, args.base_url, args.release_url)
+    prepare_pr_test_assets(
+        args.pr_number,
+        args.version,
+        args.head_sha,
+        args.base_url,
+        args.release_url,
+        artifact_root=args.artifact_root,
+    )
     return 0
 
 
@@ -240,6 +259,7 @@ def create_parser() -> argparse.ArgumentParser:
     pr_prepare_parser.add_argument("head_sha")
     pr_prepare_parser.add_argument("base_url")
     pr_prepare_parser.add_argument("release_url")
+    pr_prepare_parser.add_argument("--artifact-root", type=Path)
     pr_prepare_parser.set_defaults(func=command_prepare_pr_test_assets)
 
     return parser
