@@ -612,6 +612,10 @@ interval:
           // after that limiter changes demand. Do not route CM5 through the
           // slower heating-curve cadence.
           const bool manual_hp_service_active = oq_manual_hp::owns_control();
+          const bool manual_hp_extended_range =
+              id(hp_generation).has_state() && id(hp_generation).current_option() == "V2";
+          const int manual_hp_max_level =
+              oq_request::manual_hp_max_compressor_level(manual_hp_extended_range);
           const uint32_t loop_target_ms = (uint32_t) (
               (manual_hp_service_active ? ${oq_heat_loop_tick_s} :
                is_cooling_mode ? ${oq_heat_loop_tick_s} :
@@ -793,7 +797,7 @@ interval:
           auto publish_request = [&](int mode_code, int req1, int req2, int strategy_code, int owner_hp, const char* reason)->void {
             (void) owner_hp;
             const auto published = oq_request::make_published_request(
-                mode_code, req1, req2, strategy_code);
+                mode_code, req1, req2, strategy_code, manual_hp_max_level);
 
             id(oq_request_mode_code) = published.mode_code;
             id(oq_request_hp1_level) = published.hp1_level;
@@ -1010,12 +1014,10 @@ interval:
             const int hp2_mode_code = 0;
             #endif
             int hp1_req = (hp1_mode_code > 0)
-                ? std::max(0, std::min(oq_request::MANUAL_HP_MAX_COMPRESSOR_LEVEL,
-                                      (int) roundf(id(oq_manual_hp1_level).state)))
+                ? std::max(0, std::min(manual_hp_max_level, (int) roundf(id(oq_manual_hp1_level).state)))
                 : 0;
             int hp2_req = (hp2_mode_code > 0)
-                ? std::max(0, std::min(oq_request::MANUAL_HP_MAX_COMPRESSOR_LEVEL,
-                                      (int) roundf(id(oq_manual_hp2_level).state)))
+                ? std::max(0, std::min(manual_hp_max_level, (int) roundf(id(oq_manual_hp2_level).state)))
                 : 0;
             const bool manual_flow_ok =
                 id(flow_rate_selected).has_state() &&

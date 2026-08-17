@@ -225,6 +225,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       ...ODU_RUNTIME_FREQUENCY_KEYS,
     ],
     service: [
+      "hpGeneration",
       ...INSTALLATION_MONITORING_STATE_KEYS,
       ...COMMISSIONING_STATE_KEYS,
       ...SENSOR_CALIBRATION_KEYS,

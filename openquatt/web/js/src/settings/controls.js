@@ -457,11 +457,13 @@ export function renderSettingsSliderField(key, title, copy, className = "", opti
     return "";
   }
   const meta = getNumberMeta(key);
-  const value = normalizeNumber(key, getEntityValue(key));
-  const minLabel = options.minLabel || `${meta.min}${meta.uom || ""}`;
-  const maxLabel = options.maxLabel || `${meta.max}${meta.uom || ""}`;
+  const min = Number.isFinite(Number(options.minValue)) ? Number(options.minValue) : meta.min;
+  const max = Number.isFinite(Number(options.maxValue)) ? Number(options.maxValue) : meta.max;
+  const value = Math.max(min, Math.min(max, normalizeNumber(key, getEntityValue(key))));
+  const minLabel = options.minLabel || `${min}${meta.uom || ""}`;
+  const maxLabel = options.maxLabel || `${max}${meta.uom || ""}`;
   const valueLabel = options.valueLabel || formatValue(key, value);
-  return renderSettingsFieldCard(key, title, copy, `<label class="oq-helper-slider-field"><div class="oq-helper-slider-meta"><span>${escapeHtml(minLabel)}</span><strong>${escapeHtml(valueLabel)}</strong><span>${escapeHtml(maxLabel)}</span></div><input class="oq-helper-range" type="range" data-oq-field="${escapeHtml(key)}" min="${meta.min}" max="${meta.max}" step="${meta.step}" value="${value}" ${state.loadingEntities ? "disabled" : ""}></label>`, className, options.footerMarkup || "");
+  return renderSettingsFieldCard(key, title, copy, `<label class="oq-helper-slider-field"><div class="oq-helper-slider-meta"><span>${escapeHtml(minLabel)}</span><strong>${escapeHtml(valueLabel)}</strong><span>${escapeHtml(maxLabel)}</span></div><input class="oq-helper-range" type="range" data-oq-field="${escapeHtml(key)}" min="${min}" max="${max}" step="${meta.step}" value="${value}" ${state.loadingEntities ? "disabled" : ""}></label>`, className, options.footerMarkup || "");
 }
 
 export function renderSettingsMiniNumberField(key, title, copy, options = {}) {

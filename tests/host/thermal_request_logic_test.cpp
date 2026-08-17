@@ -38,17 +38,30 @@ int main() {
   // Absolute safety and startup inhibition retain priority over the runtime floor.
   assert(!min_runtime_hold_required(0, true, runtime_active, 1, true));
 
-  // Normal strategies retain the production 0..10 contract. Only the explicit
-  // CM100 manual-HP strategy may publish the ODU v2 experimental 0..20 range.
+  // Normal strategies retain the production 0..10 contract. The explicit
+  // CM100 manual-HP strategy only gets the experimental 0..20 range for ODU v2.
   const auto normal_request = oq_request::make_published_request(2, 20, 11, 3);
   assert(normal_request.hp1_level == oq_request::NORMAL_MAX_COMPRESSOR_LEVEL);
   assert(normal_request.hp2_level == oq_request::NORMAL_MAX_COMPRESSOR_LEVEL);
 
-  const auto manual_request = oq_request::make_published_request(2, 20, 21, 4);
-  assert(manual_request.hp1_level == oq_request::MANUAL_HP_MAX_COMPRESSOR_LEVEL);
-  assert(manual_request.hp2_level == oq_request::MANUAL_HP_MAX_COMPRESSOR_LEVEL);
+  assert(oq_request::manual_hp_max_compressor_level(false) == oq_request::NORMAL_MAX_COMPRESSOR_LEVEL);
+  assert(oq_request::manual_hp_max_compressor_level(true) == oq_request::MANUAL_HP_MAX_COMPRESSOR_LEVEL);
 
-  const auto invalid_strategy_request = oq_request::make_published_request(2, 20, -1, 99);
+  const auto manual_v15_request = oq_request::make_published_request(2, 20, 21, 4);
+  assert(manual_v15_request.hp1_level == oq_request::NORMAL_MAX_COMPRESSOR_LEVEL);
+  assert(manual_v15_request.hp2_level == oq_request::NORMAL_MAX_COMPRESSOR_LEVEL);
+
+  const auto manual_v2_request =
+      oq_request::make_published_request(2, 20, 21, 4, oq_request::manual_hp_max_compressor_level(true));
+  assert(manual_v2_request.hp1_level == oq_request::MANUAL_HP_MAX_COMPRESSOR_LEVEL);
+  assert(manual_v2_request.hp2_level == oq_request::MANUAL_HP_MAX_COMPRESSOR_LEVEL);
+
+  const auto bounded_manual_request = oq_request::make_published_request(2, 20, 20, 4, 99);
+  assert(bounded_manual_request.hp1_level == oq_request::MANUAL_HP_MAX_COMPRESSOR_LEVEL);
+  assert(bounded_manual_request.hp2_level == oq_request::MANUAL_HP_MAX_COMPRESSOR_LEVEL);
+
+  const auto invalid_strategy_request =
+      oq_request::make_published_request(2, 20, -1, 99, oq_request::MANUAL_HP_MAX_COMPRESSOR_LEVEL);
   assert(invalid_strategy_request.strategy_code == 0);
   assert(invalid_strategy_request.hp1_level == oq_request::NORMAL_MAX_COMPRESSOR_LEVEL);
   assert(invalid_strategy_request.hp2_level == 0);

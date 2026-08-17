@@ -344,6 +344,26 @@
     }
   }
 
+  function getManualHpMaxLevel() {
+    return String(getEntity("select", "Quatt Hybrid version")?.value || "") === "V2" ? 20 : 10;
+  }
+
+  function syncManualHpLevelRange() {
+    const maxLevel = getManualHpMaxLevel();
+    ["HP1", "HP2"].forEach((hp) => {
+      const entity = getEntity("number", `Manual ${hp} compressor level`);
+      if (!entity) {
+        return;
+      }
+      entity.max_value = maxLevel;
+      const stateKey = hp === "HP1" ? "manualHp1Level" : "manualHp2Level";
+      const level = Math.max(0, Math.min(maxLevel, Number(state.commissioning[stateKey]) || 0));
+      state.commissioning[stateKey] = level;
+      setNumber(`Manual ${hp} compressor level`, level, "");
+      setNumber(`${hp} compressor level`, level, "");
+    });
+  }
+
   function syncUptimeEntity() {
     const uptimeHours = Math.max(0, (Date.now() - state.bootedAt) / 3600000);
     setNumber("Uptime", Number(uptimeHours.toFixed(2)), "h");
@@ -2109,8 +2129,8 @@
       ["Flow Setpoint", 800, 0, 1500, 10, "L/h"],
       ["Cooling Flow Setpoint", 800, 0, 1500, 10, "L/h"],
       ["Manual flow service setpoint", 800, 0, 1500, 10, "L/h"],
-      ["Manual HP1 compressor level", 0, 0, 20, 1, ""],
-      ["Manual HP2 compressor level", 0, 0, 20, 1, ""],
+      ["Manual HP1 compressor level", 0, 0, 10, 1, ""],
+      ["Manual HP2 compressor level", 0, 0, 10, 1, ""],
       ["Manual iPWM", 400, 50, 850, 1, "iPWM"],
       ["Flow PI Kp", 0.35, 0, 5, 0.01, ""],
       ["Flow PI Ki", 0.05, 0, 5, 0.01, ""],
@@ -2162,6 +2182,7 @@
         uom,
       });
     });
+    syncManualHpLevelRange();
 
     [
       ["Silent start time", "19:00:00"],
@@ -3839,6 +3860,9 @@
       setNumber(levelName, 0, "");
     }
     setText("select", name, value);
+    if (name === "Quatt Hybrid version") {
+      syncManualHpLevelRange();
+    }
     if (previousValue !== String(value || "") &&
         (name === "Water Supply Source" ||
          (name === "Local Water Supply Temp Source" &&
@@ -3933,11 +3957,15 @@
     } else if (name === "Manual flow service setpoint") {
       state.commissioning.manualFlowSetpoint = Number(value);
     } else if (name === "Manual HP1 compressor level") {
-      state.commissioning.manualHp1Level = Number(value);
-      setNumber("HP1 compressor level", Number(value), "");
+      const level = Math.max(0, Math.min(getManualHpMaxLevel(), Number(value) || 0));
+      state.commissioning.manualHp1Level = level;
+      setNumber(name, level, "");
+      setNumber("HP1 compressor level", level, "");
     } else if (name === "Manual HP2 compressor level") {
-      state.commissioning.manualHp2Level = Number(value);
-      setNumber("HP2 compressor level", Number(value), "");
+      const level = Math.max(0, Math.min(getManualHpMaxLevel(), Number(value) || 0));
+      state.commissioning.manualHp2Level = level;
+      setNumber(name, level, "");
+      setNumber("HP2 compressor level", level, "");
     }
     syncOverviewTelemetry(state.installation === "single");
     syncCommissioningEntities(state.installation === "single");

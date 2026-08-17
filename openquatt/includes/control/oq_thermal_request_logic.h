@@ -10,6 +10,10 @@ namespace oq_request {
 constexpr int NORMAL_MAX_COMPRESSOR_LEVEL = 10;
 constexpr int MANUAL_HP_MAX_COMPRESSOR_LEVEL = 20;
 
+inline int manual_hp_max_compressor_level(bool is_v2) {
+  return is_v2 ? MANUAL_HP_MAX_COMPRESSOR_LEVEL : NORMAL_MAX_COMPRESSOR_LEVEL;
+}
+
 struct ExcludedLevels {
   std::string a;
   std::string b;
@@ -68,10 +72,13 @@ inline int sanitize_request_strategy_code(int strategy_code) {
   return (strategy_code >= 0 && strategy_code <= 4) ? strategy_code : 0;
 }
 
-inline PublishedRequest make_published_request(int mode_code, int hp1_level, int hp2_level, int strategy_code) {
+inline PublishedRequest make_published_request(int mode_code, int hp1_level, int hp2_level, int strategy_code,
+                                               int manual_hp_max_level = NORMAL_MAX_COMPRESSOR_LEVEL) {
   const int sanitized_strategy_code = sanitize_request_strategy_code(strategy_code);
   const int request_max_level =
-      sanitized_strategy_code == 4 ? MANUAL_HP_MAX_COMPRESSOR_LEVEL : NORMAL_MAX_COMPRESSOR_LEVEL;
+      sanitized_strategy_code == 4
+          ? clamp_level(manual_hp_max_level, NORMAL_MAX_COMPRESSOR_LEVEL, MANUAL_HP_MAX_COMPRESSOR_LEVEL)
+          : NORMAL_MAX_COMPRESSOR_LEVEL;
   hp1_level = clamp_level(hp1_level, 0, request_max_level);
   hp2_level = clamp_level(hp2_level, 0, request_max_level);
   const int topology_code = request_topology_code(hp1_level, hp2_level);
