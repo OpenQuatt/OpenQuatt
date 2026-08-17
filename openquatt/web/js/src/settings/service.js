@@ -696,12 +696,12 @@ import { renderModalShell } from "../core/modal-shell.js";
             <div class="oq-settings-manual-hp-controls">
               <div class="oq-settings-manual-hp-unit">
                 ${renderSettingsSelectField("manualHp1Mode", "Warmtepomp 1 werkmodus", "Start in Standby. Verwarmen of koelen kan pas worden gekozen zodra voldoende flow is gemeten.", "oq-settings-field--compact")}
-                ${renderSettingsSliderField("manualHp1Level", "Warmtepomp 1 compressorstand", "Aangevraagde stand 0 tot en met 10. Kies eerst een werkmodus. Normaal uitgesloten standen mogen tijdens deze handmatige test bewust worden gekozen.", "oq-settings-field--compact")}
+                ${renderSettingsSliderField("manualHp1Level", "Warmtepomp 1 compressorstand", "Aangevraagde stand 0 tot en met 20. Kies eerst een werkmodus. Normaal uitgesloten standen mogen tijdens deze handmatige test bewust worden gekozen.", "oq-settings-field--compact")}
               </div>
               ${hasEntity("hp2ExcludedA") ? `
                 <div class="oq-settings-manual-hp-unit">
                   ${renderSettingsSelectField("manualHp2Mode", "Warmtepomp 2 werkmodus", "Start in Standby. Verwarmen of koelen kan pas worden gekozen zodra voldoende flow is gemeten.", "oq-settings-field--compact")}
-                  ${renderSettingsSliderField("manualHp2Level", "Warmtepomp 2 compressorstand", "Aangevraagde stand 0 tot en met 10. Kies eerst een werkmodus. Normaal uitgesloten standen mogen tijdens deze handmatige test bewust worden gekozen.", "oq-settings-field--compact")}
+                  ${renderSettingsSliderField("manualHp2Level", "Warmtepomp 2 compressorstand", "Aangevraagde stand 0 tot en met 20. Kies eerst een werkmodus. Normaal uitgesloten standen mogen tijdens deze handmatige test bewust worden gekozen.", "oq-settings-field--compact")}
                 </div>
               ` : ""}
             </div>

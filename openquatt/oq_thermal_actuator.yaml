@@ -33,7 +33,8 @@ interval:
       - lambda: |-
           const uint32_t now_ms = (uint32_t) millis();
           const int min_level = 0;
-          const int max_level = 10;
+          const int max_level = oq_request::NORMAL_MAX_COMPRESSOR_LEVEL;
+          const int manual_hp_max_level = oq_request::MANUAL_HP_MAX_COMPRESSOR_LEVEL;
 
           uint32_t dt_ms = (uint32_t) ${oq_heat_loop_tick_s} * 1000UL;
           dt_ms = oq_request::capped_loop_dt_ms(
@@ -331,8 +332,10 @@ interval:
             }
           };
 
-          // Note: options must exactly match the options map in oq_HP_io.yaml (levels 0..10)
-          const char* lvl_opts[11] = {"0","1","2","3","4","5","6","7","8","9","10"};
+          // Note: options must exactly match the options map in oq_HP_io.yaml (levels 0..20).
+          const char* lvl_opts[21] = {
+              "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+              "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"};
           std::string hp1_service_guard = "Vrijgegeven";
           std::string hp2_service_guard = "Vrijgegeven";
           static bool last_hp1_defrost_hold = false;
@@ -341,7 +344,8 @@ interval:
           static uint32_t last_hp2_safe_stop_write_ms = 0U;
 
           auto apply_level = [&](bool is_hp1, int req_level)->int {
-            req_level = std::max(min_level, std::min(max_level, req_level));
+            const int active_max_level = manual_hp_service_active ? manual_hp_max_level : max_level;
+            req_level = std::max(min_level, std::min(active_max_level, req_level));
             const int requested_level = req_level;
             const int prev_applied = is_hp1 ? id(hp1_last_applied_level) : id(${secondary_last_applied_level_id});
             const uint8_t hp_index = is_hp1 ? 1U : 2U;
@@ -455,7 +459,7 @@ interval:
 
             // Manual HP service deliberately bypasses policy limits so every
             // compressor level can be tested. Technical actuator guards remain active.
-            int cap = max_level;
+            int cap = active_max_level;
             if (!manual_hp_service_active) {
               const bool silent_active = id(oq_silent_active).state;
               cap = silent_active ? (int) roundf(id(oq_silent_max_level).state)

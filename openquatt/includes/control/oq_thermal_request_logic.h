@@ -7,6 +7,9 @@
 
 namespace oq_request {
 
+constexpr int NORMAL_MAX_COMPRESSOR_LEVEL = 10;
+constexpr int MANUAL_HP_MAX_COMPRESSOR_LEVEL = 20;
+
 struct ExcludedLevels {
   std::string a;
   std::string b;
@@ -66,13 +69,15 @@ inline int sanitize_request_strategy_code(int strategy_code) {
 }
 
 inline PublishedRequest make_published_request(int mode_code, int hp1_level, int hp2_level, int strategy_code) {
-  constexpr int request_max_level = 10;
+  const int sanitized_strategy_code = sanitize_request_strategy_code(strategy_code);
+  const int request_max_level =
+      sanitized_strategy_code == 4 ? MANUAL_HP_MAX_COMPRESSOR_LEVEL : NORMAL_MAX_COMPRESSOR_LEVEL;
   hp1_level = clamp_level(hp1_level, 0, request_max_level);
   hp2_level = clamp_level(hp2_level, 0, request_max_level);
   const int topology_code = request_topology_code(hp1_level, hp2_level);
   return PublishedRequest{
       sanitize_request_mode_code(mode_code),           hp1_level,     hp2_level,
-      request_owner_from_topology_code(topology_code), topology_code, sanitize_request_strategy_code(strategy_code),
+      request_owner_from_topology_code(topology_code), topology_code, sanitized_strategy_code,
   };
 }
 

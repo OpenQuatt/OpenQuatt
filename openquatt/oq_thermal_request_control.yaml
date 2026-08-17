@@ -1010,10 +1010,12 @@ interval:
             const int hp2_mode_code = 0;
             #endif
             int hp1_req = (hp1_mode_code > 0)
-                ? std::max(0, std::min(10, (int) roundf(id(oq_manual_hp1_level).state)))
+                ? std::max(0, std::min(oq_request::MANUAL_HP_MAX_COMPRESSOR_LEVEL,
+                                      (int) roundf(id(oq_manual_hp1_level).state)))
                 : 0;
             int hp2_req = (hp2_mode_code > 0)
-                ? std::max(0, std::min(10, (int) roundf(id(oq_manual_hp2_level).state)))
+                ? std::max(0, std::min(oq_request::MANUAL_HP_MAX_COMPRESSOR_LEVEL,
+                                      (int) roundf(id(oq_manual_hp2_level).state)))
                 : 0;
             const bool manual_flow_ok =
                 id(flow_rate_selected).has_state() &&
