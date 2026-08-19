@@ -17,6 +17,7 @@ select:
     options:
       - CIC
       - HA input
+      - API input
       - MQTT
     initial_option: CIC
 
@@ -30,6 +31,7 @@ select:
     options:
       - CIC
       - HA input
+      - API input
       - MQTT
     initial_option: CIC
 
@@ -44,6 +46,7 @@ select:
       - Disabled
       - CIC
       - HA input
+      - API input
       - MQTT
     initial_option: Disabled
 
@@ -57,6 +60,7 @@ select:
     options:
       - CIC
       - HA input
+      - API input
       - MQTT
       - CIC or HA input
       - Disabled

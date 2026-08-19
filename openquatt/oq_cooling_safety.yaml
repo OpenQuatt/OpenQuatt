@@ -122,6 +122,7 @@ select:
     options:
       - "Auto"
       - "Home Assistant"
+      - "API input"
       - "MQTT"
     initial_option: Auto
 

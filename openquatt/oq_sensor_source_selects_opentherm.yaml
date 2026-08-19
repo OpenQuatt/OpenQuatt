@@ -19,6 +19,7 @@ select:
       - CIC
       - OT thermostat
       - HA input
+      - API input
       - MQTT
     initial_option: OT thermostat
 
@@ -33,6 +34,7 @@ select:
       - CIC
       - OT thermostat
       - HA input
+      - API input
       - MQTT
     initial_option: OT thermostat
 
@@ -48,6 +50,7 @@ select:
       - OT thermostat
       - CIC
       - HA input
+      - API input
       - MQTT
     initial_option: Disabled
 
@@ -61,6 +64,7 @@ select:
     options:
       - CIC
       - HA input
+      - API input
       - MQTT
       - CIC or HA input
       - Disabled

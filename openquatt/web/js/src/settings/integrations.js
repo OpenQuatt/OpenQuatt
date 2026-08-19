@@ -238,6 +238,8 @@ import { escapeHtml } from "../core/html.js";
       mqttHeatingEnable: "heating_enable",
       mqttCoolingEnable: "cooling_enable",
     };
+    const isApiInputOption = (option) => /^api input$/i.test(String(option || "").trim());
+    const hasApiInputSource = (config = {}) => Boolean(config.apiValueKey) && hasEntity(config.apiValueKey);
     const mqttAvailable = state.mqttStatus?.enabled !== false;
     const getMqttTopicKey = (config = {}) => config.mqttTopicKey || mqttTopicKeyByValueKey[config.valueKey] || "";
     const isMqttInputTopicEnabled = (topicKey = "") => {
@@ -273,6 +275,9 @@ import { escapeHtml } from "../core/html.js";
       if (option === "CIC or HA input") {
         return cicAvailable || hasHaSource(config);
       }
+      if (isApiInputOption(option)) {
+        return hasApiInputSource(config);
+      }
       if (isMqttOption(option)) {
         return isMqttInputTopicEnabled(getMqttTopicKey(config));
       }
@@ -296,6 +301,9 @@ import { escapeHtml } from "../core/html.js";
       }
       if (option === "CIC or HA input" && !cicAvailable && !hasHaSource(config)) {
         return "CIC en HA ontbreken";
+      }
+      if (isApiInputOption(option) && !hasApiInputSource(config)) {
+        return "API-invoer ontbreekt";
       }
       if (isMqttOption(option)) {
         return getMqttUnavailableSourceReason(getMqttTopicKey(config));
@@ -376,10 +384,14 @@ import { escapeHtml } from "../core/html.js";
       const unitTemp = getEntityNumericValue("outsideTempLocalAggregated");
       const haTemp = getEntityNumericValue("outsideTempHa");
       const mqttTemp = getEntityNumericValue("mqttOutsideTemperature");
+      const apiTemp = getEntityNumericValue("apiInputOutsideTemperature");
       const unitValid = !Number.isNaN(unitTemp);
       const haValid = hasEntity("outsideTempHaValid")
         ? isInstallationMonitoringBinaryActive("outsideTempHaValid") && !Number.isNaN(haTemp)
         : !Number.isNaN(haTemp);
+      const apiValid = hasEntity("apiInputOutsideTemperatureValid")
+        && isInstallationMonitoringBinaryActive("apiInputOutsideTemperatureValid")
+        && !Number.isNaN(apiTemp);
       const mqttValid = isMqttInputTopicEnabled("outside_temperature")
         && hasEntity("mqttOutsideTemperatureValid")
         && isInstallationMonitoringBinaryActive("mqttOutsideTemperatureValid")
@@ -387,6 +399,7 @@ import { escapeHtml } from "../core/html.js";
       const candidates = [
         unitValid ? { label: "Buitenunit", value: unitTemp } : null,
         haValid ? { label: "HA-invoer", value: haTemp } : null,
+        apiValid ? { label: "API-invoer", value: apiTemp } : null,
         mqttValid ? { label: "MQTT", value: mqttTemp } : null,
       ].filter(Boolean);
       if (candidates.length) {
@@ -421,6 +434,9 @@ import { escapeHtml } from "../core/html.js";
       if (source === "Home Assistant") {
         return isValidNumericSource("coolingDewPointHa", "coolingDewPointHaValid") ? "HA-invoer" : "HA-invoer ontbreekt";
       }
+      if (source === "API input") {
+        return isValidNumericSource("apiInputCoolingDewPoint", "apiInputCoolingDewPointValid") ? "API-invoer" : "API-invoer ontbreekt of verouderd";
+      }
       if (source === "MQTT") {
         const mqttUnavailableReason = getMqttUnavailableSourceReason("cooling_dew_point");
         if (mqttUnavailableReason) {
@@ -430,18 +446,16 @@ import { escapeHtml } from "../core/html.js";
       }
 
       const haValid = isValidNumericSource("coolingDewPointHa", "coolingDewPointHaValid");
+      const apiValid = isValidNumericSource("apiInputCoolingDewPoint", "apiInputCoolingDewPointValid");
       const mqttValid = isMqttInputTopicEnabled("cooling_dew_point") &&
         isValidNumericSource("mqttCoolingDewPoint", "mqttCoolingDewPointValid");
-      if (haValid && mqttValid) {
-        const ha = getNumericSourceValue("coolingDewPointHa");
-        const mqtt = getNumericSourceValue("mqttCoolingDewPoint");
-        return mqtt > ha ? "MQTT" : "HA-invoer";
-      }
-      if (haValid) {
-        return "HA-invoer";
-      }
-      if (mqttValid) {
-        return "MQTT";
+      const candidates = [
+        haValid ? { label: "HA-invoer", value: getNumericSourceValue("coolingDewPointHa") } : null,
+        apiValid ? { label: "API-invoer", value: getNumericSourceValue("apiInputCoolingDewPoint") } : null,
+        mqttValid ? { label: "MQTT", value: getNumericSourceValue("mqttCoolingDewPoint") } : null,
+      ].filter((candidate) => candidate && Number.isFinite(candidate.value));
+      if (candidates.length) {
+        return candidates.reduce((best, item) => (item.value > best.value ? item : best), candidates[0]).label;
       }
       return source ? formatSettingsOptionLabel(source) : "Auto";
     };
@@ -495,6 +509,23 @@ import { escapeHtml } from "../core/html.js";
         key: valueKey,
         value: valid ? value : "—",
         status: getMqttValidityLabel(validKey),
+        statusTone: valid ? "valid" : "invalid",
+        statusTitle,
+      })];
+    };
+    const renderApiSourceRows = ({ label = "API-invoer", valueKey = "", validKey = "", value = "" }) => {
+      if (!valueKey || !validKey || !hasEntity(valueKey) || !hasEntity(validKey)) {
+        return [];
+      }
+      const valid = isInstallationMonitoringBinaryActive(validKey);
+      const statusTitle = valid
+        ? "API-invoer heeft een geldige, recente waarde. OpenQuatt mag deze bron gebruiken."
+        : "API-invoer heeft nog geen geldige recente waarde. OpenQuatt gebruikt deze bron dan niet.";
+      return [renderSourceRow({
+        label,
+        key: valueKey,
+        value: valid ? value : "—",
+        status: valid ? "Geldig" : "Ongeldig",
         statusTone: valid ? "valid" : "invalid",
         statusTitle,
       })];
@@ -642,22 +673,31 @@ import { escapeHtml } from "../core/html.js";
       Disabled: "Niet gebruiken / handmatig",
       CIC: "CIC (legacy)",
       "CIC or HA input": "CIC of HA-invoer (legacy)",
+      "API input": "API-invoer",
     };
     const coolingEnableSourceLabel = formattedSourceValue("coolingEnableSource", { optionLabels: coolingEnableSourceLabels });
     const coolingEnableEffectiveSource = formattedEffectivePermissionSourceValue("coolingEnableEffectiveSource");
     const outsideTemperatureAutoInfo = mqttAvailable
       ? hasValidHaSource("outsideTempHa", "outsideTempHaValid")
-        ? "Auto gebruikt de laagste geldige buitentemperatuurbron. Zijn buitenunit, HA-invoer en MQTT geldig, dan kiest OpenQuatt de laagste waarde. Is er maar een bron geldig, dan wordt die gebruikt."
+        ? "Auto gebruikt de laagste geldige buitentemperatuurbron. Zijn buitenunit, HA-invoer, API-invoer en MQTT geldig, dan kiest OpenQuatt de laagste waarde. Is er maar een bron geldig, dan wordt die gebruikt."
         : "Auto gebruikt de laagste geldige buitentemperatuurbron."
       : hasValidHaSource("outsideTempHa", "outsideTempHaValid")
-        ? "Auto gebruikt de laagste geldige buitentemperatuurbron van de buitenunit en HA-invoer. Is er maar een bron geldig, dan wordt die gebruikt."
+        ? "Auto gebruikt de laagste geldige buitentemperatuurbron van de buitenunit, HA-invoer en API-invoer. Is er maar een bron geldig, dan wordt die gebruikt."
         : "Auto gebruikt de laagste geldige buitentemperatuurbron.";
     const sourceCards = [
       renderSourceCard({
         key: "room-temperature",
         title: "Kamertemperatuur",
         icon: "thermometer",
-        select: { key: "roomTempSource", label: "Bron", haKeys: ["roomTempHa", "roomTempHaValid"], mqttTopicKey: "room_temperature" },
+        select: {
+          key: "roomTempSource",
+          label: "Bron",
+          optionLabels: { "API input": "API-invoer" },
+          haKeys: ["roomTempHa", "roomTempHaValid"],
+          apiValueKey: "apiInputRoomTemperature",
+          apiValidKey: "apiInputRoomTemperatureValid",
+          mqttTopicKey: "room_temperature",
+        },
         activeRows: [
           renderSourceRow({ label: "Waarde", key: "roomTemp" }),
           renderSourceRow({ label: "Bron", value: formattedTextSourceValue("roomTempEffectiveSource") }),
@@ -666,6 +706,7 @@ import { escapeHtml } from "../core/html.js";
           cicAvailable ? renderSourceRow({ label: "CIC", key: "cicRoomTemp" }) : "",
           otAvailable ? renderSourceRow({ label: "OpenTherm", key: "otRoomTemp" }) : "",
           ...renderHaSourceRows({ valueKey: "roomTempHa", validKey: "roomTempHaValid" }),
+          ...renderApiSourceRows({ valueKey: "apiInputRoomTemperature", validKey: "apiInputRoomTemperatureValid" }),
           ...renderMqttSourceRows({ valueKey: "mqttRoomTemperature", validKey: "mqttRoomTemperatureValid" }),
         ],
       }),
@@ -673,7 +714,15 @@ import { escapeHtml } from "../core/html.js";
         key: "room-setpoint",
         title: "Kamer setpoint",
         icon: "target",
-        select: { key: "roomSetpointSource", label: "Bron", haKeys: ["roomSetpointHa", "roomSetpointHaValid"], mqttTopicKey: "room_setpoint" },
+        select: {
+          key: "roomSetpointSource",
+          label: "Bron",
+          optionLabels: { "API input": "API-invoer" },
+          haKeys: ["roomSetpointHa", "roomSetpointHaValid"],
+          apiValueKey: "apiInputRoomSetpoint",
+          apiValidKey: "apiInputRoomSetpointValid",
+          mqttTopicKey: "room_setpoint",
+        },
         activeRows: [
           renderSourceRow({ label: "Waarde", key: "roomSetpoint" }),
           renderSourceRow({ label: "Bron", value: formattedTextSourceValue("roomSetpointEffectiveSource") }),
@@ -682,6 +731,7 @@ import { escapeHtml } from "../core/html.js";
           cicAvailable ? renderSourceRow({ label: "CIC", key: "cicRoomSetpoint" }) : "",
           otAvailable ? renderSourceRow({ label: "OpenTherm", key: "otRoomSetpoint" }) : "",
           ...renderHaSourceRows({ valueKey: "roomSetpointHa", validKey: "roomSetpointHaValid" }),
+          ...renderApiSourceRows({ valueKey: "apiInputRoomSetpoint", validKey: "apiInputRoomSetpointValid" }),
           ...renderMqttSourceRows({ valueKey: "mqttRoomSetpoint", validKey: "mqttRoomSetpointValid" }),
         ],
       }),
@@ -759,7 +809,10 @@ import { escapeHtml } from "../core/html.js";
         select: {
           key: "outsideTempSource",
           label: "Buiten bron",
+          optionLabels: { "API input": "API-invoer" },
           haKeys: ["outsideTempHa", "outsideTempHaValid"],
+          apiValueKey: "apiInputOutsideTemperature",
+          apiValidKey: "apiInputOutsideTemperatureValid",
           mqttTopicKey: "outside_temperature",
           infoId: "outsideTempSource-auto-info",
           infoCopy: outsideTemperatureAutoInfo,
@@ -771,6 +824,7 @@ import { escapeHtml } from "../core/html.js";
         measurementRows: [
           renderSourceRow({ label: "Buitenunit", key: "outsideTempLocalAggregated" }),
           ...renderHaSourceRows({ valueKey: "outsideTempHa", validKey: "outsideTempHaValid" }),
+          ...renderApiSourceRows({ valueKey: "apiInputOutsideTemperature", validKey: "apiInputOutsideTemperatureValid" }),
           ...renderMqttSourceRows({ valueKey: "mqttOutsideTemperature", validKey: "mqttOutsideTemperatureValid" }),
         ],
       }),
@@ -781,8 +835,10 @@ import { escapeHtml } from "../core/html.js";
         select: {
           key: "heatingEnableSource",
           label: "Bron",
-          optionLabels: { Disabled: "Niet gebruiken" },
+          optionLabels: { Disabled: "Niet gebruiken", "API input": "API-invoer" },
           haKeys: ["heatingEnableHa", "heatingEnableHaValid"],
+          apiValueKey: "apiInputHeatingEnable",
+          apiValidKey: "apiInputHeatingEnableValid",
           mqttTopicKey: "heating_enable",
           keepUnavailableCurrent: true,
         },
@@ -797,6 +853,11 @@ import { escapeHtml } from "../core/html.js";
             valueKey: "heatingEnableHa",
             validKey: "heatingEnableHaValid",
             value: sourceStateText("heatingEnableHa", "Toegestaan", "Geblokkeerd"),
+          }),
+          ...renderApiSourceRows({
+            valueKey: "apiInputHeatingEnable",
+            validKey: "apiInputHeatingEnableValid",
+            value: sourceStateText("apiInputHeatingEnable", "Toegestaan", "Geblokkeerd"),
           }),
           ...renderMqttSourceRows({
             valueKey: "mqttHeatingEnable",
@@ -815,6 +876,8 @@ import { escapeHtml } from "../core/html.js";
           optionLabels: coolingEnableSourceLabels,
           hiddenOptions: ["CIC", "CIC or HA input"],
           haKeys: ["coolingEnableHa", "coolingEnableHaValid"],
+          apiValueKey: "apiInputCoolingEnable",
+          apiValidKey: "apiInputCoolingEnableValid",
           mqttTopicKey: "cooling_enable",
           keepUnavailableCurrent: true,
         },
@@ -833,6 +896,11 @@ import { escapeHtml } from "../core/html.js";
             validKey: "coolingEnableHaValid",
             value: sourceStateText("coolingEnableHa", "Toegestaan", "Geblokkeerd"),
           }),
+          ...renderApiSourceRows({
+            valueKey: "apiInputCoolingEnable",
+            validKey: "apiInputCoolingEnableValid",
+            value: sourceStateText("apiInputCoolingEnable", "Toegestaan", "Geblokkeerd"),
+          }),
           ...renderMqttSourceRows({
             valueKey: "mqttCoolingEnable",
             validKey: "mqttCoolingEnableValid",
@@ -847,11 +915,14 @@ import { escapeHtml } from "../core/html.js";
         select: {
           key: "coolingDewPointSource",
           label: "Bron",
+          optionLabels: { "API input": "API-invoer" },
           haKeys: ["coolingDewPointHa", "coolingDewPointHaValid"],
+          apiValueKey: "apiInputCoolingDewPoint",
+          apiValidKey: "apiInputCoolingDewPointValid",
           mqttTopicKey: "cooling_dew_point",
           infoId: "coolingDewPointSource-info",
           infoCopy: mqttAvailable
-            ? "Auto gebruikt de hoogste geldige waarde als Home Assistant en MQTT tegelijk geldig zijn. Kies Home Assistant of MQTT om die bron expliciet te vereisen."
+            ? "Auto gebruikt de hoogste geldige waarde als Home Assistant, API-invoer en MQTT tegelijk geldig zijn. Kies Home Assistant, API input of MQTT om die bron expliciet te vereisen."
             : "Auto gebruikt een geldige Home Assistant-waarde wanneer die beschikbaar is. Kies Home Assistant om die bron expliciet te vereisen.",
         },
         activeRows: [
@@ -860,6 +931,7 @@ import { escapeHtml } from "../core/html.js";
         ],
         measurementRows: [
           ...renderHaSourceRows({ valueKey: "coolingDewPointHa", validKey: "coolingDewPointHaValid" }),
+          ...renderApiSourceRows({ valueKey: "apiInputCoolingDewPoint", validKey: "apiInputCoolingDewPointValid" }),
           ...renderMqttSourceRows({ valueKey: "mqttCoolingDewPoint", validKey: "mqttCoolingDewPointValid" }),
         ],
       }),

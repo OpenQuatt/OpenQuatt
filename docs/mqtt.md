@@ -9,7 +9,7 @@ OpenQuatt heeft geen volledige MQTT-export. De firmware gebruikt wel een kleine 
 - warmtetoestemming;
 - koeltoestemming.
 
-Gebruik voor normale monitoring en bediening bij voorkeur de web-app en, als je die gebruikt, Home Assistant via de native ESPHome API.
+Gebruik voor normale monitoring en bediening bij voorkeur de web-app en, als je die gebruikt, Home Assistant via de native ESPHome API. Voor dezelfde externe bronwaarden zonder MQTT kun je de API-input-entiteiten gebruiken.
 
 De [keuze voor gebruiksstatistieken](web-app.md#gebruiksstatistieken-en-privacy) gebruikt een aparte outbound-only MQTT-client om de centrale OpenQuatt-loggingserver te bereiken. De huidige standaardconfiguratie gebruikt poort 1883 zonder TLS. Die client deelt geen entiteiten, discovery-berichten of logs en gebruikt niet de brokerconfiguratie van deze MQTT inputbronnen. De telemetrypayload vermeldt alleen of MQTT inputbronnen als geheel aanstaan. Brokergegevens, wifi-netwerknaam, wifi-wachtwoord, gebruikersnamen, andere wachtwoorden, topics en ontvangen waarden worden nooit meegestuurd. Zoals bij iedere internetverbinding is het bron-IP-adres technisch zichtbaar voor de loggingserver; OpenQuatt slaat dit IP-adres niet op.
 
@@ -111,13 +111,14 @@ Ga in de web-app naar **Instellingen → Bronnen / integraties → Sensorselecti
 
 Bij `Koelingsdauwpunt` kies je:
 
-- `Auto`: gebruik de hoogste geldige waarde van Home Assistant en MQTT;
+- `Auto`: gebruik de hoogste geldige waarde van Home Assistant, API-invoer en MQTT;
 - `Home Assistant`: vereis de Home Assistant-dauwpuntbron;
+- `API input`: vereis de API-invoerbron;
 - `MQTT`: vereis de MQTT-dauwpuntbron.
 
 In `Auto` is de hoogste geldige dauwpuntwaarde bewust leidend, omdat die voor koeling de veiligste ondergrens geeft.
 
-Bij `Buitentemperatuur` gebruikt `Auto` de laagste geldige waarde uit buitenunit, Home Assistant en MQTT. Dat houdt verwarming en vorstbeveiliging conservatief. Bij `Kamertemperatuur` en `Kamer setpoint` kies je MQTT expliciet als bron.
+Bij `Buitentemperatuur` gebruikt `Auto` de laagste geldige waarde uit buitenunit, Home Assistant, API-invoer en MQTT. Dat houdt verwarming en vorstbeveiliging conservatief. Bij `Kamertemperatuur` en `Kamer setpoint` kun je MQTT of API input expliciet als bron kiezen.
 
 Kies je `MQTT` expliciet als buitentemperatuurbron, dan is die bron na een (her)start pas geldig zodra OpenQuatt een nieuwe live publicatie ontvangt. Tot die tijd ontbreekt de buitentemperatuur en kan de regeling naar `CM98` (antivriescirculatie) gaan. De wachttijd hangt af van het publicatie-interval van de zender. Overweeg daarom `Auto`; dan kan OpenQuatt tijdens het wachten een andere geldige buitentemperatuurbron gebruiken.
 

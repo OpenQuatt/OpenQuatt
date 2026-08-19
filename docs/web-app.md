@@ -196,7 +196,7 @@ Bij `Expliciet toestaan` gebruikt OpenQuatt geen dauwpuntgrens: ook een beschikb
 Wil je dauwpuntbronnen uit Home Assistant gebruiken, volg dan de
 [companion-handleiding voor dynamische koelbronnen](https://github.com/OpenQuatt/home-assistant-openquatt/blob/main/docs/cooling.md).
 De web-app kiest daarna welke koelingsdauwpuntbron OpenQuatt gebruikt: `Auto`,
-`Home Assistant` of `MQTT`. In `Auto` gebruikt OpenQuatt de hoogste geldige
+`Home Assistant`, `API input` of `MQTT`. In `Auto` gebruikt OpenQuatt de hoogste geldige
 dauwpuntwaarde.
 
 Wil je externe bronwaarden of toestemmingssignalen via MQTT aanleveren, configureer dan eerst de broker bij **Bronnen / integraties -> MQTT inputbronnen**. In **MQTT sensoren** kun je per topic zien wat OpenQuatt verwacht en ongebruikte topics uitzetten. Zie [MQTT inputbronnen](mqtt.md) voor topics, payload en geldigheid.

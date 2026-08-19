@@ -60,6 +60,7 @@ class CoolingSafetyRuntime {
     if (id(cooling_dew_point_available).state) {
       if (id(cooling_dew_point_source).has_state()) {
         if (id(cooling_dew_point_source).current_option() == "MQTT") return "Dew point (MQTT)";
+        if (id(cooling_dew_point_source).current_option() == "API input") return "Dew point (API input)";
         if (id(cooling_dew_point_source).current_option() == "Home Assistant") return "Dew point (HA)";
       }
       return "Dew point";
@@ -93,17 +94,35 @@ class CoolingSafetyRuntime {
   float selected_dew_point(uint32_t now_ms, uint32_t hold_ms) {
     const int source_mode_code = dew_source_mode_code();
     const bool ha_ok = ha_dew_valid();
+    const bool api_ok = api_dew_valid();
     const bool mqtt_ok = mqtt_dew_valid();
     float selected_c = NAN;
     int selected_route_code = 0;
-    if ((source_mode_code == 2 || source_mode_code == 3) && mqtt_ok) {
+    if (source_mode_code == 2 && mqtt_ok) {
       selected_c = id(mqtt_cooling_dew_point).state;
       selected_route_code = 2;
     }
-    if ((source_mode_code == 1 && ha_ok) ||
-        (source_mode_code == 3 && ha_ok && (!finite(selected_c) || id(cooling_dew_point_ha).state > selected_c))) {
+    if (source_mode_code == 4 && api_ok) {
+      selected_c = id(api_input_cooling_dew_point).state;
+      selected_route_code = 4;
+    }
+    if (source_mode_code == 1 && ha_ok) {
       selected_c = id(cooling_dew_point_ha).state;
       selected_route_code = 1;
+    }
+    if (source_mode_code == 3) {
+      if (mqtt_ok) {
+        selected_c = id(mqtt_cooling_dew_point).state;
+        selected_route_code = 2;
+      }
+      if (api_ok && (!finite(selected_c) || id(api_input_cooling_dew_point).state > selected_c)) {
+        selected_c = id(api_input_cooling_dew_point).state;
+        selected_route_code = 4;
+      }
+      if (ha_ok && (!finite(selected_c) || id(cooling_dew_point_ha).state > selected_c)) {
+        selected_c = id(cooling_dew_point_ha).state;
+        selected_route_code = 1;
+      }
     }
     if (finite(selected_c)) {
       id(oq_cooling_dew_point_selected_last_valid_c) = selected_c;
@@ -114,7 +133,7 @@ class CoolingSafetyRuntime {
       return selected_c;
     }
     id(oq_cooling_dew_point_selected_hold_active) = false;
-    if (hold_ms > 0 && id(oq_cooling_dew_point_selected_last_route_code) != 2 &&
+    if (hold_ms > 0 && id(oq_cooling_dew_point_selected_last_route_code) == 1 &&
         id(oq_cooling_dew_point_selected_last_valid_ms) > 0 &&
         id(oq_cooling_dew_point_selected_last_mode_code) == source_mode_code &&
         (uint32_t)(now_ms - id(oq_cooling_dew_point_selected_last_valid_ms)) < hold_ms &&
@@ -204,7 +223,10 @@ class CoolingSafetyRuntime {
   int dew_source_mode_code() const {
     if (!id(cooling_dew_point_source).has_state()) return 3;
     const auto source = id(cooling_dew_point_source).current_option();
-    return source == "MQTT" ? 2 : (source == "Home Assistant" ? 1 : 3);
+    if (source == "Home Assistant") return 1;
+    if (source == "MQTT") return 2;
+    if (source == "API input") return 4;
+    return 3;
   }
   const char* fallback_block_reason() {
     if (!id(cooling_without_dew_point_enabled).state) return "No dew point source";
@@ -252,6 +274,10 @@ class CoolingSafetyRuntime {
   bool mqtt_dew_valid() const {
     return id(mqtt_cooling_dew_point_valid).has_state() && id(mqtt_cooling_dew_point_valid).state &&
            id(mqtt_cooling_dew_point).has_state() && finite(id(mqtt_cooling_dew_point).state);
+  }
+  bool api_dew_valid() const {
+    return id(api_input_cooling_dew_point_valid).has_state() && id(api_input_cooling_dew_point_valid).state &&
+           id(api_input_cooling_dew_point).has_state() && finite(id(api_input_cooling_dew_point).state);
   }
 };
 inline CoolingSafetyRuntime& runtime() {

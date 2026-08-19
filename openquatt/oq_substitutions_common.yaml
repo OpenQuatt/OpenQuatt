@@ -65,6 +65,12 @@ mqtt_heating_enable_topic: "openquatt/${device_name}/input/thermostat/heating_en
 mqtt_heating_enable_stale_s: "0"                      # Maximum age for MQTT heating-enable [s]; 0 keeps state until a new payload, disable, or restart.
 mqtt_cooling_enable_topic: "openquatt/${device_name}/input/thermostat/cooling_enable" # Fixed MQTT input topic for external cooling enable [boolean].
 mqtt_cooling_enable_stale_s: "0"                      # Maximum age for MQTT cooling-enable [s]; 0 keeps state until a new payload, disable, or restart.
+api_input_cooling_dew_point_stale_s: "900"            # Maximum age for API-input cooling dew point before it becomes invalid [s].
+api_input_outside_temperature_stale_s: "1800"         # Maximum age for API-input outside temperature before it becomes invalid [s].
+api_input_room_temperature_stale_s: "600"             # Maximum age for API-input room temperature before it becomes invalid [s].
+api_input_room_setpoint_stale_s: "0"                  # Maximum age for API-input room setpoint [s]; 0 keeps state until restart or a new payload.
+api_input_heating_enable_stale_s: "0"                 # Maximum age for API-input heating-enable [s]; 0 keeps state until restart or a new payload.
+api_input_cooling_enable_stale_s: "0"                 # Maximum age for API-input cooling-enable [s]; 0 keeps state until restart or a new payload.
 usage_telemetry_broker: "mqtt.openquatt.nl"           # Central usage-statistics MQTT broker.
 usage_telemetry_port: "1883"                          # Plain MQTT port for the current central broker.
 usage_telemetry_tls: "false"                          # Temporary until the central broker exposes MQTT/TLS.
