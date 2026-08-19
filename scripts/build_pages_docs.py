@@ -48,6 +48,7 @@ PAGES = [
     Page(PurePosixPath("docs/dashboardoverzicht.md"), PurePosixPath("dashboardoverzicht.html"), "Dashboard gebruiken", "Doorverwijzing", "Actuele dashboardhandleiding in de Home Assistant companion-repository."),
     Page(PurePosixPath("docs/verwarmen-en-koelen.md"), PurePosixPath("verwarmen-en-koelen.html"), "Verwarmen en koelen uitgelegd", "Uitleg", "Heldere uitleg van Power House, stooklijnregeling, koeling, Single en Duo."),
     Page(PurePosixPath("docs/mqtt.md"), PurePosixPath("mqtt.html"), "MQTT inputbronnen", "Docs", "Beperkte MQTT inputbronnen voor externe meetwaarden zoals koelingsdauwpunt."),
+    Page(PurePosixPath("docs/api-input.md"), PurePosixPath("api-input.html"), "API inputbronnen", "Docs", "Lokale HTTP-endpoints voor externe bronwaarden en toestemmingssignalen."),
     Page(PurePosixPath("docs/problemen-oplossen.md"), PurePosixPath("problemen-oplossen.html"), "Problemen oplossen", "Handleiding", "Rustige diagnosevolgorde bij installatie- en regelproblemen."),
     Page(PurePosixPath("docs/power-house.md"), PurePosixPath("power-house.html"), "Power House", "Docs", "Uitleg van huismodel, comfortlogica en Single/Duo-gedrag."),
     Page(PurePosixPath("docs/water-temperature-control.md"), PurePosixPath("water-temperature-control.html"), "Water Temperature Control", "Docs", "Uitleg van stooklijn, PID en Single/Duo-gedrag in curve-modus."),
@@ -101,6 +102,7 @@ SIDEBAR_GROUPS = [
         "Fallbacks en technische routes die je meestal niet dagelijks nodig hebt.",
         [
             PurePosixPath("docs/mqtt.md"),
+            PurePosixPath("docs/api-input.md"),
             PurePosixPath("docs/hcq-io-overzicht.md"),
             PurePosixPath("docs/handmatige-installatie.md"),
         ],

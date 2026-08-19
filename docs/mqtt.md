@@ -9,7 +9,7 @@ OpenQuatt heeft geen volledige MQTT-export. De firmware gebruikt wel een kleine 
 - warmtetoestemming;
 - koeltoestemming.
 
-Gebruik voor normale monitoring en bediening bij voorkeur de web-app en, als je die gebruikt, Home Assistant via de native ESPHome API. Voor dezelfde externe bronwaarden zonder MQTT kun je de API-input-entiteiten gebruiken.
+Gebruik voor normale monitoring en bediening bij voorkeur de web-app en, als je die gebruikt, Home Assistant via de native ESPHome API. Voor dezelfde externe bronwaarden zonder MQTT kun je de [API-input-entiteiten](api-input.md) gebruiken.
 
 De [keuze voor gebruiksstatistieken](web-app.md#gebruiksstatistieken-en-privacy) gebruikt een aparte outbound-only MQTT-client om de centrale OpenQuatt-loggingserver te bereiken. De huidige standaardconfiguratie gebruikt poort 1883 zonder TLS. Die client deelt geen entiteiten, discovery-berichten of logs en gebruikt niet de brokerconfiguratie van deze MQTT inputbronnen. De telemetrypayload vermeldt alleen of MQTT inputbronnen als geheel aanstaan. Brokergegevens, wifi-netwerknaam, wifi-wachtwoord, gebruikersnamen, andere wachtwoorden, topics en ontvangen waarden worden nooit meegestuurd. Zoals bij iedere internetverbinding is het bron-IP-adres technisch zichtbaar voor de loggingserver; OpenQuatt slaat dit IP-adres niet op.
 
@@ -147,6 +147,7 @@ mosquitto_pub -h mqtt.local -t openquatt/openquatt/input/thermostat/heating_enab
 ## Verder lezen
 
 - [Web-app gebruiken](web-app.md)
+- [API inputbronnen](api-input.md)
 - [Instellingen en meetwaarden](instellingen-en-meetwaarden.md)
 - [Problemen oplossen](problemen-oplossen.md)
 - [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md)

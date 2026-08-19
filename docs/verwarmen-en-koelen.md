@@ -122,7 +122,7 @@ Daarom kijkt OpenQuatt bij koeling niet alleen naar comfort, maar ook naar veili
 - wat is dan de veilige ondergrens voor de watertemperatuur;
 - mag cooling op dit moment dus wel of niet vrijgegeven worden.
 
-Een dauwpunt kan uit Home Assistant, API-invoer of MQTT komen. In de web-app kies je de bron. Bij `Auto` gebruikt OpenQuatt de hoogste geldige dauwpuntwaarde, omdat die voor koeling de veiligste ondergrens geeft. Een externe waarde moet regelmatig worden bijgewerkt; bij een verouderde of ontbrekende waarde valt OpenQuatt terug op een andere geldige bron of blokkeert het koelen. Zie [MQTT inputbronnen](mqtt.md) voor de technische geldigheidsduur.
+Een dauwpunt kan uit Home Assistant, API-invoer of MQTT komen. In de web-app kies je de bron. Bij `Auto` gebruikt OpenQuatt de hoogste geldige dauwpuntwaarde, omdat die voor koeling de veiligste ondergrens geeft. Een externe waarde moet regelmatig worden bijgewerkt; bij een verouderde of ontbrekende waarde valt OpenQuatt terug op een andere geldige bron of blokkeert het koelen. Zie [API inputbronnen](api-input.md) en [MQTT inputbronnen](mqtt.md) voor de technische geldigheidsduur.
 
 ### Wat doet `Manual Cooling Enable`?
 
