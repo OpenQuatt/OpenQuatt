@@ -13,6 +13,11 @@
 # ==============================================================================
 
 globals:
+  - id: api_input_accept_updates
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
   - id: api_input_cooling_dew_point_last_valid_ms
     type: uint32_t
     restore_value: no
@@ -90,6 +95,9 @@ number:
     mode: box
     on_value:
       - lambda: |-
+          if (!id(api_input_accept_updates)) {
+            return;
+          }
           id(api_input_cooling_dew_point_has_value) = true;
           id(api_input_cooling_dew_point_last_valid_ms) = (uint32_t) millis();
 
@@ -109,6 +117,9 @@ number:
     mode: box
     on_value:
       - lambda: |-
+          if (!id(api_input_accept_updates)) {
+            return;
+          }
           id(api_input_outside_temperature_has_value) = true;
           id(api_input_outside_temperature_last_valid_ms) = (uint32_t) millis();
 
@@ -128,6 +139,9 @@ number:
     mode: box
     on_value:
       - lambda: |-
+          if (!id(api_input_accept_updates)) {
+            return;
+          }
           id(api_input_room_temperature_has_value) = true;
           id(api_input_room_temperature_last_valid_ms) = (uint32_t) millis();
 
@@ -147,6 +161,9 @@ number:
     mode: box
     on_value:
       - lambda: |-
+          if (!id(api_input_accept_updates)) {
+            return;
+          }
           id(api_input_room_setpoint_has_value) = true;
           id(api_input_room_setpoint_last_valid_ms) = (uint32_t) millis();
 
@@ -161,10 +178,16 @@ switch:
     optimistic: true
     turn_on_action:
       - lambda: |-
+          if (!id(api_input_accept_updates)) {
+            return;
+          }
           id(api_input_heating_enable_has_value) = true;
           id(api_input_heating_enable_last_valid_ms) = (uint32_t) millis();
     turn_off_action:
       - lambda: |-
+          if (!id(api_input_accept_updates)) {
+            return;
+          }
           id(api_input_heating_enable_has_value) = true;
           id(api_input_heating_enable_last_valid_ms) = (uint32_t) millis();
 
@@ -178,12 +201,53 @@ switch:
     optimistic: true
     turn_on_action:
       - lambda: |-
+          if (!id(api_input_accept_updates)) {
+            return;
+          }
           id(api_input_cooling_enable_has_value) = true;
           id(api_input_cooling_enable_last_valid_ms) = (uint32_t) millis();
     turn_off_action:
       - lambda: |-
+          if (!id(api_input_accept_updates)) {
+            return;
+          }
           id(api_input_cooling_enable_has_value) = true;
           id(api_input_cooling_enable_last_valid_ms) = (uint32_t) millis();
+
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - lambda: |-
+          // Ignore template component startup state until real API writes can arrive.
+          id(api_input_accept_updates) = false;
+          id(api_input_cooling_dew_point_has_value) = false;
+          id(api_input_outside_temperature_has_value) = false;
+          id(api_input_room_temperature_has_value) = false;
+          id(api_input_room_setpoint_has_value) = false;
+          id(api_input_heating_enable_has_value) = false;
+          id(api_input_cooling_enable_has_value) = false;
+          id(api_input_cooling_dew_point_last_valid_ms) = 0U;
+          id(api_input_outside_temperature_last_valid_ms) = 0U;
+          id(api_input_room_temperature_last_valid_ms) = 0U;
+          id(api_input_room_setpoint_last_valid_ms) = 0U;
+          id(api_input_heating_enable_last_valid_ms) = 0U;
+          id(api_input_cooling_enable_last_valid_ms) = 0U;
+          id(api_input_cooling_dew_point_age).publish_state(NAN);
+          id(api_input_outside_temperature_age).publish_state(NAN);
+          id(api_input_room_temperature_age).publish_state(NAN);
+          id(api_input_room_setpoint_age).publish_state(NAN);
+          id(api_input_heating_enable_age).publish_state(NAN);
+          id(api_input_cooling_enable_age).publish_state(NAN);
+          id(api_input_cooling_dew_point_valid).publish_state(false);
+          id(api_input_outside_temperature_valid).publish_state(false);
+          id(api_input_room_temperature_valid).publish_state(false);
+          id(api_input_room_setpoint_valid).publish_state(false);
+          id(api_input_heating_enable_valid).publish_state(false);
+          id(api_input_cooling_enable_valid).publish_state(false);
+      - delay: 1s
+      - lambda: |-
+          id(api_input_accept_updates) = true;
 
 binary_sensor:
   - platform: template
