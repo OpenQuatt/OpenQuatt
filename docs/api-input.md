@@ -24,6 +24,8 @@ Als web-login aan staat, gebruik dan dezelfde gebruikersnaam en hetzelfde wachtw
 
 Temperatuurwaarden zijn `number`-entiteiten. Zet ze met een `POST` naar `/number/<naam>/set?value=<temperatuur>`.
 
+Sommige `curl`-versies vereisen bij `POST` een expliciete `Content-Length`. Gebruik daarom `-H "Content-Length: 0"` in de voorbeelden hieronder.
+
 | Signaal | Endpoint | Geldige waarde |
 |---|---|---|
 | Koelingsdauwpunt | `/number/api_input_cooling_dew_point/set?value=<temperatuur>` | `-20..35` graden Celsius |
@@ -43,31 +45,31 @@ Toestemmingssignalen zijn `switch`-entiteiten. Zet ze met een `POST` naar `/turn
 Koelingsdauwpunt op `15.6` graden zetten:
 
 ```sh
-curl -X POST "http://openquatt.local/number/api_input_cooling_dew_point/set?value=15.6"
+curl -X POST -H "Content-Length: 0" "http://openquatt.local/number/api_input_cooling_dew_point/set?value=15.6"
 ```
 
 Buitentemperatuur op `7.2` graden zetten:
 
 ```sh
-curl -X POST "http://openquatt.local/number/api_input_outside_temperature/set?value=7.2"
+curl -X POST -H "Content-Length: 0" "http://openquatt.local/number/api_input_outside_temperature/set?value=7.2"
 ```
 
 Warmtetoestemming aanzetten:
 
 ```sh
-curl -X POST "http://openquatt.local/switch/api_input_heating_enable/turn_on"
+curl -X POST -H "Content-Length: 0" "http://openquatt.local/switch/api_input_heating_enable/turn_on"
 ```
 
 Koeltoestemming uitzetten:
 
 ```sh
-curl -X POST "http://openquatt.local/switch/api_input_cooling_enable/turn_off"
+curl -X POST -H "Content-Length: 0" "http://openquatt.local/switch/api_input_cooling_enable/turn_off"
 ```
 
 Met web-login:
 
 ```sh
-curl --digest -u "gebruikersnaam:wachtwoord" -X POST "http://openquatt.local/number/api_input_room_temperature/set?value=20.5"
+curl --digest -u "gebruikersnaam:wachtwoord" -X POST -H "Content-Length: 0" "http://openquatt.local/number/api_input_room_temperature/set?value=20.5"
 ```
 
 ## Geldigheid
