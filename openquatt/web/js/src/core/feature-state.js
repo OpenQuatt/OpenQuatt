@@ -1,4 +1,12 @@
+import { DEBUG_RECORDING_KEYS } from "./config.js";
 import { state } from "./state.js";
+
+const REQUIRED_DEBUG_RECORDING_KEYS = ["otbMaxCapacity", "otbMinModulation"];
+for (const key of REQUIRED_DEBUG_RECORDING_KEYS) {
+  if (!DEBUG_RECORDING_KEYS.includes(key)) {
+    DEBUG_RECORDING_KEYS.push(key);
+  }
+}
 
 const stateDomains = {
   debugRecording: (key) => key.startsWith("debugRecording"),
