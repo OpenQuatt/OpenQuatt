@@ -414,7 +414,11 @@ import { renderModalShell } from "../core/modal-shell.js";
     if (upper.startsWith("DONE:") || upper === "DONE" || upper.includes("APPLIED")) {
       const result = getSettingsStatValue("boilerPowerTestResult");
       const conf = getSettingsStatValue("boilerPowerTestConfidence");
+      const isFlowLimited = upper.includes("FLOW LIMITED");
       if (result && result !== "—") {
+        if (isFlowLimited) {
+          return `Klaar - ${result}${conf && conf !== "—" ? ` (${conf})` : ""} - test begrensd door flow/temperatuurmarge.`;
+        }
         return `Klaar - ${result}${conf && conf !== "—" ? ` (${conf})` : ""}. Ketel auto uit.`;
       }
       return upper.includes("APPLIED") ? "Resultaat toegepast." : "Klaar - ketel auto uit.";

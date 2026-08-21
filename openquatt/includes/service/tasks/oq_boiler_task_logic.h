@@ -97,16 +97,14 @@ class BoilerPowerTestRuntime {
       }
       const float flow_lph = id(flow_rate_selected).state;
       float rated_w = id(oq_boiler_rated_heat_power).state;
+      float otb_max_w = NAN;
       if (id(otb_max_capacity).has_state() && !isnan(id(otb_max_capacity).state) && id(otb_max_capacity).state > 0.0f) {
-        rated_w = id(otb_max_capacity).state * 1000.0f;
-      } else {
-        oq_service_status::set_boiler_power_test("REFUSED: OT max capacity unavailable");
-        ESP_LOGW("quatt.cm100.boiler", "Boiler test refused: OT max_capacity not available");
-        return;
+        otb_max_w = id(otb_max_capacity).state * 1000.0f;
       }
       const float cp = 4180.0f;
       const float flow_for_check = (!isnan(flow_lph) && flow_lph > 0.0f) ? flow_lph : cfg.target_flow_lph;
-      auto op = oq_boiler_commissioning::compute_operating_point(rated_w, inlet_c, max_c, flow_for_check, cp, 5.0f);
+      auto op = oq_boiler_commissioning::compute_opentherm_operating_point(true, otb_max_w, rated_w, inlet_c, max_c,
+                                                                           flow_for_check, cp, 5.0f);
       if (!op.feasible) {
         oq_service_status::set_boiler_power_test("REFUSED: insufficient thermal headroom for boiler power test");
         ESP_LOGW("quatt.cm100.boiler",
@@ -164,10 +162,24 @@ class BoilerPowerTestRuntime {
       } else {
         inlet_c2 = id(water_supply_temp_selected).state;
       }
-      auto op2 = oq_boiler_commissioning::compute_operating_point(rated_w_for_calc, inlet_c2, max_c,
-                                                                  cfg.target_flow_lph, 4180.0f, 5.0f);
-      if (op2.feasible && op2.required_flow_lph > cfg.target_flow_lph) {
-        target_flow_to_use = fminf(op2.required_flow_lph, 1500.0f);
+      float otb_max_w2 = NAN;
+      if (id(otb_max_capacity).has_state() && !isnan(id(otb_max_capacity).state) && id(otb_max_capacity).state > 0.0f) {
+        otb_max_w2 = id(otb_max_capacity).state * 1000.0f;
+      }
+      auto op2 = oq_boiler_commissioning::compute_opentherm_operating_point(
+          true, otb_max_w2, rated_w_for_calc, inlet_c2, max_c, cfg.target_flow_lph, 4180.0f, 5.0f);
+      if (!op2.feasible) {
+        // Still infeasible even with OT logic (e.g., >1500) - keep at 800 and let guard handle, but mark limited
+        active_test_flow_limited_ = op2.flow_limited;
+      } else if (op2.flow_limited) {
+        target_flow_to_use = 1000.0f;
+        active_test_flow_limited_ = true;
+        ESP_LOGI("quatt.cm100.boiler",
+                 "Boiler test flow limited to 1000 L/h (required %.0f) - result may be headroom limited",
+                 op2.required_flow_lph);
+      } else if (op2.required_flow_lph > cfg.target_flow_lph) {
+        target_flow_to_use = fminf(op2.required_flow_lph, 1000.0f);
+        if (op2.required_flow_lph > 1000.0f) active_test_flow_limited_ = true;
         ESP_LOGI("quatt.cm100.boiler", "Boiler test using headroom flow %.0f L/h (required %.0f)", target_flow_to_use,
                  op2.required_flow_lph);
       }
@@ -302,6 +314,7 @@ class BoilerPowerTestRuntime {
   float prev_flow_setpoint_lph_{NAN};
   float active_test_flow_target_lph_{NAN};
   float active_test_capacity_w_{NAN};
+  bool active_test_flow_limited_{false};
   int stable_flow_count_{0};
   int sample_count_{0};
   float sum_w_{0.0f};
@@ -347,6 +360,7 @@ class BoilerPowerTestRuntime {
     plateau_count_ = 0;
     active_test_flow_target_lph_ = NAN;
     active_test_capacity_w_ = NAN;
+    active_test_flow_limited_ = false;
   }
 
   void clear_container() {
@@ -450,12 +464,14 @@ class BoilerPowerTestRuntime {
           return;
         }
         if (op.required_flow_lph > active_test_flow_target_lph_ + 10.0f) {
-          float new_flow = fminf(op.required_flow_lph, 1500.0f);
-          ESP_LOGI(
-              "quatt.cm100.boiler",
-              "Flow settled at %.0f but headroom now requires %.0f L/h (inlet %.1fC); updating target and re-settling",
-              flow_lph, op.required_flow_lph, inlet_c);
+          float new_flow = fminf(op.required_flow_lph, 1000.0f);
+          bool limited = op.flow_limited || op.required_flow_lph > 1000.0f;
+          ESP_LOGI("quatt.cm100.boiler",
+                   "Flow settled at %.0f but headroom now requires %.0f L/h (inlet %.1fC); updating target %sand "
+                   "re-settling",
+                   flow_lph, op.required_flow_lph, inlet_c, limited ? "(limited to 1000) " : "");
           active_test_flow_target_lph_ = new_flow;
+          if (limited) active_test_flow_limited_ = true;
           set_number_value(id(oq_flow_setpoint_lph), new_flow);
           stable_flow_count_ = 0;
           id(oq_commissioning_state_since_ms) = now_ms;
@@ -554,13 +570,22 @@ class BoilerPowerTestRuntime {
     if (confidence < 0.0f) confidence = 0.0f;
     if (confidence > 100.0f) confidence = 100.0f;
 
+    // If flow was limited to 1000 due to headroom, mark result as headroom-limited
+    if (active_test_flow_limited_) {
+      confidence = fminf(confidence, 70.0f);
+      ESP_LOGI("quatt.cm100.boiler",
+               "Measurement headroom limited (flow 1000, capacity %.0fW): avg=%.0fW conf=%.0f%% (penalized)",
+               active_test_capacity_w_, avg_w, confidence);
+    }
+
     id(oq_commissioning_result_w) = avg_w;
     id(oq_commissioning_result_confidence) = confidence;
     id(oq_commissioning_state_code) = STATE_COOLDOWN;
     id(oq_commissioning_state_since_ms) = now_ms;
     id(oq_commissioning_boiler_request) = false;
-    ESP_LOGI("quatt.cm100.boiler", "Measurement complete: avg=%.0fW min=%.0fW max=%.0fW samples=%u conf=%.0f%%", avg_w,
-             min_w_, max_w_, (unsigned int)sample_count_, confidence);
+    ESP_LOGI("quatt.cm100.boiler", "Measurement complete: avg=%.0fW min=%.0fW max=%.0fW samples=%u conf=%.0f%% %s",
+             avg_w, min_w_, max_w_, (unsigned int)sample_count_, confidence,
+             active_test_flow_limited_ ? "(flow limited)" : "");
     restore_flow_setpoint();
     publish_status("COOLDOWN");
   }
@@ -571,8 +596,13 @@ class BoilerPowerTestRuntime {
       return;
     }
     char msg[128];
-    snprintf(msg, sizeof(msg), "DONE: %.0fW (conf %.0f%%)", id(oq_commissioning_result_w),
-             id(oq_commissioning_result_confidence));
+    if (active_test_flow_limited_) {
+      snprintf(msg, sizeof(msg), "DONE: %.0fW (conf %.0f%%) - flow limited", id(oq_commissioning_result_w),
+               id(oq_commissioning_result_confidence));
+    } else {
+      snprintf(msg, sizeof(msg), "DONE: %.0fW (conf %.0f%%)", id(oq_commissioning_result_w),
+               id(oq_commissioning_result_confidence));
+    }
     ESP_LOGI("quatt.cm100.boiler", "Cooldown complete; CM100 idle after boiler test (flow restored, boiler off, %s)",
              msg);
     finish_task(msg, STATE_DONE, true, true);
@@ -580,8 +610,13 @@ class BoilerPowerTestRuntime {
 
   void publish_done_status() {
     char msg[128];
-    snprintf(msg, sizeof(msg), "DONE: %.0fW (conf %.0f%%)", id(oq_commissioning_result_w),
-             id(oq_commissioning_result_confidence));
+    if (active_test_flow_limited_) {
+      snprintf(msg, sizeof(msg), "DONE: %.0fW (conf %.0f%%) - flow limited", id(oq_commissioning_result_w),
+               id(oq_commissioning_result_confidence));
+    } else {
+      snprintf(msg, sizeof(msg), "DONE: %.0fW (conf %.0f%%)", id(oq_commissioning_result_w),
+               id(oq_commissioning_result_confidence));
+    }
     publish_status(msg);
   }
 

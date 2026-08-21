@@ -7,6 +7,7 @@ namespace oq_boiler_commissioning {
 
 struct OperatingPoint {
   bool feasible = false;
+  bool flow_limited = false;
   float target_temperature_c = NAN;
   float required_flow_lph = NAN;
   float headroom_c = NAN;
@@ -87,6 +88,7 @@ inline OperatingPoint compute_opentherm_operating_point(bool opentherm_selected,
     (void)cp_j_per_kgk;
     OperatingPoint out{};
     out.feasible = true;
+    out.flow_limited = false;
     out.headroom_c = headroom_c;
     out.required_flow_lph = flow_lph;
     float max_target = max_c - headroom_c;
@@ -95,7 +97,18 @@ inline OperatingPoint compute_opentherm_operating_point(bool opentherm_selected,
     out.reason = nullptr;
     return out;
   }
-  return compute_operating_point(otb_max_capacity_w, inlet_c, max_c, flow_lph, cp_j_per_kgk, headroom_c);
+  auto op = compute_operating_point(otb_max_capacity_w, inlet_c, max_c, flow_lph, cp_j_per_kgk, headroom_c);
+  // For OT, clamp required flow to 1000 max (800 base, 1000 max) and mark as limited if needed
+  if (op.feasible && op.required_flow_lph > 1000.0f) {
+    if (op.required_flow_lph > 1500.0f) {
+      // Still infeasible if >1500 even with OT
+      return op;
+    }
+    op.flow_limited = true;
+    op.required_flow_lph = 1000.0f;
+    // Target remains max - headroom, but flow is limited
+  }
+  return op;
 }
 
 inline bool has_sufficient_headroom(float rated_power_w, float inlet_c, float max_c, float flow_lph, float cp_j_per_kgk,
