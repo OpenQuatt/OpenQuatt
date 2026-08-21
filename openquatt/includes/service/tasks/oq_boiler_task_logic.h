@@ -123,13 +123,13 @@ class BoilerPowerTestRuntime {
     id(oq_commissioning_result_w) = NAN;
     id(oq_commissioning_result_confidence) = 0.0f;
 
-prev_flow_setpoint_lph_ = id(oq_flow_setpoint_lph).state;
+    prev_flow_setpoint_lph_ = id(oq_flow_setpoint_lph).state;
     flow_setpoint_saved_ = true;
     // Use headroom-aware flow if required flow exceeds default 800
     float target_flow_to_use = cfg.target_flow_lph;
     float rated_w_for_calc = id(oq_boiler_rated_heat_power).state;
-    const bool opentherm_selected = id(oq_boiler_connection).has_state() &&
-                                     id(oq_boiler_connection).current_option() == "OpenTherm";
+    const bool opentherm_selected =
+        id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
     if (opentherm_selected) {
       // Use OT max capacity if available, otherwise fallback to rated power
       float otb_max_capacity = id(otb_max_capacity).state;
@@ -142,8 +142,8 @@ prev_flow_setpoint_lph_ = id(oq_flow_setpoint_lph).state;
       if (isnan(max_c)) max_c = 60.0f;
       max_c = fmaxf(25.0f, fminf(max_c, 75.0f));
       const float inlet_c2 = id(water_supply_temp_selected).state;
-      auto op2 = oq_boiler_commissioning::compute_operating_point(rated_w_for_calc, inlet_c2, max_c, cfg.target_flow_lph,
-                                                                   4180.0f, 5.0f);
+      auto op2 = oq_boiler_commissioning::compute_operating_point(rated_w_for_calc, inlet_c2, max_c,
+                                                                  cfg.target_flow_lph, 4180.0f, 5.0f);
       if (op2.feasible && op2.required_flow_lph > cfg.target_flow_lph) {
         target_flow_to_use = fminf(op2.required_flow_lph, 1500.0f);
         ESP_LOGI("quatt.cm100.boiler", "Boiler test using headroom flow %.0f L/h (required %.0f)", target_flow_to_use,

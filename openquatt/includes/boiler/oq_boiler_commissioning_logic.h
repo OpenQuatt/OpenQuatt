@@ -63,8 +63,8 @@ inline OperatingPoint compute_operating_point(float rated_power_w, float inlet_c
 }
 
 inline OperatingPoint compute_opentherm_operating_point(bool opentherm_selected, float otb_max_capacity_w,
-                                                        float rated_power_w, float inlet_c, float max_c,
-                                                        float flow_lph, float cp_j_per_kgk, float headroom_c = 5.0f) {
+                                                        float rated_power_w, float inlet_c, float max_c, float flow_lph,
+                                                        float cp_j_per_kgk, float headroom_c = 5.0f) {
   if (!opentherm_selected) {
     // R1: keep existing behavior, no dynamic flow, just headroom-capped target
     OperatingPoint out{};
