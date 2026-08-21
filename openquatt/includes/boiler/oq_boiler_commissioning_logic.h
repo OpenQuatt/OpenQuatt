@@ -81,15 +81,14 @@ inline OperatingPoint compute_opentherm_operating_point(bool opentherm_selected,
     return out;
   }
   if (isnan(otb_max_capacity_w) || otb_max_capacity_w <= 0.0f) {
-    // OT max capacity unavailable (ID15 not supported): use conservative high flow
-    // Do not refuse; let thermal guard and measurement plateau determine reliability
+    // OT max capacity unavailable (ID15 not supported): keep at 800, don't go to 1500
+    // Many systems cannot reach 1500; use max-5 and let guard/plateau determine reliability
     (void)rated_power_w;
-    (void)flow_lph;
     (void)cp_j_per_kgk;
     OperatingPoint out{};
     out.feasible = true;
     out.headroom_c = headroom_c;
-    out.required_flow_lph = 1500.0f;
+    out.required_flow_lph = flow_lph;
     float max_target = max_c - headroom_c;
     if (isnan(max_target) || max_target <= inlet_c) max_target = inlet_c + 1.0f;
     out.target_temperature_c = max_target;

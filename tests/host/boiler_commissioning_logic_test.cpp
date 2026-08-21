@@ -59,8 +59,8 @@ void test_opentherm_uses_ot_max_capacity() {
   auto op_rated = compute_opentherm_operating_point(true, NAN, 6000.0f, 20.0f, 50.0f, 800.0f, 4180.0f, 5.0f);
   assert(op_ot.feasible);
   assert(op_rated.feasible);
-  // OT missing is conservative 1500, OT 30kW needs ~1034 which is >800 but <1500
-  assert(op_rated.required_flow_lph == 1500.0f);
+  // OT missing keeps at 800 (not 1500, many systems cannot reach 1500)
+  assert(op_rated.required_flow_lph == 800.0f);
   assert(op_ot.required_flow_lph > 800.0f);
   assert(op_ot.required_flow_lph < 1500.0f);
   // R1 should not use OT logic
@@ -71,14 +71,14 @@ void test_opentherm_uses_ot_max_capacity() {
 }
 
 void test_opentherm_missing_max_capacity() {
-  // OT max missing -> conservative high flow (1500) with max-5 target
+  // OT max missing -> keep at 800, not 1500 (many systems cannot reach 1500)
   auto op = compute_opentherm_operating_point(true, NAN, 6000.0f, 20.0f, 50.0f, 800.0f, 4180.0f, 5.0f);
   assert(op.feasible);
-  assert(op.required_flow_lph == 1500.0f);
+  assert(op.required_flow_lph == 800.0f);
   assert(op.target_temperature_c == 45.0f);
   auto op_zero = compute_opentherm_operating_point(true, 0.0f, 6000.0f, 20.0f, 50.0f, 800.0f, 4180.0f, 5.0f);
   assert(op_zero.feasible);
-  assert(op_zero.required_flow_lph == 1500.0f);
+  assert(op_zero.required_flow_lph == 800.0f);
 }
 
 void test_dynamic_flow_after_preflow() {
