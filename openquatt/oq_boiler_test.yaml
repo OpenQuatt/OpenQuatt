@@ -69,19 +69,7 @@ button:
     entity_category: config
     on_press:
       - lambda: |-
-          // Round the applied boiler rating to the nearest 100 W for a cleaner persistent setting.
-          const float result = id(oq_commissioning_result_w);
-          if (!isnan(result) && result > 0.0f) {
-            const int rounded_result = (int) roundf(result / 100.0f) * 100;
-            auto call = id(oq_boiler_rated_heat_power).make_call();
-            call.set_value((float) rounded_result);
-            call.perform();
-            char msg[64];
-            snprintf(msg, sizeof(msg), "APPLIED: %dW", rounded_result);
-            id(oq_boiler_power_test_status_value) = msg;
-          } else {
-            id(oq_boiler_power_test_status_value) = "APPLY_FAILED";
-          }
+          oq_boiler_task::runtime().apply_result();
 
 number:
   - platform: template
