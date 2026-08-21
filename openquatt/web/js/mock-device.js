@@ -4219,14 +4219,14 @@
           state.commissioning.boilerStatusText = "FLOW_SETTLING";
           setText("text_sensor", "Boiler power test status", "FLOW_SETTLING");
         });
-        scheduleCommissioningStep(1700, () => {
+        scheduleCommissioningStep(3700, () => {
           setCommissioningPhase("boiler", "boiler_settling");
           state.commissioning.boilerStatusText = "BOILER_SETTLING";
           setText("text_sensor", "Boiler power test status", "BOILER_SETTLING");
           setBinary("Boiler active", true);
           setNumber("Boiler Heat Power", 0, "W");
         });
-        scheduleCommissioningStep(2900, () => {
+        scheduleCommissioningStep(6700, () => {
           setCommissioningPhase("boiler", "measuring");
           state.commissioning.boilerStatusText = "MEASURING";
           setText("text_sensor", "Boiler power test status", "MEASURING");
@@ -4234,7 +4234,7 @@
           setNumber("Boiler Heat Power", 1803, "W");
           setNumber("Flow average (Selected)", 802, "L/h");
         });
-        scheduleCommissioningStep(4300, () => {
+        scheduleCommissioningStep(9700, () => {
           setCommissioningPhase("boiler", "done", {
             boilerResult: 1803,
             boilerConfidence: 65,
