@@ -80,16 +80,31 @@ class BoilerPowerTestRuntime {
       oq_service_status::set_boiler_power_test("REFUSED: not CM100");
       return;
     }
-    // Thermal headroom check for commissioning operating point
-    {
+    // Thermal headroom check - OpenTherm only; R1 keeps existing 800 L/h behavior
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    const bool opentherm_selected_headroom =
+        id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
+    if (opentherm_selected_headroom) {
       float max_c = id(max_water_temp_limit_c).state;
       if (isnan(max_c)) max_c = 60.0f;
       max_c = fmaxf(25.0f, fminf(max_c, 75.0f));
-      const float inlet_c = id(water_supply_temp_selected).state;
+      // Prefer OTB return water temp as boiler inlet if available, fallback to supply
+      float inlet_c = NAN;
+      if (id(otb_return_water_temp).has_state() && !isnan(id(otb_return_water_temp).state)) {
+        inlet_c = id(otb_return_water_temp).state;
+      } else {
+        inlet_c = id(water_supply_temp_selected).state;
+      }
       const float flow_lph = id(flow_rate_selected).state;
-      const float rated_w = id(oq_boiler_rated_heat_power).state;
+      float rated_w = id(oq_boiler_rated_heat_power).state;
+      if (id(otb_max_capacity).has_state() && !isnan(id(otb_max_capacity).state) && id(otb_max_capacity).state > 0.0f) {
+        rated_w = id(otb_max_capacity).state * 1000.0f;
+      } else {
+        oq_service_status::set_boiler_power_test("REFUSED: OT max capacity unavailable");
+        ESP_LOGW("quatt.cm100.boiler", "Boiler test refused: OT max_capacity not available");
+        return;
+      }
       const float cp = 4180.0f;
-      // Use current flow if valid, otherwise use configured target (800) for feasibility
       const float flow_for_check = (!isnan(flow_lph) && flow_lph > 0.0f) ? flow_lph : cfg.target_flow_lph;
       auto op = oq_boiler_commissioning::compute_operating_point(rated_w, inlet_c, max_c, flow_for_check, cp, 5.0f);
       if (!op.feasible) {
@@ -105,6 +120,7 @@ class BoilerPowerTestRuntime {
                  op.required_flow_lph, flow_for_check, cfg.target_flow_lph);
       }
     }
+#endif
 
     ESP_LOGI("quatt.cm100.boiler",
              "Boiler power test requested (cm=%d flow_mode=%s flow_sp=%.0fL/h current_task=%d active=%d)", cm_code,
@@ -128,20 +144,36 @@ class BoilerPowerTestRuntime {
     // Use headroom-aware flow if required flow exceeds default 800
     float target_flow_to_use = cfg.target_flow_lph;
     float rated_w_for_calc = id(oq_boiler_rated_heat_power).state;
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     const bool opentherm_selected =
         id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
     if (opentherm_selected) {
-      // Use OT max capacity if available, otherwise fallback to rated power
-      float otb_max_capacity = id(otb_max_capacity);
-      if (!isnan(otb_max_capacity) && otb_max_capacity > 0.0f) {
-        rated_w_for_calc = otb_max_capacity;
+      // Use OT max capacity (kW -> W) if available; otherwise refuse (don't silently use 6kW rated)
+      if (id(otb_max_capacity).has_state() && !isnan(id(otb_max_capacity).state)) {
+        float otb_max_capacity_kw = id(otb_max_capacity).state;
+        if (otb_max_capacity_kw > 0.0f) {
+          rated_w_for_calc = otb_max_capacity_kw * 1000.0f;
+        } else {
+          oq_service_status::set_boiler_power_test("REFUSED: OT max capacity unavailable");
+          ESP_LOGW("quatt.cm100.boiler", "Boiler test refused: OT max_capacity is 0 or invalid");
+          return;
+        }
+      } else {
+        oq_service_status::set_boiler_power_test("REFUSED: OT max capacity unavailable");
+        ESP_LOGW("quatt.cm100.boiler", "Boiler test refused: OT max_capacity not available for OpenTherm");
+        return;
       }
     }
-    {
+    if (opentherm_selected) {
       float max_c = id(max_water_temp_limit_c).state;
       if (isnan(max_c)) max_c = 60.0f;
       max_c = fmaxf(25.0f, fminf(max_c, 75.0f));
-      const float inlet_c2 = id(water_supply_temp_selected).state;
+      float inlet_c2 = NAN;
+      if (id(otb_return_water_temp).has_state() && !isnan(id(otb_return_water_temp).state)) {
+        inlet_c2 = id(otb_return_water_temp).state;
+      } else {
+        inlet_c2 = id(water_supply_temp_selected).state;
+      }
       auto op2 = oq_boiler_commissioning::compute_operating_point(rated_w_for_calc, inlet_c2, max_c,
                                                                   cfg.target_flow_lph, 4180.0f, 5.0f);
       if (op2.feasible && op2.required_flow_lph > cfg.target_flow_lph) {
@@ -150,6 +182,9 @@ class BoilerPowerTestRuntime {
                  op2.required_flow_lph);
       }
     }
+#else
+    (void)rated_w_for_calc;
+#endif
     active_test_flow_target_lph_ = target_flow_to_use;
     ESP_LOGI("quatt.cm100.boiler", "Boiler test armed: target_flow=%.0fL/h saved_flow=%.0fL/h state=%d",
              target_flow_to_use, prev_flow_setpoint_lph_, id(oq_commissioning_state_code));
