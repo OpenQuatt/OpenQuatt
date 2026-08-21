@@ -565,7 +565,7 @@ class BoilerPowerTestRuntime {
                "state=%d cm=%d active=%d pending=%d flow=%.0fL/h target=%.0fL/h stable=%d/%d boiler_req=%d "
                "boiler_active=%d heat=%.0fW elapsed=%lus",
                id(oq_commissioning_state_code), cm_code, (int)id(oq_commissioning_active),
-               (int)id(oq_commissioning_request_pending), flow_lph, cfg.target_flow_lph, stable_flow_count_,
+               (int)id(oq_commissioning_request_pending), flow_lph, active_test_flow_target_lph_, stable_flow_count_,
                cfg.stable_flow_samples, (int)id(oq_commissioning_boiler_request), (int)id(boiler_active).state, heat_w,
                (unsigned long)(elapsed_ms / 1000UL));
       last_state_logged_ = id(oq_commissioning_state_code);
