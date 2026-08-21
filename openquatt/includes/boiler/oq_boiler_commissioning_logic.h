@@ -25,39 +25,16 @@ inline OperatingPoint compute_operating_point(float rated_power_w, float inlet_c
     return out;
   }
 
-  if (inlet_c >= max_c) {
-    out.reason = "inlet at or above max";
-    return out;
-  }
-
-  const float available_headroom_c = max_c - headroom_c - inlet_c;
+  const float max_target = max_c - headroom_c;
+  const float available_headroom_c = max_target - inlet_c;
   if (available_headroom_c <= 0.0f) {
     out.reason = "insufficient thermal headroom for boiler power test";
     return out;
   }
 
-  // Required flow to deliver rated power within headroom
   const float required_flow_kgps = rated_power_w / (cp_j_per_kgk * available_headroom_c);
-  const float required_flow_lph = required_flow_kgps * 3600.0f;
-  out.required_flow_lph = required_flow_lph;
-
-  // If current flow is sufficient, use it and set target with headroom
-  // Otherwise, signal needed flow increase or infeasibility
-  if (required_flow_lph > 1500.0f) {
-    out.reason = "insufficient thermal headroom for boiler power test";
-    return out;
-  }
-
-  // Target is inlet + deltaT at rated power, capped at max - headroom
-  const float thermal_conductance = (flow_lph / 3600.0f) * cp_j_per_kgk;
-  const float delta_t_at_rated = rated_power_w / thermal_conductance;
-  float target = inlet_c + delta_t_at_rated;
-  const float max_target = max_c - headroom_c;
-  if (target > max_target) target = max_target;
-  if (target <= inlet_c) target = inlet_c + 1.0f;
-  if (target >= max_c) target = max_c - headroom_c;
-
-  out.target_temperature_c = target;
+  out.required_flow_lph = required_flow_kgps * 3600.0f;
+  out.target_temperature_c = max_target;
   out.feasible = true;
   out.reason = nullptr;
   return out;
@@ -66,47 +43,62 @@ inline OperatingPoint compute_operating_point(float rated_power_w, float inlet_c
 inline OperatingPoint compute_opentherm_operating_point(bool opentherm_selected, float otb_max_capacity_w,
                                                         float rated_power_w, float inlet_c, float max_c, float flow_lph,
                                                         float cp_j_per_kgk, float headroom_c = 5.0f) {
+  const float max_target = max_c - headroom_c;
+
   if (!opentherm_selected) {
-    // R1: keep existing behavior, no dynamic flow, just headroom-capped target
+    // R1: keep the configured flow and do not apply OT capacity-based flow selection.
     (void)otb_max_capacity_w;
     (void)rated_power_w;
     (void)cp_j_per_kgk;
     OperatingPoint out{};
-    out.feasible = true;
     out.headroom_c = headroom_c;
+    if (isnan(inlet_c) || isnan(max_c) || isnan(flow_lph) || flow_lph <= 0.0f) {
+      out.reason = "invalid input";
+      return out;
+    }
+    out.feasible = true;
     out.required_flow_lph = flow_lph;
-    float max_target = max_c - headroom_c;
-    if (isnan(max_target) || max_target <= inlet_c) max_target = inlet_c + 1.0f;
     out.target_temperature_c = max_target;
     out.reason = nullptr;
     return out;
   }
+
+  // Thermal headroom is required even when optional OT Data ID 15 is unavailable.
+  if (isnan(inlet_c) || isnan(max_c) || isnan(flow_lph) || flow_lph <= 0.0f) {
+    OperatingPoint out{};
+    out.headroom_c = headroom_c;
+    out.reason = "invalid input";
+    return out;
+  }
+  if (max_target - inlet_c <= 0.0f) {
+    OperatingPoint out{};
+    out.headroom_c = headroom_c;
+    out.reason = "insufficient thermal headroom for boiler power test";
+    return out;
+  }
+
   if (isnan(otb_max_capacity_w) || otb_max_capacity_w <= 0.0f) {
-    // OT max capacity unavailable (ID15 not supported): keep at 800, don't go to 1500
-    // Many systems cannot reach 1500; use max-5 and let guard/plateau determine reliability
+    // ID15 is optional. Without it, keep the supplied base flow (normally 800 L/h)
+    // and let the normal thermal guards plus plateau quality determine the outcome.
     (void)rated_power_w;
     (void)cp_j_per_kgk;
     OperatingPoint out{};
     out.feasible = true;
-    out.flow_limited = false;
     out.headroom_c = headroom_c;
     out.required_flow_lph = flow_lph;
-    float max_target = max_c - headroom_c;
-    if (isnan(max_target) || max_target <= inlet_c) max_target = inlet_c + 1.0f;
     out.target_temperature_c = max_target;
     out.reason = nullptr;
     return out;
   }
+
   auto op = compute_operating_point(otb_max_capacity_w, inlet_c, max_c, flow_lph, cp_j_per_kgk, headroom_c);
-  // For OT, clamp required flow to 1000 max (800 base, 1000 max) and mark as limited if needed
-  if (op.feasible && op.required_flow_lph > 1000.0f) {
-    if (op.required_flow_lph > 1500.0f) {
-      // Still infeasible if >1500 even with OT
-      return op;
-    }
+  if (!op.feasible) return op;
+
+  // OpenQuatt installations should not be forced beyond the practical commissioning range.
+  // A higher theoretical requirement is a valid but flow-limited test, not an infeasible one.
+  if (op.required_flow_lph > 1000.0f) {
     op.flow_limited = true;
     op.required_flow_lph = 1000.0f;
-    // Target remains max - headroom, but flow is limited
   }
   return op;
 }
