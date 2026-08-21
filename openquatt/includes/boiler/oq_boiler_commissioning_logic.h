@@ -43,8 +43,9 @@ inline OperatingPoint compute_operating_point(float rated_power_w, float inlet_c
 }
 
 inline OperatingPoint compute_opentherm_operating_point(bool opentherm_selected, float otb_max_capacity_w,
-                                                        float rated_power_w, float inlet_c, float max_c, float base_flow_lph,
-                                                        float cp_j_per_kgk = 4180.0f, float headroom_c = 5.0f) {
+                                                        float rated_power_w, float inlet_c, float max_c,
+                                                        float base_flow_lph, float cp_j_per_kgk = 4180.0f,
+                                                        float headroom_c = 5.0f) {
   const float max_target = max_c - headroom_c;
 
   if (!opentherm_selected) {
