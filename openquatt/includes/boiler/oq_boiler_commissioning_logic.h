@@ -67,6 +67,9 @@ inline OperatingPoint compute_opentherm_operating_point(bool opentherm_selected,
                                                         float cp_j_per_kgk, float headroom_c = 5.0f) {
   if (!opentherm_selected) {
     // R1: keep existing behavior, no dynamic flow, just headroom-capped target
+    (void)otb_max_capacity_w;
+    (void)rated_power_w;
+    (void)cp_j_per_kgk;
     OperatingPoint out{};
     out.feasible = true;
     out.headroom_c = headroom_c;
@@ -77,11 +80,23 @@ inline OperatingPoint compute_opentherm_operating_point(bool opentherm_selected,
     out.reason = nullptr;
     return out;
   }
-  float power_for_calc = rated_power_w;
-  if (!isnan(otb_max_capacity_w) && otb_max_capacity_w > 0.0f) {
-    power_for_calc = otb_max_capacity_w;
+  if (isnan(otb_max_capacity_w) || otb_max_capacity_w <= 0.0f) {
+    // OT max capacity unavailable (ID15 not supported): use conservative high flow
+    // Do not refuse; let thermal guard and measurement plateau determine reliability
+    (void)rated_power_w;
+    (void)flow_lph;
+    (void)cp_j_per_kgk;
+    OperatingPoint out{};
+    out.feasible = true;
+    out.headroom_c = headroom_c;
+    out.required_flow_lph = 1500.0f;
+    float max_target = max_c - headroom_c;
+    if (isnan(max_target) || max_target <= inlet_c) max_target = inlet_c + 1.0f;
+    out.target_temperature_c = max_target;
+    out.reason = nullptr;
+    return out;
   }
-  return compute_operating_point(power_for_calc, inlet_c, max_c, flow_lph, cp_j_per_kgk, headroom_c);
+  return compute_operating_point(otb_max_capacity_w, inlet_c, max_c, flow_lph, cp_j_per_kgk, headroom_c);
 }
 
 inline bool has_sufficient_headroom(float rated_power_w, float inlet_c, float max_c, float flow_lph, float cp_j_per_kgk,
