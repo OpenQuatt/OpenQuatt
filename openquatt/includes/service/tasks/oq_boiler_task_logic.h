@@ -436,6 +436,49 @@ class BoilerPowerTestRuntime {
     stable_flow_count_ = flow_stable_now ? stable_flow_count_ + 1 : 0;
     if (stable_flow_count_ >= cfg.stable_flow_samples &&
         (uint32_t)(now_ms - id(oq_commissioning_state_since_ms)) >= cfg.flow_settle_min_ms) {
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+      // Re-evaluate headroom with fresh inlet after preflow (OT return temp may have risen from 22 to 30°C)
+      const bool opentherm_selected =
+          id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
+      if (opentherm_selected) {
+        float max_c = id(max_water_temp_limit_c).state;
+        if (isnan(max_c)) max_c = 60.0f;
+        max_c = fmaxf(25.0f, fminf(max_c, 75.0f));
+        float inlet_c = NAN;
+        if (id(otb_return_water_temp).has_state() && !isnan(id(otb_return_water_temp).state)) {
+          inlet_c = id(otb_return_water_temp).state;
+        } else {
+          inlet_c = id(water_supply_temp_selected).state;
+        }
+        float rated_w = id(oq_boiler_rated_heat_power).state;
+        if (id(otb_max_capacity).has_state() && !isnan(id(otb_max_capacity).state) &&
+            id(otb_max_capacity).state > 0.0f) {
+          rated_w = id(otb_max_capacity).state * 1000.0f;
+        }
+        auto op = oq_boiler_commissioning::compute_operating_point(rated_w, inlet_c, max_c, flow_lph, 4180.0f, 5.0f);
+        if (!op.feasible) {
+          finish_task("FAILED: insufficient thermal headroom for boiler power test", STATE_FAILED, false, true);
+          return;
+        }
+        if (op.required_flow_lph > active_test_flow_target_lph_ + 10.0f) {
+          float new_flow = fminf(op.required_flow_lph, 1500.0f);
+          ESP_LOGI(
+              "quatt.cm100.boiler",
+              "Flow settled at %.0f but headroom now requires %.0f L/h (inlet %.1fC); updating target and re-settling",
+              flow_lph, op.required_flow_lph, inlet_c);
+          active_test_flow_target_lph_ = new_flow;
+          set_number_value(id(oq_flow_setpoint_lph), new_flow);
+          stable_flow_count_ = 0;
+          id(oq_commissioning_state_since_ms) = now_ms;
+          publish_status("FLOW_SETTLING");
+          return;
+        }
+        // Also update target if significantly higher (e.g., due to inlet rise)
+        if (op.required_flow_lph > active_test_flow_target_lph_ + 10.0f) {
+          // Already handled above
+        }
+      }
+#endif
       id(oq_commissioning_boiler_request_updated_ms) = now_ms;
       id(oq_commissioning_boiler_request) = true;
       id(oq_commissioning_state_code) = STATE_BOILER_SETTLE;
