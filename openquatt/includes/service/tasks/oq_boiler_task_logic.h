@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string>
 
+#include "../../boiler/oq_boiler_commissioning_logic.h"
 #include "../../boiler/oq_boiler_logic.h"
 #include "../oq_service_runtime.h"
 
@@ -79,6 +80,31 @@ class BoilerPowerTestRuntime {
       oq_service_status::set_boiler_power_test("REFUSED: not CM100");
       return;
     }
+    // Thermal headroom check for commissioning operating point
+    {
+      float max_c = id(max_water_temp_limit_c).state;
+      if (isnan(max_c)) max_c = 60.0f;
+      max_c = fmaxf(25.0f, fminf(max_c, 75.0f));
+      const float inlet_c = id(water_supply_temp_selected).state;
+      const float flow_lph = id(flow_rate_selected).state;
+      const float rated_w = id(oq_boiler_rated_heat_power).state;
+      const float cp = 4180.0f;
+      // Use current flow if valid, otherwise use configured target (800) for feasibility
+      const float flow_for_check = (!isnan(flow_lph) && flow_lph > 0.0f) ? flow_lph : cfg.target_flow_lph;
+      auto op = oq_boiler_commissioning::compute_operating_point(rated_w, inlet_c, max_c, flow_for_check, cp, 5.0f);
+      if (!op.feasible) {
+        oq_service_status::set_boiler_power_test("REFUSED: insufficient thermal headroom for boiler power test");
+        ESP_LOGW("quatt.cm100.boiler",
+                 "Boiler test refused: %s (inlet=%.1fC max=%.1fC flow=%.0fL/h rated=%.0fW headroom=%.1fC)",
+                 op.reason ? op.reason : "unknown", inlet_c, max_c, flow_for_check, rated_w, op.headroom_c);
+        return;
+      }
+      if (op.required_flow_lph > flow_for_check + 10.0f) {
+        ESP_LOGI("quatt.cm100.boiler",
+                 "Boiler test headroom requires higher flow: need %.0f L/h vs current %.0f L/h, target remains %.0f",
+                 op.required_flow_lph, flow_for_check, cfg.target_flow_lph);
+      }
+    }
 
     ESP_LOGI("quatt.cm100.boiler",
              "Boiler power test requested (cm=%d flow_mode=%s flow_sp=%.0fL/h current_task=%d active=%d)", cm_code,
@@ -99,9 +125,25 @@ class BoilerPowerTestRuntime {
 
     prev_flow_setpoint_lph_ = id(oq_flow_setpoint_lph).state;
     flow_setpoint_saved_ = true;
+    // Use headroom-aware flow if required flow exceeds default 800
+    float target_flow_to_use = cfg.target_flow_lph;
+    {
+      float max_c = id(max_water_temp_limit_c).state;
+      if (isnan(max_c)) max_c = 60.0f;
+      max_c = fmaxf(25.0f, fminf(max_c, 75.0f));
+      const float inlet_c2 = id(water_supply_temp_selected).state;
+      const float rated_w2 = id(oq_boiler_rated_heat_power).state;
+      auto op2 = oq_boiler_commissioning::compute_operating_point(rated_w2, inlet_c2, max_c, cfg.target_flow_lph,
+                                                                  4180.0f, 5.0f);
+      if (op2.feasible && op2.required_flow_lph > cfg.target_flow_lph) {
+        target_flow_to_use = fminf(op2.required_flow_lph, 1500.0f);
+        ESP_LOGI("quatt.cm100.boiler", "Boiler test using headroom flow %.0f L/h (required %.0f)", target_flow_to_use,
+                 op2.required_flow_lph);
+      }
+    }
     ESP_LOGI("quatt.cm100.boiler", "Boiler test armed: target_flow=%.0fL/h saved_flow=%.0fL/h state=%d",
-             cfg.target_flow_lph, prev_flow_setpoint_lph_, id(oq_commissioning_state_code));
-    set_number_value(id(oq_flow_setpoint_lph), cfg.target_flow_lph);
+             target_flow_to_use, prev_flow_setpoint_lph_, id(oq_commissioning_state_code));
+    set_number_value(id(oq_flow_setpoint_lph), target_flow_to_use);
 
     oq_service_status::set_commissioning("BOILER TEST STARTED");
     publish_status("FLOW_SETTLING");

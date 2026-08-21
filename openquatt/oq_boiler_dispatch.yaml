@@ -13,6 +13,10 @@
 # This package never writes R1 or OpenTherm outputs.
 # ==============================================================================
 
+esphome:
+  includes:
+    - ../../openquatt/includes/boiler/oq_boiler_commissioning_logic.h
+
 globals:
   - id: oq_boiler_command_valid
     type: bool
@@ -146,7 +150,21 @@ interval:
             command.demand_present = true;
             command.heat_request = id(oq_commissioning_boiler_request);
             command.requested_power_w = id(oq_boiler_rated_heat_power).state;
-            command.target_temperature_c = id(max_water_temp_limit_c).state;
+            // Use headroom-aware operating point for commissioning to avoid immediate inhibit at max
+            float max_c = id(max_water_temp_limit_c).state;
+            if (isnan(max_c)) max_c = 60.0f;
+            max_c = fmaxf(25.0f, fminf(max_c, 75.0f));
+            const float inlet_c = id(${secondary_water_out_temp_id}).state;
+            const float flow_lph = id(flow_rate_selected).state;
+            const float rated_w = id(oq_boiler_rated_heat_power).state;
+            auto op = oq_boiler_commissioning::compute_operating_point(rated_w, inlet_c, max_c, flow_lph,
+                                                                       ${oq_water_cp_j_per_kgk}, 5.0f);
+            if (op.feasible) {
+              command.target_temperature_c = op.target_temperature_c;
+            } else {
+              // Keep max as target but let the task handle feasibility via guards; alternative is to mark invalid
+              command.target_temperature_c = max_c - 5.0f;
+            }
             command.source = oq_boiler::COMMAND_SOURCE_COMMISSIONING;
             // Keep the authorization timestamp stable. A dispatcher pass is
             // not a fresh commissioning decision and must not re-arm the
