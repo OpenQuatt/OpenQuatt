@@ -104,8 +104,8 @@ class BoilerPowerTestRuntime {
         active_test_capacity_verified_ = true;
       }
       const float rated_w = id(oq_boiler_rated_heat_power).state;
-      const auto op = compute_opentherm_operating_point(
-          true, active_test_capacity_w_, rated_w, inlet_c, max_c, cfg.target_flow_lph);
+      const auto op = compute_opentherm_operating_point(true, active_test_capacity_w_, rated_w, inlet_c, max_c,
+                                                        cfg.target_flow_lph);
       if (!op.feasible) {
         oq_service_status::set_boiler_power_test("REFUSED: insufficient thermal headroom for boiler power test");
         ESP_LOGW("quatt.cm100.boiler", "Boiler test refused: %s (inlet=%.1fC max=%.1fC headroom=%.1fC)",
@@ -442,8 +442,8 @@ class BoilerPowerTestRuntime {
         inlet_c = id(water_supply_temp_selected).state;
       }
       const float rated_w = id(oq_boiler_rated_heat_power).state;
-      const auto op = compute_opentherm_operating_point(
-          true, active_test_capacity_w_, rated_w, inlet_c, max_c, cfg.target_flow_lph);
+      const auto op = compute_opentherm_operating_point(true, active_test_capacity_w_, rated_w, inlet_c, max_c,
+                                                        cfg.target_flow_lph);
       if (!op.feasible) {
         finish_task("FAILED: insufficient thermal headroom for boiler power test", STATE_FAILED, false, true);
         return;
@@ -567,7 +567,9 @@ class BoilerPowerTestRuntime {
     id(oq_commissioning_state_code) = STATE_COOLDOWN;
     id(oq_commissioning_state_since_ms) = now_ms;
     id(oq_commissioning_boiler_request) = false;
-    ESP_LOGI("quatt.cm100.boiler", "Measurement complete: avg=%.0fW min=%.0fW max=%.0fW samples=%u conf=%.0f%%",
+    ESP_LOGI("quatt.cm100.boiler",
+             "Measurement complete: avg=%.0fW min=%.0fW max=%.0fW samples=%u "
+             "conf=%.0f%%",
              avg_w, min_w_, max_w_, (unsigned int)sample_count_, confidence);
     restore_flow_setpoint();
     publish_status("COOLDOWN");
