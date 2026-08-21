@@ -198,6 +198,26 @@ class OtbPollingLifecycleContractTest(unittest.TestCase):
             start_block.index("esphome::opentherm::MessageId::STATUS"),
         )
 
+    def test_periodic_otb_loop_does_not_overwrite_r1_transport_activity(self) -> None:
+        apply_start = OTB_PACKAGE.index("- interval: ${oq_otb_command_apply_s}s")
+        apply_end = OTB_PACKAGE.index(
+            "- interval: ${oq_otb_link_watch_s}s", apply_start
+        )
+        apply_block = OTB_PACKAGE[apply_start:apply_end]
+        assignment = "id(oq_boiler_transport_active) ="
+        self.assertEqual(apply_block.count(assignment), 1)
+        assignment_pos = apply_block.index(assignment)
+        owner_guard_pos = apply_block.rfind(
+            "if (opentherm_selected) {", 0, assignment_pos
+        )
+        self.assertGreaterEqual(owner_guard_pos, 0)
+        self.assertLess(owner_guard_pos, assignment_pos)
+        self.assertNotIn(
+            "id(oq_boiler_transport_active) =\n"
+            "              opentherm_selected &&",
+            apply_block,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
