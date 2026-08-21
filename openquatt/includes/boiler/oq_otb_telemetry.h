@@ -45,6 +45,18 @@ struct FieldState {
   bool valid{false};
 };
 
+inline bool field_is_session_scoped(Field field) {
+  switch (field) {
+    case FIELD_DEVICE_CONFIG:
+    case FIELD_MAX_BOILER_CAPACITY:
+    case FIELD_OT_VERSION_DEVICE:
+    case FIELD_VERSION_DEVICE:
+      return true;
+    default:
+      return false;
+  }
+}
+
 class TelemetryState {
  public:
   void reset_link_session() {
@@ -93,7 +105,13 @@ class TelemetryState {
 
   bool field_is_fresh(Field field, uint32_t now_ms, uint32_t max_age_ms) const {
     const auto& state = this->fields_[field];
-    return state.valid && (uint32_t)(now_ms - state.last_valid_ms) <= max_age_ms;
+    if (!state.valid) return false;
+    // Initial/static OpenTherm values are requested once when polling starts.
+    // They remain valid for the lifetime of that link session; applying the
+    // repeating-field timeout to them would erase valid ID15/capability data
+    // a few seconds after boot even though no refresh is scheduled.
+    if (field_is_session_scoped(field)) return true;
+    return (uint32_t)(now_ms - state.last_valid_ms) <= max_age_ms;
   }
 
   bool expire_response_session_if_stale(uint32_t now_ms, uint32_t max_age_ms) {
