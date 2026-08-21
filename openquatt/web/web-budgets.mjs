@@ -7,8 +7,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Includes HCQ R2 settings, bounded usage-telemetry confirmation polling,
     // source-bound supply-temperature calibration status and results,
     // its read-only sensor-correction summary, calibration backup/restore,
-    // the read-only ODU EEPROM service export, and API ingress source controls.
-    raw: 899_000,
+    // the read-only ODU EEPROM service export, API ingress source controls,
+    // and concise CM100 boiler test phase copy (FLOW_SETTLING/BOILER_SETTLING/MEASURING/COOLDOWN).
+    raw: 902_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.
