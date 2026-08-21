@@ -127,7 +127,7 @@ class BoilerPowerTestRuntime {
     flow_setpoint_saved_ = true;
     // Use headroom-aware flow if required flow exceeds default 800
     float target_flow_to_use = cfg.target_flow_lph;
-    float rated_w_for_calc = id(oq_boiler_rated_heat_power);
+    float rated_w_for_calc = id(oq_boiler_rated_heat_power).state;
     const bool opentherm_selected =
         id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
     if (opentherm_selected) {
