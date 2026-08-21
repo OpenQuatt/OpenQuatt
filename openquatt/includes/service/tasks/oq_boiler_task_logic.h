@@ -119,7 +119,14 @@ class BoilerPowerTestRuntime {
                  "Boiler test headroom requires higher flow: need %.0f L/h vs current %.0f L/h, target remains %.0f",
                  op.required_flow_lph, flow_for_check, cfg.target_flow_lph);
       }
+      active_test_capacity_w_ = rated_w;
+    } else {
+      // R1 on Q: store rated power as capacity for later consistent use
+      active_test_capacity_w_ = id(oq_boiler_rated_heat_power).state;
     }
+#else
+    // Non-Q: no OT, store rated power
+    active_test_capacity_w_ = id(oq_boiler_rated_heat_power).state;
 #endif
 
     ESP_LOGI("quatt.cm100.boiler",
@@ -141,29 +148,12 @@ class BoilerPowerTestRuntime {
 
     prev_flow_setpoint_lph_ = id(oq_flow_setpoint_lph).state;
     flow_setpoint_saved_ = true;
-    // Use headroom-aware flow if required flow exceeds default 800
+    // Use headroom-aware flow if required flow exceeds default 800 - reuse stored capacity from start()
     float target_flow_to_use = cfg.target_flow_lph;
-    float rated_w_for_calc = id(oq_boiler_rated_heat_power).state;
+    float rated_w_for_calc = active_test_capacity_w_;
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     const bool opentherm_selected =
         id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
-    if (opentherm_selected) {
-      // Use OT max capacity (kW -> W) if available; otherwise refuse (don't silently use 6kW rated)
-      if (id(otb_max_capacity).has_state() && !isnan(id(otb_max_capacity).state)) {
-        float otb_max_capacity_kw = id(otb_max_capacity).state;
-        if (otb_max_capacity_kw > 0.0f) {
-          rated_w_for_calc = otb_max_capacity_kw * 1000.0f;
-        } else {
-          oq_service_status::set_boiler_power_test("REFUSED: OT max capacity unavailable");
-          ESP_LOGW("quatt.cm100.boiler", "Boiler test refused: OT max_capacity is 0 or invalid");
-          return;
-        }
-      } else {
-        oq_service_status::set_boiler_power_test("REFUSED: OT max capacity unavailable");
-        ESP_LOGW("quatt.cm100.boiler", "Boiler test refused: OT max_capacity not available for OpenTherm");
-        return;
-      }
-    }
     if (opentherm_selected) {
       float max_c = id(max_water_temp_limit_c).state;
       if (isnan(max_c)) max_c = 60.0f;
@@ -311,6 +301,7 @@ class BoilerPowerTestRuntime {
   bool flow_setpoint_saved_{false};
   float prev_flow_setpoint_lph_{NAN};
   float active_test_flow_target_lph_{NAN};
+  float active_test_capacity_w_{NAN};
   int stable_flow_count_{0};
   int sample_count_{0};
   float sum_w_{0.0f};
@@ -354,6 +345,8 @@ class BoilerPowerTestRuntime {
     max_w_ = NAN;
     peak_w_ = NAN;
     plateau_count_ = 0;
+    active_test_flow_target_lph_ = NAN;
+    active_test_capacity_w_ = NAN;
   }
 
   void clear_container() {
@@ -450,11 +443,7 @@ class BoilerPowerTestRuntime {
         } else {
           inlet_c = id(water_supply_temp_selected).state;
         }
-        float rated_w = id(oq_boiler_rated_heat_power).state;
-        if (id(otb_max_capacity).has_state() && !isnan(id(otb_max_capacity).state) &&
-            id(otb_max_capacity).state > 0.0f) {
-          rated_w = id(otb_max_capacity).state * 1000.0f;
-        }
+        float rated_w = active_test_capacity_w_;
         auto op = oq_boiler_commissioning::compute_operating_point(rated_w, inlet_c, max_c, flow_lph, 4180.0f, 5.0f);
         if (!op.feasible) {
           finish_task("FAILED: insufficient thermal headroom for boiler power test", STATE_FAILED, false, true);
@@ -472,10 +461,6 @@ class BoilerPowerTestRuntime {
           id(oq_commissioning_state_since_ms) = now_ms;
           publish_status("FLOW_SETTLING");
           return;
-        }
-        // Also update target if significantly higher (e.g., due to inlet rise)
-        if (op.required_flow_lph > active_test_flow_target_lph_ + 10.0f) {
-          // Already handled above
         }
       }
 #endif

@@ -53,6 +53,45 @@ void test_hard_trip_preserved() {
   assert(op.target_temperature_c < trip_c);
 }
 
+void test_opentherm_uses_ot_max_capacity() {
+  // OT max 30kW should be used instead of rated 6kW -> requires higher flow
+  auto op_ot = compute_opentherm_operating_point(true, 30000.0f, 6000.0f, 20.0f, 50.0f, 800.0f, 4180.0f, 5.0f);
+  auto op_rated = compute_opentherm_operating_point(true, NAN, 6000.0f, 20.0f, 50.0f, 800.0f, 4180.0f, 5.0f);
+  assert(op_ot.feasible);
+  assert(op_rated.feasible);
+  // OT 30kW needs more flow than 6kW
+  assert(op_ot.required_flow_lph > op_rated.required_flow_lph);
+  assert(op_ot.required_flow_lph > 800.0f);
+  // R1 should not use OT logic
+  auto op_r1 = compute_opentherm_operating_point(false, 30000.0f, 6000.0f, 20.0f, 50.0f, 800.0f, 4180.0f, 5.0f);
+  assert(op_r1.feasible);
+  assert(op_r1.required_flow_lph == 800.0f);    // R1 keeps configured flow
+  assert(op_r1.target_temperature_c == 45.0f);  // max - headroom
+}
+
+void test_opentherm_missing_max_capacity() {
+  // OT max missing -> should use rated power (fallback)
+  auto op = compute_opentherm_operating_point(true, NAN, 6000.0f, 20.0f, 50.0f, 800.0f, 4180.0f, 5.0f);
+  assert(op.feasible);
+  // With OT max 0, should be infeasible or fallback
+  auto op_zero = compute_opentherm_operating_point(true, 0.0f, 6000.0f, 20.0f, 50.0f, 800.0f, 4180.0f, 5.0f);
+  assert(op_zero.feasible);  // fallback to rated
+}
+
+void test_dynamic_flow_after_preflow() {
+  // Simulate 800 preflow with OT 30kW, inlet 22 -> required ~860, feasible
+  auto op1 = compute_opentherm_operating_point(true, 30000.0f, 6000.0f, 22.0f, 50.0f, 800.0f, 4180.0f, 5.0f);
+  assert(op1.feasible);
+  assert(op1.required_flow_lph > 800.0f);
+  assert(op1.required_flow_lph < 1500.0f);
+  // After 2 min, inlet rises to 30 (warmer return), required flow becomes higher
+  // With inlet 30, available headroom = 15C, required flow = 30000/(4180*15)=1722 >1500 -> infeasible
+  auto op2 = compute_opentherm_operating_point(true, 30000.0f, 6000.0f, 30.0f, 50.0f, 800.0f, 4180.0f, 5.0f);
+  assert(!op2.feasible);
+  // With a more powerful flow (1200) and same inlet 30, it would still be infeasible, showing need for re-evaluation
+  // The task should detect this and fail with insufficient headroom rather than starting boiler
+}
+
 }  // namespace
 
 int main() {
@@ -61,5 +100,8 @@ int main() {
   test_high_power_requires_higher_flow();
   test_insufficient_headroom_power_too_high();
   test_hard_trip_preserved();
+  test_opentherm_uses_ot_max_capacity();
+  test_opentherm_missing_max_capacity();
+  test_dynamic_flow_after_preflow();
   return 0;
 }
