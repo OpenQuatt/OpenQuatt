@@ -127,12 +127,12 @@ class BoilerPowerTestRuntime {
     flow_setpoint_saved_ = true;
     // Use headroom-aware flow if required flow exceeds default 800
     float target_flow_to_use = cfg.target_flow_lph;
-    float rated_w_for_calc = id(oq_boiler_rated_heat_power).state;
+    float rated_w_for_calc = id(oq_boiler_rated_heat_power);
     const bool opentherm_selected =
         id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
     if (opentherm_selected) {
       // Use OT max capacity if available, otherwise fallback to rated power
-      float otb_max_capacity = id(otb_max_capacity).state;
+      float otb_max_capacity = id(otb_max_capacity);
       if (!isnan(otb_max_capacity) && otb_max_capacity > 0.0f) {
         rated_w_for_calc = otb_max_capacity;
       }
@@ -192,7 +192,7 @@ class BoilerPowerTestRuntime {
     const bool task_is_manual_hp = task_code == oq_commissioning::TASK_MANUAL_HP;
     const bool boiler_test_running = id(oq_commissioning_active) && task_is_boiler;
     const float flow_lph = id(flow_rate_selected).state;
-    const bool flow_stable_now = flow_on_target(flow_lph);
+    const bool flow_stable_now = flow_on_target(flow_lph, cfg.flow_band_lph);
     const float heat_w = id(boiler_heat_power).state;
     const bool heat_valid = !isnan(heat_w) && heat_w >= 0.0f;
     log_heartbeat(task_is_boiler, cm_code, flow_lph, heat_w, now_ms, cfg);
@@ -294,8 +294,8 @@ class BoilerPowerTestRuntime {
     call.perform();
   }
 
-  bool flow_on_target(float flow_lph) const {
-    return !isnan(flow_lph) && flow_lph > 0.0f && fabsf(flow_lph - active_test_flow_target_lph_) <= cfg.flow_band_lph;
+  bool flow_on_target(float flow_lph, float flow_band_lph) const {
+    return !isnan(flow_lph) && flow_lph > 0.0f && fabsf(flow_lph - active_test_flow_target_lph_) <= flow_band_lph;
   }
 
   void publish_status(const char* status) {
