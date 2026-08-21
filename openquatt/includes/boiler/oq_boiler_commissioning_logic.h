@@ -49,9 +49,9 @@ inline OperatingPoint compute_opentherm_operating_point(bool opentherm_selected,
   const float max_target = max_c - headroom_c;
 
   if (!opentherm_selected) {
-    (void) otb_max_capacity_w;
-    (void) rated_power_w;
-    (void) cp_j_per_kgk;
+    (void)otb_max_capacity_w;
+    (void)rated_power_w;
+    (void)cp_j_per_kgk;
     OperatingPoint out{};
     out.headroom_c = headroom_c;
     if (isnan(inlet_c) || isnan(max_c) || isnan(base_flow_lph) || base_flow_lph <= 0.0f) {
@@ -79,8 +79,8 @@ inline OperatingPoint compute_opentherm_operating_point(bool opentherm_selected,
   }
 
   if (isnan(otb_max_capacity_w) || otb_max_capacity_w <= 0.0f) {
-    (void) rated_power_w;
-    (void) cp_j_per_kgk;
+    (void)rated_power_w;
+    (void)cp_j_per_kgk;
     OperatingPoint out{};
     out.feasible = true;
     out.headroom_c = headroom_c;
