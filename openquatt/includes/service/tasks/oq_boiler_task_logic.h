@@ -135,8 +135,8 @@ class BoilerPowerTestRuntime {
         inlet_c = id(water_supply_temp_selected).state;
       }
       const float rated_w = id(oq_boiler_rated_heat_power).state;
-      const auto op =
-          compute_opentherm_operating_point(true, active_test_capacity_w_, rated_w, inlet_c, max_c, cfg.target_flow_lph);
+      const auto op = compute_opentherm_operating_point(true, active_test_capacity_w_, rated_w, inlet_c, max_c,
+                                                        cfg.target_flow_lph);
       if (!op.feasible) {
         oq_service_status::set_boiler_power_test("REFUSED: insufficient thermal headroom for boiler power test");
         reset_test_state();
