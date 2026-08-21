@@ -405,7 +405,7 @@ import { renderModalShell } from "../core/modal-shell.js";
     }
     if (upper.includes("MEASURING")) {
       const heat = getSettingsStatValue("boilerHeatPower");
-      return `Ketel actief; meten.${heat && heat !== "—" ? ` Nu ${heat}.` : ""} Auto uit na 3 min.`;
+      return `Ketel actief; meten.${heat && heat !== "—" ? ` Nu ${heat}.` : ""} Min. 3 min; daarna auto uit zodra meting compleet is.`;
     }
     if (upper.includes("COOLDOWN")) {
       const result = getSettingsStatValue("boilerPowerTestResult");
@@ -547,8 +547,8 @@ import { renderModalShell } from "../core/modal-shell.js";
     const autotuneResultReady = /DONE|APPLIED/.test(String(autotuneStatus || "").toUpperCase());
     const boilerStatusDisplay = (() => {
       const upper = String(boilerStatus || "").toUpperCase();
-      if (upper.includes("FAILED") || upper.startsWith("REFUSED:")) return "Mislukt";
-      if (upper === "REFUSED") return "Start geweigerd";
+      if (upper.includes("FAILED")) return "Mislukt";
+      if (upper.startsWith("REFUSED:") || upper === "REFUSED") return "Start geweigerd";
       if (upper === "ABORTED" || upper === "ABORT") return "Handmatig gestopt";
       if (upper.startsWith("ABORTED:") || upper.startsWith("ABORT:")) return "Afgebroken";
       if (upper.startsWith("DONE:") || upper === "DONE" || upper.includes("APPLIED")) return "Klaar";
