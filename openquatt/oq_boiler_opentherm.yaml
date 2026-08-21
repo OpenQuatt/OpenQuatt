@@ -846,11 +846,12 @@ interval:
           }
           id(oq_otb_applied_command_active) = command_active;
 
-          id(oq_boiler_transport_active) =
-              opentherm_selected &&
-              id(oq_otb_link_available_state) &&
-              id(otb_ch_active).has_state() &&
-              id(otb_ch_active).state;
+          if (opentherm_selected) {
+            id(oq_boiler_transport_active) =
+                id(oq_otb_link_available_state) &&
+                id(otb_ch_active).has_state() &&
+                id(otb_ch_active).state;
+          }
 
   - interval: ${oq_otb_link_watch_s}s
     startup_delay: 2s
