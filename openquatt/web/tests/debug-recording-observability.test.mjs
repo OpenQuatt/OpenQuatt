@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const { DEBUG_RECORDING_KEYS, ENTITY_DEFS } = await import("../js/src/core/config.js");
+await import("../js/src/core/feature-state.js");
 
 const FIRMWARE_ENTITY_PACKAGES = [
   "../../oq_flow_control.yaml",
@@ -37,6 +38,8 @@ const OBSERVABILITY_KEYS = [
   "otbResponseCount",
   "otbTransportErrorCount",
   "otbResponseTimeoutCount",
+  "otbMaxCapacity",
+  "otbMinModulation",
 ];
 
 test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", () => {
