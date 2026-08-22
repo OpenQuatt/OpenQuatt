@@ -7,6 +7,15 @@ namespace {
 
 using namespace oq_boiler_commissioning;
 
+void test_commissioning_temperature_policy() {
+  assert(normalize_max_water_temperature_c(NAN) == 60.0f);
+  assert(normalize_max_water_temperature_c(10.0f) == 25.0f);
+  assert(normalize_max_water_temperature_c(90.0f) == 75.0f);
+  assert(commissioning_target_temperature_c(50.0f) == 45.0f);
+  assert(commissioning_target_temperature_c(NAN) == 55.0f);
+  assert(isnan(commissioning_target_temperature_c(50.0f, -1.0f)));
+}
+
 void test_sufficient_headroom() {
   auto op = compute_operating_point(6000.0f, 20.0f, 50.0f, 800.0f, 4180.0f, 5.0f);
   assert(op.feasible);
@@ -146,6 +155,7 @@ void test_reachability_monitor_rejects_invalid_flow() {
 }  // namespace
 
 int main() {
+  test_commissioning_temperature_policy();
   test_sufficient_headroom();
   test_insufficient_headroom_inlet_high();
   test_generic_helper_preserves_theoretical_flow();
