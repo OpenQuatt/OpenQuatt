@@ -95,4 +95,45 @@ interval:
     then:
       - lambda: |-
           // Boiler power-test task runtime: owns flow settle, boiler settle, measurement and cooldown.
-          oq_boiler_task::runtime().tick(oq_boiler_task::default_config(), (uint32_t) millis());
+          // A separate reachability monitor only intervenes after the normal minimum preflow time when
+          // the pump has remained at (near) maximum output without meaningful flow progress.
+          static oq_boiler_commissioning::FlowReachabilityMonitor flow_reachability;
+          const auto cfg = oq_boiler_task::default_config();
+          const uint32_t now_ms = (uint32_t) millis();
+          const bool flow_settling =
+              id(oq_commissioning_active) &&
+              id(oq_commissioning_task_code) == oq_commissioning::TASK_BOILER_POWER_TEST &&
+              id(oq_commissioning_state_code) == oq_commissioning::TASK_STATE_FLOW_SETTLE;
+
+          if (flow_settling) {
+            const uint32_t state_age_ms = now_ms - id(oq_commissioning_state_since_ms);
+            const float flow_lph = id(flow_rate_selected).state;
+            const float target_flow_lph = id(oq_flow_setpoint_lph).state;
+            const float output_ipwm =
+                id(oq_flow_output_ipwm).has_state() ? id(oq_flow_output_ipwm).state : NAN;
+
+            if (state_age_ms >= cfg.flow_settle_min_ms &&
+                flow_reachability.update(now_ms, flow_lph, target_flow_lph, cfg.flow_band_lph, output_ipwm)) {
+              const float best_flow_lph = flow_reachability.best_flow_lph();
+              const uint32_t saturated_ms = flow_reachability.saturated_duration_ms(now_ms);
+              ESP_LOGW("quatt.cm100.boiler",
+                       "Boiler test flow unreachable (target=%.0fL/h flow=%.0fL/h best=%.0fL/h iPWM=%.0f saturated=%lus)",
+                       target_flow_lph, flow_lph, best_flow_lph, output_ipwm,
+                       (unsigned long)(saturated_ms / 1000UL));
+
+              // Reuse the normal abort path for fail-safe cleanup and restoration of the pre-test flow
+              // setpoint, then publish this guard as a failure rather than a user abort.
+              oq_boiler_task::runtime().abort_or_clear();
+              oq_boiler_task::runtime().tick(cfg, now_ms);
+              id(oq_commissioning_result_w) = NAN;
+              id(oq_commissioning_result_confidence) = 0.0f;
+              id(oq_commissioning_state_code) = oq_commissioning::TASK_STATE_FAILED;
+              oq_service_status::set_boiler_power_test("FAILED: required boiler test flow cannot be reached");
+              flow_reachability.reset();
+              return;
+            }
+          } else {
+            flow_reachability.reset();
+          }
+
+          oq_boiler_task::runtime().tick(cfg, now_ms);
