@@ -606,7 +606,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
   export function noteEntityRefreshFailure(message) {
     if (!isLikelyDeviceConnectionError(message)) {
       state.entitySyncFailureCount = 0;
-      clearDeviceReconnect();
+      if (!state.restartRefresh.on) {
+        clearDeviceReconnect();
+      }
       return;
     }
     if (state.ota.ok === 1) {

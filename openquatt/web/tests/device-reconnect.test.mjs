@@ -237,6 +237,35 @@ test("an accepted restart reloads immediately when data returns after the outage
   assert.equal(state.restartRefresh.on, false);
 });
 
+test("a transient post-reboot entity error keeps the restart modal open until reload", async () => {
+  state.entities.uptime = { state: "1.00 h", value: 1 };
+  globalThis.fetch = async () => ({ ok: true });
+
+  await triggerNamedButton("restartAction", {
+    successNotice: "OpenQuatt wordt opnieuw opgestart.",
+    errorPrefix: "Herstart mislukt",
+    reconnectMode: "restart",
+  });
+
+  noteEntityRefreshFailure("Uptime HTTP 503");
+
+  assert.equal(state.deviceReconnectMode, "restart");
+  assert.equal(state.deviceReconnectRecoveryStartedAt, 0);
+  assert.equal(state.restartRefresh.wait, true);
+
+  state.entities.uptime = { state: "4 s", value: 4, uom: "h" };
+  noteEntityRefreshSuccess();
+
+  const refreshTimer = state.restartRefresh.id;
+  assert.ok(refreshTimer);
+  assert.equal(refreshTimer.delay, 0);
+  assert.equal(state.deviceReconnectMode, "restart");
+  assert.equal(state.deviceReconnectRecoveryStartedAt, 0);
+  refreshTimer.callback();
+
+  assert.equal(reloadCount, 1);
+});
+
 test("a lost restart acknowledgement reloads immediately when data returns", async () => {
   state.entities.uptime = { state: "1.00 h", value: 1 };
   globalThis.fetch = async () => {
