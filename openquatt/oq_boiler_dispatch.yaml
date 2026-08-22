@@ -146,10 +146,8 @@ interval:
             command.demand_present = true;
             command.heat_request = id(oq_commissioning_boiler_request);
             command.requested_power_w = id(oq_boiler_rated_heat_power).state;
-            float max_c = id(max_water_temp_limit_c).state;
-            if (isnan(max_c)) max_c = 60.0f;
-            max_c = fmaxf(25.0f, fminf(max_c, 75.0f));
-            command.target_temperature_c = max_c - 5.0f;
+            command.target_temperature_c = oq_boiler_commissioning::commissioning_target_temperature_c(
+                id(max_water_temp_limit_c).state);
             command.source = oq_boiler::COMMAND_SOURCE_COMMISSIONING;
             // Keep the authorization timestamp stable. A dispatcher pass is
             // not a fresh commissioning decision and must not re-arm the
