@@ -12,6 +12,7 @@
 namespace oq_boiler_task {
 
 using oq_boiler_commissioning::compute_opentherm_operating_point;
+using oq_boiler_commissioning::normalize_max_water_temperature_c;
 using oq_boiler_commissioning::result_apply_allowed;
 
 static constexpr int TASK_NONE = oq_commissioning::TASK_NONE;
@@ -90,9 +91,7 @@ class BoilerPowerTestRuntime {
     active_test_opentherm_ =
         id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
     if (active_test_opentherm_) {
-      float max_c = id(max_water_temp_limit_c).state;
-      if (isnan(max_c)) max_c = 60.0f;
-      max_c = fmaxf(25.0f, fminf(max_c, 75.0f));
+      const float max_c = normalize_max_water_temperature_c(id(max_water_temp_limit_c).state);
       float inlet_c = NAN;
       if (id(otb_return_water_temp).has_state() && !isnan(id(otb_return_water_temp).state)) {
         inlet_c = id(otb_return_water_temp).state;
@@ -289,6 +288,7 @@ class BoilerPowerTestRuntime {
   bool active_test_capacity_verified_{false};
   bool active_test_flow_limited_{false};
   bool active_test_result_apply_allowed_{false};
+  oq_boiler_commissioning::FlowReachabilityMonitor flow_reachability_{};
   int stable_flow_count_{0};
   int sample_count_{0};
   float sum_w_{0.0f};
@@ -337,6 +337,7 @@ class BoilerPowerTestRuntime {
 
   void reset_test_state() {
     reset_measurement_accumulators();
+    flow_reachability_.reset();
     active_test_flow_target_lph_ = NAN;
     active_test_capacity_w_ = NAN;
     active_test_theoretical_flow_lph_ = NAN;
@@ -400,6 +401,7 @@ class BoilerPowerTestRuntime {
     id(oq_commissioning_started_ms) = now_ms;
     id(oq_commissioning_state_since_ms) = now_ms;
     id(oq_commissioning_state_code) = STATE_FLOW_SETTLE;
+    flow_reachability_.reset();
     publish_status("FLOW_SETTLING");
   }
 
@@ -422,7 +424,28 @@ class BoilerPowerTestRuntime {
     return true;
   }
 
+  bool flow_reachable(const RuntimeConfig& cfg, uint32_t now_ms, float flow_lph) {
+    const uint32_t state_age_ms = now_ms - id(oq_commissioning_state_since_ms);
+    if (state_age_ms < cfg.flow_settle_min_ms) {
+      flow_reachability_.reset();
+      return true;
+    }
+    const float output_ipwm = id(oq_flow_output_ipwm).has_state() ? id(oq_flow_output_ipwm).state : NAN;
+    if (!flow_reachability_.update(now_ms, flow_lph, active_test_flow_target_lph_, cfg.flow_band_lph, output_ipwm)) {
+      return true;
+    }
+
+    ESP_LOGW("quatt.cm100.boiler",
+             "Boiler test flow unreachable (target=%.0fL/h flow=%.0fL/h best=%.0fL/h iPWM=%.0f saturated=%lus)",
+             active_test_flow_target_lph_, flow_lph, flow_reachability_.best_flow_lph(), output_ipwm,
+             (unsigned long)(flow_reachability_.saturated_duration_ms(now_ms) / 1000UL));
+    finish_task("FAILED: required boiler test flow cannot be reached", STATE_FAILED, false, true);
+    return false;
+  }
+
   void run_flow_settle(const RuntimeConfig& cfg, uint32_t now_ms, float flow_lph, bool flow_stable_now) {
+    if (!flow_reachable(cfg, now_ms, flow_lph)) return;
+
     stable_flow_count_ = flow_stable_now ? stable_flow_count_ + 1 : 0;
     if (stable_flow_count_ < cfg.stable_flow_samples ||
         (uint32_t)(now_ms - id(oq_commissioning_state_since_ms)) < cfg.flow_settle_min_ms) {
@@ -432,9 +455,7 @@ class BoilerPowerTestRuntime {
 
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     if (active_test_opentherm_) {
-      float max_c = id(max_water_temp_limit_c).state;
-      if (isnan(max_c)) max_c = 60.0f;
-      max_c = fmaxf(25.0f, fminf(max_c, 75.0f));
+      const float max_c = normalize_max_water_temperature_c(id(max_water_temp_limit_c).state);
       float inlet_c = NAN;
       if (id(otb_return_water_temp).has_state() && !isnan(id(otb_return_water_temp).state)) {
         inlet_c = id(otb_return_water_temp).state;
@@ -457,6 +478,7 @@ class BoilerPowerTestRuntime {
         active_test_flow_target_lph_ = op.target_flow_lph;
         set_number_value(id(oq_flow_setpoint_lph), active_test_flow_target_lph_);
         stable_flow_count_ = 0;
+        flow_reachability_.reset();
         id(oq_commissioning_state_since_ms) = now_ms;
         publish_status("FLOW_SETTLING");
         return;
@@ -464,6 +486,7 @@ class BoilerPowerTestRuntime {
     }
 #endif
 
+    flow_reachability_.reset();
     id(oq_commissioning_boiler_request_updated_ms) = now_ms;
     id(oq_commissioning_boiler_request) = true;
     id(oq_commissioning_state_code) = STATE_BOILER_SETTLE;
