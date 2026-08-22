@@ -122,6 +122,22 @@ Dat is belangrijk, want vreemd gedrag komt niet altijd uit het huismodel zelf. S
 - begrenzing op water;
 - of de verdeling over één of twee warmtepompen.
 
+## Externe warmtevraag (optioneel)
+
+Standaard rekent `Power House` zelf uit hoeveel vermogen het huis nodig heeft, uit de buitentemperatuur en het huismodel. Heb je een eigen voorspelling die verder kijkt dan dat — bijvoorbeeld een model dat zonnewinst, wind of bewoningspatroon meeneemt — dan kun je die vraag rechtstreeks aan `Power House` doorgeven.
+
+Zet daarvoor `Heat Demand Source` op `HA input` of `API input` en lever een waarde in watt. Staat de bron op `Disabled`, dan verandert er niets aan het gedrag dat je nu kent.
+
+Wat die externe waarde wel en niet doet:
+
+- Hij vervangt alleen de vermogensschatting uit het huismodel.
+- De kamercorrectie, de begrenzing op `Rated maximum house power`, de reactiesnelheid, de waterbegrenzing en de vorstbeveiliging blijven van OpenQuatt zelf.
+- Valt de bron weg, wordt hij te oud of stuurt hij een onbruikbare waarde, dan gaat `Power House` terug naar het eigen huismodel. Niet naar nul.
+
+Daardoor kan een externe vraag de kamer niet boven het setpoint duwen: zodra de kamer warmer wordt dan gevraagd, trekt de kamercorrectie er weer vanaf. Wil je warmte in de tijd verschuiven, bijvoorbeeld voorverwarmen bij veel zon, dan is het kamer-setpoint daarvoor de juiste knop en niet de warmtevraag.
+
+Kijk bij twijfel naar `Power House – demand source`. Die staat op `external` zolang de externe vraag echt gebruikt wordt, en op `model` zodra `Power House` op het eigen huismodel terugvalt.
+
 ## Welke instellingen zijn voor de meeste gebruikers het belangrijkst?
 
 Als je `Power House` wilt afstellen, begin dan bijna altijd hier:
@@ -187,6 +203,7 @@ Als `Power House` niet logisch lijkt te reageren, kijk dan eerst naar:
 - `Room Setpoint (Selected)`
 - `Water Supply Temp (Selected)`
 - de actieve `Heating Control Mode`
+- `Power House – demand source` en `Heat Demand (Selected)` als je een externe warmtevraag gebruikt
 
 Controleer daarna pas of de afstelling zelf te scherp of te slap is.
 

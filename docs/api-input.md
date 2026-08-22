@@ -22,7 +22,7 @@ Als web-login aan staat, gebruik dan dezelfde gebruikersnaam en hetzelfde wachtw
 
 ## Endpoints
 
-Temperatuurwaarden zijn `number`-entiteiten. Zet ze met een `POST` naar `/number/<naam>/set?value=<temperatuur>`.
+Temperatuur- en vermogenswaarden zijn `number`-entiteiten. Zet ze met een `POST` naar `/number/<naam>/set?value=<waarde>`.
 
 Sommige `curl`-versies vereisen bij `POST` een expliciete `Content-Length`. Gebruik daarom `-H "Content-Length: 0"` in de voorbeelden hieronder.
 
@@ -32,6 +32,7 @@ Sommige `curl`-versies vereisen bij `POST` een expliciete `Content-Length`. Gebr
 | Buitentemperatuur | `/number/api_input_outside_temperature/set?value=<temperatuur>` | `-40..60` graden Celsius |
 | Kamertemperatuur | `/number/api_input_room_temperature/set?value=<temperatuur>` | `0..50` graden Celsius |
 | Kamer-setpoint | `/number/api_input_room_setpoint/set?value=<temperatuur>` | `5..35` graden Celsius |
+| Warmtevraag | `/number/api_input_heat_demand/set?value=<vermogen>` | `0..15000` watt |
 
 Toestemmingssignalen zijn `switch`-entiteiten. Zet ze met een `POST` naar `/turn_on` of `/turn_off`.
 
@@ -82,6 +83,7 @@ De geldigheidsduur is:
 - buitentemperatuur: 30 minuten;
 - kamertemperatuur: 10 minuten;
 - kamer-setpoint: blijft geldig tot herstart of nieuwe waarde;
+- warmtevraag: 15 minuten;
 - warmtetoestemming: blijft geldig tot herstart of nieuwe waarde;
 - koeltoestemming: blijft geldig tot herstart of nieuwe waarde.
 
@@ -98,6 +100,8 @@ Bij `Koelingsdauwpunt` kies je:
 
 Bij `Buitentemperatuur` gebruikt `Auto` de laagste geldige waarde uit buitenunit, Home Assistant, API-invoer en MQTT. Bij `Kamertemperatuur` en `Kamer setpoint` kun je `API input` expliciet als bron kiezen.
 
+Bij `Warmtevraag` is `Disabled` de standaard. Kies je `API input`, dan gebruikt `Power House` jouw waarde in plaats van de eigen vermogensschatting, zolang die geldig is. Verloopt de waarde, dan valt de regeling terug op het huismodel en niet op nul.
+
 Bij `Warmtetoestemming` en `Koeltoestemming` telt API-invoer alleen mee als de waarde geldig is. Handmatige koeltoestemming blijft daarnaast een override.
 
 ## Verder lezen
@@ -106,3 +110,4 @@ Bij `Warmtetoestemming` en `Koeltoestemming` telt API-invoer alleen mee als de w
 - [Web-app gebruiken](web-app.md)
 - [Instellingen en meetwaarden](instellingen-en-meetwaarden.md)
 - [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md)
+- [Power House](power-house.md)
