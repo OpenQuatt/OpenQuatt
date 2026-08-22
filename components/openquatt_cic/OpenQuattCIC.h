@@ -40,6 +40,7 @@ class OpenQuattCIC : public PollingComponent {
 
   void set_water_supply_temp(sensor::Sensor* sensor) { this->water_supply_temp_ = sensor; }
   void set_flow_rate(sensor::Sensor* sensor) { this->flow_rate_ = sensor; }
+  void set_cic_boiler_water_pressure(sensor::Sensor* sensor) { this->cic_boiler_water_pressure_ = sensor; }
   void set_cic_control_setpoint(sensor::Sensor* sensor) { this->cic_control_setpoint_ = sensor; }
   void set_cic_room_setpoint(sensor::Sensor* sensor) { this->cic_room_setpoint_ = sensor; }
   void set_cic_room_temp(sensor::Sensor* sensor) { this->cic_room_temp_ = sensor; }
@@ -84,6 +85,7 @@ class OpenQuattCIC : public PollingComponent {
   struct ParsedPayload {
     MaybeFloat water_supply_temp;
     MaybeFloat flow_rate;
+    MaybeFloat cic_boiler_water_pressure;
     MaybeFloat cic_control_setpoint;
     MaybeFloat cic_room_setpoint;
     MaybeFloat cic_room_temp;
@@ -126,6 +128,7 @@ class OpenQuattCIC : public PollingComponent {
 
   sensor::Sensor* water_supply_temp_{nullptr};
   sensor::Sensor* flow_rate_{nullptr};
+  sensor::Sensor* cic_boiler_water_pressure_{nullptr};
   sensor::Sensor* cic_control_setpoint_{nullptr};
   sensor::Sensor* cic_room_setpoint_{nullptr};
   sensor::Sensor* cic_room_temp_{nullptr};

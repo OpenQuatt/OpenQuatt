@@ -75,6 +75,17 @@ sensor:
     update_interval: never
 
   - platform: template
+    id: cic_boiler_water_pressure
+    name: "CIC - Boiler Water Pressure"
+    unit_of_measurement: "bar"
+    device_class: pressure
+    state_class: measurement
+    accuracy_decimals: 2
+    icon: mdi:gauge
+    disabled_by_default: true
+    update_interval: never
+
+  - platform: template
     id: cic_control_setpoint
     name: "CIC - Control setpoint"
     unit_of_measurement: "°C"
@@ -192,6 +203,7 @@ openquatt_cic:
   response_buffer_size: 2048
   water_supply_temp: water_supply_temp_cic
   flow_rate: flow_rate_cic
+  cic_boiler_water_pressure: cic_boiler_water_pressure
   cic_control_setpoint: cic_control_setpoint
   cic_room_setpoint: cic_room_setpoint
   cic_room_temp: cic_room_temp

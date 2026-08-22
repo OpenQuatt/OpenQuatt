@@ -389,6 +389,11 @@ bool OpenQuattCIC::parse_payload_(const uint8_t* data, size_t len, ParsedPayload
     maybe_store_float(qc["flowRateFiltered"], 0.0f, 5000.0f, &payload->flow_rate);
   }
 
+  if (root["boiler"]) {
+    JsonObject boiler = root["boiler"];
+    maybe_store_float(boiler["otFbWaterPressure"], 0.0f, 10.0f, &payload->cic_boiler_water_pressure);
+  }
+
   if (root["thermostat"]) {
     JsonObject thermostat = root["thermostat"];
     maybe_store_bool(thermostat["otFtChEnabled"], &payload->cic_ch_enabled);
@@ -411,6 +416,13 @@ void OpenQuattCIC::apply_payload_(const ParsedPayload& payload) {
   }
   if (payload.flow_rate.present) {
     this->publish_float_if_changed_(this->flow_rate_, payload.flow_rate.value);
+  }
+  if (payload.cic_boiler_water_pressure.present) {
+    this->publish_float_if_changed_(this->cic_boiler_water_pressure_, payload.cic_boiler_water_pressure.value);
+  } else {
+    // Boiler OpenTherm feedback is optional in the CiC feed. Never keep a
+    // previous pressure value when a fresh payload no longer contains it.
+    this->publish_float_if_changed_(this->cic_boiler_water_pressure_, NAN);
   }
   if (payload.cic_control_setpoint.present) {
     this->publish_float_if_changed_(this->cic_control_setpoint_, payload.cic_control_setpoint.value);
@@ -485,6 +497,7 @@ void OpenQuattCIC::invalidate_feed_signals_() {
   this->publish_binary_if_changed_(this->feed_ok_, false);
   this->publish_float_if_changed_(this->water_supply_temp_, NAN);
   this->publish_float_if_changed_(this->flow_rate_, NAN);
+  this->publish_float_if_changed_(this->cic_boiler_water_pressure_, NAN);
   this->publish_float_if_changed_(this->cic_control_setpoint_, NAN);
   this->publish_float_if_changed_(this->cic_room_setpoint_, NAN);
   this->publish_float_if_changed_(this->cic_room_temp_, NAN);

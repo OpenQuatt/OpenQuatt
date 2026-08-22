@@ -20,6 +20,7 @@ CONF_RESPONSE_BUFFER_SIZE = "response_buffer_size"
 CONF_DIAGNOSTIC_PUBLISH_INTERVAL = "diagnostic_publish_interval"
 CONF_WATER_SUPPLY_TEMP = "water_supply_temp"
 CONF_FLOW_RATE = "flow_rate"
+CONF_CIC_BOILER_WATER_PRESSURE = "cic_boiler_water_pressure"
 CONF_CIC_CONTROL_SETPOINT = "cic_control_setpoint"
 CONF_CIC_ROOM_SETPOINT = "cic_room_setpoint"
 CONF_CIC_ROOM_TEMP = "cic_room_temp"
@@ -54,6 +55,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_DIAGNOSTIC_PUBLISH_INTERVAL, default="60s"): cv.positive_time_period_milliseconds,
         cv.Required(CONF_WATER_SUPPLY_TEMP): cv.use_id(sensor.Sensor),
         cv.Required(CONF_FLOW_RATE): cv.use_id(sensor.Sensor),
+        cv.Required(CONF_CIC_BOILER_WATER_PRESSURE): cv.use_id(sensor.Sensor),
         cv.Required(CONF_CIC_CONTROL_SETPOINT): cv.use_id(sensor.Sensor),
         cv.Required(CONF_CIC_ROOM_SETPOINT): cv.use_id(sensor.Sensor),
         cv.Required(CONF_CIC_ROOM_TEMP): cv.use_id(sensor.Sensor),
@@ -101,6 +103,7 @@ async def to_code(config):
     for key in [
         CONF_WATER_SUPPLY_TEMP,
         CONF_FLOW_RATE,
+        CONF_CIC_BOILER_WATER_PRESSURE,
         CONF_CIC_CONTROL_SETPOINT,
         CONF_CIC_ROOM_SETPOINT,
         CONF_CIC_ROOM_TEMP,
