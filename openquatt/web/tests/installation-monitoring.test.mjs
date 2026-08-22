@@ -39,7 +39,7 @@ test("actieve aanvoertemperatuurfallback verschijnt in de installatiebewaking", 
   }]);
 });
 
-test("ongeldige OTT-status verschijnt wanneer de thermostaat als bron is geselecteerd", () => {
+test("ongeldige OTT-status geeft geen melding wanneer alleen de kamertemperatuur via OTT komt", () => {
   state.entities = {
     otEnabled: { value: true, state: "ON" },
     otThermostatStatusValid: { value: false, state: "OFF" },
@@ -49,11 +49,104 @@ test("ongeldige OTT-status verschijnt wanneer de thermostaat als bron is geselec
 
   const monitoring = getInstallationMonitoringModel();
 
+  assert.equal(monitoring.active, false);
+  assert.deepEqual(monitoring.problems, []);
+});
+
+test("ongeldige OTT-status geeft geen melding wanneer alleen het kamer-setpoint via OTT komt", () => {
+  state.entities = {
+    otEnabled: { value: true, state: "ON" },
+    otThermostatStatusValid: { value: false, state: "OFF" },
+    otLinkProblem: { value: false, state: "OFF" },
+    roomSetpointSource: { value: "OT thermostat", state: "OT thermostat" },
+  };
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, false);
+  assert.deepEqual(monitoring.problems, []);
+});
+
+test("ongeldige OTT-status geeft geen melding wanneer beide kamerwaarden via OTT komen", () => {
+  state.entities = {
+    otEnabled: { value: true, state: "ON" },
+    otThermostatStatusValid: { value: false, state: "OFF" },
+    otLinkProblem: { value: false, state: "OFF" },
+    roomTempSource: { value: "OT thermostat", state: "OT thermostat" },
+    roomSetpointSource: { value: "OT thermostat", state: "OT thermostat" },
+  };
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, false);
+  assert.deepEqual(monitoring.problems, []);
+});
+
+test("ongeldige OTT-status meldt ontbrekende warmtetoestemming", () => {
+  state.entities = {
+    otEnabled: { value: true, state: "ON" },
+    otThermostatStatusValid: { value: false, state: "OFF" },
+    otLinkProblem: { value: false, state: "OFF" },
+    heatingEnableSource: { value: "OT thermostat", state: "OT thermostat" },
+  };
+
+  const monitoring = getInstallationMonitoringModel();
+
   assert.equal(monitoring.active, true);
   assert.deepEqual(monitoring.problems, [{
     key: "otThermostatStatusInvalid",
-    label: "Geen actuele OpenTherm-thermostaatstatus",
+    label: "Geen actuele warmtetoestemming van OpenTherm-thermostaat",
   }]);
+});
+
+test("ongeldige OTT-status meldt ontbrekende koeltoestemming", () => {
+  state.entities = {
+    otEnabled: { value: true, state: "ON" },
+    otThermostatStatusValid: { value: false, state: "OFF" },
+    otLinkProblem: { value: false, state: "OFF" },
+    coolingEnableSource: { value: "OT thermostat", state: "OT thermostat" },
+  };
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, true);
+  assert.deepEqual(monitoring.problems, [{
+    key: "otThermostatStatusInvalid",
+    label: "Geen actuele koeltoestemming van OpenTherm-thermostaat",
+  }]);
+});
+
+test("ongeldige OTT-status combineert ontbrekende verwarmings- en koeltoestemming", () => {
+  state.entities = {
+    otEnabled: { value: true, state: "ON" },
+    otThermostatStatusValid: { value: false, state: "OFF" },
+    otLinkProblem: { value: false, state: "OFF" },
+    heatingEnableSource: { value: "OT thermostat", state: "OT thermostat" },
+    coolingEnableSource: { value: "OT thermostat", state: "OT thermostat" },
+  };
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, true);
+  assert.deepEqual(monitoring.problems, [{
+    key: "otThermostatStatusInvalid",
+    label: "Geen actuele verwarmings- en koeltoestemming van OpenTherm-thermostaat",
+  }]);
+});
+
+test("actuele OTT-status geeft geen melding voor toestemming via OTT", () => {
+  state.entities = {
+    otEnabled: { value: true, state: "ON" },
+    otThermostatStatusValid: { value: true, state: "ON" },
+    otLinkProblem: { value: false, state: "OFF" },
+    heatingEnableSource: { value: "OT thermostat", state: "OT thermostat" },
+    coolingEnableSource: { value: "OT thermostat", state: "OT thermostat" },
+  };
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, false);
+  assert.deepEqual(monitoring.problems, []);
 });
 
 test("ongeldige OTT-status geeft geen melding wanneer OTT niet als bron is geselecteerd", () => {
@@ -73,12 +166,31 @@ test("ongeldige OTT-status geeft geen melding wanneer OTT niet als bron is gesel
   assert.deepEqual(monitoring.problems, []);
 });
 
-test("OTT-linkprobleem blijft apart zichtbaar wanneer OTT niet als bron is geselecteerd", () => {
+test("OTT-linkprobleem blijft zichtbaar wanneer alleen de kamerwaarden via OTT komen", () => {
   state.entities = {
     otEnabled: { value: true, state: "ON" },
     otThermostatStatusValid: { value: false, state: "OFF" },
     otLinkProblem: { value: true, state: "ON" },
-    roomTempSource: { value: "HA input", state: "HA input" },
+    roomTempSource: { value: "OT thermostat", state: "OT thermostat" },
+    roomSetpointSource: { value: "OT thermostat", state: "OT thermostat" },
+  };
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, true);
+  assert.deepEqual(monitoring.problems, [{
+    key: "otLinkProblem",
+    label: "OpenTherm-verbinding meldt een probleem",
+  }]);
+});
+
+test("OTT-linkprobleem heeft voorrang op een ongeldige toestemmingsstatus", () => {
+  state.entities = {
+    otEnabled: { value: true, state: "ON" },
+    otThermostatStatusValid: { value: false, state: "OFF" },
+    otLinkProblem: { value: true, state: "ON" },
+    heatingEnableSource: { value: "OT thermostat", state: "OT thermostat" },
+    coolingEnableSource: { value: "OT thermostat", state: "OT thermostat" },
   };
 
   const monitoring = getInstallationMonitoringModel();

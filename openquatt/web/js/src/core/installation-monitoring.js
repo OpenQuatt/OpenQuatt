@@ -4,13 +4,6 @@ import { formatFailures, formatWarningFailures } from "./failure-format.js";
 import { combineInstallationMonitoringModel } from "./incident-monitoring.js";
 import { state } from "./state.js";
 
-const OT_THERMOSTAT_SOURCE_KEYS = [
-  "roomTempSource",
-  "roomSetpointSource",
-  "heatingEnableSource",
-  "coolingEnableSource",
-];
-
 export function isInstallationMonitoringBinaryActive(key) {
   return hasEntity(key) && isEntityActive(key);
 }
@@ -50,10 +43,12 @@ export function getInstallationMonitoringModel() {
   const cyclingAlertLatched = isInstallationMonitoringBinaryActive("compressorCyclingAlertLatched");
   const cicPollingEnabled = isInstallationMonitoringIntegrationEnabled("cicPollingEnabled");
   const otEnabled = isInstallationMonitoringIntegrationEnabled("otEnabled");
-  const otThermostatSourceSelected = OT_THERMOSTAT_SOURCE_KEYS.some(
-    (key) => hasEntity(key) && String(getEntityValue(key) || "").trim() === "OT thermostat",
+  const isOtThermostatSource = (key) => (
+    hasEntity(key) && String(getEntityValue(key) || "").trim() === "OT thermostat"
   );
-  const otThermostatStatusInvalid = otThermostatSourceSelected
+  const heatingEnableFromOt = isOtThermostatSource("heatingEnableSource");
+  const coolingEnableFromOt = isOtThermostatSource("coolingEnableSource");
+  const otThermostatStatusInvalid = (heatingEnableFromOt || coolingEnableFromOt)
     && hasEntity("otThermostatStatusValid")
     && !isEntityActive("otThermostatStatusValid");
   const addBinaryProblem = (key, label) => {
@@ -71,16 +66,18 @@ export function getInstallationMonitoringModel() {
   if (cicPollingEnabled) {
     addBinaryProblem("cicDataStale", "CIC-data is verouderd");
   }
-  if (otThermostatStatusInvalid) {
+  if (otEnabled && isInstallationMonitoringBinaryActive("otLinkProblem")) {
     problems.push({
-      key: "otThermostatStatusInvalid",
-      label: "Geen actuele OpenTherm-thermostaatstatus",
+      key: "otLinkProblem",
+      label: "OpenTherm-verbinding meldt een probleem",
     });
-  }
-  if (otEnabled) {
-    if (!otThermostatStatusInvalid) {
-      addBinaryProblem("otLinkProblem", "OpenTherm-verbinding meldt een probleem");
-    }
+  } else if (otThermostatStatusInvalid) {
+    const label = heatingEnableFromOt && coolingEnableFromOt
+      ? "Geen actuele verwarmings- en koeltoestemming van OpenTherm-thermostaat"
+      : heatingEnableFromOt
+        ? "Geen actuele warmtetoestemming van OpenTherm-thermostaat"
+        : "Geen actuele koeltoestemming van OpenTherm-thermostaat";
+    problems.push({ key: "otThermostatStatusInvalid", label });
   }
   if (!structuredIncidentMonitoringAvailable && isInstallationMonitoringFailureActive("hp1Failures")) {
     problems.push({ key: "hp1Failures", label: `Warmtepomp 1: ${getInstallationMonitoringWarningFailureText("hp1Failures")}` });
