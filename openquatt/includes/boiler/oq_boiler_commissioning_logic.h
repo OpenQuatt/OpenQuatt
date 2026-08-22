@@ -99,6 +99,57 @@ inline OperatingPoint compute_opentherm_operating_point(bool opentherm_selected,
   return op;
 }
 
+class FlowReachabilityMonitor {
+ public:
+  void reset() {
+    saturated_since_ms_ = 0;
+    reference_flow_lph_ = NAN;
+    best_flow_lph_ = NAN;
+  }
+
+  bool update(uint32_t now_ms, float flow_lph, float target_flow_lph, float flow_band_lph, float output_ipwm,
+              uint32_t hold_ms = 60000UL, float saturation_ipwm = 60.0f, float progress_lph = 20.0f) {
+    if (isnan(flow_lph) || isnan(target_flow_lph) || isnan(flow_band_lph) || isnan(output_ipwm) || flow_lph <= 0.0f ||
+        target_flow_lph <= 0.0f || flow_band_lph < 0.0f || hold_ms == 0 || progress_lph < 0.0f) {
+      reset();
+      return false;
+    }
+
+    const float lower_flow_lph = target_flow_lph - flow_band_lph;
+    if (flow_lph >= lower_flow_lph || output_ipwm > saturation_ipwm) {
+      reset();
+      return false;
+    }
+
+    if (saturated_since_ms_ == 0) {
+      saturated_since_ms_ = now_ms;
+      reference_flow_lph_ = flow_lph;
+      best_flow_lph_ = flow_lph;
+      return false;
+    }
+
+    if (isnan(best_flow_lph_) || flow_lph > best_flow_lph_) best_flow_lph_ = flow_lph;
+    if (best_flow_lph_ >= reference_flow_lph_ + progress_lph) {
+      saturated_since_ms_ = now_ms;
+      reference_flow_lph_ = best_flow_lph_;
+      return false;
+    }
+
+    return (uint32_t)(now_ms - saturated_since_ms_) >= hold_ms;
+  }
+
+  float best_flow_lph() const { return best_flow_lph_; }
+
+  uint32_t saturated_duration_ms(uint32_t now_ms) const {
+    return saturated_since_ms_ == 0 ? 0UL : (uint32_t)(now_ms - saturated_since_ms_);
+  }
+
+ private:
+  uint32_t saturated_since_ms_{0};
+  float reference_flow_lph_{NAN};
+  float best_flow_lph_{NAN};
+};
+
 inline bool result_apply_allowed(bool opentherm_selected, bool capacity_verified, bool flow_limited) {
   return !opentherm_selected || (capacity_verified && !flow_limited);
 }
