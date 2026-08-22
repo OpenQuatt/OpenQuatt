@@ -87,6 +87,38 @@ test("confirmed link loss waits for stop confirmation before CM4", () => {
   );
 });
 
+test("Duo link loss revalidates HP1 while HP2 remains available", () => {
+  const scenario = catalog.getScenario("duo-link-loss-recovery");
+  assert.equal(scenario.topology, "duo");
+
+  const lost = scenario.phases.find((phase) => phase.id === "lost");
+  const revalidating = scenario.phases.find((phase) => phase.id === "revalidating");
+  const confirmed = scenario.phases.find((phase) => phase.id === "stop-confirmed");
+  const recovered = scenario.phases.find((phase) => phase.id === "recovered");
+
+  for (const phase of scenario.phases) {
+    assert.equal(phase.system.control_mode, 2);
+    assert.equal(phase.system.boiler_command_active, false);
+    assert.equal(phase.heat_pumps[1].link_state, "healthy");
+    assert.equal(phase.heat_pumps[1].availability, "available");
+    assert.equal(phase.heat_pumps[1].run_state, "running");
+  }
+
+  assert.equal(lost.heat_pumps[0].link_state, "lost");
+  assert.equal(lost.heat_pumps[0].stop_confirmation_pending, true);
+  assert.equal(revalidating.heat_pumps[0].link_state, "recovering");
+  assert.equal(revalidating.heat_pumps[0].stop_confirmation_pending, true);
+  assert.equal(revalidating.heat_pumps[0].stop_unconfirmed, false);
+  assert.equal(confirmed.heat_pumps[0].stop_confirmed, true);
+  assert.equal(confirmed.heat_pumps[0].stop_confirmation_pending, false);
+  assert.equal(recovered.heat_pumps[0].link_state, "healthy");
+  assert.equal(recovered.heat_pumps[0].availability, "available");
+  assert.ok(
+    catalog.collectEvents(scenario.id, scenario.phases.indexOf(confirmed))
+      .some((event) => event.event_type === "hp_stop_confirmed" && event.subject === "HP1"),
+  );
+});
+
 test("CM3 to CM4 R1 and OpenTherm fixtures preserve the active boiler command", () => {
   for (const [id, transport] of [
     ["cm3-cm4-r1", "R1"],
