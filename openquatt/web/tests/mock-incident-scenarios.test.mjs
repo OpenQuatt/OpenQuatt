@@ -71,7 +71,10 @@ test("confirmed link loss waits for stop confirmation before CM4", () => {
   assert.equal(lost.elapsed_s, 30);
   assert.equal(lost.system.action, "fallback_blocked");
   assert.equal(lost.system.fallback_block_reason, 10);
-  assert.equal(lost.heat_pumps[0].stop_unconfirmed, true);
+  assert.equal(lost.heat_pumps[0].stop_confirmation_pending, true);
+  assert.equal(lost.heat_pumps[0].stop_unconfirmed, false);
+  assert.equal(lost.heat_pumps[0].incidents.some((incident) => incident.definition.id === 1003), false);
+  assert.equal(lost.events.some((event) => event.reason === "hp_stop_unconfirmed"), false);
   assert.equal(lost.heat_pumps[0].protection_state, "clear");
   assert.equal(lost.heat_pumps[0].fault_active, false);
   assert.equal(fallback.system.control_mode, 4);

@@ -92,6 +92,7 @@ class HpIncidentEngine {
     start_mode_ack_timed_out_ = false;
     start_timed_out_ = false;
     wrong_mode_compressor_active_ = false;
+    stop_confirmation_pending_ = false;
     refresh_derived();
     return true;
   }
@@ -122,6 +123,12 @@ class HpIncidentEngine {
       refresh_derived();
       return;
     }
+    if (stop_confirmation_pending_ && !stop_request_initialized_) {
+      // Revalidation may only consume observations after the new safe-stop
+      // command has established its feedback baseline.
+      refresh_derived();
+      return;
+    }
 
     if (observation.mode_matches_request) {
       start_mode_seen_ = true;
@@ -131,7 +138,7 @@ class HpIncidentEngine {
     if (compressor_active) {
       stopped_read_streak_ = 0U;
       if (stop_requested_) {
-        run_state_ = RunState::STOPPING;
+        run_state_ = run_state_ == RunState::STOP_UNCONFIRMED ? RunState::STOP_UNCONFIRMED : RunState::STOPPING;
       } else if ((run_state_ == RunState::START_REQUESTED || run_state_ == RunState::WAIT_MODE ||
                   run_state_ == RunState::WAIT_COMPRESSOR) &&
                  !observation.mode_matches_request) {
@@ -183,10 +190,14 @@ class HpIncidentEngine {
       compressor_running_confirmed_ = false;
       stop_requested_ = false;
       stop_request_initialized_ = false;
+      stop_confirmation_pending_ = false;
       stopped_read_streak_ = 0U;
       wrong_mode_compressor_active_ = false;
     } else {
-      run_state_ = RunState::STOPPING;
+      // A real stop-confirmation timeout remains active until the complete
+      // two-read confirmation succeeds. A single stopped observation must not
+      // prematurely clear the fault incident.
+      run_state_ = run_state_ == RunState::STOP_UNCONFIRMED ? RunState::STOP_UNCONFIRMED : RunState::STOPPING;
     }
     refresh_derived();
   }
@@ -383,6 +394,7 @@ class HpIncidentEngine {
         elapsed_at_least(now_ms, stop_requested_at_ms_, tuning_.stop_confirm_timeout_ms)) {
       run_state_ = RunState::STOP_UNCONFIRMED;
       compressor_running_confirmed_ = false;
+      stop_confirmation_pending_ = false;
     }
   }
 
@@ -455,7 +467,13 @@ class HpIncidentEngine {
   }
 
   void invalidate_stop_confirmation_() {
-    run_state_ = RunState::STOP_UNCONFIRMED;
+    // A hard fault or confirmed link loss makes the old stop observation
+    // stale. This is a neutral revalidation phase; only the stop timeout may
+    // promote it to STOP_UNCONFIRMED and incident 1003.
+    if (run_state_ != RunState::STOP_UNCONFIRMED) {
+      run_state_ = RunState::STOPPING;
+      stop_confirmation_pending_ = true;
+    }
     compressor_running_confirmed_ = false;
     stop_requested_ = false;
     stop_request_initialized_ = false;
@@ -564,6 +582,7 @@ class HpIncidentEngine {
     outputs_.run_state = run_state_;
     outputs_.running_confirmed = compressor_running_confirmed_;
     outputs_.stop_confirmed = run_state_ == RunState::STOPPED;
+    outputs_.stop_confirmation_pending = stop_confirmation_pending_;
     outputs_.stop_unconfirmed = run_state_ == RunState::STOP_UNCONFIRMED;
     outputs_.start_mode_ack_timed_out = start_mode_ack_timed_out_;
     outputs_.start_timed_out = start_timed_out_;
@@ -612,11 +631,13 @@ class HpIncidentEngine {
     }
 
     const bool link_recovery_after_loss = link_state_ == LinkState::RECOVERING && recovering_from_loss_;
-    outputs_.must_stop = hard_fault || start_timed_out_ || link_state_ == LinkState::LOST || link_recovery_after_loss;
+    outputs_.must_stop = hard_fault || start_timed_out_ || outputs_.stop_confirmation_pending ||
+                         outputs_.stop_unconfirmed || link_state_ == LinkState::LOST || link_recovery_after_loss;
     outputs_.available_for_start = link_state_ == LinkState::HEALTHY &&
                                    (outputs_.protection_state == ProtectionState::CLEAR ||
                                     outputs_.protection_state == ProtectionState::LIMITED) &&
-                                   run_state_ != RunState::STOP_UNCONFIRMED && !start_timed_out_;
+                                   !outputs_.stop_confirmation_pending && run_state_ != RunState::STOP_UNCONFIRMED &&
+                                   !start_timed_out_;
     outputs_.fallback_cause_present = fallback_fault || fault_recovery_active_ || start_timed_out_ ||
                                       link_state_ == LinkState::LOST || link_recovery_after_loss;
     outputs_.fallback_eligible = outputs_.fallback_cause_present && !outputs_.available_for_start &&
@@ -660,6 +681,7 @@ class HpIncidentEngine {
   bool compressor_running_confirmed_ = false;
   bool stop_requested_ = false;
   bool stop_request_initialized_ = false;
+  bool stop_confirmation_pending_ = false;
   uint32_t stop_requested_at_ms_ = 0U;
   uint8_t stopped_read_streak_ = 0U;
 

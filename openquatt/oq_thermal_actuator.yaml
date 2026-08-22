@@ -520,9 +520,11 @@ interval:
               const bool initial_stop_registration_required =
                   prev_applied > 0 || incident_stop_registration_required;
               const bool stop_notification_required =
-                  initial_stop_registration_required ||
-                  (incident_outputs.must_stop &&
-                   !incident_outputs.stop_confirmed);
+                  oq_incident_actuator::requires_stop_notification(
+                      initial_stop_registration_required,
+                      incident_outputs.must_stop,
+                      incident_outputs.stop_confirmed,
+                      incident_outputs.stop_confirmation_pending);
               oq_incident_actuator::apply_stop_notification_before_safe_write(
                   stop_notification_required,
                   [&]() {

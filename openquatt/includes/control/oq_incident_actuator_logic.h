@@ -40,6 +40,11 @@ inline bool safe_stop_write_retry_due(bool stop_confirmation_pending, uint32_t n
   return static_cast<uint32_t>(now_ms - last_write_ms) >= retry_interval_ms;
 }
 
+inline bool requires_stop_notification(bool initial_stop_registration_required, bool must_stop, bool stop_confirmed,
+                                       bool stop_confirmation_pending) {
+  return initial_stop_registration_required || stop_confirmation_pending || (must_stop && !stop_confirmed);
+}
+
 // Establish the incident manager's fresh-observation baseline before the
 // first active mode/level command. A denied start produces only a safe write.
 template <typename StartGate, typename ActiveWrite, typename SafeWrite>

@@ -8,6 +8,7 @@ int main() {
   using oq_incident_actuator::apply_stop_notification_before_safe_write;
   using oq_incident_actuator::decide;
   using oq_incident_actuator::Inputs;
+  using oq_incident_actuator::requires_stop_notification;
   using oq_incident_actuator::safe_stop_write_retry_due;
 
   auto decision = decide(Inputs{5, 0, true, false});
@@ -62,5 +63,10 @@ int main() {
   assert(!safe_stop_write_retry_due(true, 19999U, 10000U, 10000U));
   assert(safe_stop_write_retry_due(true, 20000U, 10000U, 10000U));
   assert(safe_stop_write_retry_due(true, 5U, UINT32_MAX - 10U, 10U));
+
+  assert(!requires_stop_notification(false, false, true, false));
+  assert(requires_stop_notification(true, false, true, false));
+  assert(requires_stop_notification(false, true, false, false));
+  assert(requires_stop_notification(false, false, false, true));
   return 0;
 }

@@ -270,7 +270,10 @@ export function getHeatPumpStatusPresentation(heatPump = {}) {
     stopping: "Stop aangevraagd",
     stop_unconfirmed: "Stop nog niet bevestigd",
   };
-  const note = `${links[heatPump.linkState] || links.unknown} · ${runs[heatPump.runState] || runs.unknown}`;
+  const runStatus = heatPump.stopConfirmationPending
+    ? "Stopstatus wordt opnieuw bevestigd"
+    : runs[heatPump.runState] || runs.unknown;
+  const note = `${links[heatPump.linkState] || links.unknown} · ${runStatus}`;
   if (heatPump.faultActive || heatPump.protectionState === "fault_active") {
     return { label: "Storing actief", note, tone: "fault" };
   }
@@ -374,6 +377,7 @@ function normalizeHeatPump(raw) {
     availableForStart,
     mustStop,
     faultActive: normalizeBoolean(raw.fault_active),
+    stopConfirmationPending: normalizeBoolean(raw.stop_confirmation_pending),
     lastActionResult,
     actionResults,
     incidents: Array.isArray(raw.incidents)

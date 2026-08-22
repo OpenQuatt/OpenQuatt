@@ -39,6 +39,7 @@
       protection_active: false,
       running_confirmed: running,
       stop_confirmed: !running,
+      stop_confirmation_pending: false,
       stop_unconfirmed: false,
       fallback_cause_present: false,
       fallback_eligible: false,
@@ -315,22 +316,18 @@
           action: "fallback_blocked",
           fallback_block_reason: 10,
         },
-        heatPumps: [stoppedFaulted(1, 1001, [
-          INCIDENTS.linkLoss(),
-          INCIDENTS.stopUnconfirmed(),
-        ], {
+        heatPumps: [stoppedFaulted(1, 1001, [INCIDENTS.linkLoss()], {
           link_state: "lost",
           protection_state: "clear",
-          run_state: "stop_unconfirmed",
+          run_state: "stopping",
           stop_confirmed: false,
-          stop_unconfirmed: true,
+          stop_confirmation_pending: true,
           fault_active: false,
           fallback_eligible: false,
         })],
         events: [
           event(30, "incident_start", "HP1", "hp_link_loss", "fault", 1, "standby", "active", 1001),
           event(30, "hp_availability_change", "HP1", "hp_link_loss", "fault", 1, "available", "offline", 1001, 2),
-          event(30, "incident_start", "HP1", "hp_stop_unconfirmed", "fault", 1, "standby", "active", 1003),
         ],
       }),
       phase("fallback", "Stop bevestigd, CM4 actief", "De stopstatus is vers bevestigd; de ketel neemt veilig over.", 36, {
@@ -348,7 +345,6 @@
         })],
         events: [
           event(34, "hp_stop_confirmed", "HP1", "hp_link_loss", "normal", 1, "active", "standby"),
-          event(34, "incident_clear", "HP1", "hp_stop_unconfirmed", "normal", 1, "active", "standby", 1003),
           event(36, "control_mode_change", "SYSTEM", "boiler_fallback", "attention", 4, "standby", "active", 1, 4),
           event(36, "boiler_fallback_start", "CV", "boiler_fallback", "attention", 4, "standby", "active", 350, 0),
         ],
