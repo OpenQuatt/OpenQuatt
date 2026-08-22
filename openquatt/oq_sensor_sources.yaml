@@ -120,6 +120,10 @@ globals:
     type: bool
     restore_value: false
     initial_value: 'false'
+  - id: oq_heat_demand_selected_last_valid_source
+    type: uint8_t
+    restore_value: false
+    initial_value: '0'
 
 select:
   - platform: template
@@ -943,6 +947,10 @@ sensor:
       if (!id(heat_demand_source).has_state()) return NAN;
       const auto source = id(heat_demand_source).current_option();
       const bool hold_enabled = source == "HA input";
+      const uint8_t source_code = (source == "HA input")
+          ? oq_power_house::kDemandSourceHaInput
+          : (source == "API input") ? oq_power_house::kDemandSourceApiInput
+                                    : oq_power_house::kDemandSourceNone;
       const uint32_t hold_ms = (uint32_t)(${oq_selected_input_stale_hold_s}UL * 1000UL);
       const uint32_t now_ms = (uint32_t) millis();
       const bool api_valid =
@@ -961,16 +969,20 @@ sensor:
       if (selected_valid) {
         id(oq_heat_demand_selected_last_valid_w) = selected_w;
         id(oq_heat_demand_selected_last_valid_ms) = now_ms;
+        id(oq_heat_demand_selected_last_valid_source) = source_code;
         id(oq_heat_demand_selected_hold_active) = false;
         return selected_w;
       }
 
       id(oq_heat_demand_selected_hold_active) = false;
       if (hold_enabled &&
-          hold_ms > 0 &&
-          id(oq_heat_demand_selected_last_valid_ms) > 0 &&
-          (uint32_t)(now_ms - id(oq_heat_demand_selected_last_valid_ms)) < hold_ms &&
-          !isnan(id(oq_heat_demand_selected_last_valid_w))) {
+          oq_power_house::hold_cached_demand(
+              id(oq_heat_demand_selected_last_valid_source),
+              source_code,
+              id(oq_heat_demand_selected_last_valid_w),
+              id(oq_heat_demand_selected_last_valid_ms),
+              now_ms,
+              hold_ms)) {
         id(oq_heat_demand_selected_hold_active) = true;
         return id(oq_heat_demand_selected_last_valid_w);
       }

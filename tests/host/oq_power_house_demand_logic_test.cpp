@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <math.h>
+#include <stdint.h>
 
 #include "../../openquatt/includes/control/oq_power_house_demand_logic.h"
 
@@ -96,11 +97,53 @@ void test_external_demand() {
   assert(nearly_equal(exactly_rated.house_power_w, kRated));
 }
 
+// A cached demand belongs to the source that produced it. After a source change
+// the cache must not be replayed, or a stale sample from the previous source
+// keeps driving the request for a full hold window.
+void test_cached_demand_hold() {
+  using oq_power_house::hold_cached_demand;
+  using oq_power_house::kDemandSourceApiInput;
+  using oq_power_house::kDemandSourceHaInput;
+  using oq_power_house::kDemandSourceNone;
+
+  constexpr uint32_t kHoldMs = 300000UL;
+  constexpr uint32_t kCachedMs = 1000UL;
+  constexpr float kCachedW = 3000.0f;
+
+  // A brief dropout of the same source is exactly what the hold is for.
+  assert(
+      hold_cached_demand(kDemandSourceHaInput, kDemandSourceHaInput, kCachedW, kCachedMs, kCachedMs + 1000UL, kHoldMs));
+
+  // Switching away from API input must not replay the API sample under HA input.
+  assert(!hold_cached_demand(kDemandSourceApiInput, kDemandSourceHaInput, kCachedW, kCachedMs, kCachedMs + 1000UL,
+                             kHoldMs));
+  assert(!hold_cached_demand(kDemandSourceHaInput, kDemandSourceApiInput, kCachedW, kCachedMs, kCachedMs + 1000UL,
+                             kHoldMs));
+
+  // Nothing cached yet, or cached before any source was known.
+  assert(
+      !hold_cached_demand(kDemandSourceNone, kDemandSourceHaInput, kCachedW, kCachedMs, kCachedMs + 1000UL, kHoldMs));
+  assert(
+      !hold_cached_demand(kDemandSourceHaInput, kDemandSourceNone, kCachedW, kCachedMs, kCachedMs + 1000UL, kHoldMs));
+  assert(!hold_cached_demand(kDemandSourceHaInput, kDemandSourceHaInput, kCachedW, 0, kCachedMs, kHoldMs));
+
+  // An expired or disabled hold falls through to the house model.
+  assert(!hold_cached_demand(kDemandSourceHaInput, kDemandSourceHaInput, kCachedW, kCachedMs, kCachedMs + kHoldMs,
+                             kHoldMs));
+  assert(!hold_cached_demand(kDemandSourceHaInput, kDemandSourceHaInput, kCachedW, kCachedMs, kCachedMs + 1000UL, 0));
+  assert(!hold_cached_demand(kDemandSourceHaInput, kDemandSourceHaInput, NAN, kCachedMs, kCachedMs + 1000UL, kHoldMs));
+
+  // Unsigned elapsed-time arithmetic keeps the hold valid across millis() wrap.
+  assert(
+      hold_cached_demand(kDemandSourceHaInput, kDemandSourceHaInput, kCachedW, UINT32_MAX - 1000UL, 1000UL, kHoldMs));
+}
+
 }  // namespace
 
 int main() {
   test_modelled_house_power();
   test_fallback_to_model();
   test_external_demand();
+  test_cached_demand_hold();
   return 0;
 }

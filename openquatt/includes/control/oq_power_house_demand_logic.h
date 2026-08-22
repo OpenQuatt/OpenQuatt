@@ -1,8 +1,16 @@
 #pragma once
 
 #include <math.h>
+#include <stdint.h>
 
 namespace oq_power_house {
+
+// Identifies which source produced a cached external demand. Kept as a small
+// code so the selected-value lambda can persist it in a global alongside the
+// cached watts and timestamp.
+constexpr uint8_t kDemandSourceNone = 0;
+constexpr uint8_t kDemandSourceHaInput = 1;
+constexpr uint8_t kDemandSourceApiInput = 2;
 
 // Outcome of choosing the Power House feedforward term for one control tick.
 struct Feedforward {
@@ -50,6 +58,22 @@ inline Feedforward select_feedforward(float modelled_power_w, float external_pow
   result.house_power_w = clamp_power(external_power_w, 0.0f, rated_power_w);
   result.external = true;
   return result;
+}
+
+// Decide whether a cached external demand may bridge a short dropout. The
+// cache belongs to the source that produced it: after a source change it
+// describes a different origin, so replaying it would keep a stale sample from
+// the previous source driving the request for a full hold window. Elapsed time
+// is computed in unsigned arithmetic so the window survives a millis() wrap.
+inline bool hold_cached_demand(uint8_t cached_source, uint8_t current_source, float cached_power_w, uint32_t cached_ms,
+                               uint32_t now_ms, uint32_t hold_ms) {
+  if (hold_ms == 0 || cached_ms == 0 || !isfinite(cached_power_w)) {
+    return false;
+  }
+  if (cached_source == kDemandSourceNone || cached_source != current_source) {
+    return false;
+  }
+  return static_cast<uint32_t>(now_ms - cached_ms) < hold_ms;
 }
 
 }  // namespace oq_power_house
