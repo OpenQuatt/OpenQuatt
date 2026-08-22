@@ -26,22 +26,28 @@ globalThis.window = {
 
 const { state } = await import("../js/src/core/state.js");
 const { noteEntityRefreshFailure, noteEntityRefreshSuccess } = await import("../js/src/core/entity-sync.js");
+const { triggerNamedButton } = await import("../js/src/core/entity-write-actions.js");
 const { requestFirmwareOta } = await import("../js/src/features/firmware-actions.js");
 const {
   OTA_REFRESH_DELAY_MS,
+  RESTART_REFRESH_DELAY_MS,
   armOtaRefresh,
   awaitOtaEvidence,
   beginDeviceReconnect,
   clearOtaRefresh,
+  clearRestartRefresh,
   clearDeviceReconnect,
-  markDeviceReconnectRecovered,
   scheduleOtaRefresh,
 } = await import("../js/src/core/device-reconnect.js");
 
 test.afterEach(() => {
   clearDeviceReconnect();
   clearOtaRefresh();
+  clearRestartRefresh();
   state.entities = {};
+  state.busyAction = "";
+  state.controlError = "";
+  state.controlNotice = "";
   timers.length = 0;
   reloadCount = 0;
   globalThis.fetch = originalFetch;
@@ -197,11 +203,83 @@ test("an OTA entity poll does not reload before install completion", () => {
   assert.equal(state.ota.id, null);
 });
 
-test("a normal restart recovery does not reload the page", () => {
-  beginDeviceReconnect("restart");
+test("an accepted restart waits for an outage before reloading the page", async () => {
+  state.entities.uptime = { state: "1.00 h", value: 1 };
+  globalThis.fetch = async () => ({ ok: true });
 
-  assert.equal(markDeviceReconnectRecovered(), true);
-  assert.equal(state.ota.on, false);
+  await triggerNamedButton("restartAction", {
+    successNotice: "OpenQuatt wordt opnieuw opgestart.",
+    errorPrefix: "Herstart mislukt",
+    reconnectMode: "restart",
+  });
+
+  assert.equal(state.restartRefresh.on, true);
+  assert.equal(state.restartRefresh.ok, 1);
+  assert.equal(state.restartRefresh.wait, true);
+
+  noteEntityRefreshSuccess();
+
+  assert.equal(state.restartRefresh.wait, true);
+  assert.equal(reloadCount, 0);
+
+  noteEntityRefreshFailure("Failed to fetch");
+  noteEntityRefreshSuccess();
+
+  const refreshTimer = state.restartRefresh.id;
+  assert.ok(refreshTimer);
+  assert.equal(refreshTimer.delay, RESTART_REFRESH_DELAY_MS);
+  refreshTimer.callback();
+
+  assert.equal(reloadCount, 1);
+  assert.equal(state.restartRefresh.on, false);
+});
+
+test("a lost restart acknowledgement reloads only after uptime proves the reboot", async () => {
+  state.entities.uptime = { state: "1.00 h", value: 1 };
+  globalThis.fetch = async () => {
+    throw new TypeError("Failed to fetch");
+  };
+
+  await triggerNamedButton("restartAction", {
+    successNotice: "OpenQuatt wordt opnieuw opgestart.",
+    errorPrefix: "Herstart mislukt",
+    reconnectMode: "restart",
+  });
+
+  assert.equal(state.restartRefresh.on, true);
+  assert.equal(state.restartRefresh.ok, 0);
+  assert.equal(state.restartRefresh.wait, true);
+  assert.equal(state.deviceReconnectMode, "restart");
+  assert.equal(state.controlError, "");
+
+  noteEntityRefreshSuccess();
+
+  assert.equal(state.restartRefresh.wait, true);
+  assert.equal(reloadCount, 0);
+
+  state.entities.uptime = { state: "4 s", value: 4, uom: "h" };
+  noteEntityRefreshSuccess();
+
+  const refreshTimer = state.restartRefresh.id;
+  assert.ok(refreshTimer);
+  assert.equal(refreshTimer.delay, RESTART_REFRESH_DELAY_MS);
+  refreshTimer.callback();
+
+  assert.equal(reloadCount, 1);
+  assert.equal(state.restartRefresh.on, false);
+});
+
+test("an explicit restart rejection cancels its pending page reload", async () => {
+  globalThis.fetch = async () => ({ ok: false, status: 503 });
+
+  await triggerNamedButton("restartAction", {
+    errorPrefix: "Herstart mislukt",
+    reconnectMode: "restart",
+  });
+
+  assert.equal(state.restartRefresh.on, false);
+  assert.equal(state.deviceReconnectMode, "");
+  assert.match(state.controlError, /HTTP 503/);
   assert.equal(reloadCount, 0);
 });
 
