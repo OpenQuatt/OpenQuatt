@@ -12,6 +12,10 @@ const FIRMWARE_ENTITY_PACKAGES = [
   "../../oq_installation_monitoring.yaml",
   "../../oq_boiler_control.yaml",
   "../../oq_boiler_opentherm.yaml",
+  "../../oq_heating_curve_strategy.yaml",
+  "../../oq_sensor_sources.yaml",
+  "../../oq_sensor_source_selects_opentherm.yaml",
+  "../../oq_ot_slave.yaml",
 ];
 
 const OBSERVABILITY_KEYS = [
@@ -44,17 +48,32 @@ const OBSERVABILITY_KEYS = [
   "otbMinModulation",
 ];
 
+const ISSUE_473_OBSERVABILITY_KEYS = [
+  "curveRestartBlockedByRoom",
+  "heatingEnableSource",
+  "heatingEnableValid",
+  "heatingEnableSelected",
+  "otThermostatStatusValid",
+  "otThermostatChEnable",
+];
+
+const ADDED_OBSERVABILITY_KEYS = [...OBSERVABILITY_KEYS, ...ISSUE_473_OBSERVABILITY_KEYS];
+
 test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", () => {
   const legacyTailIndex = DEBUG_RECORDING_KEYS.indexOf("otLinkProblem");
 
   assert.equal(legacyTailIndex, 134);
-  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(legacyTailIndex + 1), OBSERVABILITY_KEYS);
+  assert.deepEqual(
+    DEBUG_RECORDING_KEYS.slice(legacyTailIndex + 1, legacyTailIndex + 1 + OBSERVABILITY_KEYS.length),
+    OBSERVABILITY_KEYS,
+  );
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(legacyTailIndex + 1 + OBSERVABILITY_KEYS.length), ISSUE_473_OBSERVABILITY_KEYS);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   assert.ok(DEBUG_RECORDING_KEYS.length <= 188, "debugrecorder heeft maximaal 188 entityvelden naast 4 systeemvelden");
 });
 
 test("elk nieuw debugveld heeft een opneembare entitydefinitie", () => {
-  for (const key of OBSERVABILITY_KEYS) {
+  for (const key of ADDED_OBSERVABILITY_KEYS) {
     assert.ok(ENTITY_DEFS[key], `entitydefinitie ontbreekt voor ${key}`);
     assert.match(ENTITY_DEFS[key].domain, /^(binary_sensor|number|select|sensor|switch|text_sensor)$/);
     assert.ok(key.length < 40, `debugsleutel past niet in DebugField.key: ${key}`);
@@ -68,7 +87,7 @@ test("elk nieuw debugveld verwijst naar een echte firmware-entity", async () => 
   );
   const firmwareSource = packages.join("\n");
 
-  for (const key of OBSERVABILITY_KEYS) {
+  for (const key of ADDED_OBSERVABILITY_KEYS) {
     assert.ok(firmwareSource.includes(`name: "${ENTITY_DEFS[key].name}"`), `firmware-entity ontbreekt voor ${key}`);
   }
 });

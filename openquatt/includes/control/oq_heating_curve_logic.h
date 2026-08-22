@@ -34,6 +34,19 @@ struct ControlProfileTuning {
   float dual_disable_temp_err_max_c = 0.50f;
 };
 
+enum RestartReason : uint8_t {
+  RESTART_NONE = 0,
+  RESTART_WATER_BAND = 1,
+  RESTART_ROOM_DEMAND = 2,
+};
+
+struct RestartDecision {
+  bool restart = false;
+  bool blocked_by_room = false;
+  bool blocked_by_off_lock = false;
+  RestartReason reason = RESTART_NONE;
+};
+
 struct DispatchCandidate {
   bool valid = false;
   int hp1_level = 0;
@@ -96,9 +109,39 @@ inline ControlProfileTuning control_profile(const std::string& profile_option) {
   return tuning;
 }
 
+inline RestartDecision evaluate_restart(bool below_restart_band, bool deep_undershoot_restart, bool off_lock_active,
+                                        bool room_data_fresh, float room_c, float room_sp_c, float room_overheat_off_c,
+                                        float room_resume_heat_c) {
+  RestartDecision decision;
+  const bool room_values_valid = room_data_fresh && !isnan(room_c) && !isnan(room_sp_c);
+  const bool room_requests_heat = room_values_valid && room_c <= (room_sp_c - room_resume_heat_c);
+  if (room_requests_heat) {
+    decision.restart = true;
+    decision.reason = RESTART_ROOM_DEMAND;
+    return decision;
+  }
+
+  if (!below_restart_band) return decision;
+
+  const bool room_blocks_water_restart = room_values_valid && room_c >= (room_sp_c + room_overheat_off_c);
+  if (room_blocks_water_restart) {
+    decision.blocked_by_room = true;
+    return decision;
+  }
+
+  if (off_lock_active && !deep_undershoot_restart) {
+    decision.blocked_by_off_lock = true;
+    return decision;
+  }
+
+  decision.restart = true;
+  decision.reason = RESTART_WATER_BAND;
+  return decision;
+}
+
 inline void reset_control_state(float& demand_continuous, int& demand_curve, int& demand_pre_guardrail,
                                 bool& heat_request_active, uint32_t& stop_arm_ms, uint32_t& off_since_ms,
-                                bool& restart_inhibit_active, int& regime_code) {
+                                bool& restart_inhibit_active, bool& restart_blocked_by_room, int& regime_code) {
   demand_continuous = NAN;
   demand_curve = 0;
   demand_pre_guardrail = 0;
@@ -106,6 +149,7 @@ inline void reset_control_state(float& demand_continuous, int& demand_curve, int
   stop_arm_ms = 0;
   off_since_ms = 0;
   restart_inhibit_active = false;
+  restart_blocked_by_room = false;
   regime_code = 0;
 }
 

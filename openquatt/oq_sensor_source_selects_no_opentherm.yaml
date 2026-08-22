@@ -6,6 +6,10 @@
 #   Source selectors for hardware profiles without a supported OT thermostat bus.
 # ==============================================================================
 
+substitutions:
+  oq_ot_room_temperature_fresh_expr: "false"
+  oq_ot_room_setpoint_fresh_expr: "false"
+
 select:
   - platform: template
     name: "Room Temperature Source"

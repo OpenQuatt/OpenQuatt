@@ -493,6 +493,7 @@
     curveTargetHp1Level: { domain: "sensor", name: "Curve target HP1 level", optional: true },
     curveTargetHp2Level: { domain: "sensor", name: "Curve target HP2 level", optional: true },
     curveRestartInhibit: { domain: "sensor", name: "Curve restart inhibit", optional: true },
+    curveRestartBlockedByRoom: { domain: "sensor", name: "Curve restart blocked by room", optional: true },
     curvePhase: { domain: "text_sensor", name: "Curve Phase", optional: true },
     curveOperatingRegime: { domain: "text_sensor", name: "Curve operating regime", optional: true },
     curveCapacityMode: { domain: "text_sensor", name: "Curve capacity mode", optional: true },
@@ -1424,6 +1425,14 @@
     "otbResponseCount",
     "otbTransportErrorCount",
     "otbResponseTimeoutCount",
+    "otbMaxCapacity",
+    "otbMinModulation",
+    "curveRestartBlockedByRoom",
+    "heatingEnableSource",
+    "heatingEnableValid",
+    "heatingEnableSelected",
+    "otThermostatStatusValid",
+    "otThermostatChEnable",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestOtaUrl", "firmwareTestOtaMd5Url", "installFirmwareTestOta"];

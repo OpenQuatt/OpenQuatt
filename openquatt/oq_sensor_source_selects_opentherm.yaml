@@ -7,6 +7,10 @@
 #   Include only on hardware profiles that actually provide the OT slave bridge.
 # ==============================================================================
 
+substitutions:
+  oq_ot_room_temperature_fresh_expr: "id(oq_ot_slave_hub).master_room_temperature_fresh()"
+  oq_ot_room_setpoint_fresh_expr: "id(oq_ot_slave_hub).master_room_setpoint_fresh()"
+
 select:
   - platform: template
     name: "Room Temperature Source"

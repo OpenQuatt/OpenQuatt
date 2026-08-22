@@ -80,6 +80,8 @@ class OpenQuattOTSlave : public PollingComponent
   }
   void set_slave_t_dhw_set(float value) { m_slave_state.t_dhw_set = value; }
   void prepare_for_firmware_update();
+  bool master_room_temperature_fresh() const;
+  bool master_room_setpoint_fresh() const;
 
 #define OPENQUATT_OT_SLAVE_SET_SENSOR(entity) \
   void set_##entity(sensor::Sensor* sensor) { this->entity = sensor; }
@@ -165,6 +167,8 @@ class OpenQuattOTSlave : public PollingComponent
   bool m_updatePrepareActive = false;
   unsigned long m_lastMasterStatusMs = 0;
   unsigned long m_lastSuccessfulFrameMs = 0;
+  unsigned long m_lastMasterRoomTemperatureMs = 0;
+  unsigned long m_lastMasterRoomSetpointMs = 0;
   unsigned long m_linkProblemGraceUntilMs = 0;
   unsigned long m_t6CompatUntilMs = 0;
   unsigned long m_otStartNotBeforeMs = 0;
