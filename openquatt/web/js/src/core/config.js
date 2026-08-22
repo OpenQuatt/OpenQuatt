@@ -1806,6 +1806,9 @@
     "otLinkProblem",
     "otbChCommand",
     "otbControlSetpointCommand",
+    // A live power request rather than a persisted setting: restoring it
+    // would re-assert a stale demand and mark it freshly valid.
+    "apiInputHeatDemand",
     "coolingGuardMode",
     "coolingFallbackNightMinOutdoorTemp",
     "coolingFallbackMinSupplyTemp",
@@ -1872,7 +1875,6 @@
         "apiInputOutsideTemperature",
         "apiInputRoomTemperature",
         "apiInputRoomSetpoint",
-        "apiInputHeatDemand",
         "apiInputHeatingEnable",
         "apiInputCoolingEnable",
         "apiInputCoolingDewPoint",
