@@ -752,6 +752,7 @@ export async function triggerNamedButton(key, options = {}) {
       state.commissioningTaskLock = "";
     }
     if (refreshAfterRestart && isLikelyDeviceConnectionError(error.message)) {
+      state.restartRefresh.ok = 2;
       awaitRestartEvidence();
       beginDeviceReconnect("restart", error.message);
       state.controlNotice = options.successNotice || `${entity.name} gestart.`;

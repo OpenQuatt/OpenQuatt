@@ -50,7 +50,7 @@ export const state = {
   deviceReconnectLastError: "",
   // OTA refresh lifecycle: ok 0=unconfirmed, 1=accepted, 2=accepted with a later outage.
   ota: { on: false, ok: 0, id: null, wait: false, base: null },
-  // Restart refresh lifecycle: ok 0=unconfirmed, 1=accepted, 2=accepted with a later outage.
+  // Restart refresh lifecycle: ok 0=unconfirmed, 1=accepted, 2=outage observed after the request.
   restartRefresh: { on: false, ok: 0, id: null, wait: false, base: null },
   firmwareOtaQuietUntil: 0,
   firmwareOtaQuietTimer: null,

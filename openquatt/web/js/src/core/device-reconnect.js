@@ -4,7 +4,7 @@ import { updateFirmwareState } from "./feature-state.js";
 
 export const DEVICE_RECONNECT_RECOVERY_CLEAR_DELAY_MS = 1500;
 export const OTA_REFRESH_DELAY_MS = 1500;
-export const RESTART_REFRESH_DELAY_MS = 1500;
+export const RESTART_REFRESH_DELAY_MS = 0;
 
 function getRebootEvidence() {
   const uptime = state.entities.uptime;
@@ -122,6 +122,10 @@ export function reconcileRestartEvidence() {
 
 export function scheduleRestartRefresh(delayMs = RESTART_REFRESH_DELAY_MS) {
   scheduleBrowserRefresh(state.restartRefresh, clearRestartRefresh, delayMs);
+}
+
+export function isRestartRefreshActive() {
+  return state.restartRefresh.on;
 }
 
 export function clearDeviceReconnectRecoveryTimer() {

@@ -8,7 +8,7 @@ import { getDefaultAppView, getUrlAppView, setAppView } from "./navigation.js";
 import { isFirmwareOtaQuietActive } from "./firmware-quiet.js";
 import { getInstallationMonitoringModel, syncInstallationMonitoringDetailsState } from "./installation-monitoring.js";
 import { getIncidentMonitoringFailureUpdate, getIncidentMonitoringSuccessUpdate, getIncidentMonitoringUnsupportedUpdate } from "./incident-monitoring.js";
-import { beginDeviceReconnect, clearDeviceReconnect, markDeviceReconnectRecovered, reconcileOtaEvidence, reconcileRestartEvidence } from "./device-reconnect.js";
+import { beginDeviceReconnect, clearDeviceReconnect, isRestartRefreshActive, markDeviceReconnectRecovered, reconcileOtaEvidence, reconcileRestartEvidence } from "./device-reconnect.js";
 import { getSettingsRenderSignature } from "./render-signatures.js";
 import { isSystemSettingsGroupActive } from "./surface-state.js";
 import { getHeaderRenderSignature, patchHeaderDom } from "./header-render-controls.js";
@@ -561,7 +561,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
     reconcileOtaEvidence();
     reconcileRestartEvidence();
     const wasReconnectActive = Boolean(state.deviceReconnectMode);
-    const reconnectRecovered = wasReconnectActive && typeof markDeviceReconnectRecovered === "function"
+    const reconnectRecovered = wasReconnectActive && !isRestartRefreshActive() && typeof markDeviceReconnectRecovered === "function"
       ? markDeviceReconnectRecovered()
       : false;
     if (reconnectRecovered) {

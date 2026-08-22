@@ -30,7 +30,6 @@ const { triggerNamedButton } = await import("../js/src/core/entity-write-actions
 const { requestFirmwareOta } = await import("../js/src/features/firmware-actions.js");
 const {
   OTA_REFRESH_DELAY_MS,
-  RESTART_REFRESH_DELAY_MS,
   armOtaRefresh,
   awaitOtaEvidence,
   beginDeviceReconnect,
@@ -203,7 +202,7 @@ test("an OTA entity poll does not reload before install completion", () => {
   assert.equal(state.ota.id, null);
 });
 
-test("an accepted restart waits for an outage before reloading the page", async () => {
+test("an accepted restart reloads immediately when data returns after the outage", async () => {
   state.entities.uptime = { state: "1.00 h", value: 1 };
   globalThis.fetch = async () => ({ ok: true });
 
@@ -220,6 +219,7 @@ test("an accepted restart waits for an outage before reloading the page", async 
   noteEntityRefreshSuccess();
 
   assert.equal(state.restartRefresh.wait, true);
+  assert.equal(state.deviceReconnectRecoveryStartedAt, 0);
   assert.equal(reloadCount, 0);
 
   noteEntityRefreshFailure("Failed to fetch");
@@ -227,14 +227,17 @@ test("an accepted restart waits for an outage before reloading the page", async 
 
   const refreshTimer = state.restartRefresh.id;
   assert.ok(refreshTimer);
-  assert.equal(refreshTimer.delay, RESTART_REFRESH_DELAY_MS);
+  assert.equal(refreshTimer.delay, 0);
+  noteEntityRefreshSuccess();
+  assert.equal(state.restartRefresh.id, refreshTimer);
+  assert.equal(state.deviceReconnectRecoveryStartedAt, 0);
   refreshTimer.callback();
 
   assert.equal(reloadCount, 1);
   assert.equal(state.restartRefresh.on, false);
 });
 
-test("a lost restart acknowledgement reloads only after uptime proves the reboot", async () => {
+test("a lost restart acknowledgement reloads immediately when data returns", async () => {
   state.entities.uptime = { state: "1.00 h", value: 1 };
   globalThis.fetch = async () => {
     throw new TypeError("Failed to fetch");
@@ -247,22 +250,17 @@ test("a lost restart acknowledgement reloads only after uptime proves the reboot
   });
 
   assert.equal(state.restartRefresh.on, true);
-  assert.equal(state.restartRefresh.ok, 0);
+  assert.equal(state.restartRefresh.ok, 2);
   assert.equal(state.restartRefresh.wait, true);
   assert.equal(state.deviceReconnectMode, "restart");
   assert.equal(state.controlError, "");
 
   noteEntityRefreshSuccess();
 
-  assert.equal(state.restartRefresh.wait, true);
-  assert.equal(reloadCount, 0);
-
-  state.entities.uptime = { state: "4 s", value: 4, uom: "h" };
-  noteEntityRefreshSuccess();
-
   const refreshTimer = state.restartRefresh.id;
   assert.ok(refreshTimer);
-  assert.equal(refreshTimer.delay, RESTART_REFRESH_DELAY_MS);
+  assert.equal(refreshTimer.delay, 0);
+  assert.equal(state.deviceReconnectRecoveryStartedAt, 0);
   refreshTimer.callback();
 
   assert.equal(reloadCount, 1);
