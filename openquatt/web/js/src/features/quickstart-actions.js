@@ -4,6 +4,7 @@ import { buildEntityPath } from "../core/domain-helpers.js";
 import { setEntityBackupValue } from "../core/entity-backup.js";
 import { getEntityValue } from "../core/entity-store.js";
 import { refreshEntities } from "../core/entity-sync.js";
+import { ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS } from "../core/odu-generation.js";
 import { state } from "../core/state.js";
 import { shouldInitializeQuickStartUsageTelemetryChoice, waitForUsageTelemetryChoiceConfirmation } from "../core/usage-telemetry-domain.js";
 import { getQuickStartFlowSourceModel, getQuickStartThermostatSourceModel } from "./quickstart.js";
@@ -15,7 +16,14 @@ import { render } from "../core/render-scheduler.js";
       return [...new Set([...base, ...FIRMWARE_MODAL_KEYS])];
     }
     if (stepId === "generation") {
-      return [...new Set([...base, "installationTopology", ...TOPOLOGY_HINT_KEYS, "hpGeneration"])];
+      return [...new Set([
+        ...base,
+        "installationTopology",
+        ...TOPOLOGY_HINT_KEYS,
+        "hpGeneration",
+        ...ODU_GENERATION_KEYS,
+        ...ODU_GENERATION_DETECT_KEYS,
+      ])];
     }
     if (stepId === "flow-source") {
       return [...new Set([...base, "hpGeneration", ...QUICK_START_FLOW_SOURCE_KEYS])];
@@ -56,6 +64,8 @@ import { render } from "../core/render-scheduler.js";
         ...base,
         "installationTopology",
         "hpGeneration",
+        ...ODU_GENERATION_KEYS,
+        ...ODU_GENERATION_DETECT_KEYS,
         "boilerCvAssistEnabled",
         "boilerFaultFallbackEnabled",
         "boilerConnection",

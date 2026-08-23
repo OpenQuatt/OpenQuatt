@@ -7,6 +7,7 @@ import { renderModalShell } from "../core/modal-shell.js";
 import { state } from "../core/state.js";
 import { getDeviceMeta, getFirmwareBuildConnection, getInstallationTopology } from "./device-context.js";
 import { getFirmwareBuildSwitchModel, getFirmwareProgressModel } from "./firmware-update.js";
+import { getOduGenerationDetectionModel } from "./odu-generation-ui.js";
 import { formatSettingsOptionLabel, renderSettingsFieldCard, renderSettingsInfoToggle } from "../settings/controls.js";
 import { renderCurveGraph, renderFlowSettingsFields, renderHeatingCurveProfileField, renderHeatingStrategyExplainCards, renderPowerHouseAdvancedField, renderPowerHouseBaseFields, renderSettingsCurveInputs, renderStrategySelectionFields } from "../settings/heating.js";
 import { renderBoilerCvFields, renderHpGenerationField } from "../settings/installation.js";
@@ -905,10 +906,20 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
   }
 
   export function renderConfirmReviewCards() {
-    const generationTitle = formatSettingsOptionLabel(getEntityStateText("hpGeneration"));
+    const selectedGeneration = formatSettingsOptionLabel(getEntityStateText("hpGeneration"));
+    const generationTitle = selectedGeneration ? `Geselecteerd: ${selectedGeneration}` : "";
+    const generationDetection = getOduGenerationDetectionModel();
     const strategyTitle = isCurveMode() ? "Stooklijn" : "Power House";
     const formatReviewOption = (key) => formatSettingsOptionLabel(getEntityStateText(key));
-    const generationLines = [];
+    const generationLines = generationDetection.available
+      ? [
+          ...generationDetection.heatPumps.map((heatPump) => [
+            `HP${heatPump.index} gedetecteerd`,
+            heatPump.known ? heatPump.generation : "Unknown",
+          ]),
+          ["Aanbevolen", generationDetection.recommendation || "Geen advies"],
+        ]
+      : [];
     const strategyLines = isCurveMode()
       ? [
           ["Regelprofiel", formatReviewOption("curveControlProfile")],

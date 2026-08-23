@@ -95,6 +95,10 @@
     hardwareProfileText: { domain: "text_sensor", name: "OpenQuatt Hardware Profile", optional: true },
     hardwareRevisionText: { domain: "text_sensor", name: "OpenQuatt Hardware Revision", optional: true },
     connectionText: { domain: "text_sensor", name: "OpenQuatt Connection", optional: true },
+    hp1Generation: { domain: "text_sensor", name: "HP1 - ODU generation", optional: true },
+    hp2Generation: { domain: "text_sensor", name: "HP2 - ODU generation", optional: true },
+    hp1GenerationDetect: { domain: "button", name: "HP1 - Detect ODU generation", optional: true },
+    hp2GenerationDetect: { domain: "button", name: "HP2 - Detect ODU generation", optional: true },
     wifiSignal: { domain: "sensor", name: "WiFi Signal", optional: true },
     espInternalTemp: { domain: "sensor", name: "ESP Internal Temperature", optional: true },
     statusLedsEnabled: { domain: "switch", name: "Status LEDs enabled", optional: true },
@@ -1433,6 +1437,8 @@
     "heatingEnableSelected",
     "otThermostatStatusValid",
     "otThermostatChEnable",
+    "hp1Generation",
+    "hp2Generation",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestOtaUrl", "firmwareTestOtaMd5Url", "installFirmwareTestOta"];

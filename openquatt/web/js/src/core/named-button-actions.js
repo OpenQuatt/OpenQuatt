@@ -1,5 +1,6 @@
 import { getOduRuntimeFrequencyButtonHp, getOduRuntimeFrequencyHpKeys, INSTALLATION_MONITORING_STATE_KEYS, ODU_RUNTIME_FREQUENCY_BUTTON_KEYS } from "./config.js";
 import { triggerIncidentAction, triggerNamedButton } from "./entity-write-actions.js";
+import { ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS } from "./odu-generation.js";
 import { state } from "./state.js";
 
 const commissioningRefreshGroups = [
@@ -153,6 +154,17 @@ function getRefreshOptions(buttonKey) {
   }
   if (buttonKey === "acknowledgeHpIncidents") {
     return { refreshIncidentMonitoring: true };
+  }
+
+  const generationDetectIndex = ODU_GENERATION_DETECT_KEYS.indexOf(buttonKey);
+  if (generationDetectIndex !== -1) {
+    const hpIndex = generationDetectIndex + 1;
+    return {
+      refreshKeys: [ODU_GENERATION_KEYS[generationDetectIndex]],
+      refreshDelayMs: 1800,
+      successNotice: `HP${hpIndex} ODU-detectie opnieuw aangevraagd.`,
+      errorPrefix: `ODU-detectie mislukt voor HP${hpIndex}`,
+    };
   }
 
   const group = commissioningRefreshGroups.find(({ actions }) => actions.includes(buttonKey));

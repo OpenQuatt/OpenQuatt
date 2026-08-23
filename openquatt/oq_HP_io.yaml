@@ -26,6 +26,17 @@
 #
 # ==============================================================================
 
+esphome:
+  on_boot:
+    - priority: -90
+      then:
+        - lambda: |-
+            // Runtime identity is deliberately not restored across boots.
+            id(${hp_id}_odu_generation_detection_complete) = false;
+            id(${hp_id}_odu_generation_request_pending) = false;
+            id(${hp_id}_odu_generation_request_token) = 0U;
+            id(${hp_id}_generation).publish_state("Unknown");
+
 # ----------------------------
 # MODBUS CONTROLLER
 # ----------------------------
@@ -112,6 +123,88 @@ globals:
     type: uint32_t
     restore_value: no
     initial_value: '0'
+
+  # ODU generation is sampled once per boot or explicit detection request.
+  # It is diagnostic-only and never enables generation-dependent behavior.
+  - id: ${hp_id}_odu_generation_detection_complete
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: ${hp_id}_odu_generation_request_pending
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: ${hp_id}_odu_generation_request_token
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+# ----------------------------
+# ODU GENERATION DETECTION
+# ----------------------------
+script:
+  - id: ${hp_id}_detect_odu_generation_once
+    mode: restart
+    then:
+      - lambda: |-
+          const uint32_t request_token =
+              oq_odu::next_request_token(id(${hp_id}_odu_generation_request_token));
+          id(${hp_id}_odu_generation_request_token) = request_token;
+          id(${hp_id}_odu_generation_detection_complete) = false;
+          id(${hp_id}_odu_generation_request_pending) = true;
+          id(${hp_id}_generation).publish_state("Unknown");
+
+          // Do not interleave an identity request with an operation that owns the Modbus bus.
+          if (id(${hp_id}_odu_eeprom_dump).is_active() || id(oq_runtime_polling_paused).state) {
+            id(${hp_id}_odu_generation_request_pending) = false;
+            id(${hp_id}_odu_generation_detection_complete) = true;
+            ESP_LOGW("quatt.odu", "%sODU generation detection blocked while runtime polling is paused", "${prefix}");
+            return;
+          }
+
+          auto command = esphome::modbus_controller::ModbusCommandItem::create_read_command(
+              id(${hp_id}), esphome::modbus::EntityType::HOLDING,
+              oq_odu::CONTROL_BOARD_ITEM_REGISTER, 1,
+              [=](esphome::modbus::EntityType, uint16_t start_address, std::span<const uint8_t> data) {
+                if (request_token != id(${hp_id}_odu_generation_request_token) ||
+                    !id(${hp_id}_odu_generation_request_pending) ||
+                    start_address != oq_odu::CONTROL_BOARD_ITEM_REGISTER) {
+                  return;
+                }
+
+                const auto detection = oq_odu::detect_control_board_item_response(data.data(), data.size());
+                if (detection.control_board_item_available) {
+                  // Keep the raw diagnostic entity coherent with the explicit one-shot read.
+                  id(${hp_id}_control_board_item).publish_state(detection.control_board_item);
+                }
+                id(${hp_id}_odu_generation_detection_complete) = true;
+                id(${hp_id}_odu_generation_request_pending) = false;
+                id(${hp_id}_generation).publish_state(oq_odu::generation_label(detection.generation));
+              });
+          id(${hp_id}).queue_command(std::move(command));
+      - delay: 30s
+      - lambda: |-
+          if (!id(${hp_id}_odu_generation_request_pending)) return;
+
+          // Reject a response that arrives after this bounded request window.
+          id(${hp_id}_odu_generation_request_token) =
+              oq_odu::next_request_token(id(${hp_id}_odu_generation_request_token));
+          id(${hp_id}_odu_generation_request_pending) = false;
+          id(${hp_id}_odu_generation_detection_complete) = true;
+          ESP_LOGW("quatt.odu", "%sODU generation detection timed out", "${prefix}");
+
+button:
+  - platform: template
+    id: ${hp_id}_detect_odu_generation
+    name: "${prefix}Detect ODU generation"
+    internal: true
+    disabled_by_default: true
+    icon: mdi:refresh
+    entity_category: diagnostic
+    on_press:
+      - script.execute: ${hp_id}_detect_odu_generation_once
 
 # ----------------------------
 # SELECT
@@ -577,6 +670,7 @@ sensor:
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
+    id: ${hp_id}_control_board_item
     name: "${prefix}Control board item number"
     internal: true
     disabled_by_default: true
@@ -585,6 +679,18 @@ sensor:
     register_count: 4  # 2127 - 2131
     address: 2127
     skip_updates: ${oq_modbus_telemetry_skip}
+    value_type: U_WORD
+    on_value:
+      then:
+        - lambda: |-
+            if (id(${hp_id}_odu_generation_detection_complete) ||
+                id(${hp_id}_odu_generation_request_pending)) {
+              return;
+            }
+
+            const auto detection = oq_odu::detect_control_board_item(true, x);
+            id(${hp_id}_odu_generation_detection_complete) = true;
+            id(${hp_id}_generation).publish_state(oq_odu::generation_label(detection.generation));
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -1117,6 +1223,14 @@ binary_sensor:
   # TEXT SENSOR
   # ----------------------------
 text_sensor:
+  - platform: template
+    id: ${hp_id}_generation
+    name: "${prefix}ODU generation"
+    internal: true
+    icon: mdi:heat-pump-outline
+    entity_category: diagnostic
+    update_interval: never
+
   - platform: template
     id: ${hp_id}_working_mode_label
     name: "${prefix}Working Mode Label"

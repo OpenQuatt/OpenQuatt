@@ -8,6 +8,7 @@ import { getDefaultAppView, getUrlAppView, setAppView } from "./navigation.js";
 import { isFirmwareOtaQuietActive } from "./firmware-quiet.js";
 import { getInstallationMonitoringModel, syncInstallationMonitoringDetailsState } from "./installation-monitoring.js";
 import { getIncidentMonitoringFailureUpdate, getIncidentMonitoringSuccessUpdate, getIncidentMonitoringUnsupportedUpdate } from "./incident-monitoring.js";
+import { ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS } from "./odu-generation.js";
 import { beginDeviceReconnect, clearDeviceReconnect, isRestartRefreshActive, markDeviceReconnectRecovered, reconcileOtaEvidence, reconcileRestartEvidence } from "./device-reconnect.js";
 import { getSettingsRenderSignature } from "./render-signatures.js";
 import { isSystemSettingsGroupActive } from "./surface-state.js";
@@ -206,6 +207,8 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "setupComplete",
       "installationTopology",
       "hpGeneration",
+      ...ODU_GENERATION_KEYS,
+      ...ODU_GENERATION_DETECT_KEYS,
       "boilerCvAssistEnabled",
       "boilerRatedHeatPower",
       ...BOILER_SETTING_KEYS,
@@ -1167,6 +1170,10 @@ import { fetchWithTimeout } from "./browser-utils.js";
     const quickStartThermostatSourceKeys = state.quickStartModalOpen && state.currentStep === "thermostat-source"
       ? QUICK_START_THERMOSTAT_SOURCE_KEYS
       : [];
+    const quickStartGenerationKeys = state.quickStartModalOpen
+      && (state.currentStep === "generation" || state.currentStep === "confirm")
+      ? ODU_GENERATION_KEYS
+      : [];
     const settingsStorageKeys = shouldRefreshSettingsStorageForCurrentSurface()
       ? getSettingsStorageRefreshKeys()
       : [];
@@ -1210,7 +1217,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
         }
         return;
       }
-      await refreshEntities([...new Set([...keys, ...(state.ota.wait || state.restartRefresh.wait ? ["uptime", "projectVersionText"] : []), ...quickStartSetupKeys, ...quickStartFlowSourceKeys, ...quickStartThermostatSourceKeys])], isPrefetchOverview ? "state" : appView === "settings" || quickStartSetupKeys.length ? "all" : "state", {
+      await refreshEntities([...new Set([...keys, ...(state.ota.wait || state.restartRefresh.wait ? ["uptime", "projectVersionText"] : []), ...quickStartSetupKeys, ...quickStartFlowSourceKeys, ...quickStartThermostatSourceKeys, ...quickStartGenerationKeys])], isPrefetchOverview ? "state" : appView === "settings" || quickStartSetupKeys.length ? "all" : "state", {
         concurrency: forceFast && isOverviewLike ? FAST_VIEW_ENTITY_REFRESH_CONCURRENCY : ENTITY_REFRESH_CONCURRENCY,
       });
       state.lastFastEntitySyncAt = Date.now();

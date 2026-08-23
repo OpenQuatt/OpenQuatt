@@ -91,8 +91,8 @@ bool ascii_equals_ignore_case(const char* value, size_t length, const char* expe
   return true;
 }
 
-bool string_is_missing(const char* value, size_t length) {
-  return length == 0 || ascii_equals_ignore_case(value, length, "unknown") ||
+bool string_is_missing(const char* value, size_t length, bool preserve_unknown) {
+  return length == 0 || (!preserve_unknown && ascii_equals_ignore_case(value, length, "unknown")) ||
          ascii_equals_ignore_case(value, length, "unavailable") || ascii_equals_ignore_case(value, length, "nan") ||
          ascii_equals_ignore_case(value, length, "invalid");
 }
@@ -500,8 +500,8 @@ const OpenQuattDebugRecorder::StringEntry* OpenQuattDebugRecorder::string_at_(ui
   return this->string_entries_ && index < this->string_count_ ? &this->string_entries_[index] : nullptr;
 }
 
-uint32_t OpenQuattDebugRecorder::intern_string_(const char* value, size_t length) {
-  if (string_is_missing(value, length)) {
+uint32_t OpenQuattDebugRecorder::intern_string_(const char* value, size_t length, bool preserve_unknown) {
+  if (string_is_missing(value, length, preserve_unknown)) {
     return MISSING_VALUE;
   }
   const uint32_t hash = hash_string(value, length);
@@ -587,7 +587,9 @@ uint32_t OpenQuattDebugRecorder::capture_value_(const DebugField& field) {
     case FieldType::TEXT_SENSOR: {
       auto* entity = static_cast<text_sensor::TextSensor*>(field.source);
       if (entity == nullptr || !entity->has_state()) return MISSING_VALUE;
-      return this->intern_string_(entity->state.data(), entity->state.size());
+      const bool preserve_unknown =
+          std::strcmp(field.key, "hp1Generation") == 0 || std::strcmp(field.key, "hp2Generation") == 0;
+      return this->intern_string_(entity->state.data(), entity->state.size(), preserve_unknown);
     }
 #endif
 #ifdef USE_SELECT

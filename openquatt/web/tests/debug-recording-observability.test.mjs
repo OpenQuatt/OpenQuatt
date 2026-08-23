@@ -47,6 +47,7 @@ const OBSERVABILITY_KEYS = [
   "otbMaxCapacity",
   "otbMinModulation",
 ];
+const ODU_GENERATION_KEYS = ["hp1Generation", "hp2Generation"];
 
 const ISSUE_473_OBSERVABILITY_KEYS = [
   "curveRestartBlockedByRoom",
@@ -61,15 +62,37 @@ const ADDED_OBSERVABILITY_KEYS = [...OBSERVABILITY_KEYS, ...ISSUE_473_OBSERVABIL
 
 test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", () => {
   const legacyTailIndex = DEBUG_RECORDING_KEYS.indexOf("otLinkProblem");
+  const observabilityEndIndex = legacyTailIndex + 1 + OBSERVABILITY_KEYS.length;
+  const issue473EndIndex = observabilityEndIndex + ISSUE_473_OBSERVABILITY_KEYS.length;
 
   assert.equal(legacyTailIndex, 134);
   assert.deepEqual(
-    DEBUG_RECORDING_KEYS.slice(legacyTailIndex + 1, legacyTailIndex + 1 + OBSERVABILITY_KEYS.length),
+    DEBUG_RECORDING_KEYS.slice(legacyTailIndex + 1, observabilityEndIndex),
     OBSERVABILITY_KEYS,
   );
-  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(legacyTailIndex + 1 + OBSERVABILITY_KEYS.length), ISSUE_473_OBSERVABILITY_KEYS);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(observabilityEndIndex, issue473EndIndex), ISSUE_473_OBSERVABILITY_KEYS);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue473EndIndex), ODU_GENERATION_KEYS);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   assert.ok(DEBUG_RECORDING_KEYS.length <= 188, "debugrecorder heeft maximaal 188 entityvelden naast 4 systeemvelden");
+});
+
+test("ODU-generaties worden achter het bestaande debugcontract toegevoegd", async () => {
+  const [hpPackage, recorderSource] = await Promise.all([
+    readFile(new URL("../../oq_HP_io.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../../../components/openquatt_debug_recorder/OpenQuattDebugRecorder.cpp", import.meta.url), "utf8"),
+  ]);
+
+  for (const [index, key] of ODU_GENERATION_KEYS.entries()) {
+    assert.deepEqual(ENTITY_DEFS[key], {
+      domain: "text_sensor",
+      name: `HP${index + 1} - ODU generation`,
+      optional: true,
+    });
+    assert.match(recorderSource, new RegExp(`std::strcmp\\(field\\.key, "${key}"\\)`));
+  }
+  assert.match(hpPackage, /id: \$\{hp_id\}_control_board_item/);
+  assert.match(hpPackage, /id: \$\{hp_id\}_generation/);
+  assert.match(hpPackage, /name: "\$\{prefix\}ODU generation"/);
 });
 
 test("elk nieuw debugveld heeft een opneembare entitydefinitie", () => {
