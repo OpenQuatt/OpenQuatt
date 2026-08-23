@@ -2,7 +2,7 @@ import { getEntityValue, hasEntity } from "../core/entity-store.js";
 import { createOduGenerationDetectionModel } from "../core/odu-generation.js";
 import { state } from "../core/state.js";
 import { escapeHtml } from "../core/html.js";
-import { renderNamedActionButton, renderSettingsFieldCard, renderSettingsSystemRow } from "../settings/controls.js";
+import { renderSettingsFieldCard } from "../settings/controls.js";
 import { getInstallationTopology } from "./device-context.js";
 
 export function getOduGenerationDetectionModel() {
@@ -22,36 +22,36 @@ export function getOduGenerationDetectionAdvice(model = getOduGenerationDetectio
   if (model.status === "unknown") {
     return {
       warning: true,
-      copy: "Niet alle aangesloten warmtepompen zijn betrouwbaar herkend. Daarom wordt geen versie geadviseerd; kies alleen handmatig als je het type zeker weet.",
+      copy: "Niet alle buitenunits zijn herkend. Daarom wordt geen versie geadviseerd.",
     };
   }
   if (model.status === "mixed") {
     return {
       warning: true,
-      copy: "De warmtepompen hebben verschillende generaties. Voor deze combinatie wordt geen versie geadviseerd; controleer de handmatige keuze.",
+      copy: "Deze combinatie geeft geen veilig advies. Controleer de gekozen versie.",
     };
   }
   if (model.status === "mismatch") {
     return {
       warning: true,
-      copy: `Aanbevolen: ${model.recommendation}. Nu geselecteerd: ${model.configuredGeneration}. De selectie wordt niet automatisch gewijzigd.`,
+      copy: `${model.recommendation} wordt aanbevolen; ${model.configuredGeneration} is geselecteerd. Er wordt niets automatisch gewijzigd.`,
     };
   }
   if (model.status === "match") {
     return {
       warning: false,
-      copy: `${model.recommendation} is geselecteerd en komt overeen met de automatische detectie.`,
+      copy: `${model.recommendation} komt overeen met de detectie.`,
     };
   }
   if (model.status === "detected") {
     return {
       warning: false,
-      copy: `Aanbevolen: ${model.recommendation}. Kies deze versie hieronder om de instelling expliciet op te slaan.`,
+      copy: `${model.recommendation} wordt aanbevolen. Selecteer deze versie om de keuze op te slaan.`,
     };
   }
   return {
     warning: true,
-    copy: "Nog geen betrouwbare detectiestatus ontvangen. Er wordt geen versie geadviseerd.",
+    copy: "Nog geen betrouwbare detectie; er wordt geen versie geadviseerd.",
   };
 }
 
@@ -72,44 +72,40 @@ export function renderOduGenerationDetectionStatus() {
   }
 
   const advice = getOduGenerationDetectionAdvice(model);
-  const mixedLabel = model.mixed
-    ? `Gemengde Duo: ${model.heatPumps.map((heatPump) => `HP${heatPump.index} ${heatPump.generation}`).join(" · ")}.`
-    : "";
+  const title = !model.complete
+    ? "Detectie onvolledig"
+    : model.mixed ? "Gemengde Duo gedetecteerd" : "Automatisch gevonden";
+  const busy = state.loadingEntities || Boolean(state.busyAction);
   const rows = model.heatPumps.map((heatPump) => {
     const value = heatPump.known ? `Quatt ODU ${heatPump.generation}` : "Unknown";
-    const note = heatPump.known
-      ? "Automatisch door de firmware gedetecteerd."
-      : heatPump.available
-        ? "Het type kon niet betrouwbaar worden vastgesteld."
-        : "Nog geen detectiestatus beschikbaar.";
-    const busy = state.loadingEntities || Boolean(state.busyAction);
+    const detecting = state.busyAction === heatPump.detectKey;
     const action = heatPump.detectAvailable
-      ? renderNamedActionButton(
-          heatPump.detectKey,
-          state.busyAction === heatPump.detectKey ? "Detecteren..." : "Opnieuw detecteren",
-          "oq-helper-button oq-helper-button--ghost",
-          busy,
-        )
+      ? `<button class="oq-settings-info-button oq-settings-generation-redetect" type="button" data-oq-action="press-named-button" data-oq-button-key="${escapeHtml(heatPump.detectKey)}" aria-label="${escapeHtml(detecting ? `HP${heatPump.index} wordt opnieuw gedetecteerd` : `Detecteer HP${heatPump.index} opnieuw`)}" ${detecting ? 'aria-busy="true"' : ""} ${busy ? "disabled" : ""}>${detecting ? "…" : "↻"}</button>`
       : "";
-    return renderSettingsSystemRow({
-      label: `HP${heatPump.index}`,
-      value,
-      note,
-      action,
-      dataAttribute: "data-oq-odu-generation",
-      dataValue: `hp${heatPump.index}`,
-    });
+    return `
+      <div class="oq-settings-source-row${heatPump.known ? "" : " is-warning"}" data-oq-odu-generation="hp${heatPump.index}">
+        <span class="oq-settings-source-row-label">HP${heatPump.index}${action}</span>
+        <strong>${escapeHtml(value)}</strong>
+      </div>
+    `;
   }).join("");
 
   return renderSettingsFieldCard(
     "oduGenerationDetection",
-    "Automatisch gevonden",
-    "OpenQuatt leest de ODU-generatie uit de buitenunit. De handmatige selectie blijft apart en wordt nooit stilzwijgend aangepast.",
+    title,
+    "",
     `
-      <div class="oq-settings-system-summary">${rows}</div>
-      ${mixedLabel ? `<p class="oq-settings-action-note">${escapeHtml(mixedLabel)}</p>` : ""}
-      <p class="${advice.warning ? "oq-settings-source-warning" : "oq-settings-action-note"}">${escapeHtml(advice.copy)}</p>
+      <div class="oq-settings-quickstart-status">
+        <div class="oq-settings-source-rows" role="group" aria-label="Gedetecteerde buitenunits en advies">
+          ${rows}
+          <div class="oq-settings-source-row${model.recommendation ? " is-warning" : ""}">
+            <span class="oq-settings-source-row-label">${model.mixed && model.recommendation ? "Gemengde Duo · advies" : "Advies"}</span>
+            <strong>${escapeHtml(model.recommendation || "Geen advies")}</strong>
+          </div>
+        </div>
+        <p class="oq-settings-action-note${advice.warning ? " oq-settings-action-note--warning" : ""}" aria-live="polite">${escapeHtml(advice.copy)}</p>
+      </div>
     `,
-    "oq-settings-field--span-2",
+    "oq-settings-field--span-2 oq-settings-field--compact",
   );
 }

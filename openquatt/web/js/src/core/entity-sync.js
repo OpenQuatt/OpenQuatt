@@ -1202,6 +1202,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
               ...(isCurveMode() ? CURVE_POINTS.map((point) => point.key) : POWER_HOUSE_KEYS),
             ]
           : ["setupComplete", ...HEADER_ENTITY_KEYS, "strategy", ...staticKeys];
+    const generationBefore = ODU_GENERATION_KEYS.map(getEntityValue).join();
 
     state.entitySyncInFlight = true;
     state.lastEntitySyncAttemptAt = now;
@@ -1271,6 +1272,10 @@ import { fetchWithTimeout } from "./browser-utils.js";
       const nextHeaderSignature = getHeaderRenderSignature();
       if (shouldDeferSupplementary && !state.nativeOpen) {
         schedulePrimeSupplementaryData(getSupplementaryPrimeDelayMs(syncView));
+      }
+      if (generationBefore !== ODU_GENERATION_KEYS.map(getEntityValue).join()) {
+        render();
+        return;
       }
       if (reconnectChanged) {
         render();

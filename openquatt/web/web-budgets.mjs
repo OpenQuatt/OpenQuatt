@@ -16,5 +16,6 @@ export const WEB_BUNDLE_BUDGETS = [
     // Once this bundle is the base, the normal gzip growth limit applies again.
     gzipBaselineCeiling: 238_000,
   },
-  { file: "css/openquatt-app.css", raw: 277_000 },
+  // Includes the compact, dark-safe ODU generation picker.
+  { file: "css/openquatt-app.css", raw: 278_000 },
 ];

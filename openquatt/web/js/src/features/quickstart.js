@@ -120,9 +120,9 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
     const pickerMode = mode === "picker";
     if (pickerMode) {
       return `
-        <section class="oq-helper-panel">
+        <section class="oq-helper-panel oq-helper-panel--flush">
           ${renderHpGenerationField()}
-          <div class="oq-helper-actions">
+          <div class="oq-helper-actions oq-settings-generation-actions">
             <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-quickstart-modal">Gereed</button>
           </div>
         </section>
@@ -574,7 +574,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
         copy: "Kies de versie die bij jouw Quatt hoort. Deze keuze bepaalt de basis van de regeling.",
         copyInHeader: true,
         backdropClass: "oq-helper-modal-backdrop--quickstart",
-        className: "oq-helper-modal--wide oq-helper-modal--quickstart oq-helper-modal--generation",
+        className: "oq-helper-modal--wide oq-helper-modal--scrollable",
         sectionAttributes: 'data-oq-quickstart-scroller data-oq-quickstart-step="generation"',
         closeAction: "close-quickstart-modal",
         closeLabel: "Sluit versie-popup",

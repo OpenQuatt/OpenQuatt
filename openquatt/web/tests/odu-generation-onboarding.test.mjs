@@ -145,8 +145,12 @@ test("onboarding toont Duo per HP en onderscheidt geselecteerd van aanbevolen zo
   assert.match(markup, /Quatt ODU V1/);
   assert.match(markup, /HP2/);
   assert.match(markup, /Quatt ODU V1\.5/);
-  assert.match(markup, /Gemengde Duo: HP1 V1 · HP2 V1\.5/);
-  assert.match(markup, /Aanbevolen: V1\. Nu geselecteerd: V1\.5/);
+  assert.match(markup, /Gemengde Duo gedetecteerd/);
+  assert.match(markup, /Gemengde Duo · advies/);
+  assert.match(markup, /V1 wordt aanbevolen; V1\.5 is geselecteerd/);
+  assert.match(markup, /aria-live="polite"/);
+  assert.match(markup, /aria-label="Detecteer HP1 opnieuw"/);
+  assert.match(markup, /aria-label="Detecteer HP2 opnieuw"/);
   assert.match(markup, /data-oq-button-key="hp1GenerationDetect"/);
   assert.match(markup, /data-oq-button-key="hp2GenerationDetect"/);
   assert.equal(getOduGenerationChoiceMeta("V1", "V1.5", "V1"), "Aanbevolen");
@@ -155,6 +159,9 @@ test("onboarding toont Duo per HP en onderscheidt geselecteerd van aanbevolen zo
   assert.match(quickStartSource, /renderHpGenerationField\(\)/);
   assert.equal(state.entities.hpGeneration.value, "V1.5");
   assert.deepEqual(state.drafts, {});
+
+  state.busyAction = "hp1GenerationDetect";
+  assert.match(renderOduGenerationDetectionStatus(), /aria-label="HP1 wordt opnieuw gedetecteerd"/);
 });
 
 test("Unknown blijft zichtbaar, toont geen aanbevolen badge en behoudt handmatige fallback", () => {
@@ -175,7 +182,7 @@ test("geselecteerde uniforme detectie krijgt één gecombineerde badge", () => {
   const markup = renderOduGenerationDetectionStatus();
 
   assert.equal(getOduGenerationChoiceMeta("V2", "V2", "V2"), "Geselecteerd · aanbevolen");
-  assert.match(markup, /komt overeen met de automatische detectie/);
+  assert.match(markup, /komt overeen met de detectie/);
 });
 
 test("onboarding en installatiehydratie laden status en optionele detectieknoppen", () => {

@@ -202,6 +202,10 @@
   height: 100%;
 }
 
+.oq-settings-generation-grid .oq-settings-choice-card:not(.is-active) .oq-settings-choice-meta-text {
+  color: var(--oq-settings-badge-ink);
+}
+
 .oq-settings-generation-grid .oq-settings-choice-media {
   max-width: 240px;
 }
@@ -222,6 +226,25 @@
 
 .oq-settings-generation-field {
   min-width: 0;
+}
+
+.oq-settings-generation-actions {
+  justify-content: flex-end;
+}
+
+.oq-settings-info-button.oq-settings-generation-redetect {
+  width: 36px;
+  height: 36px;
+}
+
+.oq-helper-modal-backdrop--dark [data-oq-quickstart-step="generation"] {
+  --oq-helper-card: var(--oq-helper-modal-panel-background);
+  --oq-helper-card-muted: var(--oq-helper-modal-callout-subtle-background);
+  --oq-helper-line: var(--oq-helper-modal-panel-border);
+  --oq-helper-ink: var(--oq-helper-modal-title);
+  --oq-helper-soft: var(--oq-helper-modal-copy);
+  --oq-helper-accent-deep: var(--oq-settings-badge-ink);
+  --oq-helper-accent-soft: var(--oq-settings-badge-background);
 }
 
 .oq-settings-commissioning-teaser {
