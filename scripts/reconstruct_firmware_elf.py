@@ -417,7 +417,7 @@ def checked_out_commit(source_root: Path) -> str:
 def compile_command(
     python_executable: str,
     wrapper: Path,
-    config_path: Path,
+    config_path: str | Path,
     substitutions: Mapping[str, str],
 ) -> list[str]:
     command = [python_executable, str(wrapper)]
@@ -588,7 +588,7 @@ def reconstruct(
     command = compile_command(
         sys.executable,
         wrapper,
-        config_path,
+        request.target_config,
         request.substitutions,
     )
     run_checked(command, cwd=source_root, env=environment)

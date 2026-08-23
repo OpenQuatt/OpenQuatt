@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import gzip
 import os
 from pathlib import Path
 import sys
@@ -12,6 +13,7 @@ from typing import Mapping
 
 SOURCE_DATE_EPOCH = "SOURCE_DATE_EPOCH"
 PORTABLE_SOURCE_ROOT = Path("/openquatt-source")
+_SYSTEM_GZIP_COMPRESS = gzip.compress
 
 
 def parse_source_date_epoch(environment: Mapping[str, str] | None = None) -> int | None:
@@ -60,6 +62,19 @@ def install_deterministic_build_info(epoch: int, source_root: Path | None = None
         return CORE.config_hash, epoch, format_build_time(epoch), CORE.comment or ""
 
     writer.get_build_info = get_build_info
+
+    def deterministic_gzip_compress(
+        data: bytes, compresslevel: int = 9, *, mtime: int | None = None
+    ) -> bytes:
+        return _SYSTEM_GZIP_COMPRESS(
+            data,
+            compresslevel=compresslevel,
+            mtime=epoch if mtime is None else mtime,
+        )
+
+    # ESPHome embeds compressed web resources in the application image. Python
+    # otherwise writes the current wall clock into each gzip header.
+    gzip.compress = deterministic_gzip_compress
 
     def get_line_directive(location: DocumentLocation) -> str:
         document_path = canonical_document_path(location.document, source_root)

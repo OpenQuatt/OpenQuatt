@@ -173,13 +173,14 @@ class ReconstructFirmwareElfTests(unittest.TestCase):
         command = MODULE.compile_command(
             "/python",
             Path("/wrapper.py"),
-            Path("/source/config.yaml"),
+            "configs/heatpump_controller_q/duo_wifi.yaml",
             {"z_value": "last", "a_value": "first"},
         )
         self.assertEqual(
             [
                 "/python", "/wrapper.py", "-s", "a_value", "first", "-s",
-                "z_value", "last", "compile", "/source/config.yaml",
+                "z_value", "last", "compile",
+                "configs/heatpump_controller_q/duo_wifi.yaml",
             ],
             command,
         )

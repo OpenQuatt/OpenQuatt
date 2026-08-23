@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import importlib.util
 import os
 import sys
@@ -60,6 +61,8 @@ class DeterministicEsphomeTests(unittest.TestCase):
         )
         esphome = types.ModuleType("esphome")
         esphome.writer = writer
+        original_gzip_compress = gzip.compress
+        self.addCleanup(setattr, gzip, "compress", original_gzip_compress)
 
         with mock.patch.dict(
             sys.modules,
@@ -80,6 +83,8 @@ class DeterministicEsphomeTests(unittest.TestCase):
             ),
             writer.get_build_info(),
         )
+        compressed = gzip.compress(b"web asset")
+        self.assertEqual(1787443200, int.from_bytes(compressed[4:8], "little"))
 
 
 if __name__ == "__main__":
