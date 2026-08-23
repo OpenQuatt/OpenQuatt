@@ -1,25 +1,25 @@
 import { DEBUG_RECORDING_KEYS, ENTITY_DEFS } from "./config.js";
 import { state } from "./state.js";
 
-const TEST_FLOW_SUFFIXES = [
-  "Edge100",
-  "Pulse13",
-  "Pulse20",
-  "Pulse50",
-  "RawRisingHz",
-  "RawRisingCount",
-  "PulseWidthMin",
-  "PulseWidthAvg",
-  "PulseWidthMax",
-  "PulseWidthLt20",
-  "PulseWidth20To50",
-  "PulseWidth50To100",
-  "PulseWidthGe100",
+const TEST_FLOW_ENTITIES = [
+  ["Edge100", "EDGE 100us"],
+  ["Pulse13", "PULSE 13us"],
+  ["Pulse20", "PULSE 20us"],
+  ["Pulse50", "PULSE 50us"],
+  ["RawRisingHz", "raw rising Hz"],
+  ["RawRisingCount", "raw rising count 10s"],
+  ["PulseWidthMin", "pulse width min"],
+  ["PulseWidthAvg", "pulse width avg"],
+  ["PulseWidthMax", "pulse width max"],
+  ["PulseWidthLt20", "pulse width <20us"],
+  ["PulseWidth20To50", "pulse width 20-50us"],
+  ["PulseWidth50To100", "pulse width 50-100us"],
+  ["PulseWidthGe100", "pulse width >=100us"],
 ];
 
-for (const suffix of TEST_FLOW_SUFFIXES) {
+for (const [suffix, label] of TEST_FLOW_ENTITIES) {
   const key = `controllerFlow${suffix}`;
-  ENTITY_DEFS[key] = { domain: "sensor", name: `QFF ${suffix}`, optional: true };
+  ENTITY_DEFS[key] = { domain: "sensor", name: `Controller Flow test ${label}`, optional: true };
   if (!DEBUG_RECORDING_KEYS.includes(key)) DEBUG_RECORDING_KEYS.push(key);
 }
 
