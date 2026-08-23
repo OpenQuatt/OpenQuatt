@@ -17,15 +17,17 @@ const TEST_FLOW_ENTITIES = [
   ["PulseWidthGe100", "pulse width >=100us"],
 ];
 
+for (const key of ["otbMaxCapacity", "otbMinModulation", "flowSource", "qFlowSource", "controllerFlow"]) {
+  if (!DEBUG_RECORDING_KEYS.includes(key)) DEBUG_RECORDING_KEYS.push(key);
+}
+
 for (const [suffix, label] of TEST_FLOW_ENTITIES) {
   const key = `controllerFlow${suffix}`;
   ENTITY_DEFS[key] = { domain: "sensor", name: `Controller Flow test ${label}`, optional: true };
   if (!DEBUG_RECORDING_KEYS.includes(key)) DEBUG_RECORDING_KEYS.push(key);
 }
 
-for (const key of ["otbMaxCapacity", "otbMinModulation", "flowSource", "qFlowSource", "controllerFlow", "cicFlowrate"]) {
-  if (!DEBUG_RECORDING_KEYS.includes(key)) DEBUG_RECORDING_KEYS.push(key);
-}
+if (!DEBUG_RECORDING_KEYS.includes("cicFlowrate")) DEBUG_RECORDING_KEYS.push("cicFlowrate");
 
 const stateDomains = {
   debugRecording: (key) => key.startsWith("debugRecording"),
