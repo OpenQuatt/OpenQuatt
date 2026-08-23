@@ -199,6 +199,14 @@ openquatt_flow_filter_probe:
     entity_category: diagnostic
     filters:
       - throttle_average: 10s
+  pulse_13:
+    id: oq_flow_probe_pulse_13
+    name: "Controller Flow test PULSE 13us"
+    icon: mdi:waves
+    device_class: volume_flow_rate
+    entity_category: diagnostic
+    filters:
+      - throttle_average: 10s
   pulse_20:
     id: oq_flow_probe_pulse_20
     name: "Controller Flow test PULSE 20us"
@@ -207,6 +215,50 @@ openquatt_flow_filter_probe:
     entity_category: diagnostic
     filters:
       - throttle_average: 10s
+  pulse_50:
+    id: oq_flow_probe_pulse_50
+    name: "Controller Flow test PULSE 50us"
+    icon: mdi:waves
+    device_class: volume_flow_rate
+    entity_category: diagnostic
+    filters:
+      - throttle_average: 10s
+  raw_rising_hz:
+    id: oq_flow_probe_raw_rising_hz
+    name: "Controller Flow test raw rising Hz"
+    entity_category: diagnostic
+  raw_rising_count:
+    id: oq_flow_probe_raw_rising_count
+    name: "Controller Flow test raw rising count 10s"
+    entity_category: diagnostic
+  pulse_width_min:
+    id: oq_flow_probe_width_min
+    name: "Controller Flow test pulse width min"
+    entity_category: diagnostic
+  pulse_width_avg:
+    id: oq_flow_probe_width_avg
+    name: "Controller Flow test pulse width avg"
+    entity_category: diagnostic
+  pulse_width_max:
+    id: oq_flow_probe_width_max
+    name: "Controller Flow test pulse width max"
+    entity_category: diagnostic
+  pulse_width_lt20:
+    id: oq_flow_probe_width_lt20
+    name: "Controller Flow test pulse width <20us"
+    entity_category: diagnostic
+  pulse_width_20_50:
+    id: oq_flow_probe_width_20_50
+    name: "Controller Flow test pulse width 20-50us"
+    entity_category: diagnostic
+  pulse_width_50_100:
+    id: oq_flow_probe_width_50_100
+    name: "Controller Flow test pulse width 50-100us"
+    entity_category: diagnostic
+  pulse_width_ge100:
+    id: oq_flow_probe_width_ge100
+    name: "Controller Flow test pulse width >=100us"
+    entity_category: diagnostic
 
 interval:
   - interval: 5s
