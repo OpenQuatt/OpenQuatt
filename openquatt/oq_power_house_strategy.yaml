@@ -14,10 +14,6 @@
 #     shared request interface before downstream actuator handling
 # ==============================================================================
 
-esphome:
-  includes:
-    - ../../openquatt/includes/control/oq_power_house_demand_logic.h
-
 globals:
   - id: oq_phouse_demand_external
     type: bool
