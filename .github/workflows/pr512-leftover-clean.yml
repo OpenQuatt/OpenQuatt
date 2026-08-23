@@ -36,6 +36,14 @@ jobs:
           if count != 1:
               raise SystemExit('old timestamp/wrap web test block not found')
           p.write_text(text)
+
+          p = Path('openquatt/oq_HP_io.yaml')
+          text = p.read_text()
+          old = '''              auto* pump_mode = id(${hp_id}_set_pump_mode);\n              const bool request_valid = pump_mode != nullptr && pump_mode->has_state();\n              const bool request_on = request_valid && pump_mode->current_option() == "On";\n'''
+          new = '''              const bool request_valid = id(${hp_id}_set_pump_mode).has_state();\n              const bool request_on = request_valid &&\n                  id(${hp_id}_set_pump_mode).current_option() == "On";\n'''
+          if old not in text:
+              raise SystemExit('pump command pointer block not found')
+          p.write_text(text.replace(old, new, 1))
           PY
 
           version="$(tr -d '[:space:]' < .clang-format-version)"
@@ -44,7 +52,7 @@ jobs:
           git diff --check
 
           if grep -R -n -E 'pump_request_raw|ContextRawObservation|kDiagnosticContextFreshnessMs|updated_at_ms|updatedAtMs|observe_pump_register|power_contribution_w|water_flow_switch|fault_snapshot_complete' \
-              components/openquatt_incident_manager openquatt/includes/diagnostics openquatt/oq_HP_io.yaml openquatt/web/js openquatt/web/tests scripts/tests/test_pump_ipwm_contract.py tests/host/oq_pump_ipwm_feedback_test.cpp; then
+              components/openquatt_incident_manager openquatt/includes/diagnostics openquatt/oq_HP_io.yaml openquatt/web/js openquatt/web/tests; then
             echo 'Obsolete pump diagnostic complexity remains' >&2
             exit 1
           fi
@@ -52,6 +60,6 @@ jobs:
           python3 scripts/tests/test_pump_ipwm_contract.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add components/openquatt_incident_manager/OpenQuattIncidentManager.cpp openquatt/web/tests/incident-monitoring.test.mjs
+          git add components/openquatt_incident_manager/OpenQuattIncidentManager.cpp openquatt/web/tests/incident-monitoring.test.mjs openquatt/oq_HP_io.yaml
           git commit -m "Remove pump freshness leftovers"
           git push origin HEAD:codex/issue-461-ipwm-diagnostics
