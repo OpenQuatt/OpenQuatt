@@ -35,11 +35,29 @@ class DeterministicEsphomeTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(SystemExit):
                 MODULE.parse_source_date_epoch({"SOURCE_DATE_EPOCH": value})
 
+    def test_source_document_paths_are_checkout_independent(self) -> None:
+        source_root = Path("/tmp/checkout-a")
+        self.assertEqual(
+            "/openquatt-source/openquatt/oq_common.yaml",
+            MODULE.canonical_document_path(
+                "/tmp/checkout-a/configs/../openquatt/oq_common.yaml", source_root
+            ),
+        )
+        self.assertEqual(
+            "/external/config.yaml",
+            MODULE.canonical_document_path("/external/config.yaml", source_root),
+        )
+
     def test_writer_override_uses_utc_epoch_and_current_config(self) -> None:
         writer = types.ModuleType("esphome.writer")
         writer.get_build_info = lambda: None
         core = types.ModuleType("esphome.core")
         core.CORE = types.SimpleNamespace(config_hash=0x1234ABCD, comment="test")
+        core.DocumentLocation = type(
+            "DocumentLocation",
+            (),
+            {"document": "", "line": 0, "as_line_directive": property(lambda self: "")},
+        )
         esphome = types.ModuleType("esphome")
         esphome.writer = writer
 
@@ -51,7 +69,7 @@ class DeterministicEsphomeTests(unittest.TestCase):
                 "esphome.core": core,
             },
         ):
-            MODULE.install_deterministic_build_info(1787443200)
+            MODULE.install_deterministic_build_info(1787443200, ROOT)
 
         self.assertEqual(
             (
