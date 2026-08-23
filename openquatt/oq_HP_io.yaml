@@ -745,10 +745,6 @@ sensor:
     value_type: U_WORD
     accuracy_decimals: 0
     skip_updates: ${oq_modbus_telemetry_skip}
-    on_value:
-      then:
-        - lambda: |-
-            if (isnan(x)) return;
 
   - platform: template
     id: ${hp_id}_pump_power
@@ -822,16 +818,8 @@ sensor:
       const float fan_speed = nz(id(${hp_id}_fan_speed).state);
 
       float pump_power_w = 0.0f;
-      const float pump_feedback_raw = id(${hp_id}_pump_ipwm_feedback_raw).state;
-      const float pump_relay_raw = id(${hp_id}_status_2108_raw).state;
-      if (id(${hp_id}_is_online) && !isnan(pump_feedback_raw)) {
-        const auto pump_feedback = oq_pump_ipwm::decode(
-            static_cast<uint16_t>(lroundf(pump_feedback_raw)));
-        const bool pump_relay_valid = !isnan(pump_relay_raw);
-        const bool pump_relay_on = pump_relay_valid &&
-            (static_cast<uint16_t>(lroundf(pump_relay_raw)) & 0x0800u) != 0u;
-        pump_power_w = oq_pump_ipwm::power_contribution_w(
-            pump_feedback, pump_relay_valid, pump_relay_on);
+      if (id(${hp_id}_pump_relay).has_state() && id(${hp_id}_pump_relay).state) {
+        pump_power_w = nz(id(${hp_id}_pump_power).state);
       }
 
       const float bottom_plate_w = id(${hp_id}_bottom_plate_heater).state ? bottom_plate_heater_w : 0.0f;
@@ -990,11 +978,6 @@ sensor:
     register_count: 3
     skip_updates: ${oq_modbus_telemetry_skip}
     internal: true
-    on_value:
-      then:
-        - lambda: |-
-            if (isnan(x)) return;
-            const uint16_t status = static_cast<uint16_t>(lroundf(x));
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
