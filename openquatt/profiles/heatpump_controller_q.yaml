@@ -71,6 +71,12 @@ substitutions:
   hpcq_status_led_red_pin: "GPIO2"                      # Red status LED output.
   hpcq_status_led_inverted: "false"                     # Set true when the board LED is active-low.
 
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_flow_filter_probe]
+
 packages:
   oq_hardware_revision: !include heatpump_controller_q_hardware_revision.yaml
   oq_status_leds: !include heatpump_controller_q_status_leds.yaml
@@ -168,34 +174,33 @@ sensor:
           if (x < -10.0f || x > 100.0f) return NAN;
           return x;
 
-  - platform: pulse_meter
-    id: flow_rate_controller
-    name: "Controller Flow"
+openquatt_flow_filter_probe:
+  id: flow_rate_controller
+  name: "Controller Flow"
+  icon: mdi:waves
+  unit_of_measurement: "L/h"
+  device_class: volume_flow_rate
+  state_class: measurement
+  accuracy_decimals: 1
+  pin:
+    number: ${hpcq_flow_pin}
+    mode:
+      input: true
+      pullup: true
+  kf_lpm_per_hz: ${hpcq_flow_kf_lpm_per_hz}
+  q0_lpm: ${hpcq_flow_q0_lpm}
+  edge_100:
+    id: oq_flow_probe_edge_100
+    name: "Controller Flow test EDGE 100us"
     icon: mdi:waves
-    unit_of_measurement: "L/h"
     device_class: volume_flow_rate
-    state_class: measurement
-    accuracy_decimals: 1
-    timeout: 5s
-    internal_filter_mode: PULSE
-    internal_filter: 100us
-    pin:
-      number: ${hpcq_flow_pin}
-      mode:
-        input: true
-        pullup: true
-    filters:
-      - lambda: |-
-          // pulse_meter publishes pulses/minute. Convert to Hz first:
-          // Qv[l/min] = Kf * f[Hz] + Q0, then convert to l/h.
-          const float hz = x / 60.0f;
-          const float lpm =
-            (static_cast<float>(${hpcq_flow_kf_lpm_per_hz}) * hz)
-            + static_cast<float>(${hpcq_flow_q0_lpm});
-          if (isnan(lpm)) return NAN;
-          const float lph = lpm * 60.0f;
-          return lph > 0.0f ? lph : 0.0f;
-      - throttle_average: 10s
+    entity_category: diagnostic
+  pulse_20:
+    id: oq_flow_probe_pulse_20
+    name: "Controller Flow test PULSE 20us"
+    icon: mdi:waves
+    device_class: volume_flow_rate
+    entity_category: diagnostic
 
 interval:
   - interval: 5s
