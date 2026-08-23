@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef OPENQUATT_OQ_BOILER_TRANSPORT_LOGIC_H
+#define OPENQUATT_OQ_BOILER_TRANSPORT_LOGIC_H
+
 #include <stdint.h>
 
 namespace oq_boiler_transport {
@@ -18,3 +21,5 @@ inline bool should_clear_on_field_stale(bool opentherm_selected, bool field_is_s
 }
 
 }  // namespace oq_boiler_transport
+
+#endif  // OPENQUATT_OQ_BOILER_TRANSPORT_LOGIC_H
