@@ -67,7 +67,7 @@ class PumpIpwmContractTest(unittest.TestCase):
     def test_pump_fault_context_is_recent_and_invalidated_offline(self) -> None:
         flow = yaml_block(HP_IO, "id: ${hp_id}_flow", "id: ${hp_id}_runtime_hours")
         self.assertIn("observe_pump_context", flow)
-        self.assertIn("raw_max_age_ms", flow)
+        self.assertNotIn("raw_max_age_ms", flow)
         self.assertNotIn("oq_modbus_telemetry_skip}UL + 1UL", flow)
         self.assertNotIn("${hp_id}_set_pump_mode", flow)
         self.assertIn("observe_pump_register", HP_IO)
