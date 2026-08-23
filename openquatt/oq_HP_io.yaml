@@ -192,19 +192,6 @@ select:
       "On": 4096
     skip_updates: ${oq_modbus_control_readback_skip}
 
-  - platform: template
-    id: ${hp_id}_pump_ipwm_profile
-    name: "${prefix}Pump iPWM profile"
-    icon: mdi:pump
-    entity_category: config
-    disabled_by_default: true
-    optimistic: true
-    restore_value: true
-    initial_option: "Unknown / other"
-    options:
-      - "Unknown / other"
-      - "Wilo flow feedback"
-      - "Wilo 5-75 W feedback"
 
 # Per-HP compressor level exclusions are modeled as up to two explicit blocked levels.
   - platform: template
@@ -799,11 +786,8 @@ sensor:
     lambda: |-
       if (!id(${hp_id}_is_online)) return NAN;
       const float raw = id(${hp_id}_pump_ipwm_feedback_raw).state;
-      if (isnan(raw) || !id(${hp_id}_pump_ipwm_profile).has_state()) return NAN;
-      const auto profile = oq_pump_ipwm::profile_from_option(
-          id(${hp_id}_pump_ipwm_profile).current_option().c_str());
-      const auto feedback = oq_pump_ipwm::decode(
-          profile, static_cast<uint16_t>(lroundf(raw)));
+      if (isnan(raw)) return NAN;
+      const auto feedback = oq_pump_ipwm::decode(static_cast<uint16_t>(lroundf(raw)));
       return feedback.power_valid ? feedback.power_w : NAN;
 
   - platform: modbus_controller
@@ -826,17 +810,10 @@ sensor:
         - lambda: |-
             const uint32_t now_ms = millis();
             id(${hp_id}_outside_temp_activity_ms) = now_ms;
-            // R2138 closes the pump telemetry range. The manager only consumes
-            // pending raw fields younger than one base update interval. This is
-            // deliberately shorter than the effective skipped telemetry cadence.
-            const auto profile = id(${hp_id}_pump_ipwm_profile).has_state()
-                ? oq_pump_ipwm::profile_from_option(
-                    id(${hp_id}_pump_ipwm_profile).current_option().c_str())
-                : oq_pump_ipwm::Profile::UNKNOWN;
-            constexpr uint32_t raw_max_age_ms =
-                ${oq_modbus_update_interval_s}UL * 1000UL;
+            // R2138 closes the pump telemetry snapshot. Pump-register context
+            // may be reused for up to 20 s because this is diagnostic information.
             id(oq_incident_manager).observe_pump_context(
-                ${hp_index}, profile, !isnan(x), x, now_ms, raw_max_age_ms);
+                ${hp_index}, !isnan(x), x, now_ms);
 
   - platform: template
     id: ${hp_id}_runtime_hours
@@ -875,12 +852,9 @@ sensor:
       float pump_power_w = 0.0f;
       const float pump_feedback_raw = id(${hp_id}_pump_ipwm_feedback_raw).state;
       const float pump_relay_raw = id(${hp_id}_status_2108_raw).state;
-      if (id(${hp_id}_is_online) && !isnan(pump_feedback_raw) &&
-          id(${hp_id}_pump_ipwm_profile).has_state()) {
-        const auto pump_profile = oq_pump_ipwm::profile_from_option(
-            id(${hp_id}_pump_ipwm_profile).current_option().c_str());
+      if (id(${hp_id}_is_online) && !isnan(pump_feedback_raw)) {
         const auto pump_feedback = oq_pump_ipwm::decode(
-            pump_profile, static_cast<uint16_t>(lroundf(pump_feedback_raw)));
+            static_cast<uint16_t>(lroundf(pump_feedback_raw)));
         const bool pump_relay_valid = !isnan(pump_relay_raw);
         const bool pump_relay_on = pump_relay_valid &&
             (static_cast<uint16_t>(lroundf(pump_relay_raw)) & 0x0800u) != 0u;
@@ -1240,13 +1214,9 @@ text_sensor:
     lambda: |-
       if (!id(${hp_id}_is_online)) return std::string("unknown");
       const float raw = id(${hp_id}_pump_ipwm_feedback_raw).state;
-      if (isnan(raw) || !id(${hp_id}_pump_ipwm_profile).has_state()) {
-        return std::string("unknown");
-      }
-      const auto profile = oq_pump_ipwm::profile_from_option(
-          id(${hp_id}_pump_ipwm_profile).current_option().c_str());
+      if (isnan(raw)) return std::string("unknown");
       return std::string(oq_pump_ipwm::status_name(oq_pump_ipwm::decode(
-          profile, static_cast<uint16_t>(lroundf(raw))).status));
+          static_cast<uint16_t>(lroundf(raw))).status));
 
   - platform: template
     id: ${hp_id}_working_mode_label

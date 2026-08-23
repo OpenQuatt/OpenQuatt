@@ -18,16 +18,10 @@
     "L10 (H90/C74)",
   ];
 
-  const pumpIpwmProfileOptions = [
-    "Unknown / other",
-    "Wilo flow feedback",
-    "Wilo 5-75 W feedback",
-  ];
 
   const hp2Entities = [
     ["select", "HP2 - Excluded compressor level A", { value: "None", state: "None", option: compressorLevelOptions }],
     ["select", "HP2 - Excluded compressor level B", { value: "None", state: "None", option: compressorLevelOptions }],
-    ["select", "HP2 - Pump iPWM profile", { value: "Unknown / other", state: "Unknown / other", option: pumpIpwmProfileOptions }],
     ["sensor", "HP2 - Power Input", { value: 0, uom: "W" }],
     ["sensor", "HP2 - Heat Power", { value: 0, uom: "W" }],
     ["sensor", "HP2 - Cooling Power", { value: 0, uom: "W" }],
@@ -93,7 +87,6 @@
 
   window.__OQ_MOCK_FIXTURES__ = Object.freeze({
     compressorLevelOptions,
-    pumpIpwmProfileOptions,
     hp2Entities,
     devControlOptions,
   });

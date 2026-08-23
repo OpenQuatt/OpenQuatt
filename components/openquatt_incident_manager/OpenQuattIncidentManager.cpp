@@ -794,27 +794,26 @@ void OpenQuattIncidentManager::observe_pump_register(uint8_t hp_index, uint16_t 
   unit->pump_raw_observations[slot].observe(word, now_ms);
 }
 
-void OpenQuattIncidentManager::observe_pump_context(uint8_t hp_index, oq_pump_ipwm::Profile profile, bool flow_valid,
-                                                    float flow_lph, uint32_t now_ms, uint32_t raw_max_age_ms) {
+void OpenQuattIncidentManager::observe_pump_context(uint8_t hp_index, bool flow_valid, float flow_lph,
+                                                    uint32_t now_ms) {
   UnitState* unit = this->unit_(hp_index);
   if (unit == nullptr) return;
 
   PumpContextState& context = unit->pump_context;
   context = {};
   uint16_t request_raw = 0U;
-  context.request_valid = unit->pump_raw_observations[0U].consume_if_fresh(now_ms, raw_max_age_ms, request_raw);
+  context.request_valid = unit->pump_raw_observations[0U].read_if_fresh(now_ms, request_raw);
   context.request_on = context.request_valid && (request_raw & 0x1000U) != 0U;
   uint16_t relay_raw = 0U;
-  context.relay_valid = unit->pump_raw_observations[1U].consume_if_fresh(now_ms, raw_max_age_ms, relay_raw);
+  context.relay_valid = unit->pump_raw_observations[1U].read_if_fresh(now_ms, relay_raw);
   context.relay_on = context.relay_valid && (relay_raw & 0x0800U) != 0U;
   uint16_t flow_switch_raw = 0U;
-  context.flow_switch_valid = unit->pump_raw_observations[2U].consume_if_fresh(now_ms, raw_max_age_ms, flow_switch_raw);
+  context.flow_switch_valid = unit->pump_raw_observations[2U].read_if_fresh(now_ms, flow_switch_raw);
   context.flow_switch_on = context.flow_switch_valid && (flow_switch_raw & 0x2000U) != 0U;
   context.feedback_valid =
-      unit->pump_raw_observations[3U].consume_if_fresh(now_ms, raw_max_age_ms, context.feedback_raw);
-  context.profile = profile;
+      unit->pump_raw_observations[3U].read_if_fresh(now_ms, context.feedback_raw);
   if (context.feedback_valid) {
-    const oq_pump_ipwm::DecodedFeedback feedback = oq_pump_ipwm::decode(profile, context.feedback_raw);
+    const oq_pump_ipwm::DecodedFeedback feedback = oq_pump_ipwm::decode(context.feedback_raw);
     context.status = feedback.status;
     context.power_valid = feedback.power_valid;
     context.power_w = feedback.power_w;
@@ -1833,8 +1832,6 @@ void OpenQuattIncidentManager::write_snapshot(httpd_req_t* req) const {
          write_raw(req, R"(,"ipwm_feedback_raw":)") &&
          write_optional_uint(req, snapshot.units[slot].pump_context.feedback_valid,
                              snapshot.units[slot].pump_context.feedback_raw) &&
-         write_raw(req, R"(,"ipwm_profile":)") &&
-         write_json_string(req, oq_pump_ipwm::profile_name(snapshot.units[slot].pump_context.profile)) &&
          write_raw(req, R"(,"ipwm_status":)") &&
          write_json_string(req, oq_pump_ipwm::status_name(snapshot.units[slot].pump_context.status)) &&
          write_raw(req, R"(,"pump_power_w":)") &&

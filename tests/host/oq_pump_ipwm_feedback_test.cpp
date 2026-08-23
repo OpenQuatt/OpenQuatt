@@ -8,7 +8,7 @@ using namespace oq_pump_ipwm;
 
 namespace {
 
-void expect_status(uint16_t raw, Status expected) { assert(decode(Profile::UNKNOWN, raw).status == expected); }
+void expect_status(uint16_t raw, Status expected) { assert(decode(raw).status == expected); }
 
 void test_wilo_boundaries() {
   expect_status(0U, Status::PWM_SHORT);
@@ -30,20 +30,18 @@ void test_wilo_boundaries() {
 }
 
 void test_power_band_is_fixed_and_fault_codes_never_count_as_power() {
-  for (Profile profile : {Profile::UNKNOWN, Profile::WILO_FLOW, Profile::WILO_POWER_5_75_W}) {
-    const DecodedFeedback running = decode(profile, 500U);
-    assert(running.status == Status::RUNNING);
-    assert(running.power_valid);
-    assert(running.power_w == 50.0F);
-    assert(power_contribution_w(running, true, true) == 50.0F);
-    assert(power_contribution_w(running, true, false) == 0.0F);
-    assert(power_contribution_w(running, false, true) == 0.0F);
+  const DecodedFeedback running = decode(500U);
+  assert(running.status == Status::RUNNING);
+  assert(running.power_valid);
+  assert(running.power_w == 50.0F);
+  assert(power_contribution_w(running, true, true) == 50.0F);
+  assert(power_contribution_w(running, true, false) == 0.0F);
+  assert(power_contribution_w(running, false, true) == 0.0F);
 
-    const DecodedFeedback diagnostic = decode(profile, 950U);
-    assert(diagnostic.status == Status::PUMP_OFF_FAILURE);
-    assert(!diagnostic.power_valid);
-    assert(power_contribution_w(diagnostic, true, true) == 0.0F);
-  }
+  const DecodedFeedback diagnostic = decode(950U);
+  assert(diagnostic.status == Status::PUMP_OFF_FAILURE);
+  assert(!diagnostic.power_valid);
+  assert(power_contribution_w(diagnostic, true, true) == 0.0F);
 }
 
 void test_raw_observation_retains_recent_diagnostic_context_and_is_wrap_safe() {
@@ -55,13 +53,13 @@ void test_raw_observation_retains_recent_diagnostic_context_and_is_wrap_safe() {
   ContextRawObservation observation;
   uint16_t raw = 0U;
   observation.observe(950U, 100U);
-  assert(observation.consume_if_fresh(15100U, 5000U, raw));
+  assert(observation.read_if_fresh(15100U, raw));
   assert(raw == 950U);
-  assert(observation.consume_if_fresh(15100U, 5000U, raw));
-  assert(!observation.consume_if_fresh(20100U, 5000U, raw));
+  assert(observation.read_if_fresh(15100U, raw));
+  assert(!observation.read_if_fresh(20100U, raw));
 
   observation.observe(20U, UINT32_MAX - 4U);
-  assert(observation.consume_if_fresh(3U, 5000U, raw));
+  assert(observation.read_if_fresh(3U, raw));
   assert(raw == 20U);
 }
 

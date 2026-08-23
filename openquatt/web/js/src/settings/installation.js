@@ -869,25 +869,6 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
     );
   }
 
-  export function renderSettingsPumpIpwmSection() {
-    const fields = [
-      ["hp1PumpIpwmProfile", "Warmtepomp 1"],
-      ["hp2PumpIpwmProfile", "Warmtepomp 2"],
-    ].filter(([key]) => hasEntity(key));
-    if (!fields.length) return "";
-
-    return renderSettingsSection(
-      "Diagnostiek",
-      "Pomp-iPWM-feedback",
-      "Kies per warmtepomp alleen het aantoonbare feedbacktype. Bij Onbekend / anders blijft R2137 ruwe diagnostiek en wordt de waarde niet als pompvermogen meegerekend.",
-      `<div class="oq-settings-grid">${fields.map(([key, label]) => renderSettingsSelectField(
-        key,
-        label,
-        "Wilo flow-feedback decodeert alleen de status. Kies 5–75 W-feedback uitsluitend wanneer dit vermogensprofiel voor de gemonteerde pomp is bevestigd.",
-      )).join("")}</div>`,
-    );
-  }
-
   export function renderBoilerCvFields(
     className = "oq-settings-grid oq-settings-boiler-simple-grid",
     includeFaultFallback = false,

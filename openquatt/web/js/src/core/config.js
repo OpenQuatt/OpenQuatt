@@ -534,7 +534,6 @@
     curve15: { domain: "number", name: "Curve Tsupply @ 15°C" },
     hp1ExcludedA: { domain: "select", name: "HP1 - Excluded compressor level A" },
     hp1ExcludedB: { domain: "select", name: "HP1 - Excluded compressor level B" },
-    hp1PumpIpwmProfile: { domain: "select", name: "HP1 - Pump iPWM profile" },
     hp1Power: { domain: "sensor", name: "HP1 - Power Input" },
     hp1Heat: { domain: "sensor", name: "HP1 - Heat Power" },
     hp1Cooling: { domain: "sensor", name: "HP1 - Cooling Power" },
@@ -563,7 +562,6 @@
     hp1FourWay: { domain: "binary_sensor", name: "HP1 - 4-Way valve" },
     hp2ExcludedA: { domain: "select", name: "HP2 - Excluded compressor level A", optional: true },
     hp2ExcludedB: { domain: "select", name: "HP2 - Excluded compressor level B", optional: true },
-    hp2PumpIpwmProfile: { domain: "select", name: "HP2 - Pump iPWM profile", optional: true },
     hp2Power: { domain: "sensor", name: "HP2 - Power Input", optional: true },
     hp2Heat: { domain: "sensor", name: "HP2 - Heat Power", optional: true },
     hp2Cooling: { domain: "sensor", name: "HP2 - Cooling Power", optional: true },
@@ -779,7 +777,6 @@
   export const LIMIT_KEYS = ["dayMax", "silentMax", "maxWater"];
   export const FLOW_SETTING_KEYS = ["flowControlMode", "flowSetpoint", "coolingFlowSetpoint", "manualIpwm"];
   export const FLOW_TUNING_KEYS = ["flowKp", "flowKi"];
-  export const PUMP_IPWM_PROFILE_KEYS = ["hp1PumpIpwmProfile", "hp2PumpIpwmProfile"];
   export const SENSOR_CALIBRATION_KEYS = [
     "hp1WaterInOffset",
     "hp1WaterOutOffset",
@@ -1779,7 +1776,6 @@
     ...SENSOR_SELECTION_STATE_KEYS,
     ...FLOW_SETTING_KEYS,
     ...FLOW_TUNING_KEYS,
-    ...PUMP_IPWM_PROFILE_KEYS,
     ...SENSOR_CALIBRATION_KEYS,
     ...SUPPLY_CALIBRATION_BACKUP_KEYS,
     ...SENSOR_CALIBRATION_STATE_KEYS,
@@ -1820,8 +1816,7 @@
       keys: [
         "setupComplete",
         "hpGeneration",
-        ...PUMP_IPWM_PROFILE_KEYS,
-        "boilerCvAssistEnabled",
+            "boilerCvAssistEnabled",
         "boilerRatedHeatPower",
         ...BOILER_SETTING_KEYS,
         ...BOILER_SUPPORT_SWITCHING_KEYS,

@@ -46,8 +46,7 @@ class PumpIpwmContractTest(unittest.TestCase):
         self.assertIn("raw >= 50U && raw <= 750U", PUMP_IPWM_HEADER)
         self.assertIn("result.power_valid = true", PUMP_IPWM_HEADER)
         self.assertIn("result.power_w = static_cast<float>(raw) * 0.1F", PUMP_IPWM_HEADER)
-        self.assertNotIn("if (profile == Profile::WILO_POWER_5_75_W)", PUMP_IPWM_HEADER)
-        self.assertNotIn("if (profile == Profile::UNKNOWN) return result", PUMP_IPWM_HEADER)
+        self.assertNotIn("Profile", PUMP_IPWM_HEADER)
 
     def test_diagnostic_codes_cannot_enter_power_input(self) -> None:
         pump_power = yaml_block(
@@ -77,7 +76,7 @@ class PumpIpwmContractTest(unittest.TestCase):
         self.assertIn("2115U", HP_IO)
         self.assertIn("2137U", HP_IO)
         self.assertIn("kDiagnosticContextFreshnessMs = 20000U", PUMP_IPWM_HEADER)
-        self.assertNotIn("this->pending = false", PUMP_IPWM_HEADER)
+        self.assertIn("read_if_fresh", PUMP_IPWM_HEADER)
         flow_switch = yaml_block(
             HP_IO,
             "id: ${hp_id}_status_2115_raw",

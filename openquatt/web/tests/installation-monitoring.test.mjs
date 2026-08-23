@@ -10,7 +10,6 @@ globalThis.window = {
 
 const { state } = await import("../js/src/core/state.js");
 const { getInstallationMonitoringModel } = await import("../js/src/core/installation-monitoring.js");
-const { PUMP_IPWM_PROFILE_KEYS, SETTINGS_BACKUP_SECTIONS, SETTINGS_KEYS } = await import("../js/src/core/config.js");
 
 test("actieve PT1000-leesfout verschijnt in de installatiebewaking", () => {
   state.entities = {
@@ -238,11 +237,4 @@ test("een verouderd incidentsnapshot wordt niet als actuele warmtepompstatus get
 
   state.incidentMonitoringSnapshot = null;
   state.incidentMonitoringError = "";
-});
-
-test("pomp-iPWM-profielen zijn per HP gesynchroniseerd en worden meegenomen in backup", () => {
-  assert.deepEqual(PUMP_IPWM_PROFILE_KEYS, ["hp1PumpIpwmProfile", "hp2PumpIpwmProfile"]);
-  assert.ok(PUMP_IPWM_PROFILE_KEYS.every((key) => SETTINGS_KEYS.includes(key)));
-  const installationKeys = SETTINGS_BACKUP_SECTIONS.find(({ id }) => id === "installation").keys;
-  assert.ok(PUMP_IPWM_PROFILE_KEYS.every((key) => installationKeys.includes(key)));
 });

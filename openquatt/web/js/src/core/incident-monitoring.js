@@ -159,11 +159,6 @@ const PUMP_IPWM_STATUS_LABELS = Object.freeze({
   pump_off_failure: "PumpOffFailure",
   pwm_open: "PWM-interface open",
 });
-const PUMP_IPWM_PROFILE_LABELS = Object.freeze({
-  unknown: "Onbekend / anders",
-  wilo_flow: "Wilo flow-feedback",
-  wilo_power_5_75_w: "Wilo 5–75 W-feedback",
-});
 
 const isObject = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const normalizeInteger = (value, fallback = null) => {
@@ -230,9 +225,6 @@ export function getPumpIncidentContextRows(incident = {}, pumpContext = null) {
     const raw = pumpContext.feedbackRaw !== null ? `${pumpContext.feedbackRaw} raw` : "Raw onbekend";
     const status = PUMP_IPWM_STATUS_LABELS[statusKey] || statusKey;
     rows.push(["iPWM-feedback · R2137", `${raw} · ${status}`]);
-  }
-  if (pumpContext.ipwmProfile && pumpContext.ipwmProfile !== "unknown") {
-    rows.push(["iPWM-profiel", PUMP_IPWM_PROFILE_LABELS[pumpContext.ipwmProfile] || pumpContext.ipwmProfile]);
   }
   if (pumpContext.pumpPowerW !== null) {
     rows.push(["Afgeleid pompvermogen", `${pumpContext.pumpPowerW.toLocaleString("nl-NL")} W`]);
@@ -469,7 +461,6 @@ function normalizePumpContext(raw) {
     feedbackRaw: raw.ipwm_feedback_raw === null || raw.ipwm_feedback_raw === undefined
       ? null
       : normalizeInteger(raw.ipwm_feedback_raw),
-    ipwmProfile: String(raw.ipwm_profile || "unknown"),
     ipwmStatus: String(raw.ipwm_status || "unknown"),
     pumpPowerW: optionalNumber(raw.pump_power_w),
     flowLph: optionalNumber(raw.flow_lph),

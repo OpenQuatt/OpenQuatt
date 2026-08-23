@@ -58,8 +58,7 @@ class OpenQuattIncidentManager : public Component {
   void observe_compressor_frequency(uint8_t hp_index, float frequency_hz, uint32_t now_ms);
   void observe_fault_word(uint8_t hp_index, uint16_t register_address, uint16_t word, uint32_t now_ms);
   void observe_pump_register(uint8_t hp_index, uint16_t register_address, uint16_t word, uint32_t now_ms);
-  void observe_pump_context(uint8_t hp_index, oq_pump_ipwm::Profile profile, bool flow_valid, float flow_lph,
-                            uint32_t now_ms, uint32_t raw_max_age_ms);
+  void observe_pump_context(uint8_t hp_index, bool flow_valid, float flow_lph, uint32_t now_ms);
 
   bool request_start(uint8_t hp_index, uint8_t expected_mode, uint32_t now_ms);
   void request_stop(uint8_t hp_index, uint32_t now_ms);
@@ -120,7 +119,6 @@ class OpenQuattIncidentManager : public Component {
     bool flow_switch_on{false};
     bool feedback_valid{false};
     uint16_t feedback_raw{0U};
-    oq_pump_ipwm::Profile profile{oq_pump_ipwm::Profile::UNKNOWN};
     oq_pump_ipwm::Status status{oq_pump_ipwm::Status::UNKNOWN};
     bool power_valid{false};
     float power_w{0.0F};

@@ -166,7 +166,6 @@ test("ODU source metadata and pump context preserve raw zero/false/null values",
         relay_on: true,
         flow_switch_on: false,
         ipwm_feedback_raw: 950,
-        ipwm_profile: "wilo_flow",
         ipwm_status: "pump_off_failure",
         pump_power_w: null,
         flow_lph: 0,
@@ -204,7 +203,6 @@ test("ODU source metadata and pump context preserve raw zero/false/null values",
     ["Pomprelais · R2108.b11", "AAN"],
     ["Flowswitch · R2115.b13", "UIT"],
     ["iPWM-feedback · R2137", "950 raw · PumpOffFailure"],
-    ["iPWM-profiel", "Wilo flow-feedback"],
     ["Flow · R2138", "0 L/h"],
   ]);
   assert.deepEqual(
@@ -219,7 +217,7 @@ test("ODU source metadata and pump context preserve raw zero/false/null values",
       { ...incident, lastSeenMs: 0xFFFFFFF0 },
       { ...heatPump.pumpContext, updatedAtMs: 0x10 },
     ).length,
-    6,
+    5,
   );
 
   const unavailable = normalizeIncidentMonitoringSnapshot(snapshot({
