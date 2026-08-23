@@ -224,6 +224,7 @@
 
   const HP2_ENTITIES = mockFixtures.hp2Entities;
   const COMPRESSOR_LEVEL_OPTIONS = mockFixtures.compressorLevelOptions;
+  const PUMP_IPWM_PROFILE_OPTIONS = mockFixtures.pumpIpwmProfileOptions;
   const ODU_RUNTIME_FREQUENCY_LEVELS = Array.from({ length: 11 }, (_item, index) => index);
   const ODU_RUNTIME_FREQUENCY_MODES = ["cooling", "heating"];
 
@@ -2103,6 +2104,11 @@
       value: "None",
       state: "None",
       option: COMPRESSOR_LEVEL_OPTIONS,
+    });
+    setEntity("select", "HP1 - Pump iPWM profile", {
+      value: "Unknown / other",
+      state: "Unknown / other",
+      option: PUMP_IPWM_PROFILE_OPTIONS,
     });
 
     [

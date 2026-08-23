@@ -12,7 +12,7 @@ import { getWebAuthStatusDetail, getWebAuthStatusLabel } from "../features/secur
 import { getCommissioningStatusValue, getSelectEntityOptions, renderSettingsSection } from "./controls.js";
 import { renderSettingsCoolingSection } from "./cooling.js";
 import { renderSettingsFlowSection, renderSettingsHeatingSection } from "./heating.js";
-import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection, renderSettingsQuickStartSection } from "./installation.js";
+import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection, renderSettingsPumpIpwmSection, renderSettingsQuickStartSection } from "./installation.js";
 import { renderSettingsMqttSection, renderSettingsOpenThermCicSection, renderSettingsSensorSelectionSection } from "./integrations.js";
 import { renderSettingsPrivacySection } from "./privacy.js";
 import { getApiSecurityStatusDetail, getApiSecurityStatusLabel, renderSettingsAccessSecuritySection } from "./security.js";
@@ -49,6 +49,7 @@ import { escapeHtml } from "../core/html.js";
     const sections = activeGroup === "installation"
       ? [
           renderSettingsGenerationSection(),
+          renderSettingsPumpIpwmSection(),
           renderSettingsBoilerCvSection(),
           renderSettingsAuxRelaySection(),
           renderSettingsFlowSection(),

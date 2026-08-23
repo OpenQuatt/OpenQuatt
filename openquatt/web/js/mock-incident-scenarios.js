@@ -45,6 +45,17 @@
       fallback_eligible: false,
       primary_incident_id: 0,
       last_action_result: null,
+      pump_context: {
+        request_on: null,
+        relay_on: null,
+        flow_switch_on: null,
+        ipwm_feedback_raw: null,
+        ipwm_profile: "unknown",
+        ipwm_status: "unknown",
+        pump_power_w: null,
+        flow_lph: null,
+        updated_at_ms: 0,
+      },
       incidents: [],
       ...overrides,
     };
@@ -78,6 +89,7 @@
     recoveryCondition,
     registerAddress = 0,
     bit = 0,
+    sourceDescription = "",
   }, runtimeOverrides = {}) => ({
     definition: {
       id,
@@ -91,6 +103,7 @@
       recovery_condition: recoveryCondition,
       register_address: registerAddress,
       bit,
+      source_description: sourceDescription,
     },
     runtime: runtime(runtimeOverrides),
   });
@@ -154,6 +167,20 @@
       recoveryCondition: "confirmed_odu_power_cycle",
       registerAddress: 2120,
       bit: 4,
+    }, runtimeOverrides),
+    dcWaterPump: (runtimeOverrides = {}) => incident({
+      id: 46,
+      key: "dc_water_pump",
+      presentationKey: "hp.dc_water_pump_fault",
+      category: "fault",
+      severity: "fault",
+      effects: ["display", "block_start", "stop_compressor", "mark_hp_unavailable", "pump_unavailable", "allow_cm4"],
+      effectMask: 125,
+      userAction: "contact_installer",
+      recoveryCondition: "stable_reads_and_recovery_window",
+      registerAddress: 2121,
+      bit: 13,
+      sourceDescription: "DC water pump failure",
     }, runtimeOverrides),
     linkLoss: (runtimeOverrides = {}) => incident({
       id: 1001,
@@ -715,6 +742,24 @@
           event(6, "hp_availability_change", "HP1", "hp_fault", "fault", 2, "available", "faulted", 22, 1),
           event(8, "hp_stop_confirmed", "HP1", "hp_fault", "normal", 2, "active", "standby"),
         ],
+      }),
+    ]),
+
+    scenario("pump-ipwm-failure", "Waterpompstoring met iPWM-diagnose", "Incidentmodel", "single", [
+      phase("fault", "Pomp meldt failure", "ODU-code en actuele pompcontext maken de storing technisch diagnoseerbaar.", 0, {
+        heatPumps: [stoppedFaulted(1, 46, [INCIDENTS.dcWaterPump()], {
+          pump_context: {
+            request_on: true,
+            relay_on: true,
+            flow_switch_on: false,
+            ipwm_feedback_raw: 950,
+            ipwm_profile: "wilo_flow",
+            ipwm_status: "pump_off_failure",
+            pump_power_w: null,
+            flow_lph: 0,
+            updated_at_ms: 45_000,
+          },
+        })],
       }),
     ]),
 

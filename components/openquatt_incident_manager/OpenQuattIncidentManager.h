@@ -17,6 +17,7 @@
 #include "esphome/core/preferences.h"
 #include "OpenQuattIncidentPolicy.h"
 #include "PsramBuffer.h"
+#include "includes/diagnostics/oq_pump_ipwm_feedback.h"
 #include "includes/incidents/oq_hp_incident_engine.h"
 #include "includes/incidents/oq_manual_reset_latch_policy.h"
 
@@ -56,6 +57,9 @@ class OpenQuattIncidentManager : public Component {
   void observe_working_mode(uint8_t hp_index, float working_mode, uint32_t now_ms);
   void observe_compressor_frequency(uint8_t hp_index, float frequency_hz, uint32_t now_ms);
   void observe_fault_word(uint8_t hp_index, uint16_t register_address, uint16_t word, uint32_t now_ms);
+  void observe_pump_register(uint8_t hp_index, uint16_t register_address, uint16_t word, uint32_t now_ms);
+  void observe_pump_context(uint8_t hp_index, oq_pump_ipwm::Profile profile, bool flow_valid, float flow_lph,
+                            uint32_t now_ms, uint32_t raw_max_age_ms);
 
   bool request_start(uint8_t hp_index, uint8_t expected_mode, uint32_t now_ms);
   void request_stop(uint8_t hp_index, uint32_t now_ms);
@@ -107,6 +111,24 @@ class OpenQuattIncidentManager : public Component {
     uint32_t at_ms{0U};
   };
 
+  struct PumpContextState {
+    bool request_valid{false};
+    bool request_on{false};
+    bool relay_valid{false};
+    bool relay_on{false};
+    bool flow_switch_valid{false};
+    bool flow_switch_on{false};
+    bool feedback_valid{false};
+    uint16_t feedback_raw{0U};
+    oq_pump_ipwm::Profile profile{oq_pump_ipwm::Profile::UNKNOWN};
+    oq_pump_ipwm::Status status{oq_pump_ipwm::Status::UNKNOWN};
+    bool power_valid{false};
+    float power_w{0.0F};
+    bool flow_valid{false};
+    float flow_lph{0.0F};
+    uint32_t updated_at_ms{0U};
+  };
+
   struct UnitState {
     oq_incidents::HpIncidentEngine engine{};
     bool configured{false};
@@ -152,6 +174,8 @@ class OpenQuattIncidentManager : public Component {
     size_t action_result_count{0U};
     uint32_t pending_action_request_id{0U};
     DeferredActionKind pending_action_kind{DeferredActionKind::NONE};
+    std::array<oq_pump_ipwm::ContextRawObservation, oq_pump_ipwm::kContextRawObservationCount> pump_raw_observations{};
+    PumpContextState pump_context{};
   };
 
   struct PublishedUnit {
@@ -166,6 +190,7 @@ class OpenQuattIncidentManager : public Component {
     uint32_t last_action_at_ms{0U};
     std::array<ActionResultRecord, ACTION_RESULT_HISTORY_SIZE> action_results{};
     size_t action_result_count{0U};
+    PumpContextState pump_context{};
   };
 
   struct PublishedSnapshot {

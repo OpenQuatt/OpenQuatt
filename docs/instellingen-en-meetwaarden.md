@@ -127,8 +127,11 @@ Belangrijke instellingen:
 - `Flow AUTO start iPWM`
 - `Flow PI Kp`
 - `Flow PI Ki`
+- `Pump iPWM profile` (per warmtepomp, geavanceerde diagnose)
 
 `Flow Setpoint` geldt voor verwarmen en normaal automatisch bedrijf. `Cooling Flow Setpoint` geldt alleen tijdens koelen, zodat koeling een eigen hydraulisch werkpunt kan hebben zonder de verwarmingsflow te veranderen.
+
+`Pump iPWM profile` bepaalt hoe de ruwe R2137-feedback wordt geïnterpreteerd. Laat dit op `Unknown / other` staan zolang het feedbacktype van de gemonteerde pomp niet is bevestigd; diagnostische codes worden dan nooit als pompvermogen meegerekend.
 
 Gebruik deze groep voorzichtig. Bij verkeerde bronwaarden of hydraulische problemen maak je hier snel meer ruis dan winst.
 
