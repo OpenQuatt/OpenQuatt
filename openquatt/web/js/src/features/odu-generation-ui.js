@@ -2,7 +2,6 @@ import { getEntityValue, hasEntity } from "../core/entity-store.js";
 import { createOduGenerationDetectionModel } from "../core/odu-generation.js";
 import { state } from "../core/state.js";
 import { escapeHtml } from "../core/html.js";
-import { renderSettingsFieldCard } from "../settings/controls.js";
 import { getInstallationTopology } from "./device-context.js";
 
 export function getOduGenerationDetectionModel() {
@@ -64,7 +63,7 @@ export function getOduGenerationChoiceMeta(option, selectedGeneration, recommend
   return "";
 }
 
-export function renderOduGenerationDetectionStatus() {
+export function renderOduGenerationDetectionStatus({ embedded = false } = {}) {
   const model = getOduGenerationDetectionModel();
   const canDetect = model.heatPumps.some((heatPump) => heatPump.detectAvailable);
   if (!model.available && !canDetect) {
@@ -72,9 +71,9 @@ export function renderOduGenerationDetectionStatus() {
   }
 
   const advice = getOduGenerationDetectionAdvice(model);
-  const title = !model.complete
-    ? "Detectie onvolledig"
-    : model.mixed ? "Gemengde Duo gedetecteerd" : "Automatisch gevonden";
+  const match = model.status === "match";
+  const title = !model.complete ? "Detectie onvolledig" : model.mixed ? "Gemengde Duo" : "Automatisch gevonden";
+  const badge = match ? "Komt overeen" : model.recommendation ? `Advies ${model.recommendation}` : "Geen advies";
   const busy = state.loadingEntities || Boolean(state.busyAction);
   const rows = model.heatPumps.map((heatPump) => {
     const value = heatPump.known ? `Quatt ODU ${heatPump.generation}` : "Unknown";
@@ -82,30 +81,8 @@ export function renderOduGenerationDetectionStatus() {
     const action = heatPump.detectAvailable
       ? `<button class="oq-settings-info-button oq-settings-generation-redetect" type="button" data-oq-action="press-named-button" data-oq-button-key="${escapeHtml(heatPump.detectKey)}" aria-label="${escapeHtml(detecting ? `HP${heatPump.index} wordt opnieuw gedetecteerd` : `Detecteer HP${heatPump.index} opnieuw`)}" ${detecting ? 'aria-busy="true"' : ""} ${busy ? "disabled" : ""}>${detecting ? "…" : "↻"}</button>`
       : "";
-    return `
-      <div class="oq-settings-source-row${heatPump.known ? "" : " is-warning"}" data-oq-odu-generation="hp${heatPump.index}">
-        <span class="oq-settings-source-row-label">HP${heatPump.index}${action}</span>
-        <strong>${escapeHtml(value)}</strong>
-      </div>
-    `;
+    return `<div class="oq-settings-source-row oq-gen-unit${heatPump.known ? "" : " is-warning"}" data-oq-odu-generation="hp${heatPump.index}"><span class="oq-settings-source-row-label">HP${heatPump.index}</span><span class="oq-gen-unit-value"><strong>${escapeHtml(value)}</strong>${action}</span></div>`;
   }).join("");
 
-  return renderSettingsFieldCard(
-    "oduGenerationDetection",
-    title,
-    "",
-    `
-      <div class="oq-settings-quickstart-status">
-        <div class="oq-settings-source-rows" role="group" aria-label="Gedetecteerde buitenunits en advies">
-          ${rows}
-          <div class="oq-settings-source-row${model.recommendation ? " is-warning" : ""}">
-            <span class="oq-settings-source-row-label">${model.mixed && model.recommendation ? "Gemengde Duo · advies" : "Advies"}</span>
-            <strong>${escapeHtml(model.recommendation || "Geen advies")}</strong>
-          </div>
-        </div>
-        <p class="oq-settings-action-note${advice.warning ? " oq-settings-action-note--warning" : ""}" aria-live="polite">${escapeHtml(advice.copy)}</p>
-      </div>
-    `,
-    "oq-settings-field--span-2 oq-settings-field--compact",
-  );
+  return `<section class="oq-gen-detection oq-settings-field--span-2${embedded ? " is-embedded" : " oq-helper-surface oq-settings-field"}" data-oq-settings-field="oduGenerationDetection" aria-label="ODU-detectie"><div class="oq-gen-hd"><strong>${escapeHtml(title)}</strong><span class="oq-settings-section-badge">${escapeHtml(badge)}</span></div><div class="oq-gen-units${model.heatPumps.length > 1 ? " is-duo" : ""}" role="group" aria-label="Gedetecteerde buitenunits">${rows}</div>${match ? "" : `<p class="oq-settings-action-note${advice.warning ? " oq-settings-action-note--warning" : ""}" aria-live="polite">${escapeHtml(advice.copy)}</p>`}</section>`;
 }

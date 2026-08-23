@@ -145,8 +145,8 @@ test("onboarding toont Duo per HP en onderscheidt geselecteerd van aanbevolen zo
   assert.match(markup, /Quatt ODU V1/);
   assert.match(markup, /HP2/);
   assert.match(markup, /Quatt ODU V1\.5/);
-  assert.match(markup, /Gemengde Duo gedetecteerd/);
-  assert.match(markup, /Gemengde Duo · advies/);
+  assert.match(markup, /Gemengde Duo/);
+  assert.match(markup, /Advies V1/);
   assert.match(markup, /V1 wordt aanbevolen; V1\.5 is geselecteerd/);
   assert.match(markup, /aria-live="polite"/);
   assert.match(markup, /aria-label="Detecteer HP1 opnieuw"/);
@@ -182,7 +182,8 @@ test("geselecteerde uniforme detectie krijgt één gecombineerde badge", () => {
   const markup = renderOduGenerationDetectionStatus();
 
   assert.equal(getOduGenerationChoiceMeta("V2", "V2", "V2"), "Geselecteerd · aanbevolen");
-  assert.match(markup, /komt overeen met de detectie/);
+  assert.match(markup, /Komt overeen/);
+  assert.doesNotMatch(markup, /komt overeen met de detectie/);
 });
 
 test("onboarding en installatiehydratie laden status en optionele detectieknoppen", () => {

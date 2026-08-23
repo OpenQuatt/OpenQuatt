@@ -837,7 +837,7 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
     const currentLabel = getInstallationLabel();
     const entity = state.entities.hpGeneration || {};
     const canEdit = hasEntity("hpGeneration") && getSelectEntityOptions(entity).length > 0;
-    const detectionStatus = renderOduGenerationDetectionStatus();
+    const detectionStatus = renderOduGenerationDetectionStatus({ embedded: true });
 
     if (!currentLabel && !canEdit && !detectionStatus) {
       return "";
@@ -848,8 +848,8 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
       "Quatt Hybrid-versie",
       "Kies hier welke Quatt Hybrid je hebt. Deze keuze bepaalt de basis van de regeling.",
       `
-        <div class="oq-settings-quickstart-status">
-          <div class="oq-settings-quickstart-status-row">
+        <div class="oq-helper-surface oq-settings-field">
+          <div class="oq-gen-current">
             <div>
               <p class="oq-settings-quickstart-status-label">Huidige versie</p>
               <strong class="oq-settings-quickstart-status-value">${escapeHtml(currentLabel || "Onbekend")}</strong>
@@ -863,8 +863,8 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
             Aanpassen
           </button>
           </div>
+          ${detectionStatus}
         </div>
-        ${detectionStatus}
       `,
     );
   }
