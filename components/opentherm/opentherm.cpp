@@ -688,7 +688,10 @@ void OpenTherm::process_esp32_rmt_() {
   }
 
   this->stop_timer_();
-  const rmt_decoder::DecodeResult result = rmt_decoder::decode(pulses, pulse_count);
+  // The OpenQuatt boiler input front-end maps an active OpenTherm level to a
+  // high GPIO level. Keep that hardware polarity outside the protocol decoder.
+  const rmt_decoder::DecodeResult result =
+      rmt_decoder::decode(pulses, pulse_count, rmt_decoder::InputPolarity::ACTIVE_HIGH);
   if (result.error != rmt_decoder::DecodeError::NONE) {
     const char* decode_error = "unknown";
     switch (result.error) {
