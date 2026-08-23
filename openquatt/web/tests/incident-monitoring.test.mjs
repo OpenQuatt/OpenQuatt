@@ -169,7 +169,6 @@ test("ODU source metadata and pump context preserve raw zero/false/null values",
         ipwm_status: "pump_off_failure",
         pump_power_w: null,
         flow_lph: 0,
-        updated_at_ms: 12_345,
       },
       incidents: [{
         definition: {
@@ -199,7 +198,7 @@ test("ODU source metadata and pump context preserve raw zero/false/null values",
   assert.equal(heatPump.pumpContext.flowLph, 0);
   assert.equal(heatPump.pumpContext.pumpPowerW, null);
   assert.deepEqual(getPumpIncidentContextRows(incident, heatPump.pumpContext), [
-    ["Pompaanvraag · R2010.b12", "AAN"],
+    ["Pompaanvraag (OpenQuatt) · R2010.b12", "AAN"],
     ["Pomprelais · R2108.b11", "AAN"],
     ["Flowswitch · R2115.b13", "UIT"],
     ["iPWM-feedback · R2137", "950 raw · PumpOffFailure"],

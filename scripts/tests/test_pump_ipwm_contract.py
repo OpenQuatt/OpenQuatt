@@ -70,13 +70,10 @@ class PumpIpwmContractTest(unittest.TestCase):
         self.assertNotIn("raw_max_age_ms", flow)
         self.assertNotIn("oq_modbus_telemetry_skip}UL + 1UL", flow)
         self.assertNotIn("${hp_id}_set_pump_mode", flow)
-        self.assertIn("observe_pump_register", HP_IO)
-        self.assertIn("2010U", HP_IO)
+        self.assertNotIn("pump_request_raw", HP_IO)
         self.assertIn("2108U", HP_IO)
         self.assertIn("2115U", HP_IO)
         self.assertIn("2137U", HP_IO)
-        self.assertIn("kDiagnosticContextFreshnessMs = 20000U", PUMP_IPWM_HEADER)
-        self.assertIn("read_if_fresh", PUMP_IPWM_HEADER)
         flow_switch = yaml_block(
             HP_IO,
             "id: ${hp_id}_status_2115_raw",

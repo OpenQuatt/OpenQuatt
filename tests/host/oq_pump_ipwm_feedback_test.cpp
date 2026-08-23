@@ -44,31 +44,11 @@ void test_power_band_is_fixed_and_fault_codes_never_count_as_power() {
   assert(power_contribution_w(diagnostic, true, true) == 0.0F);
 }
 
-void test_raw_observation_retains_recent_diagnostic_context_and_is_wrap_safe() {
-  assert(context_raw_observation_index(2010U) == 0U);
-  assert(context_raw_observation_index(2137U) == 3U);
-  assert(context_raw_observation_index(2138U) == kContextRawObservationCount);
-  assert(kDiagnosticContextFreshnessMs == 20000U);
-
-  ContextRawObservation observation;
-  uint16_t raw = 0U;
-  observation.observe(950U, 100U);
-  assert(observation.read_if_fresh(15100U, raw));
-  assert(raw == 950U);
-  assert(observation.read_if_fresh(15100U, raw));
-  assert(!observation.read_if_fresh(20100U, raw));
-
-  observation.observe(20U, UINT32_MAX - 4U);
-  assert(observation.read_if_fresh(3U, raw));
-  assert(raw == 20U);
-}
-
 }  // namespace
 
 int main() {
   test_wilo_boundaries();
   test_power_band_is_fixed_and_fault_codes_never_count_as_power();
-  test_raw_observation_retains_recent_diagnostic_context_and_is_wrap_safe();
   std::cout << "Pump iPWM feedback tests passed\n";
   return 0;
 }

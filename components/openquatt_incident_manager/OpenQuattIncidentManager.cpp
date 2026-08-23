@@ -700,7 +700,6 @@ void OpenQuattIncidentManager::observe_transport(uint8_t hp_index, bool online, 
   unit->transport_seen = true;
   unit->transport_online = online;
   if (!online) {
-    unit->pump_raw_observations = {};
     unit->pump_context = {};
     unit->engine.observe_link_round(now_ms, false);
     unit->last_link_round_ms = now_ms;
@@ -767,10 +766,6 @@ void OpenQuattIncidentManager::observe_fault_word(uint8_t hp_index, uint16_t reg
       register_address > oq_incidents::kLastFaultRegister) {
     return;
   }
-  const bool pump_fault_active = register_address == 2121U && (word & (1U << 13U)) != 0U;
-  if (pump_fault_active) {
-    unit->pump_context = {};
-  }
   const size_t bank = static_cast<size_t>(register_address - oq_incidents::kFirstFaultRegister);
   bool had_pending = false;
   for (bool pending : unit->fault_pending) {
@@ -779,48 +774,34 @@ void OpenQuattIncidentManager::observe_fault_word(uint8_t hp_index, uint16_t reg
   if (!had_pending) unit->fault_pending_since_ms = now_ms;
   unit->fault_words[bank] = word;
   unit->fault_pending[bank] = true;
-  const bool fault_snapshot_complete = unit->fault_pending[0U] && unit->fault_pending[1U] && unit->fault_pending[2U];
   this->process_fault_snapshot_(*unit, hp_slot_(hp_index), now_ms, false);
-  if (pump_fault_active && !fault_snapshot_complete) {
-    this->publish_snapshot_(now_ms);
-  }
 }
 
-void OpenQuattIncidentManager::observe_pump_register(uint8_t hp_index, uint16_t register_address, uint16_t word,
-                                                     uint32_t now_ms) {
-  UnitState* unit = this->unit_(hp_index);
-  const size_t slot = oq_pump_ipwm::context_raw_observation_index(register_address);
-  if (unit == nullptr || slot >= unit->pump_raw_observations.size()) return;
-  unit->pump_raw_observations[slot].observe(word, now_ms);
-}
-
-void OpenQuattIncidentManager::observe_pump_context(uint8_t hp_index, bool flow_valid, float flow_lph,
-                                                    uint32_t now_ms) {
+void OpenQuattIncidentManager::observe_pump_context(uint8_t hp_index, bool request_valid, bool request_on,
+                                                    bool relay_valid, bool relay_on, bool flow_switch_valid,
+                                                    bool flow_switch_on, bool feedback_valid, uint16_t feedback_raw,
+                                                    bool flow_valid, float flow_lph) {
   UnitState* unit = this->unit_(hp_index);
   if (unit == nullptr) return;
 
   PumpContextState& context = unit->pump_context;
   context = {};
-  uint16_t request_raw = 0U;
-  context.request_valid = unit->pump_raw_observations[0U].read_if_fresh(now_ms, request_raw);
-  context.request_on = context.request_valid && (request_raw & 0x1000U) != 0U;
-  uint16_t relay_raw = 0U;
-  context.relay_valid = unit->pump_raw_observations[1U].read_if_fresh(now_ms, relay_raw);
-  context.relay_on = context.relay_valid && (relay_raw & 0x0800U) != 0U;
-  uint16_t flow_switch_raw = 0U;
-  context.flow_switch_valid = unit->pump_raw_observations[2U].read_if_fresh(now_ms, flow_switch_raw);
-  context.flow_switch_on = context.flow_switch_valid && (flow_switch_raw & 0x2000U) != 0U;
-  context.feedback_valid = unit->pump_raw_observations[3U].read_if_fresh(now_ms, context.feedback_raw);
-  if (context.feedback_valid) {
-    const oq_pump_ipwm::DecodedFeedback feedback = oq_pump_ipwm::decode(context.feedback_raw);
+  context.request_valid = request_valid;
+  context.request_on = request_valid && request_on;
+  context.relay_valid = relay_valid;
+  context.relay_on = relay_valid && relay_on;
+  context.flow_switch_valid = flow_switch_valid;
+  context.flow_switch_on = flow_switch_valid && flow_switch_on;
+  context.feedback_valid = feedback_valid;
+  context.feedback_raw = feedback_valid ? feedback_raw : 0U;
+  if (feedback_valid) {
+    const oq_pump_ipwm::DecodedFeedback feedback = oq_pump_ipwm::decode(feedback_raw);
     context.status = feedback.status;
     context.power_valid = feedback.power_valid;
     context.power_w = feedback.power_w;
   }
   context.flow_valid = flow_valid && std::isfinite(flow_lph);
   context.flow_lph = context.flow_valid ? flow_lph : 0.0F;
-  context.updated_at_ms = now_ms;
-  this->publish_snapshot_(now_ms);
 }
 
 void OpenQuattIncidentManager::process_fault_snapshot_(UnitState& unit, size_t slot, uint32_t now_ms,

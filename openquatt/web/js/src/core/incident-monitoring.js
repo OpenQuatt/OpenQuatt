@@ -200,19 +200,10 @@ export function getPumpIncidentContextRows(incident = {}, pumpContext = null) {
     || (Number(incident.register) === 2121 && Number(incident.bit) === 13);
   if (!isPumpIncident || !isObject(pumpContext)) return [];
 
-  const incidentLastSeenMs = normalizeInteger(incident.lastSeenMs);
-  const contextUpdatedAtMs = normalizeInteger(pumpContext.updatedAtMs);
-  if (incidentLastSeenMs !== null && (
-    contextUpdatedAtMs === null
-    || ((contextUpdatedAtMs - incidentLastSeenMs) >>> 0) >= 0x80000000
-  )) {
-    return [];
-  }
-
   const rows = [];
   const onOff = (value) => value ? "AAN" : "UIT";
   if (typeof pumpContext.requestOn === "boolean") {
-    rows.push(["Pompaanvraag · R2010.b12", onOff(pumpContext.requestOn)]);
+    rows.push(["Pompaanvraag (OpenQuatt) · R2010.b12", onOff(pumpContext.requestOn)]);
   }
   if (typeof pumpContext.relayOn === "boolean") {
     rows.push(["Pomprelais · R2108.b11", onOff(pumpContext.relayOn)]);
@@ -464,7 +455,6 @@ function normalizePumpContext(raw) {
     ipwmStatus: String(raw.ipwm_status || "unknown"),
     pumpPowerW: optionalNumber(raw.pump_power_w),
     flowLph: optionalNumber(raw.flow_lph),
-    updatedAtMs: normalizeInteger(raw.updated_at_ms, 0),
   };
 }
 

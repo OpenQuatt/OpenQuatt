@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstddef>
 #include <cstdint>
 
 namespace oq_pump_ipwm {
@@ -20,41 +19,6 @@ struct DecodedFeedback {
   Status status{Status::UNKNOWN};
   bool power_valid{false};
   float power_w{0.0F};
-};
-
-inline constexpr std::size_t kContextRawObservationCount = 4U;
-inline constexpr uint32_t kDiagnosticContextFreshnessMs = 20000U;
-
-constexpr std::size_t context_raw_observation_index(uint16_t register_address) {
-  switch (register_address) {
-    case 2010U:
-      return 0U;
-    case 2108U:
-      return 1U;
-    case 2115U:
-      return 2U;
-    case 2137U:
-      return 3U;
-    default:
-      return kContextRawObservationCount;
-  }
-}
-
-struct ContextRawObservation {
-  bool valid{false};
-  uint16_t raw{0U};
-  uint32_t observed_at_ms{0U};
-
-  void observe(uint16_t value, uint32_t now_ms) {
-    this->valid = true;
-    this->raw = value;
-    this->observed_at_ms = now_ms;
-  }
-
-  bool read_if_fresh(uint32_t now_ms, uint16_t& value) const {
-    value = this->raw;
-    return this->valid && now_ms - this->observed_at_ms < kDiagnosticContextFreshnessMs;
-  }
 };
 
 constexpr const char* status_name(Status status) {
@@ -101,10 +65,6 @@ constexpr DecodedFeedback decode(uint16_t raw) {
     result.status = Status::PWM_OPEN;
   }
   return result;
-}
-
-constexpr float power_contribution_w(const DecodedFeedback& feedback, bool relay_valid, bool relay_on) {
-  return relay_valid && relay_on && feedback.power_valid ? feedback.power_w : 0.0F;
 }
 
 }  // namespace oq_pump_ipwm

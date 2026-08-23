@@ -42,8 +42,6 @@ modbus_controller:
         - lambda: |-
             id(${hp_id}_is_online) = false;
             id(${hp_id}_pump_relay).invalidate_state();
-            id(${hp_id}_water_flow_switch).invalidate_state();
-            id(${hp_id}_pump_request_raw).publish_state(NAN);
             id(${hp_id}_status_2108_raw).publish_state(NAN);
             id(${hp_id}_status_2115_raw).publish_state(NAN);
             id(${hp_id}_pump_ipwm_feedback_raw).publish_state(NAN);
@@ -272,23 +270,6 @@ sensor:
       const float pump_speed = id(${hp_id}_pump_speed).state;
       if (isnan(pump_speed)) return {};
       return pump_speed;
-
-  - platform: modbus_controller
-    modbus_controller_id: ${hp_id}
-    id: ${hp_id}_pump_request_raw
-    register_type: holding
-    address: 2010
-    value_type: U_WORD
-    force_new_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
-    internal: true
-    on_value:
-      then:
-        - lambda: |-
-            if (isnan(x)) return;
-            id(oq_incident_manager).observe_pump_register(
-                ${hp_index}, 2010U,
-                static_cast<uint16_t>(lroundf(x)), millis());
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -768,9 +749,6 @@ sensor:
       then:
         - lambda: |-
             if (isnan(x)) return;
-            id(oq_incident_manager).observe_pump_register(
-                ${hp_index}, 2137U,
-                static_cast<uint16_t>(lroundf(x)), millis());
 
   - platform: template
     id: ${hp_id}_pump_power
@@ -807,12 +785,7 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            const uint32_t now_ms = millis();
-            id(${hp_id}_outside_temp_activity_ms) = now_ms;
-            // R2138 closes the pump telemetry snapshot. Pump-register context
-            // may be reused for up to 20 s because this is diagnostic information.
-            id(oq_incident_manager).observe_pump_context(
-                ${hp_index}, !isnan(x), x, now_ms);
+            id(${hp_id}_outside_temp_activity_ms) = millis();
 
   - platform: template
     id: ${hp_id}_runtime_hours
@@ -983,8 +956,6 @@ sensor:
         - lambda: |-
             if (isnan(x)) return;
             const uint16_t status = static_cast<uint16_t>(lroundf(x));
-            id(oq_incident_manager).observe_pump_register(
-                ${hp_index}, 2108U, status, millis());
             id(${hp_id}_fan_low_speed_mode).publish_state((status & 0x0001u) != 0u);
             id(${hp_id}_bottom_plate_heater).publish_state((status & 0x0004u) != 0u);
             id(${hp_id}_crankcase_heater).publish_state((status & 0x0008u) != 0u);
@@ -1024,9 +995,6 @@ sensor:
         - lambda: |-
             if (isnan(x)) return;
             const uint16_t status = static_cast<uint16_t>(lroundf(x));
-            id(oq_incident_manager).observe_pump_register(
-                ${hp_index}, 2115U, status, millis());
-            id(${hp_id}_water_flow_switch).publish_state((status & 0x2000u) != 0u);
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -1054,9 +1022,32 @@ sensor:
     on_value:
       then:
         - lambda: |-
+            if (isnan(x)) return;
+            const uint32_t now_ms = millis();
+            const uint16_t fault_word = static_cast<uint16_t>(lroundf(x));
+            if ((fault_word & 0x2000u) != 0u) {
+              auto* pump_mode = id(${hp_id}_set_pump_mode);
+              const bool request_valid = pump_mode != nullptr && pump_mode->has_state();
+              const bool request_on = request_valid && pump_mode->current_option() == "On";
+              const float relay_raw = id(${hp_id}_status_2108_raw).state;
+              const bool relay_valid = !isnan(relay_raw);
+              const bool relay_on = relay_valid &&
+                  (static_cast<uint16_t>(lroundf(relay_raw)) & 0x0800u) != 0u;
+              const float flow_switch_raw = id(${hp_id}_status_2115_raw).state;
+              const bool flow_switch_valid = !isnan(flow_switch_raw);
+              const bool flow_switch_on = flow_switch_valid &&
+                  (static_cast<uint16_t>(lroundf(flow_switch_raw)) & 0x2000u) != 0u;
+              const float feedback_raw = id(${hp_id}_pump_ipwm_feedback_raw).state;
+              const bool feedback_valid = !isnan(feedback_raw);
+              const float flow_lph = id(${hp_id}_flow).state;
+              id(oq_incident_manager).observe_pump_context(
+                  ${hp_index}, request_valid, request_on, relay_valid, relay_on,
+                  flow_switch_valid, flow_switch_on, feedback_valid,
+                  feedback_valid ? static_cast<uint16_t>(lroundf(feedback_raw)) : 0U,
+                  !isnan(flow_lph), flow_lph);
+            }
             id(oq_incident_manager).observe_fault_word(
-                ${hp_index}, 2121U,
-                static_cast<uint16_t>(lroundf(x)), millis());
+                ${hp_index}, 2121U, fault_word, now_ms);
 
   # ----------------------------
   # BINARY SENSOR
@@ -1115,14 +1106,6 @@ binary_sensor:
     name: "${prefix}DC Pump Relay"
     icon: mdi:electric-switch
     device_class: running
-    disabled_by_default: true
-
-  - platform: template
-    id: ${hp_id}_water_flow_switch
-    name: "${prefix}Water flow switch"
-    icon: mdi:water-check
-    device_class: running
-    entity_category: diagnostic
     disabled_by_default: true
 
   - platform: modbus_controller
