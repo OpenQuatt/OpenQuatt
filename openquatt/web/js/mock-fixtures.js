@@ -18,7 +18,6 @@
     "L10 (H90/C74)",
   ];
 
-
   const hp2Entities = [
     ["select", "HP2 - Excluded compressor level A", { value: "None", state: "None", option: compressorLevelOptions }],
     ["select", "HP2 - Excluded compressor level B", { value: "None", state: "None", option: compressorLevelOptions }],

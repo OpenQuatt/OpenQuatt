@@ -1816,7 +1816,7 @@
       keys: [
         "setupComplete",
         "hpGeneration",
-            "boilerCvAssistEnabled",
+        "boilerCvAssistEnabled",
         "boilerRatedHeatPower",
         ...BOILER_SETTING_KEYS,
         ...BOILER_SUPPORT_SWITCHING_KEYS,

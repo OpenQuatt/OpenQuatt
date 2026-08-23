@@ -170,7 +170,6 @@ Onder `Instellingen` staan de onderdelen bewust gescheiden. Het idee is: eerst d
 
 Hier staan basiskeuzes zoals Quatt Hybrid-versie, flowregeling, boiler- of CV-ondersteuning, stille uren, watergrenzen en compressorinstellingen.
 
-
 `Automatische ketelovername bij warmtepompstoring` is een aparte installatiekeuze en staat standaard uit. Als je deze inschakelt, mag OpenQuatt bij een bevestigde storing van alle geconfigureerde warmtepompen overschakelen naar CM4 en de cv-ketel de verwarmingsopdracht geven. OpenQuatt doet dit alleen nadat de warmtepompen veilig zijn gestopt en flow, aanvoertemperatuur en ketelaansturing geldig zijn. Een korte communicatiedip telt niet als bevestigde storing en vraagt geen actie of bevestiging van de gebruiker.
 
 Gebruik dit deel vooral tijdens de eerste inrichting of als je installatie later verandert.
