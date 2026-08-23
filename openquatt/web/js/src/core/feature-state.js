@@ -1,19 +1,25 @@
 import { DEBUG_RECORDING_KEYS, ENTITY_DEFS } from "./config.js";
 import { state } from "./state.js";
 
-// Test-only Q flow-filter probes. Keep these out of the normal UI, but make
-// them resolvable by the device-side debug recorder so field testers do not
-// need Home Assistant to compare the three pulse-filter variants.
-ENTITY_DEFS.controllerFlowEdge100 = {
-  domain: "sensor",
-  name: "Controller Flow test EDGE 100us",
-  optional: true,
+const TEST_FLOW_ENTITIES = {
+  controllerFlowEdge100: "Controller Flow test EDGE 100us",
+  controllerFlowPulse13: "Controller Flow test PULSE 13us",
+  controllerFlowPulse20: "Controller Flow test PULSE 20us",
+  controllerFlowPulse50: "Controller Flow test PULSE 50us",
+  controllerFlowRawRisingHz: "Controller Flow test raw rising Hz",
+  controllerFlowRawRisingCount: "Controller Flow test raw rising count 10s",
+  controllerFlowPulseWidthMin: "Controller Flow test pulse width min",
+  controllerFlowPulseWidthAvg: "Controller Flow test pulse width avg",
+  controllerFlowPulseWidthMax: "Controller Flow test pulse width max",
+  controllerFlowPulseWidthLt20: "Controller Flow test pulse width <20us",
+  controllerFlowPulseWidth20To50: "Controller Flow test pulse width 20-50us",
+  controllerFlowPulseWidth50To100: "Controller Flow test pulse width 50-100us",
+  controllerFlowPulseWidthGe100: "Controller Flow test pulse width >=100us",
 };
-ENTITY_DEFS.controllerFlowPulse20 = {
-  domain: "sensor",
-  name: "Controller Flow test PULSE 20us",
-  optional: true,
-};
+
+for (const [key, name] of Object.entries(TEST_FLOW_ENTITIES)) {
+  ENTITY_DEFS[key] = { domain: "sensor", name, optional: true };
+}
 
 const REQUIRED_DEBUG_RECORDING_KEYS = [
   "otbMaxCapacity",
@@ -21,14 +27,11 @@ const REQUIRED_DEBUG_RECORDING_KEYS = [
   "flowSource",
   "qFlowSource",
   "controllerFlow",
-  "controllerFlowEdge100",
-  "controllerFlowPulse20",
+  ...Object.keys(TEST_FLOW_ENTITIES),
   "cicFlowrate",
 ];
 for (const key of REQUIRED_DEBUG_RECORDING_KEYS) {
-  if (!DEBUG_RECORDING_KEYS.includes(key)) {
-    DEBUG_RECORDING_KEYS.push(key);
-  }
+  if (!DEBUG_RECORDING_KEYS.includes(key)) DEBUG_RECORDING_KEYS.push(key);
 }
 
 const stateDomains = {
@@ -42,9 +45,7 @@ const stateDomains = {
 function updateFeatureState(domain, patch) {
   const ownsKey = stateDomains[domain];
   const foreignKey = Object.keys(patch).find((key) => !ownsKey(key));
-  if (foreignKey) {
-    throw new Error(`${domain} state beheert sleutel ${foreignKey} niet.`);
-  }
+  if (foreignKey) throw new Error(`${domain} state beheert sleutel ${foreignKey} niet.`);
   Object.assign(state, patch);
 }
 
