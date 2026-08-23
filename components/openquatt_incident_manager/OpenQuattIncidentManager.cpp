@@ -810,8 +810,7 @@ void OpenQuattIncidentManager::observe_pump_context(uint8_t hp_index, bool flow_
   uint16_t flow_switch_raw = 0U;
   context.flow_switch_valid = unit->pump_raw_observations[2U].read_if_fresh(now_ms, flow_switch_raw);
   context.flow_switch_on = context.flow_switch_valid && (flow_switch_raw & 0x2000U) != 0U;
-  context.feedback_valid =
-      unit->pump_raw_observations[3U].read_if_fresh(now_ms, context.feedback_raw);
+  context.feedback_valid = unit->pump_raw_observations[3U].read_if_fresh(now_ms, context.feedback_raw);
   if (context.feedback_valid) {
     const oq_pump_ipwm::DecodedFeedback feedback = oq_pump_ipwm::decode(context.feedback_raw);
     context.status = feedback.status;
