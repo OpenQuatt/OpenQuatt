@@ -192,7 +192,6 @@ select:
       "On": 4096
     skip_updates: ${oq_modbus_control_readback_skip}
 
-
 # Per-HP compressor level exclusions are modeled as up to two explicit blocked levels.
   - platform: template
     id: ${hp_id}_excluded_level_a
