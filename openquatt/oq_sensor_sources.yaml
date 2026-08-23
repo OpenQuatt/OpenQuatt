@@ -226,8 +226,7 @@ binary_sensor:
                id(cic_ch_enable_valid).has_state() && id(cic_ch_enable_valid).state;
       }
       if (source == "HA input") return id(heating_enable_valid_ha).state && id(heating_enable_ha).has_state();
-      if (source == "API input") return id(api_input_heating_enable_valid).has_state() && id(api_input_heating_enable_valid).state &&
-                   id(api_input_heating_enable).has_state();
+      if (source == "API input") return id(api_input_heating_enable_valid).has_state() && id(api_input_heating_enable_valid).state;
       if (source == "MQTT") return id(mqtt_heating_enable_valid).has_state() && id(mqtt_heating_enable_valid).state &&
                                   id(mqtt_heating_enable).has_state();
       return false;
@@ -272,8 +271,7 @@ binary_sensor:
       if (source == "CIC") return cic_valid;
       if (source == "CIC or HA input") return cic_valid || ha_valid;
       if (source == "HA input") return ha_valid;
-      if (source == "API input") return id(api_input_cooling_enable_valid).has_state() && id(api_input_cooling_enable_valid).state &&
-                   id(api_input_cooling_enable).has_state();
+      if (source == "API input") return id(api_input_cooling_enable_valid).has_state() && id(api_input_cooling_enable_valid).state;
       if (source == "MQTT") return id(mqtt_cooling_enable_valid).has_state() && id(mqtt_cooling_enable_valid).state &&
                                   id(mqtt_cooling_enable).has_state();
       return false;
