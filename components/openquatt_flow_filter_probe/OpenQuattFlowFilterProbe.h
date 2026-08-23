@@ -33,12 +33,12 @@ class OpenQuattFlowFilterProbe : public sensor::Sensor, public Component {
   };
 
   struct RuntimeState {
-    bool running{false};
+    uint8_t meter_state{0};  // 0=initial, 1=running, 2=timed out
     bool peeked_edge{false};
     uint32_t last_processed_edge_us{0};
   };
 
-  static void gpio_intr(OpenQuattFlowFilterProbe *probe);
+  static void IRAM_ATTR gpio_intr(OpenQuattFlowFilterProbe *probe);
   static void IRAM_ATTR apply_pulse_filter_(volatile ChannelState &channel, volatile PulseFilterState &filter,
                                             uint32_t filter_us, uint32_t now_us, bool pin_val, bool previous_pin_val);
   void process_channel_(sensor::Sensor *sensor, ChannelState state, RuntimeState &runtime, uint32_t filter_us,
