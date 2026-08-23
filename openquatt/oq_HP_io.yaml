@@ -1043,7 +1043,7 @@ sensor:
     address: 2113
     offset: 4
     value_type: U_WORD
-    register_count: 1
+    register_count: 3
     skip_updates: ${oq_modbus_telemetry_skip}
     internal: true
     on_value:
