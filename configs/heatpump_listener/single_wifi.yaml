@@ -5,6 +5,8 @@ substitutions:
   oq_hardware_profile: "heatpump_listener"
   oq_connection: "wifi"
   oq_topology_build_flag: "-DOQ_TOPOLOGY_DUO=0"
+  oq_flow_kp_default: "0.06"
+  oq_flow_ki_default: "0.0012"
   main_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/latest/download/openquatt-heatpump-listener-single-wifi-ota.manifest.json"
   dev_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/download/dev-latest/openquatt-heatpump-listener-single-wifi-ota.manifest.json"
   release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/latest/download/openquatt-heatpump-listener-single-wifi-ota.manifest.json"
