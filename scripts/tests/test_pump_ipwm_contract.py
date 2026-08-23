@@ -35,7 +35,9 @@ class PumpIpwmContractTest(unittest.TestCase):
         )
         self.assertIn("address: 2137", raw)
         self.assertIn("value_type: U_WORD", raw)
+        self.assertIn("internal: true", raw)
         self.assertNotIn("multiply:", raw)
+        self.assertNotIn("pump_ipwm_status", HP_IO)
 
         cic = yaml_block(CIC_SERVER, "- address: 2137", "- address: 2138")
         self.assertIn("${cic_compat_hp_id}_pump_ipwm_feedback_raw", cic)

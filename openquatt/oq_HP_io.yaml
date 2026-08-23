@@ -737,6 +737,7 @@ sensor:
     modbus_controller_id: ${hp_id}
     id: ${hp_id}_pump_ipwm_feedback_raw
     name: "${prefix}Pump iPWM feedback raw"
+    internal: true
     icon: mdi:pump
     disabled_by_default: true
     entity_category: diagnostic
@@ -1169,20 +1170,6 @@ binary_sensor:
   # TEXT SENSOR
   # ----------------------------
 text_sensor:
-  - platform: template
-    id: ${hp_id}_pump_ipwm_status
-    name: "${prefix}Pump iPWM status"
-    icon: mdi:pump
-    entity_category: diagnostic
-    disabled_by_default: true
-    update_interval: 10s
-    lambda: |-
-      if (!id(${hp_id}_is_online)) return std::string("unknown");
-      const float raw = id(${hp_id}_pump_ipwm_feedback_raw).state;
-      if (isnan(raw)) return std::string("unknown");
-      return std::string(oq_pump_ipwm::status_name(oq_pump_ipwm::decode(
-          static_cast<uint16_t>(lroundf(raw))).status));
-
   - platform: template
     id: ${hp_id}_working_mode_label
     name: "${prefix}Working Mode Label"
