@@ -42,16 +42,12 @@ class PumpIpwmContractTest(unittest.TestCase):
         self.assertNotIn("pump_power", cic)
         self.assertNotIn("* 10.0f", cic)
 
-    def test_profile_is_per_hp_persistent_and_fail_closed(self) -> None:
-        profile = yaml_block(
-            HP_IO,
-            "id: ${hp_id}_pump_ipwm_profile",
-            "# Per-HP compressor level exclusions",
-        )
-        self.assertIn('initial_option: "Unknown / other"', profile)
-        self.assertIn("restore_value: true", profile)
-        self.assertIn('"Wilo flow feedback"', profile)
-        self.assertIn('"Wilo 5-75 W feedback"', profile)
+    def test_r2137_has_one_fixed_power_mapping(self) -> None:
+        self.assertIn("raw >= 50U && raw <= 750U", PUMP_IPWM_HEADER)
+        self.assertIn("result.power_valid = true", PUMP_IPWM_HEADER)
+        self.assertIn("result.power_w = static_cast<float>(raw) * 0.1F", PUMP_IPWM_HEADER)
+        self.assertNotIn("if (profile == Profile::WILO_POWER_5_75_W)", PUMP_IPWM_HEADER)
+        self.assertNotIn("if (profile == Profile::UNKNOWN) return result", PUMP_IPWM_HEADER)
 
     def test_diagnostic_codes_cannot_enter_power_input(self) -> None:
         pump_power = yaml_block(
@@ -89,9 +85,6 @@ class PumpIpwmContractTest(unittest.TestCase):
         )
         self.assertIn("address: 2113", flow_switch)
         self.assertIn("offset: 4", flow_switch)
-        # R2115 is byte 4/5 of the shared R2113-R2115 response. Keep the
-        # sensor on the same three-register span as gas_return_temp; a one-
-        # register response is only two bytes and cannot satisfy offset 4.
         self.assertIn("register_count: 3", flow_switch)
         self.assertNotIn("register_count: 1", flow_switch)
         self.assertNotIn("address: 2115", flow_switch)
