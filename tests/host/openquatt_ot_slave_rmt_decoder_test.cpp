@@ -191,6 +191,16 @@ int main() {
   assert(decoded.error == DecodeError::GLITCH);
   assert(decoded.failure_pulse_index == 1U);
 
+  auto below_short_window = nominal;
+  below_short_window.pulses[below_short_window.find_duration(500U)].duration_us = 379U;
+  decoded = decode(below_short_window.pulses, below_short_window.size, InputPolarity::ACTIVE_HIGH);
+  assert(decoded.error == DecodeError::GLITCH);
+
+  auto above_short_window = nominal;
+  above_short_window.pulses[above_short_window.find_duration(500U)].duration_us = 621U;
+  decoded = decode(above_short_window.pulses, above_short_window.size, InputPolarity::ACTIVE_HIGH);
+  assert(decoded.error == DecodeError::TIMING);
+
   auto invalid_timing = nominal;
   invalid_timing.pulses[invalid_timing.find_duration(1000U)].duration_us = 899U;
   decoded = decode(invalid_timing.pulses, invalid_timing.size, InputPolarity::ACTIVE_HIGH);
