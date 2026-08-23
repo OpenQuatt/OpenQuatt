@@ -1440,6 +1440,9 @@
     "otbResponseCount",
     "otbTransportErrorCount",
     "otbResponseTimeoutCount",
+    "externalHeatDemandSource",
+    "externalHeatDemandSelected",
+    "powerHouseDemandSource",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestOtaUrl", "firmwareTestOtaMd5Url", "installFirmwareTestOta"];
