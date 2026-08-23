@@ -124,6 +124,46 @@ class CrashSymbolicationWorkflowTests(unittest.TestCase):
         )
         self.assertIn('${{ needs.validate-pr-test-build.outputs.head_sha }}', pr)
 
+    def test_pr_metadata_publish_revalidates_current_pr_state(self) -> None:
+        workflow = (
+            ROOT / ".github/workflows/pr-test-firmware-publish.yml"
+        ).read_text(encoding="utf-8")
+        revalidation = workflow.index(
+            "Revalidate PR before durable metadata publication"
+        )
+        metadata_publish = workflow.index(
+            "Publish immutable firmware build metadata", revalidation
+        )
+        release_publish = workflow.index(
+            "Publish current PR test release", metadata_publish
+        )
+        self.assertLess(revalidation, metadata_publish)
+        self.assertLess(metadata_publish, release_publish)
+
+        revalidation_block = workflow[revalidation:metadata_publish]
+        for token in (
+            'gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}"',
+            "'.state'",
+            'any(.name == "test-firmware")',
+            "'.head.sha'",
+            "'.head.repo.full_name'",
+            "'.base.repo.full_name'",
+            "'.base.ref'",
+            '!= "${HEAD_SHA}"',
+            '!= "${HEAD_REPOSITORY}"',
+            '!= "${GITHUB_REPOSITORY}"',
+            '!= "${BASE_REF}"',
+        ):
+            self.assertIn(token, revalidation_block)
+
+        release_block = workflow[release_publish:]
+        self.assertIn(
+            'gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}"',
+            release_block,
+        )
+        self.assertIn('any(.name == "test-firmware")', release_block)
+        self.assertIn("'.head.sha'", release_block)
+
     def test_build_jobs_do_not_inherit_release_write_credentials(self) -> None:
         shared = (ROOT / ".github/workflows/esphome-build.yml").read_text(
             encoding="utf-8"

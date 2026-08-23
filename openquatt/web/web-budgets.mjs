@@ -8,8 +8,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // source-bound supply-temperature calibration status and results,
     // its read-only sensor-correction summary, calibration backup/restore,
     // the read-only ODU EEPROM service export, API ingress source controls,
-    // and concise CM100 boiler test phase copy (FLOW_SETTLING/BOILER_SETTLING/MEASURING/COOLDOWN).
-    raw: 902_000,
+    // concise CM100 boiler test phase copy (FLOW_SETTLING/BOILER_SETTLING/MEASURING/COOLDOWN),
+    // and the explicit crash-telemetry disclosure with its example payload.
+    raw: 904_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

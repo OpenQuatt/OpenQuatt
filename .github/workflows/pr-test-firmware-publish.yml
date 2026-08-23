@@ -186,6 +186,25 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
 
+      - name: Revalidate PR before durable metadata publication
+        env:
+          BASE_REF: ${{ needs.validate-pr-test-build.outputs.base_ref }}
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REPOSITORY: ${{ needs.validate-pr-test-build.outputs.head_repository }}
+          HEAD_SHA: ${{ needs.validate-pr-test-build.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.validate-pr-test-build.outputs.pr_number }}
+        run: |
+          PR_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          if [[ "$(jq -r '.state' <<< "${PR_JSON}")" != "open" ]] || \
+             ! jq -e '.labels | any(.name == "test-firmware")' <<< "${PR_JSON}" >/dev/null || \
+             [[ "$(jq -r '.head.sha' <<< "${PR_JSON}")" != "${HEAD_SHA}" ]] || \
+             [[ "$(jq -r '.head.repo.full_name' <<< "${PR_JSON}")" != "${HEAD_REPOSITORY}" ]] || \
+             [[ "$(jq -r '.base.repo.full_name' <<< "${PR_JSON}")" != "${GITHUB_REPOSITORY}" ]] || \
+             [[ "$(jq -r '.base.ref' <<< "${PR_JSON}")" != "${BASE_REF}" ]]; then
+            echo "PR publication gate changed before durable metadata publication." >&2
+            exit 1
+          fi
+
       - name: Publish immutable firmware build metadata
         env:
           GH_TOKEN: ${{ github.token }}
