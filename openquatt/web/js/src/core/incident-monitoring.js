@@ -149,6 +149,16 @@ const FALLBACK_BLOCK_LABELS = Object.freeze([
   "Aanvoertemperatuur niet beschikbaar",
   "Ketelbeveiliging geeft niet vrij",
 ]);
+const PUMP_IPWM_STATUS_LABELS = Object.freeze({
+  unknown: "Onbekend",
+  pwm_short: "PWM-interface kortgesloten",
+  standby: "Stand-by",
+  running: "Pomp draait",
+  pump_on_abnormal: "PumpOnAbnormal",
+  pump_off_abnormal: "PumpOffAbnormal",
+  pump_off_failure: "PumpOffFailure",
+  pwm_open: "PWM-interface open",
+});
 
 const isObject = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const normalizeInteger = (value, fallback = null) => {
@@ -174,6 +184,46 @@ function technicalIncidentCode(id) {
   const numericId = Number(id);
   if (!Number.isInteger(numericId) || numericId < 1 || numericId > 48) return "";
   return `R${2119 + Math.floor((numericId - 1) / 16)}.b${(numericId - 1) % 16}`;
+}
+
+export function getIncidentTechnicalCode(incident = {}) {
+  const register = normalizeInteger(incident.register ?? incident.register_address);
+  const bit = normalizeInteger(incident.bit);
+  if (register >= 2119 && register <= 2121 && bit >= 0 && bit <= 15) {
+    return `R${register}.b${bit}`;
+  }
+  return technicalIncidentCode(incident.id);
+}
+
+export function getPumpIncidentContextRows(incident = {}, pumpContext = null) {
+  const isPumpIncident = Number(incident.id) === 46
+    || (Number(incident.register) === 2121 && Number(incident.bit) === 13);
+  if (!isPumpIncident || !isObject(pumpContext)) return [];
+
+  const rows = [];
+  const onOff = (value) => value ? "AAN" : "UIT";
+  if (typeof pumpContext.requestOn === "boolean") {
+    rows.push(["Pompaanvraag (OpenQuatt) · R2010.b12", onOff(pumpContext.requestOn)]);
+  }
+  if (typeof pumpContext.relayOn === "boolean") {
+    rows.push(["Pomprelais · R2108.b11", onOff(pumpContext.relayOn)]);
+  }
+  if (typeof pumpContext.flowSwitchOn === "boolean") {
+    rows.push(["Flowswitch · R2115.b13", onOff(pumpContext.flowSwitchOn)]);
+  }
+  const statusKey = String(pumpContext.ipwmStatus || "unknown");
+  if (pumpContext.feedbackRaw !== null || statusKey !== "unknown") {
+    const raw = pumpContext.feedbackRaw !== null ? `${pumpContext.feedbackRaw} raw` : "Raw onbekend";
+    const status = PUMP_IPWM_STATUS_LABELS[statusKey] || statusKey;
+    rows.push(["iPWM-feedback · R2137", `${raw} · ${status}`]);
+  }
+  if (pumpContext.pumpPowerW !== null) {
+    rows.push(["Afgeleid pompvermogen", `${pumpContext.pumpPowerW.toLocaleString("nl-NL")} W`]);
+  }
+  if (pumpContext.flowLph !== null) {
+    rows.push(["Flow · R2138", `${pumpContext.flowLph.toLocaleString("nl-NL")} L/h`]);
+  }
+  return rows;
 }
 
 export function getIncidentDisplayLabel(incident = {}) {
@@ -333,6 +383,7 @@ function normalizeIncident(raw, subject) {
     occurrenceCount: normalizeInteger(runtime.occurrence_count, 0),
     register: normalizeInteger(definition.register_address),
     bit: normalizeInteger(definition.bit),
+    technicalDescription: String(definition.source_description || "").trim(),
     recoveryCondition: String(definition.recovery_condition || "").trim(),
     userAction: String(definition.user_action || "").trim(),
   };
@@ -378,11 +429,32 @@ function normalizeHeatPump(raw) {
     mustStop,
     faultActive: normalizeBoolean(raw.fault_active),
     stopConfirmationPending: normalizeBoolean(raw.stop_confirmation_pending),
+    pumpContext: normalizePumpContext(raw.pump_context),
     lastActionResult,
     actionResults,
     incidents: Array.isArray(raw.incidents)
       ? raw.incidents.map((incident) => normalizeIncident(incident, subject)).filter(Boolean)
       : [],
+  };
+}
+
+function normalizePumpContext(raw) {
+  if (!isObject(raw)) return null;
+  const optionalNumber = (value) => {
+    if (value === null || value === undefined || value === "") return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+  };
+  return {
+    requestOn: normalizeOptionalBoolean(raw.request_on),
+    relayOn: normalizeOptionalBoolean(raw.relay_on),
+    flowSwitchOn: normalizeOptionalBoolean(raw.flow_switch_on),
+    feedbackRaw: raw.ipwm_feedback_raw === null || raw.ipwm_feedback_raw === undefined
+      ? null
+      : normalizeInteger(raw.ipwm_feedback_raw),
+    ipwmStatus: String(raw.ipwm_status || "unknown"),
+    pumpPowerW: optionalNumber(raw.pump_power_w),
+    flowLph: optionalNumber(raw.flow_lph),
   };
 }
 

@@ -98,7 +98,9 @@ int main() {
   state.record_log_message(1020, "opentherm", "Protocol error occured while receiving response: NO_CHANGE_TOO_LONG");
   state.record_log_message(1030, "opentherm", "Protocol error occured while receiving response: INVALID_STOP_BIT");
   state.record_log_message(1040, "opentherm", "Protocol error occured while receiving response: PARITY_ERROR");
-  state.record_log_message(1050, "opentherm", "Timeout while waiting for response from device");
+  state.record_log_message(1050, "opentherm",
+                           "Timeout while waiting for response from device: no frame captured before the receive "
+                           "deadline");
   state.record_log_message(1060, "opentherm", "Hub timeout triggered during send");
   state.record_log_message(1070, "opentherm", "Hub timeout triggered during receive");
   state.record_log_message(1080, "opentherm", "Error occured while manipulating timer (TIMER_START_ERROR): ESP_FAIL");

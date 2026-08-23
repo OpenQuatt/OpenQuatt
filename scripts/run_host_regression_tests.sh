@@ -36,6 +36,9 @@ python3 "${repo_root}/scripts/tests/test_energy_history_memory_contract.py"
 echo "[run] incident manager action contract"
 python3 "${repo_root}/scripts/tests/test_incident_manager_action_contract.py"
 
+echo "[run] pump iPWM contract"
+python3 "${repo_root}/scripts/tests/test_pump_ipwm_contract.py"
+
 echo "[run] internal heap placement contract"
 python3 "${repo_root}/scripts/tests/test_internal_heap_contract.py"
 

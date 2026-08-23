@@ -244,6 +244,16 @@ struct OpenThermError {
   uint8_t bit_pos;
 };
 
+struct ConversationTiming {
+  bool request_started{false};
+  bool request_completed{false};
+  bool response_captured{false};
+  uint32_t request_started_us{0};
+  uint32_t request_completed_us{0};
+  uint32_t response_captured_us{0};
+  uint32_t response_deadline_us{0};
+};
+
 /**
  * Opentherm static class that supports either listening or sending Opentherm data packets in the same time
  */
@@ -302,11 +312,23 @@ class OpenTherm {
   void stop();
 
   /**
+   * Atomically claim the final ESP32 RMT timing snapshot while stopping the conversation.
+   * Returns false on platforms without RMT timing data.
+   */
+  bool stop(ConversationTiming& timing);
+
+  /**
    * Get protocol error details in case a protocol error occured.
    * @param error reference to data structure to which fill the error details
    * @return true if protocol error occured during last conversation, false otherwise.
    */
   bool get_protocol_error(OpenThermError& error);
+
+  /**
+   * Return wire-level timestamps for the current or most recently completed ESP32 RMT conversation.
+   * Returns false on platforms without RMT timing data.
+   */
+  bool get_conversation_timing(ConversationTiming& timing);
 
   /**
    * Use this function to check whether send() function already finished sending data packed to line.
@@ -407,6 +429,12 @@ class OpenTherm {
   volatile bool rmt_frame_ready_{false};
   volatile uint32_t rmt_frame_completed_us_{0};
   volatile bool rmt_tx_active_{false};
+  volatile bool rmt_request_started_{false};
+  volatile bool rmt_request_completed_{false};
+  volatile bool rmt_response_captured_{false};
+  volatile uint32_t rmt_request_started_us_{0};
+  volatile uint32_t rmt_request_completed_us_{0};
+  volatile uint32_t rmt_response_captured_us_{0};
   uint32_t rmt_tx_deadline_us_{0};
   uint32_t receive_deadline_us_{0};
 #endif

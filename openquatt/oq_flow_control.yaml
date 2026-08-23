@@ -170,8 +170,7 @@ number:
     step: 0.001
     restore_value: true
     optimistic: true
-    # Default increased for more robust control in the current hydraulic setup.
-    initial_value: 0.03
+    initial_value: ${oq_flow_kp_default}
 
   - platform: template
     id: oq_flow_ki
@@ -184,7 +183,7 @@ number:
     step: 0.0001
     restore_value: true
     optimistic: true
-    initial_value: 0.0008
+    initial_value: ${oq_flow_ki_default}
 
 # ----------------------------
 # CONFIG: Flow Control Mode

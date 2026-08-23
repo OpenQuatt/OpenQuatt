@@ -72,7 +72,9 @@ void OpenTherm::listen() {
   this->bit_pos_ = 0;
 
 #ifdef USE_ESP32
+  portENTER_CRITICAL(&this->rmt_mux_);
   this->receive_deadline_us_ = micros() + static_cast<uint32_t>(this->device_timeout_) * 1000U;
+  portEXIT_CRITICAL(&this->rmt_mux_);
   if (!this->arm_esp32_rmt_()) {
     this->timer_error_ = ESP_FAIL;
     this->timer_error_type_ = TimerErrorType::TIMER_START_ERROR;
@@ -132,22 +134,57 @@ bool OpenTherm::get_protocol_error(OpenThermError& error) {
   return true;
 }
 
+bool OpenTherm::get_conversation_timing(ConversationTiming& timing) {
+#ifdef USE_ESP32
+  portENTER_CRITICAL(&this->rmt_mux_);
+  timing.request_started = this->rmt_request_started_;
+  timing.request_completed = this->rmt_request_completed_;
+  timing.response_captured = this->rmt_response_captured_;
+  timing.request_started_us = this->rmt_request_started_us_;
+  timing.request_completed_us = this->rmt_request_completed_us_;
+  timing.response_captured_us = this->rmt_response_captured_us_;
+  timing.response_deadline_us = this->receive_deadline_us_;
+  portEXIT_CRITICAL(&this->rmt_mux_);
+  return timing.request_started;
+#else
+  timing = {};
+  return false;
+#endif
+}
+
 void OpenTherm::stop() {
+  ConversationTiming timing;
+  this->stop(timing);
+}
+
+bool OpenTherm::stop(ConversationTiming& timing) {
   this->stop_timer_();
+  bool has_timing = false;
 #ifdef USE_ESP32
   // Invalidate both RMT callbacks before cancelling either channel. Without
   // this claim, a TX-complete ISR could arm RX between the two cancellations.
   portENTER_CRITICAL(&this->rmt_mux_);
   this->mode_ = OperationMode::IDLE;
+  timing.request_started = this->rmt_request_started_;
+  timing.request_completed = this->rmt_request_completed_;
+  timing.response_captured = this->rmt_response_captured_;
+  timing.request_started_us = this->rmt_request_started_us_;
+  timing.request_completed_us = this->rmt_request_completed_us_;
+  timing.response_captured_us = this->rmt_response_captured_us_;
+  timing.response_deadline_us = this->receive_deadline_us_;
+  has_timing = timing.request_started;
   portEXIT_CRITICAL(&this->rmt_mux_);
   this->cancel_esp32_rmt_();
   this->cancel_esp32_rmt_tx_();
+#else
+  timing = {};
 #endif
   // A runtime transport change can stop an in-flight request. Always restore
   // the master output to its initialized idle level instead of leaving the
   // final Manchester half-bit asserted on the physical interface.
   this->out_pin_->digital_write(true);
   this->mode_ = OperationMode::IDLE;
+  return has_timing;
 }
 
 void OpenTherm::process() {
@@ -455,6 +492,12 @@ bool OpenTherm::restore_esp32_rmt_tx_idle_() {
 }
 
 bool OpenTherm::start_esp32_rmt_tx_() {
+  portENTER_CRITICAL(&this->rmt_mux_);
+  this->rmt_request_started_ = false;
+  this->rmt_request_completed_ = false;
+  this->rmt_response_captured_ = false;
+  portEXIT_CRITICAL(&this->rmt_mux_);
+
   if (this->rmt_tx_channel_ == nullptr || this->rmt_tx_encoder_ == nullptr) {
     ESP_LOGE(TAG, "RMT TX is not initialized");
     return false;
@@ -472,6 +515,12 @@ bool OpenTherm::start_esp32_rmt_tx_() {
   portENTER_CRITICAL(&this->rmt_mux_);
   this->rmt_tx_active_ = true;
   const uint32_t tx_started_us = micros();
+  this->rmt_request_started_ = true;
+  this->rmt_request_completed_ = false;
+  this->rmt_response_captured_ = false;
+  this->rmt_request_started_us_ = tx_started_us;
+  this->rmt_request_completed_us_ = 0;
+  this->rmt_response_captured_us_ = 0;
   this->rmt_tx_deadline_us_ = tx_started_us + RMT_TX_TIMEOUT_US;
   this->receive_deadline_us_ = tx_started_us +
                                static_cast<uint32_t>(RMT_TX_SYMBOLS * 2U * rmt_encoder::HALF_BIT_DURATION_US) +
@@ -486,6 +535,7 @@ bool OpenTherm::start_esp32_rmt_tx_() {
   if (result != ESP_OK) {
     portENTER_CRITICAL(&this->rmt_mux_);
     this->rmt_tx_active_ = false;
+    this->rmt_request_started_ = false;
     portEXIT_CRITICAL(&this->rmt_mux_);
     ESP_LOGE(TAG, "Failed to start RMT TX: %s", esp_err_to_name(result));
     this->timer_error_ = result;
@@ -586,7 +636,10 @@ bool IRAM_ATTR OpenTherm::rmt_rx_done_callback_(rmt_channel_handle_t, const rmt_
   if (instance->rmt_armed_ && instance->mode_ == OperationMode::LISTEN) {
     instance->rmt_symbol_count_ = event->num_symbols < RMT_CAPTURE_SYMBOLS ? event->num_symbols : RMT_CAPTURE_SYMBOLS;
     instance->rmt_armed_ = false;
-    instance->rmt_frame_completed_us_ = micros();
+    const uint32_t completed_us = micros();
+    instance->rmt_frame_completed_us_ = completed_us;
+    instance->rmt_response_captured_us_ = completed_us;
+    instance->rmt_response_captured_ = true;
     instance->rmt_frame_ready_ = true;
     // Claim the completed frame immediately while keeping the bounded
     // Manchester decode in the main loop.
@@ -605,6 +658,8 @@ bool IRAM_ATTR OpenTherm::rmt_tx_done_callback_(rmt_channel_handle_t, const rmt_
   portENTER_CRITICAL_ISR(&instance->rmt_mux_);
   if (instance->rmt_tx_active_ && instance->mode_ == OperationMode::WRITE) {
     instance->rmt_tx_active_ = false;
+    instance->rmt_request_completed_us_ = micros();
+    instance->rmt_request_completed_ = true;
     instance->rmt_symbol_count_ = 0;
     instance->rmt_frame_ready_ = false;
     instance->rmt_frame_completed_us_ = 0;
@@ -688,7 +743,10 @@ void OpenTherm::process_esp32_rmt_() {
   }
 
   this->stop_timer_();
-  const rmt_decoder::DecodeResult result = rmt_decoder::decode(pulses, pulse_count);
+  // The OpenQuatt boiler input front-end maps an active OpenTherm level to a
+  // high GPIO level. Keep that hardware polarity outside the protocol decoder.
+  const rmt_decoder::DecodeResult result =
+      rmt_decoder::decode(pulses, pulse_count, rmt_decoder::InputPolarity::ACTIVE_HIGH);
   if (result.error != rmt_decoder::DecodeError::NONE) {
     const char* decode_error = "unknown";
     switch (result.error) {
