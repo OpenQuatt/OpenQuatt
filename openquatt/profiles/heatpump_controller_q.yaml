@@ -182,6 +182,8 @@ openquatt_flow_filter_probe:
   device_class: volume_flow_rate
   state_class: measurement
   accuracy_decimals: 1
+  filters:
+    - throttle_average: 10s
   pin:
     number: ${hpcq_flow_pin}
     mode:
@@ -195,12 +197,16 @@ openquatt_flow_filter_probe:
     icon: mdi:waves
     device_class: volume_flow_rate
     entity_category: diagnostic
+    filters:
+      - throttle_average: 10s
   pulse_20:
     id: oq_flow_probe_pulse_20
     name: "Controller Flow test PULSE 20us"
     icon: mdi:waves
     device_class: volume_flow_rate
     entity_category: diagnostic
+    filters:
+      - throttle_average: 10s
 
 interval:
   - interval: 5s
