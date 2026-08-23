@@ -1,0 +1,254 @@
+name: Reconstruct and Symbolize Crash
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_metadata_url:
+        description: Canonical raw GitHub URL of the immutable build metadata JSON
+        required: true
+        type: string
+      source_repository:
+        description: Exact GitHub owner/repository captured by the firmware
+        required: true
+        type: string
+        default: OpenQuatt/OpenQuatt
+      source_commit:
+        description: Full 40-character source commit captured by the firmware
+        required: true
+        type: string
+      build_epoch:
+        description: Deterministic Unix build epoch captured by the firmware
+        required: true
+        type: string
+      target_config:
+        description: Repo-relative target config captured by the firmware
+        required: true
+        type: string
+        default: configs/heatpump_controller_q/duo_wifi.yaml
+      expected_build_id:
+        description: Full captured application ELF SHA-256
+        required: true
+        type: string
+      captured_firmware_version:
+        description: Exact captured_firmware_version from the crash event
+        required: true
+        type: string
+      captured_release_channel:
+        description: Exact captured_release_channel from the crash event
+        required: true
+        type: string
+      addresses:
+        description: Comma- or space-separated crash addresses (0x...)
+        required: true
+        type: string
+      allow_untrusted_repository:
+        description: Explicitly allow executing build scripts from another repository
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  reconstruct-and-symbolize:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate captured identity and source repository policy
+        env:
+          ALLOW_UNTRUSTED_REPOSITORY: ${{ inputs.allow_untrusted_repository }}
+          BUILD_EPOCH: ${{ inputs.build_epoch }}
+          BUILD_ID: ${{ inputs.expected_build_id }}
+          BUILD_METADATA_URL: ${{ inputs.build_metadata_url }}
+          BUILD_TARGET: ${{ inputs.target_config }}
+          CAPTURED_FIRMWARE_VERSION: ${{ inputs.captured_firmware_version }}
+          CAPTURED_RELEASE_CHANNEL: ${{ inputs.captured_release_channel }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+        run: |
+          SOURCE_COMMIT="${SOURCE_COMMIT,,}"
+          BUILD_ID="${BUILD_ID,,}"
+          if [[ ! "${SOURCE_REPOSITORY}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "source_repository must be an owner/repository name." >&2
+            exit 1
+          fi
+          SOURCE_OWNER="${SOURCE_REPOSITORY%%/*}"
+          SOURCE_NAME="${SOURCE_REPOSITORY#*/}"
+          if [[ "${SOURCE_OWNER}" == "." || "${SOURCE_OWNER}" == ".." ||
+                "${SOURCE_NAME}" == "." || "${SOURCE_NAME}" == ".." ]]; then
+            echo "source_repository contains an invalid path component." >&2
+            exit 1
+          fi
+          if [[ ! "${SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_commit must be a full 40-character Git SHA." >&2
+            exit 1
+          fi
+          if [[ ! "${BUILD_ID}" =~ ^[0-9a-f]{64}$ || "${BUILD_ID}" == "$(printf '0%.0s' {1..64})" ]]; then
+            echo "expected_build_id must be a non-zero 64-character SHA-256." >&2
+            exit 1
+          fi
+          if [[ ! "${BUILD_EPOCH}" =~ ^(0|[1-9][0-9]{0,9})$ ]] ||
+             [[ ${#BUILD_EPOCH} -eq 10 && "${BUILD_EPOCH}" > "4294967295" ]]; then
+            echo "build_epoch must fit in an unsigned 32-bit timestamp." >&2
+            exit 1
+          fi
+          if [[ ! "${BUILD_TARGET}" =~ ^configs/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*\.ya?ml$ ]] ||
+             [[ "${BUILD_TARGET}" =~ (^|/)\.\.?(/|$) ]]; then
+            echo "target_config must be a repo-relative YAML path under configs/." >&2
+            exit 1
+          fi
+          if [[ -z "${CAPTURED_FIRMWARE_VERSION}" || -z "${CAPTURED_RELEASE_CHANNEL}" ]] ||
+             [[ "${CAPTURED_FIRMWARE_VERSION}" == *$'\n'* || "${CAPTURED_RELEASE_CHANNEL}" == *$'\n'* ]]; then
+            echo "Captured firmware version and release channel must be non-empty single lines." >&2
+            exit 1
+          fi
+          if [[ "${SOURCE_REPOSITORY}" != "${GITHUB_REPOSITORY}" &&
+                "${ALLOW_UNTRUSTED_REPOSITORY}" != "true" ]]; then
+            echo "A fork checkout executes repository-controlled build scripts." >&2
+            echo "Set allow_untrusted_repository only after reviewing that exact commit." >&2
+            exit 1
+          fi
+          EXPECTED_URL_PREFIX="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/firmware-build-metadata/records/${SOURCE_REPOSITORY}/${SOURCE_COMMIT}/${BUILD_ID}/"
+          EXPECTED_URL_SUFFIX=".${SOURCE_COMMIT}.${BUILD_ID}.build.json"
+          METADATA_NAME="${BUILD_METADATA_URL#${EXPECTED_URL_PREFIX}}"
+          if [[ "${METADATA_NAME}" == "${BUILD_METADATA_URL}" ||
+                ! "${METADATA_NAME}" =~ ^[a-z0-9][a-z0-9_-]*\.[0-9a-f]{40}\.[0-9a-f]{64}\.build\.json$ ||
+                "${BUILD_METADATA_URL}" != "${EXPECTED_URL_PREFIX}${METADATA_NAME}" ||
+                "${METADATA_NAME}" != *"${EXPECTED_URL_SUFFIX}" ]]; then
+            echo "build_metadata_url must be the canonical build-addressed GitHub record URL." >&2
+            exit 1
+          fi
+          echo "CAPTURED_SOURCE_COMMIT=${SOURCE_COMMIT}" >> "${GITHUB_ENV}"
+          echo "CAPTURED_BUILD_ID=${BUILD_ID}" >> "${GITHUB_ENV}"
+
+      - name: Checkout trusted reconstruction tooling
+        uses: actions/checkout@v6
+        with:
+          path: tooling
+          persist-credentials: false
+
+      - name: Stage trusted tooling outside the firmware source workspace
+        run: mv tooling "${RUNNER_TEMP}/reconstruction-tooling"
+
+      - name: Download immutable build metadata
+        env:
+          BUILD_METADATA_URL: ${{ inputs.build_metadata_url }}
+        run: |
+          curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error \
+            --max-filesize 1048576 \
+            --output "${RUNNER_TEMP}/build-metadata.json" \
+            "${BUILD_METADATA_URL}"
+
+      - name: Cross-check metadata against every captured build field
+        env:
+          BUILD_EPOCH: ${{ inputs.build_epoch }}
+          BUILD_TARGET: ${{ inputs.target_config }}
+          CAPTURED_FIRMWARE_VERSION: ${{ inputs.captured_firmware_version }}
+          CAPTURED_RELEASE_CHANNEL: ${{ inputs.captured_release_channel }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+        run: |
+          python3 "${RUNNER_TEMP}/reconstruction-tooling/scripts/reconstruct_firmware_elf.py" \
+            --source-root . \
+            --metadata "${RUNNER_TEMP}/build-metadata.json" \
+            --captured-build-id "${CAPTURED_BUILD_ID}" \
+            --captured-source-repository "${SOURCE_REPOSITORY}" \
+            --captured-source-commit "${CAPTURED_SOURCE_COMMIT}" \
+            --captured-build-epoch "${BUILD_EPOCH}" \
+            --captured-build-target "${BUILD_TARGET}" \
+            --captured-firmware-version "${CAPTURED_FIRMWARE_VERSION}" \
+            --captured-release-channel "${CAPTURED_RELEASE_CHANNEL}" \
+            --validate-metadata-only
+
+      - name: Checkout exact firmware source
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.source_repository }}
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify exact source checkout before setup or installation
+        run: |
+          ACTUAL_SOURCE_COMMIT="$(git rev-parse HEAD)"
+          if [[ "${ACTUAL_SOURCE_COMMIT}" != "${CAPTURED_SOURCE_COMMIT}" ]]; then
+            echo "Checked-out source does not match the captured full commit." >&2
+            exit 1
+          fi
+
+      - name: Verify captured source build inputs before setup or installation
+        env:
+          BUILD_EPOCH: ${{ inputs.build_epoch }}
+          BUILD_TARGET: ${{ inputs.target_config }}
+          CAPTURED_FIRMWARE_VERSION: ${{ inputs.captured_firmware_version }}
+          CAPTURED_RELEASE_CHANNEL: ${{ inputs.captured_release_channel }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+        run: |
+          python3 "${RUNNER_TEMP}/reconstruction-tooling/scripts/reconstruct_firmware_elf.py" \
+            --source-root . \
+            --metadata "${RUNNER_TEMP}/build-metadata.json" \
+            --captured-build-id "${CAPTURED_BUILD_ID}" \
+            --captured-source-repository "${SOURCE_REPOSITORY}" \
+            --captured-source-commit "${CAPTURED_SOURCE_COMMIT}" \
+            --captured-build-epoch "${BUILD_EPOCH}" \
+            --captured-build-target "${BUILD_TARGET}" \
+            --captured-firmware-version "${CAPTURED_FIRMWARE_VERSION}" \
+            --captured-release-channel "${CAPTURED_RELEASE_CHANNEL}" \
+            --validate-source-only
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.23.2"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12.14"
+          cache: pip
+          cache-dependency-path: .github/requirements-esphome.txt
+
+      - name: Install captured source build dependencies
+        run: python -m pip install --upgrade --requirement .github/requirements-esphome.txt
+
+      - name: Reconstruct and verify exact ELF
+        env:
+          BUILD_EPOCH: ${{ inputs.build_epoch }}
+          BUILD_TARGET: ${{ inputs.target_config }}
+          CAPTURED_FIRMWARE_VERSION: ${{ inputs.captured_firmware_version }}
+          CAPTURED_RELEASE_CHANNEL: ${{ inputs.captured_release_channel }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+        run: |
+          python3 "${RUNNER_TEMP}/reconstruction-tooling/scripts/reconstruct_firmware_elf.py" \
+            --source-root . \
+            --metadata "${RUNNER_TEMP}/build-metadata.json" \
+            --captured-build-id "${CAPTURED_BUILD_ID}" \
+            --captured-source-repository "${SOURCE_REPOSITORY}" \
+            --captured-source-commit "${CAPTURED_SOURCE_COMMIT}" \
+            --captured-build-epoch "${BUILD_EPOCH}" \
+            --captured-build-target "${BUILD_TARGET}" \
+            --captured-firmware-version "${CAPTURED_FIRMWARE_VERSION}" \
+            --captured-release-channel "${CAPTURED_RELEASE_CHANNEL}" \
+            --output "${RUNNER_TEMP}/firmware.elf" \
+            --result-json "${RUNNER_TEMP}/rebuild-result.json"
+
+      - name: Symbolize verified crash addresses
+        env:
+          ADDRESSES: ${{ inputs.addresses }}
+        run: |
+          python3 "${RUNNER_TEMP}/reconstruction-tooling/scripts/symbolize_firmware_crash.py" \
+            --rebuild-result "${RUNNER_TEMP}/rebuild-result.json" \
+            --expected-build-id "${CAPTURED_BUILD_ID}" \
+            "${ADDRESSES}" | tee "${RUNNER_TEMP}/symbolized.txt"
+          {
+            echo '## Verified crash symbolization'
+            echo
+            echo "ELF SHA-256: \`${CAPTURED_BUILD_ID}\`"
+            echo
+            echo '```text'
+            cat "${RUNNER_TEMP}/symbolized.txt"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      # Deliberately no artifact upload: the verified ELF remains runner-local.

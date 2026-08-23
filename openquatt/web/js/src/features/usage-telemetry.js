@@ -46,10 +46,45 @@ const USAGE_TELEMETRY_EXAMPLE_JSON = JSON.stringify({
   ram_log_history_enabled: true,
 }, null, 2);
 
+const CRASH_TELEMETRY_EXAMPLE_JSON = JSON.stringify({
+  schema_version: 1,
+  message_id: "304ace72-ad57-42b1-8c5b-8598ae7418da",
+  installation_id: "7df1c1f8-fc47-4ac8-b0d7-94d8c42d772f",
+  event: "crash",
+  timestamp_s: 1787290540,
+  uptime_s: 18342,
+  firmware_version: "v0.48.0",
+  release_channel: "dev",
+  current_build_id: "198e34bf1ad051107db928af5ba37ba186a6d37be17a956954b25277209fd953",
+  hardware_profile: "heatpump_controller_q",
+  topology: "duo",
+  connection: "wifi",
+  reset_reason: "panic",
+  crash: {
+    captured_build_id: "198e34bf1ad051107db928af5ba37ba186a6d37be17a956954b25277209fd953",
+    captured_source_repository: "OpenQuatt/OpenQuatt",
+    captured_source_commit: "a5c127aee5495c75eaa71a03ab2fabd968650b40",
+    captured_build_epoch: 1787289120,
+    captured_build_target: "configs/heatpump_controller_q/duo_wifi.yaml",
+    captured_firmware_version: "v0.48.0-dev.314+a5c127a",
+    captured_release_channel: "dev",
+    captured_by_current_build: true,
+    exception_type: "Fault",
+    reason: "LoadProhibited",
+    raw_cause: 28,
+    core: 0,
+    pc: "0x400fe12d",
+    fault_addr: "0x00000000",
+    backtrace: ["0x400fe12d", "0x40082819"],
+    other_core_backtrace: [],
+    backtrace_truncated: false,
+  },
+}, null, 2);
+
 export function renderUsageTelemetryConsent({ enabled, busy, settings = false }) {
   const scheduleCopy = settings
-    ? "Na inschakelen verstuurt OpenQuatt vrijwel direct en daarna ongeveer elk uur technische gegevens naar de OpenQuatt-loggingserver."
-    : "Na het afronden verstuurt OpenQuatt vrijwel direct en daarna ongeveer elk uur technische gegevens naar de OpenQuatt-loggingserver.";
+    ? "Na inschakelen verstuurt OpenQuatt vrijwel direct, daarna ongeveer elk uur en na een echte firmwarecrash beperkte technische gegevens naar de OpenQuatt-loggingserver."
+    : "Na het afronden verstuurt OpenQuatt vrijwel direct, daarna ongeveer elk uur en na een echte firmwarecrash beperkte technische gegevens naar de OpenQuatt-loggingserver.";
   const value = settings && enabled && hasEntity("usageTelemetryInstallationId")
     ? String(getEntityValue("usageTelemetryInstallationId") || "").trim()
     : "";
@@ -96,6 +131,7 @@ export function renderUsageTelemetryDisclosure({ collapsible = false, idPrefix =
           <li><strong>Platform</strong><span>Hardware, opstelling, verbinding en wifi-signaal</span></li>
           <li><strong>Configuratie</strong><span>Quatt Hybrid-versie, verwarmingsstrategie, flowbron en regelbronnen</span></li>
           <li><strong>Systeemstatus</strong><span>Geheugen, looptijd, chiptemperatuur en herstartreden</span></li>
+          <li><strong>Na een crash</strong><span>Crashreden, oorzaakcode, processorcore, foutadres indien bruikbaar, ruwe backtrace per core en de exacte firmwarebuild</span></li>
           <li><strong>Functies</strong><span>Aan/uit-status van CiC, OpenTherm-thermostaat, ketelondersteuning, MQTT-inputs en lokale historie; plus de ketelaansluiting (aan/uit of OpenTherm)</span></li>
         </ul>
       </section>
@@ -108,7 +144,7 @@ export function renderUsageTelemetryDisclosure({ collapsible = false, idPrefix =
           <li><strong>Identiteit</strong><span>Geen MAC-adres of netwerkadres</span></li>
           <li><strong>Wifi en toegang</strong><span>Nooit een wifi-netwerknaam, wifi-wachtwoord, gebruikersnaam, ander wachtwoord of inloggegevens</span></li>
           <li><strong>Installatiegedrag</strong><span>Geen verwarmingsmetingen of regelwaarden</span></li>
-          <li><strong>Lokale data</strong><span>Geen gemeten of ingestelde temperaturen, grenzen, MQTT-topics of logs</span></li>
+          <li><strong>Lokale data</strong><span>Geen gemeten of ingestelde temperaturen, grenzen, MQTT-topics of reguliere logs</span></li>
         </ul>
       </section>
     </div>
@@ -116,6 +152,11 @@ export function renderUsageTelemetryDisclosure({ collapsible = false, idPrefix =
       <summary>Voorbeeld van het verzonden bericht (JSON)</summary>
       <p>Voorbeeldwaarden; de velden en vorm komen overeen met het werkelijke bericht.</p>
       <pre><code>${escapeHtml(USAGE_TELEMETRY_EXAMPLE_JSON)}</code></pre>
+    </details>
+    <details class="oq-usage-payload-example">
+      <summary>Voorbeeld van een crashbericht (JSON)</summary>
+      <p>Alleen na een echte firmwarecrash. Ruwe adressen mogen uitsluitend tegen de exact overeenkomende firmwarebuild worden vertaald.</p>
+      <pre><code>${escapeHtml(CRASH_TELEMETRY_EXAMPLE_JSON)}</code></pre>
     </details>
     <p class="oq-usage-network-note">${renderOqIcon("server", "oq-usage-network-note-icon")} De OpenQuatt-loggingserver kan, zoals iedere internetdienst, technisch wel het bron-IP-adres zien. OpenQuatt slaat dit IP-adres niet op.</p>
   `;

@@ -10,11 +10,15 @@
 #include "esphome/core/defines.h"
 #ifdef USE_ESP32_CRASH_HANDLER
 #include <esp_attr.h>
+#include <esp_app_desc.h>
 #include <esp_system.h>
+#include <mbedtls/sha256.h>
 
 #include "esphome/components/esp32/crash_handler.h"
+#include "esphome/core/build_info_data.h"
 #endif
 #include "esphome/components/logger/logger.h"
+#include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 #include "esphome/core/time.h"
 
@@ -80,17 +84,30 @@ static bool header_matches_host_(const std::string& header_value, const std::str
 
 #ifdef USE_ESP32_CRASH_HANDLER
 static constexpr uint32_t CRASH_TIME_BREADCRUMB_MAGIC = 0x4F514348UL;  // OQCH
-static constexpr uint16_t CRASH_TIME_BREADCRUMB_VERSION = 1;
+static constexpr uint16_t CRASH_TIME_BREADCRUMB_VERSION = 2U;
 static constexpr uint32_t CRASH_TIME_BREADCRUMB_UPDATE_INTERVAL_MS = 15000UL;
-static constexpr uint32_t CRASH_REPORT_WAIT_TIMEOUT_MS = 120000UL;
+static constexpr uint16_t CRASH_TIME_BREADCRUMB_TIMESTAMP_VALID = 1U << 0U;
+static const uint32_t CRASH_SNAPSHOT_STORAGE_KEY = fnv1_hash("openquatt_crash_snapshot_store");
 
-struct CrashTimeBreadcrumb {
+struct CrashTimeBreadcrumbV1 {
   uint32_t magic;
   uint16_t version;
   uint16_t reserved;
   uint32_t epoch_s;
   uint32_t uptime_s;
   uint32_t sequence;
+  uint32_t crc;
+};
+
+struct CrashTimeBreadcrumb {
+  uint32_t magic;
+  uint16_t version;
+  uint16_t flags;
+  uint32_t epoch_s;
+  uint32_t uptime_s;
+  uint32_t sequence;
+  uint32_t legacy_crc_reserved;
+  CrashBuildIdentity build;
   uint32_t crc;
 };
 
@@ -106,15 +123,61 @@ static uint32_t fnv1a32(const void* data, size_t len) {
   return hash;
 }
 
-static uint32_t crash_time_breadcrumb_crc(const CrashTimeBreadcrumb& breadcrumb) {
-  CrashTimeBreadcrumb copy = breadcrumb;
-  copy.crc = 0;
+static uint32_t crash_time_breadcrumb_v1_crc(const CrashTimeBreadcrumbV1& breadcrumb) {
+  CrashTimeBreadcrumbV1 copy = breadcrumb;
+  copy.crc = 0U;
   return fnv1a32(&copy, sizeof(copy));
+}
+
+static uint32_t crash_time_breadcrumb_crc(const CrashTimeBreadcrumb& breadcrumb) {
+  return crash_crc32(&breadcrumb, offsetof(CrashTimeBreadcrumb, crc));
+}
+
+static bool crash_time_breadcrumb_v1_is_valid(const CrashTimeBreadcrumb& breadcrumb) {
+  CrashTimeBreadcrumbV1 legacy{};
+  std::memcpy(&legacy, &breadcrumb, sizeof(legacy));
+  return legacy.magic == CRASH_TIME_BREADCRUMB_MAGIC && legacy.version == 1U && epoch_is_sane(legacy.epoch_s) &&
+         legacy.crc == crash_time_breadcrumb_v1_crc(legacy);
 }
 
 static bool crash_time_breadcrumb_is_valid(const CrashTimeBreadcrumb& breadcrumb) {
   return breadcrumb.magic == CRASH_TIME_BREADCRUMB_MAGIC && breadcrumb.version == CRASH_TIME_BREADCRUMB_VERSION &&
-         epoch_is_sane(breadcrumb.epoch_s) && breadcrumb.crc == crash_time_breadcrumb_crc(breadcrumb);
+         breadcrumb.crc == crash_time_breadcrumb_crc(breadcrumb) &&
+         ((breadcrumb.flags & CRASH_TIME_BREADCRUMB_TIMESTAMP_VALID) == 0U || epoch_is_sane(breadcrumb.epoch_s));
+}
+
+static bool copy_optional_text_(char* destination, size_t destination_size, const char* source) {
+  if (destination == nullptr || destination_size == 0U || source == nullptr || source[0] == '\0') {
+    return false;
+  }
+  const size_t length = std::strlen(source);
+  return crash_copy_text(destination, destination_size, source, length);
+}
+
+static bool is_reconstructable_build_target_(const char* target) {
+  if (target == nullptr || std::strncmp(target, "configs/", 8U) != 0 || std::strstr(target, "..") != nullptr) {
+    return false;
+  }
+  const size_t length = std::strlen(target);
+  return (length > 5U && std::strcmp(target + length - 5U, ".yaml") == 0) ||
+         (length > 4U && std::strcmp(target + length - 4U, ".yml") == 0);
+}
+
+static void copy_build_identity_canonical_(CrashBuildIdentity* destination, const CrashBuildIdentity& source) {
+  if (destination == nullptr) {
+    return;
+  }
+  destination->flags = source.flags;
+  destination->build_epoch = source.build_epoch;
+  std::memcpy(destination->elf_sha256, source.elf_sha256, sizeof(destination->elf_sha256));
+  std::memcpy(destination->source_commit, source.source_commit, sizeof(destination->source_commit));
+  std::memcpy(destination->source_repository, source.source_repository, sizeof(destination->source_repository));
+  std::memcpy(destination->build_target, source.build_target, sizeof(destination->build_target));
+  std::memcpy(destination->firmware_version, source.firmware_version, sizeof(destination->firmware_version));
+  std::memcpy(destination->release_channel, source.release_channel, sizeof(destination->release_channel));
+  std::memcpy(destination->hardware_profile, source.hardware_profile, sizeof(destination->hardware_profile));
+  std::memcpy(destination->topology, source.topology, sizeof(destination->topology));
+  std::memcpy(destination->connection, source.connection, sizeof(destination->connection));
 }
 
 static const char* reset_reason_to_string(esp_reset_reason_t reason) {
@@ -549,31 +612,204 @@ void OpenQuattLogHistory::sync_time_state_() {
     this->time_rebased_ = true;
   }
 #ifdef USE_ESP32_CRASH_HANDLER
-  if (valid) {
+  if (!this->pending_crash_report_) {
     this->update_crash_time_breadcrumb_();
   }
 #endif
 }
 
+void OpenQuattLogHistory::load_current_build_identity_(CrashBuildIdentity* identity) const {
+  if (identity == nullptr) {
+    return;
+  }
+  *identity = CrashBuildIdentity{};
+#ifdef USE_ESP32_CRASH_HANDLER
+  char elf_sha256[CRASH_ELF_SHA256_HEX_LENGTH + 1U]{};
+  esp_app_get_elf_sha256(elf_sha256, sizeof(elf_sha256));
+  if (crash_is_hex_string(elf_sha256, CRASH_ELF_SHA256_HEX_LENGTH) &&
+      crash_copy_text(identity->elf_sha256, sizeof(identity->elf_sha256), elf_sha256, CRASH_ELF_SHA256_HEX_LENGTH)) {
+    identity->flags |= CRASH_BUILD_IDENTITY_ELF_SHA256_VALID;
+  }
+  if (crash_is_hex_string(this->build_source_commit_, CRASH_SOURCE_COMMIT_LENGTH) &&
+      crash_copy_text(identity->source_commit, sizeof(identity->source_commit), this->build_source_commit_,
+                      CRASH_SOURCE_COMMIT_LENGTH)) {
+    identity->flags |= CRASH_BUILD_IDENTITY_SOURCE_COMMIT_VALID;
+  }
+  if (copy_optional_text_(identity->source_repository, sizeof(identity->source_repository),
+                          this->build_source_repository_)) {
+    identity->flags |= CRASH_BUILD_IDENTITY_SOURCE_REPOSITORY_VALID;
+  }
+  if (is_reconstructable_build_target_(this->build_target_) &&
+      copy_optional_text_(identity->build_target, sizeof(identity->build_target), this->build_target_)) {
+    identity->flags |= CRASH_BUILD_IDENTITY_BUILD_TARGET_VALID;
+  }
+  if (this->build_epoch_ != 0U) {
+    identity->build_epoch = this->build_epoch_;
+    identity->flags |= CRASH_BUILD_IDENTITY_BUILD_EPOCH_VALID;
+  }
+  if (copy_optional_text_(identity->firmware_version, sizeof(identity->firmware_version), this->firmware_version_)) {
+    identity->flags |= CRASH_BUILD_IDENTITY_FIRMWARE_VERSION_VALID;
+  }
+  if (copy_optional_text_(identity->release_channel, sizeof(identity->release_channel), this->release_channel_)) {
+    identity->flags |= CRASH_BUILD_IDENTITY_RELEASE_CHANNEL_VALID;
+  }
+  if (copy_optional_text_(identity->hardware_profile, sizeof(identity->hardware_profile), this->hardware_profile_)) {
+    identity->flags |= CRASH_BUILD_IDENTITY_HARDWARE_PROFILE_VALID;
+  }
+  if (copy_optional_text_(identity->topology, sizeof(identity->topology), this->topology_)) {
+    identity->flags |= CRASH_BUILD_IDENTITY_TOPOLOGY_VALID;
+  }
+  if (copy_optional_text_(identity->connection, sizeof(identity->connection), this->connection_)) {
+    identity->flags |= CRASH_BUILD_IDENTITY_CONNECTION_VALID;
+  }
+#endif
+}
+
+bool OpenQuattLogHistory::lock_crash_() const {
+  return this->crash_mutex_ != nullptr && xSemaphoreTake(this->crash_mutex_, portMAX_DELAY) == pdTRUE;
+}
+
+void OpenQuattLogHistory::unlock_crash_() const { xSemaphoreGive(this->crash_mutex_); }
+
+bool OpenQuattLogHistory::load_crash_snapshot_() {
+  if (!this->crash_snapshot_ || !this->crash_pref_.load(this->crash_snapshot_.data())) {
+    return false;
+  }
+  if (!crash_snapshot_is_valid(*this->crash_snapshot_.data())) {
+    ESP_LOGW(TAG, "Ignoring invalid persisted crash snapshot");
+    *this->crash_snapshot_.data() = CrashSnapshot{};
+    crash_snapshot_finalize(this->crash_snapshot_.data());
+    return false;
+  }
+  return crash_snapshot_is_pending(*this->crash_snapshot_.data());
+}
+
+bool OpenQuattLogHistory::persist_crash_snapshot_(const CrashSnapshot& snapshot) {
+  if (!this->crash_snapshot_ || !this->crash_verify_ || !crash_snapshot_is_valid(snapshot) ||
+      global_preferences == nullptr || !this->crash_pref_.save(&snapshot) || !global_preferences->sync()) {
+    return false;
+  }
+  if (!this->crash_pref_.load(this->crash_verify_.data()) || !crash_snapshot_is_valid(*this->crash_verify_.data()) ||
+      std::memcmp(&snapshot, this->crash_verify_.data(), sizeof(snapshot)) != 0) {
+    ESP_LOGE(TAG, "Crash snapshot read-after-write verification failed");
+    return false;
+  }
+  *this->crash_snapshot_.data() = *this->crash_verify_.data();
+  return true;
+}
+
+bool OpenQuattLogHistory::has_pending_crash() const {
+  if (!this->lock_crash_()) {
+    return false;
+  }
+  const bool pending = this->crash_snapshot_ && crash_snapshot_is_pending(*this->crash_snapshot_.data());
+  this->unlock_crash_();
+  return pending;
+}
+
+bool OpenQuattLogHistory::copy_pending_crash(CrashSnapshot* out) const {
+  if (out == nullptr || !this->lock_crash_()) {
+    return false;
+  }
+  const bool pending = this->crash_snapshot_ && crash_snapshot_is_pending(*this->crash_snapshot_.data());
+  if (pending) {
+    *out = *this->crash_snapshot_.data();
+  }
+  this->unlock_crash_();
+  return pending;
+}
+
+bool OpenQuattLogHistory::clear_pending_crash_(const std::array<uint8_t, 16U>& crash_id, const char* action) {
+  if (!this->lock_crash_()) {
+    return false;
+  }
+  if (!this->crash_snapshot_ || !this->crash_clear_ || !crash_snapshot_is_pending(*this->crash_snapshot_.data()) ||
+      !crash_id_matches(this->crash_snapshot_.data()->crash_id, crash_id)) {
+    this->unlock_crash_();
+    return false;
+  }
+  CrashSnapshot* const cleared = this->crash_clear_.data();
+  *cleared = CrashSnapshot{};
+  crash_snapshot_finalize(cleared);
+  const bool persisted = this->persist_crash_snapshot_(*cleared);
+  this->unlock_crash_();
+  if (persisted) {
+    ESP_LOGD(TAG, "Crash snapshot %s after durable state update", action == nullptr ? "cleared" : action);
+  }
+  return persisted;
+}
+
+bool OpenQuattLogHistory::acknowledge_pending_crash(const std::array<uint8_t, 16U>& crash_id) {
+  return this->clear_pending_crash_(crash_id, "acknowledged");
+}
+
+bool OpenQuattLogHistory::discard_pending_crash(const std::array<uint8_t, 16U>& crash_id) {
+  return this->clear_pending_crash_(crash_id, "discarded");
+}
+
+std::string OpenQuattLogHistory::format_crash_id(const std::array<uint8_t, 16U>& crash_id) {
+  char uuid[37];
+  std::snprintf(uuid, sizeof(uuid), "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", crash_id[0],
+                crash_id[1], crash_id[2], crash_id[3], crash_id[4], crash_id[5], crash_id[6], crash_id[7], crash_id[8],
+                crash_id[9], crash_id[10], crash_id[11], crash_id[12], crash_id[13], crash_id[14], crash_id[15]);
+  return uuid;
+}
+
 #ifdef USE_ESP32_CRASH_HANDLER
 void OpenQuattLogHistory::load_crash_time_breadcrumb_() {
+  this->pending_crash_breadcrumb_loaded_ = false;
   this->pending_crash_breadcrumb_valid_ = false;
   this->pending_crash_epoch_s_ = 0;
   this->pending_crash_uptime_s_ = 0;
   this->pending_crash_breadcrumb_sequence_ = 0;
+  if (this->pending_crash_build_) {
+    *this->pending_crash_build_.data() = CrashBuildIdentity{};
+  }
 
-  if (!crash_time_breadcrumb_is_valid(crash_time_breadcrumb)) {
+  if (crash_time_breadcrumb_is_valid(crash_time_breadcrumb)) {
+    this->pending_crash_breadcrumb_loaded_ = true;
+    this->pending_crash_breadcrumb_valid_ = (crash_time_breadcrumb.flags & CRASH_TIME_BREADCRUMB_TIMESTAMP_VALID) != 0U;
+    this->pending_crash_epoch_s_ = crash_time_breadcrumb.epoch_s;
+    this->pending_crash_uptime_s_ = crash_time_breadcrumb.uptime_s;
+    this->pending_crash_breadcrumb_sequence_ = crash_time_breadcrumb.sequence;
+    if (this->pending_crash_build_) {
+      *this->pending_crash_build_.data() = crash_time_breadcrumb.build;
+    }
     return;
   }
 
+  if (!crash_time_breadcrumb_v1_is_valid(crash_time_breadcrumb)) {
+    return;
+  }
+  CrashTimeBreadcrumbV1 legacy{};
+  std::memcpy(&legacy, &crash_time_breadcrumb, sizeof(legacy));
+  this->pending_crash_breadcrumb_loaded_ = true;
   this->pending_crash_breadcrumb_valid_ = true;
-  this->pending_crash_epoch_s_ = crash_time_breadcrumb.epoch_s;
-  this->pending_crash_uptime_s_ = crash_time_breadcrumb.uptime_s;
-  this->pending_crash_breadcrumb_sequence_ = crash_time_breadcrumb.sequence;
+  this->pending_crash_epoch_s_ = legacy.epoch_s;
+  this->pending_crash_uptime_s_ = legacy.uptime_s;
+  this->pending_crash_breadcrumb_sequence_ = legacy.sequence;
+}
+
+void OpenQuattLogHistory::initialize_current_crash_time_breadcrumb_() {
+  CrashTimeBreadcrumb next{};
+  next.magic = CRASH_TIME_BREADCRUMB_MAGIC;
+  next.version = CRASH_TIME_BREADCRUMB_VERSION;
+  next.uptime_s = millis() / 1000UL;
+  next.sequence = this->pending_crash_breadcrumb_loaded_ ? (this->pending_crash_breadcrumb_sequence_ + 1U) : 1U;
+  this->load_current_build_identity_(&next.build);
+  if (this->time_is_valid_()) {
+    next.flags |= CRASH_TIME_BREADCRUMB_TIMESTAMP_VALID;
+    next.epoch_s = static_cast<uint32_t>(this->clock_->now().timestamp);
+  }
+  next.crc = crash_time_breadcrumb_crc(next);
+  crash_time_breadcrumb = next;
+  this->current_crash_breadcrumb_initialized_ = true;
+  this->last_crash_breadcrumb_update_ms_ = millis();
 }
 
 void OpenQuattLogHistory::update_crash_time_breadcrumb_() {
-  if (!this->time_is_valid_()) {
+  if (!this->current_crash_breadcrumb_initialized_) {
+    this->initialize_current_crash_time_breadcrumb_();
     return;
   }
 
@@ -583,14 +819,19 @@ void OpenQuattLogHistory::update_crash_time_breadcrumb_() {
     return;
   }
 
-  const auto now = this->clock_->now();
-  CrashTimeBreadcrumb next{};
-  next.magic = CRASH_TIME_BREADCRUMB_MAGIC;
-  next.version = CRASH_TIME_BREADCRUMB_VERSION;
-  next.reserved = 0;
-  next.epoch_s = static_cast<uint32_t>(now.timestamp);
+  CrashTimeBreadcrumb next = crash_time_breadcrumb;
+  if (!crash_time_breadcrumb_is_valid(next)) {
+    this->current_crash_breadcrumb_initialized_ = false;
+    this->initialize_current_crash_time_breadcrumb_();
+    return;
+  }
   next.uptime_s = now_ms / 1000UL;
-  next.sequence = crash_time_breadcrumb_is_valid(crash_time_breadcrumb) ? (crash_time_breadcrumb.sequence + 1) : 1;
+  ++next.sequence;
+  if (this->time_is_valid_()) {
+    next.flags |= CRASH_TIME_BREADCRUMB_TIMESTAMP_VALID;
+    next.epoch_s = static_cast<uint32_t>(this->clock_->now().timestamp);
+  }
+  next.crc = 0U;
   next.crc = crash_time_breadcrumb_crc(next);
   crash_time_breadcrumb = next;
   this->last_crash_breadcrumb_update_ms_ = now_ms;
@@ -613,14 +854,89 @@ void OpenQuattLogHistory::format_epoch_(uint32_t epoch_s, char* out, size_t out_
                 static_cast<unsigned>(time.second));
 }
 
-void OpenQuattLogHistory::maybe_log_pending_crash_report_() {
+bool OpenQuattLogHistory::complete_crash_candidate_(CrashSnapshot* snapshot) {
+  if (snapshot == nullptr) {
+    return false;
+  }
+  snapshot->flags |= CRASH_SNAPSHOT_PENDING;
+  if (this->pending_crash_breadcrumb_valid_) {
+    snapshot->flags |= CRASH_SNAPSHOT_TIMESTAMP_VALID;
+    snapshot->timestamp_s = this->pending_crash_epoch_s_;
+  }
+  if (this->pending_crash_breadcrumb_loaded_) {
+    snapshot->uptime_s = this->pending_crash_uptime_s_;
+    snapshot->breadcrumb_sequence = this->pending_crash_breadcrumb_sequence_;
+    if (this->pending_crash_build_) {
+      snapshot->captured_build = *this->pending_crash_build_.data();
+    }
+  }
+  if (!this->fingerprint_crash_candidate_(snapshot)) {
+    return false;
+  }
+  esp_fill_random(snapshot->crash_id.data(), snapshot->crash_id.size());
+  snapshot->crash_id[6] = static_cast<uint8_t>((snapshot->crash_id[6] & 0x0FU) | 0x40U);
+  snapshot->crash_id[8] = static_cast<uint8_t>((snapshot->crash_id[8] & 0x3FU) | 0x80U);
+  snapshot->reset_reason = static_cast<uint32_t>(esp_reset_reason());
+  this->load_current_build_identity_(&snapshot->current_build);
+
+  crash_snapshot_resolve_build_guard(snapshot);
+  crash_snapshot_finalize(snapshot);
+  return crash_snapshot_is_pending(*snapshot);
+}
+
+bool OpenQuattLogHistory::fingerprint_crash_candidate_(CrashSnapshot* snapshot) {
+  if (snapshot == nullptr || !this->crash_verify_) {
+    return false;
+  }
+  CrashSnapshot* material = this->crash_verify_.data();
+  std::memset(material, 0, sizeof(*material));
+  material->flags = snapshot->flags & (CRASH_SNAPSHOT_TIMESTAMP_VALID | CRASH_SNAPSHOT_RAW_CAUSE_VALID |
+                                       CRASH_SNAPSHOT_FAULT_ADDR_VALID | CRASH_SNAPSHOT_OTHER_CORE_BACKTRACE_VALID);
+  material->timestamp_s = snapshot->timestamp_s;
+  material->uptime_s = snapshot->uptime_s;
+  material->breadcrumb_sequence = snapshot->breadcrumb_sequence;
+  copy_build_identity_canonical_(&material->captured_build, snapshot->captured_build);
+  material->exception_type = snapshot->exception_type;
+  material->crashed_core = snapshot->crashed_core;
+  std::memcpy(material->exception_type_name, snapshot->exception_type_name, sizeof(material->exception_type_name));
+  std::memcpy(material->reason, snapshot->reason, sizeof(material->reason));
+  material->raw_cause = snapshot->raw_cause;
+  material->pc = snapshot->pc;
+  material->fault_addr = snapshot->fault_addr;
+  material->crashed_core_backtrace.core = snapshot->crashed_core_backtrace.core;
+  material->crashed_core_backtrace.count = snapshot->crashed_core_backtrace.count;
+  material->other_core_backtrace.core = snapshot->other_core_backtrace.core;
+  material->other_core_backtrace.count = snapshot->other_core_backtrace.count;
+  for (size_t index = 0U; index < snapshot->crashed_core_backtrace.count; ++index) {
+    material->crashed_core_backtrace.addresses[index] = snapshot->crashed_core_backtrace.addresses[index];
+  }
+  for (size_t index = 0U; index < snapshot->other_core_backtrace.count; ++index) {
+    material->other_core_backtrace.addresses[index] = snapshot->other_core_backtrace.addresses[index];
+  }
+  return mbedtls_sha256(reinterpret_cast<const unsigned char*>(material), sizeof(*material),
+                        snapshot->marker_fingerprint.data(), 0) == 0;
+}
+
+void OpenQuattLogHistory::consume_crash_log_line_(const char* tag, const char* message) {
+  if (!this->crash_replay_active_.load() || !this->crash_log_parser_ || tag == nullptr || message == nullptr ||
+      std::strcmp(tag, "esp32.crash") != 0) {
+    return;
+  }
+  const char* message_start = message;
+  size_t message_length = std::strlen(message);
+  split_log_fields_(message, nullptr, nullptr, &message_start, &message_length);
+  char sanitized[RAW_MAX_LEN];
+  copy_sanitized_log_line_(message_start, message_length, sanitized, sizeof(sanitized));
+  this->crash_log_parser_.data()->consume(sanitized);
+}
+
+void OpenQuattLogHistory::capture_pending_crash_report_() {
   if (!this->pending_crash_report_) {
     return;
   }
-
-  const bool time_ready = this->time_is_valid_();
-  const uint32_t now_ms = millis();
-  if (!time_ready && (now_ms - this->pending_crash_report_since_ms_) < CRASH_REPORT_WAIT_TIMEOUT_MS) {
+  if (!this->crash_snapshot_ || !this->crash_candidate_ || !this->crash_verify_ || !this->crash_log_parser_ ||
+      this->crash_mutex_ == nullptr) {
+    ESP_LOGE(TAG, "Crash snapshot storage is unavailable; preserving ESPHome crash record");
     return;
   }
 
@@ -637,19 +953,76 @@ void OpenQuattLogHistory::maybe_log_pending_crash_report_() {
   const esp_reset_reason_t reset_reason = esp_reset_reason();
   ESP_LOGE(TAG, "Current boot reset reason: %s (%d)", reset_reason_to_string(reset_reason),
            static_cast<int>(reset_reason));
-
-  if (!time_ready) {
-    ESP_LOGW(TAG, "Replaying crash report after waiting without a sane controller clock");
-  }
   ESP_LOGE(TAG, "ESPHome crash report follows; log timestamps below are replay timestamps after reboot");
+
+  this->crash_log_parser_.data()->reset();
+  this->crash_replay_active_.store(true);
   esp32::crash_handler_log();
+  this->crash_replay_active_.store(false);
+
+  CrashSnapshot* candidate = this->crash_candidate_.data();
+  *candidate = CrashSnapshot{};
+  if (!this->crash_log_parser_.data()->finish(candidate) || !this->complete_crash_candidate_(candidate)) {
+    ESP_LOGE(TAG, "Could not structure the ESPHome crash replay; preserving its retained crash marker");
+    return;
+  }
+
+  if (!this->lock_crash_()) {
+    ESP_LOGE(TAG, "Could not lock crash snapshot storage; preserving ESPHome crash record");
+    return;
+  }
+  if (crash_snapshot_reuse_durable(*this->crash_snapshot_.data(), candidate)) {
+    const std::array<uint8_t, 16U> crash_id = candidate->crash_id;
+    this->crash_candidate_ready_ = false;
+    this->unlock_crash_();
+    ESP_LOGI(TAG, "Reusing durable crash snapshot %s after reboot before marker clear",
+             format_crash_id(crash_id).c_str());
+    esp32::crash_handler_clear();
+    this->pending_crash_report_ = false;
+    this->initialize_current_crash_time_breadcrumb_();
+    return;
+  }
+  this->crash_candidate_ready_ = true;
+  const bool persisted = this->persist_crash_snapshot_(*candidate);
+  this->unlock_crash_();
+  if (!persisted) {
+    this->next_crash_persist_retry_ms_ = millis() + CRASH_PERSIST_RETRY_INTERVAL_MS;
+    ESP_LOGE(TAG, "Could not durably persist crash snapshot; preserving ESPHome crash marker for retry");
+    return;
+  }
+
+  this->crash_candidate_ready_ = false;
   esp32::crash_handler_clear();
   this->pending_crash_report_ = false;
-  this->pending_crash_breadcrumb_valid_ = false;
+  this->initialize_current_crash_time_breadcrumb_();
+}
+
+void OpenQuattLogHistory::retry_pending_crash_persist_() {
+  if (!this->pending_crash_report_ || !this->crash_candidate_ready_ || !this->crash_candidate_ ||
+      static_cast<int32_t>(millis() - this->next_crash_persist_retry_ms_) < 0) {
+    return;
+  }
+  if (!this->lock_crash_()) {
+    this->next_crash_persist_retry_ms_ = millis() + CRASH_PERSIST_RETRY_INTERVAL_MS;
+    return;
+  }
+  const bool persisted = this->persist_crash_snapshot_(*this->crash_candidate_.data());
+  this->unlock_crash_();
+  if (!persisted) {
+    this->next_crash_persist_retry_ms_ = millis() + CRASH_PERSIST_RETRY_INTERVAL_MS;
+    return;
+  }
+  this->crash_candidate_ready_ = false;
+  esp32::crash_handler_clear();
+  this->pending_crash_report_ = false;
+  this->initialize_current_crash_time_breadcrumb_();
 }
 #endif
 
 void OpenQuattLogHistory::on_log_(uint8_t level, const char* tag, const char* message, size_t message_len) {
+#ifdef USE_ESP32_CRASH_HANDLER
+  this->consume_crash_log_line_(tag, message);
+#endif
   if (!this->capture_enabled_() || message == nullptr || message_len == 0) {
     return;
   }
@@ -665,8 +1038,6 @@ void OpenQuattLogHistory::on_log_(uint8_t level, const char* tag, const char* me
   if (entry.raw_len == 0) {
     return;
   }
-
-  (void)tag;
   if (!this->lock_history_()) {
     return;
   }
@@ -700,28 +1071,63 @@ bool OpenQuattLogHistory::lock_history_() const {
 void OpenQuattLogHistory::unlock_history_() const { xSemaphoreGive(this->history_mutex_); }
 
 void OpenQuattLogHistory::setup() {
+  this->crash_mutex_ = xSemaphoreCreateMutexStatic(&this->crash_mutex_storage_);
+  if (this->crash_mutex_ == nullptr) {
+    ESP_LOGE(TAG, "Failed to initialize crash snapshot mutex");
+  } else if (!this->crash_snapshot_.allocate_external(1U)) {
+    ESP_LOGE(TAG, "Failed to allocate crash snapshot in PSRAM");
+  } else {
+    *this->crash_snapshot_.data() = CrashSnapshot{};
+    crash_snapshot_finalize(this->crash_snapshot_.data());
+    if (global_preferences == nullptr) {
+      ESP_LOGE(TAG, "Preferences backend is unavailable; ESPHome crash marker will be preserved");
+    } else {
+      this->crash_pref_ = global_preferences->make_preference<CrashSnapshot>(CRASH_SNAPSHOT_STORAGE_KEY, true);
+      this->load_crash_snapshot_();
+    }
+  }
+  if (!this->crash_candidate_.allocate_external(1U)) {
+    ESP_LOGE(TAG, "Failed to allocate crash candidate in PSRAM");
+  }
+  if (!this->crash_verify_.allocate_external(1U)) {
+    ESP_LOGE(TAG, "Failed to allocate crash verification buffer in PSRAM");
+  }
+  if (!this->crash_clear_.allocate_external(1U)) {
+    ESP_LOGE(TAG, "Failed to allocate crash clear buffer in PSRAM");
+  }
+#ifdef USE_ESP32_CRASH_HANDLER
+  if (!this->crash_log_parser_.allocate_external(1U)) {
+    ESP_LOGE(TAG, "Failed to allocate crash replay parser in PSRAM");
+  }
+  if (!this->pending_crash_build_.allocate_external(1U)) {
+    ESP_LOGE(TAG, "Failed to allocate retained crash build identity in PSRAM");
+  }
+#endif
+
+#ifdef USE_ESP32_CRASH_HANDLER
+  this->load_crash_time_breadcrumb_();
+  this->pending_crash_report_ = esp32::crash_handler_has_data();
+#endif
+
   if (logger::global_logger == nullptr) {
     ESP_LOGE(TAG, "global_logger is unavailable");
+#ifdef USE_ESP32_CRASH_HANDLER
+    if (!this->pending_crash_report_) this->initialize_current_crash_time_breadcrumb_();
+#endif
     return;
   }
-  if (web_server_base::global_web_server_base == nullptr) {
-    ESP_LOGE(TAG, "global_web_server_base is unavailable");
-    return;
-  }
+
   this->history_mutex_ = xSemaphoreCreateMutex();
   if (this->history_mutex_ == nullptr) {
     ESP_LOGE(TAG, "Failed to allocate log history mutex");
-    return;
+  } else {
+    if (this->enabled_switch_ != nullptr) {
+      this->enabled_ = this->enabled_switch_->state;
+    }
+    if (!this->entries_.allocate_external(ENTRY_CAPACITY)) {
+      ESP_LOGE(TAG, "Failed to allocate log history buffer in PSRAM");
+    }
   }
-
-  if (this->enabled_switch_ != nullptr) {
-    this->enabled_ = this->enabled_switch_->state;
-  }
-
-  if (!this->entries_.allocate_external(ENTRY_CAPACITY)) {
-    ESP_LOGE(TAG, "Failed to allocate log history buffer in PSRAM");
-  }
-  this->rotate_csrf_token_();
 
   logger::global_logger->add_log_callback(
       this, [](void* self, uint8_t level, const char* tag, const char* message, size_t message_len) {
@@ -729,23 +1135,25 @@ void OpenQuattLogHistory::setup() {
       });
 
 #ifdef USE_ESP32_CRASH_HANDLER
-  this->load_crash_time_breadcrumb_();
-  this->pending_crash_report_ = esp32::crash_handler_has_data();
-  this->pending_crash_report_since_ms_ = millis();
+  this->capture_pending_crash_report_();
+  if (!this->pending_crash_report_ && !this->current_crash_breadcrumb_initialized_)
+    this->initialize_current_crash_time_breadcrumb_();
 #endif
 
+  if (web_server_base::global_web_server_base == nullptr) {
+    ESP_LOGE(TAG, "global_web_server_base is unavailable");
+    return;
+  }
+  this->rotate_csrf_token_();
   web_server_base::global_web_server_base->add_handler(new OpenQuattLogHistoryRequestHandler(this));
   this->sync_time_state_();
-#ifdef USE_ESP32_CRASH_HANDLER
-  this->maybe_log_pending_crash_report_();
-#endif
 }
 
 void OpenQuattLogHistory::loop() {
-  this->sync_time_state_();
 #ifdef USE_ESP32_CRASH_HANDLER
-  this->maybe_log_pending_crash_report_();
+  this->retry_pending_crash_persist_();
 #endif
+  this->sync_time_state_();
 }
 
 void OpenQuattLogHistory::dump_config() {
@@ -763,8 +1171,11 @@ void OpenQuattLogHistory::dump_config() {
   ESP_LOGCONFIG(TAG, "  History buffer: %s",
                 !this->entries_ ? "missing" : (this->entries_.is_external() ? "PSRAM" : "internal"));
 #ifdef USE_ESP32_CRASH_HANDLER
-  ESP_LOGCONFIG(TAG, "  Pending crash report: %s", YESNO(this->pending_crash_report_));
+  ESP_LOGCONFIG(TAG, "  ESPHome crash marker pending: %s", YESNO(this->pending_crash_report_));
 #endif
+  ESP_LOGCONFIG(TAG, "  Durable crash snapshot pending: %s", YESNO(this->has_pending_crash()));
+  ESP_LOGCONFIG(TAG, "  Crash snapshot memory: %s",
+                !this->crash_snapshot_ ? "missing" : (this->crash_snapshot_.is_external() ? "PSRAM" : "internal"));
 }
 
 void OpenQuattLogHistory::write_recent_logs(httpd_req_t* req) const {

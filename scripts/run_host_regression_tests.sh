@@ -48,4 +48,10 @@ python3 "${repo_root}/scripts/tests/test_boiler_commissioning_ownership_contract
 echo "[run] MQTT ingress lifecycle contract"
 python3 "${repo_root}/scripts/tests/test_mqtt_ingress_lifecycle_contract.py"
 
+echo "[run] crash snapshot lifecycle contract"
+python3 "${repo_root}/scripts/tests/test_crash_snapshot_lifecycle_contract.py"
+
+echo "[run] usage telemetry cleanup lifecycle failure injection"
+python3 "${repo_root}/scripts/tests/test_usage_telemetry_cleanup_lifecycle.py"
+
 echo "Host regression tests passed (${#sources[@]})."

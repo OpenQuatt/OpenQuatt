@@ -47,6 +47,87 @@ Firmware should expose its channel explicitly via `release_channel` so Home Assi
 - CI/release build with a pinned ESPHome version from `/.github/requirements-esphome.txt`.
 - Keep release builds deterministic by updating this pin via PR (instead of using floating `latest`).
 
+## Firmware build identity and crash symbolization
+
+CI derives the build identity from the checkout itself: `git rev-parse HEAD` supplies the full
+commit and the commit timestamp supplies `SOURCE_DATE_EPOCH`. The repository, commit, target and
+epoch are compiled into the firmware as `build_source_repository`, `build_source_commit`,
+`build_target` and `build_epoch`. Effective `project_version`, `release_channel` and
+`release_manifest_url` overrides are part of the same build input.
+
+Every firmware build produces one small provenance record named
+`<artifact>.<source-commit>.<build-id>.build.json`; `firmware.elf` is never published. The record
+contains the full application ELF SHA-256 (`build_id`), effective firmware version/channel, all
+substitutions and the hashes or captured contents needed to verify the deterministic wrapper,
+Python/npm locks, generated web assets, ESP-IDF component manifest/dependency lock and sdkconfig.
+Runner-specific source paths and the derived IDF manifest hash are represented portably; the
+reconstructor expands them for its checkout and compares the generated dependency contract after
+normalizing those two values again. The OTA application descriptor contains the same full ELF
+SHA-256.
+
+Stable, dev and PR publication persist these JSON records on the
+`firmware-build-metadata` branch under
+`records/<source-owner>/<source-repository>/<source-commit>/<build-id>/`. A path that already exists
+is never overwritten: an identical rebuild contract is an idempotent retry (diagnostic run fields
+may differ), while different reconstruction inputs fail the publisher. Concurrent publishers
+re-read and retry GitHub API conflicts. Mutable `dev-latest` and
+`pr-*` releases therefore do not own the rebuild record, PR close does not delete it, and metadata
+does not consume the finite release-asset count.
+
+The canonical download URL has this form:
+
+```text
+https://raw.githubusercontent.com/OpenQuatt/OpenQuatt/firmware-build-metadata/records/<source-owner>/<source-repository>/<source-commit>/<build-id>/<artifact>.<source-commit>.<build-id>.build.json
+```
+
+Use the manually dispatched `Reconstruct and Symbolize Crash` workflow with the canonical raw URL
+of that record and every captured build field: build ID, source repository/commit, build epoch,
+target, firmware version and release channel. The workflow validates their syntax before any
+checkout, cross-checks all values against the downloaded JSON, verifies the exact checkout before
+package setup/install and verifies captured source inputs before using them. A PR build must use
+its captured fork `source_repository`; executing a fork checkout requires the workflow's explicit
+untrusted-repository acknowledgement. The workflow rebuilds in an ephemeral runner and does not
+upload the ELF.
+
+Local support tooling can use a downloaded build record directly:
+
+```bash
+python3 scripts/reconstruct_firmware_elf.py \
+  --source-root /path/to/exact-checkout \
+  --metadata openquatt-example.<commit>.<build-id>.build.json \
+  --output /tmp/firmware.elf \
+  --result-json /tmp/rebuild-result.json
+
+python3 scripts/symbolize_firmware_crash.py \
+  --rebuild-result /tmp/rebuild-result.json \
+  --expected-build-id <captured-64-hex-build-id> \
+  0x42001234 0x40370000
+```
+
+The reconstruction uses only the substitutions from the record. It verifies the captured source
+wrapper and requirements/npm lock before installation, seeds the captured ESP-IDF manifest and
+dependency lock, and verifies the generated locks, manifest, sdkconfig and web assets after the
+build. It is accepted only when the rebuilt ELF file hash, the SHA embedded in its OTA image and
+the captured `build_id` are byte-for-byte equal. A mismatch stops before `addr2line` is started.
+This final hash check is the proof of an exact reconstruction; source and epoch alone are not that
+proof.
+
+The record is durable metadata, not a fully hermetic archived toolchain. GitHub and the relevant
+package registries must still provide the captured commit and packages. In particular, metadata
+for a PR fork remains after PR close, but a deleted fork or unreachable rewritten commit can no
+longer be rebuilt. Administrative deletion or force-rewrite of the metadata branch is also outside
+the workflow's guarantees; a tampered record still cannot pass the final captured build-ID check.
+
+The analytics broker, transport and crash-topic base are a durable privacy protocol, not ordinary
+mutable configuration. Firmware stores an endpoint generation before the first retained crash
+session. Changing the broker, port, TLS mode or topic base requires a generation migration that can
+still publish a retained tombstone to every older endpoint before clearing local cleanup evidence.
+
+The analytics broker, transport and crash-topic base are a durable privacy protocol, not ordinary
+mutable configuration. Firmware stores an endpoint generation before the first retained crash
+session. Changing the broker, port, TLS mode or topic base requires a generation migration that can
+still publish a retained tombstone to every older endpoint before clearing local cleanup evidence.
+
 ## Deferred ESPHome Security Features
 
 ESPHome 2026.7 adds optional NVS HMAC encryption and OTA downgrade protection. OpenQuatt does not enable either feature as part of the compatibility migration:

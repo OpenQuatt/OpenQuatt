@@ -7,16 +7,65 @@
 
 using esphome::openquatt_usage_telemetry::append_json_escaped;
 using esphome::openquatt_usage_telemetry::configured_source_wire_value;
+using esphome::openquatt_usage_telemetry::data_publish_allowed;
 using esphome::openquatt_usage_telemetry::FixedBufferWriter;
 using esphome::openquatt_usage_telemetry::flow_source_config_wire_value;
 using esphome::openquatt_usage_telemetry::heating_strategy_wire_value;
 using esphome::openquatt_usage_telemetry::mqtt_cleanup_decision;
-using esphome::openquatt_usage_telemetry::MQTT_PUBLISH_RETAIN;
+using esphome::openquatt_usage_telemetry::mqtt_publish_policy;
 using esphome::openquatt_usage_telemetry::MqttCleanupDecision;
+using esphome::openquatt_usage_telemetry::PublishKind;
 using esphome::openquatt_usage_telemetry::quatt_hybrid_generation_wire_value;
+using esphome::openquatt_usage_telemetry::retained_cleanup_can_complete;
+using esphome::openquatt_usage_telemetry::retained_cleanup_ready_for_tombstone;
+using esphome::openquatt_usage_telemetry::retained_cleanup_recoverable_after_reboot;
+using esphome::openquatt_usage_telemetry::retained_crash_cleanup_required_on_disabled_boot;
 
 int main() {
-  assert(MQTT_PUBLISH_RETAIN == 0);
+  const auto telemetry_policy = mqtt_publish_policy(PublishKind::TELEMETRY);
+  assert(telemetry_policy.qos == 1);
+  assert(telemetry_policy.retain == 0);
+  assert(!telemetry_policy.empty_payload);
+
+  const auto crash_policy = mqtt_publish_policy(PublishKind::CRASH);
+  assert(crash_policy.qos == 1);
+  assert(crash_policy.retain == 1);
+  assert(!crash_policy.empty_payload);
+
+  const auto tombstone_policy = mqtt_publish_policy(PublishKind::TOMBSTONE);
+  assert(tombstone_policy.qos == 1);
+  assert(tombstone_policy.retain == 1);
+  assert(tombstone_policy.empty_payload);
+
+  assert(data_publish_allowed(PublishKind::TELEMETRY, true, true, false, false));
+  assert(data_publish_allowed(PublishKind::CRASH, true, true, false, false));
+  assert(!data_publish_allowed(PublishKind::TELEMETRY, false, true, false, false));
+  assert(!data_publish_allowed(PublishKind::CRASH, true, false, false, false));
+  assert(!data_publish_allowed(PublishKind::CRASH, true, true, true, false));
+  assert(!data_publish_allowed(PublishKind::CRASH, true, true, false, true));
+  assert(data_publish_allowed(PublishKind::TOMBSTONE, false, false, true, true));
+  assert(!data_publish_allowed(PublishKind::TOMBSTONE, true, true, false, false));
+
+  assert(retained_cleanup_recoverable_after_reboot(true, false));
+  assert(retained_cleanup_recoverable_after_reboot(false, true));
+  assert(retained_cleanup_recoverable_after_reboot(true, true));
+  assert(!retained_cleanup_recoverable_after_reboot(false, false));
+
+  assert(retained_cleanup_ready_for_tombstone(true, true));
+  assert(!retained_cleanup_ready_for_tombstone(true, false));
+  assert(retained_cleanup_ready_for_tombstone(false, true));
+  assert(!retained_cleanup_ready_for_tombstone(false, false));
+
+  assert(retained_crash_cleanup_required_on_disabled_boot(false, true, true));
+  assert(!retained_crash_cleanup_required_on_disabled_boot(true, true, true));
+  assert(!retained_crash_cleanup_required_on_disabled_boot(false, false, true));
+  assert(!retained_crash_cleanup_required_on_disabled_boot(false, true, false));
+
+  assert(retained_cleanup_can_complete(true, true, true, true));
+  assert(!retained_cleanup_can_complete(false, true, true, true));
+  assert(!retained_cleanup_can_complete(true, false, true, true));
+  assert(!retained_cleanup_can_complete(true, true, false, true));
+  assert(!retained_cleanup_can_complete(true, true, true, false));
 
   assert(mqtt_cleanup_decision(true, false, false, 0U) == MqttCleanupDecision::DESTROY);
   assert(mqtt_cleanup_decision(false, true, false, 1U) == MqttCleanupDecision::FORCE_DISCONNECT);

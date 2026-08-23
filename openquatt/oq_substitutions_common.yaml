@@ -15,6 +15,10 @@ friendly_name: OpenQuatt                              # Display name in Home Ass
 project_name: "openquatt.openquatt"                   # ESPHome project identifier shown in firmware metadata.
 project_version: "v0.48.0"                            # ESPHome project version shown in firmware metadata.
 release_channel: "main"                               # Firmware release channel shown in diagnostics (`main` or `dev`).
+build_source_repository: "OpenQuatt/OpenQuatt"         # GitHub owner/repository for reconstructing an official build.
+build_source_commit: "unknown"                         # Full source SHA; CI overrides this, local builds remain invalid for reconstruction.
+build_target: "unknown"                                # Repo-relative target config; CI overrides this for official builds.
+build_epoch: "0"                                       # Deterministic Unix build epoch; CI overrides zero for official builds.
 oq_firmware_initial_check_delay_s: "300"              # Stable-network delay before the first automatic manifest check [s].
 oq_firmware_periodic_check_interval: "4h"              # Automatic manifest-check cadence after the initial boot window.
 oq_hardware_profile: "unknown"                        # Compile-time hardware profile id.

@@ -183,6 +183,15 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
 
+      - name: Publish immutable firmware build metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/publish_firmware_build_metadata.py \
+            --github-repository "${GITHUB_REPOSITORY}" \
+            --start-sha "${{ needs.validate-pr-test-build.outputs.base_sha }}" \
+            "${RUNNER_TEMP}"/firmware/*/*.build.json
+
       - name: Prepare PR test firmware assets
         env:
           ARTIFACT_ROOT: ${{ runner.temp }}/firmware

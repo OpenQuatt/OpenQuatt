@@ -10,7 +10,58 @@
 namespace esphome {
 namespace openquatt_usage_telemetry {
 
-inline constexpr int MQTT_PUBLISH_RETAIN = 0;
+enum class PublishKind : uint8_t {
+  TELEMETRY = 0U,
+  CRASH = 1U,
+  TOMBSTONE = 2U,
+};
+
+struct MqttPublishPolicy {
+  int qos;
+  int retain;
+  bool empty_payload;
+};
+
+inline constexpr MqttPublishPolicy mqtt_publish_policy(PublishKind kind) {
+  switch (kind) {
+    case PublishKind::TELEMETRY:
+      return {1, 0, false};
+    case PublishKind::CRASH:
+      return {1, 1, false};
+    case PublishKind::TOMBSTONE:
+      return {1, 1, true};
+  }
+  return {1, 0, false};
+}
+
+inline constexpr bool data_publish_allowed(PublishKind kind, bool enabled, bool setup_complete,
+                                           bool consent_publish_blocked, bool tombstone_pending) {
+  if (kind == PublishKind::TOMBSTONE) {
+    return tombstone_pending;
+  }
+  return enabled && setup_complete && !consent_publish_blocked && !tombstone_pending;
+}
+
+inline constexpr bool retained_cleanup_recoverable_after_reboot(bool wal_saved,
+                                                                bool consent_storage_saved_with_cleanup_bit) {
+  return wal_saved || consent_storage_saved_with_cleanup_bit;
+}
+
+inline constexpr bool retained_cleanup_ready_for_tombstone(bool wal_saved,
+                                                           bool consent_storage_saved_with_cleanup_bit) {
+  (void)wal_saved;
+  return consent_storage_saved_with_cleanup_bit;
+}
+
+inline constexpr bool retained_crash_cleanup_required_on_disabled_boot(bool enabled, bool installation_id_present,
+                                                                       bool publish_may_have_reached_broker) {
+  return !enabled && installation_id_present && publish_may_have_reached_broker;
+}
+
+inline constexpr bool retained_cleanup_can_complete(bool tombstone_acknowledged, bool crash_snapshot_discarded,
+                                                    bool disabled_consent_saved, bool cleanup_intent_cleared) {
+  return tombstone_acknowledged && crash_snapshot_discarded && disabled_consent_saved && cleanup_intent_cleared;
+}
 
 enum class MqttCleanupDecision : uint8_t {
   DESTROY = 0U,
@@ -46,6 +97,8 @@ class FixedBufferWriter {
     return *this;
   }
 
+  void append(const char* value, size_t length) { this->append_(value, length); }
+
   void append_uint(uint64_t value) {
     char buffer[24];
     const int length = std::snprintf(buffer, sizeof(buffer), "%" PRIu64, value);
@@ -76,8 +129,12 @@ class FixedBufferWriter {
   bool ok_{true};
 };
 
-inline void append_json_escaped(FixedBufferWriter& output, const std::string& input) {
-  for (char c : input) {
+inline void append_json_escaped(FixedBufferWriter& output, const char* input, size_t length) {
+  if (input == nullptr) {
+    return;
+  }
+  for (size_t index = 0U; index < length; ++index) {
+    const char c = input[index];
     switch (c) {
       case '"':
         output += "\\\"";
@@ -111,6 +168,10 @@ inline void append_json_escaped(FixedBufferWriter& output, const std::string& in
         break;
     }
   }
+}
+
+inline void append_json_escaped(FixedBufferWriter& output, const std::string& input) {
+  append_json_escaped(output, input.data(), input.size());
 }
 
 inline const char* quatt_hybrid_generation_wire_value(const std::string& option) {

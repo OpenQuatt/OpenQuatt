@@ -2,6 +2,7 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import (
     binary_sensor,
+    openquatt_log_history,
     openquatt_mqtt_config,
     psram,
     select,
@@ -22,7 +23,7 @@ from esphome.components.esp32.const import VARIANT_ESP32S3
 from esphome.const import ENTITY_CATEGORY_CONFIG
 from esphome.core import CORE
 
-DEPENDENCIES = ["psram"]
+DEPENDENCIES = ["psram", "openquatt_log_history"]
 
 
 CONF_BROKER = "broker"
@@ -65,6 +66,7 @@ CONF_TREND_FLASH_SWITCH = "trend_flash_switch"
 CONF_DECISION_LOG_FLASH_SWITCH = "decision_log_flash_switch"
 CONF_ENERGY_HISTORY_FLASH_SWITCH = "energy_history_flash_switch"
 CONF_RAM_LOG_HISTORY_SWITCH = "ram_log_history_switch"
+CONF_CRASH_PROVIDER = "crash_provider"
 
 openquatt_usage_telemetry_ns = cg.esphome_ns.namespace("openquatt_usage_telemetry")
 OpenQuattUsageTelemetry = openquatt_usage_telemetry_ns.class_(
@@ -129,6 +131,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_DECISION_LOG_FLASH_SWITCH): cv.use_id(switch.Switch),
             cv.Required(CONF_ENERGY_HISTORY_FLASH_SWITCH): cv.use_id(switch.Switch),
             cv.Required(CONF_RAM_LOG_HISTORY_SWITCH): cv.use_id(switch.Switch),
+            cv.Required(CONF_CRASH_PROVIDER): cv.use_id(
+                openquatt_log_history.OpenQuattLogHistory
+            ),
         }
     )
     .extend(cv.COMPONENT_SCHEMA),
@@ -239,3 +244,5 @@ async def to_code(config):
     cg.add(var.set_energy_history_flash_switch(energy_history_flash_switch))
     ram_log_history_switch = await cg.get_variable(config[CONF_RAM_LOG_HISTORY_SWITCH])
     cg.add(var.set_ram_log_history_switch(ram_log_history_switch))
+    crash_provider = await cg.get_variable(config[CONF_CRASH_PROVIDER])
+    cg.add(var.set_crash_provider(crash_provider))

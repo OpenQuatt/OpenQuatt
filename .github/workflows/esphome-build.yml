@@ -18,6 +18,10 @@ on:
         required: false
         type: boolean
         default: true
+      build_epoch:
+        required: false
+        type: string
+        default: ""
       include_firmware_bin:
         required: false
         type: boolean
@@ -41,7 +45,7 @@ on:
 
 jobs:
   target-matrix:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
     steps:
@@ -59,7 +63,7 @@ jobs:
           echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
 
   compile-profiles:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: target-matrix
     strategy:
       fail-fast: false
@@ -74,10 +78,46 @@ jobs:
           ref: ${{ inputs.checkout_ref }}
           persist-credentials: ${{ inputs.checkout_persist_credentials }}
 
+      - name: Resolve deterministic build identity
+        id: build_identity
+        env:
+          REQUESTED_PROJECT_VERSION: ${{ inputs.project_version }}
+          REQUESTED_RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          REQUESTED_BUILD_EPOCH: ${{ inputs.build_epoch }}
+          SOURCE_REPOSITORY: ${{ inputs.checkout_repository || github.repository }}
+        run: |
+          SOURCE_COMMIT="$(git rev-parse HEAD)"
+          BUILD_EPOCH="${REQUESTED_BUILD_EPOCH:-$(git show -s --format=%ct HEAD)}"
+          DEFAULT_PROJECT_VERSION="$(awk -F'\"' '/^project_version: / { print $2 }' openquatt/oq_substitutions_common.yaml)"
+          DEFAULT_RELEASE_CHANNEL="$(awk -F'\"' '/^release_channel: / { print $2 }' openquatt/oq_substitutions_common.yaml)"
+          PROJECT_VERSION="${REQUESTED_PROJECT_VERSION:-${DEFAULT_PROJECT_VERSION}}"
+          RELEASE_CHANNEL="${REQUESTED_RELEASE_CHANNEL:-${DEFAULT_RELEASE_CHANNEL}}"
+          if [[ ! "${SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Checkout did not resolve to a full Git commit." >&2
+            exit 1
+          fi
+          if [[ ! "${SOURCE_REPOSITORY}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "Checkout repository is not an owner/repository name." >&2
+            exit 1
+          fi
+          if [[ ! "${BUILD_EPOCH}" =~ ^[0-9]+$ || "${BUILD_EPOCH}" -gt 4294967295 ]]; then
+            echo "Build epoch must fit in an unsigned 32-bit timestamp." >&2
+            exit 1
+          fi
+          if [[ -z "${PROJECT_VERSION}" || -z "${RELEASE_CHANNEL}" ]]; then
+            echo "Effective project version and release channel must not be empty." >&2
+            exit 1
+          fi
+          echo "source_repository=${SOURCE_REPOSITORY}" >> "${GITHUB_OUTPUT}"
+          echo "source_commit=${SOURCE_COMMIT}" >> "${GITHUB_OUTPUT}"
+          echo "build_epoch=${BUILD_EPOCH}" >> "${GITHUB_OUTPUT}"
+          echo "project_version=${PROJECT_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "release_channel=${RELEASE_CHANNEL}" >> "${GITHUB_OUTPUT}"
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "22.23.2"
           cache: npm
 
       - name: Install web build dependencies
@@ -89,7 +129,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.12.14"
           cache: pip
           cache-dependency-path: .github/requirements-esphome.txt
 
@@ -132,7 +172,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/openquatt/ccache/${{ matrix.target.id }}
-          key: ${{ runner.os }}-${{ runner.arch }}-openquatt-ccache-${{ matrix.target.id }}-${{ steps.idf_version.outputs.version }}-${{ github.sha }}
+          key: ${{ runner.os }}-${{ runner.arch }}-openquatt-ccache-${{ matrix.target.id }}-${{ steps.idf_version.outputs.version }}-${{ steps.build_identity.outputs.source_commit }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-openquatt-ccache-${{ matrix.target.id }}-${{ steps.idf_version.outputs.version }}-
 
@@ -141,11 +181,20 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/openquatt/ccache/${{ matrix.target.id }}
-          key: ${{ runner.os }}-${{ runner.arch }}-openquatt-ccache-${{ matrix.target.id }}-${{ steps.idf_version.outputs.version }}-${{ github.sha }}
+          key: ${{ runner.os }}-${{ runner.arch }}-openquatt-ccache-${{ matrix.target.id }}-${{ steps.idf_version.outputs.version }}-${{ steps.build_identity.outputs.source_commit }}
           restore-keys: |
             ${{ runner.os }}-${{ runner.arch }}-openquatt-ccache-${{ matrix.target.id }}-${{ steps.idf_version.outputs.version }}-
 
       - name: Compile firmware
+        env:
+          BUILD_EPOCH: ${{ steps.build_identity.outputs.build_epoch }}
+          BUILD_SOURCE_COMMIT: ${{ steps.build_identity.outputs.source_commit }}
+          BUILD_SOURCE_REPOSITORY: ${{ steps.build_identity.outputs.source_repository }}
+          BUILD_TARGET: ${{ matrix.target.config }}
+          PROJECT_VERSION: ${{ steps.build_identity.outputs.project_version }}
+          RELEASE_CHANNEL: ${{ steps.build_identity.outputs.release_channel }}
+          RELEASE_MANIFEST_TAG: ${{ inputs.release_manifest_tag }}
+          RELEASE_MANIFEST_NAME: ${{ matrix.target.manifest_name }}
         run: |
           export ESPHOME_ESP_IDF_PREFIX="${HOME}/.cache/esphome/idf"
           export IDF_CCACHE_ENABLE=1
@@ -154,18 +203,20 @@ jobs:
           export CCACHE_NOHASHDIR=true
           export CCACHE_DEPEND=1
           export CCACHE_BASEDIR="${GITHUB_WORKSPACE}/${{ matrix.target.build_path }}"
-          EXTRA_ARGS=()
-          if [[ -n "${{ inputs.project_version }}" ]]; then
-            EXTRA_ARGS+=(-s project_version "${{ inputs.project_version }}")
-          fi
-          if [[ -n "${{ inputs.release_channel }}" ]]; then
-            EXTRA_ARGS+=(-s release_channel "${{ inputs.release_channel }}")
-          fi
-          if [[ -n "${{ inputs.release_manifest_tag }}" ]]; then
-            RELEASE_MANIFEST_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${{ inputs.release_manifest_tag }}/${{ matrix.target.manifest_name }}"
+          export SOURCE_DATE_EPOCH="${BUILD_EPOCH}"
+          EXTRA_ARGS=(
+            -s build_source_repository "${BUILD_SOURCE_REPOSITORY}"
+            -s build_source_commit "${BUILD_SOURCE_COMMIT}"
+            -s build_target "${BUILD_TARGET}"
+            -s build_epoch "${BUILD_EPOCH}"
+            -s project_version "${PROJECT_VERSION}"
+            -s release_channel "${RELEASE_CHANNEL}"
+          )
+          if [[ -n "${RELEASE_MANIFEST_TAG}" ]]; then
+            RELEASE_MANIFEST_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_MANIFEST_TAG}/${RELEASE_MANIFEST_NAME}"
             EXTRA_ARGS+=(-s release_manifest_url "${RELEASE_MANIFEST_URL}")
           fi
-          esphome "${EXTRA_ARGS[@]}" compile "${{ matrix.target.config }}"
+          python3 scripts/esphome_deterministic.py "${EXTRA_ARGS[@]}" compile "${BUILD_TARGET}"
 
       - name: Show ccache statistics
         if: ${{ always() }}
@@ -177,6 +228,45 @@ jobs:
       - name: Validate and normalize firmware artifacts
         run: python3 scripts/repair_factory_bin.py "${{ matrix.target.build_path }}/build" --normalize-app
 
+      - name: Record deterministic build provenance
+        env:
+          ARTIFACT_NAME: ${{ matrix.target.artifact_name }}
+          BUILD_DIR: ${{ matrix.target.build_path }}/build
+          BUILD_EPOCH: ${{ steps.build_identity.outputs.build_epoch }}
+          BUILD_SOURCE_COMMIT: ${{ steps.build_identity.outputs.source_commit }}
+          BUILD_SOURCE_REPOSITORY: ${{ steps.build_identity.outputs.source_repository }}
+          BUILD_TARGET: ${{ matrix.target.config }}
+          PROJECT_VERSION: ${{ steps.build_identity.outputs.project_version }}
+          RELEASE_CHANNEL: ${{ steps.build_identity.outputs.release_channel }}
+          RELEASE_MANIFEST_TAG: ${{ inputs.release_manifest_tag }}
+          RELEASE_MANIFEST_NAME: ${{ matrix.target.manifest_name }}
+          TARGET_ID: ${{ matrix.target.id }}
+        run: |
+          METADATA_ARGS=(
+            --source-root .
+            --build-dir "${BUILD_DIR}"
+            --source-repository "${BUILD_SOURCE_REPOSITORY}"
+            --source-commit "${BUILD_SOURCE_COMMIT}"
+            --build-epoch "${BUILD_EPOCH}"
+            --target-id "${TARGET_ID}"
+            --target-config "${BUILD_TARGET}"
+            --artifact-name "${ARTIFACT_NAME}"
+            --substitution "build_source_repository=${BUILD_SOURCE_REPOSITORY}"
+            --substitution "build_source_commit=${BUILD_SOURCE_COMMIT}"
+            --substitution "build_target=${BUILD_TARGET}"
+            --substitution "build_epoch=${BUILD_EPOCH}"
+            --substitution "project_version=${PROJECT_VERSION}"
+            --substitution "release_channel=${RELEASE_CHANNEL}"
+          )
+          if [[ -n "${RELEASE_MANIFEST_TAG}" ]]; then
+            RELEASE_MANIFEST_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_MANIFEST_TAG}/${RELEASE_MANIFEST_NAME}"
+            METADATA_ARGS+=(
+              --release-manifest-tag "${RELEASE_MANIFEST_TAG}"
+              --substitution "release_manifest_url=${RELEASE_MANIFEST_URL}"
+            )
+          fi
+          python3 scripts/firmware_build_metadata.py "${METADATA_ARGS[@]}"
+
       - name: Upload firmware artifacts
         if: ${{ inputs.include_firmware_bin }}
         uses: actions/upload-artifact@v6
@@ -187,6 +277,7 @@ jobs:
             ${{ matrix.target.build_path }}/build/firmware.bin
             ${{ matrix.target.build_path }}/build/firmware.ota.bin
             ${{ matrix.target.build_path }}/build/firmware.factory.bin
+            ${{ matrix.target.build_path }}/build/${{ matrix.target.artifact_name }}.*.*.build.json
 
       - name: Upload OTA/factory artifacts
         if: ${{ !inputs.include_firmware_bin && inputs.include_factory_bin }}
@@ -197,6 +288,7 @@ jobs:
           path: |
             ${{ matrix.target.build_path }}/build/firmware.ota.bin
             ${{ matrix.target.build_path }}/build/firmware.factory.bin
+            ${{ matrix.target.build_path }}/build/${{ matrix.target.artifact_name }}.*.*.build.json
 
       - name: Upload OTA artifacts
         if: ${{ !inputs.include_firmware_bin && !inputs.include_factory_bin }}
@@ -204,4 +296,6 @@ jobs:
         with:
           name: ${{ matrix.target.artifact_name }}-${{ inputs.artifact_suffix }}
           if-no-files-found: error
-          path: ${{ matrix.target.build_path }}/build/firmware.ota.bin
+          path: |
+            ${{ matrix.target.build_path }}/build/firmware.ota.bin
+            ${{ matrix.target.build_path }}/build/${{ matrix.target.artifact_name }}.*.*.build.json

@@ -114,7 +114,7 @@ Configured startup delays are relative to the ESPHome scheduler becoming active.
 | OpenTherm thermostat slave (OTT) | Component setup | Runtime validation every 2s |
 | OpenTherm boiler master (OTB) | Enabled at late boot for normal OpenTherm control, or temporarily for the bounded R1 startup verification | R1 remains unavailable until the safe `STATUS(CH=off)` probe completes; a matching response latches a connection mismatch and keeps both R1 and OpenTherm CH off. Normal link/freshness checks start after 2s and run every `${oq_otb_link_watch_s}` (default 1s) |
 | CIC | First scheduler tick after `${cic_poll_tick_ms}` (default 5s) | Fetching only runs when CIC polling is enabled |
-| MQTT usage statistics | 90s after setup-complete, opt-in, broker configuration and network gates are all satisfied | Publishes every 1h; a boot-time network loss restarts the 90s delay |
+| MQTT usage statistics | 90s after setup-complete, opt-in, broker configuration and network gates are all satisfied | Publishes status every 1h; a pending crash or retained-topic tombstone has priority |
 | Firmware manifest | `${oq_firmware_initial_check_delay_s}` (default 300s) of continuously available network without an active OTA, sampled every 5s | Automatic checks every `${oq_firmware_periodic_check_interval}` (default 4h); manual checks and real runtime channel/target changes remain immediate |
 
 These offsets spread network and bus work; they are not readiness guarantees. A successful Modbus or OpenTherm exchange can only occur once the corresponding external equipment is connected and responsive.

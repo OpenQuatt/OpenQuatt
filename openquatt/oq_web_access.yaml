@@ -21,6 +21,15 @@ openquatt_log_history:
   id: oq_log_history
   enabled_switch: oq_ram_log_history_switch
   clock: oq_time
+  build_source_repository: "${build_source_repository}"
+  build_source_commit: "${build_source_commit}"
+  build_target: "${build_target}"
+  build_epoch: ${build_epoch}
+  firmware_version: "${project_version}"
+  release_channel: "${release_channel}"
+  hardware_profile: "${oq_hardware_profile}"
+  topology: "${oq_topology}"
+  connection: "${oq_connection}"
 
 openquatt_debug_recorder:
   id: oq_debug_recorder

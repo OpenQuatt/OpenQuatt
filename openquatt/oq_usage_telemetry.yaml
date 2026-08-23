@@ -58,3 +58,4 @@ openquatt_usage_telemetry:
   decision_log_flash_switch: oq_decision_log_flash_switch
   energy_history_flash_switch: oq_lifetime_energy_history_switch
   ram_log_history_switch: oq_ram_log_history_switch
+  crash_provider: oq_log_history

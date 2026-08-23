@@ -7,6 +7,7 @@
 #include <cstring>
 #include <inttypes.h>
 
+#include "esp_app_desc.h"
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
 #include "esp_memory_utils.h"
@@ -18,6 +19,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esphome/components/network/util.h"
+#include "esphome/components/openquatt_log_history/OpenQuattLogHistory.h"
 #include "esphome/components/openquatt_mqtt_config/OpenQuattMqttConfig.h"
 #include "esphome/core/application.h"
 #include "esphome/core/hal.h"
@@ -30,7 +32,10 @@ namespace {
 
 static const char* const TAG = "openquatt.usage_telemetry";
 static const uint32_t STORAGE_KEY = fnv1_hash("openquatt_usage_telemetry_store");
+static const uint32_t CLEANUP_STORAGE_KEY = fnv1_hash("openquatt_usage_telemetry_crash_cleanup");
 static constexpr size_t TELEMETRY_PAYLOAD_CAPACITY = 2048U;
+static constexpr size_t CRASH_PAYLOAD_CAPACITY = 2048U;
+static constexpr size_t CRASH_TELEMETRY_BACKTRACE_CAPACITY = openquatt_log_history::CRASH_BACKTRACE_CAPACITY;
 
 void log_heap_state_(const char* phase) {
   const size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
@@ -54,6 +59,91 @@ void append_json_key_(FixedBufferWriter& payload, const char* key) {
   payload += R"(,")";
   payload += key;
   payload += R"(":)";
+}
+
+template <size_t N>
+void append_json_optional_fixed_value_(FixedBufferWriter& payload, const char (&value)[N], bool valid) {
+  size_t length = 0U;
+  while (length < N && value[length] != '\0') {
+    ++length;
+  }
+  if (!valid || length == 0U || length == N) {
+    payload += "null";
+    return;
+  }
+  payload += '"';
+  append_json_escaped(payload, value, length);
+  payload += '"';
+}
+
+template <size_t N>
+bool fixed_hex_string_is_valid_(const char (&value)[N], size_t required_length) {
+  if (required_length >= N || value[required_length] != '\0') {
+    return false;
+  }
+  for (size_t index = 0U; index < required_length; ++index) {
+    const char c = value[index];
+    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+template <size_t N>
+void append_json_optional_fixed_string_(FixedBufferWriter& payload, const char* key, const char (&value)[N],
+                                        bool valid) {
+  append_json_key_(payload, key);
+  append_json_optional_fixed_value_(payload, value, valid);
+}
+
+void append_json_optional_uint64_(FixedBufferWriter& payload, const char* key, uint64_t value, bool valid) {
+  append_json_key_(payload, key);
+  if (!valid) {
+    payload += "null";
+    return;
+  }
+  payload.append_uint(value);
+}
+
+void append_json_optional_string_(FixedBufferWriter& payload, const char* key, const std::string& value) {
+  append_json_key_(payload, key);
+  if (value.empty()) {
+    payload += "null";
+    return;
+  }
+  payload += '"';
+  append_json_escaped(payload, value);
+  payload += '"';
+}
+
+void append_json_address_(FixedBufferWriter& payload, const char* key, uint32_t address, bool valid) {
+  append_json_key_(payload, key);
+  if (!valid) {
+    payload += "null";
+    return;
+  }
+  char value[13];
+  std::snprintf(value, sizeof(value), "\"0x%08" PRIx32 "\"", address);
+  payload += value;
+}
+
+void append_json_backtrace_(FixedBufferWriter& payload, const char* key,
+                            const openquatt_log_history::CrashBacktrace& backtrace, bool valid, size_t capacity) {
+  append_json_key_(payload, key);
+  payload += '[';
+  if (valid) {
+    const size_t count = std::min<size_t>({backtrace.count, backtrace.addresses.size(), capacity});
+    for (size_t index = 0U; index < count; ++index) {
+      if (index != 0U) {
+        payload += ',';
+      }
+      char value[13];
+      std::snprintf(value, sizeof(value), "\"0x%08" PRIx32 "\"", backtrace.addresses[index]);
+      payload += value;
+    }
+  }
+  payload += ']';
 }
 
 void append_json_uint_(FixedBufferWriter& payload, const char* key, size_t value) {
@@ -175,6 +265,7 @@ const char* reset_reason_name_(esp_reset_reason_t reason) {
 float OpenQuattUsageTelemetry::get_setup_priority() const { return setup_priority::LATE; }
 
 void OpenQuattUsageTelemetry::setup() {
+  this->setup_complete_gate_.store(this->is_setup_complete_());
   this->consent_mutex_ = xSemaphoreCreateMutexStatic(&this->consent_mutex_storage_);
   if (this->consent_mutex_ == nullptr) {
     ESP_LOGE(TAG,
@@ -184,13 +275,25 @@ void OpenQuattUsageTelemetry::setup() {
     this->mark_failed();
     return;
   }
+  if (this->setup_complete_sensor_ != nullptr) {
+    this->setup_complete_sensor_->add_on_state_callback([this](bool state) {
+      if (!this->set_setup_complete_gate_(state)) {
+        ESP_LOGE(TAG, "Could not update setup-complete telemetry gate; usage statistics remain blocked");
+      }
+      App.wake_loop_threadsafe();
+    });
+  }
   if (global_preferences == nullptr) {
     ESP_LOGE(TAG, "Preferences backend is unavailable; usage statistics remain disabled");
     this->publish_state(false);
     return;
   }
+  if (this->crash_provider_ != nullptr && !this->crash_snapshot_.allocate_external(1U)) {
+    ESP_LOGW(TAG, "Crash telemetry scratch space is unavailable; normal usage statistics remain available");
+  }
 
   this->pref_ = global_preferences->make_preference<Storage>(STORAGE_KEY, true);
+  this->cleanup_pref_ = global_preferences->make_preference<CleanupStorage>(CLEANUP_STORAGE_KEY, true);
   Storage storage{};
   if (!this->load_storage_(&storage)) {
     storage.magic = STORAGE_MAGIC;
@@ -226,6 +329,37 @@ void OpenQuattUsageTelemetry::setup() {
     }
   }
 
+  CleanupStorage cleanup{};
+  if (this->load_cleanup_storage_(&cleanup) && cleanup.pending != 0U) {
+    this->apply_pending_cleanup_(cleanup, &storage, true);
+  } else if (storage.installation_id_present != 0U && storage.reserved[CLEANUP_REQUIRED_RESERVED_INDEX] != 0U) {
+    cleanup.magic = CLEANUP_STORAGE_MAGIC;
+    cleanup.version = CLEANUP_STORAGE_VERSION;
+    cleanup.pending = 1U;
+    cleanup.installation_id = storage.installation_id;
+    this->apply_pending_cleanup_(cleanup, &storage, false);
+  } else if (retained_crash_cleanup_required_on_disabled_boot(
+                 storage.enabled != 0U, storage.installation_id_present != 0U,
+                 storage.reserved[CRASH_PUBLISH_MAY_HAVE_REACHED_RESERVED_INDEX] != 0U)) {
+    // A pre-crash-telemetry downgrade can preserve the anonymous ID and a
+    // retained-crash marker while knowing nothing about the crash topic. A
+    // durable may-have-reached marker was set before the crash MQTT session
+    // started, so the topic must be tombstoned even if its PUBACK was lost.
+    this->cleanup_installation_id_bytes_ = storage.installation_id;
+    this->cleanup_installation_id_ = format_uuid_(storage.installation_id);
+    this->cleanup_pending_.store(true);
+    this->cleanup_wal_durable_.store(this->persist_cleanup_wal_());
+    this->cleanup_main_durable_.store(this->persist_cleanup_main_intent_());
+    if (!retained_cleanup_recoverable_after_reboot(this->cleanup_wal_durable_.load(),
+                                                   this->cleanup_main_durable_.load())) {
+      this->schedule_cleanup_persist_retry_();
+    }
+  } else {
+    this->cleanup_pending_.store(false);
+    this->cleanup_wal_durable_.store(false);
+    this->cleanup_main_durable_.store(false);
+  }
+
   if (!this->apply_storage_(storage)) {
     ESP_LOGE(TAG,
              "Failed to apply usage telemetry consent state; "
@@ -234,7 +368,10 @@ void OpenQuattUsageTelemetry::setup() {
     this->mark_failed();
     return;
   }
-  this->boot_publish_pending_ = this->enabled_.load();
+  if (!this->enabled_.load() && !this->cleanup_pending_.load() && !this->discard_pending_crash_()) {
+    ESP_LOGW(TAG, "Crash captured while usage statistics were disabled remains blocked and will not be published");
+  }
+  this->boot_publish_pending_ = this->enabled_.load() || this->cleanup_pending_.load();
   this->next_publish_ms_ = 0;
 }
 
@@ -257,6 +394,7 @@ void OpenQuattUsageTelemetry::loop() {
     }
     this->complete_publish_session_();
   }
+  this->retry_cleanup_persistence_();
   if (this->finishing_session_.load()) {
     return;
   }
@@ -265,7 +403,7 @@ void OpenQuattUsageTelemetry::loop() {
     if (this->start_task_running_.load()) {
       return;
     }
-    if (!this->enabled_.load()) {
+    if (!this->session_publish_allowed_(this->active_publish_kind_.load())) {
       this->finish_publish_session_(false);
       return;
     }
@@ -279,7 +417,13 @@ void OpenQuattUsageTelemetry::loop() {
     return;
   }
 
-  if (!this->enabled_.load() || !this->is_setup_complete_() || !this->is_configured() || !network::is_connected()) {
+  if (!this->is_configured() || !network::is_connected()) {
+    if (this->boot_publish_pending_) {
+      this->next_publish_ms_ = 0;
+    }
+    return;
+  }
+  if (!this->cleanup_pending_.load() && (!this->enabled_.load() || !this->setup_complete_gate_.load())) {
     if (this->boot_publish_pending_) {
       this->next_publish_ms_ = 0;
     }
@@ -293,7 +437,19 @@ void OpenQuattUsageTelemetry::loop() {
     }
   }
   if (time_reached_(millis(), this->next_publish_ms_)) {
-    this->start_publish_session_();
+    if (this->cleanup_pending_.load()) {
+      if (!retained_cleanup_ready_for_tombstone(this->cleanup_wal_durable_.load(),
+                                                this->cleanup_main_durable_.load())) {
+        this->schedule_retry_();
+        return;
+      }
+      this->start_publish_session_(PublishKind::TOMBSTONE);
+      return;
+    }
+    const PublishKind kind = this->crash_provider_ != nullptr && this->crash_provider_->has_pending_crash()
+                                 ? PublishKind::CRASH
+                                 : PublishKind::TELEMETRY;
+    this->start_publish_session_(kind);
   }
 }
 
@@ -310,12 +466,26 @@ void OpenQuattUsageTelemetry::dump_config() {
   ESP_LOGCONFIG(TAG, "  Quick Start complete: %s", YESNO(this->is_setup_complete_()));
   ESP_LOGCONFIG(TAG, "  Publish interval: %" PRIu32 " seconds", this->interval_ms_ / 1000U);
   ESP_LOGCONFIG(TAG, "  Installation ID present: %s", YESNO(!this->installation_id_.empty()));
+  ESP_LOGCONFIG(TAG, "  Retained crash cleanup pending: %s", YESNO(this->cleanup_pending_.load()));
+  ESP_LOGCONFIG(TAG, "  Pending crash snapshot: %s",
+                YESNO(this->crash_provider_ != nullptr && this->crash_provider_->has_pending_crash()));
   ESP_LOGCONFIG(TAG, "  OpenQuatt worker stack: %u bytes in %s", static_cast<unsigned>(MQTT_WORKER_TASK_STACK_SIZE),
                 MQTT_WORKER_STACK_IN_PSRAM ? "PSRAM" : "internal RAM");
 }
 
 void OpenQuattUsageTelemetry::write_state(bool state) {
   const bool current_state = this->enabled_.load();
+  if (state && this->cleanup_pending_.load()) {
+    ESP_LOGW(TAG, "Usage statistics cannot be enabled until retained crash cleanup completes");
+    this->publish_state(false);
+    return;
+  }
+  if (!state && this->cleanup_pending_.load()) {
+    // Cleanup already owns the immutable installation ID. Avoid rewriting its
+    // strings while the MQTT callback may be reading them.
+    this->publish_state(false);
+    return;
+  }
   if (!state && !this->set_consent_publish_blocked_(true)) {
     ESP_LOGE(TAG, "Could not close usage telemetry consent gate");
     this->publish_state(current_state);
@@ -331,46 +501,36 @@ void OpenQuattUsageTelemetry::write_state(bool state) {
     storage.reserved.fill(0);
     storage.installation_id = this->installation_id_bytes_;
   }
-  if (state == current_state && storage.choice_configured != 0U) {
+  if (state == current_state && storage.choice_configured != 0U && !this->cleanup_pending_.load()) {
     this->publish_state(current_state);
     return;
   }
 
-  if (state && !this->ensure_installation_id_(&storage)) {
-    ESP_LOGE(TAG, "Could not generate an installation ID; usage statistics remain disabled");
-    this->publish_state(false);
-    return;
-  }
-  storage.enabled = state ? 1U : 0U;
-  storage.choice_configured = 1U;
-  if (!this->save_storage_(storage)) {
-    ESP_LOGE(TAG, "Could not persist usage statistics preference");
-    if (state) {
+  if (state) {
+    if (!this->discard_pending_crash_()) {
+      ESP_LOGE(TAG, "Could not discard a crash captured without consent; usage statistics remain disabled");
+      this->publish_state(false);
+      return;
+    }
+    if (!this->ensure_installation_id_(&storage)) {
+      ESP_LOGE(TAG, "Could not generate an installation ID; usage statistics remain disabled");
+      this->publish_state(false);
+      return;
+    }
+    storage.enabled = 1U;
+    storage.choice_configured = 1U;
+    if (!this->save_storage_(storage)) {
+      ESP_LOGE(TAG, "Could not persist usage statistics preference");
       this->publish_state(current_state);
       return;
     }
-    // A failed opt-out write must not reopen telemetry for this boot. Keep the
-    // publish gate closed and stop any active session even though durability
-    // could not be confirmed.
-    this->enabled_.store(false);
-    this->publish_state(false);
-    this->boot_publish_pending_ = false;
-    this->next_publish_ms_ = 0U;
-    if (!this->session_active_.load()) {
-      this->clear_payload_();
-      this->payload_message_id_.clear();
+    if (!this->apply_storage_(storage)) {
+      ESP_LOGE(TAG, "Could not apply usage statistics preference");
+      this->publish_state(current_state);
+      return;
     }
-    App.wake_loop_threadsafe();
-    return;
-  }
-
-  if (!this->apply_storage_(storage)) {
-    ESP_LOGE(TAG, "Could not apply usage statistics preference");
-    this->publish_state(current_state);
-    return;
-  }
-  if (state) {
     this->consecutive_failures_ = 0;
+    this->next_regular_telemetry_ms_ = 0U;
     if (this->is_setup_complete_()) {
       this->boot_publish_pending_ = false;
       this->schedule_immediate_publish_();
@@ -381,15 +541,54 @@ void OpenQuattUsageTelemetry::write_state(bool state) {
     if (!this->is_configured()) {
       ESP_LOGW(TAG, "Usage statistics were enabled, but no telemetry broker is configured in this build");
     }
-  } else {
-    this->boot_publish_pending_ = false;
-    this->next_publish_ms_ = 0;
-    if (!this->session_active_.load()) {
-      this->clear_payload_();
-      this->payload_message_id_.clear();
-    }
-    App.wake_loop_threadsafe();
+    return;
   }
+
+  storage.enabled = 0U;
+  storage.choice_configured = 1U;
+  if (storage.installation_id_present != 0U && uuid_is_present_(storage.installation_id)) {
+    storage.reserved[CLEANUP_REQUIRED_RESERVED_INDEX] = 1U;
+    this->cleanup_installation_id_bytes_ = storage.installation_id;
+    this->cleanup_installation_id_ = format_uuid_(storage.installation_id);
+    this->cleanup_pending_.store(true);
+    this->cleanup_wal_durable_.store(this->persist_cleanup_wal_());
+    if (!this->cleanup_wal_durable_.load()) {
+      ESP_LOGE(TAG, "Could not persist retained crash cleanup intent; retrying while this boot remains active");
+    }
+  }
+
+  const bool storage_saved = this->save_storage_(storage);
+  this->cleanup_main_durable_.store(storage_saved && storage.reserved[CLEANUP_REQUIRED_RESERVED_INDEX] != 0U);
+  if (!storage_saved) {
+    // A failed opt-out write must not reopen telemetry. The in-memory gate was
+    // already closed before this write and remains authoritative for this boot.
+    ESP_LOGE(TAG,
+             "Could not persist disabled usage statistics preference; runtime consent remains fail-closed, but do "
+             "not reboot or downgrade until the automatic retry succeeds");
+  }
+  if (!retained_cleanup_recoverable_after_reboot(this->cleanup_wal_durable_.load(),
+                                                 this->cleanup_main_durable_.load())) {
+    this->schedule_cleanup_persist_retry_();
+  }
+  if (!this->apply_storage_(storage)) {
+    ESP_LOGE(TAG, "Could not apply disabled usage statistics preference");
+    this->enabled_.store(false);
+    this->consent_publish_blocked_.store(true);
+    this->publish_state(false);
+  }
+  this->boot_publish_pending_ = this->cleanup_pending_.load();
+  this->consecutive_failures_ = 0U;
+  this->next_regular_telemetry_ms_ = 0U;
+  if (this->cleanup_pending_.load()) {
+    this->schedule_immediate_publish_();
+  } else {
+    this->next_publish_ms_ = 0U;
+  }
+  if (!this->session_active_.load()) {
+    this->clear_session_buffers_();
+    this->payload_message_id_.clear();
+  }
+  App.wake_loop_threadsafe();
 }
 
 bool OpenQuattUsageTelemetry::load_storage_(Storage* storage) {
@@ -397,7 +596,12 @@ bool OpenQuattUsageTelemetry::load_storage_(Storage* storage) {
     return false;
   }
   if (storage->magic != STORAGE_MAGIC || storage->version != STORAGE_VERSION || storage->enabled > 1U ||
-      storage->choice_configured > 1U || storage->installation_id_present > 1U) {
+      storage->choice_configured > 1U || storage->installation_id_present > 1U ||
+      storage->reserved[CLEANUP_REQUIRED_RESERVED_INDEX] > 1U ||
+      storage->reserved[CRASH_PUBLISH_MAY_HAVE_REACHED_RESERVED_INDEX] > 1U ||
+      storage->reserved[CRASH_ENDPOINT_GENERATION_RESERVED_INDEX] > CRASH_ENDPOINT_GENERATION ||
+      ((storage->reserved[CRASH_PUBLISH_MAY_HAVE_REACHED_RESERVED_INDEX] != 0U) !=
+       (storage->reserved[CRASH_ENDPOINT_GENERATION_RESERVED_INDEX] != 0U))) {
     return false;
   }
   const bool id_present = uuid_is_present_(storage->installation_id);
@@ -422,7 +626,190 @@ bool OpenQuattUsageTelemetry::load_legacy_storage_(StorageV1* storage) {
 }
 
 bool OpenQuattUsageTelemetry::save_storage_(const Storage& storage) {
-  return this->pref_.save(&storage) && global_preferences != nullptr && global_preferences->sync();
+  if (!this->pref_.save(&storage) || global_preferences == nullptr || !global_preferences->sync()) {
+    return false;
+  }
+  Storage verify{};
+  return this->pref_.load(&verify) && std::memcmp(&storage, &verify, sizeof(storage)) == 0;
+}
+
+bool OpenQuattUsageTelemetry::load_cleanup_storage_(CleanupStorage* storage) {
+  if (storage == nullptr || !this->cleanup_pref_.load(storage)) {
+    return false;
+  }
+  if (storage->magic != CLEANUP_STORAGE_MAGIC || storage->version != CLEANUP_STORAGE_VERSION || storage->pending > 1U ||
+      storage->reserved != 0U) {
+    return false;
+  }
+  const bool id_present = uuid_is_present_(storage->installation_id);
+  return (storage->pending != 0U) == id_present;
+}
+
+bool OpenQuattUsageTelemetry::save_cleanup_storage_(const CleanupStorage& storage) {
+  if (!this->cleanup_pref_.save(&storage) || global_preferences == nullptr || !global_preferences->sync()) {
+    return false;
+  }
+  CleanupStorage verify{};
+  return this->cleanup_pref_.load(&verify) && std::memcmp(&storage, &verify, sizeof(storage)) == 0;
+}
+
+bool OpenQuattUsageTelemetry::persist_cleanup_wal_() {
+  if (!this->cleanup_pending_.load() || !uuid_is_present_(this->cleanup_installation_id_bytes_)) {
+    return false;
+  }
+  CleanupStorage cleanup{};
+  cleanup.magic = CLEANUP_STORAGE_MAGIC;
+  cleanup.version = CLEANUP_STORAGE_VERSION;
+  cleanup.pending = 1U;
+  cleanup.reserved = 0U;
+  cleanup.installation_id = this->cleanup_installation_id_bytes_;
+  const bool saved = this->save_cleanup_storage_(cleanup);
+  this->cleanup_wal_durable_.store(saved);
+  return saved;
+}
+
+bool OpenQuattUsageTelemetry::persist_cleanup_main_intent_() {
+  if (!this->cleanup_pending_.load() || !uuid_is_present_(this->cleanup_installation_id_bytes_)) {
+    return false;
+  }
+  Storage storage{};
+  if (!this->load_storage_(&storage)) {
+    storage.magic = STORAGE_MAGIC;
+    storage.version = STORAGE_VERSION;
+    storage.reserved.fill(0U);
+  }
+  storage.enabled = 0U;
+  storage.choice_configured = 1U;
+  storage.installation_id_present = 1U;
+  storage.reserved[CLEANUP_REQUIRED_RESERVED_INDEX] = 1U;
+  storage.installation_id = this->cleanup_installation_id_bytes_;
+  const bool saved = this->save_storage_(storage);
+  this->cleanup_main_durable_.store(saved);
+  return saved;
+}
+
+void OpenQuattUsageTelemetry::schedule_cleanup_persist_retry_() {
+  this->cleanup_persist_failures_ = std::min<uint8_t>(this->cleanup_persist_failures_ + 1U, 8U);
+  uint32_t delay_ms = CLEANUP_PERSIST_RETRY_MIN_MS;
+  for (uint8_t index = 1U; index < this->cleanup_persist_failures_ && delay_ms < CLEANUP_PERSIST_RETRY_MAX_MS;
+       ++index) {
+    delay_ms = std::min<uint32_t>(delay_ms * 2U, CLEANUP_PERSIST_RETRY_MAX_MS);
+  }
+  this->next_cleanup_persist_retry_ms_ = millis() + delay_ms;
+}
+
+void OpenQuattUsageTelemetry::retry_cleanup_persistence_() {
+  if (!this->cleanup_pending_.load() ||
+      (this->next_cleanup_persist_retry_ms_ != 0U && !time_reached_(millis(), this->next_cleanup_persist_retry_ms_))) {
+    return;
+  }
+
+  if (!this->cleanup_wal_durable_.load()) {
+    this->persist_cleanup_wal_();
+  }
+  if (!this->cleanup_main_durable_.load()) {
+    this->persist_cleanup_main_intent_();
+  }
+  if (this->cleanup_wal_durable_.load() && this->cleanup_main_durable_.load()) {
+    this->cleanup_persist_failures_ = 0U;
+    this->next_cleanup_persist_retry_ms_ = 0U;
+    return;
+  }
+  this->schedule_cleanup_persist_retry_();
+}
+
+bool OpenQuattUsageTelemetry::mark_crash_publish_may_have_reached_broker_() {
+  Storage storage{};
+  if (!this->load_storage_(&storage) || storage.enabled == 0U || storage.installation_id_present == 0U ||
+      storage.installation_id != this->installation_id_bytes_) {
+    return false;
+  }
+  if (storage.reserved[CRASH_PUBLISH_MAY_HAVE_REACHED_RESERVED_INDEX] != 0U) {
+    return true;
+  }
+  storage.reserved[CRASH_PUBLISH_MAY_HAVE_REACHED_RESERVED_INDEX] = 1U;
+  storage.reserved[CRASH_ENDPOINT_GENERATION_RESERVED_INDEX] = CRASH_ENDPOINT_GENERATION;
+  return this->save_storage_(storage);
+}
+
+bool OpenQuattUsageTelemetry::complete_cleanup_wal_() {
+  if (!this->discard_pending_crash_()) {
+    ESP_LOGE(TAG, "Could not durably discard the pre-opt-out crash snapshot; cleanup remains pending");
+    return false;
+  }
+
+  // Clear or prove absence of the separate WAL before clearing the legacy
+  // main-record marker. A WAL write may have landed even when its earlier sync
+  // or readback failed; keeping the main marker intact makes every retry and
+  // reboot converge safely.
+  CleanupStorage cleared{};
+  cleared.magic = CLEANUP_STORAGE_MAGIC;
+  cleared.version = CLEANUP_STORAGE_VERSION;
+  if (!this->save_cleanup_storage_(cleared)) {
+    ESP_LOGE(TAG, "Could not clear retained crash cleanup intent; the tombstone will be retried");
+    return false;
+  }
+  this->cleanup_wal_durable_.store(false);
+
+  Storage storage{};
+  if (!this->load_storage_(&storage)) {
+    storage.magic = STORAGE_MAGIC;
+    storage.version = STORAGE_VERSION;
+    storage.enabled = 0U;
+    storage.choice_configured = 1U;
+    storage.installation_id_present = uuid_is_present_(this->cleanup_installation_id_bytes_) ? 1U : 0U;
+    storage.reserved.fill(0U);
+    storage.installation_id = this->cleanup_installation_id_bytes_;
+  } else {
+    storage.enabled = 0U;
+    storage.choice_configured = 1U;
+  }
+  storage.reserved[CLEANUP_REQUIRED_RESERVED_INDEX] = 0U;
+  storage.reserved[CRASH_PUBLISH_MAY_HAVE_REACHED_RESERVED_INDEX] = 0U;
+  storage.reserved[CRASH_ENDPOINT_GENERATION_RESERVED_INDEX] = 0U;
+  if (!this->save_storage_(storage)) {
+    ESP_LOGE(TAG, "Could not confirm durable opt-out after retained crash cleanup");
+    return false;
+  }
+  this->cleanup_main_durable_.store(false);
+
+  this->cleanup_pending_.store(false);
+  this->cleanup_wal_durable_.store(false);
+  this->cleanup_main_durable_.store(false);
+  this->cleanup_installation_id_bytes_.fill(0U);
+  this->cleanup_installation_id_.clear();
+  this->consent_publish_blocked_.store(true);
+  this->cleanup_persist_failures_ = 0U;
+  this->next_cleanup_persist_retry_ms_ = 0U;
+  return true;
+}
+
+void OpenQuattUsageTelemetry::apply_pending_cleanup_(const CleanupStorage& cleanup, Storage* storage,
+                                                     bool wal_durable) {
+  this->cleanup_installation_id_bytes_ = cleanup.installation_id;
+  this->cleanup_installation_id_ = format_uuid_(cleanup.installation_id);
+  this->cleanup_pending_.store(true);
+  this->cleanup_wal_durable_.store(wal_durable);
+  if (storage == nullptr) {
+    return;
+  }
+  storage->enabled = 0U;
+  storage->choice_configured = 1U;
+  storage->reserved[CLEANUP_REQUIRED_RESERVED_INDEX] = 1U;
+  if (storage->installation_id_present == 0U || !uuid_is_present_(storage->installation_id)) {
+    storage->installation_id_present = 1U;
+    storage->installation_id = cleanup.installation_id;
+  } else if (storage->installation_id != cleanup.installation_id) {
+    ESP_LOGE(TAG, "Retained crash cleanup ID differs from the usage statistics installation ID");
+  }
+  const bool main_saved = this->save_storage_(*storage);
+  this->cleanup_main_durable_.store(main_saved || !wal_durable);
+  if (!main_saved) {
+    ESP_LOGE(TAG, "Could not repair interrupted opt-out preference; cleanup intent remains authoritative");
+  }
+  if (!this->cleanup_wal_durable_.load() || !this->cleanup_main_durable_.load()) {
+    this->schedule_cleanup_persist_retry_();
+  }
 }
 
 bool OpenQuattUsageTelemetry::set_consent_publish_blocked_(bool blocked) {
@@ -435,6 +822,17 @@ bool OpenQuattUsageTelemetry::set_consent_publish_blocked_(bool blocked) {
     return false;
   }
   this->consent_publish_blocked_.store(blocked);
+  xSemaphoreGive(this->consent_mutex_);
+  return true;
+}
+
+bool OpenQuattUsageTelemetry::set_setup_complete_gate_(bool setup_complete) {
+  if (this->consent_mutex_ == nullptr || xSemaphoreTake(this->consent_mutex_, portMAX_DELAY) != pdTRUE) {
+    // A failed transition must never open the data-publish gate.
+    this->setup_complete_gate_.store(false);
+    return false;
+  }
+  this->setup_complete_gate_.store(setup_complete);
   xSemaphoreGive(this->consent_mutex_);
   return true;
 }
@@ -471,7 +869,7 @@ bool OpenQuattUsageTelemetry::apply_storage_(const Storage& storage) {
   const bool enabled = storage.enabled != 0U && !this->installation_id_.empty();
   const bool choice_configured = storage.choice_configured != 0U;
   this->enabled_.store(enabled);
-  this->consent_publish_blocked_.store(!enabled);
+  this->consent_publish_blocked_.store(!enabled || this->cleanup_pending_.load());
   this->choice_configured_.store(choice_configured);
   xSemaphoreGive(this->consent_mutex_);
 
@@ -497,7 +895,14 @@ void OpenQuattUsageTelemetry::schedule_immediate_publish_() {
   this->next_publish_ms_ = millis() + 1U;
 }
 
-void OpenQuattUsageTelemetry::schedule_regular_publish_() { this->next_publish_ms_ = millis() + this->interval_ms_; }
+void OpenQuattUsageTelemetry::schedule_regular_publish_() {
+  this->next_regular_telemetry_ms_ = millis() + this->interval_ms_;
+  this->next_publish_ms_ = this->next_regular_telemetry_ms_;
+}
+
+bool OpenQuattUsageTelemetry::regular_telemetry_due_() const {
+  return this->next_regular_telemetry_ms_ == 0U || time_reached_(millis(), this->next_regular_telemetry_ms_);
+}
 
 void OpenQuattUsageTelemetry::schedule_retry_() {
   this->consecutive_failures_ = std::min<uint8_t>(this->consecutive_failures_ + 1U, 8U);
@@ -508,15 +913,44 @@ void OpenQuattUsageTelemetry::schedule_retry_() {
   this->next_publish_ms_ = millis() + delay_ms;
 }
 
-void OpenQuattUsageTelemetry::start_publish_session_() {
+void OpenQuattUsageTelemetry::start_publish_session_(PublishKind kind) {
   if (this->session_active_.load() || this->start_task_running_.exchange(true)) {
+    return;
+  }
+  if ((kind != PublishKind::TOMBSTONE && !this->setup_complete_gate_.load()) || !this->session_publish_allowed_(kind)) {
+    this->start_task_running_.store(false);
     return;
   }
 
   this->boot_publish_pending_ = false;
   log_heap_state_("Usage telemetry session begin");
+  this->session_client_id_ = kind == PublishKind::TOMBSTONE ? this->cleanup_installation_id_ : this->installation_id_;
+  this->clear_session_buffers_();
 
-  if (this->payload_size_ == 0U && !this->build_payload_()) {
+  bool payload_built = false;
+  switch (kind) {
+    case PublishKind::TELEMETRY:
+      payload_built = this->build_telemetry_payload_();
+      break;
+    case PublishKind::CRASH:
+      payload_built = this->build_crash_payload_();
+      if (payload_built && !this->mark_crash_publish_may_have_reached_broker_()) {
+        ESP_LOGE(TAG, "Could not durably mark the retained crash publish; blocking that MQTT session");
+        payload_built = false;
+      }
+      if (!payload_built && this->regular_telemetry_due_() && this->session_publish_allowed_(PublishKind::TELEMETRY)) {
+        ESP_LOGW(TAG, "Crash telemetry is temporarily unavailable; publishing normal usage statistics first");
+        kind = PublishKind::TELEMETRY;
+        payload_built = this->build_telemetry_payload_();
+      }
+      break;
+    case PublishKind::TOMBSTONE:
+      payload_built = this->build_tombstone_payload_();
+      break;
+  }
+  this->active_publish_kind_.store(kind);
+  if (!this->build_publish_topic_(kind, this->session_client_id_) || !payload_built) {
+    this->clear_session_buffers_();
     this->start_task_running_.store(false);
     this->schedule_retry_();
     return;
@@ -525,7 +959,7 @@ void OpenQuattUsageTelemetry::start_publish_session_() {
   // The same worker owns both client startup and teardown. On S3 its stack is
   // persistent in PSRAM; classic ESP32 uses a per-session internal stack.
   if (!this->ensure_worker_task_()) {
-    this->clear_payload_();
+    this->clear_session_buffers_();
     this->start_task_running_.store(false);
     this->schedule_retry_();
     return;
@@ -548,7 +982,8 @@ void OpenQuattUsageTelemetry::start_publish_session_() {
   if (!this->notify_worker_(WorkerCommand::START)) {
     this->session_active_.store(false);
     this->start_task_running_.store(false);
-    this->clear_payload_();
+    this->clear_session_buffers_();
+    this->session_client_id_.clear();
     this->schedule_retry_();
     ESP_LOGE(TAG, "Failed to notify usage telemetry MQTT worker");
   }
@@ -591,8 +1026,9 @@ bool OpenQuattUsageTelemetry::notify_worker_(WorkerCommand command) {
 }
 
 bool OpenQuattUsageTelemetry::start_client_() {
-  if (!this->enabled_.load() || !this->session_active_.load() || !this->is_setup_complete_() ||
-      !this->is_configured() || this->mqtt_client_ != nullptr || this->consent_publish_blocked_.load()) {
+  const PublishKind kind = this->active_publish_kind_.load();
+  if (!this->session_active_.load() || !this->is_configured() || this->mqtt_client_ != nullptr ||
+      !this->session_publish_allowed_(kind) || this->session_client_id_.empty()) {
     return false;
   }
 
@@ -603,7 +1039,7 @@ bool OpenQuattUsageTelemetry::start_client_() {
   if (this->tls_) {
     mqtt_config.broker.verification.crt_bundle_attach = esp_crt_bundle_attach;
   }
-  mqtt_config.credentials.client_id = this->installation_id_.c_str();
+  mqtt_config.credentials.client_id = this->session_client_id_.c_str();
   mqtt_config.session.keepalive = 30;
   mqtt_config.session.disable_clean_session = false;
   mqtt_config.network.timeout_ms = 10000;
@@ -622,7 +1058,7 @@ bool OpenQuattUsageTelemetry::start_client_() {
   if (this->consent_mutex_ == nullptr || xSemaphoreTake(this->consent_mutex_, portMAX_DELAY) != pdTRUE) {
     return false;
   }
-  if (!this->enabled_.load() || !this->session_active_.load() || this->consent_publish_blocked_.load()) {
+  if (!this->session_active_.load() || !this->session_publish_allowed_(kind)) {
     xSemaphoreGive(this->consent_mutex_);
     return false;
   }
@@ -634,7 +1070,7 @@ bool OpenQuattUsageTelemetry::start_client_() {
     return false;
   }
 
-  if (!this->enabled_.load() || !this->session_active_.load() || this->consent_publish_blocked_.load()) {
+  if (!this->session_active_.load() || !this->session_publish_allowed_(kind)) {
     xSemaphoreGive(this->consent_mutex_);
     esp_mqtt_client_destroy(client);
     return false;
@@ -727,7 +1163,17 @@ void OpenQuattUsageTelemetry::finish_publish_session_(bool succeeded) {
 }
 
 void OpenQuattUsageTelemetry::complete_publish_session_() {
-  const bool succeeded = this->cleanup_succeeded_.load();
+  const PublishKind kind = this->active_publish_kind_.load();
+  bool succeeded = this->cleanup_succeeded_.load();
+
+  if (succeeded && kind == PublishKind::CRASH) {
+    if (!this->enabled_.load() || this->cleanup_pending_.load() || this->crash_provider_ == nullptr ||
+        !this->crash_provider_->acknowledge_pending_crash(this->active_crash_id_)) {
+      succeeded = false;
+    }
+  } else if (succeeded && kind == PublishKind::TOMBSTONE && !this->complete_cleanup_wal_()) {
+    succeeded = false;
+  }
 
   this->session_active_.store(false);
   this->publish_succeeded_.store(false);
@@ -735,54 +1181,73 @@ void OpenQuattUsageTelemetry::complete_publish_session_() {
   this->pending_message_id_.store(-1);
   this->finishing_session_.store(false);
   this->cleanup_succeeded_.store(false);
+  this->clear_session_buffers_();
+  this->session_client_id_.clear();
 
-  if (!this->enabled_.load()) {
-    this->clear_payload_();
+  if (this->cleanup_pending_.load()) {
+    if (kind != PublishKind::TOMBSTONE) {
+      this->schedule_immediate_publish_();
+    } else {
+      this->schedule_retry_();
+    }
     this->payload_message_id_.clear();
-    this->next_publish_ms_ = 0;
-    this->consecutive_failures_ = 0;
+    return;
+  }
+  if (!this->enabled_.load()) {
+    this->payload_message_id_.clear();
+    this->next_publish_ms_ = 0U;
+    this->consecutive_failures_ = 0U;
     return;
   }
   if (succeeded) {
-    this->clear_payload_();
-    this->payload_message_id_.clear();
-    this->consecutive_failures_ = 0;
-    this->schedule_regular_publish_();
-    ESP_LOGD(TAG, "Usage statistics published successfully");
+    if (kind == PublishKind::TELEMETRY) {
+      this->payload_message_id_.clear();
+      this->next_regular_telemetry_ms_ = millis() + this->interval_ms_;
+    }
+    this->active_crash_id_.fill(0U);
+    this->consecutive_failures_ = 0U;
+    if (kind == PublishKind::TELEMETRY && this->crash_provider_ != nullptr &&
+        this->crash_provider_->has_pending_crash()) {
+      this->schedule_retry_();
+    } else {
+      this->schedule_regular_publish_();
+    }
+    ESP_LOGD(TAG, "%s published successfully", kind == PublishKind::CRASH ? "Crash telemetry" : "Usage statistics");
   } else {
-    // Refresh volatile observations for the retry, but retain the logical
-    // message ID so a lost QoS 1 PUBACK remains idempotent for ingestion.
-    this->clear_payload_();
+    // Crash snapshots and their IDs remain durable in the provider. Normal
+    // telemetry retains its logical message ID for an idempotent QoS 1 retry.
     this->schedule_retry_();
-    ESP_LOGW(TAG, "Usage statistics publish failed; a bounded retry was scheduled");
+    ESP_LOGW(TAG, "%s publish failed; a bounded retry was scheduled",
+             kind == PublishKind::CRASH ? "Crash telemetry" : "Usage statistics");
   }
 }
 
-bool OpenQuattUsageTelemetry::build_payload_() {
+bool OpenQuattUsageTelemetry::build_publish_topic_(PublishKind kind, const std::string& installation_id) {
+  const char* const suffix = kind == PublishKind::TELEMETRY ? "/telemetry" : "/crash";
+  const size_t publish_topic_size = this->topic_.size() + 1U + installation_id.size() + std::strlen(suffix);
+  if (!this->publish_topic_.allocate_external(publish_topic_size + 1U)) {
+    ESP_LOGE(TAG, "Failed to allocate %u-byte usage telemetry topic in PSRAM",
+             static_cast<unsigned>(publish_topic_size + 1U));
+    return false;
+  }
+  FixedBufferWriter publish_topic(this->publish_topic_.data(), this->publish_topic_.size());
+  publish_topic += this->topic_;
+  publish_topic += '/';
+  publish_topic += installation_id;
+  publish_topic += suffix;
+  if (!publish_topic.ok()) {
+    ESP_LOGE(TAG, "Usage telemetry topic exceeded its PSRAM buffer");
+    this->publish_topic_.release();
+    return false;
+  }
+  return true;
+}
+
+bool OpenQuattUsageTelemetry::build_telemetry_payload_() {
   const uint64_t uptime_s = static_cast<uint64_t>(esp_timer_get_time()) / 1000000ULL;
   const std::string hardware_revision = this->read_hardware_revision_();
   if (this->payload_message_id_.empty()) {
     this->payload_message_id_ = random_message_id_();
-  }
-
-  if (!this->publish_topic_) {
-    const char* const suffix = "/telemetry";
-    const size_t publish_topic_size = this->topic_.size() + 1U + this->installation_id_.size() + std::strlen(suffix);
-    if (!this->publish_topic_.allocate_external(publish_topic_size + 1U)) {
-      ESP_LOGE(TAG, "Failed to allocate %u-byte usage telemetry topic in PSRAM",
-               static_cast<unsigned>(publish_topic_size + 1U));
-      return false;
-    }
-    FixedBufferWriter publish_topic(this->publish_topic_.data(), this->publish_topic_.size());
-    publish_topic += this->topic_;
-    publish_topic += '/';
-    publish_topic += this->installation_id_;
-    publish_topic += suffix;
-    if (!publish_topic.ok()) {
-      ESP_LOGE(TAG, "Usage telemetry topic exceeded its PSRAM buffer");
-      this->publish_topic_.release();
-      return false;
-    }
   }
 
   this->clear_payload_();
@@ -879,6 +1344,137 @@ bool OpenQuattUsageTelemetry::build_payload_() {
   }
   this->payload_size_ = payload.size();
   return true;
+}
+
+bool OpenQuattUsageTelemetry::build_crash_payload_() {
+  using namespace openquatt_log_history;
+  if (this->crash_provider_ == nullptr) {
+    return false;
+  }
+  if (!this->crash_snapshot_ && !this->crash_snapshot_.allocate_external(1U)) {
+    ESP_LOGE(TAG, "Failed to allocate crash snapshot scratch space in PSRAM");
+    return false;
+  }
+  CrashSnapshot* const snapshot = this->crash_snapshot_.data();
+  if (!this->crash_provider_->copy_pending_crash(snapshot) || !crash_snapshot_is_pending(*snapshot)) {
+    ESP_LOGW(TAG, "Pending crash snapshot became unavailable before serialization");
+    return false;
+  }
+  this->active_crash_id_ = snapshot->crash_id;
+  const std::string crash_id = OpenQuattLogHistory::format_crash_id(snapshot->crash_id);
+  const CrashBuildIdentity& captured = snapshot->captured_build;
+  char current_elf_sha256[CRASH_ELF_SHA256_HEX_LENGTH + 1U]{};
+  esp_app_get_elf_sha256(current_elf_sha256, sizeof(current_elf_sha256));
+  const bool current_build_id_valid = fixed_hex_string_is_valid_(current_elf_sha256, CRASH_ELF_SHA256_HEX_LENGTH);
+
+  this->clear_payload_();
+  if (!this->payload_.allocate_external(CRASH_PAYLOAD_CAPACITY + 1U)) {
+    ESP_LOGE(TAG, "Failed to allocate %u-byte crash telemetry payload in PSRAM",
+             static_cast<unsigned>(CRASH_PAYLOAD_CAPACITY + 1U));
+    return false;
+  }
+  FixedBufferWriter payload(this->payload_.data(), this->payload_.size());
+  payload += R"({"schema_version":1,"message_id":")";
+  payload += crash_id;
+  payload += R"(","installation_id":")";
+  payload += this->installation_id_;
+  payload += R"(","event":"crash")";
+  append_json_optional_uint64_(payload, "timestamp_s", snapshot->timestamp_s,
+                               (snapshot->flags & CRASH_SNAPSHOT_TIMESTAMP_VALID) != 0U);
+  append_json_uint_(payload, "uptime_s", snapshot->uptime_s);
+  append_json_optional_string_(payload, "firmware_version", this->firmware_version_);
+  append_json_optional_string_(payload, "release_channel", this->release_channel_);
+  append_json_optional_fixed_string_(payload, "current_build_id", current_elf_sha256, current_build_id_valid);
+  append_json_optional_string_(payload, "hardware_profile", this->hardware_profile_);
+  append_json_optional_string_(payload, "topology", this->topology_);
+  append_json_optional_string_(payload, "connection", this->connection_);
+  append_json_key_(payload, "reset_reason");
+  payload += '"';
+  payload += reset_reason_name_(static_cast<esp_reset_reason_t>(snapshot->reset_reason));
+  payload += '"';
+
+  payload += R"(,"crash":{"captured_build_id":)";
+  const bool captured_build_id_valid = (captured.flags & CRASH_BUILD_IDENTITY_ELF_SHA256_VALID) != 0U &&
+                                       fixed_hex_string_is_valid_(captured.elf_sha256, CRASH_ELF_SHA256_HEX_LENGTH);
+  append_json_optional_fixed_value_(payload, captured.elf_sha256, captured_build_id_valid);
+  append_json_optional_fixed_string_(payload, "captured_source_repository", captured.source_repository,
+                                     (captured.flags & CRASH_BUILD_IDENTITY_SOURCE_REPOSITORY_VALID) != 0U);
+  append_json_optional_fixed_string_(payload, "captured_source_commit", captured.source_commit,
+                                     (captured.flags & CRASH_BUILD_IDENTITY_SOURCE_COMMIT_VALID) != 0U);
+  append_json_optional_uint64_(payload, "captured_build_epoch", captured.build_epoch,
+                               (captured.flags & CRASH_BUILD_IDENTITY_BUILD_EPOCH_VALID) != 0U);
+  append_json_optional_fixed_string_(payload, "captured_build_target", captured.build_target,
+                                     (captured.flags & CRASH_BUILD_IDENTITY_BUILD_TARGET_VALID) != 0U);
+  append_json_optional_fixed_string_(payload, "captured_firmware_version", captured.firmware_version,
+                                     (captured.flags & CRASH_BUILD_IDENTITY_FIRMWARE_VERSION_VALID) != 0U);
+  append_json_optional_fixed_string_(payload, "captured_release_channel", captured.release_channel,
+                                     (captured.flags & CRASH_BUILD_IDENTITY_RELEASE_CHANNEL_VALID) != 0U);
+  append_json_key_(payload, "captured_by_current_build");
+  const bool captured_by_current_build =
+      current_build_id_valid && captured_build_id_valid && std::strcmp(current_elf_sha256, captured.elf_sha256) == 0;
+  payload += captured_by_current_build ? "true" : "false";
+  append_json_optional_fixed_string_(payload, "exception_type", snapshot->exception_type_name,
+                                     snapshot->exception_type_name[0] != '\0');
+  append_json_optional_fixed_string_(payload, "reason", snapshot->reason, snapshot->reason[0] != '\0');
+  append_json_key_(payload, "raw_cause");
+  if ((snapshot->flags & CRASH_SNAPSHOT_RAW_CAUSE_VALID) != 0U) {
+    payload.append_uint(snapshot->raw_cause);
+  } else {
+    payload += "null";
+  }
+  append_json_uint_(payload, "core", snapshot->crashed_core);
+  append_json_address_(payload, "pc", snapshot->pc, snapshot->pc != 0U);
+  append_json_address_(payload, "fault_addr", snapshot->fault_addr,
+                       (snapshot->flags & CRASH_SNAPSHOT_FAULT_ADDR_VALID) != 0U);
+  append_json_backtrace_(payload, "backtrace", snapshot->crashed_core_backtrace,
+                         snapshot->crashed_core_backtrace.count != 0U, CRASH_TELEMETRY_BACKTRACE_CAPACITY);
+  append_json_backtrace_(payload, "other_core_backtrace", snapshot->other_core_backtrace,
+                         (snapshot->flags & CRASH_SNAPSHOT_OTHER_CORE_BACKTRACE_VALID) != 0U,
+                         CRASH_TELEMETRY_BACKTRACE_CAPACITY);
+  append_json_key_(payload, "backtrace_truncated");
+  const bool backtrace_truncated = snapshot->crashed_core_backtrace.count > CRASH_TELEMETRY_BACKTRACE_CAPACITY ||
+                                   snapshot->other_core_backtrace.count > CRASH_TELEMETRY_BACKTRACE_CAPACITY;
+  payload += backtrace_truncated ? "true" : "false";
+  payload += "}}";
+
+  if (!payload.ok()) {
+    ESP_LOGE(TAG, "Crash telemetry JSON exceeded its %u-byte PSRAM buffer",
+             static_cast<unsigned>(CRASH_PAYLOAD_CAPACITY));
+    this->clear_payload_();
+    return false;
+  }
+  this->payload_size_ = payload.size();
+  return true;
+}
+
+bool OpenQuattUsageTelemetry::build_tombstone_payload_() {
+  this->clear_payload_();
+  return this->cleanup_pending_.load() && !this->cleanup_installation_id_.empty();
+}
+
+bool OpenQuattUsageTelemetry::discard_pending_crash_() {
+  if (this->crash_provider_ == nullptr || !this->crash_provider_->has_pending_crash()) {
+    return true;
+  }
+  if (!this->crash_snapshot_ && !this->crash_snapshot_.allocate_external(1U)) {
+    return false;
+  }
+  openquatt_log_history::CrashSnapshot* const snapshot = this->crash_snapshot_.data();
+  return this->crash_provider_->copy_pending_crash(snapshot) &&
+         this->crash_provider_->discard_pending_crash(snapshot->crash_id);
+}
+
+bool OpenQuattUsageTelemetry::session_publish_allowed_(PublishKind kind) const {
+  if (kind == PublishKind::TOMBSTONE && this->cleanup_installation_id_.empty()) {
+    return false;
+  }
+  return data_publish_allowed(kind, this->enabled_.load(), this->setup_complete_gate_.load(),
+                              this->consent_publish_blocked_.load(), this->cleanup_pending_.load());
+}
+
+void OpenQuattUsageTelemetry::clear_session_buffers_() {
+  this->publish_topic_.release();
+  this->clear_payload_();
 }
 
 void OpenQuattUsageTelemetry::clear_payload_() {
@@ -994,10 +1590,14 @@ void OpenQuattUsageTelemetry::mqtt_event_handler_(void* handler_args, esp_event_
         break;
       }
       int message_id = -1;
-      if (self->enabled_.load() && self->session_active_.load() && !self->finishing_session_.load() &&
-          !self->consent_publish_blocked_.load()) {
-        message_id = esp_mqtt_client_enqueue(event->client, self->publish_topic_.data(), self->payload_.data(),
-                                             static_cast<int>(self->payload_size_), 1, MQTT_PUBLISH_RETAIN, true);
+      const PublishKind kind = self->active_publish_kind_.load();
+      if (self->session_active_.load() && !self->finishing_session_.load() && self->session_publish_allowed_(kind)) {
+        const MqttPublishPolicy policy = mqtt_publish_policy(kind);
+        static const char EMPTY_PAYLOAD[] = "";
+        const char* const payload = policy.empty_payload ? EMPTY_PAYLOAD : self->payload_.data();
+        const size_t payload_size = policy.empty_payload ? 0U : self->payload_size_;
+        message_id = esp_mqtt_client_enqueue(event->client, self->publish_topic_.data(), payload,
+                                             static_cast<int>(payload_size), policy.qos, policy.retain, true);
       }
       xSemaphoreGive(self->consent_mutex_);
       ESP_LOGD(TAG, "esp-mqtt task stack free after enqueue: %u bytes",

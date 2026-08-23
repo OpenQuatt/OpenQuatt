@@ -10,6 +10,7 @@
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/openquatt_log_history/OpenQuattCrashSnapshot.h"
 #include "esphome/components/select/select.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/switch/switch.h"
@@ -23,6 +24,9 @@
 #include "PsramBuffer.h"
 
 namespace esphome {
+namespace openquatt_log_history {
+class OpenQuattLogHistory;
+}
 namespace openquatt_mqtt_config {
 class OpenQuattMqttConfig;
 }
@@ -80,6 +84,7 @@ class OpenQuattUsageTelemetry : public switch_::Switch, public Component {
     this->energy_history_flash_switch_ = feature_switch;
   }
   void set_ram_log_history_switch(switch_::Switch* feature_switch) { this->ram_log_history_switch_ = feature_switch; }
+  void set_crash_provider(openquatt_log_history::OpenQuattLogHistory* provider) { this->crash_provider_ = provider; }
 
   void setup() override;
   void loop() override;
@@ -93,7 +98,15 @@ class OpenQuattUsageTelemetry : public switch_::Switch, public Component {
 
   static constexpr uint32_t STORAGE_MAGIC = 0x4F515553;
   static constexpr uint16_t STORAGE_VERSION = 2;
+  static constexpr uint32_t CLEANUP_STORAGE_MAGIC = 0x4F514354;
+  static constexpr uint16_t CLEANUP_STORAGE_VERSION = 1;
+  static constexpr size_t CLEANUP_REQUIRED_RESERVED_INDEX = 0U;
+  static constexpr size_t CRASH_PUBLISH_MAY_HAVE_REACHED_RESERVED_INDEX = 1U;
+  static constexpr size_t CRASH_ENDPOINT_GENERATION_RESERVED_INDEX = 2U;
+  static constexpr uint8_t CRASH_ENDPOINT_GENERATION = 1U;
   static constexpr uint32_t INITIAL_PUBLISH_DELAY_MS = 90UL * 1000UL;
+  static constexpr uint32_t CLEANUP_PERSIST_RETRY_MIN_MS = 1000UL;
+  static constexpr uint32_t CLEANUP_PERSIST_RETRY_MAX_MS = 5UL * 60UL * 1000UL;
   static constexpr uint32_t SESSION_TIMEOUT_MS = 30000;
   static constexpr uint32_t RETRY_MIN_MS = 5UL * 60UL * 1000UL;
   static constexpr uint32_t RETRY_MAX_MS = 60UL * 60UL * 1000UL;
@@ -133,13 +146,32 @@ class OpenQuattUsageTelemetry : public switch_::Switch, public Component {
     std::array<uint8_t, 16> installation_id;
   };
 
+  struct CleanupStorage {
+    uint32_t magic;
+    uint16_t version;
+    uint8_t pending;
+    uint8_t reserved;
+    std::array<uint8_t, 16> installation_id;
+  };
+
   static_assert(sizeof(StorageV1) == 24, "Legacy usage telemetry storage layout changed unexpectedly");
   static_assert(sizeof(Storage) == 28, "Usage telemetry storage layout changed unexpectedly");
+  static_assert(sizeof(CleanupStorage) == 24, "Usage telemetry cleanup storage layout changed unexpectedly");
 
   bool load_storage_(Storage* storage);
   bool load_legacy_storage_(StorageV1* storage);
   bool save_storage_(const Storage& storage);
+  bool load_cleanup_storage_(CleanupStorage* storage);
+  bool save_cleanup_storage_(const CleanupStorage& storage);
+  bool persist_cleanup_wal_();
+  bool persist_cleanup_main_intent_();
+  void retry_cleanup_persistence_();
+  void schedule_cleanup_persist_retry_();
+  bool complete_cleanup_wal_();
+  bool mark_crash_publish_may_have_reached_broker_();
+  void apply_pending_cleanup_(const CleanupStorage& cleanup, Storage* storage, bool wal_durable);
   bool set_consent_publish_blocked_(bool blocked);
+  bool set_setup_complete_gate_(bool setup_complete);
   bool ensure_installation_id_(Storage* storage);
   bool is_setup_complete_() const;
   bool apply_storage_(const Storage& storage);
@@ -147,14 +179,21 @@ class OpenQuattUsageTelemetry : public switch_::Switch, public Component {
   void schedule_immediate_publish_();
   void schedule_regular_publish_();
   void schedule_retry_();
-  void start_publish_session_();
+  bool regular_telemetry_due_() const;
+  void start_publish_session_(PublishKind kind);
   bool ensure_worker_task_();
   bool notify_worker_(WorkerCommand command);
   bool start_client_();
   bool cleanup_client_();
   void finish_publish_session_(bool succeeded);
   void complete_publish_session_();
-  bool build_payload_();
+  bool build_publish_topic_(PublishKind kind, const std::string& installation_id);
+  bool build_telemetry_payload_();
+  bool build_crash_payload_();
+  bool build_tombstone_payload_();
+  bool discard_pending_crash_();
+  bool session_publish_allowed_(PublishKind kind) const;
+  void clear_session_buffers_();
   void clear_payload_();
   std::string read_hardware_revision_() const;
   static bool time_reached_(uint32_t now_ms, uint32_t target_ms);
@@ -203,10 +242,17 @@ class OpenQuattUsageTelemetry : public switch_::Switch, public Component {
   switch_::Switch* decision_log_flash_switch_{nullptr};
   switch_::Switch* energy_history_flash_switch_{nullptr};
   switch_::Switch* ram_log_history_switch_{nullptr};
+  openquatt_log_history::OpenQuattLogHistory* crash_provider_{nullptr};
 
   ESPPreferenceObject pref_;
+  ESPPreferenceObject cleanup_pref_;
   std::array<uint8_t, 16> installation_id_bytes_{};
   std::string installation_id_;
+  std::array<uint8_t, 16> cleanup_installation_id_bytes_{};
+  std::string cleanup_installation_id_;
+  std::string session_client_id_;
+  std::array<uint8_t, 16> active_crash_id_{};
+  openquatt_common::PsramBuffer<openquatt_log_history::CrashSnapshot> crash_snapshot_;
   openquatt_common::PsramBuffer<char> publish_topic_;
   openquatt_common::PsramBuffer<char> payload_;
   size_t payload_size_{0U};
@@ -220,9 +266,14 @@ class OpenQuattUsageTelemetry : public switch_::Switch, public Component {
   SemaphoreHandle_t consent_mutex_{nullptr};
   StaticTask worker_task_state_{};
   std::atomic<bool> enabled_{false};
+  std::atomic<bool> setup_complete_gate_{false};
   std::atomic<bool> consent_publish_blocked_{true};
   std::atomic<bool> choice_configured_{false};
+  std::atomic<bool> cleanup_pending_{false};
+  std::atomic<bool> cleanup_wal_durable_{false};
+  std::atomic<bool> cleanup_main_durable_{false};
   std::atomic<bool> session_active_{false};
+  std::atomic<PublishKind> active_publish_kind_{PublishKind::TELEMETRY};
   std::atomic<bool> finishing_session_{false};
   std::atomic<bool> start_task_running_{false};
   std::atomic<bool> start_task_complete_{false};
@@ -235,7 +286,10 @@ class OpenQuattUsageTelemetry : public switch_::Switch, public Component {
   std::atomic<int> pending_message_id_{-1};
   uint32_t session_started_ms_{0};
   uint32_t next_publish_ms_{0};
+  uint32_t next_regular_telemetry_ms_{0};
+  uint32_t next_cleanup_persist_retry_ms_{0};
   uint8_t consecutive_failures_{0};
+  uint8_t cleanup_persist_failures_{0};
   bool boot_publish_pending_{false};
 };
 

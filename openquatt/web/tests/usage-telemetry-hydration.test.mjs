@@ -166,7 +166,7 @@ test("Quick Start locks telemetry consent before hydration starts", async () => 
   assert.match(quickStartUiActionsSource, /preparationId !== quickStartPreparationId/);
 });
 
-test("usage telemetry disclosure matches the hourly payload scope", async () => {
+test("usage telemetry disclosure matches the hourly and crash payload scope", async () => {
   const quickStartSource = await readFile(new URL("../js/src/features/quickstart.js", import.meta.url), "utf8");
   const quickStartActionsSource = await readFile(new URL("../js/src/features/quickstart-actions.js", import.meta.url), "utf8");
   const entityWriteSource = await readFile(new URL("../js/src/core/entity-write-actions.js", import.meta.url), "utf8");
@@ -192,17 +192,29 @@ test("usage telemetry disclosure matches the hourly payload scope", async () => 
   assert.match(telemetryYaml, /name: "Usage statistics installation ID"[\s\S]*internal: true/);
   assert.match(disclosureSource, /settings && enabled && hasEntity\("usageTelemetryInstallationId"\)/);
   assert.match(disclosureSource, /oq-usage-consent-installation-id/);
-  assert.match(disclosureSource, /vrijwel direct en daarna ongeveer elk uur/);
+  assert.match(disclosureSource, /vrijwel direct, daarna ongeveer elk uur en na een echte firmwarecrash/);
   assert.match(disclosureSource, /OpenQuatt-loggingserver/);
   assert.match(disclosureSource, /wifi-signaal/);
   assert.match(disclosureSource, /Quatt Hybrid-versie, verwarmingsstrategie, flowbron en regelbronnen/);
   assert.match(disclosureSource, /Aan\/uit-status van CiC, OpenTherm-thermostaat, ketelondersteuning, MQTT-inputs en lokale historie/);
   assert.match(disclosureSource, /ketelaansluiting \(aan\/uit of OpenTherm\)/);
-  assert.match(disclosureSource, /Geen gemeten of ingestelde temperaturen, grenzen, MQTT-topics of logs/);
+  assert.match(disclosureSource, /Geen gemeten of ingestelde temperaturen, grenzen, MQTT-topics of reguliere logs/);
   assert.match(disclosureSource, /Nooit een wifi-netwerknaam, wifi-wachtwoord, gebruikersnaam, ander wachtwoord of inloggegevens/);
   assert.match(disclosureSource, /Voorbeeld van het verzonden bericht \(JSON\)/);
   assert.match(disclosureSource, /schema_version/);
   assert.match(disclosureSource, /timestamp_s/);
+  assert.match(disclosureSource, /Voorbeeld van een crashbericht \(JSON\)/);
+  assert.match(disclosureSource, /Crashreden, oorzaakcode, processorcore, foutadres indien bruikbaar, ruwe backtrace per core/);
+  assert.match(disclosureSource, /current_build_id/);
+  assert.match(disclosureSource, /captured_build_id/);
+  assert.match(disclosureSource, /captured_source_repository/);
+  assert.match(disclosureSource, /captured_source_commit/);
+  assert.match(disclosureSource, /captured_build_epoch/);
+  assert.match(disclosureSource, /captured_firmware_version/);
+  assert.match(disclosureSource, /captured_release_channel/);
+  assert.match(disclosureSource, /captured_by_current_build/);
+  assert.match(disclosureSource, /other_core_backtrace/);
+  assert.match(disclosureSource, /backtrace_truncated/);
   const configFields = [
     "quatt_hybrid_generation_config",
     "flow_source_config",

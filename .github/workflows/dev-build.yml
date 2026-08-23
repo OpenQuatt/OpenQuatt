@@ -64,6 +64,15 @@ jobs:
           RELEASE_URL="https://github.com/${REPO}/releases/tag/${TAG}"
           ./scripts/prepare_release_assets.sh "${{ needs.compute-meta.outputs.version }}" "${BASE_URL}" "${RELEASE_URL}"
 
+      - name: Publish immutable firmware build metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/publish_firmware_build_metadata.py \
+            --github-repository "${GITHUB_REPOSITORY}" \
+            --start-sha "${GITHUB_SHA}" \
+            dist/*/*.build.json
+
       - name: Move dev release tag
         run: |
           git config user.name "github-actions[bot]"
