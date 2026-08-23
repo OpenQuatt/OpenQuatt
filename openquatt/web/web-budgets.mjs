@@ -9,7 +9,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // its read-only sensor-correction summary, calibration backup/restore,
     // the read-only ODU EEPROM service export, API ingress source controls,
     // and concise CM100 boiler test phase copy (FLOW_SETTLING/BOILER_SETTLING/MEASURING/COOLDOWN).
-    raw: 902_000,
+    // Temporary +1 kB allowance for PR #505 flow-filter field diagnostics.
+    // Revert to 902_000 when the field-test probe is removed.
+    raw: 903_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.
