@@ -1,8 +1,8 @@
 name: PR512 focused simplify
 
 on:
-  push:
-    branches: [codex/issue-461-ipwm-diagnostics]
+  pull_request:
+    branches: [dev]
 
 permissions:
   contents: write
@@ -81,7 +81,6 @@ jobs:
               rw(path, lambda t: re.sub(r'^\s*updated_at_ms:.*\n', '', t, flags=re.M))
           rw('openquatt/web/tests/incident-monitoring.test.mjs', lambda t: t.replace('Pompaanvraag · R2010.b12', 'Pompaanvraag (OpenQuatt) · R2010.b12'))
 
-          # Remove obsolete cache-specific assertions/tests; CI will validate the final code.
           rw('tests/host/oq_pump_ipwm_feedback_test.cpp', lambda t: re.sub(r'\nvoid test_raw_observation_retains_recent_diagnostic_context_and_is_wrap_safe\(\).*?\n\}\n', '', t, count=1, flags=re.S).replace('  test_raw_observation_retains_recent_diagnostic_context_and_is_wrap_safe();\n', ''))
           rw('scripts/tests/test_pump_ipwm_contract.py', lambda t: t.replace('        self.assertIn("kDiagnosticContextFreshnessMs = 20000U", PUMP_IPWM_HEADER)\n        self.assertIn("read_if_fresh", PUMP_IPWM_HEADER)\n', '').replace('        self.assertIn("2010U", HP_IO)\n', '').replace('        self.assertIn("observe_pump_register", HP_IO)\n', '        self.assertNotIn("pump_request_raw", HP_IO)\n'))
           PY
