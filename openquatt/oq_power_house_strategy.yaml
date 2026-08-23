@@ -419,9 +419,9 @@ interval:
             // and water-temperature limiter below stay firmware-owned.
             const float P_model = oq_power_house::modelled_house_power_w(T0, Tc, Tout, house_power_rating_w);
             const bool demand_present =
-                id(heat_demand_selected).has_state() && !isnan(id(heat_demand_selected).state);
+                id(external_heat_demand_selected).has_state() && !isnan(id(external_heat_demand_selected).state);
             const oq_power_house::Feedforward feedforward = oq_power_house::select_feedforward(
-                P_model, demand_present ? id(heat_demand_selected).state : NAN, demand_present,
+                P_model, demand_present ? id(external_heat_demand_selected).state : NAN, demand_present,
                 house_power_rating_w);
             const float P_house = feedforward.house_power_w;
             id(oq_phouse_demand_external) = feedforward.external;

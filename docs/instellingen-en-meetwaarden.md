@@ -144,7 +144,7 @@ Belangrijke keuzes:
 - `Room Temperature Source`
 - `Room Setpoint Source`
 - `Cooling Dew Point Source`
-- `Heat Demand Source`
+- `External Heat Demand Source`
 
 En indirect alles wat bepaalt waar buiten-, kamer- en waterwaarden vandaan komen.
 
@@ -154,7 +154,7 @@ Kies je expliciet `MQTT`, houd er dan rekening mee dat de MQTT-buitentemperatuur
 
 Voor `Cooling Dew Point Source` is `Auto` meestal ook de veiligste keuze. OpenQuatt gebruikt dan de hoogste geldige dauwpuntwaarde van Home Assistant, API-invoer en MQTT. Kies `Home Assistant`, `API input` of `MQTT` alleen als je die bron expliciet wilt vereisen.
 
-Voor `Heat Demand Source` is `Disabled` de standaard, en voor de meeste installaties ook de juiste keuze. Kies je `HA input` of `API input`, dan neemt een externe voorspelling de vermogensschatting van het huismodel in `Power House` over. De rest van de regeling blijft ongewijzigd, en bij een wegvallende of verouderde bron valt `Power House` terug op het eigen huismodel. Zie [Power House](power-house.md).
+Voor `External Heat Demand Source` is `Disabled` de standaard, en voor de meeste installaties ook de juiste keuze. Kies je `HA input` of `API input`, dan neemt een externe voorspelling de vermogensschatting van het huismodel in `Power House` over. De rest van de regeling blijft ongewijzigd, en bij een wegvallende of verouderde bron valt `Power House` terug op het eigen huismodel. Zie [Power House](power-house.md).
 
 De temperatuurkalibratie neemt ook de actieve aanvoertemperatuurbron mee. OpenQuatt bewaart daarvoor vier afzonderlijke offsets: voor de lokale PT1000, lokale DS18B20, CIC-feed en Home Assistant-invoer. Bij een bronwissel activeert OpenQuatt automatisch de eerder opgeslagen correctie voor die bron. De CIC-correctie blijft geldig na een gewijzigde feed-URL; na een andere Home Assistant-entiteit blijft die correctie uitgeschakeld totdat je de HA-invoer opnieuw kalibreert. Een tijdelijke automatische fallback naar de water-uitmeting van de warmtepomp gebruikt geen aanvoercorrectie en wist geen opgeslagen kalibratie.
 

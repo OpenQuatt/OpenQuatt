@@ -108,19 +108,19 @@ globals:
     restore_value: false
     initial_value: 'false'
 
-  - id: oq_heat_demand_selected_last_valid_w
+  - id: oq_external_heat_demand_selected_last_valid_w
     type: float
     restore_value: false
     initial_value: 'NAN'
-  - id: oq_heat_demand_selected_last_valid_ms
+  - id: oq_external_heat_demand_selected_last_valid_ms
     type: uint32_t
     restore_value: false
     initial_value: '0'
-  - id: oq_heat_demand_selected_hold_active
+  - id: oq_external_heat_demand_selected_hold_active
     type: bool
     restore_value: false
     initial_value: 'false'
-  - id: oq_heat_demand_selected_last_valid_source
+  - id: oq_external_heat_demand_selected_last_valid_source
     type: uint8_t
     restore_value: false
     initial_value: '0'
@@ -471,7 +471,7 @@ text_sensor:
       if (id(oq_outside_temp_selected_hold_active)) add("Outside temp");
       if (id(oq_room_temp_selected_hold_active)) add("Room temp");
       if (id(oq_room_setpoint_selected_hold_active)) add("Room setpoint");
-      if (id(oq_heat_demand_selected_hold_active)) add("Heat demand");
+      if (id(oq_external_heat_demand_selected_hold_active)) add("External heat demand");
       if (id(oq_cooling_dew_point_selected_hold_active)) add("Cooling dew point");
 
       if (active.empty()) active = "None";
@@ -932,8 +932,8 @@ sensor:
       return NAN;
 
   - platform: template
-    id: heat_demand_selected
-    name: "Heat Demand (Selected)"
+    id: external_heat_demand_selected
+    name: "External Heat Demand (Selected)"
     icon: mdi:home-lightning-bolt
     unit_of_measurement: "W"
     device_class: power
@@ -944,8 +944,8 @@ sensor:
       // Optional external Power House feedforward. NAN is the normal state and
       // leaves the modelled house power in charge, so an absent or stale
       // planner degrades to firmware behaviour instead of to no heat.
-      if (!id(heat_demand_source).has_state()) return NAN;
-      const auto source = id(heat_demand_source).current_option();
+      if (!id(external_heat_demand_source).has_state()) return NAN;
+      const auto source = id(external_heat_demand_source).current_option();
       const bool hold_enabled = source == "HA input";
       const uint8_t source_code = (source == "HA input")
           ? oq_power_house::kDemandSourceHaInput
@@ -954,37 +954,37 @@ sensor:
       const uint32_t hold_ms = (uint32_t)(${oq_selected_input_stale_hold_s}UL * 1000UL);
       const uint32_t now_ms = (uint32_t) millis();
       const bool api_valid =
-          id(api_input_heat_demand_valid).has_state() && id(api_input_heat_demand_valid).state &&
-          id(api_input_heat_demand).has_state() && !isnan(id(api_input_heat_demand).state);
+          id(api_input_external_heat_demand_valid).has_state() && id(api_input_external_heat_demand_valid).state &&
+          id(api_input_external_heat_demand).has_state() && !isnan(id(api_input_external_heat_demand).state);
 
       float selected_w = NAN;
       if (source == "HA input") {
-        if (id(heat_demand_valid_ha).state && id(heat_demand_ha).has_state()) selected_w = id(heat_demand_ha).state;
+        if (id(external_heat_demand_valid_ha).state && id(external_heat_demand_ha).has_state()) selected_w = id(external_heat_demand_ha).state;
       }
       if (source == "API input") {
-        if (api_valid) selected_w = id(api_input_heat_demand).state;
+        if (api_valid) selected_w = id(api_input_external_heat_demand).state;
       }
 
       const bool selected_valid = !isnan(selected_w);
       if (selected_valid) {
-        id(oq_heat_demand_selected_last_valid_w) = selected_w;
-        id(oq_heat_demand_selected_last_valid_ms) = now_ms;
-        id(oq_heat_demand_selected_last_valid_source) = source_code;
-        id(oq_heat_demand_selected_hold_active) = false;
+        id(oq_external_heat_demand_selected_last_valid_w) = selected_w;
+        id(oq_external_heat_demand_selected_last_valid_ms) = now_ms;
+        id(oq_external_heat_demand_selected_last_valid_source) = source_code;
+        id(oq_external_heat_demand_selected_hold_active) = false;
         return selected_w;
       }
 
-      id(oq_heat_demand_selected_hold_active) = false;
+      id(oq_external_heat_demand_selected_hold_active) = false;
       if (hold_enabled &&
           oq_power_house::hold_cached_demand(
-              id(oq_heat_demand_selected_last_valid_source),
+              id(oq_external_heat_demand_selected_last_valid_source),
               source_code,
-              id(oq_heat_demand_selected_last_valid_w),
-              id(oq_heat_demand_selected_last_valid_ms),
+              id(oq_external_heat_demand_selected_last_valid_w),
+              id(oq_external_heat_demand_selected_last_valid_ms),
               now_ms,
               hold_ms)) {
-        id(oq_heat_demand_selected_hold_active) = true;
-        return id(oq_heat_demand_selected_last_valid_w);
+        id(oq_external_heat_demand_selected_hold_active) = true;
+        return id(oq_external_heat_demand_selected_last_valid_w);
       }
 
       return NAN;

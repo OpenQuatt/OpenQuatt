@@ -32,7 +32,7 @@ Sommige `curl`-versies vereisen bij `POST` een expliciete `Content-Length`. Gebr
 | Buitentemperatuur | `/number/api_input_outside_temperature/set?value=<temperatuur>` | `-40..60` graden Celsius |
 | Kamertemperatuur | `/number/api_input_room_temperature/set?value=<temperatuur>` | `0..50` graden Celsius |
 | Kamer-setpoint | `/number/api_input_room_setpoint/set?value=<temperatuur>` | `5..35` graden Celsius |
-| Warmtevraag | `/number/api_input_heat_demand/set?value=<vermogen>` | `0..15000` watt |
+| Warmtevraag | `/number/api_input_external_heat_demand/set?value=<vermogen>` | `0..15000` watt |
 
 Toestemmingssignalen zijn `switch`-entiteiten. Zet ze met een `POST` naar `/turn_on` of `/turn_off`.
 

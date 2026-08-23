@@ -36,8 +36,8 @@ select:
     initial_option: CIC
 
   - platform: template
-    name: "Heat Demand Source"
-    id: heat_demand_source
+    name: "External Heat Demand Source"
+    id: external_heat_demand_source
     icon: mdi:source-branch
     entity_category: config
     optimistic: true

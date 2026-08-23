@@ -8,7 +8,7 @@
 # Scope:
 #   - Fixed HA-backed temperature and thermostat proxy inputs
 #   - HA heating/cooling enable proxy contracts
-#   - Optional HA heat demand proxy used as Power House feedforward
+#   - Optional HA external heat demand proxy used as Power House feedforward
 #   - Aggregate HA cooling proxy contract used for cooling safety
 #
 # Notes:
@@ -74,9 +74,9 @@ sensor:
     accuracy_decimals: 2
 
   - platform: homeassistant
-    id: heat_demand_ha
-    name: "HA - Heat Demand"
-    entity_id: ${ha_heat_demand_entity_id}
+    id: external_heat_demand_ha
+    name: "HA - External Heat Demand"
+    entity_id: ${ha_external_heat_demand_entity_id}
     internal: false
     disabled_by_default: true
     icon: mdi:home-lightning-bolt
@@ -154,8 +154,8 @@ binary_sensor:
     icon: mdi:check-decagram
 
   - platform: homeassistant
-    id: heat_demand_valid_ha
-    name: "HA - Heat Demand Valid"
-    entity_id: ${ha_heat_demand_valid_entity_id}
+    id: external_heat_demand_valid_ha
+    name: "HA - External Heat Demand Valid"
+    entity_id: ${ha_external_heat_demand_valid_entity_id}
     internal: true
     icon: mdi:check-decagram
