@@ -182,6 +182,8 @@ export function formatSettingsOptionLabel(option) {
     Local: "Lokaal",
     CIC: "CIC",
     "HA input": "HA-invoer",
+    "API input": "API-invoer",
+    "API Input": "API-invoer",
     "CIC + HA input": "CIC + HA-invoer",
     "OT thermostat": "OT-thermostaat",
     "Outdoor unit": "Buitenunit",
