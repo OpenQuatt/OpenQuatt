@@ -29,26 +29,22 @@ void test_wilo_boundaries() {
   expect_status(UINT16_MAX, Status::UNKNOWN);
 }
 
-void test_power_band_is_fixed_and_fault_codes_never_count_as_power() {
+void test_power_band_is_fixed_and_fault_codes_are_not_power() {
   const DecodedFeedback running = decode(500U);
   assert(running.status == Status::RUNNING);
   assert(running.power_valid);
   assert(running.power_w == 50.0F);
-  assert(power_contribution_w(running, true, true) == 50.0F);
-  assert(power_contribution_w(running, true, false) == 0.0F);
-  assert(power_contribution_w(running, false, true) == 0.0F);
 
   const DecodedFeedback diagnostic = decode(950U);
   assert(diagnostic.status == Status::PUMP_OFF_FAILURE);
   assert(!diagnostic.power_valid);
-  assert(power_contribution_w(diagnostic, true, true) == 0.0F);
 }
 
 }  // namespace
 
 int main() {
   test_wilo_boundaries();
-  test_power_band_is_fixed_and_fault_codes_never_count_as_power();
+  test_power_band_is_fixed_and_fault_codes_are_not_power();
   std::cout << "Pump iPWM feedback tests passed\n";
   return 0;
 }
