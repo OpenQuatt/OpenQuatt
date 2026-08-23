@@ -1820,7 +1820,6 @@ void OpenQuattIncidentManager::write_snapshot(httpd_req_t* req) const {
          write_raw(req, R"(,"flow_lph":)") &&
          write_optional_float(req, snapshot.units[slot].pump_context.flow_valid,
                               snapshot.units[slot].pump_context.flow_lph) &&
-         write_raw(req, R"(,"updated_at_ms":)") && write_uint(req, snapshot.units[slot].pump_context.updated_at_ms) &&
          write_raw(req, R"(},"last_action_result":)");
     if (ok && snapshot.units[slot].last_action_seq == 0U) {
       ok = write_raw(req, "null");

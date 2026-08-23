@@ -1009,9 +1009,9 @@ sensor:
             const uint32_t now_ms = millis();
             const uint16_t fault_word = static_cast<uint16_t>(lroundf(x));
             if ((fault_word & 0x2000u) != 0u) {
-              auto* pump_mode = id(${hp_id}_set_pump_mode);
-              const bool request_valid = pump_mode != nullptr && pump_mode->has_state();
-              const bool request_on = request_valid && pump_mode->current_option() == "On";
+              const bool request_valid = id(${hp_id}_set_pump_mode).has_state();
+              const bool request_on = request_valid &&
+                  id(${hp_id}_set_pump_mode).current_option() == "On";
               const float relay_raw = id(${hp_id}_status_2108_raw).state;
               const bool relay_valid = !isnan(relay_raw);
               const bool relay_on = relay_valid &&

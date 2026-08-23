@@ -204,21 +204,6 @@ test("ODU source metadata and pump context preserve raw zero/false/null values",
     ["iPWM-feedback · R2137", "950 raw · PumpOffFailure"],
     ["Flow · R2138", "0 L/h"],
   ]);
-  assert.deepEqual(
-    getPumpIncidentContextRows(
-      { ...incident, lastSeenMs: 12_346 },
-      heatPump.pumpContext,
-    ),
-    [],
-  );
-  assert.equal(
-    getPumpIncidentContextRows(
-      { ...incident, lastSeenMs: 0xFFFFFFF0 },
-      { ...heatPump.pumpContext, updatedAtMs: 0x10 },
-    ).length,
-    5,
-  );
-
   const unavailable = normalizeIncidentMonitoringSnapshot(snapshot({
     heat_pumps: [{
       index: 1,
