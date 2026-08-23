@@ -170,6 +170,8 @@ Onder `Instellingen` staan de onderdelen bewust gescheiden. Het idee is: eerst d
 
 Hier staan basiskeuzes zoals Quatt Hybrid-versie, flowregeling, boiler- of CV-ondersteuning, stille uren, watergrenzen en compressorinstellingen.
 
+Voor iedere warmtepomp staat hier ook het `iPWM feedbackprofiel`. Laat dit op `Unknown / other` staan zolang het gemonteerde Wilo-pomptype niet is bevestigd. Met dat veilige standaardprofiel gebruikt OpenQuatt R2137 alleen als diagnostische status en telt de waarde niet mee als pompvermogen. Kies `Wilo PWM flow` voor flowfeedback of `Wilo 5–75 W power` voor het bevestigde vermogensprofiel; alleen dat laatste profiel mag geldige vermogenswaarden aan `Power Input`, energie, COP/EER en de Duo-vermogensbegrenzing bijdragen. Diagnostische statuscodes worden bij geen enkel profiel als vermogen verwerkt. De keuze is per warmtepomp afzonderlijk en wordt ook in backup en restore meegenomen.
+
 `Automatische ketelovername bij warmtepompstoring` is een aparte installatiekeuze en staat standaard uit. Als je deze inschakelt, mag OpenQuatt bij een bevestigde storing van alle geconfigureerde warmtepompen overschakelen naar CM4 en de cv-ketel de verwarmingsopdracht geven. OpenQuatt doet dit alleen nadat de warmtepompen veilig zijn gestopt en flow, aanvoertemperatuur en ketelaansturing geldig zijn. Een korte communicatiedip telt niet als bevestigde storing en vraagt geen actie of bevestiging van de gebruiker.
 
 Gebruik dit deel vooral tijdens de eerste inrichting of als je installatie later verandert.
