@@ -80,6 +80,11 @@ class PumpIpwmContractTest(unittest.TestCase):
         )
         self.assertIn("address: 2113", flow_switch)
         self.assertIn("offset: 4", flow_switch)
+        # R2115 is byte 4/5 of the shared R2113-R2115 response. Keep the
+        # sensor on the same three-register span as gas_return_temp; a one-
+        # register response is only two bytes and cannot satisfy offset 4.
+        self.assertIn("register_count: 3", flow_switch)
+        self.assertNotIn("register_count: 1", flow_switch)
         self.assertNotIn("address: 2115", flow_switch)
         self.assertIn("unit->pump_context = {};", MANAGER_CPP)
         self.assertIn(
