@@ -149,10 +149,11 @@ test("onboarding toont Duo per HP en onderscheidt geselecteerd van aanbevolen zo
   assert.match(markup, /Advies V1/);
   assert.match(markup, /V1 wordt aanbevolen; V1\.5 is geselecteerd/);
   assert.match(markup, /aria-live="polite"/);
-  assert.match(markup, /aria-label="Detecteer HP1 opnieuw"/);
-  assert.match(markup, /aria-label="Detecteer HP2 opnieuw"/);
-  assert.match(markup, /data-oq-button-key="hp1GenerationDetect"/);
-  assert.match(markup, /data-oq-button-key="hp2GenerationDetect"/);
+  assert.match(markup, /aria-label="ODU-generatie opnieuw detecteren"/);
+  assert.match(markup, /data-oq-action="press-odu-generation-detect-all"/);
+  assert.match(markup, /Opnieuw detecteren/);
+  assert.match(markup, /oq-gen-reset/);
+  assert.doesNotMatch(markup, /data-oq-button-key="hp1GenerationDetect"/);
   assert.equal(getOduGenerationChoiceMeta("V1", "V1.5", "V1"), "Aanbevolen");
   assert.equal(getOduGenerationChoiceMeta("V1.5", "V1.5", "V1"), "Geselecteerd");
   assert.match(installationSource, /meta: getOduGenerationChoiceMeta\(option, currentValue, detectionModel\.recommendation\)/);
@@ -161,7 +162,9 @@ test("onboarding toont Duo per HP en onderscheidt geselecteerd van aanbevolen zo
   assert.deepEqual(state.drafts, {});
 
   state.busyAction = "hp1GenerationDetect";
-  assert.match(renderOduGenerationDetectionStatus(), /aria-label="HP1 wordt opnieuw gedetecteerd"/);
+  assert.match(renderOduGenerationDetectionStatus(), /Detecteren…/);
+  state.busyAction = "odu-generation-detect-all";
+  assert.match(renderOduGenerationDetectionStatus(), /Detecteren…/);
 });
 
 test("Unknown blijft zichtbaar, toont geen aanbevolen badge en behoudt handmatige fallback", () => {

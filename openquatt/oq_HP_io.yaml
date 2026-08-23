@@ -204,7 +204,12 @@ button:
     icon: mdi:refresh
     entity_category: diagnostic
     on_press:
-      - script.execute: ${hp_id}_detect_odu_generation_once
+      - if:
+          condition:
+            lambda: |-
+              return !id(${hp_id}_odu_generation_request_pending);
+          then:
+            - script.execute: ${hp_id}_detect_odu_generation_once
 
 # ----------------------------
 # SELECT
@@ -676,7 +681,9 @@ sensor:
     disabled_by_default: true
     icon: mdi:identifier
     register_type: holding
-    register_count: 4  # 2127 - 2131
+    # Read span 2127-2130 to keep the Modbus range contiguous with 2131.
+    # Only register 2127 is decoded as this U_WORD diagnostic value.
+    register_count: 4
     address: 2127
     skip_updates: ${oq_modbus_telemetry_skip}
     value_type: U_WORD

@@ -837,9 +837,8 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
     const currentLabel = getInstallationLabel();
     const entity = state.entities.hpGeneration || {};
     const canEdit = hasEntity("hpGeneration") && getSelectEntityOptions(entity).length > 0;
-    const detectionStatus = renderOduGenerationDetectionStatus({ embedded: true });
 
-    if (!currentLabel && !canEdit && !detectionStatus) {
+    if (!currentLabel && !canEdit) {
       return "";
     }
 
@@ -863,7 +862,6 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
             Aanpassen
           </button>
           </div>
-          ${detectionStatus}
         </div>
       `,
     );
