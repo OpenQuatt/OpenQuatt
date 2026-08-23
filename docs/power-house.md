@@ -128,10 +128,12 @@ Standaard rekent `Power House` zelf uit hoeveel vermogen het huis nodig heeft, u
 
 Zet daarvoor `External Heat Demand Source` op `HA input` of `API input` en lever een waarde in watt. Staat de bron op `Disabled`, dan verandert er niets aan het gedrag dat je nu kent.
 
-Voor `HA input` luistert OpenQuatt naar twee vaste entiteiten in Home Assistant, die je daar zelf aanmaakt:
+Voor `HA input` luistert OpenQuatt naar twee vaste entiteiten in Home Assistant:
 
 - `sensor.openquatt_ext_heat_demand` — de gevraagde warmte in watt;
 - `binary_sensor.openquatt_ext_heat_demand_valid` — moet `on` staan, anders negeert OpenQuatt de waarde en valt hij terug op het huismodel.
+
+Het eenvoudigst maak je die aan met het package [dynamic-sources.yaml](https://github.com/OpenQuatt/home-assistant-openquatt/blob/main/packages/dynamic-sources.yaml): vul daar de helper `input_text.openquatt_source_heat_demand` met de entiteit van je eigen voorspelling, dan publiceert het package beide entiteiten voor je. Je kunt ze ook zelf aanmaken.
 
 Die tweede entiteit is jouw eigen geldigheidsschakelaar: zet hem `off` zodra je voorspelling verouderd of onbetrouwbaar is. De namen liggen vast in de firmware en zijn alleen in een eigen build aan te passen, via de substituties `ha_external_heat_demand_entity_id` en `ha_external_heat_demand_valid_entity_id`.
 
