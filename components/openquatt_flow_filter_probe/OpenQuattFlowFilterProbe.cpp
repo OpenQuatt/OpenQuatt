@@ -157,7 +157,15 @@ void OpenQuattFlowFilterProbe::publish_raw_diagnostics_(uint32_t now_us) {
     stats.from20_to50 = this->width_stats_.from20_to50;
     stats.from50_to100 = this->width_stats_.from50_to100;
     stats.ge100 = this->width_stats_.ge100;
-    this->width_stats_ = WidthStats{};
+
+    this->width_stats_.count = 0;
+    this->width_stats_.sum_us = 0;
+    this->width_stats_.min_us = UINT32_MAX;
+    this->width_stats_.max_us = 0;
+    this->width_stats_.lt20 = 0;
+    this->width_stats_.from20_to50 = 0;
+    this->width_stats_.from50_to100 = 0;
+    this->width_stats_.ge100 = 0;
   }
 
   const uint32_t elapsed_us = now_us - this->diagnostics_window_started_us_;
@@ -184,12 +192,14 @@ void OpenQuattFlowFilterProbe::publish_raw_diagnostics_(uint32_t now_us) {
   if (this->pulse_width_avg_sensor_ != nullptr)
     this->pulse_width_avg_sensor_->publish_state(static_cast<float>(stats.sum_us) / count);
   if (this->pulse_width_max_sensor_ != nullptr) this->pulse_width_max_sensor_->publish_state(stats.max_us);
-  if (this->pulse_width_lt20_sensor_ != nullptr) this->pulse_width_lt20_sensor_->publish_state(100.0f * stats.lt20 / count);
+  if (this->pulse_width_lt20_sensor_ != nullptr)
+    this->pulse_width_lt20_sensor_->publish_state(100.0f * stats.lt20 / count);
   if (this->pulse_width_20_50_sensor_ != nullptr)
     this->pulse_width_20_50_sensor_->publish_state(100.0f * stats.from20_to50 / count);
   if (this->pulse_width_50_100_sensor_ != nullptr)
     this->pulse_width_50_100_sensor_->publish_state(100.0f * stats.from50_to100 / count);
-  if (this->pulse_width_ge100_sensor_ != nullptr) this->pulse_width_ge100_sensor_->publish_state(100.0f * stats.ge100 / count);
+  if (this->pulse_width_ge100_sensor_ != nullptr)
+    this->pulse_width_ge100_sensor_->publish_state(100.0f * stats.ge100 / count);
 }
 
 void OpenQuattFlowFilterProbe::loop() {
