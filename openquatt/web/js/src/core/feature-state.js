@@ -1,36 +1,29 @@
 import { DEBUG_RECORDING_KEYS, ENTITY_DEFS } from "./config.js";
 import { state } from "./state.js";
 
-const TEST_FLOW_ENTITIES = {
-  controllerFlowEdge100: "Controller Flow test EDGE 100us",
-  controllerFlowPulse13: "Controller Flow test PULSE 13us",
-  controllerFlowPulse20: "Controller Flow test PULSE 20us",
-  controllerFlowPulse50: "Controller Flow test PULSE 50us",
-  controllerFlowRawRisingHz: "Controller Flow test raw rising Hz",
-  controllerFlowRawRisingCount: "Controller Flow test raw rising count 10s",
-  controllerFlowPulseWidthMin: "Controller Flow test pulse width min",
-  controllerFlowPulseWidthAvg: "Controller Flow test pulse width avg",
-  controllerFlowPulseWidthMax: "Controller Flow test pulse width max",
-  controllerFlowPulseWidthLt20: "Controller Flow test pulse width <20us",
-  controllerFlowPulseWidth20To50: "Controller Flow test pulse width 20-50us",
-  controllerFlowPulseWidth50To100: "Controller Flow test pulse width 50-100us",
-  controllerFlowPulseWidthGe100: "Controller Flow test pulse width >=100us",
-};
+const TEST_FLOW_SUFFIXES = [
+  "Edge100",
+  "Pulse13",
+  "Pulse20",
+  "Pulse50",
+  "RawRisingHz",
+  "RawRisingCount",
+  "PulseWidthMin",
+  "PulseWidthAvg",
+  "PulseWidthMax",
+  "PulseWidthLt20",
+  "PulseWidth20To50",
+  "PulseWidth50To100",
+  "PulseWidthGe100",
+];
 
-for (const [key, name] of Object.entries(TEST_FLOW_ENTITIES)) {
-  ENTITY_DEFS[key] = { domain: "sensor", name, optional: true };
+for (const suffix of TEST_FLOW_SUFFIXES) {
+  const key = `controllerFlow${suffix}`;
+  ENTITY_DEFS[key] = { domain: "sensor", name: `QFF ${suffix}`, optional: true };
+  if (!DEBUG_RECORDING_KEYS.includes(key)) DEBUG_RECORDING_KEYS.push(key);
 }
 
-const REQUIRED_DEBUG_RECORDING_KEYS = [
-  "otbMaxCapacity",
-  "otbMinModulation",
-  "flowSource",
-  "qFlowSource",
-  "controllerFlow",
-  ...Object.keys(TEST_FLOW_ENTITIES),
-  "cicFlowrate",
-];
-for (const key of REQUIRED_DEBUG_RECORDING_KEYS) {
+for (const key of ["otbMaxCapacity", "otbMinModulation", "flowSource", "qFlowSource", "controllerFlow", "cicFlowrate"]) {
   if (!DEBUG_RECORDING_KEYS.includes(key)) DEBUG_RECORDING_KEYS.push(key);
 }
 
