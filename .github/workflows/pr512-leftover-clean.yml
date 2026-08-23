@@ -1,0 +1,57 @@
+name: PR512 leftover cleanup
+
+on:
+  pull_request:
+    branches: [dev]
+
+permissions:
+  contents: write
+
+jobs:
+  clean:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: codex/issue-461-ipwm-diagnostics
+      - name: Remove stale freshness remnants
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('components/openquatt_incident_manager/OpenQuattIncidentManager.cpp')
+          text = p.read_text()
+          old = '''         write_raw(req, R"(,\"flow_lph\":)") &&\n         write_optional_float(req, snapshot.units[slot].pump_context.flow_valid,\n                              snapshot.units[slot].pump_context.flow_lph) &&\n         write_raw(req, R"(,\"updated_at_ms\":)") && write_uint(req, snapshot.units[slot].pump_context.updated_at_ms) &&\n         write_raw(req, R"(},\"last_action_result\":)");\n'''
+          new = '''         write_raw(req, R"(,\"flow_lph\":)") &&\n         write_optional_float(req, snapshot.units[slot].pump_context.flow_valid,\n                              snapshot.units[slot].pump_context.flow_lph) &&\n         write_raw(req, R"(},\"last_action_result\":)");\n'''
+          if old not in text:
+              raise SystemExit('updated_at_ms writer block not found')
+          p.write_text(text.replace(old, new, 1))
+
+          p = Path('openquatt/web/tests/incident-monitoring.test.mjs')
+          text = p.read_text()
+          pattern = r'''  assert\.deepEqual\(\n    getPumpIncidentContextRows\(\n      \{ \.\.\.incident, lastSeenMs: 12_346 \},\n      heatPump\.pumpContext,\n    \),\n    \[],\n  \);\n  assert\.equal\(\n    getPumpIncidentContextRows\(\n      \{ \.\.\.incident, lastSeenMs: 0xFFFFFFF0 \},\n      \{ \.\.\.heatPump\.pumpContext, updatedAtMs: 0x10 \},\n    \)\.length,\n    5,\n  \);\n\n'''
+          text, count = re.subn(pattern, '', text, count=1)
+          if count != 1:
+              raise SystemExit('old timestamp/wrap web test block not found')
+          p.write_text(text)
+          PY
+
+          version="$(tr -d '[:space:]' < .clang-format-version)"
+          python3 -m pip install --disable-pip-version-check "clang-format==${version}"
+          clang-format -i components/openquatt_incident_manager/OpenQuattIncidentManager.cpp
+          git diff --check
+
+          if grep -R -n -E 'pump_request_raw|ContextRawObservation|kDiagnosticContextFreshnessMs|updated_at_ms|updatedAtMs|observe_pump_register|power_contribution_w|water_flow_switch|fault_snapshot_complete' \
+              components/openquatt_incident_manager openquatt/includes/diagnostics openquatt/oq_HP_io.yaml openquatt/web/js openquatt/web/tests scripts/tests/test_pump_ipwm_contract.py tests/host/oq_pump_ipwm_feedback_test.cpp; then
+            echo 'Obsolete pump diagnostic complexity remains' >&2
+            exit 1
+          fi
+
+          python3 scripts/tests/test_pump_ipwm_contract.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/openquatt_incident_manager/OpenQuattIncidentManager.cpp openquatt/web/tests/incident-monitoring.test.mjs
+          git commit -m "Remove pump freshness leftovers"
+          git push origin HEAD:codex/issue-461-ipwm-diagnostics
