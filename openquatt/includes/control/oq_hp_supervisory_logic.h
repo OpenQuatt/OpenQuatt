@@ -6,6 +6,17 @@
 
 namespace oq_hp_supervisory {
 
+inline bool apply_heating_enable_gate(bool heating_request, bool heating_enable_valid, bool heating_enable_selected) {
+  return heating_request && heating_enable_valid && heating_enable_selected;
+}
+
+inline int base_control_mode(bool cooling_request, bool heating_request, bool frost_request) {
+  if (cooling_request) return 5;
+  if (heating_request) return 2;
+  if (frost_request) return 98;
+  return 0;
+}
+
 inline bool fallback_availability_is_confirmed(bool raw_availability_complete,
                                                bool every_unavailable_hp_has_fallback_cause, bool all_hp_outputs_safe) {
   // Link-loss recovery is intentionally not "available" yet. It may still

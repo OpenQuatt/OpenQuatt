@@ -94,6 +94,7 @@ test("incident snapshot normalizes HP state, lifecycle and stable machine fields
   assert.equal(normalized.heatPumps[0].linkState, "lost");
   assert.equal(normalized.heatPumps[0].runState, "stop_unconfirmed");
   assert.equal(normalized.heatPumps[0].mustStop, true);
+  assert.equal(normalized.heatPumps[0].stopConfirmationPending, false);
   assert.deepEqual(
     normalized.heatPumps[0].incidents[0].effects,
     ["stop_compressor", "mark_hp_unavailable", "allow_cm4"],
@@ -362,6 +363,25 @@ test("a suspect HP link is shown as confirmation in progress instead of an outag
   assert.equal(presentation.label, "Status wordt bepaald");
   assert.equal(presentation.tone, "clear");
   assert.match(presentation.note, /eerst bevestigd/);
+});
+
+test("stop revalidation is presented as a neutral pending status", () => {
+  const normalized = normalizeIncidentMonitoringSnapshot(snapshot({
+    heat_pumps: [{
+      index: 1,
+      link_state: "healthy",
+      protection_state: "clear",
+      run_state: "stopping",
+      stop_confirmation_pending: true,
+    }],
+  }));
+  const heatPump = normalized.heatPumps[0];
+  const presentation = getHeatPumpStatusPresentation(heatPump);
+
+  assert.equal(heatPump.stopConfirmationPending, true);
+  assert.equal(presentation.label, "Status wordt bepaald");
+  assert.equal(presentation.note, "Verbinding gezond · Stopstatus wordt opnieuw bevestigd");
+  assert.equal(presentation.tone, "warning");
 });
 
 test("incident polling keeps last-good data through transient failures and cleanly handles 404", () => {

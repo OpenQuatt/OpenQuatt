@@ -5,6 +5,24 @@
 
 namespace {
 
+void test_heating_enable_gate() {
+  using oq_hp_supervisory::apply_heating_enable_gate;
+
+  assert(apply_heating_enable_gate(true, true, true));
+  assert(!apply_heating_enable_gate(true, true, false));
+  assert(!apply_heating_enable_gate(true, false, false));
+  assert(!apply_heating_enable_gate(false, true, true));
+}
+
+void test_frost_control_mode_remains_independent_of_heating_request() {
+  using oq_hp_supervisory::base_control_mode;
+
+  assert(base_control_mode(false, false, true) == 98);
+  assert(base_control_mode(false, true, true) == 2);
+  assert(base_control_mode(true, true, true) == 5);
+  assert(base_control_mode(false, false, false) == 0);
+}
+
 oq_hp_supervisory::FallbackEvaluationInputs eligible_fallback_evaluation_inputs() {
   oq_hp_supervisory::FallbackEvaluationInputs inputs;
   inputs.current_mode = 3;
@@ -203,6 +221,8 @@ void test_control_mode_log_classification() {
 }  // namespace
 
 int main() {
+  test_heating_enable_gate();
+  test_frost_control_mode_remains_independent_of_heating_request();
   using oq_hp_supervisory::Cm4ResumeTracker;
   using oq_hp_supervisory::fallback_availability_is_confirmed;
   using oq_hp_supervisory::recovered_heating_mode;

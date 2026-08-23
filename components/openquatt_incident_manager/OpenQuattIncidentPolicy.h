@@ -21,11 +21,12 @@ inline bool post_command_feedback_complete(uint32_t mode_generation, uint32_t mo
          feedback_generation_is_newer(frequency_generation, frequency_baseline);
 }
 
-inline bool run_observation_is_fresh(bool waiting_for_start, bool waiting_for_stop, bool stop_feedback_armed,
+inline bool run_observation_is_fresh(bool waiting_for_start, bool waiting_for_stop,
+                                     bool stop_confirmation_requires_command, bool stop_feedback_armed,
                                      bool post_command_feedback) {
   if (waiting_for_start) return post_command_feedback;
-  if (waiting_for_stop && stop_feedback_armed) {
-    return post_command_feedback;
+  if (waiting_for_stop && (stop_confirmation_requires_command || stop_feedback_armed)) {
+    return stop_feedback_armed && post_command_feedback;
   }
   return true;
 }

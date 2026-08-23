@@ -95,7 +95,7 @@ import { escapeHtml } from "../core/html.js";
           : isInstallationMonitoringBinaryActive("otLinkProblem") ? "Probleem" : "OK",
         active: otEnabled && isInstallationMonitoringBinaryActive("otLinkProblem"),
       }) : "",
-      renderBinaryDiagnosticItem("otThermostatStatusValid", "Status geldig", "Ja", "Nee"),
+      renderBinaryDiagnosticItem("otThermostatStatusValid", "Statusbericht (ID 0) actueel", "Ja", "Nee"),
       renderBinaryDiagnosticItem("otThermostatChEnable", "Thermostaat CH", "Actief", "Normaal"),
       renderBinaryDiagnosticItem("otThermostatCoolingEnable", "Thermostaat koeling", "Actief", "Normaal"),
       renderValueDiagnosticItem("otControlSetpoint", "Control setpoint"),

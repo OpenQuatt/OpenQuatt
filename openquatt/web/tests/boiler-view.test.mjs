@@ -322,6 +322,7 @@ test("integration diagnostics separates thermostat, boiler control, OTB and CiC"
   try {
     const html = renderSettingsOpenThermCicSection();
     assert.match(html, /OpenTherm thermostaat \(OTT\)/);
+    assert.match(html, /Statusbericht \(ID 0\) actueel/);
     assert.match(html, /Ketelregeling/);
     assert.match(html, /OpenTherm ketel \(OTB\)/);
     assert.match(html, /CiC-feed/);

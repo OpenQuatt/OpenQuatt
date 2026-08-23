@@ -8,7 +8,7 @@ import { getDefaultAppView, getUrlAppView, setAppView } from "./navigation.js";
 import { isFirmwareOtaQuietActive } from "./firmware-quiet.js";
 import { getInstallationMonitoringModel, syncInstallationMonitoringDetailsState } from "./installation-monitoring.js";
 import { getIncidentMonitoringFailureUpdate, getIncidentMonitoringSuccessUpdate, getIncidentMonitoringUnsupportedUpdate } from "./incident-monitoring.js";
-import { beginDeviceReconnect, clearDeviceReconnect, markDeviceReconnectRecovered, reconcileOtaEvidence } from "./device-reconnect.js";
+import { beginDeviceReconnect, clearDeviceReconnect, isRestartRefreshActive, markDeviceReconnectRecovered, reconcileOtaEvidence, reconcileRestartEvidence } from "./device-reconnect.js";
 import { getSettingsRenderSignature } from "./render-signatures.js";
 import { isSystemSettingsGroupActive } from "./surface-state.js";
 import { getHeaderRenderSignature, patchHeaderDom } from "./header-render-controls.js";
@@ -559,8 +559,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
     state.lastEntitySyncSuccessAt = now;
     state.entitySyncFailureCount = 0;
     reconcileOtaEvidence();
+    reconcileRestartEvidence();
     const wasReconnectActive = Boolean(state.deviceReconnectMode);
-    const reconnectRecovered = wasReconnectActive && typeof markDeviceReconnectRecovered === "function"
+    const reconnectRecovered = wasReconnectActive && !isRestartRefreshActive() && typeof markDeviceReconnectRecovered === "function"
       ? markDeviceReconnectRecovered()
       : false;
     if (reconnectRecovered) {
@@ -605,11 +606,16 @@ import { fetchWithTimeout } from "./browser-utils.js";
   export function noteEntityRefreshFailure(message) {
     if (!isLikelyDeviceConnectionError(message)) {
       state.entitySyncFailureCount = 0;
-      clearDeviceReconnect();
+      if (!state.restartRefresh.on) {
+        clearDeviceReconnect();
+      }
       return;
     }
     if (state.ota.ok === 1) {
       state.ota.ok = 2;
+    }
+    if (state.restartRefresh.ok === 1) {
+      state.restartRefresh.ok = 2;
     }
     state.entitySyncFailureCount = Number(state.entitySyncFailureCount || 0) + 1;
     state.deviceReconnectLastError = String(message || "");
@@ -619,11 +625,13 @@ import { fetchWithTimeout } from "./browser-utils.js";
       || state.updateInstallBusy
       || state.updateInstallPhaseHint
       || state.ota.on
+      || state.restartRefresh.on
       || state.entitySyncFailureCount >= 2
     ) {
       beginDeviceReconnect(
         state.updateInstallBusy || state.updateInstallPhaseHint || state.ota.on
           ? "ota"
+          : state.restartRefresh.on ? "restart"
           : state.busyAction === "restartAction" ? "restart" : "reconnect",
         message,
       );
@@ -1202,7 +1210,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
         }
         return;
       }
-      await refreshEntities([...new Set([...keys, ...(state.ota.wait ? ["uptime", "projectVersionText"] : []), ...quickStartSetupKeys, ...quickStartFlowSourceKeys, ...quickStartThermostatSourceKeys])], isPrefetchOverview ? "state" : appView === "settings" || quickStartSetupKeys.length ? "all" : "state", {
+      await refreshEntities([...new Set([...keys, ...(state.ota.wait || state.restartRefresh.wait ? ["uptime", "projectVersionText"] : []), ...quickStartSetupKeys, ...quickStartFlowSourceKeys, ...quickStartThermostatSourceKeys])], isPrefetchOverview ? "state" : appView === "settings" || quickStartSetupKeys.length ? "all" : "state", {
         concurrency: forceFast && isOverviewLike ? FAST_VIEW_ENTITY_REFRESH_CONCURRENCY : ENTITY_REFRESH_CONCURRENCY,
       });
       state.lastFastEntitySyncAt = Date.now();

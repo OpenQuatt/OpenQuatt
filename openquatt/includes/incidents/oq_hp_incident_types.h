@@ -200,6 +200,7 @@ struct DerivedOutputs {
   bool protection_active = false;
   bool running_confirmed = false;
   bool stop_confirmed = false;
+  bool stop_confirmation_pending = false;
   bool stop_unconfirmed = false;
   bool start_mode_ack_timed_out = false;
   bool start_timed_out = false;

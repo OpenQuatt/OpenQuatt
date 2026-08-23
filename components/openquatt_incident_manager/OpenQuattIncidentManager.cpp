@@ -719,7 +719,8 @@ void OpenQuattIncidentManager::observe_compressor_frequency(uint8_t hp_index, fl
       post_command_feedback_complete(unit->working_mode_generation, unit->command_mode_generation,
                                      unit->compressor_frequency_generation, unit->command_frequency_generation);
   observation.fresh =
-      run_observation_is_fresh(waiting_for_start, waiting_for_stop, unit->stop_feedback_armed, post_command_feedback);
+      run_observation_is_fresh(waiting_for_start, waiting_for_stop, unit->engine.outputs().stop_confirmation_pending,
+                               unit->stop_feedback_armed, post_command_feedback);
   observation.mode_matches_request =
       unit->working_mode_valid && static_cast<uint8_t>(std::lround(unit->working_mode)) == unit->expected_mode;
   observation.stop_mode_confirmed =
@@ -1745,6 +1746,7 @@ void OpenQuattIncidentManager::write_snapshot(httpd_req_t* req) const {
          write_raw(req, R"(,"protection_active":)") && write_bool(req, outputs.protection_active) &&
          write_raw(req, R"(,"running_confirmed":)") && write_bool(req, outputs.running_confirmed) &&
          write_raw(req, R"(,"stop_confirmed":)") && write_bool(req, outputs.stop_confirmed) &&
+         write_raw(req, R"(,"stop_confirmation_pending":)") && write_bool(req, outputs.stop_confirmation_pending) &&
          write_raw(req, R"(,"stop_unconfirmed":)") && write_bool(req, outputs.stop_unconfirmed) &&
          write_raw(req, R"(,"fallback_cause_present":)") && write_bool(req, outputs.fallback_cause_present) &&
          write_raw(req, R"(,"fallback_eligible":)") && write_bool(req, outputs.fallback_eligible) &&

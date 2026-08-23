@@ -70,12 +70,16 @@ void test_confirmation_audit_policy() {
                                         std::numeric_limits<uint32_t>::max()));
 
   // Passive boot observations may establish that an already-idle HP is
-  // stopped. A commanded stop still requires feedback newer than its write.
-  assert(run_observation_is_fresh(false, true, false, false));
-  assert(!run_observation_is_fresh(false, true, true, false));
-  assert(run_observation_is_fresh(false, true, true, true));
-  assert(!run_observation_is_fresh(true, false, false, false));
-  assert(run_observation_is_fresh(true, false, false, true));
+  // stopped. A commanded stop or revalidation must be armed and use feedback
+  // newer than its write.
+  assert(run_observation_is_fresh(false, true, false, false, false));
+  assert(!run_observation_is_fresh(false, true, true, false, false));
+  assert(!run_observation_is_fresh(false, true, true, true, false));
+  assert(run_observation_is_fresh(false, true, true, true, true));
+  assert(!run_observation_is_fresh(false, true, false, true, false));
+  assert(run_observation_is_fresh(false, true, false, true, true));
+  assert(!run_observation_is_fresh(true, false, false, false, false));
+  assert(run_observation_is_fresh(true, false, false, false, true));
 }
 
 void test_start_failure_retry_production_policy() {

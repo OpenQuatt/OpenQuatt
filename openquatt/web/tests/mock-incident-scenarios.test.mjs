@@ -71,7 +71,10 @@ test("confirmed link loss waits for stop confirmation before CM4", () => {
   assert.equal(lost.elapsed_s, 30);
   assert.equal(lost.system.action, "fallback_blocked");
   assert.equal(lost.system.fallback_block_reason, 10);
-  assert.equal(lost.heat_pumps[0].stop_unconfirmed, true);
+  assert.equal(lost.heat_pumps[0].stop_confirmation_pending, true);
+  assert.equal(lost.heat_pumps[0].stop_unconfirmed, false);
+  assert.equal(lost.heat_pumps[0].incidents.some((incident) => incident.definition.id === 1003), false);
+  assert.equal(lost.events.some((event) => event.reason === "hp_stop_unconfirmed"), false);
   assert.equal(lost.heat_pumps[0].protection_state, "clear");
   assert.equal(lost.heat_pumps[0].fault_active, false);
   assert.equal(fallback.system.control_mode, 4);
@@ -81,6 +84,38 @@ test("confirmed link loss waits for stop confirmation before CM4", () => {
   assert.ok(
     catalog.collectEvents(scenario.id, scenario.phases.indexOf(fallback))
       .some((event) => event.event_type === "hp_stop_confirmed"),
+  );
+});
+
+test("Duo link loss revalidates HP1 while HP2 remains available", () => {
+  const scenario = catalog.getScenario("duo-link-loss-recovery");
+  assert.equal(scenario.topology, "duo");
+
+  const lost = scenario.phases.find((phase) => phase.id === "lost");
+  const revalidating = scenario.phases.find((phase) => phase.id === "revalidating");
+  const confirmed = scenario.phases.find((phase) => phase.id === "stop-confirmed");
+  const recovered = scenario.phases.find((phase) => phase.id === "recovered");
+
+  for (const phase of scenario.phases) {
+    assert.equal(phase.system.control_mode, 2);
+    assert.equal(phase.system.boiler_command_active, false);
+    assert.equal(phase.heat_pumps[1].link_state, "healthy");
+    assert.equal(phase.heat_pumps[1].availability, "available");
+    assert.equal(phase.heat_pumps[1].run_state, "running");
+  }
+
+  assert.equal(lost.heat_pumps[0].link_state, "lost");
+  assert.equal(lost.heat_pumps[0].stop_confirmation_pending, true);
+  assert.equal(revalidating.heat_pumps[0].link_state, "recovering");
+  assert.equal(revalidating.heat_pumps[0].stop_confirmation_pending, true);
+  assert.equal(revalidating.heat_pumps[0].stop_unconfirmed, false);
+  assert.equal(confirmed.heat_pumps[0].stop_confirmed, true);
+  assert.equal(confirmed.heat_pumps[0].stop_confirmation_pending, false);
+  assert.equal(recovered.heat_pumps[0].link_state, "healthy");
+  assert.equal(recovered.heat_pumps[0].availability, "available");
+  assert.ok(
+    catalog.collectEvents(scenario.id, scenario.phases.indexOf(confirmed))
+      .some((event) => event.event_type === "hp_stop_confirmed" && event.subject === "HP1"),
   );
 });
 

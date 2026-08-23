@@ -1,4 +1,5 @@
 #include "OpenQuattOTSlave.h"
+#include "room_signal_freshness.h"
 #include "esphome/core/log.h"
 #include "esp_timer.h"
 #include <cstdio>
@@ -145,11 +146,29 @@ void OpenQuattOTSlave::stop_opentherm_() {
   m_runtimeGraceUntilMs = 0;
   m_linkProblemGraceUntilMs = 0;
   m_lastSuccessfulFrameMs = 0;
+  m_lastMasterRoomTemperatureMs = 0;
+  m_lastMasterRoomSetpointMs = 0;
   if (m_ot_thermostat_ == NULL || !m_otStarted) {
     return;
   }
   m_ot_thermostat_->end();
   m_otStarted = false;
+}
+
+bool OpenQuattOTSlave::master_room_temperature_fresh() const {
+  const unsigned long now_ms = now_millis();
+  const bool link_fresh =
+      m_lastSuccessfulFrameMs != 0 && (now_ms - m_lastSuccessfulFrameMs) <= OT_LINK_PROBLEM_TIMEOUT_MS;
+  return link_fresh && oq_ot_slave::room_signal_fresh(m_enabled, m_otStarted, m_otaActive || m_updatePrepareActive,
+                                                      m_lastMasterRoomTemperatureMs, now_ms);
+}
+
+bool OpenQuattOTSlave::master_room_setpoint_fresh() const {
+  const unsigned long now_ms = now_millis();
+  const bool link_fresh =
+      m_lastSuccessfulFrameMs != 0 && (now_ms - m_lastSuccessfulFrameMs) <= OT_LINK_PROBLEM_TIMEOUT_MS;
+  return link_fresh && oq_ot_slave::room_signal_fresh(m_enabled, m_otStarted, m_otaActive || m_updatePrepareActive,
+                                                      m_lastMasterRoomSetpointMs, now_ms);
 }
 
 void OpenQuattOTSlave::try_start_opentherm_() {
@@ -342,10 +361,12 @@ void OpenQuattOTSlave::parseRequest(OpenThermMessageType type, OpenThermMessageI
 
     case OpenThermMessageID::TrSet:
       m_master_state.t_room_set = message_data::parse_f88(data);
+      m_lastMasterRoomSetpointMs = now_millis();
       break;
 
     case OpenThermMessageID::Tr:
       m_master_state.t_room = message_data::parse_f88(data);
+      m_lastMasterRoomTemperatureMs = now_millis();
       break;
 
     case OpenThermMessageID::MConfigMMemberIDcode:

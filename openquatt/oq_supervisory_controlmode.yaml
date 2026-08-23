@@ -911,12 +911,12 @@ interval:
             }
           }
 
-          const bool heating_enable_permitted =
-              id(heating_enable_valid).has_state() && id(heating_enable_valid).state &&
+          const bool heating_enable_valid_now =
+              id(heating_enable_valid).has_state() && id(heating_enable_valid).state;
+          const bool heating_enable_selected_now =
               id(heating_enable_selected).has_state() && id(heating_enable_selected).state;
-          if (heating_req && !heating_enable_permitted) {
-            heating_req = false;
-          }
+          heating_req = oq_hp_supervisory::apply_heating_enable_gate(
+              heating_req, heating_enable_valid_now, heating_enable_selected_now);
 
           const uint32_t cm2_idle_exit_ms = (uint32_t)(${oq_cm2_idle_exit_s}UL * 1000UL);
           const bool curve_mode_active = (strategy_active_code == 2);
@@ -1107,11 +1107,7 @@ interval:
             };
 
             // Determine base target (without CM1 timer)
-            int base_target = 0; // CM0
-            if (cooling_req) base_target = 5;     // CM5 desired
-            else if (heating_req) base_target = 2; // CM2 desired
-            else if (frost)  base_target = 98;     // CM98 desired
-            else             base_target = 0;      // CM0
+            int base_target = oq_hp_supervisory::base_control_mode(cooling_req, heating_req, frost);
 
             // Apply flow interlock: if thermal output is requested but low-flow fault => hold in CM1.
             if (thermal_req && (id(oq_lowflow_fault_active) || flow_low)) {

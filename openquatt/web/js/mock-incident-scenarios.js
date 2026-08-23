@@ -39,6 +39,7 @@
       protection_active: false,
       running_confirmed: running,
       stop_confirmed: !running,
+      stop_confirmation_pending: false,
       stop_unconfirmed: false,
       fallback_cause_present: false,
       fallback_eligible: false,
@@ -315,22 +316,18 @@
           action: "fallback_blocked",
           fallback_block_reason: 10,
         },
-        heatPumps: [stoppedFaulted(1, 1001, [
-          INCIDENTS.linkLoss(),
-          INCIDENTS.stopUnconfirmed(),
-        ], {
+        heatPumps: [stoppedFaulted(1, 1001, [INCIDENTS.linkLoss()], {
           link_state: "lost",
           protection_state: "clear",
-          run_state: "stop_unconfirmed",
+          run_state: "stopping",
           stop_confirmed: false,
-          stop_unconfirmed: true,
+          stop_confirmation_pending: true,
           fault_active: false,
           fallback_eligible: false,
         })],
         events: [
           event(30, "incident_start", "HP1", "hp_link_loss", "fault", 1, "standby", "active", 1001),
           event(30, "hp_availability_change", "HP1", "hp_link_loss", "fault", 1, "available", "offline", 1001, 2),
-          event(30, "incident_start", "HP1", "hp_stop_unconfirmed", "fault", 1, "standby", "active", 1003),
         ],
       }),
       phase("fallback", "Stop bevestigd, CM4 actief", "De stopstatus is vers bevestigd; de ketel neemt veilig over.", 36, {
@@ -348,12 +345,84 @@
         })],
         events: [
           event(34, "hp_stop_confirmed", "HP1", "hp_link_loss", "normal", 1, "active", "standby"),
-          event(34, "incident_clear", "HP1", "hp_stop_unconfirmed", "normal", 1, "active", "standby", 1003),
           event(36, "control_mode_change", "SYSTEM", "boiler_fallback", "attention", 4, "standby", "active", 1, 4),
           event(36, "boiler_fallback_start", "CV", "boiler_fallback", "attention", 4, "standby", "active", 350, 0),
         ],
       }),
     ], { boilerTransport: "R1" }),
+
+    scenario("duo-link-loss-recovery", "Duo: communicatie-uitval HP1 → herstel", "Communicatie", "duo", [
+      phase("healthy", "Beide verbindingen gezond", "HP1 en HP2 draaien met geldige communicatie.", 0, {
+        heatPumps: [hp1Running(), heatPump(2, { run_state: "running" })],
+      }),
+      phase("suspect", "Uitval wordt gefilterd", "De verbinding met HP1 is verdacht; beide warmtepompen blijven voorlopig draaien.", 20, {
+        heatPumps: [
+          heatPump(1, {
+            link_state: "suspect",
+            run_state: "running",
+            availability: "unknown",
+            available_for_start: false,
+            running_confirmed: true,
+            stop_confirmed: false,
+          }),
+          heatPump(2, { run_state: "running" }),
+        ],
+      }),
+      phase("lost", "Uitval HP1 bevestigd", "De verbinding met HP1 is weg. HP2 blijft verwarmen terwijl HP1 opnieuw veilig wordt gestopt.", 30, {
+        heatPumps: [
+          stoppedFaulted(1, 1001, [INCIDENTS.linkLoss()], {
+            link_state: "lost",
+            protection_state: "clear",
+            run_state: "stopping",
+            stop_confirmed: false,
+            stop_confirmation_pending: true,
+            fault_active: false,
+            fallback_eligible: false,
+          }),
+          heatPump(2, { run_state: "running" }),
+        ],
+        events: [
+          event(30, "incident_start", "HP1", "hp_link_loss", "fault", 2, "standby", "active", 1001),
+          event(30, "hp_availability_change", "HP1", "hp_link_loss", "fault", 2, "available", "offline", 1001, 2),
+        ],
+      }),
+      phase("revalidating", "Verbinding herstelt", "Nieuwe telemetrie is binnen; de stop van HP1 moet nog met verse feedback worden bevestigd.", 34, {
+        heatPumps: [
+          stoppedFaulted(1, 1001, [INCIDENTS.linkLoss()], {
+            link_state: "recovering",
+            protection_state: "clear",
+            run_state: "stopping",
+            availability: "recovering",
+            stop_confirmed: false,
+            stop_confirmation_pending: true,
+            fault_active: false,
+            fallback_eligible: false,
+          }),
+          heatPump(2, { run_state: "running" }),
+        ],
+      }),
+      phase("stop-confirmed", "Stop HP1 opnieuw bevestigd", "Verse feedback bevestigt dat HP1 stilstaat; HP2 blijft de warmtevraag leveren.", 38, {
+        heatPumps: [
+          stoppedFaulted(1, 1001, [INCIDENTS.linkLoss()], {
+            link_state: "recovering",
+            protection_state: "clear",
+            availability: "recovering",
+            fault_active: false,
+          }),
+          heatPump(2, { run_state: "running" }),
+        ],
+        events: [
+          event(38, "hp_stop_confirmed", "HP1", "hp_link_loss", "normal", 2, "active", "standby"),
+        ],
+      }),
+      phase("recovered", "HP1 weer beschikbaar", "De communicatie is stabiel en HP1 is weer beschikbaar; HP2 is zonder onderbreking blijven draaien.", 68, {
+        heatPumps: [heatPump(1), heatPump(2, { run_state: "running" })],
+        events: [
+          event(68, "incident_clear", "HP1", "hp_link_loss", "normal", 2, "active", "standby", 1001),
+          event(68, "hp_availability_change", "HP1", "hp_recovered", "normal", 2, "recovering", "available", 1001),
+        ],
+      }),
+    ]),
 
     scenario("status-only", "Statusmelding: olie-retour", "Incidentmodel", "any", [
       phase("active", "Status actief", "De melding is zichtbaar, maar begrenst of stopt de warmtepomp niet.", 5, {

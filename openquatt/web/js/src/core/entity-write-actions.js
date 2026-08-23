@@ -1,9 +1,9 @@
 import { hasEntity } from "./app-shared.js";
 import { CURVE_POINTS, ENTITY_DEFS, FIRMWARE_ENTITY_KEYS, FLOW_SETTING_KEYS, getOduRuntimeFrequencyButtonHp, getOduRuntimeFrequencyHpKeys, HEADER_ENTITY_KEYS, LIMIT_KEYS, ODU_RUNTIME_FREQUENCY_BUTTON_KEYS, OPENQUATT_RESUME_CLEAR_VALUE, OVERVIEW_KEYS, POWER_HOUSE_KEYS, QUICK_STEPS } from "./config.js";
-import { beginDeviceReconnect } from "./device-reconnect.js";
+import { armRestartRefresh, awaitRestartEvidence, beginDeviceReconnect, clearRestartRefresh } from "./device-reconnect.js";
 import { buildEntityPath, isCurveMode } from "./domain-helpers.js";
 import { formatOpenQuattResumeDateTime, getEntityValue, normalizeDateTimeValue, normalizeNumber, normalizeTimeValue, parseLooseNumber, toDateTimeInputValue } from "./entity-store.js";
-import { getSettingsRefreshKeys, refreshEntities, refreshIncidentMonitoringData, syncEntities } from "./entity-sync.js";
+import { getSettingsRefreshKeys, isLikelyDeviceConnectionError, refreshEntities, refreshIncidentMonitoringData, syncEntities } from "./entity-sync.js";
 import {
   createIncidentActionRequestId,
   postIncidentActionRequest,
@@ -662,6 +662,10 @@ export async function triggerNamedButton(key, options = {}) {
   if (!entity) {
     return;
   }
+  const refreshAfterRestart = options.reconnectMode === "restart";
+  if (refreshAfterRestart) {
+    armRestartRefresh();
+  }
   state.busyAction = key;
   state.controlError = "";
   state.controlNotice = "";
@@ -673,6 +677,9 @@ export async function triggerNamedButton(key, options = {}) {
     });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
+    }
+    if (refreshAfterRestart) {
+      state.restartRefresh.ok = 1;
     }
     const keepCommissioningModalOpen = [
       "commissioningCm100Start",
@@ -708,6 +715,9 @@ export async function triggerNamedButton(key, options = {}) {
     if (options.reconnectMode) {
       beginDeviceReconnect(options.reconnectMode);
     }
+    if (refreshAfterRestart) {
+      awaitRestartEvidence();
+    }
     if (Array.isArray(options.refreshKeys) && options.refreshKeys.length) {
       const refreshDelayMs = Number(options.refreshDelayMs || 0);
       if (Number.isFinite(refreshDelayMs) && refreshDelayMs > 0) {
@@ -741,7 +751,17 @@ export async function triggerNamedButton(key, options = {}) {
       state.pendingManualHpStart = false;
       state.commissioningTaskLock = "";
     }
-    state.controlError = `${options.errorPrefix || `Actie mislukt voor "${entity.name}"`}. ${error.message}`;
+    if (refreshAfterRestart && isLikelyDeviceConnectionError(error.message)) {
+      state.restartRefresh.ok = 2;
+      awaitRestartEvidence();
+      beginDeviceReconnect("restart", error.message);
+      state.controlNotice = options.successNotice || `${entity.name} gestart.`;
+    } else {
+      if (refreshAfterRestart) {
+        clearRestartRefresh();
+      }
+      state.controlError = `${options.errorPrefix || `Actie mislukt voor "${entity.name}"`}. ${error.message}`;
+    }
   } finally {
     state.busyAction = "";
     render();

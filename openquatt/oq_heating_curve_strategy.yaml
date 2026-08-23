@@ -63,6 +63,12 @@ globals:
     restore_value: false
     initial_value: 'false'
 
+  # Diagnostic flag: a fresh, clearly warm room blocks a water-only restart.
+  - id: oq_curve_restart_blocked_by_room
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
   # Curve outside-temperature EMA state.
   - id: oq_curve_outside_ema_c
     type: float
@@ -138,6 +144,7 @@ select:
               id(oq_curve_stop_arm_ms),
               id(oq_curve_off_since_ms),
               id(oq_curve_restart_inhibit_active),
+              id(oq_curve_restart_blocked_by_room),
               id(oq_curve_regime_code));
             id(oq_curve_oil_return_hold_until_ms) = 0;
             oq_curve::reset_outside_ema_state(
@@ -367,6 +374,7 @@ output:
               id(oq_curve_stop_arm_ms),
               id(oq_curve_off_since_ms),
               id(oq_curve_restart_inhibit_active),
+              id(oq_curve_restart_blocked_by_room),
               id(oq_curve_regime_code));
             return;
           }
@@ -381,6 +389,7 @@ output:
               id(oq_curve_stop_arm_ms),
               id(oq_curve_off_since_ms),
               id(oq_curve_restart_inhibit_active),
+              id(oq_curve_restart_blocked_by_room),
               id(oq_curve_regime_code));
             return;
           }
@@ -405,6 +414,7 @@ output:
               id(oq_curve_stop_arm_ms),
               id(oq_curve_off_since_ms),
               id(oq_curve_restart_inhibit_active),
+              id(oq_curve_restart_blocked_by_room),
               id(oq_curve_regime_code));
             return;
           }
@@ -433,9 +443,69 @@ output:
           const float room_c = id(room_temp_selected).state;
           const float room_sp_c = id(room_setpoint_selected).state;
           const bool room_valid = !isnan(room_c) && !isnan(room_sp_c);
-          const bool room_warm_for_off = room_valid && (room_c >= (room_sp_c + room_overheat_off_c));
-          const bool room_requests_heat = room_valid && (room_c <= (room_sp_c - room_resume_heat_c));
-          const bool room_allows_off = (!room_valid) || room_warm_for_off;
+
+          auto room_temperature_source_fresh = [&]() -> bool {
+            if (!id(room_temp_source).has_state()) return false;
+            const auto source = id(room_temp_source).current_option();
+            if (source == "HA input") {
+              return id(room_temp_valid_ha).state && id(thermostat_room_temp_ha).has_state() &&
+                     !isnan(id(thermostat_room_temp_ha).state) && !id(oq_room_temp_selected_hold_active);
+            }
+            if (source == "OT thermostat") {
+              return (${oq_ot_room_temperature_fresh_expr}) &&
+                     id(ot_thermostat_room_temp).has_state() && !isnan(id(ot_thermostat_room_temp).state);
+            }
+            if (source == "CIC") {
+              return id(feed_ok).has_state() && id(feed_ok).state &&
+                     id(cic_data_stale).has_state() && !id(cic_data_stale).state &&
+                     id(cic_room_temp).has_state() && !isnan(id(cic_room_temp).state);
+            }
+            if (source == "API input") {
+              return id(api_input_room_temperature_valid).has_state() &&
+                     id(api_input_room_temperature_valid).state &&
+                     id(api_input_room_temperature).has_state() && !isnan(id(api_input_room_temperature).state);
+            }
+            if (source == "MQTT") {
+              return id(mqtt_room_temperature_valid).has_state() && id(mqtt_room_temperature_valid).state &&
+                     id(mqtt_room_temperature).has_state() && !isnan(id(mqtt_room_temperature).state);
+            }
+            return false;
+          };
+
+          auto room_setpoint_source_fresh = [&]() -> bool {
+            if (!id(room_setpoint_source).has_state()) return false;
+            const auto source = id(room_setpoint_source).current_option();
+            if (source == "HA input") {
+              return id(room_setpoint_valid_ha).state && id(thermostat_setpoint_ha).has_state() &&
+                     !isnan(id(thermostat_setpoint_ha).state) && !id(oq_room_setpoint_selected_hold_active);
+            }
+            if (source == "OT thermostat") {
+              return (${oq_ot_room_setpoint_fresh_expr}) &&
+                     id(ot_thermostat_room_setpoint).has_state() && !isnan(id(ot_thermostat_room_setpoint).state);
+            }
+            if (source == "CIC") {
+              return id(feed_ok).has_state() && id(feed_ok).state &&
+                     id(cic_data_stale).has_state() && !id(cic_data_stale).state &&
+                     id(cic_room_setpoint).has_state() && !isnan(id(cic_room_setpoint).state);
+            }
+            if (source == "API input") {
+              return id(api_input_room_setpoint_valid).has_state() && id(api_input_room_setpoint_valid).state &&
+                     id(api_input_room_setpoint).has_state() && !isnan(id(api_input_room_setpoint).state);
+            }
+            if (source == "MQTT") {
+              return id(mqtt_room_setpoint_valid).has_state() && id(mqtt_room_setpoint_valid).state &&
+                     id(mqtt_room_setpoint).has_state() && !isnan(id(mqtt_room_setpoint).state);
+            }
+            return false;
+          };
+
+          const bool room_data_fresh =
+              room_valid && room_temperature_source_fresh() && room_setpoint_source_fresh();
+          const bool room_warm_for_off =
+              room_data_fresh && (room_c >= (room_sp_c + room_overheat_off_c));
+          const bool room_requests_heat =
+              room_data_fresh && (room_c <= (room_sp_c - room_resume_heat_c));
+          const bool room_allows_off = (!room_data_fresh) || room_warm_for_off;
 
           const uint32_t now_ms = (uint32_t) millis();
           constexpr uint32_t oil_return_hold_ms = 180000UL;
@@ -463,12 +533,14 @@ output:
               heat_request_active &&
               (id(oq_curve_regime_code) == 2) &&
               (id(oq_curve_demand_pre_guardrail) <= 0) &&
-              ((!room_valid) || (room_c >= (room_sp_c - room_resume_heat_c))) &&
+              ((!room_data_fresh) || (room_c >= (room_sp_c - room_resume_heat_c))) &&
               (pv >= (spw + 0.25f));
           const bool normal_stop_condition =
               !oil_return_mask_active && above_stop_band && low_pid_for_off && room_allows_off;
           const float restart_bypass_delta_c = restart_delta_c + restart_bypass_extra_c;
           bool restart_inhibit_active = false;
+          const bool was_restart_blocked_by_room = id(oq_curve_restart_blocked_by_room);
+          bool restart_blocked_by_room = false;
           uint32_t off_since_ms = id(oq_curve_off_since_ms);
           const bool was_heat_request_active = heat_request_active;
           if (heat_request_active) {
@@ -498,8 +570,12 @@ output:
             if (off_reentry_min_ms > 0 && now_ms > off_since_ms) {
               off_lock_active = (now_ms - off_since_ms) < off_reentry_min_ms;
             }
-            restart_inhibit_active = off_lock_active && !deep_undershoot_restart && !room_requests_heat;
-            if ((below_restart_band || room_requests_heat) && !restart_inhibit_active) {
+            const auto restart_decision = oq_curve::evaluate_restart(
+                below_restart_band, deep_undershoot_restart, off_lock_active, room_data_fresh, room_c, room_sp_c,
+                room_overheat_off_c, room_resume_heat_c);
+            restart_inhibit_active = restart_decision.blocked_by_off_lock;
+            restart_blocked_by_room = restart_decision.blocked_by_room;
+            if (restart_decision.restart) {
               heat_request_active = true;
               off_since_ms = 0;
             }
@@ -519,7 +595,17 @@ output:
           }
           if (heat_request_active) {
             restart_inhibit_active = false;
+            restart_blocked_by_room = false;
             off_since_ms = 0;
+          }
+
+          if (restart_blocked_by_room != was_restart_blocked_by_room) {
+            if (restart_blocked_by_room) {
+              ESP_LOGI("quatt.heatcurve", "Restart blocked: fresh room %.2f C is above %.2f C setpoint",
+                       room_c, room_sp_c);
+            } else {
+              ESP_LOGI("quatt.heatcurve", "Warm-room restart block cleared");
+            }
           }
 
           static bool last_heat_request_active = false;
@@ -557,7 +643,7 @@ output:
               regime = (supply_error_c >= recovery_enter_c) ? 1 : 2;
             }
             const bool room_allows_recovery =
-                (!room_valid) || (room_c <= (room_sp_c + tuning.trim_start_c));
+                (!room_data_fresh) || (room_c <= (room_sp_c + tuning.trim_start_c));
             constexpr int recovery_reenter_min_f = 8;
             if (regime == 1) {
               if (supply_error_c <= recovery_exit_c) regime = 2;
@@ -603,6 +689,7 @@ output:
           id(oq_curve_heat_request_active) = heat_request_active;
           id(oq_curve_off_since_ms) = off_since_ms;
           id(oq_curve_restart_inhibit_active) = restart_inhibit_active;
+          id(oq_curve_restart_blocked_by_room) = restart_blocked_by_room;
           id(oq_demand_curve) = d;
 
 sensor:
@@ -804,6 +891,18 @@ sensor:
     lambda: |-
       return id(oq_curve_restart_inhibit_active) ? 1.0f : 0.0f;
 
+  - platform: template
+    id: oq_curve_restart_blocked_by_room_sensor
+    name: "Curve restart blocked by room"
+    internal: true
+    disabled_by_default: true
+    icon: mdi:home-thermometer-outline
+    accuracy_decimals: 0
+    update_interval: 5s
+    entity_category: diagnostic
+    lambda: |-
+      return id(oq_curve_restart_blocked_by_room) ? 1.0f : 0.0f;
+
 text_sensor:
   - platform: template
     id: oq_curve_phase_sensor
@@ -873,6 +972,7 @@ interval:
                 id(oq_curve_stop_arm_ms),
                 id(oq_curve_off_since_ms),
                 id(oq_curve_restart_inhibit_active),
+                id(oq_curve_restart_blocked_by_room),
                 id(oq_curve_regime_code));
             } else {
               const float cur2 = id(oq_heating_curve_pid).target_temperature;
@@ -933,6 +1033,7 @@ interval:
               id(oq_curve_stop_arm_ms),
               id(oq_curve_off_since_ms),
               id(oq_curve_restart_inhibit_active),
+              id(oq_curve_restart_blocked_by_room),
               id(oq_curve_regime_code));
           }
       - if:
