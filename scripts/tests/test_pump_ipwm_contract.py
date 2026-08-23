@@ -11,6 +11,13 @@ MANAGER_CPP = (
     / "openquatt_incident_manager"
     / "OpenQuattIncidentManager.cpp"
 ).read_text()
+PUMP_IPWM_HEADER = (
+    ROOT
+    / "openquatt"
+    / "includes"
+    / "diagnostics"
+    / "oq_pump_ipwm_feedback.h"
+).read_text()
 
 
 def yaml_block(source: str, start_marker: str, end_marker: str) -> str:
@@ -62,7 +69,7 @@ class PumpIpwmContractTest(unittest.TestCase):
         self.assertIn("oq_pump_ipwm::power_contribution_w", power_input)
         self.assertNotIn("id(${hp_id}_pump_power).state", power_input)
 
-    def test_pump_fault_context_is_coherent_and_invalidated_offline(self) -> None:
+    def test_pump_fault_context_is_recent_and_invalidated_offline(self) -> None:
         flow = yaml_block(HP_IO, "id: ${hp_id}_flow", "id: ${hp_id}_runtime_hours")
         self.assertIn("observe_pump_context", flow)
         self.assertIn("raw_max_age_ms", flow)
@@ -73,6 +80,8 @@ class PumpIpwmContractTest(unittest.TestCase):
         self.assertIn("2108U", HP_IO)
         self.assertIn("2115U", HP_IO)
         self.assertIn("2137U", HP_IO)
+        self.assertIn("kDiagnosticContextFreshnessMs = 20000U", PUMP_IPWM_HEADER)
+        self.assertNotIn("this->pending = false", PUMP_IPWM_HEADER)
         flow_switch = yaml_block(
             HP_IO,
             "id: ${hp_id}_status_2115_raw",
