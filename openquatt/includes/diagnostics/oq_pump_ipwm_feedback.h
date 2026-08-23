@@ -31,6 +31,10 @@ struct DecodedFeedback {
 };
 
 inline constexpr std::size_t kContextRawObservationCount = 4U;
+// Pump-fault context is operator diagnostics, not a control interlock. Keep a
+// recent last-known-good value across telemetry rounds instead of requiring all
+// context registers to land inside one 5 s Modbus round.
+inline constexpr uint32_t kDiagnosticContextFreshnessMs = 20000U;
 
 constexpr std::size_t context_raw_observation_index(uint16_t register_address) {
   switch (register_address) {
@@ -60,9 +64,12 @@ struct ContextRawObservation {
 
   bool consume_if_fresh(uint32_t now_ms, uint32_t max_age_ms, uint16_t& value) {
     value = this->raw;
-    const bool fresh = this->pending && max_age_ms > 0U && now_ms - this->observed_at_ms < max_age_ms;
-    this->pending = false;
-    return fresh;
+    const uint32_t effective_max_age_ms =
+        max_age_ms < kDiagnosticContextFreshnessMs ? kDiagnosticContextFreshnessMs : max_age_ms;
+    // Deliberately retain the last observation. A later diagnostic snapshot may
+    // reuse it while it is still recent; transport/offline handling explicitly
+    // invalidates pump context when the source can no longer be trusted.
+    return this->pending && effective_max_age_ms > 0U && now_ms - this->observed_at_ms < effective_max_age_ms;
   }
 };
 
