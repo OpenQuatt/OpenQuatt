@@ -6,6 +6,9 @@
 
 namespace oq_pump_ipwm {
 
+// Kept temporarily for source compatibility with the PR wiring. R2137 has one
+// fixed interpretation for the Wilo pumps used by Quatt, so decode() does not
+// branch on this value.
 enum class Profile : uint8_t {
   UNKNOWN = 0U,
   WILO_FLOW = 1U,
@@ -114,12 +117,14 @@ constexpr const char* status_name(Status status) {
   return "unknown";
 }
 
-// R2137 stores iPWM feedback in tenths. The documented 0/2/5-75/80/
-// 85-90/95/100 bands therefore arrive as 0/20/50-750/800/850-900/950/1000.
+// R2137 is fixed for the Wilo pumps used by Quatt. The register stores tenths:
+// 5-75 W arrives as raw 50-750 and is real pump power. Values outside that
+// normal running band are status/fault codes and must never enter Power Input.
+// The profile argument is intentionally ignored; it remains only while the PR
+// wiring is being simplified.
 constexpr DecodedFeedback decode(Profile profile, uint16_t raw) {
   DecodedFeedback result;
   result.profile = profile;
-  if (profile == Profile::UNKNOWN) return result;
 
   if (raw == 0U) {
     result.status = Status::PWM_SHORT;
@@ -127,10 +132,8 @@ constexpr DecodedFeedback decode(Profile profile, uint16_t raw) {
     result.status = Status::STANDBY;
   } else if (raw >= 50U && raw <= 750U) {
     result.status = Status::RUNNING;
-    if (profile == Profile::WILO_POWER_5_75_W) {
-      result.power_valid = true;
-      result.power_w = static_cast<float>(raw) * 0.1F;
-    }
+    result.power_valid = true;
+    result.power_w = static_cast<float>(raw) * 0.1F;
   } else if (raw == 800U) {
     result.status = Status::PUMP_ON_ABNORMAL;
   } else if (raw >= 850U && raw <= 900U) {
