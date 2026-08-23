@@ -51,7 +51,7 @@ class OpenQuattFlowFilterProbe : public sensor::Sensor, public Component {
 
   struct WidthStats {
     uint32_t count{0};
-    uint64_t sum_us{0};
+    uint32_t sum_us{0};
     uint32_t min_us{UINT32_MAX};
     uint32_t max_us{0};
     uint32_t lt20{0};
