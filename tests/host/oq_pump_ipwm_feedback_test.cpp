@@ -61,23 +61,26 @@ void test_option_mapping_fails_closed() {
   assert(profile_from_option(nullptr) == Profile::UNKNOWN);
 }
 
-void test_raw_observation_is_consumed_and_wrap_safe() {
+void test_raw_observation_retains_recent_diagnostic_context_and_is_wrap_safe() {
   assert(context_raw_observation_index(2010U) == 0U);
   assert(context_raw_observation_index(2137U) == 3U);
   assert(context_raw_observation_index(2138U) == kContextRawObservationCount);
+  assert(kDiagnosticContextFreshnessMs == 20000U);
 
   ContextRawObservation observation;
   uint16_t raw = 0U;
   observation.observe(950U, 100U);
-  assert(observation.consume_if_fresh(109U, 10U, raw));
+  // The caller may still pass the 5 s Modbus base interval, but diagnostic
+  // context remains usable for the 20 s operator-facing freshness window.
+  assert(observation.consume_if_fresh(15100U, 5000U, raw));
   assert(raw == 950U);
-  assert(!observation.consume_if_fresh(109U, 10U, raw));
-
-  observation.observe(500U, 100U);
-  assert(!observation.consume_if_fresh(110U, 10U, raw));
+  // Reading the context does not consume it; another snapshot may reuse the
+  // same recent last-known-good observation.
+  assert(observation.consume_if_fresh(15100U, 5000U, raw));
+  assert(!observation.consume_if_fresh(20100U, 5000U, raw));
 
   observation.observe(20U, UINT32_MAX - 4U);
-  assert(observation.consume_if_fresh(3U, 10U, raw));
+  assert(observation.consume_if_fresh(3U, 5000U, raw));
   assert(raw == 20U);
 }
 
@@ -87,7 +90,7 @@ int main() {
   test_wilo_boundaries();
   test_profile_scopes_power();
   test_option_mapping_fails_closed();
-  test_raw_observation_is_consumed_and_wrap_safe();
+  test_raw_observation_retains_recent_diagnostic_context_and_is_wrap_safe();
   std::cout << "Pump iPWM feedback tests passed\n";
   return 0;
 }
