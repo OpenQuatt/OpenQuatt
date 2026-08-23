@@ -156,6 +156,8 @@ STRICT_TOP_LEVEL_ORDER_RULES = {
         "secondary_outside_is_distinct",
         "flow_secondary_enabled",
         "flow_mismatch_internal",
+        "oq_flow_kp_default",
+        "oq_flow_ki_default",
         "hc_dual_tuning_internal",
         "hc_hp2_diag_internal",
         "hc_runtime_reset_button_name",
