@@ -53,6 +53,9 @@ modbus_controller:
         - lambda: |-
             id(${hp_id}_is_online) = false;
             id(${hp_id}_pump_relay).invalidate_state();
+            id(${hp_id}_status_2108_raw).publish_state(NAN);
+            id(${hp_id}_status_2115_raw).publish_state(NAN);
+            id(${hp_id}_pump_ipwm_feedback_raw).publish_state(NAN);
             id(oq_incident_manager).observe_transport(${hp_index}, false, millis());
             ESP_LOGW("quatt", "%sModbus OFFLINE", "${prefix}");
     on_online:
@@ -604,7 +607,7 @@ sensor:
     device_class: "temperature"
     state_class: "measurement"
     accuracy_decimals: 2
-    register_count: 3  # 2113-2115; bridge reserved register 2115.
+    register_count: 3  # 2113-2115; includes the R2115 status word.
     filters:
       - offset: -3000
       - multiply: 0.01
@@ -845,20 +848,34 @@ sensor:
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
+    id: ${hp_id}_pump_ipwm_feedback_raw
+    name: "${prefix}Pump iPWM feedback raw"
+    internal: true
+    icon: mdi:pump
+    disabled_by_default: true
+    entity_category: diagnostic
+    register_type: holding
+    address: 2137
+    value_type: U_WORD
+    accuracy_decimals: 0
+    skip_updates: ${oq_modbus_telemetry_skip}
+
+  - platform: template
     id: ${hp_id}_pump_power
     name: "${prefix}Pump Power"
     icon: mdi:pump
     disabled_by_default: true
-    register_type: holding
-    address: 2137
-    # force_new_range: true
     unit_of_measurement: "W"
     device_class: "power"
     state_class: "measurement"
-    accuracy_decimals: 2
-    filters:
-      - multiply: 0.1
-    skip_updates: ${oq_modbus_telemetry_skip}
+    accuracy_decimals: 1
+    update_interval: 10s
+    lambda: |-
+      if (!id(${hp_id}_is_online)) return NAN;
+      const float raw = id(${hp_id}_pump_ipwm_feedback_raw).state;
+      if (isnan(raw)) return NAN;
+      const auto feedback = oq_pump_ipwm::decode(static_cast<uint16_t>(lroundf(raw)));
+      return feedback.power_valid ? feedback.power_w : NAN;
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -915,7 +932,7 @@ sensor:
       const float fan_speed = nz(id(${hp_id}_fan_speed).state);
 
       float pump_power_w = 0.0f;
-      if (id(${hp_id}_pump_relay).state) {
+      if (id(${hp_id}_pump_relay).has_state() && id(${hp_id}_pump_relay).state) {
         pump_power_w = nz(id(${hp_id}_pump_power).state);
       }
 
@@ -1039,6 +1056,7 @@ sensor:
     on_value:
       then:
         - lambda: |-
+            if (isnan(x)) return;
             const uint16_t status = static_cast<uint16_t>(lroundf(x));
             id(${hp_id}_fan_low_speed_mode).publish_state((status & 0x0001u) != 0u);
             id(${hp_id}_bottom_plate_heater).publish_state((status & 0x0004u) != 0u);
@@ -1062,6 +1080,18 @@ sensor:
             id(oq_incident_manager).observe_fault_word(
                 ${hp_index}, 2119U,
                 static_cast<uint16_t>(lroundf(x)), millis());
+
+  - platform: modbus_controller
+    modbus_controller_id: ${hp_id}
+    id: ${hp_id}_status_2115_raw
+    register_type: holding
+    # Share the existing 2113-2115 range; byte offset 4 is register R2115.
+    address: 2113
+    offset: 4
+    value_type: U_WORD
+    register_count: 3
+    skip_updates: ${oq_modbus_telemetry_skip}
+    internal: true
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -1089,9 +1119,32 @@ sensor:
     on_value:
       then:
         - lambda: |-
+            if (isnan(x)) return;
+            const uint32_t now_ms = millis();
+            const uint16_t fault_word = static_cast<uint16_t>(lroundf(x));
+            if ((fault_word & 0x2000u) != 0u) {
+              const bool request_valid = id(${hp_id}_set_pump_mode).has_state();
+              const bool request_on = request_valid &&
+                  id(${hp_id}_set_pump_mode).current_option() == "On";
+              const float relay_raw = id(${hp_id}_status_2108_raw).state;
+              const bool relay_valid = !isnan(relay_raw);
+              const bool relay_on = relay_valid &&
+                  (static_cast<uint16_t>(lroundf(relay_raw)) & 0x0800u) != 0u;
+              const float flow_switch_raw = id(${hp_id}_status_2115_raw).state;
+              const bool flow_switch_valid = !isnan(flow_switch_raw);
+              const bool flow_switch_on = flow_switch_valid &&
+                  (static_cast<uint16_t>(lroundf(flow_switch_raw)) & 0x2000u) != 0u;
+              const float feedback_raw = id(${hp_id}_pump_ipwm_feedback_raw).state;
+              const bool feedback_valid = !isnan(feedback_raw);
+              const float flow_lph = id(${hp_id}_flow).state;
+              id(oq_incident_manager).observe_pump_context(
+                  ${hp_index}, request_valid, request_on, relay_valid, relay_on,
+                  flow_switch_valid, flow_switch_on, feedback_valid,
+                  feedback_valid ? static_cast<uint16_t>(lroundf(feedback_raw)) : 0U,
+                  !isnan(flow_lph), flow_lph);
+            }
             id(oq_incident_manager).observe_fault_word(
-                ${hp_index}, 2121U,
-                static_cast<uint16_t>(lroundf(x)), millis());
+                ${hp_index}, 2121U, fault_word, now_ms);
 
   # ----------------------------
   # BINARY SENSOR

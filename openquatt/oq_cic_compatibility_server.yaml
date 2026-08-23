@@ -252,8 +252,8 @@ modbus_server:
         read_lambda: |-
           id(cic_compatibility_last_request_ms) = millis();
           if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_pump_power).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v * 10.0f));
+          const float v = id(${cic_compat_hp_id}_pump_ipwm_feedback_raw).state;
+          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v));
       - address: 2138
         value_type: U_WORD
         read_lambda: |-

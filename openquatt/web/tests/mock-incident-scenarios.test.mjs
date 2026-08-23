@@ -190,6 +190,20 @@ test("fault recovery matches the firmware-derived output without publishing a cl
   assert.equal(recovering.incidents.length, 0);
 });
 
+test("pump failure fixture carries ODU source metadata and coherent iPWM context", () => {
+  const pump = catalog.getScenario("pump-ipwm-failure").phases[0].heat_pumps[0];
+  const incident = pump.incidents[0];
+  assert.equal(incident.definition.id, 46);
+  assert.equal(incident.definition.register_address, 2121);
+  assert.equal(incident.definition.bit, 13);
+  assert.equal(incident.definition.source_description, "DC water pump failure");
+  assert.equal(pump.pump_context.ipwm_feedback_raw, 950);
+  assert.equal(pump.pump_context.ipwm_status, "pump_off_failure");
+  assert.equal(pump.pump_context.flow_switch_on, false);
+  assert.equal(pump.pump_context.flow_lph, 0);
+  assert.equal(pump.pump_context.pump_power_w, null);
+});
+
 test("stop confirmation block retains its confirmed fallback cause", () => {
   const blocked = catalog.getScenario("stop-unconfirmed-block").phases[0].heat_pumps[0];
   assert.equal(blocked.protection_state, "fault_active");

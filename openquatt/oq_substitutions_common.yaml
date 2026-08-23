@@ -192,6 +192,8 @@ oq_flow_service_output_loop_s: "5"                    # Fast actuator cadence fo
 oq_flow_service_output_startup_delay_ms: "5700"       # Apply service targets shortly after their state-machine ticks [ms].
 oq_flow_mismatch_threshold_lph: "150.0"               # Allowed HP1-vs-HP2 flow difference before mismatch logic starts [L/h].
 oq_flow_mismatch_hyst_lph: "50.0"                     # Hysteresis on mismatch detection to prevent chatter [L/h].
+oq_flow_kp_default: "0.03"                            # Default Flow PI Kp; single builds override this for one-pump hydraulics.
+oq_flow_ki_default: "0.0008"                          # Default Flow PI Ki; single builds override this for one-pump hydraulics.
 oq_flow_kp_min: "0.00"                                # Lower bound for Flow PI Kp.
 oq_flow_kp_max: "0.20"                                # Upper bound for Flow PI Kp (broader for cross-install tuning).
 oq_flow_ki_min: "0.0000"                              # Lower bound for Flow PI Ki.
