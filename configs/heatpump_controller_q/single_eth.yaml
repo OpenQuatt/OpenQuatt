@@ -12,8 +12,6 @@ substitutions:
   oq_controller_flow_sensor_id: "flow_rate_controller"
   oq_q_flow_source_selector_id: "oq_q_flow_source"
   oq_topology_build_flag: "-DOQ_TOPOLOGY_DUO=0"
-  oq_flow_kp_default: "0.06"
-  oq_flow_ki_default: "0.0012"
   main_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/latest/download/openquatt-heatpump-controller-q-single-eth-ota.manifest.json"
   dev_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/download/dev-latest/openquatt-heatpump-controller-q-single-eth-ota.manifest.json"
   release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/latest/download/openquatt-heatpump-controller-q-single-eth-ota.manifest.json"
