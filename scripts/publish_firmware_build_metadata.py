@@ -70,7 +70,12 @@ def ensure_branch(repository: str, branch: str, start_sha: str) -> None:
         raise PublishError(created.stderr.strip() or f"Cannot create branch {branch}")
 
 
-def load_record(path: Path) -> tuple[dict[str, object], str]:
+def load_record(
+    path: Path,
+    *,
+    expected_source_repository: str,
+    expected_source_commit: str,
+) -> tuple[dict[str, object], str]:
     try:
         size = path.stat().st_size
     except OSError as err:
@@ -86,6 +91,16 @@ def load_record(path: Path) -> tuple[dict[str, object], str]:
     if not isinstance(record, dict):
         raise PublishError(f"Build metadata must be a JSON object: {path}")
     request = request_from_record(record)
+    if request.source_repository != expected_source_repository:
+        raise PublishError(
+            "Build metadata source repository does not match the trusted workflow identity "
+            f"({request.source_repository} != {expected_source_repository})"
+        )
+    if request.source_commit != expected_source_commit:
+        raise PublishError(
+            "Build metadata source commit does not match the trusted workflow identity "
+            f"({request.source_commit} != {expected_source_commit})"
+        )
     expected_name = metadata_filename(record)
     if path.name != expected_name:
         raise PublishError(
@@ -137,8 +152,14 @@ def publish_record(
     repository: str,
     branch: str,
     path: Path,
+    expected_source_repository: str,
+    expected_source_commit: str,
 ) -> str:
-    _, destination = load_record(path)
+    _, destination = load_record(
+        path,
+        expected_source_repository=expected_source_repository,
+        expected_source_commit=expected_source_commit,
+    )
     content = path.read_bytes()
     if len(content) > MAX_RECORD_BYTES:
         raise PublishError(
@@ -187,6 +208,8 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--github-repository", required=True)
     parser.add_argument("--branch", default=DEFAULT_BRANCH)
     parser.add_argument("--start-sha", required=True)
+    parser.add_argument("--expected-source-repository", required=True)
+    parser.add_argument("--expected-source-commit", required=True)
     parser.add_argument("metadata", type=Path, nargs="+")
     return parser
 
@@ -196,16 +219,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         repository = normalize_repository(args.github_repository)
         start_sha = normalize_commit(args.start_sha)
+        expected_source_repository = normalize_repository(
+            args.expected_source_repository
+        )
+        expected_source_commit = normalize_commit(args.expected_source_commit)
         if args.branch != DEFAULT_BRANCH:
             raise PublishError(f"Only the durable {DEFAULT_BRANCH!r} branch is supported")
+        metadata_paths = [path.resolve() for path in args.metadata]
+        for path in metadata_paths:
+            load_record(
+                path,
+                expected_source_repository=expected_source_repository,
+                expected_source_commit=expected_source_commit,
+            )
         ensure_branch(repository, args.branch, start_sha)
         urls = [
             publish_record(
                 repository=repository,
                 branch=args.branch,
-                path=path.resolve(),
+                path=path,
+                expected_source_repository=expected_source_repository,
+                expected_source_commit=expected_source_commit,
             )
-            for path in args.metadata
+            for path in metadata_paths
         ]
     except (PublishError, RuntimeError) as err:
         raise SystemExit(str(err)) from err

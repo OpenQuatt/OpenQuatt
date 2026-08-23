@@ -48,12 +48,30 @@ class DeterministicEsphomeTests(unittest.TestCase):
             "/external/config.yaml",
             MODULE.canonical_document_path("/external/config.yaml", source_root),
         )
+        self.assertEqual(
+            "include: /openquatt-source/components/header.h\n",
+            MODULE.canonicalize_source_paths(
+                "include: /tmp/checkout-a/components/header.h\n", source_root
+            ),
+        )
 
     def test_writer_override_uses_utc_epoch_and_current_config(self) -> None:
         writer = types.ModuleType("esphome.writer")
         writer.get_build_info = lambda: None
         core = types.ModuleType("esphome.core")
-        core.CORE = types.SimpleNamespace(config_hash=0x1234ABCD, comment="test")
+
+        class FakeCore:
+            def __init__(self) -> None:
+                self._config_hash = None
+                self.comment = "test"
+                self.config = {
+                    "esphome": {"build_path": "/machine-local/build"},
+                    "include": str(ROOT / "components" / "header.h"),
+                }
+                self.config_dir = ROOT / "configs"
+
+        core.CORE = FakeCore()
+        core.EsphomeCore = FakeCore
         core.DocumentLocation = type(
             "DocumentLocation",
             (),
@@ -61,6 +79,25 @@ class DeterministicEsphomeTests(unittest.TestCase):
         )
         esphome = types.ModuleType("esphome")
         esphome.writer = writer
+        yaml_util = types.ModuleType("esphome.yaml_util")
+
+        def dump(config, **_kwargs) -> str:
+            self.assertNotIn("build_path", config["esphome"])
+            return f"include: {config['include']}\n"
+
+        yaml_util.dump = dump
+        esphome.yaml_util = yaml_util
+        constants = types.ModuleType("esphome.const")
+        constants.CONF_BUILD_PATH = "build_path"
+        constants.CONF_ESPHOME = "esphome"
+        helpers = types.ModuleType("esphome.helpers")
+        helpers.fnv1a_32bit_hash = (
+            lambda value: (
+                0x1234ABCD
+                if "/openquatt-source/components/header.h" in value
+                else 0
+            )
+        )
         original_gzip_compress = gzip.compress
         self.addCleanup(setattr, gzip, "compress", original_gzip_compress)
 
@@ -70,19 +107,21 @@ class DeterministicEsphomeTests(unittest.TestCase):
                 "esphome": esphome,
                 "esphome.writer": writer,
                 "esphome.core": core,
+                "esphome.yaml_util": yaml_util,
+                "esphome.const": constants,
+                "esphome.helpers": helpers,
             },
         ):
             MODULE.install_deterministic_build_info(1787443200, ROOT)
-
-        self.assertEqual(
-            (
-                0x1234ABCD,
-                1787443200,
-                "2026-08-23 00:00:00 +0000",
-                "test",
-            ),
-            writer.get_build_info(),
-        )
+            self.assertEqual(
+                (
+                    0x1234ABCD,
+                    1787443200,
+                    "2026-08-23 00:00:00 +0000",
+                    "test",
+                ),
+                writer.get_build_info(),
+            )
         compressed = gzip.compress(b"web asset")
         self.assertEqual(1787443200, int.from_bytes(compressed[4:8], "little"))
 

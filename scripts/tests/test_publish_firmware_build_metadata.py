@@ -25,6 +25,10 @@ SPEC.loader.exec_module(MODULE)
 from test_reconstruct_firmware_elf import build_record  # noqa: E402
 
 
+EXPECTED_SOURCE_REPOSITORY = "OpenQuatt/OpenQuatt"
+EXPECTED_SOURCE_COMMIT = "1" * 40
+
+
 def write_record(root: Path) -> Path:
     record = build_record()
     record["identity"]["artifact_name"] = "openquatt-q-duo-wifi"
@@ -41,7 +45,11 @@ class PublishFirmwareBuildMetadataTests(unittest.TestCase):
     def test_destination_is_repository_commit_and_build_addressed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             path = write_record(Path(temp_dir))
-            _, destination = MODULE.load_record(path)
+            _, destination = MODULE.load_record(
+                path,
+                expected_source_repository=EXPECTED_SOURCE_REPOSITORY,
+                expected_source_commit=EXPECTED_SOURCE_COMMIT,
+            )
             self.assertEqual(
                 (
                     "records/OpenQuatt/OpenQuatt/"
@@ -56,7 +64,60 @@ class PublishFirmwareBuildMetadataTests(unittest.TestCase):
             wrong = original.with_name("current.build.json")
             wrong.write_bytes(original.read_bytes())
             with self.assertRaisesRegex(MODULE.PublishError, "not build-addressed"):
-                MODULE.load_record(wrong)
+                MODULE.load_record(
+                    wrong,
+                    expected_source_repository=EXPECTED_SOURCE_REPOSITORY,
+                    expected_source_commit=EXPECTED_SOURCE_COMMIT,
+                )
+
+    def test_record_repository_must_match_trusted_workflow_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = write_record(Path(temp_dir))
+            with self.assertRaisesRegex(
+                MODULE.PublishError,
+                "source repository does not match the trusted workflow identity",
+            ):
+                MODULE.load_record(
+                    path,
+                    expected_source_repository="fork/OpenQuatt",
+                    expected_source_commit=EXPECTED_SOURCE_COMMIT,
+                )
+
+    def test_record_commit_must_match_trusted_workflow_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = write_record(Path(temp_dir))
+            with self.assertRaisesRegex(
+                MODULE.PublishError,
+                "source commit does not match the trusted workflow identity",
+            ):
+                MODULE.load_record(
+                    path,
+                    expected_source_repository=EXPECTED_SOURCE_REPOSITORY,
+                    expected_source_commit="3" * 40,
+                )
+
+    def test_all_records_are_validated_before_the_durable_branch_is_created(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = write_record(Path(temp_dir))
+            with mock.patch.object(MODULE, "ensure_branch") as ensure_branch:
+                with self.assertRaisesRegex(
+                    SystemExit,
+                    "source repository does not match the trusted workflow identity",
+                ):
+                    MODULE.main(
+                        [
+                            "--github-repository",
+                            EXPECTED_SOURCE_REPOSITORY,
+                            "--start-sha",
+                            EXPECTED_SOURCE_COMMIT,
+                            "--expected-source-repository",
+                            "fork/OpenQuatt",
+                            "--expected-source-commit",
+                            EXPECTED_SOURCE_COMMIT,
+                            str(path),
+                        ]
+                    )
+            ensure_branch.assert_not_called()
 
     def test_identical_existing_record_is_an_idempotent_retry(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -70,6 +131,8 @@ class PublishFirmwareBuildMetadataTests(unittest.TestCase):
                     repository="OpenQuatt/OpenQuatt",
                     branch=MODULE.DEFAULT_BRANCH,
                     path=path,
+                    expected_source_repository=EXPECTED_SOURCE_REPOSITORY,
+                    expected_source_commit=EXPECTED_SOURCE_COMMIT,
                 )
             self.assertIn("raw.githubusercontent.com/OpenQuatt/OpenQuatt", url)
             self.assertTrue(url.endswith(path.name))
@@ -83,6 +146,8 @@ class PublishFirmwareBuildMetadataTests(unittest.TestCase):
                         repository="OpenQuatt/OpenQuatt",
                         branch=MODULE.DEFAULT_BRANCH,
                         path=path,
+                        expected_source_repository=EXPECTED_SOURCE_REPOSITORY,
+                        expected_source_commit=EXPECTED_SOURCE_COMMIT,
                     )
 
     def test_rerun_diagnostics_do_not_replace_the_rebuild_record(self) -> None:
@@ -102,6 +167,8 @@ class PublishFirmwareBuildMetadataTests(unittest.TestCase):
                     repository="OpenQuatt/OpenQuatt",
                     branch=MODULE.DEFAULT_BRANCH,
                     path=path,
+                    expected_source_repository=EXPECTED_SOURCE_REPOSITORY,
+                    expected_source_commit=EXPECTED_SOURCE_COMMIT,
                 )
             publish.assert_not_called()
 
@@ -127,6 +194,8 @@ class PublishFirmwareBuildMetadataTests(unittest.TestCase):
                     repository="OpenQuatt/OpenQuatt",
                     branch=MODULE.DEFAULT_BRANCH,
                     path=path,
+                    expected_source_repository=EXPECTED_SOURCE_REPOSITORY,
+                    expected_source_commit=EXPECTED_SOURCE_COMMIT,
                 )
 
 

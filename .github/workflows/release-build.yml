@@ -7,21 +7,29 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   compile-profiles:
     uses: ./.github/workflows/esphome-build.yml
+    permissions:
+      contents: read
     with:
       artifact_suffix: release
+      checkout_persist_credentials: false
 
   publish-release:
     runs-on: ubuntu-latest
     needs: compile-profiles
+    permissions:
+      actions: read
+      contents: write
 
     steps:
       - name: Checkout scripts
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Download firmware artifacts
         uses: actions/download-artifact@v7
@@ -44,6 +52,8 @@ jobs:
           python3 scripts/publish_firmware_build_metadata.py \
             --github-repository "${GITHUB_REPOSITORY}" \
             --start-sha "${GITHUB_SHA}" \
+            --expected-source-repository "${GITHUB_REPOSITORY}" \
+            --expected-source-commit "${GITHUB_SHA}" \
             dist/*/*.build.json
 
       - name: Create release if needed

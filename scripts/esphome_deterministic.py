@@ -44,6 +44,46 @@ def canonical_document_path(document: str, source_root: Path) -> str:
     return (PORTABLE_SOURCE_ROOT / relative).as_posix()
 
 
+def canonicalize_source_paths(value: str, source_root: Path) -> str:
+    """Replace checkout-local absolute paths in serialized build inputs."""
+
+    portable = PORTABLE_SOURCE_ROOT.as_posix()
+    source_paths = {source_root, source_root.resolve()}
+    for source_path in source_paths:
+        for checkout in {str(source_path), source_path.as_posix()}:
+            checkout = checkout.rstrip("/\\")
+            value = value.replace(f"{checkout}/", f"{portable}/")
+            value = value.replace(f"{checkout}\\", f"{portable}/")
+    return value
+
+
+def portable_config_hash(core: object, source_root: Path) -> int:
+    """Calculate ESPHome's config hash without checkout-local path strings."""
+
+    cached = getattr(core, "_config_hash", None)
+    if cached is not None:
+        return cached
+
+    from esphome import yaml_util
+    from esphome.const import CONF_BUILD_PATH, CONF_ESPHOME
+    from esphome.helpers import fnv1a_32bit_hash
+
+    config = dict(core.config)
+    if (esphome_config := config.get(CONF_ESPHOME)) is not None:
+        esphome_config = dict(esphome_config)
+        esphome_config.pop(CONF_BUILD_PATH, None)
+        config[CONF_ESPHOME] = esphome_config
+    config_text = yaml_util.dump(
+        config,
+        show_secrets=True,
+        sort_keys=True,
+        relative_to=core.config_dir,
+    )
+    config_text = canonicalize_source_paths(config_text, source_root)
+    core._config_hash = fnv1a_32bit_hash(config_text)
+    return core._config_hash
+
+
 def install_deterministic_build_info(epoch: int, source_root: Path | None = None) -> None:
     """Replace ESPHome's wall-clock build-info provider for this process.
 
@@ -54,9 +94,13 @@ def install_deterministic_build_info(epoch: int, source_root: Path | None = None
     """
 
     from esphome import writer
-    from esphome.core import CORE, DocumentLocation
+    from esphome.core import CORE, DocumentLocation, EsphomeCore
 
     source_root = source_root or Path(__file__).resolve().parent.parent
+
+    EsphomeCore.config_hash = property(
+        lambda core: portable_config_hash(core, source_root)
+    )
 
     def get_build_info() -> tuple[int, int, str, str]:
         return CORE.config_hash, epoch, format_build_time(epoch), CORE.comment or ""

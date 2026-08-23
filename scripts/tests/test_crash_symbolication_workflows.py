@@ -103,8 +103,43 @@ class CrashSymbolicationWorkflowTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn('DEFAULT_BRANCH = "firmware-build-metadata"', publisher)
+        self.assertIn('parser.add_argument("--expected-source-repository", required=True)', publisher)
+        self.assertIn('parser.add_argument("--expected-source-commit", required=True)', publisher)
         self.assertIn("Immutable build metadata path already has a different rebuild contract", publisher)
         self.assertNotIn("firmware.elf", publisher)
+
+    def test_publishers_bind_records_to_trusted_source_identity(self) -> None:
+        dev = (ROOT / ".github/workflows/dev-build.yml").read_text(encoding="utf-8")
+        release = (ROOT / ".github/workflows/release-build.yml").read_text(
+            encoding="utf-8"
+        )
+        pr = (ROOT / ".github/workflows/pr-test-firmware-publish.yml").read_text(
+            encoding="utf-8"
+        )
+        for workflow in (dev, release, pr):
+            self.assertIn("--expected-source-repository", workflow)
+            self.assertIn("--expected-source-commit", workflow)
+        self.assertIn(
+            '${{ needs.validate-pr-test-build.outputs.head_repository }}', pr
+        )
+        self.assertIn('${{ needs.validate-pr-test-build.outputs.head_sha }}', pr)
+
+    def test_build_jobs_do_not_inherit_release_write_credentials(self) -> None:
+        shared = (ROOT / ".github/workflows/esphome-build.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("default: false", shared)
+        self.assertGreaterEqual(shared.count("contents: read"), 2)
+
+        for filename in ("dev-build.yml", "release-build.yml"):
+            with self.subTest(filename=filename):
+                workflow = (ROOT / ".github/workflows" / filename).read_text(
+                    encoding="utf-8"
+                )
+                self.assertIn("permissions:\n  contents: read", workflow)
+                self.assertIn("checkout_persist_credentials: false", workflow)
+                self.assertIn("persist-credentials: false", workflow)
+                self.assertIn("contents: write", workflow)
 
 
 if __name__ == "__main__":

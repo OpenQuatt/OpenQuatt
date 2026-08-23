@@ -24,6 +24,7 @@ jobs:
     outputs:
       base_ref: ${{ steps.gate.outputs.base_ref }}
       base_sha: ${{ steps.gate.outputs.base_sha }}
+      head_repository: ${{ steps.gate.outputs.head_repository }}
       head_sha: ${{ steps.gate.outputs.head_sha }}
       pr_number: ${{ steps.gate.outputs.pr_number }}
       should_publish: ${{ steps.metadata.outputs.found }}
@@ -152,6 +153,7 @@ jobs:
 
           echo "base_ref=${BASE_REF}" >> "${GITHUB_OUTPUT}"
           echo "base_sha=${BASE_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "head_repository=${HEAD_REPOSITORY}" >> "${GITHUB_OUTPUT}"
           echo "head_sha=${HEAD_SHA}" >> "${GITHUB_OUTPUT}"
           echo "pr_number=${PR_NUMBER}" >> "${GITHUB_OUTPUT}"
           echo "short_sha=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
@@ -174,6 +176,7 @@ jobs:
         with:
           ref: ${{ needs.validate-pr-test-build.outputs.base_sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Download firmware artifacts
         uses: actions/download-artifact@v7
@@ -190,6 +193,8 @@ jobs:
           python3 scripts/publish_firmware_build_metadata.py \
             --github-repository "${GITHUB_REPOSITORY}" \
             --start-sha "${{ needs.validate-pr-test-build.outputs.base_sha }}" \
+            --expected-source-repository "${{ needs.validate-pr-test-build.outputs.head_repository }}" \
+            --expected-source-commit "${{ needs.validate-pr-test-build.outputs.head_sha }}" \
             "${RUNNER_TEMP}"/firmware/*/*.build.json
 
       - name: Prepare PR test firmware assets
@@ -215,6 +220,7 @@ jobs:
           SHORT_SHA: ${{ needs.validate-pr-test-build.outputs.short_sha }}
           VERSION: ${{ needs.validate-pr-test-build.outputs.version }}
         run: |
+          gh auth setup-git
           PR_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           if [[ "$(jq -r '.state' <<< "${PR_JSON}")" != "open" ]] || \
              ! jq -e '.labels | any(.name == "test-firmware")' <<< "${PR_JSON}" >/dev/null || \
