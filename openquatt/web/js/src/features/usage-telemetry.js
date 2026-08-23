@@ -25,6 +25,7 @@ const USAGE_TELEMETRY_EXAMPLE_JSON = JSON.stringify({
   heating_enable_source: "disabled",
   cooling_enable_source: "disabled",
   cooling_dew_point_source: "auto",
+  external_heat_demand_source: "disabled",
   heap_free_b: 178432,
   heap_min_free_b: 151008,
   heap_largest_block_b: 98304,
