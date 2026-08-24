@@ -40,6 +40,19 @@ select:
     initial_option: CIC
 
   - platform: template
+    name: "External Heat Demand Source"
+    id: external_heat_demand_source
+    icon: mdi:source-branch
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    options:
+      - Disabled
+      - HA input
+      - API input
+    initial_option: Disabled
+
+  - platform: template
     name: "Heating Enable Source"
     id: heating_enable_source
     icon: mdi:source-branch

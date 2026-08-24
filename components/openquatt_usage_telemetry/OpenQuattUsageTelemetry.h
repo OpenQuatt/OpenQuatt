@@ -58,6 +58,9 @@ class OpenQuattUsageTelemetry : public switch_::Switch, public Component {
   void set_heating_enable_source_select(select::Select* source) { this->heating_enable_source_select_ = source; }
   void set_cooling_enable_source_select(select::Select* source) { this->cooling_enable_source_select_ = source; }
   void set_cooling_dew_point_source_select(select::Select* source) { this->cooling_dew_point_source_select_ = source; }
+  void set_external_heat_demand_source_select(select::Select* source) {
+    this->external_heat_demand_source_select_ = source;
+  }
   void set_loop_time_sensor(sensor::Sensor* sensor) { this->loop_time_sensor_ = sensor; }
   void set_internal_temperature_sensor(sensor::Sensor* sensor) { this->internal_temperature_sensor_ = sensor; }
   void set_wifi_signal_sensor(sensor::Sensor* sensor) { this->wifi_signal_sensor_ = sensor; }
@@ -189,6 +192,7 @@ class OpenQuattUsageTelemetry : public switch_::Switch, public Component {
   select::Select* heating_enable_source_select_{nullptr};
   select::Select* cooling_enable_source_select_{nullptr};
   select::Select* cooling_dew_point_source_select_{nullptr};
+  select::Select* external_heat_demand_source_select_{nullptr};
   sensor::Sensor* loop_time_sensor_{nullptr};
   sensor::Sensor* internal_temperature_sensor_{nullptr};
   sensor::Sensor* wifi_signal_sensor_{nullptr};

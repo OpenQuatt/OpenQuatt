@@ -15,6 +15,10 @@
 # ==============================================================================
 
 globals:
+  - id: oq_phouse_demand_external
+    type: bool
+    restore_value: false
+    initial_value: 'false'
   # Power House requested thermal power (W).
   # This is strategy-specific diagnostics/state and is not part of the generic
   # heating-strategy interface.
@@ -259,6 +263,16 @@ text_sensor:
       #endif
   # DEBUG-RUNTIME END
 
+  - platform: template
+    id: oq_phouse_demand_source
+    name: "Power House – demand source"
+    icon: mdi:source-branch
+    entity_category: diagnostic
+    update_interval: ${oq_diagnostic_update_interval_s}s
+    lambda: |-
+      // Separate a live external feedforward from a fallback to the house model.
+      return std::string(id(oq_phouse_demand_external) ? "external" : "model");
+
 sensor:
   - platform: template
     id: oq_phouse_house_w
@@ -278,10 +292,9 @@ sensor:
       if (isnan(Tout) || isnan(Tc) || isnan(T0) || isnan(Pr)) return NAN;
       if (T0 <= Tc + ${oq_temp_guard_delta_c}f) return NAN;
 
-      float x = (T0 - Tout) / (T0 - Tc);
-      if (x < 0.0f) x = 0.0f;
-      if (x > 1.0f) x = 1.0f;
-      return Pr * x;
+      // Always the modelled value, also while an external demand is driving the
+      // feedforward: it stays the reference the strategy falls back to.
+      return oq_power_house::modelled_house_power_w(T0, Tc, Tout, Pr);
 
   - platform: template
     id: oq_phouse_req_w_sensor
@@ -349,6 +362,7 @@ interval:
             id(oq_phouse_last_ms) = 0;
             id(oq_phouse_last_w) = 0.0f;
             id(oq_phouse_comfort_memory_c) = 0.0f;
+            id(oq_phouse_demand_external) = false;
             hp1_prev_valve_def = false;
             hp2_prev_valve_def = false;
             hp1_prev_oil_return = false;
@@ -393,11 +407,20 @@ interval:
               isnan(Tr) || isnan(Trsp) || (T0 <= Tc + ${oq_temp_guard_delta_c}f)) {
             id(oq_phouse_req_w) = 0.0f;
             id(oq_phouse_comfort_memory_c) = 0.0f;
+            id(oq_phouse_demand_external) = false;
             id(oq_demand_raw) = 0;
           } else {
-            float x = (T0 - Tout) / (T0 - Tc);
-            x = clampf(x, 0.0f, 1.0f);
-            const float P_house = house_power_rating_w * x;
+            // Feedforward only: an external planner may replace the modelled
+            // house power, but the comfort trim, saturation clamp, slew limiter
+            // and water-temperature limiter below stay firmware-owned.
+            const float P_model = oq_power_house::modelled_house_power_w(T0, Tc, Tout, house_power_rating_w);
+            const bool demand_present =
+                id(external_heat_demand_selected).has_state() && !isnan(id(external_heat_demand_selected).state);
+            const oq_power_house::Feedforward feedforward = oq_power_house::select_feedforward(
+                P_model, demand_present ? id(external_heat_demand_selected).state : NAN, demand_present,
+                house_power_rating_w);
+            const float P_house = feedforward.house_power_w;
+            id(oq_phouse_demand_external) = feedforward.external;
 
             const float comfort_below = clampf(id(ph_comfort_band_below_c).state, 0.0f, 2.0f);
             const float comfort_above = clampf(id(ph_comfort_band_above_c).state, 0.0f, 2.0f);

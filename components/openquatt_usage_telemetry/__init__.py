@@ -51,6 +51,7 @@ CONF_OUTSIDE_TEMPERATURE_SOURCE_SELECT = "outside_temperature_source_select"
 CONF_HEATING_ENABLE_SOURCE_SELECT = "heating_enable_source_select"
 CONF_COOLING_ENABLE_SOURCE_SELECT = "cooling_enable_source_select"
 CONF_COOLING_DEW_POINT_SOURCE_SELECT = "cooling_dew_point_source_select"
+CONF_EXTERNAL_HEAT_DEMAND_SOURCE_SELECT = "external_heat_demand_source_select"
 CONF_LOOP_TIME_SENSOR = "loop_time_sensor"
 CONF_INTERNAL_TEMPERATURE_SENSOR = "internal_temperature_sensor"
 CONF_WIFI_SIGNAL_SENSOR = "wifi_signal_sensor"
@@ -115,6 +116,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_HEATING_ENABLE_SOURCE_SELECT): cv.use_id(select.Select),
             cv.Required(CONF_COOLING_ENABLE_SOURCE_SELECT): cv.use_id(select.Select),
             cv.Required(CONF_COOLING_DEW_POINT_SOURCE_SELECT): cv.use_id(select.Select),
+            cv.Required(CONF_EXTERNAL_HEAT_DEMAND_SOURCE_SELECT): cv.use_id(select.Select),
             cv.Required(CONF_LOOP_TIME_SENSOR): cv.use_id(sensor.Sensor),
             cv.Required(CONF_INTERNAL_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
             cv.Optional(CONF_WIFI_SIGNAL_SENSOR): cv.use_id(sensor.Sensor),
@@ -207,6 +209,10 @@ async def to_code(config):
         config[CONF_COOLING_DEW_POINT_SOURCE_SELECT]
     )
     cg.add(var.set_cooling_dew_point_source_select(cooling_dew_point_source_select))
+    external_heat_demand_source_select = await cg.get_variable(
+        config[CONF_EXTERNAL_HEAT_DEMAND_SOURCE_SELECT]
+    )
+    cg.add(var.set_external_heat_demand_source_select(external_heat_demand_source_select))
     loop_time_sensor = await cg.get_variable(config[CONF_LOOP_TIME_SENSOR])
     cg.add(var.set_loop_time_sensor(loop_time_sensor))
     internal_temperature_sensor = await cg.get_variable(config[CONF_INTERNAL_TEMPERATURE_SENSOR])
