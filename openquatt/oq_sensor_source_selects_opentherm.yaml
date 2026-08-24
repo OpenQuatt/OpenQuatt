@@ -7,6 +7,10 @@
 #   Include only on hardware profiles that actually provide the OT slave bridge.
 # ==============================================================================
 
+substitutions:
+  oq_ot_room_temperature_fresh_expr: "id(oq_ot_slave_hub).master_room_temperature_fresh()"
+  oq_ot_room_setpoint_fresh_expr: "id(oq_ot_slave_hub).master_room_setpoint_fresh()"
+
 select:
   - platform: template
     name: "Room Temperature Source"
@@ -37,6 +41,19 @@ select:
       - API input
       - MQTT
     initial_option: OT thermostat
+
+  - platform: template
+    name: "External Heat Demand Source"
+    id: external_heat_demand_source
+    icon: mdi:source-branch
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    options:
+      - Disabled
+      - HA input
+      - API input
+    initial_option: Disabled
 
   - platform: template
     name: "Heating Enable Source"

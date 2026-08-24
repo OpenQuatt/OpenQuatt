@@ -354,6 +354,11 @@ export function normalizeDebugRecordingValue(key) {
   }
 
   const rawValue = getEntityValue(key);
+  const preserveUnknown = (key === "hp1Generation" || key === "hp2Generation")
+    && String(rawValue ?? "").trim().toLowerCase() === "unknown";
+  if (preserveUnknown) {
+    return "Unknown";
+  }
   if (isDebugRecordingMissingValue(rawValue)) {
     return null;
   }

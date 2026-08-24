@@ -125,7 +125,7 @@ class OpenQuattDebugRecorder : public Component {
   bool compact_strings_();
   void capture_sample_();
   uint32_t capture_value_(const DebugField& field);
-  uint32_t intern_string_(const char* value, size_t length);
+  uint32_t intern_string_(const char* value, size_t length, bool preserve_unknown = false);
   const StringEntry* string_at_(uint32_t index) const;
   const DebugSample* sample_at_(size_t index) const;
 };

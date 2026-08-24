@@ -123,7 +123,7 @@
   }
 
   .oq-helper-modal--scrollable {
-    max-height: calc(100dvh - 24px);
+    max-height: calc(100dvh - 48px);
   }
 
   .oq-helper-modal-grid {
@@ -509,9 +509,35 @@
     grid-template-columns: 1fr;
   }
 
+  .oq-settings-generation-grid .oq-settings-choice-card--with-image {
+    grid-template-columns: 88px minmax(0, 1fr);
+    grid-template-areas:
+      "media head"
+      "media copy";
+    align-items: center;
+  }
+
+  .oq-settings-generation-grid .oq-settings-choice-head {
+    grid-area: head;
+  }
+
+  .oq-settings-generation-grid .oq-settings-choice-media {
+    grid-area: media;
+    margin: 0;
+    aspect-ratio: 4 / 3;
+  }
+
+  .oq-settings-generation-grid .oq-settings-choice-copy {
+    grid-area: copy;
+  }
+
   .oq-helper-card,
   .oq-helper-panel {
     padding: 10px;
+  }
+
+  .oq-helper-panel--flush {
+    padding: 0;
   }
 
   .oq-overview-summary-shell {

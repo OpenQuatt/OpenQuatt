@@ -4,7 +4,9 @@ import test from "node:test";
 globalThis.__OQ_PREVIEW__ = false;
 
 const {
+  buildWebServerLogCopyText,
   clearWebServerLogHistory,
+  createWebServerLogEntry,
   getWebServerLogClearUrl,
   refreshWebServerLogHistory,
   renderWebServerLogHistoryControls,
@@ -25,6 +27,16 @@ function seedLogState() {
   state.webServerLogHistoryNeedsReconcile = false;
   state.webServerLogEntries = [{ raw: "old log entry", text: "old log entry" }];
 }
+
+test("buildWebServerLogCopyText omits ANSI control sequences from live entries", () => {
+  state.webServerLogEntries = [
+    createWebServerLogEntry("\x1b[31m[E][component:1]: failure\x1b[0m", { receivedAt: 1000 }),
+  ];
+
+  const copied = buildWebServerLogCopyText();
+  assert.match(copied, /\[E\]\[component:1\]: failure$/);
+  assert.doesNotMatch(copied, /\x1b|\[0m/);
+});
 
 test("clearWebServerLogHistory clears firmware history before local entries", async (t) => {
   const originalWindow = globalThis.window;

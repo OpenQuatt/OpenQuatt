@@ -8,12 +8,14 @@ export const WEB_BUNDLE_BUDGETS = [
     // source-bound supply-temperature calibration status and results,
     // its read-only sensor-correction summary, calibration backup/restore,
     // the read-only ODU EEPROM service export, API ingress source controls,
-    // and concise CM100 boiler test phase copy (FLOW_SETTLING/BOILER_SETTLING/MEASURING/COOLDOWN).
-    raw: 902_064,
+    // concise CM100 boiler test phase copy (FLOW_SETTLING/BOILER_SETTLING/MEASURING/COOLDOWN),
+    // and advisory per-ODU generation detection with single bulk-detect button for onboarding and installation settings.
+    raw: 912_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.
     gzipBaselineCeiling: 238_000,
   },
-  { file: "css/openquatt-app.css", raw: 277_000 },
+  // Includes the compact, dark-safe ODU generation picker with unified header action and distinct badge/button.
+  { file: "css/openquatt-app.css", raw: 280_000 },
 ];

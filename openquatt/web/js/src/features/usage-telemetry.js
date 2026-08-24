@@ -25,6 +25,7 @@ const USAGE_TELEMETRY_EXAMPLE_JSON = JSON.stringify({
   heating_enable_source: "disabled",
   cooling_enable_source: "disabled",
   cooling_dew_point_source: "auto",
+  external_heat_demand_source: "disabled",
   heap_free_b: 178432,
   heap_min_free_b: 151008,
   heap_largest_block_b: 98304,
@@ -48,8 +49,8 @@ const USAGE_TELEMETRY_EXAMPLE_JSON = JSON.stringify({
 
 export function renderUsageTelemetryConsent({ enabled, busy, settings = false }) {
   const scheduleCopy = settings
-    ? "Na inschakelen verstuurt OpenQuatt vrijwel direct en daarna ongeveer elk uur technische gegevens naar de OpenQuatt-loggingserver."
-    : "Na het afronden verstuurt OpenQuatt vrijwel direct en daarna ongeveer elk uur technische gegevens naar de OpenQuatt-loggingserver.";
+    ? "Na inschakelen verstuurt OpenQuatt vrijwel direct en daarna ongeveer elk uur technische gegevens naar de OpenQuatt-loggingserver. Na een echte firmwarecrash kan daarnaast het laatste technische crashrapport worden verstuurd."
+    : "Na het afronden verstuurt OpenQuatt vrijwel direct en daarna ongeveer elk uur technische gegevens naar de OpenQuatt-loggingserver. Na een echte firmwarecrash kan daarnaast het laatste technische crashrapport worden verstuurd.";
   const value = settings && enabled && hasEntity("usageTelemetryInstallationId")
     ? String(getEntityValue("usageTelemetryInstallationId") || "").trim()
     : "";
@@ -96,6 +97,7 @@ export function renderUsageTelemetryDisclosure({ collapsible = false, idPrefix =
           <li><strong>Platform</strong><span>Hardware, opstelling, verbinding en wifi-signaal</span></li>
           <li><strong>Configuratie</strong><span>Quatt Hybrid-versie, verwarmingsstrategie, flowbron en regelbronnen</span></li>
           <li><strong>Systeemstatus</strong><span>Geheugen, looptijd, chiptemperatuur en herstartreden</span></li>
+          <li><strong>Na een crash</strong><span>Het technische ESPHome-crashrapport, de ELF-SHA256 en voldoende firmware-identificatie om een passende rebuild te controleren</span></li>
           <li><strong>Functies</strong><span>Aan/uit-status van CiC, OpenTherm-thermostaat, ketelondersteuning, MQTT-inputs en lokale historie; plus de ketelaansluiting (aan/uit of OpenTherm)</span></li>
         </ul>
       </section>
@@ -108,13 +110,13 @@ export function renderUsageTelemetryDisclosure({ collapsible = false, idPrefix =
           <li><strong>Identiteit</strong><span>Geen MAC-adres of netwerkadres</span></li>
           <li><strong>Wifi en toegang</strong><span>Nooit een wifi-netwerknaam, wifi-wachtwoord, gebruikersnaam, ander wachtwoord of inloggegevens</span></li>
           <li><strong>Installatiegedrag</strong><span>Geen verwarmingsmetingen of regelwaarden</span></li>
-          <li><strong>Lokale data</strong><span>Geen gemeten of ingestelde temperaturen, grenzen, MQTT-topics of logs</span></li>
+          <li><strong>Lokale data</strong><span>Geen gemeten of ingestelde temperaturen, grenzen, MQTT-topics of logs, behalve het technische crashrapport na een firmwarecrash</span></li>
         </ul>
       </section>
     </div>
     <details class="oq-usage-payload-example">
       <summary>Voorbeeld van het verzonden bericht (JSON)</summary>
-      <p>Voorbeeldwaarden; de velden en vorm komen overeen met het werkelijke bericht.</p>
+      <p>Voorbeeldwaarden; de velden en vorm komen overeen met het gewone uurbericht. Een crashrapport wordt alleen na een echte firmwarecrash als laatste retained crash gepubliceerd.</p>
       <pre><code>${escapeHtml(USAGE_TELEMETRY_EXAMPLE_JSON)}</code></pre>
     </details>
     <p class="oq-usage-network-note">${renderOqIcon("server", "oq-usage-network-note-icon")} De OpenQuatt-loggingserver kan, zoals iedere internetdienst, technisch wel het bron-IP-adres zien. OpenQuatt slaat dit IP-adres niet op.</p>

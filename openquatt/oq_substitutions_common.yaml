@@ -71,6 +71,7 @@ api_input_room_temperature_stale_s: "600"             # Maximum age for API-inpu
 api_input_room_setpoint_stale_s: "0"                  # Maximum age for API-input room setpoint [s]; 0 keeps state until restart or a new payload.
 api_input_heating_enable_stale_s: "0"                 # Maximum age for API-input heating-enable [s]; 0 keeps state until restart or a new payload.
 api_input_cooling_enable_stale_s: "0"                 # Maximum age for API-input cooling-enable [s]; 0 keeps state until restart or a new payload.
+api_input_external_heat_demand_stale_s: "900"         # Maximum age for API-input external heat demand before it becomes invalid [s].
 usage_telemetry_broker: "mqtt.openquatt.nl"           # Central usage-statistics MQTT broker.
 usage_telemetry_port: "1883"                          # Plain MQTT port for the current central broker.
 usage_telemetry_tls: "false"                          # Temporary until the central broker exposes MQTT/TLS.
@@ -192,6 +193,8 @@ oq_flow_service_output_loop_s: "5"                    # Fast actuator cadence fo
 oq_flow_service_output_startup_delay_ms: "5700"       # Apply service targets shortly after their state-machine ticks [ms].
 oq_flow_mismatch_threshold_lph: "150.0"               # Allowed HP1-vs-HP2 flow difference before mismatch logic starts [L/h].
 oq_flow_mismatch_hyst_lph: "50.0"                     # Hysteresis on mismatch detection to prevent chatter [L/h].
+oq_flow_kp_default: "0.03"                            # Default Flow PI Kp; single builds override this for one-pump hydraulics.
+oq_flow_ki_default: "0.0008"                          # Default Flow PI Ki; single builds override this for one-pump hydraulics.
 oq_flow_kp_min: "0.00"                                # Lower bound for Flow PI Kp.
 oq_flow_kp_max: "0.20"                                # Upper bound for Flow PI Kp (broader for cross-install tuning).
 oq_flow_ki_min: "0.0000"                              # Lower bound for Flow PI Ki.
@@ -272,6 +275,8 @@ ha_heating_enable_entity_id: "binary_sensor.openquatt_ext_heating_enable"   # HA
 ha_heating_enable_valid_entity_id: "binary_sensor.openquatt_ext_heating_enable_valid" # HA validity flag for external heating enable.
 ha_cooling_dew_point_entity_id: "sensor.openquatt_ext_cooling_dew_point" # HA aggregate cooling dew point [degC].
 ha_cooling_dew_point_valid_entity_id: "binary_sensor.openquatt_ext_cooling_dew_point_valid" # HA validity flag for aggregate cooling dew point.
+ha_external_heat_demand_entity_id: "sensor.openquatt_ext_heat_demand"       # HA proxy entity for external Power House heat demand [W].
+ha_external_heat_demand_valid_entity_id: "binary_sensor.openquatt_ext_heat_demand_valid"  # HA validity flag for external heat demand.
 
 # ----------------------------
 # HP IO (MODBUS POLLING)

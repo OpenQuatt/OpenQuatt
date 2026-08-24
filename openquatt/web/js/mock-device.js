@@ -19,6 +19,7 @@
   const state = {
     scenario: "heating",
     installation: "duo",
+    oduGenerations: { ...mockFixtures.defaultOduGenerations },
     hardware: "heatpump_controller_q",
     connection: "wifi",
     boiler: "off",
@@ -226,6 +227,29 @@
   const COMPRESSOR_LEVEL_OPTIONS = mockFixtures.compressorLevelOptions;
   const ODU_RUNTIME_FREQUENCY_LEVELS = Array.from({ length: 11 }, (_item, index) => index);
   const ODU_RUNTIME_FREQUENCY_MODES = ["cooling", "heating"];
+
+  function getMockOduProfile(hp) {
+    const generation = state.oduGenerations[hp === 2 ? 2 : 1];
+    return mockFixtures.oduProfiles[generation] || mockFixtures.oduProfiles.Unknown;
+  }
+
+  function syncMockOduIdentityEntities(hp) {
+    if (hp === 2 && state.installation === "single") {
+      return;
+    }
+    const profile = getMockOduProfile(hp);
+    setEntity("sensor", `HP${hp} - Control board item number`, { value: profile.controlBoardItem });
+    setEntity("text_sensor", `HP${hp} - ODU generation`, {
+      state: profile.generation,
+      value: profile.generation,
+    });
+  }
+
+  function setMockOduGeneration(hp, generation) {
+    const profile = mockFixtures.oduProfiles[generation] || mockFixtures.oduProfiles.Unknown;
+    state.oduGenerations[hp === 2 ? 2 : 1] = profile.generation;
+    syncMockOduIdentityEntities(hp);
+  }
 
   function oduRuntimePrefix(hp) {
     return `${hp} - EXPERIMENTAL`;
@@ -1842,6 +1866,7 @@
     syncDevMeta();
     seedEntityDefinitions();
     setEntity("text_sensor", "OpenQuatt Installation Topology", { state: state.installation, value: state.installation });
+    syncMockOduIdentityEntities(1);
     setEntity("text_sensor", "OpenQuatt Hardware Profile", { state: state.hardware, value: state.hardware });
     setEntity("text_sensor", "OpenQuatt Connection", { state: state.connection, value: state.connection });
     setEntity("text_sensor", "OpenQuatt Version", { state: MOCK_STABLE_VERSION, value: MOCK_STABLE_VERSION });
@@ -2410,6 +2435,7 @@
     HP2_ENTITIES.forEach(([domain, name, payload]) => {
       setEntity(domain, name, clone(payload));
     });
+    syncMockOduIdentityEntities(2);
   }
 
   function syncRuntimeCounterEntities() {
@@ -4087,6 +4113,18 @@
   }
 
   function handleButtonPress(name) {
+    const generationDetectMatch = /^HP([12]) - Detect ODU generation$/.exec(name);
+    if (generationDetectMatch) {
+      const hp = Number(generationDetectMatch[1]);
+      setText("text_sensor", `HP${hp} - ODU generation`, "Unknown");
+      window.setTimeout(() => {
+        syncMockOduIdentityEntities(hp);
+        notifyMockUpdated();
+      }, 100);
+      notifyMockUpdated();
+      return;
+    }
+
     const oduRuntimeButton = parseOduRuntimeButtonName(name);
     if (oduRuntimeButton) {
       if (oduRuntimeButton.action === "load") {
@@ -5069,19 +5107,15 @@
   }
 
   function getMockOduIdentity(hp) {
-    const v2 = hp === 2;
-    const pcbProgram = v2 ? 0x0204 : 0x0102;
-    const eepromProgram = v2 ? 0x0032 : 0x0021;
-    const officialFirmware = v2 ? 0x0206 : 0x0108;
-    const model = v2 ? "QUATT ODU V2" : "QUATT ODU V1";
-    const serial = v2 ? "QV2-MOCK-000002" : "QV1-MOCK-000001";
+    const profile = getMockOduProfile(hp);
+    const { controlBoardItem, eepromProgram, model, officialFirmware, pcbProgram, serial } = profile;
     const core = Array(14).fill(0);
-    core[0] = v2 ? 2 : 1;
+    core[0] = hp === 2 ? 2 : 1;
     core[1] = hp;
     core[7] = 0;
     core[8] = pcbProgram;
     core[9] = eepromProgram;
-    core[13] = v2 ? 0x1202 : 0x1101;
+    core[13] = controlBoardItem;
     return {
       model,
       customerModel: model,
@@ -5092,7 +5126,7 @@
       officialFirmware,
       officialLabel: `${(officialFirmware >>> 8) & 0xff}.${officialFirmware & 0xff}`,
       core,
-      extended: [hp, v2 ? 202 : 101, v2 ? 2 : 1, officialFirmware, 0, eepromProgram],
+      extended: [hp, profile.projectCode, profile.hardwareVersion, officialFirmware, 0, eepromProgram],
       modelWords: encodeMockAsciiWords(model),
       customerModelWords: encodeMockAsciiWords(model),
       serialWords: encodeMockAsciiWords(serial),
@@ -5480,6 +5514,22 @@
             </select>
           </label>
           <label class="oq-helper-hub-dev-row">
+            <span class="oq-helper-hub-dev-label">HP1 ODU-generatie</span>
+            <select class="oq-helper-hub-dev-select" data-oq-dev-control="hp1-generation">
+              ${renderDevControlOptions("oduGeneration")}
+            </select>
+          </label>
+          <label class="oq-helper-hub-dev-row">
+            <span class="oq-helper-hub-dev-label">HP2 ODU-generatie</span>
+            <select
+              class="oq-helper-hub-dev-select"
+              data-oq-dev-control="hp2-generation"
+              ${state.installation === "single" ? "disabled" : ""}
+            >
+              ${renderDevControlOptions("oduGeneration")}
+            </select>
+          </label>
+          <label class="oq-helper-hub-dev-row">
             <span class="oq-helper-hub-dev-label">Hardware</span>
             <select class="oq-helper-hub-dev-select" data-oq-dev-control="hardware">
               ${renderDevControlOptions("hardware")}
@@ -5584,6 +5634,19 @@
         notifyDevControlsChanged();
       };
     }
+
+    [1, 2].forEach((hp) => {
+      const generation = controlsRoot.querySelector(`[data-oq-dev-control="hp${hp}-generation"]`);
+      if (!generation) {
+        return;
+      }
+      generation.value = state.oduGenerations[hp];
+      generation.onchange = () => {
+        setMockOduGeneration(hp, generation.value);
+        notifyMockUpdated();
+        notifyDevControlsChanged();
+      };
+    });
 
     const connection = controlsRoot.querySelector('[data-oq-dev-control="connection"]');
     if (connection) {

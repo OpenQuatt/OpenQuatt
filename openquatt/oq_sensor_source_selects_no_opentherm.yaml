@@ -6,6 +6,10 @@
 #   Source selectors for hardware profiles without a supported OT thermostat bus.
 # ==============================================================================
 
+substitutions:
+  oq_ot_room_temperature_fresh_expr: "false"
+  oq_ot_room_setpoint_fresh_expr: "false"
+
 select:
   - platform: template
     name: "Room Temperature Source"
@@ -34,6 +38,19 @@ select:
       - API input
       - MQTT
     initial_option: CIC
+
+  - platform: template
+    name: "External Heat Demand Source"
+    id: external_heat_demand_source
+    icon: mdi:source-branch
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    options:
+      - Disabled
+      - HA input
+      - API input
+    initial_option: Disabled
 
   - platform: template
     name: "Heating Enable Source"

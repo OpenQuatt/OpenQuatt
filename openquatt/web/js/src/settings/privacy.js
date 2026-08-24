@@ -13,7 +13,7 @@ export function renderSettingsPrivacySection() {
   return renderSettingsSection(
     "Privacy",
     "Gebruiksstatistieken",
-    "Hier kies je of OpenQuatt beperkte technische gebruiksstatistieken deelt. Wifi-netwerknaam, wifi-wachtwoord en andere wachtwoorden of inloggegevens worden nooit meegestuurd. Een niet-bevestigde keuze blijft uit.",
+    "Hier kies je of OpenQuatt beperkte technische gebruiksstatistieken en na een echte firmwarecrash het laatste technische crashrapport deelt. Wifi-netwerknaam, wifi-wachtwoord en andere wachtwoorden of inloggegevens worden nooit meegestuurd. Een niet-bevestigde keuze blijft uit.",
     `<div class="oq-usage-settings">
       ${renderUsageTelemetryConsent({ enabled, busy, settings: true })}
       ${renderUsageTelemetryDisclosure({ collapsible: true, idPrefix: "oq-settings-usage", open: state.usageTelemetryDetailsOpen })}

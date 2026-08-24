@@ -30,22 +30,5 @@ for source in "${sources[@]}"; do
   "${binary}"
 done
 
-echo "[run] energy history memory contract"
-python3 "${repo_root}/scripts/tests/test_energy_history_memory_contract.py"
-
-echo "[run] incident manager action contract"
-python3 "${repo_root}/scripts/tests/test_incident_manager_action_contract.py"
-
-echo "[run] internal heap placement contract"
-python3 "${repo_root}/scripts/tests/test_internal_heap_contract.py"
-
-echo "[run] OTB polling lifecycle contract"
-python3 "${repo_root}/scripts/tests/test_otb_polling_lifecycle_contract.py"
-
-echo "[run] boiler commissioning ownership contract"
-python3 "${repo_root}/scripts/tests/test_boiler_commissioning_ownership_contract.py"
-
-echo "[run] MQTT ingress lifecycle contract"
-python3 "${repo_root}/scripts/tests/test_mqtt_ingress_lifecycle_contract.py"
-
+# Python-contracten (scripts/tests/test_*.py) draaien separaat via `python-contracts` job / `npm run check:python-contracts` (zie #518).
 echo "Host regression tests passed (${#sources[@]})."

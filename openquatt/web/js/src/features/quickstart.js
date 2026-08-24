@@ -7,6 +7,7 @@ import { renderModalShell } from "../core/modal-shell.js";
 import { state } from "../core/state.js";
 import { getDeviceMeta, getFirmwareBuildConnection, getInstallationTopology } from "./device-context.js";
 import { getFirmwareBuildSwitchModel, getFirmwareProgressModel } from "./firmware-update.js";
+import { getOduGenerationDetectionModel } from "./odu-generation-ui.js";
 import { formatSettingsOptionLabel, renderSettingsFieldCard, renderSettingsInfoToggle } from "../settings/controls.js";
 import { renderCurveGraph, renderFlowSettingsFields, renderHeatingCurveProfileField, renderHeatingStrategyExplainCards, renderPowerHouseAdvancedField, renderPowerHouseBaseFields, renderSettingsCurveInputs, renderStrategySelectionFields } from "../settings/heating.js";
 import { renderBoilerCvFields, renderHpGenerationField } from "../settings/installation.js";
@@ -119,9 +120,9 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
     const pickerMode = mode === "picker";
     if (pickerMode) {
       return `
-        <section class="oq-helper-panel">
+        <section class="oq-helper-panel oq-helper-panel--flush">
           ${renderHpGenerationField()}
-          <div class="oq-helper-actions">
+          <div class="oq-helper-actions oq-settings-generation-actions">
             <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-quickstart-modal">Gereed</button>
           </div>
         </section>
@@ -573,7 +574,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
         copy: "Kies de versie die bij jouw Quatt hoort. Deze keuze bepaalt de basis van de regeling.",
         copyInHeader: true,
         backdropClass: "oq-helper-modal-backdrop--quickstart",
-        className: "oq-helper-modal--wide oq-helper-modal--quickstart oq-helper-modal--generation",
+        className: "oq-helper-modal--wide oq-helper-modal--scrollable",
         sectionAttributes: 'data-oq-quickstart-scroller data-oq-quickstart-step="generation"',
         closeAction: "close-quickstart-modal",
         closeLabel: "Sluit versie-popup",
@@ -905,10 +906,20 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
   }
 
   export function renderConfirmReviewCards() {
-    const generationTitle = formatSettingsOptionLabel(getEntityStateText("hpGeneration"));
+    const selectedGeneration = formatSettingsOptionLabel(getEntityStateText("hpGeneration"));
+    const generationTitle = selectedGeneration ? `Geselecteerd: ${selectedGeneration}` : "";
+    const generationDetection = getOduGenerationDetectionModel();
     const strategyTitle = isCurveMode() ? "Stooklijn" : "Power House";
     const formatReviewOption = (key) => formatSettingsOptionLabel(getEntityStateText(key));
-    const generationLines = [];
+    const generationLines = generationDetection.available
+      ? [
+          ...generationDetection.heatPumps.map((heatPump) => [
+            `HP${heatPump.index} gedetecteerd`,
+            heatPump.known ? heatPump.generation : "Unknown",
+          ]),
+          ["Aanbevolen", generationDetection.recommendation || "Geen advies"],
+        ]
+      : [];
     const strategyLines = isCurveMode()
       ? [
           ["Regelprofiel", formatReviewOption("curveControlProfile")],

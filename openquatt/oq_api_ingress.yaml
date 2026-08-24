@@ -9,6 +9,7 @@
 #   - Mirrors the MQTT input model with value + age + valid triplets.
 #   - Source selection logic can use these signals as an alternative to MQTT.
 #   - Input entities are disabled by default to avoid unintended HA exposure.
+#   - Includes the optional Power House external heat demand feedforward input.
 #
 # ==============================================================================
 
@@ -48,6 +49,11 @@ globals:
     restore_value: no
     initial_value: "0"
 
+  - id: api_input_external_heat_demand_last_valid_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+
   - id: api_input_cooling_dew_point_has_value
     type: bool
     restore_value: no
@@ -74,6 +80,11 @@ globals:
     initial_value: "false"
 
   - id: api_input_cooling_enable_has_value
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+  - id: api_input_external_heat_demand_has_value
     type: bool
     restore_value: no
     initial_value: "false"
@@ -147,6 +158,21 @@ number:
           id(api_input_room_setpoint_age).publish_state(0);
           id(api_input_room_setpoint_valid).publish_state(true);
 
+  - platform: template
+    id: api_input_external_heat_demand
+    min_value: 0
+    max_value: 15000
+    step: 10
+    restore_value: false
+    optimistic: true
+    on_value:
+      - lambda: |-
+          if (!id(api_input_accept_updates)) {
+            return;
+          }
+          id(api_input_external_heat_demand_has_value) = true;
+          id(api_input_external_heat_demand_last_valid_ms) = (uint32_t) millis();
+
 switch:
   - platform: template
     id: api_input_heating_enable
@@ -219,24 +245,28 @@ esphome:
           id(api_input_room_setpoint_has_value) = false;
           id(api_input_heating_enable_has_value) = false;
           id(api_input_cooling_enable_has_value) = false;
+          id(api_input_external_heat_demand_has_value) = false;
           id(api_input_cooling_dew_point_last_valid_ms) = 0U;
           id(api_input_outside_temperature_last_valid_ms) = 0U;
           id(api_input_room_temperature_last_valid_ms) = 0U;
           id(api_input_room_setpoint_last_valid_ms) = 0U;
           id(api_input_heating_enable_last_valid_ms) = 0U;
           id(api_input_cooling_enable_last_valid_ms) = 0U;
+          id(api_input_external_heat_demand_last_valid_ms) = 0U;
           id(api_input_cooling_dew_point_age).publish_state(NAN);
           id(api_input_outside_temperature_age).publish_state(NAN);
           id(api_input_room_temperature_age).publish_state(NAN);
           id(api_input_room_setpoint_age).publish_state(NAN);
           id(api_input_heating_enable_age).publish_state(NAN);
           id(api_input_cooling_enable_age).publish_state(NAN);
+          id(api_input_external_heat_demand_age).publish_state(NAN);
           id(api_input_cooling_dew_point_valid).publish_state(false);
           id(api_input_outside_temperature_valid).publish_state(false);
           id(api_input_room_temperature_valid).publish_state(false);
           id(api_input_room_setpoint_valid).publish_state(false);
           id(api_input_heating_enable_valid).publish_state(false);
           id(api_input_cooling_enable_valid).publish_state(false);
+          id(api_input_external_heat_demand_valid).publish_state(false);
       - delay: 1s
       - lambda: |-
           id(api_input_accept_updates) = true;
@@ -280,6 +310,13 @@ binary_sensor:
   - platform: template
     id: api_input_cooling_enable_valid
     name: "API Input Cooling Enable Valid"
+    icon: mdi:check-decagram
+    internal: true
+    device_class: connectivity
+
+  - platform: template
+    id: api_input_external_heat_demand_valid
+    name: "API Input External Heat Demand Valid"
     icon: mdi:check-decagram
     internal: true
     device_class: connectivity
@@ -333,6 +370,15 @@ sensor:
   - platform: template
     id: api_input_cooling_enable_age
     name: "API Input Cooling Enable Age"
+    icon: mdi:timer-outline
+    internal: true
+    unit_of_measurement: "s"
+    accuracy_decimals: 0
+    update_interval: never
+
+  - platform: template
+    id: api_input_external_heat_demand_age
+    name: "API Input External Heat Demand Age"
     icon: mdi:timer-outline
     internal: true
     unit_of_measurement: "s"
@@ -419,3 +465,10 @@ interval:
               (uint32_t) ${api_input_cooling_enable_stale_s}UL,
               id(api_input_cooling_enable_age),
               id(api_input_cooling_enable_valid));
+          update_numeric(
+              id(api_input_external_heat_demand_has_value),
+              id(api_input_external_heat_demand_last_valid_ms),
+              (uint32_t) ${api_input_external_heat_demand_stale_s}UL,
+              id(api_input_external_heat_demand).has_state(),
+              id(api_input_external_heat_demand_age),
+              id(api_input_external_heat_demand_valid));

@@ -6,12 +6,19 @@ ROOT = Path(__file__).resolve().parents[2]
 HUB_HEADER = (ROOT / "components" / "opentherm" / "hub.h").read_text()
 HUB_CPP = (ROOT / "components" / "opentherm" / "hub.cpp").read_text()
 OTB_PACKAGE = (ROOT / "openquatt" / "oq_boiler_opentherm.yaml").read_text()
+COMMON_PACKAGE = (ROOT / "openquatt" / "oq_common.yaml").read_text()
 Q_PROFILE = (
     ROOT / "openquatt" / "profiles" / "heatpump_controller_q.yaml"
 ).read_text()
+HP_IO_PACKAGE = (ROOT / "openquatt" / "oq_HP_io.yaml").read_text()
 
 
 class OtbPollingLifecycleContractTest(unittest.TestCase):
+    def test_boot_packages_keep_the_same_merge_shape(self) -> None:
+        for package in (COMMON_PACKAGE, OTB_PACKAGE, HP_IO_PACKAGE):
+            self.assertIn("on_boot:\n    priority: -100\n    then:", package)
+            self.assertNotIn("on_boot:\n    - priority:", package)
+
     def test_hub_owns_a_hard_polling_gate(self) -> None:
         self.assertIn("bool polling_enabled_ = false;", HUB_HEADER)
         self.assertIn("void suspend_polling();", HUB_HEADER)

@@ -18,7 +18,62 @@
     "L10 (H90/C74)",
   ];
 
+  const oduProfiles = Object.freeze({
+    V1: Object.freeze({
+      generation: "V1",
+      controlBoardItem: 0x0037,
+      model: "QUATT ODU V1",
+      pcbProgram: 0x0102,
+      eepromProgram: 0x0021,
+      officialFirmware: 0x0108,
+      projectCode: 101,
+      hardwareVersion: 1,
+      serial: "QV1-MOCK-000001",
+    }),
+    "V1.5": Object.freeze({
+      generation: "V1.5",
+      controlBoardItem: 0x0E37,
+      model: "QUATT ODU V1.5",
+      pcbProgram: 0x0105,
+      eepromProgram: 0x0022,
+      officialFirmware: 0x0109,
+      projectCode: 151,
+      hardwareVersion: 2,
+      serial: "QV15-MOCK-000002",
+    }),
+    V2: Object.freeze({
+      generation: "V2",
+      controlBoardItem: 0x1037,
+      model: "QUATT ODU V2",
+      pcbProgram: 0x0204,
+      eepromProgram: 0x0032,
+      officialFirmware: 0x0206,
+      projectCode: 202,
+      hardwareVersion: 2,
+      serial: "QV2-MOCK-000003",
+    }),
+    Unknown: Object.freeze({
+      generation: "Unknown",
+      controlBoardItem: 0xFFFF,
+      model: "Unknown ODU",
+      pcbProgram: 0,
+      eepromProgram: 0,
+      officialFirmware: 0,
+      projectCode: 0,
+      hardwareVersion: 0,
+      serial: "UNKNOWN-MOCK-ODU",
+    }),
+  });
+  const defaultOduGenerations = Object.freeze({ 1: "V1", 2: "V1.5" });
+  const oduIdentities = Object.freeze({
+    1: oduProfiles[defaultOduGenerations[1]],
+    2: oduProfiles[defaultOduGenerations[2]],
+  });
+
   const hp2Entities = [
+    ["sensor", "HP2 - Control board item number", { value: oduIdentities[2].controlBoardItem }],
+    ["text_sensor", "HP2 - ODU generation", { state: oduIdentities[2].generation, value: oduIdentities[2].generation }],
+    ["button", "HP2 - Detect ODU generation", {}],
     ["select", "HP2 - Excluded compressor level A", { value: "None", state: "None", option: compressorLevelOptions }],
     ["select", "HP2 - Excluded compressor level B", { value: "None", state: "None", option: compressorLevelOptions }],
     ["sensor", "HP2 - Power Input", { value: 0, uom: "W" }],
@@ -82,10 +137,19 @@
       { value: "connections", label: "Verbindingen" },
       { value: "hp-fault", label: "Warmtepompstoring" },
     ],
+    oduGeneration: [
+      { value: "V1", label: "V1 (0x0037)" },
+      { value: "V1.5", label: "V1.5 (0x0E37)" },
+      { value: "V2", label: "V2 (0x1037)" },
+      { value: "Unknown", label: "Unknown (0xFFFF)" },
+    ],
   };
 
   window.__OQ_MOCK_FIXTURES__ = Object.freeze({
     compressorLevelOptions,
+    oduProfiles,
+    defaultOduGenerations,
+    oduIdentities,
     hp2Entities,
     devControlOptions,
   });

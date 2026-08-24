@@ -740,6 +740,28 @@ import { escapeHtml } from "../core/html.js";
         ],
       }),
       renderSourceCard({
+        key: "external-heat-demand",
+        title: "Externe warmtevraag",
+        icon: "zap",
+        select: {
+          key: "externalHeatDemandSource",
+          label: "Bron",
+          optionLabels: { Disabled: "Niet gebruiken", "API input": "API-invoer" },
+          haKeys: ["externalHeatDemandHa", "externalHeatDemandHaValid"],
+          apiValueKey: "apiInputExternalHeatDemand",
+          apiValidKey: "apiInputExternalHeatDemandValid",
+          infoCopy: "Vervangt alleen de vermogensschatting van het huismodel in Power House. Valt de bron weg of veroudert hij, dan rekent Power House weer met het huismodel.",
+        },
+        activeRows: [
+          renderSourceRow({ label: "Waarde", key: "externalHeatDemandSelected" }),
+          renderSourceRow({ label: "Power House gebruikt", value: formattedTextSourceValue("powerHouseDemandSource") }),
+        ],
+        measurementRows: [
+          ...renderHaSourceRows({ valueKey: "externalHeatDemandHa", validKey: "externalHeatDemandHaValid" }),
+          ...renderApiSourceRows({ valueKey: "apiInputExternalHeatDemand", validKey: "apiInputExternalHeatDemandValid" }),
+        ],
+      }),
+      renderSourceCard({
         key: "water-supply",
         title: "Aanvoertemperatuur",
         icon: "droplet",

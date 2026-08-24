@@ -33,6 +33,8 @@ Toelichting:
 
 ## Documentatie
 
+Kies exact één optie:
+
 - [ ] Documentatie bijgewerkt voor de gebruikersgerichte wijziging
 - [ ] Geen documentatiewijziging nodig
 

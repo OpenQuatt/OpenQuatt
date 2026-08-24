@@ -5,7 +5,6 @@
       "name": "Quick Start en onboarding",
       "source_patterns": [
         "openquatt/web/js/src/features/quickstart*.js",
-        "openquatt/web/js/src/core/config.js",
         "openquatt/web/js/src/core/quickstart*.js",
         "openquatt/web/js/src/settings/installation.js"
       ],
@@ -28,7 +27,17 @@
     {
       "name": "Web-appinstellingen",
       "source_patterns": [
-        "openquatt/web/js/src/settings/*.js"
+        "openquatt/web/js/src/settings/installation.js",
+        "openquatt/web/js/src/settings/heating.js",
+        "openquatt/web/js/src/settings/cooling.js",
+        "openquatt/web/js/src/settings/water.js",
+        "openquatt/web/js/src/settings/boiler.js",
+        "openquatt/web/js/src/settings/controls.js",
+        "openquatt/web/js/src/settings/storage.js",
+        "openquatt/web/js/src/settings/integrations.js",
+        "openquatt/web/js/src/settings/privacy.js",
+        "openquatt/web/js/src/settings/security.js",
+        "openquatt/web/js/src/settings/silent.js"
       ],
       "docs_any_of": [
         "docs/web-app.md",
@@ -75,8 +84,6 @@
         "openquatt/oq_flow_control.yaml",
         "openquatt/oq_heating_curve_strategy.yaml",
         "openquatt/oq_power_house_strategy.yaml",
-        "openquatt/oq_strategy_manager.yaml",
-        "openquatt/oq_supervisory_controlmode.yaml",
         "openquatt/oq_thermal_request_control.yaml"
       ],
       "docs_any_of": [

@@ -628,7 +628,7 @@
 }
 
 .oq-settings-source-row.is-warning strong {
-  color: var(--oq-helper-accent-deep);
+  color: var(--oq-theme-color-11rp, var(--oq-helper-accent-deep));
 }
 
 .oq-settings-source-row.is-active strong {

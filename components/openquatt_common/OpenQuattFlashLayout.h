@@ -25,11 +25,18 @@ struct OpenQuattFlashLayout {
   static constexpr uint32_t DECISION_LOG_OFFSET = ENERGY_END_OFFSET;
   static constexpr size_t DECISION_LOG_SECTOR_COUNT = 32;
   static constexpr uint32_t DECISION_LOG_END_OFFSET = DECISION_LOG_OFFSET + (DECISION_LOG_SECTOR_COUNT * SECTOR_SIZE);
+
+  static constexpr uint32_t CRASH_TELEMETRY_OFFSET = DECISION_LOG_END_OFFSET;
+  static constexpr size_t CRASH_TELEMETRY_SECTOR_COUNT = 2;
+  static constexpr uint32_t CRASH_TELEMETRY_END_OFFSET =
+      CRASH_TELEMETRY_OFFSET + (CRASH_TELEMETRY_SECTOR_COUNT * SECTOR_SIZE);
 };
 
 static_assert(OpenQuattFlashLayout::DECISION_LOG_OFFSET % OpenQuattFlashLayout::SECTOR_SIZE == 0,
               "Persistent archives must start on erase-sector boundaries");
-static_assert(OpenQuattFlashLayout::DECISION_LOG_END_OFFSET <= 0x1E0000,
+static_assert(OpenQuattFlashLayout::CRASH_TELEMETRY_OFFSET % OpenQuattFlashLayout::SECTOR_SIZE == 0,
+              "Crash telemetry storage must start on an erase-sector boundary");
+static_assert(OpenQuattFlashLayout::CRASH_TELEMETRY_END_OFFSET <= 0x1E0000,
               "Persistent archives must fit in the smallest openquatt_data partition");
 
 }  // namespace esphome::openquatt_common

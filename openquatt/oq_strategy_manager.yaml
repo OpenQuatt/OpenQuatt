@@ -142,6 +142,7 @@ select:
               id(oq_curve_stop_arm_ms),
               id(oq_curve_off_since_ms),
               id(oq_curve_restart_inhibit_active),
+              id(oq_curve_restart_blocked_by_room),
               id(oq_curve_regime_code));
             oq_curve::reset_outside_ema_state(
               id(oq_curve_outside_ema_c),

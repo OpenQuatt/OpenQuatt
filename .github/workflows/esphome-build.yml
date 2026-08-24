@@ -154,7 +154,13 @@ jobs:
           export CCACHE_NOHASHDIR=true
           export CCACHE_DEPEND=1
           export CCACHE_BASEDIR="${GITHUB_WORKSPACE}/${{ matrix.target.build_path }}"
-          EXTRA_ARGS=()
+          SOURCE_REPOSITORY="${{ inputs.checkout_repository || github.repository }}"
+          SOURCE_COMMIT="$(git rev-parse HEAD)"
+          EXTRA_ARGS=(
+            -s build_source_repository "${SOURCE_REPOSITORY}"
+            -s build_source_commit "${SOURCE_COMMIT}"
+            -s build_target "${{ matrix.target.config }}"
+          )
           if [[ -n "${{ inputs.project_version }}" ]]; then
             EXTRA_ARGS+=(-s project_version "${{ inputs.project_version }}")
           fi

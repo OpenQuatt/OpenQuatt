@@ -1,16 +1,21 @@
 # ==============================================================================
 # OpenQuatt - Optional Usage Statistics
 # ==============================================================================
-# Dedicated outbound-only MQTT client. This intentionally does not enable
-# ESPHome's global MQTT component and therefore does not export component state,
-# discovery messages or logs.
+# Dedicated outbound-only MQTT clients. These intentionally do not enable
+# ESPHome's global MQTT component and therefore do not export component state,
+# discovery messages or regular logs.
 # ==============================================================================
+
+substitutions:
+  build_source_repository: "OpenQuatt/OpenQuatt"
+  build_source_commit: "unknown"
+  build_target: "unknown"
 
 external_components:
   - source:
       type: local
       path: ${external_components_path}
-    components: [openquatt_usage_telemetry]
+    components: [openquatt_usage_telemetry, openquatt_crash_telemetry]
 
 openquatt_usage_telemetry:
   id: oq_usage_telemetry
@@ -48,6 +53,7 @@ openquatt_usage_telemetry:
   heating_enable_source_select: heating_enable_source
   cooling_enable_source_select: cooling_enable_source
   cooling_dew_point_source_select: cooling_dew_point_source
+  external_heat_demand_source_select: external_heat_demand_source
   loop_time_sensor: oq_loop_time
   internal_temperature_sensor: oq_esp_internal_temperature
   cic_polling_switch: cic_enable
@@ -58,3 +64,24 @@ openquatt_usage_telemetry:
   decision_log_flash_switch: oq_decision_log_flash_switch
   energy_history_flash_switch: oq_lifetime_energy_history_switch
   ram_log_history_switch: oq_ram_log_history_switch
+
+openquatt_crash_telemetry:
+  id: oq_crash_telemetry
+  broker: "${usage_telemetry_broker}"
+  port: ${usage_telemetry_port}
+  tls: ${usage_telemetry_tls}
+  username: "${usage_telemetry_username}"
+  password: "${usage_telemetry_password}"
+  topic: "${usage_telemetry_topic}"
+  usage_switch: oq_usage_telemetry
+  installation_id_sensor: oq_usage_telemetry_installation_id
+  setup_complete_sensor: oq_setup_complete_sensor
+  source_repository: "${build_source_repository}"
+  source_commit: "${build_source_commit}"
+  build_target: "${build_target}"
+  release_manifest_url: "${release_manifest_url}"
+  firmware_version: "${project_version}"
+  release_channel: "${release_channel}"
+  hardware_profile: "${oq_hardware_profile}"
+  topology: "${oq_topology}"
+  connection: "${oq_connection}"

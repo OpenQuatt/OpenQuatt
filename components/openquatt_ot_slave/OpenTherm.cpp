@@ -4,6 +4,7 @@ Copyright 2018, Ihor Melnyk
 */
 
 #include "OpenTherm.h"
+#include "OpenThermRmtDecoder.h"
 #include "esphome/core/log.h"
 #include "esp_err.h"
 #include "esp_private/esp_clk.h"
@@ -22,11 +23,6 @@ static constexpr uint32_t OT_TX_RESOLUTION_HZ = 1000000;
 static constexpr uint32_t OT_RX_RESOLUTION_HZ = 1000000;
 static constexpr uint16_t OT_HALF_BIT_US = 500;
 static constexpr uint32_t OT_RMT_CLK_FREQ_HZ = 80000000;
-static constexpr uint32_t OT_RMT_GLITCH_REJECT_US = 180;
-static constexpr uint32_t OT_RMT_HALF_BIT_MIN_US = 380;
-static constexpr uint32_t OT_RMT_HALF_BIT_MAX_US = 620;
-static constexpr uint32_t OT_RMT_FULL_BIT_MIN_US = 880;
-static constexpr uint32_t OT_RMT_FULL_BIT_MAX_US = 1120;
 static constexpr uint32_t OT_RX_SIGNAL_MAX_US = 2500;
 #endif
 static constexpr uint32_t OT_FRAME_DELAY_US = 100000;
@@ -350,117 +346,47 @@ bool OpenTherm::pop_rx_frame_(RxFrame& frame) {
 }
 
 bool OpenTherm::decode_rmt_frame_(const RxFrame& frame, unsigned long& decoded_frame, OpenThermDriverError& error) {
-  static constexpr size_t OT_FRAME_BITS = 34;
-  static constexpr size_t OT_HALF_BITS = OT_FRAME_BITS * 2;
-  uint8_t half_bits[OT_HALF_BITS]{};
-  uint8_t inverted_shifted_forward[OT_HALF_BITS]{};
-  size_t half_bit_count = 0;
+  using openquatt_ot_slave::rmt_decoder::DecodeError;
+  using openquatt_ot_slave::rmt_decoder::Decoder;
+  using openquatt_ot_slave::rmt_decoder::InputPolarity;
+  using openquatt_ot_slave::rmt_decoder::Pulse;
+
+  // The thermostat input front-end maps an active OpenTherm level to GPIO
+  // high. Keep this hardware mapping explicit and outside the protocol state
+  // machine.
+  Decoder decoder(InputPolarity::ACTIVE_HIGH);
+  bool accepting_pulses = true;
 
   for (size_t i = 0; i < frame.symbol_count; ++i) {
     const uint32_t durations[2] = {frame.symbols[i].duration0, frame.symbols[i].duration1};
-    const uint8_t levels[2] = {static_cast<uint8_t>(frame.symbols[i].level0),
-                               static_cast<uint8_t>(frame.symbols[i].level1)};
+    const bool levels[2] = {frame.symbols[i].level0 != 0, frame.symbols[i].level1 != 0};
     for (int part = 0; part < 2; ++part) {
       const uint32_t duration = durations[part];
       if (duration == 0) {
         continue;
       }
-
-      uint8_t repeats = 0;
-      if (duration >= OT_RMT_HALF_BIT_MIN_US && duration <= OT_RMT_HALF_BIT_MAX_US) {
-        repeats = 1;
-      } else if (duration >= OT_RMT_FULL_BIT_MIN_US && duration <= OT_RMT_FULL_BIT_MAX_US) {
-        repeats = 2;
-      } else if (duration < OT_RMT_HALF_BIT_MIN_US) {
-        error = OpenThermDriverError::DRIVER_ERROR_GLITCH_REJECT;
-        return false;
-      } else {
-        error = OpenThermDriverError::DRIVER_ERROR_TIMING_INVALID;
-        return false;
-      }
-
-      if (half_bit_count + repeats > OT_HALF_BITS) {
-        error = OpenThermDriverError::DRIVER_ERROR_TIMING_INVALID;
-        return false;
-      }
-
-      for (uint8_t repeat = 0; repeat < repeats; ++repeat) {
-        half_bits[half_bit_count++] = levels[part];
+      if (accepting_pulses) {
+        accepting_pulses = decoder.consume(Pulse{static_cast<uint16_t>(duration), levels[part]});
       }
     }
   }
 
-  // RMT captures can be short by exactly one half-bit at the frame boundary.
-  // In practice we see either the leading low half of the start bit or the
-  // trailing high half of the stop bit dropped when the receiver arms/tears
-  // down around the idle gap. Salvage those two specific 67-half-bit cases.
-  if (half_bit_count == (OT_HALF_BITS - 1U) && half_bit_count > 0) {
-    if (half_bits[0] == 1) {
-      for (size_t i = half_bit_count; i > 0; --i) {
-        half_bits[i] = half_bits[i - 1U];
-      }
-      half_bits[0] = 0;
-      half_bit_count++;
-    } else if (half_bits[half_bit_count - 1U] == 0) {
-      half_bits[half_bit_count++] = 1;
-    }
+  const auto result = decoder.finish();
+  decoded_frame = result.data;
+  if (result.error == DecodeError::NONE || result.error == DecodeError::PARITY) {
+    // Preserve the existing callback contract: parity is classified later as
+    // INVALID_PARITY instead of collapsing into a generic decoder failure.
+    error = OpenThermDriverError::DRIVER_ERROR_NONE;
+    return true;
   }
 
-  if (half_bit_count != OT_HALF_BITS) {
+  if (result.error == DecodeError::GLITCH) {
+    error = OpenThermDriverError::DRIVER_ERROR_GLITCH_REJECT;
+  } else if (result.error == DecodeError::START_BIT) {
+    error = OpenThermDriverError::DRIVER_ERROR_START_BIT_INVALID;
+  } else {
     error = OpenThermDriverError::DRIVER_ERROR_TIMING_INVALID;
-    return false;
   }
-
-  auto try_decode_pairs = [&](const uint8_t* bits, unsigned long& frame_out, OpenThermDriverError& err) -> bool {
-    frame_out = 0;
-    for (size_t bit_index = 0; bit_index < OT_FRAME_BITS; ++bit_index) {
-      const uint8_t first = bits[bit_index * 2U];
-      const uint8_t second = bits[(bit_index * 2U) + 1U];
-      bool bit_value = false;
-      if (first == 0 && second == 1) {
-        bit_value = true;
-      } else if (first == 1 && second == 0) {
-        bit_value = false;
-      } else {
-        err = (bit_index == 0) ? OpenThermDriverError::DRIVER_ERROR_START_BIT_INVALID
-                               : OpenThermDriverError::DRIVER_ERROR_TIMING_INVALID;
-        return false;
-      }
-
-      if (bit_index == 0 || bit_index == (OT_FRAME_BITS - 1U)) {
-        if (!bit_value) {
-          err = (bit_index == 0) ? OpenThermDriverError::DRIVER_ERROR_START_BIT_INVALID
-                                 : OpenThermDriverError::DRIVER_ERROR_TIMING_INVALID;
-          return false;
-        }
-        continue;
-      }
-
-      frame_out = (frame_out << 1U) | static_cast<unsigned long>(bit_value);
-    }
-    err = OpenThermDriverError::DRIVER_ERROR_NONE;
-    return true;
-  };
-
-  uint8_t shifted_forward[OT_HALF_BITS]{};
-  for (size_t i = 0; i < (OT_HALF_BITS - 1U); ++i) {
-    shifted_forward[i] = half_bits[i + 1U];
-  }
-  shifted_forward[OT_HALF_BITS - 1U] = shifted_forward[OT_HALF_BITS - 2U] ^ 0x1U;
-  for (size_t i = 0; i < OT_HALF_BITS; ++i) {
-    inverted_shifted_forward[i] = shifted_forward[i] ^ 0x1U;
-  }
-
-  // Long-run telemetry showed that all successful RMT frames consistently decode
-  // through the inverted, one-half-bit-forward interpretation. Keep only that
-  // explicit path now that the search phase is complete.
-  OpenThermDriverError candidate_error = OpenThermDriverError::DRIVER_ERROR_NONE;
-  if (try_decode_pairs(inverted_shifted_forward, decoded_frame, candidate_error)) {
-    error = candidate_error;
-    return true;
-  }
-
-  error = candidate_error;
   return false;
 }
 
@@ -471,9 +397,15 @@ void OpenTherm::process_rmt_frame_(const RxFrame& frame) {
   unsigned long decoded_frame = 0;
   OpenThermDriverError error = OpenThermDriverError::DRIVER_ERROR_NONE;
   if (!decode_rmt_frame_(frame, decoded_frame, error)) {
+    // The RX channel remains armed while the slave transmits. Ignore any
+    // rejected self-capture without disturbing TX completion state.
+    if (status == OpenThermStatus::REQUEST_SENDING) {
+      return;
+    }
     response = 0;
     responseTimestamp = frame.done_ts_cycles;
     responseStatus = OpenThermResponseStatus::INVALID;
+    status = OpenThermStatus::RESPONSE_INVALID;
     return;
   }
 

@@ -31,19 +31,35 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
       - name: Check documentation contracts
         run: npm run check:docs
 
-      - name: Enforce documentation impact on pull requests
-        if: github.event_name == 'pull_request'
-        run: python3 scripts/check_docs_consistency.py --changed-only --strict
+  docs-impact:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-      - name: Report documentation impact on direct pushes
-        if: github.event_name == 'push'
-        run: python3 scripts/check_docs_consistency.py --changed-only
+      - name: Report documentation impact (advisory)
+        run: |
+          python3 scripts/check_docs_consistency.py --changed-only 2>&1 | tee /tmp/docs-impact.txt
+          echo "### Docs impact (advisory)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/docs-impact.txt >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/docs-impact.txt
+
+  python-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run Python contract tests
+        run: npm run check:python-contracts
 
   validate-web-settings-backup:
     runs-on: ubuntu-latest
@@ -75,7 +91,7 @@ jobs:
         run: ./scripts/run_host_regression_tests.sh
 
   validate-and-compile:
-    needs: [cpp-format, docs-consistency, validate-web-settings-backup, host-regression-tests]
+    needs: [cpp-format, docs-consistency, python-contracts, validate-web-settings-backup, host-regression-tests]
     uses: ./.github/workflows/esphome-build.yml
     with:
       artifact_suffix: firmware-${{ github.sha }}

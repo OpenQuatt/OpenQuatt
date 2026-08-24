@@ -213,6 +213,7 @@ test("usage telemetry disclosure matches the hourly payload scope", async () => 
     "heating_enable_source",
     "cooling_enable_source",
     "cooling_dew_point_source",
+    "external_heat_demand_source",
   ];
   for (const field of configFields) {
     assert.match(disclosureSource, new RegExp(field));

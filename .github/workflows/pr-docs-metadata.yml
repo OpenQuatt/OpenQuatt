@@ -1,0 +1,28 @@
+name: PR docs metadata
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-docs-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate PR docs metadata
+        run: |
+          set -o pipefail
+          python3 scripts/check_docs_consistency.py --changed-only 2>&1 | tee /tmp/pr-metadata.txt
+          STATUS=${PIPESTATUS[0]}
+          echo "### PR docs metadata" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/pr-metadata.txt >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/pr-metadata.txt
+          exit $STATUS

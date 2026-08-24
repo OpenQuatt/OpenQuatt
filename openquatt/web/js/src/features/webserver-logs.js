@@ -993,7 +993,7 @@ export function renderWebServerLoggerLevelControl() {
 export function buildWebServerLogCopyText() {
   return state.webServerLogEntries
     .map((entry) => {
-      const line = String(entry.raw ?? entry.text ?? "").trimEnd();
+      const line = String(entry.text ?? stripAnsiSequences(entry.raw ?? "")).trimEnd();
       if (!line.trim()) {
         return "";
       }

@@ -4,7 +4,7 @@ import { HP_GENERATION_IMAGE_V1, HP_GENERATION_IMAGE_V2 } from "../core/embedded
 import { getInputDraftValue } from "../core/control-drafts.js";
 import { isCurveMode } from "../core/domain-helpers.js";
 import { getEntityValue, getNumberMeta, parseLooseNumber } from "../core/entity-store.js";
-import { formatIncidentOccurrenceTime, getFallbackBlockReasonLabel, getHeatPumpStatusPresentation, getIncidentActionPresentation, getIncidentCategoryLabel, getIncidentDisplayLabel, getIncidentEffectLabels, getIncidentLifecyclePresentation, getIncidentRecoveryLabel, getIncidentUserActionLabel, getSystemActionPresentation } from "../core/incident-monitoring.js";
+import { formatIncidentOccurrenceTime, getFallbackBlockReasonLabel, getHeatPumpStatusPresentation, getIncidentActionPresentation, getIncidentCategoryLabel, getIncidentDisplayLabel, getIncidentEffectLabels, getIncidentLifecyclePresentation, getIncidentRecoveryLabel, getIncidentTechnicalCode, getIncidentUserActionLabel, getPumpIncidentContextRows, getSystemActionPresentation } from "../core/incident-monitoring.js";
 import { getInstallationMonitoringFailureText, getInstallationMonitoringModel, isInstallationMonitoringBinaryActive, isInstallationMonitoringFailureActive, isInstallationMonitoringIntegrationEnabled, syncInstallationMonitoringDetailsState } from "../core/installation-monitoring.js";
 import { renderNumberInputControl } from "../core/number-controls.js";
 import { state } from "../core/state.js";
@@ -12,6 +12,7 @@ import { getDebugRecordingStatusCopy, getDebugRecordingStatusLabel } from "../fe
 import { formatDiagnosticsDateTime, formatUptimeFromMeta, getDeviceIpAddress, getInstallationLabel } from "../features/device-context.js";
 import { getUpdateStatus } from "../features/firmware-update.js";
 import { getEspTemperatureLabel } from "../features/header-status.js";
+import { getOduGenerationChoiceMeta, getOduGenerationDetectionModel, renderOduGenerationDetectionStatus } from "../features/odu-generation-ui.js";
 import { getWebServerLogStatusLabel } from "../features/webserver-logs.js";
 import { BOILER_OPENTHERM_CAPABILITY, getBoilerOpenThermCapability, getSupportedBoilerConnectionOptions } from "./boiler.js";
 import { getSelectEntityOptions, renderNamedActionButton, renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsCompactSwitchControl, renderSettingsFieldCard, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField, renderSettingsSystemRow } from "./controls.js";
@@ -278,12 +279,15 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
     ));
   }
 
-  function renderInstallationMonitoringHpIncident(incident) {
+  export function renderInstallationMonitoringHpIncident(incident, pumpContext = null) {
     const lifecycle = getIncidentLifecyclePresentation(incident);
     const effects = getIncidentEffectLabels(incident.effects);
     const firstSeen = formatIncidentOccurrenceTime(incident.firstSeenS, incident.firstSeenMs);
     const lastSeen = formatIncidentOccurrenceTime(incident.lastSeenS, incident.lastSeenMs);
+    const technicalCode = getIncidentTechnicalCode(incident);
     const details = [
+      technicalCode ? ["ODU-code", technicalCode] : null,
+      incident.technicalDescription ? ["ODU-omschrijving", incident.technicalDescription] : null,
       effects.length ? ["Effect", effects.join(", ")] : null,
       firstSeen ? ["Eerste optreden", firstSeen] : null,
       lastSeen ? ["Laatste optreden", lastSeen] : null,
@@ -292,6 +296,7 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
         ? ["Gebruikersactie", getIncidentUserActionLabel(incident.userAction)]
         : null,
       incident.occurrenceCount > 1 ? ["Bevestigd", `${incident.occurrenceCount} keer sinds controllerstart`] : null,
+      ...getPumpIncidentContextRows(incident, pumpContext),
     ].filter(Boolean);
     return `
       <div class="oq-settings-monitoring-incident">
@@ -344,7 +349,10 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
             presentation.tone,
           )}
         </div>
-        ${incidents.map(renderInstallationMonitoringHpIncident).join("")}
+        ${incidents.map((incident) => renderInstallationMonitoringHpIncident(
+          incident,
+          heatPump.pumpContext,
+        )).join("")}
         ${retryStartRequired ? `
           <div class="oq-settings-monitoring-incident">
             <div class="oq-settings-monitoring-incident-action">
@@ -772,8 +780,10 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
   }
 
   export function renderHpGenerationField() {
+    const detectionModel = getOduGenerationDetectionModel();
+    const detectionStatus = renderOduGenerationDetectionStatus();
     if (!hasEntity("hpGeneration")) {
-      return "";
+      return detectionStatus;
     }
 
     const descriptions = {
@@ -806,6 +816,7 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
     const busy = state.loadingEntities || state.busyAction === "save-hpGeneration";
 
     return `
+      ${detectionStatus}
       <div class="oq-settings-generation-field oq-settings-field--span-2">
         <div class="oq-settings-generation-grid">
           ${options.map((option) => {
@@ -816,6 +827,7 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
               currentValue,
               busy,
               copy: description.copy || "",
+              meta: getOduGenerationChoiceMeta(option, currentValue, detectionModel.recommendation),
               image: description.image || "",
               imageAlt: description.alt || "",
               infoTitle: description.infoTitle || "",
@@ -842,8 +854,8 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
       "Quatt Hybrid-versie",
       "Kies hier welke Quatt Hybrid je hebt. Deze keuze bepaalt de basis van de regeling.",
       `
-        <div class="oq-settings-quickstart-status">
-          <div class="oq-settings-quickstart-status-row">
+        <div class="oq-helper-surface oq-settings-field">
+          <div class="oq-gen-current">
             <div>
               <p class="oq-settings-quickstart-status-label">Huidige versie</p>
               <strong class="oq-settings-quickstart-status-value">${escapeHtml(currentLabel || "Onbekend")}</strong>

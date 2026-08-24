@@ -10,6 +10,7 @@
 #include "esphome/components/web_server/web_server.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/core/log.h"
+#include "includes/incidents/oq_hp_incident_sources.h"
 
 namespace esphome {
 namespace openquatt_incident_manager {
@@ -123,6 +124,25 @@ bool write_uint(httpd_req_t* req, uint64_t value) {
 }
 
 bool write_bool(httpd_req_t* req, bool value) { return write_raw(req, value ? "true" : "false"); }
+
+bool write_float(httpd_req_t* req, float value) {
+  if (!std::isfinite(value)) return write_raw(req, "null");
+  char buffer[32];
+  std::snprintf(buffer, sizeof(buffer), "%.2f", static_cast<double>(value));
+  return write_raw(req, buffer);
+}
+
+bool write_optional_bool(httpd_req_t* req, bool valid, bool value) {
+  return valid ? write_bool(req, value) : write_raw(req, "null");
+}
+
+bool write_optional_uint(httpd_req_t* req, bool valid, uint64_t value) {
+  return valid ? write_uint(req, value) : write_raw(req, "null");
+}
+
+bool write_optional_float(httpd_req_t* req, bool valid, float value) {
+  return valid && std::isfinite(value) ? write_float(req, value) : write_raw(req, "null");
+}
 
 bool write_json_string(httpd_req_t* req, const char* value) {
   if (!write_raw(req, "\"")) return false;
@@ -680,6 +700,7 @@ void OpenQuattIncidentManager::observe_transport(uint8_t hp_index, bool online, 
   unit->transport_seen = true;
   unit->transport_online = online;
   if (!online) {
+    unit->pump_context = {};
     unit->engine.observe_link_round(now_ms, false);
     unit->last_link_round_ms = now_ms;
     this->publish_transitions_(*unit, hp_slot_(hp_index), now_ms);
@@ -754,6 +775,33 @@ void OpenQuattIncidentManager::observe_fault_word(uint8_t hp_index, uint16_t reg
   unit->fault_words[bank] = word;
   unit->fault_pending[bank] = true;
   this->process_fault_snapshot_(*unit, hp_slot_(hp_index), now_ms, false);
+}
+
+void OpenQuattIncidentManager::observe_pump_context(uint8_t hp_index, bool request_valid, bool request_on,
+                                                    bool relay_valid, bool relay_on, bool flow_switch_valid,
+                                                    bool flow_switch_on, bool feedback_valid, uint16_t feedback_raw,
+                                                    bool flow_valid, float flow_lph) {
+  UnitState* unit = this->unit_(hp_index);
+  if (unit == nullptr) return;
+
+  PumpContextState& context = unit->pump_context;
+  context = {};
+  context.request_valid = request_valid;
+  context.request_on = request_valid && request_on;
+  context.relay_valid = relay_valid;
+  context.relay_on = relay_valid && relay_on;
+  context.flow_switch_valid = flow_switch_valid;
+  context.flow_switch_on = flow_switch_valid && flow_switch_on;
+  context.feedback_valid = feedback_valid;
+  context.feedback_raw = feedback_valid ? feedback_raw : 0U;
+  if (feedback_valid) {
+    const oq_pump_ipwm::DecodedFeedback feedback = oq_pump_ipwm::decode(feedback_raw);
+    context.status = feedback.status;
+    context.power_valid = feedback.power_valid;
+    context.power_w = feedback.power_w;
+  }
+  context.flow_valid = flow_valid && std::isfinite(flow_lph);
+  context.flow_lph = context.flow_valid ? flow_lph : 0.0F;
 }
 
 void OpenQuattIncidentManager::process_fault_snapshot_(UnitState& unit, size_t slot, uint32_t now_ms,
@@ -1662,6 +1710,7 @@ void OpenQuattIncidentManager::publish_snapshot_(uint32_t now_ms) {
     next.units[slot].last_action_seq = this->units_()[slot].last_action_seq;
     next.units[slot].last_action_request_id = this->units_()[slot].last_action_request_id;
     next.units[slot].last_action_at_ms = this->units_()[slot].last_action_at_ms;
+    next.units[slot].pump_context = this->units_()[slot].pump_context;
     if (xSemaphoreTake(this->action_mutex_, portMAX_DELAY) == pdTRUE) {
       next.units[slot].action_result_count = this->units_()[slot].action_result_count;
       for (size_t offset = 0U; offset < next.units[slot].action_result_count; ++offset) {
@@ -1751,7 +1800,27 @@ void OpenQuattIncidentManager::write_snapshot(httpd_req_t* req) const {
          write_raw(req, R"(,"fallback_cause_present":)") && write_bool(req, outputs.fallback_cause_present) &&
          write_raw(req, R"(,"fallback_eligible":)") && write_bool(req, outputs.fallback_eligible) &&
          write_raw(req, R"(,"primary_incident_id":)") && write_uint(req, outputs.primary_incident_id) &&
-         write_raw(req, R"(,"last_action_result":)");
+         write_raw(req, R"(,"pump_context":{"request_on":)") &&
+         write_optional_bool(req, snapshot.units[slot].pump_context.request_valid,
+                             snapshot.units[slot].pump_context.request_on) &&
+         write_raw(req, R"(,"relay_on":)") &&
+         write_optional_bool(req, snapshot.units[slot].pump_context.relay_valid,
+                             snapshot.units[slot].pump_context.relay_on) &&
+         write_raw(req, R"(,"flow_switch_on":)") &&
+         write_optional_bool(req, snapshot.units[slot].pump_context.flow_switch_valid,
+                             snapshot.units[slot].pump_context.flow_switch_on) &&
+         write_raw(req, R"(,"ipwm_feedback_raw":)") &&
+         write_optional_uint(req, snapshot.units[slot].pump_context.feedback_valid,
+                             snapshot.units[slot].pump_context.feedback_raw) &&
+         write_raw(req, R"(,"ipwm_status":)") &&
+         write_json_string(req, oq_pump_ipwm::status_name(snapshot.units[slot].pump_context.status)) &&
+         write_raw(req, R"(,"pump_power_w":)") &&
+         write_optional_float(req, snapshot.units[slot].pump_context.power_valid,
+                              snapshot.units[slot].pump_context.power_w) &&
+         write_raw(req, R"(,"flow_lph":)") &&
+         write_optional_float(req, snapshot.units[slot].pump_context.flow_valid,
+                              snapshot.units[slot].pump_context.flow_lph) &&
+         write_raw(req, R"(},"last_action_result":)");
     if (ok && snapshot.units[slot].last_action_seq == 0U) {
       ok = write_raw(req, "null");
     } else if (ok) {
@@ -1798,6 +1867,8 @@ void OpenQuattIncidentManager::write_snapshot(httpd_req_t* req) const {
           write_json_string(req, recovery_condition_name(definition.recovery_condition)) &&
           write_raw(req, R"(,"register_address":)") && write_uint(req, definition.register_address) &&
           write_raw(req, R"(,"bit":)") && write_uint(req, definition.bit) &&
+          write_raw(req, R"(,"source_description":)") &&
+          write_json_string(req, oq_incidents::source_description_for(definition.register_address, definition.bit)) &&
           write_raw(req, R"(},"runtime":{"lifecycle":)") &&
           write_json_string(req, incident_lifecycle_name(definition, runtime)) && write_raw(req, R"(,"raw_active":)") &&
           write_bool(req, runtime.raw_active) && write_raw(req, R"(,"confirmed_active":)") &&
