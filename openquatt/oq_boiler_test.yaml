@@ -37,6 +37,16 @@ globals:
     restore_value: false
     initial_value: '"IDLE"'
 
+text_sensor:
+  - platform: template
+    id: oq_boiler_power_test_status
+    name: "Boiler power test status"
+    internal: true
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: |-
+      return {id(oq_boiler_power_test_status_value)};
+
 # ----------------------------
 # CONTROL INPUTS
 # ----------------------------

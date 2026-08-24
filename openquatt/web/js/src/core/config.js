@@ -291,6 +291,8 @@
     otbTransportErrorCount: { domain: "sensor", name: "OTB - Transport Error Count", optional: true },
     otbResponseTimeoutCount: { domain: "sensor", name: "OTB - Response Timeout Count", optional: true },
     otbLastResponseId: { domain: "sensor", name: "OTB - Last Response Message ID", optional: true },
+    otbStartHandshakeState: { domain: "text_sensor", name: "OTB - Start Handshake State", optional: true },
+    otbStartHandshakeDetail: { domain: "text_sensor", name: "OTB - Start Handshake Detail", optional: true },
     flowKp: { domain: "number", name: "Flow PI Kp", optional: true },
     flowKi: { domain: "number", name: "Flow PI Ki", optional: true },
     boilerRatedHeatPower: { domain: "number", name: "Boiler rated heat power", optional: true },
@@ -1485,6 +1487,19 @@
     "coolingRestartMode",
     "coolingMinimumOffTime",
     "coolingMinimumOffTimeRemaining",
+    "commissioningStatus",
+    "boilerPowerTestStatus",
+    "boilerCommandRequestedPower",
+    "boilerHeatPower",
+    "otbFaultIndication",
+    "otbDhwActive",
+    "otbDiagnosticIndication",
+    "otbServiceRequest",
+    "otbRelativeModulation",
+    "otbBoilerWaterTemp",
+    "otbReturnWaterTemp",
+    "otbStartHandshakeState",
+    "otbStartHandshakeDetail",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestOtaUrl", "firmwareTestOtaMd5Url", "installFirmwareTestOta"];

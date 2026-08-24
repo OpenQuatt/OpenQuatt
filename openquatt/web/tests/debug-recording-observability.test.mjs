@@ -12,6 +12,8 @@ const FIRMWARE_ENTITY_PACKAGES = [
   "../../oq_installation_monitoring.yaml",
   "../../oq_boiler_control.yaml",
   "../../oq_boiler_opentherm.yaml",
+  "../../oq_boiler_test.yaml",
+  "../../oq_commissioning.yaml",
   "../../oq_heating_curve_strategy.yaml",
   "../../oq_sensor_sources.yaml",
   "../../oq_sensor_source_selects_opentherm.yaml",
@@ -78,11 +80,28 @@ const COOLING_MIN_OFF_OBSERVABILITY_KEYS = [
   "coolingMinimumOffTimeRemaining",
 ];
 
+const ISSUE_516_OBSERVABILITY_KEYS = [
+  "commissioningStatus",
+  "boilerPowerTestStatus",
+  "boilerCommandRequestedPower",
+  "boilerHeatPower",
+  "otbFaultIndication",
+  "otbDhwActive",
+  "otbDiagnosticIndication",
+  "otbServiceRequest",
+  "otbRelativeModulation",
+  "otbBoilerWaterTemp",
+  "otbReturnWaterTemp",
+  "otbStartHandshakeState",
+  "otbStartHandshakeDetail",
+];
+
 const ADDED_OBSERVABILITY_KEYS = [
   ...OBSERVABILITY_KEYS,
   ...ISSUE_473_OBSERVABILITY_KEYS,
   ...ISSUE_489_OBSERVABILITY_KEYS,
   ...COOLING_MIN_OFF_OBSERVABILITY_KEYS,
+  ...ISSUE_516_OBSERVABILITY_KEYS,
 ];
 
 test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", () => {
@@ -92,6 +111,7 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const oduEndIndex = issue473EndIndex + ODU_GENERATION_KEYS.length;
   const fingerprintEndIndex = oduEndIndex + ODU_FINGERPRINT_KEYS.length;
   const issue489EndIndex = fingerprintEndIndex + ISSUE_489_OBSERVABILITY_KEYS.length;
+  const coolingMinOffEndIndex = issue489EndIndex + COOLING_MIN_OFF_OBSERVABILITY_KEYS.length;
 
   assert.equal(legacyTailIndex, 134);
   assert.deepEqual(
@@ -102,7 +122,11 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue473EndIndex, oduEndIndex), ODU_GENERATION_KEYS);
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(oduEndIndex, fingerprintEndIndex), ODU_FINGERPRINT_KEYS);
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(fingerprintEndIndex, issue489EndIndex), ISSUE_489_OBSERVABILITY_KEYS);
-  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue489EndIndex), COOLING_MIN_OFF_OBSERVABILITY_KEYS);
+  assert.deepEqual(
+    DEBUG_RECORDING_KEYS.slice(issue489EndIndex, coolingMinOffEndIndex),
+    COOLING_MIN_OFF_OBSERVABILITY_KEYS,
+  );
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(coolingMinOffEndIndex), ISSUE_516_OBSERVABILITY_KEYS);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   assert.ok(DEBUG_RECORDING_KEYS.length <= 188, "debugrecorder heeft maximaal 188 entityvelden naast 4 systeemvelden");
 });
