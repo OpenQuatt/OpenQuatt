@@ -11,6 +11,9 @@ Q_PROFILE = (
     ROOT / "openquatt" / "profiles" / "heatpump_controller_q.yaml"
 ).read_text()
 HP_IO_PACKAGE = (ROOT / "openquatt" / "oq_HP_io.yaml").read_text()
+START_HANDSHAKE_HEADER = (
+    ROOT / "openquatt" / "includes" / "boiler" / "oq_otb_start_handshake.h"
+).read_text()
 
 
 class OtbPollingLifecycleContractTest(unittest.TestCase):
@@ -203,6 +206,27 @@ class OtbPollingLifecycleContractTest(unittest.TestCase):
         self.assertLess(
             start_block.index("esphome::opentherm::MessageId::CH_SETPOINT"),
             start_block.index("esphome::opentherm::MessageId::STATUS"),
+        )
+
+    def test_start_handshake_correlates_request_and_response(self) -> None:
+        self.assertIn("oq_otb::telemetry_state.record_request", OTB_PACKAGE)
+        self.assertIn("oq_otb::telemetry_state.record_response", OTB_PACKAGE)
+        self.assertIn(
+            "oq_otb::telemetry_state.last_response_payload_is_usable()",
+            OTB_PACKAGE,
+        )
+        self.assertIn("oq_otb::start_handshake_state.begin(millis());", OTB_PACKAGE)
+        self.assertIn(
+            "classify_response(",
+            START_HANDSHAKE_HEADER,
+        )
+        self.assertIn(
+            "START_HANDSHAKE_RESPONSE_ID_MISMATCH",
+            START_HANDSHAKE_HEADER,
+        )
+        self.assertIn(
+            "START_HANDSHAKE_RESPONSE_TYPE_MISMATCH",
+            START_HANDSHAKE_HEADER,
         )
 
     def test_otb_periodic_loop_does_not_overwrite_r1(self) -> None:

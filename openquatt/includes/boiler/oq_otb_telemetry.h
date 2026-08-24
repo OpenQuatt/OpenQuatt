@@ -6,11 +6,38 @@
 namespace oq_otb {
 
 // OpenTherm message types used by the ESPHome master component.
+constexpr uint8_t MESSAGE_TYPE_READ_DATA = 0;
+constexpr uint8_t MESSAGE_TYPE_WRITE_DATA = 1;
 constexpr uint8_t MESSAGE_TYPE_INVALID_DATA = 2;
 constexpr uint8_t MESSAGE_TYPE_READ_ACK = 4;
 constexpr uint8_t MESSAGE_TYPE_WRITE_ACK = 5;
 constexpr uint8_t MESSAGE_TYPE_DATA_INVALID = 6;
 constexpr uint8_t MESSAGE_TYPE_UNKNOWN_DATA_ID = 7;
+
+enum ResponseCorrelation : uint8_t {
+  RESPONSE_CORRELATION_NONE = 0,
+  RESPONSE_CORRELATION_ACKNOWLEDGED,
+  RESPONSE_CORRELATION_NEGATIVE,
+  RESPONSE_CORRELATION_ID_MISMATCH,
+  RESPONSE_CORRELATION_TYPE_MISMATCH,
+  RESPONSE_CORRELATION_ORPHAN,
+};
+
+inline int expected_response_type(uint8_t request_type) {
+  if (request_type == MESSAGE_TYPE_READ_DATA) return MESSAGE_TYPE_READ_ACK;
+  if (request_type == MESSAGE_TYPE_WRITE_DATA) return MESSAGE_TYPE_WRITE_ACK;
+  return -1;
+}
+
+inline ResponseCorrelation classify_response(uint8_t request_id, uint8_t request_type, uint8_t response_id,
+                                             uint8_t response_type) {
+  if (request_id != response_id) return RESPONSE_CORRELATION_ID_MISMATCH;
+  if (response_type == MESSAGE_TYPE_DATA_INVALID || response_type == MESSAGE_TYPE_UNKNOWN_DATA_ID) {
+    return RESPONSE_CORRELATION_NEGATIVE;
+  }
+  return response_type == expected_response_type(request_type) ? RESPONSE_CORRELATION_ACKNOWLEDGED
+                                                               : RESPONSE_CORRELATION_TYPE_MISMATCH;
+}
 
 enum Field : uint8_t {
   FIELD_STATUS = 0,
@@ -62,11 +89,21 @@ class TelemetryState {
   void reset_link_session() {
     this->session_has_response_ = false;
     this->last_response_ms_ = 0;
+    this->pending_request_ = false;
+    this->last_request_id_ = -1;
+    this->last_request_type_ = -1;
     this->last_response_id_ = -1;
     this->last_response_type_ = -1;
+    this->last_response_correlation_ = RESPONSE_CORRELATION_NONE;
     for (auto& field : this->fields_) {
       field = {};
     }
+  }
+
+  void record_request(uint8_t message_id, uint8_t message_type) {
+    this->pending_request_ = true;
+    this->last_request_id_ = message_id;
+    this->last_request_type_ = message_type;
   }
 
   void record_response(uint32_t now_ms, uint8_t message_id, uint8_t message_type) {
@@ -76,24 +113,53 @@ class TelemetryState {
     this->last_response_type_ = message_type;
     this->accepted_response_count_++;
 
-    const bool acknowledged = message_type == MESSAGE_TYPE_READ_ACK || message_type == MESSAGE_TYPE_WRITE_ACK;
-    if (acknowledged) {
-      this->acknowledged_response_count_++;
-    } else if (message_type == MESSAGE_TYPE_DATA_INVALID) {
+    if (this->pending_request_) {
+      this->last_response_correlation_ =
+          classify_response(this->last_request_id_, this->last_request_type_, message_id, message_type);
+    } else {
+      this->last_response_correlation_ = RESPONSE_CORRELATION_ORPHAN;
+      this->last_request_id_ = -1;
+      this->last_request_type_ = -1;
+    }
+    this->pending_request_ = false;
+
+    switch (this->last_response_correlation_) {
+      case RESPONSE_CORRELATION_ACKNOWLEDGED:
+        this->acknowledged_response_count_++;
+        this->correlated_response_count_++;
+        break;
+      case RESPONSE_CORRELATION_NEGATIVE:
+        this->correlated_response_count_++;
+        break;
+      case RESPONSE_CORRELATION_ID_MISMATCH:
+        this->response_id_mismatch_count_++;
+        break;
+      case RESPONSE_CORRELATION_TYPE_MISMATCH:
+        this->response_type_mismatch_count_++;
+        break;
+      case RESPONSE_CORRELATION_ORPHAN:
+        this->orphan_response_count_++;
+        break;
+      default:
+        break;
+    }
+
+    if (message_type == MESSAGE_TYPE_DATA_INVALID) {
       this->data_invalid_response_count_++;
     } else if (message_type == MESSAGE_TYPE_UNKNOWN_DATA_ID) {
       this->unknown_data_id_response_count_++;
-    } else {
+    } else if (message_type != MESSAGE_TYPE_READ_ACK && message_type != MESSAGE_TYPE_WRITE_ACK) {
       this->unexpected_response_type_count_++;
     }
 
-    const int field_index = field_index_for_message_id(message_id);
+    const int field_index = this->last_request_id_ < 0 ? -1 : field_index_for_message_id(this->last_request_id_);
     if (field_index < 0) return;
 
     auto& field = this->fields_[field_index];
-    // All tracked telemetry messages are read requests. A WRITE_ACK for one of
-    // them is therefore not a valid sample, even though it is a valid frame.
-    if (message_type == MESSAGE_TYPE_READ_ACK) {
+    // All tracked telemetry messages are read requests. Only a matching
+    // READ_ACK for the request currently on the wire is a valid sample.
+    if (this->last_response_correlation_ == RESPONSE_CORRELATION_ACKNOWLEDGED &&
+        this->last_request_type_ == MESSAGE_TYPE_READ_DATA) {
       field.last_valid_ms = now_ms;
       field.valid = true;
     } else {
@@ -130,14 +196,13 @@ class TelemetryState {
     return true;
   }
 
-  bool response_payload_is_usable(uint8_t message_id, uint8_t message_type) const {
-    // Every field tracked by this helper is requested as READ_DATA. A
-    // syntactically valid WRITE_ACK for such an ID must not reach ESPHome's
-    // payload processors as if it were a valid measurement.
-    if (field_index_for_message_id(message_id) >= 0) {
-      return message_type == MESSAGE_TYPE_READ_ACK;
-    }
-    return message_type == MESSAGE_TYPE_READ_ACK || message_type == MESSAGE_TYPE_WRITE_ACK;
+  bool last_response_is_correlated() const {
+    return this->last_response_correlation_ == RESPONSE_CORRELATION_ACKNOWLEDGED ||
+           this->last_response_correlation_ == RESPONSE_CORRELATION_NEGATIVE;
+  }
+
+  bool last_response_payload_is_usable() const {
+    return this->last_response_correlation_ == RESPONSE_CORRELATION_ACKNOWLEDGED;
   }
 
   bool transport_is_available(uint32_t now_ms, uint32_t response_max_age_ms, uint32_t status_max_age_ms) const {
@@ -187,10 +252,17 @@ class TelemetryState {
 
   uint32_t last_response_ms() const { return this->last_response_ms_; }
   bool session_has_response() const { return this->session_has_response_; }
+  int last_request_id() const { return this->last_request_id_; }
+  int last_request_type() const { return this->last_request_type_; }
   int last_response_id() const { return this->last_response_id_; }
   int last_response_type() const { return this->last_response_type_; }
+  ResponseCorrelation last_response_correlation() const { return this->last_response_correlation_; }
   uint32_t accepted_response_count() const { return this->accepted_response_count_; }
   uint32_t acknowledged_response_count() const { return this->acknowledged_response_count_; }
+  uint32_t correlated_response_count() const { return this->correlated_response_count_; }
+  uint32_t response_id_mismatch_count() const { return this->response_id_mismatch_count_; }
+  uint32_t response_type_mismatch_count() const { return this->response_type_mismatch_count_; }
+  uint32_t orphan_response_count() const { return this->orphan_response_count_; }
   uint32_t data_invalid_response_count() const { return this->data_invalid_response_count_; }
   uint32_t unknown_data_id_response_count() const { return this->unknown_data_id_response_count_; }
   uint32_t unexpected_response_type_count() const { return this->unexpected_response_type_count_; }
@@ -284,10 +356,18 @@ class TelemetryState {
 
   bool session_has_response_{false};
   uint32_t last_response_ms_{0};
+  bool pending_request_{false};
+  int last_request_id_{-1};
+  int last_request_type_{-1};
   int last_response_id_{-1};
   int last_response_type_{-1};
+  ResponseCorrelation last_response_correlation_{RESPONSE_CORRELATION_NONE};
   uint32_t accepted_response_count_{0};
   uint32_t acknowledged_response_count_{0};
+  uint32_t correlated_response_count_{0};
+  uint32_t response_id_mismatch_count_{0};
+  uint32_t response_type_mismatch_count_{0};
+  uint32_t orphan_response_count_{0};
   uint32_t data_invalid_response_count_{0};
   uint32_t unknown_data_id_response_count_{0};
   uint32_t unexpected_response_type_count_{0};
