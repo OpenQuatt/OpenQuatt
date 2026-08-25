@@ -401,7 +401,7 @@ import { renderModalShell } from "../core/modal-shell.js";
       return `Flow naar ${targetText} ±40. Ketel start daarna. Min. 2 min. Nu ${flowText}.`;
     }
     if (upper.includes("BOILER_SETTLING")) {
-      return `Warmtevraag verstuurd; wachten op ketel. Flow ${flowText} (doel ±40).`;
+      return `Warmtevraag verstuurd; maximaal 90 sec wachten op ketel. Flow ${flowText} (doel ±40).`;
     }
     if (upper.includes("MEASURING")) {
       const heat = getSettingsStatValue("boilerHeatPower");

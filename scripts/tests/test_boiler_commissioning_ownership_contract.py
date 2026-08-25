@@ -38,6 +38,11 @@ class BoilerCommissioningOwnershipContract(unittest.TestCase):
         self.assertIn("boiler_test_dhw_interferes", BOILER_RUNTIME)
         self.assertIn('finish_task("FAILED: DHW active; retry without hot water or tap comfort"', BOILER_RUNTIME)
 
+    def test_boiler_start_confirmation_allows_ninety_seconds(self) -> None:
+        self.assertIn(".boiler_start_timeout_ms = 90UL * 1000UL", BOILER_RUNTIME)
+        self.assertIn("if (state_age_ms >= cfg.boiler_start_timeout_ms)", BOILER_RUNTIME)
+        self.assertIn(".boiler_settle_min_ms = 30UL * 1000UL", BOILER_RUNTIME)
+
     def test_dispatch_reuses_commissioning_temperature_policy(self) -> None:
         self.assertIn("oq_boiler_commissioning::commissioning_target_temperature_c", BOILER_DISPATCH)
         commissioning_start = BOILER_DISPATCH.index("} else if (commissioning_task_active) {")

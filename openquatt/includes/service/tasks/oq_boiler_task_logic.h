@@ -34,6 +34,7 @@ static constexpr int STATE_FAILED = oq_commissioning::TASK_STATE_FAILED;
 struct RuntimeConfig {
   uint32_t max_runtime_ms;
   uint32_t flow_settle_min_ms;
+  uint32_t boiler_start_timeout_ms;
   uint32_t boiler_settle_min_ms;
   uint32_t measure_min_ms;
   uint32_t cooldown_ms;
@@ -49,6 +50,7 @@ inline RuntimeConfig default_config() {
   return RuntimeConfig{
       .max_runtime_ms = 15UL * 60UL * 1000UL,
       .flow_settle_min_ms = 2UL * 60UL * 1000UL,
+      .boiler_start_timeout_ms = 90UL * 1000UL,
       .boiler_settle_min_ms = 30UL * 1000UL,
       .measure_min_ms = 3UL * 60UL * 1000UL,
       .cooldown_ms = 15UL * 1000UL,
@@ -534,7 +536,7 @@ class BoilerPowerTestRuntime {
     stable_flow_count_ = flow_stable_now ? stable_flow_count_ + 1 : 0;
     const uint32_t state_age_ms = now_ms - id(oq_commissioning_state_since_ms);
     if (!id(boiler_active).state) {
-      if (state_age_ms >= cfg.boiler_settle_min_ms) {
+      if (state_age_ms >= cfg.boiler_start_timeout_ms) {
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
         const bool opentherm_selected = active_test_opentherm_;
 #else
