@@ -243,6 +243,13 @@
       state: profile.generation,
       value: profile.generation,
     });
+    const compressorLevelProfile = profile.generation === "V2"
+      ? "V2 F0-F20"
+      : "Unknown / F0-F10 safe";
+    setEntity("text_sensor", `HP${hp} - Compressor level profile`, {
+      state: compressorLevelProfile,
+      value: compressorLevelProfile,
+    });
   }
 
   function setMockOduGeneration(hp, generation) {
@@ -2139,8 +2146,8 @@
       ["Flow Setpoint", 800, 0, 1500, 10, "L/h"],
       ["Cooling Flow Setpoint", 800, 0, 1500, 10, "L/h"],
       ["Manual flow service setpoint", 800, 0, 1500, 10, "L/h"],
-      ["Manual HP1 compressor level", 0, 0, 10, 1, ""],
-      ["Manual HP2 compressor level", 0, 0, 10, 1, ""],
+      ["Manual HP1 compressor level", 0, 0, 20, 1, ""],
+      ["Manual HP2 compressor level", 0, 0, 20, 1, ""],
       ["Manual iPWM", 400, 50, 850, 1, "iPWM"],
       ["Flow PI Kp", 0.35, 0, 5, 0.01, ""],
       ["Flow PI Ki", 0.05, 0, 5, 0.01, ""],
@@ -4128,6 +4135,7 @@
     if (generationDetectMatch) {
       const hp = Number(generationDetectMatch[1]);
       setText("text_sensor", `HP${hp} - ODU generation`, "Unknown");
+      setText("text_sensor", `HP${hp} - Compressor level profile`, "Unknown / F0-F10 safe");
       window.setTimeout(() => {
         syncMockOduIdentityEntities(hp);
         notifyMockUpdated();

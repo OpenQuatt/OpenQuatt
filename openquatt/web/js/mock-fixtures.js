@@ -73,6 +73,7 @@
   const hp2Entities = [
     ["sensor", "HP2 - Control board item number", { value: oduIdentities[2].controlBoardItem }],
     ["text_sensor", "HP2 - ODU generation", { state: oduIdentities[2].generation, value: oduIdentities[2].generation }],
+    ["text_sensor", "HP2 - Compressor level profile", { state: "Unknown / F0-F10 safe", value: "Unknown / F0-F10 safe" }],
     ["button", "HP2 - Detect ODU generation", {}],
     ["select", "HP2 - Excluded compressor level A", { value: "None", state: "None", option: compressorLevelOptions }],
     ["select", "HP2 - Excluded compressor level B", { value: "None", state: "None", option: compressorLevelOptions }],

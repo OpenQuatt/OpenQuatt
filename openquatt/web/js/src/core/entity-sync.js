@@ -230,6 +230,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
     service: [
       ...INSTALLATION_MONITORING_STATE_KEYS,
       ...COMMISSIONING_STATE_KEYS,
+      "hpGeneration",
       ...SENSOR_CALIBRATION_KEYS,
       ...SENSOR_CALIBRATION_STATE_KEYS,
       "boilerCvAssistEnabled",

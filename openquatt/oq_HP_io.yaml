@@ -36,6 +36,13 @@ esphome:
           id(${hp_id}_odu_generation_request_pending) = false;
           id(${hp_id}_odu_generation_request_token) = 0U;
           id(${hp_id}_generation).publish_state("Unknown");
+          id(${hp_id}_compressor_level_profile_code) =
+              static_cast<int>(oq_odu::CompressorLevelProfile::UNKNOWN);
+          id(${hp_id}_compressor_level_profile_request_pending) = false;
+          id(${hp_id}_compressor_level_profile_request_token) = 0U;
+          id(${hp_id}_compressor_level_profile).publish_state(
+              oq_odu::compressor_level_profile_label(
+                  oq_odu::CompressorLevelProfile::UNKNOWN));
 
 # ----------------------------
 # MODBUS CONTROLLER
@@ -52,6 +59,16 @@ modbus_controller:
       then:
         - lambda: |-
             id(${hp_id}_is_online) = false;
+            // A reconnected controller may belong to different ODU hardware.
+            id(${hp_id}_compressor_level_profile_request_token) =
+                oq_odu::next_request_token(
+                    id(${hp_id}_compressor_level_profile_request_token));
+            id(${hp_id}_compressor_level_profile_request_pending) = false;
+            id(${hp_id}_compressor_level_profile_code) =
+                static_cast<int>(oq_odu::CompressorLevelProfile::UNKNOWN);
+            id(${hp_id}_compressor_level_profile).publish_state(
+                oq_odu::compressor_level_profile_label(
+                    oq_odu::CompressorLevelProfile::UNKNOWN));
             id(${hp_id}_pump_relay).invalidate_state();
             id(${hp_id}_status_2108_raw).publish_state(NAN);
             id(${hp_id}_status_2115_raw).publish_state(NAN);
@@ -64,6 +81,13 @@ modbus_controller:
             id(${hp_id}_is_online) = true;
             id(oq_incident_manager).observe_transport(${hp_index}, true, millis());
             ESP_LOGI("quatt", "%sModbus ONLINE", "${prefix}");
+        - if:
+            condition:
+              lambda: |-
+                return id(${hp_id}_generation).has_state() &&
+                       id(${hp_id}_generation).state == "V2";
+            then:
+              - script.execute: ${hp_id}_detect_compressor_level_profile_once
 
 openquatt_odu_eeprom_dump:
   - id: ${hp_id}_odu_eeprom_dump
@@ -101,6 +125,13 @@ globals:
     restore_value: false
     initial_value: '0'
 
+  # Last physical F-level written to register 1999. Control bookkeeping above
+  # deliberately remains in the independent 0..10 model-level domain.
+  - id: ${hp_id}_last_commanded_physical_level
+    type: int
+    restore_value: false
+    initial_value: '0'
+
   - id: ${hp_id}_outside_temp_last_change_ms
     type: uint32_t
     restore_value: false
@@ -128,7 +159,7 @@ globals:
     initial_value: '0'
 
   # ODU generation is sampled once per boot or explicit detection request.
-  # It is diagnostic-only and never enables generation-dependent behavior.
+  # Generation alone never enables generation-dependent behavior.
   - id: ${hp_id}_odu_generation_detection_complete
     type: bool
     restore_value: no
@@ -140,6 +171,23 @@ globals:
     initial_value: 'false'
 
   - id: ${hp_id}_odu_generation_request_token
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  # Extended compressor levels are enabled only after an exact read-only match
+  # of the V2 heating expansion block (registers 3050..3059).
+  - id: ${hp_id}_compressor_level_profile_code
+    type: int
+    restore_value: no
+    initial_value: '0'
+
+  - id: ${hp_id}_compressor_level_profile_request_pending
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: ${hp_id}_compressor_level_profile_request_token
     type: uint32_t
     restore_value: no
     initial_value: '0'
@@ -197,6 +245,68 @@ script:
           id(${hp_id}_odu_generation_request_pending) = false;
           id(${hp_id}_odu_generation_detection_complete) = true;
           ESP_LOGW("quatt.odu", "%sODU generation detection timed out", "${prefix}");
+
+  - id: ${hp_id}_detect_compressor_level_profile_once
+    mode: restart
+    then:
+      - lambda: |-
+          const uint32_t request_token =
+              oq_odu::next_request_token(
+                  id(${hp_id}_compressor_level_profile_request_token));
+          id(${hp_id}_compressor_level_profile_request_token) = request_token;
+          id(${hp_id}_compressor_level_profile_request_pending) = true;
+          id(${hp_id}_compressor_level_profile_code) =
+              static_cast<int>(oq_odu::CompressorLevelProfile::UNKNOWN);
+          id(${hp_id}_compressor_level_profile).publish_state(
+              oq_odu::compressor_level_profile_label(
+                  oq_odu::CompressorLevelProfile::UNKNOWN));
+
+          // Keep capability detection read-only and do not interleave it with a
+          // task that temporarily owns the Modbus bus.
+          if (id(${hp_id}_odu_eeprom_dump).is_active() ||
+              id(oq_runtime_polling_paused).state) {
+            id(${hp_id}_compressor_level_profile_request_pending) = false;
+            ESP_LOGW("quatt.odu", "%sCompressor level profile detection blocked while runtime polling is paused", "${prefix}");
+            return;
+          }
+
+          auto command =
+              esphome::modbus_controller::ModbusCommandItem::create_read_command(
+                  id(${hp_id}), esphome::modbus::EntityType::HOLDING,
+                  oq_odu::EXTENDED_HEATING_TABLE_REGISTER,
+                  oq_odu::EXTENDED_HEATING_TABLE_REGISTER_COUNT,
+                  [=](esphome::modbus::EntityType, uint16_t start_address,
+                      std::span<const uint8_t> data) {
+                    if (request_token !=
+                            id(${hp_id}_compressor_level_profile_request_token) ||
+                        !id(${hp_id}_compressor_level_profile_request_pending) ||
+                        start_address !=
+                            oq_odu::EXTENDED_HEATING_TABLE_REGISTER) {
+                      return;
+                    }
+
+                    const auto profile =
+                        oq_odu::detect_extended_heating_table_response(
+                            data.data(), data.size());
+                    id(${hp_id}_compressor_level_profile_request_pending) = false;
+                    id(${hp_id}_compressor_level_profile_code) =
+                        static_cast<int>(profile);
+                    id(${hp_id}_compressor_level_profile).publish_state(
+                        oq_odu::compressor_level_profile_label(profile));
+                    if (!oq_odu::has_extended_compressor_levels(profile)) {
+                      ESP_LOGW("quatt.odu", "%sV2 F0-F20 expansion block not confirmed; limiting writes to F10", "${prefix}");
+                    }
+                  });
+          id(${hp_id}).queue_command(std::move(command));
+      - delay: 30s
+      - lambda: |-
+          if (!id(${hp_id}_compressor_level_profile_request_pending)) return;
+
+          id(${hp_id}_compressor_level_profile_request_token) =
+              oq_odu::next_request_token(
+                  id(${hp_id}_compressor_level_profile_request_token));
+          id(${hp_id}_compressor_level_profile_request_pending) = false;
+          ESP_LOGW("quatt.odu", "%sCompressor level profile detection timed out; limiting writes to F10", "${prefix}");
 
 button:
   - platform: template
@@ -256,6 +366,16 @@ select:
       "8": 8
       "9": 9
       "10": 10
+      "11": 11
+      "12": 12
+      "13": 13
+      "14": 14
+      "15": 15
+      "16": 16
+      "17": 17
+      "18": 18
+      "19": 19
+      "20": 20
     skip_updates: ${oq_modbus_control_readback_skip}
 
   - platform: modbus_controller
@@ -440,7 +560,7 @@ sensor:
       - multiply: 1
       - clamp:
           min_value: 0
-          max_value: 100
+          max_value: 120
           ignore_out_of_range: true
     skip_updates: ${oq_modbus_telemetry_skip}
 
@@ -459,7 +579,7 @@ sensor:
       - multiply: 1
       - clamp:
           min_value: 0
-          max_value: 100
+          max_value: 120
           ignore_out_of_range: true
     skip_updates: ${oq_modbus_telemetry_skip}
     on_value:
@@ -1120,6 +1240,7 @@ sensor:
       then:
         - lambda: |-
             if (isnan(x)) return;
+            // Enrich pump-fault observations with the latest command and feedback context.
             const uint32_t now_ms = millis();
             const uint16_t fault_word = static_cast<uint16_t>(lroundf(x));
             if ((fault_word & 0x2000u) != 0u) {
@@ -1288,6 +1409,33 @@ text_sensor:
     name: "${prefix}ODU generation"
     internal: true
     icon: mdi:heat-pump-outline
+    entity_category: diagnostic
+    update_interval: never
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: |-
+                return x == "V2";
+            then:
+              - script.execute: ${hp_id}_detect_compressor_level_profile_once
+            else:
+              - lambda: |-
+                  id(${hp_id}_compressor_level_profile_request_token) =
+                      oq_odu::next_request_token(
+                          id(${hp_id}_compressor_level_profile_request_token));
+                  id(${hp_id}_compressor_level_profile_request_pending) = false;
+                  id(${hp_id}_compressor_level_profile_code) =
+                      static_cast<int>(
+                          oq_odu::CompressorLevelProfile::UNKNOWN);
+                  id(${hp_id}_compressor_level_profile).publish_state(
+                      oq_odu::compressor_level_profile_label(
+                          oq_odu::CompressorLevelProfile::UNKNOWN));
+
+  - platform: template
+    id: ${hp_id}_compressor_level_profile
+    name: "${prefix}Compressor level profile"
+    icon: mdi:speedometer
     entity_category: diagnostic
     update_interval: never
 

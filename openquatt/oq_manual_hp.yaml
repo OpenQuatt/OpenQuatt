@@ -87,7 +87,7 @@ number:
     icon: mdi:speedometer
     mode: slider
     min_value: 0
-    max_value: 10
+    max_value: 20
     step: 1
     restore_value: false
     optimistic: true
@@ -101,7 +101,7 @@ number:
     icon: mdi:speedometer
     mode: slider
     min_value: 0
-    max_value: 10
+    max_value: 20
     step: 1
     restore_value: false
     optimistic: true
