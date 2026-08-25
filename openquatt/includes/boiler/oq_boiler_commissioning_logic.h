@@ -9,6 +9,15 @@ static constexpr float kDefaultMaxWaterTemperatureC = 60.0f;
 static constexpr float kMinMaxWaterTemperatureC = 25.0f;
 static constexpr float kMaxMaxWaterTemperatureC = 75.0f;
 static constexpr float kBoilerTestHeadroomC = 5.0f;
+static constexpr float kBoilerTestMaxFlowLph = 1000.0f;
+
+// Start near the installation's known operating point without exceeding the
+// bounded flow used by the boiler test's thermal safety calculation.
+inline float select_initial_test_flow_lph(float configured_flow_lph, float minimum_flow_lph) {
+  if (isnan(minimum_flow_lph) || minimum_flow_lph <= 0.0f) return NAN;
+  if (isnan(configured_flow_lph) || configured_flow_lph <= 0.0f) return minimum_flow_lph;
+  return fmaxf(minimum_flow_lph, fminf(configured_flow_lph, kBoilerTestMaxFlowLph));
+}
 
 inline float normalize_max_water_temperature_c(float max_c) {
   if (isnan(max_c)) max_c = kDefaultMaxWaterTemperatureC;
@@ -114,9 +123,9 @@ inline OperatingPoint compute_opentherm_operating_point(bool opentherm_selected,
   auto op = compute_operating_point(otb_max_capacity_w, inlet_c, max_c, base_flow_lph, cp_j_per_kgk, headroom_c);
   if (!op.feasible) return op;
 
-  const float selected_flow_lph = fmaxf(base_flow_lph, fminf(op.theoretical_flow_lph, 1000.0f));
+  const float selected_flow_lph = fmaxf(base_flow_lph, fminf(op.theoretical_flow_lph, kBoilerTestMaxFlowLph));
   op.target_flow_lph = selected_flow_lph;
-  op.flow_limited = op.theoretical_flow_lph > 1000.0f;
+  op.flow_limited = op.theoretical_flow_lph > kBoilerTestMaxFlowLph;
   return op;
 }
 

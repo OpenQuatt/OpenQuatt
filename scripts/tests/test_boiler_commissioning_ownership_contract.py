@@ -20,6 +20,10 @@ class BoilerCommissioningOwnershipContract(unittest.TestCase):
         self.assertIn('finish_task("FAILED: required boiler test flow cannot be reached"', BOILER_RUNTIME)
         self.assertIn("if (!flow_reachable(cfg, now_ms, flow_lph)) return;", BOILER_RUNTIME)
 
+    def test_boiler_test_flow_target_is_runtime_only(self) -> None:
+        self.assertIn("publish_transient_number_value(id(oq_flow_setpoint_lph)", BOILER_RUNTIME)
+        self.assertNotIn("set_number_value(id(oq_flow_setpoint_lph)", BOILER_RUNTIME)
+
     def test_dispatch_reuses_commissioning_temperature_policy(self) -> None:
         self.assertIn("oq_boiler_commissioning::commissioning_target_temperature_c", BOILER_DISPATCH)
         commissioning_start = BOILER_DISPATCH.index("} else if (commissioning_task_active) {")

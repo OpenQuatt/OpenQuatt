@@ -14,6 +14,7 @@ namespace oq_boiler_task {
 using oq_boiler_commissioning::compute_opentherm_operating_point;
 using oq_boiler_commissioning::normalize_max_water_temperature_c;
 using oq_boiler_commissioning::result_apply_allowed;
+using oq_boiler_commissioning::select_initial_test_flow_lph;
 
 static constexpr int TASK_NONE = oq_commissioning::TASK_NONE;
 static constexpr int TASK_BOILER_POWER_TEST = oq_commissioning::TASK_BOILER_POWER_TEST;
@@ -86,6 +87,8 @@ class BoilerPowerTestRuntime {
     }
 
     reset_test_state();
+    const float initial_test_flow_lph =
+        select_initial_test_flow_lph(id(oq_flow_setpoint_lph).state, cfg.target_flow_lph);
 
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     active_test_opentherm_ =
@@ -104,7 +107,7 @@ class BoilerPowerTestRuntime {
       }
       const float rated_w = id(oq_boiler_rated_heat_power).state;
       const auto op = compute_opentherm_operating_point(true, active_test_capacity_w_, rated_w, inlet_c, max_c,
-                                                        cfg.target_flow_lph);
+                                                        initial_test_flow_lph);
       if (!op.feasible) {
         oq_service_status::set_boiler_power_test("REFUSED: insufficient thermal headroom for boiler power test");
         ESP_LOGW("quatt.cm100.boiler", "Boiler test refused: %s (inlet=%.1fC max=%.1fC headroom=%.1fC)",
@@ -129,7 +132,7 @@ class BoilerPowerTestRuntime {
     reset_measurement_accumulators();
     prev_flow_setpoint_lph_ = id(oq_flow_setpoint_lph).state;
     flow_setpoint_saved_ = true;
-    active_test_flow_target_lph_ = cfg.target_flow_lph;
+    active_test_flow_target_lph_ = initial_test_flow_lph;
 
     id(oq_commissioning_task_code) = TASK_BOILER_POWER_TEST;
     id(oq_commissioning_request_pending) = false;
@@ -144,7 +147,7 @@ class BoilerPowerTestRuntime {
 
     ESP_LOGI("quatt.cm100.boiler", "Boiler test armed: initial target_flow=%.0fL/h saved_flow=%.0fL/h state=%d",
              active_test_flow_target_lph_, prev_flow_setpoint_lph_, id(oq_commissioning_state_code));
-    set_number_value(id(oq_flow_setpoint_lph), active_test_flow_target_lph_);
+    publish_transient_number_value(id(oq_flow_setpoint_lph), active_test_flow_target_lph_);
 
     oq_service_status::set_commissioning("BOILER TEST STARTED");
     publish_status("FLOW_SETTLING");
@@ -307,6 +310,12 @@ class BoilerPowerTestRuntime {
     call.perform();
   }
 
+  template <typename NumberEntity>
+  void publish_transient_number_value(NumberEntity& number_entity, float value) {
+    // Do not overwrite the restore_value preference with a temporary service target.
+    number_entity.publish_state(value);
+  }
+
   bool flow_on_target(float flow_lph, float flow_band_lph) const {
     return !isnan(flow_lph) && flow_lph > 0.0f && !isnan(active_test_flow_target_lph_) &&
            fabsf(flow_lph - active_test_flow_target_lph_) <= flow_band_lph;
@@ -321,7 +330,7 @@ class BoilerPowerTestRuntime {
 
   void restore_flow_setpoint() {
     if (!flow_setpoint_saved_) return;
-    set_number_value(id(oq_flow_setpoint_lph), prev_flow_setpoint_lph_);
+    publish_transient_number_value(id(oq_flow_setpoint_lph), prev_flow_setpoint_lph_);
     flow_setpoint_saved_ = false;
   }
 
@@ -464,7 +473,7 @@ class BoilerPowerTestRuntime {
       }
       const float rated_w = id(oq_boiler_rated_heat_power).state;
       const auto op = compute_opentherm_operating_point(true, active_test_capacity_w_, rated_w, inlet_c, max_c,
-                                                        cfg.target_flow_lph);
+                                                        active_test_flow_target_lph_);
       if (!op.feasible) {
         finish_task("FAILED: insufficient thermal headroom for boiler power test", STATE_FAILED, false, true);
         return;
@@ -476,7 +485,7 @@ class BoilerPowerTestRuntime {
                  "Preflow settled at %.0f L/h; theoretical flow %.0f L/h, selecting %.0f L/h%s and re-settling",
                  flow_lph, op.theoretical_flow_lph, op.target_flow_lph, op.flow_limited ? " (flow limited)" : "");
         active_test_flow_target_lph_ = op.target_flow_lph;
-        set_number_value(id(oq_flow_setpoint_lph), active_test_flow_target_lph_);
+        publish_transient_number_value(id(oq_flow_setpoint_lph), active_test_flow_target_lph_);
         stable_flow_count_ = 0;
         flow_reachability_.reset();
         id(oq_commissioning_state_since_ms) = now_ms;

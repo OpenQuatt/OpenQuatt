@@ -244,6 +244,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "boilerCvAssistEnabled",
       "boilerRatedHeatPower",
       "flowSelected",
+      "flowSetpoint",
       "flowKp",
       "flowKi",
       ...SERVICE_CONTROL_KEYS,

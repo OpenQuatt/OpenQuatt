@@ -10,6 +10,7 @@ globalThis.window = {
 };
 
 const { state } = await import("../js/src/core/state.js");
+const { SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
 const { getBoilerTestStatusCopy, getCommissioningProgressModel } = await import("../js/src/settings/service.js");
 
 function setBoilerEntities(heatPower = "—", result = "—", confidence = "—") {
@@ -35,6 +36,10 @@ test("getBoilerTestStatusCopy FLOW_SETTLING shows target and 2 min hint", () => 
   assert.match(copy, /Flow naar 800 L\/h/);
   assert.match(copy, /Min\. 2 min/);
   assert.match(copy, /Nu 812 L\/h/);
+});
+
+test("commissioning polling refreshes the temporary boiler-test flow target", () => {
+  assert(SETTINGS_GROUP_KEY_MAP.service.includes("flowSetpoint"));
 });
 
 test("getBoilerTestStatusCopy BOILER_SETTLING shows flow", () => {
