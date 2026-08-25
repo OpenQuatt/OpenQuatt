@@ -18,7 +18,7 @@ const commissioningRefreshGroups = [
     actions: ["boilerPowerTestStart", "boilerPowerTestAbort", "boilerPowerTestApply"],
     keys: [
       "commissioningStatus", "boilerPowerTestStatus", "boilerPowerTestActive", "boilerHeatPower",
-      "boilerPowerTestResult", "boilerRatedHeatPower", "flowSetpoint",
+      "boilerPowerTestResult", "boilerRatedHeatPower", "boilerPowerTestFlow", "flowSetpoint",
     ],
   },
   {

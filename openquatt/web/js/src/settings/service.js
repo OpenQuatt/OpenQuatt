@@ -838,6 +838,12 @@ import { renderModalShell } from "../core/modal-shell.js";
           title: "Boiler power test",
           copy: "Meet het effectieve boilervermogen bij stabiele flow en schrijf daarna een afgerond voorstel weg naar de boilerinstelling. Boilertest duurt meestal ongeveer 5 tot 10 minuten.",
           subcopy: `Beschikbaar verwarmingsvermogen: ${escapeHtml(boilerRatedPower)}`,
+          controls: boilerTaskRunning ? "" : renderSettingsSliderField(
+              "boilerPowerTestFlow",
+              "Tijdelijke testflow",
+              "Alleen voor deze installatie en boilertest. De normale verwarmingsflow wordt na afloop hersteld.",
+              "oq-settings-field--compact",
+            ),
           status: boilerStatusDisplay,
           statusCopy: boilerTaskWaitingForCm100
             ? "Wacht totdat CM100 actief is voordat je de boiler-test start."

@@ -40,6 +40,7 @@ test("getBoilerTestStatusCopy FLOW_SETTLING shows target and 2 min hint", () => 
 
 test("commissioning polling refreshes the temporary boiler-test flow target", () => {
   assert(SETTINGS_GROUP_KEY_MAP.service.includes("flowSetpoint"));
+  assert(SETTINGS_GROUP_KEY_MAP.service.includes("boilerPowerTestFlow"));
 });
 
 test("getBoilerTestStatusCopy BOILER_SETTLING shows flow", () => {

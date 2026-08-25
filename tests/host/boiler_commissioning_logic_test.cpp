@@ -16,12 +16,19 @@ void test_commissioning_temperature_policy() {
   assert(isnan(commissioning_target_temperature_c(50.0f, -1.0f)));
 }
 
-void test_initial_test_flow_uses_nearby_safe_operating_point() {
+void test_initial_test_flow_uses_installation_test_preference() {
   assert(select_initial_test_flow_lph(1300.0f, 800.0f) == 1000.0f);
   assert(select_initial_test_flow_lph(900.0f, 800.0f) == 900.0f);
   assert(select_initial_test_flow_lph(600.0f, 800.0f) == 800.0f);
   assert(select_initial_test_flow_lph(NAN, 800.0f) == 800.0f);
   assert(isnan(select_initial_test_flow_lph(900.0f, NAN)));
+}
+
+void test_dhw_only_interferes_with_opentherm_boiler_test() {
+  assert(boiler_test_dhw_interferes(true, true, true));
+  assert(!boiler_test_dhw_interferes(true, true, false));
+  assert(!boiler_test_dhw_interferes(true, false, true));
+  assert(!boiler_test_dhw_interferes(false, true, true));
 }
 
 void test_sufficient_headroom() {
@@ -164,7 +171,8 @@ void test_reachability_monitor_rejects_invalid_flow() {
 
 int main() {
   test_commissioning_temperature_policy();
-  test_initial_test_flow_uses_nearby_safe_operating_point();
+  test_initial_test_flow_uses_installation_test_preference();
+  test_dhw_only_interferes_with_opentherm_boiler_test();
   test_sufficient_headroom();
   test_insufficient_headroom_inlet_high();
   test_generic_helper_preserves_theoretical_flow();

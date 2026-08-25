@@ -11,12 +11,16 @@ static constexpr float kMaxMaxWaterTemperatureC = 75.0f;
 static constexpr float kBoilerTestHeadroomC = 5.0f;
 static constexpr float kBoilerTestMaxFlowLph = 1000.0f;
 
-// Start near the installation's known operating point without exceeding the
+// Use the installation-specific boiler-test preference without exceeding the
 // bounded flow used by the boiler test's thermal safety calculation.
-inline float select_initial_test_flow_lph(float configured_flow_lph, float minimum_flow_lph) {
+inline float select_initial_test_flow_lph(float configured_test_flow_lph, float minimum_flow_lph) {
   if (isnan(minimum_flow_lph) || minimum_flow_lph <= 0.0f) return NAN;
-  if (isnan(configured_flow_lph) || configured_flow_lph <= 0.0f) return minimum_flow_lph;
-  return fmaxf(minimum_flow_lph, fminf(configured_flow_lph, kBoilerTestMaxFlowLph));
+  if (isnan(configured_test_flow_lph) || configured_test_flow_lph <= 0.0f) return minimum_flow_lph;
+  return fmaxf(minimum_flow_lph, fminf(configured_test_flow_lph, kBoilerTestMaxFlowLph));
+}
+
+inline bool boiler_test_dhw_interferes(bool opentherm_selected, bool dhw_has_state, bool dhw_active) {
+  return opentherm_selected && dhw_has_state && dhw_active;
 }
 
 inline float normalize_max_water_temperature_c(float max_c) {

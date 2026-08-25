@@ -11,6 +11,7 @@
 
 namespace oq_boiler_task {
 
+using oq_boiler_commissioning::boiler_test_dhw_interferes;
 using oq_boiler_commissioning::compute_opentherm_operating_point;
 using oq_boiler_commissioning::normalize_max_water_temperature_c;
 using oq_boiler_commissioning::result_apply_allowed;
@@ -81,6 +82,10 @@ class BoilerPowerTestRuntime {
       oq_service_status::set_boiler_power_test("REFUSED: flow setpoint unavailable");
       return;
     }
+    if (!id(oq_boiler_power_test_flow_lph).has_state()) {
+      oq_service_status::set_boiler_power_test("REFUSED: boiler test flow unavailable");
+      return;
+    }
     if (cm_code != 100) {
       oq_service_status::set_boiler_power_test("REFUSED: not CM100");
       return;
@@ -88,12 +93,17 @@ class BoilerPowerTestRuntime {
 
     reset_test_state();
     const float initial_test_flow_lph =
-        select_initial_test_flow_lph(id(oq_flow_setpoint_lph).state, cfg.target_flow_lph);
+        select_initial_test_flow_lph(id(oq_boiler_power_test_flow_lph).state, cfg.target_flow_lph);
 
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     active_test_opentherm_ =
         id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
     if (active_test_opentherm_) {
+      if (boiler_test_dhw_interferes(true, id(otb_dhw_active).has_state(), id(otb_dhw_active).state)) {
+        oq_service_status::set_boiler_power_test("REFUSED: DHW active; retry without hot water or tap comfort");
+        reset_test_state();
+        return;
+      }
       const float max_c = normalize_max_water_temperature_c(id(max_water_temp_limit_c).state);
       float inlet_c = NAN;
       if (id(otb_return_water_temp).has_state() && !isnan(id(otb_return_water_temp).state)) {
@@ -125,9 +135,10 @@ class BoilerPowerTestRuntime {
 #endif
 
     ESP_LOGI("quatt.cm100.boiler",
-             "Boiler power test requested (cm=%d flow_mode=%s flow_sp=%.0fL/h current_task=%d active=%d)", cm_code,
-             id(oq_flow_control_mode).current_option().c_str(), id(oq_flow_setpoint_lph).state,
-             id(oq_commissioning_task_code), (int)id(oq_commissioning_active));
+             "Boiler power test requested (cm=%d flow_mode=%s normal_flow=%.0fL/h test_flow=%.0fL/h "
+             "current_task=%d active=%d)",
+             cm_code, id(oq_flow_control_mode).current_option().c_str(), id(oq_flow_setpoint_lph).state,
+             initial_test_flow_lph, id(oq_commissioning_task_code), (int)id(oq_commissioning_active));
 
     reset_measurement_accumulators();
     prev_flow_setpoint_lph_ = id(oq_flow_setpoint_lph).state;
@@ -257,6 +268,18 @@ class BoilerPowerTestRuntime {
       return;
     }
     if (!guards_ok()) return;
+
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    const int state_code = id(oq_commissioning_state_code);
+    const bool dhw_can_interfere =
+        state_code == STATE_FLOW_SETTLE || state_code == STATE_BOILER_SETTLE || state_code == STATE_MEASURE;
+    if (dhw_can_interfere &&
+        boiler_test_dhw_interferes(active_test_opentherm_, id(otb_dhw_active).has_state(), id(otb_dhw_active).state)) {
+      ESP_LOGW("quatt.cm100.boiler", "Boiler test failed because DHW became active (state=%d)", state_code);
+      finish_task("FAILED: DHW active; retry without hot water or tap comfort", STATE_FAILED, false, true);
+      return;
+    }
+#endif
 
     if (id(oq_commissioning_boiler_request)) id(oq_commissioning_boiler_request_updated_ms) = now_ms;
 
