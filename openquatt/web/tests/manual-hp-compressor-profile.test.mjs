@@ -16,14 +16,33 @@ test("CM100 geeft F20 alleen vrij voor een bevestigd uitgebreid V2-profiel", () 
     hpGeneration: { state: "V2", value: "V2" },
     hp1CompressorLevelProfile: { state: "V2 F0-F20", value: "V2 F0-F20" },
     hp2CompressorLevelProfile: { state: "Unknown / F0-F10 safe", value: "Unknown / F0-F10 safe" },
+    manualHp1Mode: { state: "Standby", value: "Standby" },
+    manualHp2Mode: { state: "Standby", value: "Standby" },
   };
 
-  assert.equal(getManualHpMaximumLevel("hp1CompressorLevelProfile"), 20);
-  assert.equal(getManualHpMaximumLevel("hp2CompressorLevelProfile"), 10);
-  assert.equal(getManualHpMaximumLevel("missingProfile"), 10);
+  assert.equal(getManualHpMaximumLevel("hp1CompressorLevelProfile", "manualHp1Mode"), 20);
+  assert.equal(getManualHpMaximumLevel("hp2CompressorLevelProfile", "manualHp2Mode"), 10);
+  assert.equal(getManualHpMaximumLevel("missingProfile", "manualHp1Mode"), 10);
+
+  state.entities.hp1CompressorLevelProfile = {
+    state: "V2 heating F0-F20",
+    value: "V2 heating F0-F20",
+  };
+  state.entities.manualHp1Mode = { state: "Heating", value: "Heating" };
+  assert.equal(getManualHpMaximumLevel("hp1CompressorLevelProfile", "manualHp1Mode"), 20);
+  state.entities.manualHp1Mode = { state: "Cooling", value: "Cooling" };
+  assert.equal(getManualHpMaximumLevel("hp1CompressorLevelProfile", "manualHp1Mode"), 10);
+
+  state.entities.hp1CompressorLevelProfile = {
+    state: "V2 cooling F0-F20",
+    value: "V2 cooling F0-F20",
+  };
+  assert.equal(getManualHpMaximumLevel("hp1CompressorLevelProfile", "manualHp1Mode"), 20);
+  state.entities.manualHp1Mode = { state: "Heating", value: "Heating" };
+  assert.equal(getManualHpMaximumLevel("hp1CompressorLevelProfile", "manualHp1Mode"), 10);
 
   state.entities.hpGeneration = { state: "V1.5", value: "V1.5" };
-  assert.equal(getManualHpMaximumLevel("hp1CompressorLevelProfile"), 10);
+  assert.equal(getManualHpMaximumLevel("hp1CompressorLevelProfile", "manualHp1Mode"), 10);
 });
 
 test("service hydrateert zowel de selectie als de gedetecteerde profielen", async () => {

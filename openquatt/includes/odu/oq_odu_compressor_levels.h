@@ -23,6 +23,8 @@ inline constexpr std::array<uint8_t, 11> V2_HEATING_MODEL_FREQUENCIES_HZ = {
 enum class CompressorLevelProfile : uint8_t {
   UNKNOWN = 0,
   V2_EXTENDED = 1,
+  V2_HEATING_EXTENDED = 2,
+  V2_COOLING_EXTENDED = 3,
 };
 
 struct LevelCommand {
@@ -35,18 +37,33 @@ struct RetainedLevel {
   int physical_level{0};
 };
 
-inline bool has_extended_compressor_levels(CompressorLevelProfile profile) {
-  return profile == CompressorLevelProfile::V2_EXTENDED;
+inline bool has_extended_compressor_levels(CompressorLevelProfile profile, int mode_code) {
+  if (profile == CompressorLevelProfile::V2_EXTENDED) return mode_code == 1 || mode_code == 2;
+  if (profile == CompressorLevelProfile::V2_HEATING_EXTENDED) return mode_code == 2;
+  if (profile == CompressorLevelProfile::V2_COOLING_EXTENDED) return mode_code == 1;
+  return false;
 }
 
 inline CompressorLevelProfile compressor_level_profile(const RuntimeFrequencySnapshot& snapshot) {
-  return has_extended_frequency_table(snapshot, 1) && has_extended_frequency_table(snapshot, 2)
-             ? CompressorLevelProfile::V2_EXTENDED
-             : CompressorLevelProfile::UNKNOWN;
+  const bool cooling_extended = has_extended_frequency_table(snapshot, 1);
+  const bool heating_extended = has_extended_frequency_table(snapshot, 2);
+  if (cooling_extended && heating_extended) return CompressorLevelProfile::V2_EXTENDED;
+  if (heating_extended) return CompressorLevelProfile::V2_HEATING_EXTENDED;
+  if (cooling_extended) return CompressorLevelProfile::V2_COOLING_EXTENDED;
+  return CompressorLevelProfile::UNKNOWN;
 }
 
 inline const char* compressor_level_profile_label(CompressorLevelProfile profile) {
-  return has_extended_compressor_levels(profile) ? "V2 F0-F20" : "Unknown / F0-F10 safe";
+  switch (profile) {
+    case CompressorLevelProfile::V2_EXTENDED:
+      return "V2 F0-F20";
+    case CompressorLevelProfile::V2_HEATING_EXTENDED:
+      return "V2 heating F0-F20";
+    case CompressorLevelProfile::V2_COOLING_EXTENDED:
+      return "V2 cooling F0-F20";
+    default:
+      return "Unknown / F0-F10 safe";
+  }
 }
 
 inline int physical_level_limit(bool configured_v2, const RuntimeFrequencySnapshot& snapshot, int mode_code) {

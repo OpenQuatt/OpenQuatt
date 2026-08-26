@@ -636,6 +636,35 @@ interval:
                   "no valid thermal mode for compressor request");
             }
 
+            oq_odu::LevelCommand level_command{};
+            if (applied > 0) {
+              level_command = manual_hp_service_active
+                  ? oq_odu::resolve_manual_level(
+                        configured_v2,
+                        runtime_frequency_snapshot(is_hp1),
+                        expected_mode,
+                        applied)
+                  : oq_odu::resolve_automatic_level(
+                        configured_v2,
+                        runtime_frequency_snapshot(is_hp1),
+                        expected_mode,
+                        applied);
+              if (level_command.control_level <= 0 ||
+                  level_command.physical_level <= 0) {
+                applied = 0;
+                level_command = {};
+                block_reason =
+                    "runtime frequency table cannot map compressor request";
+                candidate_block_reason =
+                    openquatt_decision_log::REASON_CANDIDATE_UNAVAILABLE;
+                (is_hp1 ? hp1_service_guard : hp2_service_guard) =
+                    "frequentietabel bevat geen bruikbare compressorstand";
+                log_hp_block_change(
+                    is_hp1,
+                    "runtime frequency table cannot map compressor request");
+              }
+            }
+
             if (applied == 0 && retained_level.control_level > 0) {
               apply_active_mode_hold(is_hp1, retained_level);
               publish_optimizer_reason("defrost_protect_hold");
@@ -668,6 +697,7 @@ interval:
                       });
               if (!active_mode_authorized) {
                 applied = 0;
+                level_command = {};
                 block_reason =
                     "waiting for incident-manager start release";
                 candidate_block_reason =
@@ -732,17 +762,6 @@ interval:
               publish_candidate_blocked(is_hp1, openquatt_decision_log::REASON_UNKNOWN, 0, 0);
             }
 
-            const auto level_command = manual_hp_service_active
-                ? oq_odu::resolve_manual_level(
-                      configured_v2,
-                      runtime_frequency_snapshot(is_hp1),
-                      expected_mode,
-                      applied)
-                : oq_odu::resolve_automatic_level(
-                      configured_v2,
-                      runtime_frequency_snapshot(is_hp1),
-                      expected_mode,
-                      applied);
             const int commanded_physical_level = level_command.physical_level;
 
             if (is_hp1) {

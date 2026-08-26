@@ -69,6 +69,14 @@ int main() {
   assert(oq_odu::resolve_automatic_level(true, extended, 1, 10).physical_level == 10);
   assert(oq_odu::resolve_automatic_level(true, extended, 2, 99).physical_level == 17);
   assert(oq_odu::resolve_automatic_level(true, extended, 2, -1).physical_level == 0);
+  auto no_automatic_frequency_below_ceiling = extended;
+  for (size_t level = 1; level < no_automatic_frequency_below_ceiling.heating.level_count; ++level) {
+    no_automatic_frequency_below_ceiling.heating.hz[level] = static_cast<uint8_t>(90U + level);
+  }
+  assert(oq_odu::validate_frequency_table(no_automatic_frequency_below_ceiling.heating));
+  const auto unmappable = oq_odu::resolve_automatic_level(true, no_automatic_frequency_below_ceiling, 2, 10);
+  assert(unmappable.control_level == 0);
+  assert(unmappable.physical_level == 0);
 
   // Missing runtime data preserves the legacy F0-F10 automatic fallback.
   auto invalid_new_v2 = unknown;
@@ -88,6 +96,20 @@ int main() {
 
   assert(oq_odu::compressor_level_profile(extended) == oq_odu::CompressorLevelProfile::V2_EXTENDED);
   assert(oq_odu::compressor_level_profile(old_v2) == oq_odu::CompressorLevelProfile::UNKNOWN);
+  auto heating_extended = extended;
+  heating_extended.cooling.level_count = oq_odu::LEGACY_FREQUENCY_LEVEL_COUNT;
+  assert(oq_odu::compressor_level_profile(heating_extended) == oq_odu::CompressorLevelProfile::V2_HEATING_EXTENDED);
+  assert(oq_odu::has_extended_compressor_levels(oq_odu::compressor_level_profile(heating_extended), 2));
+  assert(!oq_odu::has_extended_compressor_levels(oq_odu::compressor_level_profile(heating_extended), 1));
+  auto cooling_extended = extended;
+  cooling_extended.heating.level_count = oq_odu::LEGACY_FREQUENCY_LEVEL_COUNT;
+  assert(oq_odu::compressor_level_profile(cooling_extended) == oq_odu::CompressorLevelProfile::V2_COOLING_EXTENDED);
+  assert(oq_odu::has_extended_compressor_levels(oq_odu::compressor_level_profile(cooling_extended), 1));
+  assert(!oq_odu::has_extended_compressor_levels(oq_odu::compressor_level_profile(cooling_extended), 2));
+  assert(oq_odu::physical_level_limit(true, heating_extended, 2) == 20);
+  assert(oq_odu::physical_level_limit(true, heating_extended, 1) == 10);
+  assert(oq_odu::physical_level_limit(true, cooling_extended, 1) == 20);
+  assert(oq_odu::physical_level_limit(true, cooling_extended, 2) == 10);
 
   const auto retained = oq_odu::resolve_retained_level(true, false, 17, 10, 17, true, extended);
   assert(retained.control_level == 10);

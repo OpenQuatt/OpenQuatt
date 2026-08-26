@@ -54,6 +54,11 @@ class V2CompressorLevelContractTest(unittest.TestCase):
             ACTUATOR.index("applied = pick_allowed_capped"),
             ACTUATOR.rindex("resolve_automatic_level("),
         )
+        self.assertLess(
+            ACTUATOR.rindex("resolve_automatic_level("),
+            ACTUATOR.index("apply_start_gate_before_active_write"),
+        )
+        self.assertIn("runtime frequency table cannot map compressor request", ACTUATOR)
 
     def test_runtime_table_loading_is_read_only_fingerprint_gated_and_fail_closed(self) -> None:
         self.assertIn("BASE_FREQUENCY_TABLE_REGISTER", HP_IO)
@@ -79,8 +84,24 @@ class V2CompressorLevelContractTest(unittest.TestCase):
     def test_experimental_write_invalidates_and_then_reloads_control_snapshot(self) -> None:
         self.assertIn('x == "WRITE_QUEUED: runtime table write requested"', RUNTIME_EDITOR)
         self.assertIn("oq_odu::RuntimeFrequencySnapshotStorage{}", RUNTIME_EDITOR)
+        self.assertIn("runtime_frequency_reload_blocked_after_write) = true", RUNTIME_EDITOR)
+        self.assertIn("runtime_frequency_write_verification_pending) = true", RUNTIME_EDITOR)
+        self.assertIn('x.rfind("VERIFY_FAILED:", 0) == 0', RUNTIME_EDITOR)
         self.assertIn('x == "APPLIED: runtime table written and read back"', RUNTIME_EDITOR)
+        self.assertIn("runtime_frequency_reload_blocked_after_write) = false", RUNTIME_EDITOR)
+        self.assertIn("runtime_frequency_write_verification_pending) = false", RUNTIME_EDITOR)
         self.assertIn("script.execute: ${hp_id}_load_runtime_frequency_table_once", RUNTIME_EDITOR)
+
+    def test_failed_experimental_write_cannot_be_reaccepted_by_generic_retry(self) -> None:
+        self.assertIn("runtime_frequency_reload_blocked_after_write", HP_IO)
+        loader_block = yaml_block(
+            HP_IO,
+            "id: ${hp_id}_load_runtime_frequency_table_once",
+            "id: ${hp_id}_detect_odu_generation",
+        )
+        self.assertIn("if (id(${hp_id}_runtime_frequency_reload_blocked_after_write))", loader_block)
+        self.assertIn("!id(${hp_id}_runtime_frequency_reload_blocked_after_write)", HP_IO)
+        self.assertIn("if (id(${hp_id}_runtime_frequency_write_verification_pending))", RUNTIME_EDITOR)
 
     def test_offline_transition_invalidates_and_rechecks_profile(self) -> None:
         offline_block = yaml_block(HP_IO, "on_offline:", "on_online:")
@@ -107,7 +128,11 @@ class V2CompressorLevelContractTest(unittest.TestCase):
 
     def test_profile_label_matches_service_ui_gate(self) -> None:
         self.assertIn('"V2 F0-F20"', LEVEL_HEADER)
-        self.assertIn('=== "V2 F0-F20"', SERVICE_UI)
+        self.assertIn('"V2 heating F0-F20"', LEVEL_HEADER)
+        self.assertIn('"V2 cooling F0-F20"', LEVEL_HEADER)
+        self.assertIn('profile === "V2 F0-F20"', SERVICE_UI)
+        self.assertIn('mode === "Heating" && profile === "V2 heating F0-F20"', SERVICE_UI)
+        self.assertIn('mode === "Cooling" && profile === "V2 cooling F0-F20"', SERVICE_UI)
 
 
 if __name__ == "__main__":

@@ -427,6 +427,11 @@ button:
                   id(${hp_id}_odu_runtime_heating_f10),
               },
           };
+          if (id(${hp_id}_runtime_frequency_write_verification_pending)) {
+            oq_odu_runtime_frequency::publish_status(
+                refs, "BLOCKED: runtime table write verification pending");
+            return;
+          }
           oq_odu_runtime_frequency::apply_runtime_table(
               refs,
               id(${hp_id}_odu_runtime_frequency_table_enable)->state);
@@ -452,17 +457,27 @@ text_sensor:
                       oq_odu::next_request_token(
                           id(${hp_id}_compressor_level_profile_request_token));
                   id(${hp_id}_compressor_level_profile_request_pending) = false;
+                  id(${hp_id}_runtime_frequency_reload_blocked_after_write) = true;
+                  id(${hp_id}_runtime_frequency_write_verification_pending) = true;
                   id(${hp_id}_runtime_frequency_snapshot_storage) =
                       oq_odu::RuntimeFrequencySnapshotStorage{};
-                  id(${hp_id}_compressor_level_profile_code) =
-                      static_cast<int>(
-                          oq_odu::CompressorLevelProfile::UNKNOWN);
                   id(${hp_id}_compressor_level_profile).publish_state(
                       oq_odu::compressor_level_profile_label(
                           oq_odu::CompressorLevelProfile::UNKNOWN));
         - if:
             condition:
               lambda: |-
+                return x.rfind("VERIFY_FAILED:", 0) == 0;
+            then:
+              - lambda: |-
+                  // Keep control reloads blocked, but allow an explicit retry.
+                  id(${hp_id}_runtime_frequency_write_verification_pending) = false;
+        - if:
+            condition:
+              lambda: |-
                 return x == "APPLIED: runtime table written and read back";
             then:
+              - lambda: |-
+                  id(${hp_id}_runtime_frequency_reload_blocked_after_write) = false;
+                  id(${hp_id}_runtime_frequency_write_verification_pending) = false;
               - script.execute: ${hp_id}_load_runtime_frequency_table_once

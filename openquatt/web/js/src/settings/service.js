@@ -15,9 +15,17 @@ import { renderModalShell } from "../core/modal-shell.js";
     return `${levelText} (${frequencyText})`;
   }
 
-  export function getManualHpMaximumLevel(profileKey) {
+  export function getManualHpMaximumLevel(profileKey, modeKey) {
     const configuredV2 = getEntityStateText("hpGeneration").trim() === "V2";
-    return configuredV2 && getEntityStateText(profileKey).trim() === "V2 F0-F20" ? 20 : 10;
+    if (!configuredV2) return 10;
+
+    const profile = getEntityStateText(profileKey).trim();
+    if (profile === "V2 F0-F20") return 20;
+
+    const mode = getEntityStateText(modeKey).trim();
+    if (mode === "Heating" && profile === "V2 heating F0-F20") return 20;
+    if (mode === "Cooling" && profile === "V2 cooling F0-F20") return 20;
+    return 10;
   }
 
   export function isCommissioningTaskStatusBusy(status) {
@@ -463,8 +471,8 @@ import { renderModalShell } from "../core/modal-shell.js";
     const cm100TaskLocked = state.commissioningTaskLock === "cm100";
     const cm100Busy = state.loadingEntities || state.busyAction === "commissioningCm100Start" || state.busyAction === "commissioningCm100Stop" || cm100TaskLocked;
     const cm100Pending = Boolean(state.pendingCommissioningCm100Start);
-    const hp1ManualMaxLevel = getManualHpMaximumLevel("hp1CompressorLevelProfile");
-    const hp2ManualMaxLevel = getManualHpMaximumLevel("hp2CompressorLevelProfile");
+    const hp1ManualMaxLevel = getManualHpMaximumLevel("hp1CompressorLevelProfile", "manualHp1Mode");
+    const hp2ManualMaxLevel = getManualHpMaximumLevel("hp2CompressorLevelProfile", "manualHp2Mode");
     const hp1CompressorProfile = getSettingsTextStatValue("hp1CompressorLevelProfile", "F0-F10 veilig");
     const hp2CompressorProfile = getSettingsTextStatValue("hp2CompressorLevelProfile", "F0-F10 veilig");
     const cm100StartDisabled = cm100Busy || cm100Ready || cm100WaitingForCm100;

@@ -39,8 +39,6 @@ esphome:
           id(${hp_id}_generation_variant_code) =
               static_cast<int>(oq_odu::Variant::UNKNOWN);
           id(${hp_id}_runtime_frequency_snapshot_storage) = {};
-          id(${hp_id}_compressor_level_profile_code) =
-              static_cast<int>(oq_odu::CompressorLevelProfile::UNKNOWN);
           id(${hp_id}_compressor_level_profile_request_pending) = false;
           id(${hp_id}_compressor_level_profile_request_token) = 0U;
           id(${hp_id}_runtime_frequency_retry_ms) = 0U;
@@ -80,8 +78,6 @@ modbus_controller:
                     id(${hp_id}_compressor_level_profile_request_token));
             id(${hp_id}_compressor_level_profile_request_pending) = false;
             id(${hp_id}_runtime_frequency_retry_ms) = 0U;
-            id(${hp_id}_compressor_level_profile_code) =
-                static_cast<int>(oq_odu::CompressorLevelProfile::UNKNOWN);
             id(${hp_id}_compressor_level_profile).publish_state(
                 oq_odu::compressor_level_profile_label(
                     oq_odu::CompressorLevelProfile::UNKNOWN));
@@ -199,13 +195,6 @@ globals:
     restore_value: no
     initial_value: 'std::array<uint8_t, 46>{}'
 
-  # The user-facing capability profile is derived from the fingerprint and
-  # validated per-mode runtime tables. Table contents never detect hardware.
-  - id: ${hp_id}_compressor_level_profile_code
-    type: int
-    restore_value: no
-    initial_value: '0'
-
   - id: ${hp_id}_compressor_level_profile_request_pending
     type: bool
     restore_value: no
@@ -220,6 +209,18 @@ globals:
     type: uint32_t
     restore_value: no
     initial_value: '0'
+
+  # Set while an experimental runtime-table write has not passed its own
+  # readback verification. Generic retries must not accept mixed values.
+  - id: ${hp_id}_runtime_frequency_reload_blocked_after_write
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+  - id: ${hp_id}_runtime_frequency_write_verification_pending
+    type: bool
+    restore_value: no
+    initial_value: 'false'
 
 # ----------------------------
 # ODU GENERATION DETECTION
@@ -291,9 +292,6 @@ script:
                   id(${hp_id}_runtime_frequency_snapshot_storage) =
                       oq_odu::encode_runtime_frequency_snapshot(
                           pending_snapshot);
-                  id(${hp_id}_compressor_level_profile_code) =
-                      static_cast<int>(
-                          oq_odu::CompressorLevelProfile::UNKNOWN);
                   id(${hp_id}_compressor_level_profile).publish_state(
                       oq_odu::compressor_level_profile_label(
                           oq_odu::CompressorLevelProfile::UNKNOWN));
@@ -378,6 +376,10 @@ script:
     mode: restart
     then:
       - lambda: |-
+          if (id(${hp_id}_runtime_frequency_reload_blocked_after_write)) {
+            ESP_LOGW("quatt.odu", "%sRuntime frequency table reload blocked until experimental write verification succeeds", "${prefix}");
+            return;
+          }
           const uint32_t request_token =
               oq_odu::next_request_token(
                   id(${hp_id}_compressor_level_profile_request_token));
@@ -432,8 +434,6 @@ script:
                           oq_odu::encode_runtime_frequency_snapshot(snapshot);
                       const auto profile =
                           oq_odu::compressor_level_profile(snapshot);
-                      id(${hp_id}_compressor_level_profile_code) =
-                          static_cast<int>(profile);
                       id(${hp_id}_compressor_level_profile).publish_state(
                           oq_odu::compressor_level_profile_label(profile));
                     }
@@ -480,8 +480,6 @@ script:
                               const auto extended_profile =
                                   oq_odu::compressor_level_profile(
                                       extended_snapshot);
-                              id(${hp_id}_compressor_level_profile_code) =
-                                  static_cast<int>(extended_profile);
                               id(${hp_id}_compressor_level_profile).publish_state(
                                   oq_odu::compressor_level_profile_label(
                                       extended_profile));
@@ -1813,7 +1811,8 @@ interval:
             if (retry_due && table_incomplete &&
                 id(${hp_id}_odu_generation_detection_complete) &&
                 !id(${hp_id}_odu_generation_request_pending) &&
-                !id(${hp_id}_compressor_level_profile_request_pending)) {
+                !id(${hp_id}_compressor_level_profile_request_pending) &&
+                !id(${hp_id}_runtime_frequency_reload_blocked_after_write)) {
               id(${hp_id}_runtime_frequency_retry_ms) = now == 0U ? 1U : now;
               id(${hp_id}_load_runtime_frequency_table_once).execute();
               return;

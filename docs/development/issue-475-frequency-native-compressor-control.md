@@ -130,7 +130,10 @@ Op de bekende nieuwe V2-tabel resulteert dat in F0/F1/F2/F3/F7/F9/F10/F13/F15/F1
 - incomplete, aflopende en buiten-bereik responses;
 - heating/cooling extension onafhankelijk geldig of ongeldig;
 - request-token invalidatie en timeout houden F11–F20 gesloten;
+- een gedeeltelijk geldige V2-extension geeft F11–F20 alleen vrij voor de gevalideerde mode;
+- een mislukte experimentele write blijft buiten het controlpad tot de eigen readback slaagt;
 - aangepaste V2-tabel gebruikt de dichtstbijzijnde kandidaat met een lagere tie-break;
+- een positieve aanvraag zonder kandidaat tot en met 90 Hz activeert geen werkmodus of startautorisatie;
 - automatische V2-heating blijft maximaal 90 Hz;
 - CM100 vereist configuratie, fingerprint en een geldige mode-extension;
 - defrost-hold behoudt modellevel en fysiek level afzonderlijk;
@@ -160,6 +163,7 @@ Op de bekende nieuwe V2-tabel resulteert dat in F0/F1/F2/F3/F7/F9/F10/F13/F15/F1
 - 2026-08-26: incomplete identity- of tabelreads behouden de laatst gevalideerde snapshot. Een fingerprintwijziging invalidateert deze snapshot voordat een nieuwe layout wordt gelezen.
 - 2026-08-26: de bestaande experimentele F0–F10-editor invalidateert de snapshot vóór een write en laadt hem pas opnieuw na volledige readback. F11–F20-editorondersteuning blijft stap 2.
 - 2026-08-26: koude regressie-audit: de tijdelijke afhankelijkheid van een geldige tabelread voor alle automatische starts verwijderd. Alleen V2-heating gebruikt de Hz-mapping; ontbrekende data behoudt het bestaande F0–F10-pad.
-- 2026-08-26: softwarevalidatie groen: 39 hosttests, 95 Python-contracttests, 252 webtests, C++-formatcheck en volledige ESPHome-compile van `configs/heatpump_controller_q/duo_wifi.yaml`.
+- 2026-08-26: softwarevalidatie groen: 39 hosttests, 96 Python-contracttests, 254 webtests, C++-formatcheck en volledige ESPHome-compile van `configs/heatpump_controller_q/duo_wifi.yaml`.
 - 2026-08-26: V1.5 Duo-HIL groen voor OTA/boot, aangepaste runtime-tabellen, F0-F10 fail-closed begrenzing op beide ODU's, minimum-runtime-stop en terugkeer naar CM0.
+- 2026-08-26: reviewfixes: per-mode F20-capability blijft zichtbaar, onbevestigde en overlappende tabelwrites blijven buiten het controlpad en een niet-mapbaar verzoek wordt vóór de startgate gestopt.
 - 2026-08-26: resterende releasegate is HIL op V1, V2 vroeg en V2 nieuw, inclusief reconnect, incomplete reads, defrost-hold en CM100 F11-F20.
