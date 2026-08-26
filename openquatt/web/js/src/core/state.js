@@ -11,25 +11,50 @@ function getStoredDebugRecordingAcknowledgedId() {
 
 export const DEFAULT_TREND_WINDOW_HOURS = 24;
 export const TREND_WINDOW_HOURS_OPTIONS = [3, 12, 24, 72, 168, 336, 720];
-const QUICK_START_RESUME_STEP_STORAGE_KEY = "oq-quickstart-resume-step";
+const QUICK_START_SETUP_INSTALL_STORAGE_KEY = "oq-quickstart-setup-install";
+const QUICK_START_SETUP_INSTALL_STATUSES = new Set(["pending", "successful-phase", "complete"]);
 
-export function consumeStoredQuickStartResumeStep() {
+export function getStoredQuickStartSetupInstall() {
   try {
-    const step = String(window.sessionStorage.getItem(QUICK_START_RESUME_STEP_STORAGE_KEY) || "");
-    window.sessionStorage.removeItem(QUICK_START_RESUME_STEP_STORAGE_KEY);
-    return step === "generation" ? step : "setup";
+    const value = JSON.parse(window.sessionStorage.getItem(QUICK_START_SETUP_INSTALL_STORAGE_KEY) || "null");
+    const targetTopology = String(value?.targetTopology || "");
+    const targetConnection = String(value?.targetConnection || "");
+    const status = String(value?.status || "");
+    if (!QUICK_START_SETUP_INSTALL_STATUSES.has(status)
+      || !["single", "duo"].includes(targetTopology)
+      || !["wifi", "eth"].includes(targetConnection)) {
+      return null;
+    }
+    return {
+      status,
+      targetTopology,
+      targetConnection,
+      targetVersion: String(value?.targetVersion || ""),
+      startedAt: Number.isFinite(Number(value?.startedAt)) ? Number(value.startedAt) : 0,
+    };
   } catch (_error) {
-    return "setup";
+    return null;
   }
 }
 
-export function storeQuickStartResumeStep(step) {
+export function storeQuickStartSetupInstall(record) {
   try {
-    window.sessionStorage.setItem(QUICK_START_RESUME_STEP_STORAGE_KEY, step);
+    window.sessionStorage.setItem(QUICK_START_SETUP_INSTALL_STORAGE_KEY, JSON.stringify(record));
   } catch (_error) {
-    // Keep the in-memory step when storage is unavailable.
+    // Keep the in-memory install state when storage is unavailable.
   }
 }
+
+export function clearQuickStartSetupInstall() {
+  try {
+    window.sessionStorage.removeItem(QUICK_START_SETUP_INSTALL_STORAGE_KEY);
+  } catch (_error) {
+    // Keep cleanup best-effort in embedded browsers.
+  }
+}
+
+const initialQuickStartSetupInstall = getStoredQuickStartSetupInstall();
+const initialQuickStartSetupComplete = initialQuickStartSetupInstall?.status === "complete";
 
 export const state = {
   mounted: false,
@@ -54,7 +79,7 @@ export const state = {
   interfacePanelOpen: getStoredInterfacePanelOpen(),
   devPanelOpen: __OQ_PREVIEW__ && getStoredDevPanelOpen(),
   nativeOpen: getStoredSurface() === "native",
-  currentStep: consumeStoredQuickStartResumeStep(),
+  currentStep: initialQuickStartSetupComplete ? "generation" : "setup",
   quickStartModalMode: "wizard",
   settingsGroup: getStoredSettingsGroup(),
   appView: "",
@@ -84,12 +109,32 @@ export const state = {
   controlNotice: "",
   ...createDiagnosticsState(getStoredDebugRecordingAcknowledgedId()),
   ...createSettingsState(),
+  quickStartSetupUpdateComplete: initialQuickStartSetupComplete,
   updateModalOpen: false,
   systemModal: "",
   ...createSecurityState(),
   ...createFirmwareState(),
   ...createMotionState(getPrefersReducedMotion()),
 };
+
+export function restoreStoredQuickStartSetupInstall() {
+  const record = getStoredQuickStartSetupInstall();
+  if (!record || record.status === "complete") {
+    return record;
+  }
+  state.updateInstallMode = "quickstart-setup";
+  state.updateInstallTargetConnection = record.targetConnection;
+  state.updateInstallTargetTopology = record.targetTopology;
+  state.updateInstallTargetVersion = record.targetVersion;
+  state.updateInstallSuccessfulPhaseObserved = record.status === "successful-phase";
+  state.updateInstallResumedAfterReload = true;
+  state.updateInstallPhaseHint = record.status === "successful-phase" ? "rebooting" : "starting";
+  state.updateInstallProgressHint = record.status === "successful-phase" ? 100 : 0;
+  state.quickStartSetupDraft = `${record.targetTopology}:${record.targetConnection}`;
+  return record;
+}
+
+restoreStoredQuickStartSetupInstall();
 
 export function getStoredOverviewTheme() {
   try {

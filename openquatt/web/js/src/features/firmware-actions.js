@@ -6,9 +6,9 @@ import { setEntityBackupValue } from "../core/entity-backup.js";
 import { getEntityValue } from "../core/entity-store.js";
 import { isLikelyDeviceConnectionError, refreshEntities } from "../core/entity-sync.js";
 import { armOtaRefresh, awaitOtaEvidence, beginDeviceReconnect, clearOtaRefresh } from "../core/device-reconnect.js";
-import { state, storeQuickStartResumeStep } from "../core/state.js";
+import { clearQuickStartSetupInstall, state, storeQuickStartSetupInstall } from "../core/state.js";
 import { getFirmwareConnectionLabel, getFirmwareTopologyLabel, getInstallationTopology } from "./device-context.js";
-import { beginFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasKnownFirmwareTargetVersion, isFirmwareDowngradeAvailable, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection } from "./firmware-update.js";
+import { beginFirmwareOtaQuietWindow, clearFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasKnownFirmwareTargetVersion, isFirmwareDowngradeAvailable, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection } from "./firmware-update.js";
 import { render } from "../core/render-scheduler.js";
 
   export async function requestFirmwareOta(path, options) {
@@ -346,11 +346,13 @@ import { render } from "../core/render-scheduler.js";
     state.updateInstallTargetConnection = model.targetConnection;
     state.updateInstallTargetTopology = model.targetTopology;
     state.updateInstallTargetVersion = getFirmwareCurrentVersion() || "";
+    state.quickStartSetupUpdateComplete = false;
     primeFirmwareInstallProgressHints();
     state.controlError = "";
     state.controlNotice = "";
     render();
 
+    let preservePendingInstall = false;
     try {
       const targetReady = await setFirmwareUpdateTarget(model.targetOption, {
         force: true,
@@ -360,6 +362,16 @@ import { render } from "../core/render-scheduler.js";
         throw new Error("Doelmanifest is nog niet geladen. Probeer het over enkele seconden opnieuw.");
       }
       state.updateInstallTargetVersion = getFirmwareLatestVersion(getFirmwareUpdateEntity() || {}) || getFirmwareCurrentVersion() || "";
+      if (isFirmwareDowngradeAvailable()) {
+        throw new Error("Quick Start voert geen automatische downgrade uit. Bevestig de downgrade eerst bewust via Instellingen → Systeem → Updates.");
+      }
+      storeQuickStartSetupInstall({
+        status: "pending",
+        targetTopology: model.targetTopology,
+        targetConnection: model.targetConnection,
+        targetVersion: state.updateInstallTargetVersion,
+        startedAt: Date.now(),
+      });
       primeFirmwareInstallProgressHints();
       render();
 
@@ -375,15 +387,34 @@ import { render } from "../core/render-scheduler.js";
         state.updateInstallCompleted = true;
         state.updateInstallCompletedVersion = getFirmwareCurrentVersion() || state.updateInstallTargetVersion || "";
         state.currentStep = "generation";
-        storeQuickStartResumeStep("generation");
+        state.quickStartSetupUpdateComplete = true;
+        storeQuickStartSetupInstall({
+          status: "complete",
+          targetTopology: model.targetTopology,
+          targetConnection: model.targetConnection,
+          targetVersion: state.updateInstallCompletedVersion,
+          startedAt: Date.now(),
+        });
         state.controlNotice = "";
       } else {
+        preservePendingInstall = true;
         state.controlNotice = `Configuratie en software-update voor ${model.targetBuildLabel} is gestart. Wacht tot het device opnieuw bereikbaar is.`;
       }
     } catch (error) {
-      state.controlError = `Configuratie en software-update is mislukt. ${error.message}`;
+      if (state.ota.wait) {
+        preservePendingInstall = true;
+        state.controlNotice = `Configuratie en software-update voor ${model.targetBuildLabel} is gestart. OpenQuatt controleert het resultaat zodra de controller terug is.`;
+      } else {
+        clearQuickStartSetupInstall();
+        state.controlError = `Configuratie en software-update is mislukt. ${error.message}`;
+      }
     } finally {
-      resetFirmwareInstallUiState();
+      if (preservePendingInstall) {
+        state.updateInstallBusy = false;
+        clearFirmwareOtaQuietWindow();
+      } else {
+        resetFirmwareInstallUiState();
+      }
       render();
     }
   }
@@ -400,7 +431,9 @@ import { render } from "../core/render-scheduler.js";
       return;
     }
     if (!model.canInstall) {
-      state.controlError = "Deze firmware kan de gekozen configuratie en software nog niet direct installeren.";
+      state.controlError = model.downgradeAvailable
+        ? "Quick Start voert geen automatische downgrade uit. Bevestig de downgrade eerst bewust via Instellingen → Systeem → Updates."
+        : "Deze firmware kan de gekozen configuratie en software nog niet direct installeren.";
       render();
       return;
     }

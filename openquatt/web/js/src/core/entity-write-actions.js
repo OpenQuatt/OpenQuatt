@@ -10,7 +10,7 @@ import {
 } from "./incident-monitoring.js";
 import { setAppView } from "./navigation.js";
 import { render } from "./render-scheduler.js";
-import { state } from "./state.js";
+import { clearQuickStartSetupInstall, state } from "./state.js";
 import { pollFirmwareUpdateState, primeFirmwareUpdateState } from "../features/firmware-update.js";
 import { updateFirmwareState } from "./feature-state.js";
 import { stopLoginAuthStatusPolling } from "../features/security-actions.js";
@@ -529,6 +529,8 @@ export async function triggerButton(action) {
       ? "Setup gemarkeerd als afgerond."
       : "Quick Start teruggezet naar het begin. Huidige tuningwaarden blijven voorlopig staan.";
     await refreshEntities(["setupComplete"], "state");
+    clearQuickStartSetupInstall();
+    state.quickStartSetupUpdateComplete = false;
     if (action === "reset") {
       state.currentStep = QUICK_STEPS[0].id;
       state.quickStartSetupDraft = "";

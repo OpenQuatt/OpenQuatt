@@ -6,7 +6,7 @@ import { createScrollKeeper } from "../core/scroll-keeper.js";
 import { renderModalShell } from "../core/modal-shell.js";
 import { state } from "../core/state.js";
 import { getDeviceMeta, getFirmwareBuildConnection, getInstallationTopology } from "./device-context.js";
-import { getFirmwareBuildSwitchModel, getFirmwareProgressModel } from "./firmware-update.js";
+import { getFirmwareBuildSwitchModel, getFirmwareProgressModel, reconcileStoredQuickStartSetupInstall } from "./firmware-update.js";
 import { getOduGenerationDetectionModel } from "./odu-generation-ui.js";
 import { formatSettingsOptionLabel, renderSettingsFieldCard, renderSettingsInfoToggle } from "../settings/controls.js";
 import { renderCurveGraph, renderFlowSettingsFields, renderHeatingCurveProfileField, renderHeatingStrategyExplainCards, renderPowerHouseAdvancedField, renderPowerHouseBaseFields, renderSettingsCurveInputs, renderStrategySelectionFields } from "../settings/heating.js";
@@ -104,7 +104,9 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
               </button>
             </div>
             ${!model.canInstall && !busy ? `<p class="oq-helper-modal-note oq-helper-modal-note--muted">${escapeHtml(
-              !model.targetEntityAvailable || !model.installActionAvailable
+              model.downgradeAvailable
+                ? "Quick Start voert geen automatische downgrade uit. Bevestig deze eerst bewust via Instellingen → Systeem → Updates."
+                : !model.targetEntityAvailable || !model.installActionAvailable
                 ? "De firmwarebediening wordt nog geladen. Wacht een moment en probeer opnieuw."
                 : "Deze firmware mist nog het vereiste OTA-target voor de gekozen configuratie.",
             )}</p>` : ""}
@@ -791,6 +793,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
   }
 
   export function renderActiveStep() {
+    reconcileStoredQuickStartSetupInstall();
     const activeStep = getCurrentQuickStep().id;
     if (activeStep === "setup") {
       return renderSetupWorkspace();
@@ -833,6 +836,14 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
     return QUICK_STEPS.filter((step) => (step.id !== "setup" || isQEdition) && (!step.optionalEntity || hasEntity(step.optionalEntity)));
   }
 
+  export function isQuickStartStepSelectionAllowed(stepId) {
+    const steps = getQuickSteps();
+    const setupIndex = steps.findIndex((step) => step.id === "setup");
+    const targetIndex = steps.findIndex((step) => step.id === stepId);
+    return targetIndex !== -1
+      && (setupIndex === -1 || state.quickStartSetupUpdateComplete || targetIndex <= setupIndex);
+  }
+
   export function getQuickStepKicker(stepId) {
     const index = getQuickSteps().findIndex((step) => step.id === stepId);
     return `Stap ${Math.max(0, index) + 1}`;
@@ -852,6 +863,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
   export function renderStepOverview(compact = false) {
     return getQuickSteps().map((step, index) => {
       const stepStatus = getQuickStepStatus(index);
+      const selectionAllowed = isQuickStartStepSelectionAllowed(step.id);
       return `
         <button
           class="oq-helper-field oq-helper-field--step${compact ? " oq-helper-field--compact" : ""} is-${stepStatus.tone}"
@@ -859,6 +871,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
           data-oq-action="select-step"
           data-step-id="${escapeHtml(step.id)}"
           aria-current="${stepStatus.current ? "step" : "false"}"
+          ${selectionAllowed ? "" : "disabled"}
         >
           <div class="oq-helper-field-step-head">
             <h3>${String(index + 1).padStart(2, "0")}. ${escapeHtml(step.title)}</h3>
@@ -882,7 +895,12 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
   export function selectQuickStepByOffset(offset) {
     const steps = getQuickSteps();
     const nextIndex = Math.min(steps.length - 1, Math.max(0, getCurrentQuickStepIndex() + offset));
-    state.currentStep = steps[nextIndex]?.id || QUICK_STEPS[0].id;
+    const nextStepId = steps[nextIndex]?.id || QUICK_STEPS[0].id;
+    if (!isQuickStartStepSelectionAllowed(nextStepId)) {
+      return false;
+    }
+    state.currentStep = nextStepId;
+    return true;
   }
 
   export function renderQuickStartStepNav(options = {}) {

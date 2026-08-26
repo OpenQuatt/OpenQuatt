@@ -7,7 +7,7 @@ import { startEntityPolling, stopEntityPolling } from "../core/entity-polling-co
 import { isFirmwareOtaQuietActive } from "../core/firmware-quiet.js";
 import { updateFirmwareState } from "../core/feature-state.js";
 import { renderModalShell } from "../core/modal-shell.js";
-import { state } from "../core/state.js";
+import { clearQuickStartSetupInstall, getStoredQuickStartSetupInstall, state, storeQuickStartSetupInstall } from "../core/state.js";
 import { getDeviceMeta, getFirmwareAlternateConnection, getFirmwareAlternateTopology, getFirmwareBuildConnection, getFirmwareBuildLabelFor, getFirmwareConnectionLabel, getFirmwareDeviceLabel, getFirmwareHardwareProfile, getFirmwareTopologyLabel, getInstallationTopology, normalizeFirmwareConnection, normalizeInstallationTopologyLabel } from "./device-context.js";
 import { closeWebServerLogStream } from "./webserver-logs.js";
 import { escapeHtml } from "../core/html.js";
@@ -108,13 +108,15 @@ import { render } from "../core/render-scheduler.js";
     const targetEntityAvailable = hasEntity("firmwareUpdateTarget");
     const targetOptionAvailable = hasFirmwareUpdateTargetOption(targetOption);
     const installActionAvailable = hasEntity("installFirmwareUpdateTarget");
+    const downgradeAvailable = isFirmwareDowngradeAvailable();
 
     return {
       available: valid,
       canInstall: valid
         && targetEntityAvailable
         && targetOptionAvailable
-        && installActionAvailable,
+        && installActionAvailable
+        && !downgradeAvailable,
       canSwitch: valid
         && targetOption !== "current build"
         && targetEntityAvailable
@@ -123,6 +125,7 @@ import { render } from "../core/render-scheduler.js";
       targetEntityAvailable,
       targetOptionAvailable,
       installActionAvailable,
+      downgradeAvailable,
       currentTopology,
       currentConnection,
       targetTopology: topology,
@@ -318,13 +321,65 @@ import { render } from "../core/render-scheduler.js";
     }
     const expectedTopology = normalizeInstallationTopologyLabel(state.updateInstallTargetTopology);
     const expectedConnection = normalizeFirmwareConnection(state.updateInstallTargetConnection);
-    const rebootConfirmed = Boolean(state.ota.id && !state.ota.wait);
+    const rebootConfirmed = Boolean(state.ota.id && !state.ota.wait)
+      || (state.updateInstallResumedAfterReload && !isFirmwareProgressActive());
     return expectedTopology
       && expectedConnection
       && rebootConfirmed
+      && state.updateInstallSuccessfulPhaseObserved
       && getInstallationTopology() === expectedTopology
       && getFirmwareBuildConnection() === expectedConnection
-      && !isFirmwareProgressActive();
+      && hasInstalledFirmwareTargetVersion()
+      && !isFirmwareProgressActive()
+      && !isFirmwareUpdateInstalling();
+  }
+
+  export function markQuickStartSetupInstallSuccessfulPhase() {
+    if (state.updateInstallMode !== "quickstart-setup") {
+      return;
+    }
+    state.updateInstallSuccessfulPhaseObserved = true;
+    const record = getStoredQuickStartSetupInstall();
+    if (record && record.status !== "complete") {
+      storeQuickStartSetupInstall({ ...record, status: "successful-phase" });
+    }
+  }
+
+  export function reconcileStoredQuickStartSetupInstall() {
+    if (state.updateInstallMode !== "quickstart-setup" || state.updateInstallBusy) {
+      return false;
+    }
+    const record = getStoredQuickStartSetupInstall();
+    if (!record || record.status === "complete") {
+      return false;
+    }
+    const failureMessage = getFirmwareInstallFailureMessage();
+    if (failureMessage) {
+      clearQuickStartSetupInstall();
+      resetFirmwareInstallUiState();
+      state.controlError = failureMessage;
+      return false;
+    }
+    if (getFirmwareProgressPhase() === "rebooting") {
+      markQuickStartSetupInstallSuccessfulPhase();
+    }
+    if (isQuickStartSetupInstallCompletionConfirmed()) {
+      storeQuickStartSetupInstall({ ...record, status: "complete" });
+      state.quickStartSetupUpdateComplete = true;
+      state.currentStep = "generation";
+      state.updateInstallCompleted = true;
+      state.updateInstallCompletedVersion = getFirmwareCurrentVersion() || state.updateInstallTargetVersion || "";
+      state.controlError = "";
+      state.controlNotice = "";
+      resetFirmwareInstallUiState();
+      return true;
+    }
+    if (record.startedAt && Date.now() - record.startedAt > 600000) {
+      clearQuickStartSetupInstall();
+      resetFirmwareInstallUiState();
+      state.controlError = "De eerdere software-update kon niet worden bevestigd. Controleer de verbinding en probeer opnieuw.";
+    }
+    return false;
   }
 
   export function isFirmwareUpdateJustCompleted() {
@@ -341,6 +396,8 @@ import { render } from "../core/render-scheduler.js";
       updateInstallPhaseHint: "",
       updateInstallProgressHint: Number.NaN,
       updateInstallStatusPollObserved: false,
+      updateInstallSuccessfulPhaseObserved: false,
+      updateInstallResumedAfterReload: false,
       updateInstallMode: "",
       updateInstallTargetConnection: "",
       updateInstallTargetTopology: "",
@@ -353,6 +410,8 @@ import { render } from "../core/render-scheduler.js";
     state.updateInstallPhaseHint = "starting";
     state.updateInstallProgressHint = 0;
     state.updateInstallStatusPollObserved = false;
+    state.updateInstallSuccessfulPhaseObserved = false;
+    state.updateInstallResumedAfterReload = false;
   }
 
   export function resetFirmwareManualUploadSelection() {
@@ -436,11 +495,17 @@ import { render } from "../core/render-scheduler.js";
     const rawPercent = getFirmwareProgressPercent();
     const hintedPercent = Number.isNaN(state.updateInstallProgressHint) ? 0 : Math.round(state.updateInstallProgressHint);
     const basePercent = hasLivePhase && !Number.isNaN(rawPercent) ? Math.round(rawPercent) : hintedPercent;
+    const quickStartSetup = state.updateInstallMode === "quickstart-setup";
+    const quickStartSetupPending = quickStartSetup
+      && getStoredQuickStartSetupInstall()?.status !== "complete";
     const switchesBuild = state.updateInstallMode === "topology-switch"
-      || state.updateInstallMode === "build-switch"
-      || state.updateInstallMode === "quickstart-setup";
+      || state.updateInstallMode === "build-switch";
+    const quickStartTargetBuildLabel = getFirmwareBuildLabelFor(
+      state.updateInstallTargetTopology,
+      state.updateInstallTargetConnection,
+    );
 
-    if (!isFirmwareProgressActive() && !state.updateInstallBusy) {
+    if (!isFirmwareProgressActive() && !state.updateInstallBusy && !quickStartSetupPending) {
       return null;
     }
 
@@ -454,6 +519,8 @@ import { render } from "../core/render-scheduler.js";
           ? "De stabiele main-firmware is geplaatst. Het device start opnieuw op en komt daarna vanzelf terug."
           : state.updateInstallMode === "connection-switch"
           ? "Firmware is geplaatst. Het device start opnieuw op en komt daarna via de gekozen verbinding terug."
+          : quickStartSetup
+          ? `Software voor ${quickStartTargetBuildLabel} is geplaatst. De controller start opnieuw op met deze configuratie.`
           : switchesBuild
           ? "Firmware is geplaatst. Het device start opnieuw op en komt daarna met de gekozen opstelling terug."
           : "Firmware is geplaatst. Het device start nu opnieuw op en komt daarna vanzelf terug.",
@@ -480,6 +547,8 @@ import { render } from "../core/render-scheduler.js";
           ? `De stabiele main-firmware wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
           : state.updateInstallMode === "connection-switch"
           ? `De ${getFirmwareConnectionLabel(state.updateInstallTargetConnection)}-build wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
+          : quickStartSetup
+          ? `De ${quickStartTargetBuildLabel}-build wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
           : switchesBuild
           ? `De ${getFirmwareBuildLabelFor(state.updateInstallTargetTopology, state.updateInstallTargetConnection)}-build wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
           : `Firmware wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`,
@@ -495,6 +564,8 @@ import { render } from "../core/render-scheduler.js";
         ? `Downgrade naar de stabiele main-firmware is gestart voor ${getFirmwareDeviceLabel()}.`
         : state.updateInstallMode === "connection-switch"
         ? `Verbindingswissel naar ${getFirmwareConnectionLabel(state.updateInstallTargetConnection)} is gestart.`
+        : quickStartSetup
+        ? `Configuratie- en software-update voor ${quickStartTargetBuildLabel} is gestart.`
         : switchesBuild
         ? `Opstellingswissel naar ${getFirmwareTopologyLabel(state.updateInstallTargetTopology)} is gestart.`
         : `OTA-update is gestart voor ${getFirmwareDeviceLabel()}.`,
@@ -897,6 +968,7 @@ import { render } from "../core/render-scheduler.js";
           throw failure;
         }
         if (livePhase === "rebooting" && state.updateInstallStatusPollObserved) {
+          markQuickStartSetupInstallSuccessfulPhase();
           beginDeviceReconnect("ota");
         }
         render();

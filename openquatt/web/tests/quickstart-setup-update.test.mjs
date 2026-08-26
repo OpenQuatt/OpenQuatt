@@ -19,12 +19,15 @@ globalThis.window = {
 };
 
 const {
-  consumeStoredQuickStartResumeStep,
+  clearQuickStartSetupInstall,
+  getStoredQuickStartSetupInstall,
+  restoreStoredQuickStartSetupInstall,
   state,
-  storeQuickStartResumeStep,
+  storeQuickStartSetupInstall,
 } = await import("../js/src/core/state.js");
 const {
   getFirmwareBuildSwitchModel,
+  getFirmwareProgressModel,
   isFirmwareInstallCompletionConfirmed,
   isQuickStartSetupInstallCompletionConfirmed,
 } = await import("../js/src/features/firmware-update.js");
@@ -58,11 +61,14 @@ function resetSetupState() {
   };
   state.quickStartSetupDraft = "";
   state.quickStartSetupConfirmed = false;
+  state.quickStartSetupUpdateComplete = false;
   state.updateInstallBusy = false;
   state.updateInstallMode = "";
   state.updateInstallPhaseHint = "";
   state.updateInstallProgressHint = Number.NaN;
   state.updateInstallStatusPollObserved = false;
+  state.updateInstallSuccessfulPhaseObserved = false;
+  state.updateInstallResumedAfterReload = false;
   state.updateInstallTargetConnection = "";
   state.updateInstallTargetTopology = "";
   state.updateInstallTargetVersion = "";
@@ -88,6 +94,19 @@ test("de actieve configuratie kan als software-update opnieuw worden geïnstalle
   assert.equal(getFirmwareBuildSwitchModel("single", "wifi").canInstall, false);
 });
 
+test("Quick Start weigert een impliciete dev-naar-main-downgrade", () => {
+  resetSetupState();
+  state.entities.firmwareUpdate.current_version = "v0.49.0";
+  state.entities.firmwareUpdate.latest_version = "v0.48.0";
+  state.entities.firmwareUpdate.state = "available";
+  state.entities.projectVersionText = textEntity("v0.49.0");
+  state.entities.releaseChannelText = textEntity("dev");
+
+  const model = getFirmwareBuildSwitchModel("single", "wifi");
+  assert.equal(model.downgradeAvailable, true);
+  assert.equal(model.canInstall, false);
+});
+
 test("een Quick Start-installatie vereist doelconfiguratie én bewezen reboot", () => {
   resetSetupState();
   state.updateInstallMode = "quickstart-setup";
@@ -102,6 +121,7 @@ test("een Quick Start-installatie vereist doelconfiguratie én bewezen reboot", 
   state.ota.id = {};
   state.ota.wait = false;
   state.entities.firmwareUpdateStatus = textEntity("Uploading");
+  state.updateInstallSuccessfulPhaseObserved = true;
   assert.equal(isQuickStartSetupInstallCompletionConfirmed(), false);
 
   state.entities.firmwareUpdateStatus = textEntity("Idle");
@@ -113,21 +133,80 @@ test("een Quick Start-installatie vereist doelconfiguratie én bewezen reboot", 
   assert.equal(isFirmwareInstallCompletionConfirmed(), false);
 });
 
-test("de wizard hervat na de bevestigde OTA eenmalig bij de volgende stap", () => {
+test("de wizard bewaart een lopende en afgeronde Quick Start-update in de sessie", () => {
   storage.clear();
-  storeQuickStartResumeStep("generation");
+  const pending = {
+    status: "pending",
+    targetTopology: "duo",
+    targetConnection: "eth",
+    targetVersion: "v0.49.0",
+    startedAt: 1234,
+  };
+  storeQuickStartSetupInstall(pending);
+  assert.deepEqual(getStoredQuickStartSetupInstall(), pending);
 
-  assert.equal(consumeStoredQuickStartResumeStep(), "generation");
-  assert.equal(consumeStoredQuickStartResumeStep(), "setup");
+  resetSetupState();
+  restoreStoredQuickStartSetupInstall();
+  assert.equal(state.updateInstallMode, "quickstart-setup");
+  assert.equal(state.updateInstallTargetTopology, "duo");
+  assert.equal(state.updateInstallTargetConnection, "eth");
+  assert.equal(state.updateInstallResumedAfterReload, true);
 
-  storeQuickStartResumeStep("confirm");
-  assert.equal(consumeStoredQuickStartResumeStep(), "setup");
+  storeQuickStartSetupInstall({ ...pending, status: "complete" });
+  assert.equal(getStoredQuickStartSetupInstall().status, "complete");
+  clearQuickStartSetupInstall();
+  assert.equal(getStoredQuickStartSetupInstall(), null);
 });
 
-test("de Quick Start-actie slaat current build niet meer over", async () => {
-  const [actionsSource, viewSource] = await Promise.all([
+test("een hervatte update vereist een waargenomen succesvolle OTA-fase", () => {
+  resetSetupState();
+  state.updateInstallMode = "quickstart-setup";
+  state.updateInstallTargetTopology = "single";
+  state.updateInstallTargetConnection = "wifi";
+  state.updateInstallTargetVersion = "v0.48.0";
+  state.updateInstallResumedAfterReload = true;
+
+  assert.equal(isQuickStartSetupInstallCompletionConfirmed(), false);
+  state.updateInstallSuccessfulPhaseObserved = true;
+  assert.equal(isQuickStartSetupInstallCompletionConfirmed(), true);
+
+  state.updateInstallTargetVersion = "v0.49.0";
+  assert.equal(isQuickStartSetupInstallCompletionConfirmed(), false);
+});
+
+test("een hervatte lopende update houdt de configuratiekeuze geblokkeerd", () => {
+  resetSetupState();
+  storage.clear();
+  storeQuickStartSetupInstall({
+    status: "pending",
+    targetTopology: "single",
+    targetConnection: "wifi",
+    targetVersion: "v0.48.0",
+    startedAt: Date.now(),
+  });
+  restoreStoredQuickStartSetupInstall();
+
+  const progress = getFirmwareProgressModel();
+  assert.equal(progress.phaseLabel, "Installeren");
+  assert.match(progress.copy, /Single.*Wi-Fi/i);
+});
+
+test("Quick Start-voortgang noemt de volledige doelbuild", () => {
+  resetSetupState();
+  state.updateInstallMode = "quickstart-setup";
+  state.updateInstallBusy = true;
+  state.updateInstallTargetTopology = "single";
+  state.updateInstallTargetConnection = "eth";
+  state.entities.firmwareUpdateStatus = textEntity("Starting");
+
+  assert.match(getFirmwareProgressModel().copy, /Single.*Ethernet/i);
+});
+
+test("de Quick Start-actie slaat current build niet over en blokkeert vervolgstappen", async () => {
+  const [actionsSource, viewSource, uiActionsSource] = await Promise.all([
     readFile(new URL("../js/src/features/firmware-actions.js", import.meta.url), "utf8"),
     readFile(new URL("../js/src/features/quickstart.js", import.meta.url), "utf8"),
+    readFile(new URL("../js/src/features/quickstart-ui-actions.js", import.meta.url), "utf8"),
   ]);
   const start = actionsSource.indexOf("export async function installQuickStartSetupSwitch()");
   const end = actionsSource.indexOf("\n  export async function setFirmwareTestTextEntity", start);
@@ -140,5 +219,9 @@ test("de Quick Start-actie slaat current build niet meer over", async () => {
   assert.match(viewSource, /Configuratie en software-update/);
   assert.match(viewSource, /data-oq-quickstart-setup-confirm="true"/);
   assert.match(viewSource, /Configuratie bevestigen en software bijwerken/);
+  assert.match(viewSource, /selectionAllowed \? "" : "disabled"/);
+  assert.match(uiActionsSource, /isQuickStartStepSelectionAllowed\(stepId\)/);
+  assert.match(actionsSource, /isFirmwareDowngradeAvailable\(\)/);
+  assert.match(actionsSource, /storeQuickStartSetupInstall\(/);
   assert.doesNotMatch(viewSource, /model\.changes \? `[\s\S]*data-oq-action="install-quickstart-setup"/);
 });
