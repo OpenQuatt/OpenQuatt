@@ -793,15 +793,16 @@ interval:
           const bool configured_v2 =
               id(hp_generation).has_state() &&
               id(hp_generation).current_option() == "V2";
-          auto compressor_level_profile = [&](bool is_hp1) {
-            const int code = is_hp1
-                ? id(hp1_compressor_level_profile_code)
-                : id(${secondary_compressor_level_profile_code_id});
-            return static_cast<oq_odu::CompressorLevelProfile>(code);
-          };
-          auto automatic_extended_mapping_allowed = [&](bool is_hp1) {
-            return configured_v2 && oq_odu::has_extended_compressor_levels(
-                compressor_level_profile(is_hp1));
+          const auto hp1_frequency_snapshot =
+              oq_odu::decode_runtime_frequency_snapshot(
+                  id(hp1_runtime_frequency_snapshot_storage));
+          const auto secondary_frequency_snapshot =
+              oq_odu::decode_runtime_frequency_snapshot(
+                  id(${secondary_runtime_frequency_snapshot_storage_id}));
+          auto runtime_frequency_snapshot = [&](bool is_hp1)
+              -> const oq_odu::RuntimeFrequencySnapshot& {
+            return is_hp1 ? hp1_frequency_snapshot
+                          : secondary_frequency_snapshot;
           };
 
           auto publish_request = [&](int mode_code, int req1, int req2, int strategy_code, int owner_hp, const char* reason)->void {
@@ -809,11 +810,11 @@ interval:
             const bool manual_request = strategy_code == request_strategy_manual_hp;
             const int hp1_max_level = manual_request
                 ? oq_odu::physical_level_limit(
-                      configured_v2, compressor_level_profile(true))
+                      configured_v2, runtime_frequency_snapshot(true), mode_code)
                 : oq_odu::MODEL_LEVEL_MAX;
             const int hp2_max_level = manual_request
                 ? oq_odu::physical_level_limit(
-                      configured_v2, compressor_level_profile(false))
+                      configured_v2, runtime_frequency_snapshot(false), mode_code)
                 : oq_odu::MODEL_LEVEL_MAX;
             const auto published = oq_request::make_published_request(
                 mode_code, req1, req2, strategy_code,
@@ -1006,7 +1007,8 @@ interval:
                        selected_physical_level,
                        prev_applied,
                        prev_physical,
-                       automatic_extended_mapping_allowed(is_hp1))
+                       configured_v2,
+                       runtime_frequency_snapshot(is_hp1))
                 .control_level;
           };
 
@@ -1045,13 +1047,17 @@ interval:
             int hp1_req = (hp1_mode_code > 0)
                 ? std::max(0, std::min(
                       oq_odu::physical_level_limit(
-                          configured_v2, compressor_level_profile(true)),
+                          configured_v2,
+                          runtime_frequency_snapshot(true),
+                          hp1_mode_code),
                       (int) roundf(id(oq_manual_hp1_level).state)))
                 : 0;
             int hp2_req = (hp2_mode_code > 0)
                 ? std::max(0, std::min(
                       oq_odu::physical_level_limit(
-                          configured_v2, compressor_level_profile(false)),
+                          configured_v2,
+                          runtime_frequency_snapshot(false),
+                          hp2_mode_code),
                       (int) roundf(id(oq_manual_hp2_level).state)))
                 : 0;
             const bool manual_flow_ok =

@@ -439,3 +439,30 @@ text_sensor:
     icon: mdi:alert-decagram-outline
     entity_category: diagnostic
     update_interval: never
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: |-
+                return x == "WRITE_QUEUED: runtime table write requested";
+            then:
+              - lambda: |-
+                  // A write makes the control snapshot stale until verified.
+                  id(${hp_id}_compressor_level_profile_request_token) =
+                      oq_odu::next_request_token(
+                          id(${hp_id}_compressor_level_profile_request_token));
+                  id(${hp_id}_compressor_level_profile_request_pending) = false;
+                  id(${hp_id}_runtime_frequency_snapshot_storage) =
+                      oq_odu::RuntimeFrequencySnapshotStorage{};
+                  id(${hp_id}_compressor_level_profile_code) =
+                      static_cast<int>(
+                          oq_odu::CompressorLevelProfile::UNKNOWN);
+                  id(${hp_id}_compressor_level_profile).publish_state(
+                      oq_odu::compressor_level_profile_label(
+                          oq_odu::CompressorLevelProfile::UNKNOWN));
+        - if:
+            condition:
+              lambda: |-
+                return x == "APPLIED: runtime table written and read back";
+            then:
+              - script.execute: ${hp_id}_load_runtime_frequency_table_once

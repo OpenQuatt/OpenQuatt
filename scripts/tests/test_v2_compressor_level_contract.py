@@ -11,6 +11,12 @@ REQUEST_CONTROL = (ROOT / "openquatt" / "oq_thermal_request_control.yaml").read_
 LEVEL_HEADER = (
     ROOT / "openquatt" / "includes" / "odu" / "oq_odu_compressor_levels.h"
 ).read_text()
+FREQUENCY_HEADER = (
+    ROOT / "openquatt" / "includes" / "odu" / "oq_odu_frequency_table.h"
+).read_text()
+RUNTIME_EDITOR = (
+    ROOT / "openquatt" / "experimental" / "oq_odu_runtime_frequency_table_hp.yaml"
+).read_text()
 SERVICE_UI = (
     ROOT / "openquatt" / "web" / "js" / "src" / "settings" / "service.js"
 ).read_text()
@@ -35,8 +41,8 @@ class V2CompressorLevelContractTest(unittest.TestCase):
 
     def test_manual_request_surface_exposes_f20(self) -> None:
         self.assertEqual(MANUAL_HP.count("max_value: 20"), 2)
-        self.assertIn("configured_v2, compressor_level_profile(true)", REQUEST_CONTROL)
-        self.assertIn("configured_v2, compressor_level_profile(false)", REQUEST_CONTROL)
+        self.assertIn("configured_v2, runtime_frequency_snapshot(true)", REQUEST_CONTROL)
+        self.assertIn("configured_v2, runtime_frequency_snapshot(false)", REQUEST_CONTROL)
 
     def test_actuator_keeps_control_and_physical_domains_separate(self) -> None:
         self.assertIn("const char* lvl_opts[21]", ACTUATOR)
@@ -44,19 +50,52 @@ class V2CompressorLevelContractTest(unittest.TestCase):
         self.assertIn("resolve_manual_level(", ACTUATOR)
         self.assertIn("return level_command.control_level;", ACTUATOR)
         self.assertIn("last_commanded_physical_level", ACTUATOR)
+        self.assertLess(
+            ACTUATOR.index("applied = pick_allowed_capped"),
+            ACTUATOR.rindex("resolve_automatic_level("),
+        )
 
-    def test_extended_profile_detection_is_read_only_and_fail_closed(self) -> None:
-        self.assertIn("EXTENDED_HEATING_TABLE_REGISTER", HP_IO)
+    def test_runtime_table_loading_is_read_only_fingerprint_gated_and_fail_closed(self) -> None:
+        self.assertIn("BASE_FREQUENCY_TABLE_REGISTER", HP_IO)
+        self.assertIn("EXTENDED_FREQUENCY_TABLE_REGISTER", HP_IO)
+        self.assertIn("variant != oq_odu::Variant::V2_NEW_MODEL", HP_IO)
         self.assertIn("create_read_command(", HP_IO)
         self.assertNotIn("create_write_multiple_command(", HP_IO)
-        self.assertIn("limiting writes to F10", HP_IO)
+        self.assertIn("affected mode limited to F10", HP_IO)
+        self.assertIn("defer_base_publish", HP_IO)
+        extension_guard = HP_IO.index("if (!extension_result.response_complete)")
+        extension_publish = HP_IO.index("runtime_frequency_snapshot_storage) =", extension_guard)
+        self.assertLess(extension_guard, extension_publish)
+        self.assertNotIn("detect_extended_heating_table_response", HP_IO)
+        self.assertNotIn("V2_HEATING_MODEL_TO_PHYSICAL", LEVEL_HEADER)
+
+    def test_runtime_table_register_contract_matches_known_layout(self) -> None:
+        self.assertIn("BASE_FREQUENCY_TABLE_REGISTER = 3000U", FREQUENCY_HEADER)
+        self.assertIn("BASE_FREQUENCY_TABLE_REGISTER_COUNT = 22U", FREQUENCY_HEADER)
+        self.assertIn("EXTENDED_FREQUENCY_TABLE_REGISTER = 3050U", FREQUENCY_HEADER)
+        self.assertIn("EXTENDED_FREQUENCY_TABLE_REGISTER_COUNT = 20U", FREQUENCY_HEADER)
+        self.assertIn("snapshot.variant != Variant::V2_NEW_MODEL", FREQUENCY_HEADER)
+
+    def test_experimental_write_invalidates_and_then_reloads_control_snapshot(self) -> None:
+        self.assertIn('x == "WRITE_QUEUED: runtime table write requested"', RUNTIME_EDITOR)
+        self.assertIn("oq_odu::RuntimeFrequencySnapshotStorage{}", RUNTIME_EDITOR)
+        self.assertIn('x == "APPLIED: runtime table written and read back"', RUNTIME_EDITOR)
+        self.assertIn("script.execute: ${hp_id}_load_runtime_frequency_table_once", RUNTIME_EDITOR)
 
     def test_offline_transition_invalidates_and_rechecks_profile(self) -> None:
         offline_block = yaml_block(HP_IO, "on_offline:", "on_online:")
         online_block = yaml_block(HP_IO, "on_online:", "openquatt_odu_eeprom_dump:")
         self.assertIn("CompressorLevelProfile::UNKNOWN", offline_block)
+        self.assertIn("runtime_frequency_snapshot_storage) = {}", offline_block)
         self.assertIn("compressor_level_profile_request_token", offline_block)
-        self.assertIn("detect_compressor_level_profile_once", online_block)
+        self.assertIn("detect_odu_generation_once", online_block)
+
+    def test_blocked_or_incomplete_detection_is_retried_without_opening_extension(self) -> None:
+        self.assertIn("runtime_frequency_retry_ms", HP_IO)
+        self.assertIn("now - last_retry >= 60000UL", HP_IO)
+        self.assertIn("!id(${hp_id}_odu_generation_detection_complete)", HP_IO)
+        self.assertIn("table_incomplete", HP_IO)
+        self.assertIn("!id(${hp_id}_compressor_level_profile_request_pending)", HP_IO)
 
     def test_frequency_telemetry_accepts_f20(self) -> None:
         for entity_id in (

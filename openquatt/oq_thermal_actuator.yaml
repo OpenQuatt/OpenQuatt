@@ -200,16 +200,16 @@ interval:
               id(hp_generation).has_state() &&
               id(hp_generation).current_option() == "V2";
 
-          auto compressor_level_profile = [&](bool is_hp1) {
-            const int code = is_hp1
-                ? id(hp1_compressor_level_profile_code)
-                : id(${secondary_compressor_level_profile_code_id});
-            return static_cast<oq_odu::CompressorLevelProfile>(code);
-          };
-
-          auto automatic_extended_mapping_allowed = [&](bool is_hp1) {
-            return configured_v2 && oq_odu::has_extended_compressor_levels(
-                compressor_level_profile(is_hp1));
+          const auto hp1_frequency_snapshot =
+              oq_odu::decode_runtime_frequency_snapshot(
+                  id(hp1_runtime_frequency_snapshot_storage));
+          const auto secondary_frequency_snapshot =
+              oq_odu::decode_runtime_frequency_snapshot(
+                  id(${secondary_runtime_frequency_snapshot_storage_id}));
+          auto runtime_frequency_snapshot = [&](bool is_hp1)
+              -> const oq_odu::RuntimeFrequencySnapshot& {
+            return is_hp1 ? hp1_frequency_snapshot
+                          : secondary_frequency_snapshot;
           };
 
           auto hp_hold_mode_opt = [&](bool is_hp1)->const char* {
@@ -308,7 +308,8 @@ interval:
                 selected_physical_level,
                 prev_applied,
                 prev_physical,
-                automatic_extended_mapping_allowed(is_hp1));
+                configured_v2,
+                runtime_frequency_snapshot(is_hp1));
           };
 
           auto apply_active_mode_hold = [&](bool is_hp1, const oq_odu::RetainedLevel &retained)->bool {
@@ -460,7 +461,9 @@ interval:
           auto apply_level = [&](bool is_hp1, int req_level, bool was_cooling)->int {
             const int actuator_max_level = manual_hp_service_active
                 ? oq_odu::physical_level_limit(
-                      configured_v2, compressor_level_profile(is_hp1))
+                      configured_v2,
+                      runtime_frequency_snapshot(is_hp1),
+                      request_mode_code)
                 : max_level;
             req_level = std::max(min_level, std::min(actuator_max_level, req_level));
             const int requested_level = req_level;
@@ -732,10 +735,12 @@ interval:
             const auto level_command = manual_hp_service_active
                 ? oq_odu::resolve_manual_level(
                       configured_v2,
-                      compressor_level_profile(is_hp1),
+                      runtime_frequency_snapshot(is_hp1),
+                      expected_mode,
                       applied)
                 : oq_odu::resolve_automatic_level(
-                      automatic_extended_mapping_allowed(is_hp1),
+                      configured_v2,
+                      runtime_frequency_snapshot(is_hp1),
                       expected_mode,
                       applied);
             const int commanded_physical_level = level_command.physical_level;

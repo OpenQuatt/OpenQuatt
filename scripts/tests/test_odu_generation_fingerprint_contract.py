@@ -53,7 +53,7 @@ class OduGenerationFingerprintContractTest(unittest.TestCase):
         detection = source_block(
             HP_IO,
             "id: ${hp_id}_detect_odu_generation_once",
-            "id: ${hp_id}_detect_compressor_level_profile_once",
+            "id: ${hp_id}_load_runtime_frequency_table_once",
         )
         self.assertIn("oq_odu::CORE_IDENTITY_REGISTER", detection)
         self.assertIn("oq_odu::CORE_IDENTITY_REGISTER_COUNT", detection)
@@ -74,7 +74,7 @@ class OduGenerationFingerprintContractTest(unittest.TestCase):
         self.assertIn("next_request_token", detection)
         self.assertNotIn("create_write", detection)
         self.assertNotIn("3050", detection)
-        self.assertNotIn("compressor_level", detection)
+        self.assertNotIn("id(${hp_id}_compressor_level).", detection)
 
     def test_customer_model_is_not_periodically_polled(self) -> None:
         control_board = source_block(
