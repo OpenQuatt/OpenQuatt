@@ -5,6 +5,7 @@ import { state } from "../core/state.js";
 import {
   abortQuickStartFlowTest,
   applyQuickStartFlowSourceConfiguration,
+  applyQuickStartHeatingEnableSource,
   applyQuickStartThermostatSourceConfiguration,
   initializeQuickStartUsageTelemetryChoice,
   refreshQuickStartFlowSignal,
@@ -98,6 +99,7 @@ const quickStartActionHandlers = {
   "start-quickstart-flow-test": () => startQuickStartFlowTest(),
   "abort-quickstart-flow-test": () => abortQuickStartFlowTest(),
   "apply-quickstart-thermostat-source": () => applyQuickStartThermostatSourceConfiguration(),
+  "apply-quickstart-heating-enable": (button) => applyQuickStartHeatingEnableSource(button?.dataset?.heatingEnableTarget || null),
   "retry-usage-telemetry-choice": () => prepareQuickStartStep("usage-telemetry"),
   "confirm-no-usage-telemetry": () => commitSwitch("usageTelemetryEnabled", false),
   "previous-step": () => moveQuickStartStep(-1),

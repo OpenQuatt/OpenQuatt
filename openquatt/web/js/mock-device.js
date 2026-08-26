@@ -1869,7 +1869,7 @@
     syncMockOduIdentityEntities(1);
     setEntity("text_sensor", "OpenQuatt Hardware Profile", { state: state.hardware, value: state.hardware });
     setEntity("text_sensor", "OpenQuatt Connection", { state: state.connection, value: state.connection });
-    setEntity("text_sensor", "OpenQuatt Version", { state: MOCK_STABLE_VERSION, value: MOCK_STABLE_VERSION });
+    setEntity("text_sensor", "OpenQuatt Version", { state: MOCK_DEV_VERSION, value: MOCK_DEV_VERSION });
     setEntity("text_sensor", "OpenQuatt Release Channel", { state: "dev", value: "dev" });
     setEntity("sensor", "Uptime", { value: 0, uom: "h" });
     syncUptimeEntity();
@@ -1902,12 +1902,12 @@
     setEntity("sensor", "Lifetime energiehistorie grootte", { value: state.energyHistoryStoredKiB, uom: "kB" });
     setEntity("sensor", "Lifetime energiehistorie schrijfacties", { value: state.energyHistoryWrites });
     setEntity("update", "Firmware Update", {
-      state: "available",
-      value: "available",
-      current_version: MOCK_STABLE_VERSION,
+      state: "up_to_date",
+      value: "up_to_date",
+      current_version: MOCK_DEV_VERSION,
       latest_version: MOCK_DEV_VERSION,
       title: "OpenQuatt firmware",
-      summary: "Nieuwe firmware met verdere UI- en regelingverbeteringen staat klaar voor deze preview.",
+      summary: "De preview draait op de nieuwste dev-firmware.",
       release_url: getMockReleaseUrl("dev"),
     });
     setEntity("binary_sensor", "Setup Complete", { value: state.complete, state: state.complete });
@@ -2044,6 +2044,11 @@
         "Allow without dew point, user responsibility",
       ],
     });
+    setEntity("select", "Cooling Restart Mode", {
+      value: "Water temperature",
+      state: "Water temperature",
+      option: ["Water temperature", "Minimum off time"],
+    });
     setEntity("select", "Cooling Dew Point Source", {
       value: "Auto",
       state: "Auto",
@@ -2165,6 +2170,7 @@
       ["Cooling Minimum Supply Temp", 18, 5, 24, 0.5, "°C"],
       ["Cooling Demand Max", 4, 1, 10, 1, "step"],
       ["Cooling Restart Delta", 1.0, 0, 5, 0.1, "°C"],
+      ["Cooling Minimum Off Time", 600, 240, 3600, 30, "s"],
       ["Cooling Request On Delta", 0.4, 0, 2, 0.1, "°C"],
       ["Cooling Request Off Delta", 0.1, 0, 2, 0.1, "°C"],
       ["Cooling Safety Margin", 2, 0, 4, 0.1, "°C"],
@@ -2258,6 +2264,7 @@
       ["OT - Room Setpoint", 20.0, "\u00B0C"],
       ["OT - Room Temperature", 20.9, "\u00B0C"],
       ["CIC - Water Supply Temp", 29.5, "\u00B0C"],
+      ["CIC - Boiler Water Pressure", 1.7, "bar"],
       ["CIC - Control setpoint", 30.0, "\u00B0C"],
       ["CIC - Room setpoint", 20.0, "\u00B0C"],
       ["CIC - Room temperature", 20.9, "\u00B0C"],
@@ -2288,6 +2295,7 @@
       ["Cooling Dew Point (Selected)", 16.1, "°C"],
       ["Cooling Minimum Safe Supply Temp", 18.1, "°C"],
       ["Cooling Effective Minimum Supply Temp", 18.1, "°C"],
+      ["Cooling Minimum Off Time Remaining", 0, "s"],
       ["Cooling Fallback Night Minimum Outdoor Temp", 14.3, "°C"],
       ["Cooling Fallback Minimum Supply Temp", 19.0, "°C"],
       ["Cooling Supply Target", 18.0, "°C"],
@@ -3875,7 +3883,6 @@
       applyPreset(value);
     } else if (name === "Firmware Update Channel") {
       clearOtaSimulation();
-      setText("text_sensor", "OpenQuatt Release Channel", value);
       setText("text_sensor", "Firmware Update Status", "Idle");
       setNumber("Firmware Update Progress", 0, "%");
       const updateEntity = getEntity("update", "Firmware Update");
@@ -3885,14 +3892,16 @@
         updateEntity.current_version = currentVersion;
         updateEntity.latest_version = latestVersion;
         updateEntity.release_url = getMockReleaseUrl(value);
-        if (value === "main" || currentVersion === latestVersion) {
+        if (currentVersion === latestVersion) {
           updateEntity.state = "up_to_date";
           updateEntity.value = "up_to_date";
-          updateEntity.summary = "Je preview gebruikt nu het stabiele kanaal. Er staat op dit moment geen nieuwere stable release klaar.";
+          updateEntity.summary = `De preview draait al op de nieuwste ${value}-firmware.`;
         } else {
           updateEntity.state = "available";
           updateEntity.value = "available";
-          updateEntity.summary = "Het dev-kanaal heeft een nieuwere OTA-build beschikbaar voor deze preview.";
+          updateEntity.summary = value === "main"
+            ? "De stabiele main-release is beschikbaar als bewuste downgrade voor deze preview."
+            : "Het dev-kanaal heeft een nieuwere OTA-build beschikbaar voor deze preview.";
         }
       }
     } else if (name === "Firmware Update Target") {
@@ -3901,6 +3910,8 @@
       setNumber("Firmware Update Progress", 0, "%");
       const updateEntity = getEntity("update", "Firmware Update");
       const currentVersion = String(getEntity("text_sensor", "OpenQuatt Version")?.value || MOCK_STABLE_VERSION);
+      const channel = String(getEntity("select", "Firmware Update Channel")?.value || "dev");
+      const latestVersion = channel === "main" ? MOCK_STABLE_VERSION : MOCK_DEV_VERSION;
       const alternateBuild = value !== "current build";
       const targetConnection = value === "alternate connection" || value === "alternate topology and connection"
         ? state.connection === "wifi" ? "eth" : "wifi"
@@ -3911,9 +3922,9 @@
       const targetLabel = `Heatpump Controller Q ${targetTopology === "duo" ? "Duo" : "Single"} ${targetConnection === "eth" ? "Ethernet" : "Wi-Fi"}`;
       if (updateEntity) {
         updateEntity.current_version = currentVersion;
-        updateEntity.latest_version = alternateBuild ? currentVersion : MOCK_DEV_VERSION;
-        updateEntity.release_url = getMockReleaseUrl(String(getEntity("select", "Firmware Update Channel")?.value || "dev"));
-        updateEntity.state = alternateBuild ? "up_to_date" : "available";
+        updateEntity.latest_version = latestVersion;
+        updateEntity.release_url = getMockReleaseUrl(channel);
+        updateEntity.state = currentVersion === latestVersion ? "up_to_date" : "available";
         updateEntity.value = updateEntity.state;
         updateEntity.summary = alternateBuild
           ? `${targetLabel} is als alternatieve target-build geselecteerd voor deze preview.`
@@ -4843,6 +4854,9 @@
         ? "De preview draait nu op testfirmware."
         : "De preview draait nu op de nieuwste firmware.";
       setText("text_sensor", "OpenQuatt Version", targetVersion);
+      if (!testFirmware) {
+        setText("text_sensor", "OpenQuatt Release Channel", String(getEntity("select", "Firmware Update Channel")?.value || "main"));
+      }
       setInstallationMode(targetTopology);
       state.connection = targetConnection;
       setText("text_sensor", "OpenQuatt Connection", state.connection);

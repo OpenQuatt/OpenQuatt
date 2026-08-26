@@ -202,6 +202,9 @@ import { render } from "../core/render-scheduler.js";
     if (isFirmwareUpdateInstalling()) {
       return "Bezig";
     }
+    if (isFirmwareDowngradeAvailable()) {
+      return "Downgrade beschikbaar";
+    }
     if (isFirmwareUpdateAvailable()) {
       return "Beschikbaar";
     }
@@ -267,16 +270,20 @@ import { render } from "../core/render-scheduler.js";
   export function hasInstalledFirmwareTargetVersion() {
     const target = String(state.updateInstallTargetVersion || "").trim();
     const current = getFirmwareCurrentVersion();
-    if (!target || !current) {
+    if (!target || !current || !parseFirmwareVersion(target) || !parseFirmwareVersion(current)) {
       return false;
     }
-    return compareFirmwareVersions(current, target) >= 0;
+    const relation = compareFirmwareVersions(current, target);
+    return state.updateInstallMode === "downgrade" ? relation === 0 : relation >= 0;
   }
 
   export function hasInstalledFirmwareLatestVersion(entity = getFirmwareUpdateEntity() || {}) {
     const latest = getFirmwareLatestVersion(entity);
     const current = getFirmwareCurrentVersion(entity);
     if (!latest || !current) {
+      return false;
+    }
+    if (isFirmwareDowngradeAvailable(entity)) {
       return false;
     }
     return compareFirmwareVersions(current, latest) >= 0;
@@ -299,7 +306,7 @@ import { render } from "../core/render-scheduler.js";
   }
 
   export function isFirmwareUpdateJustCompleted() {
-    return (state.updateInstallCompleted || isFirmwareInstallSettled())
+    return state.updateInstallCompleted
       && !isFirmwareUpdateChecking()
       && !getFirmwareProgressModel()
       && !isFirmwareUpdateAvailable();
@@ -315,6 +322,7 @@ import { render } from "../core/render-scheduler.js";
       updateInstallMode: "",
       updateInstallTargetConnection: "",
       updateInstallTargetTopology: "",
+      firmwareDowngradeConfirmedVersion: "",
     });
     clearFirmwareOtaQuietWindow();
   }
@@ -417,6 +425,8 @@ import { render } from "../core/render-scheduler.js";
         percent: Math.max(basePercent, 100),
         copy: state.updateInstallMode === "test-firmware"
           ? "Testfirmware is geplaatst. Het device start opnieuw op en komt daarna vanzelf terug."
+          : state.updateInstallMode === "downgrade"
+          ? "De stabiele main-firmware is geplaatst. Het device start opnieuw op en komt daarna vanzelf terug."
           : state.updateInstallMode === "connection-switch"
           ? "Firmware is geplaatst. Het device start opnieuw op en komt daarna via de gekozen verbinding terug."
           : state.updateInstallMode === "topology-switch" || state.updateInstallMode === "build-switch"
@@ -429,7 +439,9 @@ import { render } from "../core/render-scheduler.js";
       return {
         phaseLabel: "Opnieuw proberen",
         percent: 0,
-        copy: "De eerste verbinding voor de firmwaredownload mislukte. OpenQuatt probeert het automatisch nog één keer.",
+        copy: state.updateInstallMode === "downgrade"
+          ? "De eerste verbinding voor de main-firmwaredownload mislukte. OpenQuatt probeert het automatisch nog één keer."
+          : "De eerste verbinding voor de firmwaredownload mislukte. OpenQuatt probeert het automatisch nog één keer.",
       };
     }
 
@@ -439,6 +451,8 @@ import { render } from "../core/render-scheduler.js";
         percent: basePercent,
         copy: state.updateInstallMode === "test-firmware"
           ? `Testfirmware wordt nu door ${getFirmwareDeviceLabel()} gedownload en geïnstalleerd.`
+          : state.updateInstallMode === "downgrade"
+          ? `De stabiele main-firmware wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
           : state.updateInstallMode === "connection-switch"
           ? `De ${getFirmwareConnectionLabel(state.updateInstallTargetConnection)}-build wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
           : state.updateInstallMode === "topology-switch" || state.updateInstallMode === "build-switch"
@@ -452,6 +466,8 @@ import { render } from "../core/render-scheduler.js";
       percent: basePercent,
       copy: state.updateInstallMode === "test-firmware"
         ? `Testfirmware-installatie is gestart voor ${getFirmwareDeviceLabel()}.`
+        : state.updateInstallMode === "downgrade"
+        ? `Downgrade naar de stabiele main-firmware is gestart voor ${getFirmwareDeviceLabel()}.`
         : state.updateInstallMode === "connection-switch"
         ? `Verbindingswissel naar ${getFirmwareConnectionLabel(state.updateInstallTargetConnection)} is gestart.`
         : state.updateInstallMode === "topology-switch" || state.updateInstallMode === "build-switch"
@@ -638,8 +654,8 @@ import { render } from "../core/render-scheduler.js";
     const entity = getFirmwareUpdateEntity() || {};
     const current = getFirmwareCurrentVersion(entity) || "—";
     let latest = isFirmwareEntityAlignedWithChannel(entity) ? getFirmwareLatestVersion(entity) : "";
-    const relation = latest ? compareFirmwareVersions(latest, current) : null;
-    if (!isFirmwareUpdateChecking() && relation !== null && relation <= 0) {
+    const relation = getFirmwareVersionRelation(entity);
+    if (!isFirmwareUpdateChecking() && relation !== null && relation <= 0 && !isFirmwareDowngradeAvailable(entity)) {
       latest = "";
     }
     return {
@@ -648,9 +664,10 @@ import { render } from "../core/render-scheduler.js";
     };
   }
 
-  export function getFirmwareVersionRelation() {
-    const { current, latest } = getFirmwareUpdateVersions();
-    if (current === "—" || latest === "—") {
+  export function getFirmwareVersionRelation(entity = getFirmwareUpdateEntity() || {}) {
+    const current = getFirmwareCurrentVersion(entity);
+    const latest = isFirmwareEntityAlignedWithChannel(entity) ? getFirmwareLatestVersion(entity) : "";
+    if (!current || !latest || !parseFirmwareVersion(current) || !parseFirmwareVersion(latest)) {
       return null;
     }
     return compareFirmwareVersions(latest, current);
@@ -689,6 +706,29 @@ import { render } from "../core/render-scheduler.js";
       || state.entities.releaseChannelText?.value
       || "—"
     ).trim() || "—";
+  }
+
+  export function getFirmwareRunningChannelLabel() {
+    return String(
+      state.entities.releaseChannelText?.state
+      || state.entities.releaseChannelText?.value
+      || "—"
+    ).trim() || "—";
+  }
+
+  export function isFirmwareDowngradeAvailable(entity = getFirmwareUpdateEntity() || {}) {
+    const selectedChannel = getFirmwareChannelLabel().toLowerCase();
+    const runningChannel = getFirmwareRunningChannelLabel().toLowerCase();
+    if (
+      selectedChannel !== "main"
+      || runningChannel !== "dev"
+      || !hasEntity("installFirmwareUpdateTarget")
+      || !isFirmwareEntityAlignedWithChannel(entity, selectedChannel)
+    ) {
+      return false;
+    }
+    const relation = getFirmwareVersionRelation(entity);
+    return relation !== null && relation < 0;
   }
 
   export function hasKnownFirmwareTargetVersion() {
@@ -909,6 +949,10 @@ import { render } from "../core/render-scheduler.js";
     }
     if (isFirmwareUpdateChecking()) {
       return `We controleren of er op kanaal ${channel} een nieuwe firmware beschikbaar is.`;
+    }
+    if (isFirmwareDowngradeAvailable()) {
+      const { current, latest } = getFirmwareUpdateVersions();
+      return `De stabiele main-release ${latest} is ouder dan de draaiende dev-build ${current}. Je kunt bewust teruggaan naar main.`;
     }
     if (isFirmwareUpdateAvailable()) {
       return "Er staat een nieuwere firmware klaar.";
@@ -1212,6 +1256,9 @@ import { render } from "../core/render-scheduler.js";
     const checking = isFirmwareUpdateChecking();
     const installing = isFirmwareUpdateInstalling();
     const available = isFirmwareUpdateAvailable();
+    const downgradeAvailable = isFirmwareDowngradeAvailable(entity);
+    const downgradeConfirmed = downgradeAvailable
+      && state.firmwareDowngradeConfirmedVersion === latest;
     const summary = getFirmwareModalCopy();
     const progress = getFirmwareProgressModel();
     const justCompleted = isFirmwareUpdateJustCompleted();
@@ -1224,6 +1271,8 @@ import { render } from "../core/render-scheduler.js";
       ? "Firmware-update bezig"
       : checking
         ? "Controleren op firmware-update"
+        : downgradeAvailable
+          ? "Terug naar main"
         : getFirmwareTitle();
     const channelOptions = channelEntity
       ? (Array.isArray(channelEntity.option) ? channelEntity.option : Array.isArray(channelEntity.options) ? channelEntity.options : [])
@@ -1289,15 +1338,27 @@ import { render } from "../core/render-scheduler.js";
               </select>
             </label>
           ` : ""}
-          <p class="oq-helper-modal-note">Laat deze pagina open tijdens de OTA-update. Het device kan na installatie kort herstarten en daarna vanzelf weer terugkomen. Bestaande OpenQuatt-instellingen blijven behouden.</p>
+          ${downgradeAvailable && !installing && !progress ? `
+            <div class="oq-helper-modal-callout oq-firmware-downgrade-callout">
+              <strong>Bewuste downgrade</strong>
+              <span>Main ${escapeHtml(latest)} vervangt de nieuwere dev-build ${escapeHtml(current)}. Functies en instellingen die alleen in dev bestaan, zijn daarna mogelijk niet meer beschikbaar.</span>
+              <label class="oq-helper-modal-check">
+                <input type="checkbox" data-oq-firmware-downgrade-confirm="true" ${downgradeConfirmed ? "checked" : ""} ${checking ? "disabled" : ""}>
+                <span>Ik begrijp dat ik terugga naar een oudere stabiele firmwareversie.</span>
+              </label>
+            </div>
+          ` : ""}
+          <p class="oq-helper-modal-note">${downgradeAvailable
+            ? "Maak zo nodig eerst een instellingenbackup. Laat deze pagina open; het device herstart na de downgrade en komt daarna vanzelf weer terug."
+            : "Laat deze pagina open tijdens de OTA-update. Het device kan na installatie kort herstarten en daarna vanzelf weer terugkomen. Bestaande OpenQuatt-instellingen blijven behouden."}</p>
           <div class="oq-helper-modal-actions oq-firmware-modal-actions">
             <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="run-firmware-check" ${checking || installing || progress ? "disabled" : ""}>
               ${checking ? "Controleren..." : "Controleer opnieuw"}
             </button>
             ${justCompleted
               ? '<button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-update-modal">Gereed</button>'
-              : `<button class="oq-helper-button" type="button" data-oq-action="install-firmware-update" ${!available || installing || checking || progress || !entity ? "disabled" : ""}>
-              ${installing ? "Bijwerken..." : "Nu bijwerken"}
+              : `<button class="oq-helper-button${downgradeAvailable ? " oq-helper-button--warning" : ""}" type="button" data-oq-action="install-firmware-update" ${(!available && !downgradeAvailable) || (downgradeAvailable && !downgradeConfirmed) || installing || checking || progress || !entity ? "disabled" : ""}>
+              ${installing ? (state.updateInstallMode === "downgrade" ? "Downgraden..." : "Bijwerken...") : downgradeAvailable ? `Terug naar main ${escapeHtml(latest)}` : "Nu bijwerken"}
             </button>`}
             ${releaseUrl ? `<a class="oq-helper-button oq-helper-button--ghost oq-helper-modal-link" href="${escapeHtml(releaseUrl)}" target="_blank" rel="noreferrer">Release notes</a>` : ""}
             ${isFirmwareAdvancedOpen() ? "" : `

@@ -85,7 +85,7 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
       return "Nog geen readback of apply-status ontvangen.";
     }
     if (normalized.includes("APPLIED")) {
-      return "Runtime registers zijn geschreven en via readback bevestigd. Een ODU powercycle zet de originele tabel terug.";
+      return "Runtime registers zijn geschreven en via readback bevestigd. Een power-cycle / stroomloos maken van de buitenunit zet de originele tabel terug.";
     }
     if (normalized.includes("GUARD_READ_REQUESTED")) {
       return "Firmware leest actuele ODU mode en compressorfrequentie voordat er geschreven wordt.";
@@ -230,7 +230,7 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
               </div>
             </div>
             <h3>ODU runtime frequentietabel</h3>
-            <p>Lees en schrijf de ODU frequentietabel alleen runtime; waarden worden niet opgeslagen in EEPROM.</p>
+            <p>Lees en schrijf de ODU frequentietabel alleen runtime; waarden worden niet opgeslagen in EEPROM. Een power-cycle / stroomloos maken van de buitenunit reset de frequentietabel weer naar de originele tabel.</p>
           </div>
           <span class="oq-settings-section-summary-toggle" aria-hidden="true"></span>
         </summary>
@@ -239,6 +239,7 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
             <strong>Schrijft direct naar ODU runtime registers.</strong>
             <p>Gebruik dit alleen voor gecontroleerde tests. Apply werkt alleen wanneer de HP in standby staat, de compressor uit is en de enable-schakelaar bewust aan staat.</p>
             <p>Verlaag koel-frequenties onder de OEM-ondergrens rond 30 Hz alleen met superheat-bewaking. Bij te lage suction superheat kan natte zuigretour richting compressor ontstaan.</p>
+            <p>Een power-cycle / stroomloos maken van de buitenunit reset de frequentietabel weer naar de originele tabel.</p>
           </div>
           <div class="oq-settings-odu-runtime-panels">
             ${hpIndexes.map((hpIndex) => renderOduRuntimeFrequencyHpPanel(hpIndex)).join("")}

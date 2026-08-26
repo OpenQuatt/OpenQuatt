@@ -1,10 +1,15 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, socket, switch, text_sensor
+from esphome.components import binary_sensor, socket, switch, text_sensor, time
 from esphome.components.esp32 import add_idf_sdkconfig_option
 from esphome.const import CONF_ID
 
-DEPENDENCIES = ["logger", "psram", "openquatt_usage_telemetry"]
+DEPENDENCIES = [
+    "logger",
+    "psram",
+    "openquatt_usage_telemetry",
+    "openquatt_log_history",
+]
 
 CONF_BROKER = "broker"
 CONF_PORT = "port"
@@ -15,6 +20,7 @@ CONF_TOPIC = "topic"
 CONF_USAGE_SWITCH = "usage_switch"
 CONF_INSTALLATION_ID_SENSOR = "installation_id_sensor"
 CONF_SETUP_COMPLETE_SENSOR = "setup_complete_sensor"
+CONF_CLOCK = "clock"
 CONF_SOURCE_REPOSITORY = "source_repository"
 CONF_SOURCE_COMMIT = "source_commit"
 CONF_BUILD_TARGET = "build_target"
@@ -54,6 +60,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_USAGE_SWITCH): cv.use_id(switch.Switch),
             cv.Required(CONF_INSTALLATION_ID_SENSOR): cv.use_id(text_sensor.TextSensor),
             cv.Required(CONF_SETUP_COMPLETE_SENSOR): cv.use_id(binary_sensor.BinarySensor),
+            cv.Required(CONF_CLOCK): cv.use_id(time.RealTimeClock),
             cv.Required(CONF_SOURCE_REPOSITORY): cv.All(
                 cv.string_strict, cv.Length(min=1, max=97)
             ),
@@ -107,6 +114,8 @@ async def to_code(config):
     cg.add(var.set_installation_id_sensor(installation_id_sensor))
     setup_complete_sensor = await cg.get_variable(config[CONF_SETUP_COMPLETE_SENSOR])
     cg.add(var.set_setup_complete_sensor(setup_complete_sensor))
+    clock = await cg.get_variable(config[CONF_CLOCK])
+    cg.add(var.set_clock(clock))
     cg.add(var.set_source_repository(config[CONF_SOURCE_REPOSITORY]))
     cg.add(var.set_source_commit(config[CONF_SOURCE_COMMIT]))
     cg.add(var.set_build_target(config[CONF_BUILD_TARGET]))

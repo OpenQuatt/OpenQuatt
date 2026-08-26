@@ -39,6 +39,15 @@ bool OpenQuattCrashTelemetry::build_crash_payload_() {
   if (!this->payload_buffer_.allocate_external(CRASH_PAYLOAD_CAPACITY + 1U)) return false;
 
   const CrashRecord& record = *this->record_.data();
+  uint32_t reported_at = 0U;
+  if (this->clock_ != nullptr) {
+    const auto now = this->clock_->now();
+    const int64_t timestamp = static_cast<int64_t>(now.timestamp);
+    if (now.is_valid() && timestamp >= static_cast<int64_t>(openquatt_log_history::MIN_VALID_CRASH_EPOCH_S) &&
+        timestamp < static_cast<int64_t>(openquatt_log_history::MAX_VALID_CRASH_EPOCH_S)) {
+      reported_at = static_cast<uint32_t>(timestamp);
+    }
+  }
   FixedWriter writer(this->payload_buffer_.data(), this->payload_buffer_.size());
   writer.append("{\"schema_version\":1,\"message_id\":");
   writer.append_json_string(record.crash_id);
@@ -46,6 +55,24 @@ bool OpenQuattCrashTelemetry::build_crash_payload_() {
   writer.append_json_string(this->state_.data()->installation_id);
   append_json_key(writer, "event");
   writer.append_json_string("crash");
+  append_json_key(writer, "crash_timestamp");
+  if (record.crash_time_valid != 0U) {
+    writer.append_uint(record.crash_timestamp);
+  } else {
+    writer.append("null");
+  }
+  append_json_key(writer, "crash_uptime_s");
+  if (record.crash_time_valid != 0U) {
+    writer.append_uint(record.crash_uptime_s);
+  } else {
+    writer.append("null");
+  }
+  append_json_key(writer, "reported_at");
+  if (reported_at != 0U) {
+    writer.append_uint(reported_at);
+  } else {
+    writer.append("null");
+  }
   append_json_key(writer, "reset_reason");
   writer.append_json_string(reset_reason_name(static_cast<esp_reset_reason_t>(record.reset_reason)));
   append_json_key(writer, "reporting_build_id");
@@ -145,7 +172,7 @@ bool OpenQuattCrashTelemetry::start_session_(CrashPublishKind kind) {
     return false;
   }
   this->mqtt_client_started_ = true;
-  ESP_LOGD(TAG, "Started %s publication", kind == CrashPublishKind::CRASH ? "retained crash" : "retained tombstone");
+  ESP_LOGD(TAG, "Started %s publication", kind == CrashPublishKind::CRASH ? "crash" : "retained tombstone");
   return true;
 }
 
@@ -175,7 +202,7 @@ void OpenQuattCrashTelemetry::complete_session_(bool succeeded) {
   if (succeeded && kind == CrashPublishKind::CRASH) {
     if (!this->clear_record_()) {
       succeeded = false;
-      ESP_LOGW(TAG, "Retained crash was acknowledged, but local record clearing failed; retrying is harmless");
+      ESP_LOGW(TAG, "Crash was acknowledged, but local record clearing failed; retrying is harmless");
     }
   } else if (succeeded && kind == CrashPublishKind::TOMBSTONE) {
     this->state_.data()->tombstone_pending = 0U;
@@ -197,7 +224,7 @@ void OpenQuattCrashTelemetry::complete_session_(bool succeeded) {
 
   if (succeeded) {
     this->next_attempt_ms_ = 0U;
-    ESP_LOGI(TAG, "%s published successfully", kind == CrashPublishKind::CRASH ? "Retained crash" : "Crash tombstone");
+    ESP_LOGI(TAG, "%s published successfully", kind == CrashPublishKind::CRASH ? "Crash" : "Crash tombstone");
   } else {
     this->schedule_retry_();
   }
@@ -233,7 +260,7 @@ void OpenQuattCrashTelemetry::loop() {
 }
 
 void OpenQuattCrashTelemetry::dump_config() {
-  ESP_LOGCONFIG(TAG, "OpenQuatt retained crash telemetry:");
+  ESP_LOGCONFIG(TAG, "OpenQuatt crash telemetry:");
   ESP_LOGCONFIG(TAG, "  Broker configured: %s", YESNO(this->is_configured()));
   ESP_LOGCONFIG(TAG, "  Pending crash: %s", YESNO(this->record_ && this->record_.data()->pending != 0U));
   ESP_LOGCONFIG(TAG, "  Tombstone pending: %s", YESNO(this->state_ && this->state_.data()->tombstone_pending != 0U));
@@ -260,8 +287,9 @@ void OpenQuattCrashTelemetry::mqtt_event_handler_(void* handler_args, esp_event_
         static const char EMPTY_PAYLOAD[] = "";
         const char* payload = kind == CrashPublishKind::TOMBSTONE ? EMPTY_PAYLOAD : self->payload_buffer_.data();
         const size_t payload_size = kind == CrashPublishKind::TOMBSTONE ? 0U : self->payload_size_;
+        const int retain = crash_publication_is_retained(kind) ? 1 : 0;
         message_id = esp_mqtt_client_enqueue(event->client, self->topic_buffer_.data(), payload,
-                                             static_cast<int>(payload_size), 1, 1, true);
+                                             static_cast<int>(payload_size), 1, retain, true);
       }
       self->unlock_gate_();
       if (message_id < 0) {

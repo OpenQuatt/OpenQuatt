@@ -6,7 +6,7 @@
 #   - Expose a local OpenTherm slave endpoint towards a thermostat
 #   - Publish thermostat intent (room temp / setpoint / CH / cooling)
 #   - Feed selected OpenQuatt runtime values back to the thermostat
-#   - No temporary OT protocol diagnostics in the product package
+#   - Keep protocol diagnostics bounded to passive counters; no test controls
 # Runtime requirements:
 #   - ESP32 target with `esp32.framework.type: esp-idf`
 #   - RMT-capable hardware; non-RMT targets are not supported by this OT runtime
@@ -82,6 +82,45 @@ sensor:
       id: ot_thermostat_room_temp
       name: "OT - Room Temperature"
       icon: mdi:home-thermometer
+
+  - platform: template
+    id: ot_thermostat_successful_frame_count
+    name: "OT - Successful Frame Count"
+    internal: true
+    icon: mdi:counter
+    accuracy_decimals: 0
+    state_class: total_increasing
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: 5s
+    lambda: |-
+      return (float) id(oq_ot_slave_hub).successful_frame_count();
+
+  - platform: template
+    id: ot_thermostat_invalid_frame_count
+    name: "OT - Invalid Frame Count"
+    internal: true
+    icon: mdi:message-alert-outline
+    accuracy_decimals: 0
+    state_class: total_increasing
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: 5s
+    lambda: |-
+      return (float) id(oq_ot_slave_hub).invalid_frame_count();
+
+  - platform: template
+    id: ot_thermostat_timeout_frame_count
+    name: "OT - Timeout Frame Count"
+    internal: true
+    icon: mdi:timer-alert-outline
+    accuracy_decimals: 0
+    state_class: total_increasing
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: 5s
+    lambda: |-
+      return (float) id(oq_ot_slave_hub).timeout_frame_count();
 
 interval:
   - interval: 2s

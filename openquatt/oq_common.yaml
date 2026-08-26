@@ -1038,7 +1038,7 @@ switch:
     icon: mdi:database
     entity_category: config
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
+    restore_mode: RESTORE_DEFAULT_ON
     turn_on_action:
       - lambda: |-
           id(oq_trends_endpoint).set_flash_enabled(true);
@@ -1068,7 +1068,7 @@ switch:
     icon: mdi:database-clock
     entity_category: config
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
+    restore_mode: RESTORE_DEFAULT_ON
     turn_on_action:
       - script.execute: oq_capture_energy_history_sample
 

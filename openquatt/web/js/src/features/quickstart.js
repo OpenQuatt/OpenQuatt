@@ -10,6 +10,7 @@ import { getFirmwareBuildSwitchModel, getFirmwareProgressModel } from "./firmwar
 import { getOduGenerationDetectionModel } from "./odu-generation-ui.js";
 import { formatSettingsOptionLabel, renderSettingsFieldCard, renderSettingsInfoToggle } from "../settings/controls.js";
 import { renderCurveGraph, renderFlowSettingsFields, renderHeatingCurveProfileField, renderHeatingStrategyExplainCards, renderPowerHouseAdvancedField, renderPowerHouseBaseFields, renderSettingsCurveInputs, renderStrategySelectionFields } from "../settings/heating.js";
+import { getHeatingEnableAdvice, getHeatingEnableCurrent, getHeatingEnableRecommendation } from "../core/heating-strategy-matrix.js";
 import { renderBoilerCvFields, renderHpGenerationField } from "../settings/installation.js";
 import { renderSilentSettingsGrid } from "../settings/silent.js";
 import { renderWaterSettingsFields } from "../settings/water.js";
@@ -618,6 +619,25 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
   export const captureQuickStartScrollState = quickStartScrollKeeper.capture;
   export const queueQuickStartScrollRestore = quickStartScrollKeeper.queue;
 
+  export function renderHeatingEnableQuickStartAdvice() {
+    if (!hasEntity("heatingEnableSource")) {
+      return "";
+    }
+    const advice = getHeatingEnableAdvice();
+    const deviant = Boolean(advice.deviant);
+    return `
+      <div class="oq-helper-surface oq-settings-field oq-settings-field--span-2${deviant ? " is-warning" : ""}">
+        <div class="oq-settings-field-head">
+          <h3>Warmtevraag bepalen</h3>
+          <p class="oq-settings-action-note" style="margin:0">Bekijk welke warmtetoestemming logisch past bij je gekozen strategie. De gekoppelde en actieve thermostaatbron is het advies.</p>
+        </div>
+        <div class="oq-settings-field-control">
+          <button class="oq-helper-button ${deviant ? "oq-helper-button--warning-soft" : "oq-helper-button--ghost"}" type="button" data-oq-action="open-heating-strategy-advice-modal">${deviant ? '<span class="oq-advice-warn-icon"><svg viewBox="0 0 20 18" aria-hidden="true"><path d="M10 1.6 L18.2 16.4 H1.8 Z"/><rect x="9.1" y="5.4" width="1.8" height="5.8" rx="0.9"/><circle cx="10" cy="13.6" r="1.1"/></svg></span> Advies per strategie bekijken' : "Advies per strategie bekijken"}</button>
+        </div>
+      </div>
+    `;
+  }
+
   export function renderStrategyWorkspace() {
     return `
       <section class="oq-helper-panel">
@@ -749,6 +769,10 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
         <h2 class="oq-helper-section-title">Bevestigen en afronden</h2>
         <p class="oq-helper-section-copy">Controleer nog één keer je keuzes. Met afronden markeer je Quick Start als voltooid.</p>
         ${renderConfirmReviewCards()}
+        <section class="oq-helper-surface oq-helper-surface--muted" aria-label="Lokale historie">
+          <h3>Lokale historie</h3>
+          <p>Energiegegevens en belangrijke regelgebeurtenissen worden lokaal bewaard zodat Resultaten en diagnose ook na een herstart beschikbaar blijven. Dit kan later worden aangepast onder Instellingen → Gegevens bewaren.</p>
+        </section>
         ${state.controlNotice ? `<p class="oq-helper-notice">${escapeHtml(state.controlNotice)}</p>` : ""}
         ${state.controlError ? `<p class="oq-helper-error">${escapeHtml(state.controlError)}</p>` : ""}
         <div class="oq-helper-actions oq-helper-actions--step">
@@ -785,11 +809,11 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
     if (activeStep === "thermostat-source") {
       return renderThermostatSourceWorkspace();
     }
-    if (activeStep === "flow") {
-      return renderFlowWorkspace();
-    }
     if (activeStep === "heating") {
       return renderHeatingWorkspace();
+    }
+    if (activeStep === "flow") {
+      return renderFlowWorkspace();
     }
     if (activeStep === "water") {
       return renderWaterWorkspace();

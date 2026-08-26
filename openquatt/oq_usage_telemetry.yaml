@@ -76,6 +76,7 @@ openquatt_crash_telemetry:
   usage_switch: oq_usage_telemetry
   installation_id_sensor: oq_usage_telemetry_installation_id
   setup_complete_sensor: oq_setup_complete_sensor
+  clock: oq_time
   source_repository: "${build_source_repository}"
   source_commit: "${build_source_commit}"
   build_target: "${build_target}"

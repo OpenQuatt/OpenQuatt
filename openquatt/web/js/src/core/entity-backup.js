@@ -95,6 +95,27 @@ export function getEntityBackupSwitchState(payload) {
   return null;
 }
 
+export async function verifyEntityBackupSelectState(key, expected) {
+  const entity = ENTITY_DEFS[key];
+  if (!entity || entity.domain !== "select") {
+    throw new Error(`Onbekende selectie ${key}.`);
+  }
+
+  const response = await fetch(buildEntityPath(entity.domain, entity.name), {
+    cache: "no-store",
+    headers: { "Cache-Control": "no-store" },
+  });
+  if (!response.ok) {
+    throw new Error(`Controleren mislukt: HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  const actual = String(payload?.value ?? payload?.state ?? "").trim();
+  if (!actual) {
+    throw new Error(`${entity.name} gaf geen geldige status terug.`);
+  }
+  return actual === String(expected || "").trim();
+}
+
 export async function verifyEntityBackupSwitchState(key, expected) {
   const entity = ENTITY_DEFS[key];
   if (!entity || entity.domain !== "switch") {

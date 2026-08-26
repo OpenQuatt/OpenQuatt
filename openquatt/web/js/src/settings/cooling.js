@@ -1,6 +1,6 @@
 import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { formatValue } from "../core/entity-store.js";
-import { formatSettingsOptionLabel, renderSettingsAdvancedDisclosure, renderSettingsFieldCard, renderSettingsNumberField, renderSettingsOptionCardsField, renderSettingsSection, renderSettingsSliderField, renderSettingsSwitchField } from "./controls.js";
+import { formatSettingsOptionLabel, renderSettingsAdvancedDisclosure, renderSettingsFieldCard, renderSettingsNumberField, renderSettingsOptionCardsField, renderSettingsSection, renderSettingsSelectField, renderSettingsSliderField, renderSettingsSwitchField } from "./controls.js";
 import { escapeHtml } from "../core/html.js";
 
   export function renderSettingsCoolingFact(label, value) {
@@ -19,7 +19,7 @@ import { escapeHtml } from "../core/html.js";
     }
 
     const labels = {
-      Ready: "Gereed",
+      Ready: "Gereed om te koelen",
       "Waiting for room request": "Koeling toegestaan, wacht op kamertemperatuur boven koel-setpoint",
       "Cooling enabled, waiting for room temperature above cooling setpoint": "Koeling toegestaan, wacht op kamertemperatuur boven koel-setpoint",
       "No dew point source": "Geen dauwpuntbron",
@@ -56,6 +56,8 @@ import { escapeHtml } from "../core/html.js";
 
   export function renderSettingsCoolingSection() {
     const roomRequestRequired = !hasEntity("coolingRoomRequestRequired") || isEntityActive("coolingRoomRequestRequired");
+    const restartByMinimumOffTime = hasEntity("coolingRestartMode") &&
+      getEntityStateText("coolingRestartMode", "Water temperature") === "Minimum off time";
     const tuningFields = [
       renderSettingsNumberField("coolingMinimumSupplyTemp", "Minimale koel-aanvoer", "Ondergrens voor het koeldoel. OpenQuatt gebruikt de hoogste waarde van deze instelling en de dauwpuntveilige grens."),
       renderSettingsSliderField("coolingDemandMax", "Maximale koelsterkte", "Bepaalt hoe krachtig OpenQuatt mag koelen. Lager geeft langere, rustigere runs; hoger geeft meer koelvermogen bij warm weer.", "", {
@@ -64,7 +66,10 @@ import { escapeHtml } from "../core/html.js";
         valueLabel: `${formatValue("coolingDemandMax")} max`,
         footerMarkup: renderCoolingSilentLimitWarning(),
       }),
-      renderSettingsNumberField("coolingRestartDelta", "Herstartmarge watertemperatuur", "Na het bereiken van het koel-aanvoerdoel start de watercyclus pas opnieuw zodra de aanvoer deze marge boven het doel ligt."),
+      hasEntity("coolingRestartMode") ? renderSettingsSelectField("coolingRestartMode", "Herstartvoorwaarde", "Kies of koeling herstart nadat het water voldoende is opgewarmd of na een vaste minimale uit-tijd. Een minimale uit-tijd remt snelle opeenvolgende koelstarts af en helpt zo pendelgedrag te verminderen. De vaste minimale uit-tijd van iedere compressor (4 minuten) blijft in beide modi altijd gelden.") : "",
+      restartByMinimumOffTime
+        ? renderSettingsNumberField("coolingMinimumOffTime", "Minimale uit-tijd koelen", "Na een werkelijke koelstop blijft de warmtepomp gedurende deze tijd uit. Bij Duo geldt dit voor beide warmtepompen. OpenQuatt start pas wanneer ook de vaste minimale compressor-uit-tijd (4 minuten) voorbij is.")
+        : renderSettingsNumberField("coolingRestartDelta", "Herstartmarge watertemperatuur", "Na het bereiken van het koel-aanvoerdoel start de watercyclus pas opnieuw zodra de aanvoer deze marge boven het doel ligt."),
       renderSettingsNumberField("coolingSafetyMargin", "Dauwpunt veiligheidsmarge", "Extra marge boven het geselecteerde dauwpunt voor de minimale veilige watertemperatuur."),
     ].filter(Boolean);
     const roomRequestFields = [
@@ -128,7 +133,7 @@ import { escapeHtml } from "../core/html.js";
     return renderSettingsSection(
       "Koeling",
       "Koelingsinstellingen",
-      "Stel hier in wanneer koelvraag ontstaat, hoe koud het water mag worden en hoeveel het water mag opwarmen voor herstart.",
+      "Stel hier in wanneer koelvraag ontstaat, hoe koud het water mag worden en wanneer een gestopte koelcyclus opnieuw mag starten.",
       `
         ${tuningFields.length ? `
           <div class="oq-settings-grid">

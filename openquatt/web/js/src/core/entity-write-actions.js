@@ -170,11 +170,13 @@ export async function commitSelect(key, option) {
     if (key === "strategy" && state.appView !== "settings") {
       await refreshEntities(isCurveMode(option) ? CURVE_POINTS.map((point) => point.key) : POWER_HOUSE_KEYS, "state");
     }
+    return true;
   } catch (error) {
     if (!verifyControlModeOverride && previousEntity) {
       state.entities[key] = previousEntity;
     }
     state.controlError = `${entity.name} kon niet worden bijgewerkt. ${error.message}`;
+    return false;
   } finally {
     state.busyAction = "";
     render();

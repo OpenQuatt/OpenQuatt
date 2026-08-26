@@ -306,10 +306,16 @@ void OpenQuattOTSlave::on_ota_global_state(ota::OTAState state, float progress, 
 #endif
 
 void OpenQuattOTSlave::processRequestThermostat(unsigned long request, OpenThermResponseStatus status) {
+  if (status == OpenThermResponseStatus::TIMEOUT) {
+    m_timeoutFrameCount = m_timeoutFrameCount < UINT32_MAX ? m_timeoutFrameCount + 1U : UINT32_MAX;
+    return;
+  }
   if (status != OpenThermResponseStatus::SUCCESS) {
+    m_invalidFrameCount = m_invalidFrameCount < UINT32_MAX ? m_invalidFrameCount + 1U : UINT32_MAX;
     return;
   }
 
+  m_successfulFrameCount = m_successfulFrameCount < UINT32_MAX ? m_successfulFrameCount + 1U : UINT32_MAX;
   m_lastSuccessfulFrameMs = now_millis();
 
   const OpenThermMessageType request_type = m_ot_thermostat_->getMessageType(request);

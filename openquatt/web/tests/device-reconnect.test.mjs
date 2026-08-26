@@ -11,6 +11,7 @@ globalThis.window = {
     timer.cancelled = true;
   },
   location: {
+    href: "http://openquatt.local/?view=settings",
     reload() {
       reloadCount += 1;
     },
@@ -70,7 +71,7 @@ test("a reboot unit change overrides stale uptime metadata", async () => {
 
   const refreshTimer = timers.find((timer) => timer.delay === OTA_REFRESH_DELAY_MS && !timer.cancelled);
   assert.ok(refreshTimer);
-  refreshTimer.callback();
+  await refreshTimer.callback();
 
   assert.equal(reloadCount, 1);
   assert.equal(state.ota.on, false);
@@ -310,16 +311,55 @@ test("an explicit restart rejection cancels its pending page reload", async () =
   assert.equal(reloadCount, 0);
 });
 
-test("a rejected OTA cancels its pending page reload", () => {
+test("a rejected OTA cancels its pending page reload", async () => {
   armOtaRefresh();
 
   scheduleOtaRefresh();
   const refreshTimer = timers[0];
   clearOtaRefresh();
-  refreshTimer.callback();
+  await refreshTimer.callback();
 
   assert.equal(refreshTimer.cancelled, true);
   assert.equal(reloadCount, 0);
+});
+
+test("an OTA refresh reloads even when explicit cache refresh fails", async () => {
+  const requestedUrls = [];
+  globalThis.fetch = async (url) => {
+    requestedUrls.push(url);
+    throw new TypeError("Failed to fetch");
+  };
+
+  armOtaRefresh();
+  scheduleOtaRefresh();
+  const refreshTimer = timers[0];
+  await refreshTimer.callback();
+
+  assert.deepEqual(requestedUrls, [
+    "http://openquatt.local/?view=settings",
+    "/0.css",
+    "/0.js",
+  ]);
+  assert.equal(reloadCount, 1);
+  assert.equal(state.ota.on, false);
+});
+
+test("cancelling OTA during cache refresh prevents a stale scheduled reload", async () => {
+  const fetchResolvers = [];
+  globalThis.fetch = () => new Promise((resolve) => {
+    fetchResolvers.push(resolve);
+  });
+
+  armOtaRefresh();
+  scheduleOtaRefresh();
+  const refreshTimer = timers[0];
+  const refreshPromise = refreshTimer.callback();
+  clearOtaRefresh();
+  fetchResolvers.forEach((resolve) => resolve({ ok: true, arrayBuffer: async () => new ArrayBuffer(0) }));
+  await refreshPromise;
+
+  assert.equal(reloadCount, 0);
+  assert.equal(state.ota.on, false);
 });
 
 test("a lost OTA acknowledgement enters reconnect recovery", async () => {

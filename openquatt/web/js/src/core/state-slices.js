@@ -225,6 +225,7 @@ export function createFirmwareState() {
     updateInstallMode: "",
     updateInstallTargetConnection: "",
     updateInstallTargetTopology: "",
+    firmwareDowngradeConfirmedVersion: "",
     firmwareAdvancedOpen: false,
     firmwareConnectionSwitchOpen: false,
     firmwareConnectionSwitchConfirmed: false,

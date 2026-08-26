@@ -100,6 +100,18 @@ Praktisch:
 
 Dat maakt `Water Temperature Control` vaak rustiger en voorspelbaarder, maar soms ook minder "comfortgestuurd".
 
+## Warmtetoestemming: meestal de thermostaat
+
+Bij `Water Temperature Control` bepaalt de buitentemperatuur via de curve het gewenste aanvoerdoel; de PID regelt daarna de werkelijke aanvoer naar dat doel. De kamer is een aanvullende correctie, niet de primaire vraagregelaar.
+
+Daarom is bij een normale installatie met kamerthermostaat een externe warmtetoestemming juist logisch: de thermostaat/zone-regeling bepaalt *of* verwarming nodig is, OpenQuatt bepaalt met de stooklijn *hoe warm* het water moet zijn.
+
+Tijdens Quick Start zet een strategieswitch naar `Water Temperature Control` de warmtetoestemming automatisch op de eerder gekozen, gekoppelde thermostaatbron. Dat is op de Q-edition normaal `Heating Enable Source = OT thermostat`; op andere hardware kan dit `CIC` of `HA input` zijn. Een uitgeschakelde of niet-geconfigureerde bron wordt niet automatisch als harde gate gekozen. `Niet gebruiken` blijft mogelijk voor bewust volledig weersafhankelijk bedrijf met permanent open afgiftesysteem.
+
+`Heating Enable Source = Niet gebruiken` betekent: geen externe warmtetoestemming; de strategie mag zelf warmtevraag opbouwen zonder harde gate. Met `Niet gebruiken` kan de stooklijn dus ook verwarmen terwijl de kamer al boven setpoint is.
+
+Buiten Quick Start toont `Instellingen → Verwarmen` bij een afwijkende keuze alleen een advies (`Aanbevolen instelling` / `Controleer configuratie`) en wordt de instelling niet stil overschreven. Voor de volledige matrix zie [Instellingen en meetwaarden](instellingen-en-meetwaarden.md#5-bronselectie).
+
 ## Welke instellingen zijn voor de meeste gebruikers het belangrijkst?
 
 Als je deze strategie afstelt, begin dan bijna altijd hier:

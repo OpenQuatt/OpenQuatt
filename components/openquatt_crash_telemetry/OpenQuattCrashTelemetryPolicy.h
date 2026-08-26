@@ -41,4 +41,8 @@ inline constexpr bool crash_data_may_be_published(CrashPublishKind kind, bool co
   return kind == CrashPublishKind::CRASH && consent_enabled && setup_complete;
 }
 
+inline constexpr bool crash_publication_is_retained(CrashPublishKind kind) {
+  return kind == CrashPublishKind::TOMBSTONE;
+}
+
 }  // namespace esphome::openquatt_crash_telemetry

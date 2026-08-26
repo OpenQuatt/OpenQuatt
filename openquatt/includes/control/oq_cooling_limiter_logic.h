@@ -55,6 +55,47 @@ inline bool water_restart_gap_recovered(const WaterCycleState& state, float filt
   return filtered_gap_c >= state.stop_buffer_gap_c + restart_delta_c;
 }
 
+inline uint32_t global_minimum_off_time_remaining_ms(bool enabled, uint32_t now_ms, bool stop_seen,
+                                                     uint32_t last_stop_ms, bool boot_hold_elapsed,
+                                                     uint32_t minimum_off_ms) {
+  if (!enabled || minimum_off_ms == 0) return 0;
+
+  if (stop_seen) {
+    const uint32_t elapsed_ms = now_ms - last_stop_ms;
+    return elapsed_ms >= minimum_off_ms ? 0 : minimum_off_ms - elapsed_ms;
+  }
+
+  if (boot_hold_elapsed) return 0;
+  return now_ms >= minimum_off_ms ? 0 : minimum_off_ms - now_ms;
+}
+
+inline bool cooling_stop_is_planned(bool was_cooling, int previous_applied_level, int requested_level) {
+  return was_cooling && previous_applied_level > 0 && requested_level <= 0;
+}
+
+inline bool apply_hp2_before_hp1_for_cooling_handover(bool hp1_was_cooling, bool hp2_was_cooling) {
+  return !hp1_was_cooling && hp2_was_cooling;
+}
+
+inline bool record_confirmed_cooling_stop(bool confirmation_pending, bool stop_confirmed, uint32_t now_ms,
+                                          uint32_t& last_confirmed_stop_ms, bool& confirmed_stop_seen) {
+  if (!confirmation_pending || !stop_confirmed) return false;
+  last_confirmed_stop_ms = now_ms;
+  confirmed_stop_seen = true;
+  return true;
+}
+
+inline bool global_minimum_off_time_blocks_start(uint32_t remaining_ms, bool stop_confirmation_pending,
+                                                 bool stop_planned_this_tick, int previous_applied_level) {
+  return previous_applied_level <= 0 && (remaining_ms > 0 || stop_confirmation_pending || stop_planned_this_tick);
+}
+
+inline bool cooling_minimum_off_stop_is_pending(bool enabled, bool water_cycle_active, int stop_reason_code,
+                                                bool cooling_stop_or_wait_active) {
+  return enabled && !water_cycle_active && cooling_stop_or_wait_active && stop_reason_code != WATER_STOP_NONE &&
+         stop_reason_code != WATER_STOP_REQUEST_CLEARED;
+}
+
 struct LimiterTuning {
   float hard_dew_stop_base_gap_c = 0.15f;
   float hard_dew_stop_margin_gain_c = 0.30f;

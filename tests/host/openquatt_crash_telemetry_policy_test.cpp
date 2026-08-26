@@ -3,6 +3,7 @@
 #include "components/openquatt_crash_telemetry/OpenQuattCrashTelemetryPolicy.h"
 
 using esphome::openquatt_crash_telemetry::crash_data_may_be_published;
+using esphome::openquatt_crash_telemetry::crash_publication_is_retained;
 using esphome::openquatt_crash_telemetry::CrashPublishKind;
 using esphome::openquatt_crash_telemetry::flash_sequence_is_newer;
 using esphome::openquatt_crash_telemetry::persisted_consent_blocks_crash;
@@ -38,5 +39,10 @@ int main() {
   assert(!crash_data_may_be_published(CrashPublishKind::CRASH, true, false));
   assert(crash_data_may_be_published(CrashPublishKind::TOMBSTONE, false, false));
   assert(!crash_data_may_be_published(CrashPublishKind::NONE, true, true));
+
+  assert(!crash_publication_is_retained(CrashPublishKind::CRASH));
+  assert(crash_publication_is_retained(CrashPublishKind::TOMBSTONE));
+  assert(!crash_publication_is_retained(CrashPublishKind::NONE));
+
   return 0;
 }

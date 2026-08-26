@@ -17,6 +17,7 @@ import { getControlModeOverrideLabel, renderSettingsServiceTaskModal } from "../
 import { renderSilentSettingsFields } from "../settings/silent.js";
 import { renderSettingsBackupImportModal, renderSettingsBackupRestoreModal, renderSettingsHistoryStorageModal } from "../settings/storage.js";
 import { renderHpWaterSensorOffsetsModal } from "../settings/water.js";
+import { renderHeatingStrategyAdviceModal } from "./heating-strategy-advice.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
 import { render } from "../core/render-scheduler.js";
@@ -648,6 +649,10 @@ import { render } from "../core/render-scheduler.js";
       return renderDebugRecordingModal();
     }
 
+    if (state.systemModal === "heating-strategy-advice") {
+      return renderHeatingStrategyAdviceModal();
+    }
+
     if (state.systemModal === "openquatt-pause") {
       const enabled = isEntityActive("openquattEnabled");
       const busy = state.busyAction === "openquatt-regulation";
@@ -667,7 +672,7 @@ import { render } from "../core/render-scheduler.js";
         closeLabel: "Sluit regeling-popup",
         bodyMarkup: `
           <p class="oq-helper-modal-copy">${enabled
-              ? "Kies hoe lang de regeling uit moet blijven. Verwarmen en koelen stoppen dan, maar beveiligingen blijven actief."
+              ? "Kies hoe lang de regeling uit moet blijven. Verwarmen en koelen stoppen dan, maar beveiligingen (inclusief vorstbeveiliging) blijven actief."
               : "De regeling staat nu tijdelijk uit. Je kunt meteen weer inschakelen of een nieuw hervatmoment plannen."
           }</p>
           ${resumeScheduled

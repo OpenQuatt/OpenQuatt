@@ -94,10 +94,15 @@ Voor koeling zijn vooral belangrijk:
 
 - `Cooling Minimum Supply Temp`
 - `Cooling Demand Max`
+- `Cooling Restart Mode`
+- `Cooling Restart Delta`
+- `Cooling Minimum Off Time`
 - `Cooling Room Request Required`
 - `Cooling Request On Delta`
 - `Cooling Request Off Delta`
 - `Cooling Safety Margin`
+
+Met `Cooling Restart Mode` kies je tussen herstart op watertemperatuur en herstart na een minimale uit-tijd. In de eerste modus bepaalt `Cooling Restart Delta` hoeveel de aanvoer na een waterzijdige stop moet opwarmen. In de tweede modus bepaalt `Cooling Minimum Off Time` hoe lang een werkelijk gestopte koelcyclus uit blijft; bij Duo blokkeert die tijd beide warmtepompen. Los daarvan bewaakt OpenQuatt altijd de vaste minimale uit-tijd per compressor (4 minuten). Een compressor start dus pas wanneer zowel de gekozen koelherstartvoorwaarde als zijn eigen minimale uit-tijd is vrijgegeven. De normale dauwpunt-, flow- en veiligheidsgrenzen blijven in beide modi actief.
 
 ### 3. Duo en looptijdgedrag
 
@@ -143,14 +148,33 @@ Belangrijke keuzes:
 - `Outside Temperature Source`
 - `Room Temperature Source`
 - `Room Setpoint Source`
+- `Heating Enable Source`
 - `Cooling Dew Point Source`
 - `External Heat Demand Source`
 
 En indirect alles wat bepaalt waar buiten-, kamer- en waterwaarden vandaan komen.
 
-Voor `Outside Temperature Source` is `Auto` meestal de verstandigste keuze. OpenQuatt kiest dan zelf een geldige bron en blijft minder gevoelig voor een buitenmeting die tijdelijk niet betrouwbaar is.
+#### Strategie-afhankelijke aanbevelingen
+
+De betekenis van dezelfde bron verschilt per verwarmingsstrategie:
+
+| Instelling | Power House | Water Temperature Control |
+|---|---|---|
+| Kamertemperatuur | Vereist / sterk aanbevolen | Aanbevolen (comfortcorrectie) |
+| Kamer-setpoint | Vereist / sterk aanbevolen | Aanbevolen |
+| Buitentemperatuur | Vereist | Vereist (fallback 40 °C) |
+| Aanvoertemperatuur | Nodig voor begrenzing | Vereist als PID-proceswaarde |
+| Flow | Vereist | Vereist |
+| Warmtetoestemming (`Heating Enable Source`) | Meestal `Niet gebruiken` | Meestal externe thermostaat/zonevraag |
+| Externe warmtevraag | Optioneel (`HA`/`API`) | Niet van toepassing |
+
+Tijdens Quick Start vervangt een strategieswitch de warmtetoestemming automatisch: `Heating Enable Source = Niet gebruiken` bij `Power House` (OpenQuatt bepaalt zelf de vraag), of de eerder gekozen, gekoppelde en actieve thermostaatbron bij `Water Temperature Control` (`OT thermostat` op Q-edition, anders `CIC`/`HA input`). Een uitgeschakelde of niet-geconfigureerde bron wordt niet automatisch als harde gate gekozen. Buiten Quick Start overschrijft de web-app een bestaande keuze niet stil; daar verschijnt alleen een advies met een knop om het over te nemen. Afwijkende combinaties blijven bewust mogelijk (bijv. Power House met zone-gate, stooklijn volledig weersafhankelijk).
+
+Voor `Outside Temperature Source` is `Auto` meestal de verstandigste keuze. OpenQuatt kiest dan zelf een geldige bron (normaliter de buitenunit) en blijft minder gevoelig voor een buitenmeting die tijdelijk niet betrouwbaar is.
 
 Kies je expliciet `MQTT`, houd er dan rekening mee dat de MQTT-buitentemperatuur na een (her)start pas geldig is zodra OpenQuatt een nieuwe live publicatie ontvangt. Tot die tijd kan de regeling naar `CM98` (antivriescirculatie) gaan. De wachttijd hangt af van het publicatie-interval van de zender.
+
+Voor `Heating Enable Source` betekent `Niet gebruiken` / `Disabled`: geen externe warmtetoestemming gebruiken; de actieve verwarmingsstrategie mag zelf warmtevraag opbouwen. Dit staat dus niet voor verwarming uitschakelen. Bij `Power House` is dit meestal gewenst; bij `Water Temperature Control` met kamerthermostaat is meestal de gekoppelde thermostaatbron gewenst (`OT thermostat`, `CIC` of `HA input`). Zie [Power House](power-house.md) en [Water Temperature Control](water-temperature-control.md).
 
 Voor `Cooling Dew Point Source` is `Auto` meestal ook de veiligste keuze. OpenQuatt gebruikt dan de hoogste geldige dauwpuntwaarde van Home Assistant, API-invoer en MQTT. Kies `Home Assistant`, `API input` of `MQTT` alleen als je die bron expliciet wilt vereisen.
 

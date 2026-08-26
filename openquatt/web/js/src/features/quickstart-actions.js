@@ -354,7 +354,44 @@ import { render } from "../core/render-scheduler.js";
     }
   }
 
-  export async function applyQuickStartThermostatSourceConfiguration() {
+  export async function applyQuickStartHeatingEnableSource(targetValue = null) {
+  const desired = targetValue ? String(targetValue).trim() : String(getEntityValue("heatingEnableSource") || "").trim();
+  // Fallback to recommendation when called without explicit target (e.g. from advice button data attribute)
+  const { getHeatingEnableRecommendation } = await import("../core/heating-strategy-matrix.js");
+  const recommended = getHeatingEnableRecommendation();
+  const value = desired && desired !== "—" ? desired : recommended;
+  if (!hasEntity("heatingEnableSource")) {
+    state.controlError = "Heating Enable-bron niet beschikbaar in deze firmware.";
+    render();
+    return;
+  }
+  state.busyAction = "quickstart-heating-enable";
+  state.controlNotice = "";
+  state.controlError = "";
+  render();
+  try {
+    const current = getEntityValue("heatingEnableSource");
+    if (String(current) !== String(value)) {
+      const applied = await setEntityBackupValue("heatingEnableSource", value);
+      state.entities.heatingEnableSource = {
+        ...(state.entities.heatingEnableSource || {}),
+        value: applied,
+        state: applied,
+      };
+    }
+    state.controlNotice = value === "Disabled"
+      ? "Warmtetoestemming op Niet gebruiken gezet: de strategie bepaalt zelf wanneer warmte nodig is."
+      : `Warmtetoestemming op ${value} gezet.`;
+    await refreshEntities(["heatingEnableSource", "heatingEnableValid", "heatingEnableSelected", "heatingBlockedByThermostat"], "all");
+  } catch (error) {
+    state.controlError = `Warmtetoestemming kon niet worden opgeslagen. ${error.message}`;
+  } finally {
+    state.busyAction = "";
+    render();
+  }
+}
+
+export async function applyQuickStartThermostatSourceConfiguration() {
     const model = getQuickStartThermostatSourceModel();
     if (!model.canApply) {
       state.controlError = model.selectedSource === "CIC"

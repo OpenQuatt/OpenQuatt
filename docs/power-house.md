@@ -122,6 +122,18 @@ Dat is belangrijk, want vreemd gedrag komt niet altijd uit het huismodel zelf. S
 - begrenzing op water;
 - of de verdeling over één of twee warmtepompen.
 
+## Warmtetoestemming: meestal Niet gebruiken
+
+`Heating Enable Source = Niet gebruiken` betekent: geen externe warmtetoestemming; de actieve verwarmingsstrategie mag zelf warmtevraag opbouwen. Dit is voor `Power House` meestal de juiste keuze.
+
+`Power House` berekent zelf continu hoeveel warmte de woning nodig heeft uit buitentemperatuur, kamertemperatuur, setpoint en huismodel. Een externe `Heating Enable` als harde gate (bijvoorbeeld `OT thermostat` CH-enable) zet daar een tweede regelaar achter: eerst bepaalt Power House de vraag, daarna kan de thermostaat die vraag hard aan/uit zetten. Dat verstoort het rustige/modulerende karakter en geeft extra stop/start.
+
+Gebruik een externe warmtetoestemming bij `Power House` alleen bewust, bijvoorbeeld als een zone-regeling als harde toestemming dient wanneer geen enkele zone openstaat.
+
+Tijdens Quick Start zet een strategieswitch naar `Power House` daarom automatisch `Heating Enable Source = Niet gebruiken`; een bestaande keuze wordt in die onboardingstap bewust vervangen. Buiten Quick Start wordt de instelling niet stil overschreven. In `Instellingen → Verwarmen` en `Instellingen → Bronnen / integraties → Sensorselectie` zie je dan alleen een advies wanneer de huidige keuze afwijkt, met een knop om het advies over te nemen. Afwijkende combinaties blijven geldig.
+
+Voor de volledige matrix per strategie zie [Instellingen en meetwaarden](instellingen-en-meetwaarden.md#5-bronselectie).
+
 ## Externe warmtevraag (optioneel)
 
 Standaard rekent `Power House` zelf uit hoeveel vermogen het huis nodig heeft, uit de buitentemperatuur en het huismodel. Heb je een eigen voorspelling die verder kijkt dan dat — bijvoorbeeld een model dat zonnewinst, wind of bewoningspatroon meeneemt — dan kun je die vraag rechtstreeks aan `Power House` doorgeven.

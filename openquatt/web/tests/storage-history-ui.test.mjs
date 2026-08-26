@@ -46,3 +46,35 @@ test("advanced storage details remain open across export renders", () => {
     Object.assign(state, previous);
   }
 });
+
+test("diagnosis storage details expose full flush and index timing", () => {
+  const previous = {
+    entities: state.entities,
+    settingsStoragePage: state.settingsStoragePage,
+    trendHistoryMetadata: state.trendHistoryMetadata,
+    trendHistoryMetadataSignature: state.trendHistoryMetadataSignature,
+  };
+
+  try {
+    state.entities = {
+      trendHistoryEnabled: { value: true },
+      trendHistoryFlashEnabled: { value: true },
+    };
+    state.settingsStoragePage = "diagnosis";
+    state.trendHistoryMetadataSignature = "test";
+    state.trendHistoryMetadata = {
+      available: "30 dagen",
+      maxEraseDurationMs: 3,
+      maxFlushDurationMs: 6,
+      maxIndexUpdateDurationMs: 2,
+      maxWriteDurationMs: 2,
+    };
+
+    const html = renderSettingsHistoryStorageModal();
+    assert.match(html, /Langste volledige opslagactie<\/span>\s*<strong>6 ms<\/strong>/);
+    assert.match(html, /Langste flashwrite<\/span>\s*<strong>2 ms<\/strong>/);
+    assert.match(html, /Langste index-update<\/span>\s*<strong>2 ms<\/strong>/);
+  } finally {
+    Object.assign(state, previous);
+  }
+});

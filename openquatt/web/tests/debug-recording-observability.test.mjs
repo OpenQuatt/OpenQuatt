@@ -17,6 +17,7 @@ const FIRMWARE_ENTITY_PACKAGES = [
   "../../oq_sensor_source_selects_opentherm.yaml",
   "../../oq_ot_slave.yaml",
   "../../oq_power_house_strategy.yaml",
+  "../../oq_cooling_strategy.yaml",
 ];
 
 const OBSERVABILITY_KEYS = [
@@ -65,10 +66,17 @@ const ISSUE_489_OBSERVABILITY_KEYS = [
   "powerHouseDemandSource",
 ];
 
+const COOLING_MIN_OFF_OBSERVABILITY_KEYS = [
+  "coolingRestartMode",
+  "coolingMinimumOffTime",
+  "coolingMinimumOffTimeRemaining",
+];
+
 const ADDED_OBSERVABILITY_KEYS = [
   ...OBSERVABILITY_KEYS,
   ...ISSUE_473_OBSERVABILITY_KEYS,
   ...ISSUE_489_OBSERVABILITY_KEYS,
+  ...COOLING_MIN_OFF_OBSERVABILITY_KEYS,
 ];
 
 test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", () => {
@@ -76,6 +84,7 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const observabilityEndIndex = legacyTailIndex + 1 + OBSERVABILITY_KEYS.length;
   const issue473EndIndex = observabilityEndIndex + ISSUE_473_OBSERVABILITY_KEYS.length;
   const oduEndIndex = issue473EndIndex + ODU_GENERATION_KEYS.length;
+  const issue489EndIndex = oduEndIndex + ISSUE_489_OBSERVABILITY_KEYS.length;
 
   assert.equal(legacyTailIndex, 134);
   assert.deepEqual(
@@ -84,7 +93,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   );
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(observabilityEndIndex, issue473EndIndex), ISSUE_473_OBSERVABILITY_KEYS);
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue473EndIndex, oduEndIndex), ODU_GENERATION_KEYS);
-  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(oduEndIndex), ISSUE_489_OBSERVABILITY_KEYS);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(oduEndIndex, issue489EndIndex), ISSUE_489_OBSERVABILITY_KEYS);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue489EndIndex), COOLING_MIN_OFF_OBSERVABILITY_KEYS);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   assert.ok(DEBUG_RECORDING_KEYS.length <= 188, "debugrecorder heeft maximaal 188 entityvelden naast 4 systeemvelden");
 });
@@ -129,7 +139,8 @@ test("elk nieuw debugveld verwijst naar een echte firmware-entity", async () => 
 });
 
 test("flowOutputIpwm publiceert de bestaande actuatoruitgang zonder tweede regelstate", async () => {
-  const flowPackage = await readFile(new URL("../../oq_flow_control.yaml", import.meta.url), "utf8");
+  const flowPackageRaw = await readFile(new URL("../../oq_flow_control.yaml", import.meta.url), "utf8");
+  const flowPackage = flowPackageRaw.replace(/\r\n/g, "\n");
   const flowOutputSensor = flowPackage.match(
     /  - platform: template\n    id: oq_flow_output_ipwm\n[\s\S]*?(?=\n  - platform: template\n)/,
   )?.[0];

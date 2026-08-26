@@ -82,6 +82,9 @@ class OpenQuattOTSlave : public PollingComponent
   void prepare_for_firmware_update();
   bool master_room_temperature_fresh() const;
   bool master_room_setpoint_fresh() const;
+  uint32_t successful_frame_count() const { return m_successfulFrameCount; }
+  uint32_t invalid_frame_count() const { return m_invalidFrameCount; }
+  uint32_t timeout_frame_count() const { return m_timeoutFrameCount; }
 
 #define OPENQUATT_OT_SLAVE_SET_SENSOR(entity) \
   void set_##entity(sensor::Sensor* sensor) { this->entity = sensor; }
@@ -174,6 +177,9 @@ class OpenQuattOTSlave : public PollingComponent
   unsigned long m_otStartNotBeforeMs = 0;
   unsigned long m_otBusIdleSinceMs = 0;
   unsigned long m_runtimeGraceUntilMs = 0;
+  uint32_t m_successfulFrameCount = 0;
+  uint32_t m_invalidFrameCount = 0;
+  uint32_t m_timeoutFrameCount = 0;
   MasterState m_master_state{};
   SlaveState m_slave_state{};
   float m_lastPublishedTBoiler = NAN;

@@ -8,7 +8,7 @@ import { isLikelyDeviceConnectionError, refreshEntities } from "../core/entity-s
 import { armOtaRefresh, awaitOtaEvidence, beginDeviceReconnect, clearOtaRefresh } from "../core/device-reconnect.js";
 import { state } from "../core/state.js";
 import { getFirmwareConnectionLabel, getFirmwareTopologyLabel, getInstallationTopology } from "./device-context.js";
-import { beginFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasKnownFirmwareTargetVersion, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection } from "./firmware-update.js";
+import { beginFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasKnownFirmwareTargetVersion, isFirmwareDowngradeAvailable, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection } from "./firmware-update.js";
 import { render } from "../core/render-scheduler.js";
 
   export async function requestFirmwareOta(path, options) {
@@ -122,6 +122,14 @@ import { render } from "../core/render-scheduler.js";
       return;
     }
 
+    const targetVersion = getFirmwareLatestVersion(entity);
+    const downgrade = isFirmwareDowngradeAvailable(entity);
+    if (downgrade && state.firmwareDowngradeConfirmedVersion !== targetVersion) {
+      state.controlError = "Bevestig opnieuw dat je naar de oudere main-firmware wilt teruggaan.";
+      render();
+      return;
+    }
+
     state.firmwareAdvancedOpen = false;
     state.updateManualUploadOpen = false;
     state.firmwareConnectionSwitchOpen = false;
@@ -134,9 +142,9 @@ import { render } from "../core/render-scheduler.js";
     state.updateInstallCompleted = false;
     state.updateInstallCompletedVersion = "";
     state.updateInstallBusy = true;
-    state.updateInstallTargetVersion = getFirmwareLatestVersion(entity);
+    state.updateInstallTargetVersion = targetVersion;
     primeFirmwareInstallProgressHints();
-    state.updateInstallMode = "normal";
+    state.updateInstallMode = downgrade ? "downgrade" : "normal";
     state.updateInstallTargetConnection = "";
     state.updateInstallTargetTopology = "";
     state.controlError = "";
@@ -144,8 +152,22 @@ import { render } from "../core/render-scheduler.js";
     render();
 
     try {
-      await setFirmwareUpdateTarget("current build", { poll: false, force: true });
-      state.updateInstallTargetVersion = getFirmwareLatestVersion(getFirmwareUpdateEntity() || {}) || state.updateInstallTargetVersion;
+      if (downgrade) {
+        const targetReady = await setFirmwareUpdateTarget("current build", { force: true });
+        const refreshedEntity = getFirmwareUpdateEntity() || {};
+        const refreshedTargetVersion = getFirmwareLatestVersion(refreshedEntity);
+        if (
+          !targetReady
+          || !isFirmwareDowngradeAvailable(refreshedEntity)
+          || state.firmwareDowngradeConfirmedVersion !== refreshedTargetVersion
+        ) {
+          throw new Error("De main-doelversie is gewijzigd of niet meer beschikbaar. Controleer en bevestig de getoonde versie opnieuw.");
+        }
+        state.updateInstallTargetVersion = refreshedTargetVersion;
+      } else {
+        await setFirmwareUpdateTarget("current build", { poll: false, force: true });
+        state.updateInstallTargetVersion = getFirmwareLatestVersion(getFirmwareUpdateEntity() || {}) || state.updateInstallTargetVersion;
+      }
       beginFirmwareOtaQuietWindow();
       const installButtonEntity = ENTITY_DEFS.installFirmwareUpdateTarget;
       const installPath = installButtonEntity && hasEntity("installFirmwareUpdateTarget")
@@ -546,7 +568,9 @@ import { render } from "../core/render-scheduler.js";
 
   const firmwareActionHandlers = {
     "open-update-modal": () => {
+      state.interfacePanelOpen = false;
       state.updateModalOpen = true;
+      state.firmwareDowngradeConfirmedVersion = "";
       render();
       return hydrateFirmwareUpdateModal();
     },
@@ -561,6 +585,7 @@ import { render } from "../core/render-scheduler.js";
       state.updateTestFirmwareOpen = false;
       state.firmwareConnectionSwitchConfirmed = false;
       state.firmwareTopologySwitchConfirmed = false;
+      state.firmwareDowngradeConfirmedVersion = "";
       resetFirmwareManualUploadSelection();
       resetFirmwareTestSelection();
       render();

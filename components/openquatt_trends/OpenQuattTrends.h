@@ -8,6 +8,8 @@
 #include "OpenQuattFlashLayout.h"
 #include "OpenQuattTrendsStoragePolicy.h"
 #include "esp_partition.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/portmacro.h>
 #include "PsramBuffer.h"
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/time/real_time_clock.h"
@@ -118,6 +120,20 @@ class OpenQuattTrends : public Component {
     std::array<TrendSample, FLASH_SAMPLES_PER_BLOCK> samples{};
   };
 
+  struct FlashIOMetrics {
+    uint32_t erase_count{0};
+    uint32_t erase_failure_count{0};
+    uint32_t last_erase_duration_ms{0};
+    uint32_t max_erase_duration_ms{0};
+    uint32_t write_failure_count{0};
+    uint32_t last_write_duration_ms{0};
+    uint32_t max_write_duration_ms{0};
+    uint32_t last_flush_duration_ms{0};
+    uint32_t max_flush_duration_ms{0};
+    uint32_t last_index_update_duration_ms{0};
+    uint32_t max_index_update_duration_ms{0};
+  };
+
   static_assert(sizeof(TrendValues) == 14, "TrendValues must stay packed");
   static_assert(sizeof(TrendSample) == 22, "TrendSample must stay packed");
   static_assert(sizeof(TrendBlockHeader) == 32, "TrendBlockHeader must stay packed");
@@ -160,6 +176,11 @@ class OpenQuattTrends : public Component {
   bool append_sample_to_flash_(const TrendSample& sample);
   bool flush_flash_builder_(bool force);
   bool write_flash_block_(const FlashBlockBuilder& builder);
+  void record_flash_erase_(uint32_t duration_ms, bool success);
+  void record_flash_write_(uint32_t duration_ms, bool success);
+  void record_flash_flush_(uint32_t duration_ms);
+  void record_flash_index_update_(uint32_t duration_ms);
+  FlashIOMetrics snapshot_flash_io_metrics_();
   bool read_flash_block_(uint32_t slot_index, uint32_t expected_sequence, FlashBlockInfo* info,
                          std::array<TrendSample, FLASH_SAMPLES_PER_BLOCK>* samples) const;
   bool update_flash_index_after_write_(const FlashBlockInfo& info, bool erased_sector);
@@ -202,6 +223,8 @@ class OpenQuattTrends : public Component {
   uint64_t flash_oldest_timestamp_ms_{0};
   uint64_t flash_last_flush_timestamp_ms_{0};
   uint16_t flash_valid_block_count_{0};
+  portMUX_TYPE flash_io_metrics_lock_ = portMUX_INITIALIZER_UNLOCKED;
+  FlashIOMetrics flash_io_metrics_{};
 
   PsramBuffer<TrendSample> ram_history_{};
   size_t ram_head_{0};

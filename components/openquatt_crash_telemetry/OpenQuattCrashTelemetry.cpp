@@ -59,13 +59,6 @@ bool OpenQuattCrashTelemetry::copy_text_(char* destination, size_t destination_s
   return true;
 }
 
-bool OpenQuattCrashTelemetry::valid_record_(const CrashRecord& record) {
-  return record.magic == CRASH_RECORD_MAGIC && record.version == CRASH_RECORD_VERSION && record.pending <= 1U &&
-         record.truncated <= 1U && record.captured_by_reporting_build <= 1U && record.sequence != 0U &&
-         record.report_length < CRASH_REPORT_CAPACITY && record.report[record.report_length] == '\0' &&
-         record.checksum == checksum_(&record, offsetof(CrashRecord, checksum));
-}
-
 void OpenQuattCrashTelemetry::random_uuid_(char* destination, size_t destination_size) {
   if (destination == nullptr || destination_size < 37U) return;
   std::array<uint8_t, 16U> bytes{};
@@ -98,7 +91,7 @@ bool OpenQuattCrashTelemetry::load_record_() {
     const size_t offset = openquatt_common::OpenQuattFlashLayout::CRASH_TELEMETRY_OFFSET +
                           (static_cast<size_t>(slot) * openquatt_common::OpenQuattFlashLayout::SECTOR_SIZE);
     if (esp_partition_read(this->flash_partition_, offset, this->record_.data(), sizeof(CrashRecord)) != ESP_OK ||
-        !valid_record_(*this->record_.data())) {
+        !detail::valid_stored_crash_record(*this->record_.data())) {
       continue;
     }
     if (!found || flash_sequence_is_newer(this->record_.data()->sequence, newest_sequence)) {
@@ -115,7 +108,7 @@ bool OpenQuattCrashTelemetry::load_record_() {
   const size_t newest_offset = openquatt_common::OpenQuattFlashLayout::CRASH_TELEMETRY_OFFSET +
                                (static_cast<size_t>(newest_slot) * openquatt_common::OpenQuattFlashLayout::SECTOR_SIZE);
   if (esp_partition_read(this->flash_partition_, newest_offset, this->record_.data(), sizeof(CrashRecord)) != ESP_OK ||
-      !valid_record_(*this->record_.data())) {
+      !detail::migrate_crash_record(this->record_.data())) {
     std::memset(this->record_.data(), 0, sizeof(CrashRecord));
     this->active_record_slot_ = -1;
     return false;
@@ -131,8 +124,8 @@ bool OpenQuattCrashTelemetry::save_record_() {
   const uint32_t previous_sequence = record->sequence;
   record->sequence++;
   if (record->sequence == 0U) record->sequence = 1U;
-  record->magic = CRASH_RECORD_MAGIC;
-  record->version = CRASH_RECORD_VERSION;
+  record->magic = detail::CRASH_RECORD_MAGIC;
+  record->version = detail::CRASH_RECORD_VERSION;
   record->checksum = 0U;
   record->checksum = checksum_(record, offsetof(CrashRecord, checksum));
   const int8_t previous_slot = this->active_record_slot_;
@@ -294,7 +287,14 @@ void OpenQuattCrashTelemetry::setup() {
 
 void OpenQuattCrashTelemetry::capture_pending_crash_() {
 #ifdef USE_ESP32_CRASH_HANDLER
-  if (!esp32::crash_handler_has_data() || logger::global_logger == nullptr || !this->record_) return;
+  if (!esp32::crash_handler_has_data()) {
+    openquatt_log_history::invalidate_crash_time_breadcrumb();
+    return;
+  }
+  if (logger::global_logger == nullptr || !this->record_) return;
+
+  openquatt_log_history::CrashTimeBreadcrumbSnapshot crash_time{};
+  const bool crash_time_valid = openquatt_log_history::consume_crash_time_breadcrumb(&crash_time);
 
   CrashRecord* record = this->record_.data();
   const uint32_t previous_sequence = record->sequence;
@@ -302,6 +302,9 @@ void OpenQuattCrashTelemetry::capture_pending_crash_() {
   record->sequence = previous_sequence;
   record->pending = 1U;
   record->captured_by_reporting_build = 1U;
+  record->crash_time_valid = crash_time_valid ? 1U : 0U;
+  record->crash_timestamp = crash_time_valid ? crash_time.epoch_s : 0U;
+  record->crash_uptime_s = crash_time_valid ? crash_time.uptime_s : 0U;
   record->build_epoch = static_cast<uint32_t>(ESPHOME_BUILD_TIME);
   record->config_hash = static_cast<uint32_t>(ESPHOME_CONFIG_HASH);
   record->reset_reason = static_cast<uint32_t>(esp_reset_reason());
@@ -335,7 +338,7 @@ void OpenQuattCrashTelemetry::capture_pending_crash_() {
   // OpenQuattLogHistory can still replay this record during the current boot:
   // ESPHome intentionally keeps its in-RAM valid flag after clearing the NOINIT marker.
   esp32::crash_handler_clear();
-  ESP_LOGI(TAG, "Stored crash %s for retained publication", record->crash_id);
+  ESP_LOGI(TAG, "Stored crash %s for publication", record->crash_id);
 #endif
 }
 

@@ -173,7 +173,10 @@
     localWaterSupplyTempSource: { domain: "select", name: "Local Water Supply Temp Source", optional: true },
     coolingMinimumSupplyTemp: { domain: "number", name: "Cooling Minimum Supply Temp", optional: true },
     coolingDemandMax: { domain: "number", name: "Cooling Demand Max", optional: true },
+    coolingRestartMode: { domain: "select", name: "Cooling Restart Mode", optional: true },
     coolingRestartDelta: { domain: "number", name: "Cooling Restart Delta", optional: true },
+    coolingMinimumOffTime: { domain: "number", name: "Cooling Minimum Off Time", optional: true },
+    coolingMinimumOffTimeRemaining: { domain: "sensor", name: "Cooling Minimum Off Time Remaining", optional: true },
     coolingPidKp: { domain: "number", name: "Cooling PID Kp", optional: true },
     coolingPidKi: { domain: "number", name: "Cooling PID Ki", optional: true },
     coolingPidKd: { domain: "number", name: "Cooling PID Kd", optional: true },
@@ -225,6 +228,7 @@
     cicPollingEnabled: { domain: "switch", name: "CIC - Enable polling", optional: true },
     cicFeedUrl: { domain: "text", name: "CIC - Feed URL", optional: true },
     cicWaterSupplyTemp: { domain: "sensor", name: "CIC - Water Supply Temp", optional: true },
+    cicBoilerWaterPressure: { domain: "sensor", name: "CIC - Boiler Water Pressure", optional: true },
     cicControlSetpoint: { domain: "sensor", name: "CIC - Control setpoint", optional: true },
     cicRoomSetpoint: { domain: "sensor", name: "CIC - Room setpoint", optional: true },
     cicRoomTemp: { domain: "sensor", name: "CIC - Room temperature", optional: true },
@@ -1059,6 +1063,7 @@
   export const CIC_POLLING_DIAGNOSTIC_KEYS = [
     "cicJsonFeedOk",
     "cicWaterSupplyTemp",
+    "cicBoilerWaterPressure",
     "cicControlSetpoint",
     "cicRoomSetpoint",
     "cicRoomTemp",
@@ -1228,7 +1233,9 @@
   export const COOLING_SETTING_KEYS = [
     "coolingMinimumSupplyTemp",
     "coolingDemandMax",
+    "coolingRestartMode",
     "coolingRestartDelta",
+    "coolingMinimumOffTime",
     "coolingPidKp",
     "coolingPidKi",
     "coolingPidKd",
@@ -1458,6 +1465,9 @@
     "externalHeatDemandSource",
     "externalHeatDemandSelected",
     "powerHouseDemandSource",
+    "coolingRestartMode",
+    "coolingMinimumOffTime",
+    "coolingMinimumOffTimeRemaining",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestOtaUrl", "firmwareTestOtaMd5Url", "installFirmwareTestOta"];
@@ -1947,7 +1957,9 @@
       keys: [
         "coolingMinimumSupplyTemp",
         "coolingDemandMax",
+        "coolingRestartMode",
         "coolingRestartDelta",
+        "coolingMinimumOffTime",
         "coolingPidKp",
         "coolingPidKi",
         "coolingPidKd",

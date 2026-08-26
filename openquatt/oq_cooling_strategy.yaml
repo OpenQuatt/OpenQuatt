@@ -217,11 +217,56 @@ globals:
     restore_value: false
     initial_value: '0'
 
+  # Shared confirmed automatic-cooling stop anchor. In minimum-off-time mode
+  # this blocks both HPs, so Duo cannot restart on the other compressor.
+  - id: oq_cooling_last_confirmed_stop_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+
+  - id: oq_cooling_confirmed_stop_seen
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
+  - id: oq_cooling_stop_confirmation_pending_hp1
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
+  - id: oq_cooling_stop_confirmation_pending_hp2
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
+  - id: oq_cooling_boot_min_off_elapsed
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
+  - id: oq_cooling_min_off_stop_pending
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
   # 0=idle, 1=owner_hp1, 2=owner_hp2
   - id: oq_cooling_request_reason_code
     type: int
     restore_value: false
     initial_value: '0'
+
+select:
+  - platform: template
+    id: cooling_restart_mode
+    name: "Cooling Restart Mode"
+    icon: mdi:restart
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_option: "Water temperature"
+    options:
+      - "Water temperature"
+      - "Minimum off time"
 
 number:
   - platform: template
@@ -264,6 +309,20 @@ number:
     optimistic: true
     restore_value: true
     initial_value: 1.0
+    entity_category: config
+
+  - platform: template
+    id: cooling_minimum_off_time
+    name: "Cooling Minimum Off Time"
+    icon: mdi:timer-pause-outline
+    unit_of_measurement: "s"
+    min_value: 240
+    max_value: 3600
+    step: 30
+    mode: slider
+    optimistic: true
+    restore_value: true
+    initial_value: 600
     entity_category: config
 
   - platform: template
@@ -546,6 +605,44 @@ sensor:
     lambda: |-
       return id(oq_cooling_water_cycle_active) ? 1.0f : 0.0f;
 
+  - platform: template
+    id: oq_cooling_minimum_off_time_remaining_sensor
+    name: "Cooling Minimum Off Time Remaining"
+    internal: true
+    icon: mdi:timer-sand
+    unit_of_measurement: "s"
+    accuracy_decimals: 0
+    update_interval: 5s
+    entity_category: diagnostic
+    lambda: |-
+      const bool restart_by_minimum_off_time =
+          id(cooling_restart_mode).has_state() &&
+          id(cooling_restart_mode).current_option() == "Minimum off time";
+      if (!restart_by_minimum_off_time) return 0.0f;
+
+      const float configured_state = id(cooling_minimum_off_time).state;
+      int configured_s =
+          isnan(configured_state) ? 600 : (int) lroundf(configured_state);
+      configured_s = std::max(240, std::min(3600, configured_s));
+      const uint32_t configured_ms = (uint32_t) configured_s * 1000UL;
+      uint32_t remaining_ms = oq_cooling::global_minimum_off_time_remaining_ms(
+          true,
+          (uint32_t) millis(),
+          id(oq_cooling_confirmed_stop_seen),
+          id(oq_cooling_last_confirmed_stop_ms),
+          id(oq_cooling_boot_min_off_elapsed),
+          configured_ms);
+      const bool stop_confirmation_pending =
+          id(oq_cooling_stop_confirmation_pending_hp1)
+          #if OQ_TOPOLOGY_DUO
+          || id(oq_cooling_stop_confirmation_pending_hp2)
+          #endif
+          ;
+      // The countdown starts at the confirmed physical stop. Until then the
+      // configured duration is the minimum remaining wait visible to support.
+      if (stop_confirmation_pending) remaining_ms = std::max(remaining_ms, configured_ms);
+      return (float) ((remaining_ms + 999UL) / 1000UL);
+
 interval:
   - interval: 5s
     then:
@@ -721,6 +818,32 @@ interval:
           float restart_delta_c = id(cooling_restart_delta).state;
           if (isnan(restart_delta_c) || restart_delta_c < 0.0f) restart_delta_c = 1.0f;
           if (restart_delta_c > 5.0f) restart_delta_c = 5.0f;
+          const bool restart_by_minimum_off_time =
+              id(cooling_restart_mode).has_state() &&
+              id(cooling_restart_mode).current_option() == "Minimum off time";
+          const bool cooling_hp_applied =
+              id(hp1_last_applied_level) > 0
+              #if OQ_TOPOLOGY_DUO
+              || id(${secondary_last_applied_level_id}) > 0
+              #endif
+              ;
+          const bool cooling_minimum_off_wait_active =
+              cooling_hp_applied ||
+              id(oq_cooling_confirmed_stop_seen) ||
+              id(oq_cooling_stop_confirmation_pending_hp1)
+              #if OQ_TOPOLOGY_DUO
+              || id(oq_cooling_stop_confirmation_pending_hp2)
+              #endif
+              ;
+          if (oq_cooling::cooling_minimum_off_stop_is_pending(
+                         restart_by_minimum_off_time,
+                         id(oq_cooling_water_cycle_active),
+                         id(oq_cooling_stop_reason_code),
+                         cooling_minimum_off_wait_active)) {
+            // Preserve a water-side stop already in progress when the user
+            // switches from temperature restart to minimum off-time.
+            id(oq_cooling_min_off_stop_pending) = true;
+          }
 
           const bool user_responsibility_mode =
               id(cooling_without_dew_point_user_responsibility_enabled).has_state() &&
@@ -1009,11 +1132,13 @@ interval:
                 stop_reason_code,
             };
             const float restart_threshold_c = stopped_cycle.stop_buffer_gap_c + restart_delta_c;
-            const bool restart_gap_recovered =
-                oq_cooling::water_restart_gap_recovered(stopped_cycle, filtered_gap_c, restart_delta_c);
+            const bool restart_gap_recovered = restart_by_minimum_off_time
+                ? !id(oq_cooling_min_off_stop_pending)
+                : oq_cooling::water_restart_gap_recovered(stopped_cycle, filtered_gap_c, restart_delta_c);
             const bool dew_recovered = !dew_mode || isnan(dew_gap_c) || dew_gap_c > hard_dew_restart_gap_c;
             const bool fallback_recovered =
-                !fallback_mode || !restart_after_water_stop || projected_floor_pause ||
+                restart_by_minimum_off_time || !fallback_mode ||
+                !restart_after_water_stop || projected_floor_pause ||
                 filtered_gap_c > restart_threshold_c;
             const bool projected_floor_recovered =
                 !projected_floor_pause ||
@@ -1048,6 +1173,9 @@ interval:
           }
 
           if (allowed_max <= 0) {
+            if (restart_by_minimum_off_time && water_cycle_active && cooling_hp_applied) {
+              id(oq_cooling_min_off_stop_pending) = true;
+            }
             id(oq_cooling_demand_raw) = 0;
             id(oq_cooling_base_demand_raw) = 0;
             id(oq_cooling_limited_demand) = 0;
@@ -1154,6 +1282,9 @@ interval:
           const bool pi_zero_stop =
               oq_cooling::record_pi_zero_stop(prev_limited, demand, filtered_gap_c, water_cycle_state);
           if (pi_zero_stop) {
+            if (restart_by_minimum_off_time && cooling_hp_applied) {
+              id(oq_cooling_min_off_stop_pending) = true;
+            }
             id(oq_cooling_water_cycle_active) = water_cycle_state.active;
             id(oq_cooling_stop_buffer_gap_c) = water_cycle_state.stop_buffer_gap_c;
             id(oq_cooling_stop_reason_code) = water_cycle_state.stop_reason_code;
@@ -1216,6 +1347,36 @@ interval:
           int f_cap = id(oq_power_cap_f);
           f_cap = std::max(0, std::min(demand_max_f, f_cap));
           if (f > f_cap) f = f_cap;
+
+          const bool demand_active = (f > 0);
+          const bool restart_by_minimum_off_time =
+              id(cooling_restart_mode).has_state() &&
+              id(cooling_restart_mode).current_option() == "Minimum off time";
+          const float cooling_minimum_off_state = id(cooling_minimum_off_time).state;
+          int cooling_minimum_off_s =
+              isnan(cooling_minimum_off_state) ? 600 : (int) lroundf(cooling_minimum_off_state);
+          cooling_minimum_off_s = std::max(240, std::min(3600, cooling_minimum_off_s));
+          const uint32_t cooling_minimum_off_ms =
+              (uint32_t) cooling_minimum_off_s * 1000UL;
+          const uint32_t global_minimum_off_remaining_ms =
+              oq_cooling::global_minimum_off_time_remaining_ms(
+                  restart_by_minimum_off_time,
+                  now_ms,
+                  id(oq_cooling_confirmed_stop_seen),
+                  id(oq_cooling_last_confirmed_stop_ms),
+                  id(oq_cooling_boot_min_off_elapsed),
+                  cooling_minimum_off_ms);
+          const bool cooling_stop_confirmation_pending =
+              id(oq_cooling_stop_confirmation_pending_hp1)
+              #if OQ_TOPOLOGY_DUO
+              || id(oq_cooling_stop_confirmation_pending_hp2)
+              #endif
+              ;
+          const bool global_cooling_restart_blocked =
+              global_minimum_off_remaining_ms > 0 ||
+              (restart_by_minimum_off_time && cooling_stop_confirmation_pending);
+          const uint32_t global_cooling_restart_remaining_s =
+              (global_minimum_off_remaining_ms + 999UL) / 1000UL;
 
           #if OQ_TOPOLOGY_DUO
           const bool lead_is_hp1 = (id(hp1_minutes) <= id(${secondary_minutes_id}));
@@ -1288,7 +1449,12 @@ interval:
                        outputs.must_stop,
                        previous_applied) &&
                    hp_has_any_allowed_level(is_hp1) &&
-                   !hp_restart_blocked(is_hp1);
+                   !hp_restart_blocked(is_hp1) &&
+                   !oq_cooling::global_minimum_off_time_blocks_start(
+                       global_minimum_off_remaining_ms,
+                       restart_by_minimum_off_time && cooling_stop_confirmation_pending,
+                       false,
+                       previous_applied);
           };
 
           auto hp_restart_remaining_s = [&](bool is_hp1)->uint32_t {
@@ -1336,7 +1502,6 @@ interval:
           int hp1_req = 0;
           int hp2_req = 0;
           int owner = 0;
-          const bool demand_active = (f > 0);
 
           #if OQ_TOPOLOGY_DUO
           const bool prev_hp1_on = (id(hp1_last_applied_level) > 0);
@@ -1378,7 +1543,16 @@ interval:
           const bool cooling_start_blocked = demand_active && owner == 0 && !hp1_can_start_cooling && !hp2_can_start_cooling;
           if (cooling_start_blocked != last_cooling_start_blocked) {
             if (cooling_start_blocked) {
-              ESP_LOGI("quatt.cool", "Cooling request blocked: both HPs are still in minimum off-time or unavailable");
+              if (global_cooling_restart_blocked) {
+                if (cooling_stop_confirmation_pending) {
+                  ESP_LOGI("quatt.cool", "Cooling request blocked: waiting for confirmed cooling stop");
+                } else {
+                  ESP_LOGI("quatt.cool", "Cooling request blocked: global minimum off-time remaining %u s",
+                           (unsigned int) global_cooling_restart_remaining_s);
+                }
+              } else {
+                ESP_LOGI("quatt.cool", "Cooling request blocked: both HPs are still in minimum off-time or unavailable");
+              }
             } else {
               ESP_LOGI("quatt.cool", "Cooling request block cleared");
             }
@@ -1411,7 +1585,16 @@ interval:
           const bool cooling_start_blocked = demand_active && !hp_can_take_cooling_start(true);
           if (cooling_start_blocked != last_cooling_start_blocked) {
             if (cooling_start_blocked) {
-              ESP_LOGI("quatt.cool", "Cooling request blocked: HP1 is still in minimum off-time or unavailable");
+              if (global_cooling_restart_blocked) {
+                if (cooling_stop_confirmation_pending) {
+                  ESP_LOGI("quatt.cool", "Cooling request blocked: waiting for confirmed cooling stop");
+                } else {
+                  ESP_LOGI("quatt.cool", "Cooling request blocked: global minimum off-time remaining %u s",
+                           (unsigned int) global_cooling_restart_remaining_s);
+                }
+              } else {
+                ESP_LOGI("quatt.cool", "Cooling request blocked: HP1 is still in minimum off-time or unavailable");
+              }
             } else {
               ESP_LOGI("quatt.cool", "Cooling request block cleared");
             }

@@ -42,6 +42,65 @@ interval:
               (uint32_t) ${oq_heat_loop_tick_s} * 1000UL);
           id(oq_thermal_actuator_last_loop_ms) = now_ms;
 
+          // Maintain the shared cooling timer outside CM5 as well, so an elapsed
+          // stop cannot become active again after the 32-bit millis counter wraps.
+          const float cooling_minimum_off_state = id(cooling_minimum_off_time).state;
+          int cooling_minimum_off_s =
+              isnan(cooling_minimum_off_state) ? 600 : (int) lroundf(cooling_minimum_off_state);
+          cooling_minimum_off_s = std::max(240, std::min(3600, cooling_minimum_off_s));
+          const uint32_t cooling_minimum_off_ms =
+              (uint32_t) cooling_minimum_off_s * 1000UL;
+          const bool restart_by_minimum_off_time =
+              id(cooling_restart_mode).has_state() &&
+              id(cooling_restart_mode).current_option() == "Minimum off time";
+          if (!id(oq_cooling_boot_min_off_elapsed) && now_ms >= cooling_minimum_off_ms) {
+            id(oq_cooling_boot_min_off_elapsed) = true;
+          }
+
+          auto confirm_cooling_stop = [&](bool is_hp1)->void {
+            bool &confirmation_pending =
+                is_hp1 ? id(oq_cooling_stop_confirmation_pending_hp1)
+                       : id(oq_cooling_stop_confirmation_pending_hp2);
+            if (!confirmation_pending) return;
+            const auto outputs =
+                id(oq_incident_manager).get_outputs(is_hp1 ? 1U : 2U);
+            if (!oq_cooling::record_confirmed_cooling_stop(
+                    confirmation_pending,
+                    outputs.stop_confirmed,
+                    now_ms,
+                    id(oq_cooling_last_confirmed_stop_ms),
+                    id(oq_cooling_confirmed_stop_seen))) {
+              return;
+            }
+            confirmation_pending = false;
+          };
+          confirm_cooling_stop(true);
+          #if OQ_TOPOLOGY_DUO
+          confirm_cooling_stop(false);
+          #endif
+
+          const bool cooling_stop_confirmation_pending =
+              id(oq_cooling_stop_confirmation_pending_hp1)
+              #if OQ_TOPOLOGY_DUO
+              || id(oq_cooling_stop_confirmation_pending_hp2)
+              #endif
+              ;
+          if (id(oq_cooling_confirmed_stop_seen) &&
+              (uint32_t)(now_ms - id(oq_cooling_last_confirmed_stop_ms)) >= cooling_minimum_off_ms) {
+            id(oq_cooling_confirmed_stop_seen) = false;
+            if (!cooling_stop_confirmation_pending) {
+              id(oq_cooling_min_off_stop_pending) = false;
+            }
+          }
+          const uint32_t cooling_global_minimum_off_remaining_ms =
+              oq_cooling::global_minimum_off_time_remaining_ms(
+                  restart_by_minimum_off_time,
+                  now_ms,
+                  id(oq_cooling_confirmed_stop_seen),
+                  id(oq_cooling_last_confirmed_stop_ms),
+                  id(oq_cooling_boot_min_off_elapsed),
+                  cooling_minimum_off_ms);
+
           auto publish_optimizer_reason = [&](const char* reason)->void {
             #if OQ_TOPOLOGY_DUO
             static std::string last_optimizer_reason = "";
@@ -340,7 +399,37 @@ interval:
           static uint32_t last_hp1_safe_stop_write_ms = 0U;
           static uint32_t last_hp2_safe_stop_write_ms = 0U;
 
-          auto apply_level = [&](bool is_hp1, int req_level)->int {
+          const int hp1_req = id(oq_actuator_hp1_req);
+          const int hp2_req = id(oq_actuator_hp2_req);
+          auto applied_mode_is_cooling = [&](bool is_hp1)->bool {
+            const int previous_applied =
+                is_hp1 ? id(hp1_last_applied_level)
+                       : id(${secondary_last_applied_level_id});
+            return previous_applied > 0 &&
+                   (request_mode_code == 1 ||
+                    id(oq_control_mode_code) == 5 ||
+                    hp_mode_is_cooling(is_hp1) ||
+                    hp_mode_target_is_cooling(is_hp1));
+          };
+          const bool hp1_was_cooling = applied_mode_is_cooling(true);
+          #if OQ_TOPOLOGY_DUO
+          const bool hp2_was_cooling = applied_mode_is_cooling(false);
+          #endif
+          const bool cooling_stop_planned_this_tick =
+              oq_cooling::cooling_stop_is_planned(
+                  hp1_was_cooling,
+                  id(hp1_last_applied_level),
+                  id(oq_cooling_request_hp1_level))
+              #if OQ_TOPOLOGY_DUO
+              || oq_cooling::cooling_stop_is_planned(
+                  hp2_was_cooling,
+                  id(${secondary_last_applied_level_id}),
+                  id(oq_cooling_request_hp2_level))
+              #endif
+              ;
+          bool cooling_stop_armed_this_tick = false;
+
+          auto apply_level = [&](bool is_hp1, int req_level, bool was_cooling)->int {
             req_level = std::max(min_level, std::min(max_level, req_level));
             const int requested_level = req_level;
             const int prev_applied = is_hp1 ? id(hp1_last_applied_level) : id(${secondary_last_applied_level_id});
@@ -425,6 +514,32 @@ interval:
               return retained_level;
             }
 
+            if (req_level > 0 && !manual_hp_service_active && request_mode_code == 1 &&
+                oq_cooling::global_minimum_off_time_blocks_start(
+                    cooling_global_minimum_off_remaining_ms,
+                    restart_by_minimum_off_time &&
+                        (cooling_stop_confirmation_pending || cooling_stop_armed_this_tick),
+                    restart_by_minimum_off_time && cooling_stop_planned_this_tick,
+                    prev_applied)) {
+              req_level = 0;
+              candidate_block_reason = openquatt_decision_log::REASON_CANDIDATE_IN_REST;
+              if (cooling_global_minimum_off_remaining_ms > 0) {
+                const uint32_t remaining_s =
+                    (cooling_global_minimum_off_remaining_ms + 999UL) / 1000UL;
+                block_reason = "cooling minimum off-time remaining " +
+                               std::to_string(remaining_s) + " s";
+                candidate_block_aux_s =
+                    remaining_s > UINT16_MAX ? UINT16_MAX : (uint16_t) remaining_s;
+                (is_hp1 ? hp1_service_guard : hp2_service_guard) =
+                    "minimale koel-uit-tijd: nog " + std::to_string(remaining_s) + " s";
+              } else {
+                block_reason = "waiting for confirmed cooling stop";
+                (is_hp1 ? hp1_service_guard : hp2_service_guard) =
+                    "wachten op bevestigde koelstop";
+              }
+              log_hp_block_change(is_hp1, block_reason);
+            }
+
             // Hard guardrail: after stop, enforce a universal per-HP minimum off-time before restart.
             if (req_level > 0 && prev_applied == 0) {
               int min_off_s = (int) ${oq_hp_min_off_s};
@@ -485,6 +600,14 @@ interval:
               apply_active_mode_hold(is_hp1, retained_level);
               publish_optimizer_reason("defrost_protect_hold");
               return retained_level;
+            }
+
+            if (applied == 0 && prev_applied > 0 && was_cooling) {
+              bool &confirmation_pending =
+                  is_hp1 ? id(oq_cooling_stop_confirmation_pending_hp1)
+                         : id(oq_cooling_stop_confirmation_pending_hp2);
+              confirmation_pending = true;
+              cooling_stop_armed_this_tick = true;
             }
 
             bool safe_mode_already_written = false;
@@ -592,9 +715,25 @@ interval:
             return applied;
           };
 
-          const int hp1_req = id(oq_actuator_hp1_req);
-          const int hp2_req = id(oq_actuator_hp2_req);
-          const int hp1_applied = apply_level(true, hp1_req);
+          #if OQ_TOPOLOGY_DUO
+          int hp1_applied = 0;
+          int hp2_applied = 0;
+          // Process the active cooling owner first so a downstream forced stop
+          // arms the same-tick gate before a stopped replacement can start.
+          const bool apply_hp2_first =
+              restart_by_minimum_off_time &&
+              !manual_hp_service_active && request_mode_code == 1 &&
+              oq_cooling::apply_hp2_before_hp1_for_cooling_handover(
+                  hp1_was_cooling, hp2_was_cooling);
+          if (apply_hp2_first) {
+            hp2_applied = apply_level(false, hp2_req, hp2_was_cooling);
+            hp1_applied = apply_level(true, hp1_req, hp1_was_cooling);
+          } else {
+            hp1_applied = apply_level(true, hp1_req, hp1_was_cooling);
+          }
+          #else
+          const int hp1_applied = apply_level(true, hp1_req, hp1_was_cooling);
+          #endif
           auto heating_transition_reason = [&]()->uint8_t {
             if (id(oq_control_mode_code) == 98) {
               return openquatt_decision_log::REASON_FROST_PROTECTION;
@@ -663,7 +802,9 @@ interval:
             return heating_transition_reason();
           };
           #if OQ_TOPOLOGY_DUO
-          const int hp2_applied = apply_level(false, hp2_req);
+          if (!apply_hp2_first) {
+            hp2_applied = apply_level(false, hp2_req, hp2_was_cooling);
+          }
           const int prev_topology_count =
               (id(hp1_last_applied_level) > 0 ? 1 : 0) + (id(${secondary_last_applied_level_id}) > 0 ? 1 : 0);
           const int new_topology_count = (hp1_applied > 0 ? 1 : 0) + (hp2_applied > 0 ? 1 : 0);

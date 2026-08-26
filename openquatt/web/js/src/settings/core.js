@@ -179,7 +179,7 @@ import { escapeHtml } from "../core/html.js";
       button.classList.toggle("is-active", active);
       button.setAttribute("aria-pressed", active ? "true" : "false");
       if (key === "strategy") {
-        button.disabled = state.loadingEntities || state.busyAction === "save-strategy";
+        button.disabled = state.loadingEntities || state.busyAction === "save-strategy" || state.busyAction === "save-heatingEnableSource";
       } else if (key === "hpGeneration") {
         button.disabled = state.loadingEntities || state.busyAction === "save-hpGeneration";
       } else if (key === "curveControlProfile") {

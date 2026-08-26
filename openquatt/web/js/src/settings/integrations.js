@@ -2,6 +2,7 @@ import { getEntityNumericValue, hasEntity } from "../core/app-shared.js";
 import { renderOqIcon, SENSOR_SELECTION_KEYS } from "../core/config.js";
 import { getInputDraftValue } from "../core/control-drafts.js";
 import { getEntityValue } from "../core/entity-store.js";
+import { getHeatingEnableAdvice } from "../core/heating-strategy-matrix.js";
 import { isInstallationMonitoringBinaryActive, isInstallationMonitoringIntegrationEnabled } from "../core/installation-monitoring.js";
 import { state } from "../core/state.js";
 import { formatMqttSensorValiditySummary, getMqttStatusDetail, getMqttStatusLabel, getMqttValidityLabel } from "../features/mqtt.js";
@@ -171,6 +172,7 @@ import { escapeHtml } from "../core/html.js";
       }) : "",
       renderBinaryDiagnosticItem("cicChEnabled", "CH-vraag", "Actief", "Normaal"),
       renderBinaryDiagnosticItem("cicCoolingEnabled", "Koeling", "Actief", "Normaal"),
+      renderValueDiagnosticItem("cicBoilerWaterPressure", "Waterdruk"),
       renderValueDiagnosticItem("cicControlSetpoint", "Control setpoint"),
       renderValueDiagnosticItem("cicRoomSetpoint", "Room setpoint"),
       renderValueDiagnosticItem("cicRoomTemp", "Room temperature"),
@@ -740,28 +742,6 @@ import { escapeHtml } from "../core/html.js";
         ],
       }),
       renderSourceCard({
-        key: "external-heat-demand",
-        title: "Externe warmtevraag",
-        icon: "zap",
-        select: {
-          key: "externalHeatDemandSource",
-          label: "Bron",
-          optionLabels: { Disabled: "Niet gebruiken", "API input": "API-invoer" },
-          haKeys: ["externalHeatDemandHa", "externalHeatDemandHaValid"],
-          apiValueKey: "apiInputExternalHeatDemand",
-          apiValidKey: "apiInputExternalHeatDemandValid",
-          infoCopy: "Vervangt alleen de vermogensschatting van het huismodel in Power House. Valt de bron weg of veroudert hij, dan rekent Power House weer met het huismodel.",
-        },
-        activeRows: [
-          renderSourceRow({ label: "Waarde", key: "externalHeatDemandSelected" }),
-          renderSourceRow({ label: "Power House gebruikt", value: formattedTextSourceValue("powerHouseDemandSource") }),
-        ],
-        measurementRows: [
-          ...renderHaSourceRows({ valueKey: "externalHeatDemandHa", validKey: "externalHeatDemandHaValid" }),
-          ...renderApiSourceRows({ valueKey: "apiInputExternalHeatDemand", validKey: "apiInputExternalHeatDemandValid" }),
-        ],
-      }),
-      renderSourceCard({
         key: "water-supply",
         title: "Aanvoertemperatuur",
         icon: "droplet",
@@ -862,6 +842,8 @@ import { escapeHtml } from "../core/html.js";
           key: "heatingEnableSource",
           label: "Bron",
           optionLabels: heatingEnableSourceLabels,
+          infoId: "heatingEnableSource-info",
+          infoCopy: "Niet gebruiken = geen externe gate; de strategie bepaalt zelf of warmte nodig is.",
           haKeys: ["heatingEnableHa", "heatingEnableHaValid"],
           apiValueKey: "apiInputHeatingEnable",
           apiValidKey: "apiInputHeatingEnableValid",
@@ -869,7 +851,13 @@ import { escapeHtml } from "../core/html.js";
           keepUnavailableCurrent: true,
         },
         activeRows: [
-          renderSourceRow({ label: "Toestemming", value: heatingEnableSourceDisabled ? "Niet gebruikt" : sourceStateText("heatingEnableSelected", "Toegestaan", "Geblokkeerd") }),
+          renderSourceRow({
+            label: "Toestemming",
+            value: heatingEnableSourceDisabled ? "Niet gebruikt" : sourceStateText("heatingEnableSelected", "Toegestaan", "Geblokkeerd"),
+            status: heatingEnableSourceDisabled ? "i" : "",
+            statusTone: heatingEnableSourceDisabled ? "valid" : "",
+            statusTitle: heatingEnableSourceDisabled ? "Geen externe gate; de strategie bepaalt zelf of warmte nodig is." : "",
+          }),
           !heatingEnableSourceDisabled ? renderSourceRow({ label: "Bron", value: heatingEnableSourceLabel }) : "",
         ],
         measurementRows: [
@@ -961,17 +949,44 @@ import { escapeHtml } from "../core/html.js";
           ...renderMqttSourceRows({ valueKey: "mqttCoolingDewPoint", validKey: "mqttCoolingDewPointValid" }),
         ],
       }),
+      renderSourceCard({
+        key: "external-heat-demand",
+        title: "Externe warmtevraag",
+        icon: "zap",
+        select: {
+          key: "externalHeatDemandSource",
+          label: "Bron",
+          optionLabels: { Disabled: "Niet gebruiken", "API input": "API-invoer" },
+          haKeys: ["externalHeatDemandHa", "externalHeatDemandHaValid"],
+          apiValueKey: "apiInputExternalHeatDemand",
+          apiValidKey: "apiInputExternalHeatDemandValid",
+          infoCopy: "Vervangt alleen de vermogensschatting van het huismodel in Power House. Valt de bron weg of veroudert hij, dan rekent Power House weer met het huismodel.",
+        },
+        activeRows: [
+          renderSourceRow({ label: "Waarde", key: "externalHeatDemandSelected" }),
+          renderSourceRow({ label: "Power House gebruikt", value: formattedTextSourceValue("powerHouseDemandSource") }),
+        ],
+        measurementRows: [
+          ...renderHaSourceRows({ valueKey: "externalHeatDemandHa", validKey: "externalHeatDemandHaValid" }),
+          ...renderApiSourceRows({ valueKey: "apiInputExternalHeatDemand", validKey: "apiInputExternalHeatDemandValid" }),
+        ],
+      }),
     ].filter(Boolean);
 
     if (!sourceCards.length) {
       return "";
     }
 
+    const heatingAdvice = hasEntity("heatingEnableSource") ? getHeatingEnableAdvice() : null;
+    const heatingAdviceHeaderAction = hasEntity("heatingEnableSource") ? `<button class="oq-helper-button ${heatingAdvice && heatingAdvice.deviant ? "oq-helper-button--warning-soft" : "oq-helper-button--ghost"}" type="button" data-oq-action="open-heating-strategy-advice-modal">${heatingAdvice && heatingAdvice.deviant ? '<span class="oq-advice-warn-icon"><svg viewBox="0 0 20 18" aria-hidden="true"><path d="M10 1.6 L18.2 16.4 H1.8 Z"/><rect x="9.1" y="5.4" width="1.8" height="5.8" rx="0.9"/><circle cx="10" cy="13.6" r="1.1"/></svg></span> Advies per strategie' : "Advies per strategie"}</button>` : "";
     return renderSettingsSection(
       "Bronnen",
       "Sensorselectie",
       "Kies welke bron OpenQuatt gebruikt voor metingen en vraag-signalen. Uitgeschakelde integraties verdwijnen uit de keuzes.",
       `<div class="oq-settings-source-grid">${sourceCards.join("")}</div>`,
+      "",
+      "",
+      heatingAdviceHeaderAction,
     );
   }
 

@@ -1,6 +1,7 @@
 import { state } from "./state.js";
 import { render } from "./render-scheduler.js";
 import { updateFirmwareState } from "./feature-state.js";
+import { refreshWebAppCache } from "./app-cache.js";
 
 export const DEVICE_RECONNECT_RECOVERY_CLEAR_DELAY_MS = 1500;
 export const OTA_REFRESH_DELAY_MS = 1500;
@@ -62,7 +63,7 @@ function hasRebootEvidence(refresh, acceptVersionChange = false) {
     || (acceptVersionChange && refresh.base[1] && evidence[1] && evidence[1] !== refresh.base[1]);
 }
 
-function scheduleBrowserRefresh(refresh, clearRefresh, delayMs) {
+function scheduleBrowserRefresh(refresh, clearRefresh, delayMs, refreshAppCache = false) {
   if (!refresh.on || (refresh.id && !refresh.wait)) {
     return;
   }
@@ -71,9 +72,15 @@ function scheduleBrowserRefresh(refresh, clearRefresh, delayMs) {
     window.clearTimeout(refresh.id);
   }
   refresh.wait = false;
-  refresh.id = window.setTimeout(() => {
+  refresh.id = window.setTimeout(async () => {
     if (!refresh.on) {
       return;
+    }
+    if (refreshAppCache) {
+      await refreshWebAppCache();
+      if (!refresh.on) {
+        return;
+      }
     }
     clearRefresh();
     window.location.reload();
@@ -99,7 +106,7 @@ export function reconcileOtaEvidence() {
 }
 
 export function scheduleOtaRefresh(delayMs = OTA_REFRESH_DELAY_MS) {
-  scheduleBrowserRefresh(state.ota, clearOtaRefresh, delayMs);
+  scheduleBrowserRefresh(state.ota, clearOtaRefresh, delayMs, true);
 }
 
 export function armRestartRefresh() {

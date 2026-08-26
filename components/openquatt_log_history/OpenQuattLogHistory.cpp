@@ -1,4 +1,5 @@
 #include "OpenQuattLogHistory.h"
+#include "OpenQuattCrashTimeBreadcrumb.h"
 
 #include <algorithm>
 #include <array>
@@ -11,6 +12,7 @@
 #ifdef USE_ESP32_CRASH_HANDLER
 #include <esp_attr.h>
 #include <esp_system.h>
+#include <esp_timer.h>
 
 #include "esphome/components/esp32/crash_handler.h"
 #endif
@@ -25,10 +27,7 @@ static const char* const TAG = "openquatt.log_history";
 
 namespace {
 
-static constexpr uint32_t MIN_VALID_EPOCH_S = 1704067200UL;  // 2024-01-01 00:00:00 UTC
-static constexpr uint32_t MAX_VALID_EPOCH_S = 2082758400UL;  // 2036-01-01 00:00:00 UTC
-
-static bool epoch_is_sane(uint32_t epoch_s) { return epoch_s >= MIN_VALID_EPOCH_S && epoch_s < MAX_VALID_EPOCH_S; }
+static bool epoch_is_sane(uint32_t epoch_s) { return crash_epoch_is_sane(epoch_s); }
 
 static std::string base64_encode_bytes_(const uint8_t* data, size_t length) {
   static constexpr char TABLE[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -79,43 +78,11 @@ static bool header_matches_host_(const std::string& header_value, const std::str
 }
 
 #ifdef USE_ESP32_CRASH_HANDLER
-static constexpr uint32_t CRASH_TIME_BREADCRUMB_MAGIC = 0x4F514348UL;  // OQCH
-static constexpr uint16_t CRASH_TIME_BREADCRUMB_VERSION = 1;
 static constexpr uint32_t CRASH_TIME_BREADCRUMB_UPDATE_INTERVAL_MS = 15000UL;
 static constexpr uint32_t CRASH_REPORT_WAIT_TIMEOUT_MS = 120000UL;
 
-struct CrashTimeBreadcrumb {
-  uint32_t magic;
-  uint16_t version;
-  uint16_t reserved;
-  uint32_t epoch_s;
-  uint32_t uptime_s;
-  uint32_t sequence;
-  uint32_t crc;
-};
-
 RTC_NOINIT_ATTR static CrashTimeBreadcrumb crash_time_breadcrumb;
-
-static uint32_t fnv1a32(const void* data, size_t len) {
-  const auto* bytes = static_cast<const uint8_t*>(data);
-  uint32_t hash = 2166136261UL;
-  for (size_t index = 0; index < len; ++index) {
-    hash ^= bytes[index];
-    hash *= 16777619UL;
-  }
-  return hash;
-}
-
-static uint32_t crash_time_breadcrumb_crc(const CrashTimeBreadcrumb& breadcrumb) {
-  CrashTimeBreadcrumb copy = breadcrumb;
-  copy.crc = 0;
-  return fnv1a32(&copy, sizeof(copy));
-}
-
-static bool crash_time_breadcrumb_is_valid(const CrashTimeBreadcrumb& breadcrumb) {
-  return breadcrumb.magic == CRASH_TIME_BREADCRUMB_MAGIC && breadcrumb.version == CRASH_TIME_BREADCRUMB_VERSION &&
-         epoch_is_sane(breadcrumb.epoch_s) && breadcrumb.crc == crash_time_breadcrumb_crc(breadcrumb);
-}
+static CrashTimeBreadcrumbBootCache crash_time_breadcrumb_boot_cache;
 
 static const char* reset_reason_to_string(esp_reset_reason_t reason) {
   switch (reason) {
@@ -353,6 +320,18 @@ class OpenQuattLogHistoryRequestHandler : public AsyncWebHandler {
 
 }  // namespace
 
+#ifdef USE_ESP32_CRASH_HANDLER
+bool consume_crash_time_breadcrumb(CrashTimeBreadcrumbSnapshot* snapshot) {
+  return consume_crash_time_breadcrumb_state(&crash_time_breadcrumb, &crash_time_breadcrumb_boot_cache, snapshot);
+}
+
+void invalidate_crash_time_breadcrumb() {
+  // Invalidate the aligned marker so a reset during cleanup fails closed instead
+  // of exposing a stale timestamp from an earlier normal boot.
+  invalidate_crash_time_breadcrumb_state(&crash_time_breadcrumb, &crash_time_breadcrumb_boot_cache);
+}
+#endif
+
 float OpenQuattLogHistory::get_setup_priority() const { return setup_priority::WIFI; }
 
 bool OpenQuattLogHistory::capture_enabled_() const { return this->enabled_ && this->entries_; }
@@ -562,14 +541,13 @@ void OpenQuattLogHistory::load_crash_time_breadcrumb_() {
   this->pending_crash_uptime_s_ = 0;
   this->pending_crash_breadcrumb_sequence_ = 0;
 
-  if (!crash_time_breadcrumb_is_valid(crash_time_breadcrumb)) {
-    return;
-  }
+  CrashTimeBreadcrumbSnapshot snapshot{};
+  if (!consume_crash_time_breadcrumb(&snapshot)) return;
 
   this->pending_crash_breadcrumb_valid_ = true;
-  this->pending_crash_epoch_s_ = crash_time_breadcrumb.epoch_s;
-  this->pending_crash_uptime_s_ = crash_time_breadcrumb.uptime_s;
-  this->pending_crash_breadcrumb_sequence_ = crash_time_breadcrumb.sequence;
+  this->pending_crash_epoch_s_ = snapshot.epoch_s;
+  this->pending_crash_uptime_s_ = snapshot.uptime_s;
+  this->pending_crash_breadcrumb_sequence_ = snapshot.sequence;
 }
 
 void OpenQuattLogHistory::update_crash_time_breadcrumb_() {
@@ -589,9 +567,9 @@ void OpenQuattLogHistory::update_crash_time_breadcrumb_() {
   next.version = CRASH_TIME_BREADCRUMB_VERSION;
   next.reserved = 0;
   next.epoch_s = static_cast<uint32_t>(now.timestamp);
-  next.uptime_s = now_ms / 1000UL;
+  next.uptime_s = crash_uptime_seconds_from_microseconds(static_cast<uint64_t>(esp_timer_get_time()));
   next.sequence = crash_time_breadcrumb_is_valid(crash_time_breadcrumb) ? (crash_time_breadcrumb.sequence + 1) : 1;
-  next.crc = crash_time_breadcrumb_crc(next);
+  next.crc = crash_time_breadcrumb_checksum(next);
   crash_time_breadcrumb = next;
   this->last_crash_breadcrumb_update_ms_ = now_ms;
 }
@@ -700,6 +678,16 @@ bool OpenQuattLogHistory::lock_history_() const {
 void OpenQuattLogHistory::unlock_history_() const { xSemaphoreGive(this->history_mutex_); }
 
 void OpenQuattLogHistory::setup() {
+#ifdef USE_ESP32_CRASH_HANDLER
+  this->load_crash_time_breadcrumb_();
+  this->pending_crash_report_ = esp32::crash_handler_has_data();
+  this->pending_crash_report_since_ms_ = millis();
+  if (!this->pending_crash_report_) {
+    invalidate_crash_time_breadcrumb();
+    this->pending_crash_breadcrumb_valid_ = false;
+  }
+#endif
+
   if (logger::global_logger == nullptr) {
     ESP_LOGE(TAG, "global_logger is unavailable");
     return;
@@ -727,12 +715,6 @@ void OpenQuattLogHistory::setup() {
       this, [](void* self, uint8_t level, const char* tag, const char* message, size_t message_len) {
         static_cast<OpenQuattLogHistory*>(self)->on_log_(level, tag, message, message_len);
       });
-
-#ifdef USE_ESP32_CRASH_HANDLER
-  this->load_crash_time_breadcrumb_();
-  this->pending_crash_report_ = esp32::crash_handler_has_data();
-  this->pending_crash_report_since_ms_ = millis();
-#endif
 
   web_server_base::global_web_server_base->add_handler(new OpenQuattLogHistoryRequestHandler(this));
   this->sync_time_state_();

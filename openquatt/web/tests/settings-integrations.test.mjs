@@ -10,7 +10,7 @@ globalThis.window = {
 
 const { state } = await import("../js/src/core/state.js");
 const { SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
-const { renderSettingsSensorSelectionSection } = await import("../js/src/settings/integrations.js");
+const { renderSettingsOpenThermCicSection, renderSettingsSensorSelectionSection } = await import("../js/src/settings/integrations.js");
 
 const MQTT_SOURCE_SELECT_KEYS = [
   "roomTempSource",
@@ -67,6 +67,23 @@ test("integraties laden de aanvoerkalibratiestatus direct", () => {
   assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("waterSupplyCalibrationOffset"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("waterSupplyCalibrationRequired"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("waterSupplyCalibrationStatus"));
+});
+
+test("CIC-diagnostiek toont waterdruk alleen wanneer de sensor aanwezig is", () => {
+  state.loadingEntities = false;
+  state.drafts = {};
+  state.entities = {
+    cicPollingEnabled: { value: true, state: "ON" },
+    cicJsonFeedOk: { value: true, state: "ON" },
+  };
+
+  const withoutPressureMarkup = renderSettingsOpenThermCicSection();
+  assert.doesNotMatch(withoutPressureMarkup, /Waterdruk/);
+
+  state.entities.cicBoilerWaterPressure = { value: 1.7, state: "1.70", uom: "bar" };
+  const withPressureMarkup = renderSettingsOpenThermCicSection();
+  assert.match(withPressureMarkup, /<dt>Waterdruk<\/dt>\s*<dd>1\.7 bar<\/dd>/);
+  assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("cicBoilerWaterPressure"));
 });
 
 test("MQTT verdwijnt uit alle bronselecties en metingen wanneer de integratie uitstaat", () => {

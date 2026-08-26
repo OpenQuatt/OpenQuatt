@@ -110,6 +110,8 @@ Standaard gebruikt OpenQuatt de kamertemperatuur en het setpoint om vast te stel
 
 Bij koelvraag kijkt OpenQuatt vervolgens naar de watertemperatuur. De regeling start rustig, bouwt alleen op als dat nodig is en remt af of stopt wanneer de aanvoer dicht bij de veilige ondergrens komt.
 
+Voor het opnieuw starten na een koelstop kun je kiezen tussen voldoende opwarming van het water en een vaste minimale uit-tijd. Die uit-tijd geldt bij Duo voor beide warmtepompen, zodat de tweede pomp niet direct de gestopte koelcyclus overneemt. Ook bij Single blijft de vaste minimale uit-tijd van de compressor (4 minuten) altijd gelden: OpenQuatt start pas wanneer alle relevante wachttijden en voorwaarden zijn vrijgegeven. De condens-, flow- en andere veiligheidsbewaking blijft altijd gelden.
+
 Wil je de exacte koelinstellingen, marges en begrenzingen begrijpen of wijzigen? Gebruik dan de technische naslag [Instellingen en meetwaarden](instellingen-en-meetwaarden.md#koeling).
 
 ### Waarom is dauwpunt zo belangrijk?

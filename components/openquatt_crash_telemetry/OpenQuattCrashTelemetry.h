@@ -9,11 +9,13 @@
 #include <freertos/semphr.h>
 
 #include "OpenQuattCrashTelemetryPolicy.h"
+#include "OpenQuattCrashTelemetryRecord.h"
 #include "OpenQuattFlashLayout.h"
 #include "PsramBuffer.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/text_sensor/text_sensor.h"
+#include "esphome/components/time/real_time_clock.h"
 #include "esphome/core/component.h"
 #include "esphome/core/preferences.h"
 #include "esp_partition.h"
@@ -32,6 +34,7 @@ class OpenQuattCrashTelemetry : public Component {
   void set_usage_switch(switch_::Switch* value) { this->usage_switch_ = value; }
   void set_installation_id_sensor(text_sensor::TextSensor* value) { this->installation_id_sensor_ = value; }
   void set_setup_complete_sensor(binary_sensor::BinarySensor* value) { this->setup_complete_sensor_ = value; }
+  void set_clock(time::RealTimeClock* value) { this->clock_ = value; }
   void set_source_repository(const std::string& value) { this->source_repository_ = value; }
   void set_source_commit(const std::string& value) { this->source_commit_ = value; }
   void set_build_target(const std::string& value) { this->build_target_ = value; }
@@ -54,45 +57,16 @@ class OpenQuattCrashTelemetry : public Component {
   bool is_persisted_consent_enabled() const { return this->state_ && this->state_.data()->consent_enabled != 0U; }
 
  protected:
-  static constexpr uint32_t CRASH_RECORD_MAGIC = 0x4F514352UL;  // OQCR
-  static constexpr uint16_t CRASH_RECORD_VERSION = 1U;
   static constexpr uint32_t STATE_MAGIC = 0x4F514353UL;  // OQCS
   static constexpr uint16_t STATE_VERSION = 1U;
-  static constexpr size_t CRASH_REPORT_CAPACITY = 2048U;
+  static constexpr size_t CRASH_REPORT_CAPACITY = detail::CRASH_REPORT_CAPACITY;
   static constexpr size_t CRASH_PAYLOAD_CAPACITY = 4096U;
   static constexpr uint32_t SESSION_TIMEOUT_MS = 30000UL;
   static constexpr uint32_t INITIAL_RETRY_MS = 5UL * 60UL * 1000UL;
   static constexpr uint32_t INITIAL_PUBLISH_DELAY_MS = 15000UL;
   static constexpr int MQTT_TASK_STACK_SIZE = 12288;
 
-  struct CrashRecord {
-    uint32_t magic;
-    uint16_t version;
-    uint8_t pending;
-    uint8_t truncated;
-    uint8_t captured_by_reporting_build;
-    uint8_t reserved[3];
-    uint16_t report_length;
-    uint16_t reserved2;
-    uint32_t sequence;
-    uint32_t build_epoch;
-    uint32_t config_hash;
-    uint32_t reset_reason;
-    char crash_id[37];
-    char build_id[65];
-    char source_repository[98];
-    char source_commit[41];
-    char build_target[97];
-    char release_manifest_url[257];
-    char firmware_version[33];
-    char release_channel[17];
-    char esphome_version[17];
-    char hardware_profile[33];
-    char topology[17];
-    char connection[17];
-    char report[CRASH_REPORT_CAPACITY];
-    uint32_t checksum;
-  };
+  using CrashRecord = detail::CrashRecord;
 
   struct StateStorage {
     uint32_t magic;
@@ -105,7 +79,6 @@ class OpenQuattCrashTelemetry : public Component {
     uint32_t checksum;
   };
 
-  static_assert(sizeof(CrashRecord) < 3072U, "Crash record should remain a small bounded blob");
   static_assert(sizeof(StateStorage) < 64U, "Crash telemetry state should remain small");
 
   void capture_pending_crash_();
@@ -133,7 +106,6 @@ class OpenQuattCrashTelemetry : public Component {
   static uint32_t checksum_(const void* data, size_t length);
   static bool copy_text_(char* destination, size_t destination_size, const std::string& source);
   static bool copy_text_(char* destination, size_t destination_size, const char* source);
-  static bool valid_record_(const CrashRecord& record);
   static void random_uuid_(char* destination, size_t destination_size);
   static const char* extract_message_body_(const char* message);
   static void mqtt_event_handler_(void* handler_args, esp_event_base_t base, int32_t event_id, void* event_data);
@@ -158,6 +130,7 @@ class OpenQuattCrashTelemetry : public Component {
   switch_::Switch* usage_switch_{nullptr};
   text_sensor::TextSensor* installation_id_sensor_{nullptr};
   binary_sensor::BinarySensor* setup_complete_sensor_{nullptr};
+  time::RealTimeClock* clock_{nullptr};
 
   StaticSemaphore_t gate_mutex_storage_{};
   SemaphoreHandle_t gate_mutex_{nullptr};

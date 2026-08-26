@@ -90,6 +90,13 @@
   align-items: center;
 }
 
+.oq-settings-section-head-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+}
+
 .oq-settings-section-head h3 {
   margin: 0;
   color: var(--oq-helper-ink);

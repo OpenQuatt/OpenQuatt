@@ -62,8 +62,27 @@ import { render } from "../core/render-scheduler.js";
       lastFlush: "Geen data",
       sizeKb: 0,
       writes: 0,
+      eraseCount: 0,
+      eraseFailures: 0,
+      lastEraseDurationMs: 0,
+      maxEraseDurationMs: 0,
+      writeFailures: 0,
+      lastWriteDurationMs: 0,
+      maxWriteDurationMs: 0,
+      lastFlushDurationMs: 0,
+      maxFlushDurationMs: 0,
+      lastIndexUpdateDurationMs: 0,
+      maxIndexUpdateDurationMs: 0,
       nowMs: Number.NaN,
     };
+  }
+
+  function parseTrendFlashMetric(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) {
+      return 0;
+    }
+    return Math.min(Math.trunc(numeric), 4294967295);
   }
 
   export function parseDecisionLogStorageMetadata(payload = {}) {
@@ -130,6 +149,21 @@ import { render } from "../core/render-scheduler.js";
     String(raw || "").split(/\r?\n/).forEach((line) => {
       if (line.startsWith("@now|")) {
         metadata.nowMs = Number(line.slice(5));
+        return;
+      }
+      if (line.startsWith("@flash_io|")) {
+        const parts = line.split("|");
+        metadata.eraseCount = parseTrendFlashMetric(parts[1]);
+        metadata.eraseFailures = parseTrendFlashMetric(parts[2]);
+        metadata.lastEraseDurationMs = parseTrendFlashMetric(parts[3]);
+        metadata.maxEraseDurationMs = parseTrendFlashMetric(parts[4]);
+        metadata.writeFailures = parseTrendFlashMetric(parts[5]);
+        metadata.lastWriteDurationMs = parseTrendFlashMetric(parts[6]);
+        metadata.maxWriteDurationMs = parseTrendFlashMetric(parts[7]);
+        metadata.lastFlushDurationMs = parseTrendFlashMetric(parts[8]);
+        metadata.maxFlushDurationMs = parseTrendFlashMetric(parts[9]);
+        metadata.lastIndexUpdateDurationMs = parseTrendFlashMetric(parts[10]);
+        metadata.maxIndexUpdateDurationMs = parseTrendFlashMetric(parts[11]);
         return;
       }
       if (!line.startsWith("@flash|")) {

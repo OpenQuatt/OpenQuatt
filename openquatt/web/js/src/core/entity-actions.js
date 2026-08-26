@@ -1,7 +1,8 @@
+import { hasEntity } from "./app-shared.js";
 import { ENTITY_DEFS } from "./config.js";
 import { getInputDraftValue } from "./control-drafts.js";
 import { reportUnknownAction } from "./action-router.js";
-import { handleControlAction } from "./control-actions.js";
+import { commitQuickStartStrategySelection, handleControlAction } from "./control-actions.js";
 import { isCurveMode } from "./domain-helpers.js";
 import { formatValue, getEntityValue, getNumberMeta, normalizeDateTimeValue, normalizeNumber, normalizeTimeValue, parseLooseNumber } from "./entity-store.js";
 import { commitDateTime, commitNumber, commitSelect, commitText, commitTime, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
@@ -12,7 +13,7 @@ import { handleDebugRecordingAction } from "../features/debug-recording.js";
 import { handleControlReplayAction } from "../features/control-replay-actions.js";
 import { handleFirmwareAction } from "../features/firmware-actions.js";
 import { updateFirmwareState, updateEnergyHistoryState } from "./feature-state.js";
-import { getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, resetFirmwareManualUploadSelection, resetFirmwareTestSelection } from "../features/firmware-update.js";
+import { getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, resetFirmwareManualUploadSelection, resetFirmwareTestSelection } from "../features/firmware-update.js";
 import { handleMqttAction, syncMqttDraftFromInput } from "../features/mqtt-actions.js";
 import { handleOduEepromDumpAction } from "../features/odu-eeprom-dump.js";
 import { handleQuickStartAction } from "../features/quickstart-ui-actions.js";
@@ -86,6 +87,14 @@ const actionDelegates = [
   export function handleInput(event) {
     if (event.target.dataset.oqQuickstartSetupConfirm) {
       state.quickStartSetupConfirmed = Boolean(event.target.checked);
+      render();
+      return;
+    }
+
+    if (event.target.dataset.oqFirmwareDowngradeConfirm) {
+      updateFirmwareState({
+        firmwareDowngradeConfirmedVersion: event.target.checked ? getFirmwareLatestVersion() : "",
+      });
       render();
       return;
     }
@@ -328,7 +337,15 @@ const actionDelegates = [
     }
 
     if (entity.domain === "select") {
-      commitSelect(field, String(event.target.value));
+      if (field === "firmwareUpdateChannel") {
+        updateFirmwareState({ firmwareDowngradeConfirmedVersion: "" });
+      }
+      const value = String(event.target.value);
+      if (field === "strategy" && state.quickStartModalOpen) {
+        void commitQuickStartStrategySelection(value);
+      } else {
+        commitSelect(field, value);
+      }
       return;
     }
 
@@ -422,6 +439,7 @@ const actionDelegates = [
             updateTestFirmwareOpen: false,
             firmwareConnectionSwitchConfirmed: false,
             firmwareTopologySwitchConfirmed: false,
+            firmwareDowngradeConfirmedVersion: "",
           });
           resetFirmwareManualUploadSelection();
           resetFirmwareTestSelection();
