@@ -111,6 +111,10 @@ import { render } from "../core/render-scheduler.js";
 
     return {
       available: valid,
+      canInstall: valid
+        && targetEntityAvailable
+        && targetOptionAvailable
+        && installActionAvailable,
       canSwitch: valid
         && targetOption !== "current build"
         && targetEntityAvailable
@@ -305,6 +309,21 @@ import { render } from "../core/render-scheduler.js";
       && hasInstalledFirmwareTargetVersion();
   }
 
+  export function isQuickStartSetupInstallCompletionConfirmed() {
+    if (state.updateInstallMode !== "quickstart-setup") {
+      return false;
+    }
+    const expectedTopology = normalizeInstallationTopologyLabel(state.updateInstallTargetTopology);
+    const expectedConnection = normalizeFirmwareConnection(state.updateInstallTargetConnection);
+    const rebootConfirmed = Boolean(state.ota.id && !state.ota.wait);
+    return expectedTopology
+      && expectedConnection
+      && rebootConfirmed
+      && getInstallationTopology() === expectedTopology
+      && getFirmwareBuildConnection() === expectedConnection
+      && !isFirmwareProgressActive();
+  }
+
   export function isFirmwareUpdateJustCompleted() {
     return state.updateInstallCompleted
       && !isFirmwareUpdateChecking()
@@ -414,6 +433,9 @@ import { render } from "../core/render-scheduler.js";
     const rawPercent = getFirmwareProgressPercent();
     const hintedPercent = Number.isNaN(state.updateInstallProgressHint) ? 0 : Math.round(state.updateInstallProgressHint);
     const basePercent = hasLivePhase && !Number.isNaN(rawPercent) ? Math.round(rawPercent) : hintedPercent;
+    const switchesBuild = state.updateInstallMode === "topology-switch"
+      || state.updateInstallMode === "build-switch"
+      || state.updateInstallMode === "quickstart-setup";
 
     if (!isFirmwareProgressActive() && !state.updateInstallBusy) {
       return null;
@@ -429,7 +451,7 @@ import { render } from "../core/render-scheduler.js";
           ? "De stabiele main-firmware is geplaatst. Het device start opnieuw op en komt daarna vanzelf terug."
           : state.updateInstallMode === "connection-switch"
           ? "Firmware is geplaatst. Het device start opnieuw op en komt daarna via de gekozen verbinding terug."
-          : state.updateInstallMode === "topology-switch" || state.updateInstallMode === "build-switch"
+          : switchesBuild
           ? "Firmware is geplaatst. Het device start opnieuw op en komt daarna met de gekozen opstelling terug."
           : "Firmware is geplaatst. Het device start nu opnieuw op en komt daarna vanzelf terug.",
       };
@@ -455,7 +477,7 @@ import { render } from "../core/render-scheduler.js";
           ? `De stabiele main-firmware wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
           : state.updateInstallMode === "connection-switch"
           ? `De ${getFirmwareConnectionLabel(state.updateInstallTargetConnection)}-build wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
-          : state.updateInstallMode === "topology-switch" || state.updateInstallMode === "build-switch"
+          : switchesBuild
           ? `De ${getFirmwareBuildLabelFor(state.updateInstallTargetTopology, state.updateInstallTargetConnection)}-build wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
           : `Firmware wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`,
       };
@@ -470,7 +492,7 @@ import { render } from "../core/render-scheduler.js";
         ? `Downgrade naar de stabiele main-firmware is gestart voor ${getFirmwareDeviceLabel()}.`
         : state.updateInstallMode === "connection-switch"
         ? `Verbindingswissel naar ${getFirmwareConnectionLabel(state.updateInstallTargetConnection)} is gestart.`
-        : state.updateInstallMode === "topology-switch" || state.updateInstallMode === "build-switch"
+        : switchesBuild
         ? `Opstellingswissel naar ${getFirmwareTopologyLabel(state.updateInstallTargetTopology)} is gestart.`
         : `OTA-update is gestart voor ${getFirmwareDeviceLabel()}.`,
     };
@@ -912,6 +934,9 @@ import { render } from "../core/render-scheduler.js";
             scheduleOtaRefresh();
             return true;
           }
+        } else if (isQuickStartSetupInstallCompletionConfirmed()) {
+          scheduleOtaRefresh();
+          return true;
         } else if (isFirmwareInstallCompletionConfirmed()) {
           scheduleOtaRefresh();
           return true;

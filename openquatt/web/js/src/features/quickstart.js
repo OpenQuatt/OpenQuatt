@@ -52,8 +52,8 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
     return `
       <section class="oq-helper-panel">
         <p class="oq-helper-label">${escapeHtml(getQuickStepKicker("setup"))}</p>
-        <h2 class="oq-helper-section-title">Kies je setup</h2>
-        <p class="oq-helper-section-copy">De gemarkeerde setup is de configuratie die nu op je Q-edition actief is. Kies alleen een andere setup als je installatie anders is opgebouwd of een andere netwerkverbinding moet gebruiken.</p>
+        <h2 class="oq-helper-section-title">Configuratie en software-update</h2>
+        <p class="oq-helper-section-copy">Kies de configuratie van je Q-edition. OpenQuatt installeert daarna altijd de nieuwste passende software en start opnieuw op.</p>
         <div class="oq-helper-fields">
           ${options.map(([key, title, copy]) => {
             const selected = model.selectedKey === key;
@@ -76,8 +76,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
             `;
           }).join("")}
         </div>
-        ${model.changes ? `
-          <div class="oq-firmware-advanced-detail">
+        <div class="oq-firmware-advanced-detail">
             ${progress ? `
               <div class="oq-helper-modal-progress" aria-live="polite">
                 <div class="oq-helper-modal-progress-head">
@@ -92,25 +91,24 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
             ` : ""}
             <div class="oq-helper-modal-grid">
               <div class="oq-helper-modal-row"><span class="oq-helper-modal-label">Huidige build</span><strong class="oq-helper-modal-value">${escapeHtml(model.currentBuildLabel)}</strong></div>
-              <div class="oq-helper-modal-row"><span class="oq-helper-modal-label">Nieuwe build</span><strong class="oq-helper-modal-value">${escapeHtml(model.targetBuildLabel)}</strong></div>
+              <div class="oq-helper-modal-row"><span class="oq-helper-modal-label">Gekozen build</span><strong class="oq-helper-modal-value">${escapeHtml(model.targetBuildLabel)}</strong></div>
             </div>
-            <p class="oq-helper-modal-note">Voor deze wijziging installeert OpenQuatt de passende firmware en start de controller opnieuw op. Bestaande OpenQuatt-instellingen blijven behouden.</p>
+            <p class="oq-helper-modal-note">OpenQuatt installeert de nieuwste software voor deze configuratie en start de controller opnieuw op. Bestaande OpenQuatt-instellingen blijven behouden.</p>
             <label class="oq-helper-modal-check">
               <input type="checkbox" data-oq-quickstart-setup-confirm="true" ${state.quickStartSetupConfirmed ? "checked" : ""} ${busy ? "disabled" : ""}>
               <span>${escapeHtml(requirements.join(" "))}</span>
             </label>
             <div class="oq-firmware-advanced-footer">
-              <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="install-quickstart-setup" ${busy || !state.quickStartSetupConfirmed || !model.canSwitch ? "disabled" : ""}>
-                ${busy ? "Setupwissel uitvoeren..." : "Nieuwe setup installeren"}
+              <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="install-quickstart-setup" ${busy || !state.quickStartSetupConfirmed || !model.canInstall ? "disabled" : ""}>
+                ${busy ? "Configuratie en software bijwerken..." : "Configuratie bevestigen en software bijwerken"}
               </button>
             </div>
-            ${!model.canSwitch && !busy ? `<p class="oq-helper-modal-note oq-helper-modal-note--muted">${escapeHtml(
+            ${!model.canInstall && !busy ? `<p class="oq-helper-modal-note oq-helper-modal-note--muted">${escapeHtml(
               !model.targetEntityAvailable || !model.installActionAvailable
                 ? "De firmwarebediening wordt nog geladen. Wacht een moment en probeer opnieuw."
-                : "Deze firmware mist nog het vereiste OTA-target. Werk eerst bij naar een build die setupwissels ondersteunt.",
+                : "Deze firmware mist nog het vereiste OTA-target voor de gekozen configuratie.",
             )}</p>` : ""}
-          </div>
-        ` : renderQuickStartStepNav()}
+        </div>
         ${state.controlNotice ? `<p class="oq-helper-notice">${escapeHtml(state.controlNotice)}</p>` : ""}
         ${state.controlError ? `<p class="oq-helper-error">${escapeHtml(state.controlError)}</p>` : ""}
       </section>
@@ -588,7 +586,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
       titleId: "oq-quickstart-modal-title",
       kicker: "Quick Start",
       title: "Rond eerst de Quick Start af",
-      copy: "Controleer eerst je setup en loop daarna stap voor stap door de basisinstellingen.",
+      copy: "Bevestig eerst je configuratie en installeer de nieuwste software. Loop daarna stap voor stap door de basisinstellingen.",
       copyInHeader: true,
       backdropClass: "oq-helper-modal-backdrop--quickstart",
       className: "oq-helper-modal--wide oq-helper-modal--quickstart",

@@ -6,7 +6,7 @@ import { setEntityBackupValue } from "../core/entity-backup.js";
 import { getEntityValue } from "../core/entity-store.js";
 import { isLikelyDeviceConnectionError, refreshEntities } from "../core/entity-sync.js";
 import { armOtaRefresh, awaitOtaEvidence, beginDeviceReconnect, clearOtaRefresh } from "../core/device-reconnect.js";
-import { state } from "../core/state.js";
+import { state, storeQuickStartResumeStep } from "../core/state.js";
 import { getFirmwareConnectionLabel, getFirmwareTopologyLabel, getInstallationTopology } from "./device-context.js";
 import { beginFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasKnownFirmwareTargetVersion, isFirmwareDowngradeAvailable, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection } from "./firmware-update.js";
 import { render } from "../core/render-scheduler.js";
@@ -329,9 +329,9 @@ import { render } from "../core/render-scheduler.js";
     }
   }
 
-  async function installFirmwareCombinedSwitch(model) {
+  async function installQuickStartSetupFirmware(model) {
     const buttonEntity = ENTITY_DEFS.installFirmwareUpdateTarget;
-    if (!model || !model.canSwitch || !buttonEntity) {
+    if (!model || !model.canInstall || !buttonEntity) {
       return;
     }
 
@@ -342,7 +342,7 @@ import { render } from "../core/render-scheduler.js";
     state.updateInstallCompleted = false;
     state.updateInstallCompletedVersion = "";
     state.updateInstallBusy = true;
-    state.updateInstallMode = "build-switch";
+    state.updateInstallMode = "quickstart-setup";
     state.updateInstallTargetConnection = model.targetConnection;
     state.updateInstallTargetTopology = model.targetTopology;
     state.updateInstallTargetVersion = getFirmwareCurrentVersion() || "";
@@ -365,6 +365,7 @@ import { render } from "../core/render-scheduler.js";
 
       beginFirmwareOtaQuietWindow();
       await requestFirmwareOta(buildEntityPath(buttonEntity.domain, buttonEntity.name, "press"), { method: "POST" });
+      awaitOtaEvidence();
 
       const completed = await pollFirmwareInstallState({
         initialDelayMs: FIRMWARE_OTA_START_QUIET_MS,
@@ -373,12 +374,14 @@ import { render } from "../core/render-scheduler.js";
       if (completed) {
         state.updateInstallCompleted = true;
         state.updateInstallCompletedVersion = getFirmwareCurrentVersion() || state.updateInstallTargetVersion || "";
+        state.currentStep = "generation";
+        storeQuickStartResumeStep("generation");
         state.controlNotice = "";
       } else {
-        state.controlNotice = `Setupwissel naar ${model.targetBuildLabel} is gestart. Wacht tot het device opnieuw bereikbaar is.`;
+        state.controlNotice = `Configuratie en software-update voor ${model.targetBuildLabel} is gestart. Wacht tot het device opnieuw bereikbaar is.`;
       }
     } catch (error) {
-      state.controlError = `Setupwissel is mislukt. ${error.message}`;
+      state.controlError = `Configuratie en software-update is mislukt. ${error.message}`;
     } finally {
       resetFirmwareInstallUiState();
       render();
@@ -388,9 +391,7 @@ import { render } from "../core/render-scheduler.js";
   export async function installQuickStartSetupSwitch() {
     const [targetTopology, targetConnection] = String(state.quickStartSetupDraft || "").split(":");
     const model = getFirmwareBuildSwitchModel(targetTopology, targetConnection);
-    if (!model.available || model.targetOption === "current build") {
-      state.currentStep = "generation";
-      render();
+    if (!model.available) {
       return;
     }
     if (!state.quickStartSetupConfirmed) {
@@ -398,21 +399,12 @@ import { render } from "../core/render-scheduler.js";
       render();
       return;
     }
-    if (!model.canSwitch) {
-      state.controlError = "Deze firmware kan de gekozen setup nog niet direct installeren. Werk de firmware eerst bij.";
+    if (!model.canInstall) {
+      state.controlError = "Deze firmware kan de gekozen configuratie en software nog niet direct installeren.";
       render();
       return;
     }
-
-    if (model.targetOption === "alternate connection") {
-      state.firmwareConnectionSwitchConfirmed = true;
-      await installFirmwareConnectionSwitch();
-    } else if (model.targetOption === "alternate topology") {
-      state.firmwareTopologySwitchConfirmed = true;
-      await installFirmwareTopologySwitch();
-    } else {
-      await installFirmwareCombinedSwitch(model);
-    }
+    await installQuickStartSetupFirmware(model);
   }
 
   export async function setFirmwareTestTextEntity(key, value) {

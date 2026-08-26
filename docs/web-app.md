@@ -76,11 +76,11 @@ Wil je de interface eerst rustig bekijken zonder echte hardware, open dan de [we
 
 Na de eerste installatie opent de web-app Quick Start zolang de basisinstallatie nog niet is afgerond.
 
-Quick Start begint op de Heatpump Controller Q met een controle van de firmware-setup. Op Waveshare en Heatpump Listener wordt deze eerste stap overgeslagen, omdat `Single` of `Duo` daar al vastligt in de geïnstalleerde firmware. Daarna volgen de configuratiestappen:
+Quick Start begint op de Heatpump Controller Q met de configuratiekeuze en software-update. Op Waveshare en Heatpump Listener wordt deze eerste stap overgeslagen, omdat `Single` of `Duo` daar al vastligt in de geïnstalleerde firmware. Daarna volgen de configuratiestappen:
 
 | Stap | Wat kies je? | Waarom? |
 |---|---|---|
-| `Kies je setup` | `Single` of `Duo`, via `Wi-Fi` of `Ethernet` | Alleen op de HCQ; installeert zo nodig direct de passende firmware. |
+| `Configuratie en software-update` | `Single` of `Duo`, via `Wi-Fi` of `Ethernet` | Alleen op de HCQ; installeert altijd de nieuwste software voor de gekozen configuratie. |
 | `Kies je Quatt Hybrid` | V1, V1.5 of V2 | Selecteert de juiste basislogica voor jouw warmtepompgeneratie. |
 | `Flowmeting configureren` | De juiste flowbron | Zorgt dat de regeling de juiste meting gebruikt. |
 | `Thermostaatgegevens configureren` | Eén bron voor kamertemperatuur en setpoint | Voorkomt dat OpenQuatt waarden uit verschillende bronnen combineert. |

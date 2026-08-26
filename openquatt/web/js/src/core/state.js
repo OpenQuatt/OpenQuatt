@@ -11,6 +11,25 @@ function getStoredDebugRecordingAcknowledgedId() {
 
 export const DEFAULT_TREND_WINDOW_HOURS = 24;
 export const TREND_WINDOW_HOURS_OPTIONS = [3, 12, 24, 72, 168, 336, 720];
+const QUICK_START_RESUME_STEP_STORAGE_KEY = "oq-quickstart-resume-step";
+
+export function consumeStoredQuickStartResumeStep() {
+  try {
+    const step = String(window.sessionStorage.getItem(QUICK_START_RESUME_STEP_STORAGE_KEY) || "");
+    window.sessionStorage.removeItem(QUICK_START_RESUME_STEP_STORAGE_KEY);
+    return step === "generation" ? step : "setup";
+  } catch (_error) {
+    return "setup";
+  }
+}
+
+export function storeQuickStartResumeStep(step) {
+  try {
+    window.sessionStorage.setItem(QUICK_START_RESUME_STEP_STORAGE_KEY, step);
+  } catch (_error) {
+    // Keep the in-memory step when storage is unavailable.
+  }
+}
 
 export const state = {
   mounted: false,
@@ -35,7 +54,7 @@ export const state = {
   interfacePanelOpen: getStoredInterfacePanelOpen(),
   devPanelOpen: __OQ_PREVIEW__ && getStoredDevPanelOpen(),
   nativeOpen: getStoredSurface() === "native",
-  currentStep: "setup",
+  currentStep: consumeStoredQuickStartResumeStep(),
   quickStartModalMode: "wizard",
   settingsGroup: getStoredSettingsGroup(),
   appView: "",
