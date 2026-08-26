@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import vm from "node:vm";
 
 globalThis.__OQ_PREVIEW__ = false;
 globalThis.window = {
@@ -26,17 +27,30 @@ test("CM100 geeft F20 alleen vrij voor een bevestigd uitgebreid V2-profiel", () 
 });
 
 test("service hydrateert zowel de selectie als de gedetecteerde profielen", async () => {
-  const [configSource, syncSource, mockSource] = await Promise.all([
+  const [configSource, syncSource] = await Promise.all([
     readFile(new URL("../js/src/core/config.js", import.meta.url), "utf8"),
     readFile(new URL("../js/src/core/entity-sync.js", import.meta.url), "utf8"),
-    readFile(new URL("../js/mock-device.js", import.meta.url), "utf8"),
   ]);
 
   assert.match(configSource, /COMMISSIONING_STATE_KEYS[\s\S]*"hp1CompressorLevelProfile"/);
   assert.match(configSource, /COMMISSIONING_STATE_KEYS[\s\S]*"hp2CompressorLevelProfile"/);
   assert.match(syncSource, /service: \[[\s\S]*"hpGeneration"/);
-  assert.match(mockSource, /profile\.variant === "V2 new model"/);
-  assert.doesNotMatch(mockSource, /profile\.generation === "V2"[\s\S]*V2 F0-F20/);
+});
+
+test("mock houdt V2-variant en compressorprofiel onafhankelijk", async () => {
+  const [fixtureSource, mockSource] = await Promise.all([
+    readFile(new URL("../js/mock-fixtures.js", import.meta.url), "utf8"),
+    readFile(new URL("../js/mock-device.js", import.meta.url), "utf8"),
+  ]);
+  const context = { window: { __OQ_MOCK_SCENARIOS__: [] } };
+  vm.runInNewContext(fixtureSource, context, { filename: "mock-fixtures.js" });
+
+  const profiles = context.window.__OQ_MOCK_FIXTURES__.oduProfiles;
+  assert.equal(profiles.V2OldModel.generation, profiles.V2.generation);
+  assert.equal(profiles.V2OldModel.compressorLevelProfile, "Unknown / F0-F10 safe");
+  assert.equal(profiles.V2.compressorLevelProfile, "V2 F0-F20");
+  assert.match(mockSource, /profile\.compressorLevelProfile \|\| "Unknown \/ F0-F10 safe"/);
+  assert.doesNotMatch(mockSource, /profile\.variant\s*===\s*"V2 new model"/);
 });
 
 test("CM100 toont de actieve select-index als fysiek F-level", () => {

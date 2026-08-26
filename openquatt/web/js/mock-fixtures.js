@@ -22,6 +22,7 @@
     V1: Object.freeze({
       generation: "V1",
       variant: "V1",
+      compressorLevelProfile: "Unknown / F0-F10 safe",
       controlBoardItem: 0x0037,
       compressorCode: 0,
       model: "",
@@ -36,6 +37,7 @@
     "V1.5": Object.freeze({
       generation: "V1.5",
       variant: "V1.5",
+      compressorLevelProfile: "Unknown / F0-F10 safe",
       controlBoardItem: 0x0E37,
       compressorCode: 0,
       model: "",
@@ -50,6 +52,7 @@
     V2OldModel: Object.freeze({
       generation: "V2",
       variant: "V2 old model",
+      compressorLevelProfile: "Unknown / F0-F10 safe",
       controlBoardItem: 0x0E37,
       compressorCode: 2825,
       model: "",
@@ -64,6 +67,7 @@
     V2: Object.freeze({
       generation: "V2",
       variant: "V2 new model",
+      compressorLevelProfile: "V2 F0-F20",
       controlBoardItem: 0x1037,
       compressorCode: 2825,
       model: "",
@@ -78,6 +82,7 @@
     Unknown: Object.freeze({
       generation: "Unknown",
       variant: "Unknown",
+      compressorLevelProfile: "Unknown / F0-F10 safe",
       controlBoardItem: 0xFFFF,
       compressorCode: 0,
       model: "Unknown ODU",
@@ -99,7 +104,7 @@
   const hp2Entities = [
     ["sensor", "HP2 - Control board item number", { value: oduIdentities[2].controlBoardItem }],
     ["text_sensor", "HP2 - ODU generation", { state: oduIdentities[2].generation, value: oduIdentities[2].generation }],
-    ["text_sensor", "HP2 - Compressor level profile", { state: "Unknown / F0-F10 safe", value: "Unknown / F0-F10 safe" }],
+    ["text_sensor", "HP2 - Compressor level profile", { state: oduIdentities[2].compressorLevelProfile, value: oduIdentities[2].compressorLevelProfile }],
     ["text_sensor", "HP2 - ODU generation variant", { state: oduIdentities[2].variant, value: oduIdentities[2].variant }],
     ["text_sensor", "HP2 - ODU customer model code", { state: "Missing", value: "Missing" }],
     ["button", "HP2 - Detect ODU generation", {}],

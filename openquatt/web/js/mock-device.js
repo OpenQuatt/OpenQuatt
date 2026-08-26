@@ -243,9 +243,7 @@
       state: profile.generation,
       value: profile.generation,
     });
-    const compressorLevelProfile = profile.variant === "V2 new model"
-      ? "V2 F0-F20"
-      : "Unknown / F0-F10 safe";
+    const compressorLevelProfile = profile.compressorLevelProfile || "Unknown / F0-F10 safe";
     setEntity("text_sensor", `HP${hp} - Compressor level profile`, {
       state: compressorLevelProfile,
       value: compressorLevelProfile,
