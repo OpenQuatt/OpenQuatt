@@ -159,6 +159,23 @@ void test_reachability_monitor_rejects_invalid_flow() {
   assert(!monitor.update(61000, NAN, 800.0f, 40.0f, 50.0f));
 }
 
+void test_boiler_settle_starts_at_confirmed_activation() {
+  BoilerActivationSettleMonitor monitor;
+  assert(!monitor.update(1000, false, 30000));
+  assert(!monitor.update(81000, true, 30000));
+  assert(!monitor.update(110999, true, 30000));
+  assert(monitor.update(111000, true, 30000));
+}
+
+void test_boiler_settle_restarts_after_activation_drops() {
+  BoilerActivationSettleMonitor monitor;
+  assert(!monitor.update(1000, true, 30000));
+  assert(!monitor.update(25000, false, 30000));
+  assert(!monitor.update(30000, true, 30000));
+  assert(!monitor.update(59999, true, 30000));
+  assert(monitor.update(60000, true, 30000));
+}
+
 }  // namespace
 
 int main() {
@@ -180,5 +197,7 @@ int main() {
   test_reachability_monitor_resets_when_actuator_not_saturated();
   test_reachability_monitor_resets_when_target_band_reached();
   test_reachability_monitor_rejects_invalid_flow();
+  test_boiler_settle_starts_at_confirmed_activation();
+  test_boiler_settle_restarts_after_activation_drops();
   return 0;
 }

@@ -176,6 +176,30 @@ class FlowReachabilityMonitor {
   float best_flow_lph_{NAN};
 };
 
+class BoilerActivationSettleMonitor {
+ public:
+  void reset() {
+    active_ = false;
+    active_since_ms_ = 0;
+  }
+
+  bool update(uint32_t now_ms, bool boiler_active, uint32_t settle_ms) {
+    if (!boiler_active) {
+      reset();
+      return false;
+    }
+    if (!active_) {
+      active_ = true;
+      active_since_ms_ = now_ms;
+    }
+    return (uint32_t)(now_ms - active_since_ms_) >= settle_ms;
+  }
+
+ private:
+  bool active_{false};
+  uint32_t active_since_ms_{0};
+};
+
 inline bool result_apply_allowed(bool opentherm_selected, bool capacity_verified, bool flow_limited) {
   return !opentherm_selected || (capacity_verified && !flow_limited);
 }

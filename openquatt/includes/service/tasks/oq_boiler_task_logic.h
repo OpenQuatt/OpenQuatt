@@ -308,6 +308,7 @@ class BoilerPowerTestRuntime {
   bool active_test_flow_limited_{false};
   bool active_test_result_apply_allowed_{false};
   oq_boiler_commissioning::FlowReachabilityMonitor flow_reachability_{};
+  oq_boiler_commissioning::BoilerActivationSettleMonitor boiler_activation_settle_{};
   int stable_flow_count_{0};
   int sample_count_{0};
   float sum_w_{0.0f};
@@ -363,6 +364,7 @@ class BoilerPowerTestRuntime {
   void reset_test_state() {
     reset_measurement_accumulators();
     flow_reachability_.reset();
+    boiler_activation_settle_.reset();
     active_test_flow_target_lph_ = NAN;
     active_test_capacity_w_ = NAN;
     active_test_theoretical_flow_lph_ = NAN;
@@ -517,6 +519,7 @@ class BoilerPowerTestRuntime {
     id(oq_commissioning_state_code) = STATE_BOILER_SETTLE;
     id(oq_commissioning_state_since_ms) = now_ms;
     stable_flow_count_ = 0;
+    boiler_activation_settle_.reset();
     ESP_LOGI("quatt.cm100.boiler", "Flow settled at %.0fL/h after %lus; requesting boiler relay", flow_lph,
              (unsigned long)((now_ms - id(oq_commissioning_started_ms)) / 1000UL));
     publish_status("BOILER_SETTLING");
@@ -524,9 +527,12 @@ class BoilerPowerTestRuntime {
 
   void run_boiler_settle(const RuntimeConfig& cfg, uint32_t now_ms, float flow_lph, float heat_w,
                          bool flow_stable_now) {
-    stable_flow_count_ = flow_stable_now ? stable_flow_count_ + 1 : 0;
     const uint32_t state_age_ms = now_ms - id(oq_commissioning_state_since_ms);
-    if (!id(boiler_active).state) {
+    const bool boiler_is_active = id(boiler_active).has_state() && id(boiler_active).state;
+    const bool active_long_enough =
+        boiler_activation_settle_.update(now_ms, boiler_is_active, cfg.boiler_settle_min_ms);
+    if (!boiler_is_active) {
+      stable_flow_count_ = 0;
       if (state_age_ms >= cfg.boiler_start_timeout_ms) {
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
         const bool opentherm_selected = active_test_opentherm_;
@@ -549,13 +555,14 @@ class BoilerPowerTestRuntime {
       }
       return;
     }
-    if (stable_flow_count_ >= cfg.stable_flow_samples && state_age_ms >= cfg.boiler_settle_min_ms) {
+    stable_flow_count_ = flow_stable_now ? stable_flow_count_ + 1 : 0;
+    if (stable_flow_count_ >= cfg.stable_flow_samples && active_long_enough) {
       id(oq_commissioning_state_code) = STATE_MEASURE;
       id(oq_commissioning_state_since_ms) = now_ms;
       reset_measurement_accumulators();
       ESP_LOGI("quatt.cm100.boiler",
                "Boiler settled; starting measurement window (flow=%.0fL/h heat=%.0fW boiler_active=%d)", flow_lph,
-               heat_w, (int)id(boiler_active).state);
+               heat_w, (int)boiler_is_active);
       publish_status("MEASURING");
     } else {
       publish_status("BOILER_SETTLING");

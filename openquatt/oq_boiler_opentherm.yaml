@@ -127,6 +127,21 @@ opentherm:
     before_send:
       then:
         - lambda: |-
+            if (id(oq_otb_hub).consume_deferred_priority_activation(
+                    esphome::opentherm::MessageId::CH_SETPOINT,
+                    esphome::opentherm::MessageId::STATUS)) {
+              // Arm only when the deferred start sequence owns the bus and
+              // immediately before its first TSet request is recorded.
+              oq_otb::start_handshake_state.begin(millis());
+              const float target_c = id(oq_otb_t_set_command).has_state()
+                                         ? id(oq_otb_t_set_command).state
+                                         : NAN;
+              ESP_LOGI(
+                  "quatt.boiler",
+                  "OpenTherm start handshake generation %u began for %.1f C",
+                  (unsigned) oq_otb::start_handshake_state.generation(),
+                  target_c);
+            }
             oq_otb::off_flush_state.record_request(
                 x.id, x.type, x.valueHB, x.valueLB);
             oq_otb::startup_probe_state.record_request(
@@ -937,16 +952,11 @@ interval:
             }
             id(oq_otb_ch_enable).turn_on();
             if (applied_start) {
-              oq_otb::start_handshake_state.begin(millis());
-              ESP_LOGI(
-                  "quatt.boiler",
-                  "OpenTherm start handshake generation %u began for %.1f C",
-                  (unsigned) oq_otb::start_handshake_state.generation(),
-                  target_c);
               // A full repeating cycle can take about half a minute. Put the
               // target ahead of the CH-enable STATUS frame after the current
               // conversation finishes. Unlike a fail-safe stop, starting must
-              // not truncate an in-flight request or boiler response.
+              // not truncate an in-flight request or boiler response. The
+              // before-send hook arms the handshake after hub activation.
               id(oq_otb_hub).defer_priority_messages(
                   esphome::opentherm::MessageId::CH_SETPOINT,
                   esphome::opentherm::MessageId::STATUS);

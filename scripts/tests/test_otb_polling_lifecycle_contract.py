@@ -34,6 +34,10 @@ class OtbPollingLifecycleContractTest(unittest.TestCase):
             "void defer_priority_messages(MessageId first, MessageId second);",
             HUB_HEADER,
         )
+        self.assertIn(
+            "bool consume_deferred_priority_activation(MessageId first, MessageId second);",
+            HUB_HEADER,
+        )
         deferred_start = HUB_CPP.index(
             "void OpenthermHub::defer_priority_messages("
         )
@@ -64,11 +68,18 @@ class OtbPollingLifecycleContractTest(unittest.TestCase):
         self.assertIn("this->priority_sequence_active_", apply_method)
         self.assertIn("this->message_iterator_ != this->messages_.end()", apply_method)
         self.assertIn(
-            "this->activate_priority_sequence_(this->deferred_priority_first_, "
-            "this->deferred_priority_second_);",
-            apply_method,
+            "const MessageId first = this->deferred_priority_first_;", apply_method
         )
+        self.assertIn(
+            "const MessageId second = this->deferred_priority_second_;", apply_method
+        )
+        self.assertIn("this->activate_priority_sequence_(first, second);", apply_method)
         self.assertIn("this->deferred_priority_pending_ = false;", apply_method)
+        self.assertIn("this->deferred_priority_activated_ = true;", apply_method)
+        self.assertLess(
+            apply_method.index("this->activate_priority_sequence_(first, second);"),
+            apply_method.index("this->deferred_priority_activated_ = true;"),
+        )
         self.assertNotIn("this->opentherm_->stop();", apply_method)
         self.assertNotIn("last_conversation_start_", apply_method)
         self.assertNotIn("last_conversation_end_", apply_method)
@@ -136,6 +147,7 @@ class OtbPollingLifecycleContractTest(unittest.TestCase):
         for method in (resume_method, suspend_method):
             self.assertIn("this->urgent_priority_pending_ = false;", method)
             self.assertIn("this->deferred_priority_pending_ = false;", method)
+            self.assertIn("this->deferred_priority_activated_ = false;", method)
 
     def test_fail_safe_off_sequences_remain_urgent(self) -> None:
         flush_start = OTB_PACKAGE.index("id: oq_otb_withdraw_and_flush")
@@ -203,6 +215,7 @@ class OtbPollingLifecycleContractTest(unittest.TestCase):
         start_block = OTB_PACKAGE[start_edge:applied_state]
         self.assertIn("id(oq_otb_hub).defer_priority_messages(", start_block)
         self.assertNotIn("id(oq_otb_hub).prioritize_messages(", start_block)
+        self.assertNotIn("start_handshake_state.begin", start_block)
         self.assertLess(
             start_block.index("esphome::opentherm::MessageId::CH_SETPOINT"),
             start_block.index("esphome::opentherm::MessageId::STATUS"),
@@ -216,6 +229,15 @@ class OtbPollingLifecycleContractTest(unittest.TestCase):
             OTB_PACKAGE,
         )
         self.assertIn("oq_otb::start_handshake_state.begin(millis());", OTB_PACKAGE)
+        before_send = OTB_PACKAGE.index("before_send:")
+        before_process = OTB_PACKAGE.index("before_process_response:", before_send)
+        before_send_block = OTB_PACKAGE[before_send:before_process]
+        self.assertIn("consume_deferred_priority_activation", before_send_block)
+        self.assertIn("start_handshake_state.begin(millis());", before_send_block)
+        self.assertLess(
+            before_send_block.index("consume_deferred_priority_activation"),
+            before_send_block.index("start_handshake_state.record_request"),
+        )
         self.assertIn(
             "classify_response(",
             START_HANDSHAKE_HEADER,

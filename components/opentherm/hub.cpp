@@ -171,6 +171,7 @@ void OpenthermHub::prioritize_messages(MessageId first, MessageId second) {
   // still be on the bus. start_conversation_() installs the sequence as soon
   // as the current exchange reaches IDLE.
   this->deferred_priority_pending_ = false;
+  this->deferred_priority_activated_ = false;
   if (!this->polling_enabled_) {
     this->urgent_priority_pending_ = false;
     return;
@@ -187,11 +188,20 @@ void OpenthermHub::defer_priority_messages(MessageId first, MessageId second) {
   // has completed.
   if (!this->polling_enabled_) {
     this->deferred_priority_pending_ = false;
+    this->deferred_priority_activated_ = false;
     return;
   }
+  this->deferred_priority_activated_ = false;
   this->deferred_priority_first_ = first;
   this->deferred_priority_second_ = second;
   this->deferred_priority_pending_ = true;
+}
+
+bool OpenthermHub::consume_deferred_priority_activation(MessageId first, MessageId second) {
+  const bool matches = this->deferred_priority_activated_ && this->deferred_priority_first_ == first &&
+                       this->deferred_priority_second_ == second;
+  this->deferred_priority_activated_ = false;
+  return matches;
 }
 
 void OpenthermHub::start_priority_polling(MessageId first, MessageId second) {
@@ -204,6 +214,7 @@ void OpenthermHub::resume_polling() {
   this->polling_enabled_ = true;
   this->urgent_priority_pending_ = false;
   this->deferred_priority_pending_ = false;
+  this->deferred_priority_activated_ = false;
   this->opentherm_->stop();
   this->sending_initial_ = true;
   this->priority_sequence_active_ = false;
@@ -219,6 +230,7 @@ void OpenthermHub::suspend_polling() {
   this->polling_enabled_ = false;
   this->urgent_priority_pending_ = false;
   this->deferred_priority_pending_ = false;
+  this->deferred_priority_activated_ = false;
   if (this->opentherm_ != nullptr) {
     this->opentherm_->stop();
   }
@@ -467,8 +479,11 @@ void OpenthermHub::apply_deferred_priority_() {
     return;
   }
 
-  this->activate_priority_sequence_(this->deferred_priority_first_, this->deferred_priority_second_);
+  const MessageId first = this->deferred_priority_first_;
+  const MessageId second = this->deferred_priority_second_;
+  this->activate_priority_sequence_(first, second);
   this->deferred_priority_pending_ = false;
+  this->deferred_priority_activated_ = true;
 }
 
 void OpenthermHub::start_conversation_() {
@@ -634,6 +649,7 @@ void OpenthermHub::handle_timeout_error_() {
 void OpenthermHub::handle_timer_error_() {
   this->urgent_priority_pending_ = false;
   this->deferred_priority_pending_ = false;
+  this->deferred_priority_activated_ = false;
   this->opentherm_->report_and_reset_timer_error();
   this->stop_opentherm_();
   // Timer error is critical, there is no point in retrying.
