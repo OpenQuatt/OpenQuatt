@@ -53,6 +53,12 @@ int main() {
   const auto retained_from_readback = oq_odu::resolve_retained_level(true, false, 17, 0, 0, true);
   assert(retained_from_readback.control_level == 10);
   assert(retained_from_readback.physical_level == 17);
+  const auto retained_from_off_anchor_readback = oq_odu::resolve_retained_level(true, false, 11, 0, 0, true);
+  assert(retained_from_off_anchor_readback.control_level == 6);
+  assert(retained_from_off_anchor_readback.physical_level == 11);
+  const auto retained_from_f20_readback = oq_odu::resolve_retained_level(true, false, 20, 0, 0, true);
+  assert(retained_from_f20_readback.control_level == 10);
+  assert(retained_from_f20_readback.physical_level == 20);
   const auto retained_fail_closed = oq_odu::resolve_retained_level(true, false, 17, 10, 17, false);
   assert(retained_fail_closed.control_level == 10);
   assert(retained_fail_closed.physical_level == 10);

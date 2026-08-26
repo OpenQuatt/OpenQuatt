@@ -94,12 +94,22 @@ inline int model_level_for_physical_heating_level(bool extended_v2_mapping_allow
   if (!extended_v2_mapping_allowed) {
     return std::min(MODEL_LEVEL_MAX, bounded_physical);
   }
-  for (size_t model_level = 0; model_level < V2_HEATING_MODEL_TO_PHYSICAL.size(); ++model_level) {
-    if (V2_HEATING_MODEL_TO_PHYSICAL[model_level] == bounded_physical) {
-      return static_cast<int>(model_level);
+
+  // Recover model bookkeeping from physical readback after logical state was
+  // lost. Off-anchor CM100 levels retain their physical value and use the
+  // nearest model-frequency anchor, so an active hold never becomes level 0.
+  const int physical_frequency = V2_HEATING_PHYSICAL_FREQUENCIES_HZ[static_cast<size_t>(bounded_physical)];
+  int nearest_model_level = 0;
+  int nearest_delta = 256;
+  for (size_t model_level = 0; model_level < V2_HEATING_MODEL_FREQUENCIES_HZ.size(); ++model_level) {
+    const int delta_signed = physical_frequency - V2_HEATING_MODEL_FREQUENCIES_HZ[model_level];
+    const int delta = delta_signed < 0 ? -delta_signed : delta_signed;
+    if (delta < nearest_delta) {
+      nearest_delta = delta;
+      nearest_model_level = static_cast<int>(model_level);
     }
   }
-  return 0;
+  return nearest_model_level;
 }
 
 inline RetainedLevel resolve_retained_level(bool hold_active, bool cooling_mode_active, int selected_physical_level,

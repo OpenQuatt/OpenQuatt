@@ -769,12 +769,12 @@ import { renderModalShell } from "../core/modal-shell.js";
             <div class="oq-settings-manual-hp-controls">
               <div class="oq-settings-manual-hp-unit">
                 ${renderSettingsSelectField("manualHp1Mode", "Warmtepomp 1 werkmodus", "Start in Standby. Verwarmen of koelen kan pas worden gekozen zodra voldoende flow is gemeten.", "oq-settings-field--compact")}
-                ${renderSettingsSliderField("manualHp1Level", "Warmtepomp 1 compressorstand", `Aangevraagde fysieke stand F0 tot en met F${hp1ManualMaxLevel}. F11-F20 worden alleen vrijgegeven na bevestiging van het uitgebreide V2-profiel.`, "oq-settings-field--compact", { maxValue: hp1ManualMaxLevel })}
+                ${renderSettingsSliderField("manualHp1Level", "Warmtepomp 1 compressorstand", `Aangevraagde fysieke stand F0 tot en met F${hp1ManualMaxLevel}. F11-F20 vereisen zowel Quatt Hybrid version V2 als een bevestigd uitgebreid hardwareprofiel.`, "oq-settings-field--compact", { maxValue: hp1ManualMaxLevel })}
               </div>
               ${hasEntity("hp2ExcludedA") ? `
                 <div class="oq-settings-manual-hp-unit">
                   ${renderSettingsSelectField("manualHp2Mode", "Warmtepomp 2 werkmodus", "Start in Standby. Verwarmen of koelen kan pas worden gekozen zodra voldoende flow is gemeten.", "oq-settings-field--compact")}
-                  ${renderSettingsSliderField("manualHp2Level", "Warmtepomp 2 compressorstand", `Aangevraagde fysieke stand F0 tot en met F${hp2ManualMaxLevel}. F11-F20 worden alleen vrijgegeven na bevestiging van het uitgebreide V2-profiel.`, "oq-settings-field--compact", { maxValue: hp2ManualMaxLevel })}
+                  ${renderSettingsSliderField("manualHp2Level", "Warmtepomp 2 compressorstand", `Aangevraagde fysieke stand F0 tot en met F${hp2ManualMaxLevel}. F11-F20 vereisen zowel Quatt Hybrid version V2 als een bevestigd uitgebreid hardwareprofiel.`, "oq-settings-field--compact", { maxValue: hp2ManualMaxLevel })}
                 </div>
               ` : ""}
             </div>
