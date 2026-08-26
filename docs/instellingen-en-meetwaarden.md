@@ -53,11 +53,14 @@ Deze groep bepaalt hoeveel ruimte OpenQuatt krijgt:
 - `Silent Mode Override`
 - `Day max level`
 - `Silent max level`
+- `Electrical current limit`
 - `Silent start time`
 - `Silent end time`
 - `CM Override`
 
 Gebruik deze groep vooral om gedrag te begrenzen of te verklaren, niet om fijn te tunen.
+
+`Electrical current limit` begrenst het gezamenlijke elektrische ingangsvermogen. Standaard blijft de bestaande grens actief: 16 A voor Single en voor Duo V1/V1.5, 20 A voor Duo V2. Power House gebruikt de grens voorspellend én via gemeten feedback; stooklijn en koelen alleen via gemeten feedback. Het is een regelgrens en geen vervanging voor zekeringen, aardlekbeveiliging of load balancing.
 
 ### 2. Verwarmingsstrategie
 

@@ -26,6 +26,7 @@ const {
   renderSettingsControlModeOverridePanel,
   renderSettingsCounterServiceSection,
 } = await import("../js/src/settings/service.js");
+const { renderSettingsElectricalCurrentLimitSection } = await import("../js/src/settings/electrical-limit.js");
 
 function numberEntity(value, uom = "", extra = {}) {
   return {
@@ -110,12 +111,46 @@ test("start- en stopgrens kunnen elkaar niet passeren", () => {
 });
 
 test("nieuwe installatie- en service-entiteiten worden bij het juiste scherm geladen", () => {
+  assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("electricalCurrentLimit"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("boilerSupportStartThreshold"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("boilerSupportStopThreshold"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.service.includes("controlModeOverride"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.service.includes("hp1RuntimeHours"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.service.includes("resetRuntimeCountersHp1Hp2"));
   assert.ok(!SETTINGS_GROUP_KEY_MAP.service.includes("resetCumulativeEnergyCounters"));
+});
+
+test("elektrische ingangsgrens respecteert Single en Duo maxima", () => {
+  const limit = numberEntity(20, "A", { min_value: 10, max_value: 20, step: 0.5 });
+  resetSettingsState({
+    installationTopology: { value: "single", state: "single" },
+    hpGeneration: { value: "V2", state: "V2" },
+    electricalCurrentLimit: limit,
+  });
+
+  let markup = renderSettingsElectricalCurrentLimitSection();
+  assert.match(markup, /Elektrische ingangsgrens/);
+  assert.match(markup, /max="16"/);
+  assert.match(markup, /circa 3650 W/);
+  assert.match(markup, /Stooklijn en koelen gebruiken alleen de gemeten feedback/);
+  assert.match(markup, /geen elektrische beveiliging/);
+
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V2", state: "V2" },
+    electricalCurrentLimit: limit,
+  });
+  markup = renderSettingsElectricalCurrentLimitSection();
+  assert.match(markup, /max="20"/);
+  assert.match(markup, /circa 4563 W/);
+
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V2", state: "V2" },
+    electricalCurrentLimit: { ...limit, value: 5, state: "5" },
+  });
+  markup = renderSettingsElectricalCurrentLimitSection();
+  assert.match(markup, /value="10"/);
 });
 
 test("koelsterkte licht de lagere limiet tijdens stille modus toe", () => {
