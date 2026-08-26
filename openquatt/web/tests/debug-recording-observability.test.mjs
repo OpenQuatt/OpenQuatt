@@ -42,12 +42,9 @@ const OBSERVABILITY_KEYS = [
   "otbLinkAvailable",
   "otbChCommand",
   "otbControlSetpointCommand",
-  "otbChActive",
   "otbFlameOn",
   "otbLastResponseAge",
-  "otbResponseCount",
   "otbTransportErrorCount",
-  "otbResponseTimeoutCount",
   "otbMaxCapacity",
   "otbMinModulation",
 ];
@@ -129,6 +126,17 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(coolingMinOffEndIndex), ISSUE_516_OBSERVABILITY_KEYS);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   assert.ok(DEBUG_RECORDING_KEYS.length <= 188, "debugrecorder heeft maximaal 188 entityvelden naast 4 systeemvelden");
+});
+
+test("OpenTherm-opname bewaart signalen zonder afleidbare doublures", () => {
+  assert.ok(DEBUG_RECORDING_KEYS.includes("boilerActive"));
+  assert.ok(DEBUG_RECORDING_KEYS.includes("otbLinkAvailable"));
+  assert.ok(DEBUG_RECORDING_KEYS.includes("otbLastResponseAge"));
+  assert.ok(DEBUG_RECORDING_KEYS.includes("otbTransportErrorCount"));
+  assert.ok(DEBUG_RECORDING_KEYS.includes("otbStartHandshakeDetail"));
+  assert.ok(!DEBUG_RECORDING_KEYS.includes("otbChActive"));
+  assert.ok(!DEBUG_RECORDING_KEYS.includes("otbResponseCount"));
+  assert.ok(!DEBUG_RECORDING_KEYS.includes("otbResponseTimeoutCount"));
 });
 
 test("ODU-generaties worden achter het bestaande debugcontract toegevoegd", async () => {
