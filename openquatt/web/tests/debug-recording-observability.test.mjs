@@ -77,11 +77,13 @@ const COOLING_MIN_OFF_OBSERVABILITY_KEYS = [
 ];
 
 const ISSUE_516_OBSERVABILITY_KEYS = [
+  "commissioningStatus",
   "boilerPowerTestStatus",
   "boilerCommandRequestedPower",
   "boilerHeatPower",
   "otbFaultIndication",
   "otbDhwActive",
+  "otbDiagnosticIndication",
   "otbRelativeModulation",
   "otbBoilerWaterTemp",
   "otbReturnWaterTemp",
