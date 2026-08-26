@@ -11,7 +11,6 @@ globalThis.window = {
 
 const { state } = await import("../js/src/core/state.js");
 const { SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
-const { getNumberMeta, normalizeNumber } = await import("../js/src/core/entity-store.js");
 const { getBoilerTestStatusCopy, getCommissioningProgressModel } = await import("../js/src/settings/service.js");
 
 function setBoilerEntities(heatPower = "—", result = "—", confidence = "—") {
@@ -39,21 +38,8 @@ test("getBoilerTestStatusCopy FLOW_SETTLING shows target and 2 min hint", () => 
   assert.match(copy, /Nu 812 L\/h/);
 });
 
-test("commissioning polling refreshes the temporary boiler-test flow target", () => {
+test("commissioning polling refreshes the active boiler-test flow target", () => {
   assert(SETTINGS_GROUP_KEY_MAP.service.includes("flowSetpoint"));
-  assert(SETTINGS_GROUP_KEY_MAP.service.includes("boilerPowerTestFlow"));
-});
-
-test("boiler-test flow slider keeps its safe range when runtime metadata is not hydrated yet", () => {
-  state.entities = { boilerPowerTestFlow: { value: 93, state: 93 } };
-  assert.deepEqual(getNumberMeta("boilerPowerTestFlow"), {
-    min: 800,
-    max: 1000,
-    step: 50,
-    uom: "L/h",
-  });
-  assert.equal(normalizeNumber("boilerPowerTestFlow", 93), 800);
-  assert.equal(normalizeNumber("boilerPowerTestFlow", 1000), 1000);
 });
 
 test("getBoilerTestStatusCopy BOILER_SETTLING shows flow", () => {

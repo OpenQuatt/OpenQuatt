@@ -42,21 +42,6 @@ globals:
 # ----------------------------
 number:
   - platform: template
-    id: oq_boiler_power_test_flow_lph
-    name: "Boiler power test flow"
-    internal: true
-    icon: mdi:waves-arrow-right
-    unit_of_measurement: "L/h"
-    mode: slider
-    min_value: 800
-    max_value: 1000
-    step: 50
-    restore_value: true
-    optimistic: true
-    initial_value: 800
-    entity_category: config
-
-  - platform: template
     id: oq_boiler_rated_heat_power
     name: "Boiler rated heat power"
     icon: mdi:radiator

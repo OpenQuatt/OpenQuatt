@@ -1,4 +1,4 @@
-import { CURVE_POINTS, ENTITY_DEFS, OPENQUATT_RESUME_CLEAR_VALUE } from "./config.js";
+import { CURVE_POINTS, OPENQUATT_RESUME_CLEAR_VALUE } from "./config.js";
 import { state } from "./state.js";
 
   export function hasEntity(key) {
@@ -19,12 +19,11 @@ import { state } from "./state.js";
 
   export function getNumberMeta(key) {
     const entity = state.entities[key] || {};
-    const definition = ENTITY_DEFS[key] || {};
     return {
-      min: Number(entity.min_value ?? definition.min_value ?? 0),
-      max: Number(entity.max_value ?? definition.max_value ?? 100),
-      step: Number(entity.step ?? definition.step ?? 1),
-      uom: entity.uom || definition.uom || "",
+      min: Number(entity.min_value ?? 0),
+      max: Number(entity.max_value ?? 100),
+      step: Number(entity.step ?? 1),
+      uom: entity.uom || "",
     };
   }
 

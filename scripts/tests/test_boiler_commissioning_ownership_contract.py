@@ -21,18 +21,13 @@ class BoilerCommissioningOwnershipContract(unittest.TestCase):
         self.assertIn("if (!flow_reachable(cfg, now_ms, flow_lph)) return;", BOILER_RUNTIME)
 
     def test_boiler_test_flow_target_is_runtime_only(self) -> None:
-        self.assertIn("id(oq_boiler_power_test_flow_lph).state", BOILER_RUNTIME)
-        self.assertNotIn("select_initial_test_flow_lph(id(oq_flow_setpoint_lph)", BOILER_RUNTIME)
+        self.assertIn("active_test_flow_target_lph_ = cfg.target_flow_lph", BOILER_RUNTIME)
+        self.assertNotIn("oq_boiler_power_test_flow_lph", BOILER_RUNTIME)
         self.assertIn("publish_transient_number_value(id(oq_flow_setpoint_lph)", BOILER_RUNTIME)
         self.assertNotIn("set_number_value(id(oq_flow_setpoint_lph)", BOILER_RUNTIME)
 
-    def test_boiler_test_flow_is_installation_specific_and_defaults_to_800(self) -> None:
-        flow_setting = BOILER_TEST_PACKAGE.split("id: oq_boiler_power_test_flow_lph", 1)[1].split(
-            "id: oq_boiler_rated_heat_power", 1
-        )[0]
-        self.assertIn("restore_value: true", flow_setting)
-        self.assertIn("initial_value: 800", flow_setting)
-        self.assertIn("max_value: 1000", flow_setting)
+    def test_boiler_test_has_no_persistent_flow_setting(self) -> None:
+        self.assertNotIn("oq_boiler_power_test_flow_lph", BOILER_TEST_PACKAGE)
 
     def test_opentherm_dhw_interference_fails_and_restores(self) -> None:
         self.assertIn("boiler_test_dhw_interferes", BOILER_RUNTIME)

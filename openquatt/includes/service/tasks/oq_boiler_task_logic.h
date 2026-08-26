@@ -15,7 +15,6 @@ using oq_boiler_commissioning::boiler_test_dhw_interferes;
 using oq_boiler_commissioning::compute_opentherm_operating_point;
 using oq_boiler_commissioning::normalize_max_water_temperature_c;
 using oq_boiler_commissioning::result_apply_allowed;
-using oq_boiler_commissioning::select_initial_test_flow_lph;
 
 static constexpr int TASK_NONE = oq_commissioning::TASK_NONE;
 static constexpr int TASK_BOILER_POWER_TEST = oq_commissioning::TASK_BOILER_POWER_TEST;
@@ -84,19 +83,12 @@ class BoilerPowerTestRuntime {
       oq_service_status::set_boiler_power_test("REFUSED: flow setpoint unavailable");
       return;
     }
-    if (!id(oq_boiler_power_test_flow_lph).has_state()) {
-      oq_service_status::set_boiler_power_test("REFUSED: boiler test flow unavailable");
-      return;
-    }
     if (cm_code != 100) {
       oq_service_status::set_boiler_power_test("REFUSED: not CM100");
       return;
     }
 
     reset_test_state();
-    const float initial_test_flow_lph =
-        select_initial_test_flow_lph(id(oq_boiler_power_test_flow_lph).state, cfg.target_flow_lph);
-
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     active_test_opentherm_ =
         id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
@@ -119,7 +111,7 @@ class BoilerPowerTestRuntime {
       }
       const float rated_w = id(oq_boiler_rated_heat_power).state;
       const auto op = compute_opentherm_operating_point(true, active_test_capacity_w_, rated_w, inlet_c, max_c,
-                                                        initial_test_flow_lph);
+                                                        cfg.target_flow_lph);
       if (!op.feasible) {
         oq_service_status::set_boiler_power_test("REFUSED: insufficient thermal headroom for boiler power test");
         ESP_LOGW("quatt.cm100.boiler", "Boiler test refused: %s (inlet=%.1fC max=%.1fC headroom=%.1fC)",
@@ -137,15 +129,14 @@ class BoilerPowerTestRuntime {
 #endif
 
     ESP_LOGI("quatt.cm100.boiler",
-             "Boiler power test requested (cm=%d flow_mode=%s normal_flow=%.0fL/h test_flow=%.0fL/h "
-             "current_task=%d active=%d)",
-             cm_code, id(oq_flow_control_mode).current_option().c_str(), id(oq_flow_setpoint_lph).state,
-             initial_test_flow_lph, id(oq_commissioning_task_code), (int)id(oq_commissioning_active));
+             "Boiler power test requested (cm=%d flow_mode=%s flow_sp=%.0fL/h current_task=%d active=%d)", cm_code,
+             id(oq_flow_control_mode).current_option().c_str(), id(oq_flow_setpoint_lph).state,
+             id(oq_commissioning_task_code), (int)id(oq_commissioning_active));
 
     reset_measurement_accumulators();
     prev_flow_setpoint_lph_ = id(oq_flow_setpoint_lph).state;
     flow_setpoint_saved_ = true;
-    active_test_flow_target_lph_ = initial_test_flow_lph;
+    active_test_flow_target_lph_ = cfg.target_flow_lph;
 
     id(oq_commissioning_task_code) = TASK_BOILER_POWER_TEST;
     id(oq_commissioning_request_pending) = false;
