@@ -25,6 +25,7 @@ const {
 } = await import("../js/src/core/state.js");
 const {
   getFirmwareBuildSwitchModel,
+  isFirmwareInstallCompletionConfirmed,
   isQuickStartSetupInstallCompletionConfirmed,
 } = await import("../js/src/features/firmware-update.js");
 
@@ -64,6 +65,7 @@ function resetSetupState() {
   state.updateInstallStatusPollObserved = false;
   state.updateInstallTargetConnection = "";
   state.updateInstallTargetTopology = "";
+  state.updateInstallTargetVersion = "";
   state.ota = { on: false, ok: 0, id: null, wait: false, base: null };
   state.controlError = "";
   state.controlNotice = "";
@@ -92,8 +94,10 @@ test("een Quick Start-installatie vereist doelconfiguratie én bewezen reboot", 
   state.updateInstallTargetTopology = "single";
   state.updateInstallTargetConnection = "wifi";
   state.ota = { on: true, ok: 1, id: null, wait: true, base: [3600000, "v0.48.0", 0] };
+  state.updateInstallTargetVersion = "v0.48.0";
 
   assert.equal(isQuickStartSetupInstallCompletionConfirmed(), false);
+  assert.equal(isFirmwareInstallCompletionConfirmed(), false);
 
   state.ota.id = {};
   state.ota.wait = false;
@@ -102,9 +106,11 @@ test("een Quick Start-installatie vereist doelconfiguratie én bewezen reboot", 
 
   state.entities.firmwareUpdateStatus = textEntity("Idle");
   assert.equal(isQuickStartSetupInstallCompletionConfirmed(), true);
+  assert.equal(isFirmwareInstallCompletionConfirmed(), true);
 
   state.entities.connectionText = textEntity("eth");
   assert.equal(isQuickStartSetupInstallCompletionConfirmed(), false);
+  assert.equal(isFirmwareInstallCompletionConfirmed(), false);
 });
 
 test("de wizard hervat na de bevestigde OTA eenmalig bij de volgende stap", () => {

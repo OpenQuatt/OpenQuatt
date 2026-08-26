@@ -304,6 +304,9 @@ import { render } from "../core/render-scheduler.js";
     if (state.updateInstallMode === "" || state.updateInstallMode === "test-firmware") {
       return Boolean(state.ota.id && !state.ota.wait);
     }
+    if (state.updateInstallMode === "quickstart-setup") {
+      return isQuickStartSetupInstallCompletionConfirmed();
+    }
     return !isFirmwareProgressActive()
       && !isFirmwareUpdateInstalling()
       && hasInstalledFirmwareTargetVersion();
