@@ -1,5 +1,7 @@
 export const ODU_GENERATION_KEYS = ["hp1Generation", "hp2Generation"];
 export const ODU_GENERATION_DETECT_KEYS = ["hp1GenerationDetect", "hp2GenerationDetect"];
+export const ODU_GENERATION_VARIANT_KEYS = ["hp1GenerationVariant", "hp2GenerationVariant"];
+export const ODU_CUSTOMER_MODEL_CODE_KEYS = ["hp1CustomerModelCode", "hp2CustomerModelCode"];
 
 const KNOWN_ODU_GENERATIONS = new Set(["V1", "V1.5", "V2"]);
 

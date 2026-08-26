@@ -46,8 +46,19 @@ test("mock-Duo gebruikt canonieke generaties met overeenkomende control_board_it
   assert.equal(identities[1].controlBoardItem, 0x0037);
   assert.equal(identities[2].generation, "V1.5");
   assert.equal(identities[2].controlBoardItem, 0x0E37);
+  assert.equal(identities[2].pcbProgram, 0x011E);
+  assert.equal(identities[2].compressorCode, 0);
   assert.notEqual(identities[1].generation, identities[2].generation);
+  assert.equal(profiles.V2OldModel.generation, "V2");
+  assert.equal(profiles.V2OldModel.variant, "V2 old model");
+  assert.equal(profiles.V2OldModel.controlBoardItem, 0x0E37);
+  assert.equal(profiles.V2OldModel.pcbProgram, 0x0122);
+  assert.equal(profiles.V2OldModel.compressorCode, 2825);
+  assert.equal(profiles.V2OldModel.customerModel, "AMH6");
   assert.equal(profiles.V2.controlBoardItem, 0x1037);
+  assert.equal(profiles.V2.pcbProgram, 0x0201);
+  assert.equal(profiles.V2.compressorCode, 2825);
+  assert.equal(profiles.V2.customerModel, "AMH6");
   assert.equal(profiles.Unknown.generation, "Unknown");
   assert.equal(profiles.Unknown.controlBoardItem, 0xFFFF);
   assert.deepEqual(
@@ -58,15 +69,22 @@ test("mock-Duo gebruikt canonieke generaties met overeenkomende control_board_it
   const hp2Entities = context.window.__OQ_MOCK_FIXTURES__.hp2Entities;
   assert.equal(hp2Entities.find(([, name]) => name === "HP2 - Control board item number")?.[2]?.value, 0x0E37);
   assert.equal(hp2Entities.find(([, name]) => name === "HP2 - ODU generation")?.[2]?.value, "V1.5");
+  assert.equal(hp2Entities.find(([, name]) => name === "HP2 - ODU generation variant")?.[2]?.value, "V1.5");
+  assert.equal(hp2Entities.find(([, name]) => name === "HP2 - ODU customer model code")?.[2]?.value, "Missing");
 });
 
 test("mock-identiteit en herdetectie gebruiken dezelfde profielbron en publiceren eerst Unknown", async () => {
   const mockSource = await readFile(new URL("../js/mock-device.js", import.meta.url), "utf8");
 
+  assert.match(mockSource, /core\[0\] = compressorCode;/);
+  assert.match(mockSource, /core\[8\] = pcbProgram;/);
   assert.match(mockSource, /core\[13\] = controlBoardItem;/);
+  assert.match(mockSource, /customerModelWords: encodeMockAsciiWords\(customerModel\)/);
   assert.match(mockSource, /const profile = getMockOduProfile\(hp\);/);
   assert.match(mockSource, /syncMockOduIdentityEntities\(1\);/);
   assert.match(mockSource, /setText\("text_sensor", `HP\$\{hp\} - ODU generation`, "Unknown"\);/);
+  assert.match(mockSource, /setText\("text_sensor", `HP\$\{hp\} - ODU generation variant`, "Unknown"\);/);
+  assert.match(mockSource, /setText\("text_sensor", `HP\$\{hp\} - ODU customer model code`, "Unknown"\);/);
   assert.match(mockSource, /data-oq-dev-control="hp1-generation"/);
   assert.match(mockSource, /data-oq-dev-control="hp2-generation"/);
   assert.match(mockSource, /setMockOduGeneration\(hp, generation\.value\);/);

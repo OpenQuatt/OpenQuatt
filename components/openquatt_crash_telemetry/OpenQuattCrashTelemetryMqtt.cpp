@@ -43,9 +43,16 @@ bool OpenQuattCrashTelemetry::build_crash_payload_() {
   if (this->clock_ != nullptr) {
     const auto now = this->clock_->now();
     const int64_t timestamp = static_cast<int64_t>(now.timestamp);
-    if (now.is_valid() && timestamp >= static_cast<int64_t>(openquatt_log_history::MIN_VALID_CRASH_EPOCH_S) &&
-        timestamp < static_cast<int64_t>(openquatt_log_history::MAX_VALID_CRASH_EPOCH_S)) {
-      reported_at = static_cast<uint32_t>(timestamp);
+    const bool timestamp_is_sane = now.is_valid() &&
+                                   timestamp >= static_cast<int64_t>(openquatt_log_history::MIN_VALID_CRASH_EPOCH_S) &&
+                                   timestamp < static_cast<int64_t>(openquatt_log_history::MAX_VALID_CRASH_EPOCH_S);
+    const uint32_t candidate = timestamp_is_sane ? static_cast<uint32_t>(timestamp) : 0U;
+    if (reported_at_is_usable(this->time_synchronized_.load(), timestamp_is_sane, record.crash_time_valid != 0U,
+                              candidate, record.crash_timestamp)) {
+      reported_at = candidate;
+    } else if (this->time_synchronized_.load() && timestamp_is_sane && record.crash_time_valid != 0U &&
+               candidate < record.crash_timestamp) {
+      ESP_LOGW(TAG, "Synchronized reporting time predates crash breadcrumb; omitting reported_at");
     }
   }
   FixedWriter writer(this->payload_buffer_.data(), this->payload_buffer_.size());
@@ -256,6 +263,7 @@ void OpenQuattCrashTelemetry::loop() {
   if (kind == CrashPublishKind::NONE || !valid_installation_id(this->state_.data()->installation_id)) return;
   if (this->next_attempt_ms_ == 0U) this->next_attempt_ms_ = millis() + INITIAL_PUBLISH_DELAY_MS;
   if (static_cast<int32_t>(millis() - this->next_attempt_ms_) < 0) return;
+  if (should_wait_for_time_sync(kind, this->time_synchronized_.load(), millis(), this->time_sync_deadline_ms_)) return;
   if (!this->start_session_(kind)) this->schedule_retry_();
 }
 
@@ -265,6 +273,7 @@ void OpenQuattCrashTelemetry::dump_config() {
   ESP_LOGCONFIG(TAG, "  Pending crash: %s", YESNO(this->record_ && this->record_.data()->pending != 0U));
   ESP_LOGCONFIG(TAG, "  Tombstone pending: %s", YESNO(this->state_ && this->state_.data()->tombstone_pending != 0U));
   ESP_LOGCONFIG(TAG, "  Consent observed: %s", YESNO(this->consent_seen_));
+  ESP_LOGCONFIG(TAG, "  Time synchronized this boot: %s", YESNO(this->time_synchronized_.load()));
 }
 
 void OpenQuattCrashTelemetry::mqtt_event_handler_(void* handler_args, esp_event_base_t base, int32_t event_id,

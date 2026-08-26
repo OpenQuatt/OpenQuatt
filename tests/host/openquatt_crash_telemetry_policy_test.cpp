@@ -7,8 +7,10 @@ using esphome::openquatt_crash_telemetry::crash_publication_is_retained;
 using esphome::openquatt_crash_telemetry::CrashPublishKind;
 using esphome::openquatt_crash_telemetry::flash_sequence_is_newer;
 using esphome::openquatt_crash_telemetry::persisted_consent_blocks_crash;
+using esphome::openquatt_crash_telemetry::reported_at_is_usable;
 using esphome::openquatt_crash_telemetry::select_crash_publish_kind;
 using esphome::openquatt_crash_telemetry::should_request_tombstone;
+using esphome::openquatt_crash_telemetry::should_wait_for_time_sync;
 
 int main() {
   assert(select_crash_publish_kind(true, false, false, false) == CrashPublishKind::TOMBSTONE);
@@ -43,6 +45,20 @@ int main() {
   assert(!crash_publication_is_retained(CrashPublishKind::CRASH));
   assert(crash_publication_is_retained(CrashPublishKind::TOMBSTONE));
   assert(!crash_publication_is_retained(CrashPublishKind::NONE));
+
+  assert(should_wait_for_time_sync(CrashPublishKind::CRASH, false, 100U, 200U));
+  assert(!should_wait_for_time_sync(CrashPublishKind::CRASH, true, 100U, 200U));
+  assert(!should_wait_for_time_sync(CrashPublishKind::TOMBSTONE, false, 100U, 200U));
+  assert(!should_wait_for_time_sync(CrashPublishKind::CRASH, false, 200U, 200U));
+  assert(!should_wait_for_time_sync(CrashPublishKind::CRASH, false, 201U, 200U));
+  assert(should_wait_for_time_sync(CrashPublishKind::CRASH, false, UINT32_MAX - 10U, 20U));
+
+  assert(reported_at_is_usable(true, true, false, 200U, 0U));
+  assert(reported_at_is_usable(true, true, true, 200U, 200U));
+  assert(reported_at_is_usable(true, true, true, 201U, 200U));
+  assert(!reported_at_is_usable(false, true, true, 201U, 200U));
+  assert(!reported_at_is_usable(true, false, true, 201U, 200U));
+  assert(!reported_at_is_usable(true, true, true, 199U, 200U));
 
   return 0;
 }

@@ -104,6 +104,8 @@ number:
           }
           id(api_input_cooling_dew_point_has_value) = true;
           id(api_input_cooling_dew_point_last_valid_ms) = (uint32_t) millis();
+          id(api_input_cooling_dew_point_age).publish_state(0);
+          id(api_input_cooling_dew_point_valid).publish_state(true);
 
   - platform: template
     id: api_input_outside_temperature
@@ -119,6 +121,8 @@ number:
           }
           id(api_input_outside_temperature_has_value) = true;
           id(api_input_outside_temperature_last_valid_ms) = (uint32_t) millis();
+          id(api_input_outside_temperature_age).publish_state(0);
+          id(api_input_outside_temperature_valid).publish_state(true);
 
   - platform: template
     id: api_input_room_temperature
@@ -134,6 +138,8 @@ number:
           }
           id(api_input_room_temperature_has_value) = true;
           id(api_input_room_temperature_last_valid_ms) = (uint32_t) millis();
+          id(api_input_room_temperature_age).publish_state(0);
+          id(api_input_room_temperature_valid).publish_state(true);
 
   - platform: template
     id: api_input_room_setpoint
@@ -149,6 +155,8 @@ number:
           }
           id(api_input_room_setpoint_has_value) = true;
           id(api_input_room_setpoint_last_valid_ms) = (uint32_t) millis();
+          id(api_input_room_setpoint_age).publish_state(0);
+          id(api_input_room_setpoint_valid).publish_state(true);
 
   - platform: template
     id: api_input_external_heat_demand
@@ -171,38 +179,58 @@ switch:
     restore_mode: RESTORE_DEFAULT_OFF
     optimistic: true
     turn_on_action:
+      - switch.template.publish:
+          id: api_input_heating_enable
+          state: ON
       - lambda: |-
           if (!id(api_input_accept_updates)) {
             return;
           }
           id(api_input_heating_enable_has_value) = true;
           id(api_input_heating_enable_last_valid_ms) = (uint32_t) millis();
+          id(api_input_heating_enable_age).publish_state(0);
+          id(api_input_heating_enable_valid).publish_state(true);
     turn_off_action:
+      - switch.template.publish:
+          id: api_input_heating_enable
+          state: OFF
       - lambda: |-
           if (!id(api_input_accept_updates)) {
             return;
           }
           id(api_input_heating_enable_has_value) = true;
           id(api_input_heating_enable_last_valid_ms) = (uint32_t) millis();
+          id(api_input_heating_enable_age).publish_state(0);
+          id(api_input_heating_enable_valid).publish_state(true);
 
   - platform: template
     id: api_input_cooling_enable
     restore_mode: RESTORE_DEFAULT_OFF
     optimistic: true
     turn_on_action:
+      - switch.template.publish:
+          id: api_input_cooling_enable
+          state: ON
       - lambda: |-
           if (!id(api_input_accept_updates)) {
             return;
           }
           id(api_input_cooling_enable_has_value) = true;
           id(api_input_cooling_enable_last_valid_ms) = (uint32_t) millis();
+          id(api_input_cooling_enable_age).publish_state(0);
+          id(api_input_cooling_enable_valid).publish_state(true);
     turn_off_action:
+      - switch.template.publish:
+          id: api_input_cooling_enable
+          state: OFF
       - lambda: |-
           if (!id(api_input_accept_updates)) {
             return;
           }
           id(api_input_cooling_enable_has_value) = true;
           id(api_input_cooling_enable_last_valid_ms) = (uint32_t) millis();
+          id(api_input_cooling_enable_age).publish_state(0);
+          id(api_input_cooling_enable_valid).publish_state(true);
 
 esphome:
   on_boot:

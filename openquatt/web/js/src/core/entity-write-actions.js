@@ -773,6 +773,45 @@ export async function triggerNamedButton(key, options = {}) {
   }
 }
 
+export async function triggerNamedButtonGroup(keys, options = {}) {
+  const entities = keys.map((key) => ENTITY_DEFS[key]).filter(Boolean);
+  if (entities.length === 0) return;
+
+  const busyAction = String(options.busyAction || "named-button-group");
+  state.busyAction = busyAction;
+  state.controlError = "";
+  state.controlNotice = "";
+  render();
+
+  try {
+    const results = await Promise.allSettled(entities.map(async (entity) => {
+      const response = await fetch(buildEntityPath(entity.domain, entity.name, "press"), { method: "POST" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    }));
+
+    const failed = results.find((result) => result.status === "rejected");
+    const refreshDelayMs = Number(options.refreshDelayMs || 0);
+    if (Number.isFinite(refreshDelayMs) && refreshDelayMs > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, refreshDelayMs));
+    }
+    if (Array.isArray(options.refreshKeys) && options.refreshKeys.length) {
+      await refreshEntities(options.refreshKeys, "state");
+    }
+    if (failed) throw failed.reason;
+
+    if (state.busyAction === busyAction) {
+      state.controlNotice = options.successNotice || "Acties gestart.";
+    }
+  } catch (error) {
+    if (state.busyAction === busyAction) {
+      state.controlError = `${options.errorPrefix || "Actie mislukt"}. ${error.message}`;
+    }
+  } finally {
+    if (state.busyAction === busyAction) state.busyAction = "";
+    render();
+  }
+}
+
 export function updateCurveDraftFromPointer(clientY) {
   const svg = state.root ? state.root.querySelector(".oq-helper-curve-svg") : null;
   if (!svg || !state.draggingCurveKey) {

@@ -50,6 +50,12 @@ const OBSERVABILITY_KEYS = [
   "otbMinModulation",
 ];
 const ODU_GENERATION_KEYS = ["hp1Generation", "hp2Generation"];
+const ODU_FINGERPRINT_KEYS = [
+  "hp1GenerationVariant",
+  "hp2GenerationVariant",
+  "hp1CustomerModelCode",
+  "hp2CustomerModelCode",
+];
 
 const ISSUE_473_OBSERVABILITY_KEYS = [
   "curveRestartBlockedByRoom",
@@ -84,7 +90,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const observabilityEndIndex = legacyTailIndex + 1 + OBSERVABILITY_KEYS.length;
   const issue473EndIndex = observabilityEndIndex + ISSUE_473_OBSERVABILITY_KEYS.length;
   const oduEndIndex = issue473EndIndex + ODU_GENERATION_KEYS.length;
-  const issue489EndIndex = oduEndIndex + ISSUE_489_OBSERVABILITY_KEYS.length;
+  const fingerprintEndIndex = oduEndIndex + ODU_FINGERPRINT_KEYS.length;
+  const issue489EndIndex = fingerprintEndIndex + ISSUE_489_OBSERVABILITY_KEYS.length;
 
   assert.equal(legacyTailIndex, 134);
   assert.deepEqual(
@@ -93,7 +100,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   );
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(observabilityEndIndex, issue473EndIndex), ISSUE_473_OBSERVABILITY_KEYS);
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue473EndIndex, oduEndIndex), ODU_GENERATION_KEYS);
-  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(oduEndIndex, issue489EndIndex), ISSUE_489_OBSERVABILITY_KEYS);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(oduEndIndex, fingerprintEndIndex), ODU_FINGERPRINT_KEYS);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(fingerprintEndIndex, issue489EndIndex), ISSUE_489_OBSERVABILITY_KEYS);
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue489EndIndex), COOLING_MIN_OFF_OBSERVABILITY_KEYS);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   assert.ok(DEBUG_RECORDING_KEYS.length <= 188, "debugrecorder heeft maximaal 188 entityvelden naast 4 systeemvelden");
@@ -113,9 +121,20 @@ test("ODU-generaties worden achter het bestaande debugcontract toegevoegd", asyn
     });
     assert.match(recorderSource, new RegExp(`std::strcmp\\(field\\.key, "${key}"\\)`));
   }
+  for (const [index, key] of ODU_FINGERPRINT_KEYS.entries()) {
+    const hp = (index % 2) + 1;
+    const suffix = index < 2 ? "ODU generation variant" : "ODU customer model code";
+    assert.deepEqual(ENTITY_DEFS[key], {
+      domain: "text_sensor",
+      name: `HP${hp} - ${suffix}`,
+      optional: true,
+    });
+  }
   assert.match(hpPackage, /id: \$\{hp_id\}_control_board_item/);
   assert.match(hpPackage, /id: \$\{hp_id\}_generation/);
   assert.match(hpPackage, /name: "\$\{prefix\}ODU generation"/);
+  assert.match(hpPackage, /name: "\$\{prefix\}ODU generation variant"/);
+  assert.match(hpPackage, /name: "\$\{prefix\}ODU customer model code"/);
 });
 
 test("elk nieuw debugveld heeft een opneembare entitydefinitie", () => {

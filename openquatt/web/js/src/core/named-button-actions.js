@@ -1,7 +1,7 @@
 import { getOduRuntimeFrequencyButtonHp, getOduRuntimeFrequencyHpKeys, INSTALLATION_MONITORING_STATE_KEYS, ODU_RUNTIME_FREQUENCY_BUTTON_KEYS } from "./config.js";
 import { hasEntity } from "./entity-store.js";
-import { triggerIncidentAction, triggerNamedButton } from "./entity-write-actions.js";
-import { ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS } from "./odu-generation.js";
+import { triggerIncidentAction, triggerNamedButton, triggerNamedButtonGroup } from "./entity-write-actions.js";
+import { ODU_CUSTOMER_MODEL_CODE_KEYS, ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS, ODU_GENERATION_VARIANT_KEYS } from "./odu-generation.js";
 import { state } from "./state.js";
 
 const commissioningRefreshGroups = [
@@ -210,11 +210,19 @@ function getRefreshOptions(buttonKey) {
   if (action === "press-odu-generation-detect-all") {
     const detectKeys = ODU_GENERATION_DETECT_KEYS.filter((key) => hasEntity(key));
     if (detectKeys.length === 0) return true;
-    // Single pill-button triggers all available HP detections at once (like “Balans resetten”).
-    for (const key of detectKeys) {
-      prepareCommissioningState(key);
-      void triggerNamedButton(key, getRefreshOptions(key));
-    }
+    const detectIndexes = detectKeys.map((key) => ODU_GENERATION_DETECT_KEYS.indexOf(key));
+    const refreshKeys = detectIndexes.flatMap((index) => [
+      ODU_GENERATION_KEYS[index],
+      ODU_GENERATION_VARIANT_KEYS[index],
+      ODU_CUSTOMER_MODEL_CODE_KEYS[index],
+    ]);
+    void triggerNamedButtonGroup(detectKeys, {
+      busyAction: "odu-generation-detect-all",
+      refreshKeys,
+      refreshDelayMs: 3200,
+      successNotice: "ODU-detectie opnieuw aangevraagd.",
+      errorPrefix: "ODU-detectie niet volledig uitgevoerd",
+    });
     return true;
   }
   if (action !== "press-named-button") {

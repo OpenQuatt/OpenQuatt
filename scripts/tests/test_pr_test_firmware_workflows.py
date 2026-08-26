@@ -79,6 +79,16 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
             PUBLISH_WORKFLOW,
         )
 
+    def test_test_firmware_label_is_removed_only_after_merge_to_dev(self) -> None:
+        self.assertIn("github.event.pull_request.merged == true", PUBLISH_WORKFLOW)
+        self.assertIn("github.event.pull_request.base.ref == 'dev'", PUBLISH_WORKFLOW)
+        self.assertIn("pull-requests: write", PUBLISH_WORKFLOW)
+        self.assertIn(
+            '"repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels/test-firmware"',
+            PUBLISH_WORKFLOW,
+        )
+        self.assertIn("grep -Fxq 'test-firmware'", PUBLISH_WORKFLOW)
+
     def test_artifact_root_option_is_available(self) -> None:
         args = build_targets.create_parser().parse_args(
             [

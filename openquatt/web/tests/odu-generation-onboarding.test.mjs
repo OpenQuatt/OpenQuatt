@@ -193,6 +193,10 @@ test("onboarding en installatiehydratie laden status en optionele detectieknoppe
   for (const [key, name] of [
     ["hp1Generation", "HP1 - ODU generation"],
     ["hp2Generation", "HP2 - ODU generation"],
+    ["hp1GenerationVariant", "HP1 - ODU generation variant"],
+    ["hp2GenerationVariant", "HP2 - ODU generation variant"],
+    ["hp1CustomerModelCode", "HP1 - ODU customer model code"],
+    ["hp2CustomerModelCode", "HP2 - ODU customer model code"],
     ["hp1GenerationDetect", "HP1 - Detect ODU generation"],
     ["hp2GenerationDetect", "HP2 - Detect ODU generation"],
   ]) {
@@ -206,4 +210,8 @@ test("onboarding en installatiehydratie laden status en optionele detectieknoppe
   assert.match(entitySyncSource, /\.\.\.quickStartGenerationKeys/);
   assert.match(namedButtonActionsSource, /ODU_GENERATION_DETECT_KEYS\.indexOf\(buttonKey\)/);
   assert.match(namedButtonActionsSource, /refreshKeys: \[ODU_GENERATION_KEYS\[generationDetectIndex\]\]/);
+  assert.match(namedButtonActionsSource, /triggerNamedButtonGroup\(detectKeys/);
+  assert.match(namedButtonActionsSource, /ODU_GENERATION_VARIANT_KEYS\[index\]/);
+  assert.match(namedButtonActionsSource, /ODU_CUSTOMER_MODEL_CODE_KEYS\[index\]/);
+  assert.match(namedButtonActionsSource, /busyAction: "odu-generation-detect-all"/);
 });

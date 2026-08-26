@@ -64,6 +64,7 @@ class OpenQuattCrashTelemetry : public Component {
   static constexpr uint32_t SESSION_TIMEOUT_MS = 30000UL;
   static constexpr uint32_t INITIAL_RETRY_MS = 5UL * 60UL * 1000UL;
   static constexpr uint32_t INITIAL_PUBLISH_DELAY_MS = 15000UL;
+  static constexpr uint32_t TIME_SYNC_WAIT_MS = 60000UL;
   static constexpr int MQTT_TASK_STACK_SIZE = 12288;
 
   using CrashRecord = detail::CrashRecord;
@@ -86,6 +87,7 @@ class OpenQuattCrashTelemetry : public Component {
   void on_consent_state_(bool enabled);
   void on_installation_id_(const std::string& installation_id);
   void on_setup_complete_(bool complete);
+  void on_time_synchronized_();
 
   bool load_record_();
   bool save_record_();
@@ -146,10 +148,12 @@ class OpenQuattCrashTelemetry : public Component {
   bool capture_active_{false};
   std::atomic<bool> setup_complete_{false};
   std::atomic<bool> consent_enabled_{false};
+  std::atomic<bool> time_synchronized_{false};
   bool consent_seen_{false};
   bool record_loaded_{false};
   bool state_loaded_{false};
   uint32_t next_attempt_ms_{0U};
+  uint32_t time_sync_deadline_ms_{0U};
   uint32_t session_started_ms_{0U};
   uint8_t cleanup_attempts_{0U};
 

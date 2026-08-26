@@ -669,7 +669,11 @@ import { escapeHtml } from "../core/html.js";
         ? "Ruwe waarde; kalibreer via Service."
         : "Ruwe waarde; niet gekalibreerd.";
     const heatingEnableSourceDisabled = String(getEntityValue("heatingEnableSource") || "").trim() === "Disabled";
-    const heatingEnableSourceLabel = formattedSourceValue("heatingEnableSource", { optionLabels: { Disabled: "Niet gebruiken" } });
+    const heatingEnableSourceLabels = {
+      Disabled: "Niet gebruiken",
+      "API input": "API-invoer",
+    };
+    const heatingEnableSourceLabel = formattedSourceValue("heatingEnableSource", { optionLabels: heatingEnableSourceLabels });
     const coolingEnableSourceDisabled = String(getEntityValue("coolingEnableSource") || "").trim() === "Disabled";
     const coolingEnableSourceLabels = {
       Disabled: "Niet gebruiken / handmatig",
@@ -837,7 +841,7 @@ import { escapeHtml } from "../core/html.js";
         select: {
           key: "heatingEnableSource",
           label: "Bron",
-          optionLabels: { Disabled: "Niet gebruiken", "API input": "API-invoer" },
+          optionLabels: heatingEnableSourceLabels,
           infoId: "heatingEnableSource-info",
           infoCopy: "Niet gebruiken = geen externe gate; de strategie bepaalt zelf of warmte nodig is.",
           haKeys: ["heatingEnableHa", "heatingEnableHaValid"],

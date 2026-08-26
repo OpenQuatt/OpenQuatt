@@ -45,4 +45,14 @@ inline constexpr bool crash_publication_is_retained(CrashPublishKind kind) {
   return kind == CrashPublishKind::TOMBSTONE;
 }
 
+inline constexpr bool should_wait_for_time_sync(CrashPublishKind kind, bool time_synchronized, uint32_t now_ms,
+                                                uint32_t deadline_ms) {
+  return kind == CrashPublishKind::CRASH && !time_synchronized && static_cast<int32_t>(now_ms - deadline_ms) < 0;
+}
+
+inline constexpr bool reported_at_is_usable(bool time_synchronized, bool timestamp_is_sane, bool crash_time_valid,
+                                            uint32_t reported_at, uint32_t crash_timestamp) {
+  return time_synchronized && timestamp_is_sane && (!crash_time_valid || reported_at >= crash_timestamp);
+}
+
 }  // namespace esphome::openquatt_crash_telemetry

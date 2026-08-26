@@ -222,6 +222,12 @@ bool OpenQuattCrashTelemetry::save_state_() {
 }
 
 void OpenQuattCrashTelemetry::setup() {
+  this->time_sync_deadline_ms_ = millis() + TIME_SYNC_WAIT_MS;
+  if (this->clock_ != nullptr) {
+    // A sane epoch may be stale RTC state. Only a sync event proves that the
+    // reporting clock was refreshed during this boot.
+    this->clock_->add_on_time_sync_callback([this]() { this->on_time_synchronized_(); });
+  }
   this->gate_mutex_ = xSemaphoreCreateMutexStatic(&this->gate_mutex_storage_);
   if (this->gate_mutex_ == nullptr) {
     ESP_LOGE(TAG, "Could not initialize crash telemetry publish gate");
@@ -394,6 +400,12 @@ void OpenQuattCrashTelemetry::on_setup_complete_(bool complete) {
   if (complete && this->consent_enabled_.load() && this->record_ && this->record_.data()->pending != 0U) {
     this->next_attempt_ms_ = millis() + INITIAL_PUBLISH_DELAY_MS;
   }
+}
+
+void OpenQuattCrashTelemetry::on_time_synchronized_() {
+  // Keep the existing initial delay or transport retry backoff intact. Once its
+  // deadline passes, loop() observes this flag and can publish immediately.
+  this->time_synchronized_.store(true);
 }
 
 void OpenQuattCrashTelemetry::on_consent_state_(bool enabled) {

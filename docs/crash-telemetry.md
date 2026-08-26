@@ -29,7 +29,9 @@ De tijdvelden hebben bewust verschillende betekenissen:
 - `crash_uptime_s` is de uptime die bij dezelfde breadcrumb hoorde en is eveneens
   `null` wanneer de breadcrumb ontbreekt.
 - `reported_at` is de geldige UTC Unix-tijd waarop de MQTT-payload na de herstart
-  is opgebouwd. Dit veld is `null` wanneer de controllerklok nog niet geldig is.
+  is opgebouwd. OpenQuatt wacht hiervoor maximaal 60 seconden op een tijdsync
+  tijdens de huidige boot. Het veld is `null` zonder zo'n sync of wanneer de
+  gesynchroniseerde tijd vóór `crash_timestamp` ligt.
 - `reporting_build_epoch` is uitsluitend de compileertijd van de rapporterende
   firmware en mag niet als crash- of ontvangsttijd worden gebruikt.
 

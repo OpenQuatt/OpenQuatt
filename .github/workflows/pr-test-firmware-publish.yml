@@ -308,3 +308,34 @@ jobs:
             cat release-view.err >&2
             exit 1
           fi
+
+  remove-merged-pr-test-label:
+    runs-on: ubuntu-latest
+    if: >-
+      ${{
+        github.event_name == 'pull_request_target' &&
+        github.event.action == 'closed' &&
+        github.event.pull_request.merged == true &&
+        github.event.pull_request.base.ref == 'dev' &&
+        contains(github.event.pull_request.labels.*.name, 'test-firmware')
+      }}
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Remove test-firmware label from merged PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api \
+            --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels/test-firmware" \
+            --silent || true
+
+          PR_LABELS="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+            --jq '.labels[].name')"
+          if grep -Fxq 'test-firmware' <<< "${PR_LABELS}"; then
+            echo "Failed to remove the test-firmware label from PR #${PR_NUMBER}." >&2
+            exit 1
+          fi
