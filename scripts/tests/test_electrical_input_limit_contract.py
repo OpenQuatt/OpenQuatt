@@ -18,6 +18,12 @@ class ElectricalInputLimitContractTest(unittest.TestCase):
         self.assertIn("id(hp_generation).current_option() == \"V2\"", SUPERVISOR)
         self.assertIn("max_current_a = ${oq_duo_current_limit_v2_a}", SUPERVISOR)
         self.assertIn("fmaxf(${oq_electrical_current_limit_min_a}, x)", SUPERVISOR)
+        self.assertGreaterEqual(
+            SUPERVISOR.count(
+                "id(oq_electrical_current_limit_a).traits.set_max_value(max_current_a)"
+            ),
+            3,
+        )
 
     def test_single_and_duo_share_measured_feedback_limiter(self) -> None:
         limiter = SUPERVISOR.split(
@@ -33,8 +39,14 @@ class ElectricalInputLimitContractTest(unittest.TestCase):
         self.assertIn("${hp_id}_voltage_last_update_ms", HP_IO)
         self.assertIn("${hp_id}_current_last_update_ms", HP_IO)
         self.assertIn("${oq_power_measurement_stale_s}", SUPERVISOR)
-        self.assertIn("id(oq_power_cap_f) = ${oq_power_cap_nan_f}", SUPERVISOR)
-        self.assertIn("id(oq_power_cap_f) = ${oq_power_cap_nan_f} / 2", SUPERVISOR)
+        self.assertIn("fminf(current_limit_a, ${oq_duo_current_limit_v1_a})", SUPERVISOR)
+        self.assertIn(
+            "floorf(${oq_power_cap_nan_f} * fallback_scale)", SUPERVISOR
+        )
+        self.assertIn(
+            "floorf((${oq_power_cap_nan_f} / 2.0f) * fallback_scale)",
+            SUPERVISOR,
+        )
 
     def test_power_house_alone_uses_predictive_thresholds(self) -> None:
         self.assertEqual(POWER_HOUSE.count("const float P_EL_SOFT_W = id(oq_power_limit_soft_w);"), 2)

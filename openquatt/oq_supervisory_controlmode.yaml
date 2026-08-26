@@ -43,6 +43,19 @@
 #
 # ==============================================================================
 
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - lambda: |-
+          float max_current_a = ${oq_duo_current_limit_v1_a};
+          #if OQ_TOPOLOGY_DUO
+          if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V2") {
+            max_current_a = ${oq_duo_current_limit_v2_a};
+          }
+          #endif
+          id(oq_electrical_current_limit_a).traits.set_max_value(max_current_a);
+
 # ----------------------------
 # TIME
 # ----------------------------
@@ -331,6 +344,7 @@ number:
         max_current_a = ${oq_duo_current_limit_v2_a};
       }
       #endif
+      id(oq_electrical_current_limit_a).traits.set_max_value(max_current_a);
       const float configured_a = id(oq_electrical_current_limit_configured_a);
       if (isnan(configured_a)) return max_current_a;
       return fminf(max_current_a, fmaxf(${oq_electrical_current_limit_min_a}, configured_a));
@@ -343,6 +357,7 @@ number:
               max_current_a = ${oq_duo_current_limit_v2_a};
             }
             #endif
+            id(oq_electrical_current_limit_a).traits.set_max_value(max_current_a);
             const float configured_a = fminf(max_current_a, fmaxf(${oq_electrical_current_limit_min_a}, x));
             id(oq_electrical_current_limit_configured_a) = configured_a;
             id(oq_electrical_current_limit_a).publish_state(configured_a);
@@ -663,10 +678,12 @@ interval:
 
             // Fail-safe: unavailable or stale power -> conservative demand cap.
             if (!measurement_valid) {
+              const float fallback_scale =
+                  fminf(current_limit_a, ${oq_duo_current_limit_v1_a}) / ${oq_duo_current_limit_v1_a};
               #if OQ_TOPOLOGY_DUO
-              id(oq_power_cap_f) = ${oq_power_cap_nan_f};
+              id(oq_power_cap_f) = (int) floorf(${oq_power_cap_nan_f} * fallback_scale);
               #else
-              id(oq_power_cap_f) = ${oq_power_cap_nan_f} / 2;
+              id(oq_power_cap_f) = (int) floorf((${oq_power_cap_nan_f} / 2.0f) * fallback_scale);
               #endif
               id(oq_power_over_soft_s) = 0;
               id(oq_power_over_peak_s) = 0;
