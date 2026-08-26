@@ -7,6 +7,7 @@ import { refreshEntities } from "../core/entity-sync.js";
 import { ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS } from "../core/odu-generation.js";
 import { state } from "../core/state.js";
 import { shouldInitializeQuickStartUsageTelemetryChoice, waitForUsageTelemetryChoiceConfirmation } from "../core/usage-telemetry-domain.js";
+import { USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS } from "../core/usage-telemetry-preview.js";
 import { getQuickStartFlowSourceModel, getQuickStartThermostatSourceModel } from "./quickstart.js";
 import { render } from "../core/render-scheduler.js";
 
@@ -57,7 +58,12 @@ import { render } from "../core/render-scheduler.js";
       return [...new Set([...base, ...SILENT_SETTING_KEYS])];
     }
     if (stepId === "usage-telemetry") {
-      return [...new Set([...base, "usageTelemetryEnabled", "usageTelemetryChoiceConfigured"])];
+      return [...new Set([
+        ...base,
+        "usageTelemetryEnabled",
+        "usageTelemetryChoiceConfigured",
+        ...USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS,
+      ])];
     }
     if (stepId === "confirm") {
       return [...new Set([
@@ -112,7 +118,11 @@ import { render } from "../core/render-scheduler.js";
 
     const confirmChoice = (expectedEnabled) => waitForUsageTelemetryChoiceConfirmation({
       refresh: async () => {
-        await refreshEntities(["usageTelemetryEnabled", "usageTelemetryChoiceConfigured"], "all");
+        await refreshEntities([
+          "usageTelemetryEnabled",
+          "usageTelemetryChoiceConfigured",
+          "usageTelemetryInstallationId",
+        ], "all");
         return [getEntityValue("usageTelemetryEnabled"), getEntityValue("usageTelemetryChoiceConfigured")];
       },
       expectedEnabled,

@@ -140,6 +140,8 @@ export function createSettingsState() {
     integrationDiagnosticsOpen: false,
     oduRuntimeFrequencyDetailsOpen: false,
     usageTelemetryDetailsOpen: false,
+    usageTelemetryPreviewPayload: null,
+    usageTelemetryPreviewSurface: "",
     installationMonitoringProblemSignature: "",
     incidentMonitoringSnapshot: null,
     incidentMonitoringError: "",

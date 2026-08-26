@@ -14,6 +14,10 @@ import {
 } from "./quickstart-actions.js";
 import { selectQuickStepByOffset } from "./quickstart.js";
 import { installQuickStartSetupSwitch } from "./firmware-actions.js";
+import {
+  captureUsageTelemetryPreview,
+  loadUsageTelemetryPreviewMqttEnabled,
+} from "../core/usage-telemetry-preview.js";
 
 const USAGE_TELEMETRY_PREPARATION_ACTION = "quickstart-usage-telemetry-prepare";
 let quickStartPreparationId = 0;
@@ -39,6 +43,14 @@ async function prepareQuickStartStep(stepId) {
     }
     if (preparesUsageTelemetry) {
       await initializeQuickStartUsageTelemetryChoice();
+      if (preparationId !== quickStartPreparationId || state.currentStep !== stepId) {
+        return;
+      }
+      const mqttEnabled = await loadUsageTelemetryPreviewMqttEnabled();
+      if (preparationId !== quickStartPreparationId || state.currentStep !== stepId) {
+        return;
+      }
+      captureUsageTelemetryPreview("quickstart", { mqttEnabled });
     }
   } finally {
     if (preparationId === quickStartPreparationId
@@ -61,6 +73,10 @@ function moveQuickStartStep(offset) {
 
 const quickStartActionHandlers = {
   "close-quickstart-modal": () => {
+    quickStartPreparationId += 1;
+    if (state.busyAction === USAGE_TELEMETRY_PREPARATION_ACTION) {
+      state.busyAction = "";
+    }
     state.quickStartModalOpen = false;
     render();
   },

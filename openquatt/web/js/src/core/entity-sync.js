@@ -21,6 +21,11 @@ import { clearWebServerLogOutput, closeWebServerLogStream, resetWebServerLogReco
 import { getMqttSensorsModalRenderSignature, refreshMqttStatus, shouldRefreshMqttStatusForCurrentSurface } from "../features/mqtt-actions.js";
 import { getApiSecurityStatusSignature, refreshApiSecurityStatus, refreshAuthStatus, shouldRefreshApiSecurityStatusForCurrentSurface, shouldRefreshAuthStatusForCurrentSurface } from "../features/security-actions.js";
 import { refreshOduEepromDumpStatuses, shouldRefreshOduEepromDumpSurface } from "../features/odu-eeprom-dump.js";
+import {
+  captureUsageTelemetryPreview,
+  loadUsageTelemetryPreviewMqttEnabled,
+  USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS,
+} from "./usage-telemetry-preview.js";
 import { render } from "./render-scheduler.js";
 import { fetchWithTimeout } from "./browser-utils.js";
 
@@ -1154,6 +1159,21 @@ import { fetchWithTimeout } from "./browser-utils.js";
     const appView = state.appView;
     const isPrefetchOverview = options.prefetchView === "overview" && !options.forceBulk && appView === "settings";
     const syncView = isPrefetchOverview ? "overview" : appView;
+    const quickStartModalVisible = state.quickStartModalOpen
+      && (state.complete !== true || state.quickStartModalMode === "generation");
+    const usageTelemetryPreviewSurface = syncView === "settings"
+      && state.settingsGroup === "system"
+      && !quickStartModalVisible
+      ? "settings-system"
+      : "";
+    const shouldCaptureUsageTelemetryPreview = Boolean(usageTelemetryPreviewSurface)
+      && state.usageTelemetryPreviewSurface !== usageTelemetryPreviewSurface;
+    if (!usageTelemetryPreviewSurface && state.usageTelemetryPreviewSurface === "settings-system") {
+      state.usageTelemetryPreviewSurface = "";
+    }
+    const usageTelemetryPreviewKeys = shouldCaptureUsageTelemetryPreview
+      ? USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS
+      : [];
     const isOverviewLike = syncView === "overview" || syncView === "control" || syncView === "diagnosis" ||
       syncView === "energy" || syncView === "results";
     const forceFast = options.forceFast === true && !options.forceBulk;
@@ -1191,7 +1211,12 @@ import { fetchWithTimeout } from "./browser-utils.js";
           ...staticKeys,
         ]
       : appView === "settings"
-        ? [...new Set([...getSettingsGroupHydrationKeys(), ...settingsStorageKeys, ...staticKeys])]
+        ? [...new Set([
+            ...getSettingsGroupHydrationKeys(),
+            ...settingsStorageKeys,
+            ...usageTelemetryPreviewKeys,
+            ...staticKeys,
+          ])]
         : isBulkDue
           ? [
               "setupComplete",
@@ -1208,6 +1233,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
     state.entitySyncInFlight = true;
     state.lastEntitySyncAttemptAt = now;
     try {
+      let usageTelemetryPreviewChanged = false;
       const reconnectModeBefore = state.deviceReconnectMode;
       const probe = shouldRefreshConnectivityProbe(now, options)
         ? await refreshConnectivityProbe()
@@ -1232,6 +1258,19 @@ import { fetchWithTimeout } from "./browser-utils.js";
       if (isPrefetchOverview) {
         await refreshIncidentMonitoringData({ prefetchOverview: true });
         return;
+      }
+      if (shouldCaptureUsageTelemetryPreview
+        && state.appView === "settings"
+        && state.settingsGroup === "system"
+        && !quickStartModalVisible) {
+        const mqttEnabled = await loadUsageTelemetryPreviewMqttEnabled();
+        if (state.appView === "settings"
+          && state.settingsGroup === "system"
+          && !(state.quickStartModalOpen
+            && (state.complete !== true || state.quickStartModalMode === "generation"))) {
+          captureUsageTelemetryPreview(usageTelemetryPreviewSurface, { mqttEnabled });
+          usageTelemetryPreviewChanged = true;
+        }
       }
       if (isOverviewLike && !state.overviewMetadataHydrated && !state.overviewMetadataHydrating) {
         void hydrateOverviewMetadata();
@@ -1279,6 +1318,10 @@ import { fetchWithTimeout } from "./browser-utils.js";
         return;
       }
       if (reconnectChanged) {
+        render();
+        return;
+      }
+      if (usageTelemetryPreviewChanged) {
         render();
         return;
       }

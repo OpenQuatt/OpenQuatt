@@ -33,6 +33,9 @@ import { render } from "./render-scheduler.js";
 
   export function setSettingsGroup(groupId, options = {}) {
     state.settingsGroup = SETTINGS_GROUP_IDS.has(groupId) ? groupId : SETTINGS_GROUPS[0].id;
+    if (state.settingsGroup !== "system" && state.usageTelemetryPreviewSurface === "settings-system") {
+      state.usageTelemetryPreviewSurface = "";
+    }
     try {
       window.localStorage.setItem("oq-settings-group", state.settingsGroup);
     } catch (_error) {

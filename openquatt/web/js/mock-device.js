@@ -384,6 +384,7 @@
 
   function syncUptimeEntity() {
     const uptimeHours = Math.max(0, (Date.now() - state.bootedAt) / 3600000);
+    setNumber("Uptime raw", Math.floor(uptimeHours * 3600), "s");
     setNumber("Uptime", Number(uptimeHours.toFixed(2)), "h");
   }
 
@@ -1882,12 +1883,20 @@
     setEntity("text_sensor", "OpenQuatt Installation Topology", { state: state.installation, value: state.installation });
     syncMockOduIdentityEntities(1);
     setEntity("text_sensor", "OpenQuatt Hardware Profile", { state: state.hardware, value: state.hardware });
+    setEntity("text_sensor", "OpenQuatt Hardware Revision", { state: "1.0 (batch 42)", value: "1.0 (batch 42)" });
     setEntity("text_sensor", "OpenQuatt Connection", { state: state.connection, value: state.connection });
     setEntity("text_sensor", "OpenQuatt Version", { state: MOCK_DEV_VERSION, value: MOCK_DEV_VERSION });
     setEntity("text_sensor", "OpenQuatt Release Channel", { state: "dev", value: "dev" });
+    setEntity("sensor", "Uptime raw", { value: 0, uom: "s" });
     setEntity("sensor", "Uptime", { value: 0, uom: "h" });
     syncUptimeEntity();
     setEntity("sensor", "ESP Internal Temperature", { value: 37.8, uom: "°C" });
+    setEntity("sensor", "WiFi Signal", { value: -61, uom: "dBm" });
+    setEntity("sensor", "Heap Free", { value: 178432, uom: "B" });
+    setEntity("sensor", "Heap Min Free", { value: 151008, uom: "B" });
+    setEntity("sensor", "Heap Max Block", { value: 98304, uom: "B" });
+    setEntity("sensor", "PSRAM Free", { value: 7023616, uom: "B" });
+    setEntity("sensor", "Loop Time", { value: 14, uom: "ms" });
     setEntity("sensor", "Firmware Update Progress", { value: 0, uom: "%" });
     setEntity("text_sensor", "Firmware Update Status", { state: "Idle", value: "Idle" });
     setEntity("text_sensor", "Trendhistorie beschikbaar", { state: "18,4 dagen", value: "18,4 dagen" });
@@ -1957,6 +1966,7 @@
     setEntity("switch", "CiC Compatibility Mode", { value: false, state: false });
     setEntity("switch", "Trendopslag", { value: true, state: true });
     setEntity("switch", "Trendhistorie opslaan in flash", { value: true, state: true });
+    setEntity("switch", "Beslisloghistorie bewaren", { value: false, state: false });
     setEntity("switch", "Lifetime energiehistorie opslaan", { value: true, state: true });
     setEntity("switch", "RAM log history", { value: true, state: true });
     updateEnergyHistoryStats();
@@ -2122,6 +2132,11 @@
       value: "Disabled",
       state: "Disabled",
       option: ["Disabled", "OT thermostat", "CIC", "HA input", "MQTT"],
+    });
+    setEntity("select", "External Heat Demand Source", {
+      value: "Disabled",
+      state: "Disabled",
+      option: ["Disabled", "API input", "MQTT"],
     });
     setEntity("select", "Firmware Update Channel", {
       value: "dev",

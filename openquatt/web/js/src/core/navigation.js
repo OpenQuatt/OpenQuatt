@@ -218,6 +218,9 @@ export function setAppView(view, options = {}) {
   const mode = options.syncMode || "replace";
   const changed = state.appView !== normalized;
   state.appView = normalized;
+  if (normalized !== "settings" && state.usageTelemetryPreviewSurface === "settings-system") {
+    state.usageTelemetryPreviewSurface = "";
+  }
 
   if (changed || options.forceSync) {
     syncUrlAppView(mode);
