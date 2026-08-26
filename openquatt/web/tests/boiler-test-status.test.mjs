@@ -45,7 +45,7 @@ test("commissioning polling refreshes the active boiler-test flow target", () =>
 test("getBoilerTestStatusCopy BOILER_SETTLING shows flow", () => {
   const copy = getBoilerTestStatusCopy("BOILER_SETTLING", 805, 800);
   assert.match(copy, /Warmtevraag verstuurd/);
-  assert.match(copy, /maximaal 90 sec/);
+  assert.match(copy, /maximaal 150 sec/);
   assert.match(copy, /Flow 805 L\/h/);
 });
 
