@@ -468,7 +468,9 @@ interval:
                     now_ms,
                     (uint32_t) (${oq_otb_field_timeout_s} * 1000UL));
             const float boiler_temperature_c =
-                id(otb_boiler_water_temp).has_state() ? id(otb_boiler_water_temp).state : NAN;
+                id(${oq_boiler_temperature_sensor_id}).has_state()
+                    ? id(${oq_boiler_temperature_sensor_id}).state
+                    : NAN;
           #else
             const bool boiler_temperature_fresh = false;
             const float boiler_temperature_c = NAN;
@@ -488,7 +490,9 @@ interval:
           if (start_thermal_decision_changed) {
           #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
             const float boiler_temperature_c =
-                id(otb_boiler_water_temp).has_state() ? id(otb_boiler_water_temp).state : NAN;
+                id(${oq_boiler_temperature_sensor_id}).has_state()
+                    ? id(${oq_boiler_temperature_sensor_id}).state
+                    : NAN;
           #else
             const float boiler_temperature_c = NAN;
           #endif

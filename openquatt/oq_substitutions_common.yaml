@@ -237,6 +237,7 @@ oq_boiler_otb_min_off_s: "120"                        # OpenTherm minimum reques
 oq_otb_supported: "false"                             # Compile-time availability of the boiler OpenTherm master transport.
 oq_otb_command_apply_s: "1"                           # Apply validated CH/TSet state to the OpenTherm master [s].
 oq_otb_startup_probe_timeout_s: "8"                   # R1 boot verification window for detecting a physically connected OpenTherm boiler [s].
+oq_boiler_temperature_sensor_id: "water_supply_temp_selected" # Existing fallback ID so non-Q profiles can validate the shared lambda; its value is ignored there.
 oq_boiler_transport_selection_extra: ""               # Hardware-specific start/stop hook after changing the boiler transport.
 
 # ----------------------------
