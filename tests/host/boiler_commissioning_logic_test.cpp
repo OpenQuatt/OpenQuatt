@@ -114,12 +114,116 @@ void test_very_high_theoretical_flow_is_limited_not_refused() {
   assert(op.target_flow_lph == 1000.0f);
 }
 
-void test_apply_policy() {
-  assert(result_apply_allowed(false, true, false));
-  assert(result_apply_allowed(true, true, false));
-  assert(!result_apply_allowed(true, false, false));
-  assert(!result_apply_allowed(true, true, true));
-  assert(!result_apply_allowed(true, false, true));
+MeasurementQualityEvidence valid_measurement_evidence() {
+  return MeasurementQualityEvidence{
+      .completed = true,
+      .opentherm_selected = true,
+      .capacity_verified = true,
+      .flow_limited = false,
+      .transport_clean = true,
+      .boiler_active_throughout = true,
+      .thermal_safe = true,
+      .dhw_clear = true,
+      .measurement_ticks = 100,
+      .stable_flow_ticks = 90,
+      .valid_power_samples = 12,
+      .result_w = 8400.0f,
+      .confidence_percent = 92.0f,
+  };
+}
+
+void test_result_quality_separates_provenance_from_confidence() {
+  auto evidence = valid_measurement_evidence();
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_OPENTHERM_ID15_AVAILABLE);
+  assert(result_apply_mode(RESULT_QUALITY_OPENTHERM_ID15_AVAILABLE) == RESULT_APPLY_DIRECT);
+
+  evidence.capacity_verified = false;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_EMPIRICAL_UNVERIFIED);
+  assert(result_apply_mode(RESULT_QUALITY_EMPIRICAL_UNVERIFIED) == RESULT_APPLY_CONFIRMATION_REQUIRED);
+
+  evidence.opentherm_selected = false;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_RELAY_EMPIRICAL);
+  assert(result_apply_mode(RESULT_QUALITY_RELAY_EMPIRICAL) == RESULT_APPLY_DIRECT);
+
+  evidence.opentherm_selected = true;
+  evidence.capacity_verified = true;
+  evidence.flow_limited = true;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_FLOW_LIMITED);
+  assert(result_apply_mode(RESULT_QUALITY_FLOW_LIMITED) == RESULT_APPLY_DENIED);
+}
+
+void test_result_quality_rejects_invalid_measurement_evidence() {
+  auto evidence = valid_measurement_evidence();
+  evidence.completed = false;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_INVALID);
+
+  evidence = valid_measurement_evidence();
+  evidence.stable_flow_ticks = 89;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_INVALID);
+
+  evidence = valid_measurement_evidence();
+  evidence.stable_flow_ticks = 101;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_INVALID);
+
+  evidence = valid_measurement_evidence();
+  evidence.valid_power_samples = 7;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_INVALID);
+
+  evidence = valid_measurement_evidence();
+  evidence.transport_clean = false;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_INVALID);
+
+  evidence = valid_measurement_evidence();
+  evidence.boiler_active_throughout = false;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_INVALID);
+
+  evidence = valid_measurement_evidence();
+  evidence.thermal_safe = false;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_INVALID);
+
+  evidence = valid_measurement_evidence();
+  evidence.dhw_clear = false;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_INVALID);
+
+  evidence = valid_measurement_evidence();
+  evidence.result_w = 999.0f;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_INVALID);
+  evidence.result_w = 50001.0f;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_INVALID);
+
+  evidence = valid_measurement_evidence();
+  evidence.confidence_percent = 79.0f;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_INVALID);
+}
+
+void test_result_quality_accepts_exact_contract_boundaries() {
+  auto evidence = valid_measurement_evidence();
+  evidence.measurement_ticks = 10;
+  evidence.stable_flow_ticks = 9;
+  evidence.valid_power_samples = 8;
+  evidence.result_w = 1000.0f;
+  evidence.confidence_percent = 80.0f;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_OPENTHERM_ID15_AVAILABLE);
+
+  evidence.result_w = 50000.0f;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_OPENTHERM_ID15_AVAILABLE);
+}
+
+void test_empirical_apply_confirmation_is_explicit_bounded_and_wrap_safe() {
+  ApplyConfirmationWindow confirmation;
+  assert(confirmation.confirm_or_arm(1000) == APPLY_CONFIRMATION_ARMED);
+  assert(confirmation.active(31000));
+  assert(confirmation.confirm_or_arm(31000) == APPLY_CONFIRMATION_CONFIRMED);
+  assert(!confirmation.active(31000));
+
+  assert(confirmation.confirm_or_arm(50000) == APPLY_CONFIRMATION_ARMED);
+  assert(!confirmation.active(80001));
+  assert(confirmation.expire(80001));
+  assert(confirmation.confirm_or_arm(80002) == APPLY_CONFIRMATION_ARMED);
+
+  confirmation.reset();
+  assert(confirmation.confirm_or_arm(UINT32_MAX - 10, 20) == APPLY_CONFIRMATION_ARMED);
+  assert(confirmation.confirm_or_arm(5, 20) == APPLY_CONFIRMATION_CONFIRMED);
 }
 
 void test_power_plateau_rebases_after_xtreme_startup_transient() {
@@ -238,10 +342,13 @@ int main() {
   test_r1_keeps_configured_flow();
   test_dynamic_flow_after_initial_800_preflow();
   test_very_high_theoretical_flow_is_limited_not_refused();
-  test_apply_policy();
   test_power_plateau_rebases_after_xtreme_startup_transient();
   test_power_plateau_loses_old_result_and_rebases();
   test_power_plateau_rejects_invalid_configuration_and_samples();
+  test_result_quality_separates_provenance_from_confidence();
+  test_result_quality_rejects_invalid_measurement_evidence();
+  test_result_quality_accepts_exact_contract_boundaries();
+  test_empirical_apply_confirmation_is_explicit_bounded_and_wrap_safe();
   test_unreachable_flow_after_sustained_saturation();
   test_reachability_monitor_allows_meaningful_progress();
   test_reachability_monitor_resets_when_actuator_not_saturated();

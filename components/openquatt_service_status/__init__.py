@@ -16,6 +16,7 @@ CONF_GLOBAL_KEYS = [
     "commissioning_status",
     "boiler_result_w",
     "boiler_confidence",
+    "boiler_quality",
     "boiler_status",
     "flow_autotune_status",
     "flow_kp_suggested",

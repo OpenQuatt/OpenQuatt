@@ -15,7 +15,6 @@ namespace oq_boiler_task {
 using oq_boiler_commissioning::boiler_test_dhw_interferes;
 using oq_boiler_commissioning::compute_opentherm_operating_point;
 using oq_boiler_commissioning::normalize_max_water_temperature_c;
-using oq_boiler_commissioning::result_apply_allowed;
 
 static constexpr int TASK_NONE = oq_commissioning::TASK_NONE;
 static constexpr int TASK_BOILER_POWER_TEST = oq_commissioning::TASK_BOILER_POWER_TEST;
@@ -110,6 +109,7 @@ class BoilerPowerTestRuntime {
         active_test_capacity_w_ = id(otb_max_capacity).state * 1000.0f;
         active_test_capacity_verified_ = true;
       }
+      active_test_transport_error_count_ = oq_otb::telemetry_state.transport_error_count();
       const float rated_w = id(oq_boiler_rated_heat_power).state;
       const auto op = compute_opentherm_operating_point(true, active_test_capacity_w_, rated_w, inlet_c, max_c,
                                                         cfg.target_flow_lph);
@@ -158,24 +158,40 @@ class BoilerPowerTestRuntime {
     publish_status("FLOW_SETTLING");
   }
 
-  void apply_result() {
+  void apply_result(uint32_t now_ms) {
     const float result = id(oq_commissioning_result_w);
-    if (isnan(result) || result <= 0.0f) {
+    if (id(oq_commissioning_task_code) != TASK_NONE || id(oq_commissioning_state_code) != STATE_DONE) {
+      publish_status("APPLY_REFUSED: test is not complete");
+      return;
+    }
+    if (!oq_boiler_commissioning::result_is_in_safe_range(result)) {
       publish_status("APPLY_FAILED: invalid result");
       return;
     }
-    if (!active_test_result_apply_allowed_) {
-      if (active_test_flow_limited_) {
+    if (active_test_result_applied_) return;
+
+    const auto apply_mode = oq_boiler_commissioning::result_apply_mode(active_test_result_quality_);
+    if (apply_mode == oq_boiler_commissioning::RESULT_APPLY_DENIED) {
+      if (active_test_result_quality_ == oq_boiler_commissioning::RESULT_QUALITY_FLOW_LIMITED) {
         publish_status("APPLY_REFUSED: flow limited");
       } else {
-        publish_status("APPLY_REFUSED: capacity unverified");
+        publish_status("APPLY_REFUSED: result quality insufficient");
       }
       return;
     }
+    if (apply_mode == oq_boiler_commissioning::RESULT_APPLY_CONFIRMATION_REQUIRED &&
+        empirical_apply_confirmation_.confirm_or_arm(now_ms) == oq_boiler_commissioning::APPLY_CONFIRMATION_ARMED) {
+      publish_status("CONFIRM_REQUIRED: confirm applying empirical result within 30s");
+      return;
+    }
+
+    empirical_apply_confirmation_.reset();
     const int rounded_result = (int)roundf(result / 100.0f) * 100;
     set_number_value(id(oq_boiler_rated_heat_power), (float)rounded_result);
-    char msg[64];
-    snprintf(msg, sizeof(msg), "APPLIED: %dW", rounded_result);
+    active_test_result_applied_ = true;
+    char msg[128];
+    snprintf(msg, sizeof(msg), "APPLIED: %dW - %s", rounded_result,
+             oq_boiler_commissioning::result_quality_text(active_test_result_quality_));
     publish_status(msg);
   }
 
@@ -239,6 +255,9 @@ class BoilerPowerTestRuntime {
     }
 
     if (task_is_none) {
+      if (id(oq_commissioning_state_code) == STATE_DONE && empirical_apply_confirmation_.expire(now_ms)) {
+        publish_done_status();
+      }
       accept_neutral_cm100_if_ready(in_cm100, now_ms);
       return;
     }
@@ -266,8 +285,22 @@ class BoilerPowerTestRuntime {
     }
     if (!guards_ok()) return;
 
-#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     const int state_code = id(oq_commissioning_state_code);
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    const bool opentherm_transport_must_be_clean =
+        active_test_opentherm_ &&
+        (state_code == STATE_FLOW_SETTLE || state_code == STATE_BOILER_SETTLE || state_code == STATE_MEASURE);
+    if (opentherm_transport_must_be_clean &&
+        (!id(oq_otb_link_available_state) ||
+         !oq_otb::telemetry_state.field_is_fresh(oq_otb::FIELD_STATUS, now_ms, boiler_temperature_max_age_ms))) {
+      finish_task("FAILED: OpenTherm status unavailable during test", STATE_FAILED, false, true);
+      return;
+    }
+    if (opentherm_transport_must_be_clean &&
+        oq_otb::telemetry_state.transport_error_count() != active_test_transport_error_count_) {
+      finish_task("FAILED: OpenTherm transport error during test", STATE_FAILED, false, true);
+      return;
+    }
     const bool dhw_can_interfere =
         state_code == STATE_FLOW_SETTLE || state_code == STATE_BOILER_SETTLE || state_code == STATE_MEASURE;
     if (dhw_can_interfere &&
@@ -277,6 +310,11 @@ class BoilerPowerTestRuntime {
       return;
     }
 #endif
+
+    if (state_code == STATE_MEASURE && (!id(boiler_active).has_state() || !id(boiler_active).state)) {
+      finish_task("FAILED: boiler became inactive during measurement", STATE_FAILED, false, true);
+      return;
+    }
 
     if (id(oq_commissioning_boiler_request)) id(oq_commissioning_boiler_request_updated_ms) = now_ms;
 
@@ -310,12 +348,17 @@ class BoilerPowerTestRuntime {
   bool active_test_opentherm_{false};
   bool active_test_capacity_verified_{false};
   bool active_test_flow_limited_{false};
-  bool active_test_result_apply_allowed_{false};
+  bool active_test_result_applied_{false};
+  uint8_t active_test_result_quality_{oq_boiler_commissioning::RESULT_QUALITY_NONE};
+  uint32_t active_test_transport_error_count_{0};
+  oq_boiler_commissioning::ApplyConfirmationWindow empirical_apply_confirmation_{};
   oq_boiler_commissioning::FlowReachabilityMonitor flow_reachability_{};
   oq_boiler_commissioning::BoilerActivationSettleMonitor boiler_activation_settle_{};
   oq_boiler_commissioning::PowerPlateauMonitor power_plateau_{};
   int stable_flow_count_{0};
   int sample_count_{0};
+  uint32_t measurement_tick_count_{0};
+  uint32_t measurement_stable_flow_tick_count_{0};
   float sum_w_{0.0f};
   float min_w_{NAN};
   float max_w_{NAN};
@@ -348,6 +391,11 @@ class BoilerPowerTestRuntime {
     }
   }
 
+  void set_result_quality(uint8_t quality) {
+    active_test_result_quality_ = quality;
+    id(oq_boiler_power_test_result_quality_value) = oq_boiler_commissioning::result_quality_text(quality);
+  }
+
   void restore_flow_setpoint() {
     if (!flow_setpoint_saved_) return;
     publish_transient_number_value(id(oq_flow_setpoint_lph), prev_flow_setpoint_lph_);
@@ -356,6 +404,8 @@ class BoilerPowerTestRuntime {
 
   void reset_measurement_accumulators() {
     stable_flow_count_ = 0;
+    measurement_tick_count_ = 0;
+    measurement_stable_flow_tick_count_ = 0;
     power_plateau_.reset();
     reset_power_samples();
   }
@@ -377,7 +427,10 @@ class BoilerPowerTestRuntime {
     active_test_opentherm_ = false;
     active_test_capacity_verified_ = false;
     active_test_flow_limited_ = false;
-    active_test_result_apply_allowed_ = false;
+    active_test_result_applied_ = false;
+    active_test_transport_error_count_ = 0;
+    empirical_apply_confirmation_.reset();
+    set_result_quality(oq_boiler_commissioning::RESULT_QUALITY_NONE);
   }
 
   void clear_container() {
@@ -621,6 +674,9 @@ class BoilerPowerTestRuntime {
   }
 
   void run_measure(const RuntimeConfig& cfg, uint32_t now_ms, bool flow_stable_now, bool heat_valid, float heat_w) {
+    measurement_tick_count_++;
+    if (flow_stable_now) measurement_stable_flow_tick_count_++;
+
     if (flow_stable_now && heat_valid && heat_w > 0.0f) {
       const auto plateau_update = power_plateau_.update(heat_w, cfg.plateau_ratio, cfg.plateau_confirm_samples);
       if (plateau_update == oq_boiler_commissioning::POWER_PLATEAU_LOST) reset_power_samples();
@@ -655,13 +711,37 @@ class BoilerPowerTestRuntime {
     if (confidence < 0.0f) confidence = 0.0f;
     if (confidence > 100.0f) confidence = 100.0f;
 
-    active_test_result_apply_allowed_ =
-        result_apply_allowed(active_test_opentherm_, active_test_capacity_verified_, active_test_flow_limited_);
-    if (!active_test_result_apply_allowed_) {
-      confidence = fminf(confidence, 70.0f);
-      ESP_LOGI("quatt.cm100.boiler", "Measurement result is informational only: %s; avg=%.0fW conf=%.0f%%",
-               active_test_flow_limited_ ? "flow/headroom limited" : "capacity unverified", avg_w, confidence);
+    const oq_boiler_commissioning::MeasurementQualityEvidence evidence{
+        .completed = true,
+        .opentherm_selected = active_test_opentherm_,
+        .capacity_verified = active_test_capacity_verified_,
+        .flow_limited = active_test_flow_limited_,
+        .transport_clean = true,
+        .boiler_active_throughout = true,
+        .thermal_safe = true,
+        .dhw_clear = true,
+        .measurement_ticks = measurement_tick_count_,
+        .stable_flow_ticks = measurement_stable_flow_tick_count_,
+        .valid_power_samples = sample_count_,
+        .result_w = avg_w,
+        .confidence_percent = confidence,
+    };
+    const auto result_quality = oq_boiler_commissioning::evaluate_result_quality(evidence);
+    if (result_quality == oq_boiler_commissioning::RESULT_QUALITY_INVALID) {
+      const float flow_stability_ratio = oq_boiler_commissioning::measurement_flow_stability_ratio(
+          measurement_tick_count_, measurement_stable_flow_tick_count_);
+      const char* failure = flow_stability_ratio < oq_boiler_commissioning::kBoilerTestMinimumFlowStabilityRatio
+                                ? "FAILED: unstable flow during measurement"
+                            : !oq_boiler_commissioning::result_is_in_safe_range(avg_w)
+                                ? "FAILED: result outside safe 1000-50000W range"
+                            : confidence < oq_boiler_commissioning::kBoilerTestMinimumApplyConfidence
+                                ? "FAILED: measured power insufficiently stable"
+                                : "FAILED: measurement quality requirements not met";
+      finish_task(failure, STATE_FAILED, false, true);
+      set_result_quality(oq_boiler_commissioning::RESULT_QUALITY_INVALID);
+      return;
     }
+    set_result_quality(result_quality);
 
     id(oq_commissioning_result_w) = avg_w;
     id(oq_commissioning_result_confidence) = confidence;
@@ -670,16 +750,19 @@ class BoilerPowerTestRuntime {
     id(oq_commissioning_boiler_request) = false;
     ESP_LOGI("quatt.cm100.boiler",
              "Measurement complete: avg=%.0fW min=%.0fW max=%.0fW samples=%u "
-             "conf=%.0f%%",
-             avg_w, min_w_, max_w_, (unsigned int)sample_count_, confidence);
+             "conf=%.0f%% flow_stable=%.0f%% quality=%s",
+             avg_w, min_w_, max_w_, (unsigned int)sample_count_, confidence,
+             oq_boiler_commissioning::measurement_flow_stability_ratio(measurement_tick_count_,
+                                                                       measurement_stable_flow_tick_count_) *
+                 100.0f,
+             oq_boiler_commissioning::result_quality_text(result_quality));
     restore_flow_setpoint();
     publish_status("COOLDOWN");
   }
 
   const char* result_quality_suffix() const {
-    if (active_test_flow_limited_) return "flow limited";
-    if (active_test_opentherm_ && !active_test_capacity_verified_) return "capacity unverified";
-    return nullptr;
+    if (active_test_result_quality_ == oq_boiler_commissioning::RESULT_QUALITY_NONE) return nullptr;
+    return oq_boiler_commissioning::result_quality_text(active_test_result_quality_);
   }
 
   void build_done_status(char* msg, size_t size) const {

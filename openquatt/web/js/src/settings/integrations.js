@@ -118,6 +118,7 @@ import { escapeHtml } from "../core/html.js";
       renderValueDiagnosticItem("boilerBlockReason", "Blokkadereden"),
       renderValueDiagnosticItem("boilerStartThermalGuard", "Warme-startbeslissing"),
       renderValueDiagnosticItem("boilerStartThermalSafeCeiling", "Warme-startgrens"),
+      renderValueDiagnosticItem("boilerPowerTestResultQuality", "Kwaliteit laatste boilertest"),
     ]);
 
     const otbDiagnosticRows = [

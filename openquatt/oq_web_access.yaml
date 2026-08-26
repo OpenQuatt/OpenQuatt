@@ -53,6 +53,7 @@ openquatt_service_status:
   commissioning_status: oq_commissioning_status_value
   boiler_result_w: oq_commissioning_result_w
   boiler_confidence: oq_commissioning_result_confidence
+  boiler_quality: oq_boiler_power_test_result_quality_value
   boiler_status: oq_boiler_power_test_status_value
   flow_autotune_status: oq_flow_autotune_status_value
   flow_kp_suggested: oq_flow_kp_suggested_value

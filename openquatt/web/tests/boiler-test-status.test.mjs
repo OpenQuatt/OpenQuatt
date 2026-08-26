@@ -11,13 +11,20 @@ globalThis.window = {
 
 const { state } = await import("../js/src/core/state.js");
 const { SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
-const { getBoilerTestStatusCopy, getCommissioningProgressModel } = await import("../js/src/settings/service.js");
+const {
+  getBoilerResultQualityCopy,
+  getBoilerTestStatusCopy,
+  getCommissioningProgressModel,
+  isBoilerTestResultReady,
+  isCommissioningTaskStatusTerminal,
+} = await import("../js/src/settings/service.js");
 
-function setBoilerEntities(heatPower = "—", result = "—", confidence = "—") {
+function setBoilerEntities(heatPower = "—", result = "—", confidence = "—", quality = "not available") {
   state.entities = {
     boilerHeatPower: { value: heatPower, state: heatPower },
     boilerPowerTestResult: { value: result, state: result },
     boilerPowerTestConfidence: { value: confidence, state: confidence },
+    boilerPowerTestResultQuality: { value: quality, state: quality },
   };
 }
 
@@ -63,10 +70,30 @@ test("getBoilerTestStatusCopy COOLDOWN shows result", () => {
 });
 
 test("getBoilerTestStatusCopy DONE shows result and confidence", () => {
-  setBoilerEntities("—", "2571 W", "92%");
+  setBoilerEntities("—", "2571 W", "92%", "verified via OpenTherm ID15");
   const copy = getBoilerTestStatusCopy("DONE: 2571W (conf 92%)", 800, 800);
   assert.match(copy, /Klaar - 2571 W/);
   assert.match(copy, /92%/);
+  assert.match(copy, /Geverifieerd via OpenTherm ID15/);
+});
+
+test("getBoilerTestStatusCopy DONE remains compatible when quality entity is absent", () => {
+  setBoilerEntities("—", "2571 W", "92%", "—");
+  const copy = getBoilerTestStatusCopy("DONE: 2571W (conf 92%)", 800, 800);
+  assert.equal(copy, "Klaar - 2571 W (92%). Ketel auto uit.");
+});
+
+test("empirical result requires an explicit second Apply within 30 seconds", () => {
+  setBoilerEntities("—", "8442 W", "96%", "empirical, ID15 unavailable");
+  const status = "CONFIRM_REQUIRED: empirical result unverified; press Apply again within 30s";
+  assert(isCommissioningTaskStatusTerminal(status));
+  assert(isBoilerTestResultReady(status));
+  assert.match(getBoilerTestStatusCopy(status, 800, 800), /Extra bevestiging nodig/);
+  assert.match(getBoilerTestStatusCopy(status, 800, 800), /binnen 30 seconden/);
+  assert.equal(
+    getBoilerResultQualityCopy("empirical, ID15 unavailable"),
+    "Empirisch gemeten; niet via OpenTherm ID15 geverifieerd",
+  );
 });
 
 test("getBoilerTestStatusCopy exact ABORTED is handmatig", () => {

@@ -37,6 +37,11 @@ globals:
     restore_value: false
     initial_value: '"IDLE"'
 
+  - id: oq_boiler_power_test_result_quality_value
+    type: std::string
+    restore_value: false
+    initial_value: '"not available"'
+
 # ----------------------------
 # CONTROL INPUTS
 # ----------------------------
@@ -84,7 +89,7 @@ button:
     entity_category: config
     on_press:
       - lambda: |-
-          oq_boiler_task::runtime().apply_result();
+          oq_boiler_task::runtime().apply_result((uint32_t) millis());
 
 text_sensor:
   - platform: template
@@ -95,6 +100,15 @@ text_sensor:
     update_interval: 1s
     lambda: |-
       return {id(oq_boiler_power_test_status_value)};
+
+  - platform: template
+    id: oq_boiler_power_test_result_quality
+    name: "Boiler power test result quality"
+    internal: true
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: |-
+      return {id(oq_boiler_power_test_result_quality_value)};
 
 # ----------------------------
 # MAIN LOOP

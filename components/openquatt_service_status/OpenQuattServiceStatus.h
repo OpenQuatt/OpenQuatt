@@ -27,6 +27,7 @@ class OpenQuattServiceStatus : public Component {
   void set_commissioning_status(StringGlobal* value) { this->commissioning_status_ = value; }
   void set_boiler_result_w(FloatGlobal* value) { this->boiler_result_w_ = value; }
   void set_boiler_confidence(FloatGlobal* value) { this->boiler_confidence_ = value; }
+  void set_boiler_quality(StringGlobal* value) { this->boiler_quality_ = value; }
   void set_boiler_status(StringGlobal* value) { this->boiler_status_ = value; }
   void set_flow_autotune_status(StringGlobal* value) { this->flow_autotune_status_ = value; }
   void set_flow_kp_suggested(FloatGlobal* value) { this->flow_kp_suggested_ = value; }
@@ -99,6 +100,7 @@ class OpenQuattServiceStatus : public Component {
   StringGlobal* commissioning_status_{nullptr};
   FloatGlobal* boiler_result_w_{nullptr};
   FloatGlobal* boiler_confidence_{nullptr};
+  StringGlobal* boiler_quality_{nullptr};
   StringGlobal* boiler_status_{nullptr};
   StringGlobal* flow_autotune_status_{nullptr};
   FloatGlobal* flow_kp_suggested_{nullptr};
