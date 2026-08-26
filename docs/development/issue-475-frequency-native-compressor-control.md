@@ -1,6 +1,6 @@
 # Issue #475: frequency-native compressor control
 
-Status: stap 1 softwarematig gereed in draft PR #534; HIL nog vereist  
+Status: stap 1 softwarematig gereed in draft PR #534; V1.5 Duo-HIL geslaagd, overige HIL nog vereist  
 Target branch: `dev`  
 Work branch: `fix/475-v2-compressor-mapping`
 
@@ -136,6 +136,21 @@ Op de bekende nieuwe V2-tabel resulteert dat in F0/F1/F2/F3/F7/F9/F10/F13/F15/F1
 - defrost-hold behoudt modellevel en fysiek level afzonderlijk;
 - Single en Duo configvalidatie; standaard compiletarget is `configs/heatpump_controller_q/duo_wifi.yaml`.
 
+## HIL-resultaten
+
+### 2026-08-26 — Q-edition Duo WiFi met twee V1.5-ODU's
+
+- Candidate `78c4d275` is via OTA geladen op `configs/heatpump_controller_q/duo_wifi.yaml`.
+- Beide ODU's zijn herkend als V1.5 met control-board-item `0x0E37` en bleven fail-closed op F0-F10.
+- De read-only runtime-loader las voor beide ODU's alle 22 basisregisters. Beide tabellen waren gelijk:
+  - cooling: `0,26,28,30,32,34,36,38,40,71,74`;
+  - heating: `0,30,39,49,55,61,67,72,79,85,90`.
+- Een CM100 heating-aanvraag van fysiek level 20 werd op HP1 en HP2 onafhankelijk begrensd tot fysiek F10. De handmatige request-entiteit bleef daarbij 20 tonen.
+- De ODU begrensde tijdens de korte proef de frequentiedemand zelf op 49 Hz met `Frequency limit ambient`; dit verandert de bevestigde F10-commandobegrenzing niet.
+- Abort volgde het bestaande minimum-runtimepad: beide compressors bleven tijdelijk op F1/30 Hz, stopten daarna gecontroleerd en keerden terug naar standby/F0/0 Hz.
+- Eindtoestand: CM0, flow 0 L/h en geen actieve ODU-fouten.
+- Geheugensnapshot na OTA, tabelreads en CM100-proef: internal heap free 111139 B, minimum 39828 B, largest block 63488 B, fragmentatie 42.9% en PSRAM free 6858440 B. De bootduur was toen circa 0.25 uur; dit is een korte regressiecheck, geen duurtest.
+
 ## Werklog
 
 - 2026-08-26: plan bijgewerkt na bevestiging dat V1 en V1.5 dezelfde oorspronkelijke heating- en coolingtabel gebruiken. Runtimegewijzigde EEPROM-tabellen blijven geldige regressiefixtures.
@@ -146,4 +161,5 @@ Op de bekende nieuwe V2-tabel resulteert dat in F0/F1/F2/F3/F7/F9/F10/F13/F15/F1
 - 2026-08-26: de bestaande experimentele F0–F10-editor invalidateert de snapshot vóór een write en laadt hem pas opnieuw na volledige readback. F11–F20-editorondersteuning blijft stap 2.
 - 2026-08-26: koude regressie-audit: de tijdelijke afhankelijkheid van een geldige tabelread voor alle automatische starts verwijderd. Alleen V2-heating gebruikt de Hz-mapping; ontbrekende data behoudt het bestaande F0–F10-pad.
 - 2026-08-26: softwarevalidatie groen: 39 hosttests, 95 Python-contracttests, 252 webtests, C++-formatcheck en volledige ESPHome-compile van `configs/heatpump_controller_q/duo_wifi.yaml`.
-- 2026-08-26: resterende releasegate is HIL op V1/V1.5, V2 vroeg en V2 nieuw, inclusief boot/reconnect, incomplete reads, aangepaste EEPROM-tabellen, defrost-hold en CM100 F11–F20.
+- 2026-08-26: V1.5 Duo-HIL groen voor OTA/boot, aangepaste runtime-tabellen, F0-F10 fail-closed begrenzing op beide ODU's, minimum-runtime-stop en terugkeer naar CM0.
+- 2026-08-26: resterende releasegate is HIL op V1, V2 vroeg en V2 nieuw, inclusief reconnect, incomplete reads, defrost-hold en CM100 F11-F20.
