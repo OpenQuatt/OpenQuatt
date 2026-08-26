@@ -1501,6 +1501,7 @@
     "otbReturnWaterTemp",
     "otbStartHandshakeDetail",
     "boilerStartThermalGuard",
+    "boilerStartThermalSafeCeiling",
     "boilerPowerTestResultQuality",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];

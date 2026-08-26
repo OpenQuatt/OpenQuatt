@@ -90,6 +90,7 @@ const ISSUE_516_OBSERVABILITY_KEYS = [
 
 const ISSUE_536_WARM_START_OBSERVABILITY_KEYS = [
   "boilerStartThermalGuard",
+  "boilerStartThermalSafeCeiling",
 ];
 
 const ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS = [
