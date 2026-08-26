@@ -134,6 +134,7 @@ inline BoilerLogDecision classify_boiler_controller_log(const BoilerControllerLo
   switch (inputs.controller_block_reason) {
     case BLOCK_WATER_TEMP_INHIBIT:
     case BLOCK_WATER_TEMP_HARD_TRIP:
+    case BLOCK_BOILER_TOO_HOT_FOR_START:
       reason = BoilerLogReason::SOFT_GUARD;
       break;
     case BLOCK_FLOW_UNAVAILABLE:
@@ -148,6 +149,7 @@ inline BoilerLogDecision classify_boiler_controller_log(const BoilerControllerLo
     case BLOCK_TRANSPORT_SETTLING:
     case BLOCK_AWAITING_FRESH_COMMAND:
     case BLOCK_CONNECTION_MISMATCH:
+    case BLOCK_BOILER_TEMPERATURE_UNAVAILABLE:
       reason = BoilerLogReason::SENSOR_FALLBACK;
       break;
     case BLOCK_ASSIST_DISABLED:

@@ -7,6 +7,7 @@
 
 #include "../../boiler/oq_boiler_commissioning_logic.h"
 #include "../../boiler/oq_boiler_logic.h"
+#include "../../boiler/oq_otb_telemetry.h"
 #include "../oq_service_runtime.h"
 
 namespace oq_boiler_task {
@@ -199,7 +200,7 @@ class BoilerPowerTestRuntime {
     clear_container();
   }
 
-  void tick(const RuntimeConfig& cfg, uint32_t now_ms) {
+  void tick(const RuntimeConfig& cfg, uint32_t now_ms, uint32_t boiler_temperature_max_age_ms) {
     const int cm_code = id(oq_control_mode_code);
     const bool in_cm100 = cm_code == 100;
     const int task_code = id(oq_commissioning_task_code);
@@ -281,7 +282,7 @@ class BoilerPowerTestRuntime {
 
     switch (id(oq_commissioning_state_code)) {
       case STATE_FLOW_SETTLE:
-        run_flow_settle(cfg, now_ms, flow_lph, flow_stable_now);
+        run_flow_settle(cfg, now_ms, boiler_temperature_max_age_ms, flow_lph, flow_stable_now);
         return;
       case STATE_BOILER_SETTLE:
         run_boiler_settle(cfg, now_ms, flow_lph, heat_w, flow_stable_now);
@@ -475,7 +476,8 @@ class BoilerPowerTestRuntime {
     return false;
   }
 
-  void run_flow_settle(const RuntimeConfig& cfg, uint32_t now_ms, float flow_lph, bool flow_stable_now) {
+  void run_flow_settle(const RuntimeConfig& cfg, uint32_t now_ms, uint32_t boiler_temperature_max_age_ms,
+                       float flow_lph, bool flow_stable_now) {
     if (!flow_reachable(cfg, now_ms, flow_lph)) return;
 
     stable_flow_count_ = flow_stable_now ? stable_flow_count_ + 1 : 0;
@@ -518,6 +520,28 @@ class BoilerPowerTestRuntime {
     }
 #endif
 
+    const auto start_thermal_decision = boiler_start_thermal_decision(now_ms, boiler_temperature_max_age_ms);
+    if (start_thermal_decision.state == oq_boiler::BOILER_START_THERMAL_HOT) {
+      ESP_LOGW("quatt.cm100.boiler",
+               "Boiler test refused before heat request: boiler is too hot (boiler=%.1fC supply=%.1fC "
+               "target=%.1fC ceiling=%.1fC)",
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+               id(otb_boiler_water_temp).state,
+#else
+               NAN,
+#endif
+               id(water_supply_temp_selected).state,
+               oq_boiler_commissioning::commissioning_target_temperature_c(id(max_water_temp_limit_c).state),
+               start_thermal_decision.safe_ceiling_c);
+      finish_task("REFUSED: boiler temperature too high for test", STATE_FAILED, false, true);
+      return;
+    }
+    if (start_thermal_decision.state == oq_boiler::BOILER_START_THERMAL_UNKNOWN) {
+      ESP_LOGW("quatt.cm100.boiler", "Boiler test refused before heat request: boiler temperature unavailable/stale");
+      finish_task("REFUSED: boiler temperature unavailable or stale", STATE_FAILED, false, true);
+      return;
+    }
+
     flow_reachability_.reset();
     id(oq_commissioning_boiler_request_updated_ms) = now_ms;
     id(oq_commissioning_boiler_request) = true;
@@ -528,6 +552,28 @@ class BoilerPowerTestRuntime {
     ESP_LOGI("quatt.cm100.boiler", "Flow settled at %.0fL/h after %lus; requesting boiler relay", flow_lph,
              (unsigned long)((now_ms - id(oq_commissioning_started_ms)) / 1000UL));
     publish_status("BOILER_SETTLING");
+  }
+
+  oq_boiler::BoilerStartThermalDecision boiler_start_thermal_decision(uint32_t now_ms,
+                                                                      uint32_t boiler_temperature_max_age_ms) const {
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    if (!active_test_opentherm_) {
+      return oq_boiler::BoilerStartThermalDecision{oq_boiler::BOILER_START_THERMAL_NOT_APPLICABLE, NAN};
+    }
+    const bool boiler_temperature_fresh = oq_otb::telemetry_state.field_is_fresh(oq_otb::FIELD_BOILER_WATER_TEMPERATURE,
+                                                                                 now_ms, boiler_temperature_max_age_ms);
+    const float boiler_temperature_c = id(otb_boiler_water_temp).has_state() ? id(otb_boiler_water_temp).state : NAN;
+    const float maximum_water_temperature_c = normalize_max_water_temperature_c(id(max_water_temp_limit_c).state);
+    const float requested_target_c =
+        oq_boiler_commissioning::commissioning_target_temperature_c(maximum_water_temperature_c);
+    return oq_boiler::evaluate_boiler_start_thermal_state(true, boiler_temperature_fresh, boiler_temperature_c,
+                                                          id(water_supply_temp_selected).state, requested_target_c,
+                                                          maximum_water_temperature_c);
+#else
+    (void)now_ms;
+    (void)boiler_temperature_max_age_ms;
+    return oq_boiler::BoilerStartThermalDecision{oq_boiler::BOILER_START_THERMAL_NOT_APPLICABLE, NAN};
+#endif
   }
 
   void run_boiler_settle(const RuntimeConfig& cfg, uint32_t now_ms, float flow_lph, float heat_w,

@@ -37,7 +37,57 @@ enum BlockReason : uint8_t {
   BLOCK_FLOW_INSUFFICIENT = 18,
   BLOCK_HP_STOP_UNCONFIRMED = 19,
   BLOCK_SOURCE_NOT_CONNECTED = 20,
+  BLOCK_BOILER_TOO_HOT_FOR_START = 21,
+  BLOCK_BOILER_TEMPERATURE_UNAVAILABLE = 22,
 };
+
+enum BoilerStartThermalState : uint8_t {
+  BOILER_START_THERMAL_IDLE = 0,
+  BOILER_START_THERMAL_NOT_APPLICABLE = 1,
+  BOILER_START_THERMAL_SAFE = 2,
+  BOILER_START_THERMAL_HOT = 3,
+  BOILER_START_THERMAL_UNKNOWN = 4,
+};
+
+struct BoilerStartThermalDecision {
+  uint8_t state = BOILER_START_THERMAL_IDLE;
+  float safe_ceiling_c = NAN;
+};
+
+inline BoilerStartThermalDecision evaluate_boiler_start_thermal_state(
+    bool opentherm_selected, bool boiler_temperature_fresh, float boiler_temperature_c, float system_supply_c,
+    float requested_target_c, float maximum_water_temperature_c, float operating_margin_c = 2.0f) {
+  if (!opentherm_selected) {
+    return BoilerStartThermalDecision{BOILER_START_THERMAL_NOT_APPLICABLE, NAN};
+  }
+  if (!boiler_temperature_fresh || !isfinite(boiler_temperature_c) || !isfinite(system_supply_c) ||
+      !isfinite(requested_target_c) || !isfinite(maximum_water_temperature_c) || !isfinite(operating_margin_c) ||
+      maximum_water_temperature_c <= 0.0f || operating_margin_c < 0.0f) {
+    return BoilerStartThermalDecision{BOILER_START_THERMAL_UNKNOWN, NAN};
+  }
+
+  const float operating_reference_c = fmaxf(system_supply_c, requested_target_c);
+  const float safe_ceiling_c = fminf(maximum_water_temperature_c, operating_reference_c + operating_margin_c);
+  return BoilerStartThermalDecision{
+      boiler_temperature_c > safe_ceiling_c ? BOILER_START_THERMAL_HOT : BOILER_START_THERMAL_SAFE,
+      safe_ceiling_c,
+  };
+}
+
+inline const char* boiler_start_thermal_state_text(uint8_t state) {
+  switch (state) {
+    case BOILER_START_THERMAL_NOT_APPLICABLE:
+      return "not applicable (R1)";
+    case BOILER_START_THERMAL_SAFE:
+      return "safe";
+    case BOILER_START_THERMAL_HOT:
+      return "blocked: boiler too hot";
+    case BOILER_START_THERMAL_UNKNOWN:
+      return "unknown: boiler temperature unavailable or stale";
+    default:
+      return "idle";
+  }
+}
 
 struct BoilerCommand {
   bool valid;
@@ -63,6 +113,7 @@ struct ControllerInput {
   bool transport_available;
   bool transport_settled;
   bool command_rearmed;
+  uint8_t boiler_start_thermal_state;
   bool target_required;
   bool target_valid;
   bool output_active;
@@ -253,6 +304,18 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
   } else if (command.source == COMMAND_SOURCE_FALLBACK && !input.fallback_outputs_safe) {
     decision.force_off = true;
     decision.block_reason = BLOCK_HP_STOP_UNCONFIRMED;
+  } else if (command.heat_request && !input.output_active &&
+             input.boiler_start_thermal_state == BOILER_START_THERMAL_HOT) {
+    decision.force_off = true;
+    decision.block_reason = BLOCK_BOILER_TOO_HOT_FOR_START;
+  } else if (command.heat_request && !input.output_active && command.source == COMMAND_SOURCE_COMMISSIONING &&
+             input.boiler_start_thermal_state == BOILER_START_THERMAL_UNKNOWN) {
+    // A service test may only energize an OpenTherm boiler after proving the
+    // chosen operating point is thermally suitable. Normal CM3/CM4 operation
+    // retains the existing supply-temperature fail-safe when optional ID25 is
+    // unsupported or temporarily unavailable.
+    decision.force_off = true;
+    decision.block_reason = BLOCK_BOILER_TEMPERATURE_UNAVAILABLE;
   } else if (!command.demand_present) {
     // Losing the owning control context (for example CM3 -> CM5) is not a
     // normal anti-cycling stop. Withdraw heat immediately, even inside the
@@ -342,6 +405,10 @@ inline const char* block_reason_text(uint8_t reason) {
       return "heat-pump stop is not confirmed";
     case BLOCK_SOURCE_NOT_CONNECTED:
       return "auxiliary heat source not connected";
+    case BLOCK_BOILER_TOO_HOT_FOR_START:
+      return "boiler temperature too high for safe start";
+    case BLOCK_BOILER_TEMPERATURE_UNAVAILABLE:
+      return "boiler temperature unavailable for safe commissioning start";
     default:
       return "";
   }

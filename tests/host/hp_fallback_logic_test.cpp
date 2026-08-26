@@ -235,6 +235,16 @@ void test_boiler_role_and_log_classification() {
   assert(log.reason == BoilerLogReason::SOFT_GUARD);
   assert(log.reason_code == 12);
 
+  inputs.controller_block_reason = oq_boiler::BLOCK_BOILER_TOO_HOT_FOR_START;
+  log = classify_boiler_controller_log(inputs, codes);
+  assert(log.reason == BoilerLogReason::SOFT_GUARD);
+  assert(log.reason_code == 12);
+
+  inputs.controller_block_reason = oq_boiler::BLOCK_BOILER_TEMPERATURE_UNAVAILABLE;
+  log = classify_boiler_controller_log(inputs, codes);
+  assert(log.reason == BoilerLogReason::SENSOR_FALLBACK);
+  assert(log.reason_code == 13);
+
   inputs.controller_block_reason = oq_boiler::BLOCK_MIN_OFF_TIME;
   log = classify_boiler_controller_log(inputs, codes);
   assert(log.reason == BoilerLogReason::MIN_REST_ACTIVE);

@@ -95,3 +95,14 @@ test("getBoilerTestStatusCopy REFUSED shows start geweigerd", () => {
   const copy2 = getBoilerTestStatusCopy("REFUSED", 800, 800);
   assert.equal(copy2, "Start geweigerd: REFUSED");
 });
+
+test("getBoilerTestStatusCopy explains a warm or unknown boiler refusal", () => {
+  assert.equal(
+    getBoilerTestStatusCopy("REFUSED: boiler temperature too high for test", 800, 800),
+    "Start geweigerd: boiler temperature too high for test",
+  );
+  assert.equal(
+    getBoilerTestStatusCopy("REFUSED: boiler temperature unavailable or stale", 800, 800),
+    "Start geweigerd: boiler temperature unavailable or stale",
+  );
+});
