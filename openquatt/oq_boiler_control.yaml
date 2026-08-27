@@ -330,8 +330,6 @@ text_sensor:
           return {"Commissioning"};
         case oq_boiler::COMMAND_SOURCE_FALLBACK:
           return {"Fallback"};
-        case oq_boiler::COMMAND_SOURCE_COLD_START:
-          return {"Cold start"};
         default:
           return {"None"};
       }

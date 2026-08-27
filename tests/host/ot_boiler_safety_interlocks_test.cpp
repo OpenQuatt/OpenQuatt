@@ -248,19 +248,6 @@ void test_fallback_and_flow_guards() {
   assert_decision(decision, false, true, oq_boiler::BLOCK_HP_STOP_UNCONFIRMED);
 }
 
-void test_cold_start_requires_assist_permission() {
-  auto command = active_command(1500);
-  command.source = oq_boiler::COMMAND_SOURCE_COLD_START;
-  auto input = safe_input(1500);
-
-  auto decision = oq_boiler::evaluate(command, input);
-  assert_decision(decision, true, false, oq_boiler::BLOCK_NONE);
-
-  input.assist_enabled = false;
-  decision = oq_boiler::evaluate(command, input);
-  assert_decision(decision, false, true, oq_boiler::BLOCK_ASSIST_DISABLED);
-}
-
 void test_minimum_times_and_ownership_loss() {
   const auto command = active_command(1000);
   auto no_heat_command = command;
@@ -375,7 +362,6 @@ int main() {
   test_fail_safe_priority();
   test_transport_selection_guard();
   test_fallback_and_flow_guards();
-  test_cold_start_requires_assist_permission();
   test_minimum_times_and_ownership_loss();
   test_commissioning_wait_state();
   test_commissioning_start_failure_reason();

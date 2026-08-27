@@ -21,7 +21,7 @@ import { escapeHtml } from "../core/html.js";
 
 const AUX_HEAT_ASSIST_TITLE = "Hybride verwarmen bij vermogenstekort";
 const AUX_HEAT_BACKUP_TITLE = "Overnemen wanneer de warmtepomp niet beschikbaar is";
-const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer geen warmtepomp veilig beschikbaar is, ook bij een koude opstart onder 5 °C. Dit gebeurt pas na een veilige stop en geldige flow, temperatuur en aansturing. Een korte communicatiedip telt niet als uitval.";
+const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer geen warmtepomp veilig beschikbaar is. Dit gebeurt pas na een veilige stop en geldige flow, temperatuur en aansturing. Een korte communicatiedip telt niet als uitval.";
 
   export function getOduRuntimeFrequencyHpIndexes() {
     return ODU_RUNTIME_FREQUENCY_HP_IDS.filter((hpIndex) => (
@@ -1040,7 +1040,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           ${sourcePresent && separateSourcePolicyAvailable && assistSettingAvailable ? renderSettingsFieldCard(
             "boilerCvAssistEnabled",
             AUX_HEAT_ASSIST_TITLE,
-            "Laat de aanvullende warmtebron meeverwarmen wanneer het beschikbare warmtepompvermogen niet genoeg is voor de warmtevraag en tijdens een koude opstart van 5 tot 12 °C.",
+            "Laat de aanvullende warmtebron meeverwarmen wanneer het beschikbare warmtepompvermogen niet genoeg is voor de warmtevraag.",
             `
               <div class="oq-settings-compact-switch-field">
                 ${renderSettingsCompactSwitchControl(

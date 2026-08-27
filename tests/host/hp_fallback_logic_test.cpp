@@ -208,7 +208,6 @@ void test_boiler_role_and_log_classification() {
   const auto codes = boiler_log_codes();
   assert(boiler_role_for_source(oq_boiler::COMMAND_SOURCE_POWER_HOUSE) == BoilerRole::ASSIST_CM3);
   assert(boiler_role_for_source(oq_boiler::COMMAND_SOURCE_HEATING_CURVE) == BoilerRole::ASSIST_CM3);
-  assert(boiler_role_for_source(oq_boiler::COMMAND_SOURCE_COLD_START) == BoilerRole::ASSIST_CM3);
   assert(boiler_role_for_source(oq_boiler::COMMAND_SOURCE_FALLBACK) == BoilerRole::FALLBACK_CM4);
   assert(boiler_role_for_source(oq_boiler::COMMAND_SOURCE_COMMISSIONING) == BoilerRole::COMMISSIONING_CM100);
   assert(boiler_role_for_source(oq_boiler::COMMAND_SOURCE_NONE) == BoilerRole::OFF);

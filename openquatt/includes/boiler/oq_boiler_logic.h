@@ -12,7 +12,6 @@ enum CommandSource : uint8_t {
   COMMAND_SOURCE_COMMISSIONING = 2,
   COMMAND_SOURCE_HEATING_CURVE = 3,
   COMMAND_SOURCE_FALLBACK = 4,
-  COMMAND_SOURCE_COLD_START = 5,
 };
 
 enum BlockReason : uint8_t {
@@ -230,8 +229,7 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
   } else if (command.source == COMMAND_SOURCE_FALLBACK && !input.fallback_enabled) {
     decision.force_off = true;
     decision.block_reason = BLOCK_FALLBACK_DISABLED;
-  } else if ((command.source == COMMAND_SOURCE_POWER_HOUSE || command.source == COMMAND_SOURCE_HEATING_CURVE ||
-              command.source == COMMAND_SOURCE_COLD_START) &&
+  } else if ((command.source == COMMAND_SOURCE_POWER_HOUSE || command.source == COMMAND_SOURCE_HEATING_CURVE) &&
              !input.assist_enabled) {
     decision.force_off = true;
     decision.block_reason = BLOCK_ASSIST_DISABLED;

@@ -11,7 +11,6 @@ inline BoilerRole boiler_role_for_source(uint8_t source) {
   switch (source) {
     case COMMAND_SOURCE_POWER_HOUSE:
     case COMMAND_SOURCE_HEATING_CURVE:
-    case COMMAND_SOURCE_COLD_START:
       return BoilerRole::ASSIST_CM3;
     case COMMAND_SOURCE_FALLBACK:
       return BoilerRole::FALLBACK_CM4;
