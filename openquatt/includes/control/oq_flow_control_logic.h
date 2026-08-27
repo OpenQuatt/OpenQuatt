@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef OPENQUATT_OQ_FLOW_CONTROL_LOGIC_H_
+#define OPENQUATT_OQ_FLOW_CONTROL_LOGIC_H_
+
 #include <math.h>
 #include <stdint.h>
 
@@ -168,3 +171,5 @@ inline PiResult update_pi(State& state, const PiInputs& in) {
 }
 
 }  // namespace oq_flow_control
+
+#endif  // OPENQUATT_OQ_FLOW_CONTROL_LOGIC_H_
