@@ -78,13 +78,11 @@ const COOLING_MIN_OFF_OBSERVABILITY_KEYS = [
 ];
 
 const ISSUE_516_OBSERVABILITY_KEYS = [
-  "commissioningStatus",
   "boilerPowerTestStatus",
   "boilerCommandRequestedPower",
   "boilerHeatPower",
   "otbFaultIndication",
   "otbDhwActive",
-  "otbDiagnosticIndication",
   "otbServiceRequest",
   "otbRelativeModulation",
   "otbBoilerWaterTemp",
@@ -137,6 +135,8 @@ test("OpenTherm-opname bewaart signalen zonder afleidbare doublures", () => {
   assert.ok(!DEBUG_RECORDING_KEYS.includes("otbChActive"));
   assert.ok(!DEBUG_RECORDING_KEYS.includes("otbResponseCount"));
   assert.ok(!DEBUG_RECORDING_KEYS.includes("otbResponseTimeoutCount"));
+  assert.ok(!DEBUG_RECORDING_KEYS.includes("commissioningStatus"));
+  assert.ok(!DEBUG_RECORDING_KEYS.includes("otbDiagnosticIndication"));
 });
 
 test("ODU-generaties worden achter het bestaande debugcontract toegevoegd", async () => {
