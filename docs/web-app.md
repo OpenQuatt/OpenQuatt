@@ -50,6 +50,7 @@ De oude OpenQuatt-preference wordt bij deze firmwareversie niet gewist, maar ook
 | Installer | Een bestaande Waveshare- of Heatpump Listener-module flashen, Wi-Fi op een nieuwe HCQ instellen of een HCQ herstellen. |
 | Web-app | Quick Start, installatiekeuzes, instellingen, updates, backup en beveiliging. |
 | Optioneel: Home Assistant | Dagelijks meekijken, dashboards, bronselectie en dynamische bronnen. |
+| Optioneel: Homey | Dagelijks meekijken, flows en OpenQuatt voeden vanuit Homey-sensoren. |
 
 Kies bij een eerste installatie eerst de passende route in het [projectoverzicht](../README.md#kies-je-route). Beide installatieroutes komen uit bij de web-app; Home Assistant is geen onderdeel van de basisinstallatie.
 
@@ -337,4 +338,4 @@ Als de web-app niet opent:
 
 Als Quick Start niet verschijnt terwijl je nog niet klaar bent, open `Instellingen -> Systeem -> Quick Start` en reset de setupstatus.
 
-Wil je OpenQuatt ook aan Home Assistant toevoegen? Ga dan optioneel verder met [Dashboard installeren](dashboard/README.md) en [Dashboard gebruiken](dashboardoverzicht.md).
+Wil je OpenQuatt ook aan Home Assistant toevoegen? Ga dan optioneel verder met [Dashboard installeren](dashboard/README.md) en [Dashboard gebruiken](dashboardoverzicht.md). Gebruik je Homey Pro, kijk dan bij [OpenQuatt in Homey](homey.md).
