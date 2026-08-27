@@ -12,7 +12,6 @@ enum CommandSource : uint8_t {
   COMMAND_SOURCE_COMMISSIONING = 2,
   COMMAND_SOURCE_HEATING_CURVE = 3,
   COMMAND_SOURCE_FALLBACK = 4,
-  COMMAND_SOURCE_COLD_START = 5,
 };
 
 enum BlockReason : uint8_t {
@@ -36,7 +35,6 @@ enum BlockReason : uint8_t {
   BLOCK_FLOW_UNAVAILABLE = 17,
   BLOCK_FLOW_INSUFFICIENT = 18,
   BLOCK_HP_STOP_UNCONFIRMED = 19,
-  BLOCK_SOURCE_NOT_CONNECTED = 20,
 };
 
 struct BoilerCommand {
@@ -50,7 +48,6 @@ struct BoilerCommand {
 };
 
 struct ControllerInput {
-  bool source_present;
   bool assist_enabled;
   bool fallback_enabled;
   bool supply_temperature_valid;
@@ -224,15 +221,13 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
   } else if (input.boiler_inhibit_active) {
     decision.force_off = true;
     decision.block_reason = BLOCK_WATER_TEMP_INHIBIT;
-  } else if (!input.source_present) {
+  } else if (command.source == COMMAND_SOURCE_FALLBACK && !input.assist_enabled) {
     decision.force_off = true;
-    decision.block_reason = BLOCK_SOURCE_NOT_CONNECTED;
+    decision.block_reason = BLOCK_ASSIST_DISABLED;
   } else if (command.source == COMMAND_SOURCE_FALLBACK && !input.fallback_enabled) {
     decision.force_off = true;
     decision.block_reason = BLOCK_FALLBACK_DISABLED;
-  } else if ((command.source == COMMAND_SOURCE_POWER_HOUSE || command.source == COMMAND_SOURCE_HEATING_CURVE ||
-              command.source == COMMAND_SOURCE_COLD_START) &&
-             !input.assist_enabled) {
+  } else if (command.source != COMMAND_SOURCE_FALLBACK && !input.assist_enabled) {
     decision.force_off = true;
     decision.block_reason = BLOCK_ASSIST_DISABLED;
   } else if (!command.valid) {
@@ -340,8 +335,6 @@ inline const char* block_reason_text(uint8_t reason) {
       return "flow too low";
     case BLOCK_HP_STOP_UNCONFIRMED:
       return "heat-pump stop is not confirmed";
-    case BLOCK_SOURCE_NOT_CONNECTED:
-      return "auxiliary heat source not connected";
     default:
       return "";
   }

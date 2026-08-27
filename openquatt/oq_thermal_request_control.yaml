@@ -1402,13 +1402,11 @@ interval:
           }
 
           // =========================
-          // 5) Absolute water-temperature/low-flow/cold-start hard stop
+          // 5) Absolute water-temperature/low-flow hard stop
           // These safety stops have higher priority than compressor minimum runtime.
           // =========================
           const bool hard_request_stop_active =
-              id(oq_water_temp_hard_trip_active) ||
-              id(oq_lowflow_fault_active) ||
-              (!is_cooling_mode && id(oq_cold_start_hp_blocked));
+              id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active);
           if (hard_request_stop_active) {
             hp1_req = 0;
             #if OQ_TOPOLOGY_DUO

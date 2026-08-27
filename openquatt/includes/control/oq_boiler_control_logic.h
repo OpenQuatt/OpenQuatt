@@ -11,7 +11,6 @@ inline BoilerRole boiler_role_for_source(uint8_t source) {
   switch (source) {
     case COMMAND_SOURCE_POWER_HOUSE:
     case COMMAND_SOURCE_HEATING_CURVE:
-    case COMMAND_SOURCE_COLD_START:
       return BoilerRole::ASSIST_CM3;
     case COMMAND_SOURCE_FALLBACK:
       return BoilerRole::FALLBACK_CM4;
@@ -151,7 +150,6 @@ inline BoilerLogDecision classify_boiler_controller_log(const BoilerControllerLo
       reason = BoilerLogReason::SENSOR_FALLBACK;
       break;
     case BLOCK_ASSIST_DISABLED:
-    case BLOCK_SOURCE_NOT_CONNECTED:
       reason = BoilerLogReason::NO_CANDIDATE;
       break;
     case BLOCK_FALLBACK_DISABLED:

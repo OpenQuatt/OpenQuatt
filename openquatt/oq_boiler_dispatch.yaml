@@ -5,8 +5,7 @@
 # Owns the transport-neutral command contract consumed by `oq_boiler_control`.
 # CM3 commands are derived from the active heating strategy. Power House asks
 # for the remaining thermal power after the selected heat-pump levels; Heating
-# Curve forwards its supply target. A cold start can temporarily own CM3 with a
-# bounded preheat target. CM4 emits a dedicated boiler-only fallback
+# Curve forwards its supply target. CM4 emits a dedicated boiler-only fallback
 # command after supervisory has confirmed heat-pump unavailability. CM100
 # remains an explicit commissioning command. The selected transport is not
 # considered here.
@@ -75,16 +74,7 @@ interval:
               now_ms,
           };
 
-          if (cm_code == 3 && id(oq_cold_start_assist_active)) {
-            command.demand_present = true;
-            command.heat_request = id(oq_strategy_heat_request_active);
-            command.requested_power_w = id(oq_boiler_rated_heat_power).state;
-            float cold_start_target_c = ${oq_hp_cold_start_boiler_target_c};
-            const float maximum_c = id(max_water_temp_limit_c).state;
-            if (!isnan(maximum_c)) cold_start_target_c = fminf(cold_start_target_c, maximum_c);
-            command.target_temperature_c = cold_start_target_c;
-            command.source = oq_boiler::COMMAND_SOURCE_COLD_START;
-          } else if (cm_code == 3) {
+          if (cm_code == 3) {
             command.demand_present = true;
             const int strategy_code = id(oq_strategy_active_code);
             const uint32_t strategy_updated_ms = id(oq_strategy_output_updated_ms);

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <math.h>
 #include <stdint.h>
 
 #include "oq_hp_fallback_logic.h"
@@ -16,48 +15,6 @@ inline int base_control_mode(bool cooling_request, bool heating_request, bool fr
   if (heating_request) return 2;
   if (frost_request) return 98;
   return 0;
-}
-
-struct ColdStartWaterSample {
-  bool required = false;
-  float temperature_c = NAN;
-  uint32_t updated_at_ms = 0;
-};
-
-struct ColdStartDecision {
-  bool samples_ready = false;
-  bool hp_start_allowed = false;
-  bool auxiliary_assist_recommended = false;
-  bool released = false;
-  float minimum_temperature_c = NAN;
-};
-
-inline bool cold_start_sample_is_new(const ColdStartWaterSample& sample, uint32_t sample_after_ms) {
-  if (!sample.required) return true;
-  if (sample_after_ms == 0 || sample.updated_at_ms == 0 || isnan(sample.temperature_c)) return false;
-  return static_cast<int32_t>(sample.updated_at_ms - sample_after_ms) > 0;
-}
-
-inline ColdStartDecision evaluate_cold_start(uint32_t sample_after_ms, const ColdStartWaterSample& hp1,
-                                             const ColdStartWaterSample& hp2, float minimum_start_c,
-                                             float assist_release_c) {
-  ColdStartDecision decision;
-  if (isnan(minimum_start_c) || isnan(assist_release_c) || assist_release_c <= minimum_start_c ||
-      !cold_start_sample_is_new(hp1, sample_after_ms) || !cold_start_sample_is_new(hp2, sample_after_ms)) {
-    return decision;
-  }
-
-  float minimum_c = NAN;
-  if (hp1.required) minimum_c = hp1.temperature_c;
-  if (hp2.required) minimum_c = isnan(minimum_c) ? hp2.temperature_c : fminf(minimum_c, hp2.temperature_c);
-  if (isnan(minimum_c)) return decision;
-
-  decision.samples_ready = true;
-  decision.minimum_temperature_c = minimum_c;
-  decision.hp_start_allowed = minimum_c >= minimum_start_c;
-  decision.auxiliary_assist_recommended = decision.hp_start_allowed && minimum_c < assist_release_c;
-  decision.released = minimum_c >= assist_release_c;
-  return decision;
 }
 
 inline bool fallback_availability_is_confirmed(bool raw_availability_complete,
@@ -112,7 +69,6 @@ struct FallbackEvaluationInputs {
   bool raw_availability_complete = false;
   bool every_unavailable_hp_has_fallback_cause = false;
   bool all_hp_outputs_safe = false;
-  bool cold_start_blocked = false;
   bool flow_valid = false;
   bool flow_sufficient = false;
   bool supply_temperature_valid = false;
@@ -133,24 +89,19 @@ struct FallbackEvaluation {
 
 inline FallbackEvaluation evaluate_fallback(const FallbackEvaluationInputs& inputs) {
   FallbackEvaluation evaluation;
-  const uint8_t effective_available_hp_count = inputs.cold_start_blocked ? 0 : inputs.available_hp_count;
-  const bool effective_fallback_cause = inputs.cold_start_blocked || inputs.every_unavailable_hp_has_fallback_cause;
-  evaluation.availability_complete =
-      inputs.cold_start_blocked ? inputs.all_hp_outputs_safe
-                                : fallback_availability_is_confirmed(inputs.raw_availability_complete,
-                                                                     inputs.every_unavailable_hp_has_fallback_cause,
-                                                                     inputs.all_hp_outputs_safe);
-  evaluation.no_hp_available_confirmed = effective_available_hp_count == 0 && evaluation.availability_complete;
+  evaluation.availability_complete = fallback_availability_is_confirmed(
+      inputs.raw_availability_complete, inputs.every_unavailable_hp_has_fallback_cause, inputs.all_hp_outputs_safe);
+  evaluation.no_hp_available_confirmed = inputs.available_hp_count == 0 && evaluation.availability_complete;
   evaluation.fallback_requested =
-      inputs.heating_demand && effective_available_hp_count == 0 && effective_fallback_cause;
+      inputs.heating_demand && inputs.available_hp_count == 0 && inputs.every_unavailable_hp_has_fallback_cause;
 
   oq_hp_fallback::FallbackInputs fallback_inputs;
   fallback_inputs.current_mode = static_cast<oq_hp_fallback::ControlMode>(inputs.current_mode);
   fallback_inputs.heating_demand = inputs.heating_demand;
   fallback_inputs.fallback_enabled = inputs.fallback_enabled;
-  fallback_inputs.available_hp_count = effective_available_hp_count;
+  fallback_inputs.available_hp_count = inputs.available_hp_count;
   fallback_inputs.hp_availability_complete = evaluation.availability_complete;
-  fallback_inputs.confirmed_fallback_cause = effective_fallback_cause;
+  fallback_inputs.confirmed_fallback_cause = inputs.every_unavailable_hp_has_fallback_cause;
   fallback_inputs.hp_output_state_safe = inputs.all_hp_outputs_safe;
   fallback_inputs.flow_valid = inputs.flow_valid;
   fallback_inputs.flow_sufficient = inputs.flow_sufficient;

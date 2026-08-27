@@ -28,7 +28,6 @@ const heatPumpCss = await readFile(new URL("../css/src/40-heatpump.css", import.
 const boilerOpenThermYaml = await readFile(new URL("../../oq_boiler_opentherm.yaml", import.meta.url), "utf8");
 const heatPumpQProfileYaml = await readFile(new URL("../../profiles/heatpump_controller_q.yaml", import.meta.url), "utf8");
 const otSlaveYaml = await readFile(new URL("../../oq_ot_slave.yaml", import.meta.url), "utf8");
-const commonSubstitutionsYaml = await readFile(new URL("../../oq_substitutions_common.yaml", import.meta.url), "utf8");
 const quickStartSource = await readFile(new URL("../js/src/features/quickstart.js", import.meta.url), "utf8");
 const quickStartActionsSource = await readFile(new URL("../js/src/features/quickstart-actions.js", import.meta.url), "utf8");
 const installationSource = await readFile(new URL("../js/src/settings/installation.js", import.meta.url), "utf8");
@@ -337,13 +336,11 @@ test("integration diagnostics separates thermostat, boiler control, OTB and CiC"
 });
 
 test("settings hydration loads boiler setup and diagnostics before rendering", () => {
-  assert.ok(FAST_OVERVIEW_KEYS.includes("auxHeatSourcePresent"));
   assert.ok(FAST_OVERVIEW_KEYS.includes("boilerCvAssistEnabled"));
   assert.ok(FAST_OVERVIEW_KEYS.includes("boilerRatedHeatPower"));
   assert.ok(FAST_OVERVIEW_KEYS.includes("boilerConnection"));
   assert.ok(FAST_OVERVIEW_KEYS.includes("boilerFaultFallbackEnabled"));
   assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.installation.includes("boilerConnection"));
-  assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.installation.includes("auxHeatSourcePresent"));
   assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.installation.includes("boilerRatedHeatPower"));
   assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.installation.includes("boilerFaultFallbackEnabled"));
   assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.installation.includes("otbLinkAvailable"));
@@ -372,36 +369,11 @@ test("settings hydration loads boiler setup and diagnostics before rendering", (
   );
 });
 
-test("auxiliary heat source setting remains editable on legacy firmware", () => {
-  assert.match(
-    installationSource,
-    /const sourcePresenceKey = separateSourcePolicyAvailable[\s\S]*?"auxHeatSourcePresent"[\s\S]*?: "boilerCvAssistEnabled"/,
-  );
-  assert.match(
-    installationSource,
-    /renderSettingsCompactSwitchControl\(sourcePresenceKey, "Warmtebron aangesloten"/,
-  );
-  assert.match(
-    installationSource,
-    /sourcePresent && separateSourcePolicyAvailable && assistSettingAvailable/,
-  );
-});
-
-test("fallback heating setting explains its guarded scope", () => {
-  assert.match(installationSource, /Overnemen wanneer de warmtepomp niet beschikbaar is/);
-  assert.match(installationSource, /wanneer geen warmtepomp veilig beschikbaar is/);
-  assert.match(installationSource, /koude opstart onder 5 °C/);
-  assert.match(installationSource, /koude opstart van 5 tot 12 °C/);
-  assert.match(commonSubstitutionsYaml, /oq_hp_cold_start_min_c: "5\.0"/);
-  assert.match(commonSubstitutionsYaml, /oq_hp_cold_start_assist_release_c: "12\.0"/);
-  assert.match(installationSource, /na een veilige stop/);
-  assert.match(installationSource, /Een korte communicatiedip telt niet als uitval/);
-});
-
-test("auxiliary heat source copy names common examples and explains hybrid heating", () => {
-  assert.match(installationSource, /cv-ketel, elektrische cv-ketel \(e-cv\) of doorstroomverwarmer/);
-  assert.match(installationSource, /Hybride verwarmen bij vermogenstekort/);
-  assert.match(installationSource, /het beschikbare warmtepompvermogen niet genoeg is/);
+test("fault fallback setting explains the consequence of both switch states", () => {
+  assert.match(installationSource, /Automatische ketelovername bij warmtepompstoring/);
+  assert.match(installationSource, /OpenQuatt stelt dit zelf vast/);
+  assert.match(installationSource, /je hoeft niets te bevestigen/);
+  assert.match(installationSource, /Een korte communicatiedip telt niet als storing/);
 });
 
 test("fault fallback is editable in Installation and the shared Quick Start boiler fields", () => {
@@ -422,7 +394,7 @@ test("fault fallback is editable in Installation and the shared Quick Start boil
   );
   assert.match(
     quickStartSource,
-    /\["Overnemen wanneer de warmtepomp niet beschikbaar is", isEntityActive\("boilerFaultFallbackEnabled"\) \? "Aan" : "Uit"\]/,
+    /\["Automatische ketelovername bij warmtepompstoring", isEntityActive\("boilerFaultFallbackEnabled"\) \? "Aan" : "Uit"\]/,
   );
   assert.match(servicePanelSource, /renderInstallationMonitoringStatusRow/);
   assert.doesNotMatch(servicePanelSource, /boilerFaultFallbackEnabled/);
@@ -448,7 +420,7 @@ test("onboarding auto-selects a detected OpenTherm boiler and explains the choic
   assert.match(installationSource, /automatisch als ketelaansluiting geselecteerd/);
   assert.match(
     installationSource,
-    /sourcePresent \|\| boilerConnectionMismatch \|\| boilerConnectionAutoSelected/,
+    /boilerPresent \|\| boilerConnectionMismatch \|\| boilerConnectionAutoSelected/,
   );
 });
 
@@ -467,10 +439,10 @@ test("firmware publishes boiler connection mismatch transitions immediately", ()
   );
 });
 
-test("Quick Start keeps the mismatch remedy visible when the source is disconnected", () => {
+test("Quick Start keeps the mismatch remedy visible when boiler assist is off", () => {
   assert.match(
     installationSource,
-    /\(sourcePresent \|\| boilerConnectionMismatch \|\| boilerConnectionAutoSelected\) && boilerConnectionAvailable \? renderSettingsFieldCard/,
+    /\(boilerPresent \|\| boilerConnectionMismatch \|\| boilerConnectionAutoSelected\) && boilerConnectionAvailable \? renderSettingsFieldCard/,
   );
   assert.match(installationSource, /OpenTherm-ketel gevonden/);
 });

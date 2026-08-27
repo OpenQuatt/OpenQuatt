@@ -149,9 +149,6 @@ oq_cm3_min_run_s: "300"                               # Minimum dwell time in CM
 oq_cm2_min_run_s: "120"                               # Minimum dwell time in CM2 before promotion [s].
 oq_cm3_curve_on_delta_c: "3.0"                        # Heating Curve target-minus-supply margin for CM2 -> CM3 [°C].
 oq_cm3_curve_off_delta_c: "1.0"                       # Heating Curve target-minus-supply margin for CM3 -> CM2 [°C].
-oq_hp_cold_start_min_c: "5.0"                         # Absolute minimum ODU outlet temperature for compressor start [°C].
-oq_hp_cold_start_assist_release_c: "12.0"              # End auxiliary cold-start assist at this ODU outlet temperature [°C].
-oq_hp_cold_start_boiler_target_c: "25.0"               # Conservative OpenTherm target while cold-start assist is active [°C].
 oq_cm0_sticky_wait_s: "86400"                         # Wait time in CM0 before sticky-pump run starts [s].
 oq_cm0_sticky_run_s: "60"                             # Duration of sticky-pump run in CM0 [s].
 oq_cm0_pump_stop_ipwm: "1000.0"                       # iPWM setpoint that forces pump off in CM0.
