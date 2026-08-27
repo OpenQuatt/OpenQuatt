@@ -383,6 +383,7 @@ button:
                   id(${hp_id}_odu_runtime_heating_f9),
                   id(${hp_id}_odu_runtime_heating_f10),
               },
+              &id(${hp_id}_runtime_frequency_write_operation_token),
           };
           oq_odu_runtime_frequency::load_runtime_table(refs);
 
@@ -426,6 +427,7 @@ button:
                   id(${hp_id}_odu_runtime_heating_f9),
                   id(${hp_id}_odu_runtime_heating_f10),
               },
+              &id(${hp_id}_runtime_frequency_write_operation_token),
           };
           if (id(${hp_id}_runtime_frequency_write_verification_pending)) {
             oq_odu_runtime_frequency::publish_status(
@@ -464,11 +466,13 @@ text_sensor:
                   id(${hp_id}_compressor_level_profile).publish_state(
                       oq_odu::compressor_level_profile_label(
                           oq_odu::CompressorLevelProfile::UNKNOWN));
+              - script.execute: ${hp_id}_runtime_frequency_write_timeout
         - if:
             condition:
               lambda: |-
                 return x.rfind("VERIFY_FAILED:", 0) == 0;
             then:
+              - script.stop: ${hp_id}_runtime_frequency_write_timeout
               - lambda: |-
                   // Keep control reloads blocked, but allow an explicit retry.
                   id(${hp_id}_runtime_frequency_write_verification_pending) = false;
@@ -477,7 +481,24 @@ text_sensor:
               lambda: |-
                 return x == "APPLIED: runtime table written and read back";
             then:
+              - script.stop: ${hp_id}_runtime_frequency_write_timeout
               - lambda: |-
                   id(${hp_id}_runtime_frequency_reload_blocked_after_write) = false;
                   id(${hp_id}_runtime_frequency_write_verification_pending) = false;
               - script.execute: ${hp_id}_load_runtime_frequency_table_once
+
+script:
+  - id: ${hp_id}_runtime_frequency_write_timeout
+    mode: restart
+    then:
+      - delay: 30s
+      - if:
+          condition:
+            lambda: |-
+              return id(${hp_id}_runtime_frequency_write_verification_pending);
+          then:
+            - lambda: |-
+                // Invalidate late callbacks before allowing an explicit retry.
+                ++id(${hp_id}_runtime_frequency_write_operation_token);
+                id(${hp_id}_odu_runtime_frequency_table_status)
+                    ->publish_state("VERIFY_FAILED: write acknowledgement timeout");

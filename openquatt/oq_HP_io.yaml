@@ -222,6 +222,12 @@ globals:
     restore_value: no
     initial_value: 'false'
 
+  # Invalidates delayed Modbus callbacks after an editor write timeout.
+  - id: ${hp_id}_runtime_frequency_write_operation_token
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
 # ----------------------------
 # ODU GENERATION DETECTION
 # ----------------------------

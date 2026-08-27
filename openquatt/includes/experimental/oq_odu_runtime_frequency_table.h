@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <span>
 #include <utility>
-#include <vector>
 
 #include "esphome/components/modbus_controller/modbus_controller.h"
 #include "esphome/components/number/number.h"
@@ -38,6 +37,7 @@ struct RuntimeFrequencyTableRefs {
   const char* prefix;
   std::array<esphome::number::Number*, 11> cooling_desired;
   std::array<esphome::number::Number*, 11> heating_desired;
+  uint32_t* write_operation_token;
 };
 
 inline void publish_status(const RuntimeFrequencyTableRefs& refs, const char* message) {
@@ -105,31 +105,41 @@ inline bool tables_match(const std::array<float, 11>& actual, const std::array<f
 
 inline uint16_t frequency_to_register(float value) { return static_cast<uint16_t>(lroundf(value)); }
 
-inline std::vector<uint16_t> build_runtime_write_values(const std::array<float, 11>& cooling,
-                                                        const std::array<float, 11>& heating) {
-  std::vector<uint16_t> values;
-  values.reserve(RUNTIME_TABLE_REGISTER_COUNT);
-  for (float value : cooling) values.push_back(frequency_to_register(value));
-  for (float value : heating) values.push_back(frequency_to_register(value));
-  return values;
+inline uint16_t runtime_write_value(const std::array<float, 11>& cooling, const std::array<float, 11>& heating,
+                                    size_t index) {
+  if (index < cooling.size()) return frequency_to_register(cooling[index]);
+  return frequency_to_register(heating[index - cooling.size()]);
 }
 
 inline void queue_apply_readback(RuntimeFrequencyTableRefs refs, std::array<float, 11> expected_cooling,
-                                 std::array<float, 11> expected_heating);
+                                 std::array<float, 11> expected_heating, uint32_t operation_token);
+
+inline void queue_runtime_write_register(RuntimeFrequencyTableRefs refs, std::array<float, 11> cooling,
+                                         std::array<float, 11> heating, size_t index, uint32_t operation_token) {
+  if (*refs.write_operation_token != operation_token) return;
+  if (index >= RUNTIME_TABLE_REGISTER_COUNT) {
+    publish_status(refs, "WRITE_CONFIRMED: runtime writes acknowledged");
+    queue_apply_readback(refs, cooling, heating, operation_token);
+    return;
+  }
+
+  auto cmd = esphome::modbus_controller::ModbusCommandItem::create_write_single_command(
+      refs.controller, static_cast<uint16_t>(RUNTIME_TABLE_START_ADDRESS + index),
+      runtime_write_value(cooling, heating, index));
+  cmd.on_data_func = [refs, cooling, heating, index, operation_token](esphome::modbus::EntityType register_type,
+                                                                      uint16_t start_address,
+                                                                      std::span<const uint8_t> data) {
+    queue_runtime_write_register(refs, cooling, heating, index + 1U, operation_token);
+  };
+  refs.controller->queue_command(std::move(cmd));
+}
 
 inline void queue_runtime_write(RuntimeFrequencyTableRefs refs, std::array<float, 11> cooling,
                                 std::array<float, 11> heating) {
   refs.enable_switch->turn_off();
   publish_status(refs, "WRITE_QUEUED: runtime table write requested");
-  auto cmd = esphome::modbus_controller::ModbusCommandItem::create_write_multiple_command(
-      refs.controller, RUNTIME_TABLE_START_ADDRESS, RUNTIME_TABLE_REGISTER_COUNT,
-      build_runtime_write_values(cooling, heating));
-  cmd.on_data_func = [refs, cooling, heating](esphome::modbus::EntityType register_type, uint16_t start_address,
-                                              std::span<const uint8_t> data) {
-    publish_status(refs, "WRITE_CONFIRMED: runtime write acknowledged");
-    queue_apply_readback(refs, cooling, heating);
-  };
-  refs.controller->queue_command(std::move(cmd));
+  const uint32_t operation_token = ++*refs.write_operation_token;
+  queue_runtime_write_register(refs, cooling, heating, 0U, operation_token);
 }
 
 inline void queue_guarded_runtime_write(RuntimeFrequencyTableRefs refs, std::array<float, 11> cooling,
@@ -163,11 +173,12 @@ inline void queue_guarded_runtime_write(RuntimeFrequencyTableRefs refs, std::arr
 }
 
 inline void queue_apply_readback(RuntimeFrequencyTableRefs refs, std::array<float, 11> expected_cooling,
-                                 std::array<float, 11> expected_heating) {
+                                 std::array<float, 11> expected_heating, uint32_t operation_token) {
   auto cmd = esphome::modbus_controller::ModbusCommandItem::create_read_command(
       refs.controller, esphome::modbus::EntityType::HOLDING, RUNTIME_TABLE_START_ADDRESS, RUNTIME_TABLE_REGISTER_COUNT,
-      [refs, expected_cooling, expected_heating](esphome::modbus::EntityType register_type, uint16_t start_address,
-                                                 std::span<const uint8_t> data) {
+      [refs, expected_cooling, expected_heating, operation_token](
+          esphome::modbus::EntityType register_type, uint16_t start_address, std::span<const uint8_t> data) {
+        if (*refs.write_operation_token != operation_token) return;
         std::array<float, 11> cooling{};
         std::array<float, 11> heating{};
         int loaded = 0;
