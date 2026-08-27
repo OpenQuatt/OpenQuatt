@@ -174,6 +174,8 @@ Hier staan basiskeuzes zoals Quatt Hybrid-versie, flowregeling, een aanvullende 
 
 Bij `Aanvullende warmtebron` leg je eerst vast of OpenQuatt een warmtebron fysiek kan aansturen. Daarna kies je afzonderlijk voor `Hybride verwarmen bij vermogenstekort` en `Overnemen wanneer de warmtepomp niet beschikbaar is`. Overname staat standaard uit. OpenQuatt schakelt pas over nadat de warmtepompen veilig zijn gestopt en flow, aanvoertemperatuur en aansturing geldig zijn. Een korte communicatiedip telt niet als uitval.
 
+Bij een nieuwe warmtevraag controleert OpenQuatt na het starten van de circulatie de uitgaande watertemperatuur van iedere aangesloten warmtepomp. Onder `5 °C` blijven de compressoren uit; met toegestane reserveverwarming kan de aanvullende warmtebron het circuit eerst opwarmen. Vanaf `5 °C` mogen de warmtepompen starten. Is bijverwarming toegestaan, dan helpt de aanvullende warmtebron tot alle uitgaande temperaturen minimaal `15 °C` zijn. Zonder aangesloten of toegestane warmtebron start de warmtepomp vanaf `5 °C` zelfstandig. De oude algemene startgrens van `18 °C` wordt niet gebruikt.
+
 Gebruik dit deel vooral tijdens de eerste inrichting of als je installatie later verandert.
 
 ### Verwarmen

@@ -127,6 +127,29 @@ globals:
     restore_value: false
     initial_value: '0'
 
+  # One cold-start session per continuous heating request. Only a fresh ODU
+  # outlet sample taken after circulation starts may release the compressor.
+  - id: oq_cold_start_session_active
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: oq_cold_start_pending
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: oq_cold_start_sample_after_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: oq_cold_start_hp_blocked
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: oq_cold_start_assist_active
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
   # Sticky Pump Protection (CM0-only)
   - id: oq_cm0_since_ms
     type: uint32_t
@@ -807,6 +830,8 @@ interval:
           const bool hp1_active_guard = hp1_heating || hp1_cooling || hp1_target_heating || hp1_target_cooling || (hp1_lvl > 0);
           const bool hp2_active_guard = hp2_heating || hp2_cooling || hp2_target_heating || hp2_target_cooling || (hp2_lvl > 0);
           const bool any_hp_active_guard = hp1_active_guard || hp2_active_guard;
+          const bool any_hp_compressor_active =
+              hp1_lvl > 0 || hp2_lvl > 0 || hp1_cmd_lvl > 0 || hp2_cmd_lvl > 0;
           #else
           const int hp2_lvl = 0;
           const int hp2_cmd_lvl = -1;
@@ -823,6 +848,8 @@ interval:
           const bool hp1_active_guard = hp1_heating || hp1_cooling || hp1_target_heating || hp1_target_cooling || (hp1_lvl > 0);
           const bool hp2_active_guard = false;
           const bool any_hp_active_guard = hp1_active_guard;
+          const bool any_hp_compressor_active =
+              hp1_lvl > 0 || hp1_cmd_lvl > 0;
           #endif
           auto defrost_stop_hold_level = [&](bool is_hp1)->int {
             const bool defrost_active = is_hp1 ? id(hp1_defrost).state : id(${secondary_defrost_id}).state;
@@ -1098,6 +1125,79 @@ interval:
             }
             #endif
           }
+
+          // -------------------------------------------------
+          // 2b) Cold water start
+          //    - below 5°C: keep compressors stopped; CM4 may preheat only
+          //      when reserve heating is explicitly allowed
+          //    - 5..15°C: HP start is allowed; configured auxiliary assist
+          //      remains active until every ODU outlet reaches 15°C
+          //    - >=15°C: normal heating logic owns the session
+          // -------------------------------------------------
+          bool cold_start_blocked = false;
+          bool cold_start_below_minimum = false;
+          bool cold_start_assist_requested = false;
+          bool cold_start_released_now = false;
+          if (!heating_req) {
+            id(oq_cold_start_session_active) = false;
+            id(oq_cold_start_pending) = false;
+            id(oq_cold_start_sample_after_ms) = 0;
+            id(oq_cold_start_hp_blocked) = false;
+            id(oq_cold_start_assist_active) = false;
+          } else {
+            if (!id(oq_cold_start_session_active)) {
+              id(oq_cold_start_session_active) = true;
+              id(oq_cold_start_pending) = !any_hp_compressor_active;
+              id(oq_cold_start_sample_after_ms) = 0;
+              id(oq_cold_start_assist_active) = false;
+            }
+
+            if (id(oq_cold_start_pending)) {
+              if (flow_ok && id(oq_cold_start_sample_after_ms) == 0) {
+                id(oq_cold_start_sample_after_ms) = now_ms;
+              }
+
+              const float hp1_raw_c = id(hp1_water_out_temp_raw).state;
+              const float hp1_offset_c = id(hp1_water_out_temp_offset).state;
+              const float hp1_out_c =
+                  isnan(hp1_raw_c) || isnan(hp1_offset_c) ? NAN : hp1_raw_c + hp1_offset_c;
+              #if OQ_TOPOLOGY_DUO
+              const float hp2_raw_c = id(${secondary_hp_id}_water_out_temp_raw).state;
+              const float hp2_offset_c = id(${secondary_hp_id}_water_out_temp_offset).state;
+              const float hp2_out_c =
+                  isnan(hp2_raw_c) || isnan(hp2_offset_c) ? NAN : hp2_raw_c + hp2_offset_c;
+              const oq_hp_supervisory::ColdStartWaterSample hp2_cold_start_sample{
+                  true, hp2_out_c, id(${secondary_water_out_last_update_ms_id})};
+              #else
+              const float hp2_out_c = NAN;
+              const oq_hp_supervisory::ColdStartWaterSample hp2_cold_start_sample{
+                  false, hp2_out_c, 0};
+              #endif
+              const auto cold_start = oq_hp_supervisory::evaluate_cold_start(
+                  id(oq_cold_start_sample_after_ms),
+                  oq_hp_supervisory::ColdStartWaterSample{
+                      true, hp1_out_c, id(hp1_water_out_temp_last_update_ms)},
+                  hp2_cold_start_sample,
+                  ${oq_hp_cold_start_min_c},
+                  ${oq_hp_cold_start_assist_release_c});
+
+              if (cold_start.released) {
+                id(oq_cold_start_pending) = false;
+                cold_start_released_now = true;
+              } else {
+                cold_start_blocked =
+                    !any_hp_compressor_active && !cold_start.hp_start_allowed;
+                cold_start_below_minimum =
+                    !any_hp_compressor_active && cold_start.samples_ready &&
+                    !cold_start.hp_start_allowed;
+                cold_start_assist_requested =
+                    cold_start.auxiliary_assist_recommended &&
+                    id(oq_aux_heat_source_present).state &&
+                    id(oq_boiler_assist_enabled).state;
+              }
+            }
+            id(oq_cold_start_hp_blocked) = cold_start_blocked;
+          }
           // -------------------------------------------------
           // 3) Frost condition (hysteresis + fail-safe) [CM98]
           //    Relevant only when there is no heat demand.
@@ -1154,6 +1254,10 @@ interval:
 
             // Determine base target (without CM1 timer)
             int base_target = oq_hp_supervisory::base_control_mode(cooling_req, heating_req, frost);
+
+            if (heating_req && cold_start_blocked) {
+              base_target = 1;
+            }
 
             // Apply flow interlock: if thermal output is requested but low-flow fault => hold in CM1.
             if (thermal_req && (id(oq_lowflow_fault_active) || flow_low)) {
@@ -1234,6 +1338,7 @@ interval:
             fallback_inputs.every_unavailable_hp_has_fallback_cause =
                 every_unavailable_hp_allows_fallback;
             fallback_inputs.all_hp_outputs_safe = fallback_outputs_safe;
+            fallback_inputs.cold_start_blocked = cold_start_below_minimum;
             fallback_inputs.flow_valid = flow_valid;
             fallback_inputs.flow_sufficient =
                 flow_ok && !id(oq_lowflow_fault_active);
@@ -1458,7 +1563,8 @@ interval:
               const bool boiler_assist_available =
                   boiler_assist_enabled &&
                   boiler_transport_available &&
-                  boiler_strategy_command_available;
+                  (cold_start_assist_requested ||
+                   boiler_strategy_command_available);
               if (heating_strategy_active && boiler_assist_available &&
                   !fallback_requested && !no_hp_available_confirmed) {
                 bool need_on = false;
@@ -1466,7 +1572,12 @@ interval:
                 const char *promote_reason = "boiler assist promoted to CM3";
                 const char *demote_reason = "boiler assist cleared, demoting to CM2";
 
-                if (power_house_active) {
+                if (cold_start_assist_requested) {
+                  need_on = true;
+                  ok_off = false;
+                  promote_reason = "cold water start promoted to CM3";
+                  demote_reason = "cold water start released, demoting to CM2";
+                } else if (power_house_active) {
                   const auto assist = oq_boiler::power_house_assist(
                       id(oq_P_deficit_w),
                       id(oq_cm3_deficit_on_w).state,
@@ -1494,7 +1605,14 @@ interval:
                 const uint32_t MIN_CM3_MS = (uint32_t)(${oq_cm3_min_run_s}UL * 1000UL);
                 const uint32_t MIN_CM2_MS = (uint32_t)(${oq_cm2_min_run_s}UL * 1000UL);
 
-                if (cm_now == 2) {
+                if (cold_start_assist_requested &&
+                    (desired_local == 2 || cm_now == 2 || cm_now == 3 || cm_now == 4)) {
+                  desired_local = 3;
+                  id(oq_cold_start_assist_active) = true;
+                  id(oq_cm3_need_since_ms) = 0;
+                  id(oq_cm3_demote_since_ms) = 0;
+                  cm_transition_reason = promote_reason;
+                } else if (cm_now == 2) {
                   if (now_ms - id(oq_cm_last_change_ms) >= MIN_CM2_MS) {
                     if (need_on) {
                       if (id(oq_cm3_need_since_ms) == 0) id(oq_cm3_need_since_ms) = now_ms;
@@ -1552,6 +1670,18 @@ interval:
                     cm_transition_reason = "heating strategy unavailable for boiler assist, returning to CM2";
                   }
                 }
+              }
+
+              if (cold_start_released_now &&
+                  id(oq_cold_start_assist_active) &&
+                  cm_now == 3) {
+                desired_local = 2;
+                id(oq_cm3_need_since_ms) = 0;
+                id(oq_cm3_demote_since_ms) = 0;
+                cm_transition_reason = "cold water start reached release temperature";
+              }
+              if (!cold_start_assist_requested || desired_local != 3) {
+                id(oq_cold_start_assist_active) = false;
               }
               }
             }
