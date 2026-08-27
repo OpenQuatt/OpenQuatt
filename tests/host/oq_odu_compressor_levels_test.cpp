@@ -117,6 +117,32 @@ int main() {
   const auto retained_from_readback = oq_odu::resolve_retained_level(true, false, 17, 0, 0, true, extended);
   assert(retained_from_readback.control_level == 10);
   assert(retained_from_readback.physical_level == 17);
+  const auto retained_after_runtime_floor = oq_odu::resolve_retained_level(true, false, 17, 1, 1, true, extended);
+  assert(retained_after_runtime_floor.control_level == 10);
+  assert(retained_after_runtime_floor.physical_level == 17);
+  const auto retained_snapshot = oq_odu::update_retained_level_snapshot({}, true, false, 17, 10, 17, true, extended);
+  const auto retained_snapshot_during_floor =
+      oq_odu::update_retained_level_snapshot(retained_snapshot, true, false, 1, 1, 1, true, extended);
+  assert(retained_snapshot_during_floor.control_level == 10);
+  assert(retained_snapshot_during_floor.physical_level == 17);
+  assert(oq_odu::retained_level_should_override_request(retained_snapshot, 0));
+  assert(oq_odu::retained_level_should_override_request(retained_snapshot, 1));
+  assert(!oq_odu::retained_level_should_override_request(retained_snapshot, 10));
+  assert(!oq_odu::retained_level_should_override_request(retained_snapshot, 17));
+  assert(oq_odu::retained_level_should_override_request(retained_snapshot, 15, true));
+  assert(!oq_odu::retained_level_should_override_request(retained_snapshot, 17, true));
+  const auto cleared_retained_snapshot =
+      oq_odu::update_retained_level_snapshot(retained_snapshot, false, false, 17, 10, 17, true, extended);
+  assert(cleared_retained_snapshot.control_level == 0);
+  assert(cleared_retained_snapshot.physical_level == 0);
+  const auto cooling_retained_snapshot =
+      oq_odu::update_retained_level_snapshot(retained_snapshot, true, true, 17, 10, 17, true, extended);
+  assert(cooling_retained_snapshot.control_level == 0);
+  assert(cooling_retained_snapshot.physical_level == 0);
+  const auto fail_closed_retained_snapshot =
+      oq_odu::update_retained_level_snapshot(retained_snapshot, true, false, 17, 10, 17, false, extended);
+  assert(fail_closed_retained_snapshot.control_level == 10);
+  assert(fail_closed_retained_snapshot.physical_level == 10);
   const auto retained_from_off_anchor_readback = oq_odu::resolve_retained_level(true, false, 11, 0, 0, true, extended);
   assert(retained_from_off_anchor_readback.control_level == 6);
   assert(retained_from_off_anchor_readback.physical_level == 11);

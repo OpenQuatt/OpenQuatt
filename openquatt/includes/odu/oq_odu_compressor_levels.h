@@ -129,19 +129,43 @@ inline RetainedLevel resolve_retained_level(bool hold_active, bool cooling_mode_
                                             const RuntimeFrequencySnapshot& snapshot) {
   if (!hold_active || cooling_mode_active) return {};
 
+  const bool selected_level_differs_from_last_command =
+      selected_physical_level > 0 && selected_physical_level != previous_physical_level;
   int physical_level = selected_physical_level > 0 ? selected_physical_level : previous_physical_level;
   const int physical_max = physical_level_limit(configured_v2, snapshot, 2);
   physical_level = std::max(0, std::min(physical_max, physical_level));
   if (physical_level <= 0 && previous_control_level <= 0) return {};
 
   int control_level = std::max(0, std::min(MODEL_LEVEL_MAX, previous_control_level));
-  if (control_level <= 0 && physical_level > 0) {
+  // During defrost an ODU can retain its physical level while a runtime guard
+  // briefly commands another level. Prefer that readback over the stale logical
+  // state so a retained F17 remains model level 10 instead of becoming level 1.
+  if ((control_level <= 0 || selected_level_differs_from_last_command) && physical_level > 0) {
     control_level = model_level_for_physical_heating_level(configured_v2, snapshot, physical_level);
   }
   if (physical_level <= 0 && control_level > 0) {
     physical_level = resolve_automatic_level(configured_v2, snapshot, 2, control_level).physical_level;
   }
   return {control_level, physical_level};
+}
+
+inline RetainedLevel update_retained_level_snapshot(const RetainedLevel& retained, bool hold_active,
+                                                    bool cooling_mode_active, int selected_physical_level,
+                                                    int previous_control_level, int previous_physical_level,
+                                                    bool configured_v2, const RuntimeFrequencySnapshot& snapshot) {
+  if (!hold_active || cooling_mode_active) return {};
+  const int physical_max = physical_level_limit(configured_v2, snapshot, 2);
+  if (retained.control_level > 0 && retained.physical_level > 0 && retained.physical_level <= physical_max) {
+    return retained;
+  }
+  return resolve_retained_level(hold_active, cooling_mode_active, selected_physical_level, previous_control_level,
+                                previous_physical_level, configured_v2, snapshot);
+}
+
+inline bool retained_level_should_override_request(const RetainedLevel& retained, int requested_level,
+                                                   bool requested_level_is_physical = false) {
+  const int retained_request_level = requested_level_is_physical ? retained.physical_level : retained.control_level;
+  return retained.control_level > 0 && retained.physical_level > 0 && requested_level < retained_request_level;
 }
 
 }  // namespace oq_odu

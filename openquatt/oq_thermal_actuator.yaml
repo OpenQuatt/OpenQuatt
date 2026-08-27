@@ -290,11 +290,15 @@ interval:
           publish_defrost_seen(false, real_defrost_seen(false));
           #endif
 
+          static oq_odu::RetainedLevel hp1_defrost_retained_level{};
+          static oq_odu::RetainedLevel hp2_defrost_retained_level{};
           auto defrost_stop_hold_level = [&](bool is_hp1) {
             // Only keep the last non-zero level during real defrost, i.e. once the
             // 4-way valve is active. The broader defrost bit can assert earlier and
             // caused the duo optimizer to pre-load far too aggressively.
             const bool defrost_active = valve_defrost_active(is_hp1);
+            oq_odu::RetainedLevel &retained =
+                is_hp1 ? hp1_defrost_retained_level : hp2_defrost_retained_level;
             const int selected_physical_level = hp_selected_level(is_hp1);
             const int prev_applied = is_hp1 ? id(hp1_last_applied_level) : id(${secondary_last_applied_level_id});
             const int prev_physical = is_hp1
@@ -302,7 +306,8 @@ interval:
                 : id(${secondary_last_commanded_physical_level_id});
             const bool cooling_mode_active =
                 hp_mode_is_cooling(is_hp1) || hp_mode_target_is_cooling(is_hp1);
-            return oq_odu::resolve_retained_level(
+            retained = oq_odu::update_retained_level_snapshot(
+                retained,
                 defrost_active,
                 cooling_mode_active,
                 selected_physical_level,
@@ -310,6 +315,7 @@ interval:
                 prev_physical,
                 configured_v2,
                 runtime_frequency_snapshot(is_hp1));
+            return retained;
           };
 
           auto apply_active_mode_hold = [&](bool is_hp1, const oq_odu::RetainedLevel &retained)->bool {
@@ -493,6 +499,9 @@ interval:
                     incident_outputs.must_stop,
                 });
             req_level = incident_guard.guarded_level;
+            if (incident_guard.bypass_runtime_and_defrost_holds) {
+              (is_hp1 ? hp1_defrost_retained_level : hp2_defrost_retained_level) = {};
+            }
             const oq_odu::RetainedLevel retained_level =
                 incident_guard.bypass_runtime_and_defrost_holds
                     ? oq_odu::RetainedLevel{}
@@ -523,7 +532,8 @@ interval:
             }
             bool &last_defrost_hold = is_hp1 ? last_hp1_defrost_hold : last_hp2_defrost_hold;
             const bool defrost_hold_active =
-                (req_level == 0 && retained_level.control_level > 0);
+                oq_odu::retained_level_should_override_request(
+                    retained_level, req_level, manual_hp_service_active);
             if (defrost_hold_active && !last_defrost_hold) {
               id(oq_decision_log).emit(
                   openquatt_decision_log::EVENT_DECISION_HOLD,
@@ -538,7 +548,7 @@ interval:
             }
             last_defrost_hold = defrost_hold_active;
 
-            if (req_level == 0 && retained_level.control_level > 0) {
+            if (defrost_hold_active) {
               char reason_buf[96];
               snprintf(reason_buf, sizeof(reason_buf),
                        "defrost hold at model level %d / physical F%d",
