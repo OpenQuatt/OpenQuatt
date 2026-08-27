@@ -64,8 +64,8 @@ class BoilerPowerTestRuntime {
   void start(const RuntimeConfig& cfg, uint32_t now_ms) {
     const int cm_code = id(oq_control_mode_code);
     const bool task_running = id(oq_commissioning_active) && id(oq_commissioning_task_code) != TASK_NONE;
-    if (!id(oq_boiler_assist_enabled).state) {
-      oq_service_status::set_boiler_power_test("REFUSED: boiler/CV assist disabled");
+    if (!id(oq_aux_heat_source_present).state) {
+      oq_service_status::set_boiler_power_test("REFUSED: auxiliary heat source not connected");
       return;
     }
     if (task_running || id(oq_commissioning_request_pending)) {
@@ -416,9 +416,9 @@ class BoilerPowerTestRuntime {
       finish_task("FAILED: boiler inhibit active", STATE_FAILED, false, true);
       return false;
     }
-    if (!id(oq_boiler_assist_enabled).state) {
-      ESP_LOGW("quatt.cm100.boiler", "Boiler test failed: boiler/CV assist disabled");
-      finish_task("FAILED: boiler/CV assist disabled", STATE_FAILED, false, true);
+    if (!id(oq_aux_heat_source_present).state) {
+      ESP_LOGW("quatt.cm100.boiler", "Boiler test failed: auxiliary heat source not connected");
+      finish_task("FAILED: auxiliary heat source not connected", STATE_FAILED, false, true);
       return false;
     }
     return true;

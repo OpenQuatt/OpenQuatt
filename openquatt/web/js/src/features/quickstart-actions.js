@@ -35,6 +35,7 @@ import { render } from "../core/render-scheduler.js";
     if (stepId === "boiler") {
       return [...new Set([
         ...base,
+        "auxHeatSourcePresent",
         "boilerCvAssistEnabled",
         "boilerFaultFallbackEnabled",
         "boilerConnection",
@@ -72,6 +73,7 @@ import { render } from "../core/render-scheduler.js";
         "hpGeneration",
         ...ODU_GENERATION_KEYS,
         ...ODU_GENERATION_DETECT_KEYS,
+        "auxHeatSourcePresent",
         "boilerCvAssistEnabled",
         "boilerFaultFallbackEnabled",
         "boilerConnection",
