@@ -657,7 +657,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
       <section class="oq-helper-panel">
         <p class="oq-helper-label">${escapeHtml(getQuickStepKicker("boiler"))}</p>
         <h2 class="oq-helper-section-title">Aanvullende warmtebron</h2>
-        <p class="oq-helper-section-copy">Geef aan of een aanvullende warmtebron is aangesloten en kies afzonderlijk of OpenQuatt die als bij- of reserveverwarming mag gebruiken.</p>
+        <p class="oq-helper-section-copy">Dit kan bijvoorbeeld een cv-ketel, elektrische cv-ketel (e-cv) of doorstroomverwarmer zijn. Kies of de warmtebron hybride meeverwarmt bij een vermogenstekort en of deze mag overnemen wanneer geen warmtepomp beschikbaar is.</p>
         ${renderBoilerCvFields("oq-settings-grid oq-settings-grid--quickstart oq-settings-boiler-simple-grid", true)}
         ${renderQuickStartStepNav({
           nextDisabled: boilerConnectionMismatch,
@@ -996,10 +996,10 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
                   : []),
                 ["Beschikbaar verwarmingsvermogen", formatValue("boilerRatedHeatPower")],
                 ...(hasEntity("boilerCvAssistEnabled")
-                  ? [["Gebruiken als bijverwarming", isEntityActive("boilerCvAssistEnabled") ? "Aan" : "Uit"]]
+                  ? [["Hybride verwarmen bij vermogenstekort", isEntityActive("boilerCvAssistEnabled") ? "Aan" : "Uit"]]
                   : []),
                 ...(hasEntity("boilerFaultFallbackEnabled")
-                  ? [["Gebruiken als reserveverwarming", isEntityActive("boilerFaultFallbackEnabled") ? "Aan" : "Uit"]]
+                  ? [["Overnemen wanneer de warmtepomp niet beschikbaar is", isEntityActive("boilerFaultFallbackEnabled") ? "Aan" : "Uit"]]
                   : []),
               ]
             : []),

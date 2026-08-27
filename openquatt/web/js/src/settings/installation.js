@@ -19,7 +19,8 @@ import { getSelectEntityOptions, renderNamedActionButton, renderSettingsAdvanced
 import { renderSettingsHeatPumpLimiterCard } from "./heating.js";
 import { escapeHtml } from "../core/html.js";
 
-const AUX_HEAT_BACKUP_TITLE = "Gebruiken als reserveverwarming";
+const AUX_HEAT_ASSIST_TITLE = "Hybride verwarmen bij vermogenstekort";
+const AUX_HEAT_BACKUP_TITLE = "Overnemen wanneer de warmtepomp niet beschikbaar is";
 const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer geen warmtepomp veilig beschikbaar is. Dit gebeurt pas na een veilige stop en geldige flow, temperatuur en aansturing. Een korte communicatiedip telt niet als uitval.";
 
   export function getOduRuntimeFrequencyHpIndexes() {
@@ -981,18 +982,18 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           renderSettingsNumberField(
             "boilerSupportStartThreshold",
             "Ondersteuning starten vanaf",
-            "Standaard 1000 W. Power House moet eerst minimaal 2 minuten zonder bijverwarming draaien; daarna moet het warmtetekort 5 minuten onafgebroken boven deze grens blijven.",
+            "Standaard 1000 W. Power House moet eerst minimaal 2 minuten zonder aanvullende warmtebron draaien; daarna moet het warmtetekort 5 minuten onafgebroken boven deze grens blijven.",
           ),
           renderSettingsNumberField(
             "boilerSupportStopThreshold",
             "Ondersteuning stoppen onder",
-            "Standaard 400 W. Bijverwarming blijft minimaal 5 minuten actief en stopt pas wanneer het warmtetekort daarna 2 minuten onder deze grens blijft.",
+            "Standaard 400 W. De aanvullende warmtebron blijft minimaal 5 minuten actief en stopt pas wanneer het warmtetekort daarna 2 minuten onder deze grens blijft.",
           ),
         ].filter(Boolean).join("")
       : "";
     const supportSwitchingMarkup = renderSettingsAdvancedDisclosure(
       "boiler-support",
-      "Wanneer bijverwarming start en stopt",
+      "Wanneer hybride ondersteuning start en stopt",
       "Alleen voor Power House. Het warmtetekort is het gevraagde woningvermogen min het maximaal beschikbare warmtepompvermogen, met minimaal 0 W. Tussen beide grenzen blijft de huidige toestand behouden. Deze waarden veranderen het beschikbare verwarmingsvermogen en de aansturing niet.",
       supportSwitchingFields ? `<div class="oq-settings-grid">${supportSwitchingFields}</div>` : "",
     );
@@ -1002,7 +1003,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           ${renderSettingsFieldCard(
             sourcePresenceKey,
             "Warmtebron aangesloten",
-            "Zet dit aan als OpenQuatt een aanvullende warmtebron fysiek kan aansturen.",
+            "Zet dit aan als OpenQuatt een aanvullende warmtebron kan aansturen, zoals een cv-ketel, elektrische cv-ketel (e-cv) of doorstroomverwarmer.",
             `
               <div class="oq-settings-compact-switch-field">
                 ${renderSettingsCompactSwitchControl(sourcePresenceKey, "Warmtebron aangesloten", sourcePresent, sourcePresentBusy)}
@@ -1038,13 +1039,13 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           ) : ""}
           ${sourcePresent && separateSourcePolicyAvailable && assistSettingAvailable ? renderSettingsFieldCard(
             "boilerCvAssistEnabled",
-            "Gebruiken als bijverwarming",
-            "Laat de warmtebron naast de warmtepomp meeverwarmen bij extra warmtevraag.",
+            AUX_HEAT_ASSIST_TITLE,
+            "Laat de aanvullende warmtebron meeverwarmen wanneer het beschikbare warmtepompvermogen niet genoeg is voor de warmtevraag.",
             `
               <div class="oq-settings-compact-switch-field">
                 ${renderSettingsCompactSwitchControl(
                   "boilerCvAssistEnabled",
-                  "Gebruiken als bijverwarming",
+                  AUX_HEAT_ASSIST_TITLE,
                   assistEnabled,
                   assistBusy,
                 )}
@@ -1086,8 +1087,8 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
       "Basis",
       "Aanvullende warmtebron",
       sourcePresent
-        ? "Kies hoe de warmtebron is aangesloten en wanneer OpenQuatt deze mag gebruiken."
-        : "Geef aan of OpenQuatt een aanvullende warmtebron kan aansturen.",
+        ? "Bijvoorbeeld een cv-ketel, elektrische cv-ketel (e-cv) of doorstroomverwarmer. Kies wanneer OpenQuatt deze mag gebruiken."
+        : "Geef aan of OpenQuatt een aanvullende warmtebron kan aansturen, zoals een cv-ketel, elektrische cv-ketel (e-cv) of doorstroomverwarmer.",
       renderBoilerCvFields("oq-settings-grid oq-settings-boiler-simple-grid", true),
     );
   }
