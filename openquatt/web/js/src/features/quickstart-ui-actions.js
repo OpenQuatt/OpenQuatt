@@ -1,7 +1,7 @@
 import { invokeActionMap } from "../core/action-router.js";
 import { commitSwitch } from "../core/entity-write-actions.js";
 import { render } from "../core/render-scheduler.js";
-import { state } from "../core/state.js";
+import { clearQuickStartSetupInstall, hasCompletedQuickStartSetupInstallFor, state } from "../core/state.js";
 import {
   abortQuickStartFlowTest,
   applyQuickStartFlowSourceConfiguration,
@@ -12,7 +12,7 @@ import {
   refreshQuickStartStepHydration,
   startQuickStartFlowTest,
 } from "./quickstart-actions.js";
-import { selectQuickStepByOffset } from "./quickstart.js";
+import { isQuickStartStepSelectionAllowed, selectQuickStepByOffset } from "./quickstart.js";
 import { installQuickStartSetupSwitch } from "./firmware-actions.js";
 import {
   captureUsageTelemetryPreview,
@@ -62,7 +62,11 @@ async function prepareQuickStartStep(stepId) {
 }
 
 function moveQuickStartStep(offset) {
-  selectQuickStepByOffset(offset);
+  if (!selectQuickStepByOffset(offset)) {
+    state.controlError = "Rond eerst de configuratie en software-update af.";
+    render();
+    return;
+  }
   if (state.currentStep === "usage-telemetry") {
     state.controlError = "";
     state.controlNotice = "";
@@ -87,13 +91,27 @@ const quickStartActionHandlers = {
     render();
   },
   "open-generation-modal": () => {
+    if (!isQuickStartStepSelectionAllowed("generation")) {
+      state.currentStep = "setup";
+      state.quickStartModalMode = "wizard";
+      state.quickStartModalOpen = true;
+      state.controlError = "Rond eerst de configuratie en software-update af.";
+      render();
+      return;
+    }
     state.currentStep = "generation";
     state.quickStartModalMode = "generation";
     state.quickStartModalOpen = true;
     render();
   },
   "select-step": (button) => {
-    state.currentStep = button.dataset.stepId || "generation";
+    const stepId = button.dataset.stepId || "generation";
+    if (!isQuickStartStepSelectionAllowed(stepId)) {
+      state.controlError = "Rond eerst de configuratie en software-update af.";
+      render();
+      return;
+    }
+    state.currentStep = stepId;
     if (state.currentStep === "usage-telemetry") {
       state.controlError = "";
       state.controlNotice = "";
@@ -102,7 +120,14 @@ const quickStartActionHandlers = {
     void prepareQuickStartStep(state.currentStep);
   },
   "select-quickstart-setup": (button) => {
-    state.quickStartSetupDraft = button.dataset.setupTarget || "";
+    const target = button.dataset.setupTarget || "";
+    const [targetTopology, targetConnection] = target.split(":");
+    const preserveCompletedInstall = hasCompletedQuickStartSetupInstallFor(targetTopology, targetConnection);
+    if (!preserveCompletedInstall) {
+      clearQuickStartSetupInstall();
+    }
+    state.quickStartSetupUpdateComplete = preserveCompletedInstall;
+    state.quickStartSetupDraft = target;
     state.quickStartSetupConfirmed = false;
     state.controlError = "";
     state.controlNotice = "";
