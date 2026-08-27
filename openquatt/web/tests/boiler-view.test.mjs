@@ -28,6 +28,7 @@ const heatPumpCss = await readFile(new URL("../css/src/40-heatpump.css", import.
 const boilerOpenThermYaml = await readFile(new URL("../../oq_boiler_opentherm.yaml", import.meta.url), "utf8");
 const heatPumpQProfileYaml = await readFile(new URL("../../profiles/heatpump_controller_q.yaml", import.meta.url), "utf8");
 const otSlaveYaml = await readFile(new URL("../../oq_ot_slave.yaml", import.meta.url), "utf8");
+const commonSubstitutionsYaml = await readFile(new URL("../../oq_substitutions_common.yaml", import.meta.url), "utf8");
 const quickStartSource = await readFile(new URL("../js/src/features/quickstart.js", import.meta.url), "utf8");
 const quickStartActionsSource = await readFile(new URL("../js/src/features/quickstart-actions.js", import.meta.url), "utf8");
 const installationSource = await readFile(new URL("../js/src/settings/installation.js", import.meta.url), "utf8");
@@ -389,6 +390,10 @@ test("auxiliary heat source setting remains editable on legacy firmware", () => 
 test("fallback heating setting explains its guarded scope", () => {
   assert.match(installationSource, /Overnemen wanneer de warmtepomp niet beschikbaar is/);
   assert.match(installationSource, /wanneer geen warmtepomp veilig beschikbaar is/);
+  assert.match(installationSource, /koude opstart onder 5 °C/);
+  assert.match(installationSource, /koude opstart van 5 tot 12 °C/);
+  assert.match(commonSubstitutionsYaml, /oq_hp_cold_start_min_c: "5\.0"/);
+  assert.match(commonSubstitutionsYaml, /oq_hp_cold_start_assist_release_c: "12\.0"/);
   assert.match(installationSource, /na een veilige stop/);
   assert.match(installationSource, /Een korte communicatiedip telt niet als uitval/);
 });
