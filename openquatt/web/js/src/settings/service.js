@@ -836,7 +836,7 @@ import { renderModalShell } from "../core/modal-shell.js";
         cardMarkup: renderCommissioningTaskCard({
           taskKey: "boiler",
           title: "Boiler power test",
-          copy: "Controleert of de ketel op commando start, de flow stabiel blijft en warmte veilig wordt overgedragen. Het gemeten waterzijdige vermogen is alleen indicatief en de test is niet nodig voor normale regeling. Gebruik daarvoor het ingestelde ketelvermogen; sommige OpenTherm-ketels leveren daarnaast hun nominale maximum via ID15. De test duurt meestal ongeveer 5 tot 10 minuten.",
+          copy: "Controleert ketelstart, stabiele flow en veilige warmteoverdracht. Het gemeten waterzijdige vermogen is indicatief; de test is niet nodig voor normale regeling. Gebruik het ingestelde ketelvermogen. Sommige OpenTherm-ketels melden daarnaast hun nominale maximum via ID15. Duur: meestal 5 tot 10 minuten.",
           subcopy: `Beschikbaar verwarmingsvermogen: ${escapeHtml(boilerRatedPower)}`,
           status: boilerStatusDisplay,
           statusCopy: boilerTaskWaitingForCm100
