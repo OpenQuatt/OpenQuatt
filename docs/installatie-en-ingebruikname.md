@@ -89,7 +89,7 @@ Als die naam niet werkt, zoek dan het IP-adres van OpenQuatt in je router en ope
 
 De web-app toont Quick Start zolang de basisinstellingen nog niet zijn afgerond. Loop die eerst rustig door. Quick Start zet de belangrijkste installatiekeuzes klaar:
 
-Bij Waveshare en Heatpump Listener ligt `Single` of `Duo` al vast in de firmware die je in de installer hebt gekozen. Quick Start toont daarom geen stap **Kies je setup** en begint met:
+Bij Waveshare en Heatpump Listener ligt `Single` of `Duo` al vast in de firmware die je in de installer hebt gekozen. Quick Start toont daarom geen stap **Configuratie en software-update** en begint met:
 
 1. Quatt Hybrid-versie: V1, V1.5 of V2;
 2. flowmeting;
