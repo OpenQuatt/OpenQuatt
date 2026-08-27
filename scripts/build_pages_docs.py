@@ -46,6 +46,7 @@ PAGES = [
     Page(PurePosixPath("docs/web-app.md"), PurePosixPath("web-app.html"), "Web-app gebruiken", "Handleiding", "Quick Start, instellingen, updates, backup en beveiliging via openquatt.local."),
     Page(PurePosixPath("docs/dashboard/README.md"), PurePosixPath("dashboard/index.html"), "OpenQuatt Home Assistant", "Doorverwijzing", "Dashboards, packages en handleidingen staan in de Home Assistant companion-repository."),
     Page(PurePosixPath("docs/dashboardoverzicht.md"), PurePosixPath("dashboardoverzicht.html"), "Dashboard gebruiken", "Doorverwijzing", "Actuele dashboardhandleiding in de Home Assistant companion-repository."),
+    Page(PurePosixPath("docs/homey.md"), PurePosixPath("homey.html"), "OpenQuatt in Homey", "Handleiding", "Homey Pro koppelen, meekijken, automatiseren en OpenQuatt voeden met je eigen sensoren."),
     Page(PurePosixPath("docs/verwarmen-en-koelen.md"), PurePosixPath("verwarmen-en-koelen.html"), "Verwarmen en koelen uitgelegd", "Uitleg", "Heldere uitleg van Power House, stooklijnregeling, koeling, Single en Duo."),
     Page(PurePosixPath("docs/mqtt.md"), PurePosixPath("mqtt.html"), "MQTT inputbronnen", "Docs", "Beperkte MQTT inputbronnen voor externe meetwaarden zoals koelingsdauwpunt."),
     Page(PurePosixPath("docs/api-input.md"), PurePosixPath("api-input.html"), "API inputbronnen", "Docs", "Lokale HTTP-endpoints voor externe bronwaarden en toestemmingssignalen."),
@@ -84,6 +85,13 @@ SIDEBAR_GROUPS = [
         [
             PurePosixPath("docs/dashboard/README.md"),
             PurePosixPath("docs/dashboardoverzicht.md"),
+        ],
+    ),
+    (
+        "Optioneel: Homey",
+        "Homey Pro koppelen nadat OpenQuatt lokaal werkt.",
+        [
+            PurePosixPath("docs/homey.md"),
         ],
     ),
     (

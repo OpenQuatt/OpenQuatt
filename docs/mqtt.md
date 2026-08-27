@@ -150,6 +150,7 @@ mosquitto_pub -h mqtt.local -t openquatt/openquatt/input/thermostat/heating_enab
 
 - [Web-app gebruiken](web-app.md)
 - [API inputbronnen](api-input.md)
+- [OpenQuatt in Homey](homey.md)
 - [Instellingen en meetwaarden](instellingen-en-meetwaarden.md)
 - [Problemen oplossen](problemen-oplossen.md)
 - [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md)
