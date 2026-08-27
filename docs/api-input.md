@@ -107,6 +107,7 @@ Bij `Warmtetoestemming` en `Koeltoestemming` telt API-invoer alleen mee als de w
 ## Verder lezen
 
 - [MQTT inputbronnen](mqtt.md)
+- [OpenQuatt in Homey](homey.md)
 - [Web-app gebruiken](web-app.md)
 - [Instellingen en meetwaarden](instellingen-en-meetwaarden.md)
 - [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md)
