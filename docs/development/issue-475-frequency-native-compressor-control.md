@@ -1,7 +1,9 @@
 # Issue #475: frequency-native compressor control
 
-Status: stap 1 softwarematig gereed in draft PR #534; V1.5 Duo-HIL geslaagd, overige HIL nog vereist  
-Target branch: `dev`  
+Status: stap 1 softwarematig gereed in draft PR #534; V1.5 Duo-HIL en gesimuleerde V2-HIL geslaagd, echte V2-HIL nog vereist
+
+Target branch: `dev`
+
 Work branch: `fix/475-v2-compressor-mapping`
 
 ## Doel
@@ -154,6 +156,16 @@ Op de bekende nieuwe V2-tabel resulteert dat in F0/F1/F2/F3/F7/F9/F10/F13/F15/F1
 - Eindtoestand: CM0, flow 0 L/h en geen actieve ODU-fouten.
 - Geheugensnapshot na OTA, tabelreads en CM100-proef: internal heap free 111139 B, minimum 39828 B, largest block 63488 B, fragmentatie 42.9% en PSRAM free 6858440 B. De bootduur was toen circa 0.25 uur; dit is een korte regressiecheck, geen duurtest.
 
+### 2026-08-27 — Q-edition Duo WiFi met HCQ ODU-simulator
+
+- Candidate `e40b6105` is via OTA geladen op `configs/heatpump_controller_q/duo_wifi.yaml`.
+- De simulator bood op adres 1 een V2 vroeg model en op adres 2 een V2 nieuw model aan. OpenQuatt publiceerde respectievelijk `Unknown / F0-F10 safe` en `V2 F0-F20`.
+- CM100 schreef op het vroege model maximaal F10/90 Hz en op het nieuwe model fysiek F20/110 Hz; demand en gemeten frequentie kwamen overeen.
+- In automatische Power House-regeling werd modellevel 8 (performanceanker 80 Hz) via de ingelezen V2-heatingtabel vertaald naar F15/82 Hz. Registerwrite, frequentiedemand en gemeten frequentie waren alle drie consistent.
+- De eerste automatische proef vond een simulatorfout: de synthetische flow nam toe bij hogere iPWM, terwijl Quatt-iPWM omgekeerd werkt. Na correctie en simulator-OTA ging de regelaar van 400 naar 244 iPWM en steeg de flow van circa 550 naar 698 L/h richting het setpoint van 800 L/h; later werd circa 796 L/h gemeten.
+- Een gerichte timeout op de extensionread `3050/20` degradeerde HP2 naar `Unknown / F0-F10 safe`. De simulator registreerde geen compressorwrite (`maxF=0`); de incidentbewaking blokkeerde vervolgens een CM100-start. Na verwijderen van de injectie en een herstart herstelde HP2 naar `V2 F0-F20`.
+- Deze proef valideert software, Modbusgedrag en foutgrenzen tegen de simulator. Hij vervangt geen eindtest op echte V2-hardware en de defrost-hold is nog niet HIL-gevalideerd.
+
 ## Werklog
 
 - 2026-08-26: plan bijgewerkt na bevestiging dat V1 en V1.5 dezelfde oorspronkelijke heating- en coolingtabel gebruiken. Runtimegewijzigde EEPROM-tabellen blijven geldige regressiefixtures.
@@ -167,3 +179,5 @@ Op de bekende nieuwe V2-tabel resulteert dat in F0/F1/F2/F3/F7/F9/F10/F13/F15/F1
 - 2026-08-26: V1.5 Duo-HIL groen voor OTA/boot, aangepaste runtime-tabellen, F0-F10 fail-closed begrenzing op beide ODU's, minimum-runtime-stop en terugkeer naar CM0.
 - 2026-08-26: reviewfixes: per-mode F20-capability blijft zichtbaar, onbevestigde en overlappende tabelwrites blijven buiten het controlpad en een niet-mapbaar verzoek wordt vóór de startgate gestopt.
 - 2026-08-26: resterende releasegate is HIL op V1, V2 vroeg en V2 nieuw, inclusief reconnect, incomplete reads, defrost-hold en CM100 F11-F20.
+- 2026-08-27: gesimuleerde V2-HIL groen voor profielherkenning, CM100 F20/110 Hz, automatische 80 Hz→F15/82 Hz-vertaling, extension-timeout fail-closed en profielherstel na reconnect.
+- 2026-08-27: simulator-iPWM gecorrigeerd naar lagere iPWM = hogere flow en hoger pompvermogen; hosttests, ESPHome-configvalidatie, firmwarecompile en OTA geslaagd.
