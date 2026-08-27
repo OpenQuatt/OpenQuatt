@@ -20,7 +20,7 @@ export const WEB_BUNDLE_BUDGETS = [
     // afzonderlijke rollen voor een aangesloten aanvullende warmtebron, hybride verwarmen en overname,
     // the issue-516 boiler/OpenTherm debug-recording fields,
     // and the issue-536 boiler-result quality and confirmed empirical Apply flow.
-    raw: 959_000,
+    raw: 961_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

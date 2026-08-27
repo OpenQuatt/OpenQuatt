@@ -286,7 +286,7 @@ class PowerPlateauMonitor {
 enum ResultQuality : uint8_t {
   RESULT_QUALITY_NONE = 0,
   RESULT_QUALITY_OPENTHERM_ID15_AVAILABLE = 1,
-  RESULT_QUALITY_EMPIRICAL_UNVERIFIED = 2,
+  RESULT_QUALITY_OPENTHERM_EMPIRICAL_NO_ID15 = 2,
   RESULT_QUALITY_RELAY_EMPIRICAL = 3,
   RESULT_QUALITY_FLOW_LIMITED = 4,
   RESULT_QUALITY_INVALID = 5,
@@ -301,7 +301,7 @@ enum ResultApplyMode : uint8_t {
 struct MeasurementQualityEvidence {
   bool completed = false;
   bool opentherm_selected = false;
-  bool capacity_verified = false;
+  bool id15_capacity_available = false;
   bool flow_limited = false;
   bool transport_clean = false;
   bool boiler_active_throughout = false;
@@ -334,15 +334,15 @@ inline ResultQuality evaluate_result_quality(const MeasurementQualityEvidence& e
   if (!measurement_valid) return RESULT_QUALITY_INVALID;
   if (evidence.flow_limited) return RESULT_QUALITY_FLOW_LIMITED;
   if (!evidence.opentherm_selected) return RESULT_QUALITY_RELAY_EMPIRICAL;
-  if (evidence.capacity_verified) return RESULT_QUALITY_OPENTHERM_ID15_AVAILABLE;
-  return RESULT_QUALITY_EMPIRICAL_UNVERIFIED;
+  if (evidence.id15_capacity_available) return RESULT_QUALITY_OPENTHERM_ID15_AVAILABLE;
+  return RESULT_QUALITY_OPENTHERM_EMPIRICAL_NO_ID15;
 }
 
 inline const char* result_quality_text(uint8_t quality) {
   switch (quality) {
     case RESULT_QUALITY_OPENTHERM_ID15_AVAILABLE:
       return "OpenTherm measurement, ID15 capacity available";
-    case RESULT_QUALITY_EMPIRICAL_UNVERIFIED:
+    case RESULT_QUALITY_OPENTHERM_EMPIRICAL_NO_ID15:
       return "empirical, ID15 unavailable";
     case RESULT_QUALITY_RELAY_EMPIRICAL:
       return "empirical relay measurement";
@@ -360,7 +360,7 @@ inline ResultApplyMode result_apply_mode(uint8_t quality) {
     case RESULT_QUALITY_OPENTHERM_ID15_AVAILABLE:
     case RESULT_QUALITY_RELAY_EMPIRICAL:
       return RESULT_APPLY_DIRECT;
-    case RESULT_QUALITY_EMPIRICAL_UNVERIFIED:
+    case RESULT_QUALITY_OPENTHERM_EMPIRICAL_NO_ID15:
       return RESULT_APPLY_CONFIRMATION_REQUIRED;
     default:
       return RESULT_APPLY_DENIED;

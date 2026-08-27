@@ -70,11 +70,11 @@ test("getBoilerTestStatusCopy COOLDOWN shows result", () => {
 });
 
 test("getBoilerTestStatusCopy DONE shows result and confidence", () => {
-  setBoilerEntities("—", "2571 W", "92%", "verified via OpenTherm ID15");
+  setBoilerEntities("—", "2571 W", "92%", "OpenTherm measurement, ID15 capacity available");
   const copy = getBoilerTestStatusCopy("DONE: 2571W (conf 92%)", 800, 800);
   assert.match(copy, /Klaar - 2571 W/);
   assert.match(copy, /92%/);
-  assert.match(copy, /Geverifieerd via OpenTherm ID15/);
+  assert.match(copy, /OpenTherm-meting; ID15-capaciteit beschikbaar/);
 });
 
 test("getBoilerTestStatusCopy DONE remains compatible when quality entity is absent", () => {
@@ -85,14 +85,14 @@ test("getBoilerTestStatusCopy DONE remains compatible when quality entity is abs
 
 test("empirical result requires an explicit second Apply within 30 seconds", () => {
   setBoilerEntities("—", "8442 W", "96%", "empirical, ID15 unavailable");
-  const status = "CONFIRM_REQUIRED: empirical result unverified; press Apply again within 30s";
+  const status = "CONFIRM_REQUIRED: confirm applying empirical result within 30s";
   assert(isCommissioningTaskStatusTerminal(status));
   assert(isBoilerTestResultReady(status));
-  assert.match(getBoilerTestStatusCopy(status, 800, 800), /Extra bevestiging nodig/);
+  assert.match(getBoilerTestStatusCopy(status, 800, 800), /Bevestig binnen 30 seconden/);
   assert.match(getBoilerTestStatusCopy(status, 800, 800), /binnen 30 seconden/);
   assert.equal(
     getBoilerResultQualityCopy("empirical, ID15 unavailable"),
-    "Empirisch gemeten; niet via OpenTherm ID15 geverifieerd",
+    "Empirisch gemeten; ID15-capaciteitsinformatie ontbreekt",
   );
 });
 

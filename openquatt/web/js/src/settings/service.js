@@ -59,9 +59,12 @@ import { renderModalShell } from "../core/modal-shell.js";
 
   export function getBoilerResultQualityCopy(quality) {
     const normalized = String(quality || "").trim().toUpperCase();
-    if (normalized.includes("VERIFIED VIA OPENTHERM ID15")) return "Geverifieerd via OpenTherm ID15";
+    if (normalized.includes("OPENTHERM MEASUREMENT, ID15 CAPACITY AVAILABLE")
+        || normalized.includes("VERIFIED VIA OPENTHERM ID15")) {
+      return "OpenTherm-meting; ID15-capaciteit beschikbaar";
+    }
     if (normalized.includes("EMPIRICAL, ID15 UNAVAILABLE")) {
-      return "Empirisch gemeten; niet via OpenTherm ID15 geverifieerd";
+      return "Empirisch gemeten; ID15-capaciteitsinformatie ontbreekt";
     }
     if (normalized.includes("EMPIRICAL RELAY MEASUREMENT")) return "Empirisch gemeten via R1";
     if (normalized.includes("FLOW/HEADROOM LIMITED")) return "Niet toepasbaar: flow/temperatuurmarge begrensd";

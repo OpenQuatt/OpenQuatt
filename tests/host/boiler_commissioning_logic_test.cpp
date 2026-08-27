@@ -118,7 +118,7 @@ MeasurementQualityEvidence valid_measurement_evidence() {
   return MeasurementQualityEvidence{
       .completed = true,
       .opentherm_selected = true,
-      .capacity_verified = true,
+      .id15_capacity_available = true,
       .flow_limited = false,
       .transport_clean = true,
       .boiler_active_throughout = true,
@@ -137,16 +137,16 @@ void test_result_quality_separates_provenance_from_confidence() {
   assert(evaluate_result_quality(evidence) == RESULT_QUALITY_OPENTHERM_ID15_AVAILABLE);
   assert(result_apply_mode(RESULT_QUALITY_OPENTHERM_ID15_AVAILABLE) == RESULT_APPLY_DIRECT);
 
-  evidence.capacity_verified = false;
-  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_EMPIRICAL_UNVERIFIED);
-  assert(result_apply_mode(RESULT_QUALITY_EMPIRICAL_UNVERIFIED) == RESULT_APPLY_CONFIRMATION_REQUIRED);
+  evidence.id15_capacity_available = false;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_OPENTHERM_EMPIRICAL_NO_ID15);
+  assert(result_apply_mode(RESULT_QUALITY_OPENTHERM_EMPIRICAL_NO_ID15) == RESULT_APPLY_CONFIRMATION_REQUIRED);
 
   evidence.opentherm_selected = false;
   assert(evaluate_result_quality(evidence) == RESULT_QUALITY_RELAY_EMPIRICAL);
   assert(result_apply_mode(RESULT_QUALITY_RELAY_EMPIRICAL) == RESULT_APPLY_DIRECT);
 
   evidence.opentherm_selected = true;
-  evidence.capacity_verified = true;
+  evidence.id15_capacity_available = true;
   evidence.flow_limited = true;
   assert(evaluate_result_quality(evidence) == RESULT_QUALITY_FLOW_LIMITED);
   assert(result_apply_mode(RESULT_QUALITY_FLOW_LIMITED) == RESULT_APPLY_DENIED);
@@ -248,6 +248,18 @@ void test_power_plateau_rebases_after_xtreme_startup_transient() {
   assert(monitor.stable());
   assert(monitor.reference_w() > 5100.0f);
   assert(monitor.reference_w() < 5200.0f);
+
+  auto evidence = valid_measurement_evidence();
+  evidence.measurement_ticks = sizeof(power_w) / sizeof(power_w[0]);
+  evidence.stable_flow_ticks = evidence.measurement_ticks;
+  evidence.valid_power_samples = stable_samples;
+  evidence.result_w = average_w;
+  evidence.confidence_percent = 92.0f;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_OPENTHERM_ID15_AVAILABLE);
+
+  evidence.id15_capacity_available = false;
+  assert(evaluate_result_quality(evidence) == RESULT_QUALITY_OPENTHERM_EMPIRICAL_NO_ID15);
+  assert(result_apply_mode(evaluate_result_quality(evidence)) == RESULT_APPLY_CONFIRMATION_REQUIRED);
 }
 
 void test_power_plateau_loses_old_result_and_rebases() {

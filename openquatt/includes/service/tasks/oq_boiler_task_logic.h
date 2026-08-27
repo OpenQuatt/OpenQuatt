@@ -107,7 +107,7 @@ class BoilerPowerTestRuntime {
       }
       if (id(otb_max_capacity).has_state() && !isnan(id(otb_max_capacity).state) && id(otb_max_capacity).state > 0.0f) {
         active_test_capacity_w_ = id(otb_max_capacity).state * 1000.0f;
-        active_test_capacity_verified_ = true;
+        active_test_id15_capacity_available_ = true;
       }
       active_test_transport_error_count_ = oq_otb::telemetry_state.transport_error_count();
       const float rated_w = id(oq_boiler_rated_heat_power).state;
@@ -122,11 +122,9 @@ class BoilerPowerTestRuntime {
       }
     } else {
       active_test_capacity_w_ = id(oq_boiler_rated_heat_power).state;
-      active_test_capacity_verified_ = true;
     }
 #else
     active_test_capacity_w_ = id(oq_boiler_rated_heat_power).state;
-    active_test_capacity_verified_ = true;
 #endif
 
     ESP_LOGI("quatt.cm100.boiler",
@@ -346,7 +344,7 @@ class BoilerPowerTestRuntime {
   float active_test_capacity_w_{NAN};
   float active_test_theoretical_flow_lph_{NAN};
   bool active_test_opentherm_{false};
-  bool active_test_capacity_verified_{false};
+  bool active_test_id15_capacity_available_{false};
   bool active_test_flow_limited_{false};
   bool active_test_result_applied_{false};
   uint8_t active_test_result_quality_{oq_boiler_commissioning::RESULT_QUALITY_NONE};
@@ -425,7 +423,7 @@ class BoilerPowerTestRuntime {
     active_test_capacity_w_ = NAN;
     active_test_theoretical_flow_lph_ = NAN;
     active_test_opentherm_ = false;
-    active_test_capacity_verified_ = false;
+    active_test_id15_capacity_available_ = false;
     active_test_flow_limited_ = false;
     active_test_result_applied_ = false;
     active_test_transport_error_count_ = 0;
@@ -714,7 +712,7 @@ class BoilerPowerTestRuntime {
     const oq_boiler_commissioning::MeasurementQualityEvidence evidence{
         .completed = true,
         .opentherm_selected = active_test_opentherm_,
-        .capacity_verified = active_test_capacity_verified_,
+        .id15_capacity_available = active_test_id15_capacity_available_,
         .flow_limited = active_test_flow_limited_,
         .transport_clean = true,
         .boiler_active_throughout = true,

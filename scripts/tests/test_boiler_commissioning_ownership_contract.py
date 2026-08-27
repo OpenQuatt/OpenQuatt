@@ -51,6 +51,17 @@ class BoilerCommissioningOwnershipContract(unittest.TestCase):
         self.assertNotIn("peak_w_", BOILER_RUNTIME)
         self.assertIn('"FAILED: boiler power did not stabilise"', BOILER_RUNTIME)
 
+    def test_plateau_rebase_keeps_full_measurement_flow_evidence(self) -> None:
+        reset_measurement_start = BOILER_RUNTIME.index("void reset_measurement_accumulators()")
+        reset_power_start = BOILER_RUNTIME.index("void reset_power_samples()", reset_measurement_start)
+        reset_test_start = BOILER_RUNTIME.index("void reset_test_state()", reset_power_start)
+        reset_measurement_body = BOILER_RUNTIME[reset_measurement_start:reset_power_start]
+        reset_power_body = BOILER_RUNTIME[reset_power_start:reset_test_start]
+        self.assertIn("measurement_tick_count_ = 0", reset_measurement_body)
+        self.assertIn("measurement_stable_flow_tick_count_ = 0", reset_measurement_body)
+        self.assertNotIn("measurement_tick_count_ = 0", reset_power_body)
+        self.assertNotIn("measurement_stable_flow_tick_count_ = 0", reset_power_body)
+
     def test_dispatch_reuses_commissioning_temperature_policy(self) -> None:
         self.assertIn("oq_boiler_commissioning::commissioning_target_temperature_c", BOILER_DISPATCH)
         commissioning_start = BOILER_DISPATCH.index("} else if (commissioning_task_active) {")
