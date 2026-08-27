@@ -165,7 +165,7 @@ Volg de route die de web-app voor jouw installatie toont. De basisstappen zijn:
 11. **Gebruiksstatistieken:** controleer of OpenQuatt beperkte technische systeemstatus, aan/uit-statussen van functies en configuratiekeuzes zoals Quatt Hybrid-versie, verwarmingsstrategie, flowbron en regelbronnen mag delen; tijdens een nieuwe Quick Start staat dit standaard aan en kan het hier worden uitgezet. Gemeten of ingestelde temperaturen, wifi-gegevens, gebruikersnamen en wachtwoorden worden nooit meegestuurd.
 12. **Bevestigen en afronden:** controleer je keuzes en markeer Quick Start als voltooid.
 
-Bij een koude verwarmingsstart circuleert OpenQuatt eerst water en controleert daarna de uitgaande temperatuur van iedere aangesloten ODU. Onder `5 °C` blijven de compressoren uit en kan alleen ingeschakelde reserveverwarming voorverwarmen. Tussen `5 en 15 °C` starten de warmtepompen zelfstandig; ingeschakelde bijverwarming helpt tijdelijk mee. Vanaf `15 °C` geldt de normale warmteregeling. Een algemene startgrens van `18 °C` wordt niet toegepast.
+Bij een koude verwarmingsstart circuleert OpenQuatt eerst water en controleert daarna de uitgaande temperatuur van iedere aangesloten ODU. Onder `5 °C` blijven de compressoren uit; met `Overnemen wanneer de warmtepomp niet beschikbaar is` kan de aanvullende warmtebron voorverwarmen. Tussen `5 en 12 °C` starten de warmtepompen zelfstandig; met `Hybride verwarmen bij vermogenstekort` helpt de aanvullende warmtebron tijdelijk mee. Vanaf `12 °C` geldt de normale warmteregeling. Een algemene startgrens van `18 °C` wordt niet toegepast.
 
 ## Je installatie is klaar wanneer
 

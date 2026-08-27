@@ -31,38 +31,38 @@ void test_cold_start_temperature_bands() {
   ColdStartWaterSample hp1{true, 4.9f, 1001};
   ColdStartWaterSample hp2{false, NAN, 0};
 
-  auto decision = evaluate_cold_start(sample_after_ms, hp1, hp2, 5.0f, 15.0f);
+  auto decision = evaluate_cold_start(sample_after_ms, hp1, hp2, 5.0f, 12.0f);
   assert(decision.samples_ready);
   assert(!decision.hp_start_allowed);
   assert(!decision.auxiliary_assist_recommended);
   assert(!decision.released);
 
   hp1.temperature_c = 5.0f;
-  decision = evaluate_cold_start(sample_after_ms, hp1, hp2, 5.0f, 15.0f);
+  decision = evaluate_cold_start(sample_after_ms, hp1, hp2, 5.0f, 12.0f);
   assert(decision.hp_start_allowed);
   assert(decision.auxiliary_assist_recommended);
   assert(!decision.released);
 
-  hp1.temperature_c = 15.0f;
-  decision = evaluate_cold_start(sample_after_ms, hp1, hp2, 5.0f, 15.0f);
+  hp1.temperature_c = 12.0f;
+  decision = evaluate_cold_start(sample_after_ms, hp1, hp2, 5.0f, 12.0f);
   assert(decision.hp_start_allowed);
   assert(!decision.auxiliary_assist_recommended);
   assert(decision.released);
 
   hp1.updated_at_ms = sample_after_ms;
-  decision = evaluate_cold_start(sample_after_ms, hp1, hp2, 5.0f, 15.0f);
+  decision = evaluate_cold_start(sample_after_ms, hp1, hp2, 5.0f, 12.0f);
   assert(!decision.samples_ready);
   assert(!decision.hp_start_allowed);
 
   hp1 = ColdStartWaterSample{true, 10.0f, 1002};
   hp2 = ColdStartWaterSample{true, 4.0f, 1003};
-  decision = evaluate_cold_start(sample_after_ms, hp1, hp2, 5.0f, 15.0f);
+  decision = evaluate_cold_start(sample_after_ms, hp1, hp2, 5.0f, 12.0f);
   assert(decision.samples_ready);
   assert(decision.minimum_temperature_c == 4.0f);
   assert(!decision.hp_start_allowed);
 
   hp2.temperature_c = NAN;
-  decision = evaluate_cold_start(sample_after_ms, hp1, hp2, 5.0f, 15.0f);
+  decision = evaluate_cold_start(sample_after_ms, hp1, hp2, 5.0f, 12.0f);
   assert(!decision.samples_ready);
 }
 
