@@ -668,8 +668,8 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
     return `
       <section class="oq-helper-panel">
         <p class="oq-helper-label">${escapeHtml(getQuickStepKicker("boiler"))}</p>
-        <h2 class="oq-helper-section-title">CV-ketel of boiler</h2>
-        <p class="oq-helper-section-copy">Geef aan of er een ketel aanwezig is, hoe die is aangesloten en of deze automatisch mag overnemen wanneer alle warmtepompen door een storing uitvallen.</p>
+        <h2 class="oq-helper-section-title">Aanvullende warmtebron</h2>
+        <p class="oq-helper-section-copy">Dit kan bijvoorbeeld een cv-ketel, elektrische cv-ketel (e-cv) of doorstroomverwarmer zijn. Kies of de warmtebron hybride meeverwarmt bij een vermogenstekort en of deze mag overnemen wanneer geen warmtepomp beschikbaar is.</p>
         ${renderBoilerCvFields("oq-settings-grid oq-settings-grid--quickstart oq-settings-boiler-simple-grid", true)}
         ${renderQuickStartStepNav({
           nextDisabled: boilerConnectionMismatch,
@@ -1011,17 +1011,23 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
         : ["Gewenste flow", formatValue("flowSetpoint")],
     ];
 
-    const boilerLines = hasEntity("boilerCvAssistEnabled")
+    const sourcePresent = hasEntity("auxHeatSourcePresent")
+      ? isEntityActive("auxHeatSourcePresent")
+      : isEntityActive("boilerCvAssistEnabled");
+    const boilerLines = hasEntity("auxHeatSourcePresent") || hasEntity("boilerCvAssistEnabled")
       ? [
-          ["CV-ketel/boiler aanwezig", isEntityActive("boilerCvAssistEnabled") ? "Ja" : "Nee"],
-          ...(isEntityActive("boilerCvAssistEnabled")
+          ["Warmtebron aangesloten", sourcePresent ? "Ja" : "Nee"],
+          ...(sourcePresent
             ? [
                 ...(hasEntity("boilerConnection")
-                  ? [["Ketelaansluiting", String(getEntityValue("boilerConnection") || "R1") === "OpenTherm" ? "OpenTherm (OTB)" : "Aan/uit (R1)"]]
+                  ? [["Aansturing warmtebron", String(getEntityValue("boilerConnection") || "R1") === "OpenTherm" ? "OpenTherm (OTB)" : "Aan/uit (R1)"]]
                   : []),
-                ["Ingesteld ketelvermogen", formatValue("boilerRatedHeatPower")],
+                ["Beschikbaar verwarmingsvermogen", formatValue("boilerRatedHeatPower")],
+                ...(hasEntity("boilerCvAssistEnabled")
+                  ? [["Hybride verwarmen bij vermogenstekort", isEntityActive("boilerCvAssistEnabled") ? "Aan" : "Uit"]]
+                  : []),
                 ...(hasEntity("boilerFaultFallbackEnabled")
-                  ? [["Automatische ketelovername bij warmtepompstoring", isEntityActive("boilerFaultFallbackEnabled") ? "Aan" : "Uit"]]
+                  ? [["Overnemen wanneer de warmtepomp niet beschikbaar is", isEntityActive("boilerFaultFallbackEnabled") ? "Aan" : "Uit"]]
                   : []),
               ]
             : []),

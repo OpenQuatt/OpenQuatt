@@ -193,6 +193,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "minRuntime",
     ],
     service: [
+      "auxHeatSourcePresent",
       "compressorStarts2hWarningLimit",
       "compressorStarts72hWarningLimit",
       "compressorCyclingWarning2h",
@@ -239,6 +240,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       ...COMMISSIONING_STATE_KEYS,
       ...SENSOR_CALIBRATION_KEYS,
       ...SENSOR_CALIBRATION_STATE_KEYS,
+      "auxHeatSourcePresent",
       "boilerCvAssistEnabled",
       "boilerRatedHeatPower",
       "flowSelected",

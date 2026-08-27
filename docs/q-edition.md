@@ -156,7 +156,7 @@ Volg de route die de web-app voor jouw installatie toont. De basisstappen zijn:
 2. **Kies je Quatt Hybrid:** V1, V1.5 of V2.
 3. **Flowmeting configureren:** controleer en activeer de juiste flowbron.
 4. **Thermostaatgegevens configureren:** kies waar kamertemperatuur en kamer-setpoint vandaan komen.
-5. **CV-ketel of boiler:** geef aan of OpenQuatt deze als ondersteuning mag gebruiken.
+5. **Aanvullende warmtebron:** leg vast of een warmtebron is aangesloten, of deze hybride mag meeverwarmen bij een vermogenstekort en of deze mag overnemen wanneer geen warmtepomp beschikbaar is.
 6. **Kies de verwarmingsstrategie:** kies hoe OpenQuatt de verwarming regelt.
 7. **Werk de regeling uit:** stel Power House of de stooklijn verder in.
 8. **Flowregeling en afstelling:** leg vast hoe de pomp geregeld moet worden en welke waarden daarbij horen.

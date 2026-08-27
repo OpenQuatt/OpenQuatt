@@ -420,6 +420,7 @@ interval:
             id(oq_boiler_rearm_required) = false;
           }
           const oq_boiler::ControllerInput input{
+              id(oq_aux_heat_source_present).state,
               id(oq_boiler_assist_enabled).state,
               id(oq_boiler_fault_fallback_enabled).state,
               has_valid_supply_temp,
