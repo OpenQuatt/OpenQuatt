@@ -50,13 +50,13 @@ import { escapeHtml } from "../core/html.js";
     const sections = activeGroup === "installation"
       ? [
           renderSettingsGenerationSection(),
-          renderSettingsElectricalCurrentLimitSection(),
           renderSettingsBoilerCvSection(),
           renderSettingsAuxRelaySection(),
           renderSettingsFlowSection(),
           renderSettingsSilentSection(),
           renderSettingsWaterSection(),
           renderSettingsCompressorSection(),
+          renderSettingsElectricalCurrentLimitSection(),
           renderSettingsOduRuntimeFrequencySection(),
         ]
       : activeGroup === "service"

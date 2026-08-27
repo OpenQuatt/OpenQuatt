@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 globalThis.__OQ_PREVIEW__ = false;
@@ -27,6 +28,7 @@ const {
   renderSettingsCounterServiceSection,
 } = await import("../js/src/settings/service.js");
 const { renderSettingsElectricalCurrentLimitSection } = await import("../js/src/settings/electrical-limit.js");
+const settingsCoreSource = await readFile(new URL("../js/src/settings/core.js", import.meta.url), "utf8");
 
 function numberEntity(value, uom = "", extra = {}) {
   return {
@@ -151,6 +153,17 @@ test("elektrische ingangsgrens respecteert Single en Duo maxima", () => {
   });
   markup = renderSettingsElectricalCurrentLimitSection();
   assert.match(markup, /value="10"/);
+});
+
+test("elektrische ingangsgrens staat voor ODU runtime", () => {
+  const installationStart = settingsCoreSource.indexOf('activeGroup === "installation"');
+  const installationEnd = settingsCoreSource.indexOf(': activeGroup === "service"', installationStart);
+  const installationOrder = settingsCoreSource.slice(installationStart, installationEnd);
+  const electricalLimitIndex = installationOrder.indexOf("renderSettingsElectricalCurrentLimitSection()");
+  const oduRuntimeIndex = installationOrder.indexOf("renderSettingsOduRuntimeFrequencySection()");
+
+  assert.ok(electricalLimitIndex >= 0);
+  assert.ok(oduRuntimeIndex > electricalLimitIndex);
 });
 
 test("koelsterkte licht de lagere limiet tijdens stille modus toe", () => {
