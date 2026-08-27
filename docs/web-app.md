@@ -84,7 +84,7 @@ Quick Start begint op de Heatpump Controller Q met de configuratiekeuze en softw
 | `Kies je Quatt Hybrid` | V1, V1.5 of V2 | Selecteert de juiste basislogica voor jouw warmtepompgeneratie. |
 | `Flowmeting configureren` | De juiste flowbron | Zorgt dat de regeling de juiste meting gebruikt. |
 | `Thermostaatgegevens configureren` | Eén bron voor kamertemperatuur en setpoint | Voorkomt dat OpenQuatt waarden uit verschillende bronnen combineert. |
-| `Aanvullende warmtebron` | Aansluiting (`R1` of `OTB`), bijverwarming en reserveverwarming | Legt afzonderlijk vast of een warmtebron is aangesloten en wanneer OpenQuatt deze mag inzetten. Op Q-hardware controleert OpenQuatt bij een R1-keuze tijdens het opstarten kort of toch een OpenTherm-ketel antwoordt. Tijdens Quick Start wordt een gedetecteerde OT-ketel automatisch als `OpenTherm (OTB)` ingesteld en wordt die keuze toegelicht. Na afgeronde onboarding blijft een onverwachte OT-ketel geblokkeerd totdat de aansluiting handmatig is gecorrigeerd. |
+| `Aanvullende warmtebron` | Aansluiting (`R1` of `OTB`), hybride verwarmen en overname | Legt afzonderlijk vast of een warmtebron is aangesloten, of deze bij een vermogenstekort hybride mag meeverwarmen en of deze mag overnemen wanneer geen warmtepomp beschikbaar is. Op Q-hardware controleert OpenQuatt bij een R1-keuze tijdens het opstarten kort of toch een OpenTherm-ketel antwoordt. Tijdens Quick Start wordt een gedetecteerde OT-ketel automatisch als `OpenTherm (OTB)` ingesteld en wordt die keuze toegelicht. Na afgeronde onboarding blijft een onverwachte OT-ketel geblokkeerd totdat de aansluiting handmatig is gecorrigeerd. |
 | `Kies de verwarmingsstrategie` | `Power House` of `Water Temperature Control` | Bepaalt hoe OpenQuatt warmtevraag maakt en vervangt daarbij automatisch de warmtetoestemming (`Niet gebruiken` voor Power House; de eerder gekozen actieve thermostaatbron voor stooklijn). |
 | `Werk de regeling uit` | Strategie-instellingen | Toont alleen de instellingen die bij de gekozen strategie horen. |
 | `Flowregeling en afstelling` | Automatische flow of vaste pompstand | Bepaalt hoe OpenQuatt de waterdoorstroming regelt. |
@@ -172,7 +172,7 @@ Onder `Instellingen` staan de onderdelen bewust gescheiden. Het idee is: eerst d
 
 Hier staan basiskeuzes zoals Quatt Hybrid-versie, flowregeling, een aanvullende warmtebron, stille uren, watergrenzen en compressorinstellingen.
 
-Bij `Aanvullende warmtebron` leg je eerst vast of OpenQuatt een warmtebron fysiek kan aansturen. Daarna kies je afzonderlijk of die bron als `Bijverwarming` naast de warmtepomp mag werken en of `Reserveverwarming` is toegestaan wanneer geen warmtepomp veilig beschikbaar is. Reserveverwarming staat standaard uit. OpenQuatt schakelt pas over nadat de warmtepompen veilig zijn gestopt en flow, aanvoertemperatuur en aansturing geldig zijn. Een korte communicatiedip telt niet als uitval.
+Bij `Aanvullende warmtebron` leg je eerst vast of OpenQuatt een warmtebron fysiek kan aansturen. Daarna kies je afzonderlijk voor `Hybride verwarmen bij vermogenstekort` en `Overnemen wanneer de warmtepomp niet beschikbaar is`. Overname staat standaard uit. OpenQuatt schakelt pas over nadat de warmtepompen veilig zijn gestopt en flow, aanvoertemperatuur en aansturing geldig zijn. Een korte communicatiedip telt niet als uitval.
 
 Gebruik dit deel vooral tijdens de eerste inrichting of als je installatie later verandert.
 

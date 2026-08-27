@@ -386,11 +386,17 @@ test("auxiliary heat source setting remains editable on legacy firmware", () => 
   );
 });
 
-test("reserve heating setting explains its guarded scope", () => {
-  assert.match(installationSource, /Gebruiken als reserveverwarming/);
+test("fallback heating setting explains its guarded scope", () => {
+  assert.match(installationSource, /Overnemen wanneer de warmtepomp niet beschikbaar is/);
   assert.match(installationSource, /wanneer geen warmtepomp veilig beschikbaar is/);
   assert.match(installationSource, /na een veilige stop/);
   assert.match(installationSource, /Een korte communicatiedip telt niet als uitval/);
+});
+
+test("auxiliary heat source copy names common examples and explains hybrid heating", () => {
+  assert.match(installationSource, /cv-ketel, elektrische cv-ketel \(e-cv\) of doorstroomverwarmer/);
+  assert.match(installationSource, /Hybride verwarmen bij vermogenstekort/);
+  assert.match(installationSource, /het beschikbare warmtepompvermogen niet genoeg is/);
 });
 
 test("fault fallback is editable in Installation and the shared Quick Start boiler fields", () => {
@@ -411,7 +417,7 @@ test("fault fallback is editable in Installation and the shared Quick Start boil
   );
   assert.match(
     quickStartSource,
-    /\["Gebruiken als reserveverwarming", isEntityActive\("boilerFaultFallbackEnabled"\) \? "Aan" : "Uit"\]/,
+    /\["Overnemen wanneer de warmtepomp niet beschikbaar is", isEntityActive\("boilerFaultFallbackEnabled"\) \? "Aan" : "Uit"\]/,
   );
   assert.match(servicePanelSource, /renderInstallationMonitoringStatusRow/);
   assert.doesNotMatch(servicePanelSource, /boilerFaultFallbackEnabled/);
