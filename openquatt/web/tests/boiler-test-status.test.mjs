@@ -84,6 +84,11 @@ test("getBoilerTestStatusCopy FAILED shows mislukt with reason", () => {
   assert.equal(copy, "Mislukt: boiler active state not confirmed");
 });
 
+test("getBoilerTestStatusCopy explains an unstable power timeout", () => {
+  const copy = getBoilerTestStatusCopy("FAILED: boiler power did not stabilise", 800, 800);
+  assert.equal(copy, "Mislukt: het ketelvermogen werd niet stabiel binnen de testtijd.");
+});
+
 test("getBoilerTestStatusCopy REFUSED shows start geweigerd", () => {
   const copy = getBoilerTestStatusCopy("REFUSED: boiler/CV assist disabled", 800, 800);
   assert.equal(copy, "Start geweigerd: boiler/CV assist disabled");

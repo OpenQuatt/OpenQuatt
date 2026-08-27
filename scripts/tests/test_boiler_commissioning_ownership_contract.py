@@ -44,6 +44,13 @@ class BoilerCommissioningOwnershipContract(unittest.TestCase):
             BOILER_RUNTIME,
         )
 
+    def test_measurement_uses_rebasable_power_plateau(self) -> None:
+        self.assertIn("PowerPlateauMonitor power_plateau_", BOILER_RUNTIME)
+        self.assertIn("POWER_PLATEAU_LOST", BOILER_RUNTIME)
+        self.assertIn("reset_power_samples()", BOILER_RUNTIME)
+        self.assertNotIn("peak_w_", BOILER_RUNTIME)
+        self.assertIn('"FAILED: boiler power did not stabilise"', BOILER_RUNTIME)
+
     def test_dispatch_reuses_commissioning_temperature_policy(self) -> None:
         self.assertIn("oq_boiler_commissioning::commissioning_target_temperature_c", BOILER_DISPATCH)
         commissioning_start = BOILER_DISPATCH.index("} else if (commissioning_task_active) {")

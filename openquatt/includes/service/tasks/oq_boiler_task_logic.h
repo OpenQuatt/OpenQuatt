@@ -257,7 +257,10 @@ class BoilerPowerTestRuntime {
       id(oq_commissioning_state_since_ms) = now_ms;
     }
     if ((uint32_t)(now_ms - id(oq_commissioning_started_ms)) >= cfg.max_runtime_ms) {
-      finish_task("FAILED: timeout", STATE_FAILED, false, true);
+      const char* failure_status = id(oq_commissioning_state_code) == STATE_MEASURE
+                                       ? "FAILED: boiler power did not stabilise"
+                                       : "FAILED: timeout";
+      finish_task(failure_status, STATE_FAILED, false, true);
       return;
     }
     if (!guards_ok()) return;
@@ -309,13 +312,12 @@ class BoilerPowerTestRuntime {
   bool active_test_result_apply_allowed_{false};
   oq_boiler_commissioning::FlowReachabilityMonitor flow_reachability_{};
   oq_boiler_commissioning::BoilerActivationSettleMonitor boiler_activation_settle_{};
+  oq_boiler_commissioning::PowerPlateauMonitor power_plateau_{};
   int stable_flow_count_{0};
   int sample_count_{0};
   float sum_w_{0.0f};
   float min_w_{NAN};
   float max_w_{NAN};
-  float peak_w_{NAN};
-  int plateau_count_{0};
   int last_state_logged_{-1};
   uint32_t last_heartbeat_ms_{0};
   std::string last_status_{};
@@ -353,12 +355,15 @@ class BoilerPowerTestRuntime {
 
   void reset_measurement_accumulators() {
     stable_flow_count_ = 0;
+    power_plateau_.reset();
+    reset_power_samples();
+  }
+
+  void reset_power_samples() {
     sample_count_ = 0;
     sum_w_ = 0.0f;
     min_w_ = NAN;
     max_w_ = NAN;
-    peak_w_ = NAN;
-    plateau_count_ = 0;
   }
 
   void reset_test_state() {
@@ -571,22 +576,17 @@ class BoilerPowerTestRuntime {
 
   void run_measure(const RuntimeConfig& cfg, uint32_t now_ms, bool flow_stable_now, bool heat_valid, float heat_w) {
     if (flow_stable_now && heat_valid && heat_w > 0.0f) {
-      if (isnan(peak_w_) || heat_w > peak_w_) {
-        peak_w_ = heat_w;
-        plateau_count_ = 0;
-      }
-      const float plateau_floor = isnan(peak_w_) ? heat_w : peak_w_ * cfg.plateau_ratio;
-      if (heat_w >= plateau_floor) {
-        if (plateau_count_ < 1000) plateau_count_++;
-      } else {
-        plateau_count_ = 0;
-      }
-      if (plateau_count_ >= cfg.plateau_confirm_samples) {
+      const auto plateau_update = power_plateau_.update(heat_w, cfg.plateau_ratio, cfg.plateau_confirm_samples);
+      if (plateau_update == oq_boiler_commissioning::POWER_PLATEAU_LOST) reset_power_samples();
+      if (plateau_update == oq_boiler_commissioning::POWER_PLATEAU_STABLE) {
         sample_count_++;
         sum_w_ += heat_w;
         if (isnan(min_w_) || heat_w < min_w_) min_w_ = heat_w;
         if (isnan(max_w_) || heat_w > max_w_) max_w_ = heat_w;
       }
+    } else {
+      const auto plateau_update = power_plateau_.update(NAN, cfg.plateau_ratio, cfg.plateau_confirm_samples);
+      if (plateau_update == oq_boiler_commissioning::POWER_PLATEAU_LOST) reset_power_samples();
     }
 
     const uint32_t measure_age_ms = now_ms - id(oq_commissioning_state_since_ms);

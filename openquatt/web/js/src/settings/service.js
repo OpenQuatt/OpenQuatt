@@ -434,6 +434,9 @@ import { renderModalShell } from "../core/modal-shell.js";
       const reason = status.slice(status.indexOf(":") + 1).trim();
       return `Start geweigerd: ${reason}`;
     }
+    if (upper.includes("FAILED: BOILER POWER DID NOT STABILISE")) {
+      return "Mislukt: het ketelvermogen werd niet stabiel binnen de testtijd.";
+    }
     if (upper.includes("FAILED")) {
       const colonIdx = status.indexOf(":");
       if (colonIdx > 0) {
@@ -836,7 +839,7 @@ import { renderModalShell } from "../core/modal-shell.js";
         cardMarkup: renderCommissioningTaskCard({
           taskKey: "boiler",
           title: "Boiler power test",
-          copy: "Controleert ketelstart, stabiele flow en veilige warmteoverdracht. Het gemeten waterzijdige vermogen is indicatief; de test is niet nodig voor normale regeling. Gebruik het ingestelde ketelvermogen. Sommige OpenTherm-ketels melden daarnaast hun nominale maximum via ID15. Duur: meestal 5 tot 10 minuten.",
+          copy: "Controleert ketelstart, stabiele flow en veilige warmteoverdracht. Het gemeten waterzijdige vermogen is indicatief; de test is niet nodig voor normale regeling. Gebruik het ingestelde ketelvermogen. Sommige OpenTherm-ketels melden daarnaast hun nominale maximum via ID15. Duur: meestal 5 tot 15 minuten.",
           subcopy: `Beschikbaar verwarmingsvermogen: ${escapeHtml(boilerRatedPower)}`,
           status: boilerStatusDisplay,
           statusCopy: boilerTaskWaitingForCm100

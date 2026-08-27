@@ -19,7 +19,7 @@ export const WEB_BUNDLE_BUDGETS = [
     // plus hervatbare, fail-closed Quick Start-OTA met main-/doelcontrole en duurzaam post-bootbewijs,
     // afzonderlijke rollen voor een aangesloten aanvullende warmtebron, hybride verwarmen en overname,
     // and the issue-516 boiler/OpenTherm debug-recording fields.
-    raw: 958_000,
+    raw: 959_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

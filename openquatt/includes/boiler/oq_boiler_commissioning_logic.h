@@ -200,6 +200,83 @@ class BoilerActivationSettleMonitor {
   uint32_t active_since_ms_{0};
 };
 
+enum PowerPlateauUpdate : uint8_t {
+  POWER_PLATEAU_WAITING = 0,
+  POWER_PLATEAU_STABLE,
+  POWER_PLATEAU_LOST,
+};
+
+class PowerPlateauMonitor {
+ public:
+  static constexpr int kMaxWindowSamples = 8;
+
+  void reset() {
+    sample_count_ = 0;
+    next_sample_ = 0;
+    reference_w_ = NAN;
+    stable_ = false;
+  }
+
+  PowerPlateauUpdate update(float power_w, float plateau_ratio, int required_samples) {
+    if (!isfinite(power_w) || power_w <= 0.0f || !isfinite(plateau_ratio) || plateau_ratio <= 0.0f ||
+        plateau_ratio >= 1.0f || required_samples < 2 || required_samples > kMaxWindowSamples) {
+      const bool was_stable = stable_;
+      reset();
+      return was_stable ? POWER_PLATEAU_LOST : POWER_PLATEAU_WAITING;
+    }
+
+    if (stable_) {
+      const float tolerance = 1.0f - plateau_ratio;
+      const float lower_w = reference_w_ * (1.0f - tolerance);
+      const float upper_w = reference_w_ * (1.0f + tolerance);
+      if (power_w >= lower_w && power_w <= upper_w) return POWER_PLATEAU_STABLE;
+
+      reset();
+      push_sample(power_w, required_samples);
+      return POWER_PLATEAU_LOST;
+    }
+
+    push_sample(power_w, required_samples);
+    if (sample_count_ < required_samples) return POWER_PLATEAU_WAITING;
+
+    float min_w = samples_[0];
+    float max_w = samples_[0];
+    float sum_w = 0.0f;
+    for (int i = 0; i < required_samples; i++) {
+      min_w = fminf(min_w, samples_[i]);
+      max_w = fmaxf(max_w, samples_[i]);
+      sum_w += samples_[i];
+    }
+    const float average_w = sum_w / (float)required_samples;
+    const float allowed_spread_w = average_w * (1.0f - plateau_ratio);
+    if (max_w - min_w > allowed_spread_w) return POWER_PLATEAU_WAITING;
+
+    reference_w_ = average_w;
+    stable_ = true;
+    return POWER_PLATEAU_STABLE;
+  }
+
+  bool stable() const { return stable_; }
+  float reference_w() const { return reference_w_; }
+
+ private:
+  void push_sample(float power_w, int required_samples) {
+    if (sample_count_ < required_samples) {
+      samples_[sample_count_++] = power_w;
+      next_sample_ = sample_count_ % required_samples;
+      return;
+    }
+    samples_[next_sample_] = power_w;
+    next_sample_ = (next_sample_ + 1) % required_samples;
+  }
+
+  float samples_[kMaxWindowSamples]{};
+  int sample_count_{0};
+  int next_sample_{0};
+  float reference_w_{NAN};
+  bool stable_{false};
+};
+
 inline bool result_apply_allowed(bool opentherm_selected, bool capacity_verified, bool flow_limited) {
   return !opentherm_selected || (capacity_verified && !flow_limited);
 }
