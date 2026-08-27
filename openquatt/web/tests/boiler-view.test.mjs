@@ -336,11 +336,13 @@ test("integration diagnostics separates thermostat, boiler control, OTB and CiC"
 });
 
 test("settings hydration loads boiler setup and diagnostics before rendering", () => {
+  assert.ok(FAST_OVERVIEW_KEYS.includes("auxHeatSourcePresent"));
   assert.ok(FAST_OVERVIEW_KEYS.includes("boilerCvAssistEnabled"));
   assert.ok(FAST_OVERVIEW_KEYS.includes("boilerRatedHeatPower"));
   assert.ok(FAST_OVERVIEW_KEYS.includes("boilerConnection"));
   assert.ok(FAST_OVERVIEW_KEYS.includes("boilerFaultFallbackEnabled"));
   assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.installation.includes("boilerConnection"));
+  assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.installation.includes("auxHeatSourcePresent"));
   assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.installation.includes("boilerRatedHeatPower"));
   assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.installation.includes("boilerFaultFallbackEnabled"));
   assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.installation.includes("otbLinkAvailable"));
@@ -369,11 +371,26 @@ test("settings hydration loads boiler setup and diagnostics before rendering", (
   );
 });
 
-test("fault fallback setting explains the consequence of both switch states", () => {
-  assert.match(installationSource, /Automatische ketelovername bij warmtepompstoring/);
-  assert.match(installationSource, /OpenQuatt stelt dit zelf vast/);
-  assert.match(installationSource, /je hoeft niets te bevestigen/);
-  assert.match(installationSource, /Een korte communicatiedip telt niet als storing/);
+test("auxiliary heat source setting remains editable on legacy firmware", () => {
+  assert.match(
+    installationSource,
+    /const sourcePresenceKey = separateSourcePolicyAvailable[\s\S]*?"auxHeatSourcePresent"[\s\S]*?: "boilerCvAssistEnabled"/,
+  );
+  assert.match(
+    installationSource,
+    /renderSettingsCompactSwitchControl\(sourcePresenceKey, "Warmtebron aangesloten"/,
+  );
+  assert.match(
+    installationSource,
+    /sourcePresent && separateSourcePolicyAvailable && assistSettingAvailable/,
+  );
+});
+
+test("reserve heating setting explains its guarded scope", () => {
+  assert.match(installationSource, /Gebruiken als reserveverwarming/);
+  assert.match(installationSource, /wanneer geen warmtepomp veilig beschikbaar is/);
+  assert.match(installationSource, /na een veilige stop/);
+  assert.match(installationSource, /Een korte communicatiedip telt niet als uitval/);
 });
 
 test("fault fallback is editable in Installation and the shared Quick Start boiler fields", () => {
@@ -394,7 +411,7 @@ test("fault fallback is editable in Installation and the shared Quick Start boil
   );
   assert.match(
     quickStartSource,
-    /\["Automatische ketelovername bij warmtepompstoring", isEntityActive\("boilerFaultFallbackEnabled"\) \? "Aan" : "Uit"\]/,
+    /\["Gebruiken als reserveverwarming", isEntityActive\("boilerFaultFallbackEnabled"\) \? "Aan" : "Uit"\]/,
   );
   assert.match(servicePanelSource, /renderInstallationMonitoringStatusRow/);
   assert.doesNotMatch(servicePanelSource, /boilerFaultFallbackEnabled/);
@@ -420,7 +437,7 @@ test("onboarding auto-selects a detected OpenTherm boiler and explains the choic
   assert.match(installationSource, /automatisch als ketelaansluiting geselecteerd/);
   assert.match(
     installationSource,
-    /boilerPresent \|\| boilerConnectionMismatch \|\| boilerConnectionAutoSelected/,
+    /sourcePresent \|\| boilerConnectionMismatch \|\| boilerConnectionAutoSelected/,
   );
 });
 
@@ -439,10 +456,10 @@ test("firmware publishes boiler connection mismatch transitions immediately", ()
   );
 });
 
-test("Quick Start keeps the mismatch remedy visible when boiler assist is off", () => {
+test("Quick Start keeps the mismatch remedy visible when the source is disconnected", () => {
   assert.match(
     installationSource,
-    /\(boilerPresent \|\| boilerConnectionMismatch \|\| boilerConnectionAutoSelected\) && boilerConnectionAvailable \? renderSettingsFieldCard/,
+    /\(sourcePresent \|\| boilerConnectionMismatch \|\| boilerConnectionAutoSelected\) && boilerConnectionAvailable \? renderSettingsFieldCard/,
   );
   assert.match(installationSource, /OpenTherm-ketel gevonden/);
 });

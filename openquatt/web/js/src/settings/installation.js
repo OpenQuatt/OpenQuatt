@@ -19,8 +19,8 @@ import { getSelectEntityOptions, renderNamedActionButton, renderSettingsAdvanced
 import { renderSettingsHeatPumpLimiterCard } from "./heating.js";
 import { escapeHtml } from "../core/html.js";
 
-const BOILER_FAULT_FALLBACK_TITLE = "Automatische ketelovername bij warmtepompstoring";
-const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepompen door een storing uitvallen. Dit gebeurt pas na veilige stop en geldige flow, temperatuur en ketelaansturing. OpenQuatt stelt dit zelf vast; je hoeft niets te bevestigen. Een korte communicatiedip telt niet als storing.";
+const AUX_HEAT_BACKUP_TITLE = "Gebruiken als reserveverwarming";
+const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer geen warmtepomp veilig beschikbaar is. Dit gebeurt pas na een veilige stop en geldige flow, temperatuur en aansturing. Een korte communicatiedip telt niet als uitval.";
 
   export function getOduRuntimeFrequencyHpIndexes() {
     return ODU_RUNTIME_FREQUENCY_HP_IDS.filter((hpIndex) => (
@@ -879,15 +879,24 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
     className = "oq-settings-grid oq-settings-boiler-simple-grid",
     includeFaultFallback = false,
   ) {
-    if (!hasEntity("boilerCvAssistEnabled")) {
+    if (!hasEntity("auxHeatSourcePresent") && !hasEntity("boilerCvAssistEnabled")) {
       return "";
     }
 
-    const boilerPresent = isEntityActive("boilerCvAssistEnabled");
+    const separateSourcePolicyAvailable = hasEntity("auxHeatSourcePresent");
+    const sourcePresenceKey = separateSourcePolicyAvailable
+      ? "auxHeatSourcePresent"
+      : "boilerCvAssistEnabled";
+    const sourcePresent = separateSourcePolicyAvailable
+      ? isEntityActive("auxHeatSourcePresent")
+      : isEntityActive("boilerCvAssistEnabled");
+    const sourcePresentBusy = state.loadingEntities || state.busyAction === `switch-${sourcePresenceKey}`;
+    const assistSettingAvailable = hasEntity("boilerCvAssistEnabled");
+    const assistEnabled = assistSettingAvailable && isEntityActive("boilerCvAssistEnabled");
+    const assistBusy = state.loadingEntities || state.busyAction === "switch-boilerCvAssistEnabled";
     const boilerPowerEntityAvailable = hasEntity("boilerRatedHeatPower");
     const boilerMeta = getNumberMeta("boilerRatedHeatPower");
     const boilerValue = getInputDraftValue("boilerRatedHeatPower");
-    const boilerBusy = state.loadingEntities || state.busyAction === "switch-boilerCvAssistEnabled";
     const fallbackSettingAvailable = hasEntity("boilerFaultFallbackEnabled");
     const fallbackEnabled = fallbackSettingAvailable && isEntityActive("boilerFaultFallbackEnabled");
     const fallbackBusy = state.loadingEntities || state.busyAction === "switch-boilerFaultFallbackEnabled";
@@ -930,7 +939,7 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
         <p>De aansluitingskeuze is tijdelijk geblokkeerd.</p>
       </div>
     ` : "";
-    const boilerPowerMissingHint = "Deze firmware levert nog geen bewerkbare boilervermogensinstelling.";
+    const boilerPowerMissingHint = "Deze firmware levert nog geen bewerkbare vermogensinstelling voor de warmtebron.";
     const boilerPowerControl = boilerPowerEntityAvailable
       ? renderNumberInputControl({
           key: "boilerRatedHeatPower",
@@ -945,7 +954,7 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
           <p>${escapeHtml(boilerPowerMissingHint)}</p>
         </div>
       `;
-    const boilerPowerFooter = boilerPresent && boilerPowerEntityAvailable
+    const boilerPowerFooter = sourcePresent && boilerPowerEntityAvailable
       ? `<p class="oq-settings-boiler-power-note">Je kunt deze waarde altijd handmatig aanpassen.</p>`
       : "";
     const boilerConnectionFooter = boilerConnectionAutoSelected
@@ -967,75 +976,91 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
           <p class="oq-settings-boiler-connection-note">OT-controle bij opstart actief.</p>
         `
         : "";
-    const supportSwitchingFields = !isCurveMode() && boilerPresent
+    const supportSwitchingFields = !isCurveMode() && sourcePresent && assistEnabled
       ? [
           renderSettingsNumberField(
             "boilerSupportStartThreshold",
             "Ondersteuning starten vanaf",
-            "Standaard 1000 W. Power House moet eerst minimaal 2 minuten zonder ketelondersteuning draaien; daarna moet het warmtetekort 5 minuten onafgebroken boven deze grens blijven.",
+            "Standaard 1000 W. Power House moet eerst minimaal 2 minuten zonder bijverwarming draaien; daarna moet het warmtetekort 5 minuten onafgebroken boven deze grens blijven.",
           ),
           renderSettingsNumberField(
             "boilerSupportStopThreshold",
             "Ondersteuning stoppen onder",
-            "Standaard 400 W. Ketelondersteuning blijft minimaal 5 minuten actief en stopt pas wanneer het warmtetekort daarna 2 minuten onder deze grens blijft.",
+            "Standaard 400 W. Bijverwarming blijft minimaal 5 minuten actief en stopt pas wanneer het warmtetekort daarna 2 minuten onder deze grens blijft.",
           ),
         ].filter(Boolean).join("")
       : "";
     const supportSwitchingMarkup = renderSettingsAdvancedDisclosure(
       "boiler-support",
-      "Wanneer ketelondersteuning start en stopt",
-      "Alleen voor Power House. Het warmtetekort is het gevraagde woningvermogen min het maximaal beschikbare warmtepompvermogen, met minimaal 0 W. Tussen beide grenzen blijft de huidige toestand behouden. Deze waarden veranderen het ketelvermogen en de OpenTherm-aansturing niet.",
+      "Wanneer bijverwarming start en stopt",
+      "Alleen voor Power House. Het warmtetekort is het gevraagde woningvermogen min het maximaal beschikbare warmtepompvermogen, met minimaal 0 W. Tussen beide grenzen blijft de huidige toestand behouden. Deze waarden veranderen het beschikbare verwarmingsvermogen en de aansturing niet.",
       supportSwitchingFields ? `<div class="oq-settings-grid">${supportSwitchingFields}</div>` : "",
     );
 
     return `
         <div class="${escapeHtml(className)}">
           ${renderSettingsFieldCard(
-            "boilerCvAssistEnabled",
-            "CV-ketel / boiler aanwezig",
-            "Geef aan of OpenQuatt deze installatie als ondersteuning mag gebruiken.",
+            sourcePresenceKey,
+            "Warmtebron aangesloten",
+            "Zet dit aan als OpenQuatt een aanvullende warmtebron fysiek kan aansturen.",
             `
               <div class="oq-settings-compact-switch-field">
-                ${renderSettingsCompactSwitchControl("boilerCvAssistEnabled", "CV-ketel / boiler aanwezig", boilerPresent, boilerBusy)}
+                ${renderSettingsCompactSwitchControl(sourcePresenceKey, "Warmtebron aangesloten", sourcePresent, sourcePresentBusy)}
               </div>
             `,
             "oq-settings-field--compact",
           )}
 
-          ${(boilerPresent || boilerConnectionMismatch || boilerConnectionAutoSelected) && boilerConnectionAvailable ? renderSettingsFieldCard(
+          ${(sourcePresent || boilerConnectionMismatch || boilerConnectionAutoSelected) && boilerConnectionAvailable ? renderSettingsFieldCard(
             "boilerConnection",
-            "Ketelaansluiting",
+            "Aansturing warmtebron",
             !openthermBoilerCapabilityKnown
-              ? "OpenQuatt controleert welke ketelaansluitingen deze hardware ondersteunt."
+              ? "OpenQuatt controleert welke aansturingen deze hardware ondersteunt."
               : openthermBoilerSupported
-              ? "Kies de aansluiting die fysiek met de ketel is verbonden. OpenQuatt gebruikt nooit beide routes tegelijk."
+              ? "Kies de route waarmee de warmtebron fysiek is verbonden. OpenQuatt gebruikt nooit beide routes tegelijk."
               : "Deze hardware ondersteunt alleen de aan/uit-aansluiting via R1.",
             boilerConnectionControl,
             "oq-settings-field--compact",
             boilerConnectionFooter,
           ) : ""}
 
-          ${boilerPresent ? renderSettingsFieldCard(
+          ${sourcePresent ? renderSettingsFieldCard(
             "boilerRatedHeatPower",
-            "Ingesteld boilervermogen",
+            "Beschikbaar verwarmingsvermogen",
             "Vul hier het vermogen in dat OpenQuatt mag meerekenen.",
             `
               <div class="oq-settings-boiler-power-inline">
                 ${boilerPowerControl}
               </div>
             `,
-            boilerPresent && boilerPowerEntityAvailable ? "oq-settings-field--compact" : "oq-settings-field--compact is-disabled",
+            sourcePresent && boilerPowerEntityAvailable ? "oq-settings-field--compact" : "oq-settings-field--compact is-disabled",
             boilerPowerFooter,
           ) : ""}
-          ${boilerPresent && includeFaultFallback && fallbackSettingAvailable ? renderSettingsFieldCard(
+          ${sourcePresent && separateSourcePolicyAvailable && assistSettingAvailable ? renderSettingsFieldCard(
+            "boilerCvAssistEnabled",
+            "Gebruiken als bijverwarming",
+            "Laat de warmtebron naast de warmtepomp meeverwarmen bij extra warmtevraag.",
+            `
+              <div class="oq-settings-compact-switch-field">
+                ${renderSettingsCompactSwitchControl(
+                  "boilerCvAssistEnabled",
+                  "Gebruiken als bijverwarming",
+                  assistEnabled,
+                  assistBusy,
+                )}
+              </div>
+            `,
+            "oq-settings-field--compact",
+          ) : ""}
+          ${sourcePresent && includeFaultFallback && fallbackSettingAvailable ? renderSettingsFieldCard(
             "boilerFaultFallbackEnabled",
-            BOILER_FAULT_FALLBACK_TITLE,
-            BOILER_FAULT_FALLBACK_COPY,
+            AUX_HEAT_BACKUP_TITLE,
+            AUX_HEAT_BACKUP_COPY,
             `
               <div class="oq-settings-compact-switch-field">
                 ${renderSettingsCompactSwitchControl(
                   "boilerFaultFallbackEnabled",
-                  BOILER_FAULT_FALLBACK_TITLE,
+                  AUX_HEAT_BACKUP_TITLE,
                   fallbackEnabled,
                   fallbackBusy,
                 )}
@@ -1050,17 +1075,19 @@ const BOILER_FAULT_FALLBACK_COPY = "Laat de cv-ketel overnemen als alle warmtepo
   }
 
   export function renderSettingsBoilerCvSection() {
-    if (!hasEntity("boilerCvAssistEnabled")) {
+    if (!hasEntity("auxHeatSourcePresent") && !hasEntity("boilerCvAssistEnabled")) {
       return "";
     }
 
-    const boilerPresent = isEntityActive("boilerCvAssistEnabled");
+    const sourcePresent = hasEntity("auxHeatSourcePresent")
+      ? isEntityActive("auxHeatSourcePresent")
+      : isEntityActive("boilerCvAssistEnabled");
     return renderSettingsSection(
       "Basis",
-      "CV-ketel of boiler",
-      boilerPresent
-        ? "Kies hoe de ketel is aangesloten en hoeveel effectief vermogen OpenQuatt als ondersteuning mag gebruiken."
-        : "Geef aan of OpenQuatt een CV-ketel of boiler als ondersteuning mag gebruiken.",
+      "Aanvullende warmtebron",
+      sourcePresent
+        ? "Kies hoe de warmtebron is aangesloten en wanneer OpenQuatt deze mag gebruiken."
+        : "Geef aan of OpenQuatt een aanvullende warmtebron kan aansturen.",
       renderBoilerCvFields("oq-settings-grid oq-settings-boiler-simple-grid", true),
     );
   }
