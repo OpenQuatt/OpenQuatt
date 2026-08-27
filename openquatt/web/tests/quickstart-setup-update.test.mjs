@@ -92,6 +92,12 @@ test("de actuele main-versie en configuratie hebben geen OTA nodig", () => {
   assert.equal(hasKnownFirmwareTargetVersion(), true);
   assert.equal(isQuickStartSetupFirmwareCurrent(model), true);
 
+  delete state.entities.firmwareUpdate.latest_version;
+  state.entities.firmwareUpdate.value = "v0.48.0";
+  state.entities.firmwareUpdate.state = "NO UPDATE";
+  assert.equal(hasKnownFirmwareTargetVersion(), true);
+  assert.equal(isQuickStartSetupFirmwareCurrent(model), true);
+
   const changedModel = getFirmwareBuildSwitchModel("duo", "eth");
   assert.equal(changedModel.targetOption, "alternate topology and connection");
   assert.equal(changedModel.canSwitch, true);
@@ -284,9 +290,12 @@ test("de Quick Start-actie controleert current build en blokkeert vervolgstappen
   assert.match(action, /await installQuickStartSetupFirmware\(model\);/);
   assert.match(viewSource, /Configuratie en software-update/);
   assert.match(viewSource, /data-oq-quickstart-setup-confirm="true"/);
-  assert.match(viewSource, /Configuratie bevestigen en software bijwerken/);
+  assert.match(viewSource, /Configuratie bevestigen en software controleren/);
   assert.match(viewSource, /Configuratie bevestigen/);
   assert.match(viewSource, /Nieuwste main-versie/);
+  assert.match(viewSource, /Wordt na bevestigen gecontroleerd/);
+  assert.doesNotMatch(viewSource, /als het kanaal, de versie of configuratie afwijkt/);
+  assert.doesNotMatch(viewSource, /zet het kanaal op main/);
   assert.match(viewSource, /dev- of testbuild/);
   assert.match(viewSource, /selectionAllowed \? "" : "disabled"/);
   assert.match(uiActionsSource, /isQuickStartStepSelectionAllowed\(stepId\)/);

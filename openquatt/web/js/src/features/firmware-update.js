@@ -617,8 +617,7 @@ import { render } from "../core/render-scheduler.js";
       return latest;
     }
     const value = String(entity.value || "").trim();
-    const current = String(entity.current_version || "").trim();
-    if (value && value !== current && /^v/i.test(value)) {
+    if (value && /^v/i.test(value)) {
       return value;
     }
     return "";

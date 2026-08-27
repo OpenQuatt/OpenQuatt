@@ -43,7 +43,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
       && isFirmwareEntityAlignedWithChannel(firmwareEntity, "main")
       && isFirmwareUpdateEntityForBuild(model.targetBuildLabel, firmwareEntity);
     const currentVersion = getFirmwareCurrentVersion(firmwareEntity) || "Onbekend";
-    const mainVersion = mainManifestReady ? getFirmwareLatestVersion(firmwareEntity) || "Onbekend" : "Wordt gecontroleerd";
+    const mainVersion = mainManifestReady ? getFirmwareLatestVersion(firmwareEntity) || "Onbekend" : "Wordt na bevestigen gecontroleerd";
     const firmwareCurrent = mainManifestReady && isQuickStartSetupFirmwareCurrent(model);
     const options = [
       ["single:wifi", "Single · Wi-Fi", "Eén warmtepomp via het draadloze netwerk."],
@@ -63,7 +63,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
       <section class="oq-helper-panel">
         <p class="oq-helper-label">${escapeHtml(getQuickStepKicker("setup"))}</p>
         <h2 class="oq-helper-section-title">Configuratie en software-update</h2>
-        <p class="oq-helper-section-copy">Kies de configuratie van je Q-edition. OpenQuatt controleert daarna de nieuwste stabiele main-release en installeert deze alleen als het kanaal, de versie of configuratie afwijkt.</p>
+        <p class="oq-helper-section-copy">Kies de configuratie van je Q-edition. OpenQuatt controleert daarna de nieuwste stabiele main-release en installeert deze alleen als de versie of configuratie afwijkt.</p>
         <div class="oq-helper-fields">
           ${options.map(([key, title, copy]) => {
             const selected = model.selectedKey === key;
@@ -106,15 +106,15 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
               <div class="oq-helper-modal-row"><span class="oq-helper-modal-label">Nieuwste main-versie</span><strong class="oq-helper-modal-value">${escapeHtml(mainVersion)}</strong></div>
             </div>
             <p class="oq-helper-modal-note">${firmwareCurrent
-              ? "Kanaal, versie en doelbuild kloppen. Na bevestigen gaat Quick Start zonder OTA verder."
-              : "OpenQuatt zet het kanaal op main en controleert versie en doelbuild. Alleen bij een afwijking volgt OTA en herstart. Instellingen blijven behouden."}</p>
+              ? "Softwareversie en configuratie kloppen. Na bevestigen gaat Quick Start zonder OTA verder."
+              : "OpenQuatt controleert de stabiele softwareversie en gekozen configuratie. Alleen bij een afwijking volgt OTA en herstart. Instellingen blijven behouden."}</p>
             <label class="oq-helper-modal-check">
               <input type="checkbox" data-oq-quickstart-setup-confirm="true" ${state.quickStartSetupConfirmed ? "checked" : ""} ${busy ? "disabled" : ""}>
               <span>${escapeHtml(requirements.join(" "))}</span>
             </label>
             <div class="oq-firmware-advanced-footer">
               <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="install-quickstart-setup" ${busy || !state.quickStartSetupConfirmed || !model.canInstall ? "disabled" : ""}>
-                ${busy ? "Configuratie en software controleren..." : firmwareCurrent ? "Configuratie bevestigen" : "Configuratie bevestigen en software bijwerken"}
+                ${busy ? "Configuratie en software controleren..." : firmwareCurrent ? "Configuratie bevestigen" : "Configuratie bevestigen en software controleren"}
               </button>
             </div>
             ${!model.canInstall && !busy ? `<p class="oq-helper-modal-note oq-helper-modal-note--muted">${escapeHtml(
