@@ -176,6 +176,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
   export const INITIAL_SETTINGS_READY_KEY_MAP = {
     installation: [
       "hpGeneration",
+      "electricalCurrentLimit",
       "boilerCvAssistEnabled",
       "boilerRatedHeatPower",
       ...BOILER_SETTING_KEYS,
@@ -192,6 +193,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "minRuntime",
     ],
     service: [
+      "auxHeatSourcePresent",
       "compressorStarts2hWarningLimit",
       "compressorStarts72hWarningLimit",
       "compressorCyclingWarning2h",
@@ -212,6 +214,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "setupComplete",
       "installationTopology",
       "hpGeneration",
+      "electricalCurrentLimit",
       ...ODU_GENERATION_KEYS,
       ...ODU_GENERATION_DETECT_KEYS,
       "boilerCvAssistEnabled",
@@ -238,6 +241,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "hpGeneration",
       ...SENSOR_CALIBRATION_KEYS,
       ...SENSOR_CALIBRATION_STATE_KEYS,
+      "auxHeatSourcePresent",
       "boilerCvAssistEnabled",
       "boilerRatedHeatPower",
       "flowSelected",

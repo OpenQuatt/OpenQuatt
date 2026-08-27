@@ -128,9 +128,11 @@ oq_power_peak_trip_s: "15"                            # Time above peak required
 oq_power_soft_trip_s: "300"                           # Time above soft required for a mild cap step [s].
 oq_power_recover_s: "60"                              # Time below recover required for cap recovery [s].
 oq_power_cap_max_f: "20"                              # Upper limit of demand-cap factor f.
-oq_power_cap_nan_f: "16"                              # Fail-safe cap factor for invalid power measurement.
+oq_power_cap_nan_f: "16"                              # Duo fail-safe demand cap for invalid power measurement; Single uses half.
 oq_duo_current_limit_v1_a: "16.0"                     # Duo current limit for V1/V1.5 hardware [A].
 oq_duo_current_limit_v2_a: "20.0"                     # Duo current limit for V2 hardware [A].
+oq_electrical_current_limit_min_a: "10.0"             # Lowest configurable installation current limit [A].
+oq_power_measurement_stale_s: "60"                    # Maximum age of voltage/current measurements used by the limiter [s].
 oq_mains_voltage_v: "230.0"                           # Nominal mains voltage used to convert current limits to power thresholds [V].
 oq_cm_prepost_s: "30"                                 # Duration of CM1 pre/postflow window [s].
 oq_cm_min_flow_lph: "250.0"                           # Minimum valid flow for compressor operation [L/h].
@@ -151,6 +153,9 @@ oq_cm3_min_run_s: "300"                               # Minimum dwell time in CM
 oq_cm2_min_run_s: "120"                               # Minimum dwell time in CM2 before promotion [s].
 oq_cm3_curve_on_delta_c: "3.0"                        # Heating Curve target-minus-supply margin for CM2 -> CM3 [°C].
 oq_cm3_curve_off_delta_c: "1.0"                       # Heating Curve target-minus-supply margin for CM3 -> CM2 [°C].
+oq_hp_cold_start_min_c: "5.0"                         # Absolute minimum ODU outlet temperature for compressor start [°C].
+oq_hp_cold_start_assist_release_c: "12.0"              # End auxiliary cold-start assist at this ODU outlet temperature [°C].
+oq_hp_cold_start_boiler_target_c: "25.0"               # Conservative OpenTherm target while cold-start assist is active [°C].
 oq_cm0_sticky_wait_s: "86400"                         # Wait time in CM0 before sticky-pump run starts [s].
 oq_cm0_sticky_run_s: "60"                             # Duration of sticky-pump run in CM0 [s].
 oq_cm0_pump_stop_ipwm: "1000.0"                       # iPWM setpoint that forces pump off in CM0.

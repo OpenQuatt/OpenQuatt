@@ -12,6 +12,7 @@ import { getWebAuthStatusDetail, getWebAuthStatusLabel } from "../features/secur
 import { getCommissioningStatusValue, getSelectEntityOptions, renderSettingsSection } from "./controls.js";
 import { renderSettingsCoolingSection } from "./cooling.js";
 import { renderSettingsFlowSection, renderSettingsHeatingSection } from "./heating.js";
+import { renderSettingsElectricalCurrentLimitSection } from "./electrical-limit.js";
 import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection, renderSettingsQuickStartSection } from "./installation.js";
 import { renderSettingsMqttSection, renderSettingsOpenThermCicSection, renderSettingsSensorSelectionSection } from "./integrations.js";
 import { renderSettingsPrivacySection } from "./privacy.js";
@@ -55,6 +56,7 @@ import { escapeHtml } from "../core/html.js";
           renderSettingsSilentSection(),
           renderSettingsWaterSection(),
           renderSettingsCompressorSection(),
+          renderSettingsElectricalCurrentLimitSection(),
           renderSettingsOduRuntimeFrequencySection(),
         ]
       : activeGroup === "service"

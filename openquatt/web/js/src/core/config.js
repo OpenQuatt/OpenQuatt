@@ -14,7 +14,7 @@
     ["generation", "Kies je Quatt Hybrid", "Geef hier aan welke Quatt Hybrid je hebt. Dan zet OpenQuatt de juiste regeling klaar."],
     ["flow-source", "Flowmeting configureren", "Controleer en activeer de flowbron die bij jouw Quatt-versie en controller hoort."],
     ["thermostat-source", "Thermostaatgegevens configureren", "Leg vast waar OpenQuatt de kamertemperatuur en het kamer-setpoint samen vandaan haalt."],
-    ["boiler", "CV-ketel of boiler", "Leg vast of er een ketel is en hoe die fysiek is aangesloten.", "boilerCvAssistEnabled"],
+    ["boiler", "Aanvullende warmtebron", "Leg vast of een aanvullende warmtebron is aangesloten en wanneer OpenQuatt die mag gebruiken.", "auxHeatSourcePresent"],
     ["strategy", "Kies de verwarmingsstrategie", "Kies hier hoe OpenQuatt je verwarming regelt. Daarna lopen we samen de belangrijkste instellingen langs."],
     ["heating", "Werk de regeling uit", "Stel nu de gekozen regeling verder in. De inhoud hieronder past zich aan aan je keuze."],
     ["flow", "Flowregeling en afstelling", "Leg daarna vast hoe de pomp geregeld moet worden en welke waarden daarbij horen. De autotune staat later onder Instellingen → Installatie → Service & commissioning."],
@@ -118,8 +118,10 @@
     usageTelemetryChoiceConfigured: { domain: "binary_sensor", name: "Usage statistics choice configured", optional: true },
     usageTelemetryInstallationId: { domain: "text_sensor", name: "Usage statistics installation ID", optional: true },
     hpGeneration: { domain: "select", name: "Quatt Hybrid version" },
+    electricalCurrentLimit: { domain: "number", name: "Electrical current limit", optional: true },
     strategy: { domain: "select", name: "Heating Control Mode" },
     openquattEnabled: { domain: "switch", name: "OpenQuatt Enabled", optional: true },
+    auxHeatSourcePresent: { domain: "switch", name: "Auxiliary heat source connected", optional: true },
     boilerCvAssistEnabled: { domain: "switch", name: "Boiler assist enabled", optional: true },
     boilerFaultFallbackEnabled: { domain: "switch", name: "Boiler fallback on heat-pump fault", optional: true },
     boilerConnection: { domain: "select", name: "Boiler connection", optional: true },
@@ -1022,6 +1024,7 @@
   export const CIC_COMPATIBILITY_KEYS = ["cicCompatibilityMode"];
   export const OPENTHERM_SETTING_KEYS = ["otEnabled", "otLinkProblem"];
   export const BOILER_SETTING_KEYS = [
+    "auxHeatSourcePresent",
     "boilerConnection",
     "boilerFaultFallbackEnabled",
   ];
@@ -1514,6 +1517,7 @@
     "openquattEnabled",
     "usageTelemetryEnabled",
     "usageTelemetryChoiceConfigured",
+    "auxHeatSourcePresent",
     "boilerCvAssistEnabled",
     "boilerConnection",
     "openquattResumeAt",
@@ -1611,6 +1615,7 @@
     "openquattEnabled",
     "usageTelemetryEnabled",
     "usageTelemetryChoiceConfigured",
+    "auxHeatSourcePresent",
     "boilerCvAssistEnabled",
     "boilerRatedHeatPower",
     "boilerConnection",
@@ -1794,6 +1799,7 @@
     "strategy",
     "installationTopology",
     "hpGeneration",
+    "electricalCurrentLimit",
     "openquattEnabled",
     "boilerCvAssistEnabled",
     "boilerRatedHeatPower",
@@ -1872,6 +1878,7 @@
       keys: [
         "setupComplete",
         "hpGeneration",
+        "electricalCurrentLimit",
         "boilerCvAssistEnabled",
         "boilerRatedHeatPower",
         ...BOILER_SETTING_KEYS,

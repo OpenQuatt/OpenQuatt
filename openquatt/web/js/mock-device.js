@@ -2182,6 +2182,7 @@
       ["Boiler rated heat power", 1800, 500, 10000, 100, "W"],
       ["CM3 deficit ON threshold", 1000, 0, 10000, 50, "W"],
       ["CM3 deficit OFF threshold", 400, 0, 10000, 50, "W"],
+      ["Electrical current limit", 16, 10, 20, 0.5, "A"],
       ["Day max level", 10, 0, 10, 1, ""],
       ["Silent max level", 6, 0, 10, 1, ""],
       ["Maximum water temperature", 56, 25, 75, 1, "°C"],
