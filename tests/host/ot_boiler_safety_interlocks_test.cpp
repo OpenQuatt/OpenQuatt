@@ -15,27 +15,9 @@ oq_boiler::BoilerCommand active_command(uint32_t updated_at_ms) {
 
 oq_boiler::ControllerInput safe_input(uint32_t now_ms) {
   return oq_boiler::ControllerInput{
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      false,
-      false,
-      false,
-      true,
-      true,
-      true,
-      oq_boiler::BOILER_START_THERMAL_SAFE,
-      true,
-      true,
-      false,
-      now_ms,
-      15000,
-      0,
-      30000,
+      true,   true,  true,  true,   true,  true, true,
+      false,  false, false, true,   true,  true, oq_boiler::BOILER_START_THERMAL_SAFE,
+      true,   true,  false, now_ms, 15000, 0,    30000,
       120000,
   };
 }
