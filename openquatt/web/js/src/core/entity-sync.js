@@ -176,6 +176,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
   export const INITIAL_SETTINGS_READY_KEY_MAP = {
     installation: [
       "hpGeneration",
+      "electricalCurrentLimit",
       "boilerCvAssistEnabled",
       "boilerRatedHeatPower",
       ...BOILER_SETTING_KEYS,
@@ -213,6 +214,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "setupComplete",
       "installationTopology",
       "hpGeneration",
+      "electricalCurrentLimit",
       ...ODU_GENERATION_KEYS,
       ...ODU_GENERATION_DETECT_KEYS,
       "boilerCvAssistEnabled",

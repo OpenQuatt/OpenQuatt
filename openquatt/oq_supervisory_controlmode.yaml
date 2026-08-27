@@ -43,16 +43,18 @@
 #
 # ==============================================================================
 
-# ----------------------------
-# TIME
-# ----------------------------
-time:
-  - platform: sntp
-    id: oq_time
-    timezone: Europe/Amsterdam
-
 esphome:
   on_boot:
+    - priority: -100
+      then:
+        - lambda: |-
+            float max_current_a = ${oq_duo_current_limit_v1_a};
+            #if OQ_TOPOLOGY_DUO
+            if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V2") {
+              max_current_a = ${oq_duo_current_limit_v2_a};
+            }
+            #endif
+            id(oq_electrical_current_limit_a).traits.set_max_value(max_current_a);
     - priority: -100
       then:
         - lambda: |-
@@ -65,6 +67,14 @@ esphome:
               }
               id(oq_aux_heat_source_policy_migrated) = true;
             }
+
+# ----------------------------
+# TIME
+# ----------------------------
+time:
+  - platform: sntp
+    id: oq_time
+    timezone: Europe/Amsterdam
 
 # ----------------------------
 # INTERNAL STATE
@@ -175,12 +185,32 @@ globals:
     initial_value: 'false'
 
   # ----------------------------
-  # Power limiter (duo current guard) - total demand cap
+  # Electrical input limiter - total demand cap
   # Cap is applied to total filtered demand f (0..20) before HP split.
   - id: oq_power_cap_f
     type: int
     restore_value: false
     initial_value: '20'
+
+  # NaN means that the user has not overridden the generation-dependent default.
+  - id: oq_electrical_current_limit_configured_a
+    type: float
+    restore_value: true
+    initial_value: 'NAN'
+
+  # One calculated threshold set is shared by supervisory feedback and Power House.
+  - id: oq_power_limit_soft_w
+    type: float
+    restore_value: false
+    initial_value: '3400.0'
+  - id: oq_power_limit_peak_w
+    type: float
+    restore_value: false
+    initial_value: '3650.0'
+  - id: oq_power_limit_recover_w
+    type: float
+    restore_value: false
+    initial_value: '3300.0'
 
   - id: oq_power_over_soft_s
     type: int
@@ -339,6 +369,41 @@ number:
     restore_value: true
     initial_value: 10
     entity_category: config
+
+  - platform: template
+    id: oq_electrical_current_limit_a
+    name: "Electrical current limit"
+    icon: mdi:current-ac
+    unit_of_measurement: "A"
+    min_value: ${oq_electrical_current_limit_min_a}
+    max_value: ${oq_duo_current_limit_v2_a}
+    step: 0.5
+    update_interval: ${oq_supervisory_loop_s}s
+    entity_category: config
+    lambda: |-
+      float max_current_a = ${oq_duo_current_limit_v1_a};
+      #if OQ_TOPOLOGY_DUO
+      if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V2") {
+        max_current_a = ${oq_duo_current_limit_v2_a};
+      }
+      #endif
+      id(oq_electrical_current_limit_a).traits.set_max_value(max_current_a);
+      const float configured_a = id(oq_electrical_current_limit_configured_a);
+      if (isnan(configured_a)) return max_current_a;
+      return fminf(max_current_a, fmaxf(${oq_electrical_current_limit_min_a}, configured_a));
+    set_action:
+      then:
+        - lambda: |-
+            float max_current_a = ${oq_duo_current_limit_v1_a};
+            #if OQ_TOPOLOGY_DUO
+            if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V2") {
+              max_current_a = ${oq_duo_current_limit_v2_a};
+            }
+            #endif
+            id(oq_electrical_current_limit_a).traits.set_max_value(max_current_a);
+            const float configured_a = fminf(max_current_a, fmaxf(${oq_electrical_current_limit_min_a}, x));
+            id(oq_electrical_current_limit_configured_a) = configured_a;
+            id(oq_electrical_current_limit_a).publish_state(configured_a);
 
   - platform: template
     id: oq_cm3_deficit_on_w
@@ -566,11 +631,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: ${oq_diagnostic_update_interval_s}s
     lambda: |-
-      #if OQ_TOPOLOGY_DUO
       return (float) id(oq_power_cap_f);
-      #else
-      return (float) ${oq_power_cap_max_f};
-      #endif
 
 # ----------------------------
 # MAIN LOOP
@@ -603,37 +664,70 @@ interval:
           }
           // -------------------------------------------------
           // -------------------------------------------------
-          // Power Limiter (duo current guard) - simplified safety net
+          // Electrical input limiter - measured safety net for Single and Duo
           // - Uses oq_total_power_input (W) = HP1+HP2 electrical
-          // - Primary limiting happens in heat-control optimizer (COP-based).
-          // - Supervisory is only a safety net for measured overshoot.
+          // - Power House also applies the same thresholds predictively.
+          // - Heating Curve and cooling only use this measured demand cap.
           //
-          // Targets scale from the active duo current limit at 230V:
+          // Targets scale from the configured current limit at 230V:
           //   V1/V1.5 = 16A -> 3400W / 3650W / 3300W
           //   V2      = 20A -> 4250W / 4562.5W / 4125W
           // -------------------------------------------------
-          #if OQ_TOPOLOGY_DUO
           {
             const int dt_s = ${oq_supervisory_loop_s};
-            const float duo_current_limit_a =
-                (id(hp_generation).has_state() && id(hp_generation).current_option() == "V2")
-                    ? ${oq_duo_current_limit_v2_a}
-                    : ${oq_duo_current_limit_v1_a};
+            float max_current_a = ${oq_duo_current_limit_v1_a};
+            #if OQ_TOPOLOGY_DUO
+            if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V2") {
+              max_current_a = ${oq_duo_current_limit_v2_a};
+            }
+            #endif
+            const float configured_a = id(oq_electrical_current_limit_configured_a);
+            const float current_limit_a = isnan(configured_a)
+                ? max_current_a
+                : fminf(max_current_a, fmaxf(${oq_electrical_current_limit_min_a}, configured_a));
             const float mains_voltage_v = ${oq_mains_voltage_v};
-            const float P_SOFT = duo_current_limit_a * mains_voltage_v * (3400.0f / (16.0f * 230.0f));
-            const float P_PEAK = duo_current_limit_a * mains_voltage_v * (3650.0f / (16.0f * 230.0f));
-            const float P_RECOVER = duo_current_limit_a * mains_voltage_v * (3300.0f / (16.0f * 230.0f));
+            const float P_SOFT = current_limit_a * mains_voltage_v * (3400.0f / (16.0f * 230.0f));
+            const float P_PEAK = current_limit_a * mains_voltage_v * (3650.0f / (16.0f * 230.0f));
+            const float P_RECOVER = current_limit_a * mains_voltage_v * (3300.0f / (16.0f * 230.0f));
+            id(oq_power_limit_soft_w) = P_SOFT;
+            id(oq_power_limit_peak_w) = P_PEAK;
+            id(oq_power_limit_recover_w) = P_RECOVER;
 
             // behavior
             const int PEAK_TRIP_S = ${oq_power_peak_trip_s};
             const int SOFT_TRIP_S = ${oq_power_soft_trip_s};
             const int RECOVER_S = ${oq_power_recover_s};
 
-            float p = id(oq_total_power_input).state;
+            const uint32_t measurement_stale_ms = (uint32_t)(${oq_power_measurement_stale_s}UL * 1000UL);
+            auto measurement_fresh = [&](uint32_t updated_ms) -> bool {
+              return updated_ms != 0 && (uint32_t)(now_ms - updated_ms) <= measurement_stale_ms;
+            };
+            bool measurement_valid =
+                id(hp1_is_online) &&
+                id(hp1_voltage).has_state() && !isnan(id(hp1_voltage).state) &&
+                id(hp1_current).has_state() && !isnan(id(hp1_current).state) &&
+                measurement_fresh(id(hp1_voltage_last_update_ms)) &&
+                measurement_fresh(id(hp1_current_last_update_ms));
+            #if OQ_TOPOLOGY_DUO
+            measurement_valid = measurement_valid &&
+                id(${secondary_hp_id}_is_online) &&
+                id(${secondary_hp_id}_voltage).has_state() && !isnan(id(${secondary_hp_id}_voltage).state) &&
+                id(${secondary_hp_id}_current).has_state() && !isnan(id(${secondary_hp_id}_current).state) &&
+                measurement_fresh(id(${secondary_hp_id}_voltage_last_update_ms)) &&
+                measurement_fresh(id(${secondary_hp_id}_current_last_update_ms));
+            #endif
+            const float p = id(oq_total_power_input).state;
+            measurement_valid = measurement_valid && id(oq_total_power_input).has_state() && !isnan(p);
 
-            // Fail-safe: power not available -> cap total demand to conservative fallback
-            if (isnan(p)) {
-              id(oq_power_cap_f) = ${oq_power_cap_nan_f};
+            // Fail-safe: unavailable or stale power -> conservative demand cap.
+            if (!measurement_valid) {
+              const float fallback_scale =
+                  fminf(current_limit_a, ${oq_duo_current_limit_v1_a}) / ${oq_duo_current_limit_v1_a};
+              #if OQ_TOPOLOGY_DUO
+              id(oq_power_cap_f) = (int) floorf(${oq_power_cap_nan_f} * fallback_scale);
+              #else
+              id(oq_power_cap_f) = (int) floorf((${oq_power_cap_nan_f} / 2.0f) * fallback_scale);
+              #endif
               id(oq_power_over_soft_s) = 0;
               id(oq_power_over_peak_s) = 0;
               id(oq_power_under_ok_s)  = 0;
@@ -673,12 +767,6 @@ interval:
               if (id(oq_power_cap_f) > ${oq_power_cap_max_f}) id(oq_power_cap_f) = ${oq_power_cap_max_f};
             }
           }
-          #else
-          id(oq_power_cap_f) = (int) ${oq_power_cap_max_f};
-          id(oq_power_over_soft_s) = 0;
-          id(oq_power_over_peak_s) = 0;
-          id(oq_power_under_ok_s) = 0;
-          #endif
 
           const uint32_t prepost_ms = (uint32_t)(${oq_cm_prepost_s}UL * 1000UL);
           const uint32_t frost_nan_grace_ms = (uint32_t)(${oq_cm_frost_nan_grace_s}UL * 1000UL);
