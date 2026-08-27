@@ -35,7 +35,6 @@ const OBSERVABILITY_KEYS = [
   "boilerActive",
   "boilerCommandValid",
   "boilerCommandActive",
-  "boilerCommandAge",
   "boilerCommandSource",
   "boilerCommandTargetTemperature",
   "boilerBlockReason",
@@ -83,11 +82,9 @@ const ISSUE_516_OBSERVABILITY_KEYS = [
   "boilerHeatPower",
   "otbFaultIndication",
   "otbDhwActive",
-  "otbServiceRequest",
   "otbRelativeModulation",
   "otbBoilerWaterTemp",
   "otbReturnWaterTemp",
-  "otbStartHandshakeState",
   "otbStartHandshakeDetail",
 ];
 
@@ -135,8 +132,11 @@ test("OpenTherm-opname bewaart signalen zonder afleidbare doublures", () => {
   assert.ok(!DEBUG_RECORDING_KEYS.includes("otbChActive"));
   assert.ok(!DEBUG_RECORDING_KEYS.includes("otbResponseCount"));
   assert.ok(!DEBUG_RECORDING_KEYS.includes("otbResponseTimeoutCount"));
+  assert.ok(!DEBUG_RECORDING_KEYS.includes("boilerCommandAge"));
   assert.ok(!DEBUG_RECORDING_KEYS.includes("commissioningStatus"));
   assert.ok(!DEBUG_RECORDING_KEYS.includes("otbDiagnosticIndication"));
+  assert.ok(!DEBUG_RECORDING_KEYS.includes("otbServiceRequest"));
+  assert.ok(!DEBUG_RECORDING_KEYS.includes("otbStartHandshakeState"));
 });
 
 test("ODU-generaties worden achter het bestaande debugcontract toegevoegd", async () => {

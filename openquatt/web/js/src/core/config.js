@@ -1454,7 +1454,6 @@
     "boilerActive",
     "boilerCommandValid",
     "boilerCommandActive",
-    "boilerCommandAge",
     "boilerCommandSource",
     "boilerCommandTargetTemperature",
     "boilerBlockReason",
@@ -1489,11 +1488,9 @@
     "boilerHeatPower",
     "otbFaultIndication",
     "otbDhwActive",
-    "otbServiceRequest",
     "otbRelativeModulation",
     "otbBoilerWaterTemp",
     "otbReturnWaterTemp",
-    "otbStartHandshakeState",
     "otbStartHandshakeDetail",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
