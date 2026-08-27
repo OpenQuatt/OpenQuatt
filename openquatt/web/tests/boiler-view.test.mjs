@@ -391,9 +391,9 @@ test("fallback heating setting explains its guarded scope", () => {
   assert.match(installationSource, /Overnemen wanneer de warmtepomp niet beschikbaar is/);
   assert.match(installationSource, /wanneer geen warmtepomp veilig beschikbaar is/);
   assert.match(installationSource, /koude opstart onder 5 °C/);
-  assert.match(installationSource, /koude opstart van 5 tot 15 °C/);
+  assert.match(installationSource, /koude opstart van 5 tot 12 °C/);
   assert.match(commonSubstitutionsYaml, /oq_hp_cold_start_min_c: "5\.0"/);
-  assert.match(commonSubstitutionsYaml, /oq_hp_cold_start_assist_release_c: "15\.0"/);
+  assert.match(commonSubstitutionsYaml, /oq_hp_cold_start_assist_release_c: "12\.0"/);
   assert.match(installationSource, /na een veilige stop/);
   assert.match(installationSource, /Een korte communicatiedip telt niet als uitval/);
 });

@@ -1130,9 +1130,9 @@ interval:
           // 2b) Cold water start
           //    - below 5°C: keep compressors stopped; CM4 may preheat only
           //      when reserve heating is explicitly allowed
-          //    - 5..15°C: HP start is allowed; configured auxiliary assist
-          //      remains active until every ODU outlet reaches 15°C
-          //    - >=15°C: normal heating logic owns the session
+          //    - 5..12°C: HP start is allowed; configured auxiliary assist
+          //      remains active until every ODU outlet reaches 12°C
+          //    - >=12°C: normal heating logic owns the session
           // -------------------------------------------------
           bool cold_start_blocked = false;
           bool cold_start_below_minimum = false;
