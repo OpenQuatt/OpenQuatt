@@ -62,6 +62,11 @@ test("calibration records are restored before the supply source selection", () =
   assert.ok(keys.indexOf("waterSupplyHaInputCalibrationIdentity") < keys.indexOf("waterSupplyHaInputCalibrationOffset"));
 });
 
+test("installation backup includes the electrical current limit", () => {
+  const keys = SETTINGS_BACKUP_SECTIONS.find(({ id }) => id === "installation").keys;
+  assert.ok(keys.includes("electricalCurrentLimit"));
+});
+
 test("completed backup restore disables telemetry only for incomplete setup", () => {
   assert.equal(shouldDisableUsageTelemetryForSetupRestore(true, false), true);
   assert.equal(shouldDisableUsageTelemetryForSetupRestore(true, true), false);

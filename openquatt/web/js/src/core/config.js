@@ -116,6 +116,7 @@
     usageTelemetryChoiceConfigured: { domain: "binary_sensor", name: "Usage statistics choice configured", optional: true },
     usageTelemetryInstallationId: { domain: "text_sensor", name: "Usage statistics installation ID", optional: true },
     hpGeneration: { domain: "select", name: "Quatt Hybrid version" },
+    electricalCurrentLimit: { domain: "number", name: "Electrical current limit", optional: true },
     strategy: { domain: "select", name: "Heating Control Mode" },
     openquattEnabled: { domain: "switch", name: "OpenQuatt Enabled", optional: true },
     boilerCvAssistEnabled: { domain: "switch", name: "Boiler assist enabled", optional: true },
@@ -1790,6 +1791,7 @@
     "strategy",
     "installationTopology",
     "hpGeneration",
+    "electricalCurrentLimit",
     "openquattEnabled",
     "boilerCvAssistEnabled",
     "boilerRatedHeatPower",
@@ -1868,6 +1870,7 @@
       keys: [
         "setupComplete",
         "hpGeneration",
+        "electricalCurrentLimit",
         "boilerCvAssistEnabled",
         "boilerRatedHeatPower",
         ...BOILER_SETTING_KEYS,
