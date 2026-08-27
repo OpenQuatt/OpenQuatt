@@ -28,6 +28,7 @@ const {
 const {
   getFirmwareBuildSwitchModel,
   getFirmwareProgressModel,
+  hasKnownFirmwareTargetVersion,
   isFirmwareInstallCompletionConfirmed,
   isQuickStartSetupInstallCompletionConfirmed,
 } = await import("../js/src/features/firmware-update.js");
@@ -84,6 +85,7 @@ test("de actieve configuratie kan als software-update opnieuw worden geïnstalle
   assert.equal(model.targetOption, "current build");
   assert.equal(model.canSwitch, false);
   assert.equal(model.canInstall, true);
+  assert.equal(hasKnownFirmwareTargetVersion(), true);
 
   const changedModel = getFirmwareBuildSwitchModel("duo", "eth");
   assert.equal(changedModel.targetOption, "alternate topology and connection");
@@ -92,9 +94,13 @@ test("de actieve configuratie kan als software-update opnieuw worden geïnstalle
 
   delete state.entities.installFirmwareUpdateTarget;
   assert.equal(getFirmwareBuildSwitchModel("single", "wifi").canInstall, false);
+
+  resetSetupState();
+  delete state.entities.firmwareUpdateChannel;
+  assert.equal(getFirmwareBuildSwitchModel("single", "wifi").canInstall, false);
 });
 
-test("Quick Start weigert een impliciete dev-naar-main-downgrade", () => {
+test("Quick Start staat de expliciet bevestigde overstap van dev naar main toe", () => {
   resetSetupState();
   state.entities.firmwareUpdate.current_version = "v0.49.0";
   state.entities.firmwareUpdate.latest_version = "v0.48.0";
@@ -104,7 +110,8 @@ test("Quick Start weigert een impliciete dev-naar-main-downgrade", () => {
 
   const model = getFirmwareBuildSwitchModel("single", "wifi");
   assert.equal(model.downgradeAvailable, true);
-  assert.equal(model.canInstall, false);
+  assert.equal(model.mainChannelAvailable, true);
+  assert.equal(model.canInstall, true);
 });
 
 test("een Quick Start-installatie vereist doelconfiguratie én bewezen reboot", () => {
@@ -125,6 +132,10 @@ test("een Quick Start-installatie vereist doelconfiguratie én bewezen reboot", 
   assert.equal(isQuickStartSetupInstallCompletionConfirmed(), false);
 
   state.entities.firmwareUpdateStatus = textEntity("Idle");
+  state.entities.releaseChannelText = textEntity("dev");
+  assert.equal(isQuickStartSetupInstallCompletionConfirmed(), false);
+
+  state.entities.releaseChannelText = textEntity("main");
   assert.equal(isQuickStartSetupInstallCompletionConfirmed(), true);
   assert.equal(isFirmwareInstallCompletionConfirmed(), true);
 
@@ -139,6 +150,7 @@ test("de wizard bewaart een lopende en afgeronde Quick Start-update in de sessie
     status: "pending",
     targetTopology: "duo",
     targetConnection: "eth",
+    targetChannel: "main",
     targetVersion: "v0.49.0",
     startedAt: 1234,
   };
@@ -155,6 +167,12 @@ test("de wizard bewaart een lopende en afgeronde Quick Start-update in de sessie
   storeQuickStartSetupInstall({ ...pending, status: "complete" });
   assert.equal(getStoredQuickStartSetupInstall().status, "complete");
   clearQuickStartSetupInstall();
+  assert.equal(getStoredQuickStartSetupInstall(), null);
+
+  storage.set("oq-quickstart-setup-install", JSON.stringify({
+    ...pending,
+    targetChannel: undefined,
+  }));
   assert.equal(getStoredQuickStartSetupInstall(), null);
 });
 
@@ -181,6 +199,7 @@ test("een hervatte lopende update houdt de configuratiekeuze geblokkeerd", () =>
     status: "pending",
     targetTopology: "single",
     targetConnection: "wifi",
+    targetChannel: "main",
     targetVersion: "v0.48.0",
     startedAt: Date.now(),
   });
@@ -211,17 +230,30 @@ test("de Quick Start-actie slaat current build niet over en blokkeert vervolgsta
   const start = actionsSource.indexOf("export async function installQuickStartSetupSwitch()");
   const end = actionsSource.indexOf("\n  export async function setFirmwareTestTextEntity", start);
   const action = actionsSource.slice(start, end);
+  const installStart = actionsSource.indexOf("async function installQuickStartSetupFirmware(model)");
+  const installEnd = actionsSource.indexOf("\n  export async function installQuickStartSetupSwitch()", installStart);
+  const installAction = actionsSource.slice(installStart, installEnd);
 
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
+  assert.notEqual(installStart, -1);
+  assert.notEqual(installEnd, -1);
   assert.doesNotMatch(action, /targetOption === "current build"/);
   assert.match(action, /await installQuickStartSetupFirmware\(model\);/);
   assert.match(viewSource, /Configuratie en software-update/);
   assert.match(viewSource, /data-oq-quickstart-setup-confirm="true"/);
   assert.match(viewSource, /Configuratie bevestigen en software bijwerken/);
+  assert.match(viewSource, /Te installeren main-versie/);
+  assert.match(viewSource, /dev- of testbuild/);
   assert.match(viewSource, /selectionAllowed \? "" : "disabled"/);
   assert.match(uiActionsSource, /isQuickStartStepSelectionAllowed\(stepId\)/);
-  assert.match(actionsSource, /isFirmwareDowngradeAvailable\(\)/);
+  assert.match(actionsSource, /setQuickStartFirmwareUpdateChannelMain\(\)/);
+  assert.match(actionsSource, /isFirmwareEntityAlignedWithChannel\(getFirmwareUpdateEntity\(\) \|\| \{\}, "main"\)/);
+  assert.ok(
+    installAction.indexOf("await setQuickStartFirmwareUpdateChannelMain()")
+      < installAction.indexOf("await setFirmwareUpdateTarget(model.targetOption"),
+  );
   assert.match(actionsSource, /storeQuickStartSetupInstall\(/);
+  assert.match(actionsSource, /targetChannel: "main"/);
   assert.doesNotMatch(viewSource, /model\.changes \? `[\s\S]*data-oq-action="install-quickstart-setup"/);
 });

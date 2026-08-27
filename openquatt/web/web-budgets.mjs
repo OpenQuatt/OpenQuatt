@@ -14,8 +14,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // selectable cooling restart by water temperature or minimum off-time,
     // toelichting lokale historie in Quick Start, plus fase-2 flash-I/O observability,
     // strategie-afhankelijke warmtetoestemming-advies (Power House vs stooklijn, OT-voorkeur, centrale modal, auto-set in Quick Start),
-    // plus hervatbare, fail-closed Quick Start-OTA met expliciete downgradeblokkade.
-    raw: 952_000,
+    // plus hervatbare, fail-closed Quick Start-OTA met vaste main-target- en versiecontrole.
+    raw: 954_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

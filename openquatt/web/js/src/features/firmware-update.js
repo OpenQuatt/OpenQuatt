@@ -108,6 +108,11 @@ import { render } from "../core/render-scheduler.js";
     const targetEntityAvailable = hasEntity("firmwareUpdateTarget");
     const targetOptionAvailable = hasFirmwareUpdateTargetOption(targetOption);
     const installActionAvailable = hasEntity("installFirmwareUpdateTarget");
+    const channelEntity = state.entities.firmwareUpdateChannel || {};
+    const channelOptions = Array.isArray(channelEntity.option)
+      ? channelEntity.option
+      : Array.isArray(channelEntity.options) ? channelEntity.options : [];
+    const mainChannelAvailable = hasEntity("firmwareUpdateChannel") && channelOptions.includes("main");
     const downgradeAvailable = isFirmwareDowngradeAvailable();
 
     return {
@@ -116,7 +121,7 @@ import { render } from "../core/render-scheduler.js";
         && targetEntityAvailable
         && targetOptionAvailable
         && installActionAvailable
-        && !downgradeAvailable,
+        && mainChannelAvailable,
       canSwitch: valid
         && targetOption !== "current build"
         && targetEntityAvailable
@@ -125,6 +130,7 @@ import { render } from "../core/render-scheduler.js";
       targetEntityAvailable,
       targetOptionAvailable,
       installActionAvailable,
+      mainChannelAvailable,
       downgradeAvailable,
       currentTopology,
       currentConnection,
@@ -327,6 +333,7 @@ import { render } from "../core/render-scheduler.js";
       && expectedConnection
       && rebootConfirmed
       && state.updateInstallSuccessfulPhaseObserved
+      && getFirmwareRunningChannelLabel().toLowerCase() === "main"
       && getInstallationTopology() === expectedTopology
       && getFirmwareBuildConnection() === expectedConnection
       && hasInstalledFirmwareTargetVersion()
@@ -520,7 +527,7 @@ import { render } from "../core/render-scheduler.js";
           : state.updateInstallMode === "connection-switch"
           ? "Firmware is geplaatst. Het device start opnieuw op en komt daarna via de gekozen verbinding terug."
           : quickStartSetup
-          ? `Software voor ${quickStartTargetBuildLabel} is geplaatst. De controller start opnieuw op met deze configuratie.`
+          ? `De stabiele main-software voor ${quickStartTargetBuildLabel} is geplaatst. De controller start opnieuw op met deze configuratie.`
           : switchesBuild
           ? "Firmware is geplaatst. Het device start opnieuw op en komt daarna met de gekozen opstelling terug."
           : "Firmware is geplaatst. Het device start nu opnieuw op en komt daarna vanzelf terug.",
@@ -548,7 +555,7 @@ import { render } from "../core/render-scheduler.js";
           : state.updateInstallMode === "connection-switch"
           ? `De ${getFirmwareConnectionLabel(state.updateInstallTargetConnection)}-build wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
           : quickStartSetup
-          ? `De ${quickStartTargetBuildLabel}-build wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
+          ? `De stabiele main-build voor ${quickStartTargetBuildLabel} wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
           : switchesBuild
           ? `De ${getFirmwareBuildLabelFor(state.updateInstallTargetTopology, state.updateInstallTargetConnection)}-build wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
           : `Firmware wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`,
@@ -565,7 +572,7 @@ import { render } from "../core/render-scheduler.js";
         : state.updateInstallMode === "connection-switch"
         ? `Verbindingswissel naar ${getFirmwareConnectionLabel(state.updateInstallTargetConnection)} is gestart.`
         : quickStartSetup
-        ? `Configuratie- en software-update voor ${quickStartTargetBuildLabel} is gestart.`
+        ? `De main-release voor ${quickStartTargetBuildLabel} is gecontroleerd en de installatie is gestart.`
         : switchesBuild
         ? `Opstellingswissel naar ${getFirmwareTopologyLabel(state.updateInstallTargetTopology)} is gestart.`
         : `OTA-update is gestart voor ${getFirmwareDeviceLabel()}.`,
@@ -828,7 +835,8 @@ import { render } from "../core/render-scheduler.js";
   }
 
   export function hasKnownFirmwareTargetVersion() {
-    return getFirmwareUpdateVersions().latest !== "—";
+    const entity = getFirmwareUpdateEntity() || {};
+    return isFirmwareEntityAlignedWithChannel(entity) && Boolean(getFirmwareLatestVersion(entity));
   }
 
   export function getFirmwareBuildSignature(label) {

@@ -142,7 +142,7 @@ Kies hier direct de combinatie die bij je installatie hoort:
 
 Sluit bij Ethernet eerst de netwerkkabel aan. Kies alleen `Duo` als de installatie daadwerkelijk twee warmtepompen heeft.
 
-Na bevestiging installeert OpenQuatt altijd de nieuwste software voor de gekozen configuratie en start de controller opnieuw op, ook wanneer de actieve configuratie niet verandert. **Bestaande OpenQuatt-instellingen blijven bij een software-update of configuratiewissel behouden.** Je hoeft bij de eerste ingebruikname dus niet via **Instellingen → Systeem → Updates** te wisselen. Open na een herstart zo nodig opnieuw `http://openquatt.local` en ga verder met Quick Start.
+Na bevestiging zet OpenQuatt het updatekanaal op `main`, controleert de nieuwste stabiele release voor de gekozen configuratie, installeert deze altijd en start de controller opnieuw op, ook wanneer de actieve configuratie en het versienummer niet veranderen. Een aanwezige dev- of testbuild wordt daarmee vervangen door de stabiele main-release. **Bestaande OpenQuatt-instellingen blijven bij een software-update of configuratiewissel behouden.** Je hoeft bij de eerste ingebruikname dus niet via **Instellingen → Systeem → Updates** te wisselen. Open na een herstart zo nodig opnieuw `http://openquatt.local` en ga verder met Quick Start.
 
 Daarna geef je aan welke Quatt Hybrid en installatie je hebt. V1, V1.5 en V2 beschrijven de generatie van de warmtepomp en staan los van de keuze voor `Single` of `Duo`.
 
@@ -152,7 +152,7 @@ Daarna geef je aan welke Quatt Hybrid en installatie je hebt. V1, V1.5 en V2 bes
 
 Volg de route die de web-app voor jouw installatie toont. De basisstappen zijn:
 
-1. **Configuratie en software-update:** `Single` of `Duo` en Wi-Fi of Ethernet; daarna installeert OpenQuatt de nieuwste passende software.
+1. **Configuratie en software-update:** `Single` of `Duo` en Wi-Fi of Ethernet; daarna controleert en installeert OpenQuatt de nieuwste stabiele main-release.
 2. **Kies je Quatt Hybrid:** V1, V1.5 of V2.
 3. **Flowmeting configureren:** controleer en activeer de juiste flowbron.
 4. **Thermostaatgegevens configureren:** kies waar kamertemperatuur en kamer-setpoint vandaan komen.

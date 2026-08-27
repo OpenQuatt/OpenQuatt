@@ -19,16 +19,19 @@ export function getStoredQuickStartSetupInstall() {
     const value = JSON.parse(window.sessionStorage.getItem(QUICK_START_SETUP_INSTALL_STORAGE_KEY) || "null");
     const targetTopology = String(value?.targetTopology || "");
     const targetConnection = String(value?.targetConnection || "");
+    const targetChannel = String(value?.targetChannel || "");
     const status = String(value?.status || "");
     if (!QUICK_START_SETUP_INSTALL_STATUSES.has(status)
       || !["single", "duo"].includes(targetTopology)
-      || !["wifi", "eth"].includes(targetConnection)) {
+      || !["wifi", "eth"].includes(targetConnection)
+      || targetChannel !== "main") {
       return null;
     }
     return {
       status,
       targetTopology,
       targetConnection,
+      targetChannel,
       targetVersion: String(value?.targetVersion || ""),
       startedAt: Number.isFinite(Number(value?.startedAt)) ? Number(value.startedAt) : 0,
     };
