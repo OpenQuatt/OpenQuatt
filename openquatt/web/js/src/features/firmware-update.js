@@ -142,6 +142,22 @@ import { render } from "../core/render-scheduler.js";
     };
   }
 
+  export function isQuickStartSetupFirmwareCurrent(model) {
+    const entity = getFirmwareUpdateEntity() || {};
+    const currentVersion = getFirmwareCurrentVersion(entity);
+    const targetVersion = getFirmwareLatestVersion(entity);
+    return Boolean(model?.available)
+      && model.currentTopology === model.targetTopology
+      && model.currentConnection === model.targetConnection
+      && getFirmwareRunningChannelLabel().toLowerCase() === "main"
+      && getFirmwareChannelLabel().toLowerCase() === "main"
+      && isFirmwareEntityAlignedWithChannel(entity, "main")
+      && isFirmwareUpdateEntityForBuild(model.targetBuildLabel, entity)
+      && parseFirmwareVersion(currentVersion)
+      && parseFirmwareVersion(targetVersion)
+      && compareFirmwareVersions(currentVersion, targetVersion) === 0;
+  }
+
   export function getFirmwareTestPrNumber(value = state.updateTestFirmwarePr) {
     const normalized = String(value || "").trim().replace(/^#?pr[-\s]*/i, "").replace(/^#/, "");
     return /^\d{1,6}$/.test(normalized) ? normalized : "";
@@ -329,10 +345,22 @@ import { render } from "../core/render-scheduler.js";
     const expectedConnection = normalizeFirmwareConnection(state.updateInstallTargetConnection);
     const rebootConfirmed = Boolean(state.ota.id && !state.ota.wait)
       || (state.updateInstallResumedAfterReload && !isFirmwareProgressActive());
+    const record = getStoredQuickStartSetupInstall();
+    const currentVersion = getFirmwareCurrentVersion();
+    const durableTargetTransition = record?.status !== "complete"
+      && ["single", "duo"].includes(record?.sourceTopology)
+      && ["wifi", "eth"].includes(record?.sourceConnection)
+      && ["main", "dev"].includes(record?.sourceChannel)
+      && Boolean(parseFirmwareVersion(record?.sourceVersion))
+      && Boolean(parseFirmwareVersion(currentVersion))
+      && (record.sourceTopology !== getInstallationTopology()
+        || record.sourceConnection !== getFirmwareBuildConnection()
+        || record.sourceChannel !== getFirmwareRunningChannelLabel().toLowerCase()
+        || compareFirmwareVersions(record.sourceVersion, currentVersion) !== 0);
     return expectedTopology
       && expectedConnection
       && rebootConfirmed
-      && state.updateInstallSuccessfulPhaseObserved
+      && (state.updateInstallSuccessfulPhaseObserved || durableTargetTransition)
       && getFirmwareRunningChannelLabel().toLowerCase() === "main"
       && getInstallationTopology() === expectedTopology
       && getFirmwareBuildConnection() === expectedConnection
@@ -503,8 +531,9 @@ import { render } from "../core/render-scheduler.js";
     const hintedPercent = Number.isNaN(state.updateInstallProgressHint) ? 0 : Math.round(state.updateInstallProgressHint);
     const basePercent = hasLivePhase && !Number.isNaN(rawPercent) ? Math.round(rawPercent) : hintedPercent;
     const quickStartSetup = state.updateInstallMode === "quickstart-setup";
+    const quickStartSetupRecord = quickStartSetup ? getStoredQuickStartSetupInstall() : null;
     const quickStartSetupPending = quickStartSetup
-      && getStoredQuickStartSetupInstall()?.status !== "complete";
+      && quickStartSetupRecord?.status !== "complete";
     const switchesBuild = state.updateInstallMode === "topology-switch"
       || state.updateInstallMode === "build-switch";
     const quickStartTargetBuildLabel = getFirmwareBuildLabelFor(
@@ -562,8 +591,9 @@ import { render } from "../core/render-scheduler.js";
       };
     }
 
+    const quickStartSetupChecking = quickStartSetup && !quickStartSetupRecord;
     return {
-      phaseLabel: "Installeren",
+      phaseLabel: quickStartSetupChecking ? "Controleren" : "Installeren",
       percent: basePercent,
       copy: state.updateInstallMode === "test-firmware"
         ? `Testfirmware-installatie is gestart voor ${getFirmwareDeviceLabel()}.`
@@ -572,7 +602,9 @@ import { render } from "../core/render-scheduler.js";
         : state.updateInstallMode === "connection-switch"
         ? `Verbindingswissel naar ${getFirmwareConnectionLabel(state.updateInstallTargetConnection)} is gestart.`
         : quickStartSetup
-        ? `De main-release voor ${quickStartTargetBuildLabel} is gecontroleerd en de installatie is gestart.`
+        ? quickStartSetupChecking
+          ? `OpenQuatt controleert de main-versie en doelbuild voor ${quickStartTargetBuildLabel}.`
+          : `De main-release voor ${quickStartTargetBuildLabel} is gecontroleerd en de installatie is gestart.`
         : switchesBuild
         ? `Opstellingswissel naar ${getFirmwareTopologyLabel(state.updateInstallTargetTopology)} is gestart.`
         : `OTA-update is gestart voor ${getFirmwareDeviceLabel()}.`,

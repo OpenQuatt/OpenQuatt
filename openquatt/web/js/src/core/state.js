@@ -20,6 +20,10 @@ export function getStoredQuickStartSetupInstall() {
     const targetTopology = String(value?.targetTopology || "");
     const targetConnection = String(value?.targetConnection || "");
     const targetChannel = String(value?.targetChannel || "");
+    const sourceTopology = String(value?.sourceTopology || "");
+    const sourceConnection = String(value?.sourceConnection || "");
+    const sourceChannel = String(value?.sourceChannel || "");
+    const sourceVersion = String(value?.sourceVersion || "");
     const status = String(value?.status || "");
     if (!QUICK_START_SETUP_INSTALL_STATUSES.has(status)
       || !["single", "duo"].includes(targetTopology)
@@ -27,6 +31,10 @@ export function getStoredQuickStartSetupInstall() {
       || targetChannel !== "main") {
       return null;
     }
+    const sourceValid = ["single", "duo"].includes(sourceTopology)
+      && ["wifi", "eth"].includes(sourceConnection)
+      && ["main", "dev"].includes(sourceChannel)
+      && Boolean(sourceVersion);
     return {
       status,
       targetTopology,
@@ -34,10 +42,19 @@ export function getStoredQuickStartSetupInstall() {
       targetChannel,
       targetVersion: String(value?.targetVersion || ""),
       startedAt: Number.isFinite(Number(value?.startedAt)) ? Number(value.startedAt) : 0,
+      ...(sourceValid ? { sourceTopology, sourceConnection, sourceChannel, sourceVersion } : {}),
     };
   } catch (_error) {
     return null;
   }
+}
+
+export function hasCompletedQuickStartSetupInstallFor(targetTopology, targetConnection) {
+  const record = getStoredQuickStartSetupInstall();
+  return record?.status === "complete"
+    && record.targetChannel === "main"
+    && record.targetTopology === String(targetTopology || "")
+    && record.targetConnection === String(targetConnection || "");
 }
 
 export function storeQuickStartSetupInstall(record) {

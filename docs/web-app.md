@@ -80,7 +80,7 @@ Quick Start begint op de Heatpump Controller Q met de configuratiekeuze en softw
 
 | Stap | Wat kies je? | Waarom? |
 |---|---|---|
-| `Configuratie en software-update` | `Single` of `Duo`, via `Wi-Fi` of `Ethernet` | Alleen op de HCQ; controleert en installeert altijd de nieuwste stabiele main-release voor de gekozen configuratie. |
+| `Configuratie en software-update` | `Single` of `Duo`, via `Wi-Fi` of `Ethernet` | Alleen op de HCQ; controleert de stabiele main-release en installeert deze alleen als kanaal, versie of configuratie afwijkt. |
 | `Kies je Quatt Hybrid` | V1, V1.5 of V2 | Selecteert de juiste basislogica voor jouw warmtepompgeneratie. |
 | `Flowmeting configureren` | De juiste flowbron | Zorgt dat de regeling de juiste meting gebruikt. |
 | `Thermostaatgegevens configureren` | Eén bron voor kamertemperatuur en setpoint | Voorkomt dat OpenQuatt waarden uit verschillende bronnen combineert. |

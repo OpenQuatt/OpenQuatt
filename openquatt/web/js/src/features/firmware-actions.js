@@ -8,7 +8,7 @@ import { isLikelyDeviceConnectionError, refreshEntities } from "../core/entity-s
 import { armOtaRefresh, awaitOtaEvidence, beginDeviceReconnect, clearOtaRefresh } from "../core/device-reconnect.js";
 import { clearQuickStartSetupInstall, state, storeQuickStartSetupInstall } from "../core/state.js";
 import { getFirmwareConnectionLabel, getFirmwareTopologyLabel, getInstallationTopology } from "./device-context.js";
-import { beginFirmwareOtaQuietWindow, clearFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasKnownFirmwareTargetVersion, isFirmwareDowngradeAvailable, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection, wait } from "./firmware-update.js";
+import { beginFirmwareOtaQuietWindow, clearFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareRunningChannelLabel, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasKnownFirmwareTargetVersion, isFirmwareDowngradeAvailable, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, isQuickStartSetupFirmwareCurrent, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection, wait } from "./firmware-update.js";
 import { render } from "../core/render-scheduler.js";
 
   export async function requestFirmwareOta(path, options) {
@@ -387,11 +387,16 @@ import { render } from "../core/render-scheduler.js";
     state.updateInstallTargetTopology = model.targetTopology;
     state.updateInstallTargetVersion = getFirmwareCurrentVersion() || "";
     state.quickStartSetupUpdateComplete = false;
-    primeFirmwareInstallProgressHints();
+    state.updateInstallPhaseHint = "";
+    state.updateInstallProgressHint = Number.NaN;
     state.controlError = "";
     state.controlNotice = "";
     render();
 
+    const sourceTopology = model.currentTopology;
+    const sourceConnection = model.currentConnection;
+    const sourceChannel = getFirmwareRunningChannelLabel().toLowerCase();
+    const sourceVersion = getFirmwareCurrentVersion() || "";
     let preservePendingInstall = false;
     try {
       const mainChannelReady = await setQuickStartFirmwareUpdateChannelMain();
@@ -411,6 +416,20 @@ import { render } from "../core/render-scheduler.js";
           || !hasKnownFirmwareTargetVersion()) {
         throw new Error("De gecontroleerde main-release hoort nog niet bij de gekozen configuratie. Probeer het over enkele seconden opnieuw.");
       }
+      if (isQuickStartSetupFirmwareCurrent(model)) {
+        state.currentStep = "generation";
+        state.quickStartSetupUpdateComplete = true;
+        storeQuickStartSetupInstall({
+          status: "complete",
+          targetTopology: model.targetTopology,
+          targetConnection: model.targetConnection,
+          targetChannel: "main",
+          targetVersion: state.updateInstallTargetVersion,
+          startedAt: Date.now(),
+        });
+        state.controlNotice = "De gekozen configuratie en stabiele main-software zijn al actueel. Er was geen OTA nodig.";
+        return;
+      }
       storeQuickStartSetupInstall({
         status: "pending",
         targetTopology: model.targetTopology,
@@ -418,6 +437,10 @@ import { render } from "../core/render-scheduler.js";
         targetChannel: "main",
         targetVersion: state.updateInstallTargetVersion,
         startedAt: Date.now(),
+        sourceTopology,
+        sourceConnection,
+        sourceChannel,
+        sourceVersion,
       });
       primeFirmwareInstallProgressHints();
       render();

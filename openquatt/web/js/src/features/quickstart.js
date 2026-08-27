@@ -6,7 +6,7 @@ import { createScrollKeeper } from "../core/scroll-keeper.js";
 import { renderModalShell } from "../core/modal-shell.js";
 import { state } from "../core/state.js";
 import { getDeviceMeta, getFirmwareBuildConnection, getInstallationTopology } from "./device-context.js";
-import { getFirmwareBuildSwitchModel, getFirmwareChannelLabel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareProgressModel, getFirmwareUpdateEntity, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, reconcileStoredQuickStartSetupInstall } from "./firmware-update.js";
+import { getFirmwareBuildSwitchModel, getFirmwareChannelLabel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareProgressModel, getFirmwareUpdateEntity, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, isQuickStartSetupFirmwareCurrent, reconcileStoredQuickStartSetupInstall } from "./firmware-update.js";
 import { getOduGenerationDetectionModel } from "./odu-generation-ui.js";
 import { formatSettingsOptionLabel, renderSettingsFieldCard, renderSettingsInfoToggle } from "../settings/controls.js";
 import { renderCurveGraph, renderFlowSettingsFields, renderHeatingCurveProfileField, renderHeatingStrategyExplainCards, renderPowerHouseAdvancedField, renderPowerHouseBaseFields, renderSettingsCurveInputs, renderStrategySelectionFields } from "../settings/heating.js";
@@ -44,6 +44,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
       && isFirmwareUpdateEntityForBuild(model.targetBuildLabel, firmwareEntity);
     const currentVersion = getFirmwareCurrentVersion(firmwareEntity) || "Onbekend";
     const mainVersion = mainManifestReady ? getFirmwareLatestVersion(firmwareEntity) || "Onbekend" : "Wordt gecontroleerd";
+    const firmwareCurrent = mainManifestReady && isQuickStartSetupFirmwareCurrent(model);
     const options = [
       ["single:wifi", "Single · Wi-Fi", "Eén warmtepomp via het draadloze netwerk."],
       ["single:eth", "Single · Ethernet", "Eén warmtepomp via een vaste netwerkkabel."],
@@ -53,14 +54,16 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
     const requirements = [
       model.targetIsDuo ? "De tweede warmtepomp is aangesloten en hoort bij deze controller." : "Deze controller wordt voor één warmtepomp gebruikt.",
       model.targetIsEthernet ? "De netwerkkabel is aangesloten." : "De Wi-Fi-gegevens zijn beschikbaar op de controller.",
-      "De stabiele main-release wordt geïnstalleerd; een aanwezige dev- of testbuild wordt daarmee vervangen.",
+      firmwareCurrent
+        ? "Configuratie en main-release zijn actueel; er is geen OTA nodig."
+        : "Zo nodig wordt de stabiele main-release geïnstalleerd en vervangt deze een dev- of testbuild.",
     ];
 
     return `
       <section class="oq-helper-panel">
         <p class="oq-helper-label">${escapeHtml(getQuickStepKicker("setup"))}</p>
         <h2 class="oq-helper-section-title">Configuratie en software-update</h2>
-        <p class="oq-helper-section-copy">Kies de configuratie van je Q-edition. OpenQuatt controleert daarna de nieuwste stabiele main-release, installeert deze altijd en start opnieuw op.</p>
+        <p class="oq-helper-section-copy">Kies de configuratie van je Q-edition. OpenQuatt controleert daarna de nieuwste stabiele main-release en installeert deze alleen als het kanaal, de versie of configuratie afwijkt.</p>
         <div class="oq-helper-fields">
           ${options.map(([key, title, copy]) => {
             const selected = model.selectedKey === key;
@@ -100,16 +103,18 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
               <div class="oq-helper-modal-row"><span class="oq-helper-modal-label">Huidige build</span><strong class="oq-helper-modal-value">${escapeHtml(model.currentBuildLabel)}</strong></div>
               <div class="oq-helper-modal-row"><span class="oq-helper-modal-label">Gekozen build</span><strong class="oq-helper-modal-value">${escapeHtml(model.targetBuildLabel)}</strong></div>
               <div class="oq-helper-modal-row"><span class="oq-helper-modal-label">Huidige versie</span><strong class="oq-helper-modal-value">${escapeHtml(currentVersion)}</strong></div>
-              <div class="oq-helper-modal-row"><span class="oq-helper-modal-label">Te installeren main-versie</span><strong class="oq-helper-modal-value">${escapeHtml(mainVersion)}</strong></div>
+              <div class="oq-helper-modal-row"><span class="oq-helper-modal-label">Nieuwste main-versie</span><strong class="oq-helper-modal-value">${escapeHtml(mainVersion)}</strong></div>
             </div>
-            <p class="oq-helper-modal-note">OpenQuatt zet het updatekanaal op main, controleert de versie en doelbuild en installeert de main-release ook als hetzelfde versienummer al aanwezig is. Bestaande OpenQuatt-instellingen blijven behouden.</p>
+            <p class="oq-helper-modal-note">${firmwareCurrent
+              ? "Kanaal, versie en doelbuild kloppen. Na bevestigen gaat Quick Start zonder OTA verder."
+              : "OpenQuatt zet het kanaal op main en controleert versie en doelbuild. Alleen bij een afwijking volgt OTA en herstart. Instellingen blijven behouden."}</p>
             <label class="oq-helper-modal-check">
               <input type="checkbox" data-oq-quickstart-setup-confirm="true" ${state.quickStartSetupConfirmed ? "checked" : ""} ${busy ? "disabled" : ""}>
               <span>${escapeHtml(requirements.join(" "))}</span>
             </label>
             <div class="oq-firmware-advanced-footer">
               <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="install-quickstart-setup" ${busy || !state.quickStartSetupConfirmed || !model.canInstall ? "disabled" : ""}>
-                ${busy ? "Configuratie en software bijwerken..." : "Configuratie bevestigen en software bijwerken"}
+                ${busy ? "Configuratie en software controleren..." : firmwareCurrent ? "Configuratie bevestigen" : "Configuratie bevestigen en software bijwerken"}
               </button>
             </div>
             ${!model.canInstall && !busy ? `<p class="oq-helper-modal-note oq-helper-modal-note--muted">${escapeHtml(
@@ -595,7 +600,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
       titleId: "oq-quickstart-modal-title",
       kicker: "Quick Start",
       title: "Rond eerst de Quick Start af",
-      copy: "Bevestig eerst je configuratie en installeer de nieuwste stabiele main-release. Loop daarna stap voor stap door de basisinstellingen.",
+      copy: "Bevestig eerst je configuratie en laat de stabiele main-release controleren en zo nodig installeren. Loop daarna stap voor stap door de basisinstellingen.",
       copyInHeader: true,
       backdropClass: "oq-helper-modal-backdrop--quickstart",
       className: "oq-helper-modal--wide oq-helper-modal--quickstart",
@@ -848,7 +853,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
     const setupIndex = steps.findIndex((step) => step.id === "setup");
     const targetIndex = steps.findIndex((step) => step.id === stepId);
     return targetIndex !== -1
-      && (setupIndex === -1 || state.quickStartSetupUpdateComplete || targetIndex <= setupIndex);
+      && (setupIndex === -1 || state.complete === true || state.quickStartSetupUpdateComplete || targetIndex <= setupIndex);
   }
 
   export function getQuickStepKicker(stepId) {

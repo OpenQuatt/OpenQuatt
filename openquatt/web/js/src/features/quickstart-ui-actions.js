@@ -1,7 +1,7 @@
 import { invokeActionMap } from "../core/action-router.js";
 import { commitSwitch } from "../core/entity-write-actions.js";
 import { render } from "../core/render-scheduler.js";
-import { clearQuickStartSetupInstall, state } from "../core/state.js";
+import { clearQuickStartSetupInstall, hasCompletedQuickStartSetupInstallFor, state } from "../core/state.js";
 import {
   abortQuickStartFlowTest,
   applyQuickStartFlowSourceConfiguration,
@@ -120,9 +120,14 @@ const quickStartActionHandlers = {
     void prepareQuickStartStep(state.currentStep);
   },
   "select-quickstart-setup": (button) => {
-    clearQuickStartSetupInstall();
-    state.quickStartSetupUpdateComplete = false;
-    state.quickStartSetupDraft = button.dataset.setupTarget || "";
+    const target = button.dataset.setupTarget || "";
+    const [targetTopology, targetConnection] = target.split(":");
+    const preserveCompletedInstall = hasCompletedQuickStartSetupInstallFor(targetTopology, targetConnection);
+    if (!preserveCompletedInstall) {
+      clearQuickStartSetupInstall();
+    }
+    state.quickStartSetupUpdateComplete = preserveCompletedInstall;
+    state.quickStartSetupDraft = target;
     state.quickStartSetupConfirmed = false;
     state.controlError = "";
     state.controlNotice = "";
