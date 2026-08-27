@@ -756,10 +756,7 @@ import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./vie
   }
 
   export function shouldRenderBoilerPanel() {
-    const sourcePresent = hasEntity("auxHeatSourcePresent")
-      ? isEntityActive("auxHeatSourcePresent")
-      : isEntityActive("boilerCvAssistEnabled");
-    return sourcePresent && hasEntity("boilerHeatPower");
+    return isEntityActive("boilerCvAssistEnabled") && hasEntity("boilerHeatPower");
   }
 
   export function getBoilerReturnTemperatureKey() {

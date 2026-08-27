@@ -51,33 +51,10 @@ time:
     id: oq_time
     timezone: Europe/Amsterdam
 
-esphome:
-  on_boot:
-    - priority: -100
-      then:
-        - lambda: |-
-            if (!id(oq_aux_heat_source_policy_migrated)) {
-              const bool legacy_source_present = id(oq_boiler_assist_enabled).state;
-              if (legacy_source_present) {
-                id(oq_aux_heat_source_present).turn_on();
-              } else {
-                id(oq_aux_heat_source_present).turn_off();
-              }
-              id(oq_aux_heat_source_policy_migrated) = true;
-            }
-
 # ----------------------------
 # INTERNAL STATE
 # ----------------------------
 globals:
-  # One-time split of the legacy combined boiler-present/assist switch. The
-  # existing assist state seeds physical presence; assist and fallback retain
-  # their own restored values.
-  - id: oq_aux_heat_source_policy_migrated
-    type: bool
-    restore_value: true
-    initial_value: 'false'
-
   # Frost hysteresis state for CM98 selection
   - id: oq_cm_frost_prev
     type: bool
@@ -255,32 +232,16 @@ select:
 
 switch:
   - platform: template
-    id: oq_aux_heat_source_present
-    name: "Auxiliary heat source connected"
-    icon: mdi:heating-coil
-    restore_mode: RESTORE_DEFAULT_ON
-    optimistic: true
-    entity_category: config
-    on_turn_off:
-      # Physical absence is the top-level fail-closed gate. Also clear both
-      # permissions so a later reconnect requires an explicit choice.
-      - switch.turn_off: oq_boiler_assist_enabled
-      - switch.turn_off: oq_boiler_fault_fallback_enabled
-
-  - platform: template
     id: oq_boiler_assist_enabled
     name: "Boiler assist enabled"
     icon: mdi:water-boiler
     restore_mode: RESTORE_DEFAULT_ON
     optimistic: true
     entity_category: config
-    on_turn_on:
-      - if:
-          condition:
-            lambda: |-
-              return !id(oq_aux_heat_source_present).state;
-          then:
-            - switch.turn_off: oq_boiler_assist_enabled
+    on_turn_off:
+      # This switch is the installation-level boiler-present permission in
+      # the web app. Turning it off must also revoke the hidden CM4 opt-in.
+      - switch.turn_off: oq_boiler_fault_fallback_enabled
 
   - platform: template
     id: oq_boiler_fault_fallback_enabled
@@ -291,13 +252,6 @@ switch:
     restore_mode: RESTORE_DEFAULT_OFF
     optimistic: true
     entity_category: config
-    on_turn_on:
-      - if:
-          condition:
-            lambda: |-
-              return !id(oq_aux_heat_source_present).state;
-          then:
-            - switch.turn_off: oq_boiler_fault_fallback_enabled
 
   - platform: template
     id: oq_enabled
@@ -1226,7 +1180,7 @@ interval:
             fallback_inputs.current_mode = current_cm_code;
             fallback_inputs.heating_demand = heating_req;
             fallback_inputs.fallback_enabled =
-                id(oq_aux_heat_source_present).state &&
+                id(oq_boiler_assist_enabled).state &&
                 id(oq_boiler_fault_fallback_enabled).state;
             fallback_inputs.available_hp_count = available_hp_count;
             fallback_inputs.raw_availability_complete =
@@ -1389,8 +1343,7 @@ interval:
                           cm4_resume_tracker.resume_mode(),
                           available_hp_count > 0,
                           power_house_active,
-                          id(oq_aux_heat_source_present).state &&
-                              id(oq_boiler_assist_enabled).state,
+                          id(oq_boiler_assist_enabled).state,
                       });
                   if (heating_mode.start_cm1_for_mode >= 0) {
                     start_cm1(heating_mode.start_cm1_for_mode);
@@ -1432,9 +1385,7 @@ interval:
                   (strcmp(cur_cm, "CM5") == 0) ? 5 :
                   (strcmp(cur_cm, "CM1") == 0) ? 1 :
                   (strcmp(cur_cm, "CM98") == 0) ? 98 : 0;
-              const bool boiler_assist_enabled =
-                  id(oq_aux_heat_source_present).state &&
-                  id(oq_boiler_assist_enabled).state;
+              const bool boiler_assist_enabled = id(oq_boiler_assist_enabled).state;
               const bool opentherm_selected =
                   id(oq_boiler_connection).has_state() &&
                   id(oq_boiler_connection).current_option() == "OpenTherm";

@@ -449,9 +449,7 @@ import { renderModalShell } from "../core/modal-shell.js";
   }
 
   export function getSettingsServiceModel() {
-    const hasBoilerAssist = hasEntity("auxHeatSourcePresent")
-      ? isEntityActive("auxHeatSourcePresent")
-      : hasEntity("boilerCvAssistEnabled") && isEntityActive("boilerCvAssistEnabled");
+    const hasBoilerAssist = hasEntity("boilerCvAssistEnabled") && isEntityActive("boilerCvAssistEnabled");
     const cm100Status = getCommissioningStatusValue();
     const cm100Active = isEntityActive("cm100Active");
     const cm100StatusUpper = String(cm100Status || "").trim().toUpperCase();
@@ -837,7 +835,7 @@ import { renderModalShell } from "../core/modal-shell.js";
           taskKey: "boiler",
           title: "Boiler power test",
           copy: "Meet het effectieve boilervermogen bij stabiele flow en schrijf daarna een afgerond voorstel weg naar de boilerinstelling. Boilertest duurt meestal ongeveer 5 tot 10 minuten.",
-          subcopy: `Beschikbaar verwarmingsvermogen: ${escapeHtml(boilerRatedPower)}`,
+          subcopy: `Ingesteld boilervermogen: ${escapeHtml(boilerRatedPower)}`,
           status: boilerStatusDisplay,
           statusCopy: boilerTaskWaitingForCm100
             ? "Wacht totdat CM100 actief is voordat je de boiler-test start."

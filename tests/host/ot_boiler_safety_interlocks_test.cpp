@@ -15,7 +15,7 @@ oq_boiler::BoilerCommand active_command(uint32_t updated_at_ms) {
 
 oq_boiler::ControllerInput safe_input(uint32_t now_ms) {
   return oq_boiler::ControllerInput{
-      true, true, true, true, true,  true,   true,  false, false, false,  true,
+      true, true, true, true, true,  true,   false, false, false, true,
       true, true, true, true, false, now_ms, 15000, 0,     30000, 120000,
   };
 }
@@ -144,11 +144,6 @@ void test_fail_safe_priority() {
   assert_decision(decision, false, true, oq_boiler::BLOCK_WATER_TEMP_INHIBIT);
 
   input = safe_input(1500);
-  input.source_present = false;
-  decision = oq_boiler::evaluate(command, input);
-  assert_decision(decision, false, true, oq_boiler::BLOCK_SOURCE_NOT_CONNECTED);
-
-  input = safe_input(1500);
   input.assist_enabled = false;
   decision = oq_boiler::evaluate(command, input);
   assert_decision(decision, false, true, oq_boiler::BLOCK_ASSIST_DISABLED);
@@ -225,7 +220,7 @@ void test_fallback_and_flow_guards() {
   auto input = safe_input(1500);
   input.assist_enabled = false;
   auto decision = oq_boiler::evaluate(command, input);
-  assert_decision(decision, true, false, oq_boiler::BLOCK_NONE);
+  assert_decision(decision, false, true, oq_boiler::BLOCK_ASSIST_DISABLED);
 
   input = safe_input(1500);
   input.fallback_enabled = false;
@@ -321,7 +316,6 @@ void test_commissioning_wait_state() {
   command.heat_request = false;
 
   auto input = safe_input(1500);
-  input.assist_enabled = false;
   auto decision = oq_boiler::evaluate(command, input);
   assert_decision(decision, false, false, oq_boiler::BLOCK_COMMISSIONING_WAITING);
   assert(decision.blocked);
@@ -330,12 +324,6 @@ void test_commissioning_wait_state() {
   input.output_last_change_ms = 1400;
   decision = oq_boiler::evaluate(command, input);
   assert_decision(decision, true, false, oq_boiler::BLOCK_MIN_ON_TIME);
-
-  command.heat_request = true;
-  input = safe_input(1500);
-  input.assist_enabled = false;
-  decision = oq_boiler::evaluate(command, input);
-  assert_decision(decision, true, false, oq_boiler::BLOCK_NONE);
 }
 
 void test_commissioning_start_failure_reason() {

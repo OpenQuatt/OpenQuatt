@@ -150,7 +150,6 @@ inline BoilerLogDecision classify_boiler_controller_log(const BoilerControllerLo
       reason = BoilerLogReason::SENSOR_FALLBACK;
       break;
     case BLOCK_ASSIST_DISABLED:
-    case BLOCK_SOURCE_NOT_CONNECTED:
       reason = BoilerLogReason::NO_CANDIDATE;
       break;
     case BLOCK_FALLBACK_DISABLED:
