@@ -12,11 +12,12 @@ export const WEB_BUNDLE_BUDGETS = [
     // advisory per-ODU generation detection with single bulk-detect button for onboarding and installation settings,
     // the explicitly confirmed dev-to-main firmware downgrade flow,
     // selectable cooling restart by water temperature or minimum off-time,
+    // instelbare elektrische ingangsgrens met topologie- en ODU-afhankelijk maximum,
     // toelichting lokale historie in Quick Start, plus fase-2 flash-I/O observability,
     // strategie-afhankelijke warmtetoestemming-advies (Power House vs stooklijn, OT-voorkeur, centrale modal, auto-set in Quick Start),
     // plus hervatbare, fail-closed Quick Start-OTA met main-/doelcontrole en duurzaam post-bootbewijs,
     // en afzonderlijke rollen voor een aangesloten aanvullende warmtebron, hybride verwarmen en overname.
-    raw: 957_000,
+    raw: 958_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

@@ -774,15 +774,10 @@ interval:
             if (P_target > cap_total) P_target = cap_total;
             if (P_target < 0.0f) P_target = 0.0f;
 
-            const float duo_current_limit_a =
-                (id(hp_generation).has_state() && id(hp_generation).current_option() == "V2")
-                    ? ${oq_duo_current_limit_v2_a}
-                    : ${oq_duo_current_limit_v1_a};
-            const float mains_voltage_v = ${oq_mains_voltage_v};
             const int last1 = id(hp1_last_applied_level);
             const int last2 = id(${secondary_last_applied_level_id});
-            const float P_EL_SOFT_W = duo_current_limit_a * mains_voltage_v * (3400.0f / (16.0f * 230.0f));
-            const float P_EL_PEAK_W = duo_current_limit_a * mains_voltage_v * (3650.0f / (16.0f * 230.0f));
+            const float P_EL_SOFT_W = id(oq_power_limit_soft_w);
+            const float P_EL_PEAK_W = id(oq_power_limit_peak_w);
             const float thermal_tie_band_w = fmaxf(150.0f, 0.05f * fmaxf(P_target, 1000.0f));
             const float thermal_keep_margin_w = fminf(90.0f, thermal_tie_band_w * 0.5f);
             float topology_power_margin_w = ${oq_optimizer_topology_power_margin_w};
@@ -1100,9 +1095,8 @@ interval:
             float best_cost = 1e12f;
             int best_l1 = 0;
             const float W_change_penalty_per_step = 50.0f;
-            const float mains_voltage_v = ${oq_mains_voltage_v};
-            const float P_EL_SOFT_W = ${oq_duo_current_limit_v1_a} * mains_voltage_v * (3400.0f / (16.0f * 230.0f));
-            const float P_EL_PEAK_W = ${oq_duo_current_limit_v1_a} * mains_voltage_v * (3650.0f / (16.0f * 230.0f));
+            const float P_EL_SOFT_W = id(oq_power_limit_soft_w);
+            const float P_EL_PEAK_W = id(oq_power_limit_peak_w);
             const float W_el_over_soft_penalty_per_W = ${oq_optimizer_penalty_per_w};
 
             for (int l1 = 0; l1 <= level_cap; l1++) {
