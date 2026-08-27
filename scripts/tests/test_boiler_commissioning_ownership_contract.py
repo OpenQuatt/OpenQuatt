@@ -34,6 +34,7 @@ class BoilerCommissioningOwnershipContract(unittest.TestCase):
         self.assertIn('finish_task("FAILED: DHW active; retry without hot water or tap comfort"', BOILER_RUNTIME)
 
     def test_boiler_start_confirmation_allows_one_hundred_fifty_seconds(self) -> None:
+        self.assertIn(".max_runtime_ms = 20UL * 60UL * 1000UL", BOILER_RUNTIME)
         self.assertIn(".boiler_start_timeout_ms = 150UL * 1000UL", BOILER_RUNTIME)
         self.assertIn("if (state_age_ms >= cfg.boiler_start_timeout_ms)", BOILER_RUNTIME)
         self.assertIn(".boiler_settle_min_ms = 30UL * 1000UL", BOILER_RUNTIME)

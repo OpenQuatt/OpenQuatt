@@ -47,7 +47,7 @@ struct RuntimeConfig {
 
 inline RuntimeConfig default_config() {
   return RuntimeConfig{
-      .max_runtime_ms = 15UL * 60UL * 1000UL,
+      .max_runtime_ms = 20UL * 60UL * 1000UL,
       .flow_settle_min_ms = 2UL * 60UL * 1000UL,
       .boiler_start_timeout_ms = 150UL * 1000UL,
       .boiler_settle_min_ms = 30UL * 1000UL,
