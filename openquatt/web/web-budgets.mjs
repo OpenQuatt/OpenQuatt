@@ -19,8 +19,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // plus hervatbare, fail-closed Quick Start-OTA met main-/doelcontrole en duurzaam post-bootbewijs,
     // afzonderlijke rollen voor een aangesloten aanvullende warmtebron, hybride verwarmen en overname,
     // the issue-516 boiler/OpenTherm debug-recording fields,
-    // and the compact per-ODU compressor profile for safe manual F-levels.
-    raw: 960_000,
+    // the compact per-ODU compressor profile for safe manual F-levels,
+    // and frequency-based day/silent limits and exclusion ranges per ODU.
+    raw: 965_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

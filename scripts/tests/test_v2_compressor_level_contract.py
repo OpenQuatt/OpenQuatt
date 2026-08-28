@@ -65,7 +65,7 @@ class V2CompressorLevelContractTest(unittest.TestCase):
         self.assertIn("return level_command.control_level;", ACTUATOR)
         self.assertIn("last_commanded_physical_level", ACTUATOR)
         self.assertLess(
-            ACTUATOR.index("applied = pick_allowed_capped"),
+            ACTUATOR.index("applied = oq_frequency_policy::pick_allowed_level("),
             ACTUATOR.rindex("resolve_automatic_level("),
         )
         self.assertLess(

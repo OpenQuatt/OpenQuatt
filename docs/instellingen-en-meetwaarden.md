@@ -51,8 +51,8 @@ Deze groep bepaalt hoeveel ruimte OpenQuatt krijgt:
 - `OpenQuatt Enabled`
 - `Manual Cooling Enable`
 - `Silent Mode Override`
-- `Day max level`
-- `Silent max level`
+- `Day max frequency`
+- `Silent max frequency`
 - `Electrical current limit`
 - `Silent start time`
 - `Silent end time`

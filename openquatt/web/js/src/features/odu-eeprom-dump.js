@@ -51,7 +51,7 @@ export function normalizeOduEepromDumpStatus(payload = {}, hp = 1) {
 }
 
 export function getOduEepromDumpHpIndexes() {
-  return getInstallationTopology() === "duo" || hasEntity("hp2ExcludedA") ? [1, 2] : [1];
+  return getInstallationTopology() === "duo" || hasEntity("hp2ExcludeMinHz") ? [1, 2] : [1];
 }
 
 export function getOduEepromCrcLabel(status) {

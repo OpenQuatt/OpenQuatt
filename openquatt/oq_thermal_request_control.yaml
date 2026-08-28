@@ -1222,38 +1222,40 @@ interval:
           const char* request_reason =
               is_cooling_mode ? "cooling_idle"
                               : (is_power_house ? "ph_idle" : "curve_idle");
-          const int min_level = 0;
           const int max_level = 10;
 
-          auto excluded_levels = [&](bool is_hp1)->oq_request::ExcludedLevels {
+          auto frequency_cap_hz = [&]()->int {
+            auto* cap = id(oq_silent_active).state
+                ? id(oq_silent_max_frequency_hz)
+                : id(oq_day_max_frequency_hz);
+            return cap->has_state() && !isnan(cap->state)
+                ? (int) lroundf(cap->state)
+                : -1;
+          };
+
+          auto excluded_frequency_range = [&](bool is_hp1)
+              -> oq_frequency_policy::FrequencyRange {
+            auto read_hz = [](auto* number)->int {
+              return number->has_state() && !isnan(number->state)
+                  ? (int) lroundf(number->state)
+                  : -1;
+            };
             if (is_hp1) {
-              return oq_request::ExcludedLevels{
-                  id(hp1_excluded_level_a).has_state()
-                      ? id(hp1_excluded_level_a).current_option()
-                      : std::string("None"),
-                  id(hp1_excluded_level_b).has_state()
-                      ? id(hp1_excluded_level_b).current_option()
-                      : std::string("None"),
+              return {
+                  read_hz(id(hp1_excluded_frequency_min_hz)),
+                  read_hz(id(hp1_excluded_frequency_max_hz)),
               };
             }
             #if OQ_TOPOLOGY_DUO
-            return oq_request::ExcludedLevels{
-                id(${secondary_excluded_level_a_id}).has_state()
-                    ? id(${secondary_excluded_level_a_id}).current_option()
-                    : std::string("None"),
-                id(${secondary_excluded_level_b_id}).has_state()
-                    ? id(${secondary_excluded_level_b_id}).current_option()
-                    : std::string("None"),
+            return {
+                read_hz(id(${secondary_excluded_frequency_min_hz_id})),
+                read_hz(id(${secondary_excluded_frequency_max_hz_id})),
             };
             #else
-            (void) is_hp1;
-            return oq_request::ExcludedLevels{"None", "None"};
+            return {};
             #endif
           };
-          int level_cap = (int) roundf(id(oq_day_max_level).state);
-          if (id(oq_silent_active).state) level_cap = (int) roundf(id(oq_silent_max_level).state);
-          if (level_cap < 0) level_cap = 0;
-          if (level_cap > max_level) level_cap = max_level;
+
           const bool hp1_valve_def = valve_defrost_active(true);
           #if OQ_TOPOLOGY_DUO
           const bool hp2_valve_def = valve_defrost_active(false);
@@ -1355,18 +1357,19 @@ interval:
           hp2_req = id(oq_request_hp2_level);
 
           // =========================
-          // 4) Allowed levels after applying up to two explicit exclusions per HP.
-          //    - level 0 always allowed
-          //    - if requested level is excluded: search down first, then up
+          // 4) Policy filtering. Day/Silent caps and one excluded frequency
+          //    range per HP are enforced directly against the runtime table.
           // =========================
           auto pick_allowed = [&](int req, bool is_hp1)->int {
-            return oq_request::pick_allowed_level(req, 1, max_level, excluded_levels(is_hp1));
-          };
-
-          // Like pick_allowed(), but never returns above cap_level.
-          auto pick_allowed_capped = [&](int req, bool is_hp1, int cap_level)->int {
-            return oq_request::pick_allowed_capped_level(
-                req, min_level, max_level, cap_level, excluded_levels(is_hp1));
+            return oq_frequency_policy::pick_allowed_level(
+                configured_v2,
+                runtime_frequency_snapshot(is_hp1),
+                active_thermal_mode_code,
+                req,
+                1,
+                max_level,
+                frequency_cap_hz(),
+                excluded_frequency_range(is_hp1));
           };
 
           hp1_req = pick_allowed(hp1_req, true);
@@ -1554,6 +1557,16 @@ interval:
             hp2_req = 0;
             #endif
           }
+
+          // Slew and runtime holds can reintroduce a previous level after the
+          // first policy pass. Revalidate the final request so this layer never
+          // publishes a level outside its own active cap or exclusion ranges.
+          hp1_req = pick_allowed(hp1_req, true);
+          #if OQ_TOPOLOGY_DUO
+          hp2_req = pick_allowed(hp2_req, false);
+          #else
+          hp2_req = 0;
+          #endif
 
           // =========================
           // 7) Thermal actuator input
