@@ -52,18 +52,6 @@ export function getWebServerLogClearUrl() {
   return `${getBasePath()}/openquatt/logs/clear`;
 }
 
-export function isWebServerLogHistoryEnabled() {
-  const entity = state.entities?.webServerLogHistoryEnabled;
-  if (!entity) {
-    return true;
-  }
-  if (typeof entity.value === "boolean") {
-    return entity.value;
-  }
-  const raw = String(entity.state ?? entity.value ?? "").toLowerCase();
-  return raw === "on" || raw === "true" || raw === "1";
-}
-
 export function getWebServerLogStatusLabel() {
   if (state.nativeOpen) {
     return "Niet beschikbaar";
@@ -125,24 +113,6 @@ export function getWebServerLogTimeTooltip(value) {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return `Sinds opstart: ${hours}u ${minutes}m ${seconds}s`;
-}
-
-export function getWebServerLogHistoryStatusLabel() {
-  if (state.nativeOpen) {
-    return "Niet beschikbaar";
-  }
-  if (isWebServerLogDemoMode()) {
-    return isWebServerLogHistoryEnabled() ? "Voorbeeld buffer aan" : "Voorbeeld buffer uit";
-  }
-  return isWebServerLogHistoryEnabled() ? "Buffer aan" : "Buffer uit";
-}
-
-export function getWebServerLogHistoryInfoCopy() {
-  if (!isWebServerLogHistoryEnabled()) {
-    return "Geen tijdelijke buffer in RAM. De viewer toont alleen live /events.";
-  }
-
-  return "Slaat de laatste firmwarelogs tijdelijk op in RAM. De viewer leest die buffer bij openen en blijft daarna live /events volgen.";
 }
 
 export function getWebServerLoggerLevelEntity() {
@@ -469,7 +439,7 @@ export function openWebServerLogsModal() {
   state.settingsInfoOpen = "";
   state.systemModal = "webserver-logs";
   render();
-  void refreshEntities(["webServerLogHistoryEnabled", "debugLevel"], "all", { forceFast: true }).then(() => {
+  void refreshEntities(["debugLevel"], "all", { forceFast: true }).then(() => {
     if (state.systemModal !== "webserver-logs") {
       return;
     }
@@ -928,33 +898,9 @@ export function renderWebServerLogStatusBanner() {
 }
 
 export function renderWebServerLogHistoryControls() {
-  const enabled = isWebServerLogHistoryEnabled();
-  const busy = state.loadingEntities || Boolean(state.busyAction);
-  const label = getWebServerLogHistoryStatusLabel();
-  const copy = getWebServerLogHistoryInfoCopy();
-  const loggerLevelControl = renderWebServerLoggerLevelControl();
-
   return `
     <div class="oq-webserver-log-history-shell">
-      ${renderWebServerLogControlCard({
-        dataValue: "webserverLogHistory",
-        label: "RAM log history",
-        value: label,
-        infoId: "webserverLogHistory",
-        infoCopy: copy,
-        action: `<button
-          class="oq-helper-button oq-helper-button--ghost"
-          type="button"
-          data-oq-action="toggle-overview-control"
-          data-control-key="webServerLogHistoryEnabled"
-          data-control-state="${enabled ? "off" : "on"}"
-          aria-pressed="${enabled ? "true" : "false"}"
-          ${busy ? "disabled" : ""}
-        >
-          ${enabled ? "Uitschakelen" : "Inschakelen"}
-        </button>`,
-      })}
-      ${loggerLevelControl}
+      ${renderWebServerLoggerLevelControl()}
     </div>
   `;
 }

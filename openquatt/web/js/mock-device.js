@@ -182,7 +182,6 @@
     energyHistoryLastWriteAt: Date.now() - (9 * 60 * 60 * 1000),
     energyHistoryHourRetention: "180 dagen",
     energyCountersReset: false,
-    logHistoryEnabled: true,
     logHistoryEntries: [],
     debugRecording: {
       active: false,
@@ -1994,7 +1993,6 @@
     setEntity("switch", "Trendhistorie opslaan in flash", { value: true, state: true });
     setEntity("switch", "Beslisloghistorie bewaren", { value: false, state: false });
     setEntity("switch", "Lifetime energiehistorie opslaan", { value: true, state: true });
-    setEntity("switch", "RAM log history", { value: true, state: true });
     updateEnergyHistoryStats();
     setEntity("select", "Debug Level", {
       value: "INFO",
@@ -4079,9 +4077,6 @@
     if (name === "OpenQuatt Enabled" && enabled && getEntity("datetime", "OpenQuatt resume at")) {
       setText("datetime", "OpenQuatt resume at", OPENQUATT_RESUME_CLEAR_VALUE);
     }
-    if (name === "RAM log history") {
-      state.logHistoryEnabled = Boolean(enabled);
-    }
     applyScenario(state.scenario);
     updateSummary();
     notifyMockUpdated();
@@ -5408,7 +5403,7 @@
       }
       if (url.pathname.endsWith("/openquatt/logs/recent") && String(init?.method || "GET").toUpperCase() === "GET") {
         return mockResponse(200, {
-          enabled: Boolean(state.logHistoryEnabled),
+          enabled: true,
           entries: clone(state.logHistoryEntries),
         });
       }

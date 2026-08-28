@@ -334,8 +334,6 @@ void invalidate_crash_time_breadcrumb() {
 
 float OpenQuattLogHistory::get_setup_priority() const { return setup_priority::WIFI; }
 
-bool OpenQuattLogHistory::capture_enabled_() const { return this->enabled_ && this->entries_; }
-
 bool OpenQuattLogHistory::time_is_valid_() const {
   if (this->clock_ == nullptr) {
     return false;
@@ -628,7 +626,7 @@ void OpenQuattLogHistory::maybe_log_pending_crash_report_() {
 #endif
 
 void OpenQuattLogHistory::on_log_(uint8_t level, const char* tag, const char* message, size_t message_len) {
-  if (!this->capture_enabled_() || message == nullptr || message_len == 0) {
+  if (!this->entries_ || message == nullptr || message_len == 0) {
     return;
   }
 
@@ -652,8 +650,6 @@ void OpenQuattLogHistory::on_log_(uint8_t level, const char* tag, const char* me
   this->push_entry_locked_(entry);
   this->unlock_history_();
 }
-
-void OpenQuattLogHistory::set_enabled(bool enabled) { this->enabled_ = enabled; }
 
 void OpenQuattLogHistory::clear_history() {
   if (!this->lock_history_()) {
@@ -702,10 +698,6 @@ void OpenQuattLogHistory::setup() {
     return;
   }
 
-  if (this->enabled_switch_ != nullptr) {
-    this->enabled_ = this->enabled_switch_->state;
-  }
-
   if (!this->entries_.allocate_external(ENTRY_CAPACITY)) {
     ESP_LOGE(TAG, "Failed to allocate log history buffer in PSRAM");
   }
@@ -738,9 +730,7 @@ void OpenQuattLogHistory::dump_config() {
   }
 
   ESP_LOGCONFIG(TAG, "OpenQuatt log history");
-  ESP_LOGCONFIG(TAG, "  Enabled switch: %s", this->enabled_switch_ == nullptr ? "<missing>" : "configured");
   ESP_LOGCONFIG(TAG, "  Clock: %s", this->clock_ == nullptr ? "<missing>" : "configured");
-  ESP_LOGCONFIG(TAG, "  Enabled: %s", YESNO(this->enabled_));
   ESP_LOGCONFIG(TAG, "  Entries: %u / %u", static_cast<unsigned>(entry_count), static_cast<unsigned>(ENTRY_CAPACITY));
   ESP_LOGCONFIG(TAG, "  History buffer: %s",
                 !this->entries_ ? "missing" : (this->entries_.is_external() ? "PSRAM" : "internal"));
@@ -789,8 +779,7 @@ void OpenQuattLogHistory::write_recent_logs(httpd_req_t* req) const {
   this->unlock_history_();
 
   ChunkedJsonWriter writer(req);
-  if (!writer.write_literal("{\"enabled\":") || !writer.write_literal(this->enabled_ ? "true" : "false") ||
-      !writer.write_literal(",\"csrf_token\":") ||
+  if (!writer.write_literal("{\"enabled\":true") || !writer.write_literal(",\"csrf_token\":") ||
       !writer.write_json_string(this->csrf_token_.c_str(), this->csrf_token_.size()) ||
       !writer.write_literal(",\"entries\":[")) {
     ESP_LOGW(TAG, "Failed to start recent log response");
