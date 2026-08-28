@@ -38,6 +38,18 @@ class OpenQuattNetworkContractTest(unittest.TestCase):
         self.assertNotIn("ensure_ethernet_enabled_();", steady)
         self.assertIn("W5500 PHY powered down", NETWORK_CPP)
 
+    def test_ip_sensor_uses_the_active_interface(self) -> None:
+        self.assertIn(
+            'id(oq_connection_text).state == "Ethernet"', NETWORK_PACKAGE
+        )
+        self.assertIn(
+            "global_eth_component->get_ip_addresses()", NETWORK_PACKAGE
+        )
+        self.assertIn('id(oq_connection_text).state == "WiFi"', NETWORK_PACKAGE)
+        self.assertIn(
+            "global_wifi_component->get_ip_addresses()", NETWORK_PACKAGE
+        )
+
     def test_recovery_enables_both_and_keeps_ethernet_first_in_auto(self) -> None:
         recovery = function_body("begin_recovery_(uint32_t now)", "begin_switch_")
         self.assertIn("ensure_wifi_enabled_();", recovery)

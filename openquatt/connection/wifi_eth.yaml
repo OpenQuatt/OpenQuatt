@@ -66,6 +66,26 @@ text_sensor:
     entity_category: diagnostic
     update_interval: 30s
     lambda: |-
+      // Read the interface selected by the runtime manager; ESPHome's generic
+      // helper otherwise follows static route priority even after Power Down.
+      if (id(oq_connection_text).state == "Ethernet" &&
+          esphome::ethernet::global_eth_component != nullptr) {
+        for (const auto &address : esphome::ethernet::global_eth_component->get_ip_addresses()) {
+          if (address.is_set()) {
+            char buffer[esphome::network::IP_ADDRESS_BUFFER_SIZE];
+            return {address.str_to(buffer)};
+          }
+        }
+      }
+      if (id(oq_connection_text).state == "WiFi" &&
+          esphome::wifi::global_wifi_component != nullptr) {
+        for (const auto &address : esphome::wifi::global_wifi_component->get_ip_addresses()) {
+          if (address.is_set()) {
+            char buffer[esphome::network::IP_ADDRESS_BUFFER_SIZE];
+            return {address.str_to(buffer)};
+          }
+        }
+      }
       for (const auto &address : esphome::network::get_ip_addresses()) {
         if (address.is_set()) {
           char buffer[esphome::network::IP_ADDRESS_BUFFER_SIZE];
