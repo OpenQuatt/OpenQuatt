@@ -65,7 +65,6 @@ CONF_TREND_RAM_SWITCH = "trend_ram_switch"
 CONF_TREND_FLASH_SWITCH = "trend_flash_switch"
 CONF_DECISION_LOG_FLASH_SWITCH = "decision_log_flash_switch"
 CONF_ENERGY_HISTORY_FLASH_SWITCH = "energy_history_flash_switch"
-CONF_RAM_LOG_HISTORY_SWITCH = "ram_log_history_switch"
 
 openquatt_usage_telemetry_ns = cg.esphome_ns.namespace("openquatt_usage_telemetry")
 OpenQuattUsageTelemetry = openquatt_usage_telemetry_ns.class_(
@@ -130,7 +129,6 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_TREND_FLASH_SWITCH): cv.use_id(switch.Switch),
             cv.Required(CONF_DECISION_LOG_FLASH_SWITCH): cv.use_id(switch.Switch),
             cv.Required(CONF_ENERGY_HISTORY_FLASH_SWITCH): cv.use_id(switch.Switch),
-            cv.Required(CONF_RAM_LOG_HISTORY_SWITCH): cv.use_id(switch.Switch),
         }
     )
     .extend(cv.COMPONENT_SCHEMA),
@@ -243,5 +241,3 @@ async def to_code(config):
     cg.add(var.set_decision_log_flash_switch(decision_log_flash_switch))
     energy_history_flash_switch = await cg.get_variable(config[CONF_ENERGY_HISTORY_FLASH_SWITCH])
     cg.add(var.set_energy_history_flash_switch(energy_history_flash_switch))
-    ram_log_history_switch = await cg.get_variable(config[CONF_RAM_LOG_HISTORY_SWITCH])
-    cg.add(var.set_ram_log_history_switch(ram_log_history_switch))

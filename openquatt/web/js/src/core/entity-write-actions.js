@@ -15,7 +15,7 @@ import { pollFirmwareUpdateState, primeFirmwareUpdateState } from "../features/f
 import { updateFirmwareState } from "./feature-state.js";
 import { stopLoginAuthStatusPolling } from "../features/security-actions.js";
 import { refreshSettingsStorageStateSoon, SETTINGS_STORAGE_KEYS } from "../features/storage-history.js";
-import { clearWebServerLogOutput, refreshWebServerLogHistory } from "../features/webserver-logs.js";
+import { refreshWebServerLogHistory } from "../features/webserver-logs.js";
 import { waitForUsageTelemetryChoiceConfirmation } from "./usage-telemetry-domain.js";
 
 async function commitUsageTelemetrySwitch(entity, enabled) {
@@ -151,17 +151,6 @@ export async function commitSelect(key, option) {
       if (state.systemModal === "webserver-logs") {
         void refreshWebServerLogHistory();
       }
-    } else if (key === "webServerLogHistoryEnabled") {
-      const selectedEnabled = ["1", "on", "true"].includes(String(option).toLowerCase());
-      if (selectedEnabled) {
-        state.webServerLogHistoryLoaded = false;
-        void refreshWebServerLogHistory();
-      } else {
-        clearWebServerLogOutput();
-      }
-      if (state.systemModal === "webserver-logs") {
-        render();
-      }
     } else if (state.appView === "settings") {
       await refreshEntities(getSettingsRefreshKeys(), "all");
     } else {
@@ -254,17 +243,6 @@ export async function commitSwitch(key, enabled) {
       }
     } else {
       await refreshEntities(["setupComplete", "strategy", "openquattEnabled", "manualCoolingEnable", "silentModeOverride", ...FLOW_SETTING_KEYS, ...LIMIT_KEYS], "state");
-    }
-    if (key === "webServerLogHistoryEnabled") {
-      if (enabled) {
-        state.webServerLogHistoryLoaded = false;
-        void refreshWebServerLogHistory();
-      } else {
-        clearWebServerLogOutput();
-      }
-      if (state.systemModal === "webserver-logs") {
-        render();
-      }
     }
     render();
   } catch (error) {

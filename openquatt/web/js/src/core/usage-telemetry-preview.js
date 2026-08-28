@@ -41,7 +41,6 @@ export const USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS = [
   "trendHistoryFlashEnabled",
   "decisionLogHistoryEnabled",
   "lifetimeEnergyHistoryEnabled",
-  "webServerLogHistoryEnabled",
 ];
 
 const INVALID_TEXT_VALUES = new Set(["", "unknown", "unavailable", "nan"]);
@@ -179,7 +178,7 @@ export function createUsageTelemetryPreview(values = {}, options = {}) {
     trend_flash_enabled: optionalBoolean(values.trendHistoryFlashEnabled),
     decision_log_flash_enabled: optionalBoolean(values.decisionLogHistoryEnabled),
     energy_history_flash_enabled: optionalBoolean(values.lifetimeEnergyHistoryEnabled),
-    ram_log_history_enabled: optionalBoolean(values.webServerLogHistoryEnabled),
+    ram_log_history_enabled: true,
   };
 }
 

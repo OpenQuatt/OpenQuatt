@@ -405,7 +405,7 @@ test("refreshWebServerLogHistory stores the firmware CSRF token", async (t) => {
   assert.equal(state.webServerLogCsrfToken, "firmware-csrf-token");
 });
 
-test("webserver log controls keep guidance behind compact info toggles", (t) => {
+test("webserver log controls only render the logger-level card", (t) => {
   const originalEntities = state.entities;
   const originalLoadingEntities = state.loadingEntities;
   const originalBusyAction = state.busyAction;
@@ -418,7 +418,6 @@ test("webserver log controls keep guidance behind compact info toggles", (t) => 
   });
 
   state.entities = {
-    webServerLogHistoryEnabled: { value: true },
     debugLevel: { value: "INFO", options: ["INFO", "DEBUG"] },
   };
   state.loadingEntities = false;
@@ -427,8 +426,8 @@ test("webserver log controls keep guidance behind compact info toggles", (t) => 
 
   const markup = renderWebServerLogHistoryControls();
   assert.match(markup, /oq-webserver-log-control-card/);
-  assert.match(markup, /data-oq-settings-info="webserverLogHistory"/);
   assert.match(markup, /data-oq-settings-info="webserverLoggerLevel"/);
+  assert.doesNotMatch(markup, /RAM log history|Uitschakelen|Inschakelen/);
   assert.equal((markup.match(/oq-settings-system-row-note/g) || []).length, 0);
 });
 

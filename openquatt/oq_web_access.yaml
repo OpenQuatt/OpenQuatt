@@ -19,7 +19,6 @@ openquatt_web_auth:
 
 openquatt_log_history:
   id: oq_log_history
-  enabled_switch: oq_ram_log_history_switch
   clock: oq_time
 
 openquatt_debug_recorder:
@@ -87,23 +86,6 @@ openquatt_service_status:
   hp_water_calibration_result_supply_raw_avg: oq_hp_water_calibration_result_supply_raw_avg_c
   hp_water_calibration_result_supply_offset: oq_hp_water_calibration_result_supply_offset_c
   hp_water_calibration_result_supply_source: oq_hp_water_calibration_result_supply_source
-
-switch:
-  - platform: template
-    id: oq_ram_log_history_switch
-    name: RAM log history
-    internal: true
-    disabled_by_default: true
-    icon: mdi:memory
-    entity_category: config
-    optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON
-    turn_on_action:
-      - lambda: |-
-          id(oq_log_history).set_enabled(true);
-    turn_off_action:
-      - lambda: |-
-          id(oq_log_history).set_enabled(false);
 
 binary_sensor:
   - platform: gpio
