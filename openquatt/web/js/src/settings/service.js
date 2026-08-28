@@ -57,21 +57,6 @@ import { renderModalShell } from "../core/modal-shell.js";
     return /DONE|APPLIED|CONFIRM_REQUIRED/.test(String(status || "").trim().toUpperCase());
   }
 
-  export function getBoilerResultQualityCopy(quality) {
-    const normalized = String(quality || "").trim().toUpperCase();
-    if (normalized.includes("OPENTHERM MEASUREMENT, ID15 CAPACITY AVAILABLE")
-        || normalized.includes("VERIFIED VIA OPENTHERM ID15")) {
-      return "OpenTherm-meting; ID15-capaciteit beschikbaar";
-    }
-    if (normalized.includes("EMPIRICAL, ID15 UNAVAILABLE")) {
-      return "Empirisch gemeten; ID15-capaciteitsinformatie ontbreekt";
-    }
-    if (normalized.includes("EMPIRICAL RELAY MEASUREMENT")) return "Empirisch gemeten via R1";
-    if (normalized.includes("FLOW/HEADROOM LIMITED")) return "Niet toepasbaar: flow/temperatuurmarge begrensd";
-    if (normalized.includes("QUALITY REQUIREMENTS NOT MET")) return "Niet toepasbaar: kwaliteitscriteria niet gehaald";
-    return "Nog geen bruikbaar meetresultaat";
-  }
-
   export function isCommissioningTaskStatusWaitingForCm100(status) {
     const normalized = String(status || "").trim().toUpperCase();
     return normalized.includes("WAITING_FOR_CM100")
@@ -432,21 +417,19 @@ import { renderModalShell } from "../core/modal-shell.js";
       return `Metingen klaar; ketel uit.${result && result !== "—" ? ` ${result}.` : ""} 15s afkoelen.`;
     }
     if (upper.startsWith("CONFIRM_REQUIRED")) {
-      return "Bevestig binnen 30 seconden nogmaals dat je dit empirisch gemeten resultaat wilt toepassen. OpenTherm ID15-capaciteitsinformatie ontbreekt.";
+      return "Bevestig binnen 30 seconden nogmaals dat je dit resultaat wilt toepassen.";
     }
     if (upper.startsWith("DONE:") || upper === "DONE" || upper.includes("APPLIED")) {
       const result = getSettingsStatValue("boilerPowerTestResult");
       const conf = getSettingsStatValue("boilerPowerTestConfidence");
-      const qualityRaw = getSettingsTextStatValue("boilerPowerTestResultQuality");
-      const quality = qualityRaw && qualityRaw !== "—" ? getBoilerResultQualityCopy(qualityRaw) : "";
       const isFlowLimited = upper.includes("FLOW LIMITED");
       if (result && result !== "—") {
         if (isFlowLimited) {
           return `Klaar - ${result}${conf && conf !== "—" ? ` (${conf})` : ""} - test begrensd door flow/temperatuurmarge.`;
         }
-        return `Klaar - ${result}${conf && conf !== "—" ? ` (${conf})` : ""}.${quality ? ` ${quality}.` : ""} Ketel auto uit.`;
+        return `Klaar - ${result}${conf && conf !== "—" ? ` (${conf})` : ""}. Ketel automatisch uit.`;
       }
-      return upper.includes("APPLIED") ? "Resultaat toegepast." : "Klaar - ketel auto uit.";
+      return upper.includes("APPLIED") ? "Resultaat toegepast." : "Klaar - ketel automatisch uit.";
     }
     if (upper === "ABORTED" || upper === "ABORT") {
       return "Handmatig gestopt. Flow en ketel zijn hersteld naar vorige instelling.";
@@ -581,7 +564,6 @@ import { renderModalShell } from "../core/modal-shell.js";
     const boilerResultApplied = /APPLIED/.test(String(boilerStatus || "").toUpperCase());
     const boilerConfirmationRequired = /CONFIRM_REQUIRED/.test(String(boilerStatus || "").toUpperCase());
     const boilerResultQualityRaw = getSettingsTextStatValue("boilerPowerTestResultQuality");
-    const boilerResultQuality = getBoilerResultQualityCopy(boilerResultQualityRaw);
     const boilerResultQualityDenied = String(boilerResultQualityRaw || "").toUpperCase().includes("REJECTED:");
     const autotuneResultReady = /DONE|APPLIED/.test(String(autotuneStatus || "").toUpperCase());
     const boilerStatusDisplay = (() => {
@@ -863,15 +845,15 @@ import { renderModalShell } from "../core/modal-shell.js";
         key: "boiler",
         title: "Boiler power test",
         label: "Boiler test",
-        summary: "Controleert ketelstart, stabiele flow en veilige warmteoverdracht; het vermogensresultaat is indicatief.",
+        summary: "Meet het vermogen dat de cv-ketel afgeeft.",
         status: boilerStatusDisplay,
         available: hasBoilerAssist,
         openDisabled: isCommissioningTaskStatusWaitingForCm100(boilerStatusDisplay),
         cardMarkup: renderCommissioningTaskCard({
           taskKey: "boiler",
           title: "Boiler power test",
-          copy: "Controleert ketelstart, stabiele flow en veilige warmteoverdracht. Het gemeten waterzijdige vermogen is indicatief en niet nodig voor normale regeling, maar een resultaat met voldoende meetkwaliteit kan als voorstel worden toegepast. Ontbreekt OpenTherm ID15-capaciteitsinformatie, dan moet je het toepassen binnen 30 seconden nogmaals bevestigen. Duur: meestal 5 tot 15 minuten.",
-          subcopy: `Beschikbaar verwarmingsvermogen: ${escapeHtml(boilerRatedPower)}`,
+          copy: "De test stabiliseert eerst de flow en meet daarna het afgegeven ketelvermogen. Duur: meestal 5 tot 15 minuten.",
+          subcopy: `Ingesteld ketelvermogen: ${escapeHtml(boilerRatedPower)}`,
           status: boilerStatusDisplay,
           statusCopy: boilerTaskWaitingForCm100
             ? "Wacht totdat CM100 actief is voordat je de boiler-test start."
@@ -898,7 +880,6 @@ import { renderModalShell } from "../core/modal-shell.js";
           metrics: `
             ${renderSettingsStaticField("boilerHeatPower", "Actueel vermogen", "Live meting tijdens de boiler-test.", boilerHeatPower)}
             ${renderSettingsStaticField("boilerPowerTestResult", "Gemeten testresultaat", "Afgerond resultaat van de laatste boiler-test.", getSettingsStatValue("boilerPowerTestResult"))}
-            ${renderSettingsStaticField("boilerPowerTestResultQuality", "Herkomst en kwaliteit", "Bepaalt of direct toepassen, extra bevestigen of weigeren is toegestaan.", boilerResultQuality)}
           `,
         }),
       },

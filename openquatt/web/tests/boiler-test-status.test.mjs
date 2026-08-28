@@ -12,9 +12,9 @@ globalThis.window = {
 const { state } = await import("../js/src/core/state.js");
 const { SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
 const {
-  getBoilerResultQualityCopy,
   getBoilerTestStatusCopy,
   getCommissioningProgressModel,
+  getSettingsServiceModel,
   isBoilerTestResultReady,
   isCommissioningTaskStatusTerminal,
 } = await import("../js/src/settings/service.js");
@@ -72,15 +72,14 @@ test("getBoilerTestStatusCopy COOLDOWN shows result", () => {
 test("getBoilerTestStatusCopy DONE shows result and confidence", () => {
   setBoilerEntities("—", "2571 W", "92%", "OpenTherm measurement, ID15 capacity available");
   const copy = getBoilerTestStatusCopy("DONE: 2571W (conf 92%)", 800, 800);
-  assert.match(copy, /Klaar - 2571 W/);
-  assert.match(copy, /92%/);
-  assert.match(copy, /OpenTherm-meting; ID15-capaciteit beschikbaar/);
+  assert.equal(copy, "Klaar - 2571 W (92%). Ketel automatisch uit.");
+  assert.doesNotMatch(copy, /ID15|empirisch/i);
 });
 
 test("getBoilerTestStatusCopy DONE remains compatible when quality entity is absent", () => {
   setBoilerEntities("—", "2571 W", "92%", "—");
   const copy = getBoilerTestStatusCopy("DONE: 2571W (conf 92%)", 800, 800);
-  assert.equal(copy, "Klaar - 2571 W (92%). Ketel auto uit.");
+  assert.equal(copy, "Klaar - 2571 W (92%). Ketel automatisch uit.");
 });
 
 test("empirical result requires an explicit second Apply within 30 seconds", () => {
@@ -88,12 +87,29 @@ test("empirical result requires an explicit second Apply within 30 seconds", () 
   const status = "CONFIRM_REQUIRED: confirm applying empirical result within 30s";
   assert(isCommissioningTaskStatusTerminal(status));
   assert(isBoilerTestResultReady(status));
-  assert.match(getBoilerTestStatusCopy(status, 800, 800), /Bevestig binnen 30 seconden/);
-  assert.match(getBoilerTestStatusCopy(status, 800, 800), /binnen 30 seconden/);
-  assert.equal(
-    getBoilerResultQualityCopy("empirical, ID15 unavailable"),
-    "Empirisch gemeten; ID15-capaciteitsinformatie ontbreekt",
-  );
+  const copy = getBoilerTestStatusCopy(status, 800, 800);
+  assert.equal(copy, "Bevestig binnen 30 seconden nogmaals dat je dit resultaat wilt toepassen.");
+  assert.doesNotMatch(copy, /ID15|empirisch/i);
+});
+
+test("boiler-test card keeps result provenance out of the user interface", () => {
+  state.loadingEntities = false;
+  state.entities = {
+    auxHeatSourcePresent: { value: true, state: "ON" },
+    cm100Active: { value: true, state: "ON" },
+    commissioningStatus: { value: "CM100 READY", state: "CM100 READY" },
+    boilerPowerTestStatus: { value: "DONE: 5096W (conf 85%)", state: "DONE: 5096W (conf 85%)" },
+    boilerHeatPower: { value: 3206.3, uom: "W" },
+    boilerPowerTestResult: { value: 5096, uom: "W" },
+    boilerPowerTestConfidence: { value: 85, uom: "%" },
+    boilerPowerTestResultQuality: { value: "empirical, ID15 unavailable", state: "empirical, ID15 unavailable" },
+    boilerPowerTestApply: { value: false, state: "OFF" },
+  };
+
+  const task = getSettingsServiceModel().tasks.find(({ key }) => key === "boiler");
+  assert.equal(task.summary, "Meet het vermogen dat de cv-ketel afgeeft.");
+  assert.match(task.cardMarkup, /De test stabiliseert eerst de flow/);
+  assert.doesNotMatch(task.cardMarkup, /Herkomst en kwaliteit|ID15|empirisch/i);
 });
 
 test("getBoilerTestStatusCopy exact ABORTED is handmatig", () => {

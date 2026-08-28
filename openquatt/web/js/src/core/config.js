@@ -1049,7 +1049,6 @@
     "boilerBlockReason",
     "boilerStartThermalGuard",
     "boilerStartThermalSafeCeiling",
-    "boilerPowerTestResultQuality",
   ];
   export const OTB_DIAGNOSTIC_KEYS = [
     "otbLinkAvailable",
