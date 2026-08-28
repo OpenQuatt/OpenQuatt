@@ -19,6 +19,7 @@ export const WEB_BUNDLE_BUDGETS = [
     // plus hervatbare, fail-closed Quick Start-OTA met main-/doelcontrole en duurzaam post-bootbewijs,
     // afzonderlijke rollen voor een aangesloten aanvullende warmtebron, hybride verwarmen en overname,
     // the issue-516 boiler/OpenTherm debug-recording fields,
+    // the issue-536 boiler-result quality and confirmed empirical Apply flow,
     // the compact per-ODU compressor profile for safe manual F-levels,
     // and frequency-based day/silent limits and exclusion ranges per ODU.
     raw: 965_000,

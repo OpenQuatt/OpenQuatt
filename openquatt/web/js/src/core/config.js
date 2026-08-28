@@ -314,6 +314,7 @@
     boilerPowerTestApply: { domain: "button", name: "Boiler Power Test Apply", optional: true },
     boilerPowerTestResult: { domain: "sensor", name: "Boiler power test result", optional: true },
     boilerPowerTestConfidence: { domain: "sensor", name: "Boiler power test confidence", optional: true },
+    boilerPowerTestResultQuality: { domain: "text_sensor", name: "Boiler power test result quality", optional: true },
     boilerPowerTestActive: { domain: "binary_sensor", name: "Boiler power test active", optional: true },
     boilerPowerTestStatus: { domain: "text_sensor", name: "Boiler power test status", optional: true },
     flowAutotuneStart: { domain: "button", name: "Flow Autotune Start", optional: true },
@@ -917,6 +918,7 @@
     "boilerPowerTestApply",
     "boilerPowerTestResult",
     "boilerPowerTestConfidence",
+    "boilerPowerTestResultQuality",
     "boilerPowerTestActive",
     "boilerPowerTestStatus",
     "boilerHeatPower",
@@ -996,6 +998,7 @@
     "cm100Active",
     "boilerPowerTestResult",
     "boilerPowerTestConfidence",
+    "boilerPowerTestResultQuality",
     "boilerPowerTestActive",
     "boilerPowerTestStatus",
     "flowAutotuneStatus",
@@ -1511,6 +1514,7 @@
     "otbStartHandshakeDetail",
     "boilerStartThermalGuard",
     "boilerStartThermalSafeCeiling",
+    "boilerPowerTestResultQuality",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestOtaUrl", "firmwareTestOtaMd5Url", "installFirmwareTestOta"];

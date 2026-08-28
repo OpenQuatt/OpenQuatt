@@ -33,6 +33,14 @@ class BoilerCommissioningOwnershipContract(unittest.TestCase):
         self.assertIn("boiler_test_dhw_interferes", BOILER_RUNTIME)
         self.assertIn('finish_task("FAILED: DHW active; retry without hot water or tap comfort"', BOILER_RUNTIME)
 
+    def test_recovered_opentherm_transport_error_does_not_abort_test(self) -> None:
+        self.assertIn("opentherm_status_required", BOILER_RUNTIME)
+        self.assertIn("active_test_opentherm_ || opentherm_selected_now", BOILER_RUNTIME)
+        self.assertIn("field_is_fresh(oq_otb::FIELD_STATUS", BOILER_RUNTIME)
+        self.assertIn('finish_task("FAILED: OpenTherm status unavailable during test"', BOILER_RUNTIME)
+        self.assertNotIn("active_test_transport_error_count_", BOILER_RUNTIME)
+        self.assertNotIn("FAILED: OpenTherm transport error during test", BOILER_RUNTIME)
+
     def test_boiler_start_confirmation_allows_one_hundred_fifty_seconds(self) -> None:
         self.assertIn(".max_runtime_ms = 20UL * 60UL * 1000UL", BOILER_RUNTIME)
         self.assertIn(".boiler_start_timeout_ms = 150UL * 1000UL", BOILER_RUNTIME)
@@ -50,6 +58,17 @@ class BoilerCommissioningOwnershipContract(unittest.TestCase):
         self.assertIn("reset_power_samples()", BOILER_RUNTIME)
         self.assertNotIn("peak_w_", BOILER_RUNTIME)
         self.assertIn('"FAILED: boiler power did not stabilise"', BOILER_RUNTIME)
+
+    def test_plateau_rebase_keeps_full_measurement_flow_evidence(self) -> None:
+        reset_measurement_start = BOILER_RUNTIME.index("void reset_measurement_accumulators()")
+        reset_power_start = BOILER_RUNTIME.index("void reset_power_samples()", reset_measurement_start)
+        reset_test_start = BOILER_RUNTIME.index("void reset_test_state()", reset_power_start)
+        reset_measurement_body = BOILER_RUNTIME[reset_measurement_start:reset_power_start]
+        reset_power_body = BOILER_RUNTIME[reset_power_start:reset_test_start]
+        self.assertIn("measurement_tick_count_ = 0", reset_measurement_body)
+        self.assertIn("measurement_stable_flow_tick_count_ = 0", reset_measurement_body)
+        self.assertNotIn("measurement_tick_count_ = 0", reset_power_body)
+        self.assertNotIn("measurement_stable_flow_tick_count_ = 0", reset_power_body)
 
     def test_dispatch_reuses_commissioning_temperature_policy(self) -> None:
         self.assertIn("oq_boiler_commissioning::commissioning_target_temperature_c", BOILER_DISPATCH)

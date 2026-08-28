@@ -177,6 +177,8 @@ void OpenQuattServiceStatus::write_status(httpd_req_t* req) const {
       !write_binary_entity(req, &first, "cm100Active", int_value(this->control_mode_code_) == 100) ||
       !write_number_entity(req, &first, "boilerPowerTestResult", float_value(this->boiler_result_w_), "W", 0) ||
       !write_number_entity(req, &first, "boilerPowerTestConfidence", float_value(this->boiler_confidence_), "%", 0) ||
+      !write_text_entity(req, &first, "boilerPowerTestResultQuality",
+                         text_value(this->boiler_quality_, "not available")) ||
       !write_binary_entity(req, &first, "boilerPowerTestActive",
                            commissioning_active && commissioning_task_code == TASK_BOILER_POWER_TEST) ||
       !write_text_entity(req, &first, "boilerPowerTestStatus", text_value(this->boiler_status_)) ||

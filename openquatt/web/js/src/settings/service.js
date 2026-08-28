@@ -62,7 +62,12 @@ import { renderModalShell } from "../core/modal-shell.js";
       || normalized.includes("FAILED")
       || normalized.includes("ABORT")
       || normalized.includes("APPLIED")
+      || normalized.includes("CONFIRM_REQUIRED")
       || normalized.includes("REFUSED");
+  }
+
+  export function isBoilerTestResultReady(status) {
+    return /DONE|APPLIED|CONFIRM_REQUIRED/.test(String(status || "").trim().toUpperCase());
   }
 
   export function isCommissioningTaskStatusWaitingForCm100(status) {
@@ -424,6 +429,9 @@ import { renderModalShell } from "../core/modal-shell.js";
       const result = getSettingsStatValue("boilerPowerTestResult");
       return `Metingen klaar; ketel uit.${result && result !== "—" ? ` ${result}.` : ""} 15s afkoelen.`;
     }
+    if (upper.startsWith("CONFIRM_REQUIRED")) {
+      return "Bevestig binnen 30 seconden nogmaals dat je dit resultaat wilt toepassen.";
+    }
     if (upper.startsWith("DONE:") || upper === "DONE" || upper.includes("APPLIED")) {
       const result = getSettingsStatValue("boilerPowerTestResult");
       const conf = getSettingsStatValue("boilerPowerTestConfidence");
@@ -432,9 +440,9 @@ import { renderModalShell } from "../core/modal-shell.js";
         if (isFlowLimited) {
           return `Klaar - ${result}${conf && conf !== "—" ? ` (${conf})` : ""} - test begrensd door flow/temperatuurmarge.`;
         }
-        return `Klaar - ${result}${conf && conf !== "—" ? ` (${conf})` : ""}. Ketel auto uit.`;
+        return `Klaar - ${result}${conf && conf !== "—" ? ` (${conf})` : ""}. Ketel automatisch uit.`;
       }
-      return upper.includes("APPLIED") ? "Resultaat toegepast." : "Klaar - ketel auto uit.";
+      return upper.includes("APPLIED") ? "Resultaat toegepast." : "Klaar - ketel automatisch uit.";
     }
     if (upper === "ABORTED" || upper === "ABORT") {
       return "Handmatig gestopt. Flow en ketel zijn hersteld naar vorige instelling.";
@@ -567,7 +575,11 @@ import { renderModalShell } from "../core/modal-shell.js";
     const hpWaterCalibrationApplied = /APPLIED/.test(String(hpWaterCalibrationStatus || "").toUpperCase());
     const flowKpSuggested = getSettingsStatValue("flowKpSuggested", { decimals: 5, trimTrailingZeros: true });
     const flowKiSuggested = getSettingsStatValue("flowKiSuggested", { decimals: 5, trimTrailingZeros: true });
-    const boilerResultReady = /DONE|APPLIED/.test(String(boilerStatus || "").toUpperCase());
+    const boilerResultReady = isBoilerTestResultReady(boilerStatus);
+    const boilerResultApplied = /APPLIED/.test(String(boilerStatus || "").toUpperCase());
+    const boilerConfirmationRequired = /CONFIRM_REQUIRED/.test(String(boilerStatus || "").toUpperCase());
+    const boilerResultQualityRaw = getSettingsTextStatValue("boilerPowerTestResultQuality");
+    const boilerResultQualityDenied = String(boilerResultQualityRaw || "").toUpperCase().includes("REJECTED:");
     const autotuneResultReady = /DONE|APPLIED/.test(String(autotuneStatus || "").toUpperCase());
     const boilerStatusDisplay = (() => {
       const upper = String(boilerStatus || "").toUpperCase();
@@ -575,6 +587,7 @@ import { renderModalShell } from "../core/modal-shell.js";
       if (upper.startsWith("REFUSED:") || upper === "REFUSED") return "Start geweigerd";
       if (upper === "ABORTED" || upper === "ABORT") return "Handmatig gestopt";
       if (upper.startsWith("ABORTED:") || upper.startsWith("ABORT:")) return "Afgebroken";
+      if (upper.includes("CONFIRM_REQUIRED")) return "Bevestiging nodig";
       if (upper.startsWith("DONE:") || upper === "DONE" || upper.includes("APPLIED")) return "Klaar";
       if (boilerTaskWaitingForCm100) return "Wachten op CM100";
       if (boilerTaskRunning) return boilerProgress.phase;
@@ -606,7 +619,7 @@ import { renderModalShell } from "../core/modal-shell.js";
       : "Wachten op CM100";
     const boilerStartDisabled = !cm100Ready || boilerBusy || !boilerControls || autotuneTaskRunning || airPurgeTaskRunning || manualFlowTaskRunning || manualHpTaskRunning || hpWaterCalibrationTaskRunning || boilerTaskRunning || autotuneTaskLocked || airPurgeTaskLocked || manualFlowTaskLocked || manualHpTaskLocked || hpWaterCalibrationTaskLocked || boilerPending;
     const boilerAbortDisabled = boilerBusy || !(boilerTaskRunning || boilerTaskLocked || boilerPending);
-    const boilerApplyDisabled = boilerBusy || boilerStartDisabled || !boilerResultReady || autotuneTaskRunning || airPurgeTaskRunning || hpWaterCalibrationTaskRunning;
+    const boilerApplyDisabled = boilerBusy || boilerStartDisabled || !boilerResultReady || boilerResultApplied || boilerResultQualityDenied || autotuneTaskRunning || airPurgeTaskRunning || hpWaterCalibrationTaskRunning;
     const autotuneStartDisabled = !cm100Ready || autotuneBusy || !autotuneControls || boilerTaskRunning || airPurgeTaskRunning || manualFlowTaskRunning || manualHpTaskRunning || hpWaterCalibrationTaskRunning || autotuneTaskRunning || boilerTaskLocked || airPurgeTaskLocked || manualFlowTaskLocked || manualHpTaskLocked || hpWaterCalibrationTaskLocked || autotunePending;
     const autotuneAbortDisabled = autotuneBusy || !(autotuneTaskRunning || autotuneTaskLocked || autotunePending);
     const autotuneApplyDisabled = autotuneBusy || autotuneStartDisabled || !autotuneResultReady || boilerTaskRunning || airPurgeTaskRunning || hpWaterCalibrationTaskRunning;
@@ -847,15 +860,15 @@ import { renderModalShell } from "../core/modal-shell.js";
         key: "boiler",
         title: "Boiler power test",
         label: "Boiler test",
-        summary: "Controleert ketelstart, stabiele flow en veilige warmteoverdracht; het vermogensresultaat is indicatief.",
+        summary: "Meet het vermogen dat de cv-ketel afgeeft.",
         status: boilerStatusDisplay,
         available: hasBoilerAssist,
         openDisabled: isCommissioningTaskStatusWaitingForCm100(boilerStatusDisplay),
         cardMarkup: renderCommissioningTaskCard({
           taskKey: "boiler",
           title: "Boiler power test",
-          copy: "Controleert ketelstart, stabiele flow en veilige warmteoverdracht. Het gemeten waterzijdige vermogen is indicatief; de test is niet nodig voor normale regeling. Gebruik het ingestelde ketelvermogen. Sommige OpenTherm-ketels melden daarnaast hun nominale maximum via ID15. Duur: meestal 5 tot 15 minuten.",
-          subcopy: `Beschikbaar verwarmingsvermogen: ${escapeHtml(boilerRatedPower)}`,
+          copy: "De test stabiliseert eerst de flow en meet daarna het afgegeven ketelvermogen. Duur: meestal 5 tot 15 minuten.",
+          subcopy: `Ingesteld ketelvermogen: ${escapeHtml(boilerRatedPower)}`,
           status: boilerStatusDisplay,
           statusCopy: boilerTaskWaitingForCm100
             ? "Wacht totdat CM100 actief is voordat je de boiler-test start."
@@ -877,7 +890,7 @@ import { renderModalShell } from "../core/modal-shell.js";
               startDisabled: boilerBusy || boilerStartDisabled,
               stopDisabled: boilerBusy || boilerAbortDisabled,
             }) : ""}
-            ${state.entities.boilerPowerTestApply ? renderNamedActionButton("boilerPowerTestApply", "Toepassen", "oq-helper-button oq-helper-button--ghost", boilerBusy || boilerApplyDisabled) : ""}
+            ${state.entities.boilerPowerTestApply ? renderNamedActionButton("boilerPowerTestApply", boilerConfirmationRequired ? "Bevestig toepassen" : "Toepassen", "oq-helper-button oq-helper-button--ghost", boilerBusy || boilerApplyDisabled) : ""}
           `,
           metrics: `
             ${renderSettingsStaticField("boilerHeatPower", "Actueel vermogen", "Live meting tijdens de boiler-test.", boilerHeatPower)}
