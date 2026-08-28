@@ -17,6 +17,20 @@ FREQUENCY_HEADER = (
 RUNTIME_EDITOR = (
     ROOT / "openquatt" / "experimental" / "oq_odu_runtime_frequency_table_hp.yaml"
 ).read_text()
+RUNTIME_EDITOR_HEADER = (
+    ROOT
+    / "openquatt"
+    / "includes"
+    / "experimental"
+    / "oq_odu_runtime_frequency_table.h"
+).read_text()
+RUNTIME_EDITOR_LOGIC = (
+    ROOT
+    / "openquatt"
+    / "includes"
+    / "experimental"
+    / "oq_odu_runtime_frequency_table_logic.h"
+).read_text()
 SERVICE_UI = (
     ROOT / "openquatt" / "web" / "js" / "src" / "settings" / "service.js"
 ).read_text()
@@ -92,6 +106,24 @@ class V2CompressorLevelContractTest(unittest.TestCase):
         self.assertIn("runtime_frequency_write_verification_pending) = false", RUNTIME_EDITOR)
         self.assertIn("script.execute: ${hp_id}_load_runtime_frequency_table_once", RUNTIME_EDITOR)
 
+    def test_experimental_editor_only_opens_extension_for_confirmed_v2_new(self) -> None:
+        self.assertIn("odu_generation_detection_complete", RUNTIME_EDITOR)
+        self.assertIn("oq_odu::Variant::V2_NEW_MODEL", RUNTIME_EDITOR)
+        for mode in ("cooling", "heating"):
+            for level in range(21):
+                self.assertIn(f"id: ${{hp_id}}_odu_runtime_{mode}_f{level}", RUNTIME_EDITOR)
+        self.assertIn("EXTENDED_TABLE_START_ADDRESS = 3050U", RUNTIME_EDITOR_LOGIC)
+        self.assertIn("EXTENDED_TABLE_REGISTER_COUNT = 20U", RUNTIME_EDITOR_LOGIC)
+        self.assertIn("queue_extension_load", RUNTIME_EDITOR_HEADER)
+        self.assertIn("queue_apply_extension_readback", RUNTIME_EDITOR_HEADER)
+        self.assertIn("delay: 60s", RUNTIME_EDITOR)
+        self.assertIn("delay: 30s", RUNTIME_EDITOR)
+        self.assertIn("queue_guarded_runtime_write(refs, tables, operation_token)", RUNTIME_EDITOR_HEADER)
+        self.assertIn("*refs.write_operation_token != operation_token", RUNTIME_EDITOR_HEADER)
+        self.assertIn("values[0] != 0.0f", RUNTIME_EDITOR_LOGIC)
+        self.assertIn("values[index] <= 0.0f", RUNTIME_EDITOR_LOGIC)
+        self.assertNotIn("create_write_multiple_command", RUNTIME_EDITOR_HEADER)
+
     def test_failed_experimental_write_cannot_be_reaccepted_by_generic_retry(self) -> None:
         self.assertIn("runtime_frequency_reload_blocked_after_write", HP_IO)
         loader_block = yaml_block(
@@ -109,6 +141,8 @@ class V2CompressorLevelContractTest(unittest.TestCase):
         self.assertIn("CompressorLevelProfile::UNKNOWN", offline_block)
         self.assertIn("runtime_frequency_snapshot_storage) = {}", offline_block)
         self.assertIn("compressor_level_profile_request_token", offline_block)
+        self.assertIn("runtime_frequency_write_operation_token", offline_block)
+        self.assertIn("VERIFY_FAILED: ODU disconnected during write", offline_block)
         self.assertIn("detect_odu_generation_once", online_block)
 
     def test_blocked_or_incomplete_detection_is_retried_without_opening_extension(self) -> None:

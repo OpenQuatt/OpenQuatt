@@ -35,14 +35,22 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     return parseLooseNumber(getInputDraftValue(key));
   }
 
+  export function getOduRuntimeFrequencyLevels(hpIndex) {
+    const variantKey = hpIndex === 2 ? "hp2GenerationVariant" : "hp1GenerationVariant";
+    const extendedLayout = String(getEntityValue(variantKey) || "").trim() === "V2 new model";
+    return ODU_RUNTIME_FREQUENCY_LEVELS.slice(0, extendedLayout ? 21 : 11);
+  }
+
   export function getOduRuntimeFrequencyTableValidation(hpIndex) {
     const invalid = [];
+    const levels = getOduRuntimeFrequencyLevels(hpIndex);
     ODU_RUNTIME_FREQUENCY_MODES.forEach((mode) => {
       let previous = -Infinity;
-      ODU_RUNTIME_FREQUENCY_LEVELS.forEach((level) => {
+      levels.forEach((level) => {
         const key = getOduRuntimeFrequencyValueKey(hpIndex, mode, level);
         const value = getOduRuntimeFrequencyNumberValue(key);
-        if (!Number.isFinite(value) || value < 0 || value > 120 || value < previous) {
+        const invalidOffLevel = level === 0 ? value !== 0 : value <= 0;
+        if (!Number.isFinite(value) || invalidOffLevel || value > 120 || value < previous) {
           invalid.push(`${mode === "cooling" ? "C" : "H"}F${level}`);
         }
         if (Number.isFinite(value)) {
@@ -125,7 +133,8 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
   }
 
   export function renderOduRuntimeFrequencyTable(hpIndex) {
-    const levelCount = ODU_RUNTIME_FREQUENCY_LEVELS.length;
+    const levels = getOduRuntimeFrequencyLevels(hpIndex);
+    const levelCount = levels.length;
     return `
       <div class="oq-settings-odu-runtime-table" role="table" aria-label="${escapeHtml(`HP${hpIndex} ODU runtime frequentietabel`)}">
         <div class="oq-settings-odu-runtime-row oq-settings-odu-runtime-row--head" role="row">
@@ -133,7 +142,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           <span role="columnheader">Cooling</span>
           <span role="columnheader">Heating</span>
         </div>
-        ${ODU_RUNTIME_FREQUENCY_LEVELS.map((level) => `
+        ${levels.map((level) => `
           <div class="oq-settings-odu-runtime-row" role="row">
             <span class="oq-settings-odu-runtime-level" role="cell">F${level}</span>
             <div role="cell">${renderOduRuntimeFrequencyNumberInput(getOduRuntimeFrequencyValueKey(hpIndex, "cooling", level), level)}</div>
@@ -184,7 +193,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     const busy = state.loadingEntities || state.busyAction === loadKey || state.busyAction === applyKey;
     const applyDisabled = busy || !enabled || !validation.valid || !operation.safe || !hasEntity(applyKey);
     const validationText = validation.valid
-      ? "Waarden zijn 0-120 Hz en per tabel oplopend."
+      ? "F0 is 0 Hz; F1 en hoger zijn 1-120 Hz en per tabel oplopend."
       : `Controleer ${validation.invalid.slice(0, 5).join(", ")}${validation.invalid.length > 5 ? "..." : ""}.`;
 
     return `
@@ -194,6 +203,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
             <p class="oq-helper-label">HP${hpIndex}</p>
             <h4>Runtime frequentietabel</h4>
             <p>${escapeHtml(operation.reason)} Laatste compressorfrequentie: ${escapeHtml(operation.freq)}.</p>
+            <p>${getOduRuntimeFrequencyLevels(hpIndex).length === 21 ? "V2-new fingerprint bevestigd: F0-F20 beschikbaar." : "Veilige layout: alleen F0-F10; uitbreidingsregisters blijven onaangeraakt."}</p>
           </div>
           <div class="oq-settings-odu-runtime-actions">
             ${hasEntity(loadKey) ? renderNamedActionButton(loadKey, state.busyAction === loadKey ? "Lezen..." : "Uit ODU laden", "oq-helper-button oq-helper-button--ghost", busy) : ""}
