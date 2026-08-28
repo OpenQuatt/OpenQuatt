@@ -16,6 +16,13 @@ void test_commissioning_temperature_policy() {
   assert(isnan(commissioning_target_temperature_c(50.0f, -1.0f)));
 }
 
+void test_dhw_only_interferes_with_opentherm_boiler_test() {
+  assert(boiler_test_dhw_interferes(true, true, true));
+  assert(!boiler_test_dhw_interferes(true, true, false));
+  assert(!boiler_test_dhw_interferes(true, false, true));
+  assert(!boiler_test_dhw_interferes(false, true, true));
+}
+
 void test_sufficient_headroom() {
   auto op = compute_operating_point(6000.0f, 20.0f, 50.0f, 800.0f, 4180.0f, 5.0f);
   assert(op.feasible);
@@ -115,6 +122,53 @@ void test_apply_policy() {
   assert(!result_apply_allowed(true, false, true));
 }
 
+void test_power_plateau_rebases_after_xtreme_startup_transient() {
+  PowerPlateauMonitor monitor;
+  const float power_w[] = {8754.0f, 8000.0f, 7361.0f, 6999.0f, 6776.0f, 6144.0f, 5988.0f, 5718.0f, 5550.0f,
+                           5347.0f, 5283.0f, 5463.0f, 5170.0f, 5149.0f, 5154.0f, 5164.0f, 5167.0f, 5189.0f,
+                           5166.0f, 5094.0f, 5260.0f, 5244.0f, 5194.0f, 5372.0f, 5235.0f, 5155.0f};
+  int stable_samples = 0;
+  float stable_sum_w = 0.0f;
+  for (float sample_w : power_w) {
+    const auto update = monitor.update(sample_w, 0.95f, 4);
+    if (update == POWER_PLATEAU_STABLE) {
+      stable_samples++;
+      stable_sum_w += sample_w;
+    }
+  }
+
+  assert(stable_samples >= 8);
+  const float average_w = stable_sum_w / (float)stable_samples;
+  assert(average_w > 5100.0f);
+  assert(average_w < 5300.0f);
+  assert(monitor.stable());
+  assert(monitor.reference_w() > 5100.0f);
+  assert(monitor.reference_w() < 5200.0f);
+}
+
+void test_power_plateau_loses_old_result_and_rebases() {
+  PowerPlateauMonitor monitor;
+  assert(monitor.update(5000.0f, 0.95f, 4) == POWER_PLATEAU_WAITING);
+  assert(monitor.update(5010.0f, 0.95f, 4) == POWER_PLATEAU_WAITING);
+  assert(monitor.update(4990.0f, 0.95f, 4) == POWER_PLATEAU_WAITING);
+  assert(monitor.update(5005.0f, 0.95f, 4) == POWER_PLATEAU_STABLE);
+  assert(monitor.update(6000.0f, 0.95f, 4) == POWER_PLATEAU_LOST);
+  assert(!monitor.stable());
+  assert(monitor.update(6010.0f, 0.95f, 4) == POWER_PLATEAU_WAITING);
+  assert(monitor.update(5990.0f, 0.95f, 4) == POWER_PLATEAU_WAITING);
+  assert(monitor.update(6005.0f, 0.95f, 4) == POWER_PLATEAU_STABLE);
+  assert(monitor.reference_w() > 5990.0f);
+  assert(monitor.reference_w() < 6010.0f);
+}
+
+void test_power_plateau_rejects_invalid_configuration_and_samples() {
+  PowerPlateauMonitor monitor;
+  assert(monitor.update(5000.0f, 0.95f, 1) == POWER_PLATEAU_WAITING);
+  assert(monitor.update(5000.0f, 1.0f, 4) == POWER_PLATEAU_WAITING);
+  assert(monitor.update(NAN, 0.95f, 4) == POWER_PLATEAU_WAITING);
+  assert(!monitor.stable());
+}
+
 void test_unreachable_flow_after_sustained_saturation() {
   FlowReachabilityMonitor monitor;
   assert(!monitor.update(1000, 700.0f, 800.0f, 40.0f, 50.0f));
@@ -152,10 +206,28 @@ void test_reachability_monitor_rejects_invalid_flow() {
   assert(!monitor.update(61000, NAN, 800.0f, 40.0f, 50.0f));
 }
 
+void test_boiler_settle_starts_at_confirmed_activation() {
+  BoilerActivationSettleMonitor monitor;
+  assert(!monitor.update(1000, false, 30000));
+  assert(!monitor.update(81000, true, 30000));
+  assert(!monitor.update(110999, true, 30000));
+  assert(monitor.update(111000, true, 30000));
+}
+
+void test_boiler_settle_restarts_after_activation_drops() {
+  BoilerActivationSettleMonitor monitor;
+  assert(!monitor.update(1000, true, 30000));
+  assert(!monitor.update(25000, false, 30000));
+  assert(!monitor.update(30000, true, 30000));
+  assert(!monitor.update(59999, true, 30000));
+  assert(monitor.update(60000, true, 30000));
+}
+
 }  // namespace
 
 int main() {
   test_commissioning_temperature_policy();
+  test_dhw_only_interferes_with_opentherm_boiler_test();
   test_sufficient_headroom();
   test_insufficient_headroom_inlet_high();
   test_generic_helper_preserves_theoretical_flow();
@@ -167,10 +239,15 @@ int main() {
   test_dynamic_flow_after_initial_800_preflow();
   test_very_high_theoretical_flow_is_limited_not_refused();
   test_apply_policy();
+  test_power_plateau_rebases_after_xtreme_startup_transient();
+  test_power_plateau_loses_old_result_and_rebases();
+  test_power_plateau_rejects_invalid_configuration_and_samples();
   test_unreachable_flow_after_sustained_saturation();
   test_reachability_monitor_allows_meaningful_progress();
   test_reachability_monitor_resets_when_actuator_not_saturated();
   test_reachability_monitor_resets_when_target_band_reached();
   test_reachability_monitor_rejects_invalid_flow();
+  test_boiler_settle_starts_at_confirmed_activation();
+  test_boiler_settle_restarts_after_activation_drops();
   return 0;
 }

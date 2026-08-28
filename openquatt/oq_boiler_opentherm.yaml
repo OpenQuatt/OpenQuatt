@@ -23,6 +23,7 @@ esphome:
           // The OpenTherm hub is runtime-owned by the installation choice. A
           // normal R1 installation must not poll an unconnected boiler bus.
           oq_otb::telemetry_state.reset_link_session();
+          oq_otb::start_handshake_state.reset();
           id(oq_otb_link_initialized) = true;
           id(oq_otb_link_available_state) = false;
           id(otb_link_available).publish_state(false);
@@ -126,9 +127,27 @@ opentherm:
     before_send:
       then:
         - lambda: |-
+            if (id(oq_otb_hub).consume_deferred_priority_activation(
+                    esphome::opentherm::MessageId::CH_SETPOINT,
+                    esphome::opentherm::MessageId::STATUS)) {
+              // Arm only when the deferred start sequence owns the bus and
+              // immediately before its first TSet request is recorded.
+              oq_otb::start_handshake_state.begin(millis());
+              const float target_c = id(oq_otb_t_set_command).has_state()
+                                         ? id(oq_otb_t_set_command).state
+                                         : NAN;
+              ESP_LOGI(
+                  "quatt.boiler",
+                  "OpenTherm start handshake generation %u began for %.1f C",
+                  (unsigned) oq_otb::start_handshake_state.generation(),
+                  target_c);
+            }
             oq_otb::off_flush_state.record_request(
                 x.id, x.type, x.valueHB, x.valueLB);
             oq_otb::startup_probe_state.record_request(
+                x.id, x.type, x.valueHB, x.valueLB);
+            oq_otb::telemetry_state.record_request(x.id, x.type);
+            oq_otb::start_handshake_state.record_request(
                 x.id, x.type, x.valueHB, x.valueLB);
     before_process_response:
       then:
@@ -139,17 +158,31 @@ opentherm:
             // entities and hide the frame from ESPHome's payload-only processor.
             const uint8_t response_id = x.id;
             const uint8_t response_type = x.type;
-            oq_otb::off_flush_state.record_response(
-                response_id, response_type, x.valueHB, x.valueLB);
-            oq_otb::startup_probe_state.record_response(
-                response_id, response_type);
+            const auto handshake_before =
+                oq_otb::start_handshake_state.result();
             oq_otb::telemetry_state.record_response(
                 millis(), response_id, response_type);
+            oq_otb::start_handshake_state.record_response(
+                response_id, response_type, x.valueHB, x.valueLB);
 
-            if (oq_otb::telemetry_state.response_payload_is_usable(
-                    response_id, response_type)) return;
+            if (oq_otb::telemetry_state.last_response_is_correlated()) {
+              oq_otb::off_flush_state.record_response(
+                  response_id, response_type, x.valueHB, x.valueLB);
+              oq_otb::startup_probe_state.record_response(
+                  response_id, response_type);
+            }
+            if (handshake_before != oq_otb::start_handshake_state.result()) {
+              char detail[128];
+              oq_otb::start_handshake_state.format_detail(
+                  detail, sizeof(detail));
+              ESP_LOGI(
+                  "quatt.boiler", "OpenTherm start handshake: %s (%s)",
+                  oq_otb::start_handshake_state.result_name(), detail);
+            }
 
-            switch (response_id) {
+            if (oq_otb::telemetry_state.last_response_payload_is_usable()) return;
+
+            switch (oq_otb::telemetry_state.last_request_id()) {
               case esphome::opentherm::MessageId::STATUS:
                 id(otb_fault_indication).invalidate_state();
                 id(otb_ch_active).invalidate_state();
@@ -549,6 +582,32 @@ sensor:
       return (float) oq_otb::telemetry_state.unexpected_response_type_count();
 
   - platform: template
+    id: otb_response_id_mismatch_count
+    name: "OTB - Response ID Mismatch Count"
+    internal: true
+    icon: mdi:identifier
+    accuracy_decimals: 0
+    state_class: total_increasing
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: 5s
+    lambda: |-
+      return (float) oq_otb::telemetry_state.response_id_mismatch_count();
+
+  - platform: template
+    id: otb_response_type_mismatch_count
+    name: "OTB - Response Type Mismatch Count"
+    internal: true
+    icon: mdi:message-alert-outline
+    accuracy_decimals: 0
+    state_class: total_increasing
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: 5s
+    lambda: |-
+      return (float) oq_otb::telemetry_state.response_type_mismatch_count();
+
+  - platform: template
     id: otb_transport_error_count
     name: "OTB - Transport Error Count"
     internal: true
@@ -641,6 +700,34 @@ sensor:
       const int message_id = oq_otb::telemetry_state.last_response_id();
       return message_id >= 0 ? (float) message_id : NAN;
 
+  - platform: template
+    id: otb_start_tset_requested
+    name: "OTB - Start TSet Requested"
+    internal: true
+    icon: mdi:thermometer-chevron-up
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: 1s
+    lambda: |-
+      if (!oq_otb::start_handshake_state.tset_request_seen()) return NAN;
+      return oq_otb::start_handshake_state.requested_tset_c();
+
+  - platform: template
+    id: otb_start_tset_accepted
+    name: "OTB - Start TSet Accepted"
+    internal: true
+    icon: mdi:thermometer-check
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: 1s
+    lambda: |-
+      if (!oq_otb::start_handshake_state.tset_ack_seen()) return NAN;
+      return oq_otb::start_handshake_state.accepted_tset_c();
+
 text_sensor:
   - platform: template
     id: otb_last_response_type
@@ -664,11 +751,43 @@ text_sensor:
     lambda: |-
       return {oq_otb::telemetry_state.last_transport_error_name()};
 
+  - platform: template
+    id: otb_start_handshake_state
+    name: "OTB - Start Handshake State"
+    internal: true
+    icon: mdi:message-check-outline
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: 1s
+    lambda: |-
+      return {oq_otb::start_handshake_state.result_name()};
+
+  - platform: template
+    id: otb_start_handshake_detail
+    name: "OTB - Start Handshake Detail"
+    internal: true
+    icon: mdi:message-text-fast-outline
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: 1s
+    lambda: |-
+      char detail[128];
+      oq_otb::start_handshake_state.format_detail(detail, sizeof(detail));
+      return {detail};
+
 interval:
   - interval: ${oq_otb_link_watch_s}s
     startup_delay: 1s
     then:
       - lambda: |-
+          const auto handshake_before =
+              oq_otb::start_handshake_state.result();
+          oq_otb::start_handshake_state.update_timeout(millis());
+          if (handshake_before != oq_otb::start_handshake_state.result()) {
+            ESP_LOGW(
+                "quatt.boiler", "OpenTherm start handshake: %s",
+                oq_otb::start_handshake_state.result_name());
+          }
           const bool startup_probe_active =
               oq_otb::startup_probe_state.active();
           if (id(oq_otb_startup_probe_active) != startup_probe_active) {
@@ -798,6 +917,10 @@ interval:
           const bool applied_stop =
               id(oq_otb_applied_command_active) && !command_active;
 
+          if (applied_stop) {
+            oq_otb::start_handshake_state.cancel();
+          }
+
           if (applied_stop && id(oq_boiler_output_request)) {
             // A fast adapter gate (most notably transient flow loss) may stop
             // the physical OpenTherm request between controller evaluations.
@@ -832,7 +955,8 @@ interval:
               // A full repeating cycle can take about half a minute. Put the
               // target ahead of the CH-enable STATUS frame after the current
               // conversation finishes. Unlike a fail-safe stop, starting must
-              // not truncate an in-flight request or boiler response.
+              // not truncate an in-flight request or boiler response. The
+              // before-send hook arms the handshake after hub activation.
               id(oq_otb_hub).defer_priority_messages(
                   esphome::opentherm::MessageId::CH_SETPOINT,
                   esphome::opentherm::MessageId::STATUS);

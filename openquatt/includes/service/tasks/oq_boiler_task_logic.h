@@ -11,6 +11,7 @@
 
 namespace oq_boiler_task {
 
+using oq_boiler_commissioning::boiler_test_dhw_interferes;
 using oq_boiler_commissioning::compute_opentherm_operating_point;
 using oq_boiler_commissioning::normalize_max_water_temperature_c;
 using oq_boiler_commissioning::result_apply_allowed;
@@ -32,6 +33,7 @@ static constexpr int STATE_FAILED = oq_commissioning::TASK_STATE_FAILED;
 struct RuntimeConfig {
   uint32_t max_runtime_ms;
   uint32_t flow_settle_min_ms;
+  uint32_t boiler_start_timeout_ms;
   uint32_t boiler_settle_min_ms;
   uint32_t measure_min_ms;
   uint32_t cooldown_ms;
@@ -45,8 +47,9 @@ struct RuntimeConfig {
 
 inline RuntimeConfig default_config() {
   return RuntimeConfig{
-      .max_runtime_ms = 15UL * 60UL * 1000UL,
+      .max_runtime_ms = 20UL * 60UL * 1000UL,
       .flow_settle_min_ms = 2UL * 60UL * 1000UL,
+      .boiler_start_timeout_ms = 150UL * 1000UL,
       .boiler_settle_min_ms = 30UL * 1000UL,
       .measure_min_ms = 3UL * 60UL * 1000UL,
       .cooldown_ms = 15UL * 1000UL,
@@ -86,11 +89,15 @@ class BoilerPowerTestRuntime {
     }
 
     reset_test_state();
-
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     active_test_opentherm_ =
         id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
     if (active_test_opentherm_) {
+      if (boiler_test_dhw_interferes(true, id(otb_dhw_active).has_state(), id(otb_dhw_active).state)) {
+        oq_service_status::set_boiler_power_test("REFUSED: DHW active; retry without hot water or tap comfort");
+        reset_test_state();
+        return;
+      }
       const float max_c = normalize_max_water_temperature_c(id(max_water_temp_limit_c).state);
       float inlet_c = NAN;
       if (id(otb_return_water_temp).has_state() && !isnan(id(otb_return_water_temp).state)) {
@@ -144,7 +151,7 @@ class BoilerPowerTestRuntime {
 
     ESP_LOGI("quatt.cm100.boiler", "Boiler test armed: initial target_flow=%.0fL/h saved_flow=%.0fL/h state=%d",
              active_test_flow_target_lph_, prev_flow_setpoint_lph_, id(oq_commissioning_state_code));
-    set_number_value(id(oq_flow_setpoint_lph), active_test_flow_target_lph_);
+    publish_transient_number_value(id(oq_flow_setpoint_lph), active_test_flow_target_lph_);
 
     oq_service_status::set_commissioning("BOILER TEST STARTED");
     publish_status("FLOW_SETTLING");
@@ -250,10 +257,25 @@ class BoilerPowerTestRuntime {
       id(oq_commissioning_state_since_ms) = now_ms;
     }
     if ((uint32_t)(now_ms - id(oq_commissioning_started_ms)) >= cfg.max_runtime_ms) {
-      finish_task("FAILED: timeout", STATE_FAILED, false, true);
+      const char* failure_status = id(oq_commissioning_state_code) == STATE_MEASURE
+                                       ? "FAILED: boiler power did not stabilise"
+                                       : "FAILED: timeout";
+      finish_task(failure_status, STATE_FAILED, false, true);
       return;
     }
     if (!guards_ok()) return;
+
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    const int state_code = id(oq_commissioning_state_code);
+    const bool dhw_can_interfere =
+        state_code == STATE_FLOW_SETTLE || state_code == STATE_BOILER_SETTLE || state_code == STATE_MEASURE;
+    if (dhw_can_interfere &&
+        boiler_test_dhw_interferes(active_test_opentherm_, id(otb_dhw_active).has_state(), id(otb_dhw_active).state)) {
+      ESP_LOGW("quatt.cm100.boiler", "Boiler test failed because DHW became active (state=%d)", state_code);
+      finish_task("FAILED: DHW active; retry without hot water or tap comfort", STATE_FAILED, false, true);
+      return;
+    }
+#endif
 
     if (id(oq_commissioning_boiler_request)) id(oq_commissioning_boiler_request_updated_ms) = now_ms;
 
@@ -289,13 +311,13 @@ class BoilerPowerTestRuntime {
   bool active_test_flow_limited_{false};
   bool active_test_result_apply_allowed_{false};
   oq_boiler_commissioning::FlowReachabilityMonitor flow_reachability_{};
+  oq_boiler_commissioning::BoilerActivationSettleMonitor boiler_activation_settle_{};
+  oq_boiler_commissioning::PowerPlateauMonitor power_plateau_{};
   int stable_flow_count_{0};
   int sample_count_{0};
   float sum_w_{0.0f};
   float min_w_{NAN};
   float max_w_{NAN};
-  float peak_w_{NAN};
-  int plateau_count_{0};
   int last_state_logged_{-1};
   uint32_t last_heartbeat_ms_{0};
   std::string last_status_{};
@@ -305,6 +327,12 @@ class BoilerPowerTestRuntime {
     auto call = number_entity.make_call();
     call.set_value(value);
     call.perform();
+  }
+
+  template <typename NumberEntity>
+  void publish_transient_number_value(NumberEntity& number_entity, float value) {
+    // Do not overwrite the restore_value preference with a temporary service target.
+    number_entity.publish_state(value);
   }
 
   bool flow_on_target(float flow_lph, float flow_band_lph) const {
@@ -321,23 +349,27 @@ class BoilerPowerTestRuntime {
 
   void restore_flow_setpoint() {
     if (!flow_setpoint_saved_) return;
-    set_number_value(id(oq_flow_setpoint_lph), prev_flow_setpoint_lph_);
+    publish_transient_number_value(id(oq_flow_setpoint_lph), prev_flow_setpoint_lph_);
     flow_setpoint_saved_ = false;
   }
 
   void reset_measurement_accumulators() {
     stable_flow_count_ = 0;
+    power_plateau_.reset();
+    reset_power_samples();
+  }
+
+  void reset_power_samples() {
     sample_count_ = 0;
     sum_w_ = 0.0f;
     min_w_ = NAN;
     max_w_ = NAN;
-    peak_w_ = NAN;
-    plateau_count_ = 0;
   }
 
   void reset_test_state() {
     reset_measurement_accumulators();
     flow_reachability_.reset();
+    boiler_activation_settle_.reset();
     active_test_flow_target_lph_ = NAN;
     active_test_capacity_w_ = NAN;
     active_test_theoretical_flow_lph_ = NAN;
@@ -464,7 +496,7 @@ class BoilerPowerTestRuntime {
       }
       const float rated_w = id(oq_boiler_rated_heat_power).state;
       const auto op = compute_opentherm_operating_point(true, active_test_capacity_w_, rated_w, inlet_c, max_c,
-                                                        cfg.target_flow_lph);
+                                                        active_test_flow_target_lph_);
       if (!op.feasible) {
         finish_task("FAILED: insufficient thermal headroom for boiler power test", STATE_FAILED, false, true);
         return;
@@ -476,7 +508,7 @@ class BoilerPowerTestRuntime {
                  "Preflow settled at %.0f L/h; theoretical flow %.0f L/h, selecting %.0f L/h%s and re-settling",
                  flow_lph, op.theoretical_flow_lph, op.target_flow_lph, op.flow_limited ? " (flow limited)" : "");
         active_test_flow_target_lph_ = op.target_flow_lph;
-        set_number_value(id(oq_flow_setpoint_lph), active_test_flow_target_lph_);
+        publish_transient_number_value(id(oq_flow_setpoint_lph), active_test_flow_target_lph_);
         stable_flow_count_ = 0;
         flow_reachability_.reset();
         id(oq_commissioning_state_since_ms) = now_ms;
@@ -492,6 +524,7 @@ class BoilerPowerTestRuntime {
     id(oq_commissioning_state_code) = STATE_BOILER_SETTLE;
     id(oq_commissioning_state_since_ms) = now_ms;
     stable_flow_count_ = 0;
+    boiler_activation_settle_.reset();
     ESP_LOGI("quatt.cm100.boiler", "Flow settled at %.0fL/h after %lus; requesting boiler relay", flow_lph,
              (unsigned long)((now_ms - id(oq_commissioning_started_ms)) / 1000UL));
     publish_status("BOILER_SETTLING");
@@ -499,10 +532,13 @@ class BoilerPowerTestRuntime {
 
   void run_boiler_settle(const RuntimeConfig& cfg, uint32_t now_ms, float flow_lph, float heat_w,
                          bool flow_stable_now) {
-    stable_flow_count_ = flow_stable_now ? stable_flow_count_ + 1 : 0;
     const uint32_t state_age_ms = now_ms - id(oq_commissioning_state_since_ms);
-    if (!id(boiler_active).state) {
-      if (state_age_ms >= cfg.boiler_settle_min_ms) {
+    const bool boiler_is_active = id(boiler_active).has_state() && id(boiler_active).state;
+    const bool active_long_enough =
+        boiler_activation_settle_.update(now_ms, boiler_is_active, cfg.boiler_settle_min_ms);
+    if (!boiler_is_active) {
+      stable_flow_count_ = 0;
+      if (state_age_ms >= cfg.boiler_start_timeout_ms) {
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
         const bool opentherm_selected = active_test_opentherm_;
 #else
@@ -524,13 +560,14 @@ class BoilerPowerTestRuntime {
       }
       return;
     }
-    if (stable_flow_count_ >= cfg.stable_flow_samples && state_age_ms >= cfg.boiler_settle_min_ms) {
+    stable_flow_count_ = flow_stable_now ? stable_flow_count_ + 1 : 0;
+    if (stable_flow_count_ >= cfg.stable_flow_samples && active_long_enough) {
       id(oq_commissioning_state_code) = STATE_MEASURE;
       id(oq_commissioning_state_since_ms) = now_ms;
       reset_measurement_accumulators();
       ESP_LOGI("quatt.cm100.boiler",
                "Boiler settled; starting measurement window (flow=%.0fL/h heat=%.0fW boiler_active=%d)", flow_lph,
-               heat_w, (int)id(boiler_active).state);
+               heat_w, (int)boiler_is_active);
       publish_status("MEASURING");
     } else {
       publish_status("BOILER_SETTLING");
@@ -539,22 +576,17 @@ class BoilerPowerTestRuntime {
 
   void run_measure(const RuntimeConfig& cfg, uint32_t now_ms, bool flow_stable_now, bool heat_valid, float heat_w) {
     if (flow_stable_now && heat_valid && heat_w > 0.0f) {
-      if (isnan(peak_w_) || heat_w > peak_w_) {
-        peak_w_ = heat_w;
-        plateau_count_ = 0;
-      }
-      const float plateau_floor = isnan(peak_w_) ? heat_w : peak_w_ * cfg.plateau_ratio;
-      if (heat_w >= plateau_floor) {
-        if (plateau_count_ < 1000) plateau_count_++;
-      } else {
-        plateau_count_ = 0;
-      }
-      if (plateau_count_ >= cfg.plateau_confirm_samples) {
+      const auto plateau_update = power_plateau_.update(heat_w, cfg.plateau_ratio, cfg.plateau_confirm_samples);
+      if (plateau_update == oq_boiler_commissioning::POWER_PLATEAU_LOST) reset_power_samples();
+      if (plateau_update == oq_boiler_commissioning::POWER_PLATEAU_STABLE) {
         sample_count_++;
         sum_w_ += heat_w;
         if (isnan(min_w_) || heat_w < min_w_) min_w_ = heat_w;
         if (isnan(max_w_) || heat_w > max_w_) max_w_ = heat_w;
       }
+    } else {
+      const auto plateau_update = power_plateau_.update(NAN, cfg.plateau_ratio, cfg.plateau_confirm_samples);
+      if (plateau_update == oq_boiler_commissioning::POWER_PLATEAU_LOST) reset_power_samples();
     }
 
     const uint32_t measure_age_ms = now_ms - id(oq_commissioning_state_since_ms);

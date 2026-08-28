@@ -20,6 +20,37 @@ class BoilerCommissioningOwnershipContract(unittest.TestCase):
         self.assertIn('finish_task("FAILED: required boiler test flow cannot be reached"', BOILER_RUNTIME)
         self.assertIn("if (!flow_reachable(cfg, now_ms, flow_lph)) return;", BOILER_RUNTIME)
 
+    def test_boiler_test_flow_target_is_runtime_only(self) -> None:
+        self.assertIn("active_test_flow_target_lph_ = cfg.target_flow_lph", BOILER_RUNTIME)
+        self.assertNotIn("oq_boiler_power_test_flow_lph", BOILER_RUNTIME)
+        self.assertIn("publish_transient_number_value(id(oq_flow_setpoint_lph)", BOILER_RUNTIME)
+        self.assertNotIn("set_number_value(id(oq_flow_setpoint_lph)", BOILER_RUNTIME)
+
+    def test_boiler_test_has_no_persistent_flow_setting(self) -> None:
+        self.assertNotIn("oq_boiler_power_test_flow_lph", BOILER_TEST_PACKAGE)
+
+    def test_opentherm_dhw_interference_fails_and_restores(self) -> None:
+        self.assertIn("boiler_test_dhw_interferes", BOILER_RUNTIME)
+        self.assertIn('finish_task("FAILED: DHW active; retry without hot water or tap comfort"', BOILER_RUNTIME)
+
+    def test_boiler_start_confirmation_allows_one_hundred_fifty_seconds(self) -> None:
+        self.assertIn(".max_runtime_ms = 20UL * 60UL * 1000UL", BOILER_RUNTIME)
+        self.assertIn(".boiler_start_timeout_ms = 150UL * 1000UL", BOILER_RUNTIME)
+        self.assertIn("if (state_age_ms >= cfg.boiler_start_timeout_ms)", BOILER_RUNTIME)
+        self.assertIn(".boiler_settle_min_ms = 30UL * 1000UL", BOILER_RUNTIME)
+        self.assertIn("BoilerActivationSettleMonitor boiler_activation_settle_", BOILER_RUNTIME)
+        self.assertIn(
+            "boiler_activation_settle_.update(now_ms, boiler_is_active, cfg.boiler_settle_min_ms)",
+            BOILER_RUNTIME,
+        )
+
+    def test_measurement_uses_rebasable_power_plateau(self) -> None:
+        self.assertIn("PowerPlateauMonitor power_plateau_", BOILER_RUNTIME)
+        self.assertIn("POWER_PLATEAU_LOST", BOILER_RUNTIME)
+        self.assertIn("reset_power_samples()", BOILER_RUNTIME)
+        self.assertNotIn("peak_w_", BOILER_RUNTIME)
+        self.assertIn('"FAILED: boiler power did not stabilise"', BOILER_RUNTIME)
+
     def test_dispatch_reuses_commissioning_temperature_policy(self) -> None:
         self.assertIn("oq_boiler_commissioning::commissioning_target_temperature_c", BOILER_DISPATCH)
         commissioning_start = BOILER_DISPATCH.index("} else if (commissioning_task_active) {")

@@ -414,7 +414,7 @@ import { renderModalShell } from "../core/modal-shell.js";
       return `Flow naar ${targetText} ±40. Ketel start daarna. Min. 2 min. Nu ${flowText}.`;
     }
     if (upper.includes("BOILER_SETTLING")) {
-      return `Warmtevraag verstuurd; wachten op ketel. Flow ${flowText} (doel ±40).`;
+      return `Warmtevraag verstuurd; maximaal 150 sec wachten op ketel. Flow ${flowText} (doel ±40).`;
     }
     if (upper.includes("MEASURING")) {
       const heat = getSettingsStatValue("boilerHeatPower");
@@ -446,6 +446,9 @@ import { renderModalShell } from "../core/modal-shell.js";
     if (upper.startsWith("REFUSED:")) {
       const reason = status.slice(status.indexOf(":") + 1).trim();
       return `Start geweigerd: ${reason}`;
+    }
+    if (upper.includes("FAILED: BOILER POWER DID NOT STABILISE")) {
+      return "Mislukt: het ketelvermogen werd niet stabiel binnen de testtijd.";
     }
     if (upper.includes("FAILED")) {
       const colonIdx = status.indexOf(":");
@@ -844,14 +847,14 @@ import { renderModalShell } from "../core/modal-shell.js";
         key: "boiler",
         title: "Boiler power test",
         label: "Boiler test",
-        summary: "Meet het effectieve boilervermogen bij stabiele flow en kan het resultaat toepassen.",
+        summary: "Controleert ketelstart, stabiele flow en veilige warmteoverdracht; het vermogensresultaat is indicatief.",
         status: boilerStatusDisplay,
         available: hasBoilerAssist,
         openDisabled: isCommissioningTaskStatusWaitingForCm100(boilerStatusDisplay),
         cardMarkup: renderCommissioningTaskCard({
           taskKey: "boiler",
           title: "Boiler power test",
-          copy: "Meet het effectieve boilervermogen bij stabiele flow en schrijf daarna een afgerond voorstel weg naar de boilerinstelling. Boilertest duurt meestal ongeveer 5 tot 10 minuten.",
+          copy: "Controleert ketelstart, stabiele flow en veilige warmteoverdracht. Het gemeten waterzijdige vermogen is indicatief; de test is niet nodig voor normale regeling. Gebruik het ingestelde ketelvermogen. Sommige OpenTherm-ketels melden daarnaast hun nominale maximum via ID15. Duur: meestal 5 tot 15 minuten.",
           subcopy: `Beschikbaar verwarmingsvermogen: ${escapeHtml(boilerRatedPower)}`,
           status: boilerStatusDisplay,
           statusCopy: boilerTaskWaitingForCm100

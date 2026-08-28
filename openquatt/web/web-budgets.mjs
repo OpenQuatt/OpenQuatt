@@ -14,11 +14,13 @@ export const WEB_BUNDLE_BUDGETS = [
     // selectable cooling restart by water temperature or minimum off-time,
     // instelbare elektrische ingangsgrens met topologie- en ODU-afhankelijk maximum,
     // toelichting lokale historie in Quick Start, plus fase-2 flash-I/O observability,
+    // bounded OTA app-shell cache refresh before reloading into newly installed firmware,
     // strategie-afhankelijke warmtetoestemming-advies (Power House vs stooklijn, OT-voorkeur, centrale modal, auto-set in Quick Start),
     // plus hervatbare, fail-closed Quick Start-OTA met main-/doelcontrole en duurzaam post-bootbewijs,
     // afzonderlijke rollen voor een aangesloten aanvullende warmtebron, hybride verwarmen en overname,
-    // het compacte per-ODU compressorprofiel voor veilige handmatige F-levels,
-    // en frequentiegebaseerde dag-/stille limieten en uitsluitbereiken per ODU.
+    // the issue-516 boiler/OpenTherm debug-recording fields,
+    // the compact per-ODU compressor profile for safe manual F-levels,
+    // and frequency-based day/silent limits and exclusion ranges per ODU.
     raw: 965_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.

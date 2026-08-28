@@ -4,6 +4,15 @@
 
 #include "openquatt/includes/boiler/oq_otb_telemetry.h"
 
+namespace {
+
+void record_read_response(oq_otb::TelemetryState& state, uint32_t now_ms, uint8_t message_id, uint8_t response_type) {
+  state.record_request(message_id, oq_otb::MESSAGE_TYPE_READ_DATA);
+  state.record_response(now_ms, message_id, response_type);
+}
+
+}  // namespace
+
 int main() {
   oq_otb::TelemetryState state;
 
@@ -11,23 +20,26 @@ int main() {
   assert(state.last_response_id() == -1);
   assert(strcmp(state.last_response_type_name(), "Never") == 0);
   assert(!state.field_is_valid(oq_otb::FIELD_CH_WATER_PRESSURE));
-  assert(state.response_payload_is_usable(18, oq_otb::MESSAGE_TYPE_READ_ACK));
-  assert(!state.response_payload_is_usable(18, oq_otb::MESSAGE_TYPE_WRITE_ACK));
-  assert(state.response_payload_is_usable(1, oq_otb::MESSAGE_TYPE_WRITE_ACK));
+  assert(oq_otb::classify_response(18, oq_otb::MESSAGE_TYPE_READ_DATA, 18, oq_otb::MESSAGE_TYPE_READ_ACK) ==
+         oq_otb::RESPONSE_CORRELATION_ACKNOWLEDGED);
+  assert(oq_otb::classify_response(18, oq_otb::MESSAGE_TYPE_READ_DATA, 18, oq_otb::MESSAGE_TYPE_WRITE_ACK) ==
+         oq_otb::RESPONSE_CORRELATION_TYPE_MISMATCH);
+  assert(oq_otb::classify_response(1, oq_otb::MESSAGE_TYPE_WRITE_DATA, 1, oq_otb::MESSAGE_TYPE_WRITE_ACK) ==
+         oq_otb::RESPONSE_CORRELATION_ACKNOWLEDGED);
 
   // Optional negative acknowledgements do not take down the transport, but
   // the mandatory STATUS field must be valid and fresh for safe actuation.
   oq_otb::TelemetryState link_state;
   assert(!link_state.transport_is_available(0, 1000, 1000));
-  link_state.record_response(100, 18, oq_otb::MESSAGE_TYPE_READ_ACK);
+  record_read_response(link_state, 100, 18, oq_otb::MESSAGE_TYPE_READ_ACK);
   assert(!link_state.transport_is_available(100, 1000, 1000));
-  link_state.record_response(150, 0, oq_otb::MESSAGE_TYPE_READ_ACK);
+  record_read_response(link_state, 150, 0, oq_otb::MESSAGE_TYPE_READ_ACK);
   assert(link_state.transport_is_available(150, 1000, 1000));
-  link_state.record_response(200, 18, oq_otb::MESSAGE_TYPE_DATA_INVALID);
+  record_read_response(link_state, 200, 18, oq_otb::MESSAGE_TYPE_DATA_INVALID);
   assert(link_state.transport_is_available(200, 1000, 1000));
-  link_state.record_response(250, 0, oq_otb::MESSAGE_TYPE_DATA_INVALID);
+  record_read_response(link_state, 250, 0, oq_otb::MESSAGE_TYPE_DATA_INVALID);
   assert(!link_state.transport_is_available(250, 1000, 1000));
-  link_state.record_response(260, 0, oq_otb::MESSAGE_TYPE_READ_ACK);
+  record_read_response(link_state, 260, 0, oq_otb::MESSAGE_TYPE_READ_ACK);
   assert(link_state.transport_is_available(260, 1000, 1000));
   const uint32_t accepted_before_reset = link_state.accepted_response_count();
   link_state.reset_link_session();
@@ -37,7 +49,7 @@ int main() {
   assert(strcmp(link_state.last_response_type_name(), "Never") == 0);
   assert(!link_state.field_is_valid(oq_otb::FIELD_STATUS));
   assert(!link_state.transport_is_available(260, 1000, 1000));
-  link_state.record_response(270, 0, oq_otb::MESSAGE_TYPE_READ_ACK);
+  record_read_response(link_state, 270, 0, oq_otb::MESSAGE_TYPE_READ_ACK);
   assert(link_state.transport_is_available(270, 1000, 1000));
   assert(!link_state.transport_is_available(1271, 1000, 1000));
   assert(link_state.expire_response_session_if_stale(1271, 1000));
@@ -47,12 +59,12 @@ int main() {
   // rollover until a genuinely new response starts a new session.
   assert(!link_state.transport_is_available(271, 1000, 1000));
   assert(!link_state.expire_response_session_if_stale(271, 1000));
-  link_state.record_response(272, 0, oq_otb::MESSAGE_TYPE_READ_ACK);
+  record_read_response(link_state, 272, 0, oq_otb::MESSAGE_TYPE_READ_ACK);
   assert(link_state.transport_is_available(272, 1000, 1000));
 
   // A READ_ACK makes only the matching field valid. Zero-valued payloads are
   // still legitimate samples; validity comes from the response type, not data.
-  state.record_response(100, 18, oq_otb::MESSAGE_TYPE_READ_ACK);
+  record_read_response(state, 100, 18, oq_otb::MESSAGE_TYPE_READ_ACK);
   assert(state.accepted_response_count() == 1);
   assert(state.acknowledged_response_count() == 1);
   assert(state.last_response_id() == 18);
@@ -64,28 +76,30 @@ int main() {
 
   // A semantic negative acknowledgement must invalidate the old sample
   // immediately while remaining a complete response for link supervision.
-  state.record_response(200, 18, oq_otb::MESSAGE_TYPE_DATA_INVALID);
+  record_read_response(state, 200, 18, oq_otb::MESSAGE_TYPE_DATA_INVALID);
   assert(state.accepted_response_count() == 2);
   assert(state.data_invalid_response_count() == 1);
   assert(!state.field_is_valid(oq_otb::FIELD_CH_WATER_PRESSURE));
   assert(strcmp(state.last_response_type_name(), "DATA_INVALID") == 0);
 
-  state.record_response(300, 18, oq_otb::MESSAGE_TYPE_UNKNOWN_DATA_ID);
+  record_read_response(state, 300, 18, oq_otb::MESSAGE_TYPE_UNKNOWN_DATA_ID);
   assert(state.unknown_data_id_response_count() == 1);
   assert(!state.field_is_valid(oq_otb::FIELD_CH_WATER_PRESSURE));
 
   // A WRITE_ACK is a valid frame for commands, but never a valid sample for
   // the read-only telemetry fields tracked here.
-  state.record_response(400, 18, oq_otb::MESSAGE_TYPE_WRITE_ACK);
-  assert(state.acknowledged_response_count() == 2);
+  record_read_response(state, 400, 18, oq_otb::MESSAGE_TYPE_WRITE_ACK);
+  assert(state.acknowledged_response_count() == 1);
+  assert(state.response_type_mismatch_count() == 1);
   assert(!state.field_is_valid(oq_otb::FIELD_CH_WATER_PRESSURE));
 
-  state.record_response(500, 18, oq_otb::MESSAGE_TYPE_INVALID_DATA);
+  record_read_response(state, 500, 18, oq_otb::MESSAGE_TYPE_INVALID_DATA);
   assert(state.unexpected_response_type_count() == 1);
+  assert(state.response_type_mismatch_count() == 2);
   assert(!state.field_is_valid(oq_otb::FIELD_CH_WATER_PRESSURE));
 
   // Freshness calculations must remain correct across millis() wraparound.
-  state.record_response(UINT32_MAX - 5, 25, oq_otb::MESSAGE_TYPE_READ_ACK);
+  record_read_response(state, UINT32_MAX - 5, 25, oq_otb::MESSAGE_TYPE_READ_ACK);
   assert(state.field_is_fresh(oq_otb::FIELD_BOILER_WATER_TEMPERATURE, 4, 10));
   assert(!state.field_is_fresh(oq_otb::FIELD_BOILER_WATER_TEMPERATURE, 5, 10));
 

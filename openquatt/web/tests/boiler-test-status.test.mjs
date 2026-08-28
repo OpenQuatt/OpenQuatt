@@ -10,6 +10,7 @@ globalThis.window = {
 };
 
 const { state } = await import("../js/src/core/state.js");
+const { SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
 const { getBoilerTestStatusCopy, getCommissioningProgressModel } = await import("../js/src/settings/service.js");
 
 function setBoilerEntities(heatPower = "—", result = "—", confidence = "—") {
@@ -37,9 +38,14 @@ test("getBoilerTestStatusCopy FLOW_SETTLING shows target and 2 min hint", () => 
   assert.match(copy, /Nu 812 L\/h/);
 });
 
+test("commissioning polling refreshes the active boiler-test flow target", () => {
+  assert(SETTINGS_GROUP_KEY_MAP.service.includes("flowSetpoint"));
+});
+
 test("getBoilerTestStatusCopy BOILER_SETTLING shows flow", () => {
   const copy = getBoilerTestStatusCopy("BOILER_SETTLING", 805, 800);
   assert.match(copy, /Warmtevraag verstuurd/);
+  assert.match(copy, /maximaal 150 sec/);
   assert.match(copy, /Flow 805 L\/h/);
 });
 
@@ -76,6 +82,11 @@ test("getBoilerTestStatusCopy ABORTED: CM100 exited is afgebroken with reason", 
 test("getBoilerTestStatusCopy FAILED shows mislukt with reason", () => {
   const copy = getBoilerTestStatusCopy("FAILED: boiler active state not confirmed", 800, 800);
   assert.equal(copy, "Mislukt: boiler active state not confirmed");
+});
+
+test("getBoilerTestStatusCopy explains an unstable power timeout", () => {
+  const copy = getBoilerTestStatusCopy("FAILED: boiler power did not stabilise", 800, 800);
+  assert.equal(copy, "Mislukt: het ketelvermogen werd niet stabiel binnen de testtijd.");
 });
 
 test("getBoilerTestStatusCopy REFUSED shows start geweigerd", () => {
