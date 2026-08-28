@@ -20,8 +20,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // afzonderlijke rollen voor een aangesloten aanvullende warmtebron, hybride verwarmen en overname,
     // the issue-516 boiler/OpenTherm debug-recording fields,
     // the issue-536 boiler-result quality and confirmed empirical Apply flow,
-    // and the compact per-ODU compressor profile for safe manual F-levels.
-    raw: 961_000,
+    // the compact per-ODU compressor profile for safe manual F-levels,
+    // and frequency-based day/silent limits and exclusion ranges per ODU.
+    raw: 965_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.
