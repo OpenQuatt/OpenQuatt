@@ -7,6 +7,14 @@
   const MOCK_STABLE_VERSION = "v0.0.0-demo";
   const MOCK_DEV_VERSION = "v0.0.1-demo";
   const MOCK_TEST_VERSION = "v0.0.0-demo-pr.test";
+  const ODU_RUNTIME_FREQUENCY_TABLE_V1 = Object.freeze({
+    cooling: Object.freeze([0, 30, 36, 42, 47, 52, 56, 61, 66, 71, 74]),
+    heating: Object.freeze([0, 30, 39, 49, 55, 61, 67, 72, 79, 85, 90]),
+  });
+  const ODU_RUNTIME_FREQUENCY_TABLE_V2_NEW = Object.freeze({
+    cooling: Object.freeze([0, 20, 26, 30, 34, 36, 38, 40, 42, 44, 46, 48, 52, 54, 56, 58, 60, 64, 66, 68, 71]),
+    heating: Object.freeze([0, 20, 26, 30, 36, 40, 45, 48, 52, 55, 60, 65, 68, 72, 76, 82, 85, 90, 95, 102, 110]),
+  });
   const mockFixtures = window.__OQ_MOCK_FIXTURES__;
   const mockEntityDefs = window.__OQ_MOCK_ENTITY_DEFS__;
   const mockIncidentScenarios = window.__OQ_MOCK_INCIDENT_SCENARIOS__;
@@ -193,12 +201,12 @@
     },
     oduRuntimeFrequency: {
       HP1: {
-        cooling: [0, 30, 36, 42, 47, 52, 56, 61, 66, 71, 74],
-        heating: [0, 30, 39, 49, 55, 61, 67, 72, 79, 85, 90],
+        cooling: [...ODU_RUNTIME_FREQUENCY_TABLE_V1.cooling],
+        heating: [...ODU_RUNTIME_FREQUENCY_TABLE_V1.heating],
       },
       HP2: {
-        cooling: [0, 30, 36, 42, 47, 52, 56, 61, 66, 71, 74],
-        heating: [0, 30, 39, 49, 55, 61, 67, 72, 79, 85, 90],
+        cooling: [...ODU_RUNTIME_FREQUENCY_TABLE_V1.cooling],
+        heating: [...ODU_RUNTIME_FREQUENCY_TABLE_V1.heating],
       },
     },
   };
@@ -225,7 +233,7 @@
 
   const HP2_ENTITIES = mockFixtures.hp2Entities;
   const COMPRESSOR_LEVEL_OPTIONS = mockFixtures.compressorLevelOptions;
-  const ODU_RUNTIME_FREQUENCY_LEVELS = Array.from({ length: 11 }, (_item, index) => index);
+  const ODU_RUNTIME_FREQUENCY_LEVELS = Array.from({ length: 21 }, (_item, index) => index);
   const ODU_RUNTIME_FREQUENCY_MODES = ["cooling", "heating"];
 
   function getMockOduProfile(hp) {
@@ -243,6 +251,11 @@
       state: profile.generation,
       value: profile.generation,
     });
+    const compressorLevelProfile = profile.compressorLevelProfile || "Unknown / F0-F10 safe";
+    setEntity("text_sensor", `HP${hp} - Compressor level profile`, {
+      state: compressorLevelProfile,
+      value: compressorLevelProfile,
+    });
     setEntity("text_sensor", `HP${hp} - ODU generation variant`, {
       state: profile.variant,
       value: profile.variant,
@@ -257,7 +270,20 @@
   function setMockOduGeneration(hp, generation) {
     const profile = mockFixtures.oduProfiles[generation] || mockFixtures.oduProfiles.Unknown;
     state.oduGenerations[hp === 2 ? 2 : 1] = profile.generation;
+    const sourceTable = profile.variant === "V2 new model"
+      ? ODU_RUNTIME_FREQUENCY_TABLE_V2_NEW
+      : ODU_RUNTIME_FREQUENCY_TABLE_V1;
+    state.oduRuntimeFrequency[`HP${hp === 2 ? 2 : 1}`] = {
+      cooling: [...sourceTable.cooling],
+      heating: [...sourceTable.heating],
+    };
     syncMockOduIdentityEntities(hp);
+    seedOduRuntimeFrequencyEntities(`HP${hp === 2 ? 2 : 1}`);
+  }
+
+  function getMockOduRuntimeFrequencyLevels(hp) {
+    const hpIndex = String(hp).endsWith("2") ? 2 : 1;
+    return ODU_RUNTIME_FREQUENCY_LEVELS.slice(0, getMockOduProfile(hpIndex).variant === "V2 new model" ? 21 : 11);
   }
 
   function oduRuntimePrefix(hp) {
@@ -2163,8 +2189,8 @@
       ["Flow Setpoint", 800, 0, 1500, 10, "L/h"],
       ["Cooling Flow Setpoint", 800, 0, 1500, 10, "L/h"],
       ["Manual flow service setpoint", 800, 0, 1500, 10, "L/h"],
-      ["Manual HP1 compressor level", 0, 0, 10, 1, ""],
-      ["Manual HP2 compressor level", 0, 0, 10, 1, ""],
+      ["Manual HP1 compressor level", 0, 0, 20, 1, ""],
+      ["Manual HP2 compressor level", 0, 0, 20, 1, ""],
       ["Manual iPWM", 400, 50, 850, 1, "iPWM"],
       ["Flow PI Kp", 0.35, 0, 5, 0.01, ""],
       ["Flow PI Ki", 0.05, 0, 5, 0.01, ""],
@@ -4058,15 +4084,16 @@
   }
 
   function getOduRuntimeDesiredTable(hp, mode) {
-    return ODU_RUNTIME_FREQUENCY_LEVELS.map((level) => (
+    return getMockOduRuntimeFrequencyLevels(hp).map((level) => (
       Number(getEntity("number", oduRuntimeValueName(hp, mode, level))?.value)
     ));
   }
 
   function validateOduRuntimeTable(values) {
     let previous = -Infinity;
-    for (const value of values) {
-      if (!Number.isFinite(value) || value < 0 || value > 120 || value < previous) {
+    for (const [level, value] of values.entries()) {
+      const invalidOffLevel = level === 0 ? value !== 0 : value <= 0;
+      if (!Number.isFinite(value) || invalidOffLevel || value > 120 || value < previous) {
         return false;
       }
       previous = value;
@@ -4086,11 +4113,12 @@
     setOduRuntimeStatus(hp, "LOAD_REQUESTED");
     window.setTimeout(() => {
       ODU_RUNTIME_FREQUENCY_MODES.forEach((mode) => {
-        ODU_RUNTIME_FREQUENCY_LEVELS.forEach((level) => {
+        getMockOduRuntimeFrequencyLevels(hp).forEach((level) => {
           setNumber(oduRuntimeValueName(hp, mode, level), table[mode][level], "Hz");
         });
       });
-      setOduRuntimeStatus(hp, "LOADED: 22/22 runtime registers");
+      const registerCount = getMockOduRuntimeFrequencyLevels(hp).length === 21 ? 42 : 22;
+      setOduRuntimeStatus(hp, `LOADED: ${registerCount}/${registerCount} runtime registers`);
       notifyMockUpdated();
     }, 320);
   }
@@ -4153,6 +4181,7 @@
     if (generationDetectMatch) {
       const hp = Number(generationDetectMatch[1]);
       setText("text_sensor", `HP${hp} - ODU generation`, "Unknown");
+      setText("text_sensor", `HP${hp} - Compressor level profile`, "Unknown / F0-F10 safe");
       setText("text_sensor", `HP${hp} - ODU generation variant`, "Unknown");
       setText("text_sensor", `HP${hp} - ODU customer model code`, "Unknown");
       window.setTimeout(() => {

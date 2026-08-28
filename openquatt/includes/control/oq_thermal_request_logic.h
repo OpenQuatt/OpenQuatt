@@ -65,10 +65,10 @@ inline int sanitize_request_strategy_code(int strategy_code) {
   return (strategy_code >= 0 && strategy_code <= 4) ? strategy_code : 0;
 }
 
-inline PublishedRequest make_published_request(int mode_code, int hp1_level, int hp2_level, int strategy_code) {
-  constexpr int request_max_level = 10;
-  hp1_level = clamp_level(hp1_level, 0, request_max_level);
-  hp2_level = clamp_level(hp2_level, 0, request_max_level);
+inline PublishedRequest make_published_request(int mode_code, int hp1_level, int hp2_level, int strategy_code,
+                                               int hp1_max_level = 10, int hp2_max_level = 10) {
+  hp1_level = clamp_level(hp1_level, 0, std::max(0, hp1_max_level));
+  hp2_level = clamp_level(hp2_level, 0, std::max(0, hp2_max_level));
   const int topology_code = request_topology_code(hp1_level, hp2_level);
   return PublishedRequest{
       sanitize_request_mode_code(mode_code),           hp1_level,     hp2_level,

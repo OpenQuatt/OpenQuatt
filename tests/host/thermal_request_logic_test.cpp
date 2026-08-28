@@ -3,8 +3,17 @@
 #include "../../openquatt/includes/control/oq_thermal_request_logic.h"
 
 int main() {
+  using oq_request::make_published_request;
   using oq_request::min_runtime_hold_required;
   using oq_request::min_runtime_window_active;
+
+  const auto automatic_request = make_published_request(2, 20, 20, 1);
+  assert(automatic_request.hp1_level == 10);
+  assert(automatic_request.hp2_level == 10);
+
+  const auto manual_request = make_published_request(2, 20, 20, 4, 20, 10);
+  assert(manual_request.hp1_level == 20);
+  assert(manual_request.hp2_level == 10);
 
   constexpr uint32_t start_ms = 1000UL;
   constexpr uint32_t min_runtime_ms = 300000UL;
