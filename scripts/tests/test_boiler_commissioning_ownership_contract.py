@@ -33,6 +33,14 @@ class BoilerCommissioningOwnershipContract(unittest.TestCase):
         self.assertIn("boiler_test_dhw_interferes", BOILER_RUNTIME)
         self.assertIn('finish_task("FAILED: DHW active; retry without hot water or tap comfort"', BOILER_RUNTIME)
 
+    def test_recovered_opentherm_transport_error_does_not_abort_test(self) -> None:
+        self.assertIn("opentherm_status_required", BOILER_RUNTIME)
+        self.assertIn("active_test_opentherm_ || opentherm_selected_now", BOILER_RUNTIME)
+        self.assertIn("field_is_fresh(oq_otb::FIELD_STATUS", BOILER_RUNTIME)
+        self.assertIn('finish_task("FAILED: OpenTherm status unavailable during test"', BOILER_RUNTIME)
+        self.assertNotIn("active_test_transport_error_count_", BOILER_RUNTIME)
+        self.assertNotIn("FAILED: OpenTherm transport error during test", BOILER_RUNTIME)
+
     def test_boiler_start_confirmation_allows_one_hundred_fifty_seconds(self) -> None:
         self.assertIn(".max_runtime_ms = 20UL * 60UL * 1000UL", BOILER_RUNTIME)
         self.assertIn(".boiler_start_timeout_ms = 150UL * 1000UL", BOILER_RUNTIME)

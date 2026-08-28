@@ -109,7 +109,6 @@ class BoilerPowerTestRuntime {
         active_test_capacity_w_ = id(otb_max_capacity).state * 1000.0f;
         active_test_id15_capacity_available_ = true;
       }
-      active_test_transport_error_count_ = oq_otb::telemetry_state.transport_error_count();
       const float rated_w = id(oq_boiler_rated_heat_power).state;
       const auto op = compute_opentherm_operating_point(true, active_test_capacity_w_, rated_w, inlet_c, max_c,
                                                         cfg.target_flow_lph);
@@ -285,18 +284,15 @@ class BoilerPowerTestRuntime {
 
     const int state_code = id(oq_commissioning_state_code);
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-    const bool opentherm_transport_must_be_clean =
-        active_test_opentherm_ &&
+    // Recovered transport errors remain diagnostic; only loss of control-critical STATUS aborts the test.
+    const bool opentherm_selected_now = id(oq_boiler_connection).current_option() == "OpenTherm";
+    const bool opentherm_status_required =
+        (active_test_opentherm_ || opentherm_selected_now) &&
         (state_code == STATE_FLOW_SETTLE || state_code == STATE_BOILER_SETTLE || state_code == STATE_MEASURE);
-    if (opentherm_transport_must_be_clean &&
+    if (opentherm_status_required &&
         (!id(oq_otb_link_available_state) ||
          !oq_otb::telemetry_state.field_is_fresh(oq_otb::FIELD_STATUS, now_ms, boiler_temperature_max_age_ms))) {
       finish_task("FAILED: OpenTherm status unavailable during test", STATE_FAILED, false, true);
-      return;
-    }
-    if (opentherm_transport_must_be_clean &&
-        oq_otb::telemetry_state.transport_error_count() != active_test_transport_error_count_) {
-      finish_task("FAILED: OpenTherm transport error during test", STATE_FAILED, false, true);
       return;
     }
     const bool dhw_can_interfere =
@@ -348,7 +344,6 @@ class BoilerPowerTestRuntime {
   bool active_test_flow_limited_{false};
   bool active_test_result_applied_{false};
   uint8_t active_test_result_quality_{oq_boiler_commissioning::RESULT_QUALITY_NONE};
-  uint32_t active_test_transport_error_count_{0};
   oq_boiler_commissioning::ApplyConfirmationWindow empirical_apply_confirmation_{};
   oq_boiler_commissioning::FlowReachabilityMonitor flow_reachability_{};
   oq_boiler_commissioning::BoilerActivationSettleMonitor boiler_activation_settle_{};
@@ -426,7 +421,6 @@ class BoilerPowerTestRuntime {
     active_test_id15_capacity_available_ = false;
     active_test_flow_limited_ = false;
     active_test_result_applied_ = false;
-    active_test_transport_error_count_ = 0;
     empirical_apply_confirmation_.reset();
     set_result_quality(oq_boiler_commissioning::RESULT_QUALITY_NONE);
   }
@@ -714,7 +708,7 @@ class BoilerPowerTestRuntime {
         .opentherm_selected = active_test_opentherm_,
         .id15_capacity_available = active_test_id15_capacity_available_,
         .flow_limited = active_test_flow_limited_,
-        .transport_clean = true,
+        .opentherm_status_available = true,
         .boiler_active_throughout = true,
         .thermal_safe = true,
         .dhw_clear = true,

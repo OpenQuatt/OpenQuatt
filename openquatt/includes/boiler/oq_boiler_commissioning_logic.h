@@ -303,7 +303,7 @@ struct MeasurementQualityEvidence {
   bool opentherm_selected = false;
   bool id15_capacity_available = false;
   bool flow_limited = false;
-  bool transport_clean = false;
+  bool opentherm_status_available = false;
   bool boiler_active_throughout = false;
   bool thermal_safe = false;
   bool dhw_clear = false;
@@ -325,8 +325,8 @@ inline float measurement_flow_stability_ratio(uint32_t measurement_ticks, uint32
 
 inline ResultQuality evaluate_result_quality(const MeasurementQualityEvidence& evidence) {
   const bool measurement_valid =
-      evidence.completed && evidence.transport_clean && evidence.boiler_active_throughout && evidence.thermal_safe &&
-      evidence.dhw_clear && evidence.valid_power_samples >= kBoilerTestMinimumPowerSamples &&
+      evidence.completed && evidence.opentherm_status_available && evidence.boiler_active_throughout &&
+      evidence.thermal_safe && evidence.dhw_clear && evidence.valid_power_samples >= kBoilerTestMinimumPowerSamples &&
       result_is_in_safe_range(evidence.result_w) && isfinite(evidence.confidence_percent) &&
       evidence.confidence_percent >= kBoilerTestMinimumApplyConfidence &&
       measurement_flow_stability_ratio(evidence.measurement_ticks, evidence.stable_flow_ticks) >=

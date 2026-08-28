@@ -120,7 +120,7 @@ MeasurementQualityEvidence valid_measurement_evidence() {
       .opentherm_selected = true,
       .id15_capacity_available = true,
       .flow_limited = false,
-      .transport_clean = true,
+      .opentherm_status_available = true,
       .boiler_active_throughout = true,
       .thermal_safe = true,
       .dhw_clear = true,
@@ -170,7 +170,7 @@ void test_result_quality_rejects_invalid_measurement_evidence() {
   assert(evaluate_result_quality(evidence) == RESULT_QUALITY_INVALID);
 
   evidence = valid_measurement_evidence();
-  evidence.transport_clean = false;
+  evidence.opentherm_status_available = false;
   assert(evaluate_result_quality(evidence) == RESULT_QUALITY_INVALID);
 
   evidence = valid_measurement_evidence();
