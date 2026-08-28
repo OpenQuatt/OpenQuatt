@@ -782,6 +782,119 @@
   accent-color: var(--oq-helper-accent);
 }
 
+.oq-helper-dual-range {
+  display: grid;
+  gap: 10px;
+}
+
+.oq-settings-field--frequency-range {
+  grid-column: 1 / -1;
+}
+
+.oq-range-disable { min-height: 32px; margin-left: auto; padding: 0 10px; font-size: 0.82rem; }
+
+.oq-helper-dual-range-track {
+  position: relative;
+  height: 28px;
+}
+
+.oq-helper-dual-range-track::before,
+.oq-helper-dual-range-track::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  height: 6px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.oq-helper-dual-range-track::before {
+  right: 0;
+  left: 0;
+  background: linear-gradient(90deg, var(--oq-helper-muted) 18.18%, var(--oq-helper-line) 0);
+}
+
+.oq-helper-dual-range-track::after {
+  right: calc(100% - var(--oq-range-end));
+  left: var(--oq-range-start);
+  background: var(--oq-helper-accent);
+}
+
+.oq-helper-dual-range.is-disabled .oq-helper-dual-range-track::after {
+  background: transparent;
+}
+
+.oq-helper-dual-range.is-invalid .oq-helper-dual-range-track::after {
+  background: var(--oq-helper-modal-error);
+}
+
+.oq-helper-dual-range-input {
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.oq-helper-dual-range-input--min {
+  z-index: 2;
+}
+
+.oq-helper-dual-range-input--max {
+  z-index: 3;
+}
+
+.oq-helper-dual-range-input:focus-visible {
+  z-index: 4;
+  outline: none;
+}
+
+.oq-helper-dual-range-input::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.oq-helper-dual-range-input::-webkit-slider-thumb {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 3px;
+  border: 3px solid var(--oq-helper-card);
+  border-radius: 50%;
+  background: var(--oq-helper-accent);
+  box-shadow: 0 0 0 1px var(--oq-helper-accent), 0 2px 6px rgba(15, 23, 42, 0.18);
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.oq-helper-dual-range-input::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.oq-helper-dual-range-input::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 3px solid var(--oq-helper-card);
+  border-radius: 50%;
+  background: var(--oq-helper-accent);
+  box-shadow: 0 0 0 1px var(--oq-helper-accent), 0 2px 6px rgba(15, 23, 42, 0.18);
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.oq-helper-dual-range-input:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(234, 88, 12, 0.2);
+}
+
+.oq-helper-dual-range-input:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 4px rgba(234, 88, 12, 0.2);
+}
+
 .oq-helper-mode-panel {
   margin-top: 18px;
   padding: 20px;

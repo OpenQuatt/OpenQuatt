@@ -13,7 +13,7 @@ globalThis.window = {
 };
 
 const { state } = await import("../js/src/core/state.js");
-const { commitSelect, getNumberSettingValidationError } = await import("../js/src/core/entity-write-actions.js");
+const { commitSelect, disableRange, getNumberSettingValidationError } = await import("../js/src/core/entity-write-actions.js");
 const { SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
 const { handleSystemAction } = await import("../js/src/features/system-actions.js");
 const { renderControlModeOverrideBanner, renderSystemModal } = await import("../js/src/features/header-status.js");
@@ -21,14 +21,17 @@ const { renderSettingsCoolingSection } = await import("../js/src/settings/coolin
 const {
   renderHeatingCurveAdvancedFields,
   renderPowerHouseBaseFields,
+  renderSettingsHeatPumpLimiterCard,
   renderSettingsFlowSection,
 } = await import("../js/src/settings/heating.js");
+const { renderSilentSettingsGrid } = await import("../js/src/settings/silent.js");
 const {
   renderSettingsControlModeOverridePanel,
   renderSettingsCounterServiceSection,
 } = await import("../js/src/settings/service.js");
 const { renderSettingsElectricalCurrentLimitSection } = await import("../js/src/settings/electrical-limit.js");
 const settingsCoreSource = await readFile(new URL("../js/src/settings/core.js", import.meta.url), "utf8");
+const entityActionsSource = await readFile(new URL("../js/src/core/entity-actions.js", import.meta.url), "utf8");
 
 function numberEntity(value, uom = "", extra = {}) {
   return {
@@ -112,10 +115,30 @@ test("start- en stopgrens kunnen elkaar niet passeren", () => {
   assert.equal(getNumberSettingValidationError("boilerSupportStopThreshold", 399, entities), "");
 });
 
+test("uitgesloten frequentiebereiken kunnen niet worden omgekeerd", () => {
+  const entities = {
+    hp1ExcludeMinHz: numberEntity(55, "Hz"),
+    hp1ExcludeMaxHz: numberEntity(61, "Hz"),
+  };
+
+  assert.equal(
+    getNumberSettingValidationError("hp1ExcludeMinHz", 62, entities),
+    "De ondergrens mag niet hoger zijn dan de bovengrens (61 Hz).",
+  );
+  assert.equal(
+    getNumberSettingValidationError("hp1ExcludeMaxHz", 54, entities),
+    "De bovengrens mag niet lager zijn dan de ondergrens (55 Hz).",
+  );
+  assert.equal(getNumberSettingValidationError("hp1ExcludeMinHz", 0, entities), "");
+  assert.equal(getNumberSettingValidationError("hp1ExcludeMaxHz", 55, entities), "");
+});
+
 test("nieuwe installatie- en service-entiteiten worden bij het juiste scherm geladen", () => {
   assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("electricalCurrentLimit"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("boilerSupportStartThreshold"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("boilerSupportStopThreshold"));
+  assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("hp1ExcludeMinHz"));
+  assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("hp2ExcludeMaxHz"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.service.includes("controlModeOverride"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.service.includes("hp1RuntimeHours"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.service.includes("resetRuntimeCountersHp1Hp2"));
@@ -169,22 +192,21 @@ test("elektrische ingangsgrens staat voor ODU runtime", () => {
 test("koelsterkte licht de lagere limiet tijdens stille modus toe", () => {
   const baseEntities = {
     coolingDemandMax: numberEntity(8, "", { min_value: 1, max_value: 10, step: 1 }),
-    silentMax: numberEntity(6, "", { min_value: 1, max_value: 10, step: 1 }),
+    silentMaxHz: numberEntity(67, "Hz", { min_value: 0, max_value: 120, step: 1 }),
     silentModeOverride: { value: "Schedule", state: "Schedule" },
     silentActive: { value: false, state: "OFF" },
   };
 
   resetSettingsState(baseEntities);
   let markup = renderSettingsCoolingSection();
-  assert.match(markup, /Tijdens stille modus wordt koelen begrensd op niveau 6/);
-  assert.match(markup, /Deze maximale koelsterkte wordt dan niet volledig gebruikt/);
+  assert.match(markup, /Tijdens stille modus wordt koelen begrensd op een compressorfrequentie van 67 Hz/);
 
   resetSettingsState({
     ...baseEntities,
     silentActive: { value: true, state: "ON" },
   });
   markup = renderSettingsCoolingSection();
-  assert.match(markup, /Stille modus is nu actief\. Koelen wordt begrensd op niveau 6/);
+  assert.match(markup, /Stille modus is nu actief\. Koelen wordt begrensd op een compressorfrequentie van 67 Hz/);
 
   resetSettingsState({
     ...baseEntities,
@@ -194,7 +216,7 @@ test("koelsterkte licht de lagere limiet tijdens stille modus toe", () => {
 
   resetSettingsState({
     ...baseEntities,
-    coolingDemandMax: numberEntity(6, "", { min_value: 1, max_value: 10, step: 1 }),
+    silentMaxHz: numberEntity(120, "Hz", { min_value: 0, max_value: 120, step: 1 }),
   });
   assert.doesNotMatch(renderSettingsCoolingSection(), /oq-settings-cooling-limit-warning/);
 
@@ -205,10 +227,93 @@ test("koelsterkte licht de lagere limiet tijdens stille modus toe", () => {
   assert.doesNotMatch(renderSettingsCoolingSection(), /oq-settings-cooling-limit-warning/);
 });
 
+test("frequentielimieten gelden voor beide modi", () => {
+  resetSettingsState({
+    silentStartTime: { value: "22:00", state: "22:00" },
+    silentEndTime: { value: "07:00", state: "07:00" },
+    silentMaxHz: numberEntity(60, "Hz", { max_value: 120, step: 1 }),
+    dayMaxHz: numberEntity(90, "Hz", { max_value: 120, step: 1 }),
+  });
+
+  const markup = renderSilentSettingsGrid();
+  assert.match(markup, /Maximale compressorfrequentie tijdens stille uren/);
+  assert.match(markup, /Maximale compressorfrequentie overdag/);
+  assert.doesNotMatch(markup, /Maximaal niveau tijdens stille uren/);
+});
+
+test("compressorinstellingen tonen één tweepuntsbereik", () => {
+  resetSettingsState({
+    hp1ExcludeMinHz: numberEntity(55, "Hz", { max_value: 120, step: 1 }),
+    hp1ExcludeMaxHz: numberEntity(61, "Hz", { max_value: 120, step: 1 }),
+  });
+  const markup = renderSettingsHeatPumpLimiterCard("Warmtepomp 1", "hp1");
+  assert.match(markup, /Uitgesloten frequentiebereik/);
+  assert.match(markup, /55–61 Hz/);
+  assert.match(markup, /data-oq-range-role="min"/);
+  assert.match(markup, /data-oq-range-role="max"/);
+  assert.match(markup, /data-oq-action="disable-range"/);
+  assert.match(markup, />20Hz</);
+});
+
+test("frequentiebereik accepteert 0 als uitschakelstand zonder terug te springen", () => {
+  assert.match(entityActionsSource, /inputValue > 0 && inputValue < 20/);
+  assert.match(entityActionsSource, /inputValue === 0[\s\S]*minInput\.value = maxInput\.value = "0";/);
+  assert.match(entityActionsSource, /dataset\.oqRangeRole && Number\(event\.target\.value\) === 0/);
+  assert.match(entityActionsSource, /minValue > 0 && maxValue > 0 && minValue > maxValue/);
+  assert.match(entityActionsSource, /minValue > 0 && maxValue > 0 && maxValue < minValue/);
+  assert.match(settingsCoreSource, /String\(getInputDraftValue\(fieldKey\) \?\? ""\)/);
+
+  resetSettingsState({
+    hp1ExcludeMinHz: numberEntity(0, "Hz", { max_value: 120, step: 1 }),
+    hp1ExcludeMaxHz: numberEntity(61, "Hz", { max_value: 120, step: 1 }),
+  });
+  const markup = renderSettingsHeatPumpLimiterCard("Warmtepomp 1", "hp1");
+  assert.match(markup, /data-oq-range-role="min"[\s\S]*?value="0"/);
+  assert.match(markup, /data-oq-range-role="max"[\s\S]*?value="0"/);
+});
+
+test("uitschakelen vereist bevestigde nulwaarden voor beide grenzen", async () => {
+  resetSettingsState({
+    hp1ExcludeMinHz: numberEntity(55, "Hz", { max_value: 120, step: 1 }),
+    hp1ExcludeMaxHz: numberEntity(61, "Hz", { max_value: 120, step: 1 }),
+  });
+  state.appView = "overview";
+  const originalFetch = globalThis.fetch;
+  const posts = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const decodedUrl = decodeURIComponent(String(url));
+    if (options.method === "POST" && decodedUrl.includes("/set?")) {
+      posts.push(decodedUrl);
+      return { ok: !decodedUrl.includes("Excluded frequency minimum"), status: 500 };
+    }
+    const value = decodedUrl.includes("Excluded frequency maximum") ? 0 : 55;
+    return { ok: true, json: async () => ({ value, state: String(value) }) };
+  };
+
+  try {
+    assert.equal(await disableRange("hp1ExcludeMinHz", "hp1ExcludeMaxHz"), false);
+    assert.equal(posts.length, 2);
+    assert.match(state.controlError, /HP1 - Excluded frequency minimum kon niet worden bijgewerkt/);
+    assert.equal(state.controlNotice, "");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("koelscherm licht de stille frequentiegrens toe", () => {
+  resetSettingsState({
+    coolingDemandMax: numberEntity(10, "", { min_value: 1, max_value: 10, step: 1 }),
+    silentMaxHz: numberEntity(46, "Hz", { max_value: 120, step: 1 }),
+    silentModeOverride: { value: "Schedule", state: "Schedule" },
+    silentActive: { value: true, state: "ON" },
+  });
+  assert.match(renderSettingsCoolingSection(), /Koelen wordt begrensd op een compressorfrequentie van 46 Hz/);
+});
+
 test("koelscherm laadt de stille-moduslimiet en actuele status", () => {
   assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("silentModeOverride"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("silentActive"));
-  assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("silentMax"));
+  assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("silentMaxHz"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("coolingRestartMode"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("coolingMinimumOffTime"));
 });

@@ -5,7 +5,7 @@ import { reportUnknownAction } from "./action-router.js";
 import { commitQuickStartStrategySelection, handleControlAction } from "./control-actions.js";
 import { isCurveMode } from "./domain-helpers.js";
 import { formatValue, getEntityValue, getNumberMeta, normalizeDateTimeValue, normalizeNumber, normalizeTimeValue, parseLooseNumber } from "./entity-store.js";
-import { commitDateTime, commitNumber, commitSelect, commitText, commitTime, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
+import { commitDateTime, commitNumber, commitSelect, commitText, commitTime, disableRange, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
 import { handleNamedButtonAction } from "./named-button-actions.js";
 import { state } from "./state.js";
 import { setInterfacePanelOpen } from "./runtime.js";
@@ -44,6 +44,46 @@ const actionDelegates = [
   handleNamedButtonAction,
   handleShellAction,
 ];
+
+function updateFrequencyRangeControl(input) {
+  const control = input.closest('[data-oq-dual-range="true"]');
+  if (!control) {
+    return;
+  }
+  const minInput = control.querySelector('[data-oq-range-role="min"]');
+  const maxInput = control.querySelector('[data-oq-range-role="max"]');
+  if (!minInput || !maxInput) {
+    return;
+  }
+  const inputValue = Number(input.value);
+  if (inputValue === 0) {
+    minInput.value = maxInput.value = "0";
+  }
+  if (inputValue > 0 && inputValue < 20) {
+    input.value = "20";
+  }
+  let minValue = Number(minInput.value);
+  let maxValue = Number(maxInput.value);
+  if (input.dataset.oqRangeRole === "min" && minValue > 0 && maxValue > 0 && minValue > maxValue) {
+    minValue = maxValue;
+    minInput.value = String(minValue);
+  } else if (input.dataset.oqRangeRole === "max" && minValue > 0 && maxValue > 0 && maxValue < minValue) {
+    maxValue = minValue;
+    maxInput.value = String(maxValue);
+  }
+  const scaleMin = Number(minInput.min);
+  const scaleMax = Number(minInput.max);
+  const span = Math.max(1, scaleMax - scaleMin);
+  const disabled = minValue === 0 || maxValue === 0;
+  control.classList.toggle("is-disabled", disabled);
+  control.classList.remove("is-invalid");
+  control.style.setProperty("--oq-range-start", `${((minValue - scaleMin) / span) * 100}%`);
+  control.style.setProperty("--oq-range-end", `${((maxValue - scaleMin) / span) * 100}%`);
+  const value = control.querySelector("[data-oq-range-value]");
+  if (value) {
+    value.textContent = disabled ? "Geen uitsluiting" : `${minValue}–${maxValue} Hz`;
+  }
+}
 
   export function handleFocusChange() {
     window.setTimeout(() => {
@@ -211,6 +251,9 @@ const actionDelegates = [
     }
 
     if (event.target.type === "range" || event.target.type === "number") {
+      if (event.target.dataset.oqRangeRole) {
+        updateFrequencyRangeControl(event.target);
+      }
       if (event.target.type === "number") {
         state.inputDrafts[field] = event.target.value;
       }
@@ -350,6 +393,11 @@ const actionDelegates = [
     }
 
     if (entity.domain === "number") {
+      if (event.target.dataset.oqRangeRole && Number(event.target.value) === 0) {
+        const minKey = field.replace("MaxHz", "MinHz");
+        void disableRange(minKey, minKey.replace("MinHz", "MaxHz"));
+        return;
+      }
       commitNumber(field, event.target.value);
       return;
     }
@@ -462,6 +510,14 @@ const actionDelegates = [
     }
 
     const action = button.dataset.oqAction;
+    if (action === "disable-range") {
+      const minKey = button.dataset.oqRangeKey || "";
+      const maxKey = minKey.replace("MinHz", "MaxHz");
+      if (ENTITY_DEFS[minKey]?.domain === "number" && ENTITY_DEFS[maxKey]?.domain === "number") {
+        void disableRange(minKey, maxKey);
+      }
+      return;
+    }
     if (actionDelegates.some((delegate) => delegate(action, button, event))) {
       return;
     }

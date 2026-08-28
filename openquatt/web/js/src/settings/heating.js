@@ -5,7 +5,7 @@ import { getCurveFallbackSuggestion, getEntityValue, normalizeNumber } from "../
 import { getHeatingEnableAdvice, getHeatingEnableCurrent, getHeatingEnableRecommendation } from "../core/heating-strategy-matrix.js";
 import { renderNumberInputField } from "../core/number-controls.js";
 import { state } from "../core/state.js";
-import { renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField } from "./controls.js";
+import { renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField } from "./controls.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
 
@@ -429,13 +429,14 @@ import { escapeHtml } from "../core/html.js";
     `;
   }
 
-  export function renderSettingsHeatPumpLimiterCard(title, keyA, keyB) {
-    const fields = [
-      renderSettingsSelectField(keyA, "Stand A", "Kies hier welke compressorstand je wilt uitsluiten."),
-      renderSettingsSelectField(keyB, "Stand B", "Kies hier nog een compressorstand die je wilt overslaan."),
-    ]
-      .filter(Boolean)
-      .join("");
+  export function renderSettingsHeatPumpLimiterCard(title, hpPrefix) {
+    const firstFrequencyKey = `${hpPrefix}ExcludeMinHz`;
+    const fields = renderSettingsFrequencyRangeField(
+      firstFrequencyKey,
+      `${hpPrefix}ExcludeMaxHz`,
+      "Uitgesloten frequentiebereik",
+      "OpenQuatt slaat alle compressorfrequenties binnen dit bereik over, bij verwarmen en koelen.",
+    );
 
     if (!fields) {
       return "";
@@ -446,7 +447,7 @@ import { escapeHtml } from "../core/html.js";
         <header>
           <p class="oq-helper-label">Warmtepomp</p>
           <h4>${escapeHtml(title)}</h4>
-          <p>Stel hier de standen in die OpenQuatt niet hoeft te gebruiken.</p>
+          <p>Kies één frequentiebereik dat OpenQuatt bij verwarmen en koelen moet overslaan.</p>
         </header>
         <div class="oq-settings-hp-group-grid">
           ${fields}

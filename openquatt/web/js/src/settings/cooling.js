@@ -41,17 +41,19 @@ import { escapeHtml } from "../core/html.js";
   }
 
   function renderCoolingSilentLimitWarning() {
-    const coolingDemandMax = getEntityNumericValue("coolingDemandMax");
-    const silentMax = getEntityNumericValue("silentMax");
     const silentModeOverride = getEntityStateText("silentModeOverride", "").trim().toLowerCase();
-    if (!hasEntity("silentMax") || !Number.isFinite(coolingDemandMax) || !Number.isFinite(silentMax) || coolingDemandMax <= silentMax || silentModeOverride === "off") {
+    if (silentModeOverride === "off") {
       return "";
     }
 
+    const silentMaxHz = getEntityNumericValue("silentMaxHz");
+    if (!hasEntity("silentMaxHz") || !Number.isFinite(silentMaxHz) || silentMaxHz >= 120) {
+      return "";
+    }
     const prefix = isEntityActive("silentActive")
       ? "Stille modus is nu actief. Koelen wordt"
       : "Tijdens stille modus wordt koelen";
-    return `<p class="oq-settings-cooling-limit-warning"><span class="oq-settings-cooling-limit-warning-icon" aria-hidden="true">!</span><span>${prefix} begrensd op niveau ${escapeHtml(formatValue("silentMax"))}. Deze maximale koelsterkte wordt dan niet volledig gebruikt.</span></p>`;
+    return `<p class="oq-settings-cooling-limit-warning"><span class="oq-settings-cooling-limit-warning-icon" aria-hidden="true">!</span><span>${prefix} begrensd op een compressorfrequentie van ${escapeHtml(formatValue("silentMaxHz"))}.</span></p>`;
   }
 
   export function renderSettingsCoolingSection() {

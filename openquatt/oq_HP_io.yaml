@@ -625,55 +625,39 @@ select:
       "On": 4096
     skip_updates: ${oq_modbus_control_readback_skip}
 
-# Per-HP compressor level exclusions are modeled as up to two explicit blocked levels.
+# One shared range applies to heating and cooling. A zero boundary disables it.
+number:
   - platform: template
-    id: ${hp_id}_excluded_level_a
-    name: "${prefix}Excluded compressor level A"
+    id: ${hp_id}_excluded_frequency_min_hz
+    name: "${prefix}Excluded frequency minimum"
+    unit_of_measurement: "Hz"
     icon: mdi:speedometer-slow
-    entity_category: config
-    disabled_by_default: true
+    min_value: 0
+    max_value: 120
+    step: 1
     optimistic: true
     restore_value: true
-    initial_option: "None"
-    options:
-      - "None"
-      - "L1 (H30/C30)"
-      - "L2 (H39/C36)"
-      - "L3 (H49/C42)"
-      - "L4 (H55/C47)"
-      - "L5 (H61/C52)"
-      - "L6 (H67/C56)"
-      - "L7 (H72/C61)"
-      - "L8 (H79/C66)"
-      - "L9 (H85/C71)"
-      - "L10 (H90/C74)"
+    initial_value: 0
+    disabled_by_default: true
+    entity_category: config
 
   - platform: template
-    id: ${hp_id}_excluded_level_b
-    name: "${prefix}Excluded compressor level B"
+    id: ${hp_id}_excluded_frequency_max_hz
+    name: "${prefix}Excluded frequency maximum"
+    unit_of_measurement: "Hz"
     icon: mdi:speedometer-slow
-    entity_category: config
-    disabled_by_default: true
+    min_value: 0
+    max_value: 120
+    step: 1
     optimistic: true
     restore_value: true
-    initial_option: "None"
-    options:
-      - "None"
-      - "L1 (H30/C30)"
-      - "L2 (H39/C36)"
-      - "L3 (H49/C42)"
-      - "L4 (H55/C47)"
-      - "L5 (H61/C52)"
-      - "L6 (H67/C56)"
-      - "L7 (H72/C61)"
-      - "L8 (H79/C66)"
-      - "L9 (H85/C71)"
-      - "L10 (H90/C74)"
+    initial_value: 0
+    disabled_by_default: true
+    entity_category: config
 
 # ----------------------------
 # NUMBER
 # ----------------------------
-number:
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
     id: ${hp_id}_pump_speed
@@ -1677,29 +1661,32 @@ text_sensor:
       }
 
   - platform: template
-    id: ${hp_id}_excluded_levels_summary
-    name: "${prefix}Excluded compressor levels"
+    id: ${hp_id}_excluded_frequency_range_summary
+    name: "${prefix}Excluded compressor frequency range"
     icon: mdi:speedometer-slow
     update_interval: 10s
     lambda: |-
-      // Summarize the two exclusion selectors into one compact diagnostic label.
-      const std::string a = id(${hp_id}_excluded_level_a).has_state()
-                                ? id(${hp_id}_excluded_level_a).current_option()
-                                : std::string("None");
-      const std::string b = id(${hp_id}_excluded_level_b).has_state()
-                                ? id(${hp_id}_excluded_level_b).current_option()
-                                : std::string("None");
-
-      if (a == "None" && b == "None") {
+      // Publish the effective shared exclusion as one diagnostic value.
+      auto read_hz = [](auto* number) -> int {
+        return number->has_state() && !isnan(number->state)
+                   ? (int) lroundf(number->state)
+                   : -1;
+      };
+      const oq_frequency_policy::FrequencyRange range{
+          read_hz(id(${hp_id}_excluded_frequency_min_hz)),
+          read_hz(id(${hp_id}_excluded_frequency_max_hz))};
+      if (!oq_frequency_policy::valid_frequency_range(range))
+        return std::string("Invalid");
+      if (oq_frequency_policy::frequency_range_disabled(range))
         return std::string("None");
+      char value[24];
+      if (range.min_hz == range.max_hz) {
+        snprintf(value, sizeof(value), "%d Hz", range.min_hz);
+      } else {
+        snprintf(value, sizeof(value), "%d-%d Hz", range.min_hz,
+                 range.max_hz);
       }
-      if (a == "None") {
-        return b;
-      }
-      if (b == "None" || a == b) {
-        return a;
-      }
-      return a + ", " + b;
+      return std::string(value);
 
   - platform: template
     id: ${hp_id}_active_failures_list

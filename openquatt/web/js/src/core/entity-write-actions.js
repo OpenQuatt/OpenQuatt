@@ -200,6 +200,20 @@ export function getNumberSettingValidationError(key, value, entities = state.ent
       return `De stopgrens moet lager zijn dan de startgrens (${startThreshold} W).`;
     }
   }
+  const exclusionBoundary = key.match(/^hp[12]Exclude(Min|Max)Hz$/);
+  if (exclusionBoundary && normalized > 0) {
+    const isMinimum = exclusionBoundary[1] === "Min";
+    const pairedKey = key.replace(isMinimum ? "MinHz" : "MaxHz", isMinimum ? "MaxHz" : "MinHz");
+    const pairedValue = parseLooseNumber(entities[pairedKey]?.value ?? entities[pairedKey]?.state);
+    if (Number.isFinite(pairedValue) && pairedValue > 0) {
+      if (isMinimum && normalized > pairedValue) {
+        return `De ondergrens mag niet hoger zijn dan de bovengrens (${pairedValue} Hz).`;
+      }
+      if (!isMinimum && normalized < pairedValue) {
+        return `De bovengrens mag niet lager zijn dan de ondergrens (${pairedValue} Hz).`;
+      }
+    }
+  }
   return "";
 }
 
@@ -272,7 +286,7 @@ export async function commitNumber(key, value, successNotice = "") {
     state.inputDrafts[key] = String(value ?? "");
     state.drafts[key] = normalized;
     render();
-    return;
+    return false;
   }
   state.busyAction = `save-${key}`;
   state.controlNotice = "";
@@ -281,6 +295,7 @@ export async function commitNumber(key, value, successNotice = "") {
   state.drafts[key] = normalized;
   render();
 
+  let succeeded = false;
   try {
     const response = await fetch(
       `${buildEntityPath(entity.domain, entity.name, "set")}?value=${encodeURIComponent(normalized)}`,
@@ -291,6 +306,7 @@ export async function commitNumber(key, value, successNotice = "") {
     }
     delete state.drafts[key];
     delete state.inputDrafts[key];
+    succeeded = true;
     state.controlNotice = successNotice || `${entity.name} bijgewerkt.`;
     await refreshEntities(
       state.appView === "settings"
@@ -306,6 +322,41 @@ export async function commitNumber(key, value, successNotice = "") {
     state.busyAction = "";
     render();
   }
+  return succeeded;
+}
+
+export async function disableRange(minKey, maxKey) {
+  const keys = [minKey, maxKey];
+  state.inputDrafts[minKey] = state.inputDrafts[maxKey] = "0";
+  render();
+  const minStored = await commitNumber(minKey, 0);
+  const firstError = state.controlError;
+  const maxStored = await commitNumber(maxKey, 0);
+  const writeError = firstError || state.controlError;
+  keys.forEach((key) => {
+    delete state.drafts[key];
+    delete state.inputDrafts[key];
+  });
+
+  let valuesConfirmed = false;
+  let verificationError = "";
+  try {
+    await refreshEntities(keys, "all");
+    valuesConfirmed = keys.every((key) => Number(getEntityValue(key)) === 0);
+  } catch (error) {
+    verificationError = error.message;
+  }
+  if (minStored && maxStored && valuesConfirmed) {
+    state.controlNotice = "Frequentie-uitsluiting uitgeschakeld.";
+    state.controlError = "";
+    render();
+    return true;
+  }
+
+  state.controlNotice = "";
+  state.controlError = writeError || verificationError || "Frequentie-uitsluiting kon niet volledig worden uitgeschakeld of bevestigd.";
+  render();
+  return false;
 }
 
 export async function commitTime(key, value) {

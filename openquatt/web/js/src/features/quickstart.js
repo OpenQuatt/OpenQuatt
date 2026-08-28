@@ -1041,8 +1041,8 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
     const silentLines = [
       ["Start stille uren", toTimeInputValue(getEntityValue("silentStartTime")) || "—"],
       ["Einde stille uren", toTimeInputValue(getEntityValue("silentEndTime")) || "—"],
-      ["Maximaal niveau tijdens stille uren", formatValue("silentMax")],
-      ["Maximaal niveau overdag", formatValue("dayMax")],
+      ["Maximaal tijdens stille uren", formatValue("silentMaxHz")],
+      ["Maximaal overdag", formatValue("dayMaxHz")],
     ];
 
     const usageTelemetryLines = hasEntity("usageTelemetryEnabled")

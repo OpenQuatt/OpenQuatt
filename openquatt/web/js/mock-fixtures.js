@@ -4,20 +4,6 @@
     throw new Error("OpenQuatt mock scenarios ontbreken.");
   }
 
-  const compressorLevelOptions = [
-    "None",
-    "L1 (H30/C30)",
-    "L2 (H39/C36)",
-    "L3 (H49/C42)",
-    "L4 (H55/C47)",
-    "L5 (H61/C52)",
-    "L6 (H67/C56)",
-    "L7 (H72/C61)",
-    "L8 (H79/C66)",
-    "L9 (H85/C71)",
-    "L10 (H90/C74)",
-  ];
-
   const oduProfiles = Object.freeze({
     V1: Object.freeze({
       generation: "V1",
@@ -108,8 +94,6 @@
     ["text_sensor", "HP2 - ODU generation variant", { state: oduIdentities[2].variant, value: oduIdentities[2].variant }],
     ["text_sensor", "HP2 - ODU customer model code", { state: "Missing", value: "Missing" }],
     ["button", "HP2 - Detect ODU generation", {}],
-    ["select", "HP2 - Excluded compressor level A", { value: "None", state: "None", option: compressorLevelOptions }],
-    ["select", "HP2 - Excluded compressor level B", { value: "None", state: "None", option: compressorLevelOptions }],
     ["sensor", "HP2 - Power Input", { value: 0, uom: "W" }],
     ["sensor", "HP2 - Heat Power", { value: 0, uom: "W" }],
     ["sensor", "HP2 - Cooling Power", { value: 0, uom: "W" }],
@@ -180,7 +164,6 @@
   };
 
   window.__OQ_MOCK_FIXTURES__ = Object.freeze({
-    compressorLevelOptions,
     oduProfiles,
     defaultOduGenerations,
     oduIdentities,
