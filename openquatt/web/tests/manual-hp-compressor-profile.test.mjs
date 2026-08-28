@@ -69,7 +69,7 @@ test("mock houdt V2-variant en compressorprofiel onafhankelijk", async () => {
   assert.equal(profiles.V2OldModel.compressorLevelProfile, "Unknown / F0-F10 safe");
   assert.equal(profiles.V2.compressorLevelProfile, "V2 F0-F20");
   assert.match(mockSource, /profile\.compressorLevelProfile \|\| "Unknown \/ F0-F10 safe"/);
-  assert.doesNotMatch(mockSource, /profile\.variant\s*===\s*"V2 new model"/);
+  assert.doesNotMatch(mockSource, /compressorLevelProfile\s*=\s*profile\.variant/);
 });
 
 test("CM100 toont de actieve select-index als fysiek F-level", () => {

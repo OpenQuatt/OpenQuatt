@@ -66,7 +66,7 @@ class ESPHome20268ContractTest(unittest.TestCase):
     def test_runtime_table_uses_confirmed_single_register_writes(self) -> None:
         self.assertIn("create_write_single_command", ODU_RUNTIME_TABLE)
         self.assertIn(
-            "queue_runtime_write_register(refs, cooling, heating, index + 1U, "
+            "queue_runtime_write_register(refs, tables, write_index + 1U, "
             "operation_token)",
             ODU_RUNTIME_TABLE,
         )

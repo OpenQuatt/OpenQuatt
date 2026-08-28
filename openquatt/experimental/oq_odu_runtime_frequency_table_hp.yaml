@@ -14,6 +14,8 @@
 #   Excel register maps are one-based; ODU communication uses sheet address - 1.
 #   Cooling F0-F10: Excel 3001..3011 -> ODU 3000..3010
 #   Heating F0-F10: Excel 3012..3022 -> ODU 3011..3021
+#   Heating F11-F20 on confirmed V2-new: Excel 3051..3060 -> ODU 3050..3059
+#   Cooling F11-F20 on confirmed V2-new: Excel 3061..3070 -> ODU 3060..3069
 #
 # Required vars:
 #   - hp_id
@@ -189,6 +191,146 @@ number:
     entity_category: config
 
   - platform: template
+    id: ${hp_id}_odu_runtime_cooling_f11
+    name: "${prefix}EXPERIMENTAL cooling F11 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 48
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_cooling_f12
+    name: "${prefix}EXPERIMENTAL cooling F12 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 52
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_cooling_f13
+    name: "${prefix}EXPERIMENTAL cooling F13 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 54
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_cooling_f14
+    name: "${prefix}EXPERIMENTAL cooling F14 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 56
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_cooling_f15
+    name: "${prefix}EXPERIMENTAL cooling F15 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 58
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_cooling_f16
+    name: "${prefix}EXPERIMENTAL cooling F16 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 60
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_cooling_f17
+    name: "${prefix}EXPERIMENTAL cooling F17 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 64
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_cooling_f18
+    name: "${prefix}EXPERIMENTAL cooling F18 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 66
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_cooling_f19
+    name: "${prefix}EXPERIMENTAL cooling F19 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 68
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_cooling_f20
+    name: "${prefix}EXPERIMENTAL cooling F20 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 71
+    entity_category: config
+
+  - platform: template
     id: ${hp_id}_odu_runtime_heating_f0
     name: "${prefix}EXPERIMENTAL heating F0 runtime Hz"
     internal: true
@@ -342,6 +484,146 @@ number:
     initial_value: 90
     entity_category: config
 
+  - platform: template
+    id: ${hp_id}_odu_runtime_heating_f11
+    name: "${prefix}EXPERIMENTAL heating F11 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 65
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_heating_f12
+    name: "${prefix}EXPERIMENTAL heating F12 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 68
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_heating_f13
+    name: "${prefix}EXPERIMENTAL heating F13 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 72
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_heating_f14
+    name: "${prefix}EXPERIMENTAL heating F14 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 76
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_heating_f15
+    name: "${prefix}EXPERIMENTAL heating F15 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 82
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_heating_f16
+    name: "${prefix}EXPERIMENTAL heating F16 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 85
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_heating_f17
+    name: "${prefix}EXPERIMENTAL heating F17 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 90
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_heating_f18
+    name: "${prefix}EXPERIMENTAL heating F18 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 95
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_heating_f19
+    name: "${prefix}EXPERIMENTAL heating F19 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 102
+    entity_category: config
+
+  - platform: template
+    id: ${hp_id}_odu_runtime_heating_f20
+    name: "${prefix}EXPERIMENTAL heating F20 runtime Hz"
+    internal: true
+    icon: mdi:sine-wave
+    mode: box
+    min_value: 0
+    max_value: 120
+    step: 1
+    restore_value: true
+    optimistic: true
+    initial_value: 110
+    entity_category: config
+
 button:
   - platform: template
     id: ${hp_id}_odu_runtime_frequency_table_load
@@ -357,6 +639,10 @@ button:
               id(${hp_id}_odu_runtime_frequency_table_enable),
               id(${hp_id}_odu_runtime_frequency_table_status),
               "${prefix}",
+              id(${hp_id}_odu_generation_detection_complete) &&
+                  static_cast<oq_odu::Variant>(
+                      id(${hp_id}_generation_variant_code)) ==
+                      oq_odu::Variant::V2_NEW_MODEL,
               {
                   id(${hp_id}_odu_runtime_cooling_f0),
                   id(${hp_id}_odu_runtime_cooling_f1),
@@ -369,6 +655,16 @@ button:
                   id(${hp_id}_odu_runtime_cooling_f8),
                   id(${hp_id}_odu_runtime_cooling_f9),
                   id(${hp_id}_odu_runtime_cooling_f10),
+                  id(${hp_id}_odu_runtime_cooling_f11),
+                  id(${hp_id}_odu_runtime_cooling_f12),
+                  id(${hp_id}_odu_runtime_cooling_f13),
+                  id(${hp_id}_odu_runtime_cooling_f14),
+                  id(${hp_id}_odu_runtime_cooling_f15),
+                  id(${hp_id}_odu_runtime_cooling_f16),
+                  id(${hp_id}_odu_runtime_cooling_f17),
+                  id(${hp_id}_odu_runtime_cooling_f18),
+                  id(${hp_id}_odu_runtime_cooling_f19),
+                  id(${hp_id}_odu_runtime_cooling_f20),
               },
               {
                   id(${hp_id}_odu_runtime_heating_f0),
@@ -382,9 +678,24 @@ button:
                   id(${hp_id}_odu_runtime_heating_f8),
                   id(${hp_id}_odu_runtime_heating_f9),
                   id(${hp_id}_odu_runtime_heating_f10),
+                  id(${hp_id}_odu_runtime_heating_f11),
+                  id(${hp_id}_odu_runtime_heating_f12),
+                  id(${hp_id}_odu_runtime_heating_f13),
+                  id(${hp_id}_odu_runtime_heating_f14),
+                  id(${hp_id}_odu_runtime_heating_f15),
+                  id(${hp_id}_odu_runtime_heating_f16),
+                  id(${hp_id}_odu_runtime_heating_f17),
+                  id(${hp_id}_odu_runtime_heating_f18),
+                  id(${hp_id}_odu_runtime_heating_f19),
+                  id(${hp_id}_odu_runtime_heating_f20),
               },
               &id(${hp_id}_runtime_frequency_write_operation_token),
           };
+          if (id(${hp_id}_runtime_frequency_write_verification_pending)) {
+            oq_odu_runtime_frequency::publish_status(
+                refs, "BLOCKED: runtime table write verification pending");
+            return;
+          }
           oq_odu_runtime_frequency::load_runtime_table(refs);
 
   - platform: template
@@ -401,6 +712,10 @@ button:
               id(${hp_id}_odu_runtime_frequency_table_enable),
               id(${hp_id}_odu_runtime_frequency_table_status),
               "${prefix}",
+              id(${hp_id}_odu_generation_detection_complete) &&
+                  static_cast<oq_odu::Variant>(
+                      id(${hp_id}_generation_variant_code)) ==
+                      oq_odu::Variant::V2_NEW_MODEL,
               {
                   id(${hp_id}_odu_runtime_cooling_f0),
                   id(${hp_id}_odu_runtime_cooling_f1),
@@ -413,6 +728,16 @@ button:
                   id(${hp_id}_odu_runtime_cooling_f8),
                   id(${hp_id}_odu_runtime_cooling_f9),
                   id(${hp_id}_odu_runtime_cooling_f10),
+                  id(${hp_id}_odu_runtime_cooling_f11),
+                  id(${hp_id}_odu_runtime_cooling_f12),
+                  id(${hp_id}_odu_runtime_cooling_f13),
+                  id(${hp_id}_odu_runtime_cooling_f14),
+                  id(${hp_id}_odu_runtime_cooling_f15),
+                  id(${hp_id}_odu_runtime_cooling_f16),
+                  id(${hp_id}_odu_runtime_cooling_f17),
+                  id(${hp_id}_odu_runtime_cooling_f18),
+                  id(${hp_id}_odu_runtime_cooling_f19),
+                  id(${hp_id}_odu_runtime_cooling_f20),
               },
               {
                   id(${hp_id}_odu_runtime_heating_f0),
@@ -426,6 +751,16 @@ button:
                   id(${hp_id}_odu_runtime_heating_f8),
                   id(${hp_id}_odu_runtime_heating_f9),
                   id(${hp_id}_odu_runtime_heating_f10),
+                  id(${hp_id}_odu_runtime_heating_f11),
+                  id(${hp_id}_odu_runtime_heating_f12),
+                  id(${hp_id}_odu_runtime_heating_f13),
+                  id(${hp_id}_odu_runtime_heating_f14),
+                  id(${hp_id}_odu_runtime_heating_f15),
+                  id(${hp_id}_odu_runtime_heating_f16),
+                  id(${hp_id}_odu_runtime_heating_f17),
+                  id(${hp_id}_odu_runtime_heating_f18),
+                  id(${hp_id}_odu_runtime_heating_f19),
+                  id(${hp_id}_odu_runtime_heating_f20),
               },
               &id(${hp_id}_runtime_frequency_write_operation_token),
           };
@@ -491,7 +826,17 @@ script:
   - id: ${hp_id}_runtime_frequency_write_timeout
     mode: restart
     then:
-      - delay: 30s
+      - if:
+          condition:
+            lambda: |-
+              return id(${hp_id}_odu_generation_detection_complete) &&
+                     static_cast<oq_odu::Variant>(
+                         id(${hp_id}_generation_variant_code)) ==
+                         oq_odu::Variant::V2_NEW_MODEL;
+          then:
+            - delay: 60s
+          else:
+            - delay: 30s
       - if:
           condition:
             lambda: |-

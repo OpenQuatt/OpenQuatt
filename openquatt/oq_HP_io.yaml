@@ -78,6 +78,12 @@ modbus_controller:
                     id(${hp_id}_compressor_level_profile_request_token));
             id(${hp_id}_compressor_level_profile_request_pending) = false;
             id(${hp_id}_runtime_frequency_retry_ms) = 0U;
+            ++id(${hp_id}_runtime_frequency_write_operation_token);
+            if (id(${hp_id}_runtime_frequency_write_verification_pending)) {
+              id(${hp_id}_runtime_frequency_write_verification_pending) = false;
+              id(${hp_id}_odu_runtime_frequency_table_status)
+                  ->publish_state("VERIFY_FAILED: ODU disconnected during write");
+            }
             id(${hp_id}_compressor_level_profile).publish_state(
                 oq_odu::compressor_level_profile_label(
                     oq_odu::CompressorLevelProfile::UNKNOWN));

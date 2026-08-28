@@ -25,7 +25,7 @@
   ].map(([id, title, copy, optionalEntity], index) => ({ id, kicker: `Stap ${index + 1}`, title, copy, ...(optionalEntity ? { optionalEntity } : {}) }));
 
   export const ODU_RUNTIME_FREQUENCY_HP_IDS = [1, 2];
-  export const ODU_RUNTIME_FREQUENCY_LEVELS = Array.from({ length: 11 }, (_item, index) => index);
+  export const ODU_RUNTIME_FREQUENCY_LEVELS = Array.from({ length: 21 }, (_item, index) => index);
   export const ODU_RUNTIME_FREQUENCY_MODES = ["cooling", "heating"];
 
   export function getOduRuntimeFrequencyModeLabel(mode) {
@@ -44,14 +44,14 @@
     return `hp${hpIndex}OduRuntimeFrequency${suffix}`;
   }
 
-  export function getOduRuntimeFrequencyHpKeys(hpIndex) {
+  export function getOduRuntimeFrequencyHpKeys(hpIndex, levels = ODU_RUNTIME_FREQUENCY_LEVELS) {
     return [
       getOduRuntimeFrequencyControlKey(hpIndex, "Enable"),
       getOduRuntimeFrequencyControlKey(hpIndex, "Load"),
       getOduRuntimeFrequencyControlKey(hpIndex, "Apply"),
       getOduRuntimeFrequencyControlKey(hpIndex, "Status"),
       ...ODU_RUNTIME_FREQUENCY_MODES.flatMap((mode) => (
-        ODU_RUNTIME_FREQUENCY_LEVELS.map((level) => getOduRuntimeFrequencyValueKey(hpIndex, mode, level))
+        levels.map((level) => getOduRuntimeFrequencyValueKey(hpIndex, mode, level))
       )),
     ];
   }
@@ -61,7 +61,12 @@
     return match ? Number(match[1]) : 0;
   }
 
-  export const ODU_RUNTIME_FREQUENCY_KEYS = ODU_RUNTIME_FREQUENCY_HP_IDS.flatMap(getOduRuntimeFrequencyHpKeys);
+  export const ODU_RUNTIME_FREQUENCY_KEYS = ODU_RUNTIME_FREQUENCY_HP_IDS.flatMap((hpIndex) => (
+    getOduRuntimeFrequencyHpKeys(hpIndex)
+  ));
+  export const ODU_RUNTIME_FREQUENCY_INITIAL_KEYS = ODU_RUNTIME_FREQUENCY_HP_IDS.flatMap((hpIndex) => (
+    getOduRuntimeFrequencyHpKeys(hpIndex, ODU_RUNTIME_FREQUENCY_LEVELS.slice(0, 11))
+  ));
   export const ODU_RUNTIME_FREQUENCY_BUTTON_KEYS = new Set(
     ODU_RUNTIME_FREQUENCY_HP_IDS.flatMap((hpIndex) => [
       getOduRuntimeFrequencyControlKey(hpIndex, "Load"),
