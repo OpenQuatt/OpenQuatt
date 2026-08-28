@@ -1237,7 +1237,10 @@ interval:
             if (!level_allowed(is_hp1, level)) return NAN;
             if (!id(outside_temp_selected).has_state() || isnan(id(outside_temp_selected).state)) return NAN;
             if (!id(oq_supply_target_temp).has_state() || isnan(id(oq_supply_target_temp).state)) return NAN;
-            return oq_perf::interp_power_th_w(level, id(outside_temp_selected).state, id(oq_supply_target_temp).state);
+            return oq_perf::interp_power_th_w_hz(
+                oq_perf::model_frequency_hz(level),
+                id(outside_temp_selected).state,
+                id(oq_supply_target_temp).state);
           };
 
           const int prev1 = id(hp1_last_applied_level);

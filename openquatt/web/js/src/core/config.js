@@ -25,7 +25,7 @@
   ].map(([id, title, copy, optionalEntity], index) => ({ id, kicker: `Stap ${index + 1}`, title, copy, ...(optionalEntity ? { optionalEntity } : {}) }));
 
   export const ODU_RUNTIME_FREQUENCY_HP_IDS = [1, 2];
-  export const ODU_RUNTIME_FREQUENCY_LEVELS = Array.from({ length: 11 }, (_item, index) => index);
+  export const ODU_RUNTIME_FREQUENCY_LEVELS = Array.from({ length: 21 }, (_item, index) => index);
   export const ODU_RUNTIME_FREQUENCY_MODES = ["cooling", "heating"];
 
   export function getOduRuntimeFrequencyModeLabel(mode) {
@@ -44,14 +44,14 @@
     return `hp${hpIndex}OduRuntimeFrequency${suffix}`;
   }
 
-  export function getOduRuntimeFrequencyHpKeys(hpIndex) {
+  export function getOduRuntimeFrequencyHpKeys(hpIndex, levels = ODU_RUNTIME_FREQUENCY_LEVELS) {
     return [
       getOduRuntimeFrequencyControlKey(hpIndex, "Enable"),
       getOduRuntimeFrequencyControlKey(hpIndex, "Load"),
       getOduRuntimeFrequencyControlKey(hpIndex, "Apply"),
       getOduRuntimeFrequencyControlKey(hpIndex, "Status"),
       ...ODU_RUNTIME_FREQUENCY_MODES.flatMap((mode) => (
-        ODU_RUNTIME_FREQUENCY_LEVELS.map((level) => getOduRuntimeFrequencyValueKey(hpIndex, mode, level))
+        levels.map((level) => getOduRuntimeFrequencyValueKey(hpIndex, mode, level))
       )),
     ];
   }
@@ -61,7 +61,12 @@
     return match ? Number(match[1]) : 0;
   }
 
-  export const ODU_RUNTIME_FREQUENCY_KEYS = ODU_RUNTIME_FREQUENCY_HP_IDS.flatMap(getOduRuntimeFrequencyHpKeys);
+  export const ODU_RUNTIME_FREQUENCY_KEYS = ODU_RUNTIME_FREQUENCY_HP_IDS.flatMap((hpIndex) => (
+    getOduRuntimeFrequencyHpKeys(hpIndex)
+  ));
+  export const ODU_RUNTIME_FREQUENCY_INITIAL_KEYS = ODU_RUNTIME_FREQUENCY_HP_IDS.flatMap((hpIndex) => (
+    getOduRuntimeFrequencyHpKeys(hpIndex, ODU_RUNTIME_FREQUENCY_LEVELS.slice(0, 11))
+  ));
   export const ODU_RUNTIME_FREQUENCY_BUTTON_KEYS = new Set(
     ODU_RUNTIME_FREQUENCY_HP_IDS.flatMap((hpIndex) => [
       getOduRuntimeFrequencyControlKey(hpIndex, "Load"),
@@ -98,6 +103,8 @@
     connectionText: { domain: "text_sensor", name: "OpenQuatt Connection", optional: true },
     hp1Generation: { domain: "text_sensor", name: "HP1 - ODU generation", optional: true },
     hp2Generation: { domain: "text_sensor", name: "HP2 - ODU generation", optional: true },
+    hp1CompressorLevelProfile: { domain: "text_sensor", name: "HP1 - Compressor level profile", optional: true },
+    hp2CompressorLevelProfile: { domain: "text_sensor", name: "HP2 - Compressor level profile", optional: true },
     hp1GenerationVariant: { domain: "text_sensor", name: "HP1 - ODU generation variant", optional: true },
     hp2GenerationVariant: { domain: "text_sensor", name: "HP2 - ODU generation variant", optional: true },
     hp1CustomerModelCode: { domain: "text_sensor", name: "HP1 - ODU customer model code", optional: true },
@@ -943,6 +950,8 @@
     "manualHp2Mode",
     "manualHp1Level",
     "manualHp2Level",
+    "hp1CompressorLevelProfile",
+    "hp2CompressorLevelProfile",
     "hpWaterCalibrationStart",
     "hpWaterCalibrationAbort",
     "hpWaterCalibrationApply",
