@@ -448,8 +448,8 @@ import { render } from "../core/render-scheduler.js";
       const rows = getConnectivityModalRows();
       const preferenceMarkup = renderSettingsSelectField(
         "preferredConnection",
-        "Voorkeursverbinding",
-        "Pas actief na verbinding.",
+        "Verbindingsmodus",
+        "Automatisch detecteert bij opstart en herstel. Kabel later aangesloten? Kies Ethernet of herstart.",
       );
       const preferenceFeedback = state.controlError || state.controlNotice ||
         (state.busyAction === "save-preferredConnection" ? "Bezig..." : "");

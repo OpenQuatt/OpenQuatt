@@ -134,11 +134,9 @@ import { state } from "../core/state.js";
   }
 
   export function getFirmwareBuildConnection() {
-    return normalizeFirmwareConnection(
-      getEntityValue("preferredConnection")
-      || getEntityValue("connectionText")
-      || getDeviceMeta().connection,
-    );
+    return normalizeFirmwareConnection(getEntityValue("preferredConnection"))
+      || normalizeFirmwareConnection(getEntityValue("connectionText"))
+      || normalizeFirmwareConnection(getDeviceMeta().connection);
   }
 
   export function getFirmwareAlternateConnection() {

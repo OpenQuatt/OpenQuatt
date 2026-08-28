@@ -125,8 +125,8 @@ test("de actuele main-versie en configuratie hebben geen OTA nodig", () => {
 test("de uniforme Q-firmware beheert verbinding los van OTA", () => {
   resetSetupState();
   state.entities.preferredConnection = {
-    ...textEntity("WiFi"),
-    option: ["WiFi", "Ethernet"],
+    ...textEntity("Automatic"),
+    option: ["Automatic", "WiFi", "Ethernet"],
   };
   state.entities.firmwareUpdate.title = "Heatpump Controller Q Single";
 

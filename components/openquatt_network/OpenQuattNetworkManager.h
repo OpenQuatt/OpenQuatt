@@ -50,6 +50,12 @@ class OpenQuattNetworkManager : public Component {
     ETHERNET = 2,
   };
 
+  enum class Preference : uint8_t {
+    AUTOMATIC = 0,
+    WIFI = 1,
+    ETHERNET = 2,
+  };
+
   enum class Phase : uint8_t {
     STARTUP,
     STEADY,
@@ -59,11 +65,11 @@ class OpenQuattNetworkManager : public Component {
 
   struct PreferenceStorage {
     uint32_t magic;
-    uint8_t connection;
+    uint8_t preference;
     uint8_t reserved[3];
   };
 
-  static constexpr uint32_t PREFERENCE_MAGIC = 0x4F514E31UL;
+  static constexpr uint32_t PREFERENCE_MAGIC = 0x4F514E32UL;
   static constexpr uint32_t W5500_PHYCFGR_REGISTER = 0x002E0000UL;
   static constexpr uint8_t W5500_PHYCFGR_POWER_DOWN = 0xF0;
   static constexpr uint8_t W5500_PHYCFGR_POWER_DOWN_RESET = 0x70;
@@ -91,23 +97,27 @@ class OpenQuattNetworkManager : public Component {
 
   bool is_connected_(Connection connection) const;
   bool is_stable_(Connection connection, uint32_t now) const;
+  void begin_automatic_detection_(uint32_t now);
   void begin_recovery_(uint32_t now);
   void begin_switch_(Connection target, uint32_t now);
   void activate_(Connection connection, const char* reason);
-  bool save_preference_(Connection connection);
+  bool save_preference_(Preference preference);
   void publish_preference_();
   void publish_active_connection_();
+  static Connection preference_connection_(Preference preference);
+  static Preference connection_preference_(Connection connection);
+  static const char* preference_name_(Preference preference);
   static const char* connection_name_(Connection connection);
 
   text_sensor::TextSensor* active_connection_sensor_{nullptr};
   OpenQuattConnectionSelect* preferred_connection_select_{nullptr};
   ESPPreferenceObject preference_store_;
 
-  Connection preference_{Connection::NONE};
+  Preference preference_{Preference::AUTOMATIC};
   Connection active_{Connection::NONE};
   Connection switch_target_{Connection::NONE};
   Connection switch_source_{Connection::NONE};
-  Connection published_preference_{Connection::NONE};
+  Preference published_preference_{Preference::AUTOMATIC};
   Connection published_active_{Connection::NONE};
   Phase phase_{Phase::STARTUP};
 

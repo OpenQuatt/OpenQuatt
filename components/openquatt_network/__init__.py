@@ -56,7 +56,7 @@ async def to_code(config):
 
     preferred_connection = await select.new_select(
         config[CONF_PREFERRED_CONNECTION],
-        options=["WiFi", "Ethernet"],
+        options=["Automatic", "WiFi", "Ethernet"],
     )
     cg.add(preferred_connection.set_parent(var))
     cg.add(var.set_preferred_connection_select(preferred_connection))

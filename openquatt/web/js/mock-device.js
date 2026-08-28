@@ -1904,12 +1904,12 @@
     syncMockOduIdentityEntities(1);
     setEntity("text_sensor", "OpenQuatt Hardware Profile", { state: state.hardware, value: state.hardware });
     setEntity("text_sensor", "OpenQuatt Hardware Revision", { state: "1.0 (batch 42)", value: "1.0 (batch 42)" });
-    const preferredConnection = state.connection === "eth" ? "Ethernet" : "WiFi";
-    setEntity("text_sensor", "OpenQuatt Connection", { state: preferredConnection, value: preferredConnection });
+    const activeConnection = state.connection === "eth" ? "Ethernet" : "WiFi";
+    setEntity("text_sensor", "OpenQuatt Connection", { state: activeConnection, value: activeConnection });
     setEntity("select", "Preferred Connection", {
-      state: preferredConnection,
-      value: preferredConnection,
-      option: ["WiFi", "Ethernet"],
+      state: "Automatic",
+      value: "Automatic",
+      option: ["Automatic", "WiFi", "Ethernet"],
     });
     setEntity("text_sensor", "OpenQuatt Version", { state: MOCK_DEV_VERSION, value: MOCK_DEV_VERSION });
     setEntity("text_sensor", "OpenQuatt Release Channel", { state: "dev", value: "dev" });
@@ -3145,7 +3145,6 @@
     state.connection = value === "eth" ? "eth" : "wifi";
     const connectionLabel = state.connection === "eth" ? "Ethernet" : "WiFi";
     setText("text_sensor", "OpenQuatt Connection", connectionLabel);
-    setText("select", "Preferred Connection", connectionLabel);
     setText("select", "Firmware Update Target", "current build");
     syncDevMeta();
   }
@@ -3931,7 +3930,10 @@
       syncWaterSupplyCalibrationForMockSource();
     }
     if (name === "Preferred Connection") {
-      setConnectionMode(value === "Ethernet" ? "eth" : "wifi");
+      if (value !== "Automatic") {
+        setConnectionMode(value === "Ethernet" ? "eth" : "wifi");
+        setText("select", "Preferred Connection", value);
+      }
     } else if (name === "Preset") {
       applyPreset(value);
     } else if (name === "Firmware Update Channel") {

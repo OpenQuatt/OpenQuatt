@@ -135,7 +135,9 @@ export async function commitSelect(key, option) {
         ? "De normale moduskeuze is weer actief."
         : `${option} is tijdelijk actief en verloopt automatisch na maximaal 30 minuten.`
       : key === "preferredConnection"
-        ? `Omschakelen naar ${option} is gestart. De actieve verbinding wordt bijgewerkt zodra ${option} beschikbaar is.`
+        ? option === "Automatic"
+          ? "Automatische detectie gestart."
+          : `Omschakelen naar ${option} is gestart. De actieve verbinding wordt bijgewerkt zodra ${option} beschikbaar is.`
       : `${entity.name} bijgewerkt.`;
     if (key === "firmwareUpdateChannel") {
       updateFirmwareState({ updateInstallCompleted: false, updateInstallCompletedVersion: "" });

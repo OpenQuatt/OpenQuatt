@@ -65,7 +65,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
         <p class="oq-helper-label">${escapeHtml(getQuickStepKicker("setup"))}</p>
         <h2 class="oq-helper-section-title">Configuratie en software-update</h2>
         <p class="oq-helper-section-copy">${escapeHtml(unifiedNetworkBuild
-          ? "Kies de opstelling. De voorkeursverbinding wijzig je bij Instellingen > Diagnostiek."
+          ? "Kies de opstelling. De verbindingsmodus wijzig je via Connectiviteit."
           : "Kies de configuratie van je Q-edition. OpenQuatt controleert daarna de nieuwste stabiele main-release en installeert deze alleen als de versie of configuratie afwijkt.")}</p>
         <div class="oq-helper-fields">
           ${options.map(([key, title, copy]) => {

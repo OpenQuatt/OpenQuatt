@@ -23,21 +23,20 @@ void OpenQuattNetworkManager::setup() {
 
   PreferenceStorage stored{};
   if (this->preference_store_.load(&stored) && stored.magic == PREFERENCE_MAGIC &&
-      (stored.connection == static_cast<uint8_t>(Connection::WIFI) ||
-       stored.connection == static_cast<uint8_t>(Connection::ETHERNET))) {
-    this->preference_ = static_cast<Connection>(stored.connection);
+      stored.preference <= static_cast<uint8_t>(Preference::ETHERNET)) {
+    this->preference_ = static_cast<Preference>(stored.preference);
   }
 
   // Ethernet must initialize even for WiFi preference so its own SPI driver can
   // put the W5500 PHY into Power Down. For Ethernet preference, WiFi can remain
   // lazily uninitialized until failover is actually needed.
-  if (this->preference_ == Connection::ETHERNET && wifi::global_wifi_component != nullptr) {
+  if (this->preference_ == Preference::ETHERNET && wifi::global_wifi_component != nullptr) {
     wifi::global_wifi_component->set_enable_on_boot(false);
   }
 
   this->phase_started_ms_ = millis();
   this->publish_preference_();
-  ESP_LOGI(TAG, "Preferred connection: %s", connection_name_(this->preference_));
+  ESP_LOGI(TAG, "Preferred connection: %s", preference_name_(this->preference_));
 }
 
 void OpenQuattNetworkManager::loop() {
@@ -75,19 +74,33 @@ void OpenQuattNetworkManager::dump_config() {
                 "  Loss timeout: %lu ms\n"
                 "  Stable time: %lu ms\n"
                 "  Switch timeout: %lu ms",
-                connection_name_(this->preference_), static_cast<unsigned long>(this->detection_timeout_ms_),
+                preference_name_(this->preference_), static_cast<unsigned long>(this->detection_timeout_ms_),
                 static_cast<unsigned long>(this->loss_timeout_ms_), static_cast<unsigned long>(this->stable_time_ms_),
                 static_cast<unsigned long>(this->switch_timeout_ms_));
 }
 
 void OpenQuattNetworkManager::request_preference(size_t index) {
-  if (index > 1) {
+  if (index > 2) {
     ESP_LOGW(TAG, "Ignoring invalid preferred connection index: %u", static_cast<unsigned>(index));
     return;
   }
 
-  const Connection target = index == 0 ? Connection::WIFI : Connection::ETHERNET;
-  if (this->phase_ == Phase::STEADY && this->preference_ == target && this->active_ == target &&
+  if (index == 0) {
+    if (this->preference_ == Preference::AUTOMATIC && this->phase_ == Phase::STARTUP) {
+      this->publish_preference_();
+      return;
+    }
+    if (!this->save_preference_(Preference::AUTOMATIC)) {
+      ESP_LOGE(TAG, "Automatic connection mode not started because preference persistence failed");
+      this->publish_preference_();
+      return;
+    }
+    this->begin_automatic_detection_(millis());
+    return;
+  }
+
+  const Connection target = index == 1 ? Connection::WIFI : Connection::ETHERNET;
+  if (this->phase_ == Phase::STEADY && this->preference_ == connection_preference_(target) && this->active_ == target &&
       this->is_connected_(target)) {
     this->publish_preference_();
     return;
@@ -119,7 +132,7 @@ void OpenQuattNetworkManager::update_connection_stability_(uint32_t now) {
 void OpenQuattNetworkManager::handle_startup_(uint32_t now) {
   if ((now - this->last_interface_action_ms_) >= INTERFACE_ACTION_RETRY_MS) {
     this->last_interface_action_ms_ = now;
-    if (this->preference_ == Connection::WIFI) {
+    if (this->preference_ == Preference::WIFI) {
       if (!this->w5500_powered_down_) {
         this->disable_ethernet_();
       }
@@ -128,26 +141,21 @@ void OpenQuattNetworkManager::handle_startup_(uint32_t now) {
     }
   }
 
-  if (this->preference_ == Connection::NONE) {
+  if (this->preference_ == Preference::AUTOMATIC) {
     if (this->is_stable_(Connection::ETHERNET, now)) {
-      if (!this->save_preference_(Connection::ETHERNET)) {
-        ESP_LOGW(TAG, "Ethernet detected, but its preference could not be persisted");
-      }
       this->activate_(Connection::ETHERNET, "initial detection");
       return;
     }
 
     if ((now - this->phase_started_ms_) >= this->detection_timeout_ms_ && this->is_stable_(Connection::WIFI, now)) {
-      if (!this->save_preference_(Connection::WIFI)) {
-        ESP_LOGW(TAG, "WiFi selected, but its preference could not be persisted");
-      }
       this->activate_(Connection::WIFI, "initial detection");
     }
     return;
   }
 
-  if (this->is_stable_(this->preference_, now)) {
-    this->activate_(this->preference_, "preferred connection available");
+  const Connection preferred_connection = preference_connection_(this->preference_);
+  if (this->is_stable_(preferred_connection, now)) {
+    this->activate_(preferred_connection, "preferred connection available");
     return;
   }
 
@@ -191,29 +199,33 @@ void OpenQuattNetworkManager::handle_recovery_(uint32_t now) {
     this->ensure_ethernet_enabled_();
   }
 
+  if (this->preference_ == Preference::AUTOMATIC) {
+    if (this->is_stable_(Connection::ETHERNET, now)) {
+      this->activate_(Connection::ETHERNET, "automatic recovery");
+      return;
+    }
+    const bool ethernet_was_active = this->active_ == Connection::ETHERNET;
+    if ((ethernet_was_active || (now - this->phase_started_ms_) >= this->detection_timeout_ms_) &&
+        this->is_stable_(Connection::WIFI, now)) {
+      this->activate_(Connection::WIFI, "automatic recovery");
+    }
+    return;
+  }
+
+  const Connection preferred_connection = preference_connection_(this->preference_);
+  if (this->is_stable_(preferred_connection, now)) {
+    this->activate_(preferred_connection, "preferred connection available");
+    return;
+  }
+
   if (this->active_ != Connection::NONE && this->is_stable_(this->active_, now)) {
     this->activate_(this->active_, "connection recovered");
     return;
   }
 
-  const Connection alternate = this->active_ == Connection::WIFI ? Connection::ETHERNET : Connection::WIFI;
-  if (this->active_ != Connection::NONE && this->is_stable_(alternate, now)) {
+  const Connection alternate = preferred_connection == Connection::WIFI ? Connection::ETHERNET : Connection::WIFI;
+  if (this->is_stable_(alternate, now)) {
     this->activate_(alternate, "automatic failover");
-    return;
-  }
-
-  if (this->active_ == Connection::NONE) {
-    if (this->preference_ != Connection::NONE && this->is_stable_(this->preference_, now)) {
-      this->activate_(this->preference_, "preferred connection available");
-      return;
-    }
-    if (this->is_stable_(Connection::ETHERNET, now)) {
-      this->activate_(Connection::ETHERNET, "automatic recovery");
-      return;
-    }
-    if (this->is_stable_(Connection::WIFI, now)) {
-      this->activate_(Connection::WIFI, "automatic recovery");
-    }
   }
 }
 
@@ -228,8 +240,9 @@ void OpenQuattNetworkManager::handle_switching_(uint32_t now) {
   }
 
   if (this->is_stable_(this->switch_target_, now)) {
-    const bool preference_changed = this->preference_ != this->switch_target_;
-    if (!preference_changed || this->save_preference_(this->switch_target_)) {
+    const Preference target_preference = connection_preference_(this->switch_target_);
+    const bool preference_changed = this->preference_ != target_preference;
+    if (!preference_changed || this->save_preference_(target_preference)) {
       this->activate_(this->switch_target_, "manual selection");
       return;
     }
@@ -286,7 +299,7 @@ bool OpenQuattNetworkManager::prepare_ethernet_after_setup_() {
 
   this->last_interface_action_ms_ = now;
   ethernet->disable();
-  if (this->preference_ == Connection::WIFI) {
+  if (this->preference_ == Preference::WIFI) {
     this->power_down_w5500_();
   } else {
     if (this->wake_w5500_()) {
@@ -438,6 +451,16 @@ bool OpenQuattNetworkManager::is_stable_(Connection connection, uint32_t now) co
   return connected_since != 0 && (now - connected_since) >= this->stable_time_ms_;
 }
 
+void OpenQuattNetworkManager::begin_automatic_detection_(uint32_t now) {
+  ESP_LOGI(TAG, "Starting automatic connection detection");
+  this->ensure_wifi_enabled_();
+  this->ensure_ethernet_enabled_();
+  this->last_interface_action_ms_ = now;
+  this->phase_ = Phase::STARTUP;
+  this->phase_started_ms_ = now;
+  this->disconnected_since_ms_ = 0;
+}
+
 void OpenQuattNetworkManager::begin_recovery_(uint32_t now) {
   ESP_LOGW(TAG, "Active connection lost; enabling WiFi and Ethernet");
   this->ensure_wifi_enabled_();
@@ -480,25 +503,25 @@ void OpenQuattNetworkManager::activate_(Connection connection, const char* reaso
   this->publish_active_connection_();
 }
 
-bool OpenQuattNetworkManager::save_preference_(Connection connection) {
+bool OpenQuattNetworkManager::save_preference_(Preference preference) {
   PreferenceStorage stored{};
   stored.magic = PREFERENCE_MAGIC;
-  stored.connection = static_cast<uint8_t>(connection);
+  stored.preference = static_cast<uint8_t>(preference);
   if (!this->preference_store_.save(&stored)) {
     return false;
   }
 
-  this->preference_ = connection;
+  this->preference_ = preference;
   this->publish_preference_();
   return true;
 }
 
 void OpenQuattNetworkManager::publish_preference_() {
-  if (this->preferred_connection_select_ == nullptr || this->preference_ == Connection::NONE) {
+  if (this->preferred_connection_select_ == nullptr) {
     return;
   }
   if (!this->preference_published_ || this->published_preference_ != this->preference_) {
-    this->preferred_connection_select_->publish_state(connection_name_(this->preference_));
+    this->preferred_connection_select_->publish_state(preference_name_(this->preference_));
     this->published_preference_ = this->preference_;
     this->preference_published_ = true;
   }
@@ -517,6 +540,34 @@ void OpenQuattNetworkManager::publish_active_connection_() {
     this->active_connection_sensor_->publish_state(connection_name_(visible));
     this->published_active_ = visible;
     this->active_published_ = true;
+  }
+}
+
+OpenQuattNetworkManager::Connection OpenQuattNetworkManager::preference_connection_(Preference preference) {
+  switch (preference) {
+    case Preference::WIFI:
+      return Connection::WIFI;
+    case Preference::ETHERNET:
+      return Connection::ETHERNET;
+    case Preference::AUTOMATIC:
+    default:
+      return Connection::NONE;
+  }
+}
+
+OpenQuattNetworkManager::Preference OpenQuattNetworkManager::connection_preference_(Connection connection) {
+  return connection == Connection::ETHERNET ? Preference::ETHERNET : Preference::WIFI;
+}
+
+const char* OpenQuattNetworkManager::preference_name_(Preference preference) {
+  switch (preference) {
+    case Preference::WIFI:
+      return "WiFi";
+    case Preference::ETHERNET:
+      return "Ethernet";
+    case Preference::AUTOMATIC:
+    default:
+      return "Automatic";
   }
 }
 

@@ -21,7 +21,7 @@ function textEntity(value, extra = {}) {
 function resetConnectivityState(connection) {
   state.entities = {
     connectionText: textEntity(connection),
-    preferredConnection: textEntity(connection, { option: ["WiFi", "Ethernet"] }),
+    preferredConnection: textEntity(connection, { option: ["Automatic", "WiFi", "Ethernet"] }),
     wifiSignal: textEntity(-61, { uom: "dBm" }),
     wifiSsid: textEntity("OpenQuatt-test"),
   };
@@ -46,7 +46,7 @@ test("Ethernet verbergt verouderde WiFi-details in de connectiviteitsmodal", () 
   assert.equal(rows.some(([label]) => label === "WiFi SSID" || label === "WiFi signaal"), false);
 
   const markup = renderSystemModal();
-  assert.match(markup, /Voorkeursverbinding/);
+  assert.match(markup, /Verbindingsmodus/);
   assert.match(markup, /data-oq-field="preferredConnection"/);
   assert.doesNotMatch(markup, /WiFi signaal/);
 });
@@ -57,6 +57,19 @@ test("WiFi toont de bijbehorende SSID en signaalsterkte", () => {
   const rows = getConnectivityModalRows();
   assert.equal(rows.some(([label, value]) => label === "WiFi SSID" && value === "OpenQuatt-test"), true);
   assert.equal(rows.some(([label, value]) => label === "WiFi signaal" && value === "-61 dBm"), true);
+});
+
+test("automatische modus licht bootdetectie en handmatige hotplug toe", () => {
+  resetConnectivityState("WiFi");
+  state.entities.preferredConnection = textEntity("Automatic", {
+    option: ["Automatic", "WiFi", "Ethernet"],
+  });
+
+  const markup = renderSystemModal();
+  assert.match(markup, /Verbindingsmodus/);
+  assert.match(markup, /Automatisch/);
+  assert.match(markup, /bij opstart en herstel/);
+  assert.match(markup, /Kabel later aangesloten\? Kies Ethernet of herstart/);
 });
 
 test("een ontbrekende actieve verbinding toont geen verouderde WiFi-details", () => {

@@ -1,16 +1,17 @@
 # ==============================================================================
 # OpenQuatt - Connection Profile: WiFi + Ethernet W5500
 # ==============================================================================
-# Standard ESPHome owns both interfaces and route priority. OpenQuatt only
-# selects the preferred interface, handles failover and powers down the W5500
-# PHY while WiFi is active.
+# Standard ESPHome owns both interfaces and route priority. OpenQuatt detects
+# Ethernet during automatic startup/recovery, handles explicit selection and
+# powers down the W5500 PHY while WiFi is active. Hotplug detection is therefore
+# intentionally unavailable during a stable WiFi connection.
 # ==============================================================================
 
 substitutions:
   oq_connection: "auto"
 
 network:
-  priority: [wifi, ethernet]
+  priority: [ethernet, wifi]
 
 wifi:
   power_save_mode: none
