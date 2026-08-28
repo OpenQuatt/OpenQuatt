@@ -1224,12 +1224,6 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
       `
         <div class="oq-settings-system-summary">
           ${renderSettingsSystemRow({ dataValue: "uptime", label: "Uptime", value: formatUptimeFromMeta() })}
-          ${renderSettingsSystemRow({ dataValue: "ip", label: "IP-adres", value: getDeviceIpAddress() })}
-          ${hasEntity("preferredConnection") ? renderSettingsSystemRow({
-            dataValue: "activeConnection",
-            label: "Actieve verbinding",
-            value: getEntityStateText("connectionText", "Niet verbonden"),
-          }) : ""}
           ${renderSettingsSystemRow({
             dataValue: "updates",
             label: "Updates",
@@ -1298,11 +1292,6 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
             })}
           ` : ""}
         </div>
-        ${renderSettingsSelectField(
-          "preferredConnection",
-          "Voorkeursverbinding",
-          "De andere verbinding wordt pas uitgeschakeld zodra de gekozen verbinding werkt.",
-        )}
       `,
     );
   }

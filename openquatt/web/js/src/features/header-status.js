@@ -17,6 +17,7 @@ import { getControlModeOverrideLabel, renderSettingsServiceTaskModal } from "../
 import { renderSilentSettingsFields } from "../settings/silent.js";
 import { renderSettingsBackupImportModal, renderSettingsBackupRestoreModal, renderSettingsHistoryStorageModal } from "../settings/storage.js";
 import { renderHpWaterSensorOffsetsModal } from "../settings/water.js";
+import { renderSettingsSelectField } from "../settings/controls.js";
 import { renderHeatingStrategyAdviceModal } from "./heating-strategy-advice.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
@@ -123,14 +124,20 @@ import { render } from "../core/render-scheduler.js";
   export function getConnectivityModalRows() {
     const rows = [
       ["Netwerkstatus", getConnectivityStatus()],
-      ["IP-adres", getDeviceIpAddress()],
     ];
+    const hasActiveConnection = hasEntity("connectionText");
+    const activeConnection = getEntityStateText("connectionText", "Niet verbonden").replace("Not connected", "Niet verbonden");
+    if (hasActiveConnection) {
+      rows.push(["Actieve verbinding", activeConnection]);
+    }
+    rows.push(["IP-adres", getDeviceIpAddress()]);
+    const showWifiDetails = !hasActiveConnection || activeConnection === "WiFi";
     const ssid = String(getEntityValue("wifiSsid") || "").trim();
-    if (ssid) {
+    if (showWifiDetails && ssid) {
       rows.push(["WiFi SSID", ssid]);
     }
     const signalEntity = state.entities.wifiSignal;
-    if (signalEntity) {
+    if (showWifiDetails && signalEntity) {
       const signal = getEntityNumericValue("wifiSignal");
       if (!Number.isNaN(signal)) {
         rows.push(["WiFi signaal", formatNumericState(signal, 0, signalEntity.uom || " dBm")]);
@@ -204,6 +211,9 @@ import { render } from "../core/render-scheduler.js";
 
   export function patchHeaderDom() {
     if (!state.root) {
+      return false;
+    }
+    if (state.systemModal === "connectivity") {
       return false;
     }
 
@@ -436,6 +446,13 @@ import { render } from "../core/render-scheduler.js";
 
     if (state.systemModal === "connectivity") {
       const rows = getConnectivityModalRows();
+      const preferenceMarkup = renderSettingsSelectField(
+        "preferredConnection",
+        "Voorkeursverbinding",
+        "Pas actief na verbinding.",
+      );
+      const preferenceFeedback = state.controlError || state.controlNotice ||
+        (state.busyAction === "save-preferredConnection" ? "Bezig..." : "");
       return renderModalShell({
         modalId: "system",
         titleId: "oq-system-modal-title",
@@ -444,7 +461,6 @@ import { render } from "../core/render-scheduler.js";
         closeAction: "close-system-modal",
         closeLabel: "Sluit systeem-popup",
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">Status en details van de actieve netwerkverbinding van OpenQuatt.</p>
           <div class="oq-helper-modal-grid">
             ${rows.map(([label, value]) => `
               <div class="oq-helper-modal-row">
@@ -452,7 +468,9 @@ import { render } from "../core/render-scheduler.js";
                 <strong class="oq-helper-modal-value">${escapeHtml(value)}</strong>
               </div>
             `).join("")}
+            ${preferenceMarkup}
           </div>
+          ${preferenceFeedback ? `<p class="${state.controlError ? "oq-helper-error" : "oq-helper-notice"}" role="status">${escapeHtml(preferenceFeedback)}</p>` : ""}
           <div class="oq-helper-modal-actions">
             <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">Gereed</button>
           </div>
