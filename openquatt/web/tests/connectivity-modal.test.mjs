@@ -78,7 +78,9 @@ test("oudere WiFi-firmware zonder runtimeverbinding behoudt WiFi-details", () =>
   assert.doesNotMatch(renderSystemModal(), /Voorkeursverbinding/);
 });
 
-test("Diagnostiek bevat geen losse verbindingsvelden meer", () => {
+test("Diagnostiek opent de gecombineerde connectiviteitsmodal zonder losse instellingen", () => {
+  assert.match(installationSource, /dataValue: "connectivity"/);
+  assert.match(installationSource, /renderSettingsSystemOpenAction\("open-connectivity-modal"\)/);
   assert.doesNotMatch(installationSource, /dataValue: "ip"/);
   assert.doesNotMatch(installationSource, /dataValue: "activeConnection"/);
   assert.doesNotMatch(installationSource, /renderSettingsSelectField\(\s*"preferredConnection"/);

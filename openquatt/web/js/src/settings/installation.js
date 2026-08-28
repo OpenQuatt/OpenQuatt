@@ -11,7 +11,7 @@ import { state } from "../core/state.js";
 import { getDebugRecordingStatusCopy, getDebugRecordingStatusLabel } from "../features/debug-recording.js";
 import { formatDiagnosticsDateTime, formatUptimeFromMeta, getDeviceIpAddress, getInstallationLabel } from "../features/device-context.js";
 import { getUpdateStatus } from "../features/firmware-update.js";
-import { getEspTemperatureLabel } from "../features/header-status.js";
+import { getConnectivityStatus, getEspTemperatureLabel } from "../features/header-status.js";
 import { getOduGenerationChoiceMeta, getOduGenerationDetectionModel, renderOduGenerationDetectionStatus } from "../features/odu-generation-ui.js";
 import { getWebServerLogStatusLabel } from "../features/webserver-logs.js";
 import { BOILER_OPENTHERM_CAPABILITY, getBoilerOpenThermCapability, getSupportedBoilerConnectionOptions } from "./boiler.js";
@@ -1212,10 +1212,24 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     );
   }
 
+  function renderSettingsSystemOpenAction(action) {
+    return `<button
+      class="oq-helper-button oq-helper-button--ghost"
+      type="button"
+      data-oq-action="${escapeHtml(action)}"
+    >
+      Openen
+    </button>`;
+  }
+
   export function renderSettingsDiagnosticsSection() {
     const updateStatus = getUpdateStatus();
     const dateTime = formatDiagnosticsDateTime();
     const busyRestart = state.busyAction === "restartAction";
+    const activeConnection = hasEntity("connectionText")
+      ? getEntityStateText("connectionText", "Niet verbonden").replace("Not connected", "Niet verbonden")
+      : getConnectivityStatus();
+    const ipAddress = getDeviceIpAddress();
 
     return renderSettingsSection(
       "Diagnostiek",
@@ -1225,41 +1239,30 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
         <div class="oq-settings-system-summary">
           ${renderSettingsSystemRow({ dataValue: "uptime", label: "Uptime", value: formatUptimeFromMeta() })}
           ${renderSettingsSystemRow({
+            dataValue: "connectivity",
+            label: "Connectiviteit",
+            value: activeConnection,
+            note: ipAddress === "—" ? "" : `IP-adres ${ipAddress}`,
+            action: renderSettingsSystemOpenAction("open-connectivity-modal"),
+          })}
+          ${renderSettingsSystemRow({
             dataValue: "updates",
             label: "Updates",
             value: updateStatus,
-            action: `<button
-              class="oq-helper-button oq-helper-button--ghost"
-              type="button"
-              data-oq-action="open-update-modal"
-            >
-              Openen
-            </button>`,
+            action: renderSettingsSystemOpenAction("open-update-modal"),
           })}
           ${renderSettingsSystemRow({
             dataValue: "webserverLog",
             label: "Logboek",
             value: getWebServerLogStatusLabel(),
-            action: `<button
-              class="oq-helper-button oq-helper-button--ghost"
-              type="button"
-              data-oq-action="open-webserver-log-modal"
-            >
-              Openen
-            </button>`,
+            action: renderSettingsSystemOpenAction("open-webserver-log-modal"),
           })}
           ${renderSettingsSystemRow({
             dataValue: "debugRecording",
             label: "Debugopname",
             value: getDebugRecordingStatusLabel(),
             note: getDebugRecordingStatusCopy(),
-            action: `<button
-              class="oq-helper-button oq-helper-button--ghost"
-              type="button"
-              data-oq-action="open-debug-recording-modal"
-            >
-              Openen
-            </button>`,
+            action: renderSettingsSystemOpenAction("open-debug-recording-modal"),
           })}
           ${renderSettingsSystemRow({ dataValue: "datetime", label: "Datum/tijd", value: dateTime })}
           ${renderSettingsSystemRow({ dataValue: "espTemp", label: "ESP-temp", value: getEspTemperatureLabel() })}
