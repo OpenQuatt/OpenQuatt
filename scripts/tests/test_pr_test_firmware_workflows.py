@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from unittest import mock
@@ -105,6 +106,14 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
 
         self.assertEqual(Path("/tmp/firmware"), args.artifact_root)
 
+    def test_unified_q_uploads_trusted_publisher_compatibility_artifacts(self) -> None:
+        self.assertIn("Upload WiFi compatibility OTA artifact", REUSABLE_BUILD_WORKFLOW)
+        self.assertIn("Upload Ethernet compatibility OTA artifact", REUSABLE_BUILD_WORKFLOW)
+        self.assertEqual(
+            2,
+            REUSABLE_BUILD_WORKFLOW.count("matrix.target.connection == 'auto'"),
+        )
+
     def test_symlinked_artifact_directory_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -114,6 +123,23 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
 
             with self.assertRaisesRegex(SystemExit, "must not be a symlink"):
                 build_targets.find_artifact_dir(root, "openquatt-test")
+
+    def test_canonical_artifact_lookup_ignores_compatibility_alias_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            canonical = root / "openquatt-test-pr-476"
+            canonical.mkdir()
+            (root / "openquatt-test-wifi-pr-476").mkdir()
+            (root / "openquatt-test-eth-pr-476").mkdir()
+
+            self.assertEqual(
+                canonical,
+                build_targets.find_artifact_dir(
+                    root,
+                    "openquatt-test",
+                    ["openquatt-test-wifi", "openquatt-test-eth"],
+                ),
+            )
 
     def test_pr_assets_are_normalized_from_external_artifact_root(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -155,6 +181,108 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
             self.assertEqual(b"firmware", (repo_root / "dist/openquatt-test.firmware.ota.bin").read_bytes())
             self.assertTrue((repo_root / "dist/openquatt-test.firmware.ota.bin.md5").is_file())
             self.assertTrue((repo_root / "dist/pr-firmware.json").is_file())
+
+    def test_release_aliases_are_byte_identical_and_get_matching_manifests(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            artifact_dir = repo_root / "dist/openquatt-test"
+            artifact_dir.mkdir(parents=True)
+            (artifact_dir / "firmware.ota.bin").write_bytes(b"ota-firmware")
+            (artifact_dir / "firmware.factory.bin").write_bytes(b"factory-firmware")
+
+            targets_file = repo_root / "build_targets.yaml"
+            targets_file.write_text(
+                """targets:
+  - id: test
+    status: enabled
+    artifact_name: openquatt-test
+    artifact_aliases: openquatt-test-wifi,openquatt-test-eth
+    manifest_name: openquatt-test-ota.manifest.json
+    chip_family: ESP32-S3
+    connection: auto
+    display_name: Test target
+""",
+                encoding="utf-8",
+            )
+
+            with (
+                mock.patch.object(build_targets, "REPO_ROOT", repo_root),
+                mock.patch.object(build_targets, "TARGETS_FILE", targets_file),
+            ):
+                build_targets.prepare_release_assets(
+                    "v1.2.3",
+                    "https://example.invalid/download",
+                    "https://example.invalid/release",
+                )
+
+            canonical_ota = repo_root / "dist/openquatt-test.firmware.ota.bin"
+            canonical_factory = repo_root / "dist/openquatt-test.firmware.factory.bin"
+            for alias in ("openquatt-test-wifi", "openquatt-test-eth"):
+                alias_ota = repo_root / f"dist/{alias}.firmware.ota.bin"
+                alias_factory = repo_root / f"dist/{alias}.firmware.factory.bin"
+                self.assertEqual(canonical_ota.read_bytes(), alias_ota.read_bytes())
+                self.assertEqual(canonical_factory.read_bytes(), alias_factory.read_bytes())
+
+                manifest = json.loads(
+                    (repo_root / f"{alias}-ota.manifest.json").read_text(encoding="utf-8")
+                )
+                self.assertTrue(
+                    manifest["builds"][0]["ota"]["path"].endswith(
+                        f"/{alias}.firmware.ota.bin"
+                    )
+                )
+                expected_connection = "Wi-Fi" if alias.endswith("-wifi") else "Ethernet"
+                self.assertEqual(f"Test target {expected_connection}", manifest["name"])
+
+    def test_pr_aliases_keep_legacy_connection_catalog_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            artifact_dir = repo_root / "dist/openquatt-test"
+            artifact_dir.mkdir(parents=True)
+            (artifact_dir / "firmware.ota.bin").write_bytes(b"ota-firmware")
+            targets_file = repo_root / "build_targets.yaml"
+            targets_file.write_text(
+                """targets:
+  - id: test
+    status: enabled
+    artifact_name: openquatt-test
+    artifact_aliases: openquatt-test-wifi,openquatt-test-eth
+    hardware: heatpump_controller_q
+    topology: duo
+    connection: auto
+    display_name: Test target
+""",
+                encoding="utf-8",
+            )
+
+            with (
+                mock.patch.object(build_targets, "REPO_ROOT", repo_root),
+                mock.patch.object(build_targets, "TARGETS_FILE", targets_file),
+            ):
+                build_targets.prepare_pr_test_assets(
+                    "476",
+                    "v1.2.3-pr.476.1+1234567",
+                    "1234567890abcdef1234567890abcdef12345678",
+                    "https://example.invalid/download",
+                    "https://example.invalid/release",
+                )
+
+            catalog = json.loads(
+                (repo_root / "dist/pr-firmware.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                ["auto", "wifi", "eth"],
+                [asset["connection"] for asset in catalog["assets"]],
+            )
+            self.assertEqual(
+                ["Test target", "Test target Wi-Fi", "Test target Ethernet"],
+                [asset["display_name"] for asset in catalog["assets"]],
+            )
+            for alias in ("openquatt-test-wifi", "openquatt-test-eth"):
+                self.assertEqual(
+                    b"ota-firmware",
+                    (repo_root / f"dist/{alias}.firmware.ota.bin").read_bytes(),
+                )
 
 
 if __name__ == "__main__":

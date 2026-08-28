@@ -134,7 +134,11 @@ import { state } from "../core/state.js";
   }
 
   export function getFirmwareBuildConnection() {
-    return normalizeFirmwareConnection(getEntityValue("connectionText") || getDeviceMeta().connection);
+    return normalizeFirmwareConnection(
+      getEntityValue("preferredConnection")
+      || getEntityValue("connectionText")
+      || getDeviceMeta().connection,
+    );
   }
 
   export function getFirmwareAlternateConnection() {
@@ -163,6 +167,9 @@ import { state } from "../core/state.js";
     const topologyLabel = getFirmwareTopologyLabel(topology);
     const hardware = getFirmwareHardwareProfile();
     if (hardware === "heatpump_controller_q") {
+      if (hasEntity("preferredConnection")) {
+        return `Heatpump Controller Q ${topologyLabel}`;
+      }
       return `Heatpump Controller Q ${topologyLabel} ${getFirmwareConnectionLabel(connection)}`;
     }
     if (hardware === "heatpump_listener") {

@@ -1,0 +1,79 @@
+# ==============================================================================
+# OpenQuatt - Connection Profile: WiFi + Ethernet W5500
+# ==============================================================================
+# Standard ESPHome owns both interfaces and route priority. OpenQuatt only
+# selects the preferred interface, handles failover and powers down the W5500
+# PHY while WiFi is active.
+# ==============================================================================
+
+substitutions:
+  oq_connection: "auto"
+
+network:
+  priority: [wifi, ethernet]
+
+wifi:
+  power_save_mode: none
+  min_auth_mode: wpa2
+  ap:
+    ssid: "OpenQuatt"
+    password: "openquatt"
+
+ethernet:
+  type: W5500
+  clk_pin: ${eth_clk_pin}
+  mosi_pin: ${eth_mosi_pin}
+  miso_pin: ${eth_miso_pin}
+  cs_pin: ${eth_cs_pin}
+  interrupt_pin: ${eth_int_pin}
+
+captive_portal:
+
+# Enable ESP Web Tools WiFi provisioning while keeping AP fallback available.
+improv_serial:
+  next_url: "http://{{ip_address}}/"
+
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_network]
+
+openquatt_network:
+  id: oq_network_manager
+  active_connection: oq_connection_text
+  preferred_connection:
+    id: oq_preferred_connection
+    name: Preferred Connection
+
+sensor:
+  - platform: wifi_signal
+    id: oq_wifi_signal
+    name: WiFi Signal
+    icon: mdi:wifi-arrow-left-right
+    update_interval: 300s
+    entity_category: diagnostic
+
+openquatt_usage_telemetry:
+  wifi_signal_sensor: oq_wifi_signal
+
+text_sensor:
+  - platform: template
+    id: oq_network_ip_address
+    name: IP Address
+    icon: mdi:ip-network-outline
+    entity_category: diagnostic
+    update_interval: 30s
+    lambda: |-
+      for (const auto &address : esphome::network::get_ip_addresses()) {
+        if (address.is_set()) {
+          char buffer[esphome::network::IP_ADDRESS_BUFFER_SIZE];
+          return {address.str_to(buffer)};
+        }
+      }
+      return {"0.0.0.0"};
+  - platform: wifi_info
+    ssid:
+      name: WiFi SSID
+      icon: mdi:wifi
+      entity_category: diagnostic

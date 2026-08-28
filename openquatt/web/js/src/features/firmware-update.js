@@ -29,6 +29,9 @@ import { render } from "../core/render-scheduler.js";
   }
 
   export function getFirmwareConnectionSwitchModel() {
+    if (hasEntity("preferredConnection")) {
+      return null;
+    }
     const hardware = getFirmwareHardwareProfile();
     const topology = getInstallationTopology();
     const currentConnection = getFirmwareBuildConnection();
@@ -93,13 +96,16 @@ import { render } from "../core/render-scheduler.js";
     const connection = normalizeFirmwareConnection(targetConnection);
     const topologyChanges = topology && topology !== currentTopology;
     const connectionChanges = connection && connection !== currentConnection;
-    const targetOption = topologyChanges && connectionChanges
-      ? "alternate topology and connection"
-      : topologyChanges
-        ? "alternate topology"
-        : connectionChanges
-          ? "alternate connection"
-          : "current build";
+    const unifiedNetworkBuild = hasEntity("preferredConnection");
+    const targetOption = unifiedNetworkBuild
+      ? topologyChanges ? "alternate topology" : "current build"
+      : topologyChanges && connectionChanges
+        ? "alternate topology and connection"
+        : topologyChanges
+          ? "alternate topology"
+          : connectionChanges
+            ? "alternate connection"
+            : "current build";
     const valid = hardware === "heatpump_controller_q"
       && ["single", "duo"].includes(currentTopology)
       && ["single", "duo"].includes(topology)

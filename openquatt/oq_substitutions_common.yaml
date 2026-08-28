@@ -25,6 +25,8 @@ oq_local_supply_temp_selector_id: "water_supply_source"     # Validation-safe pl
 oq_controller_flow_sensor_id: "hp1_flow"              # Profile-safe controller-flow source used by shared lambdas.
 oq_q_flow_source_selector_id: "flow_source"           # Validation-safe placeholder outside Q profiles.
 oq_connection: "unknown"                              # Compile-time connection profile id (`wifi` or `eth`).
+oq_connection_text_internal: "true"                   # Hide the static connection diagnostic unless a runtime manager owns it.
+oq_artifact_connection_suffix: "-${oq_connection}"    # Artifact filename suffix; empty for combined-connection firmware.
 alternate_connection: ""                              # Optional connection target used for controlled Wi-Fi/Ethernet switching.
 alternate_main_release_manifest_url: ""               # Optional main-channel OTA manifest for the alternate connection target.
 alternate_dev_release_manifest_url: ""                # Optional dev-channel OTA manifest for the alternate connection target.

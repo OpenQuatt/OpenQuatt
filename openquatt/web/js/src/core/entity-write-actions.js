@@ -134,6 +134,8 @@ export async function commitSelect(key, option) {
       ? option === "Auto"
         ? "De normale moduskeuze is weer actief."
         : `${option} is tijdelijk actief en verloopt automatisch na maximaal 30 minuten.`
+      : key === "preferredConnection"
+        ? `Omschakelen naar ${option} is gestart. De actieve verbinding wordt bijgewerkt zodra ${option} beschikbaar is.`
       : `${entity.name} bijgewerkt.`;
     if (key === "firmwareUpdateChannel") {
       updateFirmwareState({ updateInstallCompleted: false, updateInstallCompletedVersion: "" });
@@ -162,6 +164,8 @@ export async function commitSelect(key, option) {
       if (state.systemModal === "webserver-logs") {
         render();
       }
+    } else if (key === "preferredConnection") {
+      // The controller confirms this asynchronous switch once the target is stable.
     } else if (state.appView === "settings") {
       await refreshEntities(getSettingsRefreshKeys(), "all");
     } else {

@@ -1904,7 +1904,13 @@
     syncMockOduIdentityEntities(1);
     setEntity("text_sensor", "OpenQuatt Hardware Profile", { state: state.hardware, value: state.hardware });
     setEntity("text_sensor", "OpenQuatt Hardware Revision", { state: "1.0 (batch 42)", value: "1.0 (batch 42)" });
-    setEntity("text_sensor", "OpenQuatt Connection", { state: state.connection, value: state.connection });
+    const preferredConnection = state.connection === "eth" ? "Ethernet" : "WiFi";
+    setEntity("text_sensor", "OpenQuatt Connection", { state: preferredConnection, value: preferredConnection });
+    setEntity("select", "Preferred Connection", {
+      state: preferredConnection,
+      value: preferredConnection,
+      option: ["WiFi", "Ethernet"],
+    });
     setEntity("text_sensor", "OpenQuatt Version", { state: MOCK_DEV_VERSION, value: MOCK_DEV_VERSION });
     setEntity("text_sensor", "OpenQuatt Release Channel", { state: "dev", value: "dev" });
     setEntity("sensor", "Uptime raw", { value: 0, uom: "s" });
@@ -3137,7 +3143,9 @@
 
   function setConnectionMode(value) {
     state.connection = value === "eth" ? "eth" : "wifi";
-    setText("text_sensor", "OpenQuatt Connection", state.connection);
+    const connectionLabel = state.connection === "eth" ? "Ethernet" : "WiFi";
+    setText("text_sensor", "OpenQuatt Connection", connectionLabel);
+    setText("select", "Preferred Connection", connectionLabel);
     setText("select", "Firmware Update Target", "current build");
     syncDevMeta();
   }
@@ -3922,7 +3930,9 @@
           String(getEntity("select", "Water Supply Source")?.value || "") === "Local"))) {
       syncWaterSupplyCalibrationForMockSource();
     }
-    if (name === "Preset") {
+    if (name === "Preferred Connection") {
+      setConnectionMode(value === "Ethernet" ? "eth" : "wifi");
+    } else if (name === "Preset") {
       applyPreset(value);
     } else if (name === "Firmware Update Channel") {
       clearOtaSimulation();
@@ -4907,7 +4917,7 @@
       }
       setInstallationMode(targetTopology);
       state.connection = targetConnection;
-      setText("text_sensor", "OpenQuatt Connection", state.connection);
+      setText("text_sensor", "OpenQuatt Connection", state.connection === "eth" ? "Ethernet" : "WiFi");
       setText("select", "Firmware Update Target", "current build");
       setText("text_sensor", "Firmware Update Status", "Idle");
       setNumber("Firmware Update Progress", 0, "%");

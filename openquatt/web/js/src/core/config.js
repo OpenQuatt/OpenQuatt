@@ -101,6 +101,7 @@
     hardwareProfileText: { domain: "text_sensor", name: "OpenQuatt Hardware Profile", optional: true },
     hardwareRevisionText: { domain: "text_sensor", name: "OpenQuatt Hardware Revision", optional: true },
     connectionText: { domain: "text_sensor", name: "OpenQuatt Connection", optional: true },
+    preferredConnection: { domain: "select", name: "Preferred Connection", optional: true },
     hp1Generation: { domain: "text_sensor", name: "HP1 - ODU generation", optional: true },
     hp2Generation: { domain: "text_sensor", name: "HP2 - ODU generation", optional: true },
     hp1CompressorLevelProfile: { domain: "text_sensor", name: "HP1 - Compressor level profile", optional: true },
@@ -1518,7 +1519,7 @@
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestOtaUrl", "firmwareTestOtaMd5Url", "installFirmwareTestOta"];
-  export const FIRMWARE_MODAL_KEYS = [...FIRMWARE_ENTITY_KEYS, ...FIRMWARE_TEST_ENTITY_KEYS, "installFirmwareUpdateTarget", "projectVersionText", "releaseChannelText", "installationTopology", "hardwareProfileText", "connectionText"];
+  export const FIRMWARE_MODAL_KEYS = [...FIRMWARE_ENTITY_KEYS, ...FIRMWARE_TEST_ENTITY_KEYS, "installFirmwareUpdateTarget", "projectVersionText", "releaseChannelText", "installationTopology", "hardwareProfileText", "connectionText", "preferredConnection"];
   export const TOPOLOGY_HINT_KEYS = ["hp2ExcludeMinHz", "hp2Power", "hp2WaterOut"];
   export const HEADER_ENTITY_KEYS = [
     "status",
@@ -1532,6 +1533,7 @@
     "installationTopology",
     "hardwareProfileText",
     "connectionText",
+    "preferredConnection",
     "hpGeneration",
     "projectVersionText",
     "releaseChannelText",
@@ -1824,6 +1826,8 @@
   export const SETTINGS_KEYS = [
     "strategy",
     "installationTopology",
+    "connectionText",
+    "preferredConnection",
     "hpGeneration",
     "electricalCurrentLimit",
     "openquattEnabled",
@@ -1878,6 +1882,7 @@
   export const SETTINGS_BACKUP_EXPECTED_EXTRA_KEYS = new Set(["setupComplete", "openquattResumeAt", "firmwareUpdateChannel"]);
   export const SETTINGS_BACKUP_EXCLUDED_KEYS = new Set([
     "installationTopology",
+    "preferredConnection",
     ...COMMISSIONING_STATE_KEYS,
     ...ODU_RUNTIME_FREQUENCY_KEYS,
     "cicDataStale",

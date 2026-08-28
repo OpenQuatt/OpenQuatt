@@ -1,37 +1,6 @@
 # ==============================================================================
-# OpenQuatt - Electropaultje Heatpump Controller Q-edition / Duo / Wi-Fi
+# OpenQuatt - Heatpump Controller Q Duo WiFi compatibility entrypoint
 # ==============================================================================
-substitutions:
-  oq_hardware_profile: "heatpump_controller_q"
-  oq_connection: "wifi"
-  oq_hardware_build_flag: "-DOQ_HARDWARE_HEATPUMP_CONTROLLER_Q=1"
-  oq_local_supply_temp_sensor_id: "water_supply_temp_pt1000"
-  oq_local_supply_temp_selector_id: "oq_local_supply_temp_source"
-  oq_controller_flow_sensor_id: "flow_rate_controller"
-  oq_q_flow_source_selector_id: "oq_q_flow_source"
-  oq_topology_build_flag: "-DOQ_TOPOLOGY_DUO=1"
-  main_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/latest/download/openquatt-heatpump-controller-q-duo-wifi-ota.manifest.json"
-  dev_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/download/dev-latest/openquatt-heatpump-controller-q-duo-wifi-ota.manifest.json"
-  release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/latest/download/openquatt-heatpump-controller-q-duo-wifi-ota.manifest.json"
-  alternate_connection: "eth"
-  alternate_main_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/latest/download/openquatt-heatpump-controller-q-duo-eth-ota.manifest.json"
-  alternate_dev_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/download/dev-latest/openquatt-heatpump-controller-q-duo-eth-ota.manifest.json"
-  alternate_topology: "single"
-  alternate_topology_main_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/latest/download/openquatt-heatpump-controller-q-single-wifi-ota.manifest.json"
-  alternate_topology_dev_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/download/dev-latest/openquatt-heatpump-controller-q-single-wifi-ota.manifest.json"
-  alternate_build_main_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/latest/download/openquatt-heatpump-controller-q-single-eth-ota.manifest.json"
-  alternate_build_dev_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/download/dev-latest/openquatt-heatpump-controller-q-single-eth-ota.manifest.json"
-
-esphome:
-  build_path: ../../../.esphome/build/heatpump_controller_q_duo_wifi
-
+# The released WiFi and Ethernet assets are aliases of the same topology firmware.
 packages:
-  openquatt_substitutions_common: !include ../../openquatt/oq_substitutions_common_package.yaml
-  openquatt_topology_duo_substitutions: !include ../../openquatt/topology/duo_package.yaml
-  openquatt_profile_heatpump_controller_q: !include ../../openquatt/profiles/heatpump_controller_q.yaml
-  openquatt_profile_heatpump_controller_q_cic_compatibility_duo: !include ../../openquatt/profiles/heatpump_controller_q_cic_compatibility_duo.yaml
-  openquatt_base_common: !include ../../openquatt/base/common.yaml
-  openquatt_connection_wifi: !include ../../openquatt/connection/wifi.yaml
-  openquatt_connection_wifi_w5500_power_down: !include ../../openquatt/connection/wifi_w5500_power_down.yaml
-  openquatt_packages_common: !include ../../openquatt/oq_packages_common.yaml
-  openquatt_topology_duo_packages: !include ../../openquatt/topology/duo_packages.yaml
+  unified_q_duo: !include duo.yaml

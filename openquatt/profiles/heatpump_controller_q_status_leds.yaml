@@ -73,14 +73,14 @@ interval:
           // Network status follows the active connection profile, independent of HA/API.
           bool network_connected = false;
           #ifdef USE_WIFI
-          network_connected =
-              wifi::global_wifi_component != nullptr &&
-              wifi::global_wifi_component->is_connected();
+          network_connected = network_connected ||
+              (wifi::global_wifi_component != nullptr &&
+               wifi::global_wifi_component->is_connected());
           #endif
           #ifdef USE_ETHERNET
-          network_connected =
-              ethernet::global_eth_component != nullptr &&
-              ethernet::global_eth_component->is_connected();
+          network_connected = network_connected ||
+              (ethernet::global_eth_component != nullptr &&
+               ethernet::global_eth_component->is_connected());
           #endif
 
           // Red LED is reserved for faults that need local attention.
