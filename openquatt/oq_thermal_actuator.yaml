@@ -196,6 +196,21 @@ interval:
           const bool request_thermal_active = (request_mode_code == 1 || request_mode_code == 2);
           const bool manual_hp_service_active = oq_manual_hp::owns_control();
           const char* request_thermal_mode_opt = oq_request::request_mode_option(request_mode_code);
+          const bool configured_v2 =
+              id(hp_generation).has_state() &&
+              id(hp_generation).current_option() == "V2";
+
+          const auto hp1_frequency_snapshot =
+              oq_odu::decode_runtime_frequency_snapshot(
+                  id(hp1_runtime_frequency_snapshot_storage));
+          const auto secondary_frequency_snapshot =
+              oq_odu::decode_runtime_frequency_snapshot(
+                  id(${secondary_runtime_frequency_snapshot_storage_id}));
+          auto runtime_frequency_snapshot = [&](bool is_hp1)
+              -> const oq_odu::RuntimeFrequencySnapshot& {
+            return is_hp1 ? hp1_frequency_snapshot
+                          : secondary_frequency_snapshot;
+          };
 
           auto hp_hold_mode_opt = [&](bool is_hp1)->const char* {
             return oq_request::retained_mode_name(
@@ -275,21 +290,36 @@ interval:
           publish_defrost_seen(false, real_defrost_seen(false));
           #endif
 
-          auto defrost_stop_hold_level = [&](bool is_hp1)->int {
+          static oq_odu::RetainedLevel hp1_defrost_retained_level{};
+          static oq_odu::RetainedLevel hp2_defrost_retained_level{};
+          auto defrost_stop_hold_level = [&](bool is_hp1) {
             // Only keep the last non-zero level during real defrost, i.e. once the
             // 4-way valve is active. The broader defrost bit can assert earlier and
             // caused the duo optimizer to pre-load far too aggressively.
             const bool defrost_active = valve_defrost_active(is_hp1);
-            const int selected_level = hp_selected_level(is_hp1);
+            oq_odu::RetainedLevel &retained =
+                is_hp1 ? hp1_defrost_retained_level : hp2_defrost_retained_level;
+            const int selected_physical_level = hp_selected_level(is_hp1);
             const int prev_applied = is_hp1 ? id(hp1_last_applied_level) : id(${secondary_last_applied_level_id});
+            const int prev_physical = is_hp1
+                ? id(hp1_last_commanded_physical_level)
+                : id(${secondary_last_commanded_physical_level_id});
             const bool cooling_mode_active =
                 hp_mode_is_cooling(is_hp1) || hp_mode_target_is_cooling(is_hp1);
-            return oq_request::defrost_hold_level(
-                defrost_active, cooling_mode_active, selected_level, prev_applied);
+            retained = oq_odu::update_retained_level_snapshot(
+                retained,
+                defrost_active,
+                cooling_mode_active,
+                selected_physical_level,
+                prev_applied,
+                prev_physical,
+                configured_v2,
+                runtime_frequency_snapshot(is_hp1));
+            return retained;
           };
 
-          auto apply_active_mode_hold = [&](bool is_hp1, int retained_level)->bool {
-            if (retained_level <= 0) return false;
+          auto apply_active_mode_hold = [&](bool is_hp1, const oq_odu::RetainedLevel &retained)->bool {
+            if (retained.control_level <= 0 || retained.physical_level <= 0) return false;
 
             // Keep the HP in the active thermal mode and preserve a non-zero level.
             // Used when defrost retain/hold must override a zero request.
@@ -300,22 +330,25 @@ interval:
                 c.set_option(opt);
                 c.perform();
               }
-              if (hp_selected_level(true) != retained_level) {
+              if (hp_selected_level(true) != retained.physical_level) {
                 auto c = id(hp1_compressor_level).make_call();
-                c.set_index(retained_level);
+                c.set_index(retained.physical_level);
                 c.perform();
               }
+              id(hp1_last_commanded_physical_level) = retained.physical_level;
             } else {
               if (!id(${secondary_set_working_mode_id}).has_state() || id(${secondary_set_working_mode_id}).current_option() != opt) {
                 auto c = id(${secondary_set_working_mode_id}).make_call();
                 c.set_option(opt);
                 c.perform();
               }
-              if (hp_selected_level(false) != retained_level) {
+              if (hp_selected_level(false) != retained.physical_level) {
                 auto c = id(${secondary_compressor_level_id}).make_call();
-                c.set_index(retained_level);
+                c.set_index(retained.physical_level);
                 c.perform();
               }
+              id(${secondary_last_commanded_physical_level_id}) =
+                  retained.physical_level;
             }
 
             return true;
@@ -390,8 +423,10 @@ interval:
             }
           };
 
-          // Note: options must exactly match the options map in oq_HP_io.yaml (levels 0..10)
-          const char* lvl_opts[11] = {"0","1","2","3","4","5","6","7","8","9","10"};
+          // Options must exactly match the physical F-level map in oq_HP_io.yaml.
+          const char* lvl_opts[21] = {
+              "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+              "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"};
           std::string hp1_service_guard = "Vrijgegeven";
           std::string hp2_service_guard = "Vrijgegeven";
           static bool last_hp1_defrost_hold = false;
@@ -430,7 +465,13 @@ interval:
           bool cooling_stop_armed_this_tick = false;
 
           auto apply_level = [&](bool is_hp1, int req_level, bool was_cooling)->int {
-            req_level = std::max(min_level, std::min(max_level, req_level));
+            const int actuator_max_level = manual_hp_service_active
+                ? oq_odu::physical_level_limit(
+                      configured_v2,
+                      runtime_frequency_snapshot(is_hp1),
+                      request_mode_code)
+                : max_level;
+            req_level = std::max(min_level, std::min(actuator_max_level, req_level));
             const int requested_level = req_level;
             const int prev_applied = is_hp1 ? id(hp1_last_applied_level) : id(${secondary_last_applied_level_id});
             const uint8_t hp_index = is_hp1 ? 1U : 2U;
@@ -458,9 +499,12 @@ interval:
                     incident_outputs.must_stop,
                 });
             req_level = incident_guard.guarded_level;
-            const int retained_level =
+            if (incident_guard.bypass_runtime_and_defrost_holds) {
+              (is_hp1 ? hp1_defrost_retained_level : hp2_defrost_retained_level) = {};
+            }
+            const oq_odu::RetainedLevel retained_level =
                 incident_guard.bypass_runtime_and_defrost_holds
-                    ? 0
+                    ? oq_odu::RetainedLevel{}
                     : defrost_stop_hold_level(is_hp1);
             std::string block_reason;
             uint8_t candidate_block_reason = openquatt_decision_log::REASON_UNKNOWN;
@@ -487,7 +531,9 @@ interval:
                   "incidentbewaking blokkeert een nieuwe start";
             }
             bool &last_defrost_hold = is_hp1 ? last_hp1_defrost_hold : last_hp2_defrost_hold;
-            const bool defrost_hold_active = (req_level == 0 && retained_level > 0);
+            const bool defrost_hold_active =
+                oq_odu::retained_level_should_override_request(
+                    retained_level, req_level, manual_hp_service_active);
             if (defrost_hold_active && !last_defrost_hold) {
               id(oq_decision_log).emit(
                   openquatt_decision_log::EVENT_DECISION_HOLD,
@@ -497,21 +543,25 @@ interval:
                   (uint8_t) id(oq_control_mode_code),
                   openquatt_decision_log::STATE_ACTIVE,
                   openquatt_decision_log::STATE_ACTIVE,
-                  (int16_t) retained_level,
+                  (int16_t) retained_level.control_level,
                   (int16_t) requested_level);
             }
             last_defrost_hold = defrost_hold_active;
 
-            if (req_level == 0 && retained_level > 0) {
+            if (defrost_hold_active) {
               char reason_buf[96];
-              snprintf(reason_buf, sizeof(reason_buf), "defrost hold at level %d", retained_level);
+              snprintf(reason_buf, sizeof(reason_buf),
+                       "defrost hold at model level %d / physical F%d",
+                       retained_level.control_level,
+                       retained_level.physical_level);
               block_reason = reason_buf;
               (is_hp1 ? hp1_service_guard : hp2_service_guard) =
-                  "ontdooihold op stand " + std::to_string(retained_level);
+                  "ontdooihold op modelstand " +
+                  std::to_string(retained_level.control_level);
               log_hp_block_change(is_hp1, reason_buf);
               apply_active_mode_hold(is_hp1, retained_level);
               publish_optimizer_reason("defrost_protect_hold");
-              return retained_level;
+              return retained_level.control_level;
             }
 
             if (req_level > 0 && !manual_hp_service_active && request_mode_code == 1 &&
@@ -596,10 +646,39 @@ interval:
                   "no valid thermal mode for compressor request");
             }
 
-            if (applied == 0 && retained_level > 0) {
+            oq_odu::LevelCommand level_command{};
+            if (applied > 0) {
+              level_command = manual_hp_service_active
+                  ? oq_odu::resolve_manual_level(
+                        configured_v2,
+                        runtime_frequency_snapshot(is_hp1),
+                        expected_mode,
+                        applied)
+                  : oq_odu::resolve_automatic_level(
+                        configured_v2,
+                        runtime_frequency_snapshot(is_hp1),
+                        expected_mode,
+                        applied);
+              if (level_command.control_level <= 0 ||
+                  level_command.physical_level <= 0) {
+                applied = 0;
+                level_command = {};
+                block_reason =
+                    "runtime frequency table cannot map compressor request";
+                candidate_block_reason =
+                    openquatt_decision_log::REASON_CANDIDATE_UNAVAILABLE;
+                (is_hp1 ? hp1_service_guard : hp2_service_guard) =
+                    "frequentietabel bevat geen bruikbare compressorstand";
+                log_hp_block_change(
+                    is_hp1,
+                    "runtime frequency table cannot map compressor request");
+              }
+            }
+
+            if (applied == 0 && retained_level.control_level > 0) {
               apply_active_mode_hold(is_hp1, retained_level);
               publish_optimizer_reason("defrost_protect_hold");
-              return retained_level;
+              return retained_level.control_level;
             }
 
             if (applied == 0 && prev_applied > 0 && was_cooling) {
@@ -628,6 +707,7 @@ interval:
                       });
               if (!active_mode_authorized) {
                 applied = 0;
+                level_command = {};
                 block_reason =
                     "waiting for incident-manager start release";
                 candidate_block_reason =
@@ -675,7 +755,7 @@ interval:
                 block_reason = reason_buf;
                 candidate_block_reason = openquatt_decision_log::REASON_CANDIDATE_UNAVAILABLE;
                 log_hp_block_change(is_hp1, reason_buf);
-              } else if (block_reason.empty() && retained_level == 0) {
+              } else if (block_reason.empty() && retained_level.control_level == 0) {
                 block_reason = "actuator gating held request at 0";
                 candidate_block_reason = openquatt_decision_log::REASON_NO_CANDIDATE;
                 (is_hp1 ? hp1_service_guard : hp2_service_guard) = "technische bewaking houdt verzoek tegen";
@@ -692,27 +772,33 @@ interval:
               publish_candidate_blocked(is_hp1, openquatt_decision_log::REASON_UNKNOWN, 0, 0);
             }
 
+            const int commanded_physical_level = level_command.physical_level;
+
             if (is_hp1) {
               auto idx = id(hp1_compressor_level).active_index();
               const int cur = idx.has_value() ? (int) idx.value() : -1;
-              if (cur != applied ||
-                  (applied == 0 && force_safe_stop_write)) {
+              if (cur != commanded_physical_level ||
+                  (commanded_physical_level == 0 && force_safe_stop_write)) {
                 auto c = id(hp1_compressor_level).make_call();
-                c.set_option(lvl_opts[applied]);
+                c.set_option(lvl_opts[commanded_physical_level]);
                 c.perform();
               }
+              id(hp1_last_commanded_physical_level) =
+                  commanded_physical_level;
             } else {
               auto idx = id(${secondary_compressor_level_id}).active_index();
               const int cur = idx.has_value() ? (int) idx.value() : -1;
-              if (cur != applied ||
-                  (applied == 0 && force_safe_stop_write)) {
+              if (cur != commanded_physical_level ||
+                  (commanded_physical_level == 0 && force_safe_stop_write)) {
                 auto c = id(${secondary_compressor_level_id}).make_call();
-                c.set_option(lvl_opts[applied]);
+                c.set_option(lvl_opts[commanded_physical_level]);
                 c.perform();
               }
+              id(${secondary_last_commanded_physical_level_id}) =
+                  commanded_physical_level;
             }
 
-            return applied;
+            return level_command.control_level;
           };
 
           #if OQ_TOPOLOGY_DUO
