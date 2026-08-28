@@ -203,7 +203,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
             <p class="oq-helper-label">HP${hpIndex}</p>
             <h4>Runtime frequentietabel</h4>
             <p>${escapeHtml(operation.reason)} Laatste compressorfrequentie: ${escapeHtml(operation.freq)}.</p>
-            <p>${getOduRuntimeFrequencyLevels(hpIndex).length === 21 ? "Volledig compressorbereik beschikbaar." : "Veilige layout: alleen F0-F10; uitbreidingsregisters blijven onaangeraakt."}</p>
+            <p>${getOduRuntimeFrequencyLevels(hpIndex).length === 21 ? "Volledig compressorbereik beschikbaar." : "Standaard compressorbereik beschikbaar."}</p>
           </div>
           <div class="oq-settings-odu-runtime-actions">
             ${hasEntity(loadKey) ? renderNamedActionButton(loadKey, state.busyAction === loadKey ? "Lezen..." : "Uit ODU laden", "oq-helper-button oq-helper-button--ghost", busy) : ""}
