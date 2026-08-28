@@ -657,7 +657,8 @@ interval:
             float best = 0.0f;
             for (int lvl = 1; lvl <= level_cap; lvl++) {
               if (!level_allowed(is_hp1, lvl)) continue;
-              float p = oq_perf::interp_power_th_w(lvl, Tamb, Tsup);
+              float p = oq_perf::interp_power_th_w_hz(
+                  oq_perf::model_frequency_hz(lvl), Tamb, Tsup);
               if (!isnan(p)) p *= is_hp1 ? hp1_th_fac : hp2_th_fac;
               if (!isnan(p) && p > best) best = p;
             }
@@ -813,17 +814,21 @@ interval:
                 if (!hp2_available || !level_allowed(false, l2)) return c;
               }
 
-              float p1 = (l1 == 0) ? 0.0f : oq_perf::interp_power_th_w(l1, Tamb, Tsup);
+              float p1 = (l1 == 0) ? 0.0f : oq_perf::interp_power_th_w_hz(
+                  oq_perf::model_frequency_hz(l1), Tamb, Tsup);
               if (l1 > 0 && isnan(p1)) return c;
               p1 *= hp1_th_fac;
 
-              float p2 = (l2 == 0) ? 0.0f : oq_perf::interp_power_th_w(l2, Tamb, Tsup);
+              float p2 = (l2 == 0) ? 0.0f : oq_perf::interp_power_th_w_hz(
+                  oq_perf::model_frequency_hz(l2), Tamb, Tsup);
               if (l2 > 0 && isnan(p2)) return c;
               p2 *= hp2_th_fac;
 
-              float pel1 = (l1 == 0) ? 0.0f : oq_perf::interp_power_el_w(l1, Tamb, Tsup);
+              float pel1 = (l1 == 0) ? 0.0f : oq_perf::interp_power_el_w_hz(
+                  oq_perf::model_frequency_hz(l1), Tamb, Tsup);
               if (l1 > 0 && isnan(pel1)) pel1 = 0.0f;
-              float pel2 = (l2 == 0) ? 0.0f : oq_perf::interp_power_el_w(l2, Tamb, Tsup);
+              float pel2 = (l2 == 0) ? 0.0f : oq_perf::interp_power_el_w_hz(
+                  oq_perf::model_frequency_hz(l2), Tamb, Tsup);
               if (l2 > 0 && isnan(pel2)) pel2 = 0.0f;
 
               const float pel_sum = pel1 + pel2;
@@ -1103,11 +1108,13 @@ interval:
               if (l1 > 0 && !hp1_available) continue;
               if (l1 > 0 && !level_allowed(true, l1)) continue;
 
-              float p1 = (l1 == 0) ? 0.0f : oq_perf::interp_power_th_w(l1, Tamb, Tsup);
+              float p1 = (l1 == 0) ? 0.0f : oq_perf::interp_power_th_w_hz(
+                  oq_perf::model_frequency_hz(l1), Tamb, Tsup);
               if (l1 > 0 && isnan(p1)) continue;
               p1 *= hp1_th_fac;
 
-              float pel1 = (l1 == 0) ? 0.0f : oq_perf::interp_power_el_w(l1, Tamb, Tsup);
+              float pel1 = (l1 == 0) ? 0.0f : oq_perf::interp_power_el_w_hz(
+                  oq_perf::model_frequency_hz(l1), Tamb, Tsup);
               if (l1 > 0 && isnan(pel1)) pel1 = 0.0f;
               if (pel1 > P_EL_PEAK_W) continue;
 
@@ -1153,13 +1160,17 @@ interval:
           bool hp_expected_power_valid = !isnan(Tamb) && !isnan(Tsup);
           if (hp_expected_power_valid && hp1_req > 0) {
             const float hp1_expected_w =
-                oq_perf::interp_power_th_w(hp1_req, Tamb, Tsup) * hp1_th_fac;
+                oq_perf::interp_power_th_w_hz(
+                    oq_perf::model_frequency_hz(hp1_req), Tamb, Tsup) *
+                hp1_th_fac;
             if (isnan(hp1_expected_w)) hp_expected_power_valid = false;
             else hp_expected_power_w += hp1_expected_w;
           }
           if (hp_expected_power_valid && hp2_req > 0) {
             const float hp2_expected_w =
-                oq_perf::interp_power_th_w(hp2_req, Tamb, Tsup) * hp2_th_fac;
+                oq_perf::interp_power_th_w_hz(
+                    oq_perf::model_frequency_hz(hp2_req), Tamb, Tsup) *
+                hp2_th_fac;
             if (isnan(hp2_expected_w)) hp_expected_power_valid = false;
             else hp_expected_power_w += hp2_expected_w;
           }

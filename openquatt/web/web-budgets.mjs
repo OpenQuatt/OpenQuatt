@@ -19,7 +19,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // plus hervatbare, fail-closed Quick Start-OTA met main-/doelcontrole en duurzaam post-bootbewijs,
     // afzonderlijke rollen voor een aangesloten aanvullende warmtebron, hybride verwarmen en overname,
     // the issue-516 boiler/OpenTherm debug-recording fields,
-    // and the issue-536 boiler-result quality and confirmed empirical Apply flow.
+    // the issue-536 boiler-result quality and confirmed empirical Apply flow,
+    // and the compact per-ODU compressor profile for safe manual F-levels.
     raw: 961_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.

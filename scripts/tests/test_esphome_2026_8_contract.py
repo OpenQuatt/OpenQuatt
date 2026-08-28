@@ -24,6 +24,9 @@ ODU_RUNTIME_TABLE = (
     / "experimental"
     / "oq_odu_runtime_frequency_table.h"
 ).read_text()
+ODU_RUNTIME_TABLE_YAML = (
+    ROOT / "openquatt" / "experimental" / "oq_odu_runtime_frequency_table_hp.yaml"
+).read_text()
 
 
 class ESPHome20268ContractTest(unittest.TestCase):
@@ -59,6 +62,18 @@ class ESPHome20268ContractTest(unittest.TestCase):
         self.assertNotIn("ModbusRegisterType", custom_modbus)
         self.assertNotIn("const std::vector<uint8_t>&", custom_modbus)
         self.assertNotIn("const std::vector<uint8_t> &", custom_modbus)
+
+    def test_runtime_table_uses_confirmed_single_register_writes(self) -> None:
+        self.assertIn("create_write_single_command", ODU_RUNTIME_TABLE)
+        self.assertIn(
+            "queue_runtime_write_register(refs, tables, write_index + 1U, "
+            "operation_token)",
+            ODU_RUNTIME_TABLE,
+        )
+        self.assertIn("*refs.write_operation_token != operation_token", ODU_RUNTIME_TABLE)
+        self.assertIn("runtime_frequency_write_timeout", ODU_RUNTIME_TABLE_YAML)
+        self.assertIn("VERIFY_FAILED: write acknowledgement timeout", ODU_RUNTIME_TABLE_YAML)
+        self.assertNotIn("create_write_multiple_command", ODU_RUNTIME_TABLE)
 
     def test_odu_eeprom_uses_maximum_fc03_read_size(self) -> None:
         self.assertIn(
