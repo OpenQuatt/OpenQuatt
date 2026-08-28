@@ -779,7 +779,7 @@ import { renderModalShell } from "../core/modal-shell.js";
                 ${renderSettingsSelectField("manualHp1Mode", "Warmtepomp 1 werkmodus", "Start in Standby. Verwarmen of koelen kan pas worden gekozen zodra voldoende flow is gemeten.", "oq-settings-field--compact")}
                 ${renderSettingsSliderField("manualHp1Level", "Warmtepomp 1 compressorstand", `F0-F${hp1ManualMaxLevel}. F11-F20 vereisen V2-selectie plus bevestigd uitgebreid profiel.`, "oq-settings-field--compact", { maxValue: hp1ManualMaxLevel })}
               </div>
-              ${hasEntity("hp2ExcludedA") ? `
+              ${hasEntity("manualHp2Mode") ? `
                 <div class="oq-settings-manual-hp-unit">
                   ${renderSettingsSelectField("manualHp2Mode", "Warmtepomp 2 werkmodus", "Start in Standby. Verwarmen of koelen kan pas worden gekozen zodra voldoende flow is gemeten.", "oq-settings-field--compact")}
                   ${renderSettingsSliderField("manualHp2Level", "Warmtepomp 2 compressorstand", `F0-F${hp2ManualMaxLevel}. F11-F20 vereisen V2-selectie plus bevestigd uitgebreid profiel.`, "oq-settings-field--compact", { maxValue: hp2ManualMaxLevel })}

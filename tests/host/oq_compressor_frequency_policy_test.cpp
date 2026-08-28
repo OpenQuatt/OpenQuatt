@@ -49,51 +49,10 @@ oq_odu::RuntimeFrequencySnapshot make_v1_snapshot() {
 int main() {
   using namespace oq_frequency_policy;
 
-  Storage storage{};
-  assert(!storage_has_migration(storage, CAPS_MIGRATED));
-  assert(stored_frequency_hz(storage, DAY_HEATING_MAX_HZ, 120) == 120);
-  store_configured_frequency_hz(storage, DAY_HEATING_MAX_HZ, 90, DAY_HEATING_CAP_MIGRATED);
-  assert(storage_has_migration(storage, DAY_HEATING_CAP_MIGRATED));
-  assert(!storage_has_migration(storage, CAPS_MIGRATED));
-  mark_migrated(storage, DAY_COOLING_CAP_MIGRATED | SILENT_HEATING_CAP_MIGRATED | SILENT_COOLING_CAP_MIGRATED);
-  assert(storage_has_migration(storage, CAPS_MIGRATED));
-  clear_migrated(storage, DAY_HEATING_CAP_MIGRATED);
-  assert(!storage_has_migration(storage, CAPS_MIGRATED));
-  mark_migrated(storage, DAY_HEATING_CAP_MIGRATED);
-  assert(stored_frequency_hz(storage, DAY_HEATING_MAX_HZ, 120) == 90);
-  assert(exclusions_migrated_flag(1) == HP1_EXCLUSIONS_MIGRATED);
-  assert(exclusions_migrated_flag(2) == HP2_EXCLUSIONS_MIGRATED);
-  assert(storage_index_for_hp(2, HP1_HEATING_A_MIN_HZ) == HP2_HEATING_A_MIN_HZ);
-  store_configured_frequency_hz(storage, HP1_HEATING_A_MIN_HZ, 52, HP1_EXCLUSIONS_MIGRATED);
-  assert(storage_has_migration(storage, HP1_EXCLUSIONS_MIGRATED));
-  assert(stored_frequency_hz(storage, HP1_HEATING_A_MIN_HZ, 0) == 52);
-
-  Storage old_storage{};
-  old_storage[VERSION] = STORAGE_VERSION + 1;
-  old_storage[MIGRATION_FLAGS] = 0xFFU;
-  store_configured_frequency_hz(old_storage, DAY_COOLING_MAX_HZ, 74, DAY_COOLING_CAP_MIGRATED);
-  assert(!storage_has_migration(old_storage, CAPS_MIGRATED));
-  assert(storage_has_migration(old_storage, DAY_COOLING_CAP_MIGRATED));
-  assert(stored_frequency_hz(old_storage, DAY_HEATING_MAX_HZ, 120) == 0);
-
   const auto v1 = make_v1_snapshot();
-  assert(configuration_matches_variant(false, oq_odu::Variant::V1));
-  assert(configuration_matches_variant(false, oq_odu::Variant::V1_5));
-  assert(configuration_matches_variant(true, oq_odu::Variant::V2_OLD_MODEL));
-  assert(configuration_matches_variant(true, oq_odu::Variant::V2_NEW_MODEL));
-  assert(!configuration_matches_variant(false, oq_odu::Variant::V2_NEW_MODEL));
-  assert(!configuration_matches_variant(true, oq_odu::Variant::V1_5));
-  assert(!configuration_matches_variant(false, oq_odu::Variant::UNKNOWN));
-  assert(conservative_shared_cap_hz(67, 65, true) == 65);
-  assert(conservative_shared_cap_hz(67, 0, false) == 67);
-  assert(conservative_shared_cap_hz(67, -1, true) == -1);
   assert(automatic_frequency_hz(false, v1, 2, 6) == 67);
   assert(automatic_frequency_hz(false, v1, 1, 6) == 56);
   assert(automatic_frequency_hz(false, v1, 2, 0) == 0);
-  const auto v1_level_6_frequencies = automatic_mode_frequencies(false, v1, 6);
-  assert(v1_level_6_frequencies.valid());
-  assert(v1_level_6_frequencies.heating_hz == 67);
-  assert(v1_level_6_frequencies.cooling_hz == 56);
   auto v1_original = v1;
   v1_original.variant = oq_odu::Variant::V1;
   assert(automatic_frequency_hz(false, v1_original, 2, 10) == 90);
@@ -114,14 +73,6 @@ int main() {
   assert(automatic_frequency_hz(true, v2, 2, 10) == 90);
   assert(automatic_frequency_hz(true, v2, 1, 10) == 46);
 
-  auto v1_secondary = v1;
-  v1_secondary.heating.hz[6] = 65;
-  v1_secondary.cooling.hz[6] = 54;
-  const auto conservative = conservative_mode_frequencies(false, v1, v1_secondary, true, 6);
-  assert(conservative.valid());
-  assert(conservative.heating_hz == 65);
-  assert(conservative.cooling_hz == 54);
-
   auto runtime_edited = v1;
   runtime_edited.heating.hz[6] = 65;
   runtime_edited.cooling.hz[6] = 54;
@@ -133,26 +84,26 @@ int main() {
   unknown.heating.valid = false;
   assert(automatic_frequency_hz(false, unknown, 2, 6) == -1);
 
-  const ExcludedFrequencyRanges none{};
+  const FrequencyRange none{};
   assert(frequency_allowed(67, 67, none));
   assert(!frequency_allowed(68, 67, none));
   assert(frequency_allowed(120, 120, none));
   assert(!frequency_allowed(-1, 120, none));
   assert(!frequency_allowed(30, 121, none));
 
-  const ExcludedFrequencyRanges excluded{{60, 68}, {85, 85}};
+  const FrequencyRange excluded{60, 68};
   assert(!frequency_allowed(67, 120, excluded));
-  assert(!frequency_allowed(85, 120, excluded));
+  assert(frequency_allowed(85, 120, excluded));
   assert(frequency_allowed(72, 120, excluded));
   assert(valid_frequency_range({0, 0}));
   assert(valid_frequency_range({0, 60}));
-  assert(frequency_allowed(30, 120, {{0, 60}, {0, 0}}));
+  assert(frequency_allowed(30, 120, {0, 60}));
   assert(!valid_frequency_range({-1, 0}));
   assert(!valid_frequency_range({70, 60}));
 
   assert(pick_allowed_level(false, v1, 2, 10, 1, 10, 67, none) == 6);
   assert(pick_allowed_level(false, v1, 2, 6, 1, 10, 120, excluded) == 4);
-  assert(pick_allowed_level(false, v1, 2, 1, 1, 10, 120, {{30, 30}, {0, 0}}) == 2);
+  assert(pick_allowed_level(false, v1, 2, 1, 1, 10, 120, {30, 30}) == 2);
   assert(pick_allowed_level(true, v2, 2, 8, 1, 10, 80, none) == 7);
   assert(pick_allowed_level(false, unknown, 2, 6, 1, 10, 120, none) == 0);
   assert(pick_allowed_level(false, v1, 2, 6, 1, 10, 0, none) == 0);

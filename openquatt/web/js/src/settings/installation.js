@@ -1299,8 +1299,8 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
 
   export function renderSettingsCompressorSection() {
     const hpGroups = [
-      renderSettingsHeatPumpLimiterCard("Warmtepomp 1", "hp1", "hp1ExcludedA", "hp1ExcludedB"),
-      renderSettingsHeatPumpLimiterCard("Warmtepomp 2", "hp2", "hp2ExcludedA", "hp2ExcludedB"),
+      renderSettingsHeatPumpLimiterCard("Warmtepomp 1", "hp1"),
+      renderSettingsHeatPumpLimiterCard("Warmtepomp 2", "hp2"),
     ].filter(Boolean).join("");
 
     return renderSettingsSection(
@@ -1322,9 +1322,9 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           <div class="oq-settings-subpanel-head">
             <p class="oq-helper-label">Uitsluitingen</p>
             <h4>Frequentiebereiken uitsluiten</h4>
-            <p>Kies per warmtepomp welke frequentiebereiken OpenQuatt moet overslaan.</p>
+            <p>Kies per warmtepomp één frequentiebereik dat OpenQuatt moet overslaan.</p>
           </div>
-          <div class="oq-settings-hp-columns${hasEntity("hp2HeatingExcludeAMinHz") || hasEntity("hp2ExcludedA") ? "" : " oq-settings-hp-columns--single"}">
+          <div class="oq-settings-hp-columns${hasEntity("hp2ExcludeMinHz") ? "" : " oq-settings-hp-columns--single"}">
             ${hpGroups}
           </div>
         </div>

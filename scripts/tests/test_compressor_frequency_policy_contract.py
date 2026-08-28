@@ -18,86 +18,57 @@ STRATEGIES = "\n".join(
 POLICY = (
     ROOT / "openquatt" / "includes" / "control" / "oq_compressor_frequency_policy.h"
 ).read_text()
+WEB_CONFIG = (ROOT / "openquatt" / "web" / "js" / "src" / "core" / "config.js").read_text()
 
 
 class CompressorFrequencyPolicyContractTest(unittest.TestCase):
-    def test_day_and_silent_caps_are_independent_per_mode(self) -> None:
-        for entity_id in (
-            "oq_day_heating_max_frequency_hz",
-            "oq_day_cooling_max_frequency_hz",
-            "oq_silent_heating_max_frequency_hz",
-            "oq_silent_cooling_max_frequency_hz",
-        ):
-            self.assertIn(f"id: {entity_id}", SUPERVISORY)
-        self.assertIn("id: oq_frequency_caps_migrated", SUPERVISORY)
-        self.assertIn("type: std::array<uint8_t, 22>", SUPERVISORY)
-        self.assertIn("configuration_matches_variant(", POLICY)
-        self.assertIn("conservative_mode_frequencies(", SUPERVISORY)
-        self.assertIn("oq_frequency_policy::store_configured_frequency_hz(", SUPERVISORY)
+    def test_day_and_silent_caps_have_direct_persistent_defaults(self) -> None:
+        defaults = {
+            "oq_day_max_frequency_hz": "90",
+            "oq_silent_max_frequency_hz": "67",
+        }
+        for entity_id, initial_value in defaults.items():
+            start = SUPERVISORY.index(f"id: {entity_id}")
+            block = SUPERVISORY[start : start + 420]
+            self.assertIn("restore_value: true", block)
+            self.assertIn(f"initial_value: {initial_value}", block)
 
-    def test_each_hp_has_two_excluded_ranges_per_mode(self) -> None:
-        for mode in ("heating", "cooling"):
-            for range_name in ("a", "b"):
-                for boundary in ("min", "max"):
-                    self.assertIn(
-                        f"id: ${{hp_id}}_excluded_{mode}_range_{range_name}_{boundary}_hz",
-                        HP_IO,
-                    )
-        self.assertIn("snapshot.cooling.valid && snapshot.heating.valid", HP_IO)
-        self.assertIn("configuration_matches_variant(", HP_IO)
-        self.assertIn("exclusions_migrated_flag(${hp_index})", HP_IO)
-
-    def test_frequency_policy_uses_one_compact_preference_record(self) -> None:
-        self.assertIn("using Storage = std::array<uint8_t, STORAGE_SIZE>", POLICY)
-        self.assertIn("STORAGE_SIZE = 22", POLICY)
-        for source, entity_id in (
-            (SUPERVISORY, "oq_day_heating_max_frequency_hz"),
-            (SUPERVISORY, "oq_day_cooling_max_frequency_hz"),
-            (HP_IO, "${hp_id}_excluded_heating_range_a_min_hz"),
-            (HP_IO, "${hp_id}_excluded_cooling_range_b_max_hz"),
-        ):
-            start = source.index(f"id: {entity_id}")
-            block = source[start : start + 520]
-            self.assertNotIn("restore_value: true", block)
-            self.assertIn("store_configured_frequency_hz(", block)
-
-    def test_shared_caps_restore_from_the_effective_hp1_boot_path(self) -> None:
-        self.assertIn("The HP1 package owns restoration", HP_IO)
-        for entity_id in (
-            "oq_day_heating_max_frequency_hz",
-            "oq_day_cooling_max_frequency_hz",
-            "oq_silent_heating_max_frequency_hz",
-            "oq_silent_cooling_max_frequency_hz",
-        ):
-            self.assertIn(f"restore_cap(id({entity_id})", HP_IO)
+    def test_each_hp_has_one_persistent_excluded_range_shared_between_modes(self) -> None:
+        for boundary in ("min", "max"):
+            entity_id = f"${{hp_id}}_excluded_frequency_{boundary}_hz"
+            start = HP_IO.index(f"id: {entity_id}")
+            block = HP_IO[start : start + 420]
+            self.assertIn("restore_value: true", block)
+            self.assertIn("initial_value: 0", block)
 
     def test_invalid_or_unavailable_frequency_state_fails_closed(self) -> None:
         self.assertIn("if (frequency_hz <= 0", POLICY)
-        self.assertIn("!valid_frequency_range(excluded.a)", POLICY)
+        self.assertIn("!valid_frequency_range(excluded)", POLICY)
         self.assertIn("if (frequency_hz > cap_hz) return false", POLICY)
         self.assertIn("return 0;", POLICY)
 
     def test_request_and_actuator_enforce_the_policy_independently(self) -> None:
         for source in (REQUEST, ACTUATOR):
             self.assertIn("oq_frequency_policy::pick_allowed_level(", source)
-            self.assertIn("oq_frequency_caps_migrated", source)
-            self.assertIn("storage_has_migration(", source)
-        self.assertIn("!manual_hp_service_active && frequency_policy_active", ACTUATOR)
+        self.assertIn("const bool use_frequency_policy = !manual_hp_service_active", ACTUATOR)
         self.assertIn("Revalidate the final request", REQUEST)
 
-    def test_legacy_settings_remain_reachable_for_migration_and_old_backups(self) -> None:
-        for source, entity_id in (
-            (SUPERVISORY, "oq_day_max_level"),
-            (SUPERVISORY, "oq_silent_max_level"),
-            (HP_IO, "${hp_id}_excluded_level_a"),
-            (HP_IO, "${hp_id}_excluded_level_b"),
+    def test_legacy_level_settings_and_migration_storage_are_removed(self) -> None:
+        for removed in (
+            "oq_day_max_level",
+            "oq_silent_max_level",
+            "${hp_id}_excluded_level_a",
+            "${hp_id}_excluded_level_b",
+            "oq_frequency_caps_migrated",
+            "storage_has_migration",
+            "store_configured_frequency_hz",
+            "shared_cap_frequency",
         ):
-            start = source.index(f"id: {entity_id}")
-            block = source[start : start + 240]
-            self.assertNotIn("internal: true", block)
-        self.assertEqual(SUPERVISORY.count("clear_migrated("), 2)
-        self.assertEqual(HP_IO.count("clear_migrated("), 2)
-        self.assertIn("conservative_mode_frequencies(", SUPERVISORY)
+            self.assertNotIn(removed, SUPERVISORY + HP_IO + REQUEST + ACTUATOR + POLICY)
+        for removed in ("dayMax:", "silentMax:", "hp1ExcludedA:", "hp2ExcludedA:"):
+            self.assertNotIn(removed, WEB_CONFIG)
+        self.assertIn('export const FREQUENCY_CAP_KEYS = ["dayMaxHz", "silentMaxHz"]', WEB_CONFIG)
+        self.assertIn('"hp1ExcludeMinHz", "hp1ExcludeMaxHz", "hp2ExcludeMinHz", "hp2ExcludeMaxHz"', WEB_CONFIG)
 
     def test_strategies_only_offer_allowed_runtime_frequencies(self) -> None:
         self.assertEqual(

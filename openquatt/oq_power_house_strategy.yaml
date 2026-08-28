@@ -563,34 +563,8 @@ interval:
           };
 
           constexpr int max_level = 10;
-          auto excluded_levels = [&](bool is_hp1)->oq_request::ExcludedLevels {
-            if (is_hp1) {
-              return oq_request::ExcludedLevels{
-                  id(hp1_excluded_level_a).has_state()
-                      ? id(hp1_excluded_level_a).current_option()
-                      : std::string("None"),
-                  id(hp1_excluded_level_b).has_state()
-                      ? id(hp1_excluded_level_b).current_option()
-                      : std::string("None"),
-              };
-            }
-            #if OQ_TOPOLOGY_DUO
-            return oq_request::ExcludedLevels{
-                id(${secondary_excluded_level_a_id}).has_state()
-                    ? id(${secondary_excluded_level_a_id}).current_option()
-                    : std::string("None"),
-                id(${secondary_excluded_level_b_id}).has_state()
-                    ? id(${secondary_excluded_level_b_id}).current_option()
-                    : std::string("None"),
-            };
-            #else
-            (void) is_hp1;
-            return oq_request::ExcludedLevels{"None", "None"};
-            #endif
-          };
-
-          auto excluded_frequency_ranges = [&](bool is_hp1)
-              -> oq_frequency_policy::ExcludedFrequencyRanges {
+          auto excluded_frequency_range = [&](bool is_hp1)
+              -> oq_frequency_policy::FrequencyRange {
             auto read_hz = [](auto* number)->int {
               return number->has_state() && !isnan(number->state)
                   ? (int) lroundf(number->state)
@@ -598,69 +572,37 @@ interval:
             };
             if (is_hp1) {
               return {
-                  {read_hz(id(hp1_excluded_heating_range_a_min_hz)),
-                   read_hz(id(hp1_excluded_heating_range_a_max_hz))},
-                  {read_hz(id(hp1_excluded_heating_range_b_min_hz)),
-                   read_hz(id(hp1_excluded_heating_range_b_max_hz))},
+                  read_hz(id(hp1_excluded_frequency_min_hz)),
+                  read_hz(id(hp1_excluded_frequency_max_hz)),
               };
             }
             #if OQ_TOPOLOGY_DUO
             return {
-                {read_hz(id(${secondary_excluded_heating_range_a_min_hz_id})),
-                 read_hz(id(${secondary_excluded_heating_range_a_max_hz_id}))},
-                {read_hz(id(${secondary_excluded_heating_range_b_min_hz_id})),
-                 read_hz(id(${secondary_excluded_heating_range_b_max_hz_id}))},
+                read_hz(id(${secondary_excluded_frequency_min_hz_id})),
+                read_hz(id(${secondary_excluded_frequency_max_hz_id})),
             };
             #else
             return {};
             #endif
           };
 
-          auto frequency_policy_active = [&](bool is_hp1)->bool {
-            const auto &storage = id(oq_frequency_caps_migrated);
-            if (!oq_frequency_policy::storage_has_migration(
-                    storage, oq_frequency_policy::CAPS_MIGRATED))
-              return false;
-            #if OQ_TOPOLOGY_DUO
-            const int hp_index = is_hp1 ? 1 : 2;
-            #else
-            const int hp_index = 1;
-            (void) is_hp1;
-            #endif
-            return oq_frequency_policy::storage_has_migration(
-                storage,
-                oq_frequency_policy::exclusions_migrated_flag(hp_index));
-          };
-
           auto heating_cap_hz = [&]()->int {
             auto* cap = id(oq_silent_active).state
-                ? id(oq_silent_heating_max_frequency_hz)
-                : id(oq_day_heating_max_frequency_hz);
+                ? id(oq_silent_max_frequency_hz)
+                : id(oq_day_max_frequency_hz);
             return cap->has_state() && !isnan(cap->state)
                 ? (int) lroundf(cap->state)
                 : -1;
           };
 
-          auto legacy_heating_level_cap = [&]()->int {
-            int cap = (int) roundf(id(oq_day_max_level).state);
-            if (id(oq_silent_active).state)
-              cap = (int) roundf(id(oq_silent_max_level).state);
-            return std::max(0, std::min(max_level, cap));
-          };
-
           auto level_allowed = [&](bool is_hp1, int level)->bool {
-            if (frequency_policy_active(is_hp1)) {
-              const int frequency_hz =
-                  oq_frequency_policy::automatic_frequency_hz(
-                      configured_v2, runtime_frequency_snapshot(is_hp1), 2,
-                      level);
-              return oq_frequency_policy::frequency_allowed(
-                  frequency_hz, heating_cap_hz(),
-                  excluded_frequency_ranges(is_hp1));
-            }
-            return level <= legacy_heating_level_cap() &&
-                   oq_request::level_allowed_for_excluded_levels(
-                       excluded_levels(is_hp1), level);
+            const int frequency_hz =
+                oq_frequency_policy::automatic_frequency_hz(
+                    configured_v2, runtime_frequency_snapshot(is_hp1), 2,
+                    level);
+            return oq_frequency_policy::frequency_allowed(
+                frequency_hz, heating_cap_hz(),
+                excluded_frequency_range(is_hp1));
           };
 
           auto valve_defrost_active = [&](bool is_hp1)->bool {

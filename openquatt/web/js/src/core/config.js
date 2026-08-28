@@ -386,12 +386,8 @@
     waterSupplyCalibrationStatus: { domain: "text_sensor", name: "Water Supply Temperature Calibration Status", optional: true },
     controlModeLabel: { domain: "text_sensor", name: "Control Mode (Label)" },
     flowMode: { domain: "text_sensor", name: "Flow Mode" },
-    dayMax: { domain: "number", name: "Day max level", optional: true },
-    silentMax: { domain: "number", name: "Silent max level", optional: true },
-    dayHeatingMaxHz: { domain: "number", name: "Day heating max frequency", optional: true },
-    dayCoolingMaxHz: { domain: "number", name: "Day cooling max frequency", optional: true },
-    silentHeatingMaxHz: { domain: "number", name: "Silent heating max frequency", optional: true },
-    silentCoolingMaxHz: { domain: "number", name: "Silent cooling max frequency", optional: true },
+    dayMaxHz: { domain: "number", name: "Day max frequency", optional: true },
+    silentMaxHz: { domain: "number", name: "Silent max frequency", optional: true },
     silentStartTime: { domain: "time", name: "Silent start time" },
     silentEndTime: { domain: "time", name: "Silent end time" },
     openquattResumeAt: { domain: "datetime", name: "OpenQuatt resume at", optional: true },
@@ -571,16 +567,8 @@
     curve5: { domain: "number", name: "Curve Tsupply @ 5°C" },
     curve10: { domain: "number", name: "Curve Tsupply @ 10°C" },
     curve15: { domain: "number", name: "Curve Tsupply @ 15°C" },
-    hp1ExcludedA: { domain: "select", name: "HP1 - Excluded compressor level A", optional: true },
-    hp1ExcludedB: { domain: "select", name: "HP1 - Excluded compressor level B", optional: true },
-    hp1HeatingExcludeAMinHz: { domain: "number", name: "HP1 - Excluded heating range A minimum", optional: true },
-    hp1HeatingExcludeAMaxHz: { domain: "number", name: "HP1 - Excluded heating range A maximum", optional: true },
-    hp1HeatingExcludeBMinHz: { domain: "number", name: "HP1 - Excluded heating range B minimum", optional: true },
-    hp1HeatingExcludeBMaxHz: { domain: "number", name: "HP1 - Excluded heating range B maximum", optional: true },
-    hp1CoolingExcludeAMinHz: { domain: "number", name: "HP1 - Excluded cooling range A minimum", optional: true },
-    hp1CoolingExcludeAMaxHz: { domain: "number", name: "HP1 - Excluded cooling range A maximum", optional: true },
-    hp1CoolingExcludeBMinHz: { domain: "number", name: "HP1 - Excluded cooling range B minimum", optional: true },
-    hp1CoolingExcludeBMaxHz: { domain: "number", name: "HP1 - Excluded cooling range B maximum", optional: true },
+    hp1ExcludeMinHz: { domain: "number", name: "HP1 - Excluded frequency minimum", optional: true },
+    hp1ExcludeMaxHz: { domain: "number", name: "HP1 - Excluded frequency maximum", optional: true },
     hp1Power: { domain: "sensor", name: "HP1 - Power Input" },
     hp1Heat: { domain: "sensor", name: "HP1 - Heat Power" },
     hp1Cooling: { domain: "sensor", name: "HP1 - Cooling Power" },
@@ -607,16 +595,8 @@
     hp1Crankcase: { domain: "binary_sensor", name: "HP1 - Crankcase heater" },
     hp1Eev: { domain: "sensor", name: "HP1 - EEV steps" },
     hp1FourWay: { domain: "binary_sensor", name: "HP1 - 4-Way valve" },
-    hp2ExcludedA: { domain: "select", name: "HP2 - Excluded compressor level A", optional: true },
-    hp2ExcludedB: { domain: "select", name: "HP2 - Excluded compressor level B", optional: true },
-    hp2HeatingExcludeAMinHz: { domain: "number", name: "HP2 - Excluded heating range A minimum", optional: true },
-    hp2HeatingExcludeAMaxHz: { domain: "number", name: "HP2 - Excluded heating range A maximum", optional: true },
-    hp2HeatingExcludeBMinHz: { domain: "number", name: "HP2 - Excluded heating range B minimum", optional: true },
-    hp2HeatingExcludeBMaxHz: { domain: "number", name: "HP2 - Excluded heating range B maximum", optional: true },
-    hp2CoolingExcludeAMinHz: { domain: "number", name: "HP2 - Excluded cooling range A minimum", optional: true },
-    hp2CoolingExcludeAMaxHz: { domain: "number", name: "HP2 - Excluded cooling range A maximum", optional: true },
-    hp2CoolingExcludeBMinHz: { domain: "number", name: "HP2 - Excluded cooling range B minimum", optional: true },
-    hp2CoolingExcludeBMaxHz: { domain: "number", name: "HP2 - Excluded cooling range B maximum", optional: true },
+    hp2ExcludeMinHz: { domain: "number", name: "HP2 - Excluded frequency minimum", optional: true },
+    hp2ExcludeMaxHz: { domain: "number", name: "HP2 - Excluded frequency maximum", optional: true },
     hp2Power: { domain: "sensor", name: "HP2 - Power Input", optional: true },
     hp2Heat: { domain: "sensor", name: "HP2 - Heat Power", optional: true },
     hp2Cooling: { domain: "sensor", name: "HP2 - Cooling Power", optional: true },
@@ -829,8 +809,8 @@
     "phDemandRiseTime",
     "phDemandFallTime",
   ];
-  export const FREQUENCY_CAP_KEYS = ["dayHeatingMaxHz", "dayCoolingMaxHz", "silentHeatingMaxHz", "silentCoolingMaxHz"];
-  export const LIMIT_KEYS = ["dayMax", "silentMax", ...FREQUENCY_CAP_KEYS, "maxWater"];
+  export const FREQUENCY_CAP_KEYS = ["dayMaxHz", "silentMaxHz"];
+  export const LIMIT_KEYS = [...FREQUENCY_CAP_KEYS, "maxWater"];
   export const FLOW_SETTING_KEYS = ["flowControlMode", "flowSetpoint", "coolingFlowSetpoint", "manualIpwm"];
   export const FLOW_TUNING_KEYS = ["flowKp", "flowKi"];
   export const SENSOR_CALIBRATION_KEYS = [
@@ -1311,17 +1291,14 @@
     "heatingCurvePidKd",
   ];
   export const EXCLUDED_FREQUENCY_KEYS = [
-    "hp1HeatingExcludeAMinHz", "hp1HeatingExcludeAMaxHz", "hp1HeatingExcludeBMinHz", "hp1HeatingExcludeBMaxHz",
-    "hp1CoolingExcludeAMinHz", "hp1CoolingExcludeAMaxHz", "hp1CoolingExcludeBMinHz", "hp1CoolingExcludeBMaxHz",
-    "hp2HeatingExcludeAMinHz", "hp2HeatingExcludeAMaxHz", "hp2HeatingExcludeBMinHz", "hp2HeatingExcludeBMaxHz",
-    "hp2CoolingExcludeAMinHz", "hp2CoolingExcludeAMaxHz", "hp2CoolingExcludeBMinHz", "hp2CoolingExcludeBMaxHz",
+    "hp1ExcludeMinHz", "hp1ExcludeMaxHz", "hp2ExcludeMinHz", "hp2ExcludeMaxHz",
   ];
-  export const COMPRESSOR_SETTING_KEYS = ["minRuntime", "hp1ExcludedA", "hp1ExcludedB", "hp2ExcludedA", "hp2ExcludedB", ...EXCLUDED_FREQUENCY_KEYS];
+  export const COMPRESSOR_SETTING_KEYS = ["minRuntime", ...EXCLUDED_FREQUENCY_KEYS];
   // Restore order: gate + thresholds first, the function last, so a backup
   // restore cannot energize the relay with stale gate settings in between.
   export const AUX_RELAY_SETTING_KEYS = ["auxWaitForSupplyTemp", "auxHeatingStartTemp", "auxCoolingStartTemp", "auxTempHysteresis", "auxRelayFunction"];
   export const AUX_RELAY_STATE_KEYS = ["auxRelayActive", "auxRelayStatus"];
-  export const SILENT_SETTING_KEYS = ["silentStartTime", "silentEndTime", "silentMax", "dayMax", ...FREQUENCY_CAP_KEYS];
+  export const SILENT_SETTING_KEYS = ["silentStartTime", "silentEndTime", ...FREQUENCY_CAP_KEYS];
   export const BOILER_SUPPORT_SWITCHING_KEYS = ["boilerSupportStartThreshold", "boilerSupportStopThreshold"];
   export const SERVICE_CONTROL_KEYS = [
     "controlModeOverride",
@@ -1525,7 +1502,7 @@
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestOtaUrl", "firmwareTestOtaMd5Url", "installFirmwareTestOta"];
   export const FIRMWARE_MODAL_KEYS = [...FIRMWARE_ENTITY_KEYS, ...FIRMWARE_TEST_ENTITY_KEYS, "installFirmwareUpdateTarget", "projectVersionText", "releaseChannelText", "installationTopology", "hardwareProfileText", "connectionText"];
-  export const TOPOLOGY_HINT_KEYS = ["hp2ExcludedA", "hp2ExcludedB", "hp2HeatingExcludeAMinHz", "hp2Power", "hp2WaterOut"];
+  export const TOPOLOGY_HINT_KEYS = ["hp2ExcludeMinHz", "hp2Power", "hp2WaterOut"];
   export const HEADER_ENTITY_KEYS = [
     "status",
     "uptime",
@@ -1971,8 +1948,6 @@
       keys: [
         "silentStartTime",
         "silentEndTime",
-        "dayMax",
-        "silentMax",
         ...FREQUENCY_CAP_KEYS,
         "maxWater",
       ],
@@ -2031,7 +2006,7 @@
     {
       id: "compressor",
       label: "Compressor",
-      keys: ["minRuntime", "compressorStarts2hWarningLimit", "compressorStarts72hWarningLimit", "hp1ExcludedA", "hp1ExcludedB", "hp2ExcludedA", "hp2ExcludedB", ...EXCLUDED_FREQUENCY_KEYS],
+      keys: ["minRuntime", "compressorStarts2hWarningLimit", "compressorStarts72hWarningLimit", ...EXCLUDED_FREQUENCY_KEYS],
     },
     {
       id: "system",

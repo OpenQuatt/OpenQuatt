@@ -254,8 +254,6 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "strategy",
       ...POWER_HOUSE_KEYS,
       ...CURVE_SETTING_KEYS,
-      "dayMax",
-      "silentMax",
       ...FREQUENCY_CAP_KEYS,
     ],
     cooling: [
@@ -267,7 +265,6 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "coolingSupplyError",
       "silentModeOverride",
       "silentActive",
-      "silentMax",
       ...FREQUENCY_CAP_KEYS,
       ...COOLING_SETTING_KEYS,
     ],

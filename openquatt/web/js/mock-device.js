@@ -232,7 +232,6 @@
   }
 
   const HP2_ENTITIES = mockFixtures.hp2Entities;
-  const COMPRESSOR_LEVEL_OPTIONS = mockFixtures.compressorLevelOptions;
   const ODU_RUNTIME_FREQUENCY_LEVELS = Array.from({ length: 21 }, (_item, index) => index);
   const ODU_RUNTIME_FREQUENCY_MODES = ["cooling", "heating"];
 
@@ -2174,17 +2173,6 @@
       state: "Balanced",
       option: ["Quiet", "Balanced", "High output", "Custom"],
     });
-    setEntity("select", "HP1 - Excluded compressor level A", {
-      value: "None",
-      state: "None",
-      option: COMPRESSOR_LEVEL_OPTIONS,
-    });
-    setEntity("select", "HP1 - Excluded compressor level B", {
-      value: "None",
-      state: "None",
-      option: COMPRESSOR_LEVEL_OPTIONS,
-    });
-
     [
       ["Flow Setpoint", 800, 0, 1500, 10, "L/h"],
       ["Cooling Flow Setpoint", 800, 0, 1500, 10, "L/h"],
@@ -2204,28 +2192,12 @@
       ["CM3 deficit ON threshold", 1000, 0, 10000, 50, "W"],
       ["CM3 deficit OFF threshold", 400, 0, 10000, 50, "W"],
       ["Electrical current limit", 16, 10, 20, 0.5, "A"],
-      ["Day max level", 10, 0, 10, 1, ""],
-      ["Silent max level", 6, 0, 10, 1, ""],
-      ["Day heating max frequency", 90, 0, 120, 1, "Hz"],
-      ["Day cooling max frequency", 74, 0, 120, 1, "Hz"],
-      ["Silent heating max frequency", 67, 0, 120, 1, "Hz"],
-      ["Silent cooling max frequency", 56, 0, 120, 1, "Hz"],
-      ["HP1 - Excluded heating range A minimum", 0, 0, 120, 1, "Hz"],
-      ["HP1 - Excluded heating range A maximum", 0, 0, 120, 1, "Hz"],
-      ["HP1 - Excluded heating range B minimum", 0, 0, 120, 1, "Hz"],
-      ["HP1 - Excluded heating range B maximum", 0, 0, 120, 1, "Hz"],
-      ["HP1 - Excluded cooling range A minimum", 0, 0, 120, 1, "Hz"],
-      ["HP1 - Excluded cooling range A maximum", 0, 0, 120, 1, "Hz"],
-      ["HP1 - Excluded cooling range B minimum", 0, 0, 120, 1, "Hz"],
-      ["HP1 - Excluded cooling range B maximum", 0, 0, 120, 1, "Hz"],
-      ["HP2 - Excluded heating range A minimum", 0, 0, 120, 1, "Hz"],
-      ["HP2 - Excluded heating range A maximum", 0, 0, 120, 1, "Hz"],
-      ["HP2 - Excluded heating range B minimum", 0, 0, 120, 1, "Hz"],
-      ["HP2 - Excluded heating range B maximum", 0, 0, 120, 1, "Hz"],
-      ["HP2 - Excluded cooling range A minimum", 0, 0, 120, 1, "Hz"],
-      ["HP2 - Excluded cooling range A maximum", 0, 0, 120, 1, "Hz"],
-      ["HP2 - Excluded cooling range B minimum", 0, 0, 120, 1, "Hz"],
-      ["HP2 - Excluded cooling range B maximum", 0, 0, 120, 1, "Hz"],
+      ["Day max frequency", 90, 0, 120, 1, "Hz"],
+      ["Silent max frequency", 67, 0, 120, 1, "Hz"],
+      ["HP1 - Excluded frequency minimum", 0, 0, 120, 1, "Hz"],
+      ["HP1 - Excluded frequency maximum", 0, 0, 120, 1, "Hz"],
+      ["HP2 - Excluded frequency minimum", 0, 0, 120, 1, "Hz"],
+      ["HP2 - Excluded frequency maximum", 0, 0, 120, 1, "Hz"],
       ["Maximum water temperature", 56, 25, 75, 1, "°C"],
       ["Minimum runtime", 300, 300, 3600, 30, "s"],
       ["Compressor starts 2h warning limit", 6, 1, 20, 1, ""],
@@ -2598,17 +2570,17 @@
 
   function computePreset() {
     const behavior = getEntity("select", "Behavior").value;
-    const day = Number(getEntity("number", "Day max level").value);
-    const silent = Number(getEntity("number", "Silent max level").value);
+    const day = Number(getEntity("number", "Day max frequency").value);
+    const silent = Number(getEntity("number", "Silent max frequency").value);
     const near = (a, b) => Math.abs(a - b) < 0.25;
 
-    if (near(day, 7) && near(silent, 5) && behavior === "Quiet") {
+    if (near(day, 72) && near(silent, 61) && behavior === "Quiet") {
       return "Quiet";
     }
-    if (near(day, 10) && near(silent, 6) && behavior === "Balanced") {
+    if (near(day, 90) && near(silent, 67) && behavior === "Balanced") {
       return "Balanced";
     }
-    if (near(day, 10) && near(silent, 8) && behavior === "Fast response") {
+    if (near(day, 90) && near(silent, 79) && behavior === "Fast response") {
       return "High output";
     }
     return "Custom";
@@ -2620,10 +2592,10 @@
       : "Power House";
     const behavior = getEntity("select", "Behavior").value || "Balanced";
     const preset = computePreset();
-    const day = Number(getEntity("number", "Day max level").value);
-    const silent = Number(getEntity("number", "Silent max level").value);
+    const day = Number(getEntity("number", "Day max frequency").value);
+    const silent = Number(getEntity("number", "Silent max frequency").value);
     const water = Number(getEntity("number", "Maximum water temperature").value);
-    const text = `${mode}, ${behavior}, ${preset} preset, day ${day.toFixed(0)}, silent ${silent.toFixed(0)}, max ${water.toFixed(1)} C${state.complete ? ", setup complete" : ""}`;
+    const text = `${mode}, ${behavior}, ${preset} preset, day ${day.toFixed(0)} Hz, silent ${silent.toFixed(0)} Hz, max ${water.toFixed(1)} C${state.complete ? ", setup complete" : ""}`;
 
     setBinary("Setup Complete", state.complete);
     setText("text_sensor", "Summary", text);
@@ -3138,28 +3110,16 @@
   function applyPreset(value) {
     if (value === "Quiet") {
       setText("select", "Behavior", "Quiet");
-      setNumber("Day max level", 7);
-      setNumber("Silent max level", 5);
-      setNumber("Day heating max frequency", 72);
-      setNumber("Day cooling max frequency", 61);
-      setNumber("Silent heating max frequency", 61);
-      setNumber("Silent cooling max frequency", 52);
+      setNumber("Day max frequency", 72);
+      setNumber("Silent max frequency", 61);
     } else if (value === "Balanced") {
       setText("select", "Behavior", "Balanced");
-      setNumber("Day max level", 10);
-      setNumber("Silent max level", 6);
-      setNumber("Day heating max frequency", 90);
-      setNumber("Day cooling max frequency", 74);
-      setNumber("Silent heating max frequency", 67);
-      setNumber("Silent cooling max frequency", 56);
+      setNumber("Day max frequency", 90);
+      setNumber("Silent max frequency", 67);
     } else if (value === "High output") {
       setText("select", "Behavior", "Fast response");
-      setNumber("Day max level", 10);
-      setNumber("Silent max level", 8);
-      setNumber("Day heating max frequency", 90);
-      setNumber("Day cooling max frequency", 74);
-      setNumber("Silent heating max frequency", 79);
-      setNumber("Silent cooling max frequency", 66);
+      setNumber("Day max frequency", 90);
+      setNumber("Silent max frequency", 79);
     }
   }
 

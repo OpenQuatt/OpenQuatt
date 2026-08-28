@@ -88,14 +88,6 @@ globals:
     restore_value: true
     initial_value: 'false'
 
-  # One compact preference record for all frequency caps, exclusions and
-  # migration flags. Individual template numbers deliberately do not persist.
-  # The id doubles as the persisted migration marker for the new policy.
-  - id: oq_frequency_caps_migrated
-    type: std::array<uint8_t, 22>
-    restore_value: true
-    initial_value: 'std::array<uint8_t, 22>{}'
-
   # Frost hysteresis state for CM98 selection
   - id: oq_cm_frost_prev
     type: bool
@@ -377,125 +369,31 @@ switch:
 # ----------------------------
 # Sticky pump iPWM is a fixed compile-time fallback for CM0 sticky circulation.
 number:
-  # Retained for one-time migration and restore of older configuration backups.
-  # The web UI prefers the frequency-native replacements below.
   - platform: template
-    id: oq_silent_max_level
-    name: "Silent max level"
-    disabled_by_default: true
+    id: oq_silent_max_frequency_hz
+    name: "Silent max frequency"
     icon: mdi:speedometer-slow
+    unit_of_measurement: "Hz"
     min_value: 0
-    max_value: 10
+    max_value: 120
     step: 1
     optimistic: true
     restore_value: true
-    initial_value: 6
+    initial_value: 67
     entity_category: config
-    set_action:
-      - lambda: |-
-          // Re-run migration after an old backup or direct legacy write.
-          constexpr uint8_t flags =
-              oq_frequency_policy::SILENT_HEATING_CAP_MIGRATED |
-              oq_frequency_policy::SILENT_COOLING_CAP_MIGRATED;
-          oq_frequency_policy::clear_migrated(
-              id(oq_frequency_caps_migrated), flags);
 
   - platform: template
-    id: oq_day_max_level
-    name: "Day max level"
-    disabled_by_default: true
+    id: oq_day_max_frequency_hz
+    name: "Day max frequency"
     icon: mdi:speedometer
+    unit_of_measurement: "Hz"
     min_value: 0
-    max_value: 10
+    max_value: 120
     step: 1
     optimistic: true
     restore_value: true
-    initial_value: 10
+    initial_value: 90
     entity_category: config
-    set_action:
-      - lambda: |-
-          // Re-run migration after an old backup or direct legacy write.
-          constexpr uint8_t flags =
-              oq_frequency_policy::DAY_HEATING_CAP_MIGRATED |
-              oq_frequency_policy::DAY_COOLING_CAP_MIGRATED;
-          oq_frequency_policy::clear_migrated(
-              id(oq_frequency_caps_migrated), flags);
-
-  - platform: template
-    id: oq_silent_heating_max_frequency_hz
-    name: "Silent heating max frequency"
-    icon: mdi:speedometer-slow
-    unit_of_measurement: "Hz"
-    min_value: 0
-    max_value: 120
-    step: 1
-    optimistic: true
-    initial_value: 120
-    entity_category: config
-    set_action:
-      - lambda: |-
-          oq_frequency_policy::store_configured_frequency_hz(
-              id(oq_frequency_caps_migrated),
-              oq_frequency_policy::SILENT_HEATING_MAX_HZ,
-              (int) lroundf(x),
-              oq_frequency_policy::SILENT_HEATING_CAP_MIGRATED);
-
-  - platform: template
-    id: oq_silent_cooling_max_frequency_hz
-    name: "Silent cooling max frequency"
-    icon: mdi:speedometer-slow
-    unit_of_measurement: "Hz"
-    min_value: 0
-    max_value: 120
-    step: 1
-    optimistic: true
-    initial_value: 120
-    entity_category: config
-    set_action:
-      - lambda: |-
-          oq_frequency_policy::store_configured_frequency_hz(
-              id(oq_frequency_caps_migrated),
-              oq_frequency_policy::SILENT_COOLING_MAX_HZ,
-              (int) lroundf(x),
-              oq_frequency_policy::SILENT_COOLING_CAP_MIGRATED);
-
-  - platform: template
-    id: oq_day_heating_max_frequency_hz
-    name: "Day heating max frequency"
-    icon: mdi:speedometer
-    unit_of_measurement: "Hz"
-    min_value: 0
-    max_value: 120
-    step: 1
-    optimistic: true
-    initial_value: 120
-    entity_category: config
-    set_action:
-      - lambda: |-
-          oq_frequency_policy::store_configured_frequency_hz(
-              id(oq_frequency_caps_migrated),
-              oq_frequency_policy::DAY_HEATING_MAX_HZ,
-              (int) lroundf(x),
-              oq_frequency_policy::DAY_HEATING_CAP_MIGRATED);
-
-  - platform: template
-    id: oq_day_cooling_max_frequency_hz
-    name: "Day cooling max frequency"
-    icon: mdi:speedometer
-    unit_of_measurement: "Hz"
-    min_value: 0
-    max_value: 120
-    step: 1
-    optimistic: true
-    initial_value: 120
-    entity_category: config
-    set_action:
-      - lambda: |-
-          oq_frequency_policy::store_configured_frequency_hz(
-              id(oq_frequency_caps_migrated),
-              oq_frequency_policy::DAY_COOLING_MAX_HZ,
-              (int) lroundf(x),
-              oq_frequency_policy::DAY_COOLING_CAP_MIGRATED);
 
   - platform: template
     id: oq_electrical_current_limit_a
@@ -780,83 +678,6 @@ interval:
           static uint32_t boot_ms = 0;
           if (boot_ms == 0) boot_ms = now_ms;
 
-          auto &frequency_policy_storage = id(oq_frequency_caps_migrated);
-          if (!oq_frequency_policy::storage_has_migration(
-                  frequency_policy_storage,
-                  oq_frequency_policy::CAPS_MIGRATED) &&
-              id(hp_generation).has_state() &&
-              id(oq_day_max_level).has_state() &&
-              id(oq_silent_max_level).has_state()) {
-            const bool configured_v2 =
-                id(hp_generation).current_option() == "V2";
-            const auto snapshot = oq_odu::decode_runtime_frequency_snapshot(
-                id(hp1_runtime_frequency_snapshot_storage));
-            #if OQ_TOPOLOGY_DUO
-            const auto secondary_snapshot =
-                oq_odu::decode_runtime_frequency_snapshot(
-                    id(${secondary_runtime_frequency_snapshot_storage_id}));
-            constexpr bool has_secondary = true;
-            #else
-            const oq_odu::RuntimeFrequencySnapshot secondary_snapshot{};
-            constexpr bool has_secondary = false;
-            #endif
-            const int day_level = std::max(
-                0, std::min(oq_odu::MODEL_LEVEL_MAX,
-                            (int) lroundf(id(oq_day_max_level).state)));
-            const int silent_level = std::max(
-                0, std::min(oq_odu::MODEL_LEVEL_MAX,
-                            (int) lroundf(id(oq_silent_max_level).state)));
-            const auto day_frequencies =
-                oq_frequency_policy::conservative_mode_frequencies(
-                    configured_v2, snapshot, secondary_snapshot,
-                    has_secondary, day_level);
-            const auto silent_frequencies =
-                oq_frequency_policy::conservative_mode_frequencies(
-                    configured_v2, snapshot, secondary_snapshot,
-                    has_secondary, silent_level);
-            if (day_frequencies.valid() && silent_frequencies.valid()) {
-              auto migrate_cap = [&](oq_frequency_policy::StorageIndex index,
-                                     uint8_t flag, int legacy_hz) -> int {
-                if (!oq_frequency_policy::storage_has_migration(
-                        frequency_policy_storage, flag)) {
-                  oq_frequency_policy::store_configured_frequency_hz(
-                      frequency_policy_storage, index, legacy_hz, flag);
-                }
-                return oq_frequency_policy::stored_frequency_hz(
-                    frequency_policy_storage, index, legacy_hz);
-              };
-              const int configured_day_heating_hz = migrate_cap(
-                  oq_frequency_policy::DAY_HEATING_MAX_HZ,
-                  oq_frequency_policy::DAY_HEATING_CAP_MIGRATED,
-                  day_frequencies.heating_hz);
-              const int configured_day_cooling_hz = migrate_cap(
-                  oq_frequency_policy::DAY_COOLING_MAX_HZ,
-                  oq_frequency_policy::DAY_COOLING_CAP_MIGRATED,
-                  day_frequencies.cooling_hz);
-              const int configured_silent_heating_hz = migrate_cap(
-                  oq_frequency_policy::SILENT_HEATING_MAX_HZ,
-                  oq_frequency_policy::SILENT_HEATING_CAP_MIGRATED,
-                  silent_frequencies.heating_hz);
-              const int configured_silent_cooling_hz = migrate_cap(
-                  oq_frequency_policy::SILENT_COOLING_MAX_HZ,
-                  oq_frequency_policy::SILENT_COOLING_CAP_MIGRATED,
-                  silent_frequencies.cooling_hz);
-              id(oq_day_heating_max_frequency_hz).publish_state(
-                  configured_day_heating_hz);
-              id(oq_day_cooling_max_frequency_hz).publish_state(
-                  configured_day_cooling_hz);
-              id(oq_silent_heating_max_frequency_hz).publish_state(
-                  configured_silent_heating_hz);
-              id(oq_silent_cooling_max_frequency_hz).publish_state(
-                  configured_silent_cooling_hz);
-              ESP_LOGI(
-                  "frequency_policy",
-                  "Migrated level caps to Hz: day H%d/C%d silent H%d/C%d",
-                  configured_day_heating_hz, configured_day_cooling_hz,
-                  configured_silent_heating_hz,
-                  configured_silent_cooling_hz);
-            }
-          }
           auto now_time = id(oq_time).now();
           const bool time_valid = now_time.is_valid();
           const auto openquatt_resume_at = id(oq_openquatt_resume_at).state_as_esptime();

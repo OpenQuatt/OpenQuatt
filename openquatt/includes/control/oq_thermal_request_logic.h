@@ -7,11 +7,6 @@
 
 namespace oq_request {
 
-struct ExcludedLevels {
-  std::string a;
-  std::string b;
-};
-
 struct PublishedRequest {
   int mode_code;
   int hp1_level;
@@ -74,71 +69,6 @@ inline PublishedRequest make_published_request(int mode_code, int hp1_level, int
       sanitize_request_mode_code(mode_code),           hp1_level,     hp2_level,
       request_owner_from_topology_code(topology_code), topology_code, sanitize_request_strategy_code(strategy_code),
   };
-}
-
-inline bool excluded_option_matches_level(const std::string& opt, int level) {
-  switch (level) {
-    case 1:
-      return opt == "L1 (H30/C30)";
-    case 2:
-      return opt == "L2 (H39/C36)";
-    case 3:
-      return opt == "L3 (H49/C42)";
-    case 4:
-      return opt == "L4 (H55/C47)";
-    case 5:
-      return opt == "L5 (H61/C52)";
-    case 6:
-      return opt == "L6 (H67/C56)";
-    case 7:
-      return opt == "L7 (H72/C61)";
-    case 8:
-      return opt == "L8 (H79/C66)";
-    case 9:
-      return opt == "L9 (H85/C71)";
-    case 10:
-      return opt == "L10 (H90/C74)";
-    default:
-      return false;
-  }
-}
-
-inline bool level_allowed_for_excluded_levels(const ExcludedLevels& excluded, int level) {
-  if (level <= 0 || level > 10) return true;
-  return !excluded_option_matches_level(excluded.a, level) && !excluded_option_matches_level(excluded.b, level);
-}
-
-inline int pick_allowed_level(int req, int min_level, int max_level, const ExcludedLevels& excluded) {
-  if (req <= 0) return 0;
-  req = clamp_level(req, min_level, max_level);
-  if (req <= 0) return 0;
-  if (level_allowed_for_excluded_levels(excluded, req)) return req;
-
-  for (int level = req - 1; level >= min_level; --level) {
-    if (level > 0 && level_allowed_for_excluded_levels(excluded, level)) return level;
-  }
-  for (int level = req + 1; level <= max_level; ++level) {
-    if (level > 0 && level_allowed_for_excluded_levels(excluded, level)) return level;
-  }
-  return 0;
-}
-
-inline int pick_allowed_capped_level(int req, int min_level, int max_level, int cap_level,
-                                     const ExcludedLevels& excluded) {
-  if (req <= 0) return 0;
-  cap_level = clamp_level(cap_level, min_level, max_level);
-  if (cap_level <= 0) return 0;
-  req = clamp_level(req, min_level, cap_level);
-  if (req <= 0) return 0;
-  if (level_allowed_for_excluded_levels(excluded, req)) return req;
-
-  for (int level = req - 1; level >= min_level; --level) {
-    if (level > 0 && level_allowed_for_excluded_levels(excluded, level)) return level;
-  }
-  for (int level = req + 1; level <= cap_level; ++level) {
-    if (level > 0 && level_allowed_for_excluded_levels(excluded, level)) return level;
-  }
-  return 0;
 }
 
 inline bool thermal_mode_matches(float mode_raw, int mode_code) {

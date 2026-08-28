@@ -47,7 +47,7 @@ import { render } from "../core/render-scheduler.js";
       return [...new Set([...base, "strategy"])];
     }
     if (stepId === "heating") {
-      return [...new Set([...base, ...POWER_HOUSE_KEYS, ...CURVE_SETTING_KEYS, "dayMax", "silentMax", ...FREQUENCY_CAP_KEYS])];
+      return [...new Set([...base, ...POWER_HOUSE_KEYS, ...CURVE_SETTING_KEYS, ...FREQUENCY_CAP_KEYS])];
     }
     if (stepId === "flow") {
       return [...new Set([...base, ...FLOW_SETTING_KEYS, ...FLOW_TUNING_KEYS])];
