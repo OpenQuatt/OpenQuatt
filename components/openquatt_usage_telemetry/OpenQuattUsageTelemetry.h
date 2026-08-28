@@ -82,8 +82,6 @@ class OpenQuattUsageTelemetry : public switch_::Switch, public Component {
   void set_energy_history_flash_switch(switch_::Switch* feature_switch) {
     this->energy_history_flash_switch_ = feature_switch;
   }
-  void set_ram_log_history_switch(switch_::Switch* feature_switch) { this->ram_log_history_switch_ = feature_switch; }
-
   void setup() override;
   void loop() override;
   void dump_config() override;
@@ -206,8 +204,6 @@ class OpenQuattUsageTelemetry : public switch_::Switch, public Component {
   switch_::Switch* trend_flash_switch_{nullptr};
   switch_::Switch* decision_log_flash_switch_{nullptr};
   switch_::Switch* energy_history_flash_switch_{nullptr};
-  switch_::Switch* ram_log_history_switch_{nullptr};
-
   ESPPreferenceObject pref_;
   std::array<uint8_t, 16> installation_id_bytes_{};
   std::string installation_id_;

@@ -10,7 +10,6 @@
 #include <freertos/semphr.h>
 
 #include "PsramBuffer.h"
-#include "esphome/components/switch/switch.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/core/component.h"
@@ -22,7 +21,6 @@ using openquatt_common::PsramBuffer;
 
 class OpenQuattLogHistory : public Component {
  public:
-  void set_enabled_switch(switch_::Switch* enabled_switch) { this->enabled_switch_ = enabled_switch; }
   void set_clock(time::RealTimeClock* clock) { this->clock_ = clock; }
 
   void setup() override;
@@ -30,7 +28,6 @@ class OpenQuattLogHistory : public Component {
   void dump_config() override;
   float get_setup_priority() const override;
 
-  void set_enabled(bool enabled);
   void clear_history();
   const std::string& get_csrf_token() const { return this->csrf_token_; }
   bool storage_available() const { return static_cast<bool>(this->entries_); }
@@ -48,9 +45,7 @@ class OpenQuattLogHistory : public Component {
     char raw[RAW_MAX_LEN]{};
   };
 
-  bool enabled_{true};
   bool time_rebased_{false};
-  switch_::Switch* enabled_switch_{nullptr};
   time::RealTimeClock* clock_{nullptr};
   PsramBuffer<LogEntry> entries_{};
   size_t head_{0};
@@ -69,7 +64,6 @@ class OpenQuattLogHistory : public Component {
   uint32_t last_crash_breadcrumb_update_ms_{0};
 #endif
 
-  bool capture_enabled_() const;
   bool time_is_valid_() const;
   uint64_t current_time_ms_() const;
   uint64_t current_epoch_offset_ms_() const;

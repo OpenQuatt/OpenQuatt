@@ -69,7 +69,6 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
     trendHistoryFlashEnabled: false,
     decisionLogHistoryEnabled: false,
     lifetimeEnergyHistoryEnabled: true,
-    webServerLogHistoryEnabled: true,
   }, {
     messageId: "preview-message-id",
     mqttEnabled: false,
@@ -121,6 +120,7 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
   assert.equal(flowSourceConfigWireValue("Outdoor unit", "Auto", true), "outdoor_unit");
   assert.equal(flowSourceConfigWireValue("Outdoor unit", undefined, false), "outdoor_unit");
   assert.ok(USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("psramFree"));
+  assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("webServerLogHistoryEnabled"));
 });
 
 test("usage telemetry preview bounds MQTT status and fails closed", async () => {

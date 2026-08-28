@@ -295,7 +295,6 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "usageTelemetryChoiceConfigured",
       "usageTelemetryInstallationId",
       ...SETTINGS_STORAGE_KEYS,
-      "webServerLogHistoryEnabled",
       "debugLevel",
     ],
   };
