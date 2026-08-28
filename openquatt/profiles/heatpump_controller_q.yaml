@@ -5,6 +5,7 @@ substitutions:
   oq_hardware_profile: "heatpump_controller_q"         # Compile-time hardware profile id.
   oq_hardware_build_flag: "-DOQ_HARDWARE_HEATPUMP_CONTROLLER_Q=1" # Enable Q-only local sensor paths.
   oq_otb_supported: "true"                             # GPIO47/GPIO48 provide the boiler OpenTherm master transport.
+  oq_boiler_temperature_sensor_id: "otb_boiler_water_temp" # Q-edition OpenTherm ID25 sensor used by the warm-start guard.
   oq_boiler_transport_selection_extra: |-
     // Preserve the old session until a leaving-OpenTherm off flush has had
     // its bounded acknowledgement opportunity.

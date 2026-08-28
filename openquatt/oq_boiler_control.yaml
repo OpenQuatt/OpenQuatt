@@ -57,6 +57,8 @@ esphome:
           id(oq_boiler_output_target_temperature_c) = NAN;
           id(oq_boiler_transport_active) = false;
           id(oq_boiler_block_reason_code) = oq_boiler::BLOCK_COMMAND_INVALID;
+          id(oq_boiler_start_thermal_state_code) = oq_boiler::BOILER_START_THERMAL_IDLE;
+          id(oq_boiler_start_thermal_safe_ceiling_c) = NAN;
       - switch.turn_off: boiler_relay
 
 # ----------------------------
@@ -72,6 +74,16 @@ globals:
     type: uint8_t
     restore_value: false
     initial_value: '0'
+
+  - id: oq_boiler_start_thermal_state_code
+    type: uint8_t
+    restore_value: false
+    initial_value: '0'
+
+  - id: oq_boiler_start_thermal_safe_ceiling_c
+    type: float
+    restore_value: false
+    initial_value: 'NAN'
 
   - id: oq_boiler_output_last_change_ms
     type: uint32_t
@@ -269,6 +281,20 @@ sensor:
       return id(oq_boiler_command_requested_power_w);
 
   - platform: template
+    id: boiler_start_thermal_safe_ceiling
+    name: "Boiler warm-start safe ceiling"
+    icon: mdi:thermometer-check
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    entity_category: diagnostic
+    internal: true
+    update_interval: 1s
+    lambda: |-
+      return id(oq_boiler_start_thermal_safe_ceiling_c);
+
+  - platform: template
     id: boiler_command_age
     name: "Boiler command age"
     icon: mdi:timer-outline
@@ -347,6 +373,16 @@ text_sensor:
       const char *reason = oq_boiler::block_reason_text(id(oq_boiler_block_reason_code));
       return {reason[0] == '\0' ? "None" : reason};
 
+  - platform: template
+    id: boiler_start_thermal_guard
+    name: "Boiler warm-start guard"
+    icon: mdi:thermometer-alert
+    entity_category: diagnostic
+    internal: true
+    update_interval: 1s
+    lambda: |-
+      return {oq_boiler::boiler_start_thermal_state_text(id(oq_boiler_start_thermal_state_code))};
+
 # ----------------------------
 # MAIN LOOP
 # ----------------------------
@@ -414,6 +450,62 @@ interval:
               id(oq_boiler_command_source_code),
               id(oq_boiler_command_updated_ms),
           };
+          oq_boiler::BoilerStartThermalDecision start_thermal_decision{
+              oq_boiler::BOILER_START_THERMAL_IDLE,
+              NAN,
+          };
+          const bool start_thermal_decision_needed =
+              command.heat_request || command.source == oq_boiler::COMMAND_SOURCE_COMMISSIONING;
+          if (start_thermal_decision_needed) {
+            float maximum_water_temperature_c = id(max_water_temp_limit_c).state;
+            if (isnan(maximum_water_temperature_c)) maximum_water_temperature_c = 60.0f;
+            maximum_water_temperature_c = fmaxf(25.0f, fminf(maximum_water_temperature_c, 75.0f));
+          #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+            const bool boiler_temperature_fresh =
+                opentherm_selected &&
+                oq_otb::telemetry_state.field_is_fresh(
+                    oq_otb::FIELD_BOILER_WATER_TEMPERATURE,
+                    now_ms,
+                    (uint32_t) (${oq_otb_field_timeout_s} * 1000UL));
+            const float boiler_temperature_c =
+                id(${oq_boiler_temperature_sensor_id}).has_state()
+                    ? id(${oq_boiler_temperature_sensor_id}).state
+                    : NAN;
+          #else
+            const bool boiler_temperature_fresh = false;
+            const float boiler_temperature_c = NAN;
+          #endif
+            start_thermal_decision = oq_boiler::evaluate_boiler_start_thermal_state(
+                opentherm_selected,
+                boiler_temperature_fresh,
+                boiler_temperature_c,
+                supply_c,
+                target_c,
+                maximum_water_temperature_c);
+          }
+          const bool start_thermal_decision_changed =
+              id(oq_boiler_start_thermal_state_code) != start_thermal_decision.state;
+          id(oq_boiler_start_thermal_state_code) = start_thermal_decision.state;
+          id(oq_boiler_start_thermal_safe_ceiling_c) = start_thermal_decision.safe_ceiling_c;
+          if (start_thermal_decision_changed) {
+          #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+            const float boiler_temperature_c =
+                id(${oq_boiler_temperature_sensor_id}).has_state()
+                    ? id(${oq_boiler_temperature_sensor_id}).state
+                    : NAN;
+          #else
+            const float boiler_temperature_c = NAN;
+          #endif
+            ESP_LOGI(
+                "quatt.boiler",
+                "Warm-start guard: %s (boiler=%.1fC supply=%.1fC target=%.1fC ceiling=%.1fC source=%u)",
+                oq_boiler::boiler_start_thermal_state_text(start_thermal_decision.state),
+                boiler_temperature_c,
+                supply_c,
+                target_c,
+                start_thermal_decision.safe_ceiling_c,
+                (unsigned int) command.source);
+          }
           const bool command_rearmed = oq_boiler::command_satisfies_rearm(
               id(oq_boiler_rearm_required),
               command,
@@ -435,6 +527,7 @@ interval:
               transport_available,
               transport_settled,
               command_rearmed,
+              start_thermal_decision.state,
               opentherm_selected,
               target_valid,
               id(oq_boiler_output_request),

@@ -88,12 +88,18 @@ const ISSUE_516_OBSERVABILITY_KEYS = [
   "otbStartHandshakeDetail",
 ];
 
+const ISSUE_536_WARM_START_OBSERVABILITY_KEYS = [
+  "boilerStartThermalGuard",
+  "boilerStartThermalSafeCeiling",
+];
+
 const ADDED_OBSERVABILITY_KEYS = [
   ...OBSERVABILITY_KEYS,
   ...ISSUE_473_OBSERVABILITY_KEYS,
   ...ISSUE_489_OBSERVABILITY_KEYS,
   ...COOLING_MIN_OFF_OBSERVABILITY_KEYS,
   ...ISSUE_516_OBSERVABILITY_KEYS,
+  ...ISSUE_536_WARM_START_OBSERVABILITY_KEYS,
 ];
 
 test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", () => {
@@ -104,6 +110,7 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const fingerprintEndIndex = oduEndIndex + ODU_FINGERPRINT_KEYS.length;
   const issue489EndIndex = fingerprintEndIndex + ISSUE_489_OBSERVABILITY_KEYS.length;
   const coolingMinOffEndIndex = issue489EndIndex + COOLING_MIN_OFF_OBSERVABILITY_KEYS.length;
+  const issue516EndIndex = coolingMinOffEndIndex + ISSUE_516_OBSERVABILITY_KEYS.length;
 
   assert.equal(legacyTailIndex, 134);
   assert.deepEqual(
@@ -118,7 +125,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
     DEBUG_RECORDING_KEYS.slice(issue489EndIndex, coolingMinOffEndIndex),
     COOLING_MIN_OFF_OBSERVABILITY_KEYS,
   );
-  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(coolingMinOffEndIndex), ISSUE_516_OBSERVABILITY_KEYS);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(coolingMinOffEndIndex, issue516EndIndex), ISSUE_516_OBSERVABILITY_KEYS);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue516EndIndex), ISSUE_536_WARM_START_OBSERVABILITY_KEYS);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   assert.ok(DEBUG_RECORDING_KEYS.length <= 188, "debugrecorder heeft maximaal 188 entityvelden naast 4 systeemvelden");
 });

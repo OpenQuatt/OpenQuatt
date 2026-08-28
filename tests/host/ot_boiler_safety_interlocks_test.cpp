@@ -15,8 +15,10 @@ oq_boiler::BoilerCommand active_command(uint32_t updated_at_ms) {
 
 oq_boiler::ControllerInput safe_input(uint32_t now_ms) {
   return oq_boiler::ControllerInput{
-      true, true, true, true, true,  true,   true,  false, false, false,  true,
-      true, true, true, true, false, now_ms, 15000, 0,     30000, 120000,
+      true,   true,  true,  true,   true,  true, true,
+      false,  false, false, true,   true,  true, oq_boiler::BOILER_START_THERMAL_SAFE,
+      true,   true,  false, now_ms, 15000, 0,    30000,
+      120000,
   };
 }
 
@@ -123,6 +125,64 @@ void test_effective_output_target() {
   assert(isnan(oq_boiler::effective_output_target(true, false, true, true, 50.0f, 45.0f)));
   assert(fabsf(oq_boiler::effective_output_target(true, true, true, true, 50.0f, 45.0f) - 50.0f) < 0.001f);
   assert(fabsf(oq_boiler::effective_output_target(true, true, false, false, NAN, 45.0f) - 45.0f) < 0.001f);
+}
+
+void test_boiler_start_thermal_policy() {
+  auto decision = oq_boiler::evaluate_boiler_start_thermal_state(false, false, NAN, 23.0f, 30.0f, 35.0f);
+  assert(decision.state == oq_boiler::BOILER_START_THERMAL_NOT_APPLICABLE);
+
+  decision = oq_boiler::evaluate_boiler_start_thermal_state(true, true, 23.0f, 23.0f, 30.0f, 35.0f);
+  assert(decision.state == oq_boiler::BOILER_START_THERMAL_SAFE);
+  assert(fabsf(decision.safe_ceiling_c - 32.0f) < 0.001f);
+
+  decision = oq_boiler::evaluate_boiler_start_thermal_state(true, true, 48.0f, 23.0f, 30.0f, 35.0f);
+  assert(decision.state == oq_boiler::BOILER_START_THERMAL_HOT);
+  assert(fabsf(decision.safe_ceiling_c - 32.0f) < 0.001f);
+
+  decision = oq_boiler::evaluate_boiler_start_thermal_state(true, true, 34.0f, 34.0f, 30.0f, 35.0f);
+  assert(decision.state == oq_boiler::BOILER_START_THERMAL_SAFE);
+  assert(fabsf(decision.safe_ceiling_c - 35.0f) < 0.001f);
+
+  assert(oq_boiler::evaluate_boiler_start_thermal_state(true, false, 23.0f, 23.0f, 30.0f, 35.0f).state ==
+         oq_boiler::BOILER_START_THERMAL_UNKNOWN);
+  assert(oq_boiler::evaluate_boiler_start_thermal_state(true, true, NAN, 23.0f, 30.0f, 35.0f).state ==
+         oq_boiler::BOILER_START_THERMAL_UNKNOWN);
+  assert(oq_boiler::evaluate_boiler_start_thermal_state(true, true, INFINITY, 23.0f, 30.0f, 35.0f).state ==
+         oq_boiler::BOILER_START_THERMAL_UNKNOWN);
+}
+
+void test_warm_start_controller_interlock() {
+  auto command = active_command(1000);
+  auto input = safe_input(1500);
+  input.boiler_start_thermal_state = oq_boiler::BOILER_START_THERMAL_HOT;
+  auto decision = oq_boiler::evaluate(command, input);
+  assert_decision(decision, false, true, oq_boiler::BLOCK_BOILER_TOO_HOT_FOR_START);
+
+  command.source = oq_boiler::COMMAND_SOURCE_FALLBACK;
+  decision = oq_boiler::evaluate(command, input);
+  assert_decision(decision, false, true, oq_boiler::BLOCK_BOILER_TOO_HOT_FOR_START);
+
+  command.source = oq_boiler::COMMAND_SOURCE_COMMISSIONING;
+  input.boiler_start_thermal_state = oq_boiler::BOILER_START_THERMAL_UNKNOWN;
+  decision = oq_boiler::evaluate(command, input);
+  assert_decision(decision, false, true, oq_boiler::BLOCK_BOILER_TEMPERATURE_UNAVAILABLE);
+
+  command.source = oq_boiler::COMMAND_SOURCE_POWER_HOUSE;
+  decision = oq_boiler::evaluate(command, input);
+  assert_decision(decision, true, false, oq_boiler::BLOCK_NONE);
+
+  command.source = oq_boiler::COMMAND_SOURCE_FALLBACK;
+  decision = oq_boiler::evaluate(command, input);
+  assert_decision(decision, true, false, oq_boiler::BLOCK_NONE);
+
+  // The warm-start guard applies only to the OFF -> ON edge. Once the boiler
+  // is active, normal supply inhibit and hard-trip guards remain authoritative.
+  command.source = oq_boiler::COMMAND_SOURCE_COMMISSIONING;
+  input.output_active = true;
+  input.output_last_change_ms = 1499;
+  input.boiler_start_thermal_state = oq_boiler::BOILER_START_THERMAL_HOT;
+  decision = oq_boiler::evaluate(command, input);
+  assert_decision(decision, true, false, oq_boiler::BLOCK_NONE);
 }
 
 void test_fail_safe_priority() {
@@ -372,6 +432,8 @@ int main() {
   test_power_target();
   test_command_ownership_and_time();
   test_effective_output_target();
+  test_boiler_start_thermal_policy();
+  test_warm_start_controller_interlock();
   test_fail_safe_priority();
   test_transport_selection_guard();
   test_fallback_and_flow_guards();

@@ -410,6 +410,8 @@
     boilerCommandAge: { domain: "sensor", name: "Boiler command age", optional: true },
     boilerCommandSource: { domain: "text_sensor", name: "Boiler command source", optional: true },
     boilerBlockReason: { domain: "text_sensor", name: "Boiler block reason", optional: true },
+    boilerStartThermalGuard: { domain: "text_sensor", name: "Boiler warm-start guard", optional: true },
+    boilerStartThermalSafeCeiling: { domain: "sensor", name: "Boiler warm-start safe ceiling", optional: true },
     boilerHeatPower: { domain: "sensor", name: "Boiler Heat Power", optional: true },
     auxRelayFunction: { domain: "select", name: "Aux Relay Function", optional: true },
     auxWaitForSupplyTemp: { domain: "switch", name: "Aux Relay Wait For Supply Temp", optional: true },
@@ -1052,6 +1054,8 @@
     "boilerCommandAge",
     "boilerCommandSource",
     "boilerBlockReason",
+    "boilerStartThermalGuard",
+    "boilerStartThermalSafeCeiling",
   ];
   export const OTB_DIAGNOSTIC_KEYS = [
     "otbLinkAvailable",
@@ -1505,6 +1509,8 @@
     "otbBoilerWaterTemp",
     "otbReturnWaterTemp",
     "otbStartHandshakeDetail",
+    "boilerStartThermalGuard",
+    "boilerStartThermalSafeCeiling",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestOtaUrl", "firmwareTestOtaMd5Url", "installFirmwareTestOta"];
