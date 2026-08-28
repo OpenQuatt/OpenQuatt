@@ -989,7 +989,8 @@ interval:
             float pmin_dyn_effective = NAN;
             int dyn_source_state = 3;
             if (!isnan(Tamb) && !isnan(Tsup)) {
-              pmin_dyn_live = oq_perf::interp_power_th_w(1, Tamb, Tsup);
+              pmin_dyn_live = oq_perf::interp_power_th_w_hz(
+                  oq_perf::model_frequency_hz(1), Tamb, Tsup);
               if (isnan(pmin_dyn_live) || pmin_dyn_live <= 0.0f) pmin_dyn_live = NAN;
             }
             const uint32_t cache_max_ms = (uint32_t)(${oq_low_load_dyn_cache_max_s}UL * 1000UL);

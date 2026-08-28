@@ -10,9 +10,22 @@ import { renderModalShell } from "../core/modal-shell.js";
   export function getManualHpActualValue(levelKey, frequencyKey) {
     const level = getEntityNumericValue(levelKey);
     const frequency = getEntityNumericValue(frequencyKey);
-    const levelText = Number.isNaN(level) ? "Lvl —" : `Lvl ${Math.round(level)}`;
+    const levelText = Number.isNaN(level) ? "F—" : `F${Math.round(level)}`;
     const frequencyText = Number.isNaN(frequency) ? "— Hz" : `${Math.round(frequency)} Hz`;
     return `${levelText} (${frequencyText})`;
+  }
+
+  export function getManualHpMaximumLevel(profileKey, modeKey) {
+    const configuredV2 = getEntityStateText("hpGeneration").trim() === "V2";
+    if (!configuredV2) return 10;
+
+    const profile = getEntityStateText(profileKey).trim();
+    if (profile === "V2 F0-F20") return 20;
+
+    const mode = getEntityStateText(modeKey).trim();
+    if (mode === "Heating" && profile === "V2 heating F0-F20") return 20;
+    if (mode === "Cooling" && profile === "V2 cooling F0-F20") return 20;
+    return 10;
   }
 
   export function isCommissioningTaskStatusBusy(status) {
@@ -463,6 +476,8 @@ import { renderModalShell } from "../core/modal-shell.js";
     const cm100TaskLocked = state.commissioningTaskLock === "cm100";
     const cm100Busy = state.loadingEntities || state.busyAction === "commissioningCm100Start" || state.busyAction === "commissioningCm100Stop" || cm100TaskLocked;
     const cm100Pending = Boolean(state.pendingCommissioningCm100Start);
+    const hp1ManualMaxLevel = getManualHpMaximumLevel("hp1CompressorLevelProfile", "manualHp1Mode");
+    const hp2ManualMaxLevel = getManualHpMaximumLevel("hp2CompressorLevelProfile", "manualHp2Mode");
     const cm100StartDisabled = cm100Busy || cm100Ready || cm100WaitingForCm100;
     const cm100StopDisabled = cm100Busy || !cm100Ready;
     const boilerStatus = getStatusTextValue("boilerPowerTestStatus", "IDLE");
@@ -765,12 +780,12 @@ import { renderModalShell } from "../core/modal-shell.js";
             <div class="oq-settings-manual-hp-controls">
               <div class="oq-settings-manual-hp-unit">
                 ${renderSettingsSelectField("manualHp1Mode", "Warmtepomp 1 werkmodus", "Start in Standby. Verwarmen of koelen kan pas worden gekozen zodra voldoende flow is gemeten.", "oq-settings-field--compact")}
-                ${renderSettingsSliderField("manualHp1Level", "Warmtepomp 1 compressorstand", "Aangevraagde stand 0 tot en met 10. Kies eerst een werkmodus. Normaal uitgesloten standen mogen tijdens deze handmatige test bewust worden gekozen.", "oq-settings-field--compact")}
+                ${renderSettingsSliderField("manualHp1Level", "Warmtepomp 1 compressorstand", `F0-F${hp1ManualMaxLevel}. F11-F20 vereisen V2-selectie plus bevestigd uitgebreid profiel.`, "oq-settings-field--compact", { maxValue: hp1ManualMaxLevel })}
               </div>
               ${hasEntity("hp2ExcludedA") ? `
                 <div class="oq-settings-manual-hp-unit">
                   ${renderSettingsSelectField("manualHp2Mode", "Warmtepomp 2 werkmodus", "Start in Standby. Verwarmen of koelen kan pas worden gekozen zodra voldoende flow is gemeten.", "oq-settings-field--compact")}
-                  ${renderSettingsSliderField("manualHp2Level", "Warmtepomp 2 compressorstand", "Aangevraagde stand 0 tot en met 10. Kies eerst een werkmodus. Normaal uitgesloten standen mogen tijdens deze handmatige test bewust worden gekozen.", "oq-settings-field--compact")}
+                  ${renderSettingsSliderField("manualHp2Level", "Warmtepomp 2 compressorstand", `F0-F${hp2ManualMaxLevel}. F11-F20 vereisen V2-selectie plus bevestigd uitgebreid profiel.`, "oq-settings-field--compact", { maxValue: hp2ManualMaxLevel })}
                 </div>
               ` : ""}
             </div>
