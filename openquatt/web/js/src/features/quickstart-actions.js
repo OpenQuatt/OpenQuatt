@@ -1,5 +1,5 @@
 import { hasEntity, isEntityActive } from "../core/app-shared.js";
-import { CURVE_SETTING_KEYS, ENTITY_DEFS, FAST_VIEW_ENTITY_REFRESH_CONCURRENCY, FIRMWARE_MODAL_KEYS, FLOW_SETTING_KEYS, FLOW_TUNING_KEYS, HEADER_ENTITY_KEYS, POWER_HOUSE_KEYS, QUICK_START_FLOW_SOURCE_KEYS, QUICK_START_THERMOSTAT_SOURCE_KEYS, SILENT_SETTING_KEYS, TOPOLOGY_HINT_KEYS } from "../core/config.js";
+import { CURVE_SETTING_KEYS, ENTITY_DEFS, FAST_VIEW_ENTITY_REFRESH_CONCURRENCY, FIRMWARE_MODAL_KEYS, FLOW_SETTING_KEYS, FLOW_TUNING_KEYS, FREQUENCY_CAP_KEYS, HEADER_ENTITY_KEYS, POWER_HOUSE_KEYS, QUICK_START_FLOW_SOURCE_KEYS, QUICK_START_THERMOSTAT_SOURCE_KEYS, SILENT_SETTING_KEYS, TOPOLOGY_HINT_KEYS } from "../core/config.js";
 import { buildEntityPath } from "../core/domain-helpers.js";
 import { setEntityBackupValue } from "../core/entity-backup.js";
 import { getEntityValue } from "../core/entity-store.js";
@@ -47,7 +47,7 @@ import { render } from "../core/render-scheduler.js";
       return [...new Set([...base, "strategy"])];
     }
     if (stepId === "heating") {
-      return [...new Set([...base, ...POWER_HOUSE_KEYS, ...CURVE_SETTING_KEYS, "dayMax", "silentMax"])];
+      return [...new Set([...base, ...POWER_HOUSE_KEYS, ...CURVE_SETTING_KEYS, "dayMax", "silentMax", ...FREQUENCY_CAP_KEYS])];
     }
     if (stepId === "flow") {
       return [...new Set([...base, ...FLOW_SETTING_KEYS, ...FLOW_TUNING_KEYS])];

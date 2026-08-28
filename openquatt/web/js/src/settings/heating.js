@@ -429,13 +429,24 @@ import { escapeHtml } from "../core/html.js";
     `;
   }
 
-  export function renderSettingsHeatPumpLimiterCard(title, keyA, keyB) {
-    const fields = [
-      renderSettingsSelectField(keyA, "Stand A", "Kies hier welke compressorstand je wilt uitsluiten."),
-      renderSettingsSelectField(keyB, "Stand B", "Kies hier nog een compressorstand die je wilt overslaan."),
-    ]
-      .filter(Boolean)
-      .join("");
+  export function renderSettingsHeatPumpLimiterCard(title, hpPrefix, legacyKeyA, legacyKeyB) {
+    const firstFrequencyKey = `${hpPrefix}HeatingExcludeAMinHz`;
+    const frequencyFields = [
+      renderSettingsNumberField(firstFrequencyKey, "Verwarmen · bereik A vanaf", "Ondergrens van het eerste uitgesloten frequentiebereik. Gebruik samen met de bovengrens 0 Hz om dit bereik uit te schakelen."),
+      renderSettingsNumberField(`${hpPrefix}HeatingExcludeAMaxHz`, "Verwarmen · bereik A tot en met", "Bovengrens van het eerste uitgesloten frequentiebereik."),
+      renderSettingsNumberField(`${hpPrefix}HeatingExcludeBMinHz`, "Verwarmen · bereik B vanaf", "Ondergrens van het tweede uitgesloten frequentiebereik. Gebruik samen met de bovengrens 0 Hz om dit bereik uit te schakelen."),
+      renderSettingsNumberField(`${hpPrefix}HeatingExcludeBMaxHz`, "Verwarmen · bereik B tot en met", "Bovengrens van het tweede uitgesloten frequentiebereik."),
+      renderSettingsNumberField(`${hpPrefix}CoolingExcludeAMinHz`, "Koelen · bereik A vanaf", "Ondergrens van het eerste uitgesloten frequentiebereik. Gebruik samen met de bovengrens 0 Hz om dit bereik uit te schakelen."),
+      renderSettingsNumberField(`${hpPrefix}CoolingExcludeAMaxHz`, "Koelen · bereik A tot en met", "Bovengrens van het eerste uitgesloten frequentiebereik."),
+      renderSettingsNumberField(`${hpPrefix}CoolingExcludeBMinHz`, "Koelen · bereik B vanaf", "Ondergrens van het tweede uitgesloten frequentiebereik. Gebruik samen met de bovengrens 0 Hz om dit bereik uit te schakelen."),
+      renderSettingsNumberField(`${hpPrefix}CoolingExcludeBMaxHz`, "Koelen · bereik B tot en met", "Bovengrens van het tweede uitgesloten frequentiebereik."),
+    ].filter(Boolean).join("");
+    const legacyFields = [
+      renderSettingsSelectField(legacyKeyA, "Stand A", "Kies hier welke compressorstand je wilt uitsluiten."),
+      renderSettingsSelectField(legacyKeyB, "Stand B", "Kies hier nog een compressorstand die je wilt overslaan."),
+    ].filter(Boolean).join("");
+    const usesFrequencyRanges = hasEntity(firstFrequencyKey);
+    const fields = usesFrequencyRanges ? frequencyFields : legacyFields;
 
     if (!fields) {
       return "";
@@ -446,7 +457,9 @@ import { escapeHtml } from "../core/html.js";
         <header>
           <p class="oq-helper-label">Warmtepomp</p>
           <h4>${escapeHtml(title)}</h4>
-          <p>Stel hier de standen in die OpenQuatt niet hoeft te gebruiken.</p>
+          <p>${usesFrequencyRanges
+            ? "Stel per bedrijfsmodus maximaal twee frequentiebereiken in die OpenQuatt moet overslaan. Een bereik met een 0-grens staat uit."
+            : "Stel hier de standen in die OpenQuatt niet hoeft te gebruiken."}</p>
         </header>
         <div class="oq-settings-hp-group-grid">
           ${fields}

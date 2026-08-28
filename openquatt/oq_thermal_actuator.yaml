@@ -212,6 +212,79 @@ interval:
                           : secondary_frequency_snapshot;
           };
 
+          auto frequency_policy_active = [&](bool is_hp1)->bool {
+            const auto &storage = id(oq_frequency_caps_migrated);
+            if (!oq_frequency_policy::storage_has_migration(
+                    storage, oq_frequency_policy::CAPS_MIGRATED))
+              return false;
+            #if OQ_TOPOLOGY_DUO
+            const int hp_index = is_hp1 ? 1 : 2;
+            #else
+            const int hp_index = 1;
+            (void) is_hp1;
+            #endif
+            return oq_frequency_policy::storage_has_migration(
+                storage,
+                oq_frequency_policy::exclusions_migrated_flag(hp_index));
+          };
+
+          auto frequency_cap_hz = [&](int mode_code)->int {
+            auto* cap = mode_code == 1
+                ? (id(oq_silent_active).state
+                       ? id(oq_silent_cooling_max_frequency_hz)
+                       : id(oq_day_cooling_max_frequency_hz))
+                : (id(oq_silent_active).state
+                       ? id(oq_silent_heating_max_frequency_hz)
+                       : id(oq_day_heating_max_frequency_hz));
+            return cap->has_state() && !isnan(cap->state)
+                ? (int) lroundf(cap->state)
+                : -1;
+          };
+
+          auto excluded_frequency_ranges = [&](bool is_hp1, int mode_code)
+              -> oq_frequency_policy::ExcludedFrequencyRanges {
+            auto read_hz = [](auto* number)->int {
+              return number->has_state() && !isnan(number->state)
+                  ? (int) lroundf(number->state)
+                  : -1;
+            };
+            if (is_hp1) {
+              if (mode_code == 1) {
+                return {
+                    {read_hz(id(hp1_excluded_cooling_range_a_min_hz)),
+                     read_hz(id(hp1_excluded_cooling_range_a_max_hz))},
+                    {read_hz(id(hp1_excluded_cooling_range_b_min_hz)),
+                     read_hz(id(hp1_excluded_cooling_range_b_max_hz))},
+                };
+              }
+              return {
+                  {read_hz(id(hp1_excluded_heating_range_a_min_hz)),
+                   read_hz(id(hp1_excluded_heating_range_a_max_hz))},
+                  {read_hz(id(hp1_excluded_heating_range_b_min_hz)),
+                   read_hz(id(hp1_excluded_heating_range_b_max_hz))},
+              };
+            }
+            #if OQ_TOPOLOGY_DUO
+            if (mode_code == 1) {
+              return {
+                  {read_hz(id(${secondary_excluded_cooling_range_a_min_hz_id})),
+                   read_hz(id(${secondary_excluded_cooling_range_a_max_hz_id}))},
+                  {read_hz(id(${secondary_excluded_cooling_range_b_min_hz_id})),
+                   read_hz(id(${secondary_excluded_cooling_range_b_max_hz_id}))},
+              };
+            }
+            return {
+                {read_hz(id(${secondary_excluded_heating_range_a_min_hz_id})),
+                 read_hz(id(${secondary_excluded_heating_range_a_max_hz_id}))},
+                {read_hz(id(${secondary_excluded_heating_range_b_min_hz_id})),
+                 read_hz(id(${secondary_excluded_heating_range_b_max_hz_id}))},
+            };
+            #else
+            (void) mode_code;
+            return {};
+            #endif
+          };
+
           auto hp_hold_mode_opt = [&](bool is_hp1)->const char* {
             return oq_request::retained_mode_name(
                 hp_mode_is_cooling(is_hp1) || hp_mode_target_is_cooling(is_hp1),
@@ -618,20 +691,8 @@ interval:
 
             int applied = req_level;
 
-            // Manual HP service deliberately bypasses policy limits so every
-            // compressor level can be tested. Technical actuator guards remain active.
-            int cap = max_level;
-            if (!manual_hp_service_active) {
-              const bool silent_active = id(oq_silent_active).state;
-              cap = silent_active ? (int) roundf(id(oq_silent_max_level).state)
-                                  : (int) roundf(id(oq_day_max_level).state);
-              cap = std::max(min_level, std::min(max_level, cap));
-              if (applied > cap) applied = cap;
-              applied = pick_allowed_capped(applied, is_hp1, cap);
-            }
-
-            const int expected_mode =
-                applied > 0
+            int expected_mode =
+                req_level > 0
                     ? requested_mode_code_for_hp(is_hp1, true)
                     : 0;
             if (applied > 0 && expected_mode <= 0) {
@@ -644,6 +705,32 @@ interval:
               log_hp_block_change(
                   is_hp1,
                   "no valid thermal mode for compressor request");
+            }
+
+            // Manual HP service deliberately bypasses policy limits so every
+            // compressor level can be tested. Technical actuator guards remain active.
+            int cap = max_level;
+            int cap_hz = -1;
+            const bool use_frequency_policy =
+                !manual_hp_service_active && frequency_policy_active(is_hp1);
+            if (applied > 0 && use_frequency_policy) {
+              cap_hz = frequency_cap_hz(expected_mode);
+              applied = oq_frequency_policy::pick_allowed_level(
+                  configured_v2,
+                  runtime_frequency_snapshot(is_hp1),
+                  expected_mode,
+                  applied,
+                  1,
+                  max_level,
+                  cap_hz,
+                  excluded_frequency_ranges(is_hp1, expected_mode));
+            } else if (applied > 0 && !manual_hp_service_active) {
+              const bool silent_active = id(oq_silent_active).state;
+              cap = silent_active ? (int) roundf(id(oq_silent_max_level).state)
+                                  : (int) roundf(id(oq_day_max_level).state);
+              cap = std::max(min_level, std::min(max_level, cap));
+              if (applied > cap) applied = cap;
+              applied = pick_allowed_capped(applied, is_hp1, cap);
             }
 
             oq_odu::LevelCommand level_command{};
@@ -743,7 +830,17 @@ interval:
             }
 
             if (applied == 0 && req_level > 0) {
-              if (block_reason.empty() && req_level > cap) {
+              if (block_reason.empty() && use_frequency_policy) {
+                char reason_buf[144];
+                snprintf(
+                    reason_buf, sizeof(reason_buf),
+                    "frequency policy blocked request %d (cap=%d Hz)",
+                    requested_level, cap_hz);
+                block_reason = reason_buf;
+                candidate_block_reason =
+                    openquatt_decision_log::REASON_CANDIDATE_UNAVAILABLE;
+                log_hp_block_change(is_hp1, reason_buf);
+              } else if (block_reason.empty() && req_level > cap) {
                 char reason_buf[128];
                 snprintf(reason_buf, sizeof(reason_buf), "silent/day cap limited request to 0 (cap=%d, requested=%d)", cap, requested_level);
                 block_reason = reason_buf;

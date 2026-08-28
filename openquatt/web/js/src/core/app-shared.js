@@ -24,11 +24,16 @@ export { hasEntity } from "./entity-store.js";
       parts.push(`flow ${formatValue("flowSetpoint")}`);
     }
 
-    if (hasEntity("dayMax")) {
-      parts.push(`dag ${formatValue("dayMax")}`);
-    }
-    if (hasEntity("silentMax")) {
-      parts.push(`silent ${formatValue("silentMax")}`);
+    if (hasEntity("dayHeatingMaxHz")) {
+      parts.push(`dag H ${formatValue("dayHeatingMaxHz")} / C ${formatValue("dayCoolingMaxHz")}`);
+      parts.push(`stil H ${formatValue("silentHeatingMaxHz")} / C ${formatValue("silentCoolingMaxHz")}`);
+    } else {
+      if (hasEntity("dayMax")) {
+        parts.push(`dag ${formatValue("dayMax")}`);
+      }
+      if (hasEntity("silentMax")) {
+        parts.push(`stil ${formatValue("silentMax")}`);
+      }
     }
     if (hasEntity("maxWater")) {
       parts.push(`max water ${formatValue("maxWater")}`);

@@ -17,8 +17,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // strategie-afhankelijke warmtetoestemming-advies (Power House vs stooklijn, OT-voorkeur, centrale modal, auto-set in Quick Start),
     // plus hervatbare, fail-closed Quick Start-OTA met main-/doelcontrole en duurzaam post-bootbewijs,
     // afzonderlijke rollen voor een aangesloten aanvullende warmtebron, hybride verwarmen en overname,
-    // en het compacte per-ODU compressorprofiel voor veilige handmatige F-levels.
-    raw: 959_000,
+    // het compacte per-ODU compressorprofiel voor veilige handmatige F-levels,
+    // en frequentiegebaseerde dag-/stille limieten en uitsluitbereiken per ODU.
+    raw: 965_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

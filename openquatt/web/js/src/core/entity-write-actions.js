@@ -200,6 +200,20 @@ export function getNumberSettingValidationError(key, value, entities = state.ent
       return `De stopgrens moet lager zijn dan de startgrens (${startThreshold} W).`;
     }
   }
+  const exclusionBoundary = key.match(/^hp[12](?:Heating|Cooling)Exclude[AB](Min|Max)Hz$/);
+  if (exclusionBoundary && normalized > 0) {
+    const isMinimum = exclusionBoundary[1] === "Min";
+    const pairedKey = key.replace(isMinimum ? "MinHz" : "MaxHz", isMinimum ? "MaxHz" : "MinHz");
+    const pairedValue = parseLooseNumber(entities[pairedKey]?.value ?? entities[pairedKey]?.state);
+    if (Number.isFinite(pairedValue) && pairedValue > 0) {
+      if (isMinimum && normalized > pairedValue) {
+        return `De ondergrens mag niet hoger zijn dan de bovengrens (${pairedValue} Hz).`;
+      }
+      if (!isMinimum && normalized < pairedValue) {
+        return `De bovengrens mag niet lager zijn dan de ondergrens (${pairedValue} Hz).`;
+      }
+    }
+  }
   return "";
 }
 

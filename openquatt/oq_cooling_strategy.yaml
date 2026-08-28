@@ -1387,6 +1387,21 @@ interval:
           const int lead_code = lead_is_hp1 ? 1 : 2;
           if (id(oq_last_lead_hp) != lead_code) id(oq_last_lead_hp) = lead_code;
 
+          const bool configured_v2 =
+              id(hp_generation).has_state() &&
+              id(hp_generation).current_option() == "V2";
+          const auto hp1_frequency_snapshot =
+              oq_odu::decode_runtime_frequency_snapshot(
+                  id(hp1_runtime_frequency_snapshot_storage));
+          const auto secondary_frequency_snapshot =
+              oq_odu::decode_runtime_frequency_snapshot(
+                  id(${secondary_runtime_frequency_snapshot_storage_id}));
+          auto runtime_frequency_snapshot = [&](bool is_hp1)
+              -> const oq_odu::RuntimeFrequencySnapshot& {
+            return is_hp1 ? hp1_frequency_snapshot
+                          : secondary_frequency_snapshot;
+          };
+
           auto excluded_levels = [&](bool is_hp1)->oq_request::ExcludedLevels {
             if (is_hp1) {
               return oq_request::ExcludedLevels{
@@ -1413,8 +1428,78 @@ interval:
             #endif
           };
 
+          auto excluded_frequency_ranges = [&](bool is_hp1)
+              -> oq_frequency_policy::ExcludedFrequencyRanges {
+            auto read_hz = [](auto* number)->int {
+              return number->has_state() && !isnan(number->state)
+                  ? (int) lroundf(number->state)
+                  : -1;
+            };
+            if (is_hp1) {
+              return {
+                  {read_hz(id(hp1_excluded_cooling_range_a_min_hz)),
+                   read_hz(id(hp1_excluded_cooling_range_a_max_hz))},
+                  {read_hz(id(hp1_excluded_cooling_range_b_min_hz)),
+                   read_hz(id(hp1_excluded_cooling_range_b_max_hz))},
+              };
+            }
+            #if OQ_TOPOLOGY_DUO
+            return {
+                {read_hz(id(${secondary_excluded_cooling_range_a_min_hz_id})),
+                 read_hz(id(${secondary_excluded_cooling_range_a_max_hz_id}))},
+                {read_hz(id(${secondary_excluded_cooling_range_b_min_hz_id})),
+                 read_hz(id(${secondary_excluded_cooling_range_b_max_hz_id}))},
+            };
+            #else
+            return {};
+            #endif
+          };
+
+          auto frequency_policy_active = [&](bool is_hp1)->bool {
+            const auto &storage = id(oq_frequency_caps_migrated);
+            if (!oq_frequency_policy::storage_has_migration(
+                    storage, oq_frequency_policy::CAPS_MIGRATED))
+              return false;
+            #if OQ_TOPOLOGY_DUO
+            const int hp_index = is_hp1 ? 1 : 2;
+            #else
+            const int hp_index = 1;
+            (void) is_hp1;
+            #endif
+            return oq_frequency_policy::storage_has_migration(
+                storage,
+                oq_frequency_policy::exclusions_migrated_flag(hp_index));
+          };
+
+          auto cooling_cap_hz = [&]()->int {
+            auto* cap = id(oq_silent_active).state
+                ? id(oq_silent_cooling_max_frequency_hz)
+                : id(oq_day_cooling_max_frequency_hz);
+            return cap->has_state() && !isnan(cap->state)
+                ? (int) lroundf(cap->state)
+                : -1;
+          };
+
+          auto legacy_cooling_level_cap = [&]()->int {
+            int cap = (int) roundf(id(oq_day_max_level).state);
+            if (id(oq_silent_active).state)
+              cap = (int) roundf(id(oq_silent_max_level).state);
+            return std::max(0, std::min(max_level, cap));
+          };
+
           auto level_allowed = [&](bool is_hp1, int level)->bool {
-            return oq_request::level_allowed_for_excluded_levels(excluded_levels(is_hp1), level);
+            if (frequency_policy_active(is_hp1)) {
+              const int frequency_hz =
+                  oq_frequency_policy::automatic_frequency_hz(
+                      configured_v2, runtime_frequency_snapshot(is_hp1), 1,
+                      level);
+              return oq_frequency_policy::frequency_allowed(
+                  frequency_hz, cooling_cap_hz(),
+                  excluded_frequency_ranges(is_hp1));
+            }
+            return level <= legacy_cooling_level_cap() &&
+                   oq_request::level_allowed_for_excluded_levels(
+                       excluded_levels(is_hp1), level);
           };
 
           auto hp_has_any_allowed_level = [&](bool is_hp1)->bool {

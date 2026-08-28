@@ -41,10 +41,25 @@ import { escapeHtml } from "../core/html.js";
   }
 
   function renderCoolingSilentLimitWarning() {
+    const silentModeOverride = getEntityStateText("silentModeOverride", "").trim().toLowerCase();
+    if (silentModeOverride === "off") {
+      return "";
+    }
+
+    if (hasEntity("silentCoolingMaxHz")) {
+      const silentCoolingMaxHz = getEntityNumericValue("silentCoolingMaxHz");
+      if (!Number.isFinite(silentCoolingMaxHz) || silentCoolingMaxHz >= 120) {
+        return "";
+      }
+      const prefix = isEntityActive("silentActive")
+        ? "Stille modus is nu actief. Koelen wordt"
+        : "Tijdens stille modus wordt koelen";
+      return `<p class="oq-settings-cooling-limit-warning"><span class="oq-settings-cooling-limit-warning-icon" aria-hidden="true">!</span><span>${prefix} begrensd op een compressorfrequentie van ${escapeHtml(formatValue("silentCoolingMaxHz"))}.</span></p>`;
+    }
+
     const coolingDemandMax = getEntityNumericValue("coolingDemandMax");
     const silentMax = getEntityNumericValue("silentMax");
-    const silentModeOverride = getEntityStateText("silentModeOverride", "").trim().toLowerCase();
-    if (!hasEntity("silentMax") || !Number.isFinite(coolingDemandMax) || !Number.isFinite(silentMax) || coolingDemandMax <= silentMax || silentModeOverride === "off") {
+    if (!hasEntity("silentMax") || !Number.isFinite(coolingDemandMax) || !Number.isFinite(silentMax) || coolingDemandMax <= silentMax) {
       return "";
     }
 

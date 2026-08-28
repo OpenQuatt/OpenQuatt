@@ -752,7 +752,7 @@ import { renderModalShell } from "../core/modal-shell.js";
           taskKey: "manual-hp",
           title: "Handmatige warmtepompbediening",
           copy: "Start eerst de service-taak zodat de waterpomp draait. Zodra voldoende flow is gemeten kun je per warmtepomp vanuit Standby naar verwarmen of koelen schakelen en daarna een compressorstand aanvragen.",
-          subcopy: "Low-flow, maximale watertemperatuur, minimum draaitijd, minimum uit-tijd en veilige modusovergangen blijven actief. De koelvloer, silent-modus, dag/nacht-cap en normaal uitgesloten compressorstanden worden voor deze handmatige test bewust genegeerd.",
+          subcopy: "Low-flow, maximale watertemperatuur, minimum draaitijd, minimum uit-tijd en veilige modusovergangen blijven actief. De koelvloer, silent-modus, dag/nacht-cap en normaal uitgesloten frequentiebereiken worden voor deze handmatige test bewust genegeerd.",
           status: manualHpStatusDisplay,
           statusCopy: manualHpTaskRunning
             ? (manualHpStopping

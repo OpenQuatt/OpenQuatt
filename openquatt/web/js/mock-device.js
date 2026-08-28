@@ -2206,6 +2206,26 @@
       ["Electrical current limit", 16, 10, 20, 0.5, "A"],
       ["Day max level", 10, 0, 10, 1, ""],
       ["Silent max level", 6, 0, 10, 1, ""],
+      ["Day heating max frequency", 90, 0, 120, 1, "Hz"],
+      ["Day cooling max frequency", 74, 0, 120, 1, "Hz"],
+      ["Silent heating max frequency", 67, 0, 120, 1, "Hz"],
+      ["Silent cooling max frequency", 56, 0, 120, 1, "Hz"],
+      ["HP1 - Excluded heating range A minimum", 0, 0, 120, 1, "Hz"],
+      ["HP1 - Excluded heating range A maximum", 0, 0, 120, 1, "Hz"],
+      ["HP1 - Excluded heating range B minimum", 0, 0, 120, 1, "Hz"],
+      ["HP1 - Excluded heating range B maximum", 0, 0, 120, 1, "Hz"],
+      ["HP1 - Excluded cooling range A minimum", 0, 0, 120, 1, "Hz"],
+      ["HP1 - Excluded cooling range A maximum", 0, 0, 120, 1, "Hz"],
+      ["HP1 - Excluded cooling range B minimum", 0, 0, 120, 1, "Hz"],
+      ["HP1 - Excluded cooling range B maximum", 0, 0, 120, 1, "Hz"],
+      ["HP2 - Excluded heating range A minimum", 0, 0, 120, 1, "Hz"],
+      ["HP2 - Excluded heating range A maximum", 0, 0, 120, 1, "Hz"],
+      ["HP2 - Excluded heating range B minimum", 0, 0, 120, 1, "Hz"],
+      ["HP2 - Excluded heating range B maximum", 0, 0, 120, 1, "Hz"],
+      ["HP2 - Excluded cooling range A minimum", 0, 0, 120, 1, "Hz"],
+      ["HP2 - Excluded cooling range A maximum", 0, 0, 120, 1, "Hz"],
+      ["HP2 - Excluded cooling range B minimum", 0, 0, 120, 1, "Hz"],
+      ["HP2 - Excluded cooling range B maximum", 0, 0, 120, 1, "Hz"],
       ["Maximum water temperature", 56, 25, 75, 1, "°C"],
       ["Minimum runtime", 300, 300, 3600, 30, "s"],
       ["Compressor starts 2h warning limit", 6, 1, 20, 1, ""],
@@ -3120,14 +3140,26 @@
       setText("select", "Behavior", "Quiet");
       setNumber("Day max level", 7);
       setNumber("Silent max level", 5);
+      setNumber("Day heating max frequency", 72);
+      setNumber("Day cooling max frequency", 61);
+      setNumber("Silent heating max frequency", 61);
+      setNumber("Silent cooling max frequency", 52);
     } else if (value === "Balanced") {
       setText("select", "Behavior", "Balanced");
       setNumber("Day max level", 10);
       setNumber("Silent max level", 6);
+      setNumber("Day heating max frequency", 90);
+      setNumber("Day cooling max frequency", 74);
+      setNumber("Silent heating max frequency", 67);
+      setNumber("Silent cooling max frequency", 56);
     } else if (value === "High output") {
       setText("select", "Behavior", "Fast response");
       setNumber("Day max level", 10);
       setNumber("Silent max level", 8);
+      setNumber("Day heating max frequency", 90);
+      setNumber("Day cooling max frequency", 74);
+      setNumber("Silent heating max frequency", 79);
+      setNumber("Silent cooling max frequency", 66);
     }
   }
 

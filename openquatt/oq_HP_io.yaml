@@ -47,6 +47,63 @@ esphome:
                   oq_odu::CompressorLevelProfile::UNKNOWN));
           id(${hp_id}_generation_variant).publish_state("Unknown");
           id(${hp_id}_customer_model_code).publish_state("Unknown");
+      - lambda: |-
+          // The HP1 package owns restoration of the four shared caps so this
+          // also works before a runtime ODU table is available.
+          if (${hp_index} != 1) return;
+          const auto &storage = id(oq_frequency_caps_migrated);
+          auto restore_cap = [&](auto* number,
+                                 oq_frequency_policy::StorageIndex index,
+                                 uint8_t flag) {
+            if (!oq_frequency_policy::storage_has_migration(storage, flag))
+              return;
+            number->publish_state(oq_frequency_policy::stored_frequency_hz(
+                storage, index, 120));
+          };
+          restore_cap(id(oq_day_heating_max_frequency_hz),
+                      oq_frequency_policy::DAY_HEATING_MAX_HZ,
+                      oq_frequency_policy::DAY_HEATING_CAP_MIGRATED);
+          restore_cap(id(oq_day_cooling_max_frequency_hz),
+                      oq_frequency_policy::DAY_COOLING_MAX_HZ,
+                      oq_frequency_policy::DAY_COOLING_CAP_MIGRATED);
+          restore_cap(id(oq_silent_heating_max_frequency_hz),
+                      oq_frequency_policy::SILENT_HEATING_MAX_HZ,
+                      oq_frequency_policy::SILENT_HEATING_CAP_MIGRATED);
+          restore_cap(id(oq_silent_cooling_max_frequency_hz),
+                      oq_frequency_policy::SILENT_COOLING_MAX_HZ,
+                      oq_frequency_policy::SILENT_COOLING_CAP_MIGRATED);
+      - lambda: |-
+          // Restore this HP's eight range endpoints from the shared blob.
+          const auto &storage = id(oq_frequency_caps_migrated);
+          if (!oq_frequency_policy::storage_has_migration(
+                  storage,
+                  oq_frequency_policy::exclusions_migrated_flag(
+                      ${hp_index})))
+            return;
+          auto publish_stored = [&](auto* number,
+                                    oq_frequency_policy::StorageIndex hp1_index) {
+            number->publish_state(oq_frequency_policy::stored_frequency_hz(
+                storage,
+                oq_frequency_policy::storage_index_for_hp(
+                    ${hp_index}, hp1_index),
+                0));
+          };
+          publish_stored(id(${hp_id}_excluded_heating_range_a_min_hz),
+                         oq_frequency_policy::HP1_HEATING_A_MIN_HZ);
+          publish_stored(id(${hp_id}_excluded_heating_range_a_max_hz),
+                         oq_frequency_policy::HP1_HEATING_A_MAX_HZ);
+          publish_stored(id(${hp_id}_excluded_heating_range_b_min_hz),
+                         oq_frequency_policy::HP1_HEATING_B_MIN_HZ);
+          publish_stored(id(${hp_id}_excluded_heating_range_b_max_hz),
+                         oq_frequency_policy::HP1_HEATING_B_MAX_HZ);
+          publish_stored(id(${hp_id}_excluded_cooling_range_a_min_hz),
+                         oq_frequency_policy::HP1_COOLING_A_MIN_HZ);
+          publish_stored(id(${hp_id}_excluded_cooling_range_a_max_hz),
+                         oq_frequency_policy::HP1_COOLING_A_MAX_HZ);
+          publish_stored(id(${hp_id}_excluded_cooling_range_b_min_hz),
+                         oq_frequency_policy::HP1_COOLING_B_MIN_HZ);
+          publish_stored(id(${hp_id}_excluded_cooling_range_b_max_hz),
+                         oq_frequency_policy::HP1_COOLING_B_MAX_HZ);
       - script.execute: ${hp_id}_detect_odu_generation_once
 
 # ----------------------------
@@ -625,7 +682,8 @@ select:
       "On": 4096
     skip_updates: ${oq_modbus_control_readback_skip}
 
-# Per-HP compressor level exclusions are modeled as up to two explicit blocked levels.
+# Legacy level exclusions are retained for one-time migration and restore of
+# older configuration backups. The web UI prefers the frequency ranges below.
   - platform: template
     id: ${hp_id}_excluded_level_a
     name: "${prefix}Excluded compressor level A"
@@ -647,6 +705,12 @@ select:
       - "L8 (H79/C66)"
       - "L9 (H85/C71)"
       - "L10 (H90/C74)"
+    set_action:
+      - lambda: |-
+          // Re-run this HP's migration after an old backup or legacy write.
+          oq_frequency_policy::clear_migrated(
+              id(oq_frequency_caps_migrated),
+              oq_frequency_policy::exclusions_migrated_flag(${hp_index}));
 
   - platform: template
     id: ${hp_id}_excluded_level_b
@@ -669,11 +733,195 @@ select:
       - "L8 (H79/C66)"
       - "L9 (H85/C71)"
       - "L10 (H90/C74)"
+    set_action:
+      - lambda: |-
+          // Re-run this HP's migration after an old backup or legacy write.
+          oq_frequency_policy::clear_migrated(
+              id(oq_frequency_caps_migrated),
+              oq_frequency_policy::exclusions_migrated_flag(${hp_index}));
+
+# Frequency-native replacements for the two legacy excluded modellevels.
+# A range with a zero boundary is disabled; otherwise both boundaries are inclusive.
+number:
+  - platform: template
+    id: ${hp_id}_excluded_heating_range_a_min_hz
+    name: "${prefix}Excluded heating range A minimum"
+    unit_of_measurement: "Hz"
+    icon: mdi:speedometer-slow
+    min_value: 0
+    max_value: 120
+    step: 1
+    optimistic: true
+    initial_value: 0
+    disabled_by_default: true
+    entity_category: config
+    set_action:
+      - lambda: |-
+          oq_frequency_policy::store_configured_frequency_hz(
+              id(oq_frequency_caps_migrated),
+              oq_frequency_policy::storage_index_for_hp(
+                  ${hp_index},
+                  oq_frequency_policy::HP1_HEATING_A_MIN_HZ),
+              (int) lroundf(x),
+              oq_frequency_policy::exclusions_migrated_flag(${hp_index}));
+
+  - platform: template
+    id: ${hp_id}_excluded_heating_range_a_max_hz
+    name: "${prefix}Excluded heating range A maximum"
+    unit_of_measurement: "Hz"
+    icon: mdi:speedometer-slow
+    min_value: 0
+    max_value: 120
+    step: 1
+    optimistic: true
+    initial_value: 0
+    disabled_by_default: true
+    entity_category: config
+    set_action:
+      - lambda: |-
+          oq_frequency_policy::store_configured_frequency_hz(
+              id(oq_frequency_caps_migrated),
+              oq_frequency_policy::storage_index_for_hp(
+                  ${hp_index},
+                  oq_frequency_policy::HP1_HEATING_A_MAX_HZ),
+              (int) lroundf(x),
+              oq_frequency_policy::exclusions_migrated_flag(${hp_index}));
+
+  - platform: template
+    id: ${hp_id}_excluded_heating_range_b_min_hz
+    name: "${prefix}Excluded heating range B minimum"
+    unit_of_measurement: "Hz"
+    icon: mdi:speedometer-slow
+    min_value: 0
+    max_value: 120
+    step: 1
+    optimistic: true
+    initial_value: 0
+    disabled_by_default: true
+    entity_category: config
+    set_action:
+      - lambda: |-
+          oq_frequency_policy::store_configured_frequency_hz(
+              id(oq_frequency_caps_migrated),
+              oq_frequency_policy::storage_index_for_hp(
+                  ${hp_index},
+                  oq_frequency_policy::HP1_HEATING_B_MIN_HZ),
+              (int) lroundf(x),
+              oq_frequency_policy::exclusions_migrated_flag(${hp_index}));
+
+  - platform: template
+    id: ${hp_id}_excluded_heating_range_b_max_hz
+    name: "${prefix}Excluded heating range B maximum"
+    unit_of_measurement: "Hz"
+    icon: mdi:speedometer-slow
+    min_value: 0
+    max_value: 120
+    step: 1
+    optimistic: true
+    initial_value: 0
+    disabled_by_default: true
+    entity_category: config
+    set_action:
+      - lambda: |-
+          oq_frequency_policy::store_configured_frequency_hz(
+              id(oq_frequency_caps_migrated),
+              oq_frequency_policy::storage_index_for_hp(
+                  ${hp_index},
+                  oq_frequency_policy::HP1_HEATING_B_MAX_HZ),
+              (int) lroundf(x),
+              oq_frequency_policy::exclusions_migrated_flag(${hp_index}));
+
+  - platform: template
+    id: ${hp_id}_excluded_cooling_range_a_min_hz
+    name: "${prefix}Excluded cooling range A minimum"
+    unit_of_measurement: "Hz"
+    icon: mdi:speedometer-slow
+    min_value: 0
+    max_value: 120
+    step: 1
+    optimistic: true
+    initial_value: 0
+    disabled_by_default: true
+    entity_category: config
+    set_action:
+      - lambda: |-
+          oq_frequency_policy::store_configured_frequency_hz(
+              id(oq_frequency_caps_migrated),
+              oq_frequency_policy::storage_index_for_hp(
+                  ${hp_index},
+                  oq_frequency_policy::HP1_COOLING_A_MIN_HZ),
+              (int) lroundf(x),
+              oq_frequency_policy::exclusions_migrated_flag(${hp_index}));
+
+  - platform: template
+    id: ${hp_id}_excluded_cooling_range_a_max_hz
+    name: "${prefix}Excluded cooling range A maximum"
+    unit_of_measurement: "Hz"
+    icon: mdi:speedometer-slow
+    min_value: 0
+    max_value: 120
+    step: 1
+    optimistic: true
+    initial_value: 0
+    disabled_by_default: true
+    entity_category: config
+    set_action:
+      - lambda: |-
+          oq_frequency_policy::store_configured_frequency_hz(
+              id(oq_frequency_caps_migrated),
+              oq_frequency_policy::storage_index_for_hp(
+                  ${hp_index},
+                  oq_frequency_policy::HP1_COOLING_A_MAX_HZ),
+              (int) lroundf(x),
+              oq_frequency_policy::exclusions_migrated_flag(${hp_index}));
+
+  - platform: template
+    id: ${hp_id}_excluded_cooling_range_b_min_hz
+    name: "${prefix}Excluded cooling range B minimum"
+    unit_of_measurement: "Hz"
+    icon: mdi:speedometer-slow
+    min_value: 0
+    max_value: 120
+    step: 1
+    optimistic: true
+    initial_value: 0
+    disabled_by_default: true
+    entity_category: config
+    set_action:
+      - lambda: |-
+          oq_frequency_policy::store_configured_frequency_hz(
+              id(oq_frequency_caps_migrated),
+              oq_frequency_policy::storage_index_for_hp(
+                  ${hp_index},
+                  oq_frequency_policy::HP1_COOLING_B_MIN_HZ),
+              (int) lroundf(x),
+              oq_frequency_policy::exclusions_migrated_flag(${hp_index}));
+
+  - platform: template
+    id: ${hp_id}_excluded_cooling_range_b_max_hz
+    name: "${prefix}Excluded cooling range B maximum"
+    unit_of_measurement: "Hz"
+    icon: mdi:speedometer-slow
+    min_value: 0
+    max_value: 120
+    step: 1
+    optimistic: true
+    initial_value: 0
+    disabled_by_default: true
+    entity_category: config
+    set_action:
+      - lambda: |-
+          oq_frequency_policy::store_configured_frequency_hz(
+              id(oq_frequency_caps_migrated),
+              oq_frequency_policy::storage_index_for_hp(
+                  ${hp_index},
+                  oq_frequency_policy::HP1_COOLING_B_MAX_HZ),
+              (int) lroundf(x),
+              oq_frequency_policy::exclusions_migrated_flag(${hp_index}));
 
 # ----------------------------
 # NUMBER
 # ----------------------------
-number:
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
     id: ${hp_id}_pump_speed
@@ -1682,7 +1930,49 @@ text_sensor:
     icon: mdi:speedometer-slow
     update_interval: 10s
     lambda: |-
-      // Summarize the two exclusion selectors into one compact diagnostic label.
+      if (oq_frequency_policy::storage_has_migration(
+              id(oq_frequency_caps_migrated),
+              oq_frequency_policy::exclusions_migrated_flag(${hp_index}))) {
+        auto read_hz = [](auto* number) -> int {
+          return number->has_state() && !isnan(number->state)
+                     ? (int) lroundf(number->state)
+                     : -1;
+        };
+        std::string summary;
+        auto add_range = [&](const char* mode, const char* name, auto* min_number,
+                             auto* max_number) {
+          const oq_frequency_policy::FrequencyRange range{
+              read_hz(min_number), read_hz(max_number)};
+          if (oq_frequency_policy::valid_frequency_range(range) &&
+              oq_frequency_policy::frequency_range_disabled(range))
+            return;
+          char value[40];
+          if (oq_frequency_policy::valid_frequency_range(range)) {
+            if (range.min_hz == range.max_hz) {
+              snprintf(value, sizeof(value), "%s %s %d Hz", mode, name,
+                       range.min_hz);
+            } else {
+              snprintf(value, sizeof(value), "%s %s %d-%d Hz", mode, name,
+                       range.min_hz, range.max_hz);
+            }
+          } else {
+            snprintf(value, sizeof(value), "%s %s invalid", mode, name);
+          }
+          if (!summary.empty()) summary += ", ";
+          summary += value;
+        };
+        add_range("H", "A", id(${hp_id}_excluded_heating_range_a_min_hz),
+                  id(${hp_id}_excluded_heating_range_a_max_hz));
+        add_range("H", "B", id(${hp_id}_excluded_heating_range_b_min_hz),
+                  id(${hp_id}_excluded_heating_range_b_max_hz));
+        add_range("C", "A", id(${hp_id}_excluded_cooling_range_a_min_hz),
+                  id(${hp_id}_excluded_cooling_range_a_max_hz));
+        add_range("C", "B", id(${hp_id}_excluded_cooling_range_b_min_hz),
+                  id(${hp_id}_excluded_cooling_range_b_max_hz));
+        return summary.empty() ? std::string("None") : summary;
+      }
+
+      // Until migration completes, preserve the existing diagnostic label.
       const std::string a = id(${hp_id}_excluded_level_a).has_state()
                                 ? id(${hp_id}_excluded_level_a).current_option()
                                 : std::string("None");
@@ -1810,6 +2100,93 @@ interval:
     startup_delay: ${oq_modbus_startup_delay_ms}ms
     then:
       - lambda: |-
+          auto &frequency_policy_storage = id(oq_frequency_caps_migrated);
+          const uint8_t exclusion_migration_flag =
+              oq_frequency_policy::exclusions_migrated_flag(${hp_index});
+          if (!oq_frequency_policy::storage_has_migration(
+                  frequency_policy_storage, exclusion_migration_flag) &&
+              id(hp_generation).has_state()) {
+            const bool configured_v2 =
+                id(hp_generation).current_option() == "V2";
+            const auto snapshot = oq_odu::decode_runtime_frequency_snapshot(
+                id(${hp_id}_runtime_frequency_snapshot_storage));
+            const bool snapshot_ready =
+                snapshot.cooling.valid && snapshot.heating.valid &&
+                oq_frequency_policy::configuration_matches_variant(
+                    configured_v2, snapshot.variant);
+            if (snapshot_ready) {
+              auto option_level = [](auto* option) -> int {
+                if (!option->has_state() || option->current_option() == "None")
+                  return 0;
+                for (int level = 1; level <= oq_odu::MODEL_LEVEL_MAX;
+                     ++level) {
+                  if (oq_request::excluded_option_matches_level(
+                          option->current_option(), level))
+                    return level;
+                }
+                return -1;
+              };
+              const int level_a =
+                  option_level(id(${hp_id}_excluded_level_a));
+              const int level_b =
+                  option_level(id(${hp_id}_excluded_level_b));
+              auto migrated_frequency = [&](int mode_code, int level) -> int {
+                if (level == 0) return 0;
+                if (level < 0) return -1;
+                return oq_frequency_policy::automatic_frequency_hz(
+                    configured_v2, snapshot, mode_code, level);
+              };
+              const int heating_a = migrated_frequency(2, level_a);
+              const int heating_b = migrated_frequency(2, level_b);
+              const int cooling_a = migrated_frequency(1, level_a);
+              const int cooling_b = migrated_frequency(1, level_b);
+              if (heating_a >= 0 && heating_b >= 0 && cooling_a >= 0 &&
+                  cooling_b >= 0) {
+                auto store_and_publish = [&](auto* number,
+                                             oq_frequency_policy::StorageIndex
+                                                 hp1_index,
+                                             int value) {
+                  oq_frequency_policy::store_frequency_hz(
+                      frequency_policy_storage,
+                      oq_frequency_policy::storage_index_for_hp(
+                          ${hp_index}, hp1_index),
+                      value);
+                  number->publish_state(value);
+                };
+                store_and_publish(
+                    id(${hp_id}_excluded_heating_range_a_min_hz),
+                    oq_frequency_policy::HP1_HEATING_A_MIN_HZ, heating_a);
+                store_and_publish(
+                    id(${hp_id}_excluded_heating_range_a_max_hz),
+                    oq_frequency_policy::HP1_HEATING_A_MAX_HZ, heating_a);
+                store_and_publish(
+                    id(${hp_id}_excluded_heating_range_b_min_hz),
+                    oq_frequency_policy::HP1_HEATING_B_MIN_HZ, heating_b);
+                store_and_publish(
+                    id(${hp_id}_excluded_heating_range_b_max_hz),
+                    oq_frequency_policy::HP1_HEATING_B_MAX_HZ, heating_b);
+                store_and_publish(
+                    id(${hp_id}_excluded_cooling_range_a_min_hz),
+                    oq_frequency_policy::HP1_COOLING_A_MIN_HZ, cooling_a);
+                store_and_publish(
+                    id(${hp_id}_excluded_cooling_range_a_max_hz),
+                    oq_frequency_policy::HP1_COOLING_A_MAX_HZ, cooling_a);
+                store_and_publish(
+                    id(${hp_id}_excluded_cooling_range_b_min_hz),
+                    oq_frequency_policy::HP1_COOLING_B_MIN_HZ, cooling_b);
+                store_and_publish(
+                    id(${hp_id}_excluded_cooling_range_b_max_hz),
+                    oq_frequency_policy::HP1_COOLING_B_MAX_HZ, cooling_b);
+                oq_frequency_policy::mark_migrated(
+                    frequency_policy_storage, exclusion_migration_flag);
+                ESP_LOGI(
+                    "frequency_policy",
+                    "%sMigrated excluded levels to Hz: H%d/H%d C%d/C%d",
+                    "${prefix}", heating_a, heating_b, cooling_a, cooling_b);
+              }
+            }
+          }
+
           if (id(${hp_id}_odu_eeprom_dump).is_active()) {
             return;
           }

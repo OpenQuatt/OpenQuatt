@@ -21,8 +21,10 @@ const { renderSettingsCoolingSection } = await import("../js/src/settings/coolin
 const {
   renderHeatingCurveAdvancedFields,
   renderPowerHouseBaseFields,
+  renderSettingsHeatPumpLimiterCard,
   renderSettingsFlowSection,
 } = await import("../js/src/settings/heating.js");
+const { renderSilentSettingsGrid } = await import("../js/src/settings/silent.js");
 const {
   renderSettingsControlModeOverridePanel,
   renderSettingsCounterServiceSection,
@@ -112,10 +114,30 @@ test("start- en stopgrens kunnen elkaar niet passeren", () => {
   assert.equal(getNumberSettingValidationError("boilerSupportStopThreshold", 399, entities), "");
 });
 
+test("uitgesloten frequentiebereiken kunnen niet worden omgekeerd", () => {
+  const entities = {
+    hp1HeatingExcludeAMinHz: numberEntity(55, "Hz"),
+    hp1HeatingExcludeAMaxHz: numberEntity(61, "Hz"),
+  };
+
+  assert.equal(
+    getNumberSettingValidationError("hp1HeatingExcludeAMinHz", 62, entities),
+    "De ondergrens mag niet hoger zijn dan de bovengrens (61 Hz).",
+  );
+  assert.equal(
+    getNumberSettingValidationError("hp1HeatingExcludeAMaxHz", 54, entities),
+    "De bovengrens mag niet lager zijn dan de ondergrens (55 Hz).",
+  );
+  assert.equal(getNumberSettingValidationError("hp1HeatingExcludeAMinHz", 0, entities), "");
+  assert.equal(getNumberSettingValidationError("hp1HeatingExcludeAMaxHz", 55, entities), "");
+});
+
 test("nieuwe installatie- en service-entiteiten worden bij het juiste scherm geladen", () => {
   assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("electricalCurrentLimit"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("boilerSupportStartThreshold"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("boilerSupportStopThreshold"));
+  assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("hp1HeatingExcludeAMinHz"));
+  assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("hp2CoolingExcludeBMaxHz"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.service.includes("controlModeOverride"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.service.includes("hp1RuntimeHours"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.service.includes("resetRuntimeCountersHp1Hp2"));
@@ -205,10 +227,64 @@ test("koelsterkte licht de lagere limiet tijdens stille modus toe", () => {
   assert.doesNotMatch(renderSettingsCoolingSection(), /oq-settings-cooling-limit-warning/);
 });
 
+test("frequentielimieten vervangen de oude levelvelden en blijven per modus gescheiden", () => {
+  resetSettingsState({
+    silentStartTime: { value: "22:00", state: "22:00" },
+    silentEndTime: { value: "07:00", state: "07:00" },
+    silentHeatingMaxHz: numberEntity(60, "Hz", { max_value: 120, step: 1 }),
+    silentCoolingMaxHz: numberEntity(46, "Hz", { max_value: 120, step: 1 }),
+    dayHeatingMaxHz: numberEntity(90, "Hz", { max_value: 120, step: 1 }),
+    dayCoolingMaxHz: numberEntity(71, "Hz", { max_value: 120, step: 1 }),
+    silentMax: numberEntity(6),
+    dayMax: numberEntity(10),
+  });
+
+  const markup = renderSilentSettingsGrid();
+  assert.match(markup, /Maximale compressorfrequentie verwarmen tijdens stille uren/);
+  assert.match(markup, /Maximale compressorfrequentie koelen overdag/);
+  assert.doesNotMatch(markup, /Maximaal niveau tijdens stille uren/);
+});
+
+test("compressorinstellingen tonen twee frequentiebereiken per modus met legacy fallback", () => {
+  resetSettingsState({
+    hp1HeatingExcludeAMinHz: numberEntity(55, "Hz", { max_value: 120, step: 1 }),
+    hp1HeatingExcludeAMaxHz: numberEntity(61, "Hz", { max_value: 120, step: 1 }),
+    hp1HeatingExcludeBMinHz: numberEntity(0, "Hz", { max_value: 120, step: 1 }),
+    hp1HeatingExcludeBMaxHz: numberEntity(0, "Hz", { max_value: 120, step: 1 }),
+    hp1CoolingExcludeAMinHz: numberEntity(0, "Hz", { max_value: 120, step: 1 }),
+    hp1CoolingExcludeAMaxHz: numberEntity(0, "Hz", { max_value: 120, step: 1 }),
+    hp1CoolingExcludeBMinHz: numberEntity(0, "Hz", { max_value: 120, step: 1 }),
+    hp1CoolingExcludeBMaxHz: numberEntity(0, "Hz", { max_value: 120, step: 1 }),
+  });
+  let markup = renderSettingsHeatPumpLimiterCard("Warmtepomp 1", "hp1", "hp1ExcludedA", "hp1ExcludedB");
+  assert.match(markup, /Verwarmen · bereik A vanaf/);
+  assert.match(markup, /Koelen · bereik B tot en met/);
+  assert.match(markup, /0-grens staat uit/);
+
+  resetSettingsState({
+    hp1ExcludedA: { value: "L4", state: "L4", option: ["None", "L4"] },
+    hp1ExcludedB: { value: "None", state: "None", option: ["None", "L4"] },
+  });
+  markup = renderSettingsHeatPumpLimiterCard("Warmtepomp 1", "hp1", "hp1ExcludedA", "hp1ExcludedB");
+  assert.match(markup, /Stand A/);
+  assert.doesNotMatch(markup, /Verwarmen · bereik A vanaf/);
+});
+
+test("koelscherm licht de stille frequentiegrens toe", () => {
+  resetSettingsState({
+    coolingDemandMax: numberEntity(10, "", { min_value: 1, max_value: 10, step: 1 }),
+    silentCoolingMaxHz: numberEntity(46, "Hz", { max_value: 120, step: 1 }),
+    silentModeOverride: { value: "Schedule", state: "Schedule" },
+    silentActive: { value: true, state: "ON" },
+  });
+  assert.match(renderSettingsCoolingSection(), /Koelen wordt begrensd op een compressorfrequentie van 46 Hz/);
+});
+
 test("koelscherm laadt de stille-moduslimiet en actuele status", () => {
   assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("silentModeOverride"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("silentActive"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("silentMax"));
+  assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("silentCoolingMaxHz"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("coolingRestartMode"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("coolingMinimumOffTime"));
 });

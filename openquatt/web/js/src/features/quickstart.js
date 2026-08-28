@@ -1038,12 +1038,22 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
       ["Maximale watertemperatuur", formatValue("maxWater")],
     ];
 
-    const silentLines = [
+    const legacySilentLines = [
       ["Start stille uren", toTimeInputValue(getEntityValue("silentStartTime")) || "—"],
       ["Einde stille uren", toTimeInputValue(getEntityValue("silentEndTime")) || "—"],
       ["Maximaal niveau tijdens stille uren", formatValue("silentMax")],
       ["Maximaal niveau overdag", formatValue("dayMax")],
     ];
+    const silentLines = hasEntity("silentHeatingMaxHz")
+      ? [
+          ["Start stille uren", toTimeInputValue(getEntityValue("silentStartTime")) || "—"],
+          ["Einde stille uren", toTimeInputValue(getEntityValue("silentEndTime")) || "—"],
+          ["Stille uren · verwarmen", formatValue("silentHeatingMaxHz")],
+          ["Stille uren · koelen", formatValue("silentCoolingMaxHz")],
+          ["Overdag · verwarmen", formatValue("dayHeatingMaxHz")],
+          ["Overdag · koelen", formatValue("dayCoolingMaxHz")],
+        ]
+      : legacySilentLines;
 
     const usageTelemetryLines = hasEntity("usageTelemetryEnabled")
       ? [["Technische gebruiksstatistieken", isEntityActive("usageTelemetryEnabled") ? "Delen" : "Niet delen"]]
