@@ -24,11 +24,11 @@ export { hasEntity } from "./entity-store.js";
       parts.push(`flow ${formatValue("flowSetpoint")}`);
     }
 
-    if (hasEntity("dayMax")) {
-      parts.push(`dag ${formatValue("dayMax")}`);
+    if (hasEntity("dayMaxHz")) {
+      parts.push(`dag ${formatValue("dayMaxHz")}`);
     }
-    if (hasEntity("silentMax")) {
-      parts.push(`silent ${formatValue("silentMax")}`);
+    if (hasEntity("silentMaxHz")) {
+      parts.push(`stil ${formatValue("silentMaxHz")}`);
     }
     if (hasEntity("maxWater")) {
       parts.push(`max water ${formatValue("maxWater")}`);

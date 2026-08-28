@@ -752,7 +752,7 @@ import { renderModalShell } from "../core/modal-shell.js";
           taskKey: "manual-hp",
           title: "Handmatige warmtepompbediening",
           copy: "Start eerst de service-taak zodat de waterpomp draait. Zodra voldoende flow is gemeten kun je per warmtepomp vanuit Standby naar verwarmen of koelen schakelen en daarna een compressorstand aanvragen.",
-          subcopy: "Low-flow, maximale watertemperatuur, minimum draaitijd, minimum uit-tijd en veilige modusovergangen blijven actief. De koelvloer, silent-modus, dag/nacht-cap en normaal uitgesloten compressorstanden worden voor deze handmatige test bewust genegeerd.",
+          subcopy: "Low-flow, maximale watertemperatuur, minimum draaitijd, minimum uit-tijd en veilige modusovergangen blijven actief. De koelvloer, silent-modus, dag/nacht-cap en normaal uitgesloten frequentiebereiken worden voor deze handmatige test bewust genegeerd.",
           status: manualHpStatusDisplay,
           statusCopy: manualHpTaskRunning
             ? (manualHpStopping
@@ -779,7 +779,7 @@ import { renderModalShell } from "../core/modal-shell.js";
                 ${renderSettingsSelectField("manualHp1Mode", "Warmtepomp 1 werkmodus", "Start in Standby. Verwarmen of koelen kan pas worden gekozen zodra voldoende flow is gemeten.", "oq-settings-field--compact")}
                 ${renderSettingsSliderField("manualHp1Level", "Warmtepomp 1 compressorstand", `F0-F${hp1ManualMaxLevel}. F11-F20 vereisen V2-selectie plus bevestigd uitgebreid profiel.`, "oq-settings-field--compact", { maxValue: hp1ManualMaxLevel })}
               </div>
-              ${hasEntity("hp2ExcludedA") ? `
+              ${hasEntity("manualHp2Mode") ? `
                 <div class="oq-settings-manual-hp-unit">
                   ${renderSettingsSelectField("manualHp2Mode", "Warmtepomp 2 werkmodus", "Start in Standby. Verwarmen of koelen kan pas worden gekozen zodra voldoende flow is gemeten.", "oq-settings-field--compact")}
                   ${renderSettingsSliderField("manualHp2Level", "Warmtepomp 2 compressorstand", `F0-F${hp2ManualMaxLevel}. F11-F20 vereisen V2-selectie plus bevestigd uitgebreid profiel.`, "oq-settings-field--compact", { maxValue: hp2ManualMaxLevel })}

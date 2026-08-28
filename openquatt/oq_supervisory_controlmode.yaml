@@ -370,27 +370,29 @@ switch:
 # Sticky pump iPWM is a fixed compile-time fallback for CM0 sticky circulation.
 number:
   - platform: template
-    id: oq_silent_max_level
-    name: "Silent max level"
+    id: oq_silent_max_frequency_hz
+    name: "Silent max frequency"
     icon: mdi:speedometer-slow
+    unit_of_measurement: "Hz"
     min_value: 0
-    max_value: 10
+    max_value: 120
     step: 1
     optimistic: true
     restore_value: true
-    initial_value: 6
+    initial_value: 67
     entity_category: config
 
   - platform: template
-    id: oq_day_max_level
-    name: "Day max level"
+    id: oq_day_max_frequency_hz
+    name: "Day max frequency"
     icon: mdi:speedometer
+    unit_of_measurement: "Hz"
     min_value: 0
-    max_value: 10
+    max_value: 120
     step: 1
     optimistic: true
     restore_value: true
-    initial_value: 10
+    initial_value: 90
     entity_category: config
 
   - platform: template
@@ -675,6 +677,7 @@ interval:
           const uint32_t now_ms = (uint32_t) millis();
           static uint32_t boot_ms = 0;
           if (boot_ms == 0) boot_ms = now_ms;
+
           auto now_time = id(oq_time).now();
           const bool time_valid = now_time.is_valid();
           const auto openquatt_resume_at = id(oq_openquatt_resume_at).state_as_esptime();

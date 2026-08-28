@@ -23,6 +23,33 @@ import { renderSettingsBackupSection, renderSettingsTrendSection } from "./stora
 import { renderSettingsWaterSection } from "./water.js";
 import { escapeHtml } from "../core/html.js";
 
+function syncFrequencyRangeControl(control) {
+  const minInput = control?.querySelector('[data-oq-range-role="min"]');
+  const maxInput = control?.querySelector('[data-oq-range-role="max"]');
+  if (!minInput || !maxInput) {
+    return;
+  }
+  let minValue = Number(minInput.value);
+  let maxValue = Number(maxInput.value);
+  const scaleMin = Number(minInput.min);
+  const scaleMax = Number(minInput.max);
+  const span = Math.max(1, scaleMax - scaleMin);
+  const disabled = minValue === 0 || maxValue === 0;
+  if (disabled) {
+    minValue = maxValue = 0;
+    minInput.value = maxInput.value = "0";
+  }
+  const invalid = !disabled && minValue > maxValue;
+  control.classList.toggle("is-disabled", disabled);
+  control.classList.toggle("is-invalid", invalid);
+  control.style.setProperty("--oq-range-start", `${((minValue - scaleMin) / span) * 100}%`);
+  control.style.setProperty("--oq-range-end", `${((maxValue - scaleMin) / span) * 100}%`);
+  const value = control.querySelector("[data-oq-range-value]");
+  if (value) {
+    value.textContent = disabled ? "Geen uitsluiting" : invalid ? "Ongeldig bereik" : `${minValue}–${maxValue} Hz`;
+  }
+}
+
 
 
   export function renderSettingsGroupNav() {
@@ -157,11 +184,17 @@ import { escapeHtml } from "../core/html.js";
 
       card.querySelectorAll('input[data-oq-field]').forEach((input) => {
         const fieldKey = String(input.dataset.oqField || key);
-        const value = String(getInputDraftValue(fieldKey) || "");
+        const value = String(getInputDraftValue(fieldKey) ?? "");
         if (input.value !== value) {
           input.value = value;
         }
       });
+
+      const frequencyRange = card.querySelector('[data-oq-dual-range="true"]');
+      if (frequencyRange) {
+        syncFrequencyRangeControl(frequencyRange);
+        return;
+      }
 
       const sliderValue = card.querySelector(".oq-helper-slider-meta strong");
       const rangeInput = card.querySelector('input[type="range"][data-oq-field]');
