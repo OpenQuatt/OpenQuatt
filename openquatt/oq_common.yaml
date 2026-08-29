@@ -32,7 +32,9 @@ esphome:
           id(oq_installation_topology_text).publish_state("single");
           #endif
           id(oq_hardware_profile_text).publish_state("${oq_hardware_profile}");
+          #ifndef USE_OPENQUATT_NETWORK
           id(oq_connection_text).publish_state("${oq_connection}");
+          #endif
           id(oq_fw_select_callbacks_runtime_ready) = true;
           id(oq_firmware_update).add_on_state_callback([]() {
             const uint32_t request_generation = id(oq_fw_check_request_generation);
@@ -61,14 +63,17 @@ esphome:
             } else if (target == "alternate topology" && std::string("${alternate_topology}") != "") {
               topology = "${alternate_topology}";
             } else if (target == "alternate topology and connection"
-                       && std::string("${alternate_connection}") != ""
                        && std::string("${alternate_topology}") != "") {
-              connection = "${alternate_connection}";
               topology = "${alternate_topology}";
+              if (std::string("${alternate_connection}") != "") {
+                connection = "${alternate_connection}";
+              }
             }
 
+            const std::string connection_suffix =
+                std::string("${oq_artifact_connection_suffix}").empty() ? "" : "-" + connection;
             const std::string expected_file =
-                "openquatt-" + hardware_slug + "-" + topology + "-" + connection + ".firmware.ota.bin";
+                "openquatt-" + hardware_slug + "-" + topology + connection_suffix + ".firmware.ota.bin";
             const std::string firmware_url = id(oq_firmware_update).update_info.firmware_url;
             id(oq_fw_check_target_ready) = !hardware_slug.empty()
                 && firmware_url.size() >= expected_file.size()
@@ -877,12 +882,25 @@ button:
                 #else
                 const std::string topology = "single";
                 #endif
+                const std::string artifact_base =
+                    "openquatt-" + hardware_slug + "-" + topology;
                 const std::string expected_file =
-                    "openquatt-" + hardware_slug + "-" + topology + "-${oq_connection}.firmware.ota.bin";
+                    artifact_base + "${oq_artifact_connection_suffix}.firmware.ota.bin";
                 const bool valid_prefix = url.rfind(prefix, 0) == 0;
-                const bool valid_file =
+                bool valid_file =
                     url.size() >= expected_file.size() &&
                     url.compare(url.size() - expected_file.size(), expected_file.size(), expected_file) == 0;
+                #ifdef USE_OPENQUATT_NETWORK
+                // Stage-one WiFi/Ethernet names remain byte-identical aliases so
+                // trusted PR publishing also works before this tooling reaches dev.
+                for (const char *connection_suffix : {"-wifi", "-eth"}) {
+                  const std::string alias_file =
+                      artifact_base + connection_suffix + ".firmware.ota.bin";
+                  valid_file = valid_file ||
+                      (url.size() >= alias_file.size() &&
+                       url.compare(url.size() - alias_file.size(), alias_file.size(), alias_file) == 0);
+                }
+                #endif
                 const bool valid_md5 = md5_url == (url + ".md5");
                 if (!valid_prefix || !valid_file || !valid_md5) {
                   ESP_LOGW("oq_fw", "Test firmware rejected: invalid OTA URL for this build.");
@@ -1252,7 +1270,7 @@ text_sensor:
   - platform: template
     id: oq_connection_text
     name: OpenQuatt Connection
-    internal: true
+    internal: ${oq_connection_text_internal}
     icon: mdi:lan-connect
     entity_category: diagnostic
     update_interval: never

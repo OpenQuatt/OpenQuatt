@@ -149,6 +149,7 @@ export function formatSettingsOptionLabel(option) {
   }
 
   const labels = {
+    Automatic: "Automatisch",
     None: "Geen",
     Manual: "Handmatig",
     Disabled: "Niet gebruiken",

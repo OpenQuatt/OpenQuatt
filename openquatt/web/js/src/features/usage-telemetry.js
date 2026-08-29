@@ -57,7 +57,7 @@ export function renderUsageTelemetryDisclosure({ collapsible = false, idPrefix =
         <ul>
           <li><strong>Installatie</strong><span>Willekeurig ID, tijdstip en uptime</span></li>
           <li><strong>Software</strong><span>Versie en releasekanaal</span></li>
-          <li><strong>Platform</strong><span>Hardware, opstelling, verbinding en wifi-signaal</span></li>
+          <li><strong>Platform</strong><span>Hardware, opstelling, actieve verbinding, verbindingsmodus en wifi-signaal</span></li>
           <li><strong>Configuratie</strong><span>Quatt Hybrid-versie, verwarmingsstrategie, flowbron en regelbronnen</span></li>
           <li><strong>Systeemstatus</strong><span>Geheugen, looptijd, chiptemperatuur en herstartreden</span></li>
           <li><strong>Na een crash</strong><span>Het technische ESPHome-crashrapport, de ELF-SHA256 en voldoende firmware-identificatie om een passende rebuild te controleren</span></li>

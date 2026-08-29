@@ -77,22 +77,12 @@ STRICT_TOP_LEVEL_ORDER_RULES = {
         "esphome",
         "packages",
     ),
-    "configs/heatpump_controller_q/single_wifi.yaml": (
+    "configs/heatpump_controller_q/single.yaml": (
         "substitutions",
         "esphome",
         "packages",
     ),
-    "configs/heatpump_controller_q/duo_wifi.yaml": (
-        "substitutions",
-        "esphome",
-        "packages",
-    ),
-    "configs/heatpump_controller_q/single_eth.yaml": (
-        "substitutions",
-        "esphome",
-        "packages",
-    ),
-    "configs/heatpump_controller_q/duo_eth.yaml": (
+    "configs/heatpump_controller_q/duo.yaml": (
         "substitutions",
         "esphome",
         "packages",
@@ -228,41 +218,21 @@ NESTED_KEY_ORDER_RULES = {
         "openquatt_packages_common",
         "openquatt_topology_duo_packages",
     ),
-    ("configs/heatpump_controller_q/single_wifi.yaml", "packages"): (
+    ("configs/heatpump_controller_q/single.yaml", "packages"): (
         "openquatt_substitutions_common",
         "openquatt_topology_single_substitutions",
         "openquatt_profile_heatpump_controller_q",
         "openquatt_base_common",
-        "openquatt_connection_wifi",
-        "openquatt_connection_wifi_w5500_power_down",
+        "openquatt_connection_wifi_eth",
         "openquatt_packages_common",
     ),
-    ("configs/heatpump_controller_q/single_eth.yaml", "packages"): (
-        "openquatt_substitutions_common",
-        "openquatt_topology_single_substitutions",
-        "openquatt_profile_heatpump_controller_q",
-        "openquatt_base_common",
-        "openquatt_connection_eth",
-        "openquatt_packages_common",
-    ),
-    ("configs/heatpump_controller_q/duo_wifi.yaml", "packages"): (
+    ("configs/heatpump_controller_q/duo.yaml", "packages"): (
         "openquatt_substitutions_common",
         "openquatt_topology_duo_substitutions",
         "openquatt_profile_heatpump_controller_q",
         "openquatt_profile_heatpump_controller_q_cic_compatibility_duo",
         "openquatt_base_common",
-        "openquatt_connection_wifi",
-        "openquatt_connection_wifi_w5500_power_down",
-        "openquatt_packages_common",
-        "openquatt_topology_duo_packages",
-    ),
-    ("configs/heatpump_controller_q/duo_eth.yaml", "packages"): (
-        "openquatt_substitutions_common",
-        "openquatt_topology_duo_substitutions",
-        "openquatt_profile_heatpump_controller_q",
-        "openquatt_profile_heatpump_controller_q_cic_compatibility_duo",
-        "openquatt_base_common",
-        "openquatt_connection_eth",
+        "openquatt_connection_wifi_eth",
         "openquatt_packages_common",
         "openquatt_topology_duo_packages",
     ),

@@ -1,0 +1,102 @@
+# ==============================================================================
+# OpenQuatt - Connection Profile: WiFi + Ethernet W5500
+# ==============================================================================
+# Standard ESPHome owns both interfaces and route priority. OpenQuatt detects
+# Ethernet during automatic startup/recovery, handles explicit selection and
+# powers down the W5500 PHY while WiFi is active. Hotplug detection is therefore
+# intentionally unavailable during a stable WiFi connection.
+# ==============================================================================
+
+substitutions:
+  oq_connection: "auto"
+
+network:
+  priority: [ethernet, wifi]
+
+wifi:
+  power_save_mode: none
+  min_auth_mode: wpa2
+  ap:
+    ssid: "OpenQuatt"
+    password: "openquatt"
+
+ethernet:
+  type: W5500
+  clk_pin: ${eth_clk_pin}
+  mosi_pin: ${eth_mosi_pin}
+  miso_pin: ${eth_miso_pin}
+  cs_pin: ${eth_cs_pin}
+  interrupt_pin: ${eth_int_pin}
+
+captive_portal:
+
+# Enable ESP Web Tools WiFi provisioning while keeping AP fallback available.
+improv_serial:
+  next_url: "http://{{ip_address}}/"
+
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_network]
+
+openquatt_network:
+  id: oq_network_manager
+  active_connection: oq_connection_text
+  preferred_connection:
+    id: oq_preferred_connection
+    name: Preferred Connection
+
+sensor:
+  - platform: wifi_signal
+    id: oq_wifi_signal
+    name: WiFi Signal
+    icon: mdi:wifi-arrow-left-right
+    update_interval: 300s
+    entity_category: diagnostic
+
+openquatt_usage_telemetry:
+  active_connection_sensor: oq_connection_text
+  connection_preference_select: oq_preferred_connection
+  wifi_signal_sensor: oq_wifi_signal
+
+text_sensor:
+  - platform: template
+    id: oq_network_ip_address
+    name: IP Address
+    icon: mdi:ip-network-outline
+    entity_category: diagnostic
+    update_interval: 30s
+    lambda: |-
+      // Read the interface selected by the runtime manager; ESPHome's generic
+      // helper otherwise follows static route priority even after Power Down.
+      if (id(oq_connection_text).state == "Ethernet" &&
+          esphome::ethernet::global_eth_component != nullptr) {
+        for (const auto &address : esphome::ethernet::global_eth_component->get_ip_addresses()) {
+          if (address.is_set()) {
+            char buffer[esphome::network::IP_ADDRESS_BUFFER_SIZE];
+            return {address.str_to(buffer)};
+          }
+        }
+      }
+      if (id(oq_connection_text).state == "WiFi" &&
+          esphome::wifi::global_wifi_component != nullptr) {
+        for (const auto &address : esphome::wifi::global_wifi_component->get_ip_addresses()) {
+          if (address.is_set()) {
+            char buffer[esphome::network::IP_ADDRESS_BUFFER_SIZE];
+            return {address.str_to(buffer)};
+          }
+        }
+      }
+      for (const auto &address : esphome::network::get_ip_addresses()) {
+        if (address.is_set()) {
+          char buffer[esphome::network::IP_ADDRESS_BUFFER_SIZE];
+          return {address.str_to(buffer)};
+        }
+      }
+      return {"0.0.0.0"};
+  - platform: wifi_info
+    ssid:
+      name: WiFi SSID
+      icon: mdi:wifi
+      entity_category: diagnostic

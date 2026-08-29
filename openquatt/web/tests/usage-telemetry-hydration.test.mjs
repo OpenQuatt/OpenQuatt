@@ -41,7 +41,8 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
     hardwareProfileText: "heatpump_controller_q",
     hardwareRevisionText: "1.0 (batch 42)",
     installationTopology: "duo",
-    connectionText: "wifi",
+    connectionText: "WiFi",
+    preferredConnection: "Automatic",
     hpGeneration: "V1.5",
     flowSource: "Outdoor unit",
     qFlowSource: "Local",
@@ -87,6 +88,7 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
     hardware_revision: "1.0 (batch 42)",
     topology: "duo",
     connection: "wifi",
+    connection_preference: "auto",
     quatt_hybrid_generation_config: "v1_5",
     flow_source_config: "controller_local",
     heating_strategy: "power_house",
@@ -121,6 +123,16 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
   assert.equal(flowSourceConfigWireValue("Outdoor unit", undefined, false), "outdoor_unit");
   assert.ok(USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("psramFree"));
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("webServerLogHistoryEnabled"));
+});
+
+test("usage telemetry preview normalizes runtime connection states", () => {
+  const preview = createUsageTelemetryPreview({
+    connectionText: "Ethernet",
+    preferredConnection: "WiFi",
+  });
+  assert.equal(preview.connection, "eth");
+  assert.equal(preview.connection_preference, "wifi");
+  assert.equal(createUsageTelemetryPreview({ connectionText: "Not connected" }).connection, "none");
 });
 
 test("usage telemetry preview bounds MQTT status and fails closed", async () => {
@@ -315,6 +327,7 @@ test("usage telemetry disclosure matches the hourly payload scope", async () => 
   assert.match(disclosureSource, /oq-usage-consent-installation-id/);
   assert.match(disclosureSource, /vrijwel direct en daarna ongeveer elk uur/);
   assert.match(disclosureSource, /OpenQuatt-loggingserver/);
+  assert.match(disclosureSource, /actieve verbinding, verbindingsmodus/);
   assert.match(disclosureSource, /wifi-signaal/);
   assert.match(disclosureSource, /Quatt Hybrid-versie, verwarmingsstrategie, flowbron en regelbronnen/);
   assert.match(disclosureSource, /Aan\/uit-status van CiC, OpenTherm-thermostaat, ketelondersteuning, MQTT-inputs en lokale historie/);

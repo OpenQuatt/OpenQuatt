@@ -315,6 +315,10 @@
   gap: 10px;
 }
 
+.oq-helper-modal-grid > .oq-settings-field {
+  grid-column: 1 / -1;
+}
+
 .oq-helper-modal-row {
   padding: 12px 14px;
   border: 1px solid var(--oq-helper-modal-panel-border);

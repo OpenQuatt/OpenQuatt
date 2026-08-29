@@ -134,7 +134,9 @@ import { state } from "../core/state.js";
   }
 
   export function getFirmwareBuildConnection() {
-    return normalizeFirmwareConnection(getEntityValue("connectionText") || getDeviceMeta().connection);
+    return normalizeFirmwareConnection(getEntityValue("preferredConnection"))
+      || normalizeFirmwareConnection(getEntityValue("connectionText"))
+      || normalizeFirmwareConnection(getDeviceMeta().connection);
   }
 
   export function getFirmwareAlternateConnection() {
@@ -163,6 +165,9 @@ import { state } from "../core/state.js";
     const topologyLabel = getFirmwareTopologyLabel(topology);
     const hardware = getFirmwareHardwareProfile();
     if (hardware === "heatpump_controller_q") {
+      if (hasEntity("preferredConnection")) {
+        return `Heatpump Controller Q ${topologyLabel}`;
+      }
       return `Heatpump Controller Q ${topologyLabel} ${getFirmwareConnectionLabel(connection)}`;
     }
     if (hardware === "heatpump_listener") {
@@ -256,11 +261,11 @@ import { state } from "../core/state.js";
 
   export function getDeviceIpAddress() {
     const entityText = String(state.entities.ipAddress?.state ?? state.entities.ipAddress?.value ?? "").trim();
-    if (entityText) {
+    if (entityText && entityText !== "0.0.0.0" && entityText !== "::") {
       return entityText;
     }
     const explicit = String(getDeviceMeta().ipAddress || "").trim();
-    if (explicit) {
+    if (explicit && explicit !== "0.0.0.0" && explicit !== "::") {
       return explicit;
     }
     const host = typeof window !== "undefined" ? String(window.location.hostname || "").trim() : "";

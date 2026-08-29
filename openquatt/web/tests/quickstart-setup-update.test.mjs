@@ -28,7 +28,9 @@ const {
 } = await import("../js/src/core/state.js");
 const {
   getFirmwareBuildSwitchModel,
+  getFirmwareConnectionSwitchModel,
   getFirmwareProgressModel,
+  getFirmwareTestTargetModel,
   hasKnownFirmwareTargetVersion,
   isFirmwareInstallCompletionConfirmed,
   isQuickStartSetupInstallCompletionConfirmed,
@@ -118,6 +120,31 @@ test("de actuele main-versie en configuratie hebben geen OTA nodig", () => {
   resetSetupState();
   delete state.entities.firmwareUpdateChannel;
   assert.equal(getFirmwareBuildSwitchModel("single", "wifi").canInstall, false);
+});
+
+test("de uniforme Q-firmware beheert verbinding los van OTA", () => {
+  resetSetupState();
+  state.entities.preferredConnection = {
+    ...textEntity("Automatic"),
+    option: ["Automatic", "WiFi", "Ethernet"],
+  };
+  state.entities.firmwareUpdate.title = "Heatpump Controller Q Single";
+
+  const currentModel = getFirmwareBuildSwitchModel("single", "wifi");
+  assert.equal(currentModel.targetOption, "current build");
+  assert.equal(currentModel.targetBuildLabel, "Heatpump Controller Q Single");
+  assert.equal(getFirmwareConnectionSwitchModel(), null);
+  assert.deepEqual(getFirmwareTestTargetModel(), {
+    available: true,
+    artifactName: "openquatt-heatpump-controller-q-single-wifi",
+    otaFileName: "openquatt-heatpump-controller-q-single-wifi.firmware.ota.bin",
+    label: "Heatpump Controller Q Single Wi-Fi",
+  });
+
+  const topologyModel = getFirmwareBuildSwitchModel("duo", "eth");
+  assert.equal(topologyModel.targetOption, "alternate topology");
+  assert.equal(topologyModel.canSwitch, true);
+  assert.equal(topologyModel.targetBuildLabel, "Heatpump Controller Q Duo");
 });
 
 test("Quick Start staat de expliciet bevestigde overstap van dev naar main toe", () => {

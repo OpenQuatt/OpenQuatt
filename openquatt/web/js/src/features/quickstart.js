@@ -19,7 +19,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
 
   export function getQuickStartSetupModel() {
     const currentTopology = getInstallationTopology();
-    const currentConnection = getFirmwareBuildConnection();
+    const currentConnection = getFirmwareBuildConnection() || (hasEntity("preferredConnection") ? "wifi" : "");
     const currentKey = `${currentTopology}:${currentConnection}`;
     const selectedKey = state.quickStartSetupDraft || currentKey;
     const [targetTopology, targetConnection] = selectedKey.split(":");
@@ -45,12 +45,13 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
     const currentVersion = getFirmwareCurrentVersion(firmwareEntity) || "Onbekend";
     const mainVersion = mainManifestReady ? getFirmwareLatestVersion(firmwareEntity) || "Onbekend" : "Wordt na bevestigen gecontroleerd";
     const firmwareCurrent = mainManifestReady && isQuickStartSetupFirmwareCurrent(model);
+    const unifiedNetworkBuild = hasEntity("preferredConnection");
     const options = [
-      ["single:wifi", "Single · Wi-Fi", "Eén warmtepomp via het draadloze netwerk."],
-      ["single:eth", "Single · Ethernet", "Eén warmtepomp via een vaste netwerkkabel."],
-      ["duo:wifi", "Duo · Wi-Fi", "Twee warmtepompen via het draadloze netwerk."],
-      ["duo:eth", "Duo · Ethernet", "Twee warmtepompen via een vaste netwerkkabel."],
-    ];
+        ["single:wifi", "Single · Wi-Fi", "Eén warmtepomp via het draadloze netwerk."],
+        ["single:eth", "Single · Ethernet", "Eén warmtepomp via een vaste netwerkkabel."],
+        ["duo:wifi", "Duo · Wi-Fi", "Twee warmtepompen via het draadloze netwerk."],
+        ["duo:eth", "Duo · Ethernet", "Twee warmtepompen via een vaste netwerkkabel."],
+      ].filter(([key]) => !unifiedNetworkBuild || key.endsWith(`:${currentConnection}`));
     const requirements = [
       model.targetIsDuo ? "De tweede warmtepomp is aangesloten en hoort bij deze controller." : "Deze controller wordt voor één warmtepomp gebruikt.",
       model.targetIsEthernet ? "De netwerkkabel is aangesloten." : "De Wi-Fi-gegevens zijn beschikbaar op de controller.",
@@ -63,7 +64,9 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
       <section class="oq-helper-panel">
         <p class="oq-helper-label">${escapeHtml(getQuickStepKicker("setup"))}</p>
         <h2 class="oq-helper-section-title">Configuratie en software-update</h2>
-        <p class="oq-helper-section-copy">Kies de configuratie van je Q-edition. OpenQuatt controleert daarna de nieuwste stabiele main-release en installeert deze alleen als de versie of configuratie afwijkt.</p>
+        <p class="oq-helper-section-copy">${escapeHtml(unifiedNetworkBuild
+          ? "Kies de opstelling. De verbindingsmodus wijzig je via Connectiviteit."
+          : "Kies de configuratie van je Q-edition. OpenQuatt controleert daarna de nieuwste stabiele main-release en installeert deze alleen als de versie of configuratie afwijkt.")}</p>
         <div class="oq-helper-fields">
           ${options.map(([key, title, copy]) => {
             const selected = model.selectedKey === key;

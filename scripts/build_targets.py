@@ -69,6 +69,39 @@ def filter_targets(targets: list[dict[str, str]], status: str) -> list[dict[str,
     return [target for target in targets if target.get("status") == status]
 
 
+def artifact_names(target: dict[str, str]) -> list[str]:
+    """Return the canonical artifact name followed by compatibility aliases."""
+    names = [target["artifact_name"]]
+    aliases = target.get("artifact_aliases", "")
+    names.extend(alias.strip() for alias in aliases.split(",") if alias.strip())
+    if len(names) != len(set(names)):
+        raise SystemExit(f"Duplicate artifact name or alias for target {target['id']}")
+    return names
+
+
+def manifest_name_for_artifact(target: dict[str, str], artifact_name: str) -> str:
+    if artifact_name == target["artifact_name"]:
+        return target["manifest_name"]
+    return f"{artifact_name}-ota.manifest.json"
+
+
+def connection_for_artifact(target: dict[str, str], artifact_name: str) -> str:
+    if artifact_name.endswith("-wifi"):
+        return "wifi"
+    if artifact_name.endswith("-eth"):
+        return "eth"
+    return target["connection"]
+
+
+def display_name_for_artifact(target: dict[str, str], artifact_name: str) -> str:
+    connection = connection_for_artifact(target, artifact_name)
+    if target["connection"] == "auto" and connection == "wifi":
+        return f"{target['display_name']} Wi-Fi"
+    if target["connection"] == "auto" and connection == "eth":
+        return f"{target['display_name']} Ethernet"
+    return target["display_name"]
+
+
 def md5sum(path: Path) -> str:
     digest = hashlib.md5()
     with path.open("rb") as handle:
@@ -77,7 +110,11 @@ def md5sum(path: Path) -> str:
     return digest.hexdigest()
 
 
-def find_artifact_dir(dist_dir: Path, artifact_name: str) -> Path:
+def find_artifact_dir(
+    dist_dir: Path,
+    artifact_name: str,
+    excluded_artifact_names: Sequence[str] = (),
+) -> Path:
     direct = dist_dir / artifact_name
     if direct.is_dir():
         if direct.is_symlink():
@@ -85,7 +122,14 @@ def find_artifact_dir(dist_dir: Path, artifact_name: str) -> Path:
         return direct
 
     matches = sorted(
-        path for path in dist_dir.glob(f"{artifact_name}-*") if path.is_dir() and not path.is_symlink()
+        path
+        for path in dist_dir.glob(f"{artifact_name}-*")
+        if path.is_dir()
+        and not path.is_symlink()
+        and not any(
+            path.name == excluded_name or path.name.startswith(f"{excluded_name}-")
+            for excluded_name in excluded_artifact_names
+        )
     )
     if len(matches) == 1:
         return matches[0]
@@ -101,37 +145,39 @@ def prepare_release_assets(version: str, base_url: str, release_url: str) -> Non
 
     for target in filter_targets(load_targets(), "enabled"):
         artifact_name = target["artifact_name"]
-        artifact_dir = find_artifact_dir(dist_dir, artifact_name)
+        artifact_dir = find_artifact_dir(dist_dir, artifact_name, artifact_names(target)[1:])
 
         ota_source = artifact_dir / "firmware.ota.bin"
         factory_source = artifact_dir / "firmware.factory.bin"
         if not ota_source.is_file() or not factory_source.is_file():
             raise SystemExit(f"Artifact {artifact_name} is missing firmware.ota.bin or firmware.factory.bin")
 
-        ota_name = f"{artifact_name}.firmware.ota.bin"
-        factory_name = f"{artifact_name}.firmware.factory.bin"
-        ota_dest = dist_dir / ota_name
-        factory_dest = dist_dir / factory_name
-        shutil.copy2(ota_source, ota_dest)
-        shutil.copy2(factory_source, factory_dest)
+        for published_name in artifact_names(target):
+            published_display_name = display_name_for_artifact(target, published_name)
+            ota_name = f"{published_name}.firmware.ota.bin"
+            factory_name = f"{published_name}.firmware.factory.bin"
+            ota_dest = dist_dir / ota_name
+            factory_dest = dist_dir / factory_name
+            shutil.copy2(ota_source, ota_dest)
+            shutil.copy2(factory_source, factory_dest)
 
-        manifest = {
-            "name": target["display_name"],
-            "version": version,
-            "builds": [
-                {
-                    "chipFamily": target["chip_family"],
-                    "ota": {
-                        "path": f"{base_url}/{ota_name}",
-                        "md5": md5sum(ota_dest),
-                        "release_url": release_url,
-                        "summary": f"{target['display_name']} firmware {version}",
+            manifest = {
+                "name": published_display_name,
+                "version": version,
+                "builds": [
+                    {
+                        "chipFamily": target["chip_family"],
+                        "ota": {
+                            "path": f"{base_url}/{ota_name}",
+                            "md5": md5sum(ota_dest),
+                            "release_url": release_url,
+                            "summary": f"{published_display_name} firmware {version}",
+                        },
                     },
-                }
-            ],
-        }
-        manifest_path = REPO_ROOT / target["manifest_name"]
-        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+                ],
+            }
+            manifest_path = REPO_ROOT / manifest_name_for_artifact(target, published_name)
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
 
 def prepare_pr_test_assets(
@@ -150,32 +196,34 @@ def prepare_pr_test_assets(
 
     for target in filter_targets(load_targets(), "enabled"):
         artifact_name = target["artifact_name"]
-        artifact_dir = find_artifact_dir(artifact_root, artifact_name)
+        artifact_dir = find_artifact_dir(artifact_root, artifact_name, artifact_names(target)[1:])
         ota_source = artifact_dir / "firmware.ota.bin"
         if ota_source.is_symlink() or not ota_source.is_file():
             raise SystemExit(f"Artifact {artifact_name} is missing firmware.ota.bin")
 
-        ota_name = f"{artifact_name}.firmware.ota.bin"
-        ota_dest = dist_dir / ota_name
-        shutil.copy2(ota_source, ota_dest)
-        digest = md5sum(ota_dest)
-        md5_name = f"{ota_name}.md5"
-        (dist_dir / md5_name).write_text(f"{digest}\n", encoding="utf-8")
+        for published_name in artifact_names(target):
+            published_display_name = display_name_for_artifact(target, published_name)
+            ota_name = f"{published_name}.firmware.ota.bin"
+            ota_dest = dist_dir / ota_name
+            shutil.copy2(ota_source, ota_dest)
+            digest = md5sum(ota_dest)
+            md5_name = f"{ota_name}.md5"
+            (dist_dir / md5_name).write_text(f"{digest}\n", encoding="utf-8")
 
-        assets.append(
-            {
-                "target": target["id"],
-                "hardware": target["hardware"],
-                "topology": target["topology"],
-                "connection": target["connection"],
-                "display_name": target["display_name"],
-                "ota_file": ota_name,
-                "ota_url": f"{base_url}/{ota_name}",
-                "md5_file": md5_name,
-                "md5_url": f"{base_url}/{md5_name}",
-                "md5": digest,
-            }
-        )
+            assets.append(
+                {
+                    "target": target["id"],
+                    "hardware": target["hardware"],
+                    "topology": target["topology"],
+                    "connection": connection_for_artifact(target, published_name),
+                    "display_name": published_display_name,
+                    "ota_file": ota_name,
+                    "ota_url": f"{base_url}/{ota_name}",
+                    "md5_file": md5_name,
+                    "md5_url": f"{base_url}/{md5_name}",
+                    "md5": digest,
+                }
+            )
 
     catalog = {
         "pr": str(pr_number),
@@ -196,7 +244,8 @@ def command_list_configs(args: argparse.Namespace) -> int:
 
 def command_factory_files(args: argparse.Namespace) -> int:
     for target in filter_targets(load_targets(), args.status):
-        print(f"{target['artifact_name']}.firmware.factory.bin")
+        for artifact_name in artifact_names(target):
+            print(f"{artifact_name}.firmware.factory.bin")
     return 0
 
 

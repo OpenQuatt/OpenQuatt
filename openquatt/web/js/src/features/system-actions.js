@@ -29,6 +29,8 @@ function closeSystemModal() {
 
 const systemActionHandlers = {
   "open-connectivity-modal": () => {
+    state.controlError = "";
+    state.controlNotice = "";
     state.systemModal = "connectivity";
     render();
   },
