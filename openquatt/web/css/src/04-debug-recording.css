@@ -295,7 +295,8 @@
   height: 16px;
 }
 
-.oq-debug-recording-feedback--error {
+.oq-debug-recording-feedback--error,
+.oq-debug-recording-feedback--warning {
   border-color: var(--oq-theme-border-1yjq, rgba(234, 88, 12, 0.28));
   background: var(--oq-theme-surface-q7ee, rgba(255, 247, 237, 0.86));
   color: var(--oq-theme-color-3q9a, var(--oq-helper-accent-deep));
@@ -304,8 +305,6 @@
 .oq-helper-shell--dark .oq-debug-recording-feedback,
 .oq-helper-modal-backdrop--dark .oq-debug-recording-feedback {
   border-color: rgba(34, 197, 94, 0.28);
-  
-  
 }
 
 @media (max-width: 720px) {

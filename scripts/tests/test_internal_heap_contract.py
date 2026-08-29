@@ -160,7 +160,7 @@ class InternalHeapPlacementContractTest(unittest.TestCase):
             LOG_HISTORY_CPP,
         )
         self.assertIn(
-            "this->samples_.allocate_external(SAMPLE_CAPACITY)",
+            "this->samples_.allocate_external(BUFFER_BYTES)",
             DEBUG_RECORDER_CPP,
         )
         self.assertIn(
@@ -168,7 +168,19 @@ class InternalHeapPlacementContractTest(unittest.TestCase):
             DEBUG_RECORDER_CPP,
         )
         self.assertIn(
+            "this->pending_fields_.allocate_external(FIELD_CAPACITY)",
+            DEBUG_RECORDER_CPP,
+        )
+        self.assertIn(
             "this->string_entries_.allocate_external(STRING_ENTRY_CAPACITY)",
+            DEBUG_RECORDER_CPP,
+        )
+        self.assertIn(
+            "this->string_buckets_.allocate_external(STRING_BUCKET_CAPACITY)",
+            DEBUG_RECORDER_CPP,
+        )
+        self.assertIn(
+            "this->string_compaction_order_.allocate_external(STRING_ENTRY_CAPACITY)",
             DEBUG_RECORDER_CPP,
         )
         self.assertIn(

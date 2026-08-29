@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <new>
+#include <utility>
 
 #include "esphome/core/helpers.h"
 
@@ -18,6 +19,13 @@ class PsramBuffer {
 
   PsramBuffer(const PsramBuffer&) = delete;
   PsramBuffer& operator=(const PsramBuffer&) = delete;
+
+  void swap(PsramBuffer& other) noexcept {
+    using std::swap;
+    swap(this->data_, other.data_);
+    swap(this->size_, other.size_);
+    swap(this->external_, other.external_);
+  }
 
   bool allocate(size_t count) { return this->allocate_(count, true); }
 

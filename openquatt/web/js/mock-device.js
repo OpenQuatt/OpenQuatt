@@ -2,8 +2,10 @@
   const OPENQUATT_RESUME_CLEAR_VALUE = "2000-01-01 00:00:00";
   const OPENQUATT_AUTH_RECOVERY_WINDOW_MS = 600000;
   const DEBUG_RECORDING_BUFFER_BYTES = 1024 * 1024;
-  const DEBUG_RECORDING_SAMPLE_BYTES = 516;
-  const DEBUG_RECORDING_SAMPLE_CAPACITY = Math.floor(DEBUG_RECORDING_BUFFER_BYTES / DEBUG_RECORDING_SAMPLE_BYTES);
+  const DEBUG_RECORDING_SYSTEM_FIELD_COUNT = 5;
+  const DEBUG_RECORDING_FIELD_CAPACITY = 224;
+  const DEBUG_RECORDING_SAMPLE_HEADER_BYTES = 8;
+  const DEBUG_RECORDING_CSRF_TOKEN = "mock-debug-recording-csrf-token";
   const MOCK_STABLE_VERSION = "v0.0.0-demo";
   const MOCK_DEV_VERSION = "v0.0.1-demo";
   const MOCK_TEST_VERSION = "v0.0.0-demo-pr.test";
@@ -193,6 +195,11 @@
       nextOffsetS: 0,
       fields: [],
       samples: [],
+      missingFieldCount: 0,
+      pendingFields: [],
+      pendingRequestedFieldCount: 0,
+      pendingMissingFieldCount: 0,
+      configurationPending: false,
     },
     oduEepromDumps: {
       1: { active: false, ready: false, startedAt: 0, completedAt: 0, jobId: 0 },
@@ -4880,6 +4887,7 @@
       192000 - Math.round(offsetS * 7) + wobble,
       5148000 - Math.round(offsetS * 13),
       184000 - Math.round(offsetS * 5),
+      128000 - Math.round(offsetS * 3),
     ];
     return {
       offset_s: offsetS,
@@ -4901,6 +4909,31 @@
     };
   }
 
+  function getDebugRecordingFieldWidth(field) {
+    if (field?.domain === "binary_sensor" || field?.domain === "switch") return 1;
+    if (field?.domain === "text_sensor" || field?.domain === "select") return 2;
+    return 4;
+  }
+
+  function getDebugRecordingSampleBytes(fields = state.debugRecording.fields) {
+    return DEBUG_RECORDING_SAMPLE_HEADER_BYTES
+      + fields.reduce((total, field) => total + getDebugRecordingFieldWidth(field), 0);
+  }
+
+  function getDebugRecordingSampleCapacity(fields = state.debugRecording.fields) {
+    const sampleBytes = getDebugRecordingSampleBytes(fields);
+    return sampleBytes > DEBUG_RECORDING_SAMPLE_HEADER_BYTES
+      ? Math.floor(DEBUG_RECORDING_BUFFER_BYTES / sampleBytes)
+      : 0;
+  }
+
+  function isDebugRecordingEventField(field) {
+    return field?.domain === "binary_sensor"
+      || field?.domain === "switch"
+      || field?.domain === "text_sensor"
+      || field?.domain === "select";
+  }
+
   function syncDebugRecordingSamples() {
     const recording = state.debugRecording;
     if (!recording.startedAt) {
@@ -4912,10 +4945,20 @@
       recording.nextOffsetS = 0;
     }
     while (Number(recording.nextOffsetS || 0) <= elapsedS) {
-      recording.samples.push(makeDebugRecordingSample(Number(recording.nextOffsetS || 0)));
+      const previous = recording.samples.at(-1) || null;
+      const sample = makeDebugRecordingSample(Number(recording.nextOffsetS || 0));
+      sample.event_count = previous
+        ? sample.values.reduce((count, value, index) => (
+          isDebugRecordingEventField(recording.fields[index]) && !Object.is(value, previous.values[index])
+            ? count + 1
+            : count
+        ), 0)
+        : 0;
+      recording.samples.push(sample);
       recording.nextOffsetS = Number(recording.nextOffsetS || 0) + 10;
-      if (recording.samples.length > DEBUG_RECORDING_SAMPLE_CAPACITY) {
+      if (recording.samples.length > getDebugRecordingSampleCapacity(recording.fields)) {
         recording.samples.shift();
+        if (recording.samples[0]) recording.samples[0].event_count = 0;
       }
     }
     if (!rolling && recording.active && elapsedS >= Number(recording.durationS || 0)) {
@@ -4933,6 +4976,9 @@
     const firstSample = recording.samples[0] || null;
     const lastSample = recording.samples[recording.samples.length - 1] || null;
     const retainedDurationS = firstSample && lastSample ? Math.max(0, lastSample.offset_s - firstSample.offset_s) : 0;
+    const sampleRowBytes = getDebugRecordingSampleBytes(recording.fields);
+    const sampleCapacity = getDebugRecordingSampleCapacity(recording.fields);
+    const eventCount = recording.samples.reduce((total, sample) => total + Number(sample.event_count || 0), 0);
     return {
       ok: true,
       available: true,
@@ -4947,38 +4993,76 @@
       elapsed_s: elapsedS,
       remaining_s: remainingS,
       retained_duration_s: retainedDurationS,
-      retention_capacity_s: (DEBUG_RECORDING_SAMPLE_CAPACITY - 1) * 10,
+      retention_capacity_s: Math.max(0, sampleCapacity - 1) * 10,
       sample_count: recording.samples.length,
-      sample_capacity: DEBUG_RECORDING_SAMPLE_CAPACITY,
+      sample_capacity: sampleCapacity,
+      sample_row_bytes: sampleRowBytes,
       field_count: recording.fields.length,
-      entity_field_count: Math.max(0, recording.fields.length - 4),
-      missing_field_count: 0,
+      entity_field_count: Math.max(0, recording.fields.length - DEBUG_RECORDING_SYSTEM_FIELD_COUNT),
+      missing_field_count: Number(recording.missingFieldCount || 0),
+      configuration_pending: Boolean(recording.configurationPending),
+      pending_entity_field_count: Math.max(
+        0,
+        recording.pendingFields.length - DEBUG_RECORDING_SYSTEM_FIELD_COUNT,
+      ),
+      pending_requested_field_count: Number(recording.pendingRequestedFieldCount || 0),
+      pending_missing_field_count: Number(recording.pendingMissingFieldCount || 0),
+      string_count: 0,
+      string_overflow: false,
+      event_count: eventCount,
       buffer_size: DEBUG_RECORDING_BUFFER_BYTES,
+      storage_size: DEBUG_RECORDING_BUFFER_BYTES + (2 * DEBUG_RECORDING_FIELD_CAPACITY * 120) + (64 * 1024),
       estimated_size: 2048 + recording.samples.length * (16 + recording.fields.length * 3),
       buffer: "psram",
+      csrf_token: DEBUG_RECORDING_CSRF_TOKEN,
     };
+  }
+
+  function getDebugRecordingSystemFields() {
+    return [
+      { key: "uptimeMs", domain: "system", name: "uptimeMs", unit: "ms" },
+      { key: "freeHeap", domain: "system", name: "freeHeap", unit: "B" },
+      { key: "freePsram", domain: "system", name: "freePsram", unit: "B" },
+      { key: "minFreeHeap", domain: "system", name: "minFreeHeap", unit: "B" },
+      { key: "largestFreeHeapBlock", domain: "system", name: "largestFreeHeapBlock", unit: "B" },
+    ];
+  }
+
+  function hasValidDebugRecordingCsrf(init) {
+    const params = new URLSearchParams(String(init?.body || ""));
+    return params.get("csrf_token") === DEBUG_RECORDING_CSRF_TOKEN;
   }
 
   function handleDebugRecordingConfigure(url, init) {
     const params = new URLSearchParams(String(init?.body || ""));
     if (url.searchParams.get("reset") === "1") {
-      state.debugRecording.fields = [
-        { key: "uptimeMs", domain: "system", name: "uptimeMs", unit: "ms" },
-        { key: "freeHeap", domain: "system", name: "freeHeap", unit: "B" },
-        { key: "freePsram", domain: "system", name: "freePsram", unit: "B" },
-        { key: "minFreeHeap", domain: "system", name: "minFreeHeap", unit: "B" },
-      ];
+      state.debugRecording.pendingFields = getDebugRecordingSystemFields();
+      state.debugRecording.pendingRequestedFieldCount = 0;
+      state.debugRecording.pendingMissingFieldCount = 0;
+      state.debugRecording.configurationPending = true;
+    } else if (!state.debugRecording.configurationPending) {
+      return mockResponse(409, { ok: false, error: "configuration_not_started" });
     }
     String(params.get("entities") || "").split("\n").forEach((line) => {
       const [key, domain, name] = line.split("\t");
       if (key && domain && name) {
-        state.debugRecording.fields.push({ key, domain, name, unit: getEntity(domain, name)?.uom || "" });
+        state.debugRecording.pendingRequestedFieldCount += 1;
+        const entity = getEntity(domain, name);
+        if (!entity) {
+          state.debugRecording.pendingMissingFieldCount += 1;
+        } else if (state.debugRecording.pendingFields.length < DEBUG_RECORDING_FIELD_CAPACITY) {
+          state.debugRecording.pendingFields.push({ key, domain, name, unit: entity.uom || "" });
+        }
       }
     });
     return mockResponse(200, getDebugRecordingStatusPayload());
   }
 
   function handleDebugRecordingStart(url) {
+    const pending = state.debugRecording;
+    if (!pending.configurationPending || pending.pendingFields.length <= DEBUG_RECORDING_SYSTEM_FIELD_COUNT) {
+      return mockResponse(409, { ok: false, error: "configuration_not_ready" });
+    }
     const rolling = url.searchParams.get("rolling") === "1";
     const durationS = rolling ? 0 : Math.max(60, Math.min(3600, Number(url.searchParams.get("duration_s") || 15 * 60)));
     state.debugRecording = {
@@ -4989,8 +5073,13 @@
       stoppedAt: 0,
       durationS,
       nextOffsetS: 0,
-      fields: [...state.debugRecording.fields],
+      fields: [...pending.pendingFields],
       samples: [],
+      missingFieldCount: pending.pendingMissingFieldCount,
+      pendingFields: [],
+      pendingRequestedFieldCount: 0,
+      pendingMissingFieldCount: 0,
+      configurationPending: false,
     };
     syncDebugRecordingSamples();
     return mockResponse(200, getDebugRecordingStatusPayload());
@@ -5056,10 +5145,11 @@
         retained_duration_s: initial && recording.samples.length
           ? Math.max(0, recording.samples[recording.samples.length - 1].offset_s - initial.offset_s)
           : 0,
-        retention_capacity_s: (DEBUG_RECORDING_SAMPLE_CAPACITY - 1) * 10,
+        retention_capacity_s: Math.max(0, getDebugRecordingSampleCapacity(recording.fields) - 1) * 10,
         interval_s: 10,
         sample_count: recording.samples.length,
-        sample_capacity: DEBUG_RECORDING_SAMPLE_CAPACITY,
+        sample_capacity: getDebugRecordingSampleCapacity(recording.fields),
+        sample_row_bytes: getDebugRecordingSampleBytes(recording.fields),
         buffer_size: DEBUG_RECORDING_BUFFER_BYTES,
         column_count: recording.fields.length,
         storage: "psram",
@@ -5355,15 +5445,19 @@
         return mockResponse(200, getDebugRecordingStatusPayload());
       }
       if (url.pathname.endsWith("/openquatt/debug-recording/configure") && method === "POST") {
+        if (!hasValidDebugRecordingCsrf(init)) return mockResponse(403, { ok: false, error: "csrf_rejected" });
         return handleDebugRecordingConfigure(url, init || {});
       }
       if (url.pathname.endsWith("/openquatt/debug-recording/start") && method === "POST") {
+        if (!hasValidDebugRecordingCsrf(init)) return mockResponse(403, { ok: false, error: "csrf_rejected" });
         return handleDebugRecordingStart(url);
       }
       if (url.pathname.endsWith("/openquatt/debug-recording/freeze") && method === "POST") {
+        if (!hasValidDebugRecordingCsrf(init)) return mockResponse(403, { ok: false, error: "csrf_rejected" });
         return handleDebugRecordingFreeze();
       }
       if (url.pathname.endsWith("/openquatt/debug-recording/stop") && method === "POST") {
+        if (!hasValidDebugRecordingCsrf(init)) return mockResponse(403, { ok: false, error: "csrf_rejected" });
         return handleDebugRecordingStop();
       }
       if (url.pathname.endsWith("/openquatt/debug-recording/download") && method === "GET") {
