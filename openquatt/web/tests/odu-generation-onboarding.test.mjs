@@ -162,9 +162,15 @@ test("onboarding toont Duo per HP en onderscheidt geselecteerd van aanbevolen zo
   assert.deepEqual(state.drafts, {});
 
   state.busyAction = "hp1GenerationDetect";
-  assert.match(renderOduGenerationDetectionStatus(), /Detecteren…/);
+  const singlePendingMarkup = renderOduGenerationDetectionStatus();
+  assert.match(singlePendingMarkup, /Detectie bezig/);
+  assert.match(singlePendingMarkup, /Even geduld/);
+  assert.match(singlePendingMarkup, /Detecteren…/);
+  assert.doesNotMatch(singlePendingMarkup, /Detectie onvolledig/);
   state.busyAction = "odu-generation-detect-all";
-  assert.match(renderOduGenerationDetectionStatus(), /Detecteren…/);
+  const groupPendingMarkup = renderOduGenerationDetectionStatus();
+  assert.match(groupPendingMarkup, /OpenQuatt leest de buitenunits opnieuw uit/);
+  assert.doesNotMatch(groupPendingMarkup, />Unknown</);
 });
 
 test("Unknown blijft zichtbaar, toont geen aanbevolen badge en behoudt handmatige fallback", () => {
@@ -208,9 +214,10 @@ test("onboarding en installatiehydratie laden status en optionele detectieknoppe
   assert.match(entitySyncSource, /installation:\s*\[[\s\S]*\.\.\.ODU_GENERATION_KEYS[\s\S]*\.\.\.ODU_GENERATION_DETECT_KEYS/);
   assert.match(entitySyncSource, /state\.currentStep === "generation" \|\| state\.currentStep === "confirm"/);
   assert.match(entitySyncSource, /\.\.\.quickStartGenerationKeys/);
-  assert.match(namedButtonActionsSource, /ODU_GENERATION_DETECT_KEYS\.indexOf\(buttonKey\)/);
-  assert.match(namedButtonActionsSource, /refreshKeys: \[ODU_GENERATION_KEYS\[generationDetectIndex\]\]/);
+  assert.match(namedButtonActionsSource, /ODU_GENERATION_DETECT_KEYS\.includes\(buttonKey\)/);
   assert.match(namedButtonActionsSource, /triggerNamedButtonGroup\(detectKeys/);
+  assert.match(namedButtonActionsSource, /refreshUntil:/);
+  assert.match(namedButtonActionsSource, /refreshTimeoutMs: 33000/);
   assert.match(namedButtonActionsSource, /ODU_GENERATION_VARIANT_KEYS\[index\]/);
   assert.match(namedButtonActionsSource, /ODU_CUSTOMER_MODEL_CODE_KEYS\[index\]/);
   assert.match(namedButtonActionsSource, /busyAction: "odu-generation-detect-all"/);

@@ -146,6 +146,62 @@ test("late afronding van detectie overschrijft geen nieuwere actie", async () =>
   assert.equal(state.controlError, "");
 });
 
+test("detectie blijft bezig en ververst totdat de generatie bekend is", async () => {
+  resetState();
+  let refreshCount = 0;
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url) !== "/openquatt/entities") return { ok: true, status: 200 };
+    refreshCount += 1;
+    const response = entityRefreshResponse(options);
+    const payload = await response.json();
+    if (refreshCount === 1) {
+      payload.entities.hp1Generation = textEntity("Unknown");
+    }
+    return { ...response, json: async () => payload };
+  };
+
+  const pending = triggerNamedButtonGroup(["hp1GenerationDetect"], {
+    busyAction: "odu-generation-detect-all",
+    refreshKeys: refreshKeys.slice(0, 3),
+    refreshIntervalMs: 1,
+    refreshTimeoutMs: 100,
+    refreshUntil: () => state.entities.hp1Generation.value === "V2",
+    successNotice: "ODU-detectie voltooid.",
+  });
+
+  assert.equal(state.busyAction, "odu-generation-detect-all");
+  await pending;
+  assert.equal(refreshCount, 2);
+  assert.equal(state.entities.hp1Generation.value, "V2");
+  assert.equal(state.controlNotice, "ODU-detectie voltooid.");
+  assert.equal(state.busyAction, "");
+});
+
+test("detectie toont pas na de wachttijd een timeout", async () => {
+  resetState();
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url) !== "/openquatt/entities") return { ok: true, status: 200 };
+    const response = entityRefreshResponse(options);
+    const payload = await response.json();
+    payload.entities.hp1Generation = textEntity("Unknown");
+    return { ...response, json: async () => payload };
+  };
+
+  await triggerNamedButtonGroup(["hp1GenerationDetect"], {
+    busyAction: "odu-generation-detect-all",
+    refreshKeys: refreshKeys.slice(0, 3),
+    refreshIntervalMs: 2,
+    refreshTimeoutMs: 1,
+    refreshUntil: () => state.entities.hp1Generation.value === "V2",
+    refreshTimeoutMessage: "ODU-detectie niet binnen de testtijd voltooid",
+    errorPrefix: "ODU-detectie niet volledig uitgevoerd",
+  });
+
+  assert.match(state.controlError, /ODU-detectie niet binnen de testtijd voltooid/);
+  assert.equal(state.controlNotice, "");
+  assert.equal(state.busyAction, "");
+});
+
 test("nieuwe webapp blijft compatibel wanneer oude firmware fingerprintdiagnostiek mist", async () => {
   resetState();
   delete state.entities.hp1GenerationVariant;
