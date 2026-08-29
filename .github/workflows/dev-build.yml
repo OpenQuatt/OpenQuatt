@@ -95,28 +95,6 @@ jobs:
               --prerelease
           fi
 
-      - name: Remove obsolete dev release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          obsolete_assets=(
-            openquatt-duo-heatpump-listener.firmware.factory.bin
-            openquatt-duo-heatpump-listener.firmware.ota.bin
-            openquatt-duo-install.manifest.json
-            openquatt-duo-ota.manifest.json
-            openquatt-duo-waveshare.firmware.factory.bin
-            openquatt-duo-waveshare.firmware.ota.bin
-            openquatt-single-heatpump-listener.firmware.factory.bin
-            openquatt-single-heatpump-listener.firmware.ota.bin
-            openquatt-single-install.manifest.json
-            openquatt-single-ota.manifest.json
-            openquatt-single-waveshare.firmware.factory.bin
-            openquatt-single-waveshare.firmware.ota.bin
-          )
-          for asset in "${obsolete_assets[@]}"; do
-            gh release delete-asset dev-latest "$asset" --yes 2>/dev/null || true
-          done
-
       - name: Upload dev release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -126,3 +104,21 @@ jobs:
             dist/*.firmware.ota.bin \
             dist/*.firmware.factory.bin \
             --clobber
+
+      - name: Prune unexpected dev release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -t expected < <(python3 scripts/build_targets.py release-files --status enabled)
+          declare -A keep=()
+          for asset in "${expected[@]}"; do
+            keep["$asset"]=1
+          done
+
+          mapfile -t published < <(gh release view dev-latest --json assets --jq '.assets[].name')
+          for asset in "${published[@]}"; do
+            if [[ -z "${keep[$asset]+x}" ]]; then
+              echo "Removing unexpected release asset: $asset"
+              gh release delete-asset dev-latest "$asset" --yes
+            fi
+          done
