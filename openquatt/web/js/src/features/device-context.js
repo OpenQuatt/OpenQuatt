@@ -261,11 +261,11 @@ import { state } from "../core/state.js";
 
   export function getDeviceIpAddress() {
     const entityText = String(state.entities.ipAddress?.state ?? state.entities.ipAddress?.value ?? "").trim();
-    if (entityText) {
+    if (entityText && entityText !== "0.0.0.0" && entityText !== "::") {
       return entityText;
     }
     const explicit = String(getDeviceMeta().ipAddress || "").trim();
-    if (explicit) {
+    if (explicit && explicit !== "0.0.0.0" && explicit !== "::") {
       return explicit;
     }
     const host = typeof window !== "undefined" ? String(window.location.hostname || "").trim() : "";

@@ -59,6 +59,14 @@ test("WiFi toont de bijbehorende SSID en signaalsterkte", () => {
   assert.equal(rows.some(([label, value]) => label === "WiFi signaal" && value === "-61 dBm"), true);
 });
 
+test("tijdelijk 0.0.0.0 na opstart wordt niet als IP-adres getoond", () => {
+  resetConnectivityState("WiFi");
+  state.entities.ipAddress = textEntity("0.0.0.0");
+
+  const rows = getConnectivityModalRows();
+  assert.equal(rows.some(([label, value]) => label === "IP-adres" && value === "0.0.0.0"), false);
+});
+
 test("automatische modus licht bootdetectie en handmatige hotplug toe", () => {
   resetConnectivityState("WiFi");
   state.entities.preferredConnection = textEntity("Automatic", {
