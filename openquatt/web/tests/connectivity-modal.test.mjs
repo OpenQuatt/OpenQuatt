@@ -11,7 +11,7 @@ globalThis.window = {
 };
 
 const { state } = await import("../js/src/core/state.js");
-const { getConnectivityModalRows, patchHeaderDom, renderSystemModal } = await import("../js/src/features/header-status.js");
+const { getConnectivityModalRows, getHeaderRenderSignature, patchHeaderDom, renderSystemModal } = await import("../js/src/features/header-status.js");
 const installationSource = await readFile(new URL("../js/src/settings/installation.js", import.meta.url), "utf8");
 
 function textEntity(value, extra = {}) {
@@ -78,6 +78,19 @@ test("automatische modus licht bootdetectie en handmatige hotplug toe", () => {
   assert.match(markup, /Automatisch/);
   assert.match(markup, /bij opstart en herstel/);
   assert.match(markup, /Kabel later aangesloten\? Kies Ethernet of herstart/);
+  assert.match(markup, /WiFi-fallback:<\/strong> werkt alleen als WiFi vooraf is ingesteld/);
+  assert.match(markup, /openquatt\.github\.io\/OpenQuatt\/install\//);
+});
+
+test("een gewijzigde verbindingsvoorkeur vernieuwt de open modal", () => {
+  resetConnectivityState("WiFi");
+  const before = getHeaderRenderSignature();
+
+  state.entities.preferredConnection = textEntity("Ethernet", {
+    option: ["Automatic", "WiFi", "Ethernet"],
+  });
+
+  assert.notEqual(getHeaderRenderSignature(), before);
 });
 
 test("een ontbrekende actieve verbinding toont geen verouderde WiFi-details", () => {
@@ -97,6 +110,7 @@ test("oudere WiFi-firmware zonder runtimeverbinding behoudt WiFi-details", () =>
   assert.equal(rows.some(([label]) => label === "Actieve verbinding"), false);
   assert.equal(rows.some(([label]) => label === "WiFi signaal"), true);
   assert.doesNotMatch(renderSystemModal(), /Voorkeursverbinding/);
+  assert.doesNotMatch(renderSystemModal(), /WiFi-fallback/);
 });
 
 test("Diagnostiek opent de gecombineerde connectiviteitsmodal zonder losse instellingen", () => {

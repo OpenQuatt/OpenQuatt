@@ -13,6 +13,8 @@ NETWORK_SCHEMA = (
     ROOT / "components" / "openquatt_network" / "__init__.py"
 ).read_text()
 NETWORK_PACKAGE = (ROOT / "openquatt" / "connection" / "wifi_eth.yaml").read_text()
+INSTALLER = (ROOT / "docs" / "install" / "install.js").read_text()
+INSTALLER_PAGE = (ROOT / "docs" / "install" / "index.html").read_text()
 
 
 def function_body(name: str, next_name: str) -> str:
@@ -61,6 +63,21 @@ class OpenQuattNetworkContractTest(unittest.TestCase):
             automatic.index("is_stable_(Connection::ETHERNET, now)"),
             automatic.index("is_stable_(Connection::WIFI, now)"),
         )
+
+    def test_q_installer_uses_canonical_automatic_builds_with_wifi_provisioning(self) -> None:
+        self.assertIn(
+            'fileName: "openquatt-heatpump-controller-q-single.firmware.factory.bin"',
+            INSTALLER,
+        )
+        self.assertIn(
+            'fileName: "openquatt-heatpump-controller-q-duo.firmware.factory.bin"',
+            INSTALLER,
+        )
+        self.assertNotIn("openquatt-heatpump-controller-q-single-wifi.firmware.factory.bin", INSTALLER)
+        self.assertNotIn("openquatt-heatpump-controller-q-duo-eth.firmware.factory.bin", INSTALLER)
+        self.assertIn('hardware === "heatpump_controller_q"', INSTALLER)
+        self.assertIn("wifiProvisioning: true", INSTALLER)
+        self.assertIn("zonder opgeslagen Wi-Fi-gegevens", INSTALLER_PAGE)
 
 
 if __name__ == "__main__":

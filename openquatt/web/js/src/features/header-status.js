@@ -34,6 +34,7 @@ import { render } from "../core/render-scheduler.js";
       getEntitySignatureFragment("installationTopology"),
       getEntitySignatureFragment("hardwareProfileText"),
       getEntitySignatureFragment("connectionText"),
+      getEntitySignatureFragment("preferredConnection"),
       state.firmwareAdvancedOpen ? "firmware-advanced-open" : "firmware-advanced-closed",
       state.firmwareConnectionSwitchOpen ? "connection-open" : "connection-closed",
       state.firmwareTopologySwitchOpen ? "topology-open" : "topology-closed",
@@ -470,6 +471,7 @@ import { render } from "../core/render-scheduler.js";
             `).join("")}
             ${preferenceMarkup}
           </div>
+          ${preferenceMarkup ? `<p class="oq-helper-modal-note"><strong>WiFi-fallback:</strong> werkt alleen als WiFi vooraf is ingesteld. Gebruik daarvoor de <a href="https://openquatt.github.io/OpenQuatt/install/" target="_blank" rel="noreferrer">installatiehulp</a> en laat Ethernet tijdens het instellen tijdelijk los.</p>` : ""}
           ${preferenceFeedback ? `<p class="${state.controlError ? "oq-helper-error" : "oq-helper-notice"}" role="status">${escapeHtml(preferenceFeedback)}</p>` : ""}
           <div class="oq-helper-modal-actions">
             <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">Gereed</button>
