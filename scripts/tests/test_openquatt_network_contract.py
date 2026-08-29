@@ -13,6 +13,9 @@ NETWORK_SCHEMA = (
     ROOT / "components" / "openquatt_network" / "__init__.py"
 ).read_text()
 NETWORK_PACKAGE = (ROOT / "openquatt" / "connection" / "wifi_eth.yaml").read_text()
+USAGE_TELEMETRY_CPP = (
+    ROOT / "components" / "openquatt_usage_telemetry" / "OpenQuattUsageTelemetry.cpp"
+).read_text()
 INSTALLER = (ROOT / "docs" / "install" / "install.js").read_text()
 INSTALLER_PAGE = (ROOT / "docs" / "install" / "index.html").read_text()
 
@@ -63,6 +66,11 @@ class OpenQuattNetworkContractTest(unittest.TestCase):
             automatic.index("is_stable_(Connection::ETHERNET, now)"),
             automatic.index("is_stable_(Connection::WIFI, now)"),
         )
+
+    def test_usage_telemetry_reports_the_active_connection(self) -> None:
+        self.assertIn("active_connection_sensor: oq_connection_text", NETWORK_PACKAGE)
+        self.assertIn('active_connection == "WiFi"', USAGE_TELEMETRY_CPP)
+        self.assertIn('active_connection == "Ethernet"', USAGE_TELEMETRY_CPP)
 
     def test_q_installer_uses_canonical_automatic_builds_with_wifi_provisioning(self) -> None:
         self.assertIn(

@@ -827,7 +827,20 @@ bool OpenQuattUsageTelemetry::build_payload_() {
   payload += R"(,"topology":")";
   append_json_escaped(payload, this->topology_);
   payload += R"(","connection":")";
-  append_json_escaped(payload, this->connection_);
+  if (this->active_connection_sensor_ != nullptr && this->active_connection_sensor_->has_state()) {
+    const std::string& active_connection = this->active_connection_sensor_->state;
+    if (active_connection == "WiFi") {
+      payload += "wifi";
+    } else if (active_connection == "Ethernet") {
+      payload += "eth";
+    } else if (active_connection == "Not connected") {
+      payload += "none";
+    } else {
+      append_json_escaped(payload, this->connection_);
+    }
+  } else {
+    append_json_escaped(payload, this->connection_);
+  }
   payload += '"';
   append_json_optional_select_(payload, "quatt_hybrid_generation_config", this->quatt_hybrid_generation_select_,
                                quatt_hybrid_generation_wire_value);

@@ -56,6 +56,7 @@ sensor:
     entity_category: diagnostic
 
 openquatt_usage_telemetry:
+  active_connection_sensor: oq_connection_text
   wifi_signal_sensor: oq_wifi_signal
 
 text_sensor:

@@ -134,6 +134,20 @@ function hardwareRevisionValue(value) {
   return revision === "Read error" || revision === "Not programmed" ? null : revision;
 }
 
+function connectionWireValue(value) {
+  const connection = optionalText(value);
+  if (connection === "WiFi") {
+    return "wifi";
+  }
+  if (connection === "Ethernet") {
+    return "eth";
+  }
+  if (connection === "Not connected") {
+    return "none";
+  }
+  return connection;
+}
+
 export function createUsageTelemetryPreview(values = {}, options = {}) {
   const nowMs = Number.isFinite(options.nowMs) ? options.nowMs : Date.now();
   const timeValid = optionalBoolean(values.timeValid);
@@ -149,7 +163,7 @@ export function createUsageTelemetryPreview(values = {}, options = {}) {
     hardware_profile: optionalText(values.hardwareProfileText),
     hardware_revision: hardwareRevisionValue(values.hardwareRevisionText),
     topology: optionalText(values.installationTopology),
-    connection: optionalText(values.connectionText),
+    connection: connectionWireValue(values.connectionText),
     quatt_hybrid_generation_config: quattHybridGenerationWireValue(values.hpGeneration),
     flow_source_config: flowSourceConfigWireValue(values.flowSource, values.qFlowSource, qSourceAvailable),
     heating_strategy: heatingStrategyWireValue(values.strategy),
