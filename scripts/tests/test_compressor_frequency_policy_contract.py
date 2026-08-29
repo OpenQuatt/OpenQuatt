@@ -18,6 +18,9 @@ STRATEGIES = "\n".join(
 POLICY = (
     ROOT / "openquatt" / "includes" / "control" / "oq_compressor_frequency_policy.h"
 ).read_text()
+RUNTIME = (
+    ROOT / "openquatt" / "includes" / "control" / "oq_compressor_frequency_runtime.h"
+).read_text()
 WEB_CONFIG = (ROOT / "openquatt" / "web" / "js" / "src" / "core" / "config.js").read_text()
 
 
@@ -49,7 +52,8 @@ class CompressorFrequencyPolicyContractTest(unittest.TestCase):
 
     def test_request_and_actuator_enforce_the_policy_independently(self) -> None:
         for source in (REQUEST, ACTUATOR):
-            self.assertIn("oq_frequency_policy::pick_allowed_level(", source)
+            self.assertIn("frequency_runtime.pick_allowed_level(", source)
+            self.assertIn("oq_frequency_runtime::capture()", source)
         self.assertIn("const bool use_frequency_policy = !manual_hp_service_active", ACTUATOR)
         self.assertIn("Revalidate the final request", REQUEST)
 
@@ -64,21 +68,31 @@ class CompressorFrequencyPolicyContractTest(unittest.TestCase):
             "store_configured_frequency_hz",
             "shared_cap_frequency",
         ):
-            self.assertNotIn(removed, SUPERVISORY + HP_IO + REQUEST + ACTUATOR + POLICY)
+            self.assertNotIn(removed, SUPERVISORY + HP_IO + REQUEST + ACTUATOR + POLICY + RUNTIME)
         for removed in ("dayMax:", "silentMax:", "hp1ExcludedA:", "hp2ExcludedA:"):
             self.assertNotIn(removed, WEB_CONFIG)
         self.assertIn('export const FREQUENCY_CAP_KEYS = ["dayMaxHz", "silentMaxHz"]', WEB_CONFIG)
         self.assertIn('"hp1ExcludeMinHz", "hp1ExcludeMaxHz", "hp2ExcludeMinHz", "hp2ExcludeMaxHz"', WEB_CONFIG)
 
     def test_strategies_only_offer_allowed_runtime_frequencies(self) -> None:
-        self.assertEqual(
-            STRATEGIES.count("oq_frequency_policy::frequency_allowed("), 3
-        )
-        self.assertEqual(
-            STRATEGIES.count("oq_frequency_policy::automatic_frequency_hz("), 3
-        )
+        self.assertEqual(STRATEGIES.count("oq_frequency_runtime::capture()"), 3)
+        self.assertEqual(STRATEGIES.count("frequency_runtime.frequency_allowed("), 3)
         self.assertIn("boosted_allowed_level", STRATEGIES)
         self.assertIn("level_allowed(is_hp1, level)", STRATEGIES)
+
+    def test_runtime_inputs_are_captured_once_per_control_callback(self) -> None:
+        control_sources = STRATEGIES + REQUEST + ACTUATOR
+        self.assertEqual(control_sources.count("oq_frequency_runtime::capture()"), 5)
+        for inline_adapter in (
+            "auto runtime_frequency_snapshot",
+            "auto excluded_frequency_range",
+            "auto frequency_cap_hz",
+            "auto cooling_cap_hz",
+            "auto heating_cap_hz",
+        ):
+            self.assertNotIn(inline_adapter, control_sources)
+        self.assertIn("const auto hp1_snapshot =", RUNTIME)
+        self.assertIn("const oq_frequency_policy::FrequencyRange hp2_excluded", RUNTIME)
 
 
 if __name__ == "__main__":

@@ -1387,61 +1387,10 @@ interval:
           const int lead_code = lead_is_hp1 ? 1 : 2;
           if (id(oq_last_lead_hp) != lead_code) id(oq_last_lead_hp) = lead_code;
 
-          const bool configured_v2 =
-              id(hp_generation).has_state() &&
-              id(hp_generation).current_option() == "V2";
-          const auto hp1_frequency_snapshot =
-              oq_odu::decode_runtime_frequency_snapshot(
-                  id(hp1_runtime_frequency_snapshot_storage));
-          const auto secondary_frequency_snapshot =
-              oq_odu::decode_runtime_frequency_snapshot(
-                  id(${secondary_runtime_frequency_snapshot_storage_id}));
-          auto runtime_frequency_snapshot = [&](bool is_hp1)
-              -> const oq_odu::RuntimeFrequencySnapshot& {
-            return is_hp1 ? hp1_frequency_snapshot
-                          : secondary_frequency_snapshot;
-          };
-
-          auto excluded_frequency_range = [&](bool is_hp1)
-              -> oq_frequency_policy::FrequencyRange {
-            auto read_hz = [](auto* number)->int {
-              return number->has_state() && !isnan(number->state)
-                  ? (int) lroundf(number->state)
-                  : -1;
-            };
-            if (is_hp1) {
-              return {
-                  read_hz(id(hp1_excluded_frequency_min_hz)),
-                  read_hz(id(hp1_excluded_frequency_max_hz)),
-              };
-            }
-            #if OQ_TOPOLOGY_DUO
-            return {
-                read_hz(id(${secondary_excluded_frequency_min_hz_id})),
-                read_hz(id(${secondary_excluded_frequency_max_hz_id})),
-            };
-            #else
-            return {};
-            #endif
-          };
-
-          auto cooling_cap_hz = [&]()->int {
-            auto* cap = id(oq_silent_active).state
-                ? id(oq_silent_max_frequency_hz)
-                : id(oq_day_max_frequency_hz);
-            return cap->has_state() && !isnan(cap->state)
-                ? (int) lroundf(cap->state)
-                : -1;
-          };
+          const auto frequency_runtime = oq_frequency_runtime::capture();
 
           auto level_allowed = [&](bool is_hp1, int level)->bool {
-            const int frequency_hz =
-                oq_frequency_policy::automatic_frequency_hz(
-                    configured_v2, runtime_frequency_snapshot(is_hp1), 1,
-                    level);
-            return oq_frequency_policy::frequency_allowed(
-                frequency_hz, cooling_cap_hz(),
-                excluded_frequency_range(is_hp1));
+            return frequency_runtime.frequency_allowed(is_hp1, 1, level);
           };
 
           auto hp_has_any_allowed_level = [&](bool is_hp1)->bool {

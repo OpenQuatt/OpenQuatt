@@ -2,7 +2,7 @@
 
 #include <array>
 
-#include "../../openquatt/includes/control/oq_compressor_frequency_policy.h"
+#include "../../openquatt/includes/control/oq_compressor_frequency_runtime.h"
 
 namespace {
 
@@ -79,6 +79,20 @@ int main() {
   assert(automatic_frequency_hz(false, runtime_edited, 2, 6) == 65);
   assert(automatic_frequency_hz(false, runtime_edited, 1, 6) == 54);
   assert(pick_allowed_level(false, runtime_edited, 2, 6, 1, 10, 64, {}) == 5);
+
+  auto hp2_source = runtime_edited;
+  const oq_frequency_runtime::Context runtime{
+      false, v1, hp2_source, 67, {}, {60, 68},
+  };
+  hp2_source.heating.hz[6] = 100;
+  assert(runtime.automatic_frequency_hz(true, 2, 6) == 67);
+  assert(runtime.automatic_frequency_hz(false, 2, 6) == 65);
+  assert(runtime.frequency_allowed(true, 2, 6));
+  assert(!runtime.frequency_allowed(false, 2, 6));
+  assert(runtime.pick_allowed_level(true, 2, 10, 1, 10) == 6);
+  auto invalid_runtime = runtime;
+  invalid_runtime.cap_hz = -1;
+  assert(invalid_runtime.pick_allowed_level(true, 2, 6, 1, 10) == 0);
 
   auto unknown = v1;
   unknown.heating.valid = false;
