@@ -325,8 +325,10 @@ async function checkWriteActionContracts() {
   assertContains(mqttActions, 'fetch("/mqtt/save"', "MQTT config save");
   assertContains(mqttActions, 'fetch("/mqtt/input/save"', "MQTT input save");
   assertContains(firmwareActions, 'buildEntityPath(installButtonEntity.domain, installButtonEntity.name, "press")', "Firmware install button endpoint");
-  assertContains(debugRecording, 'getDebugRecordingEndpoint(`start?duration_s=${encodeURIComponent(minutes * 60)}`)', "Debug recording start");
-  assertContains(debugRecording, 'getDebugRecordingEndpoint("stop")', "Debug recording stop");
+  assertContains(debugRecording, 'body.set("csrf_token", csrfToken)', "Debug recording CSRF protection");
+  assertContains(debugRecording, 'const path = rolling ? "start?rolling=1" : `start?duration_s=${encodeURIComponent(minutes * 60)}`', "Debug recording start path");
+  assertContains(debugRecording, "await postDebugRecordingDevice(path)", "Debug recording start");
+  assertContains(debugRecording, 'postDebugRecordingDevice("stop")', "Debug recording stop");
   assertContains(debugRecording, 'getDebugRecordingEndpoint("download")', "Debug recording download");
   assertContains(systemActions, 'triggerNamedButton("restartAction"', "Restart confirm");
   assertContains(entityWriteActions, "export async function commitOpenQuattRegulationPause", "OpenQuatt pause write helper");
