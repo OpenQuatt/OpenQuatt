@@ -1,7 +1,7 @@
 import { getOduRuntimeFrequencyButtonHp, getOduRuntimeFrequencyHpKeys, INSTALLATION_MONITORING_STATE_KEYS, ODU_RUNTIME_FREQUENCY_BUTTON_KEYS } from "./config.js";
-import { hasEntity } from "./entity-store.js";
+import { getEntityValue, hasEntity } from "./entity-store.js";
 import { triggerIncidentAction, triggerNamedButton, triggerNamedButtonGroup } from "./entity-write-actions.js";
-import { ODU_CUSTOMER_MODEL_CODE_KEYS, ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS, ODU_GENERATION_VARIANT_KEYS } from "./odu-generation.js";
+import { normalizeDetectedOduGeneration, ODU_CUSTOMER_MODEL_CODE_KEYS, ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS, ODU_GENERATION_VARIANT_KEYS } from "./odu-generation.js";
 import { state } from "./state.js";
 
 const commissioningRefreshGroups = [
@@ -157,17 +157,6 @@ function getRefreshOptions(buttonKey) {
     return { refreshIncidentMonitoring: true };
   }
 
-  const generationDetectIndex = ODU_GENERATION_DETECT_KEYS.indexOf(buttonKey);
-  if (generationDetectIndex !== -1) {
-    const hpIndex = generationDetectIndex + 1;
-    return {
-      refreshKeys: [ODU_GENERATION_KEYS[generationDetectIndex]],
-      refreshDelayMs: 1800,
-      successNotice: `HP${hpIndex} ODU-detectie opnieuw aangevraagd.`,
-      errorPrefix: `ODU-detectie mislukt voor HP${hpIndex}`,
-    };
-  }
-
   const group = commissioningRefreshGroups.find(({ actions }) => actions.includes(buttonKey));
   if (group) {
     return { refreshKeys: [...group.keys] };
@@ -191,6 +180,33 @@ function getRefreshOptions(buttonKey) {
   return {};
 }
 
+function triggerOduGenerationDetection(detectKeys) {
+  const detectIndexes = detectKeys.map((key) => ODU_GENERATION_DETECT_KEYS.indexOf(key));
+  const generationKeys = detectIndexes.map((index) => ODU_GENERATION_KEYS[index]);
+  const refreshKeys = detectIndexes.flatMap((index) => [
+    ODU_GENERATION_KEYS[index],
+    ODU_GENERATION_VARIANT_KEYS[index],
+    ODU_CUSTOMER_MODEL_CODE_KEYS[index],
+  ]);
+
+  generationKeys.forEach((key) => {
+    const current = state.entities[key];
+    if (current) state.entities[key] = { ...current, state: "Unknown", value: "Unknown" };
+  });
+
+  return triggerNamedButtonGroup(detectKeys, {
+    busyAction: "odu-generation-detect-all",
+    refreshKeys,
+    refreshDelayMs: 800,
+    refreshIntervalMs: 1200,
+    refreshTimeoutMs: 33000,
+    refreshUntil: () => generationKeys.every((key) => normalizeDetectedOduGeneration(getEntityValue(key)) !== "Unknown"),
+    refreshTimeoutMessage: "ODU-detectie niet binnen 33 seconden voltooid",
+    successNotice: "ODU-detectie voltooid.",
+    errorPrefix: "ODU-detectie niet volledig uitgevoerd",
+  });
+}
+
   export function handleNamedButtonAction(action, button) {
   if (action === "retry-hp-start" || action === "confirm-hp-power-cycle") {
     const hpIndex = Number(button.dataset.oqHpIndex || 0);
@@ -210,19 +226,7 @@ function getRefreshOptions(buttonKey) {
   if (action === "press-odu-generation-detect-all") {
     const detectKeys = ODU_GENERATION_DETECT_KEYS.filter((key) => hasEntity(key));
     if (detectKeys.length === 0) return true;
-    const detectIndexes = detectKeys.map((key) => ODU_GENERATION_DETECT_KEYS.indexOf(key));
-    const refreshKeys = detectIndexes.flatMap((index) => [
-      ODU_GENERATION_KEYS[index],
-      ODU_GENERATION_VARIANT_KEYS[index],
-      ODU_CUSTOMER_MODEL_CODE_KEYS[index],
-    ]);
-    void triggerNamedButtonGroup(detectKeys, {
-      busyAction: "odu-generation-detect-all",
-      refreshKeys,
-      refreshDelayMs: 3200,
-      successNotice: "ODU-detectie opnieuw aangevraagd.",
-      errorPrefix: "ODU-detectie niet volledig uitgevoerd",
-    });
+    void triggerOduGenerationDetection(detectKeys);
     return true;
   }
   if (action !== "press-named-button") {
@@ -232,6 +236,10 @@ function getRefreshOptions(buttonKey) {
   const buttonKey = String(button.dataset.oqButtonKey || button.dataset.buttonKey || button.getAttribute("data-oq-button-key") || "").trim();
   if (buttonKey) {
     prepareCommissioningState(buttonKey);
+    if (ODU_GENERATION_DETECT_KEYS.includes(buttonKey)) {
+      void triggerOduGenerationDetection([buttonKey]);
+      return true;
+    }
     void triggerNamedButton(buttonKey, getRefreshOptions(buttonKey));
   }
   return true;

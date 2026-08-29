@@ -836,6 +836,19 @@ export async function triggerNamedButtonGroup(keys, options = {}) {
     }
     if (failed) throw failed.reason;
 
+    const refreshUntil = typeof options.refreshUntil === "function" ? options.refreshUntil : null;
+    const refreshIntervalMs = Math.max(0, Number(options.refreshIntervalMs || 0));
+    const refreshTimeoutMs = Math.max(0, Number(options.refreshTimeoutMs || 0));
+    const refreshStartedAt = Date.now();
+    while (refreshUntil && !refreshUntil()) {
+      if (state.busyAction !== busyAction) return;
+      if (Date.now() - refreshStartedAt >= refreshTimeoutMs) {
+        throw new Error(options.refreshTimeoutMessage || "Resultaat niet binnen de verwachte tijd ontvangen");
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, refreshIntervalMs));
+      await refreshEntities(options.refreshKeys, "state");
+    }
+
     if (state.busyAction === busyAction) {
       state.controlNotice = options.successNotice || "Acties gestart.";
     }

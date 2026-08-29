@@ -70,20 +70,31 @@ export function renderOduGenerationDetectionStatus({ embedded = false } = {}) {
     return "";
   }
 
-  const advice = getOduGenerationDetectionAdvice(model);
-  const match = model.status === "match";
-  const title = !model.complete ? "Detectie onvolledig" : model.mixed ? "Gemengde Duo" : "Automatisch gevonden";
-  const badge = match ? "Komt overeen" : model.recommendation ? `Advies ${model.recommendation}` : "Geen advies";
-  const badgeTone = match ? " is-success" : model.recommendation ? "" : " is-neutral";
   const busy = state.loadingEntities || Boolean(state.busyAction);
   const detectKeys = model.heatPumps.filter((heatPump) => heatPump.detectAvailable).map((heatPump) => heatPump.detectKey);
   const isDetecting = detectKeys.some((key) => state.busyAction === key) || state.busyAction === "odu-generation-detect-all";
+  const advice = isDetecting
+    ? {
+        warning: false,
+        copy: model.heatPumps.length > 1
+          ? "OpenQuatt leest de buitenunits opnieuw uit. Dit kan enkele seconden duren."
+          : "OpenQuatt leest de buitenunit opnieuw uit. Dit kan enkele seconden duren.",
+      }
+    : getOduGenerationDetectionAdvice(model);
+  const match = !isDetecting && model.status === "match";
+  const title = isDetecting
+    ? "Detectie bezig"
+    : !model.complete ? "Detectie onvolledig" : model.mixed ? "Gemengde Duo" : "Automatisch gevonden";
+  const badge = isDetecting
+    ? "Even geduld"
+    : match ? "Komt overeen" : model.recommendation ? `Advies ${model.recommendation}` : "Geen advies";
+  const badgeTone = match ? " is-success" : model.recommendation || isDetecting ? "" : " is-neutral";
   const detectButton = canDetect
     ? `<button class="oq-gen-reset" type="button" data-oq-action="press-odu-generation-detect-all" aria-label="ODU-generatie opnieuw detecteren" ${busy ? "disabled" : ""} aria-busy="${isDetecting ? "true" : "false"}">${escapeHtml(isDetecting ? "Detecteren…" : "Opnieuw detecteren")}</button>`
     : "";
   const rows = model.heatPumps.map((heatPump) => {
-    const value = heatPump.known ? `Quatt ODU ${heatPump.generation}` : "Unknown";
-    return `<div class="oq-settings-source-row oq-gen-unit${heatPump.known ? "" : " is-warning"}" data-oq-odu-generation="hp${heatPump.index}"><span class="oq-settings-source-row-label">HP${heatPump.index}</span><strong>${escapeHtml(value)}</strong></div>`;
+    const value = isDetecting ? "Detecteren…" : heatPump.known ? `Quatt ODU ${heatPump.generation}` : "Unknown";
+    return `<div class="oq-settings-source-row oq-gen-unit${heatPump.known || isDetecting ? "" : " is-warning"}" data-oq-odu-generation="hp${heatPump.index}"><span class="oq-settings-source-row-label">HP${heatPump.index}</span><strong>${escapeHtml(value)}</strong></div>`;
   }).join("");
 
   return `<section class="oq-gen-detection oq-settings-field--span-2${embedded ? " is-embedded" : " oq-helper-surface oq-settings-field"}" data-oq-settings-field="oduGenerationDetection" aria-label="ODU-detectie"><div class="oq-gen-hd"><strong>${escapeHtml(title)}</strong><div class="oq-gen-hd-actions"><span class="oq-settings-section-badge oq-gen-badge${badgeTone}">${escapeHtml(badge)}</span>${detectButton}</div></div><div class="oq-gen-units${model.heatPumps.length > 1 ? " is-duo" : ""}" role="group" aria-label="Gedetecteerde buitenunits">${rows}</div>${match ? "" : `<p class="oq-settings-action-note${advice.warning ? " oq-settings-action-note--warning" : ""}" aria-live="polite">${escapeHtml(advice.copy)}</p>`}</section>`;
