@@ -57,6 +57,7 @@ sensor:
 
 openquatt_usage_telemetry:
   active_connection_sensor: oq_connection_text
+  connection_preference_select: oq_preferred_connection
   wifi_signal_sensor: oq_wifi_signal
 
 text_sensor:

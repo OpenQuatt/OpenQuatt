@@ -42,6 +42,7 @@ CONF_HARDWARE_PROFILE = "hardware_profile"
 CONF_TOPOLOGY = "topology"
 CONF_CONNECTION = "connection"
 CONF_ACTIVE_CONNECTION_SENSOR = "active_connection_sensor"
+CONF_CONNECTION_PREFERENCE_SELECT = "connection_preference_select"
 CONF_QUATT_HYBRID_GENERATION_SELECT = "quatt_hybrid_generation_select"
 CONF_FLOW_SOURCE_SELECT = "flow_source_select"
 CONF_Q_FLOW_SOURCE_SELECT = "q_flow_source_select"
@@ -107,6 +108,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_TOPOLOGY): cv.All(cv.string_strict, cv.Length(max=16)),
             cv.Required(CONF_CONNECTION): cv.All(cv.string_strict, cv.Length(max=16)),
             cv.Optional(CONF_ACTIVE_CONNECTION_SENSOR): cv.use_id(text_sensor.TextSensor),
+            cv.Optional(CONF_CONNECTION_PREFERENCE_SELECT): cv.use_id(select.Select),
             cv.Required(CONF_QUATT_HYBRID_GENERATION_SELECT): cv.use_id(select.Select),
             cv.Required(CONF_FLOW_SOURCE_SELECT): cv.use_id(select.Select),
             cv.Optional(CONF_Q_FLOW_SOURCE_SELECT): cv.use_id(select.Select),
@@ -177,6 +179,9 @@ async def to_code(config):
     if active_connection_sensor_id := config.get(CONF_ACTIVE_CONNECTION_SENSOR):
         active_connection_sensor = await cg.get_variable(active_connection_sensor_id)
         cg.add(var.set_active_connection_sensor(active_connection_sensor))
+    if connection_preference_select_id := config.get(CONF_CONNECTION_PREFERENCE_SELECT):
+        connection_preference_select = await cg.get_variable(connection_preference_select_id)
+        cg.add(var.set_connection_preference_select(connection_preference_select))
     quatt_hybrid_generation_select = await cg.get_variable(
         config[CONF_QUATT_HYBRID_GENERATION_SELECT]
     )

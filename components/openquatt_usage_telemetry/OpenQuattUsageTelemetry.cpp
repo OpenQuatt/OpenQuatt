@@ -842,6 +842,22 @@ bool OpenQuattUsageTelemetry::build_payload_() {
     append_json_escaped(payload, this->connection_);
   }
   payload += '"';
+  payload += R"(,"connection_preference":")";
+  if (this->connection_preference_select_ != nullptr && this->connection_preference_select_->has_state()) {
+    const auto connection_preference = this->connection_preference_select_->current_option();
+    if (connection_preference == "Automatic") {
+      payload += "auto";
+    } else if (connection_preference == "WiFi") {
+      payload += "wifi";
+    } else if (connection_preference == "Ethernet") {
+      payload += "eth";
+    } else {
+      append_json_escaped(payload, this->connection_);
+    }
+  } else {
+    append_json_escaped(payload, this->connection_);
+  }
+  payload += '"';
   append_json_optional_select_(payload, "quatt_hybrid_generation_config", this->quatt_hybrid_generation_select_,
                                quatt_hybrid_generation_wire_value);
   append_json_flow_source_(payload, this->flow_source_select_, this->q_flow_source_select_);

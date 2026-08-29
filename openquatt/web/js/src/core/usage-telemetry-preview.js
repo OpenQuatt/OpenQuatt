@@ -14,6 +14,7 @@ export const USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS = [
   "hardwareRevisionText",
   "installationTopology",
   "connectionText",
+  "preferredConnection",
   "hpGeneration",
   "flowSource",
   "qFlowSource",
@@ -136,6 +137,9 @@ function hardwareRevisionValue(value) {
 
 function connectionWireValue(value) {
   const connection = optionalText(value);
+  if (connection === "Automatic") {
+    return "auto";
+  }
   if (connection === "WiFi") {
     return "wifi";
   }
@@ -164,6 +168,7 @@ export function createUsageTelemetryPreview(values = {}, options = {}) {
     hardware_revision: hardwareRevisionValue(values.hardwareRevisionText),
     topology: optionalText(values.installationTopology),
     connection: connectionWireValue(values.connectionText),
+    connection_preference: connectionWireValue(values.preferredConnection || values.connectionText),
     quatt_hybrid_generation_config: quattHybridGenerationWireValue(values.hpGeneration),
     flow_source_config: flowSourceConfigWireValue(values.flowSource, values.qFlowSource, qSourceAvailable),
     heating_strategy: heatingStrategyWireValue(values.strategy),

@@ -69,8 +69,10 @@ class OpenQuattNetworkContractTest(unittest.TestCase):
 
     def test_usage_telemetry_reports_the_active_connection(self) -> None:
         self.assertIn("active_connection_sensor: oq_connection_text", NETWORK_PACKAGE)
+        self.assertIn("connection_preference_select: oq_preferred_connection", NETWORK_PACKAGE)
         self.assertIn('active_connection == "WiFi"', USAGE_TELEMETRY_CPP)
         self.assertIn('active_connection == "Ethernet"', USAGE_TELEMETRY_CPP)
+        self.assertIn('connection_preference == "Automatic"', USAGE_TELEMETRY_CPP)
 
     def test_q_installer_uses_canonical_automatic_builds_with_wifi_provisioning(self) -> None:
         self.assertIn(
