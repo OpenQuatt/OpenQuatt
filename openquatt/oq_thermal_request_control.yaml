@@ -1183,22 +1183,8 @@ interval:
             hp1_req = id(oq_ph_request_hp1_level);
             hp2_req = id(oq_ph_request_hp2_level);
             request_owner_hp = id(oq_ph_request_owner_hp);
-            switch (id(oq_ph_request_reason_code)) {
-              case 1: request_reason = "ph_fallback_idle"; break;
-              case 2: request_reason = "ph_fallback_single_hp1"; break;
-              case 3: request_reason = "ph_fallback_single_hp2"; break;
-              case 4: request_reason = "ph_fallback_duo"; break;
-              case 5: request_reason = "keep_current"; break;
-              case 6: request_reason = "hold_active"; break;
-              case 7: request_reason = "defrost_hold"; break;
-              case 8: request_reason = "better_heat"; break;
-              case 9: request_reason = "soft_guard"; break;
-              case 10: request_reason = "less_power"; break;
-              case 11: request_reason = "no_candidate"; break;
-              case 12: request_reason = "defrost_boost"; break;
-              case 13: request_reason = "runtime_lead"; break;
-              default: request_reason = "ph_idle"; break;
-            }
+            request_reason = oq_power_house_dispatch::request_reason_name(
+                id(oq_ph_request_reason_code));
           }
           #else
           oq_request::reset_dual_runtime_state(
@@ -1222,12 +1208,8 @@ interval:
           } else {
             hp1_req = id(oq_ph_request_hp1_level);
             request_owner_hp = id(oq_ph_request_owner_hp);
-            switch (id(oq_ph_request_reason_code)) {
-              case 1: request_reason = "ph_fallback_idle"; break;
-              case 2: request_reason = "ph_fallback_single_hp1"; break;
-              case 14: request_reason = "ph_single_topology"; break;
-              default: request_reason = "ph_idle"; break;
-            }
+            request_reason = oq_power_house_dispatch::request_reason_name(
+                id(oq_ph_request_reason_code));
           }
           hp2_req = 0;
           #endif

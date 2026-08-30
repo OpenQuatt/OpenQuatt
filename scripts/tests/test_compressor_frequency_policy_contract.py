@@ -1,7 +1,6 @@
 from pathlib import Path
 import unittest
 
-
 ROOT = Path(__file__).resolve().parents[2]
 HP_IO = (ROOT / "openquatt" / "oq_HP_io.yaml").read_text()
 SUPERVISORY = (ROOT / "openquatt" / "oq_supervisory_controlmode.yaml").read_text()
@@ -21,8 +20,8 @@ POLICY = (
 RUNTIME = (
     ROOT / "openquatt" / "includes" / "control" / "oq_compressor_frequency_runtime.h"
 ).read_text()
+DISPATCH = (ROOT / "openquatt" / "includes" / "control" / "oq_power_house_dispatch_logic.h").read_text()
 WEB_CONFIG = (ROOT / "openquatt" / "web" / "js" / "src" / "core" / "config.js").read_text()
-
 
 class CompressorFrequencyPolicyContractTest(unittest.TestCase):
     def test_day_and_silent_caps_have_direct_persistent_defaults(self) -> None:
@@ -78,8 +77,9 @@ class CompressorFrequencyPolicyContractTest(unittest.TestCase):
     def test_strategies_only_offer_allowed_runtime_frequencies(self) -> None:
         self.assertEqual(STRATEGIES.count("oq_frequency_runtime::capture()"), 3)
         self.assertEqual(STRATEGIES.count("frequency_runtime.frequency_allowed("), 3)
-        self.assertIn("boosted_allowed_level", STRATEGIES)
-        self.assertIn("level_allowed(is_hp1, level)", STRATEGIES)
+        self.assertIn("const auto boosted = make_candidate(", DISPATCH)
+        self.assertIn("estimate.allowed", DISPATCH)
+        self.assertIn("level_allowed(hp1, level)", STRATEGIES)
 
     def test_runtime_inputs_are_captured_once_per_control_callback(self) -> None:
         control_sources = STRATEGIES + REQUEST + ACTUATOR
