@@ -378,319 +378,104 @@ output:
               id(oq_curve_regime_code));
             return;
           }
-
           const int demand_max = (int) ${oq_strategy_demand_max_f};
-          if (isnan(state)) {
-            oq_curve::reset_control_state(
-              id(oq_curve_demand_continuous),
-              id(oq_demand_curve),
-              id(oq_curve_demand_pre_guardrail),
-              id(oq_curve_heat_request_active),
-              id(oq_curve_stop_arm_ms),
-              id(oq_curve_off_since_ms),
-              id(oq_curve_restart_inhibit_active),
-              id(oq_curve_restart_blocked_by_room),
-              id(oq_curve_regime_code));
-            return;
-          }
-
-          float d_cont = state * ${oq_strategy_demand_max_f};
-          if (d_cont < 0.0f) d_cont = 0.0f;
-          if (d_cont > (float) demand_max) d_cont = (float) demand_max;
-
-          int d = (int) lroundf(d_cont);
-          if (d < 0) d = 0;
-          if (d > demand_max) d = demand_max;
-          id(oq_curve_demand_pre_guardrail) = d;
-
           const float spw = id(oq_supply_target_temp).state;
           const float pv = id(oq_system_supply_temp).state;
-          if (isnan(spw) || isnan(pv)) {
-            oq_curve::reset_control_state(
-              id(oq_curve_demand_continuous),
-              id(oq_demand_curve),
-              id(oq_curve_demand_pre_guardrail),
-              id(oq_curve_heat_request_active),
-              id(oq_curve_stop_arm_ms),
-              id(oq_curve_off_since_ms),
-              id(oq_curve_restart_inhibit_active),
-              id(oq_curve_restart_blocked_by_room),
-              id(oq_curve_regime_code));
-            return;
-          }
-
-          auto tuning = oq_curve::control_profile(
+          const auto tuning = oq_curve::control_profile(
               id(oq_curve_control_profile).has_state()
                   ? id(oq_curve_control_profile).current_option()
                   : std::string());
-          float start_delta_c = tuning.start_delta_c;
-          float stop_delta_c = tuning.stop_delta_c;
-          int off_pid_max_f = tuning.off_pid_max_f;
-          uint32_t off_confirm_ms = tuning.off_confirm_ms;
-          float room_overheat_off_c = tuning.room_overheat_off_c;
-          float room_resume_heat_c = tuning.room_resume_heat_c;
-          float restart_delta_c = tuning.restart_delta_c;
-          float restart_bypass_extra_c = tuning.restart_bypass_extra_c;
-          uint32_t off_reentry_min_ms = tuning.off_reentry_min_ms;
-          float recovery_enter_c = tuning.recovery_enter_c;
-          float recovery_exit_c = tuning.recovery_exit_c;
-          if (stop_delta_c < start_delta_c + 0.10f) stop_delta_c = start_delta_c + 0.10f;
-          if (restart_delta_c < start_delta_c + 0.05f) restart_delta_c = start_delta_c + 0.05f;
-          if (restart_bypass_extra_c < 0.20f) restart_bypass_extra_c = 0.20f;
-          if (off_pid_max_f < 0) off_pid_max_f = 0;
-          if (off_pid_max_f > demand_max) off_pid_max_f = demand_max;
-
           const float room_c = id(room_temp_selected).state;
           const float room_sp_c = id(room_setpoint_selected).state;
-          const bool room_valid = !isnan(room_c) && !isnan(room_sp_c);
-
+          const bool room_valid = isfinite(room_c) && isfinite(room_sp_c);
           auto room_temperature_source_fresh = [&]() -> bool {
             if (!id(room_temp_source).has_state()) return false;
             const auto source = id(room_temp_source).current_option();
-            if (source == "HA input") {
-              return id(room_temp_valid_ha).state && id(thermostat_room_temp_ha).has_state() &&
-                     !isnan(id(thermostat_room_temp_ha).state) && !id(oq_room_temp_selected_hold_active);
-            }
-            if (source == "OT thermostat") {
-              return (${oq_ot_room_temperature_fresh_expr}) &&
-                     id(ot_thermostat_room_temp).has_state() && !isnan(id(ot_thermostat_room_temp).state);
-            }
-            if (source == "CIC") {
-              return id(feed_ok).has_state() && id(feed_ok).state &&
-                     id(cic_data_stale).has_state() && !id(cic_data_stale).state &&
-                     id(cic_room_temp).has_state() && !isnan(id(cic_room_temp).state);
-            }
-            if (source == "API input") {
-              return id(api_input_room_temperature_valid).has_state() &&
-                     id(api_input_room_temperature_valid).state &&
-                     id(api_input_room_temperature).has_state() && !isnan(id(api_input_room_temperature).state);
-            }
-            if (source == "MQTT") {
-              return id(mqtt_room_temperature_valid).has_state() && id(mqtt_room_temperature_valid).state &&
-                     id(mqtt_room_temperature).has_state() && !isnan(id(mqtt_room_temperature).state);
-            }
-            return false;
+            return (source == "HA input" && id(room_temp_valid_ha).state &&
+                    id(thermostat_room_temp_ha).has_state() && isfinite(id(thermostat_room_temp_ha).state) && !id(oq_room_temp_selected_hold_active)) ||
+                   (source == "OT thermostat" && (${oq_ot_room_temperature_fresh_expr}) &&
+                    id(ot_thermostat_room_temp).has_state() && isfinite(id(ot_thermostat_room_temp).state)) ||
+                   (source == "CIC" && id(feed_ok).has_state() && id(feed_ok).state &&
+                    id(cic_data_stale).has_state() && !id(cic_data_stale).state && id(cic_room_temp).has_state() && isfinite(id(cic_room_temp).state)) ||
+                   (source == "API input" && id(api_input_room_temperature_valid).has_state() &&
+                    id(api_input_room_temperature_valid).state && id(api_input_room_temperature).has_state() && isfinite(id(api_input_room_temperature).state)) ||
+                   (source == "MQTT" && id(mqtt_room_temperature_valid).has_state() &&
+                    id(mqtt_room_temperature_valid).state && id(mqtt_room_temperature).has_state() && isfinite(id(mqtt_room_temperature).state));
           };
-
           auto room_setpoint_source_fresh = [&]() -> bool {
             if (!id(room_setpoint_source).has_state()) return false;
             const auto source = id(room_setpoint_source).current_option();
-            if (source == "HA input") {
-              return id(room_setpoint_valid_ha).state && id(thermostat_setpoint_ha).has_state() &&
-                     !isnan(id(thermostat_setpoint_ha).state) && !id(oq_room_setpoint_selected_hold_active);
-            }
-            if (source == "OT thermostat") {
-              return (${oq_ot_room_setpoint_fresh_expr}) &&
-                     id(ot_thermostat_room_setpoint).has_state() && !isnan(id(ot_thermostat_room_setpoint).state);
-            }
-            if (source == "CIC") {
-              return id(feed_ok).has_state() && id(feed_ok).state &&
-                     id(cic_data_stale).has_state() && !id(cic_data_stale).state &&
-                     id(cic_room_setpoint).has_state() && !isnan(id(cic_room_setpoint).state);
-            }
-            if (source == "API input") {
-              return id(api_input_room_setpoint_valid).has_state() && id(api_input_room_setpoint_valid).state &&
-                     id(api_input_room_setpoint).has_state() && !isnan(id(api_input_room_setpoint).state);
-            }
-            if (source == "MQTT") {
-              return id(mqtt_room_setpoint_valid).has_state() && id(mqtt_room_setpoint_valid).state &&
-                     id(mqtt_room_setpoint).has_state() && !isnan(id(mqtt_room_setpoint).state);
-            }
-            return false;
+            return (source == "HA input" && id(room_setpoint_valid_ha).state &&
+                    id(thermostat_setpoint_ha).has_state() && isfinite(id(thermostat_setpoint_ha).state) && !id(oq_room_setpoint_selected_hold_active)) ||
+                   (source == "OT thermostat" && (${oq_ot_room_setpoint_fresh_expr}) &&
+                    id(ot_thermostat_room_setpoint).has_state() && isfinite(id(ot_thermostat_room_setpoint).state)) ||
+                   (source == "CIC" && id(feed_ok).has_state() && id(feed_ok).state &&
+                    id(cic_data_stale).has_state() && !id(cic_data_stale).state && id(cic_room_setpoint).has_state() && isfinite(id(cic_room_setpoint).state)) ||
+                   (source == "API input" && id(api_input_room_setpoint_valid).has_state() &&
+                    id(api_input_room_setpoint_valid).state && id(api_input_room_setpoint).has_state() && isfinite(id(api_input_room_setpoint).state)) ||
+                   (source == "MQTT" && id(mqtt_room_setpoint_valid).has_state() &&
+                    id(mqtt_room_setpoint_valid).state && id(mqtt_room_setpoint).has_state() && isfinite(id(mqtt_room_setpoint).state));
           };
 
           const bool room_data_fresh =
               room_valid && room_temperature_source_fresh() && room_setpoint_source_fresh();
-          const bool room_warm_for_off =
-              room_data_fresh && (room_c >= (room_sp_c + room_overheat_off_c));
-          const bool room_requests_heat =
-              room_data_fresh && (room_c <= (room_sp_c - room_resume_heat_c));
-          const bool room_allows_off = (!room_data_fresh) || room_warm_for_off;
-
           const uint32_t now_ms = (uint32_t) millis();
-          constexpr uint32_t oil_return_hold_ms = 180000UL;
           bool oil_return_active = id(hp1_prot_oil_return).state;
           #if OQ_TOPOLOGY_DUO
           oil_return_active = oil_return_active || id(${secondary_oil_return_id}).state;
           #endif
-          if (oil_return_active) {
-            id(oq_curve_oil_return_hold_until_ms) = now_ms + oil_return_hold_ms;
-          }
-          const bool oil_return_mask_active =
-              oil_return_active ||
-              (id(oq_curve_oil_return_hold_until_ms) > 0 &&
-               now_ms < id(oq_curve_oil_return_hold_until_ms));
-          static bool last_oil_return_mask_active = false;
-          if (oil_return_mask_active != last_oil_return_mask_active) {
-            ESP_LOGI("quatt.heatcurve", "Oil return hold %s", oil_return_mask_active ? "active" : "cleared");
-            last_oil_return_mask_active = oil_return_mask_active;
-          }
-          bool heat_request_active = id(oq_curve_heat_request_active);
-          const bool above_stop_band = pv >= (spw + stop_delta_c);
-          const bool low_pid_for_off = d <= off_pid_max_f;
-          const bool low_load_release_condition =
-              !oil_return_mask_active &&
-              heat_request_active &&
-              (id(oq_curve_regime_code) == 2) &&
-              (id(oq_curve_demand_pre_guardrail) <= 0) &&
-              ((!room_data_fresh) || (room_c >= (room_sp_c - room_resume_heat_c))) &&
-              (pv >= (spw + 0.25f));
-          const bool normal_stop_condition =
-              !oil_return_mask_active && above_stop_band && low_pid_for_off && room_allows_off;
-          const float restart_bypass_delta_c = restart_delta_c + restart_bypass_extra_c;
-          bool restart_inhibit_active = false;
-          const bool was_restart_blocked_by_room = id(oq_curve_restart_blocked_by_room);
-          bool restart_blocked_by_room = false;
-          uint32_t off_since_ms = id(oq_curve_off_since_ms);
-          const bool was_heat_request_active = heat_request_active;
-          if (heat_request_active) {
-            if (normal_stop_condition || low_load_release_condition) {
-              uint32_t armed_ms = id(oq_curve_stop_arm_ms);
-              const uint32_t confirm_ms =
-                  low_load_release_condition ? std::min<uint32_t>(off_confirm_ms, 90000UL)
-                                             : off_confirm_ms;
-              if (armed_ms == 0 || now_ms <= armed_ms) {
-                id(oq_curve_stop_arm_ms) = now_ms;
-              } else if ((now_ms - armed_ms) >= confirm_ms) {
-                heat_request_active = false;
-                id(oq_curve_stop_arm_ms) = 0;
+          const auto oil_return = oq_curve::update_oil_return_hold(
+              now_ms, oil_return_active, id(oq_curve_oil_return_hold_until_ms), 180000UL);
+          int applied_total = std::max(0, id(hp1_last_applied_level));
+          #if OQ_TOPOLOGY_DUO
+          applied_total += std::max(0, id(${secondary_last_applied_level_id}));
+          #endif
+          const oq_curve::DemandState previous{
+              id(oq_curve_heat_request_active), id(oq_curve_stop_arm_ms), id(oq_curve_off_since_ms),
+              id(oq_curve_restart_inhibit_active), id(oq_curve_restart_blocked_by_room), id(oq_curve_regime_code)};
+          const auto demand = oq_curve::decide_demand(
+              {now_ms, state, spw, pv, room_c, room_sp_c, room_data_fresh, oil_return.mask_active,
+               applied_total, demand_max},
+              tuning, previous);
+          id(oq_curve_oil_return_hold_until_ms) = oil_return.hold_until_ms;
+          if (demand.valid) {
+            static bool last_oil_return_mask_active = false;
+            if (oil_return.mask_active != last_oil_return_mask_active) {
+              ESP_LOGI("quatt.heatcurve", "Oil return hold %s", oil_return.mask_active ? "active" : "cleared");
+              last_oil_return_mask_active = oil_return.mask_active;
+            }
+            if (demand.next.restart_inhibit_active != previous.restart_inhibit_active) {
+              if (demand.next.restart_inhibit_active) {
+                ESP_LOGI("quatt.heatcurve", "Restart inhibit active: off-time hold (%u/%u s)",
+                         (unsigned int) ((uint32_t)(now_ms - demand.next.off_since_ms) / 1000UL),
+                         (unsigned int) (tuning.off_reentry_min_ms / 1000UL));
+              } else {
+                ESP_LOGI("quatt.heatcurve", "Restart inhibit cleared");
               }
-            } else {
-              id(oq_curve_stop_arm_ms) = 0;
             }
-            if (!heat_request_active && was_heat_request_active) {
-              off_since_ms = now_ms;
+            if (demand.next.restart_blocked_by_room != previous.restart_blocked_by_room) {
+              if (demand.next.restart_blocked_by_room)
+                ESP_LOGI("quatt.heatcurve", "Restart blocked: fresh room %.2f C is above %.2f C setpoint",
+                         room_c, room_sp_c);
+              else ESP_LOGI("quatt.heatcurve", "Warm-room restart block cleared");
             }
-          } else {
-            id(oq_curve_stop_arm_ms) = 0;
-            if (off_since_ms == 0 || now_ms <= off_since_ms) off_since_ms = now_ms;
-            const bool below_restart_band = pv <= (spw - restart_delta_c);
-            const bool deep_undershoot_restart = pv <= (spw - restart_bypass_delta_c);
-            bool off_lock_active = false;
-            if (off_reentry_min_ms > 0 && now_ms > off_since_ms) {
-              off_lock_active = (now_ms - off_since_ms) < off_reentry_min_ms;
-            }
-            const auto restart_decision = oq_curve::evaluate_restart(
-                below_restart_band, deep_undershoot_restart, off_lock_active, room_data_fresh, room_c, room_sp_c,
-                room_overheat_off_c, room_resume_heat_c);
-            restart_inhibit_active = restart_decision.blocked_by_off_lock;
-            restart_blocked_by_room = restart_decision.blocked_by_room;
-            if (restart_decision.restart) {
-              heat_request_active = true;
-              off_since_ms = 0;
+            if (demand.next.heat_request_active != previous.heat_request_active) {
+              const char *reason = demand.next.heat_request_active
+                  ? (demand.restart_reason == oq_curve::RESTART_ROOM_DEMAND ? "room demand" : "restart band reached")
+                  : (demand.stop_reason == oq_curve::STOP_LOW_LOAD ? "low-load release" : "normal stop");
+              ESP_LOGI("quatt.heatcurve", "Heat request %s: %s",
+                       demand.next.heat_request_active ? "resumed" : "stopped", reason);
             }
           }
-          static bool last_restart_inhibit_active = false;
-          if (restart_inhibit_active != last_restart_inhibit_active) {
-            if (restart_inhibit_active) {
-              const uint32_t off_age_ms = (off_since_ms > 0 && now_ms > off_since_ms) ? (now_ms - off_since_ms) : 0;
-              const uint32_t off_age_s = off_age_ms / 1000UL;
-              const uint32_t off_min_s = off_reentry_min_ms / 1000UL;
-              ESP_LOGI("quatt.heatcurve", "Restart inhibit active: off-time hold (%u/%u s)",
-                       (unsigned int) off_age_s, (unsigned int) off_min_s);
-            } else {
-              ESP_LOGI("quatt.heatcurve", "Restart inhibit cleared");
-            }
-            last_restart_inhibit_active = restart_inhibit_active;
-          }
-          if (heat_request_active) {
-            restart_inhibit_active = false;
-            restart_blocked_by_room = false;
-            off_since_ms = 0;
-          }
-
-          if (restart_blocked_by_room != was_restart_blocked_by_room) {
-            if (restart_blocked_by_room) {
-              ESP_LOGI("quatt.heatcurve", "Restart blocked: fresh room %.2f C is above %.2f C setpoint",
-                       room_c, room_sp_c);
-            } else {
-              ESP_LOGI("quatt.heatcurve", "Warm-room restart block cleared");
-            }
-          }
-
-          static bool last_heat_request_active = false;
-          if (heat_request_active != last_heat_request_active) {
-            if (heat_request_active) {
-              ESP_LOGI("quatt.heatcurve", "Heat request resumed: %s",
-                       room_requests_heat ? "room demand" : "restart band reached");
-            } else {
-              ESP_LOGI("quatt.heatcurve", "Heat request stopped: %s",
-                       low_load_release_condition ? "low-load release" : (normal_stop_condition ? "normal stop" : "oil return hold"));
-            }
-            last_heat_request_active = heat_request_active;
-          }
-
-          if (!heat_request_active) {
-            d = 0;
-            id(oq_curve_regime_code) = 0;
-          } else {
-            if (d < 1) d = 1;
-
-            auto total_applied_level = [&]() -> int {
-              int total = id(hp1_last_applied_level);
-              if (total < 0) total = 0;
-              #if OQ_TOPOLOGY_DUO
-              int secondary = id(${secondary_last_applied_level_id});
-              if (secondary > 0) total += secondary;
-              #endif
-              return total;
-            };
-
-            const float supply_error_c = spw - pv;
-            const int applied_total = total_applied_level();
-            int regime = id(oq_curve_regime_code);
-            if (regime != 1 && regime != 2) {
-              regime = (supply_error_c >= recovery_enter_c) ? 1 : 2;
-            }
-            const bool room_allows_recovery =
-                (!room_data_fresh) || (room_c <= (room_sp_c + tuning.trim_start_c));
-            constexpr int recovery_reenter_min_f = 8;
-            if (regime == 1) {
-              if (supply_error_c <= recovery_exit_c) regime = 2;
-            } else if (!oil_return_mask_active &&
-                       supply_error_c >= recovery_enter_c &&
-                       d >= recovery_reenter_min_f &&
-                       room_allows_recovery) {
-              regime = 1;
-            }
-
-            id(oq_curve_regime_code) = regime;
-            if (regime == 1) {
-              int recovery_floor = applied_total + 1;
-              if (recovery_floor < 2) recovery_floor = 2;
-              if (recovery_floor > demand_max) recovery_floor = demand_max;
-              if (d < recovery_floor) d = recovery_floor;
-            } else {
-              // Close to target, the plant still contains a lot of thermal momentum.
-              // Cap demand explicitly here so PID saturation cannot keep pushing
-              // high discrete requests deep into the maintain band.
-              int maintain_cap = demand_max;
-              if (supply_error_c <= 0.00f) maintain_cap = 1;
-              else if (supply_error_c <= 0.10f) maintain_cap = 2;
-              else if (supply_error_c <= 0.20f) maintain_cap = 3;
-              else if (supply_error_c <= 0.35f) maintain_cap = 4;
-              else if (supply_error_c <= 0.50f) maintain_cap = 5;
-              else if (supply_error_c <= 0.70f) maintain_cap = 6;
-              else if (supply_error_c <= 0.90f) maintain_cap = 8;
-              if (d > maintain_cap) d = maintain_cap;
-            }
-          }
-
-          float d_cont_effective = d_cont;
-          if (!heat_request_active) {
-            d_cont_effective = 0.0f;
-          } else if (id(oq_curve_regime_code) == 1) {
-            if (d_cont_effective < (float) d) d_cont_effective = (float) d;
-          } else if (d_cont_effective > (float) d) {
-            d_cont_effective = (float) d;
-          }
-
-          id(oq_curve_demand_continuous) = d_cont_effective;
-          id(oq_curve_heat_request_active) = heat_request_active;
-          id(oq_curve_off_since_ms) = off_since_ms;
-          id(oq_curve_restart_inhibit_active) = restart_inhibit_active;
-          id(oq_curve_restart_blocked_by_room) = restart_blocked_by_room;
-          id(oq_demand_curve) = d;
+          id(oq_curve_demand_continuous) = demand.demand_continuous;
+          id(oq_curve_demand_pre_guardrail) = demand.demand_pre_guardrail;
+          id(oq_curve_heat_request_active) = demand.next.heat_request_active;
+          id(oq_curve_stop_arm_ms) = demand.next.stop_arm_ms;
+          id(oq_curve_off_since_ms) = demand.next.off_since_ms;
+          id(oq_curve_restart_inhibit_active) = demand.next.restart_inhibit_active;
+          id(oq_curve_restart_blocked_by_room) = demand.next.restart_blocked_by_room;
+          id(oq_curve_regime_code) = demand.next.regime_code;
+          id(oq_demand_curve) = demand.demand;
 
 sensor:
   - platform: template
