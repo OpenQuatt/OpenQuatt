@@ -55,8 +55,14 @@ class V2CompressorLevelContractTest(unittest.TestCase):
 
     def test_manual_request_surface_exposes_f20(self) -> None:
         self.assertEqual(MANUAL_HP.count("max_value: 20"), 2)
-        self.assertIn("configured_v2, runtime_frequency_snapshot(true)", REQUEST_CONTROL)
-        self.assertIn("configured_v2, runtime_frequency_snapshot(false)", REQUEST_CONTROL)
+        self.assertIn(
+            "frequency_runtime.configured_v2, frequency_runtime.snapshot(true)",
+            REQUEST_CONTROL,
+        )
+        self.assertIn(
+            "frequency_runtime.configured_v2, frequency_runtime.snapshot(false)",
+            REQUEST_CONTROL,
+        )
 
     def test_actuator_keeps_control_and_physical_domains_separate(self) -> None:
         self.assertIn("const char* lvl_opts[21]", ACTUATOR)
@@ -65,7 +71,7 @@ class V2CompressorLevelContractTest(unittest.TestCase):
         self.assertIn("return level_command.control_level;", ACTUATOR)
         self.assertIn("last_commanded_physical_level", ACTUATOR)
         self.assertLess(
-            ACTUATOR.index("applied = oq_frequency_policy::pick_allowed_level("),
+            ACTUATOR.index("applied = frequency_runtime.pick_allowed_level("),
             ACTUATOR.rindex("resolve_automatic_level("),
         )
         self.assertLess(

@@ -165,53 +165,7 @@ interval:
           const bool request_thermal_active = (request_mode_code == 1 || request_mode_code == 2);
           const bool manual_hp_service_active = oq_manual_hp::owns_control();
           const char* request_thermal_mode_opt = oq_request::request_mode_option(request_mode_code);
-          const bool configured_v2 =
-              id(hp_generation).has_state() &&
-              id(hp_generation).current_option() == "V2";
-
-          const auto hp1_frequency_snapshot =
-              oq_odu::decode_runtime_frequency_snapshot(
-                  id(hp1_runtime_frequency_snapshot_storage));
-          const auto secondary_frequency_snapshot =
-              oq_odu::decode_runtime_frequency_snapshot(
-                  id(${secondary_runtime_frequency_snapshot_storage_id}));
-          auto runtime_frequency_snapshot = [&](bool is_hp1)
-              -> const oq_odu::RuntimeFrequencySnapshot& {
-            return is_hp1 ? hp1_frequency_snapshot
-                          : secondary_frequency_snapshot;
-          };
-
-          auto frequency_cap_hz = [&]()->int {
-            auto* cap = id(oq_silent_active).state
-                ? id(oq_silent_max_frequency_hz)
-                : id(oq_day_max_frequency_hz);
-            return cap->has_state() && !isnan(cap->state)
-                ? (int) lroundf(cap->state)
-                : -1;
-          };
-
-          auto excluded_frequency_range = [&](bool is_hp1)
-              -> oq_frequency_policy::FrequencyRange {
-            auto read_hz = [](auto* number)->int {
-              return number->has_state() && !isnan(number->state)
-                  ? (int) lroundf(number->state)
-                  : -1;
-            };
-            if (is_hp1) {
-              return {
-                  read_hz(id(hp1_excluded_frequency_min_hz)),
-                  read_hz(id(hp1_excluded_frequency_max_hz)),
-              };
-            }
-            #if OQ_TOPOLOGY_DUO
-            return {
-                read_hz(id(${secondary_excluded_frequency_min_hz_id})),
-                read_hz(id(${secondary_excluded_frequency_max_hz_id})),
-            };
-            #else
-            return {};
-            #endif
-          };
+          const auto frequency_runtime = oq_frequency_runtime::capture();
 
           auto hp_hold_mode_opt = [&](bool is_hp1)->const char* {
             return oq_request::retained_mode_name(
@@ -314,8 +268,8 @@ interval:
                 selected_physical_level,
                 prev_applied,
                 prev_physical,
-                configured_v2,
-                runtime_frequency_snapshot(is_hp1));
+                frequency_runtime.configured_v2,
+                frequency_runtime.snapshot(is_hp1));
             return retained;
           };
 
@@ -468,8 +422,8 @@ interval:
           auto apply_level = [&](bool is_hp1, int req_level, bool was_cooling)->int {
             const int actuator_max_level = manual_hp_service_active
                 ? oq_odu::physical_level_limit(
-                      configured_v2,
-                      runtime_frequency_snapshot(is_hp1),
+                      frequency_runtime.configured_v2,
+                      frequency_runtime.snapshot(is_hp1),
                       request_mode_code)
                 : max_level;
             req_level = std::max(min_level, std::min(actuator_max_level, req_level));
@@ -640,29 +594,22 @@ interval:
             int cap_hz = -1;
             const bool use_frequency_policy = !manual_hp_service_active;
             if (applied > 0 && use_frequency_policy) {
-              cap_hz = frequency_cap_hz();
-              applied = oq_frequency_policy::pick_allowed_level(
-                  configured_v2,
-                  runtime_frequency_snapshot(is_hp1),
-                  expected_mode,
-                  applied,
-                  1,
-                  max_level,
-                  cap_hz,
-                  excluded_frequency_range(is_hp1));
+              cap_hz = frequency_runtime.cap_hz;
+              applied = frequency_runtime.pick_allowed_level(
+                  is_hp1, expected_mode, applied, 1, max_level);
             }
 
             oq_odu::LevelCommand level_command{};
             if (applied > 0) {
               level_command = manual_hp_service_active
                   ? oq_odu::resolve_manual_level(
-                        configured_v2,
-                        runtime_frequency_snapshot(is_hp1),
+                        frequency_runtime.configured_v2,
+                        frequency_runtime.snapshot(is_hp1),
                         expected_mode,
                         applied)
                   : oq_odu::resolve_automatic_level(
-                        configured_v2,
-                        runtime_frequency_snapshot(is_hp1),
+                        frequency_runtime.configured_v2,
+                        frequency_runtime.snapshot(is_hp1),
                         expected_mode,
                         applied);
               if (level_command.control_level <= 0 ||

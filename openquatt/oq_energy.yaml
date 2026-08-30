@@ -120,10 +120,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 10s
     lambda: |-
-      auto nz = [](float value) -> float { return isnan(value) ? 0.0f : value; };
-      const float hp_heat_w = nz(id(oq_total_heat_power).state);
-      const float boiler_w = nz(id(boiler_heat_power).state);
-      return hp_heat_w + boiler_w;
+      return oq_energy::sum_or_zero(id(oq_total_heat_power).state, id(boiler_heat_power).state);
 
   # HeatPump COP based on daily thermal/electrical energy (kWh/kWh).
   - platform: template
@@ -134,13 +131,7 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      const float heat_kwh = id(oq_heatpump_thermal_energy_daily).state;
-      const float elec_kwh = id(oq_heating_electrical_energy_daily).state;
-
-      if (isnan(heat_kwh) || isnan(elec_kwh)) return NAN;
-      if (elec_kwh < 0.01f) return NAN;
-
-      return heat_kwh / elec_kwh;
+      return oq_energy::ratio_or_nan(id(oq_heatpump_thermal_energy_daily).state, id(oq_heating_electrical_energy_daily).state, 0.01f);
 
   # HeatPump thermal energy (daily, kWh).
   - platform: total_daily_energy
@@ -207,13 +198,7 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      const float heat_kwh = id(oq_heatpump_thermal_energy_cumulative).state;
-      const float elec_kwh = id(oq_heating_electrical_energy_cumulative).state;
-
-      if (isnan(heat_kwh) || isnan(elec_kwh)) return NAN;
-      if (elec_kwh < 0.01f) return NAN;
-
-      return heat_kwh / elec_kwh;
+      return oq_energy::ratio_or_nan(id(oq_heatpump_thermal_energy_cumulative).state, id(oq_heating_electrical_energy_cumulative).state, 0.01f);
 
   # HeatPump EER based on daily cooling/electrical energy (kWh/kWh).
   - platform: template
@@ -224,13 +209,7 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      const float cooling_kwh = id(oq_heatpump_cooling_energy_daily).state;
-      const float elec_kwh = id(oq_cooling_electrical_energy_daily).state;
-
-      if (isnan(cooling_kwh) || isnan(elec_kwh)) return NAN;
-      if (elec_kwh < 0.01f) return NAN;
-
-      return cooling_kwh / elec_kwh;
+      return oq_energy::ratio_or_nan(id(oq_heatpump_cooling_energy_daily).state, id(oq_cooling_electrical_energy_daily).state, 0.01f);
 
   # HeatPump EER based on cumulative cooling/electrical energy (kWh/kWh).
   - platform: template
@@ -241,13 +220,7 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      const float cooling_kwh = id(oq_heatpump_cooling_energy_cumulative).state;
-      const float elec_kwh = id(oq_cooling_electrical_energy_cumulative).state;
-
-      if (isnan(cooling_kwh) || isnan(elec_kwh)) return NAN;
-      if (elec_kwh < 0.01f) return NAN;
-
-      return cooling_kwh / elec_kwh;
+      return oq_energy::ratio_or_nan(id(oq_heatpump_cooling_energy_cumulative).state, id(oq_cooling_electrical_energy_cumulative).state, 0.01f);
 
   # Boiler thermal energy (daily, kWh).
   - platform: total_daily_energy

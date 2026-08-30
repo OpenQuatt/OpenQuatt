@@ -1236,36 +1236,16 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      // Keep model coefficients exactly as before; only readability/safety is improved.
-      const float standby_power_w = 5.150232354845286f;
-      const float compressor_calibration = 1.1240096401010435f;
-      const float fan_calibration = -0.04858859969715763f;
-      const float bottom_plate_heater_w = 150.06430841218332f;
-      const float crankcase_heater_w = 40.0f;
-
-      auto nz = [](float value) -> float { return isnan(value) ? 0.0f : value; };
-
-      const float voltage_v = nz(id(${hp_id}_voltage).state);
-      const float current_a = nz(id(${hp_id}_current).state);
-      const float fan_speed = nz(id(${hp_id}_fan_speed).state);
-
-      float pump_power_w = 0.0f;
-      if (id(${hp_id}_pump_relay).has_state() && id(${hp_id}_pump_relay).state) {
-        pump_power_w = nz(id(${hp_id}_pump_power).state);
-      }
-
-      const float bottom_plate_w = id(${hp_id}_bottom_plate_heater).state ? bottom_plate_heater_w : 0.0f;
-      const float crankcase_w = id(${hp_id}_crankcase_heater).state ? crankcase_heater_w : 0.0f;
-
-      const float p_input_w = standby_power_w
-                            + (voltage_v * current_a * compressor_calibration)
-                            + (fan_speed * fan_calibration)
-                            + pump_power_w
-                            + bottom_plate_w
-                            + crankcase_w;
-
-      // Physical lower bound: electrical input power cannot be negative.
-      return (p_input_w < 0.0f) ? 0.0f : p_input_w;
+      return oq_energy::hp_input_power({
+          id(${hp_id}_voltage).state,
+          id(${hp_id}_current).state,
+          id(${hp_id}_fan_speed).state,
+          id(${hp_id}_pump_relay).has_state(),
+          id(${hp_id}_pump_relay).state,
+          id(${hp_id}_pump_power).state,
+          id(${hp_id}_bottom_plate_heater).state,
+          id(${hp_id}_crankcase_heater).state,
+      });
 
   - platform: template
     id: ${hp_id}_heat_power
@@ -1277,20 +1257,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 10s
     lambda: |-
-      // Heat power follows measured HP working mode (2 = Heating), not supervisory CM.
-      const float working_mode = id(${hp_id}_working_mode).state;
-      if (working_mode != 2.0f) return 0.0f;
-
-      const float t_in_c = id(${hp_id}_water_in_temp).state;
-      const float t_out_c = id(${hp_id}_water_out_temp).state;
-      const float flow_lph = id(flow_rate_selected).state;
-
-      if (isnan(t_in_c) || isnan(t_out_c) || isnan(flow_lph)) return 0.0f;
-
-      const float water_cp_j_per_kgk = ${oq_water_cp_j_per_kgk};  // J/(kg·K)
-      const float mass_flow_kgps = flow_lph / 3600.0f;  // kg/s (≈ L/h)
-      const float delta_t_k = t_out_c - t_in_c;         // K
-      return mass_flow_kgps * water_cp_j_per_kgk * delta_t_k;
+      return oq_energy::hp_heating_power(id(${hp_id}_working_mode).state, id(${hp_id}_water_in_temp).state, id(${hp_id}_water_out_temp).state, id(flow_rate_selected).state, ${oq_water_cp_j_per_kgk});
 
   - platform: template
     id: ${hp_id}_cooling_power
@@ -1302,24 +1269,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 10s
     lambda: |-
-      // Cooling power follows measured HP working mode (1 = Cooling), not supervisory CM.
-      const float working_mode = id(${hp_id}_working_mode).state;
-      if (working_mode != 1.0f) return 0.0f;
-
-      const float t_in_c = id(${hp_id}_water_in_temp).state;
-      const float t_out_c = id(${hp_id}_water_out_temp).state;
-      const float flow_lph = id(flow_rate_selected).state;
-
-      if (isnan(t_in_c) || isnan(t_out_c) || isnan(flow_lph)) return 0.0f;
-
-      const float water_cp_j_per_kgk = ${oq_water_cp_j_per_kgk};  // J/(kg·K)
-      const float mass_flow_kgps = flow_lph / 3600.0f;            // kg/s (≈ L/h)
-      const float delta_t_k = t_in_c - t_out_c;                   // K, positive while cooling
-      const float cooling_power_w = mass_flow_kgps * water_cp_j_per_kgk * delta_t_k;
-
-      // During startup the water outlet can briefly still be warmer than the inlet.
-      // That is not cooling output, so do not expose or integrate it as negative power.
-      return (cooling_power_w < 0.0f) ? 0.0f : cooling_power_w;
+      return oq_energy::hp_cooling_power(id(${hp_id}_working_mode).state, id(${hp_id}_water_in_temp).state, id(${hp_id}_water_out_temp).state, id(flow_rate_selected).state, ${oq_water_cp_j_per_kgk});
 
   - platform: template
     id: ${hp_id}_cop
@@ -1329,16 +1279,7 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      const float p_el_w = id(${hp_id}_power_input).state;
-      const float p_th_w = id(${hp_id}_heat_power).state;
-      const float min_valid_input_w = 5.0f;
-
-      if (isnan(p_el_w) || isnan(p_th_w)) return NAN;
-
-      // Avoid extreme COP values at (near) 0 W electrical input.
-      if (fabsf(p_el_w) < min_valid_input_w) return NAN;
-
-      return p_th_w / p_el_w;
+      return oq_energy::instant_ratio_or_nan(id(${hp_id}_heat_power).state, id(${hp_id}_power_input).state, 5.0f);
 
   - platform: template
     id: ${hp_id}_eer
@@ -1348,16 +1289,7 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      const float p_el_w = id(${hp_id}_power_input).state;
-      const float p_cool_w = id(${hp_id}_cooling_power).state;
-      const float min_valid_input_w = 5.0f;
-
-      if (isnan(p_el_w) || isnan(p_cool_w)) return NAN;
-
-      // Avoid extreme EER values at (near) 0 W electrical input.
-      if (fabsf(p_el_w) < min_valid_input_w) return NAN;
-
-      return p_cool_w / p_el_w;
+      return oq_energy::instant_ratio_or_nan(id(${hp_id}_cooling_power).state, id(${hp_id}_power_input).state, 5.0f);
 
   # Internal raw diagnostic words. We keep these hidden and derive the compact
   # diagnostics we actually use from them instead of exposing dozens of

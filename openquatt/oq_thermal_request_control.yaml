@@ -338,16 +338,7 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      auto nz = [](float value) -> float { return isnan(value) ? 0.0f : value; };
-      const float hp1_power_w = nz(id(hp1_power_input).state);
-      #if OQ_TOPOLOGY_DUO
-      const float hp2_power_w = nz(id(${secondary_power_input_id}).state);
-      const float total_input_w = hp1_power_w + hp2_power_w;
-      #else
-      const float total_input_w = hp1_power_w;
-      #endif
-      // Safety clamp against tiny negative noise from upstream math/rounding.
-      return (total_input_w < 0.0f) ? 0.0f : total_input_w;
+      return oq_energy_runtime::total_power_input();
 
   - platform: template
     id: oq_heating_power_input
@@ -359,17 +350,7 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      auto nz = [](float value) -> float { return isnan(value) ? 0.0f : value; };
-      if (id(oq_cooling_energy_session_active)) return 0.0f;
-      const float hp1_mode = id(hp1_working_mode).state;
-      const float hp1_power_w = (hp1_mode == 2.0f) ? nz(id(hp1_power_input).state) : 0.0f;
-      #if OQ_TOPOLOGY_DUO
-      const float hp2_mode = id(${secondary_working_mode_id}).state;
-      const float hp2_power_w = (hp2_mode == 2.0f) ? nz(id(${secondary_power_input_id}).state) : 0.0f;
-      return hp1_power_w + hp2_power_w;
-      #else
-      return hp1_power_w;
-      #endif
+      return oq_energy_runtime::heating_power_input();
 
   - platform: template
     id: oq_cooling_power_input
@@ -381,15 +362,7 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      auto nz = [](float value) -> float { return isnan(value) ? 0.0f : value; };
-      if (!id(oq_cooling_energy_session_active)) return 0.0f;
-      const float hp1_power_w = nz(id(hp1_power_input).state);
-      #if OQ_TOPOLOGY_DUO
-      const float hp2_power_w = nz(id(${secondary_power_input_id}).state);
-      return hp1_power_w + hp2_power_w;
-      #else
-      return hp1_power_w;
-      #endif
+      return oq_energy_runtime::cooling_power_input();
 
   - platform: template
     id: oq_total_heat_power
@@ -401,19 +374,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 10s
     lambda: |-
-      const float hp1_heat_w = id(hp1_heat_power).state;
-      #if OQ_TOPOLOGY_DUO
-      const float hp2_heat_w = id(${secondary_heat_power_id}).state;
-
-      if (isnan(hp1_heat_w) && isnan(hp2_heat_w)) return NAN;
-      if (isnan(hp1_heat_w)) return hp2_heat_w;
-      if (isnan(hp2_heat_w)) return hp1_heat_w;
-
-      return hp1_heat_w + hp2_heat_w;
-      #else
-      if (isnan(hp1_heat_w)) return NAN;
-      return hp1_heat_w;
-      #endif
+      return oq_energy_runtime::total_heat_power();
 
   - platform: template
     id: oq_total_cooling_power
@@ -425,19 +386,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 10s
     lambda: |-
-      const float hp1_cooling_w = id(hp1_cooling_power).state;
-      #if OQ_TOPOLOGY_DUO
-      const float hp2_cooling_w = id(${secondary_cooling_power_id}).state;
-
-      if (isnan(hp1_cooling_w) && isnan(hp2_cooling_w)) return NAN;
-      if (isnan(hp1_cooling_w)) return hp2_cooling_w;
-      if (isnan(hp2_cooling_w)) return hp1_cooling_w;
-
-      return hp1_cooling_w + hp2_cooling_w;
-      #else
-      if (isnan(hp1_cooling_w)) return NAN;
-      return hp1_cooling_w;
-      #endif
+      return oq_energy_runtime::total_cooling_power();
 
   - platform: template
     id: oq_total_cop
@@ -447,13 +396,7 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      const float total_input_w = id(oq_total_power_input).state;
-      const float total_heat_w = id(oq_total_heat_power).state;
-
-      if (isnan(total_input_w) || isnan(total_heat_w)) return NAN;
-      if (fabsf(total_input_w) < ${oq_cop_min_input_w}) return NAN;
-
-      return total_heat_w / total_input_w;
+      return oq_energy::instant_ratio_or_nan(id(oq_total_heat_power).state, id(oq_total_power_input).state, ${oq_cop_min_input_w});
 
   - platform: template
     id: oq_total_eer
@@ -463,13 +406,7 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      const float total_input_w = id(oq_cooling_power_input).state;
-      const float total_cooling_w = id(oq_total_cooling_power).state;
-
-      if (isnan(total_input_w) || isnan(total_cooling_w)) return NAN;
-      if (fabsf(total_input_w) < ${oq_cop_min_input_w}) return NAN;
-
-      return total_cooling_w / total_input_w;
+      return oq_energy::instant_ratio_or_nan(id(oq_total_cooling_power).state, id(oq_cooling_power_input).state, ${oq_cop_min_input_w});
 
   - platform: template
     id: oq_demand_raw_sensor
@@ -790,31 +727,18 @@ interval:
             #endif
           };
 
-          const bool configured_v2 =
-              id(hp_generation).has_state() &&
-              id(hp_generation).current_option() == "V2";
-          const auto hp1_frequency_snapshot =
-              oq_odu::decode_runtime_frequency_snapshot(
-                  id(hp1_runtime_frequency_snapshot_storage));
-          const auto secondary_frequency_snapshot =
-              oq_odu::decode_runtime_frequency_snapshot(
-                  id(${secondary_runtime_frequency_snapshot_storage_id}));
-          auto runtime_frequency_snapshot = [&](bool is_hp1)
-              -> const oq_odu::RuntimeFrequencySnapshot& {
-            return is_hp1 ? hp1_frequency_snapshot
-                          : secondary_frequency_snapshot;
-          };
+          const auto frequency_runtime = oq_frequency_runtime::capture();
 
           auto publish_request = [&](int mode_code, int req1, int req2, int strategy_code, int owner_hp, const char* reason)->void {
             (void) owner_hp;
             const bool manual_request = strategy_code == request_strategy_manual_hp;
             const int hp1_max_level = manual_request
                 ? oq_odu::physical_level_limit(
-                      configured_v2, runtime_frequency_snapshot(true), mode_code)
+                      frequency_runtime.configured_v2, frequency_runtime.snapshot(true), mode_code)
                 : oq_odu::MODEL_LEVEL_MAX;
             const int hp2_max_level = manual_request
                 ? oq_odu::physical_level_limit(
-                      configured_v2, runtime_frequency_snapshot(false), mode_code)
+                      frequency_runtime.configured_v2, frequency_runtime.snapshot(false), mode_code)
                 : oq_odu::MODEL_LEVEL_MAX;
             const auto published = oq_request::make_published_request(
                 mode_code, req1, req2, strategy_code,
@@ -1007,8 +931,8 @@ interval:
                        selected_physical_level,
                        prev_applied,
                        prev_physical,
-                       configured_v2,
-                       runtime_frequency_snapshot(is_hp1))
+                       frequency_runtime.configured_v2,
+                       frequency_runtime.snapshot(is_hp1))
                 .control_level;
           };
 
@@ -1047,16 +971,16 @@ interval:
             int hp1_req = (hp1_mode_code > 0)
                 ? std::max(0, std::min(
                       oq_odu::physical_level_limit(
-                          configured_v2,
-                          runtime_frequency_snapshot(true),
+                          frequency_runtime.configured_v2,
+                          frequency_runtime.snapshot(true),
                           hp1_mode_code),
                       (int) roundf(id(oq_manual_hp1_level).state)))
                 : 0;
             int hp2_req = (hp2_mode_code > 0)
                 ? std::max(0, std::min(
                       oq_odu::physical_level_limit(
-                          configured_v2,
-                          runtime_frequency_snapshot(false),
+                          frequency_runtime.configured_v2,
+                          frequency_runtime.snapshot(false),
                           hp2_mode_code),
                       (int) roundf(id(oq_manual_hp2_level).state)))
                 : 0;
@@ -1224,38 +1148,6 @@ interval:
                               : (is_power_house ? "ph_idle" : "curve_idle");
           const int max_level = 10;
 
-          auto frequency_cap_hz = [&]()->int {
-            auto* cap = id(oq_silent_active).state
-                ? id(oq_silent_max_frequency_hz)
-                : id(oq_day_max_frequency_hz);
-            return cap->has_state() && !isnan(cap->state)
-                ? (int) lroundf(cap->state)
-                : -1;
-          };
-
-          auto excluded_frequency_range = [&](bool is_hp1)
-              -> oq_frequency_policy::FrequencyRange {
-            auto read_hz = [](auto* number)->int {
-              return number->has_state() && !isnan(number->state)
-                  ? (int) lroundf(number->state)
-                  : -1;
-            };
-            if (is_hp1) {
-              return {
-                  read_hz(id(hp1_excluded_frequency_min_hz)),
-                  read_hz(id(hp1_excluded_frequency_max_hz)),
-              };
-            }
-            #if OQ_TOPOLOGY_DUO
-            return {
-                read_hz(id(${secondary_excluded_frequency_min_hz_id})),
-                read_hz(id(${secondary_excluded_frequency_max_hz_id})),
-            };
-            #else
-            return {};
-            #endif
-          };
-
           const bool hp1_valve_def = valve_defrost_active(true);
           #if OQ_TOPOLOGY_DUO
           const bool hp2_valve_def = valve_defrost_active(false);
@@ -1361,15 +1253,8 @@ interval:
           //    range per HP are enforced directly against the runtime table.
           // =========================
           auto pick_allowed = [&](int req, bool is_hp1)->int {
-            return oq_frequency_policy::pick_allowed_level(
-                configured_v2,
-                runtime_frequency_snapshot(is_hp1),
-                active_thermal_mode_code,
-                req,
-                1,
-                max_level,
-                frequency_cap_hz(),
-                excluded_frequency_range(is_hp1));
+            return frequency_runtime.pick_allowed_level(
+                is_hp1, active_thermal_mode_code, req, 1, max_level);
           };
 
           hp1_req = pick_allowed(hp1_req, true);
