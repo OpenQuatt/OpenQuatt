@@ -4,16 +4,13 @@
 using namespace oq_cooling;
 DemandInput active_input(uint32_t now_ms = 0) {
   DemandInput in;
-  in.now_ms = now_ms;
-  in.control_active = in.sensor_valid = true;
+  in.now_ms = now_ms, in.control_active = in.sensor_valid = true;
   in.guard_mode = GUARD_USER_RESPONSIBILITY;
-  in.supply_c = 20;
-  in.target_c = 19;
-  in.demand_max = 4;
-  in.kp = 3;
+  in.supply_c = 20, in.target_c = 19;
+  in.demand_max = 4, in.kp = 3;
   return in;
 }
-void test_timing_filter_and_dwell_rollover() {
+void test_timing() {
   DemandState timing;
   assert(demand_loop_dt_s(0, timing) == 5 && timing.loop_seen && timing.last_loop_ms == 0);
   timing.last_loop_ms = UINT32_MAX - 1999U;
@@ -48,7 +45,7 @@ void test_timing_filter_and_dwell_rollover() {
     assert(state.last_demand_change_ms == (actual == c.previous ? c.since : c.now));
   }
 }
-void test_room_caps_guard_switch_and_pi() {
+void test_pi() {
   struct Cap {
     float room;
     int allowed, base, demand, reason;
@@ -95,7 +92,7 @@ void test_room_caps_guard_switch_and_pi() {
   update_demand(in, {}, state);
   assert(state.integral == 14);
 }
-void test_invalid_inputs_fail_closed() {
+void test_invalid() {
   struct Invalid {
     float supply, target, dew;
     bool dew_mode, valid;
@@ -150,7 +147,7 @@ void test_invalid_inputs_fail_closed() {
   const auto overflow_stop = update_demand(in, {}, projected);
   assert(!overflow_stop.control_active && overflow_stop.arm_minimum_off_stop && projected.limited_demand == 0);
 }
-void test_minimum_off_simmer_and_pi_zero() {
+void test_stops() {
   DemandState stopped;
   stopped.guard_seen = true;
   stopped.last_guard_mode = GUARD_DEW;
@@ -196,10 +193,4 @@ void test_minimum_off_simmer_and_pi_zero() {
   assert(out.pi_zero_stop && out.arm_minimum_off_stop && !zero.water_cycle.active && zero.limited_demand == 0 &&
          zero.water_cycle.stop_reason_code == WATER_STOP_LIMITER && zero.limiter_reason_code == REASON_BUFFER_STOP);
 }
-int main() {
-  test_timing_filter_and_dwell_rollover();
-  test_room_caps_guard_switch_and_pi();
-  test_invalid_inputs_fail_closed();
-  test_minimum_off_simmer_and_pi_zero();
-  return 0;
-}
+int main() { return (test_timing(), test_pi(), test_invalid(), test_stops(), 0); }
