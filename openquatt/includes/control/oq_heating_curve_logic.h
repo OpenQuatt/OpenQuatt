@@ -172,19 +172,15 @@ inline void reset_request_state(uint32_t& request_last_loop_ms, int& request_tot
 
 inline DispatchCandidate invalid_dispatch_candidate() { return DispatchCandidate{}; }
 
-inline float normalized_demand_u(float demand_continuous, int demand_max_f) {
-  if (demand_max_f <= 0) return 0.0f;
-  if (isnan(demand_continuous)) return 0.0f;
-  const float clamped = std::max(0.0f, std::min((float)demand_max_f, demand_continuous));
-  return clamped / (float)demand_max_f;
+inline float power_capped_demand_u(float demand, int cap_f, int max_f) {
+  if (max_f <= 0 || cap_f <= 0 || !isfinite(demand)) return 0.0f;  // Invalid continuous demand fails closed.
+  return std::max(0.0f, std::min({demand, (float)cap_f, (float)max_f})) / (float)max_f;
 }
 
-inline float phase_target_power_w(bool heat_phase, float demand_u, float dispatch_u, float single_cap_w,
-                                  float duo_cap_w) {
-  const float effective_u = heat_phase ? demand_u : std::min(demand_u, dispatch_u);
-  if (effective_u <= 0.0f) return 0.0f;
-  const float single_target_w = isnan(single_cap_w) ? 0.0f : (single_cap_w * effective_u);
-  const float duo_target_w = isnan(duo_cap_w) ? single_target_w : (duo_cap_w * effective_u);
+inline float phase_target_power_w(bool heat_phase, float capped_demand_u, float single_cap_w, float duo_cap_w) {
+  if (!isfinite(capped_demand_u) || capped_demand_u <= 0.0f) return 0.0f;
+  const float single_target_w = isfinite(single_cap_w) ? (single_cap_w * capped_demand_u) : 0.0f;
+  const float duo_target_w = isfinite(duo_cap_w) ? (duo_cap_w * capped_demand_u) : single_target_w;
   return heat_phase ? single_target_w : duo_target_w;
 }
 
