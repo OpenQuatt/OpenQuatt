@@ -2,18 +2,9 @@
 # OpenQuatt - Cooling Safety Entities (policy lives in C++)
 # ==============================================================================
 globals:
-  - id: oq_cooling_fallback_night_min_last_c
-    type: float
-    restore_value: true
-    initial_value: 'NAN'
-  - id: oq_cooling_fallback_night_min_last_day_key
-    type: int
-    restore_value: true
-    initial_value: '-1'
-  - id: oq_cooling_dew_point_selected_hold_active
-    type: bool
-    restore_value: false
-    initial_value: 'false'
+  - {id: oq_cooling_fallback_night_min_last_c, type: float, restore_value: true, initial_value: 'NAN'}
+  - {id: oq_cooling_fallback_night_min_last_day_key, type: int, restore_value: true, initial_value: '-1'}
+  - {id: oq_cooling_dew_point_selected_hold_active, type: bool, restore_value: false, initial_value: 'false'}
 switch:
   - platform: template
     id: cooling_room_request_required
@@ -70,11 +61,7 @@ select:
     entity_category: config
     optimistic: true
     restore_value: true
-    options:
-      - "Auto"
-      - "Home Assistant"
-      - "API input"
-      - "MQTT"
+    options: ["Auto", "Home Assistant", "API input", "MQTT"]
     initial_option: Auto
   - platform: template
     id: cooling_without_dew_point_mode
@@ -114,7 +101,6 @@ binary_sensor:
     name: "Cooling Permitted Core"
     internal: true
     lambda: |-
-      // Core cooling preconditions that are independent from the live flow interlock.
       return oq_cooling_safety::runtime().permitted_core();
   - platform: template
     id: cooling_request_active
@@ -129,7 +115,6 @@ binary_sensor:
     icon: mdi:shield-check
     device_class: running
     lambda: |-
-      // User-facing permission includes both the core cooling prerequisites and the live flow guard.
       return oq_cooling_safety::runtime().permitted((float) ${oq_cm_min_flow_lph});
   - platform: template
     id: cooling_dew_point_available
@@ -175,9 +160,7 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      const uint32_t hold_ms = (uint32_t)(${oq_selected_input_stale_hold_s}UL * 1000UL);
-      const uint32_t now_ms = (uint32_t) millis();
-      return oq_cooling_safety::runtime().selected_dew_point(now_ms, hold_ms);
+      return oq_cooling_safety::runtime().selected_dew_point((uint32_t) millis(), (uint32_t)(${oq_selected_input_stale_hold_s}UL * 1000UL));
     filters:
       - exponential_moving_average:
           alpha: 0.3
@@ -193,7 +176,6 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      // This is the central cooling guardrail: never target water below dew point + margin.
       return oq_cooling_safety::runtime().minimum_safe_supply();
   - platform: template
     id: cooling_fallback_night_min_outdoor_temp
@@ -220,7 +202,6 @@ sensor:
     accuracy_decimals: 1
     update_interval: 10s
     lambda: |-
-      // Conservative fallback floor for systems without a dew-point source.
       return oq_cooling_safety::runtime().fallback_min_supply_temp();
   - platform: template
     id: cooling_effective_min_supply_temp
@@ -232,11 +213,9 @@ sensor:
     accuracy_decimals: 1
     update_interval: 10s
     lambda: |-
-      // Publish the active floor that raises the configured cooling target.
       return oq_cooling_safety::runtime().effective_min_supply_temp();
 interval:
   - interval: 60s
     then:
       - lambda: |-
-          // Track the minimum selected outside temperature during the local 00:00-06:00 window.
           oq_cooling_safety::runtime().update_fallback_night_min();

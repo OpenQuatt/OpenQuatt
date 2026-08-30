@@ -122,7 +122,7 @@ number:
     name: "Cooling Minimum Off Time"
     icon: mdi:timer-pause-outline
     unit_of_measurement: "s"
-    min_value: 240
+    min_value: ${oq_cooling_minimum_off_min_s}
     max_value: 3600
     step: 30
     mode: slider
@@ -404,7 +404,7 @@ sensor:
       const float configured_state = id(cooling_minimum_off_time).state;
       int configured_s =
           !isfinite(configured_state) ? 600 : (int) lroundf(configured_state);
-      configured_s = std::max(240, std::min(3600, configured_s));
+      configured_s = std::max(${oq_cooling_minimum_off_min_s}, std::min(3600, configured_s));
       const uint32_t configured_ms = (uint32_t) configured_s * 1000UL;
       uint32_t remaining_ms = oq_cooling::global_minimum_off_time_remaining_ms(
           true,
@@ -623,11 +623,10 @@ interval:
             id(oq_cooling_request_reason_code) = 0;
             return;
           }
-          const bool restart_by_minimum_off_time = id(cooling_restart_mode).has_state() &&
-                                                   id(cooling_restart_mode).current_option() == "Minimum off time";
+          const bool restart_by_minimum_off_time = id(cooling_restart_mode).has_state() && id(cooling_restart_mode).current_option() == "Minimum off time";
           const float cooling_minimum_off_state = id(cooling_minimum_off_time).state;
           int cooling_minimum_off_s = !isfinite(cooling_minimum_off_state) ? 600 : (int) lroundf(cooling_minimum_off_state);
-          cooling_minimum_off_s = std::max(240, std::min(3600, cooling_minimum_off_s));
+          cooling_minimum_off_s = std::max(${oq_cooling_minimum_off_min_s}, std::min(3600, cooling_minimum_off_s));
           const uint32_t cooling_minimum_off_ms = (uint32_t) cooling_minimum_off_s * 1000UL;
           const uint32_t global_minimum_off_remaining_ms =
               oq_cooling::global_minimum_off_time_remaining_ms(restart_by_minimum_off_time, now_ms,
@@ -666,7 +665,6 @@ interval:
           dispatch.raw_demand = id(oq_cooling_demand_raw); dispatch.demand_max = (int) ${oq_strategy_demand_max_f};
           dispatch.power_cap = id(oq_power_cap_f); dispatch.stored_owner = id(oq_cooling_owner_hp);
           dispatch.cooling_mode = true; dispatch.lead_is_hp1 = lead_is_hp1;
-          dispatch.minimum_off_enabled = restart_by_minimum_off_time;
           dispatch.stop_confirmation_pending = cooling_stop_confirmation_pending;
           dispatch.hp1 = {hp1_candidate, id(hp1_last_start_ms), id(hp1_last_stop_ms), hp_has_any_allowed_level(true)};
           #if OQ_TOPOLOGY_DUO

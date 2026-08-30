@@ -25,16 +25,15 @@ class CoolingSafetyRuntime {
                           id(cooling_without_dew_point_enabled).state, fallback_min_valid());
   }
   bool request_active() {
-    RoomRequestInput input;
-    input.room_required = id(cooling_room_request_required).state;
-    input.enabled_valid = id(cooling_enable_selected).has_state();
-    input.enabled = id(cooling_enable_selected).state;
-    input.room_valid = room_valid();
-    input.room_c = id(room_temp_selected).state;
-    input.setpoint_valid = setpoint_valid();
-    input.setpoint_c = id(room_setpoint_selected).state;
-    input.on_delta_c = id(cooling_request_on_delta).state;
-    input.off_delta_c = id(cooling_request_off_delta).state;
+    const RoomRequestInput input{id(cooling_room_request_required).state,
+                                 id(cooling_enable_selected).has_state(),
+                                 id(cooling_enable_selected).state,
+                                 room_valid(),
+                                 setpoint_valid(),
+                                 id(room_temp_selected).state,
+                                 id(room_setpoint_selected).state,
+                                 id(cooling_request_on_delta).state,
+                                 id(cooling_request_off_delta).state};
     return update_room_request(input, request_latched_);
   }
   bool permitted(float min_flow_lph) {

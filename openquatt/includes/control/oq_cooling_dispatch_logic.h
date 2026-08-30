@@ -13,7 +13,7 @@ struct DispatchInput {
   uint32_t now_ms = 0, cadence_ms = 5000, hp_min_off_ms = 0, global_min_off_remaining_ms = 0;
   int raw_demand = 0, demand_max = 10, power_cap = 10, stored_owner = 0;
   bool cooling_mode = false, duo = false, lead_is_hp1 = true;
-  bool minimum_off_enabled = false, stop_confirmation_pending = false;
+  bool stop_confirmation_pending = false;
   DispatchHpInput hp1, hp2;
 };
 struct DispatchState {
@@ -48,8 +48,7 @@ inline int recent_activity_owner(const DispatchInput& in) {
 }
 inline bool dispatch_hp_can_serve(const DispatchInput& in, const DispatchHpInput& hp, bool restart_blocked) {
   return oq_hp_candidate::may_serve_candidate(hp.candidate) && hp.has_allowed_level && !restart_blocked &&
-         !global_minimum_off_time_blocks_start(in.global_min_off_remaining_ms,
-                                               in.minimum_off_enabled && in.stop_confirmation_pending, false,
+         !global_minimum_off_time_blocks_start(in.global_min_off_remaining_ms, in.stop_confirmation_pending, false,
                                                hp.candidate.previous_applied_level);
 }
 inline DispatchOutput update_dispatch(const DispatchInput& in, DispatchState& state) {

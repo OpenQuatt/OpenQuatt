@@ -32,6 +32,7 @@ struct TickConfig {
   uint32_t now_ms;
   uint32_t dt_ms;
   int minimum_off_s;
+  int cooling_minimum_off_min_s;
   float minimum_flow_lph;
 };
 
@@ -53,8 +54,9 @@ class Runtime {
  public:
   void tick(const TickConfig& config) {
     const float cooling_off_state = id(cooling_minimum_off_time).state;
-    int cooling_off_s = isnan(cooling_off_state) ? 600 : static_cast<int>(lroundf(cooling_off_state));
-    cooling_off_s = std::max(240, std::min(3600, cooling_off_s));
+    int cooling_off_s = !isfinite(cooling_off_state) ? 600 : static_cast<int>(lroundf(cooling_off_state));
+    const int cooling_off_floor_s = oq_cooling::cooling_minimum_off_floor_s(config.cooling_minimum_off_min_s);
+    cooling_off_s = std::max(cooling_off_floor_s, std::min(3600, cooling_off_s));
     const bool restart_by_minimum_off_time =
         id(cooling_restart_mode).has_state() && id(cooling_restart_mode).current_option() == "Minimum off time";
     const int request_mode_code = id(oq_request_mode_code);
@@ -73,9 +75,9 @@ class Runtime {
     };
     this->publish_defrost_events(config.now_ms);
 
-    const bool hp1_was_cooling = this->applied_mode_is_cooling_(true, request_mode_code);
+    const bool hp1_was_cooling = this->applied_cooling_[0] || this->applied_mode_is_cooling_(true, request_mode_code);
 #if OQ_TOPOLOGY_DUO
-    const bool hp2_was_cooling = this->applied_mode_is_cooling_(false, request_mode_code);
+    const bool hp2_was_cooling = this->applied_cooling_[1] || this->applied_mode_is_cooling_(false, request_mode_code);
 #else
     constexpr bool hp2_was_cooling = false;
 #endif
@@ -90,7 +92,7 @@ class Runtime {
     int hp1_applied = 0;
     int hp2_applied = 0;
 #if OQ_TOPOLOGY_DUO
-    const bool hp2_first = restart_by_minimum_off_time && !manual_service_active && request_mode_code == 1 &&
+    const bool hp2_first = !manual_service_active && request_mode_code == 1 &&
                            oq_cooling::apply_hp2_before_hp1_for_cooling_handover(hp1_was_cooling, hp2_was_cooling);
     if (hp2_first) {
       hp2_applied = this->apply_level_(false, id(oq_actuator_hp2_req), hp2_was_cooling, cycle);
@@ -102,6 +104,16 @@ class Runtime {
     this->publish_topology_change_(hp1_applied, hp2_applied, config.now_ms);
 #else
     hp1_applied = this->apply_level_(true, id(oq_actuator_hp1_req), hp1_was_cooling, cycle);
+#endif
+    this->applied_cooling_[0] =
+        oq_cooling::next_applied_cooling(hp1_was_cooling, hp1_applied,
+                                         this->requested_mode_code(true, hp1_applied > 0, request_mode_code,
+                                                                   request_thermal_active, manual_service_active));
+#if OQ_TOPOLOGY_DUO
+    this->applied_cooling_[1] =
+        oq_cooling::next_applied_cooling(hp2_was_cooling, hp2_applied,
+                                         this->requested_mode_code(false, hp2_applied > 0, request_mode_code,
+                                                                   request_thermal_active, manual_service_active));
 #endif
 
     if (manual_service_active) {
@@ -404,8 +416,7 @@ class Runtime {
     const bool cooling_start_blocked =
         !cycle.manual_service_active && cycle.request_mode_code == 1 &&
         oq_cooling::global_minimum_off_time_blocks_start(
-            cycle.cooling.remaining_ms,
-            cycle.restart_by_minimum_off_time && (cycle.cooling.confirmation_pending || cycle.cooling_stop_armed),
+            cycle.cooling.remaining_ms, cycle.cooling.confirmation_pending || cycle.cooling_stop_armed,
             cycle.restart_by_minimum_off_time && cycle.cooling_stop_planned, previous);
     const uint32_t hp_rest_remaining_ms = oq_thermal_actuator::minimum_off_remaining_ms(
         cycle.config.now_ms, this->last_stop_ms_(is_hp1),
@@ -770,6 +781,7 @@ class Runtime {
   std::string last_manual_guard_status_;
   bool last_defrost_seen_[2]{false, false};
   bool last_defrost_holds_[2]{false, false};
+  bool applied_cooling_[2]{false, false};
   uint32_t defrost_started_ms_[2]{0, 0};
   uint32_t last_safe_stop_write_ms_[2]{0, 0};
   oq_odu::RetainedLevel retained_levels_[2]{};

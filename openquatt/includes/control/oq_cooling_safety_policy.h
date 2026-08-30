@@ -36,7 +36,7 @@ inline DewPointSelection select_dew_point(int mode, const DewPointSources& sourc
     take(sources.mqtt, sources.mqtt_valid, 2);
   else if (mode == 4)
     take(sources.api, sources.api_valid, 4);
-  else {
+  else if (mode == 3) {
     take(sources.mqtt, sources.mqtt_valid, 2);
     take(sources.api, sources.api_valid, 4);
     take(sources.ha, sources.ha_valid, 1);

@@ -87,11 +87,15 @@ inline uint32_t global_minimum_off_time_remaining_ms(bool enabled, uint32_t now_
 inline bool cooling_stop_is_planned(bool was_cooling, int previous_applied_level, int requested_level) {
   return was_cooling && previous_applied_level > 0 && requested_level <= 0;
 }
-
 inline bool apply_hp2_before_hp1_for_cooling_handover(bool hp1_was_cooling, bool hp2_was_cooling) {
   return !hp1_was_cooling && hp2_was_cooling;
 }
-
+inline bool next_applied_cooling(bool was_cooling, int applied_level, int request_mode_code) {
+  return applied_level > 0 && (request_mode_code == 1 || (request_mode_code != 2 && was_cooling));
+}
+inline int cooling_minimum_off_floor_s(int configured_floor_s) {
+  return std::max(1, std::min(240, configured_floor_s));
+}
 inline bool record_confirmed_cooling_stop(bool confirmation_pending, bool stop_confirmed, uint32_t now_ms,
                                           uint32_t& last_confirmed_stop_ms, bool& confirmed_stop_seen) {
   if (!confirmation_pending || !stop_confirmed) return false;
