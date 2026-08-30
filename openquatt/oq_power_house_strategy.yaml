@@ -372,155 +372,39 @@ interval:
             oil_return_hold_until_ms = 0;
             return;
           }
-
           const uint32_t now_ms = (uint32_t) millis();
           const uint32_t loop_target_ms = (uint32_t) (${oq_heat_loop_powerhouse_s} * 1000UL);
-          float dt_s = (float) loop_target_ms / 1000.0f;
-          if (id(oq_ph_request_last_loop_ms) > 0 && now_ms > id(oq_ph_request_last_loop_ms)) {
-            const uint32_t elapsed_ms = now_ms - id(oq_ph_request_last_loop_ms);
-            if (elapsed_ms < loop_target_ms) return;
-            dt_s = (float) elapsed_ms / 1000.0f;
-          }
-          id(oq_ph_request_last_loop_ms) = now_ms;
-
-          constexpr float seconds_per_minute = 60.0f;
+          const auto cadence = oq_power_house::decide_cadence(now_ms, id(oq_ph_request_last_loop_ms), loop_target_ms);
+          if (!cadence.due) return;
+          id(oq_ph_request_last_loop_ms) = now_ms == 0 ? UINT32_MAX : now_ms;
           const int demand_max_f = (int) ${oq_strategy_demand_max_f};
-          auto clampf = [&](float v, float lo, float hi)->float {
-            if (v < lo) return lo;
-            if (v > hi) return hi;
-            return v;
-          };
-          auto clamp_demand = [&](int demand)->int {
-            if (demand < 0) return 0;
-            if (demand > demand_max_f) return demand_max_f;
-            return demand;
-          };
-
-          const float Tout = id(outside_temp_selected).state;
-          const float Tc = id(house_cold_temp_c).state;
-          const float T0 = id(house_zero_power_temp_c).state;
-          const float house_power_rating_w = id(house_rated_power_w).state;
-          const float Tr = id(room_temp_selected).state;
-          const float Trsp = id(room_setpoint_selected).state;
-
-          if (isnan(Tout) || isnan(Tc) || isnan(T0) || isnan(house_power_rating_w) || (house_power_rating_w <= 0.0f) ||
-              isnan(Tr) || isnan(Trsp) || (T0 <= Tc + ${oq_temp_guard_delta_c}f)) {
-            id(oq_phouse_req_w) = 0.0f;
-            id(oq_phouse_comfort_memory_c) = 0.0f;
-            id(oq_phouse_demand_external) = false;
-            id(oq_demand_raw) = 0;
-          } else {
-            // Feedforward only: an external planner may replace the modelled
-            // house power, but the comfort trim, saturation clamp, slew limiter
-            // and water-temperature limiter below stay firmware-owned.
-            const float P_model = oq_power_house::modelled_house_power_w(T0, Tc, Tout, house_power_rating_w);
-            const bool demand_present =
-                id(external_heat_demand_selected).has_state() && !isnan(id(external_heat_demand_selected).state);
-            const oq_power_house::Feedforward feedforward = oq_power_house::select_feedforward(
-                P_model, demand_present ? id(external_heat_demand_selected).state : NAN, demand_present,
-                house_power_rating_w);
-            const float P_house = feedforward.house_power_w;
-            id(oq_phouse_demand_external) = feedforward.external;
-
-            const float comfort_below = clampf(id(ph_comfort_band_below_c).state, 0.0f, 2.0f);
-            const float comfort_above = clampf(id(ph_comfort_band_above_c).state, 0.0f, 2.0f);
-            const float Tr_low_base = Trsp - comfort_below;
-            const float Tr_high_base = Trsp + comfort_above;
-            const float Tr_mid_base = Tr_low_base + 0.5f * (Tr_high_base - Tr_low_base);
-
-            uint32_t last = id(oq_phouse_last_ms);
-            float lastw = id(oq_phouse_last_w);
-            if (last == 0) {
-              last = now_ms;
-              lastw = P_house;
-            }
-
-            const float dt_power_s = (now_ms >= last) ? ((now_ms - last) / 1000.0f) : 0.0f;
-            const float comfort_memory_max_c = clampf(0.05f + (0.50f * comfort_above), 0.08f, 0.20f);
-            float comfort_memory_c = id(oq_phouse_comfort_memory_c);
-            if (isnan(comfort_memory_c) || comfort_memory_c < 0.0f) comfort_memory_c = 0.0f;
-
-            if (Tr < Tr_low_base) {
-              const float undershoot_norm = clampf((Tr_low_base - Tr) / 0.45f, 0.0f, 1.0f);
-              const float build_min_c_per_min = comfort_memory_max_c / 90.0f;
-              const float build_max_c_per_min = comfort_memory_max_c / 24.0f;
-              const float build_c_per_s =
-                  (build_min_c_per_min + (build_max_c_per_min - build_min_c_per_min) * undershoot_norm) /
-                  seconds_per_minute;
-              comfort_memory_c += build_c_per_s * dt_power_s;
-            } else if (Tr <= Tr_mid_base) {
-              // Keep the accumulated comfort memory through the colder half of
-              // the band so the room does not drift persistently low.
-            } else if (Tr <= Tr_high_base) {
-              const float decay_c_per_s = (comfort_memory_max_c / 40.0f) / seconds_per_minute;
-              comfort_memory_c -= decay_c_per_s * dt_power_s;
-            } else {
-              const float fast_decay_c_per_s = (comfort_memory_max_c / 12.0f) / seconds_per_minute;
-              comfort_memory_c -= fast_decay_c_per_s * dt_power_s;
-            }
-            comfort_memory_c = clampf(comfort_memory_c, 0.0f, comfort_memory_max_c);
-            id(oq_phouse_comfort_memory_c) = comfort_memory_c;
-
-            const float Trsp_effective = Trsp + comfort_memory_c;
-            const float Tr_low = Trsp_effective - comfort_below;
-
-            float e = 0.0f;
-            if (Tr < Tr_low) e = Tr_low - Tr;
-            else if (Tr > Trsp) e = Trsp - Tr;
-
-            const float temperature_reaction_w_per_k = id(ph_kp_w_per_k).state;
-            float P_raw = P_house + temperature_reaction_w_per_k * e;
-            P_raw = clampf(P_raw, 0.0f, house_power_rating_w);
-
-            const float rise_time_min = clampf(id(ph_demand_rise_time_min).state, 2.0f, 20.0f);
-            const float fall_time_min = clampf(id(ph_demand_fall_time_min).state, 1.0f, 10.0f);
-            const float up = (house_power_rating_w / rise_time_min) / seconds_per_minute;
-            const float dn = (house_power_rating_w / fall_time_min) / seconds_per_minute;
-
-            float P_limited = P_raw;
-            if (dt_power_s > 0.0f) {
-              if (P_raw > lastw && up > 0.0f) {
-                P_limited = std::min(P_raw, lastw + up * dt_power_s);
-              } else if (P_raw < lastw && dn > 0.0f) {
-                P_limited = std::max(P_raw, lastw - dn * dt_power_s);
-              }
-            }
-
-            const float P_effective = P_limited * id(oq_water_temp_limit_factor);
-            id(oq_phouse_req_w) = P_effective;
-            id(oq_phouse_last_w) = P_effective;
-            id(oq_phouse_last_ms) = now_ms;
-            id(oq_demand_raw) = clamp_demand((int) lroundf(${oq_strategy_demand_max_f} * (P_effective / house_power_rating_w)));
-          }
-
-          int raw = id(oq_demand_raw);
-          raw = std::max(0, std::min(demand_max_f, raw));
-
-          int ramp_up_step_min = (int) lroundf(id(oq_demand_filter_ramp_up_step_min).state);
-          if (ramp_up_step_min < 1) ramp_up_step_min = 1;
-          if (ramp_up_step_min > demand_max_f) ramp_up_step_min = demand_max_f;
-
-          int f = id(oq_demand_filtered);
-          f = std::max(0, std::min(demand_max_f, f));
-          id(oq_demand_filtered_prev) = f;
-
-          float ramp_budget = id(oq_demand_filter_ramp_up_budget) + (((float) ramp_up_step_min) / 60.0f) * dt_s;
-          if (ramp_budget > (float) demand_max_f) ramp_budget = (float) demand_max_f;
-          int ramp_steps = (int) floorf(ramp_budget);
-          if (ramp_steps < 0) ramp_steps = 0;
-          id(oq_demand_filter_ramp_up_budget) = ramp_budget - (float) ramp_steps;
-
-          if (raw > f) {
-            if (ramp_steps > 0) f = std::min(f + ramp_steps, raw);
-          } else if (raw == 0 && f == 1) {
-            f = 0;
-          } else if (raw <= (f - 2)) {
-            f = raw;
-          }
-
-          f = std::max(0, std::min(demand_max_f, f));
-          id(oq_demand_filtered) = f;
-          id(oq_heating_demand_filtered) = f;
+          const bool external_valid = id(external_heat_demand_selected).has_state();
+          const oq_power_house::DemandInput demand_input{
+              now_ms, id(outside_temp_selected).state, id(house_cold_temp_c).state,
+              id(house_zero_power_temp_c).state, id(house_rated_power_w).state, id(room_temp_selected).state,
+              id(room_setpoint_selected).state, id(external_heat_demand_selected).state,
+              id(oq_water_temp_limit_factor), external_valid};
+          const oq_power_house::DemandTuning demand_tuning{
+              ${oq_temp_guard_delta_c}f, id(ph_kp_w_per_k).state, id(ph_comfort_band_below_c).state,
+              id(ph_comfort_band_above_c).state, id(ph_demand_rise_time_min).state,
+              id(ph_demand_fall_time_min).state, demand_max_f};
+          const oq_power_house::DemandState demand_state{
+              id(oq_phouse_last_w), id(oq_phouse_last_ms), id(oq_phouse_comfort_memory_c)};
+          const auto demand = oq_power_house::decide_demand(demand_input, demand_tuning, demand_state);
+          id(oq_phouse_req_w) = demand.requested_w;
+          id(oq_phouse_last_w) = demand.next.last_w;
+          id(oq_phouse_last_ms) = demand.next.last_ms;
+          id(oq_phouse_comfort_memory_c) = demand.next.comfort_memory_c;
+          id(oq_phouse_demand_external) = demand.external;
+          id(oq_demand_raw) = demand.raw_demand;
+          const auto filtered = oq_power_house::filter_demand(
+              demand.raw_demand, id(oq_demand_filtered), id(oq_demand_filter_ramp_up_budget),
+              id(oq_demand_filter_ramp_up_step_min).state, cadence.dt_s, demand_max_f);
+          id(oq_demand_filtered_prev) = filtered.previous;
+          id(oq_demand_filter_ramp_up_budget) = filtered.ramp_budget;
+          id(oq_demand_filtered) = filtered.filtered;
+          id(oq_heating_demand_filtered) = filtered.filtered;
+          int f = filtered.filtered;
 
           int f_cap = id(oq_power_cap_f);
           f_cap = std::max(0, std::min(demand_max_f, f_cap));
@@ -693,10 +577,10 @@ interval:
               if (on_hold < 1) on_hold = 1;
               if (off_hold < 1) off_hold = 1;
 
-              if (f >= dual_on_f) id(oq_dual_hp_enable_hold_elapsed_accum_min) += dt_s / 60.0f;
+              if (f >= dual_on_f) id(oq_dual_hp_enable_hold_elapsed_accum_min) += cadence.dt_s / 60.0f;
               else id(oq_dual_hp_enable_hold_elapsed_accum_min) = 0.0f;
 
-              if (f <= dual_off_f) id(oq_dual_hp_disable_hold_elapsed_accum_min) += dt_s / 60.0f;
+              if (f <= dual_off_f) id(oq_dual_hp_disable_hold_elapsed_accum_min) += cadence.dt_s / 60.0f;
               else id(oq_dual_hp_disable_hold_elapsed_accum_min) = 0.0f;
 
               if (!id(oq_dual_hp_enabled) && id(oq_dual_hp_enable_hold_elapsed_accum_min) >= (float) on_hold) {
@@ -1183,5 +1067,5 @@ interval:
           snprintf(
             debug_buf, sizeof(debug_buf),
             "ph f=%d raw=%d preq=%.0f owner=%d reason=%d",
-            f, raw, id(oq_phouse_req_w), request_owner_hp, request_reason_code);
+            f, demand.raw_demand, id(oq_phouse_req_w), request_owner_hp, request_reason_code);
           ESP_LOGD("quatt.strategy", "%s", debug_buf);
