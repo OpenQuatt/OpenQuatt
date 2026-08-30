@@ -266,9 +266,13 @@ void OpenthermHub::loop() {
   if (!this->polling_enabled_) {
     return;
   }
+  const OperationMode transport_mode_before = this->opentherm_->get_mode();
   const uint32_t transport_started_us = micros();
-  this->opentherm_->process();
-  this->warn_if_slow_("RMT completion processing", transport_started_us);
+  const transport_diagnostics::PollResult transport_result = this->opentherm_->process();
+  const uint32_t transport_finished_us = micros();
+  const OperationMode transport_mode_after = this->opentherm_->get_mode();
+  this->record_transport_poll_(transport_result, transport_mode_before, transport_mode_after,
+                               timing::elapsed_us(transport_finished_us, transport_started_us));
   if (this->sync_mode_) {
     this->sync_loop_();
     return;
@@ -440,17 +444,42 @@ void OpenthermHub::warn_if_slow_(const char* phase, uint32_t started_us) const {
   }
 }
 
+void OpenthermHub::record_transport_poll_(transport_diagnostics::PollResult result, OperationMode mode_before,
+                                          OperationMode mode_after, uint32_t elapsed_us) {
+  if (!transport_diagnostics::record_slow_poll(this->slow_transport_poll_stats_, result, elapsed_us)) {
+    return;
+  }
+  this->last_slow_transport_mode_before_ = mode_before;
+  this->last_slow_transport_mode_after_ = mode_after;
+}
+
 void OpenthermHub::log_transport_diagnostics_() const {
   ESP_LOGD(TAG,
            "OpenTherm transport: requests=%u tx_completed=%u rx_captured=%u rx_accepted=%u rx_rejected=%u "
            "tx_timeouts=%u response_timeouts=%u late_timeouts=%u max_wire_response=%u ms "
-           "max_processing_latency=%u ms",
+           "max_processing_latency=%u ms slow_polls=%u max_poll_wall=%u ms "
+           "slow_outcomes(no_work=%u tx_timeout=%u rx_timeout_no_frame=%u rx_frame_after_deadline=%u "
+           "rx_frame_accepted=%u rx_frame_rejected=%u) last_slow=%s mode=%s->%s; slow poll wall time may "
+           "include task preemption and is not OpenTherm wire wait time",
            static_cast<unsigned>(this->requests_started_), static_cast<unsigned>(this->tx_completed_),
            static_cast<unsigned>(this->rx_captured_), static_cast<unsigned>(this->rx_accepted_),
            static_cast<unsigned>(this->rx_rejected_), static_cast<unsigned>(this->tx_timeouts_),
            static_cast<unsigned>(this->response_timeouts_), static_cast<unsigned>(this->late_response_timeouts_),
            static_cast<unsigned>(this->max_wire_response_us_ / 1000U),
-           static_cast<unsigned>(this->max_processing_latency_us_ / 1000U));
+           static_cast<unsigned>(this->max_processing_latency_us_ / 1000U),
+           static_cast<unsigned>(this->slow_transport_poll_stats_.count),
+           static_cast<unsigned>(this->slow_transport_poll_stats_.max_elapsed_us / 1000U),
+           static_cast<unsigned>(this->slow_transport_poll_stats_.no_work),
+           static_cast<unsigned>(this->slow_transport_poll_stats_.tx_timeout),
+           static_cast<unsigned>(this->slow_transport_poll_stats_.rx_timeout_no_frame),
+           static_cast<unsigned>(this->slow_transport_poll_stats_.rx_frame_after_deadline),
+           static_cast<unsigned>(this->slow_transport_poll_stats_.rx_frame_accepted),
+           static_cast<unsigned>(this->slow_transport_poll_stats_.rx_frame_rejected),
+           this->slow_transport_poll_stats_.count > 0
+               ? transport_diagnostics::poll_result_to_str(this->slow_transport_poll_stats_.last_result)
+               : "none",
+           this->opentherm_->operation_mode_to_str(this->last_slow_transport_mode_before_),
+           this->opentherm_->operation_mode_to_str(this->last_slow_transport_mode_after_));
 }
 
 void OpenthermHub::activate_priority_sequence_(MessageId first, MessageId second) {

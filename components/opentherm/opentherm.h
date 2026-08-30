@@ -13,6 +13,7 @@
 #include "esphome/core/log.h"
 
 #include "opentherm_rmt_encoder.h"
+#include "opentherm_transport_diagnostics.h"
 
 #ifdef USE_ESP32
 #include "driver/gptimer.h"
@@ -302,8 +303,9 @@ class OpenTherm {
 
   /**
    * Process a completed hardware receive capture. This is a no-op on ESP8266.
+   * @return classification of the transport work performed by this poll.
    */
-  void process();
+  transport_diagnostics::PollResult process();
 
   /**
    * Stops listening for data packet or sending out data packet and resets internal state of this class.
@@ -461,7 +463,7 @@ class OpenTherm {
   bool reset_esp32_rmt_tx_();
   void cancel_esp32_rmt_();
   void cancel_esp32_rmt_tx_();
-  void process_esp32_rmt_();
+  transport_diagnostics::PollResult process_esp32_rmt_();
   void start_esp32_timer_(uint64_t alarm_value, bool auto_reload);
 #endif
 

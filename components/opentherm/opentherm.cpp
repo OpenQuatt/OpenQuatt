@@ -187,9 +187,11 @@ bool OpenTherm::stop(ConversationTiming& timing) {
   return has_timing;
 }
 
-void OpenTherm::process() {
+transport_diagnostics::PollResult OpenTherm::process() {
 #ifdef USE_ESP32
-  this->process_esp32_rmt_();
+  return this->process_esp32_rmt_();
+#else
+  return transport_diagnostics::PollResult::NO_WORK;
 #endif
 }
 
@@ -685,24 +687,24 @@ bool IRAM_ATTR OpenTherm::rmt_tx_done_callback_(rmt_channel_handle_t, const rmt_
   return false;
 }
 
-void OpenTherm::process_esp32_rmt_() {
-  bool transmit_timed_out = false;
+transport_diagnostics::PollResult OpenTherm::process_esp32_rmt_() {
+  transport_diagnostics::PollObservation observation;
   portENTER_CRITICAL(&this->rmt_mux_);
   if (this->mode_ == OperationMode::WRITE && this->rmt_tx_active_ &&
       static_cast<int32_t>(micros() - this->rmt_tx_deadline_us_) >= 0) {
     this->rmt_tx_active_ = false;
     this->mode_ = OperationMode::ERROR_TIMEOUT;
-    transmit_timed_out = true;
+    observation.tx_timed_out = true;
   }
   portEXIT_CRITICAL(&this->rmt_mux_);
-  if (transmit_timed_out) {
+  if (observation.tx_timed_out) {
     this->reset_esp32_rmt_tx_();
     ESP_LOGW(TAG, "RMT transmit completion timed out");
-    return;
+    return transport_diagnostics::classify_poll(observation);
   }
 
   if (this->mode_ != OperationMode::LISTEN && this->mode_ != OperationMode::RMT_PENDING) {
-    return;
+    return transport_diagnostics::classify_poll(observation);
   }
 
   const bool deadline_expired = static_cast<int32_t>(micros() - this->receive_deadline_us_) >= 0;
@@ -717,6 +719,7 @@ void OpenTherm::process_esp32_rmt_() {
       symbol_count = this->rmt_symbol_count_;
     } else {
       this->mode_ = OperationMode::ERROR_TIMEOUT;
+      observation.rx_frame_after_deadline = true;
     }
     this->rmt_frame_ready_ = false;
     this->rmt_frame_completed_us_ = 0;
@@ -724,10 +727,11 @@ void OpenTherm::process_esp32_rmt_() {
     // Arbitrate completion and timeout under the same lock used by the ISR:
     // exactly one of them is allowed to claim this receive operation.
     this->mode_ = OperationMode::ERROR_TIMEOUT;
+    observation.rx_timed_out = true;
   }
   portEXIT_CRITICAL(&this->rmt_mux_);
   if (!frame_ready) {
-    return;
+    return transport_diagnostics::classify_poll(observation);
   }
 
   rmt_decoder::Pulse pulses[RMT_CAPTURE_SYMBOLS * 2]{};
@@ -821,6 +825,9 @@ void OpenTherm::process_esp32_rmt_() {
       this->mode_ = OperationMode::ERROR_PROTOCOL;
       break;
   }
+  observation.frame_processed = true;
+  observation.frame_accepted = result.error == rmt_decoder::DecodeError::NONE;
+  return transport_diagnostics::classify_poll(observation);
 }
 
 void IRAM_ATTR OpenTherm::start_esp32_timer_(uint64_t alarm_value, bool auto_reload) {
