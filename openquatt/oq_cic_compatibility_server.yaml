@@ -24,445 +24,228 @@ modbus_server:
     registers:
       - address: 1999
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          const auto compressor_level = id(${cic_compat_hp_id}_compressor_level).current_option();
-          if (!id(cic_compatibility_enable).state || compressor_level.empty()) return 0;
-          return static_cast<uint16_t>(atoi(compressor_level.c_str()));
-        write_lambda: |-
-          return true;
+        read_lambda: return oq_cic::read(oq_cic::compressor_level(id(${cic_compat_hp_id}_compressor_level).current_option().c_str()));
+        write_lambda: return true;
       - address: 2006
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          return id(${cic_compat_hp_id}_low_noise_mode).current_option() == "On" ? 1 : 0;
-        write_lambda: |-
-          return true;
+        read_lambda: return oq_cic::read(oq_cic::on_option(id(${cic_compat_hp_id}_low_noise_mode).current_option().c_str()));
+        write_lambda: return true;
       - address: 2010
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          return id(${cic_compat_hp_id}_set_pump_mode).current_option() == "On" ? 4096 : 0;
-        write_lambda: |-
-          return true;
+        read_lambda: return oq_cic::read(oq_cic::on_option(id(${cic_compat_hp_id}_set_pump_mode).current_option().c_str(), 4096u));
+        write_lambda: return true;
       - address: 2015
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_pump_speed).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v));
-        write_lambda: |-
-          return true;
+        read_lambda: return oq_cic::read(oq_cic::scaled(id(${cic_compat_hp_id}_pump_speed).state));
+        write_lambda: return true;
       - address: 3999
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          const auto working_mode = id(${cic_compat_hp_id}_set_working_mode).current_option();
-          if (!id(cic_compatibility_enable).state) return 0;
-          if (working_mode == "Cooling") return 1;
-          if (working_mode == "Heating") return 2;
-          return 0;
-        write_lambda: |-
-          return true;
+        read_lambda: return oq_cic::read(oq_cic::working_mode(id(${cic_compat_hp_id}_set_working_mode).current_option().c_str()));
+        write_lambda: return true;
       - address: 2099
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_working_mode).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v));
+        read_lambda: return oq_cic::read(oq_cic::scaled(id(${cic_compat_hp_id}_working_mode).state));
       - address: 2100
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_voltage).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v));
+        read_lambda: return oq_cic::read(oq_cic::scaled(id(${cic_compat_hp_id}_voltage).state));
       - address: 2101
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_current).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v * 10.0f));
+        read_lambda: return oq_cic::read(oq_cic::scaled(id(${cic_compat_hp_id}_current).state, 10.0f));
       - address: 2102
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_compressor_frequency_demand).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v));
+        read_lambda: return oq_cic::read(oq_cic::scaled(id(${cic_compat_hp_id}_compressor_frequency_demand).state));
       - address: 2103
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_compressor_frequency).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v));
+        read_lambda: return oq_cic::read(oq_cic::scaled(id(${cic_compat_hp_id}_compressor_frequency).state));
       - address: 2104
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_fan_speed_max).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v));
+        read_lambda: return oq_cic::read(oq_cic::scaled(id(${cic_compat_hp_id}_fan_speed_max).state));
       - address: 2105
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_fan_speed).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v));
+        read_lambda: return oq_cic::read(oq_cic::scaled(id(${cic_compat_hp_id}_fan_speed).state));
       - address: 2106
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0;
+        read_lambda: return oq_cic::constant(0u);
       - address: 2107
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_eev_steps).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v));
+        read_lambda: return oq_cic::read(oq_cic::scaled(id(${cic_compat_hp_id}_eev_steps).state));
       - address: 2108
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          uint16_t bits = 0;
-          if (id(${cic_compat_hp_id}_fan_low_speed_mode).state) bits |= 0x0001u;
-          if (id(${cic_compat_hp_id}_bottom_plate_heater).state) bits |= 0x0004u;
-          if (id(${cic_compat_hp_id}_crankcase_heater).state) bits |= 0x0008u;
-          if (id(${cic_compat_hp_id}_fan_defrost_mode).state) bits |= 0x0010u;
-          if (id(${cic_compat_hp_id}_fan_high_speed_mode).state) bits |= 0x0020u;
-          if (id(${cic_compat_hp_id}_4_way_valve).state) bits |= 0x0040u;
-          if (id(${cic_compat_hp_id}_pump_relay).state) bits |= 0x0800u;
-          return bits;
+        read_lambda: return oq_cic::read_${cic_compat_hp_id}_status_flags();
       - address: 2109
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0;
+        read_lambda: return oq_cic::constant(0u);
       - address: 2110
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_outside_temp).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf((v * 100.0f) + 3000.0f));
+        read_lambda: return oq_cic::read(oq_cic::temperature(id(${cic_compat_hp_id}_outside_temp).state));
       - address: 2111
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_evaporator_coil_temp).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf((v * 100.0f) + 3000.0f));
+        read_lambda: return oq_cic::read(oq_cic::temperature(id(${cic_compat_hp_id}_evaporator_coil_temp).state));
       - address: 2112
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_gas_discharge_temp).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf((v * 100.0f) + 3000.0f));
+        read_lambda: return oq_cic::read(oq_cic::temperature(id(${cic_compat_hp_id}_gas_discharge_temp).state));
       - address: 2113
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_gas_return_temp).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf((v * 100.0f) + 3000.0f));
+        read_lambda: return oq_cic::read(oq_cic::temperature(id(${cic_compat_hp_id}_gas_return_temp).state));
       - address: 2114
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0;
+        read_lambda: return oq_cic::constant(0u);
       - address: 2116
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_evaporator_pressure).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v * 10.0f));
+        read_lambda: return oq_cic::read(oq_cic::scaled(id(${cic_compat_hp_id}_evaporator_pressure).state, 10.0f));
       - address: 2117
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_condenser_pressure).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v * 10.0f));
+        read_lambda: return oq_cic::read(oq_cic::scaled(id(${cic_compat_hp_id}_condenser_pressure).state, 10.0f));
       - address: 2118
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          return id(${cic_compat_hp_id}_defrost).state ? 1 : 0;
+        read_lambda: return oq_cic::read(oq_cic::boolean(id(${cic_compat_hp_id}_defrost).state));
       - address: 2122
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_pcb_firmware_raw).state;
-          return isnan(v) ? 0x011Eu : static_cast<uint16_t>(lroundf(v));
+        read_lambda: return oq_cic::read(oq_cic::scaled(id(${cic_compat_hp_id}_pcb_firmware_raw).state, 1.0f, oq_cic::FIRMWARE_FALLBACK));
       - address: 2131
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_condensing_temp).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf((v * 100.0f) + 3000.0f));
+        read_lambda: return oq_cic::read(oq_cic::temperature(id(${cic_compat_hp_id}_condensing_temp).state));
       - address: 2132
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_evaporating_temp).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf((v * 100.0f) + 3000.0f));
+        read_lambda: return oq_cic::read(oq_cic::temperature(id(${cic_compat_hp_id}_evaporating_temp).state));
       - address: 2133
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_water_in_temp).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf((v * 100.0f) + 3000.0f));
+        read_lambda: return oq_cic::read(oq_cic::temperature(id(${cic_compat_hp_id}_water_in_temp).state));
       - address: 2134
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_water_out_temp).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf((v * 100.0f) + 3000.0f));
+        read_lambda: return oq_cic::read(oq_cic::temperature(id(${cic_compat_hp_id}_water_out_temp).state));
       - address: 2135
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_inner_coil_temp).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf((v * 100.0f) + 3000.0f));
+        read_lambda: return oq_cic::read(oq_cic::temperature(id(${cic_compat_hp_id}_inner_coil_temp).state));
       - address: 2136
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0;
+        read_lambda: return oq_cic::constant(0u);
       - address: 2137
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_pump_ipwm_feedback_raw).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v));
+        read_lambda: return oq_cic::read(oq_cic::scaled(id(${cic_compat_hp_id}_pump_ipwm_feedback_raw).state));
       - address: 2138
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          if (!id(cic_compatibility_enable).state) return 0;
-          const float v = id(${cic_compat_hp_id}_flow).state;
-          return isnan(v) ? 0 : static_cast<uint16_t>(lroundf(v / 0.618f));
+        read_lambda: return oq_cic::read(oq_cic::flow(id(${cic_compat_hp_id}_flow).state));
       - address: 11006
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0;
+        read_lambda: return oq_cic::constant(0u);
       - address: 11160
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11161
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11162
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11163
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11164
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11165
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11166
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11167
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11168
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11169
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11170
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11171
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11172
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11173
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11174
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11175
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11176
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11177
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11178
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11179
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11219
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11220
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11221
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11222
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11223
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11224
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11225
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11226
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11227
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11228
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11229
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11230
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11231
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11232
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11233
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11234
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11235
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11236
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11237
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
       - address: 11238
         value_type: U_WORD
-        read_lambda: |-
-          id(cic_compatibility_last_request_ms) = millis();
-          return 0xFFFFu;
+        read_lambda: return oq_cic::constant(oq_cic::UNAVAILABLE);
