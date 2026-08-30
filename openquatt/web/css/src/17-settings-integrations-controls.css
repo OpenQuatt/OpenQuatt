@@ -369,6 +369,8 @@
 }
 
 .oq-settings-source-nav {
+  display: grid;
+  gap: 12px;
   min-width: 0;
   padding: 12px;
   border-right: 1px solid var(--oq-helper-line);
@@ -379,14 +381,9 @@
 .oq-settings-source-category {
   min-width: 0;
   overflow: hidden;
-  margin-bottom: 12px;
   border: 1px solid var(--oq-helper-line);
   border-radius: var(--oq-helper-radius-md);
   background: var(--oq-theme-surface-1uy3, var(--oq-helper-card));
-}
-
-.oq-settings-source-category:last-child {
-  margin-bottom: 0;
 }
 
 .oq-settings-source-category-head {
@@ -399,26 +396,34 @@
   background: var(--oq-theme-surface-w5r3, linear-gradient(180deg, rgba(241, 245, 249, 0.94), rgba(248, 250, 252, 0.98)));
 }
 
-.oq-settings-source-category-icon {
+.oq-settings-source-category-icon,
+.oq-settings-source-signal-icon {
   display: grid;
+  place-items: center;
+}
+
+.oq-settings-source-category-icon {
   flex: 0 0 34px;
   width: 34px;
   height: 34px;
-  place-items: center;
   border: 1px solid var(--oq-theme-border-7jb1, rgba(37, 99, 235, 0.16));
   border-radius: 50%;
   background: var(--oq-theme-surface-1uy3, var(--oq-helper-card));
   color: var(--oq-theme-color-7hmo, #1d4ed8);
 }
 
+.oq-settings-source-category-icon-svg,
+.oq-settings-source-signal-icon-svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .oq-settings-source-category-icon-svg {
   width: 18px;
   height: 18px;
-  fill: none;
-  stroke: currentColor;
   stroke-width: 2.05;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 .oq-settings-source-category-copy {
@@ -529,22 +534,16 @@
 }
 
 .oq-settings-source-signal-icon {
-  display: grid;
   flex: 0 0 26px;
   width: 26px;
   height: 26px;
-  place-items: center;
   color: var(--oq-helper-faint);
 }
 
 .oq-settings-source-signal-icon-svg {
   width: 17px;
   height: 17px;
-  fill: none;
-  stroke: currentColor;
   stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 .oq-settings-source-signal-summary {
@@ -788,10 +787,6 @@
   font-weight: 650;
 }
 
-.oq-settings-source-row.is-warning strong {
-  color: var(--oq-theme-color-11rp, var(--oq-helper-accent-deep));
-}
-
 .oq-settings-source-row.is-effective {
   margin-inline: -8px;
   padding: 7px 8px;
@@ -853,11 +848,8 @@
 
 @container oq-settings-sources (max-width: 420px) {
   .oq-settings-source-nav {
+    gap: 9px;
     padding: 9px;
-  }
-
-  .oq-settings-source-category {
-    margin-bottom: 9px;
   }
 
   .oq-settings-source-category-head {

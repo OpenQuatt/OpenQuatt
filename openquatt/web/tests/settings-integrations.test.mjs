@@ -450,21 +450,18 @@ test("uitgeschakelde CIC en OpenTherm verdwijnen uit keuzes en metingen", () => 
   assert.doesNotMatch(getSelectMarkup(markup, "roomTempSource"), /<option value="(?:CIC|OT thermostat)"/);
   assert.doesNotMatch(inspector, /data-source-kind="(?:cic|ot)"/);
 
-  state.entities.roomTempSource.value = "OT thermostat";
-  markup = renderFocusedSource("room-temperature");
-  inspector = getInspectorMarkup(markup);
-  assert.match(inspector, /Huidige bron niet beschikbaar: OpenTherm staat uit/);
-  assert.match(getSelectMarkup(markup, "roomTempSource"), /<option value="OT thermostat" selected disabled>Kies een beschikbare bron<\/option>/);
-  assert.doesNotMatch(getSelectMarkup(markup, "roomTempSource"), />OT-thermostaat<\/option>/);
-  assert.doesNotMatch(inspector, /data-source-kind="ot"/);
-
-  state.entities.roomTempSource.value = "CIC";
-  markup = renderFocusedSource("room-temperature");
-  inspector = getInspectorMarkup(markup);
-  assert.match(inspector, /Huidige bron niet beschikbaar: CIC-polling staat uit/);
-  assert.match(getSelectMarkup(markup, "roomTempSource"), /<option value="CIC" selected disabled>Kies een beschikbare bron<\/option>/);
-  assert.doesNotMatch(getSelectMarkup(markup, "roomTempSource"), />CIC<\/option>/);
-  assert.doesNotMatch(inspector, /data-source-kind="cic"/);
+  [
+    ["OT thermostat", /OpenTherm staat uit/, />OT-thermostaat<\/option>/, /data-source-kind="ot"/],
+    ["CIC", /CIC-polling staat uit/, />CIC<\/option>/, /data-source-kind="cic"/],
+  ].forEach(([source, warning, option, measurement]) => {
+    state.entities.roomTempSource.value = source;
+    markup = renderFocusedSource("room-temperature");
+    inspector = getInspectorMarkup(markup);
+    assert.match(inspector, warning);
+    assert.match(getSelectMarkup(markup, "roomTempSource"), new RegExp(`<option value="${source}" selected disabled>Kies een beschikbare bron<\\/option>`));
+    assert.doesNotMatch(getSelectMarkup(markup, "roomTempSource"), option);
+    assert.doesNotMatch(inspector, measurement);
+  });
 
   state.entities.coolingEnableSource.value = "CIC";
   markup = renderFocusedSource("cooling-enable");

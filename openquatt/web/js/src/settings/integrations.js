@@ -521,7 +521,6 @@ import { escapeHtml } from "../core/html.js";
       label,
       value = "",
       key = "",
-      active = false,
       status = "",
       statusTone = "",
       statusTitle = "",
@@ -542,7 +541,7 @@ import { escapeHtml } from "../core/html.js";
         : "";
       return `
         <div
-          class="oq-settings-source-row${active ? " is-warning" : ""}${status ? " has-status" : ""}${effective ? " is-effective" : ""}"
+          class="oq-settings-source-row${effective ? " is-effective" : ""}"
           ${safeSourceKind ? `data-source-kind="${escapeHtml(safeSourceKind)}"` : ""}
           ${safeSourceState ? `data-source-state="${escapeHtml(safeSourceState)}"` : ""}
           ${effective ? 'data-source-effective="true"' : ""}
@@ -663,14 +662,28 @@ import { escapeHtml } from "../core/html.js";
           : currentUnavailable ? `Huidige bron niet beschikbaar: ${getUnavailableSourceReason(current, config)}` : "",
       };
     };
+    const buildExternalSourceSelect = (stem, externalStem, mqttTopicKey = "", extra = {}) => ({
+      key: `${stem}Source`,
+      label: "Bron",
+      optionLabels: { "API input": "API-invoer" },
+      haKeys: [`${stem}Ha`, `${stem}HaValid`],
+      apiValueKey: `apiInput${externalStem}`,
+      apiValidKey: `apiInput${externalStem}Valid`,
+      mqttTopicKey,
+      ...extra,
+    });
+    const buildExternalSourceKeys = (stem, externalStem, includeMqtt = true) => ({
+      ha: [`${stem}Ha`, `${stem}HaValid`],
+      api: [`apiInput${externalStem}`, `apiInput${externalStem}Valid`, `apiInput${externalStem}Age`],
+      ...(includeMqtt ? { mqtt: [`mqtt${externalStem}`, `mqtt${externalStem}Valid`] } : {}),
+    });
     const buildSourceSignal = ({
       key,
       group,
       title,
       icon = "",
       select,
-      secondarySelect = null,
-      secondarySelects = null,
+      secondarySelects = [],
       summaryValue = "",
       summarySource = "",
       summaryInfo = "",
@@ -682,10 +695,7 @@ import { escapeHtml } from "../core/html.js";
       const mainSelect = select && select.when !== false
         ? renderSourceSelect(select.key, select)
         : { markup: "", warning: "" };
-      const secondaryConfigs = Array.isArray(secondarySelects)
-        ? secondarySelects
-        : secondarySelect ? [secondarySelect] : [];
-      const secondaries = secondaryConfigs
+      const secondaries = secondarySelects
         .filter((config) => config && config.when !== false)
         .map((config) => renderSourceSelect(config.key, config))
         .filter((item) => item.markup);
@@ -789,60 +799,64 @@ import { escapeHtml } from "../core/html.js";
     const externalHeatDemandUsedSource = powerHouseDemandSource === "external"
       ? externalHeatDemandConfiguredSource
       : powerHouseDemandSource === "model" ? "Huismodel" : "—";
-    const sourceSignals = [
-      buildSourceSignal({
-        key: "room-temperature",
+    const buildRoomSignal = ({ key, title, icon, stem, externalStem, mqttTopic, usedSource }) => {
+      const entityStem = `${stem[0].toUpperCase()}${stem.slice(1)}`;
+      return buildSourceSignal({
+        key,
         group: "room-outside",
+        title,
+        icon,
+        select: buildExternalSourceSelect(stem, externalStem, mqttTopic),
+        summaryValue: getSettingsStatValue(stem),
+        summarySource: usedSource,
+        routeWarning: invalidSourceValueWarning(stem),
+        measurementRows: [
+          cicAvailable ? renderSourceRow({ label: "CIC", key: `cic${entityStem}`, sourceKind: "cic", sourceState: "available", effective: sourcesMatch(usedSource, "CIC") }) : "",
+          otAvailable ? renderSourceRow({ label: "OpenTherm", key: `ot${entityStem}`, sourceKind: "ot", sourceState: "available", effective: sourcesMatch(usedSource, "OpenTherm") }) : "",
+          ...renderExternalSourceRows(`${stem}Source`, usedSource, buildExternalSourceKeys(stem, externalStem)),
+        ],
+      });
+    };
+    const buildPermissionSignal = ({ mode, title, icon, usedSource, optionLabels, selectExtra = {}, summaryValue, routeWarning, measurementRows }) => {
+      const stem = `${mode}Enable`;
+      const externalStem = `${mode[0].toUpperCase()}${mode.slice(1)}Enable`;
+      return buildSourceSignal({
+        key: `${mode}-enable`,
+        group: mode,
+        title,
+        icon,
+        select: buildExternalSourceSelect(stem, externalStem, `${mode}_enable`, {
+          optionLabels,
+          keepUnavailableCurrent: true,
+          ...selectExtra,
+        }),
+        summaryValue,
+        summarySource: usedSource,
+        routeWarning,
+        measurementRows: [
+          ...measurementRows,
+          ...renderExternalSourceRows(`${stem}Source`, usedSource, buildExternalSourceKeys(stem, externalStem), (key) => sourceStateText(key, "Toegestaan", "Geblokkeerd")),
+        ],
+      });
+    };
+    const sourceSignals = [
+      buildRoomSignal({
+        key: "room-temperature",
         title: "Kamertemperatuur",
         icon: "thermometer",
-        select: {
-          key: "roomTempSource",
-          label: "Bron",
-          optionLabels: { "API input": "API-invoer" },
-          haKeys: ["roomTempHa", "roomTempHaValid"],
-          apiValueKey: "apiInputRoomTemperature",
-          apiValidKey: "apiInputRoomTemperatureValid",
-          mqttTopicKey: "room_temperature",
-        },
-        summaryValue: getSettingsStatValue("roomTemp"),
-        summarySource: roomTemperatureUsedSource,
-        routeWarning: invalidSourceValueWarning("roomTemp"),
-        measurementRows: [
-          cicAvailable ? renderSourceRow({ label: "CIC", key: "cicRoomTemp", sourceKind: "cic", sourceState: "available", effective: sourcesMatch(roomTemperatureUsedSource, "CIC") }) : "",
-          otAvailable ? renderSourceRow({ label: "OpenTherm", key: "otRoomTemp", sourceKind: "ot", sourceState: "available", effective: sourcesMatch(roomTemperatureUsedSource, "OpenTherm") }) : "",
-          ...renderExternalSourceRows("roomTempSource", roomTemperatureUsedSource, {
-            ha: ["roomTempHa", "roomTempHaValid"],
-            api: ["apiInputRoomTemperature", "apiInputRoomTemperatureValid", "apiInputRoomTemperatureAge"],
-            mqtt: ["mqttRoomTemperature", "mqttRoomTemperatureValid"],
-          }),
-        ],
+        stem: "roomTemp",
+        externalStem: "RoomTemperature",
+        mqttTopic: "room_temperature",
+        usedSource: roomTemperatureUsedSource,
       }),
-      buildSourceSignal({
+      buildRoomSignal({
         key: "room-setpoint",
-        group: "room-outside",
         title: "Kamer setpoint",
         icon: "target",
-        select: {
-          key: "roomSetpointSource",
-          label: "Bron",
-          optionLabels: { "API input": "API-invoer" },
-          haKeys: ["roomSetpointHa", "roomSetpointHaValid"],
-          apiValueKey: "apiInputRoomSetpoint",
-          apiValidKey: "apiInputRoomSetpointValid",
-          mqttTopicKey: "room_setpoint",
-        },
-        summaryValue: getSettingsStatValue("roomSetpoint"),
-        summarySource: roomSetpointUsedSource,
-        routeWarning: invalidSourceValueWarning("roomSetpoint"),
-        measurementRows: [
-          cicAvailable ? renderSourceRow({ label: "CIC", key: "cicRoomSetpoint", sourceKind: "cic", sourceState: "available", effective: sourcesMatch(roomSetpointUsedSource, "CIC") }) : "",
-          otAvailable ? renderSourceRow({ label: "OpenTherm", key: "otRoomSetpoint", sourceKind: "ot", sourceState: "available", effective: sourcesMatch(roomSetpointUsedSource, "OpenTherm") }) : "",
-          ...renderExternalSourceRows("roomSetpointSource", roomSetpointUsedSource, {
-            ha: ["roomSetpointHa", "roomSetpointHaValid"],
-            api: ["apiInputRoomSetpoint", "apiInputRoomSetpointValid", "apiInputRoomSetpointAge"],
-            mqtt: ["mqttRoomSetpoint", "mqttRoomSetpointValid"],
-          }),
-        ],
+        stem: "roomSetpoint",
+        externalStem: "RoomSetpoint",
+        mqttTopic: "room_setpoint",
+        usedSource: roomSetpointUsedSource,
       }),
       buildSourceSignal({
         key: "water-supply",
@@ -850,11 +864,11 @@ import { escapeHtml } from "../core/html.js";
         title: "Aanvoertemperatuur",
         icon: "droplet",
         select: { key: "waterSupplySource", label: "Bron", haKeys: ["waterSupplyTempHa", "waterSupplyTempHaValid"] },
-        secondarySelect: {
+        secondarySelects: [{
           key: "localWaterSupplyTempSource",
           label: "Lokale sensor",
           when: currentWaterSupplySource === "Local" && hasEntity("localWaterSupplyTempSource"),
-        },
+        }],
         summaryValue: getSettingsStatValue("supplyTemp"),
         summarySource: waterSupplyUsedSource,
         summaryInfo: renderSettingsInfoToggle(
@@ -920,88 +934,52 @@ import { escapeHtml } from "../core/html.js";
         warning: currentOutsideTempSource === "MQTT"
           ? "Na een (her)start is de MQTT-buitentemperatuur pas geldig na een nieuwe live publicatie. Tot die tijd ontbreekt de buitentemperatuur en kan OpenQuatt naar CM98 (antivriescirculatie) gaan. De wachttijd hangt af van het publicatie-interval. Overweeg daarom Auto; dan kan OpenQuatt tijdens het wachten een andere geldige buitentemperatuurbron gebruiken."
           : "",
-        select: {
-          key: "outsideTempSource",
+        select: buildExternalSourceSelect("outsideTemp", "OutsideTemperature", "outside_temperature", {
           label: "Buiten bron",
-          optionLabels: { "API input": "API-invoer" },
-          haKeys: ["outsideTempHa", "outsideTempHaValid"],
-          apiValueKey: "apiInputOutsideTemperature",
-          apiValidKey: "apiInputOutsideTemperatureValid",
-          mqttTopicKey: "outside_temperature",
           infoId: "outsideTempSource-auto-info",
           infoCopy: outsideTemperatureAutoInfo,
-        },
+        }),
         summaryValue: getSettingsStatValue("outsideTempSelected"),
         summarySource: outsideTemperatureUsedSource,
         routeWarning: invalidSourceValueWarning("outsideTempSelected"),
         measurementRows: [
           renderSourceRow({ label: "Buitenunit", key: "outsideTempLocalAggregated", sourceKind: "outdoor", sourceState: "available", effective: sourcesMatch(outsideTemperatureUsedSource, "Buitenunit") }),
-          ...renderExternalSourceRows("outsideTempSource", outsideTemperatureUsedSource, {
-            ha: ["outsideTempHa", "outsideTempHaValid"],
-            api: ["apiInputOutsideTemperature", "apiInputOutsideTemperatureValid", "apiInputOutsideTemperatureAge"],
-            mqtt: ["mqttOutsideTemperature", "mqttOutsideTemperatureValid"],
-          }),
+          ...renderExternalSourceRows("outsideTempSource", outsideTemperatureUsedSource, buildExternalSourceKeys("outsideTemp", "OutsideTemperature")),
         ],
       }),
-      buildSourceSignal({
-        key: "heating-enable",
-        group: "heating",
+      buildPermissionSignal({
+        mode: "heating",
         title: "Warmtetoestemming",
         icon: "flame",
-        select: {
-          key: "heatingEnableSource",
-          label: "Bron",
-          optionLabels: heatingEnableSourceLabels,
+        usedSource: heatingEnableUsedSource,
+        optionLabels: heatingEnableSourceLabels,
+        selectExtra: {
           infoId: "heatingEnableSource-info",
           infoCopy: "Niet gebruiken = geen externe gate; de strategie bepaalt zelf of warmte nodig is.",
-          haKeys: ["heatingEnableHa", "heatingEnableHaValid"],
-          apiValueKey: "apiInputHeatingEnable",
-          apiValidKey: "apiInputHeatingEnableValid",
-          mqttTopicKey: "heating_enable",
-          keepUnavailableCurrent: true,
         },
         summaryValue: heatingEnableSourceDisabled
           ? "Niet gebruikt"
           : sourceStateText("heatingEnableSelected", "Toegestaan", "Geblokkeerd"),
-        summarySource: heatingEnableUsedSource,
         routeWarning: heatingEnableSourceDisabled ? "" : invalidSourceValueWarning("heatingEnableSelected"),
         measurementRows: [
           otAvailable ? renderSourceRow({ label: "OpenTherm", value: sourceStateText("otThermostatChEnable", "Toegestaan", "Geblokkeerd"), sourceKind: "ot", sourceState: "available", effective: sourcesMatch(heatingEnableUsedSource, "OpenTherm") }) : "",
           cicAvailable ? renderSourceRow({ label: "CIC", value: sourceStateText("cicChEnabled", "Toegestaan", "Geblokkeerd"), sourceKind: "cic", sourceState: "available", effective: sourcesMatch(heatingEnableUsedSource, "CIC") }) : "",
-          ...renderExternalSourceRows("heatingEnableSource", heatingEnableUsedSource, {
-            ha: ["heatingEnableHa", "heatingEnableHaValid"],
-            api: ["apiInputHeatingEnable", "apiInputHeatingEnableValid", "apiInputHeatingEnableAge"],
-            mqtt: ["mqttHeatingEnable", "mqttHeatingEnableValid"],
-          }, (key) => sourceStateText(key, "Toegestaan", "Geblokkeerd")),
         ],
       }),
-      buildSourceSignal({
-        key: "cooling-enable",
-        group: "cooling",
+      buildPermissionSignal({
+        mode: "cooling",
         title: "Koeltoestemming",
         icon: "snowflake",
-        select: {
-          key: "coolingEnableSource",
-          label: "Bron",
-          optionLabels: coolingEnableSourceLabels,
+        usedSource: coolingEnableUsedSource,
+        optionLabels: coolingEnableSourceLabels,
+        selectExtra: {
           hiddenOptions: ["CIC", "CIC or HA input"],
-          haKeys: ["coolingEnableHa", "coolingEnableHaValid"],
-          apiValueKey: "apiInputCoolingEnable",
-          apiValidKey: "apiInputCoolingEnableValid",
-          mqttTopicKey: "cooling_enable",
-          keepUnavailableCurrent: true,
         },
         summaryValue: sourceStateText("coolingEnableSelected", "Toegestaan", "Geblokkeerd"),
-        summarySource: coolingEnableUsedSource,
         routeWarning: invalidSourceValueWarning("coolingEnableSelected"),
         measurementRows: [
           renderSourceRow({ label: "Handmatig", value: sourceStateText("manualCoolingEnable", "Aan", "Uit"), sourceKind: "manual", sourceState: "available", effective: sourcesMatch(coolingEnableUsedSource, "Handmatig") }),
           otAvailable ? renderSourceRow({ label: "OpenTherm", value: sourceStateText("otThermostatCoolingEnable", "Toegestaan", "Geblokkeerd"), sourceKind: "ot", sourceState: "available", effective: sourcesMatch(coolingEnableUsedSource, "OpenTherm") }) : "",
-          ...renderExternalSourceRows("coolingEnableSource", coolingEnableUsedSource, {
-            ha: ["coolingEnableHa", "coolingEnableHaValid"],
-            api: ["apiInputCoolingEnable", "apiInputCoolingEnableValid", "apiInputCoolingEnableAge"],
-            mqtt: ["mqttCoolingEnable", "mqttCoolingEnableValid"],
-          }, (key) => sourceStateText(key, "Toegestaan", "Geblokkeerd")),
         ],
       }),
       buildSourceSignal({
@@ -1009,28 +987,17 @@ import { escapeHtml } from "../core/html.js";
         group: "cooling",
         title: "Koelingsdauwpunt",
         icon: "thermometer",
-        select: {
-          key: "coolingDewPointSource",
-          label: "Bron",
-          optionLabels: { "API input": "API-invoer" },
-          haKeys: ["coolingDewPointHa", "coolingDewPointHaValid"],
-          apiValueKey: "apiInputCoolingDewPoint",
-          apiValidKey: "apiInputCoolingDewPointValid",
-          mqttTopicKey: "cooling_dew_point",
+        select: buildExternalSourceSelect("coolingDewPoint", "CoolingDewPoint", "cooling_dew_point", {
           infoId: "coolingDewPointSource-info",
           infoCopy: mqttAvailable
             ? "Auto gebruikt de hoogste geldige waarde als Home Assistant, API-invoer en MQTT tegelijk geldig zijn. Kies Home Assistant, API input of MQTT om die bron expliciet te vereisen."
             : "Auto gebruikt een geldige Home Assistant-waarde wanneer die beschikbaar is. Kies Home Assistant om die bron expliciet te vereisen.",
-        },
+        }),
         summaryValue: getSettingsStatValue("coolingDewPointSelected"),
         summarySource: coolingDewPointUsedSource,
         routeWarning: invalidSourceValueWarning("coolingDewPointSelected"),
         measurementRows: [
-          ...renderExternalSourceRows("coolingDewPointSource", coolingDewPointUsedSource, {
-            ha: ["coolingDewPointHa", "coolingDewPointHaValid"],
-            api: ["apiInputCoolingDewPoint", "apiInputCoolingDewPointValid", "apiInputCoolingDewPointAge"],
-            mqtt: ["mqttCoolingDewPoint", "mqttCoolingDewPointValid"],
-          }),
+          ...renderExternalSourceRows("coolingDewPointSource", coolingDewPointUsedSource, buildExternalSourceKeys("coolingDewPoint", "CoolingDewPoint")),
         ],
       }),
       buildSourceSignal({
@@ -1038,25 +1005,17 @@ import { escapeHtml } from "../core/html.js";
         group: "heating",
         title: "Externe warmtevraag",
         icon: "zap",
-        select: {
-          key: "externalHeatDemandSource",
-          label: "Bron",
+        select: buildExternalSourceSelect("externalHeatDemand", "ExternalHeatDemand", "", {
           optionLabels: { Disabled: "Niet gebruiken", "API input": "API-invoer" },
-          haKeys: ["externalHeatDemandHa", "externalHeatDemandHaValid"],
-          apiValueKey: "apiInputExternalHeatDemand",
-          apiValidKey: "apiInputExternalHeatDemandValid",
           infoCopy: "Vervangt alleen de vermogensschatting van het huismodel in Power House. Valt de bron weg of veroudert hij, dan rekent Power House weer met het huismodel.",
-        },
+        }),
         summaryValue: getSettingsStatValue("externalHeatDemandSelected"),
         summarySource: externalHeatDemandUsedSource,
         routeWarning: String(getEntityValue("externalHeatDemandSource") || "") === "Disabled"
           ? ""
           : invalidSourceValueWarning("externalHeatDemandSelected"),
         measurementRows: [
-          ...renderExternalSourceRows("externalHeatDemandSource", externalHeatDemandUsedSource, {
-            ha: ["externalHeatDemandHa", "externalHeatDemandHaValid"],
-            api: ["apiInputExternalHeatDemand", "apiInputExternalHeatDemandValid", "apiInputExternalHeatDemandAge"],
-          }),
+          ...renderExternalSourceRows("externalHeatDemandSource", externalHeatDemandUsedSource, buildExternalSourceKeys("externalHeatDemand", "ExternalHeatDemand", false)),
         ],
       }),
     ].filter(Boolean);
@@ -1066,30 +1025,10 @@ import { escapeHtml } from "../core/html.js";
     }
 
     const sourceCategories = [
-      {
-        id: "room-outside",
-        title: "Ruimte & buiten",
-        icon: "home-cog",
-        keys: ["room-temperature", "room-setpoint", "outside-temperature"],
-      },
-      {
-        id: "water-circuit",
-        title: "Watercircuit",
-        icon: "droplet",
-        keys: ["water-supply", "flow-source"],
-      },
-      {
-        id: "heating",
-        title: "Verwarmen",
-        icon: "flame",
-        keys: ["external-heat-demand", "heating-enable"],
-      },
-      {
-        id: "cooling",
-        title: "Koelen",
-        icon: "snowflake",
-        keys: ["cooling-enable", "cooling-dew-point"],
-      },
+      { id: "room-outside", title: "Ruimte & buiten", icon: "home-cog", keys: ["room-temperature", "room-setpoint", "outside-temperature"] },
+      { id: "water-circuit", title: "Watercircuit", icon: "droplet", keys: ["water-supply", "flow-source"] },
+      { id: "heating", title: "Verwarmen", icon: "flame", keys: ["external-heat-demand", "heating-enable"] },
+      { id: "cooling", title: "Koelen", icon: "snowflake", keys: ["cooling-enable", "cooling-dew-point"] },
     ];
     const signalByKey = new Map(sourceSignals.map((signal) => [signal.key, signal]));
     const visibleCategories = sourceCategories
@@ -1111,7 +1050,7 @@ import { escapeHtml } from "../core/html.js";
         const active = signal.key === focusedSignal.key;
         return `
           <button
-            class="oq-settings-source-signal${active ? " is-active" : ""}${signal.warningCopy ? " is-warning" : ""}"
+            class="oq-settings-source-signal${signal.warningCopy ? " is-warning" : ""}"
             type="button"
             data-oq-action="select-settings-source"
             data-source-key="${escapeHtml(signal.key)}"
