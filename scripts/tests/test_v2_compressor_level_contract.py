@@ -6,7 +6,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 HP_IO = (ROOT / "openquatt" / "oq_HP_io.yaml").read_text()
 MANUAL_HP = (ROOT / "openquatt" / "oq_manual_hp.yaml").read_text()
-ACTUATOR = (ROOT / "openquatt" / "oq_thermal_actuator.yaml").read_text()
+ACTUATOR = (ROOT / "openquatt/includes/control/oq_thermal_actuator_runtime.h").read_text()
 REQUEST_CONTROL = (ROOT / "openquatt" / "oq_thermal_request_control.yaml").read_text()
 LEVEL_HEADER = (
     ROOT / "openquatt" / "includes" / "odu" / "oq_odu_compressor_levels.h"
@@ -65,13 +65,13 @@ class V2CompressorLevelContractTest(unittest.TestCase):
         )
 
     def test_actuator_keeps_control_and_physical_domains_separate(self) -> None:
-        self.assertIn("const char* lvl_opts[21]", ACTUATOR)
+        self.assertIn("level_options[21]", ACTUATOR)
         self.assertIn("resolve_automatic_level(", ACTUATOR)
         self.assertIn("resolve_manual_level(", ACTUATOR)
-        self.assertIn("return level_command.control_level;", ACTUATOR)
+        self.assertIn("return command.control_level;", ACTUATOR)
         self.assertIn("last_commanded_physical_level", ACTUATOR)
         self.assertLess(
-            ACTUATOR.index("applied = frequency_runtime.pick_allowed_level("),
+            ACTUATOR.index("applied = cycle.frequency.pick_allowed_level("),
             ACTUATOR.rindex("resolve_automatic_level("),
         )
         self.assertLess(
