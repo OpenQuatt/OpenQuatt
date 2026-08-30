@@ -1009,7 +1009,9 @@ import { escapeHtml } from "../core/html.js";
           optionLabels: { Disabled: "Niet gebruiken", "API input": "API-invoer" },
           infoCopy: "Vervangt alleen de vermogensschatting van het huismodel in Power House. Valt de bron weg of veroudert hij, dan rekent Power House weer met het huismodel.",
         }),
-        summaryValue: getSettingsStatValue("externalHeatDemandSelected"),
+        summaryValue: externalHeatDemandConfiguredSource === "Niet gebruiken"
+          ? "Niet gebruikt"
+          : getSettingsStatValue("externalHeatDemandSelected"),
         summarySource: externalHeatDemandUsedSource,
         routeWarning: String(getEntityValue("externalHeatDemandSource") || "") === "Disabled"
           ? ""
@@ -1043,11 +1045,16 @@ import { escapeHtml } from "../core/html.js";
       state.settingsSourceFocusKey = focusedSignal.key;
     }
     const focusedCategory = visibleCategories.find((category) => category.id === focusedSignal.group) || visibleCategories[0];
-    const categoryMarkup = visibleCategories.map((category, categoryIndex) => {
+    const categoryMarkup = visibleCategories.map((category) => {
       const count = category.signals.length;
       const categoryTitleId = `oq-settings-source-category-${category.id}`;
       const signalsMarkup = category.signals.map((signal) => {
         const active = signal.key === focusedSignal.key;
+        const showUsedSource = signal.summarySource !== "—"
+          || !sourcesMatch(signal.configuredSource, "Niet gebruiken");
+        const sourcePathLabel = showUsedSource
+          ? `Ingesteld: ${signal.configuredSource}. Gebruikt: ${signal.summarySource}`
+          : `Ingesteld: ${signal.configuredSource}`;
         return `
           <button
             class="oq-settings-source-signal${signal.warningCopy ? " is-warning" : ""}"
@@ -1067,10 +1074,10 @@ import { escapeHtml } from "../core/html.js";
               <strong>${escapeHtml(signal.summaryValue)}</strong>
               <small
                 class="oq-settings-source-signal-source-path"
-                aria-label="Ingesteld: ${escapeHtml(signal.configuredSource)}. Gebruikt: ${escapeHtml(signal.summarySource)}"
+                aria-label="${escapeHtml(sourcePathLabel)}"
               >
                 <span>${escapeHtml(signal.configuredSource)}</span>
-                ${signal.configuredSource !== signal.summarySource ? `
+                ${showUsedSource && signal.configuredSource !== signal.summarySource ? `
                   <span class="oq-settings-source-signal-source-arrow" aria-hidden="true">→</span>
                   <span>${escapeHtml(signal.summarySource)}</span>
                 ` : ""}
@@ -1088,7 +1095,6 @@ import { escapeHtml } from "../core/html.js";
               <h4 id="${escapeHtml(categoryTitleId)}">${escapeHtml(category.title)}</h4>
               <small class="oq-settings-source-category-count">${count} ${count === 1 ? "signaal" : "signalen"}</small>
             </div>
-            <span class="oq-settings-source-category-index" aria-hidden="true">${String(categoryIndex + 1).padStart(2, "0")}</span>
           </header>
           ${signalsMarkup}
         </section>

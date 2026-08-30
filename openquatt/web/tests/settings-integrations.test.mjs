@@ -43,6 +43,12 @@ function getCategoryMarkup(markup, key) {
   return match[0];
 }
 
+function getSignalMarkup(markup, key) {
+  const match = markup.match(new RegExp(`<button[^>]+data-source-key="${key}"[\\s\\S]*?<\\/button>`));
+  assert.ok(match, `bronsignaal ${key} ontbreekt`);
+  return match[0];
+}
+
 function assertMarkupOrder(markup, values) {
   let previousIndex = -1;
   values.forEach((value) => {
@@ -201,6 +207,13 @@ test("focuspaneel groepeert alle signalen in vaste volgorde en rendert één ins
   assert.match(getInspectorMarkup(markup), /data-oq-focus-key="settings-source-detail-back"/);
   assert.match(getCategoryMarkup(markup, "room-outside"), /aria-label="Ingesteld: Auto\. Gebruikt: HA-invoer"/);
   assert.match(getCategoryMarkup(markup, "room-outside"), /<span>Auto<\/span>[\s\S]*?<span class="oq-settings-source-signal-source-arrow" aria-hidden="true">→<\/span>[\s\S]*?<span>HA-invoer<\/span>/);
+  const heatingEnableMarkup = getSignalMarkup(markup, "heating-enable");
+  assert.match(heatingEnableMarkup, /aria-label="Ingesteld: Niet gebruiken"/);
+  assert.doesNotMatch(heatingEnableMarkup, /oq-settings-source-signal-source-arrow|>—<\/span>/);
+  const externalHeatDemandMarkup = getSignalMarkup(markup, "external-heat-demand");
+  assert.match(externalHeatDemandMarkup, /<strong>Niet gebruikt<\/strong>[\s\S]*?<span>Niet gebruiken<\/span>/);
+  assert.doesNotMatch(externalHeatDemandMarkup, /<strong>0(?: kW)?<\/strong>/);
+  assert.doesNotMatch(markup, /oq-settings-source-category-index/);
   assert.doesNotMatch(markup, /Bronwaarden tonen|>Relevant<|>Alles</);
 });
 
