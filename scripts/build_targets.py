@@ -70,7 +70,7 @@ def filter_targets(targets: list[dict[str, str]], status: str) -> list[dict[str,
 
 
 def artifact_names(target: dict[str, str]) -> list[str]:
-    """Return the canonical artifact name followed by manifest compatibility aliases."""
+    """Return the canonical artifact name followed by compatibility aliases."""
     names = [target["artifact_name"]]
     aliases = target.get("artifact_aliases", "")
     names.extend(alias.strip() for alias in aliases.split(",") if alias.strip())
@@ -104,11 +104,14 @@ def display_name_for_artifact(target: dict[str, str], artifact_name: str) -> str
 
 def release_asset_names(target: dict[str, str]) -> list[str]:
     """Return every file name that should exist on a release for this target."""
-    artifact_name = target["artifact_name"]
-    names = [
-        f"{artifact_name}.firmware.ota.bin",
-        f"{artifact_name}.firmware.factory.bin",
-    ]
+    names: list[str] = []
+    for published_name in artifact_names(target):
+        names.extend(
+            [
+                f"{published_name}.firmware.ota.bin",
+                f"{published_name}.firmware.factory.bin",
+            ]
+        )
     names.extend(manifest_name_for_artifact(target, published_name) for published_name in artifact_names(target))
     return names
 
@@ -163,16 +166,15 @@ def prepare_release_assets(version: str, base_url: str, release_url: str) -> Non
         if not ota_source.is_file() or not factory_source.is_file():
             raise SystemExit(f"Artifact {artifact_name} is missing firmware.ota.bin or firmware.factory.bin")
 
-        ota_name = f"{artifact_name}.firmware.ota.bin"
-        factory_name = f"{artifact_name}.firmware.factory.bin"
-        ota_dest = dist_dir / ota_name
-        factory_dest = dist_dir / factory_name
-        shutil.copy2(ota_source, ota_dest)
-        shutil.copy2(factory_source, factory_dest)
-        ota_md5 = md5sum(ota_dest)
-
         for published_name in artifact_names(target):
             published_display_name = display_name_for_artifact(target, published_name)
+            ota_name = f"{published_name}.firmware.ota.bin"
+            factory_name = f"{published_name}.firmware.factory.bin"
+            ota_dest = dist_dir / ota_name
+            factory_dest = dist_dir / factory_name
+            shutil.copy2(ota_source, ota_dest)
+            shutil.copy2(factory_source, factory_dest)
+
             manifest = {
                 "name": published_display_name,
                 "version": version,
@@ -181,7 +183,7 @@ def prepare_release_assets(version: str, base_url: str, release_url: str) -> Non
                         "chipFamily": target["chip_family"],
                         "ota": {
                             "path": f"{base_url}/{ota_name}",
-                            "md5": ota_md5,
+                            "md5": md5sum(ota_dest),
                             "release_url": release_url,
                             "summary": f"{published_display_name} firmware {version}",
                         },
@@ -256,7 +258,8 @@ def command_list_configs(args: argparse.Namespace) -> int:
 
 def command_factory_files(args: argparse.Namespace) -> int:
     for target in filter_targets(load_targets(), args.status):
-        print(f"{target['artifact_name']}.firmware.factory.bin")
+        for artifact_name in artifact_names(target):
+            print(f"{artifact_name}.firmware.factory.bin")
     return 0
 
 
