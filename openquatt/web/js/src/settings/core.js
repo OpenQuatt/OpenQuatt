@@ -130,7 +130,7 @@ function syncFrequencyRangeControl(control) {
     }
 
     const activeGroup = SETTINGS_GROUP_IDS.has(state.settingsGroup) ? state.settingsGroup : SETTINGS_GROUPS[0].id;
-    if (activeGroup === "service") {
+    if (activeGroup === "service" || (activeGroup === "integrations" && state.focusedField)) {
       return false;
     }
 

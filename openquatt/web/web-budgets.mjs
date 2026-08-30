@@ -22,14 +22,17 @@ export const WEB_BUNDLE_BUDGETS = [
     // the issue-536 boiler-result quality and confirmed empirical Apply flow,
     // the compact per-ODU compressor profile for safe manual F-levels,
     // the unified Q-firmware network preference and active-connection controls,
+    // the issue-471 grouped source focus panel with configured/effective paths,
+    // relevant-source diagnostics, warnings and stable keyboard focus,
     // and frequency-based day/silent limits and exclusion ranges per ODU.
-    raw: 966_000,
+    raw: 979_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.
     gzipBaselineCeiling: 238_000,
   },
   // Includes the compact, dark-safe ODU generation picker with unified header action and distinct badge/button,
-  // plus the warmtetoestemming-advies modal (3 summary cards, comparison, matrix, sticky footer).
-  { file: "css/openquatt-app.css", raw: 295_000 },
+  // the warmtetoestemming-advies modal (3 summary cards, comparison, matrix, sticky footer),
+  // and the responsive issue-471 master/detail source focus panel.
+  { file: "css/openquatt-app.css", raw: 302_000 },
 ];
