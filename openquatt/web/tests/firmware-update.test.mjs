@@ -11,6 +11,8 @@ globalThis.window = {
 };
 
 const { state } = await import("../js/src/core/state.js");
+const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
+const { installFirmwareTestUpdate } = await import("../js/src/features/firmware-actions.js");
 const {
   getFirmwareModalCopy,
   getFirmwareProgressModel,
@@ -66,6 +68,71 @@ test("PR firmware uses deterministic release URLs without the GitHub REST API", 
     label: "PR 395 · Heatpump Controller Q Duo Wi-Fi",
   });
   assert.equal(getFirmwareTestAssetUrls("395/../../dev-latest", target), null);
+});
+
+test("PR firmware starts with one complete render before the first device write", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalLocation = window.location;
+  const originalState = { ...state };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalLocation === undefined) {
+      delete window.location;
+    } else {
+      window.location = originalLocation;
+    }
+    setRenderCallback(null);
+    for (const key of Object.keys(state)) {
+      if (!(key in originalState)) {
+        delete state[key];
+      }
+    }
+    Object.assign(state, originalState);
+  });
+
+  state.drafts = {};
+  state.entities = {
+    hardwareProfileText: { state: "heatpump_controller_q" },
+    installationTopology: { state: "duo" },
+    connectionText: { state: "wifi" },
+    installFirmwareTestOta: { state: "" },
+    firmwareTestOtaUrl: { state: "" },
+    firmwareTestOtaMd5Url: { state: "" },
+  };
+  state.updateTestFirmwarePr = "528";
+  state.updateTestFirmwareConfirmed = true;
+  window.location = { pathname: "/" };
+
+  const events = [];
+  setRenderCallback(() => {
+    events.push({
+      type: "render",
+      busy: state.updateInstallBusy,
+      build: state.updateTestFirmwareBuild,
+    });
+  });
+
+  globalThis.fetch = async () => {
+    events.push({ type: "fetch" });
+    return { ok: false, status: 503 };
+  };
+
+  const operation = installFirmwareTestUpdate();
+  await operation;
+
+  assert.deepEqual(events, [
+    {
+      type: "render",
+      busy: true,
+      build: "PR 528 · Heatpump Controller Q Duo Wi-Fi",
+    },
+    { type: "fetch" },
+    {
+      type: "render",
+      busy: false,
+      build: "PR 528 · Heatpump Controller Q Duo Wi-Fi",
+    },
+  ]);
 });
 
 test("dev firmware exposes an explicit confirmed downgrade to the older main release", () => {

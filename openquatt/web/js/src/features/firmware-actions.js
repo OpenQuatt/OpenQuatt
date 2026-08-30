@@ -564,7 +564,6 @@ import { render } from "../core/render-scheduler.js";
     state.controlNotice = "";
     state.updateTestFirmwareError = "";
     state.updateTestFirmwareBuild = null;
-    render();
 
     let flashRequested = false;
     try {
