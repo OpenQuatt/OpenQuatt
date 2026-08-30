@@ -1,245 +1,74 @@
 # ==============================================================================
 # OpenQuatt - Cooling Strategy
 # ==============================================================================
-#
-# Goal:
-#   Own the complete cooling path on top of the cooling safety signals.
-#   This layer produces the cooling supply target, a cooling demand `f`, and the
-#   downstream cooling compressor requests. Room comfort decides whether cooling
-#   is needed; this strategy decides how much cooling is safe on the water side.
-#
-# Scope:
-#   - Derive the cooling supply target from the configured floor and dew-point
-#     or fallback safety floor
-#   - Run a water-temperature PI(D) loop with a safe-floor limiter
-#   - Publish `oq_cooling_demand_raw` (0..10)
-#   - Choose the active cooling owner HP and publish cooling requests
-#
-# Control model:
-#   1. The cooling safety layer latches room demand and computes the minimum
-#      safe supply temperature.
-#   2. `Cooling Supply Target` is the coldest allowed water target. It does not
-#      include a comfort offset; comfort hysteresis stays in the room layer.
-#   3. `buffer_gap = supply - target` controls modulation. Positive gap means
-#      water is still warmer than target and cooling may increase.
-#   4. `dew_gap = supply - dew_point` is only a safety distance. Raw dew_gap can
-#      stop cooling immediately, while filtered buffer_gap and its trend drive
-#      normal modulation.
-#   5. The safe-floor limiter caps the PI output before it reaches the compressor:
-#      it projects the filtered water gap forward with its current trend, allows
-#      the PI output while that projection stays safely above the floor, brakes
-#      back to level 1 when higher levels move toward the floor too quickly, and
-#      stops hard only at/under the stop zone or too close to the real/fallback
-#      floor. Projection never creates a stop by itself.
-#   6. `Cooling Restart Delta` only applies after a real water-side stop. Normal
-#      room-demand stops can restart from the current limiter state.
-#
-# ==============================================================================
-
+# Owns the supply target, safe water-side demand (0..10), and downstream HP requests.
+# Room safety latches demand and provides the real/fallback minimum supply temperature.
+# `buffer_gap = supply - target` drives PI modulation; positive means cooling may rise.
+# Raw `dew_gap = supply - dew_point` may stop immediately. Filtered buffer gap and trend
+# drive normal limiting. Projection may brake to F1 but never creates a stop by itself.
+# `Cooling Restart Delta` applies only after a water-side stop, not a room-demand stop.
 globals:
   - id: oq_cooling_demand_raw
     type: int
     restore_value: false
     initial_value: '0'
-
-  - id: oq_cooling_pid_integral
-    type: float
-    restore_value: false
-    initial_value: '0.0'
-
-  - id: oq_cooling_pid_last_error_c
-    type: float
-    restore_value: false
-    initial_value: '0.0'
-
-  - id: oq_cooling_buffer_gap_filtered_c
-    type: float
-    restore_value: false
-    initial_value: '0.0'
-
-  - id: oq_cooling_buffer_gap_rate_ref_c
-    type: float
-    restore_value: false
-    initial_value: '0.0'
-
-  - id: oq_cooling_buffer_gap_rate_c_per_min
-    type: float
-    restore_value: false
-    initial_value: '0.0'
-
-  - id: oq_cooling_dew_gap_c
-    type: float
-    restore_value: false
-    initial_value: 'NAN'
-
-  - id: oq_cooling_stop_buffer_gap_c
-    type: float
-    restore_value: false
-    initial_value: '0.0'
-
-  - id: oq_cooling_gap_filter_ready
-    type: bool
-    restore_value: false
-    initial_value: 'false'
-
-  - id: oq_cooling_simmer_allowed
-    type: bool
-    restore_value: false
-    initial_value: 'false'
-
-  - id: oq_cooling_projection_brake_active
-    type: bool
-    restore_value: false
-    initial_value: 'false'
-
-  - id: oq_cooling_projected_gap_c
-    type: float
-    restore_value: false
-    initial_value: 'NAN'
-
-  - id: oq_cooling_limiter_allowed_max
-    type: int
-    restore_value: false
-    initial_value: '0'
-
-  - id: oq_cooling_base_demand_raw
-    type: int
-    restore_value: false
-    initial_value: '0'
-
-  - id: oq_cooling_limited_demand
-    type: int
-    restore_value: false
-    initial_value: '0'
-
-  # 0=inactive, 1=full, 2=projected_floor, 3=simmer, 4=falling_gap, 5=buffer_stop,
-  # 6=dew_stop, 7=fallback_floor, 8=restart_wait, 9=room_cap, 10=fallback_cap1,
-  # 11=level1_hold, 12=oil_return_hold, 13=oil_return_recovery, 14=capacity_cap
-  - id: oq_cooling_limiter_reason_code
-    type: int
-    restore_value: false
-    initial_value: '0'
-
   # 0=none, 1=limiter, 2=dew, 3=fallback, 4=projected_floor (legacy), 5=request_cleared,
   # 6=flow_permission_lost, 7=core_permission_lost
   - id: oq_cooling_stop_reason_code
     type: int
     restore_value: false
     initial_value: '0'
-
-  - id: oq_cooling_last_loop_ms
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
-
-  - id: oq_cooling_buffer_gap_rate_ref_ms
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
-
-  - id: oq_cooling_last_demand_change_ms
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
-
-  - id: oq_cooling_stop_candidate_since_ms
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
-
-  - id: oq_cooling_dew_stop_candidate_since_ms
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
-
-  - id: oq_cooling_capacity_cap
-    type: int
-    restore_value: false
-    initial_value: '10'
-
-  - id: oq_cooling_capacity_last_change_ms
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
-
-  - id: oq_cooling_capacity_recovery_since_ms
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
-
-  - id: oq_cooling_capacity_full_recovery_since_ms
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
-
-  - id: oq_cooling_water_cycle_active
-    type: bool
-    restore_value: false
-    initial_value: 'false'
-
   - id: oq_cooling_request_last_loop_ms
     type: uint32_t
     restore_value: false
     initial_value: '0'
-
   - id: oq_cooling_request_hp1_level
     type: int
     restore_value: false
     initial_value: '0'
-
   - id: oq_cooling_request_hp2_level
     type: int
     restore_value: false
     initial_value: '0'
-
   - id: oq_cooling_request_owner_hp
     type: int
     restore_value: false
     initial_value: '0'
-
   - id: oq_cooling_owner_hp
     type: int
     restore_value: false
     initial_value: '0'
-
   # Shared confirmed automatic-cooling stop anchor. In minimum-off-time mode
   # this blocks both HPs, so Duo cannot restart on the other compressor.
   - id: oq_cooling_last_confirmed_stop_ms
     type: uint32_t
     restore_value: false
     initial_value: '0'
-
   - id: oq_cooling_confirmed_stop_seen
     type: bool
     restore_value: false
     initial_value: 'false'
-
   - id: oq_cooling_stop_confirmation_pending_hp1
     type: bool
     restore_value: false
     initial_value: 'false'
-
   - id: oq_cooling_stop_confirmation_pending_hp2
     type: bool
     restore_value: false
     initial_value: 'false'
-
   - id: oq_cooling_boot_min_off_elapsed
     type: bool
     restore_value: false
     initial_value: 'false'
-
   - id: oq_cooling_min_off_stop_pending
     type: bool
     restore_value: false
     initial_value: 'false'
-
   # 0=idle, 1=owner_hp1, 2=owner_hp2
   - id: oq_cooling_request_reason_code
     type: int
     restore_value: false
     initial_value: '0'
-
 select:
   - platform: template
     id: cooling_restart_mode
@@ -252,7 +81,6 @@ select:
     options:
       - "Water temperature"
       - "Minimum off time"
-
 number:
   - platform: template
     id: cooling_min_supply_temp
@@ -267,7 +95,6 @@ number:
     restore_value: true
     initial_value: 14.0
     entity_category: config
-
   - platform: template
     id: cooling_demand_max_f
     name: "Cooling Demand Max"
@@ -281,7 +108,6 @@ number:
     restore_value: true
     initial_value: 4
     entity_category: config
-
   - platform: template
     id: cooling_restart_delta
     name: "Cooling Restart Delta"
@@ -295,7 +121,6 @@ number:
     restore_value: true
     initial_value: 1.0
     entity_category: config
-
   - platform: template
     id: cooling_minimum_off_time
     name: "Cooling Minimum Off Time"
@@ -309,7 +134,6 @@ number:
     restore_value: true
     initial_value: 600
     entity_category: config
-
   - platform: template
     id: cooling_pid_kp
     name: "Cooling PID Kp"
@@ -322,7 +146,6 @@ number:
     restore_value: true
     initial_value: 3.0
     entity_category: config
-
   - platform: template
     id: cooling_pid_ki
     name: "Cooling PID Ki"
@@ -335,7 +158,6 @@ number:
     restore_value: true
     initial_value: 0.12
     entity_category: config
-
   - platform: template
     id: cooling_pid_kd
     name: "Cooling PID Kd"
@@ -348,7 +170,6 @@ number:
     restore_value: true
     initial_value: 0.0
     entity_category: config
-
 sensor:
   - platform: template
     id: cooling_supply_target
@@ -367,7 +188,6 @@ sensor:
         base_floor_c = fmaxf(base_floor_c, id(cooling_effective_min_supply_temp).state);
       }
       return base_floor_c;
-
   - platform: template
     id: cooling_supply_error
     name: "Cooling Supply Error"
@@ -381,7 +201,6 @@ sensor:
       if (!id(oq_system_supply_temp).has_state() || isnan(id(oq_system_supply_temp).state)) return NAN;
       // Positive error means the supply is warmer than target, so more cooling may be requested.
       return id(oq_system_supply_temp).state - id(cooling_supply_target).state;
-
   - platform: template
     id: oq_cooling_demand_raw_sensor
     name: "Cooling Demand (raw)"
@@ -392,7 +211,6 @@ sensor:
     update_interval: 5s
     lambda: |-
       return (float) id(oq_cooling_demand_raw);
-
   - platform: template
     id: oq_cooling_base_demand_raw_sensor
     name: "Cooling base demand raw"
@@ -403,8 +221,7 @@ sensor:
     update_interval: 5s
     entity_category: diagnostic
     lambda: |-
-      return (float) id(oq_cooling_base_demand_raw);
-
+      return (float) oq_cooling::demand_runtime().state().base_demand;
   - platform: template
     id: oq_cooling_limited_demand_sensor
     name: "Cooling limited demand"
@@ -415,8 +232,7 @@ sensor:
     update_interval: 5s
     entity_category: diagnostic
     lambda: |-
-      return (float) id(oq_cooling_limited_demand);
-
+      return (float) oq_cooling::demand_runtime().state().limited_demand;
   - platform: template
     id: oq_cooling_limiter_allowed_max_sensor
     name: "Cooling limiter allowed max"
@@ -427,8 +243,7 @@ sensor:
     update_interval: 5s
     entity_category: diagnostic
     lambda: |-
-      return (float) id(oq_cooling_limiter_allowed_max);
-
+      return (float) oq_cooling::demand_runtime().state().allowed_max;
   - platform: template
     id: oq_cooling_buffer_gap_filtered_sensor
     name: "Cooling buffer gap filtered"
@@ -439,8 +254,7 @@ sensor:
     update_interval: 5s
     entity_category: diagnostic
     lambda: |-
-      return id(oq_cooling_buffer_gap_filtered_c);
-
+      return oq_cooling::demand_runtime().state().filter.filtered_gap_c;
   - platform: template
     id: oq_cooling_buffer_gap_rate_sensor
     name: "Cooling buffer gap rate"
@@ -451,8 +265,7 @@ sensor:
     update_interval: 5s
     entity_category: diagnostic
     lambda: |-
-      return id(oq_cooling_buffer_gap_rate_c_per_min);
-
+      return oq_cooling::demand_runtime().state().filter.rate_c_per_min;
   - platform: template
     id: oq_cooling_projected_gap_sensor
     name: "Cooling projected gap"
@@ -463,8 +276,7 @@ sensor:
     update_interval: 5s
     entity_category: diagnostic
     lambda: |-
-      return id(oq_cooling_projected_gap_c);
-
+      return oq_cooling::demand_runtime().state().projected_gap_c;
   - platform: template
     id: oq_cooling_projection_brake_active_sensor
     name: "Cooling projection brake active"
@@ -474,8 +286,7 @@ sensor:
     update_interval: 5s
     entity_category: diagnostic
     lambda: |-
-      return id(oq_cooling_projection_brake_active) ? 1.0f : 0.0f;
-
+      return oq_cooling::demand_runtime().state().limiter.projection_brake_active ? 1.0f : 0.0f;
   - platform: template
     id: oq_cooling_dew_gap_sensor
     name: "Cooling dew gap"
@@ -486,8 +297,7 @@ sensor:
     update_interval: 5s
     entity_category: diagnostic
     lambda: |-
-      return id(oq_cooling_dew_gap_c);
-
+      return oq_cooling::demand_runtime().state().dew_gap_c;
   - platform: template
     id: oq_cooling_stop_buffer_gap_sensor
     name: "Cooling stop buffer gap"
@@ -498,8 +308,7 @@ sensor:
     update_interval: 5s
     entity_category: diagnostic
     lambda: |-
-      return id(oq_cooling_stop_buffer_gap_c);
-
+      return oq_cooling::demand_runtime().state().water_cycle.stop_buffer_gap_c;
   - platform: template
     id: oq_cooling_limiter_reason_code_sensor
     name: "Cooling limiter reason code"
@@ -509,8 +318,7 @@ sensor:
     update_interval: 5s
     entity_category: diagnostic
     lambda: |-
-      return (float) id(oq_cooling_limiter_reason_code);
-
+      return (float) oq_cooling::demand_runtime().state().limiter_reason_code;
   - platform: template
     id: oq_cooling_stop_reason_code_sensor
     name: "Cooling stop reason code"
@@ -521,7 +329,6 @@ sensor:
     entity_category: diagnostic
     lambda: |-
       return (float) id(oq_cooling_stop_reason_code);
-
   - platform: template
     id: oq_cooling_request_reason_code_sensor
     name: "Cooling request reason code"
@@ -532,7 +339,6 @@ sensor:
     entity_category: diagnostic
     lambda: |-
       return (float) id(oq_cooling_request_reason_code);
-
   - platform: template
     id: oq_cooling_request_hp1_level_sensor
     name: "Cooling request HP1 level"
@@ -544,7 +350,6 @@ sensor:
     entity_category: diagnostic
     lambda: |-
       return (float) id(oq_cooling_request_hp1_level);
-
   - platform: template
     id: oq_cooling_request_hp2_level_sensor
     name: "Cooling request HP2 level"
@@ -556,7 +361,6 @@ sensor:
     entity_category: diagnostic
     lambda: |-
       return (float) id(oq_cooling_request_hp2_level);
-
   - platform: template
     id: oq_cooling_request_owner_hp_sensor
     name: "Cooling request owner HP"
@@ -567,7 +371,6 @@ sensor:
     entity_category: diagnostic
     lambda: |-
       return (float) id(oq_cooling_request_owner_hp);
-
   - platform: template
     id: oq_cooling_owner_hp_sensor
     name: "Cooling owner HP"
@@ -578,7 +381,6 @@ sensor:
     entity_category: diagnostic
     lambda: |-
       return (float) id(oq_cooling_owner_hp);
-
   - platform: template
     id: oq_cooling_water_cycle_active_sensor
     name: "Cooling water cycle active"
@@ -588,8 +390,7 @@ sensor:
     update_interval: 5s
     entity_category: diagnostic
     lambda: |-
-      return id(oq_cooling_water_cycle_active) ? 1.0f : 0.0f;
-
+      return oq_cooling::demand_runtime().state().water_cycle.active ? 1.0f : 0.0f;
   - platform: template
     id: oq_cooling_minimum_off_time_remaining_sensor
     name: "Cooling Minimum Off Time Remaining"
@@ -604,7 +405,6 @@ sensor:
           id(cooling_restart_mode).has_state() &&
           id(cooling_restart_mode).current_option() == "Minimum off time";
       if (!restart_by_minimum_off_time) return 0.0f;
-
       const float configured_state = id(cooling_minimum_off_time).state;
       int configured_s =
           isnan(configured_state) ? 600 : (int) lroundf(configured_state);
@@ -627,33 +427,14 @@ sensor:
       // configured duration is the minimum remaining wait visible to support.
       if (stop_confirmation_pending) remaining_ms = std::max(remaining_ms, configured_ms);
       return (float) ((remaining_ms + 999UL) / 1000UL);
-
 interval:
   - interval: 5s
     then:
       - lambda: |-
-          // Internal controller constants. They intentionally are not user settings:
-          // the public tuning surface stays small, while the limiter still has
-          // enough shape to behave across low-mass and high-mass water systems.
-          const float filter_tau_s = 60.0f;
-          const uint32_t rate_window_ms = 60000UL;
-          oq_cooling::OilReturnTuning oil_return_tuning{(uint32_t) (${oq_cooling_oil_return_hold_s} * 1000UL)};
-          oq_cooling::LimiterTuning limiter_tuning;
-          limiter_tuning.limiter_stop_confirm_ms = (uint32_t) (${oq_cooling_limiter_stop_confirm_s} * 1000UL);
-          const uint32_t upscale_dwell_ms = 90000UL;
-          const uint32_t downscale_dwell_ms = 30000UL;
-          const float simmer_room_error_min_c = 0.20f;
-
-          // Resolve loop timing and reset the controller cleanly when cooling is not allowed.
-          const uint32_t now_ms = (uint32_t) millis();
-          float dt_s = 5.0f;
-          if (id(oq_cooling_last_loop_ms) > 0 && now_ms > id(oq_cooling_last_loop_ms)) {
-            dt_s = (float) (now_ms - id(oq_cooling_last_loop_ms)) / 1000.0f;
-          }
-          if (dt_s < 0.1f) dt_s = 0.1f;
-          if (dt_s > 15.0f) dt_s = 15.0f;
-          id(oq_cooling_last_loop_ms) = now_ms;
-
+          oq_cooling::DemandTuning tuning;
+          tuning.oil_return.hold_ms = (uint32_t) (${oq_cooling_oil_return_hold_s} * 1000UL);
+          tuning.limiter.limiter_stop_confirm_ms =
+              (uint32_t) (${oq_cooling_limiter_stop_confirm_s} * 1000UL);
           auto publish_cooling_limiter_event = [&](bool limiter_active,
                                                    int limiter_reason,
                                                    int limited_demand,
@@ -713,21 +494,13 @@ interval:
             }
             last_pause_active = pause_active;
           };
-
           bool oil_return_active = id(hp1_prot_oil_return).state;
           #if OQ_TOPOLOGY_DUO
           oil_return_active = oil_return_active || id(${secondary_oil_return_id}).state;
           #endif
-          static oq_cooling::OilReturnState oil_return_state;
-
-          const bool active =
-              id(cooling_enable_selected).state &&
-              id(cooling_request_active).state &&
-              id(cooling_permitted).state;
+          const auto &previous = oq_cooling::demand_runtime().state();
           const bool cooling_cycle_was_active =
-              id(oq_cooling_water_cycle_active) ||
-              id(oq_cooling_limited_demand) > 0 ||
-              id(oq_cooling_base_demand_raw) > 0 ||
+              previous.water_cycle.active || previous.limited_demand > 0 || previous.base_demand > 0 ||
               id(oq_cooling_request_hp1_level) > 0 ||
               id(oq_cooling_request_hp2_level) > 0;
           const bool cooling_request_cleared =
@@ -744,50 +517,6 @@ interval:
               cooling_request_still_active &&
               id(cooling_permitted_core).has_state() && id(cooling_permitted_core).state &&
               (!id(cooling_permitted).has_state() || !id(cooling_permitted).state);
-          const bool cooling_sensor_missing =
-              !id(cooling_supply_target).has_state() || isnan(id(cooling_supply_target).state) ||
-              !id(oq_system_supply_temp).has_state() || isnan(id(oq_system_supply_temp).state);
-
-          if (!active || cooling_sensor_missing) {
-            id(oq_cooling_demand_raw) = 0;
-            id(oq_cooling_pid_integral) = 0.0f;
-            id(oq_cooling_pid_last_error_c) = 0.0f;
-            id(oq_cooling_water_cycle_active) = false;
-            id(oq_cooling_gap_filter_ready) = false;
-            id(oq_cooling_projected_gap_c) = NAN;
-            id(oq_cooling_limiter_allowed_max) = 0;
-            id(oq_cooling_base_demand_raw) = 0;
-            id(oq_cooling_limited_demand) = 0;
-            id(oq_cooling_limiter_reason_code) = 0;
-            id(oq_cooling_stop_reason_code) = oq_cooling::inactive_stop_reason(
-                cooling_cycle_was_active, cooling_request_cleared, cooling_sensor_missing,
-                cooling_flow_permission_lost, cooling_core_permission_lost);
-            id(oq_cooling_buffer_gap_rate_ref_ms) = 0;
-            id(oq_cooling_last_demand_change_ms) = 0;
-            oq_cooling::update_oil_return(
-                {now_ms, false, oil_return_active}, {}, oil_return_tuning, limiter_tuning, oil_return_state);
-            const int reset_capacity_cap = oq_cooling::clamp_level((int) lroundf(id(cooling_demand_max_f).state), 1, 10);
-            id(oq_cooling_simmer_allowed) = false;
-            id(oq_cooling_projection_brake_active) = false;
-            id(oq_cooling_stop_candidate_since_ms) = 0;
-            id(oq_cooling_dew_stop_candidate_since_ms) = 0;
-            publish_cooling_limiter_event(false, 0, 0, 0, NAN);
-            id(oq_cooling_capacity_cap) = reset_capacity_cap;
-            id(oq_cooling_capacity_last_change_ms) = 0;
-            id(oq_cooling_capacity_recovery_since_ms) = 0;
-            id(oq_cooling_capacity_full_recovery_since_ms) = 0;
-            return;
-          }
-
-          // Cooling PI(D): positive buffer gap means the system supply is still warmer than target.
-          // This is the regulation error. It is deliberately separate from dew_gap:
-          // buffer_gap is comfort/control room, dew_gap is condensation safety.
-          const float supply_c = id(oq_system_supply_temp).state;
-          const float target_c = id(cooling_supply_target).state;
-          const float buffer_gap_c = supply_c - target_c;
-          float restart_delta_c = id(cooling_restart_delta).state;
-          if (isnan(restart_delta_c) || restart_delta_c < 0.0f) restart_delta_c = 1.0f;
-          if (restart_delta_c > 5.0f) restart_delta_c = 5.0f;
           const bool restart_by_minimum_off_time =
               id(cooling_restart_mode).has_state() &&
               id(cooling_restart_mode).current_option() == "Minimum off time";
@@ -805,325 +534,85 @@ interval:
               || id(oq_cooling_stop_confirmation_pending_hp2)
               #endif
               ;
-          if (oq_cooling::cooling_minimum_off_stop_is_pending(
-                         restart_by_minimum_off_time,
-                         id(oq_cooling_water_cycle_active),
-                         id(oq_cooling_stop_reason_code),
-                         cooling_minimum_off_wait_active)) {
-            // Preserve a water-side stop already in progress when the user
-            // switches from temperature restart to minimum off-time.
-            id(oq_cooling_min_off_stop_pending) = true;
-          }
-
           const bool user_responsibility_mode =
               id(cooling_without_dew_point_user_responsibility_enabled).has_state() &&
               id(cooling_without_dew_point_user_responsibility_enabled).state;
           const bool dew_mode =
               !user_responsibility_mode &&
               id(cooling_dew_point_available).has_state() && id(cooling_dew_point_available).state &&
-              id(cooling_dew_point_selected).has_state() && !isnan(id(cooling_dew_point_selected).state);
+              id(cooling_dew_point_selected).has_state() && isfinite(id(cooling_dew_point_selected).state);
           const bool fallback_mode =
               !user_responsibility_mode &&
               !dew_mode && id(cooling_fallback_active).has_state() && id(cooling_fallback_active).state;
-          const int guard_mode =
-              user_responsibility_mode ? 3 : (dew_mode ? 1 : (fallback_mode ? 2 : 0));
-          static int last_guard_mode = -1;
-          if (last_guard_mode >= 0 && guard_mode != last_guard_mode) {
-            id(oq_cooling_water_cycle_active) = false;
-            id(oq_cooling_gap_filter_ready) = false;
-            id(oq_cooling_projected_gap_c) = NAN;
-            id(oq_cooling_stop_reason_code) = 0;
-            id(oq_cooling_stop_buffer_gap_c) = 0.0f;
-            id(oq_cooling_last_demand_change_ms) = 0;
-            oq_cooling::reset_oil_return_recovery(oil_return_state);
-            id(oq_cooling_simmer_allowed) = false;
-            id(oq_cooling_projection_brake_active) = false;
-            id(oq_cooling_stop_candidate_since_ms) = 0;
-            id(oq_cooling_dew_stop_candidate_since_ms) = 0;
-            id(oq_cooling_capacity_cap) = 10;
-            id(oq_cooling_capacity_last_change_ms) = 0;
-            id(oq_cooling_capacity_recovery_since_ms) = 0;
-            id(oq_cooling_capacity_full_recovery_since_ms) = 0;
-            id(oq_cooling_buffer_gap_rate_ref_ms) = 0;
-            id(oq_cooling_pid_integral) = 0.0f;
-            id(oq_cooling_pid_last_error_c) = buffer_gap_c;
-            ESP_LOGI("quatt.cool", "Cooling guard mode changed: reset restart latch");
-          }
-          last_guard_mode = guard_mode;
-
-          // Use raw temperatures for hard safety, but filter the water-side gap
-          // before modulation. Small systems can move 0.1-0.2 C in seconds; the
-          // 60s EMA/rate prevents that noise from becoming level chatter.
-          float filtered_gap_c = buffer_gap_c;
-          if (!id(oq_cooling_gap_filter_ready)) {
-            id(oq_cooling_buffer_gap_filtered_c) = buffer_gap_c;
-            id(oq_cooling_buffer_gap_rate_ref_c) = buffer_gap_c;
-            id(oq_cooling_buffer_gap_rate_c_per_min) = 0.0f;
-            id(oq_cooling_buffer_gap_rate_ref_ms) = now_ms;
-            id(oq_cooling_gap_filter_ready) = true;
-          } else {
-            const float alpha = dt_s / (filter_tau_s + dt_s);
-            id(oq_cooling_buffer_gap_filtered_c) += alpha * (buffer_gap_c - id(oq_cooling_buffer_gap_filtered_c));
-            if (id(oq_cooling_buffer_gap_rate_ref_ms) == 0 || now_ms <= id(oq_cooling_buffer_gap_rate_ref_ms)) {
-              id(oq_cooling_buffer_gap_rate_ref_c) = id(oq_cooling_buffer_gap_filtered_c);
-              id(oq_cooling_buffer_gap_rate_ref_ms) = now_ms;
-              id(oq_cooling_buffer_gap_rate_c_per_min) = 0.0f;
-            } else if ((uint32_t)(now_ms - id(oq_cooling_buffer_gap_rate_ref_ms)) >= rate_window_ms) {
-              const float elapsed_min = ((float) (now_ms - id(oq_cooling_buffer_gap_rate_ref_ms))) / 60000.0f;
-              if (elapsed_min > 0.0f) {
-                id(oq_cooling_buffer_gap_rate_c_per_min) =
-                    (id(oq_cooling_buffer_gap_filtered_c) - id(oq_cooling_buffer_gap_rate_ref_c)) / elapsed_min;
-              }
-              id(oq_cooling_buffer_gap_rate_ref_c) = id(oq_cooling_buffer_gap_filtered_c);
-              id(oq_cooling_buffer_gap_rate_ref_ms) = now_ms;
-            }
-          }
-          filtered_gap_c = id(oq_cooling_buffer_gap_filtered_c);
-          const float gap_rate_c_per_min = id(oq_cooling_buffer_gap_rate_c_per_min);
-
-          const float dew_gap_c = dew_mode ? (supply_c - id(cooling_dew_point_selected).state) : NAN;
-          id(oq_cooling_dew_gap_c) = dew_gap_c;
-          float safety_margin_c = 0.0f;
-          if (id(cooling_safety_margin_selected).has_state() && !isnan(id(cooling_safety_margin_selected).state)) {
-            safety_margin_c = id(cooling_safety_margin_selected).state;
-          }
-          safety_margin_c = fmaxf(0.0f, fminf(2.0f, safety_margin_c));
-          float kp = id(cooling_pid_kp).state;
-          float ki = id(cooling_pid_ki).state;
-          float kd = id(cooling_pid_kd).state;
-          if (isnan(kp) || kp < 0.0f) kp = 0.0f;
-          if (isnan(ki) || ki < 0.0f) ki = 0.0f;
-          if (isnan(kd) || kd < 0.0f) kd = 0.0f;
-
-          float integral = id(oq_cooling_pid_integral);
-          float derivative = 0.0f;
-          if (dt_s > 0.0f) {
-            derivative = (buffer_gap_c - id(oq_cooling_pid_last_error_c)) / dt_s;
-          }
-
           float room_error_c = NAN;
           bool room_error_valid = false;
-          if (id(room_temp_selected).has_state() && !isnan(id(room_temp_selected).state) &&
-              id(room_setpoint_selected).has_state() && !isnan(id(room_setpoint_selected).state)) {
+          if (id(room_temp_selected).has_state() && isfinite(id(room_temp_selected).state) &&
+              id(room_setpoint_selected).has_state() && isfinite(id(room_setpoint_selected).state)) {
             room_error_c = id(room_temp_selected).state - id(room_setpoint_selected).state;
-            room_error_valid = true;
+            room_error_valid = isfinite(room_error_c);
           }
-
-          int demand_max = oq_cooling::clamp_level((int) lroundf(id(cooling_demand_max_f).state), 1, 10);
-          const int capacity_demand_max = demand_max;
-
-          bool room_cap_active = false;
-          if (room_error_valid) {
-            const int before_room_cap = demand_max;
-            if (room_error_c < 0.4f) demand_max = std::min(demand_max, 1);
-            else if (room_error_c < 0.8f) demand_max = std::min(demand_max, 2);
-            else if (room_error_c < 1.2f) demand_max = std::min(demand_max, 3);
-            room_cap_active = demand_max < before_room_cap;
-          }
-
-          oq_cooling::LimiterState limiter_state{id(oq_cooling_simmer_allowed), id(oq_cooling_projection_brake_active),
-              id(oq_cooling_stop_candidate_since_ms), id(oq_cooling_dew_stop_candidate_since_ms),
-              id(oq_cooling_capacity_cap), id(oq_cooling_capacity_last_change_ms),
-              id(oq_cooling_capacity_recovery_since_ms), id(oq_cooling_capacity_full_recovery_since_ms)};
-          oq_cooling::LimiterInput limiter_input{now_ms, demand_max, capacity_demand_max, id(oq_cooling_limited_demand),
-              room_cap_active, dew_mode, fallback_mode, false, false, buffer_gap_c,
-              filtered_gap_c, gap_rate_c_per_min, dew_gap_c, safety_margin_c};
-
-          const auto oil_return_decision = oq_cooling::update_oil_return({now_ms, true, oil_return_active}, limiter_input,
-              oil_return_tuning, limiter_tuning, oil_return_state);
-          limiter_input.oil_return_mask_active = oil_return_decision.mask_active;
-          limiter_input.oil_return_recovery_cap_active = oil_return_decision.recovery_cap_active;
-          if (oil_return_decision.reset_integral_and_dwell) {
-            integral = id(oq_cooling_pid_integral) = 0.0f;
-            id(oq_cooling_last_demand_change_ms) = now_ms;
-          } else if (oil_return_decision.mask_active || oil_return_decision.recovery_cap_active) {
-            integral = fminf(integral, 0.0f);
-          }
+          const bool supply_valid = id(oq_system_supply_temp).has_state() &&
+                                    isfinite(id(oq_system_supply_temp).state);
+          const bool target_valid = id(cooling_supply_target).has_state() &&
+                                    isfinite(id(cooling_supply_target).state);
+          oq_cooling::DemandInput input;
+          input.now_ms = (uint32_t) millis();
+          input.control_active = id(cooling_enable_selected).has_state() && id(cooling_enable_selected).state &&
+                                 id(cooling_request_active).has_state() && id(cooling_request_active).state &&
+                                 id(cooling_permitted).has_state() && id(cooling_permitted).state;
+          input.cycle_was_active = cooling_cycle_was_active;
+          input.request_cleared = cooling_request_cleared;
+          input.sensor_valid = supply_valid && target_valid;
+          input.flow_permission_lost = cooling_flow_permission_lost;
+          input.core_permission_lost = cooling_core_permission_lost;
+          input.oil_return_active = oil_return_active;
+          input.cooling_hp_applied = cooling_hp_applied;
+          input.restart_by_minimum_off_time = restart_by_minimum_off_time;
+          input.minimum_off_stop_pending = id(oq_cooling_min_off_stop_pending);
+          input.minimum_off_wait_active = cooling_minimum_off_wait_active;
+          input.guard_mode = user_responsibility_mode ? oq_cooling::GUARD_USER_RESPONSIBILITY
+                             : dew_mode              ? oq_cooling::GUARD_DEW
+                             : fallback_mode         ? oq_cooling::GUARD_FALLBACK
+                                                     : oq_cooling::GUARD_NONE;
+          input.dew_mode = dew_mode;
+          input.fallback_mode = fallback_mode;
+          input.room_error_valid = room_error_valid;
+          input.supply_c = supply_valid ? id(oq_system_supply_temp).state : NAN;
+          input.target_c = target_valid ? id(cooling_supply_target).state : NAN;
+          input.dew_point_c = dew_mode ? id(cooling_dew_point_selected).state : NAN;
+          input.safety_margin_c = id(cooling_safety_margin_selected).has_state()
+                                      ? id(cooling_safety_margin_selected).state : NAN;
+          input.room_error_c = room_error_c;
+          input.restart_delta_c = id(cooling_restart_delta).has_state() ? id(cooling_restart_delta).state : NAN;
+          input.demand_max = id(cooling_demand_max_f).has_state() ? id(cooling_demand_max_f).state : NAN;
+          input.kp = id(cooling_pid_kp).has_state() ? id(cooling_pid_kp).state : NAN;
+          input.ki = id(cooling_pid_ki).has_state() ? id(cooling_pid_ki).state : NAN;
+          input.kd = id(cooling_pid_kd).has_state() ? id(cooling_pid_kd).state : NAN;
+          const auto decision = oq_cooling::demand_runtime().tick(input, tuning);
+          const auto &cooling = oq_cooling::demand_runtime().state();
+          id(oq_cooling_demand_raw) = cooling.limited_demand;
+          id(oq_cooling_stop_reason_code) = cooling.water_cycle.stop_reason_code;
+          if (decision.arm_minimum_off_stop) id(oq_cooling_min_off_stop_pending) = true;
           static bool last_oil_return_mask_active = false;
-          if (oil_return_decision.mask_active != last_oil_return_mask_active) {
+          const bool oil_return_mask_active =
+              cooling.limiter_reason_code == oq_cooling::REASON_OIL_RETURN_HOLD;
+          if (decision.control_active && oil_return_mask_active != last_oil_return_mask_active) {
             ESP_LOGI("quatt.cool", "Cooling oil-return recovery %s",
-                     oil_return_decision.mask_active ? "active" : "cleared");
-            last_oil_return_mask_active = oil_return_decision.mask_active;
+                     oil_return_mask_active ? "active" : "cleared");
+            last_oil_return_mask_active = oil_return_mask_active;
           }
-
-          const auto limiter_output = oq_cooling::update_limiter(limiter_input, limiter_tuning, limiter_state);
-          if (limiter_output.reset_gap_rate_reference) {
-            id(oq_cooling_buffer_gap_rate_ref_c) = filtered_gap_c;
-            id(oq_cooling_buffer_gap_rate_ref_ms) = now_ms;
-          }
-          if (limiter_output.clamp_integral_to_zero) integral = fminf(integral, 0.0f);
-          id(oq_cooling_simmer_allowed) = limiter_state.simmer_allowed;
-          id(oq_cooling_projection_brake_active) = limiter_state.projection_brake_active;
-          id(oq_cooling_stop_candidate_since_ms) = limiter_state.stop_candidate_since_ms;
-          id(oq_cooling_dew_stop_candidate_since_ms) = limiter_state.dew_stop_candidate_since_ms;
-          id(oq_cooling_capacity_cap) = limiter_state.capacity_cap;
-          id(oq_cooling_capacity_last_change_ms) = limiter_state.capacity_last_change_ms;
-          id(oq_cooling_capacity_recovery_since_ms) = limiter_state.capacity_recovery_since_ms;
-          id(oq_cooling_capacity_full_recovery_since_ms) = limiter_state.capacity_full_recovery_since_ms;
-          id(oq_cooling_projected_gap_c) = limiter_output.projected_gap_c;
-
-          const int allowed_max = limiter_output.allowed_max;
-          int reason_code = limiter_output.reason_code;
-          id(oq_cooling_limiter_allowed_max) = allowed_max;
-
-          // Water-side stops use restart hysteresis; a cleared room request may
-          // restart immediately when the current limiter allows it.
-          bool water_cycle_active = id(oq_cooling_water_cycle_active);
-          if (!water_cycle_active) {
-            const auto restart = oq_cooling::evaluate_water_restart(
-                restart_by_minimum_off_time, id(oq_cooling_min_off_stop_pending), restart_delta_c,
-                limiter_input, limiter_output, limiter_tuning, limiter_state,
-                {false, id(oq_cooling_stop_buffer_gap_c), id(oq_cooling_stop_reason_code)});
-            water_cycle_active = restart.state.active;
-            id(oq_cooling_stop_buffer_gap_c) = restart.state.stop_buffer_gap_c;
-            id(oq_cooling_stop_reason_code) = restart.state.stop_reason_code;
-            if (!restart.state.active) {
-              id(oq_cooling_demand_raw) = 0;
-              id(oq_cooling_base_demand_raw) = 0;
-              id(oq_cooling_limited_demand) = 0;
-              id(oq_cooling_limiter_reason_code) = restart.limiter_reason_code;
-              id(oq_cooling_pid_last_error_c) = buffer_gap_c;
-              if (restart.reset_integral) id(oq_cooling_pid_integral) = 0.0f;
-              publish_cooling_limiter_event(true, id(oq_cooling_limiter_reason_code), 0, 0, dew_gap_c, true);
-              return;
-            }
-          }
-
-          if (allowed_max <= 0) {
-            if (restart_by_minimum_off_time && water_cycle_active && cooling_hp_applied) {
-              id(oq_cooling_min_off_stop_pending) = true;
-            }
-            id(oq_cooling_demand_raw) = 0;
-            id(oq_cooling_base_demand_raw) = 0;
-            id(oq_cooling_limited_demand) = 0;
-            id(oq_cooling_limiter_reason_code) = reason_code;
-            id(oq_cooling_water_cycle_active) = false;
-            id(oq_cooling_stop_buffer_gap_c) = filtered_gap_c;
-            id(oq_cooling_stop_reason_code) =
-                reason_code == oq_cooling::REASON_DEW_STOP ? 2 :
-                (reason_code == oq_cooling::REASON_FALLBACK_FLOOR ? 3 : 1);
-            id(oq_cooling_pid_last_error_c) = buffer_gap_c;
-            if (reason_code == oq_cooling::REASON_DEW_STOP ||
-                reason_code == oq_cooling::REASON_FALLBACK_FLOOR) {
-              id(oq_cooling_pid_integral) = 0.0f;
-            } else if (reason_code != oq_cooling::REASON_PROJECTED_FLOOR) {
-              integral = fminf(integral, 0.0f);
-            }
-            id(oq_cooling_pid_integral) = integral;
-
-            static int last_reason = -1;
-            if (reason_code != last_reason) {
-              ESP_LOGI("quatt.cool", "Cooling limiter: %s gap=%.2f ema=%.2f rate=%.2f dew=%.2f",
-                       oq_cooling::reason_name(reason_code), buffer_gap_c, filtered_gap_c,
-                       gap_rate_c_per_min, dew_gap_c);
-              last_reason = reason_code;
-            }
-            publish_cooling_limiter_event(true, reason_code, 0, 0, dew_gap_c, true);
-            return;
-          }
-
-          id(oq_cooling_water_cycle_active) = water_cycle_active;
-
-          // Keep the integrator from winding up while the safe-floor limiter caps output.
-          const float out_before_integral_update = (kp * buffer_gap_c) + (ki * integral) + (kd * derivative);
-          const bool capped_high = out_before_integral_update > (float) allowed_max;
-          if (!(capped_high && buffer_gap_c > 0.0f)) {
-            integral += buffer_gap_c * dt_s;
-          }
-          if (integral < -20.0f) integral = -20.0f;
-          if (integral > 20.0f) integral = 20.0f;
-
-          float out = (kp * buffer_gap_c) + (ki * integral) + (kd * derivative);
-          if (out < 0.0f) out = 0.0f;
-          int base_demand = (int) lroundf(out);
-          if (base_demand < 0) base_demand = 0;
-          if (base_demand > demand_max) base_demand = demand_max;
-          id(oq_cooling_base_demand_raw) = base_demand;
-
-          // Level-1 simmer is a post-PI permission, not a PI feedback signal. It
-          // may hold level 1 when the PI would round to zero, but only if the
-          // limiter says level 1 is safe and the room still has meaningful demand.
-          int demand_candidate = std::min(base_demand, allowed_max);
-          const bool oil_return_level1_hold =
-              (reason_code == oq_cooling::REASON_OIL_RETURN_HOLD ||
-               reason_code == oq_cooling::REASON_OIL_RETURN_RECOVERY) && allowed_max >= 1;
-          const bool can_simmer =
-              oil_return_level1_hold ||
-              ((!room_error_valid || room_error_c > simmer_room_error_min_c) &&
-               allowed_max >= 1 &&
-               (reason_code == oq_cooling::REASON_SIMMER ||
-                reason_code == oq_cooling::REASON_FALLING_GAP ||
-                fallback_mode));
-          if (can_simmer && demand_candidate < 1) {
-            demand_candidate = 1;
-            if (reason_code != oq_cooling::REASON_FALLING_GAP &&
-                reason_code != oq_cooling::REASON_FALLBACK_CAP1 &&
-                reason_code != oq_cooling::REASON_OIL_RETURN_HOLD &&
-                reason_code != oq_cooling::REASON_OIL_RETURN_RECOVERY) {
-              reason_code = oq_cooling::REASON_SIMMER;
-            }
-          }
-
-          // Slow upward changes for comfort and compressor calmness; allow
-          // limiter-driven downscaling immediately because it protects the floor.
-          int demand = demand_candidate;
-          const int prev_limited = id(oq_cooling_limited_demand);
-          const uint32_t last_change_ms = id(oq_cooling_last_demand_change_ms);
-          const uint32_t elapsed_change_ms =
-              (last_change_ms > 0 && now_ms > last_change_ms) ? (uint32_t)(now_ms - last_change_ms) : 0;
-          if (prev_limited > 0 && allowed_max < prev_limited) {
-            demand = std::min(demand_candidate, allowed_max);
-          } else if (demand_candidate > prev_limited) {
-            if (prev_limited == 0) {
-              // Start every new cooling run at level 1. If level 1 cannot pull
-              // the water gap down, the normal up-dwell can still promote it.
-              demand = std::min(demand_candidate, 1);
-            } else if (last_change_ms == 0 || elapsed_change_ms >= upscale_dwell_ms) {
-              demand = std::min(demand_candidate, prev_limited + 1);
-            } else {
-              demand = prev_limited;
-            }
-          } else if (demand_candidate < prev_limited) {
-            if (elapsed_change_ms >= downscale_dwell_ms) demand = demand_candidate;
-            else demand = prev_limited;
-          }
-          if (demand > allowed_max) demand = allowed_max;
-          if (demand < 0) demand = 0;
-          if (demand != prev_limited) id(oq_cooling_last_demand_change_ms) = now_ms;
-
-          oq_cooling::WaterCycleState water_cycle_state{
-              water_cycle_active,
-              id(oq_cooling_stop_buffer_gap_c),
-              id(oq_cooling_stop_reason_code),
-          };
-          const bool pi_zero_stop =
-              oq_cooling::record_pi_zero_stop(prev_limited, demand, filtered_gap_c, water_cycle_state);
-          if (pi_zero_stop) {
-            if (restart_by_minimum_off_time && cooling_hp_applied) {
-              id(oq_cooling_min_off_stop_pending) = true;
-            }
-            id(oq_cooling_water_cycle_active) = water_cycle_state.active;
-            id(oq_cooling_stop_buffer_gap_c) = water_cycle_state.stop_buffer_gap_c;
-            id(oq_cooling_stop_reason_code) = water_cycle_state.stop_reason_code;
-            reason_code = oq_cooling::REASON_BUFFER_STOP;
-            integral = fminf(integral, 0.0f);
-          }
-
-          id(oq_cooling_limited_demand) = demand;
-          id(oq_cooling_limiter_reason_code) = reason_code;
-          id(oq_cooling_pid_integral) = integral;
-          id(oq_cooling_pid_last_error_c) = buffer_gap_c;
-          id(oq_cooling_demand_raw) = demand;
-          publish_cooling_limiter_event(reason_code != 1, reason_code, demand, base_demand, dew_gap_c, pi_zero_stop);
-
+          if (decision.guard_changed) ESP_LOGI("quatt.cool", "Cooling guard mode changed: reset restart latch");
+          publish_cooling_limiter_event(decision.event_limiter_active, cooling.limiter_reason_code,
+                                        cooling.limited_demand, cooling.base_demand, cooling.dew_gap_c,
+                                        decision.event_hard_pause);
           static int last_reason = -1;
-          if (reason_code != last_reason) {
+          if (decision.control_active && cooling.limiter_reason_code != last_reason) {
             ESP_LOGI("quatt.cool", "Cooling limiter: %s f=%d raw=%d lim=%d gap=%.2f ema=%.2f rate=%.2f dew=%.2f",
-                     oq_cooling::reason_name(reason_code), demand, base_demand, allowed_max,
-                     buffer_gap_c, filtered_gap_c, gap_rate_c_per_min, dew_gap_c);
-            last_reason = reason_code;
+                     oq_cooling::reason_name(cooling.limiter_reason_code), cooling.limited_demand,
+                     cooling.base_demand, cooling.allowed_max, input.supply_c - input.target_c,
+                     cooling.filter.filtered_gap_c, cooling.filter.rate_c_per_min, cooling.dew_gap_c);
+            last_reason = cooling.limiter_reason_code;
           }
-
   - interval: ${oq_heat_loop_tick_s}s
     startup_delay: 4000ms
     then:
@@ -1139,7 +628,6 @@ interval:
             id(oq_cooling_request_reason_code) = 0;
             return;
           }
-
           const uint32_t now_ms = (uint32_t) millis();
           // Cooling demand is already filtered and dwell-limited upstream. Keep
           // the HP owner/request bridge on the 5s tick so level changes do not
@@ -1150,21 +638,17 @@ interval:
             if (elapsed_ms < loop_target_ms) return;
           }
           id(oq_cooling_request_last_loop_ms) = now_ms;
-
           constexpr int max_level = 10;
           const int demand_max_f = (int) ${oq_strategy_demand_max_f};
           int raw = id(oq_cooling_demand_raw);
           raw = std::max(0, std::min(demand_max_f, raw));
-
           id(oq_demand_filtered_prev) = id(oq_demand_filtered);
           id(oq_demand_filtered) = raw;
           id(oq_heating_demand_filtered) = 0;
-
           int f = raw;
           int f_cap = id(oq_power_cap_f);
           f_cap = std::max(0, std::min(demand_max_f, f_cap));
           if (f > f_cap) f = f_cap;
-
           const bool demand_active = (f > 0);
           const bool restart_by_minimum_off_time =
               id(cooling_restart_mode).has_state() &&
@@ -1194,22 +678,17 @@ interval:
               (restart_by_minimum_off_time && cooling_stop_confirmation_pending);
           const uint32_t global_cooling_restart_remaining_s =
               (global_minimum_off_remaining_ms + 999UL) / 1000UL;
-
           #if OQ_TOPOLOGY_DUO
           const bool lead_is_hp1 = (id(hp1_minutes) <= id(${secondary_minutes_id}));
           #else
           const bool lead_is_hp1 = true;
           #endif
-
           const int lead_code = lead_is_hp1 ? 1 : 2;
           if (id(oq_last_lead_hp) != lead_code) id(oq_last_lead_hp) = lead_code;
-
           const auto frequency_runtime = oq_frequency_runtime::capture();
-
           auto level_allowed = [&](bool is_hp1, int level)->bool {
             return frequency_runtime.frequency_allowed(is_hp1, 1, level);
           };
-
           auto hp_has_any_allowed_level = [&](bool is_hp1)->bool {
             for (int lvl = 1; lvl <= max_level; lvl++) {
               if (level_allowed(is_hp1, lvl)) return true;
@@ -1445,17 +924,18 @@ interval:
           id(oq_strategy_phase_text).publish_state((f > 0) ? "cool" : "idle");
 
           char debug_buf[240];
+          const auto &cooling = oq_cooling::demand_runtime().state();
           snprintf(
             debug_buf, sizeof(debug_buf),
             "cool f=%d raw=%d lim=%d owner=%d gap=%.2f ema=%.2f rate=%.2f dew=%.2f reason=%s target=%.2f",
             f,
-            id(oq_cooling_base_demand_raw),
-            id(oq_cooling_limiter_allowed_max),
+            cooling.base_demand,
+            cooling.allowed_max,
             owner,
             id(oq_system_supply_temp).state - id(cooling_supply_target).state,
-            id(oq_cooling_buffer_gap_filtered_c),
-            id(oq_cooling_buffer_gap_rate_c_per_min),
-            id(oq_cooling_dew_gap_c),
-            oq_cooling::reason_name(id(oq_cooling_limiter_reason_code)),
+            cooling.filter.filtered_gap_c,
+            cooling.filter.rate_c_per_min,
+            cooling.dew_gap_c,
+            oq_cooling::reason_name(cooling.limiter_reason_code),
             id(cooling_supply_target).state);
           ESP_LOGD("quatt.strategy", "%s", debug_buf);
