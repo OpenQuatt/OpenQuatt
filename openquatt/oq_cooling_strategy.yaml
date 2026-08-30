@@ -152,21 +152,6 @@ globals:
     restore_value: false
     initial_value: '0'
 
-  - id: oq_cooling_oil_return_hold_until_ms
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
-
-  - id: oq_cooling_oil_return_recovery_stable_since_ms
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
-
-  - id: oq_cooling_oil_return_recovery_cap_until_ms
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
-
   - id: oq_cooling_capacity_cap
     type: int
     restore_value: false
@@ -652,16 +637,9 @@ interval:
           // enough shape to behave across low-mass and high-mass water systems.
           const float filter_tau_s = 60.0f;
           const uint32_t rate_window_ms = 60000UL;
-          const uint32_t oil_return_recovery_stable_ms = 120000UL;
-          const uint32_t oil_return_recovery_cap_ms = 120000UL;
-          const float oil_return_recovery_dew_extra_c = 0.30f;
-          const float oil_return_recovery_projected_extra_c = 0.15f;
-          const float oil_return_recovery_fast_fall_rate_c_per_min = -0.05f;
-          const uint32_t oil_return_hold_ms =
-              (uint32_t) (${oq_cooling_oil_return_hold_s} * 1000UL);
+          oq_cooling::OilReturnTuning oil_return_tuning{(uint32_t) (${oq_cooling_oil_return_hold_s} * 1000UL)};
           oq_cooling::LimiterTuning limiter_tuning;
-          limiter_tuning.limiter_stop_confirm_ms =
-              (uint32_t) (${oq_cooling_limiter_stop_confirm_s} * 1000UL);
+          limiter_tuning.limiter_stop_confirm_ms = (uint32_t) (${oq_cooling_limiter_stop_confirm_s} * 1000UL);
           const uint32_t upscale_dwell_ms = 90000UL;
           const uint32_t downscale_dwell_ms = 30000UL;
           const float simmer_room_error_min_c = 0.20f;
@@ -740,11 +718,7 @@ interval:
           #if OQ_TOPOLOGY_DUO
           oil_return_active = oil_return_active || id(${secondary_oil_return_id}).state;
           #endif
-          if (oil_return_active) {
-            id(oq_cooling_oil_return_hold_until_ms) = now_ms + oil_return_hold_ms;
-            id(oq_cooling_oil_return_recovery_stable_since_ms) = 0;
-            id(oq_cooling_oil_return_recovery_cap_until_ms) = 0;
-          }
+          static oq_cooling::OilReturnState oil_return_state;
 
           const bool active =
               id(cooling_enable_selected).state &&
@@ -785,18 +759,14 @@ interval:
             id(oq_cooling_base_demand_raw) = 0;
             id(oq_cooling_limited_demand) = 0;
             id(oq_cooling_limiter_reason_code) = 0;
-            id(oq_cooling_stop_reason_code) =
-                (cooling_cycle_was_active && cooling_request_cleared) ? 5 :
-                (cooling_cycle_was_active && cooling_sensor_missing) ? 3 :
-                cooling_flow_permission_lost ? 6 :
-                cooling_core_permission_lost ? 7 : 0;
+            id(oq_cooling_stop_reason_code) = oq_cooling::inactive_stop_reason(
+                cooling_cycle_was_active, cooling_request_cleared, cooling_sensor_missing,
+                cooling_flow_permission_lost, cooling_core_permission_lost);
             id(oq_cooling_buffer_gap_rate_ref_ms) = 0;
             id(oq_cooling_last_demand_change_ms) = 0;
-            id(oq_cooling_oil_return_recovery_stable_since_ms) = 0;
-            id(oq_cooling_oil_return_recovery_cap_until_ms) = 0;
-            int reset_capacity_cap = (int) lroundf(id(cooling_demand_max_f).state);
-            if (reset_capacity_cap < 1) reset_capacity_cap = 1;
-            if (reset_capacity_cap > 10) reset_capacity_cap = 10;
+            oq_cooling::update_oil_return(
+                {now_ms, false, oil_return_active}, {}, oil_return_tuning, limiter_tuning, oil_return_state);
+            const int reset_capacity_cap = oq_cooling::clamp_level((int) lroundf(id(cooling_demand_max_f).state), 1, 10);
             id(oq_cooling_simmer_allowed) = false;
             id(oq_cooling_projection_brake_active) = false;
             id(oq_cooling_stop_candidate_since_ms) = 0;
@@ -865,8 +835,7 @@ interval:
             id(oq_cooling_stop_reason_code) = 0;
             id(oq_cooling_stop_buffer_gap_c) = 0.0f;
             id(oq_cooling_last_demand_change_ms) = 0;
-            id(oq_cooling_oil_return_recovery_stable_since_ms) = 0;
-            id(oq_cooling_oil_return_recovery_cap_until_ms) = 0;
+            oq_cooling::reset_oil_return_recovery(oil_return_state);
             id(oq_cooling_simmer_allowed) = false;
             id(oq_cooling_projection_brake_active) = false;
             id(oq_cooling_stop_candidate_since_ms) = 0;
@@ -918,107 +887,7 @@ interval:
           if (id(cooling_safety_margin_selected).has_state() && !isnan(id(cooling_safety_margin_selected).state)) {
             safety_margin_c = id(cooling_safety_margin_selected).state;
           }
-          if (safety_margin_c < 0.0f) safety_margin_c = 0.0f;
-          if (safety_margin_c > 2.0f) safety_margin_c = 2.0f;
-          const float hard_dew_stop_gap_c =
-              limiter_tuning.hard_dew_stop_base_gap_c +
-              (limiter_tuning.hard_dew_stop_margin_gain_c * safety_margin_c);
-          const float hard_dew_restart_gap_c =
-              hard_dew_stop_gap_c + limiter_tuning.hard_dew_restart_hyst_c;
-
-          const float projected_gap_c =
-              filtered_gap_c + (gap_rate_c_per_min * limiter_tuning.projection_horizon_min);
-          id(oq_cooling_projected_gap_c) = projected_gap_c;
-
-          bool oil_return_hold_window_active =
-              id(oq_cooling_oil_return_hold_until_ms) > 0 &&
-              now_ms < id(oq_cooling_oil_return_hold_until_ms);
-          bool oil_return_mask_active = oil_return_active || oil_return_hold_window_active;
-          bool oil_return_recovery_cap_active =
-              id(oq_cooling_oil_return_recovery_cap_until_ms) > 0 &&
-              now_ms < id(oq_cooling_oil_return_recovery_cap_until_ms);
-          if (!oil_return_recovery_cap_active &&
-              id(oq_cooling_oil_return_recovery_cap_until_ms) > 0) {
-            id(oq_cooling_oil_return_recovery_cap_until_ms) = 0;
-          }
-
-          const bool oil_return_recovery_not_needed = !dew_mode && !fallback_mode;
-          const bool oil_return_dew_recovered =
-              !dew_mode ||
-              (!isnan(dew_gap_c) &&
-               dew_gap_c >= hard_dew_restart_gap_c + oil_return_recovery_dew_extra_c);
-          const bool oil_return_fallback_recovered =
-              !fallback_mode ||
-              filtered_gap_c >= limiter_tuning.fallback_cap1_gap_c + oil_return_recovery_dew_extra_c;
-          const bool oil_return_filtered_recovered =
-              filtered_gap_c >= 0.0f ||
-              (filtered_gap_c > limiter_tuning.limiter_soft_stop_gap_c && gap_rate_c_per_min > 0.10f);
-          const bool oil_return_projected_recovered =
-              projected_gap_c >= limiter_tuning.projected_floor_release_gap_c + oil_return_recovery_projected_extra_c;
-          const bool oil_return_trend_recovered =
-              gap_rate_c_per_min >= oil_return_recovery_fast_fall_rate_c_per_min;
-          const bool oil_return_recovery_safe =
-              !oil_return_recovery_not_needed &&
-              oil_return_dew_recovered &&
-              oil_return_fallback_recovered &&
-              oil_return_filtered_recovered &&
-              oil_return_projected_recovered &&
-              oil_return_trend_recovered;
-
-          bool oil_return_recovery_stable = false;
-          if (!oil_return_active && oil_return_hold_window_active && oil_return_recovery_safe) {
-            uint32_t stable_since_ms = id(oq_cooling_oil_return_recovery_stable_since_ms);
-            if (stable_since_ms == 0 || now_ms <= stable_since_ms) {
-              id(oq_cooling_oil_return_recovery_stable_since_ms) = now_ms;
-              stable_since_ms = now_ms;
-            }
-            oil_return_recovery_stable =
-                (uint32_t)(now_ms - stable_since_ms) >= oil_return_recovery_stable_ms;
-          } else if (!oil_return_active) {
-            id(oq_cooling_oil_return_recovery_stable_since_ms) = 0;
-          }
-
-          if (!oil_return_active && oil_return_hold_window_active && oil_return_recovery_not_needed) {
-            id(oq_cooling_oil_return_hold_until_ms) = 0;
-            id(oq_cooling_oil_return_recovery_stable_since_ms) = 0;
-            id(oq_cooling_oil_return_recovery_cap_until_ms) = 0;
-            oil_return_hold_window_active = false;
-            oil_return_mask_active = false;
-            oil_return_recovery_cap_active = false;
-          } else if (!oil_return_active && oil_return_hold_window_active && oil_return_recovery_stable) {
-            id(oq_cooling_oil_return_hold_until_ms) = 0;
-            id(oq_cooling_oil_return_recovery_stable_since_ms) = 0;
-            id(oq_cooling_oil_return_recovery_cap_until_ms) = now_ms + oil_return_recovery_cap_ms;
-            id(oq_cooling_pid_integral) = 0.0f;
-            id(oq_cooling_last_demand_change_ms) = now_ms;
-            oil_return_hold_window_active = false;
-            oil_return_mask_active = false;
-            oil_return_recovery_cap_active = true;
-          } else if (!oil_return_active &&
-              id(oq_cooling_oil_return_hold_until_ms) > 0 &&
-              !oil_return_hold_window_active) {
-            id(oq_cooling_oil_return_hold_until_ms) = 0;
-            id(oq_cooling_oil_return_recovery_stable_since_ms) = 0;
-            if (oil_return_recovery_not_needed) {
-              id(oq_cooling_oil_return_recovery_cap_until_ms) = 0;
-              oil_return_recovery_cap_active = false;
-            } else {
-              id(oq_cooling_oil_return_recovery_cap_until_ms) = now_ms + oil_return_recovery_cap_ms;
-              id(oq_cooling_pid_integral) = 0.0f;
-              id(oq_cooling_last_demand_change_ms) = now_ms;
-              oil_return_recovery_cap_active = true;
-            }
-            oil_return_mask_active = false;
-          }
-          static bool last_oil_return_mask_active = false;
-          if (oil_return_mask_active != last_oil_return_mask_active) {
-            ESP_LOGI(
-                "quatt.cool",
-                "Cooling oil-return recovery %s",
-                oil_return_mask_active ? "active" : "cleared");
-            last_oil_return_mask_active = oil_return_mask_active;
-          }
-
+          safety_margin_c = fmaxf(0.0f, fminf(2.0f, safety_margin_c));
           float kp = id(cooling_pid_kp).state;
           float ki = id(cooling_pid_ki).state;
           float kd = id(cooling_pid_kd).state;
@@ -1027,10 +896,6 @@ interval:
           if (isnan(kd) || kd < 0.0f) kd = 0.0f;
 
           float integral = id(oq_cooling_pid_integral);
-          if (oil_return_mask_active || oil_return_recovery_cap_active) {
-            integral = fminf(integral, 0.0f);
-          }
-
           float derivative = 0.0f;
           if (dt_s > 0.0f) {
             derivative = (buffer_gap_c - id(oq_cooling_pid_last_error_c)) / dt_s;
@@ -1044,9 +909,7 @@ interval:
             room_error_valid = true;
           }
 
-          int demand_max = (int) lroundf(id(cooling_demand_max_f).state);
-          if (demand_max < 1) demand_max = 1;
-          if (demand_max > 10) demand_max = 10;
+          int demand_max = oq_cooling::clamp_level((int) lroundf(id(cooling_demand_max_f).state), 1, 10);
           const int capacity_demand_max = demand_max;
 
           bool room_cap_active = false;
@@ -1058,34 +921,32 @@ interval:
             room_cap_active = demand_max < before_room_cap;
           }
 
-          oq_cooling::LimiterState limiter_state;
-          limiter_state.simmer_allowed = id(oq_cooling_simmer_allowed);
-          limiter_state.projection_brake_active = id(oq_cooling_projection_brake_active);
-          limiter_state.stop_candidate_since_ms = id(oq_cooling_stop_candidate_since_ms);
-          limiter_state.dew_stop_candidate_since_ms = id(oq_cooling_dew_stop_candidate_since_ms);
-          limiter_state.capacity_cap = id(oq_cooling_capacity_cap);
-          limiter_state.capacity_last_change_ms = id(oq_cooling_capacity_last_change_ms);
-          limiter_state.capacity_recovery_since_ms = id(oq_cooling_capacity_recovery_since_ms);
-          limiter_state.capacity_full_recovery_since_ms = id(oq_cooling_capacity_full_recovery_since_ms);
+          oq_cooling::LimiterState limiter_state{id(oq_cooling_simmer_allowed), id(oq_cooling_projection_brake_active),
+              id(oq_cooling_stop_candidate_since_ms), id(oq_cooling_dew_stop_candidate_since_ms),
+              id(oq_cooling_capacity_cap), id(oq_cooling_capacity_last_change_ms),
+              id(oq_cooling_capacity_recovery_since_ms), id(oq_cooling_capacity_full_recovery_since_ms)};
+          oq_cooling::LimiterInput limiter_input{now_ms, demand_max, capacity_demand_max, id(oq_cooling_limited_demand),
+              room_cap_active, dew_mode, fallback_mode, false, false, buffer_gap_c,
+              filtered_gap_c, gap_rate_c_per_min, dew_gap_c, safety_margin_c};
 
-          oq_cooling::LimiterInput limiter_input;
-          limiter_input.now_ms = now_ms;
-          limiter_input.demand_max = demand_max;
-          limiter_input.capacity_demand_max = capacity_demand_max;
-          limiter_input.previous_limited_demand = id(oq_cooling_limited_demand);
-          limiter_input.room_cap_active = room_cap_active;
-          limiter_input.dew_mode = dew_mode;
-          limiter_input.fallback_mode = fallback_mode;
-          limiter_input.oil_return_mask_active = oil_return_mask_active;
-          limiter_input.oil_return_recovery_cap_active = oil_return_recovery_cap_active;
-          limiter_input.buffer_gap_c = buffer_gap_c;
-          limiter_input.filtered_gap_c = filtered_gap_c;
-          limiter_input.gap_rate_c_per_min = gap_rate_c_per_min;
-          limiter_input.dew_gap_c = dew_gap_c;
-          limiter_input.safety_margin_c = safety_margin_c;
+          const auto oil_return_decision = oq_cooling::update_oil_return({now_ms, true, oil_return_active}, limiter_input,
+              oil_return_tuning, limiter_tuning, oil_return_state);
+          limiter_input.oil_return_mask_active = oil_return_decision.mask_active;
+          limiter_input.oil_return_recovery_cap_active = oil_return_decision.recovery_cap_active;
+          if (oil_return_decision.reset_integral_and_dwell) {
+            integral = id(oq_cooling_pid_integral) = 0.0f;
+            id(oq_cooling_last_demand_change_ms) = now_ms;
+          } else if (oil_return_decision.mask_active || oil_return_decision.recovery_cap_active) {
+            integral = fminf(integral, 0.0f);
+          }
+          static bool last_oil_return_mask_active = false;
+          if (oil_return_decision.mask_active != last_oil_return_mask_active) {
+            ESP_LOGI("quatt.cool", "Cooling oil-return recovery %s",
+                     oil_return_decision.mask_active ? "active" : "cleared");
+            last_oil_return_mask_active = oil_return_decision.mask_active;
+          }
 
-          const auto limiter_output =
-              oq_cooling::update_limiter(limiter_input, limiter_tuning, limiter_state);
+          const auto limiter_output = oq_cooling::update_limiter(limiter_input, limiter_tuning, limiter_state);
           if (limiter_output.reset_gap_rate_reference) {
             id(oq_cooling_buffer_gap_rate_ref_c) = filtered_gap_c;
             id(oq_cooling_buffer_gap_rate_ref_ms) = now_ms;
@@ -1105,68 +966,24 @@ interval:
           int reason_code = limiter_output.reason_code;
           id(oq_cooling_limiter_allowed_max) = allowed_max;
 
-          // Restart hysteresis is only for water-side stops. If cooling stopped
-          // because the room demand disappeared, the next room request may start
-          // immediately as long as the current limiter allows it.
+          // Water-side stops use restart hysteresis; a cleared room request may
+          // restart immediately when the current limiter allows it.
           bool water_cycle_active = id(oq_cooling_water_cycle_active);
           if (!water_cycle_active) {
-            int stop_reason_code = id(oq_cooling_stop_reason_code);
-            if (stop_reason_code == 5) {
-              // Request-cleared is informational for the decision log. It must
-              // not trigger water-side restart hysteresis.
-              stop_reason_code = 0;
-              id(oq_cooling_stop_reason_code) = 0;
-            }
-            if (stop_reason_code == 4 &&
-                (reason_code == oq_cooling::REASON_DEW_STOP ||
-                 reason_code == oq_cooling::REASON_FALLBACK_FLOOR)) {
-              stop_reason_code = reason_code == oq_cooling::REASON_DEW_STOP ? 2 : 3;
-              id(oq_cooling_stop_reason_code) = stop_reason_code;
-              id(oq_cooling_stop_buffer_gap_c) = filtered_gap_c;
-            }
-            const bool restart_after_water_stop = stop_reason_code != 0;
-            const bool projected_floor_pause = stop_reason_code == 4;
-            const oq_cooling::WaterCycleState stopped_cycle{
-                false,
-                id(oq_cooling_stop_buffer_gap_c),
-                stop_reason_code,
-            };
-            const float restart_threshold_c = stopped_cycle.stop_buffer_gap_c + restart_delta_c;
-            const bool restart_gap_recovered = restart_by_minimum_off_time
-                ? !id(oq_cooling_min_off_stop_pending)
-                : oq_cooling::water_restart_gap_recovered(stopped_cycle, filtered_gap_c, restart_delta_c);
-            const bool dew_recovered = !dew_mode || isnan(dew_gap_c) || dew_gap_c > hard_dew_restart_gap_c;
-            const bool fallback_recovered =
-                restart_by_minimum_off_time || !fallback_mode ||
-                !restart_after_water_stop || projected_floor_pause ||
-                filtered_gap_c > restart_threshold_c;
-            const bool projected_floor_recovered =
-                !projected_floor_pause ||
-                !limiter_state.projection_brake_active ||
-                projected_gap_c >= limiter_tuning.projected_floor_release_gap_c ||
-                gap_rate_c_per_min >= 0.0f;
-            const bool restart_recovered =
-                oil_return_mask_active ||
-                (restart_gap_recovered && dew_recovered && fallback_recovered && projected_floor_recovered);
-            if (restart_recovered && allowed_max > 0) {
-              water_cycle_active = true;
-              id(oq_cooling_stop_reason_code) = 0;
-            } else {
+            const auto restart = oq_cooling::evaluate_water_restart(
+                restart_by_minimum_off_time, id(oq_cooling_min_off_stop_pending), restart_delta_c,
+                limiter_input, limiter_output, limiter_tuning, limiter_state,
+                {false, id(oq_cooling_stop_buffer_gap_c), id(oq_cooling_stop_reason_code)});
+            water_cycle_active = restart.state.active;
+            id(oq_cooling_stop_buffer_gap_c) = restart.state.stop_buffer_gap_c;
+            id(oq_cooling_stop_reason_code) = restart.state.stop_reason_code;
+            if (!restart.state.active) {
               id(oq_cooling_demand_raw) = 0;
               id(oq_cooling_base_demand_raw) = 0;
               id(oq_cooling_limited_demand) = 0;
-              id(oq_cooling_limiter_reason_code) =
-                  (reason_code == oq_cooling::REASON_DEW_STOP ||
-                   reason_code == oq_cooling::REASON_FALLBACK_FLOOR ||
-                   !restart_after_water_stop ||
-                   (projected_floor_pause && !projected_floor_recovered))
-                      ? reason_code
-                      : oq_cooling::REASON_RESTART_WAIT;
+              id(oq_cooling_limiter_reason_code) = restart.limiter_reason_code;
               id(oq_cooling_pid_last_error_c) = buffer_gap_c;
-              if (reason_code == oq_cooling::REASON_DEW_STOP ||
-                  reason_code == oq_cooling::REASON_FALLBACK_FLOOR) {
-                id(oq_cooling_pid_integral) = 0.0f;
-              }
+              if (restart.reset_integral) id(oq_cooling_pid_integral) = 0.0f;
               publish_cooling_limiter_event(true, id(oq_cooling_limiter_reason_code), 0, 0, dew_gap_c, true);
               return;
             }
