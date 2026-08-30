@@ -56,6 +56,13 @@ class ElectricalInputLimitContractTest(unittest.TestCase):
         self.assertNotIn("oq_power_limit_peak_w", HEATING_CURVE)
         self.assertNotIn("oq_power_limit_peak_w", COOLING)
 
+    def test_heating_curve_dispatch_uses_power_capped_continuous_demand(self) -> None:
+        for marker in ("oq_curve::power_capped_demand_u(id(oq_curve_demand_continuous), f, demand_max_f)", "phase_target_power_w(heat_phase, demand_u, owner_cap_w, duo_cap_w)", "lroundf(demand_u * (float) level_cap)", "const float dispatch_u = demand_max_f > 0 ? (float) f / (float) demand_max_f : 0.0f;", "(dispatch_u >= 0.95f)", "(dispatch_u >= duo_enable_min_u)", "(dispatch_u <= duo_disable_max_u)", "const bool demand_active = demand_u > 0.0f;", "hp2_candidate_state,\n                      demand_active,"):
+            self.assertIn(marker, HEATING_CURVE)
+        self.assertNotIn("if (isnan(demand_continuous))", HEATING_CURVE)
+        paths = ("openquatt/oq_heating_curve_strategy.yaml", "openquatt/includes/control/oq_heating_curve_logic.h", "tests/host/heating_curve_restart_logic_test.cpp", "scripts/tests/test_electrical_input_limit_contract.py")
+        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1879)
+
 
 if __name__ == "__main__":
     unittest.main()

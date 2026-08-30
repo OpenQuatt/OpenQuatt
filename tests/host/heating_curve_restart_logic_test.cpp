@@ -114,7 +114,6 @@ void test_control_reset_clears_restart_diagnostics() {
   assert(!restart_blocked_by_room);
   assert(regime_code == 0);
 }
-
 }  // namespace
 
 int main() {
@@ -127,5 +126,12 @@ int main() {
   test_no_water_restart_does_not_report_a_room_block();
   test_non_finite_room_values_cannot_block_restart();
   test_control_reset_clears_restart_diagnostics();
+  const float capped_u = oq_curve::power_capped_demand_u(18.0f, 8, 20);
+  assert(capped_u == 0.4f && lroundf(capped_u * 10.0f) == 4);                              // Single cap.
+  assert(oq_curve::phase_target_power_w(true, capped_u, 10000.0f, 18000.0f) == 4000.0f);   // Duo recovery.
+  assert(oq_curve::phase_target_power_w(false, capped_u, 10000.0f, 18000.0f) == 7200.0f);  // Duo maintain.
+  assert(oq_curve::power_capped_demand_u(6.0f, 8, 20) == 0.3f && oq_curve::power_capped_demand_u(18.0f, 0, 20) == 0.0f);
+  assert(oq_curve::power_capped_demand_u(NAN, 8, 20) == 0.0f &&
+         oq_curve::power_capped_demand_u(INFINITY, 8, 20) == 0.0f);
   return 0;
 }

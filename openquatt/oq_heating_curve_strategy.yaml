@@ -1095,19 +1095,15 @@ interval:
           }
           id(oq_curve_request_last_loop_ms) = now_ms;
 
-          constexpr int max_level = 10;
+          constexpr int level_cap = 10;
           const int demand_max_f = (int) ${oq_strategy_demand_max_f};
-          int raw = id(oq_demand_raw);
-          raw = std::max(0, std::min(demand_max_f, raw));
+          const int raw = std::max(0, std::min(demand_max_f, id(oq_demand_raw)));
 
           id(oq_demand_filtered_prev) = id(oq_demand_filtered);
           id(oq_demand_filtered) = raw;
           id(oq_heating_demand_filtered) = raw;
 
-          int f = raw;
-          int f_cap = id(oq_power_cap_f);
-          f_cap = std::max(0, std::min(demand_max_f, f_cap));
-          if (f > f_cap) f = f_cap;
+          const int f = std::min(raw, std::max(0, std::min(demand_max_f, id(oq_power_cap_f))));
 
           #if OQ_TOPOLOGY_DUO
           const bool lead_is_hp1 = (id(hp1_minutes) <= id(${secondary_minutes_id}));
@@ -1131,8 +1127,6 @@ interval:
             return false;
             #endif
           };
-
-          const int level_cap = max_level;
 
           const bool hp1_valve_def = valve_defrost_active(true);
           #if OQ_TOPOLOGY_DUO
@@ -1168,13 +1162,10 @@ interval:
           const bool hp2_candidate_available = false;
           #endif
 
-          int owner = 0;
-          int dispatch_hp1 = 0;
-          int dispatch_hp2 = 0;
-          float demand_continuous = id(oq_curve_demand_continuous);
-          if (isnan(demand_continuous)) demand_continuous = (float) f;
-          const float demand_u = oq_curve::normalized_demand_u(demand_continuous, demand_max_f);
-          const float dispatch_u = oq_curve::normalized_demand_u((float) f, demand_max_f);
+          int owner = 0, dispatch_hp1 = 0, dispatch_hp2 = 0;
+          const float demand_u = oq_curve::power_capped_demand_u(id(oq_curve_demand_continuous), f, demand_max_f);
+          const float dispatch_u = demand_max_f > 0 ? (float) f / (float) demand_max_f : 0.0f;
+          const bool demand_active = demand_u > 0.0f;
           #if OQ_TOPOLOGY_DUO
           const auto tuning = oq_curve::control_profile(
               id(oq_curve_control_profile).has_state()
@@ -1185,7 +1176,6 @@ interval:
           if (!isnan(id(oq_supply_target_temp).state) && !isnan(id(oq_system_supply_temp).state)) {
             temp_err_c = id(oq_supply_target_temp).state - id(oq_system_supply_temp).state;
           }
-          const bool demand_active = (f > 0);
           const bool heat_phase = demand_active && (id(oq_curve_regime_code) == 1);
           const int prev_curve_post = id(oq_demand_filtered_prev);
 
@@ -1269,7 +1259,7 @@ interval:
 
           const bool demand_rundown = (f < prev_curve_post);
           const float target_power_w =
-              demand_active ? oq_curve::phase_target_power_w(heat_phase, demand_u, dispatch_u, owner_cap_w, duo_cap_w) : 0.0f;
+              demand_active ? oq_curve::phase_target_power_w(heat_phase, demand_u, owner_cap_w, duo_cap_w) : 0.0f;
 
           oq_curve::DispatchCandidate best_single = oq_curve::invalid_dispatch_candidate();
           if (demand_active && single_owner == 1) {
@@ -1411,9 +1401,9 @@ interval:
               id(oq_curve_single_owner_hp),
               id(oq_duo_request_hold_until_ms),
               1);
-          owner = (demand_u > 0.0f && hp1_candidate_available) ? 1 : 0;
+          owner = (demand_active && hp1_candidate_available) ? 1 : 0;
           dispatch_hp1 = hp1_candidate_available
-              ? std::max(0, std::min(max_level, (int) lroundf(demand_u * (float) max_level)))
+              ? std::max(0, std::min(level_cap, (int) lroundf(demand_u * (float) level_cap)))
               : 0;
           dispatch_hp2 = 0;
           id(oq_curve_capacity_mode_code) = (dispatch_hp1 > 0) ? 1 : 0;
@@ -1426,7 +1416,7 @@ interval:
                       dispatch_hp2,
                       hp1_candidate_state,
                       hp2_candidate_state,
-                      f > 0,
+                      demand_active,
                   });
           if (suspect_topology_hold.active) {
             dispatch_hp1 = suspect_topology_hold.hp1_level;
