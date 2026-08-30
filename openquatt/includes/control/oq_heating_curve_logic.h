@@ -47,6 +47,41 @@ struct RestartDecision {
   RestartReason reason = RESTART_NONE;
 };
 
+enum StopReason : uint8_t {
+  STOP_NONE = 0,
+  STOP_NORMAL = 1,
+  STOP_LOW_LOAD = 2,
+};
+struct OilReturnDecision {
+  uint32_t hold_until_ms = 0;
+  bool mask_active = false;
+};
+struct DemandState {
+  bool heat_request_active = false;
+  uint32_t stop_arm_ms = 0;
+  uint32_t off_since_ms = 0;
+  bool restart_inhibit_active = false;
+  bool restart_blocked_by_room = false;
+  int regime_code = 0;
+};
+struct DemandInput {
+  uint32_t now_ms = 0;
+  float pid_output = NAN, supply_target_c = NAN, supply_c = NAN;
+  float room_c = NAN, room_setpoint_c = NAN;
+  bool room_data_fresh = false;
+  bool oil_return_mask_active = false;
+  int applied_total_level = 0;
+  int demand_max = 0;
+};
+struct DemandDecision {
+  DemandState next;
+  float demand_continuous = NAN;
+  int demand = 0, demand_pre_guardrail = 0;
+  bool valid = false;
+  StopReason stop_reason = STOP_NONE;
+  RestartReason restart_reason = RESTART_NONE;
+};
+
 struct DispatchCandidate {
   bool valid = false;
   int hp1_level = 0;
@@ -113,7 +148,7 @@ inline RestartDecision evaluate_restart(bool below_restart_band, bool deep_under
                                         bool room_data_fresh, float room_c, float room_sp_c, float room_overheat_off_c,
                                         float room_resume_heat_c) {
   RestartDecision decision;
-  const bool room_values_valid = room_data_fresh && !isnan(room_c) && !isnan(room_sp_c);
+  const bool room_values_valid = room_data_fresh && isfinite(room_c) && isfinite(room_sp_c);
   const bool room_requests_heat = room_values_valid && room_c <= (room_sp_c - room_resume_heat_c);
   if (room_requests_heat) {
     decision.restart = true;
@@ -137,6 +172,131 @@ inline RestartDecision evaluate_restart(bool below_restart_band, bool deep_under
   decision.restart = true;
   decision.reason = RESTART_WATER_BAND;
   return decision;
+}
+
+inline uint32_t timestamp_ms(uint32_t now_ms) { return now_ms == 0 ? UINT32_MAX : now_ms; }
+
+inline OilReturnDecision update_oil_return_hold(uint32_t now_ms, bool oil_return_active, uint32_t hold_until_ms,
+                                                uint32_t hold_ms) {
+  if (oil_return_active) {
+    uint32_t deadline_ms = now_ms + hold_ms;
+    if (deadline_ms == 0) deadline_ms = 1;
+    return {deadline_ms, true};
+  }
+  if (hold_until_ms != 0 && static_cast<int32_t>(hold_until_ms - now_ms) > 0) return {hold_until_ms, true};
+  return {};
+}
+
+inline DemandDecision decide_demand(const DemandInput& in, const ControlProfileTuning& requested_tuning,
+                                    const DemandState& state) {
+  DemandDecision out;
+  const float tuning_values[] = {
+      requested_tuning.start_delta_c,      requested_tuning.stop_delta_c,    requested_tuning.room_overheat_off_c,
+      requested_tuning.room_resume_heat_c, requested_tuning.restart_delta_c, requested_tuning.restart_bypass_extra_c,
+      requested_tuning.recovery_enter_c,   requested_tuning.recovery_exit_c, requested_tuning.trim_start_c};
+  bool tuning_valid = true;
+  for (float value : tuning_values) tuning_valid = tuning_valid && isfinite(value);
+  if (in.demand_max <= 0 || !isfinite(in.pid_output) || !isfinite(in.supply_target_c) || !isfinite(in.supply_c) ||
+      !tuning_valid) {
+    return out;
+  }
+
+  ControlProfileTuning tuning = requested_tuning;
+  tuning.stop_delta_c = std::max(tuning.stop_delta_c, tuning.start_delta_c + 0.10f);
+  tuning.restart_delta_c = std::max(tuning.restart_delta_c, tuning.start_delta_c + 0.05f);
+  tuning.restart_bypass_extra_c = std::max(tuning.restart_bypass_extra_c, 0.20f);
+  tuning.off_pid_max_f = std::max(0, std::min(in.demand_max, tuning.off_pid_max_f));
+
+  float demand_continuous = in.pid_output <= 0.0f   ? 0.0f
+                            : in.pid_output >= 1.0f ? static_cast<float>(in.demand_max)
+                                                    : in.pid_output * static_cast<float>(in.demand_max);
+  int demand = std::max(0, std::min(in.demand_max, static_cast<int>(lroundf(demand_continuous))));
+  out.demand_pre_guardrail = demand;
+  out.next = state;
+  out.next.restart_inhibit_active = out.next.restart_blocked_by_room = false;
+
+  const bool room_valid = in.room_data_fresh && isfinite(in.room_c) && isfinite(in.room_setpoint_c);
+  const bool room_warm_for_off = room_valid && in.room_c >= in.room_setpoint_c + tuning.room_overheat_off_c;
+  const bool room_allows_off = !room_valid || room_warm_for_off;
+  const bool normal_stop = !in.oil_return_mask_active && in.supply_c >= in.supply_target_c + tuning.stop_delta_c &&
+                           demand <= tuning.off_pid_max_f && room_allows_off;
+  const bool low_load_stop = !in.oil_return_mask_active && state.heat_request_active && state.regime_code == 2 &&
+                             out.demand_pre_guardrail <= 0 &&
+                             (!room_valid || in.room_c >= in.room_setpoint_c - tuning.room_resume_heat_c) &&
+                             in.supply_c >= in.supply_target_c + 0.25f;
+
+  if (out.next.heat_request_active) {
+    if (normal_stop || low_load_stop) {
+      const uint32_t confirm_ms =
+          low_load_stop ? std::min<uint32_t>(tuning.off_confirm_ms, 90000UL) : tuning.off_confirm_ms;
+      if (out.next.stop_arm_ms == 0) {
+        out.next.stop_arm_ms = timestamp_ms(in.now_ms);
+      } else if (static_cast<uint32_t>(in.now_ms - out.next.stop_arm_ms) >= confirm_ms) {
+        out.next.heat_request_active = false;
+        out.next.stop_arm_ms = 0;
+        out.next.off_since_ms = timestamp_ms(in.now_ms);
+        out.stop_reason = low_load_stop ? STOP_LOW_LOAD : STOP_NORMAL;
+      }
+    } else {
+      out.next.stop_arm_ms = 0;
+    }
+  } else {
+    out.next.stop_arm_ms = 0;
+    const bool off_age_known = out.next.off_since_ms != 0;
+    if (!off_age_known) out.next.off_since_ms = timestamp_ms(in.now_ms);
+    const bool below_restart_band = in.supply_c <= in.supply_target_c - tuning.restart_delta_c;
+    const bool deep_undershoot =
+        in.supply_c <= in.supply_target_c - (tuning.restart_delta_c + tuning.restart_bypass_extra_c);
+    const bool off_lock_active = off_age_known && tuning.off_reentry_min_ms > 0 &&
+                                 static_cast<uint32_t>(in.now_ms - out.next.off_since_ms) < tuning.off_reentry_min_ms;
+    const auto restart = evaluate_restart(below_restart_band, deep_undershoot, off_lock_active, room_valid, in.room_c,
+                                          in.room_setpoint_c, tuning.room_overheat_off_c, tuning.room_resume_heat_c);
+    out.next.restart_inhibit_active = restart.blocked_by_off_lock;
+    out.next.restart_blocked_by_room = restart.blocked_by_room;
+    out.restart_reason = restart.reason;
+    if (restart.restart) {
+      out.next.heat_request_active = true;
+      out.next.off_since_ms = 0;
+    }
+  }
+
+  if (!out.next.heat_request_active) {
+    demand = 0;
+    out.next.regime_code = 0;
+  } else {
+    out.next.restart_inhibit_active = false;
+    out.next.restart_blocked_by_room = false;
+    out.next.off_since_ms = 0;
+    demand = std::max(1, demand);
+    const float supply_error_c = in.supply_target_c - in.supply_c;
+    int regime = out.next.regime_code;
+    if (regime != 1 && regime != 2) regime = supply_error_c >= tuning.recovery_enter_c ? 1 : 2;
+    if (regime == 1 && supply_error_c <= tuning.recovery_exit_c) {
+      regime = 2;
+    } else if (regime == 2 && !in.oil_return_mask_active && supply_error_c >= tuning.recovery_enter_c && demand >= 8 &&
+               (!room_valid || in.room_c <= in.room_setpoint_c + tuning.trim_start_c)) {
+      regime = 1;
+    }
+    out.next.regime_code = regime;
+    if (regime == 1) {
+      demand = std::max(demand, std::min(in.demand_max, std::max(2, in.applied_total_level + 1)));
+    } else {
+      static constexpr float thresholds[] = {0.00f, 0.10f, 0.20f, 0.35f, 0.50f, 0.70f, 0.90f};
+      static constexpr int caps[] = {1, 2, 3, 4, 5, 6, 8};
+      for (int i = 0; i < 7; ++i)
+        if (supply_error_c <= thresholds[i]) {
+          demand = std::min(demand, caps[i]);
+          break;
+        }
+    }
+  }
+
+  out.demand_continuous = !out.next.heat_request_active ? 0.0f
+                          : out.next.regime_code == 1   ? std::max(demand_continuous, static_cast<float>(demand))
+                                                        : std::min(demand_continuous, static_cast<float>(demand));
+  out.demand = demand;
+  out.valid = true;
+  return out;
 }
 
 inline void reset_control_state(float& demand_continuous, int& demand_curve, int& demand_pre_guardrail,
