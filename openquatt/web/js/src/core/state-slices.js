@@ -133,6 +133,8 @@ export function createSettingsState() {
     renderedSettingsGroup: "",
     settingsPageScrollRestoreToken: 0,
     settingsInfoOpen: "",
+    settingsSourceFocusKey: "room-temperature",
+    settingsSourceDetailOpen: false,
     settingsAdvancedOpen: {},
     pendingControlModeOverride: "",
     installationMonitoringDetailsOpen: false,

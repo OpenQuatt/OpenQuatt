@@ -4,6 +4,7 @@ import { getSettingsRenderSignature } from "../core/render-signatures.js";
 import { escapeHtml } from "../core/html.js";
 import { renderModalShell, syncModalFocus } from "../core/modal-shell.js";
 import { captureModalContinuity, restoreModalContinuity } from "../core/modal-continuity.js";
+import { captureSettingsFocusContinuity, restoreSettingsFocusContinuity } from "../core/settings-focus-continuity.js";
 import { setRenderCallback } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { clearLegacyMotionVariables, startMotionLoop, stopMotionLoop } from "../core/motion.js";
@@ -20,39 +21,8 @@ import { renderControlReplayView } from "../features/control-replay-view.js";
 import { renderOverviewView, syncTechTooltipLayers } from "./heatpump.js";
 import { renderDiagnosisView, syncOverviewTrendInteractions } from "./overview.js";
 
-function captureFocusedSettingsField() {
-  const active = document.activeElement;
-  if (state.appView !== "settings" || !state.root?.contains(active) || !active?.dataset?.oqField) {
-    return null;
-  }
-  return {
-    field: active.dataset.oqField,
-    modalId: active.closest("[data-oq-modal]")?.dataset.oqModal || "",
-    selectionStart: active.selectionStart,
-    selectionEnd: active.selectionEnd,
-  };
-}
-
-function restoreFocusedSettingsField(focusState) {
-  if (!focusState || !state.root) {
-    return;
-  }
-
-  const modal = document.activeElement.closest("[data-oq-modal]");
-  if ((modal?.dataset.oqModal || "") !== focusState.modalId) {
-    return;
-  }
-
-  const input = (modal || state.root).querySelector(`[data-oq-field="${focusState.field}"]`);
-  if (!input || input.disabled) {
-    return;
-  }
-
-  input.focus({ preventScroll: true });
-  if (typeof focusState.selectionStart === "number" && typeof input.setSelectionRange === "function") {
-    input.setSelectionRange(focusState.selectionStart, focusState.selectionEnd);
-  }
-}
+const captureFocusedSettingsField = () => captureSettingsFocusContinuity(state.root, state.appView);
+const restoreFocusedSettingsField = (focusState) => restoreSettingsFocusContinuity(state.root, focusState);
 
 export function renderSettingsView() {
     return `
