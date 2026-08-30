@@ -489,48 +489,24 @@ import { escapeHtml } from "../core/html.js";
       }
       return source ? formatSettingsOptionLabel(source) : "Auto";
     };
+    const sourceKindPatterns = [
+      ["ha", /\b(?:ha|home assistant)\b/],
+      ["api", /\bapi\b/],
+      ["mqtt", /\bmqtt\b/],
+      ["cic", /\bcic\b/],
+      ["ot", /\b(?:opentherm|ot thermostat|ot-thermostaat)\b/],
+      ["outdoor", /\b(?:outdoor unit|buitenunit|quatt-flow)\b/],
+      ["local", /\b(?:local|lokaal|controller)\b/],
+      ["pt1000", /\bpt1000\b/],
+      ["ds18b20", /\bds18b20\b/],
+      ["manual", /\b(?:manual|handmatig)\b/],
+      ["hp1", /\bhp1\b/],
+      ["hp2", /\bhp2\b/],
+      ["disabled", /\b(?:disabled|niet gebruiken|none)\b|^—$|^$/],
+    ];
     const sourceKinds = (value = "") => {
       const text = String(value || "").trim().toLowerCase();
-      const kinds = new Set();
-      if (/\b(ha|home assistant)\b/.test(text)) {
-        kinds.add("ha");
-      }
-      if (/\bapi\b/.test(text)) {
-        kinds.add("api");
-      }
-      if (/\bmqtt\b/.test(text)) {
-        kinds.add("mqtt");
-      }
-      if (/\bcic\b/.test(text)) {
-        kinds.add("cic");
-      }
-      if (/\b(opentherm|ot thermostat|ot-thermostaat)\b/.test(text)) {
-        kinds.add("ot");
-      }
-      if (/\b(outdoor unit|buitenunit|quatt-flow)\b/.test(text)) {
-        kinds.add("outdoor");
-      }
-      if (/\b(local|lokaal|controller)\b/.test(text)) {
-        kinds.add("local");
-      }
-      if (/\bpt1000\b/.test(text)) {
-        kinds.add("pt1000");
-      }
-      if (/\bds18b20\b/.test(text)) {
-        kinds.add("ds18b20");
-      }
-      if (/\b(manual|handmatig)\b/.test(text)) {
-        kinds.add("manual");
-      }
-      if (/\bhp1\b/.test(text)) {
-        kinds.add("hp1");
-      }
-      if (/\bhp2\b/.test(text)) {
-        kinds.add("hp2");
-      }
-      if (/\b(disabled|niet gebruiken|none)\b/.test(text) || text === "—" || text === "") {
-        kinds.add("disabled");
-      }
+      const kinds = new Set(sourceKindPatterns.filter(([, pattern]) => pattern.test(text)).map(([kind]) => kind));
       if (!kinds.size) {
         kinds.add(text.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "other");
       }
@@ -576,57 +552,29 @@ import { escapeHtml } from "../core/html.js";
         </div>
       `;
     };
-    const renderHaSourceRows = ({ label = "HA-invoer", valueKey = "", validKey = "", value = "", forceVisible = false, effective = false }) => {
-      if (!valueKey || !validKey || !hasEntity(valueKey) || !hasEntity(validKey)) {
-        return [];
-      }
-      const valid = isInstallationMonitoringBinaryActive(validKey);
-      if (!valid && !forceVisible && !effective) {
-        return [];
-      }
-      const statusTitle = valid
-        ? "Home Assistant geeft dit signaal geldig door. OpenQuatt mag deze HA-invoer gebruiken."
-        : "Home Assistant geeft dit signaal niet geldig door. OpenQuatt gebruikt deze HA-invoer dan niet als bron.";
-      return [renderSourceRow({
-        label,
-        key: valueKey,
-        value: valid ? value : "—",
-        status: valid ? "Beschikbaar" : "Niet geldig",
-        statusTone: valid ? "valid" : "invalid",
-        statusTitle,
-        sourceKind: "ha",
-        sourceState: valid ? "valid" : "invalid",
-        effective,
-      })];
+    const inputSourceCopy = {
+      ha: {
+        label: "HA-invoer",
+        valid: ["Beschikbaar", "Home Assistant geeft dit signaal geldig door. OpenQuatt mag deze HA-invoer gebruiken."],
+        invalid: ["Niet geldig", "Home Assistant geeft dit signaal niet geldig door. OpenQuatt gebruikt deze HA-invoer dan niet als bron."],
+      },
+      mqtt: {
+        label: "MQTT",
+        valid: ["Geldig", "MQTT heeft een geldige, recente waarde ontvangen. OpenQuatt mag deze MQTT-invoer gebruiken."],
+        invalid: ["Ongeldig", "MQTT heeft nog geen geldige recente waarde ontvangen. OpenQuatt gebruikt deze MQTT-invoer dan niet als bron."],
+      },
+      api: {
+        label: "API-invoer",
+        valid: ["Beschikbaar", "API-invoer heeft een geldige, recente waarde. OpenQuatt mag deze bron gebruiken."],
+        stale: ["Verouderd", "API-invoer heeft geen geldige recente waarde meer. OpenQuatt gebruikt deze bron dan niet."],
+        missing: ["Wacht op data", "API-invoer heeft nog geen geldige waarde ontvangen. OpenQuatt gebruikt deze bron dan niet."],
+      },
     };
-    const renderMqttSourceRows = ({ label = "MQTT", valueKey = "", validKey = "", value = "", topicKey = "", forceVisible = false, effective = false }) => {
+    const renderInputSourceRows = ({ kind, label = "", valueKey = "", validKey = "", ageKey = "", value = "", topicKey = "", forceVisible = false, effective = false }) => {
       if (!valueKey || !validKey || !hasEntity(valueKey) || !hasEntity(validKey)) {
         return [];
       }
-      if (!isMqttInputTopicEnabled(topicKey || mqttTopicKeyByValueKey[valueKey])) {
-        return [];
-      }
-      const valid = isInstallationMonitoringBinaryActive(validKey);
-      if (!valid && !forceVisible && !effective) {
-        return [];
-      }
-      const statusTitle = valid
-        ? "MQTT heeft een geldige, recente waarde ontvangen. OpenQuatt mag deze MQTT-invoer gebruiken."
-        : "MQTT heeft nog geen geldige recente waarde ontvangen. OpenQuatt gebruikt deze MQTT-invoer dan niet als bron.";
-      return [renderSourceRow({
-        label,
-        key: valueKey,
-        value: valid ? value : "—",
-        status: getMqttValidityLabel(validKey),
-        statusTone: valid ? "valid" : "invalid",
-        statusTitle,
-        sourceKind: "mqtt",
-        sourceState: valid ? "valid" : "invalid",
-        effective,
-      })];
-    };
-    const renderApiSourceRows = ({ label = "API-invoer", valueKey = "", validKey = "", ageKey = "", value = "", forceVisible = false, effective = false }) => {
-      if (!valueKey || !validKey || !hasEntity(valueKey) || !hasEntity(validKey)) {
+      if (kind === "mqtt" && !isMqttInputTopicEnabled(topicKey || mqttTopicKeyByValueKey[valueKey])) {
         return [];
       }
       const valid = isInstallationMonitoringBinaryActive(validKey);
@@ -634,24 +582,37 @@ import { escapeHtml } from "../core/html.js";
         return [];
       }
       const age = ageKey && hasEntity(ageKey) ? getNumericSourceValue(ageKey) : NaN;
-      const inactiveStatus = Number.isFinite(age) ? "Verouderd" : "Wacht op data";
-      const statusTitle = valid
-        ? "API-invoer heeft een geldige, recente waarde. OpenQuatt mag deze bron gebruiken."
-        : Number.isFinite(age)
-          ? "API-invoer heeft geen geldige recente waarde meer. OpenQuatt gebruikt deze bron dan niet."
-          : "API-invoer heeft nog geen geldige waarde ontvangen. OpenQuatt gebruikt deze bron dan niet.";
+      const sourceState = valid ? "valid" : kind === "api" ? (Number.isFinite(age) ? "stale" : "missing") : "invalid";
+      const [defaultStatus, statusTitle] = inputSourceCopy[kind][sourceState];
       return [renderSourceRow({
-        label,
+        label: label || inputSourceCopy[kind].label,
         key: valueKey,
         value: valid ? value : "—",
-        status: valid ? "Beschikbaar" : inactiveStatus,
+        status: kind === "mqtt" ? getMqttValidityLabel(validKey) : defaultStatus,
         statusTone: valid ? "valid" : "invalid",
         statusTitle,
-        sourceKind: "api",
-        sourceState: valid ? "valid" : Number.isFinite(age) ? "stale" : "missing",
+        sourceKind: kind,
+        sourceState,
         effective,
       })];
     };
+    const inputOptionByKind = { ha: "HA input", api: "API input", mqtt: "MQTT" };
+    const renderExternalSourceRows = (selectKey, effectiveSource, sources, formatValue = null) => (
+      Object.entries(sources).flatMap(([kind, keys]) => {
+        const [valueKey, validKey, ageKey = "", topicKey = ""] = keys;
+        const option = inputOptionByKind[kind];
+        return renderInputSourceRows({
+          kind,
+          valueKey,
+          validKey,
+          ageKey,
+          topicKey,
+          value: formatValue ? formatValue(valueKey) : "",
+          forceVisible: isConfiguredSource(selectKey, option),
+          effective: sourcesMatch(effectiveSource, option),
+        });
+      })
+    );
     const renderSourceSelect = (key, config = {}) => {
       if (!hasEntity(key)) {
         return { markup: "", warning: "" };
@@ -674,11 +635,8 @@ import { escapeHtml } from "../core/html.js";
       ) || (
         current === "OT thermostat" && !otAvailable
       );
-      const renderOptions = currentHidden && !hideUnavailableCurrent && !availableOptions.includes(current)
-        ? [current, ...availableOptions]
-        : currentUnavailable && !hideUnavailableCurrent && !availableOptions.includes(current)
-        ? [current, ...availableOptions]
-        : availableOptions;
+      const keepCurrent = (currentHidden || currentUnavailable) && !hideUnavailableCurrent && !availableOptions.includes(current);
+      const renderOptions = keepCurrent ? [current, ...availableOptions] : availableOptions;
       const optionMarkup = renderOptions.map((option) => {
         const displayLabel = formatSourceOptionLabel(option, config);
         return `<option value="${escapeHtml(option)}" ${option === current ? "selected" : ""}>${escapeHtml(displayLabel)}</option>`;
@@ -852,24 +810,10 @@ import { escapeHtml } from "../core/html.js";
         measurementRows: [
           cicAvailable ? renderSourceRow({ label: "CIC", key: "cicRoomTemp", sourceKind: "cic", sourceState: "available", effective: sourcesMatch(roomTemperatureUsedSource, "CIC") }) : "",
           otAvailable ? renderSourceRow({ label: "OpenTherm", key: "otRoomTemp", sourceKind: "ot", sourceState: "available", effective: sourcesMatch(roomTemperatureUsedSource, "OpenTherm") }) : "",
-          ...renderHaSourceRows({
-            valueKey: "roomTempHa",
-            validKey: "roomTempHaValid",
-            forceVisible: isConfiguredSource("roomTempSource", "HA input"),
-            effective: sourcesMatch(roomTemperatureUsedSource, "HA input"),
-          }),
-          ...renderApiSourceRows({
-            valueKey: "apiInputRoomTemperature",
-            validKey: "apiInputRoomTemperatureValid",
-            ageKey: "apiInputRoomTemperatureAge",
-            forceVisible: isConfiguredSource("roomTempSource", "API input"),
-            effective: sourcesMatch(roomTemperatureUsedSource, "API input"),
-          }),
-          ...renderMqttSourceRows({
-            valueKey: "mqttRoomTemperature",
-            validKey: "mqttRoomTemperatureValid",
-            forceVisible: isConfiguredSource("roomTempSource", "MQTT"),
-            effective: sourcesMatch(roomTemperatureUsedSource, "MQTT"),
+          ...renderExternalSourceRows("roomTempSource", roomTemperatureUsedSource, {
+            ha: ["roomTempHa", "roomTempHaValid"],
+            api: ["apiInputRoomTemperature", "apiInputRoomTemperatureValid", "apiInputRoomTemperatureAge"],
+            mqtt: ["mqttRoomTemperature", "mqttRoomTemperatureValid"],
           }),
         ],
       }),
@@ -893,24 +837,10 @@ import { escapeHtml } from "../core/html.js";
         measurementRows: [
           cicAvailable ? renderSourceRow({ label: "CIC", key: "cicRoomSetpoint", sourceKind: "cic", sourceState: "available", effective: sourcesMatch(roomSetpointUsedSource, "CIC") }) : "",
           otAvailable ? renderSourceRow({ label: "OpenTherm", key: "otRoomSetpoint", sourceKind: "ot", sourceState: "available", effective: sourcesMatch(roomSetpointUsedSource, "OpenTherm") }) : "",
-          ...renderHaSourceRows({
-            valueKey: "roomSetpointHa",
-            validKey: "roomSetpointHaValid",
-            forceVisible: isConfiguredSource("roomSetpointSource", "HA input"),
-            effective: sourcesMatch(roomSetpointUsedSource, "HA input"),
-          }),
-          ...renderApiSourceRows({
-            valueKey: "apiInputRoomSetpoint",
-            validKey: "apiInputRoomSetpointValid",
-            ageKey: "apiInputRoomSetpointAge",
-            forceVisible: isConfiguredSource("roomSetpointSource", "API input"),
-            effective: sourcesMatch(roomSetpointUsedSource, "API input"),
-          }),
-          ...renderMqttSourceRows({
-            valueKey: "mqttRoomSetpoint",
-            validKey: "mqttRoomSetpointValid",
-            forceVisible: isConfiguredSource("roomSetpointSource", "MQTT"),
-            effective: sourcesMatch(roomSetpointUsedSource, "MQTT"),
+          ...renderExternalSourceRows("roomSetpointSource", roomSetpointUsedSource, {
+            ha: ["roomSetpointHa", "roomSetpointHaValid"],
+            api: ["apiInputRoomSetpoint", "apiInputRoomSetpointValid", "apiInputRoomSetpointAge"],
+            mqtt: ["mqttRoomSetpoint", "mqttRoomSetpointValid"],
           }),
         ],
       }),
@@ -943,11 +873,8 @@ import { escapeHtml } from "../core/html.js";
           renderSourceRow({ label: "PT1000", key: "waterSupplyTempPt1000", sourceKind: "pt1000", sourceState: "available", effective: sourcesMatch(waterSupplyUsedSource, "PT1000") }),
           renderSourceRow({ label: "DS18B20", key: "waterSupplyTempDs18b20", sourceKind: "ds18b20", sourceState: "available", effective: sourcesMatch(waterSupplyUsedSource, "DS18B20") }),
           cicAvailable ? renderSourceRow({ label: "CIC", key: "cicWaterSupplyTemp", sourceKind: "cic", sourceState: "available", effective: sourcesMatch(waterSupplyUsedSource, "CIC") }) : "",
-          ...renderHaSourceRows({
-            valueKey: "waterSupplyTempHa",
-            validKey: "waterSupplyTempHaValid",
-            forceVisible: isConfiguredSource("waterSupplySource", "HA input"),
-            effective: sourcesMatch(waterSupplyUsedSource, "HA input"),
+          ...renderExternalSourceRows("waterSupplySource", waterSupplyUsedSource, {
+            ha: ["waterSupplyTempHa", "waterSupplyTempHaValid"],
           }),
         ],
         measurementTitle: "Ruwe metingen",
@@ -1009,24 +936,10 @@ import { escapeHtml } from "../core/html.js";
         routeWarning: invalidSourceValueWarning("outsideTempSelected"),
         measurementRows: [
           renderSourceRow({ label: "Buitenunit", key: "outsideTempLocalAggregated", sourceKind: "outdoor", sourceState: "available", effective: sourcesMatch(outsideTemperatureUsedSource, "Buitenunit") }),
-          ...renderHaSourceRows({
-            valueKey: "outsideTempHa",
-            validKey: "outsideTempHaValid",
-            forceVisible: isConfiguredSource("outsideTempSource", "HA input"),
-            effective: sourcesMatch(outsideTemperatureUsedSource, "HA input"),
-          }),
-          ...renderApiSourceRows({
-            valueKey: "apiInputOutsideTemperature",
-            validKey: "apiInputOutsideTemperatureValid",
-            ageKey: "apiInputOutsideTemperatureAge",
-            forceVisible: isConfiguredSource("outsideTempSource", "API input"),
-            effective: sourcesMatch(outsideTemperatureUsedSource, "API input"),
-          }),
-          ...renderMqttSourceRows({
-            valueKey: "mqttOutsideTemperature",
-            validKey: "mqttOutsideTemperatureValid",
-            forceVisible: isConfiguredSource("outsideTempSource", "MQTT"),
-            effective: sourcesMatch(outsideTemperatureUsedSource, "MQTT"),
+          ...renderExternalSourceRows("outsideTempSource", outsideTemperatureUsedSource, {
+            ha: ["outsideTempHa", "outsideTempHaValid"],
+            api: ["apiInputOutsideTemperature", "apiInputOutsideTemperatureValid", "apiInputOutsideTemperatureAge"],
+            mqtt: ["mqttOutsideTemperature", "mqttOutsideTemperatureValid"],
           }),
         ],
       }),
@@ -1055,28 +968,11 @@ import { escapeHtml } from "../core/html.js";
         measurementRows: [
           otAvailable ? renderSourceRow({ label: "OpenTherm", value: sourceStateText("otThermostatChEnable", "Toegestaan", "Geblokkeerd"), sourceKind: "ot", sourceState: "available", effective: sourcesMatch(heatingEnableUsedSource, "OpenTherm") }) : "",
           cicAvailable ? renderSourceRow({ label: "CIC", value: sourceStateText("cicChEnabled", "Toegestaan", "Geblokkeerd"), sourceKind: "cic", sourceState: "available", effective: sourcesMatch(heatingEnableUsedSource, "CIC") }) : "",
-          ...renderHaSourceRows({
-            valueKey: "heatingEnableHa",
-            validKey: "heatingEnableHaValid",
-            value: sourceStateText("heatingEnableHa", "Toegestaan", "Geblokkeerd"),
-            forceVisible: isConfiguredSource("heatingEnableSource", "HA input"),
-            effective: sourcesMatch(heatingEnableUsedSource, "HA input"),
-          }),
-          ...renderApiSourceRows({
-            valueKey: "apiInputHeatingEnable",
-            validKey: "apiInputHeatingEnableValid",
-            ageKey: "apiInputHeatingEnableAge",
-            value: sourceStateText("apiInputHeatingEnable", "Toegestaan", "Geblokkeerd"),
-            forceVisible: isConfiguredSource("heatingEnableSource", "API input"),
-            effective: sourcesMatch(heatingEnableUsedSource, "API input"),
-          }),
-          ...renderMqttSourceRows({
-            valueKey: "mqttHeatingEnable",
-            validKey: "mqttHeatingEnableValid",
-            value: sourceStateText("mqttHeatingEnable", "Toegestaan", "Geblokkeerd"),
-            forceVisible: isConfiguredSource("heatingEnableSource", "MQTT"),
-            effective: sourcesMatch(heatingEnableUsedSource, "MQTT"),
-          }),
+          ...renderExternalSourceRows("heatingEnableSource", heatingEnableUsedSource, {
+            ha: ["heatingEnableHa", "heatingEnableHaValid"],
+            api: ["apiInputHeatingEnable", "apiInputHeatingEnableValid", "apiInputHeatingEnableAge"],
+            mqtt: ["mqttHeatingEnable", "mqttHeatingEnableValid"],
+          }, (key) => sourceStateText(key, "Toegestaan", "Geblokkeerd")),
         ],
       }),
       buildSourceSignal({
@@ -1101,28 +997,11 @@ import { escapeHtml } from "../core/html.js";
         measurementRows: [
           renderSourceRow({ label: "Handmatig", value: sourceStateText("manualCoolingEnable", "Aan", "Uit"), sourceKind: "manual", sourceState: "available", effective: sourcesMatch(coolingEnableUsedSource, "Handmatig") }),
           otAvailable ? renderSourceRow({ label: "OpenTherm", value: sourceStateText("otThermostatCoolingEnable", "Toegestaan", "Geblokkeerd"), sourceKind: "ot", sourceState: "available", effective: sourcesMatch(coolingEnableUsedSource, "OpenTherm") }) : "",
-          ...renderHaSourceRows({
-            valueKey: "coolingEnableHa",
-            validKey: "coolingEnableHaValid",
-            value: sourceStateText("coolingEnableHa", "Toegestaan", "Geblokkeerd"),
-            forceVisible: isConfiguredSource("coolingEnableSource", "HA input"),
-            effective: sourcesMatch(coolingEnableUsedSource, "HA input"),
-          }),
-          ...renderApiSourceRows({
-            valueKey: "apiInputCoolingEnable",
-            validKey: "apiInputCoolingEnableValid",
-            ageKey: "apiInputCoolingEnableAge",
-            value: sourceStateText("apiInputCoolingEnable", "Toegestaan", "Geblokkeerd"),
-            forceVisible: isConfiguredSource("coolingEnableSource", "API input"),
-            effective: sourcesMatch(coolingEnableUsedSource, "API input"),
-          }),
-          ...renderMqttSourceRows({
-            valueKey: "mqttCoolingEnable",
-            validKey: "mqttCoolingEnableValid",
-            value: sourceStateText("mqttCoolingEnable", "Toegestaan", "Geblokkeerd"),
-            forceVisible: isConfiguredSource("coolingEnableSource", "MQTT"),
-            effective: sourcesMatch(coolingEnableUsedSource, "MQTT"),
-          }),
+          ...renderExternalSourceRows("coolingEnableSource", coolingEnableUsedSource, {
+            ha: ["coolingEnableHa", "coolingEnableHaValid"],
+            api: ["apiInputCoolingEnable", "apiInputCoolingEnableValid", "apiInputCoolingEnableAge"],
+            mqtt: ["mqttCoolingEnable", "mqttCoolingEnableValid"],
+          }, (key) => sourceStateText(key, "Toegestaan", "Geblokkeerd")),
         ],
       }),
       buildSourceSignal({
@@ -1147,24 +1026,10 @@ import { escapeHtml } from "../core/html.js";
         summarySource: coolingDewPointUsedSource,
         routeWarning: invalidSourceValueWarning("coolingDewPointSelected"),
         measurementRows: [
-          ...renderHaSourceRows({
-            valueKey: "coolingDewPointHa",
-            validKey: "coolingDewPointHaValid",
-            forceVisible: isConfiguredSource("coolingDewPointSource", "HA input"),
-            effective: sourcesMatch(coolingDewPointUsedSource, "HA input"),
-          }),
-          ...renderApiSourceRows({
-            valueKey: "apiInputCoolingDewPoint",
-            validKey: "apiInputCoolingDewPointValid",
-            ageKey: "apiInputCoolingDewPointAge",
-            forceVisible: isConfiguredSource("coolingDewPointSource", "API input"),
-            effective: sourcesMatch(coolingDewPointUsedSource, "API input"),
-          }),
-          ...renderMqttSourceRows({
-            valueKey: "mqttCoolingDewPoint",
-            validKey: "mqttCoolingDewPointValid",
-            forceVisible: isConfiguredSource("coolingDewPointSource", "MQTT"),
-            effective: sourcesMatch(coolingDewPointUsedSource, "MQTT"),
+          ...renderExternalSourceRows("coolingDewPointSource", coolingDewPointUsedSource, {
+            ha: ["coolingDewPointHa", "coolingDewPointHaValid"],
+            api: ["apiInputCoolingDewPoint", "apiInputCoolingDewPointValid", "apiInputCoolingDewPointAge"],
+            mqtt: ["mqttCoolingDewPoint", "mqttCoolingDewPointValid"],
           }),
         ],
       }),
@@ -1188,18 +1053,9 @@ import { escapeHtml } from "../core/html.js";
           ? ""
           : invalidSourceValueWarning("externalHeatDemandSelected"),
         measurementRows: [
-          ...renderHaSourceRows({
-            valueKey: "externalHeatDemandHa",
-            validKey: "externalHeatDemandHaValid",
-            forceVisible: isConfiguredSource("externalHeatDemandSource", "HA input"),
-            effective: sourcesMatch(externalHeatDemandUsedSource, "HA input"),
-          }),
-          ...renderApiSourceRows({
-            valueKey: "apiInputExternalHeatDemand",
-            validKey: "apiInputExternalHeatDemandValid",
-            ageKey: "apiInputExternalHeatDemandAge",
-            forceVisible: isConfiguredSource("externalHeatDemandSource", "API input"),
-            effective: sourcesMatch(externalHeatDemandUsedSource, "API input"),
+          ...renderExternalSourceRows("externalHeatDemandSource", externalHeatDemandUsedSource, {
+            ha: ["externalHeatDemandHa", "externalHeatDemandHaValid"],
+            api: ["apiInputExternalHeatDemand", "apiInputExternalHeatDemandValid", "apiInputExternalHeatDemandAge"],
           }),
         ],
       }),

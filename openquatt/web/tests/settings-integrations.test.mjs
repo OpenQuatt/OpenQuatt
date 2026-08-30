@@ -16,23 +16,14 @@ const { handleViewAction } = await import("../js/src/features/view-actions.js");
 const { captureSettingsFocusContinuity, restoreSettingsFocusContinuity } = await import("../js/src/core/settings-focus-continuity.js");
 const { renderSettingsOpenThermCicSection, renderSettingsSensorSelectionSection } = await import("../js/src/settings/integrations.js");
 
-const MQTT_SOURCE_SELECT_KEYS = [
-  "roomTempSource",
-  "roomSetpointSource",
-  "outsideTempSource",
-  "heatingEnableSource",
-  "coolingEnableSource",
-  "coolingDewPointSource",
+const MQTT_SOURCE_SELECTS = [
+  ["roomTempSource", "room-temperature"],
+  ["roomSetpointSource", "room-setpoint"],
+  ["outsideTempSource", "outside-temperature"],
+  ["heatingEnableSource", "heating-enable"],
+  ["coolingEnableSource", "cooling-enable"],
+  ["coolingDewPointSource", "cooling-dew-point"],
 ];
-
-const SOURCE_KEY_BY_SELECT_KEY = {
-  roomTempSource: "room-temperature",
-  roomSetpointSource: "room-setpoint",
-  outsideTempSource: "outside-temperature",
-  heatingEnableSource: "heating-enable",
-  coolingEnableSource: "cooling-enable",
-  coolingDewPointSource: "cooling-dew-point",
-};
 
 function getSelectMarkup(markup, key) {
   const match = markup.match(new RegExp(`<select[^>]+data-oq-field="${key}"[^>]*>([\\s\\S]*?)<\\/select>`));
@@ -196,29 +187,16 @@ test("focuspaneel groepeert alle signalen in vaste volgorde en rendert één ins
   assert.equal((markup.match(/data-oq-action="select-settings-source"/g) || []).length, 9);
   assert.equal((markup.match(/data-oq-focus-key="settings-source-[^"]+"/g) || []).length, 10);
   assert.equal((markup.match(/\sdata-oq-source-inspector(?:\s|>)/g) || []).length, 1);
-  assertMarkupOrder(markup, [
-    'data-source-category="room-outside"',
-    'data-source-category="water-circuit"',
-    'data-source-category="heating"',
-    'data-source-category="cooling"',
-  ]);
-  assertMarkupOrder(getCategoryMarkup(markup, "room-outside"), [
-    'data-source-key="room-temperature"',
-    'data-source-key="room-setpoint"',
-    'data-source-key="outside-temperature"',
-  ]);
-  assertMarkupOrder(getCategoryMarkup(markup, "water-circuit"), [
-    'data-source-key="water-supply"',
-    'data-source-key="flow-source"',
-  ]);
-  assertMarkupOrder(getCategoryMarkup(markup, "heating"), [
-    'data-source-key="external-heat-demand"',
-    'data-source-key="heating-enable"',
-  ]);
-  assertMarkupOrder(getCategoryMarkup(markup, "cooling"), [
-    'data-source-key="cooling-enable"',
-    'data-source-key="cooling-dew-point"',
-  ]);
+  const expectedSources = [
+    ["room-outside", ["room-temperature", "room-setpoint", "outside-temperature"]],
+    ["water-circuit", ["water-supply", "flow-source"]],
+    ["heating", ["external-heat-demand", "heating-enable"]],
+    ["cooling", ["cooling-enable", "cooling-dew-point"]],
+  ];
+  assertMarkupOrder(markup, expectedSources.map(([category]) => `data-source-category="${category}"`));
+  expectedSources.forEach(([category, sources]) => {
+    assertMarkupOrder(getCategoryMarkup(markup, category), sources.map((source) => `data-source-key="${source}"`));
+  });
   assert.match(getInspectorMarkup(markup), /data-source-key="room-temperature"/);
   assert.match(getInspectorMarkup(markup), /data-oq-focus-key="settings-source-detail-back"/);
   assert.match(getCategoryMarkup(markup, "room-outside"), /aria-label="Ingesteld: Auto\. Gebruikt: HA-invoer"/);
@@ -523,22 +501,19 @@ test("secundaire bronselecties blijven alleen zichtbaar wanneer hun hoofdkeuze z
 
 test("MQTT verdwijnt uit alle bronselecties en metingen wanneer de integratie uitstaat", () => {
   setSourceSelectionState(true);
-  MQTT_SOURCE_SELECT_KEYS.forEach((key) => {
-    const enabledMarkup = renderFocusedSource(SOURCE_KEY_BY_SELECT_KEY[key]);
+  MQTT_SOURCE_SELECTS.forEach(([key, sourceKey]) => {
+    const enabledMarkup = renderFocusedSource(sourceKey);
     assert.match(getSelectMarkup(enabledMarkup, key), /<option value="MQTT"/);
   });
   assert.match(renderFocusedSource("room-temperature"), /data-source-kind="mqtt"\s+data-source-state="valid"/);
 
   setSourceSelectionState(false);
-  MQTT_SOURCE_SELECT_KEYS.forEach((key) => {
-    const disabledMarkup = renderFocusedSource(SOURCE_KEY_BY_SELECT_KEY[key]);
+  MQTT_SOURCE_SELECTS.forEach(([key, sourceKey]) => {
+    const disabledMarkup = renderFocusedSource(sourceKey);
     assert.doesNotMatch(getSelectMarkup(disabledMarkup, key), /<option value="MQTT"/);
     assert.doesNotMatch(getInspectorMarkup(disabledMarkup), /data-source-kind="mqtt"/);
-  });
-
-  MQTT_SOURCE_SELECT_KEYS.forEach((key) => {
     state.entities[key].value = "MQTT";
-    const disabledCurrentMarkup = renderFocusedSource(SOURCE_KEY_BY_SELECT_KEY[key]);
+    const disabledCurrentMarkup = renderFocusedSource(sourceKey);
     const selectMarkup = getSelectMarkup(disabledCurrentMarkup, key);
     assert.match(selectMarkup, /<option value="MQTT" selected disabled>Kies een beschikbare bron<\/option>/);
     assert.doesNotMatch(selectMarkup, />MQTT<\/option>/);
