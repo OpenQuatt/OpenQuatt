@@ -209,6 +209,20 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
                 mock.patch.object(build_targets, "REPO_ROOT", repo_root),
                 mock.patch.object(build_targets, "TARGETS_FILE", targets_file),
             ):
+                self.assertEqual(
+                    [
+                        "openquatt-test.firmware.ota.bin",
+                        "openquatt-test.firmware.factory.bin",
+                        "openquatt-test-wifi.firmware.ota.bin",
+                        "openquatt-test-wifi.firmware.factory.bin",
+                        "openquatt-test-eth.firmware.ota.bin",
+                        "openquatt-test-eth.firmware.factory.bin",
+                        "openquatt-test-ota.manifest.json",
+                        "openquatt-test-wifi-ota.manifest.json",
+                        "openquatt-test-eth-ota.manifest.json",
+                    ],
+                    build_targets.release_asset_names(build_targets.load_targets()[0]),
+                )
                 build_targets.prepare_release_assets(
                     "v1.2.3",
                     "https://example.invalid/download",
