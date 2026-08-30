@@ -7,6 +7,16 @@
 
 namespace oq_thermal_actuator {
 
+inline uint32_t minimum_off_remaining_ms(uint32_t now_ms, uint32_t last_stop_ms, uint32_t minimum_off_ms) {
+  if (last_stop_ms == 0 || minimum_off_ms == 0) return 0;
+  const uint32_t elapsed_ms = now_ms - last_stop_ms;
+  return elapsed_ms < minimum_off_ms ? minimum_off_ms - elapsed_ms : 0;
+}
+
+constexpr bool valid_level_command(int control_level, int physical_level) {
+  return control_level > 0 && control_level <= 10 && physical_level > 0 && physical_level <= 20;
+}
+
 struct ManualGuardInputs {
   int requested_level;
   int mode_code;
@@ -30,14 +40,26 @@ inline std::string manual_guard(const ManualGuardInputs& in, const std::string& 
   if (in.startup_inhibit_remaining_s > 0) {
     return "opstartblokkering na reboot: nog " + std::to_string(in.startup_inhibit_remaining_s) + " s";
   }
-  if (in.mode_code <= 0) return "kies eerst verwarmen of koelen";
+  if (in.mode_code != 1 && in.mode_code != 2) return "kies eerst verwarmen of koelen";
   if (in.mode_conflict) return "conflicterende werkmodus tussen HP1 en HP2";
-  if (in.last_stop_ms > 0 && static_cast<uint32_t>(in.now_ms - in.last_stop_ms) < in.minimum_off_ms) {
-    const uint32_t remaining_s =
-        (in.minimum_off_ms - static_cast<uint32_t>(in.now_ms - in.last_stop_ms) + 999UL) / 1000UL;
+  const uint32_t remaining_ms = minimum_off_remaining_ms(in.now_ms, in.last_stop_ms, in.minimum_off_ms);
+  if (remaining_ms > 0) {
+    const uint32_t remaining_s = (remaining_ms + 999UL) / 1000UL;
     return "minimale uit-tijd: nog " + std::to_string(remaining_s) + " s";
   }
   return current_guard;
+}
+
+enum class PreflightBlock : uint8_t { NONE, SAFE_ZERO, DEFROST, COOLING_REST, HP_REST, MODE };
+
+inline PreflightBlock decide_preflight(int guarded_level, int previous_level, bool retained_hold, int expected_mode,
+                                       uint32_t hp_rest_remaining_ms, bool bypass_holds, bool cooling_start_blocked) {
+  if (bypass_holds) return PreflightBlock::SAFE_ZERO;
+  if (retained_hold) return PreflightBlock::DEFROST;
+  if (guarded_level > 0 && cooling_start_blocked) return PreflightBlock::COOLING_REST;
+  if (guarded_level > 0 && previous_level == 0 && hp_rest_remaining_ms > 0) return PreflightBlock::HP_REST;
+  if (guarded_level > 0 && expected_mode != 1 && expected_mode != 2) return PreflightBlock::MODE;
+  return guarded_level > 0 ? PreflightBlock::NONE : PreflightBlock::SAFE_ZERO;
 }
 
 inline void accumulate_runtime(uint32_t dt_ms, uint32_t& accumulated_ms, int& runtime_minutes) {

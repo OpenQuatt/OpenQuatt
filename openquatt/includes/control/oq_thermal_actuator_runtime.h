@@ -244,6 +244,7 @@ class Runtime {
   void write_level(bool is_hp1, int physical_level, bool force_write) {
     static const char* const level_options[21] = {"0",  "1",  "2",  "3",  "4",  "5",  "6",  "7",  "8",  "9", "10",
                                                   "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"};
+    if (physical_level < 0 || physical_level > 20) physical_level = 0;
     if (is_hp1) {
       const auto index = id(hp1_compressor_level).active_index();
       const int current = index.has_value() ? static_cast<int>(index.value()) : -1;
@@ -396,11 +397,27 @@ class Runtime {
     // -> valid mode -> frequency policy -> start/stop registration -> physical write.
     const auto incident_guard =
         oq_incident_actuator::decide({level, previous, incident.available_for_start, incident.must_stop});
-    level = incident_guard.guarded_level;
     if (incident_guard.bypass_runtime_and_defrost_holds) this->clear_retained_level(is_hp1);
     const auto retained = incident_guard.bypass_runtime_and_defrost_holds
                               ? oq_odu::RetainedLevel{}
                               : this->retained_level(is_hp1, cycle.frequency);
+    const bool cooling_start_blocked =
+        !cycle.manual_service_active && cycle.request_mode_code == 1 &&
+        oq_cooling::global_minimum_off_time_blocks_start(
+            cycle.cooling.remaining_ms,
+            cycle.restart_by_minimum_off_time && (cycle.cooling.confirmation_pending || cycle.cooling_stop_armed),
+            cycle.restart_by_minimum_off_time && cycle.cooling_stop_planned, previous);
+    const uint32_t hp_rest_remaining_ms = oq_thermal_actuator::minimum_off_remaining_ms(
+        cycle.config.now_ms, this->last_stop_ms_(is_hp1),
+        static_cast<uint32_t>(std::max(0, cycle.config.minimum_off_s)) * 1000UL);
+    const int expected_mode = this->requested_mode_code(is_hp1, true, cycle.request_mode_code,
+                                                        cycle.request_thermal_active, cycle.manual_service_active);
+    const bool defrost_hold = oq_odu::retained_level_should_override_request(retained, incident_guard.guarded_level,
+                                                                             cycle.manual_service_active);
+    const auto preflight = oq_thermal_actuator::decide_preflight(
+        incident_guard.guarded_level, previous, defrost_hold, expected_mode, hp_rest_remaining_ms,
+        incident_guard.bypass_runtime_and_defrost_holds, cooling_start_blocked);
+    level = preflight == oq_thermal_actuator::PreflightBlock::NONE ? incident_guard.guarded_level : 0;
     std::string block_reason;
     uint8_t candidate_reason = openquatt_decision_log::REASON_UNKNOWN;
     uint16_t candidate_aux_s = 0;
@@ -418,8 +435,6 @@ class Runtime {
       this->service_guard_(cycle, is_hp1) = "incidentbewaking blokkeert een nieuwe start";
     }
 
-    const bool defrost_hold =
-        oq_odu::retained_level_should_override_request(retained, level, cycle.manual_service_active);
     this->publish_defrost_hold_start(is_hp1, defrost_hold, retained, requested);
     if (defrost_hold) {
       char reason[96];
@@ -432,12 +447,7 @@ class Runtime {
       return retained.control_level;
     }
 
-    if (level > 0 && !cycle.manual_service_active && cycle.request_mode_code == 1 &&
-        oq_cooling::global_minimum_off_time_blocks_start(
-            cycle.cooling.remaining_ms,
-            cycle.restart_by_minimum_off_time && (cycle.cooling.confirmation_pending || cycle.cooling_stop_armed),
-            cycle.restart_by_minimum_off_time && cycle.cooling_stop_planned, previous)) {
-      level = 0;
+    if (preflight == oq_thermal_actuator::PreflightBlock::COOLING_REST) {
       candidate_reason = openquatt_decision_log::REASON_CANDIDATE_IN_REST;
       if (cycle.cooling.remaining_ms > 0) {
         const uint32_t remaining_s = (cycle.cooling.remaining_ms + 999UL) / 1000UL;
@@ -451,32 +461,20 @@ class Runtime {
       this->log_block_change(is_hp1, block_reason);
     }
 
-    const int minimum_off_s = std::max(0, cycle.config.minimum_off_s);
-    const uint32_t last_stop_ms = this->last_stop_ms_(is_hp1);
-    if (level > 0 && previous == 0 && minimum_off_s > 0 && last_stop_ms > 0 && cycle.config.now_ms > last_stop_ms) {
-      const uint32_t elapsed_ms = cycle.config.now_ms - last_stop_ms;
-      const uint32_t minimum_ms = static_cast<uint32_t>(minimum_off_s) * 1000UL;
-      if (elapsed_ms < minimum_ms) {
-        level = 0;
-        const uint32_t remaining_s = (minimum_ms - elapsed_ms + 999UL) / 1000UL;
-        char reason[144];
-        snprintf(reason, sizeof(reason), "minimum off-time remaining %u s after stop (requested %d)",
-                 static_cast<unsigned int>(remaining_s), requested);
-        block_reason = reason;
-        candidate_reason = openquatt_decision_log::REASON_CANDIDATE_IN_REST;
-        candidate_aux_s = this->cap_seconds_(remaining_s);
-        this->service_guard_(cycle, is_hp1) = "minimale uit-tijd: nog " + std::to_string(remaining_s) + " s";
-        this->log_block_change(is_hp1, reason);
-      }
+    if (preflight == oq_thermal_actuator::PreflightBlock::HP_REST) {
+      const uint32_t remaining_s = (hp_rest_remaining_ms + 999UL) / 1000UL;
+      char reason[144];
+      snprintf(reason, sizeof(reason), "minimum off-time remaining %u s after stop (requested %d)",
+               static_cast<unsigned int>(remaining_s), requested);
+      block_reason = reason;
+      candidate_reason = openquatt_decision_log::REASON_CANDIDATE_IN_REST;
+      candidate_aux_s = this->cap_seconds_(remaining_s);
+      this->service_guard_(cycle, is_hp1) = "minimale uit-tijd: nog " + std::to_string(remaining_s) + " s";
+      this->log_block_change(is_hp1, reason);
     }
 
     int applied = level;
-    const int expected_mode = level > 0
-                                  ? this->requested_mode_code(is_hp1, true, cycle.request_mode_code,
-                                                              cycle.request_thermal_active, cycle.manual_service_active)
-                                  : 0;
-    if (applied > 0 && expected_mode <= 0) {
-      applied = 0;
+    if (preflight == oq_thermal_actuator::PreflightBlock::MODE) {
       block_reason = "no valid thermal mode for compressor request";
       candidate_reason = openquatt_decision_log::REASON_CANDIDATE_UNAVAILABLE;
       this->service_guard_(cycle, is_hp1) = "geen geldige werkmodus voor compressorstart";
@@ -497,7 +495,7 @@ class Runtime {
                                                    expected_mode, applied)
                     : oq_odu::resolve_automatic_level(cycle.frequency.configured_v2, cycle.frequency.snapshot(is_hp1),
                                                       expected_mode, applied);
-      if (command.control_level <= 0 || command.physical_level <= 0) {
+      if (!oq_thermal_actuator::valid_level_command(command.control_level, command.physical_level)) {
         applied = 0;
         command = {};
         block_reason = "runtime frequency table cannot map compressor request";
