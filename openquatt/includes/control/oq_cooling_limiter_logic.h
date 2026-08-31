@@ -208,7 +208,7 @@ inline int clamp_level(int value, int min_value, int max_value) {
   return std::max(min_value, std::min(max_value, value));
 }
 
-inline bool finite_float(float value) { return !isnan(value); }
+inline bool finite_float(float value) { return isfinite(value); }
 
 inline float hard_dew_restart_gap(const LimiterInput& in, const LimiterTuning& tuning) {
   return tuning.hard_dew_stop_base_gap_c + tuning.hard_dew_stop_margin_gain_c * in.safety_margin_c +
