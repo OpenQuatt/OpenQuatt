@@ -6,6 +6,7 @@
 #include <cstring>
 #include <string>
 
+#include "../performance/hp_perf_frequency.h"
 #include "oq_supervisory_state_logic.h"
 
 #if defined(OQ_TOPOLOGY_DUO)

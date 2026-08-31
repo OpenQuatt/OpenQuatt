@@ -23,6 +23,7 @@ class SupervisoryStateRuntimeContractTest(unittest.TestCase):
         self.assertLessEqual(len(YAML.splitlines()), 700)
 
     def test_runtime_owns_complete_supervisory_side_effects(self) -> None:
+        self.assertIn('#include "../performance/hp_perf_frequency.h"', RUNTIME)
         for marker in (
             "oq_supervisory_power_runtime::runtime().tick",
             "oq_supervisory_safety_runtime::runtime().tick",
