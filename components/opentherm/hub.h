@@ -94,6 +94,9 @@ class OpenthermHub final : public Component {
   uint32_t late_response_timeouts_ = 0;
   uint32_t max_wire_response_us_ = 0;
   uint32_t max_processing_latency_us_ = 0;
+  transport_diagnostics::SlowPollStats slow_transport_poll_stats_;
+  OperationMode last_slow_transport_mode_before_ = IDLE;
+  OperationMode last_slow_transport_mode_after_ = IDLE;
   OperationMode last_mode_ = IDLE;
   OpenthermData last_request_;
 
@@ -120,6 +123,8 @@ class OpenthermHub final : public Component {
   void check_cadence_(uint32_t started_us) const;
   bool should_skip_loop_(uint32_t cur_time_us) const;
   void warn_if_slow_(const char* phase, uint32_t started_us) const;
+  void record_transport_poll_(transport_diagnostics::PollResult result, OperationMode mode_before,
+                              OperationMode mode_after, uint32_t elapsed_us);
   void log_transport_diagnostics_() const;
   void sync_loop_();
 
