@@ -42,7 +42,7 @@ entities, configuratie, koppelingen en één of enkele runtime-aanroepen.
 | Cooling-kern | Herstel/timing, vraag/dispatch en safety/handover | Gereed | #573, #577, #578 |
 | Thermal Request | Arbitrage en actuatorrequests | Gereed | #581 |
 | Supervisory safety | Vermogenslimiet plus flow-/frost-interlocks | Gereed | #582 |
-| Supervisory state-machine | Resterende hoofdloop naar C++ | Implementatie en HIL gereed; audit/PR loopt | Nog te openen |
+| Supervisory state-machine | Resterende hoofdloop naar C++ | Klaar voor review | #583 |
 | Strategy runtimes | Heating Curve, Power House, Cooling en managerbinding | Gepland | Nog te openen |
 | Hydraulics en outputs | Flow Control, Thermal Limits en Auxiliary Relay | Gepland | Nog te openen |
 | Boiler runtime | Commandocapture, outputcontroller en transportbinding | Gepland | Nog te openen |
