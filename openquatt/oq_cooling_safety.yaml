@@ -70,10 +70,7 @@ select:
     entity_category: config
     optimistic: true
     restore_value: true
-    options:
-      - "Dew point required"
-      - "Allow without dew point, use dew point approximation"
-      - "Allow without dew point, user responsibility"
+    options: ["Dew point required", "Allow without dew point, use dew point approximation", "Allow without dew point, user responsibility"]
     initial_option: Dew point required
 binary_sensor:
   - platform: template
@@ -160,7 +157,8 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      return oq_cooling_safety::runtime().selected_dew_point((uint32_t) millis(), (uint32_t)(${oq_selected_input_stale_hold_s}UL * 1000UL));
+      return oq_cooling_safety::runtime().selected_dew_point((uint32_t) millis(),
+                                                            (uint32_t) (${oq_selected_input_stale_hold_s}UL * 1000UL));
     filters:
       - exponential_moving_average:
           alpha: 0.3

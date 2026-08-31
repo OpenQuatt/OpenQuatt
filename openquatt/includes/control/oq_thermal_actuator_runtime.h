@@ -74,7 +74,6 @@ class Runtime {
                                     restart_by_minimum_off_time),
     };
     this->publish_defrost_events(config.now_ms);
-
     const bool hp1_was_cooling = this->applied_cooling_[0] || this->applied_mode_is_cooling_(true, request_mode_code);
 #if OQ_TOPOLOGY_DUO
     const bool hp2_was_cooling = this->applied_cooling_[1] || this->applied_mode_is_cooling_(false, request_mode_code);
@@ -88,12 +87,10 @@ class Runtime {
         cycle.cooling_stop_planned || oq_cooling::cooling_stop_is_planned(hp2_was_cooling, id(hp2_last_applied_level),
                                                                           id(oq_cooling_request_hp2_level));
 #endif
-
     int hp1_applied = 0;
     int hp2_applied = 0;
 #if OQ_TOPOLOGY_DUO
-    const bool hp2_first = !manual_service_active && request_mode_code == 1 &&
-                           oq_cooling::apply_hp2_before_hp1_for_cooling_handover(hp1_was_cooling, hp2_was_cooling);
+    const bool hp2_first = oq_cooling::apply_hp2_before_hp1_for_cooling_handover(hp1_was_cooling, hp2_was_cooling);
     if (hp2_first) {
       hp2_applied = this->apply_level_(false, id(oq_actuator_hp2_req), hp2_was_cooling, cycle);
       hp1_applied = this->apply_level_(true, id(oq_actuator_hp1_req), hp1_was_cooling, cycle);
@@ -115,7 +112,6 @@ class Runtime {
                                          this->requested_mode_code(false, hp2_applied > 0, request_mode_code,
                                                                    request_thermal_active, manual_service_active));
 #endif
-
     if (manual_service_active) {
       this->publish_manual_guard(static_cast<int>(roundf(id(oq_manual_hp1_level).state)),
                                  static_cast<int>(roundf(id(oq_manual_hp2_level).state)), hp1_applied, hp2_applied,
@@ -133,7 +129,6 @@ class Runtime {
     if (!id(oq_cooling_boot_min_off_elapsed) && now_ms >= minimum_off_ms) {
       id(oq_cooling_boot_min_off_elapsed) = true;
     }
-
     this->confirm_cooling_stop_(true, now_ms);
 #if OQ_TOPOLOGY_DUO
     this->confirm_cooling_stop_(false, now_ms);
@@ -413,16 +408,17 @@ class Runtime {
     const auto retained = incident_guard.bypass_runtime_and_defrost_holds
                               ? oq_odu::RetainedLevel{}
                               : this->retained_level(is_hp1, cycle.frequency);
-    const bool cooling_start_blocked =
-        !cycle.manual_service_active && cycle.request_mode_code == 1 &&
-        oq_cooling::global_minimum_off_time_blocks_start(
-            cycle.cooling.remaining_ms, cycle.cooling.confirmation_pending || cycle.cooling_stop_armed,
-            cycle.restart_by_minimum_off_time && cycle.cooling_stop_planned, previous);
+    const int expected_mode = this->requested_mode_code(is_hp1, true, cycle.request_mode_code,
+                                                        cycle.request_thermal_active, cycle.manual_service_active);
+    const bool cooling_start_blocked = oq_cooling::cooling_stop_confirmation_blocks_start(
+                                           cycle.cooling.confirmation_pending, cycle.cooling_stop_armed, previous) ||
+                                       (!cycle.manual_service_active && cycle.request_mode_code == 1 &&
+                                        oq_cooling::global_minimum_off_time_blocks_start(
+                                            cycle.cooling.remaining_ms, false,
+                                            cycle.restart_by_minimum_off_time && cycle.cooling_stop_planned, previous));
     const uint32_t hp_rest_remaining_ms = oq_thermal_actuator::minimum_off_remaining_ms(
         cycle.config.now_ms, this->last_stop_ms_(is_hp1),
         static_cast<uint32_t>(std::max(0, cycle.config.minimum_off_s)) * 1000UL);
-    const int expected_mode = this->requested_mode_code(is_hp1, true, cycle.request_mode_code,
-                                                        cycle.request_thermal_active, cycle.manual_service_active);
     const bool defrost_hold = oq_odu::retained_level_should_override_request(retained, incident_guard.guarded_level,
                                                                              cycle.manual_service_active);
     const auto preflight = oq_thermal_actuator::decide_preflight(
@@ -521,7 +517,7 @@ class Runtime {
       this->publish_optimizer_reason("defrost_protect_hold");
       return retained.control_level;
     }
-    if (applied == 0 && previous > 0 && was_cooling) {
+    if (oq_cooling::cooling_stop_requires_confirmation(was_cooling, previous, incident.running_confirmed, applied)) {
       this->cooling_confirmation_pending_(is_hp1) = true;
       cycle.cooling_stop_armed = true;
     }
@@ -553,7 +549,7 @@ class Runtime {
       }
     }
     if (applied == 0 && !safe_mode_written) {
-      const bool register_initial_stop = previous > 0 || register_incident_stop;
+      const bool register_initial_stop = previous > 0 || incident.running_confirmed || register_incident_stop;
       const bool notify_stop = oq_incident_actuator::requires_stop_notification(
           register_initial_stop, incident.must_stop, incident.stop_confirmed, incident.stop_confirmation_pending);
       oq_incident_actuator::apply_stop_notification_before_safe_write(
@@ -610,8 +606,10 @@ class Runtime {
   }
 
   bool applied_mode_is_cooling_(bool is_hp1, int request_mode_code) const {
-    return this->previous_applied_(is_hp1) > 0 && (request_mode_code == 1 || id(oq_control_mode_code) == 5 ||
-                                                   this->mode_is(is_hp1, 1) || this->mode_target_is(is_hp1, 1));
+    const auto incident = id(oq_incident_manager).get_outputs(is_hp1 ? 1U : 2U);
+    const bool running = this->previous_applied_(is_hp1) > 0 || incident.running_confirmed;
+    return running && (request_mode_code == 1 || id(oq_control_mode_code) == 5 || this->mode_is(is_hp1, 1) ||
+                       this->mode_target_is(is_hp1, 1));
   }
 
   void publish_topology_change_(int hp1_applied, int hp2_applied, uint32_t now_ms) {

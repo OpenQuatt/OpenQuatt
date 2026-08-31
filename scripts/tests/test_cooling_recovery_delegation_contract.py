@@ -14,7 +14,7 @@ class CoolingRecoveryDelegationContractTest(unittest.TestCase):
         self.assertIn("select_dew_point(", SAFETY_POLICY)
         self.assertNotIn("id(oq_cooling_min_off_stop_pending) = false", YAML)
         self.assertIn("id(oq_cooling_min_off_stop_pending) = false", ACTUATOR_RUNTIME)
-        for marker in ("applied_cooling_[2]", "cycle.cooling.confirmation_pending || cycle.cooling_stop_armed",
+        for marker in ("applied_cooling_[2]", "cooling_stop_confirmation_blocks_start(",
                        "next_applied_cooling("): self.assertIn(marker, ACTUATOR_RUNTIME)
         self.assertIn("(int) ${oq_cooling_minimum_off_min_s}", ACTUATOR_YAML)
         self.assertIn('oq_cooling_minimum_off_min_s: "240"', SUBSTITUTIONS)

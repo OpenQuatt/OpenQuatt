@@ -28,19 +28,12 @@ int main() {
   assert(select_dew_point(1, sources, 100, 250, state).held &&
          isnan(select_dew_point(2, sources, 101, 250, state).value));
   bool latched = false;
-  RoomRequestInput in;
-  in.room_valid = in.setpoint_valid = true;
-  in.room_c = in.setpoint_c = 20;
-  in.on_delta_c = 0.4f, in.off_delta_c = 0.1f;
-  assert(!update_room_request(in, latched));
-  in.room_c = 20.41f;
-  assert(update_room_request(in, latched) && latched);
-  in.room_c = 20.1f;
-  assert(update_room_request(in, latched));
-  in.room_c = 20.09f;
-  assert(!update_room_request(in, latched) && !latched);
-  in.room_c = INFINITY;
-  assert(!update_room_request(in, latched));
+  RoomRequestInput in{true, false, false, true, true, 20, 20, 0.4f, 0.1f};
+  auto demand = [&](float room_c) {
+    in.room_c = room_c;
+    return update_room_request(in, latched);
+  };
+  assert(!demand(20) && demand(20.41f) && latched && demand(20.1f) && !demand(20.09f) && !latched && !demand(INFINITY));
   in.room_required = false, in.enabled_valid = in.enabled = true;
   assert(update_room_request(in, latched) && !latched);
   assert(core_permitted(false, false, true, true, false, false));
@@ -52,5 +45,4 @@ int main() {
          isnan(fallback_minimum_supply(true, INFINITY, false, NAN, false, NAN)));
   assert(fallback_minimum_supply(true, 24, true, 20, false, NAN) == 21.5f &&
          fallback_minimum_supply(true, 24, true, 20, true, 21) == 20.0f && isnan(clamp_finite(INFINITY, 0, 4)));
-  return 0;
 }
