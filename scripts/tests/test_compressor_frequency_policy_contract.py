@@ -5,6 +5,9 @@ ROOT = Path(__file__).resolve().parents[2]
 HP_IO = (ROOT / "openquatt" / "oq_HP_io.yaml").read_text()
 SUPERVISORY = (ROOT / "openquatt" / "oq_supervisory_controlmode.yaml").read_text()
 REQUEST = (ROOT / "openquatt" / "oq_thermal_request_control.yaml").read_text()
+REQUEST_RUNTIME = (
+    ROOT / "openquatt/includes/control/oq_thermal_request_runtime.h"
+).read_text()
 ACTUATOR = (ROOT / "openquatt/includes/control/oq_thermal_actuator_runtime.h").read_text()
 STRATEGIES = "\n".join(
     (ROOT / "openquatt" / name).read_text()
@@ -50,12 +53,12 @@ class CompressorFrequencyPolicyContractTest(unittest.TestCase):
         self.assertIn("return 0;", POLICY)
 
     def test_request_and_actuator_enforce_the_policy_independently(self) -> None:
-        self.assertIn("frequency_runtime.pick_allowed_level(", REQUEST)
+        self.assertIn("frequency.pick_allowed_level(", REQUEST_RUNTIME)
         self.assertIn("cycle.frequency.pick_allowed_level(", ACTUATOR)
-        for source in (REQUEST, ACTUATOR):
+        for source in (REQUEST_RUNTIME, ACTUATOR):
             self.assertIn("oq_frequency_runtime::capture()", source)
         self.assertIn("const bool use_frequency_policy = !cycle.manual_service_active", ACTUATOR)
-        self.assertIn("Revalidate the final request", REQUEST)
+        self.assertGreaterEqual(REQUEST_RUNTIME.count("this->allowed_("), 4)
 
     def test_legacy_level_settings_and_migration_storage_are_removed(self) -> None:
         for removed in (
@@ -82,7 +85,7 @@ class CompressorFrequencyPolicyContractTest(unittest.TestCase):
         self.assertIn("level_allowed(hp1, level)", STRATEGIES)
 
     def test_runtime_inputs_are_captured_once_per_control_callback(self) -> None:
-        control_sources = STRATEGIES + REQUEST + ACTUATOR
+        control_sources = STRATEGIES + REQUEST_RUNTIME + ACTUATOR
         self.assertEqual(control_sources.count("oq_frequency_runtime::capture()"), 5)
         for inline_adapter in (
             "auto runtime_frequency_snapshot",

@@ -8,6 +8,9 @@ HP_IO = (ROOT / "openquatt" / "oq_HP_io.yaml").read_text()
 MANUAL_HP = (ROOT / "openquatt" / "oq_manual_hp.yaml").read_text()
 ACTUATOR = (ROOT / "openquatt/includes/control/oq_thermal_actuator_runtime.h").read_text()
 REQUEST_CONTROL = (ROOT / "openquatt" / "oq_thermal_request_control.yaml").read_text()
+REQUEST_RUNTIME = (
+    ROOT / "openquatt/includes/control/oq_thermal_request_runtime.h"
+).read_text()
 LEVEL_HEADER = (
     ROOT / "openquatt" / "includes" / "odu" / "oq_odu_compressor_levels.h"
 ).read_text()
@@ -55,14 +58,9 @@ class V2CompressorLevelContractTest(unittest.TestCase):
 
     def test_manual_request_surface_exposes_f20(self) -> None:
         self.assertEqual(MANUAL_HP.count("max_value: 20"), 2)
-        self.assertIn(
-            "frequency_runtime.configured_v2, frequency_runtime.snapshot(true)",
-            REQUEST_CONTROL,
-        )
-        self.assertIn(
-            "frequency_runtime.configured_v2, frequency_runtime.snapshot(false)",
-            REQUEST_CONTROL,
-        )
+        self.assertIn("this->physical_limit_(true", REQUEST_RUNTIME)
+        self.assertIn("this->physical_limit_(false", REQUEST_RUNTIME)
+        self.assertIn("oq_thermal_request_runtime::runtime().tick", REQUEST_CONTROL)
 
     def test_actuator_keeps_control_and_physical_domains_separate(self) -> None:
         self.assertIn("level_options[21]", ACTUATOR)
