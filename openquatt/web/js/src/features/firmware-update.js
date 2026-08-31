@@ -759,6 +759,9 @@ import { render } from "../core/render-scheduler.js";
     if (!isFirmwareEntityAlignedWithChannel()) {
       return false;
     }
+    if (isFirmwarePrToDevTransition()) {
+      return true;
+    }
     const relation = getFirmwareVersionRelation();
     if (relation !== null) {
       return relation > 0;
@@ -795,7 +798,13 @@ import { render } from "../core/render-scheduler.js";
     const current = getFirmwareCurrentVersion(entity) || "—";
     let latest = isFirmwareEntityAlignedWithChannel(entity) ? getFirmwareLatestVersion(entity) : "";
     const relation = getFirmwareVersionRelation(entity);
-    if (!isFirmwareUpdateChecking() && relation !== null && relation <= 0 && !isFirmwareDowngradeAvailable(entity)) {
+    if (
+      !isFirmwareUpdateChecking()
+      && relation !== null
+      && relation <= 0
+      && !isFirmwareDowngradeAvailable(entity)
+      && !isFirmwarePrToDevTransition(entity)
+    ) {
       latest = "";
     }
     return {
@@ -811,6 +820,15 @@ import { render } from "../core/render-scheduler.js";
       return null;
     }
     return compareFirmwareVersions(latest, current);
+  }
+
+  function isFirmwarePrToDevTransition(entity = getFirmwareUpdateEntity() || {}) {
+    const current = parseFirmwareVersion(getFirmwareCurrentVersion(entity));
+    const latest = parseFirmwareVersion(getFirmwareLatestVersion(entity));
+    return getFirmwareChannelLabel().toLowerCase() === "dev"
+      && isFirmwareEntityAlignedWithChannel(entity, "dev")
+      && current?.prereleaseTag.toLowerCase() === "pr"
+      && latest?.prereleaseTag.toLowerCase() === "dev";
   }
 
   export function getFirmwareReleaseUrlFallback(channel = getFirmwareChannelLabel()) {
@@ -1098,6 +1116,9 @@ import { render } from "../core/render-scheduler.js";
     if (isFirmwareDowngradeAvailable()) {
       const { current, latest } = getFirmwareUpdateVersions();
       return `De stabiele main-release ${latest} is ouder dan de draaiende dev-build ${current}. Je kunt bewust teruggaan naar main.`;
+    }
+    if (isFirmwarePrToDevTransition()) {
+      return "Dev-firmware kan de PR-testfirmware vervangen.";
     }
     if (isFirmwareUpdateAvailable()) {
       return "Er staat een nieuwere firmware klaar.";

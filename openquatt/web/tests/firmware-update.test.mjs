@@ -55,6 +55,33 @@ function setDevToMainDowngradeState() {
   state.updateModalOpen = true;
 }
 
+function setPrToDevState() {
+  state.drafts = {};
+  state.entities = {
+    firmwareUpdate: {
+      state: "UPDATE AVAILABLE",
+      value: "v0.49.0-dev.740+2f65a08",
+      current_version: "v0.49.0-pr.555.1321+222bde1",
+      latest_version: "v0.49.0-dev.740+2f65a08",
+      release_url: "https://github.com/OpenQuatt/OpenQuatt/releases/tag/dev-latest",
+    },
+    firmwareUpdateChannel: { state: "dev", value: "dev", option: ["main", "dev"] },
+    projectVersionText: { state: "v0.49.0-pr.555.1321+222bde1", value: "v0.49.0-pr.555.1321+222bde1" },
+    releaseChannelText: { state: "dev", value: "dev" },
+  };
+  state.updateCheckBusy = false;
+  state.updateInstallBusy = false;
+  state.updateInstallCompleted = false;
+  state.updateInstallCompletedVersion = "";
+  state.updateInstallMode = "";
+  state.updateInstallTargetVersion = "";
+  state.updateInstallPhaseHint = "";
+  state.updateInstallProgressHint = Number.NaN;
+  state.updateInstallStatusPollObserved = false;
+  state.firmwareDowngradeConfirmedVersion = "";
+  state.updateModalOpen = true;
+}
+
 test("PR firmware uses deterministic release URLs without the GitHub REST API", () => {
   const target = {
     available: true,
@@ -68,6 +95,22 @@ test("PR firmware uses deterministic release URLs without the GitHub REST API", 
     label: "PR 395 · Heatpump Controller Q Duo Wi-Fi",
   });
   assert.equal(getFirmwareTestAssetUrls("395/../../dev-latest", target), null);
+});
+
+test("PR test firmware can return to the dev channel", () => {
+  setPrToDevState();
+
+  assert.equal(isFirmwareUpdateAvailable(), true);
+  assert.deepEqual(getFirmwareUpdateVersions(), {
+    current: "v0.49.0-pr.555.1321+222bde1",
+    latest: "v0.49.0-dev.740+2f65a08",
+  });
+  assert.equal(getUpdateStatus(), "Beschikbaar");
+  assert.match(getFirmwareModalCopy(), /Dev-firmware kan de PR-testfirmware vervangen/);
+
+  const modal = renderUpdateModal();
+  const installButton = modal.match(/<button class="oq-helper-button[^"]*" type="button" data-oq-action="install-firmware-update"[^>]*>/)?.[0] || "";
+  assert.doesNotMatch(installButton, /disabled/);
 });
 
 test("PR firmware starts with one complete render before the first device write", async (t) => {
