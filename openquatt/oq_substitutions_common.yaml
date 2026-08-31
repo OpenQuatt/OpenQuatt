@@ -186,6 +186,7 @@ oq_cooling_limiter_stop_confirm_s: "30"               # Confirm time before soft
 oq_cooling_oil_return_hold_s: "1200"                  # Maximum oil-return recovery window; floor-guard modes clear earlier after recovery [s].
 oq_cop_min_input_w: "10.0"                            # Minimum electrical input for a valid COP calculation [W].
 oq_hp_min_off_s: "240"                                # Minimum per-HP off-time before any restart [s].
+oq_hp_min_runtime_min_s: "300"                        # Build-time floor for the user-configurable compressor runtime [s].
 oq_optimizer_penalty_per_w: "5.0"                     # Cost factor above soft limit [cost/W].
 oq_optimizer_topology_power_margin_w: "150.0"         # Required power delta before a single<->duo topology switch counts as a meaningful efficiency gain [W].
 oq_optimizer_topology_heat_advantage_w: "450.0"       # Required heat-match advantage before a less-efficient topology may override the efficiency-first choice [W].

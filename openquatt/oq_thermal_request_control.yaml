@@ -250,7 +250,7 @@ number:
     icon: mdi:timer-cog-outline
     entity_category: config
     unit_of_measurement: "s"
-    min_value: 300
+    min_value: ${oq_hp_min_runtime_min_s}
     max_value: 3600
     step: 30
     mode: slider
@@ -940,7 +940,7 @@ interval:
           // Keep the runtime floor hard in code as well. Older installs may still
           // restore a pre-migration numeric value such as 60, even though the UI
           // slider now starts at 300 s.
-          if (min_rt_s > 0 && min_rt_s < 300) min_rt_s = 300;
+          if (min_rt_s > 0 && min_rt_s < (int) ${oq_hp_min_runtime_min_s}) min_rt_s = (int) ${oq_hp_min_runtime_min_s};
           const uint32_t min_rt_ms = (min_rt_s > 0) ? ((uint32_t) min_rt_s * 1000UL) : 0;
           auto min_runtime_hold_level = [&](bool is_hp1)->int {
             const uint32_t last_real_start_ms = is_hp1 ? id(hp1_last_real_heat_start_ms) : id(hp2_last_real_heat_start_ms);
