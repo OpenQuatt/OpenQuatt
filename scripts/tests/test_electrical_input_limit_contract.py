@@ -1,14 +1,13 @@
 from pathlib import Path
 import unittest
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SUPERVISOR = (ROOT / "openquatt" / "oq_supervisory_controlmode.yaml").read_text()
 POWER_HOUSE = (ROOT / "openquatt" / "oq_power_house_strategy.yaml").read_text()
+DISPATCH = (ROOT / "openquatt" / "includes" / "control" / "oq_power_house_dispatch_logic.h").read_text()
 HEATING_CURVE = (ROOT / "openquatt" / "oq_heating_curve_strategy.yaml").read_text()
 COOLING = (ROOT / "openquatt" / "oq_cooling_strategy.yaml").read_text()
 HP_IO = (ROOT / "openquatt" / "oq_HP_io.yaml").read_text()
-
 
 class ElectricalInputLimitContractTest(unittest.TestCase):
     def test_setting_is_persistent_and_keeps_generation_defaults(self) -> None:
@@ -49,8 +48,10 @@ class ElectricalInputLimitContractTest(unittest.TestCase):
         )
 
     def test_power_house_alone_uses_predictive_thresholds(self) -> None:
-        self.assertEqual(POWER_HOUSE.count("const float P_EL_SOFT_W = id(oq_power_limit_soft_w);"), 2)
-        self.assertEqual(POWER_HOUSE.count("const float P_EL_PEAK_W = id(oq_power_limit_peak_w);"), 2)
+        self.assertEqual(POWER_HOUSE.count("id(oq_power_limit_soft_w)"), 1)
+        self.assertEqual(POWER_HOUSE.count("id(oq_power_limit_peak_w)"), 1)
+        self.assertIn("electrical_limits_valid", DISPATCH)
+        self.assertIn("result.electrical_w > tuning.peak_limit_w", DISPATCH)
         self.assertIn("id(oq_power_cap_f)", HEATING_CURVE)
         self.assertIn("id(oq_power_cap_f)", COOLING)
         self.assertNotIn("oq_power_limit_peak_w", HEATING_CURVE)
@@ -62,7 +63,6 @@ class ElectricalInputLimitContractTest(unittest.TestCase):
         self.assertNotIn("if (isnan(demand_continuous))", HEATING_CURVE)
         paths = ("openquatt/oq_heating_curve_strategy.yaml", "openquatt/includes/control/oq_heating_curve_logic.h", "tests/host/heating_curve_restart_logic_test.cpp", "scripts/tests/test_electrical_input_limit_contract.py")
         self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1879)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,27 +1,12 @@
 # ==============================================================================
 # OpenQuatt - Power House Strategy
 # ==============================================================================
-#
-# Goal:
-#   Owns the complete Power House strategy implementation and its compressor-request output.
-#
-# Ownership:
-#   - Computes Power House requested heat and compatible demand from room/outside state
-#   - Publishes Power House tuning and diagnostics
-#   - Computes filtered Power House demand from oq_demand_raw
-#   - Chooses the Power House topology / compressor requests
-#   - Publishes request outputs for oq_thermal_request_control through the
-#     shared request interface before downstream actuator handling
-# ==============================================================================
 
 globals:
   - id: oq_phouse_demand_external
     type: bool
     restore_value: false
     initial_value: 'false'
-  # Power House requested thermal power (W).
-  # This is strategy-specific diagnostics/state and is not part of the generic
-  # heating-strategy interface.
   - id: oq_phouse_req_w
     type: float
     restore_value: false
@@ -37,10 +22,6 @@ globals:
     restore_value: false
     initial_value: '0'
 
-  # Internal comfort memory that slowly builds when the room stays on the cold
-  # side for longer. This nudges the effective cold-side target upward so Power
-  # House behaves more like the older warm-leaning model, without exposing the
-  # old bias/tau controls in the UI.
   - id: oq_phouse_comfort_memory_c
     type: float
     restore_value: false
@@ -71,11 +52,6 @@ globals:
     restore_value: false
     initial_value: '0'
 
-  # 0=idle, 1=fallback_idle, 2=fallback_single_hp1, 3=fallback_single_hp2,
-  # 4=fallback_duo, 5=keep_current, 6=hold_active, 7=defrost_hold,
-  # 8=better_heat, 9=soft_guard, 10=less_power, 11=no_candidate,
-  # 12=defrost_boost, 13=runtime_lead, 14=single_topology,
-  # 15=oil_return_hold
   - id: oq_ph_request_reason_code
     type: int
     restore_value: false
@@ -106,7 +82,7 @@ select:
     set_action:
       then:
         - lambda: |-
-            // Preset wrapper around the canonical rise/fall response-time knobs.
+            // Map the response preset to the canonical rise/fall knobs.
             auto set_number_value = [](auto *num, float value) {
               if (num == nullptr) return;
               auto c = num->make_call();
@@ -246,7 +222,6 @@ number:
     initial_value: 1
 
 text_sensor:
-  # DEBUG-RUNTIME START: Duo Power House request reason
   - platform: template
     id: oq_duo_optimizer_reason
     name: "Duo optimizer reason"
@@ -261,8 +236,6 @@ text_sensor:
       #else
       return std::string("single_topology");
       #endif
-  # DEBUG-RUNTIME END
-
   - platform: template
     id: oq_phouse_demand_source
     name: "Power House – demand source"
@@ -270,7 +243,6 @@ text_sensor:
     entity_category: diagnostic
     update_interval: ${oq_diagnostic_update_interval_s}s
     lambda: |-
-      // Separate a live external feedforward from a fallback to the house model.
       return std::string(id(oq_phouse_demand_external) ? "external" : "model");
 
 sensor:
@@ -292,8 +264,6 @@ sensor:
       if (isnan(Tout) || isnan(Tc) || isnan(T0) || isnan(Pr)) return NAN;
       if (T0 <= Tc + ${oq_temp_guard_delta_c}f) return NAN;
 
-      // Always the modelled value, also while an external demand is driving the
-      // feedforward: it stays the reference the strategy falls back to.
       return oq_power_house::modelled_house_power_w(T0, Tc, Tout, Pr);
 
   - platform: template
@@ -344,16 +314,11 @@ interval:
     then:
       - lambda: |-
           // Power House strategy: owns filtered demand and PH topology selection.
-          static bool hp1_prev_valve_def = false;
-          static bool hp2_prev_valve_def = false;
-          static bool hp1_prev_oil_return = false;
-          static bool hp2_prev_oil_return = false;
-          static uint32_t hp1_defrost_owner_hold_until_ms = 0;
-          static uint32_t hp2_defrost_owner_hold_until_ms = 0;
-          static uint32_t oil_return_hold_until_ms = 0;
+          static oq_power_house_dispatch::DispatchState dispatch_state;
           const int cm_code = id(oq_control_mode_code);
           const bool active = (cm_code != 5) && (id(oq_heat_mode_code) != 1);
           if (!active) {
+            dispatch_state = {};
             id(oq_ph_request_last_loop_ms) = 0;
             id(oq_ph_request_hp1_level) = 0;
             id(oq_ph_request_hp2_level) = 0;
@@ -363,34 +328,47 @@ interval:
             id(oq_phouse_last_w) = 0.0f;
             id(oq_phouse_comfort_memory_c) = 0.0f;
             id(oq_phouse_demand_external) = false;
-            hp1_prev_valve_def = false;
-            hp2_prev_valve_def = false;
-            hp1_prev_oil_return = false;
-            hp2_prev_oil_return = false;
-            hp1_defrost_owner_hold_until_ms = 0;
-            hp2_defrost_owner_hold_until_ms = 0;
-            oil_return_hold_until_ms = 0;
+            id(oq_P_hp_cap_w) = 0.0f;
+            id(oq_P_deficit_w) = 0.0f;
             return;
           }
+
           const uint32_t now_ms = (uint32_t) millis();
+          if (id(oq_strategy_output_source_code) != 3) dispatch_state = {};
+          const bool hp1_valve_def = id(hp1_4_way_valve).state;
+          const bool hp1_oil_return = id(hp1_prot_oil_return).state;
+          #if OQ_TOPOLOGY_DUO
+          const bool hp2_valve_def = id(${secondary_4_way_valve_id}).state;
+          const bool hp2_oil_return = id(${secondary_oil_return_id}).state;
+          const int hp2_applied_level = id(${secondary_last_applied_level_id});
+          #else
+          const bool hp2_valve_def = false;
+          const bool hp2_oil_return = false;
+          const int hp2_applied_level = 0;
+          #endif
+          dispatch_state = oq_power_house_dispatch::observe_protection(
+              dispatch_state, {now_ms, hp1_valve_def, hp2_valve_def, hp1_oil_return || hp2_oil_return,
+                               id(hp1_last_applied_level), hp2_applied_level});
+
           const uint32_t loop_target_ms = (uint32_t) (${oq_heat_loop_powerhouse_s} * 1000UL);
-          const auto cadence = oq_power_house::decide_cadence(now_ms, id(oq_ph_request_last_loop_ms), loop_target_ms);
+          const auto cadence =
+              oq_power_house::decide_cadence(now_ms, id(oq_ph_request_last_loop_ms), loop_target_ms);
           if (!cadence.due) return;
           id(oq_ph_request_last_loop_ms) = now_ms == 0 ? UINT32_MAX : now_ms;
+
           const int demand_max_f = (int) ${oq_strategy_demand_max_f};
-          const bool external_valid = id(external_heat_demand_selected).has_state();
           const oq_power_house::DemandInput demand_input{
               now_ms, id(outside_temp_selected).state, id(house_cold_temp_c).state,
               id(house_zero_power_temp_c).state, id(house_rated_power_w).state, id(room_temp_selected).state,
               id(room_setpoint_selected).state, id(external_heat_demand_selected).state,
-              id(oq_water_temp_limit_factor), external_valid};
+              id(oq_water_temp_limit_factor), id(external_heat_demand_selected).has_state()};
           const oq_power_house::DemandTuning demand_tuning{
               ${oq_temp_guard_delta_c}f, id(ph_kp_w_per_k).state, id(ph_comfort_band_below_c).state,
               id(ph_comfort_band_above_c).state, id(ph_demand_rise_time_min).state,
               id(ph_demand_fall_time_min).state, demand_max_f};
-          const oq_power_house::DemandState demand_state{
-              id(oq_phouse_last_w), id(oq_phouse_last_ms), id(oq_phouse_comfort_memory_c)};
-          const auto demand = oq_power_house::decide_demand(demand_input, demand_tuning, demand_state);
+          const auto demand = oq_power_house::decide_demand(
+              demand_input, demand_tuning,
+              {id(oq_phouse_last_w), id(oq_phouse_last_ms), id(oq_phouse_comfort_memory_c)});
           id(oq_phouse_req_w) = demand.requested_w;
           id(oq_phouse_last_w) = demand.next.last_w;
           id(oq_phouse_last_ms) = demand.next.last_ms;
@@ -404,668 +382,112 @@ interval:
           id(oq_demand_filter_ramp_up_budget) = filtered.ramp_budget;
           id(oq_demand_filtered) = filtered.filtered;
           id(oq_heating_demand_filtered) = filtered.filtered;
-          int f = filtered.filtered;
-
-          int f_cap = id(oq_power_cap_f);
-          f_cap = std::max(0, std::min(demand_max_f, f_cap));
-          if (f > f_cap) f = f_cap;
+          int f = std::min(filtered.filtered, std::max(0, std::min(demand_max_f, id(oq_power_cap_f))));
 
           #if OQ_TOPOLOGY_DUO
-          const bool lead_is_hp1 = (id(hp1_minutes) <= id(${secondary_minutes_id}));
+          const bool lead_is_hp1 = id(hp1_minutes) <= id(${secondary_minutes_id});
+          const bool duo = true;
           #else
           const bool lead_is_hp1 = true;
+          const bool duo = false;
           #endif
-          const int lead_code = lead_is_hp1 ? 1 : 2;
-          if (id(oq_last_lead_hp) != lead_code) id(oq_last_lead_hp) = lead_code;
+          id(oq_last_lead_hp) = lead_is_hp1 ? 1 : 2;
 
           const auto frequency_runtime = oq_frequency_runtime::capture();
-
-          auto publish_optimizer_reason = [&](const char* reason)->void {
-            #if OQ_TOPOLOGY_DUO
-            static std::string last_optimizer_reason = "";
-            const std::string s(reason);
-            if (s != last_optimizer_reason) {
-              id(oq_duo_optimizer_reason).publish_state(s.c_str());
-              last_optimizer_reason = s;
-            }
-            #else
-            (void) reason;
-            #endif
-          };
-
-          constexpr int max_level = 10;
-          auto level_allowed = [&](bool is_hp1, int level)->bool {
+          auto level_allowed = [&](bool is_hp1, int level) -> bool {
             return frequency_runtime.frequency_allowed(is_hp1, 2, level);
           };
 
-          auto valve_defrost_active = [&](bool is_hp1)->bool {
-            if (is_hp1) return id(hp1_4_way_valve).state;
-            #if OQ_TOPOLOGY_DUO
-            return id(${secondary_4_way_valve_id}).state;
-            #else
-            return false;
-            #endif
-          };
-
-          const float Tamb = id(outside_temp_selected).state;
-          const float Tsup = id(oq_system_supply_temp).state;
-          const int level_cap = max_level;
-
-          const bool hp1_def = id(hp1_defrost).state;
-          const bool hp1_valve_def = valve_defrost_active(true);
-          const bool hp1_oil_return = id(hp1_prot_oil_return).state;
-          const auto hp1_incident_outputs =
-              id(oq_incident_manager).get_outputs(1);
-          const int hp1_previous_applied_level =
-              id(hp1_last_applied_level);
-          const auto hp1_candidate_state =
-              oq_hp_candidate::candidate_state(
-                  hp1_incident_outputs,
-                  hp1_previous_applied_level);
-          const bool hp1_available =
-              oq_hp_candidate::may_serve_candidate(hp1_candidate_state);
+          const float outside_c = id(outside_temp_selected).state;
+          const float supply_c = id(oq_system_supply_temp).state;
+          const bool performance_valid = isfinite(outside_c) && isfinite(supply_c);
+          const auto hp1_incident = id(oq_incident_manager).get_outputs(1);
+          const auto hp1_candidate =
+              oq_hp_candidate::candidate_state(hp1_incident, id(hp1_last_applied_level));
+          const bool hp1_defrost_active = id(hp1_defrost).state;
           #if OQ_TOPOLOGY_DUO
-          const bool hp2_def = id(${secondary_defrost_id}).state;
-          const bool hp2_valve_def = valve_defrost_active(false);
-          const bool hp2_oil_return = id(${secondary_oil_return_id}).state;
-          const auto hp2_incident_outputs =
-              id(oq_incident_manager).get_outputs(2);
-          const int hp2_previous_applied_level =
-              id(${secondary_last_applied_level_id});
-          const auto hp2_candidate_state =
-              oq_hp_candidate::candidate_state(
-                  hp2_incident_outputs,
-                  hp2_previous_applied_level);
-          const bool hp2_available =
-              oq_hp_candidate::may_serve_candidate(hp2_candidate_state);
+          const auto hp2_incident = id(oq_incident_manager).get_outputs(2);
+          const auto hp2_candidate =
+              oq_hp_candidate::candidate_state(hp2_incident, hp2_applied_level);
+          const bool hp2_defrost_active = id(${secondary_defrost_id}).state;
           #else
-          const bool hp2_def = false;
-          const bool hp2_valve_def = false;
-          const bool hp2_oil_return = false;
-          const oq_hp_candidate::HpCandidateState hp2_candidate_state;
-          const bool hp2_available = false;
+          const oq_hp_candidate::HpCandidateState hp2_candidate;
+          const bool hp2_defrost_active = false;
           #endif
 
-          constexpr uint32_t defrost_owner_hold_ms = 180000UL;
-          if (hp1_valve_def || hp1_prev_valve_def) hp1_defrost_owner_hold_until_ms = now_ms + defrost_owner_hold_ms;
-          if (hp2_valve_def || hp2_prev_valve_def) hp2_defrost_owner_hold_until_ms = now_ms + defrost_owner_hold_ms;
-          hp1_prev_valve_def = hp1_valve_def;
-          hp2_prev_valve_def = hp2_valve_def;
-
-          constexpr uint32_t oil_return_hold_ms = 120000UL;
-          const bool oil_return_active = hp1_oil_return || hp2_oil_return;
-          if (oil_return_active || hp1_prev_oil_return || hp2_prev_oil_return) {
-            oil_return_hold_until_ms = now_ms + oil_return_hold_ms;
-          }
-          hp1_prev_oil_return = hp1_oil_return;
-          hp2_prev_oil_return = hp2_oil_return;
-          const bool oil_return_hold_active =
-              oil_return_active ||
-              (oil_return_hold_until_ms > 0 && now_ms < oil_return_hold_until_ms);
-
-          float def_fac_cfg = ${oq_defrost_power_factor};
-          if (isnan(def_fac_cfg)) def_fac_cfg = 0.55f;
-          const float def_fac = fmaxf(0.10f, fminf(1.00f, def_fac_cfg));
-          const float hp1_th_fac = hp1_valve_def ? def_fac : 1.0f;
-          const float hp2_th_fac = hp2_valve_def ? def_fac : 1.0f;
-
-          auto max_cap_hp = [&](bool is_hp1)->float {
-            if ((is_hp1 && !hp1_available) || (!is_hp1 && !hp2_available)) return 0.0f;
-            float best = 0.0f;
-            for (int lvl = 1; lvl <= level_cap; lvl++) {
-              if (!level_allowed(is_hp1, lvl)) continue;
-              float p = oq_perf::interp_power_th_w_hz(
-                  oq_perf::model_frequency_hz(lvl), Tamb, Tsup);
-              if (!isnan(p)) p *= is_hp1 ? hp1_th_fac : hp2_th_fac;
-              if (!isnan(p) && p > best) best = p;
+          float defrost_factor = ${oq_defrost_power_factor};
+          if (!isfinite(defrost_factor)) defrost_factor = 0.55f;
+          defrost_factor = fmaxf(0.10f, fminf(1.00f, defrost_factor));
+          auto build_hp = [&](oq_power_house_dispatch::HpInput& result,
+                              bool hp1,
+                              const oq_hp_candidate::HpCandidateState& candidate,
+                              bool defrost,
+                              bool valve_defrost) {
+            result.candidate = candidate;
+            result.defrost = defrost;
+            result.valve_defrost = valve_defrost;
+            result.levels[0] = {true, true, true, 0.0f, 0.0f};
+            for (int level = 1; level <= oq_power_house_dispatch::kMaxLevel; ++level) {
+              const bool allowed = level_allowed(hp1, level);
+              float thermal_w = NAN;
+              float electrical_w = NAN;
+              if (performance_valid) {
+                const float frequency_hz = oq_perf::model_frequency_hz(level);
+                thermal_w = oq_perf::interp_power_th_w_hz(frequency_hz, outside_c, supply_c);
+                electrical_w = oq_perf::interp_power_el_w_hz(frequency_hz, outside_c, supply_c);
+                if (valve_defrost && isfinite(thermal_w)) thermal_w *= defrost_factor;
+              }
+              result.levels[level] = {allowed, isfinite(thermal_w) && thermal_w >= 0.0f,
+                                      isfinite(electrical_w) && electrical_w >= 0.0f,
+                                      thermal_w, electrical_w};
             }
-            return best;
           };
 
-          auto publish_capacity_and_deficit = [&](float requested_w)->float {
-            float cap_total = 0.0f;
-            if (!isnan(Tamb) && !isnan(Tsup)) {
-              cap_total = max_cap_hp(true) + max_cap_hp(false);
-            }
-            id(oq_P_hp_cap_w) = cap_total;
-
-            float req = requested_w;
-            if (isnan(req)) req = 0.0f;
-            float deficit = req - cap_total;
-            if (deficit < 0.0f) deficit = 0.0f;
-            id(oq_P_deficit_w) = deficit;
-            return cap_total;
-          };
-
-          int hp1_req = 0;
-          int hp2_req = 0;
-          int request_owner_hp = 0;
-          int request_reason_code = 0;
-
-          const float strategy_rated_power_w = id(house_rated_power_w).state;
-          float P_req_total = id(oq_phouse_req_w);
-          float strategy_power_cap_w = NAN;
-          if (!isnan(strategy_rated_power_w) && strategy_rated_power_w > 0.0f) {
-            strategy_power_cap_w =
-                strategy_rated_power_w * ((float) f / (float) demand_max_f);
+          float requested_w = id(oq_phouse_req_w);
+          const float rated_w = id(house_rated_power_w).state;
+          if (isfinite(requested_w) && isfinite(rated_w) && rated_w > 0.0f) {
+            requested_w = std::min(requested_w, rated_w * (float) f / (float) demand_max_f);
           }
-          if (!isnan(strategy_power_cap_w)) {
-            P_req_total = std::min(P_req_total, strategy_power_cap_w);
-          }
+          oq_power_house_dispatch::DispatchInput dispatch_input{
+              now_ms, f, requested_w, duo, performance_valid, lead_is_hp1};
+          build_hp(dispatch_input.hp1, true, hp1_candidate, hp1_defrost_active, hp1_valve_def);
+          #if OQ_TOPOLOGY_DUO
+          build_hp(dispatch_input.hp2, false, hp2_candidate, hp2_defrost_active, hp2_valve_def);
+          #endif
+          const oq_power_house_dispatch::DispatchTuning dispatch_tuning{
+              id(oq_power_limit_soft_w), id(oq_power_limit_peak_w), ${oq_optimizer_penalty_per_w},
+              ${oq_optimizer_topology_power_margin_w}, ${oq_optimizer_topology_heat_advantage_w},
+              (int) roundf(${oq_defrost_comp_min_f}), (int) roundf(${oq_defrost_comp_boost_steps})};
+          const auto dispatch = oq_power_house_dispatch::decide_dispatch(
+              dispatch_input, dispatch_tuning, dispatch_state);
+          id(oq_ph_request_hp1_level) = dispatch.hp1_level;
+          id(oq_ph_request_hp2_level) = dispatch.hp2_level;
+          id(oq_ph_request_owner_hp) = dispatch.owner_hp;
+          id(oq_ph_request_reason_code) = (int) dispatch.reason;
+          id(oq_P_hp_cap_w) = dispatch.capacity_w;
+          id(oq_P_deficit_w) = dispatch.deficit_w;
 
           #if OQ_TOPOLOGY_DUO
-          const float cap_total = publish_capacity_and_deficit(P_req_total);
-          const bool perf_inputs_valid = !isnan(Tamb) && !isnan(Tsup) && level_cap > 0;
-          if (!perf_inputs_valid) {
-            request_reason_code = 1;
-            id(oq_duo_request_hold_until_ms) = 0;
-            // Use a fixed fallback threshold now that the tuning entity is gone.
-            int dual_on_f = std::max(2, std::min(9, demand_max_f));
-            int dual_off_f = dual_on_f - 2;
-            if (dual_off_f < 1) dual_off_f = 1;
-
-            const bool prefer_single = (f > 0 && f <= dual_on_f && !(hp1_def && hp2_def));
-            if (!prefer_single) {
-              oq_request::reset_dual_hold_state(
-                  id(oq_dual_hp_enabled),
-                  id(oq_dual_hp_enable_hold_elapsed_accum_min),
-                  id(oq_dual_hp_disable_hold_elapsed_accum_min),
-                  id(oq_dual_hp_emergency_hold_elapsed_accum_min));
-            } else {
-              int on_hold = (int) roundf(id(oq_dual_hp_enable_hold_min).state);
-              int off_hold = (int) roundf(id(oq_dual_hp_disable_hold_min).state);
-              if (on_hold < 1) on_hold = 1;
-              if (off_hold < 1) off_hold = 1;
-
-              if (f >= dual_on_f) id(oq_dual_hp_enable_hold_elapsed_accum_min) += cadence.dt_s / 60.0f;
-              else id(oq_dual_hp_enable_hold_elapsed_accum_min) = 0.0f;
-
-              if (f <= dual_off_f) id(oq_dual_hp_disable_hold_elapsed_accum_min) += cadence.dt_s / 60.0f;
-              else id(oq_dual_hp_disable_hold_elapsed_accum_min) = 0.0f;
-
-              if (!id(oq_dual_hp_enabled) && id(oq_dual_hp_enable_hold_elapsed_accum_min) >= (float) on_hold) {
-                id(oq_dual_hp_enabled) = true;
-                id(oq_dual_hp_disable_hold_elapsed_accum_min) = 0.0f;
-              } else if (id(oq_dual_hp_enabled) && id(oq_dual_hp_disable_hold_elapsed_accum_min) >= (float) off_hold) {
-                id(oq_dual_hp_enabled) = false;
-                id(oq_dual_hp_enable_hold_elapsed_accum_min) = 0.0f;
-              }
-            }
-            const bool needs_dual = (f > dual_on_f) || (prefer_single && id(oq_dual_hp_enabled));
-
-            if (!hp1_available && !hp2_available) {
-              oq_request::reset_dual_hold_state(
-                  id(oq_dual_hp_enabled),
-                  id(oq_dual_hp_enable_hold_elapsed_accum_min),
-                  id(oq_dual_hp_disable_hold_elapsed_accum_min),
-                  id(oq_dual_hp_emergency_hold_elapsed_accum_min));
-              request_reason_code = 11;
-            } else if (hp1_available != hp2_available) {
-              oq_request::reset_dual_hold_state(
-                  id(oq_dual_hp_enabled),
-                  id(oq_dual_hp_enable_hold_elapsed_accum_min),
-                  id(oq_dual_hp_disable_hold_elapsed_accum_min),
-                  id(oq_dual_hp_emergency_hold_elapsed_accum_min));
-              const int available_request = std::min(max_level, f);
-              hp1_req = hp1_available ? available_request : 0;
-              hp2_req = hp2_available ? available_request : 0;
-              request_owner_hp = hp1_available ? 1 : 2;
-              request_reason_code = 13;
-            } else if (prefer_single && !needs_dual) {
-              if (lead_is_hp1) hp1_req = f;
-              else hp2_req = f;
-              request_owner_hp = lead_is_hp1 ? 1 : 2;
-              request_reason_code = lead_is_hp1 ? 2 : 3;
-            } else {
-              hp1_req = f / 2;
-              hp2_req = f / 2;
-              if ((f % 2) == 1) {
-                if (lead_is_hp1) hp1_req += 1;
-                else hp2_req += 1;
-              }
-              request_owner_hp = 0;
-              request_reason_code = 4;
-            }
-          } else {
-            float P_target = P_req_total;
-            if (isnan(P_target)) P_target = 0.0f;
-            if (P_target > cap_total) P_target = cap_total;
-            if (P_target < 0.0f) P_target = 0.0f;
-
-            const int last1 = id(hp1_last_applied_level);
-            const int last2 = id(${secondary_last_applied_level_id});
-            const float P_EL_SOFT_W = id(oq_power_limit_soft_w);
-            const float P_EL_PEAK_W = id(oq_power_limit_peak_w);
-            const float thermal_tie_band_w = fmaxf(150.0f, 0.05f * fmaxf(P_target, 1000.0f));
-            const float thermal_keep_margin_w = fminf(90.0f, thermal_tie_band_w * 0.5f);
-            float topology_power_margin_w = ${oq_optimizer_topology_power_margin_w};
-            if (isnan(topology_power_margin_w) || topology_power_margin_w < 0.0f) topology_power_margin_w = 150.0f;
-            float topology_heat_advantage_w = ${oq_optimizer_topology_heat_advantage_w};
-            if (isnan(topology_heat_advantage_w) || topology_heat_advantage_w < 0.0f) topology_heat_advantage_w = 450.0f;
-            const float pel_switch_margin_w = 150.0f;
-            const float soft_switch_margin_w = 40.0f;
-            struct DuoCandidate {
-              bool valid;
-              int l1;
-              int l2;
-              float p_th_w;
-              float p_el_w;
-              float err_w;
-              float over_soft_w;
-              int level_moves;
-              int active_hp_count;
-              int balance_steps;
-              bool single_on_lead;
-            };
-
-            auto build_duo_candidate = [&](int l1, int l2)->DuoCandidate {
-              DuoCandidate c{};
-              c.valid = false;
-              c.l1 = l1;
-              c.l2 = l2;
-
-              if (l1 > 0) {
-                if (!hp1_available || !level_allowed(true, l1)) return c;
-              }
-              if (l2 > 0) {
-                if (!hp2_available || !level_allowed(false, l2)) return c;
-              }
-
-              float p1 = (l1 == 0) ? 0.0f : oq_perf::interp_power_th_w_hz(
-                  oq_perf::model_frequency_hz(l1), Tamb, Tsup);
-              if (l1 > 0 && isnan(p1)) return c;
-              p1 *= hp1_th_fac;
-
-              float p2 = (l2 == 0) ? 0.0f : oq_perf::interp_power_th_w_hz(
-                  oq_perf::model_frequency_hz(l2), Tamb, Tsup);
-              if (l2 > 0 && isnan(p2)) return c;
-              p2 *= hp2_th_fac;
-
-              float pel1 = (l1 == 0) ? 0.0f : oq_perf::interp_power_el_w_hz(
-                  oq_perf::model_frequency_hz(l1), Tamb, Tsup);
-              if (l1 > 0 && isnan(pel1)) pel1 = 0.0f;
-              float pel2 = (l2 == 0) ? 0.0f : oq_perf::interp_power_el_w_hz(
-                  oq_perf::model_frequency_hz(l2), Tamb, Tsup);
-              if (l2 > 0 && isnan(pel2)) pel2 = 0.0f;
-
-              const float pel_sum = pel1 + pel2;
-              if (pel_sum > P_EL_PEAK_W) return c;
-
-              c.valid = true;
-              c.p_th_w = p1 + p2;
-              c.p_el_w = pel_sum;
-              c.err_w = fabsf(c.p_th_w - P_target);
-              c.over_soft_w = fmaxf(0.0f, pel_sum - P_EL_SOFT_W);
-              c.level_moves = abs(l1 - last1) + abs(l2 - last2);
-              c.active_hp_count = (l1 > 0 ? 1 : 0) + (l2 > 0 ? 1 : 0);
-              c.balance_steps = abs(l1 - l2);
-              c.single_on_lead =
-                  (c.active_hp_count == 1) &&
-                  (((l1 > 0) && lead_is_hp1) || ((l2 > 0) && !lead_is_hp1));
-              return c;
-            };
-
-            auto better_duo_candidate = [&](const DuoCandidate &a, const DuoCandidate &b)->bool {
-              const float soft_eps_w = 1.0f;
-              const float pel_eps_w = 1.0f;
-              const float err_eps_w = 1.0f;
-              if (fabsf(a.over_soft_w - b.over_soft_w) > soft_eps_w) return a.over_soft_w < b.over_soft_w;
-              if (fabsf(a.p_el_w - b.p_el_w) > pel_eps_w) return a.p_el_w < b.p_el_w;
-              if (fabsf(a.err_w - b.err_w) > err_eps_w) return a.err_w < b.err_w;
-              if (a.level_moves != b.level_moves) return a.level_moves < b.level_moves;
-              if (a.active_hp_count == 2 && b.active_hp_count == 2 && a.balance_steps != b.balance_steps) {
-                return a.balance_steps < b.balance_steps;
-              }
-              if (a.active_hp_count == 1 && b.active_hp_count == 1) {
-                const int a_single = (a.l1 > 0) ? a.l1 : a.l2;
-                const int b_single = (b.l1 > 0) ? b.l1 : b.l2;
-                if (a_single == b_single && a.single_on_lead != b.single_on_lead) return a.single_on_lead;
-              }
-              if (a.l1 != b.l1) return a.l1 < b.l1;
-              return a.l2 < b.l2;
-            };
-
-            const DuoCandidate current_candidate = build_duo_candidate(last1, last2);
-            auto pick_topology_candidate = [&](int active_hp_count, DuoCandidate &chosen)->bool {
-              float topology_best_err_w = 1e12f;
-              bool have_topology_candidate = false;
-              for (int l1 = 0; l1 <= level_cap; l1++) {
-                for (int l2 = 0; l2 <= level_cap; l2++) {
-                  const DuoCandidate c = build_duo_candidate(l1, l2);
-                  if (!c.valid || c.active_hp_count != active_hp_count) continue;
-                  have_topology_candidate = true;
-                  if (c.err_w < topology_best_err_w) topology_best_err_w = c.err_w;
-                }
-              }
-              if (!have_topology_candidate) return false;
-
-              bool have_chosen = false;
-              for (int l1 = 0; l1 <= level_cap; l1++) {
-                for (int l2 = 0; l2 <= level_cap; l2++) {
-                  const DuoCandidate c = build_duo_candidate(l1, l2);
-                  if (!c.valid || c.active_hp_count != active_hp_count) continue;
-                  if (c.err_w > (topology_best_err_w + thermal_tie_band_w)) continue;
-                  if (!have_chosen || better_duo_candidate(c, chosen)) {
-                    chosen = c;
-                    have_chosen = true;
-                  }
-                }
-              }
-              return have_chosen;
-            };
-
-            DuoCandidate best_single_candidate{};
-            const bool have_best_single = pick_topology_candidate(1, best_single_candidate);
-            DuoCandidate best_duo_candidate{};
-            const bool have_best_duo = pick_topology_candidate(2, best_duo_candidate);
-            const bool valve_defrost_any = hp1_valve_def || hp2_valve_def;
-            const bool hp1_single_active = (last1 > 0) && (last2 <= 0);
-            const bool hp2_single_active = (last1 <= 0) && (last2 > 0);
-            const bool single_topology_active = hp1_single_active || hp2_single_active;
-
-            DuoCandidate best_candidate{};
-            bool have_best_candidate = false;
-            if (have_best_single && have_best_duo) {
-              const DuoCandidate *preferred_candidate = &best_single_candidate;
-              const DuoCandidate *alternate_candidate = &best_duo_candidate;
-              if (best_duo_candidate.p_el_w < best_single_candidate.p_el_w) {
-                preferred_candidate = &best_duo_candidate;
-                alternate_candidate = &best_single_candidate;
-              }
-              best_candidate = *preferred_candidate;
-              if (alternate_candidate->err_w + topology_heat_advantage_w < preferred_candidate->err_w) {
-                best_candidate = *alternate_candidate;
-              }
-              have_best_candidate = true;
-            } else if (have_best_single) {
-              best_candidate = best_single_candidate;
-              have_best_candidate = true;
-            } else if (have_best_duo) {
-              best_candidate = best_duo_candidate;
-              have_best_candidate = true;
-            }
-
-            if (valve_defrost_any && single_topology_active && have_best_single &&
-                have_best_candidate && (best_candidate.active_hp_count == 2)) {
-              best_candidate = best_single_candidate;
-            }
-            if (valve_defrost_any && have_best_single && best_candidate.active_hp_count == 1) {
-              if (hp1_single_active && best_candidate.l1 <= 0 && best_single_candidate.l1 > 0) {
-                best_candidate = best_single_candidate;
-              }
-              if (hp2_single_active && best_candidate.l2 <= 0 && best_single_candidate.l2 > 0) {
-                best_candidate = best_single_candidate;
-              }
-            }
-
-            bool keep_current = false;
-            int optimizer_reason_code = 2;
-            if (have_best_candidate && current_candidate.valid) {
-              const bool current_heat_ok = current_candidate.err_w <= (best_candidate.err_w + thermal_keep_margin_w);
-              const bool topology_change =
-                  (current_candidate.active_hp_count > 0) &&
-                  (best_candidate.active_hp_count > 0) &&
-                  (current_candidate.active_hp_count != best_candidate.active_hp_count);
-              const bool single_owner_swap =
-                  (current_candidate.active_hp_count == 1) &&
-                  (best_candidate.active_hp_count == 1) &&
-                  ((current_candidate.l1 > 0) != (best_candidate.l1 > 0));
-              const bool hold_window_active =
-                  (id(oq_duo_request_hold_until_ms) > 0) &&
-                  (now_ms < id(oq_duo_request_hold_until_ms));
-              const bool defrost_owner_hold_active =
-                  single_owner_swap &&
-                  ((hp1_valve_def || hp2_valve_def) ||
-                   (hp1_defrost_owner_hold_until_ms > now_ms) ||
-                   (hp2_defrost_owner_hold_until_ms > now_ms));
-              const bool oil_return_topology_hold_active =
-                  oil_return_hold_active &&
-                  current_heat_ok &&
-                  (topology_change || single_owner_swap);
-              const bool topology_change_allowed =
-                  !topology_change ||
-                  (best_candidate.err_w + topology_heat_advantage_w < current_candidate.err_w) ||
-                  (best_candidate.p_el_w + topology_power_margin_w < current_candidate.p_el_w);
-              const bool hold_active =
-                  hold_window_active &&
-                  current_heat_ok &&
-                  topology_change &&
-                  !topology_change_allowed;
-              const bool better_soft_guard =
-                  current_candidate.over_soft_w > (best_candidate.over_soft_w + soft_switch_margin_w);
-              const float efficiency_switch_margin_w =
-                  topology_change ? topology_power_margin_w : pel_switch_margin_w;
-              const bool better_efficiency =
-                  current_candidate.p_el_w > (best_candidate.p_el_w + efficiency_switch_margin_w);
-
-              if (defrost_owner_hold_active) {
-                keep_current = true;
-                optimizer_reason_code = 7;
-              } else if (oil_return_topology_hold_active) {
-                keep_current = true;
-                optimizer_reason_code = 15;
-              } else if (hold_active && current_heat_ok) {
-                keep_current = true;
-                optimizer_reason_code = (hp1_valve_def || hp2_valve_def) ? 7 : 6;
-              } else if (topology_change && !topology_change_allowed && current_heat_ok) {
-                keep_current = true;
-                optimizer_reason_code = 6;
-              } else if (!current_heat_ok) {
-                optimizer_reason_code = 8;
-              } else if (better_soft_guard) {
-                optimizer_reason_code = 9;
-              } else if (better_efficiency) {
-                optimizer_reason_code = 10;
-              } else {
-                keep_current = true;
-                optimizer_reason_code = 5;
-              }
-            } else if (!have_best_candidate) {
-              keep_current = current_candidate.valid;
-              optimizer_reason_code = keep_current ? 5 : 11;
-            } else {
-              optimizer_reason_code = 8;
-            }
-
-            const DuoCandidate chosen_candidate =
-                (keep_current && current_candidate.valid) ? current_candidate : best_candidate;
-            hp1_req = chosen_candidate.valid ? chosen_candidate.l1 : 0;
-            hp2_req = chosen_candidate.valid ? chosen_candidate.l2 : 0;
-            request_reason_code = optimizer_reason_code;
-
-            switch (optimizer_reason_code) {
-              case 5: publish_optimizer_reason("keep_current"); break;
-              case 6: publish_optimizer_reason("hold_active"); break;
-              case 7: publish_optimizer_reason("defrost_hold"); break;
-              case 8: publish_optimizer_reason("better_heat"); break;
-              case 9: publish_optimizer_reason("soft_guard"); break;
-              case 10: publish_optimizer_reason("less_power"); break;
-              case 11: publish_optimizer_reason("no_candidate"); break;
-              case 15: publish_optimizer_reason("oil_return_hold"); break;
-              default: break;
-            }
-
-            int def_comp_min_f = (int) roundf(${oq_defrost_comp_min_f});
-            if (def_comp_min_f < 0) def_comp_min_f = 0;
-            if (def_comp_min_f > demand_max_f) def_comp_min_f = demand_max_f;
-            int def_comp_boost = (int) roundf(${oq_defrost_comp_boost_steps});
-            if (def_comp_boost < 0) def_comp_boost = 0;
-            if (def_comp_boost > 3) def_comp_boost = 3;
-            const bool chosen_underdelivers =
-                chosen_candidate.valid && (chosen_candidate.p_th_w + thermal_tie_band_w < P_target);
-            const bool allow_defrost_boost =
-                (def_comp_boost > 0) &&
-                (f >= def_comp_min_f) &&
-                chosen_underdelivers &&
-                chosen_candidate.valid &&
-                (chosen_candidate.active_hp_count == 2);
-            auto boosted_allowed_level = [&](bool is_hp1, int current_level) {
-              const int target_level =
-                  std::min(level_cap, current_level + def_comp_boost);
-              for (int level = target_level; level > current_level; --level) {
-                if (level_allowed(is_hp1, level)) return level;
-              }
-              return current_level;
-            };
-            if (allow_defrost_boost) {
-              if (hp1_valve_def && !hp2_valve_def && hp2_req > 0) {
-                const int boosted_level =
-                    boosted_allowed_level(false, hp2_req);
-                if (boosted_level > hp2_req) {
-                  hp2_req = boosted_level;
-                  request_reason_code = 12;
-                  publish_optimizer_reason("defrost_boost");
-                }
-              }
-              if (hp2_valve_def && !hp1_valve_def && hp1_req > 0) {
-                const int boosted_level =
-                    boosted_allowed_level(true, hp1_req);
-                if (boosted_level > hp1_req) {
-                  hp1_req = boosted_level;
-                  request_reason_code = 12;
-                  publish_optimizer_reason("defrost_boost");
-                }
-              }
-            }
-            if (hp1_req > 0 && hp2_req == 0) request_owner_hp = 1;
-            else if (hp2_req > 0 && hp1_req == 0) request_owner_hp = 2;
-            else request_owner_hp = 0;
-
-            const bool single_req = ((hp1_req > 0) != (hp2_req > 0));
-            const bool both_idle_prev = (id(hp1_last_applied_level) <= 0 && id(${secondary_last_applied_level_id}) <= 0);
-            if (single_req && both_idle_prev && !(hp1_def || hp2_def) && !(hp1_valve_def || hp2_valve_def)) {
-              const int req_single = (hp1_req > 0) ? hp1_req : hp2_req;
-              const bool lead_can =
-                  (lead_is_hp1 ? hp1_available : hp2_available) &&
-                  level_allowed(lead_is_hp1, req_single);
-              const bool lag_can =
-                  (lead_is_hp1 ? hp2_available : hp1_available) &&
-                  level_allowed(!lead_is_hp1, req_single);
-              if (lead_can && lag_can) {
-                if (lead_is_hp1) {
-                  hp1_req = req_single;
-                  hp2_req = 0;
-                  request_owner_hp = 1;
-                } else {
-                  hp2_req = req_single;
-                  hp1_req = 0;
-                  request_owner_hp = 2;
-                }
-                request_reason_code = 13;
-                publish_optimizer_reason("runtime_lead");
-              }
-            }
+          static std::string last_optimizer_reason;
+          const std::string optimizer_reason(
+              oq_power_house_dispatch::request_reason_name((int) dispatch.reason));
+          if (optimizer_reason != last_optimizer_reason) {
+            id(oq_duo_optimizer_reason).publish_state(optimizer_reason.c_str());
+            last_optimizer_reason = optimizer_reason;
           }
-          #else
-          publish_optimizer_reason("single_topology");
-          const float cap_total = publish_capacity_and_deficit(P_req_total);
-          const bool perf_inputs_valid = !isnan(Tamb) && !isnan(Tsup) && level_cap > 0;
-          if (!perf_inputs_valid) {
-            hp1_req = hp1_available ? f : 0;
-            request_reason_code = (hp1_req > 0) ? 2 : 11;
-          } else {
-            float P_target = P_req_total;
-            if (isnan(P_target)) P_target = 0.0f;
-            if (P_target > cap_total) P_target = cap_total;
-            if (P_target < 0.0f) P_target = 0.0f;
-
-            const int last1 = id(hp1_last_applied_level);
-            float best_cost = 1e12f;
-            int best_l1 = 0;
-            const float W_change_penalty_per_step = 50.0f;
-            const float P_EL_SOFT_W = id(oq_power_limit_soft_w);
-            const float P_EL_PEAK_W = id(oq_power_limit_peak_w);
-            const float W_el_over_soft_penalty_per_W = ${oq_optimizer_penalty_per_w};
-
-            for (int l1 = 0; l1 <= level_cap; l1++) {
-              if (l1 > 0 && !hp1_available) continue;
-              if (l1 > 0 && !level_allowed(true, l1)) continue;
-
-              float p1 = (l1 == 0) ? 0.0f : oq_perf::interp_power_th_w_hz(
-                  oq_perf::model_frequency_hz(l1), Tamb, Tsup);
-              if (l1 > 0 && isnan(p1)) continue;
-              p1 *= hp1_th_fac;
-
-              float pel1 = (l1 == 0) ? 0.0f : oq_perf::interp_power_el_w_hz(
-                  oq_perf::model_frequency_hz(l1), Tamb, Tsup);
-              if (l1 > 0 && isnan(pel1)) pel1 = 0.0f;
-              if (pel1 > P_EL_PEAK_W) continue;
-
-              float cost = fabsf(p1 - P_target);
-              cost += W_change_penalty_per_step * (float) abs(l1 - last1);
-              if (pel1 > P_EL_SOFT_W) cost += (pel1 - P_EL_SOFT_W) * W_el_over_soft_penalty_per_W;
-
-              if (cost < best_cost) {
-                best_cost = cost;
-                best_l1 = l1;
-              }
-            }
-            hp1_req = best_l1;
-            request_reason_code = (best_l1 > 0) ? 14 : 0;
-          }
-          request_owner_hp = (hp1_req > 0) ? 1 : 0;
-          hp2_req = 0;
           #endif
 
-          const auto suspect_topology_hold =
-              oq_hp_candidate::preserve_active_topology_during_suspect(
-                  {
-                      hp1_req,
-                      hp2_req,
-                      hp1_candidate_state,
-                      hp2_candidate_state,
-                      f > 0,
-                  });
-          if (suspect_topology_hold.active) {
-            hp1_req = suspect_topology_hold.hp1_level;
-            hp2_req = suspect_topology_hold.hp2_level;
-            request_owner_hp = suspect_topology_hold.owner_hp;
-            request_reason_code = 5;
-            publish_optimizer_reason("keep_current");
-          }
-
-          id(oq_ph_request_hp1_level) = hp1_req;
-          id(oq_ph_request_hp2_level) = hp2_req;
-          id(oq_ph_request_owner_hp) = request_owner_hp;
-          id(oq_ph_request_reason_code) = request_reason_code;
-
-          float hp_expected_power_w = 0.0f;
-          bool hp_expected_power_valid = !isnan(Tamb) && !isnan(Tsup);
-          if (hp_expected_power_valid && hp1_req > 0) {
-            const float hp1_expected_w =
-                oq_perf::interp_power_th_w_hz(
-                    oq_perf::model_frequency_hz(hp1_req), Tamb, Tsup) *
-                hp1_th_fac;
-            if (isnan(hp1_expected_w)) hp_expected_power_valid = false;
-            else hp_expected_power_w += hp1_expected_w;
-          }
-          if (hp_expected_power_valid && hp2_req > 0) {
-            const float hp2_expected_w =
-                oq_perf::interp_power_th_w_hz(
-                    oq_perf::model_frequency_hz(hp2_req), Tamb, Tsup) *
-                hp2_th_fac;
-            if (isnan(hp2_expected_w)) hp_expected_power_valid = false;
-            else hp_expected_power_w += hp2_expected_w;
-          }
-
-          id(oq_strategy_phase_code) = (f > 0) ? 1 : 0;
-          id(oq_strategy_requested_power_w) = P_req_total;
+          id(oq_strategy_phase_code) = f > 0 ? 1 : 0;
+          id(oq_strategy_requested_power_w) = requested_w;
           id(oq_strategy_supply_target_temp) = NAN;
-          id(oq_strategy_heat_request_active) = (f > 0);
-          id(oq_strategy_hp_expected_power_w) =
-              hp_expected_power_valid ? hp_expected_power_w : NAN;
-          id(oq_strategy_hp_max_power_w) = id(oq_P_hp_cap_w);
-          id(oq_strategy_hp_saturated) =
-              (f > 0) && !isnan(id(oq_P_deficit_w)) && id(oq_P_deficit_w) > 0.0f;
-          id(oq_strategy_output_valid) =
-              !isnan(P_req_total) && hp_expected_power_valid;
+          id(oq_strategy_heat_request_active) = f > 0;
+          id(oq_strategy_hp_expected_power_w) = dispatch.expected_w;
+          id(oq_strategy_hp_max_power_w) = dispatch.capacity_w;
+          id(oq_strategy_hp_saturated) = dispatch.saturated;
+          id(oq_strategy_output_valid) = dispatch.output_valid;
           id(oq_strategy_output_source_code) = 3;
           id(oq_strategy_output_updated_ms) = now_ms;
-          id(oq_strategy_phase_text).publish_state((f > 0) ? "heat" : "idle");
+          id(oq_strategy_phase_text).publish_state(f > 0 ? "heat" : "idle");
 
-          char debug_buf[160];
-          snprintf(
-            debug_buf, sizeof(debug_buf),
-            "ph f=%d raw=%d preq=%.0f owner=%d reason=%d",
-            f, demand.raw_demand, id(oq_phouse_req_w), request_owner_hp, request_reason_code);
-          ESP_LOGD("quatt.strategy", "%s", debug_buf);
+          ESP_LOGD("quatt.strategy", "ph f=%d raw=%d preq=%.0f owner=%d reason=%d",
+                   f, demand.raw_demand, requested_w, dispatch.owner_hp, (int) dispatch.reason);
