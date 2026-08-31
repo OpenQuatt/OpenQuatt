@@ -4,6 +4,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 SUPERVISOR = (ROOT / "openquatt/oq_supervisory_controlmode.yaml").read_text()
+SUPERVISOR_RUNTIME = (ROOT / "openquatt/includes/control/oq_supervisory_state_runtime.h").read_text()
 LOGIC = (ROOT / "openquatt/includes/control/oq_supervisory_safety_logic.h").read_text()
 RUNTIME = (ROOT / "openquatt/includes/control/oq_supervisory_safety_runtime.h").read_text()
 HOST_TEST = (ROOT / "tests/host/supervisory_safety_logic_test.cpp").read_text()
@@ -11,11 +12,11 @@ HOST_TEST = (ROOT / "tests/host/supervisory_safety_logic_test.cpp").read_text()
 
 class SupervisorySafetyContractTest(unittest.TestCase):
     def test_yaml_delegates_flow_and_frost_decisions_once(self) -> None:
-        self.assertEqual(SUPERVISOR.count("oq_supervisory_safety_runtime::runtime().tick"), 1)
+        self.assertEqual(SUPERVISOR_RUNTIME.count("oq_supervisory_safety_runtime::runtime().tick"), 1)
         for removed_inline_state in ("oq_lowflow_since_ms", "oq_flow_recover_since_ms", "frost_nan_grace_active"):
             self.assertNotIn(removed_inline_state, SUPERVISOR)
-        self.assertIn("const bool flow_low = safety.flow_low;", SUPERVISOR)
-        self.assertIn("const bool frost = safety.frost_active;", SUPERVISOR)
+        self.assertIn("const bool flow_low = safety.flow_low;", SUPERVISOR_RUNTIME)
+        self.assertIn("const bool frost = safety.frost_active;", SUPERVISOR_RUNTIME)
 
     def test_runtime_owns_side_effects_and_preserves_shared_contracts(self) -> None:
         for marker in (

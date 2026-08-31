@@ -3,6 +3,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 SUPERVISOR = (ROOT / "openquatt" / "oq_supervisory_controlmode.yaml").read_text()
+SUPERVISOR_RUNTIME = (ROOT / "openquatt/includes/control/oq_supervisory_state_runtime.h").read_text()
 LIMITER_LOGIC = (ROOT / "openquatt" / "includes" / "control" / "oq_supervisory_power_limiter_logic.h").read_text()
 LIMITER_RUNTIME = (ROOT / "openquatt" / "includes" / "control" / "oq_supervisory_power_limiter_runtime.h").read_text()
 LIMITER_TEST = (ROOT / "tests" / "host" / "supervisory_power_limiter_logic_test.cpp").read_text()
@@ -23,7 +24,7 @@ class ElectricalInputLimitContractTest(unittest.TestCase):
         self.assertGreaterEqual(SUPERVISOR.count("traits.set_max_value"), 3)
 
     def test_single_and_duo_share_measured_feedback_limiter(self) -> None:
-        self.assertEqual(SUPERVISOR.count("oq_supervisory_power_runtime::runtime().tick"), 1)
+        self.assertEqual(SUPERVISOR_RUNTIME.count("oq_supervisory_power_runtime::runtime().tick"), 1)
         self.assertNotIn("if (!measurement_valid)", SUPERVISOR)
         self.assertIn("id(hp1_is_online)", LIMITER_RUNTIME)
         self.assertIn("OQ_POWER_SECONDARY_ID(is_online)", LIMITER_RUNTIME)

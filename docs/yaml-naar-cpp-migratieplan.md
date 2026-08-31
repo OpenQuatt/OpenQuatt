@@ -41,8 +41,8 @@ entities, configuratie, koppelingen en één of enkele runtime-aanroepen.
 | Power House-kern | Vraaglogica en dispatch | Gereed | #568, #571 |
 | Cooling-kern | Herstel/timing, vraag/dispatch en safety/handover | Gereed | #573, #577, #578 |
 | Thermal Request | Arbitrage en actuatorrequests | Gereed | #581 |
-| Supervisory safety | Vermogenslimiet plus flow-/frost-interlocks | Klaar voor merge | #582 |
-| Supervisory state-machine | Resterende hoofdloop naar C++ | In uitvoering | Nog te openen |
+| Supervisory safety | Vermogenslimiet plus flow-/frost-interlocks | Gereed | #582 |
+| Supervisory state-machine | Resterende hoofdloop naar C++ | Implementatie en HIL gereed; audit/PR loopt | Nog te openen |
 | Strategy runtimes | Heating Curve, Power House, Cooling en managerbinding | Gepland | Nog te openen |
 | Hydraulics en outputs | Flow Control, Thermal Limits en Auxiliary Relay | Gepland | Nog te openen |
 | Boiler runtime | Commandocapture, outputcontroller en transportbinding | Gepland | Nog te openen |
@@ -83,6 +83,22 @@ Specifieke HIL-scenario's:
 - Power House startbevestiging/idle-exit en Heating Curve hervatting;
 - CM3 assist/fallback-handover voor relais en OpenTherm;
 - silent window en sticky-pumprun zonder extra Modbus-chatter.
+
+Tussenstand na implementatie:
+
+- `oq_supervisory_controlmode.yaml`: 1.915 naar 677 regels (-1.238);
+- productiecode van dit werkblok: 1.915 naar 2.092 regels (+177), binnen de
+  acceptatiegrens van 2.150; tests en dit plandocument tellen afzonderlijk;
+- Q Single en Q Duo compileren; statisch DIRAM is voor Q Duo +8 bytes ten
+  opzichte van schone `dev` (210.671 tegenover 210.663 bytes);
+- host- en contracttests dekken low-load, startbevestiging, idle-exit, override,
+  silent window, sticky-pump, ongeldige invoer, timergrenzen en rollover;
+- HIL geslaagd voor CM-overrides, CM0/CM1/CM2 met flowverlies en herstel,
+  Power House-vraag, Heating Curve-hervatting tijdens postflow, CM5 met pre- en
+  postflow, defrost-hold, silent mode en CM4/OpenTherm-fallback na bevestigde
+  Duo-fouten;
+- na HIL is schone `dev` (`14002173`) teruggezet en staan controller en
+  simulator weer op de normale uitgangsinstellingen.
 
 ## Bewust in YAML houden
 
