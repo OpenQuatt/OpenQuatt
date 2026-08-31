@@ -48,13 +48,9 @@ esphome:
     - priority: -100
       then:
         - lambda: |-
-            float max_current_a = ${oq_duo_current_limit_v1_a};
-            #if OQ_TOPOLOGY_DUO
-            if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V2") {
-              max_current_a = ${oq_duo_current_limit_v2_a};
-            }
-            #endif
-            id(oq_electrical_current_limit_a).traits.set_max_value(max_current_a);
+            id(oq_electrical_current_limit_a).traits.set_max_value(
+                oq_supervisory_power_runtime::maximum_current_a(
+                    ${oq_duo_current_limit_v1_a}, ${oq_duo_current_limit_v2_a}));
     - priority: -100
       then:
         - lambda: |-
@@ -103,15 +99,7 @@ globals:
     type: int
     restore_value: false
     initial_value: '0'  # 0=CM0, 2=CM2, 4=CM4, 5=CM5, 98=CM98
-  # Flow interlock timers
-  - id: oq_lowflow_since_ms
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
-  - id: oq_flow_recover_since_ms
-    type: uint32_t
-    restore_value: false
-    initial_value: '0'
+  # Shared flow interlock state; timer ownership lives in the C++ safety runtime.
   - id: oq_lowflow_fault_active
     type: bool
     restore_value: false
@@ -235,18 +223,6 @@ globals:
     restore_value: false
     initial_value: '3300.0'
 
-  - id: oq_power_over_soft_s
-    type: int
-    restore_value: false
-    initial_value: '0'
-  - id: oq_power_over_peak_s
-    type: int
-    restore_value: false
-    initial_value: '0'
-  - id: oq_power_under_ok_s
-    type: int
-    restore_value: false
-    initial_value: '0'
   # DEBUG-RUNTIME START: Power House low-load diagnostics
   # Dynamic low-load diagnostics (Power House)
   - id: oq_low_load_pmin_dyn_w
@@ -406,27 +382,19 @@ number:
     update_interval: ${oq_supervisory_loop_s}s
     entity_category: config
     lambda: |-
-      float max_current_a = ${oq_duo_current_limit_v1_a};
-      #if OQ_TOPOLOGY_DUO
-      if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V2") {
-        max_current_a = ${oq_duo_current_limit_v2_a};
-      }
-      #endif
+      const float max_current_a = oq_supervisory_power_runtime::maximum_current_a(
+          ${oq_duo_current_limit_v1_a}, ${oq_duo_current_limit_v2_a});
       id(oq_electrical_current_limit_a).traits.set_max_value(max_current_a);
-      const float configured_a = id(oq_electrical_current_limit_configured_a);
-      if (isnan(configured_a)) return max_current_a;
-      return fminf(max_current_a, fmaxf(${oq_electrical_current_limit_min_a}, configured_a));
+      return oq_supervisory_power_runtime::configured_current_a(
+          ${oq_electrical_current_limit_min_a}, ${oq_duo_current_limit_v1_a}, ${oq_duo_current_limit_v2_a});
     set_action:
       then:
         - lambda: |-
-            float max_current_a = ${oq_duo_current_limit_v1_a};
-            #if OQ_TOPOLOGY_DUO
-            if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V2") {
-              max_current_a = ${oq_duo_current_limit_v2_a};
-            }
-            #endif
+            const float max_current_a = oq_supervisory_power_runtime::maximum_current_a(
+                ${oq_duo_current_limit_v1_a}, ${oq_duo_current_limit_v2_a});
             id(oq_electrical_current_limit_a).traits.set_max_value(max_current_a);
-            const float configured_a = fminf(max_current_a, fmaxf(${oq_electrical_current_limit_min_a}, x));
+            const float configured_a = oq_supervisory_power::effective_current_a(
+                x, ${oq_electrical_current_limit_min_a}, max_current_a);
             id(oq_electrical_current_limit_configured_a) = configured_a;
             id(oq_electrical_current_limit_a).publish_state(configured_a);
 
@@ -675,8 +643,6 @@ interval:
           // 5) apply_sticky_pump_policy() (CM0 sticky + pump/PWM ownership)
           // -------------------------------------------------
           const uint32_t now_ms = (uint32_t) millis();
-          static uint32_t boot_ms = 0;
-          if (boot_ms == 0) boot_ms = now_ms;
 
           auto now_time = id(oq_time).now();
           const bool time_valid = now_time.is_valid();
@@ -688,119 +654,14 @@ interval:
           if (!id(oq_enabled).state && time_valid && openquatt_resume_scheduled && now_time >= openquatt_resume_at) {
             id(oq_enabled).turn_on();
           }
-          // -------------------------------------------------
-          // -------------------------------------------------
-          // Electrical input limiter - measured safety net for Single and Duo
-          // - Uses oq_total_power_input (W) = HP1+HP2 electrical
-          // - Power House also applies the same thresholds predictively.
-          // - Heating Curve and cooling only use this measured demand cap.
-          //
-          // Targets scale from the configured current limit at 230V:
-          //   V1/V1.5 = 16A -> 3400W / 3650W / 3300W
-          //   V2      = 20A -> 4250W / 4562.5W / 4125W
-          // -------------------------------------------------
-          {
-            const int dt_s = ${oq_supervisory_loop_s};
-            float max_current_a = ${oq_duo_current_limit_v1_a};
-            #if OQ_TOPOLOGY_DUO
-            if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V2") {
-              max_current_a = ${oq_duo_current_limit_v2_a};
-            }
-            #endif
-            const float configured_a = id(oq_electrical_current_limit_configured_a);
-            const float current_limit_a = isnan(configured_a)
-                ? max_current_a
-                : fminf(max_current_a, fmaxf(${oq_electrical_current_limit_min_a}, configured_a));
-            const float mains_voltage_v = ${oq_mains_voltage_v};
-            const float P_SOFT = current_limit_a * mains_voltage_v * (3400.0f / (16.0f * 230.0f));
-            const float P_PEAK = current_limit_a * mains_voltage_v * (3650.0f / (16.0f * 230.0f));
-            const float P_RECOVER = current_limit_a * mains_voltage_v * (3300.0f / (16.0f * 230.0f));
-            id(oq_power_limit_soft_w) = P_SOFT;
-            id(oq_power_limit_peak_w) = P_PEAK;
-            id(oq_power_limit_recover_w) = P_RECOVER;
-
-            // behavior
-            const int PEAK_TRIP_S = ${oq_power_peak_trip_s};
-            const int SOFT_TRIP_S = ${oq_power_soft_trip_s};
-            const int RECOVER_S = ${oq_power_recover_s};
-
-            const uint32_t measurement_stale_ms = (uint32_t)(${oq_power_measurement_stale_s}UL * 1000UL);
-            auto measurement_fresh = [&](uint32_t updated_ms) -> bool {
-              return updated_ms != 0 && (uint32_t)(now_ms - updated_ms) <= measurement_stale_ms;
-            };
-            bool measurement_valid =
-                id(hp1_is_online) &&
-                id(hp1_voltage).has_state() && !isnan(id(hp1_voltage).state) &&
-                id(hp1_current).has_state() && !isnan(id(hp1_current).state) &&
-                measurement_fresh(id(hp1_voltage_last_update_ms)) &&
-                measurement_fresh(id(hp1_current_last_update_ms));
-            #if OQ_TOPOLOGY_DUO
-            measurement_valid = measurement_valid &&
-                id(${secondary_hp_id}_is_online) &&
-                id(${secondary_hp_id}_voltage).has_state() && !isnan(id(${secondary_hp_id}_voltage).state) &&
-                id(${secondary_hp_id}_current).has_state() && !isnan(id(${secondary_hp_id}_current).state) &&
-                measurement_fresh(id(${secondary_hp_id}_voltage_last_update_ms)) &&
-                measurement_fresh(id(${secondary_hp_id}_current_last_update_ms));
-            #endif
-            const float p = id(oq_total_power_input).state;
-            measurement_valid = measurement_valid && id(oq_total_power_input).has_state() && !isnan(p);
-
-            // Fail-safe: unavailable or stale power -> conservative demand cap.
-            if (!measurement_valid) {
-              const float fallback_scale =
-                  fminf(current_limit_a, ${oq_duo_current_limit_v1_a}) / ${oq_duo_current_limit_v1_a};
-              #if OQ_TOPOLOGY_DUO
-              id(oq_power_cap_f) = (int) floorf(${oq_power_cap_nan_f} * fallback_scale);
-              #else
-              id(oq_power_cap_f) = (int) floorf((${oq_power_cap_nan_f} / 2.0f) * fallback_scale);
-              #endif
-              id(oq_power_over_soft_s) = 0;
-              id(oq_power_over_peak_s) = 0;
-              id(oq_power_under_ok_s)  = 0;
-            } else {
-              // Update timers
-              if (p > P_PEAK) id(oq_power_over_peak_s) += dt_s;
-              else id(oq_power_over_peak_s) = 0;
-
-              if (p > P_SOFT) id(oq_power_over_soft_s) += dt_s;
-              else id(oq_power_over_soft_s) = 0;
-
-              if (p < P_RECOVER) id(oq_power_under_ok_s) += dt_s;
-              else id(oq_power_under_ok_s) = 0;
-
-              // Event-based cap down
-              if (id(oq_power_over_peak_s) >= PEAK_TRIP_S) {
-                // fast step down
-                if (id(oq_power_cap_f) > 0) id(oq_power_cap_f) -= 2;
-                id(oq_power_over_peak_s) = 0;
-                id(oq_power_over_soft_s) = 0;
-                id(oq_power_under_ok_s)  = 0;
-              } else if (id(oq_power_over_soft_s) >= SOFT_TRIP_S) {
-                // mild step down
-                if (id(oq_power_cap_f) > 0) id(oq_power_cap_f) -= 1;
-                id(oq_power_over_soft_s) = 0;
-                id(oq_power_under_ok_s)  = 0;
-              }
-
-              // Faster recovery when comfortably below
-              if (id(oq_power_under_ok_s) >= RECOVER_S) {
-                if (id(oq_power_cap_f) < ${oq_power_cap_max_f}) id(oq_power_cap_f) += 1;
-                id(oq_power_under_ok_s) = 0;
-              }
-
-              // Clamp
-              if (id(oq_power_cap_f) < 0) id(oq_power_cap_f) = 0;
-              if (id(oq_power_cap_f) > ${oq_power_cap_max_f}) id(oq_power_cap_f) = ${oq_power_cap_max_f};
-            }
-          }
+          oq_supervisory_power_runtime::runtime().tick(
+              {now_ms, ${oq_supervisory_loop_s}, ${oq_duo_current_limit_v1_a}, ${oq_duo_current_limit_v2_a},
+               ${oq_electrical_current_limit_min_a}, ${oq_mains_voltage_v}, ${oq_power_peak_trip_s},
+               ${oq_power_soft_trip_s}, ${oq_power_recover_s}, ${oq_power_measurement_stale_s},
+               ${oq_power_cap_nan_f}, ${oq_power_cap_max_f}});
 
           const uint32_t prepost_ms = (uint32_t)(${oq_cm_prepost_s}UL * 1000UL);
-          const uint32_t frost_nan_grace_ms = (uint32_t)(${oq_cm_frost_nan_grace_s}UL * 1000UL);
-          const bool frost_nan_grace_active =
-              (frost_nan_grace_ms > 0) && ((uint32_t)(now_ms - boot_ms) < frost_nan_grace_ms);
           const float min_flow_lph = ${oq_cm_min_flow_lph};
-          const uint32_t flow_fault_ms = (uint32_t)(${oq_cm_flow_fault_s}UL * 1000UL);
-          const uint32_t flow_recover_ms = (uint32_t)(${oq_cm_flow_recover_s}UL * 1000UL);
           // -------------------------------------------------
           // Helpers: minimize Modbus writes (write-on-change)
           // -------------------------------------------------
@@ -942,18 +803,6 @@ interval:
           const bool any_hp_compressor_active =
               hp1_lvl > 0 || hp1_cmd_lvl > 0;
           #endif
-          auto defrost_stop_hold_level = [&](bool is_hp1)->int {
-            const bool defrost_active = is_hp1 ? id(hp1_defrost).state : id(${secondary_defrost_id}).state;
-            if (!defrost_active) return 0;
-
-            const int selected_level = is_hp1 ? hp1_cmd_lvl : hp2_cmd_lvl;
-            if (selected_level > 0) return selected_level;
-
-            const int prev_level = is_hp1 ? hp1_lvl : hp2_lvl;
-            if (prev_level > 0) return prev_level;
-
-            return 0;
-          };
           const bool both_units_idle = !any_hp_active_guard;
 
           bool heating_req = heating_req_raw && openquatt_enabled;
@@ -1137,86 +986,13 @@ interval:
           // -------------------------------------------------
           // 2) Flow interlock status + timers
           // -------------------------------------------------
-          const float flow = id(flow_rate_selected).state;
-          const bool flow_valid = !isnan(flow);
-          const bool flow_low = (!flow_valid) || (flow < min_flow_lph);
-          const bool lowflow_fault_was_active = id(oq_lowflow_fault_active);
-
-          if (!thermal_req) {
-            // No active thermal request: reset flow interlock state
-            id(oq_lowflow_since_ms) = 0;
-            id(oq_flow_recover_since_ms) = 0;
-            id(oq_lowflow_fault_active) = false;
-          } else {
-            if (flow_low) {
-              // Start/continue low-flow timer
-              if (id(oq_lowflow_since_ms) == 0) id(oq_lowflow_since_ms) = now_ms;
-              id(oq_flow_recover_since_ms) = 0;
-
-              // Declare fault if low flow persists >= flow_fault_ms
-              const uint32_t dt = (uint32_t)(now_ms - id(oq_lowflow_since_ms));
-              if (dt >= flow_fault_ms) id(oq_lowflow_fault_active) = true;
-            } else {
-              // Flow OK: start/continue recovery timer if we were in fault
-              id(oq_lowflow_since_ms) = 0;
-              if (id(oq_lowflow_fault_active)) {
-                if (id(oq_flow_recover_since_ms) == 0) id(oq_flow_recover_since_ms) = now_ms;
-                const uint32_t dt = (uint32_t)(now_ms - id(oq_flow_recover_since_ms));
-                if (dt >= flow_recover_ms) {
-                  id(oq_lowflow_fault_active) = false;
-                  id(oq_flow_recover_since_ms) = 0;
-                }
-              } else {
-                id(oq_flow_recover_since_ms) = 0;
-              }
-            }
-          }
-
-          // Normal pump startup may begin below the flow threshold. Only log a
-          // blocked start when that condition survives the configured fault delay.
-          if (!lowflow_fault_was_active && id(oq_lowflow_fault_active)) {
-            const int16_t measured_flow_lph = flow_valid
-                ? (int16_t) std::max(-32768L, std::min(32767L, lroundf(flow)))
-                : 0;
-            const int16_t required_flow_lph =
-                (int16_t) std::max(-32768L, std::min(32767L, lroundf(min_flow_lph)));
-            id(oq_decision_log).emit(
-              openquatt_decision_log::EVENT_DECISION_BLOCKED,
-              openquatt_decision_log::SUBJECT_SYSTEM,
-              openquatt_decision_log::REASON_FLOW_TOO_LOW,
-              openquatt_decision_log::SEVERITY_LIMITED,
-              1,
-              openquatt_decision_log::STATE_LIMITED,
-              openquatt_decision_log::STATE_BLOCKED,
-              measured_flow_lph,
-              0,
-              required_flow_lph);
-          }
-
-          // Flow OK definition for diagnostics: NaN is NOT OK.
-          const bool flow_ok = flow_valid && (flow >= min_flow_lph);
-
-          // Internal interlock: only enforced when heating is requested.
-          const bool min_flow_ok = thermal_req ? (!id(oq_lowflow_fault_active) && flow_ok) : true;
-
-          // Publish lowflow fault status (writes-only-on-change)
-          publish_binary_if_changed(id(oq_lowflow_fault_active_bs), id(oq_lowflow_fault_active));
-
-          // Hard safety path: persistent low-flow fault must force both HPs to Standby + level 0.
-          // Never issue that stop command to a unit that is actively defrosting; let heat-control
-          // keep its last non-zero command until defrost clears.
-          if (id(oq_lowflow_fault_active)) {
-            if (defrost_stop_hold_level(true) <= 0) {
-              set_select_option(id(hp1_set_working_mode), "Standby");
-              set_select_option(id(hp1_compressor_level), "0");
-            }
-            #if OQ_TOPOLOGY_DUO
-            if (defrost_stop_hold_level(false) <= 0) {
-              set_select_option(id(${secondary_set_working_mode_id}), "Standby");
-              set_select_option(id(${secondary_compressor_level_id}), "0");
-            }
-            #endif
-          }
+          const auto safety = oq_supervisory_safety_runtime::runtime().tick(
+              {now_ms, thermal_req, min_flow_lph, ${oq_cm_flow_fault_s}, ${oq_cm_flow_recover_s},
+               ${oq_cm_frost_on_c}, ${oq_cm_frost_off_c}, ${oq_cm_frost_nan_grace_s}});
+          const bool flow_valid = safety.flow_valid;
+          const bool flow_low = safety.flow_low;
+          const bool flow_ok = safety.flow_ok;
+          const bool frost = safety.frost_active;
 
           // -------------------------------------------------
           // 2b) Cold water start
@@ -1290,30 +1066,6 @@ interval:
             }
             id(oq_cold_start_hp_blocked) = cold_start_blocked;
           }
-          // -------------------------------------------------
-          // 3) Frost condition (hysteresis + fail-safe) [CM98]
-          //    Relevant only when there is no heat demand.
-          //    Uses selected outside source to stay aligned with active source selection.
-          //    - ON: <5°C
-          //    - OFF: >6°C
-          //    - FAIL-SAFE: NaN -> frost ON (after startup grace)
-          // -------------------------------------------------
-          const float outside_c = id(outside_temp_selected).state;
-
-          bool frost = false;
-          if (!thermal_req) {
-            if (isnan(outside_c)) {
-              frost = !frost_nan_grace_active; // fail-safe after startup grace
-            } else {
-              if (id(oq_cm_frost_prev)) {
-                frost = (outside_c < ${oq_cm_frost_off_c});
-              } else {
-                frost = (outside_c < ${oq_cm_frost_on_c});
-              }
-            }
-          }
-          id(oq_cm_frost_prev) = frost;
-
           // -------------------------------------------------
           // 4) CM selection with CM1 timer (pre/postflow) + flow interlock
           // -------------------------------------------------
