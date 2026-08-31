@@ -1,6 +1,4 @@
-# ==============================================================================
 # OpenQuatt - Power House Strategy
-# ==============================================================================
 
 globals:
   - id: oq_phouse_demand_external
@@ -70,36 +68,11 @@ select:
     update_interval: 5s
     entity_category: config
     lambda: |-
-      const float rise = id(ph_demand_rise_time_min).state;
-      const float fall = id(ph_demand_fall_time_min).state;
-      auto near = [](float a, float b) -> bool {
-        return !isnan(a) && fabsf(a - b) < 0.25f;
-      };
-      if (near(rise, 12.0f) && near(fall, 5.0f)) return std::string("Calm");
-      if (near(rise, 8.0f) && near(fall, 3.0f)) return std::string("Balanced");
-      if (near(rise, 5.0f) && near(fall, 2.0f)) return std::string("Responsive");
-      return std::string("Custom");
+      return oq_power_house_runtime::runtime().response_profile();
     set_action:
       then:
         - lambda: |-
-            // Map the response preset to the canonical rise/fall knobs.
-            auto set_number_value = [](auto *num, float value) {
-              if (num == nullptr) return;
-              auto c = num->make_call();
-              c.set_value(value);
-              c.perform();
-            };
-
-            if (x == "Calm") {
-              set_number_value(id(ph_demand_rise_time_min), 12.0f);
-              set_number_value(id(ph_demand_fall_time_min), 5.0f);
-            } else if (x == "Balanced") {
-              set_number_value(id(ph_demand_rise_time_min), 8.0f);
-              set_number_value(id(ph_demand_fall_time_min), 3.0f);
-            } else if (x == "Responsive") {
-              set_number_value(id(ph_demand_rise_time_min), 5.0f);
-              set_number_value(id(ph_demand_fall_time_min), 2.0f);
-            }
+            oq_power_house_runtime::runtime().set_response_profile(x);
 
 number:
   - platform: template
@@ -313,181 +286,14 @@ interval:
     startup_delay: 4000ms
     then:
       - lambda: |-
-          // Power House strategy: owns filtered demand and PH topology selection.
-          static oq_power_house_dispatch::DispatchState dispatch_state;
-          const int cm_code = id(oq_control_mode_code);
-          const bool active = (cm_code != 5) && (id(oq_heat_mode_code) != 1);
-          if (!active) {
-            dispatch_state = {};
-            id(oq_ph_request_last_loop_ms) = 0;
-            id(oq_ph_request_hp1_level) = 0;
-            id(oq_ph_request_hp2_level) = 0;
-            id(oq_ph_request_owner_hp) = 0;
-            id(oq_ph_request_reason_code) = 0;
-            id(oq_phouse_last_ms) = 0;
-            id(oq_phouse_last_w) = 0.0f;
-            id(oq_phouse_comfort_memory_c) = 0.0f;
-            id(oq_phouse_demand_external) = false;
-            id(oq_P_hp_cap_w) = 0.0f;
-            id(oq_P_deficit_w) = 0.0f;
-            return;
-          }
-
-          const uint32_t now_ms = (uint32_t) millis();
-          if (id(oq_strategy_output_source_code) != 3) dispatch_state = {};
-          const bool hp1_valve_def = id(hp1_4_way_valve).state;
-          const bool hp1_oil_return = id(hp1_prot_oil_return).state;
-          #if OQ_TOPOLOGY_DUO
-          const bool hp2_valve_def = id(${secondary_4_way_valve_id}).state;
-          const bool hp2_oil_return = id(${secondary_oil_return_id}).state;
-          const int hp2_applied_level = id(${secondary_last_applied_level_id});
-          #else
-          const bool hp2_valve_def = false;
-          const bool hp2_oil_return = false;
-          const int hp2_applied_level = 0;
-          #endif
-          dispatch_state = oq_power_house_dispatch::observe_protection(
-              dispatch_state, {now_ms, hp1_valve_def, hp2_valve_def, hp1_oil_return || hp2_oil_return,
-                               id(hp1_last_applied_level), hp2_applied_level});
-
-          const uint32_t loop_target_ms = (uint32_t) (${oq_heat_loop_powerhouse_s} * 1000UL);
-          const auto cadence =
-              oq_power_house::decide_cadence(now_ms, id(oq_ph_request_last_loop_ms), loop_target_ms);
-          if (!cadence.due) return;
-          id(oq_ph_request_last_loop_ms) = now_ms == 0 ? UINT32_MAX : now_ms;
-
-          const int demand_max_f = (int) ${oq_strategy_demand_max_f};
-          const oq_power_house::DemandInput demand_input{
-              now_ms, id(outside_temp_selected).state, id(house_cold_temp_c).state,
-              id(house_zero_power_temp_c).state, id(house_rated_power_w).state, id(room_temp_selected).state,
-              id(room_setpoint_selected).state, id(external_heat_demand_selected).state,
-              id(oq_water_temp_limit_factor), id(external_heat_demand_selected).has_state()};
-          const oq_power_house::DemandTuning demand_tuning{
-              ${oq_temp_guard_delta_c}f, id(ph_kp_w_per_k).state, id(ph_comfort_band_below_c).state,
-              id(ph_comfort_band_above_c).state, id(ph_demand_rise_time_min).state,
-              id(ph_demand_fall_time_min).state, demand_max_f};
-          const auto demand = oq_power_house::decide_demand(
-              demand_input, demand_tuning,
-              {id(oq_phouse_last_w), id(oq_phouse_last_ms), id(oq_phouse_comfort_memory_c)});
-          id(oq_phouse_req_w) = demand.requested_w;
-          id(oq_phouse_last_w) = demand.next.last_w;
-          id(oq_phouse_last_ms) = demand.next.last_ms;
-          id(oq_phouse_comfort_memory_c) = demand.next.comfort_memory_c;
-          id(oq_phouse_demand_external) = demand.external;
-          id(oq_demand_raw) = demand.raw_demand;
-          const auto filtered = oq_power_house::filter_demand(
-              demand.raw_demand, id(oq_demand_filtered), id(oq_demand_filter_ramp_up_budget),
-              id(oq_demand_filter_ramp_up_step_min).state, cadence.dt_s, demand_max_f);
-          id(oq_demand_filtered_prev) = filtered.previous;
-          id(oq_demand_filter_ramp_up_budget) = filtered.ramp_budget;
-          id(oq_demand_filtered) = filtered.filtered;
-          id(oq_heating_demand_filtered) = filtered.filtered;
-          int f = std::min(filtered.filtered, std::max(0, std::min(demand_max_f, id(oq_power_cap_f))));
-
-          #if OQ_TOPOLOGY_DUO
-          const bool lead_is_hp1 = id(hp1_minutes) <= id(${secondary_minutes_id});
-          const bool duo = true;
-          #else
-          const bool lead_is_hp1 = true;
-          const bool duo = false;
-          #endif
-          id(oq_last_lead_hp) = lead_is_hp1 ? 1 : 2;
-
-          const auto frequency_runtime = oq_frequency_runtime::capture();
-          auto level_allowed = [&](bool is_hp1, int level) -> bool {
-            return frequency_runtime.frequency_allowed(is_hp1, 2, level);
-          };
-
-          const float outside_c = id(outside_temp_selected).state;
-          const float supply_c = id(oq_system_supply_temp).state;
-          const bool performance_valid = isfinite(outside_c) && isfinite(supply_c);
-          const auto hp1_incident = id(oq_incident_manager).get_outputs(1);
-          const auto hp1_candidate =
-              oq_hp_candidate::candidate_state(hp1_incident, id(hp1_last_applied_level));
-          const bool hp1_defrost_active = id(hp1_defrost).state;
-          #if OQ_TOPOLOGY_DUO
-          const auto hp2_incident = id(oq_incident_manager).get_outputs(2);
-          const auto hp2_candidate =
-              oq_hp_candidate::candidate_state(hp2_incident, hp2_applied_level);
-          const bool hp2_defrost_active = id(${secondary_defrost_id}).state;
-          #else
-          const oq_hp_candidate::HpCandidateState hp2_candidate;
-          const bool hp2_defrost_active = false;
-          #endif
-
-          float defrost_factor = ${oq_defrost_power_factor};
-          if (!isfinite(defrost_factor)) defrost_factor = 0.55f;
-          defrost_factor = fmaxf(0.10f, fminf(1.00f, defrost_factor));
-          auto build_hp = [&](oq_power_house_dispatch::HpInput& result,
-                              bool hp1,
-                              const oq_hp_candidate::HpCandidateState& candidate,
-                              bool defrost,
-                              bool valve_defrost) {
-            result.candidate = candidate;
-            result.defrost = defrost;
-            result.valve_defrost = valve_defrost;
-            result.levels[0] = {true, true, true, 0.0f, 0.0f};
-            for (int level = 1; level <= oq_power_house_dispatch::kMaxLevel; ++level) {
-              const bool allowed = level_allowed(hp1, level);
-              float thermal_w = NAN;
-              float electrical_w = NAN;
-              if (performance_valid) {
-                const float frequency_hz = oq_perf::model_frequency_hz(level);
-                thermal_w = oq_perf::interp_power_th_w_hz(frequency_hz, outside_c, supply_c);
-                electrical_w = oq_perf::interp_power_el_w_hz(frequency_hz, outside_c, supply_c);
-                if (valve_defrost && isfinite(thermal_w)) thermal_w *= defrost_factor;
-              }
-              result.levels[level] = {allowed, isfinite(thermal_w) && thermal_w >= 0.0f,
-                                      isfinite(electrical_w) && electrical_w >= 0.0f,
-                                      thermal_w, electrical_w};
-            }
-          };
-
-          float requested_w = id(oq_phouse_req_w);
-          const float rated_w = id(house_rated_power_w).state;
-          if (isfinite(requested_w) && isfinite(rated_w) && rated_w > 0.0f) {
-            requested_w = std::min(requested_w, rated_w * (float) f / (float) demand_max_f);
-          }
-          oq_power_house_dispatch::DispatchInput dispatch_input{
-              now_ms, f, requested_w, duo, performance_valid, lead_is_hp1};
-          build_hp(dispatch_input.hp1, true, hp1_candidate, hp1_defrost_active, hp1_valve_def);
-          #if OQ_TOPOLOGY_DUO
-          build_hp(dispatch_input.hp2, false, hp2_candidate, hp2_defrost_active, hp2_valve_def);
-          #endif
-          const oq_power_house_dispatch::DispatchTuning dispatch_tuning{
-              id(oq_power_limit_soft_w), id(oq_power_limit_peak_w), ${oq_optimizer_penalty_per_w},
-              ${oq_optimizer_topology_power_margin_w}, ${oq_optimizer_topology_heat_advantage_w},
-              (int) roundf(${oq_defrost_comp_min_f}), (int) roundf(${oq_defrost_comp_boost_steps})};
-          const auto dispatch = oq_power_house_dispatch::decide_dispatch(
-              dispatch_input, dispatch_tuning, dispatch_state);
-          id(oq_ph_request_hp1_level) = dispatch.hp1_level;
-          id(oq_ph_request_hp2_level) = dispatch.hp2_level;
-          id(oq_ph_request_owner_hp) = dispatch.owner_hp;
-          id(oq_ph_request_reason_code) = (int) dispatch.reason;
-          id(oq_P_hp_cap_w) = dispatch.capacity_w;
-          id(oq_P_deficit_w) = dispatch.deficit_w;
-
-          #if OQ_TOPOLOGY_DUO
-          static std::string last_optimizer_reason;
-          const std::string optimizer_reason(
-              oq_power_house_dispatch::request_reason_name((int) dispatch.reason));
-          if (optimizer_reason != last_optimizer_reason) {
-            id(oq_duo_optimizer_reason).publish_state(optimizer_reason.c_str());
-            last_optimizer_reason = optimizer_reason;
-          }
-          #endif
-
-          id(oq_strategy_phase_code) = f > 0 ? 1 : 0;
-          id(oq_strategy_requested_power_w) = requested_w;
-          id(oq_strategy_supply_target_temp) = NAN;
-          id(oq_strategy_heat_request_active) = f > 0;
-          id(oq_strategy_hp_expected_power_w) = dispatch.expected_w;
-          id(oq_strategy_hp_max_power_w) = dispatch.capacity_w;
-          id(oq_strategy_hp_saturated) = dispatch.saturated;
-          id(oq_strategy_output_valid) = dispatch.output_valid;
-          id(oq_strategy_output_source_code) = 3;
-          id(oq_strategy_output_updated_ms) = now_ms;
-          id(oq_strategy_phase_text).publish_state(f > 0 ? "heat" : "idle");
-
-          ESP_LOGD("quatt.strategy", "ph f=%d raw=%d preq=%.0f owner=%d reason=%d",
-                   f, demand.raw_demand, requested_w, dispatch.owner_hp, (int) dispatch.reason);
+          oq_power_house_runtime::runtime().tick({
+              (uint32_t) ${oq_heat_loop_powerhouse_s} * 1000UL,
+              (int) ${oq_strategy_demand_max_f},
+              ${oq_temp_guard_delta_c}f,
+              ${oq_defrost_power_factor},
+              ${oq_optimizer_penalty_per_w},
+              ${oq_optimizer_topology_power_margin_w},
+              ${oq_optimizer_topology_heat_advantage_w},
+              (int) roundf(${oq_defrost_comp_min_f}),
+              (int) roundf(${oq_defrost_comp_boost_steps}),
+          });

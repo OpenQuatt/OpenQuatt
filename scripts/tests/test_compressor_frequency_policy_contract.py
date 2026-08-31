@@ -17,6 +17,7 @@ STRATEGIES = "\n".join(
         "oq_cooling_strategy.yaml",
     )
 )
+STRATEGY_RUNTIMES = "\n".join((ROOT / f"openquatt/includes/control/oq_{name}_runtime.h").read_text() for name in ("heating_curve", "power_house", "cooling"))
 POLICY = (
     ROOT / "openquatt" / "includes" / "control" / "oq_compressor_frequency_policy.h"
 ).read_text()
@@ -78,14 +79,14 @@ class CompressorFrequencyPolicyContractTest(unittest.TestCase):
         self.assertIn('"hp1ExcludeMinHz", "hp1ExcludeMaxHz", "hp2ExcludeMinHz", "hp2ExcludeMaxHz"', WEB_CONFIG)
 
     def test_strategies_only_offer_allowed_runtime_frequencies(self) -> None:
-        self.assertEqual(STRATEGIES.count("oq_frequency_runtime::capture()"), 3)
-        self.assertEqual(STRATEGIES.count("frequency_runtime.frequency_allowed("), 3)
+        self.assertEqual(STRATEGY_RUNTIMES.count("oq_frequency_runtime::capture()"), 3)
+        self.assertEqual(STRATEGY_RUNTIMES.count("frequency.frequency_allowed("), 3)
         self.assertIn("const auto boosted = make_candidate(", DISPATCH)
         self.assertIn("estimate.allowed", DISPATCH)
-        self.assertIn("level_allowed(hp1, level)", STRATEGIES)
+        self.assertIn("frequency.frequency_allowed(hp1, 2, level)", STRATEGY_RUNTIMES)
 
     def test_runtime_inputs_are_captured_once_per_control_callback(self) -> None:
-        control_sources = STRATEGIES + REQUEST_RUNTIME + ACTUATOR
+        control_sources = STRATEGIES + STRATEGY_RUNTIMES + REQUEST_RUNTIME + ACTUATOR
         self.assertEqual(control_sources.count("oq_frequency_runtime::capture()"), 5)
         for inline_adapter in (
             "auto runtime_frequency_snapshot",

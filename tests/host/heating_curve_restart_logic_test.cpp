@@ -164,6 +164,35 @@ void test_maintain_caps() {
            near(out.demand_continuous, static_cast<float>(test.expected)));
   }
 }
+void test_outside_filter_target_and_cadence_rollover() {
+  auto ema = update_outside_ema(1000U, 10.0f, 100.0f, {});
+  assert(ema.next.initialized && near(ema.value_c, 10.0f));
+  ema = update_outside_ema(11000U, 0.0f, 100.0f, ema.next);
+  assert(near(ema.value_c, 9.090909f));
+  OutsideEmaState rollover{10.0f, true, UINT32_MAX - 4999U};
+  ema = update_outside_ema(5000U, 0.0f, 100.0f, rollover);
+  assert(near(ema.value_c, 9.090909f));
+  assert(!update_outside_ema(1000U, NAN, 100.0f, rollover).next.initialized);
+
+  const std::array<CurvePoint, 6> points{{
+      {-20.0f, 50.0f},
+      {-10.0f, 45.0f},
+      {0.0f, 40.0f},
+      {5.0f, 37.5f},
+      {10.0f, 35.0f},
+      {15.0f, 30.0f},
+  }};
+  assert(near(supply_target(-5.0f, 40.0f, points, NAN, NAN, tuning(), 70.0f), 42.5f));
+  assert(near(supply_target(-5.0f, 40.0f, points, 22.0f, 20.0f, tuning(), 70.0f), 40.5f));
+  assert(near(supply_target(-5.0f, 40.0f, points, 22.0f, 20.0f, tuning(), 39.0f), 39.0f));
+  assert(near(supply_target(NAN, 40.0f, points, NAN, NAN, tuning(), 70.0f), 40.0f));
+
+  assert(cadence_due(100U, 0U, 30000U));
+  assert(!cadence_due(1000U, UINT32_MAX - 1000U, 3000U));
+  assert(cadence_due(2000U, UINT32_MAX - 1000U, 3000U));
+  assert(elapsed_window_active(1000U, UINT32_MAX - 1000U, 3000U));
+  assert(!elapsed_window_active(2000U, UINT32_MAX - 1000U, 3000U));
+}
 }  // namespace
 int main() {
   test_restart_matrix();
@@ -173,5 +202,6 @@ int main() {
   test_stop_confirmation_and_rollover();
   test_restart_lock_and_regimes();
   test_maintain_caps();
+  test_outside_filter_target_and_cadence_rollover();
   return 0;
 }

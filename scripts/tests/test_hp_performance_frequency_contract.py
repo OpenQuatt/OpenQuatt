@@ -14,6 +14,7 @@ STRATEGIES = "\n".join(
         "oq_supervisory_controlmode.yaml",
     )
 )
+STRATEGIES += "\n" + "\n".join((ROOT / f"openquatt/includes/control/oq_{name}_runtime.h").read_text() for name in ("heating_curve", "power_house"))
 
 
 class HPPerformanceFrequencyContractTest(unittest.TestCase):

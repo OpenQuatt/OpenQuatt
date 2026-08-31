@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <math.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -90,6 +91,22 @@ struct DispatchCandidate {
   float error_w = 1.0e9f;
   int active_hp_count = 0;
   int balance_gap = 0;
+};
+
+struct OutsideEmaState {
+  float value_c = NAN;
+  bool initialized = false;
+  uint32_t last_ms = 0;
+};
+
+struct OutsideEmaDecision {
+  OutsideEmaState next;
+  float value_c = NAN;
+};
+
+struct CurvePoint {
+  float outside_c = NAN;
+  float target_c = NAN;
 };
 
 inline ControlProfileTuning control_profile(const std::string& profile_option) {
@@ -185,6 +202,60 @@ inline OilReturnDecision update_oil_return_hold(uint32_t now_ms, bool oil_return
   }
   if (hold_until_ms != 0 && static_cast<int32_t>(hold_until_ms - now_ms) > 0) return {hold_until_ms, true};
   return {};
+}
+
+inline OutsideEmaDecision update_outside_ema(uint32_t now_ms, float outside_c, float tau_s,
+                                             const OutsideEmaState& state) {
+  OutsideEmaDecision out;
+  if (!isfinite(outside_c)) return out;
+  if (!state.initialized || state.last_ms == 0 || !isfinite(state.value_c) || !isfinite(tau_s) || tau_s <= 0.0f) {
+    out.next = {outside_c, true, timestamp_ms(now_ms)};
+    out.value_c = outside_c;
+    return out;
+  }
+  const float dt_s = static_cast<float>(static_cast<uint32_t>(now_ms - state.last_ms)) / 1000.0f;
+  const float alpha = std::max(0.0f, std::min(1.0f, dt_s / (tau_s + dt_s)));
+  out.value_c = state.value_c + alpha * (outside_c - state.value_c);
+  out.next = {out.value_c, true, timestamp_ms(now_ms)};
+  return out;
+}
+
+inline float supply_target(float outside_c, float fallback_c, const std::array<CurvePoint, 6>& points, float room_c,
+                           float room_setpoint_c, const ControlProfileTuning& tuning, float max_water_c) {
+  float target_c = fallback_c;
+  if (isfinite(outside_c)) {
+    if (outside_c <= points.front().outside_c)
+      target_c = points.front().target_c;
+    else if (outside_c >= points.back().outside_c)
+      target_c = points.back().target_c;
+    else
+      for (size_t i = 0; i + 1 < points.size(); ++i)
+        if (outside_c >= points[i].outside_c && outside_c <= points[i + 1].outside_c) {
+          const float fraction = (outside_c - points[i].outside_c) / (points[i + 1].outside_c - points[i].outside_c);
+          target_c = points[i].target_c + fraction * (points[i + 1].target_c - points[i].target_c);
+          break;
+        }
+  }
+  if (isfinite(target_c) && isfinite(room_c) && isfinite(room_setpoint_c)) {
+    const float warm_error_c = room_c - room_setpoint_c;
+    if (warm_error_c > tuning.trim_start_c) {
+      const float trim_c =
+          std::max(0.0f, std::min(tuning.trim_max_c, (warm_error_c - tuning.trim_start_c) * tuning.trim_gain));
+      target_c -= trim_c;
+    }
+  }
+  if (isfinite(target_c) && tuning.quant_step_c > 0.0f)
+    target_c = roundf(target_c / tuning.quant_step_c) * tuning.quant_step_c;
+  if (isfinite(target_c) && isfinite(max_water_c)) target_c = fminf(target_c, max_water_c);
+  return target_c;
+}
+
+inline bool cadence_due(uint32_t now_ms, uint32_t last_ms, uint32_t target_ms) {
+  return target_ms > 0 && (last_ms == 0 || static_cast<uint32_t>(now_ms - last_ms) >= target_ms);
+}
+
+inline bool elapsed_window_active(uint32_t now_ms, uint32_t started_ms, uint32_t duration_ms) {
+  return started_ms != 0 && duration_ms > 0 && static_cast<uint32_t>(now_ms - started_ms) < duration_ms;
 }
 
 inline DemandDecision decide_demand(const DemandInput& in, const ControlProfileTuning& requested_tuning,

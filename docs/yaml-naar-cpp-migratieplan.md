@@ -42,13 +42,67 @@ entities, configuratie, koppelingen en één of enkele runtime-aanroepen.
 | Cooling-kern | Herstel/timing, vraag/dispatch en safety/handover | Gereed | #573, #577, #578 |
 | Thermal Request | Arbitrage en actuatorrequests | Gereed | #581 |
 | Supervisory safety | Vermogenslimiet plus flow-/frost-interlocks | Gereed | #582 |
-| Supervisory state-machine | Resterende hoofdloop naar C++ | Klaar voor review | #583 |
-| Strategy runtimes | Heating Curve, Power House, Cooling en managerbinding | Gepland | Nog te openen |
+| Supervisory state-machine | Resterende hoofdloop naar C++ | Gereed | #583 |
+| Strategy runtimes | Heating Curve, Power House, Cooling en managerbinding | Gereed, PR volgt | Deze PR |
 | Hydraulics en outputs | Flow Control, Thermal Limits en Auxiliary Relay | Gepland | Nog te openen |
 | Boiler runtime | Commandocapture, outputcontroller en transportbinding | Gepland | Nog te openen |
 | Bronselectie-opruiming | Generieke selectie/freshness waar dit YAML werkelijk verkleint | Beslispunt na bovenstaande blokken | Nog te bepalen |
 
-## Actueel werkblok: Supervisory state-machine
+## Actueel werkblok: Strategy runtimes
+
+Doel: de resterende stateful ESPHome-lambdas van Heating Curve, Power House en
+Cooling vervangen door compacte runtime-aanroepen. De Strategy Manager blijft
+het declaratieve contract voor selectie en diagnostische entities, maar draagt
+modewissels, bronselectie en gedeelde statuspublicatie over aan C++.
+
+Omvang:
+
+1. Heating Curve-runtime:
+   - PID-output naar vraagbeslissing en freshness van kamermetingen;
+   - buitentemperatuurfilter, stooklijndoel en PID-lifecycle;
+   - Single/Duo-dispatch, defrost-/oil-return-hold en rolloverveilige cadence.
+2. Power House-runtime:
+   - vraagcaptatie, filtering en gedeelde strategy-output;
+   - performancecandidate-opbouw en Single/Duo-dispatch;
+   - responseprofielbinding en lifecycle-reset.
+3. Cooling-runtime:
+   - demand/safety-inputcaptatie, eventtransities en minimum-off-diagnostiek;
+   - ownerdispatch, stopbevestiging en strategy-output;
+   - lifecycle-reset buiten CM5.
+4. Strategy Manager-binding:
+   - atomische reset bij strategywissel;
+   - actieve-strategy- en waterlimitpublicatie;
+   - lokale buitentemperatuuraggregatie met freshness.
+
+Gezamenlijke HIL-acceptatie:
+
+- Power House en Heating Curve onder normale vraag, ramp-up en vraagwegval;
+- Heating Curve stop/hervatting, waterlimit en Single/Duo-dispatch;
+- Cooling start/stop, minimum-off, flowverlies, dauwpunt/fallback en herstel;
+- strategywissels tijdens idle en actieve vraag zonder stale output of extra
+  compressorstart;
+- defrost/oil-return en incidentgestuurde eigenaarwissel;
+- herstel naar schone `dev`-firmware en normale simulatorinstellingen.
+
+Afronding:
+
+- de vier strategy-YAML's zijn samen 1.330 regels kleiner; inclusief de nieuwe
+  runtimeheaders en gedeelde helper is de productiecode netto 26 regels kleiner;
+- de volledige hostset (55), Python-contractset (163) en C++-formatcontrole zijn groen;
+- Q Single en Q Duo compileren; Q Duo gebruikt statisch 16 bytes meer DIRAM en
+  het image is 208 bytes groter dan de schone `dev`-basis;
+- HIL is geslaagd voor Power House- en Heating Curve-vraag/dispatch, een actieve
+  strategieswitch zonder extra compressorstart, Cooling fail-closed zonder
+  dauwpunt, minimum-off, flowverlies/herstel en defrost-hold;
+- bij geïnjecteerd ODU2-linkverlies werd HP2 bevestigd onbeschikbaar en gestopt,
+  nam HP1 de aanvraag over en keerde ODU2 na stabiele telemetrie terug naar
+  `healthy/available`; Power House hervatte daarna via de normale startbevestiging;
+- Heating Curve-stop/hervatting en waterlimiet zijn hostmatig afgedekt; de HIL-rig
+  kan de geselecteerde lokale PT1000-watertemperatuur niet injecteren;
+- na HIL is schone `dev` (`e9b6290e`) teruggezet en zijn de normale controller-
+  en simulatorinstellingen hersteld.
+
+## Vorig werkblok: Supervisory state-machine
 
 Doel: de resterende grote lambda in `oq_supervisory_controlmode.yaml` vervangen
 door compacte inputcaptatie en één runtime-aanroep. Dit werkblok blijft één PR,
