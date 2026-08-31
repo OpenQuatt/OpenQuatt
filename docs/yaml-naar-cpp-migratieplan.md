@@ -87,7 +87,7 @@ Specifieke HIL-scenario's:
 Tussenstand na implementatie:
 
 - `oq_supervisory_controlmode.yaml`: 1.915 naar 677 regels (-1.238);
-- productiecode van dit werkblok: 1.915 naar 2.092 regels (+177), binnen de
+- productiecode van dit werkblok: 1.915 naar 2.093 regels (+178), binnen de
   acceptatiegrens van 2.150; tests en dit plandocument tellen afzonderlijk;
 - Q Single en Q Duo compileren; statisch DIRAM is voor Q Duo +8 bytes ten
   opzichte van schone `dev` (210.671 tegenover 210.663 bytes);
