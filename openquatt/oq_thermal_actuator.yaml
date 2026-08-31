@@ -1,23 +1,13 @@
 # ==============================================================================
 # OpenQuatt - Thermal Actuator
 # ==============================================================================
-#
-# Contract:
-#   Applies finalized thermal requests through the stateful C++ actuator.
-#   The runtime owns the ordered safety gates, HP writes and bookkeeping.
-#
-# Ownership:
-#   - Consumes `oq_request_mode_code`
-#   - Consumes `oq_actuator_hp1_req` / `oq_actuator_hp2_req`
-#   - Is the only package that writes HP working mode and compressor levels
-# ==============================================================================
-
+# Maps finalized requests to the stateful C++ actuator. The runtime owns ordered
+# safety gates, HP writes and bookkeeping; this is the only HP-commanding package.
 globals:
   - id: oq_thermal_actuator_last_loop_ms
     type: uint32_t
     restore_value: false
     initial_value: '0'
-
 interval:
   - interval: ${oq_heat_loop_tick_s}s
     startup_delay: 4000ms
@@ -25,17 +15,16 @@ interval:
       - lambda: |-
           // Keep elapsed-time accounting in YAML; C++ owns actuation behavior.
           const uint32_t now_ms = (uint32_t) millis();
-          const uint32_t nominal_dt_ms =
-              (uint32_t) ${oq_heat_loop_tick_s} * 1000UL;
+          const uint32_t nominal_dt_ms = (uint32_t) ${oq_heat_loop_tick_s} * 1000UL;
           const uint32_t dt_ms = oq_request::capped_loop_dt_ms(
               now_ms,
               id(oq_thermal_actuator_last_loop_ms),
               nominal_dt_ms);
           id(oq_thermal_actuator_last_loop_ms) = now_ms;
-
           oq_thermal_actuator_runtime::runtime().tick({
               now_ms,
               dt_ms,
               (int) ${oq_hp_min_off_s},
+              (int) ${oq_cooling_minimum_off_min_s},
               (float) ${oq_cm_min_flow_lph},
           });

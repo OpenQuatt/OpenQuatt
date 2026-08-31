@@ -40,7 +40,7 @@ void test_single() {
   in.now_ms++;
   assert(!update_dispatch(in, state).evaluated);
   in.now_ms += in.cadence_ms;
-  in.minimum_off_enabled = in.stop_confirmation_pending = true;
+  in.stop_confirmation_pending = true;
   out = update_dispatch(in, state);
   assert(out.start_blocked && out.owner == 0);
   in.hp1.candidate.previous_applied_level = 2;
@@ -87,6 +87,14 @@ void test_stops() {
   assert(out.owner_before_hold == 2 && out.owner == 2 && out.hp2_request == 4);
   in.now_ms += in.cadence_ms;
   in.hp2.candidate.must_stop = true;
+  out = update_dispatch(in, state);
+  assert(out.owner == 1 && out.hp1_request == 4 && out.hp2_request == 0);
+  in.now_ms += in.cadence_ms;
+  in.stop_confirmation_pending = true;
+  out = update_dispatch(in, state);
+  assert(out.start_blocked && out.owner == 0 && out.hp1_request == 0 && out.hp2_request == 0);
+  in.now_ms += in.cadence_ms;
+  in.stop_confirmation_pending = false;
   out = update_dispatch(in, state);
   assert(out.owner == 1 && out.hp1_request == 4 && out.hp2_request == 0);
   in.now_ms += in.cadence_ms;

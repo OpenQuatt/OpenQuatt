@@ -48,6 +48,17 @@ void test_existing_water_and_minimum_off_contracts() {
          !apply_hp2_before_hp1_for_cooling_handover(true, false) &&
          !apply_hp2_before_hp1_for_cooling_handover(true, true) &&
          !apply_hp2_before_hp1_for_cooling_handover(false, false));
+  assert(next_applied_cooling(false, 1, 1));
+  assert(next_applied_cooling(true, 1, 0) && !next_applied_cooling(true, 0, 0) && !next_applied_cooling(true, 1, 2));
+  assert(cooling_minimum_off_floor_s(10) == 10 && cooling_minimum_off_floor_s(0) == 1 &&
+         cooling_minimum_off_floor_s(600) == 600 && cooling_minimum_off_floor_s(4000) == 3600);
+  assert(cooling_stop_confirmation_blocks_start(true, false, 0) &&
+         cooling_stop_confirmation_blocks_start(false, true, 0) &&
+         !cooling_stop_confirmation_blocks_start(true, true, 1) &&
+         !cooling_stop_confirmation_blocks_start(false, false, 0));
+  assert(
+      cooling_stop_requires_confirmation(true, 0, true, 0) && cooling_stop_requires_confirmation(true, 1, false, 0) &&
+      !cooling_stop_requires_confirmation(false, 1, true, 0) && !cooling_stop_requires_confirmation(true, 0, true, 1));
   uint32_t confirmed_at = 1234;
   bool seen = false;
   assert(!record_confirmed_cooling_stop(false, true, 2000, confirmed_at, seen) && confirmed_at == 1234 && !seen);
