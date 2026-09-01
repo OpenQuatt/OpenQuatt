@@ -1012,7 +1012,7 @@ void OpenQuattDebugRecorder::capture_sample_() {
     }
     if (previous != nullptr && read_value_(previous, field) != value) {
       change_count++;
-      if (event_type_(field.type)) {
+      if (event_type_(field.type) && std::strcmp(field.key, "timeNowHhmm") != 0) {
         event_count++;
       }
     }
