@@ -55,8 +55,12 @@ class HilHarnessContractTest(unittest.TestCase):
         self.assertIn("--restore-snapshot", DOCS)
         self.assertIn("OpenQuatt/OpenQuatt-Simulator", DOCS)
         self.assertIn('"check:hil"', PACKAGE)
-        self.assertIn("hil-harness-tests:", WORKFLOW)
-        self.assertIn("npm run check:hil", WORKFLOW)
+        self.assertNotIn("hil-harness-tests:", WORKFLOW)
+        host_job = WORKFLOW.split("  host-regression-tests:", 1)[1].split(
+            "\n  validate-and-compile:", 1
+        )[0]
+        self.assertIn("npm run check:hil", host_job)
+        self.assertIn("./scripts/run_host_regression_tests.sh", host_job)
 
 
 if __name__ == "__main__":
