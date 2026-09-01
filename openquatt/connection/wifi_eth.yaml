@@ -30,6 +30,9 @@ ethernet:
 
 captive_portal:
 
+# Keep captive provisioning ahead of the normal web app on the fallback AP.
+openquatt_captive_portal_router:
+
 # Enable ESP Web Tools WiFi provisioning while keeping AP fallback available.
 improv_serial:
   next_url: "http://{{ip_address}}/"
@@ -38,7 +41,7 @@ external_components:
   - source:
       type: local
       path: ${external_components_path}
-    components: [openquatt_network]
+    components: [openquatt_network, openquatt_captive_portal_router]
 
 openquatt_network:
   id: oq_network_manager

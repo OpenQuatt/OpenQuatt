@@ -7,6 +7,12 @@
 substitutions:
   oq_connection: "wifi"
 
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_captive_portal_router]
+
 wifi:
   power_save_mode: none
   min_auth_mode: wpa2
@@ -15,6 +21,9 @@ wifi:
     password: "openquatt"
 
 captive_portal:
+
+# Keep captive provisioning ahead of the normal web app while fallback AP mode is active.
+openquatt_captive_portal_router:
 
 # Enable ESP Web Tools Wi-Fi provisioning while keeping AP fallback available.
 improv_serial:

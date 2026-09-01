@@ -27,9 +27,51 @@ ODU_RUNTIME_TABLE = (
 ODU_RUNTIME_TABLE_YAML = (
     ROOT / "openquatt" / "experimental" / "oq_odu_runtime_frequency_table_hp.yaml"
 ).read_text()
+CAPTIVE_PORTAL_ROUTER_CPP = (
+    ROOT
+    / "components"
+    / "openquatt_captive_portal_router"
+    / "OpenQuattCaptivePortalRouter.cpp"
+).read_text()
+WIFI_PROFILE = (ROOT / "openquatt" / "connection" / "wifi.yaml").read_text()
+WIFI_ETH_PROFILE = (
+    ROOT / "openquatt" / "connection" / "wifi_eth.yaml"
+).read_text()
 
 
 class ESPHomeCompatibilityContractTest(unittest.TestCase):
+    def test_captive_portal_router_registers_before_web_server(self) -> None:
+        self.assertIn(
+            "return setup_priority::WIFI + 0.5f;", CAPTIVE_PORTAL_ROUTER_CPP
+        )
+        self.assertIn(
+            "add_handler_without_auth(this);", CAPTIVE_PORTAL_ROUTER_CPP
+        )
+        profiles = (
+            (
+                "wifi",
+                WIFI_PROFILE,
+                "components: [openquatt_captive_portal_router]",
+            ),
+            (
+                "wifi_eth",
+                WIFI_ETH_PROFILE,
+                "components: [openquatt_network, openquatt_captive_portal_router]",
+            ),
+        )
+        for profile_name, profile, component_declaration in profiles:
+            with self.subTest(profile=profile_name):
+                self.assertIn(component_declaration, profile)
+                self.assertIn("openquatt_captive_portal_router:", profile)
+
+    def test_captive_portal_router_delegates_existing_portal_routes(self) -> None:
+        self.assertIn("portal->canHandle(request)", CAPTIVE_PORTAL_ROUTER_CPP)
+        self.assertIn("portal->handleRequest(request)", CAPTIVE_PORTAL_ROUTER_CPP)
+
+    def test_captive_portal_router_only_handles_root_requests(self) -> None:
+        self.assertIn("request->url_to(url_buffer)", CAPTIVE_PORTAL_ROUTER_CPP)
+        self.assertIn('== "/";', CAPTIVE_PORTAL_ROUTER_CPP)
+
     def test_web_auth_credentials_have_component_lifetime(self) -> None:
         self.assertIn("AuthStorage runtime_storage_{};", WEB_AUTH_HEADER)
         self.assertIn(
