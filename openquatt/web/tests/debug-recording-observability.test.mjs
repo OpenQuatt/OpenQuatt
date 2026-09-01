@@ -212,7 +212,12 @@ test("elk nieuw debugveld verwijst naar een echte firmware-entity", async () => 
 
 test("flowOutputIpwm publiceert de bestaande actuatoruitgang zonder tweede regelstate", async () => {
   const flowPackageRaw = await readFile(new URL("../../oq_flow_control.yaml", import.meta.url), "utf8");
+  const flowRuntimeRaw = await readFile(
+    new URL("../../includes/control/oq_flow_runtime.h", import.meta.url),
+    "utf8",
+  );
   const flowPackage = flowPackageRaw.replace(/\r\n/g, "\n");
+  const flowRuntime = flowRuntimeRaw.replace(/\r\n/g, "\n");
   const flowOutputSensor = flowPackage.match(
     /  - platform: template\n    id: oq_flow_output_ipwm\n[\s\S]*?(?=\n  - platform: template\n)/,
   )?.[0];
@@ -222,12 +227,11 @@ test("flowOutputIpwm publiceert de bestaande actuatoruitgang zonder tweede regel
   assert.match(flowOutputSensor, /internal: true/);
   assert.match(flowOutputSensor, /update_interval: never/);
   assert.doesNotMatch(flowOutputSensor, /update_interval: 1s/);
-  assert.equal((flowPackage.match(/id\(oq_flow_last_pwm\) = value;/g) || []).length, 2);
-  assert.equal((flowPackage.match(/id\(oq_flow_output_ipwm\)\.publish_state\(\(float\) value\);/g) || []).length, 2);
-  for (const value of ["service_pwm", "start_pwm", "at_pwm", "purge_pwm", "test_pwm", "pwm"]) {
-    assert.ok(flowPackage.includes(`set_flow_output_pwm(${value});`), `eventpublicatie ontbreekt voor ${value}`);
-    assert.ok(!flowPackage.includes(`id(oq_flow_last_pwm) = ${value};`), `directe niet-gepubliceerde write voor ${value}`);
-  }
+  assert.equal((flowRuntime.match(/id\(oq_flow_last_pwm\) = pwm;/g) || []).length, 1);
+  assert.equal((flowRuntime.match(/id\(oq_flow_output_ipwm\)\.publish_state\(\(float\)pwm\);/g) || []).length, 1);
+  assert.equal((flowRuntime.match(/set_output_pwm_\(/g) || []).length, 7);
+  assert.doesNotMatch(flowPackage, /id\(oq_flow_last_pwm\)\s*=/);
+  assert.doesNotMatch(flowPackage, /id\(oq_flow_output_ipwm\)\.publish_state/);
   assert.equal(ENTITY_DEFS.flowOutputIpwm.domain, "sensor");
   assert.equal(ENTITY_DEFS.flowOutputIpwm.name, "Flow Output iPWM");
 });

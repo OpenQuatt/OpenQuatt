@@ -84,8 +84,8 @@ Afronding:
 
 - de drie doel-YAML's zijn samen 765 regels kleiner: 1.289 naar 524 regels;
 - inclusief de nieuwe runtimes en pure besliskernen is de productiecode netto
-  11 regels kleiner; 345 regels regressietests en 53 regels plandocumentatie
-  tellen afzonderlijk, waardoor de volledige repositorydelta +387 regels is;
+  11 regels kleiner; 349 regels regressietests en 53 regels plandocumentatie
+  tellen afzonderlijk, waardoor de volledige repositorydelta +391 regels is;
 - de volledige hostset (57), Python-contractset (167), C++-formatcontrole en
   config-validatie voor Q, Waveshare en Listener (Single/Duo) zijn groen;
 - Q Single en Q Duo compileren; beide gebruiken 184 bytes minder statisch DIRAM.
