@@ -27,6 +27,7 @@ import {
 } from '../../tests/hil/scenarios/input-sources.mjs';
 
 const HIL_PROFILE = 'input-sources-fast-v1';
+const SIMULATOR_CONTRACT = 'openquatt-modbus-opentherm-v1';
 const VALID_STAGES = new Set([
   'smoke',
   'inputs',
@@ -60,6 +61,8 @@ Options:
   --test-config PATH        Optional test profile to compile and upload first.
   --restore-config PATH     Normal firmware config uploaded in finally/recovery.
   --expected-profile NAME   Required HIL marker (default: ${HIL_PROFILE}).
+  --expected-simulator-contract NAME
+                            Required simulator contract (default: ${SIMULATOR_CONTRACT}).
   --write-interval-ms N     Global REST-write spacing, minimum 1000 (default: 1500).
   --output-root PATH        Run artifacts (default: .tmp/hil).
   --restore-snapshot PATH   Recover settings from an earlier snapshot.
@@ -81,6 +84,7 @@ export function parseArgs(argv) {
     stage: 'smoke',
     apply: false,
     expectedProfile: HIL_PROFILE,
+    expectedSimulatorContract: SIMULATOR_CONTRACT,
     writeIntervalMs: 1500,
     outputRoot: '.tmp/hil',
     settingsOnly: false,
@@ -100,6 +104,9 @@ export function parseArgs(argv) {
     else if (option === '--test-config') options.testConfig = requiredValue(argv, index++, option);
     else if (option === '--restore-config') options.restoreConfig = requiredValue(argv, index++, option);
     else if (option === '--expected-profile') options.expectedProfile = requiredValue(argv, index++, option);
+    else if (option === '--expected-simulator-contract') {
+      options.expectedSimulatorContract = requiredValue(argv, index++, option);
+    }
     else if (option === '--output-root') options.outputRoot = requiredValue(argv, index++, option);
     else if (option === '--restore-snapshot') options.restoreSnapshot = requiredValue(argv, index++, option);
     else if (option === '--write-interval-ms') {
@@ -175,6 +182,12 @@ async function diagnostics(controller, simulator) {
     { key: 'fragmentationPercent', domain: 'sensor', name: 'Heap Fragmentation', optional: true },
     { key: 'psramFree', domain: 'sensor', name: 'PSRAM Free', optional: true },
   ]);
+  const simulatorValues = await simulator.values([
+    { key: 'contract', domain: 'text_sensor', name: 'OpenQuatt Simulator Contract', optional: true },
+    { key: 'version', domain: 'text_sensor', name: 'OpenQuatt Simulator Version', optional: true },
+    { key: 'hp1', domain: 'text_sensor', name: 'ODU 1 diagnostics' },
+    { key: 'hp2', domain: 'text_sensor', name: 'ODU 2 diagnostics' },
+  ]);
   return {
     capturedAt: new Date().toISOString(),
     firmware: controllerValues.firmware,
@@ -186,12 +199,21 @@ async function diagnostics(controller, simulator) {
       fragmentationPercent: asFiniteNumber(controllerValues.fragmentationPercent),
       psramFree: asFiniteNumber(controllerValues.psramFree),
     },
-    hp1: await simulator.value('text_sensor', 'ODU 1 diagnostics'),
-    hp2: await simulator.value('text_sensor', 'ODU 2 diagnostics'),
+    simulator: {
+      contract: simulatorValues.contract,
+      version: simulatorValues.version,
+    },
+    hp1: simulatorValues.hp1,
+    hp2: simulatorValues.hp2,
   };
 }
 
-function verifyDiagnostics(result, options) {
+export function verifyDiagnostics(result, options) {
+  assert(
+    result.simulator?.contract === options.expectedSimulatorContract,
+    `simulator contract differs: expected ${options.expectedSimulatorContract}, received ${result.simulator?.contract ?? 'missing'}`,
+  );
+  assert(result.simulator.version, 'simulator version is missing');
   for (const [name, text] of [['HP1', result.hp1], ['HP2', result.hp2]]) {
     for (const field of ['exc', 'bad_addr', 'bad_write', 'cap']) {
       const match = String(text).match(new RegExp(`${field}=(\\d+)`));

@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { firmwareCommand } from '../../scripts/hil/firmware.mjs';
-import { parseArgs } from '../../scripts/hil/run-input-sources.mjs';
+import { parseArgs, verifyDiagnostics } from '../../scripts/hil/run-input-sources.mjs';
 import {
   HilRestClient,
   RequestGate,
@@ -179,9 +179,37 @@ test('mutating CLI modes require apply plus an automatic firmware restore', () =
   ]);
   assert.equal(parsed.apply, true);
   assert.equal(parsed.writeIntervalMs, 1500);
+  assert.equal(parsed.expectedSimulatorContract, 'openquatt-modbus-opentherm-v1');
+  assert.equal(
+    parseArgs([...targets, '--expected-simulator-contract', 'next-contract']).expectedSimulatorContract,
+    'next-contract',
+  );
   assert.throws(
     () => parseArgs([...targets, '--stage', 'all', '--apply', '--settings-only']),
     /--device and --restore-config|--settings-only/,
+  );
+});
+
+test('diagnostics reject an absent or incompatible simulator contract', () => {
+  const result = {
+    simulator: { contract: 'openquatt-modbus-opentherm-v1', version: 'v0.1.0' },
+    memory: { heapMinFree: 40000, largestBlock: 50000 },
+    hp1: 'exc=0 bad_addr=0 bad_write=0 cap=0',
+    hp2: 'exc=0 bad_addr=0 bad_write=0 cap=0',
+  };
+  const options = {
+    expectedSimulatorContract: 'openquatt-modbus-opentherm-v1',
+    minHeapMinFree: 0,
+    minLargestBlock: 0,
+  };
+  assert.doesNotThrow(() => verifyDiagnostics(result, options));
+  assert.throws(
+    () => verifyDiagnostics({ ...result, simulator: { contract: null, version: null } }, options),
+    /simulator contract differs/,
+  );
+  assert.throws(
+    () => verifyDiagnostics(result, { ...options, expectedSimulatorContract: 'next-contract' }),
+    /simulator contract differs/,
   );
 });
 

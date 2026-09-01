@@ -44,6 +44,8 @@ class HilHarnessContractTest(unittest.TestCase):
     def test_mutations_are_gated_and_targets_have_no_defaults(self):
         self.assertIn("mutating HIL runs require --apply", RUNNER)
         self.assertIn("--device and --restore-config", RUNNER)
+        self.assertIn("openquatt-modbus-opentherm-v1", RUNNER)
+        self.assertIn("simulator contract differs", RUNNER)
         self.assertIn("writeIntervalMs < 1000", REST_CLIENT)
         self.assertNotIn("192.168.", RUNNER)
         self.assertNotIn("192.168.", REST_CLIENT)
@@ -51,6 +53,7 @@ class HilHarnessContractTest(unittest.TestCase):
     def test_harness_is_documented_and_checked_in_ci(self):
         self.assertIn("snapshot.json", DOCS)
         self.assertIn("--restore-snapshot", DOCS)
+        self.assertIn("OpenQuatt/OpenQuatt-Simulator", DOCS)
         self.assertIn('"check:hil"', PACKAGE)
         self.assertIn("hil-harness-tests:", WORKFLOW)
         self.assertIn("npm run check:hil", WORKFLOW)

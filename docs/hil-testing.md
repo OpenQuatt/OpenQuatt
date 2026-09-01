@@ -23,12 +23,17 @@ firmware uploadt vereist altijd `--apply`. Verder gelden deze grenzen:
   geforceerd in CM0; de oorspronkelijke override wordt pas na profielcontrole
   teruggezet;
 - de testfirmware moet het verwachte `HIL Test Profile` publiceren;
+- de simulator moet vóór iedere mutatie exact contract
+  `openquatt-modbus-opentherm-v1` publiceren;
 - een muterende run vereist een normale restoreconfig en OTA-adres;
 - snapshots en rapporten blijven onder het door Git genegeerde `.tmp/hil/`.
 
 De runner bevat geen IP-adressen, wifi-gegevens, wachtwoorden of lokale
 instellingenback-ups. Gebruik hem alleen wanneer bedrading, hydrauliek en de
 simulator volgens de testerhandleiding veilig zijn aangesloten.
+De zelfstandige simulatorbron en testerhandleiding staan in
+[`OpenQuatt-Simulator`](https://github.com/OpenQuatt/OpenQuatt-Simulator). Gebruik
+voor dit contract minimaal simulatorrelease `v0.1.0`.
 
 ## Read-only rooktest
 
@@ -44,7 +49,7 @@ node scripts/hil/run-input-sources.mjs \
 
 Het rapport bevat actuele en minimale interne heap, grootste vrije block,
 fragmentatie, vrije PSRAM en beide ODU-diagnoseregels voor zover de entities
-beschikbaar zijn.
+beschikbaar zijn. Ook simulatorcontract en -versie worden vastgelegd.
 
 ## Volledige input-/bronselectietest
 
