@@ -91,7 +91,7 @@ int main() {
   output = step(input(400, false, 300.0f, 5.0f), config(), output.state);
   assert(!output.frost_active);
   output = step(input(500, true, 300.0f, 0.0f), config(), output.state);
-  assert(!output.frost_active);
+  assert(!output.frost_active && output.state.frost_initialized);
 
   // On a cold boot, the gap between the on/off thresholds must fail safe.
   output = step(input(100, false, 300.0f, 5.5f), config(), {});
@@ -100,6 +100,12 @@ int main() {
   assert(!output.frost_active);
   output = step(input(300, false, 300.0f, 5.5f), config(), output.state);
   assert(!output.frost_active);
+
+  // Thermal demand suppresses frost but cannot initialize a cold-boot state.
+  output = step(input(100, true, 300.0f, 5.5f), config(), {});
+  assert(!output.frost_active && !output.state.frost_initialized);
+  output = step(input(200, false, 300.0f, 5.5f), config(), output.state);
+  assert(output.frost_active && output.state.frost_initialized);
 
   auto missing_outside = input(1000, false, 300.0f, NAN);
   missing_outside.outside_temperature_has_state = false;

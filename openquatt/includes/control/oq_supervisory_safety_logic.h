@@ -111,7 +111,6 @@ inline Output step(const Input& input, const Config& config, State state) {
       frost_thresholds_valid && input.outside_temperature_has_state && std::isfinite(input.outside_temperature_c);
   if (input.thermal_request) {
     state.frost_active = false;
-    state.frost_initialized = true;
   } else if (!outside_temperature_valid) {
     state.frost_active = !frost_nan_grace_active;
     if (!frost_nan_grace_active) state.frost_initialized = true;
