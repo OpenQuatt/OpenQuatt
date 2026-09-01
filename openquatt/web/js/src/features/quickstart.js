@@ -26,6 +26,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
     const switchModel = getFirmwareBuildSwitchModel(targetTopology, targetConnection);
     return {
       ...switchModel,
+      currentConnection,
       currentKey,
       selectedKey,
       changes: selectedKey !== currentKey,
@@ -51,7 +52,7 @@ import { renderUsageTelemetryConsent, renderUsageTelemetryDisclosure } from "./u
         ["single:eth", "Single · Ethernet", "Eén warmtepomp via een vaste netwerkkabel."],
         ["duo:wifi", "Duo · Wi-Fi", "Twee warmtepompen via het draadloze netwerk."],
         ["duo:eth", "Duo · Ethernet", "Twee warmtepompen via een vaste netwerkkabel."],
-      ].filter(([key]) => !unifiedNetworkBuild || key.endsWith(`:${currentConnection}`));
+      ].filter(([key]) => !unifiedNetworkBuild || key.endsWith(`:${model.currentConnection}`));
     const requirements = [
       model.targetIsDuo ? "De tweede warmtepomp is aangesloten en hoort bij deze controller." : "Deze controller wordt voor één warmtepomp gebruikt.",
       model.targetIsEthernet ? "De netwerkkabel is aangesloten." : "De Wi-Fi-gegevens zijn beschikbaar op de controller.",
