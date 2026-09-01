@@ -48,11 +48,76 @@ entities, configuratie, koppelingen en één of enkele runtime-aanroepen.
 | Boiler runtime | Commandocapture, outputcontroller en transportbinding | Gereed | #595 |
 | Externe inputs en bronselectie | API-freshness plus generieke, brongebonden selectie | Gereed | #599 |
 
-Vervolg ligt niet automatisch in nog een YAML-migratie. Eerst wordt de
-herhaalbaarheid van de acceptatietests verbeterd met de veilige, repositorylokale
-[HIL-runner](hil-testing.md). Een volgend migratieblok krijgt opnieuw een
-go/no-go op testwaarde, contractgrens en netto productiecode; regelaantal alleen
-is geen reden om declaratieve YAML te verplaatsen.
+## Eindconclusie
+
+De migratie is afgerond. De zestien functionele migratie-PR's hebben 9.030
+YAML-regels verwijderd. Inclusief de nieuwe C++-runtimes is de productiecode
+netto 620 regels kleiner. Daartegenover staan 2.630 regels regressietests, 340
+regels documentatie en 7 overige regels; de volledige repository groeide dus
+bewust met 2.357 regels. De winst zit vooral in rechtstreeks hosttestbare
+besliskernen, expliciete runtimecontracten en compactere YAML-binding, niet in
+een zo klein mogelijke repository.
+
+Voorbereidende contract-PR's: [#562](https://github.com/OpenQuatt/OpenQuatt/pull/562)
+en [#563](https://github.com/OpenQuatt/OpenQuatt/pull/563).
+
+Functionele migratie-PR's:
+[#564](https://github.com/OpenQuatt/OpenQuatt/pull/564),
+[#566](https://github.com/OpenQuatt/OpenQuatt/pull/566),
+[#567](https://github.com/OpenQuatt/OpenQuatt/pull/567),
+[#568](https://github.com/OpenQuatt/OpenQuatt/pull/568),
+[#570](https://github.com/OpenQuatt/OpenQuatt/pull/570),
+[#571](https://github.com/OpenQuatt/OpenQuatt/pull/571),
+[#573](https://github.com/OpenQuatt/OpenQuatt/pull/573),
+[#577](https://github.com/OpenQuatt/OpenQuatt/pull/577),
+[#578](https://github.com/OpenQuatt/OpenQuatt/pull/578),
+[#581](https://github.com/OpenQuatt/OpenQuatt/pull/581),
+[#582](https://github.com/OpenQuatt/OpenQuatt/pull/582),
+[#583](https://github.com/OpenQuatt/OpenQuatt/pull/583),
+[#584](https://github.com/OpenQuatt/OpenQuatt/pull/584),
+[#589](https://github.com/OpenQuatt/OpenQuatt/pull/589),
+[#595](https://github.com/OpenQuatt/OpenQuatt/pull/595) en
+[#599](https://github.com/OpenQuatt/OpenQuatt/pull/599).
+
+De acceptatie is herhaalbaar gemaakt in
+[#600](https://github.com/OpenQuatt/OpenQuatt/pull/600). De gecombineerde
+Modbus/OpenTherm-simulator, het versiecontract en de testerhandleiding staan
+zelfstandig in [OpenQuatt-Simulator](https://github.com/OpenQuatt/OpenQuatt-Simulator),
+release [v0.1.0](https://github.com/OpenQuatt/OpenQuatt-Simulator/releases/tag/v0.1.0).
+
+## Laatste go/no-go-audit
+
+Een hernieuwde scan van actuele `dev` geeft **no-go** voor verdere migratie
+binnen dit project. De grootste resterende YAML is groot om declaratieve redenen:
+
+- `oq_HP_io.yaml` bevat vooral Modbus-registers, entities en transportbinding.
+  De ODU-detectie en frequentietabel hebben al pure C++-parsers en hosttests;
+  het verplaatsen van de asynchrone ESPHome-callbacks zou nu meer adaptercode en
+  integratierisico dan testwinst opleveren.
+- `oq_boiler_opentherm.yaml` en `oq_ot_slave.yaml` blijven het protocol- en
+  entitycontract. Dispatch, outputbeslissingen, freshness en transportpolicy
+  zijn al naar C++ verplaatst en getest.
+- Heating Curve, Power House, Cooling, Supervisory, Thermal Request, flow,
+  actuator, boiler en service-YAML bevatten hoofdzakelijk entities,
+  configuratie, publicatie en compacte `runtime().tick()`-binding.
+- `oq_hp_water_calibration.yaml` bestaat grotendeels uit instellingen en
+  backupbridges; de state-machine draait al in C++.
+- `experimental/oq_odu_runtime_frequency_table_hp.yaml` blijft bewust
+  experimenteel en is geen productie-migratiekandidaat.
+
+Twee blokken kunnen later een eigen reliability-project rechtvaardigen:
+firmware-update/OTA-orchestratie in `oq_common.yaml` en de asynchrone
+ODU-detectie/table-load in `oq_HP_io.yaml`. Daarvoor is eerst een concreet
+probleem, expliciet componentcontract en aantoonbare netto test- of
+betrouwbaarheidswinst nodig. Regelaantal alleen is geen reden om ze te
+verplaatsen.
+
+Resterende risico's zijn vooral integratierisico's: hosttests simuleren geen
+ESPHome-scheduler of elektrische bus, de simulator is geen volledig fysiek
+hydraulisch systeem en versnelde HIL-timers bewijzen niet iedere lange
+productieduur in realtime. Daarom blijven firmwarecompilatie voor alle profielen,
+gerichte HIL bij safety-/timingwijzigingen en een schone firmware-/settingsrestore
+onderdeel van de acceptatiecriteria.
 
 ## Besluit volgend werkblok: externe inputs en bronselectie
 
