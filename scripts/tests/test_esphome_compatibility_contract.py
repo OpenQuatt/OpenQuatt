@@ -29,7 +29,7 @@ ODU_RUNTIME_TABLE_YAML = (
 ).read_text()
 
 
-class ESPHome20268ContractTest(unittest.TestCase):
+class ESPHomeCompatibilityContractTest(unittest.TestCase):
     def test_web_auth_credentials_have_component_lifetime(self) -> None:
         self.assertIn("AuthStorage runtime_storage_{};", WEB_AUTH_HEADER)
         self.assertIn(
