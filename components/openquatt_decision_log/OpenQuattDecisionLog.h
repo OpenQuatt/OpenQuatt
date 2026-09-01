@@ -121,6 +121,7 @@ enum ReasonCode : uint8_t {
   REASON_SUPERVISORY_OVERRIDE = 69,
   REASON_HP_PERSISTENCE_FAILURE = 70,
   REASON_HP_RECOVERED = 71,
+  REASON_USER_RAISE = 72,
 };
 
 enum Severity : uint8_t {

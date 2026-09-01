@@ -447,6 +447,11 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         summary: "De warmtepompen zijn gelijkwaardig. Het systeem kiest de pomp die het beste past bij draaiuren, beschikbaarheid en wachttijd.",
         checks: ["Draaiuren vergeleken", "Warmtepomp beschikbaar", "Wachttijd vrij"],
       },
+      user_raise: {
+        label: "Thermostaat omhoog gezet",
+        summary: "U hebt de thermostaat omhoog gezet. De warmtepomp is hierdoor meteen gestart om de woning sneller op te warmen.",
+        checks: ["Setpoint verhoogd", "Direct op gereageerd", "Warmtepomp gestart"],
+      },
       oil_return_hold: {
         label: "Compressor beschermen",
         summary: "De warmtepomp blijft kort doorlopen om de compressor netjes te beschermen.",

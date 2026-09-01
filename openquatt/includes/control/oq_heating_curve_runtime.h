@@ -74,6 +74,10 @@ class Runtime {
                                                  id(oq_curve_setpoint_raise_latch), applied_total, demand_max_f},
                                                 tuning, previous);
     if (demand.next.heat_request_active) id(oq_curve_setpoint_raise_latch) = false;
+    if (demand.valid && demand.next.heat_request_active && !previous.heat_request_active)
+      id(oq_curve_last_restart_reason) = static_cast<uint8_t>(demand.restart_reason);
+    if (demand.valid && !demand.next.heat_request_active && previous.heat_request_active)
+      id(oq_curve_last_restart_reason) = 0;
     id(oq_curve_oil_return_hold_until_ms) = oil_return.hold_until_ms;
     if (demand.valid)
       this->log_demand_transition_(now_ms, room_c, room_setpoint_c, oil_return.mask_active, tuning, previous, demand);
@@ -447,6 +451,7 @@ class Runtime {
         id(oq_curve_restart_inhibit_active), id(oq_curve_restart_blocked_by_room), id(oq_curve_regime_code));
     id(oq_curve_last_room_setpoint_c) = NAN;
     id(oq_curve_setpoint_raise_latch) = false;
+    id(oq_curve_last_restart_reason) = 0;
   }
 
   void reset_outside_ema_() {

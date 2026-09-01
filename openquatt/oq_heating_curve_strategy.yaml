@@ -116,6 +116,12 @@ globals:
     restore_value: false
     initial_value: 'false'
 
+  # Last restart reason, captured on heat_request_active false→true transition.
+  - id: oq_curve_last_restart_reason
+    type: uint8_t
+    restore_value: false
+    initial_value: '0'
+
 select:
   - platform: template
     id: oq_curve_control_profile
