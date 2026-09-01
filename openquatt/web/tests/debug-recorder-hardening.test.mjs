@@ -19,8 +19,8 @@ test("packed rows vergroten de retentie van de volledige dev-debugset", () => {
   );
   const capacity = Math.floor((1024 * 1024) / rowBytes);
 
-  assert.equal(rowBytes, 602);
-  assert.equal(capacity, 1741);
+  assert.equal(rowBytes, 603);
+  assert.equal(capacity, 1738);
   assert.ok((capacity - 1) * 10 >= 4.8 * 60 * 60);
   assert.match(header, /PsramBuffer<uint8_t> samples_/);
   assert.match(source, /value_size_for_type_/);
@@ -67,6 +67,10 @@ test("mutaties zijn beschermd en status bevat operationele geheugensignalen", ()
   assert.match(source, /heap_caps_get_largest_free_block\(MALLOC_CAP_INTERNAL\)/);
   assert.match(source, /pending_missing_field_count/);
   assert.match(source, /event_count/);
+});
+
+test("de klok blijft opgenomen maar telt niet als statuswijziging", () => {
+  assert.match(source, /event_type_\(field\.type\) && std::strcmp\(field\.key, "timeNowHhmm"\) != 0/);
 });
 
 test("rolling totalen laten de overgang vóór de retentiewindow los", () => {
