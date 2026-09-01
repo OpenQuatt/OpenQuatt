@@ -31,7 +31,11 @@ class SupervisorySafetyContractTest(unittest.TestCase):
             "id(hp2_compressor_level)",
         ):
             self.assertIn(marker, RUNTIME)
-        self.assertIn("restore_value: true\n    initial_value: 'false'", SUPERVISOR)
+        frost_global = SUPERVISOR.split("id: oq_cm_frost_prev", 1)[1].split("# Pre/Postflow", 1)[0]
+        self.assertIn("restore_value: false", frost_global)
+        self.assertIn("2881445393U", SUPERVISOR)
+        self.assertIn("frost_initialized", LOGIC)
+        self.assertIn("config.frost_off_c", LOGIC)
         self.assertIn("id: oq_lowflow_fault_active", SUPERVISOR)
 
     def test_logic_covers_failure_boundaries(self) -> None:

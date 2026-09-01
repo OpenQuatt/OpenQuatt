@@ -34,6 +34,7 @@ struct RuntimeFrequencyTableRefs {
   bool extended_layout;
   std::array<esphome::number::Number*, EXTENDED_LEVEL_COUNT> cooling_desired;
   std::array<esphome::number::Number*, EXTENDED_LEVEL_COUNT> heating_desired;
+  bool* table_loaded;
   uint32_t* write_operation_token;
 };
 
@@ -130,6 +131,7 @@ inline void finish_apply_readback(const RuntimeFrequencyTableRefs& refs, const R
     publish_status(refs, "VERIFY_FAILED: readback mismatch");
     return;
   }
+  *refs.table_loaded = true;
   publish_runtime_table(refs, actual);
   publish_status(refs, "APPLIED: runtime table written and read back");
 }
@@ -176,6 +178,7 @@ inline void queue_apply_readback(RuntimeFrequencyTableRefs refs, RuntimeFrequenc
 }
 
 inline void finish_load(const RuntimeFrequencyTableRefs& refs, const RuntimeFrequencyTables& tables) {
+  *refs.table_loaded = true;
   publish_runtime_table(refs, tables);
   publish_register_progress(refs, "LOADED", runtime_register_count(tables.level_count),
                             runtime_register_count(tables.level_count));
@@ -204,6 +207,7 @@ inline void load_runtime_table(RuntimeFrequencyTableRefs refs) {
     publish_status(refs, "BLOCKED: EEPROM dump active");
     return;
   }
+  *refs.table_loaded = false;
   publish_status(refs, "LOAD_REQUESTED");
   const uint32_t operation_token = ++*refs.write_operation_token;
   auto cmd = esphome::modbus_controller::ModbusCommandItem::create_read_command(
@@ -239,6 +243,10 @@ inline void apply_runtime_table(RuntimeFrequencyTableRefs refs, bool enabled) {
   }
   if (!enabled) {
     publish_status(refs, "BLOCKED: enable switch is off");
+    return;
+  }
+  if (!*refs.table_loaded) {
+    publish_status(refs, "BLOCKED: load ODU runtime table first");
     return;
   }
 

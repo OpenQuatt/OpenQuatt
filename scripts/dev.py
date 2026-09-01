@@ -505,6 +505,13 @@ def validate_command(args: argparse.Namespace) -> int:
             log_path=log_dir / f"{stem}.config.log",
             label=f"config {config}",
         )
+        run_logged(
+            [*helper_python, str(command_scripts_dir / "check_nvs_budget.py"), config],
+            cwd=command_root,
+            env=env,
+            log_path=log_dir / f"{stem}.nvs-budget.log",
+            label=f"NVS budget {config}",
+        )
 
     if args.config_only:
         print()

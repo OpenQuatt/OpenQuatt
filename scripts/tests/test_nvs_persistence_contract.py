@@ -1,0 +1,55 @@
+from pathlib import Path
+import sys
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import check_nvs_budget  # noqa: E402
+
+
+ODU_EDITOR = (ROOT / "openquatt/experimental/oq_odu_runtime_frequency_table_hp.yaml").read_text()
+ODU_RUNTIME = (ROOT / "openquatt/includes/experimental/oq_odu_runtime_frequency_table.h").read_text()
+HP_IO = (ROOT / "openquatt/oq_HP_io.yaml").read_text()
+API_INGRESS = (ROOT / "openquatt/oq_api_ingress.yaml").read_text()
+NVS_CLEANUP = (ROOT / "openquatt/includes/storage/oq_nvs_cleanup.h").read_text()
+DEV = (ROOT / "scripts/dev.py").read_text()
+CRASH_HEADER = (ROOT / "components/openquatt_crash_telemetry/OpenQuattCrashTelemetry.h").read_text()
+AUTH_HEADER = (ROOT / "components/openquatt_web_auth/OpenQuattWebAuth.h").read_text()
+
+
+class NvsPersistenceContractTest(unittest.TestCase):
+    def test_odu_editor_is_ram_only_and_requires_a_current_boot_load(self) -> None:
+        self.assertEqual(ODU_EDITOR.count("restore_value: false"), 42)
+        self.assertNotIn("restore_value: true", ODU_EDITOR)
+        self.assertIn("runtime_frequency_table_loaded", HP_IO)
+        self.assertIn("BLOCKED: load ODU runtime table first", ODU_RUNTIME)
+        self.assertIn("erase_entity_preferences", HP_IO)
+
+    def test_api_enable_inputs_are_session_state(self) -> None:
+        self.assertEqual(API_INGRESS.count("restore_mode: ALWAYS_OFF"), 2)
+        self.assertNotIn("restore_mode: RESTORE_DEFAULT_OFF", API_INGRESS)
+        self.assertIn('"API ingress enable state"', API_INGRESS)
+
+    def test_cleanup_is_targeted_and_never_erases_the_partition(self) -> None:
+        self.assertIn('nvs_open(ESPHOME_NAMESPACE, NVS_READWRITE', NVS_CLEANUP)
+        self.assertIn("nvs_erase_key", NVS_CLEANUP)
+        self.assertNotIn("nvs_flash_erase", NVS_CLEANUP)
+
+    def test_budget_math_and_validation_integration(self) -> None:
+        self.assertEqual(check_nvs_budget.blob_entries(1), 3)
+        self.assertEqual(check_nvs_budget.blob_entries(32), 3)
+        self.assertEqual(check_nvs_budget.blob_entries(33), 4)
+        self.assertEqual(check_nvs_budget.blob_entries(256), 10)
+        self.assertEqual(check_nvs_budget.cpp_type_bytes("uint32_t[3]"), 12)
+        self.assertEqual(check_nvs_budget.REQUIRED_AVAILABLE_ENTRIES, 126)
+        self.assertIn("check_nvs_budget.py", DEV)
+
+    def test_custom_blob_sizes_are_compile_time_budget_contracts(self) -> None:
+        self.assertIn("sizeof(StateStorage) == 56U", CRASH_HEADER)
+        self.assertIn("sizeof(AuthStorage) == 104U", AUTH_HEADER)
+
+
+if __name__ == "__main__":
+    unittest.main()

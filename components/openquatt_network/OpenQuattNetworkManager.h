@@ -69,6 +69,8 @@ class OpenQuattNetworkManager : public Component {
     uint8_t reserved[3];
   };
 
+  static_assert(sizeof(PreferenceStorage) == 8U, "Network preference NVS budget changed");
+
   static constexpr uint32_t PREFERENCE_MAGIC = 0x4F514E32UL;
   static constexpr uint32_t W5500_PHYCFGR_REGISTER = 0x002E0000UL;
   static constexpr uint8_t W5500_PHYCFGR_POWER_DOWN = 0xF0;

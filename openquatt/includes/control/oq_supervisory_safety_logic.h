@@ -32,6 +32,7 @@ struct State {
   bool flow_recovery_timing = false;
   uint32_t flow_recovery_since_ms = 0;
   bool low_flow_fault_active = false;
+  bool frost_initialized = false;
   bool frost_active = false;
 };
 
@@ -110,8 +111,14 @@ inline Output step(const Input& input, const Config& config, State state) {
       frost_thresholds_valid && input.outside_temperature_has_state && std::isfinite(input.outside_temperature_c);
   if (input.thermal_request) {
     state.frost_active = false;
+    state.frost_initialized = true;
   } else if (!outside_temperature_valid) {
     state.frost_active = !frost_nan_grace_active;
+    if (!frost_nan_grace_active) state.frost_initialized = true;
+  } else if (!state.frost_initialized) {
+    // Reconstruct the non-persistent hysteresis conservatively after boot.
+    state.frost_active = input.outside_temperature_c < config.frost_off_c;
+    state.frost_initialized = true;
   } else if (state.frost_active) {
     state.frost_active = input.outside_temperature_c < config.frost_off_c;
   } else {

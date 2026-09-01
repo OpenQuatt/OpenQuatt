@@ -34,8 +34,9 @@ switch:
     entity_category: config
 
 number:
-  # Editable desired runtime table. Defaults mirror the known ODU factory table;
-  # use Load before applying to confirm the current runtime values.
+  # RAM-only editor for the ODU-owned runtime table. Defaults only provide a
+  # bounded initial display; a successful Load in the current boot is required
+  # before Apply can write anything.
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f0
     name: "${prefix}EXPERIMENTAL cooling F0 runtime Hz"
@@ -45,7 +46,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 0
     entity_category: config
@@ -59,7 +60,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 30
     entity_category: config
@@ -73,7 +74,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 36
     entity_category: config
@@ -87,7 +88,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 42
     entity_category: config
@@ -101,7 +102,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 47
     entity_category: config
@@ -115,7 +116,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 52
     entity_category: config
@@ -129,7 +130,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 56
     entity_category: config
@@ -143,7 +144,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 61
     entity_category: config
@@ -157,7 +158,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 66
     entity_category: config
@@ -171,7 +172,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 71
     entity_category: config
@@ -185,7 +186,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 74
     entity_category: config
@@ -199,7 +200,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 48
     entity_category: config
@@ -213,7 +214,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 52
     entity_category: config
@@ -227,7 +228,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 54
     entity_category: config
@@ -241,7 +242,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 56
     entity_category: config
@@ -255,7 +256,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 58
     entity_category: config
@@ -269,7 +270,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 60
     entity_category: config
@@ -283,7 +284,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 64
     entity_category: config
@@ -297,7 +298,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 66
     entity_category: config
@@ -311,7 +312,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 68
     entity_category: config
@@ -325,7 +326,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 71
     entity_category: config
@@ -339,7 +340,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 0
     entity_category: config
@@ -353,7 +354,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 30
     entity_category: config
@@ -367,7 +368,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 39
     entity_category: config
@@ -381,7 +382,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 49
     entity_category: config
@@ -395,7 +396,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 55
     entity_category: config
@@ -409,7 +410,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 61
     entity_category: config
@@ -423,7 +424,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 67
     entity_category: config
@@ -437,7 +438,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 72
     entity_category: config
@@ -451,7 +452,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 79
     entity_category: config
@@ -465,7 +466,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 85
     entity_category: config
@@ -479,7 +480,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 90
     entity_category: config
@@ -493,7 +494,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 65
     entity_category: config
@@ -507,7 +508,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 68
     entity_category: config
@@ -521,7 +522,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 72
     entity_category: config
@@ -535,7 +536,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 76
     entity_category: config
@@ -549,7 +550,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 82
     entity_category: config
@@ -563,7 +564,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 85
     entity_category: config
@@ -577,7 +578,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 90
     entity_category: config
@@ -591,7 +592,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 95
     entity_category: config
@@ -605,7 +606,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 102
     entity_category: config
@@ -619,7 +620,7 @@ number:
     min_value: 0
     max_value: 120
     step: 1
-    restore_value: true
+    restore_value: false
     optimistic: true
     initial_value: 110
     entity_category: config
@@ -689,6 +690,7 @@ button:
                   id(${hp_id}_odu_runtime_heating_f19),
                   id(${hp_id}_odu_runtime_heating_f20),
               },
+              &id(${hp_id}_runtime_frequency_table_loaded),
               &id(${hp_id}_runtime_frequency_write_operation_token),
           };
           if (id(${hp_id}_runtime_frequency_write_verification_pending)) {
@@ -762,6 +764,7 @@ button:
                   id(${hp_id}_odu_runtime_heating_f19),
                   id(${hp_id}_odu_runtime_heating_f20),
               },
+              &id(${hp_id}_runtime_frequency_table_loaded),
               &id(${hp_id}_runtime_frequency_write_operation_token),
           };
           if (id(${hp_id}_runtime_frequency_write_verification_pending)) {
