@@ -44,7 +44,7 @@ entities, configuratie, koppelingen en één of enkele runtime-aanroepen.
 | Supervisory safety | Vermogenslimiet plus flow-/frost-interlocks | Gereed | #582 |
 | Supervisory state-machine | Resterende hoofdloop naar C++ | Gereed | #583 |
 | Strategy runtimes | Heating Curve, Power House, Cooling en managerbinding | Gereed | #584 |
-| Hydraulics en outputs | Flow Control, Thermal Limits en Auxiliary Relay | Klaar voor review | Deze PR |
+| Hydraulics en outputs | Flow Control, Thermal Limits en Auxiliary Relay | Klaar voor review | #589 |
 | Boiler runtime | Commandocapture, outputcontroller en transportbinding | Gepland | Nog te openen |
 | Bronselectie-opruiming | Generieke selectie/freshness waar dit YAML werkelijk verkleint | Beslispunt na bovenstaande blokken | Nog te bepalen |
 
