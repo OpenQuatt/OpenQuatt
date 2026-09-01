@@ -19,6 +19,8 @@ firmware uploadt vereist altijd `--apply`. Verder gelden deze grenzen:
   vastgelegd;
 - testinstellingen worden vóór én na het terugplaatsen van normale firmware
   hersteld en teruggelezen;
+- de herstelde firmwareversie en config-hash moeten exact overeenkomen met de
+  identiteit die vóór de test in het snapshot is opgeslagen;
 - tijdens compileren en terugplaatsen van normale firmware blijft de controller
   geforceerd in CM0; de oorspronkelijke override wordt pas na profielcontrole
   teruggezet;

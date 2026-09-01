@@ -162,14 +162,23 @@ async function waitProfile(controller, expectedProfile, interrupted) {
   }, `HIL profile ${expectedProfile}`, { timeoutMs: 180000, intervalMs: 1500, interrupted });
 }
 
-async function waitNormalFirmware(controller, interrupted) {
-  return waitFor(async () => {
+export function verifyRestoredFirmware(actual, expected) {
+  assert(
+    actual === expected,
+    `restored firmware differs: expected ${expected}, received ${actual ?? 'missing'}`,
+  );
+  return actual;
+}
+
+async function waitNormalFirmware(controller, expectedFirmware, interrupted) {
+  const actualFirmware = await waitFor(async () => {
     const values = await controller.values([
       { key: 'version', domain: 'text_sensor', name: 'ESPHome Version' },
       { key: 'profile', domain: 'text_sensor', name: 'HIL Test Profile', optional: true },
     ]);
     return values.version && values.profile === null ? values.version : false;
   }, 'normal firmware after OTA restore', { timeoutMs: 180000, intervalMs: 1500, interrupted });
+  return verifyRestoredFirmware(actualFirmware, expectedFirmware);
 }
 
 async function diagnostics(controller, simulator) {
@@ -269,7 +278,7 @@ async function restoreFirmwareAndSettings({
     );
     const normalFirmwareConfirmed = firmwareRestored
       ? await attempt('wait for normal firmware', async () => {
-          restoredFirmware = await waitNormalFirmware(controller, interrupted);
+          restoredFirmware = await waitNormalFirmware(controller, snapshot.firmware, interrupted);
         })
       : false;
     if (normalFirmwareConfirmed) {

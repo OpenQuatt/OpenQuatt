@@ -5,7 +5,11 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { firmwareCommand } from '../../scripts/hil/firmware.mjs';
-import { parseArgs, verifyDiagnostics } from '../../scripts/hil/run-input-sources.mjs';
+import {
+  parseArgs,
+  verifyDiagnostics,
+  verifyRestoredFirmware,
+} from '../../scripts/hil/run-input-sources.mjs';
 import {
   HilRestClient,
   RequestGate,
@@ -155,6 +159,20 @@ test('target URLs reject credentials and non-HTTP protocols', () => {
 
 test('snapshots require the exact pre-test firmware identity', () => {
   assert.throws(() => validateSnapshot({ schema: 1 }), /firmware identity/);
+  assert.equal(
+    verifyRestoredFirmware(
+      '2026.8.2 (config hash 0x12345678)',
+      '2026.8.2 (config hash 0x12345678)',
+    ),
+    '2026.8.2 (config hash 0x12345678)',
+  );
+  assert.throws(
+    () => verifyRestoredFirmware(
+      '2026.8.2 (config hash 0x87654321)',
+      '2026.8.2 (config hash 0x12345678)',
+    ),
+    /restored firmware differs/,
+  );
 });
 
 test('mutating CLI modes require apply plus an automatic firmware restore', () => {
