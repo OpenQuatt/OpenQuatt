@@ -44,11 +44,64 @@ entities, configuratie, koppelingen en één of enkele runtime-aanroepen.
 | Supervisory safety | Vermogenslimiet plus flow-/frost-interlocks | Gereed | #582 |
 | Supervisory state-machine | Resterende hoofdloop naar C++ | Gereed | #583 |
 | Strategy runtimes | Heating Curve, Power House, Cooling en managerbinding | Gereed | #584 |
-| Hydraulics en outputs | Flow Control, Thermal Limits en Auxiliary Relay | Gepland | Nog te openen |
+| Hydraulics en outputs | Flow Control, Thermal Limits en Auxiliary Relay | Klaar voor review | Deze PR |
 | Boiler runtime | Commandocapture, outputcontroller en transportbinding | Gepland | Nog te openen |
 | Bronselectie-opruiming | Generieke selectie/freshness waar dit YAML werkelijk verkleint | Beslispunt na bovenstaande blokken | Nog te bepalen |
 
-## Actueel werkblok: Strategy runtimes
+## Actueel werkblok: Hydraulics en outputs
+
+Doel: de stateful flowregeling, gedeelde watertemperatuurbeveiliging en
+auxiliary-relaybeslissingen als één samenhangende runtimegrens naar C++
+verplaatsen. YAML blijft eigenaar van entities, persistente instellingen,
+intervalbinding en hardware-uitgangen.
+
+Omvang:
+
+1. Flow Control:
+   - lokale Single/Duo-flowaggregatie en mismatch-hold;
+   - AUTO-start, PI-lifecycle, normale/koel-last-good-banken en failsafe;
+   - CM0/CM98/CM100, handmatig bedrijf, autotune en servicetaken.
+2. Thermal Limits:
+   - soft limiter en boiler-inhibithysterese;
+   - trip/hard-trip, CM3-hold en rolloverveilige timing;
+   - fail-closed behoud van een al actieve trip bij ontbrekende flowtemperatuur.
+3. Auxiliary Relay:
+   - CM- en CM1-bestemmingsbinding voor verwarmen/koelen;
+   - temperatuurpoort met hysterese en ontbrekende-sensor-failsafe;
+   - expliciet eigenaarschap voor externe bediening en write-on-change-output.
+
+Gezamenlijke HIL-acceptatie:
+
+- AUTO-flowstart, PI-regeling, handmatige iPWM, CM98 en flowverlies/herstel;
+- normale en koel-flowsetpoints plus Single/Duo-pompuitvoer;
+- thermische soft limit, boiler-inhibit en hard-trip/herstel voor zover de rig
+  de geselecteerde aanvoertemperatuur betrouwbaar kan injecteren;
+- auxiliary relay uit/verwarmen/koelen/gecombineerd, temperatuurpoort,
+  ontbrekende temperatuur en externe bediening;
+- na HIL schone `dev`-firmware en normale simulator-/controllerinstellingen.
+
+Afronding:
+
+- de drie doel-YAML's zijn samen 765 regels kleiner: 1.289 naar 524 regels;
+- inclusief de nieuwe runtimes en pure besliskernen is de productiecode netto
+  11 regels kleiner; 345 regels regressietests en 53 regels plandocumentatie
+  tellen afzonderlijk, waardoor de volledige repositorydelta +387 regels is;
+- de volledige hostset (57), Python-contractset (167), C++-formatcontrole en
+  config-validatie voor Q, Waveshare en Listener (Single/Duo) zijn groen;
+- Q Single en Q Duo compileren; beide gebruiken 184 bytes minder statisch DIRAM.
+  Het image is respectievelijk 348 en 800 bytes kleiner dan schone `dev`;
+- HIL is geslaagd voor AUTO-start/PI, Duo-mismatch met 30 s hold en herstel,
+  handmatige iPWM, CM98, CM0, totale flowuitval en hervatting, plus externe en
+  warmtevraaggestuurde R2-bediening met temperatuurhysterese;
+- normale/koel-/manual-flowsetpointselectie, Thermal Limits-foutpaden en de
+  cooling/gecombineerde auxiliary-relaymodi zijn hostmatig afgedekt. De rig kan
+  de geselecteerde lokale PT1000-aanvoertemperatuur niet betrouwbaar injecteren,
+  zodat soft limit, boiler-inhibit en hard-trip niet als HIL zijn afgevinkt;
+- na HIL is schone `dev` (`88f34748`, config hash `0x9ddc4edd`) teruggezet. De
+  controllerinstellingen zijn hersteld en beide ODU-diagnostics plus alle vier
+  OpenTherm-fouttellers zijn nul gebleven.
+
+## Vorig werkblok: Strategy runtimes
 
 Doel: de resterende stateful ESPHome-lambdas van Heating Curve, Power House en
 Cooling vervangen door compacte runtime-aanroepen. De Strategy Manager blijft
