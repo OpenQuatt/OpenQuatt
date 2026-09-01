@@ -46,7 +46,13 @@ entities, configuratie, koppelingen en één of enkele runtime-aanroepen.
 | Strategy runtimes | Heating Curve, Power House, Cooling en managerbinding | Gereed | #584 |
 | Hydraulics en outputs | Flow Control, Thermal Limits en Auxiliary Relay | Gereed | #589 |
 | Boiler runtime | Commandocapture, outputcontroller en transportbinding | Gereed | #595 |
-| Externe inputs en bronselectie | API-freshness plus generieke, brongebonden selectie | Gereed; PR volgt | Nog te bepalen |
+| Externe inputs en bronselectie | API-freshness plus generieke, brongebonden selectie | Gereed | #599 |
+
+Vervolg ligt niet automatisch in nog een YAML-migratie. Eerst wordt de
+herhaalbaarheid van de acceptatietests verbeterd met de veilige, repositorylokale
+[HIL-runner](hil-testing.md). Een volgend migratieblok krijgt opnieuw een
+go/no-go op testwaarde, contractgrens en netto productiecode; regelaantal alleen
+is geen reden om declaratieve YAML te verplaatsen.
 
 ## Besluit volgend werkblok: externe inputs en bronselectie
 

@@ -9,6 +9,7 @@
     "build:web:preview": "node openquatt/web/build-assets.mjs --preview",
     "check:docs": "npm run check:docs:contracts",
     "check:docs:contracts": "python3 scripts/check_docs_consistency.py && node scripts/check_web_docs_sync.mjs",
+    "check:hil": "node --test tests/hil/*.test.mjs",
     "check:python-contracts": "python3 -m unittest discover -s scripts/tests -p \"test_*.py\"",
     "check:cpp-format": "python3 scripts/cpp_format.py check",
     "check:web": "npm run build:web && node openquatt/web/run-web-tests.mjs && node openquatt/web/check-web-quality.mjs",
