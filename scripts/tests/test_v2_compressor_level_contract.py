@@ -18,14 +18,13 @@ FREQUENCY_HEADER = (
     ROOT / "openquatt" / "includes" / "odu" / "oq_odu_frequency_table.h"
 ).read_text()
 RUNTIME_EDITOR = (
-    ROOT / "openquatt" / "experimental" / "oq_odu_runtime_frequency_table_hp.yaml"
+    ROOT / "openquatt" / "experimental" / "oq_odu_runtime_frequency_service_hp.yaml"
 ).read_text()
 RUNTIME_EDITOR_HEADER = (
-    ROOT
-    / "openquatt"
-    / "includes"
-    / "experimental"
-    / "oq_odu_runtime_frequency_table.h"
+    ROOT / "components/openquatt_odu_runtime_frequency/OpenQuattOduRuntimeFrequency.h"
+).read_text()
+RUNTIME_EDITOR_SOURCE = (
+    ROOT / "components/openquatt_odu_runtime_frequency/OpenQuattOduRuntimeFrequency.cpp"
 ).read_text()
 RUNTIME_EDITOR_LOGIC = (
     ROOT
@@ -100,44 +99,44 @@ class V2CompressorLevelContractTest(unittest.TestCase):
         self.assertIn("snapshot.variant != Variant::V2_NEW_MODEL", FREQUENCY_HEADER)
 
     def test_experimental_write_invalidates_and_then_reloads_control_snapshot(self) -> None:
-        self.assertIn('x == "WRITE_QUEUED: runtime table write requested"', RUNTIME_EDITOR)
+        self.assertIn("on_write_started:", RUNTIME_EDITOR)
         self.assertIn("oq_odu::RuntimeFrequencySnapshotStorage{}", RUNTIME_EDITOR)
-        self.assertIn("runtime_frequency_reload_blocked_after_write) = true", RUNTIME_EDITOR)
-        self.assertIn("runtime_frequency_write_verification_pending) = true", RUNTIME_EDITOR)
-        self.assertIn('x.rfind("VERIFY_FAILED:", 0) == 0', RUNTIME_EDITOR)
-        self.assertIn('x == "APPLIED: runtime table written and read back"', RUNTIME_EDITOR)
-        self.assertIn("runtime_frequency_reload_blocked_after_write) = false", RUNTIME_EDITOR)
-        self.assertIn("runtime_frequency_write_verification_pending) = false", RUNTIME_EDITOR)
+        self.assertIn("write_tainted_.store(true", RUNTIME_EDITOR_SOURCE)
+        self.assertIn("VERIFY_FAILED: readback mismatch", RUNTIME_EDITOR_SOURCE)
+        self.assertIn("write_tainted_.store(false", RUNTIME_EDITOR_SOURCE)
+        self.assertIn("APPLIED: runtime table written and read back", RUNTIME_EDITOR_SOURCE)
+        self.assertIn("on_write_applied:", RUNTIME_EDITOR)
         self.assertIn("script.execute: ${hp_id}_load_runtime_frequency_table_once", RUNTIME_EDITOR)
 
     def test_experimental_editor_only_opens_extension_for_confirmed_v2_new(self) -> None:
-        self.assertIn("odu_generation_detection_complete", RUNTIME_EDITOR)
-        self.assertIn("oq_odu::Variant::V2_NEW_MODEL", RUNTIME_EDITOR)
-        for mode in ("cooling", "heating"):
-            for level in range(21):
-                self.assertIn(f"id: ${{hp_id}}_odu_runtime_{mode}_f{level}", RUNTIME_EDITOR)
+        self.assertIn("set_extended_layout(", HP_IO)
+        self.assertIn("oq_odu::Variant::V2_NEW_MODEL", HP_IO)
+        self.assertNotIn("platform: template", RUNTIME_EDITOR)
+        self.assertNotIn("_odu_runtime_cooling_f", RUNTIME_EDITOR)
+        self.assertNotIn("_odu_runtime_heating_f", RUNTIME_EDITOR)
         self.assertIn("EXTENDED_TABLE_START_ADDRESS = 3050U", RUNTIME_EDITOR_LOGIC)
         self.assertIn("EXTENDED_TABLE_REGISTER_COUNT = 20U", RUNTIME_EDITOR_LOGIC)
-        self.assertIn("queue_extension_load", RUNTIME_EDITOR_HEADER)
-        self.assertIn("queue_apply_extension_readback", RUNTIME_EDITOR_HEADER)
-        self.assertIn("delay: 60s", RUNTIME_EDITOR)
-        self.assertIn("delay: 30s", RUNTIME_EDITOR)
-        self.assertIn("queue_guarded_runtime_write(refs, tables, operation_token)", RUNTIME_EDITOR_HEADER)
-        self.assertIn("*refs.write_operation_token != operation_token", RUNTIME_EDITOR_HEADER)
-        self.assertIn("values[0] != 0.0f", RUNTIME_EDITOR_LOGIC)
-        self.assertIn("values[index] <= 0.0f", RUNTIME_EDITOR_LOGIC)
-        self.assertNotIn("create_write_multiple_command", RUNTIME_EDITOR_HEADER)
+        self.assertIn("queue_load_extension_", RUNTIME_EDITOR_SOURCE)
+        self.assertIn("queue_readback_extension_", RUNTIME_EDITOR_SOURCE)
+        self.assertIn("EXTENDED_OPERATION_TIMEOUT_MS = 60000U", RUNTIME_EDITOR_HEADER)
+        self.assertIn("BASE_OPERATION_TIMEOUT_MS = 30000U", RUNTIME_EDITOR_HEADER)
+        self.assertIn("queue_guard_(pending_request_token)", RUNTIME_EDITOR_SOURCE)
+        self.assertIn("token_matches_(operation_token)", RUNTIME_EDITOR_SOURCE)
+        self.assertIn("values[0] != 0U", RUNTIME_EDITOR_LOGIC)
+        self.assertIn("values[index] == 0U", RUNTIME_EDITOR_LOGIC)
+        self.assertNotIn("create_write_multiple_command", RUNTIME_EDITOR_SOURCE)
 
     def test_failed_experimental_write_cannot_be_reaccepted_by_generic_retry(self) -> None:
-        self.assertIn("runtime_frequency_reload_blocked_after_write", HP_IO)
+        self.assertIn("runtime_reload_blocked_after_write", HP_IO)
         loader_block = yaml_block(
             HP_IO,
             "id: ${hp_id}_load_runtime_frequency_table_once",
             "id: ${hp_id}_detect_odu_generation",
         )
-        self.assertIn("if (id(${hp_id}_runtime_frequency_reload_blocked_after_write))", loader_block)
-        self.assertIn("!id(${hp_id}_runtime_frequency_reload_blocked_after_write)", HP_IO)
-        self.assertIn("if (id(${hp_id}_runtime_frequency_write_verification_pending))", RUNTIME_EDITOR)
+        self.assertIn("->runtime_reload_blocked_after_write()", loader_block)
+        self.assertIn("->runtime_reload_blocked_after_write()", HP_IO)
+        self.assertIn("write_tainted_", RUNTIME_EDITOR_HEADER)
+        self.assertIn("if (this->write_started_)", RUNTIME_EDITOR_SOURCE)
 
     def test_offline_transition_invalidates_and_rechecks_profile(self) -> None:
         offline_block = yaml_block(HP_IO, "on_offline:", "on_online:")
@@ -145,7 +144,7 @@ class V2CompressorLevelContractTest(unittest.TestCase):
         self.assertIn("CompressorLevelProfile::UNKNOWN", offline_block)
         self.assertIn("runtime_frequency_snapshot_storage) = {}", offline_block)
         self.assertIn("compressor_level_profile_request_token", offline_block)
-        self.assertIn("runtime_frequency_write_operation_token", offline_block)
+        self.assertIn("odu_runtime_frequency)->reset_runtime_state", offline_block)
         self.assertIn("VERIFY_FAILED: ODU disconnected during write", offline_block)
         self.assertIn("detect_odu_generation_once", online_block)
 

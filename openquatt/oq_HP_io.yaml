@@ -31,55 +31,6 @@ esphome:
     priority: -100
     then:
       - lambda: |-
-          // Retire only the former RAM-editor preferences; ODU registers remain authoritative.
-          const std::array<esphome::EntityBase*, 42> retired_runtime_editor_preferences{{
-              id(${hp_id}_odu_runtime_cooling_f0),
-              id(${hp_id}_odu_runtime_cooling_f1),
-              id(${hp_id}_odu_runtime_cooling_f2),
-              id(${hp_id}_odu_runtime_cooling_f3),
-              id(${hp_id}_odu_runtime_cooling_f4),
-              id(${hp_id}_odu_runtime_cooling_f5),
-              id(${hp_id}_odu_runtime_cooling_f6),
-              id(${hp_id}_odu_runtime_cooling_f7),
-              id(${hp_id}_odu_runtime_cooling_f8),
-              id(${hp_id}_odu_runtime_cooling_f9),
-              id(${hp_id}_odu_runtime_cooling_f10),
-              id(${hp_id}_odu_runtime_cooling_f11),
-              id(${hp_id}_odu_runtime_cooling_f12),
-              id(${hp_id}_odu_runtime_cooling_f13),
-              id(${hp_id}_odu_runtime_cooling_f14),
-              id(${hp_id}_odu_runtime_cooling_f15),
-              id(${hp_id}_odu_runtime_cooling_f16),
-              id(${hp_id}_odu_runtime_cooling_f17),
-              id(${hp_id}_odu_runtime_cooling_f18),
-              id(${hp_id}_odu_runtime_cooling_f19),
-              id(${hp_id}_odu_runtime_cooling_f20),
-              id(${hp_id}_odu_runtime_heating_f0),
-              id(${hp_id}_odu_runtime_heating_f1),
-              id(${hp_id}_odu_runtime_heating_f2),
-              id(${hp_id}_odu_runtime_heating_f3),
-              id(${hp_id}_odu_runtime_heating_f4),
-              id(${hp_id}_odu_runtime_heating_f5),
-              id(${hp_id}_odu_runtime_heating_f6),
-              id(${hp_id}_odu_runtime_heating_f7),
-              id(${hp_id}_odu_runtime_heating_f8),
-              id(${hp_id}_odu_runtime_heating_f9),
-              id(${hp_id}_odu_runtime_heating_f10),
-              id(${hp_id}_odu_runtime_heating_f11),
-              id(${hp_id}_odu_runtime_heating_f12),
-              id(${hp_id}_odu_runtime_heating_f13),
-              id(${hp_id}_odu_runtime_heating_f14),
-              id(${hp_id}_odu_runtime_heating_f15),
-              id(${hp_id}_odu_runtime_heating_f16),
-              id(${hp_id}_odu_runtime_heating_f17),
-              id(${hp_id}_odu_runtime_heating_f18),
-              id(${hp_id}_odu_runtime_heating_f19),
-              id(${hp_id}_odu_runtime_heating_f20),
-          }};
-          oq_nvs_cleanup::erase_entity_preferences(
-              retired_runtime_editor_preferences,
-              "${hp_id} ODU runtime frequency editor");
-      - lambda: |-
           // Runtime identity is deliberately not restored across boots.
           id(${hp_id}_odu_generation_detection_complete) = false;
           id(${hp_id}_odu_generation_request_pending) = false;
@@ -88,7 +39,7 @@ esphome:
           id(${hp_id}_generation_variant_code) =
               static_cast<int>(oq_odu::Variant::UNKNOWN);
           id(${hp_id}_runtime_frequency_snapshot_storage) = {};
-          id(${hp_id}_runtime_frequency_table_loaded) = false;
+          id(${hp_id}_odu_runtime_frequency)->reset_runtime_state();
           id(${hp_id}_compressor_level_profile_request_pending) = false;
           id(${hp_id}_compressor_level_profile_request_token) = 0U;
           id(${hp_id}_runtime_frequency_retry_ms) = 0U;
@@ -123,18 +74,13 @@ modbus_controller:
             id(${hp_id}_generation_variant_code) =
                 static_cast<int>(oq_odu::Variant::UNKNOWN);
             id(${hp_id}_runtime_frequency_snapshot_storage) = {};
-            id(${hp_id}_runtime_frequency_table_loaded) = false;
+            id(${hp_id}_odu_runtime_frequency)->reset_runtime_state(
+                "VERIFY_FAILED: ODU disconnected during write");
             id(${hp_id}_compressor_level_profile_request_token) =
                 oq_odu::next_request_token(
                     id(${hp_id}_compressor_level_profile_request_token));
             id(${hp_id}_compressor_level_profile_request_pending) = false;
             id(${hp_id}_runtime_frequency_retry_ms) = 0U;
-            ++id(${hp_id}_runtime_frequency_write_operation_token);
-            if (id(${hp_id}_runtime_frequency_write_verification_pending)) {
-              id(${hp_id}_runtime_frequency_write_verification_pending) = false;
-              id(${hp_id}_odu_runtime_frequency_table_status)
-                  ->publish_state("VERIFY_FAILED: ODU disconnected during write");
-            }
             id(${hp_id}_compressor_level_profile).publish_state(
                 oq_odu::compressor_level_profile_label(
                     oq_odu::CompressorLevelProfile::UNKNOWN));
@@ -262,12 +208,6 @@ globals:
     restore_value: no
     initial_value: 'std::array<uint8_t, 46>{}'
 
-  # The editor is writable only after a successful explicit Load in this boot.
-  - id: ${hp_id}_runtime_frequency_table_loaded
-    type: bool
-    restore_value: no
-    initial_value: 'false'
-
   - id: ${hp_id}_compressor_level_profile_request_pending
     type: bool
     restore_value: no
@@ -279,24 +219,6 @@ globals:
     initial_value: '0'
 
   - id: ${hp_id}_runtime_frequency_retry_ms
-    type: uint32_t
-    restore_value: no
-    initial_value: '0'
-
-  # Set while an experimental runtime-table write has not passed its own
-  # readback verification. Generic retries must not accept mixed values.
-  - id: ${hp_id}_runtime_frequency_reload_blocked_after_write
-    type: bool
-    restore_value: no
-    initial_value: 'false'
-
-  - id: ${hp_id}_runtime_frequency_write_verification_pending
-    type: bool
-    restore_value: no
-    initial_value: 'false'
-
-  # Invalidates delayed Modbus callbacks after an editor write timeout.
-  - id: ${hp_id}_runtime_frequency_write_operation_token
     type: uint32_t
     restore_value: no
     initial_value: '0'
@@ -316,7 +238,7 @@ script:
               millis() == 0U ? 1U : millis();
           id(${hp_id}_odu_generation_detection_complete) = false;
           id(${hp_id}_odu_generation_request_pending) = true;
-          id(${hp_id}_runtime_frequency_table_loaded) = false;
+          id(${hp_id}_odu_runtime_frequency)->reset_runtime_state();
           id(${hp_id}_generation).publish_state("Unknown");
           id(${hp_id}_generation_variant_code) =
               static_cast<int>(oq_odu::Variant::UNKNOWN);
@@ -362,6 +284,8 @@ script:
                 id(${hp_id}_control_board_item).publish_state(core.control_board_item);
 
                 auto apply_detected_variant = [=](oq_odu::Variant detected_variant) {
+                  id(${hp_id}_odu_runtime_frequency)->set_extended_layout(
+                      detected_variant == oq_odu::Variant::V2_NEW_MODEL);
                   const auto active_snapshot =
                       oq_odu::decode_runtime_frequency_snapshot(
                           id(${hp_id}_runtime_frequency_snapshot_storage));
@@ -456,7 +380,8 @@ script:
     mode: restart
     then:
       - lambda: |-
-          if (id(${hp_id}_runtime_frequency_reload_blocked_after_write)) {
+          if (id(${hp_id}_odu_runtime_frequency)
+                  ->runtime_reload_blocked_after_write()) {
             ESP_LOGW("quatt.odu", "%sRuntime frequency table reload blocked until experimental write verification succeeds", "${prefix}");
             return;
           }
@@ -1773,7 +1698,8 @@ interval:
                 id(${hp_id}_odu_generation_detection_complete) &&
                 !id(${hp_id}_odu_generation_request_pending) &&
                 !id(${hp_id}_compressor_level_profile_request_pending) &&
-                !id(${hp_id}_runtime_frequency_reload_blocked_after_write)) {
+                !id(${hp_id}_odu_runtime_frequency)
+                     ->runtime_reload_blocked_after_write()) {
               id(${hp_id}_runtime_frequency_retry_ms) = now == 0U ? 1U : now;
               id(${hp_id}_load_runtime_frequency_table_once).execute();
               return;

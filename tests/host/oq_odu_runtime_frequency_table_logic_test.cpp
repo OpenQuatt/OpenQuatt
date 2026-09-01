@@ -44,8 +44,8 @@ int main() {
   assert(parse_extended_runtime_table(extension_data.data(), extension_data.size(), tables, extension_loaded));
   assert(extension_loaded == EXTENDED_TABLE_REGISTER_COUNT);
   assert(tables.level_count == EXTENDED_LEVEL_COUNT);
-  assert(tables.heating[11] == 65.0f && tables.heating[20] == 110.0f);
-  assert(tables.cooling[11] == 48.0f && tables.cooling[20] == 71.0f);
+  assert(tables.heating[11] == 65U && tables.heating[20] == 110U);
+  assert(tables.cooling[11] == 48U && tables.cooling[20] == 71U);
   assert(validate_monotonic_table(tables.cooling, tables.level_count));
   assert(validate_monotonic_table(tables.heating, tables.level_count));
 
@@ -73,18 +73,18 @@ int main() {
   assert(runtime_register_count(0U) == 0U);
 
   auto mismatch = tables;
-  mismatch.heating[20] = 109.0f;
+  mismatch.heating[20] = 109U;
   assert(!tables_match(mismatch, tables));
   assert(tables_match(tables, tables));
 
   auto invalid = tables.heating;
-  invalid[12] = 64.0f;
+  invalid[12] = 64U;
   assert(!validate_monotonic_table(invalid, EXTENDED_LEVEL_COUNT));
   invalid = tables.heating;
-  invalid[0] = 1.0f;
+  invalid[0] = 1U;
   assert(!validate_monotonic_table(invalid, EXTENDED_LEVEL_COUNT));
   invalid = tables.heating;
-  invalid[1] = 0.0f;
+  invalid[1] = 0U;
   assert(!validate_monotonic_table(invalid, EXTENDED_LEVEL_COUNT));
   assert(!parse_extended_runtime_table(extension_data.data(), extension_data.size() - 2U, mismatch, extension_loaded));
   return 0;

@@ -35,11 +35,16 @@ class OpenQuattOduEepromDump : public Component {
   void dump_config() override;
   float get_setup_priority() const override;
 
-  bool is_active() const { return this->active_.load(std::memory_order_acquire); }
+  bool is_active() const {
+    return this->active_.load(std::memory_order_acquire) ||
+           this->external_operation_active_.load(std::memory_order_acquire);
+  }
   bool request_is_authenticated(AsyncWebServerRequest* request) const {
     return this->web_auth_ != nullptr && this->web_auth_->request_is_authenticated(request);
   }
   StartResult start(bool include_extended_metadata);
+  bool try_begin_external_operation();
+  void end_external_operation();
   void write_status(httpd_req_t* req) const;
   bool begin_download();
   void write_download(httpd_req_t* req) const;
@@ -102,6 +107,7 @@ class OpenQuattOduEepromDump : public Component {
   std::atomic<bool> starting_{false};
   std::atomic<bool> dump_ready_{false};
   std::atomic<bool> download_in_progress_{false};
+  std::atomic<bool> external_operation_active_{false};
   std::atomic<uint8_t> progress_{0};
   std::atomic<uint16_t> registers_read_{0};
   std::atomic<uint32_t> job_id_{0};

@@ -1,4 +1,4 @@
-import { getOduRuntimeFrequencyButtonHp, getOduRuntimeFrequencyHpKeys, INSTALLATION_MONITORING_STATE_KEYS, ODU_RUNTIME_FREQUENCY_BUTTON_KEYS } from "./config.js";
+import { INSTALLATION_MONITORING_STATE_KEYS } from "./config.js";
 import { getEntityValue, hasEntity } from "./entity-store.js";
 import { triggerIncidentAction, triggerNamedButton, triggerNamedButtonGroup } from "./entity-write-actions.js";
 import { normalizeDetectedOduGeneration, ODU_CUSTOMER_MODEL_CODE_KEYS, ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS, ODU_GENERATION_VARIANT_KEYS } from "./odu-generation.js";
@@ -160,21 +160,6 @@ function getRefreshOptions(buttonKey) {
   const group = commissioningRefreshGroups.find(({ actions }) => actions.includes(buttonKey));
   if (group) {
     return { refreshKeys: [...group.keys] };
-  }
-
-  if (ODU_RUNTIME_FREQUENCY_BUTTON_KEYS.has(buttonKey)) {
-    const hpIndex = getOduRuntimeFrequencyButtonHp(buttonKey);
-    if (hpIndex) {
-      const isLoad = buttonKey.endsWith("Load");
-      return {
-        refreshKeys: getOduRuntimeFrequencyHpKeys(hpIndex),
-        refreshDelayMs: isLoad ? 1200 : 3200,
-        successNotice: isLoad
-          ? `HP${hpIndex} ODU runtime tabel lezen aangevraagd.`
-          : `HP${hpIndex} ODU runtime write aangevraagd; controleer status/readback.`,
-        errorPrefix: `ODU runtime actie mislukt voor HP${hpIndex}`,
-      };
-    }
   }
 
   return {};
