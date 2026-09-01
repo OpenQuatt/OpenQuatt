@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { build } from "esbuild";
 
 globalThis.__OQ_PREVIEW__ = false;
 const storage = new Map();
@@ -36,13 +40,55 @@ const {
   isQuickStartSetupInstallCompletionConfirmed,
   isQuickStartSetupFirmwareCurrent,
 } = await import("../js/src/features/firmware-update.js");
+const quickStartBundle = await build({
+  bundle: true,
+  define: { __OQ_PREVIEW__: "false" },
+  format: "esm",
+  platform: "node",
+  stdin: {
+    contents: `
+      export { renderQuickStartModal, renderSetupWorkspace } from "../js/src/features/quickstart.js";
+      export { state } from "../js/src/core/state.js";
+    `,
+    loader: "js",
+    resolveDir: fileURLToPath(new URL(".", import.meta.url)),
+  },
+  plugins: [{
+    name: "quickstart-test-assets",
+    setup(pluginBuild) {
+      pluginBuild.onResolve({ filter: /^virtual:embedded-assets$/ }, () => ({
+        path: "embedded-assets",
+        namespace: "quickstart-test-assets",
+      }));
+      pluginBuild.onLoad({ filter: /.*/, namespace: "quickstart-test-assets" }, () => ({
+        contents: 'export const HP_GENERATION_IMAGE_V1 = ""; export const HP_GENERATION_IMAGE_V2 = ""; export const LOGO_MARKUP = "";',
+        loader: "js",
+      }));
+    },
+  }],
+  write: false,
+});
+const quickStartBundleDirectory = await mkdtemp(join(tmpdir(), "openquatt-quickstart-test-"));
+const quickStartBundlePath = join(quickStartBundleDirectory, "quickstart.mjs");
+let quickStartModule;
+try {
+  await writeFile(quickStartBundlePath, quickStartBundle.outputFiles[0].text);
+  quickStartModule = await import(pathToFileURL(quickStartBundlePath).href);
+} finally {
+  await rm(quickStartBundleDirectory, { force: true, recursive: true });
+}
+const {
+  renderQuickStartModal,
+  renderSetupWorkspace,
+  state: quickStartState,
+} = quickStartModule;
 
 function textEntity(value) {
   return { state: value, value };
 }
 
-function resetSetupState() {
-  state.entities = {
+function resetSetupState(targetState = state) {
+  targetState.entities = {
     connectionText: textEntity("wifi"),
     firmwareUpdate: {
       current_version: "v0.48.0",
@@ -63,24 +109,29 @@ function resetSetupState() {
     installationTopology: textEntity("single"),
     projectVersionText: textEntity("v0.48.0"),
     releaseChannelText: textEntity("main"),
+    setupComplete: textEntity(false),
   };
-  state.quickStartSetupDraft = "";
-  state.quickStartSetupConfirmed = false;
-  state.quickStartSetupUpdateComplete = false;
-  state.complete = false;
-  state.updateInstallBusy = false;
-  state.updateInstallMode = "";
-  state.updateInstallPhaseHint = "";
-  state.updateInstallProgressHint = Number.NaN;
-  state.updateInstallStatusPollObserved = false;
-  state.updateInstallSuccessfulPhaseObserved = false;
-  state.updateInstallResumedAfterReload = false;
-  state.updateInstallTargetConnection = "";
-  state.updateInstallTargetTopology = "";
-  state.updateInstallTargetVersion = "";
-  state.ota = { on: false, ok: 0, id: null, wait: false, base: null };
-  state.controlError = "";
-  state.controlNotice = "";
+  targetState.currentStep = "setup";
+  targetState.quickStartSetupDraft = "";
+  targetState.quickStartSetupConfirmed = false;
+  targetState.quickStartSetupUpdateComplete = false;
+  targetState.quickStartModalMode = "wizard";
+  targetState.quickStartModalOpen = true;
+  targetState.complete = false;
+  targetState.loadingEntities = false;
+  targetState.updateInstallBusy = false;
+  targetState.updateInstallMode = "";
+  targetState.updateInstallPhaseHint = "";
+  targetState.updateInstallProgressHint = Number.NaN;
+  targetState.updateInstallStatusPollObserved = false;
+  targetState.updateInstallSuccessfulPhaseObserved = false;
+  targetState.updateInstallResumedAfterReload = false;
+  targetState.updateInstallTargetConnection = "";
+  targetState.updateInstallTargetTopology = "";
+  targetState.updateInstallTargetVersion = "";
+  targetState.ota = { on: false, ok: 0, id: null, wait: false, base: null };
+  targetState.controlError = "";
+  targetState.controlNotice = "";
 }
 
 test("de actuele main-versie en configuratie hebben geen OTA nodig", () => {
@@ -145,6 +196,54 @@ test("de uniforme Q-firmware beheert verbinding los van OTA", () => {
   assert.equal(topologyModel.targetOption, "alternate topology");
   assert.equal(topologyModel.canSwitch, true);
   assert.equal(topologyModel.targetBuildLabel, "Heatpump Controller Q Duo");
+});
+
+test("Quick Start rendert alleen setups voor de verbinding van uniforme Q-firmware", () => {
+  resetSetupState(quickStartState);
+  quickStartState.entities.preferredConnection = {
+    ...textEntity("Automatic"),
+    option: ["Automatic", "WiFi", "Ethernet"],
+  };
+  quickStartState.entities.firmwareUpdate.title = "Heatpump Controller Q Single";
+
+  let setupHtml = "";
+  assert.doesNotThrow(() => {
+    setupHtml = renderSetupWorkspace();
+  });
+  assert.deepEqual(
+    [...setupHtml.matchAll(/data-setup-target="([^"]+)"/g)].map((match) => match[1]),
+    ["single:wifi", "duo:wifi"],
+  );
+
+  quickStartState.entities.installationTopology = textEntity("duo");
+  quickStartState.entities.preferredConnection = {
+    ...textEntity("Ethernet"),
+    option: ["Automatic", "WiFi", "Ethernet"],
+  };
+  quickStartState.entities.connectionText = textEntity("eth");
+  quickStartState.entities.firmwareUpdate.title = "Heatpump Controller Q Duo";
+  setupHtml = renderSetupWorkspace();
+  assert.deepEqual(
+    [...setupHtml.matchAll(/data-setup-target="([^"]+)"/g)].map((match) => match[1]),
+    ["single:eth", "duo:eth"],
+  );
+});
+
+test("Quick Start opent na eerste synchronisatie voor een factory-resetstatus", () => {
+  resetSetupState(quickStartState);
+  quickStartState.entities.preferredConnection = {
+    ...textEntity("Automatic"),
+    option: ["Automatic", "WiFi", "Ethernet"],
+  };
+  quickStartState.entities.firmwareUpdate.title = "Heatpump Controller Q Single";
+  quickStartState.loadingEntities = true;
+  assert.equal(renderQuickStartModal(), "");
+
+  quickStartState.loadingEntities = false;
+  const modalHtml = renderQuickStartModal();
+  assert.match(modalHtml, /Rond eerst de Quick Start af/);
+  assert.match(modalHtml, /data-setup-target="single:wifi"/);
+  assert.doesNotMatch(modalHtml, /Eerste synchronisatie/);
 });
 
 test("Quick Start staat de expliciet bevestigde overstap van dev naar main toe", () => {
