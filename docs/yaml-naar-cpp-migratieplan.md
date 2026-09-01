@@ -45,10 +45,60 @@ entities, configuratie, koppelingen en één of enkele runtime-aanroepen.
 | Supervisory state-machine | Resterende hoofdloop naar C++ | Gereed | #583 |
 | Strategy runtimes | Heating Curve, Power House, Cooling en managerbinding | Gereed | #584 |
 | Hydraulics en outputs | Flow Control, Thermal Limits en Auxiliary Relay | Gereed | #589 |
-| Boiler runtime | Commandocapture, outputcontroller en transportbinding | Klaar voor review | #595 |
-| Bronselectie-opruiming | Generieke selectie/freshness waar dit YAML werkelijk verkleint | Beslispunt na bovenstaande blokken | Nog te bepalen |
+| Boiler runtime | Commandocapture, outputcontroller en transportbinding | Gereed | #595 |
+| Externe inputs en bronselectie | API-freshness plus generieke, brongebonden selectie | Go onder harde LOC- en testbaarheidsgrens | Nog te bepalen |
 
-## Actueel werkblok: Boiler runtime
+## Besluit volgend werkblok: externe inputs en bronselectie
+
+De go/no-go-analyse op `dev` commit `1afdf23c` geeft een voorwaardelijke **go**
+voor één gebundeld vervolgblok. De reden is niet alleen YAML-grootte:
+
+- `oq_sensor_sources.yaml` en `oq_api_ingress.yaml` tellen samen 1.461 regels,
+  waarvan 31 inline lambdas samen 815 regels uitvoerbare C++ bevatten;
+- de API-ingress-lifecycle en de bronselectiematrix hebben nog geen directe
+  hostregressies. Alleen de bestaande supply-calibratie- en holdhelpers zijn
+  rechtstreeks afgedekt;
+- de huidige HA-hold voor buiten-, kamer- en setpointtemperatuur onthoudt niet
+  welke bron de cache vulde. Na een bronwissel kan daardoor maximaal 300 s een
+  waarde van bijvoorbeeld Outdoor unit, OpenTherm, CIC, API of MQTT als
+  HA-helde waarde terugkomen;
+- OpenTherm-freshness wordt in Heating Curve aanvullend gecontroleerd, maar niet
+  in het canonieke geselecteerde kamer-/setpointsignaal dat ook Power House en
+  Cooling gebruiken;
+- de API-ingress gebruikt `last_valid_ms == 0` als ontbrekend-sentinel, waardoor
+  een update exact op `millis()`-rollover tijdelijk als ontbrekend geldt. De
+  externe-warmtevraagpublicatie wordt bovendien pas in de 5 s-cadans geldig,
+  anders dan de overige API-inputs.
+
+Scope van één PR:
+
+1. Een pure freshness-/holdkern met bronidentiteit, rolloverveilige tijd en
+   expliciete missing/finite-contracten.
+2. Een API-ingressruntime voor de zeven bestaande inputslots, met behoud van
+   entity-ID's, stale-tijden en reboot-reset.
+3. Een bronselectieruntime voor wateraanvoer, flow, buiten-/kamertemperatuur,
+   kamer-setpoint, externe warmtevraag en heating/cooling enable.
+4. Compacte YAML-binding op de bestaande updatecadans; geen centralisatie die
+   de huidige 5 s/10 s- of eventtiming verandert.
+
+Harde uitvoeringsgrenzen:
+
+- YAML-doel voor de twee hoofdbestanden: maximaal 750 regels samen;
+- totale productiecode van het werkblok groeit niet; tests en dit plan worden
+  afzonderlijk gerapporteerd;
+- entities, opties, standaardwaarden, stale-tijden en HA/MQTT/CIC/OpenTherm-
+  contracten blijven gelijk, behalve expliciet geteste fail-closed correcties;
+- hosttests dekken alle bronmatrices, cross-source hold, stale/NaN/Inf,
+  bronwissels, reboot, timestamp nul en `millis()`-rollover;
+- HIL dekt API-write/expiry/herstel, bronwissels tijdens actieve vraag,
+  heating/cooling-enable fail-closed en reboot zonder stale replay. Niet lokaal
+  injecteerbare PT1000-paden blijven aanvullend hostmatig afgedekt.
+
+Als een compacte pure kern plus runtime deze grenzen niet haalt, stopt dit
+werkblok vóór publicatie. Grote declaratieve YAML, protocolmapping of korte
+bindingslambdas worden niet ter wille van de vorm naar C++ verplaatst.
+
+## Afgerond werkblok: Boiler runtime
 
 Doel: dispatch, outputbeslissingen en de R1/OpenTherm-lifecycle achter één
 transportneutraal C++-contract brengen. YAML blijft eigenaar van entities,
