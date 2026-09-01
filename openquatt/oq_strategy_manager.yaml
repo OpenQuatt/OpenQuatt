@@ -124,10 +124,7 @@ text_sensor:
     id: oq_strategy_phase_text
     name: "Strategy phase"
     internal: true
-    icon: mdi:state-machine
     update_interval: never
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       return std::string("idle");
 
@@ -150,11 +147,8 @@ sensor:
     id: oq_strategy_active_code_sensor
     name: "Strategy active code"
     internal: true
-    icon: mdi:counter
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       return (float) id(oq_strategy_active_code);
 
@@ -162,11 +156,8 @@ sensor:
     id: oq_strategy_phase_code_sensor
     name: "Strategy phase code"
     internal: true
-    icon: mdi:counter
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       return (float) id(oq_strategy_phase_code);
 
@@ -174,13 +165,10 @@ sensor:
     id: oq_strategy_requested_power_w_sensor
     name: "Strategy requested power"
     internal: true
-    icon: mdi:flash-outline
     unit_of_measurement: "W"
     state_class: measurement
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       return id(oq_strategy_requested_power_w);
 
@@ -188,14 +176,10 @@ sensor:
     id: oq_strategy_supply_target_temp_sensor
     name: "Strategy supply target"
     internal: true
-    icon: mdi:target
     unit_of_measurement: "°C"
-    device_class: temperature
     state_class: measurement
     accuracy_decimals: 1
     update_interval: 5s
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       return id(oq_strategy_supply_target_temp);
 
@@ -203,11 +187,8 @@ sensor:
     id: oq_strategy_water_limit_factor_sensor
     name: "Strategy water limit factor"
     internal: true
-    icon: mdi:water-percent-alert
     accuracy_decimals: 2
     update_interval: 5s
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       return id(oq_strategy_water_limit_factor);
 
@@ -216,9 +197,6 @@ binary_sensor:
     id: oq_strategy_heat_request_active_sensor
     name: "Strategy request active"
     internal: true
-    device_class: heat
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       return id(oq_strategy_heat_request_active);
 
@@ -226,8 +204,6 @@ binary_sensor:
     id: oq_strategy_water_trip_active_sensor
     name: "Strategy water trip active"
     internal: true
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       return id(oq_strategy_water_trip_active);
 
@@ -235,8 +211,6 @@ binary_sensor:
     id: oq_strategy_water_hard_trip_active_sensor
     name: "Strategy water hard trip active"
     internal: true
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       return id(oq_strategy_water_hard_trip_active);
 

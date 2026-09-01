@@ -72,7 +72,6 @@ sensor:
   - platform: template
     id: mqtt_cooling_dew_point_age
     name: "MQTT Cooling Dew Point Age"
-    icon: mdi:timer-outline
     internal: true
     unit_of_measurement: "s"
     accuracy_decimals: 0
@@ -92,7 +91,6 @@ sensor:
   - platform: template
     id: mqtt_outside_temperature_age
     name: "MQTT Outside Temperature Age"
-    icon: mdi:timer-outline
     internal: true
     unit_of_measurement: "s"
     accuracy_decimals: 0
@@ -112,7 +110,6 @@ sensor:
   - platform: template
     id: mqtt_room_temperature_age
     name: "MQTT Room Temperature Age"
-    icon: mdi:timer-outline
     internal: true
     unit_of_measurement: "s"
     accuracy_decimals: 0
@@ -132,7 +129,6 @@ sensor:
   - platform: template
     id: mqtt_room_setpoint_age
     name: "MQTT Room Setpoint Age"
-    icon: mdi:timer-outline
     internal: true
     unit_of_measurement: "s"
     accuracy_decimals: 0
@@ -141,7 +137,6 @@ sensor:
   - platform: template
     id: mqtt_heating_enable_age
     name: "MQTT Heating Enable Age"
-    icon: mdi:timer-outline
     internal: true
     unit_of_measurement: "s"
     accuracy_decimals: 0
@@ -150,7 +145,6 @@ sensor:
   - platform: template
     id: mqtt_cooling_enable_age
     name: "MQTT Cooling Enable Age"
-    icon: mdi:timer-outline
     internal: true
     unit_of_measurement: "s"
     accuracy_decimals: 0
@@ -160,30 +154,22 @@ binary_sensor:
   - platform: template
     id: mqtt_cooling_dew_point_valid
     name: "MQTT Cooling Dew Point Valid"
-    icon: mdi:water-check
     internal: true
-    device_class: connectivity
 
   - platform: template
     id: mqtt_outside_temperature_valid
     name: "MQTT Outside Temperature Valid"
-    icon: mdi:check-decagram
     internal: true
-    device_class: connectivity
 
   - platform: template
     id: mqtt_room_temperature_valid
     name: "MQTT Room Temperature Valid"
-    icon: mdi:check-decagram
     internal: true
-    device_class: connectivity
 
   - platform: template
     id: mqtt_room_setpoint_valid
     name: "MQTT Room Setpoint Valid"
-    icon: mdi:check-decagram
     internal: true
-    device_class: connectivity
 
   - platform: template
     id: mqtt_heating_enable
@@ -195,9 +181,7 @@ binary_sensor:
   - platform: template
     id: mqtt_heating_enable_valid
     name: "MQTT Heating Enable Valid"
-    icon: mdi:check-decagram
     internal: true
-    device_class: connectivity
 
   - platform: template
     id: mqtt_cooling_enable
@@ -209,6 +193,4 @@ binary_sensor:
   - platform: template
     id: mqtt_cooling_enable_valid
     name: "MQTT Cooling Enable Valid"
-    icon: mdi:check-decagram
     internal: true
-    device_class: connectivity

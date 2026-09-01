@@ -207,9 +207,6 @@ text_sensor:
     id: oq_selected_input_hold_active
     name: "Selected Input Hold Active"
     internal: true
-    disabled_by_default: true
-    icon: mdi:timer-sand
-    entity_category: diagnostic
     update_interval: ${oq_diagnostic_update_interval_s}s
     lambda: |-
       return {oq_sensor_source::runtime().selected_hold_status()};

@@ -201,9 +201,6 @@ text_sensor:
     id: oq_duo_optimizer_reason
     name: "Duo optimizer reason"
     internal: true
-    icon: mdi:swap-horizontal
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: never
     lambda: |-
       #if OQ_TOPOLOGY_DUO
@@ -257,14 +254,10 @@ sensor:
     id: oq_phouse_comfort_memory_c_sensor
     name: "Power House – comfort memory"
     internal: true
-    icon: mdi:thermometer-plus
     unit_of_measurement: "°C"
-    device_class: temperature
     state_class: measurement
     accuracy_decimals: 3
     update_interval: 5s
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       return id(oq_phouse_comfort_memory_c);
 
@@ -272,14 +265,10 @@ sensor:
     id: oq_phouse_effective_room_target_c_sensor
     name: "Power House – effective room target"
     internal: true
-    icon: mdi:target
     unit_of_measurement: "°C"
-    device_class: temperature
     state_class: measurement
     accuracy_decimals: 2
     update_interval: 5s
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       return id(room_setpoint_selected).state + id(oq_phouse_comfort_memory_c);
 

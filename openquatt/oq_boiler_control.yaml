@@ -182,11 +182,8 @@ switch:
     id: boiler_relay
     name: "Boiler relay"
     internal: true
-    disabled_by_default: true
     output: boiler_relay_out
-    icon: mdi:water-boiler
     restore_mode: ALWAYS_OFF
-    entity_category: diagnostic
 
 binary_sensor:
   - platform: template
@@ -248,12 +245,9 @@ sensor:
   - platform: template
     id: boiler_start_thermal_safe_ceiling
     name: "Boiler warm-start safe ceiling"
-    icon: mdi:thermometer-check
     unit_of_measurement: "°C"
-    device_class: temperature
     state_class: measurement
     accuracy_decimals: 1
-    entity_category: diagnostic
     internal: true
     update_interval: 1s
     lambda: |-
@@ -262,10 +256,8 @@ sensor:
   - platform: template
     id: boiler_command_age
     name: "Boiler command age"
-    icon: mdi:timer-outline
     unit_of_measurement: "s"
     accuracy_decimals: 1
-    entity_category: diagnostic
     internal: true
     update_interval: 1s
     lambda: |-
@@ -313,8 +305,6 @@ text_sensor:
   - platform: template
     id: boiler_start_thermal_guard
     name: "Boiler warm-start guard"
-    icon: mdi:thermometer-alert
-    entity_category: diagnostic
     internal: true
     update_interval: 1s
     lambda: |-

@@ -205,191 +205,155 @@ sensor:
     id: oq_cooling_base_demand_raw_sensor
     name: "Cooling base demand raw"
     internal: true
-    icon: mdi:speedometer
     unit_of_measurement: "step"
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return (float) oq_cooling::demand_runtime().state().base_demand;
   - platform: template
     id: oq_cooling_limited_demand_sensor
     name: "Cooling limited demand"
     internal: true
-    icon: mdi:speedometer-slow
     unit_of_measurement: "step"
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return (float) oq_cooling::demand_runtime().state().limited_demand;
   - platform: template
     id: oq_cooling_limiter_allowed_max_sensor
     name: "Cooling limiter allowed max"
     internal: true
-    icon: mdi:speedometer-medium
     unit_of_measurement: "step"
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return (float) oq_cooling::demand_runtime().state().allowed_max;
   - platform: template
     id: oq_cooling_buffer_gap_filtered_sensor
     name: "Cooling buffer gap filtered"
     internal: true
-    icon: mdi:delta
     unit_of_measurement: "°C"
     accuracy_decimals: 2
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return oq_cooling::demand_runtime().state().filter.filtered_gap_c;
   - platform: template
     id: oq_cooling_buffer_gap_rate_sensor
     name: "Cooling buffer gap rate"
     internal: true
-    icon: mdi:chart-line
     unit_of_measurement: "°C/min"
     accuracy_decimals: 2
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return oq_cooling::demand_runtime().state().filter.rate_c_per_min;
   - platform: template
     id: oq_cooling_projected_gap_sensor
     name: "Cooling projected gap"
     internal: true
-    icon: mdi:chart-bell-curve
     unit_of_measurement: "°C"
     accuracy_decimals: 2
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return oq_cooling::demand_runtime().state().projected_gap_c;
   - platform: template
     id: oq_cooling_projection_brake_active_sensor
     name: "Cooling projection brake active"
     internal: true
-    icon: mdi:car-brake-alert
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return oq_cooling::demand_runtime().state().limiter.projection_brake_active ? 1.0f : 0.0f;
   - platform: template
     id: oq_cooling_dew_gap_sensor
     name: "Cooling dew gap"
     internal: true
-    icon: mdi:water-thermometer
     unit_of_measurement: "°C"
     accuracy_decimals: 2
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return oq_cooling::demand_runtime().state().dew_gap_c;
   - platform: template
     id: oq_cooling_stop_buffer_gap_sensor
     name: "Cooling stop buffer gap"
     internal: true
-    icon: mdi:stop-circle-outline
     unit_of_measurement: "°C"
     accuracy_decimals: 2
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return oq_cooling::demand_runtime().state().water_cycle.stop_buffer_gap_c;
   - platform: template
     id: oq_cooling_limiter_reason_code_sensor
     name: "Cooling limiter reason code"
     internal: true
-    icon: mdi:counter
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return (float) oq_cooling::demand_runtime().state().limiter_reason_code;
   - platform: template
     id: oq_cooling_stop_reason_code_sensor
     name: "Cooling stop reason code"
     internal: true
-    icon: mdi:counter
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return (float) id(oq_cooling_stop_reason_code);
   - platform: template
     id: oq_cooling_request_reason_code_sensor
     name: "Cooling request reason code"
     internal: true
-    icon: mdi:counter
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return (float) id(oq_cooling_request_reason_code);
   - platform: template
     id: oq_cooling_request_hp1_level_sensor
     name: "Cooling request HP1 level"
     internal: true
-    icon: mdi:numeric-1-box-outline
     unit_of_measurement: "step"
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return (float) id(oq_cooling_request_hp1_level);
   - platform: template
     id: oq_cooling_request_hp2_level_sensor
     name: "Cooling request HP2 level"
     internal: true
-    icon: mdi:numeric-2-box-outline
     unit_of_measurement: "step"
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return (float) id(oq_cooling_request_hp2_level);
   - platform: template
     id: oq_cooling_request_owner_hp_sensor
     name: "Cooling request owner HP"
     internal: true
-    icon: mdi:source-branch
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return (float) id(oq_cooling_request_owner_hp);
   - platform: template
     id: oq_cooling_owner_hp_sensor
     name: "Cooling owner HP"
     internal: true
-    icon: mdi:source-branch
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return (float) id(oq_cooling_owner_hp);
   - platform: template
     id: oq_cooling_water_cycle_active_sensor
     name: "Cooling water cycle active"
     internal: true
-    icon: mdi:water-sync
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return oq_cooling::demand_runtime().state().water_cycle.active ? 1.0f : 0.0f;
   - platform: template
     id: oq_cooling_minimum_off_time_remaining_sensor
     name: "Cooling Minimum Off Time Remaining"
     internal: true
-    icon: mdi:timer-sand
     unit_of_measurement: "s"
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return oq_cooling_runtime::runtime().minimum_off_remaining_s(
           ${oq_cooling_minimum_off_min_s});

@@ -335,8 +335,6 @@ number:
       id: oq_otb_t_set_command
       name: "OTB - Control Setpoint Command"
       internal: true
-      entity_category: diagnostic
-      icon: mdi:thermostat
       min_value: 0
       max_value: 90
       step: 0.1
@@ -350,9 +348,7 @@ switch:
       id: oq_otb_ch_enable
       name: "OTB - Central Heating Command"
       internal: true
-      entity_category: diagnostic
       restore_mode: ALWAYS_OFF
-      icon: mdi:radiator
 
 # Keep Home Assistant lean: expose primary operational values by default,
 # publish secondary status as disabled-by-default, and keep service/protocol
@@ -363,8 +359,6 @@ binary_sensor:
     id: oq_boiler_connection_auto_selected
     name: "OTB - Boiler Connection Auto-selected"
     internal: true
-    entity_category: diagnostic
-    icon: mdi:auto-fix
     lambda: |-
       return id(oq_boiler_connection_auto_selected_state);
 
@@ -372,9 +366,6 @@ binary_sensor:
     id: oq_boiler_connection_mismatch
     name: "OTB - Boiler Connection Mismatch"
     internal: true
-    device_class: problem
-    entity_category: diagnostic
-    icon: mdi:connection
     lambda: |-
       return id(oq_boiler_connection_mismatch_state);
 
@@ -411,7 +402,6 @@ binary_sensor:
       id: otb_dhw_present
       name: "OTB - DHW Present"
       internal: true
-      entity_category: diagnostic
     service_request:
       id: otb_service_request
       name: "OTB - Service Required"
@@ -421,7 +411,6 @@ binary_sensor:
       id: otb_lockout_reset
       name: "OTB - Lockout Reset"
       internal: true
-      entity_category: diagnostic
     low_water_pressure:
       id: otb_low_water_pressure
       name: "OTB - Low Water Pressure"
@@ -466,51 +455,37 @@ sensor:
       id: otb_oem_fault_code
       name: "OTB - OEM Fault Code"
       internal: true
-      entity_category: diagnostic
     oem_diagnostic_code:
       id: otb_oem_diagnostic_code
       name: "OTB - OEM Diagnostic Code"
       internal: true
-      entity_category: diagnostic
     max_capacity:
       id: otb_max_capacity
       name: "OTB - Maximum Boiler Capacity"
       internal: true
-      entity_category: diagnostic
-      disabled_by_default: true
     min_mod_level:
       id: otb_min_modulation
       name: "OTB - Minimum Modulation"
       internal: true
-      entity_category: diagnostic
-      disabled_by_default: true
     opentherm_version_device:
       id: otb_opentherm_version
       name: "OTB - OpenTherm Device Version"
       internal: true
-      entity_category: diagnostic
-      disabled_by_default: true
     device_type:
       id: otb_device_type
       name: "OTB - Device Type"
       internal: true
-      entity_category: diagnostic
-      disabled_by_default: true
     device_version:
       id: otb_device_version
       name: "OTB - Device Product Version"
       internal: true
-      entity_category: diagnostic
-      disabled_by_default: true
 
   - platform: template
     id: otb_last_response_age
     name: "OTB - Last Response Age"
     internal: true
-    icon: mdi:timer-outline
     unit_of_measurement: "s"
     accuracy_decimals: 1
-    entity_category: diagnostic
     update_interval: ${oq_otb_link_watch_s}s
     lambda: |-
       if (!oq_otb::telemetry_state.session_has_response()) return NAN;
@@ -521,10 +496,8 @@ sensor:
     id: otb_response_count
     name: "OTB - Valid Response Count"
     internal: true
-    icon: mdi:counter
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
     update_interval: 5s
     lambda: |-
       return (float) oq_otb::telemetry_state.acknowledged_response_count();
@@ -533,11 +506,8 @@ sensor:
     id: otb_complete_response_count
     name: "OTB - Complete Response Count"
     internal: true
-    icon: mdi:counter
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return (float) oq_otb::telemetry_state.accepted_response_count();
@@ -546,11 +516,8 @@ sensor:
     id: otb_data_invalid_response_count
     name: "OTB - DATA_INVALID Response Count"
     internal: true
-    icon: mdi:alert-circle-outline
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return (float) oq_otb::telemetry_state.data_invalid_response_count();
@@ -559,11 +526,8 @@ sensor:
     id: otb_unknown_data_id_response_count
     name: "OTB - UNKNOWN_DATAID Response Count"
     internal: true
-    icon: mdi:help-circle-outline
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return (float) oq_otb::telemetry_state.unknown_data_id_response_count();
@@ -572,11 +536,8 @@ sensor:
     id: otb_unexpected_response_type_count
     name: "OTB - Unexpected Response Type Count"
     internal: true
-    icon: mdi:message-alert-outline
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return (float) oq_otb::telemetry_state.unexpected_response_type_count();
@@ -585,11 +546,8 @@ sensor:
     id: otb_response_id_mismatch_count
     name: "OTB - Response ID Mismatch Count"
     internal: true
-    icon: mdi:identifier
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return (float) oq_otb::telemetry_state.response_id_mismatch_count();
@@ -598,11 +556,8 @@ sensor:
     id: otb_response_type_mismatch_count
     name: "OTB - Response Type Mismatch Count"
     internal: true
-    icon: mdi:message-alert-outline
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return (float) oq_otb::telemetry_state.response_type_mismatch_count();
@@ -611,11 +566,8 @@ sensor:
     id: otb_transport_error_count
     name: "OTB - Transport Error Count"
     internal: true
-    icon: mdi:alert-octagon-outline
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return (float) oq_otb::telemetry_state.transport_error_count();
@@ -624,11 +576,8 @@ sensor:
     id: otb_protocol_error_count
     name: "OTB - Protocol Error Count"
     internal: true
-    icon: mdi:pulse
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return (float) oq_otb::telemetry_state.protocol_error_count();
@@ -637,11 +586,8 @@ sensor:
     id: otb_response_timeout_count
     name: "OTB - Response Timeout Count"
     internal: true
-    icon: mdi:timer-alert-outline
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return (float) oq_otb::telemetry_state.response_timeout_count();
@@ -650,11 +596,8 @@ sensor:
     id: otb_no_transition_count
     name: "OTB - NO_TRANSITION Count"
     internal: true
-    icon: mdi:chart-timeline-variant-shimmer
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return (float) oq_otb::telemetry_state.no_transition_count();
@@ -663,11 +606,8 @@ sensor:
     id: otb_no_change_too_long_count
     name: "OTB - NO_CHANGE_TOO_LONG Count"
     internal: true
-    icon: mdi:chart-timeline-variant-shimmer
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return (float) oq_otb::telemetry_state.no_change_too_long_count();
@@ -676,11 +616,8 @@ sensor:
     id: otb_last_transport_error_age
     name: "OTB - Last Transport Error Age"
     internal: true
-    icon: mdi:timer-alert-outline
     unit_of_measurement: "s"
     accuracy_decimals: 1
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       if (oq_otb::telemetry_state.transport_error_count() == 0) return NAN;
@@ -692,9 +629,7 @@ sensor:
     id: otb_last_response_id
     name: "OTB - Last Response Message ID"
     internal: true
-    icon: mdi:identifier
     accuracy_decimals: 0
-    entity_category: diagnostic
     update_interval: 5s
     lambda: |-
       const int message_id = oq_otb::telemetry_state.last_response_id();
@@ -704,11 +639,8 @@ sensor:
     id: otb_start_tset_requested
     name: "OTB - Start TSet Requested"
     internal: true
-    icon: mdi:thermometer-chevron-up
     unit_of_measurement: "°C"
     accuracy_decimals: 1
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 1s
     lambda: |-
       if (!oq_otb::start_handshake_state.tset_request_seen()) return NAN;
@@ -718,11 +650,8 @@ sensor:
     id: otb_start_tset_accepted
     name: "OTB - Start TSet Accepted"
     internal: true
-    icon: mdi:thermometer-check
     unit_of_measurement: "°C"
     accuracy_decimals: 1
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 1s
     lambda: |-
       if (!oq_otb::start_handshake_state.tset_ack_seen()) return NAN;
@@ -733,9 +662,6 @@ text_sensor:
     id: otb_last_response_type
     name: "OTB - Last Response Type"
     internal: true
-    icon: mdi:message-text-outline
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return {oq_otb::telemetry_state.last_response_type_name()};
@@ -744,9 +670,6 @@ text_sensor:
     id: otb_last_transport_error
     name: "OTB - Last Transport Error"
     internal: true
-    icon: mdi:alert-decagram-outline
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return {oq_otb::telemetry_state.last_transport_error_name()};
@@ -755,9 +678,6 @@ text_sensor:
     id: otb_start_handshake_state
     name: "OTB - Start Handshake State"
     internal: true
-    icon: mdi:message-check-outline
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 1s
     lambda: |-
       return {oq_otb::start_handshake_state.result_name()};
@@ -766,9 +686,6 @@ text_sensor:
     id: otb_start_handshake_detail
     name: "OTB - Start Handshake Detail"
     internal: true
-    icon: mdi:message-text-fast-outline
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 1s
     lambda: |-
       char detail[128];

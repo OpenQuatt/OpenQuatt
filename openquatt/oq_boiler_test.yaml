@@ -65,8 +65,6 @@ button:
     id: oq_boiler_power_test_start
     name: "Boiler Power Test Start"
     internal: true
-    icon: mdi:play-circle-outline
-    entity_category: config
     on_press:
       - lambda: |-
           oq_boiler_task::runtime().start(oq_boiler_task::default_config(), (uint32_t) millis());
@@ -75,8 +73,6 @@ button:
     id: oq_boiler_power_test_abort
     name: "Boiler Power Test Abort"
     internal: true
-    icon: mdi:stop-circle-outline
-    entity_category: config
     on_press:
       - lambda: |-
           oq_boiler_task::runtime().abort_or_clear();
@@ -85,8 +81,6 @@ button:
     id: oq_boiler_power_test_apply
     name: "Boiler Power Test Apply"
     internal: true
-    icon: mdi:check-circle-outline
-    entity_category: config
     on_press:
       - lambda: |-
           oq_boiler_task::runtime().apply_result((uint32_t) millis());
@@ -96,7 +90,6 @@ text_sensor:
     id: oq_boiler_power_test_status
     name: "Boiler power test status"
     internal: true
-    entity_category: diagnostic
     update_interval: 1s
     lambda: |-
       return {id(oq_boiler_power_test_status_value)};
@@ -105,7 +98,6 @@ text_sensor:
     id: oq_boiler_power_test_result_quality
     name: "Boiler power test result quality"
     internal: true
-    entity_category: diagnostic
     update_interval: 1s
     lambda: |-
       return {id(oq_boiler_power_test_result_quality_value)};

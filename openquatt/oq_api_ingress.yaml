@@ -126,57 +126,42 @@ binary_sensor:
   - platform: template
     id: api_input_cooling_dew_point_valid
     name: "API Input Cooling Dew Point Valid"
-    icon: mdi:check-decagram
     internal: true
-    device_class: connectivity
 
   - platform: template
     id: api_input_outside_temperature_valid
     name: "API Input Outside Temperature Valid"
-    icon: mdi:check-decagram
     internal: true
-    device_class: connectivity
 
   - platform: template
     id: api_input_room_temperature_valid
     name: "API Input Room Temperature Valid"
-    icon: mdi:check-decagram
     internal: true
-    device_class: connectivity
 
   - platform: template
     id: api_input_room_setpoint_valid
     name: "API Input Room Setpoint Valid"
-    icon: mdi:check-decagram
     internal: true
-    device_class: connectivity
 
   - platform: template
     id: api_input_heating_enable_valid
     name: "API Input Heating Enable Valid"
-    icon: mdi:check-decagram
     internal: true
-    device_class: connectivity
 
   - platform: template
     id: api_input_cooling_enable_valid
     name: "API Input Cooling Enable Valid"
-    icon: mdi:check-decagram
     internal: true
-    device_class: connectivity
 
   - platform: template
     id: api_input_external_heat_demand_valid
     name: "API Input External Heat Demand Valid"
-    icon: mdi:check-decagram
     internal: true
-    device_class: connectivity
 
 sensor:
   - platform: template
     id: api_input_cooling_dew_point_age
     name: "API Input Cooling Dew Point Age"
-    icon: mdi:timer-outline
     internal: true
     unit_of_measurement: "s"
     accuracy_decimals: 0
@@ -185,7 +170,6 @@ sensor:
   - platform: template
     id: api_input_outside_temperature_age
     name: "API Input Outside Temperature Age"
-    icon: mdi:timer-outline
     internal: true
     unit_of_measurement: "s"
     accuracy_decimals: 0
@@ -194,7 +178,6 @@ sensor:
   - platform: template
     id: api_input_room_temperature_age
     name: "API Input Room Temperature Age"
-    icon: mdi:timer-outline
     internal: true
     unit_of_measurement: "s"
     accuracy_decimals: 0
@@ -203,7 +186,6 @@ sensor:
   - platform: template
     id: api_input_room_setpoint_age
     name: "API Input Room Setpoint Age"
-    icon: mdi:timer-outline
     internal: true
     unit_of_measurement: "s"
     accuracy_decimals: 0
@@ -212,7 +194,6 @@ sensor:
   - platform: template
     id: api_input_heating_enable_age
     name: "API Input Heating Enable Age"
-    icon: mdi:timer-outline
     internal: true
     unit_of_measurement: "s"
     accuracy_decimals: 0
@@ -221,7 +202,6 @@ sensor:
   - platform: template
     id: api_input_cooling_enable_age
     name: "API Input Cooling Enable Age"
-    icon: mdi:timer-outline
     internal: true
     unit_of_measurement: "s"
     accuracy_decimals: 0
@@ -230,7 +210,6 @@ sensor:
   - platform: template
     id: api_input_external_heat_demand_age
     name: "API Input External Heat Demand Age"
-    icon: mdi:timer-outline
     internal: true
     unit_of_measurement: "s"
     accuracy_decimals: 0

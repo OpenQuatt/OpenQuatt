@@ -89,8 +89,6 @@ binary_sensor:
     id: cooling_fallback_active
     name: "Cooling Fallback Active"
     internal: true
-    icon: mdi:water-alert
-    device_class: running
     lambda: |-
       return oq_cooling_safety::runtime().fallback_active();
   - platform: template
@@ -179,10 +177,7 @@ sensor:
     id: cooling_fallback_night_min_outdoor_temp
     name: "Cooling Fallback Night Minimum Outdoor Temp"
     internal: true
-    disabled_by_default: true
-    icon: mdi:weather-night
     unit_of_measurement: "°C"
-    device_class: temperature
     state_class: measurement
     accuracy_decimals: 1
     update_interval: 60s
@@ -192,10 +187,7 @@ sensor:
     id: cooling_fallback_min_supply_temp
     name: "Cooling Fallback Minimum Supply Temp"
     internal: true
-    disabled_by_default: true
-    icon: mdi:thermometer-chevron-down
     unit_of_measurement: "°C"
-    device_class: temperature
     state_class: measurement
     accuracy_decimals: 1
     update_interval: 10s

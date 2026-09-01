@@ -491,9 +491,6 @@ text_sensor:
     id: oq_request_reason
     name: "Request Reason"
     internal: true
-    icon: mdi:source-branch
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: never
     lambda: |-
       return std::string("inactive");

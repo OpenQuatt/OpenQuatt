@@ -84,19 +84,15 @@ switch:
   - platform: template
     id: oq_aux_wait_for_supply_temp
     name: "Aux Relay Wait For Supply Temp"
-    icon: mdi:thermometer-check
     internal: true
     restore_mode: RESTORE_DEFAULT_OFF
     optimistic: true
-    entity_category: config
 
 select:
   - platform: template
     id: oq_aux_relay_function
     name: "Aux Relay Function"
-    icon: mdi:electric-switch
     internal: true
-    entity_category: config
     optimistic: true
     restore_value: true
     options:
@@ -111,7 +107,6 @@ number:
   - platform: template
     id: oq_aux_heat_start_c
     name: "Aux Relay Heating Start Temp"
-    icon: mdi:thermometer-chevron-up
     internal: true
     unit_of_measurement: "°C"
     min_value: 20
@@ -121,12 +116,10 @@ number:
     optimistic: true
     restore_value: true
     initial_value: 30
-    entity_category: config
 
   - platform: template
     id: oq_aux_cool_start_c
     name: "Aux Relay Cooling Start Temp"
-    icon: mdi:thermometer-chevron-down
     internal: true
     unit_of_measurement: "°C"
     min_value: 8
@@ -136,12 +129,10 @@ number:
     optimistic: true
     restore_value: true
     initial_value: 18
-    entity_category: config
 
   - platform: template
     id: oq_aux_temp_hysteresis_c
     name: "Aux Relay Temp Hysteresis"
-    icon: mdi:swap-vertical
     internal: true
     unit_of_measurement: "°C"
     min_value: 0.5
@@ -151,7 +142,6 @@ number:
     optimistic: true
     restore_value: true
     initial_value: 2
-    entity_category: config
 
 # ----------------------------
 # DIAGNOSTICS

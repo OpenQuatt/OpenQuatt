@@ -60,8 +60,6 @@ button:
     id: oq_acknowledge_compressor_cycling_alert
     name: "Acknowledge compressor cycling alert"
     internal: true
-    icon: mdi:check-circle-outline
-    entity_category: config
     on_press:
       - lambda: |-
           oq_diagnostics::acknowledge_compressor_cycling_alert();
@@ -70,8 +68,6 @@ button:
     id: oq_acknowledge_recovered_hp_incidents
     name: "Acknowledge recovered HP incidents"
     internal: true
-    icon: mdi:check-circle-outline
-    entity_category: config
     on_press:
       - lambda: |-
           id(oq_incident_manager).acknowledge_all_cleared();
@@ -81,8 +77,6 @@ number:
     id: oq_compressor_starts_warning_limit_2h
     name: "Compressor starts 2h warning limit"
     internal: true
-    icon: mdi:alert-decagram-outline
-    entity_category: config
     optimistic: true
     restore_value: true
     initial_value: 6
@@ -95,8 +89,6 @@ number:
     id: oq_compressor_starts_warning_limit_72h
     name: "Compressor starts 72h warning limit"
     internal: true
-    icon: mdi:calendar-clock-outline
-    entity_category: config
     optimistic: true
     restore_value: true
     initial_value: 40
@@ -110,8 +102,6 @@ sensor:
     id: oq_hp1_compressor_starts_2h
     name: "HP1 - Compressor starts 2h"
     internal: true
-    icon: mdi:counter
-    entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
@@ -122,8 +112,6 @@ sensor:
     id: oq_hp1_compressor_starts_6h
     name: "HP1 - Compressor starts 6h"
     internal: true
-    icon: mdi:counter
-    entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
@@ -134,8 +122,6 @@ sensor:
     id: oq_hp1_compressor_starts_24h
     name: "HP1 - Compressor starts 24h"
     internal: true
-    icon: mdi:counter
-    entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
@@ -146,8 +132,6 @@ sensor:
     id: oq_hp1_compressor_starts_72h
     name: "HP1 - Compressor starts 72h"
     internal: true
-    icon: mdi:counter
-    entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
@@ -158,8 +142,6 @@ sensor:
     id: oq_hp1_compressor_last_start_age
     name: "HP1 - Compressor last start age"
     internal: true
-    icon: mdi:clock-outline
-    entity_category: diagnostic
     unit_of_measurement: min
     accuracy_decimals: 0
     update_interval: 60s
@@ -170,9 +152,7 @@ sensor:
   - platform: template
     id: oq_hp2_compressor_starts_2h
     name: "HP2 - Compressor starts 2h"
-    icon: mdi:counter
     internal: true
-    entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
@@ -182,9 +162,7 @@ sensor:
   - platform: template
     id: oq_hp2_compressor_starts_6h
     name: "HP2 - Compressor starts 6h"
-    icon: mdi:counter
     internal: true
-    entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
@@ -194,9 +172,7 @@ sensor:
   - platform: template
     id: oq_hp2_compressor_starts_24h
     name: "HP2 - Compressor starts 24h"
-    icon: mdi:counter
     internal: true
-    entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
@@ -206,9 +182,7 @@ sensor:
   - platform: template
     id: oq_hp2_compressor_starts_72h
     name: "HP2 - Compressor starts 72h"
-    icon: mdi:counter
     internal: true
-    entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
@@ -218,9 +192,7 @@ sensor:
   - platform: template
     id: oq_hp2_compressor_last_start_age
     name: "HP2 - Compressor last start age"
-    icon: mdi:clock-outline
     internal: true
-    entity_category: diagnostic
     unit_of_measurement: min
     accuracy_decimals: 0
     update_interval: 60s
@@ -232,8 +204,6 @@ sensor:
     id: oq_compressor_cycling_alert_first_seen
     name: "Compressor cycling alert first seen"
     internal: true
-    icon: mdi:clock-start
-    entity_category: diagnostic
     unit_of_measurement: s
     accuracy_decimals: 0
     update_interval: 60s
@@ -246,8 +216,6 @@ sensor:
     id: oq_compressor_cycling_alert_last_seen
     name: "Compressor cycling alert last seen"
     internal: true
-    icon: mdi:clock-end
-    entity_category: diagnostic
     unit_of_measurement: s
     accuracy_decimals: 0
     update_interval: 60s
@@ -260,8 +228,6 @@ sensor:
     id: oq_compressor_cycling_alert_hp1_peak_2h
     name: "Compressor cycling alert HP1 peak 2h"
     internal: true
-    icon: mdi:chart-line
-    entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
@@ -271,8 +237,6 @@ sensor:
     id: oq_compressor_cycling_alert_hp1_peak_72h
     name: "Compressor cycling alert HP1 peak 72h"
     internal: true
-    icon: mdi:chart-line
-    entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
@@ -281,9 +245,7 @@ sensor:
   - platform: template
     id: oq_compressor_cycling_alert_hp2_peak_2h
     name: "Compressor cycling alert HP2 peak 2h"
-    icon: mdi:chart-line
     internal: true
-    entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
@@ -292,9 +254,7 @@ sensor:
   - platform: template
     id: oq_compressor_cycling_alert_hp2_peak_72h
     name: "Compressor cycling alert HP2 peak 72h"
-    icon: mdi:chart-line
     internal: true
-    entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: 60s
     lambda: |-
@@ -305,18 +265,13 @@ binary_sensor:
     id: oq_compressor_cycling_alert_latched_sensor
     name: "Compressor cycling alert latched"
     internal: true
-    icon: mdi:alert-circle-check-outline
-    device_class: problem
-    entity_category: diagnostic
     lambda: |-
       return id(oq_compressor_cycling_alert_latched);
 
   - platform: template
     id: oq_compressor_cycling_alert_alternating_sensor
     name: "Compressor cycling alert alternating"
-    icon: mdi:swap-horizontal-bold
     internal: true
-    entity_category: diagnostic
     lambda: |-
       return id(oq_compressor_cycling_alert_alternating);
 

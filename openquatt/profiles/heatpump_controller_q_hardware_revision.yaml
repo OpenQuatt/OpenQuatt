@@ -46,6 +46,4 @@ text_sensor:
     id: oq_hardware_revision_text
     name: "OpenQuatt Hardware Revision"
     internal: true
-    icon: mdi:developer-board
-    entity_category: diagnostic
     update_interval: never
