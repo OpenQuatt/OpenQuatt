@@ -61,5 +61,10 @@ int main() {
   assert(!state.available(ha, 301000, ha_hold_ms));
   state.remember(NAN, 302000, ha);
   assert(!state.has_value());
+
+  // Timestamp zero is a valid observation at millis() rollover.
+  state.remember(30.0f, 0, pt1000);
+  assert(state.has_value());
+  assert(state.available(pt1000, 10, short_hold_ms));
   return 0;
 }

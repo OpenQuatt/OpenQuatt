@@ -13,82 +13,6 @@
 #
 # ==============================================================================
 
-globals:
-  - id: api_input_accept_updates
-    type: bool
-    restore_value: no
-    initial_value: "false"
-
-  - id: api_input_cooling_dew_point_last_valid_ms
-    type: uint32_t
-    restore_value: no
-    initial_value: "0"
-
-  - id: api_input_outside_temperature_last_valid_ms
-    type: uint32_t
-    restore_value: no
-    initial_value: "0"
-
-  - id: api_input_room_temperature_last_valid_ms
-    type: uint32_t
-    restore_value: no
-    initial_value: "0"
-
-  - id: api_input_room_setpoint_last_valid_ms
-    type: uint32_t
-    restore_value: no
-    initial_value: "0"
-
-  - id: api_input_heating_enable_last_valid_ms
-    type: uint32_t
-    restore_value: no
-    initial_value: "0"
-
-  - id: api_input_cooling_enable_last_valid_ms
-    type: uint32_t
-    restore_value: no
-    initial_value: "0"
-
-  - id: api_input_external_heat_demand_last_valid_ms
-    type: uint32_t
-    restore_value: no
-    initial_value: "0"
-
-  - id: api_input_cooling_dew_point_has_value
-    type: bool
-    restore_value: no
-    initial_value: "false"
-
-  - id: api_input_outside_temperature_has_value
-    type: bool
-    restore_value: no
-    initial_value: "false"
-
-  - id: api_input_room_temperature_has_value
-    type: bool
-    restore_value: no
-    initial_value: "false"
-
-  - id: api_input_room_setpoint_has_value
-    type: bool
-    restore_value: no
-    initial_value: "false"
-
-  - id: api_input_heating_enable_has_value
-    type: bool
-    restore_value: no
-    initial_value: "false"
-
-  - id: api_input_cooling_enable_has_value
-    type: bool
-    restore_value: no
-    initial_value: "false"
-
-  - id: api_input_external_heat_demand_has_value
-    type: bool
-    restore_value: no
-    initial_value: "false"
-
 number:
   - platform: template
     id: api_input_cooling_dew_point
@@ -99,13 +23,7 @@ number:
     optimistic: true
     on_value:
       - lambda: |-
-          if (!id(api_input_accept_updates)) {
-            return;
-          }
-          id(api_input_cooling_dew_point_has_value) = true;
-          id(api_input_cooling_dew_point_last_valid_ms) = (uint32_t) millis();
-          id(api_input_cooling_dew_point_age).publish_state(0);
-          id(api_input_cooling_dew_point_valid).publish_state(true);
+          oq_api_ingress::runtime().observe(oq_api_ingress::Slot::COOLING_DEW_POINT, (uint32_t) millis());
 
   - platform: template
     id: api_input_outside_temperature
@@ -116,13 +34,7 @@ number:
     optimistic: true
     on_value:
       - lambda: |-
-          if (!id(api_input_accept_updates)) {
-            return;
-          }
-          id(api_input_outside_temperature_has_value) = true;
-          id(api_input_outside_temperature_last_valid_ms) = (uint32_t) millis();
-          id(api_input_outside_temperature_age).publish_state(0);
-          id(api_input_outside_temperature_valid).publish_state(true);
+          oq_api_ingress::runtime().observe(oq_api_ingress::Slot::OUTSIDE_TEMPERATURE, (uint32_t) millis());
 
   - platform: template
     id: api_input_room_temperature
@@ -133,13 +45,7 @@ number:
     optimistic: true
     on_value:
       - lambda: |-
-          if (!id(api_input_accept_updates)) {
-            return;
-          }
-          id(api_input_room_temperature_has_value) = true;
-          id(api_input_room_temperature_last_valid_ms) = (uint32_t) millis();
-          id(api_input_room_temperature_age).publish_state(0);
-          id(api_input_room_temperature_valid).publish_state(true);
+          oq_api_ingress::runtime().observe(oq_api_ingress::Slot::ROOM_TEMPERATURE, (uint32_t) millis());
 
   - platform: template
     id: api_input_room_setpoint
@@ -150,13 +56,7 @@ number:
     optimistic: true
     on_value:
       - lambda: |-
-          if (!id(api_input_accept_updates)) {
-            return;
-          }
-          id(api_input_room_setpoint_has_value) = true;
-          id(api_input_room_setpoint_last_valid_ms) = (uint32_t) millis();
-          id(api_input_room_setpoint_age).publish_state(0);
-          id(api_input_room_setpoint_valid).publish_state(true);
+          oq_api_ingress::runtime().observe(oq_api_ingress::Slot::ROOM_SETPOINT, (uint32_t) millis());
 
   - platform: template
     id: api_input_external_heat_demand
@@ -167,11 +67,7 @@ number:
     optimistic: true
     on_value:
       - lambda: |-
-          if (!id(api_input_accept_updates)) {
-            return;
-          }
-          id(api_input_external_heat_demand_has_value) = true;
-          id(api_input_external_heat_demand_last_valid_ms) = (uint32_t) millis();
+          oq_api_ingress::runtime().observe(oq_api_ingress::Slot::EXTERNAL_HEAT_DEMAND, (uint32_t) millis());
 
 switch:
   - platform: template
@@ -183,25 +79,13 @@ switch:
           id: api_input_heating_enable
           state: ON
       - lambda: |-
-          if (!id(api_input_accept_updates)) {
-            return;
-          }
-          id(api_input_heating_enable_has_value) = true;
-          id(api_input_heating_enable_last_valid_ms) = (uint32_t) millis();
-          id(api_input_heating_enable_age).publish_state(0);
-          id(api_input_heating_enable_valid).publish_state(true);
+          oq_api_ingress::runtime().observe(oq_api_ingress::Slot::HEATING_ENABLE, (uint32_t) millis());
     turn_off_action:
       - switch.template.publish:
           id: api_input_heating_enable
           state: OFF
       - lambda: |-
-          if (!id(api_input_accept_updates)) {
-            return;
-          }
-          id(api_input_heating_enable_has_value) = true;
-          id(api_input_heating_enable_last_valid_ms) = (uint32_t) millis();
-          id(api_input_heating_enable_age).publish_state(0);
-          id(api_input_heating_enable_valid).publish_state(true);
+          oq_api_ingress::runtime().observe(oq_api_ingress::Slot::HEATING_ENABLE, (uint32_t) millis());
 
   - platform: template
     id: api_input_cooling_enable
@@ -212,25 +96,13 @@ switch:
           id: api_input_cooling_enable
           state: ON
       - lambda: |-
-          if (!id(api_input_accept_updates)) {
-            return;
-          }
-          id(api_input_cooling_enable_has_value) = true;
-          id(api_input_cooling_enable_last_valid_ms) = (uint32_t) millis();
-          id(api_input_cooling_enable_age).publish_state(0);
-          id(api_input_cooling_enable_valid).publish_state(true);
+          oq_api_ingress::runtime().observe(oq_api_ingress::Slot::COOLING_ENABLE, (uint32_t) millis());
     turn_off_action:
       - switch.template.publish:
           id: api_input_cooling_enable
           state: OFF
       - lambda: |-
-          if (!id(api_input_accept_updates)) {
-            return;
-          }
-          id(api_input_cooling_enable_has_value) = true;
-          id(api_input_cooling_enable_last_valid_ms) = (uint32_t) millis();
-          id(api_input_cooling_enable_age).publish_state(0);
-          id(api_input_cooling_enable_valid).publish_state(true);
+          oq_api_ingress::runtime().observe(oq_api_ingress::Slot::COOLING_ENABLE, (uint32_t) millis());
 
 esphome:
   on_boot:
@@ -245,38 +117,10 @@ esphome:
               retired_api_preferences, "API ingress enable state");
       - lambda: |-
           // Ignore template component startup state until real API writes can arrive.
-          id(api_input_accept_updates) = false;
-          id(api_input_cooling_dew_point_has_value) = false;
-          id(api_input_outside_temperature_has_value) = false;
-          id(api_input_room_temperature_has_value) = false;
-          id(api_input_room_setpoint_has_value) = false;
-          id(api_input_heating_enable_has_value) = false;
-          id(api_input_cooling_enable_has_value) = false;
-          id(api_input_external_heat_demand_has_value) = false;
-          id(api_input_cooling_dew_point_last_valid_ms) = 0U;
-          id(api_input_outside_temperature_last_valid_ms) = 0U;
-          id(api_input_room_temperature_last_valid_ms) = 0U;
-          id(api_input_room_setpoint_last_valid_ms) = 0U;
-          id(api_input_heating_enable_last_valid_ms) = 0U;
-          id(api_input_cooling_enable_last_valid_ms) = 0U;
-          id(api_input_external_heat_demand_last_valid_ms) = 0U;
-          id(api_input_cooling_dew_point_age).publish_state(NAN);
-          id(api_input_outside_temperature_age).publish_state(NAN);
-          id(api_input_room_temperature_age).publish_state(NAN);
-          id(api_input_room_setpoint_age).publish_state(NAN);
-          id(api_input_heating_enable_age).publish_state(NAN);
-          id(api_input_cooling_enable_age).publish_state(NAN);
-          id(api_input_external_heat_demand_age).publish_state(NAN);
-          id(api_input_cooling_dew_point_valid).publish_state(false);
-          id(api_input_outside_temperature_valid).publish_state(false);
-          id(api_input_room_temperature_valid).publish_state(false);
-          id(api_input_room_setpoint_valid).publish_state(false);
-          id(api_input_heating_enable_valid).publish_state(false);
-          id(api_input_cooling_enable_valid).publish_state(false);
-          id(api_input_external_heat_demand_valid).publish_state(false);
+          oq_api_ingress::runtime().reset();
       - delay: 1s
       - lambda: |-
-          id(api_input_accept_updates) = true;
+          oq_api_ingress::runtime().set_accept_updates(true);
 
 binary_sensor:
   - platform: template
@@ -396,86 +240,12 @@ interval:
   - interval: 5s
     then:
       - lambda: |-
-          const uint32_t now_ms = (uint32_t) millis();
-
-          auto update_numeric = [&](bool has_value,
-                                    uint32_t last_valid_ms,
-                                    uint32_t stale_s,
-                                    bool entity_has_state,
-                                    sensor::Sensor *age_sensor,
-                                    binary_sensor::BinarySensor *valid_sensor) {
-            // Recompute age/validity exactly like the MQTT ingress model.
-            if (!has_value || !entity_has_state || last_valid_ms == 0U) {
-              age_sensor->publish_state(NAN);
-              valid_sensor->publish_state(false);
-              return;
-            }
-            const uint32_t age_ms = (uint32_t) (now_ms - last_valid_ms);
-            age_sensor->publish_state((float) age_ms / 1000.0f);
-            const bool valid = stale_s == 0U || age_ms <= (stale_s * 1000UL);
-            valid_sensor->publish_state(valid);
-          };
-
-          auto update_binary = [&](bool has_value,
-                                   uint32_t last_valid_ms,
-                                   uint32_t stale_s,
-                                   sensor::Sensor *age_sensor,
-                                   binary_sensor::BinarySensor *valid_sensor) {
-            if (!has_value || last_valid_ms == 0U) {
-              age_sensor->publish_state(NAN);
-              valid_sensor->publish_state(false);
-              return;
-            }
-            const uint32_t age_ms = (uint32_t) (now_ms - last_valid_ms);
-            age_sensor->publish_state((float) age_ms / 1000.0f);
-            const bool valid = stale_s == 0U || age_ms <= (stale_s * 1000UL);
-            valid_sensor->publish_state(valid);
-          };
-
-          update_numeric(
-              id(api_input_cooling_dew_point_has_value),
-              id(api_input_cooling_dew_point_last_valid_ms),
-              (uint32_t) ${api_input_cooling_dew_point_stale_s}UL,
-              id(api_input_cooling_dew_point).has_state(),
-              id(api_input_cooling_dew_point_age),
-              id(api_input_cooling_dew_point_valid));
-          update_numeric(
-              id(api_input_outside_temperature_has_value),
-              id(api_input_outside_temperature_last_valid_ms),
-              (uint32_t) ${api_input_outside_temperature_stale_s}UL,
-              id(api_input_outside_temperature).has_state(),
-              id(api_input_outside_temperature_age),
-              id(api_input_outside_temperature_valid));
-          update_numeric(
-              id(api_input_room_temperature_has_value),
-              id(api_input_room_temperature_last_valid_ms),
-              (uint32_t) ${api_input_room_temperature_stale_s}UL,
-              id(api_input_room_temperature).has_state(),
-              id(api_input_room_temperature_age),
-              id(api_input_room_temperature_valid));
-          update_numeric(
-              id(api_input_room_setpoint_has_value),
-              id(api_input_room_setpoint_last_valid_ms),
-              (uint32_t) ${api_input_room_setpoint_stale_s}UL,
-              id(api_input_room_setpoint).has_state(),
-              id(api_input_room_setpoint_age),
-              id(api_input_room_setpoint_valid));
-          update_binary(
-              id(api_input_heating_enable_has_value),
-              id(api_input_heating_enable_last_valid_ms),
-              (uint32_t) ${api_input_heating_enable_stale_s}UL,
-              id(api_input_heating_enable_age),
-              id(api_input_heating_enable_valid));
-          update_binary(
-              id(api_input_cooling_enable_has_value),
-              id(api_input_cooling_enable_last_valid_ms),
-              (uint32_t) ${api_input_cooling_enable_stale_s}UL,
-              id(api_input_cooling_enable_age),
-              id(api_input_cooling_enable_valid));
-          update_numeric(
-              id(api_input_external_heat_demand_has_value),
-              id(api_input_external_heat_demand_last_valid_ms),
-              (uint32_t) ${api_input_external_heat_demand_stale_s}UL,
-              id(api_input_external_heat_demand).has_state(),
-              id(api_input_external_heat_demand_age),
-              id(api_input_external_heat_demand_valid));
+          oq_api_ingress::runtime().tick(
+              (uint32_t) millis(),
+              {(uint32_t) ${api_input_cooling_dew_point_stale_s}UL,
+               (uint32_t) ${api_input_outside_temperature_stale_s}UL,
+               (uint32_t) ${api_input_room_temperature_stale_s}UL,
+               (uint32_t) ${api_input_room_setpoint_stale_s}UL,
+               (uint32_t) ${api_input_heating_enable_stale_s}UL,
+               (uint32_t) ${api_input_cooling_enable_stale_s}UL,
+               (uint32_t) ${api_input_external_heat_demand_stale_s}UL});
