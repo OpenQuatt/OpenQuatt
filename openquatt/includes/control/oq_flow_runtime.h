@@ -10,6 +10,7 @@ namespace oq_flow_runtime {
 struct TickConfig {
   float dt_s = 10.0f;
   int startup_hold_s = 20;
+  int frost_ipwm = 800;
 };
 
 class Runtime {
@@ -143,7 +144,7 @@ class Runtime {
       pi_.pi_failsafe = false;
       mode = oq_flow_control::ExecutionMode::MANUAL;
     } else if (frost) {
-      pwm = oq_flow_control::clamp_ipwm((int)roundf(id(oq_flow_frost_pwm).state));
+      pwm = oq_flow_control::clamp_ipwm(config.frost_ipwm);
       pi_.stable_cnt = 0;
       pi_.pi_failsafe = false;
       pi_.last_e = 0.0f;
@@ -194,15 +195,14 @@ class Runtime {
   }
 
   void start_auto_(const TickConfig& config, const char* reason) {
-    const int fallback = oq_flow_control::clamp_ipwm((int)roundf(id(oq_flow_auto_start_pwm).state));
     const int cm_code = id(oq_control_mode_code);
     const bool cooling_target = cm_code == 5;
     const bool commissioning_start = cm_code == 100 && id(oq_commissioning_task_code) != oq_commissioning::TASK_NONE;
     const int last_good = cooling_target ? id(oq_flow_last_good_pwm_cooling) : id(oq_flow_last_good_pwm);
-    const int pwm = oq_flow_control::compute_start_pwm(commissioning_start, 400, id(oq_flow_last_good_pwm), fallback,
+    const int pwm = oq_flow_control::compute_start_pwm(commissioning_start, 400, id(oq_flow_last_good_pwm),
                                                        cooling_target, id(oq_flow_last_good_pwm_cooling));
     ESP_LOGI("flow", "AUTO start(%s): iPWM=%d (last_good=%d bank=%s fallback=%d commissioning=%s hold %ds, fixed iPWM)",
-             reason, pwm, last_good, cooling_target ? "cooling" : "normal", fallback,
+             reason, pwm, last_good, cooling_target ? "cooling" : "normal", oq_flow_control::kAutoStartFallbackIpwm,
              commissioning_start ? "yes" : "no", config.startup_hold_s);
     set_output_pwm_(pwm);
     pi_ = {};

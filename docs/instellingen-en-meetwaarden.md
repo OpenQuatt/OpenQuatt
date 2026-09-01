@@ -131,12 +131,12 @@ Belangrijke instellingen:
 - `Cooling Flow Setpoint`
 - `Flow Control Mode`
 - `Manual iPWM`
-- `Frost Circulation iPWM`
-- `Flow AUTO start iPWM`
 - `Flow PI Kp`
 - `Flow PI Ki`
 
 `Flow Setpoint` geldt voor verwarmen en normaal automatisch bedrijf. `Cooling Flow Setpoint` geldt alleen tijdens koelen, zodat koeling een eigen hydraulisch werkpunt kan hebben zonder de verwarmingsflow te veranderen.
+
+CM98 gebruikt een vaste pompregeling van iPWM 800. AUTO start met de laatst bekende goede iPWM voor verwarmen of koelen en valt bij een ongeldige waarde terug op iPWM 440.
 
 Gebruik deze groep voorzichtig. Bij verkeerde bronwaarden of hydraulische problemen maak je hier snel meer ruis dan winst.
 
