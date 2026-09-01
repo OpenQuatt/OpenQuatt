@@ -9,8 +9,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import check_nvs_budget  # noqa: E402
 
 
-ODU_EDITOR = (ROOT / "openquatt/experimental/oq_odu_runtime_frequency_table_hp.yaml").read_text()
-ODU_RUNTIME = (ROOT / "openquatt/includes/experimental/oq_odu_runtime_frequency_table.h").read_text()
+ODU_SERVICE = (ROOT / "openquatt/experimental/oq_odu_runtime_frequency_service_hp.yaml").read_text()
+ODU_RUNTIME_HEADER = (
+    ROOT
+    / "components/openquatt_odu_runtime_frequency/OpenQuattOduRuntimeFrequency.h"
+).read_text()
+ODU_RUNTIME_SOURCE = (
+    ROOT
+    / "components/openquatt_odu_runtime_frequency/OpenQuattOduRuntimeFrequency.cpp"
+).read_text()
 HP_IO = (ROOT / "openquatt/oq_HP_io.yaml").read_text()
 API_INGRESS = (ROOT / "openquatt/oq_api_ingress.yaml").read_text()
 FLOW_CONTROL = (ROOT / "openquatt/oq_flow_control.yaml").read_text()
@@ -22,11 +29,14 @@ AUTH_HEADER = (ROOT / "components/openquatt_web_auth/OpenQuattWebAuth.h").read_t
 
 class NvsPersistenceContractTest(unittest.TestCase):
     def test_odu_editor_is_ram_only_and_requires_a_current_boot_load(self) -> None:
-        self.assertEqual(ODU_EDITOR.count("restore_value: false"), 42)
-        self.assertNotIn("restore_value: true", ODU_EDITOR)
-        self.assertIn("runtime_frequency_table_loaded", HP_IO)
-        self.assertIn("BLOCKED: load ODU runtime table first", ODU_RUNTIME)
-        self.assertIn("erase_entity_preferences", HP_IO)
+        runtime_service = ODU_RUNTIME_HEADER + ODU_RUNTIME_SOURCE
+        self.assertNotIn("restore_value:", ODU_SERVICE)
+        self.assertNotIn("preferences", runtime_service.lower())
+        self.assertIn("loaded_", ODU_RUNTIME_HEADER)
+        self.assertIn('return "load_required";', ODU_RUNTIME_SOURCE)
+        self.assertIn("std::array<uint32_t, 42>", ODU_SERVICE)
+        self.assertIn("fnv1_hash_object_id", ODU_SERVICE)
+        self.assertIn("erase_esphome_preferences", ODU_SERVICE)
 
     def test_api_enable_inputs_are_session_state(self) -> None:
         self.assertEqual(API_INGRESS.count("restore_mode: ALWAYS_OFF"), 2)

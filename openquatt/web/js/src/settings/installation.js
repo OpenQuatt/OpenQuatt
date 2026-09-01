@@ -1,5 +1,4 @@
 import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
-import { getOduRuntimeFrequencyControlKey, getOduRuntimeFrequencyValueKey, ODU_RUNTIME_FREQUENCY_HP_IDS, ODU_RUNTIME_FREQUENCY_LEVELS, ODU_RUNTIME_FREQUENCY_MODES } from "../core/config.js";
 import { HP_GENERATION_IMAGE_V1, HP_GENERATION_IMAGE_V2 } from "../core/embedded-assets.js";
 import { getInputDraftValue } from "../core/control-drafts.js";
 import { isCurveMode } from "../core/domain-helpers.js";
@@ -13,6 +12,7 @@ import { formatDiagnosticsDateTime, formatUptimeFromMeta, getDeviceIpAddress, ge
 import { getUpdateStatus } from "../features/firmware-update.js";
 import { getConnectivityStatus, getEspTemperatureLabel } from "../features/header-status.js";
 import { getOduGenerationChoiceMeta, getOduGenerationDetectionModel, renderOduGenerationDetectionStatus } from "../features/odu-generation-ui.js";
+import { getOduRuntimeFrequencyDraftValue, getOduRuntimeFrequencyHpIndexes as getNativeOduRuntimeFrequencyHpIndexes, getOduRuntimeFrequencyStatus, ODU_RUNTIME_FREQUENCY_LEVELS, ODU_RUNTIME_FREQUENCY_MODES } from "../features/odu-runtime-frequency.js";
 import { getWebServerLogStatusLabel } from "../features/webserver-logs.js";
 import { BOILER_OPENTHERM_CAPABILITY, getBoilerOpenThermCapability, getSupportedBoilerConnectionOptions } from "./boiler.js";
 import { getSelectEntityOptions, renderNamedActionButton, renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsCompactSwitchControl, renderSettingsFieldCard, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField, renderSettingsSystemRow } from "./controls.js";
@@ -24,20 +24,19 @@ const AUX_HEAT_BACKUP_TITLE = "Overnemen wanneer de warmtepomp niet beschikbaar 
 const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer geen warmtepomp veilig beschikbaar is, ook bij een koude opstart onder 5 °C. Dit gebeurt pas na een veilige stop en geldige flow, temperatuur en aansturing. Een korte communicatiedip telt niet als uitval.";
 
   export function getOduRuntimeFrequencyHpIndexes() {
-    return ODU_RUNTIME_FREQUENCY_HP_IDS.filter((hpIndex) => (
-      hasEntity(getOduRuntimeFrequencyControlKey(hpIndex, "Status"))
-      || hasEntity(getOduRuntimeFrequencyControlKey(hpIndex, "Load"))
-      || hasEntity(getOduRuntimeFrequencyValueKey(hpIndex, "cooling", 0))
-    ));
+    return getNativeOduRuntimeFrequencyHpIndexes();
   }
 
-  export function getOduRuntimeFrequencyNumberValue(key) {
-    return parseLooseNumber(getInputDraftValue(key));
+  export function getOduRuntimeFrequencyNumberValue(hpIndex, mode, level) {
+    return parseLooseNumber(getOduRuntimeFrequencyDraftValue(hpIndex, mode, level));
   }
 
   export function getOduRuntimeFrequencyLevels(hpIndex) {
+    const runtimeStatus = getOduRuntimeFrequencyStatus(hpIndex);
     const variantKey = hpIndex === 2 ? "hp2GenerationVariant" : "hp1GenerationVariant";
-    const extendedLayout = String(getEntityValue(variantKey) || "").trim() === "V2 new model";
+    const extendedLayout = runtimeStatus
+      ? runtimeStatus.extendedLayout
+      : String(getEntityValue(variantKey) || "").trim() === "V2 new model";
     return ODU_RUNTIME_FREQUENCY_LEVELS.slice(0, extendedLayout ? 21 : 11);
   }
 
@@ -47,10 +46,9 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     ODU_RUNTIME_FREQUENCY_MODES.forEach((mode) => {
       let previous = -Infinity;
       levels.forEach((level) => {
-        const key = getOduRuntimeFrequencyValueKey(hpIndex, mode, level);
-        const value = getOduRuntimeFrequencyNumberValue(key);
+        const value = getOduRuntimeFrequencyNumberValue(hpIndex, mode, level);
         const invalidOffLevel = level === 0 ? value !== 0 : value <= 0;
-        if (!Number.isFinite(value) || invalidOffLevel || value > 120 || value < previous) {
+        if (!Number.isInteger(value) || invalidOffLevel || value > 120 || value < previous) {
           invalid.push(`${mode === "cooling" ? "C" : "H"}F${level}`);
         }
         if (Number.isFinite(value)) {
@@ -117,19 +115,29 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     return "Laatste status van de experimentele runtime tabel.";
   }
 
-  export function renderOduRuntimeFrequencyNumberInput(key, tabIndex) {
-    if (!hasEntity(key)) {
-      return `<span class="oq-settings-odu-runtime-missing">-</span>`;
-    }
-    return renderNumberInputControl({
-      key,
-      value: getInputDraftValue(key),
-      meta: getNumberMeta(key),
-      controlClass: "oq-helper-control oq-helper-control--suffix oq-settings-odu-runtime-control",
-      inputClass: "oq-helper-input oq-helper-input--compact-number oq-settings-odu-runtime-input",
-      inputAttributes: `data-oq-odu-runtime-tab-index="${tabIndex}"`,
-      unitMarkup: '<span class="oq-helper-unit-chip">Hz</span>',
-    });
+  export function renderOduRuntimeFrequencyNumberInput(hpIndex, mode, level, tabIndex) {
+    const status = getOduRuntimeFrequencyStatus(hpIndex);
+    const disabled = !status?.loaded || status.busy;
+    return `
+      <label class="oq-helper-control oq-helper-control--suffix oq-settings-odu-runtime-control">
+        <input
+          class="oq-helper-input oq-helper-input--compact-number oq-settings-odu-runtime-input"
+          type="number"
+          min="0"
+          max="120"
+          step="1"
+          inputmode="numeric"
+          value="${escapeHtml(getOduRuntimeFrequencyDraftValue(hpIndex, mode, level))}"
+          data-oq-odu-runtime-hp="${hpIndex}"
+          data-oq-odu-runtime-mode="${mode}"
+          data-oq-odu-runtime-level="${level}"
+          data-oq-odu-runtime-tab-index="${tabIndex}"
+          aria-label="${escapeHtml(`HP${hpIndex} ${mode} F${level} runtime Hz`)}"
+          ${disabled ? "disabled" : ""}
+        >
+        <span class="oq-helper-unit-chip">Hz</span>
+      </label>
+    `;
   }
 
   export function renderOduRuntimeFrequencyTable(hpIndex) {
@@ -145,53 +153,25 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
         ${levels.map((level) => `
           <div class="oq-settings-odu-runtime-row" role="row">
             <span class="oq-settings-odu-runtime-level" role="cell">F${level}</span>
-            <div role="cell">${renderOduRuntimeFrequencyNumberInput(getOduRuntimeFrequencyValueKey(hpIndex, "cooling", level), level)}</div>
-            <div role="cell">${renderOduRuntimeFrequencyNumberInput(getOduRuntimeFrequencyValueKey(hpIndex, "heating", level), levelCount + level)}</div>
+            <div role="cell">${renderOduRuntimeFrequencyNumberInput(hpIndex, "cooling", level, level)}</div>
+            <div role="cell">${renderOduRuntimeFrequencyNumberInput(hpIndex, "heating", level, levelCount + level)}</div>
           </div>
         `).join("")}
       </div>
     `;
   }
 
-  export function handleOduRuntimeFrequencyInputKeyDown(event) {
-    if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) {
-      return;
-    }
-
-    const input = event.target && event.target.closest
-      ? event.target.closest("input[data-oq-odu-runtime-tab-index]")
-      : null;
-    const table = input ? input.closest(".oq-settings-odu-runtime-table") : null;
-    if (!input || !table) {
-      return;
-    }
-
-    const inputs = Array.from(table.querySelectorAll("input[data-oq-odu-runtime-tab-index]:not(:disabled)"))
-      .sort((left, right) => Number(left.dataset.oqOduRuntimeTabIndex || 0) - Number(right.dataset.oqOduRuntimeTabIndex || 0));
-    const currentIndex = inputs.indexOf(input);
-    const nextInput = inputs[currentIndex + (event.shiftKey ? -1 : 1)];
-    if (currentIndex < 0 || !nextInput) {
-      return;
-    }
-
-    event.preventDefault();
-    nextInput.focus();
-    if (typeof nextInput.select === "function") {
-      nextInput.select();
-    }
-  }
-
   export function renderOduRuntimeFrequencyHpPanel(hpIndex) {
-    const enableKey = getOduRuntimeFrequencyControlKey(hpIndex, "Enable");
-    const loadKey = getOduRuntimeFrequencyControlKey(hpIndex, "Load");
-    const applyKey = getOduRuntimeFrequencyControlKey(hpIndex, "Apply");
-    const statusKey = getOduRuntimeFrequencyControlKey(hpIndex, "Status");
-    const status = String(getEntityValue(statusKey) || "").trim() || "Nog niet geladen";
+    const runtime = getOduRuntimeFrequencyStatus(hpIndex);
+    const status = runtime?.unsupported
+      ? "Niet ondersteund door deze firmware"
+      : String(runtime?.status || "Status laden...").trim();
     const validation = getOduRuntimeFrequencyTableValidation(hpIndex);
     const operation = getOduRuntimeFrequencyOperationState(hpIndex);
-    const enabled = Boolean(getEntityValue(enableKey));
-    const busy = state.loadingEntities || state.busyAction === loadKey || state.busyAction === applyKey;
-    const applyDisabled = busy || !enabled || !validation.valid || !operation.safe || !hasEntity(applyKey);
+    const enabled = runtime?.armed === true;
+    const available = runtime && runtime.available !== false && !runtime.unsupported;
+    const busy = runtime?.busy === true || String(state.busyAction || "").startsWith(`odu-runtime-hp${hpIndex}-`);
+    const applyDisabled = busy || !runtime?.loaded || !enabled || !validation.valid || !operation.safe || !available;
     const validationText = validation.valid
       ? "F0 is 0 Hz; F1 en hoger zijn 1-120 Hz en per tabel oplopend."
       : `Controleer ${validation.invalid.slice(0, 5).join(", ")}${validation.invalid.length > 5 ? "..." : ""}.`;
@@ -206,9 +186,23 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
             <p>${getOduRuntimeFrequencyLevels(hpIndex).length === 21 ? "Volledig compressorbereik beschikbaar." : "Standaard compressorbereik beschikbaar."}</p>
           </div>
           <div class="oq-settings-odu-runtime-actions">
-            ${hasEntity(loadKey) ? renderNamedActionButton(loadKey, state.busyAction === loadKey ? "Lezen..." : "Uit ODU laden", "oq-helper-button oq-helper-button--ghost", busy) : ""}
-      ${hasEntity(enableKey) ? renderSettingsCompactSwitchControl(enableKey, `HP${hpIndex} writes vrijgeven`, enabled, busy, "Enable", "Locked") : ""}
-            ${hasEntity(applyKey) ? renderNamedActionButton(applyKey, state.busyAction === applyKey ? "Schrijven..." : "Runtime toepassen", "oq-helper-button oq-helper-button--warning", applyDisabled) : ""}
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="odu-runtime-load" data-hp="${hpIndex}" ${busy || !available ? "disabled" : ""}>${busy ? "Bezig..." : "Uit ODU laden"}</button>
+            <div class="oq-settings-compact-switch-row">
+              <span class="oq-settings-toggle-state${enabled ? " is-on" : ""}">${enabled ? "Enable" : "Locked"}</span>
+              <button
+                class="oq-settings-toggle-switch${enabled ? " is-on" : ""}"
+                type="button"
+                role="switch"
+                data-oq-action="odu-runtime-arm"
+                data-hp="${hpIndex}"
+                aria-checked="${enabled ? "true" : "false"}"
+                aria-label="${escapeHtml(`HP${hpIndex} writes ${enabled ? "vergrendelen" : "vrijgeven"}`)}"
+                ${busy || !runtime?.loaded || !available ? "disabled" : ""}
+              >
+                <span class="oq-settings-toggle-switch-track" aria-hidden="true"><span class="oq-settings-toggle-switch-knob"></span></span>
+              </button>
+            </div>
+            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="odu-runtime-apply" data-hp="${hpIndex}" ${applyDisabled ? "disabled" : ""}>${busy ? "Schrijven..." : "Runtime toepassen"}</button>
           </div>
         </div>
         <div class="oq-settings-odu-runtime-status${status.toUpperCase().includes("BLOCKED") ? " is-warning" : status.toUpperCase().includes("APPLIED") || status.toUpperCase().includes("LOADED") ? " is-success" : ""}">
@@ -218,7 +212,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           </div>
           <p>${escapeHtml(getOduRuntimeFrequencyStatusCopy(status))}</p>
         </div>
-        ${renderOduRuntimeFrequencyTable(hpIndex)}
+        ${runtime?.loaded ? renderOduRuntimeFrequencyTable(hpIndex) : `<p class="oq-settings-odu-runtime-validation is-warning">Laad eerst de actuele tabel uit de ODU; er worden geen standaardwaarden voorgeladen.</p>`}
         <p class="oq-settings-odu-runtime-validation${validation.valid && operation.safe ? " is-ok" : " is-warning"}">${escapeHtml(validationText)} ${escapeHtml(operation.safe ? "" : operation.reason)}</p>
       </article>
     `;
@@ -246,6 +240,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           <span class="oq-settings-section-summary-toggle" aria-hidden="true"></span>
         </summary>
         <div class="oq-settings-section-collapsible-body oq-settings-odu-runtime">
+          ${state.oduRuntimeFrequencyError ? `<p class="oq-settings-odu-runtime-validation is-warning" role="alert">${escapeHtml(state.oduRuntimeFrequencyError)}</p>` : ""}
           <div class="oq-settings-odu-runtime-warning" role="alert">
             <strong>Schrijft direct naar ODU runtime registers.</strong>
             <p>Gebruik dit alleen voor gecontroleerde tests. Apply werkt alleen wanneer de HP in standby staat, de compressor uit is en de enable-schakelaar bewust aan staat.</p>

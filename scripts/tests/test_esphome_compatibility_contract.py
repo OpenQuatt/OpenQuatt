@@ -17,15 +17,17 @@ ODU_EEPROM_HEADER = (
     / "openquatt_odu_eeprom_dump"
     / "OpenQuattOduEepromDump.h"
 ).read_text()
-ODU_RUNTIME_TABLE = (
+ODU_RUNTIME_HEADER = (
     ROOT
-    / "openquatt"
-    / "includes"
-    / "experimental"
-    / "oq_odu_runtime_frequency_table.h"
+    / "components"
+    / "openquatt_odu_runtime_frequency"
+    / "OpenQuattOduRuntimeFrequency.h"
 ).read_text()
-ODU_RUNTIME_TABLE_YAML = (
-    ROOT / "openquatt" / "experimental" / "oq_odu_runtime_frequency_table_hp.yaml"
+ODU_RUNTIME_SOURCE = (
+    ROOT
+    / "components"
+    / "openquatt_odu_runtime_frequency"
+    / "OpenQuattOduRuntimeFrequency.cpp"
 ).read_text()
 CAPTIVE_PORTAL_ROUTER_CPP = (
     ROOT
@@ -98,7 +100,7 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
         self.assertNotIn("command_throttle:", MODBUS_CONTROLLER)
 
     def test_custom_modbus_callbacks_use_span_payloads(self) -> None:
-        custom_modbus = MODBUS_CONTROLLER + ODU_RUNTIME_TABLE
+        custom_modbus = MODBUS_CONTROLLER + ODU_RUNTIME_SOURCE
         self.assertIn("std::span<const uint8_t>", custom_modbus)
         self.assertIn("esphome::modbus::EntityType", custom_modbus)
         self.assertNotIn("ModbusRegisterType", custom_modbus)
@@ -106,16 +108,37 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
         self.assertNotIn("const std::vector<uint8_t> &", custom_modbus)
 
     def test_runtime_table_uses_confirmed_single_register_writes(self) -> None:
-        self.assertIn("create_write_single_command", ODU_RUNTIME_TABLE)
+        self.assertIn("create_write_single_command", ODU_RUNTIME_SOURCE)
         self.assertIn(
-            "queue_runtime_write_register(refs, tables, write_index + 1U, "
-            "operation_token)",
-            ODU_RUNTIME_TABLE,
+            "queue_write_register_(write_index + 1U, operation_token)",
+            ODU_RUNTIME_SOURCE,
         )
-        self.assertIn("*refs.write_operation_token != operation_token", ODU_RUNTIME_TABLE)
-        self.assertIn("runtime_frequency_write_timeout", ODU_RUNTIME_TABLE_YAML)
-        self.assertIn("VERIFY_FAILED: write acknowledgement timeout", ODU_RUNTIME_TABLE_YAML)
-        self.assertNotIn("create_write_multiple_command", ODU_RUNTIME_TABLE)
+        self.assertIn("token_matches_(operation_token)", ODU_RUNTIME_SOURCE)
+        self.assertIn("BASE_OPERATION_TIMEOUT_MS = 30000U", ODU_RUNTIME_HEADER)
+        self.assertIn("EXTENDED_OPERATION_TIMEOUT_MS = 60000U", ODU_RUNTIME_HEADER)
+        self.assertIn("VERIFY_FAILED: write acknowledgement timeout", ODU_RUNTIME_SOURCE)
+        self.assertNotIn("create_write_multiple_command", ODU_RUNTIME_SOURCE)
+
+    def test_runtime_table_and_eeprom_dump_exclude_each_other(self) -> None:
+        self.assertIn("try_begin_external_operation", ODU_EEPROM_HEADER)
+        self.assertIn("external_operation_active_", ODU_EEPROM_HEADER)
+        self.assertIn("try_begin_external_operation()", ODU_RUNTIME_SOURCE)
+        self.assertIn("end_external_operation()", ODU_RUNTIME_SOURCE)
+        self.assertIn("bus_reservation_token_", ODU_RUNTIME_HEADER)
+        self.assertIn("pending_request_token_", ODU_RUNTIME_HEADER)
+        self.assertIn("compare_exchange_strong", ODU_RUNTIME_SOURCE)
+        self.assertIn("reset_runtime_state_locked_", ODU_RUNTIME_SOURCE)
+        self.assertGreaterEqual(
+            ODU_RUNTIME_SOURCE.count("bus_reservation_token_.exchange(0U"), 3
+        )
+        self.assertIn(
+            "fail_operation_(const char* status, uint32_t operation_token)",
+            ODU_RUNTIME_SOURCE,
+        )
+        self.assertIn(
+            "finish_without_write_(const char* status, uint32_t operation_token)",
+            ODU_RUNTIME_SOURCE,
+        )
 
     def test_odu_eeprom_uses_maximum_fc03_read_size(self) -> None:
         self.assertIn(

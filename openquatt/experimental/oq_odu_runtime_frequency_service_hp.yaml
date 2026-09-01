@@ -1,0 +1,67 @@
+# ==============================================================================
+# OpenQuatt - EXPERIMENTAL ODU Runtime Frequency Table
+# ==============================================================================
+#
+# WARNING:
+#   This component writes outdoor-unit runtime EEPROM shadow registers over
+#   Modbus. Changes become active immediately, but are NOT persisted to ODU
+#   EEPROM. A full ODU power cycle should restore the original table.
+#
+#   The editor state is RAM-only and served directly to the embedded web UI.
+#   Apply remains blocked until the current ODU table was explicitly loaded,
+#   writes were armed, and a fresh guard read confirms standby + 0 Hz.
+#
+# Register mapping:
+#   Cooling F0-F10: ODU 3000..3010
+#   Heating F0-F10: ODU 3011..3021
+#   Heating F11-F20 on confirmed V2-new: ODU 3050..3059
+#   Cooling F11-F20 on confirmed V2-new: ODU 3060..3069
+#
+# ==============================================================================
+
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - lambda: |-
+          // Retire preferences written by older entity-backed editor builds.
+          std::array<uint32_t, 42> retired_runtime_editor_preferences{};
+          size_t key_index = 0U;
+          for (const char* mode : {"cooling", "heating"}) {
+            for (size_t level = 0U; level < 21U; ++level) {
+              char name[64];
+              const int length = snprintf(
+                  name, sizeof(name),
+                  "HP${hp_index} - EXPERIMENTAL %s F%u runtime Hz", mode,
+                  static_cast<unsigned>(level));
+              if (length > 0 && static_cast<size_t>(length) < sizeof(name)) {
+                retired_runtime_editor_preferences[key_index++] =
+                    esphome::fnv1_hash_object_id(name,
+                                                static_cast<size_t>(length));
+              }
+            }
+          }
+          oq_nvs_cleanup::erase_esphome_preferences(
+              retired_runtime_editor_preferences,
+              "${hp_id} ODU runtime frequency editor");
+
+openquatt_odu_runtime_frequency:
+  - id: ${hp_id}_odu_runtime_frequency
+    controller: ${hp_id}
+    eeprom_dump: ${hp_id}_odu_eeprom_dump
+    web_auth: oq_web_auth_store
+    hp_index: ${hp_index}
+    on_write_started:
+      - lambda: |-
+          // A write makes the control snapshot stale until verified.
+          id(${hp_id}_compressor_level_profile_request_token) =
+              oq_odu::next_request_token(
+                  id(${hp_id}_compressor_level_profile_request_token));
+          id(${hp_id}_compressor_level_profile_request_pending) = false;
+          id(${hp_id}_runtime_frequency_snapshot_storage) =
+              oq_odu::RuntimeFrequencySnapshotStorage{};
+          id(${hp_id}_compressor_level_profile).publish_state(
+              oq_odu::compressor_level_profile_label(
+                  oq_odu::CompressorLevelProfile::UNKNOWN));
+    on_write_applied:
+      - script.execute: ${hp_id}_load_runtime_frequency_table_once

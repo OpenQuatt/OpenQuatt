@@ -19,6 +19,7 @@ const boundaryAllowedEdges = new Set([
   "core/entity-actions.js -> features/firmware-update.js",
   "core/entity-actions.js -> features/mqtt-actions.js",
   "core/entity-actions.js -> features/odu-eeprom-dump.js",
+  "core/entity-actions.js -> features/odu-runtime-frequency.js",
   "core/entity-actions.js -> features/quickstart-ui-actions.js",
   "core/entity-actions.js -> features/security-actions.js",
   "core/entity-actions.js -> features/shell-actions.js",
@@ -26,10 +27,10 @@ const boundaryAllowedEdges = new Set([
   "core/entity-actions.js -> features/system-actions.js",
   "core/entity-actions.js -> features/view-actions.js",
   "core/entity-actions.js -> features/webserver-logs.js",
-  "core/entity-actions.js -> settings/installation.js",
   "core/entity-actions.js -> views/energy.js",
   "core/entity-sync.js -> features/mqtt-actions.js",
   "core/entity-sync.js -> features/odu-eeprom-dump.js",
+  "core/entity-sync.js -> features/odu-runtime-frequency.js",
   "core/entity-sync.js -> features/security-actions.js",
   "core/entity-write-actions.js -> features/firmware-update.js",
   "core/entity-write-actions.js -> features/security-actions.js",
@@ -294,13 +295,13 @@ async function checkWriteActionContracts() {
 
   const entityActions = await source("js/src/core/entity-actions.js");
   const entityWriteActions = await source("js/src/core/entity-write-actions.js");
-  const namedButtonActions = await source("js/src/core/named-button-actions.js");
   const securityActions = await source("js/src/features/security-actions.js");
   const securityAccess = await source("js/src/features/security-access.js");
   const mockDevice = await source("js/mock-device.js");
   const mqttActions = await source("js/src/features/mqtt-actions.js");
   const firmwareActions = await source("js/src/features/firmware-actions.js");
   const debugRecording = await source("js/src/features/debug-recording.js");
+  const oduRuntimeFrequency = await source("js/src/features/odu-runtime-frequency.js");
   const systemActions = await source("js/src/features/system-actions.js");
   const webServerLogs = await source("js/src/features/webserver-logs.js");
 
@@ -330,8 +331,8 @@ async function checkWriteActionContracts() {
   assertContains(systemActions, 'triggerNamedButton("restartAction"', "Restart confirm");
   assertContains(entityWriteActions, "export async function commitOpenQuattRegulationPause", "OpenQuatt pause write helper");
   assertContains(entityWriteActions, "export async function commitOpenQuattRegulationResumeNow", "OpenQuatt resume write helper");
-  assertContains(namedButtonActions, 'ODU_RUNTIME_FREQUENCY_BUTTON_KEYS.has(buttonKey)', "ODU runtime named buttons");
-  assertContains(entityWriteActions, "ODU_RUNTIME_FREQUENCY_BUTTON_KEYS.has(key)", "ODU runtime named button write helper");
+  assertContains(oduRuntimeFrequency, "getOduRuntimeFrequencyEndpoint", "ODU runtime native endpoint");
+  assertContains(oduRuntimeFrequency, 'body.set("csrf_token", status.csrfToken)', "ODU runtime CSRF write guard");
   assertContains(webServerLogs, "kan DEBUG zoveel logging produceren dat de web-app en Home Assistant traag of onbereikbaar worden.", "Debug logger safety warning");
 }
 

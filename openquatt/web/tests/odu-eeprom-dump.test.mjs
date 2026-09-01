@@ -105,7 +105,7 @@ test("firmware gebruikt sheet minus een en blokkeert de frequentietabel tijdens 
     readFile(new URL("../../../components/openquatt_odu_eeprom_dump/OpenQuattOduEepromDump.h", import.meta.url), "utf8"),
     readFile(new URL("../../../components/openquatt_odu_eeprom_dump/OpenQuattOduEepromDump.cpp", import.meta.url), "utf8"),
     readFile(new URL("../../oq_HP_io.yaml", import.meta.url), "utf8"),
-    readFile(new URL("../../includes/experimental/oq_odu_runtime_frequency_table.h", import.meta.url), "utf8"),
+    readFile(new URL("../../../components/openquatt_odu_runtime_frequency/OpenQuattOduRuntimeFrequency.cpp", import.meta.url), "utf8"),
   ]);
 
   assert.match(componentHeader, /EEPROM_START_ADDRESS = 2999/);
@@ -116,7 +116,9 @@ test("firmware gebruikt sheet minus een en blokkeert de frequentietabel tijdens 
   assert.match(componentSource, /captured_at_epoch_/);
   assert.match(componentSource, /runtime_shadow_differs_from_stored_eeprom/);
   assert.match(hpPackage, /id\(\$\{hp_id\}_odu_eeprom_dump\)\.is_active\(\)/);
-  assert.match(frequencyHelper, /BLOCKED: EEPROM dump active/);
+  assert.match(componentHeader, /external_operation_active_/);
+  assert.match(frequencyHelper, /try_begin_external_operation\(\)/);
+  assert.match(frequencyHelper, /end_external_operation\(\)/);
 });
 
 test("mock exporteert 512 woorden en bewaart de bekende fabrieksfrequenties", async () => {

@@ -16,6 +16,7 @@ import { updateFirmwareState, updateEnergyHistoryState } from "./feature-state.j
 import { getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, resetFirmwareManualUploadSelection, resetFirmwareTestSelection } from "../features/firmware-update.js";
 import { handleMqttAction, syncMqttDraftFromInput } from "../features/mqtt-actions.js";
 import { handleOduEepromDumpAction } from "../features/odu-eeprom-dump.js";
+import { handleOduRuntimeFrequencyAction, handleOduRuntimeFrequencyInputKeyDown, updateOduRuntimeFrequencyDraft } from "../features/odu-runtime-frequency.js";
 import { handleQuickStartAction } from "../features/quickstart-ui-actions.js";
 import { handleSecurityAction, stopLoginAuthStatusPolling } from "../features/security-actions.js";
 import { clearSettingsBackupDraft, handleSettingsBackupFileSelection, handleStorageHistoryAction, normalizeEnergyHistoryExportMode } from "../features/storage-history.js";
@@ -23,7 +24,6 @@ import { handleSystemAction } from "../features/system-actions.js";
 import { handleShellAction } from "../features/shell-actions.js";
 import { handleViewAction } from "../features/view-actions.js";
 import { handleWebServerLogAction } from "../features/webserver-logs.js";
-import { handleOduRuntimeFrequencyInputKeyDown } from "../settings/installation.js";
 import { handleEnergyHistoryPointerMove, setEnergyHistoryPeriodValue } from "../views/energy.js";
 import { escapeHtml } from "./html.js";
 import { render } from "./render-scheduler.js";
@@ -34,6 +34,7 @@ const actionDelegates = [
   handleQuickStartAction,
   handleDebugRecordingAction,
   handleOduEepromDumpAction,
+  handleOduRuntimeFrequencyAction,
   handleSecurityAction,
   handleMqttAction,
   (action) => handleStorageHistoryAction(action, { triggerNamedButton }),
@@ -125,6 +126,11 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleInput(event) {
+    if (event.target.dataset.oqOduRuntimeHp) {
+      updateOduRuntimeFrequencyDraft(event.target);
+      return;
+    }
+
     if (event.target.dataset.oqQuickstartSetupConfirm) {
       state.quickStartSetupConfirmed = Boolean(event.target.checked);
       render();

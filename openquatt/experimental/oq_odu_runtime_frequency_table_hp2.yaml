@@ -3,7 +3,7 @@
 # ==============================================================================
 packages:
   hp2_odu_runtime_frequency_table: !include
-    file: oq_odu_runtime_frequency_table_hp.yaml
+    file: oq_odu_runtime_frequency_service_hp.yaml
     vars:
       hp_id: "hp2"
-      prefix: "HP2 - "
+      hp_index: "2"

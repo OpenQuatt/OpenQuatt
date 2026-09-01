@@ -263,7 +263,8 @@ void OpenQuattOduEepromDump::dump_config() {
 OpenQuattOduEepromDump::StartResult OpenQuattOduEepromDump::start(bool include_extended_metadata) {
   portENTER_CRITICAL(&this->state_mux_);
   const bool busy = this->active_.load(std::memory_order_acquire) || this->starting_.load(std::memory_order_acquire) ||
-                    this->download_in_progress_.load(std::memory_order_acquire);
+                    this->download_in_progress_.load(std::memory_order_acquire) ||
+                    this->external_operation_active_.load(std::memory_order_acquire);
   const bool available =
       this->available_.load(std::memory_order_acquire) && this->controller_ != nullptr && this->web_auth_ != nullptr;
   if (!busy && available) {
@@ -281,6 +282,20 @@ OpenQuattOduEepromDump::StartResult OpenQuattOduEepromDump::start(bool include_e
   ESP_LOGI(TAG, "HP%u ODU EEPROM snapshot job %u started", this->hp_index_,
            static_cast<unsigned>(this->job_id_.load()));
   return StartResult::STARTED;
+}
+
+bool OpenQuattOduEepromDump::try_begin_external_operation() {
+  portENTER_CRITICAL(&this->state_mux_);
+  const bool busy = this->active_.load(std::memory_order_acquire) || this->starting_.load(std::memory_order_acquire) ||
+                    this->download_in_progress_.load(std::memory_order_acquire) ||
+                    this->external_operation_active_.load(std::memory_order_acquire);
+  if (!busy) this->external_operation_active_.store(true, std::memory_order_release);
+  portEXIT_CRITICAL(&this->state_mux_);
+  return !busy;
+}
+
+void OpenQuattOduEepromDump::end_external_operation() {
+  this->external_operation_active_.store(false, std::memory_order_release);
 }
 
 void OpenQuattOduEepromDump::reset_job_() {

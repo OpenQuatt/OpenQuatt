@@ -1,7 +1,6 @@
 #pragma once
 
 #include <array>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 
@@ -14,15 +13,15 @@ inline constexpr uint16_t EXTENDED_TABLE_START_ADDRESS = 3050U;
 inline constexpr size_t EXTENDED_LEVEL_COUNT = 21U;
 inline constexpr size_t EXTENDED_TABLE_REGISTER_COUNT = 20U;
 inline constexpr size_t MAX_TABLE_REGISTER_COUNT = BASE_TABLE_REGISTER_COUNT + EXTENDED_TABLE_REGISTER_COUNT;
-inline constexpr float MIN_FREQUENCY_HZ = 0.0f;
-inline constexpr float MAX_FREQUENCY_HZ = 120.0f;
+inline constexpr uint8_t MIN_FREQUENCY_HZ = 0U;
+inline constexpr uint8_t MAX_FREQUENCY_HZ = 120U;
 
-using FrequencyValues = std::array<float, EXTENDED_LEVEL_COUNT>;
+using FrequencyValues = std::array<uint8_t, EXTENDED_LEVEL_COUNT>;
 
 struct RuntimeFrequencyTables {
   FrequencyValues cooling{};
   FrequencyValues heating{};
-  size_t level_count{BASE_LEVEL_COUNT};
+  uint8_t level_count{BASE_LEVEL_COUNT};
 };
 
 struct RuntimeWriteRegister {
@@ -41,16 +40,14 @@ inline size_t runtime_register_count(size_t level_count) {
   return 0U;
 }
 
-inline bool valid_frequency(float value) {
-  return !std::isnan(value) && value >= MIN_FREQUENCY_HZ && value <= MAX_FREQUENCY_HZ;
-}
+inline bool valid_frequency(uint16_t value) { return value <= MAX_FREQUENCY_HZ; }
 
 inline bool validate_monotonic_table(const FrequencyValues& values, size_t level_count) {
   if (level_count != BASE_LEVEL_COUNT && level_count != EXTENDED_LEVEL_COUNT) return false;
-  if (values[0] != 0.0f) return false;
+  if (values[0] != 0U) return false;
   for (size_t index = 0; index < level_count; ++index) {
     if (!valid_frequency(values[index])) return false;
-    if (index > 0U && values[index] <= 0.0f) return false;
+    if (index > 0U && values[index] == 0U) return false;
     if (index > 0U && values[index] < values[index - 1U]) return false;
   }
   return true;
@@ -63,11 +60,12 @@ inline bool read_u16_word(const uint8_t* data, size_t size, size_t index, uint16
   return true;
 }
 
-inline bool read_word_as_frequency(const uint8_t* data, size_t size, size_t index, float& value) {
+inline bool read_word_as_frequency(const uint8_t* data, size_t size, size_t index, uint8_t& value) {
   uint16_t raw = 0U;
   if (!read_u16_word(data, size, index, raw)) return false;
-  value = float(raw);
-  return valid_frequency(value);
+  if (!valid_frequency(raw)) return false;
+  value = static_cast<uint8_t>(raw);
+  return true;
 }
 
 inline bool parse_base_runtime_table(const uint8_t* data, size_t size, RuntimeFrequencyTables& tables, size_t& loaded) {
@@ -105,13 +103,13 @@ inline bool parse_extended_runtime_table(const uint8_t* data, size_t size, Runti
 inline bool tables_match(const RuntimeFrequencyTables& actual, const RuntimeFrequencyTables& expected) {
   if (actual.level_count != expected.level_count) return false;
   for (size_t level = 0; level < expected.level_count; ++level) {
-    if (lroundf(actual.cooling[level]) != lroundf(expected.cooling[level])) return false;
-    if (lroundf(actual.heating[level]) != lroundf(expected.heating[level])) return false;
+    if (actual.cooling[level] != expected.cooling[level]) return false;
+    if (actual.heating[level] != expected.heating[level]) return false;
   }
   return true;
 }
 
-inline uint16_t frequency_to_register(float value) { return static_cast<uint16_t>(lroundf(value)); }
+inline uint16_t frequency_to_register(uint8_t value) { return value; }
 
 inline RuntimeWriteRegister runtime_write_register(const RuntimeFrequencyTables& tables, size_t write_index) {
   if (write_index >= runtime_register_count(tables.level_count)) return {};
