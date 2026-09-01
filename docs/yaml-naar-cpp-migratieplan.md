@@ -45,7 +45,7 @@ entities, configuratie, koppelingen en één of enkele runtime-aanroepen.
 | Supervisory state-machine | Resterende hoofdloop naar C++ | Gereed | #583 |
 | Strategy runtimes | Heating Curve, Power House, Cooling en managerbinding | Gereed | #584 |
 | Hydraulics en outputs | Flow Control, Thermal Limits en Auxiliary Relay | Gereed | #589 |
-| Boiler runtime | Commandocapture, outputcontroller en transportbinding | Klaar voor review | Nog te openen |
+| Boiler runtime | Commandocapture, outputcontroller en transportbinding | Klaar voor review | #595 |
 | Bronselectie-opruiming | Generieke selectie/freshness waar dit YAML werkelijk verkleint | Beslispunt na bovenstaande blokken | Nog te bepalen |
 
 ## Actueel werkblok: Boiler runtime
