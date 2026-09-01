@@ -63,6 +63,64 @@ void test_otb_field_stale_guard() {
   assert(should_clear_on_field_stale(false, false) == false);
 }
 
+CommandAdapterInputs active_adapter_inputs() {
+  return {
+      true, true, true, true, true, 45.0f, 700.0f, 250.0f, false, true, 0.0f,
+  };
+}
+
+void test_otb_adapter_starts_only_with_every_guard() {
+  auto inputs = active_adapter_inputs();
+  auto decision = evaluate_command_adapter(inputs);
+  assert(decision.command_active);
+  assert(decision.applied_start);
+  assert(!decision.applied_stop);
+  assert(decision.write_target);
+  assert(decision.target_to_write_c == 45.0f);
+
+  inputs.status_fresh = false;
+  decision = evaluate_command_adapter(inputs);
+  assert(!decision.command_active);
+  assert(!decision.applied_start);
+  inputs = active_adapter_inputs();
+  inputs.runtime_available = false;
+  assert(!evaluate_command_adapter(inputs).command_active);
+}
+
+void test_otb_adapter_flow_loss_withdraws_central_request() {
+  auto inputs = active_adapter_inputs();
+  inputs.previously_active = true;
+  inputs.flow_lph = 100.0f;
+  const auto decision = evaluate_command_adapter(inputs);
+  assert(!decision.command_active);
+  assert(decision.applied_stop);
+  assert(decision.withdraw_controller_request);
+  assert(decision.prioritize_off_frames);
+  assert(!decision.flow_valid);
+  assert(decision.target_valid);
+  assert(decision.target_to_write_c == 0.0f);
+}
+
+void test_otb_adapter_never_touches_r1_owned_transport() {
+  auto inputs = active_adapter_inputs();
+  inputs.opentherm_selected = false;
+  inputs.previously_active = true;
+  const auto decision = evaluate_command_adapter(inputs);
+  assert(!decision.command_active);
+  assert(decision.applied_stop);
+  assert(!decision.prioritize_off_frames);
+}
+
+void test_otb_adapter_avoids_redundant_target_writes() {
+  auto inputs = active_adapter_inputs();
+  inputs.applied_target_c = 45.02f;
+  assert(!evaluate_command_adapter(inputs).write_target);
+  inputs.applied_target_c = 44.94f;
+  assert(evaluate_command_adapter(inputs).write_target);
+  inputs.applied_target_has_state = false;
+  assert(evaluate_command_adapter(inputs).write_target);
+}
+
 }  // namespace
 
 int main() {
@@ -72,5 +130,9 @@ int main() {
   test_opentherm_link_false_or_ch_inactive();
   test_transport_switch_r1_to_opentherm();
   test_otb_field_stale_guard();
+  test_otb_adapter_starts_only_with_every_guard();
+  test_otb_adapter_flow_loss_withdraws_central_request();
+  test_otb_adapter_never_touches_r1_owned_transport();
+  test_otb_adapter_avoids_redundant_target_writes();
   return 0;
 }

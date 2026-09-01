@@ -7,6 +7,30 @@
 
 namespace oq_boiler {
 
+inline const char* command_source_text(uint8_t source) {
+  switch (source) {
+    case COMMAND_SOURCE_POWER_HOUSE:
+      return "Power House";
+    case COMMAND_SOURCE_HEATING_CURVE:
+      return "Heating Curve";
+    case COMMAND_SOURCE_COMMISSIONING:
+      return "Commissioning";
+    case COMMAND_SOURCE_FALLBACK:
+      return "Fallback";
+    case COMMAND_SOURCE_COLD_START:
+      return "Cold start";
+    default:
+      return "None";
+  }
+}
+
+inline float estimate_boiler_heat_power(bool transport_active, float hp_outlet_c, float supply_c, float flow_lph,
+                                        float cp_j_per_kgk) {
+  if (!transport_active || isnan(hp_outlet_c) || isnan(supply_c) || isnan(flow_lph)) return 0.0f;
+  const float heat_power_w = (flow_lph / 3600.0f) * cp_j_per_kgk * (supply_c - hp_outlet_c);
+  return heat_power_w < 0.0f ? 0.0f : heat_power_w;
+}
+
 inline BoilerRole boiler_role_for_source(uint8_t source) {
   switch (source) {
     case COMMAND_SOURCE_POWER_HOUSE:

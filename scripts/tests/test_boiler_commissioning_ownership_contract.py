@@ -4,7 +4,12 @@ import unittest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BOILER_TEST_PACKAGE = (REPO_ROOT / "openquatt/oq_boiler_test.yaml").read_text(encoding="utf-8")
 BOILER_RUNTIME = (REPO_ROOT / "openquatt/includes/service/tasks/oq_boiler_task_logic.h").read_text(encoding="utf-8")
-BOILER_DISPATCH = (REPO_ROOT / "openquatt/oq_boiler_dispatch.yaml").read_text(encoding="utf-8")
+BOILER_DISPATCH_RUNTIME = (
+    REPO_ROOT / "openquatt/includes/control/oq_boiler_dispatch_runtime.h"
+).read_text(encoding="utf-8")
+BOILER_DISPATCH_LOGIC = (
+    REPO_ROOT / "openquatt/includes/control/oq_boiler_dispatch_logic.h"
+).read_text(encoding="utf-8")
 
 
 class BoilerCommissioningOwnershipContract(unittest.TestCase):
@@ -71,10 +76,15 @@ class BoilerCommissioningOwnershipContract(unittest.TestCase):
         self.assertNotIn("measurement_stable_flow_tick_count_ = 0", reset_power_body)
 
     def test_dispatch_reuses_commissioning_temperature_policy(self) -> None:
-        self.assertIn("oq_boiler_commissioning::commissioning_target_temperature_c", BOILER_DISPATCH)
-        commissioning_start = BOILER_DISPATCH.index("} else if (commissioning_task_active) {")
-        commissioning_block = BOILER_DISPATCH[commissioning_start:]
-        self.assertNotIn("max_c - 5.0f", commissioning_block)
+        self.assertIn(
+            "oq_boiler_commissioning::commissioning_target_temperature_c",
+            BOILER_DISPATCH_RUNTIME,
+        )
+        self.assertIn(
+            "command.target_temperature_c = in.commissioning_target_c",
+            BOILER_DISPATCH_LOGIC,
+        )
+        self.assertNotIn("max_c - 5.0f", BOILER_DISPATCH_RUNTIME + BOILER_DISPATCH_LOGIC)
 
 
 if __name__ == "__main__":
