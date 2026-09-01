@@ -7,7 +7,9 @@ namespace {
 using namespace oq_curve;
 bool near(float actual, float expected) { return fabsf(actual - expected) < 0.001f; }
 ControlProfileTuning tuning() { return control_profile("Balanced"); }
-DemandInput input() { return {1000U, 0.5f, 35.0f, 34.0f, 20.0f, 20.5f, false, false, 0, 20}; }
+DemandInput input() {
+  return {1000U, 0.5f, 35.0f, 34.0f, 20.0f, 20.5f, false, false, false, 0, 20};
+}
 DemandState active(int regime = 2) { return {true, 0, 0, false, false, regime}; }
 
 void test_restart_matrix() {
@@ -147,6 +149,29 @@ void test_restart_lock_and_regimes() {
   in.room_c = 21.0f;
   assert(decide_demand(in, tuning(), active(2)).next.regime_code == 2);
 }
+void test_user_raise_override() {
+  auto in = input();
+  DemandState off{false, 0, 1000U, false, false, 0};  // fresh off, off-lock still active.
+  in.now_ms = 2000U;
+  in.setpoint_raise_active = true;
+  auto out = decide_demand(in, tuning(), off);
+  assert(out.valid && out.next.heat_request_active && out.next.off_since_ms == 0 && !out.next.restart_inhibit_active &&
+         out.restart_reason == RESTART_USER_RAISE);
+
+  in.setpoint_raise_active = false;
+  out = decide_demand(in, tuning(), off);
+  assert(!out.next.heat_request_active && out.next.restart_inhibit_active);
+
+  in.setpoint_raise_active = true;
+  in.supply_c = 32.0f;  // deep undershoot would also allow a water-band restart.
+  out = decide_demand(in, tuning(), off);
+  assert(out.next.heat_request_active && out.restart_reason == RESTART_WATER_BAND);
+
+  in.supply_c = 34.0f;
+  in.oil_return_mask_active = true;
+  out = decide_demand(in, tuning(), off);
+  assert(!out.next.heat_request_active && out.next.restart_inhibit_active);
+}
 void test_maintain_caps() {
   struct Case {
     float error_c;
@@ -201,6 +226,7 @@ int main() {
   test_invalid_inputs_fail_closed();
   test_stop_confirmation_and_rollover();
   test_restart_lock_and_regimes();
+  test_user_raise_override();
   test_maintain_caps();
   test_outside_filter_target_and_cadence_rollover();
   return 0;

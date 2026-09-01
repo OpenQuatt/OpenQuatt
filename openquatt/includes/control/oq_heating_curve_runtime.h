@@ -44,6 +44,15 @@ class Runtime {
                                  this->room_temperature_fresh_(ot_room_temperature_fresh) &&
                                  this->room_setpoint_fresh_(ot_room_setpoint_fresh);
     const uint32_t now_ms = static_cast<uint32_t>(millis());
+
+    if (room_data_fresh) {
+      const float last_sp = id(oq_curve_last_room_setpoint_c);
+      if (std::isfinite(last_sp) && !id(oq_curve_heat_request_active) &&
+          room_setpoint_c > last_sp + kSetpointRaiseHysteresisC)
+        id(oq_curve_setpoint_raise_latch) = true;
+      id(oq_curve_last_room_setpoint_c) = room_setpoint_c;
+    }
+
     bool oil_return_active = id(hp1_prot_oil_return).state;
 #if OQ_TOPOLOGY_DUO
     oil_return_active = oil_return_active || id(hp2_prot_oil_return).state;
@@ -61,8 +70,10 @@ class Runtime {
                                          id(oq_curve_restart_blocked_by_room),
                                          id(oq_curve_regime_code)};
     const auto demand = oq_curve::decide_demand({now_ms, pid_output, target_c, supply_c, room_c, room_setpoint_c,
-                                                 room_data_fresh, oil_return.mask_active, applied_total, demand_max_f},
+                                                 room_data_fresh, oil_return.mask_active,
+                                                 id(oq_curve_setpoint_raise_latch), applied_total, demand_max_f},
                                                 tuning, previous);
+    if (demand.next.heat_request_active) id(oq_curve_setpoint_raise_latch) = false;
     id(oq_curve_oil_return_hold_until_ms) = oil_return.hold_until_ms;
     if (demand.valid)
       this->log_demand_transition_(now_ms, room_c, room_setpoint_c, oil_return.mask_active, tuning, previous, demand);
@@ -387,6 +398,7 @@ class Runtime {
 
  private:
   static constexpr uint32_t kOilReturnHoldMs = 180000UL;
+  static constexpr float kSetpointRaiseHysteresisC = 0.20f;
 
   oq_curve::ControlProfileTuning tuning_() const {
     return oq_curve::control_profile(
@@ -433,6 +445,8 @@ class Runtime {
         id(oq_curve_demand_continuous), id(oq_demand_curve), id(oq_curve_demand_pre_guardrail),
         id(oq_curve_heat_request_active), id(oq_curve_stop_arm_ms), id(oq_curve_off_since_ms),
         id(oq_curve_restart_inhibit_active), id(oq_curve_restart_blocked_by_room), id(oq_curve_regime_code));
+    id(oq_curve_last_room_setpoint_c) = NAN;
+    id(oq_curve_setpoint_raise_latch) = false;
   }
 
   void reset_outside_ema_() {
@@ -475,7 +489,10 @@ class Runtime {
     if (demand.next.heat_request_active != previous.heat_request_active) {
       const char* reason =
           demand.next.heat_request_active
-              ? (demand.restart_reason == oq_curve::RESTART_ROOM_DEMAND ? "room demand" : "restart band reached")
+              ? (demand.restart_reason == oq_curve::RESTART_ROOM_DEMAND
+                     ? "room demand"
+                     : (demand.restart_reason == oq_curve::RESTART_USER_RAISE ? "user setpoint raise"
+                                                                             : "restart band reached"))
               : (demand.stop_reason == oq_curve::STOP_LOW_LOAD ? "low-load release" : "normal stop");
       ESP_LOGI("quatt.heatcurve", "Heat request %s: %s", demand.next.heat_request_active ? "resumed" : "stopped",
                reason);

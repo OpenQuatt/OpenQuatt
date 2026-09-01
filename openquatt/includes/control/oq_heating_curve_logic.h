@@ -39,6 +39,7 @@ enum RestartReason : uint8_t {
   RESTART_NONE = 0,
   RESTART_WATER_BAND = 1,
   RESTART_ROOM_DEMAND = 2,
+  RESTART_USER_RAISE = 3,
 };
 
 struct RestartDecision {
@@ -71,6 +72,7 @@ struct DemandInput {
   float room_c = NAN, room_setpoint_c = NAN;
   bool room_data_fresh = false;
   bool oil_return_mask_active = false;
+  bool setpoint_raise_active = false;
   int applied_total_level = 0;
   int demand_max = 0;
 };
@@ -328,6 +330,12 @@ inline DemandDecision decide_demand(const DemandInput& in, const ControlProfileT
     if (restart.restart) {
       out.next.heat_request_active = true;
       out.next.off_since_ms = 0;
+    } else if (in.setpoint_raise_active && !in.oil_return_mask_active) {
+      out.next.heat_request_active = true;
+      out.next.off_since_ms = 0;
+      out.next.restart_inhibit_active = false;
+      out.next.restart_blocked_by_room = false;
+      out.restart_reason = RESTART_USER_RAISE;
     }
   }
 

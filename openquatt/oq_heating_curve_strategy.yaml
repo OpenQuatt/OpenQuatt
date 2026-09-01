@@ -104,6 +104,18 @@ globals:
     restore_value: false
     initial_value: '0'
 
+  # Last observed room setpoint, used to detect an active user raise.
+  - id: oq_curve_last_room_setpoint_c
+    type: float
+    restore_value: false
+    initial_value: '0.0'
+
+  # Latched flag: user actively raised the room setpoint while heating was OFF.
+  - id: oq_curve_setpoint_raise_latch
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
 select:
   - platform: template
     id: oq_curve_control_profile
