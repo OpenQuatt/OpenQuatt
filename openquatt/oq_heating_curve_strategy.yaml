@@ -1,4 +1,6 @@
+# ==============================================================================
 # OpenQuatt - Heating Curve Strategy
+# ==============================================================================
 
 globals:
   # Continuous PID-derived demand before integer quantization or request guardrails.

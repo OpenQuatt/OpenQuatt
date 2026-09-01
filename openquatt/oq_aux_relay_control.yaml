@@ -49,29 +49,6 @@
 # ==============================================================================
 
 # ----------------------------
-# INTERNAL STATE
-# ----------------------------
-globals:
-  # Actual relay state; written only by the owner that drove the output
-  # (the control loop, or the switch actions in External control).
-  - id: oq_aux_relay_on
-    type: bool
-    restore_value: false
-    initial_value: 'false'
-
-  # Water-temperature gate latch; only meaningful while a thermal mode is active.
-  - id: oq_aux_temp_gate_on
-    type: bool
-    restore_value: false
-    initial_value: 'false'
-
-  # Last observed thermal mode (0=none, 1=cooling, 2=heating) to reset the latch.
-  - id: oq_aux_relay_last_mode
-    type: int
-    restore_value: false
-    initial_value: '0'
-
-# ----------------------------
 # OUTPUTS
 # ----------------------------
 output:
@@ -99,32 +76,10 @@ switch:
     optimistic: false
     turn_on_action:
       - lambda: |-
-          const bool external_control =
-              id(oq_aux_relay_function).has_state() &&
-              id(oq_aux_relay_function).current_option() == "External control";
-          if (!external_control) {
-            // Ignore the command; snap the reported state back to reality.
-            id(controller_aux_relay).publish_state(id(oq_aux_relay_on));
-            return;
-          }
-          ESP_LOGI("quatt.aux_relay", "Aux relay ON (external control)");
-          id(controller_aux_relay_out).turn_on();
-          id(oq_aux_relay_on) = true;
-          id(controller_aux_relay).publish_state(true);
+          oq_aux_relay_runtime::runtime().external_command(true);
     turn_off_action:
       - lambda: |-
-          const bool external_control =
-              id(oq_aux_relay_function).has_state() &&
-              id(oq_aux_relay_function).current_option() == "External control";
-          if (!external_control) {
-            // Ignore the command; snap the reported state back to reality.
-            id(controller_aux_relay).publish_state(id(oq_aux_relay_on));
-            return;
-          }
-          ESP_LOGI("quatt.aux_relay", "Aux relay OFF (external control)");
-          id(controller_aux_relay_out).turn_off();
-          id(oq_aux_relay_on) = false;
-          id(controller_aux_relay).publish_state(false);
+          oq_aux_relay_runtime::runtime().external_command(false);
 
   - platform: template
     id: oq_aux_wait_for_supply_temp
@@ -227,104 +182,4 @@ interval:
     startup_delay: 4800ms
     then:
       - lambda: |-
-          // Phase 1: read inputs (final supervisory decision + configuration).
-          const int cm_code = id(oq_control_mode_code);
-          const int cm1_next_code = id(oq_cm1_next_after);
-          // CM2/CM3/CM4 produce heat; CM5 cools. During CM1 pre/postflow the
-          // destination mode counts, so equipment powered via R2 (for example
-          // a circulation pump) is already available while flow is established.
-          const bool heating_active =
-              (cm_code == 2) || (cm_code == 3) || (cm_code == 4) ||
-              (cm_code == 1 && (cm1_next_code == 2 || cm1_next_code == 4));
-          const bool cooling_active =
-              (cm_code == 5) ||
-              (cm_code == 1 && cm1_next_code == 5);
-          const std::string function_option =
-              id(oq_aux_relay_function).has_state()
-                  ? id(oq_aux_relay_function).current_option()
-                  : std::string("Disabled");
-          const bool external_control = function_option == "External control";
-
-          // Phase 2: decide desired relay state and status per function.
-          bool relay_on = false;
-          std::string status = "Disabled";
-          const int mode_code = cooling_active ? 1 : (heating_active ? 2 : 0);
-          if (mode_code != id(oq_aux_relay_last_mode)) {
-            id(oq_aux_temp_gate_on) = false;
-            id(oq_aux_relay_last_mode) = mode_code;
-          }
-          if (external_control) {
-            // The switch actions own the output; only report its state here.
-            relay_on = id(oq_aux_relay_on);
-            status = "External control";
-            id(oq_aux_temp_gate_on) = false;
-          } else if (function_option == "Heating demand") {
-            relay_on = heating_active;
-            status = relay_on ? "Heating demand active" : "No heating demand";
-          } else if (function_option == "Cooling demand") {
-            relay_on = cooling_active;
-            status = relay_on ? "Cooling demand active" : "No cooling demand";
-          } else if (function_option == "Heating or cooling demand") {
-            relay_on = heating_active || cooling_active;
-            status = heating_active ? "Heating demand active"
-                   : cooling_active ? "Cooling demand active"
-                                    : "No thermal demand";
-          }
-
-          // Phase 2b: optional supply-temperature gate on top of the demand result.
-          const bool gate_enabled = id(oq_aux_wait_for_supply_temp).state;
-          if (external_control) {
-            // Gate does not apply while the relay is externally controlled.
-          } else if (!gate_enabled || !relay_on) {
-            id(oq_aux_temp_gate_on) = false;
-          } else {
-            const float supply_c = id(oq_system_supply_temp).state;
-            if (isnan(supply_c)) {
-              // Fail OFF when no valid supply-water source is available.
-              id(oq_aux_temp_gate_on) = false;
-              status = "Supply temperature unavailable";
-            } else {
-              float hysteresis_c = id(oq_aux_temp_hysteresis_c).state;
-              if (isnan(hysteresis_c)) hysteresis_c = 2.0f;
-              if (mode_code == 2) {
-                float start_c = id(oq_aux_heat_start_c).state;
-                if (isnan(start_c)) start_c = 30.0f;
-                if (supply_c >= start_c) id(oq_aux_temp_gate_on) = true;
-                else if (supply_c <= start_c - hysteresis_c) id(oq_aux_temp_gate_on) = false;
-                if (!id(oq_aux_temp_gate_on)) status = "Waiting for warm water";
-              } else {
-                float start_c = id(oq_aux_cool_start_c).state;
-                if (isnan(start_c)) start_c = 18.0f;
-                if (supply_c <= start_c) id(oq_aux_temp_gate_on) = true;
-                else if (supply_c >= start_c + hysteresis_c) id(oq_aux_temp_gate_on) = false;
-                if (!id(oq_aux_temp_gate_on)) status = "Waiting for cold water";
-              }
-            }
-            relay_on = id(oq_aux_temp_gate_on);
-          }
-
-          // Phase 3: apply relay state only on change to avoid relay chatter.
-          // In External control the switch actions own the output instead.
-          if (!external_control) {
-            if (relay_on && !id(oq_aux_relay_on)) {
-              ESP_LOGI("quatt.aux_relay", "Aux relay ON: %s", status.c_str());
-              id(controller_aux_relay_out).turn_on();
-              id(oq_aux_relay_on) = true;
-              id(controller_aux_relay).publish_state(true);
-            } else if (!relay_on && id(oq_aux_relay_on)) {
-              ESP_LOGI("quatt.aux_relay", "Aux relay OFF: %s", status.c_str());
-              id(controller_aux_relay_out).turn_off();
-              id(oq_aux_relay_on) = false;
-              id(controller_aux_relay).publish_state(false);
-            }
-          }
-
-          // Phase 4: publish diagnostics on change.
-          if (!id(oq_aux_relay_active).has_state() || id(oq_aux_relay_active).state != relay_on) {
-            id(oq_aux_relay_active).publish_state(relay_on);
-          }
-          static std::string last_status = "";
-          if (status != last_status) {
-            id(oq_aux_relay_status).publish_state(status);
-            last_status = status;
-          }
+          oq_aux_relay_runtime::runtime().tick();

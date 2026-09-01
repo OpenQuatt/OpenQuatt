@@ -1,4 +1,6 @@
+# ==============================================================================
 # OpenQuatt - Strategy Manager
+# ==============================================================================
 
 globals:
   # Shared strategy output (0..20) consumed by downstream thermal-request control.

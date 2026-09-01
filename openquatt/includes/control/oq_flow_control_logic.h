@@ -6,6 +6,8 @@
 #include <math.h>
 #include <stdint.h>
 
+#include "oq_flow_pump_logic.h"
+
 namespace oq_flow_control {
 
 // iPWM limits shared with YAML.
@@ -23,6 +25,127 @@ inline int compute_start_pwm(bool commissioning_start, int commissioning_start_p
   const int candidate = cooling_target ? last_good_pwm_cooling : last_good_pwm;
   if (candidate >= 50 && candidate <= 850) return clamp_ipwm(candidate);
   return clamp_ipwm(fallback_pwm);
+}
+
+inline float select_local_flow(bool secondary_enabled, float hp1_flow_lph, float hp2_flow_lph,
+                               float mismatch_threshold_lph) {
+  const bool hp1_valid = !isnan(hp1_flow_lph);
+  const bool hp2_valid = !isnan(hp2_flow_lph);
+  if (!secondary_enabled) return hp1_valid ? hp1_flow_lph : NAN;
+  if (hp1_valid && hp2_valid) {
+    if (fabsf(hp1_flow_lph - hp2_flow_lph) > mismatch_threshold_lph) {
+      return fmaxf(hp1_flow_lph, hp2_flow_lph);
+    }
+    return (hp1_flow_lph + hp2_flow_lph) / 2.0f;
+  }
+  if (hp1_valid) return hp1_flow_lph;
+  if (hp2_valid) return hp2_flow_lph;
+  return NAN;
+}
+
+inline bool uses_cooling_setpoint(int control_mode, bool manual_hp_owner, int manual_hp1_mode, int manual_hp2_mode) {
+  return control_mode == 5 || (manual_hp_owner && (manual_hp1_mode == 1 || manual_hp2_mode == 1));
+}
+
+inline float select_flow_setpoint(bool manual_flow_owner, float manual_setpoint_lph, bool cooling_target,
+                                  float cooling_setpoint_lph, float normal_setpoint_lph) {
+  if (manual_flow_owner) return manual_setpoint_lph;
+  return cooling_target ? cooling_setpoint_lph : normal_setpoint_lph;
+}
+
+struct MismatchState {
+  bool active = false;
+  bool timer_running = false;
+  uint32_t started_ms = 0;
+};
+
+struct MismatchInputs {
+  bool secondary_enabled = false;
+  oq_flow::PumpRelayState hp1_pump{};
+  oq_flow::PumpRelayState hp2_pump{};
+  float hp1_flow_lph = NAN;
+  float hp2_flow_lph = NAN;
+  float threshold_lph = 0.0f;
+  float hysteresis_lph = 0.0f;
+  uint32_t now_ms = 0;
+  uint32_t hold_ms = 30000;
+};
+
+inline bool update_mismatch(MismatchState& state, const MismatchInputs& in) {
+  const bool pumps_stopped = oq_flow::all_relevant_pumps_stopped(in.secondary_enabled, in.hp1_pump, in.hp2_pump);
+  if (!in.secondary_enabled || pumps_stopped) {
+    state = {};
+    return false;
+  }
+  if (isnan(in.hp1_flow_lph) || isnan(in.hp2_flow_lph)) {
+    state.active = false;
+    state.timer_running = false;
+    return false;
+  }
+
+  const float difference_lph = fabsf(in.hp1_flow_lph - in.hp2_flow_lph);
+  const float off_threshold_lph = fmaxf(0.0f, in.threshold_lph - in.hysteresis_lph);
+  if (!state.active) {
+    if (difference_lph > in.threshold_lph) {
+      if (!state.timer_running) {
+        state.timer_running = true;
+        state.started_ms = in.now_ms;
+      }
+      if (static_cast<uint32_t>(in.now_ms - state.started_ms) >= in.hold_ms) {
+        state.active = true;
+        state.timer_running = false;
+      }
+    } else {
+      state.timer_running = false;
+    }
+  } else if (difference_lph < off_threshold_lph) {
+    state.active = false;
+  }
+  return state.active;
+}
+
+enum class ExecutionMode : uint8_t {
+  AUTO,
+  AUTO_STARTING,
+  AUTO_FAILSAFE,
+  MANUAL,
+  FROST,
+  AUTOTUNE,
+  AIR_PURGE,
+  QUICK_FLOW_TEST,
+  MANUAL_FLOW,
+  HP_WATER_CALIBRATION,
+  CM0,
+  CM100_IDLE,
+};
+
+inline const char* execution_mode_text(ExecutionMode mode) {
+  switch (mode) {
+    case ExecutionMode::AUTO_STARTING:
+      return "AUTO (starting)";
+    case ExecutionMode::AUTO_FAILSAFE:
+      return "AUTO (failsafe)";
+    case ExecutionMode::MANUAL:
+      return "MANUAL";
+    case ExecutionMode::FROST:
+      return "CM98";
+    case ExecutionMode::AUTOTUNE:
+      return "AUTOTUNE";
+    case ExecutionMode::AIR_PURGE:
+      return "AIR PURGE";
+    case ExecutionMode::QUICK_FLOW_TEST:
+      return "QUICK FLOW TEST";
+    case ExecutionMode::MANUAL_FLOW:
+      return "MANUAL FLOW";
+    case ExecutionMode::HP_WATER_CALIBRATION:
+      return "HP WATER CAL";
+    case ExecutionMode::CM0:
+      return "CM0";
+    case ExecutionMode::CM100_IDLE:
+      return "CM100 idle";
+    default:
+      return "AUTO";
+  }
 }
 
 struct State {
