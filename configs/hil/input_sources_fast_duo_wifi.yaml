@@ -1,0 +1,29 @@
+# ==============================================================================
+# OpenQuatt - HIL TEST ONLY: Fast Input/Source Q Duo WiFi Profile
+# ==============================================================================
+# Shortens only the timers needed by the input/source acceptance scenario.
+# The normal Q Duo WiFi entrypoint remains the complete firmware base.
+
+substitutions:
+  api_input_cooling_dew_point_stale_s: "30"
+  api_input_outside_temperature_stale_s: "30"
+  api_input_room_temperature_stale_s: "30"
+  api_input_room_setpoint_stale_s: "30"
+  api_input_heating_enable_stale_s: "30"
+  api_input_cooling_enable_stale_s: "30"
+  api_input_external_heat_demand_stale_s: "30"
+  oq_selected_input_stale_hold_s: "10"
+  oq_hp_min_off_s: "10"
+
+packages:
+  production_q_duo_wifi: !include ../heatpump_controller_q/duo_wifi.yaml
+
+text_sensor:
+  - platform: template
+    id: oq_hil_test_profile
+    name: "HIL Test Profile"
+    internal: true
+    entity_category: diagnostic
+    update_interval: 5s
+    lambda: |-
+      return {"input-sources-fast-v1"};
