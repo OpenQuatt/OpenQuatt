@@ -1105,28 +1105,12 @@ binary_sensor:
         - lambda: |-
             // This lifecycle edge owns actuator withdrawal; waiting for a
             // periodic controller pass would leave an active boiler requested.
-            const bool paused = x;
-            if (paused == id(oq_boiler_runtime_pause_state)) return;
-
-            const uint32_t now_ms = millis();
-            id(oq_boiler_runtime_pause_state) = paused;
-            id(oq_boiler_rearm_required) = true;
-            id(oq_boiler_rearm_after_command_ms) = now_ms;
-            if (id(oq_boiler_output_request)) {
-              id(oq_boiler_output_request) = false;
-              id(oq_boiler_output_last_change_ms) = now_ms;
-            }
-            id(oq_boiler_output_target_temperature_c) = NAN;
-            id(oq_boiler_transport_active) = false;
-            id(oq_boiler_block_reason_code) = paused
-                ? oq_boiler::BLOCK_TRANSPORT_UNAVAILABLE
-                : oq_boiler::BLOCK_AWAITING_FRESH_COMMAND;
-            id(boiler_relay).turn_off();
+            if (!oq_boiler_runtime::runtime().runtime_pause_changed(x)) return;
             ${oq_boiler_transport_shutdown_extra}
             ESP_LOGI(
                 "quatt.boiler",
                 "Runtime polling %s; boiler outputs withdrawn until a fresh command",
-                paused ? "paused" : "resumed");
+                x ? "paused" : "resumed");
 
 sensor:
   - platform: debug

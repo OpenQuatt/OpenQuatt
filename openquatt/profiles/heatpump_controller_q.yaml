@@ -5,35 +5,8 @@ substitutions:
   oq_hardware_profile: "heatpump_controller_q"         # Compile-time hardware profile id.
   oq_hardware_build_flag: "-DOQ_HARDWARE_HEATPUMP_CONTROLLER_Q=1" # Enable Q-only local sensor paths.
   oq_otb_supported: "true"                             # GPIO47/GPIO48 provide the boiler OpenTherm master transport.
-  oq_boiler_temperature_sensor_id: "otb_boiler_water_temp" # Q-edition OpenTherm ID25 sensor used by the warm-start guard.
-  oq_boiler_transport_selection_extra: |-
-    // Preserve the old session until a leaving-OpenTherm off flush has had
-    // its bounded acknowledgement opportunity.
-    if (id(oq_otb_hub_ready)) {
-      if (x == "OpenTherm") {
-        oq_otb::startup_probe_state.end();
-        id(oq_otb_startup_probe_active) = false;
-        id(oq_boiler_connection_mismatch_state) = false;
-        id(oq_boiler_connection_mismatch).publish_state(false);
-        id(oq_otb_hub).resume_polling();
-      } else {
-        id(oq_otb_withdraw_and_flush).execute();
-        oq_otb::startup_probe_state.begin(millis());
-        id(oq_otb_startup_probe_active) = true;
-        id(oq_boiler_connection_mismatch_state) = false;
-        id(oq_boiler_connection_mismatch).publish_state(false);
-        id(boiler_relay).turn_off();
-        id(oq_otb_hub).start_priority_polling(
-            esphome::opentherm::MessageId::STATUS,
-            esphome::opentherm::MessageId::CH_SETPOINT);
-      }
-    }
-    oq_otb::telemetry_state.reset_link_session();
-    id(oq_otb_link_initialized) = true;
-    id(oq_otb_link_available_state) = false;
-    id(otb_link_available).publish_state(false);
-    id(oq_otb_invalidate_telemetry).execute();
-  oq_boiler_transport_shutdown_extra: "id(oq_otb_ch_enable).turn_off(); { auto call = id(oq_otb_t_set_command).make_call(); call.set_value(0.0f); call.perform(); }" # Withdraw OTB synchronously on every transport edge.
+  oq_boiler_transport_selection_extra: "oq_boiler_otb_runtime::connection_changed(x == \"OpenTherm\");" # Start or stop the selected Q-edition transport lifecycle.
+  oq_boiler_transport_shutdown_extra: "oq_boiler_otb_runtime::withdraw_command();" # Withdraw OTB synchronously on every transport edge.
   oq_local_supply_temp_sensor_id: "water_supply_temp_pt1000" # Q-edition local PT1000 source.
   oq_local_supply_temp_selector_id: "oq_local_supply_temp_source" # Explicit local physical-sensor selection.
   oq_controller_flow_sensor_id: "flow_rate_controller" # Use the controller pulse meter for V1 flow.

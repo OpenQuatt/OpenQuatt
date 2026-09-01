@@ -50,16 +50,7 @@ esphome:
     priority: 700
     then:
       - lambda: |-
-          // Fail-safe shared shutdown; OTB adds its own controlled off handshake.
-          id(oq_boiler_command_valid) = false;
-          id(oq_boiler_command_heat_request) = false;
-          id(oq_boiler_output_request) = false;
-          id(oq_boiler_output_target_temperature_c) = NAN;
-          id(oq_boiler_transport_active) = false;
-          id(oq_boiler_block_reason_code) = oq_boiler::BLOCK_COMMAND_INVALID;
-          id(oq_boiler_start_thermal_state_code) = oq_boiler::BOILER_START_THERMAL_IDLE;
-          id(oq_boiler_start_thermal_safe_ceiling_c) = NAN;
-      - switch.turn_off: boiler_relay
+          oq_boiler_runtime::runtime().shutdown();
 
 # ----------------------------
 # INTERNAL CONTROLLER STATE
@@ -165,27 +156,13 @@ select:
             // Break-before-make: a transport change immediately drops both the
             // shared request and R1. The selected path may restart only after a
             // fresh controller evaluation.
-            if (x == "OpenTherm" && !${oq_otb_supported}) {
-              ESP_LOGW("quatt.boiler", "OpenTherm boiler transport is unsupported on this hardware; restoring R1");
+            if (!oq_boiler_runtime::runtime().connection_changed(
+                    x == "OpenTherm", ${oq_otb_supported})) {
               auto call = id(oq_boiler_connection).make_call();
               call.set_option("R1");
               call.perform();
               return;
             }
-            const uint32_t now_ms = millis();
-            id(oq_boiler_transport_change_ms) = now_ms;
-            id(oq_boiler_transport_settle_required) = true;
-            id(oq_boiler_rearm_required) = true;
-            // A command can re-arm only when its originating strategy or
-            // commissioning authorization was evaluated after this edge.
-            id(oq_boiler_rearm_after_command_ms) = now_ms;
-            if (id(oq_boiler_output_request)) {
-              id(oq_boiler_output_request) = false;
-              id(oq_boiler_output_last_change_ms) = now_ms;
-            }
-            id(oq_boiler_output_target_temperature_c) = NAN;
-            id(oq_boiler_transport_active) = false;
-            id(boiler_relay).turn_off();
             ${oq_boiler_transport_shutdown_extra}
             ${oq_boiler_transport_selection_extra}
 
@@ -227,20 +204,8 @@ binary_sensor:
     icon: mdi:check-decagram
     entity_category: diagnostic
     lambda: |-
-      // Report validity and freshness as one diagnostic contract.
-      return id(oq_boiler_command_valid) &&
-             oq_boiler::command_is_fresh(
-                 oq_boiler::BoilerCommand{
-                     id(oq_boiler_command_valid),
-                     id(oq_boiler_command_demand_present),
-                     id(oq_boiler_command_heat_request),
-                     id(oq_boiler_command_requested_power_w),
-                     id(oq_boiler_command_target_temperature_c),
-                     id(oq_boiler_command_source_code),
-                     id(oq_boiler_command_updated_ms),
-                 },
-                 millis(),
-                 (uint32_t) (${oq_boiler_command_max_age_s} * 1000UL));
+      return oq_boiler_runtime::runtime().command_is_fresh(
+          (uint32_t) (${oq_boiler_command_max_age_s} * 1000UL));
 
   - platform: template
     id: boiler_command_active
@@ -318,24 +283,10 @@ sensor:
     accuracy_decimals: 0
     update_interval: 5s
     lambda: |-
-      // Diagnostic estimate only; transport activity is the confirmation
-      // signal for both R1 and OpenTherm and also covers CM4 fallback.
-      if (!id(oq_boiler_transport_active)) return 0.0f;
-
-      const float hp2_outlet_c = id(${heatpump_outlet_temp_id}).state;
-      const float supply_c = id(water_supply_temp_selected).state;
-      const float flow_lph = id(flow_rate_selected).state;
-
-      // With missing measurements: return 0 W instead of NaN (cleaner dashboard + CM3 gate already enforced)
-      if (isnan(hp2_outlet_c) || isnan(supply_c) || isnan(flow_lph)) return 0.0f;
-
-      const float cp_j_per_kgk = ${oq_water_cp_j_per_kgk};   // J/(kg·K)
-      const float mass_flow_kgps = flow_lph / 3600.0f;       // kg/s (≈ L/h)
-      const float delta_t_k = supply_c - hp2_outlet_c;       // K
-
-      // Non-negative power (only added heat)
-      const float heat_power_w = mass_flow_kgps * cp_j_per_kgk * delta_t_k;
-      return (heat_power_w < 0.0f) ? 0.0f : heat_power_w;
+      return oq_boiler::estimate_boiler_heat_power(
+          id(oq_boiler_transport_active), id(${heatpump_outlet_temp_id}).state,
+          id(water_supply_temp_selected).state, id(flow_rate_selected).state,
+          ${oq_water_cp_j_per_kgk});
 
 text_sensor:
   - platform: template
@@ -346,21 +297,7 @@ text_sensor:
     disabled_by_default: true
     update_interval: 1s
     lambda: |-
-      // Keep the diagnostic label aligned with the transport-neutral source.
-      switch (id(oq_boiler_command_source_code)) {
-        case oq_boiler::COMMAND_SOURCE_POWER_HOUSE:
-          return {"Power House"};
-        case oq_boiler::COMMAND_SOURCE_HEATING_CURVE:
-          return {"Heating Curve"};
-        case oq_boiler::COMMAND_SOURCE_COMMISSIONING:
-          return {"Commissioning"};
-        case oq_boiler::COMMAND_SOURCE_FALLBACK:
-          return {"Fallback"};
-        case oq_boiler::COMMAND_SOURCE_COLD_START:
-          return {"Cold start"};
-        default:
-          return {"None"};
-      }
+      return {oq_boiler::command_source_text(id(oq_boiler_command_source_code))};
 
   - platform: template
     id: boiler_block_reason
@@ -391,340 +328,14 @@ interval:
     startup_delay: 4600ms
     then:
       - lambda: |-
-          // Phase 1: snapshot the shared command and all fail-safe controller inputs.
-          const int cm_code = id(oq_control_mode_code);
-          const uint32_t now_ms = millis();
-          const float supply_c = id(water_supply_temp_selected).state;
-          const bool has_valid_supply_temp = !isnan(supply_c);
-          const bool opentherm_selected =
-              id(oq_boiler_connection).has_state() &&
-              id(oq_boiler_connection).current_option() == "OpenTherm";
-          // The watcher state closes the scheduling edge on resume: if this
-          // slower loop runs before the watcher, it still cannot replay the
-          // pre-pause command.
-          const bool runtime_available =
-              !id(oq_runtime_polling_paused).state &&
-              !id(oq_boiler_runtime_pause_state);
-          const bool transport_available =
-              oq_boiler::transport_available_for_selection(
-                  runtime_available,
-                  opentherm_selected,
-                  ${oq_otb_supported},
-                  id(oq_otb_link_available_state),
-                  id(oq_otb_startup_probe_active),
-                  id(oq_boiler_connection_mismatch_state));
-          const bool transport_settled = oq_boiler::settle_period_elapsed(
-              id(oq_boiler_transport_settle_required),
-              now_ms,
-              id(oq_boiler_transport_change_ms),
-              (uint32_t) (${oq_boiler_transport_settle_s} * 1000UL));
-          if (transport_settled && id(oq_boiler_transport_settle_required)) {
-            id(oq_boiler_transport_settle_required) = false;
-          }
-          const float target_c = id(oq_boiler_command_target_temperature_c);
-          const float boiler_flow_lph = id(flow_rate_selected).state;
-          const bool boiler_flow_valid = !isnan(boiler_flow_lph);
-          const bool boiler_flow_sufficient =
-              boiler_flow_valid &&
-              boiler_flow_lph >= ${oq_cm_min_flow_lph} &&
-              !id(oq_lowflow_fault_active);
-          const bool target_valid =
-              !isnan(target_c) && target_c > 0.0f && target_c <= 90.0f &&
-              boiler_flow_sufficient;
-          const bool fallback_outputs_safe =
-              id(oq_incident_manager).all_fallback_outputs_safe();
-          const uint32_t minimum_on_ms = (uint32_t) (
-              (opentherm_selected
-                   ? ${oq_boiler_otb_min_on_s}
-                   : ${oq_boiler_relay_min_on_s}) * 1000UL);
-          const uint32_t minimum_off_ms = (uint32_t) (
-              (opentherm_selected
-                   ? ${oq_boiler_otb_min_off_s}
-                   : ${oq_boiler_relay_min_off_s}) * 1000UL);
-          const oq_boiler::BoilerCommand command{
-              id(oq_boiler_command_valid),
-              id(oq_boiler_command_demand_present),
-              id(oq_boiler_command_heat_request),
-              id(oq_boiler_command_requested_power_w),
-              id(oq_boiler_command_target_temperature_c),
-              id(oq_boiler_command_source_code),
-              id(oq_boiler_command_updated_ms),
-          };
-          oq_boiler::BoilerStartThermalDecision start_thermal_decision{
-              oq_boiler::BOILER_START_THERMAL_IDLE,
-              NAN,
-          };
-          const bool start_thermal_decision_needed =
-              command.heat_request || command.source == oq_boiler::COMMAND_SOURCE_COMMISSIONING;
-          if (start_thermal_decision_needed) {
-            float maximum_water_temperature_c = id(max_water_temp_limit_c).state;
-            if (isnan(maximum_water_temperature_c)) maximum_water_temperature_c = 60.0f;
-            maximum_water_temperature_c = fmaxf(25.0f, fminf(maximum_water_temperature_c, 75.0f));
-          #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-            const bool boiler_temperature_fresh =
-                opentherm_selected &&
-                oq_otb::telemetry_state.field_is_fresh(
-                    oq_otb::FIELD_BOILER_WATER_TEMPERATURE,
-                    now_ms,
-                    (uint32_t) (${oq_otb_field_timeout_s} * 1000UL));
-            const float boiler_temperature_c =
-                id(${oq_boiler_temperature_sensor_id}).has_state()
-                    ? id(${oq_boiler_temperature_sensor_id}).state
-                    : NAN;
-          #else
-            const bool boiler_temperature_fresh = false;
-            const float boiler_temperature_c = NAN;
-          #endif
-            start_thermal_decision = oq_boiler::evaluate_boiler_start_thermal_state(
-                opentherm_selected,
-                boiler_temperature_fresh,
-                boiler_temperature_c,
-                supply_c,
-                target_c,
-                maximum_water_temperature_c);
-          }
-          const bool start_thermal_decision_changed =
-              id(oq_boiler_start_thermal_state_code) != start_thermal_decision.state;
-          id(oq_boiler_start_thermal_state_code) = start_thermal_decision.state;
-          id(oq_boiler_start_thermal_safe_ceiling_c) = start_thermal_decision.safe_ceiling_c;
-          if (start_thermal_decision_changed) {
-          #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-            const float boiler_temperature_c =
-                id(${oq_boiler_temperature_sensor_id}).has_state()
-                    ? id(${oq_boiler_temperature_sensor_id}).state
-                    : NAN;
-          #else
-            const float boiler_temperature_c = NAN;
-          #endif
-            ESP_LOGI(
-                "quatt.boiler",
-                "Warm-start guard: %s (boiler=%.1fC supply=%.1fC target=%.1fC ceiling=%.1fC source=%u)",
-                oq_boiler::boiler_start_thermal_state_text(start_thermal_decision.state),
-                boiler_temperature_c,
-                supply_c,
-                target_c,
-                start_thermal_decision.safe_ceiling_c,
-                (unsigned int) command.source);
-          }
-          const bool command_rearmed = oq_boiler::command_satisfies_rearm(
-              id(oq_boiler_rearm_required),
-              command,
-              id(oq_boiler_rearm_after_command_ms));
-          if (id(oq_boiler_rearm_required) && command_rearmed) {
-            id(oq_boiler_rearm_required) = false;
-          }
-          const oq_boiler::ControllerInput input{
-              id(oq_aux_heat_source_present).state,
-              id(oq_boiler_assist_enabled).state,
-              id(oq_boiler_fault_fallback_enabled).state,
-              has_valid_supply_temp,
-              boiler_flow_valid,
-              boiler_flow_sufficient,
-              fallback_outputs_safe,
-              id(oq_water_temp_boiler_inhibit_active),
-              id(oq_water_temp_hard_trip_active),
-              id(oq_boiler_connection_mismatch_state),
-              transport_available,
-              transport_settled,
-              command_rearmed,
-              start_thermal_decision.state,
-              opentherm_selected,
-              target_valid,
-              id(oq_boiler_output_request),
-              now_ms,
+          oq_boiler_runtime::runtime().tick({
+              ${oq_otb_supported},
+              ${oq_cm_min_flow_lph},
               (uint32_t) (${oq_boiler_command_max_age_s} * 1000UL),
-              id(oq_boiler_output_last_change_ms),
-              minimum_on_ms,
-              minimum_off_ms,
-          };
-          const auto decision = oq_boiler::evaluate(command, input);
-          const oq_boiler::BoilerRole boiler_role =
-              oq_boiler::boiler_role_for_source(command.source);
-          const bool fallback_boiler =
-              boiler_role == oq_boiler::BoilerRole::FALLBACK_CM4;
-          const bool commissioning_boiler =
-              boiler_role == oq_boiler::BoilerRole::COMMISSIONING_CM100 &&
-              command.heat_request;
-          const std::string boiler_block_reason =
-              oq_boiler::block_reason_text(decision.block_reason);
-          const bool boiler_allowed = decision.output_active;
-          const bool boiler_requested = decision.demand_present;
-          const bool boiler_output_changed =
-              id(oq_boiler_output_request) != decision.output_active;
-          id(oq_boiler_output_request) = decision.output_active;
-          if (boiler_output_changed) {
-            id(oq_boiler_output_last_change_ms) = now_ms;
-          }
-          // A minimum-on hold keeps the last validated target even after the
-          // strategy withdraws its current command target.
-          id(oq_boiler_output_target_temperature_c) =
-              oq_boiler::effective_output_target(
-                  decision.output_active,
-                  opentherm_selected,
-                  decision.desired_active,
-                  target_valid,
-                  target_c,
-                  id(oq_boiler_output_target_temperature_c));
-          id(oq_boiler_block_reason_code) = decision.block_reason;
-
-          // Phase 2: map the transport-neutral decision to existing decision-log semantics.
-          static const oq_boiler::BoilerLogCodes log_codes{
-              {
-                  openquatt_decision_log::REASON_LESS_POWER,
-                  openquatt_decision_log::REASON_FLOW_TOO_LOW,
-                  openquatt_decision_log::REASON_SOFT_GUARD,
-                  openquatt_decision_log::REASON_SENSOR_FALLBACK,
-                  openquatt_decision_log::REASON_NO_CANDIDATE,
-                  openquatt_decision_log::REASON_FALLBACK_BLOCKED,
-                  openquatt_decision_log::REASON_HP_STOP_UNCONFIRMED,
-                  openquatt_decision_log::REASON_FLOW_PREFLOW,
-                  openquatt_decision_log::REASON_BOILER_FALLBACK,
-                  openquatt_decision_log::REASON_HP_RECOVERED,
-                  openquatt_decision_log::REASON_COMMISSIONING,
-                  openquatt_decision_log::REASON_COOLING_REQUEST,
-                  openquatt_decision_log::REASON_FROST_PROTECTION,
-                  openquatt_decision_log::REASON_HEATING_REQUEST_CLEARED,
-                  openquatt_decision_log::REASON_MIN_REST_ACTIVE,
-              },
-              {
-                  openquatt_decision_log::SEVERITY_NORMAL,
-                  openquatt_decision_log::SEVERITY_LIMITED,
-              },
-          };
-          const auto boiler_log =
-              oq_boiler::classify_boiler_controller_log(
-                  {boiler_role, decision.block_reason}, log_codes);
-          const uint8_t boiler_log_reason_code = boiler_log.reason_code;
-          const uint8_t boiler_log_severity = boiler_log.severity;
-          static bool last_boiler_allowed = false;
-          static bool last_boiler_blocked = false;
-          static std::string last_boiler_block_reason = "";
-          const bool boiler_block_reason_changed = boiler_block_reason != last_boiler_block_reason;
-          if (boiler_allowed != last_boiler_allowed || boiler_block_reason_changed) {
-            if (boiler_allowed) {
-              if (commissioning_boiler) {
-                ESP_LOGI("quatt.boiler", "Boiler enabled: CM100 commissioning task and safety guards clear");
-              } else if (fallback_boiler) {
-                ESP_LOGI("quatt.boiler", "Boiler enabled: CM4 fallback and safety guards clear");
-              } else {
-                ESP_LOGI("quatt.boiler", "Boiler enabled: CM3 and safety guards clear");
-              }
-            } else if (id(oq_water_temp_hard_trip_active)) {
-              ESP_LOGW("quatt.boiler", "Boiler blocked: %s", boiler_block_reason.c_str());
-            } else if (boiler_block_reason == "CM100 boiler commissioning waiting for flow settle") {
-              ESP_LOGI("quatt.boiler", "Boiler commissioning: waiting for flow to settle");
-            } else {
-              ESP_LOGI("quatt.boiler", "Boiler blocked: %s", boiler_block_reason.c_str());
-            }
-            last_boiler_allowed = boiler_allowed;
-            last_boiler_block_reason = boiler_block_reason;
-          }
-
-          const bool boiler_blocked = boiler_requested && !boiler_allowed;
-          if (boiler_blocked && (!last_boiler_blocked || boiler_block_reason_changed)) {
-            id(oq_decision_log).emit(
-                openquatt_decision_log::EVENT_DECISION_BLOCKED,
-                openquatt_decision_log::SUBJECT_CV,
-                boiler_log_reason_code,
-                boiler_log_severity,
-                (uint8_t) cm_code,
-                openquatt_decision_log::STATE_STANDBY,
-                openquatt_decision_log::STATE_BLOCKED,
-                has_valid_supply_temp ? (int16_t) lroundf(supply_c * 10.0f) : 0);
-          }
-          last_boiler_blocked = boiler_blocked;
-
-          // Phase 3: track boiler role separately from the transport output.
-          // A live CM3 <-> CM4 handover therefore emits role events without
-          // creating an R1 or OpenTherm output edge.
-          static oq_boiler::BoilerOutputController output_controller;
-          const auto role_transition = output_controller.advance(
-              oq_boiler::BoilerOutputCommand{boiler_role, boiler_allowed});
-
-          auto emit_role_start = [&](oq_boiler::BoilerRole started_role,
-                                     bool continuous)->void {
-            const bool fallback =
-                started_role == oq_boiler::BoilerRole::FALLBACK_CM4;
-            id(oq_decision_log).emit(
-                fallback
-                    ? openquatt_decision_log::EVENT_BOILER_FALLBACK_START
-                    : openquatt_decision_log::EVENT_BOILER_ASSIST_START,
-                openquatt_decision_log::SUBJECT_CV,
-                fallback
-                    ? openquatt_decision_log::REASON_BOILER_FALLBACK
-                    : openquatt_decision_log::REASON_BOILER_ASSIST,
-                fallback
-                    ? openquatt_decision_log::SEVERITY_ATTENTION
-                    : openquatt_decision_log::SEVERITY_NORMAL,
-                (uint8_t) cm_code,
-                openquatt_decision_log::STATE_STANDBY,
-                fallback
-                    ? openquatt_decision_log::STATE_FALLBACK
-                    : openquatt_decision_log::STATE_ACTIVE,
-                has_valid_supply_temp
-                    ? (int16_t) lroundf(supply_c * 10.0f)
-                    : 0,
-                continuous ? 1 : 0);
-          };
-          auto emit_role_stop = [&](oq_boiler::BoilerRole stopped_role,
-                                    bool continuous)->void {
-            const bool fallback =
-                stopped_role == oq_boiler::BoilerRole::FALLBACK_CM4;
-            const auto stop_log = oq_boiler::classify_boiler_stop_log(
-                {
-                    stopped_role,
-                    continuous,
-                    cm_code,
-                    id(oq_strategy_heat_request_active),
-                    id(oq_boiler_fault_fallback_enabled).state,
-                    fallback_outputs_safe,
-                    boiler_log.reason,
-                },
-                log_codes);
-            id(oq_decision_log).emit(
-                fallback
-                    ? openquatt_decision_log::EVENT_BOILER_FALLBACK_STOP
-                    : openquatt_decision_log::EVENT_BOILER_ASSIST_STOP,
-                openquatt_decision_log::SUBJECT_CV,
-                stop_log.reason_code,
-                stop_log.severity,
-                (uint8_t) cm_code,
-                fallback
-                    ? openquatt_decision_log::STATE_FALLBACK
-                    : openquatt_decision_log::STATE_ACTIVE,
-                openquatt_decision_log::STATE_STANDBY,
-                has_valid_supply_temp
-                    ? (int16_t) lroundf(supply_c * 10.0f)
-                    : 0,
-                continuous ? 1 : 0);
-          };
-
-          if (role_transition.assist_fallback_handover_without_output_edge) {
-            emit_role_stop(role_transition.previous_role, true);
-            emit_role_start(role_transition.next_role, true);
-          } else if (role_transition.output_action ==
-                     oq_boiler::BoilerOutputAction::ENABLE) {
-            emit_role_start(role_transition.next_role, false);
-          } else if (role_transition.output_action ==
-                     oq_boiler::BoilerOutputAction::DISABLE) {
-            emit_role_stop(role_transition.previous_role, false);
-          }
-
-          id(oq_incident_manager).set_boiler_status(
-              static_cast<uint8_t>(output_controller.role()),
-              output_controller.heat_enable(),
-              role_transition.assist_fallback_handover_without_output_edge);
-
-          if (oq_boiler::relay_must_be_off(
-                  opentherm_selected,
-                  id(oq_otb_startup_probe_active),
-                  id(oq_boiler_connection_mismatch_state))) {
-            id(boiler_relay).turn_off();
-          } else if (boiler_allowed) {
-            id(boiler_relay).turn_on();
-          } else {
-            id(boiler_relay).turn_off();
-          }
-          if (!opentherm_selected) {
-            id(oq_boiler_transport_active) = id(boiler_relay).state;
-          }
+              (uint32_t) (${oq_boiler_transport_settle_s} * 1000UL),
+              (uint32_t) (${oq_boiler_relay_min_on_s} * 1000UL),
+              (uint32_t) (${oq_boiler_relay_min_off_s} * 1000UL),
+              (uint32_t) (${oq_boiler_otb_min_on_s} * 1000UL),
+              (uint32_t) (${oq_boiler_otb_min_off_s} * 1000UL),
+              (uint32_t) (${oq_otb_field_timeout_s} * 1000UL),
+          });

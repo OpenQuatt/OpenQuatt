@@ -44,11 +44,52 @@ entities, configuratie, koppelingen en één of enkele runtime-aanroepen.
 | Supervisory safety | Vermogenslimiet plus flow-/frost-interlocks | Gereed | #582 |
 | Supervisory state-machine | Resterende hoofdloop naar C++ | Gereed | #583 |
 | Strategy runtimes | Heating Curve, Power House, Cooling en managerbinding | Gereed | #584 |
-| Hydraulics en outputs | Flow Control, Thermal Limits en Auxiliary Relay | Klaar voor review | #589 |
-| Boiler runtime | Commandocapture, outputcontroller en transportbinding | Gepland | Nog te openen |
+| Hydraulics en outputs | Flow Control, Thermal Limits en Auxiliary Relay | Gereed | #589 |
+| Boiler runtime | Commandocapture, outputcontroller en transportbinding | Klaar voor review | Nog te openen |
 | Bronselectie-opruiming | Generieke selectie/freshness waar dit YAML werkelijk verkleint | Beslispunt na bovenstaande blokken | Nog te bepalen |
 
-## Actueel werkblok: Hydraulics en outputs
+## Actueel werkblok: Boiler runtime
+
+Doel: dispatch, outputbeslissingen en de R1/OpenTherm-lifecycle achter één
+transportneutraal C++-contract brengen. YAML blijft eigenaar van entities,
+configuratie, protocoltelemetrie en compacte interval-/eventbinding.
+
+Omvang:
+
+1. Boiler-dispatch:
+   - koude-startassist, Power House, Heating Curve, fallback en commissioning;
+   - bronprovenance, freshness, restvermogen en hydraulisch doelsetpoint.
+2. Boiler-controller:
+   - centrale fail-closed outputbeslissing, minimale aan/uit-tijden en re-arm;
+   - flow-, temperatuur-, incident-, selectie- en runtime-pauzegates;
+   - R1-output, roltransities, logging en incidentstatus.
+3. OpenTherm-binding:
+   - commandotoepassing en urgente off-frames;
+   - link-, selectie- en startup-probe-lifecycle;
+   - break-before-make en geen stale replay na herstel.
+
+Afronding:
+
+- de drie Boiler-YAML's zijn samen 646 regels kleiner: 2.020 naar 1.374 regels;
+  inclusief de nieuwe runtimes en besliskernen is de productiecode netto 6
+  regels kleiner; regressietests en dit plandocument tellen afzonderlijk;
+- de volledige hostset (58), Python-contractset (171), webset (311),
+  C++-formatcontrole en config-validatie voor Q, Waveshare en Listener
+  (Single/Duo) zijn groen;
+- Q Single en Q Duo compileren. Q Duo gebruikt 40 bytes minder statisch DIRAM
+  en het image is 252 bytes groter; Q Single gebruikt eveneens 40 bytes minder
+  DIRAM en het image is 12 bytes kleiner dan de schone basis;
+- HIL is geslaagd voor CM100-dispatch, flowverlies en herstel, OpenTherm-
+  linkverlies met expliciete herstart en break-before-make bij R1/OpenTherm.
+  Na gemeten flowverlies waren Boiler-request, CH en `TSet` binnen 1.305 ms
+  ingetrokken. De foutinjectierondes gebruikten uitsluitend lokale,
+  niet-gecommitte testtimings; de productiebuild behoudt 120 s minimum-off en
+  de normale commissioning-tijden;
+- na HIL is schone actuele `dev` (`3f3217e1`, config hash `0xa853017d`)
+  teruggezet. Controllerinstellingen zijn hersteld en beide ODU-diagnostics
+  plus alle vier OpenTherm-fouttellers staan op nul.
+
+## Vorig werkblok: Hydraulics en outputs
 
 Doel: de stateful flowregeling, gedeelde watertemperatuurbeveiliging en
 auxiliary-relaybeslissingen als één samenhangende runtimegrens naar C++

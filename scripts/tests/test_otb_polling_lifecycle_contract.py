@@ -6,6 +6,12 @@ ROOT = Path(__file__).resolve().parents[2]
 HUB_HEADER = (ROOT / "components" / "opentherm" / "hub.h").read_text()
 HUB_CPP = (ROOT / "components" / "opentherm" / "hub.cpp").read_text()
 OTB_PACKAGE = (ROOT / "openquatt" / "oq_boiler_opentherm.yaml").read_text()
+OTB_RUNTIME = (
+    ROOT / "openquatt" / "includes" / "boiler" / "oq_boiler_otb_runtime.h"
+).read_text()
+TRANSPORT_LOGIC = (
+    ROOT / "openquatt" / "includes" / "boiler" / "oq_boiler_transport_logic.h"
+).read_text()
 COMMON_PACKAGE = (ROOT / "openquatt" / "oq_common.yaml").read_text()
 Q_PROFILE = (
     ROOT / "openquatt" / "profiles" / "heatpump_controller_q.yaml"
@@ -159,12 +165,14 @@ class OtbPollingLifecycleContractTest(unittest.TestCase):
             flush_block.index("esphome::opentherm::MessageId::CH_SETPOINT"),
         )
 
-        stop_start = OTB_PACKAGE.index(
-            "if (applied_stop && opentherm_selected"
+        self.assertIn(
+            "out.prioritize_off_frames = out.applied_stop && in.opentherm_selected && in.link_available",
+            TRANSPORT_LOGIC,
         )
-        stop_end = OTB_PACKAGE.index("if (command_active)", stop_start)
-        stop_block = OTB_PACKAGE[stop_start:stop_end]
-        self.assertIn("id(oq_otb_hub).prioritize_messages(", stop_block)
+        stop_start = OTB_RUNTIME.index("if (decision.prioritize_off_frames)")
+        stop_end = OTB_RUNTIME.index("if (decision.write_target)", stop_start)
+        stop_block = OTB_RUNTIME[stop_start:stop_end]
+        self.assertIn(".prioritize_messages(", stop_block)
         self.assertLess(
             stop_block.index("esphome::opentherm::MessageId::STATUS"),
             stop_block.index("esphome::opentherm::MessageId::CH_SETPOINT"),
@@ -205,16 +213,16 @@ class OtbPollingLifecycleContractTest(unittest.TestCase):
 
     def test_start_edge_prioritizes_setpoint_before_ch_status(self) -> None:
         self.assertIn(
-            "!id(oq_otb_applied_command_active) && command_active",
-            OTB_PACKAGE,
+            "out.applied_start = !in.previously_active && out.command_active",
+            TRANSPORT_LOGIC,
         )
-        start_edge = OTB_PACKAGE.index("if (applied_start)")
-        applied_state = OTB_PACKAGE.index(
-            "id(oq_otb_applied_command_active) = command_active;", start_edge
+        start_edge = OTB_RUNTIME.index("if (decision.applied_start)")
+        applied_state = OTB_RUNTIME.index(
+            "id(oq_otb_applied_command_active) = decision.command_active;", start_edge
         )
-        start_block = OTB_PACKAGE[start_edge:applied_state]
-        self.assertIn("id(oq_otb_hub).defer_priority_messages(", start_block)
-        self.assertNotIn("id(oq_otb_hub).prioritize_messages(", start_block)
+        start_block = OTB_RUNTIME[start_edge:applied_state]
+        self.assertIn(".defer_priority_messages(", start_block)
+        self.assertNotIn(".prioritize_messages(", start_block)
         self.assertNotIn("start_handshake_state.begin", start_block)
         self.assertLess(
             start_block.index("esphome::opentherm::MessageId::CH_SETPOINT"),
@@ -253,8 +261,8 @@ class OtbPollingLifecycleContractTest(unittest.TestCase):
 
     def test_otb_periodic_loop_does_not_overwrite_r1(self) -> None:
         # Periodic 1s OTB adapter must be guarded - R1's transport_active is owned by relay, not OTB
-        self.assertIn("oq_boiler_transport::otb_may_update_transport", OTB_PACKAGE)
-        self.assertIn("oq_boiler_transport::compute_otb_transport_active", OTB_PACKAGE)
+        self.assertIn("oq_boiler_transport::otb_may_update_transport", OTB_RUNTIME)
+        self.assertIn("oq_boiler_transport::compute_otb_transport_active", OTB_RUNTIME)
         # Old unconditional pattern must be gone
         self.assertNotIn(
             "id(oq_boiler_transport_active) =\n              opentherm_selected &&",

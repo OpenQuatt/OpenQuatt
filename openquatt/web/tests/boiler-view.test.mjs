@@ -26,7 +26,10 @@ const {
 const { INITIAL_SETTINGS_READY_KEY_MAP, SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
 const heatPumpCss = await readFile(new URL("../css/src/40-heatpump.css", import.meta.url), "utf8");
 const boilerOpenThermYaml = await readFile(new URL("../../oq_boiler_opentherm.yaml", import.meta.url), "utf8");
-const heatPumpQProfileYaml = await readFile(new URL("../../profiles/heatpump_controller_q.yaml", import.meta.url), "utf8");
+const boilerOpenThermRuntime = await readFile(
+  new URL("../../includes/boiler/oq_boiler_otb_runtime.h", import.meta.url),
+  "utf8",
+);
 const otSlaveYaml = await readFile(new URL("../../oq_ot_slave.yaml", import.meta.url), "utf8");
 const commonSubstitutionsYaml = await readFile(new URL("../../oq_substitutions_common.yaml", import.meta.url), "utf8");
 const quickStartSource = await readFile(new URL("../js/src/features/quickstart.js", import.meta.url), "utf8");
@@ -462,7 +465,7 @@ test("firmware publishes boiler connection mismatch transitions immediately", ()
     /oq_boiler_connection_mismatch_state\) = false;\s+id\(oq_boiler_connection_mismatch\)\.publish_state\(false\);/,
   );
   assert.match(
-    heatPumpQProfileYaml,
+    boilerOpenThermRuntime,
     /oq_boiler_connection_mismatch_state\) = false;\s+id\(oq_boiler_connection_mismatch\)\.publish_state\(false\);/,
   );
 });
