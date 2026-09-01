@@ -1,6 +1,6 @@
-import { hasEntity, isEntityActive } from "../core/app-shared.js";
+import { hasEntity } from "../core/app-shared.js";
 import { TOPOLOGY_HINT_KEYS } from "../core/config.js";
-import { getEntityValue } from "../core/entity-store.js";
+import { getEntityValue, isDeviceTimeValid } from "../core/entity-store.js";
 import { formatDurationFromMinutes } from "../core/formatting.js";
 import { state } from "../core/state.js";
 
@@ -180,12 +180,11 @@ import { state } from "../core/state.js";
   }
 
   export function formatDeviceClock() {
-    const timeValid = isEntityActive("timeValid");
     const deviceClock = String(getEntityValue("timeNowHhmm") || "").trim();
-    if (deviceClock && deviceClock !== "invalid") {
+    if (isDeviceTimeValid(deviceClock)) {
       return deviceClock;
     }
-    if (hasEntity("timeValid") && !timeValid) {
+    if (hasEntity("timeNowHhmm")) {
       return "Geen tijdsync";
     }
     try {
@@ -199,7 +198,7 @@ import { state } from "../core/state.js";
   }
 
   export function formatDiagnosticsDateTime() {
-    if (hasEntity("timeValid") && !isEntityActive("timeValid")) {
+    if (hasEntity("timeNowHhmm") && !isDeviceTimeValid(getEntityValue("timeNowHhmm"))) {
       return "Geen tijdsync";
     }
 

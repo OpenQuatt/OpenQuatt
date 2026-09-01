@@ -1,6 +1,6 @@
 import { formatOverviewStatValue, getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive, isTrendHistoryEnabled } from "../core/app-shared.js";
 import { isCurveMode } from "../core/domain-helpers.js";
-import { formatOpenQuattResumeDateTime, getEntityValue, hasOpenQuattResumeSchedule } from "../core/entity-store.js";
+import { formatOpenQuattResumeDateTime, getEntityValue, hasOpenQuattResumeSchedule, parseDeviceClockMinutes } from "../core/entity-store.js";
 import { getOverviewControlsRenderSignature, getRenderSignature } from "../core/render-signatures.js";
 import { formatDurationFromMinutes, formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
@@ -167,17 +167,7 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
   export const formatOverviewTrendDurationLabel = formatDurationFromMinutes;
 
   export function parseOverviewClockMinutes(rawValue) {
-    const value = String(rawValue || "").trim();
-    const match = value.match(/^(\d{1,2}):(\d{2})$/);
-    if (!match) {
-      return Number.NaN;
-    }
-    const hours = Number(match[1]);
-    const minutes = Number(match[2]);
-    if (Number.isNaN(hours) || Number.isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-      return Number.NaN;
-    }
-    return (hours * 60) + minutes;
+    return parseDeviceClockMinutes(rawValue);
   }
 
   export function formatOverviewTrendClockLabel(totalMinutes) {
@@ -195,7 +185,7 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
   export function formatOverviewTrendPointTime(sampleTimestamp, endTime) {
     const ageMinutes = Math.max(0, (Number(endTime) - Number(sampleTimestamp)) / 60000);
     const ageLabel = formatOverviewTrendDurationLabel(ageMinutes);
-    const clockLabel = hasEntity("timeValid") && isEntityActive("timeValid") ? formatOverviewTrendClockLabel(ageMinutes) : "";
+    const clockLabel = formatOverviewTrendClockLabel(ageMinutes);
     if (clockLabel) {
       return {
         value: clockLabel,

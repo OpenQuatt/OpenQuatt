@@ -531,11 +531,6 @@ binary_sensor:
     device_class: problem
     entity_category: diagnostic
 
-  - platform: template
-    id: oq_time_valid
-    name: "Time valid"
-    internal: true
-
 text_sensor:
   - platform: template
     id: oq_control_mode
