@@ -10,6 +10,8 @@
 
 namespace oq_flow_control {
 
+constexpr int kAutoStartFallbackIpwm = 440;
+
 // iPWM limits shared with YAML.
 inline int clamp_ipwm(int value) {
   constexpr int kMin = 50;
@@ -19,12 +21,12 @@ inline int clamp_ipwm(int value) {
   return value;
 }
 
-inline int compute_start_pwm(bool commissioning_start, int commissioning_start_pwm, int last_good_pwm, int fallback_pwm,
+inline int compute_start_pwm(bool commissioning_start, int commissioning_start_pwm, int last_good_pwm,
                              bool cooling_target, int last_good_pwm_cooling) {
   if (commissioning_start) return clamp_ipwm(commissioning_start_pwm);
   const int candidate = cooling_target ? last_good_pwm_cooling : last_good_pwm;
   if (candidate >= 50 && candidate <= 850) return clamp_ipwm(candidate);
-  return clamp_ipwm(fallback_pwm);
+  return clamp_ipwm(kAutoStartFallbackIpwm);
 }
 
 inline float select_local_flow(bool secondary_enabled, float hp1_flow_lph, float hp2_flow_lph,

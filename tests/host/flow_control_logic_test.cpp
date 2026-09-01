@@ -118,19 +118,21 @@ void test_nan_flow_failsafe() {
 
 void test_compute_start_pwm() {
   // CM100 commissioning always uses commissioning PWM (400), not last_good
-  int start = compute_start_pwm(true, 400, 440, 440, false, 460);
+  int start = compute_start_pwm(true, 400, 440, false, 460);
   assert(start == 400);
-  int start_cooling = compute_start_pwm(true, 400, 440, 440, true, 460);
+  int start_cooling = compute_start_pwm(true, 400, 440, true, 460);
   assert(start_cooling == 400);
   // Outside CM100 uses last_good per bank
-  int start_auto = compute_start_pwm(false, 400, 440, 440, false, 460);
+  int start_auto = compute_start_pwm(false, 400, 440, false, 460);
   assert(start_auto == 440);
-  int start_auto_cooling = compute_start_pwm(false, 400, 440, 440, true, 460);
+  int start_auto_cooling = compute_start_pwm(false, 400, 440, true, 460);
   assert(start_auto_cooling == 460);
-  // Invalid last_good falls back to fallback
-  int start_fallback = compute_start_pwm(false, 400, 0, 440, false, 460);
-  assert(start_fallback == 440);
-  int start_fallback_comm = compute_start_pwm(true, 400, 0, 440, false, 460);
+  // Invalid last_good falls back to the fixed C++ default.
+  int start_fallback = compute_start_pwm(false, 400, 0, false, 460);
+  assert(start_fallback == kAutoStartFallbackIpwm);
+  int start_fallback_cooling = compute_start_pwm(false, 400, 440, true, 900);
+  assert(start_fallback_cooling == kAutoStartFallbackIpwm);
+  int start_fallback_comm = compute_start_pwm(true, 400, 0, false, 460);
   assert(start_fallback_comm == 400);
 }
 

@@ -13,6 +13,7 @@ ODU_EDITOR = (ROOT / "openquatt/experimental/oq_odu_runtime_frequency_table_hp.y
 ODU_RUNTIME = (ROOT / "openquatt/includes/experimental/oq_odu_runtime_frequency_table.h").read_text()
 HP_IO = (ROOT / "openquatt/oq_HP_io.yaml").read_text()
 API_INGRESS = (ROOT / "openquatt/oq_api_ingress.yaml").read_text()
+FLOW_CONTROL = (ROOT / "openquatt/oq_flow_control.yaml").read_text()
 NVS_CLEANUP = (ROOT / "openquatt/includes/storage/oq_nvs_cleanup.h").read_text()
 DEV = (ROOT / "scripts/dev.py").read_text()
 CRASH_HEADER = (ROOT / "components/openquatt_crash_telemetry/OpenQuattCrashTelemetry.h").read_text()
@@ -31,6 +32,11 @@ class NvsPersistenceContractTest(unittest.TestCase):
         self.assertEqual(API_INGRESS.count("restore_mode: ALWAYS_OFF"), 2)
         self.assertNotIn("restore_mode: RESTORE_DEFAULT_OFF", API_INGRESS)
         self.assertIn('"API ingress enable state"', API_INGRESS)
+
+    def test_retired_flow_pwm_preferences_are_cleaned_up(self) -> None:
+        self.assertIn("435184091U", FLOW_CONTROL)
+        self.assertIn("3242211636U", FLOW_CONTROL)
+        self.assertIn('"retired flow PWM entities"', FLOW_CONTROL)
 
     def test_cleanup_is_targeted_and_never_erases_the_partition(self) -> None:
         self.assertIn('nvs_open(ESPHOME_NAMESPACE, NVS_READWRITE', NVS_CLEANUP)

@@ -162,6 +162,7 @@ oq_cm0_sticky_wait_s: "86400"                         # Wait time in CM0 before 
 oq_cm0_sticky_run_s: "60"                             # Duration of sticky-pump run in CM0 [s].
 oq_cm0_pump_stop_ipwm: "1000.0"                       # iPWM setpoint that forces pump off in CM0.
 oq_sticky_pwm: "800"                                  # Fixed iPWM fallback used during CM0 sticky circulation.
+oq_cm98_pump_ipwm: "800"                              # Fixed pump iPWM used during CM98 frost circulation.
 
 # ----------------------------
 # HEATING STRATEGY

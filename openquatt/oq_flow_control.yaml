@@ -33,6 +33,18 @@
 #
 # ==============================================================================
 
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - lambda: |-
+          constexpr std::array<uint32_t, 2> retired_flow_pwm_preferences{{
+              435184091U,
+              3242211636U,
+          }};
+          oq_nvs_cleanup::erase_esphome_preferences(
+              retired_flow_pwm_preferences, "retired flow PWM entities");
+
 # ----------------------------
 # INTERNAL STATE (PI)
 # ----------------------------
@@ -107,32 +119,6 @@ number:
     initial_value: 400
     restore_value: true
     optimistic: true
-
-  - platform: template
-    id: oq_flow_frost_pwm
-    name: "Frost Circulation iPWM"
-    internal: true
-    unit_of_measurement: "iPWM"
-    mode: slider
-    min_value: 50
-    max_value: 850
-    step: 10
-    restore_value: true
-    optimistic: true
-    initial_value: 800
-
-  - platform: template
-    id: oq_flow_auto_start_pwm
-    name: "Flow AUTO start iPWM"
-    internal: true
-    unit_of_measurement: "iPWM"
-    mode: slider
-    min_value: 50
-    max_value: 850
-    step: 1
-    restore_value: true
-    optimistic: true
-    initial_value: 440
 
   - platform: template
     id: oq_flow_kp
@@ -241,4 +227,4 @@ interval:
     startup_delay: ${oq_flow_loop_startup_delay_ms}ms
     then:
       - lambda: |-
-          oq_flow_runtime::runtime().tick({${oq_flow_loop_s}, 20});
+          oq_flow_runtime::runtime().tick({${oq_flow_loop_s}, 20, ${oq_cm98_pump_ipwm}});
