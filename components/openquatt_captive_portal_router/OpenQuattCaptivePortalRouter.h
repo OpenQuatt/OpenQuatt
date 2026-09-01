@@ -15,9 +15,6 @@ class OpenQuattCaptivePortalRouter final : public AsyncWebHandler, public Compon
 
   bool canHandle(AsyncWebServerRequest* request) const override;
   void handleRequest(AsyncWebServerRequest* request) override;
-
- protected:
-  bool request_targets_soft_ap_(AsyncWebServerRequest* request) const;
 };
 
 }  // namespace openquatt_captive_portal_router

@@ -68,10 +68,9 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
         self.assertIn("portal->canHandle(request)", CAPTIVE_PORTAL_ROUTER_CPP)
         self.assertIn("portal->handleRequest(request)", CAPTIVE_PORTAL_ROUTER_CPP)
 
-    def test_captive_portal_router_only_handles_soft_ap_requests(self) -> None:
-        self.assertIn("wifi->wifi_soft_ap_ip()", CAPTIVE_PORTAL_ROUTER_CPP)
-        self.assertIn("getsockname(httpd_req_to_sockfd", CAPTIVE_PORTAL_ROUTER_CPP)
-        self.assertIn("local_address.ss_family != AF_INET", CAPTIVE_PORTAL_ROUTER_CPP)
+    def test_captive_portal_router_only_handles_root_requests(self) -> None:
+        self.assertIn("request->url_to(url_buffer)", CAPTIVE_PORTAL_ROUTER_CPP)
+        self.assertIn('== "/";', CAPTIVE_PORTAL_ROUTER_CPP)
 
     def test_web_auth_credentials_have_component_lifetime(self) -> None:
         self.assertIn("AuthStorage runtime_storage_{};", WEB_AUTH_HEADER)

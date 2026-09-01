@@ -1,8 +1,5 @@
 #include "OpenQuattCaptivePortalRouter.h"
 
-#include <lwip/sockets.h>
-
-#include "esphome/components/wifi/wifi_component.h"
 #include "esphome/core/log.h"
 
 namespace esphome {
@@ -29,7 +26,12 @@ void OpenQuattCaptivePortalRouter::setup() {
 
 bool OpenQuattCaptivePortalRouter::canHandle(AsyncWebServerRequest* request) const {
   auto* portal = captive_portal::global_captive_portal;
-  return portal != nullptr && portal->canHandle(request) && this->request_targets_soft_ap_(request);
+  if (portal == nullptr || !portal->canHandle(request)) {
+    return false;
+  }
+
+  char url_buffer[AsyncWebServerRequest::URL_BUF_SIZE];
+  return request->url_to(url_buffer) == "/";
 }
 
 void OpenQuattCaptivePortalRouter::handleRequest(AsyncWebServerRequest* request) {
@@ -39,31 +41,6 @@ void OpenQuattCaptivePortalRouter::handleRequest(AsyncWebServerRequest* request)
     return;
   }
   portal->handleRequest(request);
-}
-
-bool OpenQuattCaptivePortalRouter::request_targets_soft_ap_(AsyncWebServerRequest* request) const {
-  auto* wifi = wifi::global_wifi_component;
-  if (wifi == nullptr) {
-    return false;
-  }
-
-  const network::IPAddress soft_ap_ip = wifi->wifi_soft_ap_ip();
-  if (!soft_ap_ip.is_set() || !soft_ap_ip.is_ip4()) {
-    return false;
-  }
-
-  httpd_req_t* raw_request = *request;
-  struct sockaddr_storage local_address{};
-  socklen_t address_length = sizeof(local_address);
-  if (getsockname(httpd_req_to_sockfd(raw_request), reinterpret_cast<struct sockaddr*>(&local_address),
-                  &address_length) != 0 ||
-      local_address.ss_family != AF_INET) {
-    return false;
-  }
-
-  const auto* local_ipv4 = reinterpret_cast<const struct sockaddr_in*>(&local_address);
-  const esp_ip4_addr_t soft_ap_ipv4 = soft_ap_ip;
-  return local_ipv4->sin_addr.s_addr == soft_ap_ipv4.addr;
 }
 
 void OpenQuattCaptivePortalRouter::dump_config() {

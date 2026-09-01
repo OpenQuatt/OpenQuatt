@@ -3,7 +3,7 @@ import esphome.config_validation as cv
 from esphome.const import CONF_ID
 
 AUTO_LOAD = ["web_server_base"]
-DEPENDENCIES = ["captive_portal", "web_server", "wifi"]
+DEPENDENCIES = ["captive_portal", "web_server"]
 
 openquatt_captive_portal_router_ns = cg.esphome_ns.namespace(
     "openquatt_captive_portal_router"
