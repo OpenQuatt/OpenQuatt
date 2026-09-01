@@ -1,19 +1,4 @@
-# ==============================================================================
 # OpenQuatt - Strategy Manager
-# ==============================================================================
-#
-# Goal:
-#   Own the shared strategy interface and active heating-strategy selection.
-#
-# Responsibilities:
-#   - Publishes the active heating strategy as `oq_heat_mode_code`
-#   - Declares shared strategy output `oq_demand_raw`
-#   - Exposes the user-facing heating strategy selector and status
-#
-# Ownership:
-#   - Curve and Power House implementations write `oq_demand_raw` in their own modules
-#   - This package does not implement strategy-specific demand or compressor-request logic
-# ==============================================================================
 
 globals:
   # Shared strategy output (0..20) consumed by downstream thermal-request control.
@@ -121,50 +106,8 @@ select:
       then:
         - climate.pid.reset_integral_term: oq_heating_curve_pid
         - lambda: |-
-            // Reset the shared strategy interface and curve-local state on mode switches.
-            id(oq_heat_mode_code) = (x == "Water Temperature Control (heating curve)") ? 1 : 0;
-            id(oq_demand_raw) = 0;
-            id(oq_strategy_phase_code) = 0;
-            id(oq_strategy_requested_power_w) = NAN;
-            id(oq_strategy_supply_target_temp) = NAN;
-            id(oq_strategy_heat_request_active) = false;
-            id(oq_strategy_output_valid) = false;
-            id(oq_strategy_output_source_code) = 0;
-            id(oq_strategy_output_updated_ms) = 0;
-            id(oq_strategy_hp_expected_power_w) = NAN;
-            id(oq_strategy_hp_max_power_w) = NAN;
-            id(oq_strategy_hp_saturated) = false;
-            oq_curve::reset_control_state(
-              id(oq_curve_demand_continuous),
-              id(oq_demand_curve),
-              id(oq_curve_demand_pre_guardrail),
-              id(oq_curve_heat_request_active),
-              id(oq_curve_stop_arm_ms),
-              id(oq_curve_off_since_ms),
-              id(oq_curve_restart_inhibit_active),
-              id(oq_curve_restart_blocked_by_room),
-              id(oq_curve_regime_code));
-            oq_curve::reset_outside_ema_state(
-              id(oq_curve_outside_ema_c),
-              id(oq_curve_outside_ema_initialized),
-              id(oq_curve_outside_ema_last_ms));
-            oq_curve::reset_request_state(
-              id(oq_curve_request_last_loop_ms),
-              id(oq_curve_request_total_level),
-              id(oq_curve_request_owner_hp),
-              id(oq_curve_dispatch_hp1_level),
-              id(oq_curve_dispatch_hp2_level),
-              id(oq_curve_capacity_mode_code));
-            oq_request::reset_dual_runtime_state(
-              id(oq_dual_hp_enabled),
-              id(oq_dual_hp_enable_hold_elapsed_accum_min),
-              id(oq_dual_hp_disable_hold_elapsed_accum_min),
-              id(oq_dual_hp_emergency_hold_elapsed_accum_min),
-              id(oq_curve_single_owner_hp),
-              id(oq_duo_request_hold_until_ms),
-              0);
-            id(oq_strategy_phase_text).publish_state("idle");
-            ESP_LOGD("quatt.strategy", "strategy_switch");
+            oq_strategy_runtime::runtime().switch_heating_mode(
+                x == "Water Temperature Control (heating curve)");
 
 text_sensor:
   - platform: template
@@ -198,50 +141,8 @@ sensor:
     accuracy_decimals: 1
     update_interval: 10s
     lambda: |-
-      // Prefer local sensors from HPs that are actively moving air. Idle local
-      // sensors remain useful as fallback, but they are more vulnerable to sun,
-      // frost and thermal lag than a running unit.
-      const uint32_t now_ms = millis();
-      uint32_t stale_s = (uint32_t) ${oq_outside_temp_stale_s};
-      const uint32_t stale_ms = stale_s * 1000UL;
-      const bool dual_local_sources = (${secondary_outside_is_distinct} != 0);
-      const float hp1_outside_c = id(hp1_outside_temp).state;
-      const float hp2_outside_c = id(${secondary_outside_temp_id}).state;
-      const float hp1_mode_raw = id(hp1_working_mode).state;
-      const float hp2_mode_raw = id(${secondary_working_mode_id}).state;
-
-      auto is_active_working_mode = [](float mode_raw)->bool {
-        if (isnan(mode_raw)) return false;
-        const int mode = (int) roundf(mode_raw);
-        return mode == 1 || mode == 2;
-      };
-
-      auto trusted_local_outside = [&](float outside_c, uint32_t last_change_ms, uint32_t activity_ms)->bool {
-        if (isnan(outside_c)) return false;
-        if (!dual_local_sources || stale_ms == 0) return true;
-        if (last_change_ms == 0 || activity_ms == 0) return true;
-        if (activity_ms <= last_change_ms) return true;
-        if (now_ms <= last_change_ms || now_ms <= activity_ms) return true;
-        const bool outside_old = (uint32_t) (now_ms - last_change_ms) >= stale_ms;
-        const bool hp_recently_active = (uint32_t) (now_ms - activity_ms) < stale_ms;
-        if (outside_old && hp_recently_active) return false;
-        return true;
-      };
-
-      const bool hp1_valid =
-          trusted_local_outside(hp1_outside_c, id(hp1_outside_temp_last_change_ms), id(hp1_outside_temp_activity_ms));
-      const bool hp2_valid =
-          trusted_local_outside(hp2_outside_c, id(${secondary_outside_last_change_ms_id}), id(${secondary_outside_activity_ms_id}));
-      const bool hp1_active = hp1_valid && is_active_working_mode(hp1_mode_raw);
-      const bool hp2_active = hp2_valid && is_active_working_mode(hp2_mode_raw);
-
-      if (hp1_active && hp2_active) return std::min(hp1_outside_c, hp2_outside_c);
-      if (hp1_active) return hp1_outside_c;
-      if (hp2_active) return hp2_outside_c;
-      if (hp1_valid && hp2_valid) return 0.5f * (hp1_outside_c + hp2_outside_c);
-      if (hp1_valid) return hp1_outside_c;
-      if (hp2_valid) return hp2_outside_c;
-      return NAN;
+      return oq_strategy_runtime::runtime().local_outside_temperature(
+          (uint32_t) ${oq_outside_temp_stale_s});
 
   - platform: template
     id: oq_strategy_active_code_sensor
@@ -342,15 +243,4 @@ interval:
     startup_delay: 800ms
     then:
       - lambda: |-
-          id(oq_heat_mode_code) = id(oq_heat_control_mode).active_index().value_or(0) == 1 ? 1 : 0;
-
-          // Publish the shared strategy interface fields that are independent of
-          // the active strategy implementation.
-          const int cm_code = id(oq_control_mode_code);
-          if (cm_code == 5) id(oq_strategy_active_code) = 1;
-          else if (id(oq_heat_mode_code) == 1) id(oq_strategy_active_code) = 2;
-          else id(oq_strategy_active_code) = 3;
-
-          id(oq_strategy_water_limit_factor) = id(oq_water_temp_limit_factor);
-          id(oq_strategy_water_trip_active) = id(oq_water_temp_trip_active);
-          id(oq_strategy_water_hard_trip_active) = id(oq_water_temp_hard_trip_active);
+          oq_strategy_runtime::runtime().tick();

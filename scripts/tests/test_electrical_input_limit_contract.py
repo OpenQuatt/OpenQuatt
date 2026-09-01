@@ -8,9 +8,12 @@ LIMITER_LOGIC = (ROOT / "openquatt" / "includes" / "control" / "oq_supervisory_p
 LIMITER_RUNTIME = (ROOT / "openquatt" / "includes" / "control" / "oq_supervisory_power_limiter_runtime.h").read_text()
 LIMITER_TEST = (ROOT / "tests" / "host" / "supervisory_power_limiter_logic_test.cpp").read_text()
 POWER_HOUSE = (ROOT / "openquatt" / "oq_power_house_strategy.yaml").read_text()
+POWER_HOUSE_RUNTIME = (ROOT / "openquatt/includes/control/oq_power_house_runtime.h").read_text()
 DISPATCH = (ROOT / "openquatt" / "includes" / "control" / "oq_power_house_dispatch_logic.h").read_text()
 HEATING_CURVE = (ROOT / "openquatt" / "oq_heating_curve_strategy.yaml").read_text()
+HEATING_CURVE_RUNTIME = (ROOT / "openquatt/includes/control/oq_heating_curve_runtime.h").read_text()
 COOLING = (ROOT / "openquatt" / "oq_cooling_strategy.yaml").read_text()
+COOLING_RUNTIME = (ROOT / "openquatt/includes/control/oq_cooling_runtime.h").read_text()
 HP_IO = (ROOT / "openquatt" / "oq_HP_io.yaml").read_text()
 
 class ElectricalInputLimitContractTest(unittest.TestCase):
@@ -46,20 +49,20 @@ class ElectricalInputLimitContractTest(unittest.TestCase):
         self.assertLessEqual(total, 2360)
 
     def test_power_house_alone_uses_predictive_thresholds(self) -> None:
-        self.assertEqual(POWER_HOUSE.count("id(oq_power_limit_soft_w)"), 1)
-        self.assertEqual(POWER_HOUSE.count("id(oq_power_limit_peak_w)"), 1)
+        self.assertEqual(POWER_HOUSE_RUNTIME.count("id(oq_power_limit_soft_w)"), 1)
+        self.assertEqual(POWER_HOUSE_RUNTIME.count("id(oq_power_limit_peak_w)"), 1)
         self.assertIn("electrical_limits_valid", DISPATCH)
         self.assertIn("result.electrical_w > tuning.peak_limit_w", DISPATCH)
-        self.assertIn("id(oq_power_cap_f)", HEATING_CURVE)
-        self.assertIn("id(oq_power_cap_f)", COOLING)
-        self.assertNotIn("oq_power_limit_peak_w", HEATING_CURVE)
-        self.assertNotIn("oq_power_limit_peak_w", COOLING)
+        self.assertIn("id(oq_power_cap_f)", HEATING_CURVE_RUNTIME)
+        self.assertIn("id(oq_power_cap_f)", COOLING_RUNTIME)
+        self.assertNotIn("oq_power_limit_peak_w", HEATING_CURVE + HEATING_CURVE_RUNTIME)
+        self.assertNotIn("oq_power_limit_peak_w", COOLING + COOLING_RUNTIME)
 
     def test_heating_curve_dispatch_uses_power_capped_continuous_demand(self) -> None:
-        for marker in ("oq_curve::power_capped_demand_u(id(oq_curve_demand_continuous), f, demand_max_f)", "phase_target_power_w(heat_phase, demand_u, owner_cap_w, duo_cap_w)", "lroundf(demand_u * (float) level_cap)", "const float dispatch_u = demand_max_f > 0 ? (float) f / (float) demand_max_f : 0.0f;", "(dispatch_u >= 0.95f)", "(dispatch_u >= duo_enable_min_u)", "(dispatch_u <= duo_disable_max_u)", "const bool demand_active = demand_u > 0.0f;", "hp2_candidate_state,\n                      demand_active,"):
-            self.assertIn(marker, HEATING_CURVE)
-        self.assertNotIn("if (isnan(demand_continuous))", HEATING_CURVE)
-        paths = ("openquatt/oq_heating_curve_strategy.yaml", "openquatt/includes/control/oq_heating_curve_logic.h", "tests/host/heating_curve_restart_logic_test.cpp", "scripts/tests/test_electrical_input_limit_contract.py")
+        for marker in ("oq_curve::power_capped_demand_u(id(oq_curve_demand_continuous), capped, config.demand_max_f)", "phase_target_power_w(heat_phase, demand_u, owner_capacity_w, duo_capacity_w)", "std::lround(demand_u * level_cap)", "const float dispatch_u = config.demand_max_f > 0 ? static_cast<float>(capped) / config.demand_max_f : 0.0f;", "dispatch_u >= 0.95f", "dispatch_u >= duo_enable_min_u", "dispatch_u <= duo_disable_max_u", "const bool demand_active = demand_u > 0.0f;", "hp1_candidate, hp2_candidate, demand_active"):
+            self.assertIn(marker, HEATING_CURVE_RUNTIME)
+        self.assertNotIn("if (isnan(demand_continuous))", HEATING_CURVE_RUNTIME)
+        paths = ("openquatt/oq_heating_curve_strategy.yaml", "openquatt/includes/control/oq_heating_curve_logic.h", "openquatt/includes/control/oq_heating_curve_runtime.h", "tests/host/heating_curve_restart_logic_test.cpp", "scripts/tests/test_electrical_input_limit_contract.py")
         self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1879)
 
 if __name__ == "__main__":
