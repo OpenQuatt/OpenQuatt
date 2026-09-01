@@ -67,9 +67,7 @@ sensor:
     name: "HA - Cooling Dew Point"
     entity_id: ${ha_cooling_dew_point_entity_id}
     internal: true
-    icon: mdi:water-thermometer
     unit_of_measurement: "°C"
-    device_class: temperature
     state_class: measurement
     accuracy_decimals: 2
 
@@ -109,53 +107,45 @@ binary_sensor:
     name: "HA - Outside Temperature Valid"
     entity_id: ${ha_outside_temp_valid_entity_id}
     internal: true
-    icon: mdi:check-decagram
 
   - platform: homeassistant
     id: water_supply_temp_valid_ha
     name: "HA - Water Supply Temperature Valid"
     entity_id: ${ha_water_supply_temp_valid_entity_id}
     internal: true
-    icon: mdi:check-decagram
 
   - platform: homeassistant
     id: room_setpoint_valid_ha
     name: "HA - Room Setpoint Valid"
     entity_id: ${ha_room_setpoint_valid_entity_id}
     internal: true
-    icon: mdi:check-decagram
 
   - platform: homeassistant
     id: room_temp_valid_ha
     name: "HA - Room Temperature Valid"
     entity_id: ${ha_room_temp_valid_entity_id}
     internal: true
-    icon: mdi:check-decagram
 
   - platform: homeassistant
     id: heating_enable_valid_ha
     name: "HA - Heating Enable Valid"
     entity_id: ${ha_heating_enable_valid_entity_id}
     internal: true
-    icon: mdi:check-decagram
 
   - platform: homeassistant
     id: cooling_enable_valid_ha
     name: "HA - Cooling Enable Valid"
     entity_id: ${ha_cooling_enable_valid_entity_id}
     internal: true
-    icon: mdi:check-decagram
 
   - platform: homeassistant
     id: cooling_dew_point_valid_ha
     name: "HA - Cooling Dew Point Valid"
     entity_id: ${ha_cooling_dew_point_valid_entity_id}
     internal: true
-    icon: mdi:check-decagram
 
   - platform: homeassistant
     id: external_heat_demand_valid_ha
     name: "HA - External Heat Demand Valid"
     entity_id: ${ha_external_heat_demand_valid_entity_id}
     internal: true
-    icon: mdi:check-decagram

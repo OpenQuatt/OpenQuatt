@@ -61,10 +61,8 @@ sensor:
   - platform: template
     id: oq_system_supply_temp
     name: "System Supply Temp (abstraction)"
-    icon: mdi:water-thermometer
     internal: true
     unit_of_measurement: "°C"
-    device_class: temperature
     state_class: measurement
     accuracy_decimals: 1
     update_interval: 5s

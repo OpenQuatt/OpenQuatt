@@ -70,8 +70,6 @@ button:
     id: oq_flow_autotune_start
     name: "Flow Autotune Start"
     internal: true
-    icon: mdi:play-circle-outline
-    entity_category: config
     on_press:
       - lambda: |-
           const auto cfg = oq_flow_autotune::make_runtime_config(
@@ -86,8 +84,6 @@ button:
     id: oq_flow_autotune_abort_btn
     name: "Flow Autotune Abort"
     internal: true
-    icon: mdi:stop-circle-outline
-    entity_category: config
     on_press:
       - lambda: |-
           id(oq_flow_autotune_abort) = true;
@@ -96,8 +92,6 @@ button:
     id: oq_flow_autotune_apply
     name: "Apply Flow Autotune Kp-Ki"
     internal: true
-    icon: mdi:check-circle-outline
-    entity_category: config
     on_press:
       - lambda: |-
           // Read the suggested gains and apply them only when both are valid.

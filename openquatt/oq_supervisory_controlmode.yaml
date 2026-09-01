@@ -435,36 +435,28 @@ number:
     id: oq_low_load_dyn_off_factor
     name: "Low-load dynamic OFF factor"
     internal: true
-    icon: mdi:percent-outline
-    disabled_by_default: true
     min_value: 0.60
     max_value: 0.90
     step: 0.05
     optimistic: true
     restore_value: true
     initial_value: 0.75
-    entity_category: config
 
   - platform: template
     id: oq_low_load_dyn_on_factor
     name: "Low-load dynamic ON factor"
     internal: true
-    icon: mdi:percent-outline
-    disabled_by_default: true
     min_value: 0.85
     max_value: 1.10
     step: 0.05
     optimistic: true
     restore_value: true
     initial_value: 1.0
-    entity_category: config
 
   - platform: template
     id: oq_low_load_min_hysteresis_w
     name: "Low-load minimum hysteresis"
     internal: true
-    icon: mdi:arrow-expand-vertical
-    disabled_by_default: true
     unit_of_measurement: "W"
     min_value: 100
     max_value: 400
@@ -472,14 +464,11 @@ number:
     optimistic: true
     restore_value: true
     initial_value: 200
-    entity_category: config
 
   - platform: template
     id: oq_low_load_reentry_block_s
     name: "Low-load CM2 re-entry block"
     internal: true
-    icon: mdi:timer-lock-outline
-    disabled_by_default: true
     unit_of_measurement: "s"
     min_value: 0
     max_value: 900
@@ -487,7 +476,6 @@ number:
     optimistic: true
     restore_value: true
     initial_value: 300
-    entity_category: config
 # ----------------------------
 # SCHEDULE INPUTS
 # ----------------------------
@@ -547,10 +535,6 @@ binary_sensor:
     id: oq_time_valid
     name: "Time valid"
     internal: true
-    disabled_by_default: true
-    icon: mdi:clock-check
-    device_class: connectivity
-    entity_category: diagnostic
 
 text_sensor:
   - platform: template
@@ -569,37 +553,26 @@ text_sensor:
     id: oq_time_now_hhmm
     name: "Time now (HH:MM)"
     internal: true
-    icon: mdi:clock-outline
     update_interval: never
-    entity_category: diagnostic
 
   - platform: template
     id: oq_silent_window_hhmm
     name: "Silent window (start-end)"
     internal: true
-    disabled_by_default: true
-    icon: mdi:calendar-clock
     update_interval: never
-    entity_category: diagnostic
 
   - platform: template
     id: oq_silent_status
     name: "Silent status"
     internal: true
-    disabled_by_default: true
-    icon: mdi:information-outline
     update_interval: never
-    entity_category: diagnostic
 
   # DEBUG-RUNTIME START: Power House low-load diagnostics
   - platform: template
     id: oq_low_load_dyn_status
     name: "Low-load dynamic thresholds"
     internal: true
-    icon: mdi:chart-bell-curve
     update_interval: ${oq_diagnostic_update_interval_s}s
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       // Read the active threshold set from diagnostics.
       const float pmin = id(oq_low_load_pmin_dyn_w);
@@ -625,7 +598,6 @@ sensor:
     id: power_cap_level
     name: "Power cap demand"
     internal: true
-    icon: mdi:speedometer
     unit_of_measurement: "step"
     state_class: measurement
     accuracy_decimals: 0

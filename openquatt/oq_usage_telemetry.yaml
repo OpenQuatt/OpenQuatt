@@ -31,13 +31,11 @@ openquatt_usage_telemetry:
     id: oq_usage_telemetry_installation_id
     name: "Usage statistics installation ID"
     internal: true
-    entity_category: diagnostic
   setup_complete_sensor: oq_setup_complete_sensor
   choice_configured:
     id: oq_usage_telemetry_choice_configured
     name: "Usage statistics choice configured"
     internal: true
-    entity_category: diagnostic
   interval: 1h
   firmware_version: "${project_version}"
   release_channel: "${release_channel}"

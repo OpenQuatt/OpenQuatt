@@ -60,8 +60,6 @@ button:
     id: oq_air_purge_start
     name: "Air Purge Start"
     internal: true
-    icon: mdi:water-pump
-    entity_category: config
     on_press:
       - lambda: |-
           oq_air_purge::runtime().start(
@@ -72,8 +70,6 @@ button:
     id: oq_air_purge_abort_btn
     name: "Air Purge Abort"
     internal: true
-    icon: mdi:stop-circle-outline
-    entity_category: config
     on_press:
       - lambda: |-
           oq_air_purge::runtime().abort_or_clear();
@@ -83,8 +79,6 @@ switch:
     id: oq_air_purge_return_to_auto
     name: "Air purge return to Auto"
     internal: true
-    icon: mdi:backup-restore
-    entity_category: config
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
 

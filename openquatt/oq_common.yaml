@@ -637,25 +637,19 @@ text:
     name: "Firmware Test OTA URL"
     id: oq_firmware_test_ota_url
     internal: true
-    icon: mdi:link-variant
     mode: text
     optimistic: true
     restore_value: false
     max_length: 255
-    disabled_by_default: true
-    entity_category: config
 
   - platform: template
     name: "Firmware Test OTA MD5 URL"
     id: oq_firmware_test_ota_md5_url
     internal: true
-    icon: mdi:link-variant
     mode: text
     optimistic: true
     restore_value: false
     max_length: 255
-    disabled_by_default: true
-    entity_category: config
 
 # ==============================================================================
 # DIAGNOSTIC ENTITIES
@@ -733,10 +727,7 @@ select:
   - platform: template
     name: "Firmware Update Target"
     id: oq_firmware_update_target
-    icon: mdi:swap-horizontal
     internal: true
-    disabled_by_default: true
-    entity_category: config
     optimistic: true
     restore_value: false
     options: ["current build", "alternate connection", "alternate topology", "alternate topology and connection"]
@@ -812,9 +803,6 @@ select:
     name: "Debug Level"
     id: debug_level_select
     internal: true
-    disabled_by_default: true
-    icon: mdi:lan
-    entity_category: diagnostic
     optimistic: true
     # Always recover to INFO after a reboot; DEBUG can overwhelm busy Duo installations.
     restore_value: false
@@ -853,9 +841,6 @@ button:
     name: "Install Firmware Test OTA"
     id: oq_install_firmware_test_ota
     internal: true
-    icon: mdi:test-tube
-    disabled_by_default: true
-    entity_category: config
     on_press:
       then:
         - if:
@@ -930,9 +915,6 @@ button:
     id: oq_trend_history_flush_button
     name: Trendhistorie nu opslaan
     internal: true
-    disabled_by_default: true
-    icon: mdi:content-save
-    entity_category: config
     on_press:
       - lambda: |-
           id(oq_trend_capture_force_once) = true;
@@ -945,9 +927,6 @@ button:
     id: oq_decision_log_flush_button
     name: Beslisloghistorie nu opslaan
     internal: true
-    disabled_by_default: true
-    icon: mdi:content-save
-    entity_category: config
     on_press:
       - lambda: |-
           id(oq_decision_log).force_flush();
@@ -956,9 +935,6 @@ button:
     id: oq_decision_log_clear_button
     name: Beslisloghistorie wissen
     internal: true
-    disabled_by_default: true
-    icon: mdi:delete-clock
-    entity_category: config
     on_press:
       - lambda: |-
           id(oq_decision_log).clear_flash_history();
@@ -967,9 +943,6 @@ button:
     id: oq_lifetime_energy_history_clear_button
     name: Lifetime energiehistorie wissen
     internal: true
-    disabled_by_default: true
-    icon: mdi:delete-clock
-    entity_category: config
     on_press:
       - lambda: |-
           id(oq_energy_history_endpoint).clear_history();
@@ -978,9 +951,6 @@ button:
     id: oq_lifetime_energy_history_capture_button
     name: Lifetime energiehistorie nu opslaan
     internal: true
-    disabled_by_default: true
-    icon: mdi:content-save
-    entity_category: config
     on_press:
       - script.execute: oq_capture_energy_history_sample
       - script.wait: oq_capture_energy_history_sample
@@ -1019,9 +989,6 @@ button:
     id: oq_install_firmware_update_target
     name: Install Firmware Update Target
     internal: true
-    disabled_by_default: true
-    icon: mdi:swap-horizontal-bold
-    entity_category: diagnostic
     on_press:
       - if:
           condition:
@@ -1039,9 +1006,6 @@ switch:
     id: oq_trend_history_enabled_switch
     name: Trendopslag
     internal: true
-    disabled_by_default: true
-    icon: mdi:chart-line
-    entity_category: config
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
     turn_on_action:
@@ -1054,8 +1018,6 @@ switch:
     id: oq_trend_history_flash_switch
     name: Trendhistorie opslaan in flash
     internal: true
-    icon: mdi:database
-    entity_category: config
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
     turn_on_action:
@@ -1069,8 +1031,6 @@ switch:
     id: oq_decision_log_flash_switch
     name: Beslisloghistorie bewaren
     internal: true
-    icon: mdi:timeline-clock-outline
-    entity_category: config
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
     turn_on_action:
@@ -1084,8 +1044,6 @@ switch:
     id: oq_lifetime_energy_history_switch
     name: Lifetime energiehistorie opslaan
     internal: true
-    icon: mdi:database-clock
-    entity_category: config
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
     turn_on_action:
@@ -1100,7 +1058,6 @@ binary_sensor:
     id: oq_runtime_polling_paused
     name: Runtime polling paused
     internal: true
-    entity_category: diagnostic
     on_state:
       then:
         - lambda: |-
@@ -1143,20 +1100,15 @@ sensor:
       id: oq_loop_time
       name: "Loop Time"
       internal: true
-      icon: mdi:timer-outline
-      entity_category: diagnostic
-      disabled_by_default: true
       accuracy_decimals: 0
 
   - platform: template
     name: Firmware Update Progress
     id: oq_firmware_update_progress
     internal: true
-    icon: mdi:progress-upload
     unit_of_measurement: "%"
     accuracy_decimals: 0
     update_interval: 1s
-    entity_category: diagnostic
     lambda: |-
       return id(oq_ota_progress_pct);
 
@@ -1164,11 +1116,8 @@ sensor:
     name: Uptime raw
     id: uptime_sensor
     internal: true
-    icon: mdi:timer-outline
     update_interval: 60s
-    device_class: duration
     unit_of_measurement: s
-    entity_category: diagnostic
 
   - platform: template
     name: Uptime
@@ -1198,8 +1147,6 @@ text_sensor:
     id: oq_firmware_update_status
     name: Firmware Update Status
     internal: true
-    icon: mdi:upload-network-outline
-    entity_category: diagnostic
     update_interval: never
     lambda: |-
       // Expose a compact OTA phase label for dashboards and the local web UI.
@@ -1234,8 +1181,6 @@ text_sensor:
     id: oq_installation_topology_text
     name: OpenQuatt Installation Topology
     internal: true
-    icon: mdi:home-analytics
-    entity_category: diagnostic
     update_interval: never
     lambda: |-
       #if OQ_TOPOLOGY_DUO
@@ -1247,8 +1192,6 @@ text_sensor:
     id: oq_hardware_profile_text
     name: OpenQuatt Hardware Profile
     internal: true
-    icon: mdi:developer-board
-    entity_category: diagnostic
     update_interval: never
     lambda: |-
       return {"${oq_hardware_profile}"};
@@ -1279,8 +1222,6 @@ text_sensor:
     id: uptime_readable_text
     name: Uptime readable
     internal: true
-    icon: mdi:timer-outline
-    entity_category: diagnostic
     update_interval: 60s
     lambda: |-
       // Read the raw uptime and bail out early when the source is unavailable.

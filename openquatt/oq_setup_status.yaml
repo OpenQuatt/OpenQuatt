@@ -23,9 +23,6 @@ button:
     id: oq_setup_complete_button
     name: "Complete setup"
     internal: true
-    disabled_by_default: true
-    icon: mdi:check-bold
-    entity_category: config
     on_press:
       - lambda: |-
           id(oq_setup_complete) = true;
@@ -34,9 +31,6 @@ button:
     id: oq_setup_reset_button
     name: "Reset setup state"
     internal: true
-    disabled_by_default: true
-    icon: mdi:restart
-    entity_category: config
     on_press:
       - lambda: |-
           id(oq_setup_complete) = false;
@@ -46,8 +40,5 @@ binary_sensor:
     id: oq_setup_complete_sensor
     name: "Setup Complete"
     internal: true
-    icon: mdi:check-circle-outline
-    device_class: running
-    entity_category: diagnostic
     lambda: |-
       return id(oq_setup_complete);

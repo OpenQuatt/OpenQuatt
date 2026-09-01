@@ -131,11 +131,8 @@ sensor:
     name: "CIC - Polling interval"
     internal: true
     unit_of_measurement: "s"
-    device_class: duration
     state_class: measurement
     accuracy_decimals: 0
-    icon: mdi:timer-sand
-    disabled_by_default: true
     update_interval: never
 
   - platform: template
@@ -143,11 +140,8 @@ sensor:
     name: "CIC - Last success age"
     internal: true
     unit_of_measurement: "s"
-    device_class: duration
     state_class: measurement
     accuracy_decimals: 0
-    disabled_by_default: true
-    icon: mdi:timeline-clock-outline
     update_interval: never
 
 binary_sensor:
@@ -161,8 +155,6 @@ binary_sensor:
   - platform: template
     id: cic_ch_enable_valid
     name: "CIC - CH enable valid"
-    icon: mdi:check-decagram
-    entity_category: diagnostic
     internal: true
 
   - platform: template

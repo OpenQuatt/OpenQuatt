@@ -285,9 +285,6 @@ button:
     id: reset_heating_curve_pid_integral
     name: "Reset Heating Curve PID integral"
     internal: true
-    disabled_by_default: true
-    icon: mdi:restart
-    entity_category: config
     on_press:
       then:
         - climate.pid.reset_integral_term: oq_heating_curve_pid
@@ -297,7 +294,6 @@ climate:
     id: oq_heating_curve_pid
     name: "Heating Curve PID"
     internal: true
-    icon: mdi:thermostat
     sensor: oq_system_supply_temp
     default_target_temperature: 35 °C
     heat_output: heating_curve_pid_out
@@ -330,10 +326,8 @@ sensor:
   - platform: template
     id: oq_curve_outside_temp_filtered
     name: "Outside Temperature (Curve filtered)"
-    icon: mdi:thermometer-lines
     internal: true
     unit_of_measurement: "°C"
-    device_class: temperature
     state_class: measurement
     accuracy_decimals: 2
     update_interval: 10s
@@ -356,13 +350,10 @@ sensor:
     id: oq_curve_demand_continuous_sensor
     name: "Curve demand (effective)"
     internal: true
-    disabled_by_default: true
-    icon: mdi:sine-wave
     unit_of_measurement: "step"
     state_class: measurement
     accuracy_decimals: 2
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return id(oq_curve_demand_continuous);
 
@@ -370,13 +361,10 @@ sensor:
     id: oq_curve_demand_post_guardrail_sensor
     name: "Curve demand (discrete)"
     internal: true
-    disabled_by_default: true
-    icon: mdi:counter
     unit_of_measurement: "step"
     state_class: measurement
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return (float) id(oq_demand_curve);
 
@@ -384,13 +372,10 @@ sensor:
     id: oq_curve_request_total_level_sensor
     name: "Curve dispatch total level"
     internal: true
-    disabled_by_default: true
-    icon: mdi:counter
     unit_of_measurement: "step"
     state_class: measurement
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return (float) id(oq_curve_request_total_level);
 
@@ -398,13 +383,10 @@ sensor:
     id: oq_curve_dispatch_hp1_level_sensor
     name: "Curve target HP1 level"
     internal: true
-    disabled_by_default: true
-    icon: mdi:counter
     unit_of_measurement: "step"
     state_class: measurement
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return (float) id(oq_curve_dispatch_hp1_level);
 
@@ -412,13 +394,10 @@ sensor:
     id: oq_curve_dispatch_hp2_level_sensor
     name: "Curve target HP2 level"
     internal: true
-    disabled_by_default: true
-    icon: mdi:counter
     unit_of_measurement: "step"
     state_class: measurement
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return (float) id(oq_curve_dispatch_hp2_level);
 
@@ -426,11 +405,8 @@ sensor:
     id: oq_curve_restart_inhibit_sensor
     name: "Curve restart inhibit"
     internal: true
-    disabled_by_default: true
-    icon: mdi:timer-sand-paused
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return id(oq_curve_restart_inhibit_active) ? 1.0f : 0.0f;
 
@@ -438,11 +414,8 @@ sensor:
     id: oq_curve_restart_blocked_by_room_sensor
     name: "Curve restart blocked by room"
     internal: true
-    disabled_by_default: true
-    icon: mdi:home-thermometer-outline
     accuracy_decimals: 0
     update_interval: 5s
-    entity_category: diagnostic
     lambda: |-
       return id(oq_curve_restart_blocked_by_room) ? 1.0f : 0.0f;
 
@@ -451,10 +424,7 @@ text_sensor:
     id: oq_curve_phase_sensor
     name: "Curve Phase"
     internal: true
-    icon: mdi:state-machine
     update_interval: ${oq_diagnostic_update_interval_s}s
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       if (!id(oq_curve_heat_request_active)) return std::string("OFF");
       return (id(oq_curve_regime_code) == 1) ? std::string("HEAT") : std::string("COAST");
@@ -463,10 +433,7 @@ text_sensor:
     id: oq_curve_regime_sensor
     name: "Curve operating regime"
     internal: true
-    icon: mdi:state-machine
     update_interval: ${oq_diagnostic_update_interval_s}s
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       switch (id(oq_curve_regime_code)) {
         case 1: return std::string("RECOVERY");
@@ -478,10 +445,7 @@ text_sensor:
     id: oq_curve_capacity_mode_sensor
     name: "Curve capacity mode"
     internal: true
-    icon: mdi:state-machine
     update_interval: ${oq_diagnostic_update_interval_s}s
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       const char *mode_name = oq_curve::capacity_mode_name(id(oq_curve_capacity_mode_code));
       return std::string(mode_name);

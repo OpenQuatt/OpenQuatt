@@ -93,7 +93,4 @@ sensor:
     psram:
       name: "PSRAM Free"
       internal: true
-      icon: mdi:memory
-      entity_category: diagnostic
-      disabled_by_default: true
       accuracy_decimals: 0

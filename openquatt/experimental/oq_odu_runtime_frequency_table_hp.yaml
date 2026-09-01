@@ -28,10 +28,8 @@ switch:
     id: ${hp_id}_odu_runtime_frequency_table_enable
     name: "${prefix}EXPERIMENTAL ODU runtime frequency write enable"
     internal: true
-    icon: mdi:alert-decagram
     optimistic: true
     restore_mode: ALWAYS_OFF
-    entity_category: config
 
 number:
   # RAM-only editor for the ODU-owned runtime table. Defaults only provide a
@@ -41,7 +39,6 @@ number:
     id: ${hp_id}_odu_runtime_cooling_f0
     name: "${prefix}EXPERIMENTAL cooling F0 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -49,13 +46,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 0
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f1
     name: "${prefix}EXPERIMENTAL cooling F1 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -63,13 +58,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 30
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f2
     name: "${prefix}EXPERIMENTAL cooling F2 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -77,13 +70,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 36
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f3
     name: "${prefix}EXPERIMENTAL cooling F3 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -91,13 +82,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 42
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f4
     name: "${prefix}EXPERIMENTAL cooling F4 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -105,13 +94,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 47
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f5
     name: "${prefix}EXPERIMENTAL cooling F5 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -119,13 +106,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 52
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f6
     name: "${prefix}EXPERIMENTAL cooling F6 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -133,13 +118,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 56
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f7
     name: "${prefix}EXPERIMENTAL cooling F7 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -147,13 +130,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 61
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f8
     name: "${prefix}EXPERIMENTAL cooling F8 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -161,13 +142,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 66
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f9
     name: "${prefix}EXPERIMENTAL cooling F9 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -175,13 +154,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 71
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f10
     name: "${prefix}EXPERIMENTAL cooling F10 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -189,13 +166,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 74
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f11
     name: "${prefix}EXPERIMENTAL cooling F11 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -203,13 +178,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 48
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f12
     name: "${prefix}EXPERIMENTAL cooling F12 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -217,13 +190,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 52
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f13
     name: "${prefix}EXPERIMENTAL cooling F13 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -231,13 +202,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 54
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f14
     name: "${prefix}EXPERIMENTAL cooling F14 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -245,13 +214,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 56
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f15
     name: "${prefix}EXPERIMENTAL cooling F15 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -259,13 +226,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 58
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f16
     name: "${prefix}EXPERIMENTAL cooling F16 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -273,13 +238,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 60
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f17
     name: "${prefix}EXPERIMENTAL cooling F17 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -287,13 +250,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 64
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f18
     name: "${prefix}EXPERIMENTAL cooling F18 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -301,13 +262,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 66
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f19
     name: "${prefix}EXPERIMENTAL cooling F19 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -315,13 +274,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 68
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_cooling_f20
     name: "${prefix}EXPERIMENTAL cooling F20 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -329,13 +286,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 71
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f0
     name: "${prefix}EXPERIMENTAL heating F0 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -343,13 +298,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 0
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f1
     name: "${prefix}EXPERIMENTAL heating F1 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -357,13 +310,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 30
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f2
     name: "${prefix}EXPERIMENTAL heating F2 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -371,13 +322,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 39
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f3
     name: "${prefix}EXPERIMENTAL heating F3 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -385,13 +334,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 49
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f4
     name: "${prefix}EXPERIMENTAL heating F4 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -399,13 +346,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 55
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f5
     name: "${prefix}EXPERIMENTAL heating F5 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -413,13 +358,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 61
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f6
     name: "${prefix}EXPERIMENTAL heating F6 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -427,13 +370,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 67
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f7
     name: "${prefix}EXPERIMENTAL heating F7 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -441,13 +382,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 72
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f8
     name: "${prefix}EXPERIMENTAL heating F8 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -455,13 +394,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 79
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f9
     name: "${prefix}EXPERIMENTAL heating F9 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -469,13 +406,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 85
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f10
     name: "${prefix}EXPERIMENTAL heating F10 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -483,13 +418,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 90
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f11
     name: "${prefix}EXPERIMENTAL heating F11 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -497,13 +430,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 65
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f12
     name: "${prefix}EXPERIMENTAL heating F12 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -511,13 +442,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 68
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f13
     name: "${prefix}EXPERIMENTAL heating F13 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -525,13 +454,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 72
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f14
     name: "${prefix}EXPERIMENTAL heating F14 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -539,13 +466,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 76
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f15
     name: "${prefix}EXPERIMENTAL heating F15 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -553,13 +478,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 82
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f16
     name: "${prefix}EXPERIMENTAL heating F16 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -567,13 +490,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 85
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f17
     name: "${prefix}EXPERIMENTAL heating F17 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -581,13 +502,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 90
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f18
     name: "${prefix}EXPERIMENTAL heating F18 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -595,13 +514,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 95
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f19
     name: "${prefix}EXPERIMENTAL heating F19 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -609,13 +526,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 102
-    entity_category: config
 
   - platform: template
     id: ${hp_id}_odu_runtime_heating_f20
     name: "${prefix}EXPERIMENTAL heating F20 runtime Hz"
     internal: true
-    icon: mdi:sine-wave
     mode: box
     min_value: 0
     max_value: 120
@@ -623,15 +538,12 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 110
-    entity_category: config
 
 button:
   - platform: template
     id: ${hp_id}_odu_runtime_frequency_table_load
     name: "${prefix}EXPERIMENTAL load ODU runtime frequency table"
     internal: true
-    icon: mdi:download-alert-outline
-    entity_category: config
     on_press:
       - lambda: |-
           oq_odu_runtime_frequency::RuntimeFrequencyTableRefs refs = {
@@ -704,8 +616,6 @@ button:
     id: ${hp_id}_odu_runtime_frequency_table_apply
     name: "${prefix}EXPERIMENTAL apply ODU runtime frequency table"
     internal: true
-    icon: mdi:alert-circle-check-outline
-    entity_category: config
     on_press:
       - lambda: |-
           oq_odu_runtime_frequency::RuntimeFrequencyTableRefs refs = {
@@ -781,8 +691,6 @@ text_sensor:
     id: ${hp_id}_odu_runtime_frequency_table_status
     name: "${prefix}EXPERIMENTAL ODU runtime frequency status"
     internal: true
-    icon: mdi:alert-decagram-outline
-    entity_category: diagnostic
     update_interval: never
     on_value:
       then:

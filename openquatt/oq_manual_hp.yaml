@@ -49,7 +49,6 @@ select:
     id: oq_manual_hp1_mode
     name: "Manual HP1 service mode"
     internal: true
-    icon: mdi:heat-pump
     optimistic: false
     restore_value: false
     initial_option: "Standby"
@@ -57,7 +56,6 @@ select:
       - "Standby"
       - "Heating"
       - "Cooling"
-    entity_category: config
     set_action:
       - lambda: |-
           oq_manual_hp::runtime().set_mode(1, x.str(), (float) ${oq_cm_min_flow_lph});
@@ -66,7 +64,6 @@ select:
     id: oq_manual_hp2_mode
     name: "Manual HP2 service mode"
     internal: true
-    icon: mdi:heat-pump
     optimistic: false
     restore_value: false
     initial_option: "Standby"
@@ -74,7 +71,6 @@ select:
       - "Standby"
       - "Heating"
       - "Cooling"
-    entity_category: config
     set_action:
       - lambda: |-
           oq_manual_hp::runtime().set_mode(2, x.str(), (float) ${oq_cm_min_flow_lph});
@@ -84,7 +80,6 @@ number:
     id: oq_manual_hp1_level
     name: "Manual HP1 compressor level"
     internal: true
-    icon: mdi:speedometer
     mode: slider
     min_value: 0
     max_value: 20
@@ -92,13 +87,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 0
-    entity_category: config
 
   - platform: template
     id: oq_manual_hp2_level
     name: "Manual HP2 compressor level"
     internal: true
-    icon: mdi:speedometer
     mode: slider
     min_value: 0
     max_value: 20
@@ -106,15 +99,12 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 0
-    entity_category: config
 
 button:
   - platform: template
     id: oq_manual_hp_start
     name: "Manual HP Start"
     internal: true
-    icon: mdi:heat-pump-outline
-    entity_category: config
     on_press:
       - lambda: |-
           oq_manual_hp::runtime().start();
@@ -123,8 +113,6 @@ button:
     id: oq_manual_hp_abort
     name: "Manual HP Abort"
     internal: true
-    icon: mdi:stop-circle-outline
-    entity_category: config
     on_press:
       - lambda: |-
           oq_manual_hp::runtime().abort_or_clear();

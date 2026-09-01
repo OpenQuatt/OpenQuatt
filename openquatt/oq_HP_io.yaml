@@ -588,9 +588,6 @@ button:
     id: ${hp_id}_detect_odu_generation
     name: "${prefix}Detect ODU generation"
     internal: true
-    disabled_by_default: true
-    icon: mdi:refresh
-    entity_category: diagnostic
     on_press:
       - if:
           condition:
@@ -608,8 +605,6 @@ select:
     id: ${hp_id}_set_working_mode
     name: "${prefix}Set Working Mode"
     internal: true
-    disabled_by_default: true
-    icon: "mdi:heat-pump-outline"
     address: 3999
     value_type: U_WORD
     optimistic: true
@@ -624,8 +619,6 @@ select:
     id: ${hp_id}_compressor_level
     name: "${prefix}Set Compressor Level"
     internal: true
-    disabled_by_default: true
-    icon: "mdi:sine-wave"
     address: 1999
     value_type: U_WORD
     optimistic: true
@@ -658,8 +651,6 @@ select:
     id: ${hp_id}_low_noise_mode
     name: "${prefix}Silent Mode"
     internal: true
-    disabled_by_default: true
-    icon: mdi:weather-night
     address: 2006
     value_type: U_WORD
     optimistic: true
@@ -673,8 +664,6 @@ select:
     id: ${hp_id}_set_pump_mode
     name: "${prefix}Set Pump Mode"
     internal: true
-    disabled_by_default: true
-    icon: "mdi:pump"
     address: 2010
     value_type: U_WORD
     optimistic: true
@@ -721,7 +710,6 @@ number:
     id: ${hp_id}_pump_speed
     name: "${prefix}Set Pump Speed"
     internal: true
-    icon: "mdi:speedometer"
     register_type: holding
     address: 2015
     value_type: U_WORD
@@ -1056,8 +1044,6 @@ sensor:
     modbus_controller_id: ${hp_id}
     name: "${prefix}Firmware EEPROM"
     internal: true
-    disabled_by_default: true
-    icon: mdi:memory
     register_type: holding
     register_count: 4  # 2123 - 2127
     address: 2123
@@ -1068,8 +1054,6 @@ sensor:
     id: ${hp_id}_control_board_item
     name: "${prefix}Control board item number"
     internal: true
-    disabled_by_default: true
-    icon: mdi:identifier
     register_type: holding
     # Read span 2127-2130 to keep the Modbus range contiguous with 2131.
     # Only register 2127 is decoded as this U_WORD diagnostic value.
@@ -1124,16 +1108,12 @@ sensor:
     id: ${hp_id}_water_in_temp_raw
     name: "${prefix}Water in temperature raw"
     internal: true
-    disabled_by_default: true
-    icon: mdi:thermometer-water
     register_type: holding
     address: 2133
     #skip_updates: 0
     unit_of_measurement: "°C"
-    device_class: "temperature"
     state_class: "measurement"
     accuracy_decimals: 2
-    entity_category: diagnostic
     filters:
       - offset: -3000
       - multiply: 0.01
@@ -1148,16 +1128,12 @@ sensor:
     id: ${hp_id}_water_out_temp_raw
     name: "${prefix}Water out temperature raw"
     internal: true
-    disabled_by_default: true
-    icon: mdi:thermometer-water
     register_type: holding
     address: 2134
     #skip_updates: 0
     unit_of_measurement: "°C"
-    device_class: "temperature"
     state_class: "measurement"
     accuracy_decimals: 2
-    entity_category: diagnostic
     filters:
       - offset: -3000
       - multiply: 0.01
@@ -1227,9 +1203,6 @@ sensor:
     id: ${hp_id}_pump_ipwm_feedback_raw
     name: "${prefix}Pump iPWM feedback raw"
     internal: true
-    icon: mdi:pump
-    disabled_by_default: true
-    entity_category: diagnostic
     register_type: holding
     address: 2137
     value_type: U_WORD
@@ -1464,9 +1437,6 @@ binary_sensor:
     id: ${hp_id}_fan_low_speed_mode
     name: "${prefix}Fan Low Speed Mode"
     internal: true
-    disabled_by_default: true
-    icon: mdi:fan-speed-1
-    device_class: running
 
   - platform: template
     id: ${hp_id}_bottom_plate_heater
@@ -1485,17 +1455,11 @@ binary_sensor:
     id: ${hp_id}_fan_defrost_mode
     name: "${prefix}Fan Defrost Mode"
     internal: true
-    disabled_by_default: true
-    icon: mdi:snowflake-melt
-    device_class: running
 
   - platform: template
     id: ${hp_id}_fan_high_speed_mode
     name: "${prefix}Fan High Speed Mode"
     internal: true
-    disabled_by_default: true
-    icon: mdi:fan-speed-3
-    device_class: running
 
   - platform: template
     id: ${hp_id}_4_way_valve
@@ -1548,7 +1512,6 @@ binary_sensor:
     id: ${hp_id}_ot_fault_active
     name: "${prefix}OT fault active"
     internal: true
-    device_class: problem
     lambda: |-
       // OT fault should only reflect explicit failure bits, not protection or cycle states.
       auto has_bit = [](float raw, uint16_t bitmask) -> bool {
@@ -1596,8 +1559,6 @@ text_sensor:
     id: ${hp_id}_generation
     name: "${prefix}ODU generation"
     internal: true
-    icon: mdi:heat-pump-outline
-    entity_category: diagnostic
     update_interval: never
 
   - platform: template
@@ -1611,16 +1572,12 @@ text_sensor:
     id: ${hp_id}_generation_variant
     name: "${prefix}ODU generation variant"
     internal: true
-    icon: mdi:identifier
-    entity_category: diagnostic
     update_interval: never
 
   - platform: template
     id: ${hp_id}_customer_model_code
     name: "${prefix}ODU customer model code"
     internal: true
-    icon: mdi:identifier
-    entity_category: diagnostic
     update_interval: never
 
   - platform: template
@@ -1765,9 +1722,6 @@ text_sensor:
     id: ${hp_id}_pcb_firmware_version
     name: "${prefix}ODU PCB firmware version"
     internal: true
-    icon: mdi:chip
-    entity_category: diagnostic
-    disabled_by_default: true
     lambda: |-
       if (!id(${hp_id}_pcb_firmware_raw).has_state()) {
         return {};

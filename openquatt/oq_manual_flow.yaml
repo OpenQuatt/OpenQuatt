@@ -44,7 +44,6 @@ number:
     id: oq_manual_flow_setpoint_lph
     name: "Manual flow service setpoint"
     internal: true
-    icon: mdi:waves-arrow-right
     unit_of_measurement: "L/h"
     mode: slider
     min_value: 0
@@ -53,15 +52,12 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 800
-    entity_category: config
 
 button:
   - platform: template
     id: oq_manual_flow_start
     name: "Manual Flow Start"
     internal: true
-    icon: mdi:water-pump
-    entity_category: config
     on_press:
       - lambda: |-
           oq_manual_flow::runtime().start();
@@ -70,8 +66,6 @@ button:
     id: oq_manual_flow_abort
     name: "Manual Flow Abort"
     internal: true
-    icon: mdi:stop-circle-outline
-    entity_category: config
     on_press:
       - lambda: |-
           oq_manual_flow::runtime().abort_or_clear();
@@ -80,8 +74,6 @@ button:
     id: oq_manual_flow_apply_heating
     name: "Apply Manual Flow To Heating"
     internal: true
-    icon: mdi:radiator
-    entity_category: config
     on_press:
       - lambda: |-
           oq_manual_flow::runtime().apply_to_heating();
@@ -90,8 +82,6 @@ button:
     id: oq_manual_flow_apply_cooling
     name: "Apply Manual Flow To Cooling"
     internal: true
-    icon: mdi:snowflake
-    entity_category: config
     on_press:
       - lambda: |-
           oq_manual_flow::runtime().apply_to_cooling();
@@ -101,8 +91,6 @@ switch:
     id: oq_quick_flow_test_switch
     name: "Quick flow test"
     internal: true
-    icon: mdi:water-pump
-    entity_category: config
     lambda: |-
       return id(oq_quick_flow_test_active);
     turn_on_action:

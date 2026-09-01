@@ -161,7 +161,6 @@ number:
     id: water_supply_temp_calibration_offset
     name: "Water Supply Temperature Calibration Offset"
     internal: true
-    icon: mdi:thermometer-plus
     unit_of_measurement: "°C"
     mode: slider
     min_value: -2
@@ -170,8 +169,6 @@ number:
     restore_value: true
     optimistic: true
     initial_value: 0
-    entity_category: config
-    disabled_by_default: true
 
   # Read/write backup bridges for the four source-bound records. Firmware
   # reconstructs each checksum; HA also carries its anonymous fingerprint.
@@ -179,15 +176,12 @@ number:
     id: oq_water_supply_temp_calibration_pt1000_backup
     name: "Water Supply PT1000 Calibration Offset"
     internal: true
-    icon: mdi:thermometer-plus
     unit_of_measurement: "°C"
     mode: box
     min_value: -2
     max_value: 2
     step: 0.01
     update_interval: 5s
-    entity_category: config
-    disabled_by_default: true
     lambda: |-
       const oq_supply_calibration::SourceIdentity source{
           oq_supply_calibration::SOURCE_LOCAL_PT1000,
@@ -214,15 +208,12 @@ number:
     id: oq_water_supply_temp_calibration_ds18b20_backup
     name: "Water Supply DS18B20 Calibration Offset"
     internal: true
-    icon: mdi:thermometer-plus
     unit_of_measurement: "°C"
     mode: box
     min_value: -2
     max_value: 2
     step: 0.01
     update_interval: 5s
-    entity_category: config
-    disabled_by_default: true
     lambda: |-
       const oq_supply_calibration::SourceIdentity source{
           oq_supply_calibration::SOURCE_LOCAL_DS18B20,
@@ -249,15 +240,12 @@ number:
     id: oq_water_supply_temp_calibration_cic_backup
     name: "Water Supply CIC Calibration Offset"
     internal: true
-    icon: mdi:thermometer-plus
     unit_of_measurement: "°C"
     mode: box
     min_value: -2
     max_value: 2
     step: 0.01
     update_interval: 5s
-    entity_category: config
-    disabled_by_default: true
     lambda: |-
       const auto record = oq_supply_calibration::load_record(
           id(oq_water_supply_temp_calibration_cic_record));
@@ -281,15 +269,12 @@ number:
     id: oq_water_supply_temp_calibration_ha_input_backup
     name: "Water Supply HA Input Calibration Offset"
     internal: true
-    icon: mdi:thermometer-plus
     unit_of_measurement: "°C"
     mode: box
     min_value: -2
     max_value: 2
     step: 0.01
     update_interval: 5s
-    entity_category: config
-    disabled_by_default: true
     lambda: |-
       const oq_supply_calibration::SourceIdentity source{
           oq_supply_calibration::SOURCE_HA_INPUT,
@@ -339,7 +324,6 @@ number:
     id: hp1_water_in_temp_offset
     name: "HP1 water in temperature offset"
     internal: true
-    icon: mdi:thermometer-plus
     unit_of_measurement: "°C"
     mode: slider
     min_value: -2
@@ -348,14 +332,11 @@ number:
     restore_value: true
     optimistic: true
     initial_value: 0
-    entity_category: config
-    disabled_by_default: true
 
   - platform: template
     id: hp1_water_out_temp_offset
     name: "HP1 water out temperature offset"
     internal: true
-    icon: mdi:thermometer-plus
     unit_of_measurement: "°C"
     mode: slider
     min_value: -2
@@ -364,14 +345,11 @@ number:
     restore_value: true
     optimistic: true
     initial_value: 0
-    entity_category: config
-    disabled_by_default: true
 
   - platform: template
     id: hp2_water_in_temp_offset
     name: "HP2 water in temperature offset"
     internal: true
-    icon: mdi:thermometer-plus
     unit_of_measurement: "°C"
     mode: slider
     min_value: -2
@@ -380,14 +358,11 @@ number:
     restore_value: true
     optimistic: true
     initial_value: 0
-    entity_category: config
-    disabled_by_default: true
 
   - platform: template
     id: hp2_water_out_temp_offset
     name: "HP2 water out temperature offset"
     internal: true
-    icon: mdi:thermometer-plus
     unit_of_measurement: "°C"
     mode: slider
     min_value: -2
@@ -396,14 +371,11 @@ number:
     restore_value: true
     optimistic: true
     initial_value: 0
-    entity_category: config
-    disabled_by_default: true
 
   - platform: template
     id: oq_hp_calibration_hp1_water_in_offset_suggested
     name: "HP calibration HP1 water in offset suggested"
     internal: true
-    icon: mdi:thermometer-check
     unit_of_measurement: "°C"
     mode: slider
     min_value: -2
@@ -412,14 +384,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 0
-    entity_category: diagnostic
-    disabled_by_default: true
 
   - platform: template
     id: oq_hp_calibration_supply_offset_suggested
     name: "HP calibration supply temperature offset suggested"
     internal: true
-    icon: mdi:thermometer-check
     unit_of_measurement: "°C"
     mode: slider
     min_value: -2
@@ -428,14 +397,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 0
-    entity_category: diagnostic
-    disabled_by_default: true
 
   - platform: template
     id: oq_hp_calibration_hp1_water_out_offset_suggested
     name: "HP calibration HP1 water out offset suggested"
     internal: true
-    icon: mdi:thermometer-check
     unit_of_measurement: "°C"
     mode: slider
     min_value: -2
@@ -444,14 +410,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 0
-    entity_category: diagnostic
-    disabled_by_default: true
 
   - platform: template
     id: oq_hp_calibration_hp2_water_in_offset_suggested
     name: "HP calibration HP2 water in offset suggested"
     internal: true
-    icon: mdi:thermometer-check
     unit_of_measurement: "°C"
     mode: slider
     min_value: -2
@@ -460,14 +423,11 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 0
-    entity_category: diagnostic
-    disabled_by_default: true
 
   - platform: template
     id: oq_hp_calibration_hp2_water_out_offset_suggested
     name: "HP calibration HP2 water out offset suggested"
     internal: true
-    icon: mdi:thermometer-check
     unit_of_measurement: "°C"
     mode: slider
     min_value: -2
@@ -476,30 +436,22 @@ number:
     restore_value: false
     optimistic: true
     initial_value: 0
-    entity_category: diagnostic
-    disabled_by_default: true
 
 text:
   - platform: template
     id: oq_water_supply_temp_calibration_ha_input_identity_backup
     name: "Water Supply HA Input Calibration Identity"
     internal: true
-    icon: mdi:fingerprint
     mode: text
     optimistic: true
     restore_value: false
     initial_value: ""
-    entity_category: config
-    disabled_by_default: true
 
 button:
   - platform: template
     id: oq_hp_water_calibration_start
     name: "HP Water Calibration Start"
     internal: true
-    icon: mdi:thermometer-sync
-    entity_category: config
-    disabled_by_default: true
     on_press:
       - lambda: |-
           oq_hp_water_calibration::runtime().start(
@@ -510,9 +462,6 @@ button:
     id: oq_hp_water_calibration_abort_btn
     name: "HP Water Calibration Abort"
     internal: true
-    icon: mdi:stop-circle-outline
-    entity_category: config
-    disabled_by_default: true
     on_press:
       - lambda: |-
           oq_hp_water_calibration::runtime().abort_or_clear();
@@ -521,9 +470,6 @@ button:
     id: oq_hp_water_calibration_apply
     name: "Apply HP Water Calibration Offsets"
     internal: true
-    icon: mdi:check-circle-outline
-    entity_category: config
-    disabled_by_default: true
     on_press:
       - lambda: |-
           oq_hp_water_calibration::runtime().apply(

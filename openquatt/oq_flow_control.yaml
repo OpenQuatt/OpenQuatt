@@ -112,8 +112,6 @@ number:
     id: oq_flow_frost_pwm
     name: "Frost Circulation iPWM"
     internal: true
-    disabled_by_default: true
-    icon: mdi:snowflake
     unit_of_measurement: "iPWM"
     mode: slider
     min_value: 50
@@ -127,8 +125,6 @@ number:
     id: oq_flow_auto_start_pwm
     name: "Flow AUTO start iPWM"
     internal: true
-    disabled_by_default: true
-    icon: mdi:rocket-launch-outline
     unit_of_measurement: "iPWM"
     mode: slider
     min_value: 50
@@ -137,7 +133,6 @@ number:
     restore_value: true
     optimistic: true
     initial_value: 440
-    entity_category: config
 
   - platform: template
     id: oq_flow_kp
@@ -191,9 +186,7 @@ sensor:
     id: oq_flow_output_ipwm
     name: "Flow Output iPWM"
     internal: true
-    icon: mdi:fan-speed-3
     unit_of_measurement: "iPWM"
-    entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: never
 

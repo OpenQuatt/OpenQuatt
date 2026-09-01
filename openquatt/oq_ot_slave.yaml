@@ -87,11 +87,8 @@ sensor:
     id: ot_thermostat_successful_frame_count
     name: "OT - Successful Frame Count"
     internal: true
-    icon: mdi:counter
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return (float) id(oq_ot_slave_hub).successful_frame_count();
@@ -100,11 +97,8 @@ sensor:
     id: ot_thermostat_invalid_frame_count
     name: "OT - Invalid Frame Count"
     internal: true
-    icon: mdi:message-alert-outline
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return (float) id(oq_ot_slave_hub).invalid_frame_count();
@@ -113,11 +107,8 @@ sensor:
     id: ot_thermostat_timeout_frame_count
     name: "OT - Timeout Frame Count"
     internal: true
-    icon: mdi:timer-alert-outline
     accuracy_decimals: 0
     state_class: total_increasing
-    entity_category: diagnostic
-    disabled_by_default: true
     update_interval: 5s
     lambda: |-
       return (float) id(oq_ot_slave_hub).timeout_frame_count();
