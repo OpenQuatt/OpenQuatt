@@ -5,6 +5,7 @@
 #include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
+#include "includes/storage/oq_nvs_cleanup.h"
 
 namespace esphome {
 namespace openquatt_network {
@@ -508,7 +509,21 @@ bool OpenQuattNetworkManager::save_preference_(Preference preference) {
   stored.magic = PREFERENCE_MAGIC;
   stored.preference = static_cast<uint8_t>(preference);
   if (!this->preference_store_.save(&stored)) {
+    oq_nvs_cleanup::log_stats("network-preference-queue-failed");
     return false;
+  }
+
+  const bool synced = global_preferences != nullptr && global_preferences->sync();
+  PreferenceStorage verified{};
+  const bool persisted = this->preference_store_.load(&verified) && verified.magic == PREFERENCE_MAGIC &&
+                         verified.preference == stored.preference;
+  if (!persisted) {
+    ESP_LOGE(TAG, "Preferred connection was not persisted (sync=%s)", YESNO(synced));
+    oq_nvs_cleanup::log_stats("network-preference-write-failed");
+    return false;
+  }
+  if (!synced) {
+    ESP_LOGW(TAG, "Preference sync reported a failure, but readback verified this connection preference");
   }
 
   this->preference_ = preference;

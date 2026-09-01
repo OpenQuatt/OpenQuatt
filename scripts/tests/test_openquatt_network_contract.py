@@ -74,6 +74,13 @@ class OpenQuattNetworkContractTest(unittest.TestCase):
         self.assertIn('active_connection == "Ethernet"', USAGE_TELEMETRY_CPP)
         self.assertIn('connection_preference == "Automatic"', USAGE_TELEMETRY_CPP)
 
+    def test_preference_change_is_published_only_after_nvs_readback(self) -> None:
+        save = function_body("save_preference_(Preference preference)", "publish_preference_()")
+        self.assertLess(save.index("global_preferences->sync()"), save.index("preference_store_.load"))
+        self.assertLess(save.index("preference_store_.load"), save.index("this->preference_ = preference"))
+        self.assertIn('log_stats("network-preference-write-failed")', save)
+        self.assertIn("sizeof(PreferenceStorage) == 8U", NETWORK_HEADER)
+
     def test_q_installer_uses_canonical_automatic_builds_with_wifi_provisioning(self) -> None:
         self.assertIn(
             'fileName: "openquatt-heatpump-controller-q-single.firmware.factory.bin"',

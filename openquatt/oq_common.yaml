@@ -17,6 +17,7 @@ esphome:
     priority: -100
     then:
       - lambda: |-
+          oq_nvs_cleanup::log_stats("boot");
           // Always start from a clean paused state after reboot or OTA.
           id(oq_runtime_polling_paused).publish_state(false);
           id(oq_http_ota_begin_observed) = false;

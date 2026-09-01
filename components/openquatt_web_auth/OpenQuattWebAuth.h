@@ -51,6 +51,8 @@ class OpenQuattWebAuth : public Component {
     char password[PASSWORD_MAX_LEN + 1];
   };
 
+  static_assert(sizeof(AuthStorage) == 104U, "Web authentication NVS budget changed");
+
   bool load_storage_(AuthStorage* storage);
   bool save_storage_(const AuthStorage& storage);
   bool apply_storage_(const AuthStorage& storage, const char* source);

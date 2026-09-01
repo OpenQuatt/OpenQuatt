@@ -80,7 +80,7 @@ class OpenQuattCrashTelemetry : public Component {
     uint32_t checksum;
   };
 
-  static_assert(sizeof(StateStorage) < 64U, "Crash telemetry state should remain small");
+  static_assert(sizeof(StateStorage) == 56U, "Crash telemetry NVS budget changed");
 
   void capture_pending_crash_();
   void on_log_(const char* tag, const char* message, size_t message_len);

@@ -25,7 +25,7 @@ class Runtime {
   oq_supervisory_safety::Output tick(const TickConfig& tick) {
     if (!this->hydrated_) {
       this->state_.low_flow_fault_active = id(oq_lowflow_fault_active);
-      this->state_.frost_active = id(oq_cm_frost_prev);
+      // Frost hysteresis is reconstructed conservatively on the first step.
       this->hydrated_ = true;
     }
 

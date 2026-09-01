@@ -48,6 +48,12 @@ esphome:
     - priority: -100
       then:
         - lambda: |-
+            constexpr std::array<uint32_t, 1> retired_frost_preferences{{
+                2881445393U,
+            }};
+            oq_nvs_cleanup::erase_esphome_preferences(
+                retired_frost_preferences, "legacy frost hysteresis");
+        - lambda: |-
             id(oq_electrical_current_limit_a).traits.set_max_value(
                 oq_supervisory_power_runtime::maximum_current_a(
                     ${oq_duo_current_limit_v1_a}, ${oq_duo_current_limit_v2_a}));
@@ -84,10 +90,11 @@ globals:
     restore_value: true
     initial_value: 'false'
 
-  # Frost hysteresis state for CM98 selection
+  # Runtime-only frost hysteresis. The first evaluation starts conservatively
+  # at the off-threshold, so a reboot cannot weaken frost protection.
   - id: oq_cm_frost_prev
     type: bool
-    restore_value: true
+    restore_value: false
     initial_value: 'false'
 
   # Pre/Postflow timer (CM1)

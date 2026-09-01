@@ -93,10 +93,22 @@ int main() {
   output = step(input(500, true, 300.0f, 0.0f), config(), output.state);
   assert(!output.frost_active);
 
+  // On a cold boot, the gap between the on/off thresholds must fail safe.
+  output = step(input(100, false, 300.0f, 5.5f), config(), {});
+  assert(output.frost_active);
+  output = step(input(200, false, 300.0f, 6.0f), config(), {});
+  assert(!output.frost_active);
+  output = step(input(300, false, 300.0f, 5.5f), config(), output.state);
+  assert(!output.frost_active);
+
   auto missing_outside = input(1000, false, 300.0f, NAN);
   missing_outside.outside_temperature_has_state = false;
   output = step(missing_outside, config(), {});
   assert(output.frost_nan_grace_active && !output.frost_active);
+  auto delayed_outside = input(2000, false, 300.0f, 5.5f);
+  output = step(delayed_outside, config(), output.state);
+  assert(output.frost_active && output.state.frost_initialized);
+  output = step(missing_outside, config(), {});
   missing_outside.now_ms = 30999;
   output = step(missing_outside, config(), output.state);
   assert(output.frost_nan_grace_active && !output.frost_active);
@@ -108,9 +120,11 @@ int main() {
   output = step(missing_outside, config(), output.state);
   assert(output.frost_active);
 
-  State restored_frost;
-  restored_frost.frost_active = true;
-  output = step(input(1000, false, 300.0f, 5.5f), config(), restored_frost);
+  State active_frost_hysteresis;
+  active_frost_hysteresis.initialized = true;
+  active_frost_hysteresis.frost_initialized = true;
+  active_frost_hysteresis.frost_active = true;
+  output = step(input(1000, false, 300.0f, 5.5f), config(), active_frost_hysteresis);
   assert(output.frost_active);
   auto invalid_frost_config = config();
   invalid_frost_config.frost_on_c = 7.0f;
