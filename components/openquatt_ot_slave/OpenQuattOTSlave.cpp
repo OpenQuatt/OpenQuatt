@@ -238,9 +238,9 @@ OpenQuattOTSlave::~OpenQuattOTSlave() {
 }
 
 void OpenQuattOTSlave::dump_config() {
-#define ID(x) x
-#define SHOW2(x) #x
-#define SHOW(x) SHOW2(x)
+#define OQ_OT_SLAVE_ID(x) x
+#define OQ_OT_SLAVE_SHOW_INNER(x) #x
+#define OQ_OT_SLAVE_SHOW(x) OQ_OT_SLAVE_SHOW_INNER(x)
 
   ESP_LOGCONFIG(TAG, "OpenQuatt OT Slave:");
   ESP_LOGCONFIG(TAG, "  Thermostat In: GPIO%d", m_pinThermostatIn);
@@ -249,12 +249,15 @@ void OpenQuattOTSlave::dump_config() {
   ESP_LOGCONFIG(TAG, "  Default Tret: %.1f C", m_slave_state.t_ret);
   ESP_LOGCONFIG(TAG, "  Default MaxTSet: %.1f C", m_slave_state.max_t_set);
   ESP_LOGCONFIG(TAG, "  Response enabled: %s", YESNO(m_response_enabled));
-  ESP_LOGCONFIG(TAG, "  Sensors: %s", SHOW(OPENQUATT_OT_SLAVE_SENSOR_LIST(ID, )));
-  ESP_LOGCONFIG(TAG, "  Binary sensors: %s", SHOW(OPENQUATT_OT_SLAVE_BINARY_SENSOR_LIST(ID, )));
-  ESP_LOGCONFIG(TAG, "  Switches: %s", SHOW(OPENQUATT_OT_SLAVE_SWITCH_LIST(ID, )));
-  ESP_LOGCONFIG(TAG, "  Input sensors: %s", SHOW(OPENQUATT_OT_SLAVE_INPUT_SENSOR_LIST(ID, )));
-  ESP_LOGCONFIG(TAG, "  Outputs: %s", SHOW(OPENQUATT_OT_SLAVE_OUTPUT_LIST(ID, )));
+  ESP_LOGCONFIG(TAG, "  Sensors: %s", OQ_OT_SLAVE_SHOW(OPENQUATT_OT_SLAVE_SENSOR_LIST(OQ_OT_SLAVE_ID, )));
+  ESP_LOGCONFIG(TAG, "  Binary sensors: %s", OQ_OT_SLAVE_SHOW(OPENQUATT_OT_SLAVE_BINARY_SENSOR_LIST(OQ_OT_SLAVE_ID, )));
+  ESP_LOGCONFIG(TAG, "  Switches: %s", OQ_OT_SLAVE_SHOW(OPENQUATT_OT_SLAVE_SWITCH_LIST(OQ_OT_SLAVE_ID, )));
+  ESP_LOGCONFIG(TAG, "  Input sensors: %s", OQ_OT_SLAVE_SHOW(OPENQUATT_OT_SLAVE_INPUT_SENSOR_LIST(OQ_OT_SLAVE_ID, )));
+  ESP_LOGCONFIG(TAG, "  Outputs: %s", OQ_OT_SLAVE_SHOW(OPENQUATT_OT_SLAVE_OUTPUT_LIST(OQ_OT_SLAVE_ID, )));
 }
+#undef OQ_OT_SLAVE_SHOW
+#undef OQ_OT_SLAVE_SHOW_INNER
+#undef OQ_OT_SLAVE_ID
 
 void OpenQuattOTSlave::setup() {
   m_ot_thermostat_ = new OpenTherm(m_pinThermostatIn, m_pinThermostatOut, true);
