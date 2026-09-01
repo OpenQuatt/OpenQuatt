@@ -975,12 +975,6 @@ class Runtime {
               ? id(oq_silent_mode_override).at(id(oq_silent_mode_override).active_index().value()).value()
               : std::string("Schedule");
 
-      static bool last_time_valid_diag = false;
-      if (time_valid != last_time_valid_diag) {
-        id(oq_time_valid).publish_state(time_valid);
-        last_time_valid_diag = time_valid;
-      }
-
       std::string now_hhmm = "invalid";
       if (time_valid) {
         char buf[8];

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { ENTITY_DEFS, FAST_OVERVIEW_KEYS, OVERVIEW_KEYS, QUICK_STEPS, SETTINGS_KEYS } from "../js/src/core/config.js";
+import { DEBUG_RECORDING_KEYS, ENTITY_DEFS, FAST_OVERVIEW_KEYS, HEADER_ENTITY_KEYS, OVERVIEW_KEYS, QUICK_STEPS, SETTINGS_KEYS } from "../js/src/core/config.js";
 
 globalThis.__OQ_PREVIEW__ = false;
 
@@ -34,7 +34,7 @@ test("usage telemetry is hydrated before Quick Start filters optional steps", ()
 test("usage telemetry preview maps live entity values to the wire contract", () => {
   const preview = createUsageTelemetryPreview({
     usageTelemetryInstallationId: "7df1c1f8-fc47-4ac8-b0d7-94d8c42d772f",
-    timeValid: true,
+    timeNowHhmm: "14:00",
     uptimeRaw: 86420.9,
     projectVersionText: "v0.48.0",
     releaseChannelText: "dev",
@@ -123,6 +123,22 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
   assert.equal(flowSourceConfigWireValue("Outdoor unit", undefined, false), "outdoor_unit");
   assert.ok(USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("psramFree"));
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("webServerLogHistoryEnabled"));
+});
+
+test("time validity is derived from the device clock text entity", () => {
+  assert.equal(ENTITY_DEFS.timeValid, undefined);
+  assert.ok(HEADER_ENTITY_KEYS.includes("timeNowHhmm"));
+  assert.ok(!HEADER_ENTITY_KEYS.includes("timeValid"));
+  assert.ok(DEBUG_RECORDING_KEYS.includes("timeNowHhmm"));
+  assert.ok(!DEBUG_RECORDING_KEYS.includes("timeValid"));
+  assert.ok(USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("timeNowHhmm"));
+  assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("timeValid"));
+
+  const nowMs = 1784527200123;
+  assert.equal(createUsageTelemetryPreview({ timeNowHhmm: "23:59" }, { nowMs }).timestamp_s, 1784527200);
+  for (const timeNowHhmm of ["invalid", "", "24:00", "12:60", "unknown", "unavailable"]) {
+    assert.equal(createUsageTelemetryPreview({ timeNowHhmm }, { nowMs }).timestamp_s, null);
+  }
 });
 
 test("usage telemetry preview normalizes runtime connection states", () => {

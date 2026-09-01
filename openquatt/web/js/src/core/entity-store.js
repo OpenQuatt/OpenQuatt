@@ -72,6 +72,25 @@ import { state } from "./state.js";
     return normalized ? normalized.slice(0, 5) : "";
   }
 
+  export function parseDeviceClockMinutes(rawValue) {
+    const value = String(rawValue || "").trim();
+    const match = value.match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) {
+      return Number.NaN;
+    }
+
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+      return Number.NaN;
+    }
+    return (hours * 60) + minutes;
+  }
+
+  export function isDeviceTimeValid(rawValue) {
+    return Number.isFinite(parseDeviceClockMinutes(rawValue));
+  }
+
   export function normalizeDateTimeValue(rawValue) {
     const value = String(rawValue || "").trim();
     if (!value) {

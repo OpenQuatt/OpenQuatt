@@ -1,12 +1,12 @@
 import { fetchWithTimeout } from "./browser-utils.js";
-import { getEntityValue } from "./entity-store.js";
+import { getEntityValue, isDeviceTimeValid } from "./entity-store.js";
 import { state } from "./state.js";
 
 const MQTT_STATUS_TIMEOUT_MS = 3000;
 
 export const USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS = [
   "usageTelemetryInstallationId",
-  "timeValid",
+  "timeNowHhmm",
   "uptimeRaw",
   "projectVersionText",
   "releaseChannelText",
@@ -154,13 +154,12 @@ function connectionWireValue(value) {
 
 export function createUsageTelemetryPreview(values = {}, options = {}) {
   const nowMs = Number.isFinite(options.nowMs) ? options.nowMs : Date.now();
-  const timeValid = optionalBoolean(values.timeValid);
   const qSourceAvailable = Object.prototype.hasOwnProperty.call(values, "qFlowSource");
   return {
     schema_version: 1,
     message_id: String(options.messageId || "preview"),
     installation_id: optionalText(values.usageTelemetryInstallationId),
-    timestamp_s: timeValid === true ? Math.floor(nowMs / 1000) : null,
+    timestamp_s: isDeviceTimeValid(values.timeNowHhmm) ? Math.floor(nowMs / 1000) : null,
     uptime_s: optionalNumber(values.uptimeRaw),
     firmware_version: optionalText(values.projectVersionText),
     release_channel: optionalText(values.releaseChannelText),
