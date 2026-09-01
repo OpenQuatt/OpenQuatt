@@ -25,8 +25,8 @@ class HilHarnessContractTest(unittest.TestCase):
 
     def test_fast_profile_does_not_change_production_floors(self):
         for marker in (
-            'api_input_room_temperature_stale_s: "30"',
-            'api_input_heating_enable_stale_s: "30"',
+            'api_input_room_temperature_stale_s: "45"',
+            'api_input_heating_enable_stale_s: "45"',
             'oq_selected_input_stale_hold_s: "10"',
             'oq_hp_min_off_s: "10"',
         ):

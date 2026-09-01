@@ -5,13 +5,13 @@
 # The normal Q Duo WiFi entrypoint remains the complete firmware base.
 
 substitutions:
-  api_input_cooling_dew_point_stale_s: "30"
-  api_input_outside_temperature_stale_s: "30"
-  api_input_room_temperature_stale_s: "30"
-  api_input_room_setpoint_stale_s: "30"
-  api_input_heating_enable_stale_s: "30"
-  api_input_cooling_enable_stale_s: "30"
-  api_input_external_heat_demand_stale_s: "30"
+  api_input_cooling_dew_point_stale_s: "45"
+  api_input_outside_temperature_stale_s: "45"
+  api_input_room_temperature_stale_s: "45"
+  api_input_room_setpoint_stale_s: "45"
+  api_input_heating_enable_stale_s: "45"
+  api_input_cooling_enable_stale_s: "45"
+  api_input_external_heat_demand_stale_s: "45"
   oq_selected_input_stale_hold_s: "10"
   oq_hp_min_off_s: "10"
 

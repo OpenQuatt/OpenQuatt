@@ -16,6 +16,25 @@ function closeEnough(actual, expected, tolerance = 0.11) {
   return actual !== null && Math.abs(actual - expected) <= tolerance;
 }
 
+function waitDewPointApiState(controller, expected, label, options = {}) {
+  return waitFor(async () => {
+    const values = await controller.values([
+      { key: 'raw', domain: 'number', name: 'api_input_cooling_dew_point' },
+      { key: 'available', domain: 'binary_sensor', name: 'Cooling Dew Point Available' },
+      { key: 'guard', domain: 'text_sensor', name: 'Cooling Guard Mode' },
+      { key: 'selected', domain: 'sensor', name: 'Cooling Dew Point (Selected)' },
+    ]);
+    const raw = asFiniteNumber(values.raw);
+    const selected = asFiniteNumber(values.selected);
+    const accepted =
+      closeEnough(raw, expected) &&
+      String(values.available) === 'true' &&
+      values.guard === 'Dew point (API input)' &&
+      selected !== null;
+    return accepted ? values : false;
+  }, label, options);
+}
+
 export async function prepareInputSourceScenario(controller, simulator, interrupted) {
   await controller.setSelect('CM Override', 'Force CM0');
   await controller.setSwitch('Manual Cooling Enable', false);
@@ -42,7 +61,7 @@ async function testNumericIngress(controller, interrupted) {
     { interrupted },
   );
   await waitUnavailable(controller, 'External Heat Demand (Selected)', 'external demand expired', {
-    timeoutMs: 55000,
+    timeoutMs: 75000,
     interrupted,
   });
   await controller.setNumber('api_input_external_heat_demand', 6400);
@@ -64,7 +83,7 @@ async function testNumericIngress(controller, interrupted) {
     { interrupted },
   );
   await waitUnavailable(controller, 'Outside Temperature (Selected)', 'outside API expired', {
-    timeoutMs: 55000,
+    timeoutMs: 75000,
     interrupted,
   });
   await controller.setNumber('api_input_outside_temperature', 11.7);
@@ -78,25 +97,13 @@ async function testNumericIngress(controller, interrupted) {
 
   await controller.setSelect('Cooling Dew Point Source', 'API input');
   await controller.setNumber('api_input_cooling_dew_point', 16.2);
-  await waitNumber(
-    controller,
-    'Cooling Dew Point (Selected)',
-    (value) => closeEnough(value, 16.2),
-    'cooling dew point API accepted',
-    { interrupted },
-  );
+  await waitDewPointApiState(controller, 16.2, 'cooling dew point API accepted', { interrupted });
   await waitUnavailable(controller, 'Cooling Dew Point (Selected)', 'cooling dew point expired', {
-    timeoutMs: 55000,
+    timeoutMs: 75000,
     interrupted,
   });
   await controller.setNumber('api_input_cooling_dew_point', 15.8);
-  await waitNumber(
-    controller,
-    'Cooling Dew Point (Selected)',
-    (value) => closeEnough(value, 15.8),
-    'cooling dew point API recovered',
-    { interrupted },
-  );
+  await waitDewPointApiState(controller, 15.8, 'cooling dew point API recovered', { interrupted });
 
   await controller.setSelect('Room Temperature Source', 'API input');
   await controller.setSelect('Room Setpoint Source', 'API input');
@@ -195,12 +202,21 @@ async function testActiveSourceSwitch(controller, interrupted) {
     await controller.setNumber('api_input_room_temperature', 19);
     await controller.setNumber('api_input_room_setpoint', 21);
     await controller.setSwitch('api_input_heating_enable', true);
-    const mode = String(await controller.value('text_sensor', 'Control Mode'));
+    const status = await controller.values([
+      { key: 'mode', domain: 'text_sensor', name: 'Control Mode' },
+      { key: 'enabled', domain: 'binary_sensor', name: 'Heating Enable (Selected)' },
+      { key: 'external', domain: 'sensor', name: 'External Heat Demand (Selected)' },
+      { key: 'outside', domain: 'sensor', name: 'Outside Temperature (Selected)' },
+      { key: 'room', domain: 'sensor', name: 'Room Temperature (Selected)' },
+      { key: 'setpoint', domain: 'sensor', name: 'Room Setpoint (Selected)' },
+      { key: 'flow', domain: 'sensor', name: 'Flow average (Selected)' },
+    ]);
+    console.log(`STATE active source switch ${JSON.stringify(status)}`);
+    const mode = String(status.mode);
     if (['CM2', 'CM3', 'CM4'].includes(mode)) {
       activeMode = mode;
       break;
     }
-    await sleep(10000);
   }
   assert(activeMode, 'heating request never became active');
   await controller.setSelect('Heating Enable Source', 'MQTT');

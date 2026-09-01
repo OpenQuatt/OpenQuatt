@@ -58,7 +58,7 @@ Hij gebruikt de normale Q Duo WiFi-firmware, met alleen deze kortere testtijden:
 
 | Contract | Productie | HIL |
 |---|---:|---:|
-| API-input stale | 0/600/900/1.800 s | 30 s |
+| API-input stale | 0/600/900/1.800 s | 45 s |
 | Geselecteerde-input hold | 300 s | 10 s |
 | HP minimum-off | 240 s | 10 s |
 
