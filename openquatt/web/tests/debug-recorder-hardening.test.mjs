@@ -69,8 +69,9 @@ test("mutaties zijn beschermd en status bevat operationele geheugensignalen", ()
   assert.match(source, /event_count/);
 });
 
-test("de klok blijft opgenomen maar telt niet als statuswijziging", () => {
-  assert.match(source, /event_type_\(field\.type\) && std::strcmp\(field\.key, "timeNowHhmm"\) != 0/);
+test("diagnostische tekst blijft opgenomen maar telt niet als statuswijziging", () => {
+  assert.match(source, /std::strcmp\(field\.key, "timeNowHhmm"\) != 0/);
+  assert.match(source, /std::strcmp\(field\.key, "lowLoadDynamicThresholds"\) != 0/);
 });
 
 test("rolling totalen laten de overgang vóór de retentiewindow los", () => {
