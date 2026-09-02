@@ -11,29 +11,6 @@ globalThis.window = {
   localStorage: { getItem: () => null },
 };
 
-const { normalizeDebugRecordingValue } = await import("../js/src/features/debug-recording.js");
-const { state } = await import("../js/src/core/state.js");
-
-test("gemengde Duo-generaties blijven per ODU gescheiden", () => {
-  state.entities = {
-    hp1Generation: { state: "V1", value: "V1" },
-    hp2Generation: { state: "V1.5", value: "V1.5" },
-  };
-
-  assert.equal(normalizeDebugRecordingValue("hp1Generation"), "V1");
-  assert.equal(normalizeDebugRecordingValue("hp2Generation"), "V1.5");
-});
-
-test("onbekende ODU-generatie blijft expliciet Unknown in browseropnames", () => {
-  state.entities = {
-    hp1Generation: { state: "Unknown", value: "Unknown" },
-    hp2Generation: { state: "unknown", value: "unknown" },
-  };
-
-  assert.equal(normalizeDebugRecordingValue("hp1Generation"), "Unknown");
-  assert.equal(normalizeDebugRecordingValue("hp2Generation"), "Unknown");
-});
-
 test("mock-Duo gebruikt canonieke generaties met overeenkomende control_board_item-waarden", async () => {
   const fixtureSource = await readFile(new URL("../js/mock-fixtures.js", import.meta.url), "utf8");
   const context = { window: { __OQ_MOCK_SCENARIOS__: [] } };

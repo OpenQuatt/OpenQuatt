@@ -107,7 +107,7 @@ const ADDED_OBSERVABILITY_KEYS = [
   ...ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS,
 ];
 
-test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", () => {
+test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", async () => {
   const legacyTailIndex = DEBUG_RECORDING_KEYS.indexOf("otLinkProblem");
   const observabilityEndIndex = legacyTailIndex + 1 + OBSERVABILITY_KEYS.length;
   const issue473EndIndex = observabilityEndIndex + ISSUE_473_OBSERVABILITY_KEYS.length;
@@ -141,7 +141,19 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
     ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS,
   );
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
-  assert.ok(DEBUG_RECORDING_KEYS.length <= 188, "debugrecorder heeft maximaal 188 entityvelden naast 4 systeemvelden");
+  const recorderHeader = await readFile(
+    new URL("../../../components/openquatt_debug_recorder/OpenQuattDebugRecorder.h", import.meta.url),
+    "utf8",
+  );
+  const fieldCapacity = Number(recorderHeader.match(/FIELD_CAPACITY = (\d+)/)?.[1]);
+  const systemFieldCount = Number(recorderHeader.match(/SYSTEM_FIELD_COUNT = (\d+)/)?.[1]);
+  assert.equal(systemFieldCount, 5);
+  assert.equal(fieldCapacity, 224);
+  assert.ok(DEBUG_RECORDING_KEYS.length <= fieldCapacity - systemFieldCount);
+  assert.ok(
+    fieldCapacity - systemFieldCount - DEBUG_RECORDING_KEYS.length >= 24,
+    "debugrecorder houdt minimaal 24 entityvelden groeiruimte",
+  );
 });
 
 test("OpenTherm-opname bewaart signalen zonder afleidbare doublures", () => {

@@ -1233,10 +1233,6 @@
     "resetRuntimeCountersHp1",
     "resetRuntimeCountersHp1Hp2",
   ];
-  export const DEBUG_RECORDING_SAMPLE_INTERVAL_MS = 10000;
-  export const DEBUG_RECORDING_BUSY_RETRY_MS = 1000;
-  export const DEBUG_RECORDING_LOG_LIMIT = 120;
-  export const DEBUG_RECORDING_EVENT_LIMIT = 1000;
   export const DEBUG_RECORDING_DURATION_OPTIONS = [
     { minutes: 15, label: "15 min" },
     { minutes: 30, label: "30 min" },

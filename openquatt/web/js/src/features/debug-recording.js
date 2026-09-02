@@ -1,23 +1,19 @@
-import { hasEntity, isEntityActive } from "../core/app-shared.js";
 import { invokeActionMap } from "../core/action-router.js";
 import { copyTextToClipboard, downloadTextFile } from "../core/browser-utils.js";
-import { DEBUG_RECORDING_BUSY_RETRY_MS, DEBUG_RECORDING_DURATION_OPTIONS, DEBUG_RECORDING_EVENT_LIMIT, DEBUG_RECORDING_KEYS, DEBUG_RECORDING_LOG_LIMIT, DEBUG_RECORDING_SAMPLE_INTERVAL_MS, ENTITY_DEFS, FAST_VIEW_ENTITY_REFRESH_CONCURRENCY } from "../core/config.js";
-import { getEntityValue, parseLooseNumber } from "../core/entity-store.js";
-import { buildBulkEntityChunks, refreshEntities } from "../core/entity-sync.js";
+import { DEBUG_RECORDING_DURATION_OPTIONS, DEBUG_RECORDING_KEYS } from "../core/config.js";
+import { buildBulkEntityChunks } from "../core/entity-sync.js";
 import { updateDebugRecordingState } from "../core/feature-state.js";
 import { state } from "../core/state.js";
 import { getBasePath } from "../core/url-path.js";
-import { getFirmwareDeviceLabel, getInstallationLabel, getInstallationTopology } from "./device-context.js";
-import { getFirmwareCurrentVersion } from "./firmware-update.js";
 import { escapeHtml } from "../core/html.js";
 import { render } from "../core/render-scheduler.js";
 import { renderModalShell } from "../core/modal-shell.js";
 
+let debugRecordingMutationGeneration = 0;
+let debugRecordingStatusFailureCount = 0;
+
 export function getDebugRecordingSampleCount() {
-  if (state.debugRecordingDeviceStatus) {
-    return Math.max(0, Number(state.debugRecordingDeviceStatus.sample_count || 0));
-  }
-  return Array.isArray(state.debugRecordingSamples) ? state.debugRecordingSamples.length : 0;
+  return Math.max(0, Number(state.debugRecordingDeviceStatus?.sample_count || 0));
 }
 
 export function isDebugRecordingRolling(status = state.debugRecordingDeviceStatus) {
@@ -50,14 +46,7 @@ export function getDebugRecordingRetainedDurationMs() {
 }
 
 export function getDebugRecordingDurationMs() {
-  if (state.debugRecordingDeviceStatus) {
-    return Math.max(0, Number(state.debugRecordingDeviceStatus.elapsed_s || 0) * 1000);
-  }
-  if (!state.debugRecordingStartedAt) {
-    return 0;
-  }
-  const endAt = state.debugRecordingActive ? Date.now() : Number(state.debugRecordingLastSampleAt || Date.now());
-  return Math.max(0, endAt - Number(state.debugRecordingStartedAt || endAt));
+  return Math.max(0, Number(state.debugRecordingDeviceStatus?.elapsed_s || 0) * 1000);
 }
 
 export function getDebugRecordingStatusLabel() {
@@ -137,13 +126,7 @@ export function getDebugRecordingRemainingMs() {
   if (isDebugRecordingRolling()) {
     return 0;
   }
-  if (state.debugRecordingDeviceStatus) {
-    return Math.max(0, Number(state.debugRecordingDeviceStatus.remaining_s || 0) * 1000);
-  }
-  if (!state.debugRecordingActive) {
-    return 0;
-  }
-  return Math.max(0, Number(state.debugRecordingEndsAt || 0) - Date.now());
+  return Math.max(0, Number(state.debugRecordingDeviceStatus?.remaining_s || 0) * 1000);
 }
 
 export function getDebugRecordingProgressPercent() {
@@ -159,12 +142,7 @@ export function getDebugRecordingProgressPercent() {
     }
     return Math.max(0, Math.min(100, (elapsed / duration) * 100));
   }
-  if (!state.debugRecordingActive || !state.debugRecordingStartedAt || !state.debugRecordingEndsAt) {
-    return getDebugRecordingSampleCount() > 0 ? 100 : 0;
-  }
-  const totalMs = Math.max(1, Number(state.debugRecordingEndsAt) - Number(state.debugRecordingStartedAt));
-  const elapsedMs = Math.max(0, Date.now() - Number(state.debugRecordingStartedAt));
-  return Math.max(0, Math.min(100, (elapsedMs / totalMs) * 100));
+  return getDebugRecordingSampleCount() > 0 ? 100 : 0;
 }
 
 export function getDebugRecordingId(source = state.debugRecordingDeviceStatus) {
@@ -272,23 +250,24 @@ export function patchDebugRecordingSettingsStatus() {
   }
 }
 
+const DEBUG_RECORDING_ICONS = {
+  activity: '<svg viewBox="0 0 24 24" focusable="false"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>',
+  status: '<svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="4"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>',
+  samples: '<svg viewBox="0 0 24 24" focusable="false"><path d="M4 16h3l2-7 4 9 2-5h5"/></svg>',
+  changes: '<svg viewBox="0 0 24 24" focusable="false"><path d="M18 8a7 7 0 1 0 1 7"/><path d="M18 4v4h-4"/></svg>',
+  file: '<svg viewBox="0 0 24 24" focusable="false"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/></svg>',
+  storage: '<svg viewBox="0 0 24 24" focusable="false"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>',
+  play: '<svg viewBox="0 0 24 24" focusable="false"><path d="M8 5v14l11-7z"/></svg>',
+  stop: '<svg viewBox="0 0 24 24" focusable="false"><path d="M7 7h10v10H7z"/></svg>',
+  download: '<svg viewBox="0 0 24 24" focusable="false"><path d="M12 4v10"/><path d="m8 10 4 4 4-4"/><path d="M5 19h14"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" focusable="false"><rect x="8" y="8" width="10" height="10" rx="2"/><path d="M6 14H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1"/></svg>',
+  check: '<svg viewBox="0 0 24 24" focusable="false"><path d="m5 13 4 4L19 7"/></svg>',
+  alert: '<svg viewBox="0 0 24 24" focusable="false"><path d="M12 8v5"/><path d="M12 17h.01"/><path d="M10.3 4.7 2.8 18a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.7a2 2 0 0 0-3.4 0z"/></svg>',
+};
+
 export function renderDebugRecordingSvgIcon(name) {
-  const icons = {
-    activity: '<svg viewBox="0 0 24 24" focusable="false"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>',
-    status: '<svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="4"/></svg>',
-    clock: '<svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></svg>',
-    samples: '<svg viewBox="0 0 24 24" focusable="false"><path d="M4 16h3l2-7 4 9 2-5h5"/></svg>',
-    changes: '<svg viewBox="0 0 24 24" focusable="false"><path d="M18 8a7 7 0 1 0 1 7"/><path d="M18 4v4h-4"/></svg>',
-    file: '<svg viewBox="0 0 24 24" focusable="false"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/></svg>',
-    storage: '<svg viewBox="0 0 24 24" focusable="false"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>',
-    play: '<svg viewBox="0 0 24 24" focusable="false"><path d="M8 5v14l11-7z"/></svg>',
-    stop: '<svg viewBox="0 0 24 24" focusable="false"><path d="M7 7h10v10H7z"/></svg>',
-    download: '<svg viewBox="0 0 24 24" focusable="false"><path d="M12 4v10"/><path d="m8 10 4 4 4-4"/><path d="M5 19h14"/></svg>',
-    copy: '<svg viewBox="0 0 24 24" focusable="false"><rect x="8" y="8" width="10" height="10" rx="2"/><path d="M6 14H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1"/></svg>',
-    check: '<svg viewBox="0 0 24 24" focusable="false"><path d="m5 13 4 4L19 7"/></svg>',
-    alert: '<svg viewBox="0 0 24 24" focusable="false"><path d="M12 8v5"/><path d="M12 17h.01"/><path d="M10.3 4.7 2.8 18a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.7a2 2 0 0 0-3.4 0z"/></svg>',
-  };
-  return icons[name] || icons.status;
+  return DEBUG_RECORDING_ICONS[name] || DEBUG_RECORDING_ICONS.status;
 }
 
 export function renderDebugRecordingIcon(name) {
@@ -297,144 +276,6 @@ export function renderDebugRecordingIcon(name) {
 
 export function renderDebugRecordingButtonIcon(name) {
   return `<span class="oq-debug-recording-button-icon" aria-hidden="true">${renderDebugRecordingSvgIcon(name)}</span>`;
-}
-
-export function getDebugRecordingColumnSchema() {
-  return [...DEBUG_RECORDING_KEYS];
-}
-
-export function getDebugRecordingUnits() {
-  const units = [];
-  DEBUG_RECORDING_KEYS.forEach((key, index) => {
-    const payload = state.entities?.[key] || {};
-    const uom = String(payload.uom ?? payload.unit_of_measurement ?? "").trim();
-    if (uom) {
-      units.push([index, uom]);
-    }
-  });
-  return units;
-}
-
-export function encodeDebugRecordingInitialValues(values) {
-  if (!Array.isArray(values)) {
-    return [];
-  }
-  return values
-    .map((value, index) => (value === null ? null : [index, value]))
-    .filter(Boolean);
-}
-
-export function isDebugRecordingMissingValue(rawValue) {
-  const value = String(rawValue ?? "").trim().toLowerCase();
-  return !value || value === "unknown" || value === "unavailable" || value === "nan" || value === "invalid";
-}
-
-export function roundDebugRecordingNumber(value, unit) {
-  const normalizedUnit = String(unit || "").trim().toLowerCase();
-  let decimals = 3;
-  if (normalizedUnit === "w" || normalizedUnit === "l/h" || normalizedUnit === "s") {
-    decimals = 0;
-  } else if (normalizedUnit === "hz" || normalizedUnit === "%") {
-    decimals = 1;
-  } else if (normalizedUnit === "°c" || normalizedUnit === "c" || normalizedUnit === "k") {
-    decimals = 2;
-  }
-  return Number(Number(value).toFixed(decimals));
-}
-
-export function normalizeDebugRecordingValue(key) {
-  const entity = ENTITY_DEFS[key];
-  const payload = state.entities?.[key] || null;
-  if (!entity || !payload) {
-    return null;
-  }
-
-  if (entity.domain === "switch" || entity.domain === "binary_sensor") {
-    return isEntityActive(key);
-  }
-
-  const rawValue = getEntityValue(key);
-  const preserveUnknown = (key === "hp1Generation" || key === "hp2Generation")
-    && String(rawValue ?? "").trim().toLowerCase() === "unknown";
-  if (preserveUnknown) {
-    return "Unknown";
-  }
-  if (isDebugRecordingMissingValue(rawValue)) {
-    return null;
-  }
-
-  if (entity.domain === "sensor" || entity.domain === "number") {
-    const numeric = parseLooseNumber(rawValue);
-    if (Number.isFinite(numeric)) {
-      const uom = String(payload.uom ?? payload.unit_of_measurement ?? "").trim();
-      return roundDebugRecordingNumber(numeric, uom);
-    }
-  }
-
-  return String(rawValue).trim();
-}
-
-export function areDebugRecordingValuesEqual(left, right) {
-  return Object.is(left, right);
-}
-
-export function isDebugRecordingEventValue(key, value) {
-  const domain = ENTITY_DEFS[key]?.domain || "";
-  return domain === "switch" || domain === "binary_sensor" || domain === "select" || domain === "text_sensor" || typeof value === "string";
-}
-
-export function addDebugRecordingEvents(elapsedSeconds, changes, previousValues, nextValues) {
-  const events = Array.isArray(state.debugRecordingEvents) ? [...state.debugRecordingEvents] : [];
-  changes.forEach(([index]) => {
-    const key = DEBUG_RECORDING_KEYS[index];
-    const nextValue = nextValues[index];
-    if (!isDebugRecordingEventValue(key, nextValue)) {
-      return;
-    }
-    events.push([elapsedSeconds, index, previousValues[index] ?? null, nextValue ?? null]);
-  });
-  state.debugRecordingEvents = events.slice(-DEBUG_RECORDING_EVENT_LIMIT);
-}
-
-export function buildDebugRecordingSample() {
-  const now = Date.now();
-  const elapsedMs = state.debugRecordingStartedAt ? Math.max(0, now - Number(state.debugRecordingStartedAt)) : 0;
-  const elapsedSeconds = Math.round(elapsedMs / 1000);
-  const values = DEBUG_RECORDING_KEYS.map((key) => normalizeDebugRecordingValue(key));
-  const hasInitial = Array.isArray(state.debugRecordingInitialValues);
-  const previousValues = Array.isArray(state.debugRecordingLastValues)
-    ? state.debugRecordingLastValues
-    : values.map(() => null);
-  const changes = [];
-
-  values.forEach((value, index) => {
-    if (!hasInitial) {
-      return;
-    }
-    if (!areDebugRecordingValuesEqual(value, previousValues[index])) {
-      changes.push([index, value]);
-    }
-  });
-
-  if (!hasInitial) {
-    state.debugRecordingInitialValues = values;
-  } else if (changes.length > 0) {
-    addDebugRecordingEvents(elapsedSeconds, changes, previousValues, values);
-  }
-  state.debugRecordingLastValues = values;
-
-  return {
-    seq: Number(state.debugRecordingSequence || 0) + 1,
-    ts: now,
-    sample: [elapsedSeconds, changes],
-  };
-}
-
-export function clearDebugRecordingTimer() {
-  if (state.debugRecordingTimer) {
-    window.clearTimeout(state.debugRecordingTimer);
-    state.debugRecordingTimer = null;
-  }
 }
 
 export function clearDebugRecordingDevicePollTimer() {
@@ -452,13 +293,6 @@ export function applyDebugRecordingDeviceStatus(payload) {
   const status = payload && typeof payload === "object" ? payload : {};
   state.debugRecordingDeviceStatus = status;
   state.debugRecordingActive = Boolean(status.active);
-  state.debugRecordingStartedAt = status.active || Number(status.sample_count || 0) > 0
-    ? Date.now() - Math.max(0, Number(status.elapsed_s || 0) * 1000)
-    : 0;
-  state.debugRecordingEndsAt = status.active
-    ? Date.now() + Math.max(0, Number(status.remaining_s || 0) * 1000)
-    : 0;
-  state.debugRecordingLastSampleAt = Number(status.sample_count || 0) > 0 ? Date.now() : 0;
 }
 
 export function applyDebugRecordingDeviceUnavailableStatus() {
@@ -482,6 +316,7 @@ export function applyDebugRecordingDeviceUnavailableStatus() {
 }
 
 export async function fetchDebugRecordingDeviceStatus() {
+  const requestGeneration = debugRecordingMutationGeneration;
   const response = await window.fetch(getDebugRecordingEndpoint("status"), {
     cache: "no-store",
     headers: { "Cache-Control": "no-store" },
@@ -490,7 +325,9 @@ export async function fetchDebugRecordingDeviceStatus() {
     throw new Error(`HTTP ${response.status}`);
   }
   const payload = await response.json();
-  applyDebugRecordingDeviceStatus(payload);
+  if (requestGeneration === debugRecordingMutationGeneration) {
+    applyDebugRecordingDeviceStatus(payload);
+  }
   return payload;
 }
 
@@ -512,13 +349,23 @@ export async function refreshDebugRecordingDeviceStatus(options = {}) {
   }
   try {
     await fetchDebugRecordingDeviceStatus();
+    debugRecordingStatusFailureCount = 0;
+    if (String(state.debugRecordingError || "").startsWith("Status kon niet worden opgehaald.")) {
+      state.debugRecordingError = "";
+    }
     if (!state.debugRecordingActive && options.silent) {
       state.debugRecordingNotice = "Debugopname is afgerond.";
     }
     scheduleDebugRecordingDeviceStatusPoll();
   } catch (error) {
-    applyDebugRecordingDeviceUnavailableStatus();
+    debugRecordingStatusFailureCount += 1;
+    if (!state.debugRecordingDeviceStatus) {
+      applyDebugRecordingDeviceUnavailableStatus();
+    }
     state.debugRecordingError = `Status kon niet worden opgehaald. ${error.message || String(error)}`;
+    if (state.debugRecordingActive) {
+      scheduleDebugRecordingDeviceStatusPoll(Math.min(30000, 2000 * (2 ** debugRecordingStatusFailureCount)));
+    }
   } finally {
     if (!options.silent) {
       state.debugRecordingBusy = false;
@@ -532,46 +379,62 @@ export async function refreshDebugRecordingDeviceStatus(options = {}) {
   }
 }
 
-export function scheduleDebugRecordingSample(delayMs = DEBUG_RECORDING_SAMPLE_INTERVAL_MS) {
-  clearDebugRecordingTimer();
-  if (!state.debugRecordingActive) {
-    return;
-  }
-  state.debugRecordingTimer = window.setTimeout(() => {
-    void captureDebugRecordingSample();
-  }, Math.max(0, Number(delayMs) || 0));
+export function getDebugRecordingCsrfToken() {
+  return String(state.debugRecordingDeviceStatus?.csrf_token || "");
 }
 
-export async function captureDebugRecordingSample() {
-  if (!state.debugRecordingActive) {
-    return;
+export async function ensureDebugRecordingCsrfToken() {
+  const current = getDebugRecordingCsrfToken();
+  if (current) {
+    return current;
   }
-  if (state.debugRecordingBusy) {
-    scheduleDebugRecordingSample(DEBUG_RECORDING_BUSY_RETRY_MS);
-    return;
+  const status = await fetchDebugRecordingDeviceStatus();
+  const csrfToken = String(status?.csrf_token || "");
+  if (!csrfToken) {
+    throw new Error("beveiligingstoken ontbreekt");
   }
+  return csrfToken;
+}
 
-  state.debugRecordingBusy = true;
-  state.debugRecordingError = "";
-  render();
+export async function postDebugRecordingDevice(path, parameters = {}) {
+  let csrfToken = await ensureDebugRecordingCsrfToken();
+  let response = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const body = new URLSearchParams(parameters);
+    body.set("csrf_token", csrfToken);
+    response = await window.fetch(getDebugRecordingEndpoint(path), {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
+    if (response.status !== 403 || attempt > 0) break;
+    const status = await fetchDebugRecordingDeviceStatus();
+    csrfToken = String(status?.csrf_token || "");
+    if (!csrfToken) break;
+  }
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return response.json();
+}
 
+async function reconcileDebugRecordingMutation(predicate) {
   try {
-    await refreshEntities(DEBUG_RECORDING_KEYS, "all", { concurrency: FAST_VIEW_ENTITY_REFRESH_CONCURRENCY });
-    const sample = buildDebugRecordingSample();
-    state.debugRecordingSequence = sample.seq;
-    state.debugRecordingLastSampleAt = sample.ts;
-    state.debugRecordingSamples = [...(state.debugRecordingSamples || []), sample.sample];
-    if (Date.now() >= Number(state.debugRecordingEndsAt || 0)) {
-      void stopDebugRecording({ completed: true });
-      return;
+    const status = await fetchDebugRecordingDeviceStatus();
+    if (!predicate(status)) {
+      scheduleDebugRecordingDeviceStatusPoll(4000);
+      return false;
     }
-    scheduleDebugRecordingSample();
-  } catch (error) {
-    state.debugRecordingError = `Meting kon niet worden opgehaald. ${error.message || String(error)}`;
-    scheduleDebugRecordingSample(DEBUG_RECORDING_SAMPLE_INTERVAL_MS);
-  } finally {
-    state.debugRecordingBusy = false;
-    render();
+    debugRecordingStatusFailureCount = 0;
+    scheduleDebugRecordingDeviceStatusPoll();
+    return true;
+  } catch (_error) {
+    if (state.debugRecordingActive) scheduleDebugRecordingDeviceStatusPoll(4000);
+    return false;
   }
 }
 
@@ -579,124 +442,73 @@ export async function configureDebugRecordingDevice() {
   const chunks = buildBulkEntityChunks(DEBUG_RECORDING_KEYS, "state");
   let status = null;
   for (let index = 0; index < chunks.length; index += 1) {
-    const response = await window.fetch(
-      getDebugRecordingEndpoint(`configure?reset=${index === 0 ? "1" : "0"}`),
-      {
-        method: "POST",
-        cache: "no-store",
-        headers: {
-          "Cache-Control": "no-store",
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: chunks[index].body,
-      }
+    status = await postDebugRecordingDevice(
+      `configure?reset=${index === 0 ? "1" : "0"}`,
+      new URLSearchParams(chunks[index].body),
     );
-    if (!response.ok) {
-      throw new Error(`configuratie HTTP ${response.status}`);
-    }
-    status = await response.json();
   }
 
-  if (Number(status?.entity_field_count || 0) !== DEBUG_RECORDING_KEYS.length) {
-    throw new Error(`onvolledige debugset (${Number(status?.entity_field_count || 0)}/${DEBUG_RECORDING_KEYS.length})`);
+  if (!status?.configuration_pending || Number(status?.pending_requested_field_count || 0) !== DEBUG_RECORDING_KEYS.length) {
+    throw new Error(
+      `onvolledige debugset (${Number(status?.pending_requested_field_count || 0)}/${DEBUG_RECORDING_KEYS.length})`,
+    );
   }
   return status;
 }
 
-export async function startDebugRecording(durationMinutes) {
+export async function startDebugRecordingMode({ rolling = false, durationMinutes = 15 } = {}) {
   const minutes = Math.max(1, Number(durationMinutes) || 15);
-  clearDebugRecordingTimer();
+  const previousRecordingId = getDebugRecordingId();
+  debugRecordingMutationGeneration += 1;
   clearDebugRecordingDevicePollTimer();
   updateDebugRecordingState({
     debugRecordingBusy: true,
     debugRecordingError: "",
     debugRecordingNotice: "",
-    debugRecordingSamples: [],
-    debugRecordingEvents: [],
-    debugRecordingInitialValues: null,
-    debugRecordingLastValues: null,
     debugRecordingDeviceBundle: null,
-    debugRecordingLastSampleAt: 0,
-    debugRecordingSequence: 0,
   });
   render();
   try {
     await configureDebugRecordingDevice();
-    const response = await window.fetch(getDebugRecordingEndpoint(`start?duration_s=${encodeURIComponent(minutes * 60)}`), {
-      method: "POST",
-      cache: "no-store",
-      headers: { "Cache-Control": "no-store" },
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
+    const path = rolling ? "start?rolling=1" : `start?duration_s=${encodeURIComponent(minutes * 60)}`;
+    const payload = await postDebugRecordingDevice(path);
     applyDebugRecordingDeviceStatus(payload);
+    debugRecordingStatusFailureCount = 0;
     scheduleDebugRecordingDeviceStatusPoll();
   } catch (error) {
-    applyDebugRecordingDeviceUnavailableStatus();
-    state.debugRecordingError = `Debugopname kon niet worden gestart. ${error.message || String(error)}`;
+    const reconciled = await reconcileDebugRecordingMutation((status) => (
+      Boolean(status?.active)
+      && isDebugRecordingRolling(status) === rolling
+      && getDebugRecordingId(status) !== previousRecordingId
+    ));
+    if (reconciled) {
+      state.debugRecordingNotice = `${rolling ? "Rolling debug" : "Debugopname"} is gestart; alleen de bevestiging was vertraagd.`;
+    } else {
+      state.debugRecordingError = `${rolling ? "Rolling debug" : "Debugopname"} kon niet worden gestart. ${error.message || String(error)}`;
+    }
   } finally {
     state.debugRecordingBusy = false;
     render();
   }
 }
 
-export async function startRollingDebugRecording() {
-  clearDebugRecordingTimer();
-  clearDebugRecordingDevicePollTimer();
-  updateDebugRecordingState({
-    debugRecordingBusy: true,
-    debugRecordingError: "",
-    debugRecordingNotice: "",
-    debugRecordingSamples: [],
-    debugRecordingEvents: [],
-    debugRecordingInitialValues: null,
-    debugRecordingLastValues: null,
-    debugRecordingDeviceBundle: null,
-    debugRecordingLastSampleAt: 0,
-    debugRecordingSequence: 0,
-  });
-  render();
-  try {
-    await configureDebugRecordingDevice();
-    const response = await window.fetch(getDebugRecordingEndpoint("start?rolling=1"), {
-      method: "POST",
-      cache: "no-store",
-      headers: { "Cache-Control": "no-store" },
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
-    applyDebugRecordingDeviceStatus(payload);
-    scheduleDebugRecordingDeviceStatusPoll();
-  } catch (error) {
-    applyDebugRecordingDeviceUnavailableStatus();
-    state.debugRecordingError = `Rolling debug kon niet worden gestart. ${error.message || String(error)}`;
-  } finally {
-    state.debugRecordingBusy = false;
-    render();
-  }
+export function startDebugRecording(durationMinutes) {
+  return startDebugRecordingMode({ durationMinutes });
+}
+
+export function startRollingDebugRecording() {
+  return startDebugRecordingMode({ rolling: true });
 }
 
 export async function requestDebugRecordingFreeze() {
-  const response = await window.fetch(getDebugRecordingEndpoint("freeze"), {
-    method: "POST",
-    cache: "no-store",
-    headers: { "Cache-Control": "no-store" },
-  });
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-  const payload = await response.json();
+  debugRecordingMutationGeneration += 1;
+  const payload = await postDebugRecordingDevice("freeze");
   applyDebugRecordingDeviceStatus(payload);
   clearDebugRecordingDevicePollTimer();
   return payload;
 }
 
 export async function freezeDebugRecording() {
-  clearDebugRecordingTimer();
   state.debugRecordingBusy = true;
   state.debugRecordingError = "";
   render();
@@ -704,7 +516,12 @@ export async function freezeDebugRecording() {
     await requestDebugRecordingFreeze();
     state.debugRecordingNotice = "Rolling debug is gestopt. De recente buffer blijft bewaard.";
   } catch (error) {
-    state.debugRecordingError = `Rolling debug kon niet worden gestopt. ${error.message || String(error)}`;
+    const reconciled = await reconcileDebugRecordingMutation((status) => !status?.active);
+    if (reconciled) {
+      state.debugRecordingNotice = "Rolling debug is gestopt; alleen de bevestiging was vertraagd.";
+    } else {
+      state.debugRecordingError = `Rolling debug kon niet worden gestopt. ${error.message || String(error)}`;
+    }
   } finally {
     state.debugRecordingBusy = false;
     render();
@@ -712,57 +529,26 @@ export async function freezeDebugRecording() {
 }
 
 export async function stopDebugRecording(options = {}) {
-  clearDebugRecordingTimer();
+  debugRecordingMutationGeneration += 1;
   clearDebugRecordingDevicePollTimer();
   state.debugRecordingBusy = true;
   state.debugRecordingError = "";
   render();
   try {
-    const response = await window.fetch(getDebugRecordingEndpoint("stop"), {
-      method: "POST",
-      cache: "no-store",
-      headers: { "Cache-Control": "no-store" },
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
+    const payload = await postDebugRecordingDevice("stop");
     applyDebugRecordingDeviceStatus(payload);
     state.debugRecordingNotice = options.completed ? "Debugopname is afgerond." : "Debugopname is gestopt.";
   } catch (error) {
-    state.debugRecordingError = `Debugopname kon niet worden gestopt. ${error.message || String(error)}`;
+    const reconciled = await reconcileDebugRecordingMutation((status) => !status?.active);
+    if (reconciled) {
+      state.debugRecordingNotice = "Debugopname is gestopt; alleen de bevestiging was vertraagd.";
+    } else {
+      state.debugRecordingError = `Debugopname kon niet worden gestopt. ${error.message || String(error)}`;
+    }
   } finally {
     state.debugRecordingBusy = false;
     render();
   }
-}
-
-export function buildDebugRecordingCorePayload(extra = {}) {
-  const endedAt = state.debugRecordingActive ? Date.now() : Number(state.debugRecordingLastSampleAt || Date.now());
-  return {
-    format: "openquatt-debug-v2",
-    schema_version: 2,
-    kind: "openquatt_debug_recording",
-    encoding: "column-delta-json-v2",
-    exported_at: new Date().toISOString(),
-    source: extra.source || {},
-    recording: {
-      started_at: state.debugRecordingStartedAt ? new Date(Number(state.debugRecordingStartedAt)).toISOString() : "",
-      ended_at: endedAt ? new Date(endedAt).toISOString() : "",
-      active: Boolean(state.debugRecordingActive),
-      duration_s: state.debugRecordingStartedAt ? Math.round(Math.max(0, endedAt - Number(state.debugRecordingStartedAt)) / 1000) : 0,
-      interval_s: Math.round(DEBUG_RECORDING_SAMPLE_INTERVAL_MS / 1000),
-      sample_count: getDebugRecordingSampleCount(),
-      column_count: DEBUG_RECORDING_KEYS.length,
-      storage: "browser",
-    },
-    columns: getDebugRecordingColumnSchema(),
-    units: getDebugRecordingUnits(),
-    initial: encodeDebugRecordingInitialValues(state.debugRecordingInitialValues),
-    samples: state.debugRecordingSamples || [],
-    events: state.debugRecordingEvents || [],
-    ...(extra.logs ? { logs: extra.logs } : {}),
-  };
 }
 
 export function getDebugRecordingCompactJson(payload) {
@@ -770,15 +556,7 @@ export function getDebugRecordingCompactJson(payload) {
 }
 
 export function getDebugRecordingEstimatedBytes() {
-  const estimated = Number(state.debugRecordingDeviceStatus?.estimated_size || 0);
-  if (estimated > 0) {
-    return estimated;
-  }
-  try {
-    return new Blob([getDebugRecordingCompactJson(buildDebugRecordingCorePayload())]).size;
-  } catch (_error) {
-    return getDebugRecordingCompactJson(buildDebugRecordingCorePayload()).length;
-  }
+  return Math.max(0, Number(state.debugRecordingDeviceStatus?.estimated_size || 0));
 }
 
 export function formatDebugRecordingBytes(bytes) {
@@ -802,9 +580,9 @@ export function getDebugRecordingFilename(bundle) {
   return `${installation}-debug-recording-${stamp}.oqdebug.json`;
 }
 
-export async function downloadDebugRecordingBundle() {
+export async function exportDebugRecordingBundle(mode) {
   if (getDebugRecordingSampleCount() === 0) {
-    state.debugRecordingError = "Er is nog geen debugopname om te downloaden.";
+    state.debugRecordingError = `Er is nog geen debugopname om te ${mode === "copy" ? "kopiëren" : "downloaden"}.`;
     render();
     return;
   }
@@ -822,49 +600,35 @@ export async function downloadDebugRecordingBundle() {
     }
     const bundle = await response.json();
     state.debugRecordingDeviceBundle = bundle;
-    downloadTextFile(getDebugRecordingFilename(bundle), getDebugRecordingCompactJson(bundle), "application/json");
+    if (mode === "copy") {
+      const copied = await copyTextToClipboard(getDebugRecordingCompactJson(bundle));
+      if (!copied) {
+        throw new Error("Kopiëren naar het klembord is niet gelukt.");
+      }
+    } else {
+      downloadTextFile(getDebugRecordingFilename(bundle), getDebugRecordingCompactJson(bundle), "application/json");
+    }
     acknowledgeDebugRecording(bundle);
-    state.debugRecordingNotice = rollingActive ? "Momentopname gedownload. Rolling debug loopt door." : "Supportbestand gedownload.";
+    const action = mode === "copy" ? "gekopieerd" : "gedownload";
+    state.debugRecordingNotice = rollingActive
+      ? `Momentopname ${action}. Rolling debug loopt door.`
+      : mode === "copy" ? "Supportbestand gekopieerd." : "Supportbestand gedownload.";
   } catch (error) {
-    state.debugRecordingError = "Download mislukt. Probeer opnieuw of kopieer de data.";
+    state.debugRecordingError = mode === "copy"
+      ? "Kopiëren mislukt. Probeer opnieuw of download het supportbestand."
+      : "Download mislukt. Probeer opnieuw of kopieer de data.";
   } finally {
     state.debugRecordingBusy = false;
     render();
   }
 }
 
-export async function copyDebugRecordingBundle() {
-  if (getDebugRecordingSampleCount() === 0) {
-    state.debugRecordingError = "Er is nog geen debugopname om te kopiëren.";
-    render();
-    return;
-  }
-  state.debugRecordingBusy = true;
-  state.debugRecordingError = "";
-  const rollingActive = state.debugRecordingActive && isDebugRecordingRolling();
-  render();
-  try {
-    const response = await window.fetch(getDebugRecordingEndpoint("download"), {
-      cache: "no-store",
-      headers: { "Cache-Control": "no-store" },
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const bundle = await response.json();
-    state.debugRecordingDeviceBundle = bundle;
-    const copied = await copyTextToClipboard(getDebugRecordingCompactJson(bundle));
-    if (!copied) {
-      throw new Error("Kopiëren naar het klembord is niet gelukt.");
-    }
-    acknowledgeDebugRecording(bundle);
-    state.debugRecordingNotice = rollingActive ? "Momentopname gekopieerd. Rolling debug loopt door." : "Supportbestand gekopieerd.";
-  } catch (error) {
-    state.debugRecordingError = "Kopiëren mislukt. Probeer opnieuw of download het supportbestand.";
-  } finally {
-    state.debugRecordingBusy = false;
-    render();
-  }
+export function downloadDebugRecordingBundle() {
+  return exportDebugRecordingBundle("download");
+}
+
+export function copyDebugRecordingBundle() {
+  return exportDebugRecordingBundle("copy");
 }
 
 const debugRecordingActionHandlers = {
@@ -895,9 +659,9 @@ export function renderDebugRecordingModal() {
   const sampleCount = getDebugRecordingSampleCount();
   const busy = state.debugRecordingBusy;
   const estimatedSize = formatDebugRecordingBytes(getDebugRecordingEstimatedBytes());
-  const eventCount = Array.isArray(state.debugRecordingDeviceBundle?.events)
-    ? state.debugRecordingDeviceBundle.events.length
-    : Array.isArray(state.debugRecordingEvents) ? state.debugRecordingEvents.length : 0;
+  const eventCount = Math.max(0, Number(state.debugRecordingDeviceStatus?.event_count || 0));
+  const missingFieldCount = Math.max(0, Number(state.debugRecordingDeviceStatus?.missing_field_count || 0));
+  const stringOverflow = state.debugRecordingDeviceStatus?.string_overflow === true;
   const selectedMinutes = getDebugRecordingSelectedMinutes();
   const remainingMs = getDebugRecordingRemainingMs();
   const retainedMs = getDebugRecordingRetainedDurationMs();
@@ -912,11 +676,16 @@ export function renderDebugRecordingModal() {
     { icon: "file", label: "Geschatte grootte", value: `± ${estimatedSize}` },
     { icon: "storage", label: "Opslag", value: state.debugRecordingDeviceStatus?.available === false ? "Niet beschikbaar" : "Apparaatgeheugen" },
   ];
+  const dataWarning = stringOverflow
+    ? "De stringopslag is volgelopen; enkele tekstwaarden ontbreken in de opname."
+    : missingFieldCount > 0
+      ? `${missingFieldCount} niet beschikbare signalen zijn veilig overgeslagen.`
+      : "";
   const feedback = state.debugRecordingError
     ? { kind: "error", icon: "alert", text: state.debugRecordingError }
     : state.debugRecordingNotice
       ? { kind: "success", icon: "check", text: state.debugRecordingNotice }
-      : null;
+      : dataWarning ? { kind: "warning", icon: "alert", text: dataWarning } : null;
   return renderModalShell({
     id: "system",
     titleId: "oq-debug-recording-modal-title",
