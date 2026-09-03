@@ -38,7 +38,7 @@ class ReleaseDebugSymbolsTests(unittest.TestCase):
             "name: openquatt-q-debug-symbols-${{ needs.compute-meta.outputs.version }}",
             DEV_WORKFLOW,
         )
-        self.assertIn("retention-days: 30", DEV_WORKFLOW)
+        self.assertIn("retention-days: 7", DEV_WORKFLOW)
         self.assertIn(
             '"${{ needs.compute-meta.outputs.version }}"',
             DEV_WORKFLOW,
