@@ -14,10 +14,11 @@ from scripts import prepare_q_debug_symbols as debug_symbols
 ROOT = Path(__file__).resolve().parents[2]
 REUSABLE_BUILD_WORKFLOW = (ROOT / ".github/workflows/esphome-build.yml").read_text(encoding="utf-8")
 RELEASE_WORKFLOW = (ROOT / ".github/workflows/release-build.yml").read_text(encoding="utf-8")
+DEV_WORKFLOW = (ROOT / ".github/workflows/dev-build.yml").read_text(encoding="utf-8")
 
 
 class ReleaseDebugSymbolsTests(unittest.TestCase):
-    def test_release_only_enables_q_debug_symbols(self) -> None:
+    def test_release_enables_q_debug_symbols(self) -> None:
         self.assertIn("include_debug_symbols:", REUSABLE_BUILD_WORKFLOW)
         self.assertIn("include_debug_symbols: true", RELEASE_WORKFLOW)
         self.assertIn(
@@ -28,6 +29,20 @@ class ReleaseDebugSymbolsTests(unittest.TestCase):
         self.assertIn("merge-multiple: true", RELEASE_WORKFLOW)
         self.assertIn("name: openquatt-q-debug-symbols-${{ github.ref_name }}", RELEASE_WORKFLOW)
         self.assertIn("retention-days: 90", RELEASE_WORKFLOW)
+
+    def test_dev_enables_unique_q_debug_symbol_artifacts(self) -> None:
+        self.assertIn("include_debug_symbols: true", DEV_WORKFLOW)
+        self.assertIn("pattern: q-debug-stage-*-dev-release", DEV_WORKFLOW)
+        self.assertIn("merge-multiple: true", DEV_WORKFLOW)
+        self.assertIn(
+            "name: openquatt-q-debug-symbols-${{ needs.compute-meta.outputs.version }}",
+            DEV_WORKFLOW,
+        )
+        self.assertIn("retention-days: 30", DEV_WORKFLOW)
+        self.assertIn(
+            '"${{ needs.compute-meta.outputs.version }}"',
+            DEV_WORKFLOW,
+        )
 
     def test_prepare_q_debug_symbols_indexes_only_q_targets(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
