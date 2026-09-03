@@ -14,6 +14,7 @@ jobs:
     uses: ./.github/workflows/esphome-build.yml
     with:
       artifact_suffix: release
+      include_debug_symbols: true
 
   publish-release:
     runs-on: ubuntu-latest
@@ -29,6 +30,13 @@ jobs:
           pattern: openquatt-*-release
           path: dist
 
+      - name: Download Q debug symbol staging artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: q-debug-stage-*-release
+          path: q-debug-symbols-staging
+          merge-multiple: true
+
       - name: Prepare release assets and manifests
         run: |
           TAG="${GITHUB_REF_NAME}"
@@ -36,6 +44,31 @@ jobs:
           BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
           RELEASE_URL="https://github.com/${REPO}/releases/tag/${TAG}"
           ./scripts/prepare_release_assets.sh "${TAG}" "${BASE_URL}" "${RELEASE_URL}"
+
+      - name: Prepare Q debug symbol artifact
+        run: |
+          ESPHOME_VERSION="$(sed -n 's/^esphome==//p' .github/requirements-esphome.txt)"
+          SOURCE_COMMIT="$(git rev-parse HEAD)"
+          if [[ -z "${ESPHOME_VERSION}" ]]; then
+            echo "Could not resolve ESPHome version from .github/requirements-esphome.txt" >&2
+            exit 1
+          fi
+          python3 scripts/prepare_q_debug_symbols.py \
+            "${GITHUB_REF_NAME}" \
+            "${SOURCE_COMMIT}" \
+            "${ESPHOME_VERSION}" \
+            --artifact-root q-debug-symbols-staging \
+            --output-dir q-debug-symbols
+
+      # Keep symbols out of GitHub Release assets. This Actions artifact is retained
+      # for 90 days so field crashes can be decoded against the exact release ELF.
+      - name: Upload Q debug symbol artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: openquatt-q-debug-symbols-${{ github.ref_name }}
+          if-no-files-found: error
+          retention-days: 90
+          path: q-debug-symbols
 
       - name: Create release if needed
         env:

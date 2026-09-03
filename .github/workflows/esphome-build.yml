@@ -26,6 +26,10 @@ on:
         required: false
         type: boolean
         default: true
+      include_debug_symbols:
+        required: false
+        type: boolean
+        default: false
       project_version:
         required: false
         type: string
@@ -182,6 +186,25 @@ jobs:
 
       - name: Validate and normalize firmware artifacts
         run: python3 scripts/repair_factory_bin.py "${{ matrix.target.build_path }}/build" --normalize-app
+
+      - name: Stage Q debug symbols
+        if: ${{ inputs.include_debug_symbols && matrix.target.hardware == 'heatpump_controller_q' }}
+        run: |
+          SYMBOL_ROOT="${RUNNER_TEMP}/q-debug-symbols/${{ matrix.target.id }}"
+          mkdir -p "${SYMBOL_ROOT}"
+          cp "${{ matrix.target.build_path }}/build/firmware.elf" "${SYMBOL_ROOT}/firmware.elf"
+          cp "${{ matrix.target.build_path }}/build/openquatt.map" "${SYMBOL_ROOT}/openquatt.map"
+
+      # Matrix jobs cannot share files directly. Keep these fan-in artifacts for
+      # one day only; the release workflow consolidates them into one 90-day artifact.
+      - name: Upload Q debug symbol staging artifact
+        if: ${{ inputs.include_debug_symbols && matrix.target.hardware == 'heatpump_controller_q' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: q-debug-stage-${{ matrix.target.id }}-${{ inputs.artifact_suffix }}
+          if-no-files-found: error
+          retention-days: 1
+          path: ${{ runner.temp }}/q-debug-symbols
 
       - name: Upload firmware artifacts
         if: ${{ inputs.include_firmware_bin }}
