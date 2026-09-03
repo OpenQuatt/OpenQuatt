@@ -50,7 +50,7 @@ Gebruik dit ELF uitsluitend wanneer zijn SHA256 exact gelijk is aan
 
 Voor Heatpump Controller Q-builds bewaart GitHub Actions de exacte symbolen uit
 dezelfde build als de firmware. Getagde releases krijgen 90 dagen één artifact
-`openquatt-q-debug-symbols-<tag>`. Dev-builds krijgen 30 dagen een uniek artifact
+`openquatt-q-debug-symbols-<tag>`. Dev-builds krijgen 7 dagen een uniek artifact
 `openquatt-q-debug-symbols-<dev-versie>`, zodat oudere symbolen beschikbaar
 blijven wanneer `dev-latest` naar een nieuwere build verschuift.
 
@@ -74,7 +74,7 @@ server-side afgehandeld.
 - Een pending tombstone gebruikt de op dat moment geconfigureerde broker en
   topicbasis. Migratie over meerdere oude endpoints valt buiten deze versie.
 - Voor Q-releasebuilds zijn de exacte symbolen 90 dagen beschikbaar en voor
-  Q-dev-builds 30 dagen; daarna blijft reconstructie afhankelijk van de opgenomen
+  Q-dev-builds 7 dagen; daarna blijft reconstructie afhankelijk van de opgenomen
   buildmetadata.
 - Wanneer een opnieuw gebouwd ELF niet exact dezelfde SHA256 heeft, blijven de
   adressen ruwe diagnose-informatie en worden ze niet gesymboliseerd.
