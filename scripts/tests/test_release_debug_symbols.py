@@ -44,6 +44,18 @@ class ReleaseDebugSymbolsTests(unittest.TestCase):
             DEV_WORKFLOW,
         )
 
+    def test_staging_artifacts_are_deleted_after_consolidation(self) -> None:
+        for workflow in (RELEASE_WORKFLOW, DEV_WORKFLOW):
+            self.assertIn("actions: write", workflow)
+            self.assertIn("Delete Q debug symbol staging artifacts", workflow)
+            self.assertIn("actions/runs/${GITHUB_RUN_ID}/artifacts", workflow)
+            self.assertIn('startswith("q-debug-stage-")', workflow)
+            self.assertIn("actions/artifacts/${artifact_id}", workflow)
+
+            upload_position = workflow.index("Upload Q debug symbol artifact")
+            delete_position = workflow.index("Delete Q debug symbol staging artifacts")
+            self.assertLess(upload_position, delete_position)
+
     def test_prepare_q_debug_symbols_indexes_only_q_targets(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
