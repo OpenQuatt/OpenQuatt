@@ -46,8 +46,15 @@ Voor normale crashes na een herstart in dezelfde firmware kan een kandidaat-ELF
 opnieuw worden gebouwd vanuit de opgenomen bronrepository, commit en het exacte
 target, met de opgenomen ESPHome-versie en buildtijd als aanvullende invoer.
 Gebruik dit ELF uitsluitend wanneer zijn SHA256 exact gelijk is aan
-`reporting_build_id`. De firmware bewaart of publiceert niet standaard bij
-iedere build een ELF-bestand.
+`reporting_build_id`.
+
+Voor getagde Heatpump Controller Q-releases bewaart de releaseworkflow daarom
+90 dagen één GitHub Actions-artifact `openquatt-q-debug-symbols-<tag>`. Dit
+artifact is geen GitHub Release-asset en bevat per Q-target de exacte
+`firmware.elf`, `openquatt.map` en een `index.json`. Het indexbestand koppelt de
+bestanden via de ELF-SHA256 rechtstreeks aan `reporting_build_id`, plus het
+buildtarget, de broncommit en de gebruikte ESPHome-versie. Andere
+hardwareprofielen krijgen geen debug-symbolenartifact.
 
 Bij opt-out bewaart OpenQuatt alleen een kleine pending-tombstone status en
 publiceert het een lege retained payload zodra de broker bereikbaar is. Deze
@@ -62,8 +69,8 @@ server-side afgehandeld.
   gepubliceerde oudere crash.
 - Een pending tombstone gebruikt de op dat moment geconfigureerde broker en
   topicbasis. Migratie over meerdere oude endpoints valt buiten deze versie.
-- De opgenomen buildvelden maken een gerichte rebuild en SHA-controle mogelijk,
-  maar vormen geen garantie dat iedere oude toolchain later nog byte-identiek
-  beschikbaar is.
+- Voor Q-releasebuilds zijn de exacte symbolen 90 dagen beschikbaar; buiten die
+  termijn en voor andere buildsoorten blijft reconstructie afhankelijk van de
+  opgenomen buildmetadata.
 - Wanneer een opnieuw gebouwd ELF niet exact dezelfde SHA256 heeft, blijven de
   adressen ruwe diagnose-informatie en worden ze niet gesymboliseerd.
