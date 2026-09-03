@@ -36,6 +36,7 @@ jobs:
     uses: ./.github/workflows/esphome-build.yml
     with:
       artifact_suffix: dev-release
+      include_debug_symbols: true
       project_version: ${{ needs.compute-meta.outputs.version }}
       release_channel: dev
       release_manifest_tag: dev-latest
@@ -56,6 +57,13 @@ jobs:
           pattern: openquatt-*-dev-release
           path: dist
 
+      - name: Download Q debug symbol staging artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: q-debug-stage-*-dev-release
+          path: q-debug-symbols-staging
+          merge-multiple: true
+
       - name: Prepare dev release assets and manifests
         run: |
           TAG="dev-latest"
@@ -63,6 +71,31 @@ jobs:
           BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
           RELEASE_URL="https://github.com/${REPO}/releases/tag/${TAG}"
           ./scripts/prepare_release_assets.sh "${{ needs.compute-meta.outputs.version }}" "${BASE_URL}" "${RELEASE_URL}"
+
+      - name: Prepare Q debug symbol artifact
+        run: |
+          ESPHOME_VERSION="$(sed -n 's/^esphome==//p' .github/requirements-esphome.txt)"
+          SOURCE_COMMIT="$(git rev-parse HEAD)"
+          if [[ -z "${ESPHOME_VERSION}" ]]; then
+            echo "Could not resolve ESPHome version from .github/requirements-esphome.txt" >&2
+            exit 1
+          fi
+          python3 scripts/prepare_q_debug_symbols.py \
+            "${{ needs.compute-meta.outputs.version }}" \
+            "${SOURCE_COMMIT}" \
+            "${ESPHOME_VERSION}" \
+            --artifact-root q-debug-symbols-staging \
+            --output-dir q-debug-symbols
+
+      # Dev builds are frequent, so retain exact symbols for 7 days. The unique
+      # version/SHA name keeps older dev symbol sets available after dev-latest moves.
+      - name: Upload Q debug symbol artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: openquatt-q-debug-symbols-${{ needs.compute-meta.outputs.version }}
+          if-no-files-found: error
+          retention-days: 7
+          path: q-debug-symbols
 
       - name: Move dev release tag
         run: |
