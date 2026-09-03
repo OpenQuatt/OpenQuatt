@@ -13,6 +13,7 @@
 #include "oq_thermal_request_logic.h"
 #include "../odu/oq_odu_compressor_levels.h"
 #include "../service/oq_service_status.h"
+#include "../service/tasks/oq_manual_hp_logic.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_thermal_actuator_runtime {

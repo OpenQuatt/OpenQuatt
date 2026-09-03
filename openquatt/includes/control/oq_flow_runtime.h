@@ -4,6 +4,8 @@
 #include <stdint.h>
 
 #include "oq_flow_control_logic.h"
+#include "../service/oq_service_logic.h"
+#include "../service/tasks/oq_manual_hp_logic.h"
 
 namespace oq_flow_runtime {
 
