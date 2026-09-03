@@ -48,12 +48,16 @@ target, met de opgenomen ESPHome-versie en buildtijd als aanvullende invoer.
 Gebruik dit ELF uitsluitend wanneer zijn SHA256 exact gelijk is aan
 `reporting_build_id`.
 
-Voor getagde Heatpump Controller Q-releases bewaart de releaseworkflow daarom
-90 dagen één GitHub Actions-artifact `openquatt-q-debug-symbols-<tag>`. Dit
-artifact is geen GitHub Release-asset en bevat per Q-target de exacte
-`firmware.elf`, `openquatt.map` en een `index.json`. Het indexbestand koppelt de
-bestanden via de ELF-SHA256 rechtstreeks aan `reporting_build_id`, plus het
-buildtarget, de broncommit en de gebruikte ESPHome-versie. Andere
+Voor Heatpump Controller Q-builds bewaart GitHub Actions de exacte symbolen uit
+dezelfde build als de firmware. Getagde releases krijgen 90 dagen één artifact
+`openquatt-q-debug-symbols-<tag>`. Dev-builds krijgen 30 dagen een uniek artifact
+`openquatt-q-debug-symbols-<dev-versie>`, zodat oudere symbolen beschikbaar
+blijven wanneer `dev-latest` naar een nieuwere build verschuift.
+
+Deze symbolen zijn geen GitHub Release-assets. Ieder artifact bevat per Q-target
+de exacte `firmware.elf`, `openquatt.map` en een `index.json`. Het indexbestand
+koppelt de bestanden via de ELF-SHA256 rechtstreeks aan `reporting_build_id`,
+plus het buildtarget, de broncommit en de gebruikte ESPHome-versie. Andere
 hardwareprofielen krijgen geen debug-symbolenartifact.
 
 Bij opt-out bewaart OpenQuatt alleen een kleine pending-tombstone status en
@@ -69,8 +73,8 @@ server-side afgehandeld.
   gepubliceerde oudere crash.
 - Een pending tombstone gebruikt de op dat moment geconfigureerde broker en
   topicbasis. Migratie over meerdere oude endpoints valt buiten deze versie.
-- Voor Q-releasebuilds zijn de exacte symbolen 90 dagen beschikbaar; buiten die
-  termijn en voor andere buildsoorten blijft reconstructie afhankelijk van de
-  opgenomen buildmetadata.
+- Voor Q-releasebuilds zijn de exacte symbolen 90 dagen beschikbaar en voor
+  Q-dev-builds 30 dagen; daarna blijft reconstructie afhankelijk van de opgenomen
+  buildmetadata.
 - Wanneer een opnieuw gebouwd ELF niet exact dezelfde SHA256 heeft, blijven de
   adressen ruwe diagnose-informatie en worden ze niet gesymboliseerd.
