@@ -1,6 +1,7 @@
 #pragma once
 
 #include "oq_boiler_dispatch_logic.h"
+#include "../boiler/oq_boiler_commissioning_logic.h"
 #include "../service/oq_service_logic.h"
 
 namespace oq_boiler_dispatch_runtime {
