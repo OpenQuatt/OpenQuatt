@@ -7,6 +7,8 @@
 #include <string>
 
 #include "../performance/hp_perf_frequency.h"
+#include "../service/oq_service_logic.h"
+#include "../service/tasks/oq_manual_hp_logic.h"
 #include "oq_supervisory_state_logic.h"
 
 #if defined(OQ_TOPOLOGY_DUO)

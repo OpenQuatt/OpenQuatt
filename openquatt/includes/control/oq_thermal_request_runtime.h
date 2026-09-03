@@ -11,6 +11,7 @@
 #include "oq_power_house_dispatch_logic.h"
 #include "oq_thermal_request_logic.h"
 #include "../odu/oq_odu_compressor_levels.h"
+#include "../service/tasks/oq_manual_hp_logic.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_thermal_request_runtime {
