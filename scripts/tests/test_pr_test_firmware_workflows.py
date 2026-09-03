@@ -182,7 +182,7 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
             self.assertTrue((repo_root / "dist/openquatt-test.firmware.ota.bin.md5").is_file())
             self.assertTrue((repo_root / "dist/pr-firmware.json").is_file())
 
-    def test_release_aliases_are_byte_identical_and_get_matching_manifests(self) -> None:
+    def test_release_aliases_get_compatibility_manifests_without_duplicate_binaries(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
             artifact_dir = repo_root / "dist/openquatt-test"
@@ -209,19 +209,16 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
                 mock.patch.object(build_targets, "REPO_ROOT", repo_root),
                 mock.patch.object(build_targets, "TARGETS_FILE", targets_file),
             ):
+                target = build_targets.load_targets()[0]
                 self.assertEqual(
                     [
                         "openquatt-test.firmware.ota.bin",
                         "openquatt-test.firmware.factory.bin",
-                        "openquatt-test-wifi.firmware.ota.bin",
-                        "openquatt-test-wifi.firmware.factory.bin",
-                        "openquatt-test-eth.firmware.ota.bin",
-                        "openquatt-test-eth.firmware.factory.bin",
                         "openquatt-test-ota.manifest.json",
                         "openquatt-test-wifi-ota.manifest.json",
                         "openquatt-test-eth-ota.manifest.json",
                     ],
-                    build_targets.release_asset_names(build_targets.load_targets()[0]),
+                    build_targets.release_asset_names(target),
                 )
                 build_targets.prepare_release_assets(
                     "v1.2.3",
@@ -231,22 +228,32 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
 
             canonical_ota = repo_root / "dist/openquatt-test.firmware.ota.bin"
             canonical_factory = repo_root / "dist/openquatt-test.firmware.factory.bin"
-            for alias in ("openquatt-test-wifi", "openquatt-test-eth"):
-                alias_ota = repo_root / f"dist/{alias}.firmware.ota.bin"
-                alias_factory = repo_root / f"dist/{alias}.firmware.factory.bin"
-                self.assertEqual(canonical_ota.read_bytes(), alias_ota.read_bytes())
-                self.assertEqual(canonical_factory.read_bytes(), alias_factory.read_bytes())
+            self.assertEqual(b"ota-firmware", canonical_ota.read_bytes())
+            self.assertEqual(b"factory-firmware", canonical_factory.read_bytes())
 
-                manifest = json.loads(
-                    (repo_root / f"{alias}-ota.manifest.json").read_text(encoding="utf-8")
+            manifests = {
+                name: json.loads((repo_root / name).read_text(encoding="utf-8"))
+                for name in (
+                    "openquatt-test-ota.manifest.json",
+                    "openquatt-test-wifi-ota.manifest.json",
+                    "openquatt-test-eth-ota.manifest.json",
                 )
-                self.assertTrue(
-                    manifest["builds"][0]["ota"]["path"].endswith(
-                        f"/{alias}.firmware.ota.bin"
-                    )
-                )
+            }
+            expected_ota_path = "https://example.invalid/download/openquatt-test.firmware.ota.bin"
+            expected_ota_md5 = build_targets.md5sum(canonical_ota)
+            for manifest in manifests.values():
+                self.assertEqual(expected_ota_path, manifest["builds"][0]["ota"]["path"])
+                self.assertEqual(expected_ota_md5, manifest["builds"][0]["ota"]["md5"])
+
+            self.assertEqual("Test target", manifests["openquatt-test-ota.manifest.json"]["name"])
+            for alias in ("openquatt-test-wifi", "openquatt-test-eth"):
+                self.assertFalse((repo_root / f"dist/{alias}.firmware.ota.bin").exists())
+                self.assertFalse((repo_root / f"dist/{alias}.firmware.factory.bin").exists())
                 expected_connection = "Wi-Fi" if alias.endswith("-wifi") else "Ethernet"
-                self.assertEqual(f"Test target {expected_connection}", manifest["name"])
+                self.assertEqual(
+                    f"Test target {expected_connection}",
+                    manifests[f"{alias}-ota.manifest.json"]["name"],
+                )
 
     def test_pr_aliases_keep_legacy_connection_catalog_entries(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
