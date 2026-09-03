@@ -87,14 +87,14 @@ jobs:
             --artifact-root q-debug-symbols-staging \
             --output-dir q-debug-symbols
 
-      # Dev builds are frequent, so retain exact symbols for 30 days. The unique
+      # Dev builds are frequent, so retain exact symbols for 7 days. The unique
       # version/SHA name keeps older dev symbol sets available after dev-latest moves.
       - name: Upload Q debug symbol artifact
         uses: actions/upload-artifact@v6
         with:
           name: openquatt-q-debug-symbols-${{ needs.compute-meta.outputs.version }}
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
           path: q-debug-symbols
 
       - name: Move dev release tag
