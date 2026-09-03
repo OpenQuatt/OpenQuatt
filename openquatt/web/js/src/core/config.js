@@ -34,8 +34,10 @@
     firmwareUpdateStatus: { domain: "text_sensor", name: "Firmware Update Status", optional: true },
     firmwareTestOtaUrl: { domain: "text", name: "Firmware Test OTA URL", optional: true },
     firmwareTestOtaMd5Url: { domain: "text", name: "Firmware Test OTA MD5 URL", optional: true },
+    firmwareTestManifestUrl: { domain: "text", name: "Firmware Test Manifest URL", optional: true },
     checkFirmwareUpdates: { domain: "button", name: "Check Firmware Updates", optional: true },
     installFirmwareTestOta: { domain: "button", name: "Install Firmware Test OTA", optional: true },
+    installFirmwareTestManifest: { domain: "button", name: "Install Firmware Test Manifest", optional: true },
     installFirmwareUpdateTarget: { domain: "button", name: "Install Firmware Update Target", optional: true },
     restartAction: { domain: "button", name: "Restart", optional: true },
     uptime: { domain: "sensor", name: "Uptime", optional: true },
@@ -1429,7 +1431,7 @@
     "boilerPowerTestResultQuality",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
-  export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestOtaUrl", "firmwareTestOtaMd5Url", "installFirmwareTestOta"];
+  export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestManifestUrl", "installFirmwareTestManifest"];
   export const FIRMWARE_MODAL_KEYS = [...FIRMWARE_ENTITY_KEYS, ...FIRMWARE_TEST_ENTITY_KEYS, "installFirmwareUpdateTarget", "projectVersionText", "releaseChannelText", "installationTopology", "hardwareProfileText", "connectionText", "preferredConnection"];
   export const TOPOLOGY_HINT_KEYS = ["hp2ExcludeMinHz", "hp2Power", "hp2WaterOut"];
   export const HEADER_ENTITY_KEYS = [

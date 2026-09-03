@@ -524,7 +524,7 @@ import { render } from "../core/render-scheduler.js";
   export async function installFirmwareTestUpdate() {
     const prNumber = getFirmwareTestPrNumber();
     const target = getFirmwareTestTargetModel();
-    const buttonEntity = ENTITY_DEFS.installFirmwareTestOta;
+    const buttonEntity = ENTITY_DEFS.installFirmwareTestManifest;
     if (!prNumber) {
       state.updateTestFirmwareError = "Vul een geldig PR-nummer in.";
       render();
@@ -540,8 +540,8 @@ import { render } from "../core/render-scheduler.js";
       render();
       return;
     }
-    if (!buttonEntity || !hasEntity("installFirmwareTestOta")) {
-      state.updateTestFirmwareError = "Deze firmware bevat de testfirmware-installatieknop nog niet.";
+    if (!buttonEntity || !hasEntity("firmwareTestManifestUrl") || !hasEntity("installFirmwareTestManifest")) {
+      state.updateTestFirmwareError = "Deze firmware bevat de testfirmware-installatieknop nog niet. Installeer eerst een nieuwere build.";
       render();
       return;
     }
@@ -567,17 +567,17 @@ import { render } from "../core/render-scheduler.js";
 
     let flashRequested = false;
     try {
-      // PR release asset URLs are deterministic. The device reports download
-      // and checksum failures, so the webapp does not need GitHub's rate-limited API.
+      // PR-manifest-URL is deterministisch. Het device valideert fail-closed
+      // op repository, PR-tag en exact target en gebruikt daarna dezelfde
+      // bewaakte update.check → update.perform-lifecycle als main/dev.
       const testAsset = getFirmwareTestAssetUrls(prNumber, target);
-      if (!testAsset) {
+      if (!testAsset?.manifestUrl) {
         throw new Error("Geen geldig PR-target gevonden.");
       }
       state.updateTestFirmwareBuild = testAsset.label;
       render();
 
-      await setFirmwareTestTextEntity("firmwareTestOtaUrl", testAsset.otaUrl);
-      await setFirmwareTestTextEntity("firmwareTestOtaMd5Url", testAsset.md5Url);
+      await setFirmwareTestTextEntity("firmwareTestManifestUrl", testAsset.manifestUrl);
 
       flashRequested = true;
       beginFirmwareOtaQuietWindow();

@@ -264,11 +264,12 @@ jobs:
           gh release upload "${TAG}" \
             dist/*.firmware.ota.bin \
             dist/*.firmware.ota.bin.md5 \
+            dist/*-ota.manifest.json \
             dist/pr-firmware.json \
             --clobber
 
           EXPECTED_ASSET_COUNT="$(find dist -maxdepth 1 -type f \
-            \( -name '*.firmware.ota.bin' -o -name '*.firmware.ota.bin.md5' -o -name 'pr-firmware.json' \) \
+            \( -name '*.firmware.ota.bin' -o -name '*.firmware.ota.bin.md5' -o -name '*-ota.manifest.json' -o -name 'pr-firmware.json' \) \
             | wc -l | tr -d ' ')"
           PUBLISHED_ASSET_COUNT="$(gh release view "${TAG}" --json assets --jq '.assets | length')"
           if [[ "${PUBLISHED_ASSET_COUNT}" != "${EXPECTED_ASSET_COUNT}" ]]; then

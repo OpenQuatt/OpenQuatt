@@ -234,22 +234,3 @@ jobs:
           name: ${{ matrix.target.artifact_name }}-${{ inputs.artifact_suffix }}
           if-no-files-found: error
           path: ${{ matrix.target.build_path }}/build/firmware.ota.bin
-
-      # The privileged PR publisher intentionally runs trusted target-branch
-      # tooling. Keep the old Q artifact inputs available during the staged
-      # matrix migration; all three artifacts contain the same topology binary.
-      - name: Upload WiFi compatibility OTA artifact
-        if: ${{ !inputs.include_firmware_bin && !inputs.include_factory_bin && matrix.target.connection == 'auto' }}
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.target.artifact_name }}-wifi-${{ inputs.artifact_suffix }}
-          if-no-files-found: error
-          path: ${{ matrix.target.build_path }}/build/firmware.ota.bin
-
-      - name: Upload Ethernet compatibility OTA artifact
-        if: ${{ !inputs.include_firmware_bin && !inputs.include_factory_bin && matrix.target.connection == 'auto' }}
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.target.artifact_name }}-eth-${{ inputs.artifact_suffix }}
-          if-no-files-found: error
-          path: ${{ matrix.target.build_path }}/build/firmware.ota.bin
