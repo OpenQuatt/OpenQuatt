@@ -25,22 +25,18 @@ Voor de meeste gebruikers is dit niet de eerste keuze.
 
 Kies een factory-bestand dat precies past bij je installatie.
 
-De bestandsnaam bevat normaal:
+Voor de Heatpump Controller Q-edition is er sinds de gecombineerde netwerkfirmware nog maar één factory-binary per topologie. Wi-Fi en Ethernet zitten in dezelfde firmware; de verbindingsmodus wordt runtime gekozen.
 
-- `openquatt`;
-- het hardwareprofiel;
-- `single` of `duo`;
-- `wifi` of, alleen voor Heatpump Controller Q, `eth`;
-- `firmware.factory.bin`.
-
-Voorbeelden:
+Gebruik voor Q-edition:
 
 ```text
-openquatt-heatpump-controller-q-single-wifi.firmware.factory.bin
-openquatt-heatpump-controller-q-duo-wifi.firmware.factory.bin
-openquatt-heatpump-controller-q-single-eth.firmware.factory.bin
-openquatt-heatpump-controller-q-duo-eth.firmware.factory.bin
+openquatt-heatpump-controller-q-single.firmware.factory.bin
+openquatt-heatpump-controller-q-duo.firmware.factory.bin
 ```
+
+Oudere Wi-Fi-/Ethernet-manifestnamen blijven voor OTA-compatibiliteit bestaan, maar verwijzen naar dezelfde canonieke Single- of Duo-binary. Er worden hiervoor geen aparte Q Wi-Fi- of Ethernet-releasebinaries gepubliceerd.
+
+Voor andere ondersteunde hardwareprofielen kan de verbindingsvariant nog wel onderdeel van de bestandsnaam zijn.
 
 Gebruik geen `ota.bin` voor een eerste installatie via USB. Voor de eerste flash heb je een factory-binary nodig.
 
@@ -52,11 +48,11 @@ Gebruik geen `ota.bin` voor een eerste installatie via USB. Voor de eerste flash
 4. Kies `Connect`.
 5. Kies het gedownloade factory-bestand.
 6. Flash de module.
-7. Stel bij een Wi-Fi-build daarna Wi-Fi in via de browserflow of via het fallback access point. Sluit bij een Ethernet-build de netwerkkabel aan.
+7. Bij een Heatpump Controller Q stel je Wi-Fi eenmalig in voor fallback; Ethernet en Wi-Fi gebruiken daarna dezelfde firmware.
 
 ## Na het flashen
 
-Als Wi-Fi niet direct via de browserflow lukt, gebruikt een Wi-Fi-build het OpenQuatt fallback access point:
+Als Wi-Fi niet direct via de browserflow lukt, gebruikt een Wi-Fi-capabele build het OpenQuatt fallback access point:
 
 - SSID: `OpenQuatt`
 - wachtwoord: `openquatt`
@@ -75,6 +71,6 @@ Loop vervolgens de Quick Start in de web-app door.
 - Een firmwarebestand voor het verkeerde hardwareprofiel kiezen.
 - Een OTA-bestand gebruiken voor de eerste USB-installatie.
 - De browser sluiten voordat Wi-Fi is ingesteld.
-- Een Ethernet-bestand gebruiken op hardware zonder W5500 Ethernet-poort.
+- Bij Q-edition zoeken naar een aparte Wi-Fi- of Ethernet-factory-binary; gebruik daar de canonieke Single- of Duo-binary.
 
 Als je twijfelt, kies dan opnieuw je route in het [projectoverzicht](../README.md#kies-je-route) en gebruik de normale installer of Q-edition-handleiding.
