@@ -141,8 +141,8 @@ export function isDuplicateWebServerLogEntry(candidate, existingEntry = null) {
 
   const candidateSeq = Number(candidate.seq);
   const existingSeq = Number(existingEntry.seq);
-  if (Number.isFinite(candidateSeq) && Number.isFinite(existingSeq) && candidateSeq === existingSeq) {
-    return true;
+  if (Number.isFinite(candidateSeq) && Number.isFinite(existingSeq)) {
+    return candidateSeq === existingSeq;
   }
 
   const candidateRaw = String(candidate.raw ?? candidate.text ?? "").trim();
@@ -448,9 +448,9 @@ export function openWebServerLogsModal() {
     queueWebServerLogScrollRestore(scrollState);
   });
   scrollWebServerLogToBottom();
-  if (!state.webServerLogHistoryLoaded || state.webServerLogEntries.length === 0) {
-    void refreshWebServerLogHistory();
-  }
+  // Altijd historie ophalen: vult aan wat erbij kwam terwijl het modal dicht was.
+  // SSE start via syncWebServerLogStream() bij render.
+  void refreshWebServerLogHistory();
 }
 
 export function clearWebServerLogOutput() {
@@ -649,6 +649,8 @@ export function handleWebServerLogOpen() {
   state.webServerLogError = "";
   render();
   queueWebServerLogScrollRestore(scrollState);
+
+  if (state.systemModal === "webserver-logs") void refreshWebServerLogHistory();
 }
 
 setWebServerLogControls({
@@ -674,18 +676,15 @@ export function handleWebServerLogPing() {
   }
 }
 
-export function handleWebServerLogError() {
-  if (!state.webServerLogSource) {
-    return;
-  }
+export function handleWebServerLogError(event) {
+  if (!state.webServerLogSource) return;
 
   const scrollState = state.systemModal === "webserver-logs"
     ? captureWebServerLogScrollState()
     : null;
-  state.webServerLogEnabled = false;
   state.webServerLogConnected = false;
-  state.webServerLogError = "De live logstream kon niet worden geopend.";
-  closeWebServerLogStream();
+  state.webServerLogError = "Verbinden…";
+  if (event?.currentTarget?.readyState === 2) closeWebServerLogStream();
   render();
   queueWebServerLogScrollRestore(scrollState);
 }
@@ -717,8 +716,8 @@ export function handleWebServerLogMessage(event) {
   const output = getWebServerLogOutputElement();
   const scroller = getWebServerLogScrollerElement();
 
-  trimWebServerLogEntries(output);
   appendWebServerLogEntriesToDom(filteredEntries, output);
+  trimWebServerLogEntries(output);
 
   state.webServerLogEnabled = true;
   if (scroller && scrollState) {
@@ -809,12 +808,9 @@ export function getWebServerLogTone(value) {
 }
 
 export function trimWebServerLogEntries(output) {
-  while (state.webServerLogEntries.length > WEB_SERVER_LOG_MAX_ENTRIES) {
-    state.webServerLogEntries.shift();
-    if (output && output.firstElementChild) {
-      output.removeChild(output.firstElementChild);
-    }
-  }
+  if (state.webServerLogEntries.length > WEB_SERVER_LOG_MAX_ENTRIES)
+    state.webServerLogEntries = state.webServerLogEntries.slice(-WEB_SERVER_LOG_MAX_ENTRIES);
+  while (output?.childElementCount > WEB_SERVER_LOG_MAX_ENTRIES) output.firstElementChild?.remove();
 }
 
 export function getWebServerLogOutputElement() {
