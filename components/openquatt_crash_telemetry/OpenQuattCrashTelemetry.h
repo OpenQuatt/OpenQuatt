@@ -7,6 +7,7 @@
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <freertos/task.h>
 
 #include "OpenQuattCrashTelemetryPolicy.h"
 #include "OpenQuattCrashTelemetryRecord.h"
@@ -18,6 +19,7 @@
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/core/component.h"
 #include "esphome/core/preferences.h"
+#include "esphome/core/static_task.h"
 #include "esp_partition.h"
 #include "mqtt_client.h"
 
@@ -63,9 +65,26 @@ class OpenQuattCrashTelemetry : public Component {
   static constexpr size_t CRASH_PAYLOAD_CAPACITY = 4096U;
   static constexpr uint32_t SESSION_TIMEOUT_MS = 30000UL;
   static constexpr uint32_t INITIAL_RETRY_MS = 5UL * 60UL * 1000UL;
-  static constexpr uint32_t INITIAL_PUBLISH_DELAY_MS = 15000UL;
   static constexpr uint32_t TIME_SYNC_WAIT_MS = 60000UL;
+  static constexpr uint32_t WORKER_STALL_LOG_MS = 30UL * 1000UL;
+  static constexpr uint32_t WORKER_CLEANUP_RETRY_MS = 1000UL;
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  // PSRAM-backed worker stack, mirroring usage telemetry. Sizes stay
+  // conservative until HIL watermarks prove they can shrink.
+  static constexpr uint32_t MQTT_WORKER_TASK_STACK_SIZE = 16384U;
+  static constexpr bool MQTT_WORKER_STACK_IN_PSRAM = true;
+#else
+  // Classic ESP32 cannot safely run Wi-Fi/ROM-using tasks from a PSRAM stack.
+  static constexpr uint32_t MQTT_WORKER_TASK_STACK_SIZE = 8192U;
+  static constexpr bool MQTT_WORKER_STACK_IN_PSRAM = false;
+#endif
   static constexpr int MQTT_TASK_STACK_SIZE = 12288;
+  static_assert(sizeof(StackType_t) == 1U, "ESP-IDF StaticTask stack sizes are configured in bytes");
+
+  enum class WorkerCommand : uint32_t {
+    START = 1U,
+    CLEANUP = 2U,
+  };
 
   using CrashRecord = detail::CrashRecord;
 
@@ -97,9 +116,15 @@ class OpenQuattCrashTelemetry : public Component {
   bool save_state_();
   bool build_topic_();
   bool build_crash_payload_();
-  bool start_session_(CrashPublishKind kind);
-  void complete_session_(bool succeeded);
-  bool stop_client_();
+  void start_publish_session_(CrashPublishKind kind);
+  bool ensure_worker_task_();
+  bool notify_worker_(WorkerCommand command);
+  bool start_client_();
+  bool cleanup_client_();
+  void request_session_finish_(bool publication_succeeded);
+  void finalize_session_();
+  static bool time_reached_(uint32_t now_ms, uint32_t target_ms);
+  static void worker_task_(void* arg);
   void schedule_retry_();
   void schedule_immediate_();
   bool lock_gate_() const;
@@ -139,6 +164,19 @@ class OpenQuattCrashTelemetry : public Component {
   ESPPreferenceObject state_pref_{};
   const esp_partition_t* flash_partition_{nullptr};
   int8_t active_record_slot_{-1};
+  StaticTask worker_task_state_{};
+  bool worker_task_region_valid_{false};
+  std::atomic<bool> start_task_running_{false};
+  std::atomic<bool> start_task_complete_{false};
+  std::atomic<bool> finishing_session_{false};
+  std::atomic<bool> cleanup_task_complete_{false};
+  std::atomic<bool> mqtt_connected_seen_{false};
+  std::atomic<bool> mqtt_disconnected_seen_{false};
+  bool publication_result_succeeded_{false};
+  bool cleanup_disconnect_requested_{false};
+  uint8_t cleanup_stop_failures_{0U};
+  uint32_t worker_operation_started_ms_{0U};
+  bool worker_stall_logged_{false};
   openquatt_common::PsramBuffer<CrashRecord> record_{};
   openquatt_common::PsramBuffer<StateStorage> state_{};
   openquatt_common::PsramBuffer<char> topic_buffer_{};
@@ -155,7 +193,6 @@ class OpenQuattCrashTelemetry : public Component {
   uint32_t next_attempt_ms_{0U};
   uint32_t time_sync_deadline_ms_{0U};
   uint32_t session_started_ms_{0U};
-  uint8_t cleanup_attempts_{0U};
 
   esp_mqtt_client_handle_t mqtt_client_{nullptr};
   bool mqtt_client_started_{false};

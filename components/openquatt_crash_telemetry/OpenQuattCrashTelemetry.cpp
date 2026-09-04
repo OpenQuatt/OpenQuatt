@@ -398,7 +398,7 @@ void OpenQuattCrashTelemetry::on_setup_complete_(bool complete) {
   this->setup_complete_.store(complete);
   this->unlock_gate_();
   if (complete && this->consent_enabled_.load() && this->record_ && this->record_.data()->pending != 0U) {
-    this->next_attempt_ms_ = millis() + INITIAL_PUBLISH_DELAY_MS;
+    this->next_attempt_ms_ = millis() + CRASH_INITIAL_PUBLISH_DELAY_MS;
   }
 }
 
@@ -450,7 +450,7 @@ void OpenQuattCrashTelemetry::on_consent_state_(bool enabled) {
   }
 
   if (this->setup_complete_.load() && this->record_ && this->record_.data()->pending != 0U) {
-    this->next_attempt_ms_ = millis() + INITIAL_PUBLISH_DELAY_MS;
+    this->next_attempt_ms_ = millis() + CRASH_INITIAL_PUBLISH_DELAY_MS;
   }
 }
 
