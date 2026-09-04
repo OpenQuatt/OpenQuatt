@@ -816,10 +816,11 @@ script:
                   }
                 }
                 if (!valid) {
-                  ESP_LOGE("oq_fw", "PR test install blocked: firmware info no longer matches this PR.");
+                  ESP_LOGE("oq_fw", "PR test install blocked before OTA start; runtime polling resumed.");
+                  id(oq_firmware_target_install_active) = false;
+                  id(oq_runtime_polling_paused).publish_state(false);
                   id(oq_ota_phase_code) = 5;
                   id(oq_firmware_update_status).publish_state("Error");
-                  id(oq_firmware_target_install_active) = false;
                   return;
                 }
             - if:

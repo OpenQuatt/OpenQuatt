@@ -61,6 +61,25 @@ class PrManifestInstallContractTest(unittest.TestCase):
             install_script.index("- update.perform:"),
         )
 
+    def test_failed_pre_perform_check_resumes_runtime_polling(self) -> None:
+        install_script = _script_block("oq_install_firmware_test_manifest_deferred")
+        pause_index = install_script.index(
+            "Runtime polling paused before deferred PR test OTA."
+        )
+        resume_index = install_script.index(
+            "PR test install blocked before OTA start; runtime polling resumed."
+        )
+        self.assertLess(pause_index, resume_index)
+        tail = install_script[resume_index:]
+        self.assertIn(
+            "id(oq_runtime_polling_paused).publish_state(false);",
+            tail,
+        )
+        self.assertIn(
+            "id(oq_firmware_target_install_active) = false;",
+            tail,
+        )
+
     def test_update_lifecycle_is_exclusive_during_install(self) -> None:
         self.assertIn(
             "Firmware source change ignored during active install.",
@@ -75,7 +94,7 @@ class PrManifestInstallContractTest(unittest.TestCase):
             COMMON_PACKAGE,
         )
         self.assertIn(
-            "firmware info no longer matches this PR",
+            "PR test install blocked before OTA start; runtime polling resumed.",
             COMMON_PACKAGE,
         )
 
