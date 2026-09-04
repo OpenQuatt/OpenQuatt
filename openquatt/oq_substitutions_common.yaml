@@ -13,7 +13,7 @@
 device_name: "openquatt"                              # Internal ESPHome device ID / hostname base.
 friendly_name: OpenQuatt                              # Display name in Home Assistant / UI.
 project_name: "openquatt.openquatt"                   # ESPHome project identifier shown in firmware metadata.
-project_version: "v0.49.0"                            # ESPHome project version shown in firmware metadata.
+project_version: "v0.49.1"                            # ESPHome project version shown in firmware metadata.
 release_channel: "main"                               # Firmware release channel shown in diagnostics (`main` or `dev`).
 oq_firmware_initial_check_delay_s: "300"              # Stable-network delay before the first automatic manifest check [s].
 oq_firmware_periodic_check_interval: "4h"              # Automatic manifest-check cadence after the initial boot window.
