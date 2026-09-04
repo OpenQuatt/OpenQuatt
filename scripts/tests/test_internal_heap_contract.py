@@ -39,6 +39,21 @@ TELEMETRY_POLICY = (
     / "openquatt_usage_telemetry"
     / "OpenQuattUsageTelemetryPolicy.h"
 ).read_text()
+CRASH_TELEMETRY_HEADER = (
+    ROOT
+    / "components"
+    / "openquatt_crash_telemetry"
+    / "OpenQuattCrashTelemetry.h"
+).read_text()
+CRASH_TELEMETRY_CPP = (
+    ROOT
+    / "components"
+    / "openquatt_crash_telemetry"
+    / "OpenQuattCrashTelemetryMqtt.cpp"
+).read_text()
+CRASH_TELEMETRY_CODEGEN = (
+    ROOT / "components" / "openquatt_crash_telemetry" / "__init__.py"
+).read_text()
 LOG_HISTORY_CPP = (
     ROOT
     / "components"
@@ -149,6 +164,43 @@ class InternalHeapPlacementContractTest(unittest.TestCase):
         )
         self.assertIn("eSetValueWithOverwrite", TELEMETRY_CPP)
         self.assertNotIn("eSetValueWithoutOverwrite", TELEMETRY_CPP)
+
+    def test_crash_telemetry_worker_owns_mqtt_lifecycle(self) -> None:
+        self.assertIn("StaticTask worker_task_state_", CRASH_TELEMETRY_HEADER)
+        self.assertIn(
+            "MQTT_WORKER_STACK_IN_PSRAM = true",
+            CRASH_TELEMETRY_HEADER,
+        )
+        self.assertIn(
+            "MQTT_WORKER_STACK_IN_PSRAM = false",
+            CRASH_TELEMETRY_HEADER,
+        )
+        self.assertIn("psram.request_external_task_stack()", CRASH_TELEMETRY_CODEGEN)
+        self.assertIn(
+            "get_esp32_variant() == VARIANT_ESP32S3",
+            CRASH_TELEMETRY_CODEGEN,
+        )
+        self.assertNotIn("xTaskCreatePinnedToCore(", CRASH_TELEMETRY_CPP)
+        self.assertNotIn("vTaskDelete(", CRASH_TELEMETRY_CPP)
+        self.assertIn(
+            "this->worker_task_state_.deallocate();",
+            CRASH_TELEMETRY_CPP,
+        )
+        self.assertIn("eTaskGetState(handle) != eSuspended", CRASH_TELEMETRY_CPP)
+        # Every MQTT lifecycle call exists exactly once, inside the worker
+        # start/cleanup path. The main loop only notifies the worker.
+        for lifecycle_call in (
+            "esp_mqtt_client_init(",
+            "esp_mqtt_client_start(",
+            "esp_mqtt_client_stop(",
+            "esp_mqtt_client_destroy(",
+        ):
+            self.assertEqual(CRASH_TELEMETRY_CPP.count(lifecycle_call), 1)
+        self.assertIn("void OpenQuattCrashTelemetry::finalize_session_()", CRASH_TELEMETRY_CPP)
+        self.assertIn("this->finalize_session_();", CRASH_TELEMETRY_CPP)
+        self.assertIn("request_session_finish_(", CRASH_TELEMETRY_CPP)
+        self.assertIn("select_crash_session_action(", CRASH_TELEMETRY_CPP)
+        self.assertIn("select_crash_cleanup_decision(", CRASH_TELEMETRY_CPP)
 
     def test_large_diagnostic_buffers_never_fall_back_to_internal_heap(self) -> None:
         self.assertIn(

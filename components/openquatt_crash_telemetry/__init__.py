@@ -1,8 +1,10 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, socket, switch, text_sensor, time
-from esphome.components.esp32 import add_idf_sdkconfig_option
+from esphome.components import binary_sensor, psram, socket, switch, text_sensor, time
+from esphome.components.esp32 import add_idf_sdkconfig_option, get_esp32_variant
+from esphome.components.esp32.const import VARIANT_ESP32S3
 from esphome.const import CONF_ID
+from esphome.core import CORE
 
 DEPENDENCIES = [
     "logger",
@@ -97,6 +99,8 @@ CONFIG_SCHEMA = cv.All(
 
 async def to_code(config):
     add_idf_sdkconfig_option("CONFIG_APP_RETRIEVE_LEN_ELF_SHA", 64)
+    if CORE.is_esp32 and get_esp32_variant() == VARIANT_ESP32S3:
+        psram.request_external_task_stack()
 
     cg.add_global(openquatt_crash_telemetry_ns.using)
     var = cg.new_Pvariable(config[CONF_ID])
