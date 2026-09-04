@@ -652,7 +652,8 @@ import { render } from "../core/render-scheduler.js";
         closeAction: "close-system-modal",
         closeLabel: "Sluit koelvenster-popup",
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">Kies wanneer OpenQuatt lokaal koeltoestemming mag geven. Wijzigingen worden direct toegepast.</p>
+          <p class="oq-helper-modal-copy">Kies wanneer OpenQuatt lokaal koeltoestemming mag geven. Een tijd wordt opgeslagen zodra je het veld verlaat of op Enter drukt.</p>
+          ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
           <div class="oq-helper-modal-body">
             ${renderCoolingScheduleSettingsFields("oq-settings-grid oq-settings-grid--modal")}
           </div>
@@ -673,7 +674,8 @@ import { render } from "../core/render-scheduler.js";
         closeAction: "close-system-modal",
         closeLabel: "Sluit stille-uren-popup",
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">Kies wanneer het systeem stiller moet werken, en hoe ver het dan nog mag opschalen. Wijzigingen worden direct toegepast.</p>
+          <p class="oq-helper-modal-copy">Kies wanneer het systeem stiller moet werken, en hoe ver het dan nog mag opschalen. Een tijd wordt opgeslagen zodra je het veld verlaat of op Enter drukt.</p>
+          ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
           <div class="oq-helper-modal-body">
             ${renderSilentSettingsFields()}
           </div>

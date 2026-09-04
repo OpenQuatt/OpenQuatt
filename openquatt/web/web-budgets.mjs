@@ -32,9 +32,10 @@ export const WEB_BUNDLE_BUDGETS = [
     // and the grouped issue-541 cooling-window control and overview modal.
     // plus bounded webserver-log history polling (single scheduler, retry
     // back-off and authoritative refresh without a second /events stream).
-    // The validated bundle is 992068 B; the raw budget keeps ~0.9 kB margin
+    // Includes stable native time editing and confirmed, stale-poll-safe saves.
+    // The validated bundle is ~994 kB; the raw budget keeps ~1 kB margin
     // for build-environment variance.
-    raw: 993_000,
+    raw: 995_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

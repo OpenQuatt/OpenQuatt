@@ -988,6 +988,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
 
   export async function refreshEntities(keys, detail = "state", options = {}) {
     const now = Date.now();
+    const timeWriteRevision = state.timeWriteRevision;
     const forceMissing = options.forceMissing === true;
     const refreshKeys = keys.filter((key) =>
       forceMissing || SERVICE_STATUS_ENTITY_KEYS.has(key) || !isKnownOptionalMissingEntity(key, now)
@@ -1045,6 +1046,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
       const missing = new Set(Array.isArray(payload?.missing) ? payload.missing : []);
 
       chunk.keys.forEach((key) => {
+        // A poll started before/during a time write must not restore the old time.
+        if (ENTITY_DEFS[key]?.domain === "time"
+            && (state.savingTimeFields.has(key) || state.timeWriteRevision !== timeWriteRevision)) return;
         if (Object.prototype.hasOwnProperty.call(entities, key)) {
           if (state.optionalMissingEntities) {
             delete state.optionalMissingEntities[key];
