@@ -8,7 +8,8 @@ namespace oq_supervisory_safety {
 
 struct Input {
   uint32_t now_ms = 0;
-  bool thermal_request = false;
+  // Remains true while a compressor/request is winding down after demand closes.
+  bool flow_guard_required = false;
   bool flow_has_state = false;
   float flow_lph = NAN;
   bool outside_temperature_has_state = false;
@@ -74,7 +75,7 @@ inline Output step(const Input& input, const Config& config, State state) {
   const bool flow_ok = minimum_flow_valid && flow_valid && input.flow_lph >= config.minimum_flow_lph;
   const bool flow_low = !flow_ok;
 
-  if (!input.thermal_request) {
+  if (!input.flow_guard_required) {
     state.low_flow_timing = false;
     state.flow_recovery_timing = false;
     state.low_flow_fault_active = false;
@@ -109,7 +110,7 @@ inline Output step(const Input& input, const Config& config, State state) {
       std::isfinite(config.frost_on_c) && std::isfinite(config.frost_off_c) && config.frost_on_c <= config.frost_off_c;
   const bool outside_temperature_valid =
       frost_thresholds_valid && input.outside_temperature_has_state && std::isfinite(input.outside_temperature_c);
-  if (input.thermal_request) {
+  if (input.flow_guard_required) {
     state.frost_active = false;
   } else if (!outside_temperature_valid) {
     state.frost_active = !frost_nan_grace_active;
@@ -128,7 +129,7 @@ inline Output step(const Input& input, const Config& config, State state) {
           flow_valid,
           flow_low,
           flow_ok,
-          input.thermal_request ? (!state.low_flow_fault_active && flow_ok) : true,
+          input.flow_guard_required ? (!state.low_flow_fault_active && flow_ok) : true,
           !previous_fault && state.low_flow_fault_active,
           previous_fault && !state.low_flow_fault_active,
           state.frost_active,

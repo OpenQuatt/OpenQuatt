@@ -112,6 +112,16 @@ Bij koelvraag kijkt OpenQuatt vervolgens naar de watertemperatuur. De regeling s
 
 Voor het opnieuw starten na een koelstop kun je kiezen tussen voldoende opwarming van het water en een vaste minimale uit-tijd. Die uit-tijd geldt bij Duo voor beide warmtepompen, zodat de tweede pomp niet direct de gestopte koelcyclus overneemt. Ook bij Single blijft de vaste minimale uit-tijd van de compressor (4 minuten) altijd gelden: OpenQuatt start pas wanneer alle relevante wachttijden en voorwaarden zijn vrijgegeven. De condens-, flow- en andere veiligheidsbewaking blijft altijd gelden.
 
+### Koelen binnen een dagelijks tijdvenster
+
+Wil je bijvoorbeeld alleen overdag koelen, kies dan `Schedule` bij `Cooling Enable Source` en stel de start- en eindtijd in. Het schema geeft alleen toestemming om te koelen. Standaard blijft `Cooling Room Request Required` aan en begint koeling dus pas als de kamertemperatuur daadwerkelijk om koeling vraagt. Zet je die instelling bewust uit, dan vormt een actief tijdvenster zelf de koelvraag. De dauwpunt-, water- en flowbeveiligingen en `OpenQuatt Enabled` blijven in beide gevallen leidend.
+
+De starttijd hoort bij het venster, de eindtijd niet: `08:00-20:00` is actief vanaf 08:00 tot vlak voor 20:00. Een venster mag over middernacht lopen, bijvoorbeeld `20:00-07:00`. Zijn start en einde gelijk, dan staat het venster uit; de veilige standaard `00:00-00:00` activeert na een update dus niets onverwacht.
+
+Het schema gebruikt de lokale klok van de controller. Na een herstart zonder geldige netwerktijd blijft de schematoestemming veilig uit. Zodra SNTP de tijd heeft gesynchroniseerd, loopt de lokale klok op de controller door en wordt het venster automatisch opnieuw beoordeeld.
+
+Aan het einde van het venster trekt OpenQuatt de koeltoestemming gecontroleerd in. Een nog lopende minimale compressortijd kan de compressor kort na de eindtijd laten doorlopen; daarna kan de pomp voor de normale postflow actief blijven. Een harde veiligheidsingreep mag de minimale looptijd wel doorbreken.
+
 Wil je de exacte koelinstellingen, marges en begrenzingen begrijpen of wijzigen? Gebruik dan de technische naslag [Instellingen en meetwaarden](instellingen-en-meetwaarden.md#koeling).
 
 ### Waarom is dauwpunt zo belangrijk?
@@ -128,7 +138,9 @@ Een dauwpunt kan uit Home Assistant, API-invoer of MQTT komen. In de web-app kie
 
 ### Wat doet `Manual Cooling Enable`?
 
-Die schakelaar geeft extra handmatige toestemming, maar vervangt geen normale koelvraag en geen beveiliging.
+Die schakelaar geeft extra handmatige toestemming en omzeilt daarmee de gekozen `Cooling Enable Source`, dus ook een gesloten of nog niet geldige `Schedule`. Met de standaardinstelling `Cooling Room Request Required` blijft nog steeds een normale koelvraag nodig. De schakelaar omzeilt nooit `OpenQuatt Enabled`, dauwpunt-, water- of flowbeveiligingen.
+
+`Manual Cooling Enable` is geen automatisch aflopende override. De gebruikte herstelmodus `RESTORE_DEFAULT_OFF` betekent dat een opgeslagen stand na een herstart terugkomt; alleen zonder opgeslagen stand is de standaard uit. Zet de schakelaar daarom zelf weer uit wanneer de handmatige toestemming niet meer nodig is.
 
 Kort gezegd:
 

@@ -86,4 +86,5 @@ select:
       - CIC or HA input
       - Disabled
       - OT thermostat
+      - Schedule
     initial_option: Disabled

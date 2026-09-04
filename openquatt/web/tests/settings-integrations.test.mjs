@@ -100,7 +100,7 @@ function setSourceSelectionState(mqttEnabled) {
     outdoorUnitFlowMode: { value: "Local aggregate HP1/HP2", option: ["Flowmeter HP1", "Flowmeter HP2", "Local aggregate HP1/HP2"] },
     outsideTempSource: { value: "Outdoor unit", option: ["Auto", "Outdoor unit", "HA input", "API input", "MQTT"] },
     heatingEnableSource: { value: "Disabled", option: ["Disabled", "OT thermostat", "CIC", "HA input", "API input", "MQTT"] },
-    coolingEnableSource: { value: "Disabled", option: ["Disabled", "OT thermostat", "HA input", "API input", "MQTT"] },
+    coolingEnableSource: { value: "Disabled", option: ["Disabled", "OT thermostat", "HA input", "API input", "MQTT", "Schedule"] },
     coolingDewPointSource: { value: "Auto", option: ["Auto", "Home Assistant", "API input", "MQTT"] },
     externalHeatDemandSource: { value: "Disabled", option: ["Disabled", "HA input", "API input"] },
     roomTemp: valueEntity(21.8, "°C"),
@@ -482,6 +482,22 @@ test("uitgeschakelde CIC en OpenTherm verdwijnen uit keuzes en metingen", () => 
   assert.match(inspector, /Huidige legacybron niet beschikbaar: CIC-polling staat uit; kies een nieuwe bron\./);
   assert.match(getSelectMarkup(markup, "coolingEnableSource"), /<option value="CIC" selected disabled>Kies een beschikbare bron<\/option>/);
   assert.doesNotMatch(getSelectMarkup(markup, "coolingEnableSource"), />CIC \(legacy\)<\/option>/);
+});
+
+test("dagelijks koelvenster blijft als lokale toestemmingsbron beschikbaar", () => {
+  setSourceSelectionState(false);
+  state.entities.cicPollingEnabled = binaryEntity(false);
+  state.entities.otEnabled = binaryEntity(false);
+  state.entities.coolingEnableSource.value = "Schedule";
+  state.entities.coolingEnableEffectiveSource = valueEntity("Schedule + Manual");
+  state.entities.coolingEnableValid = binaryEntity(true);
+
+  const markup = renderFocusedSource("cooling-enable");
+  const options = getSelectMarkup(markup, "coolingEnableSource");
+  const inspector = getInspectorMarkup(markup);
+
+  assert.match(options, /<option value="Schedule" selected>Dagelijks tijdvenster<\/option>/);
+  assert.match(inspector, /Dagelijks tijdvenster \+ handmatig/);
 });
 
 test("secundaire bronselecties blijven alleen zichtbaar wanneer hun hoofdkeuze ze gebruikt", () => {

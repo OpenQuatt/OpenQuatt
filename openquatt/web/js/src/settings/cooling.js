@@ -1,6 +1,7 @@
 import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
-import { formatValue } from "../core/entity-store.js";
-import { formatSettingsOptionLabel, renderSettingsAdvancedDisclosure, renderSettingsFieldCard, renderSettingsNumberField, renderSettingsOptionCardsField, renderSettingsSection, renderSettingsSelectField, renderSettingsSliderField, renderSettingsSwitchField } from "./controls.js";
+import { COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS, COOLING_SCHEDULE_VALID_KEY } from "../core/config.js";
+import { formatValue, toTimeInputValue } from "../core/entity-store.js";
+import { formatSettingsOptionLabel, renderSettingsAdvancedDisclosure, renderSettingsFieldCard, renderSettingsNumberField, renderSettingsOptionCardsField, renderSettingsSection, renderSettingsSelectField, renderSettingsSliderField, renderSettingsSwitchField, renderSettingsTimeField } from "./controls.js";
 import { escapeHtml } from "../core/html.js";
 
   export function renderSettingsCoolingFact(label, value) {
@@ -40,6 +41,18 @@ import { escapeHtml } from "../core/html.js";
     return labels[value] || value;
   }
 
+  export function getCoolingScheduleStatus() {
+    const start = toTimeInputValue(getEntityStateText(COOLING_SCHEDULE_TIME_KEYS[0], ""));
+    const end = toTimeInputValue(getEntityStateText(COOLING_SCHEDULE_TIME_KEYS[1], ""));
+    const effective = getEntityStateText(COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, "");
+    return !start || !end ? "Niet beschikbaar"
+      : start === end ? "Uitgeschakeld"
+      : getEntityStateText(COOLING_SCHEDULE_SOURCE_KEY, "") !== "Schedule" ? "Niet geselecteerd"
+      : !isEntityActive(COOLING_SCHEDULE_VALID_KEY) ? "Tijd ongeldig"
+      : !effective || /unknown|unavailable/i.test(effective) ? "Niet beschikbaar"
+      : effective.includes("Schedule") ? "Open" : "Gesloten";
+  }
+
   function renderCoolingSilentLimitWarning() {
     const silentModeOverride = getEntityStateText("silentModeOverride", "").trim().toLowerCase();
     if (silentModeOverride === "off") {
@@ -61,6 +74,8 @@ import { escapeHtml } from "../core/html.js";
     const restartByMinimumOffTime = hasEntity("coolingRestartMode") &&
       getEntityStateText("coolingRestartMode", "Water temperature") === "Minimum off time";
     const tuningFields = [
+      renderSettingsTimeField(COOLING_SCHEDULE_TIME_KEYS[0], "Start (inclusief)", "Kies Dagelijks tijdvenster als bron."),
+      renderSettingsTimeField(COOLING_SCHEDULE_TIME_KEYS[1], `Einde (exclusief) · ${getCoolingScheduleStatus()}`, "Nachtvensters lopen door; gelijke tijden staan uit. Alleen toestemming: kamerinstelling en koelbeveiligingen blijven gelden."),
       renderSettingsNumberField("coolingMinimumSupplyTemp", "Minimale koel-aanvoer", "Ondergrens voor het koeldoel. OpenQuatt gebruikt de hoogste waarde van deze instelling en de dauwpuntveilige grens."),
       renderSettingsSliderField("coolingDemandMax", "Maximale koelsterkte", "Bepaalt hoe krachtig OpenQuatt mag koelen. Lager geeft langere, rustigere runs; hoger geeft meer koelvermogen bij warm weer.", "", {
         minLabel: "Rustig",

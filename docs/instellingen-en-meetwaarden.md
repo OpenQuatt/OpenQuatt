@@ -50,6 +50,7 @@ Deze groep bepaalt hoeveel ruimte OpenQuatt krijgt:
 
 - `OpenQuatt Enabled`
 - `Manual Cooling Enable`
+- `Cooling Enable Source`
 - `Silent Mode Override`
 - `Day max frequency`
 - `Silent max frequency`
@@ -95,6 +96,9 @@ Voor beide strategieën blijft belangrijk:
 
 Voor koeling zijn vooral belangrijk:
 
+- `Cooling Enable Source`
+- `Cooling schedule start time`
+- `Cooling schedule end time`
 - `Cooling Minimum Supply Temp`
 - `Cooling Demand Max`
 - `Cooling Restart Mode`
@@ -106,6 +110,14 @@ Voor koeling zijn vooral belangrijk:
 - `Cooling Safety Margin`
 
 Met `Cooling Restart Mode` kies je tussen herstart op watertemperatuur en herstart na een minimale uit-tijd. In de eerste modus bepaalt `Cooling Restart Delta` hoeveel de aanvoer na een waterzijdige stop moet opwarmen. In de tweede modus bepaalt `Cooling Minimum Off Time` hoe lang een werkelijk gestopte koelcyclus uit blijft; bij Duo blokkeert die tijd beide warmtepompen. Los daarvan bewaakt OpenQuatt altijd de vaste minimale uit-tijd per compressor (4 minuten). Een compressor start dus pas wanneer zowel de gekozen koelherstartvoorwaarde als zijn eigen minimale uit-tijd is vrijgegeven. De normale dauwpunt-, flow- en veiligheidsgrenzen blijven in beide modi actief.
+
+Kies `Schedule` bij `Cooling Enable Source` om de koeltoestemming lokaal tot een dagelijks venster te beperken. Het begin is inbegrepen en het einde niet (`[start,end)`). Een begintijd die later is dan de eindtijd loopt over middernacht; gelijke tijden schakelen het venster uit. De standaard is daarom veilig `00:00-00:00`.
+
+Het schema is een toestemmingsbron, geen aparte koelstrategie of veiligheidsoverride. `Cooling Room Request Required` staat standaard aan, zodat binnen het venster ook een geldige kamerkoelvraag nodig blijft. Alleen wanneer je die instelling bewust uitzet, wordt het actieve venster zelf de vraag. Dauwpunt-, minimale aanvoer-, flow- en overige beveiligingen blijven altijd gelden.
+
+De controller beoordeelt het schema met zijn lokale, via SNTP gesynchroniseerde klok. Na een offline herstart is de bron ongeldig en blijft koeltoestemming via `Schedule` uit totdat de tijd geldig is; na synchronisatie loopt de lokale klok op de controller door. Bij het sluiten van het venster gebruikt OpenQuatt de normale gecontroleerde overgang. Een nog geldige minimale compressortijd kan de compressor kort voorbij de eindtijd laten lopen, tenzij een harde veiligheidsingreep direct stoppen vereist; daarna kan de pomp nog de normale postflow uitvoeren.
+
+`Manual Cooling Enable` omzeilt de gekozen toestemmingsbron, ook `Schedule`, maar geen enkele koelbeveiliging en ook `OpenQuatt Enabled` niet. De stand wordt met `RESTORE_DEFAULT_OFF` opgeslagen: na een herstart keert een eerder opgeslagen ingeschakelde stand terug; uit is alleen de standaard wanneer nog geen stand is opgeslagen.
 
 ### 3. Duo en looptijdgedrag
 
@@ -152,6 +164,7 @@ Belangrijke keuzes:
 - `Room Temperature Source`
 - `Room Setpoint Source`
 - `Heating Enable Source`
+- `Cooling Enable Source`
 - `Cooling Dew Point Source`
 - `External Heat Demand Source`
 

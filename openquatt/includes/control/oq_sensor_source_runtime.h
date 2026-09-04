@@ -6,6 +6,7 @@
 
 #include "oq_flow_pump_logic.h"
 #include "oq_input_source_logic.h"
+#include "oq_schedule_runtime.h"
 #include "oq_supply_calibration_logic.h"
 #include "oq_supply_hold_logic.h"
 
@@ -298,6 +299,7 @@ class Runtime {
     if (option == "OT thermostat") return oq_input_source::Source::OPENTHERM;
     if (option == "Disabled") return oq_input_source::Source::DISABLED;
     if (option == "CIC or HA input") return oq_input_source::Source::CIC_OR_HA;
+    if (option == "Schedule") return oq_input_source::Source::SCHEDULE;
     return oq_input_source::Source::NONE;
   }
 
@@ -344,6 +346,7 @@ class Runtime {
   }
 
   static oq_input_source::EnableSources cooling_enable_sources() {
+    const auto schedule = oq_schedule::cooling_window();
     return {{id(ot_thermostat_status_valid).has_state() && id(ot_thermostat_status_valid).state &&
                  id(ot_thermostat_cooling_enable).has_state() && id(ot_thermostat_cooling_enable).state,
              id(ot_thermostat_status_valid).has_state() && id(ot_thermostat_status_valid).state &&
@@ -357,7 +360,8 @@ class Runtime {
              id(api_input_cooling_enable_valid).has_state() && id(api_input_cooling_enable_valid).state},
             {id(mqtt_cooling_enable).has_state() && id(mqtt_cooling_enable).state,
              id(mqtt_cooling_enable_valid).has_state() && id(mqtt_cooling_enable_valid).state &&
-                 id(mqtt_cooling_enable).has_state()}};
+                 id(mqtt_cooling_enable).has_state()},
+            {schedule.active, schedule.valid}};
   }
 
   static oq_input_source::NumericSources room_sources(bool opentherm_fresh, bool setpoint) {

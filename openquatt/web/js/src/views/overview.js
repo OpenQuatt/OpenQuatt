@@ -1,4 +1,5 @@
 import { formatOverviewStatValue, getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive, isTrendHistoryEnabled } from "../core/app-shared.js";
+import { COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY } from "../core/config.js";
 import { isCurveMode } from "../core/domain-helpers.js";
 import { formatOpenQuattResumeDateTime, getEntityValue, hasOpenQuattResumeSchedule, parseDeviceClockMinutes } from "../core/entity-store.js";
 import { getOverviewControlsRenderSignature, getRenderSignature } from "../core/render-signatures.js";
@@ -71,9 +72,11 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
       "HA input": "HA-invoer",
       MQTT: "MQTT",
       "OT thermostat": "OpenTherm",
+      Schedule: "dagelijks tijdvenster",
       "HA input + Manual": "HA-invoer + handmatig",
       "MQTT + Manual": "MQTT + handmatig",
       "OT thermostat + Manual": "OpenTherm + handmatig",
+      "Schedule + Manual": "dagelijks tijdvenster + handmatig",
     };
     return labels[value] || value;
   }
@@ -595,9 +598,9 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
     const openquattResumeLoading = (state.loadingEntities || state.entitySyncInFlight) && !hasEntity("openquattResumeAt");
     const manualCoolingEnabled = isEntityActive("manualCoolingEnable");
     const coolingEnabled = hasEntity("coolingEnableSelected") ? isEntityActive("coolingEnableSelected") : manualCoolingEnabled;
-    const coolingEffectiveSource = formatOverviewPermissionSource(getEntityStateText("coolingEnableEffectiveSource", ""));
-    const coolingConfiguredSourceRaw = String(getEntityValue("coolingEnableSource") || "").trim();
-    const coolingConfiguredSource = formatOverviewPermissionSource(getEntityValue("coolingEnableSource"));
+    const coolingEffectiveSource = formatOverviewPermissionSource(getEntityStateText(COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, ""));
+    const coolingConfiguredSourceRaw = String(getEntityValue(COOLING_SCHEDULE_SOURCE_KEY) || "").trim();
+    const coolingConfiguredSource = formatOverviewPermissionSource(getEntityValue(COOLING_SCHEDULE_SOURCE_KEY));
     const silentModeOverride = String(getEntityValue("silentModeOverride") || "Schedule");
     const coolingBlocked = !isEntityActive("coolingPermitted");
     const coolingRequestActive = isEntityActive("coolingRequestActive");
@@ -651,7 +654,7 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
 
     return [
       { key: "openquattEnabled", label: "Openquatt regeling", status: openquattEnabled ? "Actief" : "Tijdelijk uit", copy: openquattEnabled ? "Verwarmen en koelen worden automatisch geregeld." : openquattResumeScheduled ? "Verwarming en koeling zijn tijdelijk uitgeschakeld. Beveiligingen (inclusief vorstbeveiliging) blijven actief." : "Verwarming en koeling zijn uitgeschakeld. Beveiligingen (inclusief vorstbeveiliging) blijven actief.", tone: openquattEnabled ? "green" : "orange", kind: "openquatt-control", meta: openquattEnabled ? [] : [openquattResumeLoading ? { label: "Hervatten", value: "Laden…", tone: "neutral", loading: true } : { label: openquattResumeScheduled ? "Hervat automatisch" : "Hervatten", value: openquattResumeScheduled ? formatOpenQuattResumeDateTime(openquattResumeAt, true) : "Handmatig", tone: openquattResumeScheduled ? "orange" : "neutral" }] },
-      { key: "manualCoolingEnable", label: "Koeltoestemming", status: coolingStatus, copy: coolingCopy, buttonLabel: manualCoolingEnabled ? "Toestemming uit" : "Toestemming aan", nextState: manualCoolingEnabled ? "off" : "on", tone: coolingEnabled ? (coolingModeActive ? "blue" : "sky") : "neutral" },
+      { key: "manualCoolingEnable", label: "Koeltoestemming", status: coolingStatus, copy: coolingCopy, buttonLabel: manualCoolingEnabled ? "Handmatig uit" : "Handmatig aan", nextState: manualCoolingEnabled ? "off" : "on", tone: coolingEnabled ? (coolingModeActive ? "blue" : "sky") : "neutral" },
       { key: "silentModeOverride", label: "Stille modus", status: silentStatus, copy: silentCopy, tone: silentTone, kind: "select", selectedOption: silentModeOverride, settingsAction: true, options: [{ value: "Off", label: "Uit" }, { value: "On", label: "Aan" }, { value: "Schedule", label: "Schema" }] },
     ].filter((card) => hasEntity(card.key));
   }
