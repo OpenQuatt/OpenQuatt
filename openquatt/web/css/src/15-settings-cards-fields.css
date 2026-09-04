@@ -650,10 +650,6 @@
   align-items: start;
 }
 
-.oq-settings-choice-inline-grid--details {
-  margin-top: 12px;
-}
-
 .oq-settings-choice-inline-grid--inside-card {
   margin-top: 6px;
 }
@@ -795,7 +791,8 @@
   align-items: stretch;
 }
 
-.oq-settings-electrical-entry {
+.oq-settings-electrical-entry,
+.oq-settings-electrical-estimate {
   flex: 1 1 220px;
   display: flex;
   flex-direction: column;
@@ -938,18 +935,6 @@
   color: var(--oq-helper-soft);
   font-size: 0.76rem;
   line-height: 1.4;
-}
-
-.oq-settings-electrical-estimate {
-  flex: 1 1 220px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  padding: 8px 12px;
-  border-radius: 14px;
-  border: 1px solid var(--oq-settings-inset-border);
-  background: var(--oq-settings-inset-background);
 }
 
 .oq-settings-electrical-estimate strong {

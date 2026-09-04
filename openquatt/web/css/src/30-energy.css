@@ -221,15 +221,9 @@
   --oq-energy-history-tab-bg: #fbe7dc;
   --oq-energy-history-tab-ink: #c2410c;
   --oq-energy-history-input: #f59e0b;
-  --oq-energy-history-input-soft: #ffedd5;
   --oq-energy-history-heat: #10b981;
-  --oq-energy-history-heat-soft: #d1fae5;
   --oq-energy-history-cooling: #2563eb;
-  --oq-energy-history-cooling-soft: #dbeafe;
   --oq-energy-history-boiler: #ef4444;
-  --oq-energy-history-boiler-soft: #fee2e2;
-  --oq-energy-history-accent: #8b5cf6;
-  --oq-energy-history-accent-soft: #ede9fe;
   --oq-energy-history-boiler-zero: #b8c0cc;
   --oq-energy-history-boiler-zero-soft: #f2f4f7;
   display: grid;

@@ -17,7 +17,6 @@
   --oq-overview-lane-bg: rgba(31, 42, 57, 0.96);
   --oq-overview-lane-border: rgba(124, 141, 165, 0.2);
   --oq-overview-row-border: rgba(124, 141, 165, 0.18);
-  --oq-overview-meter-track: rgba(51, 63, 81, 0.92);
   --oq-overview-shell-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 14px 30px rgba(2, 6, 23, 0.08);
   --oq-overview-shell-shadow-soft: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 12px 24px rgba(2, 6, 23, 0.07);
   --oq-overview-lane-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025), 0 6px 14px rgba(2, 6, 23, 0.035);
@@ -50,42 +49,6 @@
   --oq-overview-lane-bg: #ffffff;
   --oq-overview-lane-border: #e5e7eb;
   --oq-overview-row-border: #e5e7eb;
-  --oq-overview-meter-track: #e5e7eb;
-}
-
-.oq-overview-meter {
-  margin-top: 14px;
-}
-
-.oq-overview-meter-track {
-  height: 14px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: var(--oq-overview-meter-track);
-}
-
-.oq-overview-meter-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #1d4ed8, #60a5fa);
-}
-
-.oq-overview-hp--orange .oq-overview-meter-fill {
-  background: linear-gradient(90deg, #f59e0b, #ef4444);
-}
-
-.oq-overview-meter-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 8px;
-  color: var(--oq-overview-muted);
-  font-size: 0.9rem;
-}
-
-.oq-overview-meter-meta strong {
-  color: var(--oq-overview-title);
 }
 
 .oq-overview-summary-shell,
@@ -167,10 +130,6 @@
 
 .oq-overview-head > :first-child {
   min-width: 0;
-}
-
-.oq-overview-theme-toggle {
-  min-width: 166px;
 }
 
 .oq-overview-head .oq-helper-section-title,

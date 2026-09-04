@@ -495,6 +495,24 @@ import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./vie
     };
   }
 
+  const HEAT_PUMP_READINGS = [
+    { bind: "flow", x: 52, y: 308, width: 72, valueKey: "flowText", label: "Flow", align: "center", tooltip: { modifierKey: "returnLineTone", icon: "flow", x: 110, y: 276, width: 126, kicker: "Flow", detail: "CV-circuit", direction: "left" } },
+    { bind: "discharge-pressure", x: 218, y: 138, width: 50, valueKey: "dischargePressureText", label: "Persdruk", align: "end", tooltip: { modifier: "warm", icon: "pressure", x: 82, y: 120, width: 118, kicker: "Druk", detail: "Perszijde", direction: "right" } },
+    { bind: "discharge-temp", x: 218, y: 166, width: 50, valueKey: "dischargeTempText", label: "Perstemperatuur", align: "end", tooltip: { modifier: "warm", icon: "temperature", x: 80, y: 174, width: 142, kicker: "Temperatuur", detail: "Perszijde", direction: "right" } },
+    { bind: "suction-pressure", x: 378, y: 138, width: 50, valueKey: "suctionPressureText", label: "Zuigdruk", tooltip: { modifier: "component", icon: "pressure", x: 438, y: 120, width: 118, kicker: "Druk", detail: "Zuigzijde", direction: "left" } },
+    { bind: "suction-temp", x: 378, y: 166, width: 50, valueKey: "suctionTempText", label: "Zuigtemperatuur", tooltip: { modifier: "component", icon: "temperature", x: 414, y: 174, width: 142, kicker: "Temperatuur", detail: "Zuigzijde", direction: "left" } },
+    { bind: "inner-coil-temp", x: 120, y: 166, width: 52, valueKey: "innerCoilTempText", label: "Inner coil temperatuur", align: "center", tooltip: { modifier: "component", icon: "temperature", x: 174, y: 148, width: 132, kicker: "Temperatuur", detail: "Condensor", direction: "right" } },
+    { bind: "evaporator-temp", x: 484, y: 166, width: 52, valueKey: "evaporatorCoilTempText", label: "Verdampertemperatuur", align: "center", tooltip: { modifier: "component", icon: "temperature", x: 344, y: 148, width: 132, kicker: "Temperatuur", detail: "Verdamper", direction: "right" } },
+    { bind: "outside-temp", x: 548, y: 110, width: 48, valueKey: "outsideTempText", label: "Buitentemperatuur", align: "center", tooltip: { modifier: "component", icon: "temperature", x: 424, y: 92, width: 136, kicker: "Temperatuur", detail: "Buitenlucht", direction: "right" } },
+    { bind: "fan-speed", x: 520, y: 258, width: 60, valueKey: "fanRpmText", label: "Ventilatorsnelheid", align: "center", tooltip: { modifier: "component", icon: "fan", x: 410, y: 236, width: 118, kicker: "Ventilator", detail: "Toerental", direction: "right" } },
+    { bind: "supply", x: 22, y: 114, width: 58, valueKey: "waterOutText", label: "Aanvoer", ariaLabel: "Aanvoer temperatuur", tooltip: { modifierKey: "supplyLineTone", icon: "temperature", x: 96, y: 96, width: 124, kicker: "Temperatuur", detail: "Aanvoer", direction: "left" } },
+    { bind: "return", x: 22, y: 274, width: 58, valueKey: "waterInText", label: "Retour", ariaLabel: "Retour temperatuur", tooltip: { modifierKey: "returnLineTone", icon: "temperature", x: 96, y: 252, width: 124, kicker: "Temperatuur", detail: "Retour", direction: "left" } },
+  ];
+
+  function getHeatPumpReadingAria(reading, model) {
+    return `${reading.ariaLabel || reading.label} ${model[reading.valueKey]}`;
+  }
+
   export function renderHeatPumpSchematic(model) {
     const svgIdBase = String(model.title || "hp").toLowerCase().replace(/[^a-z0-9]+/g, "-");
     const condWaterHeatGradientId = `${svgIdBase}-cond-water-heat`;
@@ -507,19 +525,15 @@ import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./vie
       { label: model.heatLabel, ariaLabel: model.heatLabel, labelBind: "footer-heat-label", labelMarkup: model.heatLabel === "Koelafgifte" ? "Koel<br>afgifte" : "Warmte<br>afgifte", value: model.heatText, valueBind: "footer-heat" },
       { label: model.efficiencyLabel, labelBind: "footer-efficiency-label", value: model.efficiencyText, valueBind: "footer-efficiency" },
     ];
-    const readings = [
-      { bind: "flow", x: 52, y: 308, width: 72, value: model.flowText, label: "Flow", ariaLabel: `Flow ${model.flowText}`, align: "center", tooltip: { modifier: model.returnLineTone, icon: "flow", x: 110, y: 276, width: 126, kicker: "Flow", detail: "CV-circuit", direction: "left" } },
-      { bind: "discharge-pressure", x: 218, y: 138, width: 50, value: model.dischargePressureText, label: "Persdruk", ariaLabel: `Persdruk ${model.dischargePressureText}`, align: "end", tooltip: { modifier: "warm", icon: "pressure", x: 82, y: 120, width: 118, kicker: "Druk", detail: "Perszijde", direction: "right" } },
-      { bind: "discharge-temp", x: 218, y: 166, width: 50, value: model.dischargeTempText, label: "Perstemperatuur", ariaLabel: `Perstemperatuur ${model.dischargeTempText}`, align: "end", tooltip: { modifier: "warm", icon: "temperature", x: 80, y: 174, width: 142, kicker: "Temperatuur", detail: "Perszijde", direction: "right" } },
-      { bind: "suction-pressure", x: 378, y: 138, width: 50, value: model.suctionPressureText, label: "Zuigdruk", ariaLabel: `Zuigdruk ${model.suctionPressureText}`, tooltip: { modifier: "component", icon: "pressure", x: 438, y: 120, width: 118, kicker: "Druk", detail: "Zuigzijde", direction: "left" } },
-      { bind: "suction-temp", x: 378, y: 166, width: 50, value: model.suctionTempText, label: "Zuigtemperatuur", ariaLabel: `Zuigtemperatuur ${model.suctionTempText}`, tooltip: { modifier: "component", icon: "temperature", x: 414, y: 174, width: 142, kicker: "Temperatuur", detail: "Zuigzijde", direction: "left" } },
-      { bind: "inner-coil-temp", x: 120, y: 166, width: 52, value: model.innerCoilTempText, label: "Inner coil temperatuur", ariaLabel: `Inner coil temperatuur ${model.innerCoilTempText}`, align: "center", tooltip: { modifier: "component", icon: "temperature", x: 174, y: 148, width: 132, kicker: "Temperatuur", detail: "Condensor", direction: "right" } },
-      { bind: "evaporator-temp", x: 484, y: 166, width: 52, value: model.evaporatorCoilTempText, label: "Verdampertemperatuur", ariaLabel: `Verdampertemperatuur ${model.evaporatorCoilTempText}`, align: "center", tooltip: { modifier: "component", icon: "temperature", x: 344, y: 148, width: 132, kicker: "Temperatuur", detail: "Verdamper", direction: "right" } },
-      { bind: "outside-temp", x: 548, y: 110, width: 48, value: model.outsideTempText, label: "Buitentemperatuur", ariaLabel: `Buitentemperatuur ${model.outsideTempText}`, align: "center", tooltip: { modifier: "component", icon: "temperature", x: 424, y: 92, width: 136, kicker: "Temperatuur", detail: "Buitenlucht", direction: "right" } },
-      { bind: "fan-speed", x: 520, y: 258, width: 60, value: model.fanRpmText, label: "Ventilatorsnelheid", ariaLabel: `Ventilatorsnelheid ${model.fanRpmText}`, align: "center", tooltip: { modifier: "component", icon: "fan", x: 410, y: 236, width: 118, kicker: "Ventilator", detail: "Toerental", direction: "right" } },
-      { bind: "supply", x: 22, y: 114, width: 58, value: model.waterOutText, label: "Aanvoer", tooltip: { modifier: model.supplyLineTone, icon: "temperature", x: 96, y: 96, width: 124, kicker: "Temperatuur", detail: "Aanvoer", direction: "left" } },
-      { bind: "return", x: 22, y: 274, width: 58, value: model.waterInText, label: "Retour", tooltip: { modifier: model.returnLineTone, icon: "temperature", x: 96, y: 252, width: 124, kicker: "Temperatuur", detail: "Retour", direction: "left" } },
-    ];
+    const readings = HEAT_PUMP_READINGS.map((reading) => ({
+      ...reading,
+      value: model[reading.valueKey],
+      ariaLabel: getHeatPumpReadingAria(reading, model),
+      tooltip: {
+        ...reading.tooltip,
+        modifier: reading.tooltip.modifierKey ? model[reading.tooltip.modifierKey] : reading.tooltip.modifier,
+      },
+    }));
     const hotspots = [
       { bind: "compressor-freq", ariaLabel: `Compressorfrequentie ${model.compressorFreqText}`, x: 300, y: 148, width: 52, height: 26, rx: 12, tooltip: { modifier: "component", icon: "fan", x: 366, y: 130, width: 136, kicker: "Frequentie", detail: "Compressor", direction: "left" } },
       { bind: "fourway", ariaLabel: `4-wegklep, ${model.fourWayPositionText}`, x: 252, y: 208, width: 52, height: 52, rx: 16, tooltip: { modifier: "component", icon: "fourway", x: 308, y: 198, width: 196, kicker: "4-wegklep", detail: model.fourWayPositionText, detailBind: "fourway-detail", direction: "left" } },
@@ -1466,26 +1480,16 @@ import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./vie
       board.className = model.boardClass;
     }
     syncBoundText(board, [
+      ...HEAT_PUMP_READINGS.map((reading) => [`${reading.bind}-value`, model[reading.valueKey]]),
       ["status", model.statusText],
       ["left-exchanger-title", model.leftExchangerTitle],
       ["right-exchanger-title", model.rightExchangerTitle],
       ["compressor-freq", model.compressorFreqText],
-      ["flow-value", model.flowText],
-      ["inner-coil-temp-value", model.innerCoilTempText],
-      ["evaporator-temp-value", model.evaporatorCoilTempText],
-      ["outside-temp-value", model.outsideTempText],
-      ["discharge-pressure-value", model.dischargePressureText],
-      ["discharge-temp-value", model.dischargeTempText],
-      ["suction-pressure-value", model.suctionPressureText],
-      ["suction-temp-value", model.suctionTempText],
-      ["supply-value", model.waterOutText],
-      ["return-value", model.waterInText],
       ["footer-mode", model.mode],
       ["footer-power", model.powerText],
       ["footer-heat", model.heatText],
       ["footer-efficiency-label", model.efficiencyLabel],
       ["footer-efficiency", model.efficiencyText],
-      ["fan-speed-value", model.fanRpmText],
       ["fourway-detail", model.fourWayPositionText],
       ["eev-detail", model.eevPositionText],
     ]);
@@ -1513,18 +1517,8 @@ import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./vie
       setVariantClass(board.querySelector(`[data-oq-bind="${bind}"]`), "oq-hp-tech-tooltip--", tone, ["warm", "supply", "return"]);
     });
     syncBoundAria(board, [
-      ["supply-reading", `Aanvoer temperatuur ${model.waterOutText}`],
-      ["flow-reading", `Flow ${model.flowText}`],
-      ["inner-coil-temp-reading", `Inner coil temperatuur ${model.innerCoilTempText}`],
-      ["evaporator-temp-reading", `Verdampertemperatuur ${model.evaporatorCoilTempText}`],
-      ["outside-temp-reading", `Buitentemperatuur ${model.outsideTempText}`],
+      ...HEAT_PUMP_READINGS.map((reading) => [`${reading.bind}-reading`, getHeatPumpReadingAria(reading, model)]),
       ["compressor-freq-trigger", `Compressorfrequentie ${model.compressorFreqText}`],
-      ["fan-speed-reading", `Ventilatorsnelheid ${model.fanRpmText}`],
-      ["discharge-pressure-reading", `Persdruk ${model.dischargePressureText}`],
-      ["discharge-temp-reading", `Perstemperatuur ${model.dischargeTempText}`],
-      ["return-reading", `Retour temperatuur ${model.waterInText}`],
-      ["suction-pressure-reading", `Zuigdruk ${model.suctionPressureText}`],
-      ["suction-temp-reading", `Zuigtemperatuur ${model.suctionTempText}`],
       ["fourway-trigger", `4-wegklep, ${model.fourWayPositionText}`],
       ["eev-trigger", `Expansieventiel, ${model.eevPositionText}`],
     ]);

@@ -3,6 +3,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { build, transform } from "esbuild";
+import {
+  compactHtmlTemplateWhitespacePlugin,
+  minifyCssBundle,
+  minifyJavaScriptBundle,
+} from "./bundle-minifiers.mjs";
 import { resolveCssSources } from "./css-source-list.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -251,13 +256,14 @@ async function checkJavaScriptBundleFresh() {
     target: "es2020",
     define: { __OQ_PREVIEW__: "false" },
     write: false,
-    plugins: [embeddedAssetsPlugin()],
+    plugins: [compactHtmlTemplateWhitespacePlugin(), embeddedAssetsPlugin()],
   });
   const header = [
     `/* Generated minified bundle: ${toBundlePath(path.relative(webDir, outputPath))}. */`,
     "/* Source files are in ./js/src and ./css/src. Rebuild with: node openquatt/web/build-assets.mjs */",
   ].join("\n");
-  const expected = `${header}\n${(result.outputFiles[0]?.text || "").trim()}\n`;
+  const minified = await minifyJavaScriptBundle(result.outputFiles[0]?.text || "", "production bundle");
+  const expected = `${header}\n${minified}\n`;
   const actual = await readFile(outputPath, "utf8");
   if (actual !== expected) {
     throw new Error("JS bundle is stale. Run: rtk npm run build:web");
@@ -271,7 +277,8 @@ async function checkCssBundleFresh() {
     `/* Generated minified bundle: ${toBundlePath(path.relative(webDir, outputPath))}. */`,
     "/* Source files are in ./js/src and ./css/src. Rebuild with: node openquatt/web/build-assets.mjs */",
   ].join("\n");
-  const minified = (await transform(sourceParts.map((source) => source.trimEnd()).join("\n"), { loader: "css", minify: true })).code.trim();
+  const esbuildOutput = (await transform(sourceParts.map((source) => source.trimEnd()).join("\n"), { loader: "css", minify: true })).code.trim();
+  const minified = minifyCssBundle(esbuildOutput, outputPath);
   const expected = `${header}\n${minified}\n`;
   const actual = await readFile(outputPath, "utf8");
   if (actual !== expected) {
@@ -536,6 +543,13 @@ async function checkProductionInterfaceCssContracts() {
     ["esp-app.oq-native-app {", "ESPHome fallback surface"],
   ]) {
     assertContains(productionCss, needle, `Production CSS: ${label}`);
+  }
+  for (const tone of ["blue", "orange", "green", "sky"]) {
+    assertContains(
+      productionCss,
+      `.oq-overview-stat--${tone} p {`,
+      `Production CSS: overview ${tone} stat tone`,
+    );
   }
 }
 

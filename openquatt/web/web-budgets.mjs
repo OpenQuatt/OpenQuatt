@@ -31,9 +31,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // and frequency-based day/silent limits and exclusion ranges per ODU.
     // plus bounded webserver-log history polling (single scheduler, retry
     // back-off and authoritative refresh without a second /events stream).
-    // The validated bundle is 987085 B; the raw budget keeps ~1.9 kB margin
-    // for build-environment variance.
-    raw: 989_000,
+    // The validated bundle is 896166 B; the raw budget keeps ~8.8 kB margin
+    // for build-environment variance and small follow-up changes.
+    raw: 905_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.
@@ -44,5 +44,7 @@ export const WEB_BUNDLE_BUDGETS = [
   // the issue-615 electrical-limit slider with red above-standard zone,
   // matching estimate/entry boxes, label icons and aligned vertical rhythm,
   // and the responsive issue-471 master/detail source focus panel.
-  { file: "css/openquatt-app.css", raw: 305_000 },
+  // The validated bundle is 194847 B; keep a small margin while preserving
+  // the source-level symbol compaction and dead-CSS reduction.
+  { file: "css/openquatt-app.css", raw: 200_000 },
 ];
