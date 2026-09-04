@@ -34,6 +34,7 @@
     connection: "wifi",
     boiler: "off",
     diagnostics: "clear",
+    oduWriteState: "scenario",
     auxTempGateOn: false,
     auxRelayLastMode: 0,
     complete: true,
@@ -219,6 +220,10 @@
       1: { loaded: false, armed: false, busy: false, status: "READY: load ODU runtime table", extendedLayout: false },
       2: { loaded: false, armed: false, busy: false, status: "READY: load ODU runtime table", extendedLayout: false },
     },
+    oduSettingsService: {
+      1: { loaded: false, busy: false, status: "READY", profileAvailable: false, autoReapply: false, actual: { mode: 1, startTemperatureC: 4, stopDeltaC: 3 } },
+      2: { loaded: false, busy: false, status: "READY", profileAvailable: false, autoReapply: false, actual: { mode: 3, startTemperatureC: 4, stopDeltaC: 3 } },
+    },
   };
 
   function isCoolingScenario(name = state.scenario) {
@@ -290,6 +295,11 @@
       status: "READY: load ODU runtime table",
       extendedLayout: profile.variant === "V2 new model",
     };
+    const settings = state.oduSettingsService[hp === 2 ? 2 : 1];
+    settings.loaded = false;
+    settings.busy = false;
+    settings.status = "READY";
+    settings.actual = { mode: profile.generation === "V1" ? 1 : 3, startTemperatureC: 4, stopDeltaC: 3 };
     syncMockOduIdentityEntities(hp);
   }
 
@@ -2509,6 +2519,7 @@
   }
 
   function notifyMockUpdated() {
+    applyOduWriteTestState();
     updateTrendFlashStats();
     updateEnergyHistoryStats();
     syncDevMeta();
@@ -4041,6 +4052,29 @@
     return true;
   }
 
+  function isMockOduWriteSafe(hp) {
+    const hpName = `HP${hp}`;
+    const mode = String(getEntity("text_sensor", `${hpName} - Working Mode Label`)?.value || "").trim();
+    const compressorHz = Number(getEntity("sensor", `${hpName} - Compressor frequency`)?.value);
+    return /standby|stand-by/i.test(mode) && Number.isFinite(compressorHz) && compressorHz <= 0.5;
+  }
+
+  function applyOduWriteTestState() {
+    window.__OQ_DEV_ODU_WRITE_STATE__ = state.oduWriteState;
+    if (state.oduWriteState === "scenario") return;
+    const standby = state.oduWriteState === "standby";
+    const hpIndexes = state.installation === "single" ? [1] : [1, 2];
+    hpIndexes.forEach((hp) => {
+      setText("text_sensor", `HP${hp} - Working Mode Label`, standby ? "Standby" : "Heating");
+      setNumber(`HP${hp} - Compressor frequency`, standby ? 0 : 30, "Hz");
+      const settings = state.oduSettingsService[hp];
+      if (standby && settings.status === "PENDING_SAFE" && settings.desired) {
+        settings.actual = { ...settings.desired };
+        settings.status = "IN_SYNC";
+      }
+    });
+  }
+
   function getOduRuntimeServicePayload(hp) {
     const service = state.oduRuntimeFrequencyService[hp];
     const table = state.oduRuntimeFrequency[`HP${hp}`];
@@ -4067,7 +4101,7 @@
   }
 
   function handleMockOduRuntimeRequest(url, method, init) {
-    const match = url.pathname.match(/^\/openquatt\/odu-runtime\/hp([12])\/(status|load|arm|apply)$/);
+    const match = url.pathname.match(/\/openquatt\/odu-runtime\/hp([12])\/(status|load|arm|apply)$/);
     if (!match) return null;
     const hp = Number(match[1]);
     const action = match[2];
@@ -4134,6 +4168,83 @@
       notifyMockUpdated();
     }, 640);
     return mockResponse(200, getOduRuntimeServicePayload(hp));
+  }
+
+  function getMockOduVariant(hp) {
+    const generation = mockFixtures.oduProfiles[state.oduGenerations[hp]] || mockFixtures.oduProfiles.Unknown;
+    return generation.variant === "V1" ? 1
+      : generation.variant === "V1.5" ? 2
+        : generation.variant === "V2 old model" ? 3
+          : generation.variant === "V2 new model" ? 4 : 0;
+  }
+
+  function getOduSettingsPayload(hp) {
+    const service = state.oduSettingsService[hp];
+    const variant = getMockOduVariant(hp);
+    const desired = service.desired || service.actual;
+    return {
+      ok: true,
+      available: variant > 0,
+      hp,
+      busy: service.busy,
+      loaded: service.loaded,
+      profile_available: service.profileAvailable,
+      auto_reapply: service.autoReapply,
+      identity_ready: variant > 0,
+      identity_matches: service.profileAvailable,
+      write_uncertain: false,
+      variant,
+      control_board_item: variant === 1 ? 0x0037 : variant === 4 ? 0x1037 : 0x0E37,
+      status: service.status,
+      csrf_token: "oq-mock-odu-settings",
+      actual: { mode: service.actual.mode, start_temperature_c: service.actual.startTemperatureC, stop_delta_c: service.actual.stopDeltaC },
+      desired: { mode: desired.mode, start_temperature_c: desired.startTemperatureC, stop_delta_c: desired.stopDeltaC },
+      defaults: { mode: variant === 1 ? 1 : 3, start_temperature_c: 4, stop_delta_c: 3 },
+    };
+  }
+
+  function handleMockOduSettingsRequest(url, method, init) {
+    const match = url.pathname.match(/\/openquatt\/odu-settings\/hp([12])\/(status|load|save)$/);
+    if (!match) return null;
+    const hp = Number(match[1]);
+    const action = match[2];
+    if (hp === 2 && state.installation === "single") return mockResponse(404, { ok: false });
+    if (action === "status") return method === "GET" ? mockResponse(200, getOduSettingsPayload(hp)) : mockResponse(405, { ok: false });
+    if (method !== "POST") return mockResponse(405, { ok: false });
+    const params = new URLSearchParams(String(init?.body || ""));
+    if (params.get("csrf_token") !== "oq-mock-odu-settings") return mockResponse(409, { ok: false, error: "forbidden" });
+    const service = state.oduSettingsService[hp];
+    if (service.busy) return mockResponse(409, { ok: false, error: "busy" });
+    service.busy = true;
+    service.status = action === "load" ? "LOAD_REQUESTED" : "SAVE_REQUESTED";
+    if (action === "save") {
+      service.desired = {
+        mode: Number(params.get("mode")),
+        startTemperatureC: Number(params.get("start_temperature_c")),
+        stopDeltaC: Number(params.get("stop_delta_c")),
+      };
+      service.profileAvailable = true;
+      service.autoReapply = params.get("auto_reapply") === "true";
+    }
+    window.setTimeout(() => {
+      service.busy = false;
+      service.loaded = true;
+      if (action === "load") {
+        service.status = "LOADED";
+      } else {
+        const settingsMatch = service.actual.mode === service.desired.mode
+          && service.actual.startTemperatureC === service.desired.startTemperatureC
+          && service.actual.stopDeltaC === service.desired.stopDeltaC;
+        if (settingsMatch || isMockOduWriteSafe(hp)) {
+          service.actual = { ...service.desired };
+          service.status = "IN_SYNC";
+        } else {
+          service.status = "PENDING_SAFE";
+        }
+      }
+      notifyMockUpdated();
+    }, 320);
+    return mockResponse(200, getOduSettingsPayload(hp));
   }
 
   function handleButtonPress(name) {
@@ -5467,6 +5578,10 @@
       if (oduRuntimeResponse) {
         return oduRuntimeResponse;
       }
+      const oduSettingsResponse = handleMockOduSettingsRequest(url, method, init || {});
+      if (oduSettingsResponse) {
+        return oduSettingsResponse;
+      }
       const oduEepromResponse = handleMockOduEepromRequest(url, method);
       if (oduEepromResponse) {
         return oduEepromResponse;
@@ -5665,6 +5780,12 @@
             </select>
           </label>
           <label class="oq-helper-hub-dev-row">
+            <span class="oq-helper-hub-dev-label">ODU-schrijftest</span>
+            <select class="oq-helper-hub-dev-select" data-oq-dev-control="odu-write-state">
+              ${renderDevControlOptions("oduWriteState")}
+            </select>
+          </label>
+          <label class="oq-helper-hub-dev-row">
             <span class="oq-helper-hub-dev-label">CV-ketel</span>
             <select class="oq-helper-hub-dev-select" data-oq-dev-control="boiler">
               ${renderDevControlOptions("boiler")}
@@ -5787,6 +5908,19 @@
       };
     }
 
+    const oduWriteState = controlsRoot.querySelector('[data-oq-dev-control="odu-write-state"]');
+    if (oduWriteState) {
+      oduWriteState.value = state.oduWriteState;
+      oduWriteState.onchange = () => {
+        state.oduWriteState = ["standby", "running"].includes(oduWriteState.value)
+          ? oduWriteState.value
+          : "scenario";
+        applyOduWriteTestState();
+        notifyMockUpdated();
+        notifyDevControlsChanged();
+      };
+    }
+
     const boiler = controlsRoot.querySelector('[data-oq-dev-control="boiler"]');
     if (boiler) {
       const handleBoilerChange = () => {
@@ -5895,6 +6029,7 @@
   refreshMqttToken();
   setInstallationMode(state.installation);
   applyScenario(state.scenario);
+  applyOduWriteTestState();
   updateSummary();
   installFetchMock();
   window.setInterval(() => {

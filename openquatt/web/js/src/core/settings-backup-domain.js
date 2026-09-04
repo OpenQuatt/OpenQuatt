@@ -89,6 +89,39 @@ export function settingsBackupMqttNeedsPassword(mqtt) {
   return Boolean(mqtt?.password_was_set);
 }
 
+export function normalizeSettingsBackupOduProfiles(value) {
+  if (value === null || value === undefined) return {};
+  if (!isObject(value)) throw new Error("Bodemplaatinstellingen in backup zijn ongeldig.");
+  const profiles = {};
+  for (const hpKey of ["hp1", "hp2"]) {
+    if (!Object.prototype.hasOwnProperty.call(value, hpKey)) continue;
+    const profile = value[hpKey];
+    const variant = Number(profile?.variant);
+    const controlBoardItem = Number(profile?.control_board_item);
+    const mode = Number(profile?.mode);
+    const startTemperatureC = Number(profile?.start_temperature_c);
+    const stopDeltaC = Number(profile?.stop_delta_c);
+    if (!isObject(profile)
+        || !Number.isInteger(variant) || variant < 1 || variant > 4
+        || !Number.isInteger(controlBoardItem) || controlBoardItem < 1 || controlBoardItem > 0xFFFF
+        || !Number.isInteger(mode) || mode < 0 || mode > 3
+        || !Number.isInteger(startTemperatureC) || startTemperatureC < -30 || startTemperatureC > 30
+        || !Number.isInteger(stopDeltaC) || stopDeltaC < 0 || stopDeltaC > 30
+        || typeof profile.auto_reapply !== "boolean") {
+      throw new Error(`${hpKey.toUpperCase()} bodemplaatinstellingen in backup zijn ongeldig.`);
+    }
+    profiles[hpKey] = {
+      variant,
+      control_board_item: controlBoardItem,
+      mode,
+      start_temperature_c: startTemperatureC,
+      stop_delta_c: stopDeltaC,
+      auto_reapply: profile.auto_reapply === true,
+    };
+  }
+  return profiles;
+}
+
 export function isSettingsBackupMqttSourceSelection(key, value) {
   return SETTINGS_BACKUP_MQTT_SOURCE_KEYS.has(key) && /\bMQTT\b/i.test(String(value || ""));
 }

@@ -29,6 +29,12 @@ ODU_RUNTIME_SOURCE = (
     / "openquatt_odu_runtime_frequency"
     / "OpenQuattOduRuntimeFrequency.cpp"
 ).read_text()
+ODU_SETTINGS_HEADER = (
+    ROOT / "components/openquatt_odu_settings/OpenQuattOduSettings.h"
+).read_text()
+ODU_SETTINGS_SOURCE = (
+    ROOT / "components/openquatt_odu_settings/OpenQuattOduSettings.cpp"
+).read_text()
 CAPTIVE_PORTAL_ROUTER_CPP = (
     ROOT
     / "components"
@@ -100,7 +106,7 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
         self.assertNotIn("command_throttle:", MODBUS_CONTROLLER)
 
     def test_custom_modbus_callbacks_use_span_payloads(self) -> None:
-        custom_modbus = MODBUS_CONTROLLER + ODU_RUNTIME_SOURCE
+        custom_modbus = MODBUS_CONTROLLER + ODU_RUNTIME_SOURCE + ODU_SETTINGS_SOURCE
         self.assertIn("std::span<const uint8_t>", custom_modbus)
         self.assertIn("esphome::modbus::EntityType", custom_modbus)
         self.assertNotIn("ModbusRegisterType", custom_modbus)
@@ -118,6 +124,17 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
         self.assertIn("EXTENDED_OPERATION_TIMEOUT_MS = 60000U", ODU_RUNTIME_HEADER)
         self.assertIn("VERIFY_FAILED: write acknowledgement timeout", ODU_RUNTIME_SOURCE)
         self.assertNotIn("create_write_multiple_command", ODU_RUNTIME_SOURCE)
+
+    def test_bottom_plate_writes_are_guarded_confirmed_and_verified(self) -> None:
+        self.assertIn("create_write_single_command", ODU_SETTINGS_SOURCE)
+        self.assertIn("GUARD_START_ADDRESS = 2099U", ODU_SETTINGS_HEADER)
+        self.assertIn("OPERATION_TIMEOUT_MS = 30000U", ODU_SETTINGS_HEADER)
+        self.assertIn("queue_readback_", ODU_SETTINGS_SOURCE)
+        self.assertIn("VERIFY_FAILED", ODU_SETTINGS_SOURCE)
+        self.assertIn("manual_apply_pending_.store(false", ODU_SETTINGS_SOURCE)
+        self.assertNotIn("create_write_multiple_command", ODU_SETTINGS_SOURCE)
+        self.assertIn("try_begin_external_operation()", ODU_SETTINGS_SOURCE)
+        self.assertIn("end_external_operation()", ODU_SETTINGS_SOURCE)
 
     def test_runtime_table_and_eeprom_dump_exclude_each_other(self) -> None:
         self.assertIn("try_begin_external_operation", ODU_EEPROM_HEADER)

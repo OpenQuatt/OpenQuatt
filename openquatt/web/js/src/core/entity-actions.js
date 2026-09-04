@@ -18,6 +18,7 @@ import { getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNu
 import { handleMqttAction, syncMqttDraftFromInput } from "../features/mqtt-actions.js";
 import { handleOduEepromDumpAction } from "../features/odu-eeprom-dump.js";
 import { handleOduRuntimeFrequencyAction, handleOduRuntimeFrequencyInputKeyDown, updateOduRuntimeFrequencyDraft } from "../features/odu-runtime-frequency.js";
+import { handleOduSettingsAction, updateOduSettingsDraft } from "../features/odu-settings.js";
 import { handleQuickStartAction } from "../features/quickstart-ui-actions.js";
 import { handleSecurityAction, stopLoginAuthStatusPolling } from "../features/security-actions.js";
 import { clearSettingsBackupDraft, handleSettingsBackupFileSelection, handleStorageHistoryAction, normalizeEnergyHistoryExportMode } from "../features/storage-history.js";
@@ -36,6 +37,7 @@ const actionDelegates = [
   handleDebugRecordingAction,
   handleOduEepromDumpAction,
   handleOduRuntimeFrequencyAction,
+  handleOduSettingsAction,
   handleSecurityAction,
   handleMqttAction,
   (action) => handleStorageHistoryAction(action, { triggerNamedButton }),
@@ -174,6 +176,11 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleInput(event) {
+    if (event.target.dataset.oqOduSettingsHp) {
+      updateOduSettingsDraft(event.target);
+      return;
+    }
+
     if (event.target.dataset.oqOduRuntimeHp) {
       updateOduRuntimeFrequencyDraft(event.target);
       return;
@@ -384,6 +391,11 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleChange(event) {
+    if (event.target.dataset.oqOduSettingsHp) {
+      updateOduSettingsDraft(event.target);
+      return;
+    }
+
     if (__OQ_PREVIEW__ && event.target.dataset.oqDevControl === "boiler" && typeof window.__OQ_SET_MOCK_BOILER__ === "function") {
       window.__OQ_SET_MOCK_BOILER__(event.target.value);
       return;

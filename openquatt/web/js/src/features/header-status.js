@@ -11,6 +11,8 @@ import { formatDeviceClock, formatUptimeFromMeta, getDeviceIpAddress, getInstall
 import { getFirmwareUpdateEntity, getUpdateStatus, isFirmwareUpdateAvailable } from "./firmware-update.js";
 import { renderMqttModal, renderMqttSensorsModal } from "./mqtt.js";
 import { renderOduEepromDumpModal } from "./odu-eeprom-dump.js";
+import { renderOduRuntimeFrequencyModal } from "./odu-runtime-frequency.js";
+import { renderOduSettingsModal } from "./odu-settings.js";
 import { renderApiSecurityModal, renderLoginModal } from "./security-access.js";
 import { getWebServerLogStatusLabel, renderWebServerLogsModal } from "./webserver-logs.js";
 import { getControlModeOverrideLabel, renderSettingsServiceTaskModal } from "../settings/service.js";
@@ -499,6 +501,14 @@ import { render } from "../core/render-scheduler.js";
 
     if (state.systemModal === "odu-eeprom-dump") {
       return renderOduEepromDumpModal();
+    }
+
+    if (state.systemModal === "odu-bottom-plate-settings") {
+      return renderOduSettingsModal();
+    }
+
+    if (state.systemModal === "odu-frequency-settings") {
+      return renderOduRuntimeFrequencyModal();
     }
 
     if (String(state.systemModal || "").startsWith("service-task-")) {

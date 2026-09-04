@@ -9,7 +9,7 @@ import { updateEnergyHistoryState } from "../core/feature-state.js";
 import { setEntityBackupValue, verifyEntityBackupSwitchState } from "../core/entity-backup.js";
 import { formatValue, getEntityValue, normalizeDateTimeValue, normalizeTimeValue, parseLooseNumber } from "../core/entity-store.js";
 import { refreshEntities, syncEntities } from "../core/entity-sync.js";
-import { buildSettingsBackupMqttConfig, collectUnknownSettingsBackupItems, isSettingsBackupMqttSourceSelection, normalizeSettingsBackupMqttConfig, SETTINGS_BACKUP_MIN_SCHEMA_VERSION, SETTINGS_BACKUP_MQTT_INPUT_KEYS, SETTINGS_BACKUP_MQTT_RETAINED_KEYS, settingsBackupMqttNeedsPassword } from "../core/settings-backup-domain.js";
+import { buildSettingsBackupMqttConfig, collectUnknownSettingsBackupItems, isSettingsBackupMqttSourceSelection, normalizeSettingsBackupMqttConfig, normalizeSettingsBackupOduProfiles, SETTINGS_BACKUP_MIN_SCHEMA_VERSION, SETTINGS_BACKUP_MQTT_INPUT_KEYS, SETTINGS_BACKUP_MQTT_RETAINED_KEYS, settingsBackupMqttNeedsPassword } from "../core/settings-backup-domain.js";
 import { DEFAULT_TREND_WINDOW_HOURS, state } from "../core/state.js";
 import { ENERGY_HISTORY_VIEW_KEYS, getSettingsStorageRefreshKeys, SETTINGS_STORAGE_KEYS, TREND_HISTORY_VIEW_KEYS } from "../core/storage-history-keys.js";
 import { setStorageHistoryControls } from "../core/storage-history-controls.js";
@@ -18,6 +18,7 @@ import { normalizeTrendWindowHours, setTrendWindowHours } from "../core/trend-wi
 import { getBasePath } from "../core/url-path.js";
 import { getFirmwareDeviceLabel, getInstallationLabel, getInstallationTopology } from "./device-context.js";
 import { getFirmwareCurrentVersion } from "./firmware-update.js";
+import { getOduSettingsBackupProfiles, restoreOduSettingsBackupProfiles } from "./odu-settings.js";
 import { render } from "../core/render-scheduler.js";
 
   export function energyHistoryImportRecordHasHour(row) {
@@ -1083,7 +1084,7 @@ import { render } from "../core/render-scheduler.js";
     return text || undefined;
   }
 
-  export function buildSettingsBackupSnapshot(mqtt = null) {
+  export function buildSettingsBackupSnapshot(mqtt = null, oduBottomPlate = {}) {
     const settings = {};
     SETTINGS_BACKUP_SECTIONS.forEach((section) => {
       const values = {};
@@ -1102,6 +1103,7 @@ import { render } from "../core/render-scheduler.js";
       source: getSettingsBackupSourceMeta(),
       settings,
       mqtt,
+      odu_bottom_plate: oduBottomPlate,
     };
   }
 
@@ -1321,12 +1323,14 @@ import { render } from "../core/render-scheduler.js";
 
     const settings = parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {};
     const mqtt = schemaVersion >= 2 ? normalizeSettingsBackupMqttConfig(parsed.mqtt) : null;
+    const oduBottomPlate = schemaVersion >= 3 ? normalizeSettingsBackupOduProfiles(parsed.odu_bottom_plate) : {};
     const snapshot = {
       schema_version: schemaVersion,
       exported_at: String(parsed.exported_at || ""),
       source: parsed.source && typeof parsed.source === "object" ? parsed.source : {},
       settings,
       mqtt,
+      odu_bottom_plate: oduBottomPlate,
       file_name: fileName || "",
     };
     snapshot.summary = getSettingsBackupSelectionSummary(snapshot);
@@ -1341,8 +1345,11 @@ import { render } from "../core/render-scheduler.js";
 
     try {
       await refreshEntities(SETTINGS_BACKUP_KEYS, "all");
-      const mqttStatus = await fetchSettingsBackupMqttStatus();
-      return buildSettingsBackupSnapshot(buildSettingsBackupMqttConfig(mqttStatus));
+      const [mqttStatus, oduBottomPlate] = await Promise.all([
+        fetchSettingsBackupMqttStatus(),
+        getOduSettingsBackupProfiles(),
+      ]);
+      return buildSettingsBackupSnapshot(buildSettingsBackupMqttConfig(mqttStatus), oduBottomPlate);
     } finally {
       state.settingsBackupBusy = false;
       render();
@@ -1397,6 +1404,8 @@ import { render } from "../core/render-scheduler.js";
   export function createSettingsBackupRestoreItem(key, section, reason, detail = "", severity = "warning") {
     const mqttLabels = {
       "mqtt.config": "MQTT-configuratie",
+      "odu_bottom_plate.hp1": "HP1 bodemplaatverwarming",
+      "odu_bottom_plate.hp2": "HP2 bodemplaatverwarming",
     };
     return {
       key,
@@ -1656,6 +1665,32 @@ import { render } from "../core/render-scheduler.js";
         }
       }
 
+      try {
+        const oduResults = await restoreOduSettingsBackupProfiles(draft.odu_bottom_plate || {});
+        oduResults.forEach((result) => {
+          const resultKey = `odu_bottom_plate.${result.key}`;
+          if (result.applied) {
+            applied.push(resultKey);
+          } else {
+            skipped.push(createSettingsBackupRestoreItem(
+              resultKey,
+              "Buitenunit",
+              "Niet toegepast",
+              result.reason,
+              "error",
+            ));
+          }
+        });
+      } catch (error) {
+        skipped.push(createSettingsBackupRestoreItem(
+          "odu_bottom_plate",
+          "Buitenunit",
+          "Herstellen mislukt",
+          String(error?.message || error),
+          "error",
+        ));
+      }
+
       const operationValues = draft.settings?.operation || {};
       if (Object.prototype.hasOwnProperty.call(operationValues, "openquattEnabled")) {
         if (!hasEntity("openquattEnabled")) {
@@ -1756,6 +1791,7 @@ import { render } from "../core/render-scheduler.js";
         skipped,
         unknown,
         mqttIncluded: Boolean(draft.mqtt),
+        oduBottomPlateIncluded: Object.keys(draft.odu_bottom_plate || {}).length > 0,
         sourceSchemaVersion: draft.schema_version,
       };
       state.systemModal = "settings-backup-success";

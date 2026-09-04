@@ -647,6 +647,11 @@
     padding-right: 10px;
   }
 
+  .oq-settings-odu-fields > label {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .oq-settings-monitoring-summary,
   .oq-settings-monitoring-compressor-unit,
   .oq-settings-monitoring-row,
