@@ -13,6 +13,14 @@ begrensde record in flash beschikbaar voor een retry. MQTT QoS 1 kan dezelfde
 crash opnieuw afleveren wanneer een acknowledgement verloren gaat. Een ontvanger
 moet daarom dedupliceren op de combinatie van `installation_id` en `message_id`.
 
+De MQTT-client voor crashpublicatie wordt door een geïsoleerde worker beheerd.
+De normale ESPHome-hoofdloop bouwt alleen de begrensde payload op en verwerkt
+het resultaat. Een trage of vastlopende MQTT-start of -cleanup mag daardoor de
+verwarmingsregeling of controllerhoofdloop niet blokkeren. Het lokale
+crashrecord wordt pas gewist nadat de PUBACK is ontvangen én de client volledig
+is opgeruimd; blijft de cleanup hangen, dan blijft het record behouden voor een
+retry onder hetzelfde `message_id`.
+
 De payload bevat geen gewone runtime-logs, metingen of regelwaarden. Wel bevat
 hij de regels uit het ESPHome-crashrapport, het resettype, firmwareversie,
 releasekanaal, ESPHome-versie, bronrepository, volledige commit-SHA, exact
