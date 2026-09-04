@@ -1,7 +1,7 @@
 import { hasEntity } from "../core/app-shared.js";
 import { setEntityBackupValue, verifyEntityBackupSelectState } from "../core/entity-backup.js";
-import { getOpenQuattPauseDraftValue, getOpenQuattPausePresetValue } from "../core/entity-store.js";
-import { commitOpenQuattRegulationPause, commitOpenQuattRegulationResumeNow, commitSelect, triggerNamedButton } from "../core/entity-write-actions.js";
+import { getOpenQuattPauseDraftValue, getOpenQuattPausePresetValue, getEntityValue, parseLooseNumber } from "../core/entity-store.js";
+import { commitNumber, commitOpenQuattRegulationPause, commitOpenQuattRegulationResumeNow, commitSelect, triggerNamedButton } from "../core/entity-write-actions.js";
 import { refreshEntities } from "../core/entity-sync.js";
 import { invokeActionMap } from "../core/action-router.js";
 import { render } from "../core/render-scheduler.js";
@@ -13,6 +13,7 @@ import { clearSettingsBackupDraft } from "./storage-history.js";
 function closeSystemModal() {
   stopLoginAuthStatusPolling();
   clearDebugRecordingDevicePollTimer();
+  const wasElectricalLimitConfirm = state.systemModal === "electrical-limit-confirm";
   state.systemModal = "";
   state.authDraftCurrentPassword = "";
   state.authDraftNewPassword = "";
@@ -22,6 +23,12 @@ function closeSystemModal() {
   state.apiSecurityNotice = "";
   state.apiSecurityError = "";
   state.pendingControlModeOverride = "";
+  if (wasElectricalLimitConfirm) {
+    // Annuleren zet het invoerveld terug op de bevestigde waarde.
+    delete state.drafts.electricalCurrentLimit;
+    delete state.inputDrafts.electricalCurrentLimit;
+    state.pendingElectricalLimit = null;
+  }
   clearSettingsBackupDraft();
   render();
   scheduleDebugRecordingDeviceStatusPoll();
@@ -93,6 +100,36 @@ const systemActionHandlers = {
     successNotice: "De cumulatieve energietellers zijn teruggezet.",
     errorPrefix: "Energietellers resetten mislukt",
   }),
+  "confirm-electrical-limit": () => {
+    const pending = state.pendingElectricalLimit || {};
+    const toA = Number(pending.toA);
+    if (!Number.isFinite(toA)) {
+      closeSystemModal();
+      return;
+    }
+    state.pendingElectricalLimit = null;
+    state.systemModal = "";
+    return commitNumber("electricalCurrentLimit", toA, "Elektrische ingangsgrens bijgewerkt.");
+  },
+  "reset-electrical-limit-to-default": async () => {
+    state.pendingElectricalLimit = null;
+    if (state.systemModal === "electrical-limit-confirm") {
+      state.systemModal = "";
+    }
+    if (!hasEntity("electricalCurrentLimitReset")) {
+      // Oude firmware zonder reset-button: hooguit expliciet op de standaard zetten.
+      const { getElectricalLimitTopologyInfo } = await import("../settings/electrical-limit.js");
+      const info = getElectricalLimitTopologyInfo();
+      return commitNumber("electricalCurrentLimit", info.standardA, "Elektrische ingangsgrens teruggezet op de standaardwaarde.");
+    }
+    // Reset via firmware: clears the stored override back to NAN so the
+    // limit automatically follows the generation-dependent standard again.
+    return triggerNamedButton("electricalCurrentLimitReset", {
+      successNotice: "Elektrische ingangsgrens teruggezet op automatisch (standaardwaarde).",
+      errorPrefix: "Elektrische ingangsgrens resetten mislukt",
+      refreshKeys: ["electricalCurrentLimit"],
+    });
+  },
   "open-silent-settings-modal": () => {
     state.systemModal = "silent-settings";
     render();

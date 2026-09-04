@@ -15,16 +15,32 @@ HEATING_CURVE_RUNTIME = (ROOT / "openquatt/includes/control/oq_heating_curve_run
 COOLING = (ROOT / "openquatt" / "oq_cooling_strategy.yaml").read_text()
 COOLING_RUNTIME = (ROOT / "openquatt/includes/control/oq_cooling_runtime.h").read_text()
 HP_IO = (ROOT / "openquatt" / "oq_HP_io.yaml").read_text()
+SUBSTITUTIONS = (ROOT / "openquatt" / "oq_substitutions_common.yaml").read_text()
+WEB_LIMIT = (ROOT / "openquatt" / "web" / "js" / "src" / "settings" / "electrical-limit.js").read_text()
 
 class ElectricalInputLimitContractTest(unittest.TestCase):
     def test_setting_is_persistent_and_keeps_generation_defaults(self) -> None:
         self.assertIn("id: oq_electrical_current_limit_configured_a", SUPERVISOR)
         self.assertIn("restore_value: true\n    initial_value: 'NAN'", SUPERVISOR)
         self.assertIn("id: oq_electrical_current_limit_a", SUPERVISOR)
+        self.assertIn("id: oq_electrical_current_limit_reset", SUPERVISOR)
         self.assertIn("id(hp_generation).current_option() == \"V2\"", LIMITER_RUNTIME)
-        self.assertIn("maximum_current_a(", LIMITER_LOGIC)
+        self.assertIn("standard_current_a(", LIMITER_LOGIC)
+        self.assertIn("absolute_maximum_current_a(", LIMITER_LOGIC)
+        self.assertIn("generation_known()", LIMITER_RUNTIME)
+        self.assertIn("odu_v1_confirmed()", LIMITER_RUNTIME)
+        self.assertIn("odu_v2_confirmed()", LIMITER_RUNTIME)
+        self.assertIn("odu_generation_detection_complete", LIMITER_RUNTIME)
+        self.assertGreaterEqual(SUPERVISOR.count("traits.set_max_value"), 3)
         self.assertIn("effective_current_a(", LIMITER_LOGIC)
         self.assertGreaterEqual(SUPERVISOR.count("traits.set_max_value"), 3)
+
+    def test_firmware_and_web_share_absolute_limits(self) -> None:
+        self.assertIn('oq_duo_current_limit_v2_max_a: "26.0"', SUBSTITUTIONS)
+        self.assertIn("ELECTRICAL_LIMIT_V2_MAX_A = 26", WEB_LIMIT)
+        self.assertIn('oq_electrical_current_limit_min_a: "10.0"', SUBSTITUTIONS)
+        self.assertIn("ELECTRICAL_LIMIT_MIN_A = 10", WEB_LIMIT)
+        self.assertIn("oq_duo_current_limit_v2_max_a", SUPERVISOR)
 
     def test_single_and_duo_share_measured_feedback_limiter(self) -> None:
         self.assertEqual(SUPERVISOR_RUNTIME.count("oq_supervisory_power_runtime::runtime().tick"), 1)

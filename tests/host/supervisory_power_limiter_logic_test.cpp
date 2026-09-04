@@ -22,6 +22,21 @@ int main() {
   assert(maximum_current_a(true, false, 16.0f, 20.0f) == 16.0f);
   assert(maximum_current_a(true, true, 16.0f, 20.0f) == 20.0f);
   assert(maximum_current_a(false, true, 16.0f, 20.0f) == 16.0f);
+  assert(standard_current_a(true, false, 16.0f, 20.0f) == 16.0f);
+  assert(standard_current_a(true, true, 16.0f, 20.0f) == 20.0f);
+  assert(standard_current_a(false, true, 16.0f, 20.0f) == 16.0f);
+  assert(absolute_maximum_current_a(false, true, true, false, false, 16.0f, 20.0f, 26.0f) == 16.0f);
+  // Duo V1 with matching ODU detection may use the derived per-ODU ceiling (2 x 10 A).
+  assert(absolute_maximum_current_a(true, true, false, true, false, 16.0f, 20.0f, 26.0f) == 20.0f);
+  // Without confirmed detection the installation standard remains the ceiling.
+  assert(absolute_maximum_current_a(true, true, false, false, false, 16.0f, 20.0f, 26.0f) == 16.0f);
+  assert(absolute_maximum_current_a(true, true, true, false, false, 16.0f, 20.0f, 26.0f) == 20.0f);
+  // Duo V2 only reaches its derived ceiling (2 x 13 A) with both ODUs detected as V2.
+  assert(absolute_maximum_current_a(true, true, true, false, true, 16.0f, 20.0f, 26.0f) == 26.0f);
+  // Family mismatch stays on the standard.
+  assert(absolute_maximum_current_a(true, true, true, true, false, 16.0f, 20.0f, 26.0f) == 20.0f);
+  assert(absolute_maximum_current_a(true, true, false, false, true, 16.0f, 20.0f, 26.0f) == 16.0f);
+  assert(absolute_maximum_current_a(true, false, false, true, false, 16.0f, 20.0f, 26.0f) == 16.0f);
   assert(effective_current_a(NAN, 10.0f, 16.0f) == 16.0f);
   assert(effective_current_a(4.0f, 10.0f, 16.0f) == 10.0f);
   assert(effective_current_a(18.0f, 10.0f, 16.0f) == 16.0f);

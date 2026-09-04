@@ -18,6 +18,7 @@ import { renderSilentSettingsFields } from "../settings/silent.js";
 import { renderSettingsBackupImportModal, renderSettingsBackupRestoreModal, renderSettingsHistoryStorageModal } from "../settings/storage.js";
 import { renderHpWaterSensorOffsetsModal } from "../settings/water.js";
 import { renderSettingsSelectField } from "../settings/controls.js";
+import { formatDutchAmps } from "../settings/electrical-limit.js";
 import { renderHeatingStrategyAdviceModal } from "./heating-strategy-advice.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
@@ -671,6 +672,35 @@ import { render } from "../core/render-scheduler.js";
 
     if (state.systemModal === "heating-strategy-advice") {
       return renderHeatingStrategyAdviceModal();
+    }
+
+    if (state.systemModal === "electrical-limit-confirm") {
+      const pending = state.pendingElectricalLimit || {};
+      const fromA = Number(pending.fromA);
+      const toA = Number(pending.toA);
+      const standardA = Number(pending.standardA);
+      const busy = state.busyAction === "save-electricalCurrentLimit";
+      const fromLabel = formatDutchAmps(fromA);
+      const toLabel = formatDutchAmps(toA);
+      const standardLabel = formatDutchAmps(standardA);
+      return renderModalShell({
+        modalId: "system",
+        titleId: "oq-electrical-limit-modal-title",
+        kicker: "Elektrische installatie",
+        title: "Hogere elektrische ingangsgrens instellen?",
+        closeAction: "close-system-modal",
+        closeLabel: "Sluit elektrische-ingangsgrens-popup",
+        bodyMarkup: `
+          <p class="oq-helper-modal-copy">Je verhoogt de grens van <strong>${escapeHtml(fromLabel)}</strong> naar <strong>${escapeHtml(toLabel)}</strong>.</p>
+          <p class="oq-settings-action-note oq-settings-action-note--warning">Bevestig alleen wanneer de volledige elektrische aansluiting geschikt is voor minimaal ${escapeHtml(toLabel)}. Bij een standaard ${escapeHtml(standardLabel)}-groep kan de installatieautomaat uitschakelen. Bij onjuist gedimensioneerde bekabeling of aansluitmaterialen kan oververhitting of brandgevaar ontstaan.</p>
+          <p class="oq-helper-modal-copy">OpenQuatt vervangt nooit de elektrische beveiliging van de installatie.</p>
+          ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
+          <div class="oq-helper-modal-actions">
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>Annuleren</button>
+            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-electrical-limit" ${busy ? "disabled" : ""}>${busy ? "Instellen..." : `${escapeHtml(toLabel)} instellen`}</button>
+          </div>
+        `,
+      });
     }
 
     if (state.systemModal === "openquatt-pause") {

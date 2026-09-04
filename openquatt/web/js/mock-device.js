@@ -2146,7 +2146,7 @@
       ["Boiler rated heat power", 1800, 500, 10000, 100, "W"],
       ["CM3 deficit ON threshold", 1000, 0, 10000, 50, "W"],
       ["CM3 deficit OFF threshold", 400, 0, 10000, 50, "W"],
-      ["Electrical current limit", 16, 10, 20, 0.5, "A"],
+      ["Electrical current limit", 16, 10, 26, 0.5, "A"],
       ["Day max frequency", 90, 0, 120, 1, "Hz"],
       ["Silent max frequency", 67, 0, 120, 1, "Hz"],
       ["HP1 - Excluded frequency minimum", 0, 0, 120, 1, "Hz"],
@@ -4137,6 +4137,14 @@
   }
 
   function handleButtonPress(name) {
+    if (name === "Reset electrical current limit") {
+      // Mirror the firmware reset: back to the automatic generation default.
+      const hybrid = String(getEntity("select", "Quatt Hybrid version")?.value || "").trim();
+      setNumber("Electrical current limit", state.installation === "duo" && hybrid === "V2" ? 20 : 16, "A");
+      notifyMockUpdated();
+      return;
+    }
+
     const generationDetectMatch = /^HP([12]) - Detect ODU generation$/.exec(name);
     if (generationDetectMatch) {
       const hp = Number(generationDetectMatch[1]);

@@ -8,6 +8,7 @@ import { formatValue, getEntityValue, getNumberMeta, normalizeDateTimeValue, nor
 import { commitDateTime, commitNumber, commitSelect, commitText, commitTime, disableRange, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
 import { handleNamedButtonAction } from "./named-button-actions.js";
 import { state } from "./state.js";
+import { formatDutchAmps, getCommittedElectricalLimitRaw, getElectricalLimitChangePlan, renderElectricalLimitEstimate, renderElectricalLimitFooter, renderElectricalLimitRestore, resolveElectricalLimitView } from "../settings/electrical-limit.js";
 import { setInterfacePanelOpen } from "./runtime.js";
 import { handleDebugRecordingAction } from "../features/debug-recording.js";
 import { handleControlReplayAction } from "../features/control-replay-actions.js";
@@ -85,6 +86,53 @@ function updateFrequencyRangeControl(input) {
     value.textContent = disabled ? "Geen uitsluiting" : `${minValue}–${maxValue} Hz`;
   }
 }
+
+  export function requestElectricalLimitChange(rawValue) {
+    const meta = getNumberMeta("electricalCurrentLimit");
+    const plan = getElectricalLimitChangePlan(rawValue, getCommittedElectricalLimitRaw(), meta.min);
+    if (!plan.valid) {
+      state.inputDrafts.electricalCurrentLimit = String(rawValue ?? "");
+      render();
+      return false;
+    }
+    state.inputDrafts.electricalCurrentLimit = String(rawValue ?? "");
+    state.drafts.electricalCurrentLimit = plan.clamped;
+    if (plan.requiresConfirmation) {
+      state.pendingElectricalLimit = { fromA: plan.fromA, toA: plan.clamped, standardA: plan.info.standardA };
+      state.systemModal = "electrical-limit-confirm";
+      render();
+      return true;
+    }
+    state.pendingElectricalLimit = null;
+    void commitNumber("electricalCurrentLimit", plan.clamped);
+    return false;
+  }
+
+  export function refreshElectricalLimitLiveRegions() {
+    // Live inline feedback tijdens het typen: alleen footer en herstelknop
+    // worden bijgewerkt, het invoerveld zelf (en daarmee de focus) blijft
+    // onaangeroerd. Geen volledige render(), die zou de focus stelen.
+    if (!state.root || state.systemModal) {
+      return;
+    }
+    const card = state.root.querySelector('[data-oq-settings-field="electricalCurrentLimit"]');
+    if (!card) {
+      return;
+    }
+    const view = resolveElectricalLimitView();
+    const estimate = card.querySelector(".oq-settings-electrical-estimate");
+    if (estimate) {
+      estimate.outerHTML = renderElectricalLimitEstimate(view);
+    }
+    const restore = card.querySelector(".oq-settings-electrical-restore");
+    if (restore) {
+      restore.outerHTML = renderElectricalLimitRestore(view);
+    }
+    const body = card.querySelector(".oq-settings-electrical-body");
+    if (body) {
+      body.outerHTML = renderElectricalLimitFooter(view);
+    }
+  }
 
   export function handleFocusChange() {
     window.setTimeout(() => {
@@ -269,9 +317,17 @@ function updateFrequencyRangeControl(input) {
         const normalized = normalizeNumber(field, event.target.value);
         state.drafts[field] = normalized;
         if (event.target.type === "range") {
-          const sliderValue = event.target.closest(".oq-helper-slider-field")?.querySelector(".oq-helper-slider-meta strong");
-          if (sliderValue) {
-            sliderValue.textContent = formatValue(field, normalized);
+          if (field === "electricalCurrentLimit") {
+            const sliderValue = event.target.closest("[data-oq-settings-field]")?.querySelector(".oq-helper-slider-meta strong");
+            if (sliderValue) {
+              sliderValue.textContent = formatDutchAmps(normalized);
+            }
+            refreshElectricalLimitLiveRegions();
+          } else {
+            const sliderValue = event.target.closest(".oq-helper-slider-field")?.querySelector(".oq-helper-slider-meta strong");
+            if (sliderValue) {
+              sliderValue.textContent = formatValue(field, normalized);
+            }
           }
         }
       }
@@ -402,6 +458,10 @@ function updateFrequencyRangeControl(input) {
       if (event.target.dataset.oqRangeRole && Number(event.target.value) === 0) {
         const minKey = field.replace("MaxHz", "MinHz");
         void disableRange(minKey, minKey.replace("MinHz", "MaxHz"));
+        return;
+      }
+      if (field === "electricalCurrentLimit") {
+        void requestElectricalLimitChange(event.target.value);
         return;
       }
       commitNumber(field, event.target.value);
