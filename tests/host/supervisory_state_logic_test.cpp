@@ -124,6 +124,29 @@ void test_request_confirmation() {
   assert(!startup.heating_request && !startup.preflow_request && !startup.state.timing);
 }
 
+void test_first_heating_preflow_overlaps_sensor_acquisition() {
+  using namespace oq_supervisory_state;
+  assert(start_heating_preflow(true, false, false, 0, 0, 1));
+  const uint32_t until = 31000;
+  assert(window_active(30000, until));
+  // Getting flow and new samples during preflow cannot start a second window.
+  assert(!start_heating_preflow(true, false, false, 1, until, 2));
+  assert(!window_active(31001, until));
+  assert(!hold_expired_heating_preflow(2, true, 2));
+  // Missing/unsafe samples keep CM1 after 30 s. Cancellation discards the window.
+  assert(hold_expired_heating_preflow(2, true, 1));
+  assert(!start_heating_preflow(true, false, false, 1, until, 1));
+  assert(!hold_expired_heating_preflow(2, false, 1));
+  assert(!start_heating_preflow(false, false, false, 0, 0, 1));
+  // Postflow, active compressors, cooling, CM4 and service retain ownership.
+  assert(!hold_expired_heating_preflow(0, true, 1));
+  assert(!hold_expired_heating_preflow(2, true, 4));
+  assert(!start_heating_preflow(true, true, false, 0, 0, 1));
+  assert(!start_heating_preflow(true, false, true, 1, 0, 1));
+  assert(!start_heating_preflow(true, false, false, 4, 0, 2));
+  assert(!start_heating_preflow(true, false, false, 100, 0, 2));
+}
+
 void test_idle_exit_boundaries() {
   using namespace oq_supervisory_state;
   IdleExitInput input;
@@ -240,6 +263,7 @@ int main() {
   test_low_load_hysteresis_and_cache();
   test_low_load_reentry_release_and_invalid_tuning();
   test_request_confirmation();
+  test_first_heating_preflow_overlaps_sensor_acquisition();
   test_idle_exit_boundaries();
   test_override_timeout();
   test_silent_window();

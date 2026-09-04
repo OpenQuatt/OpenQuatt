@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[2]
 YAML = (ROOT / "openquatt/oq_supervisory_controlmode.yaml").read_text()
 LOGIC = (ROOT / "openquatt/includes/control/oq_supervisory_state_logic.h").read_text()
 RUNTIME = (ROOT / "openquatt/includes/control/oq_supervisory_state_runtime.h").read_text()
+PROBE = (ROOT / "openquatt/includes/control/oq_cold_start_probe.h").read_text()
 HOST_TEST = (ROOT / "tests/host/supervisory_state_logic_test.cpp").read_text()
 
 
@@ -54,8 +55,9 @@ class SupervisoryStateRuntimeContractTest(unittest.TestCase):
         self.assertIn("UINT32_MAX - 20", HOST_TEST)
 
     def test_production_sources_remain_bounded(self) -> None:
-        total = sum(len(source.splitlines()) for source in (YAML, LOGIC, RUNTIME))
-        self.assertLessEqual(total, 2150)
+        # Include the bounded Modbus reader added for first-start water samples.
+        total = sum(len(source.splitlines()) for source in (YAML, LOGIC, RUNTIME, PROBE))
+        self.assertLessEqual(total, 2250)
 
 
 if __name__ == "__main__":

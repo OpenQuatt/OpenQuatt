@@ -262,6 +262,17 @@ Power House uses `Power House demand rise time` as its single upward rate limite
 thermostat-raise first start may temporarily request the lowest viable capacity; normal watt regulation resumes after
 the compressor starts.
 
+For both heating strategies, the 30 s CM1 preflow window starts with the first heating request and overlaps
+flow establishment, Power House demand confirmation and the cold-start water check. Once flow is sufficient,
+each online ODU receives a targeted read of holding register `2134` (water outlet temperature), using the existing
+sensor filters and calibration. One persistent reader per HP permits at most one pending request and retries
+at most once per 10 s. Flow loss, cancelled demand, OTA pause or service control cancels pending probe ownership;
+callbacks for those detached requests cannot refresh a later circulation session. Normal polling remains unchanged.
+
+An expired preflow window stays in CM1 until fresh water samples, flow and the other start guards permit CM2;
+it does not start another 30 s window. No compressor is released solely because a read was queued or preflow
+elapsed. The per-HP 240 s minimum-off gate and the Heating Curve 5/8/10-minute water re-entry blocks still apply.
+
 Power House duo request selection works in simple steps:
 
 - compare the best valid single-HP and dual-HP candidates separately

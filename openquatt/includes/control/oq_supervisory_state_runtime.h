@@ -9,6 +9,7 @@
 #include "../performance/hp_perf_frequency.h"
 #include "../service/oq_service_logic.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
+#include "oq_cold_start_probe.h"
 #include "oq_supervisory_state_logic.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
@@ -367,6 +368,8 @@ class Runtime {
       }
 
       if (id(oq_cold_start_pending)) {
+        // After flow loss, require another sample taken after flow recovers.
+        if (!flow_ok) id(oq_cold_start_sample_after_ms) = 0;
         if (flow_ok && id(oq_cold_start_sample_after_ms) == 0) {
           id(oq_cold_start_sample_after_ms) = now_ms;
         }
@@ -402,6 +405,17 @@ class Runtime {
       }
       id(oq_cold_start_hp_blocked) = cold_start_blocked;
     }
+    const bool probe_allowed = heating_flow_req && id(oq_cold_start_pending) && flow_ok &&
+                               !id(oq_runtime_polling_paused).state && openquatt_enabled &&
+                               id(oq_cm_override).current_option() == "Auto" && id(oq_control_mode_code) != 100;
+    this->hp1_water_probe_.poll(now_ms, id(oq_cold_start_sample_after_ms),
+                                probe_allowed && id(hp1_is_online) && !id(hp1_odu_eeprom_dump).is_active(), &id(hp1),
+                                &id(hp1_water_out_temp_raw));
+#if OQ_TOPOLOGY_DUO
+    this->hp2_water_probe_.poll(now_ms, id(oq_cold_start_sample_after_ms),
+                                probe_allowed && id(hp2_is_online) && !id(hp2_odu_eeprom_dump).is_active(), &id(hp2),
+                                &id(hp2_water_out_temp_raw));
+#endif
     // -------------------------------------------------
     // 4) CM selection with CM1 timer (pre/postflow) + flow interlock
     // -------------------------------------------------
@@ -446,8 +460,6 @@ class Runtime {
       // Handle CM1 window:
       // - If we're currently in CM1 and timer is running, keep CM1 until expiry.
       // - When CM1 expires, move to oq_cm1_next_after (but recompute if heating/frost changed).
-      const bool now_before_until = ms_window_active(id(oq_cm1_until_ms));
-
       // Supervisory override (test/commissioning)
       // - Auto (normal logic)
       // - Force CM0 / Force CM1 / Force CM98 (auto-expire)
@@ -547,14 +559,20 @@ class Runtime {
           desired_local = 100;
           cm_transition_reason = "commissioning task active";
         } else {
+          // Start the 30 s circulation window on the first heating request,
+          // while flow and fresh ODU samples are still being acquired.
+          if (oq_supervisory_state::start_heating_preflow(heating_flow_req, cooling_req, any_hp_active_guard,
+                                                          current_cm_code, id(oq_cm1_until_ms), base_target)) {
+            start_cm1(2);
+          }
           // Snapshot CM1 timer state (before we touch globals)
           const bool cm1_timer_active = (id(oq_cm1_until_ms) != 0);
-          const bool cm1_timer_running = cm1_timer_active && now_before_until;
-          const bool cm1_timer_expired = cm1_timer_active && !now_before_until;
+          const bool cm1_timer_running = cm1_timer_active && ms_window_active(id(oq_cm1_until_ms));
+          const bool cm1_timer_expired = cm1_timer_active && !cm1_timer_running;
           const int cm1_next_after = id(oq_cm1_next_after);
 
           // 1) If we're in CM1 and timer is still running -> stay CM1
-          if (cm1_timer_running && strcmp(cur_cm, "CM1") == 0) {
+          if (cm1_timer_running && (strcmp(cur_cm, "CM1") == 0 || (id(oq_cm1_next_after) == 2 && heating_flow_req))) {
             desired_local = 1;
             cm_transition_reason = "CM1 hold timer active";
 
@@ -567,7 +585,8 @@ class Runtime {
             } else if (cm1_next_after == 2) {
               if (heating_req && base_target == 2)
                 desired_local = 2;
-              else if (heating_preflow_req)
+              else if (oq_supervisory_state::hold_expired_heating_preflow(cm1_next_after, heating_flow_req,
+                                                                          base_target))
                 desired_local = 1;
               else if (base_target == 98)
                 desired_local = 98;
@@ -613,10 +632,9 @@ class Runtime {
                      "CM1 hold expired: next_after=%d, heating_req=%d, cooling_req=%d, base_target=%d -> desired=%d",
                      cm1_next_after, (int)heating_req, (int)cooling_req, base_target, desired_local);
 
-            // Keep an expired preflow window armed while Power House demand
-            // confirmation is still pending. Confirmation can then advance
-            // directly to CM2 without starting a second CM1 interval.
-            if (!(cm1_next_after == 2 && heating_preflow_req && !heating_req)) {
+            // Keep completed preflow while confirmation, flow or fresh water
+            // samples are pending. Guards must pass on this tick to enter CM2.
+            if (!oq_supervisory_state::hold_expired_heating_preflow(cm1_next_after, heating_flow_req, base_target)) {
               id(oq_cm1_until_ms) = 0;
               id(oq_cm1_next_after) = 0;
             }
@@ -1098,6 +1116,10 @@ class Runtime {
   }
 
  private:
+  oq_cold_start::WaterProbe hp1_water_probe_;
+#if OQ_TOPOLOGY_DUO
+  oq_cold_start::WaterProbe hp2_water_probe_;
+#endif
   static void shutdown_boiler_transport_() {
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     id(oq_otb_ch_enable).turn_off();

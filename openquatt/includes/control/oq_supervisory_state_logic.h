@@ -137,6 +137,16 @@ struct PowerHouseStartOutput {
   bool preflow_request = false;
 };
 
+inline bool start_heating_preflow(bool request, bool cooling, bool hp_active, int current_mode, uint32_t timer_until_ms,
+                                  int base_target) {
+  return request && !cooling && !hp_active && (current_mode == 0 || current_mode == 1) && timer_until_ms == 0 &&
+         (base_target == 1 || base_target == 2);
+}
+
+inline bool hold_expired_heating_preflow(int next_after, bool request, int base_target) {
+  return next_after == 2 && request && base_target == 1;
+}
+
 inline PowerHouseStartOutput power_house_start(uint32_t now_ms, bool request, bool confirmation_scope, bool fast_intent,
                                                uint32_t confirmation_ms, ConfirmationState state) {
   const auto confirmation =
