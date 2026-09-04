@@ -29,9 +29,11 @@ export const WEB_BUNDLE_BUDGETS = [
     // the issue-471 grouped source focus panel with configured/effective paths,
     // relevant-source diagnostics, warnings and stable keyboard focus,
     // and frequency-based day/silent limits and exclusion ranges per ODU.
+    // plus bounded webserver-log SSE recovery (single reconnect scheduler
+    // with back-off, source-identity guards and history backfill flag).
     // CI measures 987506 B for this bundle; the raw budget keeps ~1.5 kB
     // margin for build-environment variance.
-    raw: 989_000,
+    raw: 990_500,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.
