@@ -4,11 +4,16 @@
 
 using esphome::openquatt_crash_telemetry::crash_data_may_be_published;
 using esphome::openquatt_crash_telemetry::crash_publication_is_retained;
+using esphome::openquatt_crash_telemetry::CrashCleanupDecision;
 using esphome::openquatt_crash_telemetry::CrashPublishKind;
+using esphome::openquatt_crash_telemetry::CrashSessionAction;
 using esphome::openquatt_crash_telemetry::flash_sequence_is_newer;
+using esphome::openquatt_crash_telemetry::initial_publish_delay_ms;
 using esphome::openquatt_crash_telemetry::persisted_consent_blocks_crash;
 using esphome::openquatt_crash_telemetry::reported_at_is_usable;
+using esphome::openquatt_crash_telemetry::select_crash_cleanup_decision;
 using esphome::openquatt_crash_telemetry::select_crash_publish_kind;
+using esphome::openquatt_crash_telemetry::select_crash_session_action;
 using esphome::openquatt_crash_telemetry::should_request_tombstone;
 using esphome::openquatt_crash_telemetry::should_wait_for_time_sync;
 
@@ -59,6 +64,27 @@ int main() {
   assert(!reported_at_is_usable(false, true, true, 201U, 200U));
   assert(!reported_at_is_usable(true, false, true, 201U, 200U));
   assert(!reported_at_is_usable(true, true, true, 199U, 200U));
+
+  assert(select_crash_session_action(false, false, false, false, false, false) == CrashSessionAction::NONE);
+  assert(select_crash_session_action(true, true, false, true, false, false) == CrashSessionAction::NONE);
+  assert(select_crash_session_action(true, false, true, true, false, false) == CrashSessionAction::NONE);
+  assert(select_crash_session_action(true, false, false, true, false, false) == CrashSessionAction::FINISH_SUCCESS);
+  assert(select_crash_session_action(true, false, false, false, true, false) == CrashSessionAction::FINISH_FAILURE);
+  assert(select_crash_session_action(true, false, false, false, false, true) == CrashSessionAction::FINISH_FAILURE);
+  assert(select_crash_session_action(true, false, false, false, false, false) == CrashSessionAction::NONE);
+  assert(select_crash_session_action(true, false, false, true, true, true) == CrashSessionAction::FINISH_SUCCESS);
+
+  assert(select_crash_cleanup_decision(true, false, false, 0U) == CrashCleanupDecision::DESTROY);
+  assert(select_crash_cleanup_decision(false, true, false, 0U) == CrashCleanupDecision::FORCE_DISCONNECT);
+  assert(select_crash_cleanup_decision(false, true, true, 0U) == CrashCleanupDecision::RETRY_STOP);
+  assert(select_crash_cleanup_decision(false, false, false, 0U) == CrashCleanupDecision::RETRY_STOP);
+  assert(select_crash_cleanup_decision(false, false, false, 1U) == CrashCleanupDecision::RETRY_STOP);
+  assert(select_crash_cleanup_decision(false, false, false, 2U) == CrashCleanupDecision::DESTROY_ALREADY_STOPPED);
+  assert(select_crash_cleanup_decision(false, true, true, 9U) == CrashCleanupDecision::DESTROY_ALREADY_STOPPED);
+
+  assert(initial_publish_delay_ms(CrashPublishKind::CRASH) == 15UL * 1000UL);
+  assert(initial_publish_delay_ms(CrashPublishKind::NONE) == 15UL * 1000UL);
+  assert(initial_publish_delay_ms(CrashPublishKind::TOMBSTONE) < initial_publish_delay_ms(CrashPublishKind::CRASH));
 
   return 0;
 }
