@@ -670,8 +670,9 @@ bool OpenQuattUsageTelemetry::cleanup_client_() {
     }
     if (error != ESP_OK) {
       ++this->cleanup_stop_failures_;
-      const MqttCleanupDecision decision = mqtt_cleanup_decision(
-          false, this->mqtt_connected_seen_.load(), this->mqtt_disconnected_seen_.load(), this->cleanup_stop_failures_);
+      const MqttCleanupDecision decision =
+          mqtt_cleanup_decision(false, this->mqtt_connected_seen_.load(), this->mqtt_disconnected_seen_.load(),
+                                this->cleanup_stop_failures_, this->cleanup_disconnect_requested_);
       if (decision == MqttCleanupDecision::FORCE_DISCONNECT) {
         // A connected client may fail to construct its graceful DISCONNECT
         // packet under memory pressure. Its own task handles DISCONNECT_BIT by
