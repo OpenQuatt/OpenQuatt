@@ -178,6 +178,9 @@ test("elektrische ingangsgrens respecteert Single en Duo maxima", () => {
   assert.match(markup, /max="26"/);
   assert.match(markup, /20 A · Duo V2/);
   assert.match(markup, /circa 4,6 kW/);
+  assert.match(markup, /type="range"/);
+  assert.match(markup, /oq-settings-electrical-slider-track/);
+  assert.match(markup, /--oq-electrical-standard-pct:62\.5%/);
 
   resetSettingsState({
     installationTopology: { value: "duo", state: "duo" },
@@ -189,6 +192,7 @@ test("elektrische ingangsgrens respecteert Single en Duo maxima", () => {
   markup = renderSettingsElectricalCurrentLimitSection();
   assert.match(markup, /max="20"/);
   assert.match(markup, /16 A · Duo V1\/V1\.5/);
+  assert.match(markup, /--oq-electrical-standard-pct:60\.0%/);
 
   resetSettingsState({
     installationTopology: { value: "duo", state: "duo" },

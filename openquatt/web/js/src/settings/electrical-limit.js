@@ -1,5 +1,6 @@
 import { getEntityStateText, hasEntity } from "../core/app-shared.js";
 import { getInputDraftValue } from "../core/control-drafts.js";
+import { renderOqIcon } from "../core/config.js";
 import { getEntityValue, getNumberMeta, parseLooseNumber } from "../core/entity-store.js";
 import { escapeHtml } from "../core/html.js";
 import { createOduGenerationDetectionModel } from "../core/odu-generation.js";
@@ -171,11 +172,13 @@ export function renderElectricalLimitRestore(view) {
 
 export function renderElectricalLimitEntry(view = resolveElectricalLimitView()) {
   const { info, currentA } = view;
-  return `<div class="oq-settings-electrical-entry"><span class="oq-settings-electrical-entry-label">Ingestelde stroom</span><div class="oq-settings-electrical-entry-row"><input class="oq-helper-input oq-settings-electrical-input" type="number" data-oq-field="electricalCurrentLimit" min="${view.meta.min}" max="${view.meta.max}" step="${view.meta.step}" value="${escapeHtml(currentA)}" ${state.loadingEntities ? "disabled" : ""}><span class="oq-helper-unit-chip">A</span></div><span class="oq-settings-electrical-entry-caption">Standaard voor deze installatie: ${formatDutchAmps(info.standardA)} · ${escapeHtml(info.standardLabel)}</span></div>`;
+  const span = Math.max(1e-9, info.absoluteMaxA - view.minA);
+  const standardPct = ((info.standardA - view.minA) / span) * 100;
+  return `<div class="oq-settings-electrical-entry"><span class="oq-settings-electrical-entry-label">${renderOqIcon("pencil", "oq-settings-electrical-label-icon")}Ingestelde stroom</span><div class="oq-settings-electrical-slider-block"><div class="oq-helper-slider-meta"><span>${formatDutchAmps(view.minA)}</span><strong>${formatDutchAmps(currentA)}</strong><span>${formatDutchAmps(info.absoluteMaxA)}</span></div><div class="oq-settings-electrical-slider-track" style="--oq-electrical-standard-pct:${standardPct.toFixed(1)}%"><input class="oq-helper-range oq-settings-electrical-slider" type="range" data-oq-field="electricalCurrentLimit" min="${view.meta.min}" max="${view.meta.max}" step="${view.meta.step}" value="${escapeHtml(currentA)}" aria-label="Ingestelde stroom" ${state.loadingEntities ? "disabled" : ""}></div></div><span class="oq-settings-electrical-entry-caption">Standaard voor deze installatie: ${formatDutchAmps(info.standardA)} · ${escapeHtml(info.standardLabel)}</span></div>`;
 }
 
 export function renderElectricalLimitEstimate(view = resolveElectricalLimitView()) {
-  return `<div class="oq-settings-electrical-estimate"><span>Indicatief vermogen</span><strong>circa ${formatIndicativeKw(view.currentA)} bij 230 V</strong><em>Benadering bij de ingestelde stroom; geen harde begrenzing.</em></div>`;
+  return `<div class="oq-settings-electrical-estimate"><span>${renderOqIcon("calculator", "oq-settings-electrical-label-icon")}Indicatief vermogen</span><strong>circa ${formatIndicativeKw(view.currentA)} bij 230 V</strong><em>Benadering bij de ingestelde stroom; geen harde begrenzing.</em></div>`;
 }
 
 export function renderElectricalLimitFooter(view = resolveElectricalLimitView()) {
@@ -186,7 +189,7 @@ export function renderElectricalLimitFooter(view = resolveElectricalLimitView())
   const belowMarkup = !view.aboveStandard && view.belowStandard
     ? `<p class="oq-settings-electrical-note">Een lagere waarde kan het maximale verwarmings- en koelvermogen beperken.</p>`
     : "";
-  return `<div class="oq-settings-electrical-body">${warningMarkup}${belowMarkup}<p class="oq-settings-electrical-safety"><strong>Let op:</strong> dit is een softwarematige regelgrens en geen elektrische beveiliging. De groepzekering, bekabeling en elektrische aansluiting moeten altijd geschikt zijn voor de ingestelde stroom. Korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten.</p></div>`;
+  return `<div class="oq-settings-electrical-body">${warningMarkup}${belowMarkup}<p class="oq-settings-electrical-safety">${renderOqIcon("triangle-alert", "oq-settings-electrical-safety-icon")}<strong>Let op:</strong> dit is een softwarematige regelgrens en geen elektrische beveiliging. De groepzekering, bekabeling en elektrische aansluiting moeten altijd geschikt zijn voor de ingestelde stroom. Korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten.</p></div>`;
 }
 
 export function renderSettingsElectricalCurrentLimitSection() {

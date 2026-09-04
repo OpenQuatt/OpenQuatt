@@ -8,7 +8,7 @@ import { formatValue, getEntityValue, getNumberMeta, normalizeDateTimeValue, nor
 import { commitDateTime, commitNumber, commitSelect, commitText, commitTime, disableRange, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
 import { handleNamedButtonAction } from "./named-button-actions.js";
 import { state } from "./state.js";
-import { getCommittedElectricalLimitRaw, getElectricalLimitChangePlan, renderElectricalLimitEstimate, renderElectricalLimitFooter, renderElectricalLimitRestore, resolveElectricalLimitView } from "../settings/electrical-limit.js";
+import { formatDutchAmps, getCommittedElectricalLimitRaw, getElectricalLimitChangePlan, renderElectricalLimitEstimate, renderElectricalLimitFooter, renderElectricalLimitRestore, resolveElectricalLimitView } from "../settings/electrical-limit.js";
 import { setInterfacePanelOpen } from "./runtime.js";
 import { handleDebugRecordingAction } from "../features/debug-recording.js";
 import { handleControlReplayAction } from "../features/control-replay-actions.js";
@@ -317,13 +317,18 @@ function updateFrequencyRangeControl(input) {
         const normalized = normalizeNumber(field, event.target.value);
         state.drafts[field] = normalized;
         if (event.target.type === "range") {
-          const sliderValue = event.target.closest(".oq-helper-slider-field")?.querySelector(".oq-helper-slider-meta strong");
-          if (sliderValue) {
-            sliderValue.textContent = formatValue(field, normalized);
+          if (field === "electricalCurrentLimit") {
+            const sliderValue = event.target.closest("[data-oq-settings-field]")?.querySelector(".oq-helper-slider-meta strong");
+            if (sliderValue) {
+              sliderValue.textContent = formatDutchAmps(normalized);
+            }
+            refreshElectricalLimitLiveRegions();
+          } else {
+            const sliderValue = event.target.closest(".oq-helper-slider-field")?.querySelector(".oq-helper-slider-meta strong");
+            if (sliderValue) {
+              sliderValue.textContent = formatValue(field, normalized);
+            }
           }
-        }
-        if (field === "electricalCurrentLimit" && event.target.type === "number") {
-          refreshElectricalLimitLiveRegions();
         }
       }
     }
