@@ -3,7 +3,6 @@ import { getInputDraftValue } from "../core/control-drafts.js";
 import { getEntityValue, getNumberMeta, parseLooseNumber } from "../core/entity-store.js";
 import { escapeHtml } from "../core/html.js";
 import { createOduGenerationDetectionModel } from "../core/odu-generation.js";
-import { renderNumberInputControl } from "../core/number-controls.js";
 import { state } from "../core/state.js";
 import { renderSettingsFieldCard, renderSettingsSection } from "./controls.js";
 
@@ -170,6 +169,11 @@ export function renderElectricalLimitRestore(view) {
   return `<div class="oq-settings-electrical-restore">${button}</div>`;
 }
 
+export function renderElectricalLimitEntry(view = resolveElectricalLimitView()) {
+  const { info, currentA } = view;
+  return `<div class="oq-settings-electrical-entry"><span class="oq-settings-electrical-entry-label">Ingestelde stroom</span><div class="oq-settings-electrical-entry-row"><input class="oq-helper-input oq-settings-electrical-input" type="number" data-oq-field="electricalCurrentLimit" min="${view.meta.min}" max="${view.meta.max}" step="${view.meta.step}" value="${escapeHtml(currentA)}" ${state.loadingEntities ? "disabled" : ""}><span class="oq-helper-unit-chip">A</span></div><span class="oq-settings-electrical-entry-caption">Standaard voor deze installatie: ${formatDutchAmps(info.standardA)} · ${escapeHtml(info.standardLabel)}</span></div>`;
+}
+
 export function renderElectricalLimitEstimate(view = resolveElectricalLimitView()) {
   return `<div class="oq-settings-electrical-estimate"><span>Indicatief vermogen</span><strong>circa ${formatIndicativeKw(view.currentA)} bij 230 V</strong><em>Benadering bij de ingestelde stroom; geen harde begrenzing.</em></div>`;
 }
@@ -191,13 +195,6 @@ export function renderSettingsElectricalCurrentLimitSection() {
   }
 
   const view = resolveElectricalLimitView();
-  const control = renderNumberInputControl({
-    key: "electricalCurrentLimit",
-    value: view.currentA,
-    meta: view.meta,
-    controlClass: "oq-helper-control oq-helper-control--suffix",
-    unitMarkup: '<span class="oq-helper-unit-chip">A</span>',
-  });
 
   return renderSettingsSection(
     "Elektrische installatie",
@@ -207,7 +204,7 @@ export function renderSettingsElectricalCurrentLimitSection() {
       "electricalCurrentLimit",
       "Maximale gezamenlijke netstroom",
       "Deze grens geldt voor alle buitenunits samen, niet per warmtepomp. Power House gebruikt de grens vooraf bij de vermogensverdeling en regelt daarna bij op basis van gemeten feedback. Stooklijnbedrijf en koelen gebruiken alleen de gemeten feedback. Een lagere waarde kan het beschikbare verwarmings- en koelvermogen beperken. Door meetvertraging en korte stroompieken kan de werkelijke stroom tijdelijk boven de ingestelde waarde komen. Dit is een softwarematige regelgrens en geen elektrische beveiliging.",
-      `<div class="oq-settings-electrical-control-row">${control}${renderElectricalLimitEstimate(view)}</div><p class="oq-settings-electrical-caption">Standaard voor deze installatie: <strong>${formatDutchAmps(view.info.standardA)} · ${escapeHtml(view.info.standardLabel)}</strong></p>${renderElectricalLimitRestore(view)}`,
+      `<div class="oq-settings-electrical-control-row">${renderElectricalLimitEntry(view)}${renderElectricalLimitEstimate(view)}</div>${renderElectricalLimitRestore(view)}`,
       "",
       renderElectricalLimitFooter(view),
     ),
