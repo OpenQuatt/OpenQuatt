@@ -713,6 +713,8 @@ class Runtime {
     if (id(oq_control_mode_code) == 98) return openquatt_decision_log::REASON_FROST_PROTECTION;
     if (!id(oq_strategy_heat_request_active)) return openquatt_decision_log::REASON_HEATING_REQUEST_CLEARED;
     if (id(oq_heat_mode_code) == 1) {
+      if (id(oq_curve_fast_intent_code) == 2) return openquatt_decision_log::REASON_SETPOINT_RAISE;
+      if (id(oq_curve_fast_intent_code) == 1) return openquatt_decision_log::REASON_ROOM_DEMAND;
 #if OQ_TOPOLOGY_DUO
       return id(oq_curve_capacity_mode_code) == 2 ? openquatt_decision_log::REASON_BETTER_HEAT
                                                   : openquatt_decision_log::REASON_RUNTIME_LEAD;
@@ -720,6 +722,8 @@ class Runtime {
       return openquatt_decision_log::REASON_RUNTIME_LEAD;
 #endif
     }
+    if (id(oq_ph_fast_intent_code) == 2) return openquatt_decision_log::REASON_SETPOINT_RAISE;
+    if (id(oq_ph_fast_intent_code) == 1) return openquatt_decision_log::REASON_ROOM_DEMAND;
     return static_cast<uint8_t>(id(oq_ph_request_reason_code));
   }
 

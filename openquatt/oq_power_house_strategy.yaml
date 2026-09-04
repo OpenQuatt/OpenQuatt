@@ -27,11 +27,6 @@ globals:
     restore_value: false
     initial_value: '0.0'
 
-  - id: oq_demand_filter_ramp_up_budget
-    type: float
-    restore_value: false
-    initial_value: '0.0'
-
   - id: oq_ph_request_last_loop_ms
     type: uint32_t
     restore_value: false
@@ -53,6 +48,12 @@ globals:
     initial_value: '0'
 
   - id: oq_ph_request_reason_code
+    type: int
+    restore_value: false
+    initial_value: '0'
+
+  # Fast first-start intent: 0=none, 1=room demand, 2=setpoint raise.
+  - id: oq_ph_fast_intent_code
     type: int
     restore_value: false
     initial_value: '0'
@@ -181,21 +182,6 @@ number:
     initial_value: 3
     entity_category: config
 
-  - platform: template
-    id: oq_demand_filter_ramp_up_step_min
-    name: "Demand filter ramp up"
-    disabled_by_default: true
-    entity_category: config
-    icon: mdi:stairs-up
-    unit_of_measurement: "step/min"
-    min_value: 1
-    max_value: 20
-    step: 1
-    mode: slider
-    restore_value: true
-    optimistic: true
-    initial_value: 1
-
 text_sensor:
   - platform: template
     id: oq_duo_optimizer_reason
@@ -216,6 +202,14 @@ text_sensor:
     update_interval: ${oq_diagnostic_update_interval_s}s
     lambda: |-
       return std::string(id(oq_phouse_demand_external) ? "external" : "model");
+  - platform: template
+    id: oq_ph_fast_intent_sensor
+    name: "Power House first-start intent"
+    internal: true
+    update_interval: 5s
+    lambda: |-
+      return std::string(oq_heat_intent::reason_name(
+          static_cast<oq_heat_intent::Reason>(id(oq_ph_fast_intent_code))));
 
 sensor:
   - platform: template
@@ -277,8 +271,10 @@ interval:
     startup_delay: 4000ms
     then:
       - lambda: |-
+          // Evaluate first-start intent more frequently than normal thermal requests.
           oq_power_house_runtime::runtime().tick({
-              (uint32_t) ${oq_heat_loop_powerhouse_s} * 1000UL,
+              (uint32_t) ${oq_ph_demand_loop_s} * 1000UL,
+              (uint32_t) ${oq_hp_min_off_s} * 1000UL,
               (int) ${oq_strategy_demand_max_f},
               ${oq_temp_guard_delta_c}f,
               ${oq_defrost_power_factor},
@@ -287,4 +283,6 @@ interval:
               ${oq_optimizer_topology_heat_advantage_w},
               (int) roundf(${oq_defrost_comp_min_f}),
               (int) roundf(${oq_defrost_comp_boost_steps}),
+              (${oq_ot_room_temperature_fresh_expr}),
+              (${oq_ot_room_setpoint_fresh_expr}),
           });

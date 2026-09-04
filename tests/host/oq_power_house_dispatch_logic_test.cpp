@@ -24,6 +24,8 @@ void expect_safe(const DispatchDecision& out, const DispatchInput& in, const Dis
   if (in.demand_level <= 0) assert(out.hp1_level == 0 && out.hp2_level == 0);
   if (in.hp1.candidate.must_stop) assert(out.hp1_level == 0);
   if (in.hp2.candidate.must_stop) assert(out.hp2_level == 0);
+  if (!in.hp1.candidate.minimum_off_ready && in.hp1.candidate.previous_applied_level <= 0) assert(out.hp1_level == 0);
+  if (!in.hp2.candidate.minimum_off_ready && in.hp2.candidate.previous_applied_level <= 0) assert(out.hp2_level == 0);
   if (out.output_valid) assert(isfinite(out.expected_w));
   if (!out.output_valid || out.hp1_level + out.hp2_level == 0) return;
   float electrical_w = 0.0f;
@@ -99,6 +101,13 @@ void test_single_and_failures() {
   in.hp1.candidate = {11, false, false, true};
   out = decide_dispatch(in, cfg, {});
   assert(out.hp1_level == 0 && out.hp2_level > 0);
+  in = input(true);
+  in.hp1.candidate.minimum_off_ready = false;
+  out = decide_dispatch(in, cfg, {});
+  assert(out.hp1_level == 0 && out.hp2_level > 0);
+  in.hp2.candidate.minimum_off_ready = false;
+  out = decide_dispatch(in, cfg, {});
+  assert(out.hp1_level == 0 && out.hp2_level == 0 && out.reason == Reason::NO_CANDIDATE);
   cfg = tuning();
   in = input();
   assert(decide_dispatch(in, cfg, {}).hp1_level == 3);

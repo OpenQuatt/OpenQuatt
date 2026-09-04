@@ -43,10 +43,28 @@ class Runtime {
         manual_active || mode.cooling ? config.tick_ms : (mode.curve ? config.curve_ms : config.power_house_ms);
 
     const bool startup_inhibit_active = this->update_startup_inhibit_(config.now_ms, config.minimum_off_s);
+    const bool startup_inhibit_changed =
+        !this->startup_snapshot_initialized_ || startup_inhibit_active != this->last_startup_inhibit_active_;
+    this->startup_snapshot_initialized_ = true;
+    this->last_startup_inhibit_active_ = startup_inhibit_active;
     if (id(oq_heat_last_mode_code) != mode.control_flavor_code) {
       id(oq_heat_last_mode_code) = mode.control_flavor_code;
       id(oq_heat_last_loop_ms) = 0;
     }
+    const int strategy_hp1 = mode.cooling ? id(oq_cooling_request_hp1_level)
+                             : mode.curve ? id(oq_curve_dispatch_hp1_level)
+                                          : id(oq_ph_request_hp1_level);
+    const int strategy_hp2 = mode.cooling ? id(oq_cooling_request_hp2_level)
+                             : mode.curve ? id(oq_curve_dispatch_hp2_level)
+                                          : id(oq_ph_request_hp2_level);
+    if (startup_inhibit_changed || !this->strategy_snapshot_initialized_ || cm_code != this->last_cm_code_ ||
+        strategy_hp1 != this->last_strategy_hp1_ || strategy_hp2 != this->last_strategy_hp2_) {
+      id(oq_heat_last_loop_ms) = 0;
+    }
+    this->strategy_snapshot_initialized_ = true;
+    this->last_cm_code_ = cm_code;
+    this->last_strategy_hp1_ = strategy_hp1;
+    this->last_strategy_hp2_ = strategy_hp2;
     const auto cadence = oq_request::cadence_decision(config.now_ms, id(oq_heat_last_loop_ms), loop_target_ms);
     if (!cadence.due) return;
     id(oq_heat_last_loop_ms) = config.now_ms;
@@ -79,6 +97,13 @@ class Runtime {
   }
 
  private:
+  bool strategy_snapshot_initialized_{false};
+  bool startup_snapshot_initialized_{false};
+  bool last_startup_inhibit_active_{false};
+  int last_cm_code_{-1};
+  int last_strategy_hp1_{0};
+  int last_strategy_hp2_{0};
+
   bool update_startup_inhibit_(uint32_t now_ms, uint32_t minimum_off_s) {
     if (id(oq_boot_startup_inhibit_until_ms) == 0) {
       const uint32_t inhibit_ms = minimum_off_s * 1000UL;
