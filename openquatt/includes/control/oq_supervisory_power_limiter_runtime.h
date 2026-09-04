@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <string>
 
 #include "oq_supervisory_power_limiter_logic.h"
 
@@ -50,13 +51,46 @@ inline bool generation_v2() {
 #endif
 }
 
+namespace detail {
+inline bool odu_detected_as(const std::string& generation, bool v2) {
+  if (v2) {
+    return generation == "V2";
+  }
+  return generation == "V1" || generation == "V1.5";
+}
+}  // namespace detail
+
+// True only when the ODU identity layer reliably reports the given family.
+// Detection runs once per boot/request and resets to Unknown in between, so a
+// merely configured (restored) hp_generation alone never releases an elevated
+// limit.
+inline bool odu_v2_confirmed() {
+#if OQ_TOPOLOGY_DUO
+  return id(hp1_odu_generation_detection_complete) && id(hp1_generation).has_state() &&
+         detail::odu_detected_as(id(hp1_generation).state, true) && id(hp2_odu_generation_detection_complete) &&
+         id(hp2_generation).has_state() && detail::odu_detected_as(id(hp2_generation).state, true);
+#else
+  return false;
+#endif
+}
+
+inline bool odu_v1_confirmed() {
+#if OQ_TOPOLOGY_DUO
+  return id(hp1_odu_generation_detection_complete) && id(hp1_generation).has_state() &&
+         detail::odu_detected_as(id(hp1_generation).state, false) && id(hp2_odu_generation_detection_complete) &&
+         id(hp2_generation).has_state() && detail::odu_detected_as(id(hp2_generation).state, false);
+#else
+  return false;
+#endif
+}
+
 inline float standard_current_a(float v1_a, float v2_a) {
   return oq_supervisory_power::standard_current_a(OQ_TOPOLOGY_DUO, generation_v2(), v1_a, v2_a);
 }
 
 inline float maximum_current_a(float v1_a, float v2_a, float v2_max_a) {
-  return oq_supervisory_power::absolute_maximum_current_a(OQ_TOPOLOGY_DUO, generation_known(), generation_v2(), v1_a,
-                                                          v2_a, v2_max_a);
+  return oq_supervisory_power::absolute_maximum_current_a(OQ_TOPOLOGY_DUO, generation_known(), generation_v2(),
+                                                          odu_v1_confirmed(), odu_v2_confirmed(), v1_a, v2_a, v2_max_a);
 }
 
 inline float configured_current_a(float minimum_a, float v1_a, float v2_a, float v2_max_a) {

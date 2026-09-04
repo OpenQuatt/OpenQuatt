@@ -348,6 +348,25 @@ switch:
             id: oq_openquatt_resume_at
             datetime: "2000-01-01 00:00:00"
 # ----------------------------
+# ACTIONS
+# ----------------------------
+button:
+  - platform: template
+    id: oq_electrical_current_limit_reset
+    name: "Reset electrical current limit"
+    icon: mdi:restore
+    entity_category: config
+    on_press:
+      then:
+        - lambda: |-
+            // Back to automatic: NAN follows the generation-dependent standard,
+            // so a later generation change is picked up without a stored override.
+            id(oq_electrical_current_limit_configured_a) = NAN;
+            id(oq_electrical_current_limit_a).publish_state(
+                oq_supervisory_power_runtime::configured_current_a(
+                    ${oq_electrical_current_limit_min_a}, ${oq_duo_current_limit_v1_a},
+                    ${oq_duo_current_limit_v2_a}, ${oq_duo_current_limit_v2_max_a}));
+# ----------------------------
 # TUNING
 # ----------------------------
 # Sticky pump iPWM is a fixed compile-time fallback for CM0 sticky circulation.
@@ -384,11 +403,12 @@ number:
     icon: mdi:current-ac
     unit_of_measurement: "A"
     min_value: ${oq_electrical_current_limit_min_a}
-    # Absolute technische bovengrens (26 A voor Duo V2). De
+    # Absolute hardware maxima (26 A Duo V2, 20 A Duo V1/V1.5). De
     # installatieafhankelijke standaard (16 A Single/Duo V1/V1.5, 20 A Duo V2)
     # is een waarschuwingsgrens; waarden daarboven worden in de web-app
-    # expliciet bevestigd. Single, Duo V1/V1.5 (tot 20 A) en Duo met onbekende
-    # generatie (tot 16 A) blijven conservatief via traits.
+    # expliciet bevestigd. Een verhoogde grens wordt alleen vrijgegeven bij
+    # bevestigde ODU-detectie van dezelfde familie; anders blijft de
+    # standaard het plafond (afgedwongen via traits).
     max_value: ${oq_duo_current_limit_v2_max_a}
     step: 0.5
     update_interval: ${oq_supervisory_loop_s}s

@@ -8,7 +8,7 @@ import { formatValue, getEntityValue, getNumberMeta, normalizeDateTimeValue, nor
 import { commitDateTime, commitNumber, commitSelect, commitText, commitTime, disableRange, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
 import { handleNamedButtonAction } from "./named-button-actions.js";
 import { state } from "./state.js";
-import { getCommittedElectricalLimitRaw, getElectricalLimitChangePlan } from "../settings/electrical-limit.js";
+import { getCommittedElectricalLimitRaw, getElectricalLimitChangePlan, renderElectricalLimitFooter, renderElectricalLimitRestore, resolveElectricalLimitView } from "../settings/electrical-limit.js";
 import { setInterfacePanelOpen } from "./runtime.js";
 import { handleDebugRecordingAction } from "../features/debug-recording.js";
 import { handleControlReplayAction } from "../features/control-replay-actions.js";
@@ -106,6 +106,28 @@ function updateFrequencyRangeControl(input) {
     state.pendingElectricalLimit = null;
     void commitNumber("electricalCurrentLimit", plan.clamped);
     return false;
+  }
+
+  export function refreshElectricalLimitLiveRegions() {
+    // Live inline feedback tijdens het typen: alleen footer en herstelknop
+    // worden bijgewerkt, het invoerveld zelf (en daarmee de focus) blijft
+    // onaangeroerd. Geen volledige render(), die zou de focus stelen.
+    if (!state.root || state.systemModal) {
+      return;
+    }
+    const card = state.root.querySelector('[data-oq-settings-field="electricalCurrentLimit"]');
+    if (!card) {
+      return;
+    }
+    const view = resolveElectricalLimitView();
+    const restore = card.querySelector(".oq-settings-electrical-restore");
+    if (restore) {
+      restore.outerHTML = renderElectricalLimitRestore(view);
+    }
+    const body = card.querySelector(".oq-settings-electrical-body");
+    if (body) {
+      body.outerHTML = renderElectricalLimitFooter(view);
+    }
   }
 
   export function handleFocusChange() {
@@ -295,6 +317,9 @@ function updateFrequencyRangeControl(input) {
           if (sliderValue) {
             sliderValue.textContent = formatValue(field, normalized);
           }
+        }
+        if (field === "electricalCurrentLimit" && event.target.type === "number") {
+          refreshElectricalLimitLiveRegions();
         }
       }
     }

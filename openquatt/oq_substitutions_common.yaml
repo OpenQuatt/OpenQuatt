@@ -131,9 +131,9 @@ oq_power_soft_trip_s: "300"                           # Time above soft required
 oq_power_recover_s: "60"                              # Time below recover required for cap recovery [s].
 oq_power_cap_max_f: "20"                              # Upper limit of demand-cap factor f.
 oq_power_cap_nan_f: "16"                              # Duo fail-safe demand cap for invalid power measurement; Single uses half.
-oq_duo_current_limit_v1_a: "16.0"                     # Duo current limit for V1/V1.5 hardware [A].
-oq_duo_current_limit_v2_a: "20.0"                     # Duo current limit for V2 hardware [A].
-oq_duo_current_limit_v2_max_a: "26.0"                 # Absolute technical upper bound for V2 hardware [A].
+oq_duo_current_limit_v1_a: "16.0"                     # Duo standard limit for V1/V1.5 hardware [A].
+oq_duo_current_limit_v2_a: "20.0"                     # Duo standard limit for V2 hardware [A]; also the hardware maximum for V1/V1.5 ODUs [A].
+oq_duo_current_limit_v2_max_a: "26.0"                 # Absolute hardware maximum for V2 ODU hardware [A].
 oq_electrical_current_limit_min_a: "10.0"             # Lowest configurable installation current limit [A].
 oq_power_measurement_stale_s: "60"                    # Maximum age of voltage/current measurements used by the limiter [s].
 oq_mains_voltage_v: "230.0"                           # Nominal mains voltage used to convert current limits to power thresholds [V].

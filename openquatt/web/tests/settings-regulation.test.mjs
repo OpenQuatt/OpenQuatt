@@ -169,6 +169,8 @@ test("elektrische ingangsgrens respecteert Single en Duo maxima", () => {
   resetSettingsState({
     installationTopology: { value: "duo", state: "duo" },
     hpGeneration: { value: "V2", state: "V2" },
+    hp1Generation: { value: "V2", state: "V2" },
+    hp2Generation: { value: "V2", state: "V2" },
     electricalCurrentLimit: limit,
   });
   markup = renderSettingsElectricalCurrentLimitSection();
@@ -179,6 +181,8 @@ test("elektrische ingangsgrens respecteert Single en Duo maxima", () => {
   resetSettingsState({
     installationTopology: { value: "duo", state: "duo" },
     hpGeneration: { value: "V1", state: "V1" },
+    hp1Generation: { value: "V1", state: "V1" },
+    hp2Generation: { value: "V1.5", state: "V1.5" },
     electricalCurrentLimit: limit,
   });
   markup = renderSettingsElectricalCurrentLimitSection();
@@ -201,6 +205,8 @@ test("elektrische ingangsgrens waarschuwt boven en relativeert onder de standaar
   resetSettingsState({
     installationTopology: { value: "duo", state: "duo" },
     hpGeneration: { value: "V1", state: "V1" },
+    hp1Generation: { value: "V1", state: "V1" },
+    hp2Generation: { value: "V1.5", state: "V1.5" },
     electricalCurrentLimit: limit,
   });
   let info = getElectricalLimitTopologyInfo();
@@ -233,6 +239,8 @@ test("elektrische ingangsgrens waarschuwt boven en relativeert onder de standaar
   resetSettingsState({
     installationTopology: { value: "duo", state: "duo" },
     hpGeneration: { value: "V2", state: "V2" },
+    hp1Generation: { value: "V2", state: "V2" },
+    hp2Generation: { value: "V2", state: "V2" },
     electricalCurrentLimit: limit,
   });
   info = getElectricalLimitTopologyInfo();
@@ -254,6 +262,47 @@ test("elektrische ingangsgrens waarschuwt boven en relativeert onder de standaar
   state.inputDrafts.electricalCurrentLimit = "30";
   state.drafts.electricalCurrentLimit = 30;
   assert.match(renderSettingsElectricalCurrentLimitSection(), /value="26"/);
+});
+
+test("elektrische ingangsgrens geeft geen verhoging vrij zonder bevestigde ODU-detectie", async () => {
+  const { getElectricalLimitTopologyInfo } = await import("../js/src/settings/electrical-limit.js");
+  const limit = numberEntity(16, "A", { min_value: 10, max_value: 26, step: 0.5 });
+
+  // Duo met geconfigureerde V1.5 maar mislukte detectie: geen 20 A.
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V1.5", state: "V1.5" },
+    hp1Generation: { value: "Unknown", state: "Unknown" },
+    hp2Generation: { value: "Unknown", state: "Unknown" },
+    electricalCurrentLimit: limit,
+  });
+  let info = getElectricalLimitTopologyInfo();
+  assert.equal(info.standardA, 16);
+  assert.equal(info.absoluteMaxA, 16);
+  assert.match(renderSettingsElectricalCurrentLimitSection(), /max="16"/);
+
+  // Eén onbekende buitenunit blokkeert de verhoging eveneens.
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V2", state: "V2" },
+    hp1Generation: { value: "V2", state: "V2" },
+    hp2Generation: { value: "Unknown", state: "Unknown" },
+    electricalCurrentLimit: limit,
+  });
+  info = getElectricalLimitTopologyInfo();
+  assert.equal(info.standardA, 20);
+  assert.equal(info.absoluteMaxA, 20);
+
+  // Familiemismatch (geconfigureerd V2, gedetecteerd V1) blijft op de standaard.
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V2", state: "V2" },
+    hp1Generation: { value: "V1", state: "V1" },
+    hp2Generation: { value: "V1.5", state: "V1.5" },
+    electricalCurrentLimit: limit,
+  });
+  info = getElectricalLimitTopologyInfo();
+  assert.equal(info.absoluteMaxA, 20);
 });
 
 test("elektrische ingangsgrens geeft geen verhoging vrij bij onbekende generatie", async () => {
@@ -287,6 +336,8 @@ test("elektrische ingangsgrens leest de bevestigde waarde los van open drafts", 
   resetSettingsState({
     installationTopology: { value: "duo", state: "duo" },
     hpGeneration: { value: "V1", state: "V1" },
+    hp1Generation: { value: "V1", state: "V1" },
+    hp2Generation: { value: "V1.5", state: "V1.5" },
     electricalCurrentLimit: limit,
   });
 
@@ -316,6 +367,8 @@ test("elektrische ingangsgrens vereist bevestiging boven de standaard en annuler
   resetSettingsState({
     installationTopology: { value: "duo", state: "duo" },
     hpGeneration: { value: "V1", state: "V1" },
+    hp1Generation: { value: "V1", state: "V1" },
+    hp2Generation: { value: "V1.5", state: "V1.5" },
     electricalCurrentLimit: limit,
   });
 
@@ -367,8 +420,72 @@ test("elektrische ingangsgrens vereist bevestiging boven de standaard en annuler
   }
 });
 
-test("elektrische ingangsgrens staat voor ODU runtime", () => {
-  const installationStart = settingsCoreSource.indexOf('activeGroup === "installation"');
+test("elektrische reset drukt de firmware-knop in en valt terug zonder button-entity", async () => {
+  const { handleSystemAction } = await import("../js/src/features/system-actions.js");
+  const limit = numberEntity(20, "A", { min_value: 10, max_value: 26, step: 0.5 });
+
+  const originalFetch = globalThis.fetch;
+  const posts = [];
+  globalThis.fetch = async (url, options = {}) => {
+    posts.push({ url: String(url), method: options.method || "GET" });
+    return { ok: true, json: async () => ({ value: 16, state: "16" }) };
+  };
+  const waitForPosts = async () => {
+    for (let i = 0; i < 100 && posts.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
+  try {
+    // Met button-entity: press-actie richting firmware (reset naar NaN).
+    resetSettingsState({
+      installationTopology: { value: "duo", state: "duo" },
+      hpGeneration: { value: "V1", state: "V1" },
+      hp1Generation: { value: "V1", state: "V1" },
+      hp2Generation: { value: "V1.5", state: "V1.5" },
+      electricalCurrentLimit: limit,
+      electricalCurrentLimitReset: { value: "", state: "" },
+    });
+    await handleSystemAction("reset-electrical-limit-to-default", {});
+    await waitForPosts();
+    assert.ok(posts.some((post) => post.method === "POST" && post.url.includes("Reset%20electrical%20current%20limit")));
+    assert.match(String(state.controlNotice || ""), /automatisch/);
+
+    // Zonder button-entity (oude firmware): terugval op expliciet standaard zetten.
+    posts.length = 0;
+    resetSettingsState({
+      installationTopology: { value: "duo", state: "duo" },
+      hpGeneration: { value: "V1", state: "V1" },
+      hp1Generation: { value: "V1", state: "V1" },
+      hp2Generation: { value: "V1.5", state: "V1.5" },
+      electricalCurrentLimit: limit,
+    });
+    await handleSystemAction("reset-electrical-limit-to-default", {});
+    await waitForPosts();
+    assert.ok(posts.some((post) => post.method === "POST" && post.url.includes("value=16")));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("elektrische backup-waarschuwing verschijnt alleen boven de standaard", async () => {
+  const { getElectricalLimitBackupRestoreWarning } = await import("../js/src/settings/electrical-limit.js");
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V1", state: "V1" },
+    hp1Generation: { value: "V1", state: "V1" },
+    hp2Generation: { value: "V1.5", state: "V1.5" },
+    electricalCurrentLimit: numberEntity(16, "A", { min_value: 10, max_value: 26, step: 0.5 }),
+  });
+
+  const warning = getElectricalLimitBackupRestoreWarning({ installation: { electricalCurrentLimit: 20 } });
+  assert.match(warning, /backup zet de elektrische ingangsgrens op 20 A/);
+  assert.match(warning, /boven de standaard 16 A/);
+  assert.equal(getElectricalLimitBackupRestoreWarning({ installation: { electricalCurrentLimit: 16 } }), "");
+  assert.equal(getElectricalLimitBackupRestoreWarning({ installation: {} }), "");
+  assert.equal(getElectricalLimitBackupRestoreWarning(null), "");
+});
+
+test("elektrische ingangsgrens staat voor ODU runtime", () => {  const installationStart = settingsCoreSource.indexOf('activeGroup === "installation"');
   const installationEnd = settingsCoreSource.indexOf(': activeGroup === "service"', installationStart);
   const installationOrder = settingsCoreSource.slice(installationStart, installationEnd);
   const electricalLimitIndex = installationOrder.indexOf("renderSettingsElectricalCurrentLimitSection()");

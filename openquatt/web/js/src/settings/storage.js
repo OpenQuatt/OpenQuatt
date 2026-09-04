@@ -8,6 +8,7 @@ import { getInstallationLabel, getInstallationTopology } from "../features/devic
 import { getFirmwareCurrentVersion } from "../features/firmware-update.js";
 import { ENERGY_HISTORY_EXPORT_MODES, getSettingsBackupSelectionSummary, normalizeEnergyHistoryExportMode } from "../features/storage-history.js";
 import { formatSettingsOptionLabel, getSettingsStatValue, renderSettingsCompactSwitchControl, renderSettingsFieldCard, renderSettingsSection, renderSettingsSwitchCopy } from "./controls.js";
+import { getElectricalLimitBackupRestoreWarning } from "./electrical-limit.js";
 import { escapeHtml } from "../core/html.js";
 import { renderModalShell } from "../core/modal-shell.js";
 
@@ -759,6 +760,9 @@ import { renderModalShell } from "../core/modal-shell.js";
       : summary.requiredMissing
         ? "Ontbrekende velden houden hun firmware-default."
         : "Velden zonder waarde worden overgeslagen.";
+    const electricalRestoreWarning = hasEntity("electricalCurrentLimit")
+      ? getElectricalLimitBackupRestoreWarning(draft.settings)
+      : "";
 
     return renderModalShell({
       id: "system",
@@ -848,6 +852,7 @@ import { renderModalShell } from "../core/modal-shell.js";
             `).join("")}
           </div>
           <p class="oq-settings-action-note${summary.unknown || summary.requiredMissing || installationMismatch ? " oq-settings-action-note--warning" : ""}">${escapeHtml(warningText)}</p>
+          ${electricalRestoreWarning ? `<p class="oq-settings-action-note oq-settings-action-note--warning" role="alert">${escapeHtml(electricalRestoreWarning)}</p>` : ""}
           ${state.settingsBackupError ? `<p class="oq-settings-backup-error">${escapeHtml(state.settingsBackupError)}</p>` : ""}`,
       actions: `
         <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${state.settingsBackupBusy ? "disabled" : ""}>Annuleren</button>

@@ -4137,6 +4137,14 @@
   }
 
   function handleButtonPress(name) {
+    if (name === "Reset electrical current limit") {
+      // Mirror the firmware reset: back to the automatic generation default.
+      const hybrid = String(getEntity("select", "Quatt Hybrid version")?.value || "").trim();
+      setNumber("Electrical current limit", state.installation === "duo" && hybrid === "V2" ? 20 : 16, "A");
+      notifyMockUpdated();
+      return;
+    }
+
     const generationDetectMatch = /^HP([12]) - Detect ODU generation$/.exec(name);
     if (generationDetectMatch) {
       const hp = Number(generationDetectMatch[1]);

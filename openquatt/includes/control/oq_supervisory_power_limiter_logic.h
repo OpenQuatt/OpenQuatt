@@ -62,20 +62,29 @@ inline float standard_current_a(bool duo, bool generation_v2, float v1_a, float 
 inline float maximum_current_a(bool duo, bool generation_v2, float v1_a, float v2_a) {
   return standard_current_a(duo, generation_v2, v1_a, v2_a);
 }
-// Absolute technische bovengrens: Duo V2 mag tot de bevestigde V2-max-grens,
-// Duo V1/V1.5 tot de V2-standaard (zelfde buitenunit-/regelplatform als Duo
-// V2). Single en Duo met onbekende generatie blijven conservatief op de
-// V1-standaard staan, zodat geen hogere waarde wordt vrijgegeven zonder
-// betrouwbare detectie.
-inline float absolute_maximum_current_a(bool duo, bool generation_known, bool generation_v2, float v1_a, float v2_a,
-                                        float v2_max_a) {
+
+// Absolute hardware maxima: 20 A is the maximum V1/V1.5 ODU hardware can
+// sustain; 26 A is the maximum V2 ODU hardware can technically sustain.
+// Duo V2 may therefore be raised to v2_max_a, Duo V1/V1.5 to v2_a. Single
+// and Duo with unknown generation stay conservatively on the installation
+// standard, so no elevated value is released without reliable detection.
+inline float absolute_maximum_current_a(bool duo, bool generation_known, bool generation_v2, bool odu_v1_confirmed,
+                                        bool odu_v2_confirmed, float v1_a, float v2_a, float v2_max_a) {
+  const float standard = standard_current_a(duo, generation_v2, v1_a, v2_a);
   if (!duo) {
-    return v1_a;
+    return standard;
   }
-  if (!generation_known) {
-    return v1_a;
+  // An elevated limit is only released when the configured family matches the
+  // reliably detected ODU family. A merely configured hp_generation (which
+  // always has a restored value) never suffices on its own. Without confirmed
+  // detection the installation standard remains the ceiling.
+  if (generation_known && generation_v2 && odu_v2_confirmed) {
+    return v2_max_a;
   }
-  return generation_v2 ? v2_max_a : v2_a;
+  if (generation_known && !generation_v2 && odu_v1_confirmed) {
+    return v2_a;
+  }
+  return standard;
 }
 
 inline float effective_current_a(float configured_a, float minimum_a, float maximum_a) {

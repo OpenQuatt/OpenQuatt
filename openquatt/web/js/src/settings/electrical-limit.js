@@ -2,6 +2,7 @@ import { getEntityStateText, hasEntity } from "../core/app-shared.js";
 import { getInputDraftValue } from "../core/control-drafts.js";
 import { getEntityValue, getNumberMeta, parseLooseNumber } from "../core/entity-store.js";
 import { escapeHtml } from "../core/html.js";
+import { createOduGenerationDetectionModel } from "../core/odu-generation.js";
 import { renderNumberInputControl } from "../core/number-controls.js";
 import { state } from "../core/state.js";
 import { renderSettingsFieldCard, renderSettingsSection } from "./controls.js";
@@ -11,6 +12,25 @@ export const ELECTRICAL_LIMIT_MIN_A = 10;
 // Absolute technische bovengrens Duo V2; spiegelt oq_duo_current_limit_v2_max_a.
 export const ELECTRICAL_LIMIT_V2_MAX_A = 26;
 
+export function detectionConfirmsFamily(topology, configuredGeneration, isV2) {
+  const model = createOduGenerationDetectionModel({
+    topology,
+    configuredGeneration,
+    hp1Available: hasEntity("hp1Generation"),
+    hp1Generation: getEntityValue("hp1Generation"),
+    hp1DetectAvailable: hasEntity("hp1GenerationDetect"),
+    hp2Available: hasEntity("hp2Generation"),
+    hp2Generation: getEntityValue("hp2Generation"),
+    hp2DetectAvailable: hasEntity("hp2GenerationDetect"),
+  });
+  const duo = String(topology || "").trim().toLowerCase() === "duo";
+  if (model.heatPumps.length !== (duo ? 2 : 1)) {
+    return false;
+  }
+  return model.heatPumps.every((heatPump) => heatPump.known
+    && (isV2 ? heatPump.generation === "V2" : (heatPump.generation === "V1" || heatPump.generation === "V1.5")));
+}
+
 export function getElectricalLimitTopologyInfo() {
   const topology = String(getEntityStateText("installationTopology") || "").trim().toLowerCase();
   const generation = String(getEntityValue("hpGeneration") || "").trim();
@@ -18,10 +38,14 @@ export function getElectricalLimitTopologyInfo() {
   const isV2 = generation === "V2";
   const generationKnown = ELECTRICAL_LIMIT_KNOWN_GENERATIONS.includes(generation);
   const standardA = isDuo && isV2 ? 20 : 16;
-  // Absolute technische bovengrens: Duo V2 tot de bevestigde V2-max-grens,
-  // Duo V1/V1.5 tot de V2-standaard. Single en Duo met onbekende generatie
-  // blijven conservatief op de standaard staan.
-  const absoluteMaxA = !isDuo ? 16 : !generationKnown ? 16 : isV2 ? ELECTRICAL_LIMIT_V2_MAX_A : 20;
+  // Een verhoogde grens wordt alleen vrijgegeven wanneer de geconfigureerde
+  // familie overeenkomt met de betrouwbaar gedetecteerde ODU-familie. Alleen
+  // een (altijd aanwezige) hp_generation-selectie is nooit voldoende.
+  const elevationConfirmed = isDuo && generationKnown && detectionConfirmsFamily(topology, generation, isV2);
+  // Absolute hardware maxima: 20 A is het maximum dat V1/V1.5-hardware aankan,
+  // 26 A het maximum dat V2 technisch aankan. Zonder bevestigde detectie
+  // blijft de installatiestandaard het plafond.
+  const absoluteMaxA = elevationConfirmed ? (isV2 ? ELECTRICAL_LIMIT_V2_MAX_A : 20) : standardA;
   let standardLabel = "Single";
   if (isDuo && isV2) {
     standardLabel = "Duo V2";
@@ -93,11 +117,25 @@ export function getCommittedElectricalLimitRaw() {
   return entity.value ?? entity.state ?? "";
 }
 
-export function renderSettingsElectricalCurrentLimitSection() {
-  if (!hasEntity("electricalCurrentLimit")) {
+export function getElectricalLimitBackupRestoreWarning(settings) {
+  const info = getElectricalLimitTopologyInfo();
+  const sections = settings && typeof settings === "object" ? Object.values(settings) : [];
+  let backupRaw;
+  for (const section of sections) {
+    if (section && typeof section === "object"
+      && Object.prototype.hasOwnProperty.call(section, "electricalCurrentLimit")) {
+      backupRaw = section.electricalCurrentLimit;
+      break;
+    }
+  }
+  const backupA = parseLooseNumber(backupRaw);
+  if (!Number.isFinite(backupA) || backupA <= info.standardA + 1e-9) {
     return "";
   }
+  return `Let op: deze backup zet de elektrische ingangsgrens op ${formatDutchAmps(backupA)}, boven de standaard ${formatDutchAmps(info.standardA)} voor deze installatie (${info.standardLabel}). Herstellen vereist dezelfde controle als handmatig verhogen: bevestig alleen wanneer de volledige elektrische aansluiting hiervoor geschikt is. Alleen een zwaardere installatieautomaat plaatsen is niet voldoende.`;
+}
 
+export function resolveElectricalLimitView() {
   const info = getElectricalLimitTopologyInfo();
   const entityMeta = getNumberMeta("electricalCurrentLimit");
   const minA = Number.isFinite(entityMeta.min) ? entityMeta.min : ELECTRICAL_LIMIT_MIN_A;
@@ -109,33 +147,50 @@ export function renderSettingsElectricalCurrentLimitSection() {
     ? draftParsed
     : Number.isFinite(pendingTo) ? pendingTo : committedA;
   const currentA = Math.min(info.absoluteMaxA, Math.max(minA, effectiveRaw));
-  const meta = {
-    ...entityMeta,
-    min: minA,
-    max: info.absoluteMaxA,
+  return {
+    info,
+    minA,
+    committedA,
+    currentA,
+    meta: { ...entityMeta, min: minA, max: info.absoluteMaxA },
+    aboveStandard: currentA > info.standardA + 1e-9,
+    belowStandard: currentA < info.standardA - 1e-9,
+    showRestore: Math.abs(committedA - info.standardA) > 1e-9 || Math.abs(currentA - info.standardA) > 1e-9,
   };
+}
+
+export function renderElectricalLimitRestore(view) {
+  const busy = state.busyAction === "save-electricalCurrentLimit" || state.busyAction === "electricalCurrentLimitReset";
+  const button = view.showRestore
+    ? `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="reset-electrical-limit-to-default" ${busy || state.loadingEntities ? "disabled" : ""}>Standaardwaarde herstellen (${formatDutchAmps(view.info.standardA)})</button>`
+    : "";
+  return `<div class="oq-settings-electrical-restore">${button}</div>`;
+}
+
+export function renderElectricalLimitFooter(view = resolveElectricalLimitView()) {
+  const { info, currentA } = view;
+  const warningMarkup = view.aboveStandard
+    ? `<div class="oq-settings-electrical-warning" role="alert"><span class="oq-settings-cooling-limit-warning-icon" aria-hidden="true">!</span><div class="oq-settings-electrical-warning-copy"><strong>Hogere waarde dan de standaard elektrische aansluiting</strong><span>Je hebt een waarde gekozen boven de standaard ${formatDutchAmps(info.standardA)} voor een ${escapeHtml(info.standardLabel)}. Verhoog deze grens alleen wanneer de warmtepomp is aangesloten op een daarvoor ontworpen, zwaarder afgezekerde groep en ook de bekabeling, werkschakelaar en het overige aansluitmateriaal hiervoor geschikt zijn. Alleen de installatieautomaat vervangen door een zwaarder exemplaar is niet voldoende en kan gevaarlijk zijn.</span></div></div>`
+    : "";
+  const belowMarkup = !view.aboveStandard && view.belowStandard
+    ? `<p class="oq-settings-electrical-note">Een lagere waarde kan het maximale verwarmings- en koelvermogen beperken.</p>`
+    : "";
+  return `<div class="oq-settings-electrical-body"><div class="oq-settings-electrical-facts"><div class="oq-settings-electrical-fact"><span>Standaard voor deze installatie</span><strong>${formatDutchAmps(info.standardA)} · ${escapeHtml(info.standardLabel)}</strong></div><div class="oq-settings-electrical-fact"><span>Indicatief vermogen bij 230 V</span><strong>circa ${formatIndicativeKw(currentA)}</strong></div></div><p class="oq-settings-electrical-caption">Benadering op basis van de ingestelde stroom (${formatDutchAmps(currentA)}); geen gegarandeerde harde begrenzing.</p>${warningMarkup}${belowMarkup}<p class="oq-settings-electrical-safety"><strong>Let op:</strong> dit is een softwarematige regelgrens en geen elektrische beveiliging. De groepzekering, bekabeling en elektrische aansluiting moeten altijd geschikt zijn voor de ingestelde stroom. Korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten.</p></div>`;
+}
+
+export function renderSettingsElectricalCurrentLimitSection() {
+  if (!hasEntity("electricalCurrentLimit")) {
+    return "";
+  }
+
+  const view = resolveElectricalLimitView();
   const control = renderNumberInputControl({
     key: "electricalCurrentLimit",
-    value: currentA,
-    meta,
+    value: view.currentA,
+    meta: view.meta,
     controlClass: "oq-helper-control oq-helper-control--suffix",
     unitMarkup: '<span class="oq-helper-unit-chip">A</span>',
   });
-
-  const aboveStandard = currentA > info.standardA + 1e-9;
-  const belowStandard = currentA < info.standardA - 1e-9;
-  const showRestore = Math.abs(committedA - info.standardA) > 1e-9 || Math.abs(currentA - info.standardA) > 1e-9;
-  const busy = state.busyAction === "save-electricalCurrentLimit";
-  const restoreButton = showRestore
-    ? `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="reset-electrical-limit-to-default" ${busy || state.loadingEntities ? "disabled" : ""}>Standaardwaarde herstellen (${formatDutchAmps(info.standardA)})</button>`
-    : "";
-
-  const warningMarkup = aboveStandard
-    ? `<div class="oq-settings-electrical-warning" role="alert"><span class="oq-settings-cooling-limit-warning-icon" aria-hidden="true">!</span><div class="oq-settings-electrical-warning-copy"><strong>Hogere waarde dan de standaard elektrische aansluiting</strong><span>Je hebt een waarde gekozen boven de standaard ${formatDutchAmps(info.standardA)} voor een ${escapeHtml(info.standardLabel)}. Verhoog deze grens alleen wanneer de warmtepomp is aangesloten op een daarvoor ontworpen, zwaarder afgezekerde groep en ook de bekabeling, werkschakelaar en het overige aansluitmateriaal hiervoor geschikt zijn. Alleen de installatieautomaat vervangen door een zwaarder exemplaar is niet voldoende en kan gevaarlijk zijn.</span></div></div>`
-    : "";
-  const belowMarkup = !aboveStandard && belowStandard
-    ? `<p class="oq-settings-electrical-note">Een lagere waarde kan het maximale verwarmings- en koelvermogen beperken.</p>`
-    : "";
 
   return renderSettingsSection(
     "Elektrische installatie",
@@ -145,9 +200,9 @@ export function renderSettingsElectricalCurrentLimitSection() {
       "electricalCurrentLimit",
       "Maximale gezamenlijke netstroom",
       "Deze grens geldt voor alle buitenunits samen, niet per warmtepomp. Power House gebruikt de grens vooraf bij de vermogensverdeling en regelt daarna bij op basis van gemeten feedback. Stooklijnbedrijf en koelen gebruiken alleen de gemeten feedback. Een lagere waarde kan het beschikbare verwarmings- en koelvermogen beperken. Door meetvertraging en korte stroompieken kan de werkelijke stroom tijdelijk boven de ingestelde waarde komen. Dit is een softwarematige regelgrens en geen elektrische beveiliging.",
-      `${control}${restoreButton ? `<div class="oq-settings-electrical-restore">${restoreButton}</div>` : ""}`,
+      `${control}${renderElectricalLimitRestore(view)}`,
       "",
-      `<div class="oq-settings-electrical-body"><div class="oq-settings-electrical-facts"><div class="oq-settings-electrical-fact"><span>Standaard voor deze installatie</span><strong>${formatDutchAmps(info.standardA)} · ${escapeHtml(info.standardLabel)}</strong></div><div class="oq-settings-electrical-fact"><span>Indicatief vermogen bij 230 V</span><strong>circa ${formatIndicativeKw(currentA)}</strong></div></div><p class="oq-settings-electrical-caption">Benadering op basis van de ingestelde stroom (${formatDutchAmps(currentA)}); geen gegarandeerde harde begrenzing.</p>${warningMarkup}${belowMarkup}<p class="oq-settings-electrical-safety"><strong>Let op:</strong> dit is een softwarematige regelgrens en geen elektrische beveiliging. De groepzekering, bekabeling en elektrische aansluiting moeten altijd geschikt zijn voor de ingestelde stroom. Korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten.</p></div>`,
+      renderElectricalLimitFooter(view),
     ),
   );
 }
