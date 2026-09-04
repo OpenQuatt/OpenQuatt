@@ -142,6 +142,7 @@ test("PR firmware starts with one complete render before the first device write"
     hardwareProfileText: { state: "heatpump_controller_q" },
     installationTopology: { state: "duo" },
     connectionText: { state: "wifi" },
+    preferredConnection: { state: "Automatic", value: "Automatic", option: ["Automatic", "WiFi", "Ethernet"] },
     installFirmwareTestManifest: { state: "" },
     firmwareTestManifestUrl: { state: "" },
   };

@@ -8,7 +8,7 @@ import { isLikelyDeviceConnectionError, refreshEntities } from "../core/entity-s
 import { armOtaRefresh, awaitOtaEvidence, beginDeviceReconnect, clearOtaRefresh } from "../core/device-reconnect.js";
 import { clearQuickStartSetupInstall, state, storeQuickStartSetupInstall } from "../core/state.js";
 import { getFirmwareConnectionLabel, getFirmwareTopologyLabel, getInstallationTopology } from "./device-context.js";
-import { beginFirmwareOtaQuietWindow, clearFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareRunningChannelLabel, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasKnownFirmwareTargetVersion, isFirmwareDowngradeAvailable, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, isQuickStartSetupFirmwareCurrent, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection, wait } from "./firmware-update.js";
+import { beginFirmwareOtaQuietWindow, clearFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareRunningChannelLabel, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasFirmwareTestLegacyCapability, hasFirmwareTestManifestCapability, hasKnownFirmwareTargetVersion, isFirmwareDowngradeAvailable, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, isQuickStartSetupFirmwareCurrent, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection, wait } from "./firmware-update.js";
 import { render } from "../core/render-scheduler.js";
 
   export async function requestFirmwareOta(path, options) {
@@ -524,7 +524,11 @@ import { render } from "../core/render-scheduler.js";
   export async function installFirmwareTestUpdate() {
     const prNumber = getFirmwareTestPrNumber();
     const target = getFirmwareTestTargetModel();
-    const buttonEntity = ENTITY_DEFS.installFirmwareTestManifest;
+    const useManifest = hasFirmwareTestManifestCapability();
+    const useLegacy = !useManifest && hasFirmwareTestLegacyCapability();
+    const buttonEntity = useManifest
+      ? ENTITY_DEFS.installFirmwareTestManifest
+      : useLegacy ? ENTITY_DEFS.installFirmwareTestOta : null;
     if (!prNumber) {
       state.updateTestFirmwareError = "Vul een geldig PR-nummer in.";
       render();
@@ -540,7 +544,7 @@ import { render } from "../core/render-scheduler.js";
       render();
       return;
     }
-    if (!buttonEntity || !hasEntity("firmwareTestManifestUrl") || !hasEntity("installFirmwareTestManifest")) {
+    if (!buttonEntity || (!useManifest && !useLegacy)) {
       state.updateTestFirmwareError = "Deze firmware bevat de testfirmware-installatieknop nog niet. Installeer eerst een nieuwere build.";
       render();
       return;
@@ -567,17 +571,24 @@ import { render } from "../core/render-scheduler.js";
 
     let flashRequested = false;
     try {
-      // PR-manifest-URL is deterministisch. Het device valideert fail-closed
-      // op repository, PR-tag en exact target en gebruikt daarna dezelfde
-      // bewaakte update.check → update.perform-lifecycle als main/dev.
       const testAsset = getFirmwareTestAssetUrls(prNumber, target);
-      if (!testAsset?.manifestUrl) {
+      if (!testAsset || (useManifest && !testAsset.manifestUrl) || (useLegacy && !testAsset.otaUrl)) {
         throw new Error("Geen geldig PR-target gevonden.");
       }
       state.updateTestFirmwareBuild = testAsset.label;
       render();
 
-      await setFirmwareTestTextEntity("firmwareTestManifestUrl", testAsset.manifestUrl);
+      if (useManifest) {
+        // PR-manifest-URL is deterministisch. Het device valideert fail-closed
+        // op repository, PR-tag en exact target en gebruikt daarna dezelfde
+        // bewaakte update.check → update.perform-lifecycle als main/dev.
+        await setFirmwareTestTextEntity("firmwareTestManifestUrl", testAsset.manifestUrl);
+      } else {
+        // Legacy fallback voor firmware zonder manifest-capability (#607).
+        // Let op: voor oude uniforme HCQ bestaan geen wifi/eth bins meer.
+        await setFirmwareTestTextEntity("firmwareTestOtaUrl", testAsset.otaUrl);
+        await setFirmwareTestTextEntity("firmwareTestOtaMd5Url", testAsset.md5Url);
+      }
 
       flashRequested = true;
       beginFirmwareOtaQuietWindow();

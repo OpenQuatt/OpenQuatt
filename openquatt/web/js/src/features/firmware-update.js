@@ -181,10 +181,12 @@ import { render } from "../core/render-scheduler.js";
     }
     const topologyLabel = topology === "duo" ? "Duo" : "Single";
 
-    // Optie A: uniforme HCQ-build gebruikt altijd het canonieke
-    // topologie-artifact zonder verbindingssuffix. preferredConnection is
-    // een runtimevoorkeur en geen buildvariant.
-    if (hardware === "heatpump_controller_q") {
+    // Uniforme HCQ-build (herkenbaar aan preferredConnection) gebruikt het
+    // canonieke topologie-artifact zonder verbindingssuffix.
+    // preferredConnection is een runtimevoorkeur en geen buildvariant.
+    // Oudere HCQ-firmware zonder preferredConnection valt terug op het
+    // verbindingsspecifieke artifact voor de legacy OTA+MD5-route.
+    if (hardware === "heatpump_controller_q" && hasEntity("preferredConnection")) {
       const artifactName = `openquatt-heatpump-controller-q-${topology}`;
       return {
         available: true,
@@ -196,6 +198,23 @@ import { render } from "../core/render-scheduler.js";
     }
 
     const connection = getFirmwareBuildConnection();
+    if (hardware === "heatpump_controller_q") {
+      if (connection !== "wifi" && connection !== "eth") {
+        return {
+          available: false,
+          label: "Onbekend target",
+          error: "Deze firmware meldt geen herkenbaar hardware-, opstelling- of verbindingsprofiel.",
+        };
+      }
+      const artifactName = `openquatt-heatpump-controller-q-${topology}-${connection}`;
+      return {
+        available: true,
+        artifactName,
+        otaFileName: `${artifactName}.firmware.ota.bin`,
+        manifestFileName: `${artifactName}-ota.manifest.json`,
+        label: `Heatpump Controller Q ${topologyLabel} ${getFirmwareConnectionLabel(connection)}`,
+      };
+    }
     const hardwareMap = {
       waveshare: {
         slug: "waveshare",
@@ -241,6 +260,14 @@ import { render } from "../core/render-scheduler.js";
       manifestFileName,
       label: `PR ${normalizedPrNumber} · ${target.label}`,
     };
+  }
+
+  export function hasFirmwareTestManifestCapability() {
+    return Boolean(hasEntity("firmwareTestManifestUrl") && hasEntity("installFirmwareTestManifest"));
+  }
+
+  export function hasFirmwareTestLegacyCapability() {
+    return Boolean(hasEntity("firmwareTestOtaUrl") && hasEntity("firmwareTestOtaMd5Url") && hasEntity("installFirmwareTestOta"));
   }
 
   export function getUpdateStatus() {
@@ -1339,7 +1366,7 @@ import { render } from "../core/render-scheduler.js";
     const prNumber = getFirmwareTestPrNumber();
     const target = getFirmwareTestTargetModel();
     const urls = getFirmwareTestAssetUrls(prNumber, target);
-    const controlsAvailable = Boolean(target.available && hasEntity("firmwareTestManifestUrl") && hasEntity("installFirmwareTestManifest"));
+    const controlsAvailable = Boolean(target.available && (hasFirmwareTestManifestCapability() || hasFirmwareTestLegacyCapability()));
     const ready = Boolean(prNumber && controlsAvailable);
     const build = state.updateTestFirmwareBuild || null;
     const targetLabel = target.available ? target.label : target.error;

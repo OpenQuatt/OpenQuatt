@@ -261,10 +261,18 @@ jobs:
             --notes "${NOTES}" \
             --prerelease
 
+          # Backward-compatible: oudere builds genereren nog geen manifesten.
+          # Upload ze alleen indien aanwezig, zodat deze publisher zowel op
+          # main (oude generator) als op dev (nieuwe generator) werkt.
+          MANIFEST_ARGS=()
+          if compgen -G "dist/*-ota.manifest.json" > /dev/null; then
+            MANIFEST_ARGS=(dist/*-ota.manifest.json)
+          fi
+
           gh release upload "${TAG}" \
             dist/*.firmware.ota.bin \
             dist/*.firmware.ota.bin.md5 \
-            dist/*-ota.manifest.json \
+            "${MANIFEST_ARGS[@]}" \
             dist/pr-firmware.json \
             --clobber
 
