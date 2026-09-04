@@ -111,6 +111,17 @@ void test_request_confirmation() {
   ConfirmationState rollover{true, UINT32_MAX - 20};
   output = confirm_request(29, true, true, 50, rollover);
   assert(output.confirmed);
+
+  auto startup = power_house_start(2000, true, true, false, 30000, {});
+  assert(!startup.heating_request && startup.preflow_request && startup.state.timing);
+  startup = power_house_start(31999, true, true, false, 30000, startup.state);
+  assert(!startup.heating_request && startup.preflow_request);
+  startup = power_house_start(32000, true, true, false, 30000, startup.state);
+  assert(startup.heating_request && !startup.preflow_request);
+  startup = power_house_start(33000, true, true, true, 30000, {});
+  assert(startup.heating_request && !startup.preflow_request && !startup.state.timing);
+  startup = power_house_start(34000, false, true, false, 30000, startup.state);
+  assert(!startup.heating_request && !startup.preflow_request && !startup.state.timing);
 }
 
 void test_idle_exit_boundaries() {

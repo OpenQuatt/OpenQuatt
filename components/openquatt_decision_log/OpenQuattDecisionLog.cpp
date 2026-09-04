@@ -1299,6 +1299,10 @@ const char* OpenQuattDecisionLog::reason_to_string_(uint8_t value) {
       return "hp_persistence_failure";
     case REASON_HP_RECOVERED:
       return "hp_recovered";
+    case REASON_ROOM_DEMAND:
+      return "room_demand";
+    case REASON_SETPOINT_RAISE:
+      return "setpoint_raise";
     default:
       return "unknown";
   }

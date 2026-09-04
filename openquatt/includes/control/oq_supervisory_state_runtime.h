@@ -261,9 +261,16 @@ class Runtime {
     id(oq_low_load_on_dyn_w) = low_load.on_threshold_w;
     id(oq_low_load_dyn_source_state) = low_load.source_code;
     bool heating_req = low_load.heating_request;
+    bool heating_preflow_req = false;
     const float low_load_off_w = low_load.off_threshold_w;
     bool reentry_block_active = low_load.reentry_block_active;
     if (!power_house_active) id(oq_ph_start_confirm_since_ms) = 0;
+
+    const bool heating_enable_valid_now = id(heating_enable_valid).has_state() && id(heating_enable_valid).state;
+    const bool heating_enable_selected_now =
+        id(heating_enable_selected).has_state() && id(heating_enable_selected).state;
+    heating_req = oq_hp_supervisory::apply_heating_enable_gate(heating_req, heating_enable_valid_now,
+                                                               heating_enable_selected_now);
 
     // Power House startup confirmation:
     // from a non-heating state, demand must stay active briefly before we enter CM1/CM2.
@@ -271,18 +278,14 @@ class Runtime {
     // before they turn into a real compressor start.
     if (power_house_active) {
       const bool start_pending_scope = !in_cm2 && !any_hp_active_guard;
-      const auto confirmation = oq_supervisory_state::confirm_request(
-          now_ms, heating_req, start_pending_scope, oq_supervisory_state::seconds_to_ms(tick.ph_start_confirm_s),
+      const auto startup = oq_supervisory_state::power_house_start(
+          now_ms, heating_req, start_pending_scope, id(oq_ph_fast_intent_code) != 0,
+          oq_supervisory_state::seconds_to_ms(tick.ph_start_confirm_s),
           {id(oq_ph_start_confirm_since_ms) != 0, id(oq_ph_start_confirm_since_ms)});
-      id(oq_ph_start_confirm_since_ms) = confirmation.state.timing ? confirmation.state.since_ms : 0;
-      heating_req = confirmation.confirmed;
+      id(oq_ph_start_confirm_since_ms) = startup.state.timing ? startup.state.since_ms : 0;
+      heating_preflow_req = startup.preflow_request;
+      heating_req = startup.heating_request;
     }
-
-    const bool heating_enable_valid_now = id(heating_enable_valid).has_state() && id(heating_enable_valid).state;
-    const bool heating_enable_selected_now =
-        id(heating_enable_selected).has_state() && id(heating_enable_selected).state;
-    heating_req = oq_hp_supervisory::apply_heating_enable_gate(heating_req, heating_enable_valid_now,
-                                                               heating_enable_selected_now);
 
     const bool curve_mode_active = (strategy_active_code == 2);
     const uint32_t cm2_startup_grace_ms = oq_supervisory_state::seconds_to_ms(tick.cm2_min_run_s);
@@ -316,13 +319,15 @@ class Runtime {
       // During active block, CM2 may not be re-entered from non-CM2 states.
       if (!in_cm2 && reentry_block_active) {
         heating_req = false;
+        heating_preflow_req = false;
       }
     }
     const bool manual_hp_thermal_req =
         oq_manual_hp::owns_control() &&
         ((int)roundf(id(oq_manual_hp1_level).state) > 0 || (int)roundf(id(oq_manual_hp2_level).state) > 0 ||
          id(oq_actuator_hp1_req) > 0 || id(oq_actuator_hp2_req) > 0);
-    const bool thermal_req = heating_req || cooling_req || manual_hp_thermal_req;
+    const bool heating_flow_req = heating_req || heating_preflow_req;
+    const bool thermal_req = heating_flow_req || cooling_req || manual_hp_thermal_req;
 
     // -------------------------------------------------
     // 2) Flow interlock status + timers
@@ -347,7 +352,7 @@ class Runtime {
     bool cold_start_below_minimum = false;
     bool cold_start_assist_requested = false;
     bool cold_start_released_now = false;
-    if (!heating_req) {
+    if (!heating_flow_req) {
       id(oq_cold_start_session_active) = false;
       id(oq_cold_start_pending) = false;
       id(oq_cold_start_sample_after_ms) = 0;
@@ -426,6 +431,8 @@ class Runtime {
 
       // Determine base target (without CM1 timer)
       int base_target = oq_hp_supervisory::base_control_mode(cooling_req, heating_req, frost);
+
+      if (heating_preflow_req) base_target = 1;
 
       if (heating_req && cold_start_blocked) {
         base_target = 1;
@@ -560,6 +567,8 @@ class Runtime {
             } else if (cm1_next_after == 2) {
               if (heating_req && base_target == 2)
                 desired_local = 2;
+              else if (heating_preflow_req)
+                desired_local = 1;
               else if (base_target == 98)
                 desired_local = 98;
               else
@@ -604,9 +613,13 @@ class Runtime {
                      "CM1 hold expired: next_after=%d, heating_req=%d, cooling_req=%d, base_target=%d -> desired=%d",
                      cm1_next_after, (int)heating_req, (int)cooling_req, base_target, desired_local);
 
-            // Clear CM1 window only AFTER we have used next_after
-            id(oq_cm1_until_ms) = 0;
-            id(oq_cm1_next_after) = 0;
+            // Keep an expired preflow window armed while Power House demand
+            // confirmation is still pending. Confirmation can then advance
+            // directly to CM2 without starting a second CM1 interval.
+            if (!(cm1_next_after == 2 && heating_preflow_req && !heating_req)) {
+              id(oq_cm1_until_ms) = 0;
+              id(oq_cm1_next_after) = 0;
+            }
           } else {
             // 3) Not in CM1 (or no CM1 window active) -> normal transition logic
             if (cm1_timer_expired) {
@@ -632,6 +645,10 @@ class Runtime {
                                                                : openquatt_decision_log::REASON_FLOW_PREFLOW;
                 cm_transition_reason = "cooling request held by flow interlock";
               }
+            } else if (heating_preflow_req && !heating_req) {
+              if (strcmp(cur_cm, "CM1") != 0) start_cm1(2);
+              desired_local = 1;
+              cm_transition_reason = "Power House demand confirmation overlaps heating preflow";
             } else if (heating_req) {
               const auto heating_mode = oq_hp_supervisory::decide_heating_mode({
                   current_cm_code,

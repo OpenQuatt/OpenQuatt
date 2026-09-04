@@ -131,6 +131,19 @@ inline ConfirmationOutput confirm_request(uint32_t now_ms, bool request, bool co
   return {state, elapsed(now_ms, state.since_ms, confirmation_ms)};
 }
 
+struct PowerHouseStartOutput {
+  ConfirmationState state;
+  bool heating_request = false;
+  bool preflow_request = false;
+};
+
+inline PowerHouseStartOutput power_house_start(uint32_t now_ms, bool request, bool confirmation_scope, bool fast_intent,
+                                               uint32_t confirmation_ms, ConfirmationState state) {
+  const auto confirmation =
+      confirm_request(now_ms, request, confirmation_scope, fast_intent ? 0 : confirmation_ms, state);
+  return {confirmation.state, confirmation.confirmed, confirmation_scope && request && !confirmation.confirmed};
+}
+
 enum class IdleExitReason : uint8_t {
   NOT_IN_CM2,
   NO_HEAT_REQUEST,

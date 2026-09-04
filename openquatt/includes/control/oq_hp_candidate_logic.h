@@ -1,12 +1,21 @@
 #pragma once
 
+#include <cstdint>
+
 namespace oq_hp_candidate {
 
 inline bool may_start(bool available_for_start, bool must_stop) { return available_for_start && !must_stop; }
 
-inline bool may_serve_candidate(bool available_for_start, bool must_stop, int previous_applied_level) {
+inline bool may_serve_candidate(bool available_for_start, bool must_stop, int previous_applied_level,
+                                bool minimum_off_ready = true) {
   if (must_stop) return false;
-  return available_for_start || previous_applied_level > 0;
+  return previous_applied_level > 0 || (available_for_start && minimum_off_ready);
+}
+
+inline bool minimum_off_ready(uint32_t now_ms, uint32_t last_stop_ms, uint32_t minimum_off_ms,
+                              int previous_applied_level) {
+  if (previous_applied_level > 0 || last_stop_ms == 0 || minimum_off_ms == 0) return true;
+  return static_cast<uint32_t>(now_ms - last_stop_ms) >= minimum_off_ms;
 }
 
 struct HpCandidateState {
@@ -14,6 +23,7 @@ struct HpCandidateState {
   bool available_for_start = false;
   bool must_stop = false;
   bool link_suspect = false;
+  bool minimum_off_ready = true;
 };
 
 template <typename IncidentOutputs>
@@ -24,11 +34,13 @@ inline HpCandidateState candidate_state(const IncidentOutputs& outputs, int prev
       outputs.available_for_start,
       outputs.must_stop,
       outputs.link_state == LinkState::SUSPECT,
+      true,
   };
 }
 
 inline bool may_serve_candidate(const HpCandidateState& candidate) {
-  return may_serve_candidate(candidate.available_for_start, candidate.must_stop, candidate.previous_applied_level);
+  return may_serve_candidate(candidate.available_for_start, candidate.must_stop, candidate.previous_applied_level,
+                             candidate.minimum_off_ready);
 }
 
 struct SuspectTopologyHold {

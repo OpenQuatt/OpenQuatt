@@ -114,7 +114,6 @@ Deze groep speelt vooral mee als je twee warmtepompen gebruikt of onrustig compr
 Belangrijke instellingen:
 
 - `Minimum runtime`
-- `Demand filter ramp up`
 - `Dual HP Enable Level`
 - `Dual HP Enable Hold`
 - `Dual HP Disable Hold`
