@@ -1,13 +1,15 @@
-export async function fetchWithTimeout(input, options = {}, timeoutMs = 0, timeoutMessage = "", consumeResponse = null) {
+export async function fetchWithTimeout(input, options = {}, timeoutMs = 0, timeoutMessage = "", consumeResponse = null, runtime = {}) {
+  const fetchImplementation = typeof runtime.fetch === "function" ? runtime.fetch : fetch;
+  const timerHost = runtime.timerHost || window;
   if (typeof AbortController !== "function" || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    const response = await fetch(input, options);
+    const response = await fetchImplementation(input, options);
     return typeof consumeResponse === "function" ? consumeResponse(response) : response;
   }
 
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutId = timerHost.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(input, { ...options, signal: controller.signal });
+    const response = await fetchImplementation(input, { ...options, signal: controller.signal });
     return typeof consumeResponse === "function" ? await consumeResponse(response) : response;
   } catch (error) {
     if (controller.signal.aborted) {
@@ -15,7 +17,7 @@ export async function fetchWithTimeout(input, options = {}, timeoutMs = 0, timeo
     }
     throw error;
   } finally {
-    window.clearTimeout(timeoutId);
+    timerHost.clearTimeout(timeoutId);
   }
 }
 

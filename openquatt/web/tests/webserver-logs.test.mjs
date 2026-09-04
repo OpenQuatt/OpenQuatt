@@ -4,25 +4,49 @@ import test from "node:test";
 globalThis.__OQ_PREVIEW__ = false;
 
 const {
+  WEB_SERVER_LOG_MAX_ENTRIES,
+  WEB_SERVER_LOG_POLL_INTERVAL_MS,
+  WEB_SERVER_LOG_POLL_RETRY_DELAYS_MS,
+  WEB_SERVER_LOG_REQUEST_TIMEOUT_MS,
   buildWebServerLogCopyText,
+  cancelWebServerLogPoll,
   clearWebServerLogHistory,
+  closeWebServerLogStream,
   createWebServerLogEntry,
   getWebServerLogClearUrl,
+  normalizeRecentWebServerLogPayload,
+  openWebServerLogsModal,
   refreshWebServerLogHistory,
   renderWebServerLogHistoryControls,
   renderWebServerLoggerLevelControl,
+  scheduleWebServerLogPoll,
+  syncWebServerLogStream,
 } =
   await import("../js/src/features/webserver-logs.js");
 const { state } = await import("../js/src/core/state.js");
+const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
 
 function seedLogState() {
+  if (state.webServerLogPollTimer) {
+    try {
+      globalThis.clearTimeout(state.webServerLogPollTimer);
+    } catch {
+      // Ignore timer cleanup in test setup.
+    }
+  }
   state.nativeOpen = false;
   state.systemModal = null;
   state.busyAction = "";
+  state.mounted = false;
   state.webServerLogSource = null;
   state.webServerLogConnected = false;
+  state.webServerLogEnabled = null;
+  state.webServerLogError = "";
+  state.webServerLogPollTimer = null;
+  state.webServerLogPollFailureCount = 0;
   state.webServerLogHistoryError = "";
   state.webServerLogHistoryLoaded = true;
+  state.webServerLogHistoryLoading = false;
   state.webServerLogCsrfToken = "test-csrf-token";
   state.webServerLogHistoryNeedsReconcile = false;
   state.webServerLogEntries = [{ raw: "old log entry", text: "old log entry" }];
@@ -304,7 +328,7 @@ test("clearWebServerLogHistory keeps reconciliation pending when the modal close
   assert.equal(state.webServerLogEntries.length, 1);
 });
 
-test("refreshWebServerLogHistory replaces stale rows without dropping concurrent live entries", async (t) => {
+test("refreshWebServerLogHistory replaces stale rows from the authoritative history", async (t) => {
   const originalWindow = globalThis.window;
   t.after(() => {
     globalThis.window = originalWindow;
@@ -313,11 +337,9 @@ test("refreshWebServerLogHistory replaces stale rows without dropping concurrent
   seedLogState();
   state.systemModal = "webserver-logs";
   state.webServerLogHistoryNeedsReconcile = true;
-  const liveEntry = { raw: "live during refresh", text: "live during refresh", receivedAt: 3000 };
   globalThis.window = {
     location: { pathname: "/" },
     fetch: async () => {
-      state.webServerLogEntries = [...state.webServerLogEntries, liveEntry];
       return {
         ok: true,
         status: 200,
@@ -331,8 +353,40 @@ test("refreshWebServerLogHistory replaces stale rows without dropping concurrent
   };
 
   await refreshWebServerLogHistory();
-  assert.deepEqual(state.webServerLogEntries.map(({ raw }) => raw), ["authoritative history", "live during refresh"]);
+  assert.deepEqual(state.webServerLogEntries.map(({ raw }) => raw), ["authoritative history"]);
   assert.equal(state.webServerLogHistoryNeedsReconcile, false);
+});
+
+test("background-refresh rendert opnieuw wanneer firmware timestamps herijkt", async (t) => {
+  const originalWindow = globalThis.window;
+  let renderCount = 0;
+  t.after(() => {
+    globalThis.window = originalWindow;
+    setRenderCallback(null);
+  });
+
+  seedLogState();
+  state.systemModal = "webserver-logs";
+  state.webServerLogEntries = [createWebServerLogEntry("zelfde regel", { receivedAt: 1000, seq: 1 })];
+  setRenderCallback(() => {
+    renderCount += 1;
+  });
+  globalThis.window = {
+    location: { pathname: "/" },
+    fetch: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        enabled: true,
+        csrf_token: "test-csrf-token",
+        entries: [{ raw: "zelfde regel", ts: 1757000000000, seq: 1 }],
+      }),
+    }),
+  };
+
+  assert.equal(await refreshWebServerLogHistory({ background: true }), true);
+  assert.equal(state.webServerLogEntries[0].receivedAt, 1757000000000);
+  assert.equal(renderCount, 1);
 });
 
 test("clearWebServerLogHistory does not replace another pending action", async (t) => {
@@ -450,4 +504,364 @@ test("active DEBUG keeps its performance warning visible", (t) => {
   const markup = renderWebServerLoggerLevelControl();
   assert.match(markup, /oq-webserver-log-control-card--warning/);
   assert.match(markup, /DEBUG kan de web-app en Home Assistant vertragen\./);
+});
+
+function stubPollTimers(t) {
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  const scheduled = [];
+  globalThis.setTimeout = (callback, delay) => {
+    const id = { callback, delay };
+    scheduled.push(id);
+    return id;
+  };
+  globalThis.clearTimeout = (id) => {
+    const index = scheduled.indexOf(id);
+    if (index >= 0) {
+      scheduled.splice(index, 1);
+    }
+  };
+  t.after(() => {
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+    cancelWebServerLogPoll();
+  });
+  return scheduled;
+}
+
+function seedLifecycleState() {
+  seedLogState();
+  state.mounted = true;
+  state.systemModal = "webserver-logs";
+}
+
+async function flushHistoryRequests() {
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
+async function fireNextPoll(scheduled) {
+  const timer = scheduled.shift();
+  assert.ok(timer);
+  await timer.callback();
+  return timer;
+}
+
+test("logboek gebruikt history-polling zonder extra EventSource", (t) => {
+  const originalWindow = globalThis.window;
+  t.after(() => {
+    globalThis.window = originalWindow;
+  });
+
+  seedLifecycleState();
+  const scheduled = stubPollTimers(t);
+  let eventSourceConstructed = 0;
+  globalThis.window = {
+    location: { pathname: "/" },
+    fetch: async () => ({ ok: true, json: async () => ({ enabled: true, entries: [] }) }),
+    EventSource: class {
+      constructor() {
+        eventSourceConstructed += 1;
+      }
+    },
+  };
+
+  syncWebServerLogStream();
+  syncWebServerLogStream();
+
+  assert.equal(eventSourceConstructed, 0);
+  assert.equal(state.webServerLogSource, null);
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0].delay, WEB_SERVER_LOG_POLL_INTERVAL_MS);
+  assert.equal(state.webServerLogPollTimer, scheduled[0]);
+});
+
+test("geslaagde poll voegt historie toe en plant precies één volgende poll", async (t) => {
+  const originalWindow = globalThis.window;
+  t.after(() => {
+    globalThis.window = originalWindow;
+  });
+
+  seedLifecycleState();
+  state.webServerLogEntries = [];
+  const scheduled = stubPollTimers(t);
+  const historyRequests = [];
+  globalThis.window = {
+    location: { pathname: "/" },
+    fetch: async (url) => {
+      historyRequests.push(url);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          enabled: true,
+          csrf_token: "new-token",
+          entries: [{ raw: "nieuwe logregel", ts: 2000, seq: 2 }],
+        }),
+      };
+    },
+  };
+
+  syncWebServerLogStream();
+  const firstTimer = await fireNextPoll(scheduled);
+
+  assert.equal(firstTimer.delay, WEB_SERVER_LOG_POLL_INTERVAL_MS);
+  assert.deepEqual(historyRequests, ["/openquatt/logs/recent"]);
+  assert.deepEqual(state.webServerLogEntries.map(({ raw }) => raw), ["nieuwe logregel"]);
+  assert.equal(state.webServerLogCsrfToken, "new-token");
+  assert.equal(state.webServerLogConnected, true);
+  assert.equal(state.webServerLogPollFailureCount, 0);
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0].delay, WEB_SERVER_LOG_POLL_INTERVAL_MS);
+});
+
+test("mislukte polls gebruiken back-off en herstellen zonder paginarefresh", async (t) => {
+  const originalWindow = globalThis.window;
+  t.after(() => {
+    globalThis.window = originalWindow;
+  });
+
+  seedLifecycleState();
+  state.webServerLogEntries = [];
+  const scheduled = stubPollTimers(t);
+  let requestCount = 0;
+  globalThis.window = {
+    location: { pathname: "/" },
+    fetch: async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        throw new TypeError("connection closed");
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          enabled: true,
+          csrf_token: "recovered-token",
+          entries: [{ raw: "gemist tijdens storing", ts: 3000, seq: 3 }],
+        }),
+      };
+    },
+  };
+
+  scheduleWebServerLogPoll();
+  await fireNextPoll(scheduled);
+
+  assert.equal(state.webServerLogConnected, false);
+  assert.match(state.webServerLogError, /Nieuwe poging/);
+  assert.equal(state.webServerLogPollFailureCount, 1);
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0].delay, WEB_SERVER_LOG_POLL_RETRY_DELAYS_MS[0]);
+
+  await fireNextPoll(scheduled);
+
+  assert.equal(state.webServerLogConnected, true);
+  assert.equal(state.webServerLogError, "");
+  assert.equal(state.webServerLogPollFailureCount, 0);
+  assert.deepEqual(state.webServerLogEntries.map(({ raw }) => raw), ["gemist tijdens storing"]);
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0].delay, WEB_SERVER_LOG_POLL_INTERVAL_MS);
+});
+
+test("vastgelopen history-request wordt afgebroken en opnieuw geprobeerd", async (t) => {
+  const originalWindow = globalThis.window;
+  t.after(() => {
+    globalThis.window = originalWindow;
+  });
+
+  seedLifecycleState();
+  const scheduled = stubPollTimers(t);
+  globalThis.window = {
+    location: { pathname: "/" },
+    fetch: (_url, options = {}) => new Promise((_resolve, reject) => {
+      options.signal?.addEventListener("abort", () => {
+        const error = new Error("request timeout");
+        error.name = "AbortError";
+        reject(error);
+      });
+    }),
+  };
+
+  scheduleWebServerLogPoll();
+  const pollTimer = scheduled.shift();
+  const pollPromise = pollTimer.callback();
+  await flushHistoryRequests();
+
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0].delay, WEB_SERVER_LOG_REQUEST_TIMEOUT_MS);
+  const requestTimeout = scheduled.shift();
+  requestTimeout.callback();
+  await pollPromise;
+
+  assert.equal(state.webServerLogConnected, false);
+  assert.match(state.webServerLogError, /Nieuwe poging/);
+  assert.equal(state.webServerLogPollFailureCount, 1);
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0].delay, WEB_SERVER_LOG_POLL_RETRY_DELAYS_MS[0]);
+});
+
+test("polltimer wordt geannuleerd bij sluiten van het modal", (t) => {
+  const originalWindow = globalThis.window;
+  t.after(() => {
+    globalThis.window = originalWindow;
+  });
+
+  seedLifecycleState();
+  const scheduled = stubPollTimers(t);
+  globalThis.window = { location: { pathname: "/" }, fetch: async () => ({ ok: true }) };
+
+  scheduleWebServerLogPoll();
+  assert.equal(scheduled.length, 1);
+
+  state.systemModal = null;
+  syncWebServerLogStream();
+
+  assert.equal(state.webServerLogPollTimer, null);
+  assert.equal(scheduled.length, 0);
+});
+
+test("late pollresponse na sluiten verandert het logboek niet", async (t) => {
+  const originalWindow = globalThis.window;
+  t.after(() => {
+    globalThis.window = originalWindow;
+  });
+
+  seedLifecycleState();
+  state.webServerLogEntries = [];
+  const scheduled = stubPollTimers(t);
+  let resolveFetch;
+  globalThis.window = {
+    location: { pathname: "/" },
+    fetch: () => new Promise((resolve) => {
+      resolveFetch = resolve;
+    }),
+  };
+
+  scheduleWebServerLogPoll();
+  const timer = scheduled.shift();
+  const pollPromise = timer.callback();
+  await flushHistoryRequests();
+
+  state.systemModal = null;
+  syncWebServerLogStream();
+  resolveFetch({
+    ok: true,
+    status: 200,
+    json: async () => ({ enabled: true, entries: [{ raw: "te laat", ts: 4000, seq: 4 }] }),
+  });
+  await pollPromise;
+
+  assert.deepEqual(state.webServerLogEntries, []);
+  assert.equal(state.webServerLogPollTimer, null);
+  assert.equal(scheduled.length, 0);
+});
+
+test("sluiten invalideert een directe history-request zonder loading-state achter te laten", async (t) => {
+  const originalWindow = globalThis.window;
+  t.after(() => {
+    globalThis.window = originalWindow;
+  });
+
+  seedLifecycleState();
+  state.webServerLogEntries = [];
+  let resolveFetch;
+  globalThis.window = {
+    location: { pathname: "/" },
+    fetch: () => new Promise((resolve) => {
+      resolveFetch = resolve;
+    }),
+  };
+
+  const refreshPromise = refreshWebServerLogHistory();
+  await flushHistoryRequests();
+  assert.equal(state.webServerLogHistoryLoading, true);
+
+  state.systemModal = null;
+  closeWebServerLogStream();
+  assert.equal(state.webServerLogHistoryLoading, false);
+
+  resolveFetch({
+    ok: true,
+    status: 200,
+    json: async () => ({ enabled: true, entries: [{ raw: "te laat", ts: 4000, seq: 4 }] }),
+  });
+  assert.equal(await refreshPromise, false);
+  assert.deepEqual(state.webServerLogEntries, []);
+  assert.equal(state.webServerLogHistoryLoading, false);
+});
+
+test("normale modalopening haalt de historie direct precies één keer op", async (t) => {
+  const originalWindow = globalThis.window;
+  t.after(() => {
+    globalThis.window = originalWindow;
+  });
+
+  seedLogState();
+  state.systemModal = null;
+  state.webServerLogEntries = [];
+  state.webServerLogHistoryRequestToken = 0;
+  const historyRequests = [];
+  globalThis.window = {
+    location: { pathname: "/" },
+    fetch: async (url) => {
+      if (String(url).includes("/openquatt/logs/recent")) {
+        historyRequests.push(url);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ enabled: true, csrf_token: "test-csrf-token", entries: [] }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ entities: {}, missing: [] }),
+      };
+    },
+  };
+
+  openWebServerLogsModal();
+  await flushHistoryRequests();
+
+  assert.deepEqual(historyRequests, ["/openquatt/logs/recent"]);
+});
+
+test("identieke tekst met verschillende seq blijft behouden", () => {
+  const entries = normalizeRecentWebServerLogPayload({
+    enabled: true,
+    entries: [
+      { raw: "zelfde melding", ts: 1000, seq: 1 },
+      { raw: "zelfde melding", ts: 1500, seq: 2 },
+    ],
+  });
+
+  assert.deepEqual(entries.map(({ seq }) => seq), [1, 2]);
+});
+
+test("history-refresh begrenst 500 firmware-regels tot 250", async (t) => {
+  const originalWindow = globalThis.window;
+  t.after(() => {
+    globalThis.window = originalWindow;
+  });
+
+  seedLifecycleState();
+  globalThis.window = {
+    location: { pathname: "/" },
+    fetch: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        enabled: true,
+        entries: Array.from({ length: 500 }, (_entry, index) => ({
+          raw: `regel ${index + 1}`,
+          ts: index + 1,
+          seq: index + 1,
+        })),
+      }),
+    }),
+  };
+
+  await refreshWebServerLogHistory();
+  assert.equal(state.webServerLogEntries.length, WEB_SERVER_LOG_MAX_ENTRIES);
+  assert.equal(state.webServerLogEntries[0].seq, 251);
 });
