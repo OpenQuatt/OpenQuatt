@@ -403,12 +403,13 @@ number:
     icon: mdi:current-ac
     unit_of_measurement: "A"
     min_value: ${oq_electrical_current_limit_min_a}
-    # Absolute hardware maxima (26 A Duo V2, 20 A Duo V1/V1.5). De
-    # installatieafhankelijke standaard (16 A Single/Duo V1/V1.5, 20 A Duo V2)
-    # is een waarschuwingsgrens; waarden daarboven worden in de web-app
-    # expliciet bevestigd. Een verhoogde grens wordt alleen vrijgegeven bij
-    # bevestigde ODU-detectie van dezelfde familie; anders blijft de
-    # standaard het plafond (afgedwongen via traits).
+    # Absolute OpenQuatt ceilings (26 A Duo V2, 20 A Duo V1/V1.5), derived from
+    # the published per-ODU maxima (2 x 13 A / 2 x 10 A). De
+    # installatieafhankelijke standaard (16 A Single/Duo V1/V1.5, 20 A Duo V2,
+    # de officiële Quatt Duo-specificatie) is een waarschuwingsgrens; waarden
+    # daarboven worden in de web-app expliciet bevestigd. Een verhoogde grens
+    # wordt alleen vrijgegeven bij bevestigde ODU-detectie van dezelfde
+    # familie; anders blijft de standaard het plafond (afgedwongen via traits).
     max_value: ${oq_duo_current_limit_v2_max_a}
     step: 0.5
     update_interval: ${oq_supervisory_loop_s}s

@@ -63,11 +63,13 @@ inline float maximum_current_a(bool duo, bool generation_v2, float v1_a, float v
   return standard_current_a(duo, generation_v2, v1_a, v2_a);
 }
 
-// Absolute hardware maxima: 20 A is the maximum V1/V1.5 ODU hardware can
-// sustain; 26 A is the maximum V2 ODU hardware can technically sustain.
-// Duo V2 may therefore be raised to v2_max_a, Duo V1/V1.5 to v2_a. Single
-// and Duo with unknown generation stay conservatively on the installation
-// standard, so no elevated value is released without reliable detection.
+// Absolute OpenQuatt ceilings, derived from the published maximum current
+// per outdoor unit: 2 x 10 A for V1/V1.5 and 2 x 13 A for V2. The official
+// Quatt Duo specification stays 16 A and 20 A respectively; use above those
+// values requires a fully suitable electrical installation. Single and Duo
+// without confirmed detection stay conservatively on the installation
+// standard (16 or 20 A), so no elevated value is released without reliable
+// detection.
 inline float absolute_maximum_current_a(bool duo, bool generation_known, bool generation_v2, bool odu_v1_confirmed,
                                         bool odu_v2_confirmed, float v1_a, float v2_a, float v2_max_a) {
   const float standard = standard_current_a(duo, generation_v2, v1_a, v2_a);

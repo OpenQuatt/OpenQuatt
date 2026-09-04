@@ -9,7 +9,9 @@ import { renderSettingsFieldCard, renderSettingsSection } from "./controls.js";
 
 export const ELECTRICAL_LIMIT_KNOWN_GENERATIONS = ["V1", "V1.5", "V2"];
 export const ELECTRICAL_LIMIT_MIN_A = 10;
-// Absolute technische bovengrens Duo V2; spiegelt oq_duo_current_limit_v2_max_a.
+// Absolute OpenQuatt ceiling for Duo V2 (2 x 13 A published per-ODU max);
+// spiegelt oq_duo_current_limit_v2_max_a. De officiële Quatt Duo-specificatie
+// (20 A) blijft de standaard- en waarschuwingsgrens.
 export const ELECTRICAL_LIMIT_V2_MAX_A = 26;
 
 export function detectionConfirmsFamily(topology, configuredGeneration, isV2) {
@@ -42,9 +44,10 @@ export function getElectricalLimitTopologyInfo() {
   // familie overeenkomt met de betrouwbaar gedetecteerde ODU-familie. Alleen
   // een (altijd aanwezige) hp_generation-selectie is nooit voldoende.
   const elevationConfirmed = isDuo && generationKnown && detectionConfirmsFamily(topology, generation, isV2);
-  // Absolute hardware maxima: 20 A is het maximum dat V1/V1.5-hardware aankan,
-  // 26 A het maximum dat V2 technisch aankan. Zonder bevestigde detectie
-  // blijft de installatiestandaard het plafond.
+  // Absolute OpenQuatt ceilings, derived from the published per-ODU maxima
+  // (2 x 10 A V1/V1.5, 2 x 13 A V2). De officiële Duo-specificatie (16/20 A)
+  // blijft de standaard. Zonder bevestigde detectie blijft de
+  // installatiestandaard het plafond.
   const absoluteMaxA = elevationConfirmed ? (isV2 ? ELECTRICAL_LIMIT_V2_MAX_A : 20) : standardA;
   let standardLabel = "Single";
   if (isDuo && isV2) {
