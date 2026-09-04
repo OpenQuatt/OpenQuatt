@@ -114,7 +114,7 @@ Voor het opnieuw starten na een koelstop kun je kiezen tussen voldoende opwarmin
 
 ### Koelen binnen een dagelijks tijdvenster
 
-Wil je bijvoorbeeld alleen overdag koelen, kies dan `Schedule` bij `Cooling Enable Source` en stel de start- en eindtijd in. Het schema geeft alleen toestemming om te koelen. Standaard blijft `Cooling Room Request Required` aan en begint koeling dus pas als de kamertemperatuur daadwerkelijk om koeling vraagt. Zet je die instelling bewust uit, dan vormt een actief tijdvenster zelf de koelvraag. De dauwpunt-, water- en flowbeveiligingen en `OpenQuatt Enabled` blijven in beide gevallen leidend.
+Wil je bijvoorbeeld alleen overdag koelen, zet dan onder **Instellingen → Koelen** het blok **Dagelijks koelvenster** aan en stel de start- en eindtijd in. Het tandwiel bij **Koeltoestemming** op het overzicht opent dezelfde instellingen. Inschakelen kiest intern `Schedule` als `Cooling Enable Source`; uitschakelen kiest `Disabled`. Het schema geeft alleen toestemming om te koelen. Standaard blijft `Cooling Room Request Required` aan en begint koeling dus pas als de kamertemperatuur daadwerkelijk om koeling vraagt. Zet je die instelling bewust uit, dan vormt een actief tijdvenster zelf de koelvraag. De dauwpunt-, water- en flowbeveiligingen en `OpenQuatt Enabled` blijven in beide gevallen leidend.
 
 De starttijd hoort bij het venster, de eindtijd niet: `08:00-20:00` is actief vanaf 08:00 tot vlak voor 20:00. Een venster mag over middernacht lopen, bijvoorbeeld `20:00-07:00`. Zijn start en einde gelijk, dan staat het venster uit; de veilige standaard `00:00-00:00` activeert na een update dus niets onverwacht.
 

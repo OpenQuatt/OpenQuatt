@@ -238,8 +238,10 @@ test("restore defers a non-Schedule cooling source while the current Schedule is
   const startWrite = harness.calls.indexOf("POST Cooling schedule start time=08:00:00");
   const endWrite = harness.calls.indexOf("POST Cooling schedule end time=18:00:00");
   const restoredSourceWrite = harness.calls.lastIndexOf("POST Cooling Enable Source=HA input");
+  const finalGuardWrite = harness.calls.lastIndexOf("POST Cooling Enable Source=Disabled");
   assert.ok(disabledWrite >= 0 && disabledWrite < startWrite);
   assert.ok(startWrite < endWrite && endWrite < restoredSourceWrite);
+  assert.ok(endWrite < finalGuardWrite && finalGuardWrite < restoredSourceWrite);
   assert.equal(harness.values.get("Cooling Enable Source"), "HA input");
   assert.ok(result.applied.includes("coolingEnableSource"));
 });

@@ -134,6 +134,10 @@ const systemActionHandlers = {
     state.systemModal = "silent-settings";
     render();
   },
+  "open-cooling-schedule-modal": () => {
+    state.systemModal = "cooling-schedule";
+    render();
+  },
   "open-openquatt-pause-modal": () => {
     state.pauseResumeDraft = getOpenQuattPauseDraftValue();
     state.systemModal = "openquatt-pause";

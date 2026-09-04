@@ -3,6 +3,7 @@ import { COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, COO
 import { formatValue, toTimeInputValue } from "../core/entity-store.js";
 import { formatSettingsOptionLabel, renderSettingsAdvancedDisclosure, renderSettingsFieldCard, renderSettingsNumberField, renderSettingsOptionCardsField, renderSettingsSection, renderSettingsSelectField, renderSettingsSliderField, renderSettingsSwitchField, renderSettingsTimeField } from "./controls.js";
 import { escapeHtml } from "../core/html.js";
+import { state } from "../core/state.js";
 
   export function renderSettingsCoolingFact(label, value) {
     return `
@@ -53,6 +54,73 @@ import { escapeHtml } from "../core/html.js";
       : effective.includes("Schedule") ? "Open" : "Gesloten";
   }
 
+  function getCoolingScheduleStatusCopy(enabled, status, start, end, source) {
+    if (!enabled) {
+      return source && source !== "Disabled"
+        ? `Uit; koeltoestemming gebruikt nu ${formatSettingsOptionLabel(source)}.`
+        : "Uit; het lokale venster geeft geen koeltoestemming.";
+    }
+    if (status === "Open") {
+      return `Open van ${start} tot ${end}; koeltoestemming is nu actief.`;
+    }
+    if (status === "Gesloten") {
+      return `Open van ${start} tot ${end}; koeltoestemming is nu niet actief.`;
+    }
+    if (status === "Uitgeschakeld") {
+      return "Start en einde zijn gelijk. Kies verschillende tijden om een venster te openen.";
+    }
+    return status === "Tijd ongeldig"
+      ? "De lokale klok is nog niet geldig; koeltoestemming blijft uit."
+      : "Het koelvenster is nog niet beschikbaar; koeltoestemming blijft uit.";
+  }
+
+  export function renderCoolingScheduleSettingsFields(gridClass = "oq-settings-grid") {
+    if (!hasEntity(COOLING_SCHEDULE_SOURCE_KEY) || !COOLING_SCHEDULE_TIME_KEYS.every((key) => hasEntity(key))) {
+      return "";
+    }
+    const source = getEntityStateText(COOLING_SCHEDULE_SOURCE_KEY, "Disabled");
+    const enabled = source === "Schedule";
+    const start = toTimeInputValue(getEntityStateText(COOLING_SCHEDULE_TIME_KEYS[0], ""));
+    const end = toTimeInputValue(getEntityStateText(COOLING_SCHEDULE_TIME_KEYS[1], ""));
+    const status = getCoolingScheduleStatus();
+    const busy = state.loadingEntities || state.busyAction === `save-${COOLING_SCHEDULE_SOURCE_KEY}`;
+    const stateLabel = enabled ? "Aan" : "Uit";
+    return `
+      <section class="oq-settings-cooling-schedule${enabled ? " is-enabled" : ""}">
+        <div class="oq-settings-subpanel-head oq-settings-cooling-schedule-head">
+          <div>
+            <p class="oq-helper-label">Koeltoestemming</p>
+            <h4>Dagelijks koelvenster</h4>
+            <p>Laat OpenQuatt alleen binnen dit lokale tijdvenster koelen. Kamerinstelling en koelbeveiligingen blijven altijd gelden.</p>
+          </div>
+          <div class="oq-settings-compact-switch-row">
+            <span class="oq-settings-toggle-state${enabled ? " is-on" : ""}">${stateLabel}</span>
+            <button
+              class="oq-settings-toggle-switch${enabled ? " is-on" : ""}"
+              type="button"
+              role="switch"
+              data-oq-action="select-overview-control-option"
+              data-control-key="${escapeHtml(COOLING_SCHEDULE_SOURCE_KEY)}"
+              data-control-option="${enabled ? "Disabled" : "Schedule"}"
+              aria-checked="${enabled ? "true" : "false"}"
+              aria-label="Dagelijks koelvenster: ${stateLabel}"
+              ${busy ? "disabled" : ""}
+            >
+              <span class="oq-settings-toggle-switch-track" aria-hidden="true"><span class="oq-settings-toggle-switch-knob"></span></span>
+            </button>
+          </div>
+        </div>
+        ${enabled ? `
+          <div class="${escapeHtml(gridClass)}">
+            ${renderSettingsTimeField(COOLING_SCHEDULE_TIME_KEYS[0], "Start koelvenster", "De starttijd is inbegrepen.")}
+            ${renderSettingsTimeField(COOLING_SCHEDULE_TIME_KEYS[1], "Einde koelvenster", "De eindtijd is niet inbegrepen. Een nachtvenster mag over middernacht lopen.")}
+          </div>
+        ` : ""}
+        <p class="oq-settings-cooling-schedule-status"><strong>${enabled ? escapeHtml(status) : "Uit"}</strong><span>${escapeHtml(getCoolingScheduleStatusCopy(enabled, status, start, end, source))}</span></p>
+      </section>
+    `;
+  }
+
   function renderCoolingSilentLimitWarning() {
     const silentModeOverride = getEntityStateText("silentModeOverride", "").trim().toLowerCase();
     if (silentModeOverride === "off") {
@@ -73,9 +141,8 @@ import { escapeHtml } from "../core/html.js";
     const roomRequestRequired = !hasEntity("coolingRoomRequestRequired") || isEntityActive("coolingRoomRequestRequired");
     const restartByMinimumOffTime = hasEntity("coolingRestartMode") &&
       getEntityStateText("coolingRestartMode", "Water temperature") === "Minimum off time";
+    const scheduleFields = renderCoolingScheduleSettingsFields();
     const tuningFields = [
-      renderSettingsTimeField(COOLING_SCHEDULE_TIME_KEYS[0], "Start (inclusief)", "Kies Dagelijks tijdvenster als bron."),
-      renderSettingsTimeField(COOLING_SCHEDULE_TIME_KEYS[1], `Einde (exclusief) · ${getCoolingScheduleStatus()}`, "Nachtvensters lopen door; gelijke tijden staan uit. Alleen toestemming: kamerinstelling en koelbeveiligingen blijven gelden."),
       renderSettingsNumberField("coolingMinimumSupplyTemp", "Minimale koel-aanvoer", "Ondergrens voor het koeldoel. OpenQuatt gebruikt de hoogste waarde van deze instelling en de dauwpuntveilige grens."),
       renderSettingsSliderField("coolingDemandMax", "Maximale koelsterkte", "Bepaalt hoe krachtig OpenQuatt mag koelen. Lager geeft langere, rustigere runs; hoger geeft meer koelvermogen bij warm weer.", "", {
         minLabel: "Rustig",
@@ -135,7 +202,7 @@ import { escapeHtml } from "../core/html.js";
       pidFields ? `<div class="oq-settings-grid oq-settings-grid--pid">${pidFields}</div>` : "",
     );
 
-    if (!tuningFields.length && !hasRoomRequestSettings && !hasFallbackSettings && !guardStatusPanel && !hasFallbackDetails && !advancedPidMarkup) {
+    if (!scheduleFields && !tuningFields.length && !hasRoomRequestSettings && !hasFallbackSettings && !guardStatusPanel && !hasFallbackDetails && !advancedPidMarkup) {
       return "";
     }
 
@@ -152,6 +219,7 @@ import { escapeHtml } from "../core/html.js";
       "Koelingsinstellingen",
       "Stel hier in wanneer koelvraag ontstaat, hoe koud het water mag worden en wanneer een gestopte koelcyclus opnieuw mag starten.",
       `
+        ${scheduleFields}
         ${tuningFields.length ? `
           <div class="oq-settings-grid">
             ${tuningFields.join("")}

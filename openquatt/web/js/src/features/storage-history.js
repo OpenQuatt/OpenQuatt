@@ -1680,8 +1680,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
         let detail = "";
         try {
           if (!coolingGuarded || (coolingScheduleRequested &&
-              (verifiedCoolingTimes < COOLING_SCHEDULE_TIME_KEYS.length ||
-                !await verifyEntityBackupSelectState(key, "Disabled")))) {
+              verifiedCoolingTimes < COOLING_SCHEDULE_TIME_KEYS.length) || !await guardCoolingSchedule()) {
             throw new Error(COOLING_GUARD_ERROR);
           }
           await setVerifiedCoolingValue(key, value);
@@ -1712,7 +1711,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
 
       for (const { key, value, section } of deferredMqttSources) {
         const guardedCoolingSource = key === COOLING_SCHEDULE_SOURCE_KEY && coolingGuarded !== null;
-        if (!mqttRestoreReady || (guardedCoolingSource && !coolingGuarded)) {
+        if (!mqttRestoreReady || (guardedCoolingSource && (!coolingGuarded || !await guardCoolingSchedule()))) {
           skipped.push(createSettingsBackupRestoreItem(
             key,
             section.label,

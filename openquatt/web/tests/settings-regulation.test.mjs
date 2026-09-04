@@ -30,7 +30,7 @@ const {
   renderSettingsCounterServiceSection,
 } = await import("../js/src/settings/service.js");
 const { renderSettingsElectricalCurrentLimitSection } = await import("../js/src/settings/electrical-limit.js");
-const { getOverviewControlCards } = await import("../js/src/views/overview.js");
+const { getOverviewControlCards, renderOverviewControlActions } = await import("../js/src/views/overview.js");
 const settingsCoreSource = await readFile(new URL("../js/src/settings/core.js", import.meta.url), "utf8");
 const entityActionsSource = await readFile(new URL("../js/src/core/entity-actions.js", import.meta.url), "utf8");
 const mockDeviceSource = await readFile(new URL("../js/mock-device.js", import.meta.url), "utf8");
@@ -551,13 +551,23 @@ test("dagelijks koelvenster toont configuratie en fail-closed status", () => {
 
   resetSettingsState(baseEntities);
   let markup = renderSettingsCoolingSection();
-  assert.match(markup, /Dagelijks tijdvenster/);
-  assert.match(markup, /Start \(inclusief\)/);
-  assert.match(markup, /Einde \(exclusief\) · Open/);
-  assert.match(markup, /Kies Dagelijks tijdvenster als bron/);
-  assert.match(markup, /Nachtvensters lopen door/);
-  assert.match(markup, /koelbeveiligingen blijven gelden/);
+  assert.match(markup, /Dagelijks koelvenster/);
+  assert.match(markup, /oq-settings-cooling-schedule is-enabled/);
+  assert.match(markup, /Start koelvenster/);
+  assert.match(markup, /Einde koelvenster/);
+  assert.match(markup, /role="switch"/);
+  assert.match(markup, /data-control-option="Disabled"/);
+  assert.match(markup, /aria-checked="true"/);
+  assert.match(markup, /Kamerinstelling en koelbeveiligingen blijven altijd gelden/);
+  assert.match(markup, /Open van 09:00 tot 17:00/);
   assert.equal(getCoolingScheduleStatus(), "Open");
+
+  handleSystemAction("open-cooling-schedule-modal", {});
+  assert.equal(state.systemModal, "cooling-schedule");
+  const modal = renderSystemModal();
+  assert.match(modal, /Koelvenster instellen/);
+  assert.match(modal, /oq-settings-grid oq-settings-grid--modal/);
+  assert.match(modal, /Dagelijks koelvenster/);
 
   resetSettingsState({
     ...baseEntities,
@@ -578,7 +588,7 @@ test("dagelijks koelvenster toont configuratie en fail-closed status", () => {
     coolingEnableEffectiveSource: { value: "None", state: "None" },
   });
   assert.equal(getCoolingScheduleStatus(), "Uitgeschakeld");
-  assert.match(renderSettingsCoolingSection(), /gelijke tijden staan uit/);
+  assert.match(renderSettingsCoolingSection(), /Start en einde zijn gelijk/);
 
   resetSettingsState({
     ...baseEntities,
@@ -586,6 +596,12 @@ test("dagelijks koelvenster toont configuratie en fail-closed status", () => {
     coolingEnableEffectiveSource: { value: "None", state: "None" },
   });
   assert.equal(getCoolingScheduleStatus(), "Niet geselecteerd");
+  markup = renderSettingsCoolingSection();
+  assert.match(markup, /data-control-option="Schedule"/);
+  assert.match(markup, /aria-checked="false"/);
+  assert.doesNotMatch(markup, /Start koelvenster/);
+  assert.doesNotMatch(markup, /Einde koelvenster/);
+  assert.match(markup, /<strong>Uit<\/strong>/);
 
   resetSettingsState({
     ...baseEntities,
@@ -618,6 +634,8 @@ test("overzicht labelt lokaal koelvenster en handmatige override", () => {
     manualCoolingEnable: { value: false, state: "OFF" },
     coolingEnableSelected: { value: false, state: "OFF" },
     coolingEnableSource: { value: "Schedule", state: "Schedule" },
+    coolingScheduleStartTime: { value: "09:00:00", state: "09:00:00" },
+    coolingScheduleEndTime: { value: "17:00:00", state: "17:00:00" },
     coolingEnableEffectiveSource: { value: "None", state: "None" },
     coolingEnableValid: { value: true, state: "ON" },
     coolingPermitted: { value: false, state: "OFF" },
@@ -629,6 +647,20 @@ test("overzicht labelt lokaal koelvenster en handmatige override", () => {
   let card = getOverviewControlCards().find(({ key }) => key === "manualCoolingEnable");
   assert.match(card.copy, /dagelijks tijdvenster geeft geen toestemming/);
   assert.equal(card.buttonLabel, "Handmatig aan");
+  assert.equal(card.settingsAction, "open-cooling-schedule-modal");
+  assert.match(renderOverviewControlActions(card), /Koelvenster instellen/);
+  assert.match(renderOverviewControlActions(card), /open-cooling-schedule-modal/);
+
+  const entitiesWithoutScheduleSource = {
+    ...baseEntities,
+    manualCoolingEnable: { value: false, state: "OFF" },
+    coolingScheduleStartTime: { value: "09:00:00", state: "09:00:00" },
+    coolingScheduleEndTime: { value: "17:00:00", state: "17:00:00" },
+  };
+  delete entitiesWithoutScheduleSource.coolingEnableSource;
+  resetSettingsState(entitiesWithoutScheduleSource);
+  card = getOverviewControlCards().find(({ key }) => key === "manualCoolingEnable");
+  assert.equal(card.settingsAction, "");
 
   resetSettingsState({
     ...baseEntities,
