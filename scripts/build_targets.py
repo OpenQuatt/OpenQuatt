@@ -235,9 +235,9 @@ def prepare_pr_test_assets(
         if ota_source.is_symlink() or not ota_source.is_file():
             raise SystemExit(f"Artifact {artifact_name} is missing firmware.ota.bin")
 
-        # Optie A: alleen de canonieke OTA-binary publiceren. Voor uniforme
-        # HCQ betekent dit géén aparte wifi/eth bins meer; compatibiliteit
-        # wordt via manifesten (zelfde schema als main/dev) geboden.
+        # Eén keer canoniek bouwen; voor legacy-firmware zonder
+        # manifest-capability ook wifi/eth copies met MD5 publiceren.
+        # Alle manifesten (canoniek + alias) wijzen naar de canonieke binary.
         ota_name = f"{artifact_name}.firmware.ota.bin"
         ota_dest = dist_dir / ota_name
         shutil.copy2(ota_source, ota_dest)
@@ -258,23 +258,32 @@ def prepare_pr_test_assets(
             manifest_name = manifest_name_for_artifact(target, published_name)
             (dist_dir / manifest_name).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
-        published_display_name = display_name_for_artifact(target, artifact_name)
-        assets.append(
-            {
-                "target": target["id"],
-                "hardware": target["hardware"],
-                "topology": target["topology"],
-                "connection": target["connection"],
-                "display_name": published_display_name,
-                "ota_file": ota_name,
-                "ota_url": f"{base_url}/{ota_name}",
-                "md5_file": md5_name,
-                "md5_url": f"{base_url}/{md5_name}",
-                "md5": digest,
-                "manifest_file": manifest_name_for_artifact(target, artifact_name),
-                "manifest_url": f"{base_url}/{manifest_name_for_artifact(target, artifact_name)}",
-            }
-        )
+            if published_name != artifact_name:
+                alias_ota_name = f"{published_name}.firmware.ota.bin"
+                shutil.copy2(ota_dest, dist_dir / alias_ota_name)
+                (dist_dir / f"{alias_ota_name}.md5").write_text(f"{digest}\n", encoding="utf-8")
+
+            published_display_name = display_name_for_artifact(target, published_name)
+            alias_ota_file = (
+                ota_name if published_name == artifact_name
+                else f"{published_name}.firmware.ota.bin"
+            )
+            assets.append(
+                {
+                    "target": target["id"],
+                    "hardware": target["hardware"],
+                    "topology": target["topology"],
+                    "connection": connection_for_artifact(target, published_name),
+                    "display_name": published_display_name,
+                    "ota_file": alias_ota_file,
+                    "ota_url": f"{base_url}/{alias_ota_file}",
+                    "md5_file": f"{alias_ota_file}.md5",
+                    "md5_url": f"{base_url}/{alias_ota_file}.md5",
+                    "md5": digest,
+                    "manifest_file": manifest_name_for_artifact(target, published_name),
+                    "manifest_url": f"{base_url}/{manifest_name_for_artifact(target, published_name)}",
+                }
+            )
 
     catalog = {
         "pr": str(pr_number),

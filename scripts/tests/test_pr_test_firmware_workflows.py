@@ -300,10 +300,17 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
             catalog = json.loads(
                 (repo_root / "dist/pr-firmware.json").read_text(encoding="utf-8")
             )
-            # Optie A: één canoniek asset, géén wifi/eth bins meer.
-            self.assertEqual(1, len(catalog["assets"]))
-            self.assertEqual("auto", catalog["assets"][0]["connection"])
-            self.assertEqual("Test target", catalog["assets"][0]["display_name"])
+            # Legacy-firmware zonder manifest-capability gebruikt de
+            # verbindingsspecifieke bins; daarom bestaan de alias-copies
+            # naast de canonieke binary.
+            self.assertEqual(
+                ["auto", "wifi", "eth"],
+                [asset["connection"] for asset in catalog["assets"]],
+            )
+            self.assertEqual(
+                ["Test target", "Test target Wi-Fi", "Test target Ethernet"],
+                [asset["display_name"] for asset in catalog["assets"]],
+            )
             self.assertEqual(
                 "openquatt-test.firmware.ota.bin",
                 catalog["assets"][0]["ota_file"],
@@ -313,7 +320,11 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
                 catalog["assets"][0]["manifest_file"],
             )
             for alias in ("openquatt-test-wifi", "openquatt-test-eth"):
-                self.assertFalse((repo_root / f"dist/{alias}.firmware.ota.bin").exists())
+                self.assertEqual(
+                    b"ota-firmware",
+                    (repo_root / f"dist/{alias}.firmware.ota.bin").read_bytes(),
+                )
+                self.assertTrue((repo_root / f"dist/{alias}.firmware.ota.bin.md5").is_file())
 
             manifests = {
                 name: json.loads((repo_root / f"dist/{name}").read_text(encoding="utf-8"))

@@ -782,10 +782,59 @@ script:
                 id(oq_firmware_update_status).publish_state("Starting");
                 id(oq_firmware_update_progress).publish_state(0.0f);
             - delay: 1500ms
-            - script.execute: oq_watch_http_ota_start
-            - update.perform:
-                id: oq_firmware_update
-                force_update: true
+            - lambda: |-
+                // Laatste gordel vlak voor perform: set_source_url() geldt
+                // pas voor een volgende check, perform() flasht uit het al
+                // aanwezige update_info. Weiger alles wat niet exact naar
+                // deze PR-release en asset wijst.
+                const std::string manifest_url = id(oq_firmware_test_manifest_url).state;
+                const std::string prefix =
+                    "https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-";
+                bool valid = manifest_url.rfind(prefix, 0) == 0;
+                if (valid) {
+                  std::string rest = manifest_url.substr(prefix.size());
+                  auto slash = rest.find('/');
+                  if (slash == std::string::npos) {
+                    valid = false;
+                  } else {
+                    std::string pr = rest.substr(0, slash);
+                    std::string manifest_file = rest.substr(slash + 1);
+                    const std::string manifest_suffix = "-ota.manifest.json";
+                    if (manifest_file.size() <= manifest_suffix.size()
+                        || manifest_file.compare(
+                               manifest_file.size() - manifest_suffix.size(),
+                               manifest_suffix.size(), manifest_suffix) != 0) {
+                      valid = false;
+                    } else {
+                      std::string ota_file = manifest_file.substr(
+                              0, manifest_file.size() - manifest_suffix.size())
+                          + ".firmware.ota.bin";
+                      const std::string expected_firmware_url = prefix + pr + "/" + ota_file;
+                      valid = id(oq_firmware_update).update_info.firmware_url
+                          == expected_firmware_url;
+                    }
+                  }
+                }
+                if (!valid) {
+                  ESP_LOGE("oq_fw", "PR test install blocked: firmware info no longer matches this PR.");
+                  id(oq_ota_phase_code) = 5;
+                  id(oq_firmware_update_status).publish_state("Error");
+                  id(oq_firmware_target_install_active) = false;
+                  return;
+                }
+            - if:
+                condition:
+                  lambda: |-
+                    return id(oq_ota_phase_code) != 5
+                        && id(oq_firmware_target_install_active);
+                then:
+                  - script.execute: oq_watch_http_ota_start
+                  - update.perform:
+                      id: oq_firmware_update
+                      force_update: true
+                else:
+                  - lambda: |-
+                      id(oq_firmware_target_install_active) = false;
           else:
             - lambda: |-
                 if (id(oq_ota_phase_code) == 5) {
@@ -911,6 +960,11 @@ select:
       then:
         - lambda: |-
             // Keep the update source aligned with the selected channel and target.
+            // No source changes while a firmware install owns the update slot.
+            if (id(oq_firmware_target_install_active)) {
+              ESP_LOGW("oq_fw", "Firmware source change ignored during active install.");
+              return;
+            }
             const bool alternate_connection_update_target =
               id(oq_firmware_update_target).current_option() == "alternate connection";
             const bool alternate_topology_update_target =
@@ -950,6 +1004,10 @@ select:
                 if (!id(oq_fw_select_callbacks_runtime_ready)) {
                   return false;
                 }
+                if (id(oq_firmware_target_install_active)) {
+                  ESP_LOGI("oq_fw", "Firmware update check skipped: install active.");
+                  return false;
+                }
                 // A real runtime selection supersedes the deferred boot check.
                 id(oq_fw_boot_check_pending) = false;
                 // Prevent duplicate update checks when the channel changes repeatedly.
@@ -979,6 +1037,11 @@ select:
       then:
         - lambda: |-
             // Switch between the current-build manifest and alternate target manifests.
+            // No source changes while a firmware install owns the update slot.
+            if (id(oq_firmware_target_install_active)) {
+              ESP_LOGW("oq_fw", "Firmware source change ignored during active install.");
+              return;
+            }
             const bool alternate_connection_update_target = x == "alternate connection";
             const bool alternate_topology_update_target = x == "alternate topology";
             const bool alternate_build_update_target = x == "alternate topology and connection";
@@ -1013,6 +1076,10 @@ select:
             condition:
               lambda: |-
                 if (!id(oq_fw_select_callbacks_runtime_ready)) {
+                  return false;
+                }
+                if (id(oq_firmware_target_install_active)) {
+                  ESP_LOGI("oq_fw", "Firmware update check skipped: install active.");
                   return false;
                 }
                 // A real runtime selection supersedes the deferred boot check.
@@ -1215,27 +1282,36 @@ button:
     icon: mdi:update
     entity_category: diagnostic
     on_press:
-      - script.execute: oq_apply_firmware_update_source
-      - script.wait: oq_apply_firmware_update_source
       - if:
           condition:
             lambda: |-
-              // A manual request supersedes the deferred boot check.
-              id(oq_fw_boot_check_pending) = false;
-              // Prevent duplicate update checks after repeated manual requests.
-              constexpr uint32_t fw_check_cooldown_ms = 1000UL;
-              const uint32_t now_ms = (uint32_t) millis();
-              const uint32_t last_request_ms = id(oq_fw_check_last_request_ms);
-              if (last_request_ms > 0 && now_ms >= last_request_ms &&
-                  (now_ms - last_request_ms) < fw_check_cooldown_ms) {
-                ESP_LOGI("oq_fw", "Firmware update check skipped: cooldown active after a recent request.");
+              if (id(oq_firmware_target_install_active)) {
+                ESP_LOGW("oq_fw", "Firmware update check ignored because an install is active.");
                 return false;
               }
-              id(oq_fw_check_last_request_ms) = now_ms;
               return true;
           then:
-            - update.check:
-                id: oq_firmware_update
+            - script.execute: oq_apply_firmware_update_source
+            - script.wait: oq_apply_firmware_update_source
+            - if:
+                condition:
+                  lambda: |-
+                    // A manual request supersedes the deferred boot check.
+                    id(oq_fw_boot_check_pending) = false;
+                    // Prevent duplicate update checks after repeated manual requests.
+                    constexpr uint32_t fw_check_cooldown_ms = 1000UL;
+                    const uint32_t now_ms = (uint32_t) millis();
+                    const uint32_t last_request_ms = id(oq_fw_check_last_request_ms);
+                    if (last_request_ms > 0 && now_ms >= last_request_ms &&
+                        (now_ms - last_request_ms) < fw_check_cooldown_ms) {
+                      ESP_LOGI("oq_fw", "Firmware update check skipped: cooldown active after a recent request.");
+                      return false;
+                    }
+                    id(oq_fw_check_last_request_ms) = now_ms;
+                    return true;
+                then:
+                  - update.check:
+                      id: oq_firmware_update
 
   - platform: template
     id: oq_install_firmware_update_target

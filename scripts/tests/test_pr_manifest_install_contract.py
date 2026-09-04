@@ -53,11 +53,30 @@ class PrManifestInstallContractTest(unittest.TestCase):
             install_script.count('id(oq_firmware_update).set_source_url(url.c_str());'),
             3,
         )
-        self.assertIn("- update.perform:\n                id: oq_firmware_update", install_script)
+        self.assertIn("- update.perform:", install_script)
+        self.assertIn("id: oq_firmware_update", install_script)
         self.assertIn("force_update: true", install_script)
         self.assertLess(
             install_script.index("- update.check:"),
             install_script.index("- update.perform:"),
+        )
+
+    def test_update_lifecycle_is_exclusive_during_install(self) -> None:
+        self.assertIn(
+            "Firmware source change ignored during active install.",
+            COMMON_PACKAGE,
+        )
+        self.assertIn(
+            "Firmware update check skipped: install active.",
+            COMMON_PACKAGE,
+        )
+        self.assertIn(
+            "Firmware update check ignored because an install is active.",
+            COMMON_PACKAGE,
+        )
+        self.assertIn(
+            "firmware info no longer matches this PR",
+            COMMON_PACKAGE,
         )
 
     def test_webapp_uniform_selection_uses_preferred_connection(self) -> None:
