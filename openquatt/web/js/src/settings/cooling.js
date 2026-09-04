@@ -54,12 +54,7 @@ import { state } from "../core/state.js";
       : effective.includes("Schedule") ? "Open" : "Gesloten";
   }
 
-  function getCoolingScheduleStatusCopy(enabled, status, start, end, source) {
-    if (!enabled) {
-      return source && source !== "Disabled"
-        ? `Uit; koeltoestemming gebruikt nu ${formatSettingsOptionLabel(source)}.`
-        : "Uit; het lokale venster geeft geen koeltoestemming.";
-    }
+  function getCoolingScheduleStatusCopy(status, start, end) {
     if (status === "Open") {
       return `Open van ${start} tot ${end}; koeltoestemming is nu actief.`;
     }
@@ -115,8 +110,8 @@ import { state } from "../core/state.js";
             ${renderSettingsTimeField(COOLING_SCHEDULE_TIME_KEYS[0], "Start koelvenster", "De starttijd is inbegrepen.")}
             ${renderSettingsTimeField(COOLING_SCHEDULE_TIME_KEYS[1], "Einde koelvenster", "De eindtijd is niet inbegrepen. Een nachtvenster mag over middernacht lopen.")}
           </div>
+          <p class="oq-settings-cooling-schedule-status"><strong>${escapeHtml(status)}</strong><span>${escapeHtml(getCoolingScheduleStatusCopy(status, start, end))}</span></p>
         ` : ""}
-        <p class="oq-settings-cooling-schedule-status"><strong>${enabled ? escapeHtml(status) : "Uit"}</strong><span>${escapeHtml(getCoolingScheduleStatusCopy(enabled, status, start, end, source))}</span></p>
       </section>
     `;
   }

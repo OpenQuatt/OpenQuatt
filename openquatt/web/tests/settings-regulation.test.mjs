@@ -601,7 +601,7 @@ test("dagelijks koelvenster toont configuratie en fail-closed status", () => {
   assert.match(markup, /aria-checked="false"/);
   assert.doesNotMatch(markup, /Start koelvenster/);
   assert.doesNotMatch(markup, /Einde koelvenster/);
-  assert.match(markup, /<strong>Uit<\/strong>/);
+  assert.doesNotMatch(markup, /oq-settings-cooling-schedule-status/);
 
   resetSettingsState({
     ...baseEntities,
