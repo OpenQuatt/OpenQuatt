@@ -81,7 +81,7 @@ def artifact_names(target: dict[str, str]) -> list[str]:
 
 def manifest_name_for_artifact(target: dict[str, str], artifact_name: str) -> str:
     if artifact_name == target["artifact_name"]:
-        return target["manifest_name"]
+        return target.get("manifest_name") or f"{artifact_name}-ota.manifest.json"
     return f"{artifact_name}-ota.manifest.json"
 
 
@@ -150,6 +150,35 @@ def find_artifact_dir(
     raise SystemExit(f"Ambiguous artifact directories for {artifact_name}: {names}")
 
 
+def build_ota_manifest(
+    target: dict[str, str],
+    published_name: str,
+    version: str,
+    base_url: str,
+    release_url: str,
+    ota_name: str,
+    ota_md5: str,
+) -> dict:
+    """Build a standard ESPHome OTA manifest with the main/dev schema."""
+    published_display_name = display_name_for_artifact(target, published_name)
+    chip_family = target.get("chip_family") or "ESP32-S3"
+    return {
+        "name": published_display_name,
+        "version": version,
+        "builds": [
+            {
+                "chipFamily": chip_family,
+                "ota": {
+                    "path": f"{base_url}/{ota_name}",
+                    "md5": ota_md5,
+                    "release_url": release_url,
+                    "summary": f"{published_display_name} firmware {version}",
+                },
+            },
+        ],
+    }
+
+
 def prepare_release_assets(version: str, base_url: str, release_url: str) -> None:
     dist_dir = REPO_ROOT / "dist"
     dist_dir.mkdir(parents=True, exist_ok=True)
@@ -172,22 +201,15 @@ def prepare_release_assets(version: str, base_url: str, release_url: str) -> Non
         ota_md5 = md5sum(ota_dest)
 
         for published_name in artifact_names(target):
-            published_display_name = display_name_for_artifact(target, published_name)
-            manifest = {
-                "name": published_display_name,
-                "version": version,
-                "builds": [
-                    {
-                        "chipFamily": target["chip_family"],
-                        "ota": {
-                            "path": f"{base_url}/{ota_name}",
-                            "md5": ota_md5,
-                            "release_url": release_url,
-                            "summary": f"{published_display_name} firmware {version}",
-                        },
-                    },
-                ],
-            }
+            manifest = build_ota_manifest(
+                target,
+                published_name,
+                version,
+                base_url,
+                release_url,
+                ota_name,
+                ota_md5,
+            )
             manifest_path = REPO_ROOT / manifest_name_for_artifact(target, published_name)
             manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
@@ -213,15 +235,39 @@ def prepare_pr_test_assets(
         if ota_source.is_symlink() or not ota_source.is_file():
             raise SystemExit(f"Artifact {artifact_name} is missing firmware.ota.bin")
 
-        for published_name in artifact_names(target):
-            published_display_name = display_name_for_artifact(target, published_name)
-            ota_name = f"{published_name}.firmware.ota.bin"
-            ota_dest = dist_dir / ota_name
-            shutil.copy2(ota_source, ota_dest)
-            digest = md5sum(ota_dest)
-            md5_name = f"{ota_name}.md5"
-            (dist_dir / md5_name).write_text(f"{digest}\n", encoding="utf-8")
+        # Eén keer canoniek bouwen; voor legacy-firmware zonder
+        # manifest-capability ook wifi/eth copies met MD5 publiceren.
+        # Alle manifesten (canoniek + alias) wijzen naar de canonieke binary.
+        ota_name = f"{artifact_name}.firmware.ota.bin"
+        ota_dest = dist_dir / ota_name
+        shutil.copy2(ota_source, ota_dest)
+        digest = md5sum(ota_dest)
+        md5_name = f"{ota_name}.md5"
+        (dist_dir / md5_name).write_text(f"{digest}\n", encoding="utf-8")
 
+        for published_name in artifact_names(target):
+            manifest = build_ota_manifest(
+                target,
+                published_name,
+                version,
+                base_url,
+                release_url,
+                ota_name,
+                digest,
+            )
+            manifest_name = manifest_name_for_artifact(target, published_name)
+            (dist_dir / manifest_name).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+            if published_name != artifact_name:
+                alias_ota_name = f"{published_name}.firmware.ota.bin"
+                shutil.copy2(ota_dest, dist_dir / alias_ota_name)
+                (dist_dir / f"{alias_ota_name}.md5").write_text(f"{digest}\n", encoding="utf-8")
+
+            published_display_name = display_name_for_artifact(target, published_name)
+            alias_ota_file = (
+                ota_name if published_name == artifact_name
+                else f"{published_name}.firmware.ota.bin"
+            )
             assets.append(
                 {
                     "target": target["id"],
@@ -229,11 +275,13 @@ def prepare_pr_test_assets(
                     "topology": target["topology"],
                     "connection": connection_for_artifact(target, published_name),
                     "display_name": published_display_name,
-                    "ota_file": ota_name,
-                    "ota_url": f"{base_url}/{ota_name}",
-                    "md5_file": md5_name,
-                    "md5_url": f"{base_url}/{md5_name}",
+                    "ota_file": alias_ota_file,
+                    "ota_url": f"{base_url}/{alias_ota_file}",
+                    "md5_file": f"{alias_ota_file}.md5",
+                    "md5_url": f"{base_url}/{alias_ota_file}.md5",
                     "md5": digest,
+                    "manifest_file": manifest_name_for_artifact(target, published_name),
+                    "manifest_url": f"{base_url}/{manifest_name_for_artifact(target, published_name)}",
                 }
             )
 

@@ -549,6 +549,308 @@ script:
                   ESP_LOGE("oq_fw", "Firmware install blocked: target manifest check failed twice.");
                 }
 
+  - id: oq_install_firmware_test_manifest_deferred
+    mode: single
+    then:
+      - lambda: |-
+          id(oq_fw_boot_check_pending) = false;
+          id(oq_http_ota_begin_observed) = false;
+          id(oq_ota_phase_code) = 1;
+          id(oq_firmware_update_status).publish_state("Starting");
+          id(oq_firmware_update_progress).publish_state(0.0f);
+          // Claim de installatie vroeg, zodat periodieke main/dev-checks de
+          // PR-source niet kunnen overschrijven terwijl de PR-check loopt.
+          id(oq_firmware_target_install_active) = true;
+      - delay: 1500ms
+      - lambda: |-
+          // Fail-closed validatie van de PR-manifest-URL. Alleen exact
+          // OpenQuatt/OpenQuatt/releases/download/pr-<nr>/<manifest> voor
+          // dit hardware/topology-target wordt geaccepteerd. Voor uniforme
+          // HCQ is dat de canonieke naam zonder verbindingssuffix.
+          const std::string url = id(oq_firmware_test_manifest_url).state;
+          const std::string prefix =
+              "https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-";
+          std::string hardware_slug;
+          const std::string hardware = "${oq_hardware_profile}";
+          if (hardware == "waveshare") {
+            hardware_slug = "waveshare";
+          } else if (hardware == "heatpump_listener") {
+            hardware_slug = "heatpump-listener";
+          } else if (hardware == "heatpump_controller_q") {
+            hardware_slug = "heatpump-controller-q";
+          } else {
+            ESP_LOGW("oq_fw", "Test firmware rejected: unsupported hardware profile.");
+            id(oq_firmware_target_install_active) = false;
+            id(oq_ota_phase_code) = 5;
+            id(oq_firmware_update_status).publish_state("Error");
+            return;
+          }
+          #if OQ_TOPOLOGY_DUO
+          const std::string topology = "duo";
+          #else
+          const std::string topology = "single";
+          #endif
+          const std::string artifact_base = "openquatt-" + hardware_slug + "-" + topology;
+          const std::string expected_manifest =
+              artifact_base + "${oq_artifact_connection_suffix}-ota.manifest.json";
+          bool valid = url.rfind(prefix, 0) == 0;
+          if (valid) {
+            std::string rest = url.substr(prefix.size());
+            auto slash = rest.find('/');
+            std::string pr;
+            std::string file;
+            if (slash != std::string::npos) {
+              pr = rest.substr(0, slash);
+              file = rest.substr(slash + 1);
+            }
+            valid = !pr.empty() && pr.size() <= 6 && file == expected_manifest;
+            if (valid) {
+              for (char c : pr) {
+                if (c < '0' || c > '9') {
+                  valid = false;
+                  break;
+                }
+              }
+              if (valid && pr[0] == '0') {
+                valid = false;
+              }
+            }
+          }
+          if (!valid) {
+            ESP_LOGW("oq_fw", "Test firmware rejected: invalid PR manifest URL for this build.");
+            id(oq_firmware_target_install_active) = false;
+            id(oq_ota_phase_code) = 5;
+            id(oq_firmware_update_status).publish_state("Error");
+            return;
+          }
+          ESP_LOGI("oq_fw", "PR test manifest uses manifest: %s", url.c_str());
+          id(oq_firmware_update).set_source_url(url.c_str());
+      - lambda: |-
+          if (id(oq_ota_phase_code) == 5) {
+            return;
+          }
+          id(oq_fw_check_request_generation) += 1;
+          if (id(oq_fw_check_request_generation) == 0) {
+            id(oq_fw_check_request_generation) = 1;
+          }
+          id(oq_fw_check_target_ready) = false;
+          ESP_LOGI("oq_fw", "Waiting for PR test manifest check %lu before install.",
+                   (unsigned long) id(oq_fw_check_request_generation));
+      - update.check:
+          id: oq_firmware_update
+      - wait_until:
+          condition:
+            lambda: |-
+              return id(oq_fw_check_completed_generation) == id(oq_fw_check_request_generation)
+                  || id(oq_ota_phase_code) == 5;
+          timeout: 20s
+      - lambda: |-
+          // PR-specifieke exact-URL-validatie: een reeds lopende normale
+          // manifestcheck kan een stale resultaat publiceren. De generieke
+          // target_ready controleert slechts het suffix van de firmware-
+          // bestandsnaam, die voor main/dev en PR gelijk is. Wijs daarom
+          // alles af wat niet exact naar deze PR-release en asset wijst.
+          if (id(oq_ota_phase_code) == 5) {
+            return;
+          }
+          if (id(oq_fw_check_completed_generation) != id(oq_fw_check_request_generation)) {
+            return;
+          }
+          const std::string manifest_url = id(oq_firmware_test_manifest_url).state;
+          const std::string prefix =
+              "https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-";
+          if (manifest_url.rfind(prefix, 0) != 0) {
+            id(oq_ota_phase_code) = 5;
+            id(oq_firmware_update_status).publish_state("Error");
+            ESP_LOGW("oq_fw", "PR test install blocked: manifest URL changed mid-flight.");
+            return;
+          }
+          std::string rest = manifest_url.substr(prefix.size());
+          auto slash = rest.find('/');
+          if (slash == std::string::npos) {
+            id(oq_ota_phase_code) = 5;
+            id(oq_firmware_update_status).publish_state("Error");
+            return;
+          }
+          std::string pr = rest.substr(0, slash);
+          std::string manifest_file = rest.substr(slash + 1);
+          const std::string manifest_suffix = "-ota.manifest.json";
+          if (manifest_file.size() <= manifest_suffix.size()
+              || manifest_file.compare(
+                     manifest_file.size() - manifest_suffix.size(),
+                     manifest_suffix.size(), manifest_suffix) != 0) {
+            id(oq_ota_phase_code) = 5;
+            id(oq_firmware_update_status).publish_state("Error");
+            return;
+          }
+          std::string ota_file = manifest_file.substr(
+                  0, manifest_file.size() - manifest_suffix.size())
+              + ".firmware.ota.bin";
+          const std::string expected_firmware_url = prefix + pr + "/" + ota_file;
+          const std::string actual_firmware_url =
+              id(oq_firmware_update).update_info.firmware_url;
+          if (actual_firmware_url != expected_firmware_url) {
+            ESP_LOGW("oq_fw", "PR test manifest check rejected stale result for this install.");
+            return;
+          }
+          id(oq_fw_check_target_ready) = true;
+      - if:
+          condition:
+            lambda: |-
+              return id(oq_ota_phase_code) != 5
+                  && (id(oq_fw_check_completed_generation) != id(oq_fw_check_request_generation)
+                      || !id(oq_fw_check_target_ready));
+          then:
+            - lambda: |-
+                // Herstel de PR-source voor de retry: een stale normale check
+                // kan de source hebben laten staan op main/dev.
+                const std::string url = id(oq_firmware_test_manifest_url).state;
+                id(oq_firmware_update).set_source_url(url.c_str());
+                id(oq_fw_check_request_generation) += 1;
+                if (id(oq_fw_check_request_generation) == 0) {
+                  id(oq_fw_check_request_generation) = 1;
+                }
+                id(oq_fw_check_target_ready) = false;
+                ESP_LOGW("oq_fw", "PR test manifest check did not complete; retrying check %lu once.",
+                         (unsigned long) id(oq_fw_check_request_generation));
+            - update.check:
+                id: oq_firmware_update
+            - wait_until:
+                condition:
+                  lambda: |-
+                    return id(oq_fw_check_completed_generation) == id(oq_fw_check_request_generation);
+                timeout: 20s
+            - lambda: |-
+                if (id(oq_fw_check_completed_generation) != id(oq_fw_check_request_generation)) {
+                  return;
+                }
+                const std::string manifest_url = id(oq_firmware_test_manifest_url).state;
+                const std::string prefix =
+                    "https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-";
+                if (manifest_url.rfind(prefix, 0) != 0) {
+                  id(oq_ota_phase_code) = 5;
+                  id(oq_firmware_update_status).publish_state("Error");
+                  return;
+                }
+                std::string rest = manifest_url.substr(prefix.size());
+                auto slash = rest.find('/');
+                if (slash == std::string::npos) {
+                  id(oq_ota_phase_code) = 5;
+                  id(oq_firmware_update_status).publish_state("Error");
+                  return;
+                }
+                std::string pr = rest.substr(0, slash);
+                std::string manifest_file = rest.substr(slash + 1);
+                const std::string manifest_suffix = "-ota.manifest.json";
+                if (manifest_file.size() <= manifest_suffix.size()
+                    || manifest_file.compare(
+                           manifest_file.size() - manifest_suffix.size(),
+                           manifest_suffix.size(), manifest_suffix) != 0) {
+                  id(oq_ota_phase_code) = 5;
+                  id(oq_firmware_update_status).publish_state("Error");
+                  return;
+                }
+                std::string ota_file = manifest_file.substr(
+                        0, manifest_file.size() - manifest_suffix.size())
+                    + ".firmware.ota.bin";
+                const std::string expected_firmware_url = prefix + pr + "/" + ota_file;
+                const std::string actual_firmware_url =
+                    id(oq_firmware_update).update_info.firmware_url;
+                if (actual_firmware_url != expected_firmware_url) {
+                  ESP_LOGW("oq_fw", "PR test manifest retry rejected stale result.");
+                  return;
+                }
+                id(oq_fw_check_target_ready) = true;
+      - if:
+          condition:
+            lambda: |-
+              return id(oq_ota_phase_code) != 5
+                  && id(oq_fw_check_completed_generation) == id(oq_fw_check_request_generation)
+                  && id(oq_fw_check_target_ready)
+                  && !id(oq_runtime_polling_paused).state
+                  && id(oq_firmware_target_install_active);
+          then:
+            - lambda: |-
+                // Bevestig de PR-source nogmaals vlak voor perform, zodat een
+                // tussentijdse kanaal/target-wissel geen main/dev installeert.
+                const std::string url = id(oq_firmware_test_manifest_url).state;
+                id(oq_firmware_update).set_source_url(url.c_str());
+                id(oq_firmware_target_install_attempt) = 1;
+                id(oq_http_ota_begin_observed) = false;
+                id(oq_runtime_polling_paused).publish_state(true);
+                ESP_LOGI("oq_fw", "Runtime polling paused before deferred PR test OTA.");
+                id(oq_firmware_update_status).publish_state("Starting");
+                id(oq_firmware_update_progress).publish_state(0.0f);
+            - delay: 1500ms
+            - lambda: |-
+                // Laatste gordel vlak voor perform: set_source_url() geldt
+                // pas voor een volgende check, perform() flasht uit het al
+                // aanwezige update_info. Weiger alles wat niet exact naar
+                // deze PR-release en asset wijst.
+                const std::string manifest_url = id(oq_firmware_test_manifest_url).state;
+                const std::string prefix =
+                    "https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-";
+                bool valid = manifest_url.rfind(prefix, 0) == 0;
+                if (valid) {
+                  std::string rest = manifest_url.substr(prefix.size());
+                  auto slash = rest.find('/');
+                  if (slash == std::string::npos) {
+                    valid = false;
+                  } else {
+                    std::string pr = rest.substr(0, slash);
+                    std::string manifest_file = rest.substr(slash + 1);
+                    const std::string manifest_suffix = "-ota.manifest.json";
+                    if (manifest_file.size() <= manifest_suffix.size()
+                        || manifest_file.compare(
+                               manifest_file.size() - manifest_suffix.size(),
+                               manifest_suffix.size(), manifest_suffix) != 0) {
+                      valid = false;
+                    } else {
+                      std::string ota_file = manifest_file.substr(
+                              0, manifest_file.size() - manifest_suffix.size())
+                          + ".firmware.ota.bin";
+                      const std::string expected_firmware_url = prefix + pr + "/" + ota_file;
+                      valid = id(oq_firmware_update).update_info.firmware_url
+                          == expected_firmware_url;
+                    }
+                  }
+                }
+                if (!valid) {
+                  ESP_LOGE("oq_fw", "PR test install blocked before OTA start; runtime polling resumed.");
+                  id(oq_firmware_target_install_active) = false;
+                  id(oq_runtime_polling_paused).publish_state(false);
+                  id(oq_ota_phase_code) = 5;
+                  id(oq_firmware_update_status).publish_state("Error");
+                  return;
+                }
+            - if:
+                condition:
+                  lambda: |-
+                    return id(oq_ota_phase_code) != 5
+                        && id(oq_firmware_target_install_active);
+                then:
+                  - script.execute: oq_watch_http_ota_start
+                  - update.perform:
+                      id: oq_firmware_update
+                      force_update: true
+                else:
+                  - lambda: |-
+                      id(oq_firmware_target_install_active) = false;
+          else:
+            - lambda: |-
+                if (id(oq_ota_phase_code) == 5) {
+                  id(oq_firmware_target_install_active) = false;
+                  return;
+                }
+                if (id(oq_runtime_polling_paused).state) {
+                  ESP_LOGW("oq_fw", "PR test install request cancelled because another OTA became active.");
+                } else {
+                  id(oq_ota_phase_code) = 5;
+                  id(oq_firmware_update_status).publish_state("Error");
+                  ESP_LOGE("oq_fw", "PR test install blocked: target manifest check failed twice.");
+                }
+                id(oq_firmware_target_install_active) = false;
+
   - id: oq_capture_overview_trend_sample
     mode: single
     then:
@@ -630,21 +932,12 @@ openquatt_energy_history:
   clock: oq_time
 
 # ==============================================================================
-# PR TEST FIRMWARE OTA
+# PR TEST FIRMWARE VIA OTA-MANIFEST (manifest preferred, directe OTA+MD5 als fallback)
 # ==============================================================================
 text:
   - platform: template
-    name: "Firmware Test OTA URL"
-    id: oq_firmware_test_ota_url
-    internal: true
-    mode: text
-    optimistic: true
-    restore_value: false
-    max_length: 255
-
-  - platform: template
-    name: "Firmware Test OTA MD5 URL"
-    id: oq_firmware_test_ota_md5_url
+    name: "Firmware Test Manifest URL"
+    id: oq_firmware_test_manifest_url
     internal: true
     mode: text
     optimistic: true
@@ -668,6 +961,11 @@ select:
       then:
         - lambda: |-
             // Keep the update source aligned with the selected channel and target.
+            // No source changes while a firmware install owns the update slot.
+            if (id(oq_firmware_target_install_active)) {
+              ESP_LOGW("oq_fw", "Firmware source change ignored during active install.");
+              return;
+            }
             const bool alternate_connection_update_target =
               id(oq_firmware_update_target).current_option() == "alternate connection";
             const bool alternate_topology_update_target =
@@ -707,6 +1005,10 @@ select:
                 if (!id(oq_fw_select_callbacks_runtime_ready)) {
                   return false;
                 }
+                if (id(oq_firmware_target_install_active)) {
+                  ESP_LOGI("oq_fw", "Firmware update check skipped: install active.");
+                  return false;
+                }
                 // A real runtime selection supersedes the deferred boot check.
                 id(oq_fw_boot_check_pending) = false;
                 // Prevent duplicate update checks when the channel changes repeatedly.
@@ -736,6 +1038,11 @@ select:
       then:
         - lambda: |-
             // Switch between the current-build manifest and alternate target manifests.
+            // No source changes while a firmware install owns the update slot.
+            if (id(oq_firmware_target_install_active)) {
+              ESP_LOGW("oq_fw", "Firmware source change ignored during active install.");
+              return;
+            }
             const bool alternate_connection_update_target = x == "alternate connection";
             const bool alternate_topology_update_target = x == "alternate topology";
             const bool alternate_build_update_target = x == "alternate topology and connection";
@@ -770,6 +1077,10 @@ select:
             condition:
               lambda: |-
                 if (!id(oq_fw_select_callbacks_runtime_ready)) {
+                  return false;
+                }
+                if (id(oq_firmware_target_install_active)) {
+                  ESP_LOGI("oq_fw", "Firmware update check skipped: install active.");
                   return false;
                 }
                 // A real runtime selection supersedes the deferred boot check.
@@ -838,17 +1149,18 @@ select:
 
 button:
   - platform: template
-    name: "Install Firmware Test OTA"
-    id: oq_install_firmware_test_ota
+    name: "Install Firmware Test Manifest"
+    id: oq_install_firmware_test_manifest
     internal: true
     on_press:
       then:
         - if:
             condition:
               lambda: |-
-                // Accept only OpenQuatt PR-release assets for this exact build target.
-                const std::string url = id(oq_firmware_test_ota_url).state;
-                const std::string md5_url = id(oq_firmware_test_ota_md5_url).state;
+                // Fail-closed: alleen exact OpenQuatt/OpenQuatt/releases/download/pr-<nr>/
+                // met exact de manifestnaam voor hardware en topologie. Voor
+                // uniforme HCQ de canonieke naam zonder verbindingssuffix.
+                const std::string url = id(oq_firmware_test_manifest_url).state;
                 const std::string prefix =
                     "https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-";
                 std::string hardware_slug;
@@ -860,7 +1172,8 @@ button:
                 } else if (hardware == "heatpump_controller_q") {
                   hardware_slug = "heatpump-controller-q";
                 } else {
-                  ESP_LOGW("oq_fw", "Test firmware rejected: unsupported hardware profile '%s'.", hardware.c_str());
+                  ESP_LOGW("oq_fw", "Test firmware rejected: unsupported hardware profile.");
+                  id(oq_firmware_update_status).publish_state("Error");
                   return false;
                 }
                 #if OQ_TOPOLOGY_DUO
@@ -870,36 +1183,43 @@ button:
                 #endif
                 const std::string artifact_base =
                     "openquatt-" + hardware_slug + "-" + topology;
-                const std::string expected_file =
-                    artifact_base + "${oq_artifact_connection_suffix}.firmware.ota.bin";
-                const bool valid_prefix = url.rfind(prefix, 0) == 0;
-                bool valid_file =
-                    url.size() >= expected_file.size() &&
-                    url.compare(url.size() - expected_file.size(), expected_file.size(), expected_file) == 0;
-                #ifdef USE_OPENQUATT_NETWORK
-                // Stage-one WiFi/Ethernet names remain byte-identical aliases so
-                // trusted PR publishing also works before this tooling reaches dev.
-                for (const char *connection_suffix : {"-wifi", "-eth"}) {
-                  const std::string alias_file =
-                      artifact_base + connection_suffix + ".firmware.ota.bin";
-                  valid_file = valid_file ||
-                      (url.size() >= alias_file.size() &&
-                       url.compare(url.size() - alias_file.size(), alias_file.size(), alias_file) == 0);
-                }
-                #endif
-                const bool valid_md5 = md5_url == (url + ".md5");
-                if (!valid_prefix || !valid_file || !valid_md5) {
-                  ESP_LOGW("oq_fw", "Test firmware rejected: invalid OTA URL for this build.");
+                const std::string expected_manifest =
+                    artifact_base + "${oq_artifact_connection_suffix}-ota.manifest.json";
+                if (url.rfind(prefix, 0) != 0) {
+                  ESP_LOGW("oq_fw", "Test firmware rejected: invalid PR manifest prefix.");
                   id(oq_firmware_update_status).publish_state("Error");
                   return false;
                 }
-                return true;
+                std::string rest = url.substr(prefix.size());
+                auto slash = rest.find('/');
+                if (slash == std::string::npos) {
+                  ESP_LOGW("oq_fw", "Test firmware rejected: invalid PR manifest URL.");
+                  id(oq_firmware_update_status).publish_state("Error");
+                  return false;
+                }
+                std::string pr = rest.substr(0, slash);
+                std::string file = rest.substr(slash + 1);
+                bool valid = !pr.empty() && pr.size() <= 6 && file == expected_manifest;
+                if (valid) {
+                  for (char c : pr) {
+                    if (c < '0' || c > '9') {
+                      valid = false;
+                      break;
+                    }
+                  }
+                  if (valid && pr[0] == '0') {
+                    valid = false;
+                  }
+                }
+                if (!valid) {
+                  ESP_LOGW("oq_fw", "Test firmware rejected: invalid PR manifest URL for this build.");
+                  id(oq_firmware_update_status).publish_state("Error");
+                  return false;
+                }
+                return !id(oq_runtime_polling_paused).state
+                    && !id(oq_firmware_target_install_active);
             then:
-              - ota.http_request.flash:
-                  url: !lambda |-
-                    return id(oq_firmware_test_ota_url).state;
-                  md5_url: !lambda |-
-                    return id(oq_firmware_test_ota_md5_url).state;
+              - script.execute: oq_install_firmware_test_manifest_deferred
 
   - platform: restart
     name: Restart
@@ -963,27 +1283,36 @@ button:
     icon: mdi:update
     entity_category: diagnostic
     on_press:
-      - script.execute: oq_apply_firmware_update_source
-      - script.wait: oq_apply_firmware_update_source
       - if:
           condition:
             lambda: |-
-              // A manual request supersedes the deferred boot check.
-              id(oq_fw_boot_check_pending) = false;
-              // Prevent duplicate update checks after repeated manual requests.
-              constexpr uint32_t fw_check_cooldown_ms = 1000UL;
-              const uint32_t now_ms = (uint32_t) millis();
-              const uint32_t last_request_ms = id(oq_fw_check_last_request_ms);
-              if (last_request_ms > 0 && now_ms >= last_request_ms &&
-                  (now_ms - last_request_ms) < fw_check_cooldown_ms) {
-                ESP_LOGI("oq_fw", "Firmware update check skipped: cooldown active after a recent request.");
+              if (id(oq_firmware_target_install_active)) {
+                ESP_LOGW("oq_fw", "Firmware update check ignored because an install is active.");
                 return false;
               }
-              id(oq_fw_check_last_request_ms) = now_ms;
               return true;
           then:
-            - update.check:
-                id: oq_firmware_update
+            - script.execute: oq_apply_firmware_update_source
+            - script.wait: oq_apply_firmware_update_source
+            - if:
+                condition:
+                  lambda: |-
+                    // A manual request supersedes the deferred boot check.
+                    id(oq_fw_boot_check_pending) = false;
+                    // Prevent duplicate update checks after repeated manual requests.
+                    constexpr uint32_t fw_check_cooldown_ms = 1000UL;
+                    const uint32_t now_ms = (uint32_t) millis();
+                    const uint32_t last_request_ms = id(oq_fw_check_last_request_ms);
+                    if (last_request_ms > 0 && now_ms >= last_request_ms &&
+                        (now_ms - last_request_ms) < fw_check_cooldown_ms) {
+                      ESP_LOGI("oq_fw", "Firmware update check skipped: cooldown active after a recent request.");
+                      return false;
+                    }
+                    id(oq_fw_check_last_request_ms) = now_ms;
+                    return true;
+                then:
+                  - update.check:
+                      id: oq_firmware_update
 
   - platform: template
     id: oq_install_firmware_update_target

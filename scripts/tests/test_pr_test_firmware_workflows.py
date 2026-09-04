@@ -106,13 +106,14 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
 
         self.assertEqual(Path("/tmp/firmware"), args.artifact_root)
 
-    def test_unified_q_uploads_trusted_publisher_compatibility_artifacts(self) -> None:
-        self.assertIn("Upload WiFi compatibility OTA artifact", REUSABLE_BUILD_WORKFLOW)
-        self.assertIn("Upload Ethernet compatibility OTA artifact", REUSABLE_BUILD_WORKFLOW)
+    def test_unified_q_has_no_compatibility_artifact_uploads(self) -> None:
+        self.assertNotIn("Upload WiFi compatibility OTA artifact", REUSABLE_BUILD_WORKFLOW)
+        self.assertNotIn("Upload Ethernet compatibility OTA artifact", REUSABLE_BUILD_WORKFLOW)
         self.assertEqual(
-            2,
+            0,
             REUSABLE_BUILD_WORKFLOW.count("matrix.target.connection == 'auto'"),
         )
+        self.assertIn("dist/*-ota.manifest.json", PUBLISH_WORKFLOW)
 
     def test_symlinked_artifact_directory_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -181,6 +182,12 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
             self.assertEqual(b"firmware", (repo_root / "dist/openquatt-test.firmware.ota.bin").read_bytes())
             self.assertTrue((repo_root / "dist/openquatt-test.firmware.ota.bin.md5").is_file())
             self.assertTrue((repo_root / "dist/pr-firmware.json").is_file())
+            manifest = json.loads((repo_root / "dist/openquatt-test-ota.manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("v1.2.3-pr.423.1+1234567", manifest["version"])
+            self.assertEqual(
+                "https://example.invalid/download/openquatt-test.firmware.ota.bin",
+                manifest["builds"][0]["ota"]["path"],
+            )
 
     def test_release_aliases_get_compatibility_manifests_without_duplicate_binaries(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -255,7 +262,7 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
                     manifests[f"{alias}-ota.manifest.json"]["name"],
                 )
 
-    def test_pr_aliases_keep_legacy_connection_catalog_entries(self) -> None:
+    def test_pr_aliases_publish_canonical_bin_with_compatibility_manifests(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
             artifact_dir = repo_root / "dist/openquatt-test"
@@ -268,6 +275,8 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
     status: enabled
     artifact_name: openquatt-test
     artifact_aliases: openquatt-test-wifi,openquatt-test-eth
+    manifest_name: openquatt-test-ota.manifest.json
+    chip_family: ESP32-S3
     hardware: heatpump_controller_q
     topology: duo
     connection: auto
@@ -291,6 +300,9 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
             catalog = json.loads(
                 (repo_root / "dist/pr-firmware.json").read_text(encoding="utf-8")
             )
+            # Legacy-firmware zonder manifest-capability gebruikt de
+            # verbindingsspecifieke bins; daarom bestaan de alias-copies
+            # naast de canonieke binary.
             self.assertEqual(
                 ["auto", "wifi", "eth"],
                 [asset["connection"] for asset in catalog["assets"]],
@@ -299,11 +311,33 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
                 ["Test target", "Test target Wi-Fi", "Test target Ethernet"],
                 [asset["display_name"] for asset in catalog["assets"]],
             )
+            self.assertEqual(
+                "openquatt-test.firmware.ota.bin",
+                catalog["assets"][0]["ota_file"],
+            )
+            self.assertEqual(
+                "openquatt-test-ota.manifest.json",
+                catalog["assets"][0]["manifest_file"],
+            )
             for alias in ("openquatt-test-wifi", "openquatt-test-eth"):
                 self.assertEqual(
                     b"ota-firmware",
                     (repo_root / f"dist/{alias}.firmware.ota.bin").read_bytes(),
                 )
+                self.assertTrue((repo_root / f"dist/{alias}.firmware.ota.bin.md5").is_file())
+
+            manifests = {
+                name: json.loads((repo_root / f"dist/{name}").read_text(encoding="utf-8"))
+                for name in (
+                    "openquatt-test-ota.manifest.json",
+                    "openquatt-test-wifi-ota.manifest.json",
+                    "openquatt-test-eth-ota.manifest.json",
+                )
+            }
+            expected_ota_path = "https://example.invalid/download/openquatt-test.firmware.ota.bin"
+            for manifest in manifests.values():
+                self.assertEqual("v1.2.3-pr.476.1+1234567", manifest["version"])
+                self.assertEqual(expected_ota_path, manifest["builds"][0]["ota"]["path"])
 
 
 if __name__ == "__main__":

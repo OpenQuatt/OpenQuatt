@@ -172,26 +172,61 @@ import { render } from "../core/render-scheduler.js";
   export function getFirmwareTestTargetModel() {
     const hardware = getFirmwareHardwareProfile();
     const topology = getInstallationTopology();
+    if (topology !== "single" && topology !== "duo") {
+      return {
+        available: false,
+        label: "Onbekend target",
+        error: "Deze firmware meldt geen herkenbaar hardware- of opstellingsprofiel.",
+      };
+    }
+    const topologyLabel = topology === "duo" ? "Duo" : "Single";
+
+    // Uniforme HCQ-build (herkenbaar aan preferredConnection) gebruikt het
+    // canonieke topologie-artifact zonder verbindingssuffix.
+    // preferredConnection is een runtimevoorkeur en geen buildvariant.
+    // Oudere HCQ-firmware zonder preferredConnection valt terug op het
+    // verbindingsspecifieke artifact voor de legacy OTA+MD5-route.
+    if (hardware === "heatpump_controller_q" && hasEntity("preferredConnection")) {
+      const artifactName = `openquatt-heatpump-controller-q-${topology}`;
+      return {
+        available: true,
+        artifactName,
+        otaFileName: `${artifactName}.firmware.ota.bin`,
+        manifestFileName: `${artifactName}-ota.manifest.json`,
+        label: `Heatpump Controller Q ${topologyLabel}`,
+      };
+    }
+
     const connection = getFirmwareBuildConnection();
+    if (hardware === "heatpump_controller_q") {
+      if (connection !== "wifi" && connection !== "eth") {
+        return {
+          available: false,
+          label: "Onbekend target",
+          error: "Deze firmware meldt geen herkenbaar hardware-, opstelling- of verbindingsprofiel.",
+        };
+      }
+      const artifactName = `openquatt-heatpump-controller-q-${topology}-${connection}`;
+      return {
+        available: true,
+        artifactName,
+        otaFileName: `${artifactName}.firmware.ota.bin`,
+        manifestFileName: `${artifactName}-ota.manifest.json`,
+        label: `Heatpump Controller Q ${topologyLabel} ${getFirmwareConnectionLabel(connection)}`,
+      };
+    }
     const hardwareMap = {
       waveshare: {
         slug: "waveshare",
         label: "Waveshare",
-        connections: ["wifi"],
       },
       heatpump_listener: {
         slug: "heatpump-listener",
         label: "Heatpump Listener",
-        connections: ["wifi"],
-      },
-      heatpump_controller_q: {
-        slug: "heatpump-controller-q",
-        label: "Heatpump Controller Q",
-        connections: ["wifi", "eth"],
       },
     };
     const profile = hardwareMap[hardware];
-    if (!profile || (topology !== "single" && topology !== "duo") || !profile.connections.includes(connection)) {
+    if (!profile || connection !== "wifi") {
       return {
         available: false,
         label: "Onbekend target",
@@ -199,13 +234,13 @@ import { render } from "../core/render-scheduler.js";
       };
     }
 
-    const artifactName = `openquatt-${profile.slug}-${topology}-${connection}`;
-    const topologyLabel = topology === "duo" ? "Duo" : "Single";
+    const artifactName = `openquatt-${profile.slug}-${topology}-wifi`;
     return {
       available: true,
       artifactName,
       otaFileName: `${artifactName}.firmware.ota.bin`,
-      label: `${profile.label} ${topologyLabel} ${getFirmwareConnectionLabel(connection)}`,
+      manifestFileName: `${artifactName}-ota.manifest.json`,
+      label: `${profile.label} ${topologyLabel} Wi-Fi`,
     };
   }
 
@@ -215,12 +250,24 @@ import { render } from "../core/render-scheduler.js";
       return null;
     }
     const baseUrl = `https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-${normalizedPrNumber}`;
+    const manifestFileName = target.manifestFileName || `${target.artifactName}-ota.manifest.json`;
+    const manifestUrl = `${baseUrl}/${manifestFileName}`;
     const otaUrl = `${baseUrl}/${target.otaFileName}`;
     return {
       otaUrl,
       md5Url: `${otaUrl}.md5`,
+      manifestUrl,
+      manifestFileName,
       label: `PR ${normalizedPrNumber} · ${target.label}`,
     };
+  }
+
+  export function hasFirmwareTestManifestCapability() {
+    return Boolean(hasEntity("firmwareTestManifestUrl") && hasEntity("installFirmwareTestManifest"));
+  }
+
+  export function hasFirmwareTestLegacyCapability() {
+    return Boolean(hasEntity("firmwareTestOtaUrl") && hasEntity("firmwareTestOtaMd5Url") && hasEntity("installFirmwareTestOta"));
   }
 
   export function getUpdateStatus() {
@@ -1319,7 +1366,7 @@ import { render } from "../core/render-scheduler.js";
     const prNumber = getFirmwareTestPrNumber();
     const target = getFirmwareTestTargetModel();
     const urls = getFirmwareTestAssetUrls(prNumber, target);
-    const controlsAvailable = Boolean(target.available && hasEntity("firmwareTestOtaUrl") && hasEntity("firmwareTestOtaMd5Url") && hasEntity("installFirmwareTestOta"));
+    const controlsAvailable = Boolean(target.available && (hasFirmwareTestManifestCapability() || hasFirmwareTestLegacyCapability()));
     const ready = Boolean(prNumber && controlsAvailable);
     const build = state.updateTestFirmwareBuild || null;
     const targetLabel = target.available ? target.label : target.error;

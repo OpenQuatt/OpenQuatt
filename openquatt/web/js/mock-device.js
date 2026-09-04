@@ -4763,8 +4763,8 @@
       }
     } else if (name === "Install Firmware Update Target") {
       handleUpdateInstall("Firmware Update");
-    } else if (name === "Install Firmware Test OTA") {
-      handleUpdateInstall("Firmware Test OTA");
+    } else if (name === "Install Firmware Test OTA" || name === "Install Firmware Test Manifest") {
+      handleUpdateInstall(name === "Install Firmware Test Manifest" ? "Firmware Test Manifest" : "Firmware Test OTA");
     } else if (name === "Trendhistorie nu opslaan") {
       state.trendFlashLastFlushAt = Date.now();
       state.trendFlashNewestAt = Date.now() - (2 * 60 * 1000);
@@ -4786,10 +4786,10 @@
   }
 
   function handleUpdateInstall(name) {
-    if (name !== "Firmware Update" && name !== "Firmware Test OTA") {
+    if (name !== "Firmware Update" && name !== "Firmware Test OTA" && name !== "Firmware Test Manifest") {
       return;
     }
-    const testFirmware = name === "Firmware Test OTA";
+    const testFirmware = name === "Firmware Test OTA" || name === "Firmware Test Manifest";
     const updateEntity = getEntity("update", "Firmware Update");
     if (!updateEntity) {
       return;

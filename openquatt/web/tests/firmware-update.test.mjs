@@ -85,14 +85,18 @@ function setPrToDevState() {
 test("PR firmware uses deterministic release URLs without the GitHub REST API", () => {
   const target = {
     available: true,
-    label: "Heatpump Controller Q Duo Wi-Fi",
-    otaFileName: "openquatt-heatpump-controller-q-duo-wifi.firmware.ota.bin",
+    label: "Heatpump Controller Q Duo",
+    artifactName: "openquatt-heatpump-controller-q-duo",
+    otaFileName: "openquatt-heatpump-controller-q-duo.firmware.ota.bin",
+    manifestFileName: "openquatt-heatpump-controller-q-duo-ota.manifest.json",
   };
 
   assert.deepEqual(getFirmwareTestAssetUrls(395, target), {
-    otaUrl: "https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-395/openquatt-heatpump-controller-q-duo-wifi.firmware.ota.bin",
-    md5Url: "https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-395/openquatt-heatpump-controller-q-duo-wifi.firmware.ota.bin.md5",
-    label: "PR 395 · Heatpump Controller Q Duo Wi-Fi",
+    otaUrl: "https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-395/openquatt-heatpump-controller-q-duo.firmware.ota.bin",
+    md5Url: "https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-395/openquatt-heatpump-controller-q-duo.firmware.ota.bin.md5",
+    manifestUrl: "https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-395/openquatt-heatpump-controller-q-duo-ota.manifest.json",
+    manifestFileName: "openquatt-heatpump-controller-q-duo-ota.manifest.json",
+    label: "PR 395 · Heatpump Controller Q Duo",
   });
   assert.equal(getFirmwareTestAssetUrls("395/../../dev-latest", target), null);
 });
@@ -138,9 +142,9 @@ test("PR firmware starts with one complete render before the first device write"
     hardwareProfileText: { state: "heatpump_controller_q" },
     installationTopology: { state: "duo" },
     connectionText: { state: "wifi" },
-    installFirmwareTestOta: { state: "" },
-    firmwareTestOtaUrl: { state: "" },
-    firmwareTestOtaMd5Url: { state: "" },
+    preferredConnection: { state: "Automatic", value: "Automatic", option: ["Automatic", "WiFi", "Ethernet"] },
+    installFirmwareTestManifest: { state: "" },
+    firmwareTestManifestUrl: { state: "" },
   };
   state.updateTestFirmwarePr = "528";
   state.updateTestFirmwareConfirmed = true;
@@ -167,13 +171,13 @@ test("PR firmware starts with one complete render before the first device write"
     {
       type: "render",
       busy: true,
-      build: "PR 528 · Heatpump Controller Q Duo Wi-Fi",
+      build: "PR 528 · Heatpump Controller Q Duo",
     },
     { type: "fetch" },
     {
       type: "render",
       busy: false,
-      build: "PR 528 · Heatpump Controller Q Duo Wi-Fi",
+      build: "PR 528 · Heatpump Controller Q Duo",
     },
   ]);
 });

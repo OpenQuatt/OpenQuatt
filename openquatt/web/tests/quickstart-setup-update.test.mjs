@@ -187,9 +187,10 @@ test("de uniforme Q-firmware beheert verbinding los van OTA", () => {
   assert.equal(getFirmwareConnectionSwitchModel(), null);
   assert.deepEqual(getFirmwareTestTargetModel(), {
     available: true,
-    artifactName: "openquatt-heatpump-controller-q-single-wifi",
-    otaFileName: "openquatt-heatpump-controller-q-single-wifi.firmware.ota.bin",
-    label: "Heatpump Controller Q Single Wi-Fi",
+    artifactName: "openquatt-heatpump-controller-q-single",
+    otaFileName: "openquatt-heatpump-controller-q-single.firmware.ota.bin",
+    manifestFileName: "openquatt-heatpump-controller-q-single-ota.manifest.json",
+    label: "Heatpump Controller Q Single",
   });
 
   const topologyModel = getFirmwareBuildSwitchModel("duo", "eth");
