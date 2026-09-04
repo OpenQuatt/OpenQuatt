@@ -13,6 +13,12 @@ import { renderSettingsInfoToggle } from "../settings/controls.js";
 
 export const WEB_SERVER_LOG_MAX_ENTRIES = 250;
 
+export const WEB_SERVER_LOG_RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000, 30000];
+
+export function isCurrentWebServerLogSourceEvent(event) {
+  return Boolean(event?.currentTarget && event.currentTarget === state.webServerLogSource);
+}
+
 export function getWebServerLogDemoEntries() {
   if (!__OQ_PREVIEW__ || typeof window === "undefined") {
     return [];
@@ -448,8 +454,11 @@ export function openWebServerLogsModal() {
     queueWebServerLogScrollRestore(scrollState);
   });
   scrollWebServerLogToBottom();
-  // Altijd historie ophalen: vult aan wat erbij kwam terwijl het modal dicht was.
-  // SSE start via syncWebServerLogStream() bij render.
+  // Altijd één historie-fetch bij openen; een reconnect doet later zelf een
+  // backfill via webServerLogNeedsBackfill. SSE start via sync bij render.
+  cancelWebServerLogReconnect();
+  state.webServerLogReconnectAttempt = 0;
+  state.webServerLogNeedsBackfill = false;
   void refreshWebServerLogHistory();
 }
 
@@ -558,7 +567,13 @@ export async function clearWebServerLogHistory() {
 export function resetWebServerLogRecoveryState() {
   const scrollState = captureWebServerLogScrollState();
   closeWebServerLogStream();
-  updateWebServerLogState({ webServerLogEnabled: null, webServerLogConnected: false, webServerLogCsrfToken: "" });
+  updateWebServerLogState({
+    webServerLogEnabled: null,
+    webServerLogConnected: false,
+    webServerLogCsrfToken: "",
+    webServerLogReconnectAttempt: 0,
+    webServerLogNeedsBackfill: false,
+  });
   clearWebServerLogOutput();
   if (state.systemModal === "webserver-logs") {
     void refreshWebServerLogHistory({ scrollState });
@@ -624,6 +639,7 @@ export function openWebServerLogStream() {
 }
 
 export function closeWebServerLogStream() {
+  cancelWebServerLogReconnect();
   const source = state.webServerLogSource;
   if (source) {
     try {
@@ -636,10 +652,48 @@ export function closeWebServerLogStream() {
   state.webServerLogConnected = false;
 }
 
-export function handleWebServerLogOpen() {
-  if (!state.webServerLogSource || state.nativeOpen) {
+export function cancelWebServerLogReconnect() {
+  if (state.webServerLogReconnectTimer !== null && state.webServerLogReconnectTimer !== undefined) {
+    globalThis.clearTimeout(state.webServerLogReconnectTimer);
+  }
+  state.webServerLogReconnectTimer = null;
+}
+
+export function scheduleWebServerLogReconnect() {
+  if (state.webServerLogReconnectTimer || !state.mounted || state.nativeOpen) {
     return;
   }
+  if (state.systemModal !== "webserver-logs" || !state.webServerLogSource) {
+    return;
+  }
+  if (state.busyAction === "clear-webserver-log-history") {
+    return;
+  }
+  const attempt = Math.max(0, state.webServerLogReconnectAttempt || 0);
+  const delay = WEB_SERVER_LOG_RECONNECT_DELAYS_MS[
+    Math.min(attempt, WEB_SERVER_LOG_RECONNECT_DELAYS_MS.length - 1)
+  ];
+  state.webServerLogReconnectTimer = globalThis.setTimeout(() => {
+    state.webServerLogReconnectTimer = null;
+    state.webServerLogReconnectAttempt = attempt + 1;
+    if (!state.mounted || state.nativeOpen || state.systemModal !== "webserver-logs") {
+      return;
+    }
+    if (state.busyAction === "clear-webserver-log-history") {
+      return;
+    }
+    closeWebServerLogStream();
+    syncWebServerLogStream();
+  }, delay);
+}
+
+export function handleWebServerLogOpen(event) {
+  if (!state.webServerLogSource || state.nativeOpen || !isCurrentWebServerLogSourceEvent(event)) {
+    return;
+  }
+
+  cancelWebServerLogReconnect();
+  state.webServerLogReconnectAttempt = 0;
 
   const scrollState = state.systemModal === "webserver-logs"
     ? captureWebServerLogScrollState()
@@ -650,7 +704,11 @@ export function handleWebServerLogOpen() {
   render();
   queueWebServerLogScrollRestore(scrollState);
 
-  if (state.systemModal === "webserver-logs") void refreshWebServerLogHistory();
+  const shouldBackfill = state.webServerLogNeedsBackfill === true;
+  state.webServerLogNeedsBackfill = false;
+  if (shouldBackfill && state.systemModal === "webserver-logs") {
+    void refreshWebServerLogHistory();
+  }
 }
 
 setWebServerLogControls({
@@ -659,8 +717,8 @@ setWebServerLogControls({
   resetRecoveryState: resetWebServerLogRecoveryState,
 });
 
-export function handleWebServerLogPing() {
-  if (!state.webServerLogSource || state.nativeOpen) {
+export function handleWebServerLogPing(event) {
+  if (!state.webServerLogSource || state.nativeOpen || !isCurrentWebServerLogSourceEvent(event)) {
     return;
   }
 
@@ -677,20 +735,26 @@ export function handleWebServerLogPing() {
 }
 
 export function handleWebServerLogError(event) {
-  if (!state.webServerLogSource) return;
+  if (!state.webServerLogSource || !isCurrentWebServerLogSourceEvent(event)) {
+    return;
+  }
 
   const scrollState = state.systemModal === "webserver-logs"
     ? captureWebServerLogScrollState()
     : null;
   state.webServerLogConnected = false;
-  state.webServerLogError = "Verbinden…";
-  if (event?.currentTarget?.readyState === 2) closeWebServerLogStream();
+  state.webServerLogError = "Live verbinding onderbroken. Opnieuw verbinden…";
+  state.webServerLogNeedsBackfill = true;
+  // EventSource.CLOSED is per spec altijd 2.
+  if (event?.currentTarget?.readyState === 2) {
+    scheduleWebServerLogReconnect();
+  }
   render();
   queueWebServerLogScrollRestore(scrollState);
 }
 
 export function handleWebServerLogMessage(event) {
-  if (!state.webServerLogSource || !event || typeof event.data !== "string") {
+  if (!state.webServerLogSource || !event || typeof event.data !== "string" || !isCurrentWebServerLogSourceEvent(event)) {
     return;
   }
 
