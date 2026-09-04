@@ -182,7 +182,7 @@ export function renderElectricalLimitFooter(view = resolveElectricalLimitView())
   const belowMarkup = !view.aboveStandard && view.belowStandard
     ? `<p class="oq-settings-electrical-note">Een lagere waarde kan het maximale verwarmings- en koelvermogen beperken.</p>`
     : "";
-  return `<div class="oq-settings-electrical-body"><div class="oq-settings-electrical-facts"><div class="oq-settings-electrical-fact"><span>Standaard voor deze installatie</span><strong>${formatDutchAmps(info.standardA)} · ${escapeHtml(info.standardLabel)}</strong></div></div>${warningMarkup}${belowMarkup}<p class="oq-settings-electrical-safety"><strong>Let op:</strong> dit is een softwarematige regelgrens en geen elektrische beveiliging. De groepzekering, bekabeling en elektrische aansluiting moeten altijd geschikt zijn voor de ingestelde stroom. Korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten.</p></div>`;
+  return `<div class="oq-settings-electrical-body">${warningMarkup}${belowMarkup}<p class="oq-settings-electrical-safety"><strong>Let op:</strong> dit is een softwarematige regelgrens en geen elektrische beveiliging. De groepzekering, bekabeling en elektrische aansluiting moeten altijd geschikt zijn voor de ingestelde stroom. Korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten.</p></div>`;
 }
 
 export function renderSettingsElectricalCurrentLimitSection() {
@@ -207,7 +207,7 @@ export function renderSettingsElectricalCurrentLimitSection() {
       "electricalCurrentLimit",
       "Maximale gezamenlijke netstroom",
       "Deze grens geldt voor alle buitenunits samen, niet per warmtepomp. Power House gebruikt de grens vooraf bij de vermogensverdeling en regelt daarna bij op basis van gemeten feedback. Stooklijnbedrijf en koelen gebruiken alleen de gemeten feedback. Een lagere waarde kan het beschikbare verwarmings- en koelvermogen beperken. Door meetvertraging en korte stroompieken kan de werkelijke stroom tijdelijk boven de ingestelde waarde komen. Dit is een softwarematige regelgrens en geen elektrische beveiliging.",
-      `<div class="oq-settings-electrical-control-row">${control}${renderElectricalLimitEstimate(view)}</div>${renderElectricalLimitRestore(view)}`,
+      `<div class="oq-settings-electrical-control-row">${control}${renderElectricalLimitEstimate(view)}</div><p class="oq-settings-electrical-caption">Standaard voor deze installatie: <strong>${formatDutchAmps(view.info.standardA)} · ${escapeHtml(view.info.standardLabel)}</strong></p>${renderElectricalLimitRestore(view)}`,
       "",
       renderElectricalLimitFooter(view),
     ),

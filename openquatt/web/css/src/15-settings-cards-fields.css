@@ -797,6 +797,21 @@
 
 .oq-settings-electrical-control-row > .oq-helper-control {
   flex: 3 1 240px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+.oq-settings-electrical-caption {
+  margin: 8px 0 0;
+  color: var(--oq-helper-soft);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.oq-settings-electrical-caption strong {
+  color: var(--oq-helper-ink);
+  font-weight: 750;
 }
 
 .oq-settings-electrical-estimate {
@@ -832,38 +847,6 @@
   color: var(--oq-helper-soft);
   font-size: 0.76rem;
   line-height: 1.4;
-}
-
-.oq-settings-electrical-facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
-  gap: 10px;
-}
-
-.oq-settings-electrical-fact {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  padding: 11px 12px;
-  border-radius: 14px;
-  border: 1px solid var(--oq-settings-inset-border);
-  background: var(--oq-settings-inset-background);
-}
-
-.oq-settings-electrical-fact span {
-  color: var(--oq-helper-soft);
-  font-size: 0.78rem;
-  font-weight: 700;
-  line-height: 1.35;
-}
-
-.oq-settings-electrical-fact strong {
-  min-width: 0;
-  color: var(--oq-helper-ink);
-  font-size: 1rem;
-  font-weight: 750;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
 }
 
 .oq-settings-electrical-warning {
