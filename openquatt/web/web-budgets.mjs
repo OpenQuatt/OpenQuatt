@@ -31,9 +31,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // and frequency-based day/silent limits and exclusion ranges per ODU.
     // plus bounded webserver-log SSE recovery (single reconnect scheduler
     // with back-off, source-identity guards and history backfill flag).
-    // CI measures 987506 B for this bundle; the raw budget keeps ~1.5 kB
+    // CI measures 990226 B for this bundle; the raw budget keeps ~1.5 kB
     // margin for build-environment variance.
-    raw: 990_500,
+    raw: 991_700,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

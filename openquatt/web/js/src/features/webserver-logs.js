@@ -475,6 +475,7 @@ export function clearWebServerLogOutput() {
     webServerLogHistoryRequestToken: state.webServerLogHistoryRequestToken + 1,
     webServerLogRecentTail: [],
     webServerLogRecentAnchorAt: 0,
+    webServerLogNeedsBackfill: false,
   });
   webServerLogScrollKeeper.invalidate();
   if (state.systemModal === "webserver-logs") {
