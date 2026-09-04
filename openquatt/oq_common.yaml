@@ -932,7 +932,7 @@ openquatt_energy_history:
   clock: oq_time
 
 # ==============================================================================
-# PR TEST FIRMWARE VIA OTA-MANIFEST (optie A: geen oude directe OTA-compat)
+# PR TEST FIRMWARE VIA OTA-MANIFEST (manifest preferred, directe OTA+MD5 als fallback)
 # ==============================================================================
 text:
   - platform: template
