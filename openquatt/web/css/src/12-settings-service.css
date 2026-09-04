@@ -444,9 +444,36 @@
   gap: 16px;
 }
 
+.oq-settings-odu-modal {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100svh - 48px);
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+}
+
+.oq-settings-odu-modal > .oq-helper-modal-head {
+  flex: 0 0 auto;
+}
+
+.oq-settings-odu-modal .oq-helper-modal-close {
+  flex-shrink: 0;
+}
+
+.oq-settings-odu-modal-body {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
+  -webkit-overflow-scrolling: touch;
+}
+
 .oq-settings-odu-runtime-warning {
   display: grid;
   gap: 6px;
+  margin-bottom: 16px;
   padding: 14px 16px;
   border-radius: var(--oq-helper-radius-md);
   border: 1px solid var(--oq-settings-warning-border, rgba(234, 88, 12, 0.24));
@@ -629,13 +656,19 @@
 }
 
 .oq-settings-odu-fields,
+.oq-settings-odu-temperature-settings,
 .oq-settings-odu-technical {
   display: grid;
   gap: 12px;
 }
 
+.oq-settings-odu-temperature-settings[hidden] {
+  display: none;
+}
+
 .oq-settings-odu-launcher-list {
-  gap: 12px;
+  display: grid;
+  gap: 16px;
 }
 
 .oq-settings-odu-technical p {
@@ -662,7 +695,8 @@
   color: var(--oq-helper-accent-deep);
 }
 
-.oq-settings-odu-fields > label {
+.oq-settings-odu-fields > label,
+.oq-settings-odu-temperature-settings > label {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
   align-items: center;
@@ -670,6 +704,13 @@
   color: var(--oq-helper-ink);
   font-weight: 700;
   line-height: 1.4;
+}
+
+.oq-settings-odu-mode-description {
+  margin: 0;
+  color: var(--oq-helper-soft);
+  font-size: 0.88rem;
+  line-height: 1.5;
 }
 
 .oq-settings-odu-thresholds {

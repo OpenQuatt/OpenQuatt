@@ -76,5 +76,10 @@ test("buitenunitinstellingen openen beide editors zonder interne termen in de ho
   assert.match(viewActionsSource, /"open-odu-frequency-settings": \(\) => \{\s+state\.controlNotice = "";/);
   assert.match(viewActionsSource, /"toggle-odu-frequency-technical-details"/);
   assert.match(featureSource, /oduRuntimeFrequencyTechnicalDetailsOpen \? " open"/);
-  assert.match(cssSource, /\.oq-settings-odu-launcher-list \{\s+gap: 12px;/);
+  assert.match(cssSource, /\.oq-settings-odu-launcher-list \{\s+display: grid;\s+gap: 16px;/);
+  assert.match(cssSource, /\.oq-settings-odu-runtime-warning \{[^}]*margin-bottom: 16px;/s);
+  assert.match(featureSource, /V1 en V1\.5 voorzichtig met koelwaarden onder 30 Hz/);
+  assert.match(featureSource, /Bij V2 is 20 Hz toegestaan/);
+  assert.match(featureSource, /volledig stroomloos.*oorspronkelijke frequenties/);
+  assert.doesNotMatch(featureSource, /OEM-ondergrens|suction superheat|natte zuigretour/i);
 });

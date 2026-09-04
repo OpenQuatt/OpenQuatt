@@ -101,6 +101,20 @@
   line-height: 1.05;
 }
 
+.oq-helper-modal-badge {
+  display: inline-flex;
+  vertical-align: middle;
+  padding: 4px 9px;
+  border: 1px solid var(--oq-helper-modal-callout-border);
+  border-radius: 999px;
+  background: var(--oq-helper-modal-callout-background);
+  color: var(--oq-helper-modal-callout-title);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
 .oq-helper-modal-close {
   appearance: none;
   border: 1px solid var(--oq-helper-modal-close-border);

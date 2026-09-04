@@ -647,7 +647,8 @@
     padding-right: 10px;
   }
 
-  .oq-settings-odu-fields > label {
+  .oq-settings-odu-fields > label,
+  .oq-settings-odu-temperature-settings > label {
     align-items: stretch;
     grid-template-columns: minmax(0, 1fr);
   }

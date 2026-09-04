@@ -391,18 +391,21 @@ export function renderOduRuntimeFrequencyModal() {
     titleId: "oq-odu-frequency-title",
     kicker: "Instellingen buitenunit",
     title: "Frequentietabel",
+    titleBadge: "Experimenteel",
     closeAction: "close-system-modal",
     closeLabel: "Sluit frequentietabel",
-    modalClass: "oq-helper-modal--wide",
+    modalClass: "oq-helper-modal--wide oq-settings-odu-modal",
     bodyMarkup: `
-      <div class="oq-settings-odu-runtime-warning" role="note">
-        <strong>Niet permanent opgeslagen</strong>
-        <p>Na een herstart of stroomonderbreking gebruikt de buitenunit weer de waarden uit haar eigen geheugen.</p>
-        <p>Wijzig alleen waarden waarvan je het effect op de compressor kent. Toepassen is alleen mogelijk in standby met de compressor uit.</p>
-        <p>Verlaag koelfrequenties onder de OEM-ondergrens rond 30 Hz alleen met superheat-bewaking. Bij een te lage suction superheat kan natte zuigretour richting de compressor ontstaan.</p>
-      </div>
-      ${state.oduRuntimeFrequencyError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.oduRuntimeFrequencyError)}</p>` : ""}
-      <div class="oq-settings-odu-runtime-panels">${hpIndexes.map(renderFrequencyPanel).join("")}</div>
-      <details class="oq-settings-odu-technical"${state.oduRuntimeFrequencyTechnicalDetailsOpen ? " open" : ""}><summary data-oq-action="toggle-odu-frequency-technical-details">Technische details</summary><p>De tabel wordt direct naar tijdelijke Modbus-registers van de buitenunit geschreven. OpenQuatt bewaart deze frequenties niet.</p></details>`,
+      <div class="oq-settings-odu-modal-body" data-oq-modal-scroll="body">
+        <div class="oq-settings-odu-runtime-warning" role="note">
+          <strong>Niet permanent opgeslagen</strong>
+          <p>Als de buitenunit volledig stroomloos is geweest, worden jouw aanpassingen teruggezet naar de oorspronkelijke frequenties.</p>
+          <p>Wijzig alleen waarden waarvan je het effect op de compressor kent. Toepassen is alleen mogelijk in standby met de compressor uit.</p>
+          <p>Wees bij Quatt buitenunits V1 en V1.5 voorzichtig met koelwaarden onder 30 Hz: bij een te lage frequentie kan vloeibaar koudemiddel terugstromen en de compressor beschadigen. Bij V2 is 20 Hz toegestaan.</p>
+        </div>
+        ${state.oduRuntimeFrequencyError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.oduRuntimeFrequencyError)}</p>` : ""}
+        <div class="oq-settings-odu-runtime-panels">${hpIndexes.map(renderFrequencyPanel).join("")}</div>
+        <details class="oq-settings-odu-technical"${state.oduRuntimeFrequencyTechnicalDetailsOpen ? " open" : ""}><summary data-oq-action="toggle-odu-frequency-technical-details">Technische details</summary><p>De tabel wordt direct naar tijdelijke Modbus-registers van de buitenunit geschreven. OpenQuatt bewaart deze frequenties niet.</p></details>
+      </div>`,
   });
 }

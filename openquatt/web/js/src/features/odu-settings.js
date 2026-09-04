@@ -9,11 +9,29 @@ import { getBasePath } from "../core/url-path.js";
 import { getInstallationTopology } from "./device-context.js";
 
 const MODE_OPTIONS = [
-  [0, "Uit"],
-  [1, "Temperatuurregeling"],
-  [2, "Ontdooicyclus"],
-  [3, "Temperatuur- en ontdooiregeling"],
+  [1, "Volgt buitentemperatuur"],
+  [2, "Tijdens ontdooien"],
+  [3, "Onbekend (standaard V1.5 en V2)"],
 ];
+
+function modeDescription(mode) {
+  if (Number(mode) === 1) {
+    return "De verwarming schakelt op basis van de ingestelde buitentemperatuurgrenzen.";
+  }
+  if (Number(mode) === 2) {
+    return "De verwarming schakelt in zodra een ontdooicyclus start en twee minuten nadat deze is afgelopen weer uit.";
+  }
+  if (Number(mode) === 3) {
+    return "De werking is niet officieel gedocumenteerd. In de praktijk lijkt de verwarming onder 0 °C aan te gaan, boven 0 °C uit te gaan en tijdens ontdooien actief te zijn. Dit is de standaardinstelling voor Quatt buitenunit V1.5 en V2.";
+  }
+  return "De werking van deze waarde is niet bekend.";
+}
+
+function settingsSummary(settings) {
+  const mode = Number(settings?.mode);
+  if (mode !== 1) return `modus ${Number.isInteger(mode) ? mode : "—"}`;
+  return `modus 1, ${settings?.startTemperatureC ?? "—"} °C inschakelen en ${settings?.stopDeltaC ?? "—"} °C verschil`;
+}
 
 export function getOduSettingsEndpoint(hp, action) {
   return `${getBasePath()}/openquatt/odu-settings/hp${Number(hp) === 2 ? 2 : 1}/${action}`;
@@ -214,7 +232,7 @@ function validDraft(draft) {
   const mode = parseDraftInteger(draft.mode);
   const startTemperatureC = parseDraftInteger(draft.startTemperatureC);
   const stopDeltaC = parseDraftInteger(draft.stopDeltaC);
-  return mode !== null && mode >= 0 && mode <= 3
+  return mode !== null && mode >= 1 && mode <= 3
     && startTemperatureC !== null && startTemperatureC >= -30 && startTemperatureC <= 30
     && stopDeltaC !== null && stopDeltaC >= 0 && stopDeltaC <= 30;
 }
@@ -263,12 +281,24 @@ export function updateOduSettingsDraft(input) {
     ...(state.oduSettingsDrafts || {}),
     [hp]: { ...draft, [field]: field === "autoReapply" ? Boolean(input.checked) : String(input.value), dirty: true },
   };
-  const panel = input.closest(".oq-settings-odu-panel");
+  const panel = input.closest(".oq-settings-odu-runtime-panel");
   const next = getDraft(hp);
   const start = parseDraftInteger(next.startTemperatureC);
   const delta = parseDraftInteger(next.stopDeltaC);
+  const temperatureSettings = panel?.querySelector("[data-oq-odu-temperature-settings]");
+  const modeOutput = panel?.querySelector("[data-oq-odu-mode-description]");
+  const startOutput = panel?.querySelector("[data-oq-odu-start-temperature]");
   const stop = panel?.querySelector("[data-oq-odu-stop-temperature]");
-  if (stop) stop.textContent = start !== null && delta !== null ? `${start + delta} °C` : "—";
+  const saveButton = panel?.querySelector('[data-oq-action="odu-settings-save"]');
+  if (temperatureSettings) temperatureSettings.hidden = Number(next.mode) !== 1;
+  if (modeOutput) modeOutput.textContent = modeDescription(next.mode);
+  if (startOutput) startOutput.textContent = start !== null ? `${start} °C of kouder` : "—";
+  if (stop) stop.textContent = start !== null && delta !== null ? `${start + delta} °C of warmer` : "—";
+  if (saveButton) {
+    const status = getOduSettingsStatus(hp);
+    const busy = status?.busy || String(state.busyAction || "").startsWith(`odu-settings-hp${hp}-`);
+    saveButton.disabled = !status?.available || !status.identityReady || status.unsupported || busy || !validDraft(next);
+  }
   return true;
 }
 
@@ -289,15 +319,11 @@ function statusPresentation(status) {
   return ["Actuele waarden nog niet geladen", ""];
 }
 
-function modeLabel(mode) {
-  return MODE_OPTIONS.find(([value]) => value === Number(mode))?.[1] || `Modus ${mode}`;
-}
-
 function variantLabel(variant) {
-  if (variant === 1) return "V1";
-  if (variant === 2) return "V1.5";
-  if (variant === 3) return "V2 oud model";
-  if (variant === 4) return "V2 nieuw model";
+  if (variant === 1) return "Quatt buitenunit V1";
+  if (variant === 2) return "Quatt buitenunit V1.5";
+  if (variant === 3) return "Quatt buitenunit V2 oud model";
+  if (variant === 4) return "Quatt buitenunit V2 nieuw model";
   return "Onbekend";
 }
 
@@ -311,7 +337,6 @@ function renderPanel(hp) {
   const stopDelta = parseDraftInteger(draft.stopDeltaC);
   const stopTemperature = startTemperature !== null && stopDelta !== null ? startTemperature + stopDelta : null;
   const [statusLabel, tone] = statusPresentation(status);
-  const defaultMode = status?.defaults?.mode;
   return `
     <article class="oq-settings-odu-runtime-panel">
       <div class="oq-settings-odu-runtime-panel-head">
@@ -322,14 +347,18 @@ function renderPanel(hp) {
       ${status?.loaded || status?.profileAvailable ? `
         <div class="oq-settings-odu-fields">
           <label><span>Regelmethode</span><select class="oq-helper-select" data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="mode" ${!enabled ? "disabled" : ""}>
+            ${MODE_OPTIONS.some(([value]) => value === Number(draft.mode)) ? "" : '<option value="" selected disabled>Kies een regelmethode</option>'}
             ${MODE_OPTIONS.map(([value, label]) => `<option value="${value}"${Number(draft.mode) === value ? " selected" : ""}>${value} · ${escapeHtml(label)}</option>`).join("")}
           </select></label>
-          <label><span>Temperatuurgrens voor inschakelen</span><span class="oq-helper-control oq-helper-control--suffix"><input class="oq-helper-input" type="number" min="-30" max="30" step="1" value="${escapeHtml(draft.startTemperatureC)}" data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="startTemperatureC" ${!enabled ? "disabled" : ""}><span class="oq-helper-unit-chip">°C</span></span></label>
-          <label><span>Uitschakelen nadat de buitentemperatuur is gestegen met</span><span class="oq-helper-control oq-helper-control--suffix"><input class="oq-helper-input" type="number" min="0" max="30" step="1" value="${escapeHtml(draft.stopDeltaC)}" data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="stopDeltaC" ${!enabled ? "disabled" : ""}><span class="oq-helper-unit-chip">°C</span></span></label>
+          <p class="oq-settings-odu-mode-description" data-oq-odu-mode-description aria-live="polite">${escapeHtml(modeDescription(draft.mode))}</p>
+          <div class="oq-settings-odu-temperature-settings" data-oq-odu-temperature-settings${Number(draft.mode) === 1 ? "" : " hidden"}>
+            <label><span>Temperatuurgrens voor inschakelen</span><span class="oq-helper-control oq-helper-control--suffix"><input class="oq-helper-input" type="number" min="-30" max="30" step="1" value="${escapeHtml(draft.startTemperatureC)}" data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="startTemperatureC" ${!enabled ? "disabled" : ""}><span class="oq-helper-unit-chip">°C</span></span></label>
+            <label><span>Uitschakelen nadat de buitentemperatuur is gestegen met</span><span class="oq-helper-control oq-helper-control--suffix"><input class="oq-helper-input" type="number" min="0" max="30" step="1" value="${escapeHtml(draft.stopDeltaC)}" data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="stopDeltaC" ${!enabled ? "disabled" : ""}><span class="oq-helper-unit-chip">°C</span></span></label>
+            <div class="oq-settings-odu-thresholds"><span>Verwarming aan vanaf <strong data-oq-odu-start-temperature>${escapeHtml(draft.startTemperatureC || "—")} °C of kouder</strong></span><span>Verwarming weer uit bij <strong data-oq-odu-stop-temperature>${stopTemperature !== null ? `${stopTemperature} °C of warmer` : "—"}</strong></span></div>
+          </div>
         </div>
-        <div class="oq-settings-odu-thresholds"><span>Verwarming aan vanaf <strong>${escapeHtml(draft.startTemperatureC || "—")} °C of kouder</strong></span><span>Verwarming weer uit bij <strong data-oq-odu-stop-temperature>${stopTemperature !== null ? `${stopTemperature} °C` : "—"}</strong> of warmer</span></div>
         <label class="oq-settings-odu-auto"><input type="checkbox" data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="autoReapply" ${draft.autoReapply ? "checked" : ""} ${!enabled ? "disabled" : ""}><span><strong>Na herstart automatisch opnieuw toepassen</strong><small>OpenQuatt bewaart deze waarden en past ze toe zodra de buitenunit in standby staat en de compressor uit is.</small></span></label>
-        <p class="oq-settings-odu-runtime-validation">Referentie voor ${escapeHtml(variantLabel(status?.variant))}: modus ${escapeHtml(defaultMode ?? "—")}, 4 °C inschakelen en 3 °C verschil. Huidige buitenunit: modus ${escapeHtml(status?.actual?.mode ?? "—")} (${escapeHtml(modeLabel(status?.actual?.mode))}), ${escapeHtml(status?.actual?.startTemperatureC ?? "—")} °C / ${escapeHtml(status?.actual?.stopDeltaC ?? "—")} °C.</p>
+        <p class="oq-settings-odu-runtime-validation">Standaard voor ${escapeHtml(variantLabel(status?.variant))}: ${escapeHtml(settingsSummary(status?.defaults))}. Huidige buitenunit: ${escapeHtml(settingsSummary(status?.actual))}.</p>
         <div class="oq-helper-modal-actions"><button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="odu-settings-save" data-hp="${hp}" ${!enabled || !valid ? "disabled" : ""}>${busy ? "Bezig..." : "Opslaan en toepassen"}</button></div>
       ` : '<p class="oq-settings-odu-runtime-validation">Laad de actuele waarden uit de buitenunit voordat je iets wijzigt.</p>'}
     </article>`;
@@ -341,14 +370,17 @@ export function renderOduSettingsModal() {
     titleId: "oq-odu-settings-title",
     kicker: "Instellingen buitenunit",
     title: "Bodemplaatverwarming",
+    titleBadge: "Experimenteel",
     closeAction: "close-system-modal",
     closeLabel: "Sluit bodemplaatinstellingen",
-    modalClass: "oq-helper-modal--wide",
+    modalClass: "oq-helper-modal--wide oq-settings-odu-modal",
     bodyMarkup: `
-      <div class="oq-settings-odu-runtime-warning"><strong>Niet permanent opgeslagen in de buitenunit</strong><p>Na een herstart of stroomonderbreking gebruikt de buitenunit weer haar eigen opgeslagen waarden. OpenQuatt kan jouw keuze daarna veilig opnieuw toepassen.</p></div>
-      ${state.oduSettingsError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.oduSettingsError)}</p>` : ""}
-      ${state.controlNotice && String(state.controlNotice).startsWith("HP") ? `<p class="oq-helper-notice" role="status">${escapeHtml(state.controlNotice)}</p>` : ""}
-      <div class="oq-settings-odu-runtime-panels">${getOduSettingsHpIndexes().map(renderPanel).join("")}</div>`,
+      <div class="oq-settings-odu-modal-body" data-oq-modal-scroll="body">
+        <div class="oq-settings-odu-runtime-warning"><strong>Niet permanent opgeslagen in de buitenunit</strong><p>Na een herstart of stroomonderbreking gebruikt de buitenunit weer haar eigen opgeslagen waarden. OpenQuatt kan jouw keuze daarna veilig opnieuw toepassen.</p></div>
+        ${state.oduSettingsError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.oduSettingsError)}</p>` : ""}
+        ${state.controlNotice && String(state.controlNotice).startsWith("HP") ? `<p class="oq-helper-notice" role="status">${escapeHtml(state.controlNotice)}</p>` : ""}
+        <div class="oq-settings-odu-runtime-panels">${getOduSettingsHpIndexes().map(renderPanel).join("")}</div>
+      </div>`,
   });
 }
 
