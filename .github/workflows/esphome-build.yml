@@ -30,6 +30,10 @@ on:
         required: false
         type: boolean
         default: false
+      enable_ccache:
+        required: false
+        type: boolean
+        default: true
       project_version:
         required: false
         type: string
@@ -124,6 +128,7 @@ jobs:
           key: ${{ runner.os }}-${{ runner.arch }}-esphome-idf-${{ steps.idf_version.outputs.version }}
 
       - name: Make ccache available
+        if: ${{ inputs.enable_ccache }}
         run: |
           if ! command -v ccache >/dev/null 2>&1; then
             sudo apt-get update
@@ -132,7 +137,7 @@ jobs:
           ccache --version
 
       - name: Cache compiler outputs
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ inputs.enable_ccache && github.event_name != 'pull_request' }}
         uses: actions/cache@v5
         with:
           path: ~/.cache/openquatt/ccache/${{ matrix.target.id }}
@@ -141,7 +146,7 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-openquatt-ccache-${{ matrix.target.id }}-${{ steps.idf_version.outputs.version }}-
 
       - name: Restore compiler outputs
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ inputs.enable_ccache && github.event_name == 'pull_request' }}
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/openquatt/ccache/${{ matrix.target.id }}
@@ -152,12 +157,17 @@ jobs:
       - name: Compile firmware
         run: |
           export ESPHOME_ESP_IDF_PREFIX="${HOME}/.cache/esphome/idf"
-          export IDF_CCACHE_ENABLE=1
-          export CCACHE_DIR="${HOME}/.cache/openquatt/ccache/${{ matrix.target.id }}"
-          export CCACHE_MAXSIZE=2G
-          export CCACHE_NOHASHDIR=true
-          export CCACHE_DEPEND=1
-          export CCACHE_BASEDIR="${GITHUB_WORKSPACE}/${{ matrix.target.build_path }}"
+          if [[ "${{ inputs.enable_ccache }}" == "true" ]]; then
+            export IDF_CCACHE_ENABLE=1
+            export CCACHE_DIR="${HOME}/.cache/openquatt/ccache/${{ matrix.target.id }}"
+            export CCACHE_MAXSIZE=2G
+            export CCACHE_NOHASHDIR=true
+            export CCACHE_DEPEND=1
+            export CCACHE_BASEDIR="${GITHUB_WORKSPACE}/${{ matrix.target.build_path }}"
+          else
+            unset IDF_CCACHE_ENABLE
+            export CCACHE_DISABLE=1
+          fi
           SOURCE_REPOSITORY="${{ inputs.checkout_repository || github.repository }}"
           SOURCE_COMMIT="$(git rev-parse HEAD)"
           EXTRA_ARGS=(
@@ -178,7 +188,7 @@ jobs:
           esphome "${EXTRA_ARGS[@]}" compile "${{ matrix.target.config }}"
 
       - name: Show ccache statistics
-        if: ${{ always() }}
+        if: ${{ always() && inputs.enable_ccache }}
         run: |
           export CCACHE_DIR="${HOME}/.cache/openquatt/ccache/${{ matrix.target.id }}"
           export CCACHE_MAXSIZE=2G

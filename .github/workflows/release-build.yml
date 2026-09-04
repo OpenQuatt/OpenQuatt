@@ -16,6 +16,8 @@ jobs:
     with:
       artifact_suffix: release
       include_debug_symbols: true
+      # Release artifacts must come from a compiler-cache-free matrix.
+      enable_ccache: false
 
   publish-release:
     runs-on: ubuntu-latest
