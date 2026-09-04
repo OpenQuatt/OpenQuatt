@@ -151,6 +151,7 @@ class InternalHeapPlacementContractTest(unittest.TestCase):
     def test_telemetry_cleanup_and_consent_fail_closed(self) -> None:
         self.assertIn("mqtt_cleanup_decision(", TELEMETRY_POLICY)
         self.assertIn("DESTROY_ALREADY_STOPPED", TELEMETRY_POLICY)
+        self.assertIn("disconnect_requested", TELEMETRY_POLICY)
         self.assertIn("xSemaphoreCreateMutexStatic", TELEMETRY_CPP)
         self.assertIn("consent_mutex_", TELEMETRY_HEADER)
         self.assertIn("consent_publish_blocked_", TELEMETRY_HEADER)
