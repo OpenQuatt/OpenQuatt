@@ -13,11 +13,13 @@ import { renderSettingsInfoToggle } from "../settings/controls.js";
 
 export const WEB_SERVER_LOG_MAX_ENTRIES = 250;
 
-export const WEB_SERVER_LOG_RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000, 30000];
+export const WEB_SERVER_LOG_POLL_INTERVAL_MS = 3000;
 
-export function isCurrentWebServerLogSourceEvent(event) {
-  return Boolean(event?.currentTarget && event.currentTarget === state.webServerLogSource);
-}
+export const WEB_SERVER_LOG_POLL_RETRY_DELAYS_MS = [3000, 5000, 10000, 30000];
+
+export const WEB_SERVER_LOG_REQUEST_TIMEOUT_MS = 8000;
+
+const activeWebServerLogHistoryControllers = new Set();
 
 export function getWebServerLogDemoEntries() {
   if (!__OQ_PREVIEW__ || typeof window === "undefined") {
@@ -44,10 +46,6 @@ export function isWebServerLogDemoMode() {
   }
 
   return getWebServerLogDemoEntries().length > 0;
-}
-
-export function getWebServerLogUrl() {
-  return `${getBasePath()}/events`;
 }
 
 export function getWebServerLogHistoryUrl() {
@@ -138,65 +136,6 @@ export function getWebServerLoggerLevelValue(entity = getWebServerLoggerLevelEnt
   const value = String(entity?.value ?? entity?.state ?? "").trim();
   const options = getWebServerLoggerLevelOptions(entity);
   return options.includes(value) ? value : (options.includes("INFO") ? "INFO" : options[0] || "");
-}
-
-export function isDuplicateWebServerLogEntry(candidate, existingEntry = null) {
-  if (!candidate || !existingEntry) {
-    return false;
-  }
-
-  const candidateSeq = Number(candidate.seq);
-  const existingSeq = Number(existingEntry.seq);
-  if (Number.isFinite(candidateSeq) && Number.isFinite(existingSeq)) {
-    return candidateSeq === existingSeq;
-  }
-
-  const candidateRaw = String(candidate.raw ?? candidate.text ?? "").trim();
-  const existingRaw = String(existingEntry.raw ?? existingEntry.text ?? "").trim();
-  if (!candidateRaw || candidateRaw !== existingRaw) {
-    return false;
-  }
-
-  const candidateReceivedAt = Number(candidate.receivedAt ?? candidate.ts ?? 0);
-  const existingReceivedAt = Number(existingEntry.receivedAt ?? existingEntry.ts ?? 0);
-  return Math.abs(candidateReceivedAt - existingReceivedAt) <= 2000;
-}
-
-export function compareWebServerLogEntries(left, right) {
-  const leftTime = Number(left.receivedAt ?? left.ts ?? 0);
-  const rightTime = Number(right.receivedAt ?? right.ts ?? 0);
-  if (leftTime !== rightTime) {
-    return leftTime - rightTime;
-  }
-
-  const leftSeq = Number(left.seq ?? 0);
-  const rightSeq = Number(right.seq ?? 0);
-  if (leftSeq !== rightSeq) {
-    return leftSeq - rightSeq;
-  }
-
-  return String(left.raw ?? "").localeCompare(String(right.raw ?? ""));
-}
-
-export function mergeWebServerLogEntries(entries, { prepend = false } = {}) {
-  if (!Array.isArray(entries) || entries.length === 0) {
-    return;
-  }
-
-  const merged = prepend
-    ? [...entries, ...state.webServerLogEntries]
-    : [...state.webServerLogEntries, ...entries];
-  merged.sort(compareWebServerLogEntries);
-
-  const deduped = [];
-  for (const entry of merged) {
-    const previous = deduped[deduped.length - 1] || null;
-    if (!isDuplicateWebServerLogEntry(entry, previous)) {
-      deduped.push(entry);
-    }
-  }
-
-  state.webServerLogEntries = deduped.slice(-WEB_SERVER_LOG_MAX_ENTRIES);
 }
 
 export function createWebServerLogEntry(raw, options = {}) {
@@ -319,65 +258,98 @@ export const queueSettingsBackupRestoreModalScrollRestore = settingsBackupRestor
 
 export async function refreshWebServerLogHistory(options = {}) {
   if (state.nativeOpen || typeof window.fetch !== "function") {
-    return;
+    return false;
   }
 
+  const background = options.background === true;
   const scrollState = options.scrollState || captureWebServerLogScrollState();
-  const replaceEntries = options.replaceEntries === true || state.webServerLogHistoryNeedsReconcile === true;
-  const entriesBeforeRequest = replaceEntries ? new Set(state.webServerLogEntries) : null;
+  const entriesBefore = state.webServerLogEntries;
+  const firstEntryBefore = entriesBefore[0] || null;
+  const lastEntryBefore = entriesBefore[entriesBefore.length - 1] || null;
+  const statusBefore = `${state.webServerLogEnabled}|${state.webServerLogConnected}|${state.webServerLogError}|${state.webServerLogHistoryError}`;
   const requestToken = Number(state.webServerLogHistoryRequestToken || 0) + 1;
   state.webServerLogHistoryRequestToken = requestToken;
-  state.webServerLogHistoryLoading = true;
-  state.webServerLogHistoryError = "";
+  if (!background) {
+    state.webServerLogHistoryLoading = true;
+    state.webServerLogHistoryError = "";
+  }
+  const abortController = typeof globalThis.AbortController === "function"
+    ? new globalThis.AbortController()
+    : null;
+  const requestTimeout = abortController
+    ? globalThis.setTimeout(() => abortController.abort(), WEB_SERVER_LOG_REQUEST_TIMEOUT_MS)
+    : null;
+  if (abortController) {
+    activeWebServerLogHistoryControllers.add(abortController);
+  }
+  let succeeded = false;
 
   try {
-    const response = await window.fetch(getWebServerLogHistoryUrl(), {
+    const requestOptions = {
       headers: {
         "Cache-Control": "no-store",
       },
-    });
+    };
+    if (abortController) {
+      requestOptions.signal = abortController.signal;
+    }
+    const response = await window.fetch(getWebServerLogHistoryUrl(), requestOptions);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
 
     const payload = await response.json();
     if (state.systemModal !== "webserver-logs" || state.webServerLogHistoryRequestToken !== requestToken) {
-      return;
+      return false;
     }
 
+    const historyAvailable = payload.enabled !== false;
+    state.webServerLogEnabled = historyAvailable;
+    state.webServerLogConnected = historyAvailable;
+    state.webServerLogError = "";
+    state.webServerLogHistoryError = "";
     state.webServerLogCsrfToken = String(payload.csrf_token || "");
     const recentEntries = normalizeRecentWebServerLogPayload(payload);
-    const liveEntries = replaceEntries
-      ? state.webServerLogEntries.filter((entry) => !entriesBeforeRequest.has(entry))
-      : [];
-    if (replaceEntries) {
-      state.webServerLogEntries = [];
-      state.webServerLogRecentTail = [];
-      state.webServerLogRecentAnchorAt = 0;
-    }
+    state.webServerLogEntries = recentEntries.slice(-WEB_SERVER_LOG_MAX_ENTRIES);
     state.webServerLogHistoryLoaded = true;
     state.webServerLogHistoryNeedsReconcile = false;
-    if (recentEntries.length > 0) {
-      mergeWebServerLogEntries(recentEntries, { prepend: true });
-      state.webServerLogRecentTail = recentEntries.slice(-4).map((entry) => String(entry.raw ?? entry.text ?? ""));
-      state.webServerLogRecentAnchorAt = Date.now();
-    }
-    if (liveEntries.length > 0) {
-      mergeWebServerLogEntries(liveEntries);
-    }
+    succeeded = true;
   } catch (error) {
     if (state.systemModal === "webserver-logs" && state.webServerLogHistoryRequestToken === requestToken) {
-      state.webServerLogHistoryError = error instanceof Error ? error.message : "Recente logs konden niet worden opgehaald.";
+      state.webServerLogConnected = false;
+      if (background) {
+        state.webServerLogError = "Live bijwerken onderbroken. Nieuwe poging volgt automatisch.";
+      } else {
+        state.webServerLogHistoryError = error instanceof Error ? error.message : "Recente logs konden niet worden opgehaald.";
+      }
     }
   } finally {
-    if (state.webServerLogHistoryRequestToken === requestToken) {
+    if (requestTimeout !== null) {
+      globalThis.clearTimeout(requestTimeout);
+    }
+    if (abortController) {
+      activeWebServerLogHistoryControllers.delete(abortController);
+    }
+    if (!background && state.webServerLogHistoryRequestToken === requestToken) {
       state.webServerLogHistoryLoading = false;
     }
     if (state.systemModal === "webserver-logs" && state.webServerLogHistoryRequestToken === requestToken) {
-      render();
-      queueWebServerLogScrollRestore(scrollState);
+      const entriesAfter = state.webServerLogEntries;
+      const firstEntryAfter = entriesAfter[0] || null;
+      const lastEntryAfter = entriesAfter[entriesAfter.length - 1] || null;
+      const entriesChanged = entriesBefore.length !== entriesAfter.length ||
+        firstEntryBefore?.seq !== firstEntryAfter?.seq || firstEntryBefore?.raw !== firstEntryAfter?.raw ||
+        firstEntryBefore?.receivedAt !== firstEntryAfter?.receivedAt ||
+        lastEntryBefore?.seq !== lastEntryAfter?.seq || lastEntryBefore?.raw !== lastEntryAfter?.raw ||
+        lastEntryBefore?.receivedAt !== lastEntryAfter?.receivedAt;
+      const statusAfter = `${state.webServerLogEnabled}|${state.webServerLogConnected}|${state.webServerLogError}|${state.webServerLogHistoryError}`;
+      if (!background || entriesChanged || statusBefore !== statusAfter) {
+        render();
+        queueWebServerLogScrollRestore(scrollState);
+      }
     }
   }
+  return succeeded;
 }
 
 export function normalizeRecentWebServerLogEntry(entry, fallbackSeq = 0) {
@@ -411,37 +383,19 @@ export function normalizeRecentWebServerLogPayload(payload) {
     .filter((entry) => entry !== null);
 }
 
-export function shouldIgnoreLiveWebServerLogEntry(entry) {
-  if (!entry || !Array.isArray(state.webServerLogRecentTail) || state.webServerLogRecentTail.length === 0) {
-    return false;
-  }
-
-  const recentAgeMs = Date.now() - Number(state.webServerLogRecentAnchorAt || 0);
-  if (recentAgeMs > 2500) {
-    return false;
-  }
-
-  const raw = String(entry.raw ?? entry.text ?? "").trim();
-  if (!raw) {
-    return false;
-  }
-
-  return state.webServerLogRecentTail.includes(raw);
-}
-
-export function hasWebServerLogEntry(candidate, entries = state.webServerLogEntries) {
-  if (!candidate || !Array.isArray(entries) || entries.length === 0) {
-    return false;
-  }
-
-  return entries.some((existing) => isDuplicateWebServerLogEntry(candidate, existing));
-}
-
 export function openWebServerLogsModal() {
   if (isWebServerLogDemoMode() && state.webServerLogEntries.length === 0) {
     updateWebServerLogState({ webServerLogEntries: seedWebServerLogDemoEntries() });
   }
-  updateWebServerLogState({ webServerLogCopyMessage: "", webServerLogCopyError: "" });
+  closeWebServerLogStream();
+  updateWebServerLogState({
+    webServerLogCopyMessage: "",
+    webServerLogCopyError: "",
+    webServerLogError: "",
+    webServerLogHistoryError: "",
+    webServerLogEnabled: null,
+    webServerLogPollFailureCount: 0,
+  });
   state.settingsInfoOpen = "";
   state.systemModal = "webserver-logs";
   render();
@@ -454,12 +408,11 @@ export function openWebServerLogsModal() {
     queueWebServerLogScrollRestore(scrollState);
   });
   scrollWebServerLogToBottom();
-  // Altijd één historie-fetch bij openen; een reconnect doet later zelf een
-  // backfill via webServerLogNeedsBackfill. SSE start via sync bij render.
-  cancelWebServerLogReconnect();
-  state.webServerLogReconnectAttempt = 0;
-  state.webServerLogNeedsBackfill = false;
-  void refreshWebServerLogHistory();
+  // De RAM-historie is de betrouwbare logbron; de algemene /events-stream
+  // kan logevents laten vallen zolang dezelfde sessie state-data verstuurt.
+  if (!isWebServerLogDemoMode()) {
+    void refreshWebServerLogHistory();
+  }
 }
 
 export function clearWebServerLogOutput() {
@@ -473,9 +426,6 @@ export function clearWebServerLogOutput() {
     webServerLogCopyMessage: "",
     webServerLogCopyError: "",
     webServerLogHistoryRequestToken: state.webServerLogHistoryRequestToken + 1,
-    webServerLogRecentTail: [],
-    webServerLogRecentAnchorAt: 0,
-    webServerLogNeedsBackfill: false,
   });
   webServerLogScrollKeeper.invalidate();
   if (state.systemModal === "webserver-logs") {
@@ -572,8 +522,7 @@ export function resetWebServerLogRecoveryState() {
     webServerLogEnabled: null,
     webServerLogConnected: false,
     webServerLogCsrfToken: "",
-    webServerLogReconnectAttempt: 0,
-    webServerLogNeedsBackfill: false,
+    webServerLogPollFailureCount: 0,
   });
   clearWebServerLogOutput();
   if (state.systemModal === "webserver-logs") {
@@ -599,48 +548,17 @@ export function syncWebServerLogStream() {
     return;
   }
 
-  if (state.webServerLogSource) {
-    return;
-  }
-
-  openWebServerLogStream();
-}
-
-export function openWebServerLogStream() {
-  if (isWebServerLogDemoMode()) {
-    state.webServerLogEnabled = true;
-    state.webServerLogConnected = false;
-    state.webServerLogError = "";
-    render();
-    return;
-  }
-
-  if (typeof window.EventSource !== "function") {
-    state.webServerLogEnabled = false;
-    state.webServerLogConnected = false;
-    state.webServerLogError = "Deze browser ondersteunt geen live logstream.";
-    render();
-    return;
-  }
-
-  try {
-    const source = new window.EventSource(getWebServerLogUrl());
-    state.webServerLogSource = source;
-    source.addEventListener("open", handleWebServerLogOpen);
-    source.addEventListener("ping", handleWebServerLogPing);
-    source.addEventListener("log", handleWebServerLogMessage);
-    source.onerror = handleWebServerLogError;
-  } catch (error) {
-    state.webServerLogEnabled = false;
-    state.webServerLogConnected = false;
-    state.webServerLogError = error instanceof Error ? error.message : "De live logstream kon niet worden geopend.";
-    closeWebServerLogStream();
-    render();
-  }
+  scheduleWebServerLogPoll();
 }
 
 export function closeWebServerLogStream() {
-  cancelWebServerLogReconnect();
+  cancelWebServerLogPoll();
+  state.webServerLogHistoryRequestToken = Number(state.webServerLogHistoryRequestToken || 0) + 1;
+  state.webServerLogHistoryLoading = false;
+  for (const controller of activeWebServerLogHistoryControllers) {
+    controller.abort();
+  }
+  activeWebServerLogHistoryControllers.clear();
   const source = state.webServerLogSource;
   if (source) {
     try {
@@ -653,63 +571,54 @@ export function closeWebServerLogStream() {
   state.webServerLogConnected = false;
 }
 
-export function cancelWebServerLogReconnect() {
-  if (state.webServerLogReconnectTimer !== null && state.webServerLogReconnectTimer !== undefined) {
-    globalThis.clearTimeout(state.webServerLogReconnectTimer);
+export function cancelWebServerLogPoll() {
+  if (state.webServerLogPollTimer !== null && state.webServerLogPollTimer !== undefined) {
+    globalThis.clearTimeout(state.webServerLogPollTimer);
   }
-  state.webServerLogReconnectTimer = null;
+  state.webServerLogPollTimer = null;
 }
 
-export function scheduleWebServerLogReconnect() {
-  if (state.webServerLogReconnectTimer || !state.mounted || state.nativeOpen) {
+export function scheduleWebServerLogPoll(delay = WEB_SERVER_LOG_POLL_INTERVAL_MS) {
+  if (state.webServerLogPollTimer || !state.mounted || state.nativeOpen) {
     return;
   }
-  if (state.systemModal !== "webserver-logs" || !state.webServerLogSource) {
+  if (state.systemModal !== "webserver-logs" || state.webServerLogEnabled === false) {
     return;
   }
   if (state.busyAction === "clear-webserver-log-history") {
     return;
   }
-  const attempt = Math.max(0, state.webServerLogReconnectAttempt || 0);
-  const delay = WEB_SERVER_LOG_RECONNECT_DELAYS_MS[
-    Math.min(attempt, WEB_SERVER_LOG_RECONNECT_DELAYS_MS.length - 1)
-  ];
-  state.webServerLogReconnectTimer = globalThis.setTimeout(() => {
-    state.webServerLogReconnectTimer = null;
-    state.webServerLogReconnectAttempt = attempt + 1;
-    if (!state.mounted || state.nativeOpen || state.systemModal !== "webserver-logs") {
+  const pollTimer = globalThis.setTimeout(async () => {
+    if (state.webServerLogPollTimer !== pollTimer) {
       return;
     }
-    if (state.busyAction === "clear-webserver-log-history") {
+    if (state.webServerLogHistoryLoading) {
+      state.webServerLogPollTimer = null;
+      scheduleWebServerLogPoll();
       return;
     }
-    closeWebServerLogStream();
-    syncWebServerLogStream();
+    const succeeded = await refreshWebServerLogHistory({ background: true });
+    if (state.webServerLogPollTimer !== pollTimer) {
+      return;
+    }
+    state.webServerLogPollTimer = null;
+    if (!state.mounted || state.nativeOpen || state.systemModal !== "webserver-logs" ||
+        state.busyAction === "clear-webserver-log-history" || state.webServerLogEnabled === false) {
+      return;
+    }
+    if (succeeded) {
+      state.webServerLogPollFailureCount = 0;
+      scheduleWebServerLogPoll();
+      return;
+    }
+    const failureCount = Math.max(0, Number(state.webServerLogPollFailureCount || 0)) + 1;
+    state.webServerLogPollFailureCount = failureCount;
+    const retryDelay = WEB_SERVER_LOG_POLL_RETRY_DELAYS_MS[
+      Math.min(failureCount - 1, WEB_SERVER_LOG_POLL_RETRY_DELAYS_MS.length - 1)
+    ];
+    scheduleWebServerLogPoll(retryDelay);
   }, delay);
-}
-
-export function handleWebServerLogOpen(event) {
-  if (!state.webServerLogSource || state.nativeOpen || !isCurrentWebServerLogSourceEvent(event)) {
-    return;
-  }
-
-  cancelWebServerLogReconnect();
-  state.webServerLogReconnectAttempt = 0;
-
-  const scrollState = state.systemModal === "webserver-logs"
-    ? captureWebServerLogScrollState()
-    : null;
-  state.webServerLogEnabled = true;
-  state.webServerLogConnected = true;
-  state.webServerLogError = "";
-  render();
-  queueWebServerLogScrollRestore(scrollState);
-
-  const shouldBackfill = state.webServerLogNeedsBackfill === true;
-  state.webServerLogNeedsBackfill = false;
-  if (shouldBackfill && state.systemModal === "webserver-logs") {
-    void refreshWebServerLogHistory();
-  }
+  state.webServerLogPollTimer = pollTimer;
 }
 
 setWebServerLogControls({
@@ -717,107 +626,6 @@ setWebServerLogControls({
   closeStream: closeWebServerLogStream,
   resetRecoveryState: resetWebServerLogRecoveryState,
 });
-
-export function handleWebServerLogPing(event) {
-  if (!state.webServerLogSource || state.nativeOpen || !isCurrentWebServerLogSourceEvent(event)) {
-    return;
-  }
-
-  const scrollState = state.systemModal === "webserver-logs"
-    ? captureWebServerLogScrollState()
-    : null;
-  state.webServerLogEnabled = true;
-  if (!state.webServerLogConnected) {
-    state.webServerLogConnected = true;
-    state.webServerLogError = "";
-    render();
-    queueWebServerLogScrollRestore(scrollState);
-  }
-}
-
-export function handleWebServerLogError(event) {
-  if (!state.webServerLogSource || !isCurrentWebServerLogSourceEvent(event)) {
-    return;
-  }
-
-  const scrollState = state.systemModal === "webserver-logs"
-    ? captureWebServerLogScrollState()
-    : null;
-  state.webServerLogConnected = false;
-  state.webServerLogError = "Live verbinding onderbroken. Opnieuw verbinden…";
-  state.webServerLogNeedsBackfill = true;
-  // EventSource.CLOSED is per spec altijd 2.
-  if (event?.currentTarget?.readyState === 2) {
-    scheduleWebServerLogReconnect();
-  }
-  render();
-  queueWebServerLogScrollRestore(scrollState);
-}
-
-export function handleWebServerLogMessage(event) {
-  if (!state.webServerLogSource || !event || typeof event.data !== "string" || !isCurrentWebServerLogSourceEvent(event)) {
-    return;
-  }
-
-  const scrollState = captureWebServerLogScrollState();
-  const payload = normalizeWebServerLogPayload(event.data);
-  if (!payload) {
-    return;
-  }
-
-  const lines = payload.split(/\r?\n/).filter((line) => line.trim() !== "");
-  if (lines.length === 0) {
-    return;
-  }
-
-  const entries = lines.map((line) => createWebServerLogEntry(line));
-  const filteredEntries = entries.filter((entry) => !shouldIgnoreLiveWebServerLogEntry(entry) && !hasWebServerLogEntry(entry));
-  if (filteredEntries.length === 0) {
-    return;
-  }
-
-  mergeWebServerLogEntries(filteredEntries);
-
-  const output = getWebServerLogOutputElement();
-  const scroller = getWebServerLogScrollerElement();
-
-  appendWebServerLogEntriesToDom(filteredEntries, output);
-  trimWebServerLogEntries(output);
-
-  state.webServerLogEnabled = true;
-  if (scroller && scrollState) {
-    queueWebServerLogScrollRestore(scrollState, false);
-  }
-}
-
-export function normalizeWebServerLogPayload(raw) {
-  const text = String(raw ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
-  if (!text) {
-    return "";
-  }
-
-  const trimmed = text.trim();
-  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
-    try {
-      const parsed = JSON.parse(trimmed);
-      const candidate = typeof parsed === "string"
-        ? parsed
-        : parsed?.message
-        ?? parsed?.msg
-        ?? parsed?.text
-        ?? parsed?.data
-        ?? parsed?.payload
-        ?? "";
-      if (typeof candidate === "string" && candidate.trim()) {
-        return candidate.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
-      }
-    } catch (_error) {
-      // Ignore JSON parse failures and fall back to the raw text payload.
-    }
-  }
-
-  return text;
-}
 
 export function stripAnsiSequences(value) {
   return String(value ?? "").replace(/\x1b\[[0-9;]*m/g, "");
@@ -872,39 +680,11 @@ export function getWebServerLogTone(value) {
   return "verbose";
 }
 
-export function trimWebServerLogEntries(output) {
-  if (state.webServerLogEntries.length > WEB_SERVER_LOG_MAX_ENTRIES)
-    state.webServerLogEntries = state.webServerLogEntries.slice(-WEB_SERVER_LOG_MAX_ENTRIES);
-  while (output?.childElementCount > WEB_SERVER_LOG_MAX_ENTRIES) output.firstElementChild?.remove();
-}
-
-export function getWebServerLogOutputElement() {
-  if (!state.root) {
-    return null;
-  }
-  return state.root.querySelector("[data-oq-webserver-log-output]");
-}
-
 export function getWebServerLogScrollerElement() {
   if (!state.root) {
     return null;
   }
   return state.root.querySelector("[data-oq-webserver-log-scroller]");
-}
-
-export function appendWebServerLogEntriesToDom(entries, output) {
-  if (!output || entries.length === 0) {
-    return;
-  }
-
-  if (output.dataset.webServerLogEmpty === "true") {
-    output.dataset.webServerLogEmpty = "false";
-    output.innerHTML = "";
-  }
-
-  for (const entry of entries) {
-    output.insertAdjacentHTML("beforeend", renderWebServerLogEntry(entry));
-  }
 }
 
 export function renderWebServerLogEntry(entry) {
