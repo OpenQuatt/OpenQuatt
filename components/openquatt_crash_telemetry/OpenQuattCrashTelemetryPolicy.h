@@ -89,13 +89,19 @@ enum class CrashCleanupDecision : uint8_t {
 
 // Crash-specific cleanup decision for the worker task. Kept local to this
 // component so the already-working usage telemetry helper stays untouched.
+//
+// The disconnect request is an input: esp_mqtt_client_disconnect() only sets
+// DISCONNECT_BIT, which a no-longer-running MQTT task never processes. So at
+// most one FORCE_DISCONNECT is allowed; a repeated ESP_FAIL afterwards means
+// the task is gone and destroy becomes safe.
 inline constexpr CrashCleanupDecision select_crash_cleanup_decision(bool stop_succeeded, bool connected_seen,
                                                                     bool disconnected_seen,
-                                                                    uint8_t consecutive_stop_failures) {
+                                                                    uint8_t consecutive_stop_failures,
+                                                                    bool disconnect_requested) {
   if (stop_succeeded) {
     return CrashCleanupDecision::DESTROY;
   }
-  if (connected_seen && !disconnected_seen) {
+  if (connected_seen && !disconnected_seen && !disconnect_requested) {
     return CrashCleanupDecision::FORCE_DISCONNECT;
   }
   if (consecutive_stop_failures < 2U) {

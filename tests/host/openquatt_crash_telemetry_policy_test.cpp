@@ -74,13 +74,25 @@ int main() {
   assert(select_crash_session_action(true, false, false, false, false, false) == CrashSessionAction::NONE);
   assert(select_crash_session_action(true, false, false, true, true, true) == CrashSessionAction::FINISH_SUCCESS);
 
-  assert(select_crash_cleanup_decision(true, false, false, 0U) == CrashCleanupDecision::DESTROY);
-  assert(select_crash_cleanup_decision(false, true, false, 0U) == CrashCleanupDecision::FORCE_DISCONNECT);
-  assert(select_crash_cleanup_decision(false, true, true, 0U) == CrashCleanupDecision::RETRY_STOP);
-  assert(select_crash_cleanup_decision(false, false, false, 0U) == CrashCleanupDecision::RETRY_STOP);
-  assert(select_crash_cleanup_decision(false, false, false, 1U) == CrashCleanupDecision::RETRY_STOP);
-  assert(select_crash_cleanup_decision(false, false, false, 2U) == CrashCleanupDecision::DESTROY_ALREADY_STOPPED);
-  assert(select_crash_cleanup_decision(false, true, true, 9U) == CrashCleanupDecision::DESTROY_ALREADY_STOPPED);
+  assert(select_crash_cleanup_decision(true, false, false, 0U, false) == CrashCleanupDecision::DESTROY);
+  assert(select_crash_cleanup_decision(false, true, false, 0U, false) == CrashCleanupDecision::FORCE_DISCONNECT);
+  assert(select_crash_cleanup_decision(false, true, true, 0U, false) == CrashCleanupDecision::RETRY_STOP);
+  assert(select_crash_cleanup_decision(false, false, false, 0U, false) == CrashCleanupDecision::RETRY_STOP);
+  assert(select_crash_cleanup_decision(false, false, false, 1U, false) == CrashCleanupDecision::RETRY_STOP);
+  assert(select_crash_cleanup_decision(false, false, false, 2U, false) ==
+         CrashCleanupDecision::DESTROY_ALREADY_STOPPED);
+  assert(select_crash_cleanup_decision(false, true, true, 9U, false) == CrashCleanupDecision::DESTROY_ALREADY_STOPPED);
+  // No second FORCE_DISCONNECT once a disconnect was requested: without a
+  // running MQTT task the disconnect bit is never processed, so retrying it
+  // would loop forever instead of reaching destroy. One verification retry
+  // is allowed then destroy follows.
+  assert(select_crash_cleanup_decision(false, true, false, 1U, true) == CrashCleanupDecision::RETRY_STOP);
+  assert(select_crash_cleanup_decision(false, true, false, 2U, true) == CrashCleanupDecision::DESTROY_ALREADY_STOPPED);
+  // Start race: first ESP_FAIL before the MQTT task set run=true gets one
+  // verification retry, then cleanup must progress to destroy.
+  assert(select_crash_cleanup_decision(false, false, false, 1U, false) == CrashCleanupDecision::RETRY_STOP);
+  assert(select_crash_cleanup_decision(false, false, false, 2U, false) ==
+         CrashCleanupDecision::DESTROY_ALREADY_STOPPED);
 
   assert(initial_publish_delay_ms(CrashPublishKind::CRASH) == 15UL * 1000UL);
   assert(initial_publish_delay_ms(CrashPublishKind::NONE) == 15UL * 1000UL);
