@@ -1117,8 +1117,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       detail: reason.summary,
       next: "Het systeem beoordeelt opnieuw zodra vraag, marge of beschikbaarheid verandert.",
     };
-    const copies = {
-      source_start: {
+    switch (eventType) {
+      case "source_start":
+        return {
         title: isCoolingModeEvent ? `Koeling gestart (${subject})` : `${subject} gestart`,
         reasonLabel: isCoolingModeEvent ? "Koeling gestart" : "",
         reasonSummary: isCoolingModeEvent ? "Koeling is vrijgegeven en de gekozen warmtepomp start met koelen." : "",
@@ -1131,8 +1132,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         next: isCoolingModeEvent
           ? "Koeling blijft actief zolang er koelvraag is en de veilige marges vrij blijven."
           : "Als de vraag hoog blijft, beoordeelt het systeem of extra vermogen nodig is.",
-      },
-      source_stop: {
+      };
+      case "source_stop":
+        return {
         title: isCoolingModeEvent
           ? coolingStopReason === "dew_stop"
             ? `${subject} gestopt door dauwpunt`
@@ -1191,8 +1193,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           : heatingDemandEnded
           ? "Het systeem blijft standby totdat er opnieuw warmtevraag is."
           : "Bij stijgende vraag kan dezelfde of de andere warmtepomp opnieuw starten.",
-      },
-      topology_change: {
+      };
+      case "topology_change":
+        return {
         title: isCoolingModeEvent
           ? event?.to === "idle"
             ? reasonCode === "cooling_request_cleared"
@@ -1251,16 +1254,18 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           : event?.to === "idle" && heatingDemandEnded
           ? "Het systeem blijft standby totdat er opnieuw warmtevraag is."
           : "De tweede warmtepomp blijft beschikbaar als de vraag opnieuw stijgt.",
-      },
-      decision_hold: {
+      };
+      case "decision_hold":
+        return {
         title: reasonCode === "defrost_hold" ? "Keuze kort vastgehouden" : "Start of wissel uitgesteld",
         summary: reasonCode === "defrost_hold"
           ? "De regelaar laat ontdooien rustig afronden voordat hij opnieuw schakelt."
           : "De regelaar wacht bewust even om korte cycli en onrustig gedrag te voorkomen.",
         detail: reason.summary,
         next: "Na de wachttijd beoordeelt het systeem opnieuw wat de rustigste keuze is.",
-      },
-      decision_blocked: {
+      };
+      case "decision_blocked":
+        return {
         title: reasonCode === "flow_too_low"
           ? "Start geblokkeerd: waterflow te laag"
           : subject === "CV-ketel" ? "CV-ketel niet vrijgegeven" : "Actie geblokkeerd",
@@ -1282,16 +1287,18 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         checks: reasonCode === "flow_too_low"
           ? ["Voorlooptijd verstreken", "Warmtepomp blijft veilig uit", "Waterflow wordt opnieuw beoordeeld"]
           : null,
-      },
-      candidate_blocked: {
+      };
+      case "candidate_blocked":
+        return {
         title: `${subject} wacht nog`,
         summary: reasonCode === "candidate_in_rest"
           ? `${subject} zit nog in rusttijd na een vorige stop.`
           : `${subject} is nu nog geen veilige kandidaat om te starten.`,
         detail: reason.summary,
         next: "De regelaar probeert opnieuw zodra de voorwaarde vrij is en de vraag blijft bestaan.",
-      },
-      flow_hold_start: {
+      };
+      case "flow_hold_start":
+        return {
         title: reasonCode === "flow_postflow"
           ? coolingRuntimeHold ? "Koeling loopt nog kort door" : heatingRuntimeHold ? "Verwarming loopt nog kort door" : isCoolingModeEvent ? "Naloop na koelen actief" : "Naloop actief"
           : isFlowFault ? "Start wacht op voldoende waterflow"
@@ -1340,8 +1347,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           : heatingRuntimeHold
           ? `${activeHeatingSource} stopt zodra de minimale looptijd vrij is; daarna rondt de pomp de naloop af.`
           : "De regelaar gaat automatisch verder zodra de flowfase klaar is.",
-      },
-      flow_hold_clear: {
+      };
+      case "flow_hold_clear":
+        return {
         title: reasonCode === "flow_postflow"
           ? isCoolingModeEvent ? "Naloop na koelen klaar" : "Naloop klaar"
           : isFlowFault ? "Waterflow hersteld"
@@ -1379,8 +1387,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           : isFlowFault
           ? ["Waterflow hersteld", "Startblokkade opgeheven", "Regeling gaat verder"]
           : ["Waterflow voldoende", "Warmtepomp vrijgegeven", "Regeling gaat verder"],
-      },
-      startup_inhibit_start: {
+      };
+      case "startup_inhibit_start":
+        return {
         title: Number(event?.value_a) === 1 ? "Koeling wacht na herstart" : "Verwarming wacht na herstart",
         reasonLabel: "Wachttijd na herstart",
         reasonSummary: "De compressor blijft na een herstart kort uit om een te snelle herstart te voorkomen.",
@@ -1392,8 +1401,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           ? "De warmtepomp start automatisch met koelen zodra de wachttijd voorbij is."
           : "De warmtepomp start automatisch met verwarmen zodra de wachttijd voorbij is.",
         checks: ["Comfortvraag aanwezig", "Compressor blijft nog uit", "Start volgt automatisch"],
-      },
-      startup_inhibit_clear: {
+      };
+      case "startup_inhibit_clear":
+        return {
         title: "Wachttijd na herstart voorbij",
         reasonLabel: "Wachttijd afgerond",
         reasonSummary: "De compressor mag weer starten als de vraag nog aanwezig is.",
@@ -1401,8 +1411,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         detail: "De minimale uit-tijd na de reboot is afgerond. Alle normale startvoorwaarden blijven van toepassing.",
         next: "Bij aanhoudende vraag gaat de controller automatisch verder met de gekozen warmtepomp.",
         checks: ["Wachttijd verstreken", "Start weer toegestaan", "Regeling gaat verder"],
-      },
-      startup_inhibit_refresh: {
+      };
+      case "startup_inhibit_refresh":
+        return {
         title: Number(event?.value_a) === 1 ? "Koelvraag tijdens wachttijd gewijzigd" : "Warmtevraag tijdens wachttijd gewijzigd",
         reasonLabel: "Wachttijd blijft actief",
         reasonSummary: "De gekozen warmtepomp of doelmodus veranderde, maar de wachttijd na de herstart loopt door.",
@@ -1410,20 +1421,23 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         detail: "Tijdens de wachttijd veranderde welke warmtepomp of doelmodus gewenst is. De blokkering is niet opgeheven; alleen de context van de wachtperiode is bijgewerkt.",
         next: "Zodra de wachttijd voorbij is, mag de dan gekozen warmtepomp automatisch starten.",
         checks: ["Vraag opnieuw beoordeeld", "Wachttijd blijft actief", "Start volgt automatisch"],
-      },
-      defrost_seen_start: {
+      };
+      case "defrost_seen_start":
+        return {
         title: `Ontdooien gestart (${subject})`,
         summary: `${subject} ontdooit kort. Dat is normaal bij koud en vochtig weer.`,
         detail: "De buitenunit bepaalt zelf hoe lang ontdooien duurt. De regelaar voorkomt ondertussen onnodige wissels.",
         next: "Na ontdooien levert de warmtepomp automatisch weer normaal mee.",
-      },
-      defrost_seen_clear: {
+      };
+      case "defrost_seen_clear":
+        return {
         title: `Ontdooien klaar (${subject})`,
         summary: `${subject} heeft ontdooien afgerond en kan weer normaal vermogen leveren.`,
         detail: "De regelaar ziet dat de ontdooifase voorbij is en laat de normale regeling weer doorlopen.",
         next: "Bij aanhoudende vraag blijft de warmtepomp actief of schakelt duo-bedrijf bij.",
-      },
-      cooling_limited: {
+      };
+      case "cooling_limited":
+        return {
         title: reasonCode === "dew_stop"
           ? "Koeling gestopt door dauwpunt"
           : reasonCode === "restart_wait"
@@ -1448,38 +1462,44 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           : coolingProtectionReason
           ? "Koeling wordt vrijgegeven zodra de veilige marge stabiel genoeg is."
           : "Koeling blijft binnen dit maximum zolang de instelling en koelvraag gelijk blijven.",
-      },
-      cooling_released: {
+      };
+      case "cooling_released":
+        return {
         title: "Koeling vrijgegeven",
         summary: "De veilige marge is terug. De warmtepomp mag weer normaal koelen.",
         detail: "De dauwpunt- en temperatuurmarge is voldoende hersteld om de begrenzing los te laten.",
         next: "De regelaar blijft koelen zolang de kamer daarom vraagt.",
-      },
-      sticky_pump_run: {
+      };
+      case "sticky_pump_run":
+        return {
         title: "Pompbescherming uitgevoerd",
         summary: "De pomp draaide kort na langere stilstand. Dit is geen verwarmings- of koelvraag.",
         detail: "Deze korte run voorkomt dat de pomp na stilstand vast gaat zitten.",
         next: "De volgende preventieve run volgt pas na de ingestelde beschermingstijd.",
-      },
-      frost_protection_start: {
+      };
+      case "frost_protection_start":
+        return {
         title: "Vorstbescherming actief",
         summary: "Het systeem laat water circuleren om bevriezing te voorkomen.",
         detail: "Dit is beschermingsgedrag. Er hoeft geen verwarmings- of koelvraag te zijn.",
         next: "Vorstbescherming stopt zodra het risico weg is of de normale regeling weer voorrang krijgt.",
-      },
-      frost_protection_clear: {
+      };
+      case "frost_protection_clear":
+        return {
         title: "Vorstbescherming gestopt",
         summary: "Het systeem verlaat de vorstbescherming en gaat terug naar normale regeling.",
         detail: "Het watercircuit hoeft niet langer apart beschermd te worden.",
         next: "Bij nieuw vorstrisico kan de bescherming automatisch opnieuw starten.",
-      },
-      boiler_assist_start: {
+      };
+      case "boiler_assist_start":
+        return {
         title: "CV-ketel ondersteunt tijdelijk",
         summary: "De CV-ketel helpt omdat extra capaciteit tijdelijk nuttig is.",
         detail: "De warmtepompen blijven de basis leveren. De CV-ketel vult alleen aan zolang de vraag daar om vraagt.",
         next: "De CV-ketel stopt zodra de warmtepompen de vraag weer rustig zelf kunnen dragen.",
-      },
-      boiler_assist_stop: boilerStopBlocked
+      };
+      case "boiler_assist_stop":
+        return boilerStopBlocked
         ? {
           title: reasonCode === "sensor_fallback"
             ? "CV-ondersteuning gestopt: meting ontbreekt"
@@ -1503,17 +1523,19 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           summary: "De extra ondersteuning is niet meer nodig.",
           detail: "De warmtevraag is genoeg gedaald of de warmtepompen kunnen het weer zelf dragen.",
           next: "De CV-ketel blijft beschikbaar als er later opnieuw extra capaciteit nodig is.",
-        },
-      attention_pattern: {
+        };
+      case "attention_pattern":
+        return {
         title: "Aandachtspunt gezien",
         summary: reasonCode === "start_stop_rate_high"
           ? "Er zijn relatief veel starts/stops gezien. Dat is nuttig om te volgen."
           : "Het systeem ziet een patroon dat extra aandacht verdient.",
         detail: reason.summary,
         next: "Als het patroon aanhoudt, blijft dit zichtbaar voor support en analyse.",
-      },
-    };
-    return copies[eventType] || fallback;
+      };
+      default:
+        return fallback;
+    }
   }
 
   function getDecisionEventGraphEndMinute(startMinute, event, selectedWindow) {
@@ -2096,14 +2118,6 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         const weights = { event: 0, span: 1, aggregate: 2 };
         return (weights[left.kind] ?? 3) - (weights[right.kind] ?? 3);
       });
-  }
-
-  function getControlWorkingItems(heatPumpPanels) {
-    const decisionLogItems = getControlWorkingDecisionLogItems();
-    if (decisionLogItems.length) {
-      return decisionLogItems;
-    }
-    return [];
   }
 
   function getControlWorkingSelectedItem(items) {
@@ -3201,8 +3215,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     `;
   }
 
-  function getControlWorkingSignature(heatPumpPanels) {
-    const current = getControlWorkingCurrent(heatPumpPanels);
+  function getControlWorkingSignature(current) {
     return getRenderSignature({
       tab: getControlWorkingSelectedTab(),
       window: getControlWorkingSelectedWindow(),
@@ -3237,11 +3250,10 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     });
   }
 
-  function renderControlWorkingPanel(heatPumpPanels) {
-    const current = getControlWorkingCurrent(heatPumpPanels);
-    const items = getControlWorkingItems(heatPumpPanels);
-    const selectedItem = getControlWorkingSelectedItem(items);
+  function renderControlWorkingPanel(current, signature = getControlWorkingSignature(current)) {
     const selectedTab = getControlWorkingSelectedTab();
+    const items = selectedTab === "status" ? [] : getControlWorkingDecisionLogItems();
+    const selectedItem = getControlWorkingSelectedItem(items);
     const visibleItem = selectedTab === "graphs"
       ? getControlWorkingItemForMinute(items, getControlWorkingGraphMinute())
       : selectedItem;
@@ -3252,7 +3264,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       : renderControlWorkingTimelineTab(items, visibleItem);
     const periodChoices = selectedTab === "status" ? "" : renderControlWorkingWindowChoices();
     return `
-      <section class="oq-working" data-render-signature="${escapeHtml(getControlWorkingSignature(heatPumpPanels))}">
+      <section class="oq-working" data-render-signature="${escapeHtml(signature)}">
         <header class="oq-working-head">
           <div class="oq-working-head-copy">
             <span class="oq-working-kicker">
@@ -3273,11 +3285,11 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
   }
 
   export function renderControlReplayView() {
-    const heatPumpPanels = getHeatPumpPanels();
+    const current = getControlWorkingCurrent(getHeatPumpPanels());
     return `
       <section class="oq-helper-panel oq-helper-panel--flush">
         <div class="oq-overview-board oq-overview-board--${escapeHtml(state.overviewTheme)}">
-          ${renderControlWorkingPanel(heatPumpPanels)}
+          ${renderControlWorkingPanel(current)}
         </div>
       </section>
     `;
@@ -3301,11 +3313,12 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     if (board.className !== nextBoardClass) {
       board.className = nextBoardClass;
     }
-    const heatPumpPanels = getHeatPumpPanels();
+    const current = getControlWorkingCurrent(getHeatPumpPanels());
+    const signature = getControlWorkingSignature(current);
     return replaceOuterHtmlIfSignatureChanged(
       panel,
-      getControlWorkingSignature(heatPumpPanels),
-      renderControlWorkingPanel(heatPumpPanels),
+      signature,
+      () => renderControlWorkingPanel(current, signature),
     ) || true;
   }
 

@@ -1612,7 +1612,7 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
     replaceOuterHtmlIfSignatureChanged(
       trends,
       getOverviewTrendRenderSignature(),
-      renderOverviewTrendsPanel(),
+      () => renderOverviewTrendsPanel(),
     );
     patchOverviewTrendCurrentValues(board);
     syncOverviewTrendInteractions(board);

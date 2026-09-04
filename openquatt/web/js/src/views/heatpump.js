@@ -1568,7 +1568,7 @@ import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./vie
       replaceOuterHtmlIfSignatureChanged(
         monitoringNotice,
         getRenderSignature(monitoring),
-        renderOverviewInstallationMonitoringNotice(),
+        () => renderOverviewInstallationMonitoringNotice(),
       );
     }
 
@@ -1584,7 +1584,7 @@ import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./vie
         replaceOuterHtmlIfSignatureChanged(
           statusPanel,
           getRenderSignature(getOverviewStatusCards(strategyLabel, controlModeLabel)),
-          renderOverviewStatusPanel(strategyLabel, controlModeLabel),
+          () => renderOverviewStatusPanel(strategyLabel, controlModeLabel),
         );
       }
 
@@ -1602,7 +1602,7 @@ import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./vie
       replaceOuterHtmlIfSignatureChanged(
         system,
         getRenderSignature(getOverviewStrategySectionModel()),
-        renderOverviewNarrativePanel(getOverviewStrategySectionModel()),
+        () => renderOverviewNarrativePanel(getOverviewStrategySectionModel()),
       );
     }
 
@@ -1611,7 +1611,7 @@ import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./vie
       replaceOuterHtmlIfSignatureChanged(
         temps,
         getOverviewTempsRenderSignature(tempsModel),
-        renderOverviewTempsPanel(),
+        () => renderOverviewTempsPanel(),
       );
     }
 
@@ -1619,7 +1619,7 @@ import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./vie
       replaceOuterHtmlIfSignatureChanged(
         trends,
         getOverviewTrendRenderSignature(),
-        renderOverviewTrendsPanel(),
+        () => renderOverviewTrendsPanel(),
       );
       patchOverviewTrendCurrentValues(board);
     }

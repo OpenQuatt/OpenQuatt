@@ -1371,12 +1371,12 @@ import { replaceOuterHtmlIfSignatureChanged } from "./view-utils.js";
     }
 
     const model = getEnergySectionModel();
-    const energyChanged = replaceOuterHtmlIfSignatureChanged(
+    replaceOuterHtmlIfSignatureChanged(
       energy,
       getEnergySectionRenderSignature(model),
-      renderEnergySection(model),
+      () => renderEnergySection(model),
     );
-    return energyChanged;
+    return true;
   }
 
   export function patchResultsDom() {
@@ -1397,14 +1397,14 @@ import { replaceOuterHtmlIfSignatureChanged } from "./view-utils.js";
 
     const historyModel = getEnergyHistoryPanelModel();
     const periodControlFocused = isEnergyHistoryPeriodControlFocused();
-    const historyChanged = periodControlFocused
-      ? false
-      : replaceOuterHtmlIfSignatureChanged(
+    if (!periodControlFocused) {
+      replaceOuterHtmlIfSignatureChanged(
         history,
         getEnergyHistoryRenderSignature(historyModel),
-        renderEnergyHistoryPanel(historyModel),
+        () => renderEnergyHistoryPanel(historyModel),
       );
-    return historyChanged || periodControlFocused;
+    }
+    return true;
   }
 
   setViewPatchControls({ patchEnergyDom, patchResultsDom });
