@@ -132,28 +132,11 @@ void test_demand_slew_and_limits() {
   warm.room_c = 22.0f;
   assert(decide_demand(warm, tuning(), {3000, 1U, 0.1f}).next.comfort_memory_c < 0.1f);
 }
-void test_filter_table() {
-  struct Case {
-    int raw, current;
-    float budget, step_min, dt_s;
-    int expected;
-    float expected_budget;
-  };
-  const Case cases[] = {{10, 2, 0, 1, 60, 3, 0},   {10, 2, 0, 1, 30, 2, 0.5f},     {10, 2, 0, 20, 60, 10, 0},
-                        {4, 5, 0, 1, 60, 5, 0},    {3, 5, 0, 1, 60, 3, 0},         {0, 1, 0, 1, 60, 0, 0},
-                        {10, 2, NAN, 1, 60, 2, 0}, {10, 2, 0, INFINITY, 60, 2, 0}, {10, 2, 0, 1, INFINITY, 2, 0}};
-  for (const auto& test : cases) {
-    const auto out = filter_demand(test.raw, test.current, test.budget, test.step_min, test.dt_s, 20);
-    assert(out.previous == test.current && out.filtered == test.expected &&
-           near(out.ramp_budget, test.expected_budget));
-  }
-}
 }  // namespace
 int main() {
   test_model_and_feedforward();
   test_cache_and_cadence_rollover();
   test_demand_finite_contract();
   test_demand_slew_and_limits();
-  test_filter_table();
   return 0;
 }

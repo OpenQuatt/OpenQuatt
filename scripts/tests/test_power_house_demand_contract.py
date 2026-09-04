@@ -5,10 +5,12 @@ class PowerHouseDemandContractTest(unittest.TestCase):
     def test_delegation_and_line_budget(self) -> None:
         yaml = FILES[0].read_text()
         text = FILES[1].read_text()
-        positions = [text.index(marker) for marker in ("observe_protection(", "decide_cadence(", "decide_demand(", "filter_demand(", "decide_dispatch(")]
+        positions = [text.index(marker) for marker in ("observe_protection(", "decide_cadence(", "decide_demand(", "decide_dispatch(")]
         self.assertEqual(positions, sorted(positions))
         self.assertIn("id(oq_ph_request_last_loop_ms) = now_ms == 0 ? UINT32_MAX : now_ms;", text)
         self.assertIn("oq_power_house_runtime::runtime().tick", yaml)
-        for marker in ("now_ms > id(oq_ph_request_last_loop_ms)", "float ramp_budget = id(oq_demand_filter_ramp_up_budget)", "fminf(requested_w", "struct DuoCandidate"):
+        self.assertIn("oq_ph_demand_loop_s", yaml)
+        for marker in ("filter_demand(", "oq_demand_filter_ramp_up", "now_ms > id(oq_ph_request_last_loop_ms)", "fminf(requested_w", "struct DuoCandidate"):
             self.assertNotIn(marker, text)
+            self.assertNotIn(marker, yaml)
         self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 3120)

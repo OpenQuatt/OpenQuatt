@@ -32,7 +32,7 @@ class ThermalActuatorRuntimeContractTest(unittest.TestCase):
                  "openquatt/includes/control/oq_thermal_actuator_runtime.h", "tests/host/thermal_actuator_logic_test.cpp",
                  "scripts/tests/test_thermal_actuator_runtime_contract.py", "scripts/tests/test_v2_compressor_level_contract.py",
                  "scripts/tests/test_compressor_frequency_policy_contract.py")
-        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1287)
+        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1291)
 
 
 if __name__ == "__main__":

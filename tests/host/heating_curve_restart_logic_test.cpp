@@ -107,6 +107,9 @@ void test_stop_confirmation_and_rollover() {
   assert(!out.next.heat_request_active && out.stop_reason == STOP_LOW_LOAD);
 }
 void test_restart_lock_and_regimes() {
+  assert(control_profile("Comfort").off_reentry_min_ms == 300000U);
+  assert(control_profile("Balanced").off_reentry_min_ms == 480000U);
+  assert(control_profile("Stable").off_reentry_min_ms == 600000U);
   auto in = input();
   DemandState off{false, 0, 1000U, false, false, 0};
   in.now_ms = 2000U;

@@ -95,9 +95,9 @@ This prevents hidden control coupling and keeps debugging deterministic.
 | Supervisory | `${oq_supervisory_loop_s}` (default 5s) | Mode decisions, flow interlock, frost logic, power-cap safety net |
 | Strategy manager | `${oq_strategy_loop_s}` (default 5s) | Active strategy selection plus shared `oq_strategy_*` interface state |
 | Heating curve | `${oq_strategy_loop_s}` plus `${oq_heat_loop_tick_s}` | Curve target generation, PID demand, and curve compressor requests |
-| Power House | `${oq_heat_loop_tick_s}` with effective cadence `${oq_heat_loop_powerhouse_s}` | Power model, filtered demand, and Power House compressor requests |
+| Power House | `${oq_heat_loop_tick_s}` with effective cadence `${oq_ph_demand_loop_s}` | Power model, demand regulation, first-start intent, and Power House compressor requests |
 | Cooling | `${oq_heat_loop_tick_s}` | Cooling target, PI demand, and cooling compressor requests |
-| Thermal request control | Tick `${oq_heat_loop_tick_s}` (default 5s), effective cadence `${oq_heat_loop_curve_s}` (Curve) / `${oq_heat_loop_powerhouse_s}` (Power House) | Shared request control, guards, and actuator input |
+| Thermal request control | Tick `${oq_heat_loop_tick_s}` (default 5s), effective cadence `${oq_heat_loop_curve_s}` (Curve) / `${oq_heat_loop_powerhouse_s}` (Power House), with immediate evaluation on mode or strategy-request changes | Shared request control, guards, and actuator input |
 | Flow control | `${oq_flow_loop_s}` (default 5s) | Pump iPWM control (AUTO/MANUAL/FROST/CM100 autotune override) |
 | Boiler control | `${oq_boiler_loop_s}` (default 5s) | CM3 assist, CM4 fault fallback and CM100 boiler test under shared safety guards |
 | HP incident manager | component loop plus fresh HP observations | Debounce, incident lifecycle, HP availability, start/stop confirmation and CM4 eligibility |
@@ -250,7 +250,7 @@ Heating-curve stability guards around zero-demand edge:
 
 `oq_thermal_request_control` enforces, in order:
 
-1. demand filter and clamp
+1. demand normalization and clamp
 2. power cap clamp (`oq_power_cap_f`)
 3. Control Mode gating (CM2/CM3 only; CM4 always requests zero HP output)
 4. strategy-specific level logic
@@ -258,10 +258,20 @@ Heating-curve stability guards around zero-demand edge:
 6. min-runtime stop blocking (all strategies)
 7. write-on-change application and runtime counters
 
-Demand filter behavior is asymmetric:
+Power House uses `Power House demand rise time` as its single upward rate limiter. A validated room-demand or
+thermostat-raise first start may temporarily request the lowest viable capacity; normal watt regulation resumes after
+the compressor starts.
 
-- downward path follows demand immediately
-- upward path is rate-limited by runtime control `Demand filter ramp up` (step/min, Power House path)
+For both heating strategies, the 30 s CM1 preflow window starts with the first heating request and overlaps
+flow establishment, Power House demand confirmation and the cold-start water check. Once flow is sufficient,
+each online ODU receives a targeted read of holding register `2134` (water outlet temperature), using the existing
+sensor filters and calibration. One persistent reader per HP permits at most one pending request and retries
+at most once per 10 s. Flow loss, cancelled demand, OTA pause or service control cancels pending probe ownership;
+callbacks for those detached requests cannot refresh a later circulation session. Normal polling remains unchanged.
+
+An expired preflow window stays in CM1 until fresh water samples, flow and the other start guards permit CM2;
+it does not start another 30 s window. No compressor is released solely because a read was queued or preflow
+elapsed. The per-HP 240 s minimum-off gate and the Heating Curve 5/8/10-minute water re-entry blocks still apply.
 
 Power House duo request selection works in simple steps:
 
