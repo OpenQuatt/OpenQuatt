@@ -292,17 +292,6 @@ void OpenQuattCrashTelemetry::worker_task_(void* arg) {
     }
 
     if (command == WorkerCommand::CLEANUP) {
-#ifdef OQ_CRASH_TELEMETRY_CLEANUP_STALL_TEST_MS
-      // HIL-only fault injection: stall the isolated worker before MQTT
-      // cleanup to prove the controller loop stays responsive (HIL 9.4).
-      // Pass -DOQ_CRASH_TELEMETRY_CLEANUP_STALL_TEST_MS=<ms> as an extra
-      // build flag in a temporary local HIL config. Never enable in release
-      // firmware.
-      ESP_LOGW(TAG,
-               "HIL fault injection active: stalling crash worker cleanup by %u ms; never enable in release builds",
-               static_cast<unsigned>(OQ_CRASH_TELEMETRY_CLEANUP_STALL_TEST_MS));
-      vTaskDelay(pdMS_TO_TICKS(OQ_CRASH_TELEMETRY_CLEANUP_STALL_TEST_MS));
-#endif
       while (!self->cleanup_client_()) {
         vTaskDelay(pdMS_TO_TICKS(WORKER_CLEANUP_RETRY_MS));
       }
