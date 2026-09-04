@@ -22,6 +22,13 @@ int main() {
   assert(maximum_current_a(true, false, 16.0f, 20.0f) == 16.0f);
   assert(maximum_current_a(true, true, 16.0f, 20.0f) == 20.0f);
   assert(maximum_current_a(false, true, 16.0f, 20.0f) == 16.0f);
+  assert(standard_current_a(true, false, 16.0f, 20.0f) == 16.0f);
+  assert(standard_current_a(true, true, 16.0f, 20.0f) == 20.0f);
+  assert(standard_current_a(false, true, 16.0f, 20.0f) == 16.0f);
+  assert(absolute_maximum_current_a(false, true, true, 16.0f, 20.0f, 26.0f) == 16.0f);
+  assert(absolute_maximum_current_a(true, true, false, 16.0f, 20.0f, 26.0f) == 20.0f);
+  assert(absolute_maximum_current_a(true, true, true, 16.0f, 20.0f, 26.0f) == 26.0f);
+  assert(absolute_maximum_current_a(true, false, false, 16.0f, 20.0f, 26.0f) == 16.0f);
   assert(effective_current_a(NAN, 10.0f, 16.0f) == 16.0f);
   assert(effective_current_a(4.0f, 10.0f, 16.0f) == 10.0f);
   assert(effective_current_a(18.0f, 10.0f, 16.0f) == 16.0f);

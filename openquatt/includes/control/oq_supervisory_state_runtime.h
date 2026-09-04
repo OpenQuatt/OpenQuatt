@@ -18,6 +18,7 @@ struct TickConfig {
   uint32_t loop_s;
   float duo_current_limit_v1_a;
   float duo_current_limit_v2_a;
+  float duo_current_limit_v2_max_a;
   float electrical_current_limit_min_a;
   float mains_voltage_v;
   uint32_t power_peak_trip_s;
@@ -79,7 +80,7 @@ class Runtime {
       id(oq_enabled).turn_on();
     }
     oq_supervisory_power_runtime::runtime().tick(
-        {now_ms, tick.loop_s, tick.duo_current_limit_v1_a, tick.duo_current_limit_v2_a,
+        {now_ms, tick.loop_s, tick.duo_current_limit_v1_a, tick.duo_current_limit_v2_a, tick.duo_current_limit_v2_max_a,
          tick.electrical_current_limit_min_a, tick.mains_voltage_v, tick.power_peak_trip_s, tick.power_soft_trip_s,
          tick.power_recover_s, tick.power_measurement_stale_s, tick.power_cap_nan_f, tick.power_cap_max_f});
 

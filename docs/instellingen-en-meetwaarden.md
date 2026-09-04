@@ -60,7 +60,7 @@ Deze groep bepaalt hoeveel ruimte OpenQuatt krijgt:
 
 Gebruik deze groep vooral om gedrag te begrenzen of te verklaren, niet om fijn te tunen.
 
-`Electrical current limit` begrenst het gezamenlijke elektrische ingangsvermogen. Standaard blijft de bestaande grens actief: 16 A voor Single en voor Duo V1/V1.5, 20 A voor Duo V2. Power House gebruikt de grens voorspellend én via gemeten feedback; stooklijn en koelen alleen via gemeten feedback. Het is een regelgrens en geen vervanging voor zekeringen, aardlekbeveiliging of load balancing.
+`Electrical current limit` begrenst als `Maximale gezamenlijke netstroom` het gezamenlijke elektrische ingangsvermogen van de buitenunits. Standaard blijft de bestaande grens actief: 16 A voor Single en voor Duo V1/V1.5, 20 A voor Duo V2. Een hogere waarde is alleen mogelijk tot de bevestigde technische bovengrens (Duo V2 tot 26 A, Duo V1/V1.5 tot 20 A; Single en Duo met onbekende generatie blijven op 16 A), toont direct een waarschuwing en vraagt een expliciete bevestiging. Power House gebruikt de grens voorspellend én via gemeten feedback; stooklijn en koelen alleen via gemeten feedback. Het is een softwarematige regelgrens en geen vervanging voor zekeringen, aardlekbeveiliging of load balancing; korte overschrijdingen door meetvertraging zijn niet volledig uit te sluiten.
 
 ### 2. Verwarmingsstrategie
 

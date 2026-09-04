@@ -13,6 +13,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // the explicitly confirmed dev-to-main firmware downgrade flow,
     // selectable cooling restart by water temperature or minimum off-time,
     // instelbare elektrische ingangsgrens met topologie- en ODU-afhankelijk maximum,
+    // issue-615 verduidelijking met standaardreferentie, inline waarschuwing,
+    // expliciete bevestiging boven de standaard en standaard-herstelactie,
     // toelichting lokale historie in Quick Start, plus fase-2 flash-I/O observability,
     // bounded OTA app-shell cache refresh before reloading into newly installed firmware,
     // strategie-afhankelijke warmtetoestemming-advies (Power House vs stooklijn, OT-voorkeur, centrale modal, auto-set in Quick Start),
@@ -25,7 +27,7 @@ export const WEB_BUNDLE_BUDGETS = [
     // the issue-471 grouped source focus panel with configured/effective paths,
     // relevant-source diagnostics, warnings and stable keyboard focus,
     // and frequency-based day/silent limits and exclusion ranges per ODU.
-    raw: 979_000,
+    raw: 986_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

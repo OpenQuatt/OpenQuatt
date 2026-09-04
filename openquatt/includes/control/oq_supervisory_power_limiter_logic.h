@@ -55,8 +55,27 @@ struct Thresholds {
   float recover_w;
 };
 
-inline float maximum_current_a(bool duo, bool generation_v2, float v1_a, float v2_a) {
+inline float standard_current_a(bool duo, bool generation_v2, float v1_a, float v2_a) {
   return duo && generation_v2 ? v2_a : v1_a;
+}
+
+inline float maximum_current_a(bool duo, bool generation_v2, float v1_a, float v2_a) {
+  return standard_current_a(duo, generation_v2, v1_a, v2_a);
+}
+// Absolute technische bovengrens: Duo V2 mag tot de bevestigde V2-max-grens,
+// Duo V1/V1.5 tot de V2-standaard (zelfde buitenunit-/regelplatform als Duo
+// V2). Single en Duo met onbekende generatie blijven conservatief op de
+// V1-standaard staan, zodat geen hogere waarde wordt vrijgegeven zonder
+// betrouwbare detectie.
+inline float absolute_maximum_current_a(bool duo, bool generation_known, bool generation_v2, float v1_a, float v2_a,
+                                        float v2_max_a) {
+  if (!duo) {
+    return v1_a;
+  }
+  if (!generation_known) {
+    return v1_a;
+  }
+  return generation_v2 ? v2_max_a : v2_a;
 }
 
 inline float effective_current_a(float configured_a, float minimum_a, float maximum_a) {

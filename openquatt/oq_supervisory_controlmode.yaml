@@ -56,7 +56,7 @@ esphome:
         - lambda: |-
             id(oq_electrical_current_limit_a).traits.set_max_value(
                 oq_supervisory_power_runtime::maximum_current_a(
-                    ${oq_duo_current_limit_v1_a}, ${oq_duo_current_limit_v2_a}));
+                    ${oq_duo_current_limit_v1_a}, ${oq_duo_current_limit_v2_a}, ${oq_duo_current_limit_v2_max_a}));
     - priority: -100
       then:
         - lambda: |-
@@ -384,21 +384,27 @@ number:
     icon: mdi:current-ac
     unit_of_measurement: "A"
     min_value: ${oq_electrical_current_limit_min_a}
-    max_value: ${oq_duo_current_limit_v2_a}
+    # Absolute technische bovengrens (26 A voor Duo V2). De
+    # installatieafhankelijke standaard (16 A Single/Duo V1/V1.5, 20 A Duo V2)
+    # is een waarschuwingsgrens; waarden daarboven worden in de web-app
+    # expliciet bevestigd. Single, Duo V1/V1.5 (tot 20 A) en Duo met onbekende
+    # generatie (tot 16 A) blijven conservatief via traits.
+    max_value: ${oq_duo_current_limit_v2_max_a}
     step: 0.5
     update_interval: ${oq_supervisory_loop_s}s
     entity_category: config
     lambda: |-
       const float max_current_a = oq_supervisory_power_runtime::maximum_current_a(
-          ${oq_duo_current_limit_v1_a}, ${oq_duo_current_limit_v2_a});
+          ${oq_duo_current_limit_v1_a}, ${oq_duo_current_limit_v2_a}, ${oq_duo_current_limit_v2_max_a});
       id(oq_electrical_current_limit_a).traits.set_max_value(max_current_a);
       return oq_supervisory_power_runtime::configured_current_a(
-          ${oq_electrical_current_limit_min_a}, ${oq_duo_current_limit_v1_a}, ${oq_duo_current_limit_v2_a});
+          ${oq_electrical_current_limit_min_a}, ${oq_duo_current_limit_v1_a}, ${oq_duo_current_limit_v2_a},
+          ${oq_duo_current_limit_v2_max_a});
     set_action:
       then:
         - lambda: |-
             const float max_current_a = oq_supervisory_power_runtime::maximum_current_a(
-                ${oq_duo_current_limit_v1_a}, ${oq_duo_current_limit_v2_a});
+                ${oq_duo_current_limit_v1_a}, ${oq_duo_current_limit_v2_a}, ${oq_duo_current_limit_v2_max_a});
             id(oq_electrical_current_limit_a).traits.set_max_value(max_current_a);
             const float configured_a = oq_supervisory_power::effective_current_a(
                 x, ${oq_electrical_current_limit_min_a}, max_current_a);
@@ -613,6 +619,7 @@ interval:
               ${oq_supervisory_loop_s},
               ${oq_duo_current_limit_v1_a},
               ${oq_duo_current_limit_v2_a},
+              ${oq_duo_current_limit_v2_max_a},
               ${oq_electrical_current_limit_min_a},
               ${oq_mains_voltage_v},
               ${oq_power_peak_trip_s},

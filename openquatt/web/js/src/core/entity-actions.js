@@ -8,6 +8,7 @@ import { formatValue, getEntityValue, getNumberMeta, normalizeDateTimeValue, nor
 import { commitDateTime, commitNumber, commitSelect, commitText, commitTime, disableRange, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
 import { handleNamedButtonAction } from "./named-button-actions.js";
 import { state } from "./state.js";
+import { getCommittedElectricalLimitRaw, getElectricalLimitChangePlan } from "../settings/electrical-limit.js";
 import { setInterfacePanelOpen } from "./runtime.js";
 import { handleDebugRecordingAction } from "../features/debug-recording.js";
 import { handleControlReplayAction } from "../features/control-replay-actions.js";
@@ -85,6 +86,27 @@ function updateFrequencyRangeControl(input) {
     value.textContent = disabled ? "Geen uitsluiting" : `${minValue}–${maxValue} Hz`;
   }
 }
+
+  export function requestElectricalLimitChange(rawValue) {
+    const meta = getNumberMeta("electricalCurrentLimit");
+    const plan = getElectricalLimitChangePlan(rawValue, getCommittedElectricalLimitRaw(), meta.min);
+    if (!plan.valid) {
+      state.inputDrafts.electricalCurrentLimit = String(rawValue ?? "");
+      render();
+      return false;
+    }
+    state.inputDrafts.electricalCurrentLimit = String(rawValue ?? "");
+    state.drafts.electricalCurrentLimit = plan.clamped;
+    if (plan.requiresConfirmation) {
+      state.pendingElectricalLimit = { fromA: plan.fromA, toA: plan.clamped, standardA: plan.info.standardA };
+      state.systemModal = "electrical-limit-confirm";
+      render();
+      return true;
+    }
+    state.pendingElectricalLimit = null;
+    void commitNumber("electricalCurrentLimit", plan.clamped);
+    return false;
+  }
 
   export function handleFocusChange() {
     window.setTimeout(() => {
@@ -402,6 +424,10 @@ function updateFrequencyRangeControl(input) {
       if (event.target.dataset.oqRangeRole && Number(event.target.value) === 0) {
         const minKey = field.replace("MaxHz", "MinHz");
         void disableRange(minKey, minKey.replace("MinHz", "MaxHz"));
+        return;
+      }
+      if (field === "electricalCurrentLimit") {
+        void requestElectricalLimitChange(event.target.value);
         return;
       }
       commitNumber(field, event.target.value);

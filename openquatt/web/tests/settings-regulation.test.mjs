@@ -155,10 +155,16 @@ test("elektrische ingangsgrens respecteert Single en Duo maxima", () => {
 
   let markup = renderSettingsElectricalCurrentLimitSection();
   assert.match(markup, /Elektrische ingangsgrens/);
+  assert.match(markup, /Maximale gezamenlijke netstroom/);
   assert.match(markup, /max="16"/);
-  assert.match(markup, /circa 3650 W/);
-  assert.match(markup, /Stooklijn en koelen gebruiken alleen de gemeten feedback/);
-  assert.match(markup, /geen elektrische beveiliging/);
+  assert.match(markup, /Standaard voor deze installatie/);
+  assert.match(markup, /16 A · Single/);
+  assert.match(markup, /Indicatief vermogen bij 230 V/);
+  assert.match(markup, /circa 3,7 kW/);
+  assert.match(markup, /gezamenlijke elektrische belasting van de buitenunits/);
+  assert.match(markup, /Stooklijnbedrijf en koelen gebruiken alleen de gemeten feedback/);
+  assert.match(markup, /softwarematige regelgrens en geen elektrische beveiliging/);
+  assert.match(markup, /Korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten/);
 
   resetSettingsState({
     installationTopology: { value: "duo", state: "duo" },
@@ -166,8 +172,18 @@ test("elektrische ingangsgrens respecteert Single en Duo maxima", () => {
     electricalCurrentLimit: limit,
   });
   markup = renderSettingsElectricalCurrentLimitSection();
+  assert.match(markup, /max="26"/);
+  assert.match(markup, /20 A · Duo V2/);
+  assert.match(markup, /circa 4,6 kW/);
+
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V1", state: "V1" },
+    electricalCurrentLimit: limit,
+  });
+  markup = renderSettingsElectricalCurrentLimitSection();
   assert.match(markup, /max="20"/);
-  assert.match(markup, /circa 4563 W/);
+  assert.match(markup, /16 A · Duo V1\/V1\.5/);
 
   resetSettingsState({
     installationTopology: { value: "duo", state: "duo" },
@@ -176,6 +192,179 @@ test("elektrische ingangsgrens respecteert Single en Duo maxima", () => {
   });
   markup = renderSettingsElectricalCurrentLimitSection();
   assert.match(markup, /value="10"/);
+});
+
+test("elektrische ingangsgrens waarschuwt boven en relativeert onder de standaard", async () => {
+  const { getElectricalLimitTopologyInfo } = await import("../js/src/settings/electrical-limit.js");
+  const limit = numberEntity(16, "A", { min_value: 10, max_value: 20, step: 0.5 });
+
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V1", state: "V1" },
+    electricalCurrentLimit: limit,
+  });
+  let info = getElectricalLimitTopologyInfo();
+  assert.equal(info.standardA, 16);
+  assert.equal(info.absoluteMaxA, 20);
+
+  // Direct onder de standaard: alleen neutrale melding, geen waarschuwing.
+  state.inputDrafts.electricalCurrentLimit = "15.5";
+  state.drafts.electricalCurrentLimit = 15.5;
+  let markup = renderSettingsElectricalCurrentLimitSection();
+  assert.match(markup, /Een lagere waarde kan het maximale verwarmings- en koelvermogen beperken/);
+  assert.doesNotMatch(markup, /Hogere waarde dan de standaard elektrische aansluiting/);
+  assert.match(markup, /Standaardwaarde herstellen/);
+
+  // Op de standaard: geen waarschuwing en geen vermogensmelding.
+  state.inputDrafts.electricalCurrentLimit = "16";
+  state.drafts.electricalCurrentLimit = 16;
+  markup = renderSettingsElectricalCurrentLimitSection();
+  assert.doesNotMatch(markup, /Hogere waarde dan de standaard elektrische aansluiting/);
+  assert.doesNotMatch(markup, /Een lagere waarde kan het maximale verwarmings-/);
+
+  // Direct boven de standaard: inline waarschuwing met zwaardere-groep-eis.
+  state.inputDrafts.electricalCurrentLimit = "16.5";
+  state.drafts.electricalCurrentLimit = 16.5;
+  markup = renderSettingsElectricalCurrentLimitSection();
+  assert.match(markup, /Hogere waarde dan de standaard elektrische aansluiting/);
+  assert.match(markup, /Alleen de installatieautomaat vervangen door een zwaarder exemplaar is niet voldoende/);
+
+  // Duo V2 waarschuwt pas boven 20 A.
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V2", state: "V2" },
+    electricalCurrentLimit: limit,
+  });
+  info = getElectricalLimitTopologyInfo();
+  assert.equal(info.standardA, 20);
+  assert.equal(info.absoluteMaxA, 26);
+  state.inputDrafts.electricalCurrentLimit = "20";
+  state.drafts.electricalCurrentLimit = 20;
+  assert.doesNotMatch(renderSettingsElectricalCurrentLimitSection(), /Hogere waarde dan de standaard/);
+
+  // Duo V2 tot 26 A: boven 20 A volgt dezelfde waarschuwing en bevestiging.
+  state.inputDrafts.electricalCurrentLimit = "26";
+  state.drafts.electricalCurrentLimit = 26;
+  markup = renderSettingsElectricalCurrentLimitSection();
+  assert.match(markup, /max="26"/);
+  assert.match(markup, /Hogere waarde dan de standaard elektrische aansluiting/);
+  assert.match(markup, /boven de standaard 20 A voor een Duo V2/);
+
+  // Boven het absolute maximum wordt afgekapt op 26 A.
+  state.inputDrafts.electricalCurrentLimit = "30";
+  state.drafts.electricalCurrentLimit = 30;
+  assert.match(renderSettingsElectricalCurrentLimitSection(), /value="26"/);
+});
+
+test("elektrische ingangsgrens geeft geen verhoging vrij bij onbekende generatie", async () => {
+  const { getElectricalLimitTopologyInfo } = await import("../js/src/settings/electrical-limit.js");
+  const limit = numberEntity(16, "A", { min_value: 10, max_value: 20, step: 0.5 });
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "", state: "" },
+    electricalCurrentLimit: limit,
+  });
+  const info = getElectricalLimitTopologyInfo();
+  assert.equal(info.standardA, 16);
+  assert.equal(info.absoluteMaxA, 16);
+  const markup = renderSettingsElectricalCurrentLimitSection();
+  assert.match(markup, /max="16"/);
+  assert.match(markup, /Standaard voor deze installatie/);
+
+  resetSettingsState({
+    installationTopology: { value: "single", state: "single" },
+    hpGeneration: { value: "V1", state: "V1" },
+    electricalCurrentLimit: limit,
+  });
+  const singleInfo = getElectricalLimitTopologyInfo();
+  assert.equal(singleInfo.standardA, 16);
+  assert.equal(singleInfo.absoluteMaxA, 16);
+});
+
+test("elektrische ingangsgrens leest de bevestigde waarde los van open drafts", async () => {
+  const { getCommittedElectricalLimitRaw, getElectricalLimitChangePlan } = await import("../js/src/settings/electrical-limit.js");
+  const limit = numberEntity(16, "A", { min_value: 10, max_value: 20, step: 0.5 });
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V1", state: "V1" },
+    electricalCurrentLimit: limit,
+  });
+
+  // Simuleer typen: de draft staat al op 17 terwijl 16 bevestigd is.
+  state.inputDrafts.electricalCurrentLimit = "17";
+  state.drafts.electricalCurrentLimit = 17;
+  assert.equal(getCommittedElectricalLimitRaw(), 16);
+  const plan = getElectricalLimitChangePlan("17", getCommittedElectricalLimitRaw(), 10);
+  assert.equal(plan.requiresConfirmation, true);
+  assert.equal(plan.fromA, 16);
+  assert.equal(plan.toA, 17);
+});
+
+test("elektrische stroomaanduiding toont hele ampères zonder decimalen", async () => {
+  const { formatDutchAmps } = await import("../js/src/settings/electrical-limit.js");
+  assert.equal(formatDutchAmps(16), "16 A");
+  assert.equal(formatDutchAmps(20), "20 A");
+  assert.equal(formatDutchAmps(16.5), "16,5 A");
+  assert.equal(formatDutchAmps(Number.NaN), "—");
+});
+
+test("elektrische ingangsgrens vereist bevestiging boven de standaard en annuleren herstelt", async () => {
+  const { getElectricalLimitChangePlan } = await import("../js/src/settings/electrical-limit.js");
+  const { renderSystemModal } = await import("../js/src/features/header-status.js");
+  const { handleSystemAction } = await import("../js/src/features/system-actions.js");
+  const limit = numberEntity(16, "A", { min_value: 10, max_value: 20, step: 0.5 });
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V1", state: "V1" },
+    electricalCurrentLimit: limit,
+  });
+
+  // Puur plan: boven de standaard is bevestiging vereist met oude en nieuwe waarde.
+  let plan = getElectricalLimitChangePlan("20", 16, 10);
+  assert.equal(plan.valid, true);
+  assert.equal(plan.requiresConfirmation, true);
+  assert.equal(plan.fromA, 16);
+  assert.equal(plan.toA, 20);
+  plan = getElectricalLimitChangePlan("16", 16, 10);
+  assert.equal(plan.requiresConfirmation, false);
+  plan = getElectricalLimitChangePlan("15.5", 16, 10);
+  assert.equal(plan.requiresConfirmation, false);
+
+  const originalFetch = globalThis.fetch;
+  const posts = [];
+  globalThis.fetch = async (url, options = {}) => {
+    posts.push(String(url));
+    return { ok: true, json: async () => ({ value: 20, state: "20" }) };
+  };
+  try {
+    // Simuleer de bevestigingsstroom zoals requestElectricalLimitChange die opbouwt.
+    state.inputDrafts.electricalCurrentLimit = "20";
+    state.drafts.electricalCurrentLimit = 20;
+    state.pendingElectricalLimit = { fromA: 16, toA: 20, standardA: 16 };
+    state.systemModal = "electrical-limit-confirm";
+    let modal = renderSystemModal();
+    assert.match(modal, /Hogere elektrische ingangsgrens instellen\?/);
+    assert.match(modal, /van <strong>16 A<\/strong> naar <strong>20 A<\/strong>/);
+    assert.match(modal, /20 A instellen/);
+    assert.match(modal, /OpenQuatt vervangt nooit de elektrische beveiliging/);
+
+    // Annuleren sluit de dialoog en zet het veld terug op de bevestigde waarde.
+    handleSystemAction("close-system-modal", {});
+    assert.equal(state.systemModal, "");
+    assert.equal(state.pendingElectricalLimit, null);
+    assert.equal(state.inputDrafts.electricalCurrentLimit, undefined);
+    const markup = renderSettingsElectricalCurrentLimitSection();
+    assert.doesNotMatch(markup, /Hogere waarde dan de standaard elektrische aansluiting/);
+
+    // Bevestigen schrijft de nieuwe waarde weg.
+    state.pendingElectricalLimit = { fromA: 16, toA: 20, standardA: 16 };
+    state.systemModal = "electrical-limit-confirm";
+    await handleSystemAction("confirm-electrical-limit", {});
+    assert.equal(state.systemModal, "");
+    assert.ok(posts.some((url) => url.includes("value=20")));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("elektrische ingangsgrens staat voor ODU runtime", () => {
