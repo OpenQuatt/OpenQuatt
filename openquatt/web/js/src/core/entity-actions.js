@@ -8,7 +8,7 @@ import { formatValue, getEntityValue, getNumberMeta, normalizeDateTimeValue, nor
 import { commitDateTime, commitNumber, commitSelect, commitText, commitTime, disableRange, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
 import { handleNamedButtonAction } from "./named-button-actions.js";
 import { state } from "./state.js";
-import { getCommittedElectricalLimitRaw, getElectricalLimitChangePlan, renderElectricalLimitFooter, renderElectricalLimitRestore, resolveElectricalLimitView } from "../settings/electrical-limit.js";
+import { getCommittedElectricalLimitRaw, getElectricalLimitChangePlan, renderElectricalLimitEstimate, renderElectricalLimitFooter, renderElectricalLimitRestore, resolveElectricalLimitView } from "../settings/electrical-limit.js";
 import { setInterfacePanelOpen } from "./runtime.js";
 import { handleDebugRecordingAction } from "../features/debug-recording.js";
 import { handleControlReplayAction } from "../features/control-replay-actions.js";
@@ -120,6 +120,10 @@ function updateFrequencyRangeControl(input) {
       return;
     }
     const view = resolveElectricalLimitView();
+    const estimate = card.querySelector(".oq-settings-electrical-estimate");
+    if (estimate) {
+      estimate.outerHTML = renderElectricalLimitEstimate(view);
+    }
     const restore = card.querySelector(".oq-settings-electrical-restore");
     if (restore) {
       restore.outerHTML = renderElectricalLimitRestore(view);

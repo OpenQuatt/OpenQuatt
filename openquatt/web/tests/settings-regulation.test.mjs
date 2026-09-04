@@ -159,7 +159,8 @@ test("elektrische ingangsgrens respecteert Single en Duo maxima", () => {
   assert.match(markup, /max="16"/);
   assert.match(markup, /Standaard voor deze installatie/);
   assert.match(markup, /16 A · Single/);
-  assert.match(markup, /Indicatief vermogen bij 230 V/);
+  assert.match(markup, /Indicatief vermogen/);
+  assert.match(markup, /oq-settings-electrical-estimate/);
   assert.match(markup, /circa 3,7 kW/);
   assert.match(markup, /gezamenlijke elektrische belasting van de buitenunits/);
   assert.match(markup, /Stooklijnbedrijf en koelen gebruiken alleen de gemeten feedback/);

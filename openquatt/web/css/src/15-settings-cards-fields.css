@@ -788,6 +788,52 @@
   font-size: 0.82rem;
 }
 
+.oq-settings-electrical-control-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.oq-settings-electrical-control-row > .oq-helper-control {
+  flex: 3 1 240px;
+}
+
+.oq-settings-electrical-estimate {
+  flex: 2 1 180px;
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--oq-settings-inset-border);
+  background: var(--oq-settings-inset-background);
+}
+
+.oq-settings-electrical-estimate span {
+  color: var(--oq-helper-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.oq-settings-electrical-estimate strong {
+  min-width: 0;
+  color: var(--oq-helper-ink);
+  font-size: 1rem;
+  font-weight: 750;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.oq-settings-electrical-estimate em {
+  font-style: normal;
+  color: var(--oq-helper-soft);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
 .oq-settings-electrical-facts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
@@ -818,13 +864,6 @@
   font-weight: 750;
   line-height: 1.3;
   overflow-wrap: anywhere;
-}
-
-.oq-settings-electrical-caption {
-  margin: 0;
-  color: var(--oq-helper-soft);
-  font-size: 0.8rem;
-  line-height: 1.5;
 }
 
 .oq-settings-electrical-warning {

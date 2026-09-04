@@ -39,6 +39,7 @@ export const WEB_BUNDLE_BUDGETS = [
   },
   // Includes the compact, dark-safe ODU generation picker with unified header action and distinct badge/button,
   // the warmtetoestemming-advies modal (3 summary cards, comparison, matrix, sticky footer),
+  // the issue-615 electrical-limit estimate beside the input field,
   // and the responsive issue-471 master/detail source focus panel.
-  { file: "css/openquatt-app.css", raw: 302_000 },
+  { file: "css/openquatt-app.css", raw: 303_000 },
 ];

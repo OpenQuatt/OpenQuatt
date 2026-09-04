@@ -170,15 +170,19 @@ export function renderElectricalLimitRestore(view) {
   return `<div class="oq-settings-electrical-restore">${button}</div>`;
 }
 
+export function renderElectricalLimitEstimate(view = resolveElectricalLimitView()) {
+  return `<div class="oq-settings-electrical-estimate"><span>Indicatief vermogen</span><strong>circa ${formatIndicativeKw(view.currentA)} bij 230 V</strong><em>Benadering bij de ingestelde stroom; geen harde begrenzing.</em></div>`;
+}
+
 export function renderElectricalLimitFooter(view = resolveElectricalLimitView()) {
-  const { info, currentA } = view;
+  const { info } = view;
   const warningMarkup = view.aboveStandard
     ? `<div class="oq-settings-electrical-warning" role="alert"><span class="oq-settings-cooling-limit-warning-icon" aria-hidden="true">!</span><div class="oq-settings-electrical-warning-copy"><strong>Hogere waarde dan de standaard elektrische aansluiting</strong><span>Je hebt een waarde gekozen boven de standaard ${formatDutchAmps(info.standardA)} voor een ${escapeHtml(info.standardLabel)}. Verhoog deze grens alleen wanneer de warmtepomp is aangesloten op een daarvoor ontworpen, zwaarder afgezekerde groep en ook de bekabeling, werkschakelaar en het overige aansluitmateriaal hiervoor geschikt zijn. Alleen de installatieautomaat vervangen door een zwaarder exemplaar is niet voldoende en kan gevaarlijk zijn.</span></div></div>`
     : "";
   const belowMarkup = !view.aboveStandard && view.belowStandard
     ? `<p class="oq-settings-electrical-note">Een lagere waarde kan het maximale verwarmings- en koelvermogen beperken.</p>`
     : "";
-  return `<div class="oq-settings-electrical-body"><div class="oq-settings-electrical-facts"><div class="oq-settings-electrical-fact"><span>Standaard voor deze installatie</span><strong>${formatDutchAmps(info.standardA)} · ${escapeHtml(info.standardLabel)}</strong></div><div class="oq-settings-electrical-fact"><span>Indicatief vermogen bij 230 V</span><strong>circa ${formatIndicativeKw(currentA)}</strong></div></div><p class="oq-settings-electrical-caption">Benadering op basis van de ingestelde stroom (${formatDutchAmps(currentA)}); geen gegarandeerde harde begrenzing.</p>${warningMarkup}${belowMarkup}<p class="oq-settings-electrical-safety"><strong>Let op:</strong> dit is een softwarematige regelgrens en geen elektrische beveiliging. De groepzekering, bekabeling en elektrische aansluiting moeten altijd geschikt zijn voor de ingestelde stroom. Korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten.</p></div>`;
+  return `<div class="oq-settings-electrical-body"><div class="oq-settings-electrical-facts"><div class="oq-settings-electrical-fact"><span>Standaard voor deze installatie</span><strong>${formatDutchAmps(info.standardA)} · ${escapeHtml(info.standardLabel)}</strong></div></div>${warningMarkup}${belowMarkup}<p class="oq-settings-electrical-safety"><strong>Let op:</strong> dit is een softwarematige regelgrens en geen elektrische beveiliging. De groepzekering, bekabeling en elektrische aansluiting moeten altijd geschikt zijn voor de ingestelde stroom. Korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten.</p></div>`;
 }
 
 export function renderSettingsElectricalCurrentLimitSection() {
@@ -203,7 +207,7 @@ export function renderSettingsElectricalCurrentLimitSection() {
       "electricalCurrentLimit",
       "Maximale gezamenlijke netstroom",
       "Deze grens geldt voor alle buitenunits samen, niet per warmtepomp. Power House gebruikt de grens vooraf bij de vermogensverdeling en regelt daarna bij op basis van gemeten feedback. Stooklijnbedrijf en koelen gebruiken alleen de gemeten feedback. Een lagere waarde kan het beschikbare verwarmings- en koelvermogen beperken. Door meetvertraging en korte stroompieken kan de werkelijke stroom tijdelijk boven de ingestelde waarde komen. Dit is een softwarematige regelgrens en geen elektrische beveiliging.",
-      `${control}${renderElectricalLimitRestore(view)}`,
+      `<div class="oq-settings-electrical-control-row">${control}${renderElectricalLimitEstimate(view)}</div>${renderElectricalLimitRestore(view)}`,
       "",
       renderElectricalLimitFooter(view),
     ),
