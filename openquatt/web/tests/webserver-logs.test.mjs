@@ -756,7 +756,7 @@ test("late pollresponse na sluiten verandert het logboek niet", async (t) => {
   assert.equal(scheduled.length, 0);
 });
 
-test("sluiten breekt een directe history-request af zonder loading-state achter te laten", async (t) => {
+test("sluiten invalideert een directe history-request zonder loading-state achter te laten", async (t) => {
   const originalWindow = globalThis.window;
   t.after(() => {
     globalThis.window = originalWindow;

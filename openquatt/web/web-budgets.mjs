@@ -31,7 +31,7 @@ export const WEB_BUNDLE_BUDGETS = [
     // and frequency-based day/silent limits and exclusion ranges per ODU.
     // plus bounded webserver-log history polling (single scheduler, retry
     // back-off and authoritative refresh without a second /events stream).
-    // The validated bundle is 987207 B; the raw budget keeps ~1.8 kB margin
+    // The validated bundle is 987085 B; the raw budget keeps ~1.9 kB margin
     // for build-environment variance.
     raw: 989_000,
     // One-time migration ceiling for structured incident monitoring, replay,

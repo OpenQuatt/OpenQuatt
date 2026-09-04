@@ -1,4 +1,4 @@
-import { copyTextToClipboard } from "../core/browser-utils.js";
+import { copyTextToClipboard, fetchWithTimeout } from "../core/browser-utils.js";
 import { refreshEntities } from "../core/entity-sync.js";
 import { state } from "../core/state.js";
 import { getBasePath } from "../core/url-path.js";
@@ -18,8 +18,6 @@ export const WEB_SERVER_LOG_POLL_INTERVAL_MS = 3000;
 export const WEB_SERVER_LOG_POLL_RETRY_DELAYS_MS = [3000, 5000, 10000, 30000];
 
 export const WEB_SERVER_LOG_REQUEST_TIMEOUT_MS = 8000;
-
-const activeWebServerLogHistoryControllers = new Set();
 
 export function getWebServerLogDemoEntries() {
   if (!__OQ_PREVIEW__ || typeof window === "undefined") {
@@ -273,27 +271,17 @@ export async function refreshWebServerLogHistory(options = {}) {
     state.webServerLogHistoryLoading = true;
     state.webServerLogHistoryError = "";
   }
-  const abortController = typeof globalThis.AbortController === "function"
-    ? new globalThis.AbortController()
-    : null;
-  const requestTimeout = abortController
-    ? globalThis.setTimeout(() => abortController.abort(), WEB_SERVER_LOG_REQUEST_TIMEOUT_MS)
-    : null;
-  if (abortController) {
-    activeWebServerLogHistoryControllers.add(abortController);
-  }
   let succeeded = false;
 
   try {
-    const requestOptions = {
-      headers: {
-        "Cache-Control": "no-store",
-      },
-    };
-    if (abortController) {
-      requestOptions.signal = abortController.signal;
-    }
-    const response = await window.fetch(getWebServerLogHistoryUrl(), requestOptions);
+    const response = await fetchWithTimeout(
+      getWebServerLogHistoryUrl(),
+      { headers: { "Cache-Control": "no-store" } },
+      WEB_SERVER_LOG_REQUEST_TIMEOUT_MS,
+      "Recente logs reageerden niet binnen 8 seconden.",
+      null,
+      { fetch: window.fetch.bind(window), timerHost: globalThis },
+    );
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -324,12 +312,6 @@ export async function refreshWebServerLogHistory(options = {}) {
       }
     }
   } finally {
-    if (requestTimeout !== null) {
-      globalThis.clearTimeout(requestTimeout);
-    }
-    if (abortController) {
-      activeWebServerLogHistoryControllers.delete(abortController);
-    }
     if (!background && state.webServerLogHistoryRequestToken === requestToken) {
       state.webServerLogHistoryLoading = false;
     }
@@ -555,10 +537,6 @@ export function closeWebServerLogStream() {
   cancelWebServerLogPoll();
   state.webServerLogHistoryRequestToken = Number(state.webServerLogHistoryRequestToken || 0) + 1;
   state.webServerLogHistoryLoading = false;
-  for (const controller of activeWebServerLogHistoryControllers) {
-    controller.abort();
-  }
-  activeWebServerLogHistoryControllers.clear();
   const source = state.webServerLogSource;
   if (source) {
     try {
