@@ -378,15 +378,17 @@ test("elektrische ingangsgrens vereist bevestiging boven de standaard en annuler
   });
 
   // Puur plan: boven de standaard is bevestiging vereist met oude en nieuwe waarde.
-  let plan = getElectricalLimitChangePlan("20", 16, 10);
+  let plan = getElectricalLimitChangePlan("20", 16, 6);
   assert.equal(plan.valid, true);
   assert.equal(plan.requiresConfirmation, true);
   assert.equal(plan.fromA, 16);
   assert.equal(plan.toA, 20);
-  plan = getElectricalLimitChangePlan("16", 16, 10);
+  plan = getElectricalLimitChangePlan("16", 16, 6);
   assert.equal(plan.requiresConfirmation, false);
-  plan = getElectricalLimitChangePlan("15.5", 16, 10);
+  plan = getElectricalLimitChangePlan("15.5", 16, 6);
   assert.equal(plan.requiresConfirmation, false);
+  plan = getElectricalLimitChangePlan("4", 16, 6);
+  assert.equal(plan.toA, 6);
 
   const originalFetch = globalThis.fetch;
   const posts = [];
@@ -425,9 +427,9 @@ test("elektrische ingangsgrens vereist bevestiging boven de standaard en annuler
   }
 });
 
-test("elektrische reset drukt de firmware-knop in en valt terug zonder button-entity", async () => {
+test("elektrische reset schrijft de actuele standaardwaarde zonder firmware-knop", async () => {
   const { handleSystemAction } = await import("../js/src/features/system-actions.js");
-  const limit = numberEntity(20, "A", { min_value: 10, max_value: 26, step: 0.5 });
+  const limit = numberEntity(20, "A", { min_value: 6, max_value: 26, step: 0.5 });
 
   const originalFetch = globalThis.fetch;
   const posts = [];
@@ -441,22 +443,7 @@ test("elektrische reset drukt de firmware-knop in en valt terug zonder button-en
     }
   };
   try {
-    // Met button-entity: press-actie richting firmware (reset naar NaN).
-    resetSettingsState({
-      installationTopology: { value: "duo", state: "duo" },
-      hpGeneration: { value: "V1", state: "V1" },
-      hp1Generation: { value: "V1", state: "V1" },
-      hp2Generation: { value: "V1.5", state: "V1.5" },
-      electricalCurrentLimit: limit,
-      electricalCurrentLimitReset: { value: "", state: "" },
-    });
-    await handleSystemAction("reset-electrical-limit-to-default", {});
-    await waitForPosts();
-    assert.ok(posts.some((post) => post.method === "POST" && post.url.includes("Reset%20electrical%20current%20limit")));
-    assert.match(String(state.controlNotice || ""), /automatisch/);
-
-    // Zonder button-entity (oude firmware): terugval op expliciet standaard zetten.
-    posts.length = 0;
+    // Herstel blijft volledig in de web-app en schrijft de huidige standaardwaarde.
     resetSettingsState({
       installationTopology: { value: "duo", state: "duo" },
       hpGeneration: { value: "V1", state: "V1" },
@@ -467,6 +454,8 @@ test("elektrische reset drukt de firmware-knop in en valt terug zonder button-en
     await handleSystemAction("reset-electrical-limit-to-default", {});
     await waitForPosts();
     assert.ok(posts.some((post) => post.method === "POST" && post.url.includes("value=16")));
+    assert.ok(!posts.some((post) => post.url.includes("Reset%20electrical%20current%20limit")));
+    assert.match(String(state.controlNotice || ""), /standaardwaarde/);
   } finally {
     globalThis.fetch = originalFetch;
   }

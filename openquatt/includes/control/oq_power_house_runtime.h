@@ -7,6 +7,7 @@
 
 #include "../performance/hp_perf_frequency.h"
 #include "oq_compressor_frequency_runtime.h"
+#include "oq_heat_intent_runtime.h"
 #include "oq_power_house_demand_logic.h"
 #include "oq_power_house_dispatch_logic.h"
 
@@ -15,6 +16,7 @@ namespace oq_power_house_runtime {
 
 struct TickConfig {
   uint32_t loop_ms;
+  uint32_t minimum_off_ms;
   int demand_max_f;
   float temperature_guard_c;
   float defrost_power_factor;
@@ -23,6 +25,8 @@ struct TickConfig {
   float topology_heat_advantage_w;
   int defrost_comp_min_f;
   int defrost_comp_boost_steps;
+  bool ot_room_temperature_fresh;
+  bool ot_room_setpoint_fresh;
 };
 
 class Runtime {
@@ -98,24 +102,25 @@ class Runtime {
         id(ph_demand_fall_time_min).state,
         config.demand_max_f,
     };
-    const auto demand = oq_power_house::decide_demand(
-        demand_input, demand_tuning, {id(oq_phouse_last_w), id(oq_phouse_last_ms), id(oq_phouse_comfort_memory_c)});
-    id(oq_phouse_req_w) = demand.requested_w;
-    id(oq_phouse_last_w) = demand.next.last_w;
+    const int applied_total =
+        std::max(0, static_cast<int>(id(hp1_last_applied_level))) + std::max(0, static_cast<int>(hp2_applied_level));
+    if (applied_total > 0 && this->fast_floor_w_ > 0.0f) {
+      this->demand_state_.last_w = std::max(this->demand_state_.last_w, this->fast_floor_w_);
+      this->fast_floor_w_ = 0.0f;
+    }
+    const auto demand = oq_power_house::decide_demand(demand_input, demand_tuning, this->demand_state_);
+    this->demand_state_ = demand.next;
+    float requested_w = demand.requested_w;
+    float next_last_w = demand.next.last_w;
+    int raw_demand = demand.raw_demand;
+    const auto intent = oq_heat_intent_runtime::evaluate(
+        now_ms, applied_total > 0, std::max(0.0f, demand_tuning.comfort_below_c), 10000UL,
+        config.ot_room_temperature_fresh, config.ot_room_setpoint_fresh, this->intent_state_);
+    this->intent_state_ = intent.next;
+    id(oq_ph_fast_intent_code) = static_cast<int>(intent.reason);
     id(oq_phouse_last_ms) = demand.next.last_ms;
     id(oq_phouse_comfort_memory_c) = demand.next.comfort_memory_c;
     id(oq_phouse_demand_external) = demand.external;
-    id(oq_demand_raw) = demand.raw_demand;
-
-    const auto filtered =
-        oq_power_house::filter_demand(demand.raw_demand, id(oq_demand_filtered), id(oq_demand_filter_ramp_up_budget),
-                                      id(oq_demand_filter_ramp_up_step_min).state, cadence.dt_s, config.demand_max_f);
-    id(oq_demand_filtered_prev) = filtered.previous;
-    id(oq_demand_filter_ramp_up_budget) = filtered.ramp_budget;
-    id(oq_demand_filtered) = filtered.filtered;
-    id(oq_heating_demand_filtered) = filtered.filtered;
-    const int capped_demand =
-        std::min(filtered.filtered, std::max(0, std::min(config.demand_max_f, static_cast<int>(id(oq_power_cap_f)))));
 
 #if OQ_TOPOLOGY_DUO
     const bool lead_is_hp1 = id(hp1_minutes) <= id(hp2_minutes);
@@ -130,12 +135,15 @@ class Runtime {
     const float outside_c = id(outside_temp_selected).state;
     const float supply_c = id(oq_system_supply_temp).state;
     const bool performance_valid = std::isfinite(outside_c) && std::isfinite(supply_c);
-    const auto hp1_candidate =
+    auto hp1_candidate =
         oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(1), id(hp1_last_applied_level));
+    hp1_candidate.minimum_off_ready = oq_hp_candidate::minimum_off_ready(
+        now_ms, id(hp1_last_stop_ms), config.minimum_off_ms, id(hp1_last_applied_level));
     const bool hp1_defrost_active = id(hp1_defrost).state;
 #if OQ_TOPOLOGY_DUO
-    const auto hp2_candidate =
-        oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(2), hp2_applied_level);
+    auto hp2_candidate = oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(2), hp2_applied_level);
+    hp2_candidate.minimum_off_ready =
+        oq_hp_candidate::minimum_off_ready(now_ms, id(hp2_last_stop_ms), config.minimum_off_ms, hp2_applied_level);
     const bool hp2_defrost_active = id(hp2_defrost).state;
 #else
     const oq_hp_candidate::HpCandidateState hp2_candidate;
@@ -166,16 +174,55 @@ class Runtime {
       }
     };
 
-    float requested_w = id(oq_phouse_req_w);
-    const float rated_w = id(house_rated_power_w).state;
-    if (std::isfinite(requested_w) && std::isfinite(rated_w) && rated_w > 0.0f && config.demand_max_f > 0)
-      requested_w = std::min(requested_w, rated_w * static_cast<float>(capped_demand) / config.demand_max_f);
-    oq_power_house_dispatch::DispatchInput dispatch_input{now_ms, capped_demand,     requested_w,
+    oq_power_house_dispatch::DispatchInput dispatch_input{now_ms, raw_demand,        requested_w,
                                                           duo,    performance_valid, lead_is_hp1};
     build_hp(dispatch_input.hp1, true, hp1_candidate, hp1_defrost_active, hp1_valve_defrost);
 #if OQ_TOPOLOGY_DUO
     build_hp(dispatch_input.hp2, false, hp2_candidate, hp2_defrost_active, hp2_valve_defrost);
 #endif
+    float minimum_viable_w = NAN;
+    const auto include_minimum = [&](const oq_power_house_dispatch::HpInput& hp) {
+      if (!oq_hp_candidate::may_serve_candidate(hp.candidate)) return;
+      for (int level = 1; level <= oq_power_house_dispatch::kMaxLevel; ++level) {
+        const auto& estimate = hp.levels[level];
+        if (!estimate.allowed || !estimate.thermal_valid || !std::isfinite(estimate.thermal_w) ||
+            estimate.thermal_w <= 0.0f)
+          continue;
+        minimum_viable_w =
+            std::isfinite(minimum_viable_w) ? std::min(minimum_viable_w, estimate.thermal_w) : estimate.thermal_w;
+        break;
+      }
+    };
+    include_minimum(dispatch_input.hp1);
+#if OQ_TOPOLOGY_DUO
+    include_minimum(dispatch_input.hp2);
+#endif
+    if (intent.active && applied_total == 0 && std::isfinite(minimum_viable_w) &&
+        id(oq_water_temp_limit_factor) >= 0.999f) {
+      requested_w = std::max(requested_w, minimum_viable_w);
+      next_last_w = std::max(next_last_w, requested_w);
+      this->fast_floor_w_ = requested_w;
+      const float rated_w = id(house_rated_power_w).state;
+      if (std::isfinite(rated_w) && rated_w > 0.0f && config.demand_max_f > 0)
+        raw_demand = std::max(
+            raw_demand,
+            std::min(config.demand_max_f, static_cast<int>(std::ceil(requested_w * config.demand_max_f / rated_w))));
+    } else if (applied_total == 0) {
+      this->fast_floor_w_ = 0.0f;
+    }
+    id(oq_phouse_req_w) = requested_w;
+    id(oq_phouse_last_w) = next_last_w;
+    id(oq_demand_raw) = raw_demand;
+    id(oq_demand_filtered_prev) = id(oq_demand_filtered);
+    id(oq_demand_filtered) = raw_demand;
+    id(oq_heating_demand_filtered) = raw_demand;
+    const int capped_demand =
+        std::min(raw_demand, std::max(0, std::min(config.demand_max_f, static_cast<int>(id(oq_power_cap_f)))));
+    const float rated_w = id(house_rated_power_w).state;
+    if (std::isfinite(requested_w) && std::isfinite(rated_w) && rated_w > 0.0f && config.demand_max_f > 0)
+      requested_w = std::min(requested_w, rated_w * static_cast<float>(capped_demand) / config.demand_max_f);
+    dispatch_input.demand_level = capped_demand;
+    dispatch_input.requested_w = requested_w;
     const oq_power_house_dispatch::DispatchTuning dispatch_tuning{
         id(oq_power_limit_soft_w),       id(oq_power_limit_peak_w),        config.optimizer_penalty_per_w,
         config.topology_power_margin_w,  config.topology_heat_advantage_w, config.defrost_comp_min_f,
@@ -209,13 +256,18 @@ class Runtime {
     id(oq_strategy_output_source_code) = 3;
     id(oq_strategy_output_updated_ms) = now_ms;
     id(oq_strategy_phase_text).publish_state(capped_demand > 0 ? "heat" : "idle");
-    ESP_LOGD("quatt.strategy", "ph f=%d raw=%d preq=%.0f owner=%d reason=%d", capped_demand, demand.raw_demand,
-             requested_w, dispatch.owner_hp, static_cast<int>(dispatch.reason));
+    ESP_LOGD("quatt.strategy", "ph f=%d raw=%d preq=%.0f intent=%s owner=%d reason=%d", capped_demand, raw_demand,
+             requested_w, oq_heat_intent::reason_name(intent.reason), dispatch.owner_hp,
+             static_cast<int>(dispatch.reason));
   }
 
   void reset() {
     this->dispatch_state_ = {};
     this->last_optimizer_reason_.clear();
+    this->intent_state_ = {};
+    this->demand_state_ = {};
+    this->fast_floor_w_ = 0.0f;
+    id(oq_ph_fast_intent_code) = 0;
     id(oq_ph_request_last_loop_ms) = 0;
     id(oq_ph_request_hp1_level) = 0;
     id(oq_ph_request_hp2_level) = 0;
@@ -240,6 +292,9 @@ class Runtime {
   }
 
   oq_power_house_dispatch::DispatchState dispatch_state_;
+  oq_heat_intent::State intent_state_;
+  oq_power_house::DemandState demand_state_;
+  float fast_floor_w_{0.0f};
   std::string last_optimizer_reason_;
 };
 

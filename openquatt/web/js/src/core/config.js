@@ -94,7 +94,6 @@
     ["usageTelemetryInstallationId", DOMAIN_TEXT_SENSOR, "Usage statistics installation ID"],
     ["hpGeneration", DOMAIN_SELECT, "Quatt Hybrid version", false],
     ["electricalCurrentLimit", DOMAIN_NUMBER, "Electrical current limit"],
-    ["electricalCurrentLimitReset", DOMAIN_BUTTON, "Reset electrical current limit"],
     ["strategy", DOMAIN_SELECT, "Heating Control Mode", false],
     ["openquattEnabled", DOMAIN_SWITCH, "OpenQuatt Enabled"],
     ["auxHeatSourcePresent", DOMAIN_SWITCH, "Auxiliary heat source connected"],

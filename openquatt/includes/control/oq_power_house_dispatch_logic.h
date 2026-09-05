@@ -94,9 +94,7 @@ inline oq_hp_candidate::HpCandidateState sanitized_candidate(const HpInput& hp) 
   candidate.previous_applied_level = applied_level(hp);
   return candidate;
 }
-inline bool hp_may_serve(const HpInput& hp) {
-  return !hp.candidate.must_stop && (hp.candidate.available_for_start || applied_level(hp) > 0);
-}
+inline bool hp_may_serve(const HpInput& hp) { return oq_hp_candidate::may_serve_candidate(sanitized_candidate(hp)); }
 inline void observe_tail(TimedTail& tail, bool active, uint32_t now_ms, uint32_t duration_ms) {
   if (active || tail.previous_active) {
     tail.armed = true;

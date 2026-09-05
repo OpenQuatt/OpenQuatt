@@ -37,14 +37,14 @@ int main() {
   assert(absolute_maximum_current_a(true, true, true, true, false, 16.0f, 20.0f, 26.0f) == 20.0f);
   assert(absolute_maximum_current_a(true, true, false, false, true, 16.0f, 20.0f, 26.0f) == 16.0f);
   assert(absolute_maximum_current_a(true, false, false, true, false, 16.0f, 20.0f, 26.0f) == 16.0f);
-  assert(effective_current_a(NAN, 10.0f, 16.0f) == 16.0f);
-  assert(effective_current_a(4.0f, 10.0f, 16.0f) == 10.0f);
-  assert(effective_current_a(18.0f, 10.0f, 16.0f) == 16.0f);
+  assert(effective_current_a(NAN, 6.0f, 16.0f) == 16.0f);
+  assert(effective_current_a(4.0f, 6.0f, 16.0f) == 6.0f);
+  assert(effective_current_a(18.0f, 6.0f, 16.0f) == 16.0f);
   const auto v2 = thresholds(20.0f, 230.0f);
   assert(v2.soft_w == 4250.0f && v2.peak_w == 4562.5f && v2.recover_w == 4125.0f);
   assert(fallback_cap(true, 16.0f, 16.0f, 16, 20) == 16);
   assert(fallback_cap(false, 16.0f, 16.0f, 16, 20) == 8);
-  assert(fallback_cap(true, 10.0f, 16.0f, 16, 20) == 10);
+  assert(fallback_cap(true, 6.0f, 16.0f, 16, 20) == 6);
   assert(fallback_cap(true, 16.0f, 0.0f, 16, 20) == 0);
 
   assert(fresh(1500, 1000, 500));
