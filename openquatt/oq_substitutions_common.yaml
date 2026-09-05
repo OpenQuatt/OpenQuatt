@@ -134,7 +134,7 @@ oq_power_cap_nan_f: "16"                              # Duo fail-safe demand cap
 oq_duo_current_limit_v1_a: "16.0"                     # Duo standard limit: official Quatt Duo max for V1/V1.5 [A].
 oq_duo_current_limit_v2_a: "20.0"                     # Duo standard limit: official Quatt Duo max for V2 [A]; also the derived per-ODU ceiling (2 x 10 A) for V1/V1.5 [A].
 oq_duo_current_limit_v2_max_a: "26.0"                 # Absolute OpenQuatt ceiling for V2: 2 x published 13 A per-ODU max [A].
-oq_electrical_current_limit_min_a: "10.0"             # Lowest configurable installation current limit [A].
+oq_electrical_current_limit_min_a: "6.0"              # Lowest configurable installation current limit [A].
 oq_power_measurement_stale_s: "60"                    # Maximum age of voltage/current measurements used by the limiter [s].
 oq_mains_voltage_v: "230.0"                           # Nominal mains voltage used to convert current limits to power thresholds [V].
 oq_cm_prepost_s: "30"                                 # Duration of CM1 pre/postflow window [s].
