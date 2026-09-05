@@ -7,6 +7,7 @@ import { captureModalContinuity, restoreModalContinuity } from "../core/modal-co
 import { captureSettingsFocusContinuity, restoreSettingsFocusContinuity } from "../core/settings-focus-continuity.js";
 import { setRenderCallback } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
+import { deferTimeInputRender } from "../core/time-input.js";
 import { clearLegacyMotionVariables, startMotionLoop, stopMotionLoop } from "../core/motion.js";
 import { bindHeaderDevControls, syncNativeVisibility } from "../core/runtime.js";
 import { renderDeviceReconnectModal, renderUpdateModal } from "../features/firmware-update.js";
@@ -178,6 +179,9 @@ export function renderSettingsView() {
 
   export function render() {
     if (!state.root) {
+      return;
+    }
+    if (deferTimeInputRender()) {
       return;
     }
 

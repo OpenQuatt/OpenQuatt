@@ -344,6 +344,61 @@
   background: var(--oq-settings-subpanel-background);
 }
 
+.oq-settings-cooling-schedule {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid var(--oq-helper-line);
+  border-radius: var(--oq-helper-radius-lg);
+  background: var(--oq-settings-subpanel-background);
+}
+
+.oq-settings-cooling-schedule.is-enabled {
+  border-color: rgba(234, 88, 12, 0.24);
+  background: var(--oq-settings-choice-active-background);
+  box-shadow: var(--oq-settings-choice-active-shadow);
+}
+
+.oq-settings-cooling-schedule-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.oq-settings-cooling-schedule-head > div:first-child {
+  min-width: 0;
+}
+
+.oq-settings-cooling-schedule-head > .oq-settings-compact-switch-row {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.oq-settings-cooling-schedule-status {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  color: var(--oq-helper-soft);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.oq-settings-cooling-schedule-status strong {
+  color: var(--oq-helper-ink);
+  white-space: nowrap;
+}
+
+@media (max-width: 680px) {
+  .oq-settings-cooling-schedule-head,
+  .oq-settings-cooling-schedule-status {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .oq-ph-concept-card {
   display: grid;
   gap: 12px;

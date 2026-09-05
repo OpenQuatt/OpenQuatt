@@ -9,8 +9,8 @@
 namespace {
 oq_supervisory_safety::Config config() { return {250.0f, 60000, 30000, 5.0f, 6.0f, 30000}; }
 
-oq_supervisory_safety::Input input(uint32_t now_ms, bool thermal_request, float flow_lph, float outside_c = 10.0f) {
-  return {now_ms, thermal_request, true, flow_lph, true, outside_c};
+oq_supervisory_safety::Input input(uint32_t now_ms, bool flow_guard_required, float flow_lph, float outside_c = 10.0f) {
+  return {now_ms, flow_guard_required, true, flow_lph, true, outside_c};
 }
 }  // namespace
 
@@ -36,7 +36,11 @@ int main() {
   output = step(input(93000, true, 100.0f), config(), output.state);
   output = step(input(153000, true, 100.0f), config(), output.state);
   assert(output.state.low_flow_fault_active);
-  output = step(input(153001, false, 100.0f), config(), output.state);
+  // Losing demand must not clear the fault while compressor wind-down still
+  // requires the flow guard. It may clear only after the guard is released.
+  output = step(input(153001, true, 100.0f), config(), output.state);
+  assert(output.state.low_flow_fault_active && !output.low_flow_fault_cleared);
+  output = step(input(153002, false, 100.0f), config(), output.state);
   assert(!output.state.low_flow_fault_active && output.low_flow_fault_cleared && output.minimum_flow_ok);
   assert(!output.state.low_flow_timing && !output.state.flow_recovery_timing);
 

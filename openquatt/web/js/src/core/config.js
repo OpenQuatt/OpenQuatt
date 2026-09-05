@@ -103,6 +103,8 @@
     ["otbConnectionAutoSelected", DOMAIN_BINARY_SENSOR, "OTB - Boiler Connection Auto-selected"],
     ["otbConnectionMismatch", DOMAIN_BINARY_SENSOR, "OTB - Boiler Connection Mismatch"],
     ["manualCoolingEnable", DOMAIN_SWITCH, "Manual Cooling Enable"],
+    ["coolingScheduleStartTime", DOMAIN_TIME, "Cooling schedule start time"],
+    ["coolingScheduleEndTime", DOMAIN_TIME, "Cooling schedule end time"],
     ["cicCompatibilityMode", DOMAIN_SWITCH, "CiC Compatibility Mode"],
     ["silentModeOverride", DOMAIN_SELECT, "Silent Mode Override"],
     ["controlModeOverride", DOMAIN_SELECT, "CM Override"],
@@ -601,6 +603,10 @@
     ["reset", DOMAIN_BUTTON, "Reset setup state", false],
   ]);
 
+  export const COOLING_SCHEDULE_SOURCE_KEY = "coolingEnableSource";
+  export const COOLING_SCHEDULE_VALID_KEY = "coolingEnableValid";
+  export const COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY = "coolingEnableEffectiveSource";
+  export const COOLING_SCHEDULE_TIME_KEYS = ["coolingScheduleStartTime", "coolingScheduleEndTime"];
   export const APP_VIEWS = [
     { id: "overview", label: "Overzicht", icon: "monitor-dashboard" },
     { id: "energy", label: "Energie", icon: "zap" },
@@ -822,7 +828,7 @@
     "roomTempSource",
     "roomSetpointSource",
     "heatingEnableSource",
-    "coolingEnableSource",
+    COOLING_SCHEDULE_SOURCE_KEY,
     "hp1Failures",
     "hp2Failures",
   ];
@@ -843,7 +849,7 @@
     "roomTempSource",
     "roomSetpointSource",
     "heatingEnableSource",
-    "coolingEnableSource",
+    COOLING_SCHEDULE_SOURCE_KEY,
     "hp1Failures",
     "hp2Failures",
   ];
@@ -1053,7 +1059,7 @@
     "roomTempSource",
     "roomSetpointSource",
     "heatingEnableSource",
-    "coolingEnableSource",
+    COOLING_SCHEDULE_SOURCE_KEY,
     "coolingDewPointSource",
   ];
   export const SENSOR_SELECTION_STATE_KEYS = [
@@ -1129,9 +1135,9 @@
     "mqttCoolingEnable",
     "mqttCoolingEnableAge",
     "mqttCoolingEnableValid",
-    "coolingEnableValid",
+    COOLING_SCHEDULE_VALID_KEY,
     "coolingEnableSelected",
-    "coolingEnableEffectiveSource",
+    COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY,
     "otThermostatCoolingEnable",
     "coolingEnableHa",
     "coolingEnableHaValid",
@@ -1202,6 +1208,7 @@
     "mqttRoomSetpointValid",
   ];
   export const COOLING_SETTING_KEYS = [
+    ...COOLING_SCHEDULE_TIME_KEYS,
     "coolingMinimumSupplyTemp",
     "coolingDemandMax",
     "coolingRestartMode",
@@ -1485,9 +1492,11 @@
     "openquattResumeAt",
     "manualCoolingEnable",
     "silentModeOverride",
-    "coolingEnableSource",
+    ...COOLING_SCHEDULE_TIME_KEYS,
+    COOLING_SCHEDULE_SOURCE_KEY,
+    COOLING_SCHEDULE_VALID_KEY,
     "coolingEnableSelected",
-    "coolingEnableEffectiveSource",
+    COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY,
     "coolingRequestActive",
     "coolingPermitted",
     "coolingBlockReason",
@@ -1584,9 +1593,9 @@
     "boilerFaultFallbackEnabled",
     "openquattResumeAt",
     "manualCoolingEnable",
-    "coolingEnableSource",
+    COOLING_SCHEDULE_SOURCE_KEY,
     "coolingEnableSelected",
-    "coolingEnableEffectiveSource",
+    COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY,
     "trendHistoryEnabled",
     "trendHistoryFlashEnabled",
     "coolingPermitted",
@@ -1884,7 +1893,7 @@
         "roomTempSource",
         "roomSetpointSource",
         "heatingEnableSource",
-        "coolingEnableSource",
+        COOLING_SCHEDULE_SOURCE_KEY,
         "coolingDewPointSource",
         "externalHeatDemandSource",
         "apiInputOutsideTemperature",
@@ -1941,6 +1950,7 @@
       id: "cooling",
       label: "Koeling",
       keys: [
+        ...COOLING_SCHEDULE_TIME_KEYS,
         "coolingMinimumSupplyTemp",
         "coolingDemandMax",
         "coolingRestartMode",

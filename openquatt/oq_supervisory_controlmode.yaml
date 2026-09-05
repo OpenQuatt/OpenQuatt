@@ -76,7 +76,7 @@ esphome:
 time:
   - platform: sntp
     id: oq_time
-    timezone: Europe/Amsterdam
+    timezone: ${oq_timezone}
 
 # ----------------------------
 # INTERNAL STATE
