@@ -5,7 +5,7 @@ import { formatValue, getEntityValue, getNumberMeta, normalizeNumber, parseLoose
 import { escapeHtml } from "../core/html.js";
 import { renderNumberInputControl } from "../core/number-controls.js";
 import { state } from "../core/state.js";
-import { getSelectEntityOptions, getSettingsChoiceModel, getSettingsSelectModel, getSettingsSwitchModel } from "./field-models.js";
+import { getSettingsChoiceModel, getSettingsSelectModel, getSettingsSwitchModel } from "./field-models.js";
 
 export { getSelectEntityOptions } from "./field-models.js";
 
@@ -210,9 +210,9 @@ export function formatSettingsOptionLabel(option) {
   return labels[value] || value;
 }
 
-export function renderSettingsChoiceOption({ key, option, currentValue, busy, copy = "", meta = "", image = "", imageAlt = "", infoTitle = "", infoCopy = "", infoId = "" }) {
-  const model = getSettingsChoiceModel(key, option, { currentValue, busy });
-  const { active } = model;
+export function renderSettingsChoiceOption({ key, option, model = getSettingsSelectModel(key), currentValue, busy, copy = "", meta = "", image = "", imageAlt = "", infoTitle = "", infoCopy = "", infoId = "" }) {
+  const choice = getSettingsChoiceModel(key, option, { model, currentValue, busy });
+  const { active } = choice;
   const cardBody = `
     <button
       class="oq-helper-surface oq-settings-choice-card${active ? " is-active" : ""}${image ? " oq-settings-choice-card--with-image" : ""}${infoCopy ? " oq-settings-choice-card--has-info" : ""}"
@@ -220,8 +220,9 @@ export function renderSettingsChoiceOption({ key, option, currentValue, busy, co
       data-oq-action="select-settings-option"
       data-select-key="${escapeHtml(key)}"
       data-select-option="${escapeHtml(option)}"
+      ${busy === undefined ? 'data-oq-select-model="true"' : ""}
       aria-pressed="${active ? "true" : "false"}"
-      ${model.busy ? "disabled" : ""}
+      ${choice.busy || !model.available ? "disabled" : ""}
     >
       <span class="oq-settings-choice-head">
         <span class="oq-settings-choice-title">${escapeHtml(formatSettingsOptionLabel(option))}</span>
@@ -245,12 +246,44 @@ export function renderSettingsChoiceOption({ key, option, currentValue, busy, co
   `;
 }
 
+function renderSettingsSelectOptions(model) {
+  return model.options.map((option) => `<option value="${escapeHtml(option)}" ${option === model.value ? "selected" : ""}>${escapeHtml(formatSettingsOptionLabel(option))}</option>`).join("");
+}
+
+export function renderSettingsSelectControl(key, model = getSettingsSelectModel(key)) {
+  return `<select class="oq-helper-select" data-oq-field="${escapeHtml(key)}" data-oq-select-model="true" ${model.busy || !model.available ? "disabled" : ""}>${renderSettingsSelectOptions(model)}</select>`;
+}
+
+export function patchSettingsSelectControl(select, model) {
+  // Custom source/capability filters own their options and disabled gates.
+  if (select.dataset.oqSelectModel === "true") {
+    select.disabled = model.busy || !model.available;
+    // Do not replace a native menu's options while the user is choosing.
+    if (select === document.activeElement) return;
+    const options = Array.from(select.options);
+    if (options.length !== model.options.length || options.some((option, index) => option.value !== String(model.options[index]) || option.textContent !== formatSettingsOptionLabel(model.options[index]))) {
+      select.innerHTML = renderSettingsSelectOptions(model);
+    }
+  }
+  if (select.value !== model.value) select.value = model.value;
+}
+
+export function patchSettingsChoiceOption(button, model) {
+  const key = String(button.dataset.selectKey || "");
+  const option = String(button.dataset.selectOption || "");
+  const { active, busy } = getSettingsChoiceModel(key, option, { model });
+  button.classList.toggle("is-active", active);
+  button.setAttribute("aria-pressed", active ? "true" : "false");
+  if (button.dataset.oqSelectModel === "true") button.disabled = busy || !model.available;
+  button.closest(".oq-settings-choice-card-shell")?.classList.toggle("is-active", active);
+}
+
 export function renderSettingsSelectField(key, title, copy, className = "") {
-  const { available, value, options, busy } = getSettingsSelectModel(key);
-  if (!available) {
+  const model = getSettingsSelectModel(key);
+  if (!model.available) {
     return "";
   }
-  return renderSettingsFieldCard(key, title, copy, `<label class="oq-settings-control oq-settings-control--select"><select class="oq-helper-select" data-oq-field="${escapeHtml(key)}" ${busy ? "disabled" : ""}>${options.map((option) => `<option value="${escapeHtml(option)}" ${option === value ? "selected" : ""}>${escapeHtml(formatSettingsOptionLabel(option))}</option>`).join("")}</select><span class="oq-settings-select-caret" aria-hidden="true"></span></label>`, className);
+  return renderSettingsFieldCard(key, title, copy, `<label class="oq-settings-control oq-settings-control--select">${renderSettingsSelectControl(key, model)}<span class="oq-settings-select-caret" aria-hidden="true"></span></label>`, className);
 }
 
 export function renderSettingsAdvancedDisclosure(id, title, copy, bodyMarkup) {
@@ -399,22 +432,19 @@ export function renderNamedToggleActionButton({
 }
 
 export function renderSettingsOptionCardsField(key, title, copy, descriptions, className = "") {
-  if (!hasEntity(key)) {
+  const model = getSettingsSelectModel(key);
+  if (!model.available) {
     return "";
   }
 
-  const entity = state.entities[key] || {};
-  const currentValue = String(getEntityValue(key) || "");
-  const options = getSelectEntityOptions(entity);
-  const busy = state.loadingEntities || state.busyAction === `save-${key}`;
   const controlMarkup = `
     <div class="oq-settings-choice-grid">
-      ${options.map((option) => {
+      ${model.options.map((option) => {
         const description = descriptions[option] || "";
         const optionCopy = typeof description === "string" ? description : (description.copy || "");
         const optionImage = typeof description === "string" ? "" : (description.image || "");
         const optionImageAlt = typeof description === "string" ? "" : (description.alt || "");
-        return renderSettingsChoiceOption({ key, option, currentValue, busy, copy: optionCopy, image: optionImage, imageAlt: optionImageAlt });
+        return renderSettingsChoiceOption({ key, option, model, copy: optionCopy, image: optionImage, imageAlt: optionImageAlt });
       }).join("")}
     </div>
   `;

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 globalThis.__OQ_PREVIEW__ = false;
-globalThis.window = { localStorage: { getItem: () => null } };
+globalThis.window = { location: { pathname: "/" }, localStorage: { getItem: () => null } };
 const bundle = await build({
   bundle: true,
   define: { __OQ_PREVIEW__: "false" },
@@ -15,8 +15,12 @@ const bundle = await build({
       export { state } from "../js/src/core/state.js";
       export { SETTINGS_GROUPS } from "../js/src/core/config.js";
       export { getSelectEntityOptions, getSettingsChoiceModel, getSettingsSelectModel, getSettingsSwitchModel } from "../js/src/settings/field-models.js";
-      export { renderSettingsChoiceOption, renderSettingsCompactSwitchControl, renderSettingsSelectField, renderSettingsSwitchField } from "../js/src/settings/controls.js";
+      export { renderSettingsChoiceOption, renderSettingsCompactSwitchControl, renderSettingsSelectField, renderSettingsSwitchField, renderSettingsOptionCardsField, patchSettingsSelectControl } from "../js/src/settings/controls.js";
+      export { renderSettingsStorageSelectRow } from "../js/src/settings/storage.js";
+      export { renderHeatingStrategyExplainCards } from "../js/src/settings/heating.js";
       export { patchSettingsDom } from "../js/src/settings/core.js";
+      export { commitSelect } from "../js/src/core/entity-write-actions.js";
+      export { setRenderCallback } from "../js/src/core/render-scheduler.js";
     `,
     resolveDir: fileURLToPath(new URL(".", import.meta.url)),
   },
@@ -31,15 +35,30 @@ const bundle = await build({
   }],
   write: false,
 });
-const { state, SETTINGS_GROUPS, getSelectEntityOptions, getSettingsChoiceModel, getSettingsSelectModel, getSettingsSwitchModel, renderSettingsChoiceOption, renderSettingsCompactSwitchControl, renderSettingsSelectField, renderSettingsSwitchField, patchSettingsDom } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
+const { state, SETTINGS_GROUPS, getSelectEntityOptions, getSettingsChoiceModel, getSettingsSelectModel, getSettingsSwitchModel, renderSettingsChoiceOption, renderSettingsCompactSwitchControl, renderSettingsSelectField, renderSettingsSwitchField, renderSettingsOptionCardsField, patchSettingsSelectControl, renderSettingsStorageSelectRow, renderHeatingStrategyExplainCards, patchSettingsDom, commitSelect, setRenderCallback } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
 const initial = structuredClone(state);
 
 test.beforeEach(() => {
+  setRenderCallback(null);
+  globalThis.document = { activeElement: null };
   Object.assign(state, structuredClone(initial));
   state.loadingEntities = false;
   state.appView = "settings";
   state.settingsGroup = "installation";
 });
+
+function selectNode(key, values) {
+  const select = node({ oqField: key, oqSelectModel: "true" });
+  select.options = values.map(value => ({ value, textContent: value }));
+  select.optionWrites = 0;
+  Object.defineProperty(select, "innerHTML", {
+    set(html) {
+      select.optionWrites++;
+      select.options = [...html.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map(([, value, textContent]) => ({ value, textContent }));
+    },
+  });
+  return select;
+}
 
 function node(dataset = {}) {
   const classes = new Set();
@@ -129,7 +148,7 @@ test("live field patches reuse models without replacing nodes or overwriting sel
   const select = node({ oqField: "strategy" });
   select.disabled = true;
   select.options = ["original options"];
-  const choice = node({ selectKey: "strategy", selectOption: "draft" });
+  const choice = node({ selectKey: "strategy", selectOption: "draft", oqSelectModel: "true" });
   const customChoice = node({ selectKey: "customSafety", selectOption: "draft" });
   customChoice.disabled = true;
   const control = node({ controlKey: "enabled", switchTitle: "Warmte", onLabel: "Actief", offLabel: "Gestopt" });
@@ -179,4 +198,125 @@ test("focused integrations and service retain their existing full-render fallbac
   state.focusedField = "";
   assert.equal(patchSettingsDom(), false);
   assert.equal(select.value, "typing");
+});
+
+test("dropdowns, option cards and storage rows render one field snapshot", () => {
+  state.entities.coolingWithoutDewPointMode = { value: "A", options: ["A", "B"] };
+  state.drafts.coolingWithoutDewPointMode = "B";
+  state.busyAction = "save-coolingWithoutDewPointMode";
+  const model = getSettingsSelectModel("coolingWithoutDewPointMode");
+  const cards = renderSettingsOptionCardsField("coolingWithoutDewPointMode", "Beveiliging", "", { A: "Eerste", B: "Tweede" });
+  assert.match(cards, /data-select-option="B"[^>]*aria-pressed="true"[^>]*disabled/);
+  assert.equal((cards.match(/data-oq-select-model="true"/g) || []).length, 2);
+  assert.match(renderSettingsStorageSelectRow("coolingWithoutDewPointMode", "Bewaren", ""), /<select[^>]*disabled[^>]*>.*<option value="B" selected>/s);
+  state.entities.coolingWithoutDewPointMode.value = "changed after snapshot";
+  state.busyAction = "";
+  assert.deepEqual(getSettingsChoiceModel("coolingWithoutDewPointMode", "B", { model }), { active: true, busy: true });
+});
+
+test("managed fields follow loading, saving, rollback and missing-entity states", () => {
+  const key = "coolingWithoutDewPointMode";
+  const select = selectNode(key, ["A", "B"]);
+  const choice = node({ selectKey: key, selectOption: "B", oqSelectModel: "true" });
+  const shell = node();
+  choice.closest = () => shell;
+  mount({ selects: [select], choices: [choice] });
+  for (const [available, value, busyAction, loading, disabled] of [
+    [true, "A", "", true, true],
+    [true, "B", `save-${key}`, false, true],
+    [true, "A", "", false, false],
+    [false, "", "", false, true],
+    [true, "B", "save-other", false, false],
+  ]) {
+    state.entities[key] = available ? { value, options: ["A", "B"] } : null;
+    state.busyAction = busyAction;
+    state.loadingEntities = loading;
+    assert.equal(patchSettingsDom(), true);
+    assert.equal(select.value, value);
+    assert.equal(select.disabled, disabled);
+    assert.equal(choice.disabled, disabled);
+    assert.equal(choice.getAttribute("aria-pressed"), value === "B" ? "true" : "false");
+    assert.equal(shell.classList.contains("is-active"), value === "B");
+  }
+});
+
+test("live option changes preserve the select node and only rewrite changed options", () => {
+  state.entities.flowControlMode = { value: "A", option: ["A", "B"] };
+  const select = selectNode("flowControlMode", ["A", "B"]);
+  const originalOption = select.options[0];
+  patchSettingsSelectControl(select, getSettingsSelectModel("flowControlMode"));
+  assert.equal(select.options[0], originalOption);
+  assert.equal(select.optionWrites, 0);
+  state.entities.flowControlMode = { value: "C", options: ["B", "C"] };
+  patchSettingsSelectControl(select, getSettingsSelectModel("flowControlMode"));
+  assert.equal(select.optionWrites, 1);
+  assert.deepEqual(select.options.map(option => option.value), ["B", "C"]);
+  assert.equal(select.value, "C");
+  patchSettingsSelectControl(select, getSettingsSelectModel("flowControlMode"));
+  assert.equal(select.optionWrites, 1);
+});
+
+test("focused native selects defer option and value updates until focus leaves", () => {
+  const select = selectNode("flowControlMode", ["A", "B"]);
+  select.value = "A";
+  document.activeElement = select;
+  state.entities.flowControlMode = { value: "C", options: ["B", "C"] };
+  patchSettingsSelectControl(select, getSettingsSelectModel("flowControlMode"));
+  assert.equal(select.value, "A");
+  assert.equal(select.optionWrites, 0);
+  document.activeElement = null;
+  patchSettingsSelectControl(select, getSettingsSelectModel("flowControlMode"));
+  assert.equal(select.value, "C");
+  assert.equal(select.optionWrites, 1);
+});
+
+test("custom choice gates are not enrolled in automatic busy updates", () => {
+  state.entities.strategy = { value: "A", option: ["A"] };
+  const html = renderSettingsChoiceOption({ key: "strategy", option: "A", busy: true });
+  assert.doesNotMatch(html, /data-oq-select-model/);
+  const custom = node({ selectKey: "strategy", selectOption: "A" });
+  custom.disabled = true;
+  mount({ choices: [custom] });
+  patchSettingsDom();
+  assert.equal(custom.disabled, true);
+  assert.equal(custom.getAttribute("aria-pressed"), "true");
+});
+
+test("unknown strategy is not presented as an active Power House selection", () => {
+  state.entities.strategy = { value: "Unknown" };
+  const html = renderHeatingStrategyExplainCards();
+  assert.doesNotMatch(html, /aria-pressed="true"/);
+  assert.equal((html.match(/data-oq-select-model="true"/g) || []).length, 2);
+});
+
+test("firmware option text is escaped in both dropdown and choice rendering", () => {
+  const option = '\"><img src=x onerror=alert(1)>';
+  state.entities.strategy = { value: option, options: [option] };
+  for (const html of [renderSettingsSelectField("strategy", "Strategy", ""), renderSettingsOptionCardsField("strategy", "Strategy", "", {})]) {
+    assert.doesNotMatch(html, /<img/);
+    assert.match(html, /&quot;&gt;&lt;img/);
+  }
+});
+
+test("a failed select request restores both controls and releases their busy state", async (t) => {
+  const key = "flowControlMode";
+  state.entities[key] = { value: "Automatic", option: ["Automatic", "Manual"] };
+  const select = selectNode(key, ["Automatic", "Manual"]);
+  const choice = node({ selectKey: key, selectOption: "Manual", oqSelectModel: "true" });
+  mount({ selects: [select], choices: [choice] });
+  setRenderCallback(patchSettingsDom);
+  let rejectRequest;
+  t.mock.method(globalThis, "fetch", () => new Promise((resolve, reject) => { rejectRequest = reject; }));
+  const result = commitSelect(key, "Manual");
+  assert.equal(select.value, "Manual");
+  assert.equal(select.disabled, true);
+  assert.equal(choice.getAttribute("aria-pressed"), "true");
+  assert.equal(choice.disabled, true);
+  rejectRequest(new Error("connection lost"));
+  assert.equal(await result, false);
+  assert.equal(select.value, "Automatic");
+  assert.equal(select.disabled, false);
+  assert.equal(choice.getAttribute("aria-pressed"), "false");
+  assert.equal(choice.disabled, false);
+  assert.match(state.controlError, /connection lost/);
 });

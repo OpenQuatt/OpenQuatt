@@ -15,3 +15,16 @@ Rebuild the bundle with:
 
 Run the local web smoke checks with:
 - `rtk npm run smoke:web`
+
+Settings select controls use `settings/field-models.js` for entity availability,
+draft-aware values, firmware options (`option` or `options`) and busy state.
+Pass the same model to choice cards in a field; keep presentation copy and
+specialized capability/source filters in their domain renderer.
+
+`settings/controls.js` owns rendering and live patches for these controls.
+`data-oq-select-model="true"` opts into shared disabled-state updates and, for
+native selects, option updates. Only add it when the shared model owns those
+decisions. An explicit choice `busy` override retains its custom disabled gate;
+filtered selects without the marker retain their own options and gates. Focused
+native menus defer value/option patches until focus leaves. Service and focused
+integration panels retain their existing full-render fallback.

@@ -22,7 +22,7 @@ export function getSettingsSelectModel(key) {
   };
 }
 
-export function getSettingsChoiceModel(key, option, { currentValue = String(getEntityValue(key) || ""), busy = getFieldBusy(key) } = {}) {
+export function getSettingsChoiceModel(key, option, { model = getSettingsSelectModel(key), currentValue = model.value, busy = model.busy } = {}) {
   return {
     active: option === currentValue,
     busy,
