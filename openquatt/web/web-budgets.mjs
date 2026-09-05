@@ -32,9 +32,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // and frequency-based day/silent limits and exclusion ranges per ODU.
     // plus bounded webserver-log history polling (single scheduler, retry
     // back-off and authoritative refresh without a second /events stream).
-    // The validated bundle is 999316 B; the raw budget keeps ~2.7 kB margin
+    // The validated bundle is 1002074 B; the raw budget keeps ~0.9 kB margin
     // for build-environment variance.
-    raw: 1_002_000,
+    raw: 1_003_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

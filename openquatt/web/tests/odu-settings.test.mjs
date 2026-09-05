@@ -13,12 +13,15 @@ globalThis.window = {
 const {
   getOduSettingsEndpoint,
   getOduSettingsHpIndexes,
+  handleOduSettingsAction,
   normalizeOduSettingsStatus,
   renderOduSettingsModal,
+  restoreOduSettingsBackupProfiles,
   shouldRefreshOduSettingsSurface,
   updateOduSettingsDraft,
 } = await import("../js/src/features/odu-settings.js");
 const { state } = await import("../js/src/core/state.js");
+const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
 
 test("bodemplaatservice gebruikt per-HP endpoints en de installatie-topologie", () => {
   state.entities = { installationTopology: { value: "duo", state: "duo" } };
@@ -232,4 +235,67 @@ test("netwerkfout vervangt de laadstatus door duidelijke niet-beschikbaarcopy", 
   assert.match(featureSource, /Status ophalen mislukt\. Controleer de verbinding met OpenQuatt\./);
   assert.match(featureSource, /changed \|\| hadError/);
   assert.match(mockSource, /pathname\.match\(\/\\\/openquatt\\\/odu-settings/);
+});
+
+test("actie en backupherstel melden alleen expliciet bevestigde firmwarestatussen als geslaagd", { timeout: 3000 }, async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalTimer = window.setTimeout;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    window.setTimeout = originalTimer;
+    setRenderCallback(null);
+  });
+  window.setTimeout = (callback, delay) => setTimeout(callback, delay === 500 ? 0 : delay);
+  state.entities = { installationTopology: { value: "single", state: "single" } };
+  const values = { mode: 1, start_temperature_c: 4, stop_delta_c: 3 };
+  const initial = {
+    hp: 1, available: true, loaded: true, identity_ready: true, identity_matches: true,
+    profile_available: true, variant: 2, control_board_item: 3639, csrf_token: "test-token",
+    actual: values, desired: values, defaults: values, status: "LOADED",
+  };
+  const outcomes = [
+    { status: "OFFLINE", available: false },
+    { status: "UNAVAILABLE", available: false },
+    { status: "READY" },
+    { status: "IDENTITY_REQUIRED" },
+    { status: "VERIFY_FAILED", write_uncertain: true },
+    { status: "PERSIST_FAILED" },
+    { status: "IDENTITY_MISMATCH", identity_matches: false },
+    { status: "IN_SYNC", write_uncertain: true },
+    { status: "IN_SYNC", loaded: false },
+    { status: "IN_SYNC", profile_available: false },
+    { status: "IN_SYNC", unsupported: true },
+    { status: "IN_SYNC" },
+    { status: "PENDING_SAFE" },
+    { status: "LOADED" },
+  ];
+  for (const outcome of outcomes) {
+    const completed = { ...initial, ...outcome, busy: false };
+    for (const action of ["load", "save", "restore"]) {
+      const responses = action === "restore" ? [initial] : [];
+      responses.push({ ...initial, status: "SAVE_REQUESTED", busy: true }, completed);
+      globalThis.fetch = async () => {
+        assert.ok(responses.length, "unexpected request");
+        return new Response(JSON.stringify(responses.shift()), { status: 200 });
+      };
+      const success = action === "load" ? outcome.status === "LOADED"
+        : (outcome.status === "IN_SYNC" || outcome.status === "PENDING_SAFE") && Object.keys(outcome).length === 1;
+      state.oduSettingsStatuses = { 1: normalizeOduSettingsStatus(initial) };
+      state.oduSettingsDrafts = {};
+      if (action === "restore") {
+        const [result] = await restoreOduSettingsBackupProfiles({ hp1: { ...values, variant: 2, control_board_item: 3639, auto_reapply: false } });
+        assert.equal(result.applied, success, `restore: ${JSON.stringify(outcome)}`);
+        if (success) assert.equal(result.pending, outcome.status === "PENDING_SAFE");
+      } else {
+        await new Promise((resolve) => {
+          setRenderCallback(() => { if (!state.busyAction) resolve(); });
+          handleOduSettingsAction(`odu-settings-${action}`, { dataset: { hp: "1" } });
+        });
+        setRenderCallback(null);
+        assert.equal(Boolean(state.controlNotice), success, `${action}: ${JSON.stringify(outcome)}`);
+        assert.equal(Boolean(state.oduSettingsError), !success);
+      }
+      assert.equal(responses.length, 0);
+    }
+  }
 });

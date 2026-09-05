@@ -237,6 +237,15 @@ function validDraft(draft) {
     && stopDeltaC !== null && stopDeltaC >= 0 && stopDeltaC <= 30;
 }
 
+function assertOperationCompleted(status, action) {
+  // Older firmware can persist a profile while still waiting for standby.
+  const allowed = action === "load" ? ["LOADED"] : ["IN_SYNC", "PENDING_SAFE"];
+  const confirmed = status.available && !status.unsupported && !status.busy && status.loaded
+    && allowed.includes(status.status)
+    && (action === "load" || (status.profileAvailable && status.identityMatches && !status.writeUncertain));
+  if (!confirmed) throw new Error(`Resultaat niet bevestigd (${status.status}).`);
+}
+
 async function runOperation(hp, action) {
   const draft = getDraft(hp);
   if (action === "save" && !validDraft(draft)) {
@@ -257,7 +266,7 @@ async function runOperation(hp, action) {
     } : {});
     if (status.busy) status = await waitForOperation(hp);
     storeStatus(status, true);
-    if (/FAILED|MISMATCH/.test(status.status)) throw new Error(status.status);
+    assertOperationCompleted(status, action);
     state.controlNotice = status.status === "PENDING_SAFE"
       ? `HP${hp}: opgeslagen; toepassen wacht tot de buitenunit stilstaat.`
       : action === "load"
@@ -434,11 +443,8 @@ export async function restoreOduSettingsBackupProfiles(profiles = {}) {
         auto_reapply: profile.auto_reapply,
       });
       if (status.busy) status = await waitForOperation(hp);
-      if (/FAILED|MISMATCH/.test(status.status)) {
-        results.push({ key, applied: false, reason: `Firmwarestatus: ${status.status}` });
-      } else {
-        results.push({ key, applied: true, pending: status.status === "PENDING_SAFE" });
-      }
+      assertOperationCompleted(status, "save");
+      results.push({ key, applied: true, pending: status.status === "PENDING_SAFE" });
     } catch (error) {
       results.push({ key, applied: false, reason: `Resultaat niet bevestigd: ${error.message || String(error)}` });
     }
