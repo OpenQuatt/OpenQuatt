@@ -50,15 +50,16 @@ test("runtime-editor hydrateert F0-F20 maar toont de uitbreiding alleen na nativ
   assert.match(mockSource, /service\.extendedLayout \? 42 : 22/);
 });
 
-test("dev-preview kan beide ODU-editors veilig en geblokkeerd doorlopen", () => {
+test("dev-preview onderscheidt direct toepasbare bodemplaatinstellingen van de geblokkeerde frequentietabel", () => {
   assert.match(mockFixturesSource, /oduWriteState/);
   assert.match(mockFixturesSource, /Standby · 0 Hz/);
   assert.match(mockFixturesSource, /Heating · 30 Hz/);
   assert.match(mockSource, /data-oq-dev-control="odu-write-state"/);
   assert.match(mockSource, /function applyOduWriteTestState\(\)/);
   assert.match(mockSource, /window\.__OQ_DEV_ODU_WRITE_STATE__ = state\.oduWriteState/);
-  assert.match(mockSource, /service\.status = "PENDING_SAFE"/);
-  assert.match(mockSource, /settings\.status = "IN_SYNC"/);
+  assert.doesNotMatch(mockSource, /service\.status = "PENDING_SAFE"/);
+  assert.match(mockSource, /service\.status = "IN_SYNC"/);
+  assert.match(mockSource, /BLOCKED: ODU is not in standby/);
   assert.match(featureSource, /__OQ_PREVIEW__ && typeof window !== "undefined"/);
   assert.match(featureSource, /window\.__OQ_DEV_ODU_WRITE_STATE__/);
   assert.match(devSource, /mock-fixtures\.js\?v=odu-settings-v3/);

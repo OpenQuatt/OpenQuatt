@@ -46,12 +46,8 @@ class OpenQuattOduSettings : public Component {
   void write_status(httpd_req_t* req) const;
 
  protected:
-  static constexpr uint16_t GUARD_START_ADDRESS = 2099U;
-  static constexpr uint16_t GUARD_REGISTER_COUNT = 5U;
-  static constexpr size_t GUARD_WORKING_MODE_INDEX = 0U;
-  static constexpr size_t GUARD_COMPRESSOR_FREQUENCY_INDEX = 4U;
   static constexpr uint32_t OPERATION_TIMEOUT_MS = 30000U;
-  static constexpr uint32_t SAFE_RETRY_MS = 60000U;
+  static constexpr uint32_t BUS_RETRY_MS = 60000U;
   static constexpr uint32_t FAILURE_RETRY_MS = 300000U;
   static constexpr uint32_t PERIODIC_RECONCILE_MS = 21600000U;
 
@@ -105,7 +101,6 @@ class OpenQuattOduSettings : public Component {
   void fail_operation_(const char* status, uint32_t operation_token);
   void queue_settings_read_(uint32_t operation_token);
   void handle_settings_read_(const oq_odu::BottomPlateSettings& settings, uint32_t operation_token);
-  void queue_guard_(uint32_t operation_token);
   void queue_next_write_(uint32_t operation_token);
   void queue_readback_(uint32_t operation_token);
 };

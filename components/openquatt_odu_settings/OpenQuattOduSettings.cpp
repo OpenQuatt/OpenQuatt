@@ -449,7 +449,7 @@ bool OpenQuattOduSettings::begin_reconcile_() {
   uint32_t request_token = 0U;
   this->reconcile_due_ms_ = 0U;
   if (!this->begin_request_(request_token)) {
-    this->schedule_reconcile_(SAFE_RETRY_MS);
+    this->schedule_reconcile_(BUS_RETRY_MS);
     return false;
   }
   portENTER_CRITICAL(&this->state_mux_);
@@ -494,6 +494,7 @@ void OpenQuattOduSettings::handle_settings_read_(const oq_odu::BottomPlateSettin
   this->loaded_.store(true, std::memory_order_release);
   const Operation operation = this->operation_;
   const bool matches = oq_odu::bottom_plate_settings_match(settings, this->desired_);
+  if (operation != Operation::LOAD && !matches) this->set_status_locked_("APPLYING");
   portEXIT_CRITICAL(&this->state_mux_);
   if (operation == Operation::LOAD) {
     this->finish_operation_(
@@ -506,35 +507,10 @@ void OpenQuattOduSettings::handle_settings_read_(const oq_odu::BottomPlateSettin
     this->write_tainted_.store(false, std::memory_order_release);
     this->finish_operation_("IN_SYNC", operation_token, PERIODIC_RECONCILE_MS);
   } else {
-    this->queue_guard_(operation_token);
+    // Bottom-plate settings may be applied while the compressor runs.
+    // The bus reservation, write ordering and full readback still apply.
+    this->queue_next_write_(operation_token);
   }
-}
-
-void OpenQuattOduSettings::queue_guard_(uint32_t operation_token) {
-  auto command = modbus_controller::ModbusCommandItem::create_read_command(
-      this->controller_, modbus::EntityType::HOLDING, GUARD_START_ADDRESS, GUARD_REGISTER_COUNT,
-      [this, operation_token](modbus::EntityType, uint16_t start_address, std::span<const uint8_t> data) {
-        if (!this->token_matches_(operation_token) || start_address != GUARD_START_ADDRESS) return;
-        if (data.size() < GUARD_REGISTER_COUNT * 2U) {
-          this->finish_operation_("PENDING_SAFE", operation_token, SAFE_RETRY_MS);
-          return;
-        }
-        const uint16_t working_mode = oq_odu::read_word(data.data(), GUARD_WORKING_MODE_INDEX);
-        const uint16_t compressor_hz = oq_odu::read_word(data.data(), GUARD_COMPRESSOR_FREQUENCY_INDEX);
-        if (working_mode != 0U || compressor_hz != 0U) {
-          this->finish_operation_("PENDING_SAFE", operation_token, SAFE_RETRY_MS);
-          return;
-        }
-        portENTER_CRITICAL(&this->state_mux_);
-        if (!this->token_matches_(operation_token)) {
-          portEXIT_CRITICAL(&this->state_mux_);
-          return;
-        }
-        this->set_status_locked_("APPLYING");
-        portEXIT_CRITICAL(&this->state_mux_);
-        this->queue_next_write_(operation_token);
-      });
-  this->controller_->queue_command(std::move(command));
 }
 
 void OpenQuattOduSettings::queue_next_write_(uint32_t operation_token) {

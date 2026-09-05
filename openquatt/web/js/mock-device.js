@@ -4052,13 +4052,6 @@
     return true;
   }
 
-  function isMockOduWriteSafe(hp) {
-    const hpName = `HP${hp}`;
-    const mode = String(getEntity("text_sensor", `${hpName} - Working Mode Label`)?.value || "").trim();
-    const compressorHz = Number(getEntity("sensor", `${hpName} - Compressor frequency`)?.value);
-    return /standby|stand-by/i.test(mode) && Number.isFinite(compressorHz) && compressorHz <= 0.5;
-  }
-
   function applyOduWriteTestState() {
     window.__OQ_DEV_ODU_WRITE_STATE__ = state.oduWriteState;
     if (state.oduWriteState === "scenario") return;
@@ -4067,11 +4060,6 @@
     hpIndexes.forEach((hp) => {
       setText("text_sensor", `HP${hp} - Working Mode Label`, standby ? "Standby" : "Heating");
       setNumber(`HP${hp} - Compressor frequency`, standby ? 0 : 30, "Hz");
-      const settings = state.oduSettingsService[hp];
-      if (standby && settings.status === "PENDING_SAFE" && settings.desired) {
-        settings.actual = { ...settings.desired };
-        settings.status = "IN_SYNC";
-      }
     });
   }
 
@@ -4232,15 +4220,8 @@
       if (action === "load") {
         service.status = "LOADED";
       } else {
-        const settingsMatch = service.actual.mode === service.desired.mode
-          && service.actual.startTemperatureC === service.desired.startTemperatureC
-          && service.actual.stopDeltaC === service.desired.stopDeltaC;
-        if (settingsMatch || isMockOduWriteSafe(hp)) {
-          service.actual = { ...service.desired };
-          service.status = "IN_SYNC";
-        } else {
-          service.status = "PENDING_SAFE";
-        }
+        service.actual = { ...service.desired };
+        service.status = "IN_SYNC";
       }
       notifyMockUpdated();
     }, 320);

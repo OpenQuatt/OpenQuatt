@@ -79,6 +79,9 @@ test("modal maakt modus en grenzen instelbaar en berekent de stoptemperatuur", (
   assert.match(modal, /data-oq-odu-temperature-settings hidden/);
   assert.match(modal, /7 °C/);
   assert.match(modal, /Na herstart automatisch opnieuw toepassen/);
+  assert.match(modal, /ook aanpassen terwijl de compressor draait/);
+  assert.match(modal, /opnieuw toe, ook als de compressor draait/);
+  assert.doesNotMatch(modal, /zodra de buitenunit in standby/);
   assert.match(modal, /Quatt buitenunit V1\.5/);
   assert.match(modal, /oq-helper-modal--wide oq-settings-odu-modal/);
   assert.match(modal, /oq-settings-odu-modal-body" data-oq-modal-scroll="body"/);
@@ -216,7 +219,7 @@ test("firmwarecontract schrijft sheet 3237-3239 via Modbus 3236-3238", async () 
   assert.match(logic, /variant == Variant::V1 \? 1U : 3U/);
   assert.match(source, /create_write_single_command/);
   assert.match(source, /queue_readback_/);
-  assert.match(source, /PENDING_SAFE/);
+  assert.doesNotMatch(source, /PENDING_SAFE|queue_guard_/);
   assert.match(packageSource, /set_odu_identity/);
   assert.match(packageSource, /notify_odu_offline/);
   assert.match(webAccess, /openquatt_odu_settings/);

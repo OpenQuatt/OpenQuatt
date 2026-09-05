@@ -357,7 +357,7 @@ function renderPanel(hp) {
             <div class="oq-settings-odu-thresholds"><span>Verwarming aan vanaf <strong data-oq-odu-start-temperature>${escapeHtml(draft.startTemperatureC || "—")} °C of kouder</strong></span><span>Verwarming weer uit bij <strong data-oq-odu-stop-temperature>${stopTemperature !== null ? `${stopTemperature} °C of warmer` : "—"}</strong></span></div>
           </div>
         </div>
-        <label class="oq-settings-odu-auto"><input type="checkbox" data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="autoReapply" ${draft.autoReapply ? "checked" : ""} ${!enabled ? "disabled" : ""}><span><strong>Na herstart automatisch opnieuw toepassen</strong><small>OpenQuatt bewaart deze waarden en past ze toe zodra de buitenunit in standby staat en de compressor uit is.</small></span></label>
+        <label class="oq-settings-odu-auto"><input type="checkbox" data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="autoReapply" ${draft.autoReapply ? "checked" : ""} ${!enabled ? "disabled" : ""}><span><strong>Na herstart automatisch opnieuw toepassen</strong><small>OpenQuatt bewaart deze waarden en past ze na een herstart opnieuw toe, ook als de compressor draait.</small></span></label>
         <p class="oq-settings-odu-runtime-validation">Standaard voor ${escapeHtml(variantLabel(status?.variant))}: ${escapeHtml(settingsSummary(status?.defaults))}. Huidige buitenunit: ${escapeHtml(settingsSummary(status?.actual))}.</p>
         <div class="oq-helper-modal-actions"><button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="odu-settings-save" data-hp="${hp}" ${!enabled || !valid ? "disabled" : ""}>${busy ? "Bezig..." : "Opslaan en toepassen"}</button></div>
       ` : '<p class="oq-settings-odu-runtime-validation">Laad de actuele waarden uit de buitenunit voordat je iets wijzigt.</p>'}
@@ -376,7 +376,7 @@ export function renderOduSettingsModal() {
     modalClass: "oq-helper-modal--wide oq-settings-odu-modal",
     bodyMarkup: `
       <div class="oq-settings-odu-modal-body" data-oq-modal-scroll="body">
-        <div class="oq-settings-odu-runtime-warning"><strong>Niet permanent opgeslagen in de buitenunit</strong><p>Na een herstart of stroomonderbreking gebruikt de buitenunit weer haar eigen opgeslagen waarden. OpenQuatt kan jouw keuze daarna veilig opnieuw toepassen.</p></div>
+        <div class="oq-settings-odu-runtime-warning"><strong>Niet permanent opgeslagen in de buitenunit</strong><p>Na een herstart of stroomonderbreking gebruikt de buitenunit weer haar eigen opgeslagen waarden. OpenQuatt kan jouw keuze daarna veilig opnieuw toepassen.</p><p>Je kunt deze instellingen ook aanpassen terwijl de compressor draait.</p></div>
         ${state.oduSettingsError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.oduSettingsError)}</p>` : ""}
         ${state.controlNotice && String(state.controlNotice).startsWith("HP") ? `<p class="oq-helper-notice" role="status">${escapeHtml(state.controlNotice)}</p>` : ""}
         <div class="oq-settings-odu-runtime-panels">${getOduSettingsHpIndexes().map(renderPanel).join("")}</div>
