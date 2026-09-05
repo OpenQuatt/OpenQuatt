@@ -224,6 +224,20 @@ void test_silent_window() {
   assert(!output.active && std::string(output.status) == "forced_off");
 }
 
+void test_flow_guard_and_cm1_idle_hold() {
+  using namespace oq_supervisory_state;
+  assert(flow_guard_required(true, false, false));
+  assert(flow_guard_required(false, true, false));
+  assert(flow_guard_required(false, false, true));
+  assert(!flow_guard_required(false, false, false));
+
+  assert(hold_cm1_until_hp_idle(true, false, 0, true));
+  assert(hold_cm1_until_hp_idle(true, false, 98, true));
+  assert(!hold_cm1_until_hp_idle(true, false, 98, false));
+  assert(!hold_cm1_until_hp_idle(false, false, 98, true));
+  assert(!hold_cm1_until_hp_idle(true, true, 98, true));
+}
+
 void test_sticky_pump_timing() {
   using namespace oq_supervisory_state;
   auto output = update_sticky_pump(0, true, 1000, 500, {});
@@ -267,6 +281,7 @@ int main() {
   test_idle_exit_boundaries();
   test_override_timeout();
   test_silent_window();
+  test_flow_guard_and_cm1_idle_hold();
   test_sticky_pump_timing();
   return 0;
 }

@@ -48,6 +48,7 @@ int main() {
   assert(std::strcmp(configured_source_wire_value("API input"), "api_input") == 0);
   assert(std::strcmp(configured_source_wire_value("MQTT"), "mqtt") == 0);
   assert(std::strcmp(configured_source_wire_value("CIC or HA input"), "cic_or_home_assistant") == 0);
+  assert(std::strcmp(configured_source_wire_value("Schedule"), "schedule") == 0);
   assert(std::strcmp(configured_source_wire_value("Disabled"), "disabled") == 0);
   assert(configured_source_wire_value("unknown") == nullptr);
 

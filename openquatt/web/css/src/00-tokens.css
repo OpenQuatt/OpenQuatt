@@ -90,6 +90,15 @@
 
 .oq-helper-shell--dark,
 .oq-helper-modal-backdrop--dark {
+  --oq-helper-bg: #202d3f;
+  --oq-helper-card: #26364a;
+  --oq-helper-card-muted: #304155;
+  --oq-helper-line: rgba(148, 163, 184, 0.24);
+  --oq-helper-line-strong: rgba(148, 163, 184, 0.4);
+  --oq-helper-ink: #f8fafc;
+  --oq-helper-soft: #dbe4ef;
+  --oq-helper-faint: #aec0d4;
+  --oq-helper-muted: #cbd5e1;
   --oq-helper-modal-border: rgba(71, 85, 105, 0.5);
   --oq-helper-modal-background:
     radial-gradient(circle at top left, rgba(249, 115, 22, 0.14), transparent 32%),

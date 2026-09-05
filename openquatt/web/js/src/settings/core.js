@@ -2,7 +2,7 @@ import { getEntityStateText, hasEntity, isEntityActive } from "../core/app-share
 import { renderOqIcon, SETTINGS_GROUP_IDS, SETTINGS_GROUPS } from "../core/config.js";
 import { isCurveMode } from "../core/domain-helpers.js";
 import { getInputDraftValue } from "../core/control-drafts.js";
-import { formatValue, getEntityValue, normalizeNumber } from "../core/entity-store.js";
+import { formatValue, getEntityValue, normalizeNumber, toTimeInputValue } from "../core/entity-store.js";
 import { state } from "../core/state.js";
 import { setSettingsRenderControls } from "../core/settings-render-controls.js";
 import { formatDiagnosticsDateTime, formatUptimeFromMeta, getDeviceIpAddress, getInstallationLabel } from "../features/device-context.js";
@@ -184,7 +184,11 @@ function syncFrequencyRangeControl(control) {
 
       card.querySelectorAll('input[data-oq-field]').forEach((input) => {
         const fieldKey = String(input.dataset.oqField || key);
-        const value = String(getInputDraftValue(fieldKey) ?? "");
+        if (input.type === "time" && input === document.activeElement) return;
+        const value = input.type === "time"
+          ? toTimeInputValue(getInputDraftValue(fieldKey))
+          : String(getInputDraftValue(fieldKey) ?? "");
+        if (input.type === "time") input.disabled = state.loadingEntities || state.savingTimeFields.has(fieldKey);
         if (input.value !== value) {
           input.value = value;
         }

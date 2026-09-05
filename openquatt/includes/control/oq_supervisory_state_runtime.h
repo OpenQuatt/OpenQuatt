@@ -323,18 +323,20 @@ class Runtime {
         heating_preflow_req = false;
       }
     }
+    const bool actuator_request_active = id(oq_actuator_hp1_req) > 0 || id(oq_actuator_hp2_req) > 0;
     const bool manual_hp_thermal_req =
-        oq_manual_hp::owns_control() &&
-        ((int)roundf(id(oq_manual_hp1_level).state) > 0 || (int)roundf(id(oq_manual_hp2_level).state) > 0 ||
-         id(oq_actuator_hp1_req) > 0 || id(oq_actuator_hp2_req) > 0);
+        oq_manual_hp::owns_control() && ((int)roundf(id(oq_manual_hp1_level).state) > 0 ||
+                                         (int)roundf(id(oq_manual_hp2_level).state) > 0 || actuator_request_active);
     const bool heating_flow_req = heating_req || heating_preflow_req;
     const bool thermal_req = heating_flow_req || cooling_req || manual_hp_thermal_req;
+    const bool flow_guard_required =
+        oq_supervisory_state::flow_guard_required(thermal_req, any_hp_compressor_active, actuator_request_active);
 
     // -------------------------------------------------
     // 2) Flow interlock status + timers
     // -------------------------------------------------
     const auto safety = oq_supervisory_safety_runtime::runtime().tick(
-        {now_ms, thermal_req, min_flow_lph, tick.cm_flow_fault_s, tick.cm_flow_recover_s, tick.cm_frost_on_c,
+        {now_ms, flow_guard_required, min_flow_lph, tick.cm_flow_fault_s, tick.cm_flow_recover_s, tick.cm_frost_on_c,
          tick.cm_frost_off_c, tick.cm_frost_nan_grace_s});
     const bool flow_valid = safety.flow_valid;
     const bool flow_low = safety.flow_low;
@@ -699,9 +701,10 @@ class Runtime {
             }
           }
 
-          // Safety: never leave CM1 to CM0 while any HP still reports/targets activity.
+          // Safety: never leave CM1 to CM0/CM98 while any HP still reports/targets activity.
           // Keep CM1 (pump-on holding state) until both HPs are effectively idle.
-          if (strcmp(cur_cm, "CM1") == 0 && !thermal_req && base_target == 0 && any_hp_active_guard) {
+          if (oq_supervisory_state::hold_cm1_until_hp_idle(strcmp(cur_cm, "CM1") == 0, thermal_req, base_target,
+                                                           any_hp_active_guard || actuator_request_active)) {
             desired_local = 1;
           }
 

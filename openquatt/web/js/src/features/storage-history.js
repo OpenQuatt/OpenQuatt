@@ -1,12 +1,12 @@
 import { getSetupCompleteState, hasEntity, isEntityActive, isTrendHistoryEnabled } from "../core/app-shared.js";
 import { invokeActionMap } from "../core/action-router.js";
 import { downloadBlobFile, downloadJsonFile } from "../core/browser-utils.js";
-import { ENTITY_DEFS, FAST_VIEW_ENTITY_REFRESH_CONCURRENCY, SETTINGS_BACKUP_KEY_SET, SETTINGS_BACKUP_KEYS, SETTINGS_BACKUP_SCHEMA_VERSION, SETTINGS_BACKUP_SECTIONS, TREND_HISTORY_REFRESH_INTERVAL_MS } from "../core/config.js";
+import { COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS, ENTITY_DEFS, FAST_VIEW_ENTITY_REFRESH_CONCURRENCY, SETTINGS_BACKUP_KEY_SET, SETTINGS_BACKUP_KEYS, SETTINGS_BACKUP_SCHEMA_VERSION, SETTINGS_BACKUP_SECTIONS, TREND_HISTORY_REFRESH_INTERVAL_MS } from "../core/config.js";
 import { buildEntityPath } from "../core/domain-helpers.js";
 import { getEnergyHistoryRequestQuery } from "../core/energy-history-query.js";
 import { getEnergyHistoryDateKeyFromDate, parseEnergyHistoryDateKey } from "../core/energy-history-domain.js";
 import { updateEnergyHistoryState } from "../core/feature-state.js";
-import { setEntityBackupValue, verifyEntityBackupSwitchState } from "../core/entity-backup.js";
+import { setEntityBackupValue, verifyEntityBackupSelectState, verifyEntityBackupSwitchState } from "../core/entity-backup.js";
 import { formatValue, getEntityValue, normalizeDateTimeValue, normalizeTimeValue, parseLooseNumber } from "../core/entity-store.js";
 import { refreshEntities, syncEntities } from "../core/entity-sync.js";
 import { buildSettingsBackupMqttConfig, collectUnknownSettingsBackupItems, isSettingsBackupMqttSourceSelection, normalizeSettingsBackupMqttConfig, SETTINGS_BACKUP_MIN_SCHEMA_VERSION, SETTINGS_BACKUP_MQTT_INPUT_KEYS, SETTINGS_BACKUP_MQTT_RETAINED_KEYS, settingsBackupMqttNeedsPassword } from "../core/settings-backup-domain.js";
@@ -19,6 +19,8 @@ import { getBasePath } from "../core/url-path.js";
 import { getFirmwareDeviceLabel, getInstallationLabel, getInstallationTopology } from "./device-context.js";
 import { getFirmwareCurrentVersion } from "./firmware-update.js";
 import { render } from "../core/render-scheduler.js";
+
+const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
 
   export function energyHistoryImportRecordHasHour(row) {
     return Object.prototype.hasOwnProperty.call(row, "hour") ||
@@ -1497,6 +1499,22 @@ import { render } from "../core/render-scheduler.js";
     return !shouldDisableUsageTelemetryForSetupRestore(shouldCompleteSetup, setupWasComplete) || telemetryAvailable;
   }
 
+  async function setVerifiedCoolingValue(key, value, normalize) {
+    await setEntityBackupValue(key, value);
+    if (!await verifyEntityBackupSelectState(key, value, normalize)) {
+      throw new Error("Niet bevestigd.");
+    }
+  }
+
+  async function guardCoolingSchedule() {
+    try {
+      await setVerifiedCoolingValue(COOLING_SCHEDULE_SOURCE_KEY, "Disabled");
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
   export async function restoreSettingsBackup() {
     const draft = state.settingsBackupDraft;
     if (!draft || state.settingsBackupBusy) {
@@ -1520,6 +1538,9 @@ import { render } from "../core/render-scheduler.js";
     const skipped = [];
     const unknown = getSettingsBackupUnknownItems(draft);
     const deferredMqttSources = [];
+    let verifiedCoolingTimes = 0;
+    let deferredCoolingSource = null;
+    let coolingGuarded = null;
     let shouldCompleteSetup = false;
     let setupWasComplete = false;
     let setupCompletionSafe = true;
@@ -1530,6 +1551,27 @@ import { render } from "../core/render-scheduler.js";
     try {
       await refreshEntities([...SETTINGS_BACKUP_KEYS, "usageTelemetryEnabled"], "all");
       setupWasComplete = isEntityActive("setupComplete");
+
+      const coolingSourceValue = draft.settings?.sensor_sources?.[COOLING_SCHEDULE_SOURCE_KEY];
+      const coolingScheduleRequested = String(coolingSourceValue || "").trim() === "Schedule";
+      const coolingTimesRequested = COOLING_SCHEDULE_TIME_KEYS.some(
+        (key) => draft.settings?.cooling?.[key] !== undefined,
+      );
+      if (coolingTimesRequested || coolingScheduleRequested) {
+        coolingGuarded = false;
+      } else if (coolingSourceValue !== undefined) {
+        try {
+          coolingGuarded = await verifyEntityBackupSelectState(
+            COOLING_SCHEDULE_SOURCE_KEY,
+            "Schedule",
+          ) ? false : null;
+        } catch (_error) {
+          coolingGuarded = false;
+        }
+      }
+      if (coolingGuarded === false) {
+        coolingGuarded = await guardCoolingSchedule();
+      }
 
       if (draft.mqtt) {
         try {
@@ -1557,7 +1599,7 @@ import { render } from "../core/render-scheduler.js";
               key,
               section.label,
               "Ontbreekt in backup",
-              "De huidige firmwarewaarde of firmware-default is behouden.",
+              "Niet toegepast.",
             ));
             continue;
           }
@@ -1570,6 +1612,31 @@ import { render } from "../core/render-scheduler.js";
 
           if (key === "openquattEnabled") {
             continue;
+          }
+
+          if (key === COOLING_SCHEDULE_SOURCE_KEY && coolingGuarded !== null) {
+            const target = { key, value, section };
+            if (isSettingsBackupMqttSourceSelection(key, value)) {
+              deferredMqttSources.push(target);
+            } else {
+              deferredCoolingSource = target;
+            }
+            continue;
+          }
+
+          const coolingScheduleTime = COOLING_SCHEDULE_TIME_KEYS.includes(key);
+          if (coolingScheduleTime && coolingGuarded !== null) {
+            coolingGuarded = await guardCoolingSchedule();
+            if (!coolingGuarded) {
+              skipped.push(createSettingsBackupRestoreItem(
+                key,
+                section.label,
+                COOLING_GUARD_ERROR,
+                "",
+                "error",
+              ));
+              continue;
+            }
           }
 
           if (isSettingsBackupMqttSourceSelection(key, value)) {
@@ -1589,7 +1656,12 @@ import { render } from "../core/render-scheduler.js";
           }
 
           try {
-            await setEntityBackupValue(key, value);
+            if (coolingScheduleTime) {
+              await setVerifiedCoolingValue(key, value, normalizeTimeValue);
+              verifiedCoolingTimes += 1;
+            } else {
+              await setEntityBackupValue(key, value);
+            }
             applied.push(key);
           } catch (error) {
             skipped.push(createSettingsBackupRestoreItem(
@@ -1600,6 +1672,24 @@ import { render } from "../core/render-scheduler.js";
               "error",
             ));
           }
+        }
+      }
+
+      if (deferredCoolingSource) {
+        const { key, value, section } = deferredCoolingSource;
+        let detail = "";
+        try {
+          if (!coolingGuarded || (coolingScheduleRequested &&
+              verifiedCoolingTimes < COOLING_SCHEDULE_TIME_KEYS.length) || !await guardCoolingSchedule()) {
+            throw new Error(COOLING_GUARD_ERROR);
+          }
+          await setVerifiedCoolingValue(key, value);
+          applied.push(key);
+        } catch (error) {
+          detail = await guardCoolingSchedule()
+            ? String(error?.message || error)
+            : COOLING_GUARD_ERROR;
+          skipped.push(createSettingsBackupRestoreItem(key, section.label, "Bron niet toegepast", detail, "error"));
         }
       }
 
@@ -1620,19 +1710,20 @@ import { render } from "../core/render-scheduler.js";
       }
 
       for (const { key, value, section } of deferredMqttSources) {
-        if (!mqttRestoreReady) {
+        const guardedCoolingSource = key === COOLING_SCHEDULE_SOURCE_KEY && coolingGuarded !== null;
+        if (!mqttRestoreReady || (guardedCoolingSource && (!coolingGuarded || !await guardCoolingSchedule()))) {
           skipped.push(createSettingsBackupRestoreItem(
             key,
             section.label,
             "MQTT-bron niet toegepast",
-            `${mqttRestoreFailureDetail || "MQTT kon niet worden hersteld."} De huidige bronselectie is behouden.`,
+            mqttRestoreFailureDetail || "MQTT kon niet veilig worden hersteld.",
             "error",
           ));
           continue;
         }
 
         const entity = ENTITY_DEFS[key];
-        if (!entity || !hasEntity(key)) {
+        if (!entity || (!hasEntity(key) && !guardedCoolingSource)) {
           skipped.push(createSettingsBackupRestoreItem(
             key,
             section.label,
@@ -1643,14 +1734,22 @@ import { render } from "../core/render-scheduler.js";
         }
 
         try {
-          await setEntityBackupValue(key, value);
+          if (guardedCoolingSource) {
+            await setVerifiedCoolingValue(key, value);
+          } else {
+            await setEntityBackupValue(key, value);
+          }
           applied.push(key);
         } catch (error) {
+          let detail = String(error?.message || error);
+          if (guardedCoolingSource && !await guardCoolingSchedule()) {
+            detail = COOLING_GUARD_ERROR;
+          }
           skipped.push(createSettingsBackupRestoreItem(
             key,
             section.label,
             "Schrijven mislukt",
-            String(error?.message || error),
+            detail,
             "error",
           ));
         }

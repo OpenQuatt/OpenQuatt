@@ -102,6 +102,7 @@ export function configuredSourceWireValue(value) {
     "Home Assistant": "home_assistant",
     "API input": "api_input",
     MQTT: "mqtt",
+    Schedule: "schedule",
     "CIC or HA input": "cic_or_home_assistant",
     Disabled: "disabled",
   })[optionalText(value)] ?? null;

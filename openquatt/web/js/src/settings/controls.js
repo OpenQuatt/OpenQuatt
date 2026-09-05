@@ -152,10 +152,12 @@ export function formatSettingsOptionLabel(option) {
     Automatic: "Automatisch",
     None: "Geen",
     Manual: "Handmatig",
+    Schedule: "Dagelijks tijdvenster",
     Disabled: "Niet gebruiken",
     "HA input + Manual": "HA-invoer + handmatig",
     "MQTT + Manual": "MQTT + handmatig",
     "OT thermostat + Manual": "OT-thermostaat + handmatig",
+    "Schedule + Manual": "Dagelijks tijdvenster + handmatig",
     "CIC + Manual": "CIC + handmatig",
     "CIC + HA input + Manual": "CIC + HA-invoer + handmatig",
     Balanced: "Gebalanceerd",
@@ -578,8 +580,8 @@ export function renderSettingsTimeField(key, title, copy, className = "") {
   if (!hasEntity(key)) {
     return "";
   }
-  const value = toTimeInputValue(getEntityValue(key));
-  return renderSettingsFieldCard(key, title, copy, `<label class="oq-settings-control oq-settings-control--time"><input class="oq-helper-input oq-helper-input--time" type="time" step="60" lang="nl-NL" inputmode="numeric" data-oq-field="${escapeHtml(key)}" value="${escapeHtml(value)}" ${state.loadingEntities ? "disabled" : ""}><span class="oq-settings-time-icon" aria-hidden="true"><svg viewBox="0 0 20 20" focusable="false"><circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M10 6.2 V10 L12.9 11.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span></label>`, className || "oq-settings-field--time");
+  const value = toTimeInputValue(getInputDraftValue(key));
+  return renderSettingsFieldCard(key, title, copy, `<label class="oq-settings-control oq-settings-control--time"><input class="oq-helper-input oq-helper-input--time" type="time" step="60" lang="nl-NL" inputmode="numeric" aria-label="${escapeHtml(title)}" data-oq-field="${escapeHtml(key)}" value="${escapeHtml(value)}" ${state.loadingEntities || state.savingTimeFields.has(key) ? "disabled" : ""}><span class="oq-settings-time-icon" aria-hidden="true"><svg viewBox="0 0 20 20" focusable="false"><circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M10 6.2 V10 L12.9 11.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span></label>`, className || "oq-settings-field--time");
 }
 
 export function renderSettingsSection(kicker, title, copy, body, badgeMarkup = "", className = "", headerActions = "") {
