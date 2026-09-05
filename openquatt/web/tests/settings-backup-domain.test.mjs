@@ -6,6 +6,7 @@ import {
   collectUnknownSettingsBackupItems,
   isSettingsBackupMqttSourceSelection,
   normalizeSettingsBackupMqttConfig,
+  normalizeSettingsBackupOduProfiles,
   settingsBackupMqttNeedsPassword,
 } from "../js/src/core/settings-backup-domain.js";
 
@@ -29,6 +30,42 @@ test("MQTT backup keeps configuration but excludes runtime and secret fields", (
   assert.equal(Object.hasOwn(backup, "csrf_token"), false);
   assert.equal(Object.hasOwn(backup, "connected"), false);
   assert.equal(Object.hasOwn(backup, "password"), false);
+});
+
+test("bodemplaatbackup bewaart alleen geldige generatiegebonden profielen", () => {
+  const profiles = normalizeSettingsBackupOduProfiles({
+    hp1: {
+      variant: 2,
+      control_board_item: 0x0E37,
+      mode: 3,
+      start_temperature_c: 4,
+      stop_delta_c: 3,
+      auto_reapply: true,
+    },
+  });
+  assert.deepEqual(profiles.hp1, {
+    variant: 2,
+    control_board_item: 0x0E37,
+    mode: 3,
+    start_temperature_c: 4,
+    stop_delta_c: 3,
+    auto_reapply: true,
+  });
+  assert.throws(() => normalizeSettingsBackupOduProfiles({ hp1: { mode: 4 } }), /bodemplaat/i);
+  assert.throws(
+    () => normalizeSettingsBackupOduProfiles({ hp1: { ...profiles.hp1, auto_reapply: "true" } }),
+    /bodemplaat/i,
+  );
+  for (const field of ["variant", "control_board_item", "mode", "start_temperature_c", "stop_delta_c"]) {
+    for (const value of [null, undefined, "", "1", false, true, [], [1], {}, 1.5]) {
+      assert.throws(
+        () => normalizeSettingsBackupOduProfiles({ hp1: { ...profiles.hp1, [field]: value } }),
+        /bodemplaat/i,
+        `${field} must not coerce ${JSON.stringify(value)} to an accepted register value`,
+      );
+    }
+  }
+  assert.equal(normalizeSettingsBackupOduProfiles({ hp1: { ...profiles.hp1, mode: 0 } }).hp1.mode, 0);
 });
 
 test("MQTT restore validation requires a valid endpoint", () => {

@@ -25,6 +25,7 @@ export const WEB_BUNDLE_BUDGETS = [
     // the issue-516 boiler/OpenTherm debug-recording fields,
     // the issue-536 boiler-result quality and confirmed empirical Apply flow,
     // the compact per-ODU compressor profile for safe manual F-levels,
+    // the generation-bound bottom-plate profile editor and backup/restore,
     // the unified Q-firmware network preference and active-connection controls,
     // the issue-471 grouped source focus panel with configured/effective paths,
     // relevant-source diagnostics, warnings and stable keyboard focus,
@@ -33,9 +34,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // plus bounded webserver-log history polling (single scheduler, retry
     // back-off and authoritative refresh without a second /events stream).
     // Includes stable native time editing and confirmed, stale-poll-safe saves.
-    // Retain the compact production pipeline and its existing raw ceiling
-    // for build-environment variance and small follow-up changes.
-    raw: 905_000,
+    // Compact pipeline plus the bottom-plate editor/backup: ~914 kB.
+    // Keep ~5 kB margin; do not restore the pre-compaction 1 MB ceiling.
+    raw: 919_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.
@@ -46,6 +47,7 @@ export const WEB_BUNDLE_BUDGETS = [
   // the issue-615 electrical-limit slider with red above-standard zone,
   // matching estimate/entry boxes, label icons and aligned vertical rhythm,
   // the responsive issue-471 master/detail source focus panel,
+  // the per-ODU bottom-plate settings modal,
   // and the grouped issue-541 cooling-window settings block.
   // Preserve the source-level symbol compaction and dead-CSS reduction.
   { file: "css/openquatt-app.css", raw: 200_000 },

@@ -1984,7 +1984,7 @@
       ],
     },
   ];
-  export const SETTINGS_BACKUP_SCHEMA_VERSION = 2;
+  export const SETTINGS_BACKUP_SCHEMA_VERSION = 3;
   export const SETTINGS_BACKUP_KEYS = [...new Set(SETTINGS_BACKUP_SECTIONS.flatMap((section) => section.keys))];
   export const SETTINGS_BACKUP_KEY_SET = new Set(SETTINGS_BACKUP_KEYS);
   export const FAST_POLL_INTERVAL_MS = 5000;

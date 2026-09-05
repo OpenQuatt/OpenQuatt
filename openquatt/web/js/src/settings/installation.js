@@ -2,7 +2,7 @@ import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } 
 import { HP_GENERATION_IMAGE_V1, HP_GENERATION_IMAGE_V2 } from "../core/embedded-assets.js";
 import { getInputDraftValue } from "../core/control-drafts.js";
 import { isCurveMode } from "../core/domain-helpers.js";
-import { getEntityValue, getNumberMeta, parseLooseNumber } from "../core/entity-store.js";
+import { getEntityValue, getNumberMeta } from "../core/entity-store.js";
 import { formatIncidentOccurrenceTime, getFallbackBlockReasonLabel, getHeatPumpStatusPresentation, getIncidentActionPresentation, getIncidentCategoryLabel, getIncidentDisplayLabel, getIncidentEffectLabels, getIncidentLifecyclePresentation, getIncidentRecoveryLabel, getIncidentTechnicalCode, getIncidentUserActionLabel, getPumpIncidentContextRows, getSystemActionPresentation } from "../core/incident-monitoring.js";
 import { getInstallationMonitoringFailureText, getInstallationMonitoringModel, isInstallationMonitoringBinaryActive, isInstallationMonitoringFailureActive, isInstallationMonitoringIntegrationEnabled, syncInstallationMonitoringDetailsState } from "../core/installation-monitoring.js";
 import { renderNumberInputControl } from "../core/number-controls.js";
@@ -12,7 +12,7 @@ import { formatDiagnosticsDateTime, formatUptimeFromMeta, getDeviceIpAddress, ge
 import { getUpdateStatus } from "../features/firmware-update.js";
 import { getConnectivityStatus, getEspTemperatureLabel } from "../features/header-status.js";
 import { getOduGenerationChoiceMeta, getOduGenerationDetectionModel, renderOduGenerationDetectionStatus } from "../features/odu-generation-ui.js";
-import { getOduRuntimeFrequencyDraftValue, getOduRuntimeFrequencyHpIndexes as getNativeOduRuntimeFrequencyHpIndexes, getOduRuntimeFrequencyStatus, ODU_RUNTIME_FREQUENCY_LEVELS, ODU_RUNTIME_FREQUENCY_MODES } from "../features/odu-runtime-frequency.js";
+import { getOduRuntimeFrequencyHpIndexes } from "../features/odu-runtime-frequency.js";
 import { getWebServerLogStatusLabel } from "../features/webserver-logs.js";
 import { BOILER_OPENTHERM_CAPABILITY, getBoilerOpenThermCapability, getSupportedBoilerConnectionOptions } from "./boiler.js";
 import { getSelectEntityOptions, renderNamedActionButton, renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsCompactSwitchControl, renderSettingsFieldCard, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField, renderSettingsSystemRow } from "./controls.js";
@@ -24,201 +24,6 @@ const AUX_HEAT_ASSIST_TITLE = "Hybride verwarmen bij vermogenstekort";
 const AUX_HEAT_BACKUP_TITLE = "Overnemen wanneer de warmtepomp niet beschikbaar is";
 const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer geen warmtepomp veilig beschikbaar is, ook bij een koude opstart onder 5 °C. Dit gebeurt pas na een veilige stop en geldige flow, temperatuur en aansturing. Een korte communicatiedip telt niet als uitval.";
 
-  export function getOduRuntimeFrequencyHpIndexes() {
-    return getNativeOduRuntimeFrequencyHpIndexes();
-  }
-
-  export function getOduRuntimeFrequencyNumberValue(hpIndex, mode, level) {
-    return parseLooseNumber(getOduRuntimeFrequencyDraftValue(hpIndex, mode, level));
-  }
-
-  export function getOduRuntimeFrequencyLevels(hpIndex) {
-    const runtimeStatus = getOduRuntimeFrequencyStatus(hpIndex);
-    const variantKey = hpIndex === 2 ? "hp2GenerationVariant" : "hp1GenerationVariant";
-    const extendedLayout = runtimeStatus
-      ? runtimeStatus.extendedLayout
-      : String(getEntityValue(variantKey) || "").trim() === "V2 new model";
-    return ODU_RUNTIME_FREQUENCY_LEVELS.slice(0, extendedLayout ? 21 : 11);
-  }
-
-  export function getOduRuntimeFrequencyTableValidation(hpIndex) {
-    const invalid = [];
-    const levels = getOduRuntimeFrequencyLevels(hpIndex);
-    ODU_RUNTIME_FREQUENCY_MODES.forEach((mode) => {
-      let previous = -Infinity;
-      levels.forEach((level) => {
-        const value = getOduRuntimeFrequencyNumberValue(hpIndex, mode, level);
-        const invalidOffLevel = level === 0 ? value !== 0 : value <= 0;
-        if (!Number.isInteger(value) || invalidOffLevel || value > 120 || value < previous) {
-          invalid.push(`${mode === "cooling" ? "C" : "H"}F${level}`);
-        }
-        if (Number.isFinite(value)) {
-          previous = value;
-        }
-      });
-    });
-    return {
-      valid: invalid.length === 0,
-      invalid,
-    };
-  }
-
-  export function getOduRuntimeFrequencyOperationState(hpIndex) {
-    const mode = String(getEntityValue(`hp${hpIndex}Mode`) || "").trim();
-    const freq = parseLooseNumber(getEntityValue(`hp${hpIndex}Freq`));
-    const modeKnown = mode && mode !== "Onbekend" && mode !== "Unknown";
-    const freqKnown = Number.isFinite(freq);
-    const standby = modeKnown && /standby|stand-by/i.test(mode);
-    const stopped = freqKnown && freq <= 0.5;
-    const reason = !modeKnown
-      ? "ODU status is onbekend."
-      : !standby
-        ? `ODU staat in ${mode}.`
-        : !freqKnown
-          ? "Compressorfrequentie is onbekend."
-          : !stopped
-            ? `Compressor draait op ${freq.toFixed(0)} Hz.`
-            : "Standby en compressor uit.";
-    return {
-      mode: modeKnown ? mode : "Onbekend",
-      freq: Number.isFinite(freq) ? `${freq.toFixed(0)} Hz` : "Onbekend",
-      safe: standby && stopped,
-      reason,
-    };
-  }
-
-  export function getOduRuntimeFrequencyStatusCopy(status) {
-    const normalized = String(status || "").toUpperCase();
-    if (!status || normalized === "UNKNOWN" || normalized === "UNAVAILABLE") {
-      return "Nog geen readback of apply-status ontvangen.";
-    }
-    if (normalized.includes("APPLIED")) {
-      return "Runtime registers zijn geschreven en via readback bevestigd. Een power-cycle / stroomloos maken van de buitenunit zet de originele tabel terug.";
-    }
-    if (normalized.includes("GUARD_READ_REQUESTED")) {
-      return "Firmware leest actuele ODU mode en compressorfrequentie voordat er geschreven wordt.";
-    }
-    if (normalized.includes("WRITE_QUEUED") || normalized.includes("WRITE_CONFIRMED")) {
-      return "Runtime write loopt; wacht op bevestigde readback voordat je de waarden vertrouwt.";
-    }
-    if (normalized.includes("FAILED")) {
-      return "Firmware kon de runtime tabel niet volledig bevestigen. Laad opnieuw voordat je verder test.";
-    }
-    if (normalized.includes("LOADED")) {
-      return "Readback is in de velden geladen. Controleer de waarden voordat je schrijft.";
-    }
-    if (normalized.includes("BLOCKED")) {
-      return "Firmware heeft de actie geblokkeerd; controleer enable, standby en compressorstatus.";
-    }
-    if (normalized.includes("LOAD_REQUESTED")) {
-      return "Readback is aangevraagd bij de ODU.";
-    }
-    return "Laatste status van de experimentele runtime tabel.";
-  }
-
-  export function renderOduRuntimeFrequencyNumberInput(hpIndex, mode, level, tabIndex) {
-    const status = getOduRuntimeFrequencyStatus(hpIndex);
-    const disabled = !status?.loaded || status.busy;
-    return `
-      <label class="oq-helper-control oq-helper-control--suffix oq-settings-odu-runtime-control">
-        <input
-          class="oq-helper-input oq-helper-input--compact-number oq-settings-odu-runtime-input"
-          type="number"
-          min="0"
-          max="120"
-          step="1"
-          inputmode="numeric"
-          value="${escapeHtml(getOduRuntimeFrequencyDraftValue(hpIndex, mode, level))}"
-          data-oq-odu-runtime-hp="${hpIndex}"
-          data-oq-odu-runtime-mode="${mode}"
-          data-oq-odu-runtime-level="${level}"
-          data-oq-odu-runtime-tab-index="${tabIndex}"
-          aria-label="${escapeHtml(`HP${hpIndex} ${mode} F${level} runtime Hz`)}"
-          ${disabled ? "disabled" : ""}
-        >
-        <span class="oq-helper-unit-chip">Hz</span>
-      </label>
-    `;
-  }
-
-  export function renderOduRuntimeFrequencyTable(hpIndex) {
-    const levels = getOduRuntimeFrequencyLevels(hpIndex);
-    const levelCount = levels.length;
-    return `
-      <div class="oq-settings-odu-runtime-table" role="table" aria-label="${escapeHtml(`HP${hpIndex} ODU runtime frequentietabel`)}">
-        <div class="oq-settings-odu-runtime-row oq-settings-odu-runtime-row--head" role="row">
-          <span role="columnheader">Level</span>
-          <span role="columnheader">Cooling</span>
-          <span role="columnheader">Heating</span>
-        </div>
-        ${levels.map((level) => `
-          <div class="oq-settings-odu-runtime-row" role="row">
-            <span class="oq-settings-odu-runtime-level" role="cell">F${level}</span>
-            <div role="cell">${renderOduRuntimeFrequencyNumberInput(hpIndex, "cooling", level, level)}</div>
-            <div role="cell">${renderOduRuntimeFrequencyNumberInput(hpIndex, "heating", level, levelCount + level)}</div>
-          </div>
-        `).join("")}
-      </div>
-    `;
-  }
-
-  export function renderOduRuntimeFrequencyHpPanel(hpIndex) {
-    const runtime = getOduRuntimeFrequencyStatus(hpIndex);
-    const status = runtime?.unsupported
-      ? "Niet ondersteund door deze firmware"
-      : String(runtime?.status || "Status laden...").trim();
-    const validation = getOduRuntimeFrequencyTableValidation(hpIndex);
-    const operation = getOduRuntimeFrequencyOperationState(hpIndex);
-    const enabled = runtime?.armed === true;
-    const available = runtime && runtime.available !== false && !runtime.unsupported;
-    const busy = runtime?.busy === true || String(state.busyAction || "").startsWith(`odu-runtime-hp${hpIndex}-`);
-    const applyDisabled = busy || !runtime?.loaded || !enabled || !validation.valid || !operation.safe || !available;
-    const validationText = validation.valid
-      ? "F0 is 0 Hz; F1 en hoger zijn 1-120 Hz en per tabel oplopend."
-      : `Controleer ${validation.invalid.slice(0, 5).join(", ")}${validation.invalid.length > 5 ? "..." : ""}.`;
-
-    return `
-      <article class="oq-settings-odu-runtime-panel">
-        <div class="oq-settings-odu-runtime-panel-head">
-          <div>
-            <p class="oq-helper-label">HP${hpIndex}</p>
-            <h4>Runtime frequentietabel</h4>
-            <p>${escapeHtml(operation.reason)} Laatste compressorfrequentie: ${escapeHtml(operation.freq)}.</p>
-            <p>${getOduRuntimeFrequencyLevels(hpIndex).length === 21 ? "Volledig compressorbereik beschikbaar." : "Standaard compressorbereik beschikbaar."}</p>
-          </div>
-          <div class="oq-settings-odu-runtime-actions">
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="odu-runtime-load" data-hp="${hpIndex}" ${busy || !available ? "disabled" : ""}>${busy ? "Bezig..." : "Uit ODU laden"}</button>
-            <div class="oq-settings-compact-switch-row">
-              <span class="oq-settings-toggle-state${enabled ? " is-on" : ""}">${enabled ? "Enable" : "Locked"}</span>
-              <button
-                class="oq-settings-toggle-switch${enabled ? " is-on" : ""}"
-                type="button"
-                role="switch"
-                data-oq-action="odu-runtime-arm"
-                data-hp="${hpIndex}"
-                aria-checked="${enabled ? "true" : "false"}"
-                aria-label="${escapeHtml(`HP${hpIndex} writes ${enabled ? "vergrendelen" : "vrijgeven"}`)}"
-                ${busy || !runtime?.loaded || !available ? "disabled" : ""}
-              >
-                <span class="oq-settings-toggle-switch-track" aria-hidden="true"><span class="oq-settings-toggle-switch-knob"></span></span>
-              </button>
-            </div>
-            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="odu-runtime-apply" data-hp="${hpIndex}" ${applyDisabled ? "disabled" : ""}>${busy ? "Schrijven..." : "Runtime toepassen"}</button>
-          </div>
-        </div>
-        <div class="oq-settings-odu-runtime-status${status.toUpperCase().includes("BLOCKED") ? " is-warning" : status.toUpperCase().includes("APPLIED") || status.toUpperCase().includes("LOADED") ? " is-success" : ""}">
-          <div>
-            <span>Status</span>
-            <strong>${escapeHtml(status)}</strong>
-          </div>
-          <p>${escapeHtml(getOduRuntimeFrequencyStatusCopy(status))}</p>
-        </div>
-        ${runtime?.loaded ? renderOduRuntimeFrequencyTable(hpIndex) : `<p class="oq-settings-odu-runtime-validation is-warning">Laad eerst de actuele tabel uit de ODU; er worden geen standaardwaarden voorgeladen.</p>`}
-        <p class="oq-settings-odu-runtime-validation${validation.valid && operation.safe ? " is-ok" : " is-warning"}">${escapeHtml(validationText)} ${escapeHtml(operation.safe ? "" : operation.reason)}</p>
-      </article>
-    `;
-  }
-
   export function renderSettingsOduRuntimeFrequencySection() {
     const hpIndexes = getOduRuntimeFrequencyHpIndexes();
     if (!hpIndexes.length) {
@@ -226,34 +31,27 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     }
 
     return `
-      <details class="oq-settings-section oq-settings-section--collapsible oq-settings-odu-runtime-details"${state.oduRuntimeFrequencyDetailsOpen ? " open" : ""}>
-        <summary class="oq-settings-section-summary" data-oq-action="toggle-odu-runtime-frequency-details">
-          <div class="oq-settings-section-head">
-            <div class="oq-settings-section-head-meta">
-              <p class="oq-helper-label">Experimenteel</p>
-              <div class="oq-settings-section-head-meta-badge">
-                <span class="oq-settings-section-badge oq-settings-section-badge--experimental">Runtime only</span>
-              </div>
-            </div>
-            <h3>ODU runtime frequentietabel</h3>
-            <p>Lees en schrijf de ODU frequentietabel alleen runtime; waarden worden niet opgeslagen in EEPROM. Een power-cycle / stroomloos maken van de buitenunit reset de frequentietabel weer naar de originele tabel.</p>
-          </div>
-          <span class="oq-settings-section-summary-toggle" aria-hidden="true"></span>
-        </summary>
-        <div class="oq-settings-section-collapsible-body oq-settings-odu-runtime">
-          ${state.oduRuntimeFrequencyError ? `<p class="oq-settings-odu-runtime-validation is-warning" role="alert">${escapeHtml(state.oduRuntimeFrequencyError)}</p>` : ""}
-          <div class="oq-settings-odu-runtime-warning" role="alert">
-            <strong>Schrijft direct naar ODU runtime registers.</strong>
-            <p>Gebruik dit alleen voor gecontroleerde tests. Apply werkt alleen wanneer de HP in standby staat, de compressor uit is en de enable-schakelaar bewust aan staat.</p>
-            <p>Verlaag koel-frequenties onder de OEM-ondergrens rond 30 Hz alleen met superheat-bewaking. Bij te lage suction superheat kan natte zuigretour richting compressor ontstaan.</p>
-            <p>Een power-cycle / stroomloos maken van de buitenunit reset de frequentietabel weer naar de originele tabel.</p>
-          </div>
-          <div class="oq-settings-odu-runtime-panels">
-            ${hpIndexes.map((hpIndex) => renderOduRuntimeFrequencyHpPanel(hpIndex)).join("")}
-          </div>
+      <section class="oq-settings-section oq-settings-odu-launchers">
+        <div class="oq-settings-section-head">
+          <div class="oq-settings-section-head-meta"><p class="oq-helper-label">Buitenunit</p><span class="oq-settings-section-badge oq-settings-section-badge--experimental">Niet permanent opgeslagen</span></div>
+          <h3>Instellingen buitenunit</h3>
+          <p>Hier wijzig je instellingen die direct door de buitenunit worden gebruikt. Na een herstart gebruikt de buitenunit weer de waarden uit haar eigen geheugen.</p>
         </div>
-      </details>
-    `;
+        <div class="oq-settings-section-body oq-settings-odu-launcher-list">
+          ${renderSettingsSystemRow({
+            label: "Bodemplaatverwarming",
+            value: "Regelmethode en temperatuurgrenzen",
+            note: "OpenQuatt kan jouw keuze bewaren en na een herstart veilig opnieuw toepassen.",
+            action: '<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="open-odu-bottom-plate-settings">Instellen</button>',
+          })}
+          ${renderSettingsSystemRow({
+            label: "Frequentietabel",
+            value: `${hpIndexes.length === 2 ? "Twee buitenunits" : "Eén buitenunit"}`,
+            note: "Direct aanpassen voor gecontroleerde tests; OpenQuatt bewaart deze tabel niet.",
+            action: '<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="open-odu-frequency-settings">Openen</button>',
+          })}
+        </div>
+      </section>`;
   }
 
   export function renderInstallationMonitoringBadge(

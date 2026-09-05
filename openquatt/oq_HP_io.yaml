@@ -40,6 +40,7 @@ esphome:
               static_cast<int>(oq_odu::Variant::UNKNOWN);
           id(${hp_id}_runtime_frequency_snapshot_storage) = {};
           id(${hp_id}_odu_runtime_frequency)->reset_runtime_state();
+          id(${hp_id}_odu_settings)->notify_odu_offline();
           id(${hp_id}_compressor_level_profile_request_pending) = false;
           id(${hp_id}_compressor_level_profile_request_token) = 0U;
           id(${hp_id}_runtime_frequency_retry_ms) = 0U;
@@ -76,6 +77,7 @@ modbus_controller:
             id(${hp_id}_runtime_frequency_snapshot_storage) = {};
             id(${hp_id}_odu_runtime_frequency)->reset_runtime_state(
                 "VERIFY_FAILED: ODU disconnected during write");
+            id(${hp_id}_odu_settings)->notify_odu_offline();
             id(${hp_id}_compressor_level_profile_request_token) =
                 oq_odu::next_request_token(
                     id(${hp_id}_compressor_level_profile_request_token));
@@ -107,6 +109,13 @@ openquatt_odu_eeprom_dump:
     web_auth: oq_web_auth_store
     hp_index: ${hp_index}
     device_address: ${device_address}
+
+openquatt_odu_settings:
+  - id: ${hp_id}_odu_settings
+    controller: ${hp_id}
+    eeprom_dump: ${hp_id}_odu_eeprom_dump
+    web_auth: oq_web_auth_store
+    hp_index: ${hp_index}
 
 # ----------------------------
 # GLOBALS
@@ -239,6 +248,7 @@ script:
           id(${hp_id}_odu_generation_detection_complete) = false;
           id(${hp_id}_odu_generation_request_pending) = true;
           id(${hp_id}_odu_runtime_frequency)->reset_runtime_state();
+          id(${hp_id}_odu_settings)->notify_odu_offline();
           id(${hp_id}_generation).publish_state("Unknown");
           id(${hp_id}_generation_variant_code) =
               static_cast<int>(oq_odu::Variant::UNKNOWN);
@@ -286,6 +296,8 @@ script:
                 auto apply_detected_variant = [=](oq_odu::Variant detected_variant) {
                   id(${hp_id}_odu_runtime_frequency)->set_extended_layout(
                       detected_variant == oq_odu::Variant::V2_NEW_MODEL);
+                  id(${hp_id}_odu_settings)->set_odu_identity(
+                      core.control_board_item, detected_variant);
                   const auto active_snapshot =
                       oq_odu::decode_runtime_frequency_snapshot(
                           id(${hp_id}_runtime_frequency_snapshot_storage));

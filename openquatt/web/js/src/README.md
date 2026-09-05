@@ -28,3 +28,10 @@ decisions. An explicit choice `busy` override retains its custom disabled gate;
 filtered selects without the marker retain their own options and gates. Focused
 native menus defer value/option patches until focus leaves. Service and focused
 integration panels retain their existing full-render fallback.
+
+The ODU editors share modal/panel/action markup in `features/odu-editor-ui.js`
+and numeric input markup in `core/number-controls.js`. Service-owned inputs omit
+`data-oq-field` and pass their own disabled gate; they are not ESPHome entities.
+The bottom-plate editor uses one model for initial rendering and live draft
+validation. Its identity/write rules remain separate from the frequency table's
+arm, standby and 0 Hz requirements.

@@ -23,8 +23,9 @@ NVS_GC_RESERVED_PAGES = 1
 REQUIRED_AVAILABLE_ENTRIES = 126
 
 # Custom OpenQuatt preferences: MQTT config 11, web auth 6, crash state 4,
-# usage telemetry 3, network preference 3 and incident reset journal 9.
-CUSTOM_PREFERENCE_ENTRIES = 36
+# usage telemetry 3, network preference 3, incident reset journal 9 and two
+# per-ODU bottom-plate profiles 6.
+CUSTOM_PREFERENCE_ENTRIES = 42
 # Namespace records, ESPHome safe-mode/WiFi/PHY state and estimation margin.
 ESP_SYSTEM_RESERVE_ENTRIES = 14
 
