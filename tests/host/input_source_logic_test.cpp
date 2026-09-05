@@ -83,6 +83,7 @@ void test_enable_source_selection() {
   sources.cic = {false, true};
   sources.ha = {true, true};
   sources.api = {true, false};
+  sources.schedule = {false, true};
 
   auto heating = select_heating_enable(Source::DISABLED, sources);
   assert(heating.valid && heating.value);
@@ -103,6 +104,16 @@ void test_enable_source_selection() {
   sources.cic = {false, false};
   cooling = select_cooling_enable(Source::CIC_OR_HA, sources, false);
   assert(!cooling.valid && !cooling.value);
+  cooling = select_cooling_enable(Source::SCHEDULE, sources, false);
+  assert(cooling.valid && !cooling.value);
+  sources.schedule = {true, true};
+  cooling = select_cooling_enable(Source::SCHEDULE, sources, false);
+  assert(cooling.valid && cooling.value);
+  sources.schedule = {false, false};
+  cooling = select_cooling_enable(Source::SCHEDULE, sources, false);
+  assert(!cooling.valid && !cooling.value);
+  cooling = select_cooling_enable(Source::SCHEDULE, sources, true);
+  assert(cooling.valid && cooling.value);
 }
 
 void test_flow_source_routes() {

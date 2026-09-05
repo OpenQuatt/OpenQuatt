@@ -58,7 +58,7 @@ export function getWebServerLogStatusLabel() {
   if (state.nativeOpen) {
     return "Niet beschikbaar";
   }
-  if (isWebServerLogDemoMode()) {
+  if (__OQ_PREVIEW__ && isWebServerLogDemoMode()) {
     return "Voorbeeld";
   }
   if (state.webServerLogEnabled === false) {
@@ -156,7 +156,7 @@ export function getDemoLogReceivedAt(index, total) {
 }
 
 export function seedWebServerLogDemoEntries() {
-  const entries = getWebServerLogDemoEntries();
+  const entries = __OQ_PREVIEW__ ? getWebServerLogDemoEntries() : [];
   const total = entries.length;
   return entries.map((entry, index) => createWebServerLogEntry(entry, {
     receivedAt: getDemoLogReceivedAt(index, total),
@@ -366,7 +366,7 @@ export function normalizeRecentWebServerLogPayload(payload) {
 }
 
 export function openWebServerLogsModal() {
-  if (isWebServerLogDemoMode() && state.webServerLogEntries.length === 0) {
+  if (__OQ_PREVIEW__ && isWebServerLogDemoMode() && state.webServerLogEntries.length === 0) {
     updateWebServerLogState({ webServerLogEntries: seedWebServerLogDemoEntries() });
   }
   closeWebServerLogStream();
@@ -392,7 +392,7 @@ export function openWebServerLogsModal() {
   scrollWebServerLogToBottom();
   // De RAM-historie is de betrouwbare logbron; de algemene /events-stream
   // kan logevents laten vallen zolang dezelfde sessie state-data verstuurt.
-  if (!isWebServerLogDemoMode()) {
+  if (!__OQ_PREVIEW__ || !isWebServerLogDemoMode()) {
     void refreshWebServerLogHistory();
   }
 }
@@ -420,7 +420,7 @@ export async function clearWebServerLogHistory() {
     return false;
   }
 
-  if (state.nativeOpen || isWebServerLogDemoMode()) {
+  if (state.nativeOpen || (__OQ_PREVIEW__ && isWebServerLogDemoMode())) {
     clearWebServerLogOutput();
     return true;
   }
@@ -513,7 +513,7 @@ export function resetWebServerLogRecoveryState() {
 }
 
 export function syncWebServerLogStream() {
-  if (isWebServerLogDemoMode()) {
+  if (__OQ_PREVIEW__ && isWebServerLogDemoMode()) {
     closeWebServerLogStream();
     return;
   }
@@ -805,7 +805,7 @@ export function handleWebServerLogAction(action) {
 }
 
 export function renderWebServerLogsModal() {
-  const demoMode = isWebServerLogDemoMode();
+  const demoMode = __OQ_PREVIEW__ && isWebServerLogDemoMode();
   const clearBusy = state.busyAction === "clear-webserver-log-history";
   const clearDisabled = Boolean(state.busyAction) || state.webServerLogHistoryLoading ||
     (!demoMode && !state.nativeOpen && !state.webServerLogCsrfToken);

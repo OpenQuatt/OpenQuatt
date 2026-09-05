@@ -16,6 +16,7 @@ import { renderOduSettingsModal } from "./odu-settings.js";
 import { renderApiSecurityModal, renderLoginModal } from "./security-access.js";
 import { getWebServerLogStatusLabel, renderWebServerLogsModal } from "./webserver-logs.js";
 import { getControlModeOverrideLabel, renderSettingsServiceTaskModal } from "../settings/service.js";
+import { renderCoolingScheduleSettingsFields } from "../settings/cooling.js";
 import { renderSilentSettingsFields } from "../settings/silent.js";
 import { renderSettingsBackupImportModal, renderSettingsBackupRestoreModal, renderSettingsHistoryStorageModal } from "../settings/storage.js";
 import { renderHpWaterSensorOffsetsModal } from "../settings/water.js";
@@ -651,6 +652,28 @@ import { render } from "../core/render-scheduler.js";
       });
     }
 
+    if (state.systemModal === "cooling-schedule") {
+      return renderModalShell({
+        modalId: "system",
+        titleId: "oq-cooling-schedule-modal-title",
+        kicker: "Koeltoestemming",
+        title: "Koelvenster instellen",
+        modalClass: "oq-helper-modal--wide",
+        closeAction: "close-system-modal",
+        closeLabel: "Sluit koelvenster-popup",
+        bodyMarkup: `
+          <p class="oq-helper-modal-copy">Kies wanneer OpenQuatt lokaal koeltoestemming mag geven. Een tijd wordt opgeslagen zodra je het veld verlaat of op Enter drukt.</p>
+          ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
+          <div class="oq-helper-modal-body">
+            ${renderCoolingScheduleSettingsFields("oq-settings-grid oq-settings-grid--modal")}
+          </div>
+          <div class="oq-helper-modal-actions">
+            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">Gereed</button>
+          </div>
+        `,
+      });
+    }
+
     if (state.systemModal === "silent-settings") {
       return renderModalShell({
         modalId: "system",
@@ -661,7 +684,8 @@ import { render } from "../core/render-scheduler.js";
         closeAction: "close-system-modal",
         closeLabel: "Sluit stille-uren-popup",
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">Kies wanneer het systeem stiller moet werken, en hoe ver het dan nog mag opschalen. Wijzigingen worden direct toegepast.</p>
+          <p class="oq-helper-modal-copy">Kies wanneer het systeem stiller moet werken, en hoe ver het dan nog mag opschalen. Een tijd wordt opgeslagen zodra je het veld verlaat of op Enter drukt.</p>
+          ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
           <div class="oq-helper-modal-body">
             ${renderSilentSettingsFields()}
           </div>

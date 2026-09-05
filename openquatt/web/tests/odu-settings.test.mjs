@@ -13,6 +13,7 @@ globalThis.window = {
 const {
   getOduSettingsEndpoint,
   getOduSettingsHpIndexes,
+  getOduSettingsEditorModel,
   handleOduSettingsAction,
   normalizeOduSettingsStatus,
   renderOduSettingsModal,
@@ -22,6 +23,40 @@ const {
 } = await import("../js/src/features/odu-settings.js");
 const { state } = await import("../js/src/core/state.js");
 const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
+
+test("rendering en live invoer delen dezelfde bodemplaatwaarden en save-gates", () => {
+  state.entities = { installationTopology: { value: "single" } };
+  state.oduSettingsError = "";
+  state.controlNotice = "";
+  state.busyAction = "";
+  state.oduSettingsDrafts = { 1: { mode: "1", startTemperatureC: "4", stopDeltaC: "3", autoReapply: false, dirty: true } };
+  for (const patch of [{}, { available: false }, { identityReady: false }, { unsupported: true }, { busy: true }]) {
+    state.oduSettingsStatuses = { 1: { available: true, identityReady: true, loaded: true, ...patch } };
+    const model = getOduSettingsEditorModel(1);
+    const markup = renderOduSettingsModal();
+    const button = markup.match(/<button[^>]*data-oq-action="odu-settings-save"[^>]*>/)[0];
+    assert.equal(/\bdisabled\b/.test(button), model.saveDisabled);
+    const saveButton = { disabled: !model.saveDisabled };
+    updateOduSettingsDraft({
+      dataset: { oqOduSettingsHp: "1", oqOduSettingsField: "startTemperatureC" }, value: "4",
+      closest: () => ({ querySelector: selector => selector.includes("odu-settings-save") ? saveButton : null }),
+    });
+    assert.equal(saveButton.disabled, model.saveDisabled);
+    assert.doesNotMatch(markup, /data-oq-field=/);
+    assert.match(markup, /data-oq-odu-stop-temperature>7 °C of warmer/);
+  }
+});
+
+test("lege of ongeldige temperatuur toont dezelfde onbekende grens bij render en live invoer", () => {
+  state.oduSettingsStatuses = { 1: { available: true, identityReady: true, loaded: true } };
+  for (const value of ["", "invalid", "0", "-30", "30"]) {
+    state.oduSettingsDrafts = { 1: { mode: "1", startTemperatureC: value, stopDeltaC: "3" } };
+    const model = getOduSettingsEditorModel(1);
+    assert.equal(model.saveDisabled, ["", "invalid"].includes(value));
+    assert.ok(renderOduSettingsModal().includes(`data-oq-odu-start-temperature>${model.startCopy}</strong>`));
+    assert.ok(renderOduSettingsModal().includes(`data-oq-odu-stop-temperature>${model.stopCopy}</strong>`));
+  }
+});
 
 test("bodemplaatservice gebruikt per-HP endpoints en de installatie-topologie", () => {
   state.entities = { installationTopology: { value: "duo", state: "duo" } };

@@ -1,7 +1,6 @@
 .oq-overview-board {
   --oq-overview-bg: linear-gradient(180deg, rgba(30, 40, 56, 0.98), rgba(23, 32, 46, 0.98));
   --oq-overview-border: rgba(124, 141, 165, 0.24);
-  --oq-overview-shadow: 0 24px 48px rgba(5, 9, 16, 0.2);
   --oq-overview-ink: #e8eef8;
   --oq-overview-title: #f8fafc;
   --oq-overview-soft: #cad5e2;
@@ -17,16 +16,15 @@
   --oq-overview-lane-bg: rgba(31, 42, 57, 0.96);
   --oq-overview-lane-border: rgba(124, 141, 165, 0.2);
   --oq-overview-row-border: rgba(124, 141, 165, 0.18);
-  --oq-overview-meter-track: rgba(51, 63, 81, 0.92);
-  --oq-overview-shell-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 14px 30px rgba(2, 6, 23, 0.08);
-  --oq-overview-shell-shadow-soft: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 12px 24px rgba(2, 6, 23, 0.07);
-  --oq-overview-lane-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025), 0 6px 14px rgba(2, 6, 23, 0.035);
+  --oq-stat-background: var(--oq-overview-lane-bg);
+  --oq-stat-border: var(--oq-overview-panel-border);
+  --oq-stat-ink: var(--oq-overview-title);
+  --oq-stat-soft: var(--oq-overview-soft);
   --oq-overview-interactive-transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
   padding: 24px;
-  border-radius: 30px;
+  border-radius: var(--oq-helper-radius-lg);
   background: var(--oq-overview-bg);
   border: 1px solid var(--oq-overview-border);
-  box-shadow: var(--oq-overview-shadow);
   color: var(--oq-overview-ink);
   position: relative;
 }
@@ -34,7 +32,6 @@
 .oq-overview-board--light {
   --oq-overview-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 250, 251, 0.98));
   --oq-overview-border: #e5e7eb;
-  --oq-overview-shadow: 0 20px 42px rgba(15, 23, 42, 0.08);
   --oq-overview-ink: #374151;
   --oq-overview-title: #111827;
   --oq-overview-soft: #6b7280;
@@ -50,42 +47,6 @@
   --oq-overview-lane-bg: #ffffff;
   --oq-overview-lane-border: #e5e7eb;
   --oq-overview-row-border: #e5e7eb;
-  --oq-overview-meter-track: #e5e7eb;
-}
-
-.oq-overview-meter {
-  margin-top: 14px;
-}
-
-.oq-overview-meter-track {
-  height: 14px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: var(--oq-overview-meter-track);
-}
-
-.oq-overview-meter-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #1d4ed8, #60a5fa);
-}
-
-.oq-overview-hp--orange .oq-overview-meter-fill {
-  background: linear-gradient(90deg, #f59e0b, #ef4444);
-}
-
-.oq-overview-meter-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 8px;
-  color: var(--oq-overview-muted);
-  font-size: 0.9rem;
-}
-
-.oq-overview-meter-meta strong {
-  color: var(--oq-overview-title);
 }
 
 .oq-overview-summary-shell,
@@ -99,8 +60,7 @@
 
 .oq-overview-summary-shell {
   padding: 16px;
-  border-radius: 26px;
-  box-shadow: var(--oq-overview-shell-shadow-soft);
+  border-radius: var(--oq-helper-radius-lg);
 }
 
 .oq-overview-monitoring-notice {
@@ -169,10 +129,6 @@
   min-width: 0;
 }
 
-.oq-overview-theme-toggle {
-  min-width: 166px;
-}
-
 .oq-overview-head .oq-helper-section-title,
 .oq-overview-system-copy h3,
 .oq-overview-hp h3 {
@@ -222,79 +178,9 @@
   align-items: stretch;
 }
 
-.oq-overview-stat,
 .oq-overview-controlpanel {
   background: var(--oq-overview-lane-bg);
   border: 1px solid var(--oq-overview-panel-border);
-}
-
-.oq-overview-stat {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  padding: 12px 16px;
-  min-height: 0;
-  border-radius: 16px;
-  box-shadow: var(--oq-overview-lane-shadow);
-}
-
-.oq-overview-stat p,
-.oq-overview-stat span {
-  margin: 0;
-}
-
-.oq-overview-stat p {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.oq-overview-stat strong {
-  display: block;
-  margin-top: 6px;
-  color: var(--oq-overview-title);
-  font-size: clamp(1.18rem, 1.05vw, 1.55rem);
-  line-height: 1;
-}
-
-.oq-overview-stat span {
-  display: block;
-  margin-top: 5px;
-  color: var(--oq-overview-soft);
-  font-size: 0.78rem;
-}
-
-.oq-overview-stat--blue p {
-  color: #2563eb;
-}
-
-.oq-overview-stat--orange p {
-  color: #ea580c;
-}
-
-.oq-overview-stat--green p {
-  color: #16a34a;
-}
-
-.oq-overview-stat--sky p {
-  color: #0284c7;
-}
-
-.oq-overview-stat--status {
-  min-height: 0;
-}
-
-.oq-overview-stat--status strong {
-  font-size: 0.86rem;
-  line-height: 1.2;
-  max-width: 100%;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.oq-overview-stat--status span {
-  font-size: 0.74rem;
 }
 
 .oq-overview-sectionhead {
@@ -330,8 +216,7 @@
   display: grid;
   gap: 10px;
   padding: 14px 16px;
-  border-radius: 14px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025), 0 4px 10px rgba(2, 6, 23, 0.03);
+  border-radius: var(--oq-helper-radius-md);
 }
 
 .oq-overview-controlpanel p {
@@ -598,8 +483,7 @@
 .oq-overview-hp,
 .oq-overview-energy {
   padding: 20px;
-  border-radius: 24px;
-  box-shadow: var(--oq-overview-shell-shadow);
+  border-radius: var(--oq-helper-radius-lg);
 }
 
 .oq-overview-chip {
@@ -673,59 +557,6 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.oq-overview-metric {
-  position: relative;
-  overflow: hidden;
-  padding: 18px;
-  border-radius: 18px;
-  background: var(--oq-overview-lane-bg);
-  border: 1px solid var(--oq-overview-lane-border);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
-}
-
-.oq-overview-metric::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 5px;
-}
-
-.oq-overview-metric span {
-  display: block;
-  color: var(--oq-overview-muted);
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.oq-overview-metric strong {
-  display: block;
-  margin-top: 8px;
-  color: var(--oq-overview-title);
-  font-size: 1.1rem;
-  line-height: 1.15;
-}
-
-.oq-overview-metric p {
-  margin: 8px 0 0;
-  color: var(--oq-overview-soft);
-  font-size: 0.84rem;
-  line-height: 1.4;
-}
-
-.oq-overview-metric--blue::before {
-  background: linear-gradient(180deg, #1d4ed8, #60a5fa);
-}
-
-.oq-overview-metric--orange::before {
-  background: linear-gradient(180deg, #f59e0b, #ef4444);
-}
-
-.oq-overview-metric--sky::before {
-  background: linear-gradient(180deg, #0ea5e9, #67e8f9);
-}
-
 .oq-overview-temps-list {
   display: grid;
   gap: 10px;
@@ -755,7 +586,6 @@
   border-radius: 24px;
   background: var(--oq-overview-panel-bg);
   border: 1px solid var(--oq-overview-panel-border);
-  box-shadow: var(--oq-overview-shell-shadow);
   position: relative;
 }
 
@@ -790,7 +620,6 @@
   border-radius: 18px;
   background: var(--oq-overview-lane-bg);
   border: 1px solid var(--oq-overview-lane-border);
-  box-shadow: var(--oq-overview-lane-shadow);
   align-content: start;
   width: fit-content;
   max-width: 100%;
@@ -862,7 +691,6 @@
   border-radius: 18px;
   background: var(--oq-overview-lane-bg);
   border: 1px solid var(--oq-overview-lane-border);
-  box-shadow: var(--oq-overview-lane-shadow);
 }
 
 .oq-overview-trends-disabled p {
@@ -907,7 +735,6 @@
   border-radius: 20px;
   background: var(--oq-overview-lane-bg);
   border: 1px solid var(--oq-overview-lane-border);
-  box-shadow: var(--oq-overview-lane-shadow);
   overflow: hidden;
 }
 

@@ -371,198 +371,53 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     return CONTROL_WORKING_SEVERITY_METAS[severity] || CONTROL_WORKING_SEVERITY_METAS.normal;
   }
 
-  const CONTROL_WORKING_REASON_METAS = Object.freeze({
-      keep_current: {
-        label: "Huidige keuze blijft logisch",
-        summary: "De huidige stand past bij de vraag in huis. Wisselen zou nu weinig voordeel geven.",
-        checks: ["Vraag blijft binnen de band", "Geen betere keuze nodig", "Rustig door laten lopen"],
-      },
-      hold_active: {
-        label: "Wissel bewust uitgesteld",
-        summary: "Het systeem wacht bewust even, zodat warmtepompen niet onnodig vaak starten en stoppen.",
-        checks: ["Vraag is nog niet duidelijk anders", "Minimale looptijd telt mee", "Actieve bron werkt nog goed"],
-      },
-      defrost_hold: {
-        label: "Ontdooien rustig laten verlopen",
-        summary: "Een warmtepomp ontdooit kort. Dat is normaal wintergedrag en herstelt vanzelf.",
-        checks: ["Ontdooien actief of net klaar", "Warmte kan kort lager zijn", "Herstart gebeurt automatisch"],
-      },
-      better_heat: {
-        label: "Twee pompen passen beter",
-        summary: "De warmtevraag blijft hoog. Twee warmtepompen kunnen die vraag rustiger leveren dan één pomp op hoge belasting.",
-        checks: ["Warmtevraag blijft hoog", "Beide warmtepompen beschikbaar", "Samen leveren ze rustiger vermogen"],
-      },
-      soft_guard: {
-        label: "Veilige marge bewaakt",
-        summary: "Het systeem begrenst zichzelf om veilig binnen de temperatuur- en flowgrenzen te blijven.",
-        checks: ["Veiligheidsmarge bewaakt", "Geen storing", "Begrenzing verdwijnt vanzelf"],
-      },
-      less_power: {
-        label: "Minder vermogen nodig",
-        summary: "De vraag neemt af. Eén warmtepomp kan de resterende vraag weer rustig dragen.",
-        checks: ["Vraag neemt af", "Eén warmtepomp is genoeg", "Minder elektrisch vermogen nodig"],
-      },
-      cooling_request_cleared: {
-        label: "Geen koelvraag meer",
-        summary: "De koelvraag is weggevallen. De warmtepomp mag stoppen en de pomp kan nog kort nalopen.",
-        checks: ["Koelvraag weg", "Warmtepomp stopt", "Naloop kan normaal zijn"],
-      },
-      heating_request_cleared: {
-        label: "Geen warmtevraag meer",
-        summary: "De warmtevraag is weggevallen. De warmtepomp mag stoppen en de pomp kan nog kort nalopen.",
-        checks: ["Warmtevraag weg", "Warmtepomp stopt", "Naloop kan normaal zijn"],
-      },
-      no_candidate: {
-        label: "Nog geen veilige start",
-        summary: "Er is vraag, maar een start is nu nog niet verstandig door wachttijd of bescherming.",
-        checks: ["Beschikbaarheid gecontroleerd", "Bescherming of wachttijd actief", "Straks opnieuw beoordelen"],
-      },
-      candidate_in_rest: {
-        label: "Rusttijd loopt nog",
-        summary: "De warmtepomp is kort geleden gestopt en wacht nog even om korte cycli te voorkomen.",
-        checks: ["Vorige stop is recent", "Start wordt uitgesteld", "Bij blijvende vraag opnieuw beoordelen"],
-      },
-      candidate_in_defrost: {
-        label: "Warmtepomp ontdooit",
-        summary: "Deze warmtepomp kan nu niet starten of wisselen omdat ontdooien eerst rustig moet afronden.",
-        checks: ["Ontdooien actief", "Niet onnodig wisselen", "Automatisch opnieuw beoordelen"],
-      },
-      candidate_unavailable: {
-        label: "Warmtepomp niet beschikbaar",
-        summary: "De warmtepomp is nu geen geschikte kandidaat door beschikbaarheid of technische begrenzing.",
-        checks: ["Kandidaat gecontroleerd", "Voorwaarde niet vrij", "Andere keuze blijft mogelijk"],
-      },
-      defrost_boost: {
-        label: "Ontdooien opgevangen",
-        summary: "Een andere bron kan tijdelijk helpen terwijl een warmtepomp ontdooit.",
-        checks: ["Ontdooien verlaagt kort vermogen", "Andere bron beschikbaar", "Comfort blijft beschermd"],
-      },
-      boiler_assist: {
-        label: "CV ondersteunt tijdelijk",
-        summary: "De CV-ketel helpt alleen wanneer de warmtevraag tijdelijk meer vermogen vraagt dan de warmtepompen rustig kunnen leveren.",
-        checks: ["Warmtevraag blijft hoog", "Warmtepompen leveren maximaal rustig vermogen", "CV stopt zodra ondersteuning niet meer nodig is"],
-      },
-      runtime_lead: {
-        label: "Draaiurenbalans",
-        summary: "De warmtepompen zijn gelijkwaardig. Het systeem kiest de pomp die het beste past bij draaiuren, beschikbaarheid en wachttijd.",
-        checks: ["Draaiuren vergeleken", "Warmtepomp beschikbaar", "Wachttijd vrij"],
-      },
-      oil_return_hold: {
-        label: "Compressor beschermen",
-        summary: "De warmtepomp blijft kort doorlopen om de compressor netjes te beschermen.",
-        checks: ["Minimale looptijd actief", "Stop wordt uitgesteld", "Korte cyclus voorkomen"],
-      },
-      single_topology: {
-        label: "Eén warmtepomp aanwezig",
-        summary: "Er is maar één warmtepomp beschikbaar. Keuzes met twee warmtepompen zijn dan niet van toepassing.",
-        checks: ["Opstelling gecontroleerd", "Geen tweede warmtepomp", "Keuze blijft beperkt"],
-      },
-      demand_decreased: {
-        label: "Warmtevraag nam af",
-        summary: "De vraag zakte terug. Minder vermogen is genoeg om de woning op temperatuur te houden.",
-        checks: ["Vraag is lager", "Stopvertraging verlopen", "Andere warmtepomp blijft actief"],
-      },
-      min_rest_active: {
-        label: "Minimum rusttijd actief",
-        summary: "De warmtepomp wacht nog even om korte starts en onnodige belasting te voorkomen.",
-        checks: ["Vorige stop is recent", "Rusttijd loopt", "Start volgt als vraag blijft"],
-      },
-      start_stop_rate_high: {
-        label: "Veel starts/stops",
-        summary: "De warmtepomp start vaker dan wenselijk. Dat is niet direct een storing, maar wel nuttig om te bekijken.",
-        checks: ["Startteller hoog", "Geen acute storing", "Nuttig voor support"],
-      },
-      sticky_protection: {
-        label: "Pompbescherming",
-        summary: "De pomp draait kort zodat hij na lange stilstand niet vast gaat zitten. Dit is geen verwarmings- of koelvraag.",
-        checks: ["Geen comfortvraag", "Dagelijkse bescherming actief", "Alleen korte pomprun"],
-      },
-      frost_protection: {
-        label: "Vorstbescherming",
-        summary: "Het systeem laat water circuleren om bevriezing van het watercircuit te voorkomen.",
-        checks: ["Geen comfortvraag nodig", "Vorstrisico bewaakt", "Water blijft circuleren"],
-      },
-      flow_preflow: {
-        label: "Voorloop actief",
-        summary: "De pomp bouwt eerst waterflow op voordat de warmtepomp mag starten.",
-        checks: ["Waterflow opbouwen", "Warmtepomp nog niet vrij", "Start volgt automatisch"],
-      },
-      flow_postflow: {
-        label: "Naloop actief",
-        summary: "De pomp blijft kort nadraaien zodat warmte netjes uit het systeem wordt afgevoerd.",
-        checks: ["Warmtepomp stopt", "Pomp draait kort door", "Daarna standby"],
-      },
-      flow_too_low: {
-        label: "Waterflow blijft te laag",
-        summary: "De normale voorlooptijd is verstreken, maar de waterflow is nog niet voldoende voor een veilige start.",
-        checks: ["Voorlooptijd verstreken", "Start blijft geblokkeerd", "Flow wordt opnieuw beoordeeld"],
-      },
-      startup_inhibit: {
-        label: "Wachttijd na herstart",
-        summary: "Na een herstart blijft de compressor kort uit om een te snelle herstart te voorkomen.",
-        checks: ["Comfortvraag is aanwezig", "Compressor wacht nog", "Start volgt automatisch"],
-      },
-      capacity_cap: {
-        label: "Ingesteld koelmaximum",
-        summary: "Er is koelvraag. Het systeem blijft binnen het maximale koelniveau dat in de software is ingesteld.",
-        checks: ["Koelvraag actief", "Softwaremaximum actief", "Dauwpunt blijft bewaakt"],
-      },
-      falling_gap: {
-        label: "Dauwpuntmarge daalt",
-        summary: "De marge tot het dauwpunt wordt kleiner. Het systeem grijpt vroeg in om condens te voorkomen.",
-        checks: ["Marge daalt", "Aanvoer blijft veilig", "Koeling blijft voorzichtig actief"],
-      },
-      projected_floor: {
-        label: "Aanvoer nadert veilige ondergrens",
-        summary: "De aanvoer dreigt te koud te worden. Het systeem verlaagt de koeling preventief.",
-        checks: ["Aanvoer voorspeld", "Veilige grens leidend", "Geen storing"],
-      },
-      simmer: {
-        label: "Koeling rustig bijgesteld",
-        summary: "De koeling blijft op een laag niveau zodat de temperatuur rustig richting setpoint kan bewegen.",
-        checks: ["Lage koelvraag", "Geen abrupte stop", "Rustige regeling"],
-      },
-      buffer_stop: {
-        label: "Water al koud genoeg",
-        summary: "Er is koelvraag, maar het water is al koud genoeg. De warmtepomp hoeft daarom nu niet te starten.",
-        checks: ["Koelvraag blijft actief", "Water is al koud genoeg", "Start volgt automatisch"],
-      },
-      dew_stop: {
-        label: "Dauwpuntstop",
-        summary: "De warmtepomp stopt kort omdat verder koelen te dicht bij het dauwpunt zou komen.",
-        checks: ["Condensrisico voorkomen", "Koelvraag blijft bestaan", "Herstart na veilige marge"],
-      },
-      cooling_limiter: {
-        label: "Softwaremaximum actief",
-        summary: "Er is koelvraag. Het systeem koelt binnen het actuele softwaremaximum en blijft de veiligheidsmarges bewaken.",
-        checks: ["Koelvraag actief", "Softwaremaximum actief", "Marge blijft bewaakt"],
-      },
-      sensor_fallback: {
-        label: "Sensorwaarde onzeker",
-        summary: "Een meting is tijdelijk minder zeker. Het systeem kiest daarom voorzichtig gedrag.",
-        checks: ["Metingen gecontroleerd", "Veilige keuze voorrang", "Herstel zodra data stabiel is"],
-      },
-      restart_wait: {
-        label: "Koeling wacht op veilige herstart",
-        summary: "De koelvraag is nog aanwezig. Na de koelstop wacht het systeem tot de veilige marge voldoende is hersteld.",
-        checks: ["Herstart wacht bewust", "Marge moet stabiel blijven", "Daarna opnieuw beoordelen"],
-      },
-      level1_hold: {
-        label: "Voorzichtig blijven koelen",
-        summary: "De koeling blijft nog even laag totdat duidelijk is dat de veilige marge terug is.",
-        checks: ["Even wachten met opschalen", "Geen snelle sprong omhoog", "Comfortvraag blijft bewaakt"],
-      },
-      room_cap: {
-        label: "Kamervraag begrenst",
-        summary: "De kamer vraagt koeling, maar niet genoeg om harder te gaan koelen.",
-        checks: ["Kamer koelt richting setpoint", "Vraag blijft beperkt", "Rustige regeling"],
-      },
-      oil_return_recovery: {
-        label: "Compressorherstel",
-        summary: "Het systeem geeft compressorherstel tijdelijk voorrang en blijft de veiligheid bewaken.",
-        checks: ["Compressorprotectie actief", "Gecontroleerd herstel", "Veiligheid blijft bewaakt"],
-      },
-  });
+  function createControlWorkingReasonMetas(definitions) {
+    return Object.freeze(Object.fromEntries(definitions.map(([code, label, summary, ...checks]) => [
+      code,
+      { label, summary, checks },
+    ])));
+  }
+
+  const CONTROL_WORKING_REASON_METAS = createControlWorkingReasonMetas([
+    ["keep_current", "Huidige keuze blijft logisch", "De huidige stand past bij de vraag in huis. Wisselen zou nu weinig voordeel geven.", "Vraag blijft binnen de band", "Geen betere keuze nodig", "Rustig door laten lopen"],
+    ["hold_active", "Wissel bewust uitgesteld", "Het systeem wacht bewust even, zodat warmtepompen niet onnodig vaak starten en stoppen.", "Vraag is nog niet duidelijk anders", "Minimale looptijd telt mee", "Actieve bron werkt nog goed"],
+    ["defrost_hold", "Ontdooien rustig laten verlopen", "Een warmtepomp ontdooit kort. Dat is normaal wintergedrag en herstelt vanzelf.", "Ontdooien actief of net klaar", "Warmte kan kort lager zijn", "Herstart gebeurt automatisch"],
+    ["better_heat", "Twee pompen passen beter", "De warmtevraag blijft hoog. Twee warmtepompen kunnen die vraag rustiger leveren dan één pomp op hoge belasting.", "Warmtevraag blijft hoog", "Beide warmtepompen beschikbaar", "Samen leveren ze rustiger vermogen"],
+    ["soft_guard", "Veilige marge bewaakt", "Het systeem begrenst zichzelf om veilig binnen de temperatuur- en flowgrenzen te blijven.", "Veiligheidsmarge bewaakt", "Geen storing", "Begrenzing verdwijnt vanzelf"],
+    ["less_power", "Minder vermogen nodig", "De vraag neemt af. Eén warmtepomp kan de resterende vraag weer rustig dragen.", "Vraag neemt af", "Eén warmtepomp is genoeg", "Minder elektrisch vermogen nodig"],
+    ["cooling_request_cleared", "Geen koelvraag meer", "De koelvraag is weggevallen. De warmtepomp mag stoppen en de pomp kan nog kort nalopen.", "Koelvraag weg", "Warmtepomp stopt", "Naloop kan normaal zijn"],
+    ["heating_request_cleared", "Geen warmtevraag meer", "De warmtevraag is weggevallen. De warmtepomp mag stoppen en de pomp kan nog kort nalopen.", "Warmtevraag weg", "Warmtepomp stopt", "Naloop kan normaal zijn"],
+    ["no_candidate", "Nog geen veilige start", "Er is vraag, maar een start is nu nog niet verstandig door wachttijd of bescherming.", "Beschikbaarheid gecontroleerd", "Bescherming of wachttijd actief", "Straks opnieuw beoordelen"],
+    ["candidate_in_rest", "Rusttijd loopt nog", "De warmtepomp is kort geleden gestopt en wacht nog even om korte cycli te voorkomen.", "Vorige stop is recent", "Start wordt uitgesteld", "Bij blijvende vraag opnieuw beoordelen"],
+    ["candidate_in_defrost", "Warmtepomp ontdooit", "Deze warmtepomp kan nu niet starten of wisselen omdat ontdooien eerst rustig moet afronden.", "Ontdooien actief", "Niet onnodig wisselen", "Automatisch opnieuw beoordelen"],
+    ["candidate_unavailable", "Warmtepomp niet beschikbaar", "De warmtepomp is nu geen geschikte kandidaat door beschikbaarheid of technische begrenzing.", "Kandidaat gecontroleerd", "Voorwaarde niet vrij", "Andere keuze blijft mogelijk"],
+    ["defrost_boost", "Ontdooien opgevangen", "Een andere bron kan tijdelijk helpen terwijl een warmtepomp ontdooit.", "Ontdooien verlaagt kort vermogen", "Andere bron beschikbaar", "Comfort blijft beschermd"],
+    ["boiler_assist", "CV ondersteunt tijdelijk", "De CV-ketel helpt alleen wanneer de warmtevraag tijdelijk meer vermogen vraagt dan de warmtepompen rustig kunnen leveren.", "Warmtevraag blijft hoog", "Warmtepompen leveren maximaal rustig vermogen", "CV stopt zodra ondersteuning niet meer nodig is"],
+    ["runtime_lead", "Draaiurenbalans", "De warmtepompen zijn gelijkwaardig. Het systeem kiest de pomp die het beste past bij draaiuren, beschikbaarheid en wachttijd.", "Draaiuren vergeleken", "Warmtepomp beschikbaar", "Wachttijd vrij"],
+    ["oil_return_hold", "Compressor beschermen", "De warmtepomp blijft kort doorlopen om de compressor netjes te beschermen.", "Minimale looptijd actief", "Stop wordt uitgesteld", "Korte cyclus voorkomen"],
+    ["single_topology", "Eén warmtepomp aanwezig", "Er is maar één warmtepomp beschikbaar. Keuzes met twee warmtepompen zijn dan niet van toepassing.", "Opstelling gecontroleerd", "Geen tweede warmtepomp", "Keuze blijft beperkt"],
+    ["demand_decreased", "Warmtevraag nam af", "De vraag zakte terug. Minder vermogen is genoeg om de woning op temperatuur te houden.", "Vraag is lager", "Stopvertraging verlopen", "Andere warmtepomp blijft actief"],
+    ["min_rest_active", "Minimum rusttijd actief", "De warmtepomp wacht nog even om korte starts en onnodige belasting te voorkomen.", "Vorige stop is recent", "Rusttijd loopt", "Start volgt als vraag blijft"],
+    ["start_stop_rate_high", "Veel starts/stops", "De warmtepomp start vaker dan wenselijk. Dat is niet direct een storing, maar wel nuttig om te bekijken.", "Startteller hoog", "Geen acute storing", "Nuttig voor support"],
+    ["sticky_protection", "Pompbescherming", "De pomp draait kort zodat hij na lange stilstand niet vast gaat zitten. Dit is geen verwarmings- of koelvraag.", "Geen comfortvraag", "Dagelijkse bescherming actief", "Alleen korte pomprun"],
+    ["frost_protection", "Vorstbescherming", "Het systeem laat water circuleren om bevriezing van het watercircuit te voorkomen.", "Geen comfortvraag nodig", "Vorstrisico bewaakt", "Water blijft circuleren"],
+    ["flow_preflow", "Voorloop actief", "De pomp bouwt eerst waterflow op voordat de warmtepomp mag starten.", "Waterflow opbouwen", "Warmtepomp nog niet vrij", "Start volgt automatisch"],
+    ["flow_postflow", "Naloop actief", "De pomp blijft kort nadraaien zodat warmte netjes uit het systeem wordt afgevoerd.", "Warmtepomp stopt", "Pomp draait kort door", "Daarna standby"],
+    ["flow_too_low", "Waterflow blijft te laag", "De normale voorlooptijd is verstreken, maar de waterflow is nog niet voldoende voor een veilige start.", "Voorlooptijd verstreken", "Start blijft geblokkeerd", "Flow wordt opnieuw beoordeeld"],
+    ["startup_inhibit", "Wachttijd na herstart", "Na een herstart blijft de compressor kort uit om een te snelle herstart te voorkomen.", "Comfortvraag is aanwezig", "Compressor wacht nog", "Start volgt automatisch"],
+    ["capacity_cap", "Ingesteld koelmaximum", "Er is koelvraag. Het systeem blijft binnen het maximale koelniveau dat in de software is ingesteld.", "Koelvraag actief", "Softwaremaximum actief", "Dauwpunt blijft bewaakt"],
+    ["falling_gap", "Dauwpuntmarge daalt", "De marge tot het dauwpunt wordt kleiner. Het systeem grijpt vroeg in om condens te voorkomen.", "Marge daalt", "Aanvoer blijft veilig", "Koeling blijft voorzichtig actief"],
+    ["projected_floor", "Aanvoer nadert veilige ondergrens", "De aanvoer dreigt te koud te worden. Het systeem verlaagt de koeling preventief.", "Aanvoer voorspeld", "Veilige grens leidend", "Geen storing"],
+    ["simmer", "Koeling rustig bijgesteld", "De koeling blijft op een laag niveau zodat de temperatuur rustig richting setpoint kan bewegen.", "Lage koelvraag", "Geen abrupte stop", "Rustige regeling"],
+    ["buffer_stop", "Water al koud genoeg", "Er is koelvraag, maar het water is al koud genoeg. De warmtepomp hoeft daarom nu niet te starten.", "Koelvraag blijft actief", "Water is al koud genoeg", "Start volgt automatisch"],
+    ["dew_stop", "Dauwpuntstop", "De warmtepomp stopt kort omdat verder koelen te dicht bij het dauwpunt zou komen.", "Condensrisico voorkomen", "Koelvraag blijft bestaan", "Herstart na veilige marge"],
+    ["cooling_limiter", "Softwaremaximum actief", "Er is koelvraag. Het systeem koelt binnen het actuele softwaremaximum en blijft de veiligheidsmarges bewaken.", "Koelvraag actief", "Softwaremaximum actief", "Marge blijft bewaakt"],
+    ["sensor_fallback", "Sensorwaarde onzeker", "Een meting is tijdelijk minder zeker. Het systeem kiest daarom voorzichtig gedrag.", "Metingen gecontroleerd", "Veilige keuze voorrang", "Herstel zodra data stabiel is"],
+    ["restart_wait", "Koeling wacht op veilige herstart", "De koelvraag is nog aanwezig. Na de koelstop wacht het systeem tot de veilige marge voldoende is hersteld.", "Herstart wacht bewust", "Marge moet stabiel blijven", "Daarna opnieuw beoordelen"],
+    ["level1_hold", "Voorzichtig blijven koelen", "De koeling blijft nog even laag totdat duidelijk is dat de veilige marge terug is.", "Even wachten met opschalen", "Geen snelle sprong omhoog", "Comfortvraag blijft bewaakt"],
+    ["room_cap", "Kamervraag begrenst", "De kamer vraagt koeling, maar niet genoeg om harder te gaan koelen.", "Kamer koelt richting setpoint", "Vraag blijft beperkt", "Rustige regeling"],
+    ["oil_return_recovery", "Compressorherstel", "Het systeem geeft compressorherstel tijdelijk voorrang en blijft de veiligheid bewaken.", "Compressorprotectie actief", "Gecontroleerd herstel", "Veiligheid blijft bewaakt"],
+  ]);
 
   const CONTROL_WORKING_REASON_FALLBACK = Object.freeze({
     label: "Keuze van het systeem",
@@ -1262,8 +1117,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       detail: reason.summary,
       next: "Het systeem beoordeelt opnieuw zodra vraag, marge of beschikbaarheid verandert.",
     };
-    const copies = {
-      source_start: {
+    switch (eventType) {
+      case "source_start":
+        return {
         title: isCoolingModeEvent ? `Koeling gestart (${subject})` : `${subject} gestart`,
         reasonLabel: isCoolingModeEvent ? "Koeling gestart" : "",
         reasonSummary: isCoolingModeEvent ? "Koeling is vrijgegeven en de gekozen warmtepomp start met koelen." : "",
@@ -1276,8 +1132,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         next: isCoolingModeEvent
           ? "Koeling blijft actief zolang er koelvraag is en de veilige marges vrij blijven."
           : "Als de vraag hoog blijft, beoordeelt het systeem of extra vermogen nodig is.",
-      },
-      source_stop: {
+      };
+      case "source_stop":
+        return {
         title: isCoolingModeEvent
           ? coolingStopReason === "dew_stop"
             ? `${subject} gestopt door dauwpunt`
@@ -1336,8 +1193,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           : heatingDemandEnded
           ? "Het systeem blijft standby totdat er opnieuw warmtevraag is."
           : "Bij stijgende vraag kan dezelfde of de andere warmtepomp opnieuw starten.",
-      },
-      topology_change: {
+      };
+      case "topology_change":
+        return {
         title: isCoolingModeEvent
           ? event?.to === "idle"
             ? reasonCode === "cooling_request_cleared"
@@ -1396,16 +1254,18 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           : event?.to === "idle" && heatingDemandEnded
           ? "Het systeem blijft standby totdat er opnieuw warmtevraag is."
           : "De tweede warmtepomp blijft beschikbaar als de vraag opnieuw stijgt.",
-      },
-      decision_hold: {
+      };
+      case "decision_hold":
+        return {
         title: reasonCode === "defrost_hold" ? "Keuze kort vastgehouden" : "Start of wissel uitgesteld",
         summary: reasonCode === "defrost_hold"
           ? "De regelaar laat ontdooien rustig afronden voordat hij opnieuw schakelt."
           : "De regelaar wacht bewust even om korte cycli en onrustig gedrag te voorkomen.",
         detail: reason.summary,
         next: "Na de wachttijd beoordeelt het systeem opnieuw wat de rustigste keuze is.",
-      },
-      decision_blocked: {
+      };
+      case "decision_blocked":
+        return {
         title: reasonCode === "flow_too_low"
           ? "Start geblokkeerd: waterflow te laag"
           : subject === "CV-ketel" ? "CV-ketel niet vrijgegeven" : "Actie geblokkeerd",
@@ -1427,16 +1287,18 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         checks: reasonCode === "flow_too_low"
           ? ["Voorlooptijd verstreken", "Warmtepomp blijft veilig uit", "Waterflow wordt opnieuw beoordeeld"]
           : null,
-      },
-      candidate_blocked: {
+      };
+      case "candidate_blocked":
+        return {
         title: `${subject} wacht nog`,
         summary: reasonCode === "candidate_in_rest"
           ? `${subject} zit nog in rusttijd na een vorige stop.`
           : `${subject} is nu nog geen veilige kandidaat om te starten.`,
         detail: reason.summary,
         next: "De regelaar probeert opnieuw zodra de voorwaarde vrij is en de vraag blijft bestaan.",
-      },
-      flow_hold_start: {
+      };
+      case "flow_hold_start":
+        return {
         title: reasonCode === "flow_postflow"
           ? coolingRuntimeHold ? "Koeling loopt nog kort door" : heatingRuntimeHold ? "Verwarming loopt nog kort door" : isCoolingModeEvent ? "Naloop na koelen actief" : "Naloop actief"
           : isFlowFault ? "Start wacht op voldoende waterflow"
@@ -1485,8 +1347,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           : heatingRuntimeHold
           ? `${activeHeatingSource} stopt zodra de minimale looptijd vrij is; daarna rondt de pomp de naloop af.`
           : "De regelaar gaat automatisch verder zodra de flowfase klaar is.",
-      },
-      flow_hold_clear: {
+      };
+      case "flow_hold_clear":
+        return {
         title: reasonCode === "flow_postflow"
           ? isCoolingModeEvent ? "Naloop na koelen klaar" : "Naloop klaar"
           : isFlowFault ? "Waterflow hersteld"
@@ -1524,8 +1387,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           : isFlowFault
           ? ["Waterflow hersteld", "Startblokkade opgeheven", "Regeling gaat verder"]
           : ["Waterflow voldoende", "Warmtepomp vrijgegeven", "Regeling gaat verder"],
-      },
-      startup_inhibit_start: {
+      };
+      case "startup_inhibit_start":
+        return {
         title: Number(event?.value_a) === 1 ? "Koeling wacht na herstart" : "Verwarming wacht na herstart",
         reasonLabel: "Wachttijd na herstart",
         reasonSummary: "De compressor blijft na een herstart kort uit om een te snelle herstart te voorkomen.",
@@ -1537,8 +1401,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           ? "De warmtepomp start automatisch met koelen zodra de wachttijd voorbij is."
           : "De warmtepomp start automatisch met verwarmen zodra de wachttijd voorbij is.",
         checks: ["Comfortvraag aanwezig", "Compressor blijft nog uit", "Start volgt automatisch"],
-      },
-      startup_inhibit_clear: {
+      };
+      case "startup_inhibit_clear":
+        return {
         title: "Wachttijd na herstart voorbij",
         reasonLabel: "Wachttijd afgerond",
         reasonSummary: "De compressor mag weer starten als de vraag nog aanwezig is.",
@@ -1546,8 +1411,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         detail: "De minimale uit-tijd na de reboot is afgerond. Alle normale startvoorwaarden blijven van toepassing.",
         next: "Bij aanhoudende vraag gaat de controller automatisch verder met de gekozen warmtepomp.",
         checks: ["Wachttijd verstreken", "Start weer toegestaan", "Regeling gaat verder"],
-      },
-      startup_inhibit_refresh: {
+      };
+      case "startup_inhibit_refresh":
+        return {
         title: Number(event?.value_a) === 1 ? "Koelvraag tijdens wachttijd gewijzigd" : "Warmtevraag tijdens wachttijd gewijzigd",
         reasonLabel: "Wachttijd blijft actief",
         reasonSummary: "De gekozen warmtepomp of doelmodus veranderde, maar de wachttijd na de herstart loopt door.",
@@ -1555,20 +1421,23 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         detail: "Tijdens de wachttijd veranderde welke warmtepomp of doelmodus gewenst is. De blokkering is niet opgeheven; alleen de context van de wachtperiode is bijgewerkt.",
         next: "Zodra de wachttijd voorbij is, mag de dan gekozen warmtepomp automatisch starten.",
         checks: ["Vraag opnieuw beoordeeld", "Wachttijd blijft actief", "Start volgt automatisch"],
-      },
-      defrost_seen_start: {
+      };
+      case "defrost_seen_start":
+        return {
         title: `Ontdooien gestart (${subject})`,
         summary: `${subject} ontdooit kort. Dat is normaal bij koud en vochtig weer.`,
         detail: "De buitenunit bepaalt zelf hoe lang ontdooien duurt. De regelaar voorkomt ondertussen onnodige wissels.",
         next: "Na ontdooien levert de warmtepomp automatisch weer normaal mee.",
-      },
-      defrost_seen_clear: {
+      };
+      case "defrost_seen_clear":
+        return {
         title: `Ontdooien klaar (${subject})`,
         summary: `${subject} heeft ontdooien afgerond en kan weer normaal vermogen leveren.`,
         detail: "De regelaar ziet dat de ontdooifase voorbij is en laat de normale regeling weer doorlopen.",
         next: "Bij aanhoudende vraag blijft de warmtepomp actief of schakelt duo-bedrijf bij.",
-      },
-      cooling_limited: {
+      };
+      case "cooling_limited":
+        return {
         title: reasonCode === "dew_stop"
           ? "Koeling gestopt door dauwpunt"
           : reasonCode === "restart_wait"
@@ -1593,38 +1462,44 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           : coolingProtectionReason
           ? "Koeling wordt vrijgegeven zodra de veilige marge stabiel genoeg is."
           : "Koeling blijft binnen dit maximum zolang de instelling en koelvraag gelijk blijven.",
-      },
-      cooling_released: {
+      };
+      case "cooling_released":
+        return {
         title: "Koeling vrijgegeven",
         summary: "De veilige marge is terug. De warmtepomp mag weer normaal koelen.",
         detail: "De dauwpunt- en temperatuurmarge is voldoende hersteld om de begrenzing los te laten.",
         next: "De regelaar blijft koelen zolang de kamer daarom vraagt.",
-      },
-      sticky_pump_run: {
+      };
+      case "sticky_pump_run":
+        return {
         title: "Pompbescherming uitgevoerd",
         summary: "De pomp draaide kort na langere stilstand. Dit is geen verwarmings- of koelvraag.",
         detail: "Deze korte run voorkomt dat de pomp na stilstand vast gaat zitten.",
         next: "De volgende preventieve run volgt pas na de ingestelde beschermingstijd.",
-      },
-      frost_protection_start: {
+      };
+      case "frost_protection_start":
+        return {
         title: "Vorstbescherming actief",
         summary: "Het systeem laat water circuleren om bevriezing te voorkomen.",
         detail: "Dit is beschermingsgedrag. Er hoeft geen verwarmings- of koelvraag te zijn.",
         next: "Vorstbescherming stopt zodra het risico weg is of de normale regeling weer voorrang krijgt.",
-      },
-      frost_protection_clear: {
+      };
+      case "frost_protection_clear":
+        return {
         title: "Vorstbescherming gestopt",
         summary: "Het systeem verlaat de vorstbescherming en gaat terug naar normale regeling.",
         detail: "Het watercircuit hoeft niet langer apart beschermd te worden.",
         next: "Bij nieuw vorstrisico kan de bescherming automatisch opnieuw starten.",
-      },
-      boiler_assist_start: {
+      };
+      case "boiler_assist_start":
+        return {
         title: "CV-ketel ondersteunt tijdelijk",
         summary: "De CV-ketel helpt omdat extra capaciteit tijdelijk nuttig is.",
         detail: "De warmtepompen blijven de basis leveren. De CV-ketel vult alleen aan zolang de vraag daar om vraagt.",
         next: "De CV-ketel stopt zodra de warmtepompen de vraag weer rustig zelf kunnen dragen.",
-      },
-      boiler_assist_stop: boilerStopBlocked
+      };
+      case "boiler_assist_stop":
+        return boilerStopBlocked
         ? {
           title: reasonCode === "sensor_fallback"
             ? "CV-ondersteuning gestopt: meting ontbreekt"
@@ -1648,17 +1523,19 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           summary: "De extra ondersteuning is niet meer nodig.",
           detail: "De warmtevraag is genoeg gedaald of de warmtepompen kunnen het weer zelf dragen.",
           next: "De CV-ketel blijft beschikbaar als er later opnieuw extra capaciteit nodig is.",
-        },
-      attention_pattern: {
+        };
+      case "attention_pattern":
+        return {
         title: "Aandachtspunt gezien",
         summary: reasonCode === "start_stop_rate_high"
           ? "Er zijn relatief veel starts/stops gezien. Dat is nuttig om te volgen."
           : "Het systeem ziet een patroon dat extra aandacht verdient.",
         detail: reason.summary,
         next: "Als het patroon aanhoudt, blijft dit zichtbaar voor support en analyse.",
-      },
-    };
-    return copies[eventType] || fallback;
+      };
+      default:
+        return fallback;
+    }
   }
 
   function getDecisionEventGraphEndMinute(startMinute, event, selectedWindow) {
@@ -2241,14 +2118,6 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         const weights = { event: 0, span: 1, aggregate: 2 };
         return (weights[left.kind] ?? 3) - (weights[right.kind] ?? 3);
       });
-  }
-
-  function getControlWorkingItems(heatPumpPanels) {
-    const decisionLogItems = getControlWorkingDecisionLogItems();
-    if (decisionLogItems.length) {
-      return decisionLogItems;
-    }
-    return [];
   }
 
   function getControlWorkingSelectedItem(items) {
@@ -3346,8 +3215,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     `;
   }
 
-  function getControlWorkingSignature(heatPumpPanels) {
-    const current = getControlWorkingCurrent(heatPumpPanels);
+  function getControlWorkingSignature(current) {
     return getRenderSignature({
       tab: getControlWorkingSelectedTab(),
       window: getControlWorkingSelectedWindow(),
@@ -3382,11 +3250,10 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     });
   }
 
-  function renderControlWorkingPanel(heatPumpPanels) {
-    const current = getControlWorkingCurrent(heatPumpPanels);
-    const items = getControlWorkingItems(heatPumpPanels);
-    const selectedItem = getControlWorkingSelectedItem(items);
+  function renderControlWorkingPanel(current, signature = getControlWorkingSignature(current)) {
     const selectedTab = getControlWorkingSelectedTab();
+    const items = selectedTab === "status" ? [] : getControlWorkingDecisionLogItems();
+    const selectedItem = getControlWorkingSelectedItem(items);
     const visibleItem = selectedTab === "graphs"
       ? getControlWorkingItemForMinute(items, getControlWorkingGraphMinute())
       : selectedItem;
@@ -3397,7 +3264,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       : renderControlWorkingTimelineTab(items, visibleItem);
     const periodChoices = selectedTab === "status" ? "" : renderControlWorkingWindowChoices();
     return `
-      <section class="oq-working" data-render-signature="${escapeHtml(getControlWorkingSignature(heatPumpPanels))}">
+      <section class="oq-working" data-render-signature="${escapeHtml(signature)}">
         <header class="oq-working-head">
           <div class="oq-working-head-copy">
             <span class="oq-working-kicker">
@@ -3418,11 +3285,11 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
   }
 
   export function renderControlReplayView() {
-    const heatPumpPanels = getHeatPumpPanels();
+    const current = getControlWorkingCurrent(getHeatPumpPanels());
     return `
       <section class="oq-helper-panel oq-helper-panel--flush">
         <div class="oq-overview-board oq-overview-board--${escapeHtml(state.overviewTheme)}">
-          ${renderControlWorkingPanel(heatPumpPanels)}
+          ${renderControlWorkingPanel(current)}
         </div>
       </section>
     `;
@@ -3446,11 +3313,12 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     if (board.className !== nextBoardClass) {
       board.className = nextBoardClass;
     }
-    const heatPumpPanels = getHeatPumpPanels();
+    const current = getControlWorkingCurrent(getHeatPumpPanels());
+    const signature = getControlWorkingSignature(current);
     return replaceOuterHtmlIfSignatureChanged(
       panel,
-      getControlWorkingSignature(heatPumpPanels),
-      renderControlWorkingPanel(heatPumpPanels),
+      signature,
+      () => renderControlWorkingPanel(current, signature),
     ) || true;
   }
 

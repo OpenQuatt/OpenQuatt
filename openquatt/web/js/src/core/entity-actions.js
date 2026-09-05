@@ -4,8 +4,9 @@ import { getInputDraftValue } from "./control-drafts.js";
 import { reportUnknownAction } from "./action-router.js";
 import { commitQuickStartStrategySelection, handleControlAction } from "./control-actions.js";
 import { isCurveMode } from "./domain-helpers.js";
-import { formatValue, getEntityValue, getNumberMeta, normalizeDateTimeValue, normalizeNumber, normalizeTimeValue, parseLooseNumber } from "./entity-store.js";
-import { commitDateTime, commitNumber, commitSelect, commitText, commitTime, disableRange, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
+import { formatValue, getEntityValue, getNumberMeta, normalizeDateTimeValue, normalizeNumber, parseLooseNumber } from "./entity-store.js";
+import { commitDateTime, commitNumber, commitSelect, commitText, disableRange, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
+import { finishTimeInput, handleTimeInputFocus } from "./time-input.js";
 import { handleNamedButtonAction } from "./named-button-actions.js";
 import { state } from "./state.js";
 import { formatDutchAmps, getCommittedElectricalLimitRaw, getElectricalLimitChangePlan, renderElectricalLimitEstimate, renderElectricalLimitFooter, renderElectricalLimitRestore, resolveElectricalLimitView } from "../settings/electrical-limit.js";
@@ -136,7 +137,8 @@ function updateFrequencyRangeControl(input) {
     }
   }
 
-  export function handleFocusChange() {
+  export function handleFocusChange(event) {
+    handleTimeInputFocus(event);
     window.setTimeout(() => {
       const active = document.activeElement;
       state.focusedField = active && active.dataset ? active.dataset.oqField || "" : "";
@@ -306,7 +308,7 @@ function updateFrequencyRangeControl(input) {
       return;
     }
 
-    if (ENTITY_DEFS[field]?.domain === "text") {
+    if (["text", "time"].includes(ENTITY_DEFS[field]?.domain)) {
       state.inputDrafts[field] = String(event.target.value || "");
       return;
     }
@@ -342,6 +344,11 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleKeyDown(event) {
+    if (event.key === "Enter" && event.target.type === "time") {
+      event.preventDefault();
+      event.target.blur();
+      return;
+    }
     handleOduRuntimeFrequencyInputKeyDown(event);
   }
 
@@ -486,13 +493,8 @@ function updateFrequencyRangeControl(input) {
     }
 
     if (entity.domain === "time") {
-      const normalized = normalizeTimeValue(event.target.value);
-      if (!normalized) {
-        state.controlError = `${entity.name} verwacht tijd als HH:MM.`;
-        render();
-        return;
-      }
-      commitTime(field, normalized);
+      state.inputDrafts[field] = event.target.value;
+      if (document.activeElement !== event.target) finishTimeInput(event.target);
       return;
     }
 

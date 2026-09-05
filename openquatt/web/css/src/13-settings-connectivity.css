@@ -65,16 +65,6 @@
   color: var(--oq-theme-color-11rp, var(--oq-helper-accent));
 }
 
-.oq-settings-mqtt-modal-icon-svg {
-  width: 1.24rem;
-  height: 1.24rem;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.05;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 .oq-settings-mqtt-modal-logo {
   display: block;
   width: 1.38rem;
@@ -553,10 +543,6 @@
   border-radius: var(--oq-helper-radius-md);
 }
 
-.oq-helper-modal-actions--compact {
-  margin-top: 0;
-}
-
 @media (max-width: 640px) {
   .oq-settings-mqtt-modal-head {
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -619,9 +605,6 @@
 }
 
 @media (max-width: 960px) {
-  .oq-settings-commissioning-teaser,
-  .oq-settings-boiler-grid,
-  .oq-settings-commissioning-grid,
   .oq-settings-service-toolbar {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -637,7 +620,7 @@
   }
 
   .oq-settings-odu-runtime-row {
-    grid-template-columns: 44px repeat(2, minmax(0, 1fr));
+    grid-template-columns: 52px repeat(2, minmax(0, 1fr));
     gap: 6px;
     padding: 6px;
   }
@@ -654,7 +637,6 @@
   }
 
   .oq-settings-monitoring-summary,
-  .oq-settings-monitoring-compressor-unit,
   .oq-settings-monitoring-row,
   .oq-settings-monitoring-incident-action {
     align-items: stretch;
@@ -667,10 +649,6 @@
 
   .oq-settings-monitoring-grid {
     grid-template-columns: 1fr;
-  }
-
-  .oq-settings-monitoring-compressor-unit dl {
-    justify-content: flex-start;
   }
 
   .oq-settings-commissioning-card-head {
@@ -702,7 +680,6 @@
   }
 
   .oq-settings-hp-calibration-steps,
-  .oq-settings-hp-calibration-checklist,
   .oq-settings-hp-calibration-live-grid,
   .oq-settings-hp-calibration-actions,
   .oq-settings-hp-offset-row,
@@ -717,8 +694,6 @@
 
 .oq-helper-shell--dark .oq-settings-hp-calibration-status,
 .oq-helper-modal-backdrop--dark .oq-settings-hp-calibration-status,
-.oq-helper-shell--dark .oq-settings-hp-calibration-checklist span,
-.oq-helper-modal-backdrop--dark .oq-settings-hp-calibration-checklist span,
 .oq-helper-shell--dark .oq-settings-hp-calibration-live-card,
 .oq-helper-modal-backdrop--dark .oq-settings-hp-calibration-live-card,
 .oq-helper-shell--dark .oq-settings-hp-calibration-table,
@@ -748,48 +723,6 @@
 
 .oq-settings-api-security-shell--modal {
   margin-top: 18px;
-}
-
-.oq-settings-api-security-status-row {
-  align-items: flex-start;
-}
-
-.oq-settings-api-security-key {
-  display: grid;
-  gap: 12px;
-  padding: 16px 18px;
-  border-radius: var(--oq-helper-radius-lg);
-  border: 1px solid var(--oq-helper-line);
-  background: var(--oq-theme-surface-aedd, linear-gradient(180deg, rgba(255, 247, 237, 0.7), rgba(255, 255, 255, 0.96)));
-}
-
-.oq-settings-api-security-key-row {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.oq-settings-api-security-key-value {
-  box-sizing: border-box;
-  min-width: 0;
-  width: 100%;
-  padding: 12px 14px;
-  border-radius: var(--oq-helper-radius-md);
-  border: 1px solid var(--oq-helper-line);
-  background: var(--oq-theme-surface-1uy3, var(--oq-helper-card-muted));
-  color: var(--oq-theme-color-1w4r, var(--oq-helper-ink));
-  font-family: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", monospace;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  word-break: break-all;
-  overflow-wrap: anywhere;
-}
-
-.oq-settings-api-security-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 12px;
 }
 
 .oq-settings-mqtt-form-grid {

@@ -181,6 +181,8 @@ export function createSettingsState() {
     headerRenderSignature: "",
     drafts: {},
     inputDrafts: {},
+    savingTimeFields: new Set(),
+    timeWriteRevision: 0,
     focusedField: "",
   };
 }

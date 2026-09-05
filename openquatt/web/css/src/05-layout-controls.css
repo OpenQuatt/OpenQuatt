@@ -71,12 +71,6 @@
   box-shadow: var(--oq-helper-tab-active-shadow);
 }
 
-.oq-helper-app-tab--launch {
-  border-color: rgba(234, 88, 12, 0.24);
-  background: var(--oq-helper-tab-launch-background);
-  color: var(--oq-helper-tab-launch-ink);
-}
-
 .oq-helper-panel {
   border: 1px solid var(--oq-helper-line);
   border-radius: var(--oq-helper-radius-lg);
@@ -402,48 +396,6 @@
   letter-spacing: -0.03em;
 }
 
-.oq-helper-meta {
-  display: grid;
-  gap: 10px;
-  margin: 16px 0 0;
-}
-
-.oq-helper-meta-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--oq-helper-line);
-}
-
-.oq-helper-meta-row:last-child {
-  border-bottom: none;
-}
-
-.oq-helper-meta-row dt {
-  color: var(--oq-helper-faint);
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.oq-helper-meta-row dd {
-  margin: 0;
-  color: var(--oq-helper-ink);
-  font-weight: 700;
-  text-align: right;
-}
-
-.oq-helper-summary {
-  padding: 18px;
-  border-radius: var(--oq-helper-radius-lg);
-  background: var(--oq-helper-card-muted);
-  border: 1px solid var(--oq-helper-line);
-  font-size: 1.05rem;
-  line-height: 1.5;
-}
-
 .oq-helper-notice {
   margin: 12px 0 0;
   color: var(--oq-helper-sky);
@@ -476,10 +428,6 @@
 .oq-helper-fields--compact {
   gap: 10px;
   margin-top: 14px;
-}
-
-.oq-helper-fields--spaced {
-  margin-top: 18px;
 }
 
 .oq-helper-field {
@@ -644,7 +592,6 @@
   line-height: 1.5;
 }
 
-.oq-helper-control-grid,
 .oq-helper-curve-grid {
   display: grid;
   gap: 12px;
@@ -895,14 +842,6 @@
   box-shadow: 0 0 0 4px rgba(234, 88, 12, 0.2);
 }
 
-.oq-helper-mode-panel {
-  margin-top: 18px;
-  padding: 20px;
-  border-radius: var(--oq-helper-radius-lg);
-  border: 1px solid var(--oq-helper-line);
-  background: var(--oq-helper-card-muted);
-}
-
 .oq-helper-step-nav {
   display: flex;
   flex-wrap: wrap;
@@ -929,10 +868,6 @@
   color: var(--oq-helper-soft);
   font-size: 0.92rem;
   line-height: 1.5;
-}
-
-.oq-helper-mode-head {
-  margin-bottom: 14px;
 }
 
 .oq-helper-curve-shell {
@@ -993,10 +928,4 @@
   font-size: 11px;
   font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
   font-weight: 700;
-}
-
-.oq-helper-settings-stack {
-  display: grid;
-  gap: 18px;
-  margin-top: 18px;
 }

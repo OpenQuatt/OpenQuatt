@@ -395,6 +395,28 @@
     entity.state = Boolean(value);
   }
 
+  function parseMockClockMinute(value) {
+    const raw = String(value || "").trim();
+    const [hours, minutes, seconds = 0] = raw.split(":").map(Number);
+    return /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.test(raw)
+      && hours < 24 && minutes < 60 && seconds < 60
+      ? (hours * 60) + minutes
+      : Number.NaN;
+  }
+
+  function evaluateMockCoolingSchedule(now = new Date()) {
+    const start = parseMockClockMinute(getEntity("time", "Cooling schedule start time")?.value);
+    const end = parseMockClockMinute(getEntity("time", "Cooling schedule end time")?.value);
+    if (![now.getTime(), start, end].every(Number.isFinite)) {
+      return { active: false, valid: false };
+    }
+    const current = (now.getHours() * 60) + now.getMinutes();
+    const active = start !== end && (start < end
+      ? current >= start && current < end
+      : current >= start || current < end);
+    return { active, valid: true };
+  }
+
   function setSwitch(name, value) {
     const entity = getEntity("switch", name);
     if (!entity) {
@@ -2111,7 +2133,7 @@
     setEntity("select", "Cooling Enable Source", {
       value: "Disabled",
       state: "Disabled",
-      option: ["CIC", "HA input", "MQTT", "CIC or HA input", "Disabled", "OT thermostat"],
+      option: ["CIC", "HA input", "API input", "MQTT", "CIC or HA input", "Disabled", "OT thermostat", "Schedule"],
     });
     setEntity("select", "Heating Enable Source", {
       value: "Disabled",
@@ -2205,6 +2227,8 @@
     [
       ["Silent start time", "19:00:00"],
       ["Silent end time", "07:00:00"],
+      ["Cooling schedule start time", "00:00:00"],
+      ["Cooling schedule end time", "00:00:00"],
     ].forEach(([name, value]) => {
       setEntity("time", name, {
         value,
@@ -2583,6 +2607,7 @@
     setBinary("CIC - JSON Feed OK", true);
     setBinary("HA - Heating Enable", heatingEnabledScenario);
     setBinary("HA - Cooling Enable", coolingScenario);
+    setBinary("API Input Cooling Enable Valid", true);
     setBinary("MQTT Heating Enable", heatingEnabledScenario);
     setBinary("MQTT Heating Enable Valid", true);
     setBinary("MQTT Cooling Enable", coolingScenario);
@@ -2603,6 +2628,7 @@
       || (heatingEnableValid && heatingEnableSource === "MQTT" && Boolean(getEntity("binary_sensor", "MQTT Heating Enable")?.value));
     const coolingEnableSource = String(getEntity("select", "Cooling Enable Source")?.value || "Disabled");
     const manualCoolingEnabled = isSwitchEnabled("Manual Cooling Enable");
+    const coolingSchedule = evaluateMockCoolingSchedule();
     const cicCoolingValid = Boolean(getEntity("binary_sensor", "CIC - JSON Feed OK")?.value)
       && !Boolean(getEntity("binary_sensor", "CIC - Data stale")?.value);
     const haCoolingValid = Boolean(getEntity("binary_sensor", "HA - Cooling Enable Valid")?.value);
@@ -2614,13 +2640,17 @@
       || (coolingEnableSource === "CIC" && cicCoolingValid)
       || (coolingEnableSource === "CIC or HA input" && (cicCoolingValid || haCoolingValid))
       || (coolingEnableSource === "HA input" && haCoolingValid)
-      || (coolingEnableSource === "MQTT" && Boolean(getEntity("binary_sensor", "MQTT Cooling Enable Valid")?.value));
+      || (coolingEnableSource === "API input" && Boolean(getEntity("binary_sensor", "API Input Cooling Enable Valid")?.value))
+      || (coolingEnableSource === "MQTT" && Boolean(getEntity("binary_sensor", "MQTT Cooling Enable Valid")?.value))
+      || (coolingEnableSource === "Schedule" && coolingSchedule.valid);
     const sourceCoolingEnabled = coolingEnableValid && (
       (coolingEnableSource === "OT thermostat" && Boolean(getEntity("binary_sensor", "OT - Thermostat Cooling Enable")?.value))
       || (coolingEnableSource === "CIC" && cicCoolingEnabled)
       || (coolingEnableSource === "CIC or HA input" && (cicCoolingEnabled || haCoolingEnabled))
       || (coolingEnableSource === "HA input" && Boolean(getEntity("binary_sensor", "HA - Cooling Enable")?.value))
+      || (coolingEnableSource === "API input" && Boolean(getEntity("switch", "api_input_cooling_enable")?.value))
       || (coolingEnableSource === "MQTT" && Boolean(getEntity("binary_sensor", "MQTT Cooling Enable")?.value))
+      || (coolingEnableSource === "Schedule" && coolingSchedule.active)
     );
     const sourceCoolingEffective = coolingEnableSource === "CIC or HA input"
       ? (cicCoolingEnabled && haCoolingEnabled ? "CIC + HA input" : cicCoolingEnabled ? "CIC" : haCoolingEnabled ? "HA input" : "None")

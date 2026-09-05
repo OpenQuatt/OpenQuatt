@@ -156,7 +156,7 @@ test("onboarding toont Duo per HP en onderscheidt geselecteerd van aanbevolen zo
   assert.doesNotMatch(markup, /data-oq-button-key="hp1GenerationDetect"/);
   assert.equal(getOduGenerationChoiceMeta("V1", "V1.5", "V1"), "Aanbevolen");
   assert.equal(getOduGenerationChoiceMeta("V1.5", "V1.5", "V1"), "Geselecteerd");
-  assert.match(installationSource, /meta: getOduGenerationChoiceMeta\(option, currentValue, detectionModel\.recommendation\)/);
+  assert.match(installationSource, /meta: getOduGenerationChoiceMeta\(option, model\.value, detectionModel\.recommendation\)/);
   assert.match(quickStartSource, /renderHpGenerationField\(\)/);
   assert.equal(state.entities.hpGeneration.value, "V1.5");
   assert.deepEqual(state.drafts, {});

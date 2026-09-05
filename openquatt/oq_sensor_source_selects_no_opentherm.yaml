@@ -81,6 +81,10 @@ select:
       - MQTT
       - CIC or HA input
       - Disabled
+      # Keep index 6 aligned with OpenTherm firmware. Template selects persist
+      # their option index; the unavailable source fails closed on this profile.
+      - OT thermostat
+      - Schedule
     initial_option: Disabled
 
 binary_sensor:

@@ -91,24 +91,6 @@
     z-index: 6;
   }
 
-  
-
-  .oq-helper-devdock,
-  .oq-helper-devdock--collapsed {
-    position: fixed;
-    top: 10px;
-    left: 10px;
-    width: min(300px, calc(100vw - 20px));
-  }
-
-  .oq-helper-devdock--collapsed {
-    display: block;
-  }
-
-  .oq-helper-devdock-toggle {
-    width: auto;
-  }
-
   .oq-helper-logo-lockup {
     align-items: flex-start;
   }
@@ -134,7 +116,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .oq-settings-installation-summary,
   .oq-settings-system-row {
     flex-direction: column;
     align-items: stretch;
@@ -183,10 +164,6 @@
     min-width: 0;
   }
 
-  .oq-settings-backup-modal-section-head-meta {
-    justify-content: flex-start;
-  }
-
   .oq-settings-backup-compare-values {
     grid-template-columns: 1fr;
   }
@@ -196,7 +173,6 @@
     grid-template-columns: 1fr;
   }
 
-  .oq-settings-installation-summary button,
   .oq-settings-system-row button {
     width: 100%;
   }
@@ -208,13 +184,7 @@
   }
 
   .oq-helper-hub-switches,
-  .oq-helper-hub-actions,
-  .oq-helper-hub-dev-grid,
-  .oq-helper-hub-dev-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .oq-helper-devdock .oq-helper-hub-dev-actions {
+  .oq-helper-hub-actions {
     grid-template-columns: 1fr;
   }
 
@@ -307,10 +277,6 @@
     border-radius: 20px;
   }
 
-  .oq-overview-trends-toolbar {
-    grid-template-columns: 1fr;
-  }
-
   .oq-overview-trendcard {
     padding: 14px;
   }
@@ -363,10 +329,8 @@
   .oq-settings-grid,
   .oq-settings-strategy-grid,
   .oq-settings-choice-grid,
-  .oq-settings-response-grid,
   .oq-settings-choice-inline-grid,
   .oq-settings-storage-summary,
-  .oq-settings-storage-domain-grid,
   .oq-settings-rule-groups,
   .oq-settings-curve-grid,
   .oq-settings-hp-columns,
@@ -415,13 +379,11 @@
     align-items: stretch;
   }
 
-  .oq-settings-storage-action-stack,
   .oq-settings-storage-import-actions,
   .oq-settings-storage-export-controls {
     justify-content: stretch;
   }
 
-  .oq-settings-storage-action-stack .oq-helper-button,
   .oq-settings-storage-import-actions .oq-helper-button,
   .oq-settings-storage-export-controls .oq-helper-button,
   .oq-settings-storage-export-select {
@@ -469,8 +431,7 @@
     grid-template-columns: 1fr;
   }
 
-  .oq-ph-concept-zones,
-  .oq-ph-concept-legend {
+  .oq-ph-concept-zones {
     grid-template-columns: 1fr;
   }
 
@@ -833,12 +794,6 @@
     padding: 12px;
   }
 
-  .oq-overview-trends-toolbar {
-    margin-top: 10px;
-    gap: 10px;
-  }
-
-  .oq-overview-trends-note,
   .oq-overview-trends-window {
     padding: 12px;
     border-radius: 16px;

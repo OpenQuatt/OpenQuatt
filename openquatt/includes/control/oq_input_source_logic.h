@@ -17,6 +17,7 @@ enum class Source : uint8_t {
   OPENTHERM,
   DISABLED,
   CIC_OR_HA,
+  SCHEDULE,
 };
 
 struct NumericSample {
@@ -177,6 +178,7 @@ struct EnableSources {
   BinarySample ha;
   BinarySample api;
   BinarySample mqtt;
+  BinarySample schedule;
 };
 
 inline BinarySample valid_binary(const BinarySample& sample) { return {sample.valid && sample.value, sample.valid}; }
@@ -196,6 +198,8 @@ inline BinarySample binary_for(Source source, const EnableSources& sources) {
     case Source::CIC_OR_HA:
       return {(sources.cic.valid && sources.cic.value) || (sources.ha.valid && sources.ha.value),
               sources.cic.valid || sources.ha.valid};
+    case Source::SCHEDULE:
+      return valid_binary(sources.schedule);
     default:
       return {};
   }

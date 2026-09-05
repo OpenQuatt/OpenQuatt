@@ -3,11 +3,12 @@ import { invokeActionMap } from "../core/action-router.js";
 import { fetchWithTimeout } from "../core/browser-utils.js";
 import { getEntityValue, parseLooseNumber } from "../core/entity-store.js";
 import { escapeHtml } from "../core/html.js";
-import { renderModalShell } from "../core/modal-shell.js";
+import { renderNumberInputControl } from "../core/number-controls.js";
 import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { getBasePath } from "../core/url-path.js";
 import { getInstallationTopology } from "./device-context.js";
+import { renderOduEditorAction, renderOduEditorModal, renderOduEditorPanel } from "./odu-editor-ui.js";
 
 export const ODU_RUNTIME_FREQUENCY_LEVELS = Array.from({ length: 21 }, (_item, index) => index);
 export const ODU_RUNTIME_FREQUENCY_MODES = ["cooling", "heating"];
@@ -329,17 +330,16 @@ function getStatusPresentation(status) {
 
 function renderFrequencyInput(hp, mode, level, tabIndex) {
   const status = getOduRuntimeFrequencyStatus(hp);
-  return `
-    <label class="oq-helper-control oq-helper-control--suffix oq-settings-odu-runtime-control">
-      <input class="oq-helper-input oq-helper-input--compact-number oq-settings-odu-runtime-input"
-        type="number" min="0" max="120" step="1" inputmode="numeric"
-        value="${escapeHtml(getOduRuntimeFrequencyDraftValue(hp, mode, level))}"
-        data-oq-odu-runtime-hp="${hp}" data-oq-odu-runtime-mode="${mode}"
+  return renderNumberInputControl({
+    value: getOduRuntimeFrequencyDraftValue(hp, mode, level),
+    meta: { min: 0, max: 120, step: 1 },
+    controlClass: "oq-helper-control oq-settings-odu-runtime-control",
+    inputClass: "oq-helper-input oq-helper-input--compact-number oq-settings-odu-runtime-input",
+    inputAttributes: `inputmode="numeric" data-oq-odu-runtime-hp="${hp}" data-oq-odu-runtime-mode="${mode}"
         data-oq-odu-runtime-level="${level}" data-oq-odu-runtime-tab-index="${tabIndex}"
-        aria-label="${escapeHtml(`HP${hp} ${mode === "cooling" ? "koelen" : "verwarmen"} F${level}`)}"
-        ${!status?.loaded || status.busy ? "disabled" : ""}>
-      <span class="oq-helper-unit-chip">Hz</span>
-    </label>`;
+        aria-label="${escapeHtml(`HP${hp} ${mode === "cooling" ? "koelen" : "verwarmen"} F${level} in Hz`)}"`,
+    disabled: !status?.loaded || status.busy,
+  });
 }
 
 function renderFrequencyTable(hp) {
@@ -348,7 +348,7 @@ function renderFrequencyTable(hp) {
   return `
     <div class="oq-settings-odu-runtime-table" role="table" aria-label="${escapeHtml(`HP${hp} frequentietabel`)}">
       <div class="oq-settings-odu-runtime-row oq-settings-odu-runtime-row--head" role="row">
-        <span role="columnheader">Niveau</span><span role="columnheader">Koelen</span><span role="columnheader">Verwarmen</span>
+        <span role="columnheader">Niveau</span><span role="columnheader">Koelen<br>Hz</span><span role="columnheader">Verwarmen<br>Hz</span>
       </div>
       ${levels.map((level) => `
         <div class="oq-settings-odu-runtime-row" role="row">
@@ -368,44 +368,33 @@ function renderFrequencyPanel(hp) {
   const armed = status?.armed === true;
   const [statusLabel, statusTone] = getStatusPresentation(status?.status);
   const applyDisabled = busy || !status?.loaded || !armed || !validation.valid || !operation.safe || !available;
-  return `
-    <article class="oq-settings-odu-runtime-panel">
-      <div class="oq-settings-odu-runtime-panel-head">
-        <div><p class="oq-helper-label">HP${hp}</p><h4>Frequentietabel</h4><p>${escapeHtml(operation.copy)}</p></div>
-        <div class="oq-settings-odu-runtime-actions">
-          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="odu-runtime-load" data-hp="${hp}" ${busy || !available ? "disabled" : ""}>Uit buitenunit laden</button>
-          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="odu-runtime-arm" data-hp="${hp}" ${busy || !status?.loaded || !available ? "disabled" : ""}>${armed ? "Wijzigingen vergrendelen" : "Wijzigingen vrijgeven"}</button>
-          <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="odu-runtime-apply" data-hp="${hp}" ${applyDisabled ? "disabled" : ""}>${busy ? "Bezig..." : "Toepassen"}</button>
-        </div>
-      </div>
-      <div class="oq-settings-odu-runtime-status${statusTone ? ` is-${statusTone}` : ""}"><strong>${escapeHtml(statusLabel)}</strong></div>
+  return renderOduEditorPanel({
+    hp, title: "Frequentietabel", copy: operation.copy,
+    actions: renderOduEditorAction(hp, "odu-runtime-load", "Uit buitenunit laden", busy || !available)
+      + renderOduEditorAction(hp, "odu-runtime-arm", armed ? "Wijzigingen vergrendelen" : "Wijzigingen vrijgeven", busy || !status?.loaded || !available)
+      + renderOduEditorAction(hp, "odu-runtime-apply", busy ? "Bezig..." : "Toepassen", applyDisabled, "warning"),
+    statusLabel, tone: statusTone,
+    body: `
       ${status?.loaded ? renderFrequencyTable(hp) : '<p class="oq-settings-odu-runtime-validation is-warning">Laad eerst de actuele tabel; er worden geen standaardwaarden ingevuld.</p>'}
       ${!status?.loaded || validation.valid ? "" : `<p class="oq-settings-odu-runtime-validation is-warning">Controleer ${escapeHtml(validation.invalid.slice(0, 6).join(", "))}.</p>`}
-    </article>`;
+    `,
+  });
 }
 
 export function renderOduRuntimeFrequencyModal() {
   const hpIndexes = getOduRuntimeFrequencyHpIndexes();
-  return renderModalShell({
+  return renderOduEditorModal({
     modalId: "odu-frequency-settings",
     titleId: "oq-odu-frequency-title",
-    kicker: "Instellingen buitenunit",
     title: "Frequentietabel",
-    titleBadge: "Experimenteel",
-    closeAction: "close-system-modal",
     closeLabel: "Sluit frequentietabel",
-    modalClass: "oq-helper-modal--wide oq-settings-odu-modal",
-    bodyMarkup: `
-      <div class="oq-settings-odu-modal-body" data-oq-modal-scroll="body">
-        <div class="oq-settings-odu-runtime-warning" role="note">
+    warning: `
           <strong>Niet permanent opgeslagen</strong>
           <p>Als de buitenunit volledig stroomloos is geweest, worden jouw aanpassingen teruggezet naar de oorspronkelijke frequenties.</p>
           <p>Wijzig alleen waarden waarvan je het effect op de compressor kent. Toepassen is alleen mogelijk in standby met de compressor uit.</p>
-          <p>Wees bij Quatt buitenunits V1 en V1.5 voorzichtig met koelwaarden onder 30 Hz: bij een te lage frequentie kan vloeibaar koudemiddel terugstromen en de compressor beschadigen. Bij V2 is 20 Hz toegestaan.</p>
-        </div>
-        ${state.oduRuntimeFrequencyError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.oduRuntimeFrequencyError)}</p>` : ""}
-        <div class="oq-settings-odu-runtime-panels">${hpIndexes.map(renderFrequencyPanel).join("")}</div>
-        <details class="oq-settings-odu-technical"${state.oduRuntimeFrequencyTechnicalDetailsOpen ? " open" : ""}><summary data-oq-action="toggle-odu-frequency-technical-details">Technische details</summary><p>De tabel wordt direct naar tijdelijke Modbus-registers van de buitenunit geschreven. OpenQuatt bewaart deze frequenties niet.</p></details>
-      </div>`,
+          <p>Wees bij Quatt buitenunits V1 en V1.5 voorzichtig met koelwaarden onder 30 Hz: bij een te lage frequentie kan vloeibaar koudemiddel terugstromen en de compressor beschadigen. Bij V2 is 20 Hz toegestaan.</p>`,
+    error: state.oduRuntimeFrequencyError,
+    panels: hpIndexes.map(renderFrequencyPanel).join(""),
+    footer: `<details class="oq-settings-odu-technical"${state.oduRuntimeFrequencyTechnicalDetailsOpen ? " open" : ""}><summary data-oq-action="toggle-odu-frequency-technical-details">Technische details</summary><p>De tabel wordt direct naar tijdelijke Modbus-registers van de buitenunit geschreven. OpenQuatt bewaart deze frequenties niet.</p></details>`,
   });
 }

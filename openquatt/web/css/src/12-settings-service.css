@@ -439,11 +439,6 @@
   line-height: 1.45;
 }
 
-.oq-settings-odu-runtime {
-  display: grid;
-  gap: 16px;
-}
-
 .oq-settings-odu-modal {
   display: flex;
   flex-direction: column;
@@ -454,6 +449,11 @@
 
 .oq-settings-odu-modal > .oq-helper-modal-head {
   flex: 0 0 auto;
+}
+
+.oq-settings-odu-modal > .oq-helper-modal-head > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .oq-settings-odu-modal .oq-helper-modal-close {
@@ -542,10 +542,6 @@
 }
 
 .oq-settings-odu-runtime-status {
-  display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  gap: 12px;
-  align-items: center;
   padding: 12px 14px;
   border-radius: var(--oq-helper-radius-md);
   border: 1px solid rgba(148, 163, 184, 0.2);
@@ -562,28 +558,12 @@
   background: var(--oq-theme-surface-9ku0, rgba(240, 253, 244, 0.76));
 }
 
-.oq-settings-odu-runtime-status span {
-  display: block;
-  color: var(--oq-helper-muted);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .oq-settings-odu-runtime-status strong {
   display: block;
-  margin-top: 3px;
   color: var(--oq-helper-ink);
   font-size: 0.92rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
-}
-
-.oq-settings-odu-runtime-status p {
-  margin: 0;
-  color: var(--oq-helper-soft);
-  line-height: 1.42;
 }
 
 .oq-settings-odu-runtime-table {
@@ -633,13 +613,6 @@
   width: 100%;
 }
 
-.oq-settings-odu-runtime-missing {
-  display: inline-flex;
-  align-items: center;
-  min-height: 38px;
-  color: var(--oq-helper-muted);
-}
-
 .oq-settings-odu-runtime-validation {
   margin: 0;
   color: var(--oq-helper-soft);
@@ -676,23 +649,6 @@
   color: var(--oq-helper-soft);
   font-size: 0.88rem;
   line-height: 1.5;
-}
-
-.oq-settings-odu-state {
-  padding: 10px 12px;
-  border-radius: var(--oq-helper-radius-md);
-  background: var(--oq-theme-surface-n2rf, rgba(248, 250, 252, 0.82));
-  color: var(--oq-helper-ink);
-}
-
-.oq-settings-odu-state.is-success {
-  background: var(--oq-theme-surface-9ku0, rgba(240, 253, 244, 0.76));
-  color: var(--oq-theme-color-12vw, rgb(22, 101, 52));
-}
-
-.oq-settings-odu-state.is-warning {
-  background: var(--oq-theme-surface-1s04, rgba(255, 247, 237, 0.74));
-  color: var(--oq-helper-accent-deep);
 }
 
 .oq-settings-odu-fields > label,
@@ -1185,54 +1141,6 @@
   gap: 14px;
 }
 
-.oq-helper-modal-head--cm100 {
-  align-items: flex-start;
-  margin-bottom: 6px;
-}
-
-.oq-helper-modal-head--cm100 .oq-helper-modal-close {
-  margin-top: 6px;
-}
-
-.oq-settings-commissioning-modal-copy {
-  margin: 0 0 12px;
-  color: var(--oq-helper-soft);
-  font-size: 0.96rem;
-  line-height: 1.45;
-}
-
-.oq-settings-commissioning-modal-copy--lead {
-  margin-top: 2px;
-}
-
-.oq-settings-commissioning-summary {
-  margin-top: 12px;
-}
-
-.oq-settings-commissioning-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 14px;
-  align-items: stretch;
-}
-
-.oq-helper-modal--cm100 {
-  padding-bottom: 16px;
-}
-
-.oq-helper-modal--cm100 .oq-settings-commissioning-grid {
-  align-items: start;
-}
-
-.oq-settings-commissioning-grid--single {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.oq-settings-commissioning-card--span-2 {
-  grid-column: 1 / -1;
-}
-
 .oq-settings-commissioning-card {
   display: grid;
   gap: 6px;
@@ -1283,10 +1191,6 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-top: 2px;
-}
-
-.oq-settings-commissioning-card--span-2 .oq-settings-commissioning-card-actions {
-  grid-template-columns: minmax(0, 1fr);
 }
 
 .oq-settings-commissioning-card-actions .oq-helper-button {
@@ -1507,25 +1411,18 @@
   background: #ea580c;
 }
 
-.oq-settings-hp-calibration-checklist,
 .oq-settings-hp-calibration-live-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
-.oq-settings-hp-calibration-checklist span,
 .oq-settings-hp-calibration-live-card {
   min-width: 0;
   padding: 12px 14px;
   border: 1px solid var(--oq-helper-line);
   border-radius: var(--oq-helper-radius);
   background: rgba(255, 255, 255, 0.82);
-}
-
-.oq-settings-hp-calibration-checklist span {
-  color: var(--oq-helper-soft);
-  line-height: 1.35;
 }
 
 .oq-settings-hp-calibration-live-card {
@@ -1800,97 +1697,6 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.oq-helper-modal--cm100 .oq-helper-modal-actions {
-  margin-top: 10px;
-}
-
-.oq-settings-boiler-shell {
-  display: grid;
-  gap: 16px;
-}
-
-.oq-settings-boiler-summary {
-  display: grid;
-  gap: 8px;
-}
-
-.oq-settings-boiler-summary h4 {
-  margin: 0;
-  color: var(--oq-helper-ink);
-  font-size: 1.18rem;
-  line-height: 1.18;
-  letter-spacing: -0.03em;
-}
-
-.oq-settings-boiler-summary p:last-child {
-  margin: 0;
-  color: var(--oq-helper-soft);
-  line-height: 1.58;
-}
-
-.oq-settings-boiler-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
-  gap: 14px;
-  align-items: stretch;
-}
-
-.oq-settings-boiler-presence,
-.oq-settings-boiler-power {
-  display: grid;
-  gap: 14px;
-  padding: 18px;
-  border-radius: var(--oq-helper-radius-lg);
-  border: 1px solid var(--oq-helper-line);
-  background: var(--oq-theme-surface-h7gc, linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(249, 250, 251, 0.98)));
-}
-
-.oq-settings-boiler-card-head {
-  display: grid;
-  gap: 6px;
-}
-
-.oq-settings-boiler-card-head h4 {
-  margin: 0;
-  color: var(--oq-helper-ink);
-  font-size: 1.05rem;
-  line-height: 1.22;
-  letter-spacing: -0.02em;
-}
-
-.oq-settings-boiler-card-head p:last-child {
-  margin: 0;
-  color: var(--oq-helper-soft);
-  line-height: 1.58;
-}
-
-.oq-settings-boiler-choice-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.oq-settings-boiler-choice {
-  min-height: 100%;
-}
-
-.oq-settings-boiler-choice-title {
-  font-size: 1.02rem;
-  font-weight: 800;
-  line-height: 1.2;
-  color: var(--oq-helper-ink);
-}
-
-.oq-settings-boiler-choice-copy {
-  color: var(--oq-helper-soft);
-  line-height: 1.55;
-}
-
-.oq-settings-boiler-power-control-shell {
-  display: grid;
-  gap: 10px;
-}
-
 .oq-settings-boiler-power-control {
   width: 100%;
 }
@@ -1910,8 +1716,7 @@
 }
 
 .oq-settings-boiler-power-empty p,
-.oq-settings-boiler-power-note,
-.oq-settings-boiler-foot {
+.oq-settings-boiler-power-note {
   margin: 0;
   color: var(--oq-helper-soft);
   line-height: 1.58;
@@ -1954,10 +1759,6 @@
 .oq-settings-boiler-connection-note.is-warning p,
 .oq-settings-boiler-connection-note.is-success p {
   margin: 0;
-}
-
-.oq-settings-boiler-foot {
-  padding-top: 2px;
 }
 
 .oq-settings-quickstart-status {

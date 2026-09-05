@@ -14,6 +14,7 @@ const {
 } = await import("../js/src/core/usage-telemetry-domain.js");
 const {
   createUsageTelemetryPreview,
+  configuredSourceWireValue,
   flowSourceConfigWireValue,
   loadUsageTelemetryPreviewMqttEnabled,
   USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS,
@@ -121,6 +122,7 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
   });
   assert.equal(flowSourceConfigWireValue("Outdoor unit", "Auto", true), "outdoor_unit");
   assert.equal(flowSourceConfigWireValue("Outdoor unit", undefined, false), "outdoor_unit");
+  assert.equal(configuredSourceWireValue("Schedule"), "schedule");
   assert.ok(USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("psramFree"));
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("webServerLogHistoryEnabled"));
 });

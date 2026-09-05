@@ -1,5 +1,5 @@
 import { getSetupCompleteState, isTrendHistoryEnabled, renderAppSummary } from "./app-shared.js";
-import { AUX_RELAY_SETTING_KEYS, AUX_RELAY_STATE_KEYS, BOILER_DIAGNOSTIC_KEYS, BOILER_SETTING_KEYS, BOILER_SUPPORT_SWITCHING_KEYS, BULK_POLL_INTERVAL_MS, CIC_COMPATIBILITY_KEYS, CIC_POLLING_DIAGNOSTIC_KEYS, CIC_POLLING_SETTING_KEYS, COMMISSIONING_STATE_KEYS, COMPRESSOR_SETTING_KEYS, CONNECTIVITY_PROBE_SUCCESS_TTL_MS, CONNECTIVITY_PROBE_TIMEOUT_MS, CONTROL_REPLAY_STATE_KEYS, COOLING_SETTING_KEYS, CURVE_POINTS, CURVE_SETTING_KEYS, ENTITY_DEFS, ENTITY_REFRESH_CONCURRENCY, FAST_OVERVIEW_KEYS, FAST_VIEW_ENTITY_REFRESH_CONCURRENCY, FIRMWARE_ENTITY_KEYS, FIRMWARE_MODAL_KEYS, FLOW_SETTING_KEYS, FLOW_TUNING_KEYS, FREQUENCY_CAP_KEYS, HEADER_ENTITY_KEYS, HIDDEN_POLL_INTERVAL_MS, INSTALLATION_MONITORING_STATE_KEYS, LIMIT_KEYS, OPENTHERM_DIAGNOSTIC_KEYS, OPENTHERM_SETTING_KEYS, OTB_DIAGNOSTIC_KEYS, OVERVIEW_ENERGY_COLUMN_CONFIGS, OVERVIEW_KEYS, OVERVIEW_METADATA_KEYS, POWER_HOUSE_KEYS, QUICK_START_FLOW_SOURCE_KEYS, QUICK_START_THERMOSTAT_SOURCE_KEYS, SENSOR_CALIBRATION_KEYS, SENSOR_CALIBRATION_STATE_KEYS, SENSOR_SELECTION_KEYS, SENSOR_SELECTION_STATE_KEYS, SERVICE_CONTROL_KEYS, SERVICE_STATUS_ENTITY_KEYS, SETTINGS_GROUP_IDS, SETTINGS_GROUPS, SETTINGS_KEYS, SILENT_SETTING_KEYS, STATIC_POLL_INTERVAL_MS } from "./config.js";
+import { AUX_RELAY_SETTING_KEYS, AUX_RELAY_STATE_KEYS, BOILER_DIAGNOSTIC_KEYS, BOILER_SETTING_KEYS, BOILER_SUPPORT_SWITCHING_KEYS, BULK_POLL_INTERVAL_MS, CIC_COMPATIBILITY_KEYS, CIC_POLLING_DIAGNOSTIC_KEYS, CIC_POLLING_SETTING_KEYS, COMMISSIONING_STATE_KEYS, COMPRESSOR_SETTING_KEYS, CONNECTIVITY_PROBE_SUCCESS_TTL_MS, CONNECTIVITY_PROBE_TIMEOUT_MS, CONTROL_REPLAY_STATE_KEYS, COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS, COOLING_SCHEDULE_VALID_KEY, COOLING_SETTING_KEYS, CURVE_POINTS, CURVE_SETTING_KEYS, ENTITY_DEFS, ENTITY_REFRESH_CONCURRENCY, FAST_OVERVIEW_KEYS, FAST_VIEW_ENTITY_REFRESH_CONCURRENCY, FIRMWARE_ENTITY_KEYS, FIRMWARE_MODAL_KEYS, FLOW_SETTING_KEYS, FLOW_TUNING_KEYS, FREQUENCY_CAP_KEYS, HEADER_ENTITY_KEYS, HIDDEN_POLL_INTERVAL_MS, INSTALLATION_MONITORING_STATE_KEYS, LIMIT_KEYS, OPENTHERM_DIAGNOSTIC_KEYS, OPENTHERM_SETTING_KEYS, OTB_DIAGNOSTIC_KEYS, OVERVIEW_ENERGY_COLUMN_CONFIGS, OVERVIEW_KEYS, OVERVIEW_METADATA_KEYS, POWER_HOUSE_KEYS, QUICK_START_FLOW_SOURCE_KEYS, QUICK_START_THERMOSTAT_SOURCE_KEYS, SENSOR_CALIBRATION_KEYS, SENSOR_CALIBRATION_STATE_KEYS, SENSOR_SELECTION_KEYS, SENSOR_SELECTION_STATE_KEYS, SERVICE_CONTROL_KEYS, SERVICE_STATUS_ENTITY_KEYS, SETTINGS_GROUP_IDS, SETTINGS_GROUPS, SETTINGS_KEYS, SILENT_SETTING_KEYS, STATIC_POLL_INTERVAL_MS } from "./config.js";
 import { buildEntityPath, isCurveMode } from "./domain-helpers.js";
 import { getEntityValue, parseLooseNumber } from "./entity-store.js";
 import { state } from "./state.js";
@@ -206,7 +206,14 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "cm100Active",
     ],
     heating: ["strategy"],
-    cooling: ["manualCoolingEnable", "coolingWithoutDewPointMode"],
+    cooling: [
+      "manualCoolingEnable",
+      "coolingWithoutDewPointMode",
+      ...COOLING_SCHEDULE_TIME_KEYS,
+      COOLING_SCHEDULE_SOURCE_KEY,
+      COOLING_SCHEDULE_VALID_KEY,
+      COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY,
+    ],
     integrations: ["otEnabled", "cicPollingEnabled", "flowSource", "boilerConnection", "boilerCommandValid", "otbLinkAvailable"],
     system: ["setupComplete", "projectVersionText", "releaseChannelText", "firmwareUpdateChannel", "statusLedsEnabled", "usageTelemetryEnabled", "usageTelemetryChoiceConfigured", "usageTelemetryInstallationId"],
   };
@@ -260,6 +267,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
     ],
     cooling: [
       "manualCoolingEnable",
+      COOLING_SCHEDULE_SOURCE_KEY,
+      COOLING_SCHEDULE_VALID_KEY,
+      COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY,
       "coolingWithoutDewPointMode",
       "coolingDewPointSelected",
       "coolingMinimumSafeSupplyTemp",
@@ -319,15 +329,15 @@ import { fetchWithTimeout } from "./browser-utils.js";
     "flowSelected",
     "totalCop",
     "manualCoolingEnable",
-    "coolingEnableSource",
+    COOLING_SCHEDULE_SOURCE_KEY,
     "coolingEnableSelected",
-    "coolingEnableEffectiveSource",
+    COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY,
     "silentModeOverride",
     "totalHeat",
     "totalCoolingPower",
   ];
 
-  export const INITIAL_OVERVIEW_TEXT_KEYS = ["strategy", "controlModeLabel", "hpGeneration", "coolingEnableEffectiveSource"];
+  export const INITIAL_OVERVIEW_TEXT_KEYS = ["strategy", "controlModeLabel", "hpGeneration", COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY];
 
   export const INITIAL_OVERVIEW_NUMERIC_KEYS = ["totalPower", "flowSelected"];
 
@@ -979,6 +989,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
 
   export async function refreshEntities(keys, detail = "state", options = {}) {
     const now = Date.now();
+    const timeWriteRevision = state.timeWriteRevision;
     const forceMissing = options.forceMissing === true;
     const refreshKeys = keys.filter((key) =>
       forceMissing || SERVICE_STATUS_ENTITY_KEYS.has(key) || !isKnownOptionalMissingEntity(key, now)
@@ -1036,6 +1047,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
       const missing = new Set(Array.isArray(payload?.missing) ? payload.missing : []);
 
       chunk.keys.forEach((key) => {
+        // A poll started before/during a time write must not restore the old time.
+        if (ENTITY_DEFS[key]?.domain === "time"
+            && (state.savingTimeFields.has(key) || state.timeWriteRevision !== timeWriteRevision)) return;
         if (Object.prototype.hasOwnProperty.call(entities, key)) {
           if (state.optionalMissingEntities) {
             delete state.optionalMissingEntities[key];

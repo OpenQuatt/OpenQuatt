@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <limits>
 
+#include "oq_daily_window_logic.h"
+
 namespace oq_supervisory_state {
 
 inline uint32_t seconds_to_ms(uint32_t seconds) {
@@ -269,6 +271,14 @@ inline OverrideOutput update_override(uint32_t now_ms, int selected_mode, uint32
   return {state, mode, false};
 }
 
+inline bool flow_guard_required(bool thermal_request, bool compressor_active, bool actuator_request_active) {
+  return thermal_request || compressor_active || actuator_request_active;
+}
+
+inline bool hold_cm1_until_hp_idle(bool in_cm1, bool thermal_request, int base_target, bool hp_active) {
+  return in_cm1 && !thermal_request && (base_target == 0 || base_target == 98) && hp_active;
+}
+
 enum class SilentOverride : uint8_t { SCHEDULE, ON, OFF };
 
 struct SilentWindowOutput {
@@ -279,17 +289,9 @@ struct SilentWindowOutput {
 inline SilentWindowOutput silent_window(bool time_valid, int current_minute, int start_minute, int end_minute,
                                         SilentOverride override_mode) {
   SilentWindowOutput output;
-  if (time_valid) {
-    const int current = std::clamp(current_minute, 0, 1439);
-    const int start = std::clamp(start_minute, 0, 1439);
-    const int end = std::clamp(end_minute, 0, 1439);
-    if (start == end) {
-      output.status = "window_disabled";
-    } else {
-      output.active = start < end ? current >= start && current < end : current >= start || current < end;
-      output.status = output.active ? "in_window" : "out_of_window";
-    }
-  }
+  const auto window = oq_daily_window::evaluate(time_valid, true, true, current_minute, start_minute, end_minute);
+  output.active = window.active;
+  output.status = oq_daily_window::status_name(window.status);
   if (override_mode == SilentOverride::ON) {
     output.active = true;
     output.status = "forced_on";

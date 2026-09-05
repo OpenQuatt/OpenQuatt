@@ -29,12 +29,14 @@ export const WEB_BUNDLE_BUDGETS = [
     // the unified Q-firmware network preference and active-connection controls,
     // the issue-471 grouped source focus panel with configured/effective paths,
     // relevant-source diagnostics, warnings and stable keyboard focus,
-    // and frequency-based day/silent limits and exclusion ranges per ODU.
+    // frequency-based day/silent limits and exclusion ranges per ODU,
+    // and the grouped issue-541 cooling-window control and overview modal.
     // plus bounded webserver-log history polling (single scheduler, retry
     // back-off and authoritative refresh without a second /events stream).
-    // The validated bundle is 1002074 B; the raw budget keeps ~0.9 kB margin
-    // for build-environment variance.
-    raw: 1_003_000,
+    // Includes stable native time editing and confirmed, stale-poll-safe saves.
+    // Compact pipeline plus the bottom-plate editor/backup: ~914 kB.
+    // Keep ~5 kB margin; do not restore the pre-compaction 1 MB ceiling.
+    raw: 919_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.
@@ -45,6 +47,8 @@ export const WEB_BUNDLE_BUDGETS = [
   // the issue-615 electrical-limit slider with red above-standard zone,
   // matching estimate/entry boxes, label icons and aligned vertical rhythm,
   // the responsive issue-471 master/detail source focus panel,
-  // and the per-ODU bottom-plate settings modal.
-  { file: "css/openquatt-app.css", raw: 308_000 },
+  // the per-ODU bottom-plate settings modal,
+  // and the grouped issue-541 cooling-window settings block.
+  // Preserve the source-level symbol compaction and dead-CSS reduction.
+  { file: "css/openquatt-app.css", raw: 200_000 },
 ];

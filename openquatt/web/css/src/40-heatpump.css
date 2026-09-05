@@ -214,42 +214,6 @@
   line-height: 1.25;
 }
 
-.oq-hp-schematic-board {
-  margin-top: 14px;
-  padding: 16px;
-  border-radius: 24px;
-  background: linear-gradient(180deg, #1d2430, #171d27);
-  border: 1px solid rgba(71, 85, 105, 0.45);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
-
-@keyframes oq-hp-flow-forward {
-  from {
-    stroke-dashoffset: 0;
-  }
-  to {
-    stroke-dashoffset: -28;
-  }
-}
-
-@keyframes oq-hp-flow-backward {
-  from {
-    stroke-dashoffset: 0;
-  }
-  to {
-    stroke-dashoffset: 28;
-  }
-}
-
-@keyframes oq-hp-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @keyframes oq-hp-pulse {
   0%, 100% {
     fill: rgba(255, 255, 255, 0.08);
@@ -265,36 +229,12 @@
   border-radius: 24px;
   background: linear-gradient(180deg, #1b2230, #161c28);
   border: 1px solid rgba(71, 85, 105, 0.42);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .oq-hp-tech-shell {
   display: grid;
   gap: 12px;
-}
-
-.oq-hp-tech-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-}
-
-.oq-hp-tech-kicker {
-  color: #94a3b8;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-.oq-hp-tech-status {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(71, 85, 105, 0.45);
-  background: rgba(15, 23, 42, 0.42);
-  color: #e5e7eb;
-  font-size: 0.9rem;
-  font-weight: 700;
 }
 
 .oq-hp-tech-svg {
@@ -314,26 +254,11 @@
   stroke-dasharray: 8 10;
 }
 
-.oq-hp-tech-frame-title {
-  fill: #94a3b8;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.36em;
-  text-anchor: middle;
-}
-
 .oq-hp-tech-title {
   fill: #f8fafc;
   font-size: 20px;
   font-weight: 700;
   text-anchor: middle;
-}
-
-.oq-hp-tech-water-value,
-.oq-hp-tech-note {
-  fill: #94a3b8;
-  font-size: 12px;
-  font-weight: 600;
 }
 
 .oq-hp-tech-water-reading {
@@ -368,23 +293,6 @@
 .oq-hp-tech-water-reading:focus .oq-hp-tech-water-reading-value,
 .oq-hp-tech-water-reading:focus-visible .oq-hp-tech-water-reading-value {
   fill: #ffffff;
-}
-
-.oq-hp-tech-note--center {
-  text-anchor: middle;
-}
-
-.oq-hp-tech-chip rect {
-  fill: rgba(15, 23, 42, 0.78);
-  stroke: rgba(100, 116, 139, 0.32);
-  stroke-width: 1;
-}
-
-.oq-hp-tech-chip-text {
-  fill: #f8fafc;
-  font-size: 12px;
-  font-weight: 700;
-  text-anchor: middle;
 }
 
 .oq-hp-tech-condensor-shell,

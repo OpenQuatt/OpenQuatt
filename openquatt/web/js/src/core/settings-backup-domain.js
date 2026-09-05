@@ -96,11 +96,11 @@ export function normalizeSettingsBackupOduProfiles(value) {
   for (const hpKey of ["hp1", "hp2"]) {
     if (!Object.prototype.hasOwnProperty.call(value, hpKey)) continue;
     const profile = value[hpKey];
-    const variant = Number(profile?.variant);
-    const controlBoardItem = Number(profile?.control_board_item);
-    const mode = Number(profile?.mode);
-    const startTemperatureC = Number(profile?.start_temperature_c);
-    const stopDeltaC = Number(profile?.stop_delta_c);
+    const variant = profile?.variant;
+    const controlBoardItem = profile?.control_board_item;
+    const mode = profile?.mode;
+    const startTemperatureC = profile?.start_temperature_c;
+    const stopDeltaC = profile?.stop_delta_c;
     if (!isObject(profile)
         || !Number.isInteger(variant) || variant < 1 || variant > 4
         || !Number.isInteger(controlBoardItem) || controlBoardItem < 1 || controlBoardItem > 0xFFFF
