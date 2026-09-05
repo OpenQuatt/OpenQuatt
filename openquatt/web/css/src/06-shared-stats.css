@@ -1,0 +1,79 @@
+.oq-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--oq-stat-border, var(--oq-helper-line));
+  border-radius: var(--oq-helper-radius-md);
+  background: var(--oq-stat-background, var(--oq-helper-card));
+}
+
+.oq-stat-label,
+.oq-stat-note {
+  margin: 0;
+  color: var(--oq-stat-soft, var(--oq-helper-soft));
+}
+
+.oq-stat-label {
+  color: var(--oq-stat-tone, var(--oq-stat-soft, var(--oq-helper-soft)));
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.oq-stat-value {
+  color: var(--oq-stat-ink, var(--oq-helper-ink));
+  font-size: 1.2rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.oq-stat-note {
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.oq-stat--status .oq-stat-value {
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.oq-stat--blue {
+  --oq-stat-tone: #2563eb;
+  --oq-stat-accent: linear-gradient(180deg, #1d4ed8, #60a5fa);
+}
+
+.oq-stat--orange {
+  --oq-stat-tone: #ea580c;
+  --oq-stat-accent: linear-gradient(180deg, #f59e0b, #ef4444);
+}
+
+.oq-stat--green {
+  --oq-stat-tone: #16a34a;
+}
+
+.oq-stat--sky {
+  --oq-stat-tone: #0284c7;
+  --oq-stat-accent: linear-gradient(180deg, #0ea5e9, #67e8f9);
+}
+
+.oq-stat--accent {
+  position: relative;
+  overflow: hidden;
+}
+
+.oq-stat--accent::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: var(--oq-stat-accent, var(--oq-stat-tone));
+}
+
+.oq-stat--accent .oq-stat-label {
+  color: var(--oq-stat-soft, var(--oq-helper-soft));
+}

@@ -3,7 +3,6 @@
   --oq-helper-card: #ffffff;
   --oq-helper-card-muted: #f3f4f6;
   --oq-helper-line: #e5e7eb;
-  --oq-helper-line-strong: #d1d5db;
   --oq-helper-ink: #111827;
   --oq-helper-soft: #4b5563;
   --oq-helper-faint: #6b7280;
@@ -11,8 +10,6 @@
   --oq-helper-accent: #ea580c;
   --oq-helper-accent-deep: #c2410c;
   --oq-helper-accent-soft: #fff7ed;
-  --oq-helper-note-soft: #eff6ff;
-  --oq-helper-tip-soft: #ecfdf5;
   --oq-helper-sky: #1d4ed8;
   --oq-helper-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 14px 40px rgba(15, 23, 42, 0.05);
   --oq-helper-radius-lg: 16px;
@@ -50,8 +47,6 @@
   --oq-helper-tab-badge-ink: var(--oq-helper-accent-deep);
   --oq-helper-tab-active-background: var(--oq-helper-accent-soft);
   --oq-helper-tab-active-shadow: none;
-  --oq-helper-tab-launch-background: linear-gradient(180deg, rgba(255, 247, 237, 0.96), rgba(255, 255, 255, 0.98));
-  --oq-helper-tab-launch-ink: var(--oq-helper-accent-deep);
   --oq-helper-aside-background: linear-gradient(180deg, rgba(249, 250, 251, 0.98), rgba(255, 255, 255, 0.98));
   --oq-settings-section-background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 250, 251, 0.98));
   --oq-settings-summary-toggle-background: rgba(255, 255, 255, 0.82);
@@ -71,11 +66,8 @@
   --oq-settings-choice-active-shadow: inset 0 0 0 1px rgba(234, 88, 12, 0.08);
   --oq-settings-strategy-active-background: linear-gradient(180deg, rgba(255, 247, 237, 0.88), rgba(255, 255, 255, 0.98));
   --oq-settings-strategy-active-shadow: inset 0 0 0 1px rgba(234, 88, 12, 0.08);
-  --oq-settings-response-active-background: linear-gradient(180deg, rgba(255, 247, 237, 0.76), rgba(255, 255, 255, 0.98));
   --oq-settings-choice-media-background: linear-gradient(180deg, rgba(248, 250, 252, 0.94), rgba(241, 245, 249, 0.98));
   --oq-settings-choice-media-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
-  --oq-settings-commissioning-background: linear-gradient(180deg, rgba(255, 247, 237, 0.72), rgba(255, 255, 255, 0.96));
-  --oq-settings-commissioning-panel-background: var(--oq-helper-card);
   --oq-settings-backup-section-background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(249, 250, 251, 0.98));
   --oq-settings-backup-compare-border: rgba(229, 231, 235, 0.92);
   --oq-settings-backup-compare-background: rgba(255, 255, 255, 0.65);
@@ -131,8 +123,6 @@
   --oq-helper-tab-badge-ink: #fb923c;
   --oq-helper-tab-active-background: rgba(255, 247, 237, 0.96);
   --oq-helper-tab-active-shadow: 0 10px 22px rgba(2, 6, 23, 0.18);
-  --oq-helper-tab-launch-background: linear-gradient(180deg, rgba(66, 32, 14, 0.34), rgba(22, 33, 49, 0.92));
-  --oq-helper-tab-launch-ink: #f97316;
   --oq-helper-aside-background: linear-gradient(180deg, rgba(21, 31, 46, 0.98), rgba(16, 24, 38, 0.98));
   --oq-settings-section-background: linear-gradient(180deg, rgba(28, 39, 56, 0.98), rgba(23, 34, 49, 0.98));
   --oq-settings-summary-toggle-background: rgba(15, 23, 42, 0.46);
@@ -152,11 +142,8 @@
   --oq-settings-choice-active-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.16);
   --oq-settings-strategy-active-background: linear-gradient(180deg, rgba(66, 32, 14, 0.42), rgba(22, 33, 49, 0.96));
   --oq-settings-strategy-active-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.16);
-  --oq-settings-response-active-background: linear-gradient(180deg, rgba(66, 32, 14, 0.34), rgba(22, 33, 49, 0.92));
   --oq-settings-choice-media-background: linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(30, 41, 59, 0.94));
   --oq-settings-choice-media-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.1);
-  --oq-settings-commissioning-background: linear-gradient(180deg, rgba(66, 32, 14, 0.34), rgba(22, 33, 49, 0.94));
-  --oq-settings-commissioning-panel-background: rgba(15, 23, 42, 0.34);
   --oq-settings-backup-section-background: linear-gradient(180deg, rgba(66, 32, 14, 0.22), rgba(22, 33, 49, 0.94));
   --oq-settings-backup-compare-border: rgba(71, 85, 105, 0.48);
   --oq-settings-backup-compare-background: rgba(24, 35, 49, 0.72);
@@ -167,7 +154,6 @@
   --oq-settings-concept-background: linear-gradient(180deg, rgba(22, 34, 49, 0.92), rgba(18, 29, 43, 0.98));
   --oq-settings-concept-pill-border: rgba(148, 163, 184, 0.12);
   --oq-settings-concept-pill-background: rgba(23, 35, 51, 0.84);
-  --oq-theme-border-120w: rgba(251, 146, 60, 0.66);
   --oq-theme-border-1eek: rgba(71, 85, 105, 0.46);
   --oq-theme-border-1nxp: rgba(148, 163, 184, 0.18);
   --oq-theme-border-1yjq: rgba(249, 115, 22, 0.36);
@@ -195,7 +181,6 @@
   --oq-theme-color-vrmj: #bfdbfe;
   --oq-theme-fill-xlqu: var(--oq-energy-history-surface);
   --oq-theme-shadow-16sj: 0 16px 30px rgba(2, 6, 23, 0.26);
-  --oq-theme-shadow-1c6l: none;
   --oq-theme-shadow-1t4x: inset 0 0 0 1px rgba(249, 115, 22, 0.14);
   --oq-theme-shadow-1wio: 0 18px 36px rgba(2, 6, 23, 0.26);
   --oq-theme-shadow-4vvm: 0 14px 30px rgba(2, 6, 23, 0.24);
@@ -206,7 +191,6 @@
   --oq-theme-surface-13ii: rgba(148, 163, 184, 0.12);
   --oq-theme-surface-13nh: linear-gradient(180deg, rgba(72, 37, 18, 0.34), rgba(29, 42, 59, 0.96));
   --oq-theme-surface-148y: #4ade80;
-  --oq-theme-surface-14p7: var(--oq-helper-accent);
   --oq-theme-surface-15rb: rgba(20, 83, 45, 0.24);
   --oq-theme-surface-15zu: linear-gradient(180deg, rgba(66, 32, 14, 0.24), rgba(22, 33, 49, 0.94));
   --oq-theme-surface-1b2j: rgba(71, 85, 105, 0.44);
@@ -216,7 +200,6 @@
   --oq-theme-surface-1e8i: rgba(31, 45, 63, 0.98);
   --oq-theme-surface-1hci: rgba(15, 23, 42, 0.22);
   --oq-theme-surface-1je6: rgba(15, 23, 42, 0.76);
-  --oq-theme-surface-1mjj: rgba(37, 99, 235, 0.18);
   --oq-theme-surface-1mzo: rgba(245, 158, 11, 0.14);
   --oq-theme-surface-1s04: rgba(66, 32, 14, 0.26);
   --oq-theme-surface-1src: rgba(15, 23, 42, 0.24);
@@ -227,7 +210,6 @@
   --oq-theme-surface-1y6j: rgba(15, 23, 42, 0.46);
   --oq-theme-surface-21vy: rgba(18, 27, 41, 0.82);
   --oq-theme-surface-2e6b: rgba(51, 65, 85, 0.86);
-  --oq-theme-surface-2hai: rgba(15, 23, 42, 0.5);
   --oq-theme-surface-479n: rgba(22, 34, 49, 0.82);
   --oq-theme-surface-8g96: rgba(15, 23, 42, 0.18);
   --oq-theme-surface-9ku0: rgba(20, 83, 45, 0.22);

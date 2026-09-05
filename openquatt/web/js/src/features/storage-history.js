@@ -102,48 +102,61 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
     };
   }
 
-  export async function refreshDecisionLogStorageMetadata(options = {}) {
-    const force = options.force === true;
-    const now = Date.now();
-    if (!force && state.decisionLogStorageMetadataFetchPromise) {
-      return state.decisionLogStorageMetadataFetchPromise;
+  async function fetchHistoryResource(path, format = "text") {
+    const response = await fetch(`${getBasePath()}${path}`, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
-    if (!force && (state.decisionLogStorageMetadataSignature || state.decisionLogStorageMetadataError) &&
-        (now - Number(state.decisionLogStorageMetadataLastFetchAt || 0)) < TREND_HISTORY_REFRESH_INTERVAL_MS) {
-      return false;
+    return response[format]();
+  }
+
+  async function refreshHistoryMetadata(prefix, options, load, errorPrefix) {
+    const promiseKey = prefix + "FetchPromise";
+    const signatureKey = prefix + "Signature";
+    const errorKey = prefix + "Error";
+    const timestampKey = prefix + "LastFetchAt";
+    if (options.force !== true) {
+      if (state[promiseKey]) return state[promiseKey];
+      if ((state[signatureKey] || state[errorKey])
+          && Date.now() - Number(state[timestampKey] || 0) < TREND_HISTORY_REFRESH_INTERVAL_MS) {
+        return false;
+      }
     }
 
-    state.decisionLogStorageMetadataFetchPromise = (async () => {
-      const response = await fetch(`${getBasePath()}/openquatt/decision-log?meta=1`, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+    const request = (async () => {
+      try {
+        const { metadata, signature } = await load();
+        // A forced refresh can supersede this request while its response is pending.
+        if (state[promiseKey] !== request) return false;
+        const changed = signature !== state[signatureKey] || state[errorKey] !== "";
+        state[prefix] = metadata;
+        state[errorKey] = "";
+        state[signatureKey] = signature;
+        state[timestampKey] = Date.now();
+        return changed;
+      } catch (error) {
+        if (state[promiseKey] !== request) return false;
+        const nextError = `${errorPrefix} ${error.message}`;
+        const changed = state[errorKey] !== nextError;
+        state[prefix] = {};
+        state[errorKey] = nextError;
+        state[signatureKey] = "";
+        state[timestampKey] = Date.now();
+        return changed;
+      } finally {
+        if (state[promiseKey] === request) state[promiseKey] = null;
       }
-      const payload = await response.json();
-      if (!payload?.ok) {
-        throw new Error("ongeldig antwoord");
-      }
-      const signature = JSON.stringify(payload);
-      const changed = signature !== state.decisionLogStorageMetadataSignature || state.decisionLogStorageMetadataError !== "";
-      state.decisionLogStorageMetadata = parseDecisionLogStorageMetadata(payload);
-      state.decisionLogStorageMetadataError = "";
-      state.decisionLogStorageMetadataSignature = signature;
-      state.decisionLogStorageMetadataLastFetchAt = Date.now();
-      return changed;
     })();
+    state[promiseKey] = request;
+    return request;
+  }
 
-    try {
-      return await state.decisionLogStorageMetadataFetchPromise;
-    } catch (error) {
-      const nextError = `Beslisloghistorie kon niet worden geladen. ${error.message}`;
-      const changed = state.decisionLogStorageMetadataError !== nextError;
-      state.decisionLogStorageMetadata = {};
-      state.decisionLogStorageMetadataError = nextError;
-      state.decisionLogStorageMetadataSignature = "";
-      state.decisionLogStorageMetadataLastFetchAt = Date.now();
-      return changed;
-    } finally {
-      state.decisionLogStorageMetadataFetchPromise = null;
-    }
+  export async function refreshDecisionLogStorageMetadata(options = {}) {
+    return refreshHistoryMetadata("decisionLogStorageMetadata", options, async () => {
+      const payload = await fetchHistoryResource("/openquatt/decision-log?meta=1", "json");
+      if (!payload?.ok) throw new Error("ongeldig antwoord");
+      return { metadata: parseDecisionLogStorageMetadata(payload), signature: JSON.stringify(payload) };
+    }, "Beslisloghistorie kon niet worden geladen.");
   }
 
   export function parseTrendHistoryMetadata(raw) {
@@ -185,6 +198,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
   export async function refreshTrendHistoryMetadata(options = {}) {
     if (!hasEntity("trendHistoryEnabled") && !isDevPreviewEnvironmentForFetches()) {
       const changed = Boolean(state.trendHistoryMetadataSignature || state.trendHistoryMetadataError);
+      state.trendHistoryMetadataFetchPromise = null;
       state.trendHistoryMetadata = {};
       state.trendHistoryMetadataError = "";
       state.trendHistoryMetadataSignature = "";
@@ -192,45 +206,13 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       return changed;
     }
 
-    const force = options.force === true;
-    const now = Date.now();
-    if (!force && state.trendHistoryMetadataFetchPromise) {
-      return state.trendHistoryMetadataFetchPromise;
-    }
-    if (!force && (state.trendHistoryMetadataSignature || state.trendHistoryMetadataError) &&
-        (now - Number(state.trendHistoryMetadataLastFetchAt || 0)) < TREND_HISTORY_REFRESH_INTERVAL_MS) {
-      return false;
-    }
-
-    state.trendHistoryMetadataFetchPromise = (async () => {
-      const response = await fetch(`${getBasePath()}/trends/history?meta=1`, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const raw = await response.text();
-      const metadata = parseTrendHistoryMetadata(raw);
-      const signature = `${raw.length}|${raw.slice(0, 120)}|${raw.slice(-120)}`;
-      const changed = signature !== state.trendHistoryMetadataSignature || state.trendHistoryMetadataError !== "";
-      state.trendHistoryMetadata = metadata;
-      state.trendHistoryMetadataError = "";
-      state.trendHistoryMetadataSignature = signature;
-      state.trendHistoryMetadataLastFetchAt = Date.now();
-      return changed;
-    })();
-
-    try {
-      return await state.trendHistoryMetadataFetchPromise;
-    } catch (error) {
-      const nextError = `Trendhistorie metadata kon niet worden geladen. ${error.message}`;
-      const changed = state.trendHistoryMetadataError !== nextError;
-      state.trendHistoryMetadata = {};
-      state.trendHistoryMetadataError = nextError;
-      state.trendHistoryMetadataSignature = "";
-      state.trendHistoryMetadataLastFetchAt = Date.now();
-      return changed;
-    } finally {
-      state.trendHistoryMetadataFetchPromise = null;
-    }
+    return refreshHistoryMetadata("trendHistoryMetadata", options, async () => {
+      const raw = await fetchHistoryResource("/trends/history?meta=1");
+      return {
+        metadata: parseTrendHistoryMetadata(raw),
+        signature: `${raw.length}|${raw.slice(0, 120)}|${raw.slice(-120)}`,
+      };
+    }, "Trendhistorie metadata kon niet worden geladen.");
   }
 
   export async function refreshSettingsStorageState(options = {}) {
@@ -1905,11 +1887,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       if (windowHours !== state.trendWindowHours) {
         setTrendWindowHours(windowHours);
       }
-      const response = await fetch(`${getBasePath()}/trends/history?hours=${encodeURIComponent(String(windowHours))}`, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const raw = await response.text();
+      const raw = await fetchHistoryResource(`/trends/history?hours=${encodeURIComponent(String(windowHours))}`);
       const lines = raw.split(/\r?\n/);
       let nowMs = Number.NaN;
       let body = raw;
@@ -1978,13 +1956,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
 
     state.energyHistoryFetchQuery = query;
     state.energyHistoryFetchPromise = (async () => {
-      const fetchEnergyHistoryText = async (requestQuery) => {
-        const response = await fetch(`${getBasePath()}/energy/history${requestQuery}`, { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        return response.text();
-      };
+      const fetchEnergyHistoryText = (requestQuery) => fetchHistoryResource(`/energy/history${requestQuery}`);
       let finalQuery = query;
       let raw = await fetchEnergyHistoryText(finalQuery);
       if (options.metaOnly !== true && finalQuery.includes("meta=1") && typeof getEnergyHistoryRequestQuery === "function") {

@@ -33,9 +33,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // plus bounded webserver-log history polling (single scheduler, retry
     // back-off and authoritative refresh without a second /events stream).
     // Includes stable native time editing and confirmed, stale-poll-safe saves.
-    // The validated bundle is ~994 kB; the raw budget keeps ~1 kB margin
-    // for build-environment variance.
-    raw: 995_000,
+    // Retain the compact production pipeline and its existing raw ceiling
+    // for build-environment variance and small follow-up changes.
+    raw: 905_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.
@@ -47,5 +47,6 @@ export const WEB_BUNDLE_BUDGETS = [
   // matching estimate/entry boxes, label icons and aligned vertical rhythm,
   // the responsive issue-471 master/detail source focus panel,
   // and the grouped issue-541 cooling-window settings block.
-  { file: "css/openquatt-app.css", raw: 306_000 },
+  // Preserve the source-level symbol compaction and dead-CSS reduction.
+  { file: "css/openquatt-app.css", raw: 200_000 },
 ];

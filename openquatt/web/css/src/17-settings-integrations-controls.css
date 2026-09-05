@@ -914,67 +914,6 @@
   }
 }
 
-.oq-settings-checkbox-switch {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  width: fit-content;
-  min-height: 40px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--oq-helper-ink);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.96rem;
-  font-weight: 700;
-  line-height: 1.2;
-  text-align: left;
-}
-
-.oq-settings-checkbox-switch:disabled {
-  cursor: wait;
-  opacity: 0.62;
-}
-
-.oq-settings-checkbox-switch-box {
-  position: relative;
-  box-sizing: border-box;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
-  border: 1px solid var(--oq-helper-line-strong);
-  border-radius: 6px;
-  background: var(--oq-theme-surface-2hai, var(--oq-helper-card));
-  box-shadow: var(--oq-theme-shadow-1c6l, inset 0 1px 0 rgba(255, 255, 255, 0.7));
-}
-
-.oq-settings-checkbox-switch.is-active .oq-settings-checkbox-switch-box {
-  border-color: var(--oq-theme-border-120w, rgba(234, 88, 12, 0.48));
-  background: var(--oq-theme-surface-14p7, var(--oq-helper-accent));
-}
-
-.oq-settings-checkbox-switch.is-active .oq-settings-checkbox-switch-box::after {
-  content: "";
-  position: absolute;
-  left: 6px;
-  top: 3px;
-  width: 7px;
-  height: 12px;
-  border: solid #fff;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-}
-
-.oq-helper-shell--dark .oq-settings-checkbox-switch-box,
-.oq-helper-modal-backdrop--dark .oq-settings-checkbox-switch-box {
-  
-  border-color: rgba(148, 163, 184, 0.38);
-  
-}
-
 .oq-settings-control--select {
   position: relative;
   display: block;
@@ -1223,11 +1162,6 @@
 
 .oq-settings-curve-shell .oq-helper-curve-shell {
   margin: 0;
-}
-
-.oq-settings-grid--curve-fallback {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 16px;
 }
 
 .oq-settings-field--curve-fallback-card,

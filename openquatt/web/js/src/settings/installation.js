@@ -16,6 +16,7 @@ import { getOduRuntimeFrequencyDraftValue, getOduRuntimeFrequencyHpIndexes as ge
 import { getWebServerLogStatusLabel } from "../features/webserver-logs.js";
 import { BOILER_OPENTHERM_CAPABILITY, getBoilerOpenThermCapability, getSupportedBoilerConnectionOptions } from "./boiler.js";
 import { getSelectEntityOptions, renderNamedActionButton, renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsCompactSwitchControl, renderSettingsFieldCard, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField, renderSettingsSystemRow } from "./controls.js";
+import { getSettingsSelectModel } from "./field-models.js";
 import { renderSettingsHeatPumpLimiterCard } from "./heating.js";
 import { escapeHtml } from "../core/html.js";
 
@@ -817,24 +818,20 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
       },
     };
 
-    const entity = state.entities.hpGeneration || {};
-    const currentValue = String(getEntityValue("hpGeneration") || "");
-    const options = getSelectEntityOptions(entity);
-    const busy = state.loadingEntities || state.busyAction === "save-hpGeneration";
+    const model = getSettingsSelectModel("hpGeneration");
 
     return `
       ${detectionStatus}
       <div class="oq-settings-generation-field oq-settings-field--span-2">
         <div class="oq-settings-generation-grid">
-          ${options.map((option) => {
+          ${model.options.map((option) => {
             const description = descriptions[option] || {};
             return renderSettingsChoiceOption({
               key: "hpGeneration",
               option,
-              currentValue,
-              busy,
+              model,
               copy: description.copy || "",
-              meta: getOduGenerationChoiceMeta(option, currentValue, detectionModel.recommendation),
+              meta: getOduGenerationChoiceMeta(option, model.value, detectionModel.recommendation),
               image: description.image || "",
               imageAlt: description.alt || "",
               infoTitle: description.infoTitle || "",
@@ -849,8 +846,8 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
 
   export function renderSettingsGenerationSection() {
     const currentLabel = getInstallationLabel();
-    const entity = state.entities.hpGeneration || {};
-    const canEdit = hasEntity("hpGeneration") && getSelectEntityOptions(entity).length > 0;
+    const model = getSettingsSelectModel("hpGeneration");
+    const canEdit = model.available && model.options.length > 0;
 
     if (!currentLabel && !canEdit) {
       return "";
@@ -871,7 +868,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
             class="oq-helper-button oq-helper-button--ghost"
             type="button"
             data-oq-action="open-generation-modal"
-            ${!canEdit || state.loadingEntities || state.busyAction === "save-hpGeneration" ? "disabled" : ""}
+            ${!canEdit || model.busy ? "disabled" : ""}
           >
             Aanpassen
           </button>

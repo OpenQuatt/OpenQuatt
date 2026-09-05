@@ -8,6 +8,7 @@ export const CSS_SOURCE_FILES = [
   "css/src/03-modals.css",
   "css/src/04-debug-recording.css",
   "css/src/05-layout-controls.css",
+  "css/src/06-shared-stats.css",
   "css/src/10-settings-layout.css",
   "css/src/11-settings-climate.css",
   "css/src/12-settings-service.css",
