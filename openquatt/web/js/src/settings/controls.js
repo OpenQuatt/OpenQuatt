@@ -5,6 +5,9 @@ import { formatValue, getEntityValue, getNumberMeta, normalizeNumber, parseLoose
 import { escapeHtml } from "../core/html.js";
 import { renderNumberInputControl } from "../core/number-controls.js";
 import { state } from "../core/state.js";
+import { getSelectEntityOptions, getSettingsChoiceModel, getSettingsSelectModel, getSettingsSwitchModel } from "./field-models.js";
+
+export { getSelectEntityOptions } from "./field-models.js";
 
 export function renderSettingsInfoToggle(infoId, title, copy, buttonLabel = "i", className = "") {
   if (!copy) {
@@ -206,7 +209,8 @@ export function formatSettingsOptionLabel(option) {
 }
 
 export function renderSettingsChoiceOption({ key, option, currentValue, busy, copy = "", meta = "", image = "", imageAlt = "", infoTitle = "", infoCopy = "", infoId = "" }) {
-  const active = option === currentValue;
+  const model = getSettingsChoiceModel(key, option, { currentValue, busy });
+  const { active } = model;
   const cardBody = `
     <button
       class="oq-helper-surface oq-settings-choice-card${active ? " is-active" : ""}${image ? " oq-settings-choice-card--with-image" : ""}${infoCopy ? " oq-settings-choice-card--has-info" : ""}"
@@ -215,7 +219,7 @@ export function renderSettingsChoiceOption({ key, option, currentValue, busy, co
       data-select-key="${escapeHtml(key)}"
       data-select-option="${escapeHtml(option)}"
       aria-pressed="${active ? "true" : "false"}"
-      ${busy ? "disabled" : ""}
+      ${model.busy ? "disabled" : ""}
     >
       <span class="oq-settings-choice-head">
         <span class="oq-settings-choice-title">${escapeHtml(formatSettingsOptionLabel(option))}</span>
@@ -239,26 +243,11 @@ export function renderSettingsChoiceOption({ key, option, currentValue, busy, co
   `;
 }
 
-export function getSelectEntityOptions(entity = {}) {
-  if (Array.isArray(entity.option)) {
-    return entity.option;
-  }
-  if (Array.isArray(entity.options)) {
-    return entity.options;
-  }
-  return [];
-}
-
 export function renderSettingsSelectField(key, title, copy, className = "") {
-  if (!hasEntity(key)) {
+  const { available, value, options, busy } = getSettingsSelectModel(key);
+  if (!available) {
     return "";
   }
-  const entity = state.entities[key] || {};
-  const value = String(getEntityValue(key) || "");
-  const options = getSelectEntityOptions(entity);
-  const busy = state.loadingEntities
-    || state.busyAction === `save-${key}`
-    || (key === "strategy" && state.busyAction === "save-heatingEnableSource");
   return renderSettingsFieldCard(key, title, copy, `<label class="oq-settings-control oq-settings-control--select"><select class="oq-helper-select" data-oq-field="${escapeHtml(key)}" ${busy ? "disabled" : ""}>${options.map((option) => `<option value="${escapeHtml(option)}" ${option === value ? "selected" : ""}>${escapeHtml(formatSettingsOptionLabel(option))}</option>`).join("")}</select><span class="oq-settings-select-caret" aria-hidden="true"></span></label>`, className);
 }
 
@@ -284,24 +273,23 @@ export function renderSettingsSwitchPill(key, enabled, onLabel = "Aan", offLabel
 }
 
 export function renderSettingsCompactSwitchControl(key, title, enabled, busy, onLabel = "Aan", offLabel = "Uit", showStatus = true) {
-  const stateLabel = enabled ? onLabel : offLabel;
-  const nextState = enabled ? "off" : "on";
+  const model = getSettingsSwitchModel(key, { title, enabled, busy, onLabel, offLabel });
   return `
     <div class="oq-settings-compact-switch-row">
-      ${showStatus ? renderSettingsSwitchPill(key, enabled, onLabel, offLabel) : ""}
+      ${showStatus ? renderSettingsSwitchPill(key, model.enabled, onLabel, offLabel) : ""}
       <button
-        class="oq-settings-toggle-switch${enabled ? " is-on" : ""}"
+        class="oq-settings-toggle-switch${model.enabled ? " is-on" : ""}"
         type="button"
         role="switch"
         data-oq-action="toggle-overview-control"
         data-control-key="${escapeHtml(key)}"
-        data-control-state="${escapeHtml(nextState)}"
+        data-control-state="${escapeHtml(model.nextState)}"
         data-switch-title="${escapeHtml(title)}"
         data-on-label="${escapeHtml(onLabel)}"
         data-off-label="${escapeHtml(offLabel)}"
-        aria-checked="${enabled ? "true" : "false"}"
-        aria-label="${escapeHtml(`${title}: ${stateLabel}`)}"
-        ${busy ? "disabled" : ""}
+        aria-checked="${model.enabled ? "true" : "false"}"
+        aria-label="${escapeHtml(model.ariaLabel)}"
+        ${model.busy ? "disabled" : ""}
       >
         <span class="oq-settings-toggle-switch-track" aria-hidden="true">
           <span class="oq-settings-toggle-switch-knob"></span>
@@ -324,8 +312,7 @@ export function renderSettingsSwitchField(key, title, copy, enabledCopy = "", di
     return "";
   }
 
-  const enabled = Boolean(getEntityValue(key));
-  const busy = state.loadingEntities || state.busyAction === `switch-${key}`;
+  const { enabled, busy } = getSettingsSwitchModel(key);
   return renderSettingsFieldCard(
     key,
     title,
@@ -345,8 +332,7 @@ export function renderSettingsCheckboxSwitchField(key, title, copy, label, class
     return "";
   }
 
-  const enabled = Boolean(getEntityValue(key));
-  const busy = state.loadingEntities || state.busyAction === `switch-${key}`;
+  const { enabled, busy } = getSettingsSwitchModel(key);
   return renderSettingsFieldCard(
     key,
     title,
@@ -366,8 +352,7 @@ export function renderSettingsIntegrationSwitchCard(key, title, copy) {
     return "";
   }
 
-  const enabled = Boolean(getEntityValue(key));
-  const busy = state.loadingEntities || state.busyAction === `switch-${key}`;
+  const { enabled, busy } = getSettingsSwitchModel(key);
   return `
     <article class="oq-settings-integration-card" data-oq-settings-field="${escapeHtml(key)}">
       <div class="oq-settings-integration-card-head">

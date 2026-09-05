@@ -13,6 +13,7 @@ import { getHeatPumpPanelStatusLabel, getOverviewStatusCards, getOverviewStrateg
 import { escapeHtml } from "../core/html.js";
 import { render } from "../core/render-scheduler.js";
 import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./view-utils.js";
+import { renderStatCard } from "./stat-card.js";
 
   export function getHeatPumpRuntimeModel(title, keys, accent) {
     const mode = formatWorkingMode(getEntityStateText(keys.mode, "Unknown"));
@@ -1042,21 +1043,9 @@ import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./vie
           <span class="oq-overview-chip oq-overview-chip--${model.statusTone}">${escapeHtml(model.statusText)}</span>
         </div>
         <div class="oq-overview-hp-stats">
-          <article class="oq-overview-stat oq-overview-stat--orange">
-            <p>Warmteafgifte</p>
-            <strong data-oq-boiler-heat-value>${escapeHtml(model.heatText)}</strong>
-            <span>afgegeven warmte</span>
-          </article>
-          <article class="oq-overview-stat oq-overview-stat--blue">
-            <p>${escapeHtml(model.returnTempLabel)}</p>
-            <strong data-oq-bind="boiler-return-value">${escapeHtml(model.returnTempText)}</strong>
-            <span>retour naar boiler</span>
-          </article>
-          <article class="oq-overview-stat oq-overview-stat--sky">
-            <p>${escapeHtml(model.supplyTempLabel)}</p>
-            <strong data-oq-bind="boiler-supply-value">${escapeHtml(model.supplyTempText)}</strong>
-            <span>${model.opentherm ? "gemeten door ketel" : "naar het systeem"}</span>
-          </article>
+          ${renderStatCard({ label: "Warmteafgifte", value: model.heatText, tone: "orange", note: "afgegeven warmte", valueData: { "oq-boiler-heat-value": "" } })}
+          ${renderStatCard({ label: model.returnTempLabel, value: model.returnTempText, tone: "blue", note: "retour naar boiler", valueData: { "oq-bind": "boiler-return-value" } })}
+          ${renderStatCard({ label: model.supplyTempLabel, value: model.supplyTempText, tone: "sky", note: model.opentherm ? "gemeten door ketel" : "naar het systeem", valueData: { "oq-bind": "boiler-supply-value" } })}
         </div>
         ${model.opentherm ? renderBoilerTelemetry(model) : ""}
         <p class="oq-boiler-status-detail" data-oq-boiler-status-detail${model.statusDetail ? "" : " hidden"}>${escapeHtml(model.statusDetail)}</p>

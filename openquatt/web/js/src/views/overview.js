@@ -11,15 +11,10 @@ import { setViewPatchControls } from "../core/view-patch-controls.js";
 import { formatCoolingBlockReason } from "../settings/cooling.js";
 import { render } from "../core/render-scheduler.js";
 import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./view-utils.js";
+import { renderStatCard } from "./stat-card.js";
 
   export function renderOverviewStatCardMarkup({ label, value, tone, note, status = false }) {
-    return `
-      <article class="oq-overview-stat oq-overview-stat--${escapeHtml(tone)}${status ? " oq-overview-stat--status" : ""}">
-        <p>${escapeHtml(label)}</p>
-        <strong>${escapeHtml(value)}</strong>
-        <span>${escapeHtml(note)}</span>
-      </article>
-    `;
+    return renderStatCard({ label, value, tone, note, status });
   }
 
   export function renderOverviewStatCards(cards, status = false) {
@@ -148,13 +143,7 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
   }
 
   export function renderOverviewMetricCard(label, value, tone = "blue", note = "") {
-    return `
-      <article class="oq-overview-metric oq-overview-metric--${escapeHtml(tone)}">
-        <span>${escapeHtml(label)}</span>
-        <strong>${escapeHtml(value)}</strong>
-        ${note ? `<p>${escapeHtml(note)}</p>` : ""}
-      </article>
-    `;
+    return renderStatCard({ label, value, tone, note, accent: true });
   }
 
   export function formatSignedTemperature(value) {

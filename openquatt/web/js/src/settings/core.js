@@ -22,6 +22,7 @@ import { renderSettingsSilentSection } from "./silent.js";
 import { renderSettingsBackupSection, renderSettingsTrendSection } from "./storage.js";
 import { renderSettingsWaterSection } from "./water.js";
 import { escapeHtml } from "../core/html.js";
+import { getSettingsChoiceModel, getSettingsSelectModel, getSettingsSwitchModel } from "./field-models.js";
 
 function syncFrequencyRangeControl(control) {
   const minInput = control?.querySelector('[data-oq-range-role="min"]');
@@ -176,7 +177,7 @@ function syncFrequencyRangeControl(control) {
 
       card.querySelectorAll('select[data-oq-field]').forEach((select) => {
         const fieldKey = String(select.dataset.oqField || key);
-        const value = String(getEntityValue(fieldKey) || "");
+        const { value } = getSettingsSelectModel(fieldKey);
         if (select.value !== value) {
           select.value = value;
         }
@@ -209,18 +210,11 @@ function syncFrequencyRangeControl(control) {
     stack.querySelectorAll('[data-select-key]').forEach((button) => {
       const key = String(button.dataset.selectKey || "");
       const option = String(button.dataset.selectOption || "");
-      const currentValue = String(getEntityValue(key) || "");
-      const active = option === currentValue;
+      const { active, busy } = getSettingsChoiceModel(key, option);
       button.classList.toggle("is-active", active);
       button.setAttribute("aria-pressed", active ? "true" : "false");
-      if (key === "strategy") {
-        button.disabled = state.loadingEntities || state.busyAction === "save-strategy" || state.busyAction === "save-heatingEnableSource";
-      } else if (key === "hpGeneration") {
-        button.disabled = state.loadingEntities || state.busyAction === "save-hpGeneration";
-      } else if (key === "curveControlProfile") {
-        button.disabled = state.loadingEntities || state.busyAction === "save-curveControlProfile";
-      } else if (key === "phResponseProfile") {
-        button.disabled = state.loadingEntities || state.busyAction === "save-phResponseProfile";
+      if (["strategy", "hpGeneration", "curveControlProfile", "phResponseProfile"].includes(key)) {
+        button.disabled = busy;
       }
 
       const shell = button.closest(".oq-settings-choice-card-shell");
@@ -245,24 +239,22 @@ function syncFrequencyRangeControl(control) {
 
     stack.querySelectorAll('[data-oq-action="toggle-overview-control"][data-control-key]').forEach((button) => {
       const key = String(button.dataset.controlKey || "");
-      const current = Boolean(getEntityValue(key));
       const onLabel = String(button.dataset.onLabel || "Aan");
       const offLabel = String(button.dataset.offLabel || "Uit");
       const title = String(button.dataset.switchTitle || key);
-      const stateLabel = current ? onLabel : offLabel;
-      button.dataset.controlState = current ? "off" : "on";
-      button.classList.toggle("is-on", current);
-      button.setAttribute("aria-checked", current ? "true" : "false");
-      button.setAttribute("aria-label", `${title}: ${stateLabel}`);
-      button.disabled = state.loadingEntities || state.busyAction === `switch-${key}`;
+      const model = getSettingsSwitchModel(key, { title, onLabel, offLabel });
+      button.dataset.controlState = model.nextState;
+      button.classList.toggle("is-on", model.enabled);
+      button.setAttribute("aria-checked", model.enabled ? "true" : "false");
+      button.setAttribute("aria-label", model.ariaLabel);
+      button.disabled = model.busy;
     });
 
     stack.querySelectorAll("[data-oq-switch-pill]").forEach((pill) => {
       const key = String(pill.dataset.oqSwitchPill || "");
-      const enabled = Boolean(getEntityValue(key));
       const onLabel = String(pill.dataset.onLabel || "Aan");
       const offLabel = String(pill.dataset.offLabel || "Uit");
-      const label = enabled ? onLabel : offLabel;
+      const { enabled, label } = getSettingsSwitchModel(key, { onLabel, offLabel });
       pill.classList.toggle("is-on", enabled);
       if (pill.textContent !== label) {
         pill.textContent = label;

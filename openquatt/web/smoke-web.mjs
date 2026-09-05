@@ -541,15 +541,13 @@ async function checkProductionInterfaceCssContracts() {
     [".oq-helper-hub-toggle {", "interface panel toggle"],
     [".oq-helper-status-grid {", "interface status grid"],
     ["esp-app.oq-native-app {", "ESPHome fallback surface"],
+    [".oq-stat {", "shared stat card"],
+    [".oq-stat-label {", "shared stat label"],
+    [".oq-stat-value {", "shared stat value"],
+    [".oq-stat-note {", "shared stat note"],
+    [".oq-stat--status .oq-stat-value {", "wrapping status value"],
   ]) {
     assertContains(productionCss, needle, `Production CSS: ${label}`);
-  }
-  for (const tone of ["blue", "orange", "green", "sky"]) {
-    assertContains(
-      productionCss,
-      `.oq-overview-stat--${tone} p {`,
-      `Production CSS: overview ${tone} stat tone`,
-    );
   }
 }
 
