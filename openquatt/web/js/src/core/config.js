@@ -76,7 +76,6 @@
     usageTelemetryInstallationId: { domain: "text_sensor", name: "Usage statistics installation ID", optional: true },
     hpGeneration: { domain: "select", name: "Quatt Hybrid version" },
     electricalCurrentLimit: { domain: "number", name: "Electrical current limit", optional: true },
-    electricalCurrentLimitReset: { domain: "button", name: "Reset electrical current limit", optional: true },
     strategy: { domain: "select", name: "Heating Control Mode" },
     openquattEnabled: { domain: "switch", name: "OpenQuatt Enabled", optional: true },
     auxHeatSourcePresent: { domain: "switch", name: "Auxiliary heat source connected", optional: true },

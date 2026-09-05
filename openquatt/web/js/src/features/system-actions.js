@@ -116,19 +116,9 @@ const systemActionHandlers = {
     if (state.systemModal === "electrical-limit-confirm") {
       state.systemModal = "";
     }
-    if (!hasEntity("electricalCurrentLimitReset")) {
-      // Oude firmware zonder reset-button: hooguit expliciet op de standaard zetten.
-      const { getElectricalLimitTopologyInfo } = await import("../settings/electrical-limit.js");
-      const info = getElectricalLimitTopologyInfo();
-      return commitNumber("electricalCurrentLimit", info.standardA, "Elektrische ingangsgrens teruggezet op de standaardwaarde.");
-    }
-    // Reset via firmware: clears the stored override back to NAN so the
-    // limit automatically follows the generation-dependent standard again.
-    return triggerNamedButton("electricalCurrentLimitReset", {
-      successNotice: "Elektrische ingangsgrens teruggezet op automatisch (standaardwaarde).",
-      errorPrefix: "Elektrische ingangsgrens resetten mislukt",
-      refreshKeys: ["electricalCurrentLimit"],
-    });
+    const { getElectricalLimitTopologyInfo } = await import("../settings/electrical-limit.js");
+    const info = getElectricalLimitTopologyInfo();
+    return commitNumber("electricalCurrentLimit", info.standardA, "Elektrische ingangsgrens teruggezet op de standaardwaarde.");
   },
   "open-silent-settings-modal": () => {
     state.systemModal = "silent-settings";
