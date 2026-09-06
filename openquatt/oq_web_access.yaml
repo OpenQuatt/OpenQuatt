@@ -39,6 +39,8 @@ openquatt_decision_log:
 
 openquatt_incident_manager:
   id: oq_incident_manager
+  minimum_off_time: ${oq_hp_min_off_s}s
+  polling_paused: oq_runtime_polling_paused
   clock: oq_time
   control_mode_code: oq_control_mode_code
   decision_log: oq_decision_log

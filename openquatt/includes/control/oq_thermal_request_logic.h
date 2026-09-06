@@ -70,6 +70,8 @@ struct ManualRequestInput {
   bool stop_requested;
   bool safety_stop;
   bool startup_inhibit;
+  bool hp1_startup_inhibit{false};
+  bool hp2_startup_inhibit{false};
 };
 
 struct ManualRequest {
@@ -238,31 +240,40 @@ inline int hold_request_mode_code(int hold1, int hold2, bool hp1_cooling_hold, b
 }
 
 inline ManualRequest arbitrate_manual_request(const ManualRequestInput& input) {
-  const int hp1_mode = clamp_level(input.hp1_mode_code, 0, 2);
-  const int hp2_mode = input.duo ? clamp_level(input.hp2_mode_code, 0, 2) : 0;
-  int hp1_level = hp1_mode > 0 ? clamp_level(input.hp1_requested_level, 0, std::max(0, input.hp1_max_level)) : 0;
-  int hp2_level = hp2_mode > 0 ? clamp_level(input.hp2_requested_level, 0, std::max(0, input.hp2_max_level)) : 0;
+  const int hp1_requested_mode = clamp_level(input.hp1_mode_code, 0, 2);
+  const int hp2_requested_mode = input.duo ? clamp_level(input.hp2_mode_code, 0, 2) : 0;
+  const int hp1_requested_level =
+      hp1_requested_mode > 0 ? clamp_level(input.hp1_requested_level, 0, std::max(0, input.hp1_max_level)) : 0;
+  const int hp2_requested_level =
+      hp2_requested_mode > 0 ? clamp_level(input.hp2_requested_level, 0, std::max(0, input.hp2_max_level)) : 0;
+  const int hp1_mode = input.hp1_startup_inhibit ? 0 : hp1_requested_mode;
+  const int hp2_mode = input.hp2_startup_inhibit ? 0 : hp2_requested_mode;
+  int hp1_level = input.hp1_startup_inhibit ? 0 : hp1_requested_level;
+  int hp2_level = input.hp2_startup_inhibit ? 0 : hp2_requested_level;
+  const int hp1_hold_level = input.hp1_startup_inhibit ? 0 : input.hp1_hold_level;
+  const int hp2_hold_level = input.hp2_startup_inhibit ? 0 : input.hp2_hold_level;
   const bool conflict = hp1_mode > 0 && hp2_mode > 0 && hp1_mode != hp2_mode;
-  const int desired_hp1 = (!input.stop_requested && !input.safety_stop && !conflict) ? hp1_level : 0;
-  const int desired_hp2 = (!input.stop_requested && !input.safety_stop && !conflict) ? hp2_level : 0;
+  const int desired_hp1 = (!input.stop_requested && !input.safety_stop && !conflict) ? hp1_requested_level : 0;
+  const int desired_hp2 = (!input.stop_requested && !input.safety_stop && !conflict) ? hp2_requested_level : 0;
 
   if (input.stop_requested) {
-    hp1_level = input.hp1_hold_level;
-    hp2_level = input.duo ? input.hp2_hold_level : 0;
+    hp1_level = hp1_hold_level;
+    hp2_level = input.duo ? hp2_hold_level : 0;
   }
   if (input.safety_stop || input.startup_inhibit || conflict) {
     hp1_level = 0;
     hp2_level = 0;
   } else if (!input.stop_requested) {
-    if (hp1_level == 0) hp1_level = input.hp1_hold_level;
-    if (input.duo && hp2_level == 0) hp2_level = input.hp2_hold_level;
+    if (hp1_level == 0) hp1_level = hp1_hold_level;
+    if (input.duo && hp2_level == 0) hp2_level = hp2_hold_level;
   }
 
   int mode_code = 0;
   if (hp1_level > 0 && hp1_mode > 0) mode_code = hp1_mode;
   if (hp2_level > 0 && hp2_mode > 0) mode_code = hp2_mode;
   if (mode_code == 0 && (hp1_level > 0 || hp2_level > 0)) {
-    mode_code = hold_request_mode_code(hp1_level, hp2_level, input.hp1_cooling_hold, input.hp2_cooling_hold);
+    mode_code = hold_request_mode_code(hp1_level, hp2_level, input.hp1_cooling_hold && !input.hp1_startup_inhibit,
+                                       input.hp2_cooling_hold && !input.hp2_startup_inhibit);
   }
   const ManualReason reason = input.safety_stop       ? MANUAL_SAFETY_STOP
                               : input.startup_inhibit ? MANUAL_STARTUP_INHIBIT
