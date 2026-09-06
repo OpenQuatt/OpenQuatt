@@ -24,8 +24,6 @@ struct QualityConfig {
   float max_abs_room_trend_k_per_h = 0.05f;
   float max_room_range_c = 0.30f;
   float max_abs_water_endpoint_delta_c = 1.0f;
-  float max_heat_uncertainty_w = 400.0f;
-  float max_heat_uncertainty_fraction = 0.20f;
 };
 
 inline bool valid_quality_config(const QualityConfig& config) {
@@ -44,10 +42,7 @@ inline bool valid_quality_config(const QualityConfig& config) {
          config.max_abs_room_trend_k_per_h >= 0.0f && config.max_abs_room_trend_k_per_h <= 2.0f &&
          isfinite(config.max_room_range_c) && config.max_room_range_c >= 0.0f && config.max_room_range_c <= 5.0f &&
          isfinite(config.max_abs_water_endpoint_delta_c) && config.max_abs_water_endpoint_delta_c >= 0.0f &&
-         config.max_abs_water_endpoint_delta_c <= 20.0f && isfinite(config.max_heat_uncertainty_w) &&
-         config.max_heat_uncertainty_w >= 0.0f && config.max_heat_uncertainty_w <= config.max_abs_heat_w &&
-         isfinite(config.max_heat_uncertainty_fraction) && config.max_heat_uncertainty_fraction >= 0.0f &&
-         config.max_heat_uncertainty_fraction <= 1.0f;
+         config.max_abs_water_endpoint_delta_c <= 20.0f;
 }
 
 inline LearningStatus validate_snapshot(const LearningSnapshot& snapshot, const QualityConfig& config) {
@@ -56,13 +51,11 @@ inline LearningStatus validate_snapshot(const LearningSnapshot& snapshot, const 
       snapshot.invalid_reasons != INVALID_NONE)
     return LearningStatus::INVALID_MEASUREMENT;
   if (!isfinite(snapshot.room_c) || !isfinite(snapshot.setpoint_c) || !isfinite(snapshot.outside_c) ||
-      !isfinite(snapshot.heat_to_water_w) || !isfinite(snapshot.heat_uncertainty_w) ||
-      !isfinite(snapshot.mean_water_c) || snapshot.room_c < config.room_min_c || snapshot.room_c > config.room_max_c ||
-      snapshot.setpoint_c < config.setpoint_min_c || snapshot.setpoint_c > config.setpoint_max_c ||
-      snapshot.outside_c < config.outside_min_c || snapshot.outside_c > config.outside_max_c ||
-      snapshot.mean_water_c < config.water_min_c || snapshot.mean_water_c > config.water_max_c ||
-      fabsf(snapshot.heat_to_water_w) > config.max_abs_heat_w || snapshot.heat_uncertainty_w < 0.0f ||
-      snapshot.heat_uncertainty_w > config.max_abs_heat_w)
+      !isfinite(snapshot.heat_to_water_w) || !isfinite(snapshot.mean_water_c) || snapshot.room_c < config.room_min_c ||
+      snapshot.room_c > config.room_max_c || snapshot.setpoint_c < config.setpoint_min_c ||
+      snapshot.setpoint_c > config.setpoint_max_c || snapshot.outside_c < config.outside_min_c ||
+      snapshot.outside_c > config.outside_max_c || snapshot.mean_water_c < config.water_min_c ||
+      snapshot.mean_water_c > config.water_max_c || fabsf(snapshot.heat_to_water_w) > config.max_abs_heat_w)
     return LearningStatus::INVALID_MEASUREMENT;
   return LearningStatus::OK;
 }
@@ -70,9 +63,9 @@ inline LearningStatus validate_snapshot(const LearningSnapshot& snapshot, const 
 inline LearningStatus evaluate_segment_quality(const SegmentRecord& record, const QualityConfig& config) {
   if (!valid_quality_config(config)) return LearningStatus::INVALID_CONFIGURATION;
   if (record.duration_s == 0 || !isfinite(record.mean_room_c) || !isfinite(record.mean_setpoint_c) ||
-      !isfinite(record.mean_outside_c) || !isfinite(record.mean_heat_w) || !isfinite(record.mean_heat_uncertainty_w) ||
-      !isfinite(record.room_trend_k_per_h) || !isfinite(record.room_range_k) || !isfinite(record.setpoint_range_c) ||
-      !isfinite(record.water_start_c) || !isfinite(record.water_end_c))
+      !isfinite(record.mean_outside_c) || !isfinite(record.mean_heat_w) || !isfinite(record.room_trend_k_per_h) ||
+      !isfinite(record.room_range_k) || !isfinite(record.setpoint_range_c) || !isfinite(record.water_start_c) ||
+      !isfinite(record.water_end_c))
     return LearningStatus::INVALID_MEASUREMENT;
   if (!(record.mean_heat_w > 0.0f)) return LearningStatus::NONPOSITIVE_HEAT;
   if (record.setpoint_range_c > config.max_setpoint_range_c) return LearningStatus::SETPOINT_CHANGED;
@@ -81,9 +74,6 @@ inline LearningStatus evaluate_segment_quality(const SegmentRecord& record, cons
     return LearningStatus::ROOM_UNSTABLE;
   if (fabsf(record.water_end_c - record.water_start_c) > config.max_abs_water_endpoint_delta_c)
     return LearningStatus::WATER_STORAGE_UNSTABLE;
-  const float relative_limit = config.max_heat_uncertainty_fraction * record.mean_heat_w;
-  if (record.mean_heat_uncertainty_w > config.max_heat_uncertainty_w || record.mean_heat_uncertainty_w > relative_limit)
-    return LearningStatus::MEASUREMENT_UNCERTAIN;
   return LearningStatus::OK;
 }
 
@@ -107,13 +97,11 @@ inline LearningStatus validate_segment_record(const SegmentRecord& record, const
       record.mean_setpoint_c < config.setpoint_min_c || record.mean_setpoint_c > config.setpoint_max_c ||
       !isfinite(record.mean_outside_c) || record.mean_outside_c < config.outside_min_c ||
       record.mean_outside_c > config.outside_max_c || !isfinite(record.mean_heat_w) ||
-      fabsf(record.mean_heat_w) > config.max_abs_heat_w || !isfinite(record.mean_heat_uncertainty_w) ||
-      record.mean_heat_uncertainty_w < 0.0f || record.mean_heat_uncertainty_w > config.max_abs_heat_w ||
-      !isfinite(record.room_trend_k_per_h) || !isfinite(record.room_range_k) || record.room_range_k < 0.0f ||
-      !isfinite(record.setpoint_range_c) || record.setpoint_range_c < 0.0f || !isfinite(record.water_start_c) ||
-      record.water_start_c < config.water_min_c || record.water_start_c > config.water_max_c ||
-      !isfinite(record.water_end_c) || record.water_end_c < config.water_min_c ||
-      record.water_end_c > config.water_max_c)
+      fabsf(record.mean_heat_w) > config.max_abs_heat_w || !isfinite(record.room_trend_k_per_h) ||
+      !isfinite(record.room_range_k) || record.room_range_k < 0.0f || !isfinite(record.setpoint_range_c) ||
+      record.setpoint_range_c < 0.0f || !isfinite(record.water_start_c) || record.water_start_c < config.water_min_c ||
+      record.water_start_c > config.water_max_c || !isfinite(record.water_end_c) ||
+      record.water_end_c < config.water_min_c || record.water_end_c > config.water_max_c)
     return LearningStatus::INVALID_MEASUREMENT;
   return evaluate_segment_quality(record, config);
 }

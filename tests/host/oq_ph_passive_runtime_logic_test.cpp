@@ -25,7 +25,6 @@ LearningSnapshot snapshot(uint64_t monotonic_ms, uint32_t epoch_s) {
   value.setpoint_c = 20.0f;
   value.outside_c = 5.0f;
   value.heat_to_water_w = 2200.0f;
-  value.heat_uncertainty_w = 50.0f;
   value.mean_water_c = 30.0f;
   return value;
 }
@@ -78,7 +77,6 @@ void test_pause_revokes_ready_state_without_discarding_records() {
   state.records[0].mean_setpoint_c = 20.0f;
   state.records[0].mean_outside_c = 5.0f;
   state.records[0].mean_heat_w = 2200.0f;
-  state.records[0].mean_heat_uncertainty_w = 50.0f;
   state.records[0].room_trend_k_per_h = 0.0f;
   state.records[0].room_range_k = 0.0f;
   state.records[0].setpoint_range_c = 0.0f;
@@ -153,13 +151,12 @@ void test_evaluation_refresh_keeps_physical_evidence() {
   state.batch_result.advice_ready = true;
 
   auto refreshed_config = config();
-  refreshed_config.thermal_window.unmodeled_gain_bound_valid = true;
-  refreshed_config.thermal_window.unmodeled_gain_bound_w = 750.0f;
+  refreshed_config.thermal_model.max_residual_rms_k_per_h = 0.75f;
   refresh_passive_evaluation(state, refreshed_config);
 
   assert(state.record_count == 1);
   assert(state.thermal_state.accepted_samples == 12);
-  assert(state.config.thermal_window.unmodeled_gain_bound_w == 750.0f);
+  assert(state.config.thermal_model.max_residual_rms_k_per_h == 0.75f);
   assert(!state.batch_accumulator.active && !state.thermal_accumulator.active);
   assert(!state.fit_running && state.fit_pending && !state.fit_inputs_bound);
   assert(!state.batch_result.advice_ready);
@@ -219,19 +216,6 @@ void test_summary_never_exposes_readiness_without_live_valid_context() {
   assert(!summary.batch_advice_ready && !summary.thermal_model_ready && !summary.cross_validated_advice_ready);
 }
 
-void test_boot_reconfirmation_preserves_history_only_once() {
-  CalorimetryReconfirmationState lifecycle;
-  assert(!calorimetry_confirmation_invalidates(lifecycle, true));
-  assert(calorimetry_confirmation_invalidates(lifecycle, false));
-  assert(calorimetry_confirmation_invalidates(lifecycle, true));
-
-  CalorimetryReconfirmationState rebooted;
-  assert(!calorimetry_confirmation_invalidates(rebooted, true));
-  CalorimetryReconfirmationState revoked_before_confirmation;
-  assert(calorimetry_confirmation_invalidates(revoked_before_confirmation, false));
-  assert(calorimetry_confirmation_invalidates(revoked_before_confirmation, true));
-}
-
 }  // namespace
 
 int main() {
@@ -244,5 +228,4 @@ int main() {
   test_active_or_reference_change_revokes_bound_fit_result();
   test_missing_utc_pauses_without_blocking_owner();
   test_summary_never_exposes_readiness_without_live_valid_context();
-  test_boot_reconfirmation_preserves_history_only_once();
 }

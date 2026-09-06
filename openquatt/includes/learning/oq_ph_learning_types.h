@@ -38,7 +38,6 @@ enum class LearningStatus : uint8_t {
   SETPOINT_CHANGED,
   ROOM_UNSTABLE,
   WATER_STORAGE_UNSTABLE,
-  MEASUREMENT_UNCERTAIN,
   DATASET_FULL,
   STALE_DATA,
   INSUFFICIENT_SPREAD,
@@ -75,7 +74,6 @@ struct LearningSnapshot {
   float setpoint_c = NAN;
   float outside_c = NAN;
   float heat_to_water_w = NAN;  // Signed calorimetry; validity is separate.
-  float heat_uncertainty_w = NAN;
   float mean_water_c = NAN;
 };
 
@@ -88,7 +86,6 @@ struct SegmentRecord {
   float mean_setpoint_c = NAN;
   float mean_outside_c = NAN;
   float mean_heat_w = NAN;
-  float mean_heat_uncertainty_w = NAN;
   float room_trend_k_per_h = NAN;
   float room_range_k = NAN;
   float setpoint_range_c = NAN;
@@ -148,8 +145,6 @@ inline const char* learning_status_name(LearningStatus status) {
       return "room_unstable";
     case LearningStatus::WATER_STORAGE_UNSTABLE:
       return "water_storage_unstable";
-    case LearningStatus::MEASUREMENT_UNCERTAIN:
-      return "measurement_uncertain";
     case LearningStatus::DATASET_FULL:
       return "dataset_full";
     case LearningStatus::STALE_DATA:

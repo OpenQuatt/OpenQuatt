@@ -39,10 +39,6 @@ inline const char* snapshot_source_status_name(SnapshotSourceStatus status) {
       return "invalid_configuration";
     case SnapshotSourceStatus::INVALID_TOPOLOGY:
       return "invalid_topology";
-    case SnapshotSourceStatus::INVALID_CALORIMETRY_CONTRACT:
-      return "invalid_calorimetry_contract";
-    case SnapshotSourceStatus::INVALID_UNCERTAINTY:
-      return "invalid_uncertainty";
     case SnapshotSourceStatus::MISSING_REQUIRED_UNIT:
       return "missing_required_unit";
     case SnapshotSourceStatus::UNEXPECTED_UNIT:

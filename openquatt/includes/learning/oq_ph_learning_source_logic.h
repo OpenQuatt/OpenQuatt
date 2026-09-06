@@ -16,8 +16,10 @@ namespace oq_power_house::learning {
 constexpr float kWaterVolumetricHeatCapacityJPerLiterK = 4180.0f;
 constexpr uint32_t kAbsoluteMaxMeasurementAgeMs = 60U * 60U * 1000U;
 constexpr uint32_t kAbsoluteMaxMeasurementSkewMs = 60U * 60U * 1000U;
-constexpr float kAbsoluteMaxFlowLph = 20000.0f;
-constexpr float kAbsoluteMaxSeriesJunctionDeltaC = 20.0f;
+// Phase 1 uses one fixed water-side contract for the supported profiles. A
+// later apply phase must establish measurement uncertainty independently.
+constexpr float kPassiveMaximumFlowLph = 3000.0f;
+constexpr float kPassiveSeriesJunctionToleranceC = 1.0f;
 constexpr size_t kMaxSourceMeasurements = 19;
 constexpr size_t kSystemSourceMeasurements = 5;
 constexpr size_t kSourceMeasurementsPerHeatPump = 7;
@@ -97,13 +99,6 @@ enum class HydronicTopology : uint8_t {
   DUO_PARALLEL,
 };
 
-struct CalorimetryContract {
-  bool uncertainty_proven = false;
-  float heat_uncertainty_w = NAN;
-  float max_flow_lph = NAN;
-  float max_series_junction_delta_c = NAN;
-};
-
 struct HeatPumpRawMeasurements {
   bool present = false;
   PhysicalMeasurement<float> water_in_c;
@@ -141,7 +136,6 @@ struct LearningSourceInput {
   uint32_t epoch_s = 0;
   uint32_t context_revision = 0;
   HydronicTopology topology = HydronicTopology::UNKNOWN;
-  CalorimetryContract calorimetry;
   PhysicalMeasurement<float> room_c;
   PhysicalMeasurement<float> setpoint_c;
   PhysicalMeasurement<float> outside_c;
@@ -156,8 +150,6 @@ enum class SnapshotSourceStatus : uint8_t {
   OK = 0,
   INVALID_CONFIGURATION,
   INVALID_TOPOLOGY,
-  INVALID_CALORIMETRY_CONTRACT,
-  INVALID_UNCERTAINTY,
   MISSING_REQUIRED_UNIT,
   UNEXPECTED_UNIT,
   MISSING_MEASUREMENT,
@@ -364,8 +356,6 @@ inline uint32_t reasons_for_status(SnapshotSourceStatus status) {
       return INVALID_DEFROST_OR_OIL_RETURN;
     case SnapshotSourceStatus::BOILER_ACTIVE:
       return INVALID_BOILER_HEAT;
-    case SnapshotSourceStatus::INVALID_UNCERTAINTY:
-    case SnapshotSourceStatus::INVALID_CALORIMETRY_CONTRACT:
     case SnapshotSourceStatus::FLOW_OUT_OF_RANGE:
     case SnapshotSourceStatus::SERIES_JUNCTION_MISMATCH:
       return INVALID_SOURCE_UNCERTAIN;
@@ -418,21 +408,11 @@ inline CalorimetryResult evaluate_calorimetry(const LearningSourceInput& input, 
     result.status = status;
     return result;
   }
-  if (!input.calorimetry.uncertainty_proven || !isfinite(input.calorimetry.heat_uncertainty_w) ||
-      input.calorimetry.heat_uncertainty_w < 0.0f || input.calorimetry.heat_uncertainty_w > quality.max_abs_heat_w) {
-    result.status = SnapshotSourceStatus::INVALID_UNCERTAINTY;
-    return result;
-  }
-  if (!isfinite(input.calorimetry.max_flow_lph) || input.calorimetry.max_flow_lph <= 0.0f ||
-      input.calorimetry.max_flow_lph > kAbsoluteMaxFlowLph) {
-    result.status = SnapshotSourceStatus::INVALID_CALORIMETRY_CONTRACT;
-    return result;
-  }
   if (!isfinite(input.flow_lph.value) || input.flow_lph.value < 0.0f) {
     result.status = SnapshotSourceStatus::INVALID_VALUE;
     return result;
   }
-  if (input.flow_lph.value > input.calorimetry.max_flow_lph) {
+  if (input.flow_lph.value > kPassiveMaximumFlowLph) {
     result.status = SnapshotSourceStatus::FLOW_OUT_OF_RANGE;
     return result;
   }
@@ -457,14 +437,7 @@ inline CalorimetryResult evaluate_calorimetry(const LearningSourceInput& input, 
   double water_sum_c = static_cast<double>(input.hp1.water_in_c.value) + input.hp1.water_out_c.value;
   size_t water_count = 2;
   if (input.topology == HydronicTopology::DUO_SERIES) {
-    if (!isfinite(input.calorimetry.max_series_junction_delta_c) ||
-        input.calorimetry.max_series_junction_delta_c <= 0.0f ||
-        input.calorimetry.max_series_junction_delta_c > kAbsoluteMaxSeriesJunctionDeltaC) {
-      result.status = SnapshotSourceStatus::INVALID_CALORIMETRY_CONTRACT;
-      return result;
-    }
-    if (fabsf(input.hp1.water_out_c.value - input.hp2.water_in_c.value) >
-        input.calorimetry.max_series_junction_delta_c) {
+    if (fabsf(input.hp1.water_out_c.value - input.hp2.water_in_c.value) > kPassiveSeriesJunctionToleranceC) {
       result.status = SnapshotSourceStatus::SERIES_JUNCTION_MISMATCH;
       return result;
     }
@@ -585,7 +558,6 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
   result.snapshot.setpoint_c = input.setpoint_c.value;
   result.snapshot.outside_c = input.outside_c.value;
   result.snapshot.heat_to_water_w = calorimetry.heat_to_water_w;
-  result.snapshot.heat_uncertainty_w = input.calorimetry.heat_uncertainty_w;
   result.snapshot.mean_water_c = calorimetry.mean_water_c;
   return result;
 }

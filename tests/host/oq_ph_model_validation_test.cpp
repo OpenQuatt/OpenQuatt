@@ -18,7 +18,6 @@ static AdviceResult batch_fit(float room_trend = 0.0f) {
       record.mean_room_c = record.mean_setpoint_c = 20.0f;
       record.mean_outside_c = -5.0f + 2.0f * day;
       record.mean_heat_w = 200.0f * (20.0f - record.mean_outside_c);
-      record.mean_heat_uncertainty_w = 10.0f;
       record.room_trend_k_per_h = room_trend;
       record.room_range_k = fabsf(room_trend) * 4.0f;
       record.setpoint_range_c = 0.0f;
@@ -57,14 +56,11 @@ static ThermalModelState dynamic_fit(double heat_loss, const ThermalModelConfig&
     interval.context_revision = 1;
     interval.complete = interval.inputs_fresh = interval.generations_consistent = true;
     interval.operational_gates_passed = interval.hidden_heat_exclusion_valid = interval.hidden_heat_excluded = true;
-    interval.unmodeled_gain_bound_valid = true;
-    interval.unmodeled_gain_bound_w = 0.0;  // Exact synthetic house has no internal/solar source.
     interval.indoor_start_c = indoor;
     interval.indoor_end_c = end_indoor;
     interval.mean_indoor_c = equilibrium + (indoor - equilibrium) * (1.0 - decay) / (heat_loss / capacity * hours);
     interval.mean_outside_c = outside;
     interval.mean_heat_w = heat;
-    interval.heat_uncertainty_w = 10.0;
     assert(observe_thermal_interval(state, interval, config).accepted);
     indoor = end_indoor;
   }

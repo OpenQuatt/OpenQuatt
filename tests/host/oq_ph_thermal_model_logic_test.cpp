@@ -21,7 +21,6 @@ ThermalModelConfig test_config() {
   config.residual_ewma_alpha_per_hour = 0.15;
   config.max_residual_rms_k_per_h = 0.20;
   config.max_abs_residual_bias_k_per_h = 0.10;
-  config.max_unmodeled_gain_w = 100.0;
   return config;
 }
 
@@ -42,19 +41,15 @@ ThermalInterval exact_interval(uint64_t start_ms, double duration_h, double indo
   interval.operational_gates_passed = true;
   interval.hidden_heat_exclusion_valid = true;
   interval.hidden_heat_excluded = true;
-  interval.unmodeled_gain_bound_valid = true;
-  interval.unmodeled_gain_bound_w = 50.0;
   interval.indoor_start_c = indoor_start_c;
   interval.indoor_end_c = indoor_start_c + indoor_delta_c;
   interval.mean_indoor_c = indoor_start_c + 0.5 * indoor_delta_c;
   interval.mean_outside_c = outside_c;
   interval.mean_heat_w = heat_w;
-  interval.heat_uncertainty_w = 50.0;
   return interval;
 }
 
-ThermalModelEstimate train_synthetic(ThermalModelState& state, const ThermalModelConfig& config, uint32_t count,
-                                     bool provide_gain_bound = true) {
+ThermalModelEstimate train_synthetic(ThermalModelState& state, const ThermalModelConfig& config, uint32_t count) {
   assert(initialize_thermal_model(state, config));
   uint64_t time_ms = 1000;
   double indoor_c = 20.0;
@@ -67,10 +62,6 @@ ThermalModelEstimate train_synthetic(ThermalModelState& state, const ThermalMode
     const double equilibrium_heat_w = kTrueHeatLossWPerK * (indoor_c - outside_c);
     const double heat_w = fmax(0.0, equilibrium_heat_w + excitation_w[index % 7U]);
     auto interval = exact_interval(time_ms, duration_h, indoor_c, outside_c, heat_w);
-    if (!provide_gain_bound && index == 5U) {
-      interval.unmodeled_gain_bound_valid = false;
-      interval.unmodeled_gain_bound_w = NAN;
-    }
     result = observe_thermal_interval(state, interval, config);
     assert(result.accepted);
     indoor_c = interval.indoor_end_c;
@@ -197,16 +188,6 @@ void test_interval_bounds_and_hidden_heat() {
   nan_interval.mean_heat_w = NAN;
   result = observe_thermal_interval(state, nan_interval, config);
   assert(result.status == ThermalUpdateStatus::REJECTED_INVALID_INTERVAL && !result.accepted);
-}
-
-void test_gain_assumption_allows_diagnostics_but_never_ready() {
-  const auto config = test_config();
-  ThermalModelState state;
-  const auto estimate = train_synthetic(state, config, 240, false);
-  assert(estimate.parameters_valid);
-  assert(!estimate.ready);
-  assert((estimate.readiness_reasons & THERMAL_READY_UNMODELED_GAINS) != 0);
-  assert(!estimate.unmodeled_gain_bounds_known_and_acceptable);
 }
 
 void test_invalidation_revokes_readiness_without_erasing_history() {
@@ -454,7 +435,6 @@ int main() {
   test_stationary_rank_one_data_never_becomes_ready();
   test_missing_stale_and_context_changes_reset();
   test_interval_bounds_and_hidden_heat();
-  test_gain_assumption_allows_diagnostics_but_never_ready();
   test_invalidation_revokes_readiness_without_erasing_history();
   test_forgetting_factor_is_elapsed_time_based();
   test_readiness_evidence_is_duration_normalized();

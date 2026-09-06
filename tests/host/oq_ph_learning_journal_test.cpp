@@ -28,7 +28,6 @@ SegmentRecord record(uint32_t start_epoch_s, float outside_c) {
   value.mean_setpoint_c = 20.0f;
   value.mean_outside_c = outside_c;
   value.mean_heat_w = 200.0f * (16.0f - outside_c);
-  value.mean_heat_uncertainty_w = 50.0f;
   value.room_trend_k_per_h = 0.0f;
   value.room_range_k = 0.0f;
   value.setpoint_range_c = 0.0f;
@@ -62,7 +61,7 @@ PassiveRuntimeStorage populated(uint32_t now_epoch_s) {
 
 void test_round_trip_and_reboot_remap_never_restores_readiness() {
   static_assert(kLearningJournalHeaderBytes == 32U);
-  static_assert(kLearningJournalRecordBytes == 56U);
+  static_assert(kLearningJournalRecordBytes == 52U);
   constexpr uint32_t now_epoch = 20000U * 86400U + 12U * 3600U;
   auto original = populated(now_epoch);
   uint8_t bytes[kLearningJournalMaxBytes];

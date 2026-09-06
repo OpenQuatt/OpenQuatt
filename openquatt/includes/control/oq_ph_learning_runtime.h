@@ -54,7 +54,6 @@ struct RuntimeStorage {
   PassiveTickInput tick;
   PassiveRuntimeSummary summary;
   PassiveRuntimeConfig config;
-  CalorimetryReconfirmationState calorimetry_reconfirmation;
   oq_sources::ResolvedLearningSource sources[4];
   uint32_t source_revisions[4]{};
   uint8_t context[kMaxPassiveContextBytes]{};
@@ -263,10 +262,6 @@ class Runtime {
     watch_policy_select_(id(oq_heat_control_mode));
     watch_policy_select_(id(oq_cm_override));
     watch_policy_select_(id(oq_boiler_connection));
-    watch_measurement_number_(id(oq_ph_learning_heat_uncertainty));
-    watch_measurement_number_(id(oq_ph_learning_maximum_flow));
-    watch_measurement_number_(id(oq_ph_learning_junction_tolerance));
-    watch_policy_number_(id(oq_ph_learning_gain_bound));
     watch_policy_number_(id(house_cold_temp_c));
     watch_policy_number_(id(house_zero_power_temp_c));
     watch_policy_number_(id(house_rated_power_w));
@@ -281,9 +276,6 @@ class Runtime {
     watch_measurement_number_(id(hp2_water_in_temp_offset));
     watch_measurement_number_(id(hp2_water_out_temp_offset));
 #endif
-    id(oq_ph_learning_calorimetry_confirmed).add_on_state_callback([this](bool confirmed) {
-      this->calorimetry_confirmation_changed_(confirmed);
-    });
     id(cic_feed_url).add_on_state_callback([this](const std::string&) { this->measurement_context_changed(); });
     return true;
   }
@@ -291,16 +283,6 @@ class Runtime {
   static oq_power_house::HouseLine active_line_() {
     const float span = id(house_zero_power_temp_c).state - id(house_cold_temp_c).state;
     return {span > 0.0f ? id(house_rated_power_w).state / span : NAN, id(house_zero_power_temp_c).state};
-  }
-
-  void calorimetry_confirmation_changed_(bool confirmed) {
-    if (!storage_) return;
-    auto& state = storage_[0];
-    if (!calorimetry_confirmation_invalidates(state.calorimetry_reconfirmation, confirmed)) {
-      pause();
-      return;
-    }
-    measurement_context_changed();
   }
 
   void capture_(RuntimeStorage& state, uint64_t now_ms, uint32_t epoch) {
@@ -323,12 +305,6 @@ class Runtime {
                                       id(hp2_water_out_temp_offset).state, state.context_revision);
 #endif
     apply_compile_time_topology(in, OQ_TOPOLOGY_DUO);
-    auto& calorimetry = in.calorimetry;
-    calorimetry.heat_uncertainty_w = id(oq_ph_learning_heat_uncertainty).state;
-    calorimetry.uncertainty_proven =
-        id(oq_ph_learning_calorimetry_confirmed).state && calorimetry.heat_uncertainty_w > 0.0f;
-    calorimetry.max_flow_lph = id(oq_ph_learning_maximum_flow).state;
-    calorimetry.max_series_junction_delta_c = id(oq_ph_learning_junction_tolerance).state;
     const bool opentherm_selected = id(oq_boiler_connection).current_option() == "OpenTherm";
     const bool boiler_runtime_available = id(oq_boiler_connection).has_state() &&
                                           (opentherm_selected || id(oq_boiler_connection).current_option() == "R1") &&
@@ -394,9 +370,6 @@ class Runtime {
     op.comfort_acceptable = in.room_c.value >= in.setpoint_c.value - id(ph_comfort_band_below_c).state &&
                             in.room_c.value <= in.setpoint_c.value + id(ph_comfort_band_above_c).state;
     state.config.thermal_model.initial_heat_loss_w_per_k = active_line_().heat_loss_w_per_k;
-    const float gain = id(oq_ph_learning_gain_bound).state;
-    state.config.thermal_window.unmodeled_gain_bound_valid = isfinite(gain) && gain > 0;
-    state.config.thermal_window.unmodeled_gain_bound_w = gain > 0 ? gain : NAN;
   }
 
   void build_context_(RuntimeStorage& state) {
@@ -437,9 +410,6 @@ class Runtime {
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     str(id(oq_q_flow_source).current_option());
 #endif
-    f32(id(oq_ph_learning_heat_uncertainty).state);
-    f32(id(oq_ph_learning_maximum_flow).state);
-    f32(id(oq_ph_learning_junction_tolerance).state);
     f32(id(hp1_water_in_temp_offset).state);
     f32(id(hp1_water_out_temp_offset).state);
 #if OQ_TOPOLOGY_DUO
@@ -600,7 +570,6 @@ class Runtime {
         {THERMAL_READY_PARAMETER_BOUNDS, "parameter_bounds"},
         {THERMAL_READY_RESIDUAL_RMS, "residual_rms"},
         {THERMAL_READY_RESIDUAL_BIAS, "residual_bias"},
-        {THERMAL_READY_UNMODELED_GAINS, "unmodeled_gains"},
         {THERMAL_READY_INVALID_STATE, "invalid_state"},
         {THERMAL_READY_RECENT_DATA_INVALID, "recent_data_invalid"},
         {THERMAL_READY_STALE_MODEL, "stale_model"},
@@ -673,9 +642,7 @@ class Runtime {
         comma = true;
       }
     };
-    reason(!state.input.calorimetry.uncertainty_proven, "calorimetry_not_verified");
     reason(!state.input.boiler_heat.valid, "external_heat_not_excluded");
-    reason(!state.config.thermal_window.unmodeled_gain_bound_valid, "unmodeled_gain_bound_unknown");
     reason(!state.journal.available, "persistence_unavailable");
     if (summary.batch_advice_ready && summary.thermal_model_ready && !summary.cross_validated_advice_ready) {
       const auto validation_status = summary.validation.status;
@@ -722,8 +689,7 @@ class Runtime {
     for (size_t i = 0; i < state.learner.record_count; ++i) {
       const auto& r = state.learner.records[i];
       json.add("%s[%u,%u,", i ? "," : "", r.start_epoch_s, r.end_epoch_s);
-      const float values[]{r.mean_room_c, r.mean_setpoint_c,         r.mean_outside_c,
-                           r.mean_heat_w, r.mean_heat_uncertainty_w, r.room_trend_k_per_h};
+      const float values[]{r.mean_room_c, r.mean_setpoint_c, r.mean_outside_c, r.mean_heat_w, r.room_trend_k_per_h};
       for (float v : values) {
         json.number(v);
         json.add(",");

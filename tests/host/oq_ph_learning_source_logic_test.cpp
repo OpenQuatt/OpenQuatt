@@ -42,10 +42,6 @@ LearningSourceInput valid_input(HydronicTopology topology = HydronicTopology::SI
   input.epoch_s = kEpochS;
   input.context_revision = 17;
   input.topology = topology;
-  input.calorimetry.uncertainty_proven = true;
-  input.calorimetry.heat_uncertainty_w = 100.0f;
-  input.calorimetry.max_flow_lph = 2000.0f;
-  input.calorimetry.max_series_junction_delta_c = 0.5f;
   input.room_c = measurement(20.0f, 1);
   input.setpoint_c = measurement(20.0f, 2);
   input.outside_c = measurement(5.0f, 3, PhysicalUnit::HP1);
@@ -217,6 +213,11 @@ void test_off_periods_keep_signed_heat_and_allow_zero_flow() {
 }
 
 void test_invalid_values_contracts_and_unknowns_never_become_zero() {
+  auto fixed_limits = valid_input(HydronicTopology::DUO_SERIES);
+  fixed_limits.flow_lph.value = kPassiveMaximumFlowLph;
+  fixed_limits.hp2.water_in_c.value = fixed_limits.hp1.water_out_c.value + kPassiveSeriesJunctionToleranceC;
+  assert(build(fixed_limits).measurement_valid);
+
   auto nan_value = valid_input();
   nan_value.hp1.water_out_c.value = NAN;
   assert_failed(build(nan_value), SnapshotSourceStatus::INVALID_VALUE);
@@ -226,16 +227,8 @@ void test_invalid_values_contracts_and_unknowns_never_become_zero() {
   cancelling_extremes.hp1.water_out_c.value = 1000.0f;
   assert_failed(build(cancelling_extremes), SnapshotSourceStatus::INVALID_VALUE);
 
-  auto uncertain = valid_input();
-  uncertain.calorimetry.uncertainty_proven = false;
-  assert_failed(build(uncertain), SnapshotSourceStatus::INVALID_UNCERTAINTY);
-
-  auto invalid_max_flow = valid_input();
-  invalid_max_flow.calorimetry.max_flow_lph = kAbsoluteMaxFlowLph + 1.0f;
-  assert_failed(build(invalid_max_flow), SnapshotSourceStatus::INVALID_CALORIMETRY_CONTRACT);
-
   auto excessive_flow = valid_input();
-  excessive_flow.flow_lph.value = excessive_flow.calorimetry.max_flow_lph + 1.0f;
+  excessive_flow.flow_lph.value = kPassiveMaximumFlowLph + 1.0f;
   assert_failed(build(excessive_flow), SnapshotSourceStatus::FLOW_OUT_OF_RANGE);
 
   auto broken_series_junction = valid_input(HydronicTopology::DUO_SERIES);

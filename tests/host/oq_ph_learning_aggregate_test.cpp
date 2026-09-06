@@ -15,7 +15,6 @@ LearningSnapshot snapshot(uint64_t monotonic_ms, uint32_t epoch_s, float heat_w)
   value.setpoint_c = 20.0f;
   value.outside_c = 5.0f;
   value.heat_to_water_w = heat_w;
-  value.heat_uncertainty_w = 40.0f;
   value.mean_water_c = 30.0f;
   return value;
 }
@@ -30,7 +29,6 @@ SegmentRecord record(uint32_t end_epoch_s, float heat_w = 1000.0f) {
   value.mean_setpoint_c = 20.0f;
   value.mean_outside_c = 5.0f;
   value.mean_heat_w = heat_w;
-  value.mean_heat_uncertainty_w = 40.0f;
   value.room_trend_k_per_h = 0.0f;
   value.room_range_k = 0.0f;
   value.setpoint_range_c = 0.0f;

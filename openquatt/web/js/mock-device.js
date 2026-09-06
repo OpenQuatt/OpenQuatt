@@ -338,11 +338,6 @@
     const definitions = [
       ["switch", "Power House Passive Learning"],
       ["button", "Power House Learning Reset"],
-      ["switch", "Power House Learning Calorimetry Confirmed"],
-      ["number", "Power House Learning Heat Uncertainty"],
-      ["number", "Power House Learning Maximum Flow"],
-      ["number", "Power House Learning Junction Tolerance"],
-      ["number", "Power House Learning Gain Bound"],
     ];
     if (!hasHouseLearningCapability()) {
       definitions.forEach(([domain, name]) => entities.delete(entityKey(domain, name)));
@@ -352,20 +347,6 @@
     const learningEnabled = getEntity("switch", "Power House Passive Learning");
     setEntity("switch", "Power House Passive Learning", learningEnabled || { state: false, value: false });
     setEntity("button", "Power House Learning Reset", {});
-    const calorimetryConfirmed = getEntity("switch", "Power House Learning Calorimetry Confirmed");
-    setEntity("switch", "Power House Learning Calorimetry Confirmed", calorimetryConfirmed || { state: false, value: false });
-    setEntity("number", "Power House Learning Heat Uncertainty", {
-      state: 0, value: 0, min_value: 0, max_value: 2000, step: 10, uom: "W",
-    });
-    setEntity("number", "Power House Learning Maximum Flow", {
-      state: 3000, value: 3000, min_value: 100, max_value: 10000, step: 100, uom: "L/h",
-    });
-    setEntity("number", "Power House Learning Junction Tolerance", {
-      state: 1, value: 1, min_value: 0.1, max_value: 5, step: 0.1, uom: "°C",
-    });
-    setEntity("number", "Power House Learning Gain Bound", {
-      state: 0, value: 0, min_value: 0, max_value: 1000, step: 10, uom: "W",
-    });
   }
 
   function seedEntityDefinitions() {
@@ -5554,13 +5535,10 @@
 
   function getHouseLearningStatusPayload() {
     const enabled = isSwitchEnabled("Power House Passive Learning");
-    const confirmed = isSwitchEnabled("Power House Learning Calorimetry Confirmed");
     const controlMode = String(getEntity("text_sensor", "Control Mode (Label)")?.value || "");
-    const uncertainty = Number(getEntity("number", "Power House Learning Heat Uncertainty")?.value || 0);
     const invalidReasons = [];
     if (!controlMode.startsWith("CM2")) invalidReasons.push("control_mode");
     if (state.boiler !== "off") invalidReasons.push("boiler_heat");
-    if (!confirmed || !(uncertainty > 0)) invalidReasons.push("calorimetry_not_verified");
     const ready = invalidReasons.length === 0 && state.houseLearning.records >= 24;
     return {
       schema: 1,

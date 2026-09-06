@@ -15,8 +15,8 @@ namespace learning = oq_power_house::learning;
 
 static const char* kHeader =
     "monotonic_ms,epoch_s,source_generation,physical_context_generation,control_generation,invalid_reasons,room_c,"
-    "setpoint_c,outside_c,heat_to_water_w,heat_uncertainty_w,mean_water_c";
-static const size_t kFields = 12;
+    "setpoint_c,outside_c,heat_to_water_w,mean_water_c";
+static const size_t kFields = 11;
 
 struct Counters {
   unsigned long long rows = 0;
@@ -84,7 +84,7 @@ static bool parse_snapshot(char* line, learning::LearningSnapshot& snapshot) {
       !parse_u32(fields[4], control_generation) || !parse_u32(fields[5], invalid_reasons) ||
       !parse_float(fields[6], snapshot.room_c) || !parse_float(fields[7], snapshot.setpoint_c) ||
       !parse_float(fields[8], snapshot.outside_c) || !parse_float(fields[9], snapshot.heat_to_water_w) ||
-      !parse_float(fields[10], snapshot.heat_uncertainty_w) || !parse_float(fields[11], snapshot.mean_water_c))
+      !parse_float(fields[10], snapshot.mean_water_c))
     return false;
   snapshot.monotonic_ms = monotonic_ms;
   snapshot.epoch_s = epoch_s;
@@ -142,7 +142,6 @@ int main(int argc, char** argv) {
   float active_t0 = NAN;
   float reference_room_c = NAN;
   float reference_setpoint_c = NAN;
-  float unmodeled_gain_bound_w = NAN;
   uint32_t now_epoch_s = static_cast<uint32_t>(time(nullptr));
   for (int index = 1; index < argc; ++index) {
     if (strcmp(argv[index], "--active-h") == 0 && index + 1 < argc) {
@@ -156,10 +155,6 @@ int main(int argc, char** argv) {
       if (!parse_option_float(argv[++index], reference_setpoint_c) || reference_setpoint_c < 5.0f ||
           reference_setpoint_c > 35.0f)
         return fprintf(stderr, "invalid --reference-setpoint-c\n"), 2;
-    } else if (strcmp(argv[index], "--rls-max-unmodeled-gain-w") == 0 && index + 1 < argc) {
-      if (!parse_option_float(argv[++index], unmodeled_gain_bound_w) || unmodeled_gain_bound_w < 0.0f ||
-          unmodeled_gain_bound_w > 50000.0f)
-        return fprintf(stderr, "invalid --rls-max-unmodeled-gain-w\n"), 2;
     } else if (strcmp(argv[index], "--now-epoch") == 0 && index + 1 < argc) {
       if (!parse_u32(argv[++index], now_epoch_s) || now_epoch_s == 0)
         return fprintf(stderr, "invalid --now-epoch\n"), 2;
@@ -189,8 +184,6 @@ int main(int argc, char** argv) {
   }
 
   learning::PassiveRuntimeConfig config;
-  config.thermal_window.unmodeled_gain_bound_valid = isfinite(unmodeled_gain_bound_w);
-  config.thermal_window.unmodeled_gain_bound_w = unmodeled_gain_bound_w;
   if (active_h >= config.thermal_model.min_heat_loss_w_per_k && active_h <= config.thermal_model.max_heat_loss_w_per_k)
     config.thermal_model.initial_heat_loss_w_per_k = active_h;
   learning::PassiveRuntimeStorage learner;
@@ -311,8 +304,6 @@ int main(int argc, char** argv) {
   print_float(result.holdout_candidate_signed_bias_w);
   printf(",\"holdout_active_signed_bias_w\":");
   print_float(result.holdout_active_signed_bias_w);
-  printf(",\"holdout_mean_uncertainty_w\":");
-  print_float(result.holdout_mean_uncertainty_w);
   printf(",\"holdout_candidate_signed_bias_by_temp_w\":[");
   for (size_t index = 0; index < 3; ++index) {
     if (index != 0) printf(",");
@@ -350,8 +341,6 @@ int main(int argc, char** argv) {
   print_float(validation.max_estimated_storage_power_w);
   printf(",\"max_estimated_storage_fraction\":");
   print_float(validation.max_estimated_storage_fraction);
-  printf(",\"rls_unmodeled_gain_bound_w\":");
-  print_float(unmodeled_gain_bound_w);
   printf(",\"model_difference_fraction\":");
   print_float(validation.heat_loss_difference_fraction);
   printf("}\n");

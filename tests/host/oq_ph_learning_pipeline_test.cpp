@@ -38,10 +38,6 @@ LearningSourceInput observation(uint64_t now_ms, uint32_t epoch_s, float outside
   input.epoch_s = epoch_s;
   input.context_revision = 1;
   input.topology = HydronicTopology::DUO_SERIES;
-  input.calorimetry.uncertainty_proven = true;
-  input.calorimetry.heat_uncertainty_w = 50.0f;
-  input.calorimetry.max_flow_lph = 3000.0f;
-  input.calorimetry.max_series_junction_delta_c = 1.0f;
   input.room_c = measured(20.0f, 1, PhysicalUnit::SYSTEM, now_ms);
   input.setpoint_c = measured(20.0f, 2, PhysicalUnit::SYSTEM, now_ms);
   input.outside_c = measured(outside_c, 2110, PhysicalUnit::HP1, now_ms);

@@ -13,8 +13,8 @@ using namespace oq_ph_learning;
 void add_record(JsonWriter& json, bool comma) {
   static constexpr char kFloat[] = "-3.40282e+38";
   static constexpr char kUint[] = "4294967295";
-  json.add("%s[%s,%s,%s,%s,%s,%s,%s,%s,%s]", comma ? "," : "", kUint, kUint, kFloat, kFloat, kFloat, kFloat, kFloat,
-           kFloat, kUint);
+  json.add("%s[%s,%s,%s,%s,%s,%s,%s,%s]", comma ? "," : "", kUint, kUint, kFloat, kFloat, kFloat, kFloat, kFloat,
+           kUint);
 }
 
 void add_diagnostic(JsonWriter& json, bool comma) {

@@ -52,10 +52,6 @@ LearningSourceInput diagnostic_input(HydronicTopology topology = HydronicTopolog
   LearningSourceInput input;
   input.monotonic_ms = kNowMs;
   input.topology = topology;
-  input.calorimetry.uncertainty_proven = true;
-  input.calorimetry.heat_uncertainty_w = 100.0f;
-  input.calorimetry.max_flow_lph = 2000.0f;
-  input.calorimetry.max_series_junction_delta_c = 0.5f;
   input.flow_lph = physical_measurement(1000.0f, 2138U, PhysicalUnit::HP1);
   input.hp1.present = true;
   input.hp1.water_in_c = physical_measurement(30.0f, 2133U, PhysicalUnit::HP1);
@@ -325,7 +321,7 @@ void test_diagnostic_heat_preserves_signed_physical_heat_outside_training_gates(
   assert(fabsf(duo.heat_to_water_w - 5805.5557f) < 0.01f);
 }
 
-void test_diagnostic_heat_rejects_unproved_or_incoherent_inputs() {
+void test_diagnostic_heat_rejects_incoherent_inputs() {
   QualityConfig quality;
   auto input = diagnostic_input();
   input.flow_lph.received_monotonic_ms = kNowMs - kHpLearningTiming.max_age_ms - 1U;
@@ -344,7 +340,7 @@ void test_diagnostic_heat_rejects_unproved_or_incoherent_inputs() {
   assert(!evaluate_calorimetry(input, quality).valid);
 
   input = diagnostic_input();
-  input.calorimetry.heat_uncertainty_w = NAN;
+  input.flow_lph.value = kPassiveMaximumFlowLph + 1.0f;
   assert(!evaluate_calorimetry(input, quality).valid);
 
   input = diagnostic_input();
@@ -377,6 +373,6 @@ int main() {
   test_diagnostic_capture_requires_opt_in_and_breaks_pause_continuity();
   test_cm2_contract_requires_current_withdrawn_boiler_command();
   test_diagnostic_heat_preserves_signed_physical_heat_outside_training_gates();
-  test_diagnostic_heat_rejects_unproved_or_incoherent_inputs();
+  test_diagnostic_heat_rejects_incoherent_inputs();
   return 0;
 }

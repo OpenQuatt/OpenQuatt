@@ -198,8 +198,9 @@ De leerfunctie controleert zelf CM2 en de bestaande ketelaansturing; er is geen 
 voor een andere warmtebron. OpenTherm-telemetrie is hiervoor niet vereist; een actuele melding
 van ketelactiviteit sluit de betreffende meting wel uit.
 
-Na een herstart staat `Passief leren` uit; de interne kalibratiebevestiging wordt ook niet overgenomen.
-De testversie schat geen meetnauwkeurigheid op basis van een gebruikersvinkje. `Leerdata wissen` pauzeert het leren en wist uitsluitend de leerhistorie.
+Na een herstart staat `Passief leren` uit. De testversie heeft geen aparte
+kalibratiebevestiging of meetgrensinstellingen; automatisch toepassen bestaat nog niet.
+`Leerdata wissen` pauzeert het leren en wist uitsluitend de leerhistorie.
 `Diagnostische leerdata downloaden` levert een lokale JSON-export. Voorlopige schattingen zijn nog
 geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](power-house-autotuning-development.md).
 

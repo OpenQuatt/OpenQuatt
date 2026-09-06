@@ -14,7 +14,6 @@ static LearningSnapshot sample(uint64_t elapsed_ms) {
   value.setpoint_c = 20.0f;
   value.outside_c = 5.0f;
   value.heat_to_water_w = 3000.0f;
-  value.heat_uncertainty_w = 50.0f;
   value.mean_water_c = 35.0f;
   return value;
 }
@@ -33,7 +32,6 @@ int main() {
       assert(fabs(result.interval.mean_indoor_c - 20.25) < 1e-5);
       assert(fabs(result.interval.mean_heat_w - 3000.0) < 1e-8);
       assert(result.interval.indoor_end_c > result.interval.indoor_start_c);
-      assert(!result.interval.unmodeled_gain_bound_valid);
     } else if (time == 3600000) {
       assert(result.has_interval);
       assert(result.interval.start_monotonic_ms == 1801000);
@@ -57,12 +55,12 @@ int main() {
   changed.context_revision = 2;
   result = observe_thermal_snapshot(state, changed, quality, config);
   assert(result.status == ThermalWindowStatus::CONTEXT_CHANGED && !result.has_interval);
-  config.unmodeled_gain_bound_valid = true;
-  config.unmodeled_gain_bound_w = 100;
+  config.target_duration_ms = 1200000;
   changed = sample(3710000);
   changed.context_revision = 2;
   result = observe_thermal_snapshot(state, changed, quality, config);
   assert(result.status == ThermalWindowStatus::CONTEXT_CHANGED);
+  config = {};
 
   // Small UTC drift per pair may not accumulate into an accepted window.
   state = {};
@@ -82,7 +80,6 @@ int main() {
     result = observe_thermal_snapshot(state, cooling, quality, config);
   }
   assert(result.has_interval && result.interval.mean_heat_w == -200.0);
-  assert(result.interval.unmodeled_gain_bound_valid && result.interval.unmodeled_gain_bound_w == 100.0);
   quality.max_interval_ms = 0;
   result = observe_thermal_snapshot(state, sample(1810000), quality, config);
   assert(result.status == ThermalWindowStatus::INVALID_CONFIGURATION && !state.active);

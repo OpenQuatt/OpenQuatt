@@ -57,9 +57,9 @@ Eén eigenaar in de ESPHome-mainloop beheert records en fitworkspace in PSRAM. T
 
 De actuele geselecteerde waarden blijven leidend voor bronkeuze. De resolvers leveren nu de werkelijk gekozen route, raw ontvangsttijd, exacte configuratiegeneratie en eventuele hold/synthesized-status. Fysieke aggregaten behouden beide ontvangstbewijzen en de toegepaste operator; onbewijsbare HA/API/MQTT-provenance blijft geblokkeerd. Een callback op een `*_selected`-republish geldt niet als nieuwe ontvangst. Zie [brononderzoek en integratiecontract](power-house-learning-sources.md).
 
-Passief leren introduceert geen hydraulisch installatieprofiel. De bestaande geselecteerde waarden blijven de bron van waarheid. In een Q Duo-build gebruikt de warmteberekening de bekende volgorde HP1 → HP2; dat komt uit het compileprofiel en is geen gebruikerskeuze. CM2 gebruikt het bestaande geen-ketelvraagcontract; R1-uit wordt nooit als fysiek ketelbewijs behandeld. Flowkalibratie, calorimetrische onzekerheid en een grens aan zon/interne warmte zijn hiermee nog niet bewezen. De meetadapter neemt die eigenschappen uitsluitend als expliciet bevestigd contract aan. Ontbrekend bewijs levert geen nulvermogen of geschikt leersample op.
+Passief leren introduceert geen hydraulisch installatieprofiel. De bestaande geselecteerde waarden blijven de bron van waarheid. In een Q Duo-build gebruikt de warmteberekening de bekende volgorde HP1 → HP2; dat komt uit het compileprofiel en is geen gebruikerskeuze. CM2 gebruikt het bestaande geen-ketelvraagcontract; R1-uit wordt nooit als fysiek ketelbewijs behandeld. Fase 1 hanteert vaste watergrenzen: maximaal 3000 L/h en bij Duo maximaal 1,0 °C verschil tussen HP1-uit en HP2-in. Die grenzen zijn codebeleid, geen gebruikersinstellingen. Het passieve model vraagt geen ingevoerde meetonzekerheid of grens voor zon- en interne warmte; afwijkingen blijven zichtbaar in de residuals. Automatisch toepassen bestaat nog niet. De toekomstige toepasfase moet meetkwaliteit en afwijkende warmtebronnen afzonderlijk onderbouwen.
 
-De getalsgrenzen voor stabiliteit, spreiding, meetonzekerheid en verbetering zijn ontwikkelinstellingen. Een succesvolle fit is geen gekalibreerd betrouwbaarheidspercentage en geeft geen toestemming tot automatisch toepassen. Onvoldoende geschikte data is een geldige uitkomst.
+De getalsgrenzen voor stabiliteit, spreiding en verbetering zijn ontwikkelinstellingen. Een succesvolle fit is geen gekalibreerd betrouwbaarheidspercentage en geeft geen toestemming tot automatisch toepassen. Onvoldoende geschikte data is een geldige uitkomst.
 
 ## Parallel 1R1C/RLS vanaf fase 1
 
@@ -90,12 +90,11 @@ Tijdsweging en forgetting gebruiken uren, zodat vier kwartierintervallen niet vi
 duur-bewijs leveren als één uur. Residuals worden in K/h beoordeeld; de gekozen intervalduur mag een
 foute temperatuurtrend niet verbergen. Configuratiewijzigingen wissen het oude RLS-bewijs.
 
-Zon en interne warmte ontbreken als regressorterm in deze MVP. Zonder expliciet onderbouwde grens
-aan die ongemodelleerde winst mogen numerieke parameters worden geschat, maar blijft de RLS-
-kwaliteitsvoorwaarde onvoldoende. De replay kan die **analyseaanname** krijgen via
-`--rls-max-unmodeled-gain-w`; de standaard is onbekend. Een argument of een kleine residual bewijst
-niet dat de werkelijke zon/interne winst zo klein was. De beleidsgrenzen zijn ontwikkelwaarden die
-praktijkvalidatie vereisen. Er bestaat geen verplichte weersdienst of solar-input.
+Zon en interne warmte ontbreken als regressorterm in deze MVP. De 1R1C-fit beoordeelt daarom de
+restfout, bias en spreiding van de gemeten intervallen. Die checks bewaken of het eenvoudige model
+bruikbaar is, maar onderscheiden geen zon, bewonersgedrag of meetfout. Er is geen instelling,
+replayargument, verplichte weersdienst of solar-input voor zulke oorzaken. Automatisch toepassen
+blijft uit totdat de toekomstige toepasfase dat met onafhankelijke praktijkvalidatie kan onderbouwen.
 
 `oq_ph_model_validation.h` vergelijkt `H_batch` en `U_rls` alleen bij passende source-/physical-/
 controlgeneraties, actuele RLS-gegevens en voldoende overlappend buitentemperatuurbereik. De
@@ -135,8 +134,9 @@ reboot nog oude historie opleveren; de UI mag daarom alleen na `cleared` succes 
 
 Herstel vereist geldige UTC en beschikbare geselecteerde bronnen. Schema, algoritmeversie en
 meetcontext bepalen compatibiliteit; een gewone hercompilatie of webfix wist geen historie.
-Deze vereenvoudiging gebruikt schema 3: eerdere experimentele schema's hebben drie revisions en
-worden daarom eenmalig niet hersteld. Achtergebleven NVS-owner/dirty-waarden worden niet gelezen.
+Deze vereenvoudiging gebruikt schema 4. Schema 3 bevatte per record een onzekerheidsveld dat fase 1
+niet gebruikt; die historische records worden bewust niet hersteld om een ander recordformaat nooit
+verkeerd te lezen. Achtergebleven NVS-owner/dirty-waarden worden niet gelezen.
 
 ## Uitvoerbare replay
 
@@ -152,21 +152,21 @@ De waarden in dit commando zijn synthetische voorbeelden. Gebruik de echte handm
 Het CSV-contract bevat deze header, in deze volgorde:
 
 ```csv
-monotonic_ms,epoch_s,source_generation,physical_context_generation,control_generation,invalid_reasons,room_c,setpoint_c,outside_c,heat_to_water_w,heat_uncertainty_w,mean_water_c
+monotonic_ms,epoch_s,source_generation,physical_context_generation,control_generation,invalid_reasons,room_c,setpoint_c,outside_c,heat_to_water_w,mean_water_c
 ```
 
 De replay leest dit historische CSV-formaat voor compatibiliteit, maar accepteert alleen rijen waarin de
 drie revisionkolommen gelijk en niet nul zijn. In firmware en nieuw JSON-export bestaat uitsluitend
 `context_revision`.
 
-Temperaturen zijn in °C, vermogens en onzekerheid in W; tijd is monotone milliseconden en UTC-seconden. Generatie 0 betekent onbekend. Voor historische data accepteert de CLI `--now-epoch` als expliciete analysetijd, zodat de 42-dagengrens causaal kan worden gereproduceerd. Iedere rij vertegenwoordigt een snapshot met gecontroleerde provenance. Alleen een CSV-getal of `invalid_reasons=0` vormt geen bewijs dat de onderliggende bron actueel was. Een gewone HA-historie-export voldoet niet automatisch aan dit contract.
+Temperaturen zijn in °C en vermogens in W; tijd is monotone milliseconden en UTC-seconden. Generatie 0 betekent onbekend. Voor historische data accepteert de CLI `--now-epoch` als expliciete analysetijd, zodat de 42-dagengrens causaal kan worden gereproduceerd. Iedere rij vertegenwoordigt een snapshot met gecontroleerde provenance. Alleen een CSV-getal of `invalid_reasons=0` vormt geen bewijs dat de onderliggende bron actueel was. Een gewone HA-historie-export voldoet niet automatisch aan dit contract.
 
 De CLI rapporteert JSON met aantallen, uitsluitredenen en advies/fitresultaten. `batch_status` en
 `batch_advice_ready` beschrijven de structurele fit; `status`, `model_validation_status` en `advice_ready`
 beschrijven de gecombineerde beoordeling. RLS-diagnostiek omvat `u_rls`, `c_rls_wh_per_k`,
-`rls_readiness_reasons`, samples, spreiding, laatste update en pre-update residuals. De onbekende
-gainaanname is `null`; zonder geldige RLS-updates zijn `u_rls` en `c_rls_wh_per_k` ook `null`, niet de
-startwaarden. `model_difference_fraction` is een relatief verschil, geen confidencepercentage.
+`rls_readiness_reasons`, samples, spreiding, laatste update en pre-update residuals. Zonder geldige
+RLS-updates zijn `u_rls` en `c_rls_wh_per_k` `null`, niet de startwaarden.
+`model_difference_fraction` is een relatief verschil, geen confidencepercentage.
 Ongeldige invoer is een procesfout; onvoldoende data of onvoldoende modelverbetering is een normale
 analyse-uitkomst met `advice_ready=false`. Een oude CSV-rij met `invalid_reasons` wordt niet achteraf
 geschikt gemaakt voor de dynamische route. De CLI past geen instellingen toe en bewaart geen model
@@ -181,7 +181,7 @@ De firmwarecollector bewaart naast de trainingsrecords een ring van 60 diagnosti
 | Waarde | Betekenis en herkomst |
 | --- | --- |
 | `P_base` | Actief structureel model op dezelfde control-tick; onderscheid ongeclipt model en geselecteerde feedforward |
-| Werkelijk thermisch vermogen | Signed warmte over de bewezen meetgrens, inclusief meetonzekerheid |
+| Werkelijk thermisch vermogen | Signed warmte over de bewezen meetgrens |
 | `P_request` | Werkelijk begrensde wattvraag die naar dispatch gaat |
 | Kamerfout | Gemeten kamertemperatuur versus gekozen setpoint; comfort memory afzonderlijk herkenbaar |
 | Buitentemperatuur | Geselecteerde fysieke bron met ontvangstbewijs |
@@ -216,10 +216,9 @@ De hardwarepoort omvat Q Single/Duo en Waveshare Single/Duo: vier builds, met Q 
 ## Bediening en huidige teststatus
 
 Op Q en Waveshare staat onder Instellingen → Verwarmen → Power House **Passief leren**. Daar staan
-alleen opt-in, calorimetrische bevestiging en leerstatus. De gewone geselecteerde bronwaarden blijven
-leidend; er is geen extra formulier voor hydrauliek of warmtebronnen. Opt-in en calorimetrische
-bevestiging starten na reboot uit. De reguliere Power House-instellingen blijven leidend; automatisch
-toepassen is altijd uit.
+alleen opt-in en leerstatus. De gewone geselecteerde bronwaarden blijven leidend; er is geen extra
+formulier voor hydrauliek, warmtebronnen of meetgrenzen. Opt-in start na reboot uit. De reguliere
+Power House-instellingen blijven leidend; automatisch toepassen is altijd uit.
 
 Eén mainloop-leerkern beheert verzamelen, pauzeren, resetten, herstellen en beide modellen. De
 bestaande bronselectie levert de werkelijk gekozen route met fysieke receipts. Eén contextrevision
@@ -233,9 +232,9 @@ veranderende learnerstate. Status en export gebruiken bestaande webauthenticatie
 - `GET /openquatt/learning/export`: maximaal 64 batchrecords en 60 diagnostische rijen.
 
 CM2 gebruikt het bestaande geen-ketelvraagcontract; ontbrekende OpenTherm-telemetrie is geen extra
-voorwaarde. Een actuele fysieke ketel-activiteitsmelding sluit de meting uit. Flow-/temperatuur-
-nauwkeurigheid en de grens aan ongemodelleerde warmte blijven nog praktijkwerk. Er zijn nog geen
-gevalideerde wintermodellen of aangetoonde besparingen.
+voorwaarde. Een actuele fysieke ketel-activiteitsmelding sluit de meting uit. Bronkwaliteit en het
+gedrag van de residuals blijven nog praktijkwerk. Er zijn nog geen gevalideerde wintermodellen of
+aangetoonde besparingen.
 
 De laatste eerdere OTA-build is `Sep 6 2026 15:26:14 ph-passive-1`. Daar bleven 138 van 139 vergeleken
 instellingen gelijk; alleen opt-in stond na reboot uit. Die build had nul trainingsrecords. De gemeten
@@ -244,7 +243,7 @@ vereenvoudigde code. Nieuwe timing- en geheugenmetingen moeten aan de definitiev
 
 Deze vereenvoudiging is gecontroleerd met 83 C++-hosttests, 239 Python-contracttests en 457 webtests.
 C++-format, docschecks, webbuild, smokecheck en controle van de gegenereerde assets slagen. De volledige
-Q Duo Wi-Fi-build slaagt: 206239 bytes statisch RAM en 2268259 bytes applicatie-image. Die build bevat
+Q Duo Wi-Fi-build slaagt: 205815 bytes statisch RAM en 2261175 bytes applicatie-image. Die build bevat
 ook de nieuwe bodemplaatinstellingen en herstartafhandeling uit `dev`; het verschil met een eerdere
 firmwarebuild is daarom geen zuivere meting van deze vereenvoudiging.
 

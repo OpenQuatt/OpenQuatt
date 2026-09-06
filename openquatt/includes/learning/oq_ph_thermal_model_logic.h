@@ -32,9 +32,7 @@ struct ThermalModelConfig {
   double outside_min_c = -40.0;
   double outside_max_c = 55.0;
   double max_abs_heat_w = 50000.0;
-  double max_heat_uncertainty_w = 400.0;
   double max_abs_interval_indoor_change_c = 5.0;
-  double max_unmodeled_gain_w = 200.0;  // Development policy, not a physical constant.
   double min_ready_observation_hours = 16.0;
   double min_outside_span_c = 4.0;
   double min_heat_span_w = 1000.0;
@@ -55,14 +53,11 @@ struct ThermalInterval {
   bool operational_gates_passed = false;
   bool hidden_heat_exclusion_valid = false;
   bool hidden_heat_excluded = false;
-  bool unmodeled_gain_bound_valid = false;
-  double unmodeled_gain_bound_w = NAN;
   double indoor_start_c = NAN;
   double indoor_end_c = NAN;
   double mean_indoor_c = NAN;   // Time-weighted over the interval.
   double mean_outside_c = NAN;  // Time-weighted over the interval.
   double mean_heat_w = NAN;     // Time-weighted signed heat to water.
-  double heat_uncertainty_w = NAN;
 };
 
 enum ThermalReadinessReason : uint32_t {
@@ -74,7 +69,6 @@ enum ThermalReadinessReason : uint32_t {
   THERMAL_READY_PARAMETER_BOUNDS = 1U << 4,
   THERMAL_READY_RESIDUAL_RMS = 1U << 5,
   THERMAL_READY_RESIDUAL_BIAS = 1U << 6,
-  THERMAL_READY_UNMODELED_GAINS = 1U << 7,
   THERMAL_READY_INVALID_STATE = 1U << 8,
   THERMAL_READY_RECENT_DATA_INVALID = 1U << 9,
   THERMAL_READY_STALE_MODEL = 1U << 10,
@@ -96,9 +90,7 @@ struct ThermalModelState {
   double outside_max_c = NAN;
   double heat_min_w = NAN;
   double heat_max_w = NAN;
-  double maximum_observed_unmodeled_gain_bound_w = 0.0;
   double effective_observation_hours = 0.0;
-  bool all_unmodeled_gain_bounds_known_and_acceptable = true;
   bool recent_data_valid = false;
   uint32_t accepted_samples = 0;
   uint32_t rejected_samples = 0;
@@ -124,7 +116,6 @@ struct ThermalModelEstimate {
   double heat_span_w = NAN;
   uint32_t accepted_samples = 0;
   double effective_observation_hours = 0.0;
-  bool unmodeled_gain_bounds_known_and_acceptable = false;
 };
 
 enum class ThermalUpdateStatus : uint8_t {
@@ -179,9 +170,7 @@ inline bool valid_config(const ThermalModelConfig& config) {
          finite_between(config.outside_min_c, -80.0, 70.0) &&
          finite_between(config.outside_max_c, config.outside_min_c, 80.0) &&
          config.outside_max_c > config.outside_min_c && finite_between(config.max_abs_heat_w, 100.0, 1000000.0) &&
-         finite_between(config.max_heat_uncertainty_w, 0.0, config.max_abs_heat_w) &&
          finite_between(config.max_abs_interval_indoor_change_c, 0.05, 20.0) &&
-         finite_between(config.max_unmodeled_gain_w, 0.0, 10000.0) &&
          finite_between(config.min_ready_observation_hours, 2.0, 5000.0) &&
          finite_between(config.min_outside_span_c, 0.1, 50.0) &&
          finite_between(config.min_heat_span_w, 10.0, config.max_abs_heat_w * 2.0) &&
@@ -225,8 +214,7 @@ inline bool finite_state(const ThermalModelState& state) {
          fabs(state.theta_heat_scaled) <= 1e6 &&
          covariance_is_spd(state.covariance_00, state.covariance_01, state.covariance_11) && information_valid &&
          ranges_valid && isfinite(state.residual_mean_k_per_h) && isfinite(state.residual_square_mean_k2_per_h2) &&
-         state.residual_square_mean_k2_per_h2 >= 0.0 && isfinite(state.maximum_observed_unmodeled_gain_bound_w) &&
-         state.maximum_observed_unmodeled_gain_bound_w >= 0.0 && isfinite(state.effective_observation_hours) &&
+         state.residual_square_mean_k2_per_h2 >= 0.0 && isfinite(state.effective_observation_hours) &&
          state.effective_observation_hours >= 0.0 && state.effective_observation_hours <= 1e9;
 }
 
@@ -239,7 +227,6 @@ inline void seed_state(ThermalModelState& state, const ThermalModelConfig& confi
   state.covariance_00 = config.initial_covariance;
   state.covariance_01 = 0.0;
   state.covariance_11 = config.initial_covariance;
-  state.all_unmodeled_gain_bounds_known_and_acceptable = true;
   state.reset_count = reset_count;
   state.config_bound = true;
   state.bound_config = config;
@@ -282,7 +269,6 @@ inline bool interval_values_valid(const ThermalInterval& interval, const Thermal
          finite_between(interval.mean_indoor_c, config.indoor_min_c, config.indoor_max_c) &&
          finite_between(interval.mean_outside_c, config.outside_min_c, config.outside_max_c) &&
          finite_between(interval.mean_heat_w, -config.max_abs_heat_w, config.max_abs_heat_w) &&
-         finite_between(interval.heat_uncertainty_w, 0.0, config.max_heat_uncertainty_w) &&
          fabs(interval.indoor_end_c - interval.indoor_start_c) <= config.max_abs_interval_indoor_change_c;
 }
 
@@ -300,9 +286,8 @@ inline bool same_config(const ThermalModelConfig& lhs, const ThermalModelConfig&
          lhs.max_thermal_capacity_wh_per_k == rhs.max_thermal_capacity_wh_per_k &&
          lhs.indoor_min_c == rhs.indoor_min_c && lhs.indoor_max_c == rhs.indoor_max_c &&
          lhs.outside_min_c == rhs.outside_min_c && lhs.outside_max_c == rhs.outside_max_c &&
-         lhs.max_abs_heat_w == rhs.max_abs_heat_w && lhs.max_heat_uncertainty_w == rhs.max_heat_uncertainty_w &&
+         lhs.max_abs_heat_w == rhs.max_abs_heat_w &&
          lhs.max_abs_interval_indoor_change_c == rhs.max_abs_interval_indoor_change_c &&
-         lhs.max_unmodeled_gain_w == rhs.max_unmodeled_gain_w &&
          lhs.min_ready_observation_hours == rhs.min_ready_observation_hours &&
          lhs.min_outside_span_c == rhs.min_outside_span_c && lhs.min_heat_span_w == rhs.min_heat_span_w &&
          lhs.min_information_eigenvalue == rhs.min_information_eigenvalue &&
@@ -379,8 +364,6 @@ inline ThermalModelEstimate estimate_thermal_model(const ThermalModelState& stat
     estimate.readiness_reasons |= THERMAL_READY_RESIDUAL_RMS;
   if (fabs(estimate.residual_bias_k_per_h) > config.max_abs_residual_bias_k_per_h)
     estimate.readiness_reasons |= THERMAL_READY_RESIDUAL_BIAS;
-  estimate.unmodeled_gain_bounds_known_and_acceptable = state.all_unmodeled_gain_bounds_known_and_acceptable;
-  if (!estimate.unmodeled_gain_bounds_known_and_acceptable) estimate.readiness_reasons |= THERMAL_READY_UNMODELED_GAINS;
   if (!state.recent_data_valid) estimate.readiness_reasons |= THERMAL_READY_RECENT_DATA_INVALID;
   if (now_monotonic_ms == 0 || state.last_interval_end_monotonic_ms == 0 ||
       now_monotonic_ms < state.last_interval_end_monotonic_ms ||
@@ -594,15 +577,6 @@ inline ThermalUpdateResult observe_thermal_interval(ThermalModelState& state, co
     state.heat_max_w = fmax(retained_heat_max, interval.mean_heat_w);
   }
   state.effective_observation_hours = interval_forgetting_factor * state.effective_observation_hours + duration_h;
-  if (interval.unmodeled_gain_bound_valid && isfinite(interval.unmodeled_gain_bound_w) &&
-      interval.unmodeled_gain_bound_w >= 0.0) {
-    state.maximum_observed_unmodeled_gain_bound_w =
-        fmax(state.maximum_observed_unmodeled_gain_bound_w, interval.unmodeled_gain_bound_w);
-    if (interval.unmodeled_gain_bound_w > config.max_unmodeled_gain_w)
-      state.all_unmodeled_gain_bounds_known_and_acceptable = false;
-  } else {
-    state.all_unmodeled_gain_bounds_known_and_acceptable = false;
-  }
   if (state.accepted_samples == UINT32_MAX) {
     reject_without_reset(state, interval);
     reset_state(state, config);

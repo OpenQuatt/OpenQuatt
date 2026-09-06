@@ -22,7 +22,6 @@ struct SegmentAccumulator {
   float last_setpoint_c = NAN;
   float last_outside_c = NAN;
   float last_heat_w = NAN;
-  float last_uncertainty_w = NAN;
   float water_start_c = NAN;
   float water_end_c = NAN;
   float room_min_c = NAN;
@@ -34,7 +33,6 @@ struct SegmentAccumulator {
   double setpoint_integral = 0.0;
   double outside_integral = 0.0;
   double heat_integral = 0.0;
-  double uncertainty_integral = 0.0;
   double trend_w = 0.0;
   double trend_wt = 0.0;
   double trend_wtt = 0.0;
@@ -65,7 +63,6 @@ inline void seed_segment(SegmentAccumulator& state, const LearningSnapshot& snap
   state.last_setpoint_c = snapshot.setpoint_c;
   state.last_outside_c = snapshot.outside_c;
   state.last_heat_w = snapshot.heat_to_water_w;
-  state.last_uncertainty_w = snapshot.heat_uncertainty_w;
   state.water_start_c = snapshot.mean_water_c;
   state.water_end_c = snapshot.mean_water_c;
   state.room_min_c = snapshot.room_c;
@@ -102,7 +99,6 @@ inline void update_last(SegmentAccumulator& state, const LearningSnapshot& snaps
   state.last_setpoint_c = snapshot.setpoint_c;
   state.last_outside_c = snapshot.outside_c;
   state.last_heat_w = snapshot.heat_to_water_w;
-  state.last_uncertainty_w = snapshot.heat_uncertainty_w;
   state.water_end_c = snapshot.mean_water_c;
   state.room_min_c = fminf(state.room_min_c, snapshot.room_c);
   state.room_max_c = fmaxf(state.room_max_c, snapshot.room_c);
@@ -122,7 +118,6 @@ inline SegmentRecord make_record(const SegmentAccumulator& state) {
   record.mean_setpoint_c = static_cast<float>(state.setpoint_integral * inverse_duration);
   record.mean_outside_c = static_cast<float>(state.outside_integral * inverse_duration);
   record.mean_heat_w = static_cast<float>(state.heat_integral * inverse_duration);
-  record.mean_heat_uncertainty_w = static_cast<float>(state.uncertainty_integral * inverse_duration);
   record.room_range_k = state.room_max_c - state.room_min_c;
   record.setpoint_range_c = state.setpoint_max_c - state.setpoint_min_c;
   record.water_start_c = state.water_start_c;
@@ -183,8 +178,6 @@ inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningS
     state.setpoint_integral += 0.5 * (static_cast<double>(state.last_setpoint_c) + snapshot.setpoint_c) * dt_s;
     state.outside_integral += 0.5 * (static_cast<double>(state.last_outside_c) + snapshot.outside_c) * dt_s;
     state.heat_integral += 0.5 * (static_cast<double>(state.last_heat_w) + snapshot.heat_to_water_w) * dt_s;
-    state.uncertainty_integral +=
-        0.5 * (static_cast<double>(state.last_uncertainty_w) + snapshot.heat_uncertainty_w) * dt_s;
     state.trend_w += dt_s;
     state.trend_wt += dt_s * elapsed_mid_s;
     state.trend_wtt += dt_s * elapsed_mid_s * elapsed_mid_s;

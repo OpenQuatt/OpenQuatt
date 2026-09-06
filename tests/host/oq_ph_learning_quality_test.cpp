@@ -15,7 +15,6 @@ LearningSnapshot valid_snapshot() {
   snapshot.setpoint_c = 20.0f;
   snapshot.outside_c = 5.0f;
   snapshot.heat_to_water_w = 2000.0f;
-  snapshot.heat_uncertainty_w = 100.0f;
   snapshot.mean_water_c = 30.0f;
   return snapshot;
 }
@@ -30,7 +29,6 @@ SegmentRecord valid_record() {
   record.mean_setpoint_c = 20.0f;
   record.mean_outside_c = 5.0f;
   record.mean_heat_w = 2000.0f;
-  record.mean_heat_uncertainty_w = 100.0f;
   record.room_trend_k_per_h = 0.01f;
   record.room_range_k = 0.1f;
   record.setpoint_range_c = 0.01f;
@@ -67,10 +65,6 @@ int main() {
   record = valid_record();
   record.water_end_c = 32.0f;
   assert(evaluate_segment_quality(record, config) == LearningStatus::WATER_STORAGE_UNSTABLE);
-  record = valid_record();
-  record.mean_heat_uncertainty_w = 500.0f;
-  assert(evaluate_segment_quality(record, config) == LearningStatus::MEASUREMENT_UNCERTAIN);
-
   record = valid_record();
   record.duration_s = 1;
   record.end_epoch_s = record.start_epoch_s + 1;

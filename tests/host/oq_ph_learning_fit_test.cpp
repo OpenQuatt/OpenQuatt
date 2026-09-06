@@ -19,7 +19,6 @@ SegmentRecord fitted_record(uint8_t day, uint8_t slot, float outside_c, float re
   record.mean_setpoint_c = 20.0f;
   record.mean_outside_c = outside_c;
   record.mean_heat_w = 200.0f * (16.0f - outside_c) + residual_w;
-  record.mean_heat_uncertainty_w = 50.0f;
   record.room_trend_k_per_h = 0.0f;
   record.room_range_k = 0.1f;
   record.setpoint_range_c = 0.0f;
@@ -167,7 +166,7 @@ void test_replayed_record_bypasses_fail_closed() {
          LearningStatus::INVALID_ACTIVE_MODEL);
 }
 
-void test_temperature_dominance_and_uncertainty_gate() {
+void test_temperature_dominance() {
   SegmentRecord imbalanced[54];
   for (uint8_t day = 0; day < 27; ++day) {
     float outside_c = 5.0f;
@@ -183,17 +182,6 @@ void test_temperature_dominance_and_uncertainty_gate() {
   AdviceFitWorkspace workspace;
   assert(begin_advice_fit(imbalanced, 54, kBaseEpoch + 28U * 86400U, {150.0f, 15.0f}, quality, config, workspace) ==
          LearningStatus::DAY_DOMINANCE);
-
-  SegmentRecord records[18];
-  make_dataset(records);
-  for (size_t index = 12; index < 18; ++index) records[index].mean_heat_uncertainty_w = 400.0f;
-  quality.max_heat_uncertainty_fraction = 0.50f;
-  config.min_holdout_improvement_w = 0.0f;
-  assert(begin_advice_fit(records, 18, kBaseEpoch + 10U * 86400U, {195.0f, 16.0f}, quality, config, workspace) ==
-         LearningStatus::FIT_IN_PROGRESS);
-  assert(finish_fit(workspace) == LearningStatus::NO_HOLDOUT_IMPROVEMENT);
-  assert(workspace.result.holdout_mean_uncertainty_w == 400.0f);
-  assert(!workspace.result.advice_ready);
 }
 
 void test_exact_retention_boundary_allows_43_utc_days() {
@@ -221,7 +209,7 @@ int main() {
   test_no_improvement_is_not_advice_ready();
   test_fail_closed_dataset_gates();
   test_replayed_record_bypasses_fail_closed();
-  test_temperature_dominance_and_uncertainty_gate();
+  test_temperature_dominance();
   test_exact_retention_boundary_allows_43_utc_days();
   static_assert(kMaxRecordsVisitedPerHuberFit == 768);
   static_assert(kMaxSegmentRecords == 64);

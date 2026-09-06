@@ -43,10 +43,10 @@ bruikbare eventtijd reset deze helper het segment, zodat aggregatie nooit stil o
 
 Alleen `SINGLE` en bewezen `DUO_SERIES` worden geaccepteerd. `DUO_PARALLEL` en onbekende topologie
 worden geweigerd. De installatiecontracten zijn vast: water met `cp = 4180 J/(l·K)`, en bij Duo HP1 vóór
-HP2. Het contract bevat daarom alleen de gemeten onzekerheid, een gekalibreerde maximumflow en voor Duo
-de maximale junction-afwijking. De gemeten flow en `T_out` van HP1 naar `T_in` van HP2 worden hiertegen
-getoetst. Een wijziging van sensorroute, kalibratie of ander fysiek meetcontract maakt de revision nieuw
-en wist de onverenigbare meetgeschiedenis.
+HP2. Fase 1 gebruikt vaste watergrenzen: maximaal 3000 L/h en bij Duo maximaal 1,0 °C verschil tussen
+HP1-uit en HP2-in. De gemeten flow en `T_out` van HP1 naar `T_in` van HP2 worden hiertegen getoetst.
+Een wijziging van sensorroute, kalibratie of ander fysiek meetcontract maakt de revision nieuw en wist
+de onverenigbare meetgeschiedenis.
 
 Per-veld max-age en max-skew blijven cadence-specifiek. Als ontwikkelvangrail weigert deze pure laag
 contractwaarden boven één uur; dit is geen aanbevolen freshnesswaarde. De live binding moet veel
@@ -152,14 +152,15 @@ Na reboot start opt-in uit; UTC en exact bekende context zijn nodig vóór journ
 De learner vraagt geen hydraulisch installatieprofiel. Het Q Duo-compileprofiel bepaalt de bekende
 HP1 → HP2-meetgrens; gebruikers selecteren daarvoor geen vloeistof, topologie of extra warmtebron.
 De learner gebruikt het bestaande CM2-ketelcontract; een R1-commando wordt niet als fysieke
-vlammeting behandeld. Flowkalibratie, calorimetrische onzekerheid en de grens aan zon/interne warmte
-moeten nog onderbouwd worden. Zolang dat ontbreekt blijven training of modelkwaliteit geblokkeerd en
-worden onbekende waarden als onbekend geëxporteerd.
+vlammeting behandeld. Fase 1 gebruikt vaste watergrenzen: maximaal 3000 L/h en bij Duo maximaal
+1,0 °C verschil tussen HP1-uit en HP2-in. Er is geen gebruikersinstelling voor meetonzekerheid,
+zon of interne warmte. Het passieve model bewaakt zulke niet-gemodelleerde afwijkingen via zijn
+residuals; automatisch toepassen bestaat nog niet.
 
 ## Vast installatiecontract
 
 De live firmware gebruikt altijd `WATER_CP_4180`. Single/Duo volgt uitsluitend uit het compileprofiel;
 Duo gebruikt `HP1_TO_HP2` als vaste meetgrens. Dit is een implementatiegrens, geen installatiewizard
 of opgeslagen gebruikerskeuze. De pure bronadapter behoudt zijn negatieve tests voor onbekende,
-parallelle en afwijkende meetcontracten. De meetgrens verleent geen calorimetrisch meetbewijs;
-onzekerheid, kalibratie en alle operationele gates blijven verplicht.
+parallelle en afwijkende meetgrenzen. De meetgrens levert het gemeten watervermogen; de bestaande
+operationele gates blijven verplicht.

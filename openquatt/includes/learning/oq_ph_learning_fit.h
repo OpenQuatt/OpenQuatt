@@ -17,7 +17,6 @@ constexpr size_t kMaxAdviceFitSteps = kMaxCalendarDays + 2U;
 struct FitConfig {
   uint8_t huber_passes = kMaxHuberPasses;
   float huber_delta_w = 300.0f;
-  float uncertainty_floor_w = 50.0f;
   uint8_t min_train_segments = 12;
   uint8_t min_train_days = 6;
   uint8_t min_holdout_segments = 6;
@@ -61,7 +60,6 @@ struct AdviceResult {
   float holdout_active_mae_w = NAN;
   float holdout_candidate_signed_bias_w = NAN;  // Predicted minus measured.
   float holdout_active_signed_bias_w = NAN;
-  float holdout_mean_uncertainty_w = NAN;
   float holdout_candidate_signed_bias_by_temp_w[3] = {NAN, NAN, NAN};
   float holdout_active_signed_bias_by_temp_w[3] = {NAN, NAN, NAN};
   float holdout_improvement_fraction = NAN;
@@ -91,7 +89,6 @@ struct AdviceFitWorkspace {
   uint8_t next_lodo_day = 0;
   uint32_t day_ids[kMaxCalendarDays]{};
   uint8_t day_record_counts[kMaxCalendarDays]{};
-  double day_uncertainty_weight_sums[kMaxCalendarDays]{};
   uint8_t record_day_index[kMaxSegmentRecords]{};
   float sorted_train_temperatures[kMaxSegmentRecords]{};
   AdviceResult result;
@@ -99,8 +96,7 @@ struct AdviceFitWorkspace {
 
 inline bool valid_fit_config(const FitConfig& config) {
   return config.huber_passes >= 1 && config.huber_passes <= kMaxHuberPasses && isfinite(config.huber_delta_w) &&
-         config.huber_delta_w > 0.0f && config.huber_delta_w <= 10000.0f && isfinite(config.uncertainty_floor_w) &&
-         config.uncertainty_floor_w > 0.0f && config.uncertainty_floor_w <= 5000.0f && config.min_train_segments >= 2 &&
+         config.huber_delta_w > 0.0f && config.huber_delta_w <= 10000.0f && config.min_train_segments >= 2 &&
          config.min_train_segments <= kMaxSegmentRecords && config.min_train_days >= 2 &&
          config.min_train_days < kMaxCalendarDays && config.min_holdout_segments >= 1 &&
          config.min_holdout_segments < kMaxSegmentRecords && config.min_holdout_days >= 1 &&
@@ -142,13 +138,8 @@ inline bool plausible_line(const HouseLine& line, const FitConfig& config) {
 }
 
 inline double record_base_weight(const AdviceFitWorkspace& workspace, size_t index) {
-  const SegmentRecord& record = workspace.records[index];
   const uint8_t day_index = workspace.record_day_index[index];
-  const double uncertainty = fmax(static_cast<double>(workspace.config.uncertainty_floor_w),
-                                  static_cast<double>(record.mean_heat_uncertainty_w));
-  const double uncertainty_ratio = workspace.config.uncertainty_floor_w / uncertainty;
-  const double raw_uncertainty_weight = uncertainty_ratio * uncertainty_ratio;
-  return raw_uncertainty_weight / workspace.day_uncertainty_weight_sums[day_index];
+  return 1.0 / workspace.day_record_counts[day_index];
 }
 
 inline bool fit_huber_line(const AdviceFitWorkspace& workspace, int omitted_day_index, HouseLine& output) {
@@ -247,10 +238,6 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
     }
     workspace.record_day_index[index] = workspace.day_count - 1;
     ++workspace.day_record_counts[workspace.day_count - 1];
-    const double uncertainty = fmax(static_cast<double>(workspace.config.uncertainty_floor_w),
-                                    static_cast<double>(record.mean_heat_uncertainty_w));
-    const double uncertainty_ratio = workspace.config.uncertainty_floor_w / uncertainty;
-    workspace.day_uncertainty_weight_sums[workspace.day_count - 1] += uncertainty_ratio * uncertainty_ratio;
   }
   workspace.result.context_revision = context_revision;
   if (workspace.day_count < workspace.config.min_train_days + workspace.config.min_holdout_days)
@@ -323,7 +310,6 @@ inline void evaluate_holdout(AdviceFitWorkspace& workspace) {
   double active_abs_error = 0.0;
   double candidate_bias = 0.0;
   double active_bias = 0.0;
-  double uncertainty_sum = 0.0;
   double bin_duration[3]{};
   double candidate_bin_bias[3]{};
   double active_bin_bias[3]{};
@@ -341,7 +327,6 @@ inline void evaluate_holdout(AdviceFitWorkspace& workspace) {
     active_abs_error += weight * fabs(active_error);
     candidate_bias += weight * candidate_error;
     active_bias += weight * active_error;
-    uncertainty_sum += weight * record.mean_heat_uncertainty_w;
     workspace.result.validated_temp_min_c = fminf(workspace.result.validated_temp_min_c, record.mean_outside_c);
     workspace.result.validated_temp_max_c = fmaxf(workspace.result.validated_temp_max_c, record.mean_outside_c);
     uint8_t bin = 0;
@@ -359,7 +344,6 @@ inline void evaluate_holdout(AdviceFitWorkspace& workspace) {
   workspace.result.holdout_active_mae_w = static_cast<float>(active_abs_error / duration_sum);
   workspace.result.holdout_candidate_signed_bias_w = static_cast<float>(candidate_bias / duration_sum);
   workspace.result.holdout_active_signed_bias_w = static_cast<float>(active_bias / duration_sum);
-  workspace.result.holdout_mean_uncertainty_w = static_cast<float>(uncertainty_sum / duration_sum);
   for (uint8_t bin = 0; bin < 3; ++bin) {
     if (bin_duration[bin] > 0.0) {
       workspace.result.holdout_candidate_signed_bias_by_temp_w[bin] =
@@ -458,8 +442,7 @@ inline LearningStatus advance_advice_fit(AdviceFitWorkspace& workspace) {
     }
     detail::evaluate_holdout(workspace);
     const float absolute_improvement = workspace.result.holdout_active_mae_w - workspace.result.holdout_candidate_mae_w;
-    const float required_absolute_improvement =
-        fmaxf(workspace.config.min_holdout_improvement_w, workspace.result.holdout_mean_uncertainty_w);
+    const float required_absolute_improvement = workspace.config.min_holdout_improvement_w;
     if (!isfinite(workspace.result.holdout_improvement_fraction) ||
         workspace.result.holdout_improvement_fraction < workspace.config.min_holdout_improvement_fraction ||
         absolute_improvement < required_absolute_improvement) {

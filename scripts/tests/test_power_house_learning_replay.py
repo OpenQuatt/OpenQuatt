@@ -13,7 +13,7 @@ SOURCE = ROOT / "scripts" / "power_house_learning_replay.cpp"
 HEADER = (
     "monotonic_ms,epoch_s,source_generation,physical_context_generation,"
     "control_generation,invalid_reasons,room_c,setpoint_c,outside_c,"
-    "heat_to_water_w,heat_uncertainty_w,mean_water_c"
+    "heat_to_water_w,mean_water_c"
 )
 
 
@@ -24,10 +24,10 @@ def write_csv(path, rows, header=HEADER):
         writer.writerows(rows)
 
 
-def replay(binary, csv_path, now_epoch=2_000_000_000, active_h="150", active_t0="16", extra_args=()):
+def replay(binary, csv_path, now_epoch=2_000_000_000, active_h="150", active_t0="16"):
     return subprocess.run(
         [str(binary), str(csv_path), "--active-h", str(active_h), "--active-t0", str(active_t0), "--reference-room-c", "20",
-         "--reference-setpoint-c", "20", "--now-epoch", str(now_epoch), *extra_args],
+         "--reference-setpoint-c", "20", "--now-epoch", str(now_epoch)],
         capture_output=True,
         text=True,
         check=False,
@@ -55,7 +55,6 @@ def sufficient_rows():
                     20.0,
                     outside,
                     heat,
-                    10.0,
                     35.0,
                 ]
             )
@@ -79,7 +78,7 @@ def dynamic_and_stationary_rows():
             outside = -5.0 + 2.0 * min(8, (minute - 48 * 60) // (24 * 60))
         heat = 200.0 * (room - outside) + 6000.0 * room_rate
         yield [1000 + minute * 60000, start_epoch + minute * 60, 1, 1, 1, 0,
-               room, 20.0, outside, heat, 10.0, 35.0]
+               room, 20.0, outside, heat, 35.0]
 
 
 class LearningReplayTest(unittest.TestCase):
@@ -114,13 +113,11 @@ class LearningReplayTest(unittest.TestCase):
         self.assertFalse(output["advice_ready"])
         self.assertFalse(output["auto_apply_allowed"])
         self.assertFalse(output["rls_ready"])
-        self.assertIsNone(output["rls_unmodeled_gain_bound_w"])
         self.assertGreaterEqual(output["accepted_windows"], 40)
         self.assertEqual(output["rejected_observations"], 9)
         self.assertAlmostEqual(output["candidate_h"], 200.0, delta=1.0)
         self.assertAlmostEqual(output["candidate_t0"], 18.0, delta=0.2)
         self.assertLess(output["holdout_candidate_mae_w"], output["holdout_active_mae_w"])
-        self.assertAlmostEqual(output["holdout_mean_uncertainty_w"], 10.0, delta=0.1)
 
     def test_implausible_active_line_cannot_produce_advice(self):
         rows, now_epoch = sufficient_rows()
@@ -136,7 +133,7 @@ class LearningReplayTest(unittest.TestCase):
         path = pathlib.Path(self.tempdir.name) / "both-models.csv"
         write_csv(path, dynamic_and_stationary_rows())
         now_epoch = 20011 * 86400 + 1
-        result = replay(self.binary, path, now_epoch, extra_args=("--rls-max-unmodeled-gain-w", "0"))
+        result = replay(self.binary, path, now_epoch)
         self.assertEqual(result.returncode, 0, result.stderr)
         output = json.loads(result.stdout)
         self.assertTrue(output["batch_advice_ready"], output)
@@ -149,26 +146,19 @@ class LearningReplayTest(unittest.TestCase):
         self.assertAlmostEqual(output["c_rls_wh_per_k"], 6000.0, delta=200.0)
         self.assertFalse(output["auto_apply_allowed"])
 
-        # The same numbers cannot prove unmeasured solar/internal gains absent.
-        unbounded = json.loads(replay(self.binary, path, now_epoch).stdout)
-        self.assertFalse(unbounded["advice_ready"])
-        self.assertTrue(unbounded["batch_advice_ready"])
-        self.assertIsNone(unbounded["rls_unmodeled_gain_bound_w"])
-
         # Evidence also expires when analysis is performed long after the samples.
-        stale = json.loads(replay(self.binary, path, now_epoch + 86400,
-                                  extra_args=("--rls-max-unmodeled-gain-w", "0")).stdout)
+        stale = json.loads(replay(self.binary, path, now_epoch + 86400).stdout)
         self.assertFalse(stale["advice_ready"])
         self.assertFalse(stale["auto_apply_allowed"])
 
     def test_header_extra_cell_and_missing_value_are_input_errors(self):
         path = pathlib.Path(self.tempdir.name) / "bad.csv"
-        write_csv(path, [[1, 1, 1, 1, 1, 0, 20, 20, 5, 2600, 10, 35, 0]])
+        write_csv(path, [[1, 1, 1, 1, 1, 0, 20, 20, 5, 2600, 35, 0]])
         result = replay(self.binary, path)
         self.assertEqual(result.returncode, 2)
         self.assertGreater(json.loads(result.stdout)["malformed_rows"], 0)
 
-        path.write_text(HEADER + "\n1,1,1,1,1,0,20,20,5,2600,10\n")
+        path.write_text(HEADER + "\n1,1,1,1,1,0,20,20,5,2600\n")
         result = replay(self.binary, path)
         self.assertEqual(result.returncode, 2)
 
@@ -179,9 +169,9 @@ class LearningReplayTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
 
         rows = [
-            [1, 1, 1, 1, 1, 0, 20, 20, 5, 2600, 10, 35],
-            [2, 2_000_000_001, 1, 1, 1, 0, 20, 20, 5, 2600, 10, 35],
-            [1, 2, 1, 1, 1, 0, 20, 20, 5, 2600, 10, 35],
+            [1, 1, 1, 1, 1, 0, 20, 20, 5, 2600, 35],
+            [2, 2_000_000_001, 1, 1, 1, 0, 20, 20, 5, 2600, 35],
+            [1, 2, 1, 1, 1, 0, 20, 20, 5, 2600, 35],
         ]
         path = pathlib.Path(self.tempdir.name) / "temporal.csv"
         write_csv(path, rows)
@@ -193,7 +183,7 @@ class LearningReplayTest(unittest.TestCase):
 
     def test_missing_generation_is_input_error(self):
         path = pathlib.Path(self.tempdir.name) / "missing-generation.csv"
-        write_csv(path, [[1, 1_700_000_000, 0, 1, 1, 0, 20, 20, 5, 2600, 10, 35]])
+        write_csv(path, [[1, 1_700_000_000, 0, 1, 1, 0, 20, 20, 5, 2600, 35]])
         result = replay(self.binary, path)
         self.assertEqual(result.returncode, 2)
         self.assertEqual(json.loads(result.stdout)["status"], "input_error")
@@ -201,7 +191,7 @@ class LearningReplayTest(unittest.TestCase):
     def test_new_context_discards_old_cohort_before_fit(self):
         rows, now_epoch = sufficient_rows()
         last = rows[-1]
-        rows.append([last[0] + 60_000, last[1] + 60, 2, 2, 2, 0, 20, 20, 5, 2600, 10, 35])
+        rows.append([last[0] + 60_000, last[1] + 60, 2, 2, 2, 0, 20, 20, 5, 2600, 35])
         path = pathlib.Path(self.tempdir.name) / "new-context.csv"
         write_csv(path, rows)
         result = replay(self.binary, path, now_epoch + 60)
@@ -215,7 +205,7 @@ class LearningReplayTest(unittest.TestCase):
 
     def test_embedded_nul_row_is_input_error(self):
         path = pathlib.Path(self.tempdir.name) / "nul.csv"
-        path.write_bytes((HEADER + "\n1,1700000000,1,1,1,0,20,20,5,2600,10,35\n").encode() + b"2,1700000060,1,1,1,0,20,20,5,2600,10,35\x00,extra\n")
+        path.write_bytes((HEADER + "\n1,1700000000,1,1,1,0,20,20,5,2600,35\n").encode() + b"2,1700000060,1,1,1,0,20,20,5,2600,35\x00,extra\n")
         result = replay(self.binary, path)
         self.assertEqual(result.returncode, 2)
         self.assertEqual(json.loads(result.stdout)["status"], "input_error")
@@ -224,9 +214,9 @@ class LearningReplayTest(unittest.TestCase):
         for generation_column in (2, 3, 4):
             with self.subTest(generation_column=generation_column):
                 rows = [
-                    [1000, 1700000000, 1, 1, 1, 0, 20, 20, 5, 3000, 10, 35],
-                    [61000, 1700000060, 1, 1, 1, 0, 20, 20, 5, 3000, 10, 35],
-                    [121000, 1700000120, 1, 1, 1, 0, 20, 20, 5, 3000, 10, 35],
+                    [1000, 1700000000, 1, 1, 1, 0, 20, 20, 5, 3000, 35],
+                    [61000, 1700000060, 1, 1, 1, 0, 20, 20, 5, 3000, 35],
+                    [121000, 1700000120, 1, 1, 1, 0, 20, 20, 5, 3000, 35],
                 ]
                 rows[1][generation_column] = 2
                 path = pathlib.Path(self.tempdir.name) / "late-context.csv"

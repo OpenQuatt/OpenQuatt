@@ -14,9 +14,9 @@
 namespace oq_power_house::learning {
 
 constexpr uint32_t kLearningJournalMagic = 0x4F514C4AU;  // OQLJ
-constexpr uint16_t kLearningJournalSchemaVersion = 3;
+constexpr uint16_t kLearningJournalSchemaVersion = 4;
 constexpr size_t kLearningJournalHeaderBytes = 32;
-constexpr size_t kLearningJournalRecordBytes = 56;
+constexpr size_t kLearningJournalRecordBytes = 52;
 constexpr size_t kLearningJournalCrcBytes = 4;
 constexpr size_t kLearningJournalMaxBytes = kLearningJournalHeaderBytes + kMaxPassiveContextBytes +
                                             kMaxSegmentRecords * kLearningJournalRecordBytes + kLearningJournalCrcBytes;
@@ -140,7 +140,6 @@ inline void write_record(Writer& writer, const SegmentRecord& record) {
   write_float(writer, record.mean_setpoint_c);
   write_float(writer, record.mean_outside_c);
   write_float(writer, record.mean_heat_w);
-  write_float(writer, record.mean_heat_uncertainty_w);
   write_float(writer, record.room_trend_k_per_h);
   write_float(writer, record.room_range_k);
   write_float(writer, record.setpoint_range_c);
@@ -158,7 +157,6 @@ inline SegmentRecord read_record(Reader& reader) {
   record.mean_setpoint_c = read_float(reader);
   record.mean_outside_c = read_float(reader);
   record.mean_heat_w = read_float(reader);
-  record.mean_heat_uncertainty_w = read_float(reader);
   record.room_trend_k_per_h = read_float(reader);
   record.room_range_k = read_float(reader);
   record.setpoint_range_c = read_float(reader);

@@ -53,7 +53,7 @@ function statusPayload(overrides = {}) {
     source_status: "blocked",
     model_validation_status: "batch_model_unavailable",
     journal_status: "ready",
-    invalid_reasons: ["calorimetry_not_verified"],
+    invalid_reasons: ["essential_source"],
     records: 42,
     batch_status: "collecting",
     batch_advice_ready: false,
@@ -288,7 +288,7 @@ test("diagnostische export gebruikt de bestaande browserdownload", async () => {
   }
 });
 
-test("learnerpaneel vereist switch plus endpoint en toont fail-closed meetcontract", () => {
+test("learnerpaneel vereist switch plus endpoint en toont de vaste installatie", () => {
   state.entities = {};
   state.houseLearningEndpointAvailable = true;
   state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload());
@@ -298,11 +298,6 @@ test("learnerpaneel vereist switch plus endpoint en toont fail-closed meetcontra
     installationTopology: { value: "duo" },
     houseLearningEnabled: switchEntity(false),
     houseLearningReset: {},
-    houseLearningHydraulics: { value: "Series HP1 to HP2", option: ["Unknown", "Series HP1 to HP2"] },
-    houseLearningFluid: { value: "Water", option: ["Unknown", "Water"] },
-    houseLearningExternalHeat: { value: "No other heat in CM2", option: ["Unknown", "No other heat in CM2"] },
-    houseLearningCalorimetryConfirmed: switchEntity(false),
-    houseLearningHeatUncertainty: { value: 0, min_value: 0, max_value: 2000, step: 10, uom: "W" },
   };
   const markup = renderHouseLearningSettings();
   assert.match(markup, /Passief leren/);
@@ -311,11 +306,7 @@ test("learnerpaneel vereist switch plus endpoint en toont fail-closed meetcontra
   assert.doesNotMatch(markup, /Hydraulische opstelling|Warmtedragende vloeistof/);
   assert.match(markup, /Geen automatische wijzigingen/);
   assert.doesNotMatch(markup, /Andere warmtebron|No other heat in CM2|R1-uit is geen bewijs/);
-  assert.ok(!SETTINGS_GROUP_KEY_MAP.heating.includes("houseLearningExternalHeat"));
-  assert.doesNotMatch(markup, />0 W\/K</);
-  assert.match(markup, /warmtemeting nog niet gecontroleerd/);
-  assert.doesNotMatch(markup, /calorimetry_not_confirmed/);
-  assert.equal(markup.match(/warmtemeting nog niet gecontroleerd/g)?.length, 1);
+  assert.doesNotMatch(markup, /Meetcontract en grenzen|Calorimetrie gecontroleerd|Onzekerheid warmtevermogen|Maximale meetflow|Temperatuurtolerantie koppelpunt|Grens externe warmtebijdrage/);
   assert.match(markup, /Nog niet beoordeeld/);
   assert.match(markup, /data-oq-action="download-house-learning"/);
   assert.ok(SETTINGS_GROUP_KEY_MAP.heating.includes("houseLearningEnabled"));
@@ -328,7 +319,6 @@ test("learnerpaneel vereist switch plus endpoint en toont fail-closed meetcontra
     assert.ok(!SETTINGS_GROUP_KEY_MAP.heating.includes(key));
     assert.ok(!markup.includes(`data-oq-field="${key}"`));
   }
-  assert.doesNotMatch(markup, /Meetcontract en grenzen|Calorimetrie gecontroleerd|Onzekerheid warmtevermogen|Maximale meetflow|Temperatuurtolerantie koppelpunt|Grens externe warmtebijdrage/);
 });
 
 test("mock biedt de capability alleen voor Q-edition en Waveshare", async () => {
@@ -336,7 +326,7 @@ test("mock biedt de capability alleen voor Q-edition en Waveshare", async () => 
   assert.match(mockSource, /state\.hardware === "heatpump_controller_q" \|\| state\.hardware === "waveshare"/);
   assert.match(mockSource, /entities\.delete\(entityKey\(domain, name\)\)/);
   assert.match(mockSource, /\/openquatt\/learning\/status/);
-  assert.doesNotMatch(mockSource, /Power House Learning External Heat|No other heat in CM2/);
+  assert.doesNotMatch(mockSource, /Power House Learning (Calorimetry Confirmed|Heat Uncertainty|Maximum Flow|Junction Tolerance|Gain Bound|External Heat)|No other heat in CM2/);
   assert.match(mockSource, /records: 32/);
 });
 

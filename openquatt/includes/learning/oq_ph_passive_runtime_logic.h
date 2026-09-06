@@ -26,22 +26,6 @@ struct PassiveRuntimeConfig {
   ModelValidationConfig validation;
 };
 
-// The physical calorimetry proof is intentionally ALWAYS_OFF after reboot.
-// Its first positive confirmation only rehydrates that proof; every later
-// confirmation transition is a real context change and invalidates history.
-struct CalorimetryReconfirmationState {
-  bool initial_positive_confirmation_available = true;
-};
-
-inline bool calorimetry_confirmation_invalidates(CalorimetryReconfirmationState& state, bool confirmed) {
-  if (confirmed && state.initial_positive_confirmation_available) {
-    state.initial_positive_confirmation_available = false;
-    return false;
-  }
-  state.initial_positive_confirmation_available = false;
-  return true;
-}
-
 enum class PassiveRuntimeStatus : uint8_t {
   COLLECTING = 0,
   FIT_IN_PROGRESS,

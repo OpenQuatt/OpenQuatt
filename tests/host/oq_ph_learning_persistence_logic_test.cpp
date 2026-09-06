@@ -43,7 +43,6 @@ SegmentRecord sample() {
   record.mean_room_c = record.mean_setpoint_c = 20;
   record.mean_outside_c = 5;
   record.mean_heat_w = 2200;
-  record.mean_heat_uncertainty_w = 50;
   record.room_trend_k_per_h = record.room_range_k = record.setpoint_range_c = 0;
   record.water_start_c = record.water_end_c = 30;
   return record;
