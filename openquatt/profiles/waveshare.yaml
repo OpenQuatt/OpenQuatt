@@ -14,7 +14,12 @@ substitutions:
   oq_boiler_relay_pin: "GPIO47"                         # Active boiler relay output pin.
   web_auth_recovery_pin: "GPIO0"                        # Temporary recovery input, wired to a spare button/jumper for setup.
 
+esphome:
+  build_flags:
+    - -DOQ_POWER_HOUSE_LEARNING_TARGET=1
+
 packages:
+  oq_power_house_learning: !include ../oq_power_house_learning.yaml
   oq_sensor_source_selects_no_opentherm: !include ../oq_sensor_source_selects_no_opentherm.yaml
 
 psram:

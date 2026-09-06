@@ -189,6 +189,20 @@ Hier kies en verfijn je de verwarmingsstrategie:
 
 `Power House` probeert de warmtevraag van je woning te schatten. `Water Temperature Control` werkt meer als een stooklijnregeling. Begin bij [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md) als je nog niet zeker weet welke strategie bij je past.
 
+In testfirmware met passief huismodelleren staat bij Power House op Q en Waveshare ook
+`Huismodel volgen`. Deze functie verzamelt diagnostiek en schat woningparameters; zij past geen
+regelinstellingen automatisch aan. Water staat vast; Single/Duo volgt uit de firmware en bij Duo
+loopt het water in serie van HP1 naar HP2. Dit zijn geen instelbare keuzes. Technische meetgrenzen
+en kalibratiebewijs horen niet bij deze bediening. Onbekende meetkwaliteit blijft een blokkade.
+De leerfunctie controleert zelf CM2 en de bestaande ketelaansturing; er is geen aparte keuze
+voor een andere warmtebron. OpenTherm-telemetrie is hiervoor niet vereist; een actuele melding
+van ketelactiviteit sluit de betreffende meting wel uit.
+
+Na een herstart staat `Passief leren` uit; de interne kalibratiebevestiging wordt ook niet overgenomen.
+De testversie schat geen meetnauwkeurigheid op basis van een gebruikersvinkje. `Leerdata wissen` pauzeert het leren en wist uitsluitend de leerhistorie.
+`Diagnostische leerdata downloaden` levert een lokale JSON-export. Voorlopige schattingen zijn nog
+geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](power-house-autotuning-development.md).
+
 ### Koelen
 
 Hier staan de instellingen voor koeling en dauwpuntbeveiliging.

@@ -7,6 +7,8 @@
 #include "oq_flow_pump_logic.h"
 #include "oq_input_source_logic.h"
 #include "oq_schedule_runtime.h"
+#include "../sources/oq_resolved_learning_source.h"
+#include "../sources/oq_source_receipt_runtime.h"
 #include "oq_supply_calibration_logic.h"
 #include "oq_supply_hold_logic.h"
 
@@ -14,6 +16,33 @@ namespace oq_sensor_source {
 
 class Runtime {
  public:
+  oq_sources::ResolvedLearningSource resolved_room_temperature() const {
+    return validate_cached_receipt(this->resolved_room_);
+  }
+  oq_sources::ResolvedLearningSource resolved_room_setpoint() const {
+    return validate_cached_receipt(this->resolved_setpoint_);
+  }
+  oq_sources::ResolvedLearningSource resolved_outside_temperature() const {
+    return validate_cached_receipt(this->resolved_outside_);
+  }
+  oq_sources::ResolvedLearningSource resolved_flow_rate() const {
+    return validate_cached_receipt(this->resolved_flow_);
+  }
+
+  // Register this on every source-selector and CIC URL on_value callback. It
+  // records even A->B->A changes that occur between periodic sensor updates and
+  // invalidates the old selected-source snapshot until control resolves again.
+  void source_configuration_changed() {
+    this->flow_generation_.observe(flow_configuration_key());
+    this->outside_generation_.observe(outside_configuration_key());
+    this->room_generation_.observe(room_configuration_key(false));
+    this->setpoint_generation_.observe(room_configuration_key(true));
+    this->resolved_flow_ = {};
+    this->resolved_outside_ = {};
+    this->resolved_room_ = {};
+    this->resolved_setpoint_ = {};
+  }
+
   void water_source_changed(const std::string& option) {
     if (!id(oq_water_supply_temp_current_source_ready)) return;
     const int32_t current = id(oq_water_supply_temp_current_source_code);
@@ -192,7 +221,10 @@ class Runtime {
   }
 
   float flow() const {
-    if (!id(flow_source).has_state()) return NAN;
+    if (!id(flow_source).has_state()) {
+      this->resolved_flow_ = {};
+      return NAN;
+    }
     oq_input_source::FlowInputs input;
     input.selected = parse_source(id(flow_source).current_option());
     input.cic = sample(cic_feed_valid(), id(flow_rate_cic));
@@ -225,11 +257,22 @@ class Runtime {
 #endif
     input.all_relevant_pumps_stopped = oq_flow::all_relevant_pumps_stopped(OQ_TOPOLOGY_DUO, hp1, hp2);
     const auto selected = oq_input_source::select_flow(input);
+    const oq_sources::SourceConfigurationKey configuration{
+        static_cast<uint8_t>(input.selected), static_cast<uint8_t>(input.controller_mode),
+        static_cast<uint8_t>(input.outdoor_mode),
+        input.selected == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
+    const uint32_t generation = this->flow_generation_.observe(configuration);
+    this->resolved_flow_ = resolve_flow(selected, input, generation);
+    this->resolved_flow_.configuration = configuration;
+    this->resolved_flow_.configuration_generation = this->flow_generation_.observe_resolution(this->resolved_flow_);
     return selected.valid ? selected.value : NAN;
   }
 
   float outside(uint32_t now_ms, uint32_t hold_ms) {
-    if (!id(outside_temp_source).has_state()) return NAN;
+    if (!id(outside_temp_source).has_state()) {
+      this->resolved_outside_ = {};
+      return NAN;
+    }
     oq_input_source::NumericSources sources;
     sources.outdoor = sample(true, id(outside_temp_hp_avg));
     sources.ha = sample(ha_valid(id(outside_temp_valid_ha), id(outside_temp_ha)), id(outside_temp_ha));
@@ -237,27 +280,54 @@ class Runtime {
                          id(api_input_outside_temperature));
     sources.mqtt = sample(mqtt_valid(id(mqtt_outside_temperature_valid), id(mqtt_outside_temperature)),
                           id(mqtt_outside_temperature));
-    const auto selected = oq_input_source::select_outside(parse_source(id(outside_temp_source).current_option()),
-                                                          sources, now_ms, hold_ms, outside_hold_);
+    const auto configured = parse_source(id(outside_temp_source).current_option());
+    const auto selected = oq_input_source::select_outside(configured, sources, now_ms, hold_ms, outside_hold_);
     id(oq_outside_temp_selected_hold_active) = selected.held;
+    const oq_sources::SourceConfigurationKey configuration{static_cast<uint8_t>(configured), 0U, 0U, 0U};
+    const uint32_t generation = this->outside_generation_.observe(configuration);
+    this->resolved_outside_ = resolve_outside(selected, configured, generation);
+    this->resolved_outside_.configuration = configuration;
+    this->resolved_outside_.configuration_generation =
+        this->outside_generation_.observe_resolution(this->resolved_outside_);
     return selected.valid ? selected.value : NAN;
   }
 
   float room_temperature(uint32_t now_ms, uint32_t hold_ms, bool opentherm_fresh) {
-    if (!id(room_temp_source).has_state()) return NAN;
+    if (!id(room_temp_source).has_state()) {
+      this->resolved_room_ = {};
+      return NAN;
+    }
+    const auto configured = parse_source(id(room_temp_source).current_option());
     const auto sources = room_sources(opentherm_fresh, false);
-    const auto selected = oq_input_source::select_direct(parse_source(id(room_temp_source).current_option()), sources,
-                                                         true, now_ms, hold_ms, room_hold_);
+    const auto selected = oq_input_source::select_direct(configured, sources, true, now_ms, hold_ms, room_hold_);
     id(oq_room_temp_selected_hold_active) = selected.held;
+    const oq_sources::SourceConfigurationKey configuration{
+        static_cast<uint8_t>(configured), 0U, 0U,
+        configured == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
+    const uint32_t generation = this->room_generation_.observe(configuration);
+    this->resolved_room_ = resolve_room(selected, configured, false, generation);
+    this->resolved_room_.configuration = configuration;
+    this->resolved_room_.configuration_generation = this->room_generation_.observe_resolution(this->resolved_room_);
     return selected.valid ? selected.value : NAN;
   }
 
   float room_setpoint(uint32_t now_ms, uint32_t hold_ms, bool opentherm_fresh) {
-    if (!id(room_setpoint_source).has_state()) return NAN;
+    if (!id(room_setpoint_source).has_state()) {
+      this->resolved_setpoint_ = {};
+      return NAN;
+    }
+    const auto configured = parse_source(id(room_setpoint_source).current_option());
     const auto sources = room_sources(opentherm_fresh, true);
-    const auto selected = oq_input_source::select_direct(parse_source(id(room_setpoint_source).current_option()),
-                                                         sources, true, now_ms, hold_ms, setpoint_hold_);
+    const auto selected = oq_input_source::select_direct(configured, sources, true, now_ms, hold_ms, setpoint_hold_);
     id(oq_room_setpoint_selected_hold_active) = selected.held;
+    const oq_sources::SourceConfigurationKey configuration{
+        static_cast<uint8_t>(configured), 0U, 0U,
+        configured == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
+    const uint32_t generation = this->setpoint_generation_.observe(configuration);
+    this->resolved_setpoint_ = resolve_room(selected, configured, true, generation);
+    this->resolved_setpoint_.configuration = configuration;
+    this->resolved_setpoint_.configuration_generation =
+        this->setpoint_generation_.observe_resolution(this->resolved_setpoint_);
     return selected.valid ? selected.value : NAN;
   }
 
@@ -286,6 +356,14 @@ class Runtime {
   oq_input_source::HoldState room_hold_;
   oq_input_source::HoldState setpoint_hold_;
   oq_input_source::HoldState demand_hold_;
+  mutable oq_sources::SourceConfigurationGeneration flow_generation_;
+  oq_sources::SourceConfigurationGeneration outside_generation_;
+  oq_sources::SourceConfigurationGeneration room_generation_;
+  oq_sources::SourceConfigurationGeneration setpoint_generation_;
+  mutable oq_sources::ResolvedLearningSource resolved_flow_;
+  oq_sources::ResolvedLearningSource resolved_outside_;
+  oq_sources::ResolvedLearningSource resolved_room_;
+  oq_sources::ResolvedLearningSource resolved_setpoint_;
 
   template <typename T>
   static oq_input_source::Source parse_source(const T& option) {
@@ -301,6 +379,321 @@ class Runtime {
     if (option == "CIC or HA input") return oq_input_source::Source::CIC_OR_HA;
     if (option == "Schedule") return oq_input_source::Source::SCHEDULE;
     return oq_input_source::Source::NONE;
+  }
+
+  static oq_sources::RawFloatReceipt raw_receipt(float value, uint64_t received_ms, bool received, bool valid) {
+    return {value, received_ms, received, valid};
+  }
+
+  static oq_sources::SourceConfigurationKey room_configuration_key(bool setpoint) {
+    const auto& selector = setpoint ? id(room_setpoint_source) : id(room_temp_source);
+    const auto configured =
+        selector.has_state() ? parse_source(selector.current_option()) : oq_input_source::Source::NONE;
+    return {static_cast<uint8_t>(configured), 0U, 0U,
+            configured == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
+  }
+
+  static oq_sources::SourceConfigurationKey outside_configuration_key() {
+    const auto configured = id(outside_temp_source).has_state() ? parse_source(id(outside_temp_source).current_option())
+                                                                : oq_input_source::Source::NONE;
+    return {static_cast<uint8_t>(configured), 0U, 0U, 0U};
+  }
+
+  static oq_sources::SourceConfigurationKey flow_configuration_key() {
+    const auto configured =
+        id(flow_source).has_state() ? parse_source(id(flow_source).current_option()) : oq_input_source::Source::NONE;
+    oq_input_source::ControllerFlowMode controller_mode = oq_input_source::ControllerFlowMode::OTHER;
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    if (id(oq_q_flow_source).has_state()) {
+      const auto option = id(oq_q_flow_source).current_option();
+      controller_mode = option == "Local"  ? oq_input_source::ControllerFlowMode::LOCAL
+                        : option == "Auto" ? oq_input_source::ControllerFlowMode::AUTO
+                                           : oq_input_source::ControllerFlowMode::OTHER;
+    }
+#endif
+    oq_input_source::OutdoorFlowMode outdoor_mode = oq_input_source::OutdoorFlowMode::AGGREGATE;
+#if OQ_TOPOLOGY_DUO
+    if (id(oq_duo_outdoor_flow_mode).has_state()) {
+      const auto option = id(oq_duo_outdoor_flow_mode).current_option();
+      outdoor_mode = option == "Flowmeter HP1"   ? oq_input_source::OutdoorFlowMode::HP1
+                     : option == "Flowmeter HP2" ? oq_input_source::OutdoorFlowMode::HP2
+                                                 : oq_input_source::OutdoorFlowMode::AGGREGATE;
+    }
+#endif
+    return {static_cast<uint8_t>(configured), static_cast<uint8_t>(controller_mode), static_cast<uint8_t>(outdoor_mode),
+            configured == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
+  }
+
+  static oq_sources::RawFloatReceipt current_receipt(oq_sources::LearningSourceRoute route) {
+    using oq_sources::LearningSourceRoute;
+    switch (route) {
+      case LearningSourceRoute::OPENTHERM_ROOM:
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+      {
+        const auto receipt = id(oq_ot_slave_hub).master_room_temperature_receipt();
+        return raw_receipt(receipt.value, receipt.received_ms, receipt.received, receipt.valid);
+      }
+#else
+        return {};
+#endif
+      case LearningSourceRoute::OPENTHERM_SETPOINT:
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+      {
+        const auto receipt = id(oq_ot_slave_hub).master_room_setpoint_receipt();
+        return raw_receipt(receipt.value, receipt.received_ms, receipt.received, receipt.valid);
+      }
+#else
+        return {};
+#endif
+      case LearningSourceRoute::CIC_ROOM:
+        return id(cic_component).room_temperature_receipt();
+      case LearningSourceRoute::CIC_SETPOINT:
+        return id(cic_component).room_setpoint_receipt();
+      case LearningSourceRoute::CIC_FLOW:
+        return id(cic_component).flow_rate_receipt();
+      case LearningSourceRoute::HP1_OUTSIDE:
+        return oq_sources::hp1.outside;
+      case LearningSourceRoute::HP2_OUTSIDE:
+#if OQ_TOPOLOGY_DUO
+        return oq_sources::hp2.outside;
+#else
+        return {};
+#endif
+      case LearningSourceRoute::CONTROLLER_FLOW:
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+        return oq_sources::controller_flow;
+#else
+        return {};
+#endif
+      case LearningSourceRoute::HP1_FLOW:
+        return oq_sources::hp1.flow;
+      case LearningSourceRoute::HP2_FLOW:
+#if OQ_TOPOLOGY_DUO
+        return oq_sources::hp2.flow;
+#else
+        return {};
+#endif
+      default:
+        return {};
+    }
+  }
+
+  static oq_sources::ResolvedLearningSource validate_cached_receipt(const oq_sources::ResolvedLearningSource& cached) {
+    if (cached.provenance == oq_sources::LearningSourceProvenance::PHYSICAL_RECEIPT) {
+      return oq_sources::validate_current_receipts(cached, current_receipt(cached.route));
+    }
+    if (cached.route != oq_sources::LearningSourceRoute::OUTSIDE_AGGREGATE &&
+        cached.route != oq_sources::LearningSourceRoute::FLOW_AGGREGATE)
+      return cached;
+    return oq_sources::validate_current_receipts(cached, current_receipt(cached.component_route),
+                                                 current_receipt(cached.secondary_route));
+  }
+
+  static oq_sources::ResolvedLearningSource resolve_room(const oq_input_source::NumericSelection& selected,
+                                                         oq_input_source::Source configured, bool setpoint,
+                                                         uint32_t generation) {
+    using oq_sources::LearningSourceProvenance;
+    using oq_sources::LearningSourceRoute;
+    if (selected.held) {
+      return oq_sources::unsupported_source(selected.value, selected.valid,
+                                            setpoint ? LearningSourceRoute::HA_SETPOINT : LearningSourceRoute::HA_ROOM,
+                                            generation, LearningSourceProvenance::HELD);
+    }
+    const auto route = selected.valid ? selected.route : configured;
+    switch (route) {
+      case oq_input_source::Source::OPENTHERM: {
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+        const auto receipt = setpoint ? id(oq_ot_slave_hub).master_room_setpoint_receipt()
+                                      : id(oq_ot_slave_hub).master_room_temperature_receipt();
+        return oq_sources::physical_source(
+            setpoint ? LearningSourceRoute::OPENTHERM_SETPOINT : LearningSourceRoute::OPENTHERM_ROOM,
+            raw_receipt(receipt.value, receipt.received_ms, receipt.received, receipt.valid), generation,
+            selected.valid);
+#else
+        return oq_sources::unsupported_source(
+            selected.value, selected.valid,
+            setpoint ? LearningSourceRoute::OPENTHERM_SETPOINT : LearningSourceRoute::OPENTHERM_ROOM, generation);
+#endif
+      }
+      case oq_input_source::Source::CIC:
+        return oq_sources::physical_source(
+            setpoint ? LearningSourceRoute::CIC_SETPOINT : LearningSourceRoute::CIC_ROOM,
+            setpoint ? id(cic_component).room_setpoint_receipt() : id(cic_component).room_temperature_receipt(),
+            generation, selected.valid);
+      case oq_input_source::Source::HA:
+        return oq_sources::unsupported_source(
+            selected.value, selected.valid, setpoint ? LearningSourceRoute::HA_SETPOINT : LearningSourceRoute::HA_ROOM,
+            generation);
+      case oq_input_source::Source::API:
+        return oq_sources::unsupported_source(
+            selected.value, selected.valid,
+            setpoint ? LearningSourceRoute::API_SETPOINT : LearningSourceRoute::API_ROOM, generation);
+      case oq_input_source::Source::MQTT:
+        return oq_sources::unsupported_source(
+            selected.value, selected.valid,
+            setpoint ? LearningSourceRoute::MQTT_SETPOINT : LearningSourceRoute::MQTT_ROOM, generation);
+      default:
+        return {};
+    }
+  }
+
+  static oq_sources::ResolvedLearningSource resolve_outside(const oq_input_source::NumericSelection& selected,
+                                                            oq_input_source::Source configured, uint32_t generation) {
+    using oq_sources::LearningSourceProvenance;
+    using oq_sources::LearningSourceRoute;
+    if (selected.held) {
+      return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::HA_OUTSIDE, generation,
+                                            LearningSourceProvenance::HELD);
+    }
+    const auto route = selected.valid ? selected.route : configured;
+    switch (route) {
+      case oq_input_source::Source::OUTDOOR: {
+#if OQ_TOPOLOGY_DUO
+        const bool ambiguous_direct =
+            oq_sources::receipt_matches_selected(selected.value, selected.valid, oq_sources::hp1.outside) &&
+            oq_sources::receipt_matches_selected(selected.value, selected.valid, oq_sources::hp2.outside);
+        const auto matched_route = oq_sources::uniquely_matching_receipt_route(
+            selected.value, selected.valid, LearningSourceRoute::HP1_OUTSIDE, oq_sources::hp1.outside,
+            LearningSourceRoute::HP2_OUTSIDE, oq_sources::hp2.outside);
+#else
+        const auto matched_route = oq_sources::uniquely_matching_receipt_route(
+            selected.value, selected.valid, LearningSourceRoute::HP1_OUTSIDE, oq_sources::hp1.outside);
+#endif
+        // Equal readings do not prove which physical route the control resolver
+        // selected. Keep that ambiguous case observable but untrusted.
+#if OQ_TOPOLOGY_DUO
+        if (ambiguous_direct)
+          return oq_sources::unsupported_source(selected.value, true, LearningSourceRoute::OUTSIDE_AGGREGATE,
+                                                generation);
+#endif
+        if (matched_route == LearningSourceRoute::HP1_OUTSIDE)
+          return oq_sources::physical_source(LearningSourceRoute::HP1_OUTSIDE, oq_sources::hp1.outside, generation,
+                                             true);
+#if OQ_TOPOLOGY_DUO
+        if (matched_route == LearningSourceRoute::HP2_OUTSIDE)
+          return oq_sources::physical_source(LearningSourceRoute::HP2_OUTSIDE, oq_sources::hp2.outside, generation,
+                                             true);
+#endif
+#if OQ_TOPOLOGY_DUO
+        const bool hp1_present = id(hp1_outside_temp).has_state() && isfinite(id(hp1_outside_temp).state);
+        const bool hp2_present = id(hp2_outside_temp).has_state() && isfinite(id(hp2_outside_temp).state);
+        const float mean =
+            hp1_present && hp2_present ? 0.5f * (id(hp1_outside_temp).state + id(hp2_outside_temp).state) : NAN;
+        if (selected.valid && isfinite(mean) && fabsf(selected.value - mean) < 0.0001f) {
+          return oq_sources::unsupported_composite_source(
+              selected.value, true, LearningSourceRoute::OUTSIDE_AGGREGATE, LearningSourceRoute::HP1_OUTSIDE,
+              LearningSourceRoute::HP2_OUTSIDE, oq_sources::hp1.outside, oq_sources::hp2.outside,
+              oq_sources::LearningCompositeOperation::ARITHMETIC_MEAN, {}, generation);
+        }
+#endif
+        return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::OUTSIDE_AGGREGATE,
+                                              generation);
+      }
+      case oq_input_source::Source::HA:
+        return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::HA_OUTSIDE,
+                                              generation);
+      case oq_input_source::Source::API:
+        return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::API_OUTSIDE,
+                                              generation);
+      case oq_input_source::Source::MQTT:
+        return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::MQTT_OUTSIDE,
+                                              generation);
+      default:
+        return {};
+    }
+  }
+
+  static oq_sources::ResolvedLearningSource resolve_flow(const oq_input_source::FlowSelection& selected,
+                                                         const oq_input_source::FlowInputs& input,
+                                                         uint32_t generation) {
+    using oq_sources::LearningSourceProvenance;
+    using oq_sources::LearningSourceRoute;
+    oq_input_source::FlowRoute route = selected.route;
+    if (route == oq_input_source::FlowRoute::NONE && input.selected == oq_input_source::Source::CIC) {
+      route = oq_input_source::FlowRoute::CIC;
+    } else if (route == oq_input_source::FlowRoute::NONE && input.selected == oq_input_source::Source::OUTDOOR) {
+      const bool controller_only =
+          input.q_hardware && (input.controller_mode == oq_input_source::ControllerFlowMode::LOCAL ||
+                               (!input.duo && input.controller_mode == oq_input_source::ControllerFlowMode::AUTO &&
+                                input.hp_generation_v1));
+      if (controller_only)
+        route = oq_input_source::FlowRoute::CONTROLLER;
+      else if (input.duo && input.outdoor_mode == oq_input_source::OutdoorFlowMode::HP1)
+        route = oq_input_source::FlowRoute::HP1;
+      else if (input.duo && input.outdoor_mode == oq_input_source::OutdoorFlowMode::HP2)
+        route = oq_input_source::FlowRoute::HP2;
+      else
+        route = oq_input_source::FlowRoute::AGGREGATE;
+    }
+    switch (route) {
+      case oq_input_source::FlowRoute::CIC:
+        return oq_sources::physical_source(LearningSourceRoute::CIC_FLOW, id(cic_component).flow_rate_receipt(),
+                                           generation, selected.valid);
+      case oq_input_source::FlowRoute::CONTROLLER:
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+        return oq_sources::physical_source(LearningSourceRoute::CONTROLLER_FLOW, oq_sources::controller_flow,
+                                           generation, selected.valid);
+#else
+        return {};
+#endif
+      case oq_input_source::FlowRoute::HP1:
+        return oq_sources::physical_source(LearningSourceRoute::HP1_FLOW, oq_sources::hp1.flow, generation,
+                                           selected.valid);
+      case oq_input_source::FlowRoute::HP2:
+#if OQ_TOPOLOGY_DUO
+        return oq_sources::physical_source(LearningSourceRoute::HP2_FLOW, oq_sources::hp2.flow, generation,
+                                           selected.valid);
+#else
+        return {};
+#endif
+      case oq_input_source::FlowRoute::AGGREGATE: {
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+        const bool hp1_uses_controller = id(hp_generation).has_state() && id(hp_generation).current_option() == "V1";
+        const float hp1_value = hp1_uses_controller ? id(flow_rate_controller).state : id(hp1_flow).state;
+        const auto hp1_receipt = hp1_uses_controller ? oq_sources::controller_flow : oq_sources::hp1.flow;
+        const auto hp1_route =
+            hp1_uses_controller ? LearningSourceRoute::CONTROLLER_FLOW : LearningSourceRoute::HP1_FLOW;
+#else
+        const float hp1_value = id(hp1_flow).state;
+        const auto hp1_receipt = oq_sources::hp1.flow;
+        constexpr auto hp1_route = LearningSourceRoute::HP1_FLOW;
+#endif
+#if OQ_TOPOLOGY_DUO
+        const float hp2_value = id(hp2_flow).state;
+        const bool hp1_valid = isfinite(hp1_value);
+        const bool hp2_valid = isfinite(hp2_value);
+        if (selected.valid && hp1_valid && hp2_valid) {
+          const float mean = 0.5f * (hp1_value + hp2_value);
+          const float maximum = fmaxf(hp1_value, hp2_value);
+          const auto operation =
+              fabsf(selected.value - mean) < 0.0001f
+                  ? oq_sources::LearningCompositeOperation::ARITHMETIC_MEAN
+                  : (fabsf(selected.value - maximum) < 0.0001f ? oq_sources::LearningCompositeOperation::MAXIMUM
+                                                               : oq_sources::LearningCompositeOperation::NONE);
+          if (operation != oq_sources::LearningCompositeOperation::NONE) {
+            return oq_sources::unsupported_composite_source(selected.value, true, LearningSourceRoute::FLOW_AGGREGATE,
+                                                            hp1_route, LearningSourceRoute::HP2_FLOW, hp1_receipt,
+                                                            oq_sources::hp2.flow, operation, {}, generation);
+          }
+        }
+        if (selected.valid && hp1_valid && !hp2_valid)
+          return oq_sources::physical_source(hp1_route, hp1_receipt, generation, true);
+        if (selected.valid && !hp1_valid && hp2_valid)
+          return oq_sources::physical_source(LearningSourceRoute::HP2_FLOW, oq_sources::hp2.flow, generation, true);
+#else
+        if (selected.valid && isfinite(hp1_value))
+          return oq_sources::physical_source(hp1_route, hp1_receipt, generation, true);
+#endif
+        return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::FLOW_AGGREGATE,
+                                              generation);
+      }
+      case oq_input_source::FlowRoute::PUMPS_STOPPED:
+        return oq_sources::unsupported_source(selected.value, selected.valid,
+                                              LearningSourceRoute::SYNTHESIZED_ZERO_FLOW, generation,
+                                              LearningSourceProvenance::SYNTHESIZED);
+      default:
+        return {};
+    }
   }
 
   template <typename T>

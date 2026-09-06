@@ -12,6 +12,7 @@ import { state } from "./state.js";
 import { formatDutchAmps, getCommittedElectricalLimitRaw, getElectricalLimitChangePlan, renderElectricalLimitEstimate, renderElectricalLimitFooter, renderElectricalLimitRestore, resolveElectricalLimitView } from "../settings/electrical-limit.js";
 import { setInterfacePanelOpen } from "./runtime.js";
 import { handleDebugRecordingAction } from "../features/debug-recording.js";
+import { handleHouseLearningAction } from "../features/house-learning.js";
 import { handleControlReplayAction } from "../features/control-replay-actions.js";
 import { handleFirmwareAction } from "../features/firmware-actions.js";
 import { updateFirmwareState, updateEnergyHistoryState } from "./feature-state.js";
@@ -35,6 +36,7 @@ const actionDelegates = [
   handleControlReplayAction,
   handleQuickStartAction,
   handleDebugRecordingAction,
+  (action, button) => handleHouseLearningAction(action, button, triggerNamedButton),
   handleOduEepromDumpAction,
   handleOduRuntimeFrequencyAction,
   handleSecurityAction,

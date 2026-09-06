@@ -161,7 +161,8 @@ opentherm:
             const auto handshake_before =
                 oq_otb::start_handshake_state.result();
             oq_otb::telemetry_state.record_response(
-                millis(), response_id, response_type);
+                millis(), oq_sources::monotonic_ms(), response_id, response_type,
+                static_cast<uint16_t>((x.valueHB << 8) | x.valueLB));
             oq_otb::start_handshake_state.record_response(
                 response_id, response_type, x.valueHB, x.valueLB);
 

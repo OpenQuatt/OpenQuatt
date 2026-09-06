@@ -22,6 +22,7 @@ const boundaryAllowedEdges = new Set([
   "core/entity-actions.js -> features/control-replay-actions.js",
   "core/entity-actions.js -> features/firmware-actions.js",
   "core/entity-actions.js -> features/firmware-update.js",
+  "core/entity-actions.js -> features/house-learning.js",
   "core/entity-actions.js -> features/mqtt-actions.js",
   "core/entity-actions.js -> features/odu-eeprom-dump.js",
   "core/entity-actions.js -> features/odu-runtime-frequency.js",
@@ -35,6 +36,7 @@ const boundaryAllowedEdges = new Set([
   "core/entity-actions.js -> settings/electrical-limit.js",
   "core/entity-actions.js -> views/energy.js",
   "core/entity-sync.js -> features/mqtt-actions.js",
+  "core/entity-sync.js -> features/house-learning.js",
   "core/entity-sync.js -> features/odu-eeprom-dump.js",
   "core/entity-sync.js -> features/odu-runtime-frequency.js",
   "core/entity-sync.js -> features/security-actions.js",
@@ -44,6 +46,7 @@ const boundaryAllowedEdges = new Set([
   "core/entity-write-actions.js -> features/webserver-logs.js",
   "core/render-signatures.js -> features/security-actions.js",
   "core/runtime.js -> features/debug-recording.js",
+  "settings/house-learning.js -> views/stat-card.js",
   "views/overview.js -> settings/cooling.js",
   "views/shell.js -> settings/core.js",
 ]);

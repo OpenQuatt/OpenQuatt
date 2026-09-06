@@ -219,6 +219,11 @@
       1: { loaded: false, armed: false, busy: false, status: "READY: load ODU runtime table", extendedLayout: false },
       2: { loaded: false, armed: false, busy: false, status: "READY: load ODU runtime table", extendedLayout: false },
     },
+    houseLearning: {
+      records: 32,
+      rlsSamples: 174,
+      resetCount: 0,
+    },
   };
 
   function isCoolingScenario(name = state.scenario) {
@@ -311,6 +316,44 @@
       state: "",
       value: "",
       ...payload,
+    });
+  }
+
+  function hasHouseLearningCapability() {
+    return state.hardware === "heatpump_controller_q" || state.hardware === "waveshare";
+  }
+
+  function syncHouseLearningCapability() {
+    const definitions = [
+      ["switch", "Power House Passive Learning"],
+      ["button", "Power House Learning Reset"],
+      ["switch", "Power House Learning Calorimetry Confirmed"],
+      ["number", "Power House Learning Heat Uncertainty"],
+      ["number", "Power House Learning Maximum Flow"],
+      ["number", "Power House Learning Junction Tolerance"],
+      ["number", "Power House Learning Gain Bound"],
+    ];
+    if (!hasHouseLearningCapability()) {
+      definitions.forEach(([domain, name]) => entities.delete(entityKey(domain, name)));
+      return;
+    }
+
+    const learningEnabled = getEntity("switch", "Power House Passive Learning");
+    setEntity("switch", "Power House Passive Learning", learningEnabled || { state: false, value: false });
+    setEntity("button", "Power House Learning Reset", {});
+    const calorimetryConfirmed = getEntity("switch", "Power House Learning Calorimetry Confirmed");
+    setEntity("switch", "Power House Learning Calorimetry Confirmed", calorimetryConfirmed || { state: false, value: false });
+    setEntity("number", "Power House Learning Heat Uncertainty", {
+      state: 0, value: 0, min_value: 0, max_value: 2000, step: 10, uom: "W",
+    });
+    setEntity("number", "Power House Learning Maximum Flow", {
+      state: 3000, value: 3000, min_value: 100, max_value: 10000, step: 100, uom: "L/h",
+    });
+    setEntity("number", "Power House Learning Junction Tolerance", {
+      state: 1, value: 1, min_value: 0.1, max_value: 5, step: 0.1, uom: "°C",
+    });
+    setEntity("number", "Power House Learning Gain Bound", {
+      state: 0, value: 0, min_value: 0, max_value: 1000, step: 10, uom: "W",
     });
   }
 
@@ -1872,6 +1915,7 @@
   function seedEntities() {
     syncDevMeta();
     seedEntityDefinitions();
+    syncHouseLearningCapability();
     setEntity("text_sensor", "OpenQuatt Installation Topology", { state: state.installation, value: state.installation });
     syncMockOduIdentityEntities(1);
     setEntity("text_sensor", "OpenQuatt Hardware Profile", { state: state.hardware, value: state.hardware });
@@ -4042,6 +4086,10 @@
     if (name === "Usage statistics") {
       setEntity("binary_sensor", "Usage statistics choice configured", { value: true, state: true });
     }
+    if (name === "Power House Passive Learning") {
+      notifyMockUpdated();
+      return;
+    }
     if (name === "Boiler assist enabled" && !enabled) {
       setSwitch("Boiler fallback on heat-pump fault", false);
     }
@@ -4167,6 +4215,13 @@
   }
 
   function handleButtonPress(name) {
+    if (name === "Power House Learning Reset") {
+      state.houseLearning.records = 0;
+      state.houseLearning.rlsSamples = 0;
+      state.houseLearning.resetCount += 1;
+      notifyMockUpdated();
+      return;
+    }
     const generationDetectMatch = /^HP([12]) - Detect ODU generation$/.exec(name);
     if (generationDetectMatch) {
       const hp = Number(generationDetectMatch[1]);
@@ -5402,6 +5457,68 @@
     return mockResponse(405, { ok: false, error: "method_not_allowed" });
   }
 
+  function getHouseLearningStatusPayload() {
+    const enabled = isSwitchEnabled("Power House Passive Learning");
+    const confirmed = isSwitchEnabled("Power House Learning Calorimetry Confirmed");
+    const controlMode = String(getEntity("text_sensor", "Control Mode (Label)")?.value || "");
+    const uncertainty = Number(getEntity("number", "Power House Learning Heat Uncertainty")?.value || 0);
+    const invalidReasons = [];
+    if (!controlMode.startsWith("CM2")) invalidReasons.push("control_mode");
+    if (state.boiler !== "off") invalidReasons.push("boiler_heat");
+    if (!confirmed || !(uncertainty > 0)) invalidReasons.push("calorimetry_not_verified");
+    const ready = invalidReasons.length === 0 && state.houseLearning.records >= 24;
+    return {
+      schema: 1,
+      mode: "passive",
+      enabled,
+      storage_ready: true,
+      status: enabled ? "collecting" : "paused",
+      source_status: invalidReasons.length ? "blocked" : "ready",
+      invalid_reasons: invalidReasons,
+      records: state.houseLearning.records,
+      batch_status: ready ? "ready" : "collecting",
+      batch_advice_ready: ready,
+      advice_ready: false,
+      auto_apply_allowed: false,
+      h_batch: ready ? 186.4 : null,
+      t0_batch: ready ? 16.8 : null,
+      u_rls: ready ? 179.2 : null,
+      c_rls_wh_per_k: ready ? 7420 : null,
+      rls_samples: state.houseLearning.rlsSamples,
+      rls_ready: ready,
+      rls_readiness_reasons: ready ? [] : ["not_enough_samples"],
+      tick_epoch: Math.floor(Date.now() / 1000),
+      last_sample_epoch: enabled ? Math.floor(Date.now() / 1000) - 42 : null,
+      source_generation: 8,
+      physical_generation: 3,
+      control_generation: 11,
+      journal_status: "ready",
+      model_validation_status: ready ? "model_disagreement" : "batch_model_unavailable",
+      blocked_reasons: ready ? ["model_disagreement"] : invalidReasons,
+      sources: {
+        room: { route: "selected_room_temperature", valid: true },
+        setpoint: { route: "selected_room_setpoint", valid: true },
+        outside: { route: "selected_outside_temperature", valid: true },
+        flow: { route: "selected_flow", valid: true },
+      },
+      memory: { status_cache_bytes: 4096, export_cache_bytes: 24576, request_scratch_bytes: 24576 },
+    };
+  }
+
+  function getHouseLearningExportPayload() {
+    return {
+      schema: 1,
+      mode: "passive",
+      diagnostic_only: true,
+      records: Array.from({ length: Math.min(state.houseLearning.records, 12) }, (_item, index) => ({
+        sequence: index + 1,
+        outside_c: Number((8.2 + index * 0.1).toFixed(1)),
+        room_c: Number((20.4 + index * 0.03).toFixed(2)),
+        heat_w: 2800 + index * 45,
+      })),
+    };
+  }
+
   function parseMockRequest(input) {
     const url = new URL(String(typeof input === "string" ? input : input.url), window.location.href);
     const parts = url.pathname.split("/").filter(Boolean);
@@ -5419,6 +5536,7 @@
     return Promise.resolve({
       ok: status >= 200 && status < 300,
       status,
+      blob: async () => new Blob([JSON.stringify(payload)], { type: "application/json" }),
       json: async () => clone(payload),
       text: async () => JSON.stringify(payload),
     });
@@ -5492,6 +5610,16 @@
       }
       if (url.pathname.endsWith("/openquatt/debug-recording/download") && method === "GET") {
         return handleDebugRecordingDownload();
+      }
+      if (url.pathname.endsWith("/openquatt/learning/status") && method === "GET") {
+        return hasHouseLearningCapability()
+          ? mockResponse(200, getHouseLearningStatusPayload())
+          : mockResponse(404, { ok: false, error: "not_found" });
+      }
+      if (url.pathname.endsWith("/openquatt/learning/export") && method === "GET") {
+        return hasHouseLearningCapability()
+          ? mockResponse(200, getHouseLearningExportPayload())
+          : mockResponse(404, { ok: false, error: "not_found" });
       }
       const oduRuntimeResponse = handleMockOduRuntimeRequest(url, method, init || {});
       if (oduRuntimeResponse) {
@@ -5771,6 +5899,7 @@
       hardware.value = state.hardware;
       hardware.onchange = () => {
         state.hardware = hardware.value;
+        syncHouseLearningCapability();
         setEntity("text_sensor", "OpenQuatt Hardware Profile", { state: state.hardware, value: state.hardware });
         const selectedIncident = mockIncidentScenarios.getScenario(state.incidentSimulation.scenario);
         if (selectedIncident.required_hardware && selectedIncident.required_hardware !== state.hardware) {

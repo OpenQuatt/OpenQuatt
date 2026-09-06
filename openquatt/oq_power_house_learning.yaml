@@ -1,0 +1,97 @@
+# ==============================================================================
+# OpenQuatt – Passive Power House learning
+# ==============================================================================
+# This package is included only by Q and Waveshare.
+# It never writes a heating model or actuator. A reboot requires a fresh opt-in.
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_house_learning_status]
+
+openquatt_house_learning_status:
+  id: oq_ph_learning_status_endpoint
+  web_auth: oq_web_auth_store
+
+switch:
+  - platform: template
+    id: oq_ph_learning_enabled
+    name: "Power House Passive Learning"
+    icon: mdi:school-outline
+    entity_category: config
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    on_turn_off:
+      - lambda: |-
+          oq_ph_learning::runtime().pause();
+
+  - platform: template
+    id: oq_ph_learning_calorimetry_confirmed
+    name: "Power House Learning Calorimetry Confirmed"
+    icon: mdi:check-decagram-outline
+    entity_category: config
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+
+number:
+  - platform: template
+    id: oq_ph_learning_heat_uncertainty
+    name: "Power House Learning Heat Uncertainty"
+    entity_category: config
+    unit_of_measurement: W
+    optimistic: true
+    restore_value: true
+    min_value: 0
+    max_value: 2000
+    step: 10
+    initial_value: 0
+  - platform: template
+    id: oq_ph_learning_maximum_flow
+    name: "Power House Learning Maximum Flow"
+    entity_category: config
+    unit_of_measurement: L/h
+    optimistic: true
+    restore_value: true
+    min_value: 100
+    max_value: 10000
+    step: 100
+    initial_value: 3000
+  - platform: template
+    id: oq_ph_learning_junction_tolerance
+    name: "Power House Learning Junction Tolerance"
+    entity_category: config
+    unit_of_measurement: "°C"
+    optimistic: true
+    restore_value: true
+    min_value: 0.1
+    max_value: 5
+    step: 0.1
+    initial_value: 1
+  - platform: template
+    id: oq_ph_learning_gain_bound
+    name: "Power House Learning Gain Bound"
+    entity_category: config
+    unit_of_measurement: W
+    optimistic: true
+    restore_value: true
+    min_value: 0
+    max_value: 1000
+    step: 10
+    initial_value: 0
+
+button:
+  - platform: template
+    id: oq_ph_learning_reset
+    name: "Power House Learning Reset"
+    icon: mdi:database-remove-outline
+    entity_category: config
+    on_press:
+      - lambda: |-
+          oq_ph_learning::runtime().request_reset();
+
+interval:
+  - interval: 10s
+    startup_delay: 30s
+    then:
+      - lambda: |-
+          oq_ph_learning::runtime().tick();

@@ -45,7 +45,12 @@ substitutions:
   hpcq_status_led_red_pin: "GPIO2"                      # Red status LED output.
   hpcq_status_led_inverted: "false"                     # Set true when the board LED is active-low.
 
+esphome:
+  build_flags:
+    - -DOQ_POWER_HOUSE_LEARNING_TARGET=1
+
 packages:
+  oq_power_house_learning: !include ../oq_power_house_learning.yaml
   oq_hardware_revision: !include heatpump_controller_q_hardware_revision.yaml
   oq_status_leds: !include heatpump_controller_q_status_leds.yaml
   oq_cic_compatibility: !include heatpump_controller_q_cic_compatibility.yaml
@@ -166,9 +171,14 @@ sensor:
           const float lpm =
             (static_cast<float>(${hpcq_flow_kf_lpm_per_hz}) * hz)
             + static_cast<float>(${hpcq_flow_q0_lpm});
-          if (isnan(lpm)) return NAN;
+          if (isnan(lpm)) {
+            oq_sources::controller_flow.observe(lpm, oq_sources::monotonic_ms(), false);
+            return NAN;
+          }
           const float lph = lpm * 60.0f;
-          return lph > 0.0f ? lph : 0.0f;
+          const float accepted_lph = lph > 0.0f ? lph : 0.0f;
+          oq_sources::controller_flow.observe(accepted_lph, oq_sources::monotonic_ms(), isfinite(lph));
+          return accepted_lph;
       - throttle_average: 10s
 
 interval:

@@ -184,6 +184,7 @@ STRICT_TOP_LEVEL_ORDER_RULES = {
     ),
     "openquatt/profiles/heatpump_controller_q.yaml": (
         "substitutions",
+        "esphome",
         "packages",
         "openquatt_usage_telemetry",
         "psram",
@@ -310,6 +311,7 @@ NESTED_KEY_ORDER_RULES = {
         "hp1_odu_runtime_frequency_table",
     ),
     ("openquatt/profiles/heatpump_controller_q.yaml", "packages"): (
+        "oq_power_house_learning",
         "oq_hardware_revision",
         "oq_status_leds",
         "oq_cic_compatibility",

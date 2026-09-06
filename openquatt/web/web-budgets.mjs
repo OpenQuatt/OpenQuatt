@@ -33,9 +33,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // plus bounded webserver-log history polling (single scheduler, retry
     // back-off and authoritative refresh without a second /events stream).
     // Includes stable native time editing and confirmed, stale-poll-safe saves.
-    // Retain the compact production pipeline and its existing raw ceiling
-    // for build-environment variance and small follow-up changes.
-    raw: 905_000,
+    // Includes the passive Power House learner status, measurement contract,
+    // visible-settings polling, combined-model validation and diagnostic export.
+    raw: 911_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

@@ -12,6 +12,7 @@ import { getWebAuthStatusDetail, getWebAuthStatusLabel } from "../features/secur
 import { getCommissioningStatusValue, patchSettingsChoiceOption, patchSettingsSelectControl, renderSettingsSection } from "./controls.js";
 import { renderSettingsCoolingSection } from "./cooling.js";
 import { renderSettingsFlowSection, renderSettingsHeatingSection } from "./heating.js";
+import { patchHouseLearningSettingsStatus } from "./house-learning.js";
 import { renderSettingsElectricalCurrentLimitSection } from "./electrical-limit.js";
 import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection, renderSettingsQuickStartSection } from "./installation.js";
 import { renderSettingsMqttSection, renderSettingsOpenThermCicSection, renderSettingsSensorSelectionSection } from "./integrations.js";
@@ -269,6 +270,8 @@ function syncFrequencyRangeControl(control) {
         copyNode.textContent = copy;
       }
     });
+
+    patchHouseLearningSettingsStatus();
 
     const generationStatus = stack.querySelector('button[data-oq-action="open-generation-modal"]')?.closest(".oq-settings-quickstart-status");
     if (generationStatus) {

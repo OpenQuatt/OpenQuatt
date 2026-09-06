@@ -22,6 +22,7 @@ import { getMqttSensorsModalRenderSignature, refreshMqttStatus, shouldRefreshMqt
 import { getApiSecurityStatusSignature, refreshApiSecurityStatus, refreshAuthStatus, shouldRefreshApiSecurityStatusForCurrentSurface, shouldRefreshAuthStatusForCurrentSurface } from "../features/security-actions.js";
 import { refreshOduEepromDumpStatuses, shouldRefreshOduEepromDumpSurface } from "../features/odu-eeprom-dump.js";
 import { refreshOduRuntimeFrequencyStatuses, shouldRefreshOduRuntimeFrequencySurface } from "../features/odu-runtime-frequency.js";
+import { refreshHouseLearningStatus, shouldRefreshHouseLearningStatusSurface } from "../features/house-learning.js";
 import {
   captureUsageTelemetryPreview,
   loadUsageTelemetryPreviewMqttEnabled,
@@ -261,6 +262,8 @@ import { fetchWithTimeout } from "./browser-utils.js";
     heating: [
       "strategy",
       ...POWER_HOUSE_KEYS,
+      "houseLearningEnabled",
+      "houseLearningReset",
       ...CURVE_SETTING_KEYS,
       ...FREQUENCY_CAP_KEYS,
     ],
@@ -1329,6 +1332,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
       }
       if (!shouldDeferSupplementary && shouldRefreshOduRuntimeFrequencySurface()) {
         await refreshOduRuntimeFrequencyStatuses();
+      }
+      if (!shouldDeferSupplementary && shouldRefreshHouseLearningStatusSurface()) {
+        await refreshHouseLearningStatus();
       }
       const nextHeaderSignature = getHeaderRenderSignature();
       if (shouldDeferSupplementary && !state.nativeOpen) {
