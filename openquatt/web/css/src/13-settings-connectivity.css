@@ -620,7 +620,7 @@
   }
 
   .oq-settings-odu-runtime-row {
-    grid-template-columns: 44px repeat(2, minmax(0, 1fr));
+    grid-template-columns: 52px repeat(2, minmax(0, 1fr));
     gap: 6px;
     padding: 6px;
   }
@@ -628,6 +628,12 @@
   .oq-settings-odu-runtime-input {
     padding-left: 10px;
     padding-right: 10px;
+  }
+
+  .oq-settings-odu-fields > label,
+  .oq-settings-odu-temperature-settings > label {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .oq-settings-monitoring-summary,

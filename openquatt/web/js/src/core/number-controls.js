@@ -3,22 +3,22 @@ import { getNumberMeta } from "./entity-store.js";
 import { escapeHtml } from "./html.js";
 import { state } from "./state.js";
 
-export function renderNumberInputControl({ key, value, meta, controlClass, inputClass = "oq-helper-input", inputAttributes = "", unitMarkup = "" }) {
+export function renderNumberInputControl({ key, value, meta, controlClass, controlTag = "label", inputClass = "oq-helper-input", inputAttributes = "", unitMarkup = "", disabled = state.loadingEntities }) {
   return `
-    <label class="${controlClass}">
+    <${controlTag} class="${controlClass}">
       <input
         class="${inputClass}"
         type="number"
-        data-oq-field="${escapeHtml(key)}"
+        ${key ? `data-oq-field="${escapeHtml(key)}"` : ""}
         min="${meta.min}"
         max="${meta.max}"
         step="${meta.step}"
         value="${escapeHtml(value)}"
         ${inputAttributes}
-        ${state.loadingEntities ? "disabled" : ""}
+        ${disabled ? "disabled" : ""}
       >
       ${unitMarkup}
-    </label>
+    </${controlTag}>
   `;
 }
 

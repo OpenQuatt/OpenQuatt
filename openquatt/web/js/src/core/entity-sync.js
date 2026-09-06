@@ -23,6 +23,7 @@ import { getApiSecurityStatusSignature, refreshApiSecurityStatus, refreshAuthSta
 import { refreshOduEepromDumpStatuses, shouldRefreshOduEepromDumpSurface } from "../features/odu-eeprom-dump.js";
 import { refreshOduRuntimeFrequencyStatuses, shouldRefreshOduRuntimeFrequencySurface } from "../features/odu-runtime-frequency.js";
 import { refreshHouseLearningStatus, shouldRefreshHouseLearningStatusSurface } from "../features/house-learning.js";
+import { refreshOduSettingsStatuses, shouldRefreshOduSettingsSurface } from "../features/odu-settings.js";
 import {
   captureUsageTelemetryPreview,
   loadUsageTelemetryPreviewMqttEnabled,
@@ -1335,6 +1336,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
       }
       if (!shouldDeferSupplementary && shouldRefreshHouseLearningStatusSurface()) {
         await refreshHouseLearningStatus();
+      }
+      if (!shouldDeferSupplementary && shouldRefreshOduSettingsSurface()) {
+        await refreshOduSettingsStatuses();
       }
       const nextHeaderSignature = getHeaderRenderSignature();
       if (shouldDeferSupplementary && !state.nativeOpen) {

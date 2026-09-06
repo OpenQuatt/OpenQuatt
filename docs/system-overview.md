@@ -119,6 +119,10 @@ Configured startup delays are relative to the ESPHome scheduler becoming active.
 
 These offsets spread network and bus work; they are not readiness guarantees. A successful Modbus or OpenTherm exchange can only occur once the corresponding external equipment is connected and responsive.
 
+De compressorbeveiliging telt per HP `${oq_hp_min_off_s}` (standaard 240 seconden) vanaf bevestigde stilstand: verse compressorfrequentie en standby-modus moeten de stop bevestigen. Via **Restart** kan reeds bewezen uit-tijd eenmalig worden meegenomen bij een gecontroleerde herstart van dezelfde firmware. Na de herstart zijn opnieuw verse stopmetingen nodig; de tijd zonder metingen wordt niet meegerekend. Een HP die draaide, verouderde metingen, een crash, stroomuitval of een firmwarewissel geven geen verkorting. De afzonderlijke minimale koel-uit-tijd blijft gelden.
+
+Het herstartrecord wordt vóór safe mode en OTA-toegang uit NVS verbruikt. Als dat niet aantoonbaar lukt, herstart de controller zonder HP-starts of OTA-toegang vrij te geven; alleen extra wachten zou hergebruik van oude uit-tijd niet voorkomen. Deze opslagfout vereist herstel voordat normaal bedrijf kan hervatten.
+
 ## 4. Data Pipeline
 
 ### 4.1 Input layer

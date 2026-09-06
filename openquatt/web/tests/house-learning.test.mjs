@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { runInNewContext } from "node:vm";
 
 globalThis.__OQ_PREVIEW__ = false;
 globalThis.document = { hidden: false };
@@ -363,4 +364,29 @@ test("firmware-endpoint bewaart caches en requestscratch uitsluitend in PSRAM", 
   assert.match(runtime, /ModelValidationStatus::MODEL_DISAGREEMENT/);
   assert.match(runtime, /enabled && summary\.cross_validated_advice_ready/);
   assert.match(runtime, /__DATE__[\s\S]*__TIME__[\s\S]*ph-passive-1/);
+});
+
+
+test("preview-reset pauzeert leren en bevestigt gewiste opslag zoals de firmware", async () => {
+  const source = await readFile(new URL("../js/mock-device.js", import.meta.url), "utf8");
+  const functionSource = (name) => {
+    const start = source.indexOf(`  function ${name}(`);
+    assert.ok(start >= 0);
+    return source.slice(start, source.indexOf("\n  function ", start + 1));
+  };
+  let enabled = true;
+  const mockState = { boiler: "off", houseLearning: { records: 32, rlsSamples: 174, resetCount: 0, journalStatus: "ready" } };
+  const mock = runInNewContext(`${functionSource("handleButtonPress")}\n${functionSource("getHouseLearningStatusPayload")}\n({ handleButtonPress, getHouseLearningStatusPayload })`, {
+    state: mockState,
+    isSwitchEnabled: (name) => name === "Power House Passive Learning" ? enabled : true,
+    setSwitch: (name, value) => { assert.equal(name, "Power House Passive Learning"); enabled = value; },
+    getEntity: (domain) => ({ value: domain === "text_sensor" ? "CM2 - Heatpump" : 50 }),
+    notifyMockUpdated: () => {},
+  });
+  assert.equal(isHouseLearningResetConfirmed(normalizeHouseLearningStatus(mock.getHouseLearningStatusPayload())), false);
+  mock.handleButtonPress("Power House Learning Reset");
+  const status = normalizeHouseLearningStatus(mock.getHouseLearningStatusPayload());
+  assert.equal(isHouseLearningResetConfirmed(status), true);
+  assert.equal(status.rlsSamples, 0);
+  assert.equal(mockState.houseLearning.resetCount, 1);
 });

@@ -2,7 +2,7 @@
 
 ## Status en uitgangspunt
 
-Ontwikkelbasis: `dev` op `b4eb58c37034970f402dac5bde652611aca8a939`, met GitHub vergeleken op 6 september 2026. PR #633 is daarin gemerged; de [centrale webontwikkelafspraken](../openquatt/web/README.md) gelden voor de passieve learnerbediening. Ontwerpinput: *OpenQuatt Power House Autotuning Engineer Plan*, revisie 1.1, *Adaptive Power House* en de aanvullende *1R1C Design Note*. De 24 synthetische checks uit de overdracht zijn gereproduceerd. Ze bewijzen geen meetkwaliteit, firmwaregedrag of energiebesparing.
+Ontwikkelbasis: `dev` op `fd2e200c`, met GitHub vergeleken op 6 september 2026. PR #633, #625 en #634 zijn daarin gemerged; de [centrale webontwikkelafspraken](../openquatt/web/README.md) gelden voor de passieve learnerbediening. Ontwerpinput: *OpenQuatt Power House Autotuning Engineer Plan*, revisie 1.1, *Adaptive Power House* en de aanvullende *1R1C Design Note*. De 24 synthetische checks uit de overdracht zijn gereproduceerd. Ze bewijzen geen meetkwaliteit, firmwaregedrag of energiebesparing.
 
 De implementatie bevat de scheiding van woninglijn en regelgrenzen, de passieve C++ batch-leerkern, een parallel 1R1C/RLS-model, kruisvalidatie, de meetadapter en CSV-replay. De live collector, geselecteerde-bronmetadata, één runtime-eigenaar, strikte PSRAM-opslag, een dubbel flashjournal en webbediening zijn nu aangesloten. Dit is experimentele testfirmware voor passief leren. De bestaande regeling blijft de handmatige Power House-instellingen gebruiken. Modelactivatie en automatisch toepassen zijn nog niet geïmplementeerd; de productfase met gecontroleerd toepassen is daarmee nog niet voltooid.
 
@@ -238,11 +238,23 @@ instellingen gelijk; alleen opt-in stond na reboot uit. Die build had nul traini
 runtime-PSRAM was 56112 bytes en de endpointbuffers samen 53248 bytes. Dat is geen kwalificatie van de
 vereenvoudigde code. Nieuwe timing- en geheugenmetingen moeten aan de definitieve build worden gedaan.
 
-Voor deze vereenvoudiging worden de C++-hostsuite, Python-contracten, C++-format, docschecks en een
-volledige Q Duo Wi-Fi-build uitgevoerd. De opslagtests injecteren erase-, partiële write-, verloren
-acknowledgement- en leesfouten en controleren het resultaat na gesimuleerde reboot. Er volgt een
-onafhankelijke review van de complete diff. De synchrone fit wordt pas overwogen na een meting op
-ESP32-S3; tot die tijd blijft de bestaande begrensde fit behouden.
+Deze vereenvoudiging is gecontroleerd met 83 C++-hosttests, 239 Python-contracttests en 457 webtests.
+C++-format, docschecks, webbuild, smokecheck en controle van de gegenereerde assets slagen. De volledige
+Q Duo Wi-Fi-build slaagt: 206239 bytes statisch RAM en 2268259 bytes applicatie-image. Die build bevat
+ook de nieuwe bodemplaatinstellingen en herstartafhandeling uit `dev`; het verschil met een eerdere
+firmwarebuild is daarom geen zuivere meting van deze vereenvoudiging.
+
+De opslagtests injecteren erase-, partiële write-, verloren acknowledgement- en leesfouten en
+controleren herstel na gesimuleerde reboot. De complete diff is afzonderlijk koud gereviewd; resetbevestiging,
+bronwissels tussen leerticks en de previewreset zijn daarbij gecorrigeerd en getest. De synchrone fit
+wordt pas overwogen na een meting op ESP32-S3; tot die tijd blijft de begrensde fit behouden.
+
+Een schone webbuild van de actuele `dev` met dezelfde toolchain geeft 913958 bytes raw / 261411 bytes
+gzip JavaScript. Deze feature geeft 924774 / 264797 bytes: +10816 raw en +3386 gzip (+1,30%), binnen
+de relatieve gzipgrens van 4608 bytes. Het raw-budget houdt dezelfde 6000 bytes extra ruimte als de
+eerdere featureversie, nu bovenop `dev`: 919000 → 925000. CSS blijft raw gelijk (195001 bytes).
+De nieuwe previewreset is geautomatiseerd gecontroleerd; de actuele browsermatrix en Safari/iOS zijn
+nog niet afgevinkt. De vereenvoudigde firmware is nog niet via OTA of op hardware getest.
 
 De config-only projectwrapper heeft drie bestaande stijlmeldingen in `configs/hil/input_sources_fast_duo_wifi.yaml`
 en `openquatt/oq_common.yaml`. Directe ESPHome-validatie blijft beschikbaar. Echte stroomonderbrekingen,

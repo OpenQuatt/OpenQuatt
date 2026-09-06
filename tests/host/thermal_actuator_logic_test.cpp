@@ -1,11 +1,13 @@
 #include <assert.h>
 #include <stdint.h>
 
+#include "../../openquatt/includes/control/oq_hp_restart_guard.h"
 #include "../../openquatt/includes/control/oq_thermal_actuator_logic.h"
 int main() {
   using namespace oq_thermal_actuator;
-  ManualGuardInputs input{5, 2, 10000U, 0U, 300000U, 0U, false, false, false, true, false};
+  ManualGuardInputs input{5, 2, 0U, 0U, false, false, false, true, false};
   assert(manual_guard(input, "Vrijgegeven") == "Vrijgegeven");
+  input.minimum_off_remaining_ms = 30000U;
   input.stop_requested = true;
   input.water_temperature_trip = true;
   assert(manual_guard(input, "Vrijgegeven") == "stopverzoek wordt veilig afgerond");
@@ -29,10 +31,28 @@ int main() {
   input.mode_conflict = true;
   assert(manual_guard(input, "Vrijgegeven") == "conflicterende werkmodus tussen HP1 en HP2");
   input.mode_conflict = false;
-  input.now_ms = 25U;
-  input.last_stop_ms = UINT32_MAX - 50U;
-  input.minimum_off_ms = 1000U;
-  assert(manual_guard(input, "Vrijgegeven") == "minimale uit-tijd: nog 1 s");
+
+  oq_hp_restart_guard::Policy restart_guard;
+  assert(restart_guard.configure(240000U, 10000U));
+  restart_guard.observe_stopped(1000U);
+  for (uint32_t now_ms = 11000U; now_ms <= 221000U; now_ms += 10000U) restart_guard.observe_stopped(now_ms);
+  input.minimum_off_remaining_ms = restart_guard.remaining_ms(226000U);
+  assert(input.minimum_off_remaining_ms == 15000U);
+  assert(manual_guard(input, "Vrijgegeven") == "minimale uit-tijd: nog 15 s");
+
+  restart_guard.observe_stopped(231001U);
+  input.minimum_off_remaining_ms = restart_guard.remaining_ms(231001U);
+  assert(input.minimum_off_remaining_ms == 240000U);
+  assert(manual_guard(input, "Vrijgegeven") == "minimale uit-tijd: nog 240 s");
+
+  oq_hp_restart_guard::Policy released_guard;
+  assert(released_guard.configure(240000U, 10000U));
+  assert(released_guard.restore_credit(240000U, true));
+  released_guard.observe_stopped(0U);
+  input.minimum_off_remaining_ms = released_guard.remaining_ms(0U);
+  assert(input.minimum_off_remaining_ms == 0U);
+  assert(manual_guard(input, "Vrijgegeven") == "Vrijgegeven");
+
   assert(manual_guard(input, "Bestaande blokkering") == "Bestaande blokkering");
   input.requested_level = 0;
   assert(manual_guard(input, "Vrijgegeven") == "Vrijgegeven");
