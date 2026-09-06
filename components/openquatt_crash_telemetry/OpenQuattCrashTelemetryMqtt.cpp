@@ -117,10 +117,12 @@ bool OpenQuattCrashTelemetry::build_crash_payload_() {
   append_json_key(writer, "connection_preference");
   const bool connection_preference_available =
       this->connection_preference_select_ != nullptr && this->connection_preference_select_->has_state();
+  const auto connection_preference_option =
+      connection_preference_available ? this->connection_preference_select_->current_option() : StringRef{};
   const char* connection_preference =
-      connection_preference_available
-          ? connection_preference_wire_value(this->connection_preference_select_->current_option())
-          : nullptr;
+      connection_preference_available ? connection_preference_wire_value(std::string_view(
+                                            connection_preference_option.c_str(), connection_preference_option.size()))
+                                      : nullptr;
   writer.append_json_string(connection_preference == nullptr ? record.connection : connection_preference);
   append_json_key(writer, "captured_by_reporting_build");
   writer.append(record.captured_by_reporting_build != 0U ? "true" : "false");
