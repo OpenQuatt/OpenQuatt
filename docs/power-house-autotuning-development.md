@@ -123,17 +123,24 @@ zelf in C++; de MPC-output, horizon, forecasts en aanvoertemperatuursturing word
 De batch-ankering van `U` bij weinig warmtevraag is evenmin bruikbaar als kruisvalidatiebewijs.
 De aanvullende RLS heeft geen pad naar `P_request`; `P_adaptive = 0` blijft gelden.
 
-De pure checkpointfunctie valideert schema, inhoud en configuratie en herstelt bij corruptie naar
-startwaarden. De firmware bewaart uitsluitend batchrecords in het journal; RLS en adviesreadiness
-worden na reboot opnieuw opgebouwd. Het journal heeft twee slots van 8 KiB, expliciete serialisatie,
-schema/CRC, exacte contextvergelijking en maximaal 42 dagen historie. Een duurzame dirty-markering
-gaat vooraf aan wijzigingen; writes en NVS-commits worden teruggelezen. Herstel vereist bekende UTC
-en dezelfde firmwarebuild/context. Dit conservatieve testbeleid verwerpt historie bij firmwarewissel.
-Powercutbestendigheid op echte hardware blijft een afzonderlijke vrijgavepoort.
+De firmware bewaart uitsluitend batchrecords. RLS en adviesreadiness worden na reboot opnieuw
+opgebouwd; de ongebruikte RLS-checkpoint-API is verwijderd. Het A/B-journal heeft twee slots van
+8 KiB, schema/CRC, meetcontext en maximaal 42 dagen historie. Een nieuwe write raakt alleen het
+inactieve slot en wordt teruggelezen voordat hij als opgeslagen geldt.
+
+Opslagfalen stopt verdere writes voor die boot; leren in RAM en de verwarmingsregeling blijven
+werken. Er zijn geen NVS-owner, dirty-markering of automatische herstelpogingen. Wissen heeft één
+pad: beide slots wissen en controleren, of een zichtbare fout melden. Een mislukte reset kan na een
+reboot nog oude historie opleveren; de UI mag daarom alleen na `cleared` succes melden.
+
+Herstel vereist geldige UTC en beschikbare geselecteerde bronnen. Schema, algoritmeversie en
+meetcontext bepalen compatibiliteit; een gewone hercompilatie of webfix wist geen historie.
+Deze vereenvoudiging gebruikt schema 2: data van de eerdere experimentele schema-1-build begint
+eenmalig opnieuw. Achtergebleven NVS-owner/dirty-waarden worden niet meer gelezen.
 
 ## Uitvoerbare replay
 
-De replay compileert dezelfde C++-headers als de hosttests; er is geen tweede Python-implementatie van de fit. Bouw bijvoorbeeld:
+Firmware en replay gebruiken `tick_passive_runtime()` voor beide modellen en dezelfde fit-entrypoints. De CLI parseert CSV en schrijft resultaten; hij heeft geen eigen collector- of contextresetloop. Bouw bijvoorbeeld:
 
 ```bash
 c++ -std=c++17 -Wall -Wextra -Werror -I. scripts/power_house_learning_replay.cpp -o /tmp/power_house_learning_replay
@@ -188,7 +195,7 @@ Verzamel diagnostiek ook tijdens perioden die voor modeltraining afvallen. Ander
 | --- | --- | --- |
 | 1. Fundament en passieve replay | Model/envelope, bronadapter, batch-fit, 1R1C/RLS, kruisvalidatie, regressies | Onafhankelijke review en hosttests; oude regeluitvoer behouden |
 | 2. Bronmetadata en firmwarecollector | Werkelijke source-route/timestamps, Q/Waveshare-allowlist, opt-in, diagnostiek | Alle ondersteunde entry paths gecontroleerd; ontbrekend bewijs faalt gesloten; Listener bevat geen learner |
-| 3. Persistente dataset en adviesbediening | Strikte PSRAM, begrensde export, journal, begrensde RLS-checkpoints en capability-aware UI volgens PR #633 | Reboot, allocatiefalen, CRC/schema, powercut, factory reset, upgrade/downgrade en archiefgrenzen getest |
+| 3. Persistente dataset en adviesbediening | Strikte PSRAM, begrensde export, A/B-journal en capability-aware UI volgens PR #633 | Reboot, allocatiefalen, CRC/schema, powercut, factory reset, upgrade/downgrade en archiefgrenzen getest |
 | 4. Gecontroleerd toepassen | Eén modelowner, revisions, trial, bevestiging en rollback | Batch én 1R1C-kwaliteitscontrole, meetkwaliteit, echte winterreplay, HIL en comfortpoorten geslaagd |
 | 5. Adaptive Power House | Tijdelijke power-bias met eigen confidence, limieten en decay | Aparte gesloten-lusvalidatie en aantoonbare meerwaarde uit diagnostiek |
 
@@ -196,257 +203,47 @@ Fase 1 van het product omvat stappen 1–4. Fase 2 is Adaptive Power House. Onde
 
 Voor latere activatie geldt: een complete, gevalideerde trial-intent met bevestigd herstelmodel moet aantoonbaar persistent zijn **vóór** de control-task de kandidaat activeert. Verlies van betrouwbare monitoring tijdens een trial moet herstel naar het bevestigde model geven. Een herhaalde request mag geen extra activatie of flashcyclus veroorzaken. Handmatige wijzigingen krijgen voorrang en mogen niet als een half samengestelde configuratie gecommit worden. Coalescing alleen bewijst geen volledige batch.
 
-Het journal houdt handmatige basis, actief en laatst bevestigd structureel model en metadata apart. Een toekomstige adaptive bias valt bij reboot standaard terug naar nul. Een tijdelijke afwijking wordt alleen na onafhankelijke, langdurige validatie input voor een nieuw structureel model.
+Bij toekomstige modelactivatie worden handmatige basis, actief en laatst bevestigd structureel model apart opgeslagen. Het huidige journal bevat alleen passieve meetrecords. Een toekomstige adaptive bias valt bij reboot standaard terug naar nul. Een tijdelijke afwijking wordt alleen na onafhankelijke, langdurige validatie input voor een nieuw structureel model.
 
 Begrens toekomstige adaptive bias in beide richtingen en in verandering per tijdseenheid. Laat hem vervallen bij slechte metingen, storingen, overrides of ongeldige modus. Hij mag nooit de envelope of bestaande veiligheidsgrenzen verhogen. De kernrepresentatie van `HouseLine` en de dispatcharchitectuur blijven daarbij bruikbaar.
 
 De hardwarepoort omvat Q Single/Duo en Waveshare Single/Duo: vier builds, met Q Wi-Fi/Ethernet samen zes runtimecases. Meet interne heap, grootste vrije blok, minimum-sinds-boot, stack-watermarks en timing onder gecombineerde belasting. Desktoptests of succesvolle configuratievalidatie vervangen deze metingen niet. Het 16 KiB learnerjournal ligt direct na het crasharchief binnen `openquatt_data`; bestaande archiefoffsets blijven behouden.
 
-## Verificatie van bouwstap 1
+## Bediening en huidige teststatus
 
-Gecontroleerd op 6 september 2026:
+Op Q en Waveshare staat onder Instellingen → Verwarmen → Power House **Passief leren**. Water en
+Duo-serie HP1 → HP2 zijn vast; hiervoor bestaan geen selects. Opt-in en calorimetrische bevestiging
+starten na reboot uit. De reguliere Power House-instellingen blijven leidend; automatisch toepassen
+is altijd uit. Interne engineeringwaarden worden niet als uitgebreid invulformulier aangeboden.
 
-- `bash scripts/run_host_regression_tests.sh`: 69 hosttests geslaagd, inclusief de bevroren legacyvergelijking en de volledige synthetische seriële-Duo-keten van ruwe metingen tot advies.
-- Gerichte Python-contracten voor Power House, strategy, thermal request en de replay-CLI: 15 tests geslaagd. De 7 CLI-tests dekken ook corrupte invoer, NUL-bytes, ongeldige actieve modellen en cohortwissels.
-- UBSan op de nieuwe leerkern, bronadapter en volledige ketentest: geslaagd. ASan kon in de lokale omgeving niet betrouwbaar worden uitgevoerd; er wordt geen ASan-resultaat geclaimd.
-- `npm run check:cpp-format`, `npm run check:docs` en `npm run build:web`: geslaagd. De webbuild was nodig voor de niet-ingecheckte assets bij configuratievalidatie; webbroncode is niet gewijzigd.
-- Rechtstreekse `esphome config` met `esphome==2026.8.2`: Q Duo via `configs/heatpump_controller_q/duo_wifi.yaml`, Q Single, Waveshare Single/Duo en Listener Duo geslaagd. Dit zijn configuratiechecks, geen featurebuilds of hardwarekwalificatie.
-- De integrale `scripts/dev.py validate --config-only` stopt vóór de configuratiecheck op bestaande stijlmeldingen in `configs/hil/input_sources_fast_duo_wifi.yaml:26` en `openquatt/oq_common.yaml:723,840`. Deze ongewijzigde baselinebestanden zijn buiten deze bouwstap gehouden.
+Eén mainloop-leerkern beheert verzamelen, pauzeren, resetten, herstellen en beide modellen. De
+bestaande bronselectie levert de werkelijk gekozen route met fysieke receipts. Eén contextrevision
+onderbreekt de dataset bij relevante wijzigingen, ook A→B→A tussen twee ticks. De drie generatievelden
+in CSV/records blijven voor formaatcompatibiliteit; live krijgen ze dezelfde revision.
 
-De aparte koude review omvatte alle gewijzigde vraagpaden, numerieke gelijkwaardigheid, bronkwaliteit en tijdgaten, bron-/contextwissels, dataset- en parsergrenzen, holdoutlekken en onterecht positieve adviezen. Gevonden problemen zijn opgelost en met negatieve tests gecontroleerd. De leerkern blijft passief en allocation-free; de host-sizeguard is geen ESP32-geheugenmeting.
+De HTTP-component publiceert gesynchroniseerde snapshots in PSRAM. HTTP-callbacks lezen nooit
+veranderende learnerstate. Status en export gebruiken bestaande webauthenticatie:
 
-## Verificatie van de 1R1C- en bronmetadatastap
+- `GET /openquatt/learning/status`: H/T0, U/C, voortgang, redenen en runtime-diagnostiek.
+- `GET /openquatt/learning/export`: maximaal 64 batchrecords en 60 diagnostische rijen.
 
-Gecontroleerd op 6 september 2026, boven op de eerste bouwstap:
+CM2 gebruikt het bestaande geen-ketelvraagcontract; ontbrekende OpenTherm-telemetrie is geen extra
+voorwaarde. Een actuele fysieke ketel-activiteitsmelding sluit de meting uit. De geselecteerde lokale
+PT1000 op de eerste installatie zit na HP2 en ketel. Een aanvullende vergelijking met HP2 out is nog
+niet geïmplementeerd; flow-/temperatuurnauwkeurigheid en de grens aan ongemodelleerde warmte blijven
+nog praktijkwerk. Er zijn nog geen gevalideerde wintermodellen of aangetoonde besparingen.
 
-- Alle 75 C++-hostregressies geslaagd. Gerichte UBSan-controles op RLS, thermische aggregatie,
-  modelvalidatie, batch-fit, volledige bronketen en generatie-eigenaarschap zijn groen.
-- 18 gerichte Python-tests voor replay, raw receipt-wiring en profieluitsluiting geslaagd.
-  De volledige synthetische replay leert `H/U = 200 W/K` en `C = 6000 Wh/K`; zonder onderbouwde
-  gainaanname, bij veroudering of bij teruglopende generaties volgt geen gecombineerd advies.
-- C++-formatcontrole (255 bestanden), documentatiecontracten en `git diff --check` geslaagd.
-- Volledige ESPHome 2026.8.2-testcompile van `configs/heatpump_controller_q/duo_wifi.yaml` geslaagd.
-  De compile controleert ook de passieve leerkern op de Xtensa-toolchain. De regels blijven handmatig;
-  er is geen collector- of apply-runtime geactiveerd en er is niets geflasht.
-- Configuratiechecks van Q Single/Duo, Waveshare Single/Duo en Listener Duo geslaagd. Compilerprobes
-  bewijzen bovendien dat de learningtypen ontbreken zonder de expliciete firmwareprofielpoort.
-- De aparte koude reviews omvatten echte ontvangst versus republish/afwijzing, offline en ACK-correlatie,
-  64-bits ontvangsttijd, ownership en late events, numerieke gezondheid, tijdnormalisatie, checkpoint-
-  herstel, onterecht positieve kruisvalidatie en temperatuurtrend versus warmteopslag. Bevindingen zijn
-  opgelost en met gerichte regressies gecontroleerd.
+De laatste eerdere OTA-build is `Sep 6 2026 15:26:14 ph-passive-1`. Daar bleven 138 van 139 vergeleken
+instellingen gelijk; alleen opt-in stond na reboot uit. Die build had nul trainingsrecords. De gemeten
+runtime-PSRAM was 56112 bytes en de endpointbuffers samen 53248 bytes. Dat is geen kwalificatie van de
+vereenvoudigde code. Nieuwe timing- en geheugenmetingen moeten aan de definitieve build worden gedaan.
 
-De ontvangstmetadata heeft kleine, vaste runtimeopslag. Een geslaagde compile bewijst geen interne-
-heapmarge of gedrag onder gecombineerde belasting. HIL en vergelijking met een identieke baseline
-blijven vereist vóór firmwarevrijgave. De RLS-checkpoint is nog een gevalideerd geheugenobject,
-geen binaire flashrepresentatie; raw structdumps zijn geen ondersteund opslagformaat. Een restore
-levert geen recente meetvaliditeit op. De hieronder beschreven firmwarestap voegt rebootownership,
-selected-bronbinding, collector, PSRAM-opslag, journal en bediening toe. Echte winterreplay,
-powercutproeven en comfort-/energiebesparingsvalidatie blijven open. Automatisch toepassen en
-rollback volgen pas na die verificatie.
+Voor deze vereenvoudiging worden de C++-hostsuite, Python-contracten, C++-format, docschecks en een
+volledige Q Duo Wi-Fi-build uitgevoerd. De opslagtests injecteren erase-, partiële write-, verloren
+acknowledgement- en leesfouten en controleren het resultaat na gesimuleerde reboot. Er volgt een
+onafhankelijke review van de complete diff. De synchrone fit wordt pas overwogen na een meting op
+ESP32-S3; tot die tijd blijft de bestaande begrensde fit behouden.
 
-## Passieve firmware en bediening
-
-Onder Instellingen → Verwarmen → Power House staat **Passief leren** op Q en Waveshare.
-Het vaste installatiecontract is water; Single/Duo komt uit het firmwareprofiel en Duo gebruikt
-altijd serie HP1 → HP2. Hiervoor bestaan geen selects meer. Ook de ketelbijdrage wordt automatisch
-uit de bestaande regeling en ketelkoppeling afgeleid. Calorimetrische bevestiging, vermogensonzekerheid, maximumflow, junction-tolerantie
-en de analysegrens voor ongemodelleerde warmte blijven interne engineeringconfiguratie en
-kwaliteitsvoorwaarden; ze worden niet als invulvelden in de web-app aangeboden.
-Een onbekende voorwaarde blijft zichtbaar als blokkade. Numerieke RLS-schattingen zijn voorlopig
-tot de afzonderlijke kwaliteitscontroles slagen. `auto_apply_allowed` is altijd `false`.
-
-`Power House Passive Learning` en `Power House Learning Calorimetry Confirmed` starten na elke reboot
-uit. Andere meetcontractinstellingen herstellen via de bestaande ESPHome-instellingenopslag.
-Leerdata wissen pauzeert de collector, wist uitsluitend de twee learnerslots en verifieert de erase;
-het wijzigt geen Power House-basisinstellingen of andere archieven. Zonder PSRAM start de collector
-niet; er is geen fallback naar interne DRAM.
-
-De bestaande webauthenticatie beschermt beide read-only endpoints:
-
-- `GET /openquatt/learning/status`: status, bronroutes, batch- en RLS-uitkomsten, expliciete
-  blokkeerredenen en interne geheugen-/timingdiagnostiek.
-- `GET /openquatt/learning/export`: begrensde dataset en diagnostische ring met kolomdefinities.
-
-Voor de eerste installatie is bevestigd dat er tijdens CM2 geen andere warmtebron actief is.
-De extra learnerselect is verwijderd; de actuele CM2-ketelvoorwaarden worden automatisch gecontroleerd.
-Serie HP1 → HP2 en water volgen voortaan vast uit het installatiecontract. Calorimetrische bevestiging en onzekerheidsbudget worden
-niet ingevuld om een blokkade kunstmatig te omzeilen. Het testen van de passieve keten kan beginnen
-terwijl de meetkwaliteit nog onvoldoende is; een bruikbaar model vereist echte geschikte verwarmingsdata.
-
-Voor een productvrijgave blijven koude starts, stroomonderbreking tijdens flashwrites, gelijktijdige
-HA/web/API/MQTT/Modbus/OpenTherm/OTA-belasting en identieke baseline/candidate-geheugenmetingen op alle
-ondersteunde profielen nodig. Een Q Duo-testcompile of één OTA-run vervangt die HIL-matrix niet.
-
-## Verificatie van de passieve firmwarestap
-
-Gecontroleerd op 6 september 2026:
-
-- 81 C++-hostregressies en 236 Python-contracttests geslaagd; de gerichte receipt/profile/replayset
-  bevat 18 geslaagde checks. Gerichte UBSan-controles op journal en passieve runtime zijn groen.
-- Koude review en negatieve regressies omvatten bronwissels, ingetrokken fysieke receipts,
-  CM2 → CM0 → CM2 zonder verlies van geldige historie, verkeerde strategy-owner, onbekende
-  OpenTherm-status, monotone generaties, tijdgaten en onterecht positieve modelreadiness.
-- Journaltests dekken corruptie, truncatie, schema/count/context, toekomst/veroudering, onderbroken
-  slotwrites, gelijke sequences en behoud van bestaande state bij geweigerd herstel. De firmware
-  verifieert NVS met close/reopen en flash met readback; fysieke powercuts zijn nog niet getest.
-- De exporttest gebruikt dezelfde begrensde JSON-writer en kolomconstanten als de firmware. De
-  conservatieve maximale export met 64 records en 60 diagnostische rijen is 24462 bytes binnen 24 KiB.
-  Overloop publiceert een korte foutstatus, nooit een eerdere positieve uitkomst.
-- 436 webtests, `npm run smoke:web`, bundle `--check`, C++-format en documentatiechecks zijn groen.
-  Het raw-JS-budget stijgt van 905000 naar 911000 bytes voor de nieuwe lokale status/bediening;
-  de bundel na de pre-PR-webreview is 910637 bytes raw en 260549 bytes gzip. Een schone build van
-  `origin/dev` op dezelfde toolchain geeft 899821 bytes raw en 257173 bytes gzip. De gzipgroei is
-  3376 bytes (1,313%), binnen de relatieve grens van 4608 bytes. Het absolute gzipbudget blijft
-  behouden; het raw-budget heeft nog 363 bytes ruimte.
-- Chrome: preview én productiebundels, desktop licht en mobiel 390 px donker, geen horizontale
-  overflow of consolefouten; invoerfocus/draft behouden tijdens live verversing, JSON-download en
-  reset naar nul records gecontroleerd. Safari/iOS zijn niet getest. De in-app browser kon niet
-  starten door een lokale codesignfout; Chrome was de beschikbare fallback.
-- ESPHome-configuraties Q Single/Duo, Waveshare Single/Duo en Listener Duo zijn groen. De volledige
-  firmwarebuild wordt voor Q Duo Wi-Fi uitgevoerd; andere profielen hebben in deze stap geen
-  volledige C++-compile of hardwarekwalificatie gekregen.
-
-## Eerste Q Duo-hardwaretest
-
-De testfirmware is via native ESPHome OTA naar de bevestigde Q Duo-controller op `openquatt.local`
-gestuurd. De build is herkenbaar aan `ph-passive-1` met compiletijd in de statusendpoint.
-Alle 133 bestaande, beschikbare bedieningsinstellingen zijn na de eerste OTA teruggelezen en gelijk
-gebleven. De nieuwe instellingen staan op `Series HP1 to HP2`, `Water` en `No other heat in CM2`.
-Calorimetrische bevestiging, onzekerheidsbudget en gainaanname blijven onbekend.
-
-Status en export geven geldige JSON met `auto_apply_allowed=false`. Twaalf read-only requests met
-twee gelijktijdige clients slaagden tijdens een open web-app. De runtime gebruikt 56112 bytes PSRAM;
-de aparte endpointbuffers gebruiken samen 53248 bytes PSRAM. Tijdens deze lichte belasting werd
-104155 bytes vrije interne heap, een minimum-sinds-boot van 39828 bytes, een grootste intern blok
-van 47104 bytes en 3648 bytes mainloop-stackmarge gemeten. De maximale gemeten learnertick was
-20004 microseconden, inclusief eerste initialisatie. Dit is geen worst-case kwalificatie.
-
-De eerdere firmware gaf in standby 108435 bytes vrije interne heap, 39828 bytes minimum en een
-grootste intern blok van 63488 bytes. De oude firmware en kandidaat hadden geen identieke bootduur
-en webbelasting; deze waarden bewijzen daarom geen volledige baseline/candidate-geheugenkwalificatie.
-Er trad bij deze test geen zichtbare allocatiefout of herstart op.
-
-De echte learnerreset zet opt-in direct uit en levert een lege export; de latere status bevestigt
-`journal_status=cleared` en nul records. Bestaande instellingen en archieven zijn geen resetdoel.
-In CM0 zijn er terecht geen trainingsrecords: de beperkte geen-externe-warmteverklaring geldt alleen
-in CM2 en de calorimetrie is nog niet onderbouwd. De test bewijst bediening en blokkades, geen geleerd
-wintermodel of energiebesparing.
-
-De definitieve OTA-build is live geverifieerd als `Sep  6 2026 12:21:07 ph-passive-1`.
-SHA-256 van de geüploade OTA-image:
-`9a2f368bc63e3160903f046e7d31cc962fed832fe4e7eefebd327e9eba67843a`.
-Na deze herstart bleven de drie bevestigde installatiekeuzes behouden en stonden zowel passieve
-opt-in als calorimetrische bevestiging uit. Daarna is alleen passieve opt-in weer ingeschakeld.
-De eerste status van deze boot gaf 104719 bytes vrije interne heap, 59392 bytes grootste intern
-blok, 39828 bytes minimum, 3552 bytes stackmarge en 8965 microseconden maximale learnertick.
-Automatisch toepassen bleef in alle gecontroleerde antwoorden `false`.
-
-## Vereenvoudiging van de bediening
-
-Water en de seriële Duo-volgorde HP1 → HP2 zijn vaste projecteigenschappen. De firmware verwijdert
-de eerdere hydrauliek- en vloeistofselects; achtergebleven NVS-waarden worden niet gelezen. De
-nieuwe buildcontext voorkomt dat een oudere leercontext alsnog actief wordt. Single krijgt de
-Single-meetgrens; Listener krijgt nog steeds geen learner.
-
-De normale webbediening bevat geen formulier voor meetonzekerheid, maximumflow, junction-tolerantie,
-gainaanname of een calorimetriecheckbox. Die waarden worden hiermee niet automatisch bevestigd.
-De bestaande firmware-entities voor engineering blijven beschikbaar; een onderbouwde serviceflow
-voor meetnauwkeurigheid is nog vervolgwerk. De bestaande waterkalibratie bewijst uitsluitend
-temperatuuroffsets en geldt niet als volledige flow-/warmtekalibratie.
-
-Deze vereenvoudiging is getest met 433 webtests, de websmoke- en assetcontroles, docscontrole,
-C++-formatcontrole, gerichte hosttests en configvalidatie voor Q Single en Q Duo. De Q Duo-firmware
-compileert en is via OTA geïnstalleerd op de testcontroller. De live build is
-`Sep  6 2026 14:25:56 ph-passive-1`; SHA-256 van de OTA-image:
-`b562eba597639609de0663e01bb5189f4336812896fe1c01cdf8bfc2fbe539e0`.
-
-Na de herstart waren 139 van de 140 vergeleken waarden gelijk; uitsluitend passieve opt-in stond
-zoals bedoeld uit. De verwijderde hydrauliek- en vloeistofentities waren niet meer aanwezig.
-De verklaring `No other heat in CM2` bleef behouden, calorimetrie bleef onbevestigd en automatisch
-toepassen bleef `false`. De webapp is mobiel met productieassets en live op de controller
-gecontroleerd; de gecontroleerde browserconsole bevatte geen fouten of waarschuwingen.
-De status gaf 104591 bytes vrije interne heap, 61440 bytes grootste intern blok, 39828 bytes
-minimum, 3648 bytes loop-stackmarge en 56112 bytes runtime in PSRAM. Dit is een beperkte
-OTA-verificatie; de eerder genoemde volledige geheugen- en winterkwalificatie blijft open.
-Daarna is alleen passieve opt-in via de webapp hersteld; de status bevestigt `enabled=true`,
-`storage_ready=true`, nul records en `auto_apply_allowed=false`. In CM0 blijven de
-meetkwaliteits- en warmtebijdrageblokkades van kracht.
-
-## Automatische controle van ketelbijdrage
-
-CM2 is `Heating - Heat Pump Only`. De regeling trekt ketelopdracht en uitgangen in voordat zij
-van ketelbedrijf naar CM2 overgaat. Daarom is de aanvullende learnerselect `Andere warmtebron`
-verwijderd uit firmware, webbediening, polling en backupvelden. Oude opgeslagen selectwaarden
-worden genegeerd. De reguliere instellingen voor de daadwerkelijk aangesloten ketel blijven leidend.
-
-De leerfunctie vereist CM2 in verwarmingsbedrijf en een actuele, geldige `COMMAND_SOURCE_NONE`
-zonder demand, heat request, actieve keteluitgang, R1 of nog toegepaste OT-aanvraag. Ontbrekende/stale opdrachten, pauze,
-transportwissel, rearm en verbindingsmismatch blokkeren. `CONTROL_CONTRACT` onderscheidt dit
-regelbewijs van een fysieke receipt; het geldt uitsluitend voor het boiler-veld met `NO_HEAT`.
-Het CM2-contract is leidend voor zowel R1 als OpenTherm. Bij een geselecteerde OpenTherm-ketel
-sluit een verse fysieke Status READ_ACK met CH/flame-activiteit de betreffende meting uit.
-Ontbrekende, ongeldige of verouderde OT-telemetrie vormt geen extra voorwaarde voor CM2. `oq_boiler_transport_active` duidt CH-activiteit aan en wordt
-daarom niet als beschikbaarheid van een inactieve OpenTherm-link gebruikt.
-
-CM2 bewijst geen afwezigheid van zon, interne warmte of onafhankelijk aangestuurde warmtebronnen
-(ook niet achter R2). Die modelonzekerheid en het calorimetriebewijs blijven afzonderlijke gates.
-Deze wijziging bedient geen actuatoren en verandert geen verwarmingsregeling.
-
-Het controllercontract bewijst geen fysiek uitgedoofde ketel bij linkverlies vanuit actief OT-bedrijf.
-Na lokale intrekking kan de ketel nog op zijn eigen communicatietime-out wachten. Daarom mag dit
-contract niet worden uitgelegd als onafhankelijk gemeten nul-ketelvermogen; voor modelkwalificatie
-blijven de calorimetrie en ongemodelleerde-warmtevoorwaarden vereist. Automatisch toepassen staat uit.
-
-De gebruiker heeft bevestigd dat de geselecteerde lokale PT1000 in de gezamenlijke aanvoer ná HP2
-én ketel zit; de actuele bronselectie is `Local` / `PT1000` en de ketelkoppeling is `R1`.
-Daarmee is `T_supply_PT1000 - T_HP2_out` een kandidaat voor detectie van extra warmte tussen de
-Duo-uitlaat en de woningaanvoer. Bij Single is HP1 out de referentie. Dit is nog geen nieuwe
-leerkwaliteitgate: daadwerkelijke bron/fallback, raw ontvangsttijden, debiet, transportvertraging,
-temperatuuroffsets en onzekerheid moeten eerst in die vergelijking worden vastgelegd. Een enkel
-positief verschil of een nulverschil bewijst op zichzelf geen ketelactiviteit of afwezigheid daarvan.
-
-Validatie van de vereenvoudiging: 13 learner-hostbinaries, 9 profiel-/receipt-contracttests,
-433 webtests, websmoke, C++-formatcontrole, docs- en assetcontrole geslaagd. Q Single-configvalidatie
-en volledige Q Duo-compilatie geslaagd. De cold review is apart uitgevoerd; het gevonden venster
-met nog toegepaste OT-aanvraag is afgedekt met een verplicht contractveld en negatieve regressietest.
-OTA-image `Sep  6 2026 15:26:14 ph-passive-1` is verstuurd met SHA-256
-`7d908ce9b7e4c7069a6f633655c4030245fd92d3d60e8260b9030f0cc3b05077`.
-
-Live OTA-verificatie: build-identiteit bevestigd; alleen de verwijderde `externalHeat`-entity
-ontbreekt. Van de resterende 139 gecontroleerde waarden bleven 138 gelijk en stond uitsluitend
-passieve opt-in na reboot uit. Calorimetrie bleef onbevestigd, records bleven nul en automatisch
-toepassen bleef uit. De live webapp toont geen andere-warmtebronveld; de browserconsole is schoon.
-Vrij intern geheugen 105067 bytes, grootste intern blok 61440 bytes, minimum 39904 bytes,
-loop-stackmarge 3488 bytes en runtime-PSRAM 56112 bytes. Dit vervangt geen volledige HIL-
-geheugenkwalificatie. De ΔT-controle is in deze build nog niet geïmplementeerd.
-
-## Vastlegging als draft PR naar dev
-
-De volledige wijziging is voor publicatie opnieuw tegen `dev` bekeken, verdeeld over modelcode,
-firmware/opslag en webbediening. Daarna is een afzonderlijke koude review van de complete diff uitgevoerd.
-De audit omvat ook bronontvangst, veilige blokkades, gelijktijdige HTTP-aanvragen, herstel na reboot,
-schema/buildcompatibiliteit, nieuwe installaties, gegevens wissen en de bestaande handmatige regeling.
-
-De pre-PR-correcties behandelen beschadigde modelwatermarks, de inclusieve 42-dagengrens
-(maximaal 43 verschillende UTC-dagen), gecombineerde batch/dynamische blokkeerredenen en het
-vermijden van een tijdelijke heapallocatie voor de buildidentiteit. De web-app stopt polling bij
-stooklijn en beschermt wissen met bevestiging, afhandeling van late antwoorden en controle op het
-werkelijke wisresultaat. Opslagherstel en reset zijn aanvullend met geïnjecteerde lees-, schrijf-, teruglees- en NVS-fouten getest.
-De koude review vond bovendien dat de diagnostische ring tijdens pauze bleef verzamelen; ook die
-ring is aan opt-in gebonden, met een onderbreking van de dekking bij pauze en hervatten.
-
-De uiteindelijke hostrun slaagt met 81 binaries; de Python-contractsuite met 236 tests.
-De volledige Q Duo Wi-Fi-build met ESPHome 2026.8.2 slaagt na de laatste auditfixes:
-205679 bytes statisch RAM en 2258747 bytes applicatie-image. Dit compileverslag is geen meting
-van de beschikbare interne heap tijdens bedrijf en vervangt hardwarekwalificatie niet.
-
-De config-only projectwrapper stopt op drie stijlmeldingen die al in de ongewijzigde `dev`-bestanden
-staan: `configs/hil/input_sources_fast_duo_wifi.yaml` (entity category) en twee lambda-commentchecks
-in `openquatt/oq_common.yaml`. De directe ESPHome-configchecks van Q Single/Duo en Waveshare
-Single/Duo slagen. De checker is uitsluitend aangevuld voor de nieuwe Q-profielsectie en packagevolgorde.
-
-De eerdere OTA- en browsermetingen hierboven horen bij de genoemde eerdere testbuilds.
-De laatste auditcorrecties zijn nog niet opnieuw naar de controller gestuurd. De extra Chrome-
-previewcontrole van het resetvenster liep vast in de browserautomatisering; de nieuwe resetpaden
-zijn wel onderdeel van de 436 geslaagde webtests. Een volledige browsermatrix en Safari/iOS blijven
-onderdeel van vrijgave. Deze draft claimt geen afgeronde hardware- of winterkwalificatie.
+De config-only projectwrapper heeft drie bestaande stijlmeldingen in `configs/hil/input_sources_fast_duo_wifi.yaml`
+en `openquatt/oq_common.yaml`. Directe ESPHome-validatie blijft beschikbaar. Echte stroomonderbrekingen,
+herstel op de controller en geheugen-/timingbelasting zijn nog niet op de vereenvoudigde build getest.

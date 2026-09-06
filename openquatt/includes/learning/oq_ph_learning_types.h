@@ -13,6 +13,7 @@
 namespace oq_power_house::learning {
 
 constexpr size_t kMaxSegmentRecords = 64;
+constexpr size_t kMaxPassiveContextBytes = 1024;
 // A 42 * 24 hour inclusive retention window can touch 43 UTC calendar days.
 constexpr size_t kMaxCalendarDays = 43;
 constexpr uint64_t kSegmentDurationMs = 4ULL * 60ULL * 60ULL * 1000ULL;
@@ -103,6 +104,22 @@ struct RecordBuffer {
   SegmentRecord* records = nullptr;
   size_t count = 0;
   size_t capacity = 0;
+};
+
+// Durable measurement configuration plus boot-local cohort counters. Firmware
+// uses one revision for all three counters; replay accepts the existing CSV fields.
+struct PassiveContextView {
+  const uint8_t* bytes = nullptr;
+  size_t size = 0;
+  uint32_t source_generation = 0;
+  uint32_t physical_context_generation = 0;
+  uint32_t control_generation = 0;
+};
+
+struct LearningDatasetView {
+  const SegmentRecord* records = nullptr;
+  size_t record_count = 0;
+  PassiveContextView context;
 };
 
 inline const char* learning_status_name(LearningStatus status) {

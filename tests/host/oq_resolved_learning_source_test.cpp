@@ -120,24 +120,12 @@ void test_cached_sources_fail_closed_when_current_receipt_is_revoked() {
   assert(!invalid_composite.valid && isnan(invalid_composite.value));
   assert(invalid_composite.provenance == LearningSourceProvenance::UNKNOWN);
   assert(!invalid_composite.secondary_receipt.valid);
-}
 
-void test_direct_route_requires_one_unique_matching_receipt() {
-  RawFloatReceipt hp1;
-  RawFloatReceipt hp2;
-  hp1.observe(4.0f, 100U, true);
-  hp2.observe(6.0f, 110U, true);
-  assert(uniquely_matching_receipt_route(4.0f, true, LearningSourceRoute::HP1_OUTSIDE, hp1,
-                                         LearningSourceRoute::HP2_OUTSIDE, hp2) == LearningSourceRoute::HP1_OUTSIDE);
-  assert(uniquely_matching_receipt_route(6.0f, true, LearningSourceRoute::HP1_OUTSIDE, hp1,
-                                         LearningSourceRoute::HP2_OUTSIDE, hp2) == LearningSourceRoute::HP2_OUTSIDE);
-
-  hp2.observe(4.0f, 120U, true);
-  assert(uniquely_matching_receipt_route(4.0f, true, LearningSourceRoute::HP1_OUTSIDE, hp1,
-                                         LearningSourceRoute::HP2_OUTSIDE, hp2) == LearningSourceRoute::NONE);
-  hp1.invalidate();
-  assert(uniquely_matching_receipt_route(4.0f, true, LearningSourceRoute::HP1_OUTSIDE, hp1,
-                                         LearningSourceRoute::HP2_OUTSIDE, hp2) == LearningSourceRoute::HP2_OUTSIDE);
+  hp1.observe(700.0f, 120U, true);
+  const auto single_component =
+      unsupported_composite_source(700.0f, true, LearningSourceRoute::FLOW_AGGREGATE, LearningSourceRoute::HP1_FLOW,
+                                   LearningSourceRoute::NONE, hp1, {}, LearningCompositeOperation::NONE, {}, 6U);
+  assert(validate_current_receipts(single_component, hp1).valid);
 }
 
 int main() {
@@ -148,6 +136,5 @@ int main() {
   test_unsupported_and_synthesized_values_never_gain_receipts();
   test_composite_keeps_both_physical_receipts_but_stays_unsupported();
   test_cached_sources_fail_closed_when_current_receipt_is_revoked();
-  test_direct_route_requires_one_unique_matching_receipt();
   return 0;
 }

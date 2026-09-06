@@ -6,7 +6,7 @@
 #include <string.h>
 #include <time.h>
 
-#include "../openquatt/includes/learning/oq_ph_learning_aggregate.h"
+#include "../openquatt/includes/learning/oq_ph_passive_runtime_logic.h"
 #include "../openquatt/includes/learning/oq_ph_learning_fit.h"
 #include "../openquatt/includes/learning/oq_ph_model_validation.h"
 #include "../openquatt/includes/learning/oq_ph_thermal_aggregate.h"
@@ -188,18 +188,18 @@ int main(int argc, char** argv) {
     return fprintf(stderr, "malformed CSV header\n"), 2;
   }
 
-  learning::QualityConfig quality;
-  learning::ThermalWindowAccumulator thermal_accumulator;
-  learning::ThermalWindowConfig thermal_window_config;
-  thermal_window_config.unmodeled_gain_bound_valid = isfinite(unmodeled_gain_bound_w);
-  thermal_window_config.unmodeled_gain_bound_w = unmodeled_gain_bound_w;
-  learning::ThermalModelConfig thermal_config;
-  thermal_config.initial_heat_loss_w_per_k = active_h;
-  learning::ThermalModelState thermal_state;
-  learning::initialize_thermal_model(thermal_state, thermal_config);
-  learning::SegmentAccumulator accumulator;
-  learning::SegmentRecord records[learning::kMaxSegmentRecords]{};
-  learning::RecordBuffer buffer{records, 0, learning::kMaxSegmentRecords};
+  learning::PassiveRuntimeConfig config;
+  config.thermal_window.unmodeled_gain_bound_valid = isfinite(unmodeled_gain_bound_w);
+  config.thermal_window.unmodeled_gain_bound_w = unmodeled_gain_bound_w;
+  if (active_h >= config.thermal_model.min_heat_loss_w_per_k && active_h <= config.thermal_model.max_heat_loss_w_per_k)
+    config.thermal_model.initial_heat_loss_w_per_k = active_h;
+  learning::PassiveRuntimeStorage learner;
+  learning::PassiveTickInput input;
+  input.opted_in = input.context_valid = input.active_line_valid = input.reference_context_valid = true;
+  input.active_line = {active_h, active_t0};
+  input.reference_room_c = reference_room_c;
+  input.reference_setpoint_c = reference_setpoint_c;
+  constexpr uint8_t context_bytes[] = {1};
   Counters counters;
   uint64_t previous_monotonic = 0;
   uint32_t previous_epoch = 0;
@@ -233,47 +233,33 @@ int main(int argc, char** argv) {
     previous_monotonic = snapshot.monotonic_ms;
     previous_epoch = snapshot.epoch_s;
     if (cohort_set &&
-        (snapshot.source_generation != cohort_source || snapshot.physical_context_generation != cohort_physical)) {
-      counters.discarded_cohort_records += buffer.count;
-      buffer.count = 0;
-      learning::reset_segment(accumulator);
-      ++counters.cohort_changes;
-    }
-    if (cohort_set &&
         (snapshot.source_generation != cohort_source || snapshot.physical_context_generation != cohort_physical ||
          snapshot.control_generation != cohort_control)) {
-      thermal_accumulator = {};
-      learning::initialize_thermal_model(thermal_state, thermal_config);
+      counters.discarded_cohort_records += learner.record_count;
+      ++counters.cohort_changes;
     }
     cohort_source = snapshot.source_generation;
     cohort_physical = snapshot.physical_context_generation;
     cohort_control = snapshot.control_generation;
     cohort_set = true;
-    const auto thermal_window =
-        learning::observe_thermal_snapshot(thermal_accumulator, snapshot, quality, thermal_window_config);
-    if (thermal_window.has_interval) {
-      learning::observe_thermal_interval(thermal_state, thermal_window.interval, thermal_config);
-    } else if (thermal_window.status != learning::ThermalWindowStatus::COLLECTING) {
-      learning::invalidate_thermal_observation(thermal_state, snapshot.monotonic_ms, thermal_config);
-    }
-    const learning::ObserveResult observed = learning::observe_snapshot(accumulator, snapshot, quality);
-    const size_t status_index = static_cast<size_t>(observed.status);
+    input.context = {context_bytes, sizeof(context_bytes), cohort_source, cohort_physical, cohort_control};
+    input.now_monotonic_ms = snapshot.monotonic_ms;
+    input.now_epoch_s = snapshot.epoch_s;
+    input.batch_snapshot_available = input.dynamic_snapshot_available = true;
+    input.batch_snapshot = input.dynamic_snapshot = snapshot;
+    if (!learner.initialized) learning::initialize_passive_runtime(learner, input.context, config, true);
+    const uint32_t accepted_before = learner.diagnostics.accepted_batch_records;
+    const uint32_t rejected_before = learner.diagnostics.rejected_batch_observations;
+    learning::tick_passive_runtime(learner, input);
+    counters.accepted_windows += learner.diagnostics.accepted_batch_records - accepted_before;
+    counters.rejected_observations += learner.diagnostics.rejected_batch_observations - rejected_before;
+    const size_t status_index = static_cast<size_t>(learner.diagnostics.last_batch_status);
     if (status_index < kStatusCount) ++counters.status_counts[status_index];
-    if (observed.has_record) {
-      const learning::LearningStatus appended = learning::append_record(buffer, observed.record, now_epoch_s, quality);
-      if (appended == learning::LearningStatus::OK)
-        ++counters.accepted_windows;
-      else
-        ++counters.rejected_observations;
-      const size_t appended_index = static_cast<size_t>(appended);
-      if (appended_index < kStatusCount) ++counters.status_counts[appended_index];
-    } else if (observed.status != learning::LearningStatus::COLLECTING) {
-      ++counters.rejected_observations;
-    }
   }
+
   if (line_result < 0 || ferror(file)) input_error = true;
   fclose(file);
-  if (accumulator.active) ++counters.incomplete_windows;
+  if (learner.batch_accumulator.active) ++counters.incomplete_windows;
   if (counters.rows == 0) return fprintf(stderr, "CSV has no data rows\n"), 2;
 
   if (input_error) {
@@ -287,20 +273,16 @@ int main(int argc, char** argv) {
     return 2;
   }
 
-  const oq_power_house::HouseLine active_line{active_h, active_t0};
-  learning::AdviceFitWorkspace workspace;
-  learning::FitConfig fit_config;
-  fit_config.reference_room_c = reference_room_c;
-  fit_config.reference_setpoint_c = reference_setpoint_c;
-  learning::LearningStatus status = learning::begin_advice_fit(buffer.records, buffer.count, now_epoch_s, active_line,
-                                                               quality, fit_config, workspace);
-  while (status == learning::LearningStatus::FIT_IN_PROGRESS) status = learning::advance_advice_fit(workspace);
-  const learning::AdviceResult& result = learning::advice_result(workspace);
+  input.now_epoch_s = now_epoch_s;
+  learning::request_passive_fit(learner, input);
+  while (learner.fit_running) learning::advance_passive_fit(learner);
+  const auto& result = learner.batch_result;
+  const auto status = result.status;
   const uint64_t analysis_age_ms = static_cast<uint64_t>(now_epoch_s - previous_epoch) * 1000ULL;
   const uint64_t analysis_now_ms =
       previous_monotonic <= UINT64_MAX - analysis_age_ms ? previous_monotonic + analysis_age_ms : 0;
-  const auto validation = learning::validate_house_models(result, thermal_state, thermal_config, analysis_now_ms,
-                                                          cohort_source, cohort_physical, cohort_control);
+  const auto summary = learning::passive_runtime_summary(learner, analysis_now_ms);
+  const auto& validation = summary.validation;
   printf(
       "{\"rows\":%llu,\"accepted_windows\":%llu,\"rejected_observations\":%llu,\"malformed_rows\":%llu,\"incomplete_"
       "windows\":%llu,\"discarded_cohort_records\":%llu,\"cohort_changes\":%llu,\"reference_room_c\":",
@@ -357,22 +339,23 @@ int main(int argc, char** argv) {
   printf(",\"batch_advice_ready\":%s,\"model_validation_status\":\"%s\",\"auto_apply_allowed\":false",
          result.advice_ready ? "true" : "false", learning::model_validation_status_name(validation.status));
   printf(",\"u_rls\":");
-  print_float(thermal_state.accepted_samples > 0 ? validation.thermal.heat_loss_w_per_k : NAN);
+  print_float(learner.thermal_state.accepted_samples > 0 ? summary.thermal.heat_loss_w_per_k : NAN);
   printf(",\"c_rls_wh_per_k\":");
-  print_float(thermal_state.accepted_samples > 0 ? validation.thermal.thermal_capacity_wh_per_k : NAN);
+  print_float(learner.thermal_state.accepted_samples > 0 ? summary.thermal.thermal_capacity_wh_per_k : NAN);
   printf(
       ",\"rls_ready\":%s,\"rls_readiness_reasons\":%u,\"rls_accepted_samples\":%u,\"rls_last_update_monotonic_ms\":%"
       "llu",
-      validation.thermal.ready ? "true" : "false", validation.thermal.readiness_reasons, thermal_state.accepted_samples,
-      static_cast<unsigned long long>(thermal_state.last_interval_end_monotonic_ms));
+      summary.thermal.ready ? "true" : "false", summary.thermal.readiness_reasons,
+      learner.thermal_state.accepted_samples,
+      static_cast<unsigned long long>(learner.thermal_state.last_interval_end_monotonic_ms));
   printf(",\"rls_outside_span_c\":");
-  print_float(validation.thermal.outside_span_c);
+  print_float(summary.thermal.outside_span_c);
   printf(",\"rls_residual_rms_k_per_h\":");
-  print_float(validation.thermal.residual_rms_k_per_h);
+  print_float(summary.thermal.residual_rms_k_per_h);
   printf(",\"rls_residual_bias_k_per_h\":");
-  print_float(validation.thermal.residual_bias_k_per_h);
+  print_float(summary.thermal.residual_bias_k_per_h);
   printf(",\"rls_effective_observation_hours\":");
-  print_float(validation.thermal.effective_observation_hours);
+  print_float(summary.thermal.effective_observation_hours);
   printf(",\"max_estimated_storage_power_w\":");
   print_float(validation.max_estimated_storage_power_w);
   printf(",\"max_estimated_storage_fraction\":");

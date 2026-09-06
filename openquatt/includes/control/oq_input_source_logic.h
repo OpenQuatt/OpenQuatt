@@ -146,7 +146,7 @@ inline NumericSelection select_direct(Source selected, const NumericSources& sou
   if (hold_ha && selected == Source::HA && hold.available(selected, now_ms, hold_ms)) {
     return {hold.value, selected, true, true};
   }
-  return {};
+  return {NAN, selected, false, false};
 }
 
 inline NumericSelection select_lowest_outside(const NumericSources& sources) {
@@ -242,7 +242,7 @@ struct FlowSelection {
 };
 
 inline FlowSelection flow_sample(const NumericSample& sample, FlowRoute route) {
-  return sample.valid ? FlowSelection{sample.value, route, true} : FlowSelection{};
+  return {sample.valid ? sample.value : NAN, route, sample.valid};
 }
 
 inline FlowSelection select_flow(const FlowInputs& input) {

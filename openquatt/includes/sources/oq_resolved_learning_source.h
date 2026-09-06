@@ -43,7 +43,7 @@ enum class LearningSourceProvenance : uint8_t {
   SYNTHESIZED,
 };
 
-enum class LearningCompositeOperation : uint8_t { NONE = 0, ARITHMETIC_MEAN, MAXIMUM };
+enum class LearningCompositeOperation : uint8_t { NONE = 0, ARITHMETIC_MEAN, MAXIMUM, MINIMUM };
 
 struct SourceConfigurationKey {
   uint8_t selected = 0;
@@ -147,30 +147,11 @@ inline bool usable_current_receipt(const RawFloatReceipt& receipt) {
   return receipt.received && receipt.valid && isfinite(receipt.value) && receipt.received_ms != 0U;
 }
 
-inline bool receipt_matches_selected(float selected_value, bool selected_valid, const RawFloatReceipt& receipt,
-                                     float tolerance = 0.0001f) {
-  return selected_valid && isfinite(selected_value) && isfinite(tolerance) && tolerance >= 0.0f &&
-         usable_current_receipt(receipt) && fabsf(selected_value - receipt.value) <= tolerance;
-}
-
-inline LearningSourceRoute uniquely_matching_receipt_route(float selected_value, bool selected_valid,
-                                                           LearningSourceRoute first_route,
-                                                           const RawFloatReceipt& first,
-                                                           LearningSourceRoute second_route = LearningSourceRoute::NONE,
-                                                           const RawFloatReceipt& second = {},
-                                                           float tolerance = 0.0001f) {
-  const bool first_matches = receipt_matches_selected(selected_value, selected_valid, first, tolerance);
-  const bool second_matches = receipt_matches_selected(selected_value, selected_valid, second, tolerance);
-  if (first_matches == second_matches) return LearningSourceRoute::NONE;
-  return first_matches ? first_route : second_route;
-}
-
 inline ResolvedLearningSource validate_current_receipts(const ResolvedLearningSource& cached,
                                                         const RawFloatReceipt& current,
                                                         const RawFloatReceipt& secondary = {}) {
   const bool direct = cached.provenance == LearningSourceProvenance::PHYSICAL_RECEIPT;
-  const bool composite =
-      cached.route == LearningSourceRoute::OUTSIDE_AGGREGATE || cached.route == LearningSourceRoute::FLOW_AGGREGATE;
+  const bool composite = cached.secondary_route != LearningSourceRoute::NONE;
   if ((!direct || usable_current_receipt(current)) &&
       (!composite || (usable_current_receipt(current) && usable_current_receipt(secondary))))
     return cached;

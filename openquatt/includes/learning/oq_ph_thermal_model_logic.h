@@ -5,16 +5,12 @@
 #if OQ_PH_LEARNING_CORE_AVAILABLE
 
 #include <math.h>
-#include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 
 namespace oq_power_house::learning {
 
 constexpr uint64_t kThermalMinimumIntervalMs = 15ULL * 60ULL * 1000ULL;
 constexpr uint64_t kThermalMaximumIntervalMs = 60ULL * 60ULL * 1000ULL;
-constexpr uint32_t kThermalCheckpointMagic = 0x4F513152U;  // OQ1R
-constexpr uint16_t kThermalCheckpointVersion = 1;
 
 struct ThermalModelConfig {
   uint64_t min_interval_ms = kThermalMinimumIntervalMs;
@@ -156,21 +152,6 @@ struct ThermalUpdateResult {
   ThermalUpdateStatus status = ThermalUpdateStatus::INVALID_CONFIGURATION;
   bool accepted = false;
   ThermalModelEstimate estimate;
-};
-
-struct ThermalModelCheckpoint {
-  uint32_t magic = kThermalCheckpointMagic;
-  uint16_t version = kThermalCheckpointVersion;
-  uint16_t reserved = 0;
-  uint32_t config_fingerprint = 0;
-  ThermalModelState state;
-  uint32_t checksum = 0;
-};
-
-enum class ThermalCheckpointStatus : uint8_t {
-  OK = 0,
-  INVALID_CONFIGURATION,
-  CORRUPT_RESET,
 };
 
 namespace thermal_detail {
@@ -317,60 +298,6 @@ inline bool interval_values_valid(const ThermalInterval& interval, const Thermal
          fabs(interval.indoor_end_c - interval.indoor_start_c) <= config.max_abs_interval_indoor_change_c;
 }
 
-inline uint32_t hash_u32(uint32_t hash, uint32_t value) {
-  for (uint8_t shift = 0; shift < 32; shift += 8) {
-    hash ^= static_cast<uint8_t>(value >> shift);
-    hash *= 16777619U;
-  }
-  return hash;
-}
-
-inline uint32_t hash_u64(uint32_t hash, uint64_t value) {
-  hash = hash_u32(hash, static_cast<uint32_t>(value));
-  return hash_u32(hash, static_cast<uint32_t>(value >> 32));
-}
-
-inline uint32_t hash_double(uint32_t hash, double value) {
-  uint64_t bits = 0;
-  static_assert(sizeof(bits) == sizeof(value), "double checkpoint hashing requires 64-bit double");
-  memcpy(&bits, &value, sizeof(bits));
-  return hash_u64(hash, bits);
-}
-
-inline uint32_t config_fingerprint(const ThermalModelConfig& config) {
-  uint32_t hash = 2166136261U;
-  hash = hash_u64(hash, config.min_interval_ms);
-  hash = hash_u64(hash, config.max_interval_ms);
-  hash = hash_u64(hash, config.max_model_gap_ms);
-  hash = hash_u64(hash, config.max_estimate_age_ms);
-  hash = hash_double(hash, config.forgetting_factor_per_hour);
-  hash = hash_double(hash, config.loss_feature_scale_kh);
-  hash = hash_double(hash, config.heat_feature_scale_wh);
-  hash = hash_double(hash, config.initial_heat_loss_w_per_k);
-  hash = hash_double(hash, config.initial_thermal_capacity_wh_per_k);
-  hash = hash_double(hash, config.initial_covariance);
-  hash = hash_double(hash, config.min_heat_loss_w_per_k);
-  hash = hash_double(hash, config.max_heat_loss_w_per_k);
-  hash = hash_double(hash, config.min_thermal_capacity_wh_per_k);
-  hash = hash_double(hash, config.max_thermal_capacity_wh_per_k);
-  hash = hash_double(hash, config.indoor_min_c);
-  hash = hash_double(hash, config.indoor_max_c);
-  hash = hash_double(hash, config.outside_min_c);
-  hash = hash_double(hash, config.outside_max_c);
-  hash = hash_double(hash, config.max_abs_heat_w);
-  hash = hash_double(hash, config.max_heat_uncertainty_w);
-  hash = hash_double(hash, config.max_abs_interval_indoor_change_c);
-  hash = hash_double(hash, config.max_unmodeled_gain_w);
-  hash = hash_double(hash, config.min_ready_observation_hours);
-  hash = hash_double(hash, config.min_outside_span_c);
-  hash = hash_double(hash, config.min_heat_span_w);
-  hash = hash_double(hash, config.min_information_eigenvalue);
-  hash = hash_double(hash, config.max_information_condition);
-  hash = hash_double(hash, config.residual_ewma_alpha_per_hour);
-  hash = hash_double(hash, config.max_residual_rms_k_per_h);
-  return hash_double(hash, config.max_abs_residual_bias_k_per_h);
-}
-
 inline bool same_config(const ThermalModelConfig& lhs, const ThermalModelConfig& rhs) {
   return lhs.min_interval_ms == rhs.min_interval_ms && lhs.max_interval_ms == rhs.max_interval_ms &&
          lhs.max_model_gap_ms == rhs.max_model_gap_ms && lhs.max_estimate_age_ms == rhs.max_estimate_age_ms &&
@@ -395,60 +322,6 @@ inline bool same_config(const ThermalModelConfig& lhs, const ThermalModelConfig&
          lhs.residual_ewma_alpha_per_hour == rhs.residual_ewma_alpha_per_hour &&
          lhs.max_residual_rms_k_per_h == rhs.max_residual_rms_k_per_h &&
          lhs.max_abs_residual_bias_k_per_h == rhs.max_abs_residual_bias_k_per_h;
-}
-
-inline uint32_t checkpoint_checksum(const ThermalModelCheckpoint& checkpoint) {
-  uint32_t hash = 2166136261U;
-  hash = hash_u32(hash, checkpoint.magic);
-  hash = hash_u32(hash, checkpoint.version);
-  hash = hash_u32(hash, checkpoint.reserved);
-  hash = hash_u32(hash, checkpoint.config_fingerprint);
-  const ThermalModelState& state = checkpoint.state;
-  hash = hash_u32(hash, state.initialized ? 1U : 0U);
-  hash = hash_double(hash, state.theta_loss_scaled);
-  hash = hash_double(hash, state.theta_heat_scaled);
-  hash = hash_double(hash, state.covariance_00);
-  hash = hash_double(hash, state.covariance_01);
-  hash = hash_double(hash, state.covariance_11);
-  hash = hash_double(hash, state.information_00);
-  hash = hash_double(hash, state.information_01);
-  hash = hash_double(hash, state.information_11);
-  hash = hash_double(hash, state.residual_mean_k_per_h);
-  hash = hash_double(hash, state.residual_square_mean_k2_per_h2);
-  hash = hash_double(hash, state.outside_min_c);
-  hash = hash_double(hash, state.outside_max_c);
-  hash = hash_double(hash, state.heat_min_w);
-  hash = hash_double(hash, state.heat_max_w);
-  hash = hash_double(hash, state.maximum_observed_unmodeled_gain_bound_w);
-  hash = hash_double(hash, state.effective_observation_hours);
-  hash = hash_u32(hash, state.all_unmodeled_gain_bounds_known_and_acceptable ? 1U : 0U);
-  hash = hash_u32(hash, state.recent_data_valid ? 1U : 0U);
-  hash = hash_u32(hash, state.accepted_samples);
-  hash = hash_u32(hash, state.rejected_samples);
-  hash = hash_u32(hash, state.reset_count);
-  hash = hash_u64(hash, state.last_interval_end_monotonic_ms);
-  hash = hash_u64(hash, state.last_observation_monotonic_ms);
-  hash = hash_u32(hash, state.source_generation);
-  hash = hash_u32(hash, state.physical_context_generation);
-  hash = hash_u32(hash, state.control_generation);
-  hash = hash_u32(hash, state.config_bound ? 1U : 0U);
-  return hash_u32(hash, config_fingerprint(state.bound_config));
-}
-
-inline bool checkpoint_state_valid(const ThermalModelState& state) {
-  if (!finite_state(state)) return false;
-  if (state.accepted_samples == 0) {
-    const bool generations_unbound =
-        state.source_generation == 0 && state.physical_context_generation == 0 && state.control_generation == 0;
-    const bool generations_bound =
-        state.source_generation != 0 && state.physical_context_generation != 0 && state.control_generation != 0;
-    return state.last_interval_end_monotonic_ms == 0 && (generations_unbound || generations_bound);
-  }
-  return state.last_interval_end_monotonic_ms != 0 && state.source_generation != 0 &&
-         state.physical_context_generation != 0 && state.control_generation != 0 && isfinite(state.outside_min_c) &&
-         isfinite(state.outside_max_c) && state.outside_min_c <= state.outside_max_c && isfinite(state.heat_min_w) &&
-         isfinite(state.heat_max_w) && state.heat_min_w <= state.heat_max_w &&
-         state.last_observation_monotonic_ms >= state.last_interval_end_monotonic_ms;
 }
 
 }  // namespace thermal_detail
@@ -825,36 +698,6 @@ inline ThermalUpdateResult invalidate_thermal_observation(ThermalModelState& sta
   result.status = ThermalUpdateStatus::REJECTED_STALE_OR_INCOMPLETE;
   result.estimate = estimate_thermal_model(state, config, now_monotonic_ms);
   return result;
-}
-
-inline ThermalModelCheckpoint make_thermal_checkpoint(const ThermalModelState& state,
-                                                      const ThermalModelConfig& config) {
-  ThermalModelCheckpoint checkpoint;
-  checkpoint.config_fingerprint = thermal_detail::config_fingerprint(config);
-  checkpoint.state = state;
-  checkpoint.checksum = thermal_detail::checkpoint_checksum(checkpoint);
-  return checkpoint;
-}
-
-inline ThermalCheckpointStatus restore_thermal_checkpoint(ThermalModelState& state,
-                                                          const ThermalModelCheckpoint& checkpoint,
-                                                          const ThermalModelConfig& config) {
-  using namespace thermal_detail;
-  if (!valid_config(config)) {
-    state = {};
-    return ThermalCheckpointStatus::INVALID_CONFIGURATION;
-  }
-  if (checkpoint.magic != kThermalCheckpointMagic || checkpoint.version != kThermalCheckpointVersion ||
-      checkpoint.reserved != 0 || checkpoint.config_fingerprint != config_fingerprint(checkpoint.state.bound_config) ||
-      !same_config(checkpoint.state.bound_config, config) || checkpoint.checksum != checkpoint_checksum(checkpoint) ||
-      !checkpoint_state_valid(checkpoint.state)) {
-    reset_untrusted_state(state, config);
-    return ThermalCheckpointStatus::CORRUPT_RESET;
-  }
-  state = checkpoint.state;
-  // Persistence cannot prove that live sources still own the saved generations after a reboot.
-  state.recent_data_valid = false;
-  return ThermalCheckpointStatus::OK;
 }
 
 }  // namespace oq_power_house::learning

@@ -232,19 +232,24 @@ class Runtime {
     input.q_hardware = OQ_HARDWARE_HEATPUMP_CONTROLLER_Q;
     input.duo = OQ_TOPOLOGY_DUO;
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    const bool hp1_uses_controller = id(hp_generation).has_state() && id(hp_generation).current_option() == "V1";
     if (id(oq_q_flow_source).has_state()) {
       const auto option = id(oq_q_flow_source).current_option();
       input.controller_mode = option == "Local"  ? oq_input_source::ControllerFlowMode::LOCAL
                               : option == "Auto" ? oq_input_source::ControllerFlowMode::AUTO
                                                  : oq_input_source::ControllerFlowMode::OTHER;
     }
-    input.hp_generation_v1 = id(hp_generation).has_state() && id(hp_generation).current_option() == "V1";
+    input.hp_generation_v1 = hp1_uses_controller;
     input.controller = sample(true, id(flow_rate_controller));
 #endif
     const oq_flow::PumpRelayState hp1{id(hp1_is_online) && id(hp1_pump_relay).has_state(), id(hp1_pump_relay).state};
 #if OQ_TOPOLOGY_DUO
     const oq_flow::PumpRelayState hp2{id(hp2_is_online) && id(hp2_pump_relay).has_state(), id(hp2_pump_relay).state};
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    input.hp1 = hp1_uses_controller ? input.controller : sample(true, id(hp1_flow));
+#else
     input.hp1 = sample(true, id(hp1_flow));
+#endif
     input.hp2 = sample(true, id(hp2_flow));
     if (id(oq_duo_outdoor_flow_mode).has_state()) {
       const auto mode = id(oq_duo_outdoor_flow_mode).current_option();
@@ -285,7 +290,7 @@ class Runtime {
     id(oq_outside_temp_selected_hold_active) = selected.held;
     const oq_sources::SourceConfigurationKey configuration{static_cast<uint8_t>(configured), 0U, 0U, 0U};
     const uint32_t generation = this->outside_generation_.observe(configuration);
-    this->resolved_outside_ = resolve_outside(selected, configured, generation);
+    this->resolved_outside_ = resolve_outside(selected, generation);
     this->resolved_outside_.configuration = configuration;
     this->resolved_outside_.configuration_generation =
         this->outside_generation_.observe_resolution(this->resolved_outside_);
@@ -305,7 +310,7 @@ class Runtime {
         static_cast<uint8_t>(configured), 0U, 0U,
         configured == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
     const uint32_t generation = this->room_generation_.observe(configuration);
-    this->resolved_room_ = resolve_room(selected, configured, false, generation);
+    this->resolved_room_ = resolve_room(selected, false, generation);
     this->resolved_room_.configuration = configuration;
     this->resolved_room_.configuration_generation = this->room_generation_.observe_resolution(this->resolved_room_);
     return selected.valid ? selected.value : NAN;
@@ -324,7 +329,7 @@ class Runtime {
         static_cast<uint8_t>(configured), 0U, 0U,
         configured == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
     const uint32_t generation = this->setpoint_generation_.observe(configuration);
-    this->resolved_setpoint_ = resolve_room(selected, configured, true, generation);
+    this->resolved_setpoint_ = resolve_room(selected, true, generation);
     this->resolved_setpoint_.configuration = configuration;
     this->resolved_setpoint_.configuration_generation =
         this->setpoint_generation_.observe_resolution(this->resolved_setpoint_);
@@ -490,8 +495,7 @@ class Runtime {
   }
 
   static oq_sources::ResolvedLearningSource resolve_room(const oq_input_source::NumericSelection& selected,
-                                                         oq_input_source::Source configured, bool setpoint,
-                                                         uint32_t generation) {
+                                                         bool setpoint, uint32_t generation) {
     using oq_sources::LearningSourceProvenance;
     using oq_sources::LearningSourceRoute;
     if (selected.held) {
@@ -499,8 +503,7 @@ class Runtime {
                                             setpoint ? LearningSourceRoute::HA_SETPOINT : LearningSourceRoute::HA_ROOM,
                                             generation, LearningSourceProvenance::HELD);
     }
-    const auto route = selected.valid ? selected.route : configured;
-    switch (route) {
+    switch (selected.route) {
       case oq_input_source::Source::OPENTHERM: {
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
         const auto receipt = setpoint ? id(oq_ot_slave_hub).master_room_setpoint_receipt()
@@ -538,56 +541,35 @@ class Runtime {
   }
 
   static oq_sources::ResolvedLearningSource resolve_outside(const oq_input_source::NumericSelection& selected,
-                                                            oq_input_source::Source configured, uint32_t generation) {
+                                                            uint32_t generation) {
     using oq_sources::LearningSourceProvenance;
     using oq_sources::LearningSourceRoute;
     if (selected.held) {
       return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::HA_OUTSIDE, generation,
                                             LearningSourceProvenance::HELD);
     }
-    const auto route = selected.valid ? selected.route : configured;
-    switch (route) {
+    switch (selected.route) {
       case oq_input_source::Source::OUTDOOR: {
 #if OQ_TOPOLOGY_DUO
-        const bool ambiguous_direct =
-            oq_sources::receipt_matches_selected(selected.value, selected.valid, oq_sources::hp1.outside) &&
-            oq_sources::receipt_matches_selected(selected.value, selected.valid, oq_sources::hp2.outside);
-        const auto matched_route = oq_sources::uniquely_matching_receipt_route(
-            selected.value, selected.valid, LearningSourceRoute::HP1_OUTSIDE, oq_sources::hp1.outside,
-            LearningSourceRoute::HP2_OUTSIDE, oq_sources::hp2.outside);
-#else
-        const auto matched_route = oq_sources::uniquely_matching_receipt_route(
-            selected.value, selected.valid, LearningSourceRoute::HP1_OUTSIDE, oq_sources::hp1.outside);
-#endif
-        // Equal readings do not prove which physical route the control resolver
-        // selected. Keep that ambiguous case observable but untrusted.
-#if OQ_TOPOLOGY_DUO
-        if (ambiguous_direct)
-          return oq_sources::unsupported_source(selected.value, true, LearningSourceRoute::OUTSIDE_AGGREGATE,
-                                                generation);
-#endif
-        if (matched_route == LearningSourceRoute::HP1_OUTSIDE)
-          return oq_sources::physical_source(LearningSourceRoute::HP1_OUTSIDE, oq_sources::hp1.outside, generation,
-                                             true);
-#if OQ_TOPOLOGY_DUO
-        if (matched_route == LearningSourceRoute::HP2_OUTSIDE)
-          return oq_sources::physical_source(LearningSourceRoute::HP2_OUTSIDE, oq_sources::hp2.outside, generation,
-                                             true);
-#endif
-#if OQ_TOPOLOGY_DUO
-        const bool hp1_present = id(hp1_outside_temp).has_state() && isfinite(id(hp1_outside_temp).state);
-        const bool hp2_present = id(hp2_outside_temp).has_state() && isfinite(id(hp2_outside_temp).state);
-        const float mean =
-            hp1_present && hp2_present ? 0.5f * (id(hp1_outside_temp).state + id(hp2_outside_temp).state) : NAN;
-        if (selected.valid && isfinite(mean) && fabsf(selected.value - mean) < 0.0001f) {
+        const auto& local = oq_sources::local_outside_selection;
+        if (selected.valid && local.valid && local.route == oq_sources::LocalOutsideRoute::HP1)
+          return oq_sources::physical_source(LearningSourceRoute::HP1_OUTSIDE, local.hp1_receipt, generation, true);
+        if (selected.valid && local.valid && local.route == oq_sources::LocalOutsideRoute::HP2)
+          return oq_sources::physical_source(LearningSourceRoute::HP2_OUTSIDE, local.hp2_receipt, generation, true);
+        if (selected.valid && local.valid && local.route == oq_sources::LocalOutsideRoute::COMPOSITE) {
+          const auto operation = local.operation == oq_sources::LocalOutsideOperation::MINIMUM
+                                     ? oq_sources::LearningCompositeOperation::MINIMUM
+                                     : oq_sources::LearningCompositeOperation::ARITHMETIC_MEAN;
           return oq_sources::unsupported_composite_source(
               selected.value, true, LearningSourceRoute::OUTSIDE_AGGREGATE, LearningSourceRoute::HP1_OUTSIDE,
-              LearningSourceRoute::HP2_OUTSIDE, oq_sources::hp1.outside, oq_sources::hp2.outside,
-              oq_sources::LearningCompositeOperation::ARITHMETIC_MEAN, {}, generation);
+              LearningSourceRoute::HP2_OUTSIDE, local.hp1_receipt, local.hp2_receipt, operation, {}, generation);
         }
-#endif
         return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::OUTSIDE_AGGREGATE,
                                               generation);
+#else
+        return oq_sources::physical_source(LearningSourceRoute::HP1_OUTSIDE, oq_sources::hp1.outside, generation,
+                                           selected.valid);
+#endif
       }
       case oq_input_source::Source::HA:
         return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::HA_OUTSIDE,
@@ -608,24 +590,7 @@ class Runtime {
                                                          uint32_t generation) {
     using oq_sources::LearningSourceProvenance;
     using oq_sources::LearningSourceRoute;
-    oq_input_source::FlowRoute route = selected.route;
-    if (route == oq_input_source::FlowRoute::NONE && input.selected == oq_input_source::Source::CIC) {
-      route = oq_input_source::FlowRoute::CIC;
-    } else if (route == oq_input_source::FlowRoute::NONE && input.selected == oq_input_source::Source::OUTDOOR) {
-      const bool controller_only =
-          input.q_hardware && (input.controller_mode == oq_input_source::ControllerFlowMode::LOCAL ||
-                               (!input.duo && input.controller_mode == oq_input_source::ControllerFlowMode::AUTO &&
-                                input.hp_generation_v1));
-      if (controller_only)
-        route = oq_input_source::FlowRoute::CONTROLLER;
-      else if (input.duo && input.outdoor_mode == oq_input_source::OutdoorFlowMode::HP1)
-        route = oq_input_source::FlowRoute::HP1;
-      else if (input.duo && input.outdoor_mode == oq_input_source::OutdoorFlowMode::HP2)
-        route = oq_input_source::FlowRoute::HP2;
-      else
-        route = oq_input_source::FlowRoute::AGGREGATE;
-    }
-    switch (route) {
+    switch (selected.route) {
       case oq_input_source::FlowRoute::CIC:
         return oq_sources::physical_source(LearningSourceRoute::CIC_FLOW, id(cic_component).flow_rate_receipt(),
                                            generation, selected.valid);
@@ -649,43 +614,25 @@ class Runtime {
       case oq_input_source::FlowRoute::AGGREGATE: {
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
         const bool hp1_uses_controller = id(hp_generation).has_state() && id(hp_generation).current_option() == "V1";
-        const float hp1_value = hp1_uses_controller ? id(flow_rate_controller).state : id(hp1_flow).state;
         const auto hp1_receipt = hp1_uses_controller ? oq_sources::controller_flow : oq_sources::hp1.flow;
         const auto hp1_route =
             hp1_uses_controller ? LearningSourceRoute::CONTROLLER_FLOW : LearningSourceRoute::HP1_FLOW;
 #else
-        const float hp1_value = id(hp1_flow).state;
         const auto hp1_receipt = oq_sources::hp1.flow;
         constexpr auto hp1_route = LearningSourceRoute::HP1_FLOW;
 #endif
 #if OQ_TOPOLOGY_DUO
-        const float hp2_value = id(hp2_flow).state;
-        const bool hp1_valid = isfinite(hp1_value);
-        const bool hp2_valid = isfinite(hp2_value);
-        if (selected.valid && hp1_valid && hp2_valid) {
-          const float mean = 0.5f * (hp1_value + hp2_value);
-          const float maximum = fmaxf(hp1_value, hp2_value);
-          const auto operation =
-              fabsf(selected.value - mean) < 0.0001f
-                  ? oq_sources::LearningCompositeOperation::ARITHMETIC_MEAN
-                  : (fabsf(selected.value - maximum) < 0.0001f ? oq_sources::LearningCompositeOperation::MAXIMUM
-                                                               : oq_sources::LearningCompositeOperation::NONE);
-          if (operation != oq_sources::LearningCompositeOperation::NONE) {
-            return oq_sources::unsupported_composite_source(selected.value, true, LearningSourceRoute::FLOW_AGGREGATE,
-                                                            hp1_route, LearningSourceRoute::HP2_FLOW, hp1_receipt,
-                                                            oq_sources::hp2.flow, operation, {}, generation);
-          }
-        }
-        if (selected.valid && hp1_valid && !hp2_valid)
+        if (selected.valid && input.hp1.valid && !input.hp2.valid)
           return oq_sources::physical_source(hp1_route, hp1_receipt, generation, true);
-        if (selected.valid && !hp1_valid && hp2_valid)
+        if (selected.valid && !input.hp1.valid && input.hp2.valid)
           return oq_sources::physical_source(LearningSourceRoute::HP2_FLOW, oq_sources::hp2.flow, generation, true);
+        return oq_sources::unsupported_composite_source(
+            selected.value, selected.valid, LearningSourceRoute::FLOW_AGGREGATE, hp1_route,
+            LearningSourceRoute::HP2_FLOW, hp1_receipt, oq_sources::hp2.flow,
+            oq_sources::LearningCompositeOperation::NONE, {}, generation);
 #else
-        if (selected.valid && isfinite(hp1_value))
-          return oq_sources::physical_source(hp1_route, hp1_receipt, generation, true);
+        return oq_sources::physical_source(hp1_route, hp1_receipt, generation, selected.valid);
 #endif
-        return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::FLOW_AGGREGATE,
-                                              generation);
       }
       case oq_input_source::FlowRoute::PUMPS_STOPPED:
         return oq_sources::unsupported_source(selected.value, selected.valid,

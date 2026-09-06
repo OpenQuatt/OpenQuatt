@@ -18,22 +18,6 @@
 
 namespace oq_power_house::learning {
 
-constexpr size_t kMaxPassiveContextBytes = 1024;
-
-// The caller creates a canonical byte representation of every exact source,
-// physical, control and learner configuration field that scopes the dataset.
-// A hash is deliberately insufficient: restore and live ownership compare the
-// bytes themselves before accepting old observations. Boot-scoped cohort
-// counters belong in the generation fields below, not in bytes; durable source
-// identity and configuration-generation fields do belong in bytes.
-struct PassiveContextView {
-  const uint8_t* bytes = nullptr;
-  size_t size = 0;
-  uint32_t source_generation = 0;
-  uint32_t physical_context_generation = 0;
-  uint32_t control_generation = 0;
-};
-
 struct PassiveRuntimeConfig {
   QualityConfig quality;
   FitConfig fit;
@@ -63,11 +47,9 @@ enum class PassiveRuntimeStatus : uint8_t {
   FIT_IN_PROGRESS,
   ADVICE_READY,
   PAUSED,
-  OWNER_CHANGED,
   CONTEXT_CHANGED,
   INVALID_CONFIGURATION,
   INVALID_INPUT,
-  STALE_OWNER,
   STALE_CONTEXT,
   TIME_DISCONTINUITY,
   BLOCKED,
@@ -101,7 +83,6 @@ struct PassiveRuntimeSummary {
   // firmware assertions; it can never authorize applying a model.
   bool auto_apply_allowed = false;
   size_t record_count = 0;
-  uint64_t owner_token = 0;
   uint32_t source_generation = 0;
   uint32_t physical_context_generation = 0;
   uint32_t control_generation = 0;
@@ -114,7 +95,6 @@ struct PassiveRuntimeSummary {
 };
 
 struct PassiveTickInput {
-  uint64_t owner_token = 0;
   PassiveContextView context;
   uint64_t now_monotonic_ms = 0;
   uint32_t now_epoch_s = 0;
@@ -140,7 +120,6 @@ struct PassiveRuntimeStorage {
   bool opted_in = false;
   bool restored_records = false;
   bool current_observation_valid = false;
-  uint64_t owner_token = 0;
   uint32_t source_generation = 0;
   uint32_t physical_context_generation = 0;
   uint32_t control_generation = 0;
@@ -162,7 +141,6 @@ struct PassiveRuntimeStorage {
   float fit_reference_setpoint_c = NAN;
   AdviceResult batch_result;
   ThermalModelState thermal_state;
-  ModelValidationResult validation_result;
   PassiveRuntimeDiagnostics diagnostics;
   PassiveRuntimeStatus status = PassiveRuntimeStatus::INVALID_CONFIGURATION;
 };
@@ -220,7 +198,6 @@ inline void clear_transient_collection(PassiveRuntimeStorage& state) {
   state.thermal_accumulator = {};
   cancel_fit(state);
   state.fit_pending = state.record_count > 0;
-  state.validation_result = {};
   state.current_observation_valid = false;
 }
 
@@ -229,12 +206,10 @@ inline void clear_evidence(PassiveRuntimeStorage& state) {
   state.restored_records = false;
   clear_transient_collection(state);
   initialize_thermal_model(state.thermal_state, state.config.thermal_model);
-  state.validation_result = {};
   if (state.diagnostics.evidence_reset_count != UINT32_MAX) ++state.diagnostics.evidence_reset_count;
 }
 
-inline void bind_context(PassiveRuntimeStorage& state, uint64_t owner_token, const PassiveContextView& context) {
-  state.owner_token = owner_token;
+inline void bind_context(PassiveRuntimeStorage& state, const PassiveContextView& context) {
   state.context_size = context.size;
   memcpy(state.context_bytes, context.bytes, context.size);
   state.source_generation = context.source_generation;
@@ -257,12 +232,6 @@ inline void invalidate_dynamic(PassiveRuntimeStorage& state, uint64_t now_monoto
   if (state.diagnostics.rejected_thermal_observations != UINT32_MAX) ++state.diagnostics.rejected_thermal_observations;
 }
 
-inline void refresh_validation(PassiveRuntimeStorage& state, uint64_t now_monotonic_ms) {
-  state.validation_result = validate_house_models(
-      state.batch_result, state.thermal_state, state.config.thermal_model, now_monotonic_ms, state.source_generation,
-      state.physical_context_generation, state.control_generation, state.config.validation);
-}
-
 inline void start_fit(PassiveRuntimeStorage& state, const PassiveTickInput& input) {
   cancel_fit(state);
   FitConfig fit = state.config.fit;
@@ -282,12 +251,10 @@ inline void start_fit(PassiveRuntimeStorage& state, const PassiveTickInput& inpu
 
 }  // namespace passive_runtime_detail
 
-inline PassiveRuntimeStatus initialize_passive_runtime(PassiveRuntimeStorage& state, uint64_t owner_token,
-                                                       const PassiveContextView& context,
+inline PassiveRuntimeStatus initialize_passive_runtime(PassiveRuntimeStorage& state, const PassiveContextView& context,
                                                        const PassiveRuntimeConfig& config, bool opted_in) {
   passive_runtime_detail::reset_in_place(state);
-  if (owner_token == 0 || !passive_runtime_detail::valid_context(context) ||
-      !passive_runtime_detail::valid_runtime_config(config)) {
+  if (!passive_runtime_detail::valid_context(context) || !passive_runtime_detail::valid_runtime_config(config)) {
     state.status = PassiveRuntimeStatus::INVALID_CONFIGURATION;
     return state.status;
   }
@@ -296,11 +263,64 @@ inline PassiveRuntimeStatus initialize_passive_runtime(PassiveRuntimeStorage& st
     state.status = PassiveRuntimeStatus::INVALID_CONFIGURATION;
     return state.status;
   }
-  passive_runtime_detail::bind_context(state, owner_token, context);
+  passive_runtime_detail::bind_context(state, context);
   state.initialized = true;
   state.opted_in = opted_in;
   state.status = opted_in ? PassiveRuntimeStatus::COLLECTING : PassiveRuntimeStatus::PAUSED;
   return state.status;
+}
+
+// These are the only entry points, besides tick(), that change learner state.
+inline void pause_passive_runtime(PassiveRuntimeStorage& state, uint64_t now_ms) {
+  passive_runtime_detail::clear_transient_collection(state);
+  passive_runtime_detail::invalidate_dynamic(state, now_ms);
+  state.opted_in = false;
+  state.status = PassiveRuntimeStatus::PAUSED;
+}
+
+inline void reset_passive_runtime(PassiveRuntimeStorage& state) {
+  passive_runtime_detail::reset_in_place(state);
+  state.status = PassiveRuntimeStatus::PAUSED;
+}
+
+inline LearningDatasetView passive_runtime_dataset(const PassiveRuntimeStorage& state) {
+  return {state.records,
+          state.record_count,
+          {state.context_bytes, state.context_size, state.source_generation, state.physical_context_generation,
+           state.control_generation}};
+}
+
+// A validated immutable record view is read before its backing slot is reused.
+// Restoring a batch never restores fit readiness or boot-local RLS evidence.
+template <typename RecordView>
+inline bool restore_passive_records(PassiveRuntimeStorage& state, const RecordView& records) {
+  if (!state.initialized || state.blocked || records.record_count > kMaxSegmentRecords) return false;
+  passive_runtime_detail::clear_evidence(state);
+  for (size_t index = 0; index < records.record_count; ++index) {
+    SegmentRecord record = records[index];
+    record.source_generation = state.source_generation;
+    record.physical_context_generation = state.physical_context_generation;
+    record.control_generation = state.control_generation;
+    state.records[index] = record;
+  }
+  state.record_count = records.record_count;
+  state.restored_records = state.record_count > 0;
+  state.fit_pending = state.record_count > 0;
+  state.status = state.opted_in ? PassiveRuntimeStatus::COLLECTING : PassiveRuntimeStatus::PAUSED;
+  return true;
+}
+
+inline void advance_passive_fit(PassiveRuntimeStorage& state) {
+  if (!state.fit_running) return;
+  const LearningStatus status = advance_advice_fit(state.fit_workspace);
+  state.batch_result = state.fit_workspace.result;
+  state.fit_running = status == LearningStatus::FIT_IN_PROGRESS;
+}
+
+// Offline analysis uses this same fit entry point, without inventing another
+// measurement just to finish work or evaluate retained records at a later date.
+inline void request_passive_fit(PassiveRuntimeStorage& state, const PassiveTickInput& input) {
+  passive_runtime_detail::start_fit(state, input);
 }
 
 inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, const PassiveTickInput& input) {
@@ -314,7 +334,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
     return state.status;
   }
   if (state.diagnostics.tick_count != UINT32_MAX) ++state.diagnostics.tick_count;
-  if (input.owner_token == 0 || !valid_context(input.context)) {
+  if (!valid_context(input.context)) {
     clear_evidence(state);
     state.blocked = true;
     state.status = PassiveRuntimeStatus::INVALID_INPUT;
@@ -326,21 +346,6 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   if (input.now_monotonic_ms == 0 || input.now_epoch_s == 0) {
     clear_transient_collection(state);
     state.status = PassiveRuntimeStatus::PAUSED;
-    return state.status;
-  }
-  if (input.owner_token < state.owner_token) {
-    clear_evidence(state);
-    state.blocked = true;
-    state.status = PassiveRuntimeStatus::STALE_OWNER;
-    return state.status;
-  }
-  if (input.owner_token > state.owner_token) {
-    clear_evidence(state);
-    bind_context(state, input.owner_token, input.context);
-    state.last_epoch_s = input.now_epoch_s;
-    state.last_monotonic_ms = input.now_monotonic_ms;
-    state.opted_in = input.opted_in;
-    state.status = PassiveRuntimeStatus::OWNER_CHANGED;
     return state.status;
   }
   const bool generation_decreased = input.context.source_generation < state.source_generation ||
@@ -363,7 +368,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   }
   if (generations_changed) {
     clear_evidence(state);
-    bind_context(state, input.owner_token, input.context);
+    bind_context(state, input.context);
     state.last_epoch_s = input.now_epoch_s;
     state.last_monotonic_ms = input.now_monotonic_ms;
     state.opted_in = input.opted_in;
@@ -475,22 +480,9 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
 
   if (appended_record || state.fit_pending)
     start_fit(state, input);
-  else if (state.fit_running) {
-    const LearningStatus fit_status = advance_advice_fit(state.fit_workspace);
-    state.batch_result = state.fit_workspace.result;
-    state.fit_running = fit_status == LearningStatus::FIT_IN_PROGRESS;
-  }
-  if (state.current_observation_valid)
-    refresh_validation(state, input.now_monotonic_ms);
   else
-    state.validation_result = {};
-  if (state.validation_result.cross_validated_advice_ready) {
-    state.status = PassiveRuntimeStatus::ADVICE_READY;
-  } else if (state.fit_running) {
-    state.status = PassiveRuntimeStatus::FIT_IN_PROGRESS;
-  } else {
-    state.status = PassiveRuntimeStatus::COLLECTING;
-  }
+    advance_passive_fit(state);
+  state.status = state.fit_running ? PassiveRuntimeStatus::FIT_IN_PROGRESS : PassiveRuntimeStatus::COLLECTING;
   return state.status;
 }
 
@@ -507,7 +499,6 @@ inline PassiveRuntimeSummary passive_runtime_summary(const PassiveRuntimeStorage
       state.initialized && !state.blocked && state.opted_in && state.current_observation_valid;
   summary.batch_advice_ready = live_ready_context && state.batch_result.advice_ready;
   summary.record_count = state.record_count;
-  summary.owner_token = state.owner_token;
   summary.source_generation = state.source_generation;
   summary.physical_context_generation = state.physical_context_generation;
   summary.control_generation = state.control_generation;

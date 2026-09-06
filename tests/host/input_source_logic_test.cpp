@@ -55,6 +55,9 @@ void test_hold_is_bound_to_selected_source() {
   assert(select_direct(Source::API, sources, true, 500000, 300000, hold).valid);
   sources.api = {};
   assert(!select_direct(Source::API, sources, true, 501000, 300000, hold).valid);
+
+  selected = select_direct(Source::MQTT, sources, true, 502000, 300000, hold);
+  assert(!selected.valid && selected.route == Source::MQTT);
 }
 
 void test_non_finite_samples_fail_closed() {
@@ -156,6 +159,10 @@ void test_flow_source_routes() {
   input.cic = numeric_sample(true, true, 600.0f);
   selected = select_flow(input);
   assert(selected.valid && selected.route == FlowRoute::CIC && selected.value == 600.0f);
+
+  input.cic = {};
+  selected = select_flow(input);
+  assert(!selected.valid && selected.route == FlowRoute::CIC && isnan(selected.value));
 }
 
 int main() {

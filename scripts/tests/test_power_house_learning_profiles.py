@@ -17,12 +17,12 @@ class LearningProfileContractTest(unittest.TestCase):
 
     def test_firmware_without_explicit_profile_has_no_learning_types(self):
         source = '''
-#include "openquatt/includes/learning/oq_ph_learning_generation_logic.h"
+#include "openquatt/includes/learning/oq_ph_passive_runtime_logic.h"
 #include "openquatt/includes/learning/oq_ph_model_validation.h"
 int main() {
   oq_power_house::learning::ThermalModelState thermal;
-  oq_power_house::learning::GenerationOwnerState owner;
-  return thermal.initialized || owner.initialized;
+  oq_power_house::learning::PassiveRuntimeStorage learner;
+  return thermal.initialized || learner.initialized;
 }
 '''
         compiler = os.environ.get("CXX", "c++")

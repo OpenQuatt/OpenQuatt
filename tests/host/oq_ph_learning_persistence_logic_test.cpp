@@ -1,214 +1,176 @@
 #include <assert.h>
-#include <stddef.h>
-#include <stdint.h>
+#include <initializer_list>
+#include <string.h>
 
 #include "../../openquatt/includes/learning/oq_ph_learning_persistence_logic.h"
 
-namespace {
 using namespace oq_power_house::learning;
 
-struct ResetBackend {
-  bool dirty = false;
-  bool history_present = true;
-  bool mark_dirty_ok = true;
-  unsigned mark_dirty_failures_remaining = 0;
-  bool clear_dirty_ok = true;
-  bool erase_ok = true;
-  bool invalidate_ok = true;
-  unsigned erase_calls = 0;
-  unsigned invalidate_calls = 0;
+namespace {
+constexpr uint8_t kContext[] = {2, 1, 8};
+constexpr uint32_t kEpoch = 20000U * 86400U;
+constexpr uint64_t kLater = kJournalSaveIntervalMs + 1000;
 
-  bool set_dirty(bool value) {
-    if (value && mark_dirty_failures_remaining != 0U) {
-      --mark_dirty_failures_remaining;
-      return false;
-    }
-    if ((value && !mark_dirty_ok) || (!value && !clear_dirty_ok)) return false;
-    dirty = value;
+enum class Fault { NONE, ERASE, TORN_WRITE, LOST_ACK, READ, FALSE_ERASE };
+struct Flash {
+  uint8_t bytes[2][8192];
+  Fault fault = Fault::NONE;
+  int writes = 0;
+  Flash() { memset(bytes, 0xFF, sizeof(bytes)); }
+  bool read(size_t slot, uint8_t* data, size_t size) {
+    if (fault == Fault::READ) return false;
+    memcpy(data, bytes[slot], size);
     return true;
   }
-
-  bool erase_and_verify() {
-    ++erase_calls;
-    if (!erase_ok) return false;
-    history_present = false;
+  bool erase(size_t slot) {
+    if (fault == Fault::ERASE) return false;
+    if (fault != Fault::FALSE_ERASE) memset(bytes[slot], 0xFF, sizeof(bytes[slot]));
     return true;
   }
-
-  bool invalidate_and_verify() {
-    ++invalidate_calls;
-    if (!invalidate_ok) return false;
-    history_present = false;
-    return true;
+  bool write(size_t slot, const uint8_t* data, size_t size) {
+    ++writes;
+    memcpy(bytes[slot], data, fault == Fault::TORN_WRITE ? size / 2 : size);
+    return fault != Fault::TORN_WRITE && fault != Fault::LOST_ACK;
   }
 };
 
-JournalResetOutcome reset(ResetBackend& backend) {
-  return execute_journal_reset([&backend](bool dirty) { return backend.set_dirty(dirty); },
-                               [&backend]() { return backend.erase_and_verify(); },
-                               [&backend]() { return backend.invalidate_and_verify(); });
+SegmentRecord sample() {
+  SegmentRecord record;
+  record.start_epoch_s = kEpoch - 4U * 3600U;
+  record.end_epoch_s = kEpoch;
+  record.duration_s = 4U * 3600U;
+  record.source_generation = record.physical_context_generation = record.control_generation = 1;
+  record.mean_room_c = record.mean_setpoint_c = 20;
+  record.mean_outside_c = 5;
+  record.mean_heat_w = 2200;
+  record.mean_heat_uncertainty_w = 50;
+  record.room_trend_k_per_h = record.room_range_k = record.setpoint_range_c = 0;
+  record.water_start_c = record.water_end_c = 30;
+  return record;
+}
+PassiveContextView context() { return {kContext, sizeof(kContext), 1, 1, 1}; }
+
+bool load(LearningJournalStore& store, Flash& flash, LearningJournalRecords& view) {
+  store.setup(true);
+  return store.load(
+      context(), QualityConfig{}, kEpoch,
+      [&](size_t slot, uint8_t* data, size_t size) { return flash.read(slot, data, size); }, view);
+}
+bool save(LearningJournalStore& store, Flash& flash, const SegmentRecord& record, uint64_t now = 1000,
+          uint32_t revision = 1) {
+  return store.save(
+      {&record, 1, context()}, QualityConfig{}, kEpoch, now, revision, [&](size_t slot) { return flash.erase(slot); },
+      [&](size_t slot, const uint8_t* data, size_t size) { return flash.write(slot, data, size); },
+      [&](size_t slot, uint8_t* data, size_t size) { return flash.read(slot, data, size); });
+}
+bool reset(LearningJournalStore& store, Flash& flash) {
+  return store.reset([&]() { return flash.erase(0) && flash.erase(1); },
+                     [&](size_t slot, uint8_t* data, size_t size) { return flash.read(slot, data, size); });
 }
 
-void test_reset_after_runtime_allocation_failure_survives_reboot() {
-  ResetBackend backend;
-  backend.erase_ok = false;
-  backend.invalidate_ok = false;
+void test_save_restore_and_write_rate() {
+  Flash flash;
+  LearningJournalStore store;
+  LearningJournalRecords view;
+  assert(!load(store, flash, view));
+  auto record = sample();
+  assert(save(store, flash, record));
+  assert(!save(store, flash, record, 2000, 2));
+  assert(flash.writes == 1);
+  record.mean_heat_w = 2300;
+  assert(save(store, flash, record, kLater, 2));
+  LearningJournalStore reboot;
+  assert(load(reboot, flash, view));
+  assert(view.record_count == 1 && view[0].mean_heat_w == 2300 && reboot.sequence == 2);
+  assert(reset(reboot, flash));
+  LearningJournalStore after_reset;
+  assert(!load(after_reset, flash, view));
+  assert(after_reset.available);
+}
 
-  // The request runs without learner storage. A durable dirty marker prevents
-  // the still-present journal from being restored after the interrupted erase.
-  const auto interrupted = reset(backend);
-  assert(interrupted.dirty_marked);
-  assert(!interrupted.erase_verified());
-  assert(interrupted.prevents_restore());
-  assert(backend.dirty && backend.history_present);
-
-  // The next boot observes the marker and retries deletion before restore.
-  backend.erase_ok = true;
-  if (backend.dirty) {
-    const auto reboot_cleanup = reset(backend);
-    assert(reboot_cleanup.complete());
+void test_failed_writes_do_not_destroy_previous_slot_or_start_retry_loops() {
+  for (Fault fault : {Fault::ERASE, Fault::TORN_WRITE, Fault::LOST_ACK, Fault::READ}) {
+    Flash flash;
+    LearningJournalStore store;
+    LearningJournalRecords view;
+    load(store, flash, view);
+    auto record = sample();
+    assert(save(store, flash, record));
+    record.mean_heat_w = 2300;
+    flash.fault = fault;
+    assert(!save(store, flash, record, kLater, 2));
+    assert(!store.available && store.sequence == 1);
+    const int writes = flash.writes;
+    assert(!save(store, flash, record, 2 * kLater, 2));
+    assert(flash.writes == writes);
+    flash.fault = Fault::NONE;
+    LearningJournalStore reboot;
+    assert(load(reboot, flash, view));
+    // A lost acknowledgement/readback can leave a complete newer slot. Both
+    // outcomes are valid; no partially written record may be restored.
+    assert(view[0].mean_heat_w == ((fault == Fault::LOST_ACK || fault == Fault::READ) ? 2300 : 2200));
   }
-  assert(!backend.dirty);
-  assert(!backend.history_present);
 }
 
-void test_reset_uses_verified_header_invalidation_when_erase_or_nvs_fails() {
-  ResetBackend backend;
-  backend.mark_dirty_ok = false;
-  backend.clear_dirty_ok = false;
-  backend.erase_ok = false;
-  backend.invalidate_ok = true;
-  const auto fallback = reset(backend);
-  assert(!fallback.dirty_marked);
-  assert(!fallback.erase_verified());
-  assert(fallback.data_inaccessible());
-  assert(fallback.prevents_restore());
-  assert(!fallback.complete());
-  assert(!backend.history_present);
-  assert(backend.erase_calls == 1U && backend.invalidate_calls == 1U);
-
-  backend = {};
-  backend.mark_dirty_failures_remaining = 1U;
-  backend.erase_ok = false;
-  const auto retried_marker = reset(backend);
-  assert(retried_marker.headers_invalidated && retried_marker.dirty_marked);
-  assert(backend.dirty && !backend.history_present);
-
-  backend = {};
-  backend.mark_dirty_ok = false;
-  backend.erase_ok = false;
-  backend.invalidate_ok = false;
-  const auto failed = reset(backend);
-  assert(!failed.prevents_restore());
-  assert(backend.history_present);
-}
-
-void test_restore_retries_transient_reads_and_blocks_writes_if_exhausted() {
-  JournalRestoreRetryState state;
-  uint64_t now_ms = 1000;
-  assert(journal_restore_due(state, now_ms));
-  assert(journal_restore_blocks_save(state));
-
-  for (uint8_t failure = 1; failure <= kJournalMaxTransientAttempts; ++failure) {
-    journal_restore_io_failed(state, now_ms);  // injected partition-read failure
-    if (failure < kJournalMaxTransientAttempts) {
-      assert(state.phase == JournalRestorePhase::WAITING_FOR_IO);
-      assert(!journal_restore_due(state, state.retry_at_ms - 1U));
-      now_ms = state.retry_at_ms;
-      assert(journal_restore_due(state, now_ms));
-    }
+void test_reset_and_restore_failures_are_reported_without_claiming_success() {
+  for (Fault fault : {Fault::ERASE, Fault::FALSE_ERASE, Fault::READ}) {
+    Flash flash;
+    LearningJournalStore store;
+    LearningJournalRecords view;
+    load(store, flash, view);
+    assert(save(store, flash, sample()));
+    flash.fault = fault;
+    assert(!reset(store, flash));
+    assert(!store.available && strcmp(store.status, "reset_failed") == 0);
   }
-  assert(state.phase == JournalRestorePhase::RETRY_EXHAUSTED);
-  assert(journal_restore_blocks_save(state));
-  assert(!journal_restore_due(state, UINT64_MAX));
+  Flash flash;
+  flash.fault = Fault::READ;
+  LearningJournalStore store;
+  LearningJournalRecords view;
+  assert(!load(store, flash, view));
+  assert(!store.available && store.loaded);
 }
 
-void test_restore_waits_for_utc_correction_without_consuming_io_budget() {
-  JournalRestoreRetryState state;
-  journal_restore_io_failed(state, 1000);  // one transient read failure first
-  const uint8_t io_failures = state.transient_failures;
-  const uint64_t retry_ms = state.retry_at_ms;
-  assert(journal_restore_due(state, retry_ms));
-
-  journal_restore_clock_not_ready(state, retry_ms);  // injected future-created journal
-  assert(state.phase == JournalRestorePhase::WAITING_FOR_CLOCK);
-  assert(state.transient_failures == io_failures);
-  assert(!journal_restore_due(state, state.retry_at_ms - 1U));
-  assert(journal_restore_due(state, state.retry_at_ms));
-
-  journal_restore_complete(state);  // UTC corrected; same cached slot now validates
-  assert(state.phase == JournalRestorePhase::COMPLETE);
-  assert(!journal_restore_blocks_save(state));
+void test_new_reset_cannot_reuse_previous_success() {
+  Flash flash;
+  LearningJournalStore store;
+  LearningJournalRecords view;
+  load(store, flash, view);
+  assert(reset(store, flash));
+  assert(store.persisted_records == 0 && strcmp(store.status, "cleared") == 0);
+  // Before the next learner tick erases flash, the old successful reset must
+  // no longer satisfy the webapp's paused + zero records + cleared condition.
+  store.request_reset();
+  assert(strcmp(store.status, "reset_pending") == 0);
+  flash.fault = Fault::ERASE;
+  assert(!reset(store, flash));
+  assert(strcmp(store.status, "reset_failed") == 0);
 }
 
-void test_save_retries_write_and_readback_failures_before_hourly_cooldown() {
-  JournalSaveRetryState state;
-  uint64_t now_ms = 1000;
-  assert(journal_save_due(state, now_ms, 0));
-
-  journal_save_failed(state, now_ms);  // injected write failure
-  assert(!journal_save_due(state, state.retry_at_ms - 1U, 0));
-  now_ms = state.retry_at_ms;
-  assert(journal_save_due(state, now_ms, 0));
-
-  journal_save_failed(state, now_ms);  // injected readback failure
-  now_ms = state.retry_at_ms;
-  assert(journal_save_due(state, now_ms, 0));
-
-  journal_save_succeeded(state);
-  const uint64_t last_success_ms = now_ms;
-  assert(!journal_save_due(state, now_ms + kJournalSaveIntervalMs - 1U, last_success_ms));
-  assert(journal_save_due(state, now_ms + kJournalSaveIntervalMs, last_success_ms));
+void test_incompatible_context_and_legacy_schema_start_empty() {
+  Flash flash;
+  LearningJournalStore store;
+  LearningJournalRecords view;
+  load(store, flash, view);
+  assert(save(store, flash, sample()));
+  constexpr uint8_t changed[] = {2, 1, 9};
+  LearningJournalStore different;
+  different.setup(true);
+  assert(!different.load(
+      {changed, sizeof(changed), 1, 1, 1}, QualityConfig{}, kEpoch,
+      [&](size_t slot, uint8_t* data, size_t size) { return flash.read(slot, data, size); }, view));
+  assert(different.available);
+  flash.bytes[0][4] = 1;  // Pre-simplification schema must not restore obsolete context semantics.
+  LearningJournalStore legacy;
+  assert(!load(legacy, flash, view));
+  assert(legacy.available);
 }
-
-void test_write_attempt_failure_injection_stops_at_exact_stage() {
-  const JournalWriteAttemptResult failures[]{
-      JournalWriteAttemptResult::ERASE_FAILED,      JournalWriteAttemptResult::WRITE_FAILED,
-      JournalWriteAttemptResult::READBACK_FAILED,   JournalWriteAttemptResult::VERIFY_FAILED,
-      JournalWriteAttemptResult::VALIDATION_FAILED, JournalWriteAttemptResult::COMMIT_MARKER_FAILED,
-  };
-  for (size_t failure_index = 0; failure_index < sizeof(failures) / sizeof(failures[0]); ++failure_index) {
-    size_t calls = 0;
-    const auto step = [&calls, failure_index](size_t stage) {
-      ++calls;
-      return stage != failure_index;
-    };
-    const auto result = execute_journal_write_attempt([&step]() { return step(0); }, [&step]() { return step(1); },
-                                                      [&step]() { return step(2); }, [&step]() { return step(3); },
-                                                      [&step]() { return step(4); }, [&step]() { return step(5); });
-    assert(result == failures[failure_index]);
-    assert(calls == failure_index + 1U);
-  }
-
-  size_t calls = 0;
-  const auto success = [&calls]() {
-    ++calls;
-    return true;
-  };
-  assert(execute_journal_write_attempt(success, success, success, success, success, success) ==
-         JournalWriteAttemptResult::OK);
-  assert(calls == 6U);
-}
-
-void test_save_failure_budget_is_bounded() {
-  JournalSaveRetryState state;
-  uint64_t now_ms = 1000;
-  for (uint8_t failure = 0; failure < kJournalMaxTransientAttempts; ++failure) {
-    journal_save_failed(state, now_ms);  // erase/write/read/readback/commit failure injection
-    now_ms = state.retry_at_ms;
-  }
-  assert(state.exhausted);
-  assert(!journal_save_due(state, UINT64_MAX, 0));
-}
-
 }  // namespace
 
 int main() {
-  test_reset_after_runtime_allocation_failure_survives_reboot();
-  test_reset_uses_verified_header_invalidation_when_erase_or_nvs_fails();
-  test_restore_retries_transient_reads_and_blocks_writes_if_exhausted();
-  test_restore_waits_for_utc_correction_without_consuming_io_budget();
-  test_save_retries_write_and_readback_failures_before_hourly_cooldown();
-  test_write_attempt_failure_injection_stops_at_exact_stage();
-  test_save_failure_budget_is_bounded();
+  test_save_restore_and_write_rate();
+  test_failed_writes_do_not_destroy_previous_slot_or_start_retry_loops();
+  test_reset_and_restore_failures_are_reported_without_claiming_success();
+  test_incompatible_context_and_legacy_schema_start_empty();
+  test_new_reset_cannot_reuse_previous_success();
 }

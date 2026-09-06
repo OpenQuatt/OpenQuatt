@@ -398,17 +398,6 @@ void test_corrupt_ordering_metadata_is_not_retained() {
   assert(state.last_observation_monotonic_ms == invalidated_at_ms && state.source_generation == 0);
   const auto after_invalidation = exact_interval(invalidated_at_ms, 0.5, 20.0, 5.0, 3000.0);
   assert(observe_thermal_interval(state, after_invalidation, config).accepted);
-
-  auto checkpoint = make_thermal_checkpoint(state, config);
-  ++checkpoint.checksum;
-  state.covariance_00 = NAN;
-  state.last_observation_monotonic_ms = UINT64_MAX;
-  state.source_generation = UINT32_MAX;
-  state.physical_context_generation = UINT32_MAX;
-  state.control_generation = UINT32_MAX;
-  assert(restore_thermal_checkpoint(state, checkpoint, config) == ThermalCheckpointStatus::CORRUPT_RESET);
-  assert(state.last_observation_monotonic_ms == 0 && state.source_generation == 0);
-  assert(observe_thermal_interval(state, exact_interval(1000, 0.5, 20.0, 5.0, 3000.0), config).accepted);
 }
 
 void test_sample_counter_overflow_consumes_interval() {
@@ -448,40 +437,6 @@ void test_live_configuration_is_bound_to_state() {
   assert(observe_thermal_interval(state, overlapping, changed).status == ThermalUpdateStatus::RESET_TIME);
 }
 
-void test_checkpoint_validation() {
-  const auto config = test_config();
-  ThermalModelState trained;
-  train_synthetic(trained, config, 80);
-  const auto checkpoint = make_thermal_checkpoint(trained, config);
-
-  ThermalModelState restored;
-  assert(restore_thermal_checkpoint(restored, checkpoint, config) == ThermalCheckpointStatus::OK);
-  assert(restored.accepted_samples == trained.accepted_samples);
-  assert(restored.theta_loss_scaled == trained.theta_loss_scaled);
-  assert(restored.theta_heat_scaled == trained.theta_heat_scaled);
-  assert(!restored.recent_data_valid);
-  assert(!estimate_thermal_model(restored, config, restored.last_interval_end_monotonic_ms).ready);
-
-  auto corrupt = checkpoint;
-  corrupt.state.covariance_00 = -1.0;
-  assert(restore_thermal_checkpoint(restored, corrupt, config) == ThermalCheckpointStatus::CORRUPT_RESET);
-  assert(restored.initialized && restored.accepted_samples == 0);
-
-  auto wrong_checksum = checkpoint;
-  ++wrong_checksum.checksum;
-  assert(restore_thermal_checkpoint(restored, wrong_checksum, config) == ThermalCheckpointStatus::CORRUPT_RESET);
-
-  auto changed_config = config;
-  changed_config.max_residual_rms_k_per_h += 0.01;
-  assert(restore_thermal_checkpoint(restored, checkpoint, changed_config) == ThermalCheckpointStatus::CORRUPT_RESET);
-
-  auto forged_fingerprint = checkpoint;
-  forged_fingerprint.state.bound_config.max_residual_rms_k_per_h += 0.01;
-  forged_fingerprint.config_fingerprint = thermal_detail::config_fingerprint(forged_fingerprint.state.bound_config);
-  forged_fingerprint.checksum = thermal_detail::checkpoint_checksum(forged_fingerprint);
-  assert(restore_thermal_checkpoint(restored, forged_fingerprint, config) == ThermalCheckpointStatus::CORRUPT_RESET);
-}
-
 void test_invalid_configuration_never_seeds_ready_model() {
   auto invalid = test_config();
   invalid.min_interval_ms = 1;
@@ -516,7 +471,6 @@ int main() {
   test_corrupt_ordering_metadata_is_not_retained();
   test_sample_counter_overflow_consumes_interval();
   test_live_configuration_is_bound_to_state();
-  test_checkpoint_validation();
   test_invalid_configuration_never_seeds_ready_model();
   return 0;
 }

@@ -4,145 +4,121 @@
 
 #if OQ_PH_LEARNING_CORE_AVAILABLE
 
-#include <stdint.h>
+#include "oq_ph_learning_journal.h"
 
 namespace oq_power_house::learning {
 
-constexpr uint8_t kJournalMaxTransientAttempts = 5U;
-constexpr uint64_t kJournalRetryInitialMs = 5000ULL;
-constexpr uint64_t kJournalRetryMaximumMs = 60000ULL;
-constexpr uint64_t kJournalClockRetryMs = 30000ULL;
 constexpr uint64_t kJournalSaveIntervalMs = 60ULL * 60ULL * 1000ULL;
 
-inline uint64_t journal_retry_delay_ms(uint8_t failure_count) {
-  uint64_t delay = kJournalRetryInitialMs;
-  for (uint8_t attempt = 1U; attempt < failure_count && delay < kJournalRetryMaximumMs; ++attempt) {
-    delay *= 2U;
-    if (delay > kJournalRetryMaximumMs) delay = kJournalRetryMaximumMs;
+// Reset has one outcome: both slots erased, or an explicit failure. There are
+// no alternate tombstones, NVS transactions or background recovery attempts.
+template <typename EraseAll, typename Read>
+inline bool erase_learning_journal(EraseAll erase_all, Read read) {
+  if (!erase_all()) return false;
+  uint8_t header[kLearningJournalHeaderBytes];
+  for (size_t slot = 0; slot < 2; ++slot) {
+    if (!read(slot, header, sizeof(header))) return false;
+    for (uint8_t byte : header)
+      if (byte != 0xFFU) return false;
   }
-  return delay;
+  return true;
 }
 
-inline uint64_t journal_retry_at(uint64_t now_ms, uint64_t delay_ms) {
-  return now_ms > UINT64_MAX - delay_ms ? UINT64_MAX : now_ms + delay_ms;
-}
+// Concrete A/B store. Allocate with the runtime in PSRAM. An I/O failure disables
+// persistence for this boot; collecting in RAM continues. No retry state machine.
+struct LearningJournalStore {
+  uint8_t bytes[2][kLearningJournalMaxBytes]{};
+  bool available = false;
+  bool loaded = false;
+  int active_slot = -1;
+  uint32_t sequence = 0;
+  size_t persisted_records = 0;
+  uint32_t persisted_revision = 0;
+  uint64_t last_write_ms = 0;
+  const char* status = "not_initialized";
 
-enum class JournalRestorePhase : uint8_t {
-  PENDING = 0,
-  WAITING_FOR_IO,
-  WAITING_FOR_CLOCK,
-  COMPLETE,
-  RETRY_EXHAUSTED,
-};
-
-struct JournalRestoreRetryState {
-  JournalRestorePhase phase = JournalRestorePhase::PENDING;
-  uint8_t transient_failures = 0;
-  uint64_t retry_at_ms = 0;
-};
-
-inline bool journal_restore_due(const JournalRestoreRetryState& state, uint64_t now_ms) {
-  return state.phase == JournalRestorePhase::PENDING || ((state.phase == JournalRestorePhase::WAITING_FOR_IO ||
-                                                          state.phase == JournalRestorePhase::WAITING_FOR_CLOCK) &&
-                                                         now_ms >= state.retry_at_ms);
-}
-
-inline void journal_restore_io_failed(JournalRestoreRetryState& state, uint64_t now_ms) {
-  if (state.transient_failures < UINT8_MAX) ++state.transient_failures;
-  if (state.transient_failures >= kJournalMaxTransientAttempts) {
-    state.phase = JournalRestorePhase::RETRY_EXHAUSTED;
-    state.retry_at_ms = UINT64_MAX;
-    return;
+  void setup(bool storage_available) {
+    available = storage_available;
+    status = available ? "waiting_for_context" : "storage_unavailable";
   }
-  state.phase = JournalRestorePhase::WAITING_FOR_IO;
-  state.retry_at_ms = journal_retry_at(now_ms, journal_retry_delay_ms(state.transient_failures));
-}
 
-inline void journal_restore_clock_not_ready(JournalRestoreRetryState& state, uint64_t now_ms) {
-  state.phase = JournalRestorePhase::WAITING_FOR_CLOCK;
-  state.retry_at_ms = journal_retry_at(now_ms, kJournalClockRetryMs);
-}
+  void request_reset() { status = "reset_pending"; }
 
-inline void journal_restore_complete(JournalRestoreRetryState& state) {
-  state.phase = JournalRestorePhase::COMPLETE;
-  state.retry_at_ms = 0;
-}
-
-inline bool journal_restore_blocks_save(const JournalRestoreRetryState& state) {
-  return state.phase != JournalRestorePhase::COMPLETE;
-}
-
-struct JournalSaveRetryState {
-  uint8_t transient_failures = 0;
-  uint64_t retry_at_ms = 0;
-  bool exhausted = false;
-};
-
-inline bool journal_save_due(const JournalSaveRetryState& state, uint64_t now_ms, uint64_t last_success_ms) {
-  if (state.exhausted) return false;
-  if (state.transient_failures != 0U) return now_ms >= state.retry_at_ms;
-  return last_success_ms == 0U || (now_ms >= last_success_ms && now_ms - last_success_ms >= kJournalSaveIntervalMs);
-}
-
-inline void journal_save_failed(JournalSaveRetryState& state, uint64_t now_ms) {
-  if (state.transient_failures < UINT8_MAX) ++state.transient_failures;
-  if (state.transient_failures >= kJournalMaxTransientAttempts) {
-    state.exhausted = true;
-    state.retry_at_ms = UINT64_MAX;
-    return;
+  template <typename Read>
+  bool load(const PassiveContextView& context, const QualityConfig& quality, uint32_t epoch, Read read,
+            LearningJournalRecords& records) {
+    if (loaded || !available || epoch == 0) return false;
+    loaded = true;
+    LearningJournalSlotView slots[2];
+    for (size_t slot = 0; slot < 2; ++slot) {
+      if (!read(slot, bytes[slot], sizeof(bytes[slot]))) return fail("restore_failed");
+      learning_journal_detail::Reader header{bytes[slot], sizeof(bytes[slot])};
+      header.position = 8;
+      const size_t size = learning_journal_detail::read_u32(header);
+      slots[slot] = {bytes[slot], size <= sizeof(bytes[slot]) ? size : 0};
+    }
+    const auto selected = select_learning_journal_slot(slots[0], slots[1], context.bytes, context.size, epoch, quality);
+    if (selected.status != LearningJournalStatus::OK) {
+      status = "no_compatible_history";
+      return false;
+    }
+    active_slot = selected.selected_slot;
+    sequence = selected.metadata.sequence;
+    persisted_records = selected.metadata.record_count;
+    records = {slots[active_slot], selected.metadata.context_size, selected.metadata.record_count};
+    status = "restored_batch_rls_restarts";
+    return true;
   }
-  state.retry_at_ms = journal_retry_at(now_ms, journal_retry_delay_ms(state.transient_failures));
-}
 
-inline void journal_save_succeeded(JournalSaveRetryState& state) { state = {}; }
+  bool save_due(uint64_t now_ms, size_t record_count, uint32_t revision) const {
+    return available && loaded && (record_count != persisted_records || revision != persisted_revision) &&
+           (last_write_ms == 0 || (now_ms >= last_write_ms && now_ms - last_write_ms >= kJournalSaveIntervalMs));
+  }
 
-enum class JournalWriteAttemptResult : uint8_t {
-  OK = 0,
-  ERASE_FAILED,
-  WRITE_FAILED,
-  READBACK_FAILED,
-  VERIFY_FAILED,
-  VALIDATION_FAILED,
-  COMMIT_MARKER_FAILED,
+  template <typename Erase, typename Write, typename Read>
+  bool save(const LearningDatasetView& dataset, const QualityConfig& quality, uint32_t epoch, uint64_t now_ms,
+            uint32_t revision, Erase erase, Write write, Read read) {
+    if (!save_due(now_ms, dataset.record_count, revision)) return false;
+    if (sequence == UINT32_MAX) return fail("sequence_exhausted");
+    const int slot = active_slot == 0 ? 1 : 0;
+    size_t size = 0;
+    if (encode_learning_journal(dataset, quality, sequence + 1, epoch, bytes[slot], sizeof(bytes[slot]), size) !=
+        LearningJournalStatus::OK)
+      return fail("encode_failed");
+    // The previous flash slot is untouched. Reuse its RAM cache for readback.
+    if (!erase(slot) || !write(slot, bytes[slot], size) || !read(slot, bytes[1 - slot], size) ||
+        memcmp(bytes[slot], bytes[1 - slot], size) != 0)
+      return fail("save_failed");
+    active_slot = slot;
+    ++sequence;
+    persisted_records = dataset.record_count;
+    persisted_revision = revision;
+    last_write_ms = now_ms;
+    status = "saved_verified";
+    return true;
+  }
+
+  template <typename EraseAll, typename Read>
+  bool reset(EraseAll erase_all, Read read) {
+    loaded = true;
+    if (!erase_learning_journal(erase_all, read)) return fail("reset_failed");
+    available = true;
+    active_slot = -1;
+    sequence = 0;
+    persisted_records = 0;
+    persisted_revision = 0;
+    last_write_ms = 0;
+    status = "cleared";
+    return true;
+  }
+
+ private:
+  bool fail(const char* reason) {
+    available = false;
+    status = reason;
+    return false;
+  }
 };
-
-template <typename Erase, typename Write, typename ReadBack, typename Verify, typename Validate, typename Commit>
-inline JournalWriteAttemptResult execute_journal_write_attempt(Erase erase, Write write, ReadBack read_back,
-                                                               Verify verify, Validate validate, Commit commit) {
-  if (!erase()) return JournalWriteAttemptResult::ERASE_FAILED;
-  if (!write()) return JournalWriteAttemptResult::WRITE_FAILED;
-  if (!read_back()) return JournalWriteAttemptResult::READBACK_FAILED;
-  if (!verify()) return JournalWriteAttemptResult::VERIFY_FAILED;
-  if (!validate()) return JournalWriteAttemptResult::VALIDATION_FAILED;
-  if (!commit()) return JournalWriteAttemptResult::COMMIT_MARKER_FAILED;
-  return JournalWriteAttemptResult::OK;
-}
-
-struct JournalResetOutcome {
-  bool dirty_marked = false;
-  bool slots_erased = false;
-  bool headers_invalidated = false;
-  bool dirty_clear_verified = false;
-
-  bool prevents_restore() const { return dirty_marked || slots_erased || headers_invalidated; }
-  bool data_inaccessible() const { return slots_erased || headers_invalidated; }
-  bool erase_verified() const { return slots_erased; }
-  bool complete() const { return slots_erased && dirty_clear_verified; }
-};
-
-template <typename SetDirty, typename EraseAndVerify, typename InvalidateAndVerify>
-inline JournalResetOutcome execute_journal_reset(SetDirty set_dirty, EraseAndVerify erase_and_verify,
-                                                 InvalidateAndVerify invalidate_and_verify) {
-  JournalResetOutcome outcome;
-  outcome.dirty_marked = set_dirty(true);
-  outcome.slots_erased = erase_and_verify();
-  if (!outcome.slots_erased) outcome.headers_invalidated = invalidate_and_verify();
-  // Header invalidation prevents restore but is not deletion. Retain the dirty
-  // marker so the next boot retries the full erase before allowing restore.
-  if (outcome.headers_invalidated && !outcome.dirty_marked) outcome.dirty_marked = set_dirty(true);
-  if (outcome.slots_erased) outcome.dirty_clear_verified = set_dirty(false);
-  return outcome;
-}
 
 }  // namespace oq_power_house::learning
 

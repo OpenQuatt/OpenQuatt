@@ -370,6 +370,17 @@ void test_diagnostic_heat_rejects_unproved_or_incoherent_inputs() {
 }  // namespace
 
 int main() {
+  // A -> B -> A between learner ticks retains the same durable route but must
+  // break collection through the resolver's revision, once per observed change.
+  uint32_t revisions[4]{};
+  oq_sources::ResolvedLearningSource sources[4];
+  for (auto& source : sources) source.configuration_generation = 1;
+  assert(oq_power_house::learning::observe_source_revisions(revisions, sources));
+  assert(!oq_power_house::learning::observe_source_revisions(revisions, sources));
+  sources[2].configuration_generation = 3;
+  assert(oq_power_house::learning::observe_source_revisions(revisions, sources));
+  assert(!oq_power_house::learning::observe_source_revisions(revisions, sources));
+
   test_compile_time_installation_contract_maps_single_and_duo();
   test_direct_routes_map_to_exact_source_and_timing();
   test_direct_route_fails_closed_for_spoof_stale_future_and_offline();

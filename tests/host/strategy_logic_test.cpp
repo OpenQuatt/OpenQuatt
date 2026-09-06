@@ -36,6 +36,49 @@ void test_active_and_idle_aggregation() {
   assert(isnan(aggregate_local_outside(in)));
 }
 
+void test_local_outside_selection_metadata() {
+  auto in = baseline();
+  auto selected = select_local_outside(in);
+  assert(selected.valid && selected.route == oq_sources::LocalOutsideRoute::COMPOSITE);
+  assert(selected.operation == oq_sources::LocalOutsideOperation::MINIMUM && selected.value == 5.0f);
+
+  in.hp1_mode = 0.0f;
+  selected = select_local_outside(in);
+  assert(selected.valid && selected.route == oq_sources::LocalOutsideRoute::HP2);
+  assert(selected.operation == oq_sources::LocalOutsideOperation::NONE && selected.value == 7.0f);
+
+  in.hp2_mode = 0.0f;
+  selected = select_local_outside(in);
+  assert(selected.valid && selected.route == oq_sources::LocalOutsideRoute::COMPOSITE);
+  assert(selected.operation == oq_sources::LocalOutsideOperation::ARITHMETIC_MEAN && selected.value == 6.0f);
+
+  in.hp2_outside_c = 5.0f;
+  selected = select_local_outside(in);
+  assert(selected.valid && selected.route == oq_sources::LocalOutsideRoute::COMPOSITE);
+  assert(selected.operation == oq_sources::LocalOutsideOperation::ARITHMETIC_MEAN && selected.value == 5.0f);
+
+  in.hp1_mode = 2.0f;
+  in.hp2_mode = 2.0f;
+  selected = select_local_outside(in);
+  assert(selected.valid && selected.route == oq_sources::LocalOutsideRoute::COMPOSITE);
+  assert(selected.operation == oq_sources::LocalOutsideOperation::MINIMUM && selected.value == 5.0f);
+
+  in.hp1_mode = 0.0f;
+  in.hp2_mode = 0.0f;
+  in.hp2_outside_c = NAN;
+  selected = select_local_outside(in);
+  assert(selected.valid && selected.route == oq_sources::LocalOutsideRoute::HP1 && selected.value == 5.0f);
+
+  in.hp1_outside_c = NAN;
+  in.hp2_outside_c = 5.0f;
+  selected = select_local_outside(in);
+  assert(selected.valid && selected.route == oq_sources::LocalOutsideRoute::HP2 && selected.value == 5.0f);
+
+  in.hp2_outside_c = NAN;
+  selected = select_local_outside(in);
+  assert(!selected.valid && selected.route == oq_sources::LocalOutsideRoute::NONE && isnan(selected.value));
+}
+
 void test_stale_running_sensor_and_rollover() {
   auto in = baseline();
   in.hp1_last_change_ms = 10000U;
@@ -58,6 +101,7 @@ void test_stale_running_sensor_and_rollover() {
 
 int main() {
   test_active_and_idle_aggregation();
+  test_local_outside_selection_metadata();
   test_stale_running_sensor_and_rollover();
   return 0;
 }

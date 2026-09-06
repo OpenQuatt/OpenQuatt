@@ -12,6 +12,17 @@
 
 namespace oq_power_house::learning {
 
+// Resolvers remember intermediate route changes, even if the selected route is
+// back to A at the next learner tick. These counters are never persisted.
+inline bool observe_source_revisions(uint32_t previous[4], const oq_sources::ResolvedLearningSource sources[4]) {
+  bool changed = false;
+  for (size_t index = 0; index < 4; ++index) {
+    changed = changed || previous[index] != sources[index].configuration_generation;
+    previous[index] = sources[index].configuration_generation;
+  }
+  return changed;
+}
+
 // These are measurement cadence limits, independent of selected-value holds.
 constexpr MeasurementTimingContract kHpLearningTiming{45000, 30000};
 constexpr MeasurementTimingContract kRoomLearningTiming{120000, 30000};

@@ -9,11 +9,10 @@
 
 #include "esp_heap_caps.h"
 #include "esp_partition.h"
-#include "nvs.h"
 #include "OpenQuattFlashLayout.h"
 #include "PsramBuffer.h"
 #include "../boiler/oq_otb_telemetry.h"
-#include "../learning/oq_ph_learning_generation_logic.h"
+#include "../learning/oq_ph_passive_runtime_logic.h"
 #include "../learning/oq_ph_learning_journal.h"
 #include "../learning/oq_ph_learning_live_logic.h"
 #include "../learning/oq_ph_learning_persistence_logic.h"
@@ -52,38 +51,26 @@ struct DiagnosticRow {
 
 struct RuntimeStorage {
   PassiveRuntimeStorage learner;
-  GenerationOwnerState generation;
   LearningSourceInput input;
   PassiveTickInput tick;
   PassiveRuntimeSummary summary;
   PassiveRuntimeConfig config;
   CalorimetryReconfirmationState calorimetry_reconfirmation;
   oq_sources::ResolvedLearningSource sources[4];
+  uint32_t source_revisions[4]{};
   uint8_t context[kMaxPassiveContextBytes]{};
   size_t context_size = 0;
-  uint8_t journal_slots[2][kLearningJournalMaxBytes]{};
-  size_t journal_sizes[2]{};
-  uint8_t journal_scratch[kLearningJournalMaxBytes]{};
+  LearningJournalStore journal;
   char json[kExportJsonBufferSize]{};
   DiagnosticRow rows[kMaxExportDiagnosticRows];
   DiagnosticCaptureGate diagnostic_capture;
   size_t row_count = 0, row_next = 0;
-  uint64_t owner_token = 0;
   uint64_t recovery_until_ms = 0;
   float last_setpoint = NAN;
-  uint32_t configuration_revision = 1;
-  uint32_t journal_sequence = 0;
-  int journal_slot = -1;
-  size_t persisted_records = 0;
-  uint32_t persisted_record_revision = 0;
-  JournalRestoreRetryState restore_retry;
-  JournalSaveRetryState save_retry;
-  bool persistence_ready = false, journal_dirty = true, dirty_persisted = false, restore_slots_loaded = false;
-  bool changed = false, reset_requested = false, initialized = false;
+  uint32_t context_revision = 1;
+  bool changed = false, reset_requested = false;
   const esp_partition_t* partition = nullptr;
-  const char* journal_status = "not_initialized";
   SnapshotDiagnostics source_diagnostics;
-  uint64_t last_journal_ms = 0;
   uint64_t max_tick_us = 0;
 };
 
@@ -93,13 +80,7 @@ class Runtime {
     if (!storage_) return;
     auto& state = storage_[0];
     pause_diagnostic_capture(state.diagnostic_capture);
-    if (state.learner.initialized) {
-      passive_runtime_detail::clear_transient_collection(state.learner);
-      invalidate_thermal_observation(state.learner.thermal_state, oq_sources::monotonic_ms(),
-                                     state.config.thermal_model);
-      state.learner.opted_in = false;
-      state.learner.status = PassiveRuntimeStatus::PAUSED;
-    }
+    if (state.learner.initialized) pause_passive_runtime(state.learner, oq_sources::monotonic_ms());
     publish_paused_status_(state);
   }
 
@@ -111,7 +92,7 @@ class Runtime {
     }
     auto& state = storage_[0];
     state.reset_requested = true;
-    mark_dirty_(state);
+    state.journal.request_reset();
     pause();
     publish_reset_pending_export_();
   }
@@ -119,17 +100,10 @@ class Runtime {
   void configuration_changed() {
     if (!storage_) return;
     auto& state = storage_[0];
-    if (state.configuration_revision == UINT32_MAX) {
-      state.configuration_revision = 0;
-      pause();
-    } else if (state.configuration_revision != 0) {
-      ++state.configuration_revision;
-    }
     state.changed = true;
     // Invalidate source caches on every setting event, including A->B->A before
     // the next periodic selection. This does not republish or change controls.
     oq_sensor_source::runtime().source_configuration_changed();
-    mark_dirty_(state);
     pause();
   }
 
@@ -144,51 +118,55 @@ class Runtime {
     build_context_(state);
     const bool enabled = id(oq_ph_learning_enabled).state;
     auto& input = state.input;
-    PhysicalContextTokens physical{state.configuration_revision, state.configuration_revision,
-                                   state.configuration_revision};
-    ControlContextTokens control{state.configuration_revision, state.configuration_revision,
-                                 state.configuration_revision, state.configuration_revision};
-    const auto generation = state.generation.initialized
-                                ? observe_generation(state.generation, state.owner_token, input, physical, control)
-                                : start_generation_owner(state.generation, state.owner_token,
-                                                         DatasetScopeReset::CLEARED, input, physical, control);
-    input.source_cohort_generation = generation.source_generation;
-    input.physical_context_generation = generation.physical_generation;
-    input.control_generation = generation.control_generation;
-    input.operation.captured_control_generation = input.control_generation;
-    PassiveContextView context{state.context, state.context_size, input.source_cohort_generation,
-                               input.physical_context_generation, input.control_generation};
-    const bool context_valid = generation.accepted && state.context_size > 0 &&
-                               state.context_size <= kMaxPassiveContextBytes && state.configuration_revision != 0;
-    const bool learner_invalidation = state.changed || state.reset_requested || generation.invalidate_dataset;
-    bool reset_processed = false;
-    if (learner_invalidation && state.learner.initialized) {
-      mark_dirty_(state);
-      passive_runtime_detail::clear_evidence(state.learner);
-      journal_restore_complete(state.restore_retry);
-      state.restore_slots_loaded = false;
+    // Wait for selected sources before binding a boot context. A temporary
+    // missing receipt pauses collection. A resolver route/provenance change
+    // starts a new dataset, including changes observed between learner ticks.
+    bool context_valid = state.context_size > 0;
+    for (const auto& source : state.sources) context_valid = context_valid && source.valid;
+    const bool sources_changed = context_valid && observe_source_revisions(state.source_revisions, state.sources);
+    const bool context_changed =
+        state.learner.initialized &&
+        (state.changed || sources_changed ||
+         (context_valid && (state.context_size != state.learner.context_size ||
+                            memcmp(state.context, state.learner.context_bytes, state.context_size) != 0)));
+    if (context_changed && ++state.context_revision == 0) state.context_revision = 1;
+    input.source_cohort_generation = state.context_revision;
+    input.physical_context_generation = state.context_revision;
+    input.control_generation = state.context_revision;
+    input.operation.captured_control_generation = state.context_revision;
+    PassiveContextView context{state.context, state.context_size, state.context_revision, state.context_revision,
+                               state.context_revision};
+    const bool reset_processed = state.reset_requested;
+    if (state.changed || context_changed || reset_processed) {
+      reset_passive_runtime(state.learner);
+      state.journal.reset(
+          [&state]() { return erase_slots_(state.partition); },
+          [&state](size_t slot, uint8_t* data, size_t size) { return read_slot_(state.partition, slot, data, size); });
+      state.changed = false;
     }
-    if (state.reset_requested) {
-      reset_processed = true;
+    if (reset_processed) {
       state.reset_requested = false;
       state.row_count = state.row_next = 0;
       reset_diagnostic_capture(state.diagnostic_capture);
-      erase_journal_(state);
     }
-    if (context_valid && state.owner_token != 0 && (!state.learner.initialized || learner_invalidation)) {
-      const auto initialized =
-          initialize_passive_runtime(state.learner, state.owner_token, context, state.config, enabled);
-      if (initialized != PassiveRuntimeStatus::INVALID_CONFIGURATION) state.changed = false;
+    if (context_valid && !state.learner.initialized)
+      initialize_passive_runtime(state.learner, context, state.config, enabled);
+    if (state.learner.initialized && context_valid && epoch != 0 && !state.journal.loaded) {
+      LearningJournalRecords records;
+      if (state.journal.load(
+              context, state.config.quality, epoch,
+              [&state](size_t slot, uint8_t* data, size_t size) {
+                return read_slot_(state.partition, slot, data, size);
+              },
+              records))
+        restore_passive_records(state.learner, records);
     }
-    if (state.learner.initialized && context_valid && epoch != 0 && journal_restore_due(state.restore_retry, now_ms))
-      restore_(state, epoch, now_ms);
 
     const auto batch = build_learning_snapshot(input, state.config.quality, SnapshotPurpose::STRUCTURAL_BATCH);
     const auto dynamic = build_learning_snapshot(input, state.config.quality, SnapshotPurpose::THERMAL_DYNAMIC);
     state.source_diagnostics = combined_snapshot_diagnostics(batch, dynamic);
     state.tick = PassiveTickInput{};
     auto& tick = state.tick;
-    tick.owner_token = state.owner_token;
     tick.context = context;
     tick.now_monotonic_ms = now_ms;
     tick.now_epoch_s = epoch;
@@ -209,18 +187,20 @@ class Runtime {
     if (state.learner.initialized && context_valid) {
       tick_passive_runtime(state.learner, tick);
     } else if (state.learner.initialized) {
-      passive_runtime_detail::clear_transient_collection(state.learner);
-      state.learner.status = PassiveRuntimeStatus::PAUSED;
+      pause_passive_runtime(state.learner, now_ms);
     }
     const auto diagnostic_capture = diagnostic_capture_decision(state.diagnostic_capture, enabled && !reset_processed);
     if (diagnostic_capture.capture) capture_diagnostics_(state, dynamic, epoch, diagnostic_capture.use_previous);
-    const bool records_changed = state.learner.initialized &&
-                                 (state.learner.record_count != state.persisted_records ||
-                                  state.learner.diagnostics.accepted_batch_records != state.persisted_record_revision);
     const bool persistence_window_safe = input.operation.service_or_ota_valid && !input.operation.service_or_ota;
-    if (state.learner.initialized && context_valid && epoch != 0 && enabled && records_changed &&
-        persistence_window_safe && !journal_restore_blocks_save(state.restore_retry))
-      save_(state, epoch, now_ms);
+    if (state.learner.initialized && context_valid && epoch != 0 && enabled && persistence_window_safe)
+      state.journal.save(
+          passive_runtime_dataset(state.learner), state.config.quality, epoch, now_ms,
+          state.learner.diagnostics.accepted_batch_records,
+          [&state](size_t slot) { return erase_slot_(state.partition, slot); },
+          [&state](size_t slot, const uint8_t* data, size_t size) {
+            return esp_partition_write(state.partition, slot_offset_(slot), data, size) == ESP_OK;
+          },
+          [&state](size_t slot, uint8_t* data, size_t size) { return read_slot_(state.partition, slot, data, size); });
     state.summary = passive_runtime_summary(state.learner, now_ms);
     const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - started_us;
     if (elapsed > state.max_tick_us) state.max_tick_us = elapsed;
@@ -252,38 +232,8 @@ class Runtime {
     }
     auto& state = storage_[0];
     state.partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "openquatt_data");
-    state.persistence_ready =
-        state.partition != nullptr && OpenQuattFlashLayout::HOUSE_LEARNING_END_OFFSET <= state.partition->size;
-    nvs_handle_t handle;
-    bool owner_written = false;
-    if (nvs_open("oq_ph_learning", NVS_READWRITE, &handle) == ESP_OK) {
-      uint64_t token = 0;
-      uint8_t dirty = 1;
-      const esp_err_t got = nvs_get_u64(handle, "owner", &token);
-      const esp_err_t got_dirty = nvs_get_u8(handle, "dirty", &dirty);
-      if (got_dirty == ESP_OK) {
-        state.journal_dirty = dirty != 0;
-        state.dirty_persisted = true;
-      }
-      if ((got == ESP_OK || got == ESP_ERR_NVS_NOT_FOUND) && token < UINT64_MAX &&
-          (got_dirty == ESP_OK || got_dirty == ESP_ERR_NVS_NOT_FOUND) &&
-          nvs_set_u64(handle, "owner", token + 1) == ESP_OK && nvs_commit(handle) == ESP_OK)
-        owner_written = true;
-      nvs_close(handle);
-      if (owner_written && nvs_open("oq_ph_learning", NVS_READONLY, &handle) == ESP_OK) {
-        uint64_t verified = 0;
-        if (nvs_get_u64(handle, "owner", &verified) == ESP_OK && verified == token + 1) state.owner_token = verified;
-        nvs_close(handle);
-      }
-    }
-    state.persistence_ready = state.persistence_ready && state.owner_token != 0;
-    state.journal_status = state.persistence_ready
-                               ? (state.journal_dirty ? "uncommitted_history_discarded" : "waiting_for_context")
-                               : "storage_unavailable";
-    if (state.persistence_ready && state.journal_dirty) {
-      erase_journal_(state);
-      if (state.persistence_ready) state.journal_status = "uncommitted_history_discarded";
-    }
+    state.journal.setup(state.partition != nullptr &&
+                        OpenQuattFlashLayout::HOUSE_LEARNING_END_OFFSET <= state.partition->size);
     watch_select_(id(room_temp_source));
     watch_select_(id(room_setpoint_source));
     watch_select_(id(outside_temp_source));
@@ -350,14 +300,14 @@ class Runtime {
     in.outside_c = resolved_learning_measurement(state.sources[2], now_ms);
     in.flow_lph = resolved_learning_measurement(state.sources[3], now_ms);
     in.hp1 = learning_hp_measurements(oq_sources::hp1, PhysicalUnit::HP1, id(hp1_water_in_temp_offset).state,
-                                      id(hp1_water_out_temp_offset).state, state.configuration_revision);
+                                      id(hp1_water_out_temp_offset).state, state.context_revision);
 #if OQ_TOPOLOGY_DUO
     in.hp2 = learning_hp_measurements(oq_sources::hp2, PhysicalUnit::HP2, id(hp2_water_in_temp_offset).state,
-                                      id(hp2_water_out_temp_offset).state, state.configuration_revision);
+                                      id(hp2_water_out_temp_offset).state, state.context_revision);
 #endif
     apply_compile_time_installation_contract(in, OQ_TOPOLOGY_DUO);
     auto& calorimetry = in.calorimetry;
-    calorimetry.calorimetry_generation = state.configuration_revision;
+    calorimetry.calorimetry_generation = state.context_revision;
     calorimetry.heat_uncertainty_w = id(oq_ph_learning_heat_uncertainty).state;
     calorimetry.uncertainty_proven =
         id(oq_ph_learning_calorimetry_confirmed).state && calorimetry.heat_uncertainty_w > 0.0f;
@@ -450,10 +400,7 @@ class Runtime {
       }
     };
     const auto str = [&](const std::string& value) { chars(value.data(), value.size()); };
-    // Test firmware intentionally restores only within this exact firmware build.
-    // Upgrades reset learning history rather than interpreting old policy values.
-    static constexpr char BUILD_CONTEXT[] = __DATE__ " " __TIME__;
-    chars(BUILD_CONTEXT, sizeof(BUILD_CONTEXT) - 1U);
+    // Compatibility is explicit: ordinary rebuilds and web fixes retain data.
     u32(kLearningAlgorithmVersion);
     u32(static_cast<uint32_t>(state.input.topology));
     u32(static_cast<uint32_t>(state.input.calorimetry.meter_boundary));
@@ -503,254 +450,33 @@ class Runtime {
     state.context_size = writer.ok ? writer.position : 0;
   }
 
-  static bool set_dirty_(bool dirty) {
-    nvs_handle_t handle;
-    if (nvs_open("oq_ph_learning", NVS_READWRITE, &handle) != ESP_OK) return false;
-    uint8_t value = dirty ? 1 : 0;
-    bool ok = nvs_set_u8(handle, "dirty", value) == ESP_OK && nvs_commit(handle) == ESP_OK;
-    nvs_close(handle);
-    if (!ok || nvs_open("oq_ph_learning", NVS_READONLY, &handle) != ESP_OK) return false;
-    uint8_t verified = 2;
-    ok = nvs_get_u8(handle, "dirty", &verified) == ESP_OK && verified == value;
-    nvs_close(handle);
-    return ok;
+  static size_t slot_offset_(size_t slot) {
+    return OpenQuattFlashLayout::HOUSE_LEARNING_OFFSET + slot * OpenQuattFlashLayout::HOUSE_LEARNING_SLOT_SIZE;
   }
-  static bool erase_and_verify_journal_slots_(const esp_partition_t* partition, uint8_t* scratch, size_t scratch_size) {
-    if (partition == nullptr || scratch == nullptr || scratch_size < kLearningJournalHeaderBytes ||
-        OpenQuattFlashLayout::HOUSE_LEARNING_END_OFFSET > partition->size)
-      return false;
-    bool ok = esp_partition_erase_range(partition, OpenQuattFlashLayout::HOUSE_LEARNING_OFFSET,
-                                        OpenQuattFlashLayout::HOUSE_LEARNING_SLOT_COUNT *
-                                            OpenQuattFlashLayout::HOUSE_LEARNING_SLOT_SIZE) == ESP_OK;
-    for (size_t slot = 0; ok && slot < OpenQuattFlashLayout::HOUSE_LEARNING_SLOT_COUNT; ++slot) {
-      const size_t offset =
-          OpenQuattFlashLayout::HOUSE_LEARNING_OFFSET + slot * OpenQuattFlashLayout::HOUSE_LEARNING_SLOT_SIZE;
-      ok = esp_partition_read(partition, offset, scratch, kLearningJournalHeaderBytes) == ESP_OK;
-      for (size_t index = 0; ok && index < kLearningJournalHeaderBytes; ++index) ok = scratch[index] == 0xFFU;
-    }
-    return ok;
+  static bool read_slot_(const esp_partition_t* partition, size_t slot, uint8_t* data, size_t size) {
+    return partition != nullptr && esp_partition_read(partition, slot_offset_(slot), data, size) == ESP_OK;
   }
-  static bool erase_and_verify_journal_slots_(RuntimeStorage& state) {
-    const bool ok =
-        erase_and_verify_journal_slots_(state.partition, state.journal_scratch, sizeof(state.journal_scratch));
-    if (ok) reset_persisted_journal_state_(state);
-    return ok;
+  static bool erase_slot_(const esp_partition_t* partition, size_t slot) {
+    return partition != nullptr && esp_partition_erase_range(partition, slot_offset_(slot),
+                                                             OpenQuattFlashLayout::HOUSE_LEARNING_SLOT_SIZE) == ESP_OK;
   }
-  static bool invalidate_and_verify_journal_headers_(const esp_partition_t* partition, uint8_t* scratch,
-                                                     size_t scratch_size) {
-    if (partition == nullptr || scratch == nullptr || scratch_size < sizeof(uint32_t) ||
-        OpenQuattFlashLayout::HOUSE_LEARNING_END_OFFSET > partition->size)
-      return false;
-    const uint32_t invalid_magic = 0U;
-    bool ok = true;
-    for (size_t slot = 0; ok && slot < OpenQuattFlashLayout::HOUSE_LEARNING_SLOT_COUNT; ++slot) {
-      const size_t offset =
-          OpenQuattFlashLayout::HOUSE_LEARNING_OFFSET + slot * OpenQuattFlashLayout::HOUSE_LEARNING_SLOT_SIZE;
-      ok = esp_partition_write(partition, offset, &invalid_magic, sizeof(invalid_magic)) == ESP_OK &&
-           esp_partition_read(partition, offset, scratch, sizeof(invalid_magic)) == ESP_OK;
-      for (size_t index = 0; ok && index < sizeof(invalid_magic); ++index) ok = scratch[index] == 0U;
-    }
-    return ok;
-  }
-  static bool invalidate_and_verify_journal_headers_(RuntimeStorage& state) {
-    const bool ok =
-        invalidate_and_verify_journal_headers_(state.partition, state.journal_scratch, sizeof(state.journal_scratch));
-    if (ok) reset_persisted_journal_state_(state);
-    return ok;
-  }
-  static void reset_persisted_journal_state_(RuntimeStorage& state) {
-    state.persisted_records = 0;
-    state.persisted_record_revision = 0;
-    state.journal_slot = -1;
-    state.journal_sequence = 0;
+  static bool erase_slots_(const esp_partition_t* partition) {
+    return partition != nullptr && OpenQuattFlashLayout::HOUSE_LEARNING_END_OFFSET <= partition->size &&
+           esp_partition_erase_range(partition, OpenQuattFlashLayout::HOUSE_LEARNING_OFFSET,
+                                     2U * OpenQuattFlashLayout::HOUSE_LEARNING_SLOT_SIZE) == ESP_OK;
   }
   static void reset_without_storage_() {
     const esp_partition_t* partition =
         esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "openquatt_data");
-    uint8_t scratch[kLearningJournalHeaderBytes];
-    const auto outcome = execute_journal_reset(
-        [](bool dirty) { return set_dirty_(dirty); },
-        [partition, &scratch]() { return erase_and_verify_journal_slots_(partition, scratch, sizeof(scratch)); },
-        [partition, &scratch]() {
-          return invalidate_and_verify_journal_headers_(partition, scratch, sizeof(scratch));
-        });
-    static constexpr char STATUS_CLEARED[] =
-        R"({"schema":1,"mode":"passive","enabled":false,"storage_ready":false,"status":"paused","journal_status":"cleared","auto_apply_allowed":false})";
-    static constexpr char STATUS_DIRTY_STATE_UNVERIFIED[] =
-        R"({"schema":1,"mode":"passive","enabled":false,"storage_ready":false,"status":"paused","journal_status":"cleared_dirty_state_unverified","auto_apply_allowed":false})";
-    static constexpr char STATUS_TOMBSTONED[] =
-        R"({"schema":1,"mode":"passive","enabled":false,"storage_ready":false,"status":"reset_pending","journal_status":"erase_failed_history_tombstoned","auto_apply_allowed":false})";
-    static constexpr char STATUS_FAILED[] =
-        R"({"schema":1,"mode":"passive","enabled":false,"storage_ready":false,"status":"reset_failed","journal_status":"reset_invalidation_failed","auto_apply_allowed":false})";
-    const char* status = outcome.complete()           ? STATUS_CLEARED
-                         : outcome.erase_verified()   ? STATUS_DIRTY_STATE_UNVERIFIED
-                         : outcome.prevents_restore() ? STATUS_TOMBSTONED
-                                                      : STATUS_FAILED;
+    const bool cleared = erase_learning_journal(
+        [partition]() { return erase_slots_(partition); },
+        [partition](size_t slot, uint8_t* data, size_t size) { return read_slot_(partition, slot, data, size); });
+    const char* status =
+        cleared
+            ? R"({"schema":1,"mode":"passive","enabled":false,"storage_ready":false,"status":"paused","journal_status":"cleared","auto_apply_allowed":false})"
+            : R"({"schema":1,"mode":"passive","enabled":false,"storage_ready":false,"status":"reset_failed","journal_status":"reset_failed","auto_apply_allowed":false})";
     id(oq_ph_learning_status_endpoint).publish_status_json(status, strlen(status));
-    static constexpr char EXPORT_CLEARED[] =
-        R"({"schema":1,"mode":"passive","status":"cleared","auto_apply_allowed":false,"record_columns":[],"records":[],"diagnostic_columns":[],"diagnostics":[]})";
-    static constexpr char EXPORT_PENDING[] =
-        R"({"schema":1,"mode":"passive","status":"reset_pending","auto_apply_allowed":false,"record_columns":[],"records":[],"diagnostic_columns":[],"diagnostics":[]})";
-    static constexpr char EXPORT_FAILED[] =
-        R"({"schema":1,"mode":"passive","status":"reset_failed","auto_apply_allowed":false,"record_columns":[],"records":[],"diagnostic_columns":[],"diagnostics":[]})";
-    const char* export_json = outcome.erase_verified()     ? EXPORT_CLEARED
-                              : outcome.prevents_restore() ? EXPORT_PENDING
-                                                           : EXPORT_FAILED;
-    id(oq_ph_learning_status_endpoint).publish_export_json(export_json, strlen(export_json));
-  }
-  static void mark_dirty_(RuntimeStorage& state) {
-    if (state.journal_dirty && state.dirty_persisted) return;
-    state.journal_dirty = true;
-    if (!set_dirty_(true)) {
-      const bool invalidated = erase_and_verify_journal_slots_(state) || invalidate_and_verify_journal_headers_(state);
-      state.dirty_persisted = false;
-      state.persistence_ready = false;
-      state.journal_status = invalidated ? "history_invalidated_after_nvs_failure" : "invalidation_failed";
-      return;
-    }
-    state.dirty_persisted = true;
-    state.journal_status = "history_invalidated";
-  }
-  static void erase_journal_(RuntimeStorage& state) {
-    journal_restore_complete(state.restore_retry);
-    state.restore_slots_loaded = false;
-    journal_save_succeeded(state.save_retry);
-    const bool persistence_was_ready = state.persistence_ready;
-    const auto outcome = execute_journal_reset([](bool dirty) { return set_dirty_(dirty); },
-                                               [&state]() { return erase_and_verify_journal_slots_(state); },
-                                               [&state]() { return invalidate_and_verify_journal_headers_(state); });
-    state.journal_dirty = !outcome.dirty_clear_verified;
-    state.dirty_persisted = outcome.dirty_clear_verified || outcome.dirty_marked;
-    state.journal_status =
-        outcome.complete()
-            ? "cleared"
-            : (outcome.erase_verified() ? "cleared_dirty_state_unverified"
-               : outcome.data_inaccessible()
-                   ? "headers_invalidated_erase_failed"
-                   : (outcome.dirty_marked ? "erase_failed_history_tombstoned" : "reset_invalidation_failed"));
-    state.persistence_ready = persistence_was_ready && outcome.complete();
-  }
-  static void restore_(RuntimeStorage& state, uint32_t epoch, uint64_t now_ms) {
-    if (!state.persistence_ready || state.journal_dirty) {
-      journal_restore_complete(state.restore_retry);
-      return;
-    }
-    if (!state.restore_slots_loaded) {
-      for (size_t slot = 0; slot < 2; ++slot) {
-        const size_t offset =
-            OpenQuattFlashLayout::HOUSE_LEARNING_OFFSET + slot * OpenQuattFlashLayout::HOUSE_LEARNING_SLOT_SIZE;
-        if (esp_partition_read(state.partition, offset, state.journal_slots[slot], kLearningJournalMaxBytes) !=
-            ESP_OK) {
-          journal_restore_io_failed(state.restore_retry, now_ms);
-          state.journal_status = state.restore_retry.phase == JournalRestorePhase::RETRY_EXHAUSTED
-                                     ? "restore_read_retry_exhausted"
-                                     : "restore_read_retrying";
-          return;
-        }
-        const uint8_t* b = state.journal_slots[slot] + 8;
-        const uint32_t size = uint32_t(b[0]) | (uint32_t(b[1]) << 8) | (uint32_t(b[2]) << 16) | (uint32_t(b[3]) << 24);
-        state.journal_sizes[slot] = size <= kLearningJournalMaxBytes ? size : 0;
-      }
-      state.restore_slots_loaded = true;
-    }
-    const LearningJournalSlotView slots[2]{{state.journal_slots[0], state.journal_sizes[0]},
-                                           {state.journal_slots[1], state.journal_sizes[1]}};
-    if (learning_journal_waits_for_clock(slots[0], state.context, state.context_size, epoch, state.config.quality) ||
-        learning_journal_waits_for_clock(slots[1], state.context, state.context_size, epoch, state.config.quality)) {
-      journal_restore_clock_not_ready(state.restore_retry, now_ms);
-      state.journal_status = "restore_waiting_for_clock";
-      return;
-    }
-    const auto selected = select_learning_journal_slot(slots[0], slots[1], state.context, state.context_size, epoch,
-                                                       state.config.quality);
-    if (selected.selected_slot < 0 || selected.status != LearningJournalStatus::OK) {
-      journal_restore_complete(state.restore_retry);
-      state.journal_status = "no_compatible_history";
-      return;
-    }
-    if (restore_learning_journal(state.learner, slots[selected.selected_slot], epoch) != LearningJournalStatus::OK) {
-      journal_restore_complete(state.restore_retry);
-      state.journal_status = "restore_rejected";
-      return;
-    }
-    journal_restore_complete(state.restore_retry);
-    state.journal_slot = selected.selected_slot;
-    state.journal_sequence = selected.metadata.sequence;
-    state.persisted_records = state.learner.record_count;
-    state.persisted_record_revision = state.learner.diagnostics.accepted_batch_records;
-    state.journal_status = "restored_batch_rls_restarts";
-  }
-  static void save_(RuntimeStorage& state, uint32_t epoch, uint64_t now_ms) {
-    if (!state.persistence_ready || state.journal_sequence == UINT32_MAX ||
-        !journal_save_due(state.save_retry, now_ms, state.last_journal_ms))
-      return;
-    mark_dirty_(state);
-    if (!state.persistence_ready) return;
-    size_t size = 0;
-    const auto result = encode_learning_journal(state.learner, state.journal_sequence + 1, epoch, state.journal_scratch,
-                                                sizeof(state.journal_scratch), size);
-    if (result != LearningJournalStatus::OK) {
-      schedule_save_retry_(state, now_ms, "encode_failed_retrying");
-      return;
-    }
-    const int slot = state.journal_slot == 0 ? 1 : 0;
-    const size_t offset =
-        OpenQuattFlashLayout::HOUSE_LEARNING_OFFSET + slot * OpenQuattFlashLayout::HOUSE_LEARNING_SLOT_SIZE;
-    const auto attempt = execute_journal_write_attempt(
-        [&state, offset]() {
-          return esp_partition_erase_range(state.partition, offset, OpenQuattFlashLayout::HOUSE_LEARNING_SLOT_SIZE) ==
-                 ESP_OK;
-        },
-        [&state, offset, size]() {
-          return esp_partition_write(state.partition, offset, state.journal_scratch, size) == ESP_OK;
-        },
-        [&state, offset, slot, size]() {
-          return esp_partition_read(state.partition, offset, state.journal_slots[slot], size) == ESP_OK;
-        },
-        [&state, slot, size]() { return memcmp(state.journal_scratch, state.journal_slots[slot], size) == 0; },
-        [&state, slot, size, epoch]() {
-          return inspect_learning_journal({state.journal_slots[slot], size}, state.context, state.context_size, epoch,
-                                          state.config.quality)
-                     .status == LearningJournalStatus::OK;
-        },
-        []() { return set_dirty_(false); });
-    if (attempt != JournalWriteAttemptResult::OK) {
-      schedule_save_retry_(state, now_ms, save_retry_status_(attempt));
-      return;
-    }
-    journal_save_succeeded(state.save_retry);
-    state.last_journal_ms = now_ms;
-    state.journal_dirty = false;
-    state.dirty_persisted = true;
-    state.journal_slot = slot;
-    ++state.journal_sequence;
-    state.persisted_records = state.learner.record_count;
-    state.persisted_record_revision = state.learner.diagnostics.accepted_batch_records;
-    state.journal_status = "saved_verified";
-  }
-
-  static void schedule_save_retry_(RuntimeStorage& state, uint64_t now_ms, const char* retry_status) {
-    journal_save_failed(state.save_retry, now_ms);
-    state.journal_status = state.save_retry.exhausted ? "save_retry_exhausted" : retry_status;
-  }
-
-  static const char* save_retry_status_(JournalWriteAttemptResult result) {
-    switch (result) {
-      case JournalWriteAttemptResult::ERASE_FAILED:
-        return "erase_failed_retrying";
-      case JournalWriteAttemptResult::WRITE_FAILED:
-        return "write_failed_retrying";
-      case JournalWriteAttemptResult::READBACK_FAILED:
-        return "readback_failed_retrying";
-      case JournalWriteAttemptResult::VERIFY_FAILED:
-        return "write_verification_failed_retrying";
-      case JournalWriteAttemptResult::VALIDATION_FAILED:
-        return "journal_validation_failed_retrying";
-      case JournalWriteAttemptResult::COMMIT_MARKER_FAILED:
-        return "commit_marker_failed_retrying";
-      default:
-        return "save_failed_retrying";
-    }
+    publish_reset_pending_export_();
   }
 
   static void capture_diagnostics_(RuntimeStorage& state, const SnapshotBuildResult& dynamic, uint32_t epoch,
@@ -936,7 +662,7 @@ class Runtime {
         ",\"source_generation\":%u,\"physical_generation\":%u,\"control_generation\":%u,\"journal_status\":\"%s\","
         "\"model_validation_status\":\"%s\",\"sources\":{",
         state.input.source_cohort_generation, state.input.physical_context_generation, state.input.control_generation,
-        state.journal_status, model_validation_status_name(summary.validation.status));
+        state.journal.status, model_validation_status_name(summary.validation.status));
     const char* names[]{"room", "setpoint", "outside", "flow"};
     const bool valid[]{state.input.room_c.valid, state.input.setpoint_c.valid, state.input.outside_c.valid,
                        state.input.flow_lph.valid};
@@ -954,7 +680,7 @@ class Runtime {
     reason(!state.input.calorimetry.uncertainty_proven, "calorimetry_not_verified");
     reason(!state.input.boiler_heat.valid, "external_heat_not_excluded");
     reason(!state.config.thermal_window.unmodeled_gain_bound_valid, "unmodeled_gain_bound_unknown");
-    reason(!state.persistence_ready, "persistence_unavailable");
+    reason(!state.journal.available, "persistence_unavailable");
     if (summary.batch_advice_ready && summary.thermal_model_ready && !summary.cross_validated_advice_ready) {
       const auto validation_status = summary.validation.status;
       reason(validation_status == ModelValidationStatus::CONTEXT_MISMATCH, "model_context_mismatch");

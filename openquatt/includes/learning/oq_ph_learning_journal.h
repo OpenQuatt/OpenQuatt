@@ -9,12 +9,12 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "oq_ph_passive_runtime_logic.h"
+#include "oq_ph_learning_aggregate.h"
 
 namespace oq_power_house::learning {
 
 constexpr uint32_t kLearningJournalMagic = 0x4F514C4AU;  // OQLJ
-constexpr uint16_t kLearningJournalSchemaVersion = 1;
+constexpr uint16_t kLearningJournalSchemaVersion = 2;
 constexpr size_t kLearningJournalHeaderBytes = 40;
 constexpr size_t kLearningJournalRecordBytes = 64;
 constexpr size_t kLearningJournalCrcBytes = 4;
@@ -259,17 +259,18 @@ inline uint32_t learning_journal_crc32(const uint8_t* bytes, size_t size) {
   return crc ^ 0xFFFFFFFFU;
 }
 
-inline LearningJournalStatus encode_learning_journal(const PassiveRuntimeStorage& state, uint32_t sequence,
-                                                     uint32_t created_epoch_s, uint8_t* output, size_t output_capacity,
-                                                     size_t& output_size) {
+inline LearningJournalStatus encode_learning_journal(const LearningDatasetView& state, const QualityConfig& quality,
+                                                     uint32_t sequence, uint32_t created_epoch_s, uint8_t* output,
+                                                     size_t output_capacity, size_t& output_size) {
   using namespace learning_journal_detail;
   output_size = 0;
-  if (!state.initialized || state.blocked || sequence == 0 || created_epoch_s == 0 || output == nullptr ||
-      state.context_size == 0 || state.context_size > kMaxPassiveContextBytes ||
-      state.record_count > kMaxSegmentRecords || state.source_generation == 0 ||
-      state.physical_context_generation == 0 || state.control_generation == 0)
+  if (sequence == 0 || created_epoch_s == 0 || output == nullptr || state.context.bytes == nullptr ||
+      state.context.size == 0 || state.context.size > kMaxPassiveContextBytes ||
+      (state.record_count > 0 && state.records == nullptr) || state.record_count > kMaxSegmentRecords ||
+      state.context.source_generation == 0 || state.context.physical_context_generation == 0 ||
+      state.context.control_generation == 0)
     return LearningJournalStatus::INVALID_ARGUMENT;
-  const size_t required = kLearningJournalHeaderBytes + state.context_size +
+  const size_t required = kLearningJournalHeaderBytes + state.context.size +
                           state.record_count * kLearningJournalRecordBytes + kLearningJournalCrcBytes;
   if (output_capacity < required) return LearningJournalStatus::BUFFER_TOO_SMALL;
   Writer writer{output, output_capacity};
@@ -281,21 +282,21 @@ inline LearningJournalStatus encode_learning_journal(const PassiveRuntimeStorage
   write_u32(writer, created_epoch_s);
   write_u16(writer, kLearningAlgorithmVersion);
   write_u16(writer, static_cast<uint16_t>(state.record_count));
-  write_u16(writer, static_cast<uint16_t>(state.context_size));
+  write_u16(writer, static_cast<uint16_t>(state.context.size));
   write_u16(writer, 0);
-  write_u32(writer, state.source_generation);
-  write_u32(writer, state.physical_context_generation);
-  write_u32(writer, state.control_generation);
+  write_u32(writer, state.context.source_generation);
+  write_u32(writer, state.context.physical_context_generation);
+  write_u32(writer, state.context.control_generation);
   if (!writer.ok || writer.position != kLearningJournalHeaderBytes) return LearningJournalStatus::BUFFER_TOO_SMALL;
-  memcpy(output + writer.position, state.context_bytes, state.context_size);
-  writer.position += state.context_size;
+  memcpy(output + writer.position, state.context.bytes, state.context.size);
+  writer.position += state.context.size;
   uint32_t previous_end_epoch_s = 0;
   for (size_t index = 0; index < state.record_count; ++index) {
     const SegmentRecord& record = state.records[index];
-    if (validate_segment_record(record, state.config.quality) != LearningStatus::OK ||
-        record.source_generation != state.source_generation ||
-        record.physical_context_generation != state.physical_context_generation ||
-        record.control_generation != state.control_generation || record.end_epoch_s > created_epoch_s ||
+    if (validate_segment_record(record, quality) != LearningStatus::OK ||
+        record.source_generation != state.context.source_generation ||
+        record.physical_context_generation != state.context.physical_context_generation ||
+        record.control_generation != state.context.control_generation || record.end_epoch_s > created_epoch_s ||
         created_epoch_s - record.end_epoch_s > kMaxRecordAgeS ||
         (index > 0 && record.start_epoch_s < previous_end_epoch_s))
       return LearningJournalStatus::INVALID_RECORD;
@@ -317,18 +318,6 @@ inline LearningJournalMetadata inspect_learning_journal(const LearningJournalSlo
   metadata.status = learning_journal_detail::parse_metadata(slot, expected_context, expected_context_size, now_epoch_s,
                                                             quality, metadata, nullptr);
   return metadata;
-}
-
-inline bool learning_journal_waits_for_clock(const LearningJournalSlotView& slot, const uint8_t* expected_context,
-                                             size_t expected_context_size, uint32_t now_epoch_s,
-                                             const QualityConfig& quality) {
-  const auto current = inspect_learning_journal(slot, expected_context, expected_context_size, now_epoch_s, quality);
-  if (current.status != LearningJournalStatus::TIME_DISCONTINUITY || current.created_epoch_s <= now_epoch_s)
-    return false;
-  // Re-validate at the journal creation time so an invalid CRC, context or
-  // record cannot hold persistence in clock-wait indefinitely.
-  return inspect_learning_journal(slot, expected_context, expected_context_size, current.created_epoch_s, quality)
-             .status == LearningJournalStatus::OK;
 }
 
 inline LearningJournalSelection select_learning_journal_slot(const LearningJournalSlotView& first,
@@ -370,40 +359,19 @@ inline LearningJournalSelection select_learning_journal_slot(const LearningJourn
   return selection;
 }
 
-inline LearningJournalStatus restore_learning_journal(PassiveRuntimeStorage& state, const LearningJournalSlotView& slot,
-                                                      uint32_t now_epoch_s) {
-  if (!state.initialized || state.blocked || state.context_size == 0 || now_epoch_s == 0)
-    return LearningJournalStatus::INVALID_ARGUMENT;
-  LearningJournalMetadata metadata;
-  const LearningJournalStatus status = learning_journal_detail::parse_metadata(
-      slot, state.context_bytes, state.context_size, now_epoch_s, state.config.quality, metadata, nullptr);
-  if (status != LearningJournalStatus::OK) return status;
-  // The caller keeps the selected slot immutable through this second bounded
-  // parse. This avoids a hidden stack/heap copy of all 64 records.
-  passive_runtime_detail::clear_evidence(state);
-  learning_journal_detail::Reader reader{slot.bytes, slot.size};
-  reader.position = kLearningJournalHeaderBytes + metadata.context_size;
-  for (size_t index = 0; index < metadata.record_count; ++index) {
-    SegmentRecord record = learning_journal_detail::read_record(reader);
-    record.source_generation = state.source_generation;
-    record.physical_context_generation = state.physical_context_generation;
-    record.control_generation = state.control_generation;
-    state.records[index] = record;
+// Returned only after the entire slot passed schema/context/CRC/record checks.
+// The owner must keep slot.bytes immutable until it has consumed this view.
+struct LearningJournalRecords {
+  LearningJournalSlotView slot;
+  size_t context_size = 0;
+  size_t record_count = 0;
+
+  SegmentRecord operator[](size_t index) const {
+    learning_journal_detail::Reader reader{slot.bytes, slot.size};
+    reader.position = kLearningJournalHeaderBytes + context_size + index * kLearningJournalRecordBytes;
+    return learning_journal_detail::read_record(reader);
   }
-  state.record_count = metadata.record_count;
-  state.restored_records = state.record_count > 0;
-  state.batch_result = {};
-  state.validation_result = {};
-  passive_runtime_detail::reset_in_place(state.fit_workspace);
-  state.fit_running = false;
-  state.fit_pending = state.record_count > 0;
-  state.fit_inputs_bound = false;
-  // Monotonic time and RLS evidence do not survive reboot. The retained UTC
-  // records must be refit and combined with fresh RLS evidence before advice.
-  initialize_thermal_model(state.thermal_state, state.config.thermal_model);
-  state.status = state.opted_in ? PassiveRuntimeStatus::COLLECTING : PassiveRuntimeStatus::PAUSED;
-  return LearningJournalStatus::OK;
-}
+};
 
 }  // namespace oq_power_house::learning
 

@@ -22,11 +22,10 @@ Waveshare. Er zijn geen extra Modbuspolls of regelwrites toegevoegd.
 daarnaast een 32-bits `source_fingerprint` over de exacte bronidentiteiten, hun eigen generaties en de
 calorimetriegeneratie. Dit is alleen diagnostiek/cachehint: de hash is niet collision-free, niet monotoon
 en verleent geen toestemming om een model toe te passen. De individuele brongeneraties hoeven niet aan
-elkaar gelijk te zijn. Een aparte stateful eigenaar moet de volledige resolved identities en
-configuratiegeneraties vergelijken en daarna de monotone `source_cohort_generation` verhogen. Alleen die
-caller-generatie komt in `LearningSnapshot::source_generation`; source-, physical- en
-controlgeneraties blijven de gezaghebbende modelownershiptokens. De pure eigenaar bestaat nu in
-`oq_ph_learning_generation_logic.h`; zijn firmwarebinding draait als één mainloop-eigenaar.
+elkaar gelijk te zijn. De live binding gebruikt één contextrevision voor source-, physical- en
+controlgeneraties. De leerkern bewaart de gebonden meetcontext en wijzigt als enige de modelstate.
+Er is geen aparte generation-owner of boot-token in NVS.
+
 
 Een snapshot vereist actuele room-, setpoint-, outside- en flowmetingen, water-in en water-uit per
 aanwezige unit, HP-mode en werkelijke compressoractiviteit, defrost-, klep- en olie-retourstatus en
@@ -132,14 +131,10 @@ metadata in zonder de bestaande control-freshness-timestamps te vernieuwen. Boil
 bevat de werkelijk ontvangen payload en vereiste requestcorrelatie; een compatibele aanroep zonder
 payload mag nooit `0` als waargenomen geen-warmte-status aanbieden. De live binding gebruikt het actuele CM2-controllercontract. Bij geselecteerde OpenTherm kan een verse fysieke CH/flame-melding een sample vetoën; ontbrekende OT-telemetrie is geen extra CM2-voorwaarde.
 
-De generatie-eigenaar vergelijkt volledige bronidentiteiten, configuratiegeneraties, timing- en
-provenancepolicies, hydrauliek/kalibratie en controltokens. Source- of fysieke wijzigingen wissen de
-dataset; controlwijzigingen breken het segment. `invalidated_contexts` geeft ook de toekomstige
-RLS-owner een resetreden. Een wissel A→B→A krijgt nieuwe generaties. Expliciet starten vereist een
-nonzero, strikt stijgende owner-token en gewiste datasetscope. Een late callback van een vorige
-owner kan de actieve owner niet terugwisselen. Unknown state en overflow worden geweigerd.
-De firmware reserveert een monotone owner-token via NVS met close/reopen-readback vóór gebruik.
-Alle mutaties blijven in de mainloop; HTTP leest uitsluitend gesynchroniseerde caches.
+Een gewijzigde meetcontext of instelling wist het lopende bewijs en start beide modellen opnieuw.
+Instellingevents pauzeren direct, zodat ook A→B→A tussen twee learnerticks wordt verwerkt. Alle mutaties
+blijven in de mainloop; HTTP leest uitsluitend gesynchroniseerde caches. Gewone firmwarebuilds
+behouden compatibele historie; opslagherstel vergelijkt schema, algoritmeversie en meetcontext.
 
 Voor de aanvullende 1R1C-route bestaat `SnapshotPurpose::THERMAL_DYNAMIC`. Die route laat
 kamerrespons tijdens herstel of comfortafwijkingen toe, met alle fysieke meet-, ketel-, protection-,
@@ -150,7 +145,7 @@ achteraf invaliditeitsbits uit een batch-snapshot die zijn meetwaarden al kwijt 
 
 `oq_sensor_source_runtime.h` bewaart de werkelijk gekozen route bij iedere resolver-call.
 Een bronwissel A→B→A krijgt ook tussen twee learnerticks een nieuwe configuratiegeneratie.
-Een fysiek aggregaat bewaart beide unitidentiteiten, ontvangsttijden en de operator (mean/max).
+Een fysiek aggregaat bewaart beide unitidentiteiten, ontvangsttijden en de operator (mean/min/max).
 Hold en synthesized zero blijven ongeschikt. CIC bewaart presence en receipt per veld; een ontbrekend
 veld trekt de oude validity in. HA/API/MQTT zonder aantoonbare upstream meetleeftijd blijven geblokkeerd.
 
