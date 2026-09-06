@@ -325,6 +325,8 @@ inline PhysicalMeasurement<float> resolved_learning_measurement(const oq_sources
       source.route == LearningSourceRoute::OUTSIDE_AGGREGATE || source.route == LearningSourceRoute::FLOW_AGGREGATE;
   if (!composite_route) return result;
   const bool operation_valid = source.composite_operation == LearningCompositeOperation::ARITHMETIC_MEAN ||
+                               (source.route == LearningSourceRoute::OUTSIDE_AGGREGATE &&
+                                source.composite_operation == LearningCompositeOperation::MINIMUM) ||
                                (source.route == LearningSourceRoute::FLOW_AGGREGATE &&
                                 source.composite_operation == LearningCompositeOperation::MAXIMUM);
   const uint32_t identity =
@@ -337,6 +339,8 @@ inline PhysicalMeasurement<float> resolved_learning_measurement(const oq_sources
                               receipt_skew_ms <= kHpLearningTiming.max_skew_ms;
   const float composed = source.composite_operation == LearningCompositeOperation::ARITHMETIC_MEAN
                              ? 0.5f * (source.receipt.value + source.secondary_receipt.value)
+                         : source.composite_operation == LearningCompositeOperation::MINIMUM
+                             ? fminf(source.receipt.value, source.secondary_receipt.value)
                              : fmaxf(source.receipt.value, source.secondary_receipt.value);
   result.value = composed;
   result.valid = operation_valid && identity != 0U && source.valid &&

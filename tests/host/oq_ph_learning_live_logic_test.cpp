@@ -34,6 +34,19 @@ oq_sources::ResolvedLearningSource composite_flow(float hp1, float hp2, uint64_t
       oq_sources::LearningCompositeOperation::ARITHMETIC_MEAN, configuration, 5U);
 }
 
+oq_sources::ResolvedLearningSource composite_outside(float hp1, float hp2) {
+  oq_sources::RawFloatReceipt first;
+  oq_sources::RawFloatReceipt second;
+  first.observe(hp1, kNowMs - 200U, true);
+  second.observe(hp2, kNowMs - 100U, true);
+  const oq_sources::SourceConfigurationKey configuration{static_cast<uint8_t>(oq_input_source::Source::AUTO), 0U, 0U,
+                                                         0U};
+  return oq_sources::unsupported_composite_source(
+      fminf(hp1, hp2), true, oq_sources::LearningSourceRoute::OUTSIDE_AGGREGATE,
+      oq_sources::LearningSourceRoute::HP1_OUTSIDE, oq_sources::LearningSourceRoute::HP2_OUTSIDE, first, second,
+      oq_sources::LearningCompositeOperation::MINIMUM, configuration, 6U);
+}
+
 template <typename T>
 PhysicalMeasurement<T> physical_measurement(T value, uint32_t id, PhysicalUnit unit = PhysicalUnit::SYSTEM,
                                             uint64_t received_ms = kNowMs - 100U) {
@@ -149,6 +162,24 @@ void test_composition_requires_both_receipts_exact_routes_freshness_and_skew() {
 
   source = composite_flow(700.0f, 900.0f);
   source.value = 850.0f;
+  assert(!resolved_learning_measurement(source, kNowMs).valid);
+
+  source = composite_flow(700.0f, 900.0f);
+  source.composite_operation = oq_sources::LearningCompositeOperation::MINIMUM;
+  assert(!resolved_learning_measurement(source, kNowMs).valid);
+}
+
+void test_minimum_outside_composition_uses_the_selected_value() {
+  auto source = composite_outside(6.0f, 4.0f);
+  auto measured = resolved_learning_measurement(source, kNowMs);
+  assert(measured.valid && measured.value == 4.0f);
+  assert(measured.source.kind == PhysicalSourceKind::PHYSICAL_COMPOSITION);
+
+  source.value = 5.0f;
+  assert(!resolved_learning_measurement(source, kNowMs).valid);
+
+  source = composite_outside(6.0f, 4.0f);
+  source.composite_operation = oq_sources::LearningCompositeOperation::MAXIMUM;
   assert(!resolved_learning_measurement(source, kNowMs).valid);
 }
 
@@ -367,6 +398,7 @@ int main() {
   test_direct_routes_map_to_exact_source_and_timing();
   test_direct_route_fails_closed_for_spoof_stale_future_and_offline();
   test_composition_requires_both_receipts_exact_routes_freshness_and_skew();
+  test_minimum_outside_composition_uses_the_selected_value();
   test_hp_decode_and_boiler_bits_fail_closed();
   test_strategy_output_requires_current_matching_owner();
   test_diagnostic_coverage_never_crosses_invalid_gap_or_generation_edge();

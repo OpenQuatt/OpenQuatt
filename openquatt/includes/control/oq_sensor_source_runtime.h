@@ -622,10 +622,14 @@ class Runtime {
           return oq_sources::physical_source(hp1_route, hp1_receipt, generation, true);
         if (selected.valid && !input.hp1.valid && input.hp2.valid)
           return oq_sources::physical_source(LearningSourceRoute::HP2_FLOW, oq_sources::hp2.flow, generation, true);
+        const auto operation = selected.aggregate_operation == oq_input_source::FlowAggregateOperation::ARITHMETIC_MEAN
+                                   ? oq_sources::LearningCompositeOperation::ARITHMETIC_MEAN
+                               : selected.aggregate_operation == oq_input_source::FlowAggregateOperation::MAXIMUM
+                                   ? oq_sources::LearningCompositeOperation::MAXIMUM
+                                   : oq_sources::LearningCompositeOperation::NONE;
         return oq_sources::unsupported_composite_source(
             selected.value, selected.valid, LearningSourceRoute::FLOW_AGGREGATE, hp1_route,
-            LearningSourceRoute::HP2_FLOW, hp1_receipt, oq_sources::hp2.flow,
-            oq_sources::LearningCompositeOperation::NONE, {}, generation);
+            LearningSourceRoute::HP2_FLOW, hp1_receipt, oq_sources::hp2.flow, operation, {}, generation);
 #else
         return oq_sources::physical_source(hp1_route, hp1_receipt, generation, selected.valid);
 #endif
