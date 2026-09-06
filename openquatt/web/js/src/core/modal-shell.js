@@ -38,6 +38,7 @@ export function renderModalShell({
   titleId,
   kicker,
   title,
+  titleBadge = "",
   copy = "",
   body = "",
   bodyMarkup = "",
@@ -80,7 +81,7 @@ export function renderModalShell({
         ${headerMarkup || `<div class="oq-helper-modal-head">
           <div>
             <p class="oq-helper-modal-kicker">${escapeHtml(kicker)}</p>
-            <h2 class="oq-helper-modal-title" id="${escapeHtml(titleId)}">${escapeHtml(title)}</h2>
+            <h2 class="oq-helper-modal-title" id="${escapeHtml(titleId)}">${escapeHtml(title)}${titleBadge ? ` <span class="oq-helper-modal-badge">${escapeHtml(titleBadge)}</span>` : ""}</h2>
             ${copy && copyInHeader ? `<p class="oq-helper-modal-copy">${escapeHtml(copy)}</p>` : ""}
           </div>
           ${closeMarkup}

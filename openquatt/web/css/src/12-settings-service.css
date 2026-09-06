@@ -439,14 +439,41 @@
   line-height: 1.45;
 }
 
-.oq-settings-odu-runtime {
-  display: grid;
-  gap: 16px;
+.oq-settings-odu-modal {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100svh - 48px);
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+}
+
+.oq-settings-odu-modal > .oq-helper-modal-head {
+  flex: 0 0 auto;
+}
+
+.oq-settings-odu-modal > .oq-helper-modal-head > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.oq-settings-odu-modal .oq-helper-modal-close {
+  flex-shrink: 0;
+}
+
+.oq-settings-odu-modal-body {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 .oq-settings-odu-runtime-warning {
   display: grid;
   gap: 6px;
+  margin-bottom: 16px;
   padding: 14px 16px;
   border-radius: var(--oq-helper-radius-md);
   border: 1px solid var(--oq-settings-warning-border, rgba(234, 88, 12, 0.24));
@@ -468,6 +495,7 @@
 .oq-settings-odu-runtime-panels {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: start;
   gap: 14px;
 }
 
@@ -514,10 +542,6 @@
 }
 
 .oq-settings-odu-runtime-status {
-  display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  gap: 12px;
-  align-items: center;
   padding: 12px 14px;
   border-radius: var(--oq-helper-radius-md);
   border: 1px solid rgba(148, 163, 184, 0.2);
@@ -534,28 +558,12 @@
   background: var(--oq-theme-surface-9ku0, rgba(240, 253, 244, 0.76));
 }
 
-.oq-settings-odu-runtime-status span {
-  display: block;
-  color: var(--oq-helper-muted);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .oq-settings-odu-runtime-status strong {
   display: block;
-  margin-top: 3px;
   color: var(--oq-helper-ink);
   font-size: 0.92rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
-}
-
-.oq-settings-odu-runtime-status p {
-  margin: 0;
-  color: var(--oq-helper-soft);
-  line-height: 1.42;
 }
 
 .oq-settings-odu-runtime-table {
@@ -618,6 +626,97 @@
 
 .oq-settings-odu-runtime-validation.is-ok {
   color: var(--oq-theme-color-12vw, rgb(22, 101, 52));
+}
+
+.oq-settings-odu-fields,
+.oq-settings-odu-temperature-settings,
+.oq-settings-odu-technical {
+  display: grid;
+  gap: 12px;
+}
+
+.oq-settings-odu-temperature-settings[hidden] {
+  display: none;
+}
+
+.oq-settings-odu-launcher-list {
+  display: grid;
+  gap: 16px;
+}
+
+.oq-settings-odu-technical p {
+  margin: 0;
+  color: var(--oq-helper-soft);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.oq-settings-odu-fields > label,
+.oq-settings-odu-temperature-settings > label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  align-items: center;
+  gap: 14px;
+  color: var(--oq-helper-ink);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.oq-settings-odu-mode-description {
+  margin: 0;
+  color: var(--oq-helper-soft);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.oq-settings-odu-thresholds {
+  display: grid;
+  gap: 6px;
+  padding: 13px 14px;
+  border-left: 3px solid var(--oq-helper-accent);
+  background: var(--oq-helper-card-muted);
+  color: var(--oq-helper-soft);
+}
+
+.oq-settings-odu-thresholds span,
+.oq-settings-odu-auto span {
+  display: grid;
+  gap: 3px;
+}
+
+.oq-settings-odu-thresholds strong,
+.oq-settings-odu-auto strong {
+  color: var(--oq-helper-ink);
+}
+
+.oq-settings-odu-auto {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.oq-settings-odu-auto input {
+  margin-top: 3px;
+}
+
+.oq-settings-odu-auto small {
+  color: var(--oq-helper-soft);
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.oq-settings-odu-technical {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--oq-helper-line);
+}
+
+.oq-settings-odu-technical summary {
+  color: var(--oq-helper-soft);
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .oq-settings-monitoring-summary,
