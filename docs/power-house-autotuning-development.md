@@ -57,7 +57,7 @@ Eén eigenaar in de ESPHome-mainloop beheert records en fitworkspace in PSRAM. T
 
 De actuele geselecteerde waarden blijven leidend voor bronkeuze. De resolvers leveren nu de werkelijk gekozen route, raw ontvangsttijd, exacte configuratiegeneratie en eventuele hold/synthesized-status. Fysieke aggregaten behouden beide ontvangstbewijzen en de toegepaste operator; onbewijsbare HA/API/MQTT-provenance blijft geblokkeerd. Een callback op een `*_selected`-republish geldt niet als nieuwe ontvangst. Zie [brononderzoek en integratiecontract](power-house-learning-sources.md).
 
-De eerste ontwikkelcasus is door de gebruiker bevestigd als Duo in serie HP1 → HP2, zonder buffer of bypass, met water en geen andere warmtebronnen tijdens CM2. De verklaring geldt uitsluitend in CM2; R1-uit wordt nooit als fysiek ketelbewijs gebruikt. Flowkalibratie, calorimetrische onzekerheid en een grens aan zon/interne warmte zijn hiermee nog niet bewezen. De meetadapter neemt die eigenschappen uitsluitend als expliciet bevestigd contract aan. Ontbrekend bewijs levert geen nulvermogen of geschikt leersample op.
+Passief leren introduceert geen hydraulisch installatieprofiel. De bestaande geselecteerde waarden blijven de bron van waarheid. In een Q Duo-build gebruikt de warmteberekening de bekende volgorde HP1 → HP2; dat komt uit het compileprofiel en is geen gebruikerskeuze. CM2 gebruikt het bestaande geen-ketelvraagcontract; R1-uit wordt nooit als fysiek ketelbewijs behandeld. Flowkalibratie, calorimetrische onzekerheid en een grens aan zon/interne warmte zijn hiermee nog niet bewezen. De meetadapter neemt die eigenschappen uitsluitend als expliciet bevestigd contract aan. Ontbrekend bewijs levert geen nulvermogen of geschikt leersample op.
 
 De getalsgrenzen voor stabiliteit, spreiding, meetonzekerheid en verbetering zijn ontwikkelinstellingen. Een succesvolle fit is geen gekalibreerd betrouwbaarheidspercentage en geeft geen toestemming tot automatisch toepassen. Onvoldoende geschikte data is een geldige uitkomst.
 
@@ -215,10 +215,11 @@ De hardwarepoort omvat Q Single/Duo en Waveshare Single/Duo: vier builds, met Q 
 
 ## Bediening en huidige teststatus
 
-Op Q en Waveshare staat onder Instellingen → Verwarmen → Power House **Passief leren**. Water en
-Duo-serie HP1 → HP2 zijn vast; hiervoor bestaan geen selects. Opt-in en calorimetrische bevestiging
-starten na reboot uit. De reguliere Power House-instellingen blijven leidend; automatisch toepassen
-is altijd uit. Interne engineeringwaarden worden niet als uitgebreid invulformulier aangeboden.
+Op Q en Waveshare staat onder Instellingen → Verwarmen → Power House **Passief leren**. Daar staan
+alleen opt-in, calorimetrische bevestiging en leerstatus. De gewone geselecteerde bronwaarden blijven
+leidend; er is geen extra formulier voor hydrauliek of warmtebronnen. Opt-in en calorimetrische
+bevestiging starten na reboot uit. De reguliere Power House-instellingen blijven leidend; automatisch
+toepassen is altijd uit.
 
 Eén mainloop-leerkern beheert verzamelen, pauzeren, resetten, herstellen en beide modellen. De
 bestaande bronselectie levert de werkelijk gekozen route met fysieke receipts. Eén contextrevision
@@ -232,10 +233,9 @@ veranderende learnerstate. Status en export gebruiken bestaande webauthenticatie
 - `GET /openquatt/learning/export`: maximaal 64 batchrecords en 60 diagnostische rijen.
 
 CM2 gebruikt het bestaande geen-ketelvraagcontract; ontbrekende OpenTherm-telemetrie is geen extra
-voorwaarde. Een actuele fysieke ketel-activiteitsmelding sluit de meting uit. De geselecteerde lokale
-PT1000 op de eerste installatie zit na HP2 en ketel. Een aanvullende vergelijking met HP2 out is nog
-niet geïmplementeerd; flow-/temperatuurnauwkeurigheid en de grens aan ongemodelleerde warmte blijven
-nog praktijkwerk. Er zijn nog geen gevalideerde wintermodellen of aangetoonde besparingen.
+voorwaarde. Een actuele fysieke ketel-activiteitsmelding sluit de meting uit. Flow-/temperatuur-
+nauwkeurigheid en de grens aan ongemodelleerde warmte blijven nog praktijkwerk. Er zijn nog geen
+gevalideerde wintermodellen of aangetoonde besparingen.
 
 De laatste eerdere OTA-build is `Sep 6 2026 15:26:14 ph-passive-1`. Daar bleven 138 van 139 vergeleken
 instellingen gelijk; alleen opt-in stond na reboot uit. Die build had nul trainingsrecords. De gemeten

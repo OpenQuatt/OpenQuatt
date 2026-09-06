@@ -149,17 +149,17 @@ Room/setpoint-receipts mogen maximaal 120 seconden oud zijn; de onderlinge fysie
 Een instelling, source-route, kalibratie of contextwijziging onderbreekt het bewijs en de lopende fit.
 Na reboot start opt-in uit; UTC en exact bekende context zijn nodig vóór journalherstel.
 
-De eerste testinstallatie is bevestigd als HP1 → HP2 in serie, water, geen buffer/bypass en geen andere
-warmtebron tijdens CM2. De learner gebruikt nu automatisch het bestaande CM2-ketelcontract;
-een R1-commando wordt niet als fysieke vlammeting behandeld. Flowkalibratie, calorimetrische
-onzekerheid en de grens aan zon/interne warmte moeten nog onderbouwd worden. Zolang dat ontbreekt
-blijven training of modelkwaliteit geblokkeerd en worden onbekende waarden als onbekend geëxporteerd.
+De learner vraagt geen hydraulisch installatieprofiel. Het Q Duo-compileprofiel bepaalt de bekende
+HP1 → HP2-meetgrens; gebruikers selecteren daarvoor geen vloeistof, topologie of extra warmtebron.
+De learner gebruikt het bestaande CM2-ketelcontract; een R1-commando wordt niet als fysieke
+vlammeting behandeld. Flowkalibratie, calorimetrische onzekerheid en de grens aan zon/interne warmte
+moeten nog onderbouwd worden. Zolang dat ontbreekt blijven training of modelkwaliteit geblokkeerd en
+worden onbekende waarden als onbekend geëxporteerd.
 
 ## Vast installatiecontract
 
 De live firmware gebruikt altijd `WATER_CP_4180`. Single/Duo volgt uitsluitend uit het compileprofiel;
-Duo gebruikt `HP1_TO_HP2` en de gedeelde seriële meetgrens. Eerdere hydrauliek- en vloeistofselects
-zijn verwijderd en oude opgeslagen selectwaarden hebben geen invloed. De pure bronadapter behoudt
-zijn negatieve tests voor onbekende, parallelle en afwijkende meetcontracten. Vaste hydrauliek
-verleent geen calorimetrisch meetbewijs; onzekerheid, kalibratie en alle operationele gates blijven
-ongewijzigd en zijn geen gewone gebruikersinstellingen.
+Duo gebruikt `HP1_TO_HP2` als vaste meetgrens. Dit is een implementatiegrens, geen installatiewizard
+of opgeslagen gebruikerskeuze. De pure bronadapter behoudt zijn negatieve tests voor onbekende,
+parallelle en afwijkende meetcontracten. De meetgrens verleent geen calorimetrisch meetbewijs;
+onzekerheid, kalibratie en alle operationele gates blijven verplicht.
