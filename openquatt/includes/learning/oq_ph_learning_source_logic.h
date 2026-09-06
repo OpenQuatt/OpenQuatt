@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "oq_ph_learning_aggregate.h"
+#include "../performance/oq_energy_logic.h"
 
 namespace oq_power_house::learning {
 
@@ -448,7 +449,6 @@ inline CalorimetryResult evaluate_calorimetry(const LearningSourceInput& input, 
     result.status = SnapshotSourceStatus::DUPLICATE_TEMPERATURE_SOURCE;
     return result;
   }
-  double rise_k = static_cast<double>(input.hp1.water_out_c.value) - input.hp1.water_in_c.value;
   double water_sum_c = static_cast<double>(input.hp1.water_in_c.value) + input.hp1.water_out_c.value;
   size_t water_count = 2;
   if (input.topology == HydronicTopology::DUO_SERIES) {
@@ -471,20 +471,22 @@ inline CalorimetryResult evaluate_calorimetry(const LearningSourceInput& input, 
       result.status = SnapshotSourceStatus::SERIES_JUNCTION_MISMATCH;
       return result;
     }
-    rise_k += static_cast<double>(input.hp2.water_out_c.value) - input.hp2.water_in_c.value;
     water_sum_c += static_cast<double>(input.hp2.water_in_c.value) + input.hp2.water_out_c.value;
     water_count = 4;
   }
-  const double heat_w =
-      static_cast<double>(input.flow_lph.value) * kWaterVolumetricHeatCapacityJPerLiterK / 3600.0 * rise_k;
+  float heat_w = oq_energy::hydronic_heat_power(input.hp1.water_in_c.value, input.hp1.water_out_c.value,
+                                                input.flow_lph.value, kWaterVolumetricHeatCapacityJPerLiterK);
+  if (input.topology == HydronicTopology::DUO_SERIES)
+    heat_w += oq_energy::hydronic_heat_power(input.hp2.water_in_c.value, input.hp2.water_out_c.value,
+                                             input.flow_lph.value, kWaterVolumetricHeatCapacityJPerLiterK);
   const double mean_water_c = water_sum_c / static_cast<double>(water_count);
-  if (!isfinite(heat_w) || !isfinite(mean_water_c) || !isfinite(static_cast<float>(heat_w)) ||
-      !isfinite(static_cast<float>(mean_water_c)) || fabs(heat_w) > quality.max_abs_heat_w) {
+  if (!isfinite(heat_w) || !isfinite(mean_water_c) || !isfinite(static_cast<float>(mean_water_c)) ||
+      fabsf(heat_w) > quality.max_abs_heat_w) {
     result.status = SnapshotSourceStatus::INVALID_VALUE;
     return result;
   }
   result.status = SnapshotSourceStatus::OK;
-  result.heat_to_water_w = static_cast<float>(heat_w);
+  result.heat_to_water_w = heat_w;
   result.mean_water_c = static_cast<float>(mean_water_c);
   result.valid = true;
   return result;
