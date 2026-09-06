@@ -25,8 +25,10 @@ De payload bevat geen gewone runtime-logs, metingen of regelwaarden. Wel bevat
 hij de regels uit het ESPHome-crashrapport, het resettype, firmwareversie,
 releasekanaal, ESPHome-versie, bronrepository, volledige commit-SHA, exact
 buildtarget, release-manifest-URL indien van toepassing, hardwareprofiel,
-topologie, verbinding, buildtijd en de volledige ELF-SHA256 van de firmware die
-het rapport verstuurt.
+topologie, verbinding, verbindingsvoorkeur, buildtijd en de volledige ELF-SHA256
+van de firmware die het rapport verstuurt. Bij een gecombineerde WiFi- en
+Ethernetfirmware is `connection` de actuele verbinding (`wifi`, `eth` of `none`)
+en `connection_preference` de ingestelde voorkeur (`auto`, `wifi` of `eth`).
 
 De tijdvelden hebben bewust verschillende betekenissen:
 
