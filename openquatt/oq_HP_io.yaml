@@ -737,6 +737,38 @@ sensor:
         - lambda: |-
             id(${hp_id}_current_last_update_ms) = millis();
 
+  - platform: template
+    id: ${hp_id}_minimum_heating_frequency
+    name: "${prefix}Minimum heating frequency"
+    unit_of_measurement: "Hz"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: 5s
+    lambda: |-
+      // Report the actual automatic mapping; an unavailable table stays unknown.
+      if (!id(hp_generation).has_state()) return NAN;
+      const auto snapshot = oq_odu::decode_runtime_frequency_snapshot(id(${hp_id}_runtime_frequency_snapshot_storage));
+      const int hz = oq_frequency_policy::minimum_automatic_frequency_hz(
+          id(hp_generation).current_option() == "V2", snapshot, 2);
+      return hz > 0 ? static_cast<float>(hz) : NAN;
+
+  - platform: template
+    id: ${hp_id}_minimum_cooling_frequency
+    name: "${prefix}Minimum cooling frequency"
+    unit_of_measurement: "Hz"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: 5s
+    lambda: |-
+      // Cooling can have a different minimum from heating on the same unit.
+      if (!id(hp_generation).has_state()) return NAN;
+      const auto snapshot = oq_odu::decode_runtime_frequency_snapshot(id(${hp_id}_runtime_frequency_snapshot_storage));
+      const int hz = oq_frequency_policy::minimum_automatic_frequency_hz(
+          id(hp_generation).current_option() == "V2", snapshot, 1);
+      return hz > 0 ? static_cast<float>(hz) : NAN;
+
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
     id: ${hp_id}_compressor_frequency_demand

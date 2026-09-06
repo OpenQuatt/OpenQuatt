@@ -31,6 +31,7 @@ function createOduMock(mode, frequency) {
     getEntity: (_type, name) => ({ value: name.endsWith("Working Mode Label") ? telemetry.mode : telemetry.frequency }),
     mockResponse: (status, payload) => ({ status, payload: JSON.parse(JSON.stringify(payload)) }),
     notifyMockUpdated: () => {},
+    syncMockOduIdentityEntities: () => {},
   };
   runInNewContext(mockSource.slice(start, end), context);
   return {

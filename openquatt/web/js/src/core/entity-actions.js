@@ -1,3 +1,4 @@
+import { patchFrequencyLimitWarnings } from "../features/frequency-limits.js";
 import { hasEntity } from "./app-shared.js";
 import { ENTITY_DEFS } from "./config.js";
 import { getInputDraftValue } from "./control-drafts.js";
@@ -325,6 +326,7 @@ function updateFrequencyRangeControl(input) {
       if (!Number.isNaN(numeric)) {
         const normalized = normalizeNumber(field, event.target.value);
         state.drafts[field] = normalized;
+        if (field === "silentMaxHz" || field === "dayMaxHz") patchFrequencyLimitWarnings();
         if (event.target.type === "range") {
           if (field === "electricalCurrentLimit") {
             const sliderValue = event.target.closest("[data-oq-settings-field]")?.querySelector(".oq-helper-slider-meta strong");

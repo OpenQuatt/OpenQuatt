@@ -38,13 +38,20 @@ class ThermalActuatorRuntimeContractTest(unittest.TestCase):
         hp2_mode_write = RUNTIME.index("call.perform();", hp1_mode_write + 1)
         self.assertLess(RUNTIME.index("invalidate_restart_credit(2U)", hp1_mode_write), hp2_mode_write)
 
+    def test_frequency_limit_event_requires_a_pre_policy_request(self) -> None:
+        start = RUNTIME.index("void publish_frequency_limit_block_")
+        end = RUNTIME.index("int apply_level_", start)
+        diagnostic = RUNTIME[start:end]
+        self.assertIn("const int requested = is_hp1 ? id(oq_request_hp1_level) : id(oq_request_hp2_level);", diagnostic)
+        self.assertIn("requested > 0", diagnostic)
+
     def test_complete_runtime_stack_stays_bounded(self) -> None:
         paths = ("openquatt/oq_thermal_actuator.yaml", "openquatt/includes/control/oq_thermal_actuator_logic.h",
                  "openquatt/includes/control/oq_thermal_actuator_runtime.h", "tests/host/thermal_actuator_logic_test.cpp",
                  "scripts/tests/test_thermal_actuator_runtime_contract.py", "scripts/tests/test_v2_compressor_level_contract.py",
                  "scripts/tests/test_compressor_frequency_policy_contract.py")
-        # Includes the confirmed-rest reporting and its new communication-gap regression cases.
-        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1340)
+        # Includes restart-credit invalidation and the read-only frequency-limit diagnosis.
+        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1370)
 
 
 if __name__ == "__main__":

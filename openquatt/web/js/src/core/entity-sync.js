@@ -1,3 +1,5 @@
+import { FREQUENCY_MINIMUM_KEYS } from "./config.js";
+import { patchFrequencyLimitWarnings } from "../features/frequency-limits.js";
 import { getSetupCompleteState, isTrendHistoryEnabled, renderAppSummary } from "./app-shared.js";
 import { AUX_RELAY_SETTING_KEYS, AUX_RELAY_STATE_KEYS, BOILER_DIAGNOSTIC_KEYS, BOILER_SETTING_KEYS, BOILER_SUPPORT_SWITCHING_KEYS, BULK_POLL_INTERVAL_MS, CIC_COMPATIBILITY_KEYS, CIC_POLLING_DIAGNOSTIC_KEYS, CIC_POLLING_SETTING_KEYS, COMMISSIONING_STATE_KEYS, COMPRESSOR_SETTING_KEYS, CONNECTIVITY_PROBE_SUCCESS_TTL_MS, CONNECTIVITY_PROBE_TIMEOUT_MS, CONTROL_REPLAY_STATE_KEYS, COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS, COOLING_SCHEDULE_VALID_KEY, COOLING_SETTING_KEYS, CURVE_POINTS, CURVE_SETTING_KEYS, ENTITY_DEFS, ENTITY_REFRESH_CONCURRENCY, FAST_OVERVIEW_KEYS, FAST_VIEW_ENTITY_REFRESH_CONCURRENCY, FIRMWARE_ENTITY_KEYS, FIRMWARE_MODAL_KEYS, FLOW_SETTING_KEYS, FLOW_TUNING_KEYS, FREQUENCY_CAP_KEYS, HEADER_ENTITY_KEYS, HIDDEN_POLL_INTERVAL_MS, INSTALLATION_MONITORING_STATE_KEYS, LIMIT_KEYS, OPENTHERM_DIAGNOSTIC_KEYS, OPENTHERM_SETTING_KEYS, OTB_DIAGNOSTIC_KEYS, OVERVIEW_ENERGY_COLUMN_CONFIGS, OVERVIEW_KEYS, OVERVIEW_METADATA_KEYS, POWER_HOUSE_KEYS, QUICK_START_FLOW_SOURCE_KEYS, QUICK_START_THERMOSTAT_SOURCE_KEYS, SENSOR_CALIBRATION_KEYS, SENSOR_CALIBRATION_STATE_KEYS, SENSOR_SELECTION_KEYS, SENSOR_SELECTION_STATE_KEYS, SERVICE_CONTROL_KEYS, SERVICE_STATUS_ENTITY_KEYS, SETTINGS_GROUP_IDS, SETTINGS_GROUPS, SETTINGS_KEYS, SILENT_SETTING_KEYS, STATIC_POLL_INTERVAL_MS } from "./config.js";
 import { buildEntityPath, isCurveMode } from "./domain-helpers.js";
@@ -240,6 +242,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       ...FLOW_TUNING_KEYS,
       ...SILENT_SETTING_KEYS,
       ...COMPRESSOR_SETTING_KEYS,
+      ...FREQUENCY_MINIMUM_KEYS,
       ...SENSOR_CALIBRATION_KEYS,
       ...SENSOR_CALIBRATION_STATE_KEYS,
       "maxWater",
@@ -264,6 +267,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       ...POWER_HOUSE_KEYS,
       ...CURVE_SETTING_KEYS,
       ...FREQUENCY_CAP_KEYS,
+      ...FREQUENCY_MINIMUM_KEYS,
     ],
     cooling: [
       "manualCoolingEnable",
@@ -279,6 +283,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "silentActive",
       ...FREQUENCY_CAP_KEYS,
       ...COOLING_SETTING_KEYS,
+      ...FREQUENCY_MINIMUM_KEYS,
     ],
     integrations: [
       ...OPENTHERM_SETTING_KEYS,
@@ -1248,6 +1253,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
             ]
           : ["setupComplete", ...HEADER_ENTITY_KEYS, "strategy", ...staticKeys];
     const generationBefore = ODU_GENERATION_KEYS.map(getEntityValue).join();
+    if (state.systemModal === "silent-settings") keys.push(...FREQUENCY_CAP_KEYS, ...FREQUENCY_MINIMUM_KEYS);
 
     state.entitySyncInFlight = true;
     state.lastEntitySyncAttemptAt = now;
@@ -1268,6 +1274,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
         concurrency: forceFast && isOverviewLike ? FAST_VIEW_ENTITY_REFRESH_CONCURRENCY : ENTITY_REFRESH_CONCURRENCY,
       });
       state.lastFastEntitySyncAt = Date.now();
+      patchFrequencyLimitWarnings();
       if (isBulkDue && (syncView === "overview" || syncView === "control" || syncView === "diagnosis") && !isPrefetchOverview) {
         state.lastBulkEntitySyncAt = state.lastFastEntitySyncAt;
       }
@@ -1415,6 +1422,10 @@ import { fetchWithTimeout } from "./browser-utils.js";
         return;
       }
       if (hasOpenOverlay) {
+        if (state.systemModal === "silent-settings" && !state.focusedField
+          && FREQUENCY_CAP_KEYS.some((key) => state.entities[key] && !state.root?.querySelector(`[data-oq-field="${key}"]`))) {
+          render();
+        }
         return;
       }
       if (state.appView === "settings") {

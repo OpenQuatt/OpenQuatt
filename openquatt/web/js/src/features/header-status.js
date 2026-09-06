@@ -680,7 +680,7 @@ import { render } from "../core/render-scheduler.js";
         titleId: "oq-silent-settings-modal-title",
         kicker: "Stille uren",
         title: "Stille uren instellen",
-        modalClass: "oq-helper-modal--wide",
+        modalClass: "oq-helper-modal--wide oq-helper-modal--scrollable",
         closeAction: "close-system-modal",
         closeLabel: "Sluit stille-uren-popup",
         bodyMarkup: `
