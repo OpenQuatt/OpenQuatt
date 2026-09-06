@@ -236,14 +236,16 @@ voorwaarde. Een actuele fysieke ketel-activiteitsmelding sluit de meting uit. Br
 gedrag van de residuals blijven nog praktijkwerk. Er zijn nog geen gevalideerde wintermodellen of
 aangetoonde besparingen.
 
-De laatste eerdere OTA-build is `Sep 6 2026 15:26:14 ph-passive-1`. Daar bleven 138 van 139 vergeleken
-instellingen gelijk; alleen opt-in stond na reboot uit. Die build had nul trainingsrecords. De gemeten
-runtime-PSRAM was 56112 bytes en de endpointbuffers samen 53248 bytes. Dat is geen kwalificatie van de
-vereenvoudigde code. Nieuwe timing- en geheugenmetingen moeten aan de definitieve build worden gedaan.
+De huidige Q Duo-build is via OTA geplaatst als `Sep 6 2026 21:22:05 ph-passive-1`. Na de herstart is
+passief leren expliciet aangezet. De gekozen HP1/HP2-buitencompositie is geldig; de installatie stond
+vervolgens in CM0 standby met nulflow en kon daarom nog geen trainingsrecord maken. De eerste snapshot
+meldt 105891 B vrije interne heap, 39848 B minimum heap, een grootste blok van 61440 B, 4640 B loopstackmarge,
+46832 B learning-PSRAM en een maximale learnertick van 4535 µs. Dit is een functionele smoke-test, geen
+kwalificatie onder belasting.
 
 Deze vereenvoudiging is gecontroleerd met 83 C++-hosttests, 239 Python-contracttests en 457 webtests.
 C++-format, docschecks, webbuild, smokecheck en controle van de gegenereerde assets slagen. De volledige
-Q Duo Wi-Fi-build slaagt: 205815 bytes statisch RAM en 2261175 bytes applicatie-image. Die build bevat
+Q Duo Wi-Fi-build slaagt: 205815 bytes statisch RAM en 2261295 bytes applicatie-image. Die build bevat
 ook de nieuwe bodemplaatinstellingen en herstartafhandeling uit `dev`; het verschil met een eerdere
 firmwarebuild is daarom geen zuivere meting van deze vereenvoudiging.
 
@@ -257,7 +259,7 @@ gzip JavaScript. Deze feature geeft 924774 / 264797 bytes: +10816 raw en +3386 g
 de relatieve gzipgrens van 4608 bytes. Het raw-budget houdt dezelfde 6000 bytes extra ruimte als de
 eerdere featureversie, nu bovenop `dev`: 919000 → 925000. CSS blijft raw gelijk (195001 bytes).
 De nieuwe previewreset is geautomatiseerd gecontroleerd; de actuele browsermatrix en Safari/iOS zijn
-nog niet afgevinkt. De vereenvoudigde firmware is nog niet via OTA of op hardware getest.
+nog niet afgevinkt. De OTA-smoke-test bevestigt de nieuwe bronketen, maar nog geen geldig live learningsample.
 
 De config-only projectwrapper heeft drie bestaande stijlmeldingen in `configs/hil/input_sources_fast_duo_wifi.yaml`
 en `openquatt/oq_common.yaml`. Directe ESPHome-validatie blijft beschikbaar. Echte stroomonderbrekingen,
