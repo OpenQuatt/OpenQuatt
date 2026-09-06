@@ -102,6 +102,9 @@ modbus_controller:
             ESP_LOGI("quatt", "%sModbus ONLINE", "${prefix}");
         - script.execute: ${hp_id}_detect_odu_generation_once
 
+openquatt_incident_manager:
+  ${hp_id}_controller: ${hp_id}
+
 openquatt_odu_eeprom_dump:
   - id: ${hp_id}_odu_eeprom_dump
     controller: ${hp_id}

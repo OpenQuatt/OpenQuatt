@@ -117,7 +117,6 @@ class Runtime {
       this->publish_manual_guard(static_cast<int>(roundf(id(oq_manual_hp1_level).state)),
                                  static_cast<int>(roundf(id(oq_manual_hp2_level).state)), hp1_applied, hp2_applied,
                                  cycle.service_guards[0], cycle.service_guards[1], config.now_ms,
-                                 static_cast<uint32_t>(std::max(0, config.minimum_off_s)) * 1000UL,
                                  config.minimum_flow_lph);
     }
     this->record_transition(true, hp1_applied, config.now_ms, config.dt_ms);
@@ -234,6 +233,7 @@ class Runtime {
 
   int requested_mode_code(bool is_hp1, bool active, int request_mode_code, bool request_thermal_active,
                           bool manual_service_active) const {
+    if (id(oq_incident_manager).startup_inhibited(is_hp1 ? 1U : 2U)) return 0;
     int mode_code = active && request_thermal_active ? request_mode_code : 0;
     if (manual_service_active && id(oq_manual_hp_mode_allowed)) {
       const int manual_mode = is_hp1 ? id(oq_manual_hp1_mode_code) : id(oq_manual_hp2_mode_code);
@@ -317,26 +317,27 @@ class Runtime {
   }
 
   void publish_manual_guard(int hp1_manual_level, int hp2_manual_level, int hp1_applied, int hp2_applied,
-                            std::string hp1_guard, std::string hp2_guard, uint32_t now_ms, uint32_t minimum_off_ms,
-                            float minimum_flow_lph) {
-    const uint32_t startup_remaining_s =
-        id(oq_boot_startup_inhibit_active) && id(oq_boot_startup_inhibit_until_ms) > now_ms
-            ? (id(oq_boot_startup_inhibit_until_ms) - now_ms + 999UL) / 1000UL
-            : 0;
+                            std::string hp1_guard, std::string hp2_guard, uint32_t now_ms, float minimum_flow_lph) {
     const bool flow_valid = id(flow_rate_selected).has_state() && !isnan(id(flow_rate_selected).state) &&
                             id(flow_rate_selected).state >= minimum_flow_lph;
-    const bool mode_conflict = id(oq_manual_hp1_mode_code) > 0 && id(oq_manual_hp2_mode_code) > 0 &&
+    const bool mode_conflict = !id(oq_incident_manager).startup_inhibited(1U) &&
+                               !id(oq_incident_manager).startup_inhibited(2U) && id(oq_manual_hp1_mode_code) > 0 &&
+                               id(oq_manual_hp2_mode_code) > 0 &&
                                id(oq_manual_hp1_mode_code) != id(oq_manual_hp2_mode_code);
-    const auto guard = [&](int level, int mode_code, uint32_t last_stop_ms, const std::string& current) {
+    const auto guard = [&](uint8_t hp, int level, int mode_code, int applied_level, const std::string& current) {
+      const uint32_t remaining_ms =
+          applied_level > 0 ? 0U : id(oq_incident_manager).minimum_off_remaining_ms(hp, now_ms);
+      const uint32_t startup_remaining_s =
+          id(oq_incident_manager).startup_inhibited(hp) ? (remaining_ms + 999U) / 1000U : 0U;
       return oq_thermal_actuator::manual_guard(
-          {level, mode_code, now_ms, last_stop_ms, minimum_off_ms, startup_remaining_s, id(oq_manual_hp_stop_requested),
+          {level, mode_code, remaining_ms, startup_remaining_s, id(oq_manual_hp_stop_requested),
            id(oq_water_temp_hard_trip_active), id(oq_lowflow_fault_active), flow_valid, mode_conflict},
           current);
     };
-    hp1_guard = guard(hp1_manual_level, id(oq_manual_hp1_mode_code), id(hp1_last_stop_ms), hp1_guard);
+    hp1_guard = guard(1U, hp1_manual_level, id(oq_manual_hp1_mode_code), hp1_applied, hp1_guard);
     this->finish_manual_guard_(hp1_manual_level, hp1_applied, hp1_guard);
 #if OQ_TOPOLOGY_DUO
-    hp2_guard = guard(hp2_manual_level, id(oq_manual_hp2_mode_code), id(hp2_last_stop_ms), hp2_guard);
+    hp2_guard = guard(2U, hp2_manual_level, id(oq_manual_hp2_mode_code), hp2_applied, hp2_guard);
     this->finish_manual_guard_(hp2_manual_level, hp2_applied, hp2_guard);
 #else
     (void)hp2_manual_level;
@@ -404,7 +405,8 @@ class Runtime {
     // Contract order: incident stop -> defrost hold -> cooling rest -> per-HP rest
     // -> valid mode -> frequency policy -> start/stop registration -> physical write.
     const auto incident_guard =
-        oq_incident_actuator::decide({level, previous, incident.available_for_start, incident.must_stop});
+        oq_incident_actuator::decide({level, previous, incident.available_for_start,
+                                      incident.must_stop || id(oq_incident_manager).startup_inhibited(hp_index)});
     if (incident_guard.bypass_runtime_and_defrost_holds) this->clear_retained_level(is_hp1);
     const auto retained = incident_guard.bypass_runtime_and_defrost_holds
                               ? oq_odu::RetainedLevel{}
@@ -417,9 +419,8 @@ class Runtime {
                                         oq_cooling::global_minimum_off_time_blocks_start(
                                             cycle.cooling.remaining_ms, false,
                                             cycle.restart_by_minimum_off_time && cycle.cooling_stop_planned, previous));
-    const uint32_t hp_rest_remaining_ms = oq_thermal_actuator::minimum_off_remaining_ms(
-        cycle.config.now_ms, this->last_stop_ms_(is_hp1),
-        static_cast<uint32_t>(std::max(0, cycle.config.minimum_off_s)) * 1000UL);
+    const uint32_t hp_rest_remaining_ms =
+        id(oq_incident_manager).minimum_off_remaining_ms(hp_index, cycle.config.now_ms);
     const bool defrost_hold = oq_odu::retained_level_should_override_request(retained, incident_guard.guarded_level,
                                                                              cycle.manual_service_active);
     const auto preflight = oq_thermal_actuator::decide_preflight(
@@ -590,10 +591,6 @@ class Runtime {
 
   int previous_applied_(bool is_hp1) const {
     return is_hp1 ? id(hp1_last_applied_level) : OQ_ACTUATOR_SECONDARY_ID(last_applied_level);
-  }
-
-  uint32_t last_stop_ms_(bool is_hp1) const {
-    return is_hp1 ? id(hp1_last_stop_ms) : OQ_ACTUATOR_SECONDARY_ID(last_stop_ms);
   }
 
   bool& cooling_confirmation_pending_(bool is_hp1) {

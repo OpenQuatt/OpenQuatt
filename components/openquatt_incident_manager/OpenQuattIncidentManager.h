@@ -10,13 +10,17 @@
 #include <freertos/semphr.h>
 
 #include "esphome/components/globals/globals_component.h"
+#include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/modbus_controller/modbus_controller.h"
 #include "esphome/components/openquatt_decision_log/OpenQuattDecisionLog.h"
 #include "esphome/components/openquatt_web_auth/OpenQuattWebAuth.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/core/component.h"
 #include "esphome/core/preferences.h"
 #include "OpenQuattIncidentPolicy.h"
+#include "OpenQuattRestartHandoff.h"
 #include "PsramBuffer.h"
+#include "includes/control/oq_hp_restart_guard.h"
 #include "includes/diagnostics/oq_pump_ipwm_feedback.h"
 #include "includes/incidents/oq_hp_incident_engine.h"
 #include "includes/incidents/oq_manual_reset_latch_policy.h"
@@ -47,6 +51,14 @@ class OpenQuattIncidentManager : public Component {
   void set_control_mode_code(IntGlobal* value) { this->control_mode_code_ = value; }
   void set_decision_log(openquatt_decision_log::OpenQuattDecisionLog* value) { this->decision_log_ = value; }
   void set_web_auth(openquatt_web_auth::OpenQuattWebAuth* value) { this->web_auth_ = value; }
+  void set_minimum_off_ms(uint32_t value) { this->minimum_off_ms_ = value; }
+  void set_polling_paused(binary_sensor::BinarySensor* value) { this->polling_paused_ = value; }
+  void set_hp1_controller(modbus_controller::ModbusController* value) { this->controllers_[0] = value; }
+  void set_hp2_controller(modbus_controller::ModbusController* value) { this->controllers_[1] = value; }
+  // Button callbacks only enqueue; state and Modbus queues belong to loop().
+  void request_restart() { this->restart_requested_.store(true); }
+  bool startup_inhibited(uint8_t hp_index) const;
+  uint32_t minimum_off_remaining_ms(uint8_t hp_index, uint32_t now_ms) const;
 
   void setup() override;
   void loop() override;
@@ -129,6 +141,10 @@ class OpenQuattIncidentManager : public Component {
 
   struct UnitState {
     oq_incidents::HpIncidentEngine engine{};
+    oq_hp_restart_guard::Policy restart_guard{};
+    bool startup_released{false};
+    uint32_t rest_mode_generation{0U};
+    uint32_t rest_mode_observed_ms{0U};
     bool configured{false};
     bool transport_online{false};
     bool transport_seen{false};
@@ -234,6 +250,7 @@ class OpenQuattIncidentManager : public Component {
   UnitState* unit_(uint8_t hp_index);
   const UnitState* unit_(uint8_t hp_index) const;
   void process_fault_snapshot_(UnitState& unit, size_t slot, uint32_t now_ms, bool force_partial);
+  void perform_restart_(uint32_t now_ms);
   void observe_complete_link_round_(UnitState& unit, uint32_t now_ms);
   void publish_transitions_(UnitState& unit, size_t slot, uint32_t now_ms);
   void publish_incident_transition_(size_t slot, const oq_incidents::IncidentDefinition& definition,
@@ -261,6 +278,11 @@ class OpenQuattIncidentManager : public Component {
   IntGlobal* control_mode_code_{nullptr};
   openquatt_decision_log::OpenQuattDecisionLog* decision_log_{nullptr};
   openquatt_web_auth::OpenQuattWebAuth* web_auth_{nullptr};
+  std::array<modbus_controller::ModbusController*, 2U> controllers_{};
+  binary_sensor::BinarySensor* polling_paused_{nullptr};
+  uint32_t minimum_off_ms_{240000U};
+  std::atomic<bool> restart_requested_{false};
+  bool restarting_{false};
   bool fallback_requested_{false};
   bool fallback_active_{false};
   uint8_t fallback_block_reason_{0U};

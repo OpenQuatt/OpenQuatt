@@ -44,9 +44,9 @@ class Runtime {
 
     const bool startup_inhibit_active = this->update_startup_inhibit_(config.now_ms, config.minimum_off_s);
     const bool startup_inhibit_changed =
-        !this->startup_snapshot_initialized_ || startup_inhibit_active != this->last_startup_inhibit_active_;
+        !this->startup_snapshot_initialized_ || this->startup_mask_ != this->last_startup_mask_;
     this->startup_snapshot_initialized_ = true;
-    this->last_startup_inhibit_active_ = startup_inhibit_active;
+    this->last_startup_mask_ = this->startup_mask_;
     if (id(oq_heat_last_mode_code) != mode.control_flavor_code) {
       id(oq_heat_last_mode_code) = mode.control_flavor_code;
       id(oq_heat_last_loop_ms) = 0;
@@ -99,32 +99,38 @@ class Runtime {
  private:
   bool strategy_snapshot_initialized_{false};
   bool startup_snapshot_initialized_{false};
-  bool last_startup_inhibit_active_{false};
+  uint8_t startup_mask_{0};
+  uint8_t last_startup_mask_{0};
   int last_cm_code_{-1};
   int last_strategy_hp1_{0};
   int last_strategy_hp2_{0};
 
   bool update_startup_inhibit_(uint32_t now_ms, uint32_t minimum_off_s) {
-    if (id(oq_boot_startup_inhibit_until_ms) == 0) {
-      const uint32_t inhibit_ms = minimum_off_s * 1000UL;
-      id(oq_boot_startup_inhibit_until_ms) = now_ms + inhibit_ms;
-      id(oq_boot_startup_inhibit_active) = inhibit_ms > 0;
-      if (!id(oq_boot_startup_inhibit_logged) && inhibit_ms > 0) {
-        ESP_LOGI("quatt", "Startup inhibit armed for %us after reboot; compressors remain blocked.",
-                 static_cast<unsigned int>(minimum_off_s));
-        id(oq_boot_startup_inhibit_logged) = true;
-        id(oq_boot_startup_inhibit_cleared_logged) = false;
-      }
+    this->startup_mask_ = id(oq_incident_manager).startup_inhibited(1U) ? 1U : 0U;
+    uint32_t remaining_ms = this->startup_mask_ ? id(oq_incident_manager).minimum_off_remaining_ms(1U, now_ms) : 0U;
+#if OQ_TOPOLOGY_DUO
+    if (id(oq_incident_manager).startup_inhibited(2U)) {
+      this->startup_mask_ |= 2U;
+      remaining_ms = std::max(remaining_ms, id(oq_incident_manager).minimum_off_remaining_ms(2U, now_ms));
     }
-    const bool active = oq_request::deadline_pending(now_ms, id(oq_boot_startup_inhibit_until_ms));
+#endif
+    const bool active = this->startup_mask_ != 0U;
+    // Diagnostic deadline only; the manager's per-HP confirmed-stop guards own release.
+    id(oq_boot_startup_inhibit_until_ms) = active ? now_ms + remaining_ms : 0U;
     id(oq_boot_startup_inhibit_active) = active;
-    if (!active && id(oq_boot_startup_inhibit_until_ms) > 0 && id(oq_boot_startup_inhibit_logged) &&
-        !id(oq_boot_startup_inhibit_cleared_logged)) {
-      ESP_LOGI("quatt", "Startup inhibit cleared after reboot; compressors may resume.");
+    if (active && !id(oq_boot_startup_inhibit_logged)) {
+      ESP_LOGI("quatt", "Startup guard: up to %us per HP, measured from confirmed compressor stop.",
+               static_cast<unsigned>(minimum_off_s));
+      id(oq_boot_startup_inhibit_logged) = true;
+    }
+    if (!active && id(oq_boot_startup_inhibit_logged) && !id(oq_boot_startup_inhibit_cleared_logged)) {
+      ESP_LOGI("quatt", "Startup minimum off-time confirmed for all HPs.");
       id(oq_boot_startup_inhibit_cleared_logged) = true;
     }
     return active;
   }
+
+  bool startup_blocked_(bool is_hp1) const { return (this->startup_mask_ & (is_hp1 ? 1U : 2U)) != 0U; }
 
   void track_measured_start_(bool is_hp1, uint32_t now_ms) {
     const float raw = is_hp1 ? id(hp1_working_mode).state : OQ_REQUEST_SECONDARY_ID(working_mode).state;
@@ -249,6 +255,8 @@ class Runtime {
 
   void update_startup_event_(uint32_t now_ms, uint32_t minimum_off_s, int cm_code, bool startup_inhibit,
                              int target_mode_code, int desired_hp1, int desired_hp2) {
+    if (!this->startup_blocked_(true)) desired_hp1 = 0;
+    if (!this->startup_blocked_(false)) desired_hp2 = 0;
     const bool has_request = desired_hp1 > 0 || desired_hp2 > 0;
     const bool blocked = startup_inhibit && has_request;
     const uint8_t subject = desired_hp1 > 0 && desired_hp2 > 0 ? openquatt_decision_log::SUBJECT_BOTH
@@ -326,9 +334,11 @@ class Runtime {
     const bool flow_ok =
         oq_request::finite_value_at_least(id(flow_rate_selected).has_state(), flow, config.minimum_flow_lph);
     const bool safety_stop = id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) || !flow_ok;
-    const int hp1_hold = this->minimum_runtime_hold_(true, config.now_ms, minimum_runtime_ms, startup_inhibit);
+    const int hp1_hold =
+        this->minimum_runtime_hold_(true, config.now_ms, minimum_runtime_ms, this->startup_blocked_(true));
 #if OQ_TOPOLOGY_DUO
-    const int hp2_hold = this->minimum_runtime_hold_(false, config.now_ms, minimum_runtime_ms, startup_inhibit);
+    const int hp2_hold =
+        this->minimum_runtime_hold_(false, config.now_ms, minimum_runtime_ms, this->startup_blocked_(false));
 #else
     const int hp2_hold = 0;
 #endif
@@ -350,9 +360,14 @@ class Runtime {
 #endif
         id(oq_manual_hp_stop_requested),
         safety_stop,
-        startup_inhibit,
+        false,
+        this->startup_blocked_(true),
+        this->startup_blocked_(false),
     };
-    const auto request = oq_request::arbitrate_manual_request(input);
+    auto request = oq_request::arbitrate_manual_request(input);
+    if (startup_inhibit && request.hp1_level == 0 && request.hp2_level == 0 && !safety_stop) {
+      request.reason = oq_request::MANUAL_STARTUP_INHIBIT;
+    }
     id(oq_manual_hp_mode_allowed) = request.mode_allowed;
     this->update_startup_event_(config.now_ms, config.minimum_off_s, id(oq_control_mode_code), startup_inhibit,
                                 hp1_mode > 0 ? hp1_mode : hp2_mode, request.desired_hp1_level,
@@ -368,10 +383,12 @@ class Runtime {
   void run_inactive_(const TickConfig& config, const oq_request::ModeContext& mode, bool startup_inhibit,
                      uint32_t minimum_runtime_ms, const oq_frequency_runtime::Context& frequency, int raw, int post_cap,
                      int cap) {
-    const int hp1_runtime = this->minimum_runtime_hold_(true, config.now_ms, minimum_runtime_ms, startup_inhibit);
+    const int hp1_runtime =
+        this->minimum_runtime_hold_(true, config.now_ms, minimum_runtime_ms, this->startup_blocked_(true));
     const int hp1_level = hp1_runtime > 0 ? hp1_runtime : this->defrost_hold_(true, frequency);
 #if OQ_TOPOLOGY_DUO
-    const int hp2_runtime = this->minimum_runtime_hold_(false, config.now_ms, minimum_runtime_ms, startup_inhibit);
+    const int hp2_runtime =
+        this->minimum_runtime_hold_(false, config.now_ms, minimum_runtime_ms, this->startup_blocked_(false));
     const int hp2_level = hp2_runtime > 0 ? hp2_runtime : this->defrost_hold_(false, frequency);
 #else
     const int hp2_level = 0;
@@ -458,13 +475,13 @@ class Runtime {
     if (hard_stop) hp1_level = hp2_level = 0;
     this->update_startup_event_(config.now_ms, config.minimum_off_s, id(oq_control_mode_code), startup_inhibit,
                                 mode.thermal_mode_code, hp1_level, hp2_level);
-    if (startup_inhibit) hp1_level = hp2_level = 0;
-    const bool hold_blocked = hard_stop || startup_inhibit;
-    this->apply_minimum_runtime_(true, hp1_level, hold_blocked, mode.cooling, config.now_ms, minimum_runtime_ms,
-                                 mode.thermal_mode_code, frequency);
+    if (this->startup_blocked_(true)) hp1_level = 0;
+    if (this->startup_blocked_(false)) hp2_level = 0;
+    this->apply_minimum_runtime_(true, hp1_level, hard_stop || this->startup_blocked_(true), mode.cooling,
+                                 config.now_ms, minimum_runtime_ms, mode.thermal_mode_code, frequency);
 #if OQ_TOPOLOGY_DUO
-    this->apply_minimum_runtime_(false, hp2_level, hold_blocked, mode.cooling, config.now_ms, minimum_runtime_ms,
-                                 mode.thermal_mode_code, frequency);
+    this->apply_minimum_runtime_(false, hp2_level, hard_stop || this->startup_blocked_(false), mode.cooling,
+                                 config.now_ms, minimum_runtime_ms, mode.thermal_mode_code, frequency);
 #else
     hp2_level = 0;
 #endif
