@@ -233,12 +233,7 @@ class Runtime {
     input.duo = OQ_TOPOLOGY_DUO;
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     const bool hp1_uses_controller = id(hp_generation).has_state() && id(hp_generation).current_option() == "V1";
-    if (id(oq_q_flow_source).has_state()) {
-      const auto option = id(oq_q_flow_source).current_option();
-      input.controller_mode = option == "Local"  ? oq_input_source::ControllerFlowMode::LOCAL
-                              : option == "Auto" ? oq_input_source::ControllerFlowMode::AUTO
-                                                 : oq_input_source::ControllerFlowMode::OTHER;
-    }
+    input.controller_mode = controller_flow_mode_();
     input.hp_generation_v1 = hp1_uses_controller;
     input.controller = sample(true, id(flow_rate_controller));
 #endif
@@ -251,12 +246,7 @@ class Runtime {
     input.hp1 = sample(true, id(hp1_flow));
 #endif
     input.hp2 = sample(true, id(hp2_flow));
-    if (id(oq_duo_outdoor_flow_mode).has_state()) {
-      const auto mode = id(oq_duo_outdoor_flow_mode).current_option();
-      input.outdoor_mode = mode == "Flowmeter HP1"   ? oq_input_source::OutdoorFlowMode::HP1
-                           : mode == "Flowmeter HP2" ? oq_input_source::OutdoorFlowMode::HP2
-                                                     : oq_input_source::OutdoorFlowMode::AGGREGATE;
-    }
+    input.outdoor_mode = outdoor_flow_mode_();
 #else
     const oq_flow::PumpRelayState hp2{};
 #endif
@@ -390,6 +380,28 @@ class Runtime {
     return {value, received_ms, received, valid};
   }
 
+  static oq_input_source::ControllerFlowMode controller_flow_mode_() {
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    if (id(oq_q_flow_source).has_state()) {
+      const auto option = id(oq_q_flow_source).current_option();
+      if (option == "Local") return oq_input_source::ControllerFlowMode::LOCAL;
+      if (option == "Auto") return oq_input_source::ControllerFlowMode::AUTO;
+    }
+#endif
+    return oq_input_source::ControllerFlowMode::OTHER;
+  }
+
+  static oq_input_source::OutdoorFlowMode outdoor_flow_mode_() {
+#if OQ_TOPOLOGY_DUO
+    if (id(oq_duo_outdoor_flow_mode).has_state()) {
+      const auto option = id(oq_duo_outdoor_flow_mode).current_option();
+      if (option == "Flowmeter HP1") return oq_input_source::OutdoorFlowMode::HP1;
+      if (option == "Flowmeter HP2") return oq_input_source::OutdoorFlowMode::HP2;
+    }
+#endif
+    return oq_input_source::OutdoorFlowMode::AGGREGATE;
+  }
+
   static oq_sources::SourceConfigurationKey room_configuration_key(bool setpoint) {
     const auto& selector = setpoint ? id(room_setpoint_source) : id(room_temp_source);
     const auto configured =
@@ -407,24 +419,8 @@ class Runtime {
   static oq_sources::SourceConfigurationKey flow_configuration_key() {
     const auto configured =
         id(flow_source).has_state() ? parse_source(id(flow_source).current_option()) : oq_input_source::Source::NONE;
-    oq_input_source::ControllerFlowMode controller_mode = oq_input_source::ControllerFlowMode::OTHER;
-#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-    if (id(oq_q_flow_source).has_state()) {
-      const auto option = id(oq_q_flow_source).current_option();
-      controller_mode = option == "Local"  ? oq_input_source::ControllerFlowMode::LOCAL
-                        : option == "Auto" ? oq_input_source::ControllerFlowMode::AUTO
-                                           : oq_input_source::ControllerFlowMode::OTHER;
-    }
-#endif
-    oq_input_source::OutdoorFlowMode outdoor_mode = oq_input_source::OutdoorFlowMode::AGGREGATE;
-#if OQ_TOPOLOGY_DUO
-    if (id(oq_duo_outdoor_flow_mode).has_state()) {
-      const auto option = id(oq_duo_outdoor_flow_mode).current_option();
-      outdoor_mode = option == "Flowmeter HP1"   ? oq_input_source::OutdoorFlowMode::HP1
-                     : option == "Flowmeter HP2" ? oq_input_source::OutdoorFlowMode::HP2
-                                                 : oq_input_source::OutdoorFlowMode::AGGREGATE;
-    }
-#endif
+    const auto controller_mode = controller_flow_mode_();
+    const auto outdoor_mode = outdoor_flow_mode_();
     return {static_cast<uint8_t>(configured), static_cast<uint8_t>(controller_mode), static_cast<uint8_t>(outdoor_mode),
             configured == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
   }
