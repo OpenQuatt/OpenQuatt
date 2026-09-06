@@ -36,8 +36,9 @@ export const WEB_BUNDLE_BUDGETS = [
     // Includes stable native time editing and confirmed, stale-poll-safe saves.
     // Compact pipeline plus the bottom-plate editor/backup: ~914 kB.
     // Keep ~5 kB margin; do not restore the pre-compaction 1 MB ceiling.
-    // Preserve the existing 6 kB passive-learning allowance on top of dev PR #625.
-    raw: 925_000,
+    // Passive learning currently uses 924,774 B. Keep normal maintenance
+    // headroom rather than failing the next small, unrelated UI change.
+    raw: 930_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

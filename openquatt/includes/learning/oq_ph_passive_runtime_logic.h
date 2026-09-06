@@ -83,9 +83,7 @@ struct PassiveRuntimeSummary {
   // firmware assertions; it can never authorize applying a model.
   bool auto_apply_allowed = false;
   size_t record_count = 0;
-  uint32_t source_generation = 0;
-  uint32_t physical_context_generation = 0;
-  uint32_t control_generation = 0;
+  uint32_t context_revision = 0;
   uint32_t last_epoch_s = 0;
   uint64_t last_monotonic_ms = 0;
   AdviceResult batch;
@@ -120,9 +118,7 @@ struct PassiveRuntimeStorage {
   bool opted_in = false;
   bool restored_records = false;
   bool current_observation_valid = false;
-  uint32_t source_generation = 0;
-  uint32_t physical_context_generation = 0;
-  uint32_t control_generation = 0;
+  uint32_t context_revision = 0;
   uint32_t last_epoch_s = 0;
   uint64_t last_monotonic_ms = 0;
   uint8_t context_bytes[kMaxPassiveContextBytes]{};
@@ -158,7 +154,7 @@ inline void reset_in_place(T& value) {
 
 inline bool valid_context(const PassiveContextView& context) {
   return context.bytes != nullptr && context.size > 0 && context.size <= kMaxPassiveContextBytes &&
-         context.source_generation != 0 && context.physical_context_generation != 0 && context.control_generation != 0;
+         context.context_revision != 0;
 }
 
 inline bool same_context_bytes(const PassiveRuntimeStorage& state, const PassiveContextView& context) {
@@ -212,16 +208,12 @@ inline void clear_evidence(PassiveRuntimeStorage& state) {
 inline void bind_context(PassiveRuntimeStorage& state, const PassiveContextView& context) {
   state.context_size = context.size;
   memcpy(state.context_bytes, context.bytes, context.size);
-  state.source_generation = context.source_generation;
-  state.physical_context_generation = context.physical_context_generation;
-  state.control_generation = context.control_generation;
+  state.context_revision = context.context_revision;
 }
 
 inline bool snapshot_matches_tick(const LearningSnapshot& snapshot, const PassiveTickInput& input) {
   return snapshot.monotonic_ms == input.now_monotonic_ms && snapshot.epoch_s == input.now_epoch_s &&
-         snapshot.source_generation == input.context.source_generation &&
-         snapshot.physical_context_generation == input.context.physical_context_generation &&
-         snapshot.control_generation == input.context.control_generation;
+         snapshot.context_revision == input.context.context_revision;
 }
 
 inline void invalidate_dynamic(PassiveRuntimeStorage& state, uint64_t now_monotonic_ms) {
@@ -278,16 +270,26 @@ inline void pause_passive_runtime(PassiveRuntimeStorage& state, uint64_t now_ms)
   state.status = PassiveRuntimeStatus::PAUSED;
 }
 
+// A changed assessment policy can invalidate a fit or an unfinished window,
+// without changing the physical observations already stored in records[].
+inline void refresh_passive_evaluation(PassiveRuntimeStorage& state, const PassiveRuntimeConfig& config) {
+  state.config = config;
+  if (!passive_runtime_detail::valid_runtime_config(config)) {
+    passive_runtime_detail::clear_transient_collection(state);
+    state.status = PassiveRuntimeStatus::INVALID_CONFIGURATION;
+    return;
+  }
+  passive_runtime_detail::clear_transient_collection(state);
+  state.status = state.opted_in ? PassiveRuntimeStatus::COLLECTING : PassiveRuntimeStatus::PAUSED;
+}
+
 inline void reset_passive_runtime(PassiveRuntimeStorage& state) {
   passive_runtime_detail::reset_in_place(state);
   state.status = PassiveRuntimeStatus::PAUSED;
 }
 
 inline LearningDatasetView passive_runtime_dataset(const PassiveRuntimeStorage& state) {
-  return {state.records,
-          state.record_count,
-          {state.context_bytes, state.context_size, state.source_generation, state.physical_context_generation,
-           state.control_generation}};
+  return {state.records, state.record_count, {state.context_bytes, state.context_size, state.context_revision}};
 }
 
 // A validated immutable record view is read before its backing slot is reused.
@@ -298,9 +300,7 @@ inline bool restore_passive_records(PassiveRuntimeStorage& state, const RecordVi
   passive_runtime_detail::clear_evidence(state);
   for (size_t index = 0; index < records.record_count; ++index) {
     SegmentRecord record = records[index];
-    record.source_generation = state.source_generation;
-    record.physical_context_generation = state.physical_context_generation;
-    record.control_generation = state.control_generation;
+    record.context_revision = state.context_revision;
     state.records[index] = record;
   }
   state.record_count = records.record_count;
@@ -348,18 +348,14 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
     state.status = PassiveRuntimeStatus::PAUSED;
     return state.status;
   }
-  const bool generation_decreased = input.context.source_generation < state.source_generation ||
-                                    input.context.physical_context_generation < state.physical_context_generation ||
-                                    input.context.control_generation < state.control_generation;
+  const bool generation_decreased = input.context.context_revision < state.context_revision;
   if (generation_decreased) {
     clear_evidence(state);
     state.blocked = true;
     state.status = PassiveRuntimeStatus::STALE_CONTEXT;
     return state.status;
   }
-  const bool generations_changed = input.context.source_generation != state.source_generation ||
-                                   input.context.physical_context_generation != state.physical_context_generation ||
-                                   input.context.control_generation != state.control_generation;
+  const bool generations_changed = input.context.context_revision != state.context_revision;
   if (!generations_changed && !same_context_bytes(state, input.context)) {
     clear_evidence(state);
     state.blocked = true;
@@ -499,18 +495,15 @@ inline PassiveRuntimeSummary passive_runtime_summary(const PassiveRuntimeStorage
       state.initialized && !state.blocked && state.opted_in && state.current_observation_valid;
   summary.batch_advice_ready = live_ready_context && state.batch_result.advice_ready;
   summary.record_count = state.record_count;
-  summary.source_generation = state.source_generation;
-  summary.physical_context_generation = state.physical_context_generation;
-  summary.control_generation = state.control_generation;
+  summary.context_revision = state.context_revision;
   summary.last_epoch_s = state.last_epoch_s;
   summary.last_monotonic_ms = state.last_monotonic_ms;
   summary.batch = state.batch_result;
   summary.thermal = estimate_thermal_model(state.thermal_state, state.config.thermal_model, now_monotonic_ms);
   summary.thermal_model_ready = live_ready_context && summary.thermal.ready;
   if (live_ready_context)
-    summary.validation = validate_house_models(
-        state.batch_result, state.thermal_state, state.config.thermal_model, now_monotonic_ms, state.source_generation,
-        state.physical_context_generation, state.control_generation, state.config.validation);
+    summary.validation = validate_house_models(state.batch_result, state.thermal_state, state.config.thermal_model,
+                                               now_monotonic_ms, state.context_revision, state.config.validation);
   summary.cross_validated_advice_ready = summary.validation.cross_validated_advice_ready;
   summary.auto_apply_allowed = false;
   if (!state.initialized)

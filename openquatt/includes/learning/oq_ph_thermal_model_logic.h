@@ -48,9 +48,7 @@ struct ThermalModelConfig {
 struct ThermalInterval {
   uint64_t start_monotonic_ms = 0;
   uint64_t end_monotonic_ms = 0;
-  uint32_t source_generation = 0;
-  uint32_t physical_context_generation = 0;
-  uint32_t control_generation = 0;
+  uint32_t context_revision = 0;
   bool complete = false;
   bool inputs_fresh = false;
   bool generations_consistent = false;
@@ -107,9 +105,7 @@ struct ThermalModelState {
   uint32_t reset_count = 0;
   uint64_t last_interval_end_monotonic_ms = 0;
   uint64_t last_observation_monotonic_ms = 0;
-  uint32_t source_generation = 0;
-  uint32_t physical_context_generation = 0;
-  uint32_t control_generation = 0;
+  uint32_t context_revision = 0;
   bool config_bound = false;
   ThermalModelConfig bound_config;
 };
@@ -205,10 +201,8 @@ inline bool covariance_is_spd(double covariance_00, double covariance_01, double
 }
 
 inline bool finite_state(const ThermalModelState& state) {
-  const bool generations_unbound =
-      state.source_generation == 0 && state.physical_context_generation == 0 && state.control_generation == 0;
-  const bool generations_bound =
-      state.source_generation != 0 && state.physical_context_generation != 0 && state.control_generation != 0;
+  const bool generations_unbound = state.context_revision == 0;
+  const bool generations_bound = state.context_revision != 0;
   const bool history_consistent =
       state.last_observation_monotonic_ms >= state.last_interval_end_monotonic_ms &&
       ((state.accepted_samples == 0 && state.last_interval_end_monotonic_ms == 0) ||
@@ -258,17 +252,11 @@ inline void reset_state(ThermalModelState& state, const ThermalModelConfig& conf
       state.last_observation_monotonic_ms >= state.last_interval_end_monotonic_ms
           ? state.last_observation_monotonic_ms
           : state.last_interval_end_monotonic_ms;
-  const bool generations_bound =
-      state.source_generation != 0 && state.physical_context_generation != 0 && state.control_generation != 0;
-  const uint32_t source_generation = generations_bound ? state.source_generation : 0;
-  const uint32_t physical_context_generation = generations_bound ? state.physical_context_generation : 0;
-  const uint32_t control_generation = generations_bound ? state.control_generation : 0;
+  const uint32_t context_revision = state.context_revision;
   seed_state(state, config, next_reset_count);
   state.rejected_samples = rejected_samples;
   state.last_observation_monotonic_ms = last_observation_monotonic_ms;
-  state.source_generation = source_generation;
-  state.physical_context_generation = physical_context_generation;
-  state.control_generation = control_generation;
+  state.context_revision = context_revision;
 }
 
 inline void reset_untrusted_state(ThermalModelState& state, const ThermalModelConfig& config,
@@ -433,8 +421,7 @@ inline ThermalUpdateResult observe_thermal_interval(ThermalModelState& state, co
     result.estimate = estimate_thermal_model(state, config, observation_now_ms);
     return result;
   }
-  if (!interval.generations_consistent || interval.source_generation == 0 ||
-      interval.physical_context_generation == 0 || interval.control_generation == 0) {
+  if (!interval.generations_consistent || interval.context_revision == 0) {
     reject_without_reset(state, interval);
     reset_state(state, config);
     result.status = ThermalUpdateStatus::RESET_CONTEXT;
@@ -449,16 +436,9 @@ inline ThermalUpdateResult observe_thermal_interval(ThermalModelState& state, co
     result.estimate = estimate_thermal_model(state, config, observation_now_ms);
     return result;
   }
-  const bool generation_owner_bound =
-      state.source_generation != 0 && state.physical_context_generation != 0 && state.control_generation != 0;
-  const bool generation_mismatch =
-      generation_owner_bound && (state.source_generation != interval.source_generation ||
-                                 state.physical_context_generation != interval.physical_context_generation ||
-                                 state.control_generation != interval.control_generation);
-  const bool stale_generation =
-      generation_owner_bound && (interval.source_generation < state.source_generation ||
-                                 interval.physical_context_generation < state.physical_context_generation ||
-                                 interval.control_generation < state.control_generation);
+  const bool generation_owner_bound = state.context_revision != 0;
+  const bool generation_mismatch = generation_owner_bound && state.context_revision != interval.context_revision;
+  const bool stale_generation = generation_owner_bound && interval.context_revision < state.context_revision;
   if (stale_generation) {
     reject_without_reset(state, interval);
     result.status = ThermalUpdateStatus::REJECTED_STALE_CONTEXT;
@@ -468,10 +448,8 @@ inline ThermalUpdateResult observe_thermal_interval(ThermalModelState& state, co
   if (generation_mismatch) {
     reject_without_reset(state, interval);
     reset_state(state, config);
-    // Generation owners are monotonic within a boot. initialize_thermal_model() is the explicit reboot boundary.
-    state.source_generation = interval.source_generation;
-    state.physical_context_generation = interval.physical_context_generation;
-    state.control_generation = interval.control_generation;
+    // Context revisions are monotonic within one boot; initialization is the reboot boundary.
+    state.context_revision = interval.context_revision;
     result.status = ThermalUpdateStatus::RESET_CONTEXT;
     result.estimate = estimate_thermal_model(state, config, observation_now_ms);
     return result;
@@ -636,9 +614,7 @@ inline ThermalUpdateResult observe_thermal_interval(ThermalModelState& state, co
   state.recent_data_valid = true;
   state.last_interval_end_monotonic_ms = interval.end_monotonic_ms;
   state.last_observation_monotonic_ms = interval.end_monotonic_ms;
-  state.source_generation = interval.source_generation;
-  state.physical_context_generation = interval.physical_context_generation;
-  state.control_generation = interval.control_generation;
+  state.context_revision = interval.context_revision;
 
   result.accepted = true;
   result.estimate = estimate_thermal_model(state, config, interval.end_monotonic_ms);

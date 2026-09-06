@@ -10,9 +10,7 @@ LearningSnapshot valid_snapshot() {
   LearningSnapshot snapshot;
   snapshot.monotonic_ms = 1000;
   snapshot.epoch_s = 1700000000;
-  snapshot.source_generation = 1;
-  snapshot.physical_context_generation = 2;
-  snapshot.control_generation = 3;
+  snapshot.context_revision = 1;
   snapshot.room_c = 20.0f;
   snapshot.setpoint_c = 20.0f;
   snapshot.outside_c = 5.0f;
@@ -27,9 +25,7 @@ SegmentRecord valid_record() {
   record.start_epoch_s = 20000U * 86400U + 3600U;
   record.end_epoch_s = record.start_epoch_s + 14400;
   record.duration_s = 14400;
-  record.source_generation = 1;
-  record.physical_context_generation = 2;
-  record.control_generation = 3;
+  record.context_revision = 1;
   record.mean_room_c = 20.0f;
   record.mean_setpoint_c = 20.0f;
   record.mean_outside_c = 5.0f;
@@ -88,7 +84,7 @@ int main() {
   assert(validate_segment_record(record, config) == LearningStatus::TIME_DISCONTINUITY);
 
   snapshot = valid_snapshot();
-  snapshot.source_generation = 0;
+  snapshot.context_revision = 0;
   assert(validate_snapshot(snapshot, config) == LearningStatus::INVALID_MEASUREMENT);
   snapshot = valid_snapshot();
   snapshot.invalid_reasons = INVALID_SETPOINT_RECOVERY;

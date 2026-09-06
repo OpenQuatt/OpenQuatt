@@ -96,38 +96,11 @@ enum class HydronicTopology : uint8_t {
   DUO_PARALLEL,
 };
 
-enum class MeterBoundary : uint8_t {
-  UNKNOWN = 0,
-  SINGLE_HEAT_PUMP_CIRCUIT,
-  SHARED_DUO_SERIES_CIRCUIT,
-};
-
-enum class FluidHeatCapacityModel : uint8_t {
-  UNKNOWN = 0,
-  WATER_CP_4180,
-};
-
-enum class ZeroFlowProof : uint8_t {
-  NOT_PROVEN = 0,
-  PHYSICAL_METER_COVERS_BOUNDARY,
-};
-
-enum class DuoSeriesOrder : uint8_t {
-  UNKNOWN = 0,
-  HP1_TO_HP2,
-  HP2_TO_HP1,
-};
-
 struct CalorimetryContract {
-  MeterBoundary meter_boundary = MeterBoundary::UNKNOWN;
-  FluidHeatCapacityModel fluid_model = FluidHeatCapacityModel::UNKNOWN;
-  uint32_t calorimetry_generation = 0;
   bool uncertainty_proven = false;
   float heat_uncertainty_w = NAN;
   float max_flow_lph = NAN;
-  DuoSeriesOrder duo_series_order = DuoSeriesOrder::UNKNOWN;
   float max_series_junction_delta_c = NAN;
-  ZeroFlowProof zero_flow_proof = ZeroFlowProof::NOT_PROVEN;
 };
 
 struct HeatPumpRawMeasurements {
@@ -149,7 +122,7 @@ enum class LearningControlMode : uint8_t {
 
 struct LearningOperationalContext {
   uint64_t captured_monotonic_ms = 0;
-  uint32_t captured_control_generation = 0;
+  uint32_t captured_context_revision = 0;
   bool control_mode_valid = false;
   LearningControlMode control_mode = LearningControlMode::UNKNOWN;
   bool active_limit_valid = false;
@@ -165,9 +138,7 @@ struct LearningOperationalContext {
 struct LearningSourceInput {
   uint64_t monotonic_ms = 0;
   uint32_t epoch_s = 0;
-  uint32_t source_cohort_generation = 0;
-  uint32_t physical_context_generation = 0;
-  uint32_t control_generation = 0;
+  uint32_t context_revision = 0;
   HydronicTopology topology = HydronicTopology::UNKNOWN;
   CalorimetryContract calorimetry;
   PhysicalMeasurement<float> room_c;
@@ -184,7 +155,6 @@ enum class SnapshotSourceStatus : uint8_t {
   OK = 0,
   INVALID_CONFIGURATION,
   INVALID_TOPOLOGY,
-  INVALID_METER_BOUNDARY,
   INVALID_CALORIMETRY_CONTRACT,
   INVALID_UNCERTAINTY,
   MISSING_REQUIRED_UNIT,
@@ -205,7 +175,6 @@ enum class SnapshotSourceStatus : uint8_t {
   PROTECTION_ACTIVE,
   BOILER_UNKNOWN,
   BOILER_ACTIVE,
-  ZERO_FLOW_NOT_PROVEN,
   OPERATIONAL_CONTEXT_UNKNOWN,
   CONTROL_MODE_BLOCKED,
   ACTIVE_LIMIT,
@@ -213,7 +182,7 @@ enum class SnapshotSourceStatus : uint8_t {
   SETPOINT_RECOVERY_ACTIVE,
   COMFORT_UNACCEPTABLE,
   OPERATIONAL_CONTEXT_STALE,
-  CONTROL_GENERATION_MISMATCH,
+  CONTEXT_REVISION_MISMATCH,
   FLOW_OUT_OF_RANGE,
   SERIES_JUNCTION_MISMATCH,
 };
@@ -224,8 +193,6 @@ struct SnapshotBuildResult {
   bool has_snapshot = false;
   bool measurement_valid = false;
   uint32_t invalid_reasons = INVALID_ESSENTIAL_SOURCE;
-  // Equality fingerprint for the raw route. It is not monotone and grants no apply authority.
-  uint32_t source_fingerprint = 0;
   LearningSnapshot snapshot;
 };
 
@@ -262,63 +229,14 @@ inline bool same_source(const SourceIdentity& lhs, const SourceIdentity& rhs) {
   return lhs.kind == rhs.kind && lhs.id == rhs.id && lhs.unit == rhs.unit;
 }
 
-inline uint32_t hash_u32(uint32_t hash, uint32_t value) {
-  for (uint8_t shift = 0; shift < 32; shift += 8) {
-    hash ^= static_cast<uint8_t>(value >> shift);
-    hash *= 16777619U;
-  }
-  return hash;
-}
-
-template <typename T>
-inline uint32_t hash_measurement_source(uint32_t hash, uint32_t field_tag, const PhysicalMeasurement<T>& measurement) {
-  hash = hash_u32(hash, field_tag);
-  hash = hash_u32(hash, static_cast<uint32_t>(measurement.source.kind));
-  hash = hash_u32(hash, measurement.source.id);
-  hash = hash_u32(hash, static_cast<uint32_t>(measurement.source.unit));
-  return hash_u32(hash, measurement.source_generation);
-}
-
-inline uint32_t hash_heat_pump_sources(uint32_t hash, uint32_t field_tag, const HeatPumpRawMeasurements& heat_pump) {
-  hash = hash_u32(hash, field_tag);
-  hash = hash_u32(hash, heat_pump.present ? 1U : 0U);
-  hash = hash_measurement_source(hash, field_tag + 1U, heat_pump.water_in_c);
-  hash = hash_measurement_source(hash, field_tag + 2U, heat_pump.water_out_c);
-  hash = hash_measurement_source(hash, field_tag + 3U, heat_pump.mode);
-  hash = hash_measurement_source(hash, field_tag + 4U, heat_pump.compressor_active);
-  hash = hash_measurement_source(hash, field_tag + 5U, heat_pump.defrost_active);
-  hash = hash_measurement_source(hash, field_tag + 6U, heat_pump.valve_transition_active);
-  return hash_measurement_source(hash, field_tag + 7U, heat_pump.oil_return_active);
-}
-
-inline uint32_t source_fingerprint(const LearningSourceInput& input) {
-  uint32_t hash = 2166136261U;
-  hash = hash_u32(hash, static_cast<uint32_t>(input.topology));
-  hash = hash_u32(hash, static_cast<uint32_t>(input.calorimetry.meter_boundary));
-  hash = hash_u32(hash, static_cast<uint32_t>(input.calorimetry.fluid_model));
-  hash = hash_u32(hash, input.calorimetry.calorimetry_generation);
-  hash = hash_u32(hash, static_cast<uint32_t>(input.calorimetry.duo_series_order));
-  hash = hash_measurement_source(hash, 1U, input.room_c);
-  hash = hash_measurement_source(hash, 2U, input.setpoint_c);
-  hash = hash_measurement_source(hash, 3U, input.outside_c);
-  hash = hash_measurement_source(hash, 4U, input.flow_lph);
-  hash = hash_heat_pump_sources(hash, 100U, input.hp1);
-  hash = hash_heat_pump_sources(hash, 200U, input.hp2);
-  hash = hash_measurement_source(hash, 300U, input.boiler_heat);
-  return hash == 0 ? 1U : hash;
-}
-
 inline SnapshotBuildResult failure(const LearningSourceInput& input, SnapshotSourceStatus status, uint32_t reasons) {
   SnapshotBuildResult result;
   result.status = status;
   result.invalid_reasons = reasons == INVALID_NONE ? INVALID_ESSENTIAL_SOURCE : reasons;
-  result.source_fingerprint = source_fingerprint(input);
   result.has_snapshot = input.monotonic_ms != 0 && input.epoch_s != 0;
   result.snapshot.monotonic_ms = input.monotonic_ms;
   result.snapshot.epoch_s = input.epoch_s;
-  result.snapshot.source_generation = input.source_cohort_generation;
-  result.snapshot.physical_context_generation = input.physical_context_generation;
-  result.snapshot.control_generation = input.control_generation;
+  result.snapshot.context_revision = input.context_revision;
   result.snapshot.invalid_reasons = result.invalid_reasons;
   return result;
 }
@@ -446,9 +364,7 @@ inline uint32_t reasons_for_status(SnapshotSourceStatus status) {
     case SnapshotSourceStatus::BOILER_ACTIVE:
       return INVALID_BOILER_HEAT;
     case SnapshotSourceStatus::INVALID_UNCERTAINTY:
-    case SnapshotSourceStatus::INVALID_METER_BOUNDARY:
     case SnapshotSourceStatus::INVALID_CALORIMETRY_CONTRACT:
-    case SnapshotSourceStatus::ZERO_FLOW_NOT_PROVEN:
     case SnapshotSourceStatus::FLOW_OUT_OF_RANGE:
     case SnapshotSourceStatus::SERIES_JUNCTION_MISMATCH:
       return INVALID_SOURCE_UNCERTAIN;
@@ -459,14 +375,129 @@ inline uint32_t reasons_for_status(SnapshotSourceStatus status) {
 
 }  // namespace source_detail
 
+struct CalorimetryResult {
+  SnapshotSourceStatus status = SnapshotSourceStatus::INVALID_CONFIGURATION;
+  float heat_to_water_w = NAN;
+  float mean_water_c = NAN;
+  bool valid = false;
+};
+
+// The same primitive feeds learner snapshots and diagnostic rows. It validates
+// the fixed water / HP1->HP2 measurement boundary once and never infers heat
+// from control demand or room response.
+inline CalorimetryResult evaluate_calorimetry(const LearningSourceInput& input, const QualityConfig& quality) {
+  CalorimetryResult result;
+  if (!valid_quality_config(quality) ||
+      (input.topology != HydronicTopology::SINGLE && input.topology != HydronicTopology::DUO_SERIES) ||
+      !input.hp1.present || (input.topology == HydronicTopology::DUO_SERIES && !input.hp2.present) ||
+      (input.topology == HydronicTopology::SINGLE && input.hp2.present))
+    return result;
+  source_detail::MeasurementMeta measurements[5];
+  size_t measurement_count = 0;
+  SnapshotSourceStatus status =
+      source_detail::append_measurement(input.flow_lph, input.monotonic_ms, measurements, measurement_count);
+  if (status == SnapshotSourceStatus::OK)
+    status = source_detail::append_unit_measurement(input.hp1.water_in_c, PhysicalUnit::HP1, input.monotonic_ms,
+                                                    measurements, measurement_count);
+  if (status == SnapshotSourceStatus::OK)
+    status = source_detail::append_unit_measurement(input.hp1.water_out_c, PhysicalUnit::HP1, input.monotonic_ms,
+                                                    measurements, measurement_count);
+  if (status == SnapshotSourceStatus::OK && input.topology == HydronicTopology::DUO_SERIES)
+    status = source_detail::append_unit_measurement(input.hp2.water_in_c, PhysicalUnit::HP2, input.monotonic_ms,
+                                                    measurements, measurement_count);
+  if (status == SnapshotSourceStatus::OK && input.topology == HydronicTopology::DUO_SERIES)
+    status = source_detail::append_unit_measurement(input.hp2.water_out_c, PhysicalUnit::HP2, input.monotonic_ms,
+                                                    measurements, measurement_count);
+  if (status != SnapshotSourceStatus::OK) {
+    result.status = status;
+    return result;
+  }
+  status = source_detail::validate_skew(measurements, measurement_count);
+  if (status != SnapshotSourceStatus::OK) {
+    result.status = status;
+    return result;
+  }
+  if (!input.calorimetry.uncertainty_proven || !isfinite(input.calorimetry.heat_uncertainty_w) ||
+      input.calorimetry.heat_uncertainty_w < 0.0f || input.calorimetry.heat_uncertainty_w > quality.max_abs_heat_w) {
+    result.status = SnapshotSourceStatus::INVALID_UNCERTAINTY;
+    return result;
+  }
+  if (!isfinite(input.calorimetry.max_flow_lph) || input.calorimetry.max_flow_lph <= 0.0f ||
+      input.calorimetry.max_flow_lph > kAbsoluteMaxFlowLph) {
+    result.status = SnapshotSourceStatus::INVALID_CALORIMETRY_CONTRACT;
+    return result;
+  }
+  if (!isfinite(input.flow_lph.value) || input.flow_lph.value < 0.0f) {
+    result.status = SnapshotSourceStatus::INVALID_VALUE;
+    return result;
+  }
+  if (input.flow_lph.value > input.calorimetry.max_flow_lph) {
+    result.status = SnapshotSourceStatus::FLOW_OUT_OF_RANGE;
+    return result;
+  }
+  const auto water_in_range = [&](float value) {
+    return isfinite(value) && value >= quality.water_min_c && value <= quality.water_max_c;
+  };
+  if (!water_in_range(input.hp1.water_in_c.value) || !water_in_range(input.hp1.water_out_c.value) ||
+      (input.topology == HydronicTopology::DUO_SERIES &&
+       (!water_in_range(input.hp2.water_in_c.value) || !water_in_range(input.hp2.water_out_c.value)))) {
+    result.status = SnapshotSourceStatus::INVALID_VALUE;
+    return result;
+  }
+  if (source_detail::same_source(input.hp1.water_in_c.source, input.hp1.water_out_c.source)) {
+    result.status = SnapshotSourceStatus::DUPLICATE_TEMPERATURE_SOURCE;
+    return result;
+  }
+  double rise_k = static_cast<double>(input.hp1.water_out_c.value) - input.hp1.water_in_c.value;
+  double water_sum_c = static_cast<double>(input.hp1.water_in_c.value) + input.hp1.water_out_c.value;
+  size_t water_count = 2;
+  if (input.topology == HydronicTopology::DUO_SERIES) {
+    const SourceIdentity temperature_sources[] = {input.hp1.water_in_c.source, input.hp1.water_out_c.source,
+                                                  input.hp2.water_in_c.source, input.hp2.water_out_c.source};
+    for (size_t left = 0; left < 4; ++left)
+      for (size_t right = left + 1; right < 4; ++right)
+        if (source_detail::same_source(temperature_sources[left], temperature_sources[right])) {
+          result.status = SnapshotSourceStatus::DUPLICATE_TEMPERATURE_SOURCE;
+          return result;
+        }
+    if (!isfinite(input.calorimetry.max_series_junction_delta_c) ||
+        input.calorimetry.max_series_junction_delta_c <= 0.0f ||
+        input.calorimetry.max_series_junction_delta_c > kAbsoluteMaxSeriesJunctionDeltaC) {
+      result.status = SnapshotSourceStatus::INVALID_CALORIMETRY_CONTRACT;
+      return result;
+    }
+    if (fabsf(input.hp1.water_out_c.value - input.hp2.water_in_c.value) >
+        input.calorimetry.max_series_junction_delta_c) {
+      result.status = SnapshotSourceStatus::SERIES_JUNCTION_MISMATCH;
+      return result;
+    }
+    rise_k += static_cast<double>(input.hp2.water_out_c.value) - input.hp2.water_in_c.value;
+    water_sum_c += static_cast<double>(input.hp2.water_in_c.value) + input.hp2.water_out_c.value;
+    water_count = 4;
+  }
+  const double heat_w =
+      static_cast<double>(input.flow_lph.value) * kWaterVolumetricHeatCapacityJPerLiterK / 3600.0 * rise_k;
+  const double mean_water_c = water_sum_c / static_cast<double>(water_count);
+  if (!isfinite(heat_w) || !isfinite(mean_water_c) || !isfinite(static_cast<float>(heat_w)) ||
+      !isfinite(static_cast<float>(mean_water_c)) || fabs(heat_w) > quality.max_abs_heat_w) {
+    result.status = SnapshotSourceStatus::INVALID_VALUE;
+    return result;
+  }
+  result.status = SnapshotSourceStatus::OK;
+  result.heat_to_water_w = static_cast<float>(heat_w);
+  result.mean_water_c = static_cast<float>(mean_water_c);
+  result.valid = true;
+  return result;
+}
+
 inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& input, const QualityConfig& quality,
-                                                   SnapshotPurpose purpose = SnapshotPurpose::STRUCTURAL_BATCH) {
+                                                   SnapshotPurpose purpose = SnapshotPurpose::STRUCTURAL_BATCH,
+                                                   const CalorimetryResult* prepared_calorimetry = nullptr) {
   using namespace source_detail;
   if (!valid_quality_config(quality) ||
       (purpose != SnapshotPurpose::STRUCTURAL_BATCH && purpose != SnapshotPurpose::THERMAL_DYNAMIC))
     return failure(input, SnapshotSourceStatus::INVALID_CONFIGURATION, INVALID_ESSENTIAL_SOURCE);
-  if (input.monotonic_ms == 0 || input.epoch_s == 0 || input.source_cohort_generation == 0 ||
-      input.physical_context_generation == 0 || input.control_generation == 0)
+  if (input.monotonic_ms == 0 || input.epoch_s == 0 || input.context_revision == 0)
     return failure(input, SnapshotSourceStatus::INVALID_CONFIGURATION, INVALID_ESSENTIAL_SOURCE);
   if (input.topology != HydronicTopology::SINGLE && input.topology != HydronicTopology::DUO_SERIES)
     return failure(input, SnapshotSourceStatus::INVALID_TOPOLOGY, INVALID_SOURCE_UNCERTAIN);
@@ -475,26 +506,6 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
     return failure(input, SnapshotSourceStatus::MISSING_REQUIRED_UNIT, INVALID_ESSENTIAL_SOURCE);
   if (input.topology == HydronicTopology::SINGLE && input.hp2.present)
     return failure(input, SnapshotSourceStatus::UNEXPECTED_UNIT, INVALID_SOURCE_UNCERTAIN);
-
-  const MeterBoundary expected_boundary = input.topology == HydronicTopology::SINGLE
-                                              ? MeterBoundary::SINGLE_HEAT_PUMP_CIRCUIT
-                                              : MeterBoundary::SHARED_DUO_SERIES_CIRCUIT;
-  if (input.calorimetry.meter_boundary != expected_boundary ||
-      input.calorimetry.fluid_model != FluidHeatCapacityModel::WATER_CP_4180)
-    return failure(input, SnapshotSourceStatus::INVALID_METER_BOUNDARY, INVALID_SOURCE_UNCERTAIN);
-  if (input.calorimetry.calorimetry_generation == 0 || !isfinite(input.calorimetry.max_flow_lph) ||
-      input.calorimetry.max_flow_lph <= 0.0f || input.calorimetry.max_flow_lph > kAbsoluteMaxFlowLph)
-    return failure(input, SnapshotSourceStatus::INVALID_CALORIMETRY_CONTRACT, INVALID_SOURCE_UNCERTAIN);
-  if (input.topology == HydronicTopology::DUO_SERIES &&
-      ((input.calorimetry.duo_series_order != DuoSeriesOrder::HP1_TO_HP2 &&
-        input.calorimetry.duo_series_order != DuoSeriesOrder::HP2_TO_HP1) ||
-       !isfinite(input.calorimetry.max_series_junction_delta_c) ||
-       input.calorimetry.max_series_junction_delta_c <= 0.0f ||
-       input.calorimetry.max_series_junction_delta_c > kAbsoluteMaxSeriesJunctionDeltaC))
-    return failure(input, SnapshotSourceStatus::INVALID_CALORIMETRY_CONTRACT, INVALID_SOURCE_UNCERTAIN);
-  if (!input.calorimetry.uncertainty_proven || !isfinite(input.calorimetry.heat_uncertainty_w) ||
-      input.calorimetry.heat_uncertainty_w < 0.0f || input.calorimetry.heat_uncertainty_w > quality.max_abs_heat_w)
-    return failure(input, SnapshotSourceStatus::INVALID_UNCERTAINTY, INVALID_SOURCE_UNCERTAIN);
 
   uint32_t unknown_operation_reasons = INVALID_NONE;
   if (!input.operation.control_mode_valid) unknown_operation_reasons |= INVALID_CONTROL_MODE;
@@ -511,8 +522,8 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
   if (input.operation.captured_monotonic_ms == 0 || input.operation.captured_monotonic_ms > input.monotonic_ms ||
       input.monotonic_ms - input.operation.captured_monotonic_ms > quality.max_interval_ms)
     return failure(input, SnapshotSourceStatus::OPERATIONAL_CONTEXT_STALE, all_operation_reasons);
-  if (input.operation.captured_control_generation != input.control_generation)
-    return failure(input, SnapshotSourceStatus::CONTROL_GENERATION_MISMATCH, all_operation_reasons);
+  if (input.operation.captured_context_revision != input.context_revision)
+    return failure(input, SnapshotSourceStatus::CONTEXT_REVISION_MISMATCH, all_operation_reasons);
   if (input.operation.control_mode != LearningControlMode::HEATING)
     return failure(input, SnapshotSourceStatus::CONTROL_MODE_BLOCKED, INVALID_CONTROL_MODE);
   if (input.operation.active_limit) return failure(input, SnapshotSourceStatus::ACTIVE_LIMIT, INVALID_ACTIVE_LIMIT);
@@ -542,93 +553,41 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
   if (status != SnapshotSourceStatus::OK) return failure(input, status, reasons_for_status(status));
 
   if (!finite_measurement(input.room_c) || !finite_measurement(input.setpoint_c) ||
-      !finite_measurement(input.outside_c) || !finite_measurement(input.flow_lph) ||
-      input.room_c.value < quality.room_min_c || input.room_c.value > quality.room_max_c ||
-      input.setpoint_c.value < quality.setpoint_min_c || input.setpoint_c.value > quality.setpoint_max_c ||
-      input.outside_c.value < quality.outside_min_c || input.outside_c.value > quality.outside_max_c ||
-      input.flow_lph.value < 0.0f)
+      !finite_measurement(input.outside_c) || input.room_c.value < quality.room_min_c ||
+      input.room_c.value > quality.room_max_c || input.setpoint_c.value < quality.setpoint_min_c ||
+      input.setpoint_c.value > quality.setpoint_max_c || input.outside_c.value < quality.outside_min_c ||
+      input.outside_c.value > quality.outside_max_c)
     return failure(input, SnapshotSourceStatus::INVALID_VALUE, INVALID_ESSENTIAL_SOURCE);
-  if (input.flow_lph.value > input.calorimetry.max_flow_lph)
-    return failure(input, SnapshotSourceStatus::FLOW_OUT_OF_RANGE, INVALID_SOURCE_UNCERTAIN);
   status = validate_heat_pump_state(input.hp1);
   if (status == SnapshotSourceStatus::OK && input.topology == HydronicTopology::DUO_SERIES)
     status = validate_heat_pump_state(input.hp2);
   if (status != SnapshotSourceStatus::OK) return failure(input, status, reasons_for_status(status));
-  const bool hp1_water_in_range =
-      input.hp1.water_in_c.value >= quality.water_min_c && input.hp1.water_in_c.value <= quality.water_max_c;
-  const bool hp1_water_out_range =
-      input.hp1.water_out_c.value >= quality.water_min_c && input.hp1.water_out_c.value <= quality.water_max_c;
-  const bool hp2_water_in_range =
-      input.topology != HydronicTopology::DUO_SERIES ||
-      (input.hp2.water_in_c.value >= quality.water_min_c && input.hp2.water_in_c.value <= quality.water_max_c);
-  const bool hp2_water_out_range =
-      input.topology != HydronicTopology::DUO_SERIES ||
-      (input.hp2.water_out_c.value >= quality.water_min_c && input.hp2.water_out_c.value <= quality.water_max_c);
-  if (!hp1_water_in_range || !hp1_water_out_range || !hp2_water_in_range || !hp2_water_out_range)
-    return failure(input, SnapshotSourceStatus::INVALID_VALUE, INVALID_ESSENTIAL_SOURCE);
-  if (input.topology == HydronicTopology::DUO_SERIES) {
-    const float series_junction_delta_c = input.calorimetry.duo_series_order == DuoSeriesOrder::HP1_TO_HP2
-                                              ? fabsf(input.hp1.water_out_c.value - input.hp2.water_in_c.value)
-                                              : fabsf(input.hp2.water_out_c.value - input.hp1.water_in_c.value);
-    if (series_junction_delta_c > input.calorimetry.max_series_junction_delta_c)
-      return failure(input, SnapshotSourceStatus::SERIES_JUNCTION_MISMATCH, INVALID_SOURCE_UNCERTAIN);
-  }
   if (input.boiler_heat.value == BoilerHeatState::HEAT_ACTIVE)
     return failure(input, SnapshotSourceStatus::BOILER_ACTIVE, INVALID_BOILER_HEAT);
   if (input.boiler_heat.value != BoilerHeatState::NO_HEAT)
     return failure(input, SnapshotSourceStatus::BOILER_UNKNOWN, INVALID_ESSENTIAL_SOURCE | INVALID_BOILER_HEAT);
 
-  if (same_source(input.hp1.water_in_c.source, input.hp1.water_out_c.source))
-    return failure(input, SnapshotSourceStatus::DUPLICATE_TEMPERATURE_SOURCE, INVALID_SOURCE_UNCERTAIN);
-  if (input.topology == HydronicTopology::DUO_SERIES) {
-    const SourceIdentity temperature_sources[] = {input.hp1.water_in_c.source, input.hp1.water_out_c.source,
-                                                  input.hp2.water_in_c.source, input.hp2.water_out_c.source};
-    for (size_t left = 0; left < 4; ++left)
-      for (size_t right = left + 1; right < 4; ++right)
-        if (same_source(temperature_sources[left], temperature_sources[right]))
-          return failure(input, SnapshotSourceStatus::DUPLICATE_TEMPERATURE_SOURCE, INVALID_SOURCE_UNCERTAIN);
-  }
-
   status = validate_skew(measurements, measurement_count);
   if (status != SnapshotSourceStatus::OK) return failure(input, status, reasons_for_status(status));
-  if (input.flow_lph.value == 0.0f &&
-      input.calorimetry.zero_flow_proof != ZeroFlowProof::PHYSICAL_METER_COVERS_BOUNDARY)
-    return failure(input, SnapshotSourceStatus::ZERO_FLOW_NOT_PROVEN, INVALID_SOURCE_UNCERTAIN);
-
-  const double watts_per_k =
-      static_cast<double>(input.flow_lph.value) * kWaterVolumetricHeatCapacityJPerLiterK / 3600.0;
-  double temperature_rise_k = static_cast<double>(input.hp1.water_out_c.value) - input.hp1.water_in_c.value;
-  double water_sum_c = static_cast<double>(input.hp1.water_in_c.value) + input.hp1.water_out_c.value;
-  size_t water_count = 2;
-  if (input.topology == HydronicTopology::DUO_SERIES) {
-    temperature_rise_k += static_cast<double>(input.hp2.water_out_c.value) - input.hp2.water_in_c.value;
-    water_sum_c += static_cast<double>(input.hp2.water_in_c.value) + input.hp2.water_out_c.value;
-    water_count = 4;
-  }
-  const double heat_w = watts_per_k * temperature_rise_k;
-  const double mean_water_c = water_sum_c / static_cast<double>(water_count);
-  if (!isfinite(heat_w) || !isfinite(mean_water_c) || !isfinite(static_cast<float>(heat_w)) ||
-      !isfinite(static_cast<float>(mean_water_c)) || fabs(heat_w) > quality.max_abs_heat_w)
-    return failure(input, SnapshotSourceStatus::INVALID_VALUE, INVALID_ESSENTIAL_SOURCE);
+  const CalorimetryResult calorimetry =
+      prepared_calorimetry == nullptr ? evaluate_calorimetry(input, quality) : *prepared_calorimetry;
+  if (!calorimetry.valid) return failure(input, calorimetry.status, reasons_for_status(calorimetry.status));
 
   SnapshotBuildResult result;
   result.status = SnapshotSourceStatus::OK;
   result.has_snapshot = true;
   result.measurement_valid = true;
   result.invalid_reasons = INVALID_NONE;
-  result.source_fingerprint = source_fingerprint(input);
   result.snapshot.monotonic_ms = input.monotonic_ms;
   result.snapshot.epoch_s = input.epoch_s;
-  result.snapshot.source_generation = input.source_cohort_generation;
-  result.snapshot.physical_context_generation = input.physical_context_generation;
-  result.snapshot.control_generation = input.control_generation;
+  result.snapshot.context_revision = input.context_revision;
   result.snapshot.invalid_reasons = INVALID_NONE;
   result.snapshot.room_c = input.room_c.value;
   result.snapshot.setpoint_c = input.setpoint_c.value;
   result.snapshot.outside_c = input.outside_c.value;
-  result.snapshot.heat_to_water_w = static_cast<float>(heat_w);
+  result.snapshot.heat_to_water_w = calorimetry.heat_to_water_w;
   result.snapshot.heat_uncertainty_w = input.calorimetry.heat_uncertainty_w;
-  result.snapshot.mean_water_c = static_cast<float>(mean_water_c);
+  result.snapshot.mean_water_c = calorimetry.mean_water_c;
   return result;
 }
 

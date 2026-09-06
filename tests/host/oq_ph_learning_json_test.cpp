@@ -13,8 +13,8 @@ using namespace oq_ph_learning;
 void add_record(JsonWriter& json, bool comma) {
   static constexpr char kFloat[] = "-3.40282e+38";
   static constexpr char kUint[] = "4294967295";
-  json.add("%s[%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s]", comma ? "," : "", kUint, kUint, kFloat, kFloat, kFloat, kFloat,
-           kFloat, kFloat, kUint, kUint, kUint);
+  json.add("%s[%s,%s,%s,%s,%s,%s,%s,%s,%s]", comma ? "," : "", kUint, kUint, kFloat, kFloat, kFloat, kFloat, kFloat,
+           kFloat, kUint);
 }
 
 void add_diagnostic(JsonWriter& json, bool comma) {
@@ -26,7 +26,7 @@ void add_diagnostic(JsonWriter& json, bool comma) {
   for (size_t index = 0; index < 4U; ++index) json.add(",%s", kFloat);
   json.add(",%s,%s,%s,%s,%s,%s,%s,%s", kBool, kBool, kFloat, kFloat, kBool, kFloat, kFloat, kUint);
   for (size_t index = 0; index < 10U; ++index) json.add(",%s", kBool);
-  json.add(",%s,%s]", kUint, kUint);
+  json.add(",%s]", kUint);
 }
 
 void test_worst_case_export_fits_fixed_psram_cache() {

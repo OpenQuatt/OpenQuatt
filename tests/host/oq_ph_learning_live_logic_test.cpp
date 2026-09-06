@@ -52,14 +52,9 @@ LearningSourceInput diagnostic_input(HydronicTopology topology = HydronicTopolog
   LearningSourceInput input;
   input.monotonic_ms = kNowMs;
   input.topology = topology;
-  input.calorimetry.meter_boundary = topology == HydronicTopology::SINGLE ? MeterBoundary::SINGLE_HEAT_PUMP_CIRCUIT
-                                                                          : MeterBoundary::SHARED_DUO_SERIES_CIRCUIT;
-  input.calorimetry.fluid_model = FluidHeatCapacityModel::WATER_CP_4180;
-  input.calorimetry.calorimetry_generation = 1U;
   input.calorimetry.uncertainty_proven = true;
   input.calorimetry.heat_uncertainty_w = 100.0f;
   input.calorimetry.max_flow_lph = 2000.0f;
-  input.calorimetry.duo_series_order = DuoSeriesOrder::HP1_TO_HP2;
   input.calorimetry.max_series_junction_delta_c = 0.5f;
   input.flow_lph = physical_measurement(1000.0f, 2138U, PhysicalUnit::HP1);
   input.hp1.present = true;
@@ -73,20 +68,14 @@ LearningSourceInput diagnostic_input(HydronicTopology topology = HydronicTopolog
   return input;
 }
 
-void test_compile_time_installation_contract_maps_single_and_duo() {
+void test_compile_time_topology_maps_single_and_duo() {
   LearningSourceInput single;
-  apply_compile_time_installation_contract(single, false);
+  apply_compile_time_topology(single, false);
   assert(single.topology == HydronicTopology::SINGLE);
-  assert(single.calorimetry.meter_boundary == MeterBoundary::SINGLE_HEAT_PUMP_CIRCUIT);
-  assert(single.calorimetry.fluid_model == FluidHeatCapacityModel::WATER_CP_4180);
-  assert(single.calorimetry.duo_series_order == DuoSeriesOrder::UNKNOWN);
 
   LearningSourceInput duo;
-  apply_compile_time_installation_contract(duo, true);
+  apply_compile_time_topology(duo, true);
   assert(duo.topology == HydronicTopology::DUO_SERIES);
-  assert(duo.calorimetry.meter_boundary == MeterBoundary::SHARED_DUO_SERIES_CIRCUIT);
-  assert(duo.calorimetry.fluid_model == FluidHeatCapacityModel::WATER_CP_4180);
-  assert(duo.calorimetry.duo_series_order == DuoSeriesOrder::HP1_TO_HP2);
 }
 
 void test_direct_routes_map_to_exact_source_and_timing() {
@@ -212,12 +201,11 @@ void test_strategy_output_requires_current_matching_owner() {
 }
 
 void test_diagnostic_coverage_never_crosses_invalid_gap_or_generation_edge() {
-  assert(diagnostic_coverage_seconds(100U, 110U, true, true, 7U, 7U, 8U, 8U, 60000U) == 10U);
-  assert(diagnostic_coverage_seconds(100U, 110U, false, true, 7U, 7U, 8U, 8U, 60000U) == 0U);
-  assert(diagnostic_coverage_seconds(100U, 110U, true, true, 7U, 9U, 8U, 8U, 60000U) == 0U);
-  assert(diagnostic_coverage_seconds(100U, 110U, true, true, 7U, 7U, 8U, 9U, 60000U) == 0U);
-  assert(diagnostic_coverage_seconds(100U, 161U, true, true, 7U, 7U, 8U, 8U, 60000U) == 0U);
-  assert(diagnostic_coverage_seconds(100U, 100U, true, true, 7U, 7U, 8U, 8U, 60000U) == 0U);
+  assert(diagnostic_coverage_seconds(100U, 110U, true, true, 7U, 7U, 60000U) == 10U);
+  assert(diagnostic_coverage_seconds(100U, 110U, false, true, 7U, 7U, 60000U) == 0U);
+  assert(diagnostic_coverage_seconds(100U, 110U, true, true, 7U, 9U, 60000U) == 0U);
+  assert(diagnostic_coverage_seconds(100U, 161U, true, true, 7U, 7U, 60000U) == 0U);
+  assert(diagnostic_coverage_seconds(100U, 100U, true, true, 7U, 7U, 60000U) == 0U);
 }
 
 void test_diagnostic_capture_requires_opt_in_and_breaks_pause_continuity() {
@@ -322,17 +310,17 @@ void test_diagnostic_heat_preserves_signed_physical_heat_outside_training_gates(
   input.hp1.mode = physical_measurement(HeatPumpMode::COOLING, 2099U, PhysicalUnit::HP1);
   input.hp1.defrost_active = physical_measurement(true, 2118U, PhysicalUnit::HP1);
   input.boiler_heat = physical_measurement(BoilerHeatState::HEAT_ACTIVE, 7U);
-  const auto heating = diagnostic_signed_heat(input, quality);
+  const auto heating = evaluate_calorimetry(input, quality);
   assert(heating.valid);
   assert(fabsf(heating.heat_to_water_w - 2322.2222f) < 0.01f);
 
   input.hp1.water_out_c.value = 28.0f;
-  const auto cooling = diagnostic_signed_heat(input, quality);
+  const auto cooling = evaluate_calorimetry(input, quality);
   assert(cooling.valid);
   assert(fabsf(cooling.heat_to_water_w + 2322.2222f) < 0.01f);
 
   input = diagnostic_input(HydronicTopology::DUO_SERIES);
-  const auto duo = diagnostic_signed_heat(input, quality);
+  const auto duo = evaluate_calorimetry(input, quality);
   assert(duo.valid);
   assert(fabsf(duo.heat_to_water_w - 5805.5557f) < 0.01f);
 }
@@ -341,29 +329,27 @@ void test_diagnostic_heat_rejects_unproved_or_incoherent_inputs() {
   QualityConfig quality;
   auto input = diagnostic_input();
   input.flow_lph.received_monotonic_ms = kNowMs - kHpLearningTiming.max_age_ms - 1U;
-  assert(!diagnostic_signed_heat(input, quality).valid);
+  assert(!evaluate_calorimetry(input, quality).valid);
 
   input = diagnostic_input();
   input.hp1.water_out_c.received_monotonic_ms = kNowMs - kHpLearningTiming.max_skew_ms - 101U;
-  assert(!diagnostic_signed_heat(input, quality).valid);
+  assert(!evaluate_calorimetry(input, quality).valid);
 
   input = diagnostic_input();
   input.flow_lph.provenance = MeasurementProvenance::REPUBLISHED;
-  assert(!diagnostic_signed_heat(input, quality).valid);
+  assert(!evaluate_calorimetry(input, quality).valid);
 
   input = diagnostic_input();
   input.hp1.water_out_c.source = input.hp1.water_in_c.source;
-  assert(!diagnostic_signed_heat(input, quality).valid);
+  assert(!evaluate_calorimetry(input, quality).valid);
 
   input = diagnostic_input();
   input.calorimetry.heat_uncertainty_w = NAN;
-  assert(!diagnostic_signed_heat(input, quality).valid);
+  assert(!evaluate_calorimetry(input, quality).valid);
 
   input = diagnostic_input();
   input.flow_lph.value = 0.0f;
-  assert(!diagnostic_signed_heat(input, quality).valid);
-  input.calorimetry.zero_flow_proof = ZeroFlowProof::PHYSICAL_METER_COVERS_BOUNDARY;
-  const auto zero = diagnostic_signed_heat(input, quality);
+  const auto zero = evaluate_calorimetry(input, quality);
   assert(zero.valid && zero.heat_to_water_w == 0.0f);
 }
 
@@ -381,7 +367,7 @@ int main() {
   assert(oq_power_house::learning::observe_source_revisions(revisions, sources));
   assert(!oq_power_house::learning::observe_source_revisions(revisions, sources));
 
-  test_compile_time_installation_contract_maps_single_and_duo();
+  test_compile_time_topology_maps_single_and_duo();
   test_direct_routes_map_to_exact_source_and_timing();
   test_direct_route_fails_closed_for_spoof_stale_future_and_offline();
   test_composition_requires_both_receipts_exact_routes_freshness_and_skew();

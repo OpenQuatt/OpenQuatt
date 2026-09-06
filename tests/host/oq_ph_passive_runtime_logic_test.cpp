@@ -8,9 +8,7 @@ using namespace oq_power_house::learning;
 
 constexpr uint8_t kContext[] = {1, 7, 4, 9, 2, 6};
 
-PassiveContextView context(uint32_t source = 1, uint32_t physical = 1, uint32_t control = 1) {
-  return {kContext, sizeof(kContext), source, physical, control};
-}
+PassiveContextView context(uint32_t revision = 1) { return {kContext, sizeof(kContext), revision}; }
 
 PassiveRuntimeConfig config() {
   PassiveRuntimeConfig value;
@@ -22,9 +20,7 @@ LearningSnapshot snapshot(uint64_t monotonic_ms, uint32_t epoch_s) {
   LearningSnapshot value;
   value.monotonic_ms = monotonic_ms;
   value.epoch_s = epoch_s;
-  value.source_generation = 1;
-  value.physical_context_generation = 1;
-  value.control_generation = 1;
+  value.context_revision = 1;
   value.room_c = 20.0f;
   value.setpoint_c = 20.0f;
   value.outside_c = 5.0f;
@@ -77,9 +73,7 @@ void test_pause_revokes_ready_state_without_discarding_records() {
   state.records[0].start_epoch_s = now_epoch - 4U * 3600U;
   state.records[0].end_epoch_s = now_epoch;
   state.records[0].duration_s = 4U * 3600U;
-  state.records[0].source_generation = 1;
-  state.records[0].physical_context_generation = 1;
-  state.records[0].control_generation = 1;
+  state.records[0].context_revision = 1;
   state.records[0].mean_room_c = 20.0f;
   state.records[0].mean_setpoint_c = 20.0f;
   state.records[0].mean_outside_c = 5.0f;
@@ -113,20 +107,19 @@ void test_context_change_restarts_both_models_and_rejects_old_input() {
   state.thermal_state.accepted_samples = 10;
   input.now_monotonic_ms += 1000;
   ++input.now_epoch_s;
-  input.context = context(2, 2, 2);
+  input.context = context(2);
   assert(tick_passive_runtime(state, input) == PassiveRuntimeStatus::CONTEXT_CHANGED);
-  assert(state.source_generation == 2 && state.record_count == 0 && state.thermal_state.accepted_samples == 0);
+  assert(state.context_revision == 2 && state.record_count == 0 && state.thermal_state.accepted_samples == 0);
   input.context = context();
   assert(tick_passive_runtime(state, input) == PassiveRuntimeStatus::STALE_CONTEXT);
   assert(state.blocked);
 
   reset_passive_runtime(state);
   assert(!state.blocked && !state.opted_in && state.record_count == 0);
-  initialize_passive_runtime(state, context(2, 2, 2), config(), true);
+  initialize_passive_runtime(state, context(2), config(), true);
   input = tick(6000, 20000U * 86400U + 6U);
-  input.context = context(2, 2, 2);
-  input.batch_snapshot.source_generation = input.batch_snapshot.physical_context_generation =
-      input.batch_snapshot.control_generation = 2;
+  input.context = context(2);
+  input.batch_snapshot.context_revision = 2;
   input.dynamic_snapshot = input.batch_snapshot;
   tick_passive_runtime(state, input);
   assert(tick_passive_runtime(state, input) == PassiveRuntimeStatus::TIME_DISCONTINUITY);
@@ -144,6 +137,45 @@ void test_direct_pause_breaks_continuity_and_revokes_advice() {
   assert(!paused.batch_advice_ready && !paused.thermal_model_ready && !paused.auto_apply_allowed);
   tick_passive_runtime(state, tick(3000, 20000U * 86400U + 2U));
   assert(state.batch_accumulator.integrated_duration_s == 0);
+}
+
+void test_evaluation_refresh_keeps_physical_evidence() {
+  PassiveRuntimeStorage state;
+  initialize_passive_runtime(state, context(), config(), true);
+  tick_passive_runtime(state, tick(1000, 20000U * 86400U));
+  state.records[0] = {};
+  state.records[0].context_revision = 1;
+  state.record_count = 1;
+  state.thermal_state.accepted_samples = 12;
+  state.fit_running = true;
+  state.fit_pending = false;
+  state.fit_inputs_bound = true;
+  state.batch_result.advice_ready = true;
+
+  auto refreshed_config = config();
+  refreshed_config.thermal_window.unmodeled_gain_bound_valid = true;
+  refreshed_config.thermal_window.unmodeled_gain_bound_w = 750.0f;
+  refresh_passive_evaluation(state, refreshed_config);
+
+  assert(state.record_count == 1);
+  assert(state.thermal_state.accepted_samples == 12);
+  assert(state.config.thermal_window.unmodeled_gain_bound_w == 750.0f);
+  assert(!state.batch_accumulator.active && !state.thermal_accumulator.active);
+  assert(!state.fit_running && state.fit_pending && !state.fit_inputs_bound);
+  assert(!state.batch_result.advice_ready);
+}
+
+void test_invalid_evaluation_refresh_stays_paused_until_corrected() {
+  PassiveRuntimeStorage state;
+  initialize_passive_runtime(state, context(), config(), true);
+  auto invalid_config = config();
+  invalid_config.thermal_model.initial_heat_loss_w_per_k = NAN;
+  refresh_passive_evaluation(state, invalid_config);
+  assert(state.status == PassiveRuntimeStatus::INVALID_CONFIGURATION);
+  assert(tick_passive_runtime(state, tick(1000, 20000U * 86400U)) == PassiveRuntimeStatus::INVALID_CONFIGURATION);
+
+  refresh_passive_evaluation(state, config());
+  assert(tick_passive_runtime(state, tick(2000, 20000U * 86400U + 1U)) == PassiveRuntimeStatus::COLLECTING);
 }
 
 void test_active_or_reference_change_revokes_bound_fit_result() {
@@ -207,6 +239,8 @@ int main() {
   test_pause_revokes_ready_state_without_discarding_records();
   test_context_change_restarts_both_models_and_rejects_old_input();
   test_direct_pause_breaks_continuity_and_revokes_advice();
+  test_evaluation_refresh_keeps_physical_evidence();
+  test_invalid_evaluation_refresh_stays_paused_until_corrected();
   test_active_or_reference_change_revokes_bound_fit_result();
   test_missing_utc_pauses_without_blocking_owner();
   test_summary_never_exposes_readiness_without_live_valid_context();

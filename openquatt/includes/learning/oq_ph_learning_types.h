@@ -20,7 +20,7 @@ constexpr uint64_t kSegmentDurationMs = 4ULL * 60ULL * 60ULL * 1000ULL;
 constexpr uint32_t kMaxRecordAgeS = 42U * 24U * 60U * 60U;
 constexpr uint8_t kMaxHuberPasses = 6;
 constexpr uint64_t kSetpointRecoveryMs = 60ULL * 60ULL * 1000ULL;
-constexpr uint16_t kLearningAlgorithmVersion = 1;
+constexpr uint16_t kLearningAlgorithmVersion = 2;
 
 enum class LearningStatus : uint8_t {
   OK = 0,
@@ -69,9 +69,7 @@ enum InvalidReason : uint32_t {
 struct LearningSnapshot {
   uint64_t monotonic_ms = 0;
   uint32_t epoch_s = 0;
-  uint32_t source_generation = 0;
-  uint32_t physical_context_generation = 0;
-  uint32_t control_generation = 0;
+  uint32_t context_revision = 0;
   uint32_t invalid_reasons = INVALID_NONE;
   float room_c = NAN;
   float setpoint_c = NAN;
@@ -85,9 +83,7 @@ struct SegmentRecord {
   uint32_t start_epoch_s = 0;
   uint32_t end_epoch_s = 0;
   uint32_t duration_s = 0;
-  uint32_t source_generation = 0;
-  uint32_t physical_context_generation = 0;
-  uint32_t control_generation = 0;
+  uint32_t context_revision = 0;
   float mean_room_c = NAN;
   float mean_setpoint_c = NAN;
   float mean_outside_c = NAN;
@@ -106,14 +102,12 @@ struct RecordBuffer {
   size_t capacity = 0;
 };
 
-// Durable measurement configuration plus boot-local cohort counters. Firmware
-// uses one revision for all three counters; replay accepts the existing CSV fields.
+// Durable measurement configuration plus the revision that binds one coherent
+// learning cohort. A changed setting or source starts a new cohort.
 struct PassiveContextView {
   const uint8_t* bytes = nullptr;
   size_t size = 0;
-  uint32_t source_generation = 0;
-  uint32_t physical_context_generation = 0;
-  uint32_t control_generation = 0;
+  uint32_t context_revision = 0;
 };
 
 struct LearningDatasetView {

@@ -36,8 +36,7 @@ static_assert(kMaxSegmentRecords == kMaxExportRecordRows,
 struct DiagnosticRow {
   uint32_t epoch = 0;
   uint32_t invalid = 0;
-  uint32_t source_generation = 0;
-  uint32_t control_generation = 0;
+  uint32_t context_revision = 0;
   float room = NAN, setpoint = NAN, outside = NAN, heat = NAN, base = NAN, request = NAN;
   uint32_t coverage_s = 0;
   int control_mode = 0;
@@ -68,7 +67,7 @@ struct RuntimeStorage {
   uint64_t recovery_until_ms = 0;
   float last_setpoint = NAN;
   uint32_t context_revision = 1;
-  bool changed = false, reset_requested = false;
+  bool measurement_context_changed = false, evaluation_policy_changed = false, reset_requested = false;
   const esp_partition_t* partition = nullptr;
   SnapshotDiagnostics source_diagnostics;
   uint64_t max_tick_us = 0;
@@ -97,13 +96,19 @@ class Runtime {
     publish_reset_pending_export_();
   }
 
-  void configuration_changed() {
+  void measurement_context_changed() {
     if (!storage_) return;
     auto& state = storage_[0];
-    state.changed = true;
+    state.measurement_context_changed = true;
     // Invalidate source caches on every setting event, including A->B->A before
     // the next periodic selection. This does not republish or change controls.
     oq_sensor_source::runtime().source_configuration_changed();
+    pause();
+  }
+
+  void evaluation_policy_changed() {
+    if (!storage_) return;
+    storage_[0].evaluation_policy_changed = true;
     pause();
   }
 
@@ -126,24 +131,24 @@ class Runtime {
     const bool sources_changed = context_valid && observe_source_revisions(state.source_revisions, state.sources);
     const bool context_changed =
         state.learner.initialized &&
-        (state.changed || sources_changed ||
+        (state.measurement_context_changed || sources_changed ||
          (context_valid && (state.context_size != state.learner.context_size ||
                             memcmp(state.context, state.learner.context_bytes, state.context_size) != 0)));
     if (context_changed && ++state.context_revision == 0) state.context_revision = 1;
-    input.source_cohort_generation = state.context_revision;
-    input.physical_context_generation = state.context_revision;
-    input.control_generation = state.context_revision;
-    input.operation.captured_control_generation = state.context_revision;
-    PassiveContextView context{state.context, state.context_size, state.context_revision, state.context_revision,
-                               state.context_revision};
+    input.context_revision = state.context_revision;
+    input.operation.captured_context_revision = state.context_revision;
+    PassiveContextView context{state.context, state.context_size, state.context_revision};
     const bool reset_processed = state.reset_requested;
-    if (state.changed || context_changed || reset_processed) {
+    if (state.measurement_context_changed || context_changed || reset_processed) {
       reset_passive_runtime(state.learner);
       state.journal.reset(
           [&state]() { return erase_slots_(state.partition); },
           [&state](size_t slot, uint8_t* data, size_t size) { return read_slot_(state.partition, slot, data, size); });
-      state.changed = false;
+      state.measurement_context_changed = false;
+    } else if (state.evaluation_policy_changed && state.learner.initialized) {
+      refresh_passive_evaluation(state.learner, state.config);
     }
+    state.evaluation_policy_changed = false;
     if (reset_processed) {
       state.reset_requested = false;
       state.row_count = state.row_next = 0;
@@ -162,8 +167,11 @@ class Runtime {
         restore_passive_records(state.learner, records);
     }
 
-    const auto batch = build_learning_snapshot(input, state.config.quality, SnapshotPurpose::STRUCTURAL_BATCH);
-    const auto dynamic = build_learning_snapshot(input, state.config.quality, SnapshotPurpose::THERMAL_DYNAMIC);
+    const auto calorimetry = evaluate_calorimetry(input, state.config.quality);
+    const auto batch =
+        build_learning_snapshot(input, state.config.quality, SnapshotPurpose::STRUCTURAL_BATCH, &calorimetry);
+    const auto dynamic =
+        build_learning_snapshot(input, state.config.quality, SnapshotPurpose::THERMAL_DYNAMIC, &calorimetry);
     state.source_diagnostics = combined_snapshot_diagnostics(batch, dynamic);
     state.tick = PassiveTickInput{};
     auto& tick = state.tick;
@@ -190,7 +198,8 @@ class Runtime {
       pause_passive_runtime(state.learner, now_ms);
     }
     const auto diagnostic_capture = diagnostic_capture_decision(state.diagnostic_capture, enabled && !reset_processed);
-    if (diagnostic_capture.capture) capture_diagnostics_(state, dynamic, epoch, diagnostic_capture.use_previous);
+    if (diagnostic_capture.capture)
+      capture_diagnostics_(state, dynamic, calorimetry, epoch, diagnostic_capture.use_previous);
     const bool persistence_window_safe = input.operation.service_or_ota_valid && !input.operation.service_or_ota;
     if (state.learner.initialized && context_valid && epoch != 0 && enabled && persistence_window_safe)
       state.journal.save(
@@ -212,12 +221,20 @@ class Runtime {
   bool allocation_attempted_ = false;
 
   template <typename T>
-  void watch_number_(T& entity) {
-    entity.add_on_state_callback([this](float) { this->configuration_changed(); });
+  void watch_measurement_number_(T& entity) {
+    entity.add_on_state_callback([this](float) { this->measurement_context_changed(); });
   }
   template <typename T>
-  void watch_select_(T& entity) {
-    entity.add_on_state_callback([this](size_t) { this->configuration_changed(); });
+  void watch_measurement_select_(T& entity) {
+    entity.add_on_state_callback([this](size_t) { this->measurement_context_changed(); });
+  }
+  template <typename T>
+  void watch_policy_number_(T& entity) {
+    entity.add_on_state_callback([this](float) { this->evaluation_policy_changed(); });
+  }
+  template <typename T>
+  void watch_policy_select_(T& entity) {
+    entity.add_on_state_callback([this](size_t) { this->evaluation_policy_changed(); });
   }
 
   bool setup_() {
@@ -234,40 +251,40 @@ class Runtime {
     state.partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "openquatt_data");
     state.journal.setup(state.partition != nullptr &&
                         OpenQuattFlashLayout::HOUSE_LEARNING_END_OFFSET <= state.partition->size);
-    watch_select_(id(room_temp_source));
-    watch_select_(id(room_setpoint_source));
-    watch_select_(id(outside_temp_source));
-    watch_select_(id(flow_source));
-    watch_select_(id(oq_duo_outdoor_flow_mode));
-    watch_select_(id(hp_generation));
+    watch_measurement_select_(id(room_temp_source));
+    watch_measurement_select_(id(room_setpoint_source));
+    watch_measurement_select_(id(outside_temp_source));
+    watch_measurement_select_(id(flow_source));
+    watch_measurement_select_(id(oq_duo_outdoor_flow_mode));
+    watch_measurement_select_(id(hp_generation));
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-    watch_select_(id(oq_q_flow_source));
+    watch_measurement_select_(id(oq_q_flow_source));
 #endif
-    watch_select_(id(oq_heat_control_mode));
-    watch_select_(id(oq_cm_override));
-    watch_select_(id(oq_boiler_connection));
-    watch_number_(id(oq_ph_learning_heat_uncertainty));
-    watch_number_(id(oq_ph_learning_maximum_flow));
-    watch_number_(id(oq_ph_learning_junction_tolerance));
-    watch_number_(id(oq_ph_learning_gain_bound));
-    watch_number_(id(house_cold_temp_c));
-    watch_number_(id(house_zero_power_temp_c));
-    watch_number_(id(house_rated_power_w));
-    watch_number_(id(ph_kp_w_per_k));
-    watch_number_(id(ph_comfort_band_below_c));
-    watch_number_(id(ph_comfort_band_above_c));
-    watch_number_(id(ph_demand_rise_time_min));
-    watch_number_(id(ph_demand_fall_time_min));
-    watch_number_(id(hp1_water_in_temp_offset));
-    watch_number_(id(hp1_water_out_temp_offset));
+    watch_policy_select_(id(oq_heat_control_mode));
+    watch_policy_select_(id(oq_cm_override));
+    watch_policy_select_(id(oq_boiler_connection));
+    watch_measurement_number_(id(oq_ph_learning_heat_uncertainty));
+    watch_measurement_number_(id(oq_ph_learning_maximum_flow));
+    watch_measurement_number_(id(oq_ph_learning_junction_tolerance));
+    watch_policy_number_(id(oq_ph_learning_gain_bound));
+    watch_policy_number_(id(house_cold_temp_c));
+    watch_policy_number_(id(house_zero_power_temp_c));
+    watch_policy_number_(id(house_rated_power_w));
+    watch_policy_number_(id(ph_kp_w_per_k));
+    watch_policy_number_(id(ph_comfort_band_below_c));
+    watch_policy_number_(id(ph_comfort_band_above_c));
+    watch_policy_number_(id(ph_demand_rise_time_min));
+    watch_policy_number_(id(ph_demand_fall_time_min));
+    watch_measurement_number_(id(hp1_water_in_temp_offset));
+    watch_measurement_number_(id(hp1_water_out_temp_offset));
 #if OQ_TOPOLOGY_DUO
-    watch_number_(id(hp2_water_in_temp_offset));
-    watch_number_(id(hp2_water_out_temp_offset));
+    watch_measurement_number_(id(hp2_water_in_temp_offset));
+    watch_measurement_number_(id(hp2_water_out_temp_offset));
 #endif
     id(oq_ph_learning_calorimetry_confirmed).add_on_state_callback([this](bool confirmed) {
       this->calorimetry_confirmation_changed_(confirmed);
     });
-    id(cic_feed_url).add_on_state_callback([this](const std::string&) { this->configuration_changed(); });
+    id(cic_feed_url).add_on_state_callback([this](const std::string&) { this->measurement_context_changed(); });
     return true;
   }
 
@@ -283,7 +300,7 @@ class Runtime {
       pause();
       return;
     }
-    configuration_changed();
+    measurement_context_changed();
   }
 
   void capture_(RuntimeStorage& state, uint64_t now_ms, uint32_t epoch) {
@@ -305,16 +322,13 @@ class Runtime {
     in.hp2 = learning_hp_measurements(oq_sources::hp2, PhysicalUnit::HP2, id(hp2_water_in_temp_offset).state,
                                       id(hp2_water_out_temp_offset).state, state.context_revision);
 #endif
-    apply_compile_time_installation_contract(in, OQ_TOPOLOGY_DUO);
+    apply_compile_time_topology(in, OQ_TOPOLOGY_DUO);
     auto& calorimetry = in.calorimetry;
-    calorimetry.calorimetry_generation = state.context_revision;
     calorimetry.heat_uncertainty_w = id(oq_ph_learning_heat_uncertainty).state;
     calorimetry.uncertainty_proven =
         id(oq_ph_learning_calorimetry_confirmed).state && calorimetry.heat_uncertainty_w > 0.0f;
     calorimetry.max_flow_lph = id(oq_ph_learning_maximum_flow).state;
     calorimetry.max_series_junction_delta_c = id(oq_ph_learning_junction_tolerance).state;
-    calorimetry.zero_flow_proof =
-        calorimetry.uncertainty_proven ? ZeroFlowProof::PHYSICAL_METER_COVERS_BOUNDARY : ZeroFlowProof::NOT_PROVEN;
     const bool opentherm_selected = id(oq_boiler_connection).current_option() == "OpenTherm";
     const bool boiler_runtime_available = id(oq_boiler_connection).has_state() &&
                                           (opentherm_selected || id(oq_boiler_connection).current_option() == "R1") &&
@@ -403,9 +417,6 @@ class Runtime {
     // Compatibility is explicit: ordinary rebuilds and web fixes retain data.
     u32(kLearningAlgorithmVersion);
     u32(static_cast<uint32_t>(state.input.topology));
-    u32(static_cast<uint32_t>(state.input.calorimetry.meter_boundary));
-    u32(static_cast<uint32_t>(state.input.calorimetry.fluid_model));
-    u32(static_cast<uint32_t>(state.input.calorimetry.duo_series_order));
     u32(OQ_HARDWARE_HEATPUMP_CONTROLLER_Q);
     for (const auto& source : state.sources) {
       u32(static_cast<uint32_t>(source.route));
@@ -423,24 +434,12 @@ class Runtime {
     str(id(oq_duo_outdoor_flow_mode).current_option());
     str(id(hp_generation).current_option());
     str(id(cic_feed_url).state);
-    str(id(oq_heat_control_mode).current_option());
-    str(id(oq_cm_override).current_option());
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     str(id(oq_q_flow_source).current_option());
 #endif
-    str(id(oq_boiler_connection).current_option());
     f32(id(oq_ph_learning_heat_uncertainty).state);
     f32(id(oq_ph_learning_maximum_flow).state);
     f32(id(oq_ph_learning_junction_tolerance).state);
-    f32(id(oq_ph_learning_gain_bound).state);
-    f32(id(house_rated_power_w).state);
-    f32(id(house_cold_temp_c).state);
-    f32(id(house_zero_power_temp_c).state);
-    f32(id(ph_kp_w_per_k).state);
-    f32(id(ph_comfort_band_below_c).state);
-    f32(id(ph_comfort_band_above_c).state);
-    f32(id(ph_demand_rise_time_min).state);
-    f32(id(ph_demand_fall_time_min).state);
     f32(id(hp1_water_in_temp_offset).state);
     f32(id(hp1_water_out_temp_offset).state);
 #if OQ_TOPOLOGY_DUO
@@ -479,8 +478,8 @@ class Runtime {
     publish_reset_pending_export_();
   }
 
-  static void capture_diagnostics_(RuntimeStorage& state, const SnapshotBuildResult& dynamic, uint32_t epoch,
-                                   bool use_previous) {
+  static void capture_diagnostics_(RuntimeStorage& state, const SnapshotBuildResult& dynamic,
+                                   const CalorimetryResult& calorimetry, uint32_t epoch, bool use_previous) {
     const DiagnosticRow previous =
         use_previous && state.row_count > 0
             ? state.rows[(state.row_next + kMaxExportDiagnosticRows - 1U) % kMaxExportDiagnosticRows]
@@ -489,14 +488,12 @@ class Runtime {
     row = DiagnosticRow{};
     row.epoch = epoch;
     row.invalid = dynamic.invalid_reasons;
-    row.source_generation = state.input.source_cohort_generation;
-    row.control_generation = state.input.control_generation;
+    row.context_revision = state.input.context_revision;
     row.room = state.input.room_c.valid ? state.input.room_c.value : NAN;
     row.setpoint = state.input.setpoint_c.valid ? state.input.setpoint_c.value : NAN;
     row.outside = state.input.outside_c.valid ? state.input.outside_c.value : NAN;
-    const auto diagnostic_heat = diagnostic_signed_heat(state.input, state.config.quality);
-    row.heat = diagnostic_heat.valid ? diagnostic_heat.heat_to_water_w : NAN;
-    row.heat_valid = diagnostic_heat.valid;
+    row.heat = calorimetry.valid ? calorimetry.heat_to_water_w : NAN;
+    row.heat_valid = calorimetry.valid;
     row.training_qualified = dynamic.measurement_valid;
     row.base = oq_power_house::house_line_power_w(active_line_(), row.outside);
     row.request_known = state.input.operation.active_limit_valid && isfinite(id(oq_strategy_requested_power_w));
@@ -529,9 +526,9 @@ class Runtime {
     row.protection_known = hp1_protection_known;
     row.protection_active = row.protection_known && hp1_protection_active;
 #endif
-    row.coverage_s = diagnostic_coverage_seconds(
-        previous.epoch, epoch, previous.heat_valid, row.heat_valid, previous.source_generation, row.source_generation,
-        previous.control_generation, row.control_generation, state.config.quality.max_interval_ms);
+    row.coverage_s = diagnostic_coverage_seconds(previous.epoch, epoch, previous.heat_valid, row.heat_valid,
+                                                 previous.context_revision, row.context_revision,
+                                                 state.config.quality.max_interval_ms);
     state.row_next = (state.row_next + 1U) % kMaxExportDiagnosticRows;
     if (state.row_count < kMaxExportDiagnosticRows) ++state.row_count;
   }
@@ -659,10 +656,9 @@ class Runtime {
     else
       json.add("%u", last_sample_epoch);
     json.add(
-        ",\"source_generation\":%u,\"physical_generation\":%u,\"control_generation\":%u,\"journal_status\":\"%s\","
+        ",\"context_revision\":%u,\"journal_status\":\"%s\","
         "\"model_validation_status\":\"%s\",\"sources\":{",
-        state.input.source_cohort_generation, state.input.physical_context_generation, state.input.control_generation,
-        state.journal.status, model_validation_status_name(summary.validation.status));
+        state.input.context_revision, state.journal.status, model_validation_status_name(summary.validation.status));
     const char* names[]{"room", "setpoint", "outside", "flow"};
     const bool valid[]{state.input.room_c.valid, state.input.setpoint_c.valid, state.input.outside_c.valid,
                        state.input.flow_lph.valid};
@@ -732,7 +728,7 @@ class Runtime {
         json.number(v);
         json.add(",");
       }
-      json.add("%u,%u,%u]", r.source_generation, r.physical_context_generation, r.control_generation);
+      json.add("%u]", r.context_revision);
     }
     json.add("%s", kExportDiagnosticsPrefix);
     for (size_t i = 0; i < state.row_count; ++i) {
@@ -752,12 +748,12 @@ class Runtime {
       json.number(r.heat - r.base);
       json.add(",");
       json.number(r.request - r.heat);
-      json.add(",%u,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%u,%u]", r.coverage_s, r.hp1_active ? "true" : "false",
+      json.add(",%u,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%u]", r.coverage_s, r.hp1_active ? "true" : "false",
                r.hp1_active_known ? "true" : "false", r.hp2_active ? "true" : "false",
                r.hp2_active_known ? "true" : "false", r.active_limit ? "true" : "false",
                r.active_limit_known ? "true" : "false", r.boiler_active ? "true" : "false",
                r.boiler_known ? "true" : "false", r.protection_active ? "true" : "false",
-               r.protection_known ? "true" : "false", r.source_generation, r.control_generation);
+               r.protection_known ? "true" : "false", r.context_revision);
     }
     json.add("%s", kExportSuffix);
     const size_t length = json.size();

@@ -10,9 +10,7 @@ using namespace oq_power_house::learning;
 
 constexpr uint8_t kContext[] = {9, 8, 7, 6, 5, 4, 3, 2, 1};
 
-PassiveContextView context(uint32_t source = 1, uint32_t physical = 2, uint32_t control = 3) {
-  return {kContext, sizeof(kContext), source, physical, control};
-}
+PassiveContextView context(uint32_t revision = 1) { return {kContext, sizeof(kContext), revision}; }
 
 PassiveRuntimeConfig config() {
   PassiveRuntimeConfig value;
@@ -25,9 +23,7 @@ SegmentRecord record(uint32_t start_epoch_s, float outside_c) {
   value.start_epoch_s = start_epoch_s;
   value.end_epoch_s = start_epoch_s + 4U * 3600U;
   value.duration_s = 4U * 3600U;
-  value.source_generation = 1;
-  value.physical_context_generation = 2;
-  value.control_generation = 3;
+  value.context_revision = 1;
   value.mean_room_c = 20.0f;
   value.mean_setpoint_c = 20.0f;
   value.mean_outside_c = outside_c;
@@ -65,6 +61,8 @@ PassiveRuntimeStorage populated(uint32_t now_epoch_s) {
 }
 
 void test_round_trip_and_reboot_remap_never_restores_readiness() {
+  static_assert(kLearningJournalHeaderBytes == 32U);
+  static_assert(kLearningJournalRecordBytes == 56U);
   constexpr uint32_t now_epoch = 20000U * 86400U + 12U * 3600U;
   auto original = populated(now_epoch);
   uint8_t bytes[kLearningJournalMaxBytes];
@@ -77,13 +75,11 @@ void test_round_trip_and_reboot_remap_never_restores_readiness() {
   assert(metadata.status == LearningJournalStatus::OK && metadata.sequence == 41 && metadata.record_count == 2);
 
   PassiveRuntimeStorage restored;
-  assert(initialize_passive_runtime(restored, context(7, 8, 9), config(), true) == PassiveRuntimeStatus::COLLECTING);
+  assert(initialize_passive_runtime(restored, context(7), config(), true) == PassiveRuntimeStatus::COLLECTING);
   assert(restore_passive_records(restored,
                                  LearningJournalRecords{{bytes, size}, metadata.context_size, metadata.record_count}));
   assert(restored.record_count == 2 && restored.restored_records && restored.fit_pending);
-  assert(restored.records[0].source_generation == 7);
-  assert(restored.records[0].physical_context_generation == 8);
-  assert(restored.records[0].control_generation == 9);
+  assert(restored.records[0].context_revision == 7);
   assert(restored.thermal_state.accepted_samples == 0);
   const auto summary = passive_runtime_summary(restored, 1);
   assert(!summary.batch_advice_ready && !summary.thermal_model_ready);
@@ -128,7 +124,7 @@ void test_corrupt_truncated_schema_count_context_and_record_fail_closed() {
              .status == LearningJournalStatus::CONTEXT_MISMATCH);
 
   memcpy(changed, bytes, size);
-  const size_t mean_room_offset = kLearningJournalHeaderBytes + sizeof(kContext) + 24U;
+  const size_t mean_room_offset = kLearningJournalHeaderBytes + sizeof(kContext) + 16U;
   write_u32(changed, mean_room_offset, 0x7FC00000U);
   repair_crc(changed, size);
   assert(

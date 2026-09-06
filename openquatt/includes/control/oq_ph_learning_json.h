@@ -22,23 +22,22 @@ constexpr size_t kMaxSerializedBoolChars = 5U;
 static constexpr char kExportRecordsPrefix[] =
     "{\"schema\":1,\"mode\":\"passive\",\"auto_apply_allowed\":false,\"record_columns\":[\"start_epoch_s\",\"end_"
     "epoch_s\",\"mean_room_c\",\"mean_setpoint_c\",\"mean_outside_c\",\"mean_heat_w\",\"heat_uncertainty_w\","
-    "\"room_trend_k_per_h\",\"source_generation\",\"physical_generation\",\"control_generation\"],\"records\":[";
+    "\"room_trend_k_per_h\",\"context_revision\"],\"records\":[";
 static constexpr char kExportDiagnosticsPrefix[] =
     "],\"diagnostic_columns\":[\"epoch_s\",\"invalid_reasons\",\"control_mode\",\"room_c\",\"setpoint_c\","
     "\"outside_c\",\"actual_signed_heat_w\",\"heat_valid\",\"training_qualified\",\"base_w\",\"request_w\","
     "\"request_known\",\"heat_minus_base_w\",\"request_minus_heat_w\",\"coverage_s\",\"hp1_active\","
     "\"hp1_active_known\",\"hp2_active\",\"hp2_active_known\",\"active_limit\",\"active_limit_known\","
-    "\"boiler_active\",\"boiler_known\",\"protection_active\",\"protection_known\",\"source_generation\","
-    "\"control_generation\"],\"diagnostics\":[";
+    "\"boiler_active\",\"boiler_known\",\"protection_active\",\"protection_known\",\"context_revision\"],"
+    "\"diagnostics\":[";
 static constexpr char kExportSuffix[] = "]}";
 
 constexpr size_t delimited_rows_max(size_t row_size, size_t count) {
   return count == 0U ? 0U : row_size * count + count - 1U;
 }
 
-constexpr size_t kExportRecordRowMaxBytes =
-    2U + 10U + 2U * kMaxSerializedUint32Chars + 6U * kMaxSerializedFloatChars + 3U * kMaxSerializedUint32Chars;
-constexpr size_t kExportDiagnosticRowMaxBytes = 2U + 26U + 5U * kMaxSerializedUint32Chars + kMaxSerializedInt32Chars +
+constexpr size_t kExportRecordRowMaxBytes = 2U + 8U + 3U * kMaxSerializedUint32Chars + 6U * kMaxSerializedFloatChars;
+constexpr size_t kExportDiagnosticRowMaxBytes = 2U + 25U + 4U * kMaxSerializedUint32Chars + kMaxSerializedInt32Chars +
                                                 8U * kMaxSerializedFloatChars + 13U * kMaxSerializedBoolChars;
 constexpr size_t kMaxExportJsonBytes =
     sizeof(kExportRecordsPrefix) - 1U + delimited_rows_max(kExportRecordRowMaxBytes, kMaxExportRecordRows) +

@@ -18,13 +18,10 @@ Waveshare. Er zijn geen extra Modbuspolls of regelwrites toegevoegd.
 - provenance `PHYSICAL_RECEIPT`, of een gecontroleerde `PHYSICAL_COMPOSITION` met alle raw receipts.
   `CONTROL_CONTRACT` is uitsluitend toegestaan voor het gecontroleerde geen-ketelvraagcontract in CM2.
 
-`HELD`, `SYNTHESIZED`, `REPUBLISHED` en onbekende provenance worden geweigerd. De adapter retourneert
-daarnaast een 32-bits `source_fingerprint` over de exacte bronidentiteiten, hun eigen generaties en de
-calorimetriegeneratie. Dit is alleen diagnostiek/cachehint: de hash is niet collision-free, niet monotoon
-en verleent geen toestemming om een model toe te passen. De individuele brongeneraties hoeven niet aan
-elkaar gelijk te zijn. De live binding gebruikt één contextrevision voor source-, physical- en
-controlgeneraties. De leerkern bewaart de gebonden meetcontext en wijzigt als enige de modelstate.
-Er is geen aparte generation-owner of boot-token in NVS.
+`HELD`, `SYNTHESIZED`, `REPUBLISHED` en onbekende provenance worden geweigerd. De live binding bewaart
+de gekozen route en bindt elke cohort aan één `context_revision`. De revision verandert alleen wanneer
+de fysieke meetcontext verandert; de leerkern bewaart de gebonden meetcontext en wijzigt als enige de
+modelstate. Er is geen aparte generation-owner, fingerprint of boot-token in NVS.
 
 
 Een snapshot vereist actuele room-, setpoint-, outside- en flowmetingen, water-in en water-uit per
@@ -33,8 +30,8 @@ positief bewijs dat de ketel geen warmte levert. Eén ontbrekend veld, een onbek
 staleness of te grote tijdskew maakt de hele snapshot ongeldig. Een onbekende waarde wordt nooit nul.
 De caller moet ook expliciet geldige operationele bewijzen leveren voor verwarmende Control Mode, geen
 actieve cap, geen service/OTA, geen setpoint-herstelperiode en comfort binnen de door de gebruiker
-gekozen band. De capture draagt een monotone timestamp en de bijbehorende control generation; toekomst,
-ouder dan `QualityConfig::max_interval_ms` of een generation mismatch wordt geweigerd. De adapter leidt
+gekozen band. De capture draagt een monotone timestamp en dezelfde contextrevision; toekomst,
+ouder dan `QualityConfig::max_interval_ms` of een revision mismatch wordt geweigerd. De adapter leidt
 geen vaste comfortband af uit room en setpoint. Alle gate-validity en het comfortbewijs staan standaard
 uit.
 
@@ -45,13 +42,11 @@ aggregate”, terwijl `measurement_valid` aangeeft of de meetwaarden bruikbaar z
 bruikbare eventtijd reset deze helper het segment, zodat aggregatie nooit stil over het gat heen loopt.
 
 Alleen `SINGLE` en bewezen `DUO_SERIES` worden geaccepteerd. `DUO_PARALLEL` en onbekende topologie
-worden geweigerd. De caller moet bovendien expliciet verklaren dat de flowmeter de Single-circuitgrens
-of de gedeelde seriële Duo-grens meet, dat de bestaande wateraanname `cp = 4180 J/(l·K)` past en dat de
-calorimetrische onzekerheid bekend is. Het contract vereist een nonzero calorimetriegeneratie, een
-gekalibreerde maximumflow en voor Duo de fysieke serievolgorde plus maximale junction-afwijking. De
-gemeten flow en `T_out` van de eerste naar `T_in` van de tweede unit worden hiertegen getoetst. Geen van
-deze verklaringen staat standaard aan. De caller moet bij een kalibratie- of andere fysieke wijziging ook
-`physical_context_generation` verhogen.
+worden geweigerd. De installatiecontracten zijn vast: water met `cp = 4180 J/(l·K)`, en bij Duo HP1 vóór
+HP2. Het contract bevat daarom alleen de gemeten onzekerheid, een gekalibreerde maximumflow en voor Duo
+de maximale junction-afwijking. De gemeten flow en `T_out` van HP1 naar `T_in` van HP2 worden hiertegen
+getoetst. Een wijziging van sensorroute, kalibratie of ander fysiek meetcontract maakt de revision nieuw
+en wist de onverenigbare meetgeschiedenis.
 
 Per-veld max-age en max-skew blijven cadence-specifiek. Als ontwikkelvangrail weigert deze pure laag
 contractwaarden boven één uur; dit is geen aanbevolen freshnesswaarde. De live binding moet veel
@@ -65,11 +60,9 @@ Duo series: Q = flow_lph / 3600 * 4180 * ((T_out,1 - T_in,1) + (T_out,2 - T_in,2
 ```
 
 Compressor-uitperioden blijven meetellen: de adapter rekent met het gemeten signed temperatuurverschil
-en vervangt dit niet door nul. Exact nuldebiet levert alleen nulwarmte wanneer de fysieke flowmeting de
-verklaarde meetgrens dekt en de caller `PHYSICAL_METER_COVERS_BOUNDARY` meegeeft. Watermetingen blijven
-ook dan verplicht, omdat `LearningSnapshot` een actuele gemiddelde watertemperatuur nodig heeft voor de
-opslagcontrole. Een eventuele latere uitzondering vereist een apart, nauw omschreven no-heatbewijs én
-een geldige bron voor die gemiddelde watertemperatuur.
+en vervangt dit niet door nul. Exact nuldebiet levert nulwarmte uit de fysieke flowmeting. Watermetingen
+blijven ook dan verplicht, omdat `LearningSnapshot` een actuele gemiddelde watertemperatuur nodig heeft
+voor de opslagcontrole.
 
 ## Bronkaart van de baseline
 
@@ -131,10 +124,12 @@ metadata in zonder de bestaande control-freshness-timestamps te vernieuwen. Boil
 bevat de werkelijk ontvangen payload en vereiste requestcorrelatie; een compatibele aanroep zonder
 payload mag nooit `0` als waargenomen geen-warmte-status aanbieden. De live binding gebruikt het actuele CM2-controllercontract. Bij geselecteerde OpenTherm kan een verse fysieke CH/flame-melding een sample vetoën; ontbrekende OT-telemetrie is geen extra CM2-voorwaarde.
 
-Een gewijzigde meetcontext of instelling wist het lopende bewijs en start beide modellen opnieuw.
-Instellingevents pauzeren direct, zodat ook A→B→A tussen twee learnerticks wordt verwerkt. Alle mutaties
-blijven in de mainloop; HTTP leest uitsluitend gesynchroniseerde caches. Gewone firmwarebuilds
-behouden compatibele historie; opslagherstel vergelijkt schema, algoritmeversie en meetcontext.
+Een gewijzigde meetcontext wist het lopende bewijs en start beide modellen opnieuw. Een wijziging van
+de beoordelings- of regelinstellingen onderbreekt alleen het lopende segment en de fit; de fysieke
+meetrecords blijven behouden en worden opnieuw beoordeeld. Instellingevents pauzeren direct, zodat ook
+A→B→A tussen twee learnerticks wordt verwerkt. Alle mutaties blijven in de mainloop; HTTP leest
+uitsluitend gesynchroniseerde caches. Gewone firmwarebuilds behouden compatibele historie;
+opslagherstel vergelijkt schema, algoritmeversie en meetcontext.
 
 Voor de aanvullende 1R1C-route bestaat `SnapshotPurpose::THERMAL_DYNAMIC`. Die route laat
 kamerrespons tijdens herstel of comfortafwijkingen toe, met alle fysieke meet-, ketel-, protection-,

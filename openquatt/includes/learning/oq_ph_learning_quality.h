@@ -52,8 +52,7 @@ inline bool valid_quality_config(const QualityConfig& config) {
 
 inline LearningStatus validate_snapshot(const LearningSnapshot& snapshot, const QualityConfig& config) {
   if (!valid_quality_config(config)) return LearningStatus::INVALID_CONFIGURATION;
-  if (snapshot.monotonic_ms == 0 || snapshot.epoch_s == 0 || snapshot.source_generation == 0 ||
-      snapshot.physical_context_generation == 0 || snapshot.control_generation == 0 ||
+  if (snapshot.monotonic_ms == 0 || snapshot.epoch_s == 0 || snapshot.context_revision == 0 ||
       snapshot.invalid_reasons != INVALID_NONE)
     return LearningStatus::INVALID_MEASUREMENT;
   if (!isfinite(snapshot.room_c) || !isfinite(snapshot.setpoint_c) || !isfinite(snapshot.outside_c) ||
@@ -96,7 +95,7 @@ inline LearningStatus validate_segment_record(const SegmentRecord& record, const
       static_cast<uint32_t>(kSegmentDurationMs / 1000ULL) + (config.max_interval_ms + 999U) / 1000U;
   if (record.start_epoch_s == 0 || record.end_epoch_s <= record.start_epoch_s ||
       record.duration_s < kSegmentDurationMs / 1000ULL || record.duration_s > max_duration_s ||
-      record.source_generation == 0 || record.physical_context_generation == 0 || record.control_generation == 0)
+      record.context_revision == 0)
     return LearningStatus::SEGMENT_INELIGIBLE;
   const uint32_t epoch_duration_s = record.end_epoch_s - record.start_epoch_s;
   const uint32_t duration_mismatch_s = epoch_duration_s > record.duration_s ? epoch_duration_s - record.duration_s

@@ -198,11 +198,11 @@ class LearningReplayTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(json.loads(result.stdout)["status"], "input_error")
 
-    def test_new_source_discards_old_cohort_before_fit(self):
+    def test_new_context_discards_old_cohort_before_fit(self):
         rows, now_epoch = sufficient_rows()
         last = rows[-1]
-        rows.append([last[0] + 60_000, last[1] + 60, 2, 1, 1, 0, 20, 20, 5, 2600, 10, 35])
-        path = pathlib.Path(self.tempdir.name) / "new-source.csv"
+        rows.append([last[0] + 60_000, last[1] + 60, 2, 2, 2, 0, 20, 20, 5, 2600, 10, 35])
+        path = pathlib.Path(self.tempdir.name) / "new-context.csv"
         write_csv(path, rows)
         result = replay(self.binary, path, now_epoch + 60)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -220,7 +220,7 @@ class LearningReplayTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(json.loads(result.stdout)["status"], "input_error")
 
-    def test_generation_reuse_or_decrease_cannot_restore_an_old_cohort(self):
+    def test_legacy_revision_columns_must_agree(self):
         for generation_column in (2, 3, 4):
             with self.subTest(generation_column=generation_column):
                 rows = [

@@ -88,9 +88,9 @@ static bool parse_snapshot(char* line, learning::LearningSnapshot& snapshot) {
     return false;
   snapshot.monotonic_ms = monotonic_ms;
   snapshot.epoch_s = epoch_s;
-  snapshot.source_generation = source_generation;
-  snapshot.physical_context_generation = physical_generation;
-  snapshot.control_generation = control_generation;
+  if (source_generation == 0 || source_generation != physical_generation || source_generation != control_generation)
+    return false;
+  snapshot.context_revision = source_generation;
   snapshot.invalid_reasons = invalid_reasons;
   return true;
 }
@@ -203,9 +203,7 @@ int main(int argc, char** argv) {
   Counters counters;
   uint64_t previous_monotonic = 0;
   uint32_t previous_epoch = 0;
-  uint32_t cohort_source = 0;
-  uint32_t cohort_physical = 0;
-  uint32_t cohort_control = 0;
+  uint32_t cohort_revision = 0;
   bool cohort_set = false;
   bool input_error = false;
   int line_result = 0;
@@ -220,11 +218,8 @@ int main(int argc, char** argv) {
     ++counters.rows;
     learning::LearningSnapshot snapshot;
     if (!parse_snapshot(line, snapshot) || snapshot.monotonic_ms <= previous_monotonic ||
-        snapshot.epoch_s < previous_epoch || snapshot.epoch_s > now_epoch_s || snapshot.source_generation == 0 ||
-        snapshot.physical_context_generation == 0 || snapshot.control_generation == 0 ||
-        (cohort_set &&
-         (snapshot.source_generation < cohort_source || snapshot.physical_context_generation < cohort_physical ||
-          snapshot.control_generation < cohort_control))) {
+        snapshot.epoch_s < previous_epoch || snapshot.epoch_s > now_epoch_s || snapshot.context_revision == 0 ||
+        (cohort_set && snapshot.context_revision < cohort_revision)) {
       ++counters.malformed_rows;
       ++counters.rejected_observations;
       input_error = true;
@@ -232,17 +227,13 @@ int main(int argc, char** argv) {
     }
     previous_monotonic = snapshot.monotonic_ms;
     previous_epoch = snapshot.epoch_s;
-    if (cohort_set &&
-        (snapshot.source_generation != cohort_source || snapshot.physical_context_generation != cohort_physical ||
-         snapshot.control_generation != cohort_control)) {
+    if (cohort_set && snapshot.context_revision != cohort_revision) {
       counters.discarded_cohort_records += learner.record_count;
       ++counters.cohort_changes;
     }
-    cohort_source = snapshot.source_generation;
-    cohort_physical = snapshot.physical_context_generation;
-    cohort_control = snapshot.control_generation;
+    cohort_revision = snapshot.context_revision;
     cohort_set = true;
-    input.context = {context_bytes, sizeof(context_bytes), cohort_source, cohort_physical, cohort_control};
+    input.context = {context_bytes, sizeof(context_bytes), cohort_revision};
     input.now_monotonic_ms = snapshot.monotonic_ms;
     input.now_epoch_s = snapshot.epoch_s;
     input.batch_snapshot_available = input.dynamic_snapshot_available = true;
@@ -297,11 +288,10 @@ int main(int argc, char** argv) {
                                                    : learning::learning_status_name(status));
   print_reasons(status, counters, false);
   printf(
-      ",\"source_generation\":%u,\"physical_context_generation\":%u,\"latest_control_generation\":%u,\"candidate_"
+      ",\"context_revision\":%u,\"candidate_"
       "available\":%s,\"advice_ready\":%s,\"train_segments\":%u,\"holdout_segments\":%u,\"candidate_h\":",
-      result.source_generation, result.physical_context_generation, result.latest_control_generation,
-      result.candidate_available ? "true" : "false", validation.cross_validated_advice_ready ? "true" : "false",
-      result.train_segments, result.holdout_segments);
+      result.context_revision, result.candidate_available ? "true" : "false",
+      validation.cross_validated_advice_ready ? "true" : "false", result.train_segments, result.holdout_segments);
   print_float(result.candidate.heat_loss_w_per_k);
   printf(",\"candidate_t0\":");
   print_float(result.candidate.zero_power_temp_c);

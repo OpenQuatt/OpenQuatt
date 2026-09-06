@@ -10,9 +10,7 @@ LearningSnapshot snapshot(uint64_t monotonic_ms, uint32_t epoch_s, float heat_w)
   LearningSnapshot value;
   value.monotonic_ms = monotonic_ms;
   value.epoch_s = epoch_s;
-  value.source_generation = 1;
-  value.physical_context_generation = 2;
-  value.control_generation = 3;
+  value.context_revision = 1;
   value.room_c = 20.0f;
   value.setpoint_c = 20.0f;
   value.outside_c = 5.0f;
@@ -27,9 +25,7 @@ SegmentRecord record(uint32_t end_epoch_s, float heat_w = 1000.0f) {
   value.start_epoch_s = end_epoch_s - 14400;
   value.end_epoch_s = end_epoch_s;
   value.duration_s = 14400;
-  value.source_generation = 1;
-  value.physical_context_generation = 2;
-  value.control_generation = 3;
+  value.context_revision = 1;
   value.mean_room_c = 20.0f;
   value.mean_setpoint_c = 20.0f;
   value.mean_outside_c = 5.0f;
@@ -96,12 +92,12 @@ void test_fail_closed_boundaries() {
 
   observe_snapshot(accumulator, snapshot(start_ms + 20000000ULL, start_epoch + 20000U, 1000.0f), config);
   auto changed = snapshot(start_ms + 20300000ULL, start_epoch + 20300U, 1000.0f);
-  changed.source_generation = 4;
+  changed.context_revision = 4;
   assert(observe_snapshot(accumulator, changed, config).status == LearningStatus::MIXED_CONTEXT);
-  assert(accumulator.active && accumulator.source_generation == 4);
+  assert(accumulator.active && accumulator.context_revision == 4);
 
   auto jumped = snapshot(start_ms + 20600000ULL, start_epoch + 30000U, 1000.0f);
-  jumped.source_generation = 4;
+  jumped.context_revision = 4;
   assert(observe_snapshot(accumulator, jumped, config).status == LearningStatus::TIME_DISCONTINUITY);
 
   reset_segment(accumulator);
@@ -136,7 +132,7 @@ void test_nonpositive_segment_and_record_bounds() {
 
   assert(append_record(buffer, record(base + 100U * 14400U), base + 100U * 14400U, config) == LearningStatus::OK);
   SegmentRecord mixed = record(base + 101U * 14400U);
-  mixed.source_generation = 9;
+  mixed.context_revision = 9;
   assert(append_record(buffer, mixed, mixed.end_epoch_s, config) == LearningStatus::MIXED_CONTEXT);
 }
 }  // namespace

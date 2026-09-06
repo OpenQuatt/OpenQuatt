@@ -68,18 +68,16 @@ inline const char* model_validation_status_name(ModelValidationStatus status) {
 
 inline ModelValidationResult validate_house_models(const AdviceResult& batch, const ThermalModelState& thermal,
                                                    const ThermalModelConfig& thermal_config, uint64_t now_monotonic_ms,
-                                                   uint32_t source_generation, uint32_t physical_context_generation,
-                                                   uint32_t control_generation,
+                                                   uint32_t context_revision,
                                                    const ModelValidationConfig& config = {}) {
   ModelValidationResult result;
   if (!valid_thermal_model_config(thermal_config) || !isfinite(config.max_heat_loss_difference_fraction) ||
       config.max_heat_loss_difference_fraction < 0.0 || config.max_heat_loss_difference_fraction > 0.50 ||
       !isfinite(config.min_shared_outside_span_c) || config.min_shared_outside_span_c <= 0.0 ||
-      config.min_shared_outside_span_c > 40.0 || now_monotonic_ms == 0 || source_generation == 0 ||
+      config.min_shared_outside_span_c > 40.0 || now_monotonic_ms == 0 || context_revision == 0 ||
       !isfinite(config.max_storage_power_w) || config.max_storage_power_w < 0.0 ||
       config.max_storage_power_w > 5000.0 || !isfinite(config.max_storage_fraction) ||
-      config.max_storage_fraction < 0.0 || config.max_storage_fraction > 1.0 || physical_context_generation == 0 ||
-      control_generation == 0)
+      config.max_storage_fraction < 0.0 || config.max_storage_fraction > 1.0)
     return result;
   result.thermal = estimate_thermal_model(thermal, thermal_config, now_monotonic_ms);
   result.thermal_model_ready = result.thermal.ready;
@@ -96,11 +94,7 @@ inline ModelValidationResult validate_house_models(const AdviceResult& batch, co
     result.status = ModelValidationStatus::BATCH_UNAVAILABLE;
     return result;
   }
-  if (batch.source_generation != source_generation ||
-      batch.physical_context_generation != physical_context_generation ||
-      batch.latest_control_generation != control_generation || thermal.source_generation != source_generation ||
-      thermal.physical_context_generation != physical_context_generation ||
-      thermal.control_generation != control_generation) {
+  if (batch.context_revision != context_revision || thermal.context_revision != context_revision) {
     result.status = ModelValidationStatus::CONTEXT_MISMATCH;
     return result;
   }

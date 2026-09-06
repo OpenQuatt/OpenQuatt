@@ -39,7 +39,7 @@ SegmentRecord sample() {
   record.start_epoch_s = kEpoch - 4U * 3600U;
   record.end_epoch_s = kEpoch;
   record.duration_s = 4U * 3600U;
-  record.source_generation = record.physical_context_generation = record.control_generation = 1;
+  record.context_revision = 1;
   record.mean_room_c = record.mean_setpoint_c = 20;
   record.mean_outside_c = 5;
   record.mean_heat_w = 2200;
@@ -48,7 +48,7 @@ SegmentRecord sample() {
   record.water_start_c = record.water_end_c = 30;
   return record;
 }
-PassiveContextView context() { return {kContext, sizeof(kContext), 1, 1, 1}; }
+PassiveContextView context() { return {kContext, sizeof(kContext), 1}; }
 
 bool load(LearningJournalStore& store, Flash& flash, LearningJournalRecords& view) {
   store.setup(true);
@@ -157,7 +157,7 @@ void test_incompatible_context_and_legacy_schema_start_empty() {
   LearningJournalStore different;
   different.setup(true);
   assert(!different.load(
-      {changed, sizeof(changed), 1, 1, 1}, QualityConfig{}, kEpoch,
+      {changed, sizeof(changed), 1}, QualityConfig{}, kEpoch,
       [&](size_t slot, uint8_t* data, size_t size) { return flash.read(slot, data, size); }, view));
   assert(different.available);
   flash.bytes[0][4] = 1;  // Pre-simplification schema must not restore obsolete context semantics.

@@ -14,9 +14,9 @@
 namespace oq_power_house::learning {
 
 constexpr uint32_t kLearningJournalMagic = 0x4F514C4AU;  // OQLJ
-constexpr uint16_t kLearningJournalSchemaVersion = 2;
-constexpr size_t kLearningJournalHeaderBytes = 40;
-constexpr size_t kLearningJournalRecordBytes = 64;
+constexpr uint16_t kLearningJournalSchemaVersion = 3;
+constexpr size_t kLearningJournalHeaderBytes = 32;
+constexpr size_t kLearningJournalRecordBytes = 56;
 constexpr size_t kLearningJournalCrcBytes = 4;
 constexpr size_t kLearningJournalMaxBytes = kLearningJournalHeaderBytes + kMaxPassiveContextBytes +
                                             kMaxSegmentRecords * kLearningJournalRecordBytes + kLearningJournalCrcBytes;
@@ -46,9 +46,7 @@ struct LearningJournalMetadata {
   uint16_t algorithm_version = 0;
   uint16_t record_count = 0;
   uint16_t context_size = 0;
-  uint32_t source_generation = 0;
-  uint32_t physical_context_generation = 0;
-  uint32_t control_generation = 0;
+  uint32_t context_revision = 0;
   size_t encoded_size = 0;
 };
 
@@ -137,9 +135,7 @@ inline void write_record(Writer& writer, const SegmentRecord& record) {
   write_u32(writer, record.start_epoch_s);
   write_u32(writer, record.end_epoch_s);
   write_u32(writer, record.duration_s);
-  write_u32(writer, record.source_generation);
-  write_u32(writer, record.physical_context_generation);
-  write_u32(writer, record.control_generation);
+  write_u32(writer, record.context_revision);
   write_float(writer, record.mean_room_c);
   write_float(writer, record.mean_setpoint_c);
   write_float(writer, record.mean_outside_c);
@@ -157,9 +153,7 @@ inline SegmentRecord read_record(Reader& reader) {
   record.start_epoch_s = read_u32(reader);
   record.end_epoch_s = read_u32(reader);
   record.duration_s = read_u32(reader);
-  record.source_generation = read_u32(reader);
-  record.physical_context_generation = read_u32(reader);
-  record.control_generation = read_u32(reader);
+  record.context_revision = read_u32(reader);
   record.mean_room_c = read_float(reader);
   record.mean_setpoint_c = read_float(reader);
   record.mean_outside_c = read_float(reader);
@@ -194,9 +188,7 @@ inline LearningJournalStatus parse_metadata(const LearningJournalSlotView& slot,
   metadata.record_count = read_u16(reader);
   metadata.context_size = read_u16(reader);
   const uint16_t reserved = read_u16(reader);
-  metadata.source_generation = read_u32(reader);
-  metadata.physical_context_generation = read_u32(reader);
-  metadata.control_generation = read_u32(reader);
+  metadata.context_revision = read_u32(reader);
   metadata.encoded_size = encoded_size;
   if (!reader.ok || magic != kLearningJournalMagic || schema != kLearningJournalSchemaVersion ||
       header_size != kLearningJournalHeaderBytes || metadata.algorithm_version != kLearningAlgorithmVersion ||
@@ -210,8 +202,7 @@ inline LearningJournalStatus parse_metadata(const LearningJournalSlotView& slot,
     return LearningJournalStatus::INVALID_LENGTH;
   if (metadata.sequence == 0 || metadata.created_epoch_s == 0) return LearningJournalStatus::INVALID_SEQUENCE;
   if (metadata.created_epoch_s > now_epoch_s) return LearningJournalStatus::TIME_DISCONTINUITY;
-  if (metadata.source_generation == 0 || metadata.physical_context_generation == 0 || metadata.control_generation == 0)
-    return LearningJournalStatus::INVALID_SCHEMA;
+  if (metadata.context_revision == 0) return LearningJournalStatus::INVALID_SCHEMA;
   const uint32_t stored_crc = static_cast<uint32_t>(slot.bytes[slot.size - 4U]) |
                               static_cast<uint32_t>(slot.bytes[slot.size - 3U]) << 8U |
                               static_cast<uint32_t>(slot.bytes[slot.size - 2U]) << 16U |
@@ -232,10 +223,7 @@ inline LearningJournalStatus parse_metadata(const LearningJournalSlotView& slot,
     SegmentRecord record = read_record(reader);
     if (!reader.ok || validate_segment_record(record, quality) != LearningStatus::OK)
       return LearningJournalStatus::INVALID_RECORD;
-    if (record.source_generation != metadata.source_generation ||
-        record.physical_context_generation != metadata.physical_context_generation ||
-        record.control_generation != metadata.control_generation)
-      return LearningJournalStatus::INVALID_RECORD;
+    if (record.context_revision != metadata.context_revision) return LearningJournalStatus::INVALID_RECORD;
     if (record.end_epoch_s > now_epoch_s || now_epoch_s - record.end_epoch_s > kMaxRecordAgeS)
       return LearningJournalStatus::STALE_RECORD;
     if (index > 0 && record.start_epoch_s < previous_end_epoch_s) return LearningJournalStatus::TIME_DISCONTINUITY;
@@ -267,8 +255,7 @@ inline LearningJournalStatus encode_learning_journal(const LearningDatasetView& 
   if (sequence == 0 || created_epoch_s == 0 || output == nullptr || state.context.bytes == nullptr ||
       state.context.size == 0 || state.context.size > kMaxPassiveContextBytes ||
       (state.record_count > 0 && state.records == nullptr) || state.record_count > kMaxSegmentRecords ||
-      state.context.source_generation == 0 || state.context.physical_context_generation == 0 ||
-      state.context.control_generation == 0)
+      state.context.context_revision == 0)
     return LearningJournalStatus::INVALID_ARGUMENT;
   const size_t required = kLearningJournalHeaderBytes + state.context.size +
                           state.record_count * kLearningJournalRecordBytes + kLearningJournalCrcBytes;
@@ -284,9 +271,7 @@ inline LearningJournalStatus encode_learning_journal(const LearningDatasetView& 
   write_u16(writer, static_cast<uint16_t>(state.record_count));
   write_u16(writer, static_cast<uint16_t>(state.context.size));
   write_u16(writer, 0);
-  write_u32(writer, state.context.source_generation);
-  write_u32(writer, state.context.physical_context_generation);
-  write_u32(writer, state.context.control_generation);
+  write_u32(writer, state.context.context_revision);
   if (!writer.ok || writer.position != kLearningJournalHeaderBytes) return LearningJournalStatus::BUFFER_TOO_SMALL;
   memcpy(output + writer.position, state.context.bytes, state.context.size);
   writer.position += state.context.size;
@@ -294,9 +279,7 @@ inline LearningJournalStatus encode_learning_journal(const LearningDatasetView& 
   for (size_t index = 0; index < state.record_count; ++index) {
     const SegmentRecord& record = state.records[index];
     if (validate_segment_record(record, quality) != LearningStatus::OK ||
-        record.source_generation != state.context.source_generation ||
-        record.physical_context_generation != state.context.physical_context_generation ||
-        record.control_generation != state.context.control_generation || record.end_epoch_s > created_epoch_s ||
+        record.context_revision != state.context.context_revision || record.end_epoch_s > created_epoch_s ||
         created_epoch_s - record.end_epoch_s > kMaxRecordAgeS ||
         (index > 0 && record.start_epoch_s < previous_end_epoch_s))
       return LearningJournalStatus::INVALID_RECORD;

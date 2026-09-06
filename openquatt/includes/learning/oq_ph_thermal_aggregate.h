@@ -69,9 +69,7 @@ inline void seed(ThermalWindowAccumulator& state, const LearningSnapshot& snapsh
 }
 
 inline bool same_context(const LearningSnapshot& lhs, const LearningSnapshot& rhs) {
-  return lhs.source_generation == rhs.source_generation &&
-         lhs.physical_context_generation == rhs.physical_context_generation &&
-         lhs.control_generation == rhs.control_generation;
+  return lhs.context_revision == rhs.context_revision;
 }
 
 inline bool coherent_time(const LearningSnapshot& earlier, const LearningSnapshot& later,
@@ -127,9 +125,7 @@ inline ThermalWindowResult observe_thermal_snapshot(ThermalWindowAccumulator& st
   auto& interval = result.interval;
   interval.start_monotonic_ms = state.first.monotonic_ms;
   interval.end_monotonic_ms = snapshot.monotonic_ms;
-  interval.source_generation = snapshot.source_generation;
-  interval.physical_context_generation = snapshot.physical_context_generation;
-  interval.control_generation = snapshot.control_generation;
+  interval.context_revision = snapshot.context_revision;
   interval.complete = true;
   interval.inputs_fresh = true;
   interval.generations_consistent = true;

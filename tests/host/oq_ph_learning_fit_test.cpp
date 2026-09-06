@@ -14,9 +14,7 @@ SegmentRecord fitted_record(uint8_t day, uint8_t slot, float outside_c, float re
   record.start_epoch_s = kBaseEpoch + static_cast<uint32_t>(day) * 86400U + static_cast<uint32_t>(slot) * 28800U;
   record.end_epoch_s = record.start_epoch_s + 14400U;
   record.duration_s = 14400;
-  record.source_generation = 1;
-  record.physical_context_generation = 2;
-  record.control_generation = day < 5 ? 3 : 4;  // Control generations may differ between complete segments.
+  record.context_revision = 1;
   record.mean_room_c = 20.0f;
   record.mean_setpoint_c = 20.0f;
   record.mean_outside_c = outside_c;
@@ -78,8 +76,7 @@ void test_advice_and_chronological_holdout() {
   assert(result.validated_temp_min_c < result.validated_temp_max_c);
   assert(result.algorithm_version == kLearningAlgorithmVersion);
   assert(result.lodo_heat_loss_max_w_per_k >= result.lodo_heat_loss_min_w_per_k);
-  assert(result.source_generation == 1 && result.physical_context_generation == 2);
-  assert(result.latest_control_generation == 4);
+  assert(result.context_revision == 1);
 }
 
 void test_no_improvement_is_not_advice_ready() {
@@ -108,7 +105,7 @@ void test_fail_closed_dataset_gates() {
          LearningStatus::INSUFFICIENT_SPREAD);
 
   make_dataset(records);
-  records[8].source_generation = 9;
+  records[8].context_revision = 9;
   assert(begin_advice_fit(records, 18, now, {150.0f, 15.0f}, quality, config, workspace) ==
          LearningStatus::MIXED_CONTEXT);
 
@@ -156,7 +153,7 @@ void test_replayed_record_bypasses_fail_closed() {
          LearningStatus::TIME_DISCONTINUITY);
 
   make_dataset(records);
-  records[0].control_generation = 0;
+  records[0].context_revision = 0;
   assert(begin_advice_fit(records, 18, now, {150.0f, 15.0f}, quality, config, workspace) ==
          LearningStatus::SEGMENT_INELIGIBLE);
 

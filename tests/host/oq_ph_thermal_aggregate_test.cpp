@@ -9,7 +9,7 @@ static LearningSnapshot sample(uint64_t elapsed_ms) {
   LearningSnapshot value;
   value.monotonic_ms = 1000 + elapsed_ms;
   value.epoch_s = 1800000000 + static_cast<uint32_t>(elapsed_ms / 1000);
-  value.source_generation = value.physical_context_generation = value.control_generation = 1;
+  value.context_revision = 1;
   value.room_c = 20.0f + static_cast<float>(elapsed_ms) / 3600000.0f;
   value.setpoint_c = 20.0f;
   value.outside_c = 5.0f;
@@ -54,13 +54,13 @@ int main() {
   assert(state.first.monotonic_ms == 3691000);
 
   auto changed = sample(3700000);
-  changed.control_generation = 2;
+  changed.context_revision = 2;
   result = observe_thermal_snapshot(state, changed, quality, config);
   assert(result.status == ThermalWindowStatus::CONTEXT_CHANGED && !result.has_interval);
   config.unmodeled_gain_bound_valid = true;
   config.unmodeled_gain_bound_w = 100;
   changed = sample(3710000);
-  changed.control_generation = 2;
+  changed.context_revision = 2;
   result = observe_thermal_snapshot(state, changed, quality, config);
   assert(result.status == ThermalWindowStatus::CONTEXT_CHANGED);
 

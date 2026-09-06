@@ -36,18 +36,12 @@ LearningSourceInput observation(uint64_t now_ms, uint32_t epoch_s, float outside
   LearningSourceInput input;
   input.monotonic_ms = now_ms;
   input.epoch_s = epoch_s;
-  input.source_cohort_generation = 1;
-  input.physical_context_generation = 1;
-  input.control_generation = 1;
+  input.context_revision = 1;
   input.topology = HydronicTopology::DUO_SERIES;
-  input.calorimetry.meter_boundary = MeterBoundary::SHARED_DUO_SERIES_CIRCUIT;
-  input.calorimetry.fluid_model = FluidHeatCapacityModel::WATER_CP_4180;
-  input.calorimetry.calorimetry_generation = 1;
   input.calorimetry.uncertainty_proven = true;
   input.calorimetry.heat_uncertainty_w = 50.0f;
   input.calorimetry.max_flow_lph = 3000.0f;
   input.calorimetry.max_series_junction_delta_c = 1.0f;
-  input.calorimetry.duo_series_order = DuoSeriesOrder::HP1_TO_HP2;
   input.room_c = measured(20.0f, 1, PhysicalUnit::SYSTEM, now_ms);
   input.setpoint_c = measured(20.0f, 2, PhysicalUnit::SYSTEM, now_ms);
   input.outside_c = measured(outside_c, 2110, PhysicalUnit::HP1, now_ms);
@@ -58,7 +52,7 @@ LearningSourceInput observation(uint64_t now_ms, uint32_t epoch_s, float outside
   input.boiler_heat = measured(BoilerHeatState::NO_HEAT, 3, PhysicalUnit::SYSTEM, now_ms);
   input.operation.control_mode_valid = true;
   input.operation.captured_monotonic_ms = now_ms;
-  input.operation.captured_control_generation = input.control_generation;
+  input.operation.captured_context_revision = input.context_revision;
   input.operation.control_mode = LearningControlMode::HEATING;
   input.operation.active_limit_valid = true;
   input.operation.service_or_ota_valid = true;

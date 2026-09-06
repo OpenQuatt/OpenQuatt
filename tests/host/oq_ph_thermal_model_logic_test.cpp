@@ -35,9 +35,7 @@ ThermalInterval exact_interval(uint64_t start_ms, double duration_h, double indo
   ThermalInterval interval;
   interval.start_monotonic_ms = start_ms;
   interval.end_monotonic_ms = start_ms + static_cast<uint64_t>(duration_h * 3600000.0);
-  interval.source_generation = 11;
-  interval.physical_context_generation = 13;
-  interval.control_generation = 17;
+  interval.context_revision = 11;
   interval.complete = true;
   interval.inputs_fresh = true;
   interval.generations_consistent = true;
@@ -144,24 +142,24 @@ void test_missing_stale_and_context_changes_reset() {
 
   train_synthetic(state, config, 10);
   auto changed = exact_interval(state.last_interval_end_monotonic_ms, 0.5, 20.0, 5.0, 3000.0);
-  ++changed.source_generation;
+  ++changed.context_revision;
   result = observe_thermal_interval(state, changed, config);
   assert(result.status == ThermalUpdateStatus::RESET_CONTEXT);
   assert(!result.accepted && state.accepted_samples == 0);
-  assert(state.source_generation == changed.source_generation);
+  assert(state.context_revision == changed.context_revision);
   const uint64_t context_watermark_ms = state.last_observation_monotonic_ms;
 
   auto late_previous_context = exact_interval(context_watermark_ms, 0.5, 20.0, 5.0, 3000.0);
   result = observe_thermal_interval(state, late_previous_context, config);
   assert(result.status == ThermalUpdateStatus::REJECTED_STALE_CONTEXT);
   assert(!result.accepted && state.accepted_samples == 0);
-  assert(state.source_generation == changed.source_generation);
+  assert(state.context_revision == changed.context_revision);
 
   auto current_context = exact_interval(late_previous_context.end_monotonic_ms, 0.5, 20.0, 5.0, 3000.0);
-  current_context.source_generation = changed.source_generation;
+  current_context.context_revision = changed.context_revision;
   result = observe_thermal_interval(state, current_context, config);
   assert(result.accepted && state.accepted_samples == 1);
-  assert(state.source_generation == changed.source_generation);
+  assert(state.context_revision == changed.context_revision);
 
   train_synthetic(state, config, 10);
   auto inconsistent = exact_interval(state.last_interval_end_monotonic_ms, 0.5, 20.0, 5.0, 3000.0);
@@ -371,31 +369,27 @@ void test_corrupt_ordering_metadata_is_not_retained() {
   state.covariance_00 = NAN;
   state.last_interval_end_monotonic_ms = UINT64_MAX - 1U;
   state.last_observation_monotonic_ms = UINT64_MAX;
-  state.source_generation = UINT32_MAX;
-  state.physical_context_generation = UINT32_MAX;
-  state.control_generation = UINT32_MAX;
+  state.context_revision = UINT32_MAX;
 
   const auto discarded = exact_interval(1000, 0.5, 20.0, 5.0, 3000.0);
   const auto reset = observe_thermal_interval(state, discarded, config);
   assert(reset.status == ThermalUpdateStatus::RESET_NUMERIC_STATE && !reset.accepted);
   assert(state.last_interval_end_monotonic_ms == 0 &&
          state.last_observation_monotonic_ms == discarded.end_monotonic_ms);
-  assert(state.source_generation == 0 && state.physical_context_generation == 0 && state.control_generation == 0);
+  assert(state.context_revision == 0);
 
   const auto recovered = exact_interval(discarded.end_monotonic_ms, 0.5, 20.0, 5.0, 3000.0);
   const auto accepted = observe_thermal_interval(state, recovered, config);
   assert(accepted.accepted && state.accepted_samples == 1);
-  assert(state.source_generation == recovered.source_generation);
+  assert(state.context_revision == recovered.context_revision);
 
   state.covariance_00 = NAN;
   state.last_observation_monotonic_ms = UINT64_MAX;
-  state.source_generation = UINT32_MAX;
-  state.physical_context_generation = UINT32_MAX;
-  state.control_generation = UINT32_MAX;
+  state.context_revision = UINT32_MAX;
   const uint64_t invalidated_at_ms = recovered.end_monotonic_ms + 1000U;
   const auto invalidated = invalidate_thermal_observation(state, invalidated_at_ms, config);
   assert(invalidated.status == ThermalUpdateStatus::RESET_NUMERIC_STATE);
-  assert(state.last_observation_monotonic_ms == invalidated_at_ms && state.source_generation == 0);
+  assert(state.last_observation_monotonic_ms == invalidated_at_ms && state.context_revision == 0);
   const auto after_invalidation = exact_interval(invalidated_at_ms, 0.5, 20.0, 5.0, 3000.0);
   assert(observe_thermal_interval(state, after_invalidation, config).accepted);
 }

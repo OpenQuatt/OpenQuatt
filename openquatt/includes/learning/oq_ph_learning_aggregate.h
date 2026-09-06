@@ -17,9 +17,7 @@ struct SegmentAccumulator {
   uint64_t last_monotonic_ms = 0;
   uint32_t start_epoch_s = 0;
   uint32_t last_epoch_s = 0;
-  uint32_t source_generation = 0;
-  uint32_t physical_context_generation = 0;
-  uint32_t control_generation = 0;
+  uint32_t context_revision = 0;
   float last_room_c = NAN;
   float last_setpoint_c = NAN;
   float last_outside_c = NAN;
@@ -62,9 +60,7 @@ inline void seed_segment(SegmentAccumulator& state, const LearningSnapshot& snap
   state.last_monotonic_ms = snapshot.monotonic_ms;
   state.start_epoch_s = snapshot.epoch_s;
   state.last_epoch_s = snapshot.epoch_s;
-  state.source_generation = snapshot.source_generation;
-  state.physical_context_generation = snapshot.physical_context_generation;
-  state.control_generation = snapshot.control_generation;
+  state.context_revision = snapshot.context_revision;
   state.last_room_c = snapshot.room_c;
   state.last_setpoint_c = snapshot.setpoint_c;
   state.last_outside_c = snapshot.outside_c;
@@ -79,9 +75,7 @@ inline void seed_segment(SegmentAccumulator& state, const LearningSnapshot& snap
 }
 
 inline bool same_context(const SegmentAccumulator& state, const LearningSnapshot& snapshot) {
-  return state.source_generation == snapshot.source_generation &&
-         state.physical_context_generation == snapshot.physical_context_generation &&
-         state.control_generation == snapshot.control_generation;
+  return state.context_revision == snapshot.context_revision;
 }
 
 inline bool coherent_time(const SegmentAccumulator& state, const LearningSnapshot& snapshot,
@@ -121,9 +115,7 @@ inline SegmentRecord make_record(const SegmentAccumulator& state) {
   record.start_epoch_s = state.start_epoch_s;
   record.end_epoch_s = state.last_epoch_s;
   record.duration_s = static_cast<uint32_t>((state.last_monotonic_ms - state.start_monotonic_ms) / 1000ULL);
-  record.source_generation = state.source_generation;
-  record.physical_context_generation = state.physical_context_generation;
-  record.control_generation = state.control_generation;
+  record.context_revision = state.context_revision;
   if (!(state.integrated_duration_s > 0.0)) return record;
   const double inverse_duration = 1.0 / state.integrated_duration_s;
   record.mean_room_c = static_cast<float>(state.room_integral * inverse_duration);
@@ -247,10 +239,7 @@ inline LearningStatus append_record(RecordBuffer& buffer, const SegmentRecord& r
   if (buffer.count > 0) {
     const SegmentRecord& previous = buffer.records[buffer.count - 1];
     if (record.start_epoch_s < previous.end_epoch_s) return LearningStatus::TIME_DISCONTINUITY;
-    if (record.source_generation != previous.source_generation ||
-        record.physical_context_generation != previous.physical_context_generation)
-      return LearningStatus::MIXED_CONTEXT;
-    if (record.control_generation < previous.control_generation) return LearningStatus::TIME_DISCONTINUITY;
+    if (record.context_revision != previous.context_revision) return LearningStatus::MIXED_CONTEXT;
   }
   if (buffer.count == buffer.capacity) {
     for (size_t index = 1; index < buffer.count; ++index) buffer.records[index - 1] = buffer.records[index];

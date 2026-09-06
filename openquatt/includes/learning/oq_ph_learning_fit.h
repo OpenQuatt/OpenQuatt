@@ -45,9 +45,7 @@ struct AdviceResult {
   bool candidate_available = false;
   bool advice_ready = false;
   uint16_t algorithm_version = kLearningAlgorithmVersion;
-  uint32_t source_generation = 0;
-  uint32_t physical_context_generation = 0;
-  uint32_t latest_control_generation = 0;
+  uint32_t context_revision = 0;
   HouseLine candidate;
   uint8_t train_segments = 0;
   uint8_t holdout_segments = 0;
@@ -214,9 +212,7 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
       workspace.config.reference_setpoint_c > workspace.quality_config.setpoint_max_c)
     return LearningStatus::INVALID_CONFIGURATION;
   uint32_t previous_end = 0;
-  uint32_t source_generation = 0;
-  uint32_t context_generation = 0;
-  uint32_t control_generation = 0;
+  uint32_t context_revision = 0;
   workspace.result.observed_temp_min_c = INFINITY;
   workspace.result.observed_temp_max_c = -INFINITY;
   workspace.result.max_abs_room_trend_k_per_h = 0.0f;
@@ -232,17 +228,10 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
             workspace.config.max_setpoint_context_delta_c)
       return LearningStatus::MIXED_CONTEXT;
     if (index > 0 && record.start_epoch_s < previous_end) return LearningStatus::TIME_DISCONTINUITY;
-    if (index == 0) {
-      source_generation = record.source_generation;
-      context_generation = record.physical_context_generation;
-      control_generation = record.control_generation;
-    } else if (record.source_generation != source_generation ||
-               record.physical_context_generation != context_generation) {
+    if (index == 0)
+      context_revision = record.context_revision;
+    else if (record.context_revision != context_revision)
       return LearningStatus::MIXED_CONTEXT;
-    } else if (record.control_generation < control_generation) {
-      return LearningStatus::TIME_DISCONTINUITY;
-    }
-    control_generation = record.control_generation;
     workspace.result.observed_temp_min_c = fminf(workspace.result.observed_temp_min_c, record.mean_outside_c);
     workspace.result.observed_temp_max_c = fmaxf(workspace.result.observed_temp_max_c, record.mean_outside_c);
     workspace.result.max_abs_room_trend_k_per_h =
@@ -263,9 +252,7 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
     const double uncertainty_ratio = workspace.config.uncertainty_floor_w / uncertainty;
     workspace.day_uncertainty_weight_sums[workspace.day_count - 1] += uncertainty_ratio * uncertainty_ratio;
   }
-  workspace.result.source_generation = source_generation;
-  workspace.result.physical_context_generation = context_generation;
-  workspace.result.latest_control_generation = control_generation;
+  workspace.result.context_revision = context_revision;
   if (workspace.day_count < workspace.config.min_train_days + workspace.config.min_holdout_days)
     return LearningStatus::INSUFFICIENT_DATA;
 

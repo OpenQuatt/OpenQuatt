@@ -135,8 +135,8 @@ reboot nog oude historie opleveren; de UI mag daarom alleen na `cleared` succes 
 
 Herstel vereist geldige UTC en beschikbare geselecteerde bronnen. Schema, algoritmeversie en
 meetcontext bepalen compatibiliteit; een gewone hercompilatie of webfix wist geen historie.
-Deze vereenvoudiging gebruikt schema 2: data van de eerdere experimentele schema-1-build begint
-eenmalig opnieuw. Achtergebleven NVS-owner/dirty-waarden worden niet meer gelezen.
+Deze vereenvoudiging gebruikt schema 3: eerdere experimentele schema's hebben drie revisions en
+worden daarom eenmalig niet hersteld. Achtergebleven NVS-owner/dirty-waarden worden niet gelezen.
 
 ## Uitvoerbare replay
 
@@ -154,6 +154,10 @@ Het CSV-contract bevat deze header, in deze volgorde:
 ```csv
 monotonic_ms,epoch_s,source_generation,physical_context_generation,control_generation,invalid_reasons,room_c,setpoint_c,outside_c,heat_to_water_w,heat_uncertainty_w,mean_water_c
 ```
+
+De replay leest dit historische CSV-formaat voor compatibiliteit, maar accepteert alleen rijen waarin de
+drie revisionkolommen gelijk en niet nul zijn. In firmware en nieuw JSON-export bestaat uitsluitend
+`context_revision`.
 
 Temperaturen zijn in °C, vermogens en onzekerheid in W; tijd is monotone milliseconden en UTC-seconden. Generatie 0 betekent onbekend. Voor historische data accepteert de CLI `--now-epoch` als expliciete analysetijd, zodat de 42-dagengrens causaal kan worden gereproduceerd. Iedere rij vertegenwoordigt een snapshot met gecontroleerde provenance. Alleen een CSV-getal of `invalid_reasons=0` vormt geen bewijs dat de onderliggende bron actueel was. Een gewone HA-historie-export voldoet niet automatisch aan dit contract.
 

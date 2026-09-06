@@ -40,18 +40,11 @@ LearningSourceInput valid_input(HydronicTopology topology = HydronicTopology::SI
   LearningSourceInput input;
   input.monotonic_ms = kNowMs;
   input.epoch_s = kEpochS;
-  input.source_cohort_generation = 17;
-  input.physical_context_generation = 23;
-  input.control_generation = 31;
+  input.context_revision = 17;
   input.topology = topology;
-  input.calorimetry.meter_boundary = topology == HydronicTopology::SINGLE ? MeterBoundary::SINGLE_HEAT_PUMP_CIRCUIT
-                                                                          : MeterBoundary::SHARED_DUO_SERIES_CIRCUIT;
-  input.calorimetry.fluid_model = FluidHeatCapacityModel::WATER_CP_4180;
-  input.calorimetry.calorimetry_generation = 41;
   input.calorimetry.uncertainty_proven = true;
   input.calorimetry.heat_uncertainty_w = 100.0f;
   input.calorimetry.max_flow_lph = 2000.0f;
-  input.calorimetry.duo_series_order = DuoSeriesOrder::HP1_TO_HP2;
   input.calorimetry.max_series_junction_delta_c = 0.5f;
   input.room_c = measurement(20.0f, 1);
   input.setpoint_c = measurement(20.0f, 2);
@@ -61,7 +54,7 @@ LearningSourceInput valid_input(HydronicTopology topology = HydronicTopology::SI
   if (topology == HydronicTopology::DUO_SERIES) input.hp2 = heat_pump(PhysicalUnit::HP2, 200, 32.0f, 35.0f);
   input.boiler_heat = measurement(BoilerHeatState::NO_HEAT, 5);
   input.operation.captured_monotonic_ms = kNowMs - 100;
-  input.operation.captured_control_generation = input.control_generation;
+  input.operation.captured_context_revision = input.context_revision;
   input.operation.control_mode_valid = true;
   input.operation.control_mode = LearningControlMode::HEATING;
   input.operation.active_limit_valid = true;
@@ -103,7 +96,7 @@ void retime(LearningSourceInput& input, uint64_t now_ms) {
   if (input.hp2.present) retime(input.hp2, received_ms);
   retime(input.boiler_heat, received_ms);
   input.operation.captured_monotonic_ms = received_ms;
-  input.operation.captured_control_generation = input.control_generation;
+  input.operation.captured_context_revision = input.context_revision;
 }
 
 void assert_failed(const SnapshotBuildResult& result, SnapshotSourceStatus status) {
@@ -118,8 +111,14 @@ void assert_failed(const SnapshotBuildResult& result, SnapshotSourceStatus statu
 }
 
 void test_single_and_series_calorimetry() {
-  auto single = build(valid_input());
+  const auto single_input = valid_input();
+  const auto single_calorimetry = evaluate_calorimetry(single_input, QualityConfig{});
+  const auto single =
+      build_learning_snapshot(single_input, QualityConfig{}, SnapshotPurpose::STRUCTURAL_BATCH, &single_calorimetry);
   assert(single.status == SnapshotSourceStatus::OK && single.has_snapshot);
+  assert(single_calorimetry.valid);
+  assert(single.snapshot.heat_to_water_w == single_calorimetry.heat_to_water_w);
+  assert(single.snapshot.mean_water_c == single_calorimetry.mean_water_c);
   assert(fabsf(single.snapshot.heat_to_water_w - (1000.0f / 3600.0f * 4180.0f * 2.0f)) < 0.01f);
   assert(fabsf(single.snapshot.mean_water_c - 31.0f) < 0.001f);
 
@@ -166,42 +165,15 @@ void test_freshness_and_skew_are_per_field() {
   assert_failed(build(unbounded), SnapshotSourceStatus::INVALID_TIMING_CONTRACT);
 }
 
-void test_source_route_and_context_generations() {
+void test_context_revision_binds_each_snapshot() {
   const auto baseline = build(valid_input());
   assert(baseline.has_snapshot);
-
-  auto changed_route_input = valid_input();
-  changed_route_input.outside_c.source = {PhysicalSourceKind::API_INGRESS, 9001, PhysicalUnit::SYSTEM};
-  changed_route_input.outside_c.source_generation = 77;
-  const auto changed_route = build(changed_route_input);
-  assert(changed_route.has_snapshot);
-  assert(changed_route.source_fingerprint != baseline.source_fingerprint);
-  assert(changed_route.snapshot.source_generation == baseline.snapshot.source_generation);
-
-  auto changed_raw_generation_input = valid_input();
-  ++changed_raw_generation_input.flow_lph.source_generation;
-  const auto changed_raw_generation = build(changed_raw_generation_input);
-  assert(changed_raw_generation.has_snapshot);
-  assert(changed_raw_generation.source_fingerprint != baseline.source_fingerprint);
-
-  auto changed_cohort_input = valid_input();
-  ++changed_cohort_input.source_cohort_generation;
-  const auto changed_cohort = build(changed_cohort_input);
-  assert(changed_cohort.source_fingerprint == baseline.source_fingerprint);
-  assert(changed_cohort.snapshot.source_generation != baseline.snapshot.source_generation);
-
-  auto changed_calorimetry_input = valid_input();
-  ++changed_calorimetry_input.calorimetry.calorimetry_generation;
-  ++changed_calorimetry_input.physical_context_generation;
-  const auto changed_calorimetry = build(changed_calorimetry_input);
-  assert(changed_calorimetry.source_fingerprint != baseline.source_fingerprint);
-  assert(changed_calorimetry.snapshot.physical_context_generation != baseline.snapshot.physical_context_generation);
-
   auto changed_context_input = valid_input();
-  ++changed_context_input.physical_context_generation;
+  ++changed_context_input.context_revision;
+  changed_context_input.operation.captured_context_revision = changed_context_input.context_revision;
   const auto changed_context = build(changed_context_input);
   assert(changed_context.has_snapshot);
-  assert(changed_context.snapshot.physical_context_generation != baseline.snapshot.physical_context_generation);
+  assert(changed_context.snapshot.context_revision != baseline.snapshot.context_revision);
 }
 
 void test_unit_identity_and_distinct_temperature_paths() {
@@ -222,7 +194,7 @@ void test_unit_identity_and_distinct_temperature_paths() {
   assert_failed(build(mismatched), SnapshotSourceStatus::SOURCE_UNIT_MISMATCH);
 }
 
-void test_off_periods_keep_signed_heat_and_require_zero_proof() {
+void test_off_periods_keep_signed_heat_and_allow_zero_flow() {
   auto off = valid_input();
   off.hp1.mode.value = HeatPumpMode::OFF;
   off.hp1.compressor_active.value = false;
@@ -236,10 +208,8 @@ void test_off_periods_keep_signed_heat_and_require_zero_proof() {
   zero.hp1.mode.value = HeatPumpMode::OFF;
   zero.hp1.compressor_active.value = false;
   zero.flow_lph.value = 0.0f;
-  assert_failed(build(zero), SnapshotSourceStatus::ZERO_FLOW_NOT_PROVEN);
-  zero.calorimetry.zero_flow_proof = ZeroFlowProof::PHYSICAL_METER_COVERS_BOUNDARY;
-  const auto proven_zero = build(zero);
-  assert(proven_zero.has_snapshot && proven_zero.snapshot.heat_to_water_w == 0.0f);
+  const auto zero_heat = build(zero);
+  assert(zero_heat.has_snapshot && zero_heat.snapshot.heat_to_water_w == 0.0f);
 
   // Zero-flow proof does not make missing water temperatures safe: mean-water storage remains required.
   zero.hp1.water_in_c.valid = false;
@@ -260,14 +230,6 @@ void test_invalid_values_contracts_and_unknowns_never_become_zero() {
   uncertain.calorimetry.uncertainty_proven = false;
   assert_failed(build(uncertain), SnapshotSourceStatus::INVALID_UNCERTAINTY);
 
-  auto wrong_boundary = valid_input(HydronicTopology::DUO_SERIES);
-  wrong_boundary.calorimetry.meter_boundary = MeterBoundary::SINGLE_HEAT_PUMP_CIRCUIT;
-  assert_failed(build(wrong_boundary), SnapshotSourceStatus::INVALID_METER_BOUNDARY);
-
-  auto missing_calorimetry_generation = valid_input();
-  missing_calorimetry_generation.calorimetry.calorimetry_generation = 0;
-  assert_failed(build(missing_calorimetry_generation), SnapshotSourceStatus::INVALID_CALORIMETRY_CONTRACT);
-
   auto invalid_max_flow = valid_input();
   invalid_max_flow.calorimetry.max_flow_lph = kAbsoluteMaxFlowLph + 1.0f;
   assert_failed(build(invalid_max_flow), SnapshotSourceStatus::INVALID_CALORIMETRY_CONTRACT);
@@ -280,14 +242,9 @@ void test_invalid_values_contracts_and_unknowns_never_become_zero() {
   broken_series_junction.hp2.water_in_c.value += 2.0f;
   assert_failed(build(broken_series_junction), SnapshotSourceStatus::SERIES_JUNCTION_MISMATCH);
 
-  auto unknown_series_order = valid_input(HydronicTopology::DUO_SERIES);
-  unknown_series_order.calorimetry.duo_series_order = DuoSeriesOrder::UNKNOWN;
-  assert_failed(build(unknown_series_order), SnapshotSourceStatus::INVALID_CALORIMETRY_CONTRACT);
-
   auto missing_flow = valid_input();
   missing_flow.flow_lph.value = 0.0f;
   missing_flow.flow_lph.valid = false;
-  missing_flow.calorimetry.zero_flow_proof = ZeroFlowProof::PHYSICAL_METER_COVERS_BOUNDARY;
   assert_failed(build(missing_flow), SnapshotSourceStatus::MISSING_MEASUREMENT);
 
   auto boiler_unknown = valid_input();
@@ -341,8 +298,8 @@ void test_operational_context_is_explicit_and_fail_closed() {
   assert_failed(build(future), SnapshotSourceStatus::OPERATIONAL_CONTEXT_STALE);
 
   auto generation_mismatch = valid_input();
-  ++generation_mismatch.operation.captured_control_generation;
-  assert_failed(build(generation_mismatch), SnapshotSourceStatus::CONTROL_GENERATION_MISMATCH);
+  ++generation_mismatch.operation.captured_context_revision;
+  assert_failed(build(generation_mismatch), SnapshotSourceStatus::CONTEXT_REVISION_MISMATCH);
 }
 
 void test_invalid_raw_event_poisoning_reaches_aggregate() {
@@ -455,9 +412,9 @@ int main() {
   test_single_and_series_calorimetry();
   test_missing_and_unsupported_topology_fail_closed();
   test_freshness_and_skew_are_per_field();
-  test_source_route_and_context_generations();
+  test_context_revision_binds_each_snapshot();
   test_unit_identity_and_distinct_temperature_paths();
-  test_off_periods_keep_signed_heat_and_require_zero_proof();
+  test_off_periods_keep_signed_heat_and_allow_zero_flow();
   test_invalid_values_contracts_and_unknowns_never_become_zero();
   test_provenance_and_active_exclusions();
   test_operational_context_is_explicit_and_fail_closed();
