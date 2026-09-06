@@ -445,21 +445,18 @@ inline CalorimetryResult evaluate_calorimetry(const LearningSourceInput& input, 
     result.status = SnapshotSourceStatus::INVALID_VALUE;
     return result;
   }
-  if (source_detail::same_source(input.hp1.water_in_c.source, input.hp1.water_out_c.source)) {
-    result.status = SnapshotSourceStatus::DUPLICATE_TEMPERATURE_SOURCE;
-    return result;
-  }
+  const SourceIdentity temperature_sources[] = {input.hp1.water_in_c.source, input.hp1.water_out_c.source,
+                                                input.hp2.water_in_c.source, input.hp2.water_out_c.source};
+  const size_t temperature_count = input.topology == HydronicTopology::DUO_SERIES ? 4 : 2;
+  for (size_t left = 0; left < temperature_count; ++left)
+    for (size_t right = left + 1; right < temperature_count; ++right)
+      if (source_detail::same_source(temperature_sources[left], temperature_sources[right])) {
+        result.status = SnapshotSourceStatus::DUPLICATE_TEMPERATURE_SOURCE;
+        return result;
+      }
   double water_sum_c = static_cast<double>(input.hp1.water_in_c.value) + input.hp1.water_out_c.value;
   size_t water_count = 2;
   if (input.topology == HydronicTopology::DUO_SERIES) {
-    const SourceIdentity temperature_sources[] = {input.hp1.water_in_c.source, input.hp1.water_out_c.source,
-                                                  input.hp2.water_in_c.source, input.hp2.water_out_c.source};
-    for (size_t left = 0; left < 4; ++left)
-      for (size_t right = left + 1; right < 4; ++right)
-        if (source_detail::same_source(temperature_sources[left], temperature_sources[right])) {
-          result.status = SnapshotSourceStatus::DUPLICATE_TEMPERATURE_SOURCE;
-          return result;
-        }
     if (!isfinite(input.calorimetry.max_series_junction_delta_c) ||
         input.calorimetry.max_series_junction_delta_c <= 0.0f ||
         input.calorimetry.max_series_junction_delta_c > kAbsoluteMaxSeriesJunctionDeltaC) {

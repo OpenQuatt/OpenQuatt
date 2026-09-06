@@ -42,7 +42,7 @@ inline float hp_heating_power(float mode, float inlet_c, float outlet_c, float f
 
 inline float hp_cooling_power(float mode, float inlet_c, float outlet_c, float flow_lph, float cp_j_per_kgk) {
   if (mode != 1.0f || isnan(inlet_c) || isnan(outlet_c) || isnan(flow_lph)) return 0.0f;
-  return nonnegative((flow_lph / 3600.0f) * cp_j_per_kgk * (inlet_c - outlet_c));
+  return nonnegative(-hydronic_heat_power(inlet_c, outlet_c, flow_lph, cp_j_per_kgk));
 }
 
 inline float sum_or_zero(float first, float second = NAN) { return value_or_zero(first) + value_or_zero(second); }
