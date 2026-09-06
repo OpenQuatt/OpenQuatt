@@ -76,6 +76,10 @@ class Runtime {
                                     restart_by_minimum_off_time),
     };
     this->publish_defrost_events(config.now_ms);
+    this->publish_frequency_limit_block_(true, cycle);
+#if OQ_TOPOLOGY_DUO
+    this->publish_frequency_limit_block_(false, cycle);
+#endif
     const bool hp1_was_cooling = this->applied_cooling_[0] || this->applied_mode_is_cooling_(true, request_mode_code);
 #if OQ_TOPOLOGY_DUO
     const bool hp2_was_cooling = this->applied_cooling_[1] || this->applied_mode_is_cooling_(false, request_mode_code);
@@ -388,6 +392,34 @@ class Runtime {
   }
 
  private:
+  void publish_frequency_limit_block_(bool is_hp1, const Cycle& cycle) {
+    const int cm = id(oq_control_mode_code);
+    const int requested = is_hp1 ? id(oq_request_hp1_level) : id(oq_request_hp2_level);
+    const auto incident = id(oq_incident_manager).get_outputs(is_hp1 ? 1U : 2U);
+    const int minimum = oq_frequency_policy::minimum_automatic_frequency_hz(
+        cycle.frequency.configured_v2, cycle.frequency.snapshot(is_hp1), cm == 5 ? 1 : 2);
+    const bool blocked = !cycle.manual_service_active && (cm == 2 || cm == 3 || cm == 5) && requested > 0 &&
+                         this->previous_applied_(is_hp1) == 0 && !incident.running_confirmed &&
+                         oq_frequency_policy::cap_below_minimum(cycle.frequency.cap_hz, minimum);
+    uint32_t& previous = this->last_frequency_limit_blocks_[is_hp1 ? 0 : 1];
+    const bool silent = id(oq_silent_active).state;
+    const uint32_t signature = blocked ? (static_cast<uint32_t>(cm) << 24) | (silent ? 1U << 23 : 0U) |
+                                             (static_cast<uint32_t>(cycle.frequency.cap_hz) << 8) |
+                                             static_cast<uint32_t>(minimum)
+                                       : 0U;
+    if (signature == previous) return;
+    previous = signature;
+    if (!blocked) return;
+    // Keep the pre-policy request: the final actuator request can already be
+    // zero because this frequency limit rejected every allowed level.
+    id(oq_decision_log)
+        .emit(openquatt_decision_log::EVENT_CANDIDATE_BLOCKED,
+              is_hp1 ? openquatt_decision_log::SUBJECT_HP1 : openquatt_decision_log::SUBJECT_HP2,
+              openquatt_decision_log::REASON_FREQUENCY_CAP_BELOW_MINIMUM, openquatt_decision_log::SEVERITY_LIMITED,
+              static_cast<uint8_t>(cm), openquatt_decision_log::STATE_STANDBY, openquatt_decision_log::STATE_BLOCKED,
+              static_cast<int16_t>(cycle.frequency.cap_hz), static_cast<int16_t>(minimum), 0, 0, silent ? 1U : 0U);
+  }
+
   int apply_level_(bool is_hp1, int requested, bool was_cooling, Cycle& cycle) {
     constexpr int MAX_LEVEL = 10;
     const int maximum = cycle.manual_service_active
@@ -792,6 +824,7 @@ class Runtime {
   uint32_t last_safe_stop_write_ms_[2]{0, 0};
   oq_odu::RetainedLevel retained_levels_[2]{};
   uint8_t last_candidate_reasons_[2]{openquatt_decision_log::REASON_UNKNOWN, openquatt_decision_log::REASON_UNKNOWN};
+  uint32_t last_frequency_limit_blocks_[2]{};
 };
 
 inline Runtime& runtime() {

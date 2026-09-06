@@ -35,6 +35,22 @@ inline int automatic_frequency_hz(bool configured_v2, const oq_odu::RuntimeFrequ
   return frequency_hz > 0 ? frequency_hz : -1;
 }
 
+// Read-only diagnostic: the lowest frequency the automatic level mapping can
+// request, before applying the user cap or an excluded frequency range.
+inline int minimum_automatic_frequency_hz(bool configured_v2, const oq_odu::RuntimeFrequencySnapshot& snapshot,
+                                          int mode_code) {
+  int minimum = MAX_POLICY_FREQUENCY_HZ + 1;
+  for (int level = 1; level <= oq_odu::MODEL_LEVEL_MAX; ++level) {
+    const int hz = automatic_frequency_hz(configured_v2, snapshot, mode_code, level);
+    if (hz > 0) minimum = std::min(minimum, hz);
+  }
+  return minimum <= MAX_POLICY_FREQUENCY_HZ ? minimum : -1;
+}
+
+inline bool cap_below_minimum(int cap_hz, int minimum_hz) {
+  return cap_hz >= 0 && cap_hz <= MAX_POLICY_FREQUENCY_HZ && minimum_hz > 0 && cap_hz < minimum_hz;
+}
+
 inline bool frequency_allowed(int frequency_hz, int cap_hz, const FrequencyRange& excluded) {
   if (frequency_hz <= 0 || cap_hz < 0 || cap_hz > MAX_POLICY_FREQUENCY_HZ) return false;
   if (!valid_frequency_range(excluded)) return false;

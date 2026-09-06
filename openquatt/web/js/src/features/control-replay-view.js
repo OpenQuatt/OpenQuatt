@@ -1,3 +1,4 @@
+import { describeFrequencyLimit } from "./frequency-limits.js";
 import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon } from "../core/config.js";
 import { getEntityValue } from "../core/entity-store.js";
@@ -379,6 +380,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
   }
 
   const CONTROL_WORKING_REASON_METAS = createControlWorkingReasonMetas([
+    ["frequency_cap_below_minimum", "Frequentielimiet te laag", "De ingestelde maximumfrequentie ligt onder de laagste compressorfrequentie. Hierdoor kan de warmtepomp niet starten.", "Controleer de limiet bij Stille uren", "Vergelijk met het minimum van de buitenunit"],
     ["keep_current", "Huidige keuze blijft logisch", "De huidige stand past bij de vraag in huis. Wisselen zou nu weinig voordeel geven.", "Vraag blijft binnen de band", "Geen betere keuze nodig", "Rustig door laten lopen"],
     ["hold_active", "Wissel bewust uitgesteld", "Het systeem wacht bewust even, zodat warmtepompen niet onnodig vaak starten en stoppen.", "Vraag is nog niet duidelijk anders", "Minimale looptijd telt mee", "Actieve bron werkt nog goed"],
     ["defrost_hold", "Ontdooien rustig laten verlopen", "Een warmtepomp ontdooit kort. Dat is normaal wintergedrag en herstelt vanzelf.", "Ontdooien actief of net klaar", "Warmte kan kort lager zijn", "Herstart gebeurt automatisch"],
@@ -757,7 +759,6 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const stickyActive = hasEntity("stickyActive") && isEntityActive("stickyActive");
     const boilerActive = modeModel.boilerActive;
     const startupInhibit = getControlWorkingActiveStartupInhibit();
-
     let title = "Eén warmtepomp actief";
     let copy = "De actuele vraag past binnen één warmtepomp. De andere warmtepomp blijft beschikbaar als extra capaciteit nodig is.";
     let expectation = "Een extra warmtepomp schakelt bij zodra de vraag lang genoeg hoog blijft en alle wachttijden vrij zijn.";
@@ -1110,6 +1111,19 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const incidentCopy = getControlReplayIncidentEventCopy(event, subject);
     if (incidentCopy) {
       return incidentCopy;
+    }
+    if (reasonCode === "frequency_cap_below_minimum") {
+      const silent = (Number(event?.flags) & 1) !== 0;
+      return {
+        title: `${subject} kan niet starten: frequentielimiet`,
+        summary: describeFrequencyLimit(Number(event.value_a), {
+          unit: event.subject === "HP2" ? "hp2" : "hp1",
+          mode: Number(event.cm) === 5 ? "cooling" : "heating",
+          minimum: Number(event.value_b),
+        }),
+        detail: `De maximale compressorfrequentie ${silent ? "tijdens stille uren" : "overdag"} sloot alle compressorstanden voor deze bedrijfsmodus uit.`,
+        next: `Controleer bij Stille uren de maximale compressorfrequentie ${silent ? "tijdens stille uren" : "overdag"}. Deze moet minstens gelijk zijn aan het genoemde minimum.`,
+      };
     }
     const fallback = {
       title: "Keuze van het systeem",
@@ -3229,6 +3243,10 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       graphMinute: getControlWorkingGraphMinute(),
       mode: current.modeLabel,
       title: current.title,
+      copy: current.copy,
+      expectation: current.expectation,
+      hp1Status: current.hp1Status,
+      hp2Status: current.hp2Status,
       reason: current.primaryReason,
       hp1Running: current.hp1Running,
       hp2Running: current.hp2Running,
