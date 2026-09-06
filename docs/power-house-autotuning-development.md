@@ -243,6 +243,10 @@ meldt 105891 B vrije interne heap, 39848 B minimum heap, een grootste blok van 6
 46832 B learning-PSRAM en een maximale learnertick van 4535 µs. Dit is een functionele smoke-test, geen
 kwalificatie onder belasting.
 
+Het concrete Q Duo-draaiboek voor de OpenQuatt Simulator staat in
+[power-house-learning-hil.md](power-house-learning-hil.md). Die proef bewijst een live meetpunt en de
+bronketen, maar kan geen woningrespons of vieruursrecord versneld valideren.
+
 Deze vereenvoudiging is gecontroleerd met 83 C++-hosttests, 239 Python-contracttests en 457 webtests.
 C++-format, docschecks, webbuild, smokecheck en controle van de gegenereerde assets slagen. De volledige
 Q Duo Wi-Fi-build slaagt: 205815 bytes statisch RAM en 2261295 bytes applicatie-image. Die build bevat
