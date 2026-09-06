@@ -1,7 +1,10 @@
 #include <cassert>
+#include <string_view>
 
 #include "components/openquatt_crash_telemetry/OpenQuattCrashTelemetryPolicy.h"
 
+using esphome::openquatt_crash_telemetry::active_connection_wire_value;
+using esphome::openquatt_crash_telemetry::connection_preference_wire_value;
 using esphome::openquatt_crash_telemetry::crash_data_may_be_published;
 using esphome::openquatt_crash_telemetry::crash_publication_is_retained;
 using esphome::openquatt_crash_telemetry::CrashCleanupDecision;
@@ -18,6 +21,15 @@ using esphome::openquatt_crash_telemetry::should_request_tombstone;
 using esphome::openquatt_crash_telemetry::should_wait_for_time_sync;
 
 int main() {
+  assert(std::string_view(active_connection_wire_value("WiFi")) == "wifi");
+  assert(std::string_view(active_connection_wire_value("Ethernet")) == "eth");
+  assert(std::string_view(active_connection_wire_value("Not connected")) == "none");
+  assert(active_connection_wire_value("Unknown") == nullptr);
+  assert(std::string_view(connection_preference_wire_value("Automatic")) == "auto");
+  assert(std::string_view(connection_preference_wire_value("WiFi")) == "wifi");
+  assert(std::string_view(connection_preference_wire_value("Ethernet")) == "eth");
+  assert(connection_preference_wire_value("Unknown") == nullptr);
+
   assert(select_crash_publish_kind(true, false, false, false) == CrashPublishKind::TOMBSTONE);
   assert(select_crash_publish_kind(false, true, true, true) == CrashPublishKind::CRASH);
   assert(select_crash_publish_kind(false, true, false, true) == CrashPublishKind::NONE);
