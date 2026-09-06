@@ -11,7 +11,6 @@
 
 #include "esphome/components/globals/globals_component.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
-#include "esphome/components/modbus_controller/modbus_controller.h"
 #include "esphome/components/openquatt_decision_log/OpenQuattDecisionLog.h"
 #include "esphome/components/openquatt_web_auth/OpenQuattWebAuth.h"
 #include "esphome/components/time/real_time_clock.h"
@@ -53,10 +52,9 @@ class OpenQuattIncidentManager : public Component {
   void set_web_auth(openquatt_web_auth::OpenQuattWebAuth* value) { this->web_auth_ = value; }
   void set_minimum_off_ms(uint32_t value) { this->minimum_off_ms_ = value; }
   void set_polling_paused(binary_sensor::BinarySensor* value) { this->polling_paused_ = value; }
-  void set_hp1_controller(modbus_controller::ModbusController* value) { this->controllers_[0] = value; }
-  void set_hp2_controller(modbus_controller::ModbusController* value) { this->controllers_[1] = value; }
   // Button callbacks only enqueue; state and Modbus queues belong to loop().
   void request_restart() { this->restart_requested_.store(true); }
+  void invalidate_restart_credit(uint8_t hp_index);
   bool startup_inhibited(uint8_t hp_index) const;
   uint32_t minimum_off_remaining_ms(uint8_t hp_index, uint32_t now_ms) const;
 
@@ -103,6 +101,7 @@ class OpenQuattIncidentManager : public Component {
 
  protected:
   static constexpr uint32_t LINK_ROUND_TIMEOUT_MS = 15000U;
+  static constexpr uint32_t RESTART_CREDIT_ACQUISITION_TIMEOUT_MS = 120000U;
   static constexpr uint32_t PARTIAL_FAULT_SNAPSHOT_TIMEOUT_MS = 15000U;
   static constexpr uint32_t MANUAL_RESET_PERSIST_RETRY_MS = 60000U;
   static constexpr uint8_t INITIALIZATION_FAULT_SNAPSHOT_COUNT = 2U;
@@ -142,6 +141,8 @@ class OpenQuattIncidentManager : public Component {
   struct UnitState {
     oq_incidents::HpIncidentEngine engine{};
     oq_hp_restart_guard::Policy restart_guard{};
+    bool restart_credit_pending{false};
+    uint32_t restart_credit_pending_since_ms{0U};
     bool startup_released{false};
     uint32_t rest_mode_generation{0U};
     uint32_t rest_mode_observed_ms{0U};
@@ -249,6 +250,7 @@ class OpenQuattIncidentManager : public Component {
   PublishedSnapshot& response_snapshot_() const;
   UnitState* unit_(uint8_t hp_index);
   const UnitState* unit_(uint8_t hp_index) const;
+  static void invalidate_restart_credit_(UnitState& unit);
   void process_fault_snapshot_(UnitState& unit, size_t slot, uint32_t now_ms, bool force_partial);
   void perform_restart_(uint32_t now_ms);
   void observe_complete_link_round_(UnitState& unit, uint32_t now_ms);
@@ -278,7 +280,6 @@ class OpenQuattIncidentManager : public Component {
   IntGlobal* control_mode_code_{nullptr};
   openquatt_decision_log::OpenQuattDecisionLog* decision_log_{nullptr};
   openquatt_web_auth::OpenQuattWebAuth* web_auth_{nullptr};
-  std::array<modbus_controller::ModbusController*, 2U> controllers_{};
   binary_sensor::BinarySensor* polling_paused_{nullptr};
   uint32_t minimum_off_ms_{240000U};
   std::atomic<bool> restart_requested_{false};

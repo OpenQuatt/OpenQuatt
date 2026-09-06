@@ -27,13 +27,24 @@ class ThermalActuatorRuntimeContractTest(unittest.TestCase):
             self.assertIn(state, RUNTIME)
             self.assertNotIn(state, YAML)
 
+    def test_every_active_modbus_write_invalidates_restart_credit_first(self) -> None:
+        level_write = RUNTIME.index("call.perform();", RUNTIME.index("void write_level"))
+        self.assertLess(RUNTIME.index("invalidate_restart_credit(1U)", RUNTIME.index("void write_level")), level_write)
+        hp2_level_write = RUNTIME.index("call.perform();", level_write + 1)
+        self.assertLess(RUNTIME.index("invalidate_restart_credit(2U)", level_write), hp2_level_write)
+        mode_helper = RUNTIME.index("void write_mode_option_")
+        hp1_mode_write = RUNTIME.index("call.perform();", mode_helper)
+        self.assertLess(RUNTIME.index("invalidate_restart_credit(1U)", mode_helper), hp1_mode_write)
+        hp2_mode_write = RUNTIME.index("call.perform();", hp1_mode_write + 1)
+        self.assertLess(RUNTIME.index("invalidate_restart_credit(2U)", hp1_mode_write), hp2_mode_write)
+
     def test_complete_runtime_stack_stays_bounded(self) -> None:
         paths = ("openquatt/oq_thermal_actuator.yaml", "openquatt/includes/control/oq_thermal_actuator_logic.h",
                  "openquatt/includes/control/oq_thermal_actuator_runtime.h", "tests/host/thermal_actuator_logic_test.cpp",
                  "scripts/tests/test_thermal_actuator_runtime_contract.py", "scripts/tests/test_v2_compressor_level_contract.py",
                  "scripts/tests/test_compressor_frequency_policy_contract.py")
         # Includes the confirmed-rest reporting and its new communication-gap regression cases.
-        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1320)
+        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1340)
 
 
 if __name__ == "__main__":

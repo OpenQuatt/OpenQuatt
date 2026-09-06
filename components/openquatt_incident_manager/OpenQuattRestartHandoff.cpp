@@ -109,6 +109,25 @@ bool capture_boot_context(uint32_t minimum_off_ms, BootContext* context) {
   return restart_handoff::has_image_hash(context->image_hash);
 }
 
+bool confirm_pending_image_for_controlled_restart() {
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  const esp_partition_t* boot = esp_ota_get_boot_partition();
+  if (running == nullptr || boot == nullptr || running->address != boot->address) return false;
+
+  esp_ota_img_states_t image_state = ESP_OTA_IMG_UNDEFINED;
+  const esp_err_t state_result = esp_ota_get_state_partition(running, &image_state);
+  if (state_result != ESP_OK || image_state != ESP_OTA_IMG_PENDING_VERIFY) return true;
+
+  // SafeMode confirms this same image in App.safe_reboot(). Do it before the
+  // handoff snapshot so the first controlled restart after OTA can be armed.
+  const esp_err_t confirm_result = esp_ota_mark_app_valid_cancel_rollback();
+  if (confirm_result != ESP_OK) {
+    ESP_LOGE(TAG, "Could not confirm pending image for controlled restart: %s", esp_err_to_name(confirm_result));
+    return false;
+  }
+  return true;
+}
+
 }  // namespace
 
 bool initialize_restart_handoff(uint32_t minimum_off_ms) {
@@ -151,6 +170,8 @@ bool arm_restart_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms) {
       (hp1_credit_ms == 0U && hp2_credit_ms == 0U)) {
     return false;
   }
+
+  if (!confirm_pending_image_for_controlled_restart()) return false;
 
   BootContext context{};
   if (!capture_boot_context(configured_minimum_off_ms, &context) || !context.running_partition_matches_boot ||

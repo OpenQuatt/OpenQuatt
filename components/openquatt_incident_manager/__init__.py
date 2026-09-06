@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, globals as globals_component, modbus_controller, time
+from esphome.components import binary_sensor, globals as globals_component, time
 from esphome.const import CONF_ID
 from esphome.core import CORE, CoroPriority, coroutine_with_priority
 
@@ -17,8 +17,6 @@ CONF_CONTROL_MODE_CODE = "control_mode_code"
 CONF_DECISION_LOG = "decision_log"
 CONF_WEB_AUTH = "web_auth"
 CONF_MINIMUM_OFF_TIME = "minimum_off_time"
-CONF_HP1_CONTROLLER = "hp1_controller"
-CONF_HP2_CONTROLLER = "hp2_controller"
 CONF_POLLING_PAUSED = "polling_paused"
 
 openquatt_incident_manager_ns = cg.esphome_ns.namespace(
@@ -48,8 +46,6 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_DECISION_LOG): cv.use_id(OpenQuattDecisionLog),
         cv.Required(CONF_WEB_AUTH): cv.use_id(OpenQuattWebAuth),
         cv.Required(CONF_MINIMUM_OFF_TIME): cv.positive_time_period_milliseconds,
-        cv.Required(CONF_HP1_CONTROLLER): cv.use_id(modbus_controller.ModbusController),
-        cv.Optional(CONF_HP2_CONTROLLER): cv.use_id(modbus_controller.ModbusController),
         cv.Required(CONF_POLLING_PAUSED): cv.use_id(binary_sensor.BinarySensor),
     }
 ).extend(cv.COMPONENT_SCHEMA)
@@ -71,12 +67,6 @@ async def _runtime_to_code(config):
     cg.add(var.set_minimum_off_ms(config[CONF_MINIMUM_OFF_TIME]))
     polling_paused = await cg.get_variable(config[CONF_POLLING_PAUSED])
     cg.add(var.set_polling_paused(polling_paused))
-    hp1_controller = await cg.get_variable(config[CONF_HP1_CONTROLLER])
-    cg.add(var.set_hp1_controller(hp1_controller))
-    if CONF_HP2_CONTROLLER in config:
-        hp2_controller = await cg.get_variable(config[CONF_HP2_CONTROLLER])
-        cg.add(var.set_hp2_controller(hp2_controller))
-
     clock = await cg.get_variable(config[CONF_CLOCK])
     cg.add(var.set_clock(clock))
     control_mode_code = await cg.get_variable(config[CONF_CONTROL_MODE_CODE])

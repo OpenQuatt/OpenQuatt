@@ -526,7 +526,10 @@ void OpenQuattIncidentManager::setup() {
     UnitState& unit = this->units_()[slot];
     unit.last_link_round_ms = now_ms;
     unit.restart_guard.configure(this->minimum_off_ms_, LINK_ROUND_TIMEOUT_MS);
-    unit.restart_guard.restore_credit(restored_off_credit_ms(static_cast<uint8_t>(slot + 1U)), true);
+    const uint32_t restored_credit_ms = restored_off_credit_ms(static_cast<uint8_t>(slot + 1U));
+    unit.restart_guard.restore_credit(restored_credit_ms, true);
+    unit.restart_credit_pending = restored_credit_ms != 0U;
+    unit.restart_credit_pending_since_ms = now_ms;
   }
   this->setup_manual_reset_persistence_(now_ms);
   for (size_t slot = 0U; slot < this->units_().size(); ++slot) {
@@ -561,8 +564,12 @@ void OpenQuattIncidentManager::loop() {
       this->process_fault_snapshot_(unit, slot, now_ms, true);
     }
 
+    const bool credit_acquisition_active = restored_credit_acquisition_active(
+        unit.restart_credit_pending, unit.transport_seen, unit.transport_online, now_ms,
+        unit.restart_credit_pending_since_ms, RESTART_CREDIT_ACQUISITION_TIMEOUT_MS);
+    if (unit.restart_credit_pending && !credit_acquisition_active) invalidate_restart_credit_(unit);
     if (link_round_timeout_elapsed(now_ms, unit.last_link_round_ms, LINK_ROUND_TIMEOUT_MS)) {
-      unit.restart_guard.invalidate();
+      if (!credit_acquisition_active) unit.restart_guard.invalidate();
       unit.engine.observe_link_round(now_ms, false);
       unit.last_link_round_ms = now_ms;
     }
@@ -586,6 +593,16 @@ uint32_t OpenQuattIncidentManager::minimum_off_remaining_ms(uint8_t hp_index, ui
   return unit == nullptr ? this->minimum_off_ms_ : unit->restart_guard.remaining_ms(now_ms);
 }
 
+void OpenQuattIncidentManager::invalidate_restart_credit(uint8_t hp_index) {
+  UnitState* unit = this->unit_(hp_index);
+  if (unit != nullptr) invalidate_restart_credit_(*unit);
+}
+
+void OpenQuattIncidentManager::invalidate_restart_credit_(UnitState& unit) {
+  unit.restart_credit_pending = false;
+  unit.restart_guard.invalidate();
+}
+
 void OpenQuattIncidentManager::perform_restart_(uint32_t now_ms) {
   // Runs synchronously on the ESPHome loop. No controller/strategy loop can
   // enqueue another start between this snapshot and safe_reboot().
@@ -594,13 +611,11 @@ void OpenQuattIncidentManager::perform_restart_(uint32_t now_ms) {
   for (uint8_t hp = 1U; hp <= this->configured_hp_count(); ++hp) {
     if (this->polling_paused_ == nullptr || !this->polling_paused_->has_state() || this->polling_paused_->state) break;
     const UnitState* unit = this->unit_(hp);
-    auto* controller = this->controllers_[hp - 1U];
-    // ESPHome 2026.8 submits one-shots directly to the hub; the controller's
-    // ownership list is not a second transmit queue. Continuous reads are safe.
-    if (unit == nullptr || controller == nullptr || controller->hub() == nullptr ||
-        !controller->hub()->tx_buffer_empty() || controller->hub()->tx_blocked())
-      continue;
+    if (unit == nullptr) continue;
     const auto outputs = this->get_outputs(hp);
+    // Telemetry reads and safe-stop writes may still be in flight. Every active
+    // mode/level write invalidates the guard before it enters the Modbus queue;
+    // start_feedback_armed additionally covers the incident start lifecycle.
     if (outputs.link_state == oq_incidents::LinkState::HEALTHY && outputs.stop_confirmed &&
         !outputs.stop_confirmation_pending && !unit->start_feedback_armed) {
       credit[hp - 1U] = unit->restart_guard.snapshot_credit_ms(now_ms);
@@ -752,7 +767,7 @@ void OpenQuattIncidentManager::observe_transport(uint8_t hp_index, bool online, 
   unit->transport_seen = true;
   unit->transport_online = online;
   if (!online) {
-    unit->restart_guard.invalidate();
+    invalidate_restart_credit_(*unit);
     unit->pump_context = {};
     unit->engine.observe_link_round(now_ms, false);
     unit->last_link_round_ms = now_ms;
@@ -766,10 +781,10 @@ void OpenQuattIncidentManager::observe_working_mode(uint8_t hp_index, float work
   if (unit == nullptr) return;
   if (!std::isfinite(working_mode)) {
     unit->working_mode_valid = false;
-    unit->restart_guard.invalidate();
+    invalidate_restart_credit_(*unit);
     return;
   }
-  if (static_cast<int>(std::lround(working_mode)) != 0) unit->restart_guard.invalidate();
+  if (static_cast<int>(std::lround(working_mode)) != 0) invalidate_restart_credit_(*unit);
   unit->working_mode = working_mode;
   unit->working_mode_valid = true;
   ++unit->working_mode_generation;
@@ -781,7 +796,7 @@ void OpenQuattIncidentManager::observe_compressor_frequency(uint8_t hp_index, fl
   if (unit == nullptr) return;
   if (!std::isfinite(frequency_hz) || frequency_hz < 0.0F) {
     unit->compressor_frequency_valid = false;
-    unit->restart_guard.invalidate();
+    invalidate_restart_credit_(*unit);
     return;
   }
   unit->compressor_frequency_hz = frequency_hz;
@@ -814,12 +829,13 @@ void OpenQuattIncidentManager::observe_compressor_frequency(uint8_t hp_index, fl
   // Rest evidence requires a new mode sample as well as this frequency sample.
   // Cached STOPPED alone is insufficient after a communication gap.
   if (frequency_hz > 0.5F) {
-    unit->restart_guard.invalidate();
+    invalidate_restart_credit_(*unit);
   } else if (unit->transport_online && observation.fresh && observation.stop_mode_confirmed &&
              unit->engine.outputs().stop_confirmed &&
              static_cast<uint32_t>(now_ms - unit->rest_mode_observed_ms) <= LINK_ROUND_TIMEOUT_MS &&
              feedback_generation_is_newer(unit->working_mode_generation, unit->rest_mode_generation)) {
     unit->restart_guard.observe_stopped(now_ms);
+    unit->restart_credit_pending = false;
     unit->rest_mode_generation = unit->working_mode_generation;
   }
   this->publish_transitions_(*unit, hp_slot_(hp_index), now_ms);
@@ -939,7 +955,7 @@ bool OpenQuattIncidentManager::request_start(uint8_t hp_index, uint8_t expected_
   if (this->restarting_ || !restart_handoff_storage_ready() || (newly_armed && !unit->restart_guard.can_start(now_ms)))
     return false;
   if (unit == nullptr || !unit->engine.request_start(now_ms)) return false;
-  if (newly_armed) unit->restart_guard.invalidate();
+  if (newly_armed) invalidate_restart_credit_(*unit);
   unit->expected_mode = expected_mode;
   unit->active_command_mode = expected_mode;
   unit->command_mode_generation = unit->working_mode_generation;

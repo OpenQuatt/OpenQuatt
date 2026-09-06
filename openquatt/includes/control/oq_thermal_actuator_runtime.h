@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include <algorithm>
+#include <cstring>
 #include <string>
 
 #include "oq_compressor_frequency_runtime.h"
@@ -259,6 +260,7 @@ class Runtime {
       if (current != physical_level || (physical_level == 0 && force_write)) {
         auto call = id(hp1_compressor_level).make_call();
         call.set_option(level_options[physical_level]);
+        if (physical_level > 0) id(oq_incident_manager).invalidate_restart_credit(1U);
         call.perform();
       }
       id(hp1_last_commanded_physical_level) = physical_level;
@@ -270,6 +272,7 @@ class Runtime {
     if (current != physical_level || (physical_level == 0 && force_write)) {
       auto call = id(hp2_compressor_level).make_call();
       call.set_option(level_options[physical_level]);
+      if (physical_level > 0) id(oq_incident_manager).invalidate_restart_credit(2U);
       call.perform();
     }
     id(hp2_last_commanded_physical_level) = physical_level;
@@ -686,10 +689,12 @@ class Runtime {
   }
 
   void write_mode_option_(bool is_hp1, const char* option, bool force_write) {
+    const bool active_mode = std::strcmp(option, "Cooling") == 0 || std::strcmp(option, "Heating") == 0;
     if (is_hp1) {
       if (force_write || id(hp1_set_working_mode).current_option() != option) {
         auto call = id(hp1_set_working_mode).make_call();
         call.set_option(option);
+        if (active_mode) id(oq_incident_manager).invalidate_restart_credit(1U);
         call.perform();
       }
       return;
@@ -698,6 +703,7 @@ class Runtime {
     if (force_write || id(hp2_set_working_mode).current_option() != option) {
       auto call = id(hp2_set_working_mode).make_call();
       call.set_option(option);
+      if (active_mode) id(oq_incident_manager).invalidate_restart_credit(2U);
       call.perform();
     }
 #else
