@@ -85,6 +85,59 @@ void test_round_trip_and_reboot_remap_never_restores_readiness() {
   assert(!summary.cross_validated_advice_ready && !summary.auto_apply_allowed);
 }
 
+void test_sparse_season_round_trip_and_reboot_remap() {
+  constexpr uint32_t now_epoch = 20000U * 86400U + 12U * 3600U;
+  PassiveRuntimeStorage original;
+  assert(initialize_passive_runtime(original, context(), config(), true) == PassiveRuntimeStatus::COLLECTING);
+  const uint32_t earliest_end_epoch = now_epoch - kMaxRecordAgeS;
+  for (size_t index = 0; index < kMaxSegmentRecords; ++index) {
+    const uint32_t end_epoch =
+        earliest_end_epoch + static_cast<uint32_t>(index * 365U / (kMaxSegmentRecords - 1U)) * 86400U;
+    original.records[index] = record(end_epoch - 4U * 3600U, -8.0f + static_cast<float>(index % 20U));
+  }
+  original.record_count = kMaxSegmentRecords;
+
+  uint8_t bytes[kLearningJournalMaxBytes];
+  size_t size = 0;
+  assert(encode_learning_journal(passive_runtime_dataset(original), original.config.quality, 42, now_epoch, bytes,
+                                 sizeof(bytes), size) == LearningJournalStatus::OK);
+  assert(size < 8192U);
+  const auto metadata =
+      inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now_epoch, original.config.quality);
+  assert(metadata.status == LearningJournalStatus::OK && metadata.record_count == kMaxSegmentRecords);
+
+  PassiveRuntimeStorage restored;
+  assert(initialize_passive_runtime(restored, context(7), config(), true) == PassiveRuntimeStatus::COLLECTING);
+  assert(restore_passive_records(restored,
+                                 LearningJournalRecords{{bytes, size}, metadata.context_size, metadata.record_count}));
+  assert(restored.record_count == kMaxSegmentRecords && restored.restored_records && restored.fit_pending);
+  assert(restored.records[0].end_epoch_s == earliest_end_epoch);
+  assert(restored.records[kMaxSegmentRecords - 1U].end_epoch_s == now_epoch);
+  for (size_t index = 0; index < restored.record_count; ++index) assert(restored.records[index].context_revision == 7U);
+}
+
+void test_previous_algorithm_journal_restores_as_data_for_refit() {
+  constexpr uint32_t now_epoch = 20000U * 86400U + 12U * 3600U;
+  auto original = populated(now_epoch);
+  uint8_t bytes[kLearningJournalMaxBytes];
+  size_t size = 0;
+  assert(encode_learning_journal(passive_runtime_dataset(original), original.config.quality, 43, now_epoch, bytes,
+                                 sizeof(bytes), size) == LearningJournalStatus::OK);
+  write_u16(bytes, 20U, kEarliestRestorableLearningAlgorithmVersion);
+  repair_crc(bytes, size);
+  const auto metadata =
+      inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now_epoch, original.config.quality);
+  assert(metadata.status == LearningJournalStatus::OK &&
+         metadata.algorithm_version == kEarliestRestorableLearningAlgorithmVersion);
+
+  PassiveRuntimeStorage restored;
+  assert(initialize_passive_runtime(restored, context(7), config(), true) == PassiveRuntimeStatus::COLLECTING);
+  assert(restore_passive_records(restored,
+                                 LearningJournalRecords{{bytes, size}, metadata.context_size, metadata.record_count}));
+  assert(restored.record_count == 2U && restored.fit_pending && !restored.fit_running);
+  assert(!passive_runtime_summary(restored, 1).auto_apply_allowed);
+}
+
 void test_corrupt_truncated_schema_count_context_and_record_fail_closed() {
   constexpr uint32_t now_epoch = 20000U * 86400U + 12U * 3600U;
   auto state = populated(now_epoch);
@@ -164,6 +217,8 @@ void test_two_slot_selection_survives_torn_new_write_and_rejects_sequence_aba() 
 
 int main() {
   test_round_trip_and_reboot_remap_never_restores_readiness();
+  test_sparse_season_round_trip_and_reboot_remap();
+  test_previous_algorithm_journal_restores_as_data_for_refit();
   test_corrupt_truncated_schema_count_context_and_record_fail_closed();
   test_two_slot_selection_survives_torn_new_write_and_rejects_sequence_aba();
 }

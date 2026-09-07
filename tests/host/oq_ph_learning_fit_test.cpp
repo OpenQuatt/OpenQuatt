@@ -9,7 +9,7 @@ using namespace oq_power_house::learning;
 
 constexpr uint32_t kBaseEpoch = 20000U * 86400U;
 
-SegmentRecord fitted_record(uint8_t day, uint8_t slot, float outside_c, float residual_w = 0.0f) {
+SegmentRecord fitted_record(uint16_t day, uint8_t slot, float outside_c, float residual_w = 0.0f) {
   SegmentRecord record;
   record.start_epoch_s = kBaseEpoch + static_cast<uint32_t>(day) * 86400U + static_cast<uint32_t>(slot) * 28800U;
   record.end_epoch_s = record.start_epoch_s + 14400U;
@@ -184,23 +184,26 @@ void test_temperature_dominance() {
          LearningStatus::DAY_DOMINANCE);
 }
 
-void test_exact_retention_boundary_allows_43_utc_days() {
-  SegmentRecord records[43];
-  for (uint8_t day = 0; day < 43; ++day)
-    records[day] = fitted_record(day, 0, -5.0f + 2.0f * static_cast<float>(day % 10U));
+void test_exact_retention_boundary_allows_sparse_season() {
+  SegmentRecord records[kMaxSegmentRecords];
+  for (size_t index = 0; index < kMaxSegmentRecords; ++index) {
+    const uint16_t day = static_cast<uint16_t>(index * 365U / (kMaxSegmentRecords - 1U));
+    records[index] = fitted_record(day, 0, -5.0f + 2.0f * static_cast<float>(index % 10U));
+  }
 
   AdviceFitWorkspace workspace;
   FitConfig config = fit_config();
   config.min_holdout_segments = 3;
-  const uint32_t now = records[42].end_epoch_s;
+  const uint32_t now = records[kMaxSegmentRecords - 1U].end_epoch_s;
   assert(now - records[0].end_epoch_s == kMaxRecordAgeS);
-  assert(begin_advice_fit(records, 43, now, {150.0f, 15.0f}, QualityConfig{}, config, workspace) ==
+  assert(begin_advice_fit(records, kMaxSegmentRecords, now, {150.0f, 15.0f}, QualityConfig{}, config, workspace) ==
          LearningStatus::FIT_IN_PROGRESS);
-  assert(workspace.day_count == 43 && workspace.train_day_count == 40 && workspace.train_count == 40);
+  assert(workspace.day_count == kMaxSegmentRecords && workspace.train_day_count == kMaxSegmentRecords - 3U &&
+         workspace.train_count == kMaxSegmentRecords - 3U);
   assert(finish_fit(workspace) == LearningStatus::ADVICE_READY);
   assert(workspace.result.holdout_days == 3 && workspace.result.holdout_segments == 3);
-  assert(workspace.result.validated_temp_min_c == records[40].mean_outside_c);
-  assert(workspace.result.validated_temp_max_c == records[42].mean_outside_c);
+  assert(workspace.result.validated_temp_min_c == records[kMaxSegmentRecords - 3U].mean_outside_c);
+  assert(workspace.result.validated_temp_max_c == records[kMaxSegmentRecords - 1U].mean_outside_c);
 }
 }  // namespace
 
@@ -210,9 +213,9 @@ int main() {
   test_fail_closed_dataset_gates();
   test_replayed_record_bypasses_fail_closed();
   test_temperature_dominance();
-  test_exact_retention_boundary_allows_43_utc_days();
+  test_exact_retention_boundary_allows_sparse_season();
   static_assert(kMaxRecordsVisitedPerHuberFit == 768);
   static_assert(kMaxSegmentRecords == 64);
-  static_assert(kMaxCalendarDays == 43);
+  static_assert(kMaxCalendarDays == kMaxSegmentRecords);
   return 0;
 }

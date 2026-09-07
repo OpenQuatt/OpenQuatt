@@ -189,8 +189,9 @@ inline LearningJournalStatus parse_metadata(const LearningJournalSlotView& slot,
   metadata.context_revision = read_u32(reader);
   metadata.encoded_size = encoded_size;
   if (!reader.ok || magic != kLearningJournalMagic || schema != kLearningJournalSchemaVersion ||
-      header_size != kLearningJournalHeaderBytes || metadata.algorithm_version != kLearningAlgorithmVersion ||
-      reserved != 0)
+      header_size != kLearningJournalHeaderBytes ||
+      metadata.algorithm_version < kEarliestRestorableLearningAlgorithmVersion ||
+      metadata.algorithm_version > kLearningAlgorithmVersion || reserved != 0)
     return LearningJournalStatus::INVALID_SCHEMA;
   if (metadata.record_count > kMaxSegmentRecords) return LearningJournalStatus::INVALID_COUNT;
   if (encoded_size != slot.size || metadata.context_size == 0 || metadata.context_size > kMaxPassiveContextBytes ||

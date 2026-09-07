@@ -221,6 +221,41 @@ inline LearningStatus prune_expired_records(RecordBuffer& buffer, uint32_t now_e
   return LearningStatus::OK;
 }
 
+namespace detail {
+
+inline size_t temperature_bin(float outside_c) {
+  if (outside_c < 0.0f) return 0;
+  if (outside_c < 5.0f) return 1;
+  if (outside_c < 10.0f) return 2;
+  return 3;
+}
+
+// With a full buffer, the oldest recent record becomes historical. Keep at
+// most eight records per temperature region, evicting the oldest redundant
+// historical record. The remaining newest 32 records always stay recent.
+inline size_t representative_record_to_evict(const RecordBuffer& buffer) {
+  if (buffer.records == nullptr || buffer.count != buffer.capacity || buffer.capacity != kMaxSegmentRecords)
+    return buffer.count;
+  const size_t historical_count = buffer.count - kRecentSegmentRecords + 1U;
+  size_t bins[kHistoricalTemperatureBins]{};
+  for (size_t index = 0; index < historical_count; ++index)
+    ++bins[temperature_bin(buffer.records[index].mean_outside_c)];
+  size_t evict_bin = kHistoricalTemperatureBins;
+  size_t largest_count = kHistoricalRecordsPerTemperatureBin;
+  for (size_t bin = 0; bin < kHistoricalTemperatureBins; ++bin) {
+    if (bins[bin] > largest_count) {
+      evict_bin = bin;
+      largest_count = bins[bin];
+    }
+  }
+  if (evict_bin == kHistoricalTemperatureBins) return buffer.count;
+  for (size_t index = 0; index < historical_count; ++index)
+    if (temperature_bin(buffer.records[index].mean_outside_c) == evict_bin) return index;
+  return buffer.count;
+}
+
+}  // namespace detail
+
 inline LearningStatus append_record(RecordBuffer& buffer, const SegmentRecord& record, uint32_t now_epoch_s,
                                     const QualityConfig& config) {
   const LearningStatus record_status = validate_segment_record(record, config);
@@ -235,7 +270,10 @@ inline LearningStatus append_record(RecordBuffer& buffer, const SegmentRecord& r
     if (record.context_revision != previous.context_revision) return LearningStatus::MIXED_CONTEXT;
   }
   if (buffer.count == buffer.capacity) {
-    for (size_t index = 1; index < buffer.count; ++index) buffer.records[index - 1] = buffer.records[index];
+    const size_t selected_remove_index = detail::representative_record_to_evict(buffer);
+    const size_t remove_index = selected_remove_index < buffer.count ? selected_remove_index : 0U;
+    for (size_t index = remove_index + 1U; index < buffer.count; ++index)
+      buffer.records[index - 1U] = buffer.records[index];
     --buffer.count;
   }
   buffer.records[buffer.count++] = record;

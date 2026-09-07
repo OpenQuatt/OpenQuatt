@@ -13,14 +13,22 @@
 namespace oq_power_house::learning {
 
 constexpr size_t kMaxSegmentRecords = 64;
+constexpr size_t kRecentSegmentRecords = 32;
+constexpr size_t kHistoricalTemperatureBins = 4;
+constexpr size_t kHistoricalRecordsPerTemperatureBin = 8;
+static_assert(kRecentSegmentRecords + kHistoricalTemperatureBins * kHistoricalRecordsPerTemperatureBin ==
+                  kMaxSegmentRecords,
+              "representative record storage must stay bounded");
 constexpr size_t kMaxPassiveContextBytes = 1024;
-// A 42 * 24 hour inclusive retention window can touch 43 UTC calendar days.
-constexpr size_t kMaxCalendarDays = 43;
+// A representative dataset may span a heating season, but it can never contain
+// more distinct UTC days than stored records.
+constexpr size_t kMaxCalendarDays = kMaxSegmentRecords;
 constexpr uint64_t kSegmentDurationMs = 4ULL * 60ULL * 60ULL * 1000ULL;
-constexpr uint32_t kMaxRecordAgeS = 42U * 24U * 60U * 60U;
+constexpr uint32_t kMaxRecordAgeS = 365U * 24U * 60U * 60U;
 constexpr uint8_t kMaxHuberPasses = 6;
 constexpr uint64_t kSetpointRecoveryMs = 60ULL * 60ULL * 1000ULL;
-constexpr uint16_t kLearningAlgorithmVersion = 2;
+constexpr uint16_t kEarliestRestorableLearningAlgorithmVersion = 2;
+constexpr uint16_t kLearningAlgorithmVersion = 3;
 
 enum class LearningStatus : uint8_t {
   OK = 0,

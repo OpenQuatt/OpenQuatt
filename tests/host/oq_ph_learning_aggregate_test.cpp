@@ -19,7 +19,7 @@ LearningSnapshot snapshot(uint64_t monotonic_ms, uint32_t epoch_s, float heat_w)
   return value;
 }
 
-SegmentRecord record(uint32_t end_epoch_s, float heat_w = 1000.0f) {
+SegmentRecord record(uint32_t end_epoch_s, float heat_w = 1000.0f, float outside_c = 5.0f) {
   SegmentRecord value;
   value.start_epoch_s = end_epoch_s - 14400;
   value.end_epoch_s = end_epoch_s;
@@ -27,7 +27,7 @@ SegmentRecord record(uint32_t end_epoch_s, float heat_w = 1000.0f) {
   value.context_revision = 1;
   value.mean_room_c = 20.0f;
   value.mean_setpoint_c = 20.0f;
-  value.mean_outside_c = 5.0f;
+  value.mean_outside_c = outside_c;
   value.mean_heat_w = heat_w;
   value.room_trend_k_per_h = 0.0f;
   value.room_range_k = 0.0f;
@@ -133,11 +133,43 @@ void test_nonpositive_segment_and_record_bounds() {
   mixed.context_revision = 9;
   assert(append_record(buffer, mixed, mixed.end_epoch_s, config) == LearningStatus::MIXED_CONTEXT);
 }
+
+void test_full_dataset_keeps_recent_records_and_temperature_coverage() {
+  QualityConfig config;
+  SegmentRecord storage[kMaxSegmentRecords];
+  RecordBuffer buffer{storage, 0, kMaxSegmentRecords};
+  const uint32_t base = 22000U * 86400U + 14400U;
+  for (size_t index = 0; index < kMaxSegmentRecords + 20U; ++index) {
+    float outside_c = 8.0f;
+    if (index == 0U)
+      outside_c = -5.0f;
+    else if (index == 1U)
+      outside_c = 2.0f;
+    else if (index == 2U)
+      outside_c = 12.0f;
+    const uint32_t end = base + static_cast<uint32_t>(index) * 14400U;
+    assert(append_record(buffer, record(end, 1000.0f, outside_c), end, config) == LearningStatus::OK);
+  }
+  assert(buffer.count == kMaxSegmentRecords);
+  bool has_cold = false;
+  bool has_mild = false;
+  bool has_warm = false;
+  for (size_t index = 0; index < buffer.count; ++index) {
+    has_cold = has_cold || buffer.records[index].mean_outside_c < 0.0f;
+    has_mild =
+        has_mild || (buffer.records[index].mean_outside_c >= 0.0f && buffer.records[index].mean_outside_c < 5.0f);
+    has_warm = has_warm || buffer.records[index].mean_outside_c >= 10.0f;
+  }
+  assert(has_cold && has_mild && has_warm);
+  for (size_t index = kMaxSegmentRecords - kRecentSegmentRecords; index < buffer.count; ++index)
+    assert(buffer.records[index].mean_outside_c == 8.0f);
+}
 }  // namespace
 
 int main() {
   test_time_weighted_signed_heat();
   test_fail_closed_boundaries();
   test_nonpositive_segment_and_record_bounds();
+  test_full_dataset_keeps_recent_records_and_temperature_coverage();
   return 0;
 }
