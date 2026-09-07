@@ -347,9 +347,10 @@ class Runtime {
         learning_strategy_output_current(id(oq_strategy_output_valid), id(oq_strategy_output_source_code),
                                          id(oq_strategy_active_code), millis(), id(oq_strategy_output_updated_ms)) &&
         isfinite(id(oq_strategy_water_limit_factor));
+    const bool power_cap_active = power_cap_binds_filtered_demand(id(oq_demand_filtered), id(oq_power_cap_f));
     op.active_limit = id(oq_strategy_water_limit_factor) < 0.999f || id(oq_strategy_water_trip_active) ||
-                      id(oq_strategy_water_hard_trip_active) || id(oq_strategy_hp_saturated) ||
-                      id(oq_power_cap_f) < 20 || !learning_hp_protection_clear(oq_sources::hp1, now_ms);
+                      id(oq_strategy_water_hard_trip_active) || id(oq_strategy_hp_saturated) || power_cap_active ||
+                      !learning_hp_protection_clear(oq_sources::hp1, now_ms);
 #if OQ_TOPOLOGY_DUO
     op.active_limit = op.active_limit || !learning_hp_protection_clear(oq_sources::hp2, now_ms);
 #endif

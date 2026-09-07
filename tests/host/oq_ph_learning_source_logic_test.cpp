@@ -295,6 +295,13 @@ void test_operational_context_is_explicit_and_fail_closed() {
   assert_failed(build(generation_mismatch), SnapshotSourceStatus::CONTEXT_REVISION_MISMATCH);
 }
 
+void test_power_cap_only_excludes_a_constrained_request() {
+  assert(!power_cap_binds_filtered_demand(0, 19));
+  assert(!power_cap_binds_filtered_demand(19, 19));
+  assert(power_cap_binds_filtered_demand(20, 19));
+  assert(power_cap_binds_filtered_demand(1, 0));
+}
+
 void test_invalid_raw_event_poisoning_reaches_aggregate() {
   QualityConfig quality;
   quality.max_interval_ms = 60000;
@@ -411,6 +418,7 @@ int main() {
   test_invalid_values_contracts_and_unknowns_never_become_zero();
   test_provenance_and_active_exclusions();
   test_operational_context_is_explicit_and_fail_closed();
+  test_power_cap_only_excludes_a_constrained_request();
   test_invalid_raw_event_poisoning_reaches_aggregate();
   test_dynamic_learning_keeps_temperature_response_but_not_hidden_heat();
   test_combined_diagnostics_explain_batch_only_blocks();

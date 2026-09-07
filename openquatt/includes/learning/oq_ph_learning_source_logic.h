@@ -26,6 +26,10 @@ constexpr size_t kSourceMeasurementsPerHeatPump = 7;
 static_assert(kSystemSourceMeasurements + 2U * kSourceMeasurementsPerHeatPump == kMaxSourceMeasurements,
               "Duo source metadata capacity must cover every required field");
 
+inline bool power_cap_binds_filtered_demand(int filtered_demand, int power_cap) {
+  return filtered_demand > 0 && power_cap < filtered_demand;
+}
+
 enum class PhysicalSourceKind : uint8_t {
   UNKNOWN = 0,
   DIRECT_SENSOR,
