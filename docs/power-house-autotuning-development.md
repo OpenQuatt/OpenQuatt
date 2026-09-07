@@ -55,9 +55,19 @@ De kern gebruikt maximaal 64 records en 42 dagen historie. Een ontbrekend essent
 
 Eén eigenaar in de ESPHome-mainloop beheert records en fitworkspace in PSRAM. Tijdens een hervatbare fit blijft de recordarray onveranderlijk; append/prune annuleert eerst de fit. HTTP-callbacks krijgen uitsluitend een onder mutex gekopieerde JSON-cache. Een tweede gelijktijdige export krijgt HTTP 429; netwerk-I/O houdt de cachemutex niet vast.
 
-De actuele geselecteerde waarden blijven leidend voor bronkeuze. De resolvers leveren nu de werkelijk gekozen route, raw ontvangsttijd, exacte configuratiegeneratie en eventuele hold/synthesized-status. Fysieke aggregaten behouden beide ontvangstbewijzen en de toegepaste operator; onbewijsbare HA/API/MQTT-provenance blijft geblokkeerd. Een callback op een `*_selected`-republish geldt niet als nieuwe ontvangst. Zie [brononderzoek en integratiecontract](power-house-learning-sources.md).
+De actuele geselecteerde waarden blijven leidend voor bronkeuze. De learner neemt de waarde en
+geldigheid van die bestaande resolver over; hij voert geen tweede, afwijkende herkomstcontrole uit.
+OpenTherm, CiC, Home Assistant, API input en MQTT kunnen daardoor allemaal learning-bronnen zijn
+wanneer de regelaar ze geldig verklaart. Een routewijziging maakt wel een nieuwe meetcontext. Zie
+[broncontract](power-house-learning-sources.md).
 
-Passief leren introduceert geen hydraulisch installatieprofiel. De bestaande geselecteerde waarden blijven de bron van waarheid. In een Q Duo-build gebruikt de warmteberekening de bekende volgorde HP1 → HP2; dat komt uit het compileprofiel en is geen gebruikerskeuze. CM2 gebruikt het bestaande geen-ketelvraagcontract; R1-uit wordt nooit als fysiek ketelbewijs behandeld. Fase 1 hanteert vaste watergrenzen: maximaal 3000 L/h en bij Duo maximaal 1,0 °C verschil tussen HP1-uit en HP2-in. Die grenzen zijn codebeleid, geen gebruikersinstellingen. Het passieve model vraagt geen ingevoerde meetonzekerheid of grens voor zon- en interne warmte; afwijkingen blijven zichtbaar in de residuals. Automatisch toepassen bestaat nog niet. De toekomstige toepasfase moet meetkwaliteit en afwijkende warmtebronnen afzonderlijk onderbouwen.
+Passief leren introduceert geen hydraulisch installatieprofiel. De bestaande geselecteerde waarden
+blijven de bron van waarheid. In een Q Duo-build gebruikt de calorimetrie intern HP1 gevolgd door HP2;
+dat is geen gebruikerskeuze. CM2 gebruikt het bestaande geen-ketelvraagcontract; R1-uit wordt nooit
+als fysiek ketelbewijs behandeld. Het passieve model vraagt geen ingevoerde meetonzekerheid of grens
+voor zon- en interne warmte; afwijkingen blijven zichtbaar in de residuals. Automatisch toepassen
+bestaat nog niet. De toekomstige toepasfase moet meetkwaliteit en afwijkende warmtebronnen afzonderlijk
+onderbouwen.
 
 De getalsgrenzen voor stabiliteit, spreiding en verbetering zijn ontwikkelinstellingen. Een succesvolle fit is geen gekalibreerd betrouwbaarheidspercentage en geeft geen toestemming tot automatisch toepassen. Onvoldoende geschikte data is een geldige uitkomst.
 
@@ -184,7 +194,7 @@ De firmwarecollector bewaart naast de trainingsrecords een ring van 60 diagnosti
 | Werkelijk thermisch vermogen | Signed warmte over de bewezen meetgrens |
 | `P_request` | Werkelijk begrensde wattvraag die naar dispatch gaat |
 | Kamerfout | Gemeten kamertemperatuur versus gekozen setpoint; comfort memory afzonderlijk herkenbaar |
-| Buitentemperatuur | Geselecteerde fysieke bron met ontvangstbewijs |
+| Buitentemperatuur | Bestaande geselecteerde bronwaarde |
 | Prediction error | Tijdgewogen `gemeten warmte - P_base`, met dekking en gemiddelde absolute fout |
 | Richting en duur | Positieve/negatieve afwijkingsduur; onderbreken bij tijdgaten of contextwissel |
 | Compressoractiviteit | Gemeten activiteit per unit, afzonderlijk van gevraagd/applied level |
@@ -221,7 +231,7 @@ formulier voor hydrauliek, warmtebronnen of meetgrenzen. Opt-in start na reboot 
 Power House-instellingen blijven leidend; automatisch toepassen is altijd uit.
 
 Eén mainloop-leerkern beheert verzamelen, pauzeren, resetten, herstellen en beide modellen. De
-bestaande bronselectie levert de werkelijk gekozen route met fysieke receipts. Eén contextrevision
+bestaande bronselectie levert de werkelijk gekozen route, waarde en validity. Eén contextrevision
 onderbreekt de dataset bij relevante wijzigingen, ook A→B→A tussen twee ticks. De drie generatievelden
 in CSV/records blijven voor formaatcompatibiliteit; live krijgen ze dezelfde revision.
 
@@ -236,12 +246,12 @@ voorwaarde. Een actuele fysieke ketel-activiteitsmelding sluit de meting uit. Br
 gedrag van de residuals blijven nog praktijkwerk. Er zijn nog geen gevalideerde wintermodellen of
 aangetoonde besparingen.
 
-De huidige Q Duo-build is via OTA geplaatst als `Sep 6 2026 21:22:05 ph-passive-1`. Na de herstart is
-passief leren expliciet aangezet. De gekozen HP1/HP2-buitencompositie is geldig; de installatie stond
-vervolgens in CM0 standby met nulflow en kon daarom nog geen trainingsrecord maken. De eerste snapshot
-meldt 105891 B vrije interne heap, 39848 B minimum heap, een grootste blok van 61440 B, 4640 B loopstackmarge,
-46832 B learning-PSRAM en een maximale learnertick van 4535 µs. Dit is een functionele smoke-test, geen
-kwalificatie onder belasting.
+De Q Duo-build is via OTA geplaatst als `Sep 7 2026 11:37:32 ph-passive-1`. API-kamer en API-setpoint
+zijn tijdens CM2 als geldige geselecteerde learning-bronnen gezien; daarbij is ten minste één dynamische
+learning-sample vastgelegd. Daarna zijn beide thermostaatbronnen teruggezet op `OT thermostat`, de
+simulatorpomp is uitgezet en de controller staat in CM0. De actuele HIL-smoke meldt 39828 B minimum
+interne heap, een grootste blok van 57344 B, 4480 B loopstackmarge en 46832 B learner-PSRAM. Dit is een
+functionele smoke-test, geen kwalificatie onder belasting.
 
 Deze vereenvoudiging is gecontroleerd met 83 C++-hosttests, 239 Python-contracttests en 457 webtests.
 C++-format, docschecks, webbuild, smokecheck en controle van de gegenereerde assets slagen. De volledige
@@ -259,7 +269,7 @@ gzip JavaScript. Deze feature geeft 924774 / 264797 bytes: +10816 raw en +3386 g
 de relatieve gzipgrens van 4608 bytes. Het raw-budget houdt dezelfde 6000 bytes extra ruimte als de
 eerdere featureversie, nu bovenop `dev`: 919000 → 925000. CSS blijft raw gelijk (195001 bytes).
 De nieuwe previewreset is geautomatiseerd gecontroleerd; de actuele browsermatrix en Safari/iOS zijn
-nog niet afgevinkt. De OTA-smoke-test bevestigt de nieuwe bronketen, maar nog geen geldig live learningsample.
+nog niet afgevinkt. De OTA-smoke-test bevestigt de nieuwe bronketen en één dynamische learning-sample.
 
 De config-only projectwrapper heeft drie bestaande stijlmeldingen in `configs/hil/input_sources_fast_duo_wifi.yaml`
 en `openquatt/oq_common.yaml`. Directe ESPHome-validatie blijft beschikbaar. Echte stroomonderbrekingen,
