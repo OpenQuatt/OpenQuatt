@@ -118,23 +118,24 @@ function activity(status) {
   return ["Wacht op meting", waitingNotes[reason] || "Een geldige verwarmingsmeting is nog niet beschikbaar.", "orange"];
 }
 
-function quality(status) {
+function modelStatus(status) {
   if (!status.storageReady) return "Opslag niet gereed";
   if (!status.enabled) return "Nog niet beoordeeld";
   if (statusIsStale(status)) return "Status verouderd";
-  if (status.invalidReasons.length || status.blockedReasons.length) return "Geblokkeerd";
-  if (status.adviceReady) return "Voldoende data";
-  return status.records ? "Aan het leren" : "Nog geen metingen";
+  if (status.adviceReady) return "Gevalideerd";
+  return status.rlsSamples ? "Voorlopige schatting" : "Nog geen 1R1C-data";
 }
 
-function qualityNote(status) {
+function modelStatusNote(status) {
   if (status.enabled && statusIsStale(status)) return "Geen actuele, gevalideerde leerkwaliteit";
   const modelReasons = status.blockedReasons.filter((reason) => MODEL_REASONS.includes(reason));
   if (modelReasons.length) return reasons(modelReasons, "Modelvalidatie geblokkeerd");
-  if (status.rlsReady && status.batchAdviceReady && !status.adviceReady) {
-    return "Nog niet gezamenlijk gevalideerd";
+  if (status.adviceReady) return "Voldoende gegevens verzameld. De regeling verandert hierdoor niet automatisch.";
+  if (status.rlsReady && status.batchAdviceReady) return "Nog niet gezamenlijk gevalideerd";
+  if (status.rlsSamples) {
+    return `${status.rlsSamples} geaccepteerde periode${status.rlsSamples === 1 ? "" : "n"} van 30 minuten. Meer data en variatie nodig voor validatie.`;
   }
-  return reasons(status.rlsReadinessReasons, status.enabled ? "Nog geen kwaliteitsreden" : "Start passief leren om te beoordelen");
+  return status.enabled ? "Wacht op de eerste geldige periode van 30 minuten." : "Start passief leren om te beoordelen";
 }
 
 export function renderHouseLearningStatusMarkup(status = state.houseLearningStatus) {
@@ -160,14 +161,17 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
     collectionCard("Opwarmen en afkoelen (1R1C)", status.collection?.thermal, status, activityNote),
   ];
   const modelCards = [
-    ["Leerkwaliteit", quality(status), qualityNote(status), true, status.adviceReady && !statusIsStale(status) ? "green" : "sky"],
-    ["Metingen", String(status.records), `${status.rlsSamples} 1R1C-samples`],
-    ["Batch H", metric(status.hBatch, "W/K"), "Batchschatting"],
-    ["Batch T₀", metric(status.t0Batch, "°C"), "Batchschatting"],
-    ["RLS U", metric(status.uRls, "W/K"), estimateNote(status.uRls, status.rlsReady)],
-    ["RLS C", metric(status.cRlsWhPerK, "Wh/K"), estimateNote(status.cRlsWhPerK, status.rlsReady)],
+    ["Modelstatus", modelStatus(status), modelStatusNote(status), true, status.adviceReady && !statusIsStale(status) ? "green" : "sky"],
+    ["1R1C-perioden", String(status.rlsSamples), "Geaccepteerde perioden van 30 minuten"],
+    ["Warmteverlies (U)", metric(status.uRls, "W/K"), estimateNote(status.uRls, status.rlsReady)],
+    ["Warmteopslag (C)", metric(status.cRlsWhPerK, "Wh/K"), estimateNote(status.cRlsWhPerK, status.rlsReady)],
   ];
-  return `<div class="oq-settings-grid oq-house-learning-summary">${summaryCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div><div class="oq-settings-system-summary oq-house-learning-sources">${Object.entries(status.sources).map(([key, source]) => sourceRow(key, source, status)).join("")}</div>${renderWaterTemperatureCards()}${renderSettingsAdvancedDisclosure("house-learning-model", "Modeldiagnostiek", "Schattingen zijn alleen diagnostisch en veranderen de regeling niet.", `<div class="oq-settings-grid">${modelCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>`)}${state.houseLearningStatusError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(state.houseLearningStatusError)}</p>` : ""}`;
+  const batchDiagnosticCards = [
+    ["Stabiele batch-perioden", String(status.records), "Langdurige perioden voor een tweede, onafhankelijke controle"],
+    ["Batch warmteverlies (H)", metric(status.hBatch, "W/K"), "Schatting uit stabiele perioden"],
+    ["Batch starttemperatuur (T₀)", metric(status.t0Batch, "°C"), "Geschatte buitentemperatuur waarbij verwarming begint"],
+  ];
+  return `<div class="oq-settings-grid oq-house-learning-summary">${summaryCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div><div class="oq-settings-system-summary oq-house-learning-sources">${Object.entries(status.sources).map(([key, source]) => sourceRow(key, source, status)).join("")}</div>${renderWaterTemperatureCards()}<div class="oq-settings-grid oq-house-learning-model">${modelCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>${renderSettingsAdvancedDisclosure("house-learning-model", "Modeldiagnostiek", "De voorlopige 1R1C-schatting staat hierboven. Deze extra batchcontrole gebruikt alleen langdurige stabiele perioden en verandert de regeling niet.", `<div class="oq-settings-grid">${batchDiagnosticCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>`)}${state.houseLearningStatusError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(state.houseLearningStatusError)}</p>` : ""}`;
 }
 
 export function renderHouseLearningSettings() {

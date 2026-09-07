@@ -361,10 +361,33 @@ test("gecombineerde validatie en statusleeftijd bepalen de leerkwaliteit", () =>
     advice_ready: false,
   }));
   assert.match(renderHouseLearningStatusMarkup(ready), /niet gezamenlijk gevalideerd/);
-  assert.doesNotMatch(renderHouseLearningStatusMarkup(ready), /Voldoende data/);
-  assert.match(renderHouseLearningStatusMarkup({ ...ready, adviceReady: true }), /Voldoende data/);
+  assert.doesNotMatch(renderHouseLearningStatusMarkup(ready), />Gevalideerd</);
+  assert.match(renderHouseLearningStatusMarkup({ ...ready, adviceReady: true }), />Gevalideerd</);
   assert.match(renderHouseLearningStatusMarkup({ ...ready, tickEpoch: Math.floor(Date.now() / 1000) - 31 }), /Status verouderd/);
   assert.match(renderHouseLearningStatusMarkup({ ...ready, blockedReasons: ["model_disagreement"] }), /1R1C-model verschillen/);
+});
+
+test("voorlopige 1R1C-data staat boven batchdiagnostiek", () => {
+  const markup = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(statusPayload({
+    enabled: true,
+    control_mode: 2,
+    status: "collecting",
+    invalid_reasons: [],
+    records: 0,
+    rls_samples: 5,
+    u_rls: 196.3,
+    c_rls_wh_per_k: 4803.5,
+    rls_readiness_reasons: ["not_enough_samples", "outside_span"],
+    sources: { ...statusPayload().sources, flow: { route: "selected_flow", valid: true } },
+  })));
+  assert.match(markup, /Modelstatus[\s\S]*Voorlopige schatting/);
+  assert.match(markup, /5 geaccepteerde perioden van 30 minuten/);
+  assert.match(markup, /1R1C-perioden[\s\S]*>5</);
+  assert.match(markup, /Warmteverlies \(U\)[\s\S]*196.3 W\/K/);
+  assert.match(markup, /Warmteopslag \(C\)[\s\S]*4803.5 Wh\/K/);
+  assert.doesNotMatch(markup, /Nog geen metingen/);
+  assert.ok(markup.indexOf("Warmteverlies (U)") < markup.indexOf("Modeldiagnostiek"));
+  assert.ok(markup.indexOf("Modeldiagnostiek") < markup.indexOf("Batch warmteverlies (H)"));
 });
 
 test("leerstatus toont actuele verzameling, losse bronnen en wachtredenen", () => {

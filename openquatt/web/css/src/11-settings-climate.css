@@ -90,6 +90,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.oq-house-learning-model,
 .oq-house-learning-sources,
 .oq-house-learning-water {
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -102,6 +103,7 @@
 
 @media (max-width: 980px) {
   .oq-house-learning-summary,
+  .oq-house-learning-model,
   .oq-house-learning-sources,
   .oq-house-learning-water {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -110,6 +112,7 @@
 
 @media (max-width: 640px) {
   .oq-house-learning-summary,
+  .oq-house-learning-model,
   .oq-house-learning-sources,
   .oq-house-learning-water {
     grid-template-columns: 1fr;
