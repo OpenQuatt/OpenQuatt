@@ -607,12 +607,20 @@ class Runtime {
       last_sample_epoch = state.learner.thermal_accumulator.last.epoch_s;
     const uint32_t invalid_reasons = state.source_diagnostics.invalid_reasons;
     const uint32_t rls_reasons = summary.thermal.readiness_reasons;
+    const auto& batch_window = state.learner.batch_accumulator;
+    const auto& thermal_window = state.learner.thermal_accumulator;
+    const bool collecting_enabled = enabled && state.learner.initialized && state.learner.opted_in &&
+                                    !state.learner.blocked && state.learner.status != PassiveRuntimeStatus::PAUSED;
+    const bool batch_active = collecting_enabled && !batch_window.poisoned && state.tick.batch_snapshot_available &&
+                              passive_runtime_detail::snapshot_matches_tick(state.tick.batch_snapshot, state.tick) &&
+                              validate_snapshot(state.tick.batch_snapshot, state.config.quality) == LearningStatus::OK;
+    const bool thermal_active = collecting_enabled && thermal_window.active && thermal_window.last.epoch_s == epoch;
     json.add("{\"schema\":1,\"build\":\"" __DATE__ " " __TIME__
              " ph-passive-1\",\"mode\":\"passive\",\"enabled\":%s,"
              "\"storage_ready\":true,"
              "\"status\":\"%s\",\"source_status\":\"%s\",\"invalid_reasons\":",
              enabled ? "true" : "false",
-             enabled ? (summary.current_observation_valid ? "collecting" : "blocked") : "paused",
+             enabled ? (batch_active || thermal_active ? "collecting" : "blocked") : "paused",
              snapshot_source_status_name(state.source_diagnostics.status));
     write_reasons(invalid_reasons, INVALID_REASON_NAMES,
                   sizeof(INVALID_REASON_NAMES) / sizeof(INVALID_REASON_NAMES[0]));
@@ -638,9 +646,19 @@ class Runtime {
     else
       json.add("%u", last_sample_epoch);
     json.add(
-        ",\"context_revision\":%u,\"journal_status\":\"%s\","
+        ",\"collection\":{\"batch_active\":%s,\"batch_elapsed_s\":%llu,\"batch_target_s\":%llu,"
+        "\"thermal_active\":%s,\"thermal_elapsed_s\":%llu,\"thermal_target_s\":%llu,\"thermal_intervals\":%u},"
+        "\"control_mode\":%d,\"context_revision\":%u,\"journal_status\":\"%s\","
         "\"model_validation_status\":\"%s\",\"sources\":{",
-        state.input.context_revision, state.journal.status, model_validation_status_name(summary.validation.status));
+        batch_active ? "true" : "false",
+        batch_active && batch_window.active
+            ? (batch_window.last_monotonic_ms - batch_window.start_monotonic_ms) / 1000ULL
+            : 0ULL,
+        kSegmentDurationMs / 1000ULL, thermal_active ? "true" : "false",
+        thermal_active ? (thermal_window.last.monotonic_ms - thermal_window.first.monotonic_ms) / 1000ULL : 0ULL,
+        state.config.thermal_window.target_duration_ms / 1000ULL, state.learner.diagnostics.accepted_thermal_intervals,
+        id(oq_control_mode_code), state.input.context_revision, state.journal.status,
+        model_validation_status_name(summary.validation.status));
     const char* names[]{"room", "setpoint", "outside", "flow"};
     const bool valid[]{state.input.room_c.valid, state.input.setpoint_c.valid, state.input.outside_c.valid,
                        state.input.flow_lph.valid};

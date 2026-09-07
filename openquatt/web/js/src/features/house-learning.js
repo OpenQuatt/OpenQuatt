@@ -13,6 +13,16 @@ const numberOrNull = (value) => value === null || value === undefined || value =
 const stringList = (value) => Array.isArray(value)
   ? value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim()).slice(0, 24)
   : [];
+const collectionPhase = (collection, prefix) => {
+  const keys = ["active", "elapsed_s", "target_s", "intervals"].map((suffix) => `${prefix}_${suffix}`);
+  if (!keys.some((key) => Object.hasOwn(collection, key))) return null;
+  return {
+    active: collection[`${prefix}_active`] === true,
+    elapsedSeconds: numberOrNull(collection[`${prefix}_elapsed_s`]),
+    targetSeconds: numberOrNull(collection[`${prefix}_target_s`]),
+    intervals: numberOrNull(collection[`${prefix}_intervals`]),
+  };
+};
 
 export function normalizeHouseLearningStatus(payload = {}) {
   if (Number(payload.schema) !== 1 || payload.mode !== "passive") throw new Error("onbekend statusformaat");
@@ -24,6 +34,7 @@ export function normalizeHouseLearningStatus(payload = {}) {
   };
   return {
     enabled: payload.enabled === true,
+    controlMode: numberOrNull(payload.control_mode),
     storageReady: payload.storage_ready === true,
     status: String(payload.status || "unknown"),
     sourceStatus: String(payload.source_status || "unknown"),
@@ -43,6 +54,12 @@ export function normalizeHouseLearningStatus(payload = {}) {
     tickEpoch: numberOrNull(payload.tick_epoch),
     blockedReasons: stringList(payload.blocked_reasons),
     sources: Object.fromEntries(["room", "setpoint", "outside", "flow"].map((key) => [key, source(key)])),
+    collection: payload.collection && typeof payload.collection === "object"
+      ? {
+        batch: collectionPhase(payload.collection, "batch"),
+        thermal: collectionPhase(payload.collection, "thermal"),
+      }
+      : null,
   };
 }
 

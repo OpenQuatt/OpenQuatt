@@ -48,6 +48,7 @@ function statusPayload(overrides = {}) {
     schema: 1,
     mode: "passive",
     enabled: false,
+    control_mode: 0,
     storage_ready: true,
     status: "paused",
     source_status: "blocked",
@@ -68,6 +69,15 @@ function statusPayload(overrides = {}) {
     rls_readiness_reasons: ["not_enough_samples"],
     tick_epoch: Math.floor(Date.now() / 1000),
     blocked_reasons: [],
+    collection: {
+      batch_active: true,
+      batch_elapsed_s: 125,
+      batch_target_s: 300,
+      thermal_active: false,
+      thermal_elapsed_s: 0,
+      thermal_target_s: 900,
+      thermal_intervals: 0,
+    },
     sources: {
       room: { route: "selected_room_temperature", valid: true },
       setpoint: { route: "selected_room_setpoint", valid: true },
@@ -85,6 +95,8 @@ test("passieve leerstatus normaliseert onbeschikbare getallen naar null", () => 
   assert.equal(status.uRls, null);
   assert.equal(status.records, 42);
   assert.equal(status.sources.flow.valid, false);
+  assert.deepEqual(status.collection.batch, { active: true, elapsedSeconds: 125, targetSeconds: 300, intervals: null });
+  assert.equal(normalizeHouseLearningStatus(statusPayload({ collection: undefined })).collection, null);
   assert.throws(() => normalizeHouseLearningStatus({ schema: 2, mode: "passive" }), /statusformaat/);
 });
 
@@ -264,6 +276,115 @@ test("gecombineerde validatie en statusleeftijd bepalen de leerkwaliteit", () =>
   assert.match(renderHouseLearningStatusMarkup({ ...ready, blockedReasons: ["model_disagreement"] }), /1R1C-model verschillen/);
 });
 
+test("leerstatus toont actuele verzameling, losse bronnen en wachtredenen", () => {
+  const collecting = normalizeHouseLearningStatus(statusPayload({
+    enabled: true,
+    control_mode: 2,
+    status: "collecting",
+    invalid_reasons: ["source_stale"],
+    collection: { ...statusPayload().collection, batch_active: false, thermal_active: true },
+    sources: { ...statusPayload().sources, setpoint: { route: "selected_room_setpoint", valid: false }, flow: { route: "selected_flow", valid: true } },
+  }));
+  const markup = renderHouseLearningStatusMarkup(collecting);
+  assert.match(markup, /Verzamelt nu/);
+  assert.match(markup, /Woninglijn[\s\S]*Wacht[\s\S]*Wacht op kamer setpoint/);
+  assert.match(markup, /Opwarmen en afkoelen \(1R1C\)[\s\S]*Verzamelt/);
+  assert.match(markup, /Kamer[\s\S]*Geldig/);
+  assert.match(markup, /Kamer setpoint[\s\S]*Ongeldig/);
+  assert.doesNotMatch(markup, /kamer: .* · setpoint:/);
+});
+
+test("setpointherstel vertraagt alleen de woninglijn terwijl 1R1C verzamelt", () => {
+  const markup = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(statusPayload({
+    enabled: true, control_mode: 2, status: "collecting",
+    invalid_reasons: ["setpoint_recovery"], blocked_reasons: [],
+    collection: { ...statusPayload().collection, batch_active: false, thermal_active: true },
+    sources: { ...statusPayload().sources, flow: { route: "selected_flow", valid: true } },
+  })));
+  assert.match(markup, /Verzamelt nu/);
+  assert.match(markup, /Wacht tot de kamer stabiel is na de setpointwijziging/);
+  assert.match(markup, /Opwarmen en afkoelen \(1R1C\)[\s\S]*Verzamelt/);
+});
+
+test("CM0 en CM1 wachten eenvoudig op verwarming", () => {
+  for (const controlMode of [0, 1]) {
+    const markup = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(statusPayload({
+      enabled: true,
+      control_mode: controlMode,
+      status: "blocked",
+      invalid_reasons: ["boiler_heat"],
+    })));
+    assert.match(markup, /Wacht op verwarming/);
+    assert.doesNotMatch(markup, /ketelbijdrage nog niet uitgesloten/);
+  }
+});
+
+test("serie-koppelpunt toont de watermetingen als gerichte uitleg", () => {
+  state.entities = {
+    hp1WaterOut: { value: 35.1, state: 35.1 },
+    hp2WaterIn: { value: 30.1, state: 30.1 },
+  };
+  const markup = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(statusPayload({
+    enabled: true,
+    control_mode: 2,
+    status: "blocked",
+    source_status: "series_junction_mismatch",
+  })));
+  assert.match(markup, /Watertemperaturen sluiten nog niet op elkaar aan/);
+  assert.match(markup, /Controleer HP1 water uit en HP2 water in/);
+  assert.match(markup, /HP1 water uit[\s\S]*35.1 °C/);
+  assert.match(markup, /HP2 water in[\s\S]*30.1 °C/);
+});
+
+test("bronroutes en leerwaterwaarden gebruiken bestaande entities", () => {
+  state.entities = {
+    hp1WaterIn: { value: 28.4, state: 28.4 },
+    hp1WaterOut: { value: 35.1, state: 35.1 },
+    hp2WaterIn: { value: 29.8, state: 29.8 },
+    hp2WaterOut: { value: 34.6, state: 34.6 },
+  };
+  const markup = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(statusPayload({
+    enabled: true,
+    control_mode: 2,
+    status: "collecting",
+    collection: { ...statusPayload().collection, thermal_active: true, thermal_intervals: 0 },
+    sources: {
+      ...statusPayload().sources,
+      flow: { route: "HP1/HP2 composition", valid: true },
+      outside: { route: "Synthesized zero", valid: true },
+    },
+  })));
+  assert.match(markup, /HP1 en HP2/);
+  assert.match(markup, /0 bij stilstand/);
+  assert.match(markup, /0 meetperioden afgerond/);
+  for (const key of ["hp1WaterIn", "hp1WaterOut", "hp2WaterIn", "hp2WaterOut"]) assert.ok(SETTINGS_GROUP_KEY_MAP.heating.includes(key));
+});
+
+test("gepauzeerde en verouderde status claimen geen actuele verzameling of geldige bron", () => {
+  const paused = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(statusPayload()));
+  assert.doesNotMatch(paused, /Verzamelt|>Geldig</);
+  const stale = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(statusPayload({
+    enabled: true,
+    control_mode: 2,
+    status: "collecting",
+    tick_epoch: Math.floor(Date.now() / 1000) - 31,
+    sources: { ...statusPayload().sources, flow: { route: "selected_flow", valid: true } },
+  })));
+  assert.doesNotMatch(stale, /Verzamelt|>Geldig</);
+});
+
+test("oude firmware houdt verzamelvoortgang expliciet onbekend", () => {
+  const markup = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(statusPayload({
+    enabled: true,
+    status: "collecting",
+    collection: undefined,
+    invalid_reasons: [],
+  })));
+  assert.match(markup, /Woninglijn[\s\S]*Onbekend/);
+  assert.match(markup, /Opwarmen en afkoelen \(1R1C\)[\s\S]*Onbekend/);
+  assert.match(markup, /geeft geen voortgang door/);
+});
+
 test("diagnostische export gebruikt de bestaande browserdownload", async () => {
   let clicked = false;
   const previousCreateObjectURL = URL.createObjectURL;
@@ -288,20 +409,18 @@ test("diagnostische export gebruikt de bestaande browserdownload", async () => {
   }
 });
 
-test("learnerpaneel vereist switch plus endpoint en toont de vaste installatie", () => {
+test("learnerpaneel vereist switch plus endpoint zonder installatie-instellingen", () => {
   state.entities = {};
   state.houseLearningEndpointAvailable = true;
   state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload());
   assert.equal(renderHouseLearningSettings(), "");
 
   state.entities = {
-    installationTopology: { value: "duo" },
     houseLearningEnabled: switchEntity(false),
     houseLearningReset: {},
   };
   const markup = renderHouseLearningSettings();
   assert.match(markup, /Passief leren/);
-  assert.match(markup, /Water · Duo: HP1 → HP2 in serie/);
   assert.doesNotMatch(markup, /data-oq-field="houseLearning(?:Hydraulics|Fluid)"/);
   assert.doesNotMatch(markup, /Hydraulische opstelling|Warmtedragende vloeistof/);
   assert.match(markup, /Geen automatische wijzigingen/);
@@ -312,9 +431,6 @@ test("learnerpaneel vereist switch plus endpoint en toont de vaste installatie",
   assert.ok(SETTINGS_GROUP_KEY_MAP.heating.includes("houseLearningEnabled"));
   assert.ok(!SETTINGS_GROUP_KEY_MAP.heating.includes("houseLearningHydraulics"));
   assert.ok(!SETTINGS_GROUP_KEY_MAP.heating.includes("houseLearningFluid"));
-  state.entities.installationTopology = { value: "single" };
-  assert.match(renderHouseLearningSettings(), /Water · Single: één warmtepomp/);
-  assert.doesNotMatch(renderHouseLearningSettings(), /HP1 → HP2/);
   for (const key of ["houseLearningCalorimetryConfirmed", "houseLearningHeatUncertainty", "houseLearningMaximumFlow", "houseLearningJunctionTolerance", "houseLearningGainBound"]) {
     assert.ok(!SETTINGS_GROUP_KEY_MAP.heating.includes(key));
     assert.ok(!markup.includes(`data-oq-field="${key}"`));

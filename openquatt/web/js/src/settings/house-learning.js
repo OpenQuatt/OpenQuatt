@@ -1,9 +1,9 @@
-import { hasEntity } from "../core/app-shared.js";
-import { getEntityValue } from "../core/entity-store.js";
+import { getEntityNumericValue, getEntityStateText, hasEntity } from "../core/app-shared.js";
+import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
 import { state } from "../core/state.js";
 import { renderStatCard } from "../views/stat-card.js";
-import { renderNamedActionButton, renderSettingsSwitchField } from "./controls.js";
+import { renderNamedActionButton, renderSettingsAdvancedDisclosure, renderSettingsSwitchField, renderSettingsSystemRow } from "./controls.js";
 
 const metric = (value, unit = "") => value != null && Number.isFinite(Number(value))
   ? `${Number(value).toFixed(1).replace(/\.0$/, "")} ${unit}`.trim()
@@ -45,6 +45,78 @@ const reasons = (values, fallback) => {
 const estimateNote = (value, ready) => value == null ? "Nog geen schatting" : ready ? "Gereed" : "Voorlopige schatting";
 const statusIsStale = (status) => !Number.isFinite(status.tickEpoch) || status.tickEpoch <= 0
   || Math.floor(Date.now() / 1000) - status.tickEpoch > 30;
+const SOURCE_LABELS = { room: "Kamertemperatuur", setpoint: "Kamer setpoint", outside: "Buitentemperatuur", flow: "Flow" };
+const ROUTE_LABELS = {
+  selected_room_temperature: "geselecteerde kamerbron",
+  selected_room_setpoint: "geselecteerde setpointbron",
+  selected_outside_temperature: "geselecteerde buitenbron",
+  selected_flow: "geselecteerde flowbron",
+  "HP1/HP2 composition": "HP1 en HP2",
+  "Synthesized zero": "0 bij stilstand",
+  unknown: "onbekende route",
+};
+
+function duration(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  const rounded = Math.floor(seconds);
+  const minutes = Math.floor(rounded / 60);
+  const remainder = String(rounded % 60).padStart(2, "0");
+  return minutes >= 60 ? `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}:${remainder}` : `${minutes}:${remainder}`;
+}
+
+function collectionCard(label, phase, status, waitingNote = "") {
+  if (!status.enabled) return [label, "Gepauzeerd", "Passief leren staat uit.", true, ""];
+  if (statusIsStale(status)) return [label, "Status verouderd", "Wacht op een actuele status van de regelaar.", true, "orange"];
+  if (!phase) return [label, "Onbekend", "Deze firmware geeft geen voortgang door.", true, "sky"];
+  const elapsed = duration(phase.elapsedSeconds);
+  const target = duration(phase.targetSeconds);
+  const progress = elapsed && target ? `${elapsed} / ${target}` : elapsed || target || "Tijd onbekend";
+  const intervals = Number.isFinite(phase.intervals) ? ` · ${phase.intervals} meetperioden afgerond` : "";
+  if (phase.active) return [label, "Verzamelt", `${progress}${intervals}`, true, "green"];
+  return [label, "Wacht", waitingNote || (elapsed && target ? `${progress}${intervals} · wacht op geldige meting` : "Wacht op een geldige meting."), true, "orange"];
+}
+
+function sourceRow(key, source, status) {
+  const route = ROUTE_LABELS[source.route] || source.route;
+  if (!status.enabled) return renderSettingsSystemRow({ label: SOURCE_LABELS[key], value: "Niet beoordeeld", note: "Passief leren staat uit." });
+  if (statusIsStale(status)) return renderSettingsSystemRow({ label: SOURCE_LABELS[key], value: "Status verouderd", note: "Wacht op een actuele status van de regelaar." });
+  return renderSettingsSystemRow({ label: SOURCE_LABELS[key], value: source.valid ? "Geldig" : "Ongeldig", note: `Via ${route}` });
+}
+
+function renderWaterTemperatureCards() {
+  const temperatures = [
+    ["HP1 water in", "hp1WaterIn"],
+    ["HP1 water uit", "hp1WaterOut"],
+    ["HP2 water in", "hp2WaterIn"],
+    ["HP2 water uit", "hp2WaterOut"],
+  ].filter(([, key]) => hasEntity(key));
+  if (!temperatures.length) return "";
+  return `<div class="oq-settings-grid oq-house-learning-water">${temperatures.map(([label, key]) => {
+    const value = getEntityNumericValue(key);
+    return renderStatCard({ label, value: Number.isNaN(value) ? getEntityStateText(key) : formatNumericState(value, 1, "°C") });
+  }).join("")}</div>`;
+}
+
+function activity(status) {
+  if (!status.enabled) return ["Gepauzeerd", "Schakel passief leren in om metingen te verzamelen.", ""];
+  if (statusIsStale(status)) return ["Status verouderd", "Wacht op een actuele status van de regelaar.", "orange"];
+  if (status.controlMode === 0 || status.controlMode === 1) return ["Wacht op verwarming", "Verzamelen start wanneer de verwarming actief is.", "orange"];
+  if (status.sourceStatus === "series_junction_mismatch") return ["Watertemperaturen sluiten nog niet op elkaar aan.", "Controleer HP1 water uit en HP2 water in.", "orange"];
+  if (status.status === "collecting") return ["Verzamelt nu", "Een geldige meting wordt verwerkt.", "green"];
+  const missing = Object.entries(status.sources).filter(([, source]) => !source.valid).map(([key]) => SOURCE_LABELS[key].toLowerCase());
+  if (missing.length) return ["Wacht op bron", `Nog geen geldige waarde voor ${missing.join(" en ")}.`, "orange"];
+  const waitingNotes = {
+    defrost_or_oil_return: "Verzamelen hervat na ontdooien of olieretour.",
+    service_or_ota: "Verzamelen hervat na service of de firmware-update.",
+    cooling: "Tijdens koelen worden geen verwarmingsmetingen verzameld.",
+    boiler_heat: "Verzamelen wacht tot alleen de warmtepomp verwarmt.",
+    external_heat_not_excluded: "De warmtemeting is nog niet geschikt om mee te leren.",
+    active_limit: "Verzamelen wacht tot de actieve begrenzing voorbij is.",
+    persistence_unavailable: "De opslag voor leergegevens is niet beschikbaar.",
+  };
+  const reason = [...status.invalidReasons, ...status.blockedReasons].find((key) => waitingNotes[key]);
+  return ["Wacht op meting", waitingNotes[reason] || "Een geldige verwarmingsmeting is nog niet beschikbaar.", "orange"];
+}
 
 function quality(status) {
   if (!status.storageReady) return "Opslag niet gereed";
@@ -65,24 +137,6 @@ function qualityNote(status) {
   return reasons(status.rlsReadinessReasons, status.enabled ? "Nog geen kwaliteitsreden" : "Start passief leren om te beoordelen");
 }
 
-function sourceNote(status) {
-  const labels = { room: "kamer", setpoint: "setpoint", outside: "buiten", flow: "flow" };
-  const routes = Object.entries(labels).map(([key, label]) => {
-    const source = status.sources[key];
-    return `${label}: ${source.route}${source.valid ? "" : " (ongeldig)"}`;
-  });
-  const sourceReasons = [...status.invalidReasons, ...status.blockedReasons.filter((reason) => !MODEL_REASONS.includes(reason))];
-  return `${reasons(sourceReasons, "Bronnen bruikbaar")} · ${routes.join(" · ")}`;
-}
-
-function installationNote() {
-  const topology = String(getEntityValue("installationTopology") || "").toLowerCase();
-  if (topology === "duo") return "Water · Duo: HP1 → HP2 in serie.";
-  if (topology === "single") return "Water · Single: één warmtepomp.";
-  return "Water · Single/Duo volgt uit de geïnstalleerde firmware.";
-}
-
-
 export function renderHouseLearningStatusMarkup(status = state.houseLearningStatus) {
   if (state.houseLearningReset === "pending") {
     return '<p class="oq-settings-action-note" role="status">Leerdata wordt gewist en gecontroleerd…</p>';
@@ -93,18 +147,25 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
   if (!status) return state.houseLearningStatusError
     ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(state.houseLearningStatusError)}</p>`
     : "";
-  const blocked = status.invalidReasons.length > 0 || status.blockedReasons.length > 0;
-  const cards = [
-    ["Status", status.enabled ? "Actief" : "Gepauzeerd", "Alleen diagnose; geen automatische toepassing", true, status.enabled ? "green" : ""],
-    ["Bron", blocked ? "Geblokkeerd" : status.sourceStatus === "ok" ? "Bruikbaar" : "Niet bruikbaar", sourceNote(status), true, blocked ? "orange" : "green"],
+  const [activityValue, activityNote, activityTone] = activity(status);
+  const invalidSources = Object.entries(status.sources).filter(([, source]) => !source.valid).map(([key]) => SOURCE_LABELS[key].toLowerCase());
+  const batchWaiting = invalidSources.length ? `Wacht op ${invalidSources.join(" en ")}.`
+    : status.invalidReasons.includes("setpoint_recovery") ? "Wacht tot de kamer stabiel is na de setpointwijziging."
+    : "Wacht op een stabiele, geldige verwarmingsmeting.";
+  const summaryCards = [
+    ["Leren", activityValue, activityNote, true, activityTone],
+    collectionCard("Woninglijn (stabiele verwarming)", status.collection?.batch, status, batchWaiting),
+    collectionCard("Opwarmen en afkoelen (1R1C)", status.collection?.thermal, status, activityNote),
+  ];
+  const modelCards = [
     ["Leerkwaliteit", quality(status), qualityNote(status), true, status.adviceReady && !statusIsStale(status) ? "green" : "sky"],
-    ["Metingen", String(status.records), `${status.rlsSamples} RLS-samples`],
+    ["Metingen", String(status.records), `${status.rlsSamples} 1R1C-samples`],
     ["Batch H", metric(status.hBatch, "W/K"), "Batchschatting"],
     ["Batch T₀", metric(status.t0Batch, "°C"), "Batchschatting"],
     ["RLS U", metric(status.uRls, "W/K"), estimateNote(status.uRls, status.rlsReady)],
     ["RLS C", metric(status.cRlsWhPerK, "Wh/K"), estimateNote(status.cRlsWhPerK, status.rlsReady)],
   ];
-  return `<div class="oq-settings-grid">${cards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>${state.houseLearningStatusError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(state.houseLearningStatusError)}</p>` : ""}`;
+  return `<div class="oq-settings-grid oq-house-learning-summary">${summaryCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div><div class="oq-settings-system-summary oq-house-learning-sources">${Object.entries(status.sources).map(([key, source]) => sourceRow(key, source, status)).join("")}</div>${renderWaterTemperatureCards()}${renderSettingsAdvancedDisclosure("house-learning-model", "Modeldiagnostiek", "Schattingen zijn alleen diagnostisch en veranderen de regeling niet.", `<div class="oq-settings-grid">${modelCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>`)}${state.houseLearningStatusError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(state.houseLearningStatusError)}</p>` : ""}`;
 }
 
 export function renderHouseLearningSettings() {
@@ -119,11 +180,10 @@ export function renderHouseLearningSettings() {
     <div class="oq-settings-subpanel oq-settings-subpanel--nested" data-oq-house-learning>
       <div class="oq-settings-subpanel-head">
         <p class="oq-helper-label">Passief leren</p><h4>Huismodel volgen</h4>
-        <p>Diagnostische schatting van H, T₀, U en C. Geen automatische wijzigingen.</p>
-        <p>${installationNote()}</p>
+        <p>Volgt hoeveel warmte je woning nodig heeft en hoe snel deze opwarmt en afkoelt. Geen automatische wijzigingen.</p>
       </div>
       <div class="oq-settings-grid">
-        ${renderSettingsSwitchField("houseLearningEnabled", "Passief leren", "Pauzeer of hervat. Na herstart staat dit uit.", "Verzamelt metingen.", "Geen nieuwe metingen.")}
+        ${renderSettingsSwitchField("houseLearningEnabled", "Passief leren", "Pauzeer of hervat. Na herstart staat dit uit.", "Leren ingeschakeld.", "Geen nieuwe metingen.")}
       </div>
       <div data-oq-house-learning-status>${renderHouseLearningStatusMarkup()}</div>
       <div class="oq-helper-actions">
