@@ -26,6 +26,14 @@ int main() {
   assert(decision.action == Action::FOLLOW_REQUEST);
   assert(decision.guarded_level == 5);
 
+  decision = decide(Inputs{7, 5, false, false});
+  assert(decision.action == Action::FOLLOW_REQUEST);
+  assert(decision.guarded_level == 5);
+
+  decision = decide(Inputs{3, 5, false, false});
+  assert(decision.action == Action::FOLLOW_REQUEST);
+  assert(decision.guarded_level == 3);
+
   decision = decide(Inputs{0, 5, false, true});
   assert(decision.action == Action::FORCE_STOP);
   assert(decision.guarded_level == 0);

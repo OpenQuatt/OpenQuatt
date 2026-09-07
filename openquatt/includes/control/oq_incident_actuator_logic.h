@@ -27,8 +27,15 @@ inline Decision decide(const Inputs& inputs) {
   if (inputs.must_stop) {
     return Decision{Action::FORCE_STOP, 0, true};
   }
-  if (inputs.requested_level > 0 && inputs.previous_applied_level <= 0 && !inputs.available_for_start) {
-    return Decision{Action::BLOCK_NEW_START, 0, false};
+  if (inputs.requested_level > 0 && !inputs.available_for_start) {
+    if (inputs.previous_applied_level <= 0) {
+      return Decision{Action::BLOCK_NEW_START, 0, false};
+    }
+    // During a bounded continuation window, reductions remain safe but a
+    // stale/unavailable unit must not receive a higher compressor request.
+    const int guarded_level =
+        inputs.requested_level > inputs.previous_applied_level ? inputs.previous_applied_level : inputs.requested_level;
+    return Decision{Action::FOLLOW_REQUEST, guarded_level, false};
   }
   return Decision{Action::FOLLOW_REQUEST, inputs.requested_level, false};
 }
