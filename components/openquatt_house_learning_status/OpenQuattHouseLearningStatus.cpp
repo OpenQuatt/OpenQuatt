@@ -73,7 +73,7 @@ class OpenQuattHouseLearningStatusRequestHandler : public AsyncWebHandler {
 
 }  // namespace
 
-float OpenQuattHouseLearningStatus::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
+float OpenQuattHouseLearningStatus::get_setup_priority() const { return setup_priority::WIFI; }
 
 void OpenQuattHouseLearningStatus::setup() {
   this->main_loop_task_ = xTaskGetCurrentTaskHandle();
