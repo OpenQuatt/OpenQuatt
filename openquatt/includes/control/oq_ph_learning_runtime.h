@@ -514,6 +514,18 @@ class Runtime {
       case R::CIC_SETPOINT:
       case R::CIC_FLOW:
         return "CIC";
+      case R::HA_ROOM:
+      case R::HA_SETPOINT:
+      case R::HA_OUTSIDE:
+        return "HA input";
+      case R::API_ROOM:
+      case R::API_SETPOINT:
+      case R::API_OUTSIDE:
+        return "API input";
+      case R::MQTT_ROOM:
+      case R::MQTT_SETPOINT:
+      case R::MQTT_OUTSIDE:
+        return "MQTT";
       case R::HP1_FLOW:
       case R::HP1_OUTSIDE:
         return "HP1";
