@@ -144,7 +144,9 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
   if (state.houseLearningReset === "error" || state.houseLearningReset === "uncertain") {
     return `<p class="oq-settings-action-note oq-settings-action-note--error" role="alert">${escapeHtml(state.houseLearningResetError)}</p>`;
   }
-  if (!status) return state.houseLearningStatusError
+  if (!status) return state.houseLearningEndpointChecking && !state.houseLearningEndpointChecked
+    ? '<p class="oq-settings-action-note" role="status">Beschikbaarheid van passief leren wordt gecontroleerd…</p>'
+    : state.houseLearningStatusError
     ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(state.houseLearningStatusError)}</p>`
     : "";
   const [activityValue, activityNote, activityTone] = activity(status);
@@ -169,7 +171,8 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
 }
 
 export function renderHouseLearningSettings() {
-  if (!hasEntity("houseLearningEnabled") || !state.houseLearningEndpointAvailable) return "";
+  const initialCapabilityCheck = state.houseLearningEndpointChecking && !state.houseLearningEndpointChecked;
+  if (!hasEntity("houseLearningEnabled") || (!state.houseLearningEndpointAvailable && !initialCapabilityCheck)) return "";
   const resetting = state.busyAction === "houseLearningReset" || state.houseLearningReset === "pending";
   const busy = Boolean(state.busyAction) || resetting;
   const exporting = state.busyAction === "houseLearningExport";
@@ -194,7 +197,8 @@ export function renderHouseLearningSettings() {
 
 export function patchHouseLearningSettingsStatus() {
   const panel = state.root?.querySelector("[data-oq-house-learning]");
-  if (panel && (!hasEntity("houseLearningEnabled") || !state.houseLearningEndpointAvailable)) {
+  const initialCapabilityCheck = state.houseLearningEndpointChecking && !state.houseLearningEndpointChecked;
+  if (panel && (!hasEntity("houseLearningEnabled") || (!state.houseLearningEndpointAvailable && !initialCapabilityCheck))) {
     panel.remove?.();
     return true;
   }

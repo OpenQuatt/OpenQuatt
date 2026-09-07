@@ -160,6 +160,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
           ? refreshIncidentMonitoringData({ force: true })
           : false,
       ]);
+      if (shouldRefreshHouseLearningStatusSurface()) {
+        void refreshHouseLearningStatus({ force: true });
+      }
       if (state.appView === "settings") {
         await waitForInitialSettingsReady();
       } else {

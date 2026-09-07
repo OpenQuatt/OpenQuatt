@@ -113,9 +113,12 @@ export async function refreshHouseLearningStatus(options = {}) {
   if (!options.force && Date.now() - Number(state.houseLearningLastFetchAt || 0) < HOUSE_LEARNING_STATUS_INTERVAL_MS) {
     return false;
   }
+  const initialCapabilityCheck = !state.houseLearningEndpointAvailable && !state.houseLearningEndpointChecked;
   const requestGeneration = Number(state.houseLearningRequestId || 0);
-  const before = JSON.stringify([state.houseLearningEndpointAvailable, state.houseLearningStatus, state.houseLearningStatusError]);
+  const before = JSON.stringify([state.houseLearningEndpointAvailable, state.houseLearningEndpointChecked, state.houseLearningStatus, state.houseLearningStatusError]);
+  state.houseLearningEndpointChecking = true;
   state.houseLearningFetchPromise = (async () => {
+    let probeCompleted = false;
     try {
       const response = await fetchWithTimeout(
         getHouseLearningStatusEndpoint(),
@@ -136,17 +139,26 @@ export async function refreshHouseLearningStatus(options = {}) {
         state.houseLearningStatus = status;
         state.houseLearningStatusError = "";
       }
+      probeCompleted = true;
     } catch (error) {
       if ((!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) || requestGeneration !== state.houseLearningRequestId) return false;
       state.houseLearningStatus = null;
       state.houseLearningStatusError = `Leerstatus kon niet worden opgehaald. ${error.message || String(error)}`;
+      probeCompleted = true;
     } finally {
-      if (requestGeneration === state.houseLearningRequestId) state.houseLearningLastFetchAt = Date.now();
+      if (requestGeneration === state.houseLearningRequestId) {
+        if (probeCompleted) state.houseLearningEndpointChecked = true;
+        state.houseLearningEndpointChecking = false;
+        state.houseLearningLastFetchAt = Date.now();
+      }
     }
-    const changed = before !== JSON.stringify([state.houseLearningEndpointAvailable, state.houseLearningStatus, state.houseLearningStatusError]);
-    if (changed && !state.root?.querySelector("[data-oq-house-learning]") && !state.focusedField) render();
+    const changed = before !== JSON.stringify([state.houseLearningEndpointAvailable, state.houseLearningEndpointChecked, state.houseLearningStatus, state.houseLearningStatusError]);
+    // The initial probe must replace its loading panel immediately. Later status
+    // polls retain the settings partial-patch path while the panel is present.
+    if (changed && !state.focusedField && (initialCapabilityCheck || !state.root?.querySelector("[data-oq-house-learning]"))) render();
     return changed;
   })();
+  if (initialCapabilityCheck) render();
   try {
     return await state.houseLearningFetchPromise;
   } finally {

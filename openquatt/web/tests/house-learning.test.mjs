@@ -22,8 +22,9 @@ const {
   resetHouseLearningData,
   shouldRefreshHouseLearningStatusSurface,
 } = await import("../js/src/features/house-learning.js");
-const { renderHouseLearningSettings, renderHouseLearningStatusMarkup } = await import("../js/src/settings/house-learning.js");
+const { patchHouseLearningSettingsStatus, renderHouseLearningSettings, renderHouseLearningStatusMarkup } = await import("../js/src/settings/house-learning.js");
 const { SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
+const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
 
 function switchEntity(value = false) {
   return { value, state: value };
@@ -35,12 +36,18 @@ test.afterEach(() => {
   state.controlError = "";
   state.controlNotice = "";
   state.houseLearningStatus = null;
+  state.houseLearningEndpointAvailable = false;
+  state.houseLearningEndpointChecked = false;
+  state.houseLearningEndpointChecking = false;
   state.houseLearningStatusError = "";
   state.houseLearningLastFetchAt = 0;
   state.houseLearningFetchPromise = null;
   state.houseLearningRequestId = 0;
   state.houseLearningReset = "";
   state.houseLearningResetError = "";
+  state.root = null;
+  state.focusedField = null;
+  setRenderCallback(null);
 });
 
 function statusPayload(overrides = {}) {
@@ -126,6 +133,90 @@ test("leerstatus wordt alleen op het zichtbare Power House instellingenscherm op
   state.appView = "overview";
   assert.equal(await refreshHouseLearningStatus({ force: true }), false);
   assert.equal(fetches, 0);
+});
+
+test("directe heating-entry vervangt de eerste capabilitycheck na de statusrespons", async () => {
+  state.appView = "settings";
+  state.settingsGroup = "heating";
+  state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(false) };
+  let respond;
+  globalThis.fetch = () => new Promise((resolve) => { respond = resolve; });
+
+  const refresh = refreshHouseLearningStatus({ force: true });
+  assert.match(renderHouseLearningSettings(), /Beschikbaarheid van passief leren wordt gecontroleerd/);
+  respond({ ok: false, status: 404, json: async () => ({}) });
+  assert.equal(await refresh, true);
+  assert.equal(renderHouseLearningSettings(), "");
+});
+
+test("directe heating-entry vervangt de laadstatus ook na een geslaagde respons", async () => {
+  state.appView = "settings";
+  state.settingsGroup = "heating";
+  state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(true) };
+  let rendered = "";
+  let renders = 0;
+  const statusNode = { innerHTML: "" };
+  const panel = { removed: false, remove() { this.removed = true; }, querySelector: () => statusNode };
+  state.root = { querySelector: () => panel };
+  setRenderCallback(() => { renders += 1; rendered = renderHouseLearningSettings(); });
+  let respond;
+  globalThis.fetch = () => new Promise((resolve) => { respond = resolve; });
+
+  const refresh = refreshHouseLearningStatus({ force: true });
+  assert.match(rendered, /Beschikbaarheid van passief leren wordt gecontroleerd/);
+  assert.equal(patchHouseLearningSettingsStatus(), true);
+  assert.equal(panel.removed, false);
+  assert.match(statusNode.innerHTML, /Beschikbaarheid van passief leren wordt gecontroleerd/);
+  respond({ ok: true, status: 200, json: async () => statusPayload({ enabled: true, control_mode: 2, status: "collecting" }) });
+
+  assert.equal(await refresh, true);
+  assert.match(rendered, /Verzamelt nu/);
+  assert.equal(renders, 2);
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => statusPayload({ enabled: true, control_mode: 2, status: "collecting", records: 43 }) });
+  assert.equal(await refreshHouseLearningStatus({ force: true }), true);
+  assert.equal(renders, 2, "normale statusupdates bouwen het instellingenscherm niet opnieuw op");
+});
+
+test("een herhaalde 404-probe toont geen laadblok opnieuw", async () => {
+  state.appView = "settings";
+  state.settingsGroup = "heating";
+  state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(false) };
+  const responses = [];
+  globalThis.fetch = () => new Promise((resolve) => responses.push(resolve));
+
+  const firstProbe = refreshHouseLearningStatus({ force: true });
+  responses.shift()({ ok: false, status: 404, json: async () => ({}) });
+  await firstProbe;
+  assert.equal(renderHouseLearningSettings(), "");
+
+  const panel = {
+    remove() { this.removed = true; },
+    querySelector: () => ({ innerHTML: "" }),
+  };
+  state.root = { querySelector: () => panel };
+  const retry = refreshHouseLearningStatus({ force: true });
+
+  assert.equal(renderHouseLearningSettings(), "");
+  assert.equal(patchHouseLearningSettingsStatus(), true);
+  assert.equal(panel.removed, true);
+  responses.shift()({ ok: false, status: 404, json: async () => ({}) });
+  assert.equal(await retry, false);
+});
+
+test("een late statusrespons na navigatie bevestigt de capability niet", async () => {
+  state.appView = "settings";
+  state.settingsGroup = "heating";
+  state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(false) };
+  let respond;
+  globalThis.fetch = () => new Promise((resolve) => { respond = resolve; });
+
+  const refresh = refreshHouseLearningStatus({ force: true });
+  state.appView = "overview";
+  respond({ ok: true, status: 200, json: async () => statusPayload() });
+
+  assert.equal(await refresh, false);
+  assert.equal(state.houseLearningEndpointChecked, false);
+  assert.equal(state.houseLearningEndpointChecking, false);
 });
 
 test("annuleren verstuurt geen reset en een geweigerde reset blijft als fout zichtbaar", async () => {
