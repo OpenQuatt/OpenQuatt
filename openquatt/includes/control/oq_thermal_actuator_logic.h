@@ -17,6 +17,10 @@ constexpr bool valid_level_command(int control_level, int physical_level) {
   return control_level > 0 && control_level <= 10 && physical_level > 0 && physical_level <= 20;
 }
 
+// Retained defrost writes continue an active command. A zero command must go
+// through normal start authorization, even if the ODU readback still is active.
+constexpr bool may_retain_command(int previous_level, bool safety_stop) { return previous_level > 0 && !safety_stop; }
+
 struct ManualGuardInputs {
   int requested_level;
   int mode_code;
@@ -47,14 +51,16 @@ inline std::string manual_guard(const ManualGuardInputs& in, const std::string& 
   return current_guard;
 }
 
-enum class PreflightBlock : uint8_t { NONE, SAFE_ZERO, DEFROST, COOLING_REST, HP_REST, MODE };
+enum class PreflightBlock : uint8_t { NONE, SAFE_ZERO, DEFROST, COOLING_REST, HP_REST, MODE, START_LIMIT };
 
 inline PreflightBlock decide_preflight(int guarded_level, int previous_level, bool retained_hold, int expected_mode,
-                                       uint32_t hp_rest_remaining_ms, bool bypass_holds, bool cooling_start_blocked) {
+                                       uint32_t hp_rest_remaining_ms, bool bypass_holds, bool cooling_start_blocked,
+                                       uint32_t start_limit_remaining_ms = 0U) {
   if (bypass_holds) return PreflightBlock::SAFE_ZERO;
   if (retained_hold) return PreflightBlock::DEFROST;
   if (guarded_level > 0 && cooling_start_blocked) return PreflightBlock::COOLING_REST;
   if (guarded_level > 0 && previous_level == 0 && hp_rest_remaining_ms > 0) return PreflightBlock::HP_REST;
+  if (guarded_level > 0 && previous_level == 0 && start_limit_remaining_ms > 0) return PreflightBlock::START_LIMIT;
   if (guarded_level > 0 && expected_mode != 1 && expected_mode != 2) return PreflightBlock::MODE;
   return guarded_level > 0 ? PreflightBlock::NONE : PreflightBlock::SAFE_ZERO;
 }

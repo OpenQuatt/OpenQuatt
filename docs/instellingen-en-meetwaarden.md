@@ -251,6 +251,10 @@ Alleen als het probleem daar lijkt te zitten:
 
 ### Voor compressorpendelen
 
+OpenQuatt geeft per compressor maximaal zes startopdrachten per voortschrijdend uur vrij. Een zevende start wacht totdat de oudste van die zes starts een uur geleden is, én alle bestaande startvoorwaarden zijn vrijgegeven. De minimale draaitijd (standaard 300 s) en minimale uit-tijd (standaard 240 s) blijven gelden. Verdwijnt de vraag tijdens het wachten, dan volgt geen start. De begrenzer geldt ook bij handmatige HP-bediening; stops blijven mogelijk.
+
+De begrenzer telt vrijgegeven opdrachten van stand 0 naar een actieve stand. Een mislukte start telt conservatief mee; modulatie en herhaalde actieve opdrachten tellen niet opnieuw. De beslislog meldt een geblokkeerde start met de reden `start_stop_rate_high`; handmatige HP-bediening toont de resterende wachttijd. De uurhistorie wordt bij een controllerherstart gewist. De bestaande stilstandbeveiliging blijft gelden, maar er is geen uurgrens over reboots heen of voor autonome herstarts binnen de ODU.
+
 De diagnostische pendelwaarschuwingen zijn in Home Assistant standaard
 uitgeschakeld. Schakel `Compressor cycling warning` in om één samengesteld
 signaal te krijgen zodra minimaal één actuele pendelwaarschuwing actief is. De

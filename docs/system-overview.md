@@ -123,6 +123,8 @@ De compressorbeveiliging telt per HP `${oq_hp_min_off_s}` (standaard 240 seconde
 
 Het herstartrecord wordt vóór safe mode en OTA-toegang uit NVS verbruikt. Als dat niet aantoonbaar lukt, herstart de controller zonder HP-starts of OTA-toegang vrij te geven; alleen extra wachten zou hergebruik van oude uit-tijd niet voorkomen. Deze opslagfout vereist herstel voordat normaal bedrijf kan hervatten.
 
+Daarnaast houdt de thermal actuator per compressor de laatste zes vrijgegeven startopdrachten bij in een vaste RAM-ringbuffer. Bij zes starts in de laatste 60 minuten wordt alleen een nieuwe start uitgesteld tot de oudste start verloopt. Doorlopen, moduleren en stoppen blijven mogelijk. Dit geldt voor verwarmen, koelen en handmatige HP-bediening. De startgeschiedenis vervalt bij iedere reboot en telt OQ-opdrachten, niet autonome ODU-herstarts; de bestaande gemeten startdiagnostiek blijft afzonderlijk beschikbaar.
+
 ## 4. Data Pipeline
 
 ### 4.1 Input layer
