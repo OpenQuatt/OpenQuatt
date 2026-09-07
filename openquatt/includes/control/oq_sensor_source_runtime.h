@@ -8,7 +8,6 @@
 #include "oq_input_source_logic.h"
 #include "oq_schedule_runtime.h"
 #include "../sources/oq_resolved_learning_source.h"
-#include "../sources/oq_source_receipt_runtime.h"
 #include "oq_supply_calibration_logic.h"
 #include "oq_supply_hold_logic.h"
 
@@ -16,18 +15,10 @@ namespace oq_sensor_source {
 
 class Runtime {
  public:
-  oq_sources::ResolvedLearningSource resolved_room_temperature() const {
-    return validate_cached_receipt(this->resolved_room_);
-  }
-  oq_sources::ResolvedLearningSource resolved_room_setpoint() const {
-    return validate_cached_receipt(this->resolved_setpoint_);
-  }
-  oq_sources::ResolvedLearningSource resolved_outside_temperature() const {
-    return validate_cached_receipt(this->resolved_outside_);
-  }
-  oq_sources::ResolvedLearningSource resolved_flow_rate() const {
-    return validate_cached_receipt(this->resolved_flow_);
-  }
+  oq_sources::ResolvedLearningSource resolved_room_temperature() const { return this->resolved_room_; }
+  oq_sources::ResolvedLearningSource resolved_room_setpoint() const { return this->resolved_setpoint_; }
+  oq_sources::ResolvedLearningSource resolved_outside_temperature() const { return this->resolved_outside_; }
+  oq_sources::ResolvedLearningSource resolved_flow_rate() const { return this->resolved_flow_; }
 
   // Register this on every source-selector and CIC URL on_value callback. It
   // records even A->B->A changes that occur between periodic sensor updates and
@@ -257,7 +248,7 @@ class Runtime {
         static_cast<uint8_t>(input.outdoor_mode),
         input.selected == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
     const uint32_t generation = this->flow_generation_.observe(configuration);
-    this->resolved_flow_ = resolve_flow(selected, input, generation);
+    this->resolved_flow_ = resolve_flow(selected, generation);
     this->resolved_flow_.configuration = configuration;
     this->resolved_flow_.configuration_generation = this->flow_generation_.observe_resolution(this->resolved_flow_);
     return selected.valid ? selected.value : NAN;
@@ -376,10 +367,6 @@ class Runtime {
     return oq_input_source::Source::NONE;
   }
 
-  static oq_sources::RawFloatReceipt raw_receipt(float value, uint64_t received_ms, bool received, bool valid) {
-    return {value, received_ms, received, valid};
-  }
-
   static oq_input_source::ControllerFlowMode controller_flow_mode_() {
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     if (id(oq_q_flow_source).has_state()) {
@@ -425,222 +412,78 @@ class Runtime {
             configured == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
   }
 
-  static oq_sources::RawFloatReceipt current_receipt(oq_sources::LearningSourceRoute route) {
+  static oq_sources::LearningSourceRoute room_route(oq_input_source::Source source, bool setpoint) {
     using oq_sources::LearningSourceRoute;
-    switch (route) {
-      case LearningSourceRoute::OPENTHERM_ROOM:
-#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-      {
-        const auto receipt = id(oq_ot_slave_hub).master_room_temperature_receipt();
-        return raw_receipt(receipt.value, receipt.received_ms, receipt.received, receipt.valid);
-      }
-#else
-        return {};
-#endif
-      case LearningSourceRoute::OPENTHERM_SETPOINT:
-#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-      {
-        const auto receipt = id(oq_ot_slave_hub).master_room_setpoint_receipt();
-        return raw_receipt(receipt.value, receipt.received_ms, receipt.received, receipt.valid);
-      }
-#else
-        return {};
-#endif
-      case LearningSourceRoute::CIC_ROOM:
-        return id(cic_component).room_temperature_receipt();
-      case LearningSourceRoute::CIC_SETPOINT:
-        return id(cic_component).room_setpoint_receipt();
-      case LearningSourceRoute::CIC_FLOW:
-        return id(cic_component).flow_rate_receipt();
-      case LearningSourceRoute::HP1_OUTSIDE:
-        return oq_sources::hp1.outside;
-      case LearningSourceRoute::HP2_OUTSIDE:
-#if OQ_TOPOLOGY_DUO
-        return oq_sources::hp2.outside;
-#else
-        return {};
-#endif
-      case LearningSourceRoute::CONTROLLER_FLOW:
-#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-        return oq_sources::controller_flow;
-#else
-        return {};
-#endif
-      case LearningSourceRoute::HP1_FLOW:
-        return oq_sources::hp1.flow;
-      case LearningSourceRoute::HP2_FLOW:
-#if OQ_TOPOLOGY_DUO
-        return oq_sources::hp2.flow;
-#else
-        return {};
-#endif
+    switch (source) {
+      case oq_input_source::Source::OPENTHERM:
+        return setpoint ? LearningSourceRoute::OPENTHERM_SETPOINT : LearningSourceRoute::OPENTHERM_ROOM;
+      case oq_input_source::Source::CIC:
+        return setpoint ? LearningSourceRoute::CIC_SETPOINT : LearningSourceRoute::CIC_ROOM;
+      case oq_input_source::Source::HA:
+        return setpoint ? LearningSourceRoute::HA_SETPOINT : LearningSourceRoute::HA_ROOM;
+      case oq_input_source::Source::API:
+        return setpoint ? LearningSourceRoute::API_SETPOINT : LearningSourceRoute::API_ROOM;
+      case oq_input_source::Source::MQTT:
+        return setpoint ? LearningSourceRoute::MQTT_SETPOINT : LearningSourceRoute::MQTT_ROOM;
       default:
-        return {};
+        return LearningSourceRoute::NONE;
     }
   }
 
-  static oq_sources::ResolvedLearningSource validate_cached_receipt(const oq_sources::ResolvedLearningSource& cached) {
-    if (cached.provenance == oq_sources::LearningSourceProvenance::PHYSICAL_RECEIPT) {
-      return oq_sources::validate_current_receipts(cached, current_receipt(cached.route));
+  static oq_sources::LearningSourceRoute outside_route(oq_input_source::Source source) {
+    using oq_sources::LearningSourceRoute;
+    switch (source) {
+      case oq_input_source::Source::OUTDOOR:
+      case oq_input_source::Source::AUTO:
+        return LearningSourceRoute::OUTSIDE_AGGREGATE;
+      case oq_input_source::Source::HA:
+        return LearningSourceRoute::HA_OUTSIDE;
+      case oq_input_source::Source::API:
+        return LearningSourceRoute::API_OUTSIDE;
+      case oq_input_source::Source::MQTT:
+        return LearningSourceRoute::MQTT_OUTSIDE;
+      default:
+        return LearningSourceRoute::NONE;
     }
-    if (cached.route != oq_sources::LearningSourceRoute::OUTSIDE_AGGREGATE &&
-        cached.route != oq_sources::LearningSourceRoute::FLOW_AGGREGATE)
-      return cached;
-    return oq_sources::validate_current_receipts(cached, current_receipt(cached.component_route),
-                                                 current_receipt(cached.secondary_route));
+  }
+
+  static oq_sources::LearningSourceRoute flow_route(oq_input_source::FlowRoute route) {
+    using oq_sources::LearningSourceRoute;
+    switch (route) {
+      case oq_input_source::FlowRoute::CIC:
+        return LearningSourceRoute::CIC_FLOW;
+      case oq_input_source::FlowRoute::CONTROLLER:
+        return LearningSourceRoute::CONTROLLER_FLOW;
+      case oq_input_source::FlowRoute::HP1:
+        return LearningSourceRoute::HP1_FLOW;
+      case oq_input_source::FlowRoute::HP2:
+        return LearningSourceRoute::HP2_FLOW;
+      case oq_input_source::FlowRoute::AGGREGATE:
+        return LearningSourceRoute::FLOW_AGGREGATE;
+      case oq_input_source::FlowRoute::PUMPS_STOPPED:
+        return LearningSourceRoute::SYNTHESIZED_ZERO_FLOW;
+      default:
+        return LearningSourceRoute::NONE;
+    }
   }
 
   static oq_sources::ResolvedLearningSource resolve_room(const oq_input_source::NumericSelection& selected,
                                                          bool setpoint, uint32_t generation) {
-    using oq_sources::LearningSourceProvenance;
-    using oq_sources::LearningSourceRoute;
-    if (selected.held) {
-      return oq_sources::unsupported_source(selected.value, selected.valid,
-                                            setpoint ? LearningSourceRoute::HA_SETPOINT : LearningSourceRoute::HA_ROOM,
-                                            generation, LearningSourceProvenance::HELD);
-    }
-    switch (selected.route) {
-      case oq_input_source::Source::OPENTHERM: {
-#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-        const auto receipt = setpoint ? id(oq_ot_slave_hub).master_room_setpoint_receipt()
-                                      : id(oq_ot_slave_hub).master_room_temperature_receipt();
-        return oq_sources::physical_source(
-            setpoint ? LearningSourceRoute::OPENTHERM_SETPOINT : LearningSourceRoute::OPENTHERM_ROOM,
-            raw_receipt(receipt.value, receipt.received_ms, receipt.received, receipt.valid), generation,
-            selected.valid);
-#else
-        return oq_sources::unsupported_source(
-            selected.value, selected.valid,
-            setpoint ? LearningSourceRoute::OPENTHERM_SETPOINT : LearningSourceRoute::OPENTHERM_ROOM, generation);
-#endif
-      }
-      case oq_input_source::Source::CIC:
-        return oq_sources::physical_source(
-            setpoint ? LearningSourceRoute::CIC_SETPOINT : LearningSourceRoute::CIC_ROOM,
-            setpoint ? id(cic_component).room_setpoint_receipt() : id(cic_component).room_temperature_receipt(),
-            generation, selected.valid);
-      case oq_input_source::Source::HA:
-        return oq_sources::unsupported_source(
-            selected.value, selected.valid, setpoint ? LearningSourceRoute::HA_SETPOINT : LearningSourceRoute::HA_ROOM,
-            generation);
-      case oq_input_source::Source::API:
-        return oq_sources::unsupported_source(
-            selected.value, selected.valid,
-            setpoint ? LearningSourceRoute::API_SETPOINT : LearningSourceRoute::API_ROOM, generation);
-      case oq_input_source::Source::MQTT:
-        return oq_sources::unsupported_source(
-            selected.value, selected.valid,
-            setpoint ? LearningSourceRoute::MQTT_SETPOINT : LearningSourceRoute::MQTT_ROOM, generation);
-      default:
-        return {};
-    }
+    return oq_sources::selected_source(selected.value, selected.valid, room_route(selected.route, setpoint), generation,
+                                       selected.held ? oq_sources::LearningSourceProvenance::HELD
+                                                     : oq_sources::LearningSourceProvenance::SELECTED_VALUE);
   }
 
   static oq_sources::ResolvedLearningSource resolve_outside(const oq_input_source::NumericSelection& selected,
                                                             uint32_t generation) {
-    using oq_sources::LearningSourceProvenance;
-    using oq_sources::LearningSourceRoute;
-    if (selected.held) {
-      return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::HA_OUTSIDE, generation,
-                                            LearningSourceProvenance::HELD);
-    }
-    switch (selected.route) {
-      case oq_input_source::Source::OUTDOOR: {
-#if OQ_TOPOLOGY_DUO
-        const auto& local = oq_sources::local_outside_selection;
-        if (selected.valid && local.valid && local.route == oq_sources::LocalOutsideRoute::HP1)
-          return oq_sources::physical_source(LearningSourceRoute::HP1_OUTSIDE, local.hp1_receipt, generation, true);
-        if (selected.valid && local.valid && local.route == oq_sources::LocalOutsideRoute::HP2)
-          return oq_sources::physical_source(LearningSourceRoute::HP2_OUTSIDE, local.hp2_receipt, generation, true);
-        if (selected.valid && local.valid && local.route == oq_sources::LocalOutsideRoute::COMPOSITE) {
-          const auto operation = local.operation == oq_sources::LocalOutsideOperation::MINIMUM
-                                     ? oq_sources::LearningCompositeOperation::MINIMUM
-                                     : oq_sources::LearningCompositeOperation::ARITHMETIC_MEAN;
-          return oq_sources::unsupported_composite_source(
-              selected.value, true, LearningSourceRoute::OUTSIDE_AGGREGATE, LearningSourceRoute::HP1_OUTSIDE,
-              LearningSourceRoute::HP2_OUTSIDE, local.hp1_receipt, local.hp2_receipt, operation, {}, generation);
-        }
-        return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::OUTSIDE_AGGREGATE,
-                                              generation);
-#else
-        return oq_sources::physical_source(LearningSourceRoute::HP1_OUTSIDE, oq_sources::hp1.outside, generation,
-                                           selected.valid);
-#endif
-      }
-      case oq_input_source::Source::HA:
-        return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::HA_OUTSIDE,
-                                              generation);
-      case oq_input_source::Source::API:
-        return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::API_OUTSIDE,
-                                              generation);
-      case oq_input_source::Source::MQTT:
-        return oq_sources::unsupported_source(selected.value, selected.valid, LearningSourceRoute::MQTT_OUTSIDE,
-                                              generation);
-      default:
-        return {};
-    }
+    return oq_sources::selected_source(selected.value, selected.valid, outside_route(selected.route), generation,
+                                       selected.held ? oq_sources::LearningSourceProvenance::HELD
+                                                     : oq_sources::LearningSourceProvenance::SELECTED_VALUE);
   }
 
   static oq_sources::ResolvedLearningSource resolve_flow(const oq_input_source::FlowSelection& selected,
-                                                         const oq_input_source::FlowInputs& input,
                                                          uint32_t generation) {
-    using oq_sources::LearningSourceProvenance;
-    using oq_sources::LearningSourceRoute;
-    switch (selected.route) {
-      case oq_input_source::FlowRoute::CIC:
-        return oq_sources::physical_source(LearningSourceRoute::CIC_FLOW, id(cic_component).flow_rate_receipt(),
-                                           generation, selected.valid);
-      case oq_input_source::FlowRoute::CONTROLLER:
-#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-        return oq_sources::physical_source(LearningSourceRoute::CONTROLLER_FLOW, oq_sources::controller_flow,
-                                           generation, selected.valid);
-#else
-        return {};
-#endif
-      case oq_input_source::FlowRoute::HP1:
-        return oq_sources::physical_source(LearningSourceRoute::HP1_FLOW, oq_sources::hp1.flow, generation,
-                                           selected.valid);
-      case oq_input_source::FlowRoute::HP2:
-#if OQ_TOPOLOGY_DUO
-        return oq_sources::physical_source(LearningSourceRoute::HP2_FLOW, oq_sources::hp2.flow, generation,
-                                           selected.valid);
-#else
-        return {};
-#endif
-      case oq_input_source::FlowRoute::AGGREGATE: {
-#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-        const bool hp1_uses_controller = id(hp_generation).has_state() && id(hp_generation).current_option() == "V1";
-        const auto hp1_receipt = hp1_uses_controller ? oq_sources::controller_flow : oq_sources::hp1.flow;
-        const auto hp1_route =
-            hp1_uses_controller ? LearningSourceRoute::CONTROLLER_FLOW : LearningSourceRoute::HP1_FLOW;
-#else
-        const auto hp1_receipt = oq_sources::hp1.flow;
-        constexpr auto hp1_route = LearningSourceRoute::HP1_FLOW;
-#endif
-#if OQ_TOPOLOGY_DUO
-        if (selected.valid && input.hp1.valid && !input.hp2.valid)
-          return oq_sources::physical_source(hp1_route, hp1_receipt, generation, true);
-        if (selected.valid && !input.hp1.valid && input.hp2.valid)
-          return oq_sources::physical_source(LearningSourceRoute::HP2_FLOW, oq_sources::hp2.flow, generation, true);
-        const auto operation = selected.aggregate_operation == oq_input_source::FlowAggregateOperation::ARITHMETIC_MEAN
-                                   ? oq_sources::LearningCompositeOperation::ARITHMETIC_MEAN
-                               : selected.aggregate_operation == oq_input_source::FlowAggregateOperation::MAXIMUM
-                                   ? oq_sources::LearningCompositeOperation::MAXIMUM
-                                   : oq_sources::LearningCompositeOperation::NONE;
-        return oq_sources::unsupported_composite_source(
-            selected.value, selected.valid, LearningSourceRoute::FLOW_AGGREGATE, hp1_route,
-            LearningSourceRoute::HP2_FLOW, hp1_receipt, oq_sources::hp2.flow, operation, {}, generation);
-#else
-        return oq_sources::physical_source(hp1_route, hp1_receipt, generation, selected.valid);
-#endif
-      }
-      case oq_input_source::FlowRoute::PUMPS_STOPPED:
-        return oq_sources::unsupported_source(selected.value, selected.valid,
-                                              LearningSourceRoute::SYNTHESIZED_ZERO_FLOW, generation,
-                                              LearningSourceProvenance::SYNTHESIZED);
-      default:
-        return {};
-    }
+    return oq_sources::selected_source(selected.value, selected.valid, flow_route(selected.route), generation);
   }
 
   template <typename T>

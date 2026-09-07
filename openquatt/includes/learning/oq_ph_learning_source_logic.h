@@ -52,6 +52,7 @@ enum class PhysicalUnit : uint8_t {
 
 enum class MeasurementProvenance : uint8_t {
   UNKNOWN = 0,
+  SELECTED_VALUE,
   PHYSICAL_RECEIPT,
   HELD,
   SYNTHESIZED,
@@ -275,7 +276,10 @@ inline SnapshotSourceStatus append_measurement(const PhysicalMeasurement<T>& mea
                            measurement.provenance == MeasurementProvenance::CONTROL_CONTRACT &&
                            measurement.source.kind == PhysicalSourceKind::CONTROL_CONTRACT &&
                            measurement.source.unit == PhysicalUnit::SYSTEM;
-  if (!composition && !declaration &&
+  const bool selected_value = measurement.provenance == MeasurementProvenance::SELECTED_VALUE &&
+                              measurement.source.kind == PhysicalSourceKind::CONTROL_CONTRACT &&
+                              measurement.source.unit == PhysicalUnit::SYSTEM;
+  if (!composition && !declaration && !selected_value &&
       (measurement.provenance != MeasurementProvenance::PHYSICAL_RECEIPT ||
        measurement.source.kind == PhysicalSourceKind::CONTROL_CONTRACT ||
        measurement.source.kind == PhysicalSourceKind::PHYSICAL_COMPOSITION))

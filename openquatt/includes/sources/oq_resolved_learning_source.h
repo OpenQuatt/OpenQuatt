@@ -37,6 +37,7 @@ enum class LearningSourceRoute : uint8_t {
 
 enum class LearningSourceProvenance : uint8_t {
   UNKNOWN = 0,
+  SELECTED_VALUE,
   PHYSICAL_RECEIPT,
   HELD,
   UNSUPPORTED,
@@ -53,8 +54,8 @@ struct SourceConfigurationKey {
 };
 
 struct ResolvedLearningSource {
-  // For PHYSICAL_RECEIPT this is the raw value paired with receipt.received_ms.
-  // Other provenance retains the selected control value for diagnostics only.
+  // This is always the value selected by the control source resolver. Receipts
+  // remain diagnostic metadata for routes that provide them.
   float value = NAN;
   LearningSourceRoute route = LearningSourceRoute::NONE;
   LearningSourceRoute component_route = LearningSourceRoute::NONE;
@@ -175,6 +176,20 @@ inline ResolvedLearningSource physical_source(LearningSourceRoute route, const R
   result.valid = selected_valid && receipt.received && receipt.valid && isfinite(receipt.value);
   result.provenance = result.valid ? LearningSourceProvenance::PHYSICAL_RECEIPT : LearningSourceProvenance::UNKNOWN;
   result.value = result.valid ? receipt.value : NAN;
+  return result;
+}
+
+inline ResolvedLearningSource selected_source(
+    float value, bool selected_valid, LearningSourceRoute route, uint32_t configuration_generation,
+    LearningSourceProvenance provenance = LearningSourceProvenance::SELECTED_VALUE,
+    const SourceConfigurationKey& configuration = {}) {
+  ResolvedLearningSource result;
+  result.value = selected_valid && isfinite(value) ? value : NAN;
+  result.route = route;
+  result.configuration = configuration;
+  result.configuration_generation = configuration_generation;
+  result.valid = selected_valid && isfinite(value);
+  result.provenance = result.valid ? provenance : LearningSourceProvenance::UNKNOWN;
   return result;
 }
 

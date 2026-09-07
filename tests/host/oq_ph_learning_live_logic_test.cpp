@@ -10,41 +10,10 @@ namespace {
 
 constexpr uint64_t kNowMs = 200000U;
 
-oq_sources::ResolvedLearningSource direct_source(oq_sources::LearningSourceRoute route, float value,
-                                                 oq_input_source::Source selected, uint32_t endpoint_generation = 0U,
-                                                 uint64_t received_ms = kNowMs - 100U) {
-  oq_sources::RawFloatReceipt receipt;
-  receipt.observe(value, received_ms, true);
-  const oq_sources::SourceConfigurationKey configuration{static_cast<uint8_t>(selected), 0U, 0U, endpoint_generation};
-  return oq_sources::physical_source(route, receipt, 4U, true, configuration);
-}
-
-oq_sources::ResolvedLearningSource composite_flow(float hp1, float hp2, uint64_t hp1_ms = kNowMs - 200U,
-                                                  uint64_t hp2_ms = kNowMs - 100U) {
-  oq_sources::RawFloatReceipt first;
-  oq_sources::RawFloatReceipt second;
-  first.observe(hp1, hp1_ms, true);
-  second.observe(hp2, hp2_ms, true);
-  const oq_sources::SourceConfigurationKey configuration{
-      static_cast<uint8_t>(oq_input_source::Source::OUTDOOR), 0U,
-      static_cast<uint8_t>(oq_input_source::OutdoorFlowMode::AGGREGATE), 0U};
-  return oq_sources::unsupported_composite_source(
-      0.5f * (hp1 + hp2), true, oq_sources::LearningSourceRoute::FLOW_AGGREGATE,
-      oq_sources::LearningSourceRoute::HP1_FLOW, oq_sources::LearningSourceRoute::HP2_FLOW, first, second,
-      oq_sources::LearningCompositeOperation::ARITHMETIC_MEAN, configuration, 5U);
-}
-
-oq_sources::ResolvedLearningSource composite_outside(float hp1, float hp2) {
-  oq_sources::RawFloatReceipt first;
-  oq_sources::RawFloatReceipt second;
-  first.observe(hp1, kNowMs - 200U, true);
-  second.observe(hp2, kNowMs - 100U, true);
-  const oq_sources::SourceConfigurationKey configuration{static_cast<uint8_t>(oq_input_source::Source::AUTO), 0U, 0U,
-                                                         0U};
-  return oq_sources::unsupported_composite_source(
-      fminf(hp1, hp2), true, oq_sources::LearningSourceRoute::OUTSIDE_AGGREGATE,
-      oq_sources::LearningSourceRoute::HP1_OUTSIDE, oq_sources::LearningSourceRoute::HP2_OUTSIDE, first, second,
-      oq_sources::LearningCompositeOperation::MINIMUM, configuration, 6U);
+oq_sources::ResolvedLearningSource selected_source(
+    oq_sources::LearningSourceRoute route, float value, uint32_t generation = 4U,
+    oq_sources::LearningSourceProvenance provenance = oq_sources::LearningSourceProvenance::SELECTED_VALUE) {
+  return oq_sources::selected_source(value, true, route, generation, provenance);
 }
 
 template <typename T>
@@ -87,100 +56,60 @@ void test_compile_time_topology_maps_single_and_duo() {
   assert(duo.topology == HydronicTopology::DUO_SERIES);
 }
 
-void test_direct_routes_map_to_exact_source_and_timing() {
-  const auto room = resolved_learning_measurement(
-      direct_source(oq_sources::LearningSourceRoute::OPENTHERM_ROOM, 20.5f, oq_input_source::Source::OPENTHERM),
-      kNowMs);
-  assert(room.valid && room.value == 20.5f);
-  assert(room.source.kind == PhysicalSourceKind::OPENTHERM_FRAME && room.source.id == 24U);
-  assert(room.source.unit == PhysicalUnit::SYSTEM && room.source_generation == 4U);
+void test_every_selected_route_uses_its_selected_value() {
+  constexpr oq_sources::LearningSourceRoute routes[] = {
+      oq_sources::LearningSourceRoute::OPENTHERM_ROOM,    oq_sources::LearningSourceRoute::OPENTHERM_SETPOINT,
+      oq_sources::LearningSourceRoute::CIC_ROOM,          oq_sources::LearningSourceRoute::CIC_SETPOINT,
+      oq_sources::LearningSourceRoute::CIC_FLOW,          oq_sources::LearningSourceRoute::HA_ROOM,
+      oq_sources::LearningSourceRoute::HA_SETPOINT,       oq_sources::LearningSourceRoute::HA_OUTSIDE,
+      oq_sources::LearningSourceRoute::API_ROOM,          oq_sources::LearningSourceRoute::API_SETPOINT,
+      oq_sources::LearningSourceRoute::API_OUTSIDE,       oq_sources::LearningSourceRoute::MQTT_ROOM,
+      oq_sources::LearningSourceRoute::MQTT_SETPOINT,     oq_sources::LearningSourceRoute::MQTT_OUTSIDE,
+      oq_sources::LearningSourceRoute::HP1_OUTSIDE,       oq_sources::LearningSourceRoute::HP2_OUTSIDE,
+      oq_sources::LearningSourceRoute::OUTSIDE_AGGREGATE, oq_sources::LearningSourceRoute::CONTROLLER_FLOW,
+      oq_sources::LearningSourceRoute::HP1_FLOW,          oq_sources::LearningSourceRoute::HP2_FLOW,
+      oq_sources::LearningSourceRoute::FLOW_AGGREGATE,    oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW,
+  };
+  for (const auto route : routes) {
+    const auto measured = resolved_learning_measurement(selected_source(route, 20.5f), kNowMs);
+    assert(measured.valid && measured.value == 20.5f);
+    assert(measured.source.kind == PhysicalSourceKind::CONTROL_CONTRACT);
+    assert(measured.source.id == static_cast<uint32_t>(route));
+    assert(measured.source.unit == PhysicalUnit::SYSTEM && measured.source_generation == 4U);
+    assert(measured.received_monotonic_ms == kNowMs);
+    assert(measured.provenance == MeasurementProvenance::SELECTED_VALUE);
+  }
+
+  const auto room =
+      resolved_learning_measurement(selected_source(oq_sources::LearningSourceRoute::API_ROOM, 20.5f), kNowMs);
   assert(room.timing.max_age_ms == 120000U && room.timing.max_skew_ms == 30000U);
+  const auto flow =
+      resolved_learning_measurement(selected_source(oq_sources::LearningSourceRoute::FLOW_AGGREGATE, 750.0f), kNowMs);
+  assert(flow.timing.max_age_ms == 45000U && flow.timing.max_skew_ms == 30000U);
 
-  const auto outside = resolved_learning_measurement(
-      direct_source(oq_sources::LearningSourceRoute::HP2_OUTSIDE, 4.0f, oq_input_source::Source::AUTO), kNowMs);
-  assert(outside.valid && outside.source.kind == PhysicalSourceKind::MODBUS_REGISTER);
-  assert(outside.source.id == 2110U && outside.source.unit == PhysicalUnit::HP2);
-
-  const auto cic = resolved_learning_measurement(
-      direct_source(oq_sources::LearningSourceRoute::CIC_FLOW, 750.0f, oq_input_source::Source::CIC, 9U), kNowMs);
-  assert(cic.valid && cic.source.kind == PhysicalSourceKind::CIC_FIELD && cic.source.id == 3U);
+  source_detail::MeasurementMeta measurements[1];
+  size_t count = 0;
+  assert(source_detail::append_measurement(room, kNowMs, measurements, count) == SnapshotSourceStatus::OK);
 }
 
-void test_direct_route_fails_closed_for_spoof_stale_future_and_offline() {
-  auto spoof = direct_source(oq_sources::LearningSourceRoute::HA_ROOM, 20.0f, oq_input_source::Source::HA);
-  spoof.provenance = oq_sources::LearningSourceProvenance::PHYSICAL_RECEIPT;
-  assert(!resolved_learning_measurement(spoof, kNowMs).valid);
+void test_selected_hold_uses_the_selected_value() {
+  const auto held = resolved_learning_measurement(
+      selected_source(oq_sources::LearningSourceRoute::HA_ROOM, 20.0f, 4U, oq_sources::LearningSourceProvenance::HELD),
+      kNowMs);
+  assert(held.valid && held.value == 20.0f);
 
-  auto wrong_configuration =
-      direct_source(oq_sources::LearningSourceRoute::HP1_FLOW, 700.0f, oq_input_source::Source::CIC, 3U);
-  assert(!resolved_learning_measurement(wrong_configuration, kNowMs).valid);
-
-  auto stale = direct_source(oq_sources::LearningSourceRoute::HP1_FLOW, 700.0f, oq_input_source::Source::OUTDOOR, 0U,
-                             kNowMs - 45001U);
-  assert(!resolved_learning_measurement(stale, kNowMs).valid);
-
-  auto future = direct_source(oq_sources::LearningSourceRoute::HP1_FLOW, 700.0f, oq_input_source::Source::OUTDOOR, 0U,
-                              kNowMs + 1U);
-  assert(!resolved_learning_measurement(future, kNowMs).valid);
-
-  auto offline = direct_source(oq_sources::LearningSourceRoute::HP1_FLOW, 700.0f, oq_input_source::Source::OUTDOOR);
-  offline.receipt.invalidate();
-  assert(!resolved_learning_measurement(offline, kNowMs).valid);
-
-  auto changed_value =
-      direct_source(oq_sources::LearningSourceRoute::HP1_FLOW, 700.0f, oq_input_source::Source::OUTDOOR);
-  changed_value.value = 701.0f;
-  assert(!resolved_learning_measurement(changed_value, kNowMs).valid);
-
-  auto generation_overflow =
-      direct_source(oq_sources::LearningSourceRoute::HP1_FLOW, 700.0f, oq_input_source::Source::OUTDOOR);
-  generation_overflow.configuration_generation = 0U;
-  assert(!resolved_learning_measurement(generation_overflow, kNowMs).valid);
+  auto no_generation = selected_source(oq_sources::LearningSourceRoute::MQTT_ROOM, 20.0f);
+  no_generation.configuration_generation = 0U;
+  assert(!resolved_learning_measurement(no_generation, kNowMs).valid);
 }
 
-void test_composition_requires_both_receipts_exact_routes_freshness_and_skew() {
-  auto source = composite_flow(700.0f, 900.0f);
-  auto measured = resolved_learning_measurement(source, kNowMs);
-  assert(measured.valid && measured.value == 800.0f);
-  assert(measured.source.kind == PhysicalSourceKind::PHYSICAL_COMPOSITION);
-  assert(measured.source.id != 0U && measured.source_generation == 5U);
-  assert(measured.received_monotonic_ms == kNowMs - 100U);
-  assert(measured.provenance == MeasurementProvenance::PHYSICAL_COMPOSITION);
+void test_missing_selection_is_not_a_learning_measurement() {
+  auto missing = selected_source(oq_sources::LearningSourceRoute::API_ROOM, 20.0f);
+  missing.valid = false;
+  assert(!resolved_learning_measurement(missing, kNowMs).valid);
 
-  source.secondary_receipt.invalidate();
-  assert(!resolved_learning_measurement(source, kNowMs).valid);
-
-  source = composite_flow(700.0f, 900.0f, kNowMs - 30001U, kNowMs);
-  assert(!resolved_learning_measurement(source, kNowMs).valid);
-
-  source = composite_flow(700.0f, 900.0f, kNowMs - 45001U, kNowMs - 20000U);
-  assert(!resolved_learning_measurement(source, kNowMs).valid);
-
-  source = composite_flow(700.0f, 900.0f);
-  source.secondary_route = source.component_route;
-  assert(!resolved_learning_measurement(source, kNowMs).valid);
-
-  source = composite_flow(700.0f, 900.0f);
-  source.value = 850.0f;
-  assert(!resolved_learning_measurement(source, kNowMs).valid);
-
-  source = composite_flow(700.0f, 900.0f);
-  source.composite_operation = oq_sources::LearningCompositeOperation::MINIMUM;
-  assert(!resolved_learning_measurement(source, kNowMs).valid);
-}
-
-void test_minimum_outside_composition_uses_the_selected_value() {
-  auto source = composite_outside(6.0f, 4.0f);
-  auto measured = resolved_learning_measurement(source, kNowMs);
-  assert(measured.valid && measured.value == 4.0f);
-  assert(measured.source.kind == PhysicalSourceKind::PHYSICAL_COMPOSITION);
-
-  source.value = 5.0f;
-  assert(!resolved_learning_measurement(source, kNowMs).valid);
-
-  source = composite_outside(6.0f, 4.0f);
-  source.composite_operation = oq_sources::LearningCompositeOperation::MAXIMUM;
-  assert(!resolved_learning_measurement(source, kNowMs).valid);
+  auto no_route = selected_source(oq_sources::LearningSourceRoute::NONE, 20.0f);
+  assert(!resolved_learning_measurement(no_route, kNowMs).valid);
 }
 
 void test_hp_decode_and_boiler_bits_fail_closed() {
@@ -395,10 +324,9 @@ int main() {
   assert(!oq_power_house::learning::observe_source_revisions(revisions, sources));
 
   test_compile_time_topology_maps_single_and_duo();
-  test_direct_routes_map_to_exact_source_and_timing();
-  test_direct_route_fails_closed_for_spoof_stale_future_and_offline();
-  test_composition_requires_both_receipts_exact_routes_freshness_and_skew();
-  test_minimum_outside_composition_uses_the_selected_value();
+  test_every_selected_route_uses_its_selected_value();
+  test_selected_hold_uses_the_selected_value();
+  test_missing_selection_is_not_a_learning_measurement();
   test_hp_decode_and_boiler_bits_fail_closed();
   test_strategy_output_requires_current_matching_owner();
   test_diagnostic_coverage_never_crosses_invalid_gap_or_generation_edge();

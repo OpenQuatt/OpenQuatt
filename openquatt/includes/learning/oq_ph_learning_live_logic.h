@@ -209,150 +209,40 @@ inline uint32_t diagnostic_coverage_seconds(uint32_t previous_epoch_s, uint32_t 
 
 namespace live_detail {
 
-struct RoutePolicy {
-  bool supported = false;
-  SourceIdentity identity;
-  MeasurementTimingContract timing;
-};
-
-inline RoutePolicy route_policy(oq_sources::LearningSourceRoute route) {
+inline MeasurementTimingContract selected_timing(oq_sources::LearningSourceRoute route) {
   using oq_sources::LearningSourceRoute;
   switch (route) {
     case LearningSourceRoute::OPENTHERM_ROOM:
-      return {true, {PhysicalSourceKind::OPENTHERM_FRAME, 24U, PhysicalUnit::SYSTEM}, kRoomLearningTiming};
     case LearningSourceRoute::OPENTHERM_SETPOINT:
-      return {true, {PhysicalSourceKind::OPENTHERM_FRAME, 16U, PhysicalUnit::SYSTEM}, kRoomLearningTiming};
-    case LearningSourceRoute::CIC_ROOM:
-      return {true, {PhysicalSourceKind::CIC_FIELD, 1U, PhysicalUnit::SYSTEM}, kRoomLearningTiming};
-    case LearningSourceRoute::CIC_SETPOINT:
-      return {true, {PhysicalSourceKind::CIC_FIELD, 2U, PhysicalUnit::SYSTEM}, kRoomLearningTiming};
-    case LearningSourceRoute::CIC_FLOW:
-      return {true, {PhysicalSourceKind::CIC_FIELD, 3U, PhysicalUnit::SYSTEM}, kHpLearningTiming};
-    case LearningSourceRoute::HP1_OUTSIDE:
-      return {true, {PhysicalSourceKind::MODBUS_REGISTER, 2110U, PhysicalUnit::HP1}, kHpLearningTiming};
-    case LearningSourceRoute::HP2_OUTSIDE:
-      return {true, {PhysicalSourceKind::MODBUS_REGISTER, 2110U, PhysicalUnit::HP2}, kHpLearningTiming};
-    case LearningSourceRoute::CONTROLLER_FLOW:
-      return {true, {PhysicalSourceKind::EXTERNAL_METER, 1U, PhysicalUnit::SYSTEM}, kHpLearningTiming};
-    case LearningSourceRoute::HP1_FLOW:
-      return {true, {PhysicalSourceKind::MODBUS_REGISTER, 2138U, PhysicalUnit::HP1}, kHpLearningTiming};
-    case LearningSourceRoute::HP2_FLOW:
-      return {true, {PhysicalSourceKind::MODBUS_REGISTER, 2138U, PhysicalUnit::HP2}, kHpLearningTiming};
-    default:
-      return {};
-  }
-}
-
-inline bool valid_component_pair(const oq_sources::ResolvedLearningSource& source) {
-  using oq_sources::LearningSourceRoute;
-  if (source.component_route == source.secondary_route || source.component_route == LearningSourceRoute::NONE ||
-      source.secondary_route == LearningSourceRoute::NONE)
-    return false;
-  if (source.route == LearningSourceRoute::OUTSIDE_AGGREGATE) {
-    return source.component_route == LearningSourceRoute::HP1_OUTSIDE &&
-           source.secondary_route == LearningSourceRoute::HP2_OUTSIDE;
-  }
-  if (source.route != LearningSourceRoute::FLOW_AGGREGATE) return false;
-  const bool first = source.component_route == LearningSourceRoute::HP1_FLOW ||
-                     source.component_route == LearningSourceRoute::CONTROLLER_FLOW;
-  return first && source.secondary_route == LearningSourceRoute::HP2_FLOW;
-}
-
-inline uint32_t composition_identity(oq_sources::LearningCompositeOperation operation,
-                                     oq_sources::LearningSourceRoute first, oq_sources::LearningSourceRoute second) {
-  const uint32_t operation_id = static_cast<uint32_t>(operation);
-  const uint32_t first_id = static_cast<uint32_t>(first);
-  const uint32_t second_id = static_cast<uint32_t>(second);
-  if (operation_id == 0U || operation_id > 0xFFU || first_id == 0U || first_id > 0xFFU || second_id == 0U ||
-      second_id > 0xFFU)
-    return 0U;
-  return (operation_id << 16U) | (first_id << 8U) | second_id;
-}
-
-inline bool within_selected_tolerance(oq_sources::LearningSourceRoute route, float selected, float composed) {
-  if (!isfinite(selected) || !isfinite(composed)) return false;
-  const float tolerance = route == oq_sources::LearningSourceRoute::FLOW_AGGREGATE ? 0.5f : 0.0001f;
-  return fabsf(selected - composed) <= tolerance;
-}
-
-inline bool configuration_matches_route(const oq_sources::ResolvedLearningSource& source) {
-  using oq_input_source::Source;
-  using oq_sources::LearningSourceRoute;
-  const auto selected = static_cast<Source>(source.configuration.selected);
-  switch (source.route) {
-    case LearningSourceRoute::OPENTHERM_ROOM:
-    case LearningSourceRoute::OPENTHERM_SETPOINT:
-      return selected == Source::OPENTHERM && source.configuration.endpoint_generation == 0U;
     case LearningSourceRoute::CIC_ROOM:
     case LearningSourceRoute::CIC_SETPOINT:
-    case LearningSourceRoute::CIC_FLOW:
-      return selected == Source::CIC && source.configuration.endpoint_generation != 0U;
-    case LearningSourceRoute::HP1_OUTSIDE:
-    case LearningSourceRoute::HP2_OUTSIDE:
-    case LearningSourceRoute::OUTSIDE_AGGREGATE:
-      return (selected == Source::OUTDOOR || selected == Source::AUTO) &&
-             source.configuration.endpoint_generation == 0U;
-    case LearningSourceRoute::CONTROLLER_FLOW:
-    case LearningSourceRoute::HP1_FLOW:
-    case LearningSourceRoute::HP2_FLOW:
-    case LearningSourceRoute::FLOW_AGGREGATE:
-      return selected == Source::OUTDOOR && source.configuration.endpoint_generation == 0U;
+    case LearningSourceRoute::HA_ROOM:
+    case LearningSourceRoute::HA_SETPOINT:
+    case LearningSourceRoute::API_ROOM:
+    case LearningSourceRoute::API_SETPOINT:
+    case LearningSourceRoute::MQTT_ROOM:
+    case LearningSourceRoute::MQTT_SETPOINT:
+      return kRoomLearningTiming;
     default:
-      return false;
+      return kHpLearningTiming;
   }
 }
 
 }  // namespace live_detail
 
+// Control has already selected and validated one value per signal. Learning
+// uses that value directly, regardless of the selected route.
 inline PhysicalMeasurement<float> resolved_learning_measurement(const oq_sources::ResolvedLearningSource& source,
                                                                 uint64_t now_ms) {
   PhysicalMeasurement<float> result;
-  const auto policy = live_detail::route_policy(source.route);
-  if (policy.supported) {
-    result = receipt_measurement(source.receipt, source.value, policy.identity, source.configuration_generation,
-                                 policy.timing,
-                                 source.valid && live_detail::configuration_matches_route(source) &&
-                                     source.provenance == oq_sources::LearningSourceProvenance::PHYSICAL_RECEIPT &&
-                                     source.value == source.receipt.value && source.configuration_generation != 0U &&
-                                     source.receipt.fresh(now_ms, policy.timing.max_age_ms));
-    return result;
-  }
-
-  using oq_sources::LearningCompositeOperation;
-  using oq_sources::LearningSourceProvenance;
-  using oq_sources::LearningSourceRoute;
-  const bool composite_route =
-      source.route == LearningSourceRoute::OUTSIDE_AGGREGATE || source.route == LearningSourceRoute::FLOW_AGGREGATE;
-  if (!composite_route) return result;
-  const bool operation_valid = source.composite_operation == LearningCompositeOperation::ARITHMETIC_MEAN ||
-                               (source.route == LearningSourceRoute::OUTSIDE_AGGREGATE &&
-                                source.composite_operation == LearningCompositeOperation::MINIMUM) ||
-                               (source.route == LearningSourceRoute::FLOW_AGGREGATE &&
-                                source.composite_operation == LearningCompositeOperation::MAXIMUM);
-  const uint32_t identity =
-      live_detail::composition_identity(source.composite_operation, source.component_route, source.secondary_route);
-  const uint64_t first_ms = source.receipt.received_ms;
-  const uint64_t second_ms = source.secondary_receipt.received_ms;
-  const uint64_t receipt_skew_ms = first_ms >= second_ms ? first_ms - second_ms : second_ms - first_ms;
-  const bool receipts_valid = source.receipt.fresh(now_ms, kHpLearningTiming.max_age_ms) &&
-                              source.secondary_receipt.fresh(now_ms, kHpLearningTiming.max_age_ms) &&
-                              receipt_skew_ms <= kHpLearningTiming.max_skew_ms;
-  const float composed = source.composite_operation == LearningCompositeOperation::ARITHMETIC_MEAN
-                             ? 0.5f * (source.receipt.value + source.secondary_receipt.value)
-                         : source.composite_operation == LearningCompositeOperation::MINIMUM
-                             ? fminf(source.receipt.value, source.secondary_receipt.value)
-                             : fmaxf(source.receipt.value, source.secondary_receipt.value);
-  result.value = composed;
-  result.valid = operation_valid && identity != 0U && source.valid &&
-                 live_detail::configuration_matches_route(source) &&
-                 source.provenance == LearningSourceProvenance::UNSUPPORTED && source.configuration_generation != 0U &&
-                 live_detail::valid_component_pair(source) && receipts_valid &&
-                 live_detail::within_selected_tolerance(source.route, source.value, composed);
-  result.source = {PhysicalSourceKind::PHYSICAL_COMPOSITION, identity, PhysicalUnit::SYSTEM};
+  result.value = source.value;
+  result.valid = source.valid && isfinite(source.value) && source.route != oq_sources::LearningSourceRoute::NONE &&
+                 source.configuration_generation != 0U && now_ms != 0U;
+  result.source = {PhysicalSourceKind::CONTROL_CONTRACT, static_cast<uint32_t>(source.route), PhysicalUnit::SYSTEM};
   result.source_generation = source.configuration_generation;
-  result.received_monotonic_ms = first_ms >= second_ms ? first_ms : second_ms;
-  result.timing = kHpLearningTiming;
-  result.provenance = MeasurementProvenance::PHYSICAL_COMPOSITION;
+  result.received_monotonic_ms = now_ms;
+  result.timing = live_detail::selected_timing(source.route);
+  result.provenance = MeasurementProvenance::SELECTED_VALUE;
   return result;
 }
 
