@@ -136,6 +136,8 @@ Raak deze groep pas aan nadat de strategie zelf logisch voelt.
 
 Deze groep bepaalt hoe de circulatiepomp wordt aangestuurd.
 
+Het ODU-bit `R2121.b13` (`DC water pump failure`) is uitsluitend technische diagnostiek. Sommige pomp-/ODU-combinaties melden dit bit ook bij normale stilstand; de ODU-generatie identificeert het pomptype niet betrouwbaar. Daarom veroorzaakt dit bit op zichzelf geen storingsmelding, startblokkade, compressorstop, ketelfallback of herstelwachttijd. De bestaande flowbeveiliging en overige beveiligingen blijven gelden.
+
 Belangrijke instellingen:
 
 - `Flow Setpoint`
