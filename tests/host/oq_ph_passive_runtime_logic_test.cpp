@@ -204,6 +204,32 @@ void test_direct_pause_breaks_continuity_and_revokes_advice() {
   assert(state.batch_accumulator.integrated_duration_s == 0);
 }
 
+void test_backward_utc_stays_blocked_after_pause_without_erasing_models() {
+  PassiveRuntimeStorage state;
+  initialize_passive_runtime(state, context(), config(), true);
+  constexpr uint32_t start_epoch = 20000U * 86400U;
+  for (uint32_t minute = 0; minute <= 240; ++minute)
+    tick_passive_runtime(state, tick(1000ULL + minute * 60000ULL, start_epoch + minute * 60U));
+  assert(state.record_count == 1 && state.thermal_state.accepted_samples > 0);
+  const auto record = state.records[0];
+  const auto thermal = state.thermal_state;
+  constexpr uint64_t later_ms = 1000ULL + kSegmentDurationMs + 10000ULL;
+  constexpr uint32_t later_epoch = start_epoch + 4U * 3600U + 10U;
+  tick_passive_runtime(state, tick(later_ms, later_epoch));
+  assert(tick_passive_runtime(state, tick(later_ms + 10000ULL, later_epoch - 1U)) ==
+         PassiveRuntimeStatus::TIME_DISCONTINUITY);
+  assert(passive_runtime_summary(state, later_ms + 10000ULL).blocked);
+  pause_passive_runtime(state, later_ms + 11000ULL);
+  assert(passive_runtime_summary(state, later_ms + 11000ULL).blocked);
+  assert(tick_passive_runtime(state, tick(later_ms + 20000ULL, later_epoch + 20U)) == PassiveRuntimeStatus::BLOCKED);
+  const auto summary = passive_runtime_summary(state, later_ms + 20000ULL);
+  assert(summary.blocked && !summary.batch_advice_ready && !summary.thermal_model_ready && !summary.auto_apply_allowed);
+  assert(state.record_count == 1 && memcmp(&state.records[0], &record, sizeof(record)) == 0);
+  assert(state.thermal_state.accepted_samples == thermal.accepted_samples);
+  assert(state.thermal_state.theta_loss_scaled == thermal.theta_loss_scaled);
+  assert(state.thermal_state.theta_heat_scaled == thermal.theta_heat_scaled);
+}
+
 void test_evaluation_refresh_keeps_physical_evidence() {
   PassiveRuntimeStorage state;
   initialize_passive_runtime(state, context(), config(), true);
@@ -311,6 +337,7 @@ int main() {
   test_source_switch_keeps_real_history_and_starts_a_new_interval();
   test_context_change_preserves_both_models_and_rejects_old_input();
   test_direct_pause_breaks_continuity_and_revokes_advice();
+  test_backward_utc_stays_blocked_after_pause_without_erasing_models();
   test_evaluation_refresh_keeps_physical_evidence();
   test_invalid_evaluation_refresh_stays_paused_until_corrected();
   test_active_or_reference_change_revokes_bound_fit_result();

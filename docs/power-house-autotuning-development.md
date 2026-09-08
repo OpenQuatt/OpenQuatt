@@ -65,7 +65,7 @@ wanneer de regelaar ze geldig verklaart. Een routewijziging maakt wel een nieuwe
 
 Passief leren introduceert geen hydraulisch installatieprofiel. De bestaande geselecteerde waarden
 blijven de bron van waarheid. In een Q Duo-build gebruikt de calorimetrie intern HP1 gevolgd door HP2;
-dat is geen gebruikerskeuze. CM2 gebruikt het bestaande geen-ketelvraagcontract; R1-uit wordt nooit
+dat is geen gebruikerskeuze. CM0, CM1 en CM2 gebruiken het bestaande geen-ketelvraagcontract; R1-uit wordt nooit
 als fysiek ketelbewijs behandeld. Het passieve model vraagt geen ingevoerde meetonzekerheid of grens
 voor zon- en interne warmte; afwijkingen blijven zichtbaar in de residuals. Automatisch toepassen
 bestaat nog niet. De toekomstige toepasfase moet meetkwaliteit en afwijkende warmtebronnen afzonderlijk
@@ -100,7 +100,7 @@ de bruikbaarheid. Een stilstaand systeem of een toevallig passende startwaarde v
 model. Ongeldige recente metingen schorten de beoordeling op; zij wijzigen de basisregeling niet.
 Tijdsweging en forgetting gebruiken uren, zodat vier kwartierintervallen niet viermaal zoveel
 duur-bewijs leveren als één uur. Residuals worden in K/h beoordeeld; de gekozen intervalduur mag een
-foute temperatuurtrend niet verbergen. Configuratiewijzigingen wissen het oude RLS-bewijs.
+foute temperatuurtrend niet verbergen. Bron- en configuratiewijzigingen onderbreken de lopende meetperiode, maar behouden de afgeronde leergegevens. Alleen de expliciete reset wist de leerstand.
 
 Zon en interne warmte ontbreken als regressorterm in deze MVP. De 1R1C-fit beoordeelt daarom de
 restfout, bias en spreiding van de gemeten intervallen. Die checks bewaken of het eenvoudige model
@@ -247,17 +247,18 @@ Begrens toekomstige adaptive bias in beide richtingen en in verandering per tijd
 
 De hardwarepoort omvat Q Single/Duo en Waveshare Single/Duo: vier builds, met Q Wi-Fi/Ethernet samen zes runtimecases. Meet interne heap, grootste vrije blok, minimum-sinds-boot, stack-watermarks en timing onder gecombineerde belasting. Desktoptests of succesvolle configuratievalidatie vervangen deze metingen niet. Het 16 KiB learnerjournal ligt direct na het crasharchief binnen `openquatt_data`; bestaande archiefoffsets blijven behouden.
 
-## Bediening en huidige teststatus
+## Bediening en validatiestatus
 
 Op Q en Waveshare staat onder Instellingen → Verwarmen → Power House **Passief leren**. Daar staan
-alleen opt-in en leerstatus. De gewone geselecteerde bronwaarden blijven leidend; er is geen extra
+opt-in, leerstatus, een handmatig te laden grafiek, export en wissen. De gewone geselecteerde bronwaarden blijven leidend; er is geen extra
 formulier voor hydrauliek, warmtebronnen of meetgrenzen. Opt-in start na reboot uit. De reguliere
 Power House-instellingen blijven leidend; automatisch toepassen is altijd uit.
 
 Eén mainloop-leerkern beheert verzamelen, pauzeren, resetten, herstellen en beide modellen. De
 bestaande bronselectie levert de werkelijk gekozen route, waarde en validity. Eén contextrevision
-onderbreekt de dataset bij relevante wijzigingen, ook A→B→A tussen twee ticks. De drie generatievelden
-in CSV/records blijven voor formaatcompatibiliteit; live krijgen ze dezelfde revision.
+onderbreekt alleen lopende meetintervallen bij relevante wijzigingen, ook A→B→A tussen twee ticks.
+De drie generatiekolommen blijven uitsluitend in het historische replay-CSV voor formaatcompatibiliteit;
+firmware, records en JSON-export gebruiken `context_revision`.
 
 De HTTP-component publiceert gesynchroniseerde snapshots in PSRAM. HTTP-callbacks lezen nooit
 veranderende learnerstate. Status en export gebruiken bestaande webauthenticatie:
@@ -265,15 +266,27 @@ veranderende learnerstate. Status en export gebruiken bestaande webauthenticatie
 - `GET /openquatt/learning/status`: H/T0, U/C, voortgang, redenen en runtime-diagnostiek.
 - `GET /openquatt/learning/export`: maximaal 128 batchrecords en 60 diagnostische rijen.
 
-CM2 gebruikt het bestaande geen-ketelvraagcontract; ontbrekende OpenTherm-telemetrie is geen extra
+CM0, CM1 en CM2 gebruiken het bestaande geen-ketelvraagcontract; ontbrekende OpenTherm-telemetrie is geen extra
 voorwaarde. Een actuele fysieke ketel-activiteitsmelding sluit de meting uit. Bronkwaliteit en het
 gedrag van de residuals blijven nog praktijkwerk. Er zijn nog geen gevalideerde wintermodellen of
 aangetoonde besparingen.
 
+Een blijvende runtimeblokkade, bijvoorbeeld na teruglopende UTC, krijgt de reden
+`runtime_blocked`. De web-app vraagt dan om de regelaar te herstarten en passief leren
+opnieuw in te schakelen. Pauzeren heft deze blokkade niet op; opgeslagen leerdata
+blijft bij herstart behouden.
+
+### Historische smoke-test van 7 september 2026
+
+De onderstaande resultaten horen bij de toenmalige vereenvoudigde build. Zij zijn
+geen kwalificatie van de latere 128-recordcapaciteit, het schema-5-checkpoint of de
+grafiek. Actuele vrijgavechecks en resterende hardwarepoorten moeten afzonderlijk
+voor de uiteindelijke firmware worden vastgelegd.
+
 De Q Duo-build is via OTA geplaatst als `Sep 7 2026 11:37:32 ph-passive-1`. API-kamer en API-setpoint
 zijn tijdens CM2 als geldige geselecteerde learning-bronnen gezien; daarbij is ten minste één dynamische
 learning-sample vastgelegd. Daarna zijn beide thermostaatbronnen teruggezet op `OT thermostat`, de
-simulatorpomp is uitgezet en de controller staat in CM0. De actuele HIL-smoke meldt 39828 B minimum
+simulatorpomp is uitgezet en de controller stond in CM0. De toenmalige HIL-smoke meldde 39828 B minimum
 interne heap, een grootste blok van 57344 B, 4480 B loopstackmarge en 46832 B learner-PSRAM. Dit is een
 functionele smoke-test, geen kwalificatie onder belasting.
 
@@ -288,11 +301,11 @@ controleren herstel na gesimuleerde reboot. De complete diff is afzonderlijk kou
 bronwissels tussen leerticks en de previewreset zijn daarbij gecorrigeerd en getest. De synchrone fit
 wordt pas overwogen na een meting op ESP32-S3; tot die tijd blijft de begrensde fit behouden.
 
-Een schone webbuild van de actuele `dev` met dezelfde toolchain geeft 913958 bytes raw / 261411 bytes
+Een schone webbuild van de toenmalige `dev` met dezelfde toolchain gaf 913958 bytes raw / 261411 bytes
 gzip JavaScript. Deze feature geeft 924774 / 264797 bytes: +10816 raw en +3386 gzip (+1,30%), binnen
 de relatieve gzipgrens van 4608 bytes. Het raw-budget houdt dezelfde 6000 bytes extra ruimte als de
 eerdere featureversie, nu bovenop `dev`: 919000 → 925000. CSS blijft raw gelijk (195001 bytes).
-De nieuwe previewreset is geautomatiseerd gecontroleerd; de actuele browsermatrix en Safari/iOS zijn
+De nieuwe previewreset was geautomatiseerd gecontroleerd; de browsermatrix en Safari/iOS waren
 nog niet afgevinkt. De OTA-smoke-test bevestigt de nieuwe bronketen en één dynamische learning-sample.
 
 De config-only projectwrapper heeft drie bestaande stijlmeldingen in `configs/hil/input_sources_fast_duo_wifi.yaml`

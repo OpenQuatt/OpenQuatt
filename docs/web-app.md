@@ -194,7 +194,7 @@ In testfirmware met passief huismodelleren staat bij Power House op Q en Wavesha
 regelinstellingen automatisch aan. Water staat vast; Single/Duo volgt uit de firmware en bij Duo
 loopt het water in serie van HP1 naar HP2. Dit zijn geen instelbare keuzes. Technische meetgrenzen
 en kalibratiebewijs horen niet bij deze bediening. Onbekende meetkwaliteit blijft een blokkade.
-De leerfunctie controleert zelf CM2 en de bestaande ketelaansturing; er is geen aparte keuze
+De leerfunctie neemt CM0, CM1 en CM2 mee en controleert de bestaande ketelaansturing; er is geen aparte keuze
 voor een andere warmtebron. OpenTherm-telemetrie is hiervoor niet vereist; een actuele melding
 van ketelactiviteit sluit de betreffende meting wel uit.
 

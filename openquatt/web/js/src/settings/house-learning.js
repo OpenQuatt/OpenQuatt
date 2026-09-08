@@ -99,6 +99,7 @@ function renderWaterTemperatureCards() {
 }
 
 function activity(status) {
+  if (status.blockedReasons.includes("runtime_blocked") && !statusIsStale(status)) return ["Herstart nodig", "Herstart de regelaar en schakel passief leren opnieuw in. Opgeslagen leerdata blijft behouden.", "orange"];
   if (!status.enabled) return ["Gepauzeerd", "Schakel passief leren in om metingen te verzamelen.", ""];
   if (statusIsStale(status)) return ["Status verouderd", "Wacht op een actuele status van de regelaar.", "orange"];
   if (status.sourceStatus === "series_junction_mismatch") return ["Watertemperaturen sluiten nog niet op elkaar aan.", "Controleer HP1 water uit en HP2 water in.", "orange"];

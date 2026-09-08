@@ -488,6 +488,25 @@ test("CM0 en CM1 tonen verzamelen tijdens een geldige verwarmingspauze", () => {
   }
 });
 
+test("blijvende runtimeblokkade vraagt ook na pauzeren om herstart met behoud van opgeslagen leerdata", () => {
+  for (const enabled of [true, false]) {
+    const markup = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(statusPayload({
+      enabled, status: enabled ? "blocked" : "paused", source_status: "ok",
+      invalid_reasons: [], blocked_reasons: ["runtime_blocked"],
+      collection: { ...statusPayload().collection, batch_active: false, thermal_active: false },
+    })));
+    assert.match(markup, /Herstart nodig/);
+    assert.match(markup, /Herstart de regelaar en schakel passief leren opnieuw in/);
+    assert.match(markup, /Opgeslagen leerdata blijft behouden/);
+    assert.doesNotMatch(markup, /Wacht op meting/);
+  }
+  const stale = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(statusPayload({
+    enabled: true, status: "blocked", blocked_reasons: ["runtime_blocked"],
+    tick_epoch: Math.floor(Date.now() / 1000) - 31,
+  })));
+  assert.doesNotMatch(stale, /Herstart nodig/);
+});
+
 test("serie-koppelpunt toont de watermetingen als gerichte uitleg", () => {
   state.entities = {
     hp1WaterOut: { value: 35.1, state: 35.1 },

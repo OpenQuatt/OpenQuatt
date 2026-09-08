@@ -685,6 +685,7 @@ class Runtime {
     };
     reason(!state.input.boiler_heat.valid, "external_heat_not_excluded");
     reason(!state.journal.available, "persistence_unavailable");
+    reason(state.learner.blocked, "runtime_blocked");
     if (summary.batch_advice_ready && summary.thermal_model_ready && !summary.cross_validated_advice_ready) {
       const auto validation_status = summary.validation.status;
       reason(validation_status == ModelValidationStatus::CONTEXT_MISMATCH, "model_context_mismatch");
