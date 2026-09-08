@@ -486,6 +486,13 @@ class HpIncidentEngine {
     }
     IncidentRuntime& runtime = incidents_[incident_slot(definition.register_address, definition.bit)];
 
+    if (definition.effects == effect_mask(IncidentEffect::NONE)) {
+      // Raw-only diagnostics must not confirm, latch, count, or start recovery.
+      runtime = {};
+      runtime.raw_active = raw_active;
+      return;
+    }
+
     if (raw_active) {
       if (!runtime.raw_active && !runtime.confirmed_active) {
         runtime.first_seen_ms = now_ms;

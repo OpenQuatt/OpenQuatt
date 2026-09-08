@@ -64,6 +64,9 @@ class OpenQuattIncidentManager : public Component {
   float get_setup_priority() const override;
 
   void observe_transport(uint8_t hp_index, bool online, uint32_t now_ms);
+  // A table that may have changed during a write is an explicit incident
+  // input, rather than an implicit frequency-policy stop.
+  void observe_runtime_frequency_mapping(uint8_t hp_index, bool valid, uint32_t now_ms);
   void observe_working_mode(uint8_t hp_index, float working_mode, uint32_t now_ms);
   void observe_compressor_frequency(uint8_t hp_index, float frequency_hz, uint32_t now_ms);
   void observe_fault_word(uint8_t hp_index, uint16_t register_address, uint16_t word, uint32_t now_ms);
@@ -105,13 +108,15 @@ class OpenQuattIncidentManager : public Component {
   static constexpr uint32_t PARTIAL_FAULT_SNAPSHOT_TIMEOUT_MS = 15000U;
   static constexpr uint32_t MANUAL_RESET_PERSIST_RETRY_MS = 60000U;
   static constexpr uint8_t INITIALIZATION_FAULT_SNAPSHOT_COUNT = 2U;
-  static constexpr size_t SYNTHETIC_INCIDENT_COUNT = 4U;
+  static constexpr size_t SYNTHETIC_INCIDENT_COUNT = 5U;
   static constexpr size_t ACTION_RESULT_HISTORY_SIZE = 4U;
   static constexpr oq_incidents::IncidentId LINK_LOSS_INCIDENT_ID = oq_incidents::kLinkLossIncidentId;
   static constexpr oq_incidents::IncidentId START_FAILED_INCIDENT_ID = oq_incidents::kStartFailedIncidentId;
   static constexpr oq_incidents::IncidentId STOP_UNCONFIRMED_INCIDENT_ID = oq_incidents::kStopUnconfirmedIncidentId;
   static constexpr oq_incidents::IncidentId PERSISTENCE_FAILURE_INCIDENT_ID =
       oq_incidents::kPersistenceFailureIncidentId;
+  static constexpr oq_incidents::IncidentId RUNTIME_FREQUENCY_MAPPING_INCIDENT_ID =
+      oq_incidents::kRuntimeFrequencyMappingIncidentId;
 
   struct ActionResultRecord {
     const char* action{"none"};
@@ -149,6 +154,8 @@ class OpenQuattIncidentManager : public Component {
     bool configured{false};
     bool transport_online{false};
     bool transport_seen{false};
+    bool runtime_frequency_mapping_valid{false};
+    bool runtime_frequency_mapping_observed{false};
     float working_mode{0.0F};
     bool working_mode_valid{false};
     uint32_t working_mode_generation{0U};

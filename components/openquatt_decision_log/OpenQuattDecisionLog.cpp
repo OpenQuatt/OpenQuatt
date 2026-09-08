@@ -1195,6 +1195,8 @@ const char* OpenQuattDecisionLog::subject_to_string_(uint8_t value) {
 
 const char* OpenQuattDecisionLog::reason_to_string_(uint8_t value) {
   switch (value) {
+    case REASON_FREQUENCY_CAP_BELOW_MINIMUM:
+      return "frequency_cap_below_minimum";
     case REASON_KEEP_CURRENT:
       return "keep_current";
     case REASON_HOLD_ACTIVE:

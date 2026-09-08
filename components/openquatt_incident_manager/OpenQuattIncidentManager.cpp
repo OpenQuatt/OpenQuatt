@@ -776,6 +776,23 @@ void OpenQuattIncidentManager::observe_transport(uint8_t hp_index, bool online, 
   }
 }
 
+void OpenQuattIncidentManager::observe_runtime_frequency_mapping(uint8_t hp_index, bool valid, uint32_t now_ms) {
+  UnitState* unit = this->unit_(hp_index);
+  if (unit == nullptr || (unit->runtime_frequency_mapping_observed && unit->runtime_frequency_mapping_valid == valid)) {
+    return;
+  }
+  unit->runtime_frequency_mapping_valid = valid;
+  unit->runtime_frequency_mapping_observed = true;
+  if (!valid) invalidate_restart_credit_(*unit);
+  if (valid) {
+    ESP_LOGI(TAG, "HP%u runtime frequency mapping validated", hp_index);
+  } else {
+    ESP_LOGW(TAG, "HP%u runtime frequency mapping unusable", hp_index);
+  }
+  this->publish_transitions_(*unit, hp_slot_(hp_index), now_ms);
+  this->publish_snapshot_(now_ms);
+}
+
 void OpenQuattIncidentManager::observe_working_mode(uint8_t hp_index, float working_mode, uint32_t now_ms) {
   UnitState* unit = this->unit_(hp_index);
   if (unit == nullptr) return;
@@ -1236,6 +1253,8 @@ size_t OpenQuattIncidentManager::synthetic_slot_(oq_incidents::IncidentId incide
       return 2U;
     case PERSISTENCE_FAILURE_INCIDENT_ID:
       return 3U;
+    case RUNTIME_FREQUENCY_MAPPING_INCIDENT_ID:
+      return 4U;
     default:
       return SYNTHETIC_INCIDENT_COUNT;
   }
@@ -1322,6 +1341,22 @@ oq_incidents::IncidentDefinition OpenQuattIncidentManager::synthetic_definition_
               DocumentationConfidence::DESCRIBED,
               UserAction::CONTACT_INSTALLER,
               RecoveryCondition::REVIEW_REQUIRED};
+    case 4U:
+      return {RUNTIME_FREQUENCY_MAPPING_INCIDENT_ID,
+              0U,
+              0U,
+              "hp_runtime_frequency_mapping",
+              "hp.runtime_frequency_mapping",
+              IncidentCategory::FAULT,
+              IncidentSeverity::FAULT,
+              fallback_fault_effects,
+              1U,
+              1U,
+              ClearPolicy::AFTER_STABLE_READS,
+              FallbackPolicy::AFTER_SYSTEM_GUARDS,
+              DocumentationConfidence::DESCRIBED,
+              UserAction::CHECK_INSTALLATION,
+              RecoveryCondition::STABLE_TELEMETRY};
     default:
       return {};
   }
@@ -1337,6 +1372,8 @@ uint8_t OpenQuattIncidentManager::reason_for_incident_id_(oq_incidents::Incident
       return openquatt_decision_log::REASON_HP_STOP_UNCONFIRMED;
     case PERSISTENCE_FAILURE_INCIDENT_ID:
       return openquatt_decision_log::REASON_HP_PERSISTENCE_FAILURE;
+    case RUNTIME_FREQUENCY_MAPPING_INCIDENT_ID:
+      return openquatt_decision_log::REASON_HP_FAULT;
     default:
       return openquatt_decision_log::REASON_UNKNOWN;
   }
@@ -1492,6 +1529,8 @@ void OpenQuattIncidentManager::publish_transitions_(UnitState& unit, size_t slot
       !this->manual_reset_persistence_.initialization_pending() &&
       (!this->manual_reset_persistence_.ready() || (this->manual_reset_persistence_.fault_mask() & hp_mask) != 0U);
   this->publish_synthetic_incident_(unit, slot, 3U, persistence_failure, now_ms);
+  this->publish_synthetic_incident_(
+      unit, slot, 4U, unit.runtime_frequency_mapping_observed && !unit.runtime_frequency_mapping_valid, now_ms);
 
   const bool stop_confirmation_edge = should_emit_stop_confirmation(
       unit.stop_feedback_armed, unit.previous_outputs.stop_confirmed, current_outputs.stop_confirmed);
@@ -1775,6 +1814,30 @@ oq_incidents::DerivedOutputs OpenQuattIncidentManager::outputs_for_slot_(size_t 
   const UnitState& unit = this->units_()[slot];
   if (outputs.run_state == oq_incidents::RunState::STOPPED || !unit.startup_released) {
     outputs.available_for_start = outputs.available_for_start && unit.restart_guard.can_start(millis());
+  }
+  if (!unit.runtime_frequency_mapping_valid) {
+    // A missing or interrupted mapping is a control-safety condition. The
+    // actuator receives this only through the incident-manager outputs, so a
+    // policy lookup never becomes an untracked compressor stop.
+    outputs.available_for_start = false;
+    outputs.must_stop = true;
+    outputs.fault_active = true;
+    outputs.protection_active = true;
+    outputs.fallback_cause_present = true;
+    outputs.fallback_eligible = outputs.stop_confirmed && !outputs.stop_unconfirmed;
+    outputs.active_effects |= oq_incidents::IncidentEffect::DISPLAY | oq_incidents::IncidentEffect::BLOCK_START |
+                              oq_incidents::IncidentEffect::STOP_COMPRESSOR |
+                              oq_incidents::IncidentEffect::MARK_HP_UNAVAILABLE;
+    outputs.active_incident_count = outputs.active_incident_count == UINT8_MAX
+                                        ? outputs.active_incident_count
+                                        : static_cast<uint8_t>(outputs.active_incident_count + 1U);
+    if (outputs.primary_incident_id == oq_incidents::kNoIncident) {
+      outputs.primary_incident_id = oq_incidents::kRuntimeFrequencyMappingIncidentId;
+    }
+    if (outputs.protection_state == oq_incidents::ProtectionState::CLEAR ||
+        outputs.protection_state == oq_incidents::ProtectionState::LIMITED) {
+      outputs.protection_state = oq_incidents::ProtectionState::FAULT_ACTIVE;
+    }
   }
   if (this->restarting_ || !restart_handoff_storage_ready()) {
     outputs.available_for_start = false;

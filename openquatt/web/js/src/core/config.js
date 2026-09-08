@@ -553,6 +553,8 @@
     ["hp1Cop", DOMAIN_SENSOR, "HP1 - COP", false],
     ["hp1Compressor", DOMAIN_SENSOR, "HP1 compressor level"],
     ["hp1Freq", DOMAIN_SENSOR, "HP1 - Compressor frequency", false],
+    ["hp1MinimumHeatingHz", DOMAIN_SENSOR, "HP1 - Minimum heating frequency"],
+    ["hp1MinimumCoolingHz", DOMAIN_SENSOR, "HP1 - Minimum cooling frequency"],
     ["hp1FanSpeed", DOMAIN_SENSOR, "HP1 - Fan speed", false],
     ["hp1Flow", DOMAIN_SENSOR, "HP1 - Flow", false],
     ["hp1EvaporatorCoilTemp", DOMAIN_SENSOR, "HP1 - Evaporator coil temperature", false],
@@ -581,6 +583,8 @@
     ["hp2Cop", DOMAIN_SENSOR, "HP2 - COP"],
     ["hp2Compressor", DOMAIN_SENSOR, "HP2 compressor level"],
     ["hp2Freq", DOMAIN_SENSOR, "HP2 - Compressor frequency"],
+    ["hp2MinimumHeatingHz", DOMAIN_SENSOR, "HP2 - Minimum heating frequency"],
+    ["hp2MinimumCoolingHz", DOMAIN_SENSOR, "HP2 - Minimum cooling frequency"],
     ["hp2FanSpeed", DOMAIN_SENSOR, "HP2 - Fan speed"],
     ["hp2Flow", DOMAIN_SENSOR, "HP2 - Flow"],
     ["hp2EvaporatorCoilTemp", DOMAIN_SENSOR, "HP2 - Evaporator coil temperature"],
@@ -762,6 +766,7 @@
     "phDemandFallTime",
   ];
   export const FREQUENCY_CAP_KEYS = ["dayMaxHz", "silentMaxHz"];
+  export const FREQUENCY_MINIMUM_KEYS = ["hp1MinimumHeatingHz", "hp1MinimumCoolingHz", "hp2MinimumHeatingHz", "hp2MinimumCoolingHz"];
   export const LIMIT_KEYS = [...FREQUENCY_CAP_KEYS, "maxWater"];
   export const FLOW_SETTING_KEYS = ["flowControlMode", "flowSetpoint", "coolingFlowSetpoint", "manualIpwm"];
   export const FLOW_TUNING_KEYS = ["flowKp", "flowKi"];
@@ -1654,6 +1659,7 @@
     ...INSTALLATION_MONITORING_OVERVIEW_KEYS,
   ];
   export const OVERVIEW_METADATA_KEYS = [
+    ...FREQUENCY_MINIMUM_KEYS,
     "hpGeneration",
     "boilerCvAssistEnabled",
     "boilerRatedHeatPower",

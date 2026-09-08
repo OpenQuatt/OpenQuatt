@@ -386,6 +386,10 @@ test("catalog and synthetic incident fallbacks never expose a bare incident id",
     "Opslag van handmatige resetstatus mislukt",
   );
   assert.equal(
+    getIncidentDisplayLabel({ id: 1005 }),
+    "ODU-frequentietabel moet opnieuw worden gevalideerd",
+  );
+  assert.equal(
     getIncidentDisplayLabel({ id: 26 }),
     "Niet-geclassificeerde ODU-melding (R2120.b9)",
   );

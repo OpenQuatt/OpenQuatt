@@ -263,6 +263,11 @@
       return;
     }
     const profile = getMockOduProfile(hp);
+    const frequencyTable = state.oduRuntimeFrequency[`HP${hp}`];
+    for (const mode of ["heating", "cooling"]) {
+      const minimum = profile.generation === "Unknown" ? NaN : Math.min(...frequencyTable[mode].slice(1));
+      setEntity("sensor", `HP${hp} - Minimum ${mode} frequency`, { value: minimum, uom: "Hz" });
+    }
     setEntity("sensor", `HP${hp} - Control board item number`, { value: profile.controlBoardItem });
     setEntity("text_sensor", `HP${hp} - ODU generation`, {
       state: profile.generation,
@@ -4210,6 +4215,7 @@
       } else {
         service.armed = false;
         state.oduRuntimeFrequency[hpName] = { cooling, heating };
+        syncMockOduIdentityEntities(hp);
         service.status = "APPLIED: runtime table written and read back";
       }
       service.busy = false;

@@ -14,6 +14,7 @@
 #include "OpenQuattFlashLayout.h"
 #include "PsramBuffer.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/select/select.h"
 #include "esphome/components/switch/switch.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/time/real_time_clock.h"
@@ -46,6 +47,8 @@ class OpenQuattCrashTelemetry : public Component {
   void set_hardware_profile(const std::string& value) { this->hardware_profile_ = value; }
   void set_topology(const std::string& value) { this->topology_ = value; }
   void set_connection(const std::string& value) { this->connection_ = value; }
+  void set_active_connection_sensor(text_sensor::TextSensor* value) { this->active_connection_sensor_ = value; }
+  void set_connection_preference_select(select::Select* value) { this->connection_preference_select_ = value; }
 
   void setup() override;
   void loop() override;
@@ -157,6 +160,8 @@ class OpenQuattCrashTelemetry : public Component {
   switch_::Switch* usage_switch_{nullptr};
   text_sensor::TextSensor* installation_id_sensor_{nullptr};
   binary_sensor::BinarySensor* setup_complete_sensor_{nullptr};
+  text_sensor::TextSensor* active_connection_sensor_{nullptr};
+  select::Select* connection_preference_select_{nullptr};
   time::RealTimeClock* clock_{nullptr};
 
   StaticSemaphore_t gate_mutex_storage_{};

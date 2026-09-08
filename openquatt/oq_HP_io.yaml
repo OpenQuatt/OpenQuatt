@@ -35,6 +35,9 @@ esphome:
           id(${hp_id}_odu_generation_detection_complete) = false;
           id(${hp_id}_odu_generation_request_pending) = false;
           id(${hp_id}_odu_generation_request_token) = 0U;
+          id(${hp_id}_odu_generation_revalidation_required) = true;
+          id(${hp_id}_runtime_frequency_revalidation_required) = true;
+          id(${hp_id}_validated_control_board_item) = 0U;
           id(${hp_id}_generation).publish_state("Unknown");
           id(${hp_id}_generation_variant_code) =
               static_cast<int>(oq_odu::Variant::UNKNOWN);
@@ -66,28 +69,27 @@ modbus_controller:
       then:
         - lambda: |-
             id(${hp_id}_is_online) = false;
-            // A reconnected controller may belong to different ODU hardware.
+            // Preserve validated control metadata; the incident manager decides
+            // whether a transport interruption requires a stop.
             id(${hp_id}_odu_generation_request_token) =
                 oq_odu::next_request_token(
                     id(${hp_id}_odu_generation_request_token));
             id(${hp_id}_odu_generation_request_pending) = false;
-            id(${hp_id}_odu_generation_detection_complete) = false;
-            id(${hp_id}_generation_variant_code) =
-                static_cast<int>(oq_odu::Variant::UNKNOWN);
-            id(${hp_id}_runtime_frequency_snapshot_storage) = {};
+            id(${hp_id}_odu_generation_revalidation_required) = true;
             id(${hp_id}_odu_runtime_frequency)->reset_runtime_state(
                 "VERIFY_FAILED: ODU disconnected during write");
+            if (id(${hp_id}_odu_runtime_frequency)
+                    ->runtime_reload_blocked_after_write()) {
+              id(oq_incident_manager).observe_runtime_frequency_mapping(
+                  ${hp_index}, false, millis());
+            }
             id(${hp_id}_odu_settings)->notify_odu_offline();
             id(${hp_id}_compressor_level_profile_request_token) =
                 oq_odu::next_request_token(
                     id(${hp_id}_compressor_level_profile_request_token));
             id(${hp_id}_compressor_level_profile_request_pending) = false;
+            id(${hp_id}_runtime_frequency_revalidation_required) = true;
             id(${hp_id}_runtime_frequency_retry_ms) = 0U;
-            id(${hp_id}_compressor_level_profile).publish_state(
-                oq_odu::compressor_level_profile_label(
-                    oq_odu::CompressorLevelProfile::UNKNOWN));
-            id(${hp_id}_generation).publish_state("Unknown");
-            id(${hp_id}_generation_variant).publish_state("Unknown");
             id(${hp_id}_pump_relay).invalidate_state();
             oq_sources::${hp_id}.working_mode.invalidate();
             oq_sources::${hp_id}.compressor_frequency.invalidate();
@@ -214,17 +216,34 @@ globals:
     restore_value: no
     initial_value: '0'
 
+  # Re-read identity after a transport interruption without withdrawing metadata.
+  - id: ${hp_id}_odu_generation_revalidation_required
+    type: bool
+    restore_value: no
+    initial_value: 'true'
+
+  - id: ${hp_id}_validated_control_board_item
+    type: uint16_t
+    restore_value: no
+    initial_value: '0'
+
   - id: ${hp_id}_generation_variant_code
     type: int
     restore_value: no
     initial_value: '0'
 
   # Immutable control snapshot built from the read-only runtime frequency
-  # table. It is never restored across boots or reconnects.
+  # table. It is never restored across boots, but survives transport flaps.
   - id: ${hp_id}_runtime_frequency_snapshot_storage
     type: std::array<uint8_t, 46>
     restore_value: no
     initial_value: 'std::array<uint8_t, 46>{}'
+
+  # Replace the active snapshot only after every required table is valid.
+  - id: ${hp_id}_runtime_frequency_revalidation_required
+    type: bool
+    restore_value: no
+    initial_value: 'true'
 
   - id: ${hp_id}_compressor_level_profile_request_pending
     type: bool
@@ -254,25 +273,12 @@ script:
           id(${hp_id}_odu_generation_request_token) = request_token;
           id(${hp_id}_runtime_frequency_retry_ms) =
               millis() == 0U ? 1U : millis();
-          id(${hp_id}_odu_generation_detection_complete) = false;
           id(${hp_id}_odu_generation_request_pending) = true;
-          id(${hp_id}_odu_runtime_frequency)->reset_runtime_state();
-          id(${hp_id}_odu_settings)->notify_odu_offline();
-          id(${hp_id}_generation).publish_state("Unknown");
-          id(${hp_id}_generation_variant_code) =
-              static_cast<int>(oq_odu::Variant::UNKNOWN);
-          id(${hp_id}_compressor_level_profile_request_token) =
-              oq_odu::next_request_token(
-                  id(${hp_id}_compressor_level_profile_request_token));
-          id(${hp_id}_compressor_level_profile_request_pending) = false;
-          id(${hp_id}_generation_variant).publish_state("Unknown");
-          id(${hp_id}_customer_model_code).publish_state("Unknown");
 
           // Do not interleave an identity request with an operation that owns the Modbus bus.
           if (id(${hp_id}_odu_eeprom_dump).is_active() || id(oq_runtime_polling_paused).state) {
             id(${hp_id}_odu_generation_request_pending) = false;
-            id(${hp_id}_odu_generation_detection_complete) = false;
-            ESP_LOGW("quatt.odu", "%sODU generation detection blocked while runtime polling is paused", "${prefix}");
+            ESP_LOGW("quatt.odu", "%sODU generation revalidation blocked while runtime polling is paused; keeping last validated metadata", "${prefix}");
             return;
           }
 
@@ -291,48 +297,68 @@ script:
                 const auto core = oq_odu::parse_core_identity_response(
                     data.data(), data.size());
                 if (!core.available) {
-                  id(${hp_id}_odu_generation_detection_complete) = false;
                   id(${hp_id}_odu_generation_request_pending) = false;
-                  ESP_LOGW("quatt.odu", "%sODU core identity response incomplete", "${prefix}");
+                  ESP_LOGW("quatt.odu", "%sODU core identity response incomplete; keeping last validated metadata", "${prefix}");
                   return;
                 }
 
-                // Keep the periodic raw diagnostic entities coherent with this
-                // explicit atomic identity snapshot.
-                id(${hp_id}_pcb_firmware_raw).publish_state(core.pcb_program);
-                id(${hp_id}_control_board_item).publish_state(core.control_board_item);
+                auto apply_validated_identity = [=](const oq_odu::Detection& detection) {
+                  auto invalidate_runtime_frequency_reload = [=]() {
+                    id(${hp_id}_compressor_level_profile_request_token) =
+                        oq_odu::next_request_token(
+                            id(${hp_id}_compressor_level_profile_request_token));
+                    id(${hp_id}_compressor_level_profile_request_pending) = false;
+                    id(${hp_id}_runtime_frequency_revalidation_required) = true;
+                  };
+                  if (detection.variant == oq_odu::Variant::UNKNOWN) {
+                    invalidate_runtime_frequency_reload();
+                    id(${hp_id}_odu_generation_detection_complete) = false;
+                    id(oq_incident_manager).observe_runtime_frequency_mapping(
+                        ${hp_index}, false, millis());
+                    ESP_LOGW("quatt.odu", "%sODU identity is unsupported; keeping last validated metadata", "${prefix}");
+                    return false;
+                  }
 
-                auto apply_detected_variant = [=](oq_odu::Variant detected_variant) {
+                  // Publish only validated identity; keep the frequency snapshot
+                  // active until its separate complete reload succeeds.
+                  const auto previous_variant = static_cast<oq_odu::Variant>(
+                      id(${hp_id}_generation_variant_code));
+                  const bool identity_changed =
+                      id(${hp_id}_validated_control_board_item) != 0U &&
+                      (id(${hp_id}_validated_control_board_item) != core.control_board_item ||
+                       previous_variant != detection.variant);
+                  if (identity_changed) {
+                    invalidate_runtime_frequency_reload();
+                    id(oq_incident_manager).observe_runtime_frequency_mapping(
+                        ${hp_index}, false, millis());
+                    ESP_LOGW("quatt.odu", "%sODU identity changed; incident manager requires mapping revalidation", "${prefix}");
+                  }
+                  id(${hp_id}_pcb_firmware_raw).publish_state(core.pcb_program);
+                  id(${hp_id}_control_board_item).publish_state(core.control_board_item);
                   id(${hp_id}_odu_runtime_frequency)->set_extended_layout(
-                      detected_variant == oq_odu::Variant::V2_NEW_MODEL);
+                      detection.variant == oq_odu::Variant::V2_NEW_MODEL);
                   id(${hp_id}_odu_settings)->set_odu_identity(
-                      core.control_board_item, detected_variant);
-                  const auto active_snapshot =
-                      oq_odu::decode_runtime_frequency_snapshot(
-                          id(${hp_id}_runtime_frequency_snapshot_storage));
-                  if (active_snapshot.variant == detected_variant) return;
-
-                  oq_odu::RuntimeFrequencySnapshot pending_snapshot;
-                  pending_snapshot.variant = detected_variant;
-                  id(${hp_id}_runtime_frequency_snapshot_storage) =
-                      oq_odu::encode_runtime_frequency_snapshot(
-                          pending_snapshot);
-                  id(${hp_id}_compressor_level_profile).publish_state(
-                      oq_odu::compressor_level_profile_label(
-                          oq_odu::CompressorLevelProfile::UNKNOWN));
-                };
-
-                if (!oq_odu::requires_customer_model(core)) {
-                  const auto detection = oq_odu::detect_generation(core);
-                  apply_detected_variant(detection.variant);
-                  id(${hp_id}_customer_model_code).publish_state("Not read");
+                      core.control_board_item, detection.variant);
                   id(${hp_id}_generation_variant_code) =
                       static_cast<int>(detection.variant);
+                  id(${hp_id}_validated_control_board_item) = core.control_board_item;
                   id(${hp_id}_generation_variant).publish_state(
                       oq_odu::variant_label(detection.variant));
                   id(${hp_id}_generation).publish_state(
                       oq_odu::generation_label(detection.generation));
                   id(${hp_id}_odu_generation_detection_complete) = true;
+                  id(${hp_id}_odu_generation_revalidation_required) = false;
+                  id(${hp_id}_runtime_frequency_revalidation_required) = true;
+                  return true;
+                };
+
+                if (!oq_odu::requires_customer_model(core)) {
+                  const auto detection = oq_odu::detect_generation(core);
+                  if (!apply_validated_identity(detection)) {
+                    id(${hp_id}_odu_generation_request_pending) = false;
+                    return;
+                  }
+                  id(${hp_id}_customer_model_code).publish_state("Not read");
                   id(${hp_id}_odu_generation_request_pending) = false;
                   id(${hp_id}_load_runtime_frequency_table_once).execute();
                   return;
@@ -358,30 +384,19 @@ script:
                               oq_odu::parse_customer_model_response(
                                   customer_model_data.data(),
                                   customer_model_data.size());
-                          id(${hp_id}_customer_model_code).publish_state(
-                              oq_odu::customer_model_label(customer_model));
                           const auto detection =
                               oq_odu::detect_generation(core, customer_model);
-                          if (customer_model.available) {
-                            apply_detected_variant(detection.variant);
-                          }
-                          id(${hp_id}_generation_variant_code) =
-                              static_cast<int>(detection.variant);
-                          id(${hp_id}_generation_variant).publish_state(
-                              oq_odu::variant_label(detection.variant));
-                          id(${hp_id}_generation).publish_state(
-                              oq_odu::generation_label(detection.generation));
-                          id(${hp_id}_odu_generation_detection_complete) =
-                              customer_model.available;
                           id(${hp_id}_odu_generation_request_pending) = false;
-                          if (!customer_model.available) {
+                          if (!customer_model.available ||
+                              !apply_validated_identity(detection)) {
                             ESP_LOGW("quatt.odu",
-                                     "%sODU customer model response incomplete",
+                                     "%sODU customer model response incomplete or unsupported; keeping last validated metadata",
                                      "${prefix}");
+                            return;
                           }
-                          if (customer_model.available) {
-                            id(${hp_id}_load_runtime_frequency_table_once).execute();
-                          }
+                          id(${hp_id}_customer_model_code).publish_state(
+                              oq_odu::customer_model_label(customer_model));
+                          id(${hp_id}_load_runtime_frequency_table_once).execute();
                         });
                 id(${hp_id}).queue_command(std::move(customer_model_command));
               });
@@ -394,8 +409,7 @@ script:
           id(${hp_id}_odu_generation_request_token) =
               oq_odu::next_request_token(id(${hp_id}_odu_generation_request_token));
           id(${hp_id}_odu_generation_request_pending) = false;
-          id(${hp_id}_odu_generation_detection_complete) = false;
-          ESP_LOGW("quatt.odu", "%sODU generation detection timed out", "${prefix}");
+          ESP_LOGW("quatt.odu", "%sODU generation revalidation timed out; keeping last validated metadata", "${prefix}");
 
   - id: ${hp_id}_load_runtime_frequency_table_once
     mode: restart
@@ -439,35 +453,24 @@ script:
                       return;
                     }
 
-                    const auto previous_snapshot =
-                        oq_odu::decode_runtime_frequency_snapshot(
-                            id(${hp_id}_runtime_frequency_snapshot_storage));
                     auto snapshot = oq_odu::parse_base_frequency_table_response(
                         data.data(), data.size(), variant);
-                    if (!snapshot.heating.valid && !snapshot.cooling.valid) {
+                    if (!snapshot.heating.valid || !snapshot.cooling.valid) {
                       id(${hp_id}_compressor_level_profile_request_pending) = false;
-                      ESP_LOGW("quatt.odu", "%sRuntime frequency base table invalid; keeping previous snapshot", "${prefix}");
+                      ESP_LOGW("quatt.odu", "%sRuntime frequency base table incomplete; keeping previous snapshot", "${prefix}");
                       return;
                     }
 
-                    const bool defer_base_publish =
-                        variant == oq_odu::Variant::V2_NEW_MODEL &&
-                        previous_snapshot.variant == variant &&
-                        (previous_snapshot.heating.valid ||
-                         previous_snapshot.cooling.valid);
-                    if (!defer_base_publish) {
+                    if (variant != oq_odu::Variant::V2_NEW_MODEL) {
                       id(${hp_id}_runtime_frequency_snapshot_storage) =
                           oq_odu::encode_runtime_frequency_snapshot(snapshot);
                       const auto profile =
                           oq_odu::compressor_level_profile(snapshot);
                       id(${hp_id}_compressor_level_profile).publish_state(
                           oq_odu::compressor_level_profile_label(profile));
-                    }
-                    if (!snapshot.heating.valid || !snapshot.cooling.valid) {
-                      ESP_LOGW("quatt.odu", "%sRuntime frequency base table partially invalid", "${prefix}");
-                    }
-
-                    if (variant != oq_odu::Variant::V2_NEW_MODEL) {
+                      id(${hp_id}_runtime_frequency_revalidation_required) = false;
+                      id(oq_incident_manager).observe_runtime_frequency_mapping(
+                          ${hp_index}, true, millis());
                       id(${hp_id}_compressor_level_profile_request_pending) = false;
                       return;
                     }
@@ -500,6 +503,13 @@ script:
                                 ESP_LOGW("quatt.odu", "%sV2 runtime frequency extension response incomplete; keeping previous snapshot", "${prefix}");
                                 return;
                               }
+                              if (!extension_result.heating_valid ||
+                                  !extension_result.cooling_valid) {
+                                id(${hp_id}_compressor_level_profile_request_pending) =
+                                    false;
+                                ESP_LOGW("quatt.odu", "%sV2 runtime frequency extension invalid; keeping previous snapshot", "${prefix}");
+                                return;
+                              }
                               id(${hp_id}_runtime_frequency_snapshot_storage) =
                                   oq_odu::encode_runtime_frequency_snapshot(
                                       extended_snapshot);
@@ -509,12 +519,11 @@ script:
                               id(${hp_id}_compressor_level_profile).publish_state(
                                   oq_odu::compressor_level_profile_label(
                                       extended_profile));
+                              id(${hp_id}_runtime_frequency_revalidation_required) = false;
+                              id(oq_incident_manager).observe_runtime_frequency_mapping(
+                                  ${hp_index}, true, millis());
                               id(${hp_id}_compressor_level_profile_request_pending) =
                                   false;
-                              if (!extension_result.heating_valid ||
-                                  !extension_result.cooling_valid) {
-                                ESP_LOGW("quatt.odu", "%sV2 runtime frequency extension partially invalid; affected mode limited to F10", "${prefix}");
-                              }
                             });
                     id(${hp_id}).queue_command(std::move(extension_command));
                   });
@@ -746,6 +755,38 @@ sensor:
       then:
         - lambda: |-
             id(${hp_id}_current_last_update_ms) = millis();
+
+  - platform: template
+    id: ${hp_id}_minimum_heating_frequency
+    name: "${prefix}Minimum heating frequency"
+    unit_of_measurement: "Hz"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: 5s
+    lambda: |-
+      // Report the actual automatic mapping; an unavailable table stays unknown.
+      if (!id(hp_generation).has_state()) return NAN;
+      const auto snapshot = oq_odu::decode_runtime_frequency_snapshot(id(${hp_id}_runtime_frequency_snapshot_storage));
+      const int hz = oq_frequency_policy::minimum_automatic_frequency_hz(
+          id(hp_generation).current_option() == "V2", snapshot, 2);
+      return hz > 0 ? static_cast<float>(hz) : NAN;
+
+  - platform: template
+    id: ${hp_id}_minimum_cooling_frequency
+    name: "${prefix}Minimum cooling frequency"
+    unit_of_measurement: "Hz"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    disabled_by_default: true
+    update_interval: 5s
+    lambda: |-
+      // Cooling can have a different minimum from heating on the same unit.
+      if (!id(hp_generation).has_state()) return NAN;
+      const auto snapshot = oq_odu::decode_runtime_frequency_snapshot(id(${hp_id}_runtime_frequency_snapshot_storage));
+      const int hz = oq_frequency_policy::minimum_automatic_frequency_hz(
+          id(hp_generation).current_option() == "V2", snapshot, 1);
+      return hz > 0 ? static_cast<float>(hz) : NAN;
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -1492,6 +1533,7 @@ binary_sensor:
     internal: true
     lambda: |-
       // OT fault should only reflect explicit failure bits, not protection or cycle states.
+      // R2121.b13 is raw-only diagnostics: some pumps assert it in standby.
       auto has_bit = [](float raw, uint16_t bitmask) -> bool {
         return !isnan(raw) && ((static_cast<uint16_t>(lroundf(raw)) & bitmask) != 0);
       };
@@ -1526,8 +1568,7 @@ binary_sensor:
           has_bit(status_2121, 0x0200u) ||
           has_bit(status_2121, 0x0400u) ||
           has_bit(status_2121, 0x0800u) ||
-          has_bit(status_2121, 0x1000u) ||
-          has_bit(status_2121, 0x2000u);
+          has_bit(status_2121, 0x1000u);
 
   # ----------------------------
   # TEXT SENSOR
@@ -1691,7 +1732,7 @@ text_sensor:
       if (has_bit(status_2121, 0x0400u)) add("Outlet water temp sensor failure");
       if (has_bit(status_2121, 0x0800u)) add("Inner coil temp sensor failure");
       if (has_bit(status_2121, 0x1000u)) add("Reserved temp sensor failure");
-      if (has_bit(status_2121, 0x2000u)) add("DC water pump failure");
+      // R2121.b13 remains available in the raw register, not as a failure message.
 
       return std::string(used == 0 ? "None" : s);
 
@@ -1733,7 +1774,7 @@ interval:
             const bool retry_due = last_retry == 0U ||
                 now - last_retry >= 60000UL;
             if (retry_due &&
-                !id(${hp_id}_odu_generation_detection_complete) &&
+                id(${hp_id}_odu_generation_revalidation_required) &&
                 !id(${hp_id}_odu_generation_request_pending)) {
               id(${hp_id}_runtime_frequency_retry_ms) = now == 0U ? 1U : now;
               id(${hp_id}_detect_odu_generation_once).execute();
@@ -1747,7 +1788,8 @@ interval:
                 (snapshot.variant == oq_odu::Variant::V2_NEW_MODEL &&
                  (!oq_odu::has_extended_frequency_table(snapshot, 1) ||
                   !oq_odu::has_extended_frequency_table(snapshot, 2)));
-            if (retry_due && table_incomplete &&
+            if (retry_due &&
+                (table_incomplete || id(${hp_id}_runtime_frequency_revalidation_required)) &&
                 id(${hp_id}_odu_generation_detection_complete) &&
                 !id(${hp_id}_odu_generation_request_pending) &&
                 !id(${hp_id}_compressor_level_profile_request_pending) &&
@@ -1781,5 +1823,8 @@ interval:
                 id(${hp_id}_is_online) = true;
                 id(oq_incident_manager).observe_transport(
                     ${hp_index}, true, millis());
+                if (!id(${hp_id}_odu_generation_request_pending)) {
+                  id(${hp_id}_detect_odu_generation_once).execute();
+                }
               });
           id(${hp_id}).queue_command(std::move(probe));

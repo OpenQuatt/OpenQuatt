@@ -123,6 +123,7 @@ enum ReasonCode : uint8_t {
   REASON_HP_RECOVERED = 71,
   REASON_ROOM_DEMAND = 72,
   REASON_SETPOINT_RAISE = 73,
+  REASON_FREQUENCY_CAP_BELOW_MINIMUM = 74,
 };
 
 enum Severity : uint8_t {

@@ -166,20 +166,6 @@
       registerAddress: 2120,
       bit: 4,
     }, runtimeOverrides),
-    dcWaterPump: (runtimeOverrides = {}) => incident({
-      id: 46,
-      key: "dc_water_pump",
-      presentationKey: "hp.dc_water_pump_fault",
-      category: "fault",
-      severity: "fault",
-      effects: ["display", "block_start", "stop_compressor", "mark_hp_unavailable", "pump_unavailable", "allow_cm4"],
-      effectMask: 125,
-      userAction: "contact_installer",
-      recoveryCondition: "stable_reads_and_recovery_window",
-      registerAddress: 2121,
-      bit: 13,
-      sourceDescription: "DC water pump failure",
-    }, runtimeOverrides),
     linkLoss: (runtimeOverrides = {}) => incident({
       id: 1001,
       key: "hp_link_loss",
@@ -743,16 +729,17 @@
       }),
     ]),
 
-    scenario("pump-ipwm-failure", "Waterpompstoring met iPWM-diagnose", "Incidentmodel", "single", [
-      phase("fault", "Pomp meldt failure", "ODU-code en actuele pompcontext maken de storing technisch diagnoseerbaar.", 0, {
-        heatPumps: [stoppedFaulted(1, 46, [INCIDENTS.dcWaterPump()], {
+    scenario("pump-standby-diagnostic", "Pompdiagnostiek zonder storingsmelding", "Incidentmodel", "single", [
+      phase("standby", "Pomp staat stil", "R2121.b13 veroorzaakt geen incident, startblokkade of herstelwachttijd.", 0, {
+        system: system({ control_mode: 0 }),
+        heatPumps: [heatPump(1, {
           pump_context: {
-            request_on: true,
-            relay_on: true,
+            request_on: false,
+            relay_on: false,
             flow_switch_on: false,
-            ipwm_feedback_raw: 950,
-            ipwm_status: "pump_off_failure",
-            pump_power_w: null,
+            ipwm_feedback_raw: 740,
+            ipwm_status: "running",
+            pump_power_w: 74,
             flow_lph: 0,
           },
         })],
