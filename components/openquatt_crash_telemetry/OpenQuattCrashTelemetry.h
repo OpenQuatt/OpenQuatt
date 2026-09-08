@@ -9,6 +9,7 @@
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 
+#include "OpenQuattAbortDetails.h"
 #include "OpenQuattCrashTelemetryPolicy.h"
 #include "OpenQuattCrashTelemetryRecord.h"
 #include "OpenQuattFlashLayout.h"
@@ -189,6 +190,7 @@ class OpenQuattCrashTelemetry : public Component {
   size_t payload_size_{0U};
 
   bool capture_active_{false};
+  detail::AbortReplayContext capture_context_{};
   std::atomic<bool> setup_complete_{false};
   std::atomic<bool> consent_enabled_{false};
   std::atomic<bool> time_synchronized_{false};
