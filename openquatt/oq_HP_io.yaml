@@ -1492,6 +1492,7 @@ binary_sensor:
     internal: true
     lambda: |-
       // OT fault should only reflect explicit failure bits, not protection or cycle states.
+      // R2121.b13 is raw-only diagnostics: some pumps assert it in standby.
       auto has_bit = [](float raw, uint16_t bitmask) -> bool {
         return !isnan(raw) && ((static_cast<uint16_t>(lroundf(raw)) & bitmask) != 0);
       };
@@ -1526,8 +1527,7 @@ binary_sensor:
           has_bit(status_2121, 0x0200u) ||
           has_bit(status_2121, 0x0400u) ||
           has_bit(status_2121, 0x0800u) ||
-          has_bit(status_2121, 0x1000u) ||
-          has_bit(status_2121, 0x2000u);
+          has_bit(status_2121, 0x1000u);
 
   # ----------------------------
   # TEXT SENSOR
@@ -1691,7 +1691,7 @@ text_sensor:
       if (has_bit(status_2121, 0x0400u)) add("Outlet water temp sensor failure");
       if (has_bit(status_2121, 0x0800u)) add("Inner coil temp sensor failure");
       if (has_bit(status_2121, 0x1000u)) add("Reserved temp sensor failure");
-      if (has_bit(status_2121, 0x2000u)) add("DC water pump failure");
+      // R2121.b13 remains available in the raw register, not as a failure message.
 
       return std::string(used == 0 ? "None" : s);
 
