@@ -66,6 +66,39 @@ void test_physical_source_uses_value_paired_with_receipt_time() {
   assert(unselected.provenance == LearningSourceProvenance::UNKNOWN);
 }
 
+void test_selected_zero_flow_keeps_running_source_identity() {
+  const SourceConfigurationKey configuration{2U, 0U, 0U, 0U};
+  const auto running = selected_source(800.0f, true, LearningSourceRoute::FLOW_AGGREGATE, 1U);
+  const auto stopped = selected_source(0.0f, true, LearningSourceRoute::SYNTHESIZED_ZERO_FLOW, 1U);
+  for (unsigned boot_stopped = 0; boot_stopped < 2; ++boot_stopped) {
+    SourceConfigurationGeneration owner;
+    const uint32_t configured = owner.observe(configuration);
+    if (boot_stopped) assert(owner.observe_resolution(stopped) == configured);
+    const uint32_t baseline = owner.observe_resolution(running);
+    if (boot_stopped) assert(baseline == configured);
+    for (unsigned cycle = 0; cycle < 4; ++cycle) {
+      assert(owner.observe_resolution(stopped) == baseline);
+      assert(owner.observe_resolution(running) == baseline);
+    }
+    owner.observe_resolution(stopped);
+    auto switched = running;
+    switched.route = LearningSourceRoute::HP1_FLOW;
+    assert(owner.observe_resolution(switched) > baseline);
+    const uint32_t switched_generation = owner.current();
+    auto changed_configuration = configuration;
+    ++changed_configuration.auxiliary_b;
+    assert(owner.observe(changed_configuration) > switched_generation);
+    const uint32_t selected_generation = owner.current();
+    assert(owner.observe_resolution(stopped) == selected_generation);
+    assert(owner.observe_resolution(switched) == selected_generation);
+    auto invalid = stopped;
+    invalid.valid = false;
+    assert(owner.observe_resolution(invalid) > selected_generation);
+    const uint32_t invalid_generation = owner.current();
+    assert(owner.observe_resolution(switched) > invalid_generation);
+  }
+}
+
 void test_unsupported_and_synthesized_values_never_gain_receipts() {
   const auto aggregate = unsupported_source(800.0f, true, LearningSourceRoute::FLOW_AGGREGATE, 2U);
   assert(aggregate.valid && aggregate.value == 800.0f);
@@ -133,6 +166,7 @@ int main() {
   test_configuration_generation_observes_a_b_a();
   test_resolution_generation_observes_route_a_b_a_between_learner_ticks();
   test_physical_source_uses_value_paired_with_receipt_time();
+  test_selected_zero_flow_keeps_running_source_identity();
   test_unsupported_and_synthesized_values_never_gain_receipts();
   test_composite_keeps_both_physical_receipts_but_stays_unsupported();
   test_cached_sources_fail_closed_when_current_receipt_is_revoked();

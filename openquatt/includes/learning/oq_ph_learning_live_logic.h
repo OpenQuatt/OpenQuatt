@@ -244,19 +244,19 @@ inline PhysicalMeasurement<float> resolved_learning_measurement(const oq_sources
   return result;
 }
 
-// CM2 owns heat-pump-only operation. Require the dispatched, current NONE
+// CM0/CM1 pauses and CM2 heating exclude boiler demand. Require the current NONE
 // command and withdrawn outputs as well: a mode label or R1-off alone is not
 // enough during startup, a mode transition or a paused/stale dispatcher.
 // This is controller evidence, not a physical heat measurement or a statement
 // about solar, internal or independently controlled heat gains.
-inline PhysicalMeasurement<BoilerHeatState> learning_cm2_boiler_contract(bool runtime_available, int control_mode,
-                                                                         const oq_boiler::BoilerCommand& command,
-                                                                         bool output_active, bool relay_active,
-                                                                         uint64_t now_ms,
-                                                                         bool applied_ot_command_active) {
+inline PhysicalMeasurement<BoilerHeatState> learning_no_boiler_heat_contract(bool runtime_available, int control_mode,
+                                                                             const oq_boiler::BoilerCommand& command,
+                                                                             bool output_active, bool relay_active,
+                                                                             uint64_t now_ms,
+                                                                             bool applied_ot_command_active) {
   PhysicalMeasurement<BoilerHeatState> result;
   result.value = BoilerHeatState::NO_HEAT;
-  result.valid = runtime_available && control_mode == 2 && now_ms != 0U &&
+  result.valid = runtime_available && (control_mode == 0 || control_mode == 1 || control_mode == 2) && now_ms != 0U &&
                  oq_boiler::command_is_fresh(command, static_cast<uint32_t>(now_ms), 15000U) &&
                  command.source == oq_boiler::COMMAND_SOURCE_NONE && !command.demand_present && !command.heat_request &&
                  !output_active && !relay_active && !applied_ot_command_active;
@@ -281,7 +281,7 @@ inline PhysicalMeasurement<BoilerHeatState> learning_boiler_status(float payload
                              {PhysicalSourceKind::OPENTHERM_FRAME, 0x10000U, PhysicalUnit::SYSTEM}, 1, {10000, 30000});
 }
 
-// CM2 is heat-pump-only for either boiler transport. OpenTherm is an optional
+// Heating and its idle/pump phases have no boiler demand. OpenTherm is an optional
 // contradiction check, not a required source. Keep the contract identity stable
 // when telemetry disappears or activity changes; invalidate only the sample.
 inline PhysicalMeasurement<BoilerHeatState> learning_boiler_heat(

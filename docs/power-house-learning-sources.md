@@ -37,12 +37,17 @@ Een learning-record vereist:
 - geldige geselecteerde waarden voor kamer, setpoint, buiten en flow;
 - voldoende bruikbare water- en HP-statusmetingen voor de calorimetrie;
 - verwarming zonder actieve begrenzing, service of OTA;
-- geen actuele ketelwarmte tijdens CM2;
+- geen actuele ketelwarmte tijdens CM0, CM1 of CM2;
 - een stabiel setpoint en passende comfortstatus voor de structurele batch-fit.
 
 Een geldige bron is dus niet hetzelfde als een volledig learning-record. De eerste stap
 accepteert de bestaande controlwaarde; de volgende stappen toetsen alleen voorwaarden
 die nodig zijn om werkelijk vermogen en thermisch gedrag te berekenen.
+
+Normale CM0/CM1-pauzes tellen mee in de verstreken meetduur. Geldig nuldebiet
+levert nul watervermogen; bij pompuitloop blijft het gemeten vermogen, inclusief
+een eventuele negatieve waarde, meetellen. De compressor hoeft niet vier uur
+ononderbroken te draaien. Ontbrekende metingen worden nooit vervangen door nul.
 
 De dynamische 1R1C-route kan een observatie gebruiken wanneer de structurele batch-fit
 nog wacht op setpoint-herstel. Beide routes blijven passief.

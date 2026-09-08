@@ -51,6 +51,8 @@ fysieke metingen + ontvangstbewijs + bronidentiteit + bedrijfsstatus
     -> advies met redenen en meetcontext
 ```
 
+Normale CM0/CM1-pauzes blijven onderdeel van dezelfde meetperiode als CM2. Een pompoploop of pompuitloop wordt met het gemeten watervermogen geïntegreerd; geldig nuldebiet telt mee als nulvermogen. De overgang naar stilstandsdebiet is geen bronwissel. Het actuele ketelcommando en de uitgangen moeten ook tijdens deze pauzes uit staan.
+
 De kern gebruikt maximaal 64 records en 365 dagen historie. Een ontbrekend essentieel interval maakt het lopende segment ongeschikt. Normale uitperioden en signed calorimetrie blijven onderdeel van de tijdsintegratie. De dataset leert uit gemeten warmte; `P_request`, compressorlevels en de eigen woninglijn zijn geen trainingslabels.
 
 Eén eigenaar in de ESPHome-mainloop beheert records en fitworkspace in PSRAM. Tijdens een hervatbare fit blijft de recordarray onveranderlijk; append/prune annuleert eerst de fit. HTTP-callbacks krijgen uitsluitend een onder mutex gekopieerde JSON-cache. Een tweede gelijktijdige export krijgt HTTP 429; netwerk-I/O houdt de cachemutex niet vast.

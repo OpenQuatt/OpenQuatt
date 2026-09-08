@@ -1,8 +1,11 @@
 #include <assert.h>
 #include <math.h>
 
+#include "../../openquatt/includes/control/oq_input_source_logic.h"
 #include "../../openquatt/includes/learning/oq_ph_learning_fit.h"
 #include "../../openquatt/includes/learning/oq_ph_learning_source_logic.h"
+#include "../../openquatt/includes/learning/oq_ph_learning_live_logic.h"
+#include "../../openquatt/includes/learning/oq_ph_passive_runtime_logic.h"
 
 namespace {
 using namespace oq_power_house;
@@ -95,10 +98,96 @@ void raw_series_observations_to_advice() {
   assert(active.heat_loss_w_per_k == 150.0f && active.zero_power_temp_c == 15.0f);
 }
 
+void heating_cycles_keep_idle_time_and_pump_runout(bool interrupt_idle = false) {
+  PassiveRuntimeStorage state;
+  PassiveRuntimeConfig config;
+  const uint8_t bytes[]{1};
+  const PassiveContextView context{bytes, sizeof(bytes), 1};
+  assert(initialize_passive_runtime(state, context, config, true) == PassiveRuntimeStatus::COLLECTING);
+  oq_sources::SourceConfigurationGeneration flow_generation;
+  const oq_sources::SourceConfigurationKey flow_configuration{2U, 0U, 0U, 0U};
+  flow_generation.observe(flow_configuration);
+  const auto startup_flow = oq_sources::selected_source(
+      0.0f, true, oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW, flow_generation.current());
+  const uint32_t initial_flow_generation = flow_generation.observe_resolution(startup_flow);
+  constexpr uint32_t epoch = 20000U * 86400U;
+  // Four hourly cycles: 30 min heating, 5 min pump runout with signed loss,
+  // 25 min zero flow. Mean water temperature stays at 30 C at the boundaries.
+  for (uint32_t minute = 0; minute <= 240; ++minute) {
+    const uint32_t phase = minute % 60;
+    const int cm = phase < 30 ? 2 : phase < 35 ? 1 : 0;
+    const uint64_t now = 1000ULL + minute * 60000ULL;
+    auto raw = observation(now, epoch + minute * 60U, 5.0f);
+    const float flow = cm == 0 ? 0.0f : 1000.0f;
+    const float total_delta = cm == 2 ? 4000.0f * 3600.0f / (1000.0f * 4180.0f) : -0.2f;
+    oq_input_source::FlowInputs flow_input;
+    flow_input.selected = oq_input_source::Source::OUTDOOR;
+    flow_input.duo = true;
+    flow_input.aggregate = {1000.0f, true};
+    flow_input.all_relevant_pumps_stopped = cm == 0;
+    const auto selected_flow = oq_input_source::select_flow(flow_input);
+    const auto flow_route = selected_flow.route == oq_input_source::FlowRoute::PUMPS_STOPPED
+                                ? oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW
+                                : oq_sources::LearningSourceRoute::FLOW_AGGREGATE;
+    auto resolved_flow = oq_sources::selected_source(selected_flow.value, selected_flow.valid, flow_route,
+                                                     flow_generation.observe(flow_configuration));
+    resolved_flow.configuration_generation = flow_generation.observe_resolution(resolved_flow);
+    assert(resolved_flow.configuration_generation == initial_flow_generation);
+    raw.flow_lph = resolved_learning_measurement(resolved_flow, now);
+    assert(raw.flow_lph.valid && raw.flow_lph.value == flow);
+    raw.hp1 = unit(PhysicalUnit::HP1, now, 30.0f - total_delta / 2.0f, 30.0f);
+    raw.hp2 = unit(PhysicalUnit::HP2, now, 30.0f, 30.0f + total_delta / 2.0f);
+    raw.hp1.compressor_active.value = raw.hp2.compressor_active.value = cm == 2;
+    raw.hp1.mode.value = raw.hp2.mode.value = cm == 2 ? HeatPumpMode::HEATING : HeatPumpMode::OFF;
+    const oq_boiler::BoilerCommand off{
+        true, false, false, NAN, NAN, oq_boiler::COMMAND_SOURCE_NONE, static_cast<uint32_t>(now)};
+    raw.boiler_heat = learning_no_boiler_heat_contract(true, cm, off, false, false, now, false);
+    const bool invalid_idle = interrupt_idle && minute == 100;
+    if (invalid_idle) {
+      assert(cm == 0);
+      raw.flow_lph.valid = false;
+    }
+    const auto calorimetry = evaluate_calorimetry(raw, config.quality);
+    const auto batch = build_learning_snapshot(raw, config.quality, SnapshotPurpose::STRUCTURAL_BATCH, &calorimetry);
+    const auto thermal = build_learning_snapshot(raw, config.quality, SnapshotPurpose::THERMAL_DYNAMIC, &calorimetry);
+    assert(batch.measurement_valid == !invalid_idle && thermal.measurement_valid == !invalid_idle);
+    if (!invalid_idle && cm == 0) assert(batch.snapshot.heat_to_water_w == 0.0f);
+    if (!invalid_idle && cm == 1) assert(batch.snapshot.heat_to_water_w < 0.0f);
+    PassiveTickInput input;
+    input.context = context;
+    input.now_monotonic_ms = now;
+    input.now_epoch_s = raw.epoch_s;
+    input.opted_in = input.context_valid = input.active_line_valid = input.reference_context_valid = true;
+    input.active_line = {150.0f, 16.0f};
+    input.reference_room_c = input.reference_setpoint_c = 20.0f;
+    input.batch_snapshot_available = batch.has_snapshot;
+    input.dynamic_snapshot_available = thermal.has_snapshot;
+    input.batch_snapshot = batch.snapshot;
+    input.dynamic_snapshot = thermal.snapshot;
+    tick_passive_runtime(state, input);
+    if (!interrupt_idle) assert(state.diagnostics.rejected_batch_observations == 0);
+    assert(!passive_runtime_summary(state, now).auto_apply_allowed);
+  }
+  if (interrupt_idle) {
+    assert(state.record_count == 0);
+    assert(state.thermal_state.accepted_samples < 8);
+    return;
+  }
+  assert(state.record_count == 1);
+  assert(state.records[0].duration_s == 14400U);
+  const float expected_mean = (4000.0f * 30.0f - (1000.0f / 3600.0f * 4180.0f * 0.2f) * 5.0f) / 60.0f;
+  assert(fabsf(state.records[0].mean_heat_w - expected_mean) < 0.1f);
+  assert(state.thermal_state.accepted_samples == 8);
+}
+
 // A host-side size guard for the pure data only. This is not an ESP32 footprint
 // or a substitute for the future strict-PSRAM and internal-heap HIL checks.
 static_assert(sizeof(SegmentRecord) * kMaxSegmentRecords + sizeof(AdviceFitWorkspace) + sizeof(SegmentAccumulator) <
               32U * 1024U);
 }  // namespace
 
-int main() { raw_series_observations_to_advice(); }
+int main() {
+  raw_series_observations_to_advice();
+  heating_cycles_keep_idle_time_and_pump_runout();
+  heating_cycles_keep_idle_time_and_pump_runout(true);
+}

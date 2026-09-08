@@ -92,13 +92,25 @@ class SourceConfigurationGeneration {
   }
 
   uint32_t observe_resolution(const ResolvedLearningSource& source) {
+    // The outdoor resolver reports zero while every relevant pump is stopped.
+    // This is a normal operating phase of the selected flow source, not a new
+    // source. Keep its last running identity so a real route change on restart
+    // still interrupts collection. Booting with stopped pumps has no previous
+    // running identity to invalidate when flow first resumes.
+    if (source.valid && source.value == 0.0f && source.route == LearningSourceRoute::SYNTHESIZED_ZERO_FLOW &&
+        source.provenance == LearningSourceProvenance::SELECTED_VALUE) {
+      if (!this->resolution_initialized_) this->initial_zero_flow_ = true;
+      return this->generation_;
+    }
     const ResolutionKey next{static_cast<uint8_t>(source.route), static_cast<uint8_t>(source.component_route),
                              static_cast<uint8_t>(source.secondary_route),
                              static_cast<uint8_t>(source.composite_operation), static_cast<uint8_t>(source.provenance)};
     if (!this->resolution_initialized_ || !same_resolution_(this->resolution_, next)) {
+      const bool first_flow_after_idle = !this->resolution_initialized_ && this->initial_zero_flow_;
       this->resolution_ = next;
       this->resolution_initialized_ = true;
-      this->increment_();
+      this->initial_zero_flow_ = false;
+      if (!first_flow_after_idle) this->increment_();
     }
     return this->generation_;
   }
@@ -137,6 +149,7 @@ class SourceConfigurationGeneration {
   uint32_t generation_ = 0;
   bool initialized_ = false;
   bool resolution_initialized_ = false;
+  bool initial_zero_flow_ = false;
   bool blocked_ = false;
 };
 

@@ -447,16 +447,30 @@ test("setpointherstel vertraagt alleen de woninglijn terwijl 1R1C verzamelt", ()
   assert.match(markup, /Opwarmen en afkoelen \(1R1C\)[\s\S]*Verzamelt/);
 });
 
-test("CM0 en CM1 wachten eenvoudig op verwarming", () => {
+test("CM0 en CM1 tonen een echte blokkade in plaats van wachten op verwarming", () => {
   for (const controlMode of [0, 1]) {
     const markup = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(statusPayload({
       enabled: true,
       control_mode: controlMode,
       status: "blocked",
       invalid_reasons: ["boiler_heat"],
+      sources: { ...statusPayload().sources, flow: { route: "selected_flow", valid: true } },
     })));
-    assert.match(markup, /Wacht op verwarming/);
+    assert.match(markup, /Wacht op meting/);
+    assert.match(markup, /Verzamelen wacht tot alleen de warmtepomp verwarmt/);
     assert.doesNotMatch(markup, /ketelbijdrage nog niet uitgesloten/);
+  }
+});
+
+test("CM0 en CM1 tonen verzamelen tijdens een geldige verwarmingspauze", () => {
+  for (const controlMode of [0, 1]) {
+    const markup = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(statusPayload({
+      enabled: true, control_mode: controlMode, status: "collecting",
+      invalid_reasons: [], blocked_reasons: [],
+      collection: { ...statusPayload().collection, batch_active: true, thermal_active: true },
+    })));
+    assert.match(markup, /Verzamelt tijdens verwarmingspauze/);
+    assert.doesNotMatch(markup, /Wacht op verwarming/);
   }
 });
 

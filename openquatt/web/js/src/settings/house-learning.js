@@ -101,9 +101,11 @@ function renderWaterTemperatureCards() {
 function activity(status) {
   if (!status.enabled) return ["Gepauzeerd", "Schakel passief leren in om metingen te verzamelen.", ""];
   if (statusIsStale(status)) return ["Status verouderd", "Wacht op een actuele status van de regelaar.", "orange"];
-  if (status.controlMode === 0 || status.controlMode === 1) return ["Wacht op verwarming", "Verzamelen start wanneer de verwarming actief is.", "orange"];
   if (status.sourceStatus === "series_junction_mismatch") return ["Watertemperaturen sluiten nog niet op elkaar aan.", "Controleer HP1 water uit en HP2 water in.", "orange"];
-  if (status.status === "collecting") return ["Verzamelt nu", "Een geldige meting wordt verwerkt.", "green"];
+  if (status.status === "collecting") {
+    if (status.controlMode === 0 || status.controlMode === 1) return ["Verzamelt tijdens verwarmingspauze", "Deze pauze telt mee in de meting van warmteverlies en afkoeling.", "green"];
+    return ["Verzamelt nu", "Een geldige meting wordt verwerkt.", "green"];
+  }
   const missing = Object.entries(status.sources).filter(([, source]) => !source.valid).map(([key]) => SOURCE_LABELS[key].toLowerCase());
   if (missing.length) return ["Wacht op bron", `Nog geen geldige waarde voor ${missing.join(" en ")}.`, "orange"];
   const waitingNotes = {

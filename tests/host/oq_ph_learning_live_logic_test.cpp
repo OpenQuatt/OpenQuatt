@@ -195,10 +195,10 @@ void test_diagnostic_capture_requires_opt_in_and_breaks_pause_continuity() {
   assert(decision.capture && !decision.use_previous && retained_rows == 1U);
 }
 
-void test_cm2_contract_requires_current_withdrawn_boiler_command() {
+void test_heating_and_idle_contract_requires_current_withdrawn_boiler_command() {
   const oq_boiler::BoilerCommand off{
       true, false, false, NAN, NAN, oq_boiler::COMMAND_SOURCE_NONE, static_cast<uint32_t>(kNowMs)};
-  const auto contract = learning_cm2_boiler_contract(true, 2, off, false, false, kNowMs, false);
+  const auto contract = learning_no_boiler_heat_contract(true, 2, off, false, false, kNowMs, false);
   assert(contract.valid && contract.value == BoilerHeatState::NO_HEAT);
   assert(contract.provenance == MeasurementProvenance::CONTROL_CONTRACT);
   source_detail::MeasurementMeta measurements[1];
@@ -207,20 +207,32 @@ void test_cm2_contract_requires_current_withdrawn_boiler_command() {
          SnapshotSourceStatus::UNTRUSTED_PROVENANCE);
   assert(source_detail::append_measurement(contract, kNowMs, measurements, count, true) == SnapshotSourceStatus::OK);
 
-  constexpr int blocked_modes[] = {-1, 0, 1, 3, 4, 5, 98, 99, 100};
+  constexpr int blocked_modes[] = {-1, 3, 4, 5, 98, 99, 100};
   for (int cm : blocked_modes) {
-    const auto blocked = learning_cm2_boiler_contract(true, cm, off, false, false, kNowMs, false);
+    const auto blocked = learning_no_boiler_heat_contract(true, cm, off, false, false, kNowMs, false);
     assert(!blocked.valid);
     assert(blocked.source.kind == contract.source.kind && blocked.source.id == contract.source.id);
     assert(blocked.source_generation == contract.source_generation && blocked.provenance == contract.provenance);
   }
-  assert(!learning_cm2_boiler_contract(false, 2, off, false, false, kNowMs, false).valid);
-  assert(!learning_cm2_boiler_contract(true, 2, off, true, false, kNowMs, false).valid);
-  assert(!learning_cm2_boiler_contract(true, 2, off, false, true, kNowMs, false).valid);
-  assert(!learning_cm2_boiler_contract(true, 2, off, false, false, kNowMs, true).valid);
-  assert(!learning_cm2_boiler_contract(true, 2, off, false, false, 0U, false).valid);
-  assert(learning_cm2_boiler_contract(true, 2, off, false, false, kNowMs + 15000U, false).valid);
-  assert(!learning_cm2_boiler_contract(true, 2, off, false, false, kNowMs + 15001U, false).valid);
+  for (int cm = 0; cm <= 2; ++cm) {
+    const auto idle = learning_no_boiler_heat_contract(true, cm, off, false, false, kNowMs, false);
+    assert(idle.valid && idle.value == BoilerHeatState::NO_HEAT);
+    assert(idle.source.id == contract.source.id && idle.source_generation == contract.source_generation);
+    assert(!learning_no_boiler_heat_contract(false, cm, off, false, false, kNowMs, false).valid);
+    assert(!learning_no_boiler_heat_contract(true, cm, off, true, false, kNowMs, false).valid);
+    assert(!learning_no_boiler_heat_contract(true, cm, off, false, true, kNowMs, false).valid);
+    assert(!learning_no_boiler_heat_contract(true, cm, off, false, false, kNowMs, true).valid);
+    assert(!learning_no_boiler_heat_contract(true, cm, off, false, false, kNowMs + 15001U, false).valid);
+    const auto burning = learning_boiler_status(8U, kNowMs, true, true);
+    assert(!learning_boiler_heat(true, idle, burning).valid);
+  }
+  assert(!learning_no_boiler_heat_contract(false, 2, off, false, false, kNowMs, false).valid);
+  assert(!learning_no_boiler_heat_contract(true, 2, off, true, false, kNowMs, false).valid);
+  assert(!learning_no_boiler_heat_contract(true, 2, off, false, true, kNowMs, false).valid);
+  assert(!learning_no_boiler_heat_contract(true, 2, off, false, false, kNowMs, true).valid);
+  assert(!learning_no_boiler_heat_contract(true, 2, off, false, false, 0U, false).valid);
+  assert(learning_no_boiler_heat_contract(true, 2, off, false, false, kNowMs + 15000U, false).valid);
+  assert(!learning_no_boiler_heat_contract(true, 2, off, false, false, kNowMs + 15001U, false).valid);
   for (unsigned failure = 0; failure < 6; ++failure) {
     auto command = off;
     if (failure == 0) command.valid = false;
@@ -229,11 +241,11 @@ void test_cm2_contract_requires_current_withdrawn_boiler_command() {
     if (failure == 3) command.source = oq_boiler::COMMAND_SOURCE_FALLBACK;
     if (failure == 4) command.updated_at_ms = 0;
     if (failure == 5) ++command.updated_at_ms;
-    assert(!learning_cm2_boiler_contract(true, 2, command, false, false, kNowMs, false).valid);
+    assert(!learning_no_boiler_heat_contract(true, 2, command, false, false, kNowMs, false).valid);
   }
   auto wrapped = off;
   wrapped.updated_at_ms = UINT32_MAX - 4999U;
-  assert(learning_cm2_boiler_contract(true, 2, wrapped, false, false, (1ULL << 32U) + 5000U, false).valid);
+  assert(learning_no_boiler_heat_contract(true, 2, wrapped, false, false, (1ULL << 32U) + 5000U, false).valid);
 
   // CM2 needs no OpenTherm receipt. Only current, physical heat activity
   // contradicts the contract; invalid/stale/future receipts cannot veto it.
@@ -331,7 +343,7 @@ int main() {
   test_strategy_output_requires_current_matching_owner();
   test_diagnostic_coverage_never_crosses_invalid_gap_or_generation_edge();
   test_diagnostic_capture_requires_opt_in_and_breaks_pause_continuity();
-  test_cm2_contract_requires_current_withdrawn_boiler_command();
+  test_heating_and_idle_contract_requires_current_withdrawn_boiler_command();
   test_diagnostic_heat_preserves_signed_physical_heat_outside_training_gates();
   test_diagnostic_heat_rejects_incoherent_inputs();
   return 0;

@@ -333,7 +333,7 @@ class Runtime {
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     applied_ot_command_active = opentherm_selected && id(oq_otb_applied_command_active);
 #endif
-    const auto boiler_contract = learning_cm2_boiler_contract(
+    const auto boiler_contract = learning_no_boiler_heat_contract(
         boiler_runtime_available, id(oq_control_mode_code), boiler_command, id(oq_boiler_output_request),
         id(boiler_relay).state, now_ms, applied_ot_command_active);
     PhysicalMeasurement<BoilerHeatState> boiler_telemetry;
@@ -404,10 +404,8 @@ class Runtime {
     u32(static_cast<uint32_t>(state.input.topology));
     u32(OQ_HARDWARE_HEATPUMP_CONTROLLER_Q);
     for (const auto& source : state.sources) {
-      u32(static_cast<uint32_t>(source.route));
-      u32(static_cast<uint32_t>(source.component_route));
-      u32(static_cast<uint32_t>(source.secondary_route));
-      u32(static_cast<uint32_t>(source.composite_operation));
+      // Runtime route changes are tracked by source generations. Persist only
+      // configuration here so ordinary pump stops do not change the context.
       u32(source.configuration.selected);
       u32(source.configuration.auxiliary_a);
       u32(source.configuration.auxiliary_b);
