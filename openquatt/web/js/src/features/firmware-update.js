@@ -355,6 +355,11 @@ import { render } from "../core/render-scheduler.js";
     if (!target || !current || !parseFirmwareVersion(target) || !parseFirmwareVersion(current)) {
       return false;
     }
+    if (state.updateInstallMode === "channel-switch") {
+      return getFirmwareRunningChannelLabel().toLowerCase() === "dev"
+        && parseFirmwareVersion(current).prereleaseTag.toLowerCase() === "dev"
+        && current.replace(/^v/, "") === target.replace(/^v/, "");
+    }
     const relation = compareFirmwareVersions(current, target);
     return state.updateInstallMode === "downgrade" ? relation === 0 : relation >= 0;
   }
@@ -365,7 +370,10 @@ import { render } from "../core/render-scheduler.js";
     if (!latest || !current) {
       return false;
     }
-    if (isFirmwareDowngradeAvailable(entity)) {
+    if (state.updateInstallMode === "channel-switch") {
+      return hasInstalledFirmwareTargetVersion();
+    }
+    if (isFirmwareDowngradeAvailable(entity) || isFirmwareChannelTransition(entity)) {
       return false;
     }
     return compareFirmwareVersions(current, latest) >= 0;
@@ -806,7 +814,7 @@ import { render } from "../core/render-scheduler.js";
     if (!isFirmwareEntityAlignedWithChannel()) {
       return false;
     }
-    if (isFirmwarePrToDevTransition()) {
+    if (isFirmwareChannelTransition()) {
       return true;
     }
     const relation = getFirmwareVersionRelation();
@@ -850,7 +858,7 @@ import { render } from "../core/render-scheduler.js";
       && relation !== null
       && relation <= 0
       && !isFirmwareDowngradeAvailable(entity)
-      && !isFirmwarePrToDevTransition(entity)
+      && !isFirmwareChannelTransition(entity)
     ) {
       latest = "";
     }
@@ -869,12 +877,13 @@ import { render } from "../core/render-scheduler.js";
     return compareFirmwareVersions(latest, current);
   }
 
-  function isFirmwarePrToDevTransition(entity = getFirmwareUpdateEntity() || {}) {
+  export function isFirmwareChannelTransition(entity = getFirmwareUpdateEntity() || {}) {
     const current = parseFirmwareVersion(getFirmwareCurrentVersion(entity));
     const latest = parseFirmwareVersion(getFirmwareLatestVersion(entity));
     return getFirmwareChannelLabel().toLowerCase() === "dev"
       && isFirmwareEntityAlignedWithChannel(entity, "dev")
-      && current?.prereleaseTag.toLowerCase() === "pr"
+      && (current?.prereleaseTag.toLowerCase() === "pr"
+        || (current?.prereleaseTag === "" && getFirmwareRunningChannelLabel().toLowerCase() === "main"))
       && latest?.prereleaseTag.toLowerCase() === "dev";
   }
 
@@ -1164,8 +1173,10 @@ import { render } from "../core/render-scheduler.js";
       const { current, latest } = getFirmwareUpdateVersions();
       return `De stabiele main-release ${latest} is ouder dan de draaiende dev-build ${current}. Je kunt bewust teruggaan naar main.`;
     }
-    if (isFirmwarePrToDevTransition()) {
-      return "Dev-firmware kan de PR-testfirmware vervangen.";
+    if (isFirmwareChannelTransition()) {
+      return parseFirmwareVersion(getFirmwareCurrentVersion())?.prereleaseTag.toLowerCase() === "pr"
+        ? "Dev-firmware kan de PR-testfirmware vervangen."
+        : "Dev-firmware kan de huidige main-firmware vervangen.";
     }
     if (isFirmwareUpdateAvailable()) {
       return "Er staat een nieuwere firmware klaar.";
