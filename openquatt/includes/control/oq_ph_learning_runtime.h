@@ -380,7 +380,8 @@ class Runtime {
                                   isfinite(id(ph_comfort_band_above_c).state);
     op.comfort_acceptable = in.room_c.value >= in.setpoint_c.value - id(ph_comfort_band_below_c).state &&
                             in.room_c.value <= in.setpoint_c.value + id(ph_comfort_band_above_c).state;
-    state.config.thermal_model.initial_heat_loss_w_per_k = active_line_().heat_loss_w_per_k;
+    state.config.thermal_model.initial_heat_loss_w_per_k =
+        thermal_initial_heat_loss_prior(active_line_().heat_loss_w_per_k, state.config.thermal_model);
   }
 
   void build_context_(RuntimeStorage& state) {

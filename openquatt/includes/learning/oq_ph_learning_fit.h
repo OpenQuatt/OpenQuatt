@@ -89,6 +89,7 @@ struct AdviceFitWorkspace {
   uint8_t next_lodo_day = 0;
   uint32_t day_ids[kMaxCalendarDays]{};
   uint8_t day_record_counts[kMaxCalendarDays]{};
+  uint8_t selected_record_indices[kMaxSegmentRecords]{};
   uint8_t record_day_index[kMaxSegmentRecords]{};
   float sorted_train_temperatures[kMaxSegmentRecords]{};
   AdviceResult result;
@@ -128,6 +129,10 @@ inline bool valid_fit_config(const FitConfig& config) {
 
 namespace detail {
 
+inline const SegmentRecord& fit_record(const AdviceFitWorkspace& workspace, size_t index) {
+  return workspace.records[workspace.selected_record_indices[index]];
+}
+
 inline uint32_t record_day(const SegmentRecord& record) { return record.start_epoch_s / 86400U; }
 
 inline bool plausible_line(const HouseLine& line, const FitConfig& config) {
@@ -150,7 +155,7 @@ inline bool fit_huber_line(const AdviceFitWorkspace& workspace, int omitted_day_
     double sum_y = 0.0;
     for (size_t index = 0; index < workspace.train_count; ++index) {
       if (workspace.record_day_index[index] == omitted_day_index) continue;
-      const SegmentRecord& record = workspace.records[index];
+      const SegmentRecord& record = fit_record(workspace, index);
       double robust_weight = 1.0;
       if (valid_house_line(current)) {
         const double predicted = current.heat_loss_w_per_k * (current.zero_power_temp_c - record.mean_outside_c);
@@ -169,7 +174,7 @@ inline bool fit_huber_line(const AdviceFitWorkspace& workspace, int omitted_day_
     double variance = 0.0;
     for (size_t index = 0; index < workspace.train_count; ++index) {
       if (workspace.record_day_index[index] == omitted_day_index) continue;
-      const SegmentRecord& record = workspace.records[index];
+      const SegmentRecord& record = fit_record(workspace, index);
       double robust_weight = 1.0;
       if (valid_house_line(current)) {
         const double predicted = current.heat_loss_w_per_k * (current.zero_power_temp_c - record.mean_outside_c);
@@ -204,32 +209,41 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
     return LearningStatus::INVALID_CONFIGURATION;
   uint32_t previous_end = 0;
   uint32_t context_revision = 0;
-  workspace.result.observed_temp_min_c = INFINITY;
-  workspace.result.observed_temp_max_c = -INFINITY;
-  workspace.result.max_abs_room_trend_k_per_h = 0.0f;
-  workspace.result.max_abs_room_trend_per_heat_k_per_h_w = 0.0f;
+  size_t selected_count = 0;
+  // Retain every validated record in the owner. Evaluate only observations near
+  // the current room/setpoint; day/night history must not poison the whole fit.
   for (size_t index = 0; index < workspace.record_count; ++index) {
     const SegmentRecord& record = workspace.records[index];
     const LearningStatus record_status = validate_segment_record(record, workspace.quality_config);
     if (record_status != LearningStatus::OK) return record_status;
     if (record.end_epoch_s > workspace.now_epoch_s || workspace.now_epoch_s - record.end_epoch_s > kMaxRecordAgeS)
       return LearningStatus::STALE_DATA;
-    if (fabsf(record.mean_room_c - workspace.config.reference_room_c) > workspace.config.max_room_context_delta_c ||
-        fabsf(record.mean_setpoint_c - workspace.config.reference_setpoint_c) >
-            workspace.config.max_setpoint_context_delta_c)
-      return LearningStatus::MIXED_CONTEXT;
     if (index > 0 && record.start_epoch_s < previous_end) return LearningStatus::TIME_DISCONTINUITY;
     if (index == 0)
       context_revision = record.context_revision;
     else if (record.context_revision != context_revision)
       return LearningStatus::MIXED_CONTEXT;
+    previous_end = record.end_epoch_s;
+    if (fabsf(record.mean_room_c - workspace.config.reference_room_c) > workspace.config.max_room_context_delta_c ||
+        fabsf(record.mean_setpoint_c - workspace.config.reference_setpoint_c) >
+            workspace.config.max_setpoint_context_delta_c)
+      continue;
+    workspace.selected_record_indices[selected_count++] = static_cast<uint8_t>(index);
+  }
+  workspace.record_count = selected_count;
+  if (selected_count == 0) return LearningStatus::INSUFFICIENT_DATA;
+  workspace.result.observed_temp_min_c = INFINITY;
+  workspace.result.observed_temp_max_c = -INFINITY;
+  workspace.result.max_abs_room_trend_k_per_h = 0.0f;
+  workspace.result.max_abs_room_trend_per_heat_k_per_h_w = 0.0f;
+  for (size_t index = 0; index < workspace.record_count; ++index) {
+    const SegmentRecord& record = fit_record(workspace, index);
     workspace.result.observed_temp_min_c = fminf(workspace.result.observed_temp_min_c, record.mean_outside_c);
     workspace.result.observed_temp_max_c = fmaxf(workspace.result.observed_temp_max_c, record.mean_outside_c);
     workspace.result.max_abs_room_trend_k_per_h =
         fmaxf(workspace.result.max_abs_room_trend_k_per_h, fabsf(record.room_trend_k_per_h));
     workspace.result.max_abs_room_trend_per_heat_k_per_h_w = fmaxf(
         workspace.result.max_abs_room_trend_per_heat_k_per_h_w, fabsf(record.room_trend_k_per_h) / record.mean_heat_w);
-    previous_end = record.end_epoch_s;
     const uint32_t day = record_day(record);
     if (workspace.day_count == 0 || workspace.day_ids[workspace.day_count - 1] != day) {
       if (workspace.day_count >= kMaxCalendarDays) return LearningStatus::INVALID_CONFIGURATION;
@@ -264,7 +278,7 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
     return LearningStatus::DAY_DOMINANCE;
 
   for (size_t index = 0; index < workspace.train_count; ++index) {
-    const float value = workspace.records[index].mean_outside_c;
+    const float value = fit_record(workspace, index).mean_outside_c;
     size_t insert_at = index;
     while (insert_at > 0 && workspace.sorted_train_temperatures[insert_at - 1] > value) {
       workspace.sorted_train_temperatures[insert_at] = workspace.sorted_train_temperatures[insert_at - 1];
@@ -282,7 +296,7 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
   uint8_t bins[3]{};
   const float bin_width = (workspace.result.train_p90_c - workspace.result.train_p10_c) / 3.0f;
   for (size_t index = 0; index < workspace.train_count; ++index) {
-    const float temperature = workspace.records[index].mean_outside_c;
+    const float temperature = fit_record(workspace, index).mean_outside_c;
     uint8_t bin = 0;
     if (temperature >= workspace.result.train_p90_c)
       bin = 2;
@@ -316,7 +330,7 @@ inline void evaluate_holdout(AdviceFitWorkspace& workspace) {
   workspace.result.validated_temp_min_c = INFINITY;
   workspace.result.validated_temp_max_c = -INFINITY;
   for (size_t index = workspace.train_count; index < workspace.record_count; ++index) {
-    const SegmentRecord& record = workspace.records[index];
+    const SegmentRecord& record = fit_record(workspace, index);
     const double weight = record.duration_s;
     const double candidate_w = house_line_power_w(workspace.result.candidate, record.mean_outside_c);
     const double active_w = house_line_power_w(workspace.active_line, record.mean_outside_c);

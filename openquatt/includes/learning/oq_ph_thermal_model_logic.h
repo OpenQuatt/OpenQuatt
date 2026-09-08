@@ -308,6 +308,13 @@ inline bool valid_thermal_model_config(const ThermalModelConfig& config) {
   return thermal_detail::valid_config(config);
 }
 
+// A valid manual control line can lie outside the learner's parameter bounds.
+// Clamp only its seed prior; the active line and retained model are unchanged.
+inline double thermal_initial_heat_loss_prior(double active_heat_loss_w_per_k, const ThermalModelConfig& config) {
+  if (!isfinite(active_heat_loss_w_per_k) || active_heat_loss_w_per_k <= 0.0) return config.initial_heat_loss_w_per_k;
+  return fmax(config.min_heat_loss_w_per_k, fmin(config.max_heat_loss_w_per_k, active_heat_loss_w_per_k));
+}
+
 inline bool initialize_thermal_model(ThermalModelState& state, const ThermalModelConfig& config) {
   if (!valid_thermal_model_config(config)) {
     state = {};

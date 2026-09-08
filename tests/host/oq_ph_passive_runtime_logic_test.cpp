@@ -283,9 +283,28 @@ void test_summary_never_exposes_readiness_without_live_valid_context() {
   assert(!summary.batch_advice_ready && !summary.thermal_model_ready && !summary.cross_validated_advice_ready);
 }
 
+void test_manual_line_outside_thermal_bounds_does_not_block_initialization() {
+  PassiveRuntimeConfig config;
+  // All three values are valid user-facing settings; H=3000 is above RLS bounds.
+  const auto active = oq_power_house::house_line_from_legacy(5.0f, 10.0f, 15000.0f);
+  assert(oq_power_house::valid_house_line(active));
+  config.thermal_model.initial_heat_loss_w_per_k =
+      thermal_initial_heat_loss_prior(active.heat_loss_w_per_k, config.thermal_model);
+  assert(config.thermal_model.initial_heat_loss_w_per_k == config.thermal_model.max_heat_loss_w_per_k);
+  PassiveRuntimeStorage state;
+  const uint8_t bytes[]{1};
+  assert(initialize_passive_runtime(state, {bytes, sizeof(bytes), 1}, config, true) ==
+         PassiveRuntimeStatus::COLLECTING);
+  assert(state.initialized && active.heat_loss_w_per_k == 3000.0f);
+  assert(thermal_initial_heat_loss_prior(1.0, config.thermal_model) == config.thermal_model.min_heat_loss_w_per_k);
+  assert(thermal_initial_heat_loss_prior(NAN, config.thermal_model) == config.thermal_model.initial_heat_loss_w_per_k);
+  assert(!passive_runtime_summary(state, 1000).auto_apply_allowed);
+}
+
 }  // namespace
 
 int main() {
+  test_manual_line_outside_thermal_bounds_does_not_block_initialization();
   test_validation_waits_for_live_observation();
   test_collects_fixed_records_and_fit_is_resumable();
   test_pause_revokes_ready_state_without_discarding_records();

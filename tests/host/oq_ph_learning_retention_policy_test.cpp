@@ -70,6 +70,7 @@ HouseLine fit_for_comparison(const Dataset& dataset) {
   for (size_t index = 0; index < dataset.count; ++index) {
     const uint8_t day = static_cast<uint8_t>(index / 2U);
     assert(day < kMaxCalendarDays);
+    workspace.selected_record_indices[index] = static_cast<uint8_t>(index);
     workspace.record_day_index[index] = day;
     ++workspace.day_record_counts[day];
   }

@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <math.h>
+#include <string.h>
 
 #include "../../openquatt/includes/learning/oq_ph_learning_fit.h"
 
@@ -143,7 +144,8 @@ void test_replayed_record_bypasses_fail_closed() {
   make_dataset(records);
   records[5].mean_room_c = 23.0f;
   assert(begin_advice_fit(records, 18, now, {150.0f, 15.0f}, quality, config, workspace) ==
-         LearningStatus::MIXED_CONTEXT);
+         LearningStatus::INSUFFICIENT_DATA);
+  assert(workspace.record_count == 17);
 
   make_dataset(records);
   records[4].start_epoch_s = kBaseEpoch + 2U * 86400U + 22U * 3600U;
@@ -208,9 +210,49 @@ void test_exact_retention_boundary_allows_sparse_season() {
   assert(workspace.result.validated_temp_min_c == records[kMaxSegmentRecords - 3U].mean_outside_c);
   assert(workspace.result.validated_temp_max_c == records[kMaxSegmentRecords - 1U].mean_outside_c);
 }
+void test_day_night_history_selects_immutable_fitting_subset() {
+  SegmentRecord records[36];
+  for (uint8_t day = 0; day < 9; ++day) {
+    for (uint8_t slot = 0; slot < 4; ++slot) {
+      auto& record = records[4U * day + slot];
+      record = fitted_record(day, 0, -5.0f + 2.0f * day + (slot % 2 == 0 ? -0.15f : 0.15f));
+      record.start_epoch_s += static_cast<uint32_t>(slot) * 21600U;
+      record.end_epoch_s = record.start_epoch_s + 14400U;
+      if (slot >= 2) {
+        record.mean_room_c = record.mean_setpoint_c = 19.0f;
+        record.mean_heat_w = 300.0f * (15.0f - record.mean_outside_c);
+      }
+    }
+  }
+  SegmentRecord original[36];
+  memcpy(original, records, sizeof(records));
+  AdviceFitWorkspace workspace;
+  auto config = fit_config();
+  QualityConfig quality;
+  const uint32_t now = kBaseEpoch + 10U * 86400U;
+  for (int target = 20; target >= 19; --target) {
+    config.reference_room_c = config.reference_setpoint_c = static_cast<float>(target);
+    assert(begin_advice_fit(records, 36, now, {150.0f, 15.0f}, quality, config, workspace) ==
+           LearningStatus::FIT_IN_PROGRESS);
+    assert(workspace.record_count == 18 && workspace.train_count == 12);
+    assert(finish_fit(workspace) == LearningStatus::ADVICE_READY);
+    assert(fabsf(workspace.result.candidate.heat_loss_w_per_k - (target == 20 ? 200.0f : 300.0f)) < 0.1f);
+    assert(memcmp(original, records, sizeof(records)) == 0);
+  }
+  config.reference_room_c = config.reference_setpoint_c = 22.0f;
+  assert(begin_advice_fit(records, 36, now, {150.0f, 15.0f}, quality, config, workspace) ==
+         LearningStatus::INSUFFICIENT_DATA);
+  assert(workspace.record_count == 0);
+  // Exclusion is not a bypass for corrupt or overlapping retained evidence.
+  records[0].duration_s = 1;
+  assert(begin_advice_fit(records, 36, now, {150.0f, 15.0f}, quality, config, workspace) ==
+         LearningStatus::SEGMENT_INELIGIBLE);
+}
+
 }  // namespace
 
 int main() {
+  test_day_night_history_selects_immutable_fitting_subset();
   test_advice_and_chronological_holdout();
   test_no_improvement_is_not_advice_ready();
   test_fail_closed_dataset_gates();

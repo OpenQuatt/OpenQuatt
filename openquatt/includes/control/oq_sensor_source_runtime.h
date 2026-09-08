@@ -231,11 +231,7 @@ class Runtime {
     const oq_flow::PumpRelayState hp1{id(hp1_is_online) && id(hp1_pump_relay).has_state(), id(hp1_pump_relay).state};
 #if OQ_TOPOLOGY_DUO
     const oq_flow::PumpRelayState hp2{id(hp2_is_online) && id(hp2_pump_relay).has_state(), id(hp2_pump_relay).state};
-#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-    input.hp1 = hp1_uses_controller ? input.controller : sample(true, id(hp1_flow));
-#else
     input.hp1 = sample(true, id(hp1_flow));
-#endif
     input.hp2 = sample(true, id(hp2_flow));
     input.outdoor_mode = outdoor_flow_mode_();
 #else

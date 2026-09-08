@@ -35,14 +35,15 @@ export const WEB_BUNDLE_BUDGETS = [
     // back-off and authoritative refresh without a second /events stream).
     // Includes stable native time editing and confirmed, stale-poll-safe saves.
     // Compact pipeline plus the bottom-plate editor/backup: ~914 kB.
-    // Keep ~5 kB margin; do not restore the pre-compaction 1 MB ceiling.
+    // Keep a maintenance margin; do not restore the pre-compaction 1 MB ceiling.
     // The manual passive-learning batch chart adds the export parser, SVG
     // renderer and stale-response handling. Keep a small maintenance margin.
-    raw: 940_000,
-    // One-time migration ceiling for structured incident monitoring, replay,
-    // the CSRF-protected deferred recovery actions, and their compact editor.
+    raw: 950_000,
+    // Passive learning status, diagnostics and the manual batch chart add
+    // 7,878 gzip bytes versus dev ad295bb8 (262,847 -> 270,725 bytes).
+    // This feature-sized increase has an explicit one-time ceiling.
     // Once this bundle is the base, the normal gzip growth limit applies again.
-    gzipBaselineCeiling: 238_000,
+    gzipBaselineCeiling: 275_000,
   },
   // Includes the compact, dark-safe ODU generation picker with unified header action and distinct badge/button,
   // the warmtetoestemming-advies modal (3 summary cards, comparison, matrix, sticky footer),
