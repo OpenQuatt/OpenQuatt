@@ -122,11 +122,8 @@ enum class ThermalUpdateStatus : uint8_t {
   ACCEPTED_COLLECTING = 0,
   ACCEPTED_READY,
   INVALID_CONFIGURATION,
-  RESET_CONTEXT,
-  RESET_TIME,
-  RESET_LONG_GAP,
   RESET_NUMERIC_STATE,
-  RESET_CONFIGURATION,
+  REJECTED_INCOMPATIBLE_CONFIGURATION,
   REJECTED_DURATION,
   REJECTED_INVALID_INTERVAL,
   REJECTED_STALE_OR_INCOMPLETE,
@@ -297,6 +294,14 @@ inline bool same_config(const ThermalModelConfig& lhs, const ThermalModelConfig&
          lhs.max_abs_residual_bias_k_per_h == rhs.max_abs_residual_bias_k_per_h;
 }
 
+inline bool compatible_model_scales(const ThermalModelConfig& lhs, const ThermalModelConfig& rhs) {
+  // Theta and covariance are expressed in these feature coordinates. Changing
+  // either scale would reinterpret persisted learned state, so it requires an
+  // explicit initialize rather than silently transforming or discarding it.
+  return lhs.loss_feature_scale_kh == rhs.loss_feature_scale_kh &&
+         lhs.heat_feature_scale_wh == rhs.heat_feature_scale_wh;
+}
+
 }  // namespace thermal_detail
 
 inline bool valid_thermal_model_config(const ThermalModelConfig& config) {
@@ -391,13 +396,15 @@ inline ThermalUpdateResult observe_thermal_interval(ThermalModelState& state, co
     result.estimate = estimate_thermal_model(state, config, observation_now_ms);
     return result;
   }
-  if (!same_config(state.bound_config, config)) {
+  if (!compatible_model_scales(state.bound_config, config)) {
     reject_without_reset(state, interval);
-    reset_state(state, config);
-    result.status = ThermalUpdateStatus::RESET_CONFIGURATION;
-    result.estimate = estimate_thermal_model(state, config, observation_now_ms);
+    result.status = ThermalUpdateStatus::REJECTED_INCOMPATIBLE_CONFIGURATION;
+    result.estimate = estimate_thermal_model(state, state.bound_config, observation_now_ms);
     return result;
   }
+  // Policy, prior, readiness, and plausibility changes do not reinterpret
+  // theta or covariance. Bind them without erasing collected evidence.
+  if (!same_config(state.bound_config, config)) state.bound_config = config;
   if (!interval.complete || !interval.inputs_fresh) {
     reject_without_reset(state, interval);
     result.status = ThermalUpdateStatus::REJECTED_STALE_OR_INCOMPLETE;
@@ -406,21 +413,18 @@ inline ThermalUpdateResult observe_thermal_interval(ThermalModelState& state, co
   }
   if (!interval.generations_consistent || interval.context_revision == 0) {
     reject_without_reset(state, interval);
-    reset_state(state, config);
-    result.status = ThermalUpdateStatus::RESET_CONTEXT;
+    result.status = ThermalUpdateStatus::REJECTED_STALE_CONTEXT;
     result.estimate = estimate_thermal_model(state, config, observation_now_ms);
     return result;
   }
   if (interval.start_monotonic_ms == 0 || interval.end_monotonic_ms <= interval.start_monotonic_ms ||
       (state.last_observation_monotonic_ms != 0 && interval.start_monotonic_ms < state.last_observation_monotonic_ms)) {
     reject_without_reset(state, interval);
-    reset_state(state, config);
-    result.status = ThermalUpdateStatus::RESET_TIME;
+    result.status = ThermalUpdateStatus::REJECTED_INVALID_INTERVAL;
     result.estimate = estimate_thermal_model(state, config, observation_now_ms);
     return result;
   }
   const bool generation_owner_bound = state.context_revision != 0;
-  const bool generation_mismatch = generation_owner_bound && state.context_revision != interval.context_revision;
   const bool stale_generation = generation_owner_bound && interval.context_revision < state.context_revision;
   if (stale_generation) {
     reject_without_reset(state, interval);
@@ -428,27 +432,10 @@ inline ThermalUpdateResult observe_thermal_interval(ThermalModelState& state, co
     result.estimate = estimate_thermal_model(state, config, observation_now_ms);
     return result;
   }
-  if (generation_mismatch) {
-    reject_without_reset(state, interval);
-    reset_state(state, config);
-    // Context revisions are monotonic within one boot; initialization is the reboot boundary.
-    state.context_revision = interval.context_revision;
-    result.status = ThermalUpdateStatus::RESET_CONTEXT;
-    result.estimate = estimate_thermal_model(state, config, observation_now_ms);
-    return result;
-  }
   const uint64_t duration_ms = interval.end_monotonic_ms - interval.start_monotonic_ms;
   if (duration_ms < config.min_interval_ms || duration_ms > config.max_interval_ms) {
     reject_without_reset(state, interval);
     result.status = ThermalUpdateStatus::REJECTED_DURATION;
-    result.estimate = estimate_thermal_model(state, config, observation_now_ms);
-    return result;
-  }
-  if (state.last_interval_end_monotonic_ms != 0 &&
-      interval.start_monotonic_ms - state.last_interval_end_monotonic_ms > config.max_model_gap_ms) {
-    reject_without_reset(state, interval);
-    reset_state(state, config);
-    result.status = ThermalUpdateStatus::RESET_LONG_GAP;
     result.estimate = estimate_thermal_model(state, config, observation_now_ms);
     return result;
   }
@@ -485,11 +472,9 @@ inline ThermalUpdateResult observe_thermal_interval(ThermalModelState& state, co
     return result;
   }
 
-  const uint64_t forgetting_elapsed_ms = state.last_interval_end_monotonic_ms == 0
-                                             ? duration_ms
-                                             : interval.end_monotonic_ms - state.last_interval_end_monotonic_ms;
-  const double forgetting_elapsed_h = static_cast<double>(forgetting_elapsed_ms) / 3600000.0;
-  const double interval_forgetting_factor = pow(config.forgetting_factor_per_hour, forgetting_elapsed_h);
+  // Forget as new evidence arrives. An unobserved summer/power-off gap must
+  // not inflate covariance or erase a model that would survive a reboot.
+  const double interval_forgetting_factor = pow(config.forgetting_factor_per_hour, duration_h);
   const double sqrt_duration_h = sqrt(duration_h);
   const double normalized_feature_loss = feature_loss / sqrt_duration_h;
   const double normalized_feature_heat = feature_heat / sqrt_duration_h;
@@ -616,29 +601,18 @@ inline ThermalUpdateResult invalidate_thermal_observation(ThermalModelState& sta
     result.estimate = estimate_thermal_model(state, config, now_monotonic_ms);
     return result;
   }
-  if (!same_config(state.bound_config, config)) {
+  if (!compatible_model_scales(state.bound_config, config)) {
     ThermalInterval invalid;
     invalid.end_monotonic_ms = now_monotonic_ms;
     reject_without_reset(state, invalid);
-    reset_state(state, config);
-    result.status = ThermalUpdateStatus::RESET_CONFIGURATION;
-    result.estimate = estimate_thermal_model(state, config, now_monotonic_ms);
+    result.status = ThermalUpdateStatus::REJECTED_INCOMPATIBLE_CONFIGURATION;
+    result.estimate = estimate_thermal_model(state, state.bound_config, now_monotonic_ms);
     return result;
   }
+  if (!same_config(state.bound_config, config)) state.bound_config = config;
   if (now_monotonic_ms == 0 ||
       (state.last_observation_monotonic_ms != 0 && now_monotonic_ms < state.last_observation_monotonic_ms)) {
-    reset_state(state, config);
-    result.status = ThermalUpdateStatus::RESET_TIME;
-    result.estimate = estimate_thermal_model(state, config, now_monotonic_ms);
-    return result;
-  }
-  if (state.last_interval_end_monotonic_ms != 0 &&
-      now_monotonic_ms - state.last_interval_end_monotonic_ms > config.max_model_gap_ms) {
-    ThermalInterval invalid;
-    invalid.end_monotonic_ms = now_monotonic_ms;
-    reject_without_reset(state, invalid);
-    reset_state(state, config);
-    result.status = ThermalUpdateStatus::RESET_LONG_GAP;
+    result.status = ThermalUpdateStatus::REJECTED_INVALID_INTERVAL;
     result.estimate = estimate_thermal_model(state, config, now_monotonic_ms);
     return result;
   }

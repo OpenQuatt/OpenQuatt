@@ -26,6 +26,7 @@ enum class ModelValidationStatus : uint8_t {
   MODEL_DISAGREEMENT,
   THERMAL_STORAGE_ACTIVE,
   MODELS_CONSISTENT,
+  WAITING_FOR_VALID_OBSERVATION,
 };
 
 struct ModelValidationResult {
@@ -48,6 +49,8 @@ inline const char* model_validation_status_name(ModelValidationStatus status) {
   switch (status) {
     case ModelValidationStatus::INVALID_CONFIGURATION:
       return "invalid_model_validation_configuration";
+    case ModelValidationStatus::WAITING_FOR_VALID_OBSERVATION:
+      return "waiting_for_valid_observation";
     case ModelValidationStatus::BATCH_UNAVAILABLE:
       return "batch_model_unavailable";
     case ModelValidationStatus::THERMAL_UNAVAILABLE:

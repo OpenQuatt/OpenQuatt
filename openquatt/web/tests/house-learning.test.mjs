@@ -17,6 +17,7 @@ const {
   HOUSE_LEARNING_STATUS_INTERVAL_MS,
   downloadHouseLearningExport,
   isHouseLearningResetConfirmed,
+  loadHouseLearningChart,
   normalizeHouseLearningStatus,
   refreshHouseLearningStatus,
   resetHouseLearningData,
@@ -43,6 +44,11 @@ test.afterEach(() => {
   state.houseLearningLastFetchAt = 0;
   state.houseLearningFetchPromise = null;
   state.houseLearningRequestId = 0;
+  state.houseLearningChart = null;
+  state.houseLearningChartLoading = false;
+  state.houseLearningChartError = "";
+  state.houseLearningChartFetchedAt = 0;
+  state.houseLearningChartRequestId = 0;
   state.houseLearningReset = "";
   state.houseLearningResetError = "";
   state.root = null;
@@ -156,7 +162,7 @@ test("directe heating-entry vervangt de laadstatus ook na een geslaagde respons"
   let rendered = "";
   let renders = 0;
   const statusNode = { innerHTML: "" };
-  const panel = { removed: false, remove() { this.removed = true; }, querySelector: () => statusNode };
+  const panel = { removed: false, remove() { this.removed = true; }, querySelector: (selector) => selector === "[data-oq-house-learning-status]" ? statusNode : null };
   state.root = { querySelector: () => panel };
   setRenderCallback(() => { renders += 1; rendered = renderHouseLearningSettings(); });
   let respond;
@@ -288,6 +294,27 @@ test("reset negeert een oude status en meldt pas succes na leeg, gepauzeerd en g
   assert.equal(isHouseLearningResetConfirmed({ ...state.houseLearningStatus, status: "reset_pending" }), false);
   assert.equal(state.houseLearningStatus.records, 0);
   assert.match(state.controlNotice, /gewist.*gepauzeerd/);
+});
+
+test("reset wist een lopende grafiekexport en laat de laadtoestand niet hangen", async () => {
+  state.appView = "settings";
+  state.settingsGroup = "heating";
+  state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(true) };
+  let releaseExport;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    if (requests === 1) return new Promise((resolve) => { releaseExport = resolve; });
+    return { ok: true, status: 200, json: async () => statusPayload({ enabled: false, records: 0, journal_status: "cleared" }) };
+  };
+  const load = loadHouseLearningChart();
+  assert.equal(state.houseLearningChartLoading, true);
+  assert.equal(await resetHouseLearningData(async () => { state.controlError = ""; }, { confirmReset: () => true, pollDelays: [0] }), true);
+  assert.equal(state.houseLearningChartLoading, false);
+  assert.equal(state.houseLearningChart, null);
+  releaseExport({ ok: true, status: 200, json: async () => ({ schema: 1, mode: "passive", record_columns: ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w"], records: [[1, 2, 5, 1000]] }) });
+  assert.equal(await load, false);
+  assert.equal(state.houseLearningChart, null);
 });
 
 test("geaccepteerde maar onbevestigde reset blijft onzeker en wordt niet opnieuw verstuurd", async () => {
@@ -609,4 +636,25 @@ test("preview-reset pauzeert leren en bevestigt gewiste opslag zoals de firmware
   assert.equal(isHouseLearningResetConfirmed(status), true);
   assert.equal(status.rlsSamples, 0);
   assert.equal(mockState.houseLearning.resetCount, 1);
+});
+
+
+test("grafiekpatch behoudt meetpuntfocus bij ongewijzigde data en volgt nieuwe fit", () => {
+  state.entities = { houseLearningEnabled: switchEntity(true), houseColdTemp: { value: -10 }, houseOutdoorMax: { value: 16 }, housePower: { value: 5200 } };
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload());
+  state.houseLearningChart = [];
+  state.houseLearningChartFetchedAt = 100;
+  const statusNode = { innerHTML: "" };
+  let signature;
+  let writes = 0;
+  const chartNode = { getAttribute: () => signature, setAttribute: (_key, value) => { signature = value; }, set innerHTML(_value) { writes += 1; } };
+  const panel = { querySelector: (selector) => selector === "[data-oq-house-learning-status]" ? statusNode : chartNode };
+  state.root = { querySelector: () => panel };
+  patchHouseLearningSettingsStatus();
+  patchHouseLearningSettingsStatus();
+  assert.equal(writes, 1);
+  state.houseLearningStatus.hBatch = 210;
+  patchHouseLearningSettingsStatus();
+  assert.equal(writes, 2);
 });

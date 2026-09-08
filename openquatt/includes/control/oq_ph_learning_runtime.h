@@ -59,6 +59,7 @@ struct RuntimeStorage {
   uint8_t context[kMaxPassiveContextBytes]{};
   size_t context_size = 0;
   LearningJournalStore journal;
+  uint32_t thermal_epoch = 0;
   char json[kExportJsonBufferSize]{};
   DiagnosticRow rows[kMaxExportDiagnosticRows];
   DiagnosticCaptureGate diagnostic_capture;
@@ -122,9 +123,9 @@ class Runtime {
     build_context_(state);
     const bool enabled = id(oq_ph_learning_enabled).state;
     auto& input = state.input;
-    // Wait for selected sources before binding a boot context. A temporary
-    // missing receipt pauses collection. A resolver route/provenance change
-    // starts a new dataset, including changes observed between learner ticks.
+    // Missing selected values pause collection, not restoration or checkpointing.
+    // A resolver route/provenance change
+    // interrupts unfinished intervals, including changes between learner ticks.
     bool context_valid = state.context_size > 0;
     for (const auto& source : state.sources) context_valid = context_valid && source.valid;
     const bool sources_changed = context_valid && observe_source_revisions(state.source_revisions, state.sources);
@@ -138,32 +139,39 @@ class Runtime {
     input.operation.captured_context_revision = state.context_revision;
     PassiveContextView context{state.context, state.context_size, state.context_revision};
     const bool reset_processed = state.reset_requested;
-    if (state.measurement_context_changed || context_changed || reset_processed) {
+    if (reset_processed) {
       reset_passive_runtime(state.learner);
       state.journal.reset(
           [&state]() { return erase_slots_(state.partition); },
           [&state](size_t slot, uint8_t* data, size_t size) { return read_slot_(state.partition, slot, data, size); });
-      state.measurement_context_changed = false;
     } else if (state.evaluation_policy_changed && state.learner.initialized) {
       refresh_passive_evaluation(state.learner, state.config);
     }
+    state.measurement_context_changed = false;
     state.evaluation_policy_changed = false;
     if (reset_processed) {
       state.reset_requested = false;
+      state.thermal_epoch = 0;
       state.row_count = state.row_next = 0;
       reset_diagnostic_capture(state.diagnostic_capture);
     }
-    if (context_valid && !state.learner.initialized)
+    if (state.context_size > 0 && !state.learner.initialized)
       initialize_passive_runtime(state.learner, context, state.config, enabled);
-    if (state.learner.initialized && context_valid && epoch != 0 && !state.journal.loaded) {
+    if (state.learner.initialized && epoch != 0 && !state.journal.loaded) {
       LearningJournalRecords records;
       if (state.journal.load(
               context, state.config.quality, epoch,
               [&state](size_t slot, uint8_t* data, size_t size) {
                 return read_slot_(state.partition, slot, data, size);
               },
-              records))
-        restore_passive_records(state.learner, records);
+              records, now_ms)) {
+        restore_passive_records(state.learner, records, epoch);
+        if (records.restore_thermal(state.learner.thermal_state, state.config.thermal_model, now_ms,
+                                    state.context_revision, state.thermal_epoch)) {
+          state.learner.diagnostics.accepted_thermal_intervals = state.learner.thermal_state.accepted_samples;
+          state.journal.persisted_thermal_samples = state.learner.thermal_state.accepted_samples;
+        }
+      }
     }
 
     const auto calorimetry = evaluate_calorimetry(input, state.config.quality);
@@ -174,7 +182,9 @@ class Runtime {
     state.source_diagnostics = combined_snapshot_diagnostics(batch, dynamic);
     state.tick = PassiveTickInput{};
     auto& tick = state.tick;
-    tick.context = context;
+    tick.context = context_valid ? context
+                                 : PassiveContextView{state.learner.context_bytes, state.learner.context_size,
+                                                      state.learner.context_revision};
     tick.now_monotonic_ms = now_ms;
     tick.now_epoch_s = epoch;
     tick.opted_in = enabled;
@@ -191,16 +201,15 @@ class Runtime {
     tick.batch_snapshot = batch.snapshot;
     tick.dynamic_snapshot_available = dynamic.has_snapshot;
     tick.dynamic_snapshot = dynamic.snapshot;
-    if (state.learner.initialized && context_valid) {
-      tick_passive_runtime(state.learner, tick);
-    } else if (state.learner.initialized) {
-      pause_passive_runtime(state.learner, now_ms);
-    }
+    const uint32_t thermal_samples_before = state.learner.thermal_state.accepted_samples;
+    // The paused tick still prunes expired records before checkpointing.
+    if (state.learner.initialized) tick_passive_runtime(state.learner, tick);
+    if (state.learner.thermal_state.accepted_samples > thermal_samples_before) state.thermal_epoch = epoch;
     const auto diagnostic_capture = diagnostic_capture_decision(state.diagnostic_capture, enabled && !reset_processed);
     if (diagnostic_capture.capture)
       capture_diagnostics_(state, dynamic, calorimetry, epoch, diagnostic_capture.use_previous);
     const bool persistence_window_safe = input.operation.service_or_ota_valid && !input.operation.service_or_ota;
-    if (state.learner.initialized && context_valid && epoch != 0 && enabled && persistence_window_safe)
+    if (state.learner.initialized && !state.learner.blocked && epoch != 0 && persistence_window_safe)
       state.journal.save(
           passive_runtime_dataset(state.learner), state.config.quality, epoch, now_ms,
           state.learner.diagnostics.accepted_batch_records,
@@ -208,7 +217,8 @@ class Runtime {
           [&state](size_t slot, const uint8_t* data, size_t size) {
             return esp_partition_write(state.partition, slot_offset_(slot), data, size) == ESP_OK;
           },
-          [&state](size_t slot, uint8_t* data, size_t size) { return read_slot_(state.partition, slot, data, size); });
+          [&state](size_t slot, uint8_t* data, size_t size) { return read_slot_(state.partition, slot, data, size); },
+          &state.learner.thermal_state, state.thermal_epoch);
     state.summary = passive_runtime_summary(state.learner, now_ms);
     const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - started_us;
     if (elapsed > state.max_tick_us) state.max_tick_us = elapsed;

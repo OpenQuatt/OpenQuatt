@@ -146,7 +146,7 @@ void test_new_reset_cannot_reuse_previous_success() {
   assert(strcmp(store.status, "reset_failed") == 0);
 }
 
-void test_incompatible_context_and_legacy_schema_start_empty() {
+void test_source_change_restores_but_obsolete_schema_does_not() {
   Flash flash;
   LearningJournalStore store;
   LearningJournalRecords view;
@@ -155,7 +155,7 @@ void test_incompatible_context_and_legacy_schema_start_empty() {
   constexpr uint8_t changed[] = {2, 1, 9};
   LearningJournalStore different;
   different.setup(true);
-  assert(!different.load(
+  assert(different.load(
       {changed, sizeof(changed), 1}, QualityConfig{}, kEpoch,
       [&](size_t slot, uint8_t* data, size_t size) { return flash.read(slot, data, size); }, view));
   assert(different.available);
@@ -164,12 +164,93 @@ void test_incompatible_context_and_legacy_schema_start_empty() {
   assert(!load(legacy, flash, view));
   assert(legacy.available);
 }
+
+ThermalInterval model_interval(uint64_t start) {
+  ThermalInterval interval;
+  interval.start_monotonic_ms = start;
+  interval.end_monotonic_ms = start + 1800000;
+  interval.context_revision = 1;
+  interval.complete = interval.inputs_fresh = interval.generations_consistent = true;
+  interval.operational_gates_passed = interval.hidden_heat_exclusion_valid = interval.hidden_heat_excluded = true;
+  interval.indoor_start_c = 20;
+  interval.indoor_end_c = 20.1;
+  interval.mean_indoor_c = 20.05;
+  interval.mean_outside_c = 5;
+  interval.mean_heat_w = 4200;
+  return interval;
+}
+
+ThermalModelState learned_model() {
+  ThermalModelState model;
+  assert(initialize_thermal_model(model, ThermalModelConfig{}));
+  assert(observe_thermal_interval(model, model_interval(1000), ThermalModelConfig{}).accepted);
+  return model;
+}
+
+void test_thermal_only_checkpoint_survives_reboot_and_torn_write() {
+  Flash flash;
+  LearningJournalStore store;
+  LearningJournalRecords view;
+  assert(!load(store, flash, view));
+  auto model = learned_model();
+  auto save_model = [&](uint64_t now) {
+    return store.save(
+        {nullptr, 0, context()}, QualityConfig{}, kEpoch, now, 0, [&](size_t slot) { return flash.erase(slot); },
+        [&](size_t slot, const uint8_t* data, size_t size) { return flash.write(slot, data, size); },
+        [&](size_t slot, uint8_t* data, size_t size) { return flash.read(slot, data, size); }, &model, kEpoch);
+  };
+  assert(save_model(1000));
+  const auto before = model;
+  ++model.accepted_samples;
+  assert(!save_model(2000));
+  flash.fault = Fault::TORN_WRITE;
+  assert(!save_model(kLater));
+  flash.fault = Fault::NONE;
+  LearningJournalStore reboot;
+  assert(load(reboot, flash, view));
+  assert(view.record_count == 0);
+  ThermalModelState restored;
+  uint32_t epoch = 0;
+  assert(view.restore_thermal(restored, ThermalModelConfig{}, 500, 9, epoch));
+  assert(epoch == kEpoch && restored.accepted_samples == before.accepted_samples);
+  assert(restored.theta_loss_scaled == before.theta_loss_scaled);
+  assert(restored.theta_heat_scaled == before.theta_heat_scaled);
+  assert(restored.covariance_00 == before.covariance_00 && restored.covariance_01 == before.covariance_01);
+  assert(restored.information_11 == before.information_11);
+  assert(restored.context_revision == 9 && restored.last_interval_end_monotonic_ms == 500);
+  assert(!estimate_thermal_model(restored, ThermalModelConfig{}, 500).ready);
+  reboot.persisted_thermal_samples = restored.accepted_samples;
+  assert(!reboot.save_due(kLater, 0, 0, restored.accepted_samples));
+  auto continuous = before;
+  auto resumed = model_interval(500);
+  resumed.context_revision = 9;
+  assert(observe_thermal_interval(restored, resumed, ThermalModelConfig{}).accepted);
+  assert(
+      observe_thermal_interval(continuous, model_interval(before.last_interval_end_monotonic_ms), ThermalModelConfig{})
+          .accepted);
+  assert(restored.theta_loss_scaled == continuous.theta_loss_scaled);
+  assert(restored.theta_heat_scaled == continuous.theta_heat_scaled);
+  assert(restored.covariance_11 == continuous.covariance_11);
+  assert(restored.accepted_samples == continuous.accepted_samples);
+  // A season without observations behaves like a reboot, not a numeric reset.
+  auto after_summer = before;
+  assert(observe_thermal_interval(after_summer, model_interval(180ULL * 86400000ULL), ThermalModelConfig{}).accepted);
+  assert(after_summer.reset_count == before.reset_count);
+  assert(after_summer.theta_loss_scaled == continuous.theta_loss_scaled);
+  assert(after_summer.covariance_11 == continuous.covariance_11);
+  assert(reboot.save_due(kLater, 0, 0, restored.accepted_samples));
+  assert(reset(reboot, flash));
+  LearningJournalStore cleared;
+  assert(!load(cleared, flash, view));
+}
+
 }  // namespace
 
 int main() {
+  test_thermal_only_checkpoint_survives_reboot_and_torn_write();
   test_save_restore_and_write_rate();
   test_failed_writes_do_not_destroy_previous_slot_or_start_retry_loops();
   test_reset_and_restore_failures_are_reported_without_claiming_success();
-  test_incompatible_context_and_legacy_schema_start_empty();
+  test_source_change_restores_but_obsolete_schema_does_not();
   test_new_reset_cannot_reuse_previous_success();
 }

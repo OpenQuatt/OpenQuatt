@@ -204,6 +204,16 @@ kalibratiebevestiging of meetgrensinstellingen; automatisch toepassen bestaat no
 `Diagnostische leerdata downloaden` levert een lokale JSON-export. Voorlopige schattingen zijn nog
 geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](power-house-autotuning-development.md).
 
+De grafiek `Woninglijn en meetresultaten` vergelijkt de ingestelde woninglijn (blauw) met
+de geaccepteerde stabiele meetperioden (punten). Een beschikbare geleerde woninglijn wordt
+groen getoond; buiten het gemeten temperatuurbereik is deze gestippeld. Dit is een
+doortrekking van het model, geen meting. De woninglijn toont de basiswarmtevraag, zonder
+de tijdelijke kamercorrectie of vermogensbegrenzing.
+
+Haal de meetpunten op met de knop bij de grafiek. Bij een meetpunt kun je datum, meetduur,
+gemiddelde buitentemperatuur en warmtevermogen bekijken. Zonder voldoende gegevens blijft
+de geleerde lijn weg; de grafiek verandert geen instellingen.
+
 ### Koelen
 
 Hier staan de instellingen voor koeling en dauwpuntbeveiliging.

@@ -277,17 +277,19 @@ inline LearningDatasetView passive_runtime_dataset(const PassiveRuntimeStorage& 
 }
 
 // A validated immutable record view is read before its backing slot is reused.
-// Restoring a batch never restores fit readiness or boot-local RLS evidence.
+// Restore records first; the journal may then restore the separate thermal state.
+// Fit readiness and unfinished intervals are always recomputed.
 template <typename RecordView>
-inline bool restore_passive_records(PassiveRuntimeStorage& state, const RecordView& records) {
+inline bool restore_passive_records(PassiveRuntimeStorage& state, const RecordView& records, uint32_t now_epoch_s = 0) {
   if (!state.initialized || state.blocked || records.record_count > kMaxSegmentRecords) return false;
   passive_runtime_detail::clear_evidence(state);
   for (size_t index = 0; index < records.record_count; ++index) {
     SegmentRecord record = records[index];
+    if (now_epoch_s != 0 && record.end_epoch_s <= now_epoch_s && now_epoch_s - record.end_epoch_s > kMaxRecordAgeS)
+      continue;
     record.context_revision = state.context_revision;
-    state.records[index] = record;
+    state.records[state.record_count++] = record;
   }
-  state.record_count = records.record_count;
   state.restored_records = state.record_count > 0;
   state.fit_pending = state.record_count > 0;
   state.status = state.opted_in ? PassiveRuntimeStatus::COLLECTING : PassiveRuntimeStatus::PAUSED;
@@ -319,7 +321,8 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   }
   if (state.diagnostics.tick_count != UINT32_MAX) ++state.diagnostics.tick_count;
   if (!valid_context(input.context)) {
-    clear_evidence(state);
+    clear_transient_collection(state);
+    state.thermal_state.recent_data_valid = false;
     state.blocked = true;
     state.status = PassiveRuntimeStatus::INVALID_INPUT;
     return state.status;
@@ -334,21 +337,42 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   }
   const bool generation_decreased = input.context.context_revision < state.context_revision;
   if (generation_decreased) {
-    clear_evidence(state);
+    clear_transient_collection(state);
+    state.thermal_state.recent_data_valid = false;
     state.blocked = true;
     state.status = PassiveRuntimeStatus::STALE_CONTEXT;
     return state.status;
   }
   const bool generations_changed = input.context.context_revision != state.context_revision;
   if (!generations_changed && !same_context_bytes(state, input.context)) {
-    clear_evidence(state);
+    clear_transient_collection(state);
+    state.thermal_state.recent_data_valid = false;
     state.blocked = true;
     state.status = PassiveRuntimeStatus::STALE_CONTEXT;
     return state.status;
   }
+  RecordBuffer buffer{state.records, state.record_count, kMaxSegmentRecords};
+  const bool oldest_record_expired = state.record_count > 0 && state.records[0].end_epoch_s <= input.now_epoch_s &&
+                                     input.now_epoch_s - state.records[0].end_epoch_s > kMaxRecordAgeS;
+  if (oldest_record_expired) cancel_fit(state);
+  const LearningStatus prune_status = prune_expired_records(buffer, input.now_epoch_s);
+  state.record_count = buffer.count;
+  if (prune_status != LearningStatus::OK) {
+    clear_transient_collection(state);
+    state.thermal_state.recent_data_valid = false;
+    state.blocked = true;
+    state.status = PassiveRuntimeStatus::TIME_DISCONTINUITY;
+    return state.status;
+  }
+  if (oldest_record_expired) state.fit_pending = state.record_count > 0;
+
   if (generations_changed) {
-    clear_evidence(state);
+    clear_transient_collection(state);
     bind_context(state, input.context);
+    // Revision separates unfinished intervals, not the retained house history.
+    for (size_t i = 0; i < state.record_count; ++i) state.records[i].context_revision = state.context_revision;
+    state.thermal_state.context_revision = state.context_revision;
+    state.thermal_state.recent_data_valid = false;
     state.last_epoch_s = input.now_epoch_s;
     state.last_monotonic_ms = input.now_monotonic_ms;
     state.opted_in = input.opted_in;
@@ -357,7 +381,8 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   }
   if ((state.last_monotonic_ms != 0 && input.now_monotonic_ms <= state.last_monotonic_ms) ||
       (state.last_epoch_s != 0 && input.now_epoch_s < state.last_epoch_s)) {
-    clear_evidence(state);
+    clear_transient_collection(state);
+    state.thermal_state.recent_data_valid = false;
     state.blocked = true;
     state.status = PassiveRuntimeStatus::TIME_DISCONTINUITY;
     return state.status;
@@ -366,19 +391,6 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   state.last_epoch_s = input.now_epoch_s;
   state.opted_in = input.opted_in;
 
-  RecordBuffer buffer{state.records, state.record_count, kMaxSegmentRecords};
-  const bool oldest_record_expired = state.record_count > 0 && state.records[0].end_epoch_s <= input.now_epoch_s &&
-                                     input.now_epoch_s - state.records[0].end_epoch_s > kMaxRecordAgeS;
-  if (oldest_record_expired) cancel_fit(state);
-  const LearningStatus prune_status = prune_expired_records(buffer, input.now_epoch_s);
-  state.record_count = buffer.count;
-  if (prune_status != LearningStatus::OK) {
-    clear_evidence(state);
-    state.blocked = true;
-    state.status = PassiveRuntimeStatus::TIME_DISCONTINUITY;
-    return state.status;
-  }
-  if (oldest_record_expired) state.fit_pending = state.record_count > 0;
   if (!input.opted_in) {
     clear_transient_collection(state);
     invalidate_dynamic(state, input.now_monotonic_ms);
@@ -485,6 +497,7 @@ inline PassiveRuntimeSummary passive_runtime_summary(const PassiveRuntimeStorage
   summary.batch = state.batch_result;
   summary.thermal = estimate_thermal_model(state.thermal_state, state.config.thermal_model, now_monotonic_ms);
   summary.thermal_model_ready = live_ready_context && summary.thermal.ready;
+  if (state.initialized) summary.validation.status = ModelValidationStatus::WAITING_FOR_VALID_OBSERVATION;
   if (live_ready_context)
     summary.validation = validate_house_models(state.batch_result, state.thermal_state, state.config.thermal_model,
                                                now_monotonic_ms, state.context_revision, state.config.validation);

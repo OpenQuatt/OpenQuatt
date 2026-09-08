@@ -93,8 +93,6 @@ inline const char* snapshot_source_status_name(SnapshotSourceStatus status) {
       return "context_revision_mismatch";
     case SnapshotSourceStatus::FLOW_OUT_OF_RANGE:
       return "flow_out_of_range";
-    case SnapshotSourceStatus::SERIES_JUNCTION_MISMATCH:
-      return "series_junction_mismatch";
   }
   return "unknown";
 }

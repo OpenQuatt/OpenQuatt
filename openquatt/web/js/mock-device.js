@@ -5577,16 +5577,20 @@
   }
 
   function getHouseLearningExportPayload() {
+    const now = Math.floor(Date.now() / 1000);
+    const batchDurationS = 4 * 3600;
     return {
       schema: 1,
       mode: "passive",
-      diagnostic_only: true,
-      records: Array.from({ length: Math.min(state.houseLearning.records, 12) }, (_item, index) => ({
-        sequence: index + 1,
-        outside_c: Number((8.2 + index * 0.1).toFixed(1)),
-        room_c: Number((20.4 + index * 0.03).toFixed(2)),
-        heat_w: 2800 + index * 45,
-      })),
+      auto_apply_allowed: false,
+      record_columns: ["start_epoch_s", "end_epoch_s", "mean_room_c", "mean_setpoint_c", "mean_outside_c", "mean_heat_w", "room_trend_k_per_h", "context_revision"],
+      records: Array.from({ length: Math.min(state.houseLearning.records, 12) }, (_item, index) => {
+        const end = now - ((12 - index) * (6 * 3600));
+        const outside = 2.5 + (index * 1.05);
+        return [end - batchDurationS, end, Number((20.3 + index * 0.02).toFixed(2)), 20.5, Number(outside.toFixed(1)), Math.round(186.4 * (16.8 - outside)), 0.01, 8];
+      }),
+      diagnostic_columns: [],
+      diagnostics: [],
     };
   }
 

@@ -221,7 +221,7 @@ int main(int argc, char** argv) {
     previous_monotonic = snapshot.monotonic_ms;
     previous_epoch = snapshot.epoch_s;
     if (cohort_set && snapshot.context_revision != cohort_revision) {
-      counters.discarded_cohort_records += learner.record_count;
+      // Completed records survive source changes; keep the legacy discard count at zero.
       ++counters.cohort_changes;
     }
     cohort_revision = snapshot.context_revision;

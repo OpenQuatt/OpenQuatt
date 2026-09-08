@@ -19,7 +19,6 @@ constexpr uint32_t kAbsoluteMaxMeasurementSkewMs = 60U * 60U * 1000U;
 // Phase 1 uses one fixed water-side contract for the supported profiles. A
 // later apply phase must establish measurement uncertainty independently.
 constexpr float kPassiveMaximumFlowLph = 3000.0f;
-constexpr float kPassiveSeriesJunctionToleranceC = 1.0f;
 constexpr size_t kMaxSourceMeasurements = 19;
 constexpr size_t kSystemSourceMeasurements = 5;
 constexpr size_t kSourceMeasurementsPerHeatPump = 7;
@@ -182,7 +181,6 @@ enum class SnapshotSourceStatus : uint8_t {
   OPERATIONAL_CONTEXT_STALE,
   CONTEXT_REVISION_MISMATCH,
   FLOW_OUT_OF_RANGE,
-  SERIES_JUNCTION_MISMATCH,
 };
 
 struct SnapshotBuildResult {
@@ -365,7 +363,6 @@ inline uint32_t reasons_for_status(SnapshotSourceStatus status) {
     case SnapshotSourceStatus::BOILER_ACTIVE:
       return INVALID_BOILER_HEAT;
     case SnapshotSourceStatus::FLOW_OUT_OF_RANGE:
-    case SnapshotSourceStatus::SERIES_JUNCTION_MISMATCH:
       return INVALID_SOURCE_UNCERTAIN;
     default:
       return INVALID_ESSENTIAL_SOURCE;
@@ -381,9 +378,11 @@ struct CalorimetryResult {
   bool valid = false;
 };
 
-// The same primitive feeds learner snapshots and diagnostic rows. It validates
-// the fixed water / HP1->HP2 measurement boundary once and never infers heat
-// from control demand or room response.
+// The same primitive feeds learner snapshots and diagnostic rows. It computes
+// heat from each pump's own calibrated water-side delta-T, while retaining the
+// finite, range, identity, freshness, and timing checks for every measurement.
+// HP1 outlet and HP2 inlet are separate sensor paths, so their calibration
+// offset must not reject learning.
 inline CalorimetryResult evaluate_calorimetry(const LearningSourceInput& input, const QualityConfig& quality) {
   CalorimetryResult result;
   if (!valid_quality_config(quality) ||
@@ -445,10 +444,6 @@ inline CalorimetryResult evaluate_calorimetry(const LearningSourceInput& input, 
   double water_sum_c = static_cast<double>(input.hp1.water_in_c.value) + input.hp1.water_out_c.value;
   size_t water_count = 2;
   if (input.topology == HydronicTopology::DUO_SERIES) {
-    if (fabsf(input.hp1.water_out_c.value - input.hp2.water_in_c.value) > kPassiveSeriesJunctionToleranceC) {
-      result.status = SnapshotSourceStatus::SERIES_JUNCTION_MISMATCH;
-      return result;
-    }
     water_sum_c += static_cast<double>(input.hp2.water_in_c.value) + input.hp2.water_out_c.value;
     water_count = 4;
   }

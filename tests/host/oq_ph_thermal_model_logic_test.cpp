@@ -115,7 +115,7 @@ void test_stationary_rank_one_data_never_becomes_ready() {
   assert((result.estimate.readiness_reasons & THERMAL_READY_HEAT_SPAN) != 0);
 }
 
-void test_missing_stale_and_context_changes_reset() {
+void test_missing_stale_and_context_changes_preserve_learning() {
   const auto config = test_config();
   ThermalModelState state;
   train_synthetic(state, config, 10);
@@ -132,62 +132,69 @@ void test_missing_stale_and_context_changes_reset() {
   assert(result.accepted && state.accepted_samples == 11 && state.recent_data_valid);
 
   train_synthetic(state, config, 10);
+  const uint32_t accepted_before_context_change = state.accepted_samples;
+  const double theta_loss_before_context_change = state.theta_loss_scaled;
+  const double covariance_before_context_change = state.covariance_00;
   auto changed = exact_interval(state.last_interval_end_monotonic_ms, 0.5, 20.0, 5.0, 3000.0);
   ++changed.context_revision;
   result = observe_thermal_interval(state, changed, config);
-  assert(result.status == ThermalUpdateStatus::RESET_CONTEXT);
-  assert(!result.accepted && state.accepted_samples == 0);
+  assert(result.accepted && state.accepted_samples == accepted_before_context_change + 1U);
+  assert(state.theta_loss_scaled != theta_loss_before_context_change ||
+         state.covariance_00 != covariance_before_context_change);
   assert(state.context_revision == changed.context_revision);
   const uint64_t context_watermark_ms = state.last_observation_monotonic_ms;
 
   auto late_previous_context = exact_interval(context_watermark_ms, 0.5, 20.0, 5.0, 3000.0);
   result = observe_thermal_interval(state, late_previous_context, config);
   assert(result.status == ThermalUpdateStatus::REJECTED_STALE_CONTEXT);
-  assert(!result.accepted && state.accepted_samples == 0);
+  assert(!result.accepted && state.accepted_samples == accepted_before_context_change + 1U);
   assert(state.context_revision == changed.context_revision);
 
   auto current_context = exact_interval(late_previous_context.end_monotonic_ms, 0.5, 20.0, 5.0, 3000.0);
   current_context.context_revision = changed.context_revision;
   result = observe_thermal_interval(state, current_context, config);
-  assert(result.accepted && state.accepted_samples == 1);
+  assert(result.accepted && state.accepted_samples == accepted_before_context_change + 2U);
   assert(state.context_revision == changed.context_revision);
 
   train_synthetic(state, config, 10);
+  const uint32_t accepted_before_inconsistent = state.accepted_samples;
   auto inconsistent = exact_interval(state.last_interval_end_monotonic_ms, 0.5, 20.0, 5.0, 3000.0);
   inconsistent.generations_consistent = false;
   result = observe_thermal_interval(state, inconsistent, config);
-  assert(result.status == ThermalUpdateStatus::RESET_CONTEXT);
-  assert(!result.accepted && state.accepted_samples == 0);
+  assert(result.status == ThermalUpdateStatus::REJECTED_STALE_CONTEXT);
+  assert(!result.accepted && state.accepted_samples == accepted_before_inconsistent);
 
   train_synthetic(state, config, 10);
+  const uint32_t accepted_before_long_gap = state.accepted_samples;
   auto long_gap =
       exact_interval(state.last_interval_end_monotonic_ms + config.max_model_gap_ms + 1U, 0.5, 20.0, 5.0, 3000.0);
   result = observe_thermal_interval(state, long_gap, config);
-  assert(result.status == ThermalUpdateStatus::RESET_LONG_GAP);
-  assert(!result.accepted && state.accepted_samples == 0);
+  assert(result.accepted && state.accepted_samples == accepted_before_long_gap + 1U);
 }
 
 void test_interval_bounds_and_hidden_heat() {
   const auto config = test_config();
   ThermalModelState state;
-  assert(initialize_thermal_model(state, config));
+  train_synthetic(state, config, 10);
+  const uint32_t accepted_before_invalid = state.accepted_samples;
 
-  auto short_interval = exact_interval(1000, 0.25, 20.0, 5.0, 3000.0);
+  auto short_interval = exact_interval(state.last_interval_end_monotonic_ms, 0.25, 20.0, 5.0, 3000.0);
   --short_interval.end_monotonic_ms;
   auto result = observe_thermal_interval(state, short_interval, config);
   assert(result.status == ThermalUpdateStatus::REJECTED_DURATION && !result.accepted);
+  assert(state.accepted_samples == accepted_before_invalid);
 
-  assert(initialize_thermal_model(state, config));
-  auto hidden_heat = exact_interval(1000, 0.5, 20.0, 5.0, 3000.0);
+  auto hidden_heat = exact_interval(short_interval.end_monotonic_ms, 0.5, 20.0, 5.0, 3000.0);
   hidden_heat.hidden_heat_exclusion_valid = false;
   result = observe_thermal_interval(state, hidden_heat, config);
-  assert(result.status == ThermalUpdateStatus::REJECTED_HIDDEN_HEAT && state.accepted_samples == 0);
+  assert(result.status == ThermalUpdateStatus::REJECTED_HIDDEN_HEAT &&
+         state.accepted_samples == accepted_before_invalid);
 
-  assert(initialize_thermal_model(state, config));
-  auto nan_interval = exact_interval(1000, 0.5, 20.0, 5.0, 3000.0);
+  auto nan_interval = exact_interval(hidden_heat.end_monotonic_ms, 0.5, 20.0, 5.0, 3000.0);
   nan_interval.mean_heat_w = NAN;
   result = observe_thermal_interval(state, nan_interval, config);
   assert(result.status == ThermalUpdateStatus::REJECTED_INVALID_INTERVAL && !result.accepted);
+  assert(state.accepted_samples == accepted_before_invalid);
 }
 
 void test_invalidation_revokes_readiness_without_erasing_history() {
@@ -210,15 +217,15 @@ void test_invalidation_revokes_readiness_without_erasing_history() {
 
   auto overlaps_invalid_observation = exact_interval(state.last_interval_end_monotonic_ms, 0.5, 20.0, 5.0, 3000.0);
   const auto overlap = observe_thermal_interval(state, overlaps_invalid_observation, config);
-  assert(overlap.status == ThermalUpdateStatus::RESET_TIME);
-  assert(state.accepted_samples == 0);
+  assert(overlap.status == ThermalUpdateStatus::REJECTED_INVALID_INTERVAL);
+  assert(state.accepted_samples == accepted_before);
 
   const auto ready_again = train_synthetic(state, config, 240);
   assert(ready_again.ready);
   const uint64_t long_gap_end = state.last_interval_end_monotonic_ms + config.max_model_gap_ms + 1U;
   const auto long_gap = invalidate_thermal_observation(state, long_gap_end, config);
-  assert(long_gap.status == ThermalUpdateStatus::RESET_LONG_GAP);
-  assert(state.accepted_samples == 0);
+  assert(long_gap.status == ThermalUpdateStatus::REJECTED_STALE_OR_INCOMPLETE);
+  assert(state.accepted_samples == 240);
   assert(state.last_observation_monotonic_ms == long_gap_end);
   const auto late = exact_interval(long_gap_end - 1800000U, 0.5, 20.0, 5.0, 3000.0);
   assert(!observe_thermal_interval(state, late, config).accepted);
@@ -289,7 +296,7 @@ void test_residual_diagnostics_use_rate_units() {
   assert(fabs(hourly.residual_mean_k_per_h - drift_k_per_h) < 1e-12);
 }
 
-void test_gap_ages_old_evidence() {
+void test_only_observed_duration_ages_old_evidence() {
   auto config = test_config();
   config.forgetting_factor_per_hour = 0.96;
   ThermalModelState state;
@@ -299,7 +306,7 @@ void test_gap_ages_old_evidence() {
   const auto zero_feature = exact_interval(prior_end_ms + 5ULL * 3600000ULL, 1.0, 20.0, 20.0, 0.0);
   const auto result = observe_thermal_interval(state, zero_feature, config);
   assert(result.accepted);
-  assert(fabs(state.information_00 - prior_information * pow(config.forgetting_factor_per_hour, 6.0)) < 1e-9);
+  assert(fabs(state.information_00 - prior_information * pow(config.forgetting_factor_per_hour, 1.0)) < 1e-9);
 }
 
 void test_old_excitation_cannot_keep_readiness_alive() {
@@ -340,7 +347,7 @@ void test_parameter_bounds_and_covariance_corruption() {
   assert(!result.accepted && state.accepted_samples == 0);
   assert(thermal_detail::covariance_is_spd(state.covariance_00, state.covariance_01, state.covariance_11));
   const auto overlapping = exact_interval(interval.start_monotonic_ms, 0.5, 20.0, 5.0, 3000.0);
-  assert(observe_thermal_interval(state, overlapping, config).status == ThermalUpdateStatus::RESET_TIME);
+  assert(observe_thermal_interval(state, overlapping, config).status == ThermalUpdateStatus::REJECTED_INVALID_INTERVAL);
 }
 
 void test_corrupt_ordering_metadata_is_not_retained() {
@@ -387,7 +394,7 @@ void test_sample_counter_overflow_consumes_interval() {
   assert(state.last_observation_monotonic_ms == interval.end_monotonic_ms);
 
   const auto overlapping = exact_interval(interval.start_monotonic_ms, 0.5, 20.0, 5.0, 3000.0);
-  assert(observe_thermal_interval(state, overlapping, config).status == ThermalUpdateStatus::RESET_TIME);
+  assert(observe_thermal_interval(state, overlapping, config).status == ThermalUpdateStatus::REJECTED_INVALID_INTERVAL);
 }
 
 void test_live_configuration_is_bound_to_state() {
@@ -397,19 +404,26 @@ void test_live_configuration_is_bound_to_state() {
   assert(ready.ready);
 
   auto changed = config;
-  changed.loss_feature_scale_kh *= 2.0;
-  const auto misinterpreted = estimate_thermal_model(state, changed, state.last_interval_end_monotonic_ms);
-  assert(!misinterpreted.parameters_valid && !misinterpreted.ready);
-
+  changed.max_residual_rms_k_per_h *= 1.5;
   const auto interval = exact_interval(state.last_interval_end_monotonic_ms, 0.5, 20.0, 5.0, 3000.0);
   const auto result = observe_thermal_interval(state, interval, changed);
-  assert(result.status == ThermalUpdateStatus::RESET_CONFIGURATION);
-  assert(!result.accepted && state.accepted_samples == 0 && !result.estimate.ready);
+  assert(result.accepted && state.accepted_samples == 241);
   assert(thermal_detail::same_config(state.bound_config, changed));
-  assert(state.last_observation_monotonic_ms == interval.end_monotonic_ms);
+  assert(result.estimate.parameters_valid);
 
-  const auto overlapping = exact_interval(interval.start_monotonic_ms, 0.5, 20.0, 5.0, 3000.0);
-  assert(observe_thermal_interval(state, overlapping, changed).status == ThermalUpdateStatus::RESET_TIME);
+  auto incompatible = changed;
+  incompatible.loss_feature_scale_kh *= 2.0;
+  const uint32_t accepted_before_incompatible = state.accepted_samples;
+  const double theta_before_incompatible = state.theta_loss_scaled;
+  const double covariance_before_incompatible = state.covariance_00;
+  const auto rejected = observe_thermal_interval(
+      state, exact_interval(state.last_interval_end_monotonic_ms, 0.5, 20.0, 5.0, 3000.0), incompatible);
+  assert(rejected.status == ThermalUpdateStatus::REJECTED_INCOMPATIBLE_CONFIGURATION && !rejected.accepted);
+  assert(state.accepted_samples == accepted_before_incompatible &&
+         state.theta_loss_scaled == theta_before_incompatible && state.covariance_00 == covariance_before_incompatible);
+  assert(thermal_detail::same_config(state.bound_config, changed));
+  assert(initialize_thermal_model(state, incompatible));
+  assert(state.accepted_samples == 0 && thermal_detail::same_config(state.bound_config, incompatible));
 }
 
 void test_invalid_configuration_never_seeds_ready_model() {
@@ -433,13 +447,13 @@ int main() {
   test_synthetic_recovery_and_irregular_intervals();
   test_temperature_change_is_information();
   test_stationary_rank_one_data_never_becomes_ready();
-  test_missing_stale_and_context_changes_reset();
+  test_missing_stale_and_context_changes_preserve_learning();
   test_interval_bounds_and_hidden_heat();
   test_invalidation_revokes_readiness_without_erasing_history();
   test_forgetting_factor_is_elapsed_time_based();
   test_readiness_evidence_is_duration_normalized();
   test_residual_diagnostics_use_rate_units();
-  test_gap_ages_old_evidence();
+  test_only_observed_duration_ages_old_evidence();
   test_old_excitation_cannot_keep_readiness_alive();
   test_parameter_bounds_and_covariance_corruption();
   test_corrupt_ordering_metadata_is_not_retained();

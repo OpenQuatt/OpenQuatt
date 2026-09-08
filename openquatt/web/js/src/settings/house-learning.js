@@ -4,6 +4,7 @@ import { escapeHtml } from "../core/html.js";
 import { state } from "../core/state.js";
 import { renderStatCard } from "../views/stat-card.js";
 import { renderNamedActionButton, renderSettingsAdvancedDisclosure, renderSettingsSwitchField, renderSettingsSystemRow } from "./controls.js";
+import { renderHouseLearningChart } from "./house-learning-chart.js";
 
 const metric = (value, unit = "") => value != null && Number.isFinite(Number(value))
   ? `${Number(value).toFixed(1).replace(/\.0$/, "")} ${unit}`.trim()
@@ -174,6 +175,26 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
   return `<div class="oq-settings-grid oq-house-learning-summary">${summaryCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div><div class="oq-settings-system-summary oq-house-learning-sources">${Object.entries(status.sources).map(([key, source]) => sourceRow(key, source, status)).join("")}</div>${renderWaterTemperatureCards()}<div class="oq-settings-grid oq-house-learning-model">${modelCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>${renderSettingsAdvancedDisclosure("house-learning-model", "Modeldiagnostiek", "De voorlopige 1R1C-schatting staat hierboven. Deze extra batchcontrole gebruikt alleen langdurige stabiele perioden en verandert de regeling niet.", `<div class="oq-settings-grid">${batchDiagnosticCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>`)}${state.houseLearningStatusError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(state.houseLearningStatusError)}</p>` : ""}`;
 }
 
+function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.houseLearningReset === "pending") {
+  return JSON.stringify([busy, state.houseLearningChartFetchedAt, state.houseLearningChart?.length,
+    state.houseLearningChartLoading, state.houseLearningChartError,
+    state.houseLearningStatus?.hBatch, state.houseLearningStatus?.t0Batch, state.houseLearningStatus?.batchAdviceReady,
+    ...["houseColdTemp", "houseOutdoorMax", "housePower"].map(getEntityNumericValue)]);
+}
+
+function renderHouseLearningChartPanel(busy = Boolean(state.busyAction) || state.houseLearningReset === "pending") {
+  const chart = state.houseLearningChart === null ? "" : renderHouseLearningChart(
+    state.houseLearningChart,
+    { coldC: getEntityNumericValue("houseColdTemp"), zeroC: getEntityNumericValue("houseOutdoorMax"), ratedW: getEntityNumericValue("housePower") },
+    { h: state.houseLearningStatus?.hBatch, t0: state.houseLearningStatus?.t0Batch, ready: state.houseLearningStatus?.batchAdviceReady },
+  );
+  return `
+        <div class="oq-house-learning-chart-head"><div><h5>Woninglijn en meetresultaten</h5><p>Vergelijk de ingestelde woninglijn met de metingen. Tik op een meetpunt voor datum, meetduur en waarden.</p></div><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="load-house-learning-chart" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>${state.houseLearningChartLoading ? "Meetgegevens laden…" : "Meetgegevens tonen"}</button></div>
+        ${state.houseLearningChartError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(state.houseLearningChartError)}</p>` : ""}
+        ${chart}${state.houseLearningChartFetchedAt ? `<p class="oq-house-learning-chart-freshness">Geladen ${escapeHtml(new Date(state.houseLearningChartFetchedAt).toLocaleString("nl-NL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }))}</p>` : ""}
+`;
+}
+
 export function renderHouseLearningSettings() {
   const initialCapabilityCheck = state.houseLearningEndpointChecking && !state.houseLearningEndpointChecked;
   if (!hasEntity("houseLearningEnabled") || (!state.houseLearningEndpointAvailable && !initialCapabilityCheck)) return "";
@@ -193,6 +214,7 @@ export function renderHouseLearningSettings() {
         ${renderSettingsSwitchField("houseLearningEnabled", "Passief leren", "Pauzeer of hervat. Na herstart staat dit uit.", "Leren ingeschakeld.", "Geen nieuwe metingen.")}
       </div>
       <div data-oq-house-learning-status>${renderHouseLearningStatusMarkup()}</div>
+      <div class="oq-house-learning-chart-panel" data-oq-house-learning-chart-panel data-oq-chart-signature="${escapeHtml(houseLearningChartSignature(busy))}">${renderHouseLearningChartPanel(busy)}</div>
       <div class="oq-helper-actions">
         <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="download-house-learning" ${busy ? "disabled" : ""}>${exporting ? "Leerdata downloaden…" : "Diagnostische leerdata downloaden"}</button>${reset}
       </div>
@@ -208,6 +230,14 @@ export function patchHouseLearningSettingsStatus() {
   }
   const node = panel?.querySelector("[data-oq-house-learning-status]");
   if (!node) return false;
+  const chartNode = panel?.querySelector("[data-oq-house-learning-chart-panel]");
+  if (chartNode) {
+    const signature = houseLearningChartSignature();
+    if (chartNode.getAttribute("data-oq-chart-signature") !== signature) {
+      chartNode.innerHTML = renderHouseLearningChartPanel();
+      chartNode.setAttribute("data-oq-chart-signature", signature);
+    }
+  }
   const markup = renderHouseLearningStatusMarkup();
   if (node.innerHTML !== markup) node.innerHTML = markup;
   return true;

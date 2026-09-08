@@ -4,6 +4,7 @@ import { isCurveMode } from "../core/domain-helpers.js";
 import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { getBasePath } from "../core/url-path.js";
+import { normalizeHouseLearningExport } from "../settings/house-learning-chart.js";
 
 export const HOUSE_LEARNING_STATUS_INTERVAL_MS = 10000;
 
@@ -71,6 +72,40 @@ export function shouldRefreshHouseLearningStatusSurface() {
 export const getHouseLearningStatusEndpoint = () => `${getBasePath()}/openquatt/learning/status`;
 export const getHouseLearningExportEndpoint = () => `${getBasePath()}/openquatt/learning/export`;
 
+export async function loadHouseLearningChart() {
+  if (state.houseLearningChartLoading || state.busyAction || state.houseLearningReset === "pending") return false;
+  const requestId = Number(state.houseLearningChartRequestId || 0) + 1;
+  state.houseLearningChartRequestId = requestId;
+  state.houseLearningChartLoading = true;
+  state.houseLearningChartError = "";
+  render();
+  try {
+    const response = await fetchWithTimeout(
+      getHouseLearningExportEndpoint(),
+      { cache: "no-store", headers: { "Cache-Control": "no-store" } },
+      8000,
+      "leerdata timeout",
+    );
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const records = normalizeHouseLearningExport(await response.json());
+    if (requestId !== state.houseLearningChartRequestId) return false;
+    state.houseLearningChart = records;
+    state.houseLearningChartFetchedAt = Date.now();
+    return true;
+  } catch (error) {
+    if (requestId !== state.houseLearningChartRequestId) return false;
+    state.houseLearningChart = null;
+    state.houseLearningChartFetchedAt = 0;
+    state.houseLearningChartError = `Meetgegevens konden niet worden geladen. ${error.message || String(error)}`;
+    return false;
+  } finally {
+    if (requestId === state.houseLearningChartRequestId) {
+      state.houseLearningChartLoading = false;
+      render();
+    }
+  }
+}
+
 export async function downloadHouseLearningExport() {
   if (state.busyAction) return;
   state.busyAction = "houseLearningExport";
@@ -96,6 +131,10 @@ export async function downloadHouseLearningExport() {
 export function handleHouseLearningAction(action, button, pressNamedButton) {
   if (action === "download-house-learning") {
     void downloadHouseLearningExport();
+    return true;
+  }
+  if (action === "load-house-learning-chart") {
+    void loadHouseLearningChart();
     return true;
   }
   if (action === "press-named-button" && button?.dataset.oqButtonKey === "houseLearningReset") {
@@ -137,6 +176,13 @@ export async function refreshHouseLearningStatus(options = {}) {
         const status = normalizeHouseLearningStatus(await response.json());
         if ((!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) || requestGeneration !== state.houseLearningRequestId) return false;
         state.houseLearningStatus = status;
+        if (status.records === 0 && status.journalStatus === "cleared") {
+          state.houseLearningChartRequestId = Number(state.houseLearningChartRequestId || 0) + 1;
+          state.houseLearningChart = null;
+          state.houseLearningChartLoading = false;
+          state.houseLearningChartError = "";
+          state.houseLearningChartFetchedAt = 0;
+        }
         state.houseLearningStatusError = "";
       }
       probeCompleted = true;
@@ -180,6 +226,11 @@ export async function resetHouseLearningData(pressNamedButton, options = {}) {
 
   const staleRequest = state.houseLearningFetchPromise;
   state.houseLearningRequestId = Number(state.houseLearningRequestId || 0) + 1;
+  state.houseLearningChartRequestId = Number(state.houseLearningChartRequestId || 0) + 1;
+  state.houseLearningChart = null;
+  state.houseLearningChartError = "";
+  state.houseLearningChartFetchedAt = 0;
+  state.houseLearningChartLoading = false;
   state.houseLearningReset = "pending";
   state.houseLearningResetError = "";
   state.houseLearningStatusError = "";

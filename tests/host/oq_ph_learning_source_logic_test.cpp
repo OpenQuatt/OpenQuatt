@@ -215,8 +215,17 @@ void test_off_periods_keep_signed_heat_and_allow_zero_flow() {
 void test_invalid_values_contracts_and_unknowns_never_become_zero() {
   auto fixed_limits = valid_input(HydronicTopology::DUO_SERIES);
   fixed_limits.flow_lph.value = kPassiveMaximumFlowLph;
-  fixed_limits.hp2.water_in_c.value = fixed_limits.hp1.water_out_c.value + kPassiveSeriesJunctionToleranceC;
   assert(build(fixed_limits).measurement_valid);
+
+  auto calibrated_series_offset = valid_input(HydronicTopology::DUO_SERIES);
+  calibrated_series_offset.hp1.water_in_c.value = 30.0f;
+  calibrated_series_offset.hp1.water_out_c.value = 34.0f;
+  calibrated_series_offset.hp2.water_in_c.value = 39.0f;
+  calibrated_series_offset.hp2.water_out_c.value = 42.0f;
+  const auto accepted_offset = build(calibrated_series_offset);
+  const float expected_offset_heat_w = 1000.0f / 3600.0f * 4180.0f * (4.0f + 3.0f);
+  assert(accepted_offset.measurement_valid);
+  assert(fabsf(accepted_offset.snapshot.heat_to_water_w - expected_offset_heat_w) < 0.01f);
 
   auto nan_value = valid_input();
   nan_value.hp1.water_out_c.value = NAN;
@@ -230,10 +239,6 @@ void test_invalid_values_contracts_and_unknowns_never_become_zero() {
   auto excessive_flow = valid_input();
   excessive_flow.flow_lph.value = kPassiveMaximumFlowLph + 1.0f;
   assert_failed(build(excessive_flow), SnapshotSourceStatus::FLOW_OUT_OF_RANGE);
-
-  auto broken_series_junction = valid_input(HydronicTopology::DUO_SERIES);
-  broken_series_junction.hp2.water_in_c.value += 2.0f;
-  assert_failed(build(broken_series_junction), SnapshotSourceStatus::SERIES_JUNCTION_MISMATCH);
 
   auto missing_flow = valid_input();
   missing_flow.flow_lph.value = 0.0f;

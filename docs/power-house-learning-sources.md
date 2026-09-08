@@ -26,10 +26,9 @@ De water-in- en water-uitmetingen van iedere aanwezige warmtepomp, de
 compressoractiviteit en beschermingsstatus blijven directe hardwaremetingen. Hun
 ontvangststatus beschermt de calorimetrie tegen ontbrekende of ongeldige HP-data.
 
-De Duo-build kent intern HP1 gevolgd door HP2. De berekening van warmtevermogen en de
-controle van de koppeling blijven implementatiedetails; zij zijn geen installatieprofiel
-of gebruikersinstelling. De bestaande Heat Power-sensoren gebruiken dezelfde
-waterzijdige meetketen.
+Het warmtevermogen gebruikt de ΔT per warmtepomp, net als de bestaande Heat Power-
+sensoren. Een verschil tussen HP1-uit en HP2-in blokkeert leren niet. IJking van de
+watertemperatuursensoren via het servicemenu kan de meetnauwkeurigheid verbeteren.
 
 ## Wanneer een record ontstaat
 
@@ -51,12 +50,15 @@ nog wacht op setpoint-herstel. Beide routes blijven passief.
 ## Context en opslag
 
 Een wijziging van een geselecteerde bronroute, waterkalibratie of andere fysieke
-meetcontext start een nieuwe `context_revision` en wist onverenigbare learninghistorie.
+meetcontext start een nieuwe `context_revision` en onderbreekt alleen lopende
+meetintervallen. Afgeronde records en het 1R1C-model blijven behouden.
 Een wijziging van regel- of beoordelingsinstellingen herbeoordeelt bestaande records
 zonder de fysieke metingen te wissen.
 
-De journal heeft twee flashslots met schema en CRC. Herstel vereist een passend schema,
-algoritmeversie en meetcontext. Na een reboot staat de opt-in uit. Alle statussen
+Het journal bewaart batchrecords en de 1R1C-leerstand in twee flashslots met schema en
+CRC, maximaal eenmaal per uur bij nieuwe gegevens. Herstel vereist geldige UTC en een
+ondersteund schema en algoritmeversie; schema-4-batchrecords blijven leesbaar. De
+bronkeuze verhindert herstel niet. Na een reboot staat de opt-in uit. Alle statussen
 publiceren `auto_apply_allowed: false`.
 
 ## Status en export

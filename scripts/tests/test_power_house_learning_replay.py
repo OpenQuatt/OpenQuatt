@@ -114,7 +114,7 @@ class LearningReplayTest(unittest.TestCase):
         self.assertFalse(output["auto_apply_allowed"])
         self.assertFalse(output["rls_ready"])
         self.assertGreaterEqual(output["accepted_windows"], 40)
-        self.assertEqual(output["rejected_observations"], 9)
+        self.assertEqual(output["rejected_observations"], 0)  # UTC midnight does not reject a segment.
         self.assertAlmostEqual(output["candidate_h"], 200.0, delta=1.0)
         self.assertAlmostEqual(output["candidate_t0"], 18.0, delta=0.2)
         self.assertLess(output["holdout_candidate_mae_w"], output["holdout_active_mae_w"])
@@ -188,8 +188,11 @@ class LearningReplayTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(json.loads(result.stdout)["status"], "input_error")
 
-    def test_new_context_discards_old_cohort_before_fit(self):
+    def test_new_context_retains_completed_records_and_thermal_model(self):
         rows, now_epoch = sufficient_rows()
+        original_path = pathlib.Path(self.tempdir.name) / "original-context.csv"
+        write_csv(original_path, rows)
+        original = json.loads(replay(self.binary, original_path, now_epoch).stdout)
         last = rows[-1]
         rows.append([last[0] + 60_000, last[1] + 60, 2, 2, 2, 0, 20, 20, 5, 2600, 35])
         path = pathlib.Path(self.tempdir.name) / "new-context.csv"
@@ -199,9 +202,11 @@ class LearningReplayTest(unittest.TestCase):
         output = json.loads(result.stdout)
         self.assertFalse(output["advice_ready"])
         self.assertEqual(output["cohort_changes"], 1)
-        self.assertGreater(output["discarded_cohort_records"], 0)
-        self.assertEqual(output["rls_accepted_samples"], 0)
-        self.assertIsNone(output["u_rls"])
+        self.assertEqual(output["discarded_cohort_records"], 0)
+        self.assertEqual(output["accepted_windows"], original["accepted_windows"])
+        self.assertEqual(output["rls_accepted_samples"], original["rls_accepted_samples"])
+        self.assertEqual(output["u_rls"], original["u_rls"])
+        self.assertEqual(output["c_rls_wh_per_k"], original["c_rls_wh_per_k"])
 
     def test_embedded_nul_row_is_input_error(self):
         path = pathlib.Path(self.tempdir.name) / "nul.csv"

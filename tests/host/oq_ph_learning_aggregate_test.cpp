@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <math.h>
+#include <initializer_list>
 
 #include "../../openquatt/includes/learning/oq_ph_learning_aggregate.h"
 
@@ -70,6 +71,22 @@ void test_time_weighted_signed_heat() {
   assert(result.record.duration_s == 14400U);
   assert(fabs(result.record.mean_heat_w - expected_energy_ws / 14400.0) < 0.1);
   assert(result.record.mean_heat_w < 3000.0f);  // Compressor-off and signed periods were integrated.
+}
+
+void test_midnight_and_quantized_room() {
+  for (bool rising : {false, true}) {
+    SegmentAccumulator accumulator;
+    ObserveResult result;
+    const uint32_t start = 20000U * 86400U + 22U * 3600U;
+    for (uint32_t minute = 0; minute <= 240; ++minute) {
+      auto value = snapshot(1000ULL + minute * 60000ULL, start + minute * 60U, 2500.0f);
+      // A thermostat alternating between adjacent readings versus a lasting step.
+      value.room_c = rising ? (minute < 120U ? 20.0f : 20.25f) : (minute % 2U == 0U ? 20.0f : 20.25f);
+      result = observe_snapshot(accumulator, value, QualityConfig{});
+    }
+    assert(result.has_record == !rising);
+    assert(result.status == (rising ? LearningStatus::ROOM_UNSTABLE : LearningStatus::SEGMENT_READY));
+  }
 }
 
 void test_fail_closed_boundaries() {
@@ -168,6 +185,7 @@ void test_full_dataset_keeps_recent_records_and_temperature_coverage() {
 
 int main() {
   test_time_weighted_signed_heat();
+  test_midnight_and_quantized_room();
   test_fail_closed_boundaries();
   test_nonpositive_segment_and_record_bounds();
   test_full_dataset_keeps_recent_records_and_temperature_coverage();

@@ -78,7 +78,7 @@ inline LearningStatus evaluate_segment_quality(const SegmentRecord& record, cons
 }
 
 // Rechecks persisted/replayed input independently of the collector. The end is
-// exclusive, so 20:00-24:00 UTC stays in one day; actual midnight crossings fail.
+// exclusive. A segment may cross UTC midnight; the fit assigns its start day.
 inline LearningStatus validate_segment_record(const SegmentRecord& record, const QualityConfig& config) {
   if (!valid_quality_config(config)) return LearningStatus::INVALID_CONFIGURATION;
   const uint32_t max_duration_s =
@@ -91,7 +91,6 @@ inline LearningStatus validate_segment_record(const SegmentRecord& record, const
   const uint32_t duration_mismatch_s = epoch_duration_s > record.duration_s ? epoch_duration_s - record.duration_s
                                                                             : record.duration_s - epoch_duration_s;
   if (duration_mismatch_s > config.utc_tolerance_s + 1U) return LearningStatus::TIME_DISCONTINUITY;
-  if (record.start_epoch_s / 86400U != (record.end_epoch_s - 1U) / 86400U) return LearningStatus::TIME_DISCONTINUITY;
   if (!isfinite(record.mean_room_c) || record.mean_room_c < config.room_min_c ||
       record.mean_room_c > config.room_max_c || !isfinite(record.mean_setpoint_c) ||
       record.mean_setpoint_c < config.setpoint_min_c || record.mean_setpoint_c > config.setpoint_max_c ||

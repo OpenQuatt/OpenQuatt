@@ -34,6 +34,7 @@ struct LearningJournalStore {
   uint32_t sequence = 0;
   size_t persisted_records = 0;
   uint32_t persisted_revision = 0;
+  uint32_t persisted_thermal_samples = 0;
   uint64_t last_write_ms = 0;
   const char* status = "not_initialized";
 
@@ -46,7 +47,7 @@ struct LearningJournalStore {
 
   template <typename Read>
   bool load(const PassiveContextView& context, const QualityConfig& quality, uint32_t epoch, Read read,
-            LearningJournalRecords& records) {
+            LearningJournalRecords& records, uint64_t now_ms = 0) {
     if (loaded || !available || epoch == 0) return false;
     loaded = true;
     LearningJournalSlotView slots[2];
@@ -66,24 +67,29 @@ struct LearningJournalStore {
     sequence = selected.metadata.sequence;
     persisted_records = selected.metadata.record_count;
     records = {slots[active_slot], selected.metadata.context_size, selected.metadata.record_count};
-    status = "restored_batch_rls_restarts";
+    last_write_ms = now_ms;
+    status = "restored";
     return true;
   }
 
-  bool save_due(uint64_t now_ms, size_t record_count, uint32_t revision) const {
-    return available && loaded && (record_count != persisted_records || revision != persisted_revision) &&
+  bool save_due(uint64_t now_ms, size_t record_count, uint32_t revision, uint32_t thermal_samples = 0) const {
+    return available && loaded &&
+           (record_count != persisted_records || revision != persisted_revision ||
+            thermal_samples != persisted_thermal_samples) &&
            (last_write_ms == 0 || (now_ms >= last_write_ms && now_ms - last_write_ms >= kJournalSaveIntervalMs));
   }
 
   template <typename Erase, typename Write, typename Read>
   bool save(const LearningDatasetView& dataset, const QualityConfig& quality, uint32_t epoch, uint64_t now_ms,
-            uint32_t revision, Erase erase, Write write, Read read) {
-    if (!save_due(now_ms, dataset.record_count, revision)) return false;
+            uint32_t revision, Erase erase, Write write, Read read, const ThermalModelState* thermal = nullptr,
+            uint32_t thermal_epoch = 0) {
+    const uint32_t thermal_samples = thermal != nullptr ? thermal->accepted_samples : 0;
+    if (!save_due(now_ms, dataset.record_count, revision, thermal_samples)) return false;
     if (sequence == UINT32_MAX) return fail("sequence_exhausted");
     const int slot = active_slot == 0 ? 1 : 0;
     size_t size = 0;
-    if (encode_learning_journal(dataset, quality, sequence + 1, epoch, bytes[slot], sizeof(bytes[slot]), size) !=
-        LearningJournalStatus::OK)
+    if (encode_learning_journal(dataset, quality, sequence + 1, epoch, bytes[slot], sizeof(bytes[slot]), size, thermal,
+                                thermal_epoch) != LearningJournalStatus::OK)
       return fail("encode_failed");
     // The previous flash slot is untouched. Reuse its RAM cache for readback.
     if (!erase(slot) || !write(slot, bytes[slot], size) || !read(slot, bytes[1 - slot], size) ||
@@ -93,6 +99,7 @@ struct LearningJournalStore {
     ++sequence;
     persisted_records = dataset.record_count;
     persisted_revision = revision;
+    persisted_thermal_samples = thermal_samples;
     last_write_ms = now_ms;
     status = "saved_verified";
     return true;
@@ -107,6 +114,7 @@ struct LearningJournalStore {
     sequence = 0;
     persisted_records = 0;
     persisted_revision = 0;
+    persisted_thermal_samples = 0;
     last_write_ms = 0;
     status = "cleared";
     return true;

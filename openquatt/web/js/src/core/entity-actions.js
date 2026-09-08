@@ -29,6 +29,7 @@ import { handleShellAction } from "../features/shell-actions.js";
 import { handleViewAction } from "../features/view-actions.js";
 import { handleWebServerLogAction } from "../features/webserver-logs.js";
 import { handleEnergyHistoryPointerMove, setEnergyHistoryPeriodValue } from "../views/energy.js";
+import { handleHouseLearningChartPointerMove } from "../settings/house-learning-chart.js";
 import { escapeHtml } from "./html.js";
 import { render } from "./render-scheduler.js";
 
@@ -141,6 +142,7 @@ function updateFrequencyRangeControl(input) {
 
   export function handleFocusChange(event) {
     handleTimeInputFocus(event);
+    handleHouseLearningChartPointerMove(event);
     window.setTimeout(() => {
       const active = document.activeElement;
       state.focusedField = active && active.dataset ? active.dataset.oqField || "" : "";
@@ -629,6 +631,7 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handlePointerDown(event) {
+    handleHouseLearningChartPointerMove(event);
     const replayScrubber = event.target.closest("[data-oq-control-replay-scrub]");
     if (replayScrubber) {
       state.controlReplayScrubbing = true;
@@ -650,6 +653,7 @@ function updateFrequencyRangeControl(input) {
     if (typeof handleEnergyHistoryPointerMove === "function") {
       handleEnergyHistoryPointerMove(event);
     }
+    handleHouseLearningChartPointerMove(event);
     if (state.controlReplayScrubbing) {
       event.preventDefault();
       updateControlReplayGraphMinuteFromPointer(event.clientX);

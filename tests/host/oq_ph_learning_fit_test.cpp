@@ -147,6 +147,7 @@ void test_replayed_record_bypasses_fail_closed() {
 
   make_dataset(records);
   records[4].start_epoch_s = kBaseEpoch + 2U * 86400U + 22U * 3600U;
+  // Rejected because it overlaps the next record, not because it crosses midnight.
   records[4].end_epoch_s = records[4].start_epoch_s + 14400U;
   assert(begin_advice_fit(records, 18, now, {150.0f, 15.0f}, quality, config, workspace) ==
          LearningStatus::TIME_DISCONTINUITY);
@@ -189,6 +190,8 @@ void test_exact_retention_boundary_allows_sparse_season() {
   for (size_t index = 0; index < kMaxSegmentRecords; ++index) {
     const uint16_t day = static_cast<uint16_t>(index * 365U / (kMaxSegmentRecords - 1U));
     records[index] = fitted_record(day, 0, -5.0f + 2.0f * static_cast<float>(index % 10U));
+    records[index].start_epoch_s += 22U * 3600U;
+    records[index].end_epoch_s += 22U * 3600U;
   }
 
   AdviceFitWorkspace workspace;

@@ -48,6 +48,26 @@ PassiveTickInput tick(uint64_t monotonic_ms, uint32_t epoch_s) {
   return input;
 }
 
+void test_validation_waits_for_live_observation() {
+  PassiveRuntimeStorage state;
+  auto summary = passive_runtime_summary(state, 1000);
+  assert(summary.validation.status == ModelValidationStatus::INVALID_CONFIGURATION);
+  assert(initialize_passive_runtime(state, context(), config(), true) == PassiveRuntimeStatus::COLLECTING);
+  summary = passive_runtime_summary(state, 1000);
+  assert(summary.validation.status == ModelValidationStatus::WAITING_FOR_VALID_OBSERVATION);
+  assert(!summary.cross_validated_advice_ready);
+  assert(!summary.auto_apply_allowed);
+  const auto input = tick(1000, 20000U * 86400U);
+  tick_passive_runtime(state, input);
+  summary = passive_runtime_summary(state, 1000);
+  assert(summary.validation.status == ModelValidationStatus::BATCH_UNAVAILABLE);
+  assert(!summary.cross_validated_advice_ready);
+  state.opted_in = false;
+  summary = passive_runtime_summary(state, 2000);
+  assert(summary.validation.status == ModelValidationStatus::WAITING_FOR_VALID_OBSERVATION);
+  assert(!summary.cross_validated_advice_ready);
+}
+
 void test_collects_fixed_records_and_fit_is_resumable() {
   PassiveRuntimeStorage state;
   assert(initialize_passive_runtime(state, context(), config(), true) == PassiveRuntimeStatus::COLLECTING);
@@ -96,18 +116,65 @@ void test_pause_revokes_ready_state_without_discarding_records() {
   assert(!summary.auto_apply_allowed);
 }
 
-void test_context_change_restarts_both_models_and_rejects_old_input() {
+void test_source_switch_keeps_real_history_and_starts_a_new_interval() {
+  PassiveRuntimeStorage state;
+  initialize_passive_runtime(state, context(), config(), true);
+  constexpr uint32_t epoch = 20000U * 86400U;
+  for (uint32_t minute = 0; minute <= 240; ++minute)
+    tick_passive_runtime(state, tick(1000ULL + minute * 60000ULL, epoch + minute * 60));
+  assert(state.record_count == 1 && state.thermal_state.accepted_samples > 0);
+  const auto samples = state.thermal_state.accepted_samples;
+  const auto theta = state.thermal_state.theta_loss_scaled;
+  constexpr uint8_t api_to_ot[] = {2, 3};
+  for (uint32_t minute = 241; minute <= 271; ++minute) {
+    auto input = tick(1000ULL + minute * 60000ULL, epoch + minute * 60);
+    input.context = {api_to_ot, sizeof(api_to_ot), 2};
+    input.batch_snapshot.context_revision = 2;
+    input.batch_snapshot.room_c = 20.5f;  // Different sensor: do not learn this jump.
+    input.dynamic_snapshot = input.batch_snapshot;
+    tick_passive_runtime(state, input);
+    assert(state.record_count == 1);
+    assert(state.thermal_state.accepted_samples == samples);
+    assert(state.thermal_state.theta_loss_scaled == theta);
+  }
+  auto input = tick(1000ULL + 272ULL * 60000ULL, epoch + 272U * 60);
+  input.context = {api_to_ot, sizeof(api_to_ot), 2};
+  input.batch_snapshot.context_revision = 2;
+  input.batch_snapshot.room_c = 20.5f;
+  input.dynamic_snapshot = input.batch_snapshot;
+  tick_passive_runtime(state, input);
+  assert(state.thermal_state.accepted_samples == samples + 1);
+  assert(state.thermal_state.reset_count == 0);
+  assert(state.record_count == 1 && state.records[0].context_revision == 2);
+  const auto retained_samples = state.thermal_state.accepted_samples;
+  input.now_monotonic_ms += (static_cast<uint64_t>(kMaxRecordAgeS) + 86400ULL) * 1000ULL;
+  input.now_epoch_s += kMaxRecordAgeS + 86400U;
+  input.context = {api_to_ot, sizeof(api_to_ot), 3};
+  assert(tick_passive_runtime(state, input) == PassiveRuntimeStatus::CONTEXT_CHANGED);
+  assert(state.record_count == 0);  // Source transition must prune before checkpointing too.
+  input.now_monotonic_ms += 10000;
+  input.now_epoch_s += 10;
+  input.context_valid = false;
+  assert(tick_passive_runtime(state, input) == PassiveRuntimeStatus::PAUSED);
+  assert(state.record_count == 0);  // Expiry still runs while selected sources are unavailable.
+  assert(state.thermal_state.accepted_samples == retained_samples);
+}
+
+void test_context_change_preserves_both_models_and_rejects_old_input() {
   PassiveRuntimeStorage state;
   assert(initialize_passive_runtime(state, context(), config(), true) == PassiveRuntimeStatus::COLLECTING);
   auto input = tick(1000, 20000U * 86400U);
   tick_passive_runtime(state, input);
   state.record_count = 1;
+  state.records[0].end_epoch_s = input.now_epoch_s;
   state.thermal_state.accepted_samples = 10;
   input.now_monotonic_ms += 1000;
   ++input.now_epoch_s;
   input.context = context(2);
   assert(tick_passive_runtime(state, input) == PassiveRuntimeStatus::CONTEXT_CHANGED);
-  assert(state.context_revision == 2 && state.record_count == 0 && state.thermal_state.accepted_samples == 0);
+  assert(state.context_revision == 2 && state.record_count == 1 && state.thermal_state.accepted_samples == 10);
+  assert(!state.batch_accumulator.active && !state.thermal_accumulator.active);
+  assert(state.records[0].context_revision == 2 && state.thermal_state.context_revision == 2);
   input.context = context();
   assert(tick_passive_runtime(state, input) == PassiveRuntimeStatus::STALE_CONTEXT);
   assert(state.blocked);
@@ -219,9 +286,11 @@ void test_summary_never_exposes_readiness_without_live_valid_context() {
 }  // namespace
 
 int main() {
+  test_validation_waits_for_live_observation();
   test_collects_fixed_records_and_fit_is_resumable();
   test_pause_revokes_ready_state_without_discarding_records();
-  test_context_change_restarts_both_models_and_rejects_old_input();
+  test_source_switch_keeps_real_history_and_starts_a_new_interval();
+  test_context_change_preserves_both_models_and_rejects_old_input();
   test_direct_pause_breaks_continuity_and_revokes_advice();
   test_evaluation_refresh_keeps_physical_evidence();
   test_invalid_evaluation_refresh_stays_paused_until_corrected();

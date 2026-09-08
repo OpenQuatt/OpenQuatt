@@ -53,8 +53,8 @@ PassiveRuntimeStorage populated(uint32_t now_epoch_s) {
   PassiveRuntimeStorage state;
   assert(initialize_passive_runtime(state, context(), config(), true) == PassiveRuntimeStatus::COLLECTING);
   const uint32_t day = now_epoch_s / 86400U;
-  state.records[0] = record((day - 2U) * 86400U + 3600U, -4.0f);
-  state.records[1] = record((day - 1U) * 86400U + 3600U, 4.0f);
+  state.records[0] = record((day - 2U) * 86400U + 22U * 3600U, -4.0f);
+  state.records[1] = record((day - 1U) * 86400U + 3U * 3600U, 4.0f);
   state.record_count = 2;
   return state;
 }
@@ -79,6 +79,13 @@ void test_round_trip_and_reboot_remap_never_restores_readiness() {
                                  LearningJournalRecords{{bytes, size}, metadata.context_size, metadata.record_count}));
   assert(restored.record_count == 2 && restored.restored_records && restored.fit_pending);
   assert(restored.records[0].context_revision == 7);
+  PassiveRuntimeStorage aged;
+  initialize_passive_runtime(aged, context(8), config(), true);
+  assert(restore_passive_records(aged,
+                                 LearningJournalRecords{{bytes, size}, metadata.context_size, metadata.record_count},
+                                 now_epoch + kMaxRecordAgeS + 1));
+  assert(aged.record_count == 0);
+
   assert(restored.thermal_state.accepted_samples == 0);
   const auto summary = passive_runtime_summary(restored, 1);
   assert(!summary.batch_advice_ready && !summary.thermal_model_ready);
@@ -173,7 +180,7 @@ void test_corrupt_truncated_schema_count_context_and_record_fail_closed() {
 
   constexpr uint8_t wrong_context[] = {9, 8, 7, 6, 5, 4, 3, 2, 0};
   assert(inspect_learning_journal({bytes, size}, wrong_context, sizeof(wrong_context), now_epoch, state.config.quality)
-             .status == LearningJournalStatus::CONTEXT_MISMATCH);
+             .status == LearningJournalStatus::OK);
 
   memcpy(changed, bytes, size);
   const size_t mean_room_offset = kLearningJournalHeaderBytes + sizeof(kContext) + 16U;
@@ -185,7 +192,7 @@ void test_corrupt_truncated_schema_count_context_and_record_fail_closed() {
 
   assert(inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now_epoch + kMaxRecordAgeS + 1U,
                                   state.config.quality)
-             .status == LearningJournalStatus::STALE_RECORD);
+             .status == LearningJournalStatus::OK);
 }
 
 void test_two_slot_selection_survives_torn_new_write_and_rejects_sequence_aba() {
@@ -213,9 +220,33 @@ void test_two_slot_selection_survives_torn_new_write_and_rejects_sequence_aba() 
   assert(selection.status == LearningJournalStatus::AMBIGUOUS_SEQUENCE && selection.selected_slot == -1);
 }
 
+void test_schema_four_records_migrate_without_thermal_state() {
+  constexpr uint32_t now = 20000U * 86400U + 12U * 3600U;
+  auto state = populated(now);
+  uint8_t bytes[kLearningJournalMaxBytes];
+  size_t size = 0;
+  assert(encode_learning_journal(passive_runtime_dataset(state), state.config.quality, 1, now, bytes, sizeof(bytes),
+                                 size) == LearningJournalStatus::OK);
+  // Schema 4 had the identical record layout and CRC, without the thermal tail.
+  size -= kLearningJournalThermalBytes;
+  write_u16(bytes, 4, 4);
+  write_u32(bytes, 8, size);
+  repair_crc(bytes, size);
+  constexpr uint8_t new_source[] = {9};
+  const auto metadata =
+      inspect_learning_journal({bytes, size}, new_source, sizeof(new_source), now, state.config.quality);
+  assert(metadata.status == LearningJournalStatus::OK && metadata.record_count == 2);
+  LearningJournalRecords view{{bytes, size}, metadata.context_size, metadata.record_count};
+  assert(view[0].mean_heat_w == state.records[0].mean_heat_w);
+  ThermalModelState thermal;
+  uint32_t epoch = 0;
+  assert(!view.restore_thermal(thermal, ThermalModelConfig{}, 100, 1, epoch));
+}
+
 }  // namespace
 
 int main() {
+  test_schema_four_records_migrate_without_thermal_state();
   test_round_trip_and_reboot_remap_never_restores_readiness();
   test_sparse_season_round_trip_and_reboot_remap();
   test_previous_algorithm_journal_restores_as_data_for_refit();

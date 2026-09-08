@@ -75,7 +75,7 @@ int main() {
   record = valid_record();
   record.start_epoch_s = 20000U * 86400U + 22U * 3600U;
   record.end_epoch_s = record.start_epoch_s + 14400U;
-  assert(validate_segment_record(record, config) == LearningStatus::TIME_DISCONTINUITY);
+  assert(validate_segment_record(record, config) == LearningStatus::OK);
 
   snapshot = valid_snapshot();
   snapshot.context_revision = 0;

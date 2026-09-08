@@ -51,7 +51,7 @@ fysieke metingen + ontvangstbewijs + bronidentiteit + bedrijfsstatus
     -> advies met redenen en meetcontext
 ```
 
-De kern gebruikt maximaal 64 records en 42 dagen historie. Een ontbrekend essentieel interval maakt het lopende segment ongeschikt. Normale uitperioden en signed calorimetrie blijven onderdeel van de tijdsintegratie. De dataset leert uit gemeten warmte; `P_request`, compressorlevels en de eigen woninglijn zijn geen trainingslabels.
+De kern gebruikt maximaal 64 records en 365 dagen historie. Een ontbrekend essentieel interval maakt het lopende segment ongeschikt. Normale uitperioden en signed calorimetrie blijven onderdeel van de tijdsintegratie. De dataset leert uit gemeten warmte; `P_request`, compressorlevels en de eigen woninglijn zijn geen trainingslabels.
 
 Eén eigenaar in de ESPHome-mainloop beheert records en fitworkspace in PSRAM. Tijdens een hervatbare fit blijft de recordarray onveranderlijk; append/prune annuleert eerst de fit. HTTP-callbacks krijgen uitsluitend een onder mutex gekopieerde JSON-cache. Een tweede gelijktijdige export krijgt HTTP 429; netwerk-I/O houdt de cachemutex niet vast.
 
@@ -132,21 +132,40 @@ zelf in C++; de MPC-output, horizon, forecasts en aanvoertemperatuursturing word
 De batch-ankering van `U` bij weinig warmtevraag is evenmin bruikbaar als kruisvalidatiebewijs.
 De aanvullende RLS heeft geen pad naar `P_request`; `P_adaptive = 0` blijft gelden.
 
-De firmware bewaart uitsluitend batchrecords. RLS en adviesreadiness worden na reboot opnieuw
-opgebouwd; de ongebruikte RLS-checkpoint-API is verwijderd. Het A/B-journal heeft twee slots van
-8 KiB, schema/CRC, meetcontext en maximaal 42 dagen historie. Een nieuwe write raakt alleen het
-inactieve slot en wordt teruggelezen voordat hij als opgeslagen geldt.
+De firmware bewaart batchrecords én de 1R1C-leerstand in hetzelfde A/B-journal:
+U/C-coëfficiënten, covariance, informatie voor kwaliteitsbeoordeling en sampletellers.
+Er zijn twee slots van 8 KiB; schema 5 voegt 152 bytes toe aan het recordformaat.
+Schrijven gebeurt alleen bij nieuwe leerdata, maximaal eenmaal per uur. Daardoor
+kan een onverwachte herstart maximaal ongeveer een uur nog niet opgeslagen
+leerwerk verliezen. Er is geen extra write in het OTA-pad.
 
-Opslagfalen stopt verdere writes voor die boot; leren in RAM en de verwarmingsregeling blijven
-werken. Er zijn geen NVS-owner, dirty-markering of automatische herstelpogingen. Wissen heeft één
-pad: beide slots wissen en controleren, of een zichtbare fout melden. Een mislukte reset kan na een
-reboot nog oude historie opleveren; de UI mag daarom alleen na `cleared` succes melden.
+Na herstart worden parameters en afgeronde 1R1C-perioden hersteld. Onvoltooide
+meetintervallen en bootlokale tijdstempels worden niet hersteld; een nieuw geldig
+interval is nodig voordat de 1R1C-beoordeling weer actueel kan zijn. Een bron- of
+kalibratiewijziging onderbreekt alleen lopende intervallen en herbeoordeelt de fit;
+het model en de afgeronde records blijven behouden. Ook een lange verwarmingspauze
+wist het model niet. Wie na een fysieke wijziging opnieuw wil beginnen, gebruikt
+`Leerdata wissen`. De bestaande begrensde recordselectie en maximale bewaartermijn
+van 365 dagen blijven gelden.
 
-Herstel vereist geldige UTC en beschikbare geselecteerde bronnen. Schema, algoritmeversie en
-meetcontext bepalen compatibiliteit; een gewone hercompilatie of webfix wist geen historie.
-Deze vereenvoudiging gebruikt schema 4. Schema 3 bevatte per record een onzekerheidsveld dat fase 1
-niet gebruikt; die historische records worden bewust niet hersteld om een ander recordformaat nooit
-verkeerd te lezen. Achtergebleven NVS-owner/dirty-waarden worden niet gelezen.
+Een nieuwe write raakt alleen het inactieve slot en wordt teruggelezen. Een
+onderbroken write laat het vorige geldige slot beschikbaar. Opslagfalen stopt
+verdere writes voor die boot; leren in RAM en de verwarmingsregeling blijven
+werken. Er zijn geen extra NVS-transacties of automatische herstelpogingen.
+Wissen heeft één pad: beide slots wissen en controleren, of een zichtbare fout
+melden. Bij een mislukte reset kan na reboot oude historie terugkomen; de UI mag
+daarom alleen na `cleared` succes melden.
+
+Herstel vereist geldige UTC. Bestaande schema-4-batchrecords blijven leesbaar,
+ook na een bronwissel; daarin stond nog geen 1R1C-checkpoint. Oudere onbekende
+recordformaten of beschadigde inhoud worden niet als meetdata geïnterpreteerd.
+De schema/algoritmecontrole blijft bestaan, maar de bronkeuze is geen voorwaarde
+voor het behouden van historie. Een gewoon firmware- of webupdate wist geen data.
+Automatisch toepassen blijft altijd uit.
+
+Het vermogen gebruikt de ΔT per warmtepomp. Een verschil tussen HP1-uit en HP2-in
+blokkeert leren niet: sensoren kunnen onderling afwijken. Controle/ijking van de
+watertemperatuursensoren via het servicemenu kan de meetnauwkeurigheid verbeteren.
 
 ## Uitvoerbare replay
 
@@ -169,7 +188,7 @@ De replay leest dit historische CSV-formaat voor compatibiliteit, maar accepteer
 drie revisionkolommen gelijk en niet nul zijn. In firmware en nieuw JSON-export bestaat uitsluitend
 `context_revision`.
 
-Temperaturen zijn in °C en vermogens in W; tijd is monotone milliseconden en UTC-seconden. Generatie 0 betekent onbekend. Voor historische data accepteert de CLI `--now-epoch` als expliciete analysetijd, zodat de 42-dagengrens causaal kan worden gereproduceerd. Iedere rij vertegenwoordigt een snapshot met gecontroleerde provenance. Alleen een CSV-getal of `invalid_reasons=0` vormt geen bewijs dat de onderliggende bron actueel was. Een gewone HA-historie-export voldoet niet automatisch aan dit contract.
+Temperaturen zijn in °C en vermogens in W; tijd is monotone milliseconden en UTC-seconden. Generatie 0 betekent onbekend. Voor historische data accepteert de CLI `--now-epoch` als expliciete analysetijd, zodat de bewaartermijn causaal kan worden gereproduceerd. Iedere rij vertegenwoordigt een snapshot met gecontroleerde provenance. Alleen een CSV-getal of `invalid_reasons=0` vormt geen bewijs dat de onderliggende bron actueel was. Een gewone HA-historie-export voldoet niet automatisch aan dit contract.
 
 De CLI rapporteert JSON met aantallen, uitsluitredenen en advies/fitresultaten. `batch_status` en
 `batch_advice_ready` beschrijven de structurele fit; `status`, `model_validation_status` en `advice_ready`
