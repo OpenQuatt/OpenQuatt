@@ -67,6 +67,38 @@ bool reset(LearningJournalStore& store, Flash& flash) {
                      [&](size_t slot, uint8_t* data, size_t size) { return flash.read(slot, data, size); });
 }
 
+void test_full_capacity_journal_survives_torn_write_and_reboot() {
+  Flash flash;
+  LearningJournalStore store;
+  LearningJournalRecords view;
+  assert(!load(store, flash, view));
+  uint8_t max_context[kMaxPassiveContextBytes]{};
+  SegmentRecord records[kMaxSegmentRecords];
+  for (size_t index = 0; index < kMaxSegmentRecords; ++index) {
+    records[index] = sample();
+    const uint32_t offset = static_cast<uint32_t>(kMaxSegmentRecords - 1U - index) * 86400U;
+    records[index].start_epoch_s -= offset;
+    records[index].end_epoch_s -= offset;
+  }
+  const LearningDatasetView dataset{records, kMaxSegmentRecords, {max_context, sizeof(max_context), 1}};
+  auto write = [&](uint64_t now, uint32_t revision) {
+    return store.save(
+        dataset, QualityConfig{}, kEpoch, now, revision, [&](size_t slot) { return flash.erase(slot); },
+        [&](size_t slot, const uint8_t* data, size_t size) { return flash.write(slot, data, size); },
+        [&](size_t slot, uint8_t* data, size_t size) { return flash.read(slot, data, size); });
+  };
+  assert(write(1000, 1));
+  records[kMaxSegmentRecords - 1U].mean_heat_w = 3000;
+  flash.fault = Fault::TORN_WRITE;
+  assert(!write(kLater, 2));
+  flash.fault = Fault::NONE;
+  LearningJournalStore rebooted;
+  assert(load(rebooted, flash, view));
+  assert(view.record_count == kMaxSegmentRecords);
+  assert(view[kMaxSegmentRecords - 1U].mean_heat_w == 2200);
+  assert(view[0].end_epoch_s == records[0].end_epoch_s);
+}
+
 void test_save_restore_and_write_rate() {
   Flash flash;
   LearningJournalStore store;
@@ -247,6 +279,7 @@ void test_thermal_only_checkpoint_survives_reboot_and_torn_write() {
 }  // namespace
 
 int main() {
+  test_full_capacity_journal_survives_torn_write_and_reboot();
   test_thermal_only_checkpoint_survives_reboot_and_torn_write();
   test_save_restore_and_write_rate();
   test_failed_writes_do_not_destroy_previous_slot_or_start_retry_loops();

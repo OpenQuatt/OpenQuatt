@@ -104,7 +104,9 @@ struct ThermalModelState {
 
 struct ThermalModelEstimate {
   bool parameters_valid = false;
+  // Numerical fit/data coverage only, not independent physical validation.
   bool ready = false;
+  bool capacity_validated = false;
   uint32_t readiness_reasons = THERMAL_READY_INVALID_STATE;
   double heat_loss_w_per_k = NAN;
   double thermal_capacity_wh_per_k = NAN;

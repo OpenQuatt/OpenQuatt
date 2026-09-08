@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 import subprocess
 import unittest
@@ -8,6 +9,14 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class LearningProfileContractTest(unittest.TestCase):
+    def test_export_budget_covers_endpoint_cache_and_request_snapshot(self):
+        writer = (ROOT / "openquatt/includes/control/oq_ph_learning_json.h").read_text()
+        endpoint = (ROOT / "components/openquatt_house_learning_status/OpenQuattHouseLearningStatus.h").read_text()
+        writer_kib = int(re.search(r"kExportJsonBufferSize = (\d+)U \* 1024U", writer).group(1))
+        endpoint_kib = int(re.search(r"EXPORT_BUFFER_SIZE = (\d+)U \* 1024U", endpoint).group(1))
+        self.assertGreaterEqual(endpoint_kib, writer_kib)
+        self.assertIn("REQUEST_BUFFER_SIZE = EXPORT_BUFFER_SIZE", endpoint)
+
     def test_only_q_and_waveshare_enable_the_passive_core(self):
         enabled = []
         for profile in sorted((ROOT / "openquatt/profiles").glob("*.yaml")):

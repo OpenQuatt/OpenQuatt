@@ -388,10 +388,24 @@ test("gecombineerde validatie en statusleeftijd bepalen de leerkwaliteit", () =>
     advice_ready: false,
   }));
   assert.match(renderHouseLearningStatusMarkup(ready), /niet gezamenlijk gevalideerd/);
-  assert.doesNotMatch(renderHouseLearningStatusMarkup(ready), />Gevalideerd</);
-  assert.match(renderHouseLearningStatusMarkup({ ...ready, adviceReady: true }), />Gevalideerd</);
+  assert.doesNotMatch(renderHouseLearningStatusMarkup(ready), />Warmteverlies komt overeen</);
+  assert.match(renderHouseLearningStatusMarkup({ ...ready, adviceReady: true }), />Warmteverlies komt overeen</);
   assert.match(renderHouseLearningStatusMarkup({ ...ready, tickEpoch: Math.floor(Date.now() / 1000) - 31 }), /Status verouderd/);
   assert.match(renderHouseLearningStatusMarkup({ ...ready, blockedReasons: ["model_disagreement"] }), /1R1C-model verschillen/);
+});
+
+test("modelovereenstemming valideert C niet, ook bij oude firmware", () => {
+  for (const extra of [{}, { capacity_validated: false }]) {
+    const status = normalizeHouseLearningStatus(statusPayload({
+      enabled: true, advice_ready: true, rls_ready: true, rls_samples: 100,
+      c_rls_wh_per_k: 12000, invalid_reasons: [], blocked_reasons: [], ...extra,
+    }));
+    assert.equal(status.capacityValidated, false);
+    const markup = renderHouseLearningStatusMarkup(status);
+    assert.match(markup, /Warmteverlies komt overeen/);
+    assert.match(markup, /Warmteopslag \(C\)[\s\S]*Voorlopig; nog niet gevalideerd/);
+    assert.doesNotMatch(markup, />Gevalideerd<|>Gereed</);
+  }
 });
 
 test("voorlopige 1R1C-data staat boven batchdiagnostiek", () => {
@@ -608,7 +622,7 @@ test("firmware-endpoint bewaart caches en requestscratch uitsluitend in PSRAM", 
     readFile(new URL("../../includes/control/oq_ph_learning_runtime.h", import.meta.url), "utf8"),
   ]);
   assert.match(header, /STATUS_BUFFER_SIZE = 4U \* 1024U/);
-  assert.match(header, /EXPORT_BUFFER_SIZE = 24U \* 1024U/);
+  assert.match(header, /EXPORT_BUFFER_SIZE = 32U \* 1024U/);
   assert.match(header, /REQUEST_BUFFER_SIZE = EXPORT_BUFFER_SIZE/);
   assert.match(source, /status_buffer_\.allocate_external/);
   assert.match(source, /export_buffer_\.allocate_external/);

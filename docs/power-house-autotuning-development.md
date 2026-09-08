@@ -53,7 +53,7 @@ fysieke metingen + ontvangstbewijs + bronidentiteit + bedrijfsstatus
 
 Normale CM0/CM1-pauzes blijven onderdeel van dezelfde meetperiode als CM2. Een pompoploop of pompuitloop wordt met het gemeten watervermogen geïntegreerd; geldig nuldebiet telt mee als nulvermogen. De overgang naar stilstandsdebiet is geen bronwissel. Het actuele ketelcommando en de uitgangen moeten ook tijdens deze pauzes uit staan.
 
-De kern gebruikt maximaal 64 records en 365 dagen historie. Een ontbrekend essentieel interval maakt het lopende segment ongeschikt. Normale uitperioden en signed calorimetrie blijven onderdeel van de tijdsintegratie. De dataset leert uit gemeten warmte; `P_request`, compressorlevels en de eigen woninglijn zijn geen trainingslabels.
+De kern gebruikt maximaal 128 records en 365 dagen historie: 64 recente records en 64 historische plaatsen verdeeld over vier temperatuurgebieden. De batchduur blijft vier uur. Het bestaande journalformaat blijft gelijk; journals met maximaal 64 records blijven leesbaar. Een volledig journal vraagt maximaal 7868 bytes en past in het bestaande 8 KiB-slot. De JSON-exportbuffer is 32 KiB. Teruggaan naar firmware met de oude limiet van 64 records kan een voller journal niet herstellen. De grotere capaciteit vereist nog hardwarekwalificatie van het geheugenbudget. Een ontbrekend essentieel interval maakt het lopende segment ongeschikt. Normale uitperioden en signed calorimetrie blijven onderdeel van de tijdsintegratie. De dataset leert uit gemeten warmte; `P_request`, compressorlevels en de eigen woninglijn zijn geen trainingslabels.
 
 Eén eigenaar in de ESPHome-mainloop beheert records en fitworkspace in PSRAM. Tijdens een hervatbare fit blijft de recordarray onveranderlijk; append/prune annuleert eerst de fit. HTTP-callbacks krijgen uitsluitend een onder mutex gekopieerde JSON-cache. Een tweede gelijktijdige export krijgt HTTP 429; netwerk-I/O houdt de cachemutex niet vast.
 
@@ -115,11 +115,14 @@ blind gemiddeld. `T0` blijft uit de batch-fit komen en wordt nooit gelijkgesteld
 `model_disagreement` of onvoldoende RLS-onderbouwing houdt het gecombineerde advies tegen.
 `auto_apply_allowed` blijft in deze bouwstap altijd `false`, ook als beide modellen overeenkomen.
 
-De geleerde `C` controleert ook quasi-stationariteit: `C * room_trend` schat per batch-record het
-vermogen dat in warmteopslag verdwijnt of daaruit vrijkomt. Als het maximum over training én holdout
-de ontwikkelgrens van 250 W of 10% van het gemeten warmtevermogen overschrijdt, wordt het gecombineerde
-advies geblokkeerd met `thermal_storage_not_stationary`. Beide grenzen zijn configureerbaar; dit is
-een modelmatige extra controle, geen aparte meting van opgeslagen energie.
+De geleerde `C` blijft voorlopig. `rls_ready` betekent dat de numerieke fit en datadekking
+voldoen, niet dat de fysieke warmteopslag betrouwbaar is geïdentificeerd. Het statusendpoint
+meldt daarom expliciet `capacity_validated=false`. Afronding van kamertemperaturen en
+ongemodelleerde warmte kunnen C vertekenen, ook bij een kleine voorspelfout.
+`C * room_trend` blijft geschatte diagnostiek, maar keurt geen batchadvies meer af.
+De eigen batchkwaliteit, U/H-consistentie, context en actualiteit blijven gecontroleerd.
+De web-app noemt overeenstemming van warmteverlies en presenteert C nooit als gevalideerd.
+Er is geen nieuwe estimator, instelling of journalmigratie nodig. Automatische toepassing blijft uit.
 
 Beide methoden delen dezelfde sensoren en mogelijke systematische meetfouten. Hun overeenstemming
 is aanvullende modelcontrole, geen statistisch onafhankelijk meetbewijs of garantie op besparing.
@@ -260,7 +263,7 @@ De HTTP-component publiceert gesynchroniseerde snapshots in PSRAM. HTTP-callback
 veranderende learnerstate. Status en export gebruiken bestaande webauthenticatie:
 
 - `GET /openquatt/learning/status`: H/T0, U/C, voortgang, redenen en runtime-diagnostiek.
-- `GET /openquatt/learning/export`: maximaal 64 batchrecords en 60 diagnostische rijen.
+- `GET /openquatt/learning/export`: maximaal 128 batchrecords en 60 diagnostische rijen.
 
 CM2 gebruikt het bestaande geen-ketelvraagcontract; ontbrekende OpenTherm-telemetrie is geen extra
 voorwaarde. Een actuele fysieke ketel-activiteitsmelding sluit de meting uit. Bronkwaliteit en het

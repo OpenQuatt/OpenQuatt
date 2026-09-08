@@ -145,8 +145,9 @@ void test_nonpositive_segment_and_record_bounds() {
   assert(prune_expired_records(buffer, buffer.records[0].end_epoch_s + kMaxRecordAgeS + 1U) == LearningStatus::OK);
   assert(buffer.count < kMaxSegmentRecords);
 
-  assert(append_record(buffer, record(base + 100U * 14400U), base + 100U * 14400U, config) == LearningStatus::OK);
-  SegmentRecord mixed = record(base + 101U * 14400U);
+  assert(append_record(buffer, record(base + (kMaxSegmentRecords + 2U) * 14400U),
+                       base + (kMaxSegmentRecords + 2U) * 14400U, config) == LearningStatus::OK);
+  SegmentRecord mixed = record(base + (kMaxSegmentRecords + 3U) * 14400U);
   mixed.context_revision = 9;
   assert(append_record(buffer, mixed, mixed.end_epoch_s, config) == LearningStatus::MIXED_CONTEXT);
 }

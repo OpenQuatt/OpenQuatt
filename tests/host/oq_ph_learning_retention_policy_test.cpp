@@ -102,14 +102,14 @@ void test_soft_winter_is_not_penalized() {
   const HouseLine truth{200.0f, 16.0f};
   Dataset current;
   Dataset representative;
-  for (uint16_t day = 0; day < 80U; ++day) {
+  for (uint16_t day = 0; day < 160U; ++day) {
     const float outside_c = 6.0f + static_cast<float>(day % 9U);
     const SegmentRecord value = season_record(day, outside_c, truth);
     append_current_policy(current, value);
     append_representative_policy(representative, value);
   }
   SegmentRecord heldout[9];
-  for (uint16_t index = 0; index < 9U; ++index) heldout[index] = season_record(80U + index, 7.0f + index % 7U, truth);
+  for (uint16_t index = 0; index < 9U; ++index) heldout[index] = season_record(160U + index, 7.0f + index % 7U, truth);
   const float current_error = mean_absolute_error(fit_for_comparison(current), heldout, 9U);
   const float representative_error = mean_absolute_error(fit_for_comparison(representative), heldout, 9U);
   assert(current_error < 0.1f && representative_error < 0.1f);
@@ -119,7 +119,7 @@ void test_short_cold_period_survives_and_improves_recent_prediction() {
   const HouseLine truth{200.0f, 16.0f};
   Dataset current;
   Dataset representative;
-  for (uint16_t day = 0; day < 80U; ++day) {
+  for (uint16_t day = 0; day < 160U; ++day) {
     const float outside_c = day < 16U ? -7.0f + static_cast<float>(day) : 7.0f + static_cast<float>(day % 3U);
     const float noise_w = day < 16U ? 0.0f : (outside_c < 8.0f ? 180.0f : -180.0f);
     const SegmentRecord value = season_record(day, outside_c, truth, noise_w);
@@ -130,7 +130,7 @@ void test_short_cold_period_survives_and_improves_recent_prediction() {
   assert(!contains_temperature_below(current, 0.0f));
   assert(contains_temperature_below(retained, 0.0f));
   SegmentRecord heldout[9];
-  for (uint16_t index = 0; index < 9U; ++index) heldout[index] = season_record(80U + index, 7.0f + index % 3U, truth);
+  for (uint16_t index = 0; index < 9U; ++index) heldout[index] = season_record(160U + index, 7.0f + index % 3U, truth);
   const float current_error = mean_absolute_error(fit_for_comparison(current), heldout, 9U);
   const float representative_error = mean_absolute_error(fit_for_comparison(retained), heldout, 9U);
   assert(representative_error < current_error * 0.75f);
@@ -140,7 +140,7 @@ void test_repeated_mild_records_do_not_evict_all_temperature_coverage() {
   const HouseLine truth{200.0f, 16.0f};
   Dataset current;
   Dataset representative;
-  for (uint16_t day = 0; day < 80U; ++day) {
+  for (uint16_t day = 0; day < 160U; ++day) {
     const float outside_c = day < 8U ? -6.0f + static_cast<float>(day) * 3.0f : 8.0f;
     const SegmentRecord value = season_record(day, outside_c, truth);
     append_current_policy(current, value);
@@ -157,14 +157,14 @@ void test_unmarked_heat_loss_change_remains_a_rejection_case() {
   const HouseLine after{300.0f, 16.0f};
   Dataset current;
   Dataset representative;
-  for (uint16_t day = 0; day < 80U; ++day) {
+  for (uint16_t day = 0; day < 160U; ++day) {
     const HouseLine truth = day < 60U ? before : after;
     const SegmentRecord value = season_record(day, -4.0f + static_cast<float>(day % 15U), truth);
     append_current_policy(current, value);
     append_representative_policy(representative, value);
   }
   SegmentRecord heldout[9];
-  for (uint16_t index = 0; index < 9U; ++index) heldout[index] = season_record(80U + index, -2.0f + index, after);
+  for (uint16_t index = 0; index < 9U; ++index) heldout[index] = season_record(160U + index, -2.0f + index, after);
   const float current_error = mean_absolute_error(fit_for_comparison(current), heldout, 9U);
   const float representative_error = mean_absolute_error(fit_for_comparison(representative), heldout, 9U);
   assert(representative_error > current_error * 1.2f);

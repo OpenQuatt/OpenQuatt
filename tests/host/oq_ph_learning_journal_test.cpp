@@ -123,6 +123,28 @@ void test_sparse_season_round_trip_and_reboot_remap() {
   for (size_t index = 0; index < restored.record_count; ++index) assert(restored.records[index].context_revision == 7U);
 }
 
+// Schema 5 stores the actual count, not the firmware array capacity.
+void test_previous_64_record_capacity_restores_without_reset() {
+  constexpr uint32_t now = 20000U * 86400U + 12U * 3600U;
+  auto original = populated(now);
+  for (size_t index = 0; index < 64U; ++index)
+    original.records[index] = record(now - static_cast<uint32_t>(64U - index) * 86400U, -4.0f);
+  original.record_count = 64U;
+  uint8_t bytes[4540U];  // Previous firmware's maximum encoded journal size.
+  size_t size = 0;
+  assert(encode_learning_journal(passive_runtime_dataset(original), original.config.quality, 1, now, bytes,
+                                 sizeof(bytes), size) == LearningJournalStatus::OK);
+  const auto metadata = inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality);
+  assert(metadata.status == LearningJournalStatus::OK && metadata.record_count == 64U);
+  PassiveRuntimeStorage restored;
+  assert(initialize_passive_runtime(restored, context(), config(), true) == PassiveRuntimeStatus::COLLECTING);
+  assert(restore_passive_records(restored,
+                                 LearningJournalRecords{{bytes, size}, metadata.context_size, metadata.record_count}));
+  assert(restored.record_count == 64U && restored.fit_pending);
+  for (size_t index = 0; index < 64U; ++index)
+    assert(restored.records[index].end_epoch_s == original.records[index].end_epoch_s);
+}
+
 void test_previous_algorithm_journal_restores_as_data_for_refit() {
   constexpr uint32_t now_epoch = 20000U * 86400U + 12U * 3600U;
   auto original = populated(now_epoch);
@@ -246,6 +268,7 @@ void test_schema_four_records_migrate_without_thermal_state() {
 }  // namespace
 
 int main() {
+  test_previous_64_record_capacity_restores_without_reset();
   test_schema_four_records_migrate_without_thermal_state();
   test_round_trip_and_reboot_remap_never_restores_readiness();
   test_sparse_season_round_trip_and_reboot_remap();

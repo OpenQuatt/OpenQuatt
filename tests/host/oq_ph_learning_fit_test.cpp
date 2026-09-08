@@ -259,8 +259,8 @@ int main() {
   test_replayed_record_bypasses_fail_closed();
   test_temperature_dominance();
   test_exact_retention_boundary_allows_sparse_season();
-  static_assert(kMaxRecordsVisitedPerHuberFit == 768);
-  static_assert(kMaxSegmentRecords == 64);
+  static_assert(kMaxRecordsVisitedPerHuberFit == 1536);
+  static_assert(kMaxSegmentRecords == 128);
   static_assert(kMaxCalendarDays == kMaxSegmentRecords);
   return 0;
 }

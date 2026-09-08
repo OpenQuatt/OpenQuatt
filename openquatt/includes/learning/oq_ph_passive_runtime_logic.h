@@ -156,10 +156,7 @@ inline bool valid_runtime_config(const PassiveRuntimeConfig& config) {
          config.validation.max_heat_loss_difference_fraction >= 0.0 &&
          config.validation.max_heat_loss_difference_fraction <= 0.50 &&
          isfinite(config.validation.min_shared_outside_span_c) && config.validation.min_shared_outside_span_c > 0.0 &&
-         config.validation.min_shared_outside_span_c <= 40.0 && isfinite(config.validation.max_storage_power_w) &&
-         config.validation.max_storage_power_w >= 0.0 && config.validation.max_storage_power_w <= 5000.0 &&
-         isfinite(config.validation.max_storage_fraction) && config.validation.max_storage_fraction >= 0.0 &&
-         config.validation.max_storage_fraction <= 1.0;
+         config.validation.min_shared_outside_span_c <= 40.0;
 }
 
 inline void cancel_fit(PassiveRuntimeStorage& state) {

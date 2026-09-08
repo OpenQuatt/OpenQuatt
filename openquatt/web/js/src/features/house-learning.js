@@ -49,6 +49,7 @@ export function normalizeHouseLearningStatus(payload = {}) {
     t0Batch: numberOrNull(payload.t0_batch),
     uRls: numberOrNull(payload.u_rls),
     cRlsWhPerK: numberOrNull(payload.c_rls_wh_per_k),
+    capacityValidated: payload.capacity_validated === true,
     rlsSamples: Math.max(0, Math.trunc(numberOrNull(payload.rls_samples) || 0)),
     rlsReady: payload.rls_ready === true,
     rlsReadinessReasons: stringList(payload.rls_readiness_reasons),

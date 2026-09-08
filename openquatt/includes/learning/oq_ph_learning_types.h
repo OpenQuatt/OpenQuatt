@@ -12,10 +12,10 @@
 
 namespace oq_power_house::learning {
 
-constexpr size_t kMaxSegmentRecords = 64;
-constexpr size_t kRecentSegmentRecords = 32;
+constexpr size_t kMaxSegmentRecords = 128;
+constexpr size_t kRecentSegmentRecords = 64;
 constexpr size_t kHistoricalTemperatureBins = 4;
-constexpr size_t kHistoricalRecordsPerTemperatureBin = 8;
+constexpr size_t kHistoricalRecordsPerTemperatureBin = 16;
 static_assert(kRecentSegmentRecords + kHistoricalTemperatureBins * kHistoricalRecordsPerTemperatureBin ==
                   kMaxSegmentRecords,
               "representative record storage must stay bounded");

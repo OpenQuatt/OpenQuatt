@@ -231,8 +231,8 @@ inline size_t temperature_bin(float outside_c) {
 }
 
 // With a full buffer, the oldest recent record becomes historical. Keep at
-// most eight records per temperature region, evicting the oldest redundant
-// historical record. The remaining newest 32 records always stay recent.
+// most kHistoricalRecordsPerTemperatureBin records per temperature region, evicting the oldest redundant
+// historical record. The remaining newest kRecentSegmentRecords records always stay recent.
 inline size_t representative_record_to_evict(const RecordBuffer& buffer) {
   if (buffer.records == nullptr || buffer.count != buffer.capacity || buffer.capacity != kMaxSegmentRecords)
     return buffer.count;

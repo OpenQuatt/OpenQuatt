@@ -399,7 +399,7 @@ inline LearningStatus begin_advice_fit(const SegmentRecord* records, size_t reco
 
 // Each call performs at most one Huber fit: at most
 // kMaxRecordsVisitedPerHuberFit record visits. Preparation is separate and bounded
-// by kMaxPreparationSortComparisons; holdout finalization visits at most 64 records.
+// by kMaxPreparationSortComparisons; holdout finalization visits at most kMaxSegmentRecords records.
 inline LearningStatus advance_advice_fit(AdviceFitWorkspace& workspace) {
   if (workspace.phase == FitPhase::DONE) return workspace.result.status;
   if (workspace.phase == FitPhase::IDLE) return LearningStatus::INVALID_CONFIGURATION;

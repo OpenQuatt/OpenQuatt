@@ -8,8 +8,8 @@
 namespace oq_ph_learning {
 
 constexpr size_t kStatusJsonBufferSize = 4U * 1024U;
-constexpr size_t kExportJsonBufferSize = 24U * 1024U;
-constexpr size_t kMaxExportRecordRows = 64U;
+constexpr size_t kExportJsonBufferSize = 32U * 1024U;
+constexpr size_t kMaxExportRecordRows = 128U;
 constexpr size_t kMaxExportDiagnosticRows = 60U;
 
 // %.6g needs at most 12 characters for any finite IEEE-754 float, including

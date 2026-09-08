@@ -82,6 +82,41 @@ void test_synthetic_recovery_and_irregular_intervals() {
   assert(thermal_detail::covariance_is_spd(state.covariance_00, state.covariance_01, state.covariance_11));
 }
 
+void test_longer_intervals_can_remove_real_thermal_information() {
+  auto config = test_config();
+  ThermalModelState short_model, long_model;
+  assert(initialize_thermal_model(short_model, config));
+  assert(initialize_thermal_model(long_model, config));
+  double room = 20.0;
+  ThermalInterval combined;
+  ThermalUpdateResult short_result, long_result;
+  // The same exact trajectory is offered as 30-minute and 60-minute intervals.
+  // Alternating heat is informative within an hour, but cancels over the hour.
+  for (uint32_t index = 0; index < 1344; ++index) {
+    const double outside = 3.0 + 5.0 * sin(index / 100.0);
+    const double heat = kTrueHeatLossWPerK * (room - outside) + (index % 2U ? -1500.0 : 1500.0);
+    auto interval = exact_interval(1000ULL + index * 1800000ULL, 0.5, room, outside, heat);
+    room = interval.indoor_end_c;
+    short_result = observe_thermal_interval(short_model, interval, config);
+    assert(short_result.accepted);
+    if (index % 2U == 0) {
+      combined = interval;
+    } else {
+      combined.end_monotonic_ms = interval.end_monotonic_ms;
+      combined.indoor_end_c = interval.indoor_end_c;
+      combined.mean_indoor_c = 0.5 * (combined.mean_indoor_c + interval.mean_indoor_c);
+      combined.mean_outside_c = 0.5 * (combined.mean_outside_c + interval.mean_outside_c);
+      combined.mean_heat_w = 0.5 * (combined.mean_heat_w + interval.mean_heat_w);
+      long_result = observe_thermal_interval(long_model, combined, config);
+      assert(long_result.accepted);
+    }
+  }
+  assert(short_result.estimate.ready);
+  assert(fabs(short_result.estimate.thermal_capacity_wh_per_k - kTrueCapacityWhPerK) < 1.0);
+  assert(!long_result.estimate.ready);
+  assert(long_result.estimate.readiness_reasons & THERMAL_READY_UNOBSERVABLE);
+}
+
 void test_temperature_change_is_information() {
   const auto config = test_config();
   ThermalModelState state;
@@ -444,6 +479,7 @@ void test_invalid_configuration_never_seeds_ready_model() {
 }  // namespace
 
 int main() {
+  test_longer_intervals_can_remove_real_thermal_information();
   test_synthetic_recovery_and_irregular_intervals();
   test_temperature_change_is_information();
   test_stationary_rank_one_data_never_becomes_ready();

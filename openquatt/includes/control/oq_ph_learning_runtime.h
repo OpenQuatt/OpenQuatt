@@ -644,7 +644,8 @@ class Runtime {
     json.number(summary.batch.candidate_available ? summary.batch.candidate.zero_power_temp_c : NAN);
     json.add(",\"u_rls\":");
     json.number(summary.thermal.accepted_samples > 0 ? summary.thermal.heat_loss_w_per_k : NAN);
-    json.add(",\"c_rls_wh_per_k\":");
+    // Numerical readiness is not independent validation of physical capacity.
+    json.add(",\"capacity_validated\":false,\"c_rls_wh_per_k\":");
     json.number(summary.thermal.accepted_samples > 0 ? summary.thermal.thermal_capacity_wh_per_k : NAN);
     json.add(",\"rls_samples\":%u,\"rls_ready\":%s,\"rls_readiness_reasons\":", summary.thermal.accepted_samples,
              enabled && summary.thermal_model_ready ? "true" : "false");
@@ -690,7 +691,6 @@ class Runtime {
       reason(validation_status == ModelValidationStatus::INSUFFICIENT_SHARED_RANGE,
              "insufficient_shared_temperature_range");
       reason(validation_status == ModelValidationStatus::MODEL_DISAGREEMENT, "model_disagreement");
-      reason(validation_status == ModelValidationStatus::THERMAL_STORAGE_ACTIVE, "thermal_storage_not_stationary");
     }
     json.add(
         "],\"memory\":{\"internal_free\":%u,\"internal_min\":%u,\"internal_largest_block\":%u,\"loop_stack_high_water_"

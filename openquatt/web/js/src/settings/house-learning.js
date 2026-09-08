@@ -43,7 +43,7 @@ const reasons = (values, fallback) => {
   const unique = [...new Set((values || []).map((value) => REASON_LABELS[value] || "onbekende blokkade"))];
   return unique.length ? unique.join(" · ") : fallback;
 };
-const estimateNote = (value, ready) => value == null ? "Nog geen schatting" : ready ? "Gereed" : "Voorlopige schatting";
+const estimateNote = (value, ready) => value == null ? "Nog geen schatting" : ready ? "Voldoende modeldata" : "Voorlopige schatting";
 const statusIsStale = (status) => !Number.isFinite(status.tickEpoch) || status.tickEpoch <= 0
   || Math.floor(Date.now() / 1000) - status.tickEpoch > 30;
 const SOURCE_LABELS = { room: "Kamertemperatuur", setpoint: "Kamer setpoint", outside: "Buitentemperatuur", flow: "Flow" };
@@ -125,7 +125,7 @@ function modelStatus(status) {
   if (!status.storageReady) return "Opslag niet gereed";
   if (!status.enabled) return "Nog niet beoordeeld";
   if (statusIsStale(status)) return "Status verouderd";
-  if (status.adviceReady) return "Gevalideerd";
+  if (status.adviceReady) return "Warmteverlies komt overeen";
   return status.rlsSamples ? "Voorlopige schatting" : "Nog geen 1R1C-data";
 }
 
@@ -133,7 +133,7 @@ function modelStatusNote(status) {
   if (status.enabled && statusIsStale(status)) return "Geen actuele, gevalideerde leerkwaliteit";
   const modelReasons = status.blockedReasons.filter((reason) => MODEL_REASONS.includes(reason));
   if (modelReasons.length) return reasons(modelReasons, "Modelvalidatie geblokkeerd");
-  if (status.adviceReady) return "Voldoende gegevens verzameld. De regeling verandert hierdoor niet automatisch.";
+  if (status.adviceReady) return "Beide modellen schatten een vergelijkbaar warmteverlies. Warmteopslag (C) is nog niet gevalideerd; de regeling verandert niet.";
   if (status.rlsReady && status.batchAdviceReady) return "Nog niet gezamenlijk gevalideerd";
   if (status.rlsSamples) {
     return `${status.rlsSamples} geaccepteerde periode${status.rlsSamples === 1 ? "" : "n"} van 30 minuten. Meer data en variatie nodig voor validatie.`;
@@ -167,10 +167,10 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
     ["Modelstatus", modelStatus(status), modelStatusNote(status), true, status.adviceReady && !statusIsStale(status) ? "green" : "sky"],
     ["1R1C-perioden", String(status.rlsSamples), "Geaccepteerde perioden van 30 minuten"],
     ["Warmteverlies (U)", metric(status.uRls, "W/K"), estimateNote(status.uRls, status.rlsReady)],
-    ["Warmteopslag (C)", metric(status.cRlsWhPerK, "Wh/K"), estimateNote(status.cRlsWhPerK, status.rlsReady)],
+    ["Warmteopslag (C)", metric(status.cRlsWhPerK, "Wh/K"), status.cRlsWhPerK == null ? "Nog geen schatting" : "Voorlopig; nog niet gevalideerd"],
   ];
   const batchDiagnosticCards = [
-    ["Stabiele batch-perioden", String(status.records), "Langdurige perioden voor een tweede, onafhankelijke controle"],
+    ["Stabiele batch-perioden", String(status.records), "Langdurige perioden voor vergelijking van het warmteverlies"],
     ["Batch warmteverlies (H)", metric(status.hBatch, "W/K"), "Schatting uit stabiele perioden"],
     ["Batch starttemperatuur (T₀)", metric(status.t0Batch, "°C"), "Geschatte buitentemperatuur waarbij verwarming begint"],
   ];

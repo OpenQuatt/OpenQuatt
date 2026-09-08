@@ -85,9 +85,19 @@ int main() {
   assert(batch.candidate.zero_power_temp_c == 20.0f);
   const auto warming_batch = batch_fit(0.049f);
   validation = validate_house_models(warming_batch, thermal, config, now, 1);
-  assert(validation.status == ModelValidationStatus::THERMAL_STORAGE_ACTIVE);
+  assert(validation.status == ModelValidationStatus::MODELS_CONSISTENT);
   assert(validation.max_estimated_storage_power_w > 290.0);
-  assert(!validation.cross_validated_advice_ready && !validation.auto_apply_allowed);
+  assert(validation.batch_advice_ready && validation.cross_validated_advice_ready && !validation.auto_apply_allowed);
+
+  assert(!validation.thermal.capacity_validated);
+  auto biased_capacity = thermal;
+  // Preserve U while doubling C: numerical readiness cannot prove physical C.
+  biased_capacity.theta_heat_scaled *= 0.5;
+  biased_capacity.theta_loss_scaled *= 0.5;
+  const auto biased = validate_house_models(warming_batch, biased_capacity, config, now, 1);
+  assert(biased.thermal.ready && !biased.thermal.capacity_validated);
+  assert(biased.cross_validated_advice_ready && !biased.auto_apply_allowed);
+  assert(fabs(biased.max_estimated_storage_power_w / validation.max_estimated_storage_power_w - 2.0) < 1e-6);
 
   const auto disagreeing = dynamic_fit(285.0, config);
   validation = validate_house_models(batch, disagreeing, config, now, 1);
