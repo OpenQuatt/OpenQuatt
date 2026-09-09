@@ -1016,7 +1016,7 @@ import { escapeHtml } from "../core/html.js";
       buildSourceSignal({
         key: "external-heat-demand",
         group: "heating",
-        title: "Externe warmtevraag",
+        title: "Externe warmtevraag (Power House)",
         icon: "zap",
         select: buildExternalSourceSelect("externalHeatDemand", "ExternalHeatDemand", "", {
           optionLabels: { Disabled: "Niet gebruiken", "API input": "API-invoer" },
@@ -1036,7 +1036,7 @@ import { escapeHtml } from "../core/html.js";
       buildSourceSignal({
         key: "heating-supply-target",
         group: "heating",
-        title: "Aanvoertarget",
+        title: "Aanvoertarget (stooklijn)",
         icon: "target",
         select: buildExternalSourceSelect("heatingSupplyTarget", "HeatingSupplyTarget", "heating_supply_target", {
           optionLabels: { "Heating curve": "Stooklijn", "OT thermostat": "OT-thermostaat", "API input": "API-invoer" },

@@ -77,6 +77,7 @@ api_input_heating_enable_stale_s: "0"                 # Maximum age for API-inpu
 api_input_cooling_enable_stale_s: "0"                 # Maximum age for API-input cooling-enable [s]; 0 keeps state until restart or a new payload.
 api_input_external_heat_demand_stale_s: "900"         # Maximum age for API-input external heat demand before it becomes invalid [s].
 api_input_heating_supply_target_stale_s: "900"        # Maximum age for API-input heating supply target before it becomes invalid [s].
+ha_heating_supply_target_stale_s: "900"               # Maximum age for the last HA heating supply target publish before it becomes invalid [s]; publish periodically.
 usage_telemetry_broker: "mqtt.openquatt.nl"           # Central usage-statistics MQTT broker.
 usage_telemetry_port: "1883"                          # Plain MQTT port for the current central broker.
 usage_telemetry_tls: "false"                          # Temporary until the central broker exposes MQTT/TLS.

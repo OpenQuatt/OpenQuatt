@@ -207,12 +207,18 @@ class OpenQuattMqttConfig : public Component {
   static constexpr size_t BROKER_MAX_LEN = 64;
   static constexpr size_t USERNAME_MAX_LEN = 64;
   static constexpr size_t PASSWORD_MAX_LEN = 128;
-  static constexpr uint8_t INPUT_MASK_ALL =
-      static_cast<uint8_t>((1U << (NUMERIC_INPUT_COUNT + BINARY_INPUT_COUNT)) - 1U);
+  // Frozen v1 storage bit layout for the enable/retained masks. Bit positions
+  // must never shift when inputs are added: bits 0..3 are the original numeric
+  // inputs and bits 4..5 the binary enables from before the heating supply
+  // target existed. That input owns the previously unused bit 6, so stored
+  // masks from older firmware stay valid without a storage migration.
+  static constexpr uint8_t HEATING_SUPPLY_TARGET_BIT = 6U;
+  static constexpr uint8_t BINARY_INPUT_BIT_BASE = 4U;
+  static constexpr uint8_t INPUT_MASK_ALL = 0x7FU;
   static constexpr uint8_t STATEFUL_INPUT_MASK =
       static_cast<uint8_t>((1U << static_cast<uint8_t>(NumericInputKind::ROOM_SETPOINT)) |
-                           (1U << (NUMERIC_INPUT_COUNT + static_cast<uint8_t>(BinaryInputKind::HEATING_ENABLE))) |
-                           (1U << (NUMERIC_INPUT_COUNT + static_cast<uint8_t>(BinaryInputKind::COOLING_ENABLE))));
+                           (1U << (BINARY_INPUT_BIT_BASE + static_cast<uint8_t>(BinaryInputKind::HEATING_ENABLE))) |
+                           (1U << (BINARY_INPUT_BIT_BASE + static_cast<uint8_t>(BinaryInputKind::COOLING_ENABLE))));
 
   struct Storage {
     uint32_t magic;
@@ -346,6 +352,14 @@ class OpenQuattMqttConfig : public Component {
   const BinaryInput& binary_input_(BinaryInputKind kind) const;
   static uint8_t numeric_input_mask_(NumericInputKind kind);
   static uint8_t binary_input_mask_(BinaryInputKind kind);
+  static constexpr uint8_t numeric_input_bit_(size_t index) {
+    return static_cast<uint8_t>(index >= static_cast<size_t>(NumericInputKind::HEATING_SUPPLY_TARGET)
+                                    ? (1U << HEATING_SUPPLY_TARGET_BIT)
+                                    : (1U << index));
+  }
+  static constexpr uint8_t binary_input_bit_(size_t index) {
+    return static_cast<uint8_t>(1U << (BINARY_INPUT_BIT_BASE + index));
+  }
   bool is_numeric_input_enabled_(size_t input_index) const;
   bool is_binary_input_enabled_(size_t input_index) const;
   bool is_numeric_input_accept_retained_(size_t input_index) const;

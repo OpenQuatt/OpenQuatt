@@ -5,6 +5,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_YAML = (ROOT / "openquatt/oq_sensor_sources.yaml").read_text()
 API_YAML = (ROOT / "openquatt/oq_api_ingress.yaml").read_text()
+HA_YAML = (ROOT / "openquatt/oq_ha_inputs.yaml").read_text()
+SUBSTITUTIONS_YAML = (ROOT / "openquatt/oq_substitutions_common.yaml").read_text()
 SOURCE_RUNTIME = (ROOT / "openquatt/includes/control/oq_sensor_source_runtime.h").read_text()
 API_RUNTIME = (ROOT / "openquatt/includes/control/oq_api_ingress_runtime.h").read_text()
 SOURCE_LOGIC = (ROOT / "openquatt/includes/control/oq_input_source_logic.h").read_text()
@@ -109,6 +111,16 @@ class InputSourceRuntimeContractTest(unittest.TestCase):
         self.assertIn("isfinite", SOURCE_LOGIC)
         for runtime in (SOURCE_RUNTIME, API_RUNTIME, SOURCE_LOGIC):
             self.assertNotIn("${", runtime)
+
+    def test_heating_supply_target_ha_is_freshness_gated(self) -> None:
+        # A value frozen by HA connection loss must go stale even though
+        # ESPHome retains the states: freshness is tracked at ingress via
+        # on_value, and the selected sensor passes an explicit stale window.
+        self.assertEqual(HA_YAML.count("observe_heating_supply_target_ha"), 2)
+        self.assertIn("ha_heating_supply_target_stale_s", SUBSTITUTIONS_YAML)
+        self.assertIn("ha_heating_supply_target_stale_s", SOURCE_YAML)
+        self.assertIn("evaluate_freshness(ha_supply_target_state_", SOURCE_RUNTIME)
+        self.assertIn("ha_hold_revoked", SOURCE_RUNTIME)
 
     def test_host_regressions_cover_failure_boundaries(self) -> None:
         host_test = (ROOT / "tests/host/input_source_logic_test.cpp").read_text()

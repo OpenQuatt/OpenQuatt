@@ -309,4 +309,4 @@ sensor:
     lambda: |-
       return oq_sensor_source::runtime().heating_supply_target(
           (uint32_t) millis(), (uint32_t) (${oq_selected_input_stale_hold_s}UL * 1000UL),
-          (${oq_ot_supply_target_fresh_expr}));
+          (uint32_t) ${ha_heating_supply_target_stale_s}UL, (${oq_ot_supply_target_fresh_expr}));

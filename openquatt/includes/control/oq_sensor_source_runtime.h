@@ -276,7 +276,9 @@ class Runtime {
     return selected.valid ? selected.value : NAN;
   }
 
-  float heating_supply_target(uint32_t now_ms, uint32_t hold_ms, bool opentherm_fresh) {
+  void observe_heating_supply_target_ha(uint32_t now_ms) { ha_supply_target_state_.observe(now_ms); }
+
+  float heating_supply_target(uint32_t now_ms, uint32_t hold_ms, uint32_t ha_stale_s, bool opentherm_fresh) {
     if (!id(heating_supply_target_source).has_state()) return NAN;
     const auto selected_source = parse_source(id(heating_supply_target_source).current_option());
     if (selected_source == oq_input_source::Source::HEATING_CURVE) {
@@ -292,8 +294,13 @@ class Runtime {
       supply_target_hold_.reset();
     }
     oq_input_source::NumericSources sources;
-    sources.ha = sample(ha_valid(id(heating_supply_target_valid_ha), id(heating_supply_target_ha)) &&
-                            oq_heating_supply::external_target_in_range(id(heating_supply_target_ha).state),
+    // HA freshness is tracked at ingress (on_value): a value frozen by
+    // connection loss goes stale even though ESPHome retains the states.
+    const bool ha_fresh =
+        oq_input_source::evaluate_freshness(ha_supply_target_state_, now_ms, ha_stale_s,
+                                            ha_valid(id(heating_supply_target_valid_ha), id(heating_supply_target_ha)))
+            .valid;
+    sources.ha = sample(ha_fresh && oq_heating_supply::external_target_in_range(id(heating_supply_target_ha).state),
                         id(heating_supply_target_ha));
     sources.api = sample(api_valid(id(api_input_heating_supply_target_valid), id(api_input_heating_supply_target)),
                          id(api_input_heating_supply_target));
@@ -324,6 +331,7 @@ class Runtime {
   oq_input_source::HoldState setpoint_hold_;
   oq_input_source::HoldState demand_hold_;
   oq_input_source::HoldState supply_target_hold_;
+  oq_input_source::TimedState ha_supply_target_state_;
 
   template <typename T>
   static oq_input_source::Source parse_source(const T& option) {

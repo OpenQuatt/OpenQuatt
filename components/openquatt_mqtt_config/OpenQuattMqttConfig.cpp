@@ -1707,18 +1707,18 @@ const OpenQuattMqttConfig::BinaryInput& OpenQuattMqttConfig::binary_input_(Binar
 }
 
 uint8_t OpenQuattMqttConfig::numeric_input_mask_(NumericInputKind kind) {
-  return static_cast<uint8_t>(1U << static_cast<uint8_t>(kind));
+  return numeric_input_bit_(static_cast<size_t>(kind));
 }
 
 uint8_t OpenQuattMqttConfig::binary_input_mask_(BinaryInputKind kind) {
-  return static_cast<uint8_t>(1U << (NUMERIC_INPUT_COUNT + static_cast<uint8_t>(kind)));
+  return binary_input_bit_(static_cast<size_t>(kind));
 }
 
 bool OpenQuattMqttConfig::is_numeric_input_enabled_(size_t input_index) const {
   if (input_index >= this->numeric_inputs_.size()) {
     return false;
   }
-  const uint8_t mask = static_cast<uint8_t>(1U << input_index);
+  const uint8_t mask = numeric_input_bit_(input_index);
   return (this->input_disabled_mask_.load() & mask) == 0U;
 }
 
@@ -1726,7 +1726,7 @@ bool OpenQuattMqttConfig::is_binary_input_enabled_(size_t input_index) const {
   if (input_index >= this->binary_inputs_.size()) {
     return false;
   }
-  const uint8_t mask = static_cast<uint8_t>(1U << (NUMERIC_INPUT_COUNT + input_index));
+  const uint8_t mask = binary_input_bit_(input_index);
   return (this->input_disabled_mask_.load() & mask) == 0U;
 }
 
@@ -1734,7 +1734,7 @@ bool OpenQuattMqttConfig::is_numeric_input_accept_retained_(size_t input_index) 
   if (input_index != static_cast<size_t>(NumericInputKind::ROOM_SETPOINT)) {
     return false;
   }
-  const uint8_t mask = static_cast<uint8_t>(1U << input_index);
+  const uint8_t mask = numeric_input_bit_(input_index);
   return (this->retained_disabled_mask_.load() & mask) == 0U;
 }
 
@@ -1742,7 +1742,7 @@ bool OpenQuattMqttConfig::is_binary_input_accept_retained_(size_t input_index) c
   if (input_index >= this->binary_inputs_.size()) {
     return false;
   }
-  const uint8_t mask = static_cast<uint8_t>(1U << (NUMERIC_INPUT_COUNT + input_index));
+  const uint8_t mask = binary_input_bit_(input_index);
   return (this->retained_disabled_mask_.load() & mask) == 0U;
 }
 
@@ -1752,13 +1752,13 @@ bool OpenQuattMqttConfig::input_mask_for_key_(const std::string& key, uint8_t* m
   }
   for (size_t i = 0; i < this->numeric_inputs_.size(); i++) {
     if (key == this->numeric_inputs_[i].key) {
-      *mask = static_cast<uint8_t>(1U << i);
+      *mask = numeric_input_bit_(i);
       return true;
     }
   }
   for (size_t i = 0; i < this->binary_inputs_.size(); i++) {
     if (key == this->binary_inputs_[i].key) {
-      *mask = static_cast<uint8_t>(1U << (NUMERIC_INPUT_COUNT + i));
+      *mask = binary_input_bit_(i);
       return true;
     }
   }
@@ -1792,7 +1792,7 @@ void OpenQuattMqttConfig::clear_disabled_inputs_() {
   const uint8_t disabled_mask = this->input_disabled_mask_.load() & INPUT_MASK_ALL;
   portENTER_CRITICAL(&this->pending_lock_);
   for (size_t i = 0; i < this->numeric_inputs_.size(); i++) {
-    if ((disabled_mask & static_cast<uint8_t>(1U << i)) == 0U) {
+    if ((disabled_mask & numeric_input_bit_(i)) == 0U) {
       continue;
     }
     auto& input = this->numeric_inputs_[i];
@@ -1805,7 +1805,7 @@ void OpenQuattMqttConfig::clear_disabled_inputs_() {
     input.last_valid_retained = false;
   }
   for (size_t i = 0; i < this->binary_inputs_.size(); i++) {
-    const uint8_t mask = static_cast<uint8_t>(1U << (NUMERIC_INPUT_COUNT + i));
+    const uint8_t mask = binary_input_bit_(i);
     if ((disabled_mask & mask) == 0U) {
       continue;
     }
@@ -1824,7 +1824,7 @@ void OpenQuattMqttConfig::clear_disabled_inputs_() {
 void OpenQuattMqttConfig::clear_input_(uint8_t input_mask) {
   portENTER_CRITICAL(&this->pending_lock_);
   for (size_t i = 0; i < this->numeric_inputs_.size(); i++) {
-    if ((input_mask & static_cast<uint8_t>(1U << i)) == 0U) {
+    if ((input_mask & numeric_input_bit_(i)) == 0U) {
       continue;
     }
     auto& input = this->numeric_inputs_[i];
@@ -1837,7 +1837,7 @@ void OpenQuattMqttConfig::clear_input_(uint8_t input_mask) {
     input.last_valid_retained = false;
   }
   for (size_t i = 0; i < this->binary_inputs_.size(); i++) {
-    const uint8_t mask = static_cast<uint8_t>(1U << (NUMERIC_INPUT_COUNT + i));
+    const uint8_t mask = binary_input_bit_(i);
     if ((input_mask & mask) == 0U) {
       continue;
     }
@@ -1857,7 +1857,7 @@ void OpenQuattMqttConfig::clear_session_scoped_inputs_() {
   const uint8_t session_scoped_mask = this->retained_disabled_mask_.load() & STATEFUL_INPUT_MASK;
   portENTER_CRITICAL(&this->pending_lock_);
   for (size_t i = 0; i < this->numeric_inputs_.size(); i++) {
-    if ((session_scoped_mask & static_cast<uint8_t>(1U << i)) == 0U) {
+    if ((session_scoped_mask & numeric_input_bit_(i)) == 0U) {
       continue;
     }
     auto& input = this->numeric_inputs_[i];
@@ -1866,7 +1866,7 @@ void OpenQuattMqttConfig::clear_session_scoped_inputs_() {
     input.last_valid_retained = false;
   }
   for (size_t i = 0; i < this->binary_inputs_.size(); i++) {
-    const uint8_t mask = static_cast<uint8_t>(1U << (NUMERIC_INPUT_COUNT + i));
+    const uint8_t mask = binary_input_bit_(i);
     if ((session_scoped_mask & mask) == 0U) {
       continue;
     }
