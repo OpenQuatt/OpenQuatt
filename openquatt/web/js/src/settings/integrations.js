@@ -1040,7 +1040,7 @@ import { escapeHtml } from "../core/html.js";
         icon: "target",
         select: buildExternalSourceSelect("heatingSupplyTarget", "HeatingSupplyTarget", "heating_supply_target", {
           optionLabels: { "Heating curve": "Stooklijn", "OT thermostat": "OT-thermostaat", "API input": "API-invoer" },
-          infoCopy: "Vervangt alleen het berekende stooklijntarget, inclusief kamertrim. Valt de bron weg of veroudert hij, dan regelt de stooklijn weer. Limieten, PID en Duo-dispatch blijven van OpenQuatt.",
+          infoCopy: "Een externe regelaar bepaalt dan hoe warm het aanvoerwater moet zijn, in plaats van de eigen stooklijn. Handig bij een buffervat of een thermostaat die zelf al rekent. Valt de bron weg of wordt de waarde te oud, dan neemt de stooklijn het vanzelf weer over. Beveiligingen en de warmtepompregeling blijven altijd van OpenQuatt.",
         }),
         summaryValue: heatingSupplyTargetSummaryValue,
         summarySource: heatingSupplyTargetUsedSource,
