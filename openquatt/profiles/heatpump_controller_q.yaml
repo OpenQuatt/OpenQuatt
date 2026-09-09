@@ -177,10 +177,6 @@ sensor:
       - timeout:
           timeout: 15s
           value: !lambda return 0.0f;
-    on_value:
-      then:
-        - lambda: |-
-            id(oq_controller_flow_last_update_ms) = millis();
 
 interval:
   - interval: 5s

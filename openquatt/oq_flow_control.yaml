@@ -187,10 +187,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 1s
     lambda: |-
-      return oq_flow_runtime::runtime().local_flow(
-          ${oq_flow_mismatch_threshold_lph},
-          (uint32_t) millis(),
-          (uint32_t) (${oq_controller_flow_stale_s}UL * 1000UL));
+      return oq_flow_runtime::runtime().local_flow(${oq_flow_mismatch_threshold_lph});
 
 binary_sensor:
   - platform: template

@@ -4,7 +4,6 @@
 #include <stdint.h>
 
 #include "oq_flow_control_logic.h"
-#include "oq_input_source_logic.h"
 #include "../service/oq_service_logic.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
 
@@ -18,20 +17,11 @@ struct TickConfig {
 
 class Runtime {
  public:
-  float local_flow(float mismatch_threshold_lph, uint32_t now_ms, uint32_t controller_stale_ms) const {
+  float local_flow(float mismatch_threshold_lph) const {
     float hp1_flow_lph = id(hp1_flow).state;
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     if (id(hp_generation).has_state() && id(hp_generation).current_option() == "V1") {
-      if (!id(flow_rate_controller).has_state() || !isfinite(id(flow_rate_controller).state)) {
-        hp1_flow_lph = NAN;
-      } else if (controller_stale_ms > 0U && oq_input_source::controller_flow_is_stale(
-                                                 now_ms, id(oq_controller_flow_last_update_ms), controller_stale_ms)) {
-        // #648: a stale non-zero controller flow must not stay valid for
-        // local averaging when the pulse meter stops publishing.
-        hp1_flow_lph = 0.0f;
-      } else {
-        hp1_flow_lph = id(flow_rate_controller).state;
-      }
+      hp1_flow_lph = id(flow_rate_controller).state;
     }
 #endif
 #if OQ_TOPOLOGY_DUO

@@ -65,7 +65,7 @@ class InputSourceRuntimeContractTest(unittest.TestCase):
         self.assertLessEqual(len(SOURCE_YAML.splitlines()) + len(API_YAML.splitlines()), 750)
         for call in (
             "oq_sensor_source::runtime().water_supply(",
-            "oq_sensor_source::runtime().flow(",
+            "oq_sensor_source::runtime().flow()",
             "oq_sensor_source::runtime().outside(",
             "oq_sensor_source::runtime().room_temperature(",
             "oq_sensor_source::runtime().room_setpoint(",
@@ -115,7 +115,6 @@ class InputSourceRuntimeContractTest(unittest.TestCase):
             "test_outside_lowest_valid_selection",
             "test_enable_source_selection",
             "test_flow_source_routes",
-            "test_q_controller_flow_stale_fails_to_zero",
         ):
             self.assertIn(test_name, host_test)
 

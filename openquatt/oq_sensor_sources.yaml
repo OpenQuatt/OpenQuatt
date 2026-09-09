@@ -35,7 +35,6 @@ globals:
   - {id: oq_room_temp_selected_hold_active, type: bool, restore_value: false, initial_value: 'false'}
   - {id: oq_room_setpoint_selected_hold_active, type: bool, restore_value: false, initial_value: 'false'}
   - {id: oq_external_heat_demand_selected_hold_active, type: bool, restore_value: false, initial_value: 'false'}
-  - {id: oq_controller_flow_last_update_ms, type: uint32_t, restore_value: false, initial_value: '0'}
 
 select:
   - platform: template
@@ -240,9 +239,7 @@ sensor:
     accuracy_decimals: 1
     update_interval: 5s
     lambda: |-
-      return oq_sensor_source::runtime().flow(
-          (uint32_t) millis(),
-          (uint32_t) (${oq_controller_flow_stale_s}UL * 1000UL));
+      return oq_sensor_source::runtime().flow();
 
   - platform: template
     id: outside_temp_selected
