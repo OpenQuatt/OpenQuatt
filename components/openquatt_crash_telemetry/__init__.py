@@ -102,6 +102,7 @@ CONFIG_SCHEMA = cv.All(
 
 
 async def to_code(config):
+    cg.add_build_flag("-Wl,--wrap=panic_abort")
     add_idf_sdkconfig_option("CONFIG_APP_RETRIEVE_LEN_ELF_SHA", 64)
     if CORE.is_esp32 and get_esp32_variant() == VARIANT_ESP32S3:
         psram.request_external_task_stack()
