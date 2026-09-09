@@ -190,7 +190,7 @@ class Runtime {
     return NAN;
   }
 
-  float flow() const {
+  float flow(uint32_t now_ms, uint32_t controller_stale_ms) const {
     if (!id(flow_source).has_state()) return NAN;
     oq_input_source::FlowInputs input;
     input.selected = parse_source(id(flow_source).current_option());
@@ -207,6 +207,12 @@ class Runtime {
     }
     input.hp_generation_v1 = id(hp_generation).has_state() && id(hp_generation).current_option() == "V1";
     input.controller = sample(true, id(flow_rate_controller));
+    // #648: backstop when the controller pulse meter stops publishing (e.g.
+    // a pulse-timeout zero averaged with older values, then silence).
+    input.now_ms = now_ms;
+    input.controller_last_update_ms = id(oq_controller_flow_last_update_ms);
+    input.controller_stale_ms = controller_stale_ms;
+    input.controller_freshness_enabled = controller_stale_ms > 0U;
 #endif
     const oq_flow::PumpRelayState hp1{id(hp1_is_online) && id(hp1_pump_relay).has_state(), id(hp1_pump_relay).state};
 #if OQ_TOPOLOGY_DUO

@@ -147,6 +147,74 @@ void test_flow_source_routes() {
   assert(selected.valid && selected.route == FlowRoute::CIC && selected.value == 600.0f);
 }
 
+void test_q_controller_flow_stale_fails_to_zero() {
+  // Regression for #648: pulse-timeout zero averaged with older non-zero
+  // values can publish e.g. 480 L/h once and then go quiet. The stale
+  // non-zero value must fail to 0 L/h within a bounded time.
+  FlowInputs input;
+  input.selected = Source::OUTDOOR;
+  input.q_hardware = true;
+  input.controller_mode = ControllerFlowMode::LOCAL;
+  input.controller = numeric_sample(true, true, 480.0f);
+  input.controller_freshness_enabled = true;
+  input.controller_stale_ms = 30000U;
+
+  // Fresh publish is passed through unchanged.
+  input.controller_last_update_ms = 10000U;
+  input.now_ms = 10000U;
+  auto selected = select_flow(input);
+  assert(selected.valid && selected.route == FlowRoute::CONTROLLER && selected.value == 480.0f);
+
+  // Still fresh at exactly the stale bound.
+  input.now_ms = 40000U;
+  selected = select_flow(input);
+  assert(selected.valid && selected.value == 480.0f);
+
+  // Stale: no new publish for longer than the bound -> fail to 0 L/h.
+  input.now_ms = 40001U;
+  selected = select_flow(input);
+  assert(selected.valid && selected.route == FlowRoute::CONTROLLER && selected.value == 0.0f);
+
+  // Stale zero stays zero (does not become invalid).
+  input.controller = numeric_sample(true, true, 0.0f);
+  selected = select_flow(input);
+  assert(selected.valid && selected.value == 0.0f);
+
+  // Missing sample stays invalid (never mask a missing sensor as flow).
+  input.controller = {};
+  selected = select_flow(input);
+  assert(!selected.valid);
+
+  // Q Single V1 Auto uses the same controller-only backstop.
+  input.controller = numeric_sample(true, true, 480.0f);
+  input.controller_mode = ControllerFlowMode::AUTO;
+  input.hp_generation_v1 = true;
+  input.now_ms = 40001U;
+  selected = select_flow(input);
+  assert(selected.valid && selected.route == FlowRoute::CONTROLLER && selected.value == 0.0f);
+
+  // Non-controller routes are unaffected by controller staleness.
+  input.duo = true;
+  input.aggregate = numeric_sample(true, true, 900.0f);
+  selected = select_flow(input);
+  assert(selected.valid && selected.route == FlowRoute::AGGREGATE && selected.value == 900.0f);
+
+  // Freshness disabled preserves the legacy pass-through (documents the
+  // pre-#648 behaviour for non-Q builds without the backstop).
+  input.duo = false;
+  input.controller_freshness_enabled = false;
+  input.now_ms = 40001U;
+  selected = select_flow(input);
+  assert(selected.valid && selected.value == 480.0f);
+
+  // Staleness helper: disabled, boundary and rollover behaviour.
+  assert(!controller_flow_is_stale(1000U, 0U, 0U));
+  assert(!controller_flow_is_stale(30000U, 0U, 30000U));
+  assert(controller_flow_is_stale(30001U, 0U, 30000U));
+  assert(controller_flow_is_stale(5U, UINT32_MAX - 4U, 9U));
+  assert(!controller_flow_is_stale(5U, UINT32_MAX - 4U, 10U));
+}
+
 int main() {
   test_freshness_accepts_timestamp_zero_and_rollover();
   test_hold_is_bound_to_selected_source();
@@ -154,5 +222,6 @@ int main() {
   test_outside_lowest_valid_selection();
   test_enable_source_selection();
   test_flow_source_routes();
+  test_q_controller_flow_stale_fails_to_zero();
   return 0;
 }

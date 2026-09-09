@@ -211,6 +211,7 @@ oq_flow_kp_min: "0.00"                                # Lower bound for Flow PI 
 oq_flow_kp_max: "0.20"                                # Upper bound for Flow PI Kp (broader for cross-install tuning).
 oq_flow_ki_min: "0.0000"                              # Lower bound for Flow PI Ki.
 oq_flow_ki_max: "0.0100"                              # Upper bound for Flow PI Ki (broader for cross-install tuning).
+oq_controller_flow_stale_s: "30"                      # Maximum age of the Q controller pulse-meter publish before it fails to 0 L/h [s].
 
 # ----------------------------
 # FLOW AUTOTUNE

@@ -229,6 +229,15 @@ struct FlowInputs {
   NumericSample hp1;
   NumericSample hp2;
   NumericSample aggregate;
+  // Freshness backstop for the Q controller pulse meter (#648). The pulse
+  // meter only publishes on pulses/timeout, while throttle_average may hold
+  // the last averaged non-zero value forever when no new input arrives.
+  // When enabled, a stale controller sample fails to 0 L/h instead of
+  // staying valid as a stale non-zero flow.
+  uint32_t now_ms = 0;
+  uint32_t controller_last_update_ms = 0;
+  uint32_t controller_stale_ms = 0;
+  bool controller_freshness_enabled = false;
 };
 
 struct FlowSelection {
@@ -241,13 +250,29 @@ inline FlowSelection flow_sample(const NumericSample& sample, FlowRoute route) {
   return sample.valid ? FlowSelection{sample.value, route, true} : FlowSelection{};
 }
 
+inline bool controller_flow_is_stale(uint32_t now_ms, uint32_t last_update_ms, uint32_t stale_ms) {
+  if (stale_ms == 0U) return false;
+  return (now_ms - last_update_ms) > stale_ms;
+}
+
 inline FlowSelection select_flow(const FlowInputs& input) {
   if (input.selected == Source::CIC) return flow_sample(input.cic, FlowRoute::CIC);
   if (input.selected != Source::OUTDOOR) return {};
   const bool controller_only =
       input.q_hardware && (input.controller_mode == ControllerFlowMode::LOCAL ||
                            (!input.duo && input.controller_mode == ControllerFlowMode::AUTO && input.hp_generation_v1));
-  if (controller_only) return flow_sample(input.controller, FlowRoute::CONTROLLER);
+  if (controller_only) {
+    if (!input.controller.valid) return {};
+    // #648: a pulse-timeout zero averaged with older non-zero values can
+    // leave a stale non-zero controller flow published with no further
+    // updates. Fail stale controller flow to 0 L/h so it cannot stay valid
+    // indefinitely for control and safety logic.
+    if (input.controller_freshness_enabled &&
+        controller_flow_is_stale(input.now_ms, input.controller_last_update_ms, input.controller_stale_ms)) {
+      return {0.0f, FlowRoute::CONTROLLER, true};
+    }
+    return flow_sample(input.controller, FlowRoute::CONTROLLER);
+  }
   if (input.all_relevant_pumps_stopped) return {0.0f, FlowRoute::PUMPS_STOPPED, true};
   if (input.duo && input.outdoor_mode == OutdoorFlowMode::HP1) return flow_sample(input.hp1, FlowRoute::HP1);
   if (input.duo && input.outdoor_mode == OutdoorFlowMode::HP2) return flow_sample(input.hp2, FlowRoute::HP2);
