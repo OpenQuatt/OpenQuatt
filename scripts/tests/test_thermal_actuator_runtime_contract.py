@@ -48,10 +48,29 @@ class ThermalActuatorRuntimeContractTest(unittest.TestCase):
     def test_complete_runtime_stack_stays_bounded(self) -> None:
         paths = ("openquatt/oq_thermal_actuator.yaml", "openquatt/includes/control/oq_thermal_actuator_logic.h",
                  "openquatt/includes/control/oq_thermal_actuator_runtime.h", "tests/host/thermal_actuator_logic_test.cpp",
+                 "openquatt/includes/control/oq_compressor_start_limit.h", "tests/host/compressor_start_limit_test.cpp",
                  "scripts/tests/test_thermal_actuator_runtime_contract.py", "scripts/tests/test_v2_compressor_level_contract.py",
                  "scripts/tests/test_compressor_frequency_policy_contract.py")
-        # Includes restart-credit invalidation and the read-only frequency-limit diagnosis.
-        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1370)
+        # Includes restart credit, frequency diagnosis and the bounded start quota with regression coverage.
+        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1600)
+
+    def test_start_quota_covers_retained_writes_and_final_transitions(self) -> None:
+        actuator = RUNTIME[RUNTIME.index("int apply_level_"):RUNTIME.index("int previous_applied_")]
+        remaining = actuator.index("start_limits_[is_hp1 ? 0 : 1].remaining_ms")
+        retained = actuator.index("const auto retained")
+        preflight = actuator.index("oq_thermal_actuator::decide_preflight(")
+        self.assertLess(remaining, retained)
+        self.assertLess(retained, preflight)
+        self.assertIn("oq_thermal_actuator::may_retain_command(previous, incident_guard.bypass_runtime_and_defrost_holds)", actuator)
+        self.assertIn("if (!may_retain) this->clear_retained_level(is_hp1);", actuator)
+        self.assertIn("may_retain ? this->retained_level(is_hp1, cycle.frequency) : oq_odu::RetainedLevel{}", actuator[retained:preflight])
+        self.assertIn("cooling_start_blocked, start_limit_remaining_ms)", actuator)
+        self.assertLess(preflight, actuator.index("apply_active_mode_hold("))
+        self.assertLess(preflight, actuator.index("apply_start_gate_before_active_write("))
+        self.assertIn("for (auto& limit : this->start_limits_) limit.expire(config.now_ms);", RUNTIME)
+        self.assertEqual(RUNTIME.count(".record_transition(previous, new_level, now_ms)"), 1)
+        transition = RUNTIME[RUNTIME.index("void record_transition("):RUNTIME.index("private:")]
+        self.assertLess(transition.index(".record_transition("), transition.index("previous = new_level;"))
 
 
 if __name__ == "__main__":

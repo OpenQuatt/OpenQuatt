@@ -8,6 +8,7 @@
 #include <string>
 
 #include "oq_compressor_frequency_runtime.h"
+#include "oq_compressor_start_limit.h"
 #include "oq_cooling_limiter_logic.h"
 #include "oq_incident_actuator_logic.h"
 #include "oq_thermal_actuator_logic.h"
@@ -55,6 +56,7 @@ class Runtime {
 
  public:
   void tick(const TickConfig& config) {
+    for (auto& limit : this->start_limits_) limit.expire(config.now_ms);
     const float cooling_off_state = id(cooling_minimum_off_time).state;
     int cooling_off_s = !isfinite(cooling_off_state) ? 600 : static_cast<int>(lroundf(cooling_off_state));
     const int cooling_off_floor_s = oq_cooling::cooling_minimum_off_floor_s(config.cooling_minimum_off_min_s);
@@ -371,6 +373,7 @@ class Runtime {
 
   void record_transition(bool is_hp1, int new_level, uint32_t now_ms, uint32_t dt_ms) {
     int& previous = is_hp1 ? id(hp1_last_applied_level) : OQ_ACTUATOR_SECONDARY_ID(last_applied_level);
+    this->start_limits_[is_hp1 ? 0 : 1].record_transition(previous, new_level, now_ms);
     if (previous != new_level) {
       (is_hp1 ? id(hp1_last_level_change_ms) : id(hp2_last_level_change_ms)) = now_ms;
     }
@@ -437,15 +440,18 @@ class Runtime {
     const bool force_safe_write =
         oq_incident_actuator::safe_stop_write_retry_due(stop_pending, cycle.config.now_ms, last_safe_write_ms, 10000U);
 
-    // Contract order: incident stop -> defrost hold -> cooling rest -> per-HP rest
+    // Contract order: incident stop -> defrost hold -> cooling rest -> per-HP rest -> start quota
     // -> valid mode -> frequency policy -> start/stop registration -> physical write.
     const auto incident_guard =
         oq_incident_actuator::decide({level, previous, incident.available_for_start,
                                       incident.must_stop || id(oq_incident_manager).startup_inhibited(hp_index)});
-    if (incident_guard.bypass_runtime_and_defrost_holds) this->clear_retained_level(is_hp1);
-    const auto retained = incident_guard.bypass_runtime_and_defrost_holds
-                              ? oq_odu::RetainedLevel{}
-                              : this->retained_level(is_hp1, cycle.frequency);
+    const bool may_retain =
+        oq_thermal_actuator::may_retain_command(previous, incident_guard.bypass_runtime_and_defrost_holds);
+    if (!may_retain) this->clear_retained_level(is_hp1);
+    const uint32_t start_limit_remaining_ms = this->start_limits_[is_hp1 ? 0 : 1].remaining_ms(cycle.config.now_ms);
+    // Neither retained-level early return may re-arm a zero command, including
+    // after quota expiry when demand has disappeared but ODU readback is stale.
+    const auto retained = may_retain ? this->retained_level(is_hp1, cycle.frequency) : oq_odu::RetainedLevel{};
     const int expected_mode = this->requested_mode_code(is_hp1, true, cycle.request_mode_code,
                                                         cycle.request_thermal_active, cycle.manual_service_active);
     const bool cooling_start_blocked = oq_cooling::cooling_stop_confirmation_blocks_start(
@@ -460,7 +466,7 @@ class Runtime {
                                                                              cycle.manual_service_active);
     const auto preflight = oq_thermal_actuator::decide_preflight(
         incident_guard.guarded_level, previous, defrost_hold, expected_mode, hp_rest_remaining_ms,
-        incident_guard.bypass_runtime_and_defrost_holds, cooling_start_blocked);
+        incident_guard.bypass_runtime_and_defrost_holds, cooling_start_blocked, start_limit_remaining_ms);
     level = preflight == oq_thermal_actuator::PreflightBlock::NONE ? incident_guard.guarded_level : 0;
     std::string block_reason;
     uint8_t candidate_reason = openquatt_decision_log::REASON_UNKNOWN;
@@ -515,6 +521,17 @@ class Runtime {
       candidate_aux_s = this->cap_seconds_(remaining_s);
       this->service_guard_(cycle, is_hp1) = "minimale uit-tijd: nog " + std::to_string(remaining_s) + " s";
       this->log_block_change(is_hp1, reason);
+    }
+
+    if (preflight == oq_thermal_actuator::PreflightBlock::START_LIMIT) {
+      const uint32_t remaining_s = (start_limit_remaining_ms + 999U) / 1000U;
+      block_reason = "compressor start limit reached (6/60 min)";
+      candidate_reason = openquatt_decision_log::REASON_START_STOP_RATE_HIGH;
+      candidate_aux_s = this->cap_seconds_(remaining_s);
+      this->service_guard_(cycle, is_hp1) = "startlimiet 6/uur bereikt: nog " + std::to_string(remaining_s) + " s";
+      // Keep the log reason stable: the countdown belongs in service status
+      // and the existing candidate event, not a new log line every five seconds.
+      this->log_block_change(is_hp1, block_reason);
     }
 
     int applied = level;
@@ -815,6 +832,7 @@ class Runtime {
   }
 
   std::string last_optimizer_reason_;
+  oq_thermal_actuator::CompressorStartLimit start_limits_[OQ_TOPOLOGY_DUO ? 2 : 1]{};
   std::string last_block_reasons_[2];
   std::string last_manual_guard_status_;
   bool last_defrost_seen_[2]{false, false};
