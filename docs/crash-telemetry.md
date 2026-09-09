@@ -13,12 +13,52 @@ begrensde record in flash beschikbaar voor een retry. MQTT QoS 1 kan dezelfde
 crash opnieuw afleveren wanneer een acknowledgement verloren gaat. Een ontvanger
 moet daarom dedupliceren op de combinatie van `installation_id` en `message_id`.
 
+De MQTT-client voor crashpublicatie wordt door een geïsoleerde worker beheerd.
+De normale ESPHome-hoofdloop bouwt alleen de begrensde payload op en verwerkt
+het resultaat. Een trage of vastlopende MQTT-start of -cleanup mag daardoor de
+verwarmingsregeling of controllerhoofdloop niet blokkeren. Het lokale
+crashrecord wordt pas gewist nadat de PUBACK is ontvangen én de client volledig
+is opgeruimd; blijft de cleanup hangen, dan blijft het record behouden voor een
+retry onder hetzelfde `message_id`.
+
 De payload bevat geen gewone runtime-logs, metingen of regelwaarden. Wel bevat
 hij de regels uit het ESPHome-crashrapport, het resettype, firmwareversie,
 releasekanaal, ESPHome-versie, bronrepository, volledige commit-SHA, exact
 buildtarget, release-manifest-URL indien van toepassing, hardwareprofiel,
-topologie, verbinding, buildtijd en de volledige ELF-SHA256 van de firmware die
-het rapport verstuurt.
+topologie, verbinding, verbindingsvoorkeur, buildtijd en de volledige ELF-SHA256
+van de firmware die het rapport verstuurt. Bij een gecombineerde WiFi- en
+Ethernetfirmware is `connection` de actuele verbinding (`wifi`, `eth` of `none`)
+en `connection_preference` de ingestelde voorkeur (`auto`, `wifi` of `eth`).
+
+Bij een abort/assert bevat het rapport ook `Abort details`, wanneer de tekst
+veilig beschikbaar was. Een assert is een interne controle die de firmware
+stopt wanneer een verwachte toestand niet klopt. De detailregel kan de functie,
+het bronbestand, de regel en de gefaalde controle bevatten. Dit helpt wanneer
+meerdere controles hetzelfde backtrace-adres delen; het bewijst niet vanzelf
+de onderliggende oorzaak.
+
+OpenQuatt bewaart daarvoor maximaal 255 tekens per core in vaste buffers in
+intern RAM die een softwareherstart overleven (284 bytes per core inclusief
+metadata; 568 bytes op de dual-core ESP32-S3). Iedere core schrijft zijn eigen
+buffer, zodat gelijktijdige aborts geen gedeelde schrijfbuffer nodig hebben.
+Bij de volgende boot wordt hiervan een onveranderlijke kopie gemaakt voor het
+rapport; een nieuwe crash kan de tekst van het vorige rapport zo niet wijzigen.
+Die kopie kost nogmaals 568 bytes op de ESP32-S3, plus enkele statusbytes.
+Langere teksten krijgen `[truncated]`;
+onleesbare, lege of niet bij deze build/core passende details worden weggelaten.
+Tijdens de abort worden alleen bytes uit intern DRAM gelezen, zonder
+geheugenallocatie, locks of flashschrijfacties. Tekst in flash of PSRAM wordt
+overgeslagen. Na de herstart loopt de detailregel mee in hetzelfde begrensde
+crashrecord, met dezelfde toestemming, publicatie- en retryregels. Er wordt
+geen gewone logbuffer meegestuurd; abortteksten kunnen wel door de betreffende
+software ingevulde technische waarden bevatten.
+
+Deze uitbreiding helpt alleen bij toekomstige aborts/asserts. Oude rapporten,
+een stroomonderbreking en crashes zonder beschikbare aborttekst krijgen geen
+extra detailregel. De firmware verwijdert de RAM-geldigheidsmarkering vroeg bij
+de volgende boot om details van een eerdere crash niet opnieuw te gebruiken.
+Bij falende flashopslag gevolgd door nog een herstart kan de detailregel daarom
+verloren gaan; het bestaande ESPHome-crashrecord houdt zijn eigen levenscyclus.
 
 De tijdvelden hebben bewust verschillende betekenissen:
 

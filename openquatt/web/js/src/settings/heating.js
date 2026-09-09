@@ -5,6 +5,7 @@ import { getCurveFallbackSuggestion, getEntityValue, normalizeNumber } from "../
 import { getHeatingEnableAdvice, getHeatingEnableCurrent, getHeatingEnableRecommendation } from "../core/heating-strategy-matrix.js";
 import { renderNumberInputField } from "../core/number-controls.js";
 import { state } from "../core/state.js";
+import { getSettingsSelectModel } from "./field-models.js";
 import { renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField } from "./controls.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
@@ -106,17 +107,20 @@ import { escapeHtml } from "../core/html.js";
   }
 
   export function renderHeatingStrategyExplainCards() {
-    const curveActive = isCurveMode();
+    const model = getSettingsSelectModel("strategy");
+    const powerHouseActive = model.value === STRATEGY_OPTION_POWER_HOUSE;
+    const curveActive = model.value === STRATEGY_OPTION_CURVE;
     return `
       <div class="oq-settings-strategy-grid">
         <button
-          class="oq-helper-surface oq-settings-strategy-card${curveActive ? "" : " is-active"}"
+          class="oq-helper-surface oq-settings-strategy-card${powerHouseActive ? " is-active" : ""}"
           type="button"
           data-oq-action="select-settings-option"
           data-select-key="strategy"
+          data-oq-select-model="true"
           data-select-option="${escapeHtml(STRATEGY_OPTION_POWER_HOUSE)}"
-          aria-pressed="${curveActive ? "false" : "true"}"
-          ${state.loadingEntities || state.busyAction === "save-strategy" || state.busyAction === "save-heatingEnableSource" ? "disabled" : ""}
+          aria-pressed="${powerHouseActive ? "true" : "false"}"
+          ${model.busy || !model.available ? "disabled" : ""}
         >
           <p class="oq-helper-label">Power House</p>
           <h4>Automatisch op basis van je woning</h4>
@@ -132,9 +136,10 @@ import { escapeHtml } from "../core/html.js";
           type="button"
           data-oq-action="select-settings-option"
           data-select-key="strategy"
+          data-oq-select-model="true"
           data-select-option="${escapeHtml(STRATEGY_OPTION_CURVE)}"
           aria-pressed="${curveActive ? "true" : "false"}"
-          ${state.loadingEntities || state.busyAction === "save-strategy" || state.busyAction === "save-heatingEnableSource" ? "disabled" : ""}
+          ${model.busy || !model.available ? "disabled" : ""}
         >
           <p class="oq-helper-label">Stooklijn</p>
           <h4>Regelen met een stooklijn</h4>
@@ -150,12 +155,11 @@ import { escapeHtml } from "../core/html.js";
   }
 
   export function renderPowerHouseResponseProfilesField() {
-    if (!hasEntity("phResponseProfile")) {
+    const model = getSettingsSelectModel("phResponseProfile");
+    if (!model.available) {
       return "";
     }
 
-    const currentValue = String(getEntityValue("phResponseProfile") || "");
-    const busy = state.loadingEntities || state.busyAction === "save-phResponseProfile";
     const options = [
       {
         value: "Calm",
@@ -193,7 +197,7 @@ import { escapeHtml } from "../core/html.js";
     const controlMarkup = `
       <div class="oq-settings-choice-grid oq-settings-choice-grid--response">
         ${options.map((option) => {
-          const isActive = option.value === currentValue;
+          const isActive = option.value === model.value;
           if (option.value === "Custom" && isActive) {
             return `
               <div class="oq-helper-surface oq-settings-choice-card oq-settings-choice-card--static oq-settings-choice-card--custom is-active">
@@ -209,7 +213,7 @@ import { escapeHtml } from "../core/html.js";
               </div>
             `;
           }
-          return renderSettingsChoiceOption({ key: "phResponseProfile", option: option.value, currentValue, busy, copy: option.copy, meta: option.meta });
+          return renderSettingsChoiceOption({ key: "phResponseProfile", option: option.value, model, copy: option.copy, meta: option.meta });
         }).join("")}
       </div>
     `;
@@ -224,12 +228,11 @@ import { escapeHtml } from "../core/html.js";
   }
 
   export function renderHeatingCurveProfileField() {
-    if (!hasEntity("curveControlProfile")) {
+    const model = getSettingsSelectModel("curveControlProfile");
+    if (!model.available) {
       return "";
     }
 
-    const currentValue = String(getEntityValue("curveControlProfile") || "");
-    const busy = state.loadingEntities || state.busyAction === "save-curveControlProfile";
     const options = [
       {
         value: "Comfort",
@@ -253,7 +256,7 @@ import { escapeHtml } from "../core/html.js";
 
     const controlMarkup = `
       <div class="oq-settings-choice-grid oq-settings-choice-grid--curve">
-        ${options.map((option) => renderSettingsChoiceOption({ key: "curveControlProfile", option: option.value, currentValue, busy, copy: option.copy, meta: option.meta })).join("")}
+        ${options.map((option) => renderSettingsChoiceOption({ key: "curveControlProfile", option: option.value, model, copy: option.copy, meta: option.meta })).join("")}
       </div>
     `;
 

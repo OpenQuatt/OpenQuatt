@@ -2,6 +2,12 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build, transform } from "esbuild";
+import {
+  BUNDLE_SYMBOL_MANIFEST,
+  compactHtmlTemplateWhitespacePlugin,
+  minifyCssBundle,
+  minifyJavaScriptBundle,
+} from "./bundle-minifiers.mjs";
 import { checkSettingsBackupConfig } from "./check-settings-backup.mjs";
 import { resolveCssSources } from "./css-source-list.mjs";
 
@@ -9,6 +15,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const checkOnly = process.argv.includes("--check");
 const previewOnly = process.argv.includes("--preview");
+const printSymbolManifest = process.env.OPENQUATT_WEB_SYMBOL_MANIFEST === "1";
 
 const unsupportedArguments = process.argv.slice(2).filter((argument) => !["--check", "--preview"].includes(argument));
 if (unsupportedArguments.length) {
@@ -100,7 +107,8 @@ async function renderCssBundle(bundle) {
   ].join("\n");
   const bodySegments = parts.map(({ content }) => content.trimEnd());
   const body = bodySegments.join("\n");
-  const minified = (await transform(body, { loader: "css", minify: true })).code.trim();
+  const esbuildOutput = (await transform(body, { loader: "css", minify: true })).code.trim();
+  const minified = minifyCssBundle(esbuildOutput, bundle.output);
   return `${header}\n${minified}\n`;
 }
 
@@ -114,14 +122,14 @@ async function renderJavaScriptBundle(bundle) {
     target: "es2020",
     define: { __OQ_PREVIEW__: String(bundle.preview === true) },
     write: false,
-    plugins: [embeddedAssetsPlugin()],
+    plugins: [compactHtmlTemplateWhitespacePlugin(), embeddedAssetsPlugin()],
   });
   const header = [
     `/* Generated minified bundle: ${toBundlePath(path.relative(__dirname, bundle.output))}. */`,
     "/* Source files are in ./js/src and ./css/src. Rebuild with: node openquatt/web/build-assets.mjs */",
   ].join("\n");
-  const output = result.outputFiles[0]?.text || "";
-  return `${header}\n${output.trim()}\n`;
+  const minified = await minifyJavaScriptBundle(result.outputFiles[0]?.text || "", bundle.label);
+  return `${header}\n${minified}\n`;
 }
 
 async function bundleIsCurrent(bundle, expected) {
@@ -168,6 +176,9 @@ async function buildMockEntityDefinitions() {
 }
 
 await checkSettingsBackupConfig();
+if (printSymbolManifest) {
+  console.log(JSON.stringify(BUNDLE_SYMBOL_MANIFEST, null, 2));
+}
 await buildMockEntityDefinitions();
 const staleBundles = (await Promise.all(bundles.map(buildBundle))).filter(Boolean);
 

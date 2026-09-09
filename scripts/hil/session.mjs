@@ -19,7 +19,6 @@ export const controllerSettings = [
   { key: 'heatingMode', domain: 'select', name: 'Heating Control Mode', kind: 'select' },
   { key: 'phReaction', domain: 'number', name: 'Power House temperature reaction', kind: 'number' },
   { key: 'phRise', domain: 'number', name: 'Power House demand rise time', kind: 'number' },
-  { key: 'demandRamp', domain: 'number', name: 'Demand filter ramp up', kind: 'number' },
   { key: 'flowSource', domain: 'select', name: 'Flow Source', kind: 'select' },
   { key: 'outdoorFlowMode', domain: 'select', name: 'Outdoor Unit Flow Mode', kind: 'select' },
   { key: 'flowMode', domain: 'select', name: 'Flow Control Mode', kind: 'select' },

@@ -129,6 +129,9 @@ The checker is intended as a local quality gate. Add new rules only once the cur
 
 ## Generated Web Bundles
 
+Read the [web-app development guide](openquatt/web/README.md) for component reuse,
+styling, lifecycle rules, bundle constraints and the validation/browser checklist.
+
 The files `openquatt/web/js/openquatt-app.js` and `openquatt/web/css/openquatt-app.css` are generated artifacts and are no longer committed. CI and local validate rebuild them before firmware compilation.
 
 When you change web sources, validate the generated output locally with:

@@ -17,12 +17,14 @@ constexpr bool valid_level_command(int control_level, int physical_level) {
   return control_level > 0 && control_level <= 10 && physical_level > 0 && physical_level <= 20;
 }
 
+// Retained defrost writes continue an active command. A zero command must go
+// through normal start authorization, even if the ODU readback still is active.
+constexpr bool may_retain_command(int previous_level, bool safety_stop) { return previous_level > 0 && !safety_stop; }
+
 struct ManualGuardInputs {
   int requested_level;
   int mode_code;
-  uint32_t now_ms;
-  uint32_t last_stop_ms;
-  uint32_t minimum_off_ms;
+  uint32_t minimum_off_remaining_ms;
   uint32_t startup_inhibit_remaining_s;
   bool stop_requested;
   bool water_temperature_trip;
@@ -42,22 +44,23 @@ inline std::string manual_guard(const ManualGuardInputs& in, const std::string& 
   }
   if (in.mode_code != 1 && in.mode_code != 2) return "kies eerst verwarmen of koelen";
   if (in.mode_conflict) return "conflicterende werkmodus tussen HP1 en HP2";
-  const uint32_t remaining_ms = minimum_off_remaining_ms(in.now_ms, in.last_stop_ms, in.minimum_off_ms);
-  if (remaining_ms > 0) {
-    const uint32_t remaining_s = (remaining_ms + 999UL) / 1000UL;
+  if (in.minimum_off_remaining_ms > 0) {
+    const uint32_t remaining_s = (in.minimum_off_remaining_ms + 999UL) / 1000UL;
     return "minimale uit-tijd: nog " + std::to_string(remaining_s) + " s";
   }
   return current_guard;
 }
 
-enum class PreflightBlock : uint8_t { NONE, SAFE_ZERO, DEFROST, COOLING_REST, HP_REST, MODE };
+enum class PreflightBlock : uint8_t { NONE, SAFE_ZERO, DEFROST, COOLING_REST, HP_REST, MODE, START_LIMIT };
 
 inline PreflightBlock decide_preflight(int guarded_level, int previous_level, bool retained_hold, int expected_mode,
-                                       uint32_t hp_rest_remaining_ms, bool bypass_holds, bool cooling_start_blocked) {
+                                       uint32_t hp_rest_remaining_ms, bool bypass_holds, bool cooling_start_blocked,
+                                       uint32_t start_limit_remaining_ms = 0U) {
   if (bypass_holds) return PreflightBlock::SAFE_ZERO;
   if (retained_hold) return PreflightBlock::DEFROST;
   if (guarded_level > 0 && cooling_start_blocked) return PreflightBlock::COOLING_REST;
   if (guarded_level > 0 && previous_level == 0 && hp_rest_remaining_ms > 0) return PreflightBlock::HP_REST;
+  if (guarded_level > 0 && previous_level == 0 && start_limit_remaining_ms > 0) return PreflightBlock::START_LIMIT;
   if (guarded_level > 0 && expected_mode != 1 && expected_mode != 2) return PreflightBlock::MODE;
   return guarded_level > 0 ? PreflightBlock::NONE : PreflightBlock::SAFE_ZERO;
 }

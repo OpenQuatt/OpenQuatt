@@ -14,8 +14,10 @@ RUNTIMES = {
     for name in ("heating_curve", "power_house", "cooling", "strategy")
 }
 LOGIC = (ROOT / "openquatt/includes/control/oq_strategy_logic.h").read_text()
+HEAT_INTENT_RUNTIME = (ROOT / "openquatt/includes/control/oq_heat_intent_runtime.h").read_text()
 HOST_TESTS = (
     (ROOT / "tests/host/heating_curve_restart_logic_test.cpp").read_text()
+    + (ROOT / "tests/host/heat_intent_logic_test.cpp").read_text()
     + (ROOT / "tests/host/strategy_logic_test.cpp").read_text()
 )
 
@@ -65,7 +67,10 @@ class StrategyRuntimeContractTest(unittest.TestCase):
             self.assertIn(marker, HOST_TESTS)
 
     def test_runtime_sources_remain_bounded(self) -> None:
-        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1220)
+        # Issue-649 effective supply-target selection lives in the heating-curve
+        # runtime (measured 1265 lines across the four runtimes).
+        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1280)
+        self.assertLessEqual(len(HEAT_INTENT_RUNTIME.splitlines()), 90)
         self.assertLessEqual(len(LOGIC.splitlines()), 60)
 
 

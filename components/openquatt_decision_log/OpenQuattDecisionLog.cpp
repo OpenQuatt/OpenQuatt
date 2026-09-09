@@ -1195,6 +1195,8 @@ const char* OpenQuattDecisionLog::subject_to_string_(uint8_t value) {
 
 const char* OpenQuattDecisionLog::reason_to_string_(uint8_t value) {
   switch (value) {
+    case REASON_FREQUENCY_CAP_BELOW_MINIMUM:
+      return "frequency_cap_below_minimum";
     case REASON_KEEP_CURRENT:
       return "keep_current";
     case REASON_HOLD_ACTIVE:
@@ -1299,6 +1301,10 @@ const char* OpenQuattDecisionLog::reason_to_string_(uint8_t value) {
       return "hp_persistence_failure";
     case REASON_HP_RECOVERED:
       return "hp_recovered";
+    case REASON_ROOM_DEMAND:
+      return "room_demand";
+    case REASON_SETPOINT_RAISE:
+      return "setpoint_raise";
     default:
       return "unknown";
   }

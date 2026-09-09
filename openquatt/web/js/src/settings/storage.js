@@ -7,7 +7,9 @@ import { state } from "../core/state.js";
 import { getInstallationLabel, getInstallationTopology } from "../features/device-context.js";
 import { getFirmwareCurrentVersion } from "../features/firmware-update.js";
 import { ENERGY_HISTORY_EXPORT_MODES, getSettingsBackupSelectionSummary, normalizeEnergyHistoryExportMode } from "../features/storage-history.js";
-import { formatSettingsOptionLabel, getSettingsStatValue, renderSettingsCompactSwitchControl, renderSettingsFieldCard, renderSettingsSection, renderSettingsSwitchCopy } from "./controls.js";
+import { getSettingsStatValue, renderSettingsCompactSwitchControl, renderSettingsFieldCard, renderSettingsSection, renderSettingsSelectControl, renderSettingsSwitchCopy } from "./controls.js";
+import { getSettingsSelectModel } from "./field-models.js";
+import { getElectricalLimitBackupRestoreWarning } from "./electrical-limit.js";
 import { escapeHtml } from "../core/html.js";
 import { renderModalShell } from "../core/modal-shell.js";
 
@@ -53,14 +55,8 @@ import { renderModalShell } from "../core/modal-shell.js";
   }
 
   export function renderSettingsStorageSelectRow(key, title, copy, meta = "") {
-    if (!hasEntity(key)) {
-      return "";
-    }
-
-    const entity = state.entities[key];
-    const options = Array.isArray(entity?.option) ? entity.option : [];
-    const value = String(getEntityValue(key) || "");
-    if (!options.length) {
+    const model = getSettingsSelectModel(key);
+    if (!model.available || !model.options.length) {
       return "";
     }
 
@@ -74,9 +70,7 @@ import { renderModalShell } from "../core/modal-shell.js";
           <p>${escapeHtml(copy)}</p>
         </div>
         <label class="oq-settings-storage-select">
-          <select class="oq-helper-select" data-oq-field="${escapeHtml(key)}" ${state.loadingEntities ? "disabled" : ""}>
-            ${options.map((option) => `<option value="${escapeHtml(option)}" ${option === value ? "selected" : ""}>${escapeHtml(formatSettingsOptionLabel(option))}</option>`).join("")}
-          </select>
+          ${renderSettingsSelectControl(key, model)}
           <span class="oq-settings-select-caret" aria-hidden="true"></span>
         </label>
       </article>
@@ -759,6 +753,9 @@ import { renderModalShell } from "../core/modal-shell.js";
       : summary.requiredMissing
         ? "Ontbrekende velden houden hun firmware-default."
         : "Velden zonder waarde worden overgeslagen.";
+    const electricalRestoreWarning = hasEntity("electricalCurrentLimit")
+      ? getElectricalLimitBackupRestoreWarning(draft.settings)
+      : "";
 
     return renderModalShell({
       id: "system",
@@ -848,6 +845,7 @@ import { renderModalShell } from "../core/modal-shell.js";
             `).join("")}
           </div>
           <p class="oq-settings-action-note${summary.unknown || summary.requiredMissing || installationMismatch ? " oq-settings-action-note--warning" : ""}">${escapeHtml(warningText)}</p>
+          ${electricalRestoreWarning ? `<p class="oq-settings-action-note oq-settings-action-note--warning" role="alert">${escapeHtml(electricalRestoreWarning)}</p>` : ""}
           ${state.settingsBackupError ? `<p class="oq-settings-backup-error">${escapeHtml(state.settingsBackupError)}</p>` : ""}`,
       actions: `
         <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${state.settingsBackupBusy ? "disabled" : ""}>Annuleren</button>

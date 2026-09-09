@@ -34,6 +34,7 @@
     connection: "wifi",
     boiler: "off",
     diagnostics: "clear",
+    oduWriteState: "scenario",
     auxTempGateOn: false,
     auxRelayLastMode: 0,
     complete: true,
@@ -219,6 +220,10 @@
       1: { loaded: false, armed: false, busy: false, status: "READY: load ODU runtime table", extendedLayout: false },
       2: { loaded: false, armed: false, busy: false, status: "READY: load ODU runtime table", extendedLayout: false },
     },
+    oduSettingsService: {
+      1: { loaded: false, busy: false, status: "READY", profileAvailable: false, autoReapply: false, actual: { mode: 1, startTemperatureC: 4, stopDeltaC: 3 } },
+      2: { loaded: false, busy: false, status: "READY", profileAvailable: false, autoReapply: false, actual: { mode: 3, startTemperatureC: 4, stopDeltaC: 3 } },
+    },
   };
 
   function isCoolingScenario(name = state.scenario) {
@@ -252,6 +257,11 @@
       return;
     }
     const profile = getMockOduProfile(hp);
+    const frequencyTable = state.oduRuntimeFrequency[`HP${hp}`];
+    for (const mode of ["heating", "cooling"]) {
+      const minimum = profile.generation === "Unknown" ? NaN : Math.min(...frequencyTable[mode].slice(1));
+      setEntity("sensor", `HP${hp} - Minimum ${mode} frequency`, { value: minimum, uom: "Hz" });
+    }
     setEntity("sensor", `HP${hp} - Control board item number`, { value: profile.controlBoardItem });
     setEntity("text_sensor", `HP${hp} - ODU generation`, {
       state: profile.generation,
@@ -290,6 +300,11 @@
       status: "READY: load ODU runtime table",
       extendedLayout: profile.variant === "V2 new model",
     };
+    const settings = state.oduSettingsService[hp === 2 ? 2 : 1];
+    settings.loaded = false;
+    settings.busy = false;
+    settings.status = "READY";
+    settings.actual = { mode: profile.generation === "V1" ? 1 : 3, startTemperatureC: 4, stopDeltaC: 3 };
     syncMockOduIdentityEntities(hp);
   }
 
@@ -383,6 +398,28 @@
     }
     entity.value = Boolean(value);
     entity.state = Boolean(value);
+  }
+
+  function parseMockClockMinute(value) {
+    const raw = String(value || "").trim();
+    const [hours, minutes, seconds = 0] = raw.split(":").map(Number);
+    return /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.test(raw)
+      && hours < 24 && minutes < 60 && seconds < 60
+      ? (hours * 60) + minutes
+      : Number.NaN;
+  }
+
+  function evaluateMockCoolingSchedule(now = new Date()) {
+    const start = parseMockClockMinute(getEntity("time", "Cooling schedule start time")?.value);
+    const end = parseMockClockMinute(getEntity("time", "Cooling schedule end time")?.value);
+    if (![now.getTime(), start, end].every(Number.isFinite)) {
+      return { active: false, valid: false };
+    }
+    const current = (now.getHours() * 60) + now.getMinutes();
+    const active = start !== end && (start < end
+      ? current >= start && current < end
+      : current >= start || current < end);
+    return { active, valid: true };
   }
 
   function setSwitch(name, value) {
@@ -2101,7 +2138,7 @@
     setEntity("select", "Cooling Enable Source", {
       value: "Disabled",
       state: "Disabled",
-      option: ["CIC", "HA input", "MQTT", "CIC or HA input", "Disabled", "OT thermostat"],
+      option: ["CIC", "HA input", "API input", "MQTT", "CIC or HA input", "Disabled", "OT thermostat", "Schedule"],
     });
     setEntity("select", "Heating Enable Source", {
       value: "Disabled",
@@ -2151,7 +2188,7 @@
       ["Boiler rated heat power", 1800, 500, 10000, 100, "W"],
       ["CM3 deficit ON threshold", 1000, 0, 10000, 50, "W"],
       ["CM3 deficit OFF threshold", 400, 0, 10000, 50, "W"],
-      ["Electrical current limit", 16, 10, 20, 0.5, "A"],
+      ["Electrical current limit", 16, 6, 26, 0.5, "A"],
       ["Day max frequency", 90, 0, 120, 1, "Hz"],
       ["Silent max frequency", 67, 0, 120, 1, "Hz"],
       ["HP1 - Excluded frequency minimum", 0, 0, 120, 1, "Hz"],
@@ -2200,6 +2237,8 @@
     [
       ["Silent start time", "19:00:00"],
       ["Silent end time", "07:00:00"],
+      ["Cooling schedule start time", "00:00:00"],
+      ["Cooling schedule end time", "00:00:00"],
     ].forEach(([name, value]) => {
       setEntity("time", name, {
         value,
@@ -2516,6 +2555,7 @@
   }
 
   function notifyMockUpdated() {
+    applyOduWriteTestState();
     updateTrendFlashStats();
     updateEnergyHistoryStats();
     syncDevMeta();
@@ -2579,6 +2619,7 @@
     setBinary("CIC - JSON Feed OK", true);
     setBinary("HA - Heating Enable", heatingEnabledScenario);
     setBinary("HA - Cooling Enable", coolingScenario);
+    setBinary("API Input Cooling Enable Valid", true);
     setBinary("MQTT Heating Enable", heatingEnabledScenario);
     setBinary("MQTT Heating Enable Valid", true);
     setBinary("MQTT Cooling Enable", coolingScenario);
@@ -2599,6 +2640,7 @@
       || (heatingEnableValid && heatingEnableSource === "MQTT" && Boolean(getEntity("binary_sensor", "MQTT Heating Enable")?.value));
     const coolingEnableSource = String(getEntity("select", "Cooling Enable Source")?.value || "Disabled");
     const manualCoolingEnabled = isSwitchEnabled("Manual Cooling Enable");
+    const coolingSchedule = evaluateMockCoolingSchedule();
     const cicCoolingValid = Boolean(getEntity("binary_sensor", "CIC - JSON Feed OK")?.value)
       && !Boolean(getEntity("binary_sensor", "CIC - Data stale")?.value);
     const haCoolingValid = Boolean(getEntity("binary_sensor", "HA - Cooling Enable Valid")?.value);
@@ -2610,13 +2652,17 @@
       || (coolingEnableSource === "CIC" && cicCoolingValid)
       || (coolingEnableSource === "CIC or HA input" && (cicCoolingValid || haCoolingValid))
       || (coolingEnableSource === "HA input" && haCoolingValid)
-      || (coolingEnableSource === "MQTT" && Boolean(getEntity("binary_sensor", "MQTT Cooling Enable Valid")?.value));
+      || (coolingEnableSource === "API input" && Boolean(getEntity("binary_sensor", "API Input Cooling Enable Valid")?.value))
+      || (coolingEnableSource === "MQTT" && Boolean(getEntity("binary_sensor", "MQTT Cooling Enable Valid")?.value))
+      || (coolingEnableSource === "Schedule" && coolingSchedule.valid);
     const sourceCoolingEnabled = coolingEnableValid && (
       (coolingEnableSource === "OT thermostat" && Boolean(getEntity("binary_sensor", "OT - Thermostat Cooling Enable")?.value))
       || (coolingEnableSource === "CIC" && cicCoolingEnabled)
       || (coolingEnableSource === "CIC or HA input" && (cicCoolingEnabled || haCoolingEnabled))
       || (coolingEnableSource === "HA input" && Boolean(getEntity("binary_sensor", "HA - Cooling Enable")?.value))
+      || (coolingEnableSource === "API input" && Boolean(getEntity("switch", "api_input_cooling_enable")?.value))
       || (coolingEnableSource === "MQTT" && Boolean(getEntity("binary_sensor", "MQTT Cooling Enable")?.value))
+      || (coolingEnableSource === "Schedule" && coolingSchedule.active)
     );
     const sourceCoolingEffective = coolingEnableSource === "CIC or HA input"
       ? (cicCoolingEnabled && haCoolingEnabled ? "CIC + HA input" : cicCoolingEnabled ? "CIC" : haCoolingEnabled ? "HA input" : "None")
@@ -4048,6 +4094,17 @@
     return true;
   }
 
+  function applyOduWriteTestState() {
+    window.__OQ_DEV_ODU_WRITE_STATE__ = state.oduWriteState;
+    if (state.oduWriteState === "scenario") return;
+    const standby = state.oduWriteState === "standby";
+    const hpIndexes = state.installation === "single" ? [1] : [1, 2];
+    hpIndexes.forEach((hp) => {
+      setText("text_sensor", `HP${hp} - Working Mode Label`, standby ? "Standby" : "Heating");
+      setNumber(`HP${hp} - Compressor frequency`, standby ? 0 : 30, "Hz");
+    });
+  }
+
   function getOduRuntimeServicePayload(hp) {
     const service = state.oduRuntimeFrequencyService[hp];
     const table = state.oduRuntimeFrequency[`HP${hp}`];
@@ -4074,7 +4131,7 @@
   }
 
   function handleMockOduRuntimeRequest(url, method, init) {
-    const match = url.pathname.match(/^\/openquatt\/odu-runtime\/hp([12])\/(status|load|arm|apply)$/);
+    const match = url.pathname.match(/\/openquatt\/odu-runtime\/hp([12])\/(status|load|arm|apply)$/);
     if (!match) return null;
     const hp = Number(match[1]);
     const action = match[2];
@@ -4135,12 +4192,83 @@
       } else {
         service.armed = false;
         state.oduRuntimeFrequency[hpName] = { cooling, heating };
+        syncMockOduIdentityEntities(hp);
         service.status = "APPLIED: runtime table written and read back";
       }
       service.busy = false;
       notifyMockUpdated();
     }, 640);
     return mockResponse(200, getOduRuntimeServicePayload(hp));
+  }
+
+  function getMockOduVariant(hp) {
+    const generation = mockFixtures.oduProfiles[state.oduGenerations[hp]] || mockFixtures.oduProfiles.Unknown;
+    return generation.variant === "V1" ? 1
+      : generation.variant === "V1.5" ? 2
+        : generation.variant === "V2 old model" ? 3
+          : generation.variant === "V2 new model" ? 4 : 0;
+  }
+
+  function getOduSettingsPayload(hp) {
+    const service = state.oduSettingsService[hp];
+    const variant = getMockOduVariant(hp);
+    const desired = service.desired || service.actual;
+    return {
+      ok: true,
+      available: variant > 0,
+      hp,
+      busy: service.busy,
+      loaded: service.loaded,
+      profile_available: service.profileAvailable,
+      auto_reapply: service.autoReapply,
+      identity_ready: variant > 0,
+      identity_matches: service.profileAvailable,
+      write_uncertain: false,
+      variant,
+      control_board_item: variant === 1 ? 0x0037 : variant === 4 ? 0x1037 : 0x0E37,
+      status: service.status,
+      csrf_token: "oq-mock-odu-settings",
+      actual: { mode: service.actual.mode, start_temperature_c: service.actual.startTemperatureC, stop_delta_c: service.actual.stopDeltaC },
+      desired: { mode: desired.mode, start_temperature_c: desired.startTemperatureC, stop_delta_c: desired.stopDeltaC },
+      defaults: { mode: variant === 1 ? 1 : 3, start_temperature_c: 4, stop_delta_c: 3 },
+    };
+  }
+
+  function handleMockOduSettingsRequest(url, method, init) {
+    const match = url.pathname.match(/\/openquatt\/odu-settings\/hp([12])\/(status|load|save)$/);
+    if (!match) return null;
+    const hp = Number(match[1]);
+    const action = match[2];
+    if (hp === 2 && state.installation === "single") return mockResponse(404, { ok: false });
+    if (action === "status") return method === "GET" ? mockResponse(200, getOduSettingsPayload(hp)) : mockResponse(405, { ok: false });
+    if (method !== "POST") return mockResponse(405, { ok: false });
+    const params = new URLSearchParams(String(init?.body || ""));
+    if (params.get("csrf_token") !== "oq-mock-odu-settings") return mockResponse(409, { ok: false, error: "forbidden" });
+    const service = state.oduSettingsService[hp];
+    if (service.busy) return mockResponse(409, { ok: false, error: "busy" });
+    service.busy = true;
+    service.status = action === "load" ? "LOAD_REQUESTED" : "SAVE_REQUESTED";
+    if (action === "save") {
+      service.desired = {
+        mode: Number(params.get("mode")),
+        startTemperatureC: Number(params.get("start_temperature_c")),
+        stopDeltaC: Number(params.get("stop_delta_c")),
+      };
+      service.profileAvailable = true;
+      service.autoReapply = params.get("auto_reapply") === "true";
+    }
+    window.setTimeout(() => {
+      service.busy = false;
+      service.loaded = true;
+      if (action === "load") {
+        service.status = "LOADED";
+      } else {
+        service.actual = { ...service.desired };
+        service.status = "IN_SYNC";
+      }
+      notifyMockUpdated();
+    }, 320);
+    return mockResponse(200, getOduSettingsPayload(hp));
   }
 
   function handleButtonPress(name) {
@@ -5474,6 +5602,10 @@
       if (oduRuntimeResponse) {
         return oduRuntimeResponse;
       }
+      const oduSettingsResponse = handleMockOduSettingsRequest(url, method, init || {});
+      if (oduSettingsResponse) {
+        return oduSettingsResponse;
+      }
       const oduEepromResponse = handleMockOduEepromRequest(url, method);
       if (oduEepromResponse) {
         return oduEepromResponse;
@@ -5672,6 +5804,12 @@
             </select>
           </label>
           <label class="oq-helper-hub-dev-row">
+            <span class="oq-helper-hub-dev-label">ODU-schrijftest</span>
+            <select class="oq-helper-hub-dev-select" data-oq-dev-control="odu-write-state">
+              ${renderDevControlOptions("oduWriteState")}
+            </select>
+          </label>
+          <label class="oq-helper-hub-dev-row">
             <span class="oq-helper-hub-dev-label">CV-ketel</span>
             <select class="oq-helper-hub-dev-select" data-oq-dev-control="boiler">
               ${renderDevControlOptions("boiler")}
@@ -5794,6 +5932,19 @@
       };
     }
 
+    const oduWriteState = controlsRoot.querySelector('[data-oq-dev-control="odu-write-state"]');
+    if (oduWriteState) {
+      oduWriteState.value = state.oduWriteState;
+      oduWriteState.onchange = () => {
+        state.oduWriteState = ["standby", "running"].includes(oduWriteState.value)
+          ? oduWriteState.value
+          : "scenario";
+        applyOduWriteTestState();
+        notifyMockUpdated();
+        notifyDevControlsChanged();
+      };
+    }
+
     const boiler = controlsRoot.querySelector('[data-oq-dev-control="boiler"]');
     if (boiler) {
       const handleBoilerChange = () => {
@@ -5902,6 +6053,7 @@
   refreshMqttToken();
   setInstallationMode(state.installation);
   applyScenario(state.scenario);
+  applyOduWriteTestState();
   updateSummary();
   installFetchMock();
   window.setInterval(() => {

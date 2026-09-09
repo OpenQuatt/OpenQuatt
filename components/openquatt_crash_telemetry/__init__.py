@@ -1,8 +1,10 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, socket, switch, text_sensor, time
-from esphome.components.esp32 import add_idf_sdkconfig_option
+from esphome.components import binary_sensor, psram, select, socket, switch, text_sensor, time
+from esphome.components.esp32 import add_idf_sdkconfig_option, get_esp32_variant
+from esphome.components.esp32.const import VARIANT_ESP32S3
 from esphome.const import CONF_ID
+from esphome.core import CORE
 
 DEPENDENCIES = [
     "logger",
@@ -30,6 +32,8 @@ CONF_RELEASE_CHANNEL = "release_channel"
 CONF_HARDWARE_PROFILE = "hardware_profile"
 CONF_TOPOLOGY = "topology"
 CONF_CONNECTION = "connection"
+CONF_ACTIVE_CONNECTION_SENSOR = "active_connection_sensor"
+CONF_CONNECTION_PREFERENCE_SELECT = "connection_preference_select"
 
 openquatt_crash_telemetry_ns = cg.esphome_ns.namespace("openquatt_crash_telemetry")
 OpenQuattCrashTelemetry = openquatt_crash_telemetry_ns.class_("OpenQuattCrashTelemetry", cg.Component)
@@ -88,6 +92,8 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_CONNECTION): cv.All(
                 cv.string_strict, cv.Length(max=16)
             ),
+            cv.Optional(CONF_ACTIVE_CONNECTION_SENSOR): cv.use_id(text_sensor.TextSensor),
+            cv.Optional(CONF_CONNECTION_PREFERENCE_SELECT): cv.use_id(select.Select),
         }
     ).extend(cv.COMPONENT_SCHEMA),
     validate_config,
@@ -96,7 +102,10 @@ CONFIG_SCHEMA = cv.All(
 
 
 async def to_code(config):
+    cg.add_build_flag("-Wl,--wrap=panic_abort")
     add_idf_sdkconfig_option("CONFIG_APP_RETRIEVE_LEN_ELF_SHA", 64)
+    if CORE.is_esp32 and get_esp32_variant() == VARIANT_ESP32S3:
+        psram.request_external_task_stack()
 
     cg.add_global(openquatt_crash_telemetry_ns.using)
     var = cg.new_Pvariable(config[CONF_ID])
@@ -125,3 +134,9 @@ async def to_code(config):
     cg.add(var.set_hardware_profile(config[CONF_HARDWARE_PROFILE]))
     cg.add(var.set_topology(config[CONF_TOPOLOGY]))
     cg.add(var.set_connection(config[CONF_CONNECTION]))
+    if active_connection_sensor_id := config.get(CONF_ACTIVE_CONNECTION_SENSOR):
+        active_connection_sensor = await cg.get_variable(active_connection_sensor_id)
+        cg.add(var.set_active_connection_sensor(active_connection_sensor))
+    if connection_preference_select_id := config.get(CONF_CONNECTION_PREFERENCE_SELECT):
+        connection_preference_select = await cg.get_variable(connection_preference_select_id)
+        cg.add(var.set_connection_preference_select(connection_preference_select))

@@ -1,0 +1,24 @@
+# ==============================================================================
+# OpenQuatt - Daily cooling schedule
+# ==============================================================================
+# The schedule only grants cooling permission. Room demand and all existing
+# dew-point, water-temperature and flow protections remain authoritative.
+
+datetime:
+  - platform: template
+    id: oq_cooling_schedule_start_time
+    name: "Cooling schedule start time"
+    type: time
+    optimistic: true
+    restore_value: true
+    initial_value: "00:00:00"
+    entity_category: config
+
+  - platform: template
+    id: oq_cooling_schedule_end_time
+    name: "Cooling schedule end time"
+    type: time
+    optimistic: true
+    restore_value: true
+    initial_value: "00:00:00"
+    entity_category: config

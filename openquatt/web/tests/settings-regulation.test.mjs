@@ -17,7 +17,7 @@ const { commitSelect, disableRange, getNumberSettingValidationError } = await im
 const { SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
 const { handleSystemAction } = await import("../js/src/features/system-actions.js");
 const { renderControlModeOverrideBanner, renderSystemModal } = await import("../js/src/features/header-status.js");
-const { renderSettingsCoolingSection } = await import("../js/src/settings/cooling.js");
+const { getCoolingScheduleStatus, renderSettingsCoolingSection } = await import("../js/src/settings/cooling.js");
 const {
   renderHeatingCurveAdvancedFields,
   renderPowerHouseBaseFields,
@@ -30,8 +30,10 @@ const {
   renderSettingsCounterServiceSection,
 } = await import("../js/src/settings/service.js");
 const { renderSettingsElectricalCurrentLimitSection } = await import("../js/src/settings/electrical-limit.js");
+const { getOverviewControlCards, renderOverviewControlActions } = await import("../js/src/views/overview.js");
 const settingsCoreSource = await readFile(new URL("../js/src/settings/core.js", import.meta.url), "utf8");
 const entityActionsSource = await readFile(new URL("../js/src/core/entity-actions.js", import.meta.url), "utf8");
+const mockDeviceSource = await readFile(new URL("../js/mock-device.js", import.meta.url), "utf8");
 
 function numberEntity(value, uom = "", extra = {}) {
   return {
@@ -155,19 +157,44 @@ test("elektrische ingangsgrens respecteert Single en Duo maxima", () => {
 
   let markup = renderSettingsElectricalCurrentLimitSection();
   assert.match(markup, /Elektrische ingangsgrens/);
+  assert.match(markup, /Maximale gezamenlijke netstroom/);
   assert.match(markup, /max="16"/);
-  assert.match(markup, /circa 3650 W/);
-  assert.match(markup, /Stooklijn en koelen gebruiken alleen de gemeten feedback/);
-  assert.match(markup, /geen elektrische beveiliging/);
+  assert.match(markup, /Standaard voor deze installatie/);
+  assert.match(markup, /16 A · Single/);
+  assert.match(markup, /Indicatief vermogen/);
+  assert.match(markup, /oq-settings-electrical-estimate/);
+  assert.match(markup, /circa 3,7 kW/);
+  assert.match(markup, /gezamenlijke elektrische belasting van de buitenunits/);
+  assert.match(markup, /Stooklijnbedrijf en koelen gebruiken alleen de gemeten feedback/);
+  assert.match(markup, /softwarematige regelgrens en geen elektrische beveiliging/);
+  assert.match(markup, /Korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten/);
 
   resetSettingsState({
     installationTopology: { value: "duo", state: "duo" },
     hpGeneration: { value: "V2", state: "V2" },
+    hp1Generation: { value: "V2", state: "V2" },
+    hp2Generation: { value: "V2", state: "V2" },
+    electricalCurrentLimit: limit,
+  });
+  markup = renderSettingsElectricalCurrentLimitSection();
+  assert.match(markup, /max="26"/);
+  assert.match(markup, /20 A · Duo V2/);
+  assert.match(markup, /circa 4,6 kW/);
+  assert.match(markup, /type="range"/);
+  assert.match(markup, /oq-settings-electrical-slider-track/);
+  assert.match(markup, /--oq-electrical-standard-pct:62\.5%/);
+
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V1", state: "V1" },
+    hp1Generation: { value: "V1", state: "V1" },
+    hp2Generation: { value: "V1.5", state: "V1.5" },
     electricalCurrentLimit: limit,
   });
   markup = renderSettingsElectricalCurrentLimitSection();
   assert.match(markup, /max="20"/);
-  assert.match(markup, /circa 4563 W/);
+  assert.match(markup, /16 A · Duo V1\/V1\.5/);
+  assert.match(markup, /--oq-electrical-standard-pct:60\.0%/);
 
   resetSettingsState({
     installationTopology: { value: "duo", state: "duo" },
@@ -178,8 +205,283 @@ test("elektrische ingangsgrens respecteert Single en Duo maxima", () => {
   assert.match(markup, /value="10"/);
 });
 
-test("elektrische ingangsgrens staat voor ODU runtime", () => {
-  const installationStart = settingsCoreSource.indexOf('activeGroup === "installation"');
+test("elektrische ingangsgrens waarschuwt boven en relativeert onder de standaard", async () => {
+  const { getElectricalLimitTopologyInfo } = await import("../js/src/settings/electrical-limit.js");
+  const limit = numberEntity(16, "A", { min_value: 10, max_value: 20, step: 0.5 });
+
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V1", state: "V1" },
+    hp1Generation: { value: "V1", state: "V1" },
+    hp2Generation: { value: "V1.5", state: "V1.5" },
+    electricalCurrentLimit: limit,
+  });
+  let info = getElectricalLimitTopologyInfo();
+  assert.equal(info.standardA, 16);
+  assert.equal(info.absoluteMaxA, 20);
+
+  // Direct onder de standaard: alleen neutrale melding, geen waarschuwing.
+  state.inputDrafts.electricalCurrentLimit = "15.5";
+  state.drafts.electricalCurrentLimit = 15.5;
+  let markup = renderSettingsElectricalCurrentLimitSection();
+  assert.match(markup, /Een lagere waarde kan het maximale verwarmings- en koelvermogen beperken/);
+  assert.doesNotMatch(markup, /Hogere waarde dan de standaard elektrische aansluiting/);
+  assert.match(markup, /Standaardwaarde herstellen/);
+
+  // Op de standaard: geen waarschuwing en geen vermogensmelding.
+  state.inputDrafts.electricalCurrentLimit = "16";
+  state.drafts.electricalCurrentLimit = 16;
+  markup = renderSettingsElectricalCurrentLimitSection();
+  assert.doesNotMatch(markup, /Hogere waarde dan de standaard elektrische aansluiting/);
+  assert.doesNotMatch(markup, /Een lagere waarde kan het maximale verwarmings-/);
+
+  // Direct boven de standaard: inline waarschuwing met zwaardere-groep-eis.
+  state.inputDrafts.electricalCurrentLimit = "16.5";
+  state.drafts.electricalCurrentLimit = 16.5;
+  markup = renderSettingsElectricalCurrentLimitSection();
+  assert.match(markup, /Hogere waarde dan de standaard elektrische aansluiting/);
+  assert.match(markup, /Alleen de installatieautomaat vervangen door een zwaarder exemplaar is niet voldoende/);
+
+  // Duo V2 waarschuwt pas boven 20 A.
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V2", state: "V2" },
+    hp1Generation: { value: "V2", state: "V2" },
+    hp2Generation: { value: "V2", state: "V2" },
+    electricalCurrentLimit: limit,
+  });
+  info = getElectricalLimitTopologyInfo();
+  assert.equal(info.standardA, 20);
+  assert.equal(info.absoluteMaxA, 26);
+  state.inputDrafts.electricalCurrentLimit = "20";
+  state.drafts.electricalCurrentLimit = 20;
+  assert.doesNotMatch(renderSettingsElectricalCurrentLimitSection(), /Hogere waarde dan de standaard/);
+
+  // Duo V2 tot 26 A: boven 20 A volgt dezelfde waarschuwing en bevestiging.
+  state.inputDrafts.electricalCurrentLimit = "26";
+  state.drafts.electricalCurrentLimit = 26;
+  markup = renderSettingsElectricalCurrentLimitSection();
+  assert.match(markup, /max="26"/);
+  assert.match(markup, /Hogere waarde dan de standaard elektrische aansluiting/);
+  assert.match(markup, /boven de standaard 20 A voor een Duo V2/);
+
+  // Boven het absolute maximum wordt afgekapt op 26 A.
+  state.inputDrafts.electricalCurrentLimit = "30";
+  state.drafts.electricalCurrentLimit = 30;
+  assert.match(renderSettingsElectricalCurrentLimitSection(), /value="26"/);
+});
+
+test("elektrische ingangsgrens geeft geen verhoging vrij zonder bevestigde ODU-detectie", async () => {
+  const { getElectricalLimitTopologyInfo } = await import("../js/src/settings/electrical-limit.js");
+  const limit = numberEntity(16, "A", { min_value: 10, max_value: 26, step: 0.5 });
+
+  // Duo met geconfigureerde V1.5 maar mislukte detectie: geen 20 A.
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V1.5", state: "V1.5" },
+    hp1Generation: { value: "Unknown", state: "Unknown" },
+    hp2Generation: { value: "Unknown", state: "Unknown" },
+    electricalCurrentLimit: limit,
+  });
+  let info = getElectricalLimitTopologyInfo();
+  assert.equal(info.standardA, 16);
+  assert.equal(info.absoluteMaxA, 16);
+  assert.match(renderSettingsElectricalCurrentLimitSection(), /max="16"/);
+
+  // Eén onbekende buitenunit blokkeert de verhoging eveneens.
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V2", state: "V2" },
+    hp1Generation: { value: "V2", state: "V2" },
+    hp2Generation: { value: "Unknown", state: "Unknown" },
+    electricalCurrentLimit: limit,
+  });
+  info = getElectricalLimitTopologyInfo();
+  assert.equal(info.standardA, 20);
+  assert.equal(info.absoluteMaxA, 20);
+
+  // Familiemismatch (geconfigureerd V2, gedetecteerd V1) blijft op de standaard.
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V2", state: "V2" },
+    hp1Generation: { value: "V1", state: "V1" },
+    hp2Generation: { value: "V1.5", state: "V1.5" },
+    electricalCurrentLimit: limit,
+  });
+  info = getElectricalLimitTopologyInfo();
+  assert.equal(info.absoluteMaxA, 20);
+});
+
+test("elektrische ingangsgrens geeft geen verhoging vrij bij onbekende generatie", async () => {
+  const { getElectricalLimitTopologyInfo } = await import("../js/src/settings/electrical-limit.js");
+  const limit = numberEntity(16, "A", { min_value: 10, max_value: 20, step: 0.5 });
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "", state: "" },
+    electricalCurrentLimit: limit,
+  });
+  const info = getElectricalLimitTopologyInfo();
+  assert.equal(info.standardA, 16);
+  assert.equal(info.absoluteMaxA, 16);
+  const markup = renderSettingsElectricalCurrentLimitSection();
+  assert.match(markup, /max="16"/);
+  assert.match(markup, /Standaard voor deze installatie/);
+
+  resetSettingsState({
+    installationTopology: { value: "single", state: "single" },
+    hpGeneration: { value: "V1", state: "V1" },
+    electricalCurrentLimit: limit,
+  });
+  const singleInfo = getElectricalLimitTopologyInfo();
+  assert.equal(singleInfo.standardA, 16);
+  assert.equal(singleInfo.absoluteMaxA, 16);
+});
+
+test("elektrische ingangsgrens leest de bevestigde waarde los van open drafts", async () => {
+  const { getCommittedElectricalLimitRaw, getElectricalLimitChangePlan } = await import("../js/src/settings/electrical-limit.js");
+  const limit = numberEntity(16, "A", { min_value: 10, max_value: 20, step: 0.5 });
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V1", state: "V1" },
+    hp1Generation: { value: "V1", state: "V1" },
+    hp2Generation: { value: "V1.5", state: "V1.5" },
+    electricalCurrentLimit: limit,
+  });
+
+  // Simuleer typen: de draft staat al op 17 terwijl 16 bevestigd is.
+  state.inputDrafts.electricalCurrentLimit = "17";
+  state.drafts.electricalCurrentLimit = 17;
+  assert.equal(getCommittedElectricalLimitRaw(), 16);
+  const plan = getElectricalLimitChangePlan("17", getCommittedElectricalLimitRaw(), 10);
+  assert.equal(plan.requiresConfirmation, true);
+  assert.equal(plan.fromA, 16);
+  assert.equal(plan.toA, 17);
+});
+
+test("elektrische stroomaanduiding toont hele ampères zonder decimalen", async () => {
+  const { formatDutchAmps } = await import("../js/src/settings/electrical-limit.js");
+  assert.equal(formatDutchAmps(16), "16 A");
+  assert.equal(formatDutchAmps(20), "20 A");
+  assert.equal(formatDutchAmps(16.5), "16,5 A");
+  assert.equal(formatDutchAmps(Number.NaN), "—");
+});
+
+test("elektrische ingangsgrens vereist bevestiging boven de standaard en annuleren herstelt", async () => {
+  const { getElectricalLimitChangePlan } = await import("../js/src/settings/electrical-limit.js");
+  const { renderSystemModal } = await import("../js/src/features/header-status.js");
+  const { handleSystemAction } = await import("../js/src/features/system-actions.js");
+  const limit = numberEntity(16, "A", { min_value: 10, max_value: 20, step: 0.5 });
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V1", state: "V1" },
+    hp1Generation: { value: "V1", state: "V1" },
+    hp2Generation: { value: "V1.5", state: "V1.5" },
+    electricalCurrentLimit: limit,
+  });
+
+  // Puur plan: boven de standaard is bevestiging vereist met oude en nieuwe waarde.
+  let plan = getElectricalLimitChangePlan("20", 16, 6);
+  assert.equal(plan.valid, true);
+  assert.equal(plan.requiresConfirmation, true);
+  assert.equal(plan.fromA, 16);
+  assert.equal(plan.toA, 20);
+  plan = getElectricalLimitChangePlan("16", 16, 6);
+  assert.equal(plan.requiresConfirmation, false);
+  plan = getElectricalLimitChangePlan("15.5", 16, 6);
+  assert.equal(plan.requiresConfirmation, false);
+  plan = getElectricalLimitChangePlan("4", 16, 6);
+  assert.equal(plan.toA, 6);
+
+  const originalFetch = globalThis.fetch;
+  const posts = [];
+  globalThis.fetch = async (url, options = {}) => {
+    posts.push(String(url));
+    return { ok: true, json: async () => ({ value: 20, state: "20" }) };
+  };
+  try {
+    // Simuleer de bevestigingsstroom zoals requestElectricalLimitChange die opbouwt.
+    state.inputDrafts.electricalCurrentLimit = "20";
+    state.drafts.electricalCurrentLimit = 20;
+    state.pendingElectricalLimit = { fromA: 16, toA: 20, standardA: 16 };
+    state.systemModal = "electrical-limit-confirm";
+    let modal = renderSystemModal();
+    assert.match(modal, /Hogere elektrische ingangsgrens instellen\?/);
+    assert.match(modal, /van <strong>16 A<\/strong> naar <strong>20 A<\/strong>/);
+    assert.match(modal, /20 A instellen/);
+    assert.match(modal, /OpenQuatt vervangt nooit de elektrische beveiliging/);
+
+    // Annuleren sluit de dialoog en zet het veld terug op de bevestigde waarde.
+    handleSystemAction("close-system-modal", {});
+    assert.equal(state.systemModal, "");
+    assert.equal(state.pendingElectricalLimit, null);
+    assert.equal(state.inputDrafts.electricalCurrentLimit, undefined);
+    const markup = renderSettingsElectricalCurrentLimitSection();
+    assert.doesNotMatch(markup, /Hogere waarde dan de standaard elektrische aansluiting/);
+
+    // Bevestigen schrijft de nieuwe waarde weg.
+    state.pendingElectricalLimit = { fromA: 16, toA: 20, standardA: 16 };
+    state.systemModal = "electrical-limit-confirm";
+    await handleSystemAction("confirm-electrical-limit", {});
+    assert.equal(state.systemModal, "");
+    assert.ok(posts.some((url) => url.includes("value=20")));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("elektrische reset schrijft de actuele standaardwaarde zonder firmware-knop", async () => {
+  const { handleSystemAction } = await import("../js/src/features/system-actions.js");
+  const limit = numberEntity(20, "A", { min_value: 6, max_value: 26, step: 0.5 });
+
+  const originalFetch = globalThis.fetch;
+  const posts = [];
+  globalThis.fetch = async (url, options = {}) => {
+    posts.push({ url: String(url), method: options.method || "GET" });
+    return { ok: true, json: async () => ({ value: 16, state: "16" }) };
+  };
+  const waitForPosts = async () => {
+    for (let i = 0; i < 100 && posts.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
+  try {
+    // Herstel blijft volledig in de web-app en schrijft de huidige standaardwaarde.
+    resetSettingsState({
+      installationTopology: { value: "duo", state: "duo" },
+      hpGeneration: { value: "V1", state: "V1" },
+      hp1Generation: { value: "V1", state: "V1" },
+      hp2Generation: { value: "V1.5", state: "V1.5" },
+      electricalCurrentLimit: limit,
+    });
+    await handleSystemAction("reset-electrical-limit-to-default", {});
+    await waitForPosts();
+    assert.ok(posts.some((post) => post.method === "POST" && post.url.includes("value=16")));
+    assert.ok(!posts.some((post) => post.url.includes("Reset%20electrical%20current%20limit")));
+    assert.match(String(state.controlNotice || ""), /standaardwaarde/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("elektrische backup-waarschuwing verschijnt alleen boven de standaard", async () => {
+  const { getElectricalLimitBackupRestoreWarning } = await import("../js/src/settings/electrical-limit.js");
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    hpGeneration: { value: "V1", state: "V1" },
+    hp1Generation: { value: "V1", state: "V1" },
+    hp2Generation: { value: "V1.5", state: "V1.5" },
+    electricalCurrentLimit: numberEntity(16, "A", { min_value: 10, max_value: 26, step: 0.5 }),
+  });
+
+  const warning = getElectricalLimitBackupRestoreWarning({ installation: { electricalCurrentLimit: 20 } });
+  assert.match(warning, /backup zet de elektrische ingangsgrens op 20 A/);
+  assert.match(warning, /boven de standaard 16 A/);
+  assert.equal(getElectricalLimitBackupRestoreWarning({ installation: { electricalCurrentLimit: 16 } }), "");
+  assert.equal(getElectricalLimitBackupRestoreWarning({ installation: {} }), "");
+  assert.equal(getElectricalLimitBackupRestoreWarning(null), "");
+});
+
+test("elektrische ingangsgrens staat voor ODU runtime", () => {  const installationStart = settingsCoreSource.indexOf('activeGroup === "installation"');
   const installationEnd = settingsCoreSource.indexOf(': activeGroup === "service"', installationStart);
   const installationOrder = settingsCoreSource.slice(installationStart, installationEnd);
   const electricalLimitIndex = installationOrder.indexOf("renderSettingsElectricalCurrentLimitSection()");
@@ -225,6 +527,140 @@ test("koelsterkte licht de lagere limiet tijdens stille modus toe", () => {
     silentModeOverride: baseEntities.silentModeOverride,
   });
   assert.doesNotMatch(renderSettingsCoolingSection(), /oq-settings-cooling-limit-warning/);
+});
+
+test("dagelijks koelvenster toont configuratie en fail-closed status", () => {
+  const baseEntities = {
+    coolingScheduleStartTime: { value: "09:00:00", state: "09:00:00" },
+    coolingScheduleEndTime: { value: "17:00:00", state: "17:00:00" },
+    coolingEnableSource: { value: "Schedule", state: "Schedule" },
+    coolingEnableValid: { value: true, state: "ON" },
+    coolingEnableEffectiveSource: { value: "Schedule", state: "Schedule" },
+  };
+
+  resetSettingsState(baseEntities);
+  let markup = renderSettingsCoolingSection();
+  assert.match(markup, /Dagelijks koelvenster/);
+  assert.match(markup, /oq-settings-cooling-schedule is-enabled/);
+  assert.match(markup, /Start koelvenster/);
+  assert.match(markup, /Einde koelvenster/);
+  assert.match(markup, /role="switch"/);
+  assert.match(markup, /data-control-option="Disabled"/);
+  assert.match(markup, /aria-checked="true"/);
+  assert.match(markup, /Kamerinstelling en koelbeveiligingen blijven altijd gelden/);
+  assert.match(markup, /Open van 09:00 tot 17:00/);
+  assert.equal(getCoolingScheduleStatus(), "Open");
+
+  handleSystemAction("open-cooling-schedule-modal", {});
+  assert.equal(state.systemModal, "cooling-schedule");
+  const modal = renderSystemModal();
+  assert.match(modal, /Koelvenster instellen/);
+  assert.match(modal, /oq-settings-grid oq-settings-grid--modal/);
+  assert.match(modal, /Dagelijks koelvenster/);
+
+  resetSettingsState({
+    ...baseEntities,
+    coolingEnableEffectiveSource: { value: "None", state: "None" },
+  });
+  assert.equal(getCoolingScheduleStatus(), "Gesloten");
+
+  resetSettingsState({
+    ...baseEntities,
+    coolingEnableValid: { value: false, state: "OFF" },
+    coolingEnableEffectiveSource: { value: "None", state: "None" },
+  });
+  assert.equal(getCoolingScheduleStatus(), "Tijd ongeldig");
+
+  resetSettingsState({
+    ...baseEntities,
+    coolingScheduleEndTime: { value: "09:00:00", state: "09:00:00" },
+    coolingEnableEffectiveSource: { value: "None", state: "None" },
+  });
+  assert.equal(getCoolingScheduleStatus(), "Uitgeschakeld");
+  assert.match(renderSettingsCoolingSection(), /Start en einde zijn gelijk/);
+
+  resetSettingsState({
+    ...baseEntities,
+    coolingEnableSource: { value: "Disabled", state: "Disabled" },
+    coolingEnableEffectiveSource: { value: "None", state: "None" },
+  });
+  assert.equal(getCoolingScheduleStatus(), "Niet geselecteerd");
+  markup = renderSettingsCoolingSection();
+  assert.match(markup, /data-control-option="Schedule"/);
+  assert.match(markup, /aria-checked="false"/);
+  assert.doesNotMatch(markup, /Start koelvenster/);
+  assert.doesNotMatch(markup, /Einde koelvenster/);
+  assert.doesNotMatch(markup, /oq-settings-cooling-schedule-status/);
+
+  resetSettingsState({
+    ...baseEntities,
+    coolingEnableEffectiveSource: { value: "unknown", state: "unknown" },
+  });
+  assert.equal(getCoolingScheduleStatus(), "Niet beschikbaar");
+
+  resetSettingsState({
+    ...baseEntities,
+    coolingScheduleStartTime: { value: "25:00", state: "25:00" },
+  });
+  assert.equal(getCoolingScheduleStatus(), "Niet beschikbaar");
+});
+
+test("mock bewaart bronindexen en evalueert het koelvenster grensvast", () => {
+  assert.match(
+    mockDeviceSource,
+    /option: \["CIC", "HA input", "API input", "MQTT", "CIC or HA input", "Disabled", "OT thermostat", "Schedule"\]/,
+  );
+  assert.match(mockDeviceSource, /const active = start !== end/);
+  assert.match(mockDeviceSource, /current >= start && current < end/);
+  assert.match(mockDeviceSource, /current >= start \|\| current < end/);
+  assert.match(mockDeviceSource, /return \{ active: false, valid: false \}/);
+  assert.match(mockDeviceSource, /coolingEnableSource === "API input"[\s\S]*?API Input Cooling Enable Valid/);
+  assert.match(mockDeviceSource, /coolingEnableSource === "API input"[\s\S]*?api_input_cooling_enable/);
+});
+
+test("overzicht labelt lokaal koelvenster en handmatige override", () => {
+  const baseEntities = {
+    manualCoolingEnable: { value: false, state: "OFF" },
+    coolingEnableSelected: { value: false, state: "OFF" },
+    coolingEnableSource: { value: "Schedule", state: "Schedule" },
+    coolingScheduleStartTime: { value: "09:00:00", state: "09:00:00" },
+    coolingScheduleEndTime: { value: "17:00:00", state: "17:00:00" },
+    coolingEnableEffectiveSource: { value: "None", state: "None" },
+    coolingEnableValid: { value: true, state: "ON" },
+    coolingPermitted: { value: false, state: "OFF" },
+    coolingRequestActive: { value: false, state: "OFF" },
+    coolingBlockReason: { value: "Cooling disabled", state: "Cooling disabled" },
+  };
+
+  resetSettingsState(baseEntities);
+  let card = getOverviewControlCards().find(({ key }) => key === "manualCoolingEnable");
+  assert.match(card.copy, /dagelijks tijdvenster geeft geen toestemming/);
+  assert.equal(card.buttonLabel, "Handmatig aan");
+  assert.equal(card.settingsAction, "open-cooling-schedule-modal");
+  assert.match(renderOverviewControlActions(card), /Koelvenster instellen/);
+  assert.match(renderOverviewControlActions(card), /open-cooling-schedule-modal/);
+
+  const entitiesWithoutScheduleSource = {
+    ...baseEntities,
+    manualCoolingEnable: { value: false, state: "OFF" },
+    coolingScheduleStartTime: { value: "09:00:00", state: "09:00:00" },
+    coolingScheduleEndTime: { value: "17:00:00", state: "17:00:00" },
+  };
+  delete entitiesWithoutScheduleSource.coolingEnableSource;
+  resetSettingsState(entitiesWithoutScheduleSource);
+  card = getOverviewControlCards().find(({ key }) => key === "manualCoolingEnable");
+  assert.equal(card.settingsAction, "");
+
+  resetSettingsState({
+    ...baseEntities,
+    manualCoolingEnable: { value: true, state: "ON" },
+    coolingEnableSelected: { value: true, state: "ON" },
+    coolingEnableEffectiveSource: { value: "Schedule + Manual", state: "Schedule + Manual" },
+    coolingBlockReason: { value: "Waiting for room request", state: "Waiting for room request" },
+  });
+  card = getOverviewControlCards().find(({ key }) => key === "manualCoolingEnable");
+  assert.match(card.copy, /dagelijks tijdvenster \+ handmatig/);
+  assert.equal(card.buttonLabel, "Handmatig uit");
 });
 
 test("frequentielimieten gelden voor beide modi", () => {
@@ -316,6 +752,11 @@ test("koelscherm laadt de stille-moduslimiet en actuele status", () => {
   assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("silentMaxHz"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("coolingRestartMode"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("coolingMinimumOffTime"));
+  assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("coolingScheduleStartTime"));
+  assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("coolingScheduleEndTime"));
+  assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("coolingEnableSource"));
+  assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("coolingEnableValid"));
+  assert.ok(SETTINGS_GROUP_KEY_MAP.cooling.includes("coolingEnableEffectiveSource"));
 });
 
 test("koelherstart toont alleen de instelling van de gekozen modus", () => {

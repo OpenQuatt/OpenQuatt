@@ -3,6 +3,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { build, transform } from "esbuild";
+import {
+  compactHtmlTemplateWhitespacePlugin,
+  minifyCssBundle,
+  minifyJavaScriptBundle,
+} from "./bundle-minifiers.mjs";
 import { resolveCssSources } from "./css-source-list.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -20,6 +25,7 @@ const boundaryAllowedEdges = new Set([
   "core/entity-actions.js -> features/mqtt-actions.js",
   "core/entity-actions.js -> features/odu-eeprom-dump.js",
   "core/entity-actions.js -> features/odu-runtime-frequency.js",
+  "core/entity-actions.js -> features/odu-settings.js",
   "core/entity-actions.js -> features/quickstart-ui-actions.js",
   "core/entity-actions.js -> features/security-actions.js",
   "core/entity-actions.js -> features/shell-actions.js",
@@ -27,11 +33,15 @@ const boundaryAllowedEdges = new Set([
   "core/entity-actions.js -> features/system-actions.js",
   "core/entity-actions.js -> features/view-actions.js",
   "core/entity-actions.js -> features/webserver-logs.js",
+  "core/entity-actions.js -> settings/electrical-limit.js",
   "core/entity-actions.js -> views/energy.js",
   "core/entity-sync.js -> features/mqtt-actions.js",
   "core/entity-sync.js -> features/odu-eeprom-dump.js",
   "core/entity-sync.js -> features/odu-runtime-frequency.js",
+  "core/entity-sync.js -> features/odu-settings.js",
   "core/entity-sync.js -> features/security-actions.js",
+  "core/entity-sync.js -> features/frequency-limits.js",
+  "core/entity-actions.js -> features/frequency-limits.js",
   "core/entity-write-actions.js -> features/firmware-update.js",
   "core/entity-write-actions.js -> features/security-actions.js",
   "core/entity-write-actions.js -> features/storage-history.js",
@@ -250,13 +260,14 @@ async function checkJavaScriptBundleFresh() {
     target: "es2020",
     define: { __OQ_PREVIEW__: "false" },
     write: false,
-    plugins: [embeddedAssetsPlugin()],
+    plugins: [compactHtmlTemplateWhitespacePlugin(), embeddedAssetsPlugin()],
   });
   const header = [
     `/* Generated minified bundle: ${toBundlePath(path.relative(webDir, outputPath))}. */`,
     "/* Source files are in ./js/src and ./css/src. Rebuild with: node openquatt/web/build-assets.mjs */",
   ].join("\n");
-  const expected = `${header}\n${(result.outputFiles[0]?.text || "").trim()}\n`;
+  const minified = await minifyJavaScriptBundle(result.outputFiles[0]?.text || "", "production bundle");
+  const expected = `${header}\n${minified}\n`;
   const actual = await readFile(outputPath, "utf8");
   if (actual !== expected) {
     throw new Error("JS bundle is stale. Run: rtk npm run build:web");
@@ -270,7 +281,8 @@ async function checkCssBundleFresh() {
     `/* Generated minified bundle: ${toBundlePath(path.relative(webDir, outputPath))}. */`,
     "/* Source files are in ./js/src and ./css/src. Rebuild with: node openquatt/web/build-assets.mjs */",
   ].join("\n");
-  const minified = (await transform(sourceParts.map((source) => source.trimEnd()).join("\n"), { loader: "css", minify: true })).code.trim();
+  const esbuildOutput = (await transform(sourceParts.map((source) => source.trimEnd()).join("\n"), { loader: "css", minify: true })).code.trim();
+  const minified = minifyCssBundle(esbuildOutput, outputPath);
   const expected = `${header}\n${minified}\n`;
   const actual = await readFile(outputPath, "utf8");
   if (actual !== expected) {
@@ -533,6 +545,11 @@ async function checkProductionInterfaceCssContracts() {
     [".oq-helper-hub-toggle {", "interface panel toggle"],
     [".oq-helper-status-grid {", "interface status grid"],
     ["esp-app.oq-native-app {", "ESPHome fallback surface"],
+    [".oq-stat {", "shared stat card"],
+    [".oq-stat-label {", "shared stat label"],
+    [".oq-stat-value {", "shared stat value"],
+    [".oq-stat-note {", "shared stat note"],
+    [".oq-stat--status .oq-stat-value {", "wrapping status value"],
   ]) {
     assertContains(productionCss, needle, `Production CSS: ${label}`);
   }

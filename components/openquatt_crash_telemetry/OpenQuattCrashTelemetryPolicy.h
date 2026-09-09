@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string_view>
 
 namespace esphome::openquatt_crash_telemetry {
 
@@ -9,6 +10,20 @@ enum class CrashPublishKind : uint8_t {
   CRASH = 1U,
   TOMBSTONE = 2U,
 };
+
+inline constexpr const char* active_connection_wire_value(std::string_view connection) {
+  if (connection == "WiFi") return "wifi";
+  if (connection == "Ethernet") return "eth";
+  if (connection == "Not connected") return "none";
+  return nullptr;
+}
+
+inline constexpr const char* connection_preference_wire_value(std::string_view preference) {
+  if (preference == "Automatic") return "auto";
+  if (preference == "WiFi") return "wifi";
+  if (preference == "Ethernet") return "eth";
+  return nullptr;
+}
 
 inline constexpr CrashPublishKind select_crash_publish_kind(bool tombstone_pending, bool consent_enabled,
                                                             bool setup_complete, bool crash_pending) {
@@ -53,6 +68,70 @@ inline constexpr bool should_wait_for_time_sync(CrashPublishKind kind, bool time
 inline constexpr bool reported_at_is_usable(bool time_synchronized, bool timestamp_is_sane, bool crash_time_valid,
                                             uint32_t reported_at, uint32_t crash_timestamp) {
   return time_synchronized && timestamp_is_sane && (!crash_time_valid || reported_at >= crash_timestamp);
+}
+
+enum class CrashSessionAction : uint8_t {
+  NONE = 0U,
+  FINISH_SUCCESS = 1U,
+  FINISH_FAILURE = 2U,
+};
+
+// Pure main-loop decision for an active publish session. The ESPHome loopTask
+// must never block on MQTT lifecycle calls; it only observes these flags and
+// asks the worker to start cleanup. A simultaneous success and failure keeps
+// the historical priority of success.
+inline constexpr CrashSessionAction select_crash_session_action(bool session_active, bool start_task_running,
+                                                                bool finishing_session, bool succeeded, bool failed,
+                                                                bool timed_out) {
+  if (!session_active || start_task_running || finishing_session) {
+    return CrashSessionAction::NONE;
+  }
+  if (succeeded) {
+    return CrashSessionAction::FINISH_SUCCESS;
+  }
+  if (failed || timed_out) {
+    return CrashSessionAction::FINISH_FAILURE;
+  }
+  return CrashSessionAction::NONE;
+}
+
+enum class CrashCleanupDecision : uint8_t {
+  DESTROY = 0U,
+  FORCE_DISCONNECT = 1U,
+  RETRY_STOP = 2U,
+  DESTROY_ALREADY_STOPPED = 3U,
+};
+
+// Crash-specific cleanup decision for the worker task. Kept local to this
+// component so the already-working usage telemetry helper stays untouched.
+//
+// The disconnect request is an input: esp_mqtt_client_disconnect() only sets
+// DISCONNECT_BIT, which a no-longer-running MQTT task never processes. So at
+// most one FORCE_DISCONNECT is allowed; a repeated ESP_FAIL afterwards means
+// the task is gone and destroy becomes safe.
+inline constexpr CrashCleanupDecision select_crash_cleanup_decision(bool stop_succeeded, bool connected_seen,
+                                                                    bool disconnected_seen,
+                                                                    uint8_t consecutive_stop_failures,
+                                                                    bool disconnect_requested) {
+  if (stop_succeeded) {
+    return CrashCleanupDecision::DESTROY;
+  }
+  if (connected_seen && !disconnected_seen && !disconnect_requested) {
+    return CrashCleanupDecision::FORCE_DISCONNECT;
+  }
+  if (consecutive_stop_failures < 2U) {
+    return CrashCleanupDecision::RETRY_STOP;
+  }
+  return CrashCleanupDecision::DESTROY_ALREADY_STOPPED;
+}
+
+inline constexpr uint32_t CRASH_INITIAL_PUBLISH_DELAY_MS = 15UL * 1000UL;
+inline constexpr uint32_t TOMBSTONE_INITIAL_PUBLISH_DELAY_MS = 1U;
+
+// A crash publication waits out the early boot activity wave; an opt-out
+// tombstone takes effect immediately.
+inline constexpr uint32_t initial_publish_delay_ms(CrashPublishKind kind) {
+  return kind == CrashPublishKind::TOMBSTONE ? TOMBSTONE_INITIAL_PUBLISH_DELAY_MS : CRASH_INITIAL_PUBLISH_DELAY_MS;
 }
 
 }  // namespace esphome::openquatt_crash_telemetry

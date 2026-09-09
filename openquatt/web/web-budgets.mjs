@@ -13,6 +13,10 @@ export const WEB_BUNDLE_BUDGETS = [
     // the explicitly confirmed dev-to-main firmware downgrade flow,
     // selectable cooling restart by water temperature or minimum off-time,
     // instelbare elektrische ingangsgrens met topologie- en ODU-afhankelijk maximum,
+    // issue-615 verduidelijking met standaardreferentie, inline waarschuwing,
+    // expliciete bevestiging boven de standaard en standaard-herstelactie,
+    // ODU-detectie-gating voor verhoogde limieten, reset-naar-automatisch,
+    // restore-waarschuwing en live inline-feedback tijdens typen,
     // toelichting lokale historie in Quick Start, plus fase-2 flash-I/O observability,
     // bounded OTA app-shell cache refresh before reloading into newly installed firmware,
     // strategie-afhankelijke warmtetoestemming-advies (Power House vs stooklijn, OT-voorkeur, centrale modal, auto-set in Quick Start),
@@ -21,12 +25,20 @@ export const WEB_BUNDLE_BUDGETS = [
     // the issue-516 boiler/OpenTherm debug-recording fields,
     // the issue-536 boiler-result quality and confirmed empirical Apply flow,
     // the compact per-ODU compressor profile for safe manual F-levels,
+    // the generation-bound bottom-plate profile editor and backup/restore,
     // the unified Q-firmware network preference and active-connection controls,
     // the issue-471 grouped source focus panel with configured/effective paths,
     // relevant-source diagnostics, warnings and stable keyboard focus,
-    // and frequency-based day/silent limits and exclusion ranges per ODU.
-    // the issue-649 heating supply target source card with OT/HA/API/MQTT rows.
-    raw: 982_000,
+    // frequency-based day/silent limits and exclusion ranges per ODU,
+    // and the grouped issue-541 cooling-window control and overview modal.
+    // plus bounded webserver-log history polling (single scheduler, retry
+    // back-off and authoritative refresh without a second /events stream).
+    // Includes stable native time editing and confirmed, stale-poll-safe saves.
+    // Compact pipeline plus the bottom-plate editor/backup: ~914 kB.
+    // Keep ~5 kB margin; do not restore the pre-compaction 1 MB ceiling.
+    // the issue-649 heating supply target source card with OT/HA/API/MQTT rows:
+    // measured +3.668 kB over the compact baseline (918.163 kB).
+    raw: 924_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.
@@ -34,6 +46,11 @@ export const WEB_BUNDLE_BUDGETS = [
   },
   // Includes the compact, dark-safe ODU generation picker with unified header action and distinct badge/button,
   // the warmtetoestemming-advies modal (3 summary cards, comparison, matrix, sticky footer),
-  // and the responsive issue-471 master/detail source focus panel.
-  { file: "css/openquatt-app.css", raw: 302_000 },
+  // the issue-615 electrical-limit slider with red above-standard zone,
+  // matching estimate/entry boxes, label icons and aligned vertical rhythm,
+  // the responsive issue-471 master/detail source focus panel,
+  // the per-ODU bottom-plate settings modal,
+  // and the grouped issue-541 cooling-window settings block.
+  // Preserve the source-level symbol compaction and dead-CSS reduction.
+  { file: "css/openquatt-app.css", raw: 200_000 },
 ];

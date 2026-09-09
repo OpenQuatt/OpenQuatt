@@ -55,8 +55,38 @@ struct Thresholds {
   float recover_w;
 };
 
-inline float maximum_current_a(bool duo, bool generation_v2, float v1_a, float v2_a) {
+inline float standard_current_a(bool duo, bool generation_v2, float v1_a, float v2_a) {
   return duo && generation_v2 ? v2_a : v1_a;
+}
+
+inline float maximum_current_a(bool duo, bool generation_v2, float v1_a, float v2_a) {
+  return standard_current_a(duo, generation_v2, v1_a, v2_a);
+}
+
+// Absolute OpenQuatt ceilings, derived from the published maximum current
+// per outdoor unit: 2 x 10 A for V1/V1.5 and 2 x 13 A for V2. The official
+// Quatt Duo specification stays 16 A and 20 A respectively; use above those
+// values requires a fully suitable electrical installation. Single and Duo
+// without confirmed detection stay conservatively on the installation
+// standard (16 or 20 A), so no elevated value is released without reliable
+// detection.
+inline float absolute_maximum_current_a(bool duo, bool generation_known, bool generation_v2, bool odu_v1_confirmed,
+                                        bool odu_v2_confirmed, float v1_a, float v2_a, float v2_max_a) {
+  const float standard = standard_current_a(duo, generation_v2, v1_a, v2_a);
+  if (!duo) {
+    return standard;
+  }
+  // An elevated limit is only released when the configured family matches the
+  // reliably detected ODU family. A merely configured hp_generation (which
+  // always has a restored value) never suffices on its own. Without confirmed
+  // detection the installation standard remains the ceiling.
+  if (generation_known && generation_v2 && odu_v2_confirmed) {
+    return v2_max_a;
+  }
+  if (generation_known && !generation_v2 && odu_v1_confirmed) {
+    return v2_a;
+  }
+  return standard;
 }
 
 inline float effective_current_a(float configured_a, float minimum_a, float maximum_a) {

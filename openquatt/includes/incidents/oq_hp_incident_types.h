@@ -14,6 +14,7 @@ static constexpr IncidentId kLinkLossIncidentId = 1001U;
 static constexpr IncidentId kStartFailedIncidentId = 1002U;
 static constexpr IncidentId kStopUnconfirmedIncidentId = 1003U;
 static constexpr IncidentId kPersistenceFailureIncidentId = 1004U;
+static constexpr IncidentId kRuntimeFrequencyMappingIncidentId = 1005U;
 static constexpr uint16_t kFirstFaultRegister = 2119U;
 static constexpr uint16_t kLastFaultRegister = 2121U;
 static constexpr size_t kFaultRegisterCount = 3U;

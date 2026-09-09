@@ -154,37 +154,6 @@
   margin-top: 8px;
 }
 
-.oq-settings-response-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.oq-settings-response-card {
-  padding: 16px;
-  border-radius: var(--oq-helper-radius-lg);
-  border: 1px solid var(--oq-helper-line);
-  background: var(--oq-helper-card);
-}
-
-.oq-settings-response-card.is-active {
-  border-color: rgba(234, 88, 12, 0.18);
-  background: var(--oq-settings-response-active-background);
-}
-
-.oq-settings-response-card h5 {
-  margin: 0 0 8px;
-  color: var(--oq-helper-ink);
-  font-size: 0.98rem;
-}
-
-.oq-settings-response-card p {
-  margin: 0;
-  color: var(--oq-helper-soft);
-  line-height: 1.55;
-}
-
 .oq-settings-choice-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -349,12 +318,6 @@
   padding-bottom: 2px;
 }
 
-.oq-gen-unit-value {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 @media (max-width: 640px) {
   .oq-gen-current {
     align-items: stretch;
@@ -378,48 +341,6 @@
   --oq-helper-soft: var(--oq-helper-modal-copy);
   --oq-helper-accent-deep: var(--oq-settings-badge-ink);
   --oq-helper-accent-soft: var(--oq-settings-badge-background);
-}
-
-.oq-settings-commissioning-teaser {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
-  gap: 14px;
-  margin-top: 18px;
-  padding: 18px;
-  border-radius: var(--oq-helper-radius-lg);
-  border: 1px solid var(--oq-helper-line);
-  background: var(--oq-settings-commissioning-background);
-}
-
-.oq-settings-commissioning-teaser-copy {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  min-width: 0;
-}
-
-.oq-settings-commissioning-teaser-copy h4 {
-  margin: 0;
-  color: var(--oq-helper-ink);
-  font-size: 1.1rem;
-  line-height: 1.18;
-  letter-spacing: -0.02em;
-}
-
-.oq-settings-commissioning-teaser-copy p:last-child {
-  margin: 0;
-  color: var(--oq-helper-soft);
-  line-height: 1.58;
-}
-
-.oq-settings-commissioning-teaser-panel {
-  display: grid;
-  gap: 12px;
-  align-content: start;
-  padding: 16px;
-  border-radius: 20px;
-  border: 1px solid var(--oq-helper-line);
-  background: var(--oq-settings-commissioning-panel-background);
 }
 
 .oq-settings-commissioning-teaser-status {
@@ -447,11 +368,6 @@
   margin: 0;
   color: var(--oq-helper-soft);
   line-height: 1.52;
-}
-
-.oq-settings-commissioning-teaser-button {
-  width: 100%;
-  min-height: 50px;
 }
 
 .oq-settings-commissioning-hero-actions {

@@ -13,6 +13,7 @@
 
 packages:
   oq_cooling_safety: !include oq_cooling_safety.yaml
+  oq_schedule: !include oq_schedule.yaml
 
 globals:
   - {id: oq_water_supply_temp_selected_hold_active, type: bool, restore_value: false, initial_value: 'false'}

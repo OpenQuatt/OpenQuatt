@@ -1,4 +1,5 @@
 #include "OpenQuattCrashTelemetry.h"
+#include "OpenQuattAbortDetails.h"
 #include "OpenQuattCrashTelemetryAnsi.h"
 #include "OpenQuattCrashTelemetryHelpers.h"
 
@@ -328,7 +329,11 @@ void OpenQuattCrashTelemetry::capture_pending_crash_() {
   copy_text_(record->connection, sizeof(record->connection), this->connection_);
 
   this->capture_active_ = true;
+  this->capture_context_ = {};
   esp32::crash_handler_log();
+  if (this->capture_context_.is_abort && record->captured_by_reporting_build != 0U) {
+    log_abort_details(this->capture_context_.core);
+  }
   this->capture_active_ = false;
 
   if (record->report_length == 0U) {
@@ -361,6 +366,7 @@ void OpenQuattCrashTelemetry::on_log_(const char* tag, const char* message, size
     record->captured_by_reporting_build = 0U;
   }
 
+  const size_t line_start = record->report_length;
   detail::AnsiSequenceFilter ansi_filter;
   for (const char* cursor = body; *cursor != '\0'; ++cursor) {
     const unsigned char c = static_cast<unsigned char>(*cursor);
@@ -375,6 +381,7 @@ void OpenQuattCrashTelemetry::on_log_(const char* tag, const char* message, size
   if (record->report_length + 2U < CRASH_REPORT_CAPACITY) {
     record->report[record->report_length++] = '\n';
     record->report[record->report_length] = '\0';
+    this->capture_context_.observe(record->report + line_start);
   } else {
     record->truncated = 1U;
   }
@@ -398,7 +405,7 @@ void OpenQuattCrashTelemetry::on_setup_complete_(bool complete) {
   this->setup_complete_.store(complete);
   this->unlock_gate_();
   if (complete && this->consent_enabled_.load() && this->record_ && this->record_.data()->pending != 0U) {
-    this->next_attempt_ms_ = millis() + INITIAL_PUBLISH_DELAY_MS;
+    this->next_attempt_ms_ = millis() + CRASH_INITIAL_PUBLISH_DELAY_MS;
   }
 }
 
@@ -450,7 +457,7 @@ void OpenQuattCrashTelemetry::on_consent_state_(bool enabled) {
   }
 
   if (this->setup_complete_.load() && this->record_ && this->record_.data()->pending != 0U) {
-    this->next_attempt_ms_ = millis() + INITIAL_PUBLISH_DELAY_MS;
+    this->next_attempt_ms_ = millis() + CRASH_INITIAL_PUBLISH_DELAY_MS;
   }
 }
 

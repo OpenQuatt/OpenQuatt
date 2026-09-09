@@ -396,7 +396,7 @@ void OpenQuattOduRuntimeFrequency::set_extended_layout(bool extended_layout) {
   }
   portEXIT_CRITICAL(&this->state_mux_);
   if (!changed) return;
-  ESP_LOGW(TAG, "HP%u READY: load ODU runtime table", this->hp_index_);
+  ESP_LOGI(TAG, "HP%u runtime frequency editor ready; load the ODU table before editing", this->hp_index_);
   if (reserved_token != 0U) this->eeprom_dump_->end_external_operation();
 }
 

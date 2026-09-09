@@ -83,8 +83,8 @@ class V2CompressorLevelContractTest(unittest.TestCase):
         self.assertIn("variant != oq_odu::Variant::V2_NEW_MODEL", HP_IO)
         self.assertIn("create_read_command(", HP_IO)
         self.assertNotIn("create_write_multiple_command(", HP_IO)
-        self.assertIn("affected mode limited to F10", HP_IO)
-        self.assertIn("defer_base_publish", HP_IO)
+        self.assertIn("extension invalid; keeping previous snapshot", HP_IO)
+        self.assertNotIn("defer_base_publish", HP_IO)
         extension_guard = HP_IO.index("if (!extension_result.response_complete)")
         extension_publish = HP_IO.index("runtime_frequency_snapshot_storage) =", extension_guard)
         self.assertLess(extension_guard, extension_publish)
@@ -100,7 +100,10 @@ class V2CompressorLevelContractTest(unittest.TestCase):
 
     def test_experimental_write_invalidates_and_then_reloads_control_snapshot(self) -> None:
         self.assertIn("on_write_started:", RUNTIME_EDITOR)
-        self.assertIn("oq_odu::RuntimeFrequencySnapshotStorage{}", RUNTIME_EDITOR)
+        self.assertIn("runtime_frequency_revalidation_required", RUNTIME_EDITOR)
+        self.assertIn("observe_runtime_frequency_mapping(", RUNTIME_EDITOR)
+        self.assertNotIn("RuntimeFrequencySnapshotStorage{}", RUNTIME_EDITOR)
+        self.assertNotIn("CompressorLevelProfile::UNKNOWN", RUNTIME_EDITOR)
         self.assertIn("write_tainted_.store(true", RUNTIME_EDITOR_SOURCE)
         self.assertIn("VERIFY_FAILED: readback mismatch", RUNTIME_EDITOR_SOURCE)
         self.assertIn("write_tainted_.store(false", RUNTIME_EDITOR_SOURCE)
@@ -138,20 +141,11 @@ class V2CompressorLevelContractTest(unittest.TestCase):
         self.assertIn("write_tainted_", RUNTIME_EDITOR_HEADER)
         self.assertIn("if (this->write_started_)", RUNTIME_EDITOR_SOURCE)
 
-    def test_offline_transition_invalidates_and_rechecks_profile(self) -> None:
-        offline_block = yaml_block(HP_IO, "on_offline:", "on_online:")
-        online_block = yaml_block(HP_IO, "on_online:", "openquatt_odu_eeprom_dump:")
-        self.assertIn("CompressorLevelProfile::UNKNOWN", offline_block)
-        self.assertIn("runtime_frequency_snapshot_storage) = {}", offline_block)
-        self.assertIn("compressor_level_profile_request_token", offline_block)
-        self.assertIn("odu_runtime_frequency)->reset_runtime_state", offline_block)
-        self.assertIn("VERIFY_FAILED: ODU disconnected during write", offline_block)
-        self.assertIn("detect_odu_generation_once", online_block)
-
     def test_blocked_or_incomplete_detection_is_retried_without_opening_extension(self) -> None:
         self.assertIn("runtime_frequency_retry_ms", HP_IO)
         self.assertIn("now - last_retry >= 60000UL", HP_IO)
-        self.assertIn("!id(${hp_id}_odu_generation_detection_complete)", HP_IO)
+        self.assertIn("id(${hp_id}_odu_generation_revalidation_required)", HP_IO)
+        self.assertIn("id(${hp_id}_runtime_frequency_revalidation_required)", HP_IO)
         self.assertIn("table_incomplete", HP_IO)
         self.assertIn("!id(${hp_id}_compressor_level_profile_request_pending)", HP_IO)
 

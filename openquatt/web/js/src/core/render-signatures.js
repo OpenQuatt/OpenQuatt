@@ -1,4 +1,4 @@
-import { SETTINGS_KEYS } from "./config.js";
+import { COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, SETTINGS_KEYS } from "./config.js";
 import { getApiSecurityStatusSignature } from "../features/security-actions.js";
 import { state } from "./state.js";
 
@@ -56,9 +56,9 @@ export function getOverviewControlsRenderSignature() {
     getEntitySignatureFragment("openquattEnabled"),
     getEntitySignatureFragment("openquattResumeAt"),
     getEntitySignatureFragment("manualCoolingEnable"),
-    getEntitySignatureFragment("coolingEnableSource"),
+    getEntitySignatureFragment(COOLING_SCHEDULE_SOURCE_KEY),
     getEntitySignatureFragment("coolingEnableSelected"),
-    getEntitySignatureFragment("coolingEnableEffectiveSource"),
+    getEntitySignatureFragment(COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY),
     getEntitySignatureFragment("silentModeOverride"),
     getEntitySignatureFragment("controlModeLabel"),
     getEntitySignatureFragment("coolingPermitted"),

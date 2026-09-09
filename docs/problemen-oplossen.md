@@ -135,13 +135,20 @@ Draai bij twijfel terug naar de laatste instelling waarbij het systeem logisch w
 Controleer:
 
 - is er echt een koelvraag;
-- staat `Manual Cooling Enable` goed;
+- welke `Cooling Enable Source` is gekozen;
+- bij `Schedule`: ligt de lokale tijd binnen het venster en zijn start en einde niet gelijk;
+- bij een recente herstart: heeft de controller al via SNTP een geldige netwerktijd gekregen;
+- staat `Manual Cooling Enable` bewust goed;
 - is flow beschikbaar;
 - is dauwpuntinformatie beschikbaar;
 - blokkeert de veilige minimale watertemperatuur;
 - staat de koelbeveiliging bewust op `Dauwpuntmeting vereist`, `Dauwpuntsbenadering` of `Expliciet toestaan`.
 
 Koeling is bewust terughoudend. Zonder goede dauwpuntinformatie kan blokkeren precies het veilige gedrag zijn.
+
+Een schema met gelijke start- en eindtijd staat bewust uit. De starttijd is inbegrepen en de eindtijd niet; een begintijd na de eindtijd betekent een geldig venster over middernacht. Na een offline herstart blijft `Schedule` veilig ongeldig totdat de tijd is gesynchroniseerd. Daarna beoordeelt de controller het venster automatisch opnieuw met zijn lokale klok.
+
+Loopt een compressor kort door na de ingestelde eindtijd, dan kan dat de nog geldige minimale compressortijd zijn. Is de compressor al uit maar draait de pomp nog, dan kan dat de normale postflow zijn. Blijft koeling onverwacht toegestaan, controleer dan ook `Manual Cooling Enable`: deze override wordt opgeslagen en kan na een herstart terugkomen. Hij omzeilt alleen de toestemmingsbron, nooit `OpenQuatt Enabled` of de dauwpunt-, water- en flowbeveiligingen.
 
 Gebruik je dauwpuntbronnen uit Home Assistant, volg dan de actuele
 [handleiding voor dynamische koelbronnen](https://github.com/OpenQuatt/home-assistant-openquatt/blob/main/docs/cooling.md).

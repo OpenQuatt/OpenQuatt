@@ -21,6 +21,7 @@ int main() {
   using oq_hp_candidate::HpCandidateState;
   using oq_hp_candidate::may_serve_candidate;
   using oq_hp_candidate::may_start;
+  using oq_hp_candidate::minimum_off_ready;
   using oq_hp_candidate::preserve_active_topology_during_suspect;
 
   assert(may_start(true, false));
@@ -32,6 +33,12 @@ int main() {
   assert(may_serve_candidate(false, false, 4));
   assert(!may_serve_candidate(false, false, 0));
   assert(!may_serve_candidate(true, true, 4));
+  assert(!may_serve_candidate(true, false, 0, false));
+  assert(may_serve_candidate(true, false, 4, false));
+  assert(!minimum_off_ready(239999U, 1U, 240000U, 0));
+  assert(minimum_off_ready(240001U, 1U, 240000U, 0));
+  assert(minimum_off_ready(25U, UINT32_MAX - 50U, 75U, 0));
+  assert(minimum_off_ready(100U, 99U, 240000U, 4));
 
   // A running SUSPECT HP remains the owner; a healthy idle HP is not started
   // merely because the short link dip blocks new starts on the owner.

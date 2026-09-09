@@ -164,6 +164,9 @@ inline const char* configured_source_wire_value(const std::string& option) {
   if (option == "CIC or HA input") {
     return "cic_or_home_assistant";
   }
+  if (option == "Schedule") {
+    return "schedule";
+  }
   if (option == "Disabled") {
     return "disabled";
   }
@@ -194,11 +197,15 @@ inline const char* flow_source_config_wire_value(const std::string& flow_source,
 }
 
 inline MqttCleanupDecision mqtt_cleanup_decision(bool stop_succeeded, bool connected_seen, bool disconnected_seen,
-                                                 uint8_t consecutive_stop_failures) {
+                                                 uint8_t consecutive_stop_failures, bool disconnect_requested) {
   if (stop_succeeded) {
     return MqttCleanupDecision::DESTROY;
   }
-  if (connected_seen && !disconnected_seen) {
+  // esp_mqtt_client_disconnect() only sets DISCONNECT_BIT, which a
+  // no-longer-running MQTT task never processes. Allow at most one
+  // FORCE_DISCONNECT; a repeated ESP_FAIL afterwards means the task is gone
+  // and destroy becomes safe.
+  if (connected_seen && !disconnected_seen && !disconnect_requested) {
     return MqttCleanupDecision::FORCE_DISCONNECT;
   }
   if (consecutive_stop_failures < 2U) {

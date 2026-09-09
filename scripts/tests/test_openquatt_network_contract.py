@@ -16,6 +16,9 @@ NETWORK_PACKAGE = (ROOT / "openquatt" / "connection" / "wifi_eth.yaml").read_tex
 USAGE_TELEMETRY_CPP = (
     ROOT / "components" / "openquatt_usage_telemetry" / "OpenQuattUsageTelemetry.cpp"
 ).read_text()
+CRASH_TELEMETRY_CPP = (
+    ROOT / "components" / "openquatt_crash_telemetry" / "OpenQuattCrashTelemetryMqtt.cpp"
+).read_text()
 INSTALLER = (ROOT / "docs" / "install" / "install.js").read_text()
 INSTALLER_PAGE = (ROOT / "docs" / "install" / "index.html").read_text()
 
@@ -73,6 +76,17 @@ class OpenQuattNetworkContractTest(unittest.TestCase):
         self.assertIn('active_connection == "WiFi"', USAGE_TELEMETRY_CPP)
         self.assertIn('active_connection == "Ethernet"', USAGE_TELEMETRY_CPP)
         self.assertIn('connection_preference == "Automatic"', USAGE_TELEMETRY_CPP)
+
+    def test_crash_telemetry_reports_active_connection_and_preference(self) -> None:
+        self.assertIn(
+            "openquatt_crash_telemetry:\n"
+            "  active_connection_sensor: oq_connection_text\n"
+            "  connection_preference_select: oq_preferred_connection",
+            NETWORK_PACKAGE,
+        )
+        self.assertIn("active_connection_wire_value(this->active_connection_sensor_->state)", CRASH_TELEMETRY_CPP)
+        self.assertIn("connection_preference_wire_value", CRASH_TELEMETRY_CPP)
+        self.assertIn('append_json_key(writer, "connection_preference")', CRASH_TELEMETRY_CPP)
 
     def test_preference_change_is_published_only_after_nvs_readback(self) -> None:
         save = function_body("save_preference_(Preference preference)", "publish_preference_()")

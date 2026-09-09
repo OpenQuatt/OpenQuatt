@@ -617,19 +617,30 @@ import { renderModalShell } from "../core/modal-shell.js";
         ? hpWaterCalibrationProgress.phase
         : (hpWaterCalibrationApplied ? "Offsets toegepast" : (hpWaterCalibrationResultReady ? "Klaar om toe te passen" : "Klaar om te starten")))
       : "Wachten op CM100";
-    const boilerStartDisabled = !cm100Ready || boilerBusy || !boilerControls || autotuneTaskRunning || airPurgeTaskRunning || manualFlowTaskRunning || manualHpTaskRunning || hpWaterCalibrationTaskRunning || boilerTaskRunning || autotuneTaskLocked || airPurgeTaskLocked || manualFlowTaskLocked || manualHpTaskLocked || hpWaterCalibrationTaskLocked || boilerPending;
+    const serviceTaskStates = [
+      ["boiler", boilerTaskRunning, boilerTaskLocked],
+      ["autotune", autotuneTaskRunning, autotuneTaskLocked],
+      ["purge", airPurgeTaskRunning, airPurgeTaskLocked],
+      ["manual-flow", manualFlowTaskRunning, manualFlowTaskLocked],
+      ["manual-hp", manualHpTaskRunning, manualHpTaskLocked],
+      ["hp-water-calibration", hpWaterCalibrationTaskRunning, hpWaterCalibrationTaskLocked],
+    ];
+    const anyTaskRunning = serviceTaskStates.some(([, running]) => running);
+    const startDisabled = (key, busy, controls, pending) => !cm100Ready || busy || !controls || pending || anyTaskRunning
+      || serviceTaskStates.some(([taskKey, , locked]) => locked && taskKey !== key);
+    const boilerStartDisabled = startDisabled("boiler", boilerBusy, boilerControls, boilerPending);
     const boilerAbortDisabled = boilerBusy || !(boilerTaskRunning || boilerTaskLocked || boilerPending);
     const boilerApplyDisabled = boilerBusy || boilerStartDisabled || !boilerResultReady || boilerResultApplied || boilerResultQualityDenied || autotuneTaskRunning || airPurgeTaskRunning || hpWaterCalibrationTaskRunning;
-    const autotuneStartDisabled = !cm100Ready || autotuneBusy || !autotuneControls || boilerTaskRunning || airPurgeTaskRunning || manualFlowTaskRunning || manualHpTaskRunning || hpWaterCalibrationTaskRunning || autotuneTaskRunning || boilerTaskLocked || airPurgeTaskLocked || manualFlowTaskLocked || manualHpTaskLocked || hpWaterCalibrationTaskLocked || autotunePending;
+    const autotuneStartDisabled = startDisabled("autotune", autotuneBusy, autotuneControls, autotunePending);
     const autotuneAbortDisabled = autotuneBusy || !(autotuneTaskRunning || autotuneTaskLocked || autotunePending);
     const autotuneApplyDisabled = autotuneBusy || autotuneStartDisabled || !autotuneResultReady || boilerTaskRunning || airPurgeTaskRunning || hpWaterCalibrationTaskRunning;
-    const airPurgeStartDisabled = !cm100Ready || airPurgeBusy || !airPurgeControls || boilerTaskRunning || autotuneTaskRunning || manualFlowTaskRunning || manualHpTaskRunning || hpWaterCalibrationTaskRunning || airPurgeTaskRunning || boilerTaskLocked || autotuneTaskLocked || manualFlowTaskLocked || manualHpTaskLocked || hpWaterCalibrationTaskLocked || airPurgePending;
+    const airPurgeStartDisabled = startDisabled("purge", airPurgeBusy, airPurgeControls, airPurgePending);
     const airPurgeAbortDisabled = airPurgeBusy || !(airPurgeTaskRunning || airPurgeTaskLocked || airPurgePending);
-    const manualFlowStartDisabled = !cm100Ready || manualFlowBusy || !manualFlowControls || boilerTaskRunning || autotuneTaskRunning || airPurgeTaskRunning || manualHpTaskRunning || hpWaterCalibrationTaskRunning || manualFlowTaskRunning || boilerTaskLocked || autotuneTaskLocked || airPurgeTaskLocked || manualHpTaskLocked || hpWaterCalibrationTaskLocked || manualFlowPending;
+    const manualFlowStartDisabled = startDisabled("manual-flow", manualFlowBusy, manualFlowControls, manualFlowPending);
     const manualFlowAbortDisabled = manualFlowBusy || !(manualFlowTaskRunning || manualFlowTaskLocked || manualFlowPending);
-    const manualHpStartDisabled = !cm100Ready || manualHpBusy || !manualHpControls || boilerTaskRunning || autotuneTaskRunning || airPurgeTaskRunning || manualFlowTaskRunning || hpWaterCalibrationTaskRunning || manualHpTaskRunning || boilerTaskLocked || autotuneTaskLocked || airPurgeTaskLocked || manualFlowTaskLocked || hpWaterCalibrationTaskLocked || manualHpPending;
+    const manualHpStartDisabled = startDisabled("manual-hp", manualHpBusy, manualHpControls, manualHpPending);
     const manualHpAbortDisabled = manualHpBusy || !(manualHpTaskRunning || manualHpTaskLocked || manualHpPending);
-    const hpWaterCalibrationStartDisabled = !cm100Ready || hpWaterCalibrationBusy || !hpWaterCalibrationControls || boilerTaskRunning || autotuneTaskRunning || airPurgeTaskRunning || manualFlowTaskRunning || manualHpTaskRunning || hpWaterCalibrationTaskRunning || boilerTaskLocked || autotuneTaskLocked || airPurgeTaskLocked || manualFlowTaskLocked || manualHpTaskLocked || hpWaterCalibrationPending;
+    const hpWaterCalibrationStartDisabled = startDisabled("hp-water-calibration", hpWaterCalibrationBusy, hpWaterCalibrationControls, hpWaterCalibrationPending);
     const hpWaterCalibrationAbortDisabled = hpWaterCalibrationBusy || !(hpWaterCalibrationTaskRunning || hpWaterCalibrationTaskLocked || hpWaterCalibrationPending);
     const hpWaterCalibrationApplyDisabled = hpWaterCalibrationBusy || hpWaterCalibrationTaskRunning || !hpWaterCalibrationResultReady || hpWaterCalibrationApplied;
 
@@ -690,7 +701,7 @@ import { renderModalShell } from "../core/modal-shell.js";
         status: hpWaterCalibrationStatusDisplay,
         available: Boolean(hpWaterCalibrationControls || state.entities.hpWaterCalibrationStatus),
         openDisabled: !cm100Ready,
-        cardMarkup: renderCommissioningTaskCard({
+        renderCard: () => renderCommissioningTaskCard({
           taskKey: "hp-water-calibration",
           title: "Temperatuursensoren kalibreren",
           copy: "Reken op ongeveer 3 tot 5 minuten. Eerst mengt het water 3 minuten; daarna stopt de meting zodra de sensoren stabiel genoeg zijn.",
@@ -721,7 +732,7 @@ import { renderModalShell } from "../core/modal-shell.js";
         status: manualFlowStatusDisplay,
         available: Boolean(manualFlowControls || state.entities.manualFlowStatus),
         openDisabled: !cm100Ready,
-        cardMarkup: renderCommissioningTaskCard({
+        renderCard: () => renderCommissioningTaskCard({
           taskKey: "manual-flow",
           title: "Handmatige flowregeling",
           copy: "Gebruik een tijdelijk flow-setpoint om het leidingwerk rustig te controleren. De normale instellingen wijzigen pas wanneer je een waarde bewust overneemt.",
@@ -751,7 +762,7 @@ import { renderModalShell } from "../core/modal-shell.js";
             ${renderSettingsStaticField("manualFlowTargetIpwm", "Actuele pompstand", "Door de PI-regeling aangevraagde pompstand.", getSettingsStatValue("manualFlowTargetIpwm"), "oq-settings-field--compact")}
           `,
         }),
-        modalActions: `
+        renderModalActions: () => `
           ${state.entities.manualFlowApplyHeating ? renderNamedActionButton("manualFlowApplyHeating", "Overnemen voor verwarmen", "oq-helper-button oq-helper-button--ghost", manualFlowBusy) : ""}
           ${state.entities.manualFlowApplyCooling ? renderNamedActionButton("manualFlowApplyCooling", "Overnemen voor koelen", "oq-helper-button oq-helper-button--ghost", manualFlowBusy) : ""}
         `,
@@ -764,7 +775,7 @@ import { renderModalShell } from "../core/modal-shell.js";
         status: manualHpStatusDisplay,
         available: Boolean(manualHpControls || state.entities.manualHpStatus),
         openDisabled: !cm100Ready,
-        cardMarkup: renderCommissioningTaskCard({
+        renderCard: () => renderCommissioningTaskCard({
           taskKey: "manual-hp",
           title: "Handmatige warmtepompbediening",
           copy: "Start eerst de service-taak zodat de waterpomp draait. Zodra voldoende flow is gemeten kun je per warmtepomp vanuit Standby naar verwarmen of koelen schakelen en daarna een compressorstand aanvragen.",
@@ -826,7 +837,7 @@ import { renderModalShell } from "../core/modal-shell.js";
         status: autotuneStatusDisplay,
         available: true,
         openDisabled: isCommissioningTaskStatusWaitingForCm100(autotuneStatusDisplay),
-        cardMarkup: renderCommissioningTaskCard({
+        renderCard: () => renderCommissioningTaskCard({
           taskKey: "autotune",
           title: "Flow autotune",
           copy: "Bereken een voorstel voor de flowregeling en pas dat daarna toe in de installatie-instellingen. Autotune duurt meestal ongeveer 5 tot 10 minuten.",
@@ -864,7 +875,7 @@ import { renderModalShell } from "../core/modal-shell.js";
         status: boilerStatusDisplay,
         available: hasBoilerAssist,
         openDisabled: isCommissioningTaskStatusWaitingForCm100(boilerStatusDisplay),
-        cardMarkup: renderCommissioningTaskCard({
+        renderCard: () => renderCommissioningTaskCard({
           taskKey: "boiler",
           title: "Boiler power test",
           copy: "De test stabiliseert eerst de flow en meet daarna het afgegeven ketelvermogen. Duur: meestal 5 tot 15 minuten.",
@@ -906,7 +917,7 @@ import { renderModalShell } from "../core/modal-shell.js";
         status: airPurgeStatusDisplay,
         available: airPurgeAvailable,
         openDisabled: isCommissioningTaskStatusWaitingForCm100(airPurgeStatusDisplay),
-        cardMarkup: renderCommissioningTaskCard({
+        renderCard: () => renderCommissioningTaskCard({
           taskKey: "purge",
           title: "Ontluchten",
           copy: "Draait 5 minuten met rustige doorstroming, korte pomp-pulsen en een stabilisatiefase.",
@@ -1161,7 +1172,7 @@ import { renderModalShell } from "../core/modal-shell.js";
       sectionAttributes: "data-oq-service-task-scroller",
       closeAction: "close-system-modal",
       closeLabel: `Sluit ${task.title}`,
-      body: `<div class="oq-settings-service-task-modal-body">${task.cardMarkup}</div>`,
-      actions: `${task.modalActions || ""}<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal">Sluiten</button>`,
+      body: `<div class="oq-settings-service-task-modal-body">${task.renderCard()}</div>`,
+      actions: `${task.renderModalActions?.() || ""}<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal">Sluiten</button>`,
     });
   }

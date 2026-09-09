@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <string>
 
 #include "oq_supervisory_power_limiter_logic.h"
 
@@ -19,6 +20,7 @@ struct TickConfig {
   uint32_t tick_s;
   float v1_current_a;
   float v2_current_a;
+  float v2_max_current_a;
   float minimum_current_a;
   float mains_voltage_v;
   uint32_t peak_trip_s;
@@ -29,6 +31,18 @@ struct TickConfig {
   int max_cap_f;
 };
 
+inline bool generation_known() {
+#if OQ_TOPOLOGY_DUO
+  if (!id(hp_generation).has_state()) {
+    return false;
+  }
+  const auto option = id(hp_generation).current_option();
+  return option == "V1" || option == "V1.5" || option == "V2";
+#else
+  return true;
+#endif
+}
+
 inline bool generation_v2() {
 #if OQ_TOPOLOGY_DUO
   return id(hp_generation).has_state() && id(hp_generation).current_option() == "V2";
@@ -37,19 +51,61 @@ inline bool generation_v2() {
 #endif
 }
 
-inline float maximum_current_a(float v1_a, float v2_a) {
-  return oq_supervisory_power::maximum_current_a(OQ_TOPOLOGY_DUO, generation_v2(), v1_a, v2_a);
+namespace detail {
+inline bool odu_detected_as(const std::string& generation, bool v2) {
+  if (v2) {
+    return generation == "V2";
+  }
+  return generation == "V1" || generation == "V1.5";
+}
+}  // namespace detail
+
+// True only when the ODU identity layer reliably reports the given family.
+// Detection runs once per boot/request and resets to Unknown in between, so a
+// merely configured (restored) hp_generation alone never releases an elevated
+// limit.
+inline bool odu_v2_confirmed() {
+#if OQ_TOPOLOGY_DUO
+  return id(hp1_odu_generation_detection_complete) && id(hp1_generation).has_state() &&
+         detail::odu_detected_as(id(hp1_generation).state, true) && id(hp2_odu_generation_detection_complete) &&
+         id(hp2_generation).has_state() && detail::odu_detected_as(id(hp2_generation).state, true);
+#else
+  return false;
+#endif
 }
 
-inline float configured_current_a(float minimum_a, float v1_a, float v2_a) {
-  return oq_supervisory_power::effective_current_a(id(oq_electrical_current_limit_configured_a), minimum_a,
-                                                   maximum_current_a(v1_a, v2_a));
+inline bool odu_v1_confirmed() {
+#if OQ_TOPOLOGY_DUO
+  return id(hp1_odu_generation_detection_complete) && id(hp1_generation).has_state() &&
+         detail::odu_detected_as(id(hp1_generation).state, false) && id(hp2_odu_generation_detection_complete) &&
+         id(hp2_generation).has_state() && detail::odu_detected_as(id(hp2_generation).state, false);
+#else
+  return false;
+#endif
+}
+
+inline float standard_current_a(float v1_a, float v2_a) {
+  return oq_supervisory_power::standard_current_a(OQ_TOPOLOGY_DUO, generation_v2(), v1_a, v2_a);
+}
+
+inline float maximum_current_a(float v1_a, float v2_a, float v2_max_a) {
+  return oq_supervisory_power::absolute_maximum_current_a(OQ_TOPOLOGY_DUO, generation_known(), generation_v2(),
+                                                          odu_v1_confirmed(), odu_v2_confirmed(), v1_a, v2_a, v2_max_a);
+}
+
+inline float configured_current_a(float minimum_a, float v1_a, float v2_a, float v2_max_a) {
+  const float configured = id(oq_electrical_current_limit_configured_a);
+  if (std::isnan(configured)) {
+    return standard_current_a(v1_a, v2_a);
+  }
+  return oq_supervisory_power::effective_current_a(configured, minimum_a, maximum_current_a(v1_a, v2_a, v2_max_a));
 }
 
 class Runtime {
  public:
   void tick(const TickConfig& tick) {
-    const float current_a = configured_current_a(tick.minimum_current_a, tick.v1_current_a, tick.v2_current_a);
+    const float current_a =
+        configured_current_a(tick.minimum_current_a, tick.v1_current_a, tick.v2_current_a, tick.v2_max_current_a);
     const auto limits = oq_supervisory_power::thresholds(current_a, tick.mains_voltage_v);
     const oq_supervisory_power::Config config{
         OQ_TOPOLOGY_DUO,

@@ -11,13 +11,17 @@ import { formatDeviceClock, formatUptimeFromMeta, getDeviceIpAddress, getInstall
 import { getFirmwareUpdateEntity, getUpdateStatus, isFirmwareUpdateAvailable } from "./firmware-update.js";
 import { renderMqttModal, renderMqttSensorsModal } from "./mqtt.js";
 import { renderOduEepromDumpModal } from "./odu-eeprom-dump.js";
+import { renderOduRuntimeFrequencyModal } from "./odu-runtime-frequency.js";
+import { renderOduSettingsModal } from "./odu-settings.js";
 import { renderApiSecurityModal, renderLoginModal } from "./security-access.js";
 import { getWebServerLogStatusLabel, renderWebServerLogsModal } from "./webserver-logs.js";
 import { getControlModeOverrideLabel, renderSettingsServiceTaskModal } from "../settings/service.js";
+import { renderCoolingScheduleSettingsFields } from "../settings/cooling.js";
 import { renderSilentSettingsFields } from "../settings/silent.js";
 import { renderSettingsBackupImportModal, renderSettingsBackupRestoreModal, renderSettingsHistoryStorageModal } from "../settings/storage.js";
 import { renderHpWaterSensorOffsetsModal } from "../settings/water.js";
 import { renderSettingsSelectField } from "../settings/controls.js";
+import { formatDutchAmps } from "../settings/electrical-limit.js";
 import { renderHeatingStrategyAdviceModal } from "./heating-strategy-advice.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
@@ -500,6 +504,14 @@ import { render } from "../core/render-scheduler.js";
       return renderOduEepromDumpModal();
     }
 
+    if (state.systemModal === "odu-bottom-plate-settings") {
+      return renderOduSettingsModal();
+    }
+
+    if (state.systemModal === "odu-frequency-settings") {
+      return renderOduRuntimeFrequencyModal();
+    }
+
     if (String(state.systemModal || "").startsWith("service-task-")) {
       return renderSettingsServiceTaskModal();
     }
@@ -640,17 +652,40 @@ import { render } from "../core/render-scheduler.js";
       });
     }
 
+    if (state.systemModal === "cooling-schedule") {
+      return renderModalShell({
+        modalId: "system",
+        titleId: "oq-cooling-schedule-modal-title",
+        kicker: "Koeltoestemming",
+        title: "Koelvenster instellen",
+        modalClass: "oq-helper-modal--wide",
+        closeAction: "close-system-modal",
+        closeLabel: "Sluit koelvenster-popup",
+        bodyMarkup: `
+          <p class="oq-helper-modal-copy">Kies wanneer OpenQuatt lokaal koeltoestemming mag geven. Een tijd wordt opgeslagen zodra je het veld verlaat of op Enter drukt.</p>
+          ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
+          <div class="oq-helper-modal-body">
+            ${renderCoolingScheduleSettingsFields("oq-settings-grid oq-settings-grid--modal")}
+          </div>
+          <div class="oq-helper-modal-actions">
+            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">Gereed</button>
+          </div>
+        `,
+      });
+    }
+
     if (state.systemModal === "silent-settings") {
       return renderModalShell({
         modalId: "system",
         titleId: "oq-silent-settings-modal-title",
         kicker: "Stille uren",
         title: "Stille uren instellen",
-        modalClass: "oq-helper-modal--wide",
+        modalClass: "oq-helper-modal--wide oq-helper-modal--scrollable",
         closeAction: "close-system-modal",
         closeLabel: "Sluit stille-uren-popup",
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">Kies wanneer het systeem stiller moet werken, en hoe ver het dan nog mag opschalen. Wijzigingen worden direct toegepast.</p>
+          <p class="oq-helper-modal-copy">Kies wanneer het systeem stiller moet werken, en hoe ver het dan nog mag opschalen. Een tijd wordt opgeslagen zodra je het veld verlaat of op Enter drukt.</p>
+          ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
           <div class="oq-helper-modal-body">
             ${renderSilentSettingsFields()}
           </div>
@@ -671,6 +706,35 @@ import { render } from "../core/render-scheduler.js";
 
     if (state.systemModal === "heating-strategy-advice") {
       return renderHeatingStrategyAdviceModal();
+    }
+
+    if (state.systemModal === "electrical-limit-confirm") {
+      const pending = state.pendingElectricalLimit || {};
+      const fromA = Number(pending.fromA);
+      const toA = Number(pending.toA);
+      const standardA = Number(pending.standardA);
+      const busy = state.busyAction === "save-electricalCurrentLimit";
+      const fromLabel = formatDutchAmps(fromA);
+      const toLabel = formatDutchAmps(toA);
+      const standardLabel = formatDutchAmps(standardA);
+      return renderModalShell({
+        modalId: "system",
+        titleId: "oq-electrical-limit-modal-title",
+        kicker: "Elektrische installatie",
+        title: "Hogere elektrische ingangsgrens instellen?",
+        closeAction: "close-system-modal",
+        closeLabel: "Sluit elektrische-ingangsgrens-popup",
+        bodyMarkup: `
+          <p class="oq-helper-modal-copy">Je verhoogt de grens van <strong>${escapeHtml(fromLabel)}</strong> naar <strong>${escapeHtml(toLabel)}</strong>.</p>
+          <p class="oq-settings-action-note oq-settings-action-note--warning">Bevestig alleen wanneer de volledige elektrische aansluiting geschikt is voor minimaal ${escapeHtml(toLabel)}. Bij een standaard ${escapeHtml(standardLabel)}-groep kan de installatieautomaat uitschakelen. Bij onjuist gedimensioneerde bekabeling of aansluitmaterialen kan oververhitting of brandgevaar ontstaan.</p>
+          <p class="oq-helper-modal-copy">OpenQuatt vervangt nooit de elektrische beveiliging van de installatie.</p>
+          ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
+          <div class="oq-helper-modal-actions">
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>Annuleren</button>
+            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-electrical-limit" ${busy ? "disabled" : ""}>${busy ? "Instellen..." : `${escapeHtml(toLabel)} instellen`}</button>
+          </div>
+        `,
+      });
     }
 
     if (state.systemModal === "openquatt-pause") {

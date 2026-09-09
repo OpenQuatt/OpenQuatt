@@ -1221,10 +1221,19 @@ button:
             then:
               - script.execute: oq_install_firmware_test_manifest_deferred
 
-  - platform: restart
+  - platform: template
     name: Restart
     icon: mdi:restart
     id: restart_switch
+    device_class: restart
+    entity_category: config
+    on_press:
+      - lambda: |-
+          if (id(oq_incident_manager).is_failed()) {
+            App.safe_reboot();
+          } else {
+            id(oq_incident_manager).request_restart();
+          }
 
   - platform: safe_mode
     name: Safe mode

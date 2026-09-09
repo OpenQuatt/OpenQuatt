@@ -13,7 +13,7 @@
 device_name: "openquatt"                              # Internal ESPHome device ID / hostname base.
 friendly_name: OpenQuatt                              # Display name in Home Assistant / UI.
 project_name: "openquatt.openquatt"                   # ESPHome project identifier shown in firmware metadata.
-project_version: "v0.49.0"                            # ESPHome project version shown in firmware metadata.
+project_version: "v0.50.0"                            # ESPHome project version shown in firmware metadata.
 release_channel: "main"                               # Firmware release channel shown in diagnostics (`main` or `dev`).
 oq_firmware_initial_check_delay_s: "300"              # Stable-network delay before the first automatic manifest check [s].
 oq_firmware_periodic_check_interval: "4h"              # Automatic manifest-check cadence after the initial boot window.
@@ -134,9 +134,10 @@ oq_power_soft_trip_s: "300"                           # Time above soft required
 oq_power_recover_s: "60"                              # Time below recover required for cap recovery [s].
 oq_power_cap_max_f: "20"                              # Upper limit of demand-cap factor f.
 oq_power_cap_nan_f: "16"                              # Duo fail-safe demand cap for invalid power measurement; Single uses half.
-oq_duo_current_limit_v1_a: "16.0"                     # Duo current limit for V1/V1.5 hardware [A].
-oq_duo_current_limit_v2_a: "20.0"                     # Duo current limit for V2 hardware [A].
-oq_electrical_current_limit_min_a: "10.0"             # Lowest configurable installation current limit [A].
+oq_duo_current_limit_v1_a: "16.0"                     # Duo standard limit: official Quatt Duo max for V1/V1.5 [A].
+oq_duo_current_limit_v2_a: "20.0"                     # Duo standard limit: official Quatt Duo max for V2 [A]; also the derived per-ODU ceiling (2 x 10 A) for V1/V1.5 [A].
+oq_duo_current_limit_v2_max_a: "26.0"                 # Absolute OpenQuatt ceiling for V2: 2 x published 13 A per-ODU max [A].
+oq_electrical_current_limit_min_a: "6.0"              # Lowest configurable installation current limit [A].
 oq_power_measurement_stale_s: "60"                    # Maximum age of voltage/current measurements used by the limiter [s].
 oq_mains_voltage_v: "230.0"                           # Nominal mains voltage used to convert current limits to power thresholds [V].
 oq_cm_prepost_s: "30"                                 # Duration of CM1 pre/postflow window [s].
@@ -185,6 +186,7 @@ oq_outside_temp_stale_s: "1200"                       # Ignore a local outdoor r
 oq_heat_loop_tick_s: "5"                              # Scheduler tick for heat-control loop [s].
 oq_heat_loop_curve_s: "30"                            # Effective heat-control cadence in Heating Curve mode [s].
 oq_heat_loop_powerhouse_s: "60"                       # Effective heat-control cadence in Power House mode [s].
+oq_ph_demand_loop_s: "10"                             # Power House demand and dispatch cadence [s].
 oq_cooling_minimum_off_min_s: "240"                   # Production floor for the user-configurable cooling restart delay [s].
 oq_cooling_limiter_stop_confirm_s: "30"               # Confirm time before soft-stop and dew hard-stop take effect [s].
 oq_cooling_oil_return_hold_s: "1200"                  # Maximum oil-return recovery window; floor-guard modes clear earlier after recovery [s].

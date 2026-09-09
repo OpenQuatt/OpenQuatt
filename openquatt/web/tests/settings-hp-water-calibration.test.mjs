@@ -96,8 +96,9 @@ test("kalibratie mengt drie minuten en toont de verwachte totale duur", () => {
   const task = getSettingsServiceModel().tasks.find(({ key }) => key === "hp-water-calibration");
 
   assert.match(markup, /meting start over 180 s/);
-  assert.match(task.cardMarkup, /ongeveer 3 tot 5 minuten/);
-  assert.match(task.cardMarkup, /mengt het water 3 minuten/);
+  const taskMarkup = task.renderCard();
+  assert.match(taskMarkup, /ongeveer 3 tot 5 minuten/);
+  assert.match(taskMarkup, /mengt het water 3 minuten/);
 });
 
 test("sensorcorrecties tonen de actieve aanvoercorrectie alleen-lezen", () => {
