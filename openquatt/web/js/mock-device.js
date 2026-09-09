@@ -2113,6 +2113,11 @@
       state: "Disabled",
       option: ["Disabled", "API input", "MQTT"],
     });
+    setEntity("select", "Heating Supply Target Source", {
+      value: "Heating curve",
+      state: "Heating curve",
+      option: ["Heating curve", "OT thermostat", "HA input", "API input", "MQTT"],
+    });
     setEntity("select", "Firmware Update Channel", {
       value: "dev",
       state: "dev",
@@ -2278,6 +2283,7 @@
       ["Water Supply Temp (Selected)", 29.5, "°C"],
       ["Outside Temperature (Selected)", 8.2, "°C"],
       ["Heating Curve Supply Target", 33.0, "°C"],
+      ["Heating Supply Target (Selected)", 33.0, "°C"],
       ["Power House – P_house", 2500, "W"],
       ["Power House – P_req", 2800, "W"],
       ["MQTT Cooling Dew Point", 16.2, "°C"],
@@ -2351,6 +2357,7 @@
       ["Water Supply Temperature Calibration Status", "Not calibrated"],
       ["Heating Enable Effective Source", "None"],
       ["Cooling Enable Effective Source", "HA input"],
+      ["Heating Supply – target source", "curve"],
       ["Boiler command source", "Power House"],
       ["Boiler block reason", "no boiler heat request"],
       ["Runtime lead HP", "HP2"],

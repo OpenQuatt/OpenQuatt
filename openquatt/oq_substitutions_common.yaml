@@ -67,6 +67,8 @@ mqtt_heating_enable_topic: "openquatt/${device_name}/input/thermostat/heating_en
 mqtt_heating_enable_stale_s: "0"                      # Maximum age for MQTT heating-enable [s]; 0 keeps state until a new payload, disable, or restart.
 mqtt_cooling_enable_topic: "openquatt/${device_name}/input/thermostat/cooling_enable" # Fixed MQTT input topic for external cooling enable [boolean].
 mqtt_cooling_enable_stale_s: "0"                      # Maximum age for MQTT cooling-enable [s]; 0 keeps state until a new payload, disable, or restart.
+mqtt_heating_supply_target_topic: "openquatt/${device_name}/input/heating/supply_target" # Fixed MQTT input topic for external heating supply target [degC].
+mqtt_heating_supply_target_stale_s: "900"             # Maximum age for the last valid MQTT heating supply target before it becomes invalid [s].
 api_input_cooling_dew_point_stale_s: "900"            # Maximum age for API-input cooling dew point before it becomes invalid [s].
 api_input_outside_temperature_stale_s: "1800"         # Maximum age for API-input outside temperature before it becomes invalid [s].
 api_input_room_temperature_stale_s: "600"             # Maximum age for API-input room temperature before it becomes invalid [s].
@@ -74,6 +76,7 @@ api_input_room_setpoint_stale_s: "0"                  # Maximum age for API-inpu
 api_input_heating_enable_stale_s: "0"                 # Maximum age for API-input heating-enable [s]; 0 keeps state until restart or a new payload.
 api_input_cooling_enable_stale_s: "0"                 # Maximum age for API-input cooling-enable [s]; 0 keeps state until restart or a new payload.
 api_input_external_heat_demand_stale_s: "900"         # Maximum age for API-input external heat demand before it becomes invalid [s].
+api_input_heating_supply_target_stale_s: "900"        # Maximum age for API-input heating supply target before it becomes invalid [s].
 usage_telemetry_broker: "mqtt.openquatt.nl"           # Central usage-statistics MQTT broker.
 usage_telemetry_port: "1883"                          # Plain MQTT port for the current central broker.
 usage_telemetry_tls: "false"                          # Temporary until the central broker exposes MQTT/TLS.
@@ -289,6 +292,8 @@ ha_cooling_dew_point_entity_id: "sensor.openquatt_ext_cooling_dew_point" # HA ag
 ha_cooling_dew_point_valid_entity_id: "binary_sensor.openquatt_ext_cooling_dew_point_valid" # HA validity flag for aggregate cooling dew point.
 ha_external_heat_demand_entity_id: "sensor.openquatt_ext_heat_demand"       # HA proxy entity for external Power House heat demand [W].
 ha_external_heat_demand_valid_entity_id: "binary_sensor.openquatt_ext_heat_demand_valid"  # HA validity flag for external heat demand.
+ha_heating_supply_target_entity_id: "sensor.openquatt_ext_heating_supply_target" # HA proxy entity for external heating supply target [degC].
+ha_heating_supply_target_valid_entity_id: "binary_sensor.openquatt_ext_heating_supply_target_valid" # HA validity flag for external heating supply target.
 
 # ----------------------------
 # HP IO (MODBUS POLLING)

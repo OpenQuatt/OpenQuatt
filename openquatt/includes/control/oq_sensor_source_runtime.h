@@ -115,6 +115,7 @@ class Runtime {
     add_hold(active, id(oq_room_temp_selected_hold_active), "Room temp");
     add_hold(active, id(oq_room_setpoint_selected_hold_active), "Room setpoint");
     add_hold(active, id(oq_external_heat_demand_selected_hold_active), "External heat demand");
+    add_hold(active, id(oq_heating_supply_target_selected_hold_active), "Heating supply target");
     add_hold(active, id(oq_cooling_dew_point_selected_hold_active), "Cooling dew point");
     return active.empty() ? "None" : active;
   }
@@ -273,6 +274,28 @@ class Runtime {
     return selected.valid ? selected.value : NAN;
   }
 
+  float heating_supply_target(uint32_t now_ms, uint32_t hold_ms, bool opentherm_fresh) {
+    if (!id(heating_supply_target_source).has_state()) return NAN;
+    if (parse_source(id(heating_supply_target_source).current_option()) == oq_input_source::Source::HEATING_CURVE) {
+      supply_target_hold_.reset();
+      id(oq_heating_supply_target_selected_hold_active) = false;
+      return NAN;
+    }
+    oq_input_source::NumericSources sources;
+    sources.ha = sample(ha_valid(id(heating_supply_target_valid_ha), id(heating_supply_target_ha)),
+                        id(heating_supply_target_ha));
+    sources.api = sample(api_valid(id(api_input_heating_supply_target_valid), id(api_input_heating_supply_target)),
+                         id(api_input_heating_supply_target));
+    sources.mqtt = sample(mqtt_valid(id(mqtt_heating_supply_target_valid), id(mqtt_heating_supply_target)),
+                          id(mqtt_heating_supply_target));
+    sources.opentherm = sample(opentherm_fresh, id(ot_thermostat_control_setpoint));
+    const auto selected =
+        oq_input_source::select_direct(parse_source(id(heating_supply_target_source).current_option()), sources, true,
+                                       now_ms, hold_ms, supply_target_hold_);
+    id(oq_heating_supply_target_selected_hold_active) = selected.held;
+    return selected.valid ? selected.value : NAN;
+  }
+
  private:
   struct SupplyFallback {
     bool valid = false;
@@ -285,6 +308,7 @@ class Runtime {
   oq_input_source::HoldState room_hold_;
   oq_input_source::HoldState setpoint_hold_;
   oq_input_source::HoldState demand_hold_;
+  oq_input_source::HoldState supply_target_hold_;
 
   template <typename T>
   static oq_input_source::Source parse_source(const T& option) {
@@ -298,6 +322,7 @@ class Runtime {
     if (option == "OT thermostat") return oq_input_source::Source::OPENTHERM;
     if (option == "Disabled") return oq_input_source::Source::DISABLED;
     if (option == "CIC or HA input") return oq_input_source::Source::CIC_OR_HA;
+    if (option == "Heating curve") return oq_input_source::Source::HEATING_CURVE;
     return oq_input_source::Source::NONE;
   }
 

@@ -83,6 +83,18 @@ sensor:
     state_class: measurement
     accuracy_decimals: 0
 
+  - platform: homeassistant
+    id: heating_supply_target_ha
+    name: "HA - Heating Supply Target"
+    entity_id: ${ha_heating_supply_target_entity_id}
+    internal: false
+    disabled_by_default: true
+    icon: mdi:target
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+
 binary_sensor:
   - platform: homeassistant
     id: heating_enable_ha
@@ -148,4 +160,10 @@ binary_sensor:
     id: external_heat_demand_valid_ha
     name: "HA - External Heat Demand Valid"
     entity_id: ${ha_external_heat_demand_valid_entity_id}
+    internal: true
+
+  - platform: homeassistant
+    id: heating_supply_target_valid_ha
+    name: "HA - Heating Supply Target Valid"
+    entity_id: ${ha_heating_supply_target_valid_entity_id}
     internal: true

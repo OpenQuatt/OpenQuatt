@@ -35,6 +35,7 @@ globals:
   - {id: oq_room_temp_selected_hold_active, type: bool, restore_value: false, initial_value: 'false'}
   - {id: oq_room_setpoint_selected_hold_active, type: bool, restore_value: false, initial_value: 'false'}
   - {id: oq_external_heat_demand_selected_hold_active, type: bool, restore_value: false, initial_value: 'false'}
+  - {id: oq_heating_supply_target_selected_hold_active, type: bool, restore_value: false, initial_value: 'false'}
 
 select:
   - platform: template
@@ -294,3 +295,17 @@ sensor:
     lambda: |-
       return oq_sensor_source::runtime().external_heat_demand(
           (uint32_t) millis(), (uint32_t) (${oq_selected_input_stale_hold_s}UL * 1000UL));
+
+  - platform: template
+    id: heating_supply_target_selected
+    name: "Heating Supply Target (Selected)"
+    icon: mdi:target
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 10s
+    lambda: |-
+      return oq_sensor_source::runtime().heating_supply_target(
+          (uint32_t) millis(), (uint32_t) (${oq_selected_input_stale_hold_s}UL * 1000UL),
+          (${oq_ot_supply_target_fresh_expr}));

@@ -167,6 +167,9 @@ inline const char* configured_source_wire_value(const std::string& option) {
   if (option == "Disabled") {
     return "disabled";
   }
+  if (option == "Heating curve") {
+    return "heating_curve";
+  }
   return nullptr;
 }
 

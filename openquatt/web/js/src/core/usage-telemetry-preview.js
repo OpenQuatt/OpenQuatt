@@ -26,6 +26,7 @@ export const USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS = [
   "coolingEnableSource",
   "coolingDewPointSource",
   "externalHeatDemandSource",
+  "heatingSupplyTargetSource",
   "heapFree",
   "heapMinFree",
   "heapLargestBlock",
@@ -104,6 +105,7 @@ export function configuredSourceWireValue(value) {
     MQTT: "mqtt",
     "CIC or HA input": "cic_or_home_assistant",
     Disabled: "disabled",
+    "Heating curve": "heating_curve",
   })[optionalText(value)] ?? null;
 }
 
@@ -178,6 +180,7 @@ export function createUsageTelemetryPreview(values = {}, options = {}) {
     cooling_enable_source: configuredSourceWireValue(values.coolingEnableSource),
     cooling_dew_point_source: configuredSourceWireValue(values.coolingDewPointSource),
     external_heat_demand_source: configuredSourceWireValue(values.externalHeatDemandSource),
+    heating_supply_target_source: configuredSourceWireValue(values.heatingSupplyTargetSource),
     heap_free_b: optionalNumber(values.heapFree),
     heap_min_free_b: optionalNumber(values.heapMinFree),
     heap_largest_block_b: optionalNumber(values.heapLargestBlock),

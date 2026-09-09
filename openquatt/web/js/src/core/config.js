@@ -213,6 +213,7 @@
     otEnabled: { domain: "switch", name: "OpenTherm Enabled", optional: true },
     otThermostatChEnable: { domain: "binary_sensor", name: "OT - Thermostat CH Enable", optional: true },
     otThermostatStatusValid: { domain: "binary_sensor", name: "OT - Thermostat Status Valid", optional: true },
+    otThermostatControlSetpointValid: { domain: "binary_sensor", name: "OT - Control Setpoint Valid", optional: true },
     otThermostatCoolingEnable: { domain: "binary_sensor", name: "OT - Thermostat Cooling Enable", optional: true },
     otLinkProblem: { domain: "binary_sensor", name: "OT - Link Problem", optional: true },
     otControlSetpoint: { domain: "sensor", name: "OT - Control Setpoint", optional: true },
@@ -442,6 +443,17 @@
     apiInputExternalHeatDemand: { domain: "number", name: "api_input_external_heat_demand", optional: true },
     apiInputExternalHeatDemandAge: { domain: "sensor", name: "API Input External Heat Demand Age", optional: true },
     apiInputExternalHeatDemandValid: { domain: "binary_sensor", name: "API Input External Heat Demand Valid", optional: true },
+    heatingSupplyTargetSource: { domain: "select", name: "Heating Supply Target Source", optional: true },
+    heatingSupplyTargetSelected: { domain: "sensor", name: "Heating Supply Target (Selected)", optional: true },
+    heatingSupplyTargetHa: { domain: "sensor", name: "HA - Heating Supply Target", optional: true },
+    heatingSupplyTargetHaValid: { domain: "binary_sensor", name: "HA - Heating Supply Target Valid", optional: true },
+    apiInputHeatingSupplyTarget: { domain: "number", name: "api_input_heating_supply_target", optional: true },
+    apiInputHeatingSupplyTargetAge: { domain: "sensor", name: "API Input Heating Supply Target Age", optional: true },
+    apiInputHeatingSupplyTargetValid: { domain: "binary_sensor", name: "API Input Heating Supply Target Valid", optional: true },
+    mqttHeatingSupplyTarget: { domain: "sensor", name: "MQTT Heating Supply Target", optional: true },
+    mqttHeatingSupplyTargetAge: { domain: "sensor", name: "MQTT Heating Supply Target Age", optional: true },
+    mqttHeatingSupplyTargetValid: { domain: "binary_sensor", name: "MQTT Heating Supply Target Valid", optional: true },
+    heatingSupplyTargetActiveSource: { domain: "text_sensor", name: "Heating Supply – target source", optional: true },
     apiInputHeatingEnable: { domain: "switch", name: "api_input_heating_enable", optional: true },
     apiInputHeatingEnableAge: { domain: "sensor", name: "API Input Heating Enable Age", optional: true },
     apiInputHeatingEnableValid: { domain: "binary_sensor", name: "API Input Heating Enable Valid", optional: true },
@@ -963,6 +975,7 @@
   export const OPENTHERM_DIAGNOSTIC_KEYS = [
     "otThermostatChEnable",
     "otThermostatCoolingEnable",
+    "otThermostatControlSetpointValid",
     "otControlSetpoint",
     "otRoomSetpoint",
     "otRoomTemp",
@@ -1086,6 +1099,18 @@
     "apiInputExternalHeatDemandAge",
     "apiInputExternalHeatDemandValid",
     "powerHouseDemandSource",
+    "heatingSupplyTargetSource",
+    "heatingSupplyTargetSelected",
+    "heatingSupplyTargetHa",
+    "heatingSupplyTargetHaValid",
+    "apiInputHeatingSupplyTarget",
+    "apiInputHeatingSupplyTargetAge",
+    "apiInputHeatingSupplyTargetValid",
+    "mqttHeatingSupplyTarget",
+    "mqttHeatingSupplyTargetAge",
+    "mqttHeatingSupplyTargetValid",
+    "heatingSupplyTargetActiveSource",
+    "otThermostatControlSetpointValid",
     "apiInputHeatingEnable",
     "apiInputHeatingEnableAge",
     "apiInputHeatingEnableValid",
@@ -1429,6 +1454,10 @@
     "boilerStartThermalGuard",
     "boilerStartThermalSafeCeiling",
     "boilerPowerTestResultQuality",
+    // Only the branch discriminator: the local curve target (curveSupplyTarget)
+    // and the effective target (strategySupplyTarget) are already recorded, so
+    // this single field tells a recording which of the two was driving.
+    "heatingSupplyTargetActiveSource",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestManifestUrl", "installFirmwareTestManifest"];
@@ -1802,6 +1831,9 @@
     // A live power request rather than a persisted setting: restoring it
     // would re-assert a stale demand and mark it freshly valid.
     "apiInputExternalHeatDemand",
+    // A live supply-target request rather than a persisted setting: restoring
+    // it would re-assert a stale target and mark it freshly valid.
+    "apiInputHeatingSupplyTarget",
     "coolingGuardMode",
     "coolingFallbackNightMinOutdoorTemp",
     "coolingFallbackMinSupplyTemp",
@@ -1866,6 +1898,7 @@
         "coolingEnableSource",
         "coolingDewPointSource",
         "externalHeatDemandSource",
+        "heatingSupplyTargetSource",
         "apiInputOutsideTemperature",
         "apiInputRoomTemperature",
         "apiInputRoomSetpoint",

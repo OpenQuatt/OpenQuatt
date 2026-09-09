@@ -877,6 +877,8 @@ bool OpenQuattUsageTelemetry::build_payload_() {
                                configured_source_wire_value);
   append_json_optional_select_(payload, "external_heat_demand_source", this->external_heat_demand_source_select_,
                                configured_source_wire_value);
+  append_json_optional_select_(payload, "heating_supply_target_source", this->heating_supply_target_source_select_,
+                               configured_source_wire_value);
   append_json_uint_(payload, "heap_free_b", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
   append_json_uint_(payload, "heap_min_free_b", heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
   append_json_uint_(payload, "heap_largest_block_b", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));

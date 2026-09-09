@@ -19,8 +19,8 @@ test("packed rows vergroten de retentie van de volledige dev-debugset", () => {
   );
   const capacity = Math.floor((1024 * 1024) / rowBytes);
 
-  assert.equal(rowBytes, 603);
-  assert.equal(capacity, 1738);
+  assert.equal(rowBytes, 605);
+  assert.equal(capacity, 1733);
   assert.ok((capacity - 1) * 10 >= 4.8 * 60 * 60);
   assert.match(header, /PsramBuffer<uint8_t> samples_/);
   assert.match(source, /value_size_for_type_/);

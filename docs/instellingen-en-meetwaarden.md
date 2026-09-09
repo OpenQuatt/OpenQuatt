@@ -154,6 +154,7 @@ Belangrijke keuzes:
 - `Heating Enable Source`
 - `Cooling Dew Point Source`
 - `External Heat Demand Source`
+- `Heating Supply Target Source`
 
 En indirect alles wat bepaalt waar buiten-, kamer- en waterwaarden vandaan komen.
 
@@ -170,6 +171,7 @@ De betekenis van dezelfde bron verschilt per verwarmingsstrategie:
 | Flow | Vereist | Vereist |
 | Warmtetoestemming (`Heating Enable Source`) | Meestal `Niet gebruiken` | Meestal externe thermostaat/zonevraag |
 | Externe warmtevraag | Optioneel (`HA`/`API`) | Niet van toepassing |
+| Extern aanvoertarget | Niet van toepassing | Optioneel (`OT`/`HA`/`API`/`MQTT`) |
 
 Tijdens Quick Start vervangt een strategieswitch de warmtetoestemming automatisch: `Heating Enable Source = Niet gebruiken` bij `Power House` (OpenQuatt bepaalt zelf de vraag), of de eerder gekozen, gekoppelde en actieve thermostaatbron bij `Water Temperature Control` (`OT thermostat` op Q-edition, anders `CIC`/`HA input`). Een uitgeschakelde of niet-geconfigureerde bron wordt niet automatisch als harde gate gekozen. Buiten Quick Start overschrijft de web-app een bestaande keuze niet stil; daar verschijnt alleen een advies met een knop om het over te nemen. Afwijkende combinaties blijven bewust mogelijk (bijv. Power House met zone-gate, stooklijn volledig weersafhankelijk).
 
@@ -182,6 +184,8 @@ Voor `Heating Enable Source` betekent `Niet gebruiken` / `Disabled`: geen extern
 Voor `Cooling Dew Point Source` is `Auto` meestal ook de veiligste keuze. OpenQuatt gebruikt dan de hoogste geldige dauwpuntwaarde van Home Assistant, API-invoer en MQTT. Kies `Home Assistant`, `API input` of `MQTT` alleen als je die bron expliciet wilt vereisen.
 
 Voor `External Heat Demand Source` is `Disabled` de standaard, en voor de meeste installaties ook de juiste keuze. Kies je `HA input` of `API input`, dan neemt een externe voorspelling de vermogensschatting van het huismodel in `Power House` over. De rest van de regeling blijft ongewijzigd, en bij een wegvallende of verouderde bron valt `Power House` terug op het eigen huismodel. Zie [Power House](power-house.md).
+
+Voor `Heating Supply Target Source` is `Heating curve` de standaard, en voor de meeste installaties ook de juiste keuze. Kies je `OT thermostat`, `HA input`, `API input` of `MQTT`, dan neemt een externe regelaar het aanvoerdoel van de stooklijn over, inclusief kamertrim. Limieten, PID en Duo-dispatch blijven van OpenQuatt, en bij een wegvallende of verouderde bron valt de regeling terug op de eigen stooklijn. Zie [Water Temperature Control](water-temperature-control.md#extern-aanvoertarget-optioneel).
 
 De temperatuurkalibratie neemt ook de actieve aanvoertemperatuurbron mee. OpenQuatt bewaart daarvoor vier afzonderlijke offsets: voor de lokale PT1000, lokale DS18B20, CIC-feed en Home Assistant-invoer. Bij een bronwissel activeert OpenQuatt automatisch de eerder opgeslagen correctie voor die bron. De CIC-correctie blijft geldig na een gewijzigde feed-URL; na een andere Home Assistant-entiteit blijft die correctie uitgeschakeld totdat je de HA-invoer opnieuw kalibreert. Een tijdelijke automatische fallback naar de water-uitmeting van de warmtepomp gebruikt geen aanvoercorrectie en wist geen opgeslagen kalibratie.
 

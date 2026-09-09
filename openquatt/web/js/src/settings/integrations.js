@@ -239,6 +239,7 @@ import { escapeHtml } from "../core/html.js";
       mqttOutsideTemperature: "outside_temperature",
       mqttRoomTemperature: "room_temperature",
       mqttRoomSetpoint: "room_setpoint",
+      mqttHeatingSupplyTarget: "heating_supply_target",
       mqttHeatingEnable: "heating_enable",
       mqttCoolingEnable: "cooling_enable",
     };
@@ -247,6 +248,7 @@ import { escapeHtml } from "../core/html.js";
       outside_temperature: "mqttOutsideTemperatureValid",
       room_temperature: "mqttRoomTemperatureValid",
       room_setpoint: "mqttRoomSetpointValid",
+      heating_supply_target: "mqttHeatingSupplyTargetValid",
       heating_enable: "mqttHeatingEnableValid",
       cooling_enable: "mqttCoolingEnableValid",
     };
@@ -799,6 +801,17 @@ import { escapeHtml } from "../core/html.js";
     const externalHeatDemandUsedSource = powerHouseDemandSource === "external"
       ? externalHeatDemandConfiguredSource
       : powerHouseDemandSource === "model" ? "Huismodel" : "—";
+    const heatingSupplyTargetConfiguredSource = formattedSourceValue("heatingSupplyTargetSource", {
+      optionLabels: { "Heating curve": "Stooklijn", "OT thermostat": "OT-thermostaat", "API input": "API-invoer" },
+    });
+    const heatingSupplyTargetActiveSource = String(getSettingsTextStatValue("heatingSupplyTargetActiveSource", "") || "").trim().toLowerCase();
+    const heatingSupplyTargetIsExternal = heatingSupplyTargetActiveSource === "external";
+    const heatingSupplyTargetUsedSource = heatingSupplyTargetIsExternal
+      ? heatingSupplyTargetConfiguredSource
+      : heatingSupplyTargetActiveSource === "curve" ? "Stooklijn" : "—";
+    const heatingSupplyTargetSummaryValue = heatingSupplyTargetIsExternal
+      ? getSettingsStatValue("heatingSupplyTargetSelected")
+      : getSettingsStatValue("curveSupplyTarget");
     const buildRoomSignal = ({ key, title, icon, stem, externalStem, mqttTopic, usedSource }) => {
       const entityStem = `${stem[0].toUpperCase()}${stem.slice(1)}`;
       return buildSourceSignal({
@@ -1020,6 +1033,26 @@ import { escapeHtml } from "../core/html.js";
           ...renderExternalSourceRows("externalHeatDemandSource", externalHeatDemandUsedSource, buildExternalSourceKeys("externalHeatDemand", "ExternalHeatDemand", false)),
         ],
       }),
+      buildSourceSignal({
+        key: "heating-supply-target",
+        group: "heating",
+        title: "Aanvoertarget",
+        icon: "target",
+        select: buildExternalSourceSelect("heatingSupplyTarget", "HeatingSupplyTarget", "heating_supply_target", {
+          optionLabels: { "Heating curve": "Stooklijn", "OT thermostat": "OT-thermostaat", "API input": "API-invoer" },
+          infoCopy: "Vervangt alleen het berekende stooklijntarget, inclusief kamertrim. Valt de bron weg of veroudert hij, dan regelt de stooklijn weer. Limieten, PID en Duo-dispatch blijven van OpenQuatt.",
+        }),
+        summaryValue: heatingSupplyTargetSummaryValue,
+        summarySource: heatingSupplyTargetUsedSource,
+        routeWarning: heatingSupplyTargetIsExternal
+          ? invalidSourceValueWarning("heatingSupplyTargetSelected")
+          : invalidSourceValueWarning("curveSupplyTarget"),
+        measurementRows: [
+          renderSourceRow({ label: "Stooklijn", key: "curveSupplyTarget", sourceKind: "local", sourceState: "available", effective: !heatingSupplyTargetIsExternal }),
+          otAvailable ? renderSourceRow({ label: "OpenTherm", key: "otControlSetpoint", sourceKind: "ot", sourceState: "available", effective: sourcesMatch(heatingSupplyTargetUsedSource, "OpenTherm") }) : "",
+          ...renderExternalSourceRows("heatingSupplyTargetSource", heatingSupplyTargetUsedSource, buildExternalSourceKeys("heatingSupplyTarget", "HeatingSupplyTarget")),
+        ],
+      }),
     ].filter(Boolean);
 
     if (!sourceSignals.length) {
@@ -1029,7 +1062,7 @@ import { escapeHtml } from "../core/html.js";
     const sourceCategories = [
       { id: "room-outside", title: "Ruimte & buiten", icon: "home-cog", keys: ["room-temperature", "room-setpoint", "outside-temperature"] },
       { id: "water-circuit", title: "Watercircuit", icon: "droplet", keys: ["water-supply", "flow-source"] },
-      { id: "heating", title: "Verwarmen", icon: "flame", keys: ["external-heat-demand", "heating-enable"] },
+      { id: "heating", title: "Verwarmen", icon: "flame", keys: ["external-heat-demand", "heating-supply-target", "heating-enable"] },
       { id: "cooling", title: "Koelen", icon: "snowflake", keys: ["cooling-enable", "cooling-dew-point"] },
     ];
     const signalByKey = new Map(sourceSignals.map((signal) => [signal.key, signal]));

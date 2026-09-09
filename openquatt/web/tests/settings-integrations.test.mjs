@@ -23,6 +23,7 @@ const MQTT_SOURCE_SELECTS = [
   ["heatingEnableSource", "heating-enable"],
   ["coolingEnableSource", "cooling-enable"],
   ["coolingDewPointSource", "cooling-dew-point"],
+  ["heatingSupplyTargetSource", "heating-supply-target"],
 ];
 
 function getSelectMarkup(markup, key) {
@@ -84,6 +85,7 @@ function setSourceSelectionState(mqttEnabled) {
       outside_temperature: true,
       room_temperature: true,
       room_setpoint: true,
+      heating_supply_target: true,
       heating_enable: true,
       cooling_enable: true,
     },
@@ -103,6 +105,18 @@ function setSourceSelectionState(mqttEnabled) {
     coolingEnableSource: { value: "Disabled", option: ["Disabled", "OT thermostat", "HA input", "API input", "MQTT"] },
     coolingDewPointSource: { value: "Auto", option: ["Auto", "Home Assistant", "API input", "MQTT"] },
     externalHeatDemandSource: { value: "Disabled", option: ["Disabled", "HA input", "API input"] },
+    heatingSupplyTargetSource: { value: "Heating curve", option: ["Heating curve", "OT thermostat", "HA input", "API input", "MQTT"] },
+    curveSupplyTarget: valueEntity(33.0, "°C"),
+    heatingSupplyTargetSelected: valueEntity(33.0, "°C"),
+    heatingSupplyTargetActiveSource: valueEntity("curve"),
+    heatingSupplyTargetHa: valueEntity(42.0, "°C"),
+    heatingSupplyTargetHaValid: binaryEntity(false),
+    apiInputHeatingSupplyTarget: valueEntity(42.0, "°C"),
+    apiInputHeatingSupplyTargetValid: binaryEntity(false),
+    mqttHeatingSupplyTarget: { value: 42.0, uom: "°C" },
+    mqttHeatingSupplyTargetValid: { value: false, state: "OFF" },
+    otControlSetpoint: valueEntity(30.0, "°C"),
+    otThermostatControlSetpointValid: binaryEntity(false),
     roomTemp: valueEntity(21.8, "°C"),
     roomTempEffectiveSource: valueEntity("OT thermostat"),
     roomSetpoint: valueEntity(20, "°C"),
@@ -190,13 +204,13 @@ test("focuspaneel groepeert alle signalen in vaste volgorde en rendert één ins
 
   assert.match(markup, /data-oq-source-workspace/);
   assert.equal((markup.match(/data-source-category=/g) || []).length, 4);
-  assert.equal((markup.match(/data-oq-action="select-settings-source"/g) || []).length, 9);
-  assert.equal((markup.match(/data-oq-focus-key="settings-source-[^"]+"/g) || []).length, 10);
+  assert.equal((markup.match(/data-oq-action="select-settings-source"/g) || []).length, 10);
+  assert.equal((markup.match(/data-oq-focus-key="settings-source-[^"]+"/g) || []).length, 11);
   assert.equal((markup.match(/\sdata-oq-source-inspector(?:\s|>)/g) || []).length, 1);
   const expectedSources = [
     ["room-outside", ["room-temperature", "room-setpoint", "outside-temperature"]],
     ["water-circuit", ["water-supply", "flow-source"]],
-    ["heating", ["external-heat-demand", "heating-enable"]],
+    ["heating", ["external-heat-demand", "heating-supply-target", "heating-enable"]],
     ["cooling", ["cooling-enable", "cooling-dew-point"]],
   ];
   assertMarkupOrder(markup, expectedSources.map(([category]) => `data-source-category="${category}"`));
@@ -434,6 +448,36 @@ test("Power House vertaalt de firmwarebron naar de werkelijk gebruikte externe r
 
   delete state.entities.powerHouseDemandSource;
   markup = renderFocusedSource("external-heat-demand");
+  assert.match(markup, /aria-label="Ingesteld: API-invoer\. Gebruikt: —"/);
+});
+
+test("aanvoertarget toont stooklijn als bron en schakelt zichtbaar naar extern", () => {
+  setSourceSelectionState(true);
+
+  let markup = renderFocusedSource("heating-supply-target");
+  assert.match(markup, /aria-label="Ingesteld: Stooklijn\. Gebruikt: Stooklijn"/);
+  assert.match(getInspectorMarkup(markup), /<strong>33 °C<\/strong>/);
+
+  Object.assign(state.entities, {
+    heatingSupplyTargetSource: { value: "API input", option: ["Heating curve", "OT thermostat", "HA input", "API input", "MQTT"] },
+    apiInputHeatingSupplyTarget: valueEntity(42.0, "°C"),
+    apiInputHeatingSupplyTargetValid: binaryEntity(true),
+    heatingSupplyTargetSelected: valueEntity(42.0, "°C"),
+    heatingSupplyTargetActiveSource: valueEntity("external"),
+  });
+
+  markup = renderFocusedSource("heating-supply-target");
+  assert.match(markup, /aria-label="Ingesteld: API-invoer\. Gebruikt: API-invoer"/);
+  assert.match(getInspectorMarkup(markup), /data-source-kind="api"\s+data-source-state="valid"\s+data-source-effective="true"/);
+  assert.match(getInspectorMarkup(markup), /<strong>42 °C<\/strong>/);
+
+  state.entities.heatingSupplyTargetActiveSource = valueEntity("curve");
+  markup = renderFocusedSource("heating-supply-target");
+  assert.match(markup, /aria-label="Ingesteld: API-invoer\. Gebruikt: Stooklijn"/);
+  assert.doesNotMatch(getInspectorMarkup(markup), /data-source-kind="api"[^>]+data-source-effective="true"/);
+
+  delete state.entities.heatingSupplyTargetActiveSource;
+  markup = renderFocusedSource("heating-supply-target");
   assert.match(markup, /aria-label="Ingesteld: API-invoer\. Gebruikt: —"/);
 });
 

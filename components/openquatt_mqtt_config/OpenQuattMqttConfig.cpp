@@ -348,29 +348,33 @@ class MqttConfigHandler : public AsyncWebHandler {
       const auto outside_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::OUTSIDE_TEMPERATURE);
       const auto room_temp_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::ROOM_TEMPERATURE);
       const auto room_setpoint_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::ROOM_SETPOINT);
+      const auto supply_target_index =
+          static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::HEATING_SUPPLY_TARGET);
       const auto heating_enable_index = static_cast<size_t>(OpenQuattMqttConfig::BinaryInputKind::HEATING_ENABLE);
       const auto cooling_enable_index = static_cast<size_t>(OpenQuattMqttConfig::BinaryInputKind::COOLING_ENABLE);
       const std::string topic = json_escape_(status.dew_point_topic);
       const std::string outside_topic = json_escape_(status.input_topics[outside_index]);
       const std::string room_temp_topic = json_escape_(status.input_topics[room_temp_index]);
       const std::string room_setpoint_topic = json_escape_(status.input_topics[room_setpoint_index]);
+      const std::string supply_target_topic = json_escape_(status.input_topics[supply_target_index]);
       const std::string heating_enable_topic = json_escape_(status.binary_input_topics[heating_enable_index]);
       const std::string cooling_enable_topic = json_escape_(status.binary_input_topics[cooling_enable_index]);
       const std::string source = json_escape_(status.config_source);
       const std::string csrf_token = json_escape_(status.csrf_token);
       auto* stream = request->beginResponseStream("application/json");
       stream->printf(
-          R"({"enabled":%s,"connected":%s,"runtime_pending":%s,"broker":"%s","port":%u,"username":"%s","password_set":%s,"dew_point_topic":"%s","input_topics":{"cooling_dew_point":"%s","outside_temperature":"%s","room_temperature":"%s","room_setpoint":"%s","heating_enable":"%s","cooling_enable":"%s"},"input_enabled":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_enable":%s,"cooling_enable":%s},"input_retained":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_enable":%s,"cooling_enable":%s},"input_accept_retained":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_enable":%s,"cooling_enable":%s},"non_retained_stateful_timeout_s":%u,"source":"%s","csrf_token":"%s"})",
+          R"({"enabled":%s,"connected":%s,"runtime_pending":%s,"broker":"%s","port":%u,"username":"%s","password_set":%s,"dew_point_topic":"%s","input_topics":{"cooling_dew_point":"%s","outside_temperature":"%s","room_temperature":"%s","room_setpoint":"%s","heating_supply_target":"%s","heating_enable":"%s","cooling_enable":"%s"},"input_enabled":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_supply_target":%s,"heating_enable":%s,"cooling_enable":%s},"input_retained":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_supply_target":%s,"heating_enable":%s,"cooling_enable":%s},"input_accept_retained":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_supply_target":%s,"heating_enable":%s,"cooling_enable":%s},"non_retained_stateful_timeout_s":%u,"source":"%s","csrf_token":"%s"})",
           status.enabled ? "true" : "false", status.connected ? "true" : "false",
           status.runtime_pending ? "true" : "false", broker.c_str(), status.port, username.c_str(),
           status.password_set ? "true" : "false", topic.c_str(), topic.c_str(), outside_topic.c_str(),
-          room_temp_topic.c_str(), room_setpoint_topic.c_str(), heating_enable_topic.c_str(),
-          cooling_enable_topic.c_str(),
+          room_temp_topic.c_str(), room_setpoint_topic.c_str(), supply_target_topic.c_str(),
+          heating_enable_topic.c_str(), cooling_enable_topic.c_str(),
           status.input_enabled[static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::COOLING_DEW_POINT)] ? "true"
                                                                                                               : "false",
           status.input_enabled[outside_index] ? "true" : "false",
           status.input_enabled[room_temp_index] ? "true" : "false",
           status.input_enabled[room_setpoint_index] ? "true" : "false",
+          status.input_enabled[supply_target_index] ? "true" : "false",
           status.binary_input_enabled[heating_enable_index] ? "true" : "false",
           status.binary_input_enabled[cooling_enable_index] ? "true" : "false",
           status.input_retained[static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::COOLING_DEW_POINT)]
@@ -379,6 +383,7 @@ class MqttConfigHandler : public AsyncWebHandler {
           status.input_retained[outside_index] ? "true" : "false",
           status.input_retained[room_temp_index] ? "true" : "false",
           status.input_retained[room_setpoint_index] ? "true" : "false",
+          status.input_retained[supply_target_index] ? "true" : "false",
           status.binary_input_retained[heating_enable_index] ? "true" : "false",
           status.binary_input_retained[cooling_enable_index] ? "true" : "false",
           status.input_accept_retained[static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::COOLING_DEW_POINT)]
@@ -387,6 +392,7 @@ class MqttConfigHandler : public AsyncWebHandler {
           status.input_accept_retained[outside_index] ? "true" : "false",
           status.input_accept_retained[room_temp_index] ? "true" : "false",
           status.input_accept_retained[room_setpoint_index] ? "true" : "false",
+          status.input_accept_retained[supply_target_index] ? "true" : "false",
           status.binary_input_accept_retained[heating_enable_index] ? "true" : "false",
           status.binary_input_accept_retained[cooling_enable_index] ? "true" : "false",
           static_cast<unsigned>(30U * 60U), source.c_str(), csrf_token.c_str());

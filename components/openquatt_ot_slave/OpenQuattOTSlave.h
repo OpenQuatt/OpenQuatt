@@ -82,6 +82,7 @@ class OpenQuattOTSlave : public PollingComponent
   void prepare_for_firmware_update();
   bool master_room_temperature_fresh() const;
   bool master_room_setpoint_fresh() const;
+  bool master_control_setpoint_fresh() const;
   uint32_t successful_frame_count() const { return m_successfulFrameCount; }
   uint32_t invalid_frame_count() const { return m_invalidFrameCount; }
   uint32_t timeout_frame_count() const { return m_timeoutFrameCount; }
@@ -172,6 +173,7 @@ class OpenQuattOTSlave : public PollingComponent
   unsigned long m_lastSuccessfulFrameMs = 0;
   unsigned long m_lastMasterRoomTemperatureMs = 0;
   unsigned long m_lastMasterRoomSetpointMs = 0;
+  unsigned long m_lastMasterControlSetpointMs = 0;
   unsigned long m_linkProblemGraceUntilMs = 0;
   unsigned long m_t6CompatUntilMs = 0;
   unsigned long m_otStartNotBeforeMs = 0;

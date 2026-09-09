@@ -24,7 +24,7 @@ namespace openquatt_mqtt_config {
 class OpenQuattMqttConfig : public Component {
  public:
   static constexpr size_t PAYLOAD_MAX_LEN = 128;
-  static constexpr size_t NUMERIC_INPUT_COUNT = 4;
+  static constexpr size_t NUMERIC_INPUT_COUNT = 5;
   static constexpr size_t BINARY_INPUT_COUNT = 2;
 
   enum class NumericInputKind : uint8_t {
@@ -32,6 +32,7 @@ class OpenQuattMqttConfig : public Component {
     OUTSIDE_TEMPERATURE = 1,
     ROOM_TEMPERATURE = 2,
     ROOM_SETPOINT = 3,
+    HEATING_SUPPLY_TARGET = 4,
   };
 
   enum class BinaryInputKind : uint8_t {
@@ -102,6 +103,21 @@ class OpenQuattMqttConfig : public Component {
   }
   void set_room_setpoint_valid_binary_sensor(binary_sensor::BinarySensor* binary_sensor) {
     this->set_numeric_input_valid_binary_sensor_(NumericInputKind::ROOM_SETPOINT, binary_sensor);
+  }
+  void set_heating_supply_target_topic(const std::string& topic) {
+    this->set_numeric_input_topic_(NumericInputKind::HEATING_SUPPLY_TARGET, topic);
+  }
+  void set_heating_supply_target_stale_ms(uint32_t stale_ms) {
+    this->set_numeric_input_stale_ms_(NumericInputKind::HEATING_SUPPLY_TARGET, stale_ms);
+  }
+  void set_heating_supply_target_sensor(sensor::Sensor* sensor) {
+    this->set_numeric_input_sensor_(NumericInputKind::HEATING_SUPPLY_TARGET, sensor);
+  }
+  void set_heating_supply_target_age_sensor(sensor::Sensor* sensor) {
+    this->set_numeric_input_age_sensor_(NumericInputKind::HEATING_SUPPLY_TARGET, sensor);
+  }
+  void set_heating_supply_target_valid_binary_sensor(binary_sensor::BinarySensor* binary_sensor) {
+    this->set_numeric_input_valid_binary_sensor_(NumericInputKind::HEATING_SUPPLY_TARGET, binary_sensor);
   }
   void set_heating_enable_topic(const std::string& topic) {
     this->set_binary_input_topic_(BinaryInputKind::HEATING_ENABLE, topic);
@@ -426,6 +442,7 @@ class OpenQuattMqttConfig : public Component {
       NumericInput("outside_temperature", "outside temperature", -40.0f, 60.0f),
       NumericInput("room_temperature", "room temperature", 0.0f, 50.0f),
       NumericInput("room_setpoint", "room setpoint", 5.0f, 35.0f),
+      NumericInput("heating_supply_target", "heating supply target", 20.0f, 70.0f),
   }};
   std::array<BinaryInput, BINARY_INPUT_COUNT> binary_inputs_{{
       BinaryInput("heating_enable", "heating enable"),

@@ -97,6 +97,13 @@ const ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS = [
   "boilerPowerTestResultQuality",
 ];
 
+// Only the branch discriminator: curveSupplyTarget (local) and
+// strategySupplyTarget (effective) are already recorded, so this single
+// text field tells a recording which branch was driving.
+const ISSUE_649_OBSERVABILITY_KEYS = [
+  "heatingSupplyTargetActiveSource",
+];
+
 const ADDED_OBSERVABILITY_KEYS = [
   ...OBSERVABILITY_KEYS,
   ...ISSUE_473_OBSERVABILITY_KEYS,
@@ -105,6 +112,7 @@ const ADDED_OBSERVABILITY_KEYS = [
   ...ISSUE_516_OBSERVABILITY_KEYS,
   ...ISSUE_536_WARM_START_OBSERVABILITY_KEYS,
   ...ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS,
+  ...ISSUE_649_OBSERVABILITY_KEYS,
 ];
 
 test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", async () => {
@@ -117,6 +125,7 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const coolingMinOffEndIndex = issue489EndIndex + COOLING_MIN_OFF_OBSERVABILITY_KEYS.length;
   const issue516EndIndex = coolingMinOffEndIndex + ISSUE_516_OBSERVABILITY_KEYS.length;
   const issue536WarmStartEndIndex = issue516EndIndex + ISSUE_536_WARM_START_OBSERVABILITY_KEYS.length;
+  const issue536EmpiricalEndIndex = issue536WarmStartEndIndex + ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS.length;
 
   assert.equal(legacyTailIndex, 134);
   assert.deepEqual(
@@ -137,8 +146,12 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
     ISSUE_536_WARM_START_OBSERVABILITY_KEYS,
   );
   assert.deepEqual(
-    DEBUG_RECORDING_KEYS.slice(issue536WarmStartEndIndex),
+    DEBUG_RECORDING_KEYS.slice(issue536WarmStartEndIndex, issue536EmpiricalEndIndex),
     ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS,
+  );
+  assert.deepEqual(
+    DEBUG_RECORDING_KEYS.slice(issue536EmpiricalEndIndex),
+    ISSUE_649_OBSERVABILITY_KEYS,
   );
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   const recorderHeader = await readFile(
