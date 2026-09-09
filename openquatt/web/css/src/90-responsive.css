@@ -435,6 +435,22 @@
     grid-template-columns: 1fr;
   }
 
+  .oq-house-learning-chart-head {
+    flex-direction: column;
+  }
+
+  .oq-house-learning-chart-head .oq-helper-button {
+    width: 100%;
+  }
+
+  .oq-house-learning-chart-axis {
+    font-size: 18px;
+  }
+
+  .oq-house-learning-chart-unit {
+    font-size: 16px;
+  }
+
   #oq-helper-root {
     width: calc(100vw - 16px);
     margin-top: 12px;

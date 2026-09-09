@@ -162,6 +162,7 @@ void OpenQuattCIC::fetch_task_() {
   }
 
   (void)this->fetch_and_parse_(url, &result);
+  result.received_at_ms = oq_sources::monotonic_ms();
   result.stack_high_water_mark = static_cast<uint32_t>(uxTaskGetStackHighWaterMark(nullptr));
   result.ready = true;
   result.completed_at_ms = millis();
@@ -220,7 +221,7 @@ void OpenQuattCIC::finalize_fetch_() {
 
   if (result.ok) {
     if (!this->url_state_.mark_success(result.url_generation)) return;
-    this->apply_payload_(result.payload);
+    this->apply_payload_(result.payload, result.received_at_ms);
     this->mark_success_(result.completed_at_ms);
   } else {
     if (result.error_status != nullptr) {
@@ -406,7 +407,24 @@ bool OpenQuattCIC::parse_payload_(const uint8_t* data, size_t len, ParsedPayload
   return true;
 }
 
-void OpenQuattCIC::apply_payload_(const ParsedPayload& payload) {
+void OpenQuattCIC::apply_payload_(const ParsedPayload& payload, uint64_t received_ms) {
+  oq_sources::observe_optional(this->water_supply_receipt_, payload.water_supply_temp.present,
+                               payload.water_supply_temp.value, received_ms);
+  oq_sources::observe_optional(this->flow_rate_receipt_, payload.flow_rate.present, payload.flow_rate.value,
+                               received_ms);
+  oq_sources::observe_optional(this->boiler_pressure_receipt_, payload.cic_boiler_water_pressure.present,
+                               payload.cic_boiler_water_pressure.value, received_ms);
+  oq_sources::observe_optional(this->control_setpoint_receipt_, payload.cic_control_setpoint.present,
+                               payload.cic_control_setpoint.value, received_ms);
+  oq_sources::observe_optional(this->room_setpoint_receipt_, payload.cic_room_setpoint.present,
+                               payload.cic_room_setpoint.value, received_ms);
+  oq_sources::observe_optional(this->room_temperature_receipt_, payload.cic_room_temp.present,
+                               payload.cic_room_temp.value, received_ms);
+  oq_sources::observe_optional(this->ch_enabled_receipt_, payload.cic_ch_enabled.present,
+                               payload.cic_ch_enabled.value ? 1.0f : 0.0f, received_ms);
+  oq_sources::observe_optional(this->cooling_enabled_receipt_, payload.cic_cooling_enabled.present,
+                               payload.cic_cooling_enabled.value ? 1.0f : 0.0f, received_ms);
+
   if (payload.water_supply_temp.present) {
     this->publish_float_if_changed_(this->water_supply_temp_, payload.water_supply_temp.value);
   } else {
@@ -494,6 +512,14 @@ void OpenQuattCIC::handle_disabled_() {
 }
 
 void OpenQuattCIC::invalidate_feed_signals_() {
+  this->water_supply_receipt_.invalidate();
+  this->flow_rate_receipt_.invalidate();
+  this->boiler_pressure_receipt_.invalidate();
+  this->control_setpoint_receipt_.invalidate();
+  this->room_setpoint_receipt_.invalidate();
+  this->room_temperature_receipt_.invalidate();
+  this->ch_enabled_receipt_.invalidate();
+  this->cooling_enabled_receipt_.invalidate();
   this->publish_binary_if_changed_(this->feed_ok_, false);
   this->publish_float_if_changed_(this->water_supply_temp_, NAN);
   this->publish_float_if_changed_(this->flow_rate_, NAN);

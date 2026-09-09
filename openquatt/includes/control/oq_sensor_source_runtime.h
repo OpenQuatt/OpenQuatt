@@ -7,6 +7,7 @@
 #include "oq_flow_pump_logic.h"
 #include "oq_input_source_logic.h"
 #include "oq_schedule_runtime.h"
+#include "../sources/oq_resolved_learning_source.h"
 #include "oq_supply_calibration_logic.h"
 #include "oq_supply_hold_logic.h"
 
@@ -14,6 +15,25 @@ namespace oq_sensor_source {
 
 class Runtime {
  public:
+  oq_sources::ResolvedLearningSource resolved_room_temperature() const { return this->resolved_room_; }
+  oq_sources::ResolvedLearningSource resolved_room_setpoint() const { return this->resolved_setpoint_; }
+  oq_sources::ResolvedLearningSource resolved_outside_temperature() const { return this->resolved_outside_; }
+  oq_sources::ResolvedLearningSource resolved_flow_rate() const { return this->resolved_flow_; }
+
+  // Register this on every source-selector and CIC URL on_value callback. It
+  // records even A->B->A changes that occur between periodic sensor updates and
+  // invalidates the old selected-source snapshot until control resolves again.
+  void source_configuration_changed() {
+    this->flow_generation_.observe(flow_configuration_key());
+    this->outside_generation_.observe(outside_configuration_key());
+    this->room_generation_.observe(room_configuration_key(false));
+    this->setpoint_generation_.observe(room_configuration_key(true));
+    this->resolved_flow_ = {};
+    this->resolved_outside_ = {};
+    this->resolved_room_ = {};
+    this->resolved_setpoint_ = {};
+  }
+
   void water_source_changed(const std::string& option) {
     if (!id(oq_water_supply_temp_current_source_ready)) return;
     const int32_t current = id(oq_water_supply_temp_current_source_code);
@@ -192,7 +212,10 @@ class Runtime {
   }
 
   float flow() const {
-    if (!id(flow_source).has_state()) return NAN;
+    if (!id(flow_source).has_state()) {
+      this->resolved_flow_ = {};
+      return NAN;
+    }
     oq_input_source::FlowInputs input;
     input.selected = parse_source(id(flow_source).current_option());
     input.cic = sample(cic_feed_valid(), id(flow_rate_cic));
@@ -200,13 +223,9 @@ class Runtime {
     input.q_hardware = OQ_HARDWARE_HEATPUMP_CONTROLLER_Q;
     input.duo = OQ_TOPOLOGY_DUO;
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-    if (id(oq_q_flow_source).has_state()) {
-      const auto option = id(oq_q_flow_source).current_option();
-      input.controller_mode = option == "Local"  ? oq_input_source::ControllerFlowMode::LOCAL
-                              : option == "Auto" ? oq_input_source::ControllerFlowMode::AUTO
-                                                 : oq_input_source::ControllerFlowMode::OTHER;
-    }
-    input.hp_generation_v1 = id(hp_generation).has_state() && id(hp_generation).current_option() == "V1";
+    const bool hp1_uses_controller = id(hp_generation).has_state() && id(hp_generation).current_option() == "V1";
+    input.controller_mode = controller_flow_mode_();
+    input.hp_generation_v1 = hp1_uses_controller;
     input.controller = sample(true, id(flow_rate_controller));
 #endif
     const oq_flow::PumpRelayState hp1{id(hp1_is_online) && id(hp1_pump_relay).has_state(), id(hp1_pump_relay).state};
@@ -214,22 +233,28 @@ class Runtime {
     const oq_flow::PumpRelayState hp2{id(hp2_is_online) && id(hp2_pump_relay).has_state(), id(hp2_pump_relay).state};
     input.hp1 = sample(true, id(hp1_flow));
     input.hp2 = sample(true, id(hp2_flow));
-    if (id(oq_duo_outdoor_flow_mode).has_state()) {
-      const auto mode = id(oq_duo_outdoor_flow_mode).current_option();
-      input.outdoor_mode = mode == "Flowmeter HP1"   ? oq_input_source::OutdoorFlowMode::HP1
-                           : mode == "Flowmeter HP2" ? oq_input_source::OutdoorFlowMode::HP2
-                                                     : oq_input_source::OutdoorFlowMode::AGGREGATE;
-    }
+    input.outdoor_mode = outdoor_flow_mode_();
 #else
     const oq_flow::PumpRelayState hp2{};
 #endif
     input.all_relevant_pumps_stopped = oq_flow::all_relevant_pumps_stopped(OQ_TOPOLOGY_DUO, hp1, hp2);
     const auto selected = oq_input_source::select_flow(input);
+    const oq_sources::SourceConfigurationKey configuration{
+        static_cast<uint8_t>(input.selected), static_cast<uint8_t>(input.controller_mode),
+        static_cast<uint8_t>(input.outdoor_mode),
+        input.selected == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
+    const uint32_t generation = this->flow_generation_.observe(configuration);
+    this->resolved_flow_ = resolve_flow(selected, generation);
+    this->resolved_flow_.configuration = configuration;
+    this->resolved_flow_.configuration_generation = this->flow_generation_.observe_resolution(this->resolved_flow_);
     return selected.valid ? selected.value : NAN;
   }
 
   float outside(uint32_t now_ms, uint32_t hold_ms) {
-    if (!id(outside_temp_source).has_state()) return NAN;
+    if (!id(outside_temp_source).has_state()) {
+      this->resolved_outside_ = {};
+      return NAN;
+    }
     oq_input_source::NumericSources sources;
     sources.outdoor = sample(true, id(outside_temp_hp_avg));
     sources.ha = sample(ha_valid(id(outside_temp_valid_ha), id(outside_temp_ha)), id(outside_temp_ha));
@@ -237,27 +262,54 @@ class Runtime {
                          id(api_input_outside_temperature));
     sources.mqtt = sample(mqtt_valid(id(mqtt_outside_temperature_valid), id(mqtt_outside_temperature)),
                           id(mqtt_outside_temperature));
-    const auto selected = oq_input_source::select_outside(parse_source(id(outside_temp_source).current_option()),
-                                                          sources, now_ms, hold_ms, outside_hold_);
+    const auto configured = parse_source(id(outside_temp_source).current_option());
+    const auto selected = oq_input_source::select_outside(configured, sources, now_ms, hold_ms, outside_hold_);
     id(oq_outside_temp_selected_hold_active) = selected.held;
+    const oq_sources::SourceConfigurationKey configuration{static_cast<uint8_t>(configured), 0U, 0U, 0U};
+    const uint32_t generation = this->outside_generation_.observe(configuration);
+    this->resolved_outside_ = resolve_outside(selected, generation);
+    this->resolved_outside_.configuration = configuration;
+    this->resolved_outside_.configuration_generation =
+        this->outside_generation_.observe_resolution(this->resolved_outside_);
     return selected.valid ? selected.value : NAN;
   }
 
   float room_temperature(uint32_t now_ms, uint32_t hold_ms, bool opentherm_fresh) {
-    if (!id(room_temp_source).has_state()) return NAN;
+    if (!id(room_temp_source).has_state()) {
+      this->resolved_room_ = {};
+      return NAN;
+    }
+    const auto configured = parse_source(id(room_temp_source).current_option());
     const auto sources = room_sources(opentherm_fresh, false);
-    const auto selected = oq_input_source::select_direct(parse_source(id(room_temp_source).current_option()), sources,
-                                                         true, now_ms, hold_ms, room_hold_);
+    const auto selected = oq_input_source::select_direct(configured, sources, true, now_ms, hold_ms, room_hold_);
     id(oq_room_temp_selected_hold_active) = selected.held;
+    const oq_sources::SourceConfigurationKey configuration{
+        static_cast<uint8_t>(configured), 0U, 0U,
+        configured == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
+    const uint32_t generation = this->room_generation_.observe(configuration);
+    this->resolved_room_ = resolve_room(selected, false, generation);
+    this->resolved_room_.configuration = configuration;
+    this->resolved_room_.configuration_generation = this->room_generation_.observe_resolution(this->resolved_room_);
     return selected.valid ? selected.value : NAN;
   }
 
   float room_setpoint(uint32_t now_ms, uint32_t hold_ms, bool opentherm_fresh) {
-    if (!id(room_setpoint_source).has_state()) return NAN;
+    if (!id(room_setpoint_source).has_state()) {
+      this->resolved_setpoint_ = {};
+      return NAN;
+    }
+    const auto configured = parse_source(id(room_setpoint_source).current_option());
     const auto sources = room_sources(opentherm_fresh, true);
-    const auto selected = oq_input_source::select_direct(parse_source(id(room_setpoint_source).current_option()),
-                                                         sources, true, now_ms, hold_ms, setpoint_hold_);
+    const auto selected = oq_input_source::select_direct(configured, sources, true, now_ms, hold_ms, setpoint_hold_);
     id(oq_room_setpoint_selected_hold_active) = selected.held;
+    const oq_sources::SourceConfigurationKey configuration{
+        static_cast<uint8_t>(configured), 0U, 0U,
+        configured == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
+    const uint32_t generation = this->setpoint_generation_.observe(configuration);
+    this->resolved_setpoint_ = resolve_room(selected, true, generation);
+    this->resolved_setpoint_.configuration = configuration;
+    this->resolved_setpoint_.configuration_generation =
+        this->setpoint_generation_.observe_resolution(this->resolved_setpoint_);
     return selected.valid ? selected.value : NAN;
   }
 
@@ -286,6 +338,14 @@ class Runtime {
   oq_input_source::HoldState room_hold_;
   oq_input_source::HoldState setpoint_hold_;
   oq_input_source::HoldState demand_hold_;
+  mutable oq_sources::SourceConfigurationGeneration flow_generation_;
+  oq_sources::SourceConfigurationGeneration outside_generation_;
+  oq_sources::SourceConfigurationGeneration room_generation_;
+  oq_sources::SourceConfigurationGeneration setpoint_generation_;
+  mutable oq_sources::ResolvedLearningSource resolved_flow_;
+  oq_sources::ResolvedLearningSource resolved_outside_;
+  oq_sources::ResolvedLearningSource resolved_room_;
+  oq_sources::ResolvedLearningSource resolved_setpoint_;
 
   template <typename T>
   static oq_input_source::Source parse_source(const T& option) {
@@ -301,6 +361,125 @@ class Runtime {
     if (option == "CIC or HA input") return oq_input_source::Source::CIC_OR_HA;
     if (option == "Schedule") return oq_input_source::Source::SCHEDULE;
     return oq_input_source::Source::NONE;
+  }
+
+  static oq_input_source::ControllerFlowMode controller_flow_mode_() {
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    if (id(oq_q_flow_source).has_state()) {
+      const auto option = id(oq_q_flow_source).current_option();
+      if (option == "Local") return oq_input_source::ControllerFlowMode::LOCAL;
+      if (option == "Auto") return oq_input_source::ControllerFlowMode::AUTO;
+    }
+#endif
+    return oq_input_source::ControllerFlowMode::OTHER;
+  }
+
+  static oq_input_source::OutdoorFlowMode outdoor_flow_mode_() {
+#if OQ_TOPOLOGY_DUO
+    if (id(oq_duo_outdoor_flow_mode).has_state()) {
+      const auto option = id(oq_duo_outdoor_flow_mode).current_option();
+      if (option == "Flowmeter HP1") return oq_input_source::OutdoorFlowMode::HP1;
+      if (option == "Flowmeter HP2") return oq_input_source::OutdoorFlowMode::HP2;
+    }
+#endif
+    return oq_input_source::OutdoorFlowMode::AGGREGATE;
+  }
+
+  static oq_sources::SourceConfigurationKey room_configuration_key(bool setpoint) {
+    const auto& selector = setpoint ? id(room_setpoint_source) : id(room_temp_source);
+    const auto configured =
+        selector.has_state() ? parse_source(selector.current_option()) : oq_input_source::Source::NONE;
+    return {static_cast<uint8_t>(configured), 0U, 0U,
+            configured == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
+  }
+
+  static oq_sources::SourceConfigurationKey outside_configuration_key() {
+    const auto configured = id(outside_temp_source).has_state() ? parse_source(id(outside_temp_source).current_option())
+                                                                : oq_input_source::Source::NONE;
+    return {static_cast<uint8_t>(configured), 0U, 0U, 0U};
+  }
+
+  static oq_sources::SourceConfigurationKey flow_configuration_key() {
+    const auto configured =
+        id(flow_source).has_state() ? parse_source(id(flow_source).current_option()) : oq_input_source::Source::NONE;
+    const auto controller_mode = controller_flow_mode_();
+    const auto outdoor_mode = outdoor_flow_mode_();
+    return {static_cast<uint8_t>(configured), static_cast<uint8_t>(controller_mode), static_cast<uint8_t>(outdoor_mode),
+            configured == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
+  }
+
+  static oq_sources::LearningSourceRoute room_route(oq_input_source::Source source, bool setpoint) {
+    using oq_sources::LearningSourceRoute;
+    switch (source) {
+      case oq_input_source::Source::OPENTHERM:
+        return setpoint ? LearningSourceRoute::OPENTHERM_SETPOINT : LearningSourceRoute::OPENTHERM_ROOM;
+      case oq_input_source::Source::CIC:
+        return setpoint ? LearningSourceRoute::CIC_SETPOINT : LearningSourceRoute::CIC_ROOM;
+      case oq_input_source::Source::HA:
+        return setpoint ? LearningSourceRoute::HA_SETPOINT : LearningSourceRoute::HA_ROOM;
+      case oq_input_source::Source::API:
+        return setpoint ? LearningSourceRoute::API_SETPOINT : LearningSourceRoute::API_ROOM;
+      case oq_input_source::Source::MQTT:
+        return setpoint ? LearningSourceRoute::MQTT_SETPOINT : LearningSourceRoute::MQTT_ROOM;
+      default:
+        return LearningSourceRoute::NONE;
+    }
+  }
+
+  static oq_sources::LearningSourceRoute outside_route(oq_input_source::Source source) {
+    using oq_sources::LearningSourceRoute;
+    switch (source) {
+      case oq_input_source::Source::OUTDOOR:
+      case oq_input_source::Source::AUTO:
+        return LearningSourceRoute::OUTSIDE_AGGREGATE;
+      case oq_input_source::Source::HA:
+        return LearningSourceRoute::HA_OUTSIDE;
+      case oq_input_source::Source::API:
+        return LearningSourceRoute::API_OUTSIDE;
+      case oq_input_source::Source::MQTT:
+        return LearningSourceRoute::MQTT_OUTSIDE;
+      default:
+        return LearningSourceRoute::NONE;
+    }
+  }
+
+  static oq_sources::LearningSourceRoute flow_route(oq_input_source::FlowRoute route) {
+    using oq_sources::LearningSourceRoute;
+    switch (route) {
+      case oq_input_source::FlowRoute::CIC:
+        return LearningSourceRoute::CIC_FLOW;
+      case oq_input_source::FlowRoute::CONTROLLER:
+        return LearningSourceRoute::CONTROLLER_FLOW;
+      case oq_input_source::FlowRoute::HP1:
+        return LearningSourceRoute::HP1_FLOW;
+      case oq_input_source::FlowRoute::HP2:
+        return LearningSourceRoute::HP2_FLOW;
+      case oq_input_source::FlowRoute::AGGREGATE:
+        return LearningSourceRoute::FLOW_AGGREGATE;
+      case oq_input_source::FlowRoute::PUMPS_STOPPED:
+        return LearningSourceRoute::SYNTHESIZED_ZERO_FLOW;
+      default:
+        return LearningSourceRoute::NONE;
+    }
+  }
+
+  static oq_sources::ResolvedLearningSource resolve_room(const oq_input_source::NumericSelection& selected,
+                                                         bool setpoint, uint32_t generation) {
+    return oq_sources::selected_source(selected.value, selected.valid, room_route(selected.route, setpoint), generation,
+                                       selected.held ? oq_sources::LearningSourceProvenance::HELD
+                                                     : oq_sources::LearningSourceProvenance::SELECTED_VALUE);
+  }
+
+  static oq_sources::ResolvedLearningSource resolve_outside(const oq_input_source::NumericSelection& selected,
+                                                            uint32_t generation) {
+    return oq_sources::selected_source(selected.value, selected.valid, outside_route(selected.route), generation,
+                                       selected.held ? oq_sources::LearningSourceProvenance::HELD
+                                                     : oq_sources::LearningSourceProvenance::SELECTED_VALUE);
+  }
+
+  static oq_sources::ResolvedLearningSource resolve_flow(const oq_input_source::FlowSelection& selected,
+                                                         uint32_t generation) {
+    return oq_sources::selected_source(selected.value, selected.valid, flow_route(selected.route), generation);
   }
 
   template <typename T>

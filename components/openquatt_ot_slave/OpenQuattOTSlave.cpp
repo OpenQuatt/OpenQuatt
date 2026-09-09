@@ -112,6 +112,7 @@ static constexpr unsigned long OT_BUS_IDLE_MIN_MS = 100;
 static constexpr unsigned long OT_STARTUP_FORCE_MS = 5000;
 static constexpr float SUPPORTED_OPENTHERM_VERSION = 2.2f;
 static unsigned long now_millis() { return static_cast<unsigned long>(esp_timer_get_time() / 1000ULL); }
+static uint64_t receipt_monotonic_ms() { return static_cast<uint64_t>(esp_timer_get_time()) / 1000ULL; }
 OpenQuattOTSlave::OpenQuattOTSlave() : PollingComponent(500) {}
 
 void OpenQuattOTSlave::schedule_opentherm_start_() {
@@ -148,6 +149,10 @@ void OpenQuattOTSlave::stop_opentherm_() {
   m_lastSuccessfulFrameMs = 0;
   m_lastMasterRoomTemperatureMs = 0;
   m_lastMasterRoomSetpointMs = 0;
+  m_lastMasterRoomTemperatureReceiptMs = 0;
+  m_lastMasterRoomSetpointReceiptMs = 0;
+  m_masterRoomTemperatureReceived = false;
+  m_masterRoomSetpointReceived = false;
   if (m_ot_thermostat_ == NULL || !m_otStarted) {
     return;
   }
@@ -169,6 +174,16 @@ bool OpenQuattOTSlave::master_room_setpoint_fresh() const {
       m_lastSuccessfulFrameMs != 0 && (now_ms - m_lastSuccessfulFrameMs) <= OT_LINK_PROBLEM_TIMEOUT_MS;
   return link_fresh && oq_ot_slave::room_signal_fresh(m_enabled, m_otStarted, m_otaActive || m_updatePrepareActive,
                                                       m_lastMasterRoomSetpointMs, now_ms);
+}
+
+OpenQuattOTSlave::MasterRoomReceipt OpenQuattOTSlave::master_room_temperature_receipt() const {
+  return {m_master_state.t_room, m_lastMasterRoomTemperatureReceiptMs, m_masterRoomTemperatureReceived,
+          m_masterRoomTemperatureReceived && master_room_temperature_fresh()};
+}
+
+OpenQuattOTSlave::MasterRoomReceipt OpenQuattOTSlave::master_room_setpoint_receipt() const {
+  return {m_master_state.t_room_set, m_lastMasterRoomSetpointReceiptMs, m_masterRoomSetpointReceived,
+          m_masterRoomSetpointReceived && master_room_setpoint_fresh()};
 }
 
 void OpenQuattOTSlave::try_start_opentherm_() {
@@ -310,10 +325,12 @@ void OpenQuattOTSlave::on_ota_global_state(ota::OTAState state, float progress, 
 
 void OpenQuattOTSlave::processRequestThermostat(unsigned long request, OpenThermResponseStatus status) {
   if (status == OpenThermResponseStatus::TIMEOUT) {
+    revoke_master_room_receipt_(request);
     m_timeoutFrameCount = m_timeoutFrameCount < UINT32_MAX ? m_timeoutFrameCount + 1U : UINT32_MAX;
     return;
   }
   if (status != OpenThermResponseStatus::SUCCESS) {
+    revoke_master_room_receipt_(request);
     m_invalidFrameCount = m_invalidFrameCount < UINT32_MAX ? m_invalidFrameCount + 1U : UINT32_MAX;
     return;
   }
@@ -335,6 +352,16 @@ void OpenQuattOTSlave::processRequestThermostat(unsigned long request, OpenTherm
 
   if (response != 0) {
     m_ot_thermostat_->sendResponse(response);
+  }
+}
+
+void OpenQuattOTSlave::revoke_master_room_receipt_(unsigned long request) {
+  if (m_ot_thermostat_ == NULL) return;
+  const OpenThermMessageID data_id = m_ot_thermostat_->getDataID(request);
+  if (data_id == OpenThermMessageID::Tr) {
+    m_masterRoomTemperatureReceived = false;
+  } else if (data_id == OpenThermMessageID::TrSet) {
+    m_masterRoomSetpointReceived = false;
   }
 }
 
@@ -371,11 +398,15 @@ void OpenQuattOTSlave::parseRequest(OpenThermMessageType type, OpenThermMessageI
     case OpenThermMessageID::TrSet:
       m_master_state.t_room_set = message_data::parse_f88(data);
       m_lastMasterRoomSetpointMs = now_millis();
+      m_lastMasterRoomSetpointReceiptMs = receipt_monotonic_ms();
+      m_masterRoomSetpointReceived = true;
       break;
 
     case OpenThermMessageID::Tr:
       m_master_state.t_room = message_data::parse_f88(data);
       m_lastMasterRoomTemperatureMs = now_millis();
+      m_lastMasterRoomTemperatureReceiptMs = receipt_monotonic_ms();
+      m_masterRoomTemperatureReceived = true;
       break;
 
     case OpenThermMessageID::MConfigMMemberIDcode:

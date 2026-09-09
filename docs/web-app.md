@@ -189,6 +189,31 @@ Hier kies en verfijn je de verwarmingsstrategie:
 
 `Power House` probeert de warmtevraag van je woning te schatten. `Water Temperature Control` werkt meer als een stooklijnregeling. Begin bij [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md) als je nog niet zeker weet welke strategie bij je past.
 
+In testfirmware met passief huismodelleren staat bij Power House op Q en Waveshare ook
+`Huismodel volgen`. Deze functie verzamelt diagnostiek en schat woningparameters; zij past geen
+regelinstellingen automatisch aan. Water staat vast; Single/Duo volgt uit de firmware en bij Duo
+loopt het water in serie van HP1 naar HP2. Dit zijn geen instelbare keuzes. Technische meetgrenzen
+en kalibratiebewijs horen niet bij deze bediening. Onbekende meetkwaliteit blijft een blokkade.
+De leerfunctie neemt CM0, CM1 en CM2 mee en controleert de bestaande ketelaansturing; er is geen aparte keuze
+voor een andere warmtebron. OpenTherm-telemetrie is hiervoor niet vereist; een actuele melding
+van ketelactiviteit sluit de betreffende meting wel uit.
+
+Na een herstart staat `Passief leren` uit. De testversie heeft geen aparte
+kalibratiebevestiging of meetgrensinstellingen; automatisch toepassen bestaat nog niet.
+`Leerdata wissen` pauzeert het leren en wist uitsluitend de leerhistorie.
+`Diagnostische leerdata downloaden` levert een lokale JSON-export. Voorlopige schattingen zijn nog
+geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](power-house-autotuning-development.md).
+
+De grafiek `Woninglijn en meetresultaten` vergelijkt de ingestelde woninglijn (blauw) met
+de geaccepteerde stabiele meetperioden (punten). Een beschikbare geleerde woninglijn wordt
+groen getoond; buiten het gemeten temperatuurbereik is deze gestippeld. Dit is een
+doortrekking van het model, geen meting. De woninglijn toont de basiswarmtevraag, zonder
+de tijdelijke kamercorrectie of vermogensbegrenzing.
+
+Haal de meetpunten op met de knop bij de grafiek. Bij een meetpunt kun je datum, meetduur,
+gemiddelde buitentemperatuur en warmtevermogen bekijken. Zonder voldoende gegevens blijft
+de geleerde lijn weg; de grafiek verandert geen instellingen.
+
 ### Koelen
 
 Hier staan de instellingen voor koeling en dauwpuntbeveiliging.

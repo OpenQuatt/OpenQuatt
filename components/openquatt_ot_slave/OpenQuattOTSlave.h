@@ -39,6 +39,12 @@ class OpenQuattOTSlave : public PollingComponent
 #endif
 {
  public:
+  struct MasterRoomReceipt {
+    float value = NAN;
+    uint64_t received_ms = 0;
+    bool received = false;
+    bool valid = false;
+  };
   OpenQuattOTSlave();
   virtual ~OpenQuattOTSlave();
 
@@ -82,6 +88,8 @@ class OpenQuattOTSlave : public PollingComponent
   void prepare_for_firmware_update();
   bool master_room_temperature_fresh() const;
   bool master_room_setpoint_fresh() const;
+  MasterRoomReceipt master_room_temperature_receipt() const;
+  MasterRoomReceipt master_room_setpoint_receipt() const;
   uint32_t successful_frame_count() const { return m_successfulFrameCount; }
   uint32_t invalid_frame_count() const { return m_invalidFrameCount; }
   uint32_t timeout_frame_count() const { return m_timeoutFrameCount; }
@@ -172,6 +180,10 @@ class OpenQuattOTSlave : public PollingComponent
   unsigned long m_lastSuccessfulFrameMs = 0;
   unsigned long m_lastMasterRoomTemperatureMs = 0;
   unsigned long m_lastMasterRoomSetpointMs = 0;
+  uint64_t m_lastMasterRoomTemperatureReceiptMs = 0;
+  uint64_t m_lastMasterRoomSetpointReceiptMs = 0;
+  bool m_masterRoomTemperatureReceived = false;
+  bool m_masterRoomSetpointReceived = false;
   unsigned long m_linkProblemGraceUntilMs = 0;
   unsigned long m_t6CompatUntilMs = 0;
   unsigned long m_otStartNotBeforeMs = 0;
@@ -239,6 +251,7 @@ class OpenQuattOTSlave : public PollingComponent
   void stop_opentherm_();
   void try_start_opentherm_();
   void set_enabled_(bool enabled);
+  void revoke_master_room_receipt_(unsigned long request);
 
   void processRequestThermostat(unsigned long request, OpenThermResponseStatus status);
 

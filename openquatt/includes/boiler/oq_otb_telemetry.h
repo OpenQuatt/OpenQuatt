@@ -68,7 +68,18 @@ enum TransportError : uint8_t {
 };
 
 struct FieldState {
+  uint16_t value{0};
   uint32_t last_valid_ms{0};
+  uint64_t received_ms{0};
+  bool received{false};
+  bool valid{false};
+  bool payload_valid{false};
+};
+
+struct FieldReceipt {
+  uint16_t value{0};
+  uint64_t received_ms{0};
+  bool received{false};
   bool valid{false};
 };
 
@@ -107,6 +118,21 @@ class TelemetryState {
   }
 
   void record_response(uint32_t now_ms, uint8_t message_id, uint8_t message_type) {
+    this->record_response(now_ms, static_cast<uint64_t>(now_ms), message_id, message_type, 0U, false);
+  }
+
+  void record_response(uint32_t now_ms, uint8_t message_id, uint8_t message_type, uint16_t payload) {
+    this->record_response(now_ms, static_cast<uint64_t>(now_ms), message_id, message_type, payload, true);
+  }
+
+  void record_response(uint32_t now_ms, uint64_t received_ms, uint8_t message_id, uint8_t message_type,
+                       uint16_t payload) {
+    this->record_response(now_ms, received_ms, message_id, message_type, payload, true);
+  }
+
+ private:
+  void record_response(uint32_t now_ms, uint64_t received_ms, uint8_t message_id, uint8_t message_type,
+                       uint16_t payload, bool payload_known) {
     this->session_has_response_ = true;
     this->last_response_ms_ = now_ms;
     this->last_response_id_ = message_id;
@@ -156,8 +182,15 @@ class TelemetryState {
     if (field_index < 0) return;
 
     auto& field = this->fields_[field_index];
-    // All tracked telemetry messages are read requests. Only a matching
-    // READ_ACK for the request currently on the wire is a valid sample.
+    // An ID-mismatched frame is not a physical receipt for the requested
+    // field. It still revokes legacy/current validity below.
+    if (this->last_response_correlation_ != RESPONSE_CORRELATION_ID_MISMATCH) {
+      field.value = payload;
+      field.received_ms = received_ms;
+      field.received = true;
+      field.payload_valid = payload_known;
+    }
+    // Preserve legacy response validity; the receipt additionally needs payload.
     if (this->last_response_correlation_ == RESPONSE_CORRELATION_ACKNOWLEDGED &&
         this->last_request_type_ == MESSAGE_TYPE_READ_DATA) {
       field.last_valid_ms = now_ms;
@@ -167,7 +200,13 @@ class TelemetryState {
     }
   }
 
+ public:
   bool field_is_valid(Field field) const { return this->fields_[field].valid; }
+
+  FieldReceipt field_receipt(Field field) const {
+    const auto& state = this->fields_[field];
+    return {state.value, state.received_ms, state.received, state.valid && state.payload_valid};
+  }
 
   bool field_is_fresh(Field field, uint32_t now_ms, uint32_t max_age_ms) const {
     const auto& state = this->fields_[field];

@@ -146,7 +146,7 @@ inline NumericSelection select_direct(Source selected, const NumericSources& sou
   if (hold_ha && selected == Source::HA && hold.available(selected, now_ms, hold_ms)) {
     return {hold.value, selected, true, true};
   }
-  return {};
+  return {NAN, selected, false, false};
 }
 
 inline NumericSelection select_lowest_outside(const NumericSources& sources) {
@@ -219,6 +219,7 @@ inline BinarySample select_cooling_enable(Source selected, const EnableSources& 
 enum class FlowRoute : uint8_t { NONE = 0, CIC, CONTROLLER, HP1, HP2, AGGREGATE, PUMPS_STOPPED };
 enum class ControllerFlowMode : uint8_t { OTHER = 0, LOCAL, AUTO };
 enum class OutdoorFlowMode : uint8_t { AGGREGATE = 0, HP1, HP2 };
+enum class FlowAggregateOperation : uint8_t { NONE = 0, ARITHMETIC_MEAN, MAXIMUM };
 
 struct FlowInputs {
   Source selected = Source::NONE;
@@ -239,10 +240,20 @@ struct FlowSelection {
   float value = NAN;
   FlowRoute route = FlowRoute::NONE;
   bool valid = false;
+  FlowAggregateOperation aggregate_operation = FlowAggregateOperation::NONE;
 };
 
 inline FlowSelection flow_sample(const NumericSample& sample, FlowRoute route) {
-  return sample.valid ? FlowSelection{sample.value, route, true} : FlowSelection{};
+  return {sample.valid ? sample.value : NAN, route, sample.valid};
+}
+
+inline FlowAggregateOperation observed_flow_aggregate_operation(const FlowInputs& input) {
+  if (!input.duo || !input.aggregate.valid || !input.hp1.valid || !input.hp2.valid) return {};
+  const float average = 0.5f * (input.hp1.value + input.hp2.value);
+  const float maximum = fmaxf(input.hp1.value, input.hp2.value);
+  if (fabsf(input.aggregate.value - average) <= 0.01f) return FlowAggregateOperation::ARITHMETIC_MEAN;
+  if (fabsf(input.aggregate.value - maximum) <= 0.01f) return FlowAggregateOperation::MAXIMUM;
+  return {};
 }
 
 inline FlowSelection select_flow(const FlowInputs& input) {
@@ -255,7 +266,9 @@ inline FlowSelection select_flow(const FlowInputs& input) {
   if (input.all_relevant_pumps_stopped) return {0.0f, FlowRoute::PUMPS_STOPPED, true};
   if (input.duo && input.outdoor_mode == OutdoorFlowMode::HP1) return flow_sample(input.hp1, FlowRoute::HP1);
   if (input.duo && input.outdoor_mode == OutdoorFlowMode::HP2) return flow_sample(input.hp2, FlowRoute::HP2);
-  return flow_sample(input.aggregate, FlowRoute::AGGREGATE);
+  auto result = flow_sample(input.aggregate, FlowRoute::AGGREGATE);
+  result.aggregate_operation = observed_flow_aggregate_operation(input);
+  return result;
 }
 
 }  // namespace oq_input_source

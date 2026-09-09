@@ -55,6 +55,9 @@ void test_hold_is_bound_to_selected_source() {
   assert(select_direct(Source::API, sources, true, 500000, 300000, hold).valid);
   sources.api = {};
   assert(!select_direct(Source::API, sources, true, 501000, 300000, hold).valid);
+
+  selected = select_direct(Source::MQTT, sources, true, 502000, 300000, hold);
+  assert(!selected.valid && selected.route == Source::MQTT);
 }
 
 void test_non_finite_samples_fail_closed() {
@@ -156,6 +159,32 @@ void test_flow_source_routes() {
   input.cic = numeric_sample(true, true, 600.0f);
   selected = select_flow(input);
   assert(selected.valid && selected.route == FlowRoute::CIC && selected.value == 600.0f);
+
+  input.cic = {};
+  selected = select_flow(input);
+  assert(!selected.valid && selected.route == FlowRoute::CIC && isnan(selected.value));
+}
+
+void test_observed_duo_flow_aggregate_operation() {
+  FlowInputs input;
+  input.duo = true;
+  input.aggregate = numeric_sample(true, true, 710.0f);
+  input.hp1 = numeric_sample(true, true, 700.0f);
+  input.hp2 = numeric_sample(true, true, 720.0f);
+  assert(observed_flow_aggregate_operation(input) == FlowAggregateOperation::ARITHMETIC_MEAN);
+  input.selected = Source::OUTDOOR;
+  assert(select_flow(input).aggregate_operation == FlowAggregateOperation::ARITHMETIC_MEAN);
+
+  input.aggregate = numeric_sample(true, true, 900.0f);
+  input.hp2 = numeric_sample(true, true, 900.0f);
+  assert(observed_flow_aggregate_operation(input) == FlowAggregateOperation::MAXIMUM);
+  assert(select_flow(input).aggregate_operation == FlowAggregateOperation::MAXIMUM);
+
+  input.aggregate = numeric_sample(true, true, 850.0f);
+  assert(observed_flow_aggregate_operation(input) == FlowAggregateOperation::NONE);
+
+  input.hp2 = {};
+  assert(observed_flow_aggregate_operation(input) == FlowAggregateOperation::NONE);
 }
 
 int main() {
@@ -165,5 +194,6 @@ int main() {
   test_outside_lowest_valid_selection();
   test_enable_source_selection();
   test_flow_source_routes();
+  test_observed_duo_flow_aggregate_operation();
   return 0;
 }

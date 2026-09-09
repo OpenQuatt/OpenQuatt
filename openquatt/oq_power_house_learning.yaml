@@ -1,0 +1,43 @@
+# ==============================================================================
+# OpenQuatt – Passive Power House learning
+# ==============================================================================
+# This package is included only by Q and Waveshare.
+# It never writes a heating model or actuator. A reboot requires a fresh opt-in.
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_house_learning_status]
+
+openquatt_house_learning_status:
+  id: oq_ph_learning_status_endpoint
+  web_auth: oq_web_auth_store
+
+switch:
+  - platform: template
+    id: oq_ph_learning_enabled
+    name: "Power House Passive Learning"
+    icon: mdi:school-outline
+    entity_category: config
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    on_turn_off:
+      - lambda: |-
+          oq_ph_learning::runtime().pause();
+
+button:
+  - platform: template
+    id: oq_ph_learning_reset
+    name: "Power House Learning Reset"
+    icon: mdi:database-remove-outline
+    entity_category: config
+    on_press:
+      - lambda: |-
+          oq_ph_learning::runtime().request_reset();
+
+interval:
+  - interval: 10s
+    startup_delay: 30s
+    then:
+      - lambda: |-
+          oq_ph_learning::runtime().tick();

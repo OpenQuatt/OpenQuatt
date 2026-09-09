@@ -93,6 +93,9 @@ class Runtime {
         id(oq_water_temp_limit_factor),
         id(external_heat_demand_selected).has_state(),
     };
+    // Capture the legacy envelope once with the manual inputs for this tick.
+    // Future line calibration must not change these control scales.
+    const auto envelope = oq_power_house::house_envelope_from_legacy(demand_input.rated_w);
     const oq_power_house::DemandTuning demand_tuning{
         config.temperature_guard_c,
         id(ph_kp_w_per_k).state,
@@ -202,11 +205,11 @@ class Runtime {
       requested_w = std::max(requested_w, minimum_viable_w);
       next_last_w = std::max(next_last_w, requested_w);
       this->fast_floor_w_ = requested_w;
-      const float rated_w = id(house_rated_power_w).state;
-      if (std::isfinite(rated_w) && rated_w > 0.0f && config.demand_max_f > 0)
+      const float demand_scale_w = envelope.demand_scale_w;
+      if (std::isfinite(demand_scale_w) && demand_scale_w > 0.0f && config.demand_max_f > 0)
         raw_demand = std::max(
-            raw_demand,
-            std::min(config.demand_max_f, static_cast<int>(std::ceil(requested_w * config.demand_max_f / rated_w))));
+            raw_demand, std::min(config.demand_max_f,
+                                 static_cast<int>(std::ceil(requested_w * config.demand_max_f / demand_scale_w))));
     } else if (applied_total == 0) {
       this->fast_floor_w_ = 0.0f;
     }
@@ -218,9 +221,9 @@ class Runtime {
     id(oq_heating_demand_filtered) = raw_demand;
     const int capped_demand =
         std::min(raw_demand, std::max(0, std::min(config.demand_max_f, static_cast<int>(id(oq_power_cap_f)))));
-    const float rated_w = id(house_rated_power_w).state;
-    if (std::isfinite(requested_w) && std::isfinite(rated_w) && rated_w > 0.0f && config.demand_max_f > 0)
-      requested_w = std::min(requested_w, rated_w * static_cast<float>(capped_demand) / config.demand_max_f);
+    const float demand_scale_w = envelope.demand_scale_w;
+    if (std::isfinite(requested_w) && std::isfinite(demand_scale_w) && demand_scale_w > 0.0f && config.demand_max_f > 0)
+      requested_w = std::min(requested_w, demand_scale_w * static_cast<float>(capped_demand) / config.demand_max_f);
     dispatch_input.demand_level = capped_demand;
     dispatch_input.requested_w = requested_w;
     const oq_power_house_dispatch::DispatchTuning dispatch_tuning{
