@@ -170,6 +170,13 @@ sensor:
           const float lph = lpm * 60.0f;
           return lph > 0.0f ? lph : 0.0f;
       - throttle_average: 10s
+      # #648: pulse_meter publishes 0 once after 5 s without pulses. That
+      # single zero can be averaged with older non-zero values and then no
+      # further input arrives, leaving a stale non-zero average forever.
+      # Fail to 0 L/h when the averaged output itself goes quiet.
+      - timeout:
+          timeout: 15s
+          value: !lambda return 0.0f;
 
 interval:
   - interval: 5s
