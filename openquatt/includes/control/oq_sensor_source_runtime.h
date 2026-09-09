@@ -5,6 +5,7 @@
 #include <string>
 
 #include "oq_flow_pump_logic.h"
+#include "oq_heating_supply_target_logic.h"
 #include "oq_input_source_logic.h"
 #include "oq_schedule_runtime.h"
 #include "oq_supply_calibration_logic.h"
@@ -277,22 +278,35 @@ class Runtime {
 
   float heating_supply_target(uint32_t now_ms, uint32_t hold_ms, bool opentherm_fresh) {
     if (!id(heating_supply_target_source).has_state()) return NAN;
-    if (parse_source(id(heating_supply_target_source).current_option()) == oq_input_source::Source::HEATING_CURVE) {
+    const auto selected_source = parse_source(id(heating_supply_target_source).current_option());
+    if (selected_source == oq_input_source::Source::HEATING_CURVE) {
       supply_target_hold_.reset();
       id(oq_heating_supply_target_selected_hold_active) = false;
       return NAN;
     }
+    // An explicitly switched-off HA validity flag revokes the cached target
+    // immediately instead of replaying it for the hold window (issue #649).
+    if (selected_source == oq_input_source::Source::HA &&
+        oq_heating_supply::ha_hold_revoked(id(heating_supply_target_valid_ha).has_state(),
+                                           id(heating_supply_target_valid_ha).state)) {
+      supply_target_hold_.reset();
+    }
     oq_input_source::NumericSources sources;
-    sources.ha = sample(ha_valid(id(heating_supply_target_valid_ha), id(heating_supply_target_ha)),
+    sources.ha = sample(ha_valid(id(heating_supply_target_valid_ha), id(heating_supply_target_ha)) &&
+                            oq_heating_supply::external_target_in_range(id(heating_supply_target_ha).state),
                         id(heating_supply_target_ha));
     sources.api = sample(api_valid(id(api_input_heating_supply_target_valid), id(api_input_heating_supply_target)),
                          id(api_input_heating_supply_target));
     sources.mqtt = sample(mqtt_valid(id(mqtt_heating_supply_target_valid), id(mqtt_heating_supply_target)),
                           id(mqtt_heating_supply_target));
-    sources.opentherm = sample(opentherm_fresh, id(ot_thermostat_control_setpoint));
+    // Only a fresh TSet inside the heating range counts: TSet=0 (thermostat
+    // without heat demand) falls back to the curve. Deliberately not gated on
+    // CH-enable: Heating Enable stays a separate input (issue #649).
+    const bool ot_usable = opentherm_fresh && id(ot_thermostat_control_setpoint).has_state() &&
+                           oq_heating_supply::external_target_in_range(id(ot_thermostat_control_setpoint).state);
+    sources.opentherm = sample(ot_usable, id(ot_thermostat_control_setpoint));
     const auto selected =
-        oq_input_source::select_direct(parse_source(id(heating_supply_target_source).current_option()), sources, true,
-                                       now_ms, hold_ms, supply_target_hold_);
+        oq_input_source::select_direct(selected_source, sources, true, now_ms, hold_ms, supply_target_hold_);
     id(oq_heating_supply_target_selected_hold_active) = selected.held;
     return selected.valid ? selected.value : NAN;
   }
