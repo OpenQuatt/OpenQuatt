@@ -9,7 +9,7 @@ import { DEFAULT_TREND_WINDOW_HOURS, state, TREND_WINDOW_HOURS_OPTIONS } from ".
 import { isTrendHistoryFlashEnabled, normalizeTrendWindowHours, setTrendWindowHours } from "../core/trend-window.js";
 import { getInstallationMonitoringModel } from "../core/installation-monitoring.js";
 import { setViewPatchControls } from "../core/view-patch-controls.js";
-import { formatCoolingBlockReason, getCoolingCompressorRunning, getCoolingDuoWaitingModel, getCoolingStartBlockModel } from "../settings/cooling.js";
+import { formatCoolingBlockReason, getCoolingCompressorRunning, getCoolingStartBlockModel } from "../settings/cooling.js";
 import { render } from "../core/render-scheduler.js";
 import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./view-utils.js";
 import { renderStatCard } from "./stat-card.js";
@@ -385,13 +385,6 @@ import { renderStatCard } from "./stat-card.js";
     } else if (!Number.isNaN(supplyError)) {
       statusTitle = "Koelt rustig door";
       statusCopy = "De aanvoertemperatuur zit dicht bij het koeldoel en de regeling werkt nu op laag pitje.";
-    }
-
-    if (compressorRunning && permitted && requestActive) {
-      const duoWaiting = getCoolingDuoWaitingModel();
-      if (duoWaiting) {
-        statusCopy = `${statusCopy} ${duoWaiting.display} (extra capaciteit indien nodig).`;
-      }
     }
 
     return {

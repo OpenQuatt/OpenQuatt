@@ -10,6 +10,7 @@
 #include "oq_compressor_frequency_runtime.h"
 #include "oq_compressor_start_limit.h"
 #include "oq_cooling_limiter_logic.h"
+#include "oq_cooling_start_status.h"
 #include "oq_incident_actuator_logic.h"
 #include "oq_thermal_actuator_logic.h"
 #include "oq_thermal_request_logic.h"
@@ -158,16 +159,6 @@ class Runtime {
             id(oq_cooling_last_confirmed_stop_ms), id(oq_cooling_boot_min_off_elapsed), minimum_off_ms),
         confirmation_pending,
     };
-  }
-
-  // Read-only start-quota remaining for the cooling start-block diagnostics
-  // (issue #642). The diagnostics live in oq_cooling_start_block_runtime.h so
-  // this actuator keeps only command state; timing behavior is unchanged.
-  uint32_t start_limit_remaining_ms(bool is_hp1, uint32_t now_ms) {
-#if !OQ_TOPOLOGY_DUO
-    if (!is_hp1) return 0U;
-#endif
-    return this->start_limits_[is_hp1 ? 0 : 1].remaining_ms(now_ms);
   }
 
   void publish_optimizer_reason(const char* reason) {
@@ -647,8 +638,37 @@ class Runtime {
                                         ? candidate_reason
                                         : static_cast<uint8_t>(openquatt_decision_log::REASON_UNKNOWN),
                                     requested, candidate_aux_s);
+    this->publish_cooling_start_refuse_(is_hp1, requested, previous, applied, preflight, candidate_aux_s, cycle);
     this->write_level(is_hp1, command.physical_level, force_safe_write);
     return command.control_level;
+  }
+
+  // Issue #642: publish this actuator's actual refuse verdict into the shared
+  // start-block slot. The dispatch owns cooling-window/confirmation/dispatch
+  // blocks; this final gate owns incident restart, start quota and
+  // frequency/mode refuses. Rewritten deterministically every tick, so the
+  // merged entity can never go stale whatever the tick order is.
+  void publish_cooling_start_refuse_(bool is_hp1, int requested, int previous, int applied,
+                                     oq_thermal_actuator::PreflightBlock preflight, uint16_t aux_s,
+                                     const Cycle& cycle) {
+    uint8_t reason = oq_cooling_start_status::NONE;
+    uint16_t remaining_s = 0;
+    const bool cooling = !cycle.manual_service_active &&
+                         (cycle.request_mode_code == 1 || id(oq_control_mode_code) == 5) &&
+                         id(cooling_enable_selected).has_state() && id(cooling_enable_selected).state &&
+                         id(cooling_request_active).has_state() && id(cooling_request_active).state &&
+                         id(cooling_permitted).has_state() && id(cooling_permitted).state;
+    if (cooling && requested > 0 && previous == 0 && applied == 0) {
+      const auto status = oq_cooling_start_status::map_actuator_refuse(
+          preflight == oq_thermal_actuator::PreflightBlock::COOLING_REST,
+          preflight == oq_thermal_actuator::PreflightBlock::HP_REST,
+          preflight == oq_thermal_actuator::PreflightBlock::START_LIMIT, aux_s,
+          id(oq_incident_manager).startup_inhibited(is_hp1 ? 1U : 2U));
+      reason = status.reason;
+      remaining_s = status.remaining_s;
+    }
+    id(oq_cooling_start_status_a_reason) = reason;
+    id(oq_cooling_start_status_a_remaining_s) = remaining_s;
   }
 
   int previous_applied_(bool is_hp1) const {

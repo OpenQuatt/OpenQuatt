@@ -24,4 +24,6 @@ class CoolingRecoveryDelegationContractTest(unittest.TestCase):
         paths = ("openquatt/oq_cooling_strategy.yaml", "openquatt/includes/control/oq_cooling_runtime.h", "openquatt/oq_cooling_safety.yaml", "openquatt/includes/control/oq_cooling_limiter_logic.h", "openquatt/includes/control/oq_cooling_demand_logic.h", "openquatt/includes/control/oq_cooling_dispatch_logic.h", "openquatt/includes/control/oq_cooling_safety_logic.h",
                  "openquatt/includes/control/oq_cooling_safety_policy.h", "tests/host/cooling_limiter_logic_test.cpp", "tests/host/cooling_demand_logic_test.cpp", "tests/host/cooling_dispatch_logic_test.cpp", "tests/host/cooling_safety_policy_test.cpp", "tests/host/thermal_request_logic_test.cpp")
         files = [ROOT / path for path in paths] + [Path(__file__)]
-        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in files), 2990)
+        # Issue #642 publishes the dispatch/actuator refuse verdict (reason +
+        # countdown) from these exact files, so the bound grows with it.
+        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in files), 3040)

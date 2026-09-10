@@ -129,29 +129,6 @@ import { state } from "../core/state.js";
     };
   }
 
-  export function getCoolingDuoWaitingModel() {
-    if (!hasEntity("hp1MinimumOffRemaining") && !hasEntity("hp2MinimumOffRemaining")) {
-      return null;
-    }
-    const hp1Running = getEntityNumericValue("hp1Compressor") > 0 || getEntityNumericValue("hp1Freq") > 0;
-    const hp2Running = hasEntity("hp2Compressor") &&
-      (getEntityNumericValue("hp2Compressor") > 0 || getEntityNumericValue("hp2Freq") > 0);
-    if (!hasEntity("hp2Compressor") || (hp1Running && hp2Running) || (!hp1Running && !hp2Running)) {
-      return null;
-    }
-    const waitingHp = hp1Running ? 2 : 1;
-    const remainingRaw = getEntityNumericValue(waitingHp === 2 ? "hp2MinimumOffRemaining" : "hp1MinimumOffRemaining");
-    if (!Number.isFinite(remainingRaw) || remainingRaw <= 0) {
-      return null;
-    }
-    const remainingS = Math.ceil(remainingRaw);
-    return {
-      waitingHp,
-      remainingS,
-      display: `HP${waitingHp} wacht nog ${formatCoolingStartBlockCountdown(remainingS)} op compressor-herstartbeveiliging`,
-    };
-  }
-
   export function getCoolingScheduleStatus() {
     const start = toTimeInputValue(getEntityStateText(COOLING_SCHEDULE_TIME_KEYS[0], ""));
     const end = toTimeInputValue(getEntityStateText(COOLING_SCHEDULE_TIME_KEYS[1], ""));

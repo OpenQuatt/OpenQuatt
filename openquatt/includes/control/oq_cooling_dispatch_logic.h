@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <stdint.h>
 #include "oq_cooling_limiter_logic.h"
+#include "oq_cooling_start_status.h"
 #include "oq_hp_candidate_logic.h"
 namespace oq_cooling {
 struct DispatchHpInput {
@@ -24,6 +25,11 @@ struct DispatchOutput {
   bool evaluated = false, hp1_restart_blocked = false, hp2_restart_blocked = false;
   bool start_blocked = false;
   int raw_demand = 0, demand = 0, hp1_request = 0, hp2_request = 0, owner_before_hold = 0, owner = 0;
+  // Effective start block, written by this same decision (issue #642): the
+  // reason cooling cannot start and, when known, after how many seconds the
+  // first HP can serve again. No countdown is invented for other blocks.
+  uint8_t start_status_reason = oq_cooling_start_status::NONE;
+  uint16_t start_status_remaining_s = 0;
 };
 inline bool hp_minimum_off_blocks_start(uint32_t now_ms, uint32_t last_stop_ms, int previous_applied_level,
                                         uint32_t minimum_off_ms) {
@@ -108,6 +114,39 @@ inline DispatchOutput update_dispatch(const DispatchInput& in, DispatchState& st
   out.hp2_request = in.duo ? hold.hp2_level : 0;
   out.owner = in.duo ? hold.owner_hp : (out.hp1_request > 0 ? 1 : 0);
   out.start_blocked = demand_active && out.owner_before_hold == 0 && !hp1_can_serve && !hp2_can_serve;
+  if (out.start_blocked) {
+    // A pending stop confirmation holds the full delay with unknown exact
+    // remainder, so it wins over any running countdown (issue #642: only
+    // count down a genuinely known remainder).
+    if (in.stop_confirmation_pending) {
+      out.start_status_reason = oq_cooling_start_status::COOLING_CONFIRM;
+    } else if (in.global_min_off_remaining_ms > 0) {
+      out.start_status_reason = oq_cooling_start_status::COOLING_MIN_OFF;
+      out.start_status_remaining_s = oq_cooling_start_status::ceil_seconds(in.global_min_off_remaining_ms);
+    } else {
+      // Minimum unblock time over the HPs that could serve except for their
+      // restart guard. This mirrors the can_serve selection above (the first
+      // free HP wins), so Duo 30/190 s reports 30 s, and 0/190 s is no block.
+      uint16_t best_s = UINT16_MAX;
+      const auto note_restart = [&](const DispatchHpInput& hp, bool restart_blocked) {
+        if (restart_blocked && oq_hp_candidate::may_serve_candidate(hp.candidate) && hp.has_allowed_level) {
+          best_s =
+              std::min(best_s, static_cast<uint16_t>(hp_minimum_off_remaining_s(
+                                   in.now_ms, hp.last_stop_ms, hp.candidate.previous_applied_level, in.hp_min_off_ms)));
+        }
+      };
+      note_restart(in.hp1, out.hp1_restart_blocked);
+      if (in.duo) note_restart(in.hp2, out.hp2_restart_blocked);
+      if (best_s != UINT16_MAX) {
+        out.start_status_reason = oq_cooling_start_status::HP_RESTART;
+        out.start_status_remaining_s = best_s;
+      } else {
+        // Candidate, frequency-level or incident block without a known
+        // remainder: report the block, never an invented countdown.
+        out.start_status_reason = oq_cooling_start_status::OTHER;
+      }
+    }
+  }
   return out;
 }
 inline DispatchOutput dispatch_tick(const DispatchInput& input) {

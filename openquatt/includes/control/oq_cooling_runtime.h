@@ -143,6 +143,8 @@ class Runtime {
       id(oq_cooling_request_owner_hp) = 0;
       id(oq_cooling_owner_hp) = 0;
       id(oq_cooling_request_reason_code) = 0;
+      id(oq_cooling_start_status_d_reason) = 0;
+      id(oq_cooling_start_status_d_remaining_s) = 0;
       return;
     }
     const uint32_t global_remaining_ms = oq_cooling::global_minimum_off_time_remaining_ms(
@@ -189,6 +191,15 @@ class Runtime {
 #endif
     const auto routing = oq_cooling::dispatch_tick(dispatch);
     if (!routing.evaluated) return;
+    // Issue #642: publish this dispatch's own verdict. The actuator (final
+    // gate) owns the `_a_` slot and wins on refuse; otherwise this stands.
+    if (routing.start_blocked) {
+      id(oq_cooling_start_status_d_reason) = routing.start_status_reason;
+      id(oq_cooling_start_status_d_remaining_s) = routing.start_status_remaining_s;
+    } else {
+      id(oq_cooling_start_status_d_reason) = 0;
+      id(oq_cooling_start_status_d_remaining_s) = 0;
+    }
     id(oq_demand_filtered_prev) = id(oq_demand_filtered);
     id(oq_demand_filtered) = routing.raw_demand;
     id(oq_heating_demand_filtered) = 0;

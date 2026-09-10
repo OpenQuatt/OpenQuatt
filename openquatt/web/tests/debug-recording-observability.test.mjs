@@ -100,9 +100,6 @@ const ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS = [
 const ISSUE_642_OBSERVABILITY_KEYS = [
   "coolingStartBlockReason",
   "coolingStartBlockRemaining",
-  "hp1MinimumOffRemaining",
-  "hp2MinimumOffRemaining",
-  "coolingStopConfirmationPending",
 ];
 
 const ADDED_OBSERVABILITY_KEYS = [
