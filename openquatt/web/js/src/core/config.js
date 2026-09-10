@@ -168,6 +168,8 @@
     ["coolingRestartDelta", DOMAIN_NUMBER, "Cooling Restart Delta"],
     ["coolingMinimumOffTime", DOMAIN_NUMBER, "Cooling Minimum Off Time"],
     ["coolingMinimumOffTimeRemaining", DOMAIN_SENSOR, "Cooling Minimum Off Time Remaining"],
+    ["coolingStartBlockReason", DOMAIN_TEXT_SENSOR, "Cooling Start Block Reason"],
+    ["coolingStartBlockRemaining", DOMAIN_SENSOR, "Cooling Start Block Remaining"],
     ["coolingPidKp", DOMAIN_NUMBER, "Cooling PID Kp"],
     ["coolingPidKi", DOMAIN_NUMBER, "Cooling PID Ki"],
     ["coolingPidKd", DOMAIN_NUMBER, "Cooling PID Kd"],
@@ -1462,6 +1464,8 @@
     "boilerStartThermalGuard",
     "boilerStartThermalSafeCeiling",
     "boilerPowerTestResultQuality",
+    "coolingStartBlockReason",
+    "coolingStartBlockRemaining",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestManifestUrl", "installFirmwareTestManifest"];
@@ -1517,6 +1521,8 @@
     "coolingLimitedDemand",
     "coolingLimiterAllowedMax",
     "coolingLimiterReasonCode",
+    "coolingStartBlockReason",
+    "coolingStartBlockRemaining",
     "controlModeLabel",
     "flowMode",
     "totalPower",
@@ -1606,6 +1612,8 @@
     "coolingPermitted",
     "coolingRequestActive",
     "coolingBlockReason",
+    "coolingStartBlockReason",
+    "coolingStartBlockRemaining",
     "coolingGuardMode",
     "coolingDewPointSelected",
     "coolingEffectiveMinSupplyTemp",

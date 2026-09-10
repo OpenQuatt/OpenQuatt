@@ -59,6 +59,24 @@ globals:
     type: int
     restore_value: false
     initial_value: '0'
+  # Effective start-block slots for issue #642: dispatch owns `_d_`, the
+  # actuator `_a_`; the entities merge them, actuator wins as final gate.
+  - id: oq_cooling_start_status_d_reason
+    type: int
+    restore_value: false
+    initial_value: '0'
+  - id: oq_cooling_start_status_d_remaining_s
+    type: int
+    restore_value: false
+    initial_value: '0'
+  - id: oq_cooling_start_status_a_reason
+    type: int
+    restore_value: false
+    initial_value: '0'
+  - id: oq_cooling_start_status_a_remaining_s
+    type: int
+    restore_value: false
+    initial_value: '0'
 select:
   - platform: template
     id: cooling_restart_mode
@@ -357,6 +375,29 @@ sensor:
     lambda: |-
       return oq_cooling_runtime::runtime().minimum_off_remaining_s(
           ${oq_cooling_minimum_off_min_s});
+  - platform: template
+    id: oq_cooling_start_block_remaining_sensor
+    name: "Cooling Start Block Remaining"
+    icon: mdi:timer-pause-outline
+    unit_of_measurement: "s"
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return (float) oq_cooling_start_status::merge_slots(
+          id(oq_cooling_start_status_d_reason), id(oq_cooling_start_status_d_remaining_s),
+          id(oq_cooling_start_status_a_reason), id(oq_cooling_start_status_a_remaining_s)).remaining_s;
+text_sensor:
+  - platform: template
+    id: cooling_start_block_reason
+    name: "Cooling Start Block Reason"
+    icon: mdi:information-outline
+    entity_category: diagnostic
+    update_interval: 5s
+    lambda: |-
+      return {oq_cooling_start_status::reason_name(
+          oq_cooling_start_status::merge_slots(
+              id(oq_cooling_start_status_d_reason), id(oq_cooling_start_status_d_remaining_s),
+              id(oq_cooling_start_status_a_reason), id(oq_cooling_start_status_a_remaining_s)).reason)};
 interval:
   - interval: 5s
     then:
