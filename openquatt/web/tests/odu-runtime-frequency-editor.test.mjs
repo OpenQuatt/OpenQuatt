@@ -98,7 +98,7 @@ test("dev-preview onderscheidt direct toepasbare bodemplaatinstellingen van de g
   assert.match(featureSource, /__OQ_PREVIEW__ && typeof window !== "undefined"/);
   assert.match(featureSource, /window\.__OQ_DEV_ODU_WRITE_STATE__/);
   assert.match(devSource, /mock-fixtures\.js\?v=odu-settings-v3/);
-  assert.match(devSource, /mock-device\.js\?v=odu-settings-v3/);
+  assert.match(devSource, /mock-device\.js\?v=cooling-start-block-v2/);
   assert.match(devSource, /openquatt-preview\.js\?v=odu-settings-v3/);
 });
 
