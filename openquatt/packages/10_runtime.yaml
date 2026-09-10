@@ -3,6 +3,7 @@
 # ==============================================================================
 packages:
   oq_common: !include ../oq_common.yaml
+  oq_factory_reset: !include ../oq_factory_reset.yaml
   oq_supervisory_controlmode: !include ../oq_supervisory_controlmode.yaml
   oq_commissioning: !include ../oq_commissioning.yaml
   oq_thermal_limits: !include ../oq_thermal_limits.yaml
