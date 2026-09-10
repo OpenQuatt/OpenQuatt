@@ -195,15 +195,12 @@ class Runtime {
 #endif
     const auto routing = oq_cooling::dispatch_tick(dispatch);
     if (!routing.evaluated) return;
-    // Issue #642: publish this dispatch's own verdict. The actuator (final
-    // gate) owns the `_a_` slot and wins on refuse; otherwise this stands.
-    if (routing.start_blocked) {
-      id(oq_cooling_start_status_d_reason) = routing.start_status_reason;
-      id(oq_cooling_start_status_d_remaining_s) = routing.start_status_remaining_s;
-    } else {
-      id(oq_cooling_start_status_d_reason) = 0;
-      id(oq_cooling_start_status_d_remaining_s) = 0;
-    }
+    // Issue #642: always publish this dispatch's own verdict, including an
+    // inhibited owner with start_blocked == false. DispatchOutput defaults to
+    // NONE/0, so no branch is needed and routing is untouched. The actuator
+    // (final gate) owns the `_a_` slot and wins on refuse.
+    id(oq_cooling_start_status_d_reason) = routing.start_status_reason;
+    id(oq_cooling_start_status_d_remaining_s) = routing.start_status_remaining_s;
     id(oq_demand_filtered_prev) = id(oq_demand_filtered);
     id(oq_demand_filtered) = routing.raw_demand;
     id(oq_heating_demand_filtered) = 0;

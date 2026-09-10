@@ -29,3 +29,10 @@ class CoolingRecoveryDelegationContractTest(unittest.TestCase):
         # startup-inhibit naming) from these exact decision files, so the
         # bound grows with it.
         self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in files), 3070)
+
+    def test_dispatch_verdict_is_copied_unconditionally(self) -> None:
+        # Inhibited owners ride with start_blocked == false; gating the copy
+        # on it would silently drop STARTUP_INHIBIT (issue #642).
+        self.assertIn("id(oq_cooling_start_status_d_reason) = routing.start_status_reason;", RUNTIME)
+        self.assertIn("id(oq_cooling_start_status_d_remaining_s) = routing.start_status_remaining_s;", RUNTIME)
+        self.assertNotIn("if (routing.start_blocked)", RUNTIME)

@@ -59,10 +59,8 @@ globals:
     type: int
     restore_value: false
     initial_value: '0'
-  # Effective start-block slots for issue #642 (reason codes from
-  # oq_cooling_start_status.h, remaining in seconds). The dispatch owns the
-  # `_d_` slot, the actuator the `_a_` slot; the entities merge them with the
-  # actuator winning as the final gate.
+  # Effective start-block slots for issue #642: dispatch owns `_d_`, the
+  # actuator `_a_`; the entities merge them, actuator wins as final gate.
   - id: oq_cooling_start_status_d_reason
     type: int
     restore_value: false
@@ -385,10 +383,9 @@ sensor:
     accuracy_decimals: 0
     update_interval: 5s
     lambda: |-
-      return (float) oq_cooling_start_status::merge(
-          (uint8_t) id(oq_cooling_start_status_d_reason), (uint16_t) id(oq_cooling_start_status_d_remaining_s),
-          (uint8_t) id(oq_cooling_start_status_a_reason),
-          (uint16_t) id(oq_cooling_start_status_a_remaining_s)).remaining_s;
+      return (float) oq_cooling_start_status::merge_slots(
+          id(oq_cooling_start_status_d_reason), id(oq_cooling_start_status_d_remaining_s),
+          id(oq_cooling_start_status_a_reason), id(oq_cooling_start_status_a_remaining_s)).remaining_s;
 text_sensor:
   - platform: template
     id: cooling_start_block_reason
@@ -398,11 +395,9 @@ text_sensor:
     update_interval: 5s
     lambda: |-
       return {oq_cooling_start_status::reason_name(
-          oq_cooling_start_status::merge(
-              (uint8_t) id(oq_cooling_start_status_d_reason),
-              (uint16_t) id(oq_cooling_start_status_d_remaining_s),
-              (uint8_t) id(oq_cooling_start_status_a_reason),
-              (uint16_t) id(oq_cooling_start_status_a_remaining_s)).reason)};
+          oq_cooling_start_status::merge_slots(
+              id(oq_cooling_start_status_d_reason), id(oq_cooling_start_status_d_remaining_s),
+              id(oq_cooling_start_status_a_reason), id(oq_cooling_start_status_a_remaining_s)).reason)};
 interval:
   - interval: 5s
     then:

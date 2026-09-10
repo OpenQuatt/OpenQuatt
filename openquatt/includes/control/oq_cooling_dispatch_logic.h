@@ -116,8 +116,7 @@ inline DispatchOutput update_dispatch(const DispatchInput& in, DispatchState& st
   out.hp2_request = in.duo ? hold.hp2_level : 0;
   out.owner = in.duo ? hold.owner_hp : (out.hp1_request > 0 ? 1 : 0);
   out.start_blocked = demand_active && out.owner_before_hold == 0 && !hp1_can_serve && !hp2_can_serve;
-  // Owner chosen but startup-inhibited (candidate can lag the live guard):
-  // thermal-request zeroes it downstream, so only the diagnosis names it.
+  // Inhibited owner: thermal-request zeroes it downstream; diagnosis only.
   if (!out.start_blocked && out.owner > 0 && (out.owner == 1 ? in.hp1_startup_inhibited : in.hp2_startup_inhibited)) {
     out.start_status_reason = oq_cooling_start_status::STARTUP_INHIBIT;
     out.start_status_remaining_s = oq_cooling_start_status::ceil_seconds(out.owner == 1 ? in.hp1_startup_remaining_ms

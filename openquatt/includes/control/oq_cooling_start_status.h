@@ -82,4 +82,11 @@ inline Status merge(uint8_t dispatch_reason, uint16_t dispatch_remaining_s, uint
   return Status{dispatch_reason, dispatch_remaining_s};
 }
 
+// Same merge for the plain-int ESPHome globals backing the entities.
+inline Status merge_slots(int dispatch_reason, int dispatch_remaining_s, int actuator_reason,
+                          int actuator_remaining_s) {
+  return merge(static_cast<uint8_t>(dispatch_reason), static_cast<uint16_t>(dispatch_remaining_s),
+               static_cast<uint8_t>(actuator_reason), static_cast<uint16_t>(actuator_remaining_s));
+}
+
 }  // namespace oq_cooling_start_status

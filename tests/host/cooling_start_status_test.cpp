@@ -158,10 +158,12 @@ static DispatchInput inhibited_input(uint32_t hp1_remaining_ms, bool hp1_must_st
 }
 
 static void test_owner_inhibited_reports_startup_without_rerouting() {
-  // End-to-end pipeline contract: healthy, available HP whose live startup
-  // guard is still active. Dispatch still picks it (routing untouched), but
-  // thermal-request zeroes inhibited HPs downstream, so the published status
-  // must be Startup inhibit with the guard's own remaining time.
+  // End-to-end pipeline contract at dispatch level: healthy, available HP
+  // whose live startup guard is still active. Dispatch still picks it
+  // (routing untouched), but thermal-request zeroes inhibited HPs downstream,
+  // so the published status must be Startup inhibit with the guard's own
+  // remaining time. The runtime copy of this verdict is guarded by
+  // test_dispatch_verdict_is_copied_unconditionally (python contract).
   DispatchState state;
   auto in = active_input();
   in.hp1_startup_inhibited = true;
