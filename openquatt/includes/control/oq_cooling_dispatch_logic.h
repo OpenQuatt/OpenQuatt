@@ -15,9 +15,7 @@ struct DispatchInput {
   int raw_demand = 0, demand_max = 10, power_cap = 10, stored_owner = 0;
   bool cooling_mode = false, duo = false, lead_is_hp1 = true;
   bool stop_confirmation_pending = false;
-  // Startup-inhibit state from the incident manager. Inhibited HPs surface
-  // here as unavailable candidates (their requests are zeroed upstream), so
-  // these flags name that cause with its real remaining time.
+  // Startup-inhibit flags: inhibited HPs surface as unavailable candidates.
   bool hp1_startup_inhibited = false, hp2_startup_inhibited = false;
   uint32_t hp1_startup_remaining_ms = 0, hp2_startup_remaining_ms = 0;
   DispatchHpInput hp1, hp2;
@@ -30,9 +28,8 @@ struct DispatchOutput {
   bool evaluated = false, hp1_restart_blocked = false, hp2_restart_blocked = false;
   bool start_blocked = false;
   int raw_demand = 0, demand = 0, hp1_request = 0, hp2_request = 0, owner_before_hold = 0, owner = 0;
-  // Effective start block, written by this same decision (issue #642): the
-  // reason cooling cannot start and, when known, after how many seconds the
-  // first HP can serve again. No countdown is invented for other blocks.
+  // Effective start block from this same decision: reason plus, when known,
+  // seconds until the first HP can serve. No invented countdowns.
   uint8_t start_status_reason = oq_cooling_start_status::NONE;
   uint16_t start_status_remaining_s = 0;
 };
@@ -119,7 +116,13 @@ inline DispatchOutput update_dispatch(const DispatchInput& in, DispatchState& st
   out.hp2_request = in.duo ? hold.hp2_level : 0;
   out.owner = in.duo ? hold.owner_hp : (out.hp1_request > 0 ? 1 : 0);
   out.start_blocked = demand_active && out.owner_before_hold == 0 && !hp1_can_serve && !hp2_can_serve;
-  if (out.start_blocked) {
+  // Owner chosen but startup-inhibited (candidate can lag the live guard):
+  // thermal-request zeroes it downstream, so only the diagnosis names it.
+  if (!out.start_blocked && out.owner > 0 && (out.owner == 1 ? in.hp1_startup_inhibited : in.hp2_startup_inhibited)) {
+    out.start_status_reason = oq_cooling_start_status::STARTUP_INHIBIT;
+    out.start_status_remaining_s = oq_cooling_start_status::ceil_seconds(out.owner == 1 ? in.hp1_startup_remaining_ms
+                                                                                        : in.hp2_startup_remaining_ms);
+  } else if (out.start_blocked) {
     // A pending stop confirmation holds the full delay with unknown exact
     // remainder, so it wins over any running countdown (issue #642: only
     // count down a genuinely known remainder).
@@ -146,10 +149,8 @@ inline DispatchOutput update_dispatch(const DispatchInput& in, DispatchState& st
         out.start_status_reason = oq_cooling_start_status::HP_RESTART;
         out.start_status_remaining_s = best_s;
       } else {
-        // No timed cause: an inhibited HP that is otherwise deployable names
-        // the earliest release (single: that HP; Duo: the minimum). An
-        // inhibited HP that could never serve yields the reason without a
-        // countdown rather than a misleading time; anything else is OTHER.
+        // No timed cause: earliest release over inhibited-yet-deployable HPs;
+        // inhibited but never servable yields the reason without countdown.
         uint32_t best_ms = UINT32_MAX;
         bool inhibited_seen = false;
         const auto note_inhibit = [&](bool inhibited, const DispatchHpInput& hp, uint32_t remaining_ms) {
@@ -164,8 +165,7 @@ inline DispatchOutput update_dispatch(const DispatchInput& in, DispatchState& st
           out.start_status_reason = oq_cooling_start_status::STARTUP_INHIBIT;
           out.start_status_remaining_s = best_ms == UINT32_MAX ? 0 : oq_cooling_start_status::ceil_seconds(best_ms);
         } else {
-          // Candidate, frequency-level or incident block without a known
-          // remainder: report the block, never an invented countdown.
+          // Otherwise report the block without an invented countdown.
           out.start_status_reason = oq_cooling_start_status::OTHER;
         }
       }

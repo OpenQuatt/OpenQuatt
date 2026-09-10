@@ -134,8 +134,11 @@ test("gepubliceerde herstartbeveiliging toont blokkade met juiste resterende tij
   assert.equal(system.value, "Normaal");
 });
 
-test("scheve reason/timer-paren tonen nooit een verzonnen countdown", () => {
-  // Bij een overgang kan een nieuwe reden kort met een oude timer staan.
+test("niet-tijdgebonden redenen tonen nooit een countdown, ook niet bij een oude timer", () => {
+  // Bij een overgang kan een nieuwe reden kort met een oude timer staan; de
+  // allowlist houdt die timer weg bij redenen die er nooit een mogen dragen.
+  // (Tussen twee tijdgebonden redenen kan kort een oude timer staan; dat
+  // restrisico accepteren we voor twee losse entities.)
   resetOverviewState(
     coolingBaseEntities({
       coolingStartBlockReason: textEntity("Waiting for confirmed cooling stop"),

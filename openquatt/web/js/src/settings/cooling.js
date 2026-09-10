@@ -63,8 +63,9 @@ import { state } from "../core/state.js";
 
   // Redenen die een afteltijd mogen tonen. De firmware garandeert al dat
   // alleen tijdgebonden redenen remaining_s > 0 dragen, maar reason en timer
-  // zijn losse entities met eigen poll-moment: bij een overgang zou een oude
-  // timer kort bij een nieuwe reden kunnen staan. Deze tabel maakt dat onmogelijk.
+  // zijn losse entities met eigen poll-moment. Deze tabel voorkomt dat een
+  // oude timer bij een niet-tijdgebonden reden belandt; tussen twee
+  // tijdgebonden redenen kan bij een overgang kort een oude timer staan.
   const COOLING_START_BLOCK_COUNTDOWN_REASONS = new Set([
     "Cooling minimum off-time",
     "Compressor restart protection",
@@ -79,8 +80,8 @@ import { state } from "../core/state.js";
     }
     const label = COOLING_START_BLOCK_LABELS[value] || value;
     // Firmwarecontract: tijdgebonden redenen dragen altijd remaining_s > 0,
-    // de overige altijd 0. De tabel hierboven vangt bovendien scheve
-    // reason/timer-paren bij een overgang af: nooit een verzonnen countdown.
+    // de overige altijd 0. De tabel hierboven houdt bovendien een oude timer
+    // weg bij niet-tijdgebonden redenen.
     const remaining = Math.ceil(Number(remainingS) || 0);
     if (remaining > 0 && COOLING_START_BLOCK_COUNTDOWN_REASONS.has(value)) {
       return `${label} — nog ${formatCoolingStartBlockCountdown(remaining)}`;

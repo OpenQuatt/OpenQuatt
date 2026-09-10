@@ -157,6 +157,39 @@ static DispatchInput inhibited_input(uint32_t hp1_remaining_ms, bool hp1_must_st
   return in;
 }
 
+static void test_owner_inhibited_reports_startup_without_rerouting() {
+  // End-to-end pipeline contract: healthy, available HP whose live startup
+  // guard is still active. Dispatch still picks it (routing untouched), but
+  // thermal-request zeroes inhibited HPs downstream, so the published status
+  // must be Startup inhibit with the guard's own remaining time.
+  DispatchState state;
+  auto in = active_input();
+  in.hp1_startup_inhibited = true;
+  in.hp1_startup_remaining_ms = 180000U;
+  const auto out = update_dispatch(in, state);
+  assert(!out.start_blocked);
+  assert(out.owner == 1);
+  assert(out.hp1_request > 0);
+  assert(out.start_status_reason == STARTUP_INHIBIT);
+  assert(out.start_status_remaining_s == 180);
+}
+
+static void test_owner_inhibited_duo_reports_inhibited_owner() {
+  DispatchState state;
+  auto in = active_input();
+  in.duo = true;
+  in.hp2.candidate = {0, true, false, false};
+  in.hp2.has_allowed_level = true;
+  in.stored_owner = 2;
+  in.hp2_startup_inhibited = true;
+  in.hp2_startup_remaining_ms = 210000U;
+  const auto out = update_dispatch(in, state);
+  assert(!out.start_blocked);
+  assert(out.owner == 2);
+  assert(out.start_status_reason == STARTUP_INHIBIT);
+  assert(out.start_status_remaining_s == 210);
+}
+
 static void test_startup_inhibit_reports_real_remaining() {
   DispatchState state;
   auto in = inhibited_input(180000U);
@@ -224,6 +257,8 @@ int main() {
   test_no_demand_reports_none();
   test_actuator_refuse_mapping();
   test_actuator_aggregate_keeps_first_refuse_regardless_of_order();
+  test_owner_inhibited_reports_startup_without_rerouting();
+  test_owner_inhibited_duo_reports_inhibited_owner();
   test_startup_inhibit_reports_real_remaining();
   test_startup_duo_reports_earliest_deployable_hp();
   test_startup_skips_hp_that_could_never_serve();
