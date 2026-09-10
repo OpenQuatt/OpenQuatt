@@ -549,15 +549,6 @@ import { renderStatCard } from "./stat-card.js";
           tone: "orange",
         };
       }
-      const startBlock = getCoolingStartBlockModel();
-      if (startBlock.available && startBlock.blocked && !getCoolingCompressorRunning() &&
-        isEntityActive("coolingRequestActive")) {
-        return {
-          label: "Systeem",
-          value: startBlock.display,
-          tone: "orange",
-        };
-      }
       if (isEntityActive("silentActive")) {
         return {
           label: "Systeem",
@@ -649,26 +640,15 @@ import { renderStatCard } from "./stat-card.js";
       ? `Koeltoestemming is niet gegeven: ${coolingConfiguredSource} geeft geen toestemming en handmatig staat uit.`
       : "Koeltoestemming is niet gegeven.";
     const coolingIsReady = String(coolingBlockReasonRaw).trim().toLowerCase() === "ready" || String(coolingBlockReasonRaw).trim().toLowerCase() === "gereed" || String(coolingBlockReasonRaw).trim().toLowerCase() === "gereed om te koelen";
-    const coolingStartBlock = getCoolingStartBlockModel();
+    // De enige plek met de startblokkade is het koelregelmodel hierboven; de
+    // kaart liegt nooit over draaien (alleen "Actief" bij draaiende compressor).
     const coolingCompressorRunning = getCoolingCompressorRunning();
-    const coolingStartBlocked = Boolean(
-      coolingStartBlock.available && coolingStartBlock.blocked && !coolingCompressorRunning && coolingRequestActive,
-    );
-    if (coolingEnabled && coolingStartBlocked) {
-      coolingStatus = "Wachten";
-      coolingCopy = appendCoolingPermissionSource(
-        `${coolingStartBlock.display}. Koeling start automatisch zodra de blokkade is opgeheven.`,
-        coolingEffectiveSource,
-      );
-    } else if (coolingEnabled && coolingModeActive && coolingCompressorRunning) {
+    if (coolingEnabled && coolingModeActive && coolingCompressorRunning) {
       coolingStatus = "Actief";
       coolingCopy = appendCoolingPermissionSource("Koeling draait nu.", coolingEffectiveSource);
-    } else if (coolingEnabled && coolingModeActive && !coolingCompressorRunning && coolingStartBlock.available) {
+    } else if (coolingEnabled && coolingModeActive) {
       coolingStatus = "Aan";
       coolingCopy = appendCoolingPermissionSource("Er is koelvraag. Koeling start zodra dat kan.", coolingEffectiveSource);
-    } else if (coolingEnabled && coolingModeActive) {
-      coolingStatus = "Actief";
-      coolingCopy = appendCoolingPermissionSource("Koeling draait nu.", coolingEffectiveSource);
     } else if (coolingEnabled && coolingWaitingForRoomRequest) {
       coolingStatus = "Aan";
       coolingCopy = appendCoolingPermissionSource("Koeling is toegestaan en wacht op kamertemperatuur boven het koel-setpoint.", coolingEffectiveSource);
@@ -705,7 +685,7 @@ import { renderStatCard } from "./stat-card.js";
 
     return [
       { key: "openquattEnabled", label: "Openquatt regeling", status: openquattEnabled ? "Actief" : "Tijdelijk uit", copy: openquattEnabled ? "Verwarmen en koelen worden automatisch geregeld." : openquattResumeScheduled ? "Verwarming en koeling zijn tijdelijk uitgeschakeld. Beveiligingen (inclusief vorstbeveiliging) blijven actief." : "Verwarming en koeling zijn uitgeschakeld. Beveiligingen (inclusief vorstbeveiliging) blijven actief.", tone: openquattEnabled ? "green" : "orange", kind: "openquatt-control", meta: openquattEnabled ? [] : [openquattResumeLoading ? { label: "Hervatten", value: "Laden…", tone: "neutral", loading: true } : { label: openquattResumeScheduled ? "Hervat automatisch" : "Hervatten", value: openquattResumeScheduled ? formatOpenQuattResumeDateTime(openquattResumeAt, true) : "Handmatig", tone: openquattResumeScheduled ? "orange" : "neutral" }] },
-      { key: "manualCoolingEnable", label: "Koeltoestemming", status: coolingStatus, copy: coolingCopy, buttonLabel: manualCoolingEnabled ? "Handmatig uit" : "Handmatig aan", nextState: manualCoolingEnabled ? "off" : "on", tone: !coolingEnabled ? "neutral" : (coolingStatus === "Wachten" || coolingStatus === "Geblokkeerd" ? "orange" : (coolingModeActive ? "blue" : "sky")), settingsAction: hasEntity(COOLING_SCHEDULE_SOURCE_KEY) && COOLING_SCHEDULE_TIME_KEYS.every((key) => hasEntity(key)) ? "open-cooling-schedule-modal" : "", settingsLabel: "Koelvenster instellen" },
+      { key: "manualCoolingEnable", label: "Koeltoestemming", status: coolingStatus, copy: coolingCopy, buttonLabel: manualCoolingEnabled ? "Handmatig uit" : "Handmatig aan", nextState: manualCoolingEnabled ? "off" : "on", tone: !coolingEnabled ? "neutral" : (coolingStatus === "Geblokkeerd" ? "orange" : (coolingModeActive ? "blue" : "sky")), settingsAction: hasEntity(COOLING_SCHEDULE_SOURCE_KEY) && COOLING_SCHEDULE_TIME_KEYS.every((key) => hasEntity(key)) ? "open-cooling-schedule-modal" : "", settingsLabel: "Koelvenster instellen" },
       { key: "silentModeOverride", label: "Stille modus", status: silentStatus, copy: silentCopy, tone: silentTone, kind: "select", selectedOption: silentModeOverride, settingsAction: "open-silent-settings-modal", settingsLabel: "Stille uren instellen", options: [{ value: "Off", label: "Uit" }, { value: "On", label: "Aan" }, { value: "Schedule", label: "Schema" }] },
     ].filter((card) => hasEntity(card.key));
   }

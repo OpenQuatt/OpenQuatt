@@ -184,9 +184,13 @@ class Runtime {
     dispatch.cooling_mode = true;
     dispatch.lead_is_hp1 = lead_is_hp1;
     dispatch.stop_confirmation_pending = stop_confirmation_pending;
+    dispatch.hp1_startup_inhibited = id(oq_incident_manager).startup_inhibited(1U);
+    dispatch.hp1_startup_remaining_ms = id(oq_incident_manager).minimum_off_remaining_ms(1U, now_ms);
     dispatch.hp1 = {hp1_candidate, id(hp1_last_start_ms), id(hp1_last_stop_ms), any_level_allowed(true)};
 #if OQ_TOPOLOGY_DUO
     dispatch.duo = true;
+    dispatch.hp2_startup_inhibited = id(oq_incident_manager).startup_inhibited(2U);
+    dispatch.hp2_startup_remaining_ms = id(oq_incident_manager).minimum_off_remaining_ms(2U, now_ms);
     dispatch.hp2 = {hp2_candidate, id(hp2_last_start_ms), id(hp2_last_stop_ms), any_level_allowed(false)};
 #endif
     const auto routing = oq_cooling::dispatch_tick(dispatch);
@@ -194,27 +198,8 @@ class Runtime {
     // Issue #642: publish this dispatch's own verdict. The actuator (final
     // gate) owns the `_a_` slot and wins on refuse; otherwise this stands.
     if (routing.start_blocked) {
-      uint8_t reason = routing.start_status_reason;
-      uint16_t remaining_s = routing.start_status_remaining_s;
-      if (reason == oq_cooling_start_status::OTHER) {
-        // A startup inhibit (e.g. after reboot) only surfaces here as an
-        // unavailable candidate, so name it from the incident manager itself.
-        const bool hp1_inhibited = id(oq_incident_manager).startup_inhibited(1U);
-        const uint32_t hp1_remaining_ms = id(oq_incident_manager).minimum_off_remaining_ms(1U, now_ms);
-#if OQ_TOPOLOGY_DUO
-        const bool hp2_inhibited = id(oq_incident_manager).startup_inhibited(2U);
-        const uint32_t hp2_remaining_ms = id(oq_incident_manager).minimum_off_remaining_ms(2U, now_ms);
-#else
-        const bool hp2_inhibited = false;
-        const uint32_t hp2_remaining_ms = 0U;
-#endif
-        const auto startup = oq_cooling_start_status::resolve_startup_override(hp1_inhibited, hp2_inhibited,
-                                                                               hp1_remaining_ms, hp2_remaining_ms);
-        reason = startup.reason;
-        remaining_s = startup.remaining_s;
-      }
-      id(oq_cooling_start_status_d_reason) = reason;
-      id(oq_cooling_start_status_d_remaining_s) = remaining_s;
+      id(oq_cooling_start_status_d_reason) = routing.start_status_reason;
+      id(oq_cooling_start_status_d_remaining_s) = routing.start_status_remaining_s;
     } else {
       id(oq_cooling_start_status_d_reason) = 0;
       id(oq_cooling_start_status_d_remaining_s) = 0;

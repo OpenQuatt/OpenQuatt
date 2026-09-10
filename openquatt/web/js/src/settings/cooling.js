@@ -61,6 +61,17 @@ import { state } from "../core/state.js";
     return `${minutes}:${String(rest).padStart(2, "0")}`;
   }
 
+  // Redenen die een afteltijd mogen tonen. De firmware garandeert al dat
+  // alleen tijdgebonden redenen remaining_s > 0 dragen, maar reason en timer
+  // zijn losse entities met eigen poll-moment: bij een overgang zou een oude
+  // timer kort bij een nieuwe reden kunnen staan. Deze tabel maakt dat onmogelijk.
+  const COOLING_START_BLOCK_COUNTDOWN_REASONS = new Set([
+    "Cooling minimum off-time",
+    "Compressor restart protection",
+    "Startup inhibit after reboot",
+    "Compressor start limit (6/hour)",
+  ]);
+
   export function formatCoolingStartBlockReason(reason, remainingS) {
     const value = String(reason || "").trim();
     if (!value) {
@@ -68,9 +79,10 @@ import { state } from "../core/state.js";
     }
     const label = COOLING_START_BLOCK_LABELS[value] || value;
     // Firmwarecontract: tijdgebonden redenen dragen altijd remaining_s > 0,
-    // de overige altijd 0. De UI hoeft dus geen redentabel bij te houden.
+    // de overige altijd 0. De tabel hierboven vangt bovendien scheve
+    // reason/timer-paren bij een overgang af: nooit een verzonnen countdown.
     const remaining = Math.ceil(Number(remainingS) || 0);
-    if (remaining > 0) {
+    if (remaining > 0 && COOLING_START_BLOCK_COUNTDOWN_REASONS.has(value)) {
       return `${label} — nog ${formatCoolingStartBlockCountdown(remaining)}`;
     }
     return label;
@@ -100,7 +112,8 @@ import { state } from "../core/state.js";
       : Number.NaN;
     const remainingS = Number.isFinite(remainingRaw) && remainingRaw > 0 ? Math.ceil(remainingRaw) : 0;
     const blocked = reasonRaw !== COOLING_START_BLOCK_REASON_READY;
-    const hasCountdown = blocked && remainingS > 0;
+    const hasCountdown = blocked && remainingS > 0 &&
+      COOLING_START_BLOCK_COUNTDOWN_REASONS.has(reasonRaw);
     return {
       available: true,
       blocked,

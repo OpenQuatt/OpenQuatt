@@ -147,16 +147,62 @@ static void test_actuator_aggregate_keeps_first_refuse_regardless_of_order() {
   assert(aggregate_actuator_slot(hp1_blocked).reason == HP_RESTART);
 }
 
-static void test_startup_override_names_inhibit_with_real_remaining() {
-  // After a reboot the inhibited HP never reaches the actuator preflight, so
-  // the dispatch OTHER verdict is resolved from the manager's own flags.
-  assert(resolve_startup_override(true, false, 180000U, 0U).reason == STARTUP_INHIBIT);
-  assert(resolve_startup_override(true, false, 180000U, 0U).remaining_s == 180);
-  assert(resolve_startup_override(false, true, 0U, 210000U).reason == STARTUP_INHIBIT);
-  assert(resolve_startup_override(false, true, 0U, 210000U).remaining_s == 210);
-  // No inhibit: OTHER stands, without an invented countdown.
-  assert(resolve_startup_override(false, false, 0U, 0U).reason == OTHER);
-  assert(resolve_startup_override(false, false, 0U, 0U).remaining_s == 0);
+static DispatchInput inhibited_input(uint32_t hp1_remaining_ms, bool hp1_must_stop = false) {
+  DispatchInput in = active_input();
+  // Inhibited HPs surface as unavailable candidates (requests are zeroed
+  // upstream), so the candidate is dead while the inhibit flags name it.
+  in.hp1.candidate = {0, false, hp1_must_stop, false};
+  in.hp1_startup_inhibited = true;
+  in.hp1_startup_remaining_ms = hp1_remaining_ms;
+  return in;
+}
+
+static void test_startup_inhibit_reports_real_remaining() {
+  DispatchState state;
+  auto in = inhibited_input(180000U);
+  const auto out = update_dispatch(in, state);
+  assert(out.start_blocked);
+  assert(out.start_status_reason == STARTUP_INHIBIT);
+  assert(out.start_status_remaining_s == 180);
+}
+
+static void test_startup_duo_reports_earliest_deployable_hp() {
+  DispatchState state;
+  auto in = inhibited_input(30000U);
+  in.duo = true;
+  in.hp2.candidate = {0, false, false, false};
+  in.hp2.has_allowed_level = true;
+  in.hp2_startup_inhibited = true;
+  in.hp2_startup_remaining_ms = 190000U;
+  // HP1 frees up after 30 s and can otherwise serve: no 3:10 display.
+  const auto out = update_dispatch(in, state);
+  assert(out.start_blocked);
+  assert(out.start_status_reason == STARTUP_INHIBIT);
+  assert(out.start_status_remaining_s == 30);
+}
+
+static void test_startup_skips_hp_that_could_never_serve() {
+  DispatchState state;
+  auto in = inhibited_input(30000U, true);
+  in.duo = true;
+  in.hp2.candidate = {0, false, false, false};
+  in.hp2.has_allowed_level = true;
+  in.hp2_startup_inhibited = true;
+  in.hp2_startup_remaining_ms = 190000U;
+  // HP1 inhibited but must-stop: HP2's 190 s is the honest countdown.
+  const auto out = update_dispatch(in, state);
+  assert(out.start_blocked);
+  assert(out.start_status_reason == STARTUP_INHIBIT);
+  assert(out.start_status_remaining_s == 190);
+}
+
+static void test_startup_without_deployable_hp_has_no_countdown() {
+  DispatchState state;
+  auto in = inhibited_input(30000U, true);
+  const auto out = update_dispatch(in, state);
+  assert(out.start_blocked);
+  assert(out.start_status_reason == STARTUP_INHIBIT);
+  assert(out.start_status_remaining_s == 0);
 }
 
 static void test_merge_prefers_actuator_refuse() {
@@ -178,7 +224,10 @@ int main() {
   test_no_demand_reports_none();
   test_actuator_refuse_mapping();
   test_actuator_aggregate_keeps_first_refuse_regardless_of_order();
-  test_startup_override_names_inhibit_with_real_remaining();
+  test_startup_inhibit_reports_real_remaining();
+  test_startup_duo_reports_earliest_deployable_hp();
+  test_startup_skips_hp_that_could_never_serve();
+  test_startup_without_deployable_hp_has_no_countdown();
   test_merge_prefers_actuator_refuse();
   return 0;
 }

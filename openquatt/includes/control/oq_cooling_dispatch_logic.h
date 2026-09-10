@@ -15,6 +15,11 @@ struct DispatchInput {
   int raw_demand = 0, demand_max = 10, power_cap = 10, stored_owner = 0;
   bool cooling_mode = false, duo = false, lead_is_hp1 = true;
   bool stop_confirmation_pending = false;
+  // Startup-inhibit state from the incident manager. Inhibited HPs surface
+  // here as unavailable candidates (their requests are zeroed upstream), so
+  // these flags name that cause with its real remaining time.
+  bool hp1_startup_inhibited = false, hp2_startup_inhibited = false;
+  uint32_t hp1_startup_remaining_ms = 0, hp2_startup_remaining_ms = 0;
   DispatchHpInput hp1, hp2;
 };
 struct DispatchState {
@@ -141,9 +146,28 @@ inline DispatchOutput update_dispatch(const DispatchInput& in, DispatchState& st
         out.start_status_reason = oq_cooling_start_status::HP_RESTART;
         out.start_status_remaining_s = best_s;
       } else {
-        // Candidate, frequency-level or incident block without a known
-        // remainder: report the block, never an invented countdown.
-        out.start_status_reason = oq_cooling_start_status::OTHER;
+        // No timed cause: an inhibited HP that is otherwise deployable names
+        // the earliest release (single: that HP; Duo: the minimum). An
+        // inhibited HP that could never serve yields the reason without a
+        // countdown rather than a misleading time; anything else is OTHER.
+        uint32_t best_ms = UINT32_MAX;
+        bool inhibited_seen = false;
+        const auto note_inhibit = [&](bool inhibited, const DispatchHpInput& hp, uint32_t remaining_ms) {
+          if (!inhibited) return;
+          inhibited_seen = true;
+          const bool deployable = !hp.candidate.must_stop && !hp.candidate.link_suspect && hp.has_allowed_level;
+          if (deployable && remaining_ms < best_ms) best_ms = remaining_ms;
+        };
+        note_inhibit(in.hp1_startup_inhibited, in.hp1, in.hp1_startup_remaining_ms);
+        if (in.duo) note_inhibit(in.hp2_startup_inhibited, in.hp2, in.hp2_startup_remaining_ms);
+        if (inhibited_seen) {
+          out.start_status_reason = oq_cooling_start_status::STARTUP_INHIBIT;
+          out.start_status_remaining_s = best_ms == UINT32_MAX ? 0 : oq_cooling_start_status::ceil_seconds(best_ms);
+        } else {
+          // Candidate, frequency-level or incident block without a known
+          // remainder: report the block, never an invented countdown.
+          out.start_status_reason = oq_cooling_start_status::OTHER;
+        }
       }
     }
   }

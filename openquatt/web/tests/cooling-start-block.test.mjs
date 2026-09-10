@@ -124,14 +124,37 @@ test("gepubliceerde herstartbeveiliging toont blokkade met juiste resterende tij
   assert.equal(model.statusTitle, "Wacht op herstartbeveiliging");
   assert.match(model.statusCopy, /Wachten op compressor-herstartbeveiliging — nog 3:10/);
 
+  // Eén primair oppervlak: het koelregelmodel. Kaart en Systeem-signaal liegen
+  // niet over draaien, maar tonen de blokkade niet zelf.
   const card = coolingCard();
-  assert.equal(card.status, "Wachten");
-  assert.match(card.copy, /Wachten op compressor-herstartbeveiliging — nog 3:10/);
-  assert.equal(card.tone, "orange");
+  assert.equal(card.status, "Aan");
+  assert.match(card.copy, /Er is koelvraag\. Koeling start zodra dat kan/);
 
   const system = getOverviewSystemSignal();
-  assert.match(system.value, /Wachten op compressor-herstartbeveiliging — nog 3:10/);
-  assert.equal(system.tone, "orange");
+  assert.equal(system.value, "Normaal");
+});
+
+test("scheve reason/timer-paren tonen nooit een verzonnen countdown", () => {
+  // Bij een overgang kan een nieuwe reden kort met een oude timer staan.
+  resetOverviewState(
+    coolingBaseEntities({
+      coolingStartBlockReason: textEntity("Waiting for confirmed cooling stop"),
+      coolingStartBlockRemaining: numberEntity(60, "s"),
+    }),
+  );
+  const confirm = getCoolingStartBlockModel();
+  assert.equal(confirm.hasCountdown, false);
+  assert.equal(confirm.display, "Wachten op bevestigde koelstop");
+
+  resetOverviewState(
+    coolingBaseEntities({
+      coolingStartBlockReason: textEntity("Compressor start blocked"),
+      coolingStartBlockRemaining: numberEntity(60, "s"),
+    }),
+  );
+  const other = getCoolingStartBlockModel();
+  assert.equal(other.hasCountdown, false);
+  assert.equal(other.display, "Compressorstart geblokkeerd");
 });
 
 test("koel-herstart, startlimiet en bevestigde stop zijn onderscheiden", () => {

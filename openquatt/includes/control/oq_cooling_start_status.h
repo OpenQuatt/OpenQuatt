@@ -71,21 +71,6 @@ inline Status map_actuator_refuse(bool cooling_rest, bool hp_rest, bool start_li
 // processing order: the first refusing HP wins, deterministically.
 inline Status aggregate_actuator_slot(Status hp1, Status hp2 = Status{}) { return hp1.reason != NONE ? hp1 : hp2; }
 
-// Names a startup inhibit that the dispatch can only see as an unavailable
-// candidate: inhibited HPs get their requests zeroed upstream and never reach
-// the actuator preflight, so the incident manager's own flags and remaining
-// time resolve the underlying cause here. Call only for an OTHER verdict;
-// timed verdicts already name a genuine block.
-inline Status resolve_startup_override(bool hp1_inhibited, bool hp2_inhibited, uint32_t hp1_remaining_ms,
-                                       uint32_t hp2_remaining_ms) {
-  uint32_t remaining_ms = hp1_inhibited ? hp1_remaining_ms : 0;
-  if (hp2_inhibited && hp2_remaining_ms > remaining_ms) remaining_ms = hp2_remaining_ms;
-  if (!hp1_inhibited && !hp2_inhibited) {
-    return Status{OTHER, 0};
-  }
-  return Status{STARTUP_INHIBIT, ceil_seconds(remaining_ms)};
-}
-
 // Merges the dispatch slot with the actuator slot. Both writers refresh their
 // slot every tick, so this is order-independent: the actuator is the final
 // gate and wins whenever it refuses; otherwise the dispatch verdict stands.
