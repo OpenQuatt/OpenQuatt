@@ -19,9 +19,13 @@ test("packed rows vergroten de retentie van de volledige dev-debugset", () => {
   );
   const capacity = Math.floor((1024 * 1024) / rowBytes);
 
-  assert.equal(rowBytes, 603);
-  assert.equal(capacity, 1738);
-  assert.ok((capacity - 1) * 10 >= 4.8 * 60 * 60);
+  assert.equal(rowBytes, 618);
+  assert.equal(capacity, 1696);
+  // Issue #642 voegt vijf diagnosevelden toe (effectieve startblokkade +
+  // resterende tijd + per-HP herstartbescherming + stopbevestiging), zodat een
+  // geblokkeerde koelstart achteraf verklaarbaar is. Dat kost ~7 min op een
+  // buffer van ruim 4,7 uur; nog steeds ruim voldoende voor meerdaagse diagnose.
+  assert.ok((capacity - 1) * 10 >= 4.7 * 60 * 60);
   assert.match(header, /PsramBuffer<uint8_t> samples_/);
   assert.match(source, /value_size_for_type_/);
   assert.match(source, /sample_row_bytes/);

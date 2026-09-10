@@ -37,9 +37,119 @@ import { state } from "../core/state.js";
       "Fallback cooling active": "Dauwpuntsbenadering actief",
       "Fallback corrected by warm night": "Dauwpuntsbenadering gecorrigeerd door warme nacht",
       "Fallback blocked by tropical night": "Dauwpuntsbenadering geblokkeerd door tropische nacht",
+      ...COOLING_START_BLOCK_LABELS,
     };
 
     return labels[value] || value;
+  }
+
+  export const COOLING_START_BLOCK_REASON_READY = "Ready";
+  export const COOLING_START_BLOCK_LABELS = {
+    Ready: "Gereed om te koelen",
+    "Cooling minimum off-time": "Wachten op koel-herstartbeveiliging",
+    "Waiting for confirmed cooling stop": "Wachten op bevestigde koelstop",
+    "Compressor restart protection": "Wachten op compressor-herstartbeveiliging",
+    "Startup inhibit after reboot": "Wachten op opstartvrijgave na herstart",
+    "Compressor start limit (6/hour)": "Startlimiet bereikt (6/uur)",
+    "Compressor start blocked": "Compressorstart geblokkeerd",
+  };
+
+  const COOLING_START_BLOCK_TIME_BOUND_REASONS = new Set([
+    "Cooling minimum off-time",
+    "Compressor restart protection",
+    "Startup inhibit after reboot",
+    "Compressor start limit (6/hour)",
+  ]);
+
+  export function isCoolingStartBlockTimeBound(reason) {
+    return COOLING_START_BLOCK_TIME_BOUND_REASONS.has(String(reason || "").trim());
+  }
+
+  export function formatCoolingStartBlockCountdown(seconds) {
+    const total = Math.max(0, Math.ceil(Number(seconds) || 0));
+    const minutes = Math.floor(total / 60);
+    const rest = total % 60;
+    return `${minutes}:${String(rest).padStart(2, "0")}`;
+  }
+
+  export function formatCoolingStartBlockReason(reason, remainingS) {
+    const value = String(reason || "").trim();
+    if (!value) {
+      return "";
+    }
+    const label = COOLING_START_BLOCK_LABELS[value] || value;
+    const remaining = Math.ceil(Number(remainingS) || 0);
+    if (remaining > 0 && isCoolingStartBlockTimeBound(value)) {
+      return `${label} — nog ${formatCoolingStartBlockCountdown(remaining)}`;
+    }
+    return label;
+  }
+
+  export function getCoolingCompressorRunning() {
+    const hp1 = getEntityNumericValue("hp1Compressor");
+    const hp2 = getEntityNumericValue("hp2Compressor");
+    if (!Number.isNaN(hp1) && hp1 > 0) {
+      return true;
+    }
+    if (!Number.isNaN(hp2) && hp2 > 0) {
+      return true;
+    }
+    const freq1 = getEntityNumericValue("hp1Freq");
+    if (!Number.isNaN(freq1) && freq1 > 0) {
+      return true;
+    }
+    const freq2 = getEntityNumericValue("hp2Freq");
+    if (!Number.isNaN(freq2) && freq2 > 0) {
+      return true;
+    }
+    return false;
+  }
+
+  export function getCoolingStartBlockModel() {
+    if (!hasEntity("coolingStartBlockReason")) {
+      return { available: false, blocked: false, reasonRaw: "", remainingS: 0, hasCountdown: false, display: "" };
+    }
+    const reasonRaw = String(getEntityStateText("coolingStartBlockReason", "") || "").trim();
+    if (!reasonRaw) {
+      return { available: true, blocked: false, reasonRaw: "", remainingS: 0, hasCountdown: false, display: "" };
+    }
+    const remainingRaw = hasEntity("coolingStartBlockRemaining")
+      ? getEntityNumericValue("coolingStartBlockRemaining")
+      : Number.NaN;
+    const remainingS = Number.isFinite(remainingRaw) && remainingRaw > 0 ? Math.ceil(remainingRaw) : 0;
+    const blocked = reasonRaw !== COOLING_START_BLOCK_REASON_READY;
+    const hasCountdown = blocked && remainingS > 0 && isCoolingStartBlockTimeBound(reasonRaw);
+    return {
+      available: true,
+      blocked,
+      reasonRaw,
+      remainingS: hasCountdown ? remainingS : 0,
+      hasCountdown,
+      display: blocked ? formatCoolingStartBlockReason(reasonRaw, remainingS) : formatCoolingBlockReason(reasonRaw),
+    };
+  }
+
+  export function getCoolingDuoWaitingModel() {
+    if (!hasEntity("hp1MinimumOffRemaining") && !hasEntity("hp2MinimumOffRemaining")) {
+      return null;
+    }
+    const hp1Running = getEntityNumericValue("hp1Compressor") > 0 || getEntityNumericValue("hp1Freq") > 0;
+    const hp2Running = hasEntity("hp2Compressor") &&
+      (getEntityNumericValue("hp2Compressor") > 0 || getEntityNumericValue("hp2Freq") > 0);
+    if (!hasEntity("hp2Compressor") || (hp1Running && hp2Running) || (!hp1Running && !hp2Running)) {
+      return null;
+    }
+    const waitingHp = hp1Running ? 2 : 1;
+    const remainingRaw = getEntityNumericValue(waitingHp === 2 ? "hp2MinimumOffRemaining" : "hp1MinimumOffRemaining");
+    if (!Number.isFinite(remainingRaw) || remainingRaw <= 0) {
+      return null;
+    }
+    const remainingS = Math.ceil(remainingRaw);
+    return {
+      waitingHp,
+      remainingS,
+      display: `HP${waitingHp} wacht nog ${formatCoolingStartBlockCountdown(remainingS)} op compressor-herstartbeveiliging`,
+    };
   }
 
   export function getCoolingScheduleStatus() {

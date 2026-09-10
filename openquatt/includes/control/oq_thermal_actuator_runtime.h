@@ -160,6 +160,16 @@ class Runtime {
     };
   }
 
+  // Read-only start-quota remaining for the cooling start-block diagnostics
+  // (issue #642). The diagnostics live in oq_cooling_start_block_runtime.h so
+  // this actuator keeps only command state; timing behavior is unchanged.
+  uint32_t start_limit_remaining_ms(bool is_hp1, uint32_t now_ms) {
+#if !OQ_TOPOLOGY_DUO
+    if (!is_hp1) return 0U;
+#endif
+    return this->start_limits_[is_hp1 ? 0 : 1].remaining_ms(now_ms);
+  }
+
   void publish_optimizer_reason(const char* reason) {
 #if OQ_TOPOLOGY_DUO
     const std::string value(reason);

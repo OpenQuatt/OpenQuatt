@@ -2054,6 +2054,7 @@
     });
     setEntity("text_sensor", "Control Mode (Label)", { state: "CM98" });
     setEntity("text_sensor", "Cooling Block Reason", { state: "Ready", value: "Ready" });
+    setEntity("text_sensor", "Cooling Start Block Reason", { state: "Ready", value: "Ready" });
     setEntity("text_sensor", "Cooling Guard Mode", { state: "Dew point", value: "Dew point" });
     setEntity("text_sensor", "Flow Mode", { state: "Adaptive" });
     setEntity("select", "Behavior", {
@@ -2333,6 +2334,9 @@
       ["Cooling Minimum Safe Supply Temp", 18.1, "°C"],
       ["Cooling Effective Minimum Supply Temp", 18.1, "°C"],
       ["Cooling Minimum Off Time Remaining", 0, "s"],
+      ["Cooling Start Block Remaining", 0, "s"],
+      ["HP1 - Minimum Off Remaining", 0, "s"],
+      ["HP2 - Minimum Off Remaining", 0, "s"],
       ["Cooling Fallback Night Minimum Outdoor Temp", 14.3, "°C"],
       ["Cooling Fallback Minimum Supply Temp", 19.0, "°C"],
       ["Cooling Supply Target", 18.0, "°C"],
@@ -2406,6 +2410,7 @@
       ["Heating blocked by thermostat", false],
       ["Cooling Request Active", false],
       ["Cooling Permitted", false],
+      ["Cooling Stop Confirmation Pending", false],
       ["Boiler active", false],
       ["Boiler command valid", true],
       ["Boiler command active", false],
@@ -3588,6 +3593,10 @@
       setBinary("Cooling Request Active", true);
       setBinary("Cooling Permitted", true);
       setText("text_sensor", "Cooling Block Reason", "Ready");
+      setText("text_sensor", "Cooling Start Block Reason", "Ready");
+      setNumber("Cooling Start Block Remaining", 0, "s");
+      setNumber("HP1 - Minimum Off Remaining", 0, "s");
+      setNumber("HP2 - Minimum Off Remaining", 0, "s");
       setNumber("HA - Cooling Dew Point", limited ? wave(18.4, 0.12, 0.2) : wave(15.9, 0.12, 0.2), "°C");
       setBinary("HA - Cooling Dew Point Valid", true);
       setNumber("MQTT Cooling Dew Point", limited ? wave(18.1, 0.12) : wave(16.2, 0.12), "°C");
@@ -3706,6 +3715,10 @@
         }
       }
       if (startupWait) {
+        setText("text_sensor", "Cooling Start Block Reason", "Startup inhibit after reboot");
+        setNumber("Cooling Start Block Remaining", 180, "s");
+        setNumber("HP1 - Minimum Off Remaining", 180, "s");
+        setNumber("HP2 - Minimum Off Remaining", 210, "s");
         setNumber("Cooling Power Input", 0, "W");
         setNumber("Total Power Input", single ? 46 : 58, "W");
         setNumber("Total Cooling Power", 0, "W");
