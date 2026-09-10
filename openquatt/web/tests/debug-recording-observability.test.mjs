@@ -97,10 +97,9 @@ const ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS = [
   "boilerPowerTestResultQuality",
 ];
 
-// Only the branch discriminator: curveSupplyTarget (local) and
-// strategySupplyTarget (effective) are already recorded, so this single
-// text field tells a recording which branch was driving.
 const ISSUE_649_OBSERVABILITY_KEYS = [
+  "heatingSupplyTargetSource",
+  "heatingSupplyTargetSelected",
   "heatingSupplyTargetActiveSource",
 ];
 

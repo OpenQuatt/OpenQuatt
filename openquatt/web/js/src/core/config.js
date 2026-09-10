@@ -1487,9 +1487,8 @@
     "boilerStartThermalGuard",
     "boilerStartThermalSafeCeiling",
     "boilerPowerTestResultQuality",
-    // Only the branch discriminator: the local curve target (curveSupplyTarget)
-    // and the effective target (strategySupplyTarget) are already recorded, so
-    // this single field tells a recording which of the two was driving.
+    "heatingSupplyTargetSource",
+    "heatingSupplyTargetSelected",
     "heatingSupplyTargetActiveSource",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
