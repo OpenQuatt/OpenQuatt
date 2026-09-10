@@ -17,13 +17,17 @@ class FactoryResetContractTest(unittest.TestCase):
         self.assertIn("args: [x, target]", COMMON)
 
     def test_factory_reset_button_is_exposed_to_home_assistant(self) -> None:
-        self.assertIn("platform: factory_reset", COMMON)
-        self.assertIn("id: factory_reset_button", COMMON)
-        self.assertIn(
-            "button:\n  - id: !extend factory_reset_button\n"
-            "    internal: false\n"
-            "    entity_category: config",
-            RUNTIME_PACKAGE,
+        button = (
+            '  - platform: factory_reset\n'
+            '    id: factory_reset_button\n'
+            '    name: "Factory reset"\n'
+            '    entity_category: config'
+        )
+        self.assertIn(button, COMMON)
+        self.assertNotIn("!extend factory_reset_button", RUNTIME_PACKAGE)
+        self.assertNotIn(
+            "id: factory_reset_button\n    internal: true",
+            COMMON,
         )
 
 
