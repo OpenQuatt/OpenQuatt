@@ -3733,6 +3733,7 @@
           setNumber("HP2 - Power Input", 5.2, "W");
           setNumber("HP2 - Cooling Power", 0, "W");
           setNumber("HP2 - Compressor frequency", 0, "Hz");
+          setNumber("HP2 compressor level", 0, "");
           setNumber("HP2 - Fan speed", 0, "rpm");
           setText("text_sensor", "HP2 - Working Mode Label", "Standby");
           setBinary("HP2 - 4-Way valve", false);
