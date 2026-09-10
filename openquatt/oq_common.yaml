@@ -106,14 +106,6 @@ provisioning:
     then:
       - logger.log: "API provisioning window closed; power-cycle to reopen it"
 
-factory_reset:
-  resets_required: 3
-  max_delay: 10s
-  on_increment:
-    - logger.log:
-        format: "Fast power cycle count now %u, target %u"
-        args: [x, target]
-
 ota:
   - platform: esphome
     on_begin:
@@ -1163,71 +1155,71 @@ button:
     on_press:
       then:
         - if:
-          condition:
-            lambda: |-
-              // Fail-closed: alleen exact OpenQuatt/OpenQuatt/releases/download/pr-<nr>/
-              // met exact de manifestnaam voor hardware en topologie. Voor
-              // uniforme HCQ de canonieke naam zonder verbindingssuffix.
-              const std::string url = id(oq_firmware_test_manifest_url).state;
-              const std::string prefix =
-                  "https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-";
-              std::string hardware_slug;
-              const std::string hardware = "${oq_hardware_profile}";
-              if (hardware == "waveshare") {
-                hardware_slug = "waveshare";
-              } else if (hardware == "heatpump_listener") {
-                hardware_slug = "heatpump-listener";
-              } else if (hardware == "heatpump_controller_q") {
-                hardware_slug = "heatpump-controller-q";
-              } else {
-                ESP_LOGW("oq_fw", "Test firmware rejected: unsupported hardware profile.");
-                id(oq_firmware_update_status).publish_state("Error");
-                return false;
-              }
-              #if OQ_TOPOLOGY_DUO
-              const std::string topology = "duo";
-              #else
-              const std::string topology = "single";
-              #endif
-              const std::string artifact_base =
-                  "openquatt-" + hardware_slug + "-" + topology;
-              const std::string expected_manifest =
-                  artifact_base + "${oq_artifact_connection_suffix}-ota.manifest.json";
-              if (url.rfind(prefix, 0) != 0) {
-                ESP_LOGW("oq_fw", "Test firmware rejected: invalid PR manifest prefix.");
-                id(oq_firmware_update_status).publish_state("Error");
-                return false;
-              }
-              std::string rest = url.substr(prefix.size());
-              auto slash = rest.find('/');
-              if (slash == std::string::npos) {
-                ESP_LOGW("oq_fw", "Test firmware rejected: invalid PR manifest URL.");
-                id(oq_firmware_update_status).publish_state("Error");
-                return false;
-              }
-              std::string pr = rest.substr(0, slash);
-              std::string file = rest.substr(slash + 1);
-              bool valid = !pr.empty() && pr.size() <= 6 && file == expected_manifest;
-              if (valid) {
-                for (char c : pr) {
-                  if (c < '0' || c > '9') {
+            condition:
+              lambda: |-
+                // Fail-closed: alleen exact OpenQuatt/OpenQuatt/releases/download/pr-<nr>/
+                // met exact de manifestnaam voor hardware en topologie. Voor
+                // uniforme HCQ de canonieke naam zonder verbindingssuffix.
+                const std::string url = id(oq_firmware_test_manifest_url).state;
+                const std::string prefix =
+                    "https://github.com/OpenQuatt/OpenQuatt/releases/download/pr-";
+                std::string hardware_slug;
+                const std::string hardware = "${oq_hardware_profile}";
+                if (hardware == "waveshare") {
+                  hardware_slug = "waveshare";
+                } else if (hardware == "heatpump_listener") {
+                  hardware_slug = "heatpump-listener";
+                } else if (hardware == "heatpump_controller_q") {
+                  hardware_slug = "heatpump-controller-q";
+                } else {
+                  ESP_LOGW("oq_fw", "Test firmware rejected: unsupported hardware profile.");
+                  id(oq_firmware_update_status).publish_state("Error");
+                  return false;
+                }
+                #if OQ_TOPOLOGY_DUO
+                const std::string topology = "duo";
+                #else
+                const std::string topology = "single";
+                #endif
+                const std::string artifact_base =
+                    "openquatt-" + hardware_slug + "-" + topology;
+                const std::string expected_manifest =
+                    artifact_base + "${oq_artifact_connection_suffix}-ota.manifest.json";
+                if (url.rfind(prefix, 0) != 0) {
+                  ESP_LOGW("oq_fw", "Test firmware rejected: invalid PR manifest prefix.");
+                  id(oq_firmware_update_status).publish_state("Error");
+                  return false;
+                }
+                std::string rest = url.substr(prefix.size());
+                auto slash = rest.find('/');
+                if (slash == std::string::npos) {
+                  ESP_LOGW("oq_fw", "Test firmware rejected: invalid PR manifest URL.");
+                  id(oq_firmware_update_status).publish_state("Error");
+                  return false;
+                }
+                std::string pr = rest.substr(0, slash);
+                std::string file = rest.substr(slash + 1);
+                bool valid = !pr.empty() && pr.size() <= 6 && file == expected_manifest;
+                if (valid) {
+                  for (char c : pr) {
+                    if (c < '0' || c > '9') {
+                      valid = false;
+                      break;
+                    }
+                  }
+                  if (valid && pr[0] == '0') {
                     valid = false;
-                    break;
                   }
                 }
-                if (valid && pr[0] == '0') {
-                  valid = false;
+                if (!valid) {
+                  ESP_LOGW("oq_fw", "Test firmware rejected: invalid PR manifest URL for this build.");
+                  id(oq_firmware_update_status).publish_state("Error");
+                  return false;
                 }
-              }
-              if (!valid) {
-                ESP_LOGW("oq_fw", "Test firmware rejected: invalid PR manifest URL for this build.");
-                id(oq_firmware_update_status).publish_state("Error");
-                return false;
-              }
-              return !id(oq_runtime_polling_paused).state
-                  && !id(oq_firmware_target_install_active);
-          then:
-            - script.execute: oq_install_firmware_test_manifest_deferred
+                return !id(oq_runtime_polling_paused).state
+                    && !id(oq_firmware_target_install_active);
+            then:
+              - script.execute: oq_install_firmware_test_manifest_deferred
 
   - platform: template
     name: Restart
@@ -1346,11 +1338,6 @@ button:
           else:
             - lambda: |-
                 ESP_LOGW("oq_fw", "Firmware install request ignored because an OTA operation is already active.");
-
-  - platform: factory_reset
-    id: factory_reset_button
-    name: "Factory reset"
-    entity_category: config
 
 switch:
   - platform: template
