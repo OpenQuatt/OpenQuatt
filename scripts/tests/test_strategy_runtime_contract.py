@@ -67,8 +67,9 @@ class StrategyRuntimeContractTest(unittest.TestCase):
             self.assertIn(marker, HOST_TESTS)
 
     def test_runtime_sources_remain_bounded(self) -> None:
-        # Issue #642 copies the dispatch verdict into status globals here.
-        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1260)
+        # Issue #642 copies the dispatch verdict (plus startup-inhibit naming
+        # from the incident manager) into status globals here.
+        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1280)
         self.assertLessEqual(len(HEAT_INTENT_RUNTIME.splitlines()), 90)
         self.assertLessEqual(len(LOGIC.splitlines()), 60)
 

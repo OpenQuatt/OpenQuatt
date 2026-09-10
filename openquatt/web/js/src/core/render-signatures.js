@@ -68,8 +68,6 @@ export function getOverviewControlsRenderSignature() {
     getEntitySignatureFragment("coolingStartBlockRemaining"),
     getEntitySignatureFragment("hp1Compressor"),
     getEntitySignatureFragment("hp2Compressor"),
-    getEntitySignatureFragment("hp1Freq"),
-    getEntitySignatureFragment("hp2Freq"),
     getEntitySignatureFragment("flowMode"),
     getEntitySignatureFragment("silentActive"),
   ].join("|");

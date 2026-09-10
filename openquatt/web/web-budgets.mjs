@@ -31,15 +31,15 @@ export const WEB_BUNDLE_BUDGETS = [
     // relevant-source diagnostics, warnings and stable keyboard focus,
     // frequency-based day/silent limits and exclusion ranges per ODU,
     // and the grouped issue-541 cooling-window settings block.
-    // plus the issue-642 effective cooling start block (shared cooling vs
-    // general restart protection with M:SS countdown, preflow/active
-    // distinction and duo waiting note) on the existing Ready location.
+    // plus the issue-642 published cooling start block (reason + M:SS
+    // countdown on the existing Ready location, preflow/active distinction).
     // plus bounded webserver-log history polling (single scheduler, retry
     // back-off and authoritative refresh without a second /events stream).
     // Includes stable native time editing and confirmed, stale-poll-safe saves.
     // Compact pipeline plus the bottom-plate editor/backup: ~914 kB.
-    // Keep ~5 kB margin; do not restore the pre-compaction 1 MB ceiling.
-    raw: 928_000,
+    // Keep ~2 kB margin over the current ~922 kB; do not restore the
+    // pre-compaction 1 MB ceiling.
+    raw: 924_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

@@ -16,7 +16,6 @@ const {
   formatCoolingStartBlockCountdown,
   formatCoolingStartBlockReason,
   getCoolingStartBlockModel,
-  isCoolingStartBlockTimeBound,
 } = await import("../js/src/settings/cooling.js");
 const {
   getCoolingOverviewModel,
@@ -78,8 +77,6 @@ function coolingBaseEntities(overrides = {}) {
     flowMode: textEntity("Adaptive"),
     hp1Compressor: numberEntity(0, ""),
     hp2Compressor: numberEntity(0, ""),
-    hp1Freq: numberEntity(0, "Hz"),
-    hp2Freq: numberEntity(0, "Hz"),
     silentModeOverride: textEntity("Off"),
     silentActive: binaryEntity(false),
     ...overrides,
@@ -101,14 +98,13 @@ test("aftellen gebruikt M:SS zonder verzonnen tijd bij onbekende blokkade", () =
     formatCoolingStartBlockReason("Cooling minimum off-time", 310),
     "Wachten op koel-herstartbeveiliging — nog 5:10",
   );
+  // Firmwarecontract: tijdgebonden redenen dragen altijd remaining_s > 0, de
+  // overige altijd 0. Deze combinaties stuurt de firmware dus nooit andersom.
   assert.equal(
-    formatCoolingStartBlockReason("Waiting for confirmed cooling stop", 600),
+    formatCoolingStartBlockReason("Waiting for confirmed cooling stop", 0),
     "Wachten op bevestigde koelstop",
   );
   assert.equal(formatCoolingStartBlockReason("Compressor start blocked", 0), "Compressorstart geblokkeerd");
-  assert.ok(isCoolingStartBlockTimeBound("Compressor restart protection"));
-  assert.ok(!isCoolingStartBlockTimeBound("Waiting for confirmed cooling stop"));
-  assert.ok(!isCoolingStartBlockTimeBound("Ready"));
 });
 
 test("gepubliceerde herstartbeveiliging toont blokkade met juiste resterende tijd", () => {
@@ -180,7 +176,6 @@ test("status en timer vervallen zodra de blokkade is opgeheven", () => {
   resetOverviewState(
     coolingBaseEntities({
       hp1Compressor: numberEntity(3, ""),
-      hp1Freq: numberEntity(33, "Hz"),
     }),
   );
   const model = getCoolingOverviewModel();
@@ -204,7 +199,7 @@ test("voorloop, herstartwacht en koelbedrijf zijn herkenbaar onderscheiden", () 
   assert.equal(getCoolingOverviewModel().statusTitle, "Wacht op herstartbeveiliging");
 
   resetOverviewState(
-    coolingBaseEntities({ hp1Compressor: numberEntity(3, ""), hp1Freq: numberEntity(33, "Hz") }),
+    coolingBaseEntities({ hp1Compressor: numberEntity(3, "") }),
   );
   const model = getCoolingOverviewModel();
   assert.ok(model.statusTitle !== "Wacht op herstartbeveiliging");
@@ -213,7 +208,7 @@ test("voorloop, herstartwacht en koelbedrijf zijn herkenbaar onderscheiden", () 
 
 test("draaiende HP betekent actief koelbedrijf zonder wachttekst", () => {
   resetOverviewState(
-    coolingBaseEntities({ hp1Compressor: numberEntity(3, ""), hp1Freq: numberEntity(33, "Hz") }),
+    coolingBaseEntities({ hp1Compressor: numberEntity(3, "") }),
   );
   const model = getCoolingOverviewModel();
   assert.doesNotMatch(model.statusCopy, /nog \d+:\d+/);
@@ -232,10 +227,14 @@ test("oude firmware zonder startblok-sensor valt terug op bestaande weergave", (
 });
 
 test("startblok-titel onderscheidt koel, algemeen, limiet en overig", () => {
-  assert.equal(getCoolingStartBlockTitle("Cooling minimum off-time"), "Wacht op koel-herstart");
-  assert.equal(getCoolingStartBlockTitle("Compressor restart protection"), "Wacht op herstartbeveiliging");
-  assert.equal(getCoolingStartBlockTitle("Startup inhibit after reboot"), "Wacht op herstartbeveiliging");
-  assert.equal(getCoolingStartBlockTitle("Compressor start limit (6/hour)"), "Startlimiet bereikt");
-  assert.equal(getCoolingStartBlockTitle("Waiting for confirmed cooling stop"), "Wacht op bevestigde koelstop");
-  assert.equal(getCoolingStartBlockTitle("Compressor start blocked"), "Start geblokkeerd");
+  for (const [reason, title] of [
+    ["Cooling minimum off-time", "Wacht op koel-herstart"],
+    ["Compressor restart protection", "Wacht op herstartbeveiliging"],
+    ["Startup inhibit after reboot", "Wacht op herstartbeveiliging"],
+    ["Compressor start limit (6/hour)", "Startlimiet bereikt"],
+    ["Waiting for confirmed cooling stop", "Wacht op bevestigde koelstop"],
+    ["Compressor start blocked", "Start geblokkeerd"],
+  ]) {
+    assert.equal(getCoolingStartBlockTitle(reason), title);
+  }
 });

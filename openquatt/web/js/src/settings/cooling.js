@@ -54,17 +54,6 @@ import { state } from "../core/state.js";
     "Compressor start blocked": "Compressorstart geblokkeerd",
   };
 
-  const COOLING_START_BLOCK_TIME_BOUND_REASONS = new Set([
-    "Cooling minimum off-time",
-    "Compressor restart protection",
-    "Startup inhibit after reboot",
-    "Compressor start limit (6/hour)",
-  ]);
-
-  export function isCoolingStartBlockTimeBound(reason) {
-    return COOLING_START_BLOCK_TIME_BOUND_REASONS.has(String(reason || "").trim());
-  }
-
   export function formatCoolingStartBlockCountdown(seconds) {
     const total = Math.max(0, Math.ceil(Number(seconds) || 0));
     const minutes = Math.floor(total / 60);
@@ -78,29 +67,22 @@ import { state } from "../core/state.js";
       return "";
     }
     const label = COOLING_START_BLOCK_LABELS[value] || value;
+    // Firmwarecontract: tijdgebonden redenen dragen altijd remaining_s > 0,
+    // de overige altijd 0. De UI hoeft dus geen redentabel bij te houden.
     const remaining = Math.ceil(Number(remainingS) || 0);
-    if (remaining > 0 && isCoolingStartBlockTimeBound(value)) {
+    if (remaining > 0) {
       return `${label} — nog ${formatCoolingStartBlockCountdown(remaining)}`;
     }
     return label;
   }
 
   export function getCoolingCompressorRunning() {
-    const hp1 = getEntityNumericValue("hp1Compressor");
-    const hp2 = getEntityNumericValue("hp2Compressor");
-    if (!Number.isNaN(hp1) && hp1 > 0) {
-      return true;
-    }
-    if (!Number.isNaN(hp2) && hp2 > 0) {
-      return true;
-    }
-    const freq1 = getEntityNumericValue("hp1Freq");
-    if (!Number.isNaN(freq1) && freq1 > 0) {
-      return true;
-    }
-    const freq2 = getEntityNumericValue("hp2Freq");
-    if (!Number.isNaN(freq2) && freq2 > 0) {
-      return true;
+    // De toegepaste compressorstand is leidend: niveau > 0 betekent draaien.
+    for (const key of ["hp1Compressor", "hp2Compressor"]) {
+      const level = getEntityNumericValue(key);
+      if (!Number.isNaN(level) && level > 0) {
+        return true;
+      }
     }
     return false;
   }
@@ -118,7 +100,7 @@ import { state } from "../core/state.js";
       : Number.NaN;
     const remainingS = Number.isFinite(remainingRaw) && remainingRaw > 0 ? Math.ceil(remainingRaw) : 0;
     const blocked = reasonRaw !== COOLING_START_BLOCK_REASON_READY;
-    const hasCountdown = blocked && remainingS > 0 && isCoolingStartBlockTimeBound(reasonRaw);
+    const hasCountdown = blocked && remainingS > 0;
     return {
       available: true,
       blocked,

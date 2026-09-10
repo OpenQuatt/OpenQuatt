@@ -131,6 +131,7 @@ class Runtime {
 #if OQ_TOPOLOGY_DUO
     this->record_transition(false, hp2_applied, config.now_ms, config.dt_ms);
 #endif
+    this->publish_cooling_start_status_();
   }
 
   CoolingWindow update_cooling_window(uint32_t now_ms, uint32_t minimum_off_ms, bool restart_by_minimum_off_time) {
@@ -638,37 +639,42 @@ class Runtime {
                                         ? candidate_reason
                                         : static_cast<uint8_t>(openquatt_decision_log::REASON_UNKNOWN),
                                     requested, candidate_aux_s);
-    this->publish_cooling_start_refuse_(is_hp1, requested, previous, applied, preflight, candidate_aux_s, cycle);
+    this->note_cooling_start_refuse_(is_hp1, requested, previous, applied, preflight, candidate_aux_s, cycle);
     this->write_level(is_hp1, command.physical_level, force_safe_write);
     return command.control_level;
   }
 
-  // Issue #642: publish this actuator's actual refuse verdict into the shared
-  // start-block slot. The dispatch owns cooling-window/confirmation/dispatch
+  // Issue #642: note this actuator's actual refuse verdict per HP. tick()
+  // publishes the aggregate once, so the diagnosis never depends on HP
+  // processing order. The dispatch owns cooling-window/confirmation/dispatch
   // blocks; this final gate owns incident restart, start quota and
-  // frequency/mode refuses. Rewritten deterministically every tick, so the
-  // merged entity can never go stale whatever the tick order is.
-  void publish_cooling_start_refuse_(bool is_hp1, int requested, int previous, int applied,
-                                     oq_thermal_actuator::PreflightBlock preflight, uint16_t aux_s,
-                                     const Cycle& cycle) {
-    uint8_t reason = oq_cooling_start_status::NONE;
-    uint16_t remaining_s = 0;
+  // frequency/mode refuses.
+  void note_cooling_start_refuse_(bool is_hp1, int requested, int previous, int applied,
+                                  oq_thermal_actuator::PreflightBlock preflight, uint16_t aux_s, const Cycle& cycle) {
+    auto& slot = this->cooling_a_refuse_[is_hp1 ? 0 : 1];
+    slot = {};
     const bool cooling = !cycle.manual_service_active &&
                          (cycle.request_mode_code == 1 || id(oq_control_mode_code) == 5) &&
                          id(cooling_enable_selected).has_state() && id(cooling_enable_selected).state &&
                          id(cooling_request_active).has_state() && id(cooling_request_active).state &&
                          id(cooling_permitted).has_state() && id(cooling_permitted).state;
     if (cooling && requested > 0 && previous == 0 && applied == 0) {
-      const auto status = oq_cooling_start_status::map_actuator_refuse(
+      slot = oq_cooling_start_status::map_actuator_refuse(
           preflight == oq_thermal_actuator::PreflightBlock::COOLING_REST,
           preflight == oq_thermal_actuator::PreflightBlock::HP_REST,
-          preflight == oq_thermal_actuator::PreflightBlock::START_LIMIT, aux_s,
-          id(oq_incident_manager).startup_inhibited(is_hp1 ? 1U : 2U));
-      reason = status.reason;
-      remaining_s = status.remaining_s;
+          preflight == oq_thermal_actuator::PreflightBlock::START_LIMIT, aux_s);
     }
-    id(oq_cooling_start_status_a_reason) = reason;
-    id(oq_cooling_start_status_a_remaining_s) = remaining_s;
+  }
+
+  void publish_cooling_start_status_() {
+#if OQ_TOPOLOGY_DUO
+    const auto status =
+        oq_cooling_start_status::aggregate_actuator_slot(this->cooling_a_refuse_[0], this->cooling_a_refuse_[1]);
+#else
+    const auto status = oq_cooling_start_status::aggregate_actuator_slot(this->cooling_a_refuse_[0]);
+#endif
+    id(oq_cooling_start_status_a_reason) = status.reason;
+    id(oq_cooling_start_status_a_remaining_s) = status.remaining_s;
   }
 
   int previous_applied_(bool is_hp1) const {
@@ -863,6 +869,7 @@ class Runtime {
 
   std::string last_optimizer_reason_;
   oq_thermal_actuator::CompressorStartLimit start_limits_[OQ_TOPOLOGY_DUO ? 2 : 1]{};
+  oq_cooling_start_status::Status cooling_a_refuse_[OQ_TOPOLOGY_DUO ? 2 : 1]{};
   std::string last_block_reasons_[2];
   std::string last_manual_guard_status_;
   bool last_defrost_seen_[2]{false, false};
