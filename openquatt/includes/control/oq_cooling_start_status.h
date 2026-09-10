@@ -43,9 +43,11 @@ inline uint16_t ceil_seconds(uint32_t remaining_ms) {
 }
 
 struct Status {
-  // Contract, enforced by every writer and covered by host tests: timed
-  // reasons always carry remaining_s > 0, the others always 0. The UI keys
-  // its countdown off remaining_s and needs no reason table.
+  // Contract, enforced by every writer and covered by host tests:
+  // remaining_s > 0 only when an exact remaining time is known. In
+  // particular an inhibited HP that could never serve still yields its
+  // reason, but without a countdown rather than a misleading time. The UI
+  // keys its countdown off remaining_s and needs no reason table.
   uint8_t reason = NONE;
   uint16_t remaining_s = 0;
 };
