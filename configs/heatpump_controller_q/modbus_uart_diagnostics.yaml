@@ -1,0 +1,34 @@
+# ==============================================================================
+# Temporary diagnostic package: raw Modbus UART capture
+# ==============================================================================
+# Captures TX and RX as hex after 4 ms of silence so malformed/partial frames can
+# be correlated with ESPHome's Modbus parser warnings. Intentionally avoids
+# UARTDebug::log_hex(), which adds a 10 ms delay after every emitted log line.
+
+logger:
+  initial_level: DEBUG
+
+uart:
+  - id: !extend uart_bus
+    debug:
+      direction: BOTH
+      dummy_receiver: false
+      after:
+        timeout: 4ms
+      sequence:
+        - lambda: |-
+            char hex_buf[512];
+            esphome::format_hex_pretty_to(
+              hex_buf,
+              sizeof(hex_buf),
+              bytes.data(),
+              bytes.size(),
+              ' '
+            );
+            ESP_LOGD(
+              "oq.modbus_raw",
+              "%s %u bytes: %s",
+              direction == esphome::uart::UART_DIRECTION_RX ? "RX" : "TX",
+              static_cast<unsigned>(bytes.size()),
+              hex_buf
+            );
