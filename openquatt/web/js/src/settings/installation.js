@@ -1016,6 +1016,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     const updateStatus = getUpdateStatus();
     const dateTime = formatDiagnosticsDateTime();
     const busyRestart = state.busyAction === "restartAction";
+    const busyFactoryReset = state.busyAction === "factoryResetButton";
     const activeConnection = hasEntity("connectionText")
       ? getEntityStateText("connectionText", "Niet verbonden").replace("Not connected", "Niet verbonden")
       : getConnectivityStatus();
@@ -1070,6 +1071,20 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
               ${busyRestart ? "Herstarten..." : "Herstarten"}
             </button>`,
           })}
+          ${hasEntity("factoryResetButton") ? renderSettingsSystemRow({
+            dataValue: "factory-reset",
+            label: "Factory reset",
+            value: "Terugzetten naar fabrieksinstellingen",
+            note: "Wist alle opgeslagen instellingen en koppelingen. De firmware blijft staan.",
+            action: `<button
+              class="oq-helper-button oq-helper-button--warning"
+              type="button"
+              data-oq-action="open-factory-reset-confirm"
+              ${busyFactoryReset ? "disabled" : ""}
+            >
+              ${busyFactoryReset ? "Resetten..." : "Factory reset…"}
+            </button>`,
+          }) : ""}
           ${hasEntity("statusLedsEnabled") ? `
             ${renderSettingsSystemRow({
               dataValue: "statusLeds",

@@ -49,6 +49,12 @@ const systemActionHandlers = {
     state.systemModal = "restart-confirm";
     render();
   },
+  "open-factory-reset-confirm": () => {
+    state.controlError = "";
+    state.controlNotice = "";
+    state.systemModal = "factory-reset-confirm";
+    render();
+  },
   "open-control-mode-override-confirm": (button) => {
     const option = String(button.dataset.controlModeOption || "");
     if (!["Force CM0", "Force CM1", "Force CM98"].includes(option)) {
@@ -178,6 +184,10 @@ const systemActionHandlers = {
     successNotice: "OpenQuatt wordt opnieuw opgestart. Wacht even tot de webinterface weer terugkomt.",
     errorPrefix: "Herstart mislukt",
     reconnectMode: "restart",
+  }),
+  "confirm-factory-reset": () => triggerNamedButton("factoryResetButton", {
+    successNotice: "De controller wordt teruggezet naar fabrieksinstellingen en herstart. Stel daarna alles opnieuw in.",
+    errorPrefix: "Factory reset mislukt",
   }),
 };
 
