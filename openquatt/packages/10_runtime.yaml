@@ -7,11 +7,3 @@ packages:
   oq_commissioning: !include ../oq_commissioning.yaml
   oq_thermal_limits: !include ../oq_thermal_limits.yaml
   oq_installation_monitoring: !include ../oq_installation_monitoring.yaml
-
-# Keep the factory-reset action available to Home Assistant as a config entity.
-# oq_common owns the actual ESPHome factory_reset button; this package only
-# overrides its presentation/exposure metadata after the include is merged.
-button:
-  - id: !extend factory_reset_button
-    internal: false
-    entity_category: config
