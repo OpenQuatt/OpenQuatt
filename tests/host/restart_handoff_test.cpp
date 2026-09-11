@@ -108,7 +108,7 @@ void test_only_exact_controlled_restart_restores_credit() {
   assert(may_restore_credit(record, context));
 }
 
-void test_controlled_ota_restores_on_selected_new_partition() {
+void test_controlled_ota_restores_on_selected_partition() {
   const Record record = make_ota_record();
   assert(valid_record(record));
 
@@ -118,16 +118,18 @@ void test_controlled_ota_restores_on_selected_new_partition() {
   pending_context.image_hash[0] ^= 0x5AU;
   assert(may_restore_credit(record, pending_context));
 
-  auto rollback_disabled_context = matching_context(record);
-  rollback_disabled_context.image_hash[0] ^= 0xA5U;
-  assert(may_restore_credit(record, rollback_disabled_context));
+  auto changed_image_context = matching_context(record);
+  changed_image_context.image_hash[0] ^= 0xA5U;
+  assert(may_restore_credit(record, changed_image_context));
+
+  // Reinstalling the exact same binary is still a controlled OTA when the
+  // reboot lands on the inactive partition recorded before flashing.
+  const auto same_image_context = matching_context(record);
+  assert(may_restore_credit(record, same_image_context));
 }
 
-void test_ota_handoff_rejects_old_or_uncontrolled_boot() {
+void test_ota_handoff_rejects_wrong_partition_or_uncontrolled_boot() {
   const Record record = make_ota_record();
-
-  auto same_image = matching_context(record);
-  assert(!may_restore_credit(record, same_image));
 
   auto wrong_partition = matching_context(record);
   wrong_partition.image_pending_verify = true;
@@ -344,8 +346,8 @@ void test_invalid_credit_bounds_fail_closed() {
 
 int main() {
   test_only_exact_controlled_restart_restores_credit();
-  test_controlled_ota_restores_on_selected_new_partition();
-  test_ota_handoff_rejects_old_or_uncontrolled_boot();
+  test_controlled_ota_restores_on_selected_partition();
+  test_ota_handoff_rejects_wrong_partition_or_uncontrolled_boot();
   test_corrupt_or_partial_arm_never_restores_credit();
   test_replay_and_non_restart_paths_are_rejected();
   test_consume_failure_never_grants_in_memory_credit();
