@@ -90,7 +90,7 @@ class OpenQuattOduRuntimeFrequency : public Component {
   bool write_started_{false};
   uint32_t operation_started_ms_{0U};
   uint32_t operation_timeout_ms_{BASE_OPERATION_TIMEOUT_MS};
-  char status_[96]{"READY: load ODU runtime table"};
+  char status_[96]{"Ready: load the current compressor frequency table from the ODU"};
 
   CallbackManager<void()> write_started_callbacks_{};
   CallbackManager<void()> write_applied_callbacks_{};
@@ -99,7 +99,7 @@ class OpenQuattOduRuntimeFrequency : public Component {
   void release_bus_(uint32_t request_token = 0U);
   void set_status_locked_(const char* status);
   const char* reset_runtime_state_locked_(const char* failure_message);
-  void finish_without_write_(const char* status, uint32_t operation_token);
+  void finish_without_write_(const char* status, uint32_t operation_token, bool warn);
   void fail_operation_(const char* status, uint32_t operation_token);
   void finish_apply_(const oq_odu_runtime_frequency::RuntimeFrequencyTables& actual, uint32_t operation_token);
   bool token_matches_(uint32_t operation_token) const;

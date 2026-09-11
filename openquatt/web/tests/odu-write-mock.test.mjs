@@ -76,13 +76,13 @@ test("frequentietabelmock blijft geblokkeerd tot standby met stilstaande compres
     const initialTable = mock.state.oduRuntimeFrequency.HP1;
     assert.equal(mock.request("odu-runtime", 1, "apply", values).status, 200);
     mock.finish();
-    assert.match(mock.request("odu-runtime", 1, "status").payload.status, /^BLOCKED:/);
+    assert.match(mock.request("odu-runtime", 1, "status").payload.status, /^Write blocked:/);
     assert.equal(mock.state.oduRuntimeFrequency.HP1, initialTable);
     mock.telemetry.mode = "Standby";
     mock.telemetry.frequency = 0;
     assert.equal(mock.request("odu-runtime", 1, "apply", values).status, 200);
     mock.finish();
-    assert.match(mock.request("odu-runtime", 1, "status").payload.status, /^APPLIED:/);
+    assert.match(mock.request("odu-runtime", 1, "status").payload.status, /^Frequency table written and verified/);
   }
 });
 
