@@ -58,6 +58,7 @@
     ["installFirmwareTestManifest", DOMAIN_BUTTON, "Install Firmware Test Manifest"],
     ["installFirmwareUpdateTarget", DOMAIN_BUTTON, "Install Firmware Update Target"],
     ["restartAction", DOMAIN_BUTTON, "Restart"],
+    ["factoryResetButton", DOMAIN_BUTTON, "Factory reset"],
     ["uptime", DOMAIN_SENSOR, "Uptime"],
     ["uptimeRaw", DOMAIN_SENSOR, "Uptime raw"],
     ["uptimeReadable", DOMAIN_TEXT_SENSOR, "Uptime readable"],

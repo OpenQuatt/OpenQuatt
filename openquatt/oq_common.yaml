@@ -106,6 +106,14 @@ provisioning:
     then:
       - logger.log: "API provisioning window closed; power-cycle to reopen it"
 
+factory_reset:
+  resets_required: 3
+  max_delay: 10s
+  on_increment:
+    - logger.log:
+        format: "Fast power cycle count now %u, target %u"
+        args: [x, target]
+
 ota:
   - platform: esphome
     on_begin:
@@ -1338,6 +1346,11 @@ button:
           else:
             - lambda: |-
                 ESP_LOGW("oq_fw", "Firmware install request ignored because an OTA operation is already active.");
+
+  - platform: factory_reset
+    id: factory_reset_button
+    name: "Factory reset"
+    entity_category: config
 
 switch:
   - platform: template

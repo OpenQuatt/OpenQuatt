@@ -407,6 +407,12 @@ function syncFrequencyRangeControl(control) {
         restartButton.disabled = busyRestart;
         restartButton.textContent = busyRestart ? "Herstarten..." : "Herstarten";
       }
+      const factoryResetButton = systemSummary.querySelector('button[data-oq-action="open-factory-reset-confirm"]');
+      if (factoryResetButton) {
+        const busyFactoryReset = state.busyAction === "factoryResetButton";
+        factoryResetButton.disabled = busyFactoryReset;
+        factoryResetButton.textContent = busyFactoryReset ? "Resetten..." : "Factory reset";
+      }
     }
 
     const curveShell = stack.querySelector(".oq-settings-curve-shell");
