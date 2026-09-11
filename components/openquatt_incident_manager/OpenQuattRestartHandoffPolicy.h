@@ -8,7 +8,10 @@ namespace esphome::openquatt_incident_manager::restart_handoff {
 
 constexpr uint32_t kRecordMagic = 0x4F515248UL;  // OQRH
 constexpr uint16_t kRecordVersion = 1U;
-constexpr uint8_t kRecordArmed = 1U;
+constexpr uint8_t kRecordRestartArmed = 1U;
+constexpr uint8_t kRecordOtaArmed = 2U;
+// Backward-compatible name used by the existing controlled-restart tests.
+constexpr uint8_t kRecordArmed = kRecordRestartArmed;
 constexpr uint32_t kMaximumMinimumOffMs = 3600UL * 1000UL;
 constexpr size_t kImageHashSize = 32U;
 
@@ -62,8 +65,10 @@ inline bool has_image_hash(const uint8_t (&image_hash)[kImageHashSize]) {
   return false;
 }
 
+inline bool valid_record_state(uint8_t state) { return state == kRecordRestartArmed || state == kRecordOtaArmed; }
+
 inline bool valid_record(const Record& record) {
-  return record.magic == kRecordMagic && record.version == kRecordVersion && record.state == kRecordArmed &&
+  return record.magic == kRecordMagic && record.version == kRecordVersion && valid_record_state(record.state) &&
          record.reserved == 0U && valid_minimum_off_ms(record.minimum_off_ms) &&
          record.hp1_credit_ms <= record.minimum_off_ms && record.hp2_credit_ms <= record.minimum_off_ms &&
          (record.hp1_credit_ms != 0U || record.hp2_credit_ms != 0U) && has_image_hash(record.image_hash) &&
@@ -79,6 +84,7 @@ struct BootContext {
   bool software_reset{false};
   bool running_partition_matches_boot{false};
   bool image_valid{false};
+  bool image_pending_verify{false};
   uint32_t minimum_off_ms{0U};
   uint32_t config_hash{0U};
   uint32_t boot_partition_address{0U};
@@ -88,10 +94,26 @@ struct BootContext {
 enum class StorageReadResult : uint8_t { ABSENT, PRESENT, ERROR };
 
 inline bool may_restore_credit(const Record& record, const BootContext& context) {
-  return valid_record(record) && context.software_reset && context.running_partition_matches_boot &&
-         context.image_valid && context.minimum_off_ms == record.minimum_off_ms &&
-         context.config_hash == record.config_hash && context.boot_partition_address == record.boot_partition_address &&
-         has_image_hash(context.image_hash) && std::memcmp(context.image_hash, record.image_hash, kImageHashSize) == 0;
+  if (!valid_record(record) || !context.software_reset || !context.running_partition_matches_boot ||
+      context.minimum_off_ms != record.minimum_off_ms || context.config_hash != record.config_hash ||
+      context.boot_partition_address != record.boot_partition_address || !has_image_hash(context.image_hash)) {
+    return false;
+  }
+
+  if (record.state == kRecordRestartArmed) {
+    return context.image_valid && std::memcmp(context.image_hash, record.image_hash, kImageHashSize) == 0;
+  }
+
+  if (record.state == kRecordOtaArmed) {
+    // With rollback enabled, the first boot of the selected OTA partition is
+    // pending verification. Without rollback, ESP-IDF reports the image as
+    // valid/undefined; require a different image hash in that case so an old
+    // partition cannot consume an OTA handoff merely through a software reboot.
+    const bool image_changed = std::memcmp(context.image_hash, record.image_hash, kImageHashSize) != 0;
+    return context.image_pending_verify || (context.image_valid && image_changed);
+  }
+
+  return false;
 }
 
 // A matching record is still unsafe until its deletion has been committed and
@@ -130,5 +152,35 @@ template <typename Storage>
 inline bool persist_record(Storage& storage, const Record& record) {
   return valid_record(record) && storage.write_commit_and_verify(record);
 }
+
+class StableFullCreditLatch {
+ public:
+  void observe(bool eligible, uint32_t now_ms, uint32_t stable_ms) {
+    if (!eligible) {
+      this->reset();
+      return;
+    }
+    if (!this->tracking_) {
+      this->tracking_ = true;
+      this->since_ms_ = now_ms;
+      this->confirmed_ = stable_ms == 0U;
+      return;
+    }
+    if (static_cast<uint32_t>(now_ms - this->since_ms_) >= stable_ms) this->confirmed_ = true;
+  }
+
+  void reset() {
+    this->tracking_ = false;
+    this->confirmed_ = false;
+    this->since_ms_ = 0U;
+  }
+
+  bool confirmed() const { return this->confirmed_; }
+
+ private:
+  bool tracking_{false};
+  bool confirmed_{false};
+  uint32_t since_ms_{0U};
+};
 
 }  // namespace esphome::openquatt_incident_manager::restart_handoff
