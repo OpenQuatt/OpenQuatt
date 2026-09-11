@@ -411,7 +411,7 @@ function syncFrequencyRangeControl(control) {
       if (factoryResetButton) {
         const busyFactoryReset = state.busyAction === "factoryResetButton";
         factoryResetButton.disabled = busyFactoryReset;
-        factoryResetButton.textContent = busyFactoryReset ? "Resetten..." : "Factory reset…";
+        factoryResetButton.textContent = busyFactoryReset ? "Resetten..." : "Factory reset";
       }
     }
 

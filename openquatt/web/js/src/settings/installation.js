@@ -1082,7 +1082,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
               data-oq-action="open-factory-reset-confirm"
               ${busyFactoryReset ? "disabled" : ""}
             >
-              ${busyFactoryReset ? "Resetten..." : "Factory reset…"}
+              ${busyFactoryReset ? "Resetten..." : "Factory reset"}
             </button>`,
           }) : ""}
           ${hasEntity("statusLedsEnabled") ? `
