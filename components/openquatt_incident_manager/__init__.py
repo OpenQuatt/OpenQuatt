@@ -18,12 +18,16 @@ CONF_DECISION_LOG = "decision_log"
 CONF_WEB_AUTH = "web_auth"
 CONF_MINIMUM_OFF_TIME = "minimum_off_time"
 CONF_POLLING_PAUSED = "polling_paused"
+CONF_OTA_HANDOFF_ID = "ota_handoff_id"
 
 openquatt_incident_manager_ns = cg.esphome_ns.namespace(
     "openquatt_incident_manager"
 )
 OpenQuattIncidentManager = openquatt_incident_manager_ns.class_(
     "OpenQuattIncidentManager", cg.Component
+)
+OpenQuattOtaHandoff = openquatt_incident_manager_ns.class_(
+    "OpenQuattOtaHandoff", cg.Component
 )
 
 openquatt_decision_log_ns = cg.esphome_ns.namespace("openquatt_decision_log")
@@ -39,6 +43,7 @@ OpenQuattWebAuth = openquatt_web_auth_ns.class_(
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(OpenQuattIncidentManager),
+        cv.GenerateID(CONF_OTA_HANDOFF_ID): cv.declare_id(OpenQuattOtaHandoff),
         cv.Required(CONF_CLOCK): cv.use_id(time.RealTimeClock),
         cv.Required(CONF_CONTROL_MODE_CODE): cv.use_id(
             globals_component.GlobalsComponent
@@ -75,3 +80,8 @@ async def _runtime_to_code(config):
     cg.add(var.set_decision_log(decision_log))
     web_auth = await cg.get_variable(config[CONF_WEB_AUTH])
     cg.add(var.set_web_auth(web_auth))
+
+    ota_handoff = cg.new_Pvariable(config[CONF_OTA_HANDOFF_ID])
+    await cg.register_component(ota_handoff, config)
+    cg.add(ota_handoff.set_incident_manager(var))
+    cg.add(ota_handoff.set_minimum_off_ms(config[CONF_MINIMUM_OFF_TIME]))

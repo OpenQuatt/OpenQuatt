@@ -92,11 +92,29 @@ BootContext matching_context(const Record& record) {
   return context;
 }
 
-void test_only_exact_controlled_restart_restores_credit() {
+void test_only_exact_controlled_reboot_restores_credit() {
   const Record record = make_record();
   assert(valid_record(record));
   const BootContext context = matching_context(record);
   assert(may_restore_credit(record, context));
+}
+
+void test_pending_ota_boot_uses_same_exact_handoff_policy() {
+  const Record record = make_record();
+
+  auto pending_context = matching_context(record);
+  pending_context.image_valid = false;
+  pending_context.image_pending_verify = true;
+  assert(may_restore_credit(record, pending_context));
+
+  pending_context.image_hash[0] ^= 0x5AU;
+  assert(!may_restore_credit(record, pending_context));
+
+  auto wrong_partition = matching_context(record);
+  wrong_partition.image_valid = false;
+  wrong_partition.image_pending_verify = true;
+  wrong_partition.boot_partition_address++;
+  assert(!may_restore_credit(record, wrong_partition));
 }
 
 void test_corrupt_or_partial_arm_never_restores_credit() {
@@ -300,7 +318,8 @@ void test_invalid_credit_bounds_fail_closed() {
 }  // namespace
 
 int main() {
-  test_only_exact_controlled_restart_restores_credit();
+  test_only_exact_controlled_reboot_restores_credit();
+  test_pending_ota_boot_uses_same_exact_handoff_policy();
   test_corrupt_or_partial_arm_never_restores_credit();
   test_replay_and_non_restart_paths_are_rejected();
   test_consume_failure_never_grants_in_memory_credit();
