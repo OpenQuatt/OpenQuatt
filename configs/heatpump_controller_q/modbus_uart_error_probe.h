@@ -15,8 +15,7 @@ static volatile uint32_t frame_error_count = 0;
 static volatile uint32_t other_error_count = 0;
 static volatile uint32_t last_error_status = 0;
 
-static void IRAM_ATTR uart_select_callback(uart_port_t uart_num, uart_select_notif_t notification,
-                                           BaseType_t *task_woken) {
+static void IRAM_ATTR uart_cb(uart_port_t uart_num, uart_select_notif_t notification, BaseType_t *task_woken) {
   if (notification == UART_SELECT_READ_NOTIF) {
     esphome::Application::wake_loop_isrsafe(task_woken);
     return;
@@ -42,12 +41,11 @@ static void IRAM_ATTR uart_select_callback(uart_port_t uart_num, uart_select_not
     other_error_count++;
   }
 
-  // Make the main loop run promptly so the diagnostic log stays close to the raw UART capture.
   esphome::Application::wake_loop_isrsafe(task_woken);
 }
 
 inline void install(uint8_t uart_num) {
-  uart_set_select_notif_callback(static_cast<uart_port_t>(uart_num), uart_select_callback);
+  uart_set_select_notif_callback(static_cast<uart_port_t>(uart_num), uart_cb);
   ESP_LOGI("oq.modbus_uart_err", "UART parity/frame error probe installed on UART%u", uart_num);
 }
 
@@ -63,10 +61,8 @@ inline void report_if_changed() {
     return;
   }
 
-  ESP_LOGW("oq.modbus_uart_err",
-           "UART RX error: parity=%u (+%u), frame=%u (+%u), other=%u (+%u), last_status=0x%08X",
-           parity, parity - reported_parity, frame, frame - reported_frame, other, other - reported_other,
-           static_cast<unsigned>(last_error_status));
+  ESP_LOGW("oq.modbus_uart_err", "UART RX errors: parity=%u frame=%u other=%u", parity, frame, other);
+  ESP_LOGW("oq.modbus_uart_err", "Last UART status=0x%08X", static_cast<unsigned>(last_error_status));
 
   reported_parity = parity;
   reported_frame = frame;
