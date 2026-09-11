@@ -17,8 +17,7 @@ bool initialize_restart_handoff(uint32_t minimum_off_ms);
 bool restart_handoff_storage_ready();
 uint32_t restored_off_credit_ms(uint8_t hp_index);
 bool arm_restart_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms);
-bool arm_ota_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms);
-bool clear_restart_handoff();
+bool arm_completed_ota_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms);
 
 class OpenQuattOtaHandoff : public Component
 #ifdef USE_OTA_STATE_LISTENER
@@ -37,11 +36,13 @@ class OpenQuattOtaHandoff : public Component
 
  protected:
   uint32_t full_credit_if_confirmed_(uint8_t hp_index, uint32_t now_ms) const;
+  void clear_ota_snapshot_();
 
   OpenQuattIncidentManager* incident_manager_{nullptr};
   uint32_t minimum_off_ms_{240000U};
+  uint32_t ota_hp1_credit_ms_{0U};
+  uint32_t ota_hp2_credit_ms_{0U};
   bool ota_handoff_attempted_{false};
-  bool ota_handoff_saved_{false};
 };
 
 }  // namespace esphome::openquatt_incident_manager
