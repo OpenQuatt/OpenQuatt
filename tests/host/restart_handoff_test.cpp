@@ -68,7 +68,7 @@ Record make_record() {
   Record record{};
   record.magic = esphome::openquatt_incident_manager::restart_handoff::kRecordMagic;
   record.version = esphome::openquatt_incident_manager::restart_handoff::kRecordVersion;
-  record.state = esphome::openquatt_incident_manager::restart_handoff::kRecordRestartArmed;
+  record.state = esphome::openquatt_incident_manager::restart_handoff::kRecordArmed;
   record.minimum_off_ms = MINIMUM_OFF_MS;
   record.config_hash = configuration_hash(MINIMUM_OFF_MS, true);
   record.boot_partition_address = 0x210000U;
@@ -76,15 +76,6 @@ Record make_record() {
   record.hp2_credit_ms = 120000U;
   for (size_t index = 0U; index < sizeof(record.image_hash); ++index)
     record.image_hash[index] = static_cast<uint8_t>(index);
-  finalize_record(&record);
-  return record;
-}
-
-Record make_ota_record() {
-  Record record = make_record();
-  record.state = esphome::openquatt_incident_manager::restart_handoff::kRecordOtaArmed;
-  record.boot_partition_address = 0x410000U;
-  record.hp2_credit_ms = MINIMUM_OFF_MS;
   finalize_record(&record);
   return record;
 }
@@ -101,47 +92,29 @@ BootContext matching_context(const Record& record) {
   return context;
 }
 
-void test_only_exact_controlled_restart_restores_credit() {
+void test_only_exact_controlled_reboot_restores_credit() {
   const Record record = make_record();
   assert(valid_record(record));
   const BootContext context = matching_context(record);
   assert(may_restore_credit(record, context));
 }
 
-void test_controlled_ota_restores_on_selected_partition() {
-  const Record record = make_ota_record();
-  assert(valid_record(record));
+void test_pending_ota_boot_uses_same_exact_handoff_policy() {
+  const Record record = make_record();
 
   auto pending_context = matching_context(record);
   pending_context.image_valid = false;
   pending_context.image_pending_verify = true;
-  pending_context.image_hash[0] ^= 0x5AU;
   assert(may_restore_credit(record, pending_context));
 
-  auto changed_image_context = matching_context(record);
-  changed_image_context.image_hash[0] ^= 0xA5U;
-  assert(may_restore_credit(record, changed_image_context));
-
-  // Reinstalling the exact same binary is still a controlled OTA when the
-  // reboot lands on the inactive partition recorded before flashing.
-  const auto same_image_context = matching_context(record);
-  assert(may_restore_credit(record, same_image_context));
-}
-
-void test_ota_handoff_rejects_wrong_partition_or_uncontrolled_boot() {
-  const Record record = make_ota_record();
+  pending_context.image_hash[0] ^= 0x5AU;
+  assert(!may_restore_credit(record, pending_context));
 
   auto wrong_partition = matching_context(record);
-  wrong_partition.image_pending_verify = true;
   wrong_partition.image_valid = false;
+  wrong_partition.image_pending_verify = true;
   wrong_partition.boot_partition_address++;
   assert(!may_restore_credit(record, wrong_partition));
-
-  auto uncontrolled_reset = matching_context(record);
-  uncontrolled_reset.image_pending_verify = true;
-  uncontrolled_reset.image_valid = false;
-  uncontrolled_reset.software_reset = false;
-  assert(!may_restore_credit(record, uncontrolled_reset));
 }
 
 void test_corrupt_or_partial_arm_never_restores_credit() {
@@ -345,9 +318,8 @@ void test_invalid_credit_bounds_fail_closed() {
 }  // namespace
 
 int main() {
-  test_only_exact_controlled_restart_restores_credit();
-  test_controlled_ota_restores_on_selected_partition();
-  test_ota_handoff_rejects_wrong_partition_or_uncontrolled_boot();
+  test_only_exact_controlled_reboot_restores_credit();
+  test_pending_ota_boot_uses_same_exact_handoff_policy();
   test_corrupt_or_partial_arm_never_restores_credit();
   test_replay_and_non_restart_paths_are_rejected();
   test_consume_failure_never_grants_in_memory_credit();
