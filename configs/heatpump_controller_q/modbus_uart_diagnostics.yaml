@@ -5,10 +5,11 @@
 # be correlated with ESPHome's Modbus parser warnings. Also hooks the ESP-IDF UART
 # select callback to count parity/frame errors that ESPHome normally does not log.
 #
-# The active heat-pump UART RX pin gets an internal pull-up. The diagnostic build
-# also moves DE/RE control out of ESP-IDF UART_MODE_RS485_HALF_DUPLEX and into the
-# ESPHome Modbus component. This isolates the ESP-IDF RTS turnaround path while
-# keeping the same physical M1 port, baud rate, framing and OpenQuatt polling.
+# The active heat-pump UART RX pin gets an internal pull-up. This test variant
+# keeps the normal ESP-IDF UART_MODE_RS485_HALF_DUPLEX direction control and sets
+# UART_ERR_WR_MASK so characters that fail parity/framing are discarded before
+# entering the RX FIFO. The error probe remains active to verify whether hardware
+# parity events still occur even when the corrupt byte no longer reaches Modbus.
 #
 # Intentionally avoids UARTDebug::log_hex(), which adds a 10 ms delay after every
 # emitted log line and could influence the timing being investigated.
@@ -20,14 +21,15 @@ esphome:
     priority: 600
     then:
       - lambda: |-
-          oq_modbus_uart_diag::install(id(uart_bus).get_hw_serial_number());
+          const uint8_t uart_num = id(uart_bus).get_hw_serial_number();
+          oq_modbus_uart_diag::set_discard_bad_bytes(uart_num, true);
+          oq_modbus_uart_diag::install(uart_num);
 
 logger:
   initial_level: DEBUG
 
 uart:
   - id: !extend uart_bus
-    flow_control_pin: !remove
     rx_pin:
       number: ${uart_rx_pin}
       mode:
@@ -58,10 +60,6 @@ uart:
               static_cast<unsigned>(bytes.size()),
               hex_buf
             );
-
-modbus:
-  - id: !extend mod_bus
-    flow_control_pin: ${uart_rts_pin}
 
 interval:
   - interval: 1s
