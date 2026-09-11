@@ -49,6 +49,7 @@ packages:
   oq_hardware_revision: !include heatpump_controller_q_hardware_revision.yaml
   oq_status_leds: !include heatpump_controller_q_status_leds.yaml
   oq_cic_compatibility: !include heatpump_controller_q_cic_compatibility.yaml
+  oq_uart_error_filter: !include heatpump_controller_q_uart_error_filter.yaml
   oq_aux_relay_control: !include ../oq_aux_relay_control.yaml
   oq_sensor_source_selects_opentherm: !include ../oq_sensor_source_selects_opentherm.yaml
   oq_ot_slave: !include
