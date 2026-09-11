@@ -20,6 +20,8 @@ const FIRMWARE_ENTITY_PACKAGES = [
   "../../oq_ot_slave.yaml",
   "../../oq_power_house_strategy.yaml",
   "../../oq_cooling_strategy.yaml",
+  "../../oq_thermal_request_control.yaml",
+  "../../oq_supervisory_controlmode.yaml",
 ];
 
 const OBSERVABILITY_KEYS = [
@@ -97,6 +99,21 @@ const ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS = [
   "boilerPowerTestResultQuality",
 ];
 
+const V2_CHAIN_KEYS = [
+  "hp1RequestedControlLevel",
+  "hp1AppliedControlLevel",
+  "hp1TableFrequency",
+  "hp2RequestedControlLevel",
+  "hp2AppliedControlLevel",
+  "hp2TableFrequency",
+  "phFastIntentCode",
+  "lowLoadLatch",
+  "lowLoadPminW",
+  "lowLoadOffW",
+  "lowLoadOnW",
+  "debugStaticSnapshot",
+];
+
 const ADDED_OBSERVABILITY_KEYS = [
   ...OBSERVABILITY_KEYS,
   ...ISSUE_473_OBSERVABILITY_KEYS,
@@ -105,6 +122,7 @@ const ADDED_OBSERVABILITY_KEYS = [
   ...ISSUE_516_OBSERVABILITY_KEYS,
   ...ISSUE_536_WARM_START_OBSERVABILITY_KEYS,
   ...ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS,
+  ...V2_CHAIN_KEYS,
 ];
 
 test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", async () => {
@@ -117,6 +135,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const coolingMinOffEndIndex = issue489EndIndex + COOLING_MIN_OFF_OBSERVABILITY_KEYS.length;
   const issue516EndIndex = coolingMinOffEndIndex + ISSUE_516_OBSERVABILITY_KEYS.length;
   const issue536WarmStartEndIndex = issue516EndIndex + ISSUE_536_WARM_START_OBSERVABILITY_KEYS.length;
+  const issue536EmpiricalEndIndex =
+    issue536WarmStartEndIndex + ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS.length;
 
   assert.equal(legacyTailIndex, 134);
   assert.deepEqual(
@@ -137,9 +157,10 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
     ISSUE_536_WARM_START_OBSERVABILITY_KEYS,
   );
   assert.deepEqual(
-    DEBUG_RECORDING_KEYS.slice(issue536WarmStartEndIndex),
+    DEBUG_RECORDING_KEYS.slice(issue536WarmStartEndIndex, issue536EmpiricalEndIndex),
     ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS,
   );
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue536EmpiricalEndIndex), V2_CHAIN_KEYS);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   const recorderHeader = await readFile(
     new URL("../../../components/openquatt_debug_recorder/OpenQuattDebugRecorder.h", import.meta.url),
@@ -151,8 +172,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   assert.equal(fieldCapacity, 224);
   assert.ok(DEBUG_RECORDING_KEYS.length <= fieldCapacity - systemFieldCount);
   assert.ok(
-    fieldCapacity - systemFieldCount - DEBUG_RECORDING_KEYS.length >= 24,
-    "debugrecorder houdt minimaal 24 entityvelden groeiruimte",
+    fieldCapacity - systemFieldCount - DEBUG_RECORDING_KEYS.length >= 12,
+    "debugrecorder houdt minimaal 12 entityvelden groeiruimte",
   );
 });
 

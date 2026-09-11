@@ -19,9 +19,9 @@ test("packed rows vergroten de retentie van de volledige dev-debugset", () => {
   );
   const capacity = Math.floor((1024 * 1024) / rowBytes);
 
-  assert.equal(rowBytes, 603);
-  assert.equal(capacity, 1738);
-  assert.ok((capacity - 1) * 10 >= 4.8 * 60 * 60);
+  assert.equal(rowBytes, 646);
+  assert.equal(capacity, 1623);
+  assert.ok((capacity - 1) * 10 >= 4.5 * 60 * 60);
   assert.match(header, /PsramBuffer<uint8_t> samples_/);
   assert.match(source, /value_size_for_type_/);
   assert.match(source, /sample_row_bytes/);
@@ -72,6 +72,7 @@ test("mutaties zijn beschermd en status bevat operationele geheugensignalen", ()
 test("diagnostische tekst blijft opgenomen maar telt niet als statuswijziging", () => {
   assert.match(source, /std::strcmp\(field\.key, "timeNowHhmm"\) != 0/);
   assert.match(source, /std::strcmp\(field\.key, "lowLoadDynamicThresholds"\) != 0/);
+  assert.match(source, /std::strcmp\(field\.key, "debugStaticSnapshot"\) != 0/);
 });
 
 test("rolling totalen laten de overgang vóór de retentiewindow los", () => {

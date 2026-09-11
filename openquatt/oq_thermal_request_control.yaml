@@ -458,6 +458,102 @@ sensor:
       return NAN;
       #endif
 
+  # V2/Power-House debug chain (recorder-only, no control behavior change).
+  # Requested/applied use the 0..10 model/control domain; physical F-level is
+  # already recorded via "HPx compressor level" (0..20, register 1999) and
+  # measured Hz via "HPx - Compressor frequency". Table frequency resolves the
+  # last commanded physical F-level through the validated heating runtime
+  # table. All return NAN when unavailable; never invent values. HP2 returns
+  # NAN on Single (fail-closed).
+  - platform: template
+    id: oq_hp1_requested_control_level_sensor
+    name: "HP1 requested control level"
+    internal: true
+    unit_of_measurement: "lvl"
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return (float) id(oq_actuator_hp1_req);
+
+  - platform: template
+    id: oq_hp1_applied_control_level_sensor
+    name: "HP1 applied control level"
+    internal: true
+    unit_of_measurement: "lvl"
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return (float) id(hp1_last_applied_level);
+
+  - platform: template
+    id: oq_hp1_table_frequency_sensor
+    name: "HP1 table frequency"
+    internal: true
+    unit_of_measurement: "Hz"
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      const auto snapshot = oq_odu::decode_runtime_frequency_snapshot(id(hp1_runtime_frequency_snapshot_storage));
+      const int physical = id(hp1_last_commanded_physical_level);
+      if (physical == 0) return 0.0f;
+      if (physical < 0 || !snapshot.heating.valid) return NAN;
+      const int hz = oq_odu::frequency_for_physical_level(snapshot.heating, physical);
+      return hz > 0 ? (float) hz : NAN;
+
+  - platform: template
+    id: oq_hp2_requested_control_level_sensor
+    name: "HP2 requested control level"
+    internal: true
+    unit_of_measurement: "lvl"
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      #if OQ_TOPOLOGY_DUO
+      return (float) id(oq_actuator_hp2_req);
+      #else
+      return NAN;
+      #endif
+
+  - platform: template
+    id: oq_hp2_applied_control_level_sensor
+    name: "HP2 applied control level"
+    internal: true
+    unit_of_measurement: "lvl"
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      #if OQ_TOPOLOGY_DUO
+      return (float) id(${secondary_last_applied_level_id});
+      #else
+      return NAN;
+      #endif
+
+  - platform: template
+    id: oq_hp2_table_frequency_sensor
+    name: "HP2 table frequency"
+    internal: true
+    unit_of_measurement: "Hz"
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      #if OQ_TOPOLOGY_DUO
+      const auto snapshot =
+          oq_odu::decode_runtime_frequency_snapshot(id(${secondary_runtime_frequency_snapshot_storage_id}));
+      const int physical = id(${secondary_last_commanded_physical_level_id});
+      if (physical == 0) return 0.0f;
+      if (physical < 0 || !snapshot.heating.valid) return NAN;
+      const int hz = oq_odu::frequency_for_physical_level(snapshot.heating, physical);
+      return hz > 0 ? (float) hz : NAN;
+      #else
+      return NAN;
+      #endif
+
 # ----------------------------
 # Extra overview sensors for capacity deficit
 # ----------------------------
