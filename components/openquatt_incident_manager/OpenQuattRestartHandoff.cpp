@@ -292,8 +292,7 @@ void OpenQuattOtaHandoff::on_ota_global_state(ota::OTAState state, float progres
     this->ota_handoff_attempted_ = this->ota_hp1_credit_ms_ != 0U || this->ota_hp2_credit_ms_ != 0U;
     ESP_LOGI(TAG, "Controlled OTA: captured full off-time credit HP1=%us HP2=%us%s",
              static_cast<unsigned>(this->ota_hp1_credit_ms_ / 1000U),
-             static_cast<unsigned>(this->ota_hp2_credit_ms_ / 1000U),
-             this->ota_handoff_attempted_ ? "" : " (none)");
+             static_cast<unsigned>(this->ota_hp2_credit_ms_ / 1000U), this->ota_handoff_attempted_ ? "" : " (none)");
     return;
   }
 
