@@ -32,6 +32,7 @@ packages:
   openquatt_connection_wifi_eth: !include ../../openquatt/connection/wifi_eth.yaml
   openquatt_packages_common: !include ../../openquatt/oq_packages_common.yaml
 
+# Keep the UART RX input at idle HIGH during brief RS485 receiver turn-off gaps.
 uart:
   - id: !extend uart_bus
     rx_pin:
