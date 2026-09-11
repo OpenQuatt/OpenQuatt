@@ -2,11 +2,14 @@
 
 #include <cstring>
 
+#include "OpenQuattIncidentManager.h"
 #include "OpenQuattRestartHandoffPolicy.h"
 #include "esp_app_desc.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
 #include "nvs.h"
+#include "esphome/core/application.h"
+#include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 
 namespace esphome::openquatt_incident_manager {
@@ -85,19 +88,21 @@ bool capture_boot_context(uint32_t minimum_off_ms, BootContext* context) {
 
   esp_ota_img_states_t image_state = ESP_OTA_IMG_UNDEFINED;
   const esp_err_t state_result = esp_ota_get_state_partition(running, &image_state);
-  // Without otadata rollback is unavailable, so there is no unverified OTA image
-  // to accidentally credit. Otherwise accept only an explicit valid/undefined state.
-  const bool state_safe =
+  // A normal controlled restart requires a valid image. A controlled OTA
+  // handoff may additionally be consumed on the first PENDING_VERIFY boot.
+  const bool image_valid =
       (state_result == ESP_OK && (image_state == ESP_OTA_IMG_VALID || image_state == ESP_OTA_IMG_UNDEFINED)) ||
       state_result == ESP_ERR_NOT_FOUND;
-  if (!state_safe) {
-    ESP_LOGW(TAG, "Restart handoff rejected unverified or unavailable image state: %s", esp_err_to_name(state_result));
+  const bool image_pending_verify = state_result == ESP_OK && image_state == ESP_OTA_IMG_PENDING_VERIFY;
+  if (!image_valid && !image_pending_verify) {
+    ESP_LOGW(TAG, "Restart handoff rejected unavailable image state: %s", esp_err_to_name(state_result));
     return false;
   }
 
   context->software_reset = esp_reset_reason() == ESP_RST_SW;
   context->running_partition_matches_boot = running->address == boot->address;
-  context->image_valid = state_safe;
+  context->image_valid = image_valid;
+  context->image_pending_verify = image_pending_verify;
   context->minimum_off_ms = minimum_off_ms;
 #if OQ_TOPOLOGY_DUO
   context->config_hash = restart_handoff::configuration_hash(minimum_off_ms, true);
@@ -128,6 +133,15 @@ bool confirm_pending_image_for_controlled_restart() {
   return true;
 }
 
+bool persist_handoff_record(const Record& record) {
+  nvs_handle_t handle{};
+  if (!open_storage(&handle)) return false;
+  NvsStorage storage(handle);
+  const bool persisted = restart_handoff::persist_record(storage, record);
+  nvs_close(handle);
+  return persisted;
+}
+
 }  // namespace
 
 bool initialize_restart_handoff(uint32_t minimum_off_ms) {
@@ -152,7 +166,7 @@ bool initialize_restart_handoff(uint32_t minimum_off_ms) {
   storage_ready = true;
   configured_minimum_off_ms = minimum_off_ms;
   if (context_available && (restored_credit_ms[0] != 0U || restored_credit_ms[1] != 0U)) {
-    ESP_LOGI(TAG, "Restored one-shot confirmed-off credit after controlled restart");
+    ESP_LOGI(TAG, "Restored one-shot confirmed-off credit after controlled restart or OTA");
   }
   return true;
 }
@@ -183,7 +197,7 @@ bool arm_restart_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms) {
   Record record{};
   record.magic = restart_handoff::kRecordMagic;
   record.version = restart_handoff::kRecordVersion;
-  record.state = restart_handoff::kRecordArmed;
+  record.state = restart_handoff::kRecordRestartArmed;
   record.minimum_off_ms = configured_minimum_off_ms;
   record.config_hash = context.config_hash;
   record.boot_partition_address = context.boot_partition_address;
@@ -192,13 +206,135 @@ bool arm_restart_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms) {
   std::memcpy(record.image_hash, context.image_hash, sizeof(record.image_hash));
   restart_handoff::finalize_record(&record);
 
-  nvs_handle_t handle{};
-  if (!open_storage(&handle)) return false;
-  NvsStorage storage(handle);
-  const bool persisted = restart_handoff::persist_record(storage, record);
-  nvs_close(handle);
+  const bool persisted = persist_handoff_record(record);
   if (!persisted) ESP_LOGE(TAG, "Restart handoff arm was not durably verified");
   return persisted;
 }
+
+bool arm_ota_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms) {
+  if (!storage_ready || !restart_handoff::valid_minimum_off_ms(configured_minimum_off_ms) ||
+      hp1_credit_ms > configured_minimum_off_ms || hp2_credit_ms > configured_minimum_off_ms ||
+      (hp1_credit_ms == 0U && hp2_credit_ms == 0U)) {
+    return false;
+  }
+
+  BootContext context{};
+  if (!capture_boot_context(configured_minimum_off_ms, &context) || !context.running_partition_matches_boot ||
+      !context.image_valid) {
+    ESP_LOGE(TAG, "OTA handoff arm rejected current image context");
+    return false;
+  }
+
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  const esp_partition_t* target = running != nullptr ? esp_ota_get_next_update_partition(running) : nullptr;
+  if (target == nullptr) {
+    ESP_LOGE(TAG, "OTA handoff arm could not resolve the target partition");
+    return false;
+  }
+
+  Record record{};
+  record.magic = restart_handoff::kRecordMagic;
+  record.version = restart_handoff::kRecordVersion;
+  record.state = restart_handoff::kRecordOtaArmed;
+  record.minimum_off_ms = configured_minimum_off_ms;
+  record.config_hash = context.config_hash;
+  record.boot_partition_address = target->address;
+  record.hp1_credit_ms = hp1_credit_ms;
+  record.hp2_credit_ms = hp2_credit_ms;
+  // OTA does not know the target ELF hash before flashing. Store the source
+  // hash so rollback-disabled boots can still prove that the image changed.
+  std::memcpy(record.image_hash, context.image_hash, sizeof(record.image_hash));
+  restart_handoff::finalize_record(&record);
+
+  const bool persisted = persist_handoff_record(record);
+  if (!persisted) ESP_LOGE(TAG, "OTA handoff arm was not durably verified");
+  return persisted;
+}
+
+bool clear_restart_handoff() {
+  if (!storage_ready) return false;
+  nvs_handle_t handle{};
+  if (!open_storage(&handle)) return false;
+  NvsStorage storage(handle);
+  const bool cleared = storage.erase_and_verify_absent();
+  nvs_close(handle);
+  if (!cleared) ESP_LOGE(TAG, "Restart handoff could not be durably cleared");
+  return cleared;
+}
+
+void OpenQuattOtaHandoff::setup() {
+#ifdef USE_OTA_STATE_LISTENER
+  ota::get_global_ota_callback()->add_global_state_listener(this);
+#endif
+}
+
+void OpenQuattOtaHandoff::loop() {
+  const uint32_t now_ms = millis();
+  if (static_cast<uint32_t>(now_ms - this->last_sample_ms_) < SAMPLE_INTERVAL_MS) return;
+  this->last_sample_ms_ = now_ms;
+  this->sample_(now_ms);
+}
+
+bool OpenQuattOtaHandoff::hp_eligible_for_full_credit_(uint8_t hp_index, uint32_t now_ms) const {
+  if (this->incident_manager_ == nullptr || this->incident_manager_->is_failed() ||
+      !this->incident_manager_->storage_ready() || !this->incident_manager_->hp_configured(hp_index)) {
+    return false;
+  }
+
+  const auto outputs = this->incident_manager_->get_outputs(hp_index);
+  return outputs.link_state == oq_incidents::LinkState::HEALTHY && outputs.run_state == oq_incidents::RunState::STOPPED &&
+         outputs.stop_confirmed && !outputs.stop_confirmation_pending &&
+         this->incident_manager_->minimum_off_remaining_ms(hp_index, now_ms) == 0U;
+}
+
+void OpenQuattOtaHandoff::sample_(uint32_t now_ms) {
+  for (uint8_t hp = 1U; hp <= 2U; ++hp) {
+    this->full_credit_latches_[hp - 1U].observe(this->hp_eligible_for_full_credit_(hp, now_ms), now_ms,
+                                                FULL_CREDIT_STABLE_MS);
+  }
+}
+
+#ifdef USE_OTA_STATE_LISTENER
+void OpenQuattOtaHandoff::on_ota_global_state(ota::OTAState state, float progress, uint8_t error,
+                                              ota::OTAComponent* component) {
+  (void) progress;
+  (void) error;
+  (void) component;
+
+  if (state == ota::OTA_STARTED) {
+    const uint32_t now_ms = millis();
+    this->sample_(now_ms);
+
+    uint32_t credit[2]{0U, 0U};
+    for (uint8_t hp = 1U; hp <= 2U; ++hp) {
+      if (this->full_credit_latches_[hp - 1U].confirmed() && this->hp_eligible_for_full_credit_(hp, now_ms)) {
+        credit[hp - 1U] = this->minimum_off_ms_;
+      }
+    }
+
+    this->ota_handoff_attempted_ = credit[0] != 0U || credit[1] != 0U;
+    this->ota_handoff_saved_ = this->ota_handoff_attempted_ && arm_ota_handoff(credit[0], credit[1]);
+    ESP_LOGI(TAG, "Controlled OTA: confirmed full off-time credit HP1=%us HP2=%us (%s)",
+             static_cast<unsigned>(credit[0] / 1000U), static_cast<unsigned>(credit[1] / 1000U),
+             this->ota_handoff_saved_ ? "saved" : "conservative fallback");
+    return;
+  }
+
+  if (state == ota::OTA_ABORT || state == ota::OTA_ERROR) {
+    if (this->ota_handoff_attempted_ && !clear_restart_handoff()) {
+      ESP_LOGE(TAG, "Could not clear OTA handoff after failed OTA; rebooting fail-closed");
+      App.safe_reboot();
+      return;
+    }
+    this->ota_handoff_attempted_ = false;
+    this->ota_handoff_saved_ = false;
+    return;
+  }
+
+  if (state == ota::OTA_COMPLETED && this->ota_handoff_saved_) {
+    ESP_LOGI(TAG, "Controlled OTA completed with confirmed off-time handoff armed");
+  }
+}
+#endif
 
 }  // namespace esphome::openquatt_incident_manager
