@@ -46,7 +46,12 @@ Gebruik voor de CV-ketel altijd precies één route: `OTB` of `R1`, nooit beide 
 
 De `Q`-sensorstekker bevat de PT1000 voor de lokale aanvoertemperatuur en de flowmeter-puls van Quatt V1. De PT1000 gebruikt een MAX31865 met een referentieweerstand van 1500 Ω, een nominale weerstand van 1000 Ω en 2-draadsbedrading. De firmware leest hem alleen wanneer **Lokale aanvoertemperatuur** op `PT1000` staat.
 
-De pulslezer op `GPIO15` heeft een interne pull-up en een filter van 100 µs. De firmware rekent de pulsfrequentie om met 0,05 l/min per Hz. Bij V1.5 en V2 gebruikt OpenQuatt normaal de flowmeting uit de buitenunit; de keuze is instelbaar via **Q Flow Source** (`Auto`, `Local` of `Outdoor unit`).
+De pulslezer op `GPIO15` heeft een interne pull-up en een filter van 100 µs. Kies in de web-app onder **Instellingen → Bronnen / integraties → Sensorselectie → Flow → Lokale flowmeter** het aangesloten type. In Home Assistant en de standaard ESPHome-webinterface heet deze instelling **Controller Flow Meter**:
+
+- **Huba Control** (standaard): behoudt de bestaande omrekening met 0,05 l/min per Hz en eventuele Huba-configuratieaanpassingen.
+- **ZJ-B10**: voor het [TinyTronics-model](https://www.tinytronics.nl/nl/sensoren/vloeistof/yf-b10-water-flow-sensor-messing-g1), met 7,9 Hz per l/min. De firmware deelt het aantal pulsen per minuut door 7,9 om l/h te berekenen. Een pulswaarde van nul blijft nul; de bestaande timeout van 5 seconden blijft behouden.
+
+De keuze blijft bewaard na een herstart. De bestaande middeling over 10 seconden blijft actief; wacht na wisselen tot de meting is bijgewerkt. De keuze past alleen de lokale pulsmeting aan. Bij V1.5 en V2 gebruikt OpenQuatt normaal de flowmeting uit de buitenunit; de keuze is instelbaar via **Q Flow Source** (`Auto`, `Local` of `Outdoor unit`). Kies `Local` om de aangesloten controller-flowmeter expliciet te gebruiken.
 
 ### R1 en R2: relais
 

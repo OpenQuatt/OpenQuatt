@@ -143,6 +143,7 @@
     heatingEnableSource: { domain: "select", name: "Heating Enable Source", optional: true },
     coolingEnableSource: { domain: "select", name: "Cooling Enable Source", optional: true },
     localWaterSupplyTempSource: { domain: "select", name: "Local Water Supply Temp Source", optional: true },
+    controllerFlowMeter: { domain: "select", name: "Controller Flow Meter", optional: true },
     coolingMinimumSupplyTemp: { domain: "number", name: "Cooling Minimum Supply Temp", optional: true },
     coolingDemandMax: { domain: "number", name: "Cooling Demand Max", optional: true },
     coolingRestartMode: { domain: "select", name: "Cooling Restart Mode", optional: true },
@@ -1029,6 +1030,7 @@
   export const SENSOR_SELECTION_KEYS = [
     "waterSupplySource",
     "localWaterSupplyTempSource",
+    "controllerFlowMeter",
     "flowSource",
     "qFlowSource",
     "outdoorUnitFlowMode",
@@ -1860,6 +1862,7 @@
         ...SUPPLY_CALIBRATION_BACKUP_KEYS,
         "waterSupplySource",
         "localWaterSupplyTempSource",
+        "controllerFlowMeter",
         "flowSource",
         "qFlowSource",
         "outdoorUnitFlowMode",

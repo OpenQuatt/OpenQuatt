@@ -908,6 +908,13 @@ import { escapeHtml } from "../core/html.js";
             when: currentFlowSource === "Outdoor unit" && hasEntity("qFlowSource"),
           },
           {
+            key: "controllerFlowMeter",
+            label: "Lokale flowmeter",
+            infoId: "controllerFlowMeter-info",
+            infoCopy: "Kies het type flowmeter dat op de controller is aangesloten: Huba Control of ZJ-B10. Deze instelling bepaalt de omrekening van pulsen naar flow en wordt bewaard na een herstart.",
+            when: currentFlowSource === "Outdoor unit" && hasEntity("controllerFlowMeter") && currentQFlowSource !== "Outdoor unit",
+          },
+          {
             key: "outdoorUnitFlowMode",
             label: "Meterkeuze",
             infoId: "outdoorUnitFlowMode-info",

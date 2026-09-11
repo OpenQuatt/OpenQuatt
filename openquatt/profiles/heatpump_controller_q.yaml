@@ -39,8 +39,8 @@ substitutions:
   hpcq_pt1000_nominal_resistance_ohm: "1000"            # PT1000 nominal resistance at 0 degrees C.
   hpcq_pt1000_rtd_wires: "2"                            # Probe wiring mode; board jumpers must match.
   hpcq_flow_pin: "GPIO15"                               # V1 central flowmeter pulse input.
-  hpcq_flow_kf_lpm_per_hz: "0.05"                       # DN15 datasheet Kff: Qv[l/min] = Kf * f[Hz] + Q0.
-  hpcq_flow_q0_lpm: "0"                                 # DN15 datasheet intercept [l/min].
+  hpcq_flow_kf_lpm_per_hz: "0.05"                       # Huba DN15 datasheet Kff: Qv[l/min] = Kf * f[Hz] + Q0.
+  hpcq_flow_q0_lpm: "0"                                 # Huba DN15 datasheet intercept [l/min].
   hpcq_status_led_yellow_pin: "GPIO1"                   # Yellow status LED output.
   hpcq_status_led_red_pin: "GPIO2"                      # Red status LED output.
   hpcq_status_led_inverted: "false"                     # Set true when the board LED is active-low.
@@ -112,6 +112,25 @@ select:
       - Outdoor unit
     initial_option: Auto
 
+  - platform: template
+    id: oq_controller_flow_meter
+    name: "Controller Flow Meter"
+    icon: mdi:waves
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    options:
+      - Huba Control
+      - ZJ-B10
+    initial_option: Huba Control
+    on_value:
+      - lambda: |-
+          // Reapply calibration even if the pulse rate has not changed.
+          const float pulses_per_minute = id(flow_rate_controller).get_raw_state();
+          if (!isnan(pulses_per_minute)) {
+            id(flow_rate_controller).publish_state(pulses_per_minute);
+          }
+
 spi:
   - id: oq_hpcq_pt1000_spi
     mosi_pin: ${hpcq_pt1000_mosi_pin}
@@ -160,6 +179,13 @@ sensor:
         pullup: true
     filters:
       - lambda: |-
+          if (id(oq_controller_flow_meter).current_option() == "ZJ-B10") {
+            // TinyTronics ZJ-B10: f[Hz] = 7.9 * Q[l/min].
+            // pulse_meter publishes pulses/minute, so Q[l/h] = x / 7.9.
+            if (isnan(x)) return NAN;
+            return x > 0.0f ? x / 7.9f : 0.0f;
+          }
+          // Preserve the existing Huba Control conversion and substitutions.
           // pulse_meter publishes pulses/minute. Convert to Hz first:
           // Qv[l/min] = Kf * f[Hz] + Q0, then convert to l/h.
           const float hz = x / 60.0f;

@@ -2073,6 +2073,11 @@
       state: "Auto",
       option: ["Auto", "Local", "Outdoor unit"],
     });
+    setEntity("select", "Controller Flow Meter", {
+      value: "Huba Control",
+      state: "Huba Control",
+      option: ["Huba Control", "ZJ-B10"],
+    });
     setEntity("select", "Aux Relay Function", {
       value: "Disabled",
       state: "Disabled",
