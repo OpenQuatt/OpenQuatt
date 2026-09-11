@@ -23,7 +23,7 @@ bool clear_restart_handoff();
 class OpenQuattOtaHandoff : public Component
 #ifdef USE_OTA_STATE_LISTENER
     ,
-                             public ota::OTAGlobalStateListener
+                            public ota::OTAGlobalStateListener
 #endif
 {
  public:
