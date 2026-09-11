@@ -311,7 +311,7 @@ OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::reques
       this->operation_token_.load(std::memory_order_acquire) == request_token) {
     this->loaded_.store(false, std::memory_order_release);
     this->armed_.store(false, std::memory_order_release);
-    this->set_status_locked_("LOAD_REQUESTED");
+    this->set_status_locked_("Reading compressor frequency table from ODU");
     this->pending_action_ = PendingAction::LOAD;
     this->pending_request_token_ = request_token;
     accepted = true;
@@ -321,14 +321,14 @@ OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::reques
     this->release_bus_(request_token);
     return RequestResult::BUSY;
   }
-  ESP_LOGI(TAG, "HP%u LOAD_REQUESTED", this->hp_index_);
+  ESP_LOGI(TAG, "HP%u Reading compressor frequency table from ODU", this->hp_index_);
   return RequestResult::ACCEPTED;
 }
 
 OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::request_arm(bool enabled) {
   if (!this->available_.load(std::memory_order_acquire)) return RequestResult::UNAVAILABLE;
   RequestResult result = RequestResult::ACCEPTED;
-  const char* status = enabled ? "ARMED: runtime writes enabled" : "LOCKED: runtime writes disabled";
+  const char* status = enabled ? "ODU frequency table writes enabled" : "ODU frequency table writes disabled";
   portENTER_CRITICAL(&this->state_mux_);
   if (this->busy_.load(std::memory_order_acquire)) {
     result = RequestResult::BUSY;
@@ -372,7 +372,7 @@ OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::reques
       result = RequestResult::INVALID_TABLE;
     } else {
       this->operation_tables_ = tables;
-      this->set_status_locked_("GUARD_READ_REQUESTED: checking ODU state");
+      this->set_status_locked_("Checking whether ODU is safe to modify");
       this->pending_action_ = PendingAction::APPLY;
       this->pending_request_token_ = request_token;
     }
@@ -386,7 +386,7 @@ OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::reques
     this->release_bus_(request_token);
     return result;
   }
-  ESP_LOGI(TAG, "HP%u GUARD_READ_REQUESTED: checking ODU state", this->hp_index_);
+  ESP_LOGI(TAG, "HP%u Checking whether ODU is safe to modify", this->hp_index_);
   return result;
 }
 
@@ -402,7 +402,8 @@ void OpenQuattOduRuntimeFrequency::set_extended_layout(bool extended_layout) {
   }
   portEXIT_CRITICAL(&this->state_mux_);
   if (!changed) return;
-  ESP_LOGI(TAG, "HP%u runtime frequency editor ready; load the ODU table before editing", this->hp_index_);
+  ESP_LOGI(TAG, "HP%u compressor frequency table editor ready; load the current table from the ODU before editing",
+           this->hp_index_);
   if (reserved_token != 0U) this->eeprom_dump_->end_external_operation();
 }
 
@@ -412,7 +413,7 @@ void OpenQuattOduRuntimeFrequency::reset_runtime_state(const char* failure_messa
   const char* status = this->reset_runtime_state_locked_(failure_message);
   reserved_token = this->bus_reservation_token_.exchange(0U, std::memory_order_acq_rel);
   portEXIT_CRITICAL(&this->state_mux_);
-  if (status != nullptr && std::strncmp(status, "READY", 5) == 0) {
+  if (status != nullptr && std::strncmp(status, "Ready", 5) == 0) {
     ESP_LOGD(TAG, "HP%u %s", this->hp_index_, status);
   } else {
     ESP_LOGW(TAG, "HP%u %s", this->hp_index_, status);
@@ -431,8 +432,9 @@ const char* OpenQuattOduRuntimeFrequency::reset_runtime_state_locked_(const char
   this->loaded_.store(false, std::memory_order_release);
   this->armed_.store(false, std::memory_order_release);
   if (had_write_started) this->write_tainted_.store(true, std::memory_order_release);
-  const char* status =
-      had_write_started && failure_message != nullptr ? failure_message : "READY: load ODU runtime table";
+  const char* status = had_write_started && failure_message != nullptr
+                           ? failure_message
+                           : "Ready: load the current compressor frequency table from the ODU";
   this->set_status_locked_(status);
   return status;
 }
@@ -495,16 +497,16 @@ void OpenQuattOduRuntimeFrequency::loop() {
   if (this->operation_ != Operation::NONE && millis() - this->operation_started_ms_ >= this->operation_timeout_ms_) {
     const uint32_t operation_token = this->operation_token_.load(std::memory_order_acquire);
     if (this->operation_ == Operation::LOAD) {
-      this->fail_operation_("LOAD_FAILED: Modbus response timeout", operation_token);
+      this->fail_operation_("Loading failed: ODU did not respond in time", operation_token);
     } else if (this->write_started_) {
-      this->fail_operation_("VERIFY_FAILED: write acknowledgement timeout", operation_token);
+      this->fail_operation_("Verification failed: ODU did not acknowledge the write in time", operation_token);
     } else {
-      this->finish_without_write_("BLOCKED: ODU guard response timeout", operation_token);
+      this->finish_without_write_("Write blocked: ODU safety check timed out", operation_token, true);
     }
   }
 }
 
-void OpenQuattOduRuntimeFrequency::finish_without_write_(const char* status, uint32_t operation_token) {
+void OpenQuattOduRuntimeFrequency::finish_without_write_(const char* status, uint32_t operation_token, bool warn) {
   portENTER_CRITICAL(&this->state_mux_);
   if (!this->busy_.load(std::memory_order_acquire) ||
       this->operation_token_.load(std::memory_order_acquire) != operation_token) {
@@ -516,7 +518,11 @@ void OpenQuattOduRuntimeFrequency::finish_without_write_(const char* status, uin
   this->busy_.store(false, std::memory_order_release);
   this->set_status_locked_(status);
   portEXIT_CRITICAL(&this->state_mux_);
-  ESP_LOGI(TAG, "HP%u %s", this->hp_index_, status != nullptr ? status : "");
+  if (warn) {
+    ESP_LOGW(TAG, "HP%u %s", this->hp_index_, status != nullptr ? status : "");
+  } else {
+    ESP_LOGI(TAG, "HP%u %s", this->hp_index_, status != nullptr ? status : "");
+  }
   this->release_bus_(operation_token);
 }
 
@@ -550,7 +556,7 @@ void OpenQuattOduRuntimeFrequency::queue_load_base_(uint32_t operation_token) {
         oq_odu_runtime_frequency::RuntimeFrequencyTables tables;
         size_t loaded = 0U;
         if (!oq_odu_runtime_frequency::parse_base_runtime_table(data.data(), data.size(), tables, loaded)) {
-          this->fail_operation_("LOAD_FAILED: incomplete base runtime table", operation_token);
+          this->fail_operation_("Loading failed: incomplete compressor frequency table received", operation_token);
           return;
         }
         if (this->extended_layout_.load(std::memory_order_acquire)) {
@@ -575,7 +581,8 @@ void OpenQuattOduRuntimeFrequency::queue_load_extension_(oq_odu_runtime_frequenc
         }
         size_t loaded = 0U;
         if (!oq_odu_runtime_frequency::parse_extended_runtime_table(data.data(), data.size(), tables, loaded)) {
-          this->fail_operation_("LOAD_FAILED: incomplete extended runtime table", operation_token);
+          this->fail_operation_("Loading failed: incomplete compressor frequency table extension received",
+                                operation_token);
           return;
         }
         this->finish_load_(tables, operation_token);
@@ -587,9 +594,8 @@ void OpenQuattOduRuntimeFrequency::finish_load_(const oq_odu_runtime_frequency::
                                                 uint32_t operation_token) {
   if (!this->token_matches_(operation_token)) return;
   char status[64];
-  std::snprintf(status, sizeof(status), "LOADED: %u/%u runtime registers",
-                static_cast<unsigned>(oq_odu_runtime_frequency::runtime_register_count(tables.level_count)),
-                static_cast<unsigned>(oq_odu_runtime_frequency::runtime_register_count(tables.level_count)));
+  std::snprintf(status, sizeof(status), "Compressor frequency table loaded (%u levels)",
+                static_cast<unsigned>(tables.level_count));
   portENTER_CRITICAL(&this->state_mux_);
   if (!this->busy_.load(std::memory_order_acquire) ||
       this->operation_token_.load(std::memory_order_acquire) != operation_token) {
@@ -615,20 +621,20 @@ void OpenQuattOduRuntimeFrequency::queue_guard_(uint32_t operation_token) {
         uint16_t compressor_hz = 0U;
         if (!oq_odu_runtime_frequency::read_u16_word(data.data(), data.size(), GUARD_WORKING_MODE_INDEX,
                                                      working_mode)) {
-          this->finish_without_write_("BLOCKED: ODU mode unknown", operation_token);
+          this->finish_without_write_("Write blocked: ODU operating mode unknown", operation_token, true);
           return;
         }
         if (!oq_odu_runtime_frequency::read_u16_word(data.data(), data.size(), GUARD_COMPRESSOR_FREQUENCY_INDEX,
                                                      compressor_hz)) {
-          this->finish_without_write_("BLOCKED: compressor frequency unknown", operation_token);
+          this->finish_without_write_("Write blocked: compressor frequency unknown", operation_token, true);
           return;
         }
         if (working_mode != 0U) {
-          this->finish_without_write_("BLOCKED: ODU is not in standby", operation_token);
+          this->finish_without_write_("Write blocked: ODU is not in standby", operation_token, false);
           return;
         }
         if (compressor_hz > 0U) {
-          this->finish_without_write_("BLOCKED: compressor is running", operation_token);
+          this->finish_without_write_("Write blocked: compressor is running", operation_token, false);
           return;
         }
         this->begin_write_(operation_token);
@@ -646,9 +652,9 @@ void OpenQuattOduRuntimeFrequency::begin_write_(uint32_t operation_token) {
   this->armed_.store(false, std::memory_order_release);
   this->write_started_ = true;
   this->write_tainted_.store(true, std::memory_order_release);
-  this->set_status_locked_("WRITE_QUEUED: runtime table write requested");
+  this->set_status_locked_("Writing compressor frequency table to ODU");
   portEXIT_CRITICAL(&this->state_mux_);
-  ESP_LOGW(TAG, "HP%u WRITE_QUEUED: runtime table write requested", this->hp_index_);
+  ESP_LOGW(TAG, "HP%u Writing compressor frequency table to ODU", this->hp_index_);
   this->write_started_callbacks_.call();
   this->queue_write_register_(0U, operation_token);
 }
@@ -663,16 +669,16 @@ void OpenQuattOduRuntimeFrequency::queue_write_register_(size_t write_index, uin
       portEXIT_CRITICAL(&this->state_mux_);
       return;
     }
-    this->set_status_locked_("WRITE_CONFIRMED: runtime writes acknowledged");
+    this->set_status_locked_("Frequency table written; verifying readback");
     portEXIT_CRITICAL(&this->state_mux_);
-    ESP_LOGW(TAG, "HP%u WRITE_CONFIRMED: runtime writes acknowledged", this->hp_index_);
+    ESP_LOGW(TAG, "HP%u Frequency table written; verifying readback", this->hp_index_);
     this->queue_readback_base_(operation_token);
     return;
   }
 
   const auto target = oq_odu_runtime_frequency::runtime_write_register(this->operation_tables_, write_index);
   if (!target.valid) {
-    this->fail_operation_("VERIFY_FAILED: invalid runtime register mapping", operation_token);
+    this->fail_operation_("Verification failed: internal register mapping error", operation_token);
     return;
   }
   auto command = modbus_controller::ModbusCommandItem::create_write_single_command(this->controller_, target.address,
@@ -695,7 +701,7 @@ void OpenQuattOduRuntimeFrequency::queue_readback_base_(uint32_t operation_token
         oq_odu_runtime_frequency::RuntimeFrequencyTables actual;
         size_t loaded = 0U;
         if (!oq_odu_runtime_frequency::parse_base_runtime_table(data.data(), data.size(), actual, loaded)) {
-          this->fail_operation_("VERIFY_FAILED: incomplete base readback", operation_token);
+          this->fail_operation_("Verification failed: incomplete readback from ODU", operation_token);
           return;
         }
         if (this->operation_tables_.level_count == oq_odu_runtime_frequency::EXTENDED_LEVEL_COUNT) {
@@ -720,7 +726,7 @@ void OpenQuattOduRuntimeFrequency::queue_readback_extension_(oq_odu_runtime_freq
         }
         size_t loaded = 0U;
         if (!oq_odu_runtime_frequency::parse_extended_runtime_table(data.data(), data.size(), actual, loaded)) {
-          this->fail_operation_("VERIFY_FAILED: incomplete extended readback", operation_token);
+          this->fail_operation_("Verification failed: incomplete extended readback from ODU", operation_token);
           return;
         }
         this->finish_apply_(actual, operation_token);
@@ -738,7 +744,7 @@ void OpenQuattOduRuntimeFrequency::finish_apply_(const oq_odu_runtime_frequency:
   }
   if (!oq_odu_runtime_frequency::tables_match(actual, this->operation_tables_)) {
     portEXIT_CRITICAL(&this->state_mux_);
-    this->fail_operation_("VERIFY_FAILED: readback mismatch", operation_token);
+    this->fail_operation_("Verification failed: ODU values differ from requested table", operation_token);
     return;
   }
   this->tables_ = actual;
@@ -747,9 +753,9 @@ void OpenQuattOduRuntimeFrequency::finish_apply_(const oq_odu_runtime_frequency:
   this->busy_.store(false, std::memory_order_release);
   this->loaded_.store(true, std::memory_order_release);
   this->write_tainted_.store(false, std::memory_order_release);
-  this->set_status_locked_("APPLIED: runtime table written and read back");
+  this->set_status_locked_("Frequency table written and verified successfully");
   portEXIT_CRITICAL(&this->state_mux_);
-  ESP_LOGW(TAG, "HP%u APPLIED: runtime table written and read back", this->hp_index_);
+  ESP_LOGW(TAG, "HP%u Frequency table written and verified successfully", this->hp_index_);
   this->release_bus_(operation_token);
   this->write_applied_callbacks_.call();
 }

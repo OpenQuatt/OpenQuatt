@@ -47,7 +47,7 @@ class ModbusMetadataContinuityContractTest(unittest.TestCase):
             "odu_generation_revalidation_required",
             "runtime_frequency_revalidation_required",
             "odu_runtime_frequency)->reset_runtime_state",
-            "VERIFY_FAILED: ODU disconnected during write",
+            "Verification failed: ODU disconnected during write",
         ):
             self.assertIn(value, offline)
         self.assertIn("detect_odu_generation_once", online)

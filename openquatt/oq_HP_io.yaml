@@ -77,7 +77,7 @@ modbus_controller:
             id(${hp_id}_odu_generation_request_pending) = false;
             id(${hp_id}_odu_generation_revalidation_required) = true;
             id(${hp_id}_odu_runtime_frequency)->reset_runtime_state(
-                "VERIFY_FAILED: ODU disconnected during write");
+                "Verification failed: ODU disconnected during write");
             if (id(${hp_id}_odu_runtime_frequency)
                     ->runtime_reload_blocked_after_write()) {
               id(oq_incident_manager).observe_runtime_frequency_mapping(

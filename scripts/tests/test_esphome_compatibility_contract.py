@@ -122,7 +122,7 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
         self.assertIn("token_matches_(operation_token)", ODU_RUNTIME_SOURCE)
         self.assertIn("BASE_OPERATION_TIMEOUT_MS = 30000U", ODU_RUNTIME_HEADER)
         self.assertIn("EXTENDED_OPERATION_TIMEOUT_MS = 60000U", ODU_RUNTIME_HEADER)
-        self.assertIn("VERIFY_FAILED: write acknowledgement timeout", ODU_RUNTIME_SOURCE)
+        self.assertIn("Verification failed: ODU did not acknowledge the write in time", ODU_RUNTIME_SOURCE)
         self.assertNotIn("create_write_multiple_command", ODU_RUNTIME_SOURCE)
 
     def test_bottom_plate_writes_allow_running_compressor_and_remain_verified(self) -> None:
@@ -138,8 +138,8 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
         self.assertIn("try_begin_external_operation()", ODU_SETTINGS_SOURCE)
         self.assertIn("end_external_operation()", ODU_SETTINGS_SOURCE)
         self.assertIn("queue_guard_", ODU_RUNTIME_SOURCE)
-        self.assertIn("BLOCKED: ODU is not in standby", ODU_RUNTIME_SOURCE)
-        self.assertIn("BLOCKED: compressor is running", ODU_RUNTIME_SOURCE)
+        self.assertIn("Write blocked: ODU is not in standby", ODU_RUNTIME_SOURCE)
+        self.assertIn("Write blocked: compressor is running", ODU_RUNTIME_SOURCE)
 
     def test_runtime_table_and_eeprom_dump_exclude_each_other(self) -> None:
         self.assertIn("try_begin_external_operation", ODU_EEPROM_HEADER)
@@ -158,7 +158,7 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
             ODU_RUNTIME_SOURCE,
         )
         self.assertIn(
-            "finish_without_write_(const char* status, uint32_t operation_token)",
+            "finish_without_write_(const char* status, uint32_t operation_token, bool warn)",
             ODU_RUNTIME_SOURCE,
         )
 

@@ -37,7 +37,7 @@ export function normalizeOduRuntimeFrequencyStatus(payload = {}, hp = 1) {
     armed: payload.armed === true,
     extendedLayout: payload.extended_layout === true,
     levelCount,
-    status: String(payload.status || "READY: load ODU runtime table"),
+    status: String(payload.status || "Ready: load the current compressor frequency table from the ODU"),
     csrfToken: String(payload.csrf_token || ""),
     cooling: normalizeValues(payload.cooling),
     heating: normalizeValues(payload.heating),
@@ -320,11 +320,12 @@ function getTableValidation(hp) {
 
 function getStatusPresentation(status) {
   const code = String(status || "").toUpperCase();
-  if (code.includes("APPLIED")) return ["De gekozen waarden zijn actief", "success"];
+  if (code.includes("VERIFIED SUCCESSFULLY")) return ["De gekozen waarden zijn actief", "success"];
   if (code.includes("LOADED")) return ["Waarden uit de buitenunit geladen", "success"];
   if (code.includes("BLOCKED")) return ["Wacht tot de buitenunit stilstaat", "warning"];
   if (code.includes("FAILED")) return ["Toepassen kon niet worden bevestigd", "warning"];
-  if (code.includes("WRITE") || code.includes("GUARD") || code.includes("REQUESTED")) return ["Bezig met controleren", ""];
+  if (code.includes("WRITING") || code.includes("READING") || code.includes("CHECKING")
+    || code.includes("VERIFYING") || code.includes("WRITES")) return ["Bezig met controleren", ""];
   return ["Laad eerst de actuele waarden", ""];
 }
 
