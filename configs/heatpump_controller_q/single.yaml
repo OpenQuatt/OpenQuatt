@@ -12,14 +12,6 @@ substitutions:
   oq_controller_flow_sensor_id: "flow_rate_controller"
   oq_q_flow_source_selector_id: "oq_q_flow_source"
   oq_topology_build_flag: "-DOQ_TOPOLOGY_DUO=0"
-  # Diagnostic PR only: swap the physical M1/M2 RS485 interfaces so the heat-pump
-  # Modbus master runs over the M2 transceiver and CiC compatibility runs over M1.
-  uart_tx_pin: "GPIO45"                                 # Heat-pump Modbus via physical M2 TX.
-  uart_rx_pin: "GPIO39"                                 # Heat-pump Modbus via physical M2 RX.
-  uart_rts_pin: "GPIO38"                                # Heat-pump Modbus via physical M2 DE/RE.
-  cic_compat_uart_tx_pin: "GPIO40"                      # CiC compatibility via physical M1 TX.
-  cic_compat_uart_rx_pin: "GPIO42"                      # CiC compatibility via physical M1 RX.
-  cic_compat_uart_rts_pin: "GPIO41"                     # CiC compatibility via physical M1 DE/RE.
   main_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/latest/download/openquatt-heatpump-controller-q-single-ota.manifest.json"
   dev_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/download/dev-latest/openquatt-heatpump-controller-q-single-ota.manifest.json"
   release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/latest/download/openquatt-heatpump-controller-q-single-ota.manifest.json"
