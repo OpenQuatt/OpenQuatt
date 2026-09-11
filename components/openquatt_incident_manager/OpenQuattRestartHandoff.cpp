@@ -108,8 +108,7 @@ bool capture_boot_context(uint32_t minimum_off_ms, BootContext* context) {
   // transitioning it to PENDING_VERIFY. Exact partition+image matching still
   // makes that a safe unconfirmed state for this one-shot handoff.
   const bool image_pending_verify =
-      state_result == ESP_OK &&
-      (image_state == ESP_OTA_IMG_PENDING_VERIFY || image_state == ESP_OTA_IMG_NEW);
+      state_result == ESP_OK && (image_state == ESP_OTA_IMG_PENDING_VERIFY || image_state == ESP_OTA_IMG_NEW);
   if (!image_valid && !image_pending_verify) {
     ESP_LOGW(TAG, "Restart handoff rejected unavailable image state: %s", esp_err_to_name(state_result));
     return false;
