@@ -57,8 +57,8 @@ inline void set_discard_bad_bytes(uint8_t uart_num, bool discard = true) {
   ESP_LOGI("oq.modbus_uart_err", "UART%u discard parity/framing-failed bytes: %s", uart_num,
            discard ? "enabled" : "disabled");
 #else
-  (void) uart_num;
-  (void) discard;
+  (void)uart_num;
+  (void)discard;
   ESP_LOGW("oq.modbus_uart_err", "UART parity/framing discard filter requires ESP-IDF");
 #endif
 }
