@@ -106,9 +106,8 @@ inline bool may_restore_credit(const Record& record, const BootContext& context)
 
   if (record.state == kRecordOtaArmed) {
     // With rollback enabled, the first boot of the selected OTA partition is
-    // pending verification. Without rollback, ESP-IDF reports the image as
-    // valid/undefined; require a different image hash in that case so an old
-    // partition cannot consume an OTA handoff merely through a software reboot.
+    // pending verification. Without rollback, require a changed image hash so
+    // the old partition cannot consume an OTA handoff after a software reboot.
     const bool image_changed = std::memcmp(context.image_hash, record.image_hash, kImageHashSize) != 0;
     return context.image_pending_verify || (context.image_valid && image_changed);
   }
@@ -152,35 +151,5 @@ template <typename Storage>
 inline bool persist_record(Storage& storage, const Record& record) {
   return valid_record(record) && storage.write_commit_and_verify(record);
 }
-
-class StableFullCreditLatch {
- public:
-  void observe(bool eligible, uint32_t now_ms, uint32_t stable_ms) {
-    if (!eligible) {
-      this->reset();
-      return;
-    }
-    if (!this->tracking_) {
-      this->tracking_ = true;
-      this->since_ms_ = now_ms;
-      this->confirmed_ = stable_ms == 0U;
-      return;
-    }
-    if (static_cast<uint32_t>(now_ms - this->since_ms_) >= stable_ms) this->confirmed_ = true;
-  }
-
-  void reset() {
-    this->tracking_ = false;
-    this->confirmed_ = false;
-    this->since_ms_ = 0U;
-  }
-
-  bool confirmed() const { return this->confirmed_; }
-
- private:
-  bool tracking_{false};
-  bool confirmed_{false};
-  uint32_t since_ms_{0U};
-};
 
 }  // namespace esphome::openquatt_incident_manager::restart_handoff
