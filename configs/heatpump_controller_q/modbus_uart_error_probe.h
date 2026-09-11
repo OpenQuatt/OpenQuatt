@@ -15,7 +15,8 @@ static volatile uint32_t frame_error_count = 0;
 static volatile uint32_t other_error_count = 0;
 static volatile uint32_t last_error_status = 0;
 
-static void IRAM_ATTR uart_cb(uart_port_t uart_num, uart_select_notif_t notification, BaseType_t *task_woken) {
+static void IRAM_ATTR uart_cb(uart_port_t uart_num, uart_select_notif_t notification,
+                              BaseType_t *task_woken) {
   if (notification == UART_SELECT_READ_NOTIF) {
     esphome::Application::wake_loop_isrsafe(task_woken);
     return;
