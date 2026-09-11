@@ -1,21 +1,20 @@
-# OpenQuatt voor Home Assistant
+# OpenQuatt in Home Assistant
 
-De Home Assistant-dashboards, optionele packages en bijbehorende handleidingen
-hebben een eigen releasecyclus. De primaire bron staat in de publieke companion-
-repository:
+Gebruik Home Assistant om OpenQuatt te volgen, het dashboard aan je opstelling aan te passen en optionele dynamische bronnen te koppelen.
 
-**[OpenQuatt/home-assistant-openquatt](https://github.com/OpenQuatt/home-assistant-openquatt)**
+## Begin hier
 
-Daar vind je:
+1. [Installeer het dashboard](installation.md). Kies daarna het juiste Single- of Duo-bestand.
+2. [Gebruik het dashboard](dashboard.md). Hier staat de dagelijkse route en waar je bij afwijkend gedrag eerst kijkt.
+3. Voeg alleen wanneer nodig [dynamische bronnen](dynamic-sources.md) of [dynamische koelbronnen](cooling.md) toe.
 
-- de actuele Single- en Duo-dashboards in het Nederlands en Engels;
-- de packages voor dynamische bronselectie en dynamische koelbronnen;
-- installatie-, gebruiks- en compatibiliteitsinformatie.
+## Kies je dashboard
 
-OpenQuatt zelf blijft via de ESPHome-integratie het entity/API-contract aan Home
-Assistant aanbieden. Firmware, ESPHome-configuratie en dat contract blijven in
-deze repository.
+Kies een dashboard dat past bij je opstelling en taal:
 
-Gebruik geen oude dashboard- of packagekopie uit de geschiedenis van deze
-repository: de companion-repository is vanaf de migratie voor issue
-[#424](https://github.com/OpenQuatt/OpenQuatt/issues/424) leidend.
+- [Single · Nederlands](https://github.com/OpenQuatt/home-assistant-openquatt/blob/main/dashboards/single-nl.yaml)
+- [Single · Engels](https://github.com/OpenQuatt/home-assistant-openquatt/blob/main/dashboards/single-en.yaml)
+- [Duo · Nederlands](https://github.com/OpenQuatt/home-assistant-openquatt/blob/main/dashboards/duo-nl.yaml)
+- [Duo · Engels](https://github.com/OpenQuatt/home-assistant-openquatt/blob/main/dashboards/duo-en.yaml)
+
+De dashboardbestanden en Home Assistant-packages hebben een eigen releasecyclus. De actuele bron staat in [OpenQuatt/home-assistant-openquatt](https://github.com/OpenQuatt/home-assistant-openquatt). Deze pagina helpt je kiezen en gebruiken; haal YAML en packages altijd uit die repository.

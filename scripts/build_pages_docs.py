@@ -9,10 +9,14 @@ import unicodedata
 import posixpath
 import re
 import sys
+from urllib.error import URLError
+from urllib.request import urlopen
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GITHUB_REPO_URL = "https://github.com/OpenQuatt/OpenQuatt"
+COMPANION_REPO_URL = "https://github.com/OpenQuatt/home-assistant-openquatt"
+COMPANION_RAW_URL = "https://raw.githubusercontent.com/OpenQuatt/home-assistant-openquatt/main"
 SEARCH_ICON_HTML = (
     '<svg class="search-icon-svg" viewBox="0 0 24 24" focusable="false" aria-hidden="true">'
     '<circle cx="10.5" cy="10.5" r="6.5"></circle>'
@@ -28,6 +32,7 @@ class Page:
     label: str
     kind: str
     summary: str
+    remote_source: PurePosixPath | None = None
 
 
 @dataclass(frozen=True)
@@ -44,8 +49,12 @@ PAGES = [
     Page(PurePosixPath("docs/q-edition.md"), PurePosixPath("q-edition.html"), "Heatpump Controller Q-edition aansluiten", "Aan de slag", "Doorlopende route voor aansluiten, netwerk instellen en Quick Start."),
     Page(PurePosixPath("docs/installatie-en-ingebruikname.md"), PurePosixPath("installatie-en-ingebruikname.html"), "Andere modules installeren", "Andere hardware", "Een bestaande Waveshare- of Heatpump Listener-module installeren via de web installer."),
     Page(PurePosixPath("docs/web-app.md"), PurePosixPath("web-app.html"), "Web-app gebruiken", "Handleiding", "Quick Start, instellingen, updates, backup en beveiliging via openquatt.local."),
-    Page(PurePosixPath("docs/dashboard/README.md"), PurePosixPath("dashboard/index.html"), "OpenQuatt Home Assistant", "Doorverwijzing", "Dashboards, packages en handleidingen staan in de Home Assistant companion-repository."),
-    Page(PurePosixPath("docs/dashboardoverzicht.md"), PurePosixPath("dashboardoverzicht.html"), "Dashboard gebruiken", "Doorverwijzing", "Actuele dashboardhandleiding in de Home Assistant companion-repository."),
+    Page(PurePosixPath("docs/dashboard/README.md"), PurePosixPath("dashboard/index.html"), "OpenQuatt in Home Assistant", "Home Assistant", "Dashboards, packages en handleidingen voor OpenQuatt in Home Assistant."),
+    Page(PurePosixPath("docs/dashboard/installation.md"), PurePosixPath("dashboard/installeren.html"), "Dashboard installeren", "Home Assistant", "OpenQuatt toevoegen, kaarten installeren en het juiste dashboard importeren.", PurePosixPath("docs/installation.md")),
+    Page(PurePosixPath("docs/dashboard/dashboard.md"), PurePosixPath("dashboard/gebruiken.html"), "Dashboard gebruiken", "Home Assistant", "Een rustige dagelijkse route door het OpenQuatt-dashboard.", PurePosixPath("docs/dashboard.md")),
+    Page(PurePosixPath("docs/dashboard/dynamic-sources.md"), PurePosixPath("dashboard/dynamische-bronnen.html"), "Dynamische bronnen", "Home Assistant", "Home Assistant-bronnen tijdens runtime koppelen aan OpenQuatt.", PurePosixPath("docs/dynamic-sources.md")),
+    Page(PurePosixPath("docs/dashboard/cooling.md"), PurePosixPath("dashboard/koeling.html"), "Dynamische koelbronnen", "Home Assistant", "Dauwpuntbronnen uit Home Assistant gebruiken voor veilige koeling.", PurePosixPath("docs/cooling.md")),
+    Page(PurePosixPath("docs/dashboardoverzicht.md"), PurePosixPath("dashboardoverzicht.html"), "Dashboard gebruiken", "Doorverwijzing", "Actuele dashboardhandleiding voor OpenQuatt in Home Assistant."),
     Page(PurePosixPath("docs/homey.md"), PurePosixPath("homey.html"), "OpenQuatt in Homey", "Handleiding", "Homey Pro koppelen, meekijken, automatiseren en OpenQuatt voeden met je eigen sensoren."),
     Page(PurePosixPath("docs/verwarmen-en-koelen.md"), PurePosixPath("verwarmen-en-koelen.html"), "Verwarmen en koelen uitgelegd", "Uitleg", "Heldere uitleg van Power House, stooklijnregeling, koeling, Single en Duo."),
     Page(PurePosixPath("docs/mqtt.md"), PurePosixPath("mqtt.html"), "MQTT inputbronnen", "Docs", "Beperkte MQTT inputbronnen voor externe meetwaarden zoals koelingsdauwpunt."),
@@ -84,7 +93,10 @@ SIDEBAR_GROUPS = [
         "Dashboards toevoegen nadat OpenQuatt lokaal werkt.",
         [
             PurePosixPath("docs/dashboard/README.md"),
-            PurePosixPath("docs/dashboardoverzicht.md"),
+            PurePosixPath("docs/dashboard/installation.md"),
+            PurePosixPath("docs/dashboard/dashboard.md"),
+            PurePosixPath("docs/dashboard/dynamic-sources.md"),
+            PurePosixPath("docs/dashboard/cooling.md"),
         ],
     ),
     (
@@ -431,7 +443,21 @@ class MarkdownRenderer:
 
 
 def github_source_url(page: Page) -> str:
+    if page.remote_source:
+        return f"{COMPANION_REPO_URL}/blob/main/{page.remote_source.as_posix()}"
     return f"{GITHUB_REPO_URL}/blob/main/{page.source.as_posix()}"
+
+
+def read_page_source(page: Page) -> str:
+    if not page.remote_source:
+        return (REPO_ROOT / page.source).read_text(encoding="utf-8")
+
+    source_url = f"{COMPANION_RAW_URL}/{page.remote_source.as_posix()}"
+    try:
+        with urlopen(source_url, timeout=20) as response:
+            return response.read().decode("utf-8")
+    except (OSError, URLError, UnicodeDecodeError) as error:
+        raise RuntimeError(f"Kan companion-documentatie niet ophalen: {source_url}") from error
 
 
 def build_sidebar(current_page: Page) -> str:
@@ -511,6 +537,13 @@ def render_template(rendered_page: RenderedPage, rendered_pages: list[RenderedPa
           <div class="doc-actions" aria-label="Snel starten">
             <a class="doc-action doc-action-primary" href="#kies-je-route">Kies je route</a>
             <a class="doc-action" href="{q_edition_href}">Nieuwe HCQ aansluiten</a>
+          </div>
+        """
+    elif page.source == PurePosixPath("docs/dashboard/README.md"):
+        doc_actions = f"""
+          <div class="doc-actions" aria-label="Home Assistant starten">
+            <a class="doc-action doc-action-primary" href="{rel_url(page.output, PurePosixPath('dashboard/installeren.html'))}">Dashboard installeren</a>
+            <a class="doc-action" href="{rel_url(page.output, PurePosixPath('dashboard/gebruiken.html'))}">Dashboard gebruiken</a>
           </div>
         """
 
@@ -620,7 +653,7 @@ def build_site(site_dir: Path) -> None:
     rendered_pages: list[RenderedPage] = []
     for page in PAGES:
         renderer = MarkdownRenderer(page.source, page.output)
-        text = (REPO_ROOT / page.source).read_text(encoding="utf-8")
+        text = read_page_source(page)
         lead, body = renderer.render(text)
         search_text = " ".join(
             strip_markdown(line)

@@ -217,8 +217,8 @@
       },
     },
     oduRuntimeFrequencyService: {
-      1: { loaded: false, armed: false, busy: false, status: "READY: load ODU runtime table", extendedLayout: false },
-      2: { loaded: false, armed: false, busy: false, status: "READY: load ODU runtime table", extendedLayout: false },
+      1: { loaded: false, armed: false, busy: false, status: "Ready: load the current compressor frequency table from the ODU", extendedLayout: false },
+      2: { loaded: false, armed: false, busy: false, status: "Ready: load the current compressor frequency table from the ODU", extendedLayout: false },
     },
     oduSettingsService: {
       1: { loaded: false, busy: false, status: "READY", profileAvailable: false, autoReapply: false, actual: { mode: 1, startTemperatureC: 4, stopDeltaC: 3 } },
@@ -297,7 +297,7 @@
       loaded: false,
       armed: false,
       busy: false,
-      status: "READY: load ODU runtime table",
+      status: "Ready: load the current compressor frequency table from the ODU",
       extendedLayout: profile.variant === "V2 new model",
     };
     const settings = state.oduSettingsService[hp === 2 ? 2 : 1];
@@ -2054,6 +2054,7 @@
     });
     setEntity("text_sensor", "Control Mode (Label)", { state: "CM98" });
     setEntity("text_sensor", "Cooling Block Reason", { state: "Ready", value: "Ready" });
+    setEntity("text_sensor", "Cooling Start Block Reason", { state: "Ready", value: "Ready" });
     setEntity("text_sensor", "Cooling Guard Mode", { state: "Dew point", value: "Dew point" });
     setEntity("text_sensor", "Flow Mode", { state: "Adaptive" });
     setEntity("select", "Behavior", {
@@ -2333,6 +2334,7 @@
       ["Cooling Minimum Safe Supply Temp", 18.1, "°C"],
       ["Cooling Effective Minimum Supply Temp", 18.1, "°C"],
       ["Cooling Minimum Off Time Remaining", 0, "s"],
+      ["Cooling Start Block Remaining", 0, "s"],
       ["Cooling Fallback Night Minimum Outdoor Temp", 14.3, "°C"],
       ["Cooling Fallback Minimum Supply Temp", 19.0, "°C"],
       ["Cooling Supply Target", 18.0, "°C"],
@@ -3588,6 +3590,8 @@
       setBinary("Cooling Request Active", true);
       setBinary("Cooling Permitted", true);
       setText("text_sensor", "Cooling Block Reason", "Ready");
+      setText("text_sensor", "Cooling Start Block Reason", "Ready");
+      setNumber("Cooling Start Block Remaining", 0, "s");
       setNumber("HA - Cooling Dew Point", limited ? wave(18.4, 0.12, 0.2) : wave(15.9, 0.12, 0.2), "°C");
       setBinary("HA - Cooling Dew Point Valid", true);
       setNumber("MQTT Cooling Dew Point", limited ? wave(18.1, 0.12) : wave(16.2, 0.12), "°C");
@@ -3618,6 +3622,7 @@
       setNumber("HP1 - Cooling Power", single ? (limited ? wave(1020, 70) : wave(1710, 90)) : 0, "W");
       setNumber("HP1 - COP", single ? Number(((limited ? 3.3 : 3.82) + Math.sin(t + 0.3) * 0.08).toFixed(2)) : 0);
       setNumber("HP1 - Compressor frequency", single ? (limited ? waveInt(25, 2, 0.3) : waveInt(33, 2, 0.3)) : 0, "Hz");
+      setNumber("HP1 compressor level", single ? 4 : 0, "");
       setNumber("HP1 - Fan speed", single ? (limited ? wave(520, 12, 0.3) : wave(602, 14, 0.3)) : 0, "rpm");
       setNumber("HP1 - Flow", single ? (limited ? wave(720, 18, 0.3) : wave(842, 18, 0.3)) : 0, "L/h");
       setNumber("HP1 - Evaporator coil temperature", single ? (limited ? wave(10.8, 0.25, 0.3) : wave(8.2, 0.3, 0.3)) : wave(24.8, 0.2), "\u00B0C");
@@ -3640,6 +3645,7 @@
         setNumber("HP2 - Cooling Power", limited ? wave(1020, 70, 0.3) : wave(1710, 90, 0.3), "W");
         setNumber("HP2 - COP", Number(((limited ? 3.3 : 3.82) + Math.sin(t + 0.3) * 0.08).toFixed(2)));
         setNumber("HP2 - Compressor frequency", limited ? waveInt(25, 2, 0.3) : waveInt(33, 2, 0.3), "Hz");
+        setNumber("HP2 compressor level", 4, "");
         setNumber("HP2 - Fan speed", limited ? wave(520, 12, 0.3) : wave(602, 14, 0.3), "rpm");
         setNumber("HP2 - Flow", limited ? wave(720, 18, 0.3) : wave(842, 18, 0.3), "L/h");
         setNumber("HP2 - Evaporator coil temperature", limited ? wave(10.8, 0.25, 0.3) : wave(8.2, 0.3, 0.3), "\u00B0C");
@@ -3668,6 +3674,7 @@
         setNumber("HP1 - Power Input", 5.2, "W");
         setNumber("HP1 - Cooling Power", 0, "W");
         setNumber("HP1 - Compressor frequency", 0, "Hz");
+        setNumber("HP1 compressor level", 0, "");
         setNumber("HP1 - Fan speed", 0, "rpm");
         setNumber("HP1 - Flow", 0, "L/h");
         setText("text_sensor", "HP1 - Working Mode Label", "Standby");
@@ -3676,6 +3683,7 @@
           setNumber("HP2 - Power Input", 5.2, "W");
           setNumber("HP2 - Cooling Power", 0, "W");
           setNumber("HP2 - Compressor frequency", 0, "Hz");
+          setNumber("HP2 compressor level", 0, "");
           setNumber("HP2 - Fan speed", 0, "rpm");
           setNumber("HP2 - Flow", 0, "L/h");
           setText("text_sensor", "HP2 - Working Mode Label", "Standby");
@@ -3695,17 +3703,21 @@
         setNumber("HP1 - Power Input", 5.2, "W");
         setNumber("HP1 - Cooling Power", 0, "W");
         setNumber("HP1 - Compressor frequency", 0, "Hz");
+        setNumber("HP1 compressor level", 0, "");
         setNumber("HP1 - Fan speed", 0, "rpm");
         setText("text_sensor", "HP1 - Working Mode Label", "Standby");
         if (!single) {
           setNumber("HP2 - Power Input", 5.2, "W");
           setNumber("HP2 - Cooling Power", 0, "W");
           setNumber("HP2 - Compressor frequency", 0, "Hz");
+          setNumber("HP2 compressor level", 0, "");
           setNumber("HP2 - Fan speed", 0, "rpm");
           setText("text_sensor", "HP2 - Working Mode Label", "Standby");
         }
       }
       if (startupWait) {
+        setText("text_sensor", "Cooling Start Block Reason", "Startup inhibit after reboot");
+        setNumber("Cooling Start Block Remaining", 180, "s");
         setNumber("Cooling Power Input", 0, "W");
         setNumber("Total Power Input", single ? 46 : 58, "W");
         setNumber("Total Cooling Power", 0, "W");
@@ -3713,6 +3725,7 @@
         setNumber("HP1 - Power Input", 5.2, "W");
         setNumber("HP1 - Cooling Power", 0, "W");
         setNumber("HP1 - Compressor frequency", 0, "Hz");
+        setNumber("HP1 compressor level", 0, "");
         setNumber("HP1 - Fan speed", 0, "rpm");
         setText("text_sensor", "HP1 - Working Mode Label", "Standby");
         setBinary("HP1 - 4-Way valve", false);
@@ -3720,6 +3733,7 @@
           setNumber("HP2 - Power Input", 5.2, "W");
           setNumber("HP2 - Cooling Power", 0, "W");
           setNumber("HP2 - Compressor frequency", 0, "Hz");
+          setNumber("HP2 compressor level", 0, "");
           setNumber("HP2 - Fan speed", 0, "rpm");
           setText("text_sensor", "HP2 - Working Mode Label", "Standby");
           setBinary("HP2 - 4-Way valve", false);
@@ -4142,19 +4156,19 @@
       const enabled = params.get("enabled") === "true";
       if (enabled && !service.loaded) return mockResponse(409, { ok: false, error: "load_required" });
       service.armed = enabled;
-      service.status = enabled ? "ARMED: runtime writes enabled" : "LOCKED: runtime writes disabled";
+      service.status = enabled ? "Compressor frequency table writes enabled" : "Compressor frequency table writes disabled";
       return mockResponse(200, getOduRuntimeServicePayload(hp));
     }
     if (action === "load") {
       service.busy = true;
       service.loaded = false;
       service.armed = false;
-      service.status = "LOAD_REQUESTED";
+      service.status = "Reading compressor frequency table from ODU";
       window.setTimeout(() => {
         service.busy = false;
         service.loaded = true;
-        const registerCount = service.extendedLayout ? 42 : 22;
-        service.status = `LOADED: ${registerCount}/${registerCount} runtime registers`;
+        const levelCount = service.extendedLayout ? 21 : 11;
+        service.status = `Compressor frequency table loaded (${levelCount} levels)`;
         notifyMockUpdated();
       }, 320);
       return mockResponse(200, getOduRuntimeServicePayload(hp));
@@ -4169,24 +4183,24 @@
       return mockResponse(409, { ok: false, error: "invalid_table" });
     }
     service.busy = true;
-    service.status = "GUARD_READ_REQUESTED: checking ODU state";
+    service.status = "Checking whether ODU is safe to modify";
     window.setTimeout(() => {
       const hpName = `HP${hp}`;
       const mode = String(getEntity("text_sensor", `${hpName} - Working Mode Label`)?.value || "").trim();
       const compressorHz = Number(getEntity("sensor", `${hpName} - Compressor frequency`)?.value);
       if (!mode || /unknown|onbekend/i.test(mode)) {
-        service.status = "BLOCKED: ODU mode unknown";
+        service.status = "Write blocked: ODU operating mode unknown";
       } else if (!/standby|stand-by/i.test(mode)) {
-        service.status = "BLOCKED: ODU is not in standby";
+        service.status = "Write blocked: ODU is not in standby";
       } else if (!Number.isFinite(compressorHz)) {
-        service.status = "BLOCKED: compressor frequency unknown";
+        service.status = "Write blocked: compressor frequency unknown";
       } else if (compressorHz > 0.5) {
-        service.status = "BLOCKED: compressor is running";
+        service.status = "Write blocked: compressor is running";
       } else {
         service.armed = false;
         state.oduRuntimeFrequency[hpName] = { cooling, heating };
         syncMockOduIdentityEntities(hp);
-        service.status = "APPLIED: runtime table written and read back";
+        service.status = "Frequency table written and verified successfully";
       }
       service.busy = false;
       notifyMockUpdated();

@@ -19,9 +19,15 @@ test("packed rows vergroten de retentie van de volledige dev-debugset", () => {
   );
   const capacity = Math.floor((1024 * 1024) / rowBytes);
 
-  assert.equal(rowBytes, 646);
-  assert.equal(capacity, 1623);
-  assert.ok((capacity - 1) * 10 >= 4.5 * 60 * 60);
+  assert.equal(rowBytes, 652);
+  assert.equal(capacity, 1608);
+  // Issue #642 voegt twee diagnosevelden toe (gepubliceerde startblokkade +
+  // resterende tijd), zodat een geblokkeerde koelstart achteraf verklaarbaar
+  // is. De V2/Power-House-keten voegt daar twaalf compacte kolommen aan toe
+  // (10x sensor, 1x binary, 1x text = +43 B/rij). Samen kost dat ruim twintig
+  // minuten op een buffer van ruim 4,4 uur; nog steeds ruim voldoende voor
+  // meerdaagse diagnose en ver boven de opnameduur van maximaal 1 uur.
+  assert.ok((capacity - 1) * 10 >= 4.4 * 60 * 60);
   assert.match(header, /PsramBuffer<uint8_t> samples_/);
   assert.match(source, /value_size_for_type_/);
   assert.match(source, /sample_row_bytes/);

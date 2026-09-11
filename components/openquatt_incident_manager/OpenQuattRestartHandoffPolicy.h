@@ -79,6 +79,7 @@ struct BootContext {
   bool software_reset{false};
   bool running_partition_matches_boot{false};
   bool image_valid{false};
+  bool image_pending_verify{false};
   uint32_t minimum_off_ms{0U};
   uint32_t config_hash{0U};
   uint32_t boot_partition_address{0U};
@@ -89,7 +90,7 @@ enum class StorageReadResult : uint8_t { ABSENT, PRESENT, ERROR };
 
 inline bool may_restore_credit(const Record& record, const BootContext& context) {
   return valid_record(record) && context.software_reset && context.running_partition_matches_boot &&
-         context.image_valid && context.minimum_off_ms == record.minimum_off_ms &&
+         (context.image_valid || context.image_pending_verify) && context.minimum_off_ms == record.minimum_off_ms &&
          context.config_hash == record.config_hash && context.boot_partition_address == record.boot_partition_address &&
          has_image_hash(context.image_hash) && std::memcmp(context.image_hash, record.image_hash, kImageHashSize) == 0;
 }

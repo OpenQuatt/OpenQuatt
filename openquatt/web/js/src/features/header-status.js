@@ -652,6 +652,26 @@ import { render } from "../core/render-scheduler.js";
       });
     }
 
+    if (state.systemModal === "factory-reset-confirm") {
+      const busy = state.busyAction === "factoryResetButton";
+      return renderModalShell({
+        modalId: "system",
+        titleId: "oq-factory-reset-modal-title",
+        kicker: "Onderhoud",
+        title: "Controller terugzetten naar fabrieksinstellingen?",
+        closeAction: "close-system-modal",
+        closeLabel: "Sluit factory-resetpopup",
+        bodyMarkup: `
+          <p class="oq-helper-modal-copy">Alle opgeslagen OpenQuatt-instellingen, netwerkgegevens en koppelingen worden gewist. De huidige firmware blijft geïnstalleerd. Instellingen die in de warmtepomp zelf zijn opgeslagen worden niet gewijzigd. De controller herstart en moet daarna opnieuw worden ingesteld.</p>
+          ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
+          <div class="oq-helper-modal-actions">
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>Annuleren</button>
+            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-factory-reset" ${busy ? "disabled" : ""}>${busy ? "Resetten..." : "Factory reset"}</button>
+          </div>
+        `,
+      });
+    }
+
     if (state.systemModal === "cooling-schedule") {
       return renderModalShell({
         modalId: "system",

@@ -939,3 +939,38 @@ test("resetfout blijft zichtbaar in de energieteller-popup", () => {
   assert.match(markup, /role="alert"/);
   assert.match(markup, /Energietellers resetten mislukt\. HTTP 500/);
 });
+
+test("factory-reset vraagt destructieve bevestiging en drukt op de juiste knop", async () => {
+  resetSettingsState({
+    factoryResetButton: { value: "", state: "" },
+  });
+  state.systemModal = "factory-reset-confirm";
+
+  const markup = renderSystemModal();
+  assert.match(markup, /fabrieksinstellingen/);
+  assert.match(markup, /data-oq-action="confirm-factory-reset"/);
+  assert.match(markup, /Annuleren/);
+
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  const originalLocation = globalThis.window.location;
+  globalThis.window.location = { pathname: "/" };
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    return { ok: true };
+  };
+
+  try {
+    assert.equal(handleSystemAction("open-factory-reset-confirm", {}), true);
+    assert.equal(state.systemModal, "factory-reset-confirm");
+    assert.equal(handleSystemAction("confirm-factory-reset", {}), true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(state.controlError, "");
+    assert.equal(state.systemModal, "");
+    assert.equal(requests.length, 1);
+    assert.match(requests[0], /Factory%20reset\/press$/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.window.location = originalLocation;
+  }
+});

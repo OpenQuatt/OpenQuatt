@@ -35,6 +35,14 @@ Net na het flashen kan OpenQuatt ook nog op het fallback access point zitten:
 - SSID: `OpenQuatt`
 - wachtwoord: `openquatt`
 
+## Controller terugzetten naar fabrieksinstellingen
+
+Gebruik dit alleen als laatste redmiddel, bij overdracht of om volledig opnieuw te beginnen. Een factory reset wist alle lokaal opgeslagen instellingen, netwerkgegevens en koppelingen van de controller. De firmware blijft staan; instellingen in de warmtepomp zelf worden niet gewijzigd.
+
+Via de web-app: ga naar **Instellingen -> Systeem -> Factory reset…** en bevestig. De controller herstart en de onboarding start opnieuw.
+
+Zonder webtoegang: schakel de controller drie keer achter elkaar in en binnen 10 seconden weer uit. Bij de derde snelle power-cycle worden alle opgeslagen instellingen gewist. Laat de controller daarna aan zodat de onboarding opnieuw kan starten.
+
 ## Home Assistant ziet OpenQuatt niet
 
 Controleer eerst of de web-app wel bereikbaar is. Als de web-app werkt maar Home Assistant niets ziet:

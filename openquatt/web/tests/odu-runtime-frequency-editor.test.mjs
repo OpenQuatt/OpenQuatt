@@ -82,7 +82,7 @@ test("runtime-editor hydrateert F0-F20 maar toont de uitbreiding alleen na nativ
   assert.match(mockSource, /status\|load\|arm\|apply/);
   assert.match(mockSource, /pathname\.match\(\/\\\/openquatt\\\/odu-runtime/);
   assert.match(mockSource, /Number\.isInteger\(value\)/);
-  assert.match(mockSource, /service\.extendedLayout \? 42 : 22/);
+  assert.match(mockSource, /service\.extendedLayout \? 21 : 11/);
 });
 
 test("dev-preview onderscheidt direct toepasbare bodemplaatinstellingen van de geblokkeerde frequentietabel", () => {
@@ -94,12 +94,12 @@ test("dev-preview onderscheidt direct toepasbare bodemplaatinstellingen van de g
   assert.match(mockSource, /window\.__OQ_DEV_ODU_WRITE_STATE__ = state\.oduWriteState/);
   assert.doesNotMatch(mockSource, /service\.status = "PENDING_SAFE"/);
   assert.match(mockSource, /service\.status = "IN_SYNC"/);
-  assert.match(mockSource, /BLOCKED: ODU is not in standby/);
+  assert.match(mockSource, /Write blocked: ODU is not in standby/);
   assert.match(featureSource, /__OQ_PREVIEW__ && typeof window !== "undefined"/);
   assert.match(featureSource, /window\.__OQ_DEV_ODU_WRITE_STATE__/);
   assert.match(devSource, /mock-fixtures\.js\?v=odu-settings-v3/);
-  assert.match(devSource, /mock-device\.js\?v=odu-settings-v3/);
-  assert.match(devSource, /openquatt-preview\.js\?v=odu-settings-v3/);
+  assert.match(devSource, /mock-device\.js\?v=cooling-start-block-v2/);
+  assert.match(devSource, /openquatt-preview\.js\?v=cooling-start-block-v1/);
 });
 
 test("buitenunitinstellingen openen beide editors zonder interne termen in de hoofdtekst", () => {

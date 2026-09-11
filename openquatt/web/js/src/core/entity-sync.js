@@ -307,6 +307,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "projectVersionText",
       "releaseChannelText",
       "statusLedsEnabled",
+      "factoryResetButton",
       "usageTelemetryEnabled",
       "usageTelemetryChoiceConfigured",
       "usageTelemetryInstallationId",
