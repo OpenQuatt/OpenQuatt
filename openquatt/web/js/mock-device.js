@@ -4142,7 +4142,7 @@
       const enabled = params.get("enabled") === "true";
       if (enabled && !service.loaded) return mockResponse(409, { ok: false, error: "load_required" });
       service.armed = enabled;
-      service.status = enabled ? "ODU frequency table writes enabled" : "ODU frequency table writes disabled";
+      service.status = enabled ? "Compressor frequency table writes enabled" : "Compressor frequency table writes disabled";
       return mockResponse(200, getOduRuntimeServicePayload(hp));
     }
     if (action === "load") {

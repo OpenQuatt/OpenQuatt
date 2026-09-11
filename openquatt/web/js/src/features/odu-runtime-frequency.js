@@ -318,14 +318,20 @@ function getTableValidation(hp) {
   return { valid: invalid.length === 0, invalid };
 }
 
-function getStatusPresentation(status) {
+export function getStatusPresentation(status) {
   const code = String(status || "").toUpperCase();
   if (code.includes("VERIFIED SUCCESSFULLY")) return ["De gekozen waarden zijn actief", "success"];
   if (code.includes("LOADED")) return ["Waarden uit de buitenunit geladen", "success"];
+  if (code.includes("OPERATING MODE UNKNOWN") || code.includes("FREQUENCY UNKNOWN")
+    || code.includes("SAFETY CHECK TIMED OUT")) {
+    return ["Veilige toestand van de buitenunit kon niet worden vastgesteld", "warning"];
+  }
   if (code.includes("BLOCKED")) return ["Wacht tot de buitenunit stilstaat", "warning"];
   if (code.includes("FAILED")) return ["Toepassen kon niet worden bevestigd", "warning"];
+  if (code.includes("WRITES ENABLED")) return ["Wijzigingen vrijgegeven", ""];
+  if (code.includes("WRITES DISABLED")) return ["Wijzigingen vergrendeld", ""];
   if (code.includes("WRITING") || code.includes("READING") || code.includes("CHECKING")
-    || code.includes("VERIFYING") || code.includes("WRITES")) return ["Bezig met controleren", ""];
+    || code.includes("VERIFYING")) return ["Bezig met controleren", ""];
   return ["Laad eerst de actuele waarden", ""];
 }
 
