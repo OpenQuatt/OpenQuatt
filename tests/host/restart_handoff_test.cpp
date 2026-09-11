@@ -15,6 +15,7 @@ using esphome::openquatt_incident_manager::restart_handoff::may_grant_after_dura
 using esphome::openquatt_incident_manager::restart_handoff::may_restore_credit;
 using esphome::openquatt_incident_manager::restart_handoff::persist_record;
 using esphome::openquatt_incident_manager::restart_handoff::Record;
+using esphome::openquatt_incident_manager::restart_handoff::StableFullCreditLatch;
 using esphome::openquatt_incident_manager::restart_handoff::StorageReadResult;
 using esphome::openquatt_incident_manager::restart_handoff::valid_record;
 
@@ -68,7 +69,7 @@ Record make_record() {
   Record record{};
   record.magic = esphome::openquatt_incident_manager::restart_handoff::kRecordMagic;
   record.version = esphome::openquatt_incident_manager::restart_handoff::kRecordVersion;
-  record.state = esphome::openquatt_incident_manager::restart_handoff::kRecordArmed;
+  record.state = esphome::openquatt_incident_manager::restart_handoff::kRecordRestartArmed;
   record.minimum_off_ms = MINIMUM_OFF_MS;
   record.config_hash = configuration_hash(MINIMUM_OFF_MS, true);
   record.boot_partition_address = 0x210000U;
@@ -76,6 +77,15 @@ Record make_record() {
   record.hp2_credit_ms = 120000U;
   for (size_t index = 0U; index < sizeof(record.image_hash); ++index)
     record.image_hash[index] = static_cast<uint8_t>(index);
+  finalize_record(&record);
+  return record;
+}
+
+Record make_ota_record() {
+  Record record = make_record();
+  record.state = esphome::openquatt_incident_manager::restart_handoff::kRecordOtaArmed;
+  record.boot_partition_address = 0x410000U;
+  record.hp2_credit_ms = MINIMUM_OFF_MS;
   finalize_record(&record);
   return record;
 }
@@ -97,6 +107,40 @@ void test_only_exact_controlled_restart_restores_credit() {
   assert(valid_record(record));
   const BootContext context = matching_context(record);
   assert(may_restore_credit(record, context));
+}
+
+void test_controlled_ota_restores_on_selected_new_partition() {
+  const Record record = make_ota_record();
+  assert(valid_record(record));
+
+  auto pending_context = matching_context(record);
+  pending_context.image_valid = false;
+  pending_context.image_pending_verify = true;
+  pending_context.image_hash[0] ^= 0x5AU;
+  assert(may_restore_credit(record, pending_context));
+
+  auto rollback_disabled_context = matching_context(record);
+  rollback_disabled_context.image_hash[0] ^= 0xA5U;
+  assert(may_restore_credit(record, rollback_disabled_context));
+}
+
+void test_ota_handoff_rejects_old_or_uncontrolled_boot() {
+  const Record record = make_ota_record();
+
+  auto same_image = matching_context(record);
+  assert(!may_restore_credit(record, same_image));
+
+  auto wrong_partition = matching_context(record);
+  wrong_partition.image_pending_verify = true;
+  wrong_partition.image_valid = false;
+  wrong_partition.boot_partition_address++;
+  assert(!may_restore_credit(record, wrong_partition));
+
+  auto uncontrolled_reset = matching_context(record);
+  uncontrolled_reset.image_pending_verify = true;
+  uncontrolled_reset.image_valid = false;
+  uncontrolled_reset.software_reset = false;
+  assert(!may_restore_credit(record, uncontrolled_reset));
 }
 
 void test_corrupt_or_partial_arm_never_restores_credit() {
@@ -297,10 +341,39 @@ void test_invalid_credit_bounds_fail_closed() {
   assert(!valid_record(record));
 }
 
+void test_full_credit_latch_requires_stable_eligibility() {
+  StableFullCreditLatch latch{};
+  constexpr uint32_t STABLE_MS = 15000U;
+
+  latch.observe(true, 1000U, STABLE_MS);
+  assert(!latch.confirmed());
+  latch.observe(true, 15999U, STABLE_MS);
+  assert(!latch.confirmed());
+  latch.observe(true, 16000U, STABLE_MS);
+  assert(latch.confirmed());
+
+  latch.observe(false, 17000U, STABLE_MS);
+  assert(!latch.confirmed());
+  latch.observe(true, 18000U, STABLE_MS);
+  assert(!latch.confirmed());
+}
+
+void test_full_credit_latch_handles_millis_wrap() {
+  StableFullCreditLatch latch{};
+  constexpr uint32_t STABLE_MS = 15000U;
+  constexpr uint32_t START_MS = 0xFFFFF000U;
+  latch.observe(true, START_MS, STABLE_MS);
+  assert(!latch.confirmed());
+  latch.observe(true, static_cast<uint32_t>(START_MS + STABLE_MS), STABLE_MS);
+  assert(latch.confirmed());
+}
+
 }  // namespace
 
 int main() {
   test_only_exact_controlled_restart_restores_credit();
+  test_controlled_ota_restores_on_selected_new_partition();
+  test_ota_handoff_rejects_old_or_uncontrolled_boot();
   test_corrupt_or_partial_arm_never_restores_credit();
   test_replay_and_non_restart_paths_are_rejected();
   test_consume_failure_never_grants_in_memory_credit();
@@ -312,5 +385,7 @@ int main() {
   test_consume_commit_failure_blocks_then_recovers_once();
   test_image_and_configuration_mismatch_are_rejected();
   test_invalid_credit_bounds_fail_closed();
+  test_full_credit_latch_requires_stable_eligibility();
+  test_full_credit_latch_handles_millis_wrap();
   return 0;
 }
