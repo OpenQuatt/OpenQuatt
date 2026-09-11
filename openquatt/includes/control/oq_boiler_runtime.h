@@ -240,9 +240,9 @@ class Runtime {
                                const oq_boiler::ControllerDecision& decision, oq_boiler::BoilerRole role,
                                const oq_boiler::BoilerLogDecision& controller_log) {
     const bool blocked = decision.demand_present && !decision.output_active;
-    const bool blocked_changed = !have_controller_state_ || blocked != last_blocked_;
+    const bool became_blocked = blocked && !last_blocked_;
     const bool reason_changed = !have_controller_state_ || decision.block_reason != last_block_reason_;
-    if (!have_controller_state_ || decision.output_active != last_allowed_ || reason_changed || blocked_changed) {
+    if (!have_controller_state_ || decision.output_active != last_allowed_ || reason_changed || became_blocked) {
       const char* reason = oq_boiler::block_reason_text(decision.block_reason);
       if (decision.output_active) {
         const char* context = role == oq_boiler::BoilerRole::COMMISSIONING_CM100 ? "CM100 commissioning task"
