@@ -286,9 +286,9 @@ uint32_t OpenQuattOtaHandoff::full_credit_if_confirmed_(uint8_t hp_index, uint32
 #ifdef USE_OTA_STATE_LISTENER
 void OpenQuattOtaHandoff::on_ota_global_state(ota::OTAState state, float progress, uint8_t error,
                                               ota::OTAComponent* component) {
-  (void) progress;
-  (void) error;
-  (void) component;
+  (void)progress;
+  (void)error;
+  (void)component;
 
   if (state == ota::OTA_STARTED) {
     const uint32_t now_ms = millis();
@@ -296,8 +296,7 @@ void OpenQuattOtaHandoff::on_ota_global_state(ota::OTAState state, float progres
     const uint32_t hp2_credit_ms = this->full_credit_if_confirmed_(2U, now_ms);
 
     this->ota_handoff_attempted_ = hp1_credit_ms != 0U || hp2_credit_ms != 0U;
-    this->ota_handoff_saved_ =
-        this->ota_handoff_attempted_ && arm_ota_handoff(hp1_credit_ms, hp2_credit_ms);
+    this->ota_handoff_saved_ = this->ota_handoff_attempted_ && arm_ota_handoff(hp1_credit_ms, hp2_credit_ms);
     ESP_LOGI(TAG, "Controlled OTA: confirmed full off-time credit HP1=%us HP2=%us (%s)",
              static_cast<unsigned>(hp1_credit_ms / 1000U), static_cast<unsigned>(hp2_credit_ms / 1000U),
              this->ota_handoff_saved_ ? "saved" : "conservative fallback");
