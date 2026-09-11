@@ -5,11 +5,13 @@ import test from "node:test";
 globalThis.__OQ_PREVIEW__ = false;
 
 const { DEBUG_RECORDING_KEYS, ENTITY_DEFS } = await import("../js/src/core/config.js");
-const [requestControl, supervisory, powerHouse, recorderSource] = await Promise.all([
+const [requestControl, supervisory, powerHouse, recorderSource, hpPackage, supervisoryRuntime] = await Promise.all([
   readFile(new URL("../../oq_thermal_request_control.yaml", import.meta.url), "utf8"),
   readFile(new URL("../../oq_supervisory_controlmode.yaml", import.meta.url), "utf8"),
   readFile(new URL("../../oq_power_house_strategy.yaml", import.meta.url), "utf8"),
   readFile(new URL("../../../components/openquatt_debug_recorder/OpenQuattDebugRecorder.cpp", import.meta.url), "utf8"),
+  readFile(new URL("../../oq_HP_io.yaml", import.meta.url), "utf8"),
+  readFile(new URL("../../includes/control/oq_supervisory_state_runtime.h", import.meta.url), "utf8"),
 ]);
 
 const CHAIN_KEYS = [
@@ -25,6 +27,13 @@ const CHAIN_KEYS = [
   "lowLoadOffW",
   "lowLoadOnW",
   "debugStaticSnapshot",
+];
+
+const ODU_REGISTER_KEYS = [
+  "hp1CompressorFrequencyDemand",
+  "hp2CompressorFrequencyDemand",
+  "hp1LowNoiseMode",
+  "hp2LowNoiseMode",
 ];
 
 test("V2-ketenvelden zijn compacte numerieke kolommen met delta-encoding", () => {
@@ -47,10 +56,13 @@ test("V2-ketenvelden zijn compacte numerieke kolommen met delta-encoding", () =>
 });
 
 test("startsnapshot bevat tabellen, hash en instellingen eenmalig in initial", () => {
-  for (const key of CHAIN_KEYS) {
+  for (const key of [...CHAIN_KEYS, ...ODU_REGISTER_KEYS]) {
     assert.ok(DEBUG_RECORDING_KEYS.includes(key), `debugset mist ${key}`);
   }
-  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(-CHAIN_KEYS.length), CHAIN_KEYS);
+  assert.deepEqual(
+    DEBUG_RECORDING_KEYS.slice(-(CHAIN_KEYS.length + ODU_REGISTER_KEYS.length)),
+    [...CHAIN_KEYS, ...ODU_REGISTER_KEYS],
+  );
   assert.match(powerHouse, /id: oq_debug_static_snapshot/);
   assert.match(powerHouse, /name: "Debug static snapshot"/);
   assert.match(powerHouse, /hp1/);
@@ -108,4 +120,43 @@ test("Duo legt HP2 vast; Single degradeert HP2 veilig naar null", () => {
     assert.ok(DEBUG_RECORDING_KEYS.includes(key));
   }
   assert.ok(ENTITY_DEFS.debugStaticSnapshot.optional !== false);
+});
+
+test("ODU-registervelden zijn compacte hergebruik-kolommen zonder nieuwe entities", () => {
+  const widths = { binary_sensor: 1, switch: 1, text_sensor: 2, select: 2, sensor: 4, number: 4 };
+  for (const key of ODU_REGISTER_KEYS) {
+    assert.ok(ENTITY_DEFS[key], `entitydefinitie ontbreekt voor ${key}`);
+    assert.ok(key.length < 40, `debugsleutel past niet in DebugField.key: ${key}`);
+    assert.ok(ENTITY_DEFS[key].name.length < 48, `entitynaam past niet in DebugField.name: ${key}`);
+    assert.ok(ENTITY_DEFS[key].optional !== false, `${key} moet missing-safe zijn`);
+  }
+  assert.equal(ENTITY_DEFS.hp1CompressorFrequencyDemand.domain, "sensor");
+  assert.equal(ENTITY_DEFS.hp2CompressorFrequencyDemand.domain, "sensor");
+  assert.equal(ENTITY_DEFS.hp1LowNoiseMode.domain, "select");
+  assert.equal(ENTITY_DEFS.hp2LowNoiseMode.domain, "select");
+  // 2x sensor (4B) + 2x select (2B) = 12B extra op de packed row.
+  const extra = ODU_REGISTER_KEYS.reduce((total, key) => total + widths[ENTITY_DEFS[key].domain], 0);
+  assert.equal(extra, 12);
+
+  // Demand is het bestaande Modbus-register 2102 (Hz, geclampte meting);
+  // zonder brondata levert de sensor NAN en neemt de recorder null op.
+  assert.match(hpPackage, /id: \$\{hp_id\}_compressor_frequency_demand/);
+  assert.match(hpPackage, /name: "\$\{prefix\}Compressor frequency demand"/);
+  assert.match(hpPackage, /address: 2102/);
+  assert.match(hpPackage, /unit_of_measurement: "Hz"/);
+
+  // Silent-status is de aangestuurde ODU-select op register 2006 (Off/On),
+  // niet de OpenQuatt-planningsbit; de supervisory stuurt hem uit het
+  // silent-venster (met uitzondering voor manual-HP) en leest terug.
+  assert.match(hpPackage, /id: \$\{hp_id\}_low_noise_mode/);
+  assert.match(hpPackage, /name: "\$\{prefix\}Silent Mode"/);
+  assert.match(hpPackage, /address: 2006/);
+  assert.match(supervisoryRuntime, /set_select_option\(id\(hp1_low_noise_mode\), silent_opt\)/);
+  assert.match(supervisoryRuntime, /const bool hp_silent_active = silent_active && !oq_manual_hp::owns_control\(\);/);
+
+  // HP2-instanties bestaan alleen op Duo (heatpump2-pakket); op Single slaat
+  // de recorder ze veilig over als missing (null), zonder verzonnen waarden.
+  for (const key of ["hp2CompressorFrequencyDemand", "hp2LowNoiseMode"]) {
+    assert.ok(DEBUG_RECORDING_KEYS.includes(key));
+  }
 });

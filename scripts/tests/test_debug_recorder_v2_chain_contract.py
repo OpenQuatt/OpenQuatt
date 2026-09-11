@@ -7,6 +7,11 @@ ROOT = Path(__file__).resolve().parents[2]
 REQUEST_CONTROL = (ROOT / "openquatt" / "oq_thermal_request_control.yaml").read_text()
 SUPERVISORY = (ROOT / "openquatt" / "oq_supervisory_controlmode.yaml").read_text()
 POWER_HOUSE = (ROOT / "openquatt" / "oq_power_house_strategy.yaml").read_text()
+HP_IO = (ROOT / "openquatt" / "oq_HP_io.yaml").read_text()
+SUPERVISORY_RUNTIME = (
+    ROOT / "openquatt" / "includes" / "control" / "oq_supervisory_state_runtime.h"
+).read_text()
+DUO_PACKAGES = (ROOT / "openquatt" / "topology" / "duo_packages.yaml").read_text()
 RECORDER_SOURCE = (
     ROOT / "components/openquatt_debug_recorder/OpenQuattDebugRecorder.cpp"
 ).read_text()
@@ -44,6 +49,13 @@ CHAIN_KEYS = [
     "lowLoadOffW",
     "lowLoadOnW",
     "debugStaticSnapshot",
+]
+
+REGISTER_KEYS = [
+    "hp1CompressorFrequencyDemand",
+    "hp2CompressorFrequencyDemand",
+    "hp1LowNoiseMode",
+    "hp2LowNoiseMode",
 ]
 
 
@@ -102,23 +114,47 @@ class DebugRecorderV2ChainContractTest(unittest.TestCase):
         self.assertIn('std::strcmp(field.key, "debugStaticSnapshot") != 0', RECORDER_SOURCE)
 
     def test_debug_keys_are_additive_compact_and_within_budget(self) -> None:
-        for key in CHAIN_KEYS:
+        for key in CHAIN_KEYS + REGISTER_KEYS:
             self.assertIn(f'"{key}"', CONFIG_JS)
         debug_section = CONFIG_JS[CONFIG_JS.index("export const DEBUG_RECORDING_KEYS"):]
         tail = debug_section[debug_section.index('"boilerPowerTestResultQuality"'):]
-        positions = [tail.index(f'"{key}"') for key in CHAIN_KEYS]
+        positions = [tail.index(f'"{key}"') for key in CHAIN_KEYS + REGISTER_KEYS]
         self.assertEqual(positions, sorted(positions))
-        for key in CHAIN_KEYS:
+        for key in CHAIN_KEYS + REGISTER_KEYS:
             self.assertLess(len(key), 40)
         header_capacity = int(re.search(r"FIELD_CAPACITY = (\d+)", RECORDER_HEADER).group(1))
         header_system = int(re.search(r"SYSTEM_FIELD_COUNT = (\d+)", RECORDER_HEADER).group(1))
         self.assertEqual(header_capacity, 224)
         self.assertEqual(header_system, 5)
-        self.assertLessEqual(200, header_capacity - header_system)
+        self.assertLessEqual(206, header_capacity - header_system)
 
     def test_low_load_numerics_keep_text_for_backward_compatibility(self) -> None:
         self.assertIn('name: "Low-load dynamic thresholds"', SUPERVISORY)
         self.assertIn("lowLoadDynamicThresholds", CONFIG_JS)
+
+    def test_odu_register_reuse_needs_no_new_entities(self) -> None:
+        # Demand is het bestaande Modbus-register 2102 (Hz, geclampte meting);
+        # zonder brondata levert de sensor NAN en neemt de recorder null op.
+        self.assertIn("id: ${hp_id}_compressor_frequency_demand", HP_IO)
+        self.assertIn('name: "${prefix}Compressor frequency demand"', HP_IO)
+        self.assertIn("address: 2102", HP_IO)
+        self.assertIn('unit_of_measurement: "Hz"', HP_IO)
+        # Silent-status is de aangestuurde ODU-select op register 2006
+        # (Off/On, optimistisch + readback), niet de planningsbit.
+        self.assertIn("id: ${hp_id}_low_noise_mode", HP_IO)
+        self.assertIn('name: "${prefix}Silent Mode"', HP_IO)
+        self.assertIn("address: 2006", HP_IO)
+        self.assertIn('"Off": 0', HP_IO)
+        self.assertIn('"On": 1', HP_IO)
+        # HP2-instanties bestaan alleen op Duo; op Single slaat de recorder
+        # ze veilig over als missing (null).
+        self.assertIn('hp_id: "hp2"', DUO_PACKAGES)
+
+    def test_silent_select_is_commanded_not_planned(self) -> None:
+        # De supervisory stuurt de ODU-select uit het silent-venster, met
+        # uitzondering voor manual-HP; silentActive is slechts planning.
+        self.assertIn("set_select_option(id(hp1_low_noise_mode), silent_opt)", SUPERVISORY_RUNTIME)
+        self.assertIn("silent_active && !oq_manual_hp::owns_control()", SUPERVISORY_RUNTIME)
 
 
 if __name__ == "__main__":

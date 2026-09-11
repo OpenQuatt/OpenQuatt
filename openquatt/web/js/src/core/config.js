@@ -563,6 +563,8 @@
     ["hp1AppliedControlLevel", DOMAIN_SENSOR, "HP1 applied control level"],
     ["hp1TableFrequency", DOMAIN_SENSOR, "HP1 table frequency"],
     ["hp1Freq", DOMAIN_SENSOR, "HP1 - Compressor frequency", false],
+    ["hp1CompressorFrequencyDemand", DOMAIN_SENSOR, "HP1 - Compressor frequency demand"],
+    ["hp1LowNoiseMode", DOMAIN_SELECT, "HP1 - Silent Mode"],
     ["hp1MinimumHeatingHz", DOMAIN_SENSOR, "HP1 - Minimum heating frequency"],
     ["hp1MinimumCoolingHz", DOMAIN_SENSOR, "HP1 - Minimum cooling frequency"],
     ["hp1FanSpeed", DOMAIN_SENSOR, "HP1 - Fan speed", false],
@@ -596,6 +598,8 @@
     ["hp2AppliedControlLevel", DOMAIN_SENSOR, "HP2 applied control level"],
     ["hp2TableFrequency", DOMAIN_SENSOR, "HP2 table frequency"],
     ["hp2Freq", DOMAIN_SENSOR, "HP2 - Compressor frequency"],
+    ["hp2CompressorFrequencyDemand", DOMAIN_SENSOR, "HP2 - Compressor frequency demand"],
+    ["hp2LowNoiseMode", DOMAIN_SELECT, "HP2 - Silent Mode"],
     ["hp2MinimumHeatingHz", DOMAIN_SENSOR, "HP2 - Minimum heating frequency"],
     ["hp2MinimumCoolingHz", DOMAIN_SENSOR, "HP2 - Minimum cooling frequency"],
     ["hp2FanSpeed", DOMAIN_SENSOR, "HP2 - Fan speed"],
@@ -1491,6 +1495,10 @@
     "lowLoadOffW",
     "lowLoadOnW",
     "debugStaticSnapshot",
+    "hp1CompressorFrequencyDemand",
+    "hp2CompressorFrequencyDemand",
+    "hp1LowNoiseMode",
+    "hp2LowNoiseMode",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestManifestUrl", "installFirmwareTestManifest"];
