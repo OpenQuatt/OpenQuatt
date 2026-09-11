@@ -5,9 +5,10 @@
 # be correlated with ESPHome's Modbus parser warnings. Also hooks the ESP-IDF UART
 # select callback to count parity/frame errors that ESPHome normally does not log.
 #
-# The active heat-pump UART RX pin also gets an internal pull-up. This tests the
-# hypothesis that the RS485 receiver output briefly floats during DE/RE turnaround,
-# creating the observed stray 0xFF + parity error before an otherwise valid frame.
+# The active heat-pump UART RX pin gets an internal pull-up. The diagnostic build
+# also moves DE/RE control out of ESP-IDF UART_MODE_RS485_HALF_DUPLEX and into the
+# ESPHome Modbus component. This isolates the ESP-IDF RTS turnaround path while
+# keeping the same physical M1 port, baud rate, framing and OpenQuatt polling.
 #
 # Intentionally avoids UARTDebug::log_hex(), which adds a 10 ms delay after every
 # emitted log line and could influence the timing being investigated.
@@ -26,6 +27,7 @@ logger:
 
 uart:
   - id: !extend uart_bus
+    flow_control_pin: !remove
     rx_pin:
       number: ${uart_rx_pin}
       mode:
@@ -56,6 +58,10 @@ uart:
               static_cast<unsigned>(bytes.size()),
               hex_buf
             );
+
+modbus:
+  - id: !extend mod_bus
+    flow_control_pin: ${uart_rts_pin}
 
 interval:
   - interval: 1s
