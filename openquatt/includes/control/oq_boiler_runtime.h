@@ -239,8 +239,10 @@ class Runtime {
   void publish_controller_log_(int control_mode, float supply_c, bool supply_valid,
                                const oq_boiler::ControllerDecision& decision, oq_boiler::BoilerRole role,
                                const oq_boiler::BoilerLogDecision& controller_log) {
+    const bool blocked = decision.demand_present && !decision.output_active;
+    const bool blocked_changed = !have_controller_state_ || blocked != last_blocked_;
     const bool reason_changed = !have_controller_state_ || decision.block_reason != last_block_reason_;
-    if (!have_controller_state_ || decision.output_active != last_allowed_ || reason_changed) {
+    if (!have_controller_state_ || decision.output_active != last_allowed_ || reason_changed || blocked_changed) {
       const char* reason = oq_boiler::block_reason_text(decision.block_reason);
       if (decision.output_active) {
         const char* context = role == oq_boiler::BoilerRole::COMMISSIONING_CM100 ? "CM100 commissioning task"
@@ -249,14 +251,13 @@ class Runtime {
         ESP_LOGI("quatt.boiler", "Boiler enabled: %s and safety guards clear", context);
       } else if (id(oq_water_temp_hard_trip_active)) {
         ESP_LOGW("quatt.boiler", "Boiler blocked: %s", reason);
-      } else if (decision.block_reason == oq_boiler::BLOCK_COMMISSIONING_WAITING) {
+      } else if (blocked && decision.block_reason == oq_boiler::BLOCK_COMMISSIONING_WAITING) {
         ESP_LOGI("quatt.boiler", "Boiler commissioning: waiting for flow to settle");
-      } else {
+      } else if (blocked) {
         ESP_LOGI("quatt.boiler", "Boiler blocked: %s", reason);
       }
     }
 
-    const bool blocked = decision.demand_present && !decision.output_active;
     if (blocked && (!last_blocked_ || reason_changed)) {
       id(oq_decision_log)
           .emit(openquatt_decision_log::EVENT_DECISION_BLOCKED, openquatt_decision_log::SUBJECT_CV,
