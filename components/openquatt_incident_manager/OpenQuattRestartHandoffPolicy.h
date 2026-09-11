@@ -105,11 +105,11 @@ inline bool may_restore_credit(const Record& record, const BootContext& context)
   }
 
   if (record.state == kRecordOtaArmed) {
-    // With rollback enabled, the first boot of the selected OTA partition is
-    // pending verification. Without rollback, require a changed image hash so
-    // the old partition cannot consume an OTA handoff after a software reboot.
-    const bool image_changed = std::memcmp(context.image_hash, record.image_hash, kImageHashSize) != 0;
-    return context.image_pending_verify || (context.image_valid && image_changed);
+    // The OTA record already names the exact inactive partition selected before
+    // flashing. A successful software reboot into that partition is sufficient,
+    // even when the same binary was reinstalled. Failed/interrupted OTA stays on
+    // the source partition and therefore cannot consume the credit.
+    return context.image_pending_verify || context.image_valid;
   }
 
   return false;
