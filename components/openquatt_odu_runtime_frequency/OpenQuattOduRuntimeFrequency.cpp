@@ -321,7 +321,7 @@ OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::reques
     this->release_bus_(request_token);
     return RequestResult::BUSY;
   }
-  ESP_LOGW(TAG, "HP%u LOAD_REQUESTED", this->hp_index_);
+  ESP_LOGI(TAG, "HP%u LOAD_REQUESTED", this->hp_index_);
   return RequestResult::ACCEPTED;
 }
 
@@ -339,7 +339,13 @@ OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::reques
     this->set_status_locked_(status);
   }
   portEXIT_CRITICAL(&this->state_mux_);
-  if (result == RequestResult::ACCEPTED) ESP_LOGW(TAG, "HP%u %s", this->hp_index_, status);
+  if (result == RequestResult::ACCEPTED) {
+    if (enabled) {
+      ESP_LOGW(TAG, "HP%u %s", this->hp_index_, status);
+    } else {
+      ESP_LOGI(TAG, "HP%u %s", this->hp_index_, status);
+    }
+  }
   return result;
 }
 
@@ -380,7 +386,7 @@ OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::reques
     this->release_bus_(request_token);
     return result;
   }
-  ESP_LOGW(TAG, "HP%u GUARD_READ_REQUESTED: checking ODU state", this->hp_index_);
+  ESP_LOGI(TAG, "HP%u GUARD_READ_REQUESTED: checking ODU state", this->hp_index_);
   return result;
 }
 
@@ -406,7 +412,11 @@ void OpenQuattOduRuntimeFrequency::reset_runtime_state(const char* failure_messa
   const char* status = this->reset_runtime_state_locked_(failure_message);
   reserved_token = this->bus_reservation_token_.exchange(0U, std::memory_order_acq_rel);
   portEXIT_CRITICAL(&this->state_mux_);
-  ESP_LOGW(TAG, "HP%u %s", this->hp_index_, status);
+  if (status != nullptr && std::strncmp(status, "READY", 5) == 0) {
+    ESP_LOGD(TAG, "HP%u %s", this->hp_index_, status);
+  } else {
+    ESP_LOGW(TAG, "HP%u %s", this->hp_index_, status);
+  }
   if (reserved_token != 0U) this->eeprom_dump_->end_external_operation();
 }
 
@@ -506,7 +516,7 @@ void OpenQuattOduRuntimeFrequency::finish_without_write_(const char* status, uin
   this->busy_.store(false, std::memory_order_release);
   this->set_status_locked_(status);
   portEXIT_CRITICAL(&this->state_mux_);
-  ESP_LOGW(TAG, "HP%u %s", this->hp_index_, status != nullptr ? status : "");
+  ESP_LOGI(TAG, "HP%u %s", this->hp_index_, status != nullptr ? status : "");
   this->release_bus_(operation_token);
 }
 
@@ -592,7 +602,7 @@ void OpenQuattOduRuntimeFrequency::finish_load_(const oq_odu_runtime_frequency::
   this->loaded_.store(true, std::memory_order_release);
   this->set_status_locked_(status);
   portEXIT_CRITICAL(&this->state_mux_);
-  ESP_LOGW(TAG, "HP%u %s", this->hp_index_, status);
+  ESP_LOGI(TAG, "HP%u %s", this->hp_index_, status);
   this->release_bus_(operation_token);
 }
 
