@@ -8,10 +8,7 @@ namespace esphome::openquatt_incident_manager::restart_handoff {
 
 constexpr uint32_t kRecordMagic = 0x4F515248UL;  // OQRH
 constexpr uint16_t kRecordVersion = 1U;
-constexpr uint8_t kRecordRestartArmed = 1U;
-constexpr uint8_t kRecordOtaArmed = 2U;
-// Backward-compatible name used by the existing controlled-restart tests.
-constexpr uint8_t kRecordArmed = kRecordRestartArmed;
+constexpr uint8_t kRecordArmed = 1U;
 constexpr uint32_t kMaximumMinimumOffMs = 3600UL * 1000UL;
 constexpr size_t kImageHashSize = 32U;
 
@@ -65,10 +62,8 @@ inline bool has_image_hash(const uint8_t (&image_hash)[kImageHashSize]) {
   return false;
 }
 
-inline bool valid_record_state(uint8_t state) { return state == kRecordRestartArmed || state == kRecordOtaArmed; }
-
 inline bool valid_record(const Record& record) {
-  return record.magic == kRecordMagic && record.version == kRecordVersion && valid_record_state(record.state) &&
+  return record.magic == kRecordMagic && record.version == kRecordVersion && record.state == kRecordArmed &&
          record.reserved == 0U && valid_minimum_off_ms(record.minimum_off_ms) &&
          record.hp1_credit_ms <= record.minimum_off_ms && record.hp2_credit_ms <= record.minimum_off_ms &&
          (record.hp1_credit_ms != 0U || record.hp2_credit_ms != 0U) && has_image_hash(record.image_hash) &&
@@ -94,25 +89,10 @@ struct BootContext {
 enum class StorageReadResult : uint8_t { ABSENT, PRESENT, ERROR };
 
 inline bool may_restore_credit(const Record& record, const BootContext& context) {
-  if (!valid_record(record) || !context.software_reset || !context.running_partition_matches_boot ||
-      context.minimum_off_ms != record.minimum_off_ms || context.config_hash != record.config_hash ||
-      context.boot_partition_address != record.boot_partition_address || !has_image_hash(context.image_hash)) {
-    return false;
-  }
-
-  if (record.state == kRecordRestartArmed) {
-    return context.image_valid && std::memcmp(context.image_hash, record.image_hash, kImageHashSize) == 0;
-  }
-
-  if (record.state == kRecordOtaArmed) {
-    // The OTA record already names the exact inactive partition selected before
-    // flashing. A successful software reboot into that partition is sufficient,
-    // even when the same binary was reinstalled. Failed/interrupted OTA stays on
-    // the source partition and therefore cannot consume the credit.
-    return context.image_pending_verify || context.image_valid;
-  }
-
-  return false;
+  return valid_record(record) && context.software_reset && context.running_partition_matches_boot &&
+         (context.image_valid || context.image_pending_verify) && context.minimum_off_ms == record.minimum_off_ms &&
+         context.config_hash == record.config_hash && context.boot_partition_address == record.boot_partition_address &&
+         has_image_hash(context.image_hash) && std::memcmp(context.image_hash, record.image_hash, kImageHashSize) == 0;
 }
 
 // A matching record is still unsafe until its deletion has been committed and
