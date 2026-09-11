@@ -303,9 +303,6 @@ void OpenQuattUsageTelemetry::dump_config() {
   ESP_LOGCONFIG(TAG, "  Broker configured: %s", YESNO(this->is_configured()));
   ESP_LOGCONFIG(TAG, "  Transport: %s", this->tls_ ? "MQTT/TLS" : "MQTT");
   ESP_LOGCONFIG(TAG, "  Port: %u", this->port_);
-  if (!this->tls_ && this->is_configured()) {
-    ESP_LOGW(TAG, "Usage statistics transport is not encrypted");
-  }
   ESP_LOGCONFIG(TAG, "  Choice configured: %s", YESNO(this->choice_configured_.load()));
   ESP_LOGCONFIG(TAG, "  Quick Start complete: %s", YESNO(this->is_setup_complete_()));
   ESP_LOGCONFIG(TAG, "  Publish interval: %" PRIu32 " seconds", this->interval_ms_ / 1000U);

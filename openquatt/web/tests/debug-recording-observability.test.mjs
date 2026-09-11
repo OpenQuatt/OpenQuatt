@@ -103,6 +103,11 @@ const ISSUE_649_OBSERVABILITY_KEYS = [
   "heatingSupplyTargetActiveSource",
 ];
 
+const ISSUE_642_OBSERVABILITY_KEYS = [
+  "coolingStartBlockReason",
+  "coolingStartBlockRemaining",
+];
+
 const ADDED_OBSERVABILITY_KEYS = [
   ...OBSERVABILITY_KEYS,
   ...ISSUE_473_OBSERVABILITY_KEYS,
@@ -112,6 +117,7 @@ const ADDED_OBSERVABILITY_KEYS = [
   ...ISSUE_536_WARM_START_OBSERVABILITY_KEYS,
   ...ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS,
   ...ISSUE_649_OBSERVABILITY_KEYS,
+  ...ISSUE_642_OBSERVABILITY_KEYS,
 ];
 
 test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", async () => {
@@ -125,6 +131,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const issue516EndIndex = coolingMinOffEndIndex + ISSUE_516_OBSERVABILITY_KEYS.length;
   const issue536WarmStartEndIndex = issue516EndIndex + ISSUE_536_WARM_START_OBSERVABILITY_KEYS.length;
   const issue536EmpiricalEndIndex = issue536WarmStartEndIndex + ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS.length;
+  const issue649EndIndex = issue536EmpiricalEndIndex + ISSUE_649_OBSERVABILITY_KEYS.length;
+  const issue642EndIndex = issue649EndIndex + ISSUE_642_OBSERVABILITY_KEYS.length;
 
   assert.equal(legacyTailIndex, 134);
   assert.deepEqual(
@@ -149,9 +157,14 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
     ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS,
   );
   assert.deepEqual(
-    DEBUG_RECORDING_KEYS.slice(issue536EmpiricalEndIndex),
+    DEBUG_RECORDING_KEYS.slice(issue536EmpiricalEndIndex, issue649EndIndex),
     ISSUE_649_OBSERVABILITY_KEYS,
   );
+  assert.deepEqual(
+    DEBUG_RECORDING_KEYS.slice(issue649EndIndex, issue642EndIndex),
+    ISSUE_642_OBSERVABILITY_KEYS,
+  );
+  assert.equal(issue642EndIndex, DEBUG_RECORDING_KEYS.length);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   const recorderHeader = await readFile(
     new URL("../../../components/openquatt_debug_recorder/OpenQuattDebugRecorder.h", import.meta.url),

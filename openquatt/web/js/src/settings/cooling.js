@@ -37,9 +37,92 @@ import { state } from "../core/state.js";
       "Fallback cooling active": "Dauwpuntsbenadering actief",
       "Fallback corrected by warm night": "Dauwpuntsbenadering gecorrigeerd door warme nacht",
       "Fallback blocked by tropical night": "Dauwpuntsbenadering geblokkeerd door tropische nacht",
+      ...COOLING_START_BLOCK_LABELS,
     };
 
     return labels[value] || value;
+  }
+
+  export const COOLING_START_BLOCK_REASON_READY = "Ready";
+  export const COOLING_START_BLOCK_LABELS = {
+    Ready: "Gereed om te koelen",
+    "Cooling minimum off-time": "Wachten op koel-herstartbeveiliging",
+    "Waiting for confirmed cooling stop": "Wachten op bevestigde koelstop",
+    "Compressor restart protection": "Wachten op compressor-herstartbeveiliging",
+    "Startup inhibit after reboot": "Wachten op opstartvrijgave na herstart",
+    "Compressor start limit (6/hour)": "Startlimiet bereikt (6/uur)",
+    "Compressor start blocked": "Compressorstart geblokkeerd",
+  };
+
+  export function formatCoolingStartBlockCountdown(seconds) {
+    const total = Math.max(0, Math.ceil(Number(seconds) || 0));
+    const minutes = Math.floor(total / 60);
+    const rest = total % 60;
+    return `${minutes}:${String(rest).padStart(2, "0")}`;
+  }
+
+  // Redenen die een afteltijd mogen tonen. De firmware garandeert al dat
+  // alleen tijdgebonden redenen remaining_s > 0 dragen, maar reason en timer
+  // zijn losse entities met eigen poll-moment. Deze tabel voorkomt dat een
+  // oude timer bij een niet-tijdgebonden reden belandt; tussen twee
+  // tijdgebonden redenen kan bij een overgang kort een oude timer staan.
+  const COOLING_START_BLOCK_COUNTDOWN_REASONS = new Set([
+    "Cooling minimum off-time",
+    "Compressor restart protection",
+    "Startup inhibit after reboot",
+    "Compressor start limit (6/hour)",
+  ]);
+
+  export function formatCoolingStartBlockReason(reason, remainingS) {
+    const value = String(reason || "").trim();
+    if (!value) {
+      return "";
+    }
+    const label = COOLING_START_BLOCK_LABELS[value] || value;
+    // Firmwarecontract: tijdgebonden redenen dragen altijd remaining_s > 0,
+    // de overige altijd 0. De tabel hierboven houdt bovendien een oude timer
+    // weg bij niet-tijdgebonden redenen.
+    const remaining = Math.ceil(Number(remainingS) || 0);
+    if (remaining > 0 && COOLING_START_BLOCK_COUNTDOWN_REASONS.has(value)) {
+      return `${label} — nog ${formatCoolingStartBlockCountdown(remaining)}`;
+    }
+    return label;
+  }
+
+  export function getCoolingCompressorRunning() {
+    // De toegepaste compressorstand is leidend: niveau > 0 betekent draaien.
+    for (const key of ["hp1Compressor", "hp2Compressor"]) {
+      const level = getEntityNumericValue(key);
+      if (!Number.isNaN(level) && level > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  export function getCoolingStartBlockModel() {
+    if (!hasEntity("coolingStartBlockReason")) {
+      return { available: false, blocked: false, reasonRaw: "", remainingS: 0, hasCountdown: false, display: "" };
+    }
+    const reasonRaw = String(getEntityStateText("coolingStartBlockReason", "") || "").trim();
+    if (!reasonRaw) {
+      return { available: true, blocked: false, reasonRaw: "", remainingS: 0, hasCountdown: false, display: "" };
+    }
+    const remainingRaw = hasEntity("coolingStartBlockRemaining")
+      ? getEntityNumericValue("coolingStartBlockRemaining")
+      : Number.NaN;
+    const remainingS = Number.isFinite(remainingRaw) && remainingRaw > 0 ? Math.ceil(remainingRaw) : 0;
+    const blocked = reasonRaw !== COOLING_START_BLOCK_REASON_READY;
+    const hasCountdown = blocked && remainingS > 0 &&
+      COOLING_START_BLOCK_COUNTDOWN_REASONS.has(reasonRaw);
+    return {
+      available: true,
+      blocked,
+      reasonRaw,
+      remainingS: hasCountdown ? remainingS : 0,
+      hasCountdown,
+      display: blocked ? formatCoolingStartBlockReason(reasonRaw, remainingS) : formatCoolingBlockReason(reasonRaw),
+    };
   }
 
   export function getCoolingScheduleStatus() {

@@ -68,7 +68,9 @@ class StrategyRuntimeContractTest(unittest.TestCase):
 
     def test_runtime_sources_remain_bounded(self) -> None:
         # Issue-649 effective supply-target selection lives in the heating-curve
-        # runtime (measured 1265 lines across the four runtimes).
+        # runtime; issue #642 copies the dispatch verdict (plus startup-inhibit
+        # naming from the incident manager) into status globals here.
+        # Measured 1277 lines across the four runtimes after merging both.
         self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1280)
         self.assertLessEqual(len(HEAT_INTENT_RUNTIME.splitlines()), 90)
         self.assertLessEqual(len(LOGIC.splitlines()), 60)

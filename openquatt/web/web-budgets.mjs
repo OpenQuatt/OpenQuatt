@@ -30,15 +30,18 @@ export const WEB_BUNDLE_BUDGETS = [
     // the issue-471 grouped source focus panel with configured/effective paths,
     // relevant-source diagnostics, warnings and stable keyboard focus,
     // frequency-based day/silent limits and exclusion ranges per ODU,
-    // and the grouped issue-541 cooling-window control and overview modal.
+    // and the grouped issue-541 cooling-window settings block.
+    // plus the issue-642 published cooling start block (reason + M:SS
+    // countdown on the existing Ready location, preflow/active distinction).
     // plus bounded webserver-log history polling (single scheduler, retry
     // back-off and authoritative refresh without a second /events stream).
     // Includes stable native time editing and confirmed, stale-poll-safe saves.
     // Compact pipeline plus the bottom-plate editor/backup: ~914 kB.
-    // Keep ~5 kB margin; do not restore the pre-compaction 1 MB ceiling.
     // the issue-649 heating supply target source card with OT/HA/API/MQTT rows:
     // measured +3.668 kB over the compact baseline (918.163 kB).
-    raw: 924_000,
+    // plus the merged issue-642 + issue-649 set: measured 927.315 kB.
+    // Keep ~2.7 kB margin; do not restore the pre-compaction 1 MB ceiling.
+    raw: 930_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.

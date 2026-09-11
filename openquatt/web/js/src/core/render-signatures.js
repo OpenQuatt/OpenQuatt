@@ -64,6 +64,11 @@ export function getOverviewControlsRenderSignature() {
     getEntitySignatureFragment("coolingPermitted"),
     getEntitySignatureFragment("coolingRequestActive"),
     getEntitySignatureFragment("coolingBlockReason"),
+    getEntitySignatureFragment("coolingStartBlockReason"),
+    getEntitySignatureFragment("coolingStartBlockRemaining"),
+    getEntitySignatureFragment("hp1Compressor"),
+    getEntitySignatureFragment("hp2Compressor"),
+    getEntitySignatureFragment("flowMode"),
     getEntitySignatureFragment("silentActive"),
   ].join("|");
 }
