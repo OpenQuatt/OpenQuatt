@@ -268,30 +268,19 @@ void OpenQuattOtaHandoff::setup() {
 #endif
 }
 
-void OpenQuattOtaHandoff::loop() {
-  const uint32_t now_ms = millis();
-  if (static_cast<uint32_t>(now_ms - this->last_sample_ms_) < SAMPLE_INTERVAL_MS) return;
-  this->last_sample_ms_ = now_ms;
-  this->sample_(now_ms);
-}
-
-bool OpenQuattOtaHandoff::hp_eligible_for_full_credit_(uint8_t hp_index, uint32_t now_ms) const {
+uint32_t OpenQuattOtaHandoff::full_credit_if_confirmed_(uint8_t hp_index, uint32_t now_ms) const {
   if (this->incident_manager_ == nullptr || this->incident_manager_->is_failed() ||
       !this->incident_manager_->storage_ready() || !this->incident_manager_->hp_configured(hp_index)) {
-    return false;
+    return 0U;
   }
 
   const auto outputs = this->incident_manager_->get_outputs(hp_index);
-  return outputs.link_state == oq_incidents::LinkState::HEALTHY && outputs.run_state == oq_incidents::RunState::STOPPED &&
-         outputs.stop_confirmed && !outputs.stop_confirmation_pending &&
-         this->incident_manager_->minimum_off_remaining_ms(hp_index, now_ms) == 0U;
-}
-
-void OpenQuattOtaHandoff::sample_(uint32_t now_ms) {
-  for (uint8_t hp = 1U; hp <= 2U; ++hp) {
-    this->full_credit_latches_[hp - 1U].observe(this->hp_eligible_for_full_credit_(hp, now_ms), now_ms,
-                                                FULL_CREDIT_STABLE_MS);
+  if (outputs.link_state != oq_incidents::LinkState::HEALTHY || outputs.run_state != oq_incidents::RunState::STOPPED ||
+      !outputs.stop_confirmed || outputs.stop_confirmation_pending ||
+      this->incident_manager_->minimum_off_remaining_ms(hp_index, now_ms) != 0U) {
+    return 0U;
   }
+  return this->minimum_off_ms_;
 }
 
 #ifdef USE_OTA_STATE_LISTENER
@@ -303,19 +292,14 @@ void OpenQuattOtaHandoff::on_ota_global_state(ota::OTAState state, float progres
 
   if (state == ota::OTA_STARTED) {
     const uint32_t now_ms = millis();
-    this->sample_(now_ms);
+    const uint32_t hp1_credit_ms = this->full_credit_if_confirmed_(1U, now_ms);
+    const uint32_t hp2_credit_ms = this->full_credit_if_confirmed_(2U, now_ms);
 
-    uint32_t credit[2]{0U, 0U};
-    for (uint8_t hp = 1U; hp <= 2U; ++hp) {
-      if (this->full_credit_latches_[hp - 1U].confirmed() && this->hp_eligible_for_full_credit_(hp, now_ms)) {
-        credit[hp - 1U] = this->minimum_off_ms_;
-      }
-    }
-
-    this->ota_handoff_attempted_ = credit[0] != 0U || credit[1] != 0U;
-    this->ota_handoff_saved_ = this->ota_handoff_attempted_ && arm_ota_handoff(credit[0], credit[1]);
+    this->ota_handoff_attempted_ = hp1_credit_ms != 0U || hp2_credit_ms != 0U;
+    this->ota_handoff_saved_ =
+        this->ota_handoff_attempted_ && arm_ota_handoff(hp1_credit_ms, hp2_credit_ms);
     ESP_LOGI(TAG, "Controlled OTA: confirmed full off-time credit HP1=%us HP2=%us (%s)",
-             static_cast<unsigned>(credit[0] / 1000U), static_cast<unsigned>(credit[1] / 1000U),
+             static_cast<unsigned>(hp1_credit_ms / 1000U), static_cast<unsigned>(hp2_credit_ms / 1000U),
              this->ota_handoff_saved_ ? "saved" : "conservative fallback");
     return;
   }
