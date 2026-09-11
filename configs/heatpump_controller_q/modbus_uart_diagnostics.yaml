@@ -1,9 +1,21 @@
 # ==============================================================================
-# Temporary diagnostic package: raw Modbus UART capture
+# Temporary diagnostic package: raw Modbus UART capture + UART error flags
 # ==============================================================================
 # Captures TX and RX as hex after 4 ms of silence so malformed/partial frames can
-# be correlated with ESPHome's Modbus parser warnings. Intentionally avoids
-# UARTDebug::log_hex(), which adds a 10 ms delay after every emitted log line.
+# be correlated with ESPHome's Modbus parser warnings. Also hooks the ESP-IDF UART
+# select callback to count parity/frame errors that ESPHome normally does not log.
+#
+# Intentionally avoids UARTDebug::log_hex(), which adds a 10 ms delay after every
+# emitted log line and could influence the timing being investigated.
+
+esphome:
+  includes:
+    - modbus_uart_error_probe.h
+  on_boot:
+    priority: 600
+    then:
+      - lambda: |-
+          oq_modbus_uart_diag::install(id(uart_bus).get_hw_serial_number());
 
 logger:
   initial_level: DEBUG
@@ -17,6 +29,9 @@ uart:
         timeout: 4ms
       sequence:
         - lambda: |-
+            // Report a parity/frame error immediately next to the raw capture when possible.
+            oq_modbus_uart_diag::report_if_changed();
+
             char hex_buf[512];
             esphome::format_hex_pretty_to(
               hex_buf,
@@ -32,3 +47,10 @@ uart:
               static_cast<unsigned>(bytes.size()),
               hex_buf
             );
+
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          // Fallback report if an error occurs without a UART debug trigger immediately after it.
+          oq_modbus_uart_diag::report_if_changed();
