@@ -20,6 +20,8 @@ const FIRMWARE_ENTITY_PACKAGES = [
   "../../oq_ot_slave.yaml",
   "../../oq_power_house_strategy.yaml",
   "../../oq_cooling_strategy.yaml",
+  "../../oq_thermal_request_control.yaml",
+  "../../oq_supervisory_controlmode.yaml",
 ];
 
 const OBSERVABILITY_KEYS = [
@@ -97,9 +99,36 @@ const ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS = [
   "boilerPowerTestResultQuality",
 ];
 
+const V2_CHAIN_KEYS = [
+  "hp1RequestedControlLevel",
+  "hp1AppliedControlLevel",
+  "hp1TableFrequency",
+  "hp2RequestedControlLevel",
+  "hp2AppliedControlLevel",
+  "hp2TableFrequency",
+  "phFastIntentCode",
+  "lowLoadLatch",
+  "lowLoadPminW",
+  "lowLoadOffW",
+  "lowLoadOnW",
+  "debugStaticSnapshot",
+];
+
 const ISSUE_642_OBSERVABILITY_KEYS = [
   "coolingStartBlockReason",
   "coolingStartBlockRemaining",
+];
+
+// Bestaande ODU-registervelden (geen nieuwe firmware-entities): gevraagde
+// compressorfrequentie (register 2102) en aangestuurde silent-status
+// (register 2006). Namen zijn getemplatet via ${prefix} in oq_HP_io.yaml,
+// dus de generieke firmware-naamcheck hieronder slaat ze over; zie de
+// dedicated test verderop.
+const ODU_REGISTER_KEYS = [
+  "hp1CompressorFrequencyDemand",
+  "hp2CompressorFrequencyDemand",
+  "hp1LowNoiseMode",
+  "hp2LowNoiseMode",
 ];
 
 const ADDED_OBSERVABILITY_KEYS = [
@@ -111,6 +140,8 @@ const ADDED_OBSERVABILITY_KEYS = [
   ...ISSUE_536_WARM_START_OBSERVABILITY_KEYS,
   ...ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS,
   ...ISSUE_642_OBSERVABILITY_KEYS,
+  ...V2_CHAIN_KEYS,
+  ...ODU_REGISTER_KEYS,
 ];
 
 test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", async () => {
@@ -124,6 +155,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const issue516EndIndex = coolingMinOffEndIndex + ISSUE_516_OBSERVABILITY_KEYS.length;
   const issue536WarmStartEndIndex = issue516EndIndex + ISSUE_536_WARM_START_OBSERVABILITY_KEYS.length;
   const issue536EmpiricalEndIndex = issue536WarmStartEndIndex + ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS.length;
+  const issue642EndIndex = issue536EmpiricalEndIndex + ISSUE_642_OBSERVABILITY_KEYS.length;
+  const v2ChainEndIndex = issue642EndIndex + V2_CHAIN_KEYS.length;
 
   assert.equal(legacyTailIndex, 134);
   assert.deepEqual(
@@ -148,9 +181,11 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
     ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS,
   );
   assert.deepEqual(
-    DEBUG_RECORDING_KEYS.slice(issue536EmpiricalEndIndex),
+    DEBUG_RECORDING_KEYS.slice(issue536EmpiricalEndIndex, issue642EndIndex),
     ISSUE_642_OBSERVABILITY_KEYS,
   );
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue642EndIndex, v2ChainEndIndex), V2_CHAIN_KEYS);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(v2ChainEndIndex), ODU_REGISTER_KEYS);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   const recorderHeader = await readFile(
     new URL("../../../components/openquatt_debug_recorder/OpenQuattDebugRecorder.h", import.meta.url),
@@ -162,8 +197,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   assert.equal(fieldCapacity, 224);
   assert.ok(DEBUG_RECORDING_KEYS.length <= fieldCapacity - systemFieldCount);
   assert.ok(
-    fieldCapacity - systemFieldCount - DEBUG_RECORDING_KEYS.length >= 24,
-    "debugrecorder houdt minimaal 24 entityvelden groeiruimte",
+    fieldCapacity - systemFieldCount - DEBUG_RECORDING_KEYS.length >= 12,
+    "debugrecorder houdt minimaal 12 entityvelden groeiruimte",
   );
 });
 
@@ -229,8 +264,40 @@ test("elk nieuw debugveld verwijst naar een echte firmware-entity", async () => 
   const firmwareSource = packages.join("\n");
 
   for (const key of ADDED_OBSERVABILITY_KEYS) {
+    if (ODU_REGISTER_KEYS.includes(key)) continue;
     assert.ok(firmwareSource.includes(`name: "${ENTITY_DEFS[key].name}"`), `firmware-entity ontbreekt voor ${key}`);
   }
+});
+
+test("ODU-registervelden verwijzen naar bestaande getemplatete HP-entities", async () => {
+  const hpPackage = await readFile(new URL("../../oq_HP_io.yaml", import.meta.url), "utf8");
+
+  assert.deepEqual(ENTITY_DEFS.hp1CompressorFrequencyDemand, {
+    domain: "sensor",
+    name: "HP1 - Compressor frequency demand",
+    optional: true,
+  });
+  assert.deepEqual(ENTITY_DEFS.hp2CompressorFrequencyDemand, {
+    domain: "sensor",
+    name: "HP2 - Compressor frequency demand",
+    optional: true,
+  });
+  assert.deepEqual(ENTITY_DEFS.hp1LowNoiseMode, {
+    domain: "select",
+    name: "HP1 - Silent Mode",
+    optional: true,
+  });
+  assert.deepEqual(ENTITY_DEFS.hp2LowNoiseMode, {
+    domain: "select",
+    name: "HP2 - Silent Mode",
+    optional: true,
+  });
+  assert.match(hpPackage, /id: \$\{hp_id\}_compressor_frequency_demand/);
+  assert.match(hpPackage, /name: "\$\{prefix\}Compressor frequency demand"/);
+  assert.match(hpPackage, /address: 2102/);
+  assert.match(hpPackage, /id: \$\{hp_id\}_low_noise_mode/);
+  assert.match(hpPackage, /name: "\$\{prefix\}Silent Mode"/);
+  assert.match(hpPackage, /address: 2006/);
 });
 
 test("flowOutputIpwm publiceert de bestaande actuatoruitgang zonder tweede regelstate", async () => {

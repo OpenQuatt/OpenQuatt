@@ -211,6 +211,108 @@ text_sensor:
       return std::string(oq_heat_intent::reason_name(
           static_cast<oq_heat_intent::Reason>(id(oq_ph_fast_intent_code))));
 
+  # Compact static snapshot for the debug recorder (initial-only via
+  # delta-encoding; a new value appears only when the underlying table or
+  # setting changes). Covers per-HP heating runtime tables with validity and
+  # FNV-1a fingerprint, Power House house settings, the heating minimum-off
+  # constant and the external-demand stale timeout. Generation/variant/model,
+  # demand source/selected and low-load factors are already separate debug
+  # columns and are not duplicated here. Never invents values: invalid tables
+  # yield valid:false with empty hz, missing numbers yield null, HP2 is null
+  # on Single, and snprintf overflow yields "unknown" (recorder-missing).
+  - platform: template
+    id: oq_debug_static_snapshot
+    name: "Debug static snapshot"
+    internal: true
+    update_interval: 5s
+    lambda: |-
+      // Static snapshot for the debug recorder: heating tables + house settings.
+      // Runs every 5s but the value changes only when a table/setting changes,
+      // so delta-encoding keeps it initial-only.
+      auto table_hash = [](const oq_odu::FrequencyTable &table) -> uint32_t {
+        if (!table.valid) return 0U;
+        uint32_t hash = 2166136261U;
+        for (size_t i = 0; i < table.level_count; ++i) {
+          hash ^= table.hz[i];
+          hash *= 16777619U;
+        }
+        hash ^= table.level_count;
+        hash *= 16777619U;
+        return hash;
+      };
+      auto build_hz = [](const oq_odu::FrequencyTable &table, char *out, size_t cap) -> bool {
+        size_t used = 0;
+        int n = snprintf(out + used, cap - used, "[");
+        if (n < 0 || (size_t) n >= cap - used) return false;
+        used += (size_t) n;
+        if (table.valid) {
+          for (size_t i = 0; i < table.level_count; ++i) {
+            n = snprintf(out + used, cap - used, "%s%u", i == 0 ? "" : ",", table.hz[i]);
+            if (n < 0 || (size_t) n >= cap - used) return false;
+            used += (size_t) n;
+          }
+        }
+        n = snprintf(out + used, cap - used, "]");
+        if (n < 0 || (size_t) n >= cap - used) return false;
+        return true;
+      };
+      auto fmt_float = [](float v, char *out, size_t cap) -> const char * {
+        if (!isfinite(v)) return "null";
+        snprintf(out, cap, "%.4g", (double) v);
+        return out;
+      };
+      const auto hp1_snapshot =
+          oq_odu::decode_runtime_frequency_snapshot(id(hp1_runtime_frequency_snapshot_storage));
+      const uint32_t hp1_hash = table_hash(hp1_snapshot.heating);
+      char hp1_hz[96]{};
+      if (!build_hz(hp1_snapshot.heating, hp1_hz, sizeof(hp1_hz))) return std::string("unknown");
+      char hp2_json[256]{};
+      #if OQ_TOPOLOGY_DUO
+      {
+        const auto hp2_snapshot =
+            oq_odu::decode_runtime_frequency_snapshot(id(${secondary_runtime_frequency_snapshot_storage_id}));
+        const uint32_t hp2_hash = table_hash(hp2_snapshot.heating);
+        char hp2_hz[96]{};
+        if (!build_hz(hp2_snapshot.heating, hp2_hz, sizeof(hp2_hz))) return std::string("unknown");
+        int n = snprintf(hp2_json, sizeof(hp2_json),
+                         "{\"valid\":%s,\"count\":%u,\"hash\":%u,\"hz\":%s}",
+                         hp2_snapshot.heating.valid ? "true" : "false",
+                         (unsigned) hp2_snapshot.heating.level_count, (unsigned) hp2_hash, hp2_hz);
+        if (n < 0 || (size_t) n >= sizeof(hp2_json)) return std::string("unknown");
+      }
+      #else
+      snprintf(hp2_json, sizeof(hp2_json), "null");
+      #endif
+      char cold_b[16]{}, zero_b[16]{}, rated_b[16]{}, kp_b[16]{};
+      char below_b[16]{}, above_b[16]{}, rise_b[16]{}, fall_b[16]{};
+      const char *cold = fmt_float(
+          id(house_cold_temp_c).has_state() ? id(house_cold_temp_c).state : NAN, cold_b, sizeof(cold_b));
+      const char *zero = fmt_float(
+          id(house_zero_power_temp_c).has_state() ? id(house_zero_power_temp_c).state : NAN, zero_b, sizeof(zero_b));
+      const char *rated = fmt_float(
+          id(house_rated_power_w).has_state() ? id(house_rated_power_w).state : NAN, rated_b, sizeof(rated_b));
+      const char *kp = fmt_float(
+          id(ph_kp_w_per_k).has_state() ? id(ph_kp_w_per_k).state : NAN, kp_b, sizeof(kp_b));
+      const char *below = fmt_float(
+          id(ph_comfort_band_below_c).has_state() ? id(ph_comfort_band_below_c).state : NAN, below_b, sizeof(below_b));
+      const char *above = fmt_float(
+          id(ph_comfort_band_above_c).has_state() ? id(ph_comfort_band_above_c).state : NAN, above_b, sizeof(above_b));
+      const char *rise = fmt_float(
+          id(ph_demand_rise_time_min).has_state() ? id(ph_demand_rise_time_min).state : NAN, rise_b, sizeof(rise_b));
+      const char *fall = fmt_float(
+          id(ph_demand_fall_time_min).has_state() ? id(ph_demand_fall_time_min).state : NAN, fall_b, sizeof(fall_b));
+      char buf[512]{};
+      int n = snprintf(
+          buf, sizeof(buf),
+          "{\"hp1\":{\"valid\":%s,\"count\":%u,\"hash\":%u,\"hz\":%s},\"hp2\":%s,"
+          "\"house\":{\"cold\":%s,\"zero\":%s,\"rated\":%s,\"kp\":%s,\"cbBelow\":%s,\"cbAbove\":%s,"
+          "\"rise\":%s,\"fall\":%s},\"minOffS\":%s,\"extStaleS\":%s}",
+          hp1_snapshot.heating.valid ? "true" : "false", (unsigned) hp1_snapshot.heating.level_count,
+          (unsigned) hp1_hash, hp1_hz, hp2_json, cold, zero, rated, kp, below, above, rise, fall,
+          "${oq_hp_min_off_s}", "${api_input_external_heat_demand_stale_s}");
+      if (n < 0 || (size_t) n >= sizeof(buf)) return std::string("unknown");
+      return std::string(buf);
+
 sensor:
   - platform: template
     id: oq_phouse_house_w
@@ -265,6 +367,19 @@ sensor:
     update_interval: 5s
     lambda: |-
       return id(room_setpoint_selected).state + id(oq_phouse_comfort_memory_c);
+
+  # Numeric fast first-start intent for the debug recorder (no behavior change).
+  # 0=none, 1=room demand, 2=setpoint raise. The existing
+  # "Power House first-start intent" text sensor stays untouched.
+  - platform: template
+    id: oq_ph_fast_intent_code_sensor
+    name: "Power House fast intent code"
+    internal: true
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return (float) id(oq_ph_fast_intent_code);
 
 interval:
   - interval: ${oq_heat_loop_tick_s}s

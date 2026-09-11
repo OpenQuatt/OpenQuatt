@@ -19,13 +19,17 @@ test("packed rows vergroten de retentie van de volledige dev-debugset", () => {
   );
   const capacity = Math.floor((1024 * 1024) / rowBytes);
 
-  assert.equal(rowBytes, 609);
-  assert.equal(capacity, 1721);
+  assert.equal(rowBytes, 664);
+  assert.equal(capacity, 1579);
   // Issue #642 voegt twee diagnosevelden toe (gepubliceerde startblokkade +
   // resterende tijd), zodat een geblokkeerde koelstart achteraf verklaarbaar
-  // is. Dat kost enkele minuten op een buffer van ruim 4,7 uur; nog steeds
-  // ruim voldoende voor meerdaagse diagnose.
-  assert.ok((capacity - 1) * 10 >= 4.7 * 60 * 60);
+  // is. De V2/Power-House-keten voegt daar twaalf compacte kolommen aan toe
+  // (10x sensor, 1x binary, 1x text = +43 B/rij) plus vier hergebruikte
+  // ODU-registervelden (2x demand-Hz als sensor, 2x silent-status als select
+  // = +12 B/rij, zonder nieuwe firmware-entities). Samen kost dat een klein
+  // half uur op een buffer van ruim 4,3 uur; nog steeds ruim voldoende voor
+  // meerdaagse diagnose en ver boven de opnameduur van maximaal 1 uur.
+  assert.ok((capacity - 1) * 10 >= 4.3 * 60 * 60);
   assert.match(header, /PsramBuffer<uint8_t> samples_/);
   assert.match(source, /value_size_for_type_/);
   assert.match(source, /sample_row_bytes/);
@@ -76,6 +80,7 @@ test("mutaties zijn beschermd en status bevat operationele geheugensignalen", ()
 test("diagnostische tekst blijft opgenomen maar telt niet als statuswijziging", () => {
   assert.match(source, /std::strcmp\(field\.key, "timeNowHhmm"\) != 0/);
   assert.match(source, /std::strcmp\(field\.key, "lowLoadDynamicThresholds"\) != 0/);
+  assert.match(source, /std::strcmp\(field\.key, "debugStaticSnapshot"\) != 0/);
 });
 
 test("rolling totalen laten de overgang vóór de retentiewindow los", () => {

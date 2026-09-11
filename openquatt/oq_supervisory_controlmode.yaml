@@ -540,6 +540,16 @@ binary_sensor:
     device_class: problem
     entity_category: diagnostic
 
+  # Power-House low-load latch for the debug recorder (no control change).
+  # True while the low-load hysteresis keeps heating requested despite
+  # P_req below the off threshold; false otherwise (including inactive).
+  - platform: template
+    id: oq_lowload_heat_latch_bs
+    name: "Low-load latch"
+    internal: true
+    lambda: |-
+      return id(oq_lowload_heat_latch);
+
 text_sensor:
   - platform: template
     id: oq_control_mode
@@ -608,6 +618,44 @@ sensor:
     update_interval: ${oq_diagnostic_update_interval_s}s
     lambda: |-
       return (float) id(oq_power_cap_f);
+
+  # Numeric low-load thresholds for the debug recorder (no control change).
+  # The existing "Low-load dynamic thresholds" text is kept for backward
+  # compatibility; these separate numeric fields allow precise cycle analysis
+  # (which Pmin/off/on held when a stop occurred). NAN (missing) when
+  # inactive or without a live/cached minimum; never invent values.
+  - platform: template
+    id: oq_low_load_pmin_dyn_w_sensor
+    name: "Low-load Pmin"
+    internal: true
+    unit_of_measurement: "W"
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return id(oq_low_load_pmin_dyn_w);
+
+  - platform: template
+    id: oq_low_load_off_dyn_w_sensor
+    name: "Low-load off threshold"
+    internal: true
+    unit_of_measurement: "W"
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return id(oq_low_load_off_dyn_w);
+
+  - platform: template
+    id: oq_low_load_on_dyn_w_sensor
+    name: "Low-load on threshold"
+    internal: true
+    unit_of_measurement: "W"
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return id(oq_low_load_on_dyn_w);
 
 # ----------------------------
 # MAIN LOOP
