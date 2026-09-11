@@ -9,6 +9,7 @@ enum Reason : uint8_t {
   NONE = 0,
   ROOM_DEMAND = 1,
   SETPOINT_RAISE = 2,
+  ROOM_RECOVERY = 3,
 };
 
 struct State {
@@ -17,6 +18,8 @@ struct State {
   float last_setpoint_c = NAN;
   bool setpoint_raise_active = false;
   uint32_t room_confirm_since_ms = 0;
+  bool room_start_armed = false;
+  bool room_recovery_active = false;
 };
 
 struct Input {
@@ -41,6 +44,8 @@ struct Decision {
   bool setpoint_raise_edge = false;
   bool setpoint_raise_cancelled = false;
   bool room_condition = false;
+  bool fast_start = false;
+  bool room_recovery_active = false;
   Reason reason = NONE;
 };
 
@@ -59,12 +64,14 @@ inline Decision evaluate(const Input& input, State state) {
   }
 
   if (!state.initialized || state.setpoint_source != input.setpoint_source || !std::isfinite(state.last_setpoint_c)) {
-    state = {true, input.setpoint_source, input.setpoint_c, false, 0};
+    state = {true, input.setpoint_source, input.setpoint_c, false, 0, false, false};
   } else {
     const float change_c = input.setpoint_c - state.last_setpoint_c;
     if (change_c < -0.01f) {
       out.setpoint_raise_cancelled = state.setpoint_raise_active;
       state.setpoint_raise_active = false;
+      state.room_start_armed = false;
+      state.room_recovery_active = false;
     } else if (!input.compressor_active && change_c + 0.0001f >= input.setpoint_raise_delta_c &&
                input.setpoint_c > input.room_c) {
       state.setpoint_raise_active = true;
@@ -91,14 +98,39 @@ inline Decision evaluate(const Input& input, State state) {
       (input.room_confirm_ms == 0 ||
        (state.room_confirm_since_ms != 0 &&
         static_cast<uint32_t>(input.now_ms - state.room_confirm_since_ms) >= input.room_confirm_ms));
-  out.active = state.setpoint_raise_active || room_confirmed;
-  out.reason = state.setpoint_raise_active ? SETPOINT_RAISE : (room_confirmed ? ROOM_DEMAND : NONE);
+
+  // A confirmed room-demand start is only promoted to recovery after an HP
+  // actually starts. This prevents the minimum-output floor from becoming a
+  // permanent below-setpoint mode while retaining the successful start until
+  // the room has moved clearly out of its restart band.
+  if (!state.room_recovery_active) {
+    if (state.room_start_armed && input.compressor_active) {
+      state.room_start_armed = false;
+      state.room_recovery_active = true;
+    } else if (room_confirmed && !input.compressor_active) {
+      state.room_start_armed = true;
+    } else if (!room_confirmed) {
+      state.room_start_armed = false;
+    }
+  }
+  const float recovery_release_c = input.setpoint_c - 0.5f * input.room_resume_delta_c;
+  if (state.room_recovery_active && input.room_c >= recovery_release_c) state.room_recovery_active = false;
+
+  out.fast_start =
+      !input.compressor_active && !state.room_recovery_active && (state.setpoint_raise_active || room_confirmed);
+  out.room_recovery_active = state.room_recovery_active;
+  out.active = state.setpoint_raise_active || room_confirmed || state.room_recovery_active;
+  out.reason = state.setpoint_raise_active  ? SETPOINT_RAISE
+               : state.room_recovery_active ? ROOM_RECOVERY
+               : room_confirmed             ? ROOM_DEMAND
+                                            : NONE;
   out.next = state;
   return out;
 }
 
 inline const char* reason_name(Reason reason) {
   if (reason == SETPOINT_RAISE) return "setpoint_raise";
+  if (reason == ROOM_RECOVERY) return "room_recovery";
   if (reason == ROOM_DEMAND) return "room_demand";
   return "none";
 }

@@ -54,7 +54,7 @@ class Runtime {
   }
 
   void tick(const TickConfig& config) {
-    const bool active = id(oq_control_mode_code) != 5 && id(oq_heat_mode_code) != 1;
+    const bool active = id(oq_strategy_active_code) == 3 && id(oq_control_mode_code) != 5 && id(oq_heat_mode_code) != 1;
     if (!active) {
       this->reset();
       return;
@@ -117,7 +117,10 @@ class Runtime {
         now_ms, applied_total > 0, std::max(0.0f, demand_tuning.comfort_below_c), 10000UL,
         config.ot_room_temperature_fresh, config.ot_room_setpoint_fresh, this->intent_state_);
     this->intent_state_ = intent.next;
-    id(oq_ph_fast_intent_code) = static_cast<int>(intent.reason);
+    // Only a pending start bypasses Power House's normal start confirmation.
+    // A recovery which was interrupted by a protection hold must re-enter by
+    // the ordinary, confirmed path.
+    id(oq_ph_fast_intent_code) = intent.fast_start ? static_cast<int>(intent.reason) : 0;
     id(oq_phouse_last_ms) = demand.next.last_ms;
     id(oq_phouse_comfort_memory_c) = demand.next.comfort_memory_c;
     id(oq_phouse_demand_external) = demand.external;
@@ -197,7 +200,10 @@ class Runtime {
 #if OQ_TOPOLOGY_DUO
     include_minimum(dispatch_input.hp2);
 #endif
-    if (intent.active && applied_total == 0 && std::isfinite(minimum_viable_w) &&
+    // A room recovery follows a room-demand start only; it is released halfway
+    // through the restart band. It therefore cannot turn every below-setpoint
+    // interval into an implicit keep-running-at-minimum mode.
+    if ((intent.fast_start || intent.room_recovery_active) && std::isfinite(minimum_viable_w) &&
         id(oq_water_temp_limit_factor) >= 0.999f) {
       requested_w = std::max(requested_w, minimum_viable_w);
       next_last_w = std::max(next_last_w, requested_w);
