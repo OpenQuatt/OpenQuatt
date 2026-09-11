@@ -5,6 +5,9 @@
 #include "driver/uart.h"
 #include "driver/uart_select.h"
 #include "hal/uart_ll.h"
+#ifdef USE_ESP_IDF
+#include "soc/uart_reg.h"
+#endif
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
 
@@ -42,6 +45,22 @@ static void IRAM_ATTR uart_cb(uart_port_t uart_num, uart_select_notif_t notifica
   }
 
   esphome::Application::wake_loop_isrsafe(task_woken);
+}
+
+inline void set_discard_bad_bytes(uint8_t uart_num, bool discard = true) {
+#ifdef USE_ESP_IDF
+  if (discard) {
+    REG_SET_BIT(UART_CONF0_REG(uart_num), UART_ERR_WR_MASK);
+  } else {
+    REG_CLR_BIT(UART_CONF0_REG(uart_num), UART_ERR_WR_MASK);
+  }
+  ESP_LOGI("oq.modbus_uart_err", "UART%u discard parity/framing-failed bytes: %s", uart_num,
+           discard ? "enabled" : "disabled");
+#else
+  (void) uart_num;
+  (void) discard;
+  ESP_LOGW("oq.modbus_uart_err", "UART parity/framing discard filter requires ESP-IDF");
+#endif
 }
 
 inline void install(uint8_t uart_num) {
