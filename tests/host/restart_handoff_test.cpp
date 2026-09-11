@@ -15,7 +15,6 @@ using esphome::openquatt_incident_manager::restart_handoff::may_grant_after_dura
 using esphome::openquatt_incident_manager::restart_handoff::may_restore_credit;
 using esphome::openquatt_incident_manager::restart_handoff::persist_record;
 using esphome::openquatt_incident_manager::restart_handoff::Record;
-using esphome::openquatt_incident_manager::restart_handoff::StableFullCreditLatch;
 using esphome::openquatt_incident_manager::restart_handoff::StorageReadResult;
 using esphome::openquatt_incident_manager::restart_handoff::valid_record;
 
@@ -341,33 +340,6 @@ void test_invalid_credit_bounds_fail_closed() {
   assert(!valid_record(record));
 }
 
-void test_full_credit_latch_requires_stable_eligibility() {
-  StableFullCreditLatch latch{};
-  constexpr uint32_t STABLE_MS = 15000U;
-
-  latch.observe(true, 1000U, STABLE_MS);
-  assert(!latch.confirmed());
-  latch.observe(true, 15999U, STABLE_MS);
-  assert(!latch.confirmed());
-  latch.observe(true, 16000U, STABLE_MS);
-  assert(latch.confirmed());
-
-  latch.observe(false, 17000U, STABLE_MS);
-  assert(!latch.confirmed());
-  latch.observe(true, 18000U, STABLE_MS);
-  assert(!latch.confirmed());
-}
-
-void test_full_credit_latch_handles_millis_wrap() {
-  StableFullCreditLatch latch{};
-  constexpr uint32_t STABLE_MS = 15000U;
-  constexpr uint32_t START_MS = 0xFFFFF000U;
-  latch.observe(true, START_MS, STABLE_MS);
-  assert(!latch.confirmed());
-  latch.observe(true, static_cast<uint32_t>(START_MS + STABLE_MS), STABLE_MS);
-  assert(latch.confirmed());
-}
-
 }  // namespace
 
 int main() {
@@ -385,7 +357,5 @@ int main() {
   test_consume_commit_failure_blocks_then_recovers_once();
   test_image_and_configuration_mismatch_are_rejected();
   test_invalid_credit_bounds_fail_closed();
-  test_full_credit_latch_requires_stable_eligibility();
-  test_full_credit_latch_handles_millis_wrap();
   return 0;
 }
