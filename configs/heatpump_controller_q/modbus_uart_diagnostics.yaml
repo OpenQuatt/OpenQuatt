@@ -5,6 +5,10 @@
 # be correlated with ESPHome's Modbus parser warnings. Also hooks the ESP-IDF UART
 # select callback to count parity/frame errors that ESPHome normally does not log.
 #
+# The active heat-pump UART RX pin also gets an internal pull-up. This tests the
+# hypothesis that the RS485 receiver output briefly floats during DE/RE turnaround,
+# creating the observed stray 0xFF + parity error before an otherwise valid frame.
+#
 # Intentionally avoids UARTDebug::log_hex(), which adds a 10 ms delay after every
 # emitted log line and could influence the timing being investigated.
 
@@ -22,6 +26,11 @@ logger:
 
 uart:
   - id: !extend uart_bus
+    rx_pin:
+      number: ${uart_rx_pin}
+      mode:
+        input: true
+        pullup: true
     debug:
       direction: BOTH
       dummy_receiver: false
