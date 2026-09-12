@@ -49,7 +49,7 @@ inline void install(uint8_t uart_num) {
   ESP_LOGI("oq.modbus_uart_err", "UART%u parity/frame error probe installed (ERR_WR_MASK not used)", uart_num);
 }
 
-inline void report_if_changed() {
+inline bool report_if_changed() {
   static uint32_t reported_parity = 0;
   static uint32_t reported_frame = 0;
   static uint32_t reported_other = 0;
@@ -58,7 +58,7 @@ inline void report_if_changed() {
   const uint32_t frame = frame_error_count;
   const uint32_t other = other_error_count;
   if (parity == reported_parity && frame == reported_frame && other == reported_other) {
-    return;
+    return false;
   }
 
   ESP_LOGW("oq.modbus_uart_err", "UART RX errors: parity=%u frame=%u other=%u", parity, frame, other);
@@ -67,6 +67,7 @@ inline void report_if_changed() {
   reported_parity = parity;
   reported_frame = frame;
   reported_other = other;
+  return true;
 }
 
 }  // namespace oq_modbus_uart_diag
