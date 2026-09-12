@@ -73,6 +73,10 @@ class OpenthermHub final : public Component {
   MessageId deferred_priority_second_ = MessageId::STATUS;
   // The OpenQuatt transport owner explicitly starts polling after restore.
   bool polling_enabled_ = false;
+  // Controlled startup probe (R1 verification): the absence of a boiler
+  // response is expected and must not warn. All other timeout classes
+  // (TX failure, late frame, unclassifiable) always warn.
+  bool no_response_expected_ = false;
   std::unordered_map<MessageId, uint8_t> configured_messages_;
   std::vector<MessageId> messages_;
   std::vector<MessageId>::const_iterator message_iterator_;
@@ -202,6 +206,8 @@ class OpenthermHub final : public Component {
   void resume_polling();
   void suspend_polling();
   bool is_polling_enabled() const { return this->polling_enabled_; }
+  void set_no_response_expected(bool expected) { this->no_response_expected_ = expected; }
+  bool no_response_expected() const { return this->no_response_expected_; }
 
   template <typename F>
   void add_on_before_send_callback(F&& callback) {

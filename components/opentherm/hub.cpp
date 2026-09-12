@@ -6,7 +6,7 @@
 
 namespace esphome::opentherm {
 
-static const char* const TAG = "opentherm";
+static const char* const TAG = "oq.ot.boiler";
 static constexpr uint32_t MIN_CONVERSATION_GAP_US = 100000;
 static constexpr uint32_t MAX_CONVERSATION_CADENCE_US = 1150000;
 static constexpr uint32_t SLOW_PHASE_US = 50000;
@@ -212,6 +212,7 @@ void OpenthermHub::start_priority_polling(MessageId first, MessageId second) {
 
 void OpenthermHub::resume_polling() {
   this->polling_enabled_ = true;
+  this->no_response_expected_ = false;
   this->urgent_priority_pending_ = false;
   this->deferred_priority_pending_ = false;
   this->deferred_priority_activated_ = false;
@@ -228,6 +229,7 @@ void OpenthermHub::resume_polling() {
 
 void OpenthermHub::suspend_polling() {
   this->polling_enabled_ = false;
+  this->no_response_expected_ = false;
   this->urgent_priority_pending_ = false;
   this->deferred_priority_pending_ = false;
   this->deferred_priority_activated_ = false;
@@ -668,7 +670,16 @@ void OpenthermHub::handle_timeout_error_() {
   } else if (has_wire_timing && conversation_timing.response_captured) {
     ESP_LOGW(TAG, "Timeout while waiting for response from device: frame was captured after the receive deadline");
   } else if (has_wire_timing) {
-    ESP_LOGW(TAG, "Timeout while waiting for response from device: no frame captured before the receive deadline");
+    // TX succeeded but no boiler responded. During the controlled R1 startup
+    // verification probe this is expected (no boiler on the bus) and stays
+    // below WARN; transport counters in stop_opentherm_() are unaffected.
+    if (!this->no_response_expected_) {
+      ESP_LOGW(TAG, "Timeout while waiting for response from device: no frame captured before the receive deadline");
+    } else {
+      ESP_LOGD(TAG,
+               "Timeout while waiting for response from device: no frame captured before the receive deadline "
+               "(expected during startup verification)");
+    }
   } else {
     ESP_LOGW(TAG, "Timeout while waiting for response from device");
   }
@@ -679,6 +690,7 @@ void OpenthermHub::handle_timer_error_() {
   this->urgent_priority_pending_ = false;
   this->deferred_priority_pending_ = false;
   this->deferred_priority_activated_ = false;
+  this->no_response_expected_ = false;
   this->opentherm_->report_and_reset_timer_error();
   this->stop_opentherm_();
   // Timer error is critical, there is no point in retrying.

@@ -20,6 +20,7 @@ inline void connection_changed(bool opentherm_selected) {
       id(oq_otb_startup_probe_active) = false;
       id(oq_boiler_connection_mismatch_state) = false;
       id(oq_boiler_connection_mismatch).publish_state(false);
+      id(oq_otb_hub).set_no_response_expected(false);
       id(oq_otb_hub).resume_polling();
     } else {
       id(oq_otb_withdraw_and_flush).execute();
@@ -28,6 +29,8 @@ inline void connection_changed(bool opentherm_selected) {
       id(oq_boiler_connection_mismatch_state) = false;
       id(oq_boiler_connection_mismatch).publish_state(false);
       id(boiler_relay).turn_off();
+      id(oq_otb_hub).set_no_response_expected(true);
+      ESP_LOGI("quatt.boiler", "Verifying boiler OpenTherm connection before enabling R1");
       id(oq_otb_hub)
           .start_priority_polling(esphome::opentherm::MessageId::STATUS, esphome::opentherm::MessageId::CH_SETPOINT);
     }

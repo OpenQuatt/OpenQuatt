@@ -211,7 +211,10 @@ class TelemetryState {
   }
 
   void record_log_message(uint32_t now_ms, const char* tag, const char* message) {
-    if (tag == nullptr || message == nullptr || strcmp(tag, "opentherm") != 0) return;
+    // Boiler-side OpenTherm master logs under "oq.ot.boiler". Thermostat-side
+    // tags ("oq.ot.thermostat*") and unrelated components must not count as
+    // boiler transport errors.
+    if (tag == nullptr || message == nullptr || strcmp(tag, "oq.ot.boiler") != 0) return;
 
     TransportError error = TRANSPORT_ERROR_NONE;
     if (strstr(message, "NO_TRANSITION") != nullptr) {
