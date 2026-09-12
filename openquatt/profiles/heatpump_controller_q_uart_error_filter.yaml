@@ -1,10 +1,14 @@
 # ==============================================================================
 # OpenQuatt - Heatpump Controller Q UART parity/framing error filter
 # ==============================================================================
-# IDFUARTComponent configures the peripheral at BUS priority (1000). This hook
+# IDFUARTComponent configures the peripherals at BUS priority (1000). This hook
 # joins the Q profile's final on_boot trigger at -100, after all UART setup, so
 # uart_driver_install(), uart_param_config(), thresholds and
 # UART_MODE_RS485_HALF_DUPLEX cannot overwrite UART_ERR_WR_MASK during startup.
+#
+# Apply the hardware discard bit to every UART peripheral on Controller Q. This
+# follows ESPHome maintainer guidance while the ESP32-S3 ERR_WR_MASK behaviour is
+# being investigated; it also rules out an unexpected UART-peripheral mapping.
 
 esphome:
   includes:
@@ -13,5 +17,4 @@ esphome:
     priority: -100
     then:
       - lambda: |-
-          oq_controller_q_uart::enable_error_character_discard(id(uart_bus), "M1");
-          oq_controller_q_uart::enable_error_character_discard(id(cic_compat_uart_bus), "M2");
+          oq_controller_q_uart::enable_error_character_discard_all();
