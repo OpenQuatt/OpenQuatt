@@ -1006,40 +1006,57 @@ bool OpenQuattLogHistory::parse_stream_since_(httpd_req_t* req, bool* has_since,
   }
 
   const size_t query_len = httpd_req_get_url_query_len(req);
-  if (query_len > 0 && query_len < 256) {
-    char query[256];
-    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
-      char value[32];
-      static constexpr const char* KEYS[] = {"since", "last_seq", "lastEventId", "last_event_id"};
-      for (const char* key : KEYS) {
-        const esp_err_t found = httpd_query_key_value(query, key, value, sizeof(value));
-        if (found == ESP_OK) {
-          uint16_t seq = 0;
-          if (!log_stream_logic::parse_seq_strict(value, &seq)) {
-            *invalid = true;
-            return true;
-          }
-          *has_since = true;
-          *since = seq;
+  const size_t header_len = httpd_req_get_hdr_value_len(req, "Last-Event-ID");
+  if (log_stream_logic::cursor_carrier_oversized(query_len, header_len)) {
+    // Fail closed: an oversized query string or cursor header can neither be
+    // parsed nor safely truncated, so reject it instead of ignoring a cursor
+    // that may hide inside the unreadable tail.
+    *invalid = true;
+    return true;
+  }
+
+  if (query_len > 0) {
+    char query[log_stream_logic::CURSOR_QUERY_BUF_SIZE];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) {
+      *invalid = true;
+      return true;
+    }
+    char value[log_stream_logic::CURSOR_VALUE_BUF_SIZE];
+    static constexpr const char* KEYS[] = {"since", "last_seq", "lastEventId", "last_event_id"};
+    for (const char* key : KEYS) {
+      const esp_err_t found = httpd_query_key_value(query, key, value, sizeof(value));
+      if (found == ESP_ERR_HTTPD_RESULT_TRUNC) {
+        // Cursor key present but value does not fit: reject, do not mask.
+        *invalid = true;
+        return true;
+      }
+      if (found == ESP_OK) {
+        uint16_t seq = 0;
+        if (!log_stream_logic::parse_seq_strict(value, &seq)) {
+          *invalid = true;
           return true;
         }
+        *has_since = true;
+        *since = seq;
+        return true;
       }
     }
   }
 
-  const size_t header_len = httpd_req_get_hdr_value_len(req, "Last-Event-ID");
-  if (header_len > 0 && header_len < 32) {
-    char value[32];
-    if (httpd_req_get_hdr_value_str(req, "Last-Event-ID", value, sizeof(value)) == ESP_OK) {
-      uint16_t seq = 0;
-      if (!log_stream_logic::parse_seq_strict(value, &seq)) {
-        *invalid = true;
-        return true;
-      }
-      *has_since = true;
-      *since = seq;
+  if (header_len > 0) {
+    char value[log_stream_logic::CURSOR_HEADER_BUF_SIZE];
+    if (httpd_req_get_hdr_value_str(req, "Last-Event-ID", value, sizeof(value)) != ESP_OK) {
+      *invalid = true;
       return true;
     }
+    uint16_t seq = 0;
+    if (!log_stream_logic::parse_seq_strict(value, &seq)) {
+      *invalid = true;
+      return true;
+    }
+    *has_since = true;
+    *since = seq;
+    return true;
   }
 
   return true;
@@ -1269,27 +1286,73 @@ bool OpenQuattLogHistory::build_stream_heartbeat_(char* out, size_t out_size, si
 }
 
 void OpenQuattLogHistory::request_stream_close_(size_t index, const char* reason) {
+  // Main-loop only. Terminal: once closing is set, pump_stream_session_()
+  // attempts no further socket sends and only drives the async close below.
+  // Performs no HTTPD calls itself, so repeated requests are harmless: the
+  // single choke point for queueing is maybe_queue_stream_close_().
   if (index >= this->streams_.size()) {
     return;
   }
   auto& session = this->streams_[index];
-  const bool first_request = !session.closing;
-  session.closing = true;
-  if (first_request) {
-    session.close_request_ms = millis();
-    ESP_LOGW(TAG, "Closing log stream client %u (%s)", static_cast<unsigned>(index),
-             reason != nullptr ? reason : "slow");
+  if (session.closing) {
+    return;
   }
+  session.closing = true;
+  ESP_LOGW(TAG, "Closing log stream client %u (%s)", static_cast<unsigned>(index), reason != nullptr ? reason : "slow");
   // The slot is only recycled after free_ctx confirms the real socket close
   // (see loop_streams_()). Never clear fd here: a late free_ctx must still find
   // this session's fd, otherwise it could wipe a replacement connection that
   // reused the same static slot.
-  const int sockfd = session.fd.load();
-  if (session.hd != nullptr && sockfd > 0) {
-    const esp_err_t err = httpd_sess_trigger_close(session.hd, sockfd);
-    if (err != ESP_OK && first_request) {
-      ESP_LOGW(TAG, "Log stream trigger-close failed (%d), retrying", static_cast<int>(err));
-    }
+}
+
+void OpenQuattLogHistory::stream_close_work_(void* arg) {
+  // Runs on the HTTPD task via httpd_queue_work(). Shuts the socket down only
+  // when this exact session still owns it: httpd_sess_get_ctx() is evaluated
+  // here, at execution time, so a recycled fd number or a reused session slot
+  // can never cause a replacement connection to be closed (the flaw that rules
+  // out httpd_sess_trigger_close(), which queues a bare sock_db pointer).
+  auto* session = static_cast<LogStreamSession*>(arg);
+  if (session == nullptr) {
+    return;
+  }
+  const httpd_handle_t hd = session->close_hd;
+  const int fd = session->close_fd;
+  void* const expected = session->close_expected;
+  if (hd != nullptr && fd > 0 && expected != nullptr && httpd_sess_get_ctx(hd, fd) == expected) {
+    (void)shutdown(fd, SHUT_RDWR);
+  }
+  session->close_work_queued.store(false, std::memory_order_release);
+}
+
+void OpenQuattLogHistory::maybe_queue_stream_close_(size_t index, uint32_t now_ms) {
+  // Main-loop only. Queues at most one identity-checked close work item per
+  // session: re-queue only when queueing previously failed (flag was released)
+  // or the previous callback finished (flag released by stream_close_work_())
+  // while the session demonstrably still exists (fd still set, no free_ctx).
+  if (index >= this->streams_.size()) {
+    return;
+  }
+  auto& session = this->streams_[index];
+  if (!session.closing) {
+    return;
+  }
+  const int sockfd = session.fd.load(std::memory_order_acquire);
+  if (session.hd == nullptr || sockfd <= 0) {
+    return;
+  }
+  if (session.close_request_ms != 0 && (now_ms - session.close_request_ms) < STREAM_CLOSE_RETRY_INTERVAL_MS) {
+    return;
+  }
+  bool expected_queued = false;
+  if (!session.close_work_queued.compare_exchange_strong(expected_queued, true, std::memory_order_acq_rel)) {
+    return;
+  }
+  session.close_hd = session.hd;
+  session.close_fd = sockfd;
+  session.close_expected = &session;
+  session.close_request_ms = now_ms;
+  if (httpd_queue_work(session.close_hd, &OpenQuattLogHistory::stream_close_work_, &session) != ESP_OK) {
+    session.close_work_queued.store(false, std::memory_order_release);
   }
 }
 
@@ -1343,47 +1406,21 @@ bool OpenQuattLogHistory::flush_stream_pending_(size_t index, uint32_t now_ms) {
   return true;
 }
 
-bool OpenQuattLogHistory::send_stream_buffered_(size_t index, const char* data, size_t len, uint32_t now_ms) {
-  if (index >= this->streams_.size() || data == nullptr) {
-    return false;
-  }
-  auto& session = this->streams_[index];
-  if (!session.pend_buf || len > STREAM_EVENT_BUFFER_SIZE) {
-    return false;
-  }
-  if (session.pend_len != 0) {
-    return false;
-  }
-  std::memcpy(session.pend_buf.data(), data, len);
-  session.pend_len = len;
-  session.pend_sent = 0;
-  return this->flush_stream_pending_(index, now_ms);
-}
-
 void OpenQuattLogHistory::pump_stream_session_(size_t index, uint32_t now_ms) {
   if (index >= this->streams_.size()) {
     return;
   }
   auto& session = this->streams_[index];
 
-  if (!this->flush_stream_pending_(index, now_ms)) {
+  if (session.closing) {
+    // Terminal: never attempt socket sends for a closing session, not even to
+    // drain a stuck pending frame. Just drive the identity-checked async close
+    // and wait for free_ctx to confirm the real socket close, which is the only
+    // path that recycles the slot.
+    this->maybe_queue_stream_close_(index, now_ms);
     return;
   }
-  if (session.closing) {
-    // Wait for free_ctx to confirm the real socket close before recycling the
-    // slot. Retry the async trigger periodically (e.g. work queue was full);
-    // the slot stays reserved meanwhile so a late free_ctx can never wipe a
-    // replacement connection.
-    if (session.fd.load() > 0 && (now_ms - session.close_request_ms) >= STREAM_CLOSE_RETRY_INTERVAL_MS) {
-      session.close_request_ms = now_ms;
-      const int sockfd = session.fd.load();
-      if (session.hd != nullptr && sockfd > 0) {
-        const esp_err_t err = httpd_sess_trigger_close(session.hd, sockfd);
-        if (err != ESP_OK) {
-          ESP_LOGD(TAG, "Log stream trigger-close retry failed (%d)", static_cast<int>(err));
-        }
-      }
-    }
+  if (!this->flush_stream_pending_(index, now_ms)) {
     return;
   }
 
@@ -1527,25 +1564,55 @@ void OpenQuattLogHistory::loop_streams_() {
     return;
   }
   const uint32_t now_ms = millis();
+  httpd_handle_t current_hd = nullptr;
+  if (web_server_base::global_web_server_base != nullptr &&
+      web_server_base::global_web_server_base->get_server() != nullptr) {
+    current_hd = web_server_base::global_web_server_base->get_server()->get_server();
+  }
   for (size_t index = 0; index < this->streams_.size(); ++index) {
-    const int sockfd = this->streams_[index].fd.load();
+    const int sockfd = this->streams_[index].fd.load(std::memory_order_acquire);
+    const bool work_queued = this->streams_[index].close_work_queued.load(std::memory_order_acquire);
     bool active = false;
     bool ready = false;
     if (this->lock_history_()) {
-      active = this->streams_[index].active;
-      ready = this->streams_[index].ready;
-      // Reclaim sessions whose socket died (free_ctx cleared fd). Slots are only
-      // recycled here, after the real close confirmation, so a late free_ctx can
-      // never wipe a replacement connection reusing this static slot.
-      if (active && ready && sockfd <= 0) {
-        this->streams_[index].active = false;
-        this->streams_[index].ready = false;
-        this->streams_[index].closing = false;
-        this->streams_[index].need_gap = false;
-        this->streams_[index].pending_kind = StreamPendingKind::NONE;
-        this->streams_[index].pending_seq = 0;
-        this->streams_[index].pend_len = 0;
-        this->streams_[index].pend_sent = 0;
+      auto& session = this->streams_[index];
+      active = session.active;
+      ready = session.ready;
+      if (active && session.hd != nullptr && session.hd != current_hd) {
+        // The HTTPD server instance is gone (stop/restart): its sockets died
+        // with it and its work queue will never run again, so outstanding
+        // close work for it can neither execute nor alias a new server.
+        session.active = false;
+        session.ready = false;
+        session.closing = false;
+        session.need_gap = false;
+        session.close_work_queued.store(false, std::memory_order_release);
+        session.hd = nullptr;
+        session.close_hd = nullptr;
+        session.close_fd = -1;
+        session.close_expected = nullptr;
+        session.close_request_ms = 0;
+        session.pending_kind = StreamPendingKind::NONE;
+        session.pending_seq = 0;
+        session.pend_len = 0;
+        session.pend_sent = 0;
+        active = false;
+      } else if (active && ready && sockfd <= 0 && !work_queued) {
+        // Reclaim exclusively after the real close confirmation (free_ctx
+        // cleared fd) with no close work outstanding, so a late close callback
+        // can never wipe a replacement connection reusing this static slot.
+        session.active = false;
+        session.ready = false;
+        session.closing = false;
+        session.need_gap = false;
+        session.close_hd = nullptr;
+        session.close_fd = -1;
+        session.close_expected = nullptr;
+        session.close_request_ms = 0;
+        session.pending_kind = StreamPendingKind::NONE;
+        session.pending_seq = 0;
+        session.pend_len = 0;
+        session.pend_sent = 0;
         active = false;
       }
       this->unlock_history_();
@@ -1642,6 +1709,12 @@ esp_err_t OpenQuattLogHistory::handle_log_stream(httpd_req_t* req) {
       session.fail_count = 0;
       session.first_fail_ms = 0;
       session.close_request_ms = 0;
+      // Reclaim gate guarantees no close work is outstanding for this slot
+      // (loop_streams_() only recycles with fd==0 and !close_work_queued).
+      session.close_work_queued.store(false, std::memory_order_release);
+      session.close_hd = nullptr;
+      session.close_fd = -1;
+      session.close_expected = nullptr;
       session.pending_kind = StreamPendingKind::NONE;
       session.pending_seq = 0;
       session.pend_len = 0;

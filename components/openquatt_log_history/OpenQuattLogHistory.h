@@ -63,6 +63,8 @@ class OpenQuattLogHistory : public Component {
   struct LogStreamSession {
     bool active{false};
     bool ready{false};
+    // Terminal: once closing is set, pump_stream_session_() attempts no further
+    // socket sends and only drives the async close below.
     bool closing{false};
     bool need_gap{false};
     httpd_handle_t hd{nullptr};
@@ -71,7 +73,20 @@ class OpenQuattLogHistory : public Component {
     uint16_t fail_count{0};
     uint32_t last_activity_ms{0};
     uint32_t first_fail_ms{0};
+    // Last async-close queue attempt (0 = none yet, so the first attempt is
+    // immediate). Bounds re-queue cadence, never reclaims anything.
     uint32_t close_request_ms{0};
+    // True while an identity-checked close work item is queued or running on
+    // the HTTPD task. Slots are recycled exclusively after free_ctx confirmed
+    // fd==0 with no work outstanding, so a late callback can never alias a
+    // replacement connection.
+    std::atomic<bool> close_work_queued{false};
+    // Identity snapshot for the queued async close, read by stream_close_work_()
+    // on the HTTPD task. Written by the main loop exclusively while
+    // close_work_queued==false, hence stable for the queued callback.
+    httpd_handle_t close_hd{nullptr};
+    int close_fd{-1};
+    void* close_expected{nullptr};
     uint16_t gap_oldest{0};
     uint16_t gap_newest{0};
     // Pending-frame state: committed exactly once at queue time so a later
@@ -135,16 +150,17 @@ class OpenQuattLogHistory : public Component {
                                 size_t* message_len);
   static bool seq_is_newer_(uint16_t seq, uint16_t base);
   static void stream_free_ctx_(void* ctx);
+  static void stream_close_work_(void* arg);
   bool parse_stream_since_(httpd_req_t* req, bool* has_since, uint16_t* since, bool* invalid) const;
   void loop_streams_();
   void request_stream_close_(size_t index, const char* reason);
+  void maybe_queue_stream_close_(size_t index, uint32_t now_ms);
   bool build_stream_log_event_(const LogEntry& entry, char* out, size_t out_size, size_t* out_len) const;
   bool build_stream_log_event_truncated_(const LogEntry& entry, char* out, size_t out_size, size_t* out_len) const;
   bool build_stream_gap_event_(uint16_t oldest, uint16_t newest, const char* reason, char* out, size_t out_size,
                                size_t* out_len) const;
   bool build_stream_heartbeat_(char* out, size_t out_size, size_t* out_len) const;
   bool flush_stream_pending_(size_t index, uint32_t now_ms);
-  bool send_stream_buffered_(size_t index, const char* data, size_t len, uint32_t now_ms);
   void pump_stream_session_(size_t index, uint32_t now_ms);
 };
 

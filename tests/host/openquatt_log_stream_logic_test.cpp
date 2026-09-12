@@ -92,11 +92,29 @@ int main() {
   assert(!parse_seq_strict("0x10", &seq));
   assert(!parse_seq_strict("3.5", &seq));
 
+  // --- cursor_carrier_oversized --------------------------------------------------
+  // Normal carriers (absent or tiny decimal cursors) are parseable in place.
+  assert(!cursor_carrier_oversized(0, 0));
+  assert(!cursor_carrier_oversized(7, 0));
+  assert(!cursor_carrier_oversized(0, 5));
+  assert(!cursor_carrier_oversized(CURSOR_QUERY_BUF_SIZE - 1, CURSOR_HEADER_BUF_SIZE - 1));
+  // Oversized carriers fail closed as invalid cursors instead of being silently
+  // truncated or ignored (a cursor may hide in the unreadable tail).
+  assert(cursor_carrier_oversized(CURSOR_QUERY_BUF_SIZE, 0));
+  assert(cursor_carrier_oversized(CURSOR_QUERY_BUF_SIZE + 100, 0));
+  assert(cursor_carrier_oversized(0, CURSOR_HEADER_BUF_SIZE));
+  assert(cursor_carrier_oversized(0, CURSOR_HEADER_BUF_SIZE + 10));
+
   // State-machine contracts that socket-level HIL must additionally cover
   // (needs real httpd sockets, see PR #674 HIL plan):
   // - EAGAIN/partial send keeps exactly one pending frame; last_seq is already
   //   committed at queue time so the frame is never queued twice.
   // - gap frames clear need_gap at queue time for the same reason.
+  // - closing is terminal: pump attempts no further sends once closing is set.
+  // - async close is identity-checked on the HTTPD task
+  //   (httpd_sess_get_ctx() == expected session) and at most one close work
+  //   item is outstanding per slot; re-queue only after queue failure or a
+  //   finished callback with the session demonstrably still alive.
   // - closing slots are only recycled after free_ctx confirms the real close;
-  //   a late free_ctx must never wipe a replacement connection's fd.
+  //   a late close callback can never wipe a replacement connection's fd.
 }

@@ -97,6 +97,21 @@ inline bool parse_seq_strict(const char* text, uint16_t* out) {
   return true;
 }
 
+// Bounds for the cursor carriers (?since= query string, single query value and
+// Last-Event-ID header). A legitimate log-stream client only sends tiny
+// decimal cursors, so an oversized carrier is fail-closed as an invalid cursor
+// (HTTP 400 bad_since) instead of being silently truncated or ignored.
+inline constexpr size_t CURSOR_QUERY_BUF_SIZE = 256;
+inline constexpr size_t CURSOR_VALUE_BUF_SIZE = 32;
+inline constexpr size_t CURSOR_HEADER_BUF_SIZE = 32;
+
+inline bool cursor_carrier_oversized(size_t query_len, size_t header_len) {
+  if (query_len >= CURSOR_QUERY_BUF_SIZE) {
+    return true;
+  }
+  return header_len > 0 && header_len >= CURSOR_HEADER_BUF_SIZE;
+}
+
 }  // namespace log_stream_logic
 }  // namespace openquatt_log_history
 }  // namespace esphome
