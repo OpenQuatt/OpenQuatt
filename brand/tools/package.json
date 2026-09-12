@@ -1,0 +1,18 @@
+{
+  "name": "openquatt-brand-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "export": "node export-assets.mjs",
+    "validate": "node validate-assets.mjs",
+    "bundle": "node make-bundle.mjs",
+    "build": "npm run export && npm run validate && npm run bundle"
+  },
+  "devDependencies": {
+    "@fontsource/inter": "5.2.8",
+    "@resvg/resvg-js": "2.6.2",
+    "fontkit": "2.0.4",
+    "yazl": "3.3.1"
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "brand": "OpenQuatt",
+  "colors": {
+    "orange": {
+      "value": "#EA580C",
+      "purpose": "Core brand accent"
+    },
+    "orangeBright": {
+      "value": "#F97316",
+      "purpose": "Accent on dark surfaces"
+    },
+    "orangeDeep": {
+      "value": "#C2410C",
+      "purpose": "Accessible orange text on light surfaces"
+    },
+    "navy": {
+      "value": "#0F1724",
+      "purpose": "Primary dark background"
+    },
+    "surface": {
+      "value": "#162131",
+      "purpose": "Dark raised surface"
+    },
+    "offWhite": {
+      "value": "#F8FAFC",
+      "purpose": "Reversed mark and text"
+    },
+    "ink": {
+      "value": "#111827",
+      "purpose": "Light-theme text"
+    },
+    "blueGray": {
+      "value": "#475569",
+      "purpose": "Secondary light-theme text"
+    },
+    "warmLight": {
+      "value": "#F6F2EA",
+      "purpose": "Optional warm page background"
+    }
+  },
+  "spacing": [
+    4,
+    8,
+    12,
+    16,
+    24,
+    32,
+    40,
+    48,
+    64
+  ],
+  "radii": {
+    "small": 8,
+    "medium": 12,
+    "large": 16,
+    "pill": 999
+  },
+  "typography": {
+    "family": "Inter",
+    "fallback": "\"Segoe UI\", system-ui, -apple-system, sans-serif"
+  }
+}

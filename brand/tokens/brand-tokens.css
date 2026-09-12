@@ -1,0 +1,15 @@
+:root {
+  --oq-brand-orange: #EA580C;
+  --oq-brand-orange-bright: #F97316;
+  --oq-brand-orange-deep: #C2410C;
+  --oq-brand-navy: #0F1724;
+  --oq-brand-surface: #162131;
+  --oq-brand-off-white: #F8FAFC;
+  --oq-brand-ink: #111827;
+  --oq-brand-blue-gray: #475569;
+  --oq-brand-warm-light: #F6F2EA;
+  --oq-brand-radius-sm: 8px;
+  --oq-brand-radius-md: 12px;
+  --oq-brand-radius-lg: 16px;
+  --oq-brand-radius-pill: 999px;
+}

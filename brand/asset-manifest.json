@@ -1,0 +1,562 @@
+{
+  "version": 1,
+  "brand": "OpenQuatt",
+  "concept": "Concept A — Open Q",
+  "status": "production candidate pending human approval",
+  "generatedBy": "brand/tools/export-assets.mjs",
+  "palette": {
+    "brandOrange": "#EA580C",
+    "brightOrange": "#F97316",
+    "deepOrange": "#C2410C",
+    "charcoalNavy": "#0F1724",
+    "surfaceNavy": "#162131",
+    "offWhite": "#F8FAFC",
+    "ink": "#111827",
+    "blueGray": "#475569",
+    "warmLight": "#F6F2EA"
+  },
+  "assets": [
+    {
+      "bundle": true,
+      "logicalName": "brand-asset-license",
+      "path": "BRAND-ASSET-LICENSE.md",
+      "type": "document",
+      "variant": "documentation",
+      "intendedBackground": "not-applicable",
+      "source": "OpenQuatt Brand Pack Specification v1.0"
+    },
+    {
+      "bundle": true,
+      "logicalName": "brand-guidelines",
+      "path": "BRAND-GUIDELINES.md",
+      "type": "document",
+      "variant": "documentation",
+      "intendedBackground": "not-applicable",
+      "source": "OpenQuatt Brand Pack Specification v1.0"
+    },
+    {
+      "bundle": true,
+      "logicalName": "docs-light",
+      "path": "examples/docs-light.png",
+      "type": "png",
+      "variant": "example-docs-header",
+      "intendedBackground": "light",
+      "dimensions": {
+        "width": 1280,
+        "height": 240
+      },
+      "source": "logos/svg/openquatt-logo-compact-light.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "hardware-dark",
+      "path": "examples/hardware-dark.png",
+      "type": "png",
+      "variant": "example-hardware",
+      "intendedBackground": "dark hardware",
+      "dimensions": {
+        "width": 1200,
+        "height": 600
+      },
+      "source": "hardware/openquatt-hardware-lockup-dark.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "webapp-dark",
+      "path": "examples/webapp-dark.png",
+      "type": "png",
+      "variant": "example-webapp-header",
+      "intendedBackground": "dark",
+      "dimensions": {
+        "width": 1280,
+        "height": 240
+      },
+      "source": "logos/svg/openquatt-logo-compact-dark.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "font-readme",
+      "path": "fonts/README.md",
+      "type": "document",
+      "variant": "documentation",
+      "intendedBackground": "not-applicable",
+      "source": "OpenQuatt Brand Pack Specification v1.0"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-hardware-lockup-dark",
+      "path": "hardware/openquatt-hardware-lockup-dark.svg",
+      "type": "svg",
+      "variant": "hardware-full-colour",
+      "intendedBackground": "dark hardware",
+      "viewBox": "0 0 427 108",
+      "source": "source/open-q-construction.svg + outlined Inter 600/700"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-hardware-lockup-mono-dark",
+      "path": "hardware/openquatt-hardware-lockup-mono-dark.svg",
+      "type": "svg",
+      "variant": "hardware-monochrome-white",
+      "intendedBackground": "dark hardware",
+      "viewBox": "0 0 427 108",
+      "source": "source/open-q-construction.svg + outlined Inter 600/700"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-hardware-lockup-mono-light",
+      "path": "hardware/openquatt-hardware-lockup-mono-light.svg",
+      "type": "svg",
+      "variant": "hardware-monochrome-black",
+      "intendedBackground": "light hardware",
+      "viewBox": "0 0 427 108",
+      "source": "source/open-q-construction.svg + outlined Inter 600/700"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-symbol-engraving",
+      "path": "hardware/openquatt-symbol-engraving.svg",
+      "type": "svg",
+      "variant": "engraving",
+      "intendedBackground": "material-dependent",
+      "viewBox": "0 0 100 100",
+      "source": "source/open-q-construction.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "favicon-16x16",
+      "path": "icons/favicon/favicon-16x16.png",
+      "type": "png",
+      "variant": "favicon-micro",
+      "intendedBackground": "baked charcoal tile",
+      "dimensions": {
+        "width": 16,
+        "height": 16
+      },
+      "source": "icons/favicon/favicon.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "favicon-32x32",
+      "path": "icons/favicon/favicon-32x32.png",
+      "type": "png",
+      "variant": "favicon-micro",
+      "intendedBackground": "baked charcoal tile",
+      "dimensions": {
+        "width": 32,
+        "height": 32
+      },
+      "source": "icons/favicon/favicon.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "favicon",
+      "path": "icons/favicon/favicon.svg",
+      "type": "svg",
+      "variant": "favicon",
+      "intendedBackground": "baked charcoal tile",
+      "viewBox": "0 0 64 64",
+      "source": "logos/svg/openquatt-symbol-micro.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "android-chrome-192x192",
+      "path": "icons/pwa/android-chrome-192x192.png",
+      "type": "png",
+      "variant": "pwa",
+      "intendedBackground": "baked charcoal tile",
+      "dimensions": {
+        "width": 192,
+        "height": 192
+      },
+      "source": "icons/pwa/app-icon-master.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "android-chrome-512x512",
+      "path": "icons/pwa/android-chrome-512x512.png",
+      "type": "png",
+      "variant": "pwa",
+      "intendedBackground": "baked charcoal tile",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "source": "icons/pwa/app-icon-master.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "app-icon-master",
+      "path": "icons/pwa/app-icon-master.svg",
+      "type": "svg",
+      "variant": "app-icon-master",
+      "intendedBackground": "baked charcoal tile",
+      "viewBox": "0 0 512 512",
+      "source": "logos/svg/openquatt-symbol-dark.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "apple-touch-icon",
+      "path": "icons/pwa/apple-touch-icon.png",
+      "type": "png",
+      "variant": "apple-touch",
+      "intendedBackground": "baked charcoal tile",
+      "dimensions": {
+        "width": 180,
+        "height": 180
+      },
+      "source": "icons/pwa/app-icon-master.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "maskable-icon-512x512",
+      "path": "icons/pwa/maskable-icon-512x512.png",
+      "type": "png",
+      "variant": "pwa-maskable",
+      "intendedBackground": "baked charcoal tile",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "source": "icons/pwa/maskable-icon-master.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "maskable-icon-master",
+      "path": "icons/pwa/maskable-icon-master.svg",
+      "type": "svg",
+      "variant": "maskable-master",
+      "intendedBackground": "baked charcoal tile",
+      "viewBox": "0 0 512 512",
+      "source": "logos/svg/openquatt-symbol-dark.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "avatar-master",
+      "path": "icons/social/avatar-master.svg",
+      "type": "svg",
+      "variant": "avatar-master",
+      "intendedBackground": "baked charcoal tile",
+      "viewBox": "0 0 1024 1024",
+      "source": "logos/svg/openquatt-symbol-dark.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "github-avatar-512",
+      "path": "icons/social/github-avatar-512.png",
+      "type": "png",
+      "variant": "github-avatar",
+      "intendedBackground": "baked charcoal tile",
+      "dimensions": {
+        "width": 512,
+        "height": 512
+      },
+      "source": "icons/social/avatar-master.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "social-avatar-1024",
+      "path": "icons/social/social-avatar-1024.png",
+      "type": "png",
+      "variant": "social-avatar",
+      "intendedBackground": "baked charcoal tile",
+      "dimensions": {
+        "width": 1024,
+        "height": 1024
+      },
+      "source": "icons/social/avatar-master.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-logo-horizontal-dark-1200",
+      "path": "logos/png/openquatt-logo-horizontal-dark-1200.png",
+      "type": "png",
+      "variant": "horizontal",
+      "intendedBackground": "dark",
+      "dimensions": {
+        "width": 1200,
+        "height": 300
+      },
+      "source": "logos/svg/openquatt-logo-horizontal-dark.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-logo-horizontal-light-1200",
+      "path": "logos/png/openquatt-logo-horizontal-light-1200.png",
+      "type": "png",
+      "variant": "horizontal",
+      "intendedBackground": "light",
+      "dimensions": {
+        "width": 1200,
+        "height": 300
+      },
+      "source": "logos/svg/openquatt-logo-horizontal-light.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-logo-stacked-dark-800",
+      "path": "logos/png/openquatt-logo-stacked-dark-800.png",
+      "type": "png",
+      "variant": "stacked",
+      "intendedBackground": "dark",
+      "dimensions": {
+        "width": 800,
+        "height": 510
+      },
+      "source": "logos/svg/openquatt-logo-stacked-dark.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-logo-stacked-light-800",
+      "path": "logos/png/openquatt-logo-stacked-light-800.png",
+      "type": "png",
+      "variant": "stacked",
+      "intendedBackground": "light",
+      "dimensions": {
+        "width": 800,
+        "height": 510
+      },
+      "source": "logos/svg/openquatt-logo-stacked-light.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-logo-compact-dark",
+      "path": "logos/svg/openquatt-logo-compact-dark.svg",
+      "type": "svg",
+      "variant": "compact",
+      "intendedBackground": "dark",
+      "viewBox": "0 0 265 60",
+      "source": "source/open-q-construction.svg + outlined Inter 600/700"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-logo-compact-light",
+      "path": "logos/svg/openquatt-logo-compact-light.svg",
+      "type": "svg",
+      "variant": "compact",
+      "intendedBackground": "light",
+      "viewBox": "0 0 265 60",
+      "source": "source/open-q-construction.svg + outlined Inter 600/700"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-logo-horizontal-dark",
+      "path": "logos/svg/openquatt-logo-horizontal-dark.svg",
+      "type": "svg",
+      "variant": "horizontal",
+      "intendedBackground": "dark",
+      "viewBox": "0 0 438 100",
+      "source": "source/open-q-construction.svg + outlined Inter 600/700"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-logo-horizontal-light",
+      "path": "logos/svg/openquatt-logo-horizontal-light.svg",
+      "type": "svg",
+      "variant": "horizontal",
+      "intendedBackground": "light",
+      "viewBox": "0 0 438 100",
+      "source": "source/open-q-construction.svg + outlined Inter 600/700"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-logo-horizontal-mono-dark",
+      "path": "logos/svg/openquatt-logo-horizontal-mono-dark.svg",
+      "type": "svg",
+      "variant": "horizontal-monochrome",
+      "intendedBackground": "dark",
+      "viewBox": "0 0 438 100",
+      "source": "source/open-q-construction.svg + outlined Inter 600/700"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-logo-horizontal-mono-light",
+      "path": "logos/svg/openquatt-logo-horizontal-mono-light.svg",
+      "type": "svg",
+      "variant": "horizontal-monochrome",
+      "intendedBackground": "light",
+      "viewBox": "0 0 438 100",
+      "source": "source/open-q-construction.svg + outlined Inter 600/700"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-logo-stacked-dark",
+      "path": "logos/svg/openquatt-logo-stacked-dark.svg",
+      "type": "svg",
+      "variant": "stacked",
+      "intendedBackground": "dark",
+      "viewBox": "0 0 244 165",
+      "source": "source/open-q-construction.svg + outlined Inter 600/700"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-logo-stacked-light",
+      "path": "logos/svg/openquatt-logo-stacked-light.svg",
+      "type": "svg",
+      "variant": "stacked",
+      "intendedBackground": "light",
+      "viewBox": "0 0 244 165",
+      "source": "source/open-q-construction.svg + outlined Inter 600/700"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-symbol-dark",
+      "path": "logos/svg/openquatt-symbol-dark.svg",
+      "type": "svg",
+      "variant": "dark-background",
+      "intendedBackground": "dark",
+      "viewBox": "0 0 100 100",
+      "source": "source/open-q-construction.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-symbol-light",
+      "path": "logos/svg/openquatt-symbol-light.svg",
+      "type": "svg",
+      "variant": "light-background",
+      "intendedBackground": "light",
+      "viewBox": "0 0 100 100",
+      "source": "source/open-q-construction.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-symbol-micro-dark",
+      "path": "logos/svg/openquatt-symbol-micro-dark.svg",
+      "type": "svg",
+      "variant": "micro-16-20px-dark-background",
+      "intendedBackground": "dark",
+      "viewBox": "0 0 100 100",
+      "source": "source/open-q-construction.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-symbol-micro-light",
+      "path": "logos/svg/openquatt-symbol-micro-light.svg",
+      "type": "svg",
+      "variant": "micro-16-20px-light-background",
+      "intendedBackground": "light",
+      "viewBox": "0 0 100 100",
+      "source": "source/open-q-construction.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-symbol-micro",
+      "path": "logos/svg/openquatt-symbol-micro.svg",
+      "type": "svg",
+      "variant": "micro-16-20px",
+      "intendedBackground": "light",
+      "viewBox": "0 0 100 100",
+      "source": "source/open-q-construction.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-symbol-mono",
+      "path": "logos/svg/openquatt-symbol-mono.svg",
+      "type": "svg",
+      "variant": "monochrome",
+      "intendedBackground": "light",
+      "viewBox": "0 0 100 100",
+      "source": "source/open-q-construction.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-symbol",
+      "path": "logos/svg/openquatt-symbol.svg",
+      "type": "svg",
+      "variant": "default",
+      "intendedBackground": "light",
+      "viewBox": "0 0 100 100",
+      "source": "source/open-q-construction.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-wordmark-dark",
+      "path": "logos/svg/openquatt-wordmark-dark.svg",
+      "type": "svg",
+      "variant": "wordmark",
+      "intendedBackground": "dark",
+      "viewBox": "0 0 325 72",
+      "source": "outlined Inter 600/700"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-wordmark-light",
+      "path": "logos/svg/openquatt-wordmark-light.svg",
+      "type": "svg",
+      "variant": "wordmark",
+      "intendedBackground": "light",
+      "viewBox": "0 0 325 72",
+      "source": "outlined Inter 600/700"
+    },
+    {
+      "bundle": true,
+      "logicalName": "brand-readme",
+      "path": "README.md",
+      "type": "document",
+      "variant": "documentation",
+      "intendedBackground": "not-applicable",
+      "source": "OpenQuatt Brand Pack Specification v1.0"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-social-card-1280x640",
+      "path": "social/openquatt-social-card-1280x640.png",
+      "type": "png",
+      "variant": "social-card",
+      "intendedBackground": "baked charcoal",
+      "dimensions": {
+        "width": 1280,
+        "height": 640
+      },
+      "source": "social/openquatt-social-card-1280x640.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "openquatt-social-card-1280x640",
+      "path": "social/openquatt-social-card-1280x640.svg",
+      "type": "svg",
+      "variant": "social-card",
+      "intendedBackground": "baked charcoal",
+      "viewBox": "0 0 1280 640",
+      "source": "logos/svg/openquatt-logo-horizontal-dark.svg"
+    },
+    {
+      "bundle": true,
+      "logicalName": "open-q-construction",
+      "path": "source/open-q-construction.svg",
+      "type": "svg",
+      "variant": "construction",
+      "intendedBackground": "light",
+      "viewBox": "0 0 100 100",
+      "source": "native geometry"
+    },
+    {
+      "bundle": true,
+      "logicalName": "wordmark-editable",
+      "path": "source/wordmark-editable.svg",
+      "type": "svg",
+      "variant": "editable-live-text",
+      "intendedBackground": "light",
+      "viewBox": "0 0 310 72",
+      "source": "Inter 600/700"
+    },
+    {
+      "bundle": true,
+      "logicalName": "brand-tokens-css",
+      "path": "tokens/brand-tokens.css",
+      "type": "css",
+      "variant": "design-tokens",
+      "intendedBackground": "not-applicable",
+      "source": "tokens/brand-tokens.json"
+    },
+    {
+      "bundle": true,
+      "logicalName": "brand-tokens-json",
+      "path": "tokens/brand-tokens.json",
+      "type": "json",
+      "variant": "design-tokens",
+      "intendedBackground": "not-applicable",
+      "source": "OpenQuatt Brand Pack Specification v1.0"
+    }
+  ]
+}
