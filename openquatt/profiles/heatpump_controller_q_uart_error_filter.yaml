@@ -1,34 +1,15 @@
 # ==============================================================================
 # OpenQuatt - Heatpump Controller Q UART parity/framing error filter
 # ==============================================================================
-# IDFUARTComponent configures the peripherals at BUS priority (1000). This hook
-# joins the Q profile's final on_boot trigger at -100, after all UART setup, so
-# uart_driver_install(), uart_param_config(), thresholds and
-# UART_MODE_RS485_HALF_DUPLEX cannot overwrite UART_ERR_WR_MASK during startup.
-#
-# Apply the hardware discard bit to every UART peripheral on Controller Q. This
-# follows ESPHome maintainer guidance while the ESP32-S3 ERR_WR_MASK behaviour is
-# being investigated; it also rules out an unexpected UART-peripheral mapping.
+# IDFUARTComponent configures UARTs at BUS priority (1000). This hook runs at
+# 600, after the peripheral exists and before OpenQuatt logic starts Modbus I/O.
 
 esphome:
   includes:
     - ${openquatt_root}/profiles/heatpump_controller_q_uart_error_filter.h
   on_boot:
-    priority: -100
+    priority: 600
     then:
       - lambda: |-
-          oq_controller_q_uart::enable_error_character_discard_all();
-
-binary_sensor:
-  - platform: template
-    id: oq_m1_uart_error_character_discard
-    name: "M1 UART error character discard"
-    entity_category: diagnostic
-    lambda: |-
-      return oq_controller_q_uart::error_character_discard_enabled(id(uart_bus));
-  - platform: template
-    id: oq_m2_uart_error_character_discard
-    name: "M2 UART error character discard"
-    entity_category: diagnostic
-    lambda: |-
-      return oq_controller_q_uart::error_character_discard_enabled(id(cic_compat_uart_bus));
+          oq_controller_q_uart::enable_error_character_discard(id(uart_bus), "M1");
+          oq_controller_q_uart::enable_error_character_discard(id(cic_compat_uart_bus), "M2");
