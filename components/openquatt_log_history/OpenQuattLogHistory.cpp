@@ -1386,7 +1386,11 @@ bool OpenQuattLogHistory::flush_stream_pending_(size_t index, uint32_t now_ms) {
     }
     return false;
   }
-  if (sent == HTTPD_SOCK_ERR_FAIL || sent == HTTPD_SOCK_ERR_INVALID || sent < 0) {
+  if (sent == HTTPD_SOCK_ERR_FAIL || sent == HTTPD_SOCK_ERR_INVALID || sent <= 0) {
+    // Note: sent==0 for a non-empty non-blocking send is not the normal
+    // backpressure signal (that is HTTPD_SOCK_ERR_TIMEOUT above); it indicates
+    // a broken peer. Fail closed so the client resyncs via /recent instead of
+    // spinning forever on zero-progress partial sends.
     this->request_stream_close_(index, "send-error");
     return false;
   }
