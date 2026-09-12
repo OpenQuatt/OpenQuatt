@@ -63,6 +63,13 @@ class SupervisoryStateRuntimeContractTest(unittest.TestCase):
         )
         self.assertIn("{now_ms, flow_guard_required, min_flow_lph", RUNTIME)
 
+    def test_dynamic_pmin_only_uses_servable_heat_pumps(self) -> None:
+        self.assertIn("uint32_t hp_min_off_s;", RUNTIME)
+        self.assertIn("${oq_hp_min_off_s},", YAML)
+        self.assertIn("oq_hp_candidate::candidate_state", RUNTIME)
+        self.assertIn("oq_hp_candidate::minimum_off_ready", RUNTIME)
+        self.assertIn("if (!oq_hp_candidate::may_serve_candidate(candidate)) return;", RUNTIME)
+
     def test_production_sources_remain_bounded(self) -> None:
         # Include the bounded Modbus reader added for first-start water samples.
         total = sum(len(source.splitlines()) for source in (YAML, LOGIC, RUNTIME, PROBE))

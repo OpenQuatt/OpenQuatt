@@ -36,6 +36,25 @@ const ODU_REGISTER_KEYS = [
   "hp2LowNoiseMode",
 ];
 
+const POWER_INPUT_KEYS = [
+  "hp1PowerInputQuality",
+  "hp1AcVoltage",
+  "hp1AcCurrent",
+  "hp1FanSpeed",
+  "hp1PumpPower",
+  "hp1PumpRelay",
+  "hp1BottomPlate",
+  "hp1Crankcase",
+  "hp2PowerInputQuality",
+  "hp2AcVoltage",
+  "hp2AcCurrent",
+  "hp2FanSpeed",
+  "hp2PumpPower",
+  "hp2PumpRelay",
+  "hp2BottomPlate",
+  "hp2Crankcase",
+];
+
 test("V2-ketenvelden zijn compacte numerieke kolommen met delta-encoding", () => {
   const widths = { binary_sensor: 1, switch: 1, text_sensor: 2, select: 2, sensor: 4, number: 4 };
   for (const key of CHAIN_KEYS) {
@@ -56,12 +75,12 @@ test("V2-ketenvelden zijn compacte numerieke kolommen met delta-encoding", () =>
 });
 
 test("startsnapshot bevat tabellen, hash en instellingen eenmalig in initial", () => {
-  for (const key of [...CHAIN_KEYS, ...ODU_REGISTER_KEYS]) {
+  for (const key of [...CHAIN_KEYS, ...ODU_REGISTER_KEYS, ...POWER_INPUT_KEYS]) {
     assert.ok(DEBUG_RECORDING_KEYS.includes(key), `debugset mist ${key}`);
   }
   assert.deepEqual(
-    DEBUG_RECORDING_KEYS.slice(-(CHAIN_KEYS.length + ODU_REGISTER_KEYS.length)),
-    [...CHAIN_KEYS, ...ODU_REGISTER_KEYS],
+    DEBUG_RECORDING_KEYS.slice(-(CHAIN_KEYS.length + ODU_REGISTER_KEYS.length + POWER_INPUT_KEYS.length)),
+    [...CHAIN_KEYS, ...ODU_REGISTER_KEYS, ...POWER_INPUT_KEYS],
   );
   assert.match(powerHouse, /id: oq_debug_static_snapshot/);
   assert.match(powerHouse, /name: "Debug static snapshot"/);
@@ -71,6 +90,21 @@ test("startsnapshot bevat tabellen, hash en instellingen eenmalig in initial", (
   assert.match(powerHouse, /extStaleS/);
   assert.match(powerHouse, /table_hash/);
   assert.match(powerHouse, /2166136261U/);
+  assert.match(powerHouse, /availableModels/);
+  assert.match(powerHouse, /v2Thermal/);
+  assert.match(powerHouse, /oq-v2-heating-cic420-r1/);
+  assert.match(powerHouse, /oq-v2-input-cic420-r1/);
+});
+
+test("V2 Power Input opname bewaart kwaliteit en alle regressie-inputs", () => {
+  for (const key of POWER_INPUT_KEYS) {
+    assert.ok(ENTITY_DEFS[key], `entitydefinitie ontbreekt voor ${key}`);
+    assert.ok(DEBUG_RECORDING_KEYS.includes(key), `debugset mist ${key}`);
+  }
+  assert.equal(ENTITY_DEFS.hp1PowerInputQuality.domain, "text_sensor");
+  assert.equal(ENTITY_DEFS.hp2PowerInputQuality.domain, "text_sensor");
+  assert.match(hpPackage, /id: \$\{hp_id\}_power_input_quality/);
+  assert.match(hpPackage, /hp_input_power_status_name/);
 });
 
 test("wijzigingssnapshot verschijnt alleen bij daadwerkelijke wijziging", () => {

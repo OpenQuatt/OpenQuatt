@@ -16,12 +16,23 @@ RUNTIME = (
 
 class EnergyLogicContractTest(unittest.TestCase):
     def test_per_hp_yaml_keeps_only_inputs_and_formula_contracts(self) -> None:
-        self.assertEqual(HP_IO.count("oq_energy::hp_input_power("), 1)
+        self.assertEqual(HP_IO.count("oq_energy::hp_input_power_for_variant("), 1)
         self.assertEqual(HP_IO.count("oq_energy::hp_heating_power("), 1)
         self.assertEqual(HP_IO.count("oq_energy::hp_cooling_power("), 1)
         self.assertEqual(HP_IO.count("oq_energy::instant_ratio_or_nan("), 2)
         self.assertIn("id(${hp_id}_pump_relay).has_state(),", HP_IO)
         self.assertIn("pump_relay_known && in.pump_relay_running", LOGIC)
+        self.assertIn("id(${hp_id}_odu_generation_detection_complete)", HP_IO)
+        self.assertIn("id(${hp_id}_power_input_status_code) = static_cast<int>(estimate.status)", HP_IO)
+        self.assertIn("hp_input_power_status_name", LOGIC)
+        for freshness_id in (
+            "voltage_last_update_ms",
+            "current_last_update_ms",
+            "fan_speed_last_update_ms",
+            "status_2108_last_update_ms",
+            "pump_feedback_last_update_ms",
+        ):
+            self.assertIn(f"id(${{hp_id}}_{freshness_id})", HP_IO)
 
     def test_calibration_coefficients_have_one_owner(self) -> None:
         for coefficient in (
@@ -32,6 +43,13 @@ class EnergyLogicContractTest(unittest.TestCase):
         ):
             self.assertIn(coefficient, LOGIC)
             self.assertNotIn(coefficient, HP_IO)
+        for coefficient in ("5.93f", "1.02579f", "-0.0133119f", "140.0f", "33.62f"):
+            self.assertIn(coefficient, LOGIC)
+            self.assertNotIn(coefficient, HP_IO)
+
+    def test_v2_unavailable_power_is_not_silently_summed_as_zero(self) -> None:
+        self.assertIn("v2_power_quality_contract_active()", RUNTIME)
+        self.assertIn("nonnegative_sum_required", RUNTIME)
 
     def test_system_power_sensors_use_the_runtime_adapter(self) -> None:
         for function in (

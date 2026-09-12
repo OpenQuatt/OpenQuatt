@@ -66,6 +66,16 @@ class StrategyRuntimeContractTest(unittest.TestCase):
         ):
             self.assertIn(marker, HOST_TESTS)
 
+    def test_missing_model_data_is_held_per_heat_pump(self) -> None:
+        power_house = RUNTIMES["power_house"]
+        curve = RUNTIMES["heating_curve"]
+        for marker in ("hp1_model_available", "hp2_model_available", "active_model_missing"):
+            self.assertIn(marker, power_house)
+            self.assertIn(marker, curve)
+        self.assertIn("any_servable_candidate", power_house)
+        self.assertIn("idle_model_missing", curve)
+        self.assertIn("preserve_active_topology_without_model", power_house + curve)
+
     def test_runtime_sources_remain_bounded(self) -> None:
         # Issue #642 copies the dispatch verdict (plus startup-inhibit naming
         # from the incident manager) into status globals here.

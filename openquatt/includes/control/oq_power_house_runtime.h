@@ -117,9 +117,7 @@ class Runtime {
         now_ms, applied_total > 0, std::max(0.0f, demand_tuning.comfort_below_c), 10000UL,
         config.ot_room_temperature_fresh, config.ot_room_setpoint_fresh, this->intent_state_);
     this->intent_state_ = intent.next;
-    // Only a pending start bypasses Power House's normal start confirmation.
-    // A recovery which was interrupted by a protection hold must re-enter by
-    // the ordinary, confirmed path.
+    // An interrupted recovery re-enters through the normal confirmed path.
     id(oq_ph_fast_intent_code) = intent.fast_start ? static_cast<int>(intent.reason) : 0;
     id(oq_phouse_last_ms) = demand.next.last_ms;
     id(oq_phouse_comfort_memory_c) = demand.next.comfort_memory_c;
@@ -138,6 +136,7 @@ class Runtime {
     const float outside_c = id(outside_temp_selected).state;
     const float supply_c = id(oq_system_supply_temp).state;
     const bool performance_valid = std::isfinite(outside_c) && std::isfinite(supply_c);
+    const bool allow_low_supply_boundary_estimate = id(oq_cold_start_session_active) && !id(oq_cold_start_hp_blocked);
     auto hp1_candidate =
         oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(1), id(hp1_last_applied_level));
     hp1_candidate.minimum_off_ready = oq_hp_candidate::minimum_off_ready(
@@ -156,6 +155,10 @@ class Runtime {
     float defrost_factor = config.defrost_power_factor;
     if (!std::isfinite(defrost_factor)) defrost_factor = 0.55f;
     defrost_factor = std::max(0.10f, std::min(1.00f, defrost_factor));
+    bool hp1_model_available = false;
+    bool hp2_model_available = false;
+    bool hp1_runnable_candidate = false;
+    bool hp2_runnable_candidate = false;
     const auto build_hp = [&](oq_power_house_dispatch::HpInput& result, bool hp1,
                               const oq_hp_candidate::HpCandidateState& candidate, bool defrost, bool valve_defrost) {
       result.candidate = candidate;
@@ -163,17 +166,19 @@ class Runtime {
       result.valve_defrost = valve_defrost;
       result.levels[0] = {true, true, true, 0.0f, 0.0f};
       for (int level = 1; level <= oq_power_house_dispatch::kMaxLevel; ++level) {
-        const bool allowed = frequency.frequency_allowed(hp1, 2, level);
-        float thermal_w = NAN;
-        float electrical_w = NAN;
-        if (performance_valid) {
-          const float hz = oq_perf::model_frequency_hz(level);
-          thermal_w = oq_perf::interp_power_th_w_hz(hz, outside_c, supply_c);
-          electrical_w = oq_perf::interp_power_el_w_hz(hz, outside_c, supply_c);
-          if (valve_defrost && std::isfinite(thermal_w)) thermal_w *= defrost_factor;
-        }
-        result.levels[level] = {allowed, std::isfinite(thermal_w) && thermal_w >= 0.0f,
-                                std::isfinite(electrical_w) && electrical_w >= 0.0f, thermal_w, electrical_w};
+        const auto prediction = oq_perf::predict_candidate(frequency, frequency.performance_variant(hp1), hp1, level,
+                                                           outside_c, supply_c, allow_low_supply_boundary_estimate);
+        const bool allowed = prediction.frequency_policy_allowed;
+        float thermal_w = performance_valid ? prediction.performance.pth_w : NAN;
+        float electrical_w = performance_valid ? prediction.performance.pel_w : NAN;
+        if (valve_defrost && std::isfinite(thermal_w)) thermal_w *= defrost_factor;
+        const bool thermal_valid = std::isfinite(thermal_w) && thermal_w >= 0.0f;
+        const bool electrical_valid = std::isfinite(electrical_w) && electrical_w >= 0.0f;
+        result.levels[level] = {allowed, thermal_valid, electrical_valid, thermal_w, electrical_w};
+        bool& model_available = hp1 ? hp1_model_available : hp2_model_available;
+        bool& runnable_candidate = hp1 ? hp1_runnable_candidate : hp2_runnable_candidate;
+        model_available |= prediction.runtime_frequency_known && prediction.performance.available;
+        runnable_candidate |= allowed && thermal_valid && electrical_valid;
       }
     };
 
@@ -183,6 +188,13 @@ class Runtime {
 #if OQ_TOPOLOGY_DUO
     build_hp(dispatch_input.hp2, false, hp2_candidate, hp2_defrost_active, hp2_valve_defrost);
 #endif
+    const bool active_model_missing =
+        (hp1_candidate.previous_applied_level > 0 && !hp1_candidate.must_stop && !hp1_model_available) ||
+        (duo && hp2_candidate.previous_applied_level > 0 && !hp2_candidate.must_stop && !hp2_model_available);
+    const bool any_servable_candidate =
+        (oq_hp_candidate::may_serve_candidate(hp1_candidate) && hp1_runnable_candidate) ||
+        (duo && oq_hp_candidate::may_serve_candidate(hp2_candidate) && hp2_runnable_candidate);
+    dispatch_input.performance_valid = performance_valid && any_servable_candidate && !active_model_missing;
     float minimum_viable_w = NAN;
     const auto include_minimum = [&](const oq_power_house_dispatch::HpInput& hp) {
       if (!oq_hp_candidate::may_serve_candidate(hp.candidate)) return;

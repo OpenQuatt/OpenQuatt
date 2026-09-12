@@ -210,9 +210,9 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
                                         const DispatchState& state) {
   DispatchDecision out;
   const bool request_valid = std::isfinite(in.requested_w) && in.requested_w >= 0.0f;
-  out.capacity_w = dispatch_capacity(in, tuning);
-  out.deficit_w = request_valid ? std::max(0.0f, in.requested_w - out.capacity_w) : 0.0f;
-  out.saturated = in.demand_level > 0 && out.deficit_w > 0.0f;
+  out.capacity_w = in.performance_valid ? dispatch_capacity(in, tuning) : NAN;
+  out.deficit_w = request_valid && in.performance_valid ? std::max(0.0f, in.requested_w - out.capacity_w) : NAN;
+  out.saturated = in.demand_level > 0 && std::isfinite(out.deficit_w) && out.deficit_w > 0.0f;
   if (in.demand_level <= 0) {
     out.output_valid = request_valid && in.performance_valid;
     if (out.output_valid) out.expected_w = 0.0f;
