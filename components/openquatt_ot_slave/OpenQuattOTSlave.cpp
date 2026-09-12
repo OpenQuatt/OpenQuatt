@@ -99,7 +99,7 @@ unsigned int write_f88(const float value, const unsigned int data) { return (uns
 
 namespace esphome {
 namespace OpenQuattOTSlave {
-static const char* TAG = "OpenQuattOTSlave";
+static const char* TAG = "oq.ot.thermostat";
 // The T6 can go several seconds without polling ID 0 while it cycles through
 // other IDs. Keep the last known master status long enough to avoid a spurious
 // CH-enable "blinking" effect in Home Assistant.
