@@ -157,34 +157,45 @@ interval:
                               && !isnan(id(otb_dhw_temp).state)
                           ? id(otb_dhw_temp).state
                           : NAN);
+                  id(oq_ot_slave_hub).set_slave_max_capacity(
+                      otb_available && id(otb_max_capacity).has_state()
+                              && !isnan(id(otb_max_capacity).state)
+                          ? id(otb_max_capacity).state
+                          : NAN);
+                  id(oq_ot_slave_hub).set_slave_min_modulation(
+                      otb_available && id(otb_min_modulation).has_state()
+                              && !isnan(id(otb_min_modulation).state)
+                          ? id(otb_min_modulation).state
+                          : NAN);
                 } else {
-                  const float r1_supply_c =
+                  // R1 / on-off: only expose real measurements. Unknown
+                  // telemetry stays NAN so the slave answers DATA_INVALID.
+                  // No invented pressure, DHW, modulation or capacity.
+                  id(oq_ot_slave_hub).set_slave_t_boiler(
                       id(water_supply_temp_selected).has_state() &&
                               !isnan(id(water_supply_temp_selected).state)
                           ? id(water_supply_temp_selected).state
-                          : 20.0f;
-                  const float r1_return_c =
+                          : NAN);
+                  id(oq_ot_slave_hub).set_slave_t_ret(
                       id(hp1_water_in_temp).has_state() &&
                               !isnan(id(hp1_water_in_temp).state)
                           ? id(hp1_water_in_temp).state
-                          : 20.0f;
-                  id(oq_ot_slave_hub).set_slave_t_boiler(r1_supply_c);
-                  id(oq_ot_slave_hub).set_slave_t_ret(r1_return_c);
-
-                  float ot_rel_mod_level = id(oq_demand_filtered) * 5.0f;
-                  if (ot_rel_mod_level < 0.0f) ot_rel_mod_level = 0.0f;
-                  if (ot_rel_mod_level > 100.0f) ot_rel_mod_level = 100.0f;
-                  id(oq_ot_slave_hub).set_slave_rel_mod_level(ot_rel_mod_level);
-                  // Compatibility fallback only for a non-OT boiler path. OTB
-                  // never reports this fictive value.
-                  id(oq_ot_slave_hub).set_slave_ch_pressure(1.5f);
-                  id(oq_ot_slave_hub).set_slave_t_dhw(40.0f);
+                          : NAN);
+                  id(oq_ot_slave_hub).set_slave_rel_mod_level(NAN);
+                  id(oq_ot_slave_hub).set_slave_ch_pressure(NAN);
+                  id(oq_ot_slave_hub).set_slave_t_dhw(NAN);
+                  id(oq_ot_slave_hub).set_slave_max_capacity(NAN);
+                  id(oq_ot_slave_hub).set_slave_min_modulation(NAN);
                 }
                 if (id(max_water_temp_limit_c).has_state() && !isnan(id(max_water_temp_limit_c).state)) {
                   id(oq_ot_slave_hub).set_slave_max_t_set(id(max_water_temp_limit_c).state);
+                } else {
+                  id(oq_ot_slave_hub).set_slave_max_t_set(NAN);
                 }
                 if (id(outside_temp_selected).has_state() && !isnan(id(outside_temp_selected).state)) {
                   id(oq_ot_slave_hub).set_slave_t_outside(id(outside_temp_selected).state);
+                } else {
+                  id(oq_ot_slave_hub).set_slave_t_outside(NAN);
                 }
 
                 auto is_active_problem = [](auto *binary) -> bool {
@@ -217,11 +228,10 @@ interval:
                     id(otb_dhw_active).state;
                 const bool boiler_flame_on =
                     otb_available && id(otb_flame_on).has_state() && id(otb_flame_on).state;
-                // Preserve the established composite heat-source indication
-                // for R1 installations. With OTB selected, expose only the
-                // boiler's real flame state instead of inventing one from HP activity.
+                // Flame only on real flame state (OTB). HP/CH activity
+                // is not a flame; R1 therefore never reports flame_on.
                 const bool slave_flame_on =
-                    otb_selected ? boiler_flame_on : ch_active;
+                    otb_selected ? boiler_flame_on : false;
 
                 const bool hp1_fault = is_active_problem(id(hp1_ot_fault_active));
                 const bool hp2_fault =
