@@ -10,6 +10,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+#include "OpenQuattLogStreamLogic.h"
 #include "PsramBuffer.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/components/web_server_base/web_server_base.h"
@@ -43,10 +44,13 @@ class OpenQuattLogHistory : public Component {
   // cause unbounded RAM growth or block logging/control. History stays the
   // backfill source; the stream only forwards entries newer than last_seq.
   static constexpr size_t STREAM_MAX_CLIENTS = 2;
-  static constexpr size_t STREAM_EVENT_BUFFER_SIZE = 2048;
+  static constexpr size_t STREAM_EVENT_BUFFER_SIZE = 4096;
   static constexpr uint32_t STREAM_HEARTBEAT_INTERVAL_MS = 15000UL;
   static constexpr uint32_t STREAM_SEND_TIMEOUT_MS = 30000UL;
+  static constexpr uint32_t STREAM_CLOSE_RETRY_INTERVAL_MS = 1000UL;
   static constexpr uint8_t STREAM_MAX_EVENTS_PER_LOOP = 8;
+
+  enum class StreamPendingKind : uint8_t { NONE, LOG, GAP, HEARTBEAT };
 
   struct LogEntry {
     uint16_t seq{0};
@@ -70,6 +74,13 @@ class OpenQuattLogHistory : public Component {
     uint32_t close_request_ms{0};
     uint16_t gap_oldest{0};
     uint16_t gap_newest{0};
+    // Pending-frame state: committed exactly once at queue time so a later
+    // EAGAIN/partial send can never cause the same frame to be queued twice.
+    // last_seq (for LOG) is advanced and need_gap (for GAP) is cleared when
+    // the frame is queued, not when its last byte hits the socket. On socket
+    // failure this is safe: reconnects resume from the client Last-Event-ID.
+    StreamPendingKind pending_kind{StreamPendingKind::NONE};
+    uint16_t pending_seq{0};
     size_t pend_len{0};
     size_t pend_sent{0};
     PsramBuffer<char> pend_buf{};
@@ -124,10 +135,11 @@ class OpenQuattLogHistory : public Component {
                                 size_t* message_len);
   static bool seq_is_newer_(uint16_t seq, uint16_t base);
   static void stream_free_ctx_(void* ctx);
-  bool parse_stream_since_(httpd_req_t* req, bool* has_since, uint16_t* since) const;
+  bool parse_stream_since_(httpd_req_t* req, bool* has_since, uint16_t* since, bool* invalid) const;
   void loop_streams_();
   void request_stream_close_(size_t index, const char* reason);
   bool build_stream_log_event_(const LogEntry& entry, char* out, size_t out_size, size_t* out_len) const;
+  bool build_stream_log_event_truncated_(const LogEntry& entry, char* out, size_t out_size, size_t* out_len) const;
   bool build_stream_gap_event_(uint16_t oldest, uint16_t newest, const char* reason, char* out, size_t out_size,
                                size_t* out_len) const;
   bool build_stream_heartbeat_(char* out, size_t out_size, size_t* out_len) const;

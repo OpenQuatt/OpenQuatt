@@ -979,8 +979,7 @@ bool OpenQuattLogHistory::stream_storage_available() const {
 }
 
 bool OpenQuattLogHistory::seq_is_newer_(uint16_t seq, uint16_t base) {
-  const uint16_t diff = static_cast<uint16_t>(seq - base);
-  return diff != 0 && diff < 0x8000U;
+  return log_stream_logic::seq_is_newer(seq, base);
 }
 
 void OpenQuattLogHistory::stream_free_ctx_(void* ctx) {
@@ -992,29 +991,19 @@ void OpenQuattLogHistory::stream_free_ctx_(void* ctx) {
   ESP_LOGD(TAG, "Log stream closed (fd: %d)", fd);
 }
 
-bool OpenQuattLogHistory::parse_stream_since_(httpd_req_t* req, bool* has_since, uint16_t* since) const {
+bool OpenQuattLogHistory::parse_stream_since_(httpd_req_t* req, bool* has_since, uint16_t* since, bool* invalid) const {
   if (has_since != nullptr) {
     *has_since = false;
   }
   if (since != nullptr) {
     *since = 0;
   }
-  if (req == nullptr || has_since == nullptr || since == nullptr) {
+  if (invalid != nullptr) {
+    *invalid = false;
+  }
+  if (req == nullptr || has_since == nullptr || since == nullptr || invalid == nullptr) {
     return false;
   }
-
-  auto parse_to_seq = [](const char* text, uint16_t* out) -> bool {
-    if (text == nullptr || out == nullptr || text[0] == '\0') {
-      return false;
-    }
-    char* end = nullptr;
-    const unsigned long value = std::strtoul(text, &end, 10);
-    if (end == text) {
-      return false;
-    }
-    *out = static_cast<uint16_t>(value & 0xFFFFUL);
-    return true;
-  };
 
   const size_t query_len = httpd_req_get_url_query_len(req);
   if (query_len > 0 && query_len < 256) {
@@ -1023,13 +1012,16 @@ bool OpenQuattLogHistory::parse_stream_since_(httpd_req_t* req, bool* has_since,
       char value[32];
       static constexpr const char* KEYS[] = {"since", "last_seq", "lastEventId", "last_event_id"};
       for (const char* key : KEYS) {
-        if (httpd_query_key_value(query, key, value, sizeof(value)) == ESP_OK) {
+        const esp_err_t found = httpd_query_key_value(query, key, value, sizeof(value));
+        if (found == ESP_OK) {
           uint16_t seq = 0;
-          if (parse_to_seq(value, &seq)) {
-            *has_since = true;
-            *since = seq;
+          if (!log_stream_logic::parse_seq_strict(value, &seq)) {
+            *invalid = true;
             return true;
           }
+          *has_since = true;
+          *since = seq;
+          return true;
         }
       }
     }
@@ -1040,11 +1032,13 @@ bool OpenQuattLogHistory::parse_stream_since_(httpd_req_t* req, bool* has_since,
     char value[32];
     if (httpd_req_get_hdr_value_str(req, "Last-Event-ID", value, sizeof(value)) == ESP_OK) {
       uint16_t seq = 0;
-      if (parse_to_seq(value, &seq)) {
-        *has_since = true;
-        *since = seq;
+      if (!log_stream_logic::parse_seq_strict(value, &seq)) {
+        *invalid = true;
         return true;
       }
+      *has_since = true;
+      *since = seq;
+      return true;
     }
   }
 
@@ -1114,6 +1108,75 @@ bool OpenQuattLogHistory::build_stream_log_event_(const LogEntry& entry, char* o
     return false;
   }
   if (!sse_buffer_append_json_string_(out, out_size, &pos, entry.raw, entry.raw_len)) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, "}\n\n")) {
+    return false;
+  }
+
+  const size_t payload_len = pos - CHUNK_HEADER_LEN;
+  if (payload_len + CHUNK_HEADER_LEN + 2 > out_size) {
+    return false;
+  }
+  char header[CHUNK_HEADER_LEN + 1];
+  std::snprintf(header, sizeof(header), "%08X\r\n", static_cast<unsigned>(payload_len));
+  std::memcpy(out, header, CHUNK_HEADER_LEN);
+  out[pos++] = '\r';
+  out[pos++] = '\n';
+  *out_len = pos;
+  return true;
+}
+
+bool OpenQuattLogHistory::build_stream_log_event_truncated_(const LogEntry& entry, char* out, size_t out_size,
+                                                            size_t* out_len) const {
+  // Fallback for pathological records that do not fit even the enlarged event
+  // buffer (raw + tag/message with worst-case JSON escaping). Never skip a
+  // sequence: deliver seq/ts/level plus a bounded raw prefix with an explicit
+  // truncated flag so diagnostics stay gap-free.
+  if (out == nullptr || out_len == nullptr || out_size < 256) {
+    return false;
+  }
+  static constexpr size_t CHUNK_HEADER_LEN = 10;
+  static constexpr size_t RAW_PREFIX_MAX = 64;
+  size_t pos = CHUNK_HEADER_LEN;
+
+  char num[32];
+  int written = std::snprintf(num, sizeof(num), "id: %u\n", static_cast<unsigned>(entry.seq));
+  if (written <= 0 || !sse_buffer_append_(out, out_size, &pos, num, static_cast<size_t>(written))) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, "event: log\n")) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, "data: ")) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, "{\"seq\":")) {
+    return false;
+  }
+  written = std::snprintf(num, sizeof(num), "%u", static_cast<unsigned>(entry.seq));
+  if (written <= 0 || !sse_buffer_append_(out, out_size, &pos, num, static_cast<size_t>(written))) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, ",\"ts\":")) {
+    return false;
+  }
+  written = std::snprintf(num, sizeof(num), "%" PRIu64, static_cast<uint64_t>(entry.timestamp_s) * 1000ULL);
+  if (written <= 0 || !sse_buffer_append_(out, out_size, &pos, num, static_cast<size_t>(written))) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, ",\"level\":")) {
+    return false;
+  }
+  const char* level = level_to_string_(entry.level);
+  if (!sse_buffer_append_json_string_(out, out_size, &pos, level, std::strlen(level))) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, ",\"truncated\":true,\"raw\":")) {
+    return false;
+  }
+  const size_t prefix_len = entry.raw_len < RAW_PREFIX_MAX ? entry.raw_len : RAW_PREFIX_MAX;
+  if (!sse_buffer_append_json_string_(out, out_size, &pos, entry.raw, prefix_len)) {
     return false;
   }
   if (!sse_buffer_append_literal_(out, out_size, &pos, "}\n\n")) {
@@ -1210,16 +1273,23 @@ void OpenQuattLogHistory::request_stream_close_(size_t index, const char* reason
     return;
   }
   auto& session = this->streams_[index];
-  if (session.closing) {
-    return;
-  }
+  const bool first_request = !session.closing;
   session.closing = true;
-  session.close_request_ms = millis();
-  const int sockfd = session.fd.load();
-  if (session.hd != nullptr && sockfd > 0) {
+  if (first_request) {
+    session.close_request_ms = millis();
     ESP_LOGW(TAG, "Closing log stream client %u (%s)", static_cast<unsigned>(index),
              reason != nullptr ? reason : "slow");
-    (void)httpd_sess_trigger_close(session.hd, sockfd);
+  }
+  // The slot is only recycled after free_ctx confirms the real socket close
+  // (see loop_streams_()). Never clear fd here: a late free_ctx must still find
+  // this session's fd, otherwise it could wipe a replacement connection that
+  // reused the same static slot.
+  const int sockfd = session.fd.load();
+  if (session.hd != nullptr && sockfd > 0) {
+    const esp_err_t err = httpd_sess_trigger_close(session.hd, sockfd);
+    if (err != ESP_OK && first_request) {
+      ESP_LOGW(TAG, "Log stream trigger-close failed (%d), retrying", static_cast<int>(err));
+    }
   }
 }
 
@@ -1265,6 +1335,8 @@ bool OpenQuattLogHistory::flush_stream_pending_(size_t index, uint32_t now_ms) {
   }
   session.pend_len = 0;
   session.pend_sent = 0;
+  session.pending_kind = StreamPendingKind::NONE;
+  session.pending_seq = 0;
   session.fail_count = 0;
   session.first_fail_ms = 0;
   session.last_activity_ms = now_ms;
@@ -1298,10 +1370,19 @@ void OpenQuattLogHistory::pump_stream_session_(size_t index, uint32_t now_ms) {
     return;
   }
   if (session.closing) {
-    if ((now_ms - session.close_request_ms) > 10000UL) {
-      // httpd did not confirm the close; reclaim defensively. A late free_ctx
-      // may drop one replacement event at most; the client resyncs via /recent.
-      session.fd.store(0);
+    // Wait for free_ctx to confirm the real socket close before recycling the
+    // slot. Retry the async trigger periodically (e.g. work queue was full);
+    // the slot stays reserved meanwhile so a late free_ctx can never wipe a
+    // replacement connection.
+    if (session.fd.load() > 0 && (now_ms - session.close_request_ms) >= STREAM_CLOSE_RETRY_INTERVAL_MS) {
+      session.close_request_ms = now_ms;
+      const int sockfd = session.fd.load();
+      if (session.hd != nullptr && sockfd > 0) {
+        const esp_err_t err = httpd_sess_trigger_close(session.hd, sockfd);
+        if (err != ESP_OK) {
+          ESP_LOGD(TAG, "Log stream trigger-close retry failed (%d)", static_cast<int>(err));
+        }
+      }
     }
     return;
   }
@@ -1318,12 +1399,17 @@ void OpenQuattLogHistory::pump_stream_session_(size_t index, uint32_t now_ms) {
       this->request_stream_close_(index, "gap-too-large");
       return;
     }
+    // Commit at queue time: even if the socket only accepts part of this frame
+    // now, the remainder stays pending and need_gap stays cleared, so the gap
+    // is never queued twice.
+    session.pending_kind = StreamPendingKind::GAP;
+    session.pending_seq = session.gap_newest;
+    session.need_gap = false;
     session.pend_len = frame_len;
     session.pend_sent = 0;
     if (!this->flush_stream_pending_(index, now_ms)) {
       return;
     }
-    session.need_gap = false;
   }
 
   // Snapshot one entry at a time under the history lock so socket I/O never
@@ -1333,8 +1419,6 @@ void OpenQuattLogHistory::pump_stream_session_(size_t index, uint32_t now_ms) {
     LogEntry entry{};
     bool history_empty = false;
     bool lagged = false;
-    uint16_t oldest = 0;
-    uint16_t newest = 0;
     uint32_t next_seq = 0;
 
     if (!this->lock_history_()) {
@@ -1346,12 +1430,9 @@ void OpenQuattLogHistory::pump_stream_session_(size_t index, uint32_t now_ms) {
     } else {
       const size_t oldest_index = this->head_ % ENTRY_CAPACITY;
       const size_t newest_index = (this->head_ + this->count_ - 1) % ENTRY_CAPACITY;
-      oldest = this->entries_[oldest_index].seq;
-      newest = this->entries_[newest_index].seq;
-      const bool at_oldest_minus_one = session.last_seq == static_cast<uint16_t>(oldest - 1U);
-      const uint16_t dist_to_last = static_cast<uint16_t>(session.last_seq - oldest);
-      const uint16_t dist_to_newest = static_cast<uint16_t>(newest - oldest);
-      if (!at_oldest_minus_one && dist_to_last > dist_to_newest) {
+      const uint16_t oldest = this->entries_[oldest_index].seq;
+      const uint16_t newest = this->entries_[newest_index].seq;
+      if (!log_stream_logic::cursor_in_window(session.last_seq, oldest, newest)) {
         lagged = true;
       } else {
         // Find the oldest entry newer than last_seq.
@@ -1393,16 +1474,24 @@ void OpenQuattLogHistory::pump_stream_session_(size_t index, uint32_t now_ms) {
     }
     size_t frame_len = 0;
     if (!this->build_stream_log_event_(entry, buf, STREAM_EVENT_BUFFER_SIZE, &frame_len)) {
-      ESP_LOGW(TAG, "Log stream event too large (seq %u)", static_cast<unsigned>(entry.seq));
-      session.last_seq = entry.seq;
-      continue;
+      // Pathological record: fall back to a bounded truncated frame so the
+      // sequence is still delivered instead of skipped.
+      ESP_LOGW(TAG, "Log stream event truncated (seq %u)", static_cast<unsigned>(entry.seq));
+      if (!this->build_stream_log_event_truncated_(entry, buf, STREAM_EVENT_BUFFER_SIZE, &frame_len)) {
+        this->request_stream_close_(index, "event-too-large");
+        return;
+      }
     }
+    // Commit at queue time: last_seq advances now, so a later EAGAIN/partial
+    // send resumes with the remainder of this frame and never re-queues it.
+    session.pending_kind = StreamPendingKind::LOG;
+    session.pending_seq = entry.seq;
+    session.last_seq = entry.seq;
     session.pend_len = frame_len;
     session.pend_sent = 0;
     if (!this->flush_stream_pending_(index, now_ms)) {
       return;
     }
-    session.last_seq = entry.seq;
   }
 
   if (!session.closing && session.pend_len == 0 &&
@@ -1415,6 +1504,8 @@ void OpenQuattLogHistory::pump_stream_session_(size_t index, uint32_t now_ms) {
     if (!this->build_stream_heartbeat_(buf, STREAM_EVENT_BUFFER_SIZE, &frame_len)) {
       return;
     }
+    session.pending_kind = StreamPendingKind::HEARTBEAT;
+    session.pending_seq = 0;
     session.pend_len = frame_len;
     session.pend_sent = 0;
     (void)this->flush_stream_pending_(index, now_ms);
@@ -1443,12 +1534,16 @@ void OpenQuattLogHistory::loop_streams_() {
     if (this->lock_history_()) {
       active = this->streams_[index].active;
       ready = this->streams_[index].ready;
-      // Reclaim sessions whose socket died (free_ctx cleared fd).
+      // Reclaim sessions whose socket died (free_ctx cleared fd). Slots are only
+      // recycled here, after the real close confirmation, so a late free_ctx can
+      // never wipe a replacement connection reusing this static slot.
       if (active && ready && sockfd <= 0) {
         this->streams_[index].active = false;
         this->streams_[index].ready = false;
         this->streams_[index].closing = false;
         this->streams_[index].need_gap = false;
+        this->streams_[index].pending_kind = StreamPendingKind::NONE;
+        this->streams_[index].pending_seq = 0;
         this->streams_[index].pend_len = 0;
         this->streams_[index].pend_sent = 0;
         active = false;
@@ -1479,7 +1574,15 @@ esp_err_t OpenQuattLogHistory::handle_log_stream(httpd_req_t* req) {
 
   bool has_since = false;
   uint16_t since = 0;
-  this->parse_stream_since_(req, &has_since, &since);
+  bool cursor_invalid = false;
+  this->parse_stream_since_(req, &has_since, &since, &cursor_invalid);
+  if (cursor_invalid) {
+    httpd_resp_set_status(req, HTTPD_400);
+    httpd_resp_set_type(req, "application/json; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_sendstr(req, R"({"ok":false,"error":"bad_since"})");
+    return ESP_OK;
+  }
 
   size_t slot = STREAM_MAX_CLIENTS;
   uint16_t initial_seq = 0;
@@ -1504,29 +1607,23 @@ esp_err_t OpenQuattLogHistory::handle_log_stream(httpd_req_t* req) {
     return ESP_OK;
   }
 
-  if (this->count_ == 0) {
-    initial_seq = static_cast<uint16_t>((this->next_seq_ - 1U) & 0xFFFFUL);
-  } else {
-    const size_t oldest_index = this->head_ % ENTRY_CAPACITY;
-    const size_t newest_index = (this->head_ + this->count_ - 1) % ENTRY_CAPACITY;
-    const uint16_t oldest = this->entries_[oldest_index].seq;
-    const uint16_t newest = this->entries_[newest_index].seq;
-    gap_oldest = oldest;
-    gap_newest = newest;
-    if (!has_since) {
-      initial_seq = newest;
-    } else {
-      const bool at_oldest_minus_one = since == static_cast<uint16_t>(oldest - 1U);
-      const uint16_t dist_to_since = static_cast<uint16_t>(since - oldest);
-      const uint16_t dist_to_newest = static_cast<uint16_t>(newest - oldest);
-      if (at_oldest_minus_one || dist_to_since <= dist_to_newest) {
-        initial_seq = since;
-      } else {
-        // Stale or future cursor: start live and tell the client to backfill via /recent.
-        initial_seq = newest;
-        need_gap = true;
-      }
+  {
+    const bool history_empty = this->count_ == 0;
+    uint16_t oldest = 0;
+    uint16_t newest = 0;
+    if (!history_empty) {
+      const size_t oldest_index = this->head_ % ENTRY_CAPACITY;
+      const size_t newest_index = (this->head_ + this->count_ - 1) % ENTRY_CAPACITY;
+      oldest = this->entries_[oldest_index].seq;
+      newest = this->entries_[newest_index].seq;
+      gap_oldest = oldest;
+      gap_newest = newest;
     }
+    const uint16_t next_minus_one = static_cast<uint16_t>((this->next_seq_ - 1U) & 0xFFFFUL);
+    const log_stream_logic::CursorResolution resolved =
+        log_stream_logic::resolve_initial_seq(has_since, since, history_empty, oldest, newest, next_minus_one);
+    initial_seq = resolved.initial_seq;
+    need_gap = resolved.need_gap;
   }
 
   for (size_t index = 0; index < this->streams_.size(); ++index) {
@@ -1545,6 +1642,8 @@ esp_err_t OpenQuattLogHistory::handle_log_stream(httpd_req_t* req) {
       session.fail_count = 0;
       session.first_fail_ms = 0;
       session.close_request_ms = 0;
+      session.pending_kind = StreamPendingKind::NONE;
+      session.pending_seq = 0;
       session.pend_len = 0;
       session.pend_sent = 0;
       break;
