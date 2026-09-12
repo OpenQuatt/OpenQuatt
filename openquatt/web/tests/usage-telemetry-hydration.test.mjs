@@ -55,6 +55,7 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
     coolingEnableSource: "CIC or HA input",
     coolingDewPointSource: "MQTT",
     externalHeatDemandSource: "API input",
+    heatingSupplyTargetSource: "Heating curve",
     heapFree: 178432,
     heapMinFree: 151008,
     heapLargestBlock: 98304,
@@ -100,6 +101,7 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
     cooling_enable_source: "cic_or_home_assistant",
     cooling_dew_point_source: "mqtt",
     external_heat_demand_source: "api_input",
+    heating_supply_target_source: "heating_curve",
     heap_free_b: 178432,
     heap_min_free_b: 151008,
     heap_largest_block_b: 98304,
@@ -369,6 +371,7 @@ test("usage telemetry disclosure matches the hourly payload scope", async () => 
     "cooling_enable_source",
     "cooling_dew_point_source",
     "external_heat_demand_source",
+    "heating_supply_target_source",
   ];
   for (const field of configFields) {
     assert.match(previewSource, new RegExp(field));

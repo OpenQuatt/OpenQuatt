@@ -223,11 +223,13 @@ Hier beheer je de directe gegevensbronnen en integraties:
 
 - `OpenTherm`: zet de lokale OpenTherm-thermostaatkoppeling aan of uit;
 - `CIC-polling`: zet het uitlezen van een externe CIC JSON-feed aan of uit en pas de feed-URL aan;
-- `MQTT inputbronnen`: configureer een broker voor externe MQTT-bronwaarden zoals dauwpunt, buiten- en kamerwaarden en toestemmingssignalen, en zet ongebruikte topics uit;
+- `MQTT inputbronnen`: configureer een broker voor externe MQTT-bronwaarden zoals dauwpunt, buiten- en kamerwaarden, het aanvoertarget en toestemmingssignalen, en zet ongebruikte topics uit;
 - `API inputbronnen`: lever dezelfde externe bronwaarden via lokale HTTP-endpoints aan;
 - `CiC-compatibiliteit`: gebruik dit alleen als de Quatt app via de CiC moet blijven meekijken.
 
-Onder `Sensorselectie` in dezelfde groep kies je per signaal welke bron OpenQuatt gebruikt. Naast de kaarten voor buiten-, kamer- en aanvoerwaarden staat daar `Warmtevraag`: een optionele externe vermogensvraag voor Power House, standaard op `Niet gebruiken`. Zet je die op Home Assistant of API-invoer, dan vervangt jouw waarde uitsluitend de vermogensschatting van het huismodel; de kaart laat zien of Power House die externe waarde daadwerkelijk gebruikt of is teruggevallen op het model. Zie [Power House](power-house.md).
+Onder `Sensorselectie` in dezelfde groep kies je per signaal welke bron OpenQuatt gebruikt. Naast de kaarten voor buiten-, kamer- en aanvoerwaarden staat daar `Externe warmtevraag (Power House)`: een optionele externe vermogensvraag, alleen voor de Power House-strategie, standaard op `Niet gebruiken`. Zet je die op Home Assistant of API-invoer, dan vervangt jouw waarde uitsluitend de vermogensschatting van het huismodel; de kaart laat zien of Power House die externe waarde daadwerkelijk gebruikt of is teruggevallen op het model. Zie [Power House](power-house.md).
+
+Daarnaast staat er `Aanvoertarget (stooklijn)`: een optionele externe aanvoertemperatuur, alleen voor de stooklijnregeling, standaard op `Stooklijn`. Zet je die op OpenTherm-thermostaat, Home Assistant, API-invoer of MQTT, dan vervangt jouw waarde uitsluitend het berekende stooklijntarget; de kaart laat zien of de regeling dat externe target daadwerkelijk gebruikt of is teruggevallen op de stooklijn. Zie [Water Temperature Control](water-temperature-control.md#extern-aanvoertarget-optioneel).
 
 Voor `Warmtetoestemming` (`Heating Enable Source`) betekent `Niet gebruiken`: geen externe gate; de strategie bepaalt zelf of warmte nodig is. Tijdens Quick Start vervangt een strategieswitch deze keuze automatisch door `Niet gebruiken` voor `Power House`, of door de gekoppelde en actieve thermostaatbron voor `Water Temperature Control`. Buiten Quick Start toont `Instellingen → Verwarmen` alleen een advies met knop en wordt de instelling niet stil overschreven. Afwijkende combinaties (zone-regeling, volledig weersafhankelijk) blijven mogelijk. De buitentemperatuur staat normaliter op `Auto` en gebruikt de buitenunit.
 
@@ -276,7 +278,7 @@ Het bericht bevat uitsluitend:
 - `quatt_hybrid_generation_config`: `v1`, `v1_5` of `v2` volgens de ingestelde Quatt Hybrid-versie;
 - `flow_source_config`: `cic`, `controller_local` of `outdoor_unit`, afgeleid uit de algemene en (bij Q) Q-specifieke flowselectie;
 - `heating_strategy`: `power_house` of `heating_curve`;
-- de gekozen regelbronnen in `room_temperature_source`, `room_setpoint_source`, `outside_temperature_source`, `heating_enable_source`, `cooling_enable_source`, `cooling_dew_point_source` en `external_heat_demand_source`, genormaliseerd naar vaste waarden zoals `auto`, `local`, `outdoor_unit`, `cic`, `opentherm`, `home_assistant`, `api_input`, `mqtt`, `cic_or_home_assistant`, `schedule` en `disabled`;
+- de gekozen regelbronnen in `room_temperature_source`, `room_setpoint_source`, `outside_temperature_source`, `heating_enable_source`, `cooling_enable_source`, `cooling_dew_point_source`, `external_heat_demand_source` en `heating_supply_target_source`, genormaliseerd naar vaste waarden zoals `auto`, `local`, `outdoor_unit`, `cic`, `opentherm`, `home_assistant`, `api_input`, `mqtt`, `cic_or_home_assistant`, `schedule`, `disabled` en `heating_curve`;
 - vrij heapgeheugen, het minimum sinds de start, het grootste vrije heapblok en vrij PSRAM;
 - maximale looptijd van de firmwareloop, ESP-chiptemperatuur en reden van de laatste herstart;
 - bij Wi-Fi: de signaalsterkte in dBm;
@@ -311,7 +313,7 @@ Maak een backup voordat je grotere wijzigingen doet of voordat je een factory-up
 
 De backup bevat de instellingen die de web-app beheert, inclusief de vier warmtepompoffsets en iedere geldige aanvoeroffset die per bron is opgeslagen. De MQTT-configuratie wordt ook meegenomen, maar het MQTT-wachtwoord nooit. Bij restore vergelijkt OpenQuatt de backup met de huidige installatie, zodat je verschillen kunt controleren voordat je ze terugzet.
 
-Externe invoerwaarden die je live aanlevert, zoals een warmtevraag of een kamertemperatuur via MQTT of de API, zijn geen instellingen en gaan niet mee in de backup. De gekozen bron blijft wel bewaard: na een restore staat `Warmtevraag` weer op dezelfde bron, zonder dat er een verouderde vermogensvraag wordt teruggezet.
+Externe invoerwaarden die je live aanlevert, zoals een warmtevraag, een aanvoertarget of een kamertemperatuur via MQTT of de API, zijn geen instellingen en gaan niet mee in de backup. De gekozen bron blijft wel bewaard: na een restore staan `Externe warmtevraag (Power House)` en `Aanvoertarget (stooklijn)` weer op dezelfde bron, zonder dat er een verouderde vraag of target wordt teruggezet.
 
 De kalibratiewaarden worden op dezelfde manier als de overige instellingen hersteld, vóór de opgeslagen aanvoerbron wordt geselecteerd. Kalibreer na restore opnieuw als de controller of een temperatuursensor fysiek is vervangen; een gewone bron- of CIC-URL-wijziging verwijdert een geldige kalibratie niet.
 

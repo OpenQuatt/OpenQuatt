@@ -42,7 +42,7 @@ class OpenQuattDebugRecorder : public Component {
   static constexpr uint32_t MIN_DURATION_S = 60;
   static constexpr uint32_t MAX_DURATION_S = 60 * 60;
   static constexpr size_t BUFFER_BYTES = 1024U * 1024U;
-  static constexpr size_t FIELD_CAPACITY = 240;
+  static constexpr size_t FIELD_CAPACITY = 243;
   static constexpr size_t SYSTEM_FIELD_COUNT = 5;
   static constexpr size_t FIELD_KEY_BYTES = 40;
   static constexpr size_t FIELD_NAME_BYTES = 48;

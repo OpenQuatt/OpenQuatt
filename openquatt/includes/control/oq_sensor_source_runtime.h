@@ -5,6 +5,7 @@
 #include <string>
 
 #include "oq_flow_pump_logic.h"
+#include "oq_heating_supply_target_logic.h"
 #include "oq_input_source_logic.h"
 #include "oq_schedule_runtime.h"
 #include "oq_supply_calibration_logic.h"
@@ -116,6 +117,7 @@ class Runtime {
     add_hold(active, id(oq_room_temp_selected_hold_active), "Room temp");
     add_hold(active, id(oq_room_setpoint_selected_hold_active), "Room setpoint");
     add_hold(active, id(oq_external_heat_demand_selected_hold_active), "External heat demand");
+    add_hold(active, id(oq_heating_supply_target_selected_hold_active), "Heating supply target");
     add_hold(active, id(oq_cooling_dew_point_selected_hold_active), "Cooling dew point");
     return active.empty() ? "None" : active;
   }
@@ -274,6 +276,48 @@ class Runtime {
     return selected.valid ? selected.value : NAN;
   }
 
+  void observe_heating_supply_target_ha(uint32_t now_ms) { ha_supply_target_state_.observe(now_ms); }
+
+  float heating_supply_target(uint32_t now_ms, uint32_t hold_ms, uint32_t ha_stale_s, bool opentherm_fresh) {
+    if (!id(heating_supply_target_source).has_state()) return NAN;
+    const auto selected_source = parse_source(id(heating_supply_target_source).current_option());
+    if (selected_source == oq_input_source::Source::HEATING_CURVE) {
+      supply_target_hold_.reset();
+      id(oq_heating_supply_target_selected_hold_active) = false;
+      return NAN;
+    }
+    // An explicitly switched-off HA validity flag revokes the cached target
+    // immediately instead of replaying it for the hold window (issue #649).
+    if (selected_source == oq_input_source::Source::HA &&
+        oq_heating_supply::ha_hold_revoked(id(heating_supply_target_valid_ha).has_state(),
+                                           id(heating_supply_target_valid_ha).state)) {
+      supply_target_hold_.reset();
+    }
+    oq_input_source::NumericSources sources;
+    // HA freshness is tracked at ingress (on_value): a value frozen by
+    // connection loss goes stale even though ESPHome retains the states.
+    const bool ha_fresh =
+        oq_input_source::evaluate_freshness(ha_supply_target_state_, now_ms, ha_stale_s,
+                                            ha_valid(id(heating_supply_target_valid_ha), id(heating_supply_target_ha)))
+            .valid;
+    sources.ha = sample(ha_fresh && oq_heating_supply::external_target_in_range(id(heating_supply_target_ha).state),
+                        id(heating_supply_target_ha));
+    sources.api = sample(api_valid(id(api_input_heating_supply_target_valid), id(api_input_heating_supply_target)),
+                         id(api_input_heating_supply_target));
+    sources.mqtt = sample(mqtt_valid(id(mqtt_heating_supply_target_valid), id(mqtt_heating_supply_target)),
+                          id(mqtt_heating_supply_target));
+    // Only a fresh TSet inside the heating range counts: TSet=0 (thermostat
+    // without heat demand) falls back to the curve. Deliberately not gated on
+    // CH-enable: Heating Enable stays a separate input (issue #649).
+    const bool ot_usable = opentherm_fresh && id(ot_thermostat_control_setpoint).has_state() &&
+                           oq_heating_supply::external_target_in_range(id(ot_thermostat_control_setpoint).state);
+    sources.opentherm = sample(ot_usable, id(ot_thermostat_control_setpoint));
+    const auto selected =
+        oq_input_source::select_direct(selected_source, sources, true, now_ms, hold_ms, supply_target_hold_);
+    id(oq_heating_supply_target_selected_hold_active) = selected.held;
+    return selected.valid ? selected.value : NAN;
+  }
+
  private:
   struct SupplyFallback {
     bool valid = false;
@@ -286,6 +330,8 @@ class Runtime {
   oq_input_source::HoldState room_hold_;
   oq_input_source::HoldState setpoint_hold_;
   oq_input_source::HoldState demand_hold_;
+  oq_input_source::HoldState supply_target_hold_;
+  oq_input_source::TimedState ha_supply_target_state_;
 
   template <typename T>
   static oq_input_source::Source parse_source(const T& option) {
@@ -299,6 +345,7 @@ class Runtime {
     if (option == "OT thermostat") return oq_input_source::Source::OPENTHERM;
     if (option == "Disabled") return oq_input_source::Source::DISABLED;
     if (option == "CIC or HA input") return oq_input_source::Source::CIC_OR_HA;
+    if (option == "Heating curve") return oq_input_source::Source::HEATING_CURVE;
     if (option == "Schedule") return oq_input_source::Source::SCHEDULE;
     return oq_input_source::Source::NONE;
   }

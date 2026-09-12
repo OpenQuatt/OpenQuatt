@@ -282,15 +282,24 @@ import { renderStatCard } from "./stat-card.js";
   }
 
   export function getCurveOverviewModel() {
-    const target = getEntityNumericValue("curveSupplyTarget");
+    // The strategy target is the effective target: the local curve, or the
+    // external supply target while one is driving. The curve target alone
+    // would misreport delta and status under an external target (issue #649).
+    const strategyTarget = hasEntity("strategySupplyTarget") ? getEntityNumericValue("strategySupplyTarget") : Number.NaN;
+    const curveTarget = getEntityNumericValue("curveSupplyTarget");
+    const targetKey = Number.isNaN(strategyTarget) ? "curveSupplyTarget" : "strategySupplyTarget";
+    const target = Number.isNaN(strategyTarget) ? curveTarget : strategyTarget;
     const supply = getEntityNumericValue("supplyTemp");
     const outsideKey = getOverviewOutsideTempKey();
     const outside = outsideKey ? getEntityNumericValue(outsideKey) : Number.NaN;
     const targetDelta = Number.isNaN(target) || Number.isNaN(supply) ? Number.NaN : supply - target;
     const fallbackActive = Boolean(outsideKey) && Number.isNaN(outside);
+    const externalActive = getEntityStateText("heatingSupplyTargetActiveSource", "") === "external";
 
-    let statusTitle = "Stuurt op buitentemperatuur";
-    let statusCopy = "De doelaanvoer volgt de huidige buitentemperatuur en vergelijkt die met de actuele aanvoer.";
+    let statusTitle = externalActive ? "Extern doel actief" : "Stuurt op buitentemperatuur";
+    let statusCopy = externalActive
+      ? "Een externe bron bepaalt het aanvoerdoel; de regeling vergelijkt dat met de actuele aanvoer."
+      : "De doelaanvoer volgt de huidige buitentemperatuur en vergelijkt die met de actuele aanvoer.";
 
     if (fallbackActive) {
       statusTitle = "Fallback actief";
@@ -307,7 +316,7 @@ import { renderStatCard } from "./stat-card.js";
     }
 
     return {
-      targetText: formatOverviewStatValue("curveSupplyTarget"),
+      targetText: formatOverviewStatValue(targetKey),
       supplyText: formatOverviewStatValue("supplyTemp"),
       deltaText: formatSignedTemperature(targetDelta),
       capacityText: formatOverviewStatValue("hpCapacity"),

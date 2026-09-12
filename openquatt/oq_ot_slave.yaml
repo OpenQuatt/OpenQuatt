@@ -67,6 +67,14 @@ binary_sensor:
       entity_category: diagnostic
       icon: mdi:alert-circle-outline
 
+  - platform: template
+    id: ot_thermostat_control_setpoint_valid
+    name: "OT - Control Setpoint Valid"
+    icon: mdi:check-decagram
+    entity_category: diagnostic
+    lambda: |-
+      return id(oq_ot_slave_hub).master_control_setpoint_fresh();
+
 sensor:
   - platform: openquatt_ot_slave
     openquatt_ot_slave_id: oq_ot_slave_hub

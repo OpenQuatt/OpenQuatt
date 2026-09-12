@@ -148,6 +148,7 @@ void OpenQuattOTSlave::stop_opentherm_() {
   m_lastSuccessfulFrameMs = 0;
   m_lastMasterRoomTemperatureMs = 0;
   m_lastMasterRoomSetpointMs = 0;
+  m_lastMasterControlSetpointMs = 0;
   if (m_ot_thermostat_ == NULL || !m_otStarted) {
     return;
   }
@@ -169,6 +170,14 @@ bool OpenQuattOTSlave::master_room_setpoint_fresh() const {
       m_lastSuccessfulFrameMs != 0 && (now_ms - m_lastSuccessfulFrameMs) <= OT_LINK_PROBLEM_TIMEOUT_MS;
   return link_fresh && oq_ot_slave::room_signal_fresh(m_enabled, m_otStarted, m_otaActive || m_updatePrepareActive,
                                                       m_lastMasterRoomSetpointMs, now_ms);
+}
+
+bool OpenQuattOTSlave::master_control_setpoint_fresh() const {
+  const unsigned long now_ms = now_millis();
+  const bool link_fresh =
+      m_lastSuccessfulFrameMs != 0 && (now_ms - m_lastSuccessfulFrameMs) <= OT_LINK_PROBLEM_TIMEOUT_MS;
+  return link_fresh && oq_ot_slave::room_signal_fresh(m_enabled, m_otStarted, m_otaActive || m_updatePrepareActive,
+                                                      m_lastMasterControlSetpointMs, now_ms);
 }
 
 void OpenQuattOTSlave::try_start_opentherm_() {
@@ -356,6 +365,7 @@ void OpenQuattOTSlave::parseRequest(OpenThermMessageType type, OpenThermMessageI
   switch (dataID) {
     case OpenThermMessageID::TSet:
       m_master_state.t_set = message_data::parse_f88(data);
+      m_lastMasterControlSetpointMs = now_millis();
       break;
 
     case OpenThermMessageID::MaxRelModLevelSetting:

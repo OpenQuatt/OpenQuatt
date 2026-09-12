@@ -10,6 +10,7 @@
 substitutions:
   oq_ot_room_temperature_fresh_expr: "id(oq_ot_slave_hub).master_room_temperature_fresh()"
   oq_ot_room_setpoint_fresh_expr: "id(oq_ot_slave_hub).master_room_setpoint_fresh()"
+  oq_ot_supply_target_fresh_expr: "id(oq_ot_slave_hub).master_control_setpoint_fresh()"
 
 select:
   - platform: template
@@ -54,6 +55,21 @@ select:
       - HA input
       - API input
     initial_option: Disabled
+
+  - platform: template
+    name: "Heating Supply Target Source"
+    id: heating_supply_target_source
+    icon: mdi:source-branch
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    options:
+      - Heating curve
+      - OT thermostat
+      - HA input
+      - API input
+      - MQTT
+    initial_option: Heating curve
 
   - platform: template
     name: "Heating Enable Source"

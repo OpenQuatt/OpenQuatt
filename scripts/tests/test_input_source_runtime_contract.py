@@ -5,6 +5,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_YAML = (ROOT / "openquatt/oq_sensor_sources.yaml").read_text()
 API_YAML = (ROOT / "openquatt/oq_api_ingress.yaml").read_text()
+HA_YAML = (ROOT / "openquatt/oq_ha_inputs.yaml").read_text()
+SUBSTITUTIONS_YAML = (ROOT / "openquatt/oq_substitutions_common.yaml").read_text()
 SOURCE_RUNTIME = (ROOT / "openquatt/includes/control/oq_sensor_source_runtime.h").read_text()
 API_RUNTIME = (ROOT / "openquatt/includes/control/oq_api_ingress_runtime.h").read_text()
 SOURCE_LOGIC = (ROOT / "openquatt/includes/control/oq_input_source_logic.h").read_text()
@@ -41,6 +43,7 @@ class InputSourceRuntimeContractTest(unittest.TestCase):
             "api_input_room_temperature": (0, 50, 0.1),
             "api_input_room_setpoint": (5, 35, 0.1),
             "api_input_external_heat_demand": (0, 15000, 10),
+            "api_input_heating_supply_target": (20, 70, 0.5),
         }
         for entity_id, (minimum, maximum, step) in api_ranges.items():
             block = entity_block(API_YAML, entity_id)
@@ -58,11 +61,12 @@ class InputSourceRuntimeContractTest(unittest.TestCase):
             "room_temp_selected",
             "room_setpoint_selected",
             "external_heat_demand_selected",
+            "heating_supply_target_selected",
         ):
             self.assertIn("update_interval: 10s", entity_block(SOURCE_YAML, entity_id))
 
     def test_yaml_is_a_compact_runtime_contract(self) -> None:
-        self.assertLessEqual(len(SOURCE_YAML.splitlines()) + len(API_YAML.splitlines()), 750)
+        self.assertLessEqual(len(SOURCE_YAML.splitlines()) + len(API_YAML.splitlines()), 800)
         for call in (
             "oq_sensor_source::runtime().water_supply(",
             "oq_sensor_source::runtime().flow()",
@@ -70,9 +74,10 @@ class InputSourceRuntimeContractTest(unittest.TestCase):
             "oq_sensor_source::runtime().room_temperature(",
             "oq_sensor_source::runtime().room_setpoint(",
             "oq_sensor_source::runtime().external_heat_demand(",
+            "oq_sensor_source::runtime().heating_supply_target(",
         ):
             self.assertIn(call, SOURCE_YAML)
-        self.assertEqual(API_YAML.count("oq_api_ingress::runtime().observe("), 9)
+        self.assertEqual(API_YAML.count("oq_api_ingress::runtime().observe("), 10)
         self.assertIn("oq_api_ingress::runtime().tick(", API_YAML)
 
     def test_stateful_decisions_live_in_cpp(self) -> None:
@@ -101,10 +106,21 @@ class InputSourceRuntimeContractTest(unittest.TestCase):
         self.assertIn("oq_api_ingress::runtime().reset()", API_YAML)
         self.assertIn("oq_ot_room_temperature_fresh_expr", SOURCE_YAML)
         self.assertIn("oq_ot_room_setpoint_fresh_expr", SOURCE_YAML)
+        self.assertIn("oq_ot_supply_target_fresh_expr", SOURCE_YAML)
         self.assertIn("isfinite", API_RUNTIME)
         self.assertIn("isfinite", SOURCE_LOGIC)
         for runtime in (SOURCE_RUNTIME, API_RUNTIME, SOURCE_LOGIC):
             self.assertNotIn("${", runtime)
+
+    def test_heating_supply_target_ha_is_freshness_gated(self) -> None:
+        # A value frozen by HA connection loss must go stale even though
+        # ESPHome retains the states: freshness is tracked at ingress via
+        # on_value, and the selected sensor passes an explicit stale window.
+        self.assertEqual(HA_YAML.count("observe_heating_supply_target_ha"), 2)
+        self.assertIn("ha_heating_supply_target_stale_s", SUBSTITUTIONS_YAML)
+        self.assertIn("ha_heating_supply_target_stale_s", SOURCE_YAML)
+        self.assertIn("evaluate_freshness(ha_supply_target_state_", SOURCE_RUNTIME)
+        self.assertIn("ha_hold_revoked", SOURCE_RUNTIME)
 
     def test_host_regressions_cover_failure_boundaries(self) -> None:
         host_test = (ROOT / "tests/host/input_source_logic_test.cpp").read_text()

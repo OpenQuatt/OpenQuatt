@@ -83,6 +83,23 @@ sensor:
     state_class: measurement
     accuracy_decimals: 0
 
+  - platform: homeassistant
+    id: heating_supply_target_ha
+    name: "HA - Heating Supply Target"
+    entity_id: ${ha_heating_supply_target_entity_id}
+    internal: false
+    disabled_by_default: true
+    icon: mdi:target
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    # Timestamp every HA publish at ingress (like the API/MQTT triplets), so a
+    # frozen value after connection loss still goes stale (issue #649).
+    on_value:
+      - lambda: |-
+          oq_sensor_source::runtime().observe_heating_supply_target_ha((uint32_t) millis());
+
 binary_sensor:
   - platform: homeassistant
     id: heating_enable_ha
@@ -149,3 +166,14 @@ binary_sensor:
     name: "HA - External Heat Demand Valid"
     entity_id: ${ha_external_heat_demand_valid_entity_id}
     internal: true
+
+  - platform: homeassistant
+    id: heating_supply_target_valid_ha
+    name: "HA - Heating Supply Target Valid"
+    entity_id: ${ha_heating_supply_target_valid_entity_id}
+    internal: true
+    # A validity flip without a value change still refreshes freshness, so
+    # re-arming after a dropout takes effect immediately.
+    on_state:
+      - lambda: |-
+          oq_sensor_source::runtime().observe_heating_supply_target_ha((uint32_t) millis());

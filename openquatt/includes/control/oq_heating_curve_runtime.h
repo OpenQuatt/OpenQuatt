@@ -10,6 +10,7 @@
 #include "oq_compressor_frequency_runtime.h"
 #include "oq_heat_intent_runtime.h"
 #include "oq_heating_curve_logic.h"
+#include "oq_heating_supply_target_logic.h"
 #include "oq_hp_candidate_logic.h"
 #include "oq_thermal_request_logic.h"
 
@@ -25,6 +26,7 @@ class Runtime {
   void reset_profile() {
     this->reset_control_();
     id(oq_curve_oil_return_hold_until_ms) = 0;
+    id(oq_curve_supply_external) = false;
     this->reset_outside_ema_();
     this->reset_request_(0);
   }
@@ -32,10 +34,11 @@ class Runtime {
                         bool ot_room_setpoint_fresh) {
     if (id(oq_heat_mode_code) != 1) {
       this->reset_control_();
+      id(oq_curve_supply_external) = false;
       return;
     }
     this->last_pid_output_ = pid_output;
-    const float target_c = id(oq_supply_target_temp).state;
+    const float target_c = this->effective_supply_target(id(oq_supply_target_temp).state);
     const float supply_c = id(oq_system_supply_temp).state;
     const auto tuning = this->tuning_();
     const float room_c = id(room_temp_selected).state;
@@ -115,6 +118,19 @@ class Runtime {
                                    points, id(room_temp_selected).state, id(room_setpoint_selected).state,
                                    this->tuning_(), id(max_water_temp_limit_c).state);
   }
+  float effective_supply_target(float local_curve_c) const {
+    // An external target replaces the local curve output as-is (no second
+    // room-trim); downstream limits, PID, demand and dispatch are untouched.
+    const bool has_selected = id(heating_supply_target_selected).has_state();
+    const float external_c = has_selected ? id(heating_supply_target_selected).state : NAN;
+    const float max_water_c = id(max_water_temp_limit_c).has_state() ? id(max_water_temp_limit_c).state : NAN;
+    const float ceiling_c = std::isfinite(max_water_c) ? max_water_c : 70.0f;
+    const auto effective = oq_heating_supply::select_effective_target(
+        local_curve_c, external_c, has_selected && std::isfinite(external_c), 20.0f, ceiling_c);
+    id(oq_curve_supply_external) = effective.external;
+    return effective.supply_target_c;
+  }
+
   void strategy_tick(int demand_max_f, bool ot_room_temperature_fresh, bool ot_room_setpoint_fresh) {
     const bool active = id(oq_control_mode_code) != 5 && id(oq_heat_mode_code) == 1;
     const uint32_t now_ms = static_cast<uint32_t>(millis());
@@ -125,9 +141,10 @@ class Runtime {
         call.perform();
       }
       this->reset_control_();
+      id(oq_curve_supply_external) = false;
       return;
     }
-    const float target_c = id(oq_supply_target_temp).state;
+    const float target_c = this->effective_supply_target(id(oq_supply_target_temp).state);
     const float supply_c = id(oq_system_supply_temp).state;
     if (!std::isfinite(target_c) || !std::isfinite(supply_c)) {
       this->reset_control_();
@@ -168,7 +185,9 @@ class Runtime {
     const int control_mode = id(oq_control_mode_code);
     if (control_mode != 2 && control_mode != 3) return true;
     if (!id(oq_curve_heat_request_active)) return true;
-    if (!std::isfinite(id(oq_supply_target_temp).state) || !std::isfinite(id(oq_system_supply_temp).state)) return true;
+    if (!std::isfinite(this->effective_supply_target(id(oq_supply_target_temp).state)) ||
+        !std::isfinite(id(oq_system_supply_temp).state))
+      return true;
     const bool hp1_delivering =
         id(hp1_last_applied_level) > 0 && this->working_mode_heating_(id(hp1_working_mode).state);
 #if OQ_TOPOLOGY_DUO
@@ -243,7 +262,7 @@ class Runtime {
     const bool demand_active = demand_u > 0.0f;
 #if OQ_TOPOLOGY_DUO
     const auto tuning = this->tuning_();
-    const float target_c = id(oq_supply_target_temp).state;
+    const float target_c = this->effective_supply_target(id(oq_supply_target_temp).state);
     const float supply_c = id(oq_system_supply_temp).state;
     const float temperature_error_c = std::isfinite(target_c) && std::isfinite(supply_c) ? target_c - supply_c : NAN;
     const bool heat_phase = demand_active && id(oq_curve_regime_code) == 1;

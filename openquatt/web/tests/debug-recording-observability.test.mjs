@@ -99,6 +99,12 @@ const ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS = [
   "boilerPowerTestResultQuality",
 ];
 
+const ISSUE_649_OBSERVABILITY_KEYS = [
+  "heatingSupplyTargetSource",
+  "heatingSupplyTargetSelected",
+  "heatingSupplyTargetActiveSource",
+];
+
 const V2_CHAIN_KEYS = [
   "hp1RequestedControlLevel",
   "hp1AppliedControlLevel",
@@ -158,6 +164,7 @@ const ADDED_OBSERVABILITY_KEYS = [
   ...ISSUE_516_OBSERVABILITY_KEYS,
   ...ISSUE_536_WARM_START_OBSERVABILITY_KEYS,
   ...ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS,
+  ...ISSUE_649_OBSERVABILITY_KEYS,
   ...ISSUE_642_OBSERVABILITY_KEYS,
   ...V2_CHAIN_KEYS,
   ...ODU_REGISTER_KEYS,
@@ -175,7 +182,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const issue516EndIndex = coolingMinOffEndIndex + ISSUE_516_OBSERVABILITY_KEYS.length;
   const issue536WarmStartEndIndex = issue516EndIndex + ISSUE_536_WARM_START_OBSERVABILITY_KEYS.length;
   const issue536EmpiricalEndIndex = issue536WarmStartEndIndex + ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS.length;
-  const issue642EndIndex = issue536EmpiricalEndIndex + ISSUE_642_OBSERVABILITY_KEYS.length;
+  const issue649EndIndex = issue536EmpiricalEndIndex + ISSUE_649_OBSERVABILITY_KEYS.length;
+  const issue642EndIndex = issue649EndIndex + ISSUE_642_OBSERVABILITY_KEYS.length;
   const v2ChainEndIndex = issue642EndIndex + V2_CHAIN_KEYS.length;
   const oduRegisterEndIndex = v2ChainEndIndex + ODU_REGISTER_KEYS.length;
 
@@ -202,7 +210,11 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
     ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS,
   );
   assert.deepEqual(
-    DEBUG_RECORDING_KEYS.slice(issue536EmpiricalEndIndex, issue642EndIndex),
+    DEBUG_RECORDING_KEYS.slice(issue536EmpiricalEndIndex, issue649EndIndex),
+    ISSUE_649_OBSERVABILITY_KEYS,
+  );
+  assert.deepEqual(
+    DEBUG_RECORDING_KEYS.slice(issue649EndIndex, issue642EndIndex),
     ISSUE_642_OBSERVABILITY_KEYS,
   );
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue642EndIndex, v2ChainEndIndex), V2_CHAIN_KEYS);
@@ -216,7 +228,7 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const fieldCapacity = Number(recorderHeader.match(/FIELD_CAPACITY = (\d+)/)?.[1]);
   const systemFieldCount = Number(recorderHeader.match(/SYSTEM_FIELD_COUNT = (\d+)/)?.[1]);
   assert.equal(systemFieldCount, 5);
-  assert.equal(fieldCapacity, 240);
+  assert.equal(fieldCapacity, 243);
   assert.ok(DEBUG_RECORDING_KEYS.length <= fieldCapacity - systemFieldCount);
   assert.ok(
     fieldCapacity - systemFieldCount - DEBUG_RECORDING_KEYS.length >= 12,

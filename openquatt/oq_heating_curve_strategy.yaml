@@ -3,6 +3,13 @@
 # ==============================================================================
 
 globals:
+  # True while the effective supply target is driven by a valid external source
+  # instead of the local heating curve. Mirrors oq_phouse_demand_external.
+  - id: oq_curve_supply_external
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+
   # Continuous PID-derived demand before integer quantization or request guardrails.
   - id: oq_curve_demand_continuous
     type: float
@@ -455,6 +462,16 @@ text_sensor:
     lambda: |-
       const char *mode_name = oq_curve::capacity_mode_name(id(oq_curve_capacity_mode_code));
       return std::string(mode_name);
+
+  - platform: template
+    id: oq_curve_supply_source
+    name: "Heating Supply – target source"
+    icon: mdi:source-branch
+    entity_category: diagnostic
+    update_interval: ${oq_diagnostic_update_interval_s}s
+    lambda: |-
+      // Separate a live external supply target from a fallback to the heating curve.
+      return std::string(id(oq_curve_supply_external) ? "external" : "curve");
 
   - platform: template
     id: oq_curve_fast_intent_sensor

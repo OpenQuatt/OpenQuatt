@@ -17,6 +17,7 @@ enum class Source : uint8_t {
   OPENTHERM,
   DISABLED,
   CIC_OR_HA,
+  HEATING_CURVE,
   SCHEDULE,
 };
 
