@@ -216,6 +216,7 @@ class InternalHeapPlacementContractTest(unittest.TestCase):
             "pend_buf.allocate_external(STREAM_EVENT_BUFFER_SIZE)",
             LOG_HISTORY_CPP,
         )
+
         self.assertIn(
             "this->samples_.allocate_external(BUFFER_BYTES)",
             DEBUG_RECORDER_CPP,
@@ -252,6 +253,19 @@ class InternalHeapPlacementContractTest(unittest.TestCase):
             "this->flash_index_.allocate_external(FLASH_SLOT_COUNT)",
             TRENDS_CPP,
         )
+
+    def test_log_stream_hil_observability_is_read_only_and_bounded(self) -> None:
+        for field in (
+            "stream_eagain_count_",
+            "stream_partial_send_count_",
+            "stream_send_timeout_close_count_",
+            "stream_send_error_close_count_",
+            "loop_stack_min_free_bytes_",
+        ):
+            self.assertIn(field, LOG_HISTORY_HEADER)
+            self.assertIn(field, LOG_HISTORY_CPP)
+        self.assertIn(',\\"stream\\":{\\"eagain\\":', LOG_HISTORY_CPP)
+        self.assertIn("uxTaskGetStackHighWaterMark(nullptr)", LOG_HISTORY_CPP)
 
     def test_optional_history_allocation_failures_are_explicit(self) -> None:
         self.assertIn("bool storage_available() const", LOG_HISTORY_HEADER)
