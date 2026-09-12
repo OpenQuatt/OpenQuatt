@@ -7,9 +7,10 @@
 #
 # The active heat-pump UART RX pin gets an internal pull-up. This test variant
 # keeps the normal ESP-IDF UART_MODE_RS485_HALF_DUPLEX direction control and sets
-# UART_ERR_WR_MASK so characters that fail parity/framing are discarded before
-# entering the RX FIFO. The error probe remains active to verify whether hardware
-# parity events still occur even when the corrupt byte no longer reaches Modbus.
+# UART_ERR_WR_MASK on every hardware UART so characters that fail parity/framing
+# should be discarded before entering an RX FIFO. The error probe remains active
+# on the actual Modbus UART to verify whether hardware parity events still occur
+# even when the corrupt byte should no longer reach Modbus.
 #
 # Intentionally avoids UARTDebug::log_hex(), which adds a 10 ms delay after every
 # emitted log line and could influence the timing being investigated.
@@ -21,13 +22,19 @@ esphome:
     priority: 600
     then:
       - lambda: |-
-          const uint8_t uart_num = id(uart_bus).get_hw_serial_number();
-          oq_modbus_uart_diag::set_discard_bad_bytes(uart_num, true);
-          oq_modbus_uart_diag::install(uart_num);
+          // Diagnostic only: set the hardware discard bit on every UART to rule
+          // out an unexpected peripheral/driver mapping. Keep the error callback
+          // attached only to the UART ESPHome actually assigned to Modbus.
+          for (uint8_t uart_num = 0; uart_num < UART_NUM_MAX; uart_num++) {
+            oq_modbus_uart_diag::set_discard_bad_bytes(uart_num, true);
+          }
+          oq_modbus_uart_diag::install(id(uart_bus).get_hw_serial_number());
       - delay: 1s
       - lambda: |-
-          // Read only: prove whether later startup activity changed the filter state.
-          oq_modbus_uart_diag::report_startup_filter_state(id(uart_bus).get_hw_serial_number());
+          // Read only: prove whether later startup activity changed any filter state.
+          for (uint8_t uart_num = 0; uart_num < UART_NUM_MAX; uart_num++) {
+            oq_modbus_uart_diag::report_startup_filter_state(uart_num);
+          }
 
 logger:
   initial_level: DEBUG
