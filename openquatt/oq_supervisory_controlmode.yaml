@@ -685,6 +685,7 @@ interval:
               ${oq_low_load_fallback_on_w},
               ${oq_low_load_dyn_cache_max_s},
               ${oq_ph_start_confirm_s},
+              ${oq_hp_min_off_s},
               ${oq_cm2_idle_exit_s},
               ${oq_cm2_min_run_s},
               ${oq_cm_flow_fault_s},

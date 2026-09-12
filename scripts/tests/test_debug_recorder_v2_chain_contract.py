@@ -58,6 +58,25 @@ REGISTER_KEYS = [
     "hp2LowNoiseMode",
 ]
 
+POWER_INPUT_KEYS = [
+    "hp1PowerInputQuality",
+    "hp1AcVoltage",
+    "hp1AcCurrent",
+    "hp1FanSpeed",
+    "hp1PumpPower",
+    "hp1PumpRelay",
+    "hp1BottomPlate",
+    "hp1Crankcase",
+    "hp2PowerInputQuality",
+    "hp2AcVoltage",
+    "hp2AcCurrent",
+    "hp2FanSpeed",
+    "hp2PumpPower",
+    "hp2PumpRelay",
+    "hp2BottomPlate",
+    "hp2Crankcase",
+]
+
 
 class DebugRecorderV2ChainContractTest(unittest.TestCase):
     def test_chain_entities_exist_with_exact_recorder_names(self) -> None:
@@ -114,19 +133,26 @@ class DebugRecorderV2ChainContractTest(unittest.TestCase):
         self.assertIn('std::strcmp(field.key, "debugStaticSnapshot") != 0', RECORDER_SOURCE)
 
     def test_debug_keys_are_additive_compact_and_within_budget(self) -> None:
-        for key in CHAIN_KEYS + REGISTER_KEYS:
+        for key in CHAIN_KEYS + REGISTER_KEYS + POWER_INPUT_KEYS:
             self.assertIn(f'"{key}"', CONFIG_JS)
         debug_section = CONFIG_JS[CONFIG_JS.index("export const DEBUG_RECORDING_KEYS"):]
         tail = debug_section[debug_section.index('"boilerPowerTestResultQuality"'):]
-        positions = [tail.index(f'"{key}"') for key in CHAIN_KEYS + REGISTER_KEYS]
+        positions = [tail.index(f'"{key}"') for key in CHAIN_KEYS + REGISTER_KEYS + POWER_INPUT_KEYS]
         self.assertEqual(positions, sorted(positions))
-        for key in CHAIN_KEYS + REGISTER_KEYS:
+        for key in CHAIN_KEYS + REGISTER_KEYS + POWER_INPUT_KEYS:
             self.assertLess(len(key), 40)
         header_capacity = int(re.search(r"FIELD_CAPACITY = (\d+)", RECORDER_HEADER).group(1))
         header_system = int(re.search(r"SYSTEM_FIELD_COUNT = (\d+)", RECORDER_HEADER).group(1))
-        self.assertEqual(header_capacity, 224)
+        self.assertEqual(header_capacity, 240)
         self.assertEqual(header_system, 5)
-        self.assertLessEqual(206, header_capacity - header_system)
+        self.assertLessEqual(222, header_capacity - header_system)
+
+    def test_power_input_diagnostics_include_model_ids_and_quality(self) -> None:
+        self.assertIn('\\"availableModels\\":{\\"v2Thermal\\":\\"oq-v2-heating-cic420-r1\\"', POWER_HOUSE)
+        self.assertIn('\\"v2Input\\":\\"oq-v2-input-cic420-r1\\"', POWER_HOUSE)
+        self.assertIn("id: ${hp_id}_power_input_quality", HP_IO)
+        self.assertIn('name: "${prefix}Power Input quality"', HP_IO)
+        self.assertIn("hp_input_power_status_name", HP_IO)
 
     def test_low_load_numerics_keep_text_for_backward_compatibility(self) -> None:
         self.assertIn('name: "Low-load dynamic thresholds"', SUPERVISORY)

@@ -82,8 +82,12 @@ void test_single_and_failures() {
   in.hp2.candidate.previous_applied_level = 3;
   auto out = decide_dispatch(in, cfg, {});
   assert(out.hp1_level == 4 && out.hp2_level == 3 && out.reason == Reason::FALLBACK_DUO && !out.output_valid);
+  assert(isnan(out.capacity_w) && isnan(out.deficit_w) && !out.saturated);
+  in.hp2.candidate.previous_applied_level = 0;
+  out = decide_dispatch(in, cfg, {});
+  assert(out.hp1_level == 4 && out.hp2_level == 0 && out.reason == Reason::FALLBACK_HP1);
   in.hp1.candidate.must_stop = true;
-  assert(decide_dispatch(in, cfg, {}).reason == Reason::FALLBACK_HP2);
+  assert(decide_dispatch(in, cfg, {}).reason == Reason::FALLBACK_IDLE);
   in.hp2.candidate = {};
   for (int previous : {-1, 11, 20}) {
     in.hp1.candidate = {previous, true, false, false};

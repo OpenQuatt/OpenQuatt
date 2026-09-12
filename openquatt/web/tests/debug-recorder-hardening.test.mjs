@@ -19,17 +19,14 @@ test("packed rows vergroten de retentie van de volledige dev-debugset", () => {
   );
   const capacity = Math.floor((1024 * 1024) / rowBytes);
 
-  assert.equal(rowBytes, 664);
-  assert.equal(capacity, 1579);
+  assert.equal(rowBytes, 706);
+  assert.equal(capacity, 1485);
   // Issue #642 voegt twee diagnosevelden toe (gepubliceerde startblokkade +
   // resterende tijd), zodat een geblokkeerde koelstart achteraf verklaarbaar
-  // is. De V2/Power-House-keten voegt daar twaalf compacte kolommen aan toe
-  // (10x sensor, 1x binary, 1x text = +43 B/rij) plus vier hergebruikte
-  // ODU-registervelden (2x demand-Hz als sensor, 2x silent-status als select
-  // = +12 B/rij, zonder nieuwe firmware-entities). Samen kost dat een klein
-  // half uur op een buffer van ruim 4,3 uur; nog steeds ruim voldoende voor
-  // meerdaagse diagnose en ver boven de opnameduur van maximaal 1 uur.
-  assert.ok((capacity - 1) * 10 >= 4.3 * 60 * 60);
+  // is. De V2 Power Input-keten voegt per HP acht compacte kolommen toe
+  // (4x sensor, 3x binary, 1x text = +21 B/rij). De retentie blijft ruim
+  // boven de maximaal instelbare opnameduur van 1 uur.
+  assert.ok((capacity - 1) * 10 >= 4.1 * 60 * 60);
   assert.match(header, /PsramBuffer<uint8_t> samples_/);
   assert.match(source, /value_size_for_type_/);
   assert.match(source, /sample_row_bytes/);

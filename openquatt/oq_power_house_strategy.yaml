@@ -215,9 +215,9 @@ text_sensor:
   # delta-encoding; a new value appears only when the underlying table or
   # setting changes). Covers per-HP heating runtime tables with validity and
   # FNV-1a fingerprint, Power House house settings, the heating minimum-off
-  # constant and the external-demand stale timeout. Generation/variant/model,
-  # demand source/selected and low-load factors are already separate debug
-  # columns and are not duplicated here. Never invents values: invalid tables
+  # constant, external-demand stale timeout and the available model IDs.
+  # Generation/variant, demand source/selected and low-load factors are already
+  # separate debug columns and are not duplicated here. Never invents values: invalid tables
   # yield valid:false with empty hz, missing numbers yield null, HP2 is null
   # on Single, and snprintf overflow yields "unknown" (recorder-missing).
   - platform: template
@@ -301,10 +301,12 @@ text_sensor:
           id(ph_demand_rise_time_min).has_state() ? id(ph_demand_rise_time_min).state : NAN, rise_b, sizeof(rise_b));
       const char *fall = fmt_float(
           id(ph_demand_fall_time_min).has_state() ? id(ph_demand_fall_time_min).state : NAN, fall_b, sizeof(fall_b));
-      char buf[512]{};
+      char buf[640]{};
       int n = snprintf(
           buf, sizeof(buf),
-          "{\"hp1\":{\"valid\":%s,\"count\":%u,\"hash\":%u,\"hz\":%s},\"hp2\":%s,"
+          "{\"availableModels\":{\"v2Thermal\":\"oq-v2-heating-cic420-r1\","
+          "\"v2Input\":\"oq-v2-input-cic420-r1\"},"
+          "\"hp1\":{\"valid\":%s,\"count\":%u,\"hash\":%u,\"hz\":%s},\"hp2\":%s,"
           "\"house\":{\"cold\":%s,\"zero\":%s,\"rated\":%s,\"kp\":%s,\"cbBelow\":%s,\"cbAbove\":%s,"
           "\"rise\":%s,\"fall\":%s},\"minOffS\":%s,\"extStaleS\":%s}",
           hp1_snapshot.heating.valid ? "true" : "false", (unsigned) hp1_snapshot.heating.level_count,

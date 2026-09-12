@@ -131,6 +131,25 @@ const ODU_REGISTER_KEYS = [
   "hp2LowNoiseMode",
 ];
 
+const POWER_INPUT_KEYS = [
+  "hp1PowerInputQuality",
+  "hp1AcVoltage",
+  "hp1AcCurrent",
+  "hp1FanSpeed",
+  "hp1PumpPower",
+  "hp1PumpRelay",
+  "hp1BottomPlate",
+  "hp1Crankcase",
+  "hp2PowerInputQuality",
+  "hp2AcVoltage",
+  "hp2AcCurrent",
+  "hp2FanSpeed",
+  "hp2PumpPower",
+  "hp2PumpRelay",
+  "hp2BottomPlate",
+  "hp2Crankcase",
+];
+
 const ADDED_OBSERVABILITY_KEYS = [
   ...OBSERVABILITY_KEYS,
   ...ISSUE_473_OBSERVABILITY_KEYS,
@@ -142,6 +161,7 @@ const ADDED_OBSERVABILITY_KEYS = [
   ...ISSUE_642_OBSERVABILITY_KEYS,
   ...V2_CHAIN_KEYS,
   ...ODU_REGISTER_KEYS,
+  ...POWER_INPUT_KEYS,
 ];
 
 test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", async () => {
@@ -157,6 +177,7 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const issue536EmpiricalEndIndex = issue536WarmStartEndIndex + ISSUE_536_EMPIRICAL_APPLY_OBSERVABILITY_KEYS.length;
   const issue642EndIndex = issue536EmpiricalEndIndex + ISSUE_642_OBSERVABILITY_KEYS.length;
   const v2ChainEndIndex = issue642EndIndex + V2_CHAIN_KEYS.length;
+  const oduRegisterEndIndex = v2ChainEndIndex + ODU_REGISTER_KEYS.length;
 
   assert.equal(legacyTailIndex, 134);
   assert.deepEqual(
@@ -185,7 +206,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
     ISSUE_642_OBSERVABILITY_KEYS,
   );
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue642EndIndex, v2ChainEndIndex), V2_CHAIN_KEYS);
-  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(v2ChainEndIndex), ODU_REGISTER_KEYS);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(v2ChainEndIndex, oduRegisterEndIndex), ODU_REGISTER_KEYS);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(oduRegisterEndIndex), POWER_INPUT_KEYS);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   const recorderHeader = await readFile(
     new URL("../../../components/openquatt_debug_recorder/OpenQuattDebugRecorder.h", import.meta.url),
@@ -194,7 +216,7 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const fieldCapacity = Number(recorderHeader.match(/FIELD_CAPACITY = (\d+)/)?.[1]);
   const systemFieldCount = Number(recorderHeader.match(/SYSTEM_FIELD_COUNT = (\d+)/)?.[1]);
   assert.equal(systemFieldCount, 5);
-  assert.equal(fieldCapacity, 224);
+  assert.equal(fieldCapacity, 240);
   assert.ok(DEBUG_RECORDING_KEYS.length <= fieldCapacity - systemFieldCount);
   assert.ok(
     fieldCapacity - systemFieldCount - DEBUG_RECORDING_KEYS.length >= 12,
@@ -264,7 +286,7 @@ test("elk nieuw debugveld verwijst naar een echte firmware-entity", async () => 
   const firmwareSource = packages.join("\n");
 
   for (const key of ADDED_OBSERVABILITY_KEYS) {
-    if (ODU_REGISTER_KEYS.includes(key)) continue;
+    if ([...ODU_REGISTER_KEYS, ...POWER_INPUT_KEYS].includes(key)) continue;
     assert.ok(firmwareSource.includes(`name: "${ENTITY_DEFS[key].name}"`), `firmware-entity ontbreekt voor ${key}`);
   }
 });
