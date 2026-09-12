@@ -1283,13 +1283,23 @@ sensor:
     update_interval: 10s
     lambda: |-
       // Select the estimator only after per-ODU identity and input quality are known.
+      // Decode R2137 from the same raw sample whose timestamp qualifies it.
+      // The separately published pump-power entity updates on its own schedule
+      // and must not make an older derived value appear fresh after a fault.
+      const float pump_feedback_raw = id(${hp_id}_pump_ipwm_feedback_raw).state;
+      float pump_power_w = NAN;
+      if (id(${hp_id}_is_online) && isfinite(pump_feedback_raw)) {
+        const auto pump_feedback =
+            oq_pump_ipwm::decode(static_cast<uint16_t>(lroundf(pump_feedback_raw)));
+        if (pump_feedback.power_valid) pump_power_w = pump_feedback.power_w;
+      }
       const oq_energy::HpElectricalInputs inputs{
           id(${hp_id}_voltage).state,
           id(${hp_id}_current).state,
           id(${hp_id}_fan_speed).state,
           id(${hp_id}_pump_relay).has_state(),
           id(${hp_id}_pump_relay).state,
-          id(${hp_id}_pump_power).state,
+          pump_power_w,
           id(${hp_id}_bottom_plate_heater).state,
           id(${hp_id}_crankcase_heater).state,
       };

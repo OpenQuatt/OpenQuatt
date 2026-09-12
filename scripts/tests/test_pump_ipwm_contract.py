@@ -74,7 +74,10 @@ class PumpIpwmContractTest(unittest.TestCase):
         )
         self.assertIn("oq_pump_ipwm::decode", pump_power)
         self.assertIn("feedback.power_valid ? feedback.power_w : NAN", pump_power)
-        self.assertIn("id(${hp_id}_pump_power).state", power_input)
+        self.assertIn("id(${hp_id}_pump_ipwm_feedback_raw).state", power_input)
+        self.assertIn("oq_pump_ipwm::decode", power_input)
+        self.assertIn("pump_feedback.power_valid", power_input)
+        self.assertNotIn("id(${hp_id}_pump_power).state", power_input)
         self.assertNotIn("power_contribution_w", power_input)
 
     def test_pump_context_is_captured_only_when_r2121_b13_is_active(self) -> None:

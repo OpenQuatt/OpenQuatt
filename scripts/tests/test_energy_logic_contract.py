@@ -25,6 +25,13 @@ class EnergyLogicContractTest(unittest.TestCase):
         self.assertIn("id(${hp_id}_odu_generation_detection_complete)", HP_IO)
         self.assertIn("id(${hp_id}_power_input_status_code) = static_cast<int>(estimate.status)", HP_IO)
         self.assertIn("hp_input_power_status_name", LOGIC)
+        self.assertIn(
+            "const float pump_feedback_raw = id(${hp_id}_pump_ipwm_feedback_raw).state;",
+            HP_IO,
+        )
+        self.assertIn("oq_pump_ipwm::decode", HP_IO)
+        self.assertIn("pump_power_w,", HP_IO)
+        self.assertNotIn("id(${hp_id}_pump_power).state,", HP_IO)
         for freshness_id in (
             "voltage_last_update_ms",
             "current_last_update_ms",
