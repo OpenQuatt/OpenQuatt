@@ -31,6 +31,14 @@ const boilerOpenThermRuntime = await readFile(
   "utf8",
 );
 const otSlaveYaml = await readFile(new URL("../../oq_ot_slave.yaml", import.meta.url), "utf8");
+const otSlaveCpp = await readFile(
+  new URL("../../../components/openquatt_ot_slave/OpenQuattOTSlave.cpp", import.meta.url),
+  "utf8",
+);
+const otSlaveHeader = await readFile(
+  new URL("../../../components/openquatt_ot_slave/OpenQuattOTSlave.h", import.meta.url),
+  "utf8",
+);
 const commonSubstitutionsYaml = await readFile(new URL("../../oq_substitutions_common.yaml", import.meta.url), "utf8");
 const quickStartSource = await readFile(new URL("../js/src/features/quickstart.js", import.meta.url), "utf8");
 const quickStartActionsSource = await readFile(new URL("../js/src/features/quickstart-actions.js", import.meta.url), "utf8");
@@ -518,10 +526,75 @@ test("DHW permission stays enabled without a user-facing setting", () => {
   assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("otbDhwPresent"));
 });
 
-test("thermostat slave uses real OTB flame state without changing R1 compatibility", () => {
+test("thermostat slave reports only real flame state, never HP activity as flame", () => {
   assert.match(
     otSlaveYaml,
-    /const bool slave_flame_on\s*=\s*\n\s*otb_selected \? boiler_flame_on : ch_active;/,
+    /const bool slave_flame_on\s*=\s*\n\s*otb_selected \? boiler_flame_on : false;/,
   );
   assert.match(otSlaveYaml, /set_slave_flame_on\(slave_flame_on\);/);
+  assert.doesNotMatch(otSlaveYaml, /otb_selected \? boiler_flame_on : ch_active/);
+});
+
+test("issue 668: R1 thermostat path reports no invented telemetry", () => {
+  assert.match(otSlaveYaml, /set_slave_rel_mod_level\(NAN\)/);
+  assert.match(otSlaveYaml, /set_slave_ch_pressure\(NAN\)/);
+  assert.match(otSlaveYaml, /set_slave_t_dhw\(NAN\)/);
+  assert.match(otSlaveYaml, /set_slave_max_capacity\(NAN\)/);
+  assert.match(otSlaveYaml, /set_slave_min_modulation\(NAN\)/);
+  assert.doesNotMatch(otSlaveYaml, /set_slave_ch_pressure\(1\.5f\)/);
+  assert.doesNotMatch(otSlaveYaml, /set_slave_t_dhw\(40\.0f\)/);
+  assert.doesNotMatch(otSlaveYaml, /oq_demand_filtered\) \* 5\.0f/);
+  assert.doesNotMatch(otSlaveYaml, /: 20\.0f;/);
+  assert.match(
+    otSlaveYaml,
+    /id\(water_supply_temp_selected\)\.state\s*\n?\s*: NAN/,
+  );
+  assert.match(
+    otSlaveYaml,
+    /id\(hp1_water_in_temp\)\.has_state\(\)[\s\S]*?: NAN/,
+  );
+});
+
+test("issue 668: thermostat forwards real OTB capacity and handles stale links as invalid", () => {
+  assert.match(otSlaveYaml, /id\(otb_max_capacity\)\.state\s*\n?\s*: NAN/);
+  assert.match(otSlaveYaml, /id\(otb_min_modulation\)\.state\s*\n?\s*: NAN/);
+  assert.match(otSlaveYaml, /set_slave_max_capacity\(/);
+  assert.match(otSlaveYaml, /set_slave_min_modulation\(/);
+  assert.match(otSlaveYaml, /set_slave_max_t_set\(NAN\)/);
+  assert.match(otSlaveYaml, /set_slave_t_outside\(NAN\)/);
+  assert.doesNotMatch(otSlaveCpp, /responseData = 0x1400;/);
+  assert.match(otSlaveCpp, /m_slave_state\.max_capacity_valid/);
+  assert.match(otSlaveCpp, /m_slave_state\.min_modulation_valid/);
+});
+
+test("issue 668: missing thermostat telemetry answers DATA_INVALID with real bounds", () => {
+  for (const flag of [
+    "t_boiler_valid",
+    "t_ret_valid",
+    "rel_mod_level_valid",
+    "ch_pressure_valid",
+    "t_dhw_valid",
+    "t_dhw_set_valid",
+    "max_t_set_valid",
+  ]) {
+    assert.match(otSlaveCpp, new RegExp(`!m_slave_state\\.${flag}`));
+  }
+  assert.match(otSlaveCpp, /case OpenThermMessageID::TdhwSetUBTdhwSetLB:[\s\S]*?DATA_INVALID/);
+  assert.match(otSlaveCpp, /case OpenThermMessageID::TdhwSet:[\s\S]*?DATA_INVALID/);
+  assert.match(otSlaveCpp, /case OpenThermMessageID::MaxCapacityMinModLevel:[\s\S]*?DATA_INVALID/);
+  assert.match(otSlaveCpp, /case OpenThermMessageID::MaxTSet:[\s\S]*?DATA_INVALID/);
+  assert.doesNotMatch(otSlaveCpp, /responseData = 0x3C0A;/);
+  assert.doesNotMatch(otSlaveCpp, /responseData = 0x500A;/);
+  assert.match(otSlaveCpp, /responseData = 0x4B19;/);
+  assert.match(otSlaveHeader, /float max_t_set = NAN;/);
+  assert.match(otSlaveHeader, /float t_dhw_set = NAN;/);
+  assert.match(otSlaveHeader, /bool max_t_set_valid = false;/);
+  assert.match(otSlaveHeader, /bool t_dhw_set_valid = false;/);
+});
+
+test("issue 668: OTB link recovery re-polls init-only capacity fields", () => {
+  assert.match(
+    boilerOpenThermRuntime,
+    /inline void link_watch[\s\S]*?if \(available\)[\s\S]*?id\(oq_otb_hub\)\.resume_polling\(\);/,
+  );
 });
