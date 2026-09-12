@@ -112,6 +112,13 @@ inline void link_watch(uint32_t link_timeout_ms, uint32_t field_timeout_ms) {
       call.set_value(0.0f);
       call.perform();
     }
+    if (available) {
+      // Session-scoped init-only fields (e.g. ID15 max capacity/min modulation)
+      // are cleared on a real link timeout but never re-polled by the repeating
+      // sequence. Re-run the initial message sequence on recovery so they come
+      // back without requiring a reboot or new session.
+      id(oq_otb_hub).resume_polling();
+    }
   }
   if (!available) id(oq_otb_invalidate_telemetry).execute();
 }

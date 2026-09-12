@@ -591,3 +591,10 @@ test("issue 668: missing thermostat telemetry answers DATA_INVALID with real bou
   assert.match(otSlaveHeader, /bool max_t_set_valid = false;/);
   assert.match(otSlaveHeader, /bool t_dhw_set_valid = false;/);
 });
+
+test("issue 668: OTB link recovery re-polls init-only capacity fields", () => {
+  assert.match(
+    boilerOpenThermRuntime,
+    /inline void link_watch[\s\S]*?if \(available\)[\s\S]*?id\(oq_otb_hub\)\.resume_polling\(\);/,
+  );
+});
