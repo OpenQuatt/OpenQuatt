@@ -114,14 +114,6 @@ class OpenQuattLogHistory : public Component {
   std::string csrf_token_;
   SemaphoreHandle_t history_mutex_{nullptr};
   std::array<LogStreamSession, STREAM_MAX_CLIENTS> streams_{};
-  // Read-only HIL diagnostics. These atomics avoid coupling HTTPD/free_ctx
-  // observations to the history mutex or adding per-client allocations.
-  std::atomic<uint32_t> stream_eagain_count_{0};
-  std::atomic<uint32_t> stream_partial_send_count_{0};
-  std::atomic<uint32_t> stream_send_timeout_close_count_{0};
-  std::atomic<uint32_t> stream_send_error_close_count_{0};
-  std::atomic<uint32_t> loop_stack_min_free_bytes_{0};
-  uint32_t last_stack_watermark_ms_{0};
 
 #ifdef USE_ESP32_CRASH_HANDLER
   bool pending_crash_report_{false};
@@ -139,7 +131,6 @@ class OpenQuattLogHistory : public Component {
   void sync_time_state_();
   void rebase_history_(uint32_t offset_s);
   void rotate_csrf_token_();
-  void note_loop_stack_watermark_();
   bool lock_history_() const;
   void unlock_history_() const;
 
@@ -162,7 +153,7 @@ class OpenQuattLogHistory : public Component {
   static void stream_close_work_(void* arg);
   bool parse_stream_since_(httpd_req_t* req, bool* has_since, uint16_t* since, bool* invalid) const;
   void loop_streams_();
-  bool request_stream_close_(size_t index, const char* reason);
+  void request_stream_close_(size_t index, const char* reason);
   void maybe_queue_stream_close_(size_t index, uint32_t now_ms);
   bool build_stream_log_event_(const LogEntry& entry, char* out, size_t out_size, size_t* out_len) const;
   bool build_stream_log_event_truncated_(const LogEntry& entry, char* out, size_t out_size, size_t* out_len) const;

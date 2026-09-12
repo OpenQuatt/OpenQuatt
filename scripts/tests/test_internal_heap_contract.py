@@ -254,19 +254,6 @@ class InternalHeapPlacementContractTest(unittest.TestCase):
             TRENDS_CPP,
         )
 
-    def test_log_stream_hil_observability_is_read_only_and_bounded(self) -> None:
-        for field in (
-            "stream_eagain_count_",
-            "stream_partial_send_count_",
-            "stream_send_timeout_close_count_",
-            "stream_send_error_close_count_",
-            "loop_stack_min_free_bytes_",
-        ):
-            self.assertIn(field, LOG_HISTORY_HEADER)
-            self.assertIn(field, LOG_HISTORY_CPP)
-        self.assertIn(',\\"stream\\":{\\"eagain\\":', LOG_HISTORY_CPP)
-        self.assertIn("uxTaskGetStackHighWaterMark(nullptr)", LOG_HISTORY_CPP)
-
     def test_optional_history_allocation_failures_are_explicit(self) -> None:
         self.assertIn("bool storage_available() const", LOG_HISTORY_HEADER)
         self.assertIn('"503 Service Unavailable"', LOG_HISTORY_CPP)

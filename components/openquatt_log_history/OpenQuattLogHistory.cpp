@@ -10,7 +10,6 @@
 #include <cstdlib>
 
 #include <cerrno>
-#include <freertos/task.h>
 #include <sys/socket.h>
 
 #include "esp_random.h"
@@ -838,26 +837,11 @@ void OpenQuattLogHistory::setup() {
 }
 
 void OpenQuattLogHistory::loop() {
-  this->note_loop_stack_watermark_();
   this->sync_time_state_();
 #ifdef USE_ESP32_CRASH_HANDLER
   this->maybe_log_pending_crash_report_();
 #endif
   this->loop_streams_();
-}
-
-void OpenQuattLogHistory::note_loop_stack_watermark_() {
-  const uint32_t now_ms = millis();
-  if (this->last_stack_watermark_ms_ != 0 && (now_ms - this->last_stack_watermark_ms_) < 1000U) {
-    return;
-  }
-  this->last_stack_watermark_ms_ = now_ms;
-  // ESP-IDF returns the remaining high-watermark directly in bytes.
-  const uint32_t free_bytes = static_cast<uint32_t>(uxTaskGetStackHighWaterMark(nullptr));
-  uint32_t observed = this->loop_stack_min_free_bytes_.load(std::memory_order_relaxed);
-  while ((observed == 0 || free_bytes < observed) &&
-         !this->loop_stack_min_free_bytes_.compare_exchange_weak(observed, free_bytes, std::memory_order_relaxed)) {
-  }
 }
 
 void OpenQuattLogHistory::dump_config() {
@@ -927,17 +911,7 @@ void OpenQuattLogHistory::write_recent_logs(httpd_req_t* req) const {
   ChunkedJsonWriter writer(req);
   if (!writer.write_literal("{\"enabled\":true") || !writer.write_literal(",\"csrf_token\":") ||
       !writer.write_json_string(this->csrf_token_.c_str(), this->csrf_token_.size()) ||
-      !writer.write_literal(",\"stream\":{\"eagain\":") ||
-      !writer.write_uint32(this->stream_eagain_count_.load(std::memory_order_relaxed)) ||
-      !writer.write_literal(",\"partial_sends\":") ||
-      !writer.write_uint32(this->stream_partial_send_count_.load(std::memory_order_relaxed)) ||
-      !writer.write_literal(",\"send_timeout_closes\":") ||
-      !writer.write_uint32(this->stream_send_timeout_close_count_.load(std::memory_order_relaxed)) ||
-      !writer.write_literal(",\"send_error_closes\":") ||
-      !writer.write_uint32(this->stream_send_error_close_count_.load(std::memory_order_relaxed)) ||
-      !writer.write_literal(",\"loop_stack_min_free_bytes\":") ||
-      !writer.write_uint32(this->loop_stack_min_free_bytes_.load(std::memory_order_relaxed)) ||
-      !writer.write_literal("}") || !writer.write_literal(",\"entries\":[")) {
+      !writer.write_literal(",\"entries\":[")) {
     ESP_LOGW(TAG, "Failed to start recent log response");
     return;
   }
@@ -1311,17 +1285,17 @@ bool OpenQuattLogHistory::build_stream_heartbeat_(char* out, size_t out_size, si
   return true;
 }
 
-bool OpenQuattLogHistory::request_stream_close_(size_t index, const char* reason) {
+void OpenQuattLogHistory::request_stream_close_(size_t index, const char* reason) {
   // Main-loop only. Terminal: once closing is set, pump_stream_session_()
   // attempts no further socket sends and only drives the async close below.
   // Performs no HTTPD calls itself, so repeated requests are harmless: the
   // single choke point for queueing is maybe_queue_stream_close_().
   if (index >= this->streams_.size()) {
-    return false;
+    return;
   }
   auto& session = this->streams_[index];
   if (session.closing) {
-    return false;
+    return;
   }
   session.closing = true;
   ESP_LOGW(TAG, "Closing log stream client %u (%s)", static_cast<unsigned>(index), reason != nullptr ? reason : "slow");
@@ -1329,7 +1303,6 @@ bool OpenQuattLogHistory::request_stream_close_(size_t index, const char* reason
   // (see loop_streams_()). Never clear fd here: a late free_ctx must still find
   // this session's fd, otherwise it could wipe a replacement connection that
   // reused the same static slot.
-  return true;
 }
 
 void OpenQuattLogHistory::stream_close_work_(void* arg) {
@@ -1402,7 +1375,6 @@ bool OpenQuattLogHistory::flush_stream_pending_(size_t index, uint32_t now_ms) {
   const size_t remaining = session.pend_len - session.pend_sent;
   const int sent = httpd_socket_send(session.hd, sockfd, base + session.pend_sent, remaining, 0);
   if (sent == HTTPD_SOCK_ERR_TIMEOUT) {
-    this->stream_eagain_count_.fetch_add(1, std::memory_order_relaxed);
     if (session.first_fail_ms == 0) {
       session.first_fail_ms = now_ms;
     }
@@ -1410,9 +1382,7 @@ bool OpenQuattLogHistory::flush_stream_pending_(size_t index, uint32_t now_ms) {
       ++session.fail_count;
     }
     if ((now_ms - session.first_fail_ms) >= STREAM_SEND_TIMEOUT_MS) {
-      if (this->request_stream_close_(index, "send-timeout")) {
-        this->stream_send_timeout_close_count_.fetch_add(1, std::memory_order_relaxed);
-      }
+      this->request_stream_close_(index, "send-timeout");
     }
     return false;
   }
@@ -1421,13 +1391,10 @@ bool OpenQuattLogHistory::flush_stream_pending_(size_t index, uint32_t now_ms) {
     // backpressure signal (that is HTTPD_SOCK_ERR_TIMEOUT above); it indicates
     // a broken peer. Fail closed so the client resyncs via /recent instead of
     // spinning forever on zero-progress partial sends.
-    if (this->request_stream_close_(index, "send-error")) {
-      this->stream_send_error_close_count_.fetch_add(1, std::memory_order_relaxed);
-    }
+    this->request_stream_close_(index, "send-error");
     return false;
   }
   if (static_cast<size_t>(sent) < remaining) {
-    this->stream_partial_send_count_.fetch_add(1, std::memory_order_relaxed);
     session.pend_sent += static_cast<size_t>(sent);
     session.fail_count = 0;
     session.first_fail_ms = 0;
