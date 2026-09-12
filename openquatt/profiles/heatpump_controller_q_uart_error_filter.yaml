@@ -18,3 +18,17 @@ esphome:
     then:
       - lambda: |-
           oq_controller_q_uart::enable_error_character_discard_all();
+
+binary_sensor:
+  - platform: template
+    id: oq_m1_uart_error_character_discard
+    name: "M1 UART error character discard"
+    entity_category: diagnostic
+    lambda: |-
+      return oq_controller_q_uart::error_character_discard_enabled(id(uart_bus));
+  - platform: template
+    id: oq_m2_uart_error_character_discard
+    name: "M2 UART error character discard"
+    entity_category: diagnostic
+    lambda: |-
+      return oq_controller_q_uart::error_character_discard_enabled(id(cic_compat_uart_bus));
