@@ -1,10 +1,10 @@
 # ==============================================================================
-# Temporary PR #671 diagnostic: raw Modbus RX + UART parity/frame error probe
+# Temporary PR #671 diagnostic: suspicious raw Modbus RX + UART error probe
 # ==============================================================================
 # Used for the ODU-off field test on the problematic Controller Q installation.
 # Keep the controller powered and the RS485 wiring/termination connected while
-# switching the ODU off. Any RX bytes or parity/frame errors then help determine
-# whether the glitch still exists without an active ODU transceiver.
+# switching the ODU off. Any short RX fragment or parity/frame error then helps
+# determine whether the glitch still exists without an active ODU transceiver.
 #
 # Important: this test intentionally does NOT use UART_ERR_WR_MASK. The active
 # test settings are rx_full_threshold: 120, rx_timeout: 1 and the existing RX
@@ -28,7 +28,13 @@ uart:
         timeout: 4ms
       sequence:
         - lambda: |-
-            oq_modbus_uart_diag::report_if_changed();
+            // Keep normal ODU traffic quiet. Log short fragments (the field
+            // symptom is normally one byte) and any RX batch associated with a
+            // newly observed hardware UART error.
+            const bool uart_error = oq_modbus_uart_diag::report_if_changed();
+            if (!uart_error && bytes.size() > 2) {
+              return;
+            }
 
             char hex_buf[512];
             esphome::format_hex_pretty_to(
