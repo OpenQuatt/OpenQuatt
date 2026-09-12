@@ -1,0 +1,21 @@
+# ==============================================================================
+# OpenQuatt - HCQ desktop HIL test controller / Q-edition / Duo / Wi-Fi
+# ==============================================================================
+# This entrypoint intentionally has a distinct mDNS hostname and ESPHome
+# project identity. Do not use it for a production controller.
+substitutions:
+  device_name: "openquatt-test"
+  friendly_name: OpenQuatt Test
+  project_name: "openquatt.test"
+
+esphome:
+  build_path: ../../../.esphome/build/heatpump_controller_q_duo_wifi_hil
+
+# Recovery must be durable when the HIL runner reports success. Production uses
+# ESPHome's wear-reducing deferred writes; this dedicated test controller writes
+# its small number of recovery settings immediately instead.
+preferences:
+  flash_write_interval: 1s
+
+packages:
+  openquatt_q_duo_wifi: !include duo_wifi.yaml

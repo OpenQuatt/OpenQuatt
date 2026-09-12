@@ -1,0 +1,305 @@
+# ==============================================================================
+# OpenQuatt - HIL TEST ONLY: issue #667 V2 performance / Q Duo Wi-Fi
+# ==============================================================================
+# Exposes only the otherwise-internal observations required by the deterministic
+# simulator scenario. Production timing and control limits remain unchanged.
+
+packages:
+  production_hil_q_duo_wifi: !include ../heatpump_controller_q/duo_wifi_hil.yaml
+
+globals:
+  - id: oq_hil_hp1_power_input_sample_count
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - {id: oq_hil_flow_sample_count, type: uint32_t, restore_value: false, initial_value: '0'}
+  - {id: oq_hil_hp1_water_in_sample_count, type: uint32_t, restore_value: false, initial_value: '0'}
+  - {id: oq_hil_hp1_water_out_sample_count, type: uint32_t, restore_value: false, initial_value: '0'}
+  - {id: oq_hil_hp1_heat_power_sample_count, type: uint32_t, restore_value: false, initial_value: '0'}
+  - {id: oq_hil_hp1_cop_sample_count, type: uint32_t, restore_value: false, initial_value: '0'}
+
+switch:
+  - platform: template
+    id: oq_hil_cic_water_supply_fixture_enabled
+    name: "HIL CIC Water Supply Fixture Enable"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: |-
+          // Stop the CIC poller before publishing the fixture. When merely
+          // disabled, OpenQuattCIC deliberately invalidates these states on
+          // every poll tick and would race this deterministic test source.
+          id(cic_component).stop_poller();
+          id(water_supply_temp_selected).stop_poller();
+          id(water_supply_temp_cic).publish_state(id(oq_hil_cic_water_supply_fixture_c).state);
+          id(feed_ok).publish_state(true);
+          id(cic_data_stale).publish_state(false);
+          id(oq_water_supply_temp_current_source_code) =
+              static_cast<int32_t>(oq_supply_calibration::SOURCE_CIC);
+          id(oq_water_supply_temp_current_source_ready) = true;
+          id(water_supply_temp_calibration_offset).publish_state(0.0f);
+          id(water_supply_temp_selected).publish_state(
+              id(oq_hil_cic_water_supply_fixture_c).state);
+    turn_off_action:
+      - lambda: |-
+          id(water_supply_temp_selected).start_poller();
+          id(water_supply_temp_selected).update();
+          id(cic_component).start_poller();
+
+number:
+  - platform: template
+    id: oq_hil_cic_water_supply_fixture_c
+    name: "HIL CIC Water Supply Fixture"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    optimistic: true
+    restore_value: false
+    initial_value: 22.5
+    min_value: -10
+    max_value: 70
+    step: 0.01
+
+button:
+  - platform: template
+    name: "HIL Detect HP1 ODU generation"
+    on_press:
+      - script.execute: hp1_detect_odu_generation_once
+
+  - platform: template
+    name: "HIL Detect HP2 ODU generation"
+    on_press:
+      - script.execute: hp2_detect_odu_generation_once
+
+interval:
+  - interval: 2s
+    then:
+      - if:
+          condition:
+            switch.is_on: oq_hil_cic_water_supply_fixture_enabled
+          then:
+            - lambda: |-
+                // Keep the test-only CIC value fresh while the production CIC
+                // poller is explicitly suspended by the fixture switch.
+                id(water_supply_temp_cic).publish_state(id(oq_hil_cic_water_supply_fixture_c).state);
+                id(feed_ok).publish_state(true);
+                id(cic_data_stale).publish_state(false);
+                id(oq_water_supply_temp_current_source_code) =
+                    static_cast<int32_t>(oq_supply_calibration::SOURCE_CIC);
+                id(oq_water_supply_temp_current_source_ready) = true;
+                id(water_supply_temp_calibration_offset).publish_state(0.0f);
+                id(water_supply_temp_selected).publish_state(
+                    id(oq_hil_cic_water_supply_fixture_c).state);
+
+text_sensor:
+  - platform: template
+    id: oq_hil_test_profile
+    name: "HIL Test Profile"
+    internal: true
+    update_interval: 5s
+    lambda: |-
+      return {"issue-667-v2-performance-v1"};
+
+  - platform: template
+    name: "HIL HP1 Power Input quality"
+    entity_category: diagnostic
+    update_interval: 2s
+    lambda: |-
+      return std::string(oq_energy::hp_input_power_status_name(
+          static_cast<oq_energy::HpInputPowerStatus>(id(hp1_power_input_status_code))));
+
+  - platform: template
+    name: "HIL HP2 Power Input quality"
+    entity_category: diagnostic
+    update_interval: 2s
+    lambda: |-
+      return std::string(oq_energy::hp_input_power_status_name(
+          static_cast<oq_energy::HpInputPowerStatus>(id(hp2_power_input_status_code))));
+
+  - platform: template
+    name: "HIL HP1 Generation variant"
+    entity_category: diagnostic
+    update_interval: 2s
+    lambda: |-
+      return id(hp1_generation_variant).state;
+
+  - platform: template
+    name: "HIL HP2 Generation variant"
+    entity_category: diagnostic
+    update_interval: 2s
+    lambda: |-
+      return id(hp2_generation_variant).state;
+
+sensor:
+  - id: !extend hp1_power_input
+    on_value:
+      then:
+        - lambda: |-
+            id(oq_hil_hp1_power_input_sample_count)++;
+
+  - id: !extend flow_rate_selected
+    on_value:
+      then:
+        - lambda: |-
+            id(oq_hil_flow_sample_count)++;
+
+  - id: !extend hp1_water_in_temp
+    on_value:
+      then:
+        - lambda: |-
+            id(oq_hil_hp1_water_in_sample_count)++;
+
+  - id: !extend hp1_water_out_temp
+    on_value:
+      then:
+        - lambda: |-
+            id(oq_hil_hp1_water_out_sample_count)++;
+
+  - id: !extend hp1_heat_power
+    on_value:
+      then:
+        - lambda: |-
+            id(oq_hil_hp1_heat_power_sample_count)++;
+
+  - id: !extend hp1_cop
+    on_value:
+      then:
+        - lambda: |-
+            id(oq_hil_hp1_cop_sample_count)++;
+
+  - platform: template
+    name: "HIL System Supply Temperature"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    update_interval: 2s
+    lambda: |-
+      return id(oq_system_supply_temp).state;
+
+  - platform: template
+    name: "HIL Water Supply Calibration Offset"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    update_interval: 2s
+    lambda: |-
+      return id(water_supply_temp_calibration_offset).state;
+
+  - platform: template
+    name: "HIL Water Supply Source Code"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      return static_cast<float>(id(oq_water_supply_temp_current_source_code));
+
+  - platform: template
+    name: "HIL Low-load Pmin"
+    unit_of_measurement: "W"
+    accuracy_decimals: 2
+    update_interval: 2s
+    lambda: |-
+      return id(oq_low_load_pmin_dyn_w);
+
+  - platform: template
+    name: "HIL HP1 Minimum heating frequency"
+    unit_of_measurement: "Hz"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      return id(hp1_minimum_heating_frequency).state;
+
+  - platform: template
+    name: "HIL HP2 Minimum heating frequency"
+    unit_of_measurement: "Hz"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      return id(hp2_minimum_heating_frequency).state;
+
+  - platform: template
+    name: "HIL HP1 minimum-off remaining"
+    unit_of_measurement: "s"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      const uint32_t remaining_ms =
+          id(oq_incident_manager).minimum_off_remaining_ms(1U, millis());
+      return static_cast<float>((remaining_ms + 999U) / 1000U);
+
+  - platform: template
+    name: "HIL HP1 Power Input sample counter"
+    accuracy_decimals: 0
+    update_interval: 2s
+    lambda: |-
+      return static_cast<float>(id(oq_hil_hp1_power_input_sample_count));
+
+  - platform: template
+    name: "HIL Pmin producer timestamp"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      return static_cast<float>(id(oq_low_load_dyn_last_valid_ms));
+
+  - platform: template
+    name: "HIL Flow sample counter"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      return static_cast<float>(id(oq_hil_flow_sample_count));
+
+  - platform: template
+    name: "HIL HP1 Water in sample counter"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      return static_cast<float>(id(oq_hil_hp1_water_in_sample_count));
+
+  - platform: template
+    name: "HIL HP1 Water out sample counter"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      return static_cast<float>(id(oq_hil_hp1_water_out_sample_count));
+
+  - platform: template
+    name: "HIL HP1 Heat Power sample counter"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      return static_cast<float>(id(oq_hil_hp1_heat_power_sample_count));
+
+  - platform: template
+    name: "HIL HP1 COP sample counter"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      return static_cast<float>(id(oq_hil_hp1_cop_sample_count));
+
+  - platform: template
+    name: "HIL HP1 Water in offset"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    update_interval: 2s
+    lambda: |-
+      return id(hp1_water_in_temp_offset).state;
+
+  - platform: template
+    name: "HIL HP1 Water out offset"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    update_interval: 2s
+    lambda: |-
+      return id(hp1_water_out_temp_offset).state;
+
+  - platform: template
+    name: "HIL HP2 Water in offset"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    update_interval: 2s
+    lambda: |-
+      return id(hp2_water_in_temp_offset).state;
+
+  - platform: template
+    name: "HIL HP2 Water out offset"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 2
+    update_interval: 2s
+    lambda: |-
+      return id(hp2_water_out_temp_offset).state;
