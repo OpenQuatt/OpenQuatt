@@ -206,6 +206,9 @@ occurrence, recovery condition, user action and affected HP.
 - firmware update entities, runtime update-channel select, and manual check trigger
 - runtime logger level controls
 - runtime balancing service entities from thermal request control (`Runtime lead HP`, runtime counter reset)
+- a bounded, two-client SSE log stream for the local web UI
+
+The log stream is a local UI diagnostic interface, not a public API contract. It sends only new records after a cursor (`since` or `Last-Event-ID`); `/openquatt/logs/recent` remains the bounded backfill source after reconnect. Each client has a preallocated PSRAM frame buffer. Slow clients never create an unbounded queue and are closed after sustained send backpressure.
 
 ## 5. Heating Strategy Mechanics
 
