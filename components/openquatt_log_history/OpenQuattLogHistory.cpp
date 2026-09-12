@@ -3,9 +3,14 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
+
+#include <cerrno>
+#include <sys/socket.h>
 
 #include "esp_random.h"
 #include "esphome/core/defines.h"
@@ -120,6 +125,108 @@ static bool url_path_matches(const char* url, const char* path) {
   }
   const size_t path_len = std::strlen(path);
   return std::strncmp(url, path, path_len) == 0 && (url[path_len] == '\0' || url[path_len] == '?');
+}
+
+// Non-blocking socket send for SSE sessions. Prevents the main loop from blocking
+// on a slow client; EAGAIN is reported as HTTPD_SOCK_ERR_TIMEOUT so the caller can
+// retry later without growing an unbounded per-client queue.
+static int log_stream_nonblocking_send_(httpd_handle_t hd, int sockfd, const char* buf, size_t buf_len, int flags) {
+  (void)hd;
+  if (buf == nullptr) {
+    return HTTPD_SOCK_ERR_INVALID;
+  }
+  const int ret = send(sockfd, buf, buf_len, flags | MSG_DONTWAIT);
+  if (ret < 0) {
+    const int err = errno;
+    if (err == EAGAIN || err == EWOULDBLOCK) {
+      return HTTPD_SOCK_ERR_TIMEOUT;
+    }
+    return HTTPD_SOCK_ERR_FAIL;
+  }
+  return ret;
+}
+
+static bool sse_buffer_append_(char* out, size_t out_size, size_t* pos, const char* data, size_t len) {
+  if (out == nullptr || pos == nullptr || (data == nullptr && len != 0)) {
+    return false;
+  }
+  if (len == 0) {
+    return true;
+  }
+  if (*pos >= out_size || len > out_size - *pos) {
+    return false;
+  }
+  std::memcpy(out + *pos, data, len);
+  *pos += len;
+  return true;
+}
+
+static bool sse_buffer_append_literal_(char* out, size_t out_size, size_t* pos, const char* text) {
+  if (text == nullptr) {
+    return true;
+  }
+  return sse_buffer_append_(out, out_size, pos, text, std::strlen(text));
+}
+
+static bool sse_buffer_append_json_string_(char* out, size_t out_size, size_t* pos, const char* value, size_t len) {
+  if (!sse_buffer_append_(out, out_size, pos, "\"", 1)) {
+    return false;
+  }
+  for (size_t index = 0; index < len; ++index) {
+    const unsigned char c = static_cast<unsigned char>(value[index]);
+    switch (c) {
+      case '\\':
+        if (!sse_buffer_append_literal_(out, out_size, pos, "\\\\")) {
+          return false;
+        }
+        break;
+      case '"':
+        if (!sse_buffer_append_literal_(out, out_size, pos, "\\\"")) {
+          return false;
+        }
+        break;
+      case '\b':
+        if (!sse_buffer_append_literal_(out, out_size, pos, "\\b")) {
+          return false;
+        }
+        break;
+      case '\f':
+        if (!sse_buffer_append_literal_(out, out_size, pos, "\\f")) {
+          return false;
+        }
+        break;
+      case '\n':
+        if (!sse_buffer_append_literal_(out, out_size, pos, "\\n")) {
+          return false;
+        }
+        break;
+      case '\r':
+        if (!sse_buffer_append_literal_(out, out_size, pos, "\\r")) {
+          return false;
+        }
+        break;
+      case '\t':
+        if (!sse_buffer_append_literal_(out, out_size, pos, "\\t")) {
+          return false;
+        }
+        break;
+      default:
+        if (c < 0x20) {
+          char buffer[7];
+          const int written = std::snprintf(buffer, sizeof(buffer), "\\u%04X", c);
+          if (written < 0 || !sse_buffer_append_(out, out_size, pos, buffer, static_cast<size_t>(written))) {
+            return false;
+          }
+        } else {
+          const char ch = static_cast<char>(c);
+          if (!sse_buffer_append_(out, out_size, pos, &ch, 1)) {
+            return false;
+          }
+        }
+        break;
+    }
+  }
+  return sse_buffer_append_(out, out_size, pos, "\"", 1);
 }
 
 class ChunkedJsonWriter {
@@ -284,7 +391,7 @@ class OpenQuattLogHistoryRequestHandler : public AsyncWebHandler {
   bool canHandle(AsyncWebServerRequest* request) const override {
     char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
     request->url_to(url_buf);
-    if (url_path_matches(url_buf, "/openquatt/logs/recent")) {
+    if (url_path_matches(url_buf, "/openquatt/logs/recent") || url_path_matches(url_buf, "/openquatt/logs/stream")) {
       return request->method() == HTTP_GET;
     }
     return url_path_matches(url_buf, "/openquatt/logs/clear") && request->method() == HTTP_POST;
@@ -304,6 +411,11 @@ class OpenQuattLogHistoryRequestHandler : public AsyncWebHandler {
       }
       this->parent_->clear_history();
       request->send(200, "application/json", R"({"ok":true})");
+      return;
+    }
+    if (url_path_matches(url_buf, "/openquatt/logs/stream")) {
+      httpd_req_t* stream_req = *request;
+      this->parent_->handle_log_stream(stream_req);
       return;
     }
 
@@ -701,6 +813,15 @@ void OpenQuattLogHistory::setup() {
   if (!this->entries_.allocate_external(ENTRY_CAPACITY)) {
     ESP_LOGE(TAG, "Failed to allocate log history buffer in PSRAM");
   }
+  bool streams_ready = true;
+  for (auto& session : this->streams_) {
+    if (!session.pend_buf.allocate_external(STREAM_EVENT_BUFFER_SIZE)) {
+      streams_ready = false;
+    }
+  }
+  if (!streams_ready) {
+    ESP_LOGE(TAG, "Failed to allocate log stream buffers in PSRAM; /openquatt/logs/stream unavailable");
+  }
   this->rotate_csrf_token_();
 
   logger::global_logger->add_log_callback(
@@ -720,12 +841,19 @@ void OpenQuattLogHistory::loop() {
 #ifdef USE_ESP32_CRASH_HANDLER
   this->maybe_log_pending_crash_report_();
 #endif
+  this->loop_streams_();
 }
 
 void OpenQuattLogHistory::dump_config() {
   size_t entry_count = 0;
+  size_t stream_count = 0;
   if (this->lock_history_()) {
     entry_count = this->count_;
+    for (const auto& session : this->streams_) {
+      if (session.active && session.ready) {
+        ++stream_count;
+      }
+    }
     this->unlock_history_();
   }
 
@@ -734,6 +862,8 @@ void OpenQuattLogHistory::dump_config() {
   ESP_LOGCONFIG(TAG, "  Entries: %u / %u", static_cast<unsigned>(entry_count), static_cast<unsigned>(ENTRY_CAPACITY));
   ESP_LOGCONFIG(TAG, "  History buffer: %s",
                 !this->entries_ ? "missing" : (this->entries_.is_external() ? "PSRAM" : "internal"));
+  ESP_LOGCONFIG(TAG, "  Log stream: %u / %u clients", static_cast<unsigned>(stream_count),
+                static_cast<unsigned>(STREAM_MAX_CLIENTS));
 #ifdef USE_ESP32_CRASH_HANDLER
   ESP_LOGCONFIG(TAG, "  Pending crash report: %s", YESNO(this->pending_crash_report_));
 #endif
@@ -837,6 +967,638 @@ void OpenQuattLogHistory::write_recent_logs(httpd_req_t* req) const {
   if (httpd_resp_send_chunk(req, nullptr, 0) != ESP_OK) {
     ESP_LOGW(TAG, "Failed to terminate recent log response");
   }
+}
+
+bool OpenQuattLogHistory::stream_storage_available() const {
+  for (const auto& session : this->streams_) {
+    if (!session.pend_buf) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool OpenQuattLogHistory::seq_is_newer_(uint16_t seq, uint16_t base) {
+  const uint16_t diff = static_cast<uint16_t>(seq - base);
+  return diff != 0 && diff < 0x8000U;
+}
+
+void OpenQuattLogHistory::stream_free_ctx_(void* ctx) {
+  auto* session = static_cast<LogStreamSession*>(ctx);
+  if (session == nullptr) {
+    return;
+  }
+  const int fd = session->fd.exchange(0);
+  ESP_LOGD(TAG, "Log stream closed (fd: %d)", fd);
+}
+
+bool OpenQuattLogHistory::parse_stream_since_(httpd_req_t* req, bool* has_since, uint16_t* since) const {
+  if (has_since != nullptr) {
+    *has_since = false;
+  }
+  if (since != nullptr) {
+    *since = 0;
+  }
+  if (req == nullptr || has_since == nullptr || since == nullptr) {
+    return false;
+  }
+
+  auto parse_to_seq = [](const char* text, uint16_t* out) -> bool {
+    if (text == nullptr || out == nullptr || text[0] == '\0') {
+      return false;
+    }
+    char* end = nullptr;
+    const unsigned long value = std::strtoul(text, &end, 10);
+    if (end == text) {
+      return false;
+    }
+    *out = static_cast<uint16_t>(value & 0xFFFFUL);
+    return true;
+  };
+
+  const size_t query_len = httpd_req_get_url_query_len(req);
+  if (query_len > 0 && query_len < 256) {
+    char query[256];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+      char value[32];
+      static constexpr const char* KEYS[] = {"since", "last_seq", "lastEventId", "last_event_id"};
+      for (const char* key : KEYS) {
+        if (httpd_query_key_value(query, key, value, sizeof(value)) == ESP_OK) {
+          uint16_t seq = 0;
+          if (parse_to_seq(value, &seq)) {
+            *has_since = true;
+            *since = seq;
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  const size_t header_len = httpd_req_get_hdr_value_len(req, "Last-Event-ID");
+  if (header_len > 0 && header_len < 32) {
+    char value[32];
+    if (httpd_req_get_hdr_value_str(req, "Last-Event-ID", value, sizeof(value)) == ESP_OK) {
+      uint16_t seq = 0;
+      if (parse_to_seq(value, &seq)) {
+        *has_since = true;
+        *since = seq;
+        return true;
+      }
+    }
+  }
+
+  return true;
+}
+
+bool OpenQuattLogHistory::build_stream_log_event_(const LogEntry& entry, char* out, size_t out_size,
+                                                  size_t* out_len) const {
+  if (out == nullptr || out_len == nullptr || out_size < 128) {
+    return false;
+  }
+  static constexpr size_t CHUNK_HEADER_LEN = 10;
+  size_t pos = CHUNK_HEADER_LEN;
+
+  char num[32];
+  int written = std::snprintf(num, sizeof(num), "id: %u\n", static_cast<unsigned>(entry.seq));
+  if (written <= 0 || !sse_buffer_append_(out, out_size, &pos, num, static_cast<size_t>(written))) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, "event: log\n")) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, "data: ")) {
+    return false;
+  }
+
+  const char* tag_start = "";
+  size_t tag_len = 0;
+  const char* message_start = entry.raw;
+  size_t message_len = entry.raw_len;
+  split_log_fields_(entry.raw, &tag_start, &tag_len, &message_start, &message_len);
+  const char* level = level_to_string_(entry.level);
+
+  if (!sse_buffer_append_literal_(out, out_size, &pos, "{\"seq\":")) {
+    return false;
+  }
+  written = std::snprintf(num, sizeof(num), "%u", static_cast<unsigned>(entry.seq));
+  if (written <= 0 || !sse_buffer_append_(out, out_size, &pos, num, static_cast<size_t>(written))) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, ",\"ts\":")) {
+    return false;
+  }
+  written = std::snprintf(num, sizeof(num), "%" PRIu64, static_cast<uint64_t>(entry.timestamp_s) * 1000ULL);
+  if (written <= 0 || !sse_buffer_append_(out, out_size, &pos, num, static_cast<size_t>(written))) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, ",\"level\":")) {
+    return false;
+  }
+  if (!sse_buffer_append_json_string_(out, out_size, &pos, level, std::strlen(level))) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, ",\"tag\":")) {
+    return false;
+  }
+  if (!sse_buffer_append_json_string_(out, out_size, &pos, tag_start, tag_len)) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, ",\"message\":")) {
+    return false;
+  }
+  if (!sse_buffer_append_json_string_(out, out_size, &pos, message_start, message_len)) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, ",\"raw\":")) {
+    return false;
+  }
+  if (!sse_buffer_append_json_string_(out, out_size, &pos, entry.raw, entry.raw_len)) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, "}\n\n")) {
+    return false;
+  }
+
+  const size_t payload_len = pos - CHUNK_HEADER_LEN;
+  if (payload_len + CHUNK_HEADER_LEN + 2 > out_size) {
+    return false;
+  }
+  char header[CHUNK_HEADER_LEN + 1];
+  std::snprintf(header, sizeof(header), "%08X\r\n", static_cast<unsigned>(payload_len));
+  std::memcpy(out, header, CHUNK_HEADER_LEN);
+  out[pos++] = '\r';
+  out[pos++] = '\n';
+  *out_len = pos;
+  return true;
+}
+
+bool OpenQuattLogHistory::build_stream_gap_event_(uint16_t oldest, uint16_t newest, const char* reason, char* out,
+                                                  size_t out_size, size_t* out_len) const {
+  if (out == nullptr || out_len == nullptr || out_size < 128) {
+    return false;
+  }
+  static constexpr size_t CHUNK_HEADER_LEN = 10;
+  size_t pos = CHUNK_HEADER_LEN;
+
+  char num[32];
+  int written = std::snprintf(num, sizeof(num), "id: %u\n", static_cast<unsigned>(newest));
+  if (written <= 0 || !sse_buffer_append_(out, out_size, &pos, num, static_cast<size_t>(written))) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, "event: gap\n")) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, "data: {\"resync\":true")) {
+    return false;
+  }
+  if (reason != nullptr && reason[0] != '\0') {
+    if (!sse_buffer_append_literal_(out, out_size, &pos, ",\"reason\":")) {
+      return false;
+    }
+    if (!sse_buffer_append_json_string_(out, out_size, &pos, reason, std::strlen(reason))) {
+      return false;
+    }
+  }
+  written = std::snprintf(num, sizeof(num), ",\"oldest\":%u", static_cast<unsigned>(oldest));
+  if (written <= 0 || !sse_buffer_append_(out, out_size, &pos, num, static_cast<size_t>(written))) {
+    return false;
+  }
+  written = std::snprintf(num, sizeof(num), ",\"newest\":%u", static_cast<unsigned>(newest));
+  if (written <= 0 || !sse_buffer_append_(out, out_size, &pos, num, static_cast<size_t>(written))) {
+    return false;
+  }
+  if (!sse_buffer_append_literal_(out, out_size, &pos, "}\n\n")) {
+    return false;
+  }
+
+  const size_t payload_len = pos - CHUNK_HEADER_LEN;
+  if (payload_len + CHUNK_HEADER_LEN + 2 > out_size) {
+    return false;
+  }
+  char header[CHUNK_HEADER_LEN + 1];
+  std::snprintf(header, sizeof(header), "%08X\r\n", static_cast<unsigned>(payload_len));
+  std::memcpy(out, header, CHUNK_HEADER_LEN);
+  out[pos++] = '\r';
+  out[pos++] = '\n';
+  *out_len = pos;
+  return true;
+}
+
+bool OpenQuattLogHistory::build_stream_heartbeat_(char* out, size_t out_size, size_t* out_len) const {
+  if (out == nullptr || out_len == nullptr || out_size < 64) {
+    return false;
+  }
+  static constexpr size_t CHUNK_HEADER_LEN = 10;
+  static constexpr const char* PAYLOAD = ": heartbeat\n\n";
+  static constexpr size_t PAYLOAD_LEN = 13;
+  if (CHUNK_HEADER_LEN + PAYLOAD_LEN + 2 > out_size) {
+    return false;
+  }
+  char header[CHUNK_HEADER_LEN + 1];
+  std::snprintf(header, sizeof(header), "%08X\r\n", static_cast<unsigned>(PAYLOAD_LEN));
+  std::memcpy(out, header, CHUNK_HEADER_LEN);
+  std::memcpy(out + CHUNK_HEADER_LEN, PAYLOAD, PAYLOAD_LEN);
+  out[CHUNK_HEADER_LEN + PAYLOAD_LEN] = '\r';
+  out[CHUNK_HEADER_LEN + PAYLOAD_LEN + 1] = '\n';
+  *out_len = CHUNK_HEADER_LEN + PAYLOAD_LEN + 2;
+  return true;
+}
+
+void OpenQuattLogHistory::request_stream_close_(size_t index, const char* reason) {
+  if (index >= this->streams_.size()) {
+    return;
+  }
+  auto& session = this->streams_[index];
+  if (session.closing) {
+    return;
+  }
+  session.closing = true;
+  session.close_request_ms = millis();
+  const int sockfd = session.fd.load();
+  if (session.hd != nullptr && sockfd > 0) {
+    ESP_LOGW(TAG, "Closing log stream client %u (%s)", static_cast<unsigned>(index),
+             reason != nullptr ? reason : "slow");
+    (void)httpd_sess_trigger_close(session.hd, sockfd);
+  }
+}
+
+bool OpenQuattLogHistory::flush_stream_pending_(size_t index, uint32_t now_ms) {
+  if (index >= this->streams_.size()) {
+    return false;
+  }
+  auto& session = this->streams_[index];
+  if (!session.pend_buf || session.pend_len <= session.pend_sent) {
+    return true;
+  }
+  const int sockfd = session.fd.load();
+  if (session.hd == nullptr || sockfd <= 0) {
+    return false;
+  }
+  const char* base = session.pend_buf.data();
+  if (base == nullptr) {
+    return false;
+  }
+  const size_t remaining = session.pend_len - session.pend_sent;
+  const int sent = httpd_socket_send(session.hd, sockfd, base + session.pend_sent, remaining, 0);
+  if (sent == HTTPD_SOCK_ERR_TIMEOUT) {
+    if (session.first_fail_ms == 0) {
+      session.first_fail_ms = now_ms;
+    }
+    if (session.fail_count < 0xFFFFU) {
+      ++session.fail_count;
+    }
+    if ((now_ms - session.first_fail_ms) >= STREAM_SEND_TIMEOUT_MS) {
+      this->request_stream_close_(index, "send-timeout");
+    }
+    return false;
+  }
+  if (sent == HTTPD_SOCK_ERR_FAIL || sent == HTTPD_SOCK_ERR_INVALID || sent < 0) {
+    this->request_stream_close_(index, "send-error");
+    return false;
+  }
+  if (static_cast<size_t>(sent) < remaining) {
+    session.pend_sent += static_cast<size_t>(sent);
+    session.fail_count = 0;
+    session.first_fail_ms = 0;
+    return false;
+  }
+  session.pend_len = 0;
+  session.pend_sent = 0;
+  session.fail_count = 0;
+  session.first_fail_ms = 0;
+  session.last_activity_ms = now_ms;
+  return true;
+}
+
+bool OpenQuattLogHistory::send_stream_buffered_(size_t index, const char* data, size_t len, uint32_t now_ms) {
+  if (index >= this->streams_.size() || data == nullptr) {
+    return false;
+  }
+  auto& session = this->streams_[index];
+  if (!session.pend_buf || len > STREAM_EVENT_BUFFER_SIZE) {
+    return false;
+  }
+  if (session.pend_len != 0) {
+    return false;
+  }
+  std::memcpy(session.pend_buf.data(), data, len);
+  session.pend_len = len;
+  session.pend_sent = 0;
+  return this->flush_stream_pending_(index, now_ms);
+}
+
+void OpenQuattLogHistory::pump_stream_session_(size_t index, uint32_t now_ms) {
+  if (index >= this->streams_.size()) {
+    return;
+  }
+  auto& session = this->streams_[index];
+
+  if (!this->flush_stream_pending_(index, now_ms)) {
+    return;
+  }
+  if (session.closing) {
+    if ((now_ms - session.close_request_ms) > 10000UL) {
+      // httpd did not confirm the close; reclaim defensively. A late free_ctx
+      // may drop one replacement event at most; the client resyncs via /recent.
+      session.fd.store(0);
+    }
+    return;
+  }
+
+  if (session.need_gap) {
+    char* buf = session.pend_buf.data();
+    if (buf == nullptr) {
+      this->request_stream_close_(index, "no-buffer");
+      return;
+    }
+    size_t frame_len = 0;
+    if (!this->build_stream_gap_event_(session.gap_oldest, session.gap_newest, "resync", buf, STREAM_EVENT_BUFFER_SIZE,
+                                       &frame_len)) {
+      this->request_stream_close_(index, "gap-too-large");
+      return;
+    }
+    session.pend_len = frame_len;
+    session.pend_sent = 0;
+    if (!this->flush_stream_pending_(index, now_ms)) {
+      return;
+    }
+    session.need_gap = false;
+  }
+
+  // Snapshot one entry at a time under the history lock so socket I/O never
+  // blocks the logger callback. Bounded per-loop batch keeps control latency safe.
+  for (uint8_t sent = 0; sent < STREAM_MAX_EVENTS_PER_LOOP; ++sent) {
+    bool have_entry = false;
+    LogEntry entry{};
+    bool history_empty = false;
+    bool lagged = false;
+    uint16_t oldest = 0;
+    uint16_t newest = 0;
+    uint32_t next_seq = 0;
+
+    if (!this->lock_history_()) {
+      return;
+    }
+    if (this->count_ == 0) {
+      history_empty = true;
+      next_seq = this->next_seq_;
+    } else {
+      const size_t oldest_index = this->head_ % ENTRY_CAPACITY;
+      const size_t newest_index = (this->head_ + this->count_ - 1) % ENTRY_CAPACITY;
+      oldest = this->entries_[oldest_index].seq;
+      newest = this->entries_[newest_index].seq;
+      const bool at_oldest_minus_one = session.last_seq == static_cast<uint16_t>(oldest - 1U);
+      const uint16_t dist_to_last = static_cast<uint16_t>(session.last_seq - oldest);
+      const uint16_t dist_to_newest = static_cast<uint16_t>(newest - oldest);
+      if (!at_oldest_minus_one && dist_to_last > dist_to_newest) {
+        lagged = true;
+      } else {
+        // Find the oldest entry newer than last_seq.
+        for (size_t offset = 0; offset < this->count_; ++offset) {
+          const size_t entry_index = (this->head_ + offset) % ENTRY_CAPACITY;
+          const LogEntry& candidate = this->entries_[entry_index];
+          if (seq_is_newer_(candidate.seq, session.last_seq)) {
+            entry = candidate;
+            have_entry = true;
+            break;
+          }
+        }
+      }
+    }
+    this->unlock_history_();
+
+    if (lagged) {
+      this->request_stream_close_(index, "behind-history");
+      return;
+    }
+    if (history_empty) {
+      const uint16_t current = static_cast<uint16_t>((next_seq - 1U) & 0xFFFFUL);
+      if (session.last_seq != current) {
+        session.last_seq = current;
+        session.need_gap = true;
+        session.gap_oldest = current;
+        session.gap_newest = current;
+      }
+      break;
+    }
+    if (!have_entry) {
+      break;
+    }
+
+    char* buf = session.pend_buf.data();
+    if (buf == nullptr) {
+      this->request_stream_close_(index, "no-buffer");
+      return;
+    }
+    size_t frame_len = 0;
+    if (!this->build_stream_log_event_(entry, buf, STREAM_EVENT_BUFFER_SIZE, &frame_len)) {
+      ESP_LOGW(TAG, "Log stream event too large (seq %u)", static_cast<unsigned>(entry.seq));
+      session.last_seq = entry.seq;
+      continue;
+    }
+    session.pend_len = frame_len;
+    session.pend_sent = 0;
+    if (!this->flush_stream_pending_(index, now_ms)) {
+      return;
+    }
+    session.last_seq = entry.seq;
+  }
+
+  if (!session.closing && session.pend_len == 0 &&
+      (now_ms - session.last_activity_ms) >= STREAM_HEARTBEAT_INTERVAL_MS) {
+    char* buf = session.pend_buf.data();
+    if (buf == nullptr) {
+      return;
+    }
+    size_t frame_len = 0;
+    if (!this->build_stream_heartbeat_(buf, STREAM_EVENT_BUFFER_SIZE, &frame_len)) {
+      return;
+    }
+    session.pend_len = frame_len;
+    session.pend_sent = 0;
+    (void)this->flush_stream_pending_(index, now_ms);
+  }
+}
+
+void OpenQuattLogHistory::loop_streams_() {
+  bool any_active = false;
+  for (const auto& session : this->streams_) {
+    if (session.active && session.ready) {
+      any_active = true;
+      break;
+    }
+  }
+  if (!any_active) {
+    return;
+  }
+  if (!this->storage_available() || !this->stream_storage_available()) {
+    return;
+  }
+  const uint32_t now_ms = millis();
+  for (size_t index = 0; index < this->streams_.size(); ++index) {
+    const int sockfd = this->streams_[index].fd.load();
+    bool active = false;
+    bool ready = false;
+    if (this->lock_history_()) {
+      active = this->streams_[index].active;
+      ready = this->streams_[index].ready;
+      // Reclaim sessions whose socket died (free_ctx cleared fd).
+      if (active && ready && sockfd <= 0) {
+        this->streams_[index].active = false;
+        this->streams_[index].ready = false;
+        this->streams_[index].closing = false;
+        this->streams_[index].need_gap = false;
+        this->streams_[index].pend_len = 0;
+        this->streams_[index].pend_sent = 0;
+        active = false;
+      }
+      this->unlock_history_();
+    }
+    if (!active || !ready || sockfd <= 0) {
+      continue;
+    }
+    this->pump_stream_session_(index, now_ms);
+  }
+}
+
+esp_err_t OpenQuattLogHistory::handle_log_stream(httpd_req_t* req) {
+  if (req == nullptr) {
+    return ESP_FAIL;
+  }
+  if (!this->storage_available()) {
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_sendstr(req, R"({"ok":false,"available":false,"error":"psram_unavailable"})");
+    return ESP_OK;
+  }
+  if (!this->stream_storage_available()) {
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_sendstr(req, R"({"ok":false,"available":false,"error":"stream_unavailable"})");
+    return ESP_OK;
+  }
+
+  bool has_since = false;
+  uint16_t since = 0;
+  this->parse_stream_since_(req, &has_since, &since);
+
+  size_t slot = STREAM_MAX_CLIENTS;
+  uint16_t initial_seq = 0;
+  bool need_gap = false;
+  uint16_t gap_oldest = 0;
+  uint16_t gap_newest = 0;
+
+  if (!this->lock_history_()) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Unable to lock log history");
+    return ESP_OK;
+  }
+  size_t active_count = 0;
+  for (const auto& session : this->streams_) {
+    if (session.active) {
+      ++active_count;
+    }
+  }
+  if (active_count >= STREAM_MAX_CLIENTS) {
+    this->unlock_history_();
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_sendstr(req, R"({"ok":false,"error":"busy"})");
+    return ESP_OK;
+  }
+
+  if (this->count_ == 0) {
+    initial_seq = static_cast<uint16_t>((this->next_seq_ - 1U) & 0xFFFFUL);
+  } else {
+    const size_t oldest_index = this->head_ % ENTRY_CAPACITY;
+    const size_t newest_index = (this->head_ + this->count_ - 1) % ENTRY_CAPACITY;
+    const uint16_t oldest = this->entries_[oldest_index].seq;
+    const uint16_t newest = this->entries_[newest_index].seq;
+    gap_oldest = oldest;
+    gap_newest = newest;
+    if (!has_since) {
+      initial_seq = newest;
+    } else {
+      const bool at_oldest_minus_one = since == static_cast<uint16_t>(oldest - 1U);
+      const uint16_t dist_to_since = static_cast<uint16_t>(since - oldest);
+      const uint16_t dist_to_newest = static_cast<uint16_t>(newest - oldest);
+      if (at_oldest_minus_one || dist_to_since <= dist_to_newest) {
+        initial_seq = since;
+      } else {
+        // Stale or future cursor: start live and tell the client to backfill via /recent.
+        initial_seq = newest;
+        need_gap = true;
+      }
+    }
+  }
+
+  for (size_t index = 0; index < this->streams_.size(); ++index) {
+    if (!this->streams_[index].active) {
+      slot = index;
+      auto& session = this->streams_[index];
+      session.active = true;
+      session.ready = false;
+      session.closing = false;
+      session.need_gap = need_gap;
+      session.gap_oldest = gap_oldest;
+      session.gap_newest = gap_newest;
+      session.hd = nullptr;
+      session.fd.store(0);
+      session.last_seq = initial_seq;
+      session.fail_count = 0;
+      session.first_fail_ms = 0;
+      session.close_request_ms = 0;
+      session.pend_len = 0;
+      session.pend_sent = 0;
+      break;
+    }
+  }
+  this->unlock_history_();
+
+  if (slot >= STREAM_MAX_CLIENTS) {
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_sendstr(req, R"({"ok":false,"error":"busy"})");
+    return ESP_OK;
+  }
+
+  httpd_resp_set_status(req, HTTPD_200);
+  httpd_resp_set_type(req, "text/event-stream");
+  httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+  httpd_resp_set_hdr(req, "Connection", "keep-alive");
+  httpd_resp_set_hdr(req, "X-Accel-Buffering", "no");
+  if (httpd_resp_send_chunk(req, "retry: 3000\n\n", 13) != ESP_OK) {
+    if (this->lock_history_()) {
+      this->streams_[slot].active = false;
+      this->streams_[slot].ready = false;
+      this->unlock_history_();
+    }
+    return ESP_OK;
+  }
+
+  const int sockfd = httpd_req_to_sockfd(req);
+  if (sockfd < 0) {
+    if (this->lock_history_()) {
+      this->streams_[slot].active = false;
+      this->streams_[slot].ready = false;
+      this->unlock_history_();
+    }
+    httpd_resp_send_chunk(req, nullptr, 0);
+    return ESP_OK;
+  }
+  httpd_sess_set_send_override(req->handle, sockfd, log_stream_nonblocking_send_);
+  req->sess_ctx = &this->streams_[slot];
+  req->free_ctx = stream_free_ctx_;
+
+  if (this->lock_history_()) {
+    auto& session = this->streams_[slot];
+    session.hd = req->handle;
+    session.fd.store(sockfd);
+    session.last_activity_ms = millis();
+    session.ready = true;
+    this->unlock_history_();
+  }
+  ESP_LOGI(TAG, "Log stream client connected (%u/%u)", static_cast<unsigned>(active_count + 1),
+           static_cast<unsigned>(STREAM_MAX_CLIENTS));
+  // Intentionally no terminating zero chunk: the connection stays open and
+  // loop_streams_() forwards new history entries via raw socket sends.
+  return ESP_OK;
 }
 
 }  // namespace openquatt_log_history
