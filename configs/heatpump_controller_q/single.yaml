@@ -31,6 +31,7 @@ packages:
   openquatt_base_common: !include ../../openquatt/base/common.yaml
   openquatt_connection_wifi_eth: !include ../../openquatt/connection/wifi_eth.yaml
   openquatt_packages_common: !include ../../openquatt/oq_packages_common.yaml
+  oq_modbus_uart_diagnostics: !include modbus_uart_diagnostics.yaml
 
 # Keep the UART RX input at idle HIGH during brief RS485 receiver turn-off gaps.
 uart:
