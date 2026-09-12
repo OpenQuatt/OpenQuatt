@@ -43,6 +43,31 @@ inline bool may_serve_candidate(const HpCandidateState& candidate) {
                              candidate.minimum_off_ready);
 }
 
+struct ModelUnavailableHold {
+  int hp1_level = 0;
+  int hp2_level = 0;
+  int owner_hp = 0;
+  int capacity_mode = 0;
+};
+
+// Missing model data must not start or swap heat pumps. Keep only already
+// active units running; incident-manager must-stop decisions still win.
+inline ModelUnavailableHold preserve_active_topology_without_model(bool demand_active, const HpCandidateState& hp1,
+                                                                   const HpCandidateState& hp2) {
+  ModelUnavailableHold decision;
+  if (demand_active) {
+    decision.hp1_level = !hp1.must_stop && hp1.previous_applied_level > 0 ? hp1.previous_applied_level : 0;
+    decision.hp2_level = !hp2.must_stop && hp2.previous_applied_level > 0 ? hp2.previous_applied_level : 0;
+  }
+  decision.owner_hp = (decision.hp1_level > 0 && decision.hp2_level <= 0)   ? 1
+                      : (decision.hp2_level > 0 && decision.hp1_level <= 0) ? 2
+                                                                            : 0;
+  decision.capacity_mode = (decision.hp1_level > 0 && decision.hp2_level > 0)
+                               ? 2
+                               : ((decision.hp1_level > 0 || decision.hp2_level > 0) ? 1 : 0);
+  return decision;
+}
+
 struct SuspectTopologyHold {
   int hp1_level = 0;
   int hp2_level = 0;

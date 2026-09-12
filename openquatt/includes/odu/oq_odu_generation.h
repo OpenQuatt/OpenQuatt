@@ -165,6 +165,19 @@ inline const char* variant_label(Variant variant) {
   }
 }
 
+inline Variant confirmed_variant(bool detection_complete, int variant_code) {
+  if (!detection_complete) return Variant::UNKNOWN;
+  switch (static_cast<Variant>(variant_code)) {
+    case Variant::V1:
+    case Variant::V1_5:
+    case Variant::V2_OLD_MODEL:
+    case Variant::V2_NEW_MODEL:
+      return static_cast<Variant>(variant_code);
+    default:
+      return Variant::UNKNOWN;
+  }
+}
+
 inline const char* customer_model_label(const CustomerModelPrefix& customer_model) {
   if (!customer_model.available) return "Unknown";
   if (customer_model.missing) return "Missing";

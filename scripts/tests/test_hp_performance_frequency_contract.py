@@ -14,7 +14,10 @@ STRATEGIES = "\n".join(
         "oq_supervisory_controlmode.yaml",
     )
 )
-STRATEGIES += "\n" + "\n".join((ROOT / f"openquatt/includes/control/oq_{name}_runtime.h").read_text() for name in ("heating_curve", "power_house"))
+STRATEGIES += "\n" + "\n".join(
+    (ROOT / f"openquatt/includes/control/oq_{name}_runtime.h").read_text()
+    for name in ("heating_curve", "power_house", "supervisory_state")
+)
 
 
 class HPPerformanceFrequencyContractTest(unittest.TestCase):
@@ -30,10 +33,19 @@ class HPPerformanceFrequencyContractTest(unittest.TestCase):
         self.assertIn("return NAN", FREQUENCY_HEADER)
 
     def test_control_strategies_enter_performance_maps_via_frequency(self) -> None:
-        self.assertIn("oq_perf::model_frequency_hz(", STRATEGIES)
-        self.assertIn("oq_perf::interp_power_th_w_hz(", STRATEGIES)
+        self.assertIn("oq_perf::predict_candidate(", STRATEGIES)
+        self.assertNotIn("oq_perf::model_frequency_hz(", STRATEGIES)
         self.assertNotIn("oq_perf::interp_power_th_w(", STRATEGIES)
         self.assertNotIn("oq_perf::interp_power_el_w(", STRATEGIES)
+
+    def test_v2_frequency_path_uses_one_joint_prediction(self) -> None:
+        self.assertIn("oq_v2_model::predict_heating_for_control(frequency_hz", FREQUENCY_HEADER)
+        self.assertIn("prediction.pth_w, prediction.cop, prediction.pel_w", FREQUENCY_HEADER)
+
+    def test_low_supply_boundary_requires_existing_cold_start_guard(self) -> None:
+        self.assertIn("allow_low_supply_boundary_estimate", FREQUENCY_HEADER)
+        self.assertGreaterEqual(STRATEGIES.count("id(oq_cold_start_session_active)"), 3)
+        self.assertGreaterEqual(STRATEGIES.count("!id(oq_cold_start_hp_blocked)"), 3)
 
 
 if __name__ == "__main__":

@@ -213,6 +213,11 @@ class InternalHeapPlacementContractTest(unittest.TestCase):
             LOG_HISTORY_CPP,
         )
         self.assertIn(
+            "pend_buf.allocate_external(STREAM_EVENT_BUFFER_SIZE)",
+            LOG_HISTORY_CPP,
+        )
+
+        self.assertIn(
             "this->samples_.allocate_external(BUFFER_BYTES)",
             DEBUG_RECORDER_CPP,
         )

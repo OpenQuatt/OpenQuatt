@@ -34,7 +34,7 @@ void test_thermostat_examples() {
   auto running = input(3000, 20.0f, 20.5f);
   running.compressor_active = true;
   out = evaluate(running, out.next);
-  assert(out.active && out.reason == ROOM_DEMAND && !out.next.setpoint_raise_active);
+  assert(out.active && out.reason == ROOM_RECOVERY && out.room_recovery_active && !out.next.setpoint_raise_active);
 }
 
 void test_source_freshness_and_enable_fail_closed() {
@@ -78,11 +78,88 @@ void test_power_house_room_confirmation() {
   out = evaluate(cold, out.next);
   assert(out.active && out.reason == ROOM_DEMAND);
 }
+
+void test_room_recovery_requires_a_real_room_demand_start_and_has_hysteresis() {
+  auto cold = input(1000, 19.8f, 20.0f);
+  cold.room_confirm_ms = 10000;
+  auto out = evaluate(cold, {});
+  cold.now_ms = 11000;
+  out = evaluate(cold, out.next);
+  assert(out.active && out.fast_start && out.reason == ROOM_DEMAND);
+
+  cold.now_ms = 12000;
+  cold.compressor_active = true;
+  out = evaluate(cold, out.next);
+  assert(out.active && !out.fast_start && out.room_recovery_active && out.reason == ROOM_RECOVERY);
+
+  // The recovery holds across the original restart boundary (19.9 C), then
+  // releases halfway through the 0.1 K restart band (19.95 C).
+  cold.now_ms = 13000;
+  cold.room_c = 19.92f;
+  out = evaluate(cold, out.next);
+  assert(out.room_recovery_active && out.reason == ROOM_RECOVERY);
+  cold.now_ms = 14000;
+  cold.room_c = 19.95f;
+  out = evaluate(cold, out.next);
+  assert(!out.room_recovery_active && !out.fast_start && out.reason == NONE);
+
+  // A room sample may move above the restart boundary while the compressor is
+  // starting. An already armed start must still recover until 19.95 C.
+  auto start_edge = input(1000, 19.89f, 20.0f);
+  out = evaluate(start_edge, {});
+  assert(out.next.room_start_armed);
+  start_edge.now_ms = 2000;
+  start_edge.room_c = 19.92f;
+  start_edge.compressor_active = true;
+  out = evaluate(start_edge, out.next);
+  assert(out.room_recovery_active && out.reason == ROOM_RECOVERY);
+
+  // A setpoint reduction cancels an in-flight recovery rather than preserving
+  // output against a lower comfort target.
+  cold.now_ms = 15000;
+  cold.room_c = 19.8f;
+  cold.setpoint_c = 20.1f;
+  cold.compressor_active = false;
+  out = evaluate(cold, out.next);
+  cold.now_ms = 25000;
+  out = evaluate(cold, out.next);
+  cold.compressor_active = true;
+  cold.now_ms = 26000;
+  out = evaluate(cold, out.next);
+  assert(out.room_recovery_active);
+  cold.setpoint_c = 20.0f;
+  cold.now_ms = 27000;
+  out = evaluate(cold, out.next);
+  assert(!out.room_recovery_active && !out.next.room_start_armed);
+}
+
+void test_room_recovery_does_not_attach_to_an_existing_run_and_fails_closed() {
+  auto cold = input(1000, 19.8f, 20.0f);
+  cold.compressor_active = true;
+  auto out = evaluate(cold, {});
+  assert(out.active && !out.room_recovery_active && !out.next.room_start_armed);
+  out = evaluate(cold, out.next);
+  assert(!out.room_recovery_active && !out.next.room_start_armed);
+
+  cold.compressor_active = false;
+  out = evaluate(cold, {});
+  cold.compressor_active = true;
+  cold.now_ms = 2000;
+  out = evaluate(cold, out.next);
+  assert(out.room_recovery_active);
+
+  cold.room_fresh = false;
+  cold.now_ms = 3000;
+  out = evaluate(cold, out.next);
+  assert(!out.active && !out.room_recovery_active && !out.next.initialized);
+}
 }  // namespace
 
 int main() {
   test_thermostat_examples();
   test_source_freshness_and_enable_fail_closed();
   test_power_house_room_confirmation();
+  test_room_recovery_requires_a_real_room_demand_start_and_has_hysteresis();
+  test_room_recovery_does_not_attach_to_an_existing_run_and_fails_closed();
   return 0;
 }

@@ -420,6 +420,42 @@
   align-items: center;
 }
 
+.oq-quickstart-history {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 20px;
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--oq-helper-line);
+  border-radius: var(--oq-helper-radius-lg);
+  background: var(--oq-settings-subpanel-background);
+}
+
+.oq-quickstart-history > div {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+
+.oq-quickstart-history-label,
+.oq-quickstart-history-copy {
+  margin: 0;
+}
+
+.oq-quickstart-history-label {
+  color: var(--oq-helper-ink);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.oq-quickstart-history-copy {
+  margin-top: 4px;
+  color: var(--oq-helper-soft);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 .oq-helper-fields {
   display: grid;
   gap: 12px;

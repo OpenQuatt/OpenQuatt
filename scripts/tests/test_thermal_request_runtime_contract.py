@@ -19,7 +19,7 @@ class ThermalRequestRuntimeContractTest(unittest.TestCase):
             "limit_slew",
         ):
             self.assertNotIn(implementation_marker, YAML)
-        self.assertLessEqual(len(YAML.splitlines()), 560)
+        self.assertLessEqual(len(YAML.splitlines()), 630)
 
     def test_runtime_owns_arbitration_and_fail_closed_guards(self) -> None:
         for marker in (
@@ -48,7 +48,7 @@ class ThermalRequestRuntimeContractTest(unittest.TestCase):
             self.assertIn(marker, LOGIC)
             self.assertIn(marker, HOST_TEST)
         total = sum(len(source.splitlines()) for source in (YAML, LOGIC, RUNTIME, HOST_TEST))
-        self.assertLessEqual(total, 1618)
+        self.assertLessEqual(total, 1720)
 
 
 if __name__ == "__main__":

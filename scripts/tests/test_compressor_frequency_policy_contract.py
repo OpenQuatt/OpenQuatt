@@ -80,10 +80,11 @@ class CompressorFrequencyPolicyContractTest(unittest.TestCase):
 
     def test_strategies_only_offer_allowed_runtime_frequencies(self) -> None:
         self.assertEqual(STRATEGY_RUNTIMES.count("oq_frequency_runtime::capture()"), 3)
-        self.assertEqual(STRATEGY_RUNTIMES.count("frequency.frequency_allowed("), 3)
+        self.assertEqual(STRATEGY_RUNTIMES.count("oq_perf::predict_candidate("), 2)
+        self.assertEqual(STRATEGY_RUNTIMES.count("frequency.frequency_allowed("), 1)
         self.assertIn("const auto boosted = make_candidate(", DISPATCH)
         self.assertIn("estimate.allowed", DISPATCH)
-        self.assertIn("frequency.frequency_allowed(hp1, 2, level)", STRATEGY_RUNTIMES)
+        self.assertIn("frequency.frequency_allowed(hp1, 1, level)", STRATEGY_RUNTIMES)
 
     def test_runtime_inputs_are_captured_once_per_control_callback(self) -> None:
         control_sources = STRATEGIES + STRATEGY_RUNTIMES + REQUEST_RUNTIME + ACTUATOR

@@ -23,6 +23,7 @@ int main() {
   using oq_hp_candidate::may_start;
   using oq_hp_candidate::minimum_off_ready;
   using oq_hp_candidate::preserve_active_topology_during_suspect;
+  using oq_hp_candidate::preserve_active_topology_without_model;
 
   assert(may_start(true, false));
   assert(!may_start(false, false));
@@ -39,6 +40,33 @@ int main() {
   assert(minimum_off_ready(240001U, 1U, 240000U, 0));
   assert(minimum_off_ready(25U, UINT32_MAX - 50U, 75U, 0));
   assert(minimum_off_ready(100U, 99U, 240000U, 4));
+
+  // Missing performance data preserves already-active topology but never
+  // starts an idle heat pump. Independent must-stop and demand removal win.
+  const auto model_single = preserve_active_topology_without_model(true, HpCandidateState{5, false, false, false},
+                                                                   HpCandidateState{0, true, false, false});
+  assert(model_single.hp1_level == 5);
+  assert(model_single.hp2_level == 0);
+  assert(model_single.owner_hp == 1);
+  assert(model_single.capacity_mode == 1);
+
+  const auto model_duo = preserve_active_topology_without_model(true, HpCandidateState{4, false, false, false},
+                                                                HpCandidateState{6, false, false, false});
+  assert(model_duo.hp1_level == 4);
+  assert(model_duo.hp2_level == 6);
+  assert(model_duo.owner_hp == 0);
+  assert(model_duo.capacity_mode == 2);
+
+  const auto model_must_stop = preserve_active_topology_without_model(true, HpCandidateState{4, false, true, false},
+                                                                      HpCandidateState{6, false, false, false});
+  assert(model_must_stop.hp1_level == 0);
+  assert(model_must_stop.hp2_level == 6);
+  assert(model_must_stop.owner_hp == 2);
+
+  const auto model_idle = preserve_active_topology_without_model(false, HpCandidateState{4, false, false, false},
+                                                                 HpCandidateState{6, false, false, false});
+  assert(model_idle.hp1_level == 0);
+  assert(model_idle.hp2_level == 0);
 
   // A running SUSPECT HP remains the owner; a healthy idle HP is not started
   // merely because the short link dip blocks new starts on the owner.

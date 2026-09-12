@@ -2,7 +2,7 @@
 
 namespace esphome::opentherm {
 
-static const char* const TAG = "opentherm.number";
+static const char* const TAG = "oq.ot.boiler.number";
 
 void OpenthermNumber::control(float value) {
   this->publish_state(value);

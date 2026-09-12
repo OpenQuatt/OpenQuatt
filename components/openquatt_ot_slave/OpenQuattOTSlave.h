@@ -65,7 +65,10 @@ class OpenQuattOTSlave : public PollingComponent
     m_slave_state.t_ret_valid = !std::isnan(value);
   }
   void set_slave_t_outside(float value) { m_slave_state.t_outside = value; }
-  void set_slave_max_t_set(float value) { m_slave_state.max_t_set = value; }
+  void set_slave_max_t_set(float value) {
+    m_slave_state.max_t_set = value;
+    m_slave_state.max_t_set_valid = !std::isnan(value);
+  }
   void set_slave_rel_mod_level(float value) {
     m_slave_state.rel_mod_level = value;
     m_slave_state.rel_mod_level_valid = !std::isnan(value);
@@ -78,7 +81,18 @@ class OpenQuattOTSlave : public PollingComponent
     m_slave_state.t_dhw = value;
     m_slave_state.t_dhw_valid = !std::isnan(value);
   }
-  void set_slave_t_dhw_set(float value) { m_slave_state.t_dhw_set = value; }
+  void set_slave_t_dhw_set(float value) {
+    m_slave_state.t_dhw_set = value;
+    m_slave_state.t_dhw_set_valid = !std::isnan(value);
+  }
+  void set_slave_max_capacity(float value) {
+    m_slave_state.max_capacity = value;
+    m_slave_state.max_capacity_valid = !std::isnan(value);
+  }
+  void set_slave_min_modulation(float value) {
+    m_slave_state.min_modulation = value;
+    m_slave_state.min_modulation_valid = !std::isnan(value);
+  }
   void prepare_for_firmware_update();
   bool master_room_temperature_fresh() const;
   bool master_room_setpoint_fresh() const;
@@ -151,16 +165,22 @@ class OpenQuattOTSlave : public PollingComponent
     float t_boiler = NAN;
     float t_ret = NAN;
     float t_outside = NAN;
-    float max_t_set = 60.0f;
+    float max_t_set = NAN;
     float rel_mod_level = NAN;
     float ch_pressure = NAN;
     float t_dhw = NAN;
-    float t_dhw_set = 40.0f;
+    float t_dhw_set = NAN;
+    float max_capacity = NAN;
+    float min_modulation = NAN;
     bool t_boiler_valid = false;
     bool t_ret_valid = false;
     bool rel_mod_level_valid = false;
     bool ch_pressure_valid = false;
     bool t_dhw_valid = false;
+    bool t_dhw_set_valid = false;
+    bool max_t_set_valid = false;
+    bool max_capacity_valid = false;
+    bool min_modulation_valid = false;
   };
 
   uint8_t m_pinThermostatIn = 0;

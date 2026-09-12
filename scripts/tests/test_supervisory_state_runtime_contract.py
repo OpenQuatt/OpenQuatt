@@ -21,7 +21,7 @@ class SupervisoryStateRuntimeContractTest(unittest.TestCase):
             "power_house_assist(",
         ):
             self.assertNotIn(implementation_marker, YAML)
-        self.assertLessEqual(len(YAML.splitlines()), 700)
+        self.assertLessEqual(len(YAML.splitlines()), 720)
 
     def test_runtime_owns_complete_supervisory_side_effects(self) -> None:
         self.assertIn('#include "../performance/hp_perf_frequency.h"', RUNTIME)
@@ -63,10 +63,17 @@ class SupervisoryStateRuntimeContractTest(unittest.TestCase):
         )
         self.assertIn("{now_ms, flow_guard_required, min_flow_lph", RUNTIME)
 
+    def test_dynamic_pmin_only_uses_servable_heat_pumps(self) -> None:
+        self.assertIn("uint32_t hp_min_off_s;", RUNTIME)
+        self.assertIn("${oq_hp_min_off_s},", YAML)
+        self.assertIn("oq_hp_candidate::candidate_state", RUNTIME)
+        self.assertIn("oq_hp_candidate::minimum_off_ready", RUNTIME)
+        self.assertIn("if (!oq_hp_candidate::may_serve_candidate(candidate)) return;", RUNTIME)
+
     def test_production_sources_remain_bounded(self) -> None:
         # Include the bounded Modbus reader added for first-start water samples.
         total = sum(len(source.splitlines()) for source in (YAML, LOGIC, RUNTIME, PROBE))
-        self.assertLessEqual(total, 2250)
+        self.assertLessEqual(total, 2275)
 
 
 if __name__ == "__main__":

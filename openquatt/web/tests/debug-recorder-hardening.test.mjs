@@ -19,13 +19,15 @@ test("packed rows vergroten de retentie van de volledige dev-debugset", () => {
   );
   const capacity = Math.floor((1024 * 1024) / rowBytes);
 
-  assert.equal(rowBytes, 617);
-  assert.equal(capacity, 1699);
+  assert.equal(rowBytes, 714);
+  assert.equal(capacity, 1468);
   // Issue #649 voegt drie velden toe (ingestelde bron, geselecteerde waarde,
   // actieve tak) en issue #642 twee diagnosevelden (gepubliceerde
-  // startblokkade + resterende tijd). Samen enkele minuten extra op een buffer
-  // van ruim 4,7 uur; nog steeds ruim voldoende voor meerdaagse diagnose.
-  assert.ok((capacity - 1) * 10 >= 4.7 * 60 * 60);
+  // startblokkade + resterende tijd). De V2 Power Input-keten voegt per HP
+  // acht compacte kolommen toe
+  // (4x sensor, 3x binary, 1x text = +21 B/rij). De retentie blijft ruim
+  // boven de maximaal instelbare opnameduur van 1 uur.
+  assert.ok((capacity - 1) * 10 >= 4.0 * 60 * 60);
   assert.match(header, /PsramBuffer<uint8_t> samples_/);
   assert.match(source, /value_size_for_type_/);
   assert.match(source, /sample_row_bytes/);
@@ -76,6 +78,7 @@ test("mutaties zijn beschermd en status bevat operationele geheugensignalen", ()
 test("diagnostische tekst blijft opgenomen maar telt niet als statuswijziging", () => {
   assert.match(source, /std::strcmp\(field\.key, "timeNowHhmm"\) != 0/);
   assert.match(source, /std::strcmp\(field\.key, "lowLoadDynamicThresholds"\) != 0/);
+  assert.match(source, /std::strcmp\(field\.key, "debugStaticSnapshot"\) != 0/);
 });
 
 test("rolling totalen laten de overgang vóór de retentiewindow los", () => {

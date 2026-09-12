@@ -1013,7 +1013,8 @@ void OpenQuattDebugRecorder::capture_sample_() {
     if (previous != nullptr && read_value_(previous, field) != value) {
       change_count++;
       if (event_type_(field.type) && std::strcmp(field.key, "timeNowHhmm") != 0 &&
-          std::strcmp(field.key, "lowLoadDynamicThresholds") != 0) {
+          std::strcmp(field.key, "lowLoadDynamicThresholds") != 0 &&
+          std::strcmp(field.key, "debugStaticSnapshot") != 0) {
         event_count++;
       }
     }

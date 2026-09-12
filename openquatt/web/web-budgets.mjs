@@ -35,12 +35,14 @@ export const WEB_BUNDLE_BUDGETS = [
     // countdown on the existing Ready location, preflow/active distinction).
     // plus bounded webserver-log history polling (single scheduler, retry
     // back-off and authoritative refresh without a second /events stream).
+    // plus twaalf compacte V2/Power-House debug-recordingvelden (gevraagd/
+    // toegepast niveau, tabel-Hz, intentcode, latch, Pmin/off/on, snapshot).
     // Includes stable native time editing and confirmed, stale-poll-safe saves.
     // Compact pipeline plus the bottom-plate editor/backup: ~914 kB.
     // the issue-649 heating supply target source card with OT/HA/API/MQTT rows:
-    // measured +3.668 kB over the compact baseline (918.163 kB).
-    // plus the merged issue-642 + issue-649 set: measured 927.315 kB.
-    // Keep ~2.7 kB margin; do not restore the pre-compaction 1 MB ceiling.
+    // measured +3.668 kB over its compact baseline.
+    // Keep a narrow margin for the merged issue-642, V2 and issue-649 set;
+    // do not restore the pre-compaction 1 MB ceiling.
     raw: 930_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.

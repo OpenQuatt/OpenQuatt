@@ -105,9 +105,9 @@ class V2CompressorLevelContractTest(unittest.TestCase):
         self.assertNotIn("RuntimeFrequencySnapshotStorage{}", RUNTIME_EDITOR)
         self.assertNotIn("CompressorLevelProfile::UNKNOWN", RUNTIME_EDITOR)
         self.assertIn("write_tainted_.store(true", RUNTIME_EDITOR_SOURCE)
-        self.assertIn("VERIFY_FAILED: readback mismatch", RUNTIME_EDITOR_SOURCE)
+        self.assertIn("Verification failed: ODU values differ from requested table", RUNTIME_EDITOR_SOURCE)
         self.assertIn("write_tainted_.store(false", RUNTIME_EDITOR_SOURCE)
-        self.assertIn("APPLIED: runtime table written and read back", RUNTIME_EDITOR_SOURCE)
+        self.assertIn("Frequency table written and verified successfully", RUNTIME_EDITOR_SOURCE)
         self.assertIn("on_write_applied:", RUNTIME_EDITOR)
         self.assertIn("script.execute: ${hp_id}_load_runtime_frequency_table_once", RUNTIME_EDITOR)
 

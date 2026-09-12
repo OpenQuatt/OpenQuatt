@@ -21,7 +21,7 @@ namespace esphome::opentherm {
 
 using std::string;
 
-static const char* const TAG = "opentherm";
+static const char* const TAG = "oq.ot.boiler";
 
 #ifdef ESP8266
 OpenTherm* OpenTherm::instance = nullptr;

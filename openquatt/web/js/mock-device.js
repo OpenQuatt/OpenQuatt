@@ -3,7 +3,7 @@
   const OPENQUATT_AUTH_RECOVERY_WINDOW_MS = 600000;
   const DEBUG_RECORDING_BUFFER_BYTES = 1024 * 1024;
   const DEBUG_RECORDING_SYSTEM_FIELD_COUNT = 5;
-  const DEBUG_RECORDING_FIELD_CAPACITY = 224;
+  const DEBUG_RECORDING_FIELD_CAPACITY = 240;
   const DEBUG_RECORDING_SAMPLE_HEADER_BYTES = 8;
   const DEBUG_RECORDING_CSRF_TOKEN = "mock-debug-recording-csrf-token";
   const MOCK_STABLE_VERSION = "v0.0.0-demo";
@@ -217,8 +217,8 @@
       },
     },
     oduRuntimeFrequencyService: {
-      1: { loaded: false, armed: false, busy: false, status: "READY: load ODU runtime table", extendedLayout: false },
-      2: { loaded: false, armed: false, busy: false, status: "READY: load ODU runtime table", extendedLayout: false },
+      1: { loaded: false, armed: false, busy: false, status: "Ready: load the current compressor frequency table from the ODU", extendedLayout: false },
+      2: { loaded: false, armed: false, busy: false, status: "Ready: load the current compressor frequency table from the ODU", extendedLayout: false },
     },
     oduSettingsService: {
       1: { loaded: false, busy: false, status: "READY", profileAvailable: false, autoReapply: false, actual: { mode: 1, startTemperatureC: 4, stopDeltaC: 3 } },
@@ -297,7 +297,7 @@
       loaded: false,
       armed: false,
       busy: false,
-      status: "READY: load ODU runtime table",
+      status: "Ready: load the current compressor frequency table from the ODU",
       extendedLayout: profile.variant === "V2 new model",
     };
     const settings = state.oduSettingsService[hp === 2 ? 2 : 1];
@@ -4163,19 +4163,19 @@
       const enabled = params.get("enabled") === "true";
       if (enabled && !service.loaded) return mockResponse(409, { ok: false, error: "load_required" });
       service.armed = enabled;
-      service.status = enabled ? "ARMED: runtime writes enabled" : "LOCKED: runtime writes disabled";
+      service.status = enabled ? "Compressor frequency table writes enabled" : "Compressor frequency table writes disabled";
       return mockResponse(200, getOduRuntimeServicePayload(hp));
     }
     if (action === "load") {
       service.busy = true;
       service.loaded = false;
       service.armed = false;
-      service.status = "LOAD_REQUESTED";
+      service.status = "Reading compressor frequency table from ODU";
       window.setTimeout(() => {
         service.busy = false;
         service.loaded = true;
-        const registerCount = service.extendedLayout ? 42 : 22;
-        service.status = `LOADED: ${registerCount}/${registerCount} runtime registers`;
+        const levelCount = service.extendedLayout ? 21 : 11;
+        service.status = `Compressor frequency table loaded (${levelCount} levels)`;
         notifyMockUpdated();
       }, 320);
       return mockResponse(200, getOduRuntimeServicePayload(hp));
@@ -4190,24 +4190,24 @@
       return mockResponse(409, { ok: false, error: "invalid_table" });
     }
     service.busy = true;
-    service.status = "GUARD_READ_REQUESTED: checking ODU state";
+    service.status = "Checking whether ODU is safe to modify";
     window.setTimeout(() => {
       const hpName = `HP${hp}`;
       const mode = String(getEntity("text_sensor", `${hpName} - Working Mode Label`)?.value || "").trim();
       const compressorHz = Number(getEntity("sensor", `${hpName} - Compressor frequency`)?.value);
       if (!mode || /unknown|onbekend/i.test(mode)) {
-        service.status = "BLOCKED: ODU mode unknown";
+        service.status = "Write blocked: ODU operating mode unknown";
       } else if (!/standby|stand-by/i.test(mode)) {
-        service.status = "BLOCKED: ODU is not in standby";
+        service.status = "Write blocked: ODU is not in standby";
       } else if (!Number.isFinite(compressorHz)) {
-        service.status = "BLOCKED: compressor frequency unknown";
+        service.status = "Write blocked: compressor frequency unknown";
       } else if (compressorHz > 0.5) {
-        service.status = "BLOCKED: compressor is running";
+        service.status = "Write blocked: compressor is running";
       } else {
         service.armed = false;
         state.oduRuntimeFrequency[hpName] = { cooling, heating };
         syncMockOduIdentityEntities(hp);
-        service.status = "APPLIED: runtime table written and read back";
+        service.status = "Frequency table written and verified successfully";
       }
       service.busy = false;
       notifyMockUpdated();

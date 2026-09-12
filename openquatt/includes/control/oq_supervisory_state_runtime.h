@@ -10,8 +10,9 @@
 #include "../service/oq_service_logic.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
 #include "oq_cold_start_probe.h"
+#include "oq_compressor_frequency_runtime.h"
+#include "oq_hp_candidate_logic.h"
 #include "oq_supervisory_state_logic.h"
-
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_supervisory_state_runtime {
 
@@ -34,6 +35,7 @@ struct TickConfig {
   float low_load_fallback_on_w;
   uint32_t low_load_dyn_cache_max_s;
   uint32_t ph_start_confirm_s;
+  uint32_t hp_min_off_s;
   uint32_t cm2_idle_exit_s;
   uint32_t cm2_min_run_s;
   uint32_t cm_flow_fault_s;
@@ -60,14 +62,6 @@ struct TickConfig {
 class Runtime {
  public:
   void tick(const TickConfig& tick) {
-    // -------------------------------------------------
-    // Main phases:
-    // 1) Power limiter (safety net on total input power)
-    // 2) Flow interlock + frost detection
-    // 3) resolve_desired_cm() (override + CM1 timers + CM3 promote/demote)
-    // 4) apply_silent_window() (diagnostics + low-noise mode)
-    // 5) apply_sticky_pump_policy() (CM0 sticky + pump/PWM ownership)
-    // -------------------------------------------------
     const uint32_t now_ms = (uint32_t)millis();
 
     auto now_time = id(oq_time).now();
@@ -87,9 +81,6 @@ class Runtime {
 
     const uint32_t prepost_ms = (uint32_t)(tick.cm_prepost_s * 1000UL);
     const float min_flow_lph = tick.cm_min_flow_lph;
-    // -------------------------------------------------
-    // Helpers: minimize Modbus writes (write-on-change)
-    // -------------------------------------------------
     auto set_select_option = [&](auto& sel, const char* opt) {
       if (!sel.has_state() || sel.current_option() != opt) {
         auto c = sel.make_call();
@@ -152,13 +143,6 @@ class Runtime {
       return static_cast<uint32_t>(until_ms - now_ms) < 0x80000000UL;
     };
 
-    // -------------------------------------------------
-    // 1) Thermal demand
-    //    Baseline heating demand: demand_filtered > 0
-    //    Baseline cooling demand: selected enable + request + permit
-    //    CM2 idle-exit: if both HPs are commanded/measured idle
-    //    for a while, force demand false to allow CM2->CM1->CM0.
-    // -------------------------------------------------
     const char* cur_cm_state = id(oq_control_mode).state.c_str();
     const bool in_cm2 = strcmp(cur_cm_state, "CM2") == 0;
     const bool openquatt_enabled = id(oq_enabled).state;
@@ -225,12 +209,37 @@ class Runtime {
     const bool both_units_idle = !any_hp_active_guard;
 
     const float p_req_w = power_house_active ? id(oq_strategy_requested_power_w) : NAN;
-    const float outside_c = id(outside_temp_selected).state;
-    const float supply_c = id(oq_system_supply_temp).state;
+    const float outside_c = id(outside_temp_selected).state, supply_c = id(oq_system_supply_temp).state;
     float live_minimum_power_w = NAN;
     if (power_house_active && std::isfinite(outside_c) && std::isfinite(supply_c)) {
-      live_minimum_power_w = oq_perf::interp_power_th_w_hz(oq_perf::model_frequency_hz(1), outside_c, supply_c);
-      if (!std::isfinite(live_minimum_power_w) || live_minimum_power_w <= 0.0f) live_minimum_power_w = NAN;
+      const auto frequency = oq_frequency_runtime::capture();
+      const uint32_t minimum_off_ms = oq_supervisory_state::seconds_to_ms(tick.hp_min_off_s);
+      auto hp1_candidate = oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(1), hp1_lvl);
+      hp1_candidate.minimum_off_ready =
+          oq_hp_candidate::minimum_off_ready(now_ms, id(hp1_last_stop_ms), minimum_off_ms, hp1_lvl);
+#if OQ_TOPOLOGY_DUO
+      auto hp2_candidate = oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(2), hp2_lvl);
+      hp2_candidate.minimum_off_ready =
+          oq_hp_candidate::minimum_off_ready(now_ms, id(hp2_last_stop_ms), minimum_off_ms, hp2_lvl);
+#else
+      const oq_hp_candidate::HpCandidateState hp2_candidate;
+#endif
+      const bool allow_low_supply_boundary_estimate = id(oq_cold_start_session_active) && !id(oq_cold_start_hp_blocked);
+      const auto include_minimum = [&](bool hp1, const oq_hp_candidate::HpCandidateState& candidate) {
+        if (!oq_hp_candidate::may_serve_candidate(candidate)) return;
+        for (int level = 1; level <= 10; ++level) {
+          const auto prediction = oq_perf::predict_candidate(frequency, frequency.performance_variant(hp1), hp1, level,
+                                                             outside_c, supply_c, allow_low_supply_boundary_estimate);
+          if (!prediction.usable_for_running_optimization()) continue;
+          const float power_w = prediction.performance.pth_w;
+          live_minimum_power_w =
+              std::isfinite(live_minimum_power_w) ? std::min(live_minimum_power_w, power_w) : power_w;
+        }
+      };
+      include_minimum(true, hp1_candidate);
+#if OQ_TOPOLOGY_DUO
+      include_minimum(false, hp2_candidate);
+#endif
     }
     const auto low_load = oq_supervisory_state::update_low_load(
         {

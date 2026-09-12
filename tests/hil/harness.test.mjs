@@ -1,13 +1,23 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { firmwareCommand } from '../../scripts/hil/firmware.mjs';
 import {
+  firmwareArtifactIdentity,
+  firmwareArtifactUploadCommand,
+  firmwareCommand,
+  firmwareCompileCommand,
+  verifyFirmwareArtifact,
+} from '../../scripts/hil/firmware.mjs';
+import {
+  assertSnapshotScenario,
   parseArgs,
+  runGuardedMutation,
+  restoreFirmwareAndSettings,
   verifyDiagnostics,
+  verifyRestoreArtifact,
   verifyRestoredFirmware,
 } from '../../scripts/hil/run-input-sources.mjs';
 import {
@@ -16,30 +26,97 @@ import {
   normalizeBaseUrl,
 } from '../../scripts/hil/rest-client.mjs';
 import {
+  acquireLock,
   acquireRecoveryLock,
   controllerSettings,
+  mutationLockPath,
+  parseOduActiveConfiguration,
   restoreSettings,
   simulatorSettings,
   snapshotSettings,
   validateSnapshot,
+  verifyRestoredSettings,
 } from '../../scripts/hil/session.mjs';
+import {
+  heatingPower,
+  v2PowerInput,
+} from './scenarios/v2-performance.mjs';
+import { waitNumber } from '../../scripts/hil/wait.mjs';
 
-test('recovery lock blocks concurrent recovery and reclaims a dead owner', async (context) => {
+test('target lock excludes runs and recovery, reclaims stale owner, and releases by token', async (context) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'openquatt-hil-lock-'));
-  context.after(() => rm(directory, { recursive: true, force: true }));
-  const first = await acquireRecoveryLock(directory, '/run/first');
+  const previousLockRoot = process.env.OQ_HIL_LOCK_ROOT;
+  process.env.OQ_HIL_LOCK_ROOT = directory;
+  context.after(async () => {
+    if (previousLockRoot === undefined) delete process.env.OQ_HIL_LOCK_ROOT;
+    else process.env.OQ_HIL_LOCK_ROOT = previousLockRoot;
+    await rm(directory, { recursive: true, force: true });
+  });
+  const targets = {
+    controller: `http://controller-${path.basename(directory)}.local`,
+    simulator: `http://simulator-${path.basename(directory)}.local`,
+  };
+  const first = await acquireLock(targets, '/run/first');
   await assert.rejects(
-    () => acquireRecoveryLock(directory, '/run/second'),
-    /another HIL recovery is active/,
+    () => acquireRecoveryLock(targets, '/run/first'),
+    /another HIL run or recovery is active/,
   );
   await first.release();
 
-  await writeFile(
-    path.join(directory, 'input-sources-recovery.lock'),
-    `${JSON.stringify({ pid: 99_999_999, runDir: '/run/stale' })}\n`,
+  const stale = await acquireLock(targets, '/run/stale');
+  await stale.markMutationStarted();
+  const staleOwner = JSON.parse(await readFile(stale.ownerPath, 'utf8'));
+  await writeFile(stale.ownerPath, `${JSON.stringify({ ...staleOwner, pid: 99_999_999 })}\n`);
+  const reclaimed = await acquireRecoveryLock(targets, '/run/stale');
+  const recoveryOwner = JSON.parse(await readFile(reclaimed.ownerPath, 'utf8'));
+  assert.equal(recoveryOwner.phase, 'mutation-started');
+  await assert.rejects(
+    () => stale.release(),
+    /owned by another run/,
   );
-  const reclaimed = await acquireRecoveryLock(directory, '/run/reclaimed');
+  await assert.rejects(
+    () => acquireLock(targets, '/run/other-output-root'),
+    /another HIL run or recovery is active/,
+  );
+  await writeFile(
+    reclaimed.ownerPath,
+    `${JSON.stringify({ ...recoveryOwner, pid: 99_999_999 })}\n`,
+  );
+  await assert.rejects(
+    () => acquireLock(targets, '/run/other-output-root'),
+    /unfinished HIL run requires recovery first/,
+  );
   await reclaimed.release();
+});
+
+test('a stale pre-mutation lock can be safely abandoned by the next normal run', async (context) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'openquatt-hil-premutation-lock-'));
+  const previousLockRoot = process.env.OQ_HIL_LOCK_ROOT;
+  process.env.OQ_HIL_LOCK_ROOT = directory;
+  context.after(async () => {
+    if (previousLockRoot === undefined) delete process.env.OQ_HIL_LOCK_ROOT;
+    else process.env.OQ_HIL_LOCK_ROOT = previousLockRoot;
+    await rm(directory, { recursive: true, force: true });
+  });
+  const targets = {
+    controller: 'http://controller.local',
+    simulator: 'http://simulator.local',
+  };
+  const abandoned = await acquireLock(targets, '/run/compile-crashed');
+  const owner = JSON.parse(await readFile(abandoned.ownerPath, 'utf8'));
+  assert.equal(owner.phase, 'pre-mutation');
+  await writeFile(abandoned.ownerPath, `${JSON.stringify({ ...owner, pid: 99_999_999 })}\n`);
+
+  const replacement = await acquireLock(targets, '/run/next');
+  await assert.rejects(() => abandoned.release(), /owned by another run/);
+  await replacement.release();
+});
+
+test('HCQ lab aliases resolve to one global mutation lock', () => {
+  assert.equal(
+    mutationLockPath({ controller: 'http://openquatt-test.local', simulator: 'http://sim.local' }),
+    mutationLockPath({ controller: 'http://192.168.2.86', simulator: 'http://192.168.2.63' }),
+  );
 });
 
 test('REST client is read-only unless writes are explicitly enabled', async () => {
@@ -53,6 +130,19 @@ test('REST client is read-only unless writes are explicitly enabled', async () =
   });
   await assert.rejects(() => client.setSwitch('test', true), /--apply/);
   assert.equal(called, false);
+});
+
+test('numeric waits accept zero as a valid matched sample', async () => {
+  const controller = {
+    value: async () => 0,
+  };
+  assert.equal(
+    await waitNumber(controller, 'zero', (value) => value === 0, 'zero sample', {
+      timeoutMs: 20,
+      intervalMs: 1,
+    }),
+    0,
+  );
 });
 
 test('one shared request gate enforces the global write interval', async () => {
@@ -158,7 +248,7 @@ test('target URLs reject credentials and non-HTTP protocols', () => {
 });
 
 test('snapshots require the exact pre-test firmware identity', () => {
-  assert.throws(() => validateSnapshot({ schema: 1 }), /firmware identity/);
+  assert.throws(() => validateSnapshot({ schema: 3 }), /firmware identity/);
   assert.equal(
     verifyRestoredFirmware(
       '2026.8.2 (config hash 0x12345678)',
@@ -172,6 +262,37 @@ test('snapshots require the exact pre-test firmware identity', () => {
       '2026.8.2 (config hash 0x12345678)',
     ),
     /restored firmware differs/,
+  );
+});
+
+test('restore artifact must be precompiled with the exact baseline config hash', () => {
+  assert.equal(
+    verifyRestoreArtifact('2026.8.2 (config hash 0x12345678)', '0x12345678'),
+    '0x12345678',
+  );
+  assert.throws(
+    () => verifyRestoreArtifact('2026.8.2 (config hash 0x12345678)', '0x87654321'),
+    /restore artifact differs/,
+  );
+});
+
+test('restore artifact integrity binds exact bytes and size', async (context) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'openquatt-hil-artifact-'));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const artifact = path.join(directory, 'restore-firmware.ota.bin');
+  await writeFile(artifact, Buffer.from('known firmware bytes'));
+  const identity = await firmwareArtifactIdentity(artifact);
+  await assert.doesNotReject(() => verifyFirmwareArtifact(artifact, identity));
+  await writeFile(artifact, Buffer.from('changed firmware bytes'));
+  await assert.rejects(() => verifyFirmwareArtifact(artifact, identity), /integrity differs/);
+});
+
+test('snapshot recovery rejects a different scenario runner before mutation', () => {
+  const snapshot = { scenario: 'issue-667-v2-performance' };
+  assert.doesNotThrow(() => assertSnapshotScenario(snapshot, { name: snapshot.scenario }));
+  assert.throws(
+    () => assertSnapshotScenario(snapshot, { name: 'input-sources' }),
+    /snapshot scenario differs/,
   );
 });
 
@@ -197,7 +318,7 @@ test('mutating CLI modes require apply plus an automatic firmware restore', () =
   ]);
   assert.equal(parsed.apply, true);
   assert.equal(parsed.writeIntervalMs, 1500);
-  assert.equal(parsed.expectedSimulatorContract, 'openquatt-modbus-opentherm-v1');
+  assert.equal(parsed.expectedSimulatorContract, 'openquatt-modbus-opentherm-v2');
   assert.equal(
     parseArgs([...targets, '--expected-simulator-contract', 'next-contract']).expectedSimulatorContract,
     'next-contract',
@@ -206,6 +327,20 @@ test('mutating CLI modes require apply plus an automatic firmware restore', () =
     () => parseArgs([...targets, '--stage', 'all', '--apply', '--settings-only']),
     /--device and --restore-config|--settings-only/,
   );
+});
+
+test('issue 667 golden vectors keep auxiliary loads and defrost distinct', () => {
+  const fixture = { voltageV: 230, currentA: 1.3, fanSpeed: 200, pumpPowerW: 30 };
+  const base = v2PowerInput(fixture);
+  assert.ok(Math.abs(base - 309.97883) < 0.0001);
+  assert.ok(Math.abs(v2PowerInput({ ...fixture, status2108: 0x0004 }) - (base + 140)) < 0.0001);
+  assert.ok(Math.abs(v2PowerInput({ ...fixture, status2108: 0x0008 }) - (base + 33.62)) < 0.0001);
+  assert.ok(Math.abs(v2PowerInput({ ...fixture, status2108: 0x0800 }) - (base + 30)) < 0.0001);
+  assert.equal(v2PowerInput({ ...fixture, status2108: 0x0010 }), base);
+});
+
+test('issue 667 field heat-power fixture uses production water constant', () => {
+  assert.ok(Math.abs(heatingPower({ flowLph: 1020, inletC: 22.5, outletC: 24.53 }) - 2407.6477) < 0.001);
 });
 
 test('diagnostics reject an absent or incompatible simulator contract', () => {
@@ -247,6 +382,31 @@ test('firmware upload uses argument arrays without a shell', () => {
       ],
     },
   );
+  assert.deepEqual(firmwareCompileCommand({ config: 'production.yaml', esphome: '/bin/esphome' }), {
+    executable: '/bin/esphome',
+    args: ['compile', 'production.yaml'],
+  });
+  assert.deepEqual(
+    firmwareArtifactUploadCommand({
+      config: 'production.yaml',
+      device: 'controller.local',
+      artifact: '/run/restore-firmware.ota.bin',
+      esphome: '/bin/esphome',
+    }),
+    {
+      executable: '/bin/esphome',
+      args: [
+        'upload',
+        '--device',
+        'controller.local',
+        '--ota-platform',
+        'esphome',
+        '--file',
+        '/run/restore-firmware.ota.bin',
+        'production.yaml',
+      ],
+    },
+  );
 });
 
 class FakeClient {
@@ -256,9 +416,11 @@ class FakeClient {
       setting.kind === 'number'
         ? index + 0.5
         : setting.kind === 'switch'
-          ? index % 2 === 0
+          ? false
           : `option-${index}`,
     ]));
+    this.state.set('text_sensor:ODU 1 diagnostics', 'addr=1 profile=V1.5 exc=0 bad_addr=0 bad_write=0 cap=0');
+    this.state.set('text_sensor:ODU 2 diagnostics', 'addr=2 profile=V2 old model exc=0 bad_addr=0 bad_write=0 cap=0');
   }
 
   async value(domain, name) {
@@ -287,6 +449,15 @@ class FakeClient {
   }
 }
 
+test('ODU active configuration parser rejects incomplete or invalid diagnostics', () => {
+  assert.deepEqual(
+    parseOduActiveConfiguration('addr=2 profile=V2 new model exc=0', 'HP2'),
+    { address: 2, profile: 'V2 new model' },
+  );
+  assert.throws(() => parseOduActiveConfiguration('addr=0 profile=V1', 'HP1'), /no valid active/);
+  assert.throws(() => parseOduActiveConfiguration('addr=1 exc=0', 'HP1'), /no valid active/);
+});
+
 test('snapshot restore reinstates every captured setting after a failed scenario', async () => {
   const controller = new FakeClient(controllerSettings);
   const simulator = new FakeClient(simulatorSettings);
@@ -299,6 +470,11 @@ test('snapshot restore reinstates every captured setting after a failed scenario
     simulator,
     targets,
     firmware: '2026.8.2 (config hash 0x12345678)',
+    scenario: 'input-sources',
+  });
+  assert.deepEqual(snapshot.simulatorActive, {
+    hp1: { address: 1, profile: 'V1.5' },
+    hp2: { address: 2, profile: 'V2 old model' },
   });
   for (const setting of controllerSettings) {
     controller.state.set(`${setting.domain}:${setting.name}`, setting.kind === 'number' ? 999 : 'changed');
@@ -321,6 +497,12 @@ test('snapshot restore reinstates every captured setting after a failed scenario
       setting.name,
     );
   }
+  await verifyRestoredSettings({ controller, simulator, snapshot });
+  controller.state.set('select:CM Override', 'changed after persistence window');
+  await assert.rejects(
+    () => verifyRestoredSettings({ controller, simulator, snapshot }),
+    /did not persist/,
+  );
 });
 
 test('pre-OTA restore keeps CM0 until normal firmware is confirmed', async () => {
@@ -334,6 +516,7 @@ test('pre-OTA restore keeps CM0 until normal firmware is confirmed', async () =>
       simulator: 'http://simulator.local',
     },
     firmware: '2026.8.2 (config hash 0x12345678)',
+    scenario: 'input-sources',
   });
   controller.state.set('select:Room Temperature Source', 'changed');
   await restoreSettings({
@@ -348,6 +531,77 @@ test('pre-OTA restore keeps CM0 until normal firmware is confirmed', async () =>
     await controller.value('select', 'Room Temperature Source'),
     snapshot.controller.roomSource,
   );
+});
+
+test('failed safe-CM0 restore blocks firmware OTA fail-closed', async () => {
+  let flashCalls = 0;
+  await assert.rejects(
+    () => restoreFirmwareAndSettings({
+      options: {
+        settingsOnly: false,
+        restoreConfig: 'production.yaml',
+        device: 'controller.local',
+      },
+      controller: {},
+      simulator: {},
+      snapshot: { firmware: 'baseline' },
+      interrupted: () => false,
+      restoreSettingsImpl: async () => {
+        throw new Error('injected CM0 confirmation failure');
+      },
+      flashFirmwareArtifactImpl: async () => {
+        flashCalls += 1;
+      },
+    }),
+    /firmware OTA blocked/,
+  );
+  assert.equal(flashCalls, 0);
+});
+
+test('failed post-settle CM0 confirmation blocks firmware OTA fail-closed', async () => {
+  let flashCalls = 0;
+  await assert.rejects(
+    () => restoreFirmwareAndSettings({
+      options: {
+        settingsOnly: false,
+        restoreConfig: 'production.yaml',
+        restoreArtifactPath: 'restore.ota.bin',
+        device: 'controller.local',
+      },
+      controller: {},
+      simulator: {},
+      snapshot: { firmware: 'baseline' },
+      interrupted: () => false,
+      restoreSettingsImpl: async () => {},
+      waitForSafeCm0PersistedImpl: async () => {
+        throw new Error('injected post-settle CM0 confirmation failure');
+      },
+      flashFirmwareArtifactImpl: async () => {
+        flashCalls += 1;
+      },
+    }),
+    /safe CM0 persistence failed; firmware OTA blocked/,
+  );
+  assert.equal(flashCalls, 0);
+});
+
+test('an interrupt raised during preparation prevents the first device mutation', async () => {
+  let armed = false;
+  let flashCalls = 0;
+  await assert.rejects(
+    () => runGuardedMutation({
+      interrupted: () => true,
+      arm: async () => {
+        armed = true;
+      },
+      mutate: async () => {
+        flashCalls += 1;
+      },
+    }),
+    /interrupted before device mutation/,
+  );
+  assert.equal(armed, false);
+  assert.equal(flashCalls, 0);
 });
 
 test('restore failures remain blocking while other settings are still attempted', async () => {
@@ -368,6 +622,7 @@ test('restore failures remain blocking while other settings are still attempted'
       simulator: 'http://simulator.local',
     },
     firmware: '2026.8.2 (config hash 0x12345678)',
+    scenario: 'input-sources',
   });
   controller.state.set('number:Power House temperature reaction', 999);
   controller.state.set('select:Room Temperature Source', 'changed');
@@ -380,4 +635,34 @@ test('restore failures remain blocking while other settings are still attempted'
     snapshot.controller.roomSource,
   );
   assert.equal(await controller.value('select', 'CM Override'), 'Force CM0');
+});
+
+test('a transient optional pre-restore read does not invalidate a verified restore', async () => {
+  class TransientReadClient extends FakeClient {
+    constructor(settings) {
+      super(settings);
+      this.failNextRead = false;
+    }
+
+    async values(settings) {
+      if (this.failNextRead) {
+        this.failNextRead = false;
+        throw new Error('injected reboot read gap');
+      }
+      return super.values(settings);
+    }
+  }
+
+  const controller = new FakeClient(controllerSettings);
+  const simulator = new TransientReadClient(simulatorSettings);
+  const snapshot = await snapshotSettings({
+    controller,
+    simulator,
+    targets: { controller: 'http://controller.local', simulator: 'http://simulator.local' },
+    firmware: '2026.8.2 (config hash 0x12345678)',
+    scenario: 'input-sources',
+  });
+  simulator.failNextRead = true;
+  await restoreSettings({ controller, simulator, snapshot, log: () => {} });
+  await verifyRestoredSettings({ controller, simulator, snapshot });
 });
