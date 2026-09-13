@@ -109,7 +109,10 @@ def release_asset_names(target: dict[str, str]) -> list[str]:
         f"{artifact_name}.firmware.ota.bin",
         f"{artifact_name}.firmware.factory.bin",
     ]
-    names.extend(manifest_name_for_artifact(target, published_name) for published_name in artifact_names(target))
+    for published_name in artifact_names(target):
+        if published_name != artifact_name:
+            names.append(f"{published_name}.firmware.ota.bin")
+        names.append(manifest_name_for_artifact(target, published_name))
     return names
 
 
@@ -201,13 +204,18 @@ def prepare_release_assets(version: str, base_url: str, release_url: str) -> Non
         ota_md5 = md5sum(ota_dest)
 
         for published_name in artifact_names(target):
+            published_ota_name = f"{published_name}.firmware.ota.bin"
+            if published_name != artifact_name:
+                # Legacy firmware validates the OTA filename suffix before install.
+                # Keep byte-identical alias binaries beside compatibility manifests.
+                shutil.copy2(ota_dest, dist_dir / published_ota_name)
             manifest = build_ota_manifest(
                 target,
                 published_name,
                 version,
                 base_url,
                 release_url,
-                ota_name,
+                published_ota_name,
                 ota_md5,
             )
             manifest_path = REPO_ROOT / manifest_name_for_artifact(target, published_name)
