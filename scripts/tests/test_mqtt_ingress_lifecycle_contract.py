@@ -199,7 +199,8 @@ class MqttIngressLifecycleContractTest(unittest.TestCase):
         )
         restore = CPP[restore_start:restore_end]
         self.assertEqual(process.count("durable = true;"), 1)
-        self.assertIn("if (global_preferences->sync())", process)
+        self.assertIn("const bool sync_succeeded = global_preferences->sync();", process)
+        self.assertIn("if (sync_succeeded)", process)
         self.assertIn("if (synced)", restore)
         self.assertNotIn("storage_matches_persisted_", process + restore)
         self.assertGreaterEqual(
