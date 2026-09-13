@@ -7,8 +7,8 @@
 
 #include "detail/hp_perf_map_v2_data.h"
 
-// Pure V2 heating-performance model reconstructed from the CiC 4.2.0
-// controller ELF. This module performs no I/O, allocation, or control action.
+// Pure V2 heating-performance model. This module performs no I/O, allocation,
+// or control action.
 namespace oq_v2_model {
 
 enum class Status : uint8_t {

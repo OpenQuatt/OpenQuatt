@@ -92,8 +92,8 @@ test("startsnapshot bevat tabellen, hash en instellingen eenmalig in initial", (
   assert.match(powerHouse, /2166136261U/);
   assert.match(powerHouse, /availableModels/);
   assert.match(powerHouse, /v2Thermal/);
-  assert.match(powerHouse, /oq-v2-heating-cic420-r1/);
-  assert.match(powerHouse, /oq-v2-input-cic420-r1/);
+  assert.match(powerHouse, /oq-v2-heating-r1/);
+  assert.match(powerHouse, /oq-v2-input-r1/);
 });
 
 test("V2 Power Input opname bewaart kwaliteit en alle regressie-inputs", () => {

@@ -1,6 +1,6 @@
 #pragma once
-// V1/V1.5 performance map and generation-aware dispatch to the reconstructed
-// V2 CiC 4.2.0 heating model.
+// V1/V1.5 performance map and generation-aware dispatch to the V2 heating
+// performance model.
 // Provides thermisch vermogen (W) en COP als functie van (level, Tamb, Tsup).
 #include <cmath>
 
