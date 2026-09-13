@@ -13,6 +13,7 @@
 #include "cJSON.h"
 #include "esp_heap_caps.h"
 #include "esp_memory_utils.h"
+#include "esp_timer.h"
 #include "esphome/core/application.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
@@ -803,11 +804,14 @@ void OpenQuattMqttConfig::process_storage_transaction_() {
   bool durable = false;
   bool any_save_succeeded = false;
   MutationResult failure_result = MutationResult::SAVE_FAILED;
+  uint8_t attempts = 0U;
+  const int64_t persistence_started_us = esp_timer_get_time();
   for (uint8_t attempt = 0U; attempt < STORAGE_MAX_ATTEMPTS; attempt++) {
     if (!storage_should_retry(attempt, STORAGE_MAX_ATTEMPTS, durable,
                               this->storage_transaction_phase_.load() == StorageTransactionPhase::CANCELLED)) {
       break;
     }
+    attempts = attempt + 1U;
     if (attempt == 0U) {
       // Claim the write before touching the preference backend. A timeout
       // may still change WRITING to CANCELLED, but it can then only report
@@ -821,9 +825,13 @@ void OpenQuattMqttConfig::process_storage_transaction_() {
     }
     // Only the ESPHome loop touches the preference backend. Every bounded
     // retry repeats save + sync with the complete candidate payload.
+    const int64_t save_started_us = esp_timer_get_time();
     const bool save_succeeded = this->pref_.save(&storage);
+    const int64_t save_duration_us = esp_timer_get_time() - save_started_us;
     any_save_succeeded = any_save_succeeded || save_succeeded;
     if (!save_succeeded) {
+      ESP_LOGD(TAG, "MQTT preferences save: attempt=%u duration=%" PRId64 " ms result=failed",
+               static_cast<unsigned>(attempt + 1U), save_duration_us / 1000);
       ESP_LOGE(TAG,
                "Failed to save MQTT configuration to preferences "
                "(attempt %u/%u)",
@@ -831,7 +839,13 @@ void OpenQuattMqttConfig::process_storage_transaction_() {
       failure_result = MutationResult::SAVE_FAILED;
       continue;
     }
-    if (global_preferences->sync()) {
+    const int64_t sync_started_us = esp_timer_get_time();
+    const bool sync_succeeded = global_preferences->sync();
+    const int64_t sync_duration_us = esp_timer_get_time() - sync_started_us;
+    ESP_LOGD(TAG, "MQTT preferences persistence: attempt=%u save=%" PRId64 " ms sync=%" PRId64 " ms result=%s",
+             static_cast<unsigned>(attempt + 1U), save_duration_us / 1000, sync_duration_us / 1000,
+             sync_succeeded ? "ok" : "failed");
+    if (sync_succeeded) {
       durable = true;
       break;
     }
@@ -841,6 +855,9 @@ void OpenQuattMqttConfig::process_storage_transaction_() {
              static_cast<unsigned>(attempt + 1U), static_cast<unsigned>(STORAGE_MAX_ATTEMPTS));
     failure_result = MutationResult::SYNC_FAILED;
   }
+  ESP_LOGD(TAG, "MQTT preferences transaction: attempts=%u duration=%" PRId64 " ms durable=%s",
+           static_cast<unsigned>(attempts), (esp_timer_get_time() - persistence_started_us) / 1000,
+           durable ? "yes" : "no");
 
   this->lock_persistence_();
   const bool generation_is_current = generation == this->desired_storage_generation_;
