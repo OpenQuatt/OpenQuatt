@@ -12,9 +12,14 @@ globalThis.window = {
 
 const { state } = await import("../js/src/core/state.js");
 const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
-const { installFirmwareTestUpdate } = await import("../js/src/features/firmware-actions.js");
+const { installFirmwareTestUpdate, installFirmwareUpdate } = await import("../js/src/features/firmware-actions.js");
 const {
   getFirmwareModalCopy,
+  compareFirmwareVersions,
+  hasInstalledFirmwareLatestVersion,
+  hasInstalledFirmwareTargetVersion,
+  isFirmwareChannelTransition,
+  isFirmwareInstallSettled,
   getFirmwareProgressModel,
   getFirmwareTestAssetUrls,
   getFirmwareUpdateVersions,
@@ -115,6 +120,148 @@ test("PR test firmware can return to the dev channel", () => {
   const modal = renderUpdateModal();
   const installButton = modal.match(/<button class="oq-helper-button[^"]*" type="button" data-oq-action="install-firmware-update"[^>]*>/)?.[0] || "";
   assert.doesNotMatch(installButton, /disabled/);
+});
+
+function setMainToDevState(target = "v0.49.1-dev.780+abcdef0") {
+  setPrToDevState();
+  state.entities.projectVersionText = { state: "v0.49.1" };
+  state.entities.releaseChannelText = { state: "main" };
+  Object.assign(state.entities.firmwareUpdate, {
+    state: "NO UPDATE",
+    current_version: "v0.49.1",
+    latest_version: target,
+    value: target,
+  });
+}
+
+test("main to dev remains available regardless of semantic version ordering", () => {
+  for (const target of ["v0.49.1-dev.780+abcdef0", "v0.50.0-dev.1+abcdef0", "v0.48.0-dev.1+abcdef0"]) {
+    setMainToDevState(target);
+    assert.equal(isFirmwareChannelTransition(), true);
+    assert.equal(isFirmwareUpdateAvailable(), true);
+    assert.equal(getUpdateStatus(), "Beschikbaar");
+    assert.equal(getFirmwareUpdateVersions().latest, target);
+    assert.equal(hasInstalledFirmwareLatestVersion(), false);
+    assert.match(getFirmwareModalCopy(), /Dev-firmware kan de huidige main-firmware vervangen/);
+    const button = renderUpdateModal().match(/<button[^>]*data-oq-action="install-firmware-update"[^>]*>/)?.[0];
+    assert.ok(button);
+    assert.doesNotMatch(button, /disabled/);
+  }
+  assert.equal(compareFirmwareVersions("v0.49.1", "v0.49.1-dev.780"), 1);
+});
+
+test("channel transition requires the selected dev channel and a known dev target", () => {
+  for (const target of ["", "onbekend", "v0.49.1"]) {
+    setMainToDevState(target);
+    assert.equal(isFirmwareChannelTransition(), false);
+    assert.equal(isFirmwareUpdateAvailable(), false);
+  }
+  setMainToDevState();
+  state.entities.firmwareUpdateChannel = { state: "main" };
+  assert.equal(isFirmwareChannelTransition(), false);
+  assert.equal(isFirmwareUpdateAvailable(), false);
+
+  setMainToDevState();
+  delete state.entities.releaseChannelText;
+  assert.equal(isFirmwareChannelTransition(), false);
+  assert.equal(isFirmwareUpdateAvailable(), false);
+
+  setMainToDevState();
+  state.entities.projectVersionText = { state: "onbekend" };
+  assert.equal(isFirmwareChannelTransition(), false);
+});
+
+test("same-channel updates retain ordinary version ordering", () => {
+  setMainToDevState();
+  state.entities.projectVersionText = { state: "v0.49.1-dev.779" };
+  state.entities.releaseChannelText = { state: "dev" };
+  assert.equal(isFirmwareChannelTransition(), false);
+  assert.equal(isFirmwareUpdateAvailable(), true);
+
+  setMainToDevState("v0.49.1");
+  state.entities.firmwareUpdateChannel = { state: "main" };
+  state.entities.firmwareUpdate.release_url = "https://github.com/OpenQuatt/OpenQuatt/releases/tag/v0.49.1";
+  assert.equal(isFirmwareUpdateAvailable(), false);
+  assert.equal(getUpdateStatus(), "Actueel");
+  assert.equal(getFirmwareUpdateVersions().latest, "—");
+});
+
+test("channel-switch completion fails closed until the exact dev build and channel are reported", () => {
+  for (const setup of [setMainToDevState, setPrToDevState]) {
+    setup();
+    const target = state.entities.firmwareUpdate.latest_version;
+    state.updateInstallMode = "channel-switch";
+    state.updateInstallBusy = true;
+    state.updateInstallTargetVersion = target;
+    assert.equal(hasInstalledFirmwareTargetVersion(), false);
+    assert.equal(hasInstalledFirmwareLatestVersion(), false);
+    assert.equal(isFirmwareInstallSettled(), false);
+    assert.equal(isFirmwareInstallCompletionConfirmed(), false);
+
+    // New channel alone, stale/wrong version, or a different build hash is not success.
+    state.entities.releaseChannelText = { state: "dev" };
+    for (const version of ["onbekend", "v0.50.0", "v0.50.0-dev.999", target.replace(/\+.*$/, "+other")]) {
+      state.entities.projectVersionText = { state: version };
+      assert.equal(isFirmwareInstallCompletionConfirmed(), false);
+    }
+    state.entities.projectVersionText = { state: target };
+    for (const channel of ["main", "onbekend", ""]) {
+      state.entities.releaseChannelText = { state: channel };
+      assert.equal(isFirmwareInstallCompletionConfirmed(), false);
+    }
+    state.entities.releaseChannelText = { state: "dev" };
+    // Cached pre-reboot update entity must not override live build evidence.
+    assert.equal(isFirmwareInstallCompletionConfirmed(), true);
+    state.entities.firmwareUpdateStatus = { state: "Uploading" };
+    assert.equal(isFirmwareInstallCompletionConfirmed(), false);
+    delete state.entities.firmwareUpdateStatus;
+  }
+});
+
+test("channel-switch action captures its target and never completes on a failed request", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalLocation = window.location;
+  t.after(() => { globalThis.fetch = originalFetch; window.location = originalLocation; setRenderCallback(null); });
+  window.location = { pathname: "/" };
+  setMainToDevState();
+  const observed = [];
+  setRenderCallback(() => {});
+  globalThis.fetch = async () => {
+    observed.push([state.updateInstallMode, state.updateInstallTargetVersion]);
+    assert.equal(isFirmwareInstallCompletionConfirmed(), false);
+    return { ok: false, status: 503 };
+  };
+  await installFirmwareUpdate();
+  assert.deepEqual(observed, [["channel-switch", "v0.49.1-dev.780+abcdef0"]]);
+  assert.equal(state.updateInstallCompleted, false);
+  assert.equal(state.updateInstallBusy, false);
+  assert.match(state.controlError, /503/);
+});
+
+test("channel-switch aborts if target or channel changes while the target write is pending", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalLocation = window.location;
+  t.after(() => { globalThis.fetch = originalFetch; window.location = originalLocation; setRenderCallback(null); });
+  window.location = { pathname: "/" };
+  setRenderCallback(() => {});
+  for (const change of [
+    () => { state.entities.firmwareUpdate.latest_version = "v0.49.1-dev.781+changed"; },
+    () => { state.entities.firmwareUpdateChannel = { state: "main" }; },
+  ]) {
+    setMainToDevState();
+    state.entities.firmwareUpdateTarget = { state: "current build" };
+    let requests = 0;
+    globalThis.fetch = async () => {
+      requests += 1;
+      change();
+      return { ok: true };
+    };
+    await installFirmwareUpdate();
+    assert.equal(requests, 1, "no install request after target/channel changes");
+    assert.equal(state.updateInstallCompleted, false);
+    assert.equal(state.updateInstallBusy, false);
+    assert.match(state.controlError, /dev-doelversie is gewijzigd/);
+  }
 });
 
 test("PR firmware starts with one complete render before the first device write", async (t) => {

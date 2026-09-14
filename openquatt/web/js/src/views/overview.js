@@ -1,4 +1,5 @@
 import { formatOverviewStatValue, getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive, isTrendHistoryEnabled } from "../core/app-shared.js";
+import { COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS } from "../core/config.js";
 import { isCurveMode } from "../core/domain-helpers.js";
 import { formatOpenQuattResumeDateTime, getEntityValue, hasOpenQuattResumeSchedule, parseDeviceClockMinutes } from "../core/entity-store.js";
 import { getOverviewControlsRenderSignature, getRenderSignature } from "../core/render-signatures.js";
@@ -8,18 +9,13 @@ import { DEFAULT_TREND_WINDOW_HOURS, state, TREND_WINDOW_HOURS_OPTIONS } from ".
 import { isTrendHistoryFlashEnabled, normalizeTrendWindowHours, setTrendWindowHours } from "../core/trend-window.js";
 import { getInstallationMonitoringModel } from "../core/installation-monitoring.js";
 import { setViewPatchControls } from "../core/view-patch-controls.js";
-import { formatCoolingBlockReason } from "../settings/cooling.js";
+import { formatCoolingBlockReason, getCoolingCompressorRunning, getCoolingStartBlockModel } from "../settings/cooling.js";
 import { render } from "../core/render-scheduler.js";
 import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./view-utils.js";
+import { renderStatCard } from "./stat-card.js";
 
   export function renderOverviewStatCardMarkup({ label, value, tone, note, status = false }) {
-    return `
-      <article class="oq-overview-stat oq-overview-stat--${escapeHtml(tone)}${status ? " oq-overview-stat--status" : ""}">
-        <p>${escapeHtml(label)}</p>
-        <strong>${escapeHtml(value)}</strong>
-        <span>${escapeHtml(note)}</span>
-      </article>
-    `;
+    return renderStatCard({ label, value, tone, note, status });
   }
 
   export function renderOverviewStatCards(cards, status = false) {
@@ -71,9 +67,11 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
       "HA input": "HA-invoer",
       MQTT: "MQTT",
       "OT thermostat": "OpenTherm",
+      Schedule: "dagelijks tijdvenster",
       "HA input + Manual": "HA-invoer + handmatig",
       "MQTT + Manual": "MQTT + handmatig",
       "OT thermostat + Manual": "OpenTherm + handmatig",
+      "Schedule + Manual": "dagelijks tijdvenster + handmatig",
     };
     return labels[value] || value;
   }
@@ -148,13 +146,7 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
   }
 
   export function renderOverviewMetricCard(label, value, tone = "blue", note = "") {
-    return `
-      <article class="oq-overview-metric oq-overview-metric--${escapeHtml(tone)}">
-        <span>${escapeHtml(label)}</span>
-        <strong>${escapeHtml(value)}</strong>
-        ${note ? `<p>${escapeHtml(note)}</p>` : ""}
-      </article>
-    `;
+    return renderStatCard({ label, value, tone, note, accent: true });
   }
 
   export function formatSignedTemperature(value) {
@@ -290,15 +282,24 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
   }
 
   export function getCurveOverviewModel() {
-    const target = getEntityNumericValue("curveSupplyTarget");
+    // The strategy target is the effective target: the local curve, or the
+    // external supply target while one is driving. The curve target alone
+    // would misreport delta and status under an external target (issue #649).
+    const strategyTarget = hasEntity("strategySupplyTarget") ? getEntityNumericValue("strategySupplyTarget") : Number.NaN;
+    const curveTarget = getEntityNumericValue("curveSupplyTarget");
+    const targetKey = Number.isNaN(strategyTarget) ? "curveSupplyTarget" : "strategySupplyTarget";
+    const target = Number.isNaN(strategyTarget) ? curveTarget : strategyTarget;
     const supply = getEntityNumericValue("supplyTemp");
     const outsideKey = getOverviewOutsideTempKey();
     const outside = outsideKey ? getEntityNumericValue(outsideKey) : Number.NaN;
     const targetDelta = Number.isNaN(target) || Number.isNaN(supply) ? Number.NaN : supply - target;
     const fallbackActive = Boolean(outsideKey) && Number.isNaN(outside);
+    const externalActive = getEntityStateText("heatingSupplyTargetActiveSource", "") === "external";
 
-    let statusTitle = "Stuurt op buitentemperatuur";
-    let statusCopy = "De doelaanvoer volgt de huidige buitentemperatuur en vergelijkt die met de actuele aanvoer.";
+    let statusTitle = externalActive ? "Extern doel actief" : "Stuurt op buitentemperatuur";
+    let statusCopy = externalActive
+      ? "Een externe bron bepaalt het aanvoerdoel; de regeling vergelijkt dat met de actuele aanvoer."
+      : "De doelaanvoer volgt de huidige buitentemperatuur en vergelijkt die met de actuele aanvoer.";
 
     if (fallbackActive) {
       statusTitle = "Fallback actief";
@@ -315,13 +316,38 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
     }
 
     return {
-      targetText: formatOverviewStatValue("curveSupplyTarget"),
+      targetText: formatOverviewStatValue(targetKey),
       supplyText: formatOverviewStatValue("supplyTemp"),
       deltaText: formatSignedTemperature(targetDelta),
       capacityText: formatOverviewStatValue("hpCapacity"),
       statusTitle,
       statusCopy,
     };
+  }
+
+  export function getCoolingStartBlockTitle(reasonRaw) {
+    const reason = String(reasonRaw || "").trim();
+    if (reason === "Cooling minimum off-time") {
+      return "Wacht op koel-herstart";
+    }
+    if (reason === "Compressor restart protection" || reason === "Startup inhibit after reboot") {
+      return "Wacht op herstartbeveiliging";
+    }
+    if (reason === "Compressor start limit (6/hour)") {
+      return "Startlimiet bereikt";
+    }
+    if (reason === "Waiting for confirmed cooling stop") {
+      return "Wacht op bevestigde koelstop";
+    }
+    return "Start geblokkeerd";
+  }
+
+  export function isCoolingPreflowForCooling() {
+    const modeLabel = String(getEntityStateText("controlModeLabel", "") || "").toLowerCase();
+    if (!modeLabel.includes("cm1")) {
+      return false;
+    }
+    return isEntityActive("coolingRequestActive") && isEntityActive("coolingPermitted");
   }
 
   export function getCoolingOverviewModel() {
@@ -335,6 +361,8 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
     const blockReasonRaw = getEntityStateText("coolingBlockReason", "Onbekend");
     const blockReason = formatCoolingBlockReason(blockReasonRaw);
     const waitingForRoomRequest = isCoolingWaitingForRoomRequest(blockReasonRaw, requestActive);
+    const startBlock = getCoolingStartBlockModel();
+    const compressorRunning = getCoolingCompressorRunning();
 
     let statusTitle = "Wacht op koelvraag";
     let statusCopy = "Zodra er koelvraag is, zie je hier hoe de regeling de aanvoer richting het koeldoel stuurt.";
@@ -348,6 +376,12 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
     } else if (!requestActive) {
       statusTitle = "Koeling gereed";
       statusCopy = "Koeling is toegestaan, maar wacht nog op actieve koelvraag vanuit de kamerregeling.";
+    } else if (startBlock.available && startBlock.blocked && !compressorRunning) {
+      statusTitle = getCoolingStartBlockTitle(startBlock.reasonRaw);
+      statusCopy = `${startBlock.display}. De compressor start automatisch zodra de blokkade is opgeheven.`;
+    } else if (!compressorRunning && isCoolingPreflowForCooling()) {
+      statusTitle = "Voorloop voor koelen";
+      statusCopy = "De pomp bouwt eerst waterflow op voordat de compressor voor koelen mag starten.";
     } else if (!Number.isNaN(rawDemand) && rawDemand <= 0.0) {
       statusTitle = "Houdt doel vast";
       statusCopy = "De koelvraag loopt nog, maar de compressor hoeft nu niet harder te werken.";
@@ -375,6 +409,8 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
       requestActive,
       blockReason,
       waitingForRoomRequest,
+      startBlock,
+      compressorRunning,
     };
   }
 
@@ -469,13 +505,14 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
     }
     if (isCoolingOverviewActive()) {
       const model = getCoolingOverviewModel();
+      const startBlocked = Boolean(model.startBlock?.available && model.startBlock.blocked && !model.compressorRunning);
       const tone = model.waitingForRoomRequest
         ? "neutral"
-        : !model.permitted
+        : !model.permitted || startBlocked
         ? "orange"
         : model.statusTitle === "Koelt rustig door" || model.statusTitle === "Houdt temperatuur vast"
           ? "green"
-          : model.statusTitle === "Koeling gereed"
+          : model.statusTitle === "Koeling gereed" || model.statusTitle === "Wacht op koelvraag"
             ? "neutral"
             : "sky";
       return {
@@ -595,9 +632,9 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
     const openquattResumeLoading = (state.loadingEntities || state.entitySyncInFlight) && !hasEntity("openquattResumeAt");
     const manualCoolingEnabled = isEntityActive("manualCoolingEnable");
     const coolingEnabled = hasEntity("coolingEnableSelected") ? isEntityActive("coolingEnableSelected") : manualCoolingEnabled;
-    const coolingEffectiveSource = formatOverviewPermissionSource(getEntityStateText("coolingEnableEffectiveSource", ""));
-    const coolingConfiguredSourceRaw = String(getEntityValue("coolingEnableSource") || "").trim();
-    const coolingConfiguredSource = formatOverviewPermissionSource(getEntityValue("coolingEnableSource"));
+    const coolingEffectiveSource = formatOverviewPermissionSource(getEntityStateText(COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, ""));
+    const coolingConfiguredSourceRaw = String(getEntityValue(COOLING_SCHEDULE_SOURCE_KEY) || "").trim();
+    const coolingConfiguredSource = formatOverviewPermissionSource(getEntityValue(COOLING_SCHEDULE_SOURCE_KEY));
     const silentModeOverride = String(getEntityValue("silentModeOverride") || "Schedule");
     const coolingBlocked = !isEntityActive("coolingPermitted");
     const coolingRequestActive = isEntityActive("coolingRequestActive");
@@ -612,9 +649,15 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
       ? `Koeltoestemming is niet gegeven: ${coolingConfiguredSource} geeft geen toestemming en handmatig staat uit.`
       : "Koeltoestemming is niet gegeven.";
     const coolingIsReady = String(coolingBlockReasonRaw).trim().toLowerCase() === "ready" || String(coolingBlockReasonRaw).trim().toLowerCase() === "gereed" || String(coolingBlockReasonRaw).trim().toLowerCase() === "gereed om te koelen";
-    if (coolingEnabled && coolingModeActive) {
+    // De enige plek met de startblokkade is het koelregelmodel hierboven; de
+    // kaart liegt nooit over draaien (alleen "Actief" bij draaiende compressor).
+    const coolingCompressorRunning = getCoolingCompressorRunning();
+    if (coolingEnabled && coolingModeActive && coolingCompressorRunning) {
       coolingStatus = "Actief";
       coolingCopy = appendCoolingPermissionSource("Koeling draait nu.", coolingEffectiveSource);
+    } else if (coolingEnabled && coolingModeActive) {
+      coolingStatus = "Aan";
+      coolingCopy = appendCoolingPermissionSource("Er is koelvraag. Koeling start zodra dat kan.", coolingEffectiveSource);
     } else if (coolingEnabled && coolingWaitingForRoomRequest) {
       coolingStatus = "Aan";
       coolingCopy = appendCoolingPermissionSource("Koeling is toegestaan en wacht op kamertemperatuur boven het koel-setpoint.", coolingEffectiveSource);
@@ -651,8 +694,8 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
 
     return [
       { key: "openquattEnabled", label: "Openquatt regeling", status: openquattEnabled ? "Actief" : "Tijdelijk uit", copy: openquattEnabled ? "Verwarmen en koelen worden automatisch geregeld." : openquattResumeScheduled ? "Verwarming en koeling zijn tijdelijk uitgeschakeld. Beveiligingen (inclusief vorstbeveiliging) blijven actief." : "Verwarming en koeling zijn uitgeschakeld. Beveiligingen (inclusief vorstbeveiliging) blijven actief.", tone: openquattEnabled ? "green" : "orange", kind: "openquatt-control", meta: openquattEnabled ? [] : [openquattResumeLoading ? { label: "Hervatten", value: "Laden…", tone: "neutral", loading: true } : { label: openquattResumeScheduled ? "Hervat automatisch" : "Hervatten", value: openquattResumeScheduled ? formatOpenQuattResumeDateTime(openquattResumeAt, true) : "Handmatig", tone: openquattResumeScheduled ? "orange" : "neutral" }] },
-      { key: "manualCoolingEnable", label: "Koeltoestemming", status: coolingStatus, copy: coolingCopy, buttonLabel: manualCoolingEnabled ? "Toestemming uit" : "Toestemming aan", nextState: manualCoolingEnabled ? "off" : "on", tone: coolingEnabled ? (coolingModeActive ? "blue" : "sky") : "neutral" },
-      { key: "silentModeOverride", label: "Stille modus", status: silentStatus, copy: silentCopy, tone: silentTone, kind: "select", selectedOption: silentModeOverride, settingsAction: true, options: [{ value: "Off", label: "Uit" }, { value: "On", label: "Aan" }, { value: "Schedule", label: "Schema" }] },
+      { key: "manualCoolingEnable", label: "Koeltoestemming", status: coolingStatus, copy: coolingCopy, buttonLabel: manualCoolingEnabled ? "Handmatig uit" : "Handmatig aan", nextState: manualCoolingEnabled ? "off" : "on", tone: !coolingEnabled ? "neutral" : (coolingStatus === "Geblokkeerd" ? "orange" : (coolingModeActive ? "blue" : "sky")), settingsAction: hasEntity(COOLING_SCHEDULE_SOURCE_KEY) && COOLING_SCHEDULE_TIME_KEYS.every((key) => hasEntity(key)) ? "open-cooling-schedule-modal" : "", settingsLabel: "Koelvenster instellen" },
+      { key: "silentModeOverride", label: "Stille modus", status: silentStatus, copy: silentCopy, tone: silentTone, kind: "select", selectedOption: silentModeOverride, settingsAction: "open-silent-settings-modal", settingsLabel: "Stille uren instellen", options: [{ value: "Off", label: "Uit" }, { value: "On", label: "Aan" }, { value: "Schedule", label: "Schema" }] },
     ].filter((card) => hasEntity(card.key));
   }
 
@@ -691,6 +734,10 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
     `;
   }
 
+  function renderOverviewControlSettingsButton(card) {
+    return !card.settingsAction ? "" : `<button class="oq-overview-controlpanel-icon" type="button" data-oq-action="${escapeHtml(card.settingsAction)}" aria-label="${escapeHtml(card.settingsLabel)}" title="${escapeHtml(card.settingsLabel)}">⚙</button>`;
+  }
+
   export function renderOverviewControlActions(card) {
     if (card.kind === "openquatt-control") {
       const busy = state.busyAction === "openquatt-regulation";
@@ -721,15 +768,13 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
               attrs: `data-control-key="${escapeHtml(card.key)}" data-control-option="${escapeHtml(option.value)}"`,
             })).join("")}
           </div>
-          ${card.settingsAction
-            ? `<button class="oq-overview-controlpanel-icon" type="button" data-oq-action="open-silent-settings-modal" aria-label="Open instellingen voor stille uren" title="Stille uren instellen">⚙</button>`
-            : ""}
+          ${renderOverviewControlSettingsButton(card)}
         </div>
       `;
     }
 
     return `
-      <div class="oq-overview-controlpanel-actions">
+      <div class="oq-overview-controlpanel-actions${card.settingsAction ? " oq-overview-controlpanel-actions--split" : ""}">
         ${renderOverviewControlButton({
           className: "oq-overview-controlpanel-toggle",
           action: "toggle-overview-control",
@@ -737,6 +782,7 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
           busy: state.busyAction === `switch-${card.key}`,
           attrs: `data-control-key="${escapeHtml(card.key)}" data-control-state="${escapeHtml(card.nextState)}"`,
         })}
+        ${renderOverviewControlSettingsButton(card)}
       </div>
     `;
   }
@@ -1612,7 +1658,7 @@ import { isSystemInStandby, replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfCh
     replaceOuterHtmlIfSignatureChanged(
       trends,
       getOverviewTrendRenderSignature(),
-      renderOverviewTrendsPanel(),
+      () => renderOverviewTrendsPanel(),
     );
     patchOverviewTrendCurrentValues(board);
     syncOverviewTrendInteractions(board);

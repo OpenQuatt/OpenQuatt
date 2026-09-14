@@ -19,6 +19,7 @@ using esphome::openquatt_incident_manager::incident_storage_failure_outputs;
 using esphome::openquatt_incident_manager::link_round_timeout_elapsed;
 using esphome::openquatt_incident_manager::perform_start_failure_retry;
 using esphome::openquatt_incident_manager::post_command_feedback_complete;
+using esphome::openquatt_incident_manager::restored_credit_acquisition_active;
 using esphome::openquatt_incident_manager::run_observation_is_fresh;
 using esphome::openquatt_incident_manager::should_emit_operator_stop_confirmation;
 using esphome::openquatt_incident_manager::should_emit_start_confirmation;
@@ -128,6 +129,16 @@ void test_link_round_timeout_tolerates_scan_jitter() {
   assert(engine.outputs().link_state == oq_incidents::LinkState::SUSPECT);
   engine.observe_link_round(last_round_ms + 45000U, false);
   assert(engine.outputs().link_state == oq_incidents::LinkState::LOST);
+}
+
+void test_restored_credit_survives_only_bounded_online_acquisition() {
+  constexpr uint32_t kTimeoutMs = 120000U;
+  assert(restored_credit_acquisition_active(true, false, false, 119999U, 0U, kTimeoutMs));
+  assert(restored_credit_acquisition_active(true, true, true, 119999U, 0U, kTimeoutMs));
+  assert(!restored_credit_acquisition_active(true, true, false, 1000U, 0U, kTimeoutMs));
+  assert(!restored_credit_acquisition_active(true, false, false, 120000U, 0U, kTimeoutMs));
+  assert(!restored_credit_acquisition_active(false, false, false, 1U, 0U, kTimeoutMs));
+  assert(restored_credit_acquisition_active(true, false, false, 50U, UINT32_MAX - 49U, kTimeoutMs));
 }
 
 void test_duo_fallback_coverage_fails_closed() {
@@ -441,6 +452,7 @@ int main() {
   test_confirmation_audit_policy();
   test_start_failure_retry_production_policy();
   test_link_round_timeout_tolerates_scan_jitter();
+  test_restored_credit_survives_only_bounded_online_acquisition();
   test_duo_fallback_coverage_fails_closed();
   test_incident_storage_failure_forces_safe_outputs();
   test_fallback_output_confirmation();

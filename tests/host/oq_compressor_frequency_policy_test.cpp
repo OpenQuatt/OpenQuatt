@@ -50,6 +50,15 @@ int main() {
   using namespace oq_frequency_policy;
 
   const auto v1 = make_v1_snapshot();
+  assert(minimum_automatic_frequency_hz(false, v1, 2) == 30);
+  assert(minimum_automatic_frequency_hz(false, v1, 1) == 30);
+  assert(cap_below_minimum(20, minimum_automatic_frequency_hz(false, v1, 2)));
+  assert(!cap_below_minimum(30, minimum_automatic_frequency_hz(false, v1, 2)));
+  assert(!cap_below_minimum(67, 30));
+  assert(!cap_below_minimum(90, 30));
+  assert(!cap_below_minimum(-1, 30));
+  assert(!cap_below_minimum(20, -1));
+  assert(!cap_below_minimum(20, 0));
   assert(automatic_frequency_hz(false, v1, 2, 6) == 67);
   assert(automatic_frequency_hz(false, v1, 1, 6) == 56);
   assert(automatic_frequency_hz(false, v1, 2, 0) == 0);
@@ -63,6 +72,9 @@ int main() {
   v2_old.heating = make_table({0, 20, 26, 30, 48, 55, 61, 72, 80, 85, 90});
   assert(automatic_frequency_hz(true, v2_old, 2, 8) == 80);
   assert(automatic_frequency_hz(true, v2_old, 1, 10) == 71);
+  assert(minimum_automatic_frequency_hz(true, v2_old, 2) == 20);
+  assert(minimum_automatic_frequency_hz(true, v2_old, 1) == 30);
+  assert(!cap_below_minimum(20, minimum_automatic_frequency_hz(true, v2_old, 2)));
 
   auto v2 = v1;
   v2.variant = oq_odu::Variant::V2_NEW_MODEL;
@@ -72,6 +84,8 @@ int main() {
   assert(automatic_frequency_hz(true, v2, 2, 8) == 82);
   assert(automatic_frequency_hz(true, v2, 2, 10) == 90);
   assert(automatic_frequency_hz(true, v2, 1, 10) == 46);
+  assert(minimum_automatic_frequency_hz(true, v2, 2) == automatic_frequency_hz(true, v2, 2, 1));
+  assert(minimum_automatic_frequency_hz(true, v2, 1) == automatic_frequency_hz(true, v2, 1, 1));
 
   auto runtime_edited = v1;
   runtime_edited.heating.hz[6] = 65;
@@ -97,6 +111,16 @@ int main() {
   auto unknown = v1;
   unknown.heating.valid = false;
   assert(automatic_frequency_hz(false, unknown, 2, 6) == -1);
+  assert(minimum_automatic_frequency_hz(false, unknown, 2) == -1);
+  assert(minimum_automatic_frequency_hz(false, {}, 2) == -1);
+  auto lowered_minimum = v1;
+  lowered_minimum.heating.hz[1] = 26;
+  assert(minimum_automatic_frequency_hz(false, lowered_minimum, 2) == 26);
+  assert(minimum_automatic_frequency_hz(false, lowered_minimum, 1) == 30);
+  assert(cap_below_minimum(25, 26));
+  assert(!cap_below_minimum(26, 26));
+  assert(pick_allowed_level(false, lowered_minimum, 2, 1, 1, 10, 25, {}) == 0);
+  assert(pick_allowed_level(false, lowered_minimum, 2, 1, 1, 10, 26, {}) == 1);
 
   const FrequencyRange none{};
   assert(frequency_allowed(67, 67, none));

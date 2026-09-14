@@ -16,7 +16,11 @@ substitutions:
 uart:
   - id: cic_compat_uart_bus
     tx_pin: ${cic_compat_uart_tx_pin}
-    rx_pin: ${cic_compat_uart_rx_pin}
+    rx_pin:
+      number: ${cic_compat_uart_rx_pin}
+      mode:
+        input: true
+        pullup: true
     flow_control_pin: ${cic_compat_uart_rts_pin}
     baud_rate: 19200
     data_bits: 8

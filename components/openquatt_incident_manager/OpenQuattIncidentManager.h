@@ -10,13 +10,16 @@
 #include <freertos/semphr.h>
 
 #include "esphome/components/globals/globals_component.h"
+#include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/openquatt_decision_log/OpenQuattDecisionLog.h"
 #include "esphome/components/openquatt_web_auth/OpenQuattWebAuth.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/core/component.h"
 #include "esphome/core/preferences.h"
 #include "OpenQuattIncidentPolicy.h"
+#include "OpenQuattRestartHandoff.h"
 #include "PsramBuffer.h"
+#include "includes/control/oq_hp_restart_guard.h"
 #include "includes/diagnostics/oq_pump_ipwm_feedback.h"
 #include "includes/incidents/oq_hp_incident_engine.h"
 #include "includes/incidents/oq_manual_reset_latch_policy.h"
@@ -47,6 +50,13 @@ class OpenQuattIncidentManager : public Component {
   void set_control_mode_code(IntGlobal* value) { this->control_mode_code_ = value; }
   void set_decision_log(openquatt_decision_log::OpenQuattDecisionLog* value) { this->decision_log_ = value; }
   void set_web_auth(openquatt_web_auth::OpenQuattWebAuth* value) { this->web_auth_ = value; }
+  void set_minimum_off_ms(uint32_t value) { this->minimum_off_ms_ = value; }
+  void set_polling_paused(binary_sensor::BinarySensor* value) { this->polling_paused_ = value; }
+  // Button callbacks only enqueue; state and Modbus queues belong to loop().
+  void request_restart() { this->restart_requested_.store(true); }
+  void invalidate_restart_credit(uint8_t hp_index);
+  bool startup_inhibited(uint8_t hp_index) const;
+  uint32_t minimum_off_remaining_ms(uint8_t hp_index, uint32_t now_ms) const;
 
   void setup() override;
   void loop() override;
@@ -54,6 +64,9 @@ class OpenQuattIncidentManager : public Component {
   float get_setup_priority() const override;
 
   void observe_transport(uint8_t hp_index, bool online, uint32_t now_ms);
+  // A table that may have changed during a write is an explicit incident
+  // input, rather than an implicit frequency-policy stop.
+  void observe_runtime_frequency_mapping(uint8_t hp_index, bool valid, uint32_t now_ms);
   void observe_working_mode(uint8_t hp_index, float working_mode, uint32_t now_ms);
   void observe_compressor_frequency(uint8_t hp_index, float frequency_hz, uint32_t now_ms);
   void observe_fault_word(uint8_t hp_index, uint16_t register_address, uint16_t word, uint32_t now_ms);
@@ -91,16 +104,19 @@ class OpenQuattIncidentManager : public Component {
 
  protected:
   static constexpr uint32_t LINK_ROUND_TIMEOUT_MS = 15000U;
+  static constexpr uint32_t RESTART_CREDIT_ACQUISITION_TIMEOUT_MS = 120000U;
   static constexpr uint32_t PARTIAL_FAULT_SNAPSHOT_TIMEOUT_MS = 15000U;
   static constexpr uint32_t MANUAL_RESET_PERSIST_RETRY_MS = 60000U;
   static constexpr uint8_t INITIALIZATION_FAULT_SNAPSHOT_COUNT = 2U;
-  static constexpr size_t SYNTHETIC_INCIDENT_COUNT = 4U;
+  static constexpr size_t SYNTHETIC_INCIDENT_COUNT = 5U;
   static constexpr size_t ACTION_RESULT_HISTORY_SIZE = 4U;
   static constexpr oq_incidents::IncidentId LINK_LOSS_INCIDENT_ID = oq_incidents::kLinkLossIncidentId;
   static constexpr oq_incidents::IncidentId START_FAILED_INCIDENT_ID = oq_incidents::kStartFailedIncidentId;
   static constexpr oq_incidents::IncidentId STOP_UNCONFIRMED_INCIDENT_ID = oq_incidents::kStopUnconfirmedIncidentId;
   static constexpr oq_incidents::IncidentId PERSISTENCE_FAILURE_INCIDENT_ID =
       oq_incidents::kPersistenceFailureIncidentId;
+  static constexpr oq_incidents::IncidentId RUNTIME_FREQUENCY_MAPPING_INCIDENT_ID =
+      oq_incidents::kRuntimeFrequencyMappingIncidentId;
 
   struct ActionResultRecord {
     const char* action{"none"};
@@ -129,9 +145,17 @@ class OpenQuattIncidentManager : public Component {
 
   struct UnitState {
     oq_incidents::HpIncidentEngine engine{};
+    oq_hp_restart_guard::Policy restart_guard{};
+    bool restart_credit_pending{false};
+    uint32_t restart_credit_pending_since_ms{0U};
+    bool startup_released{false};
+    uint32_t rest_mode_generation{0U};
+    uint32_t rest_mode_observed_ms{0U};
     bool configured{false};
     bool transport_online{false};
     bool transport_seen{false};
+    bool runtime_frequency_mapping_valid{false};
+    bool runtime_frequency_mapping_observed{false};
     float working_mode{0.0F};
     bool working_mode_valid{false};
     uint32_t working_mode_generation{0U};
@@ -233,7 +257,9 @@ class OpenQuattIncidentManager : public Component {
   PublishedSnapshot& response_snapshot_() const;
   UnitState* unit_(uint8_t hp_index);
   const UnitState* unit_(uint8_t hp_index) const;
+  static void invalidate_restart_credit_(UnitState& unit);
   void process_fault_snapshot_(UnitState& unit, size_t slot, uint32_t now_ms, bool force_partial);
+  void perform_restart_(uint32_t now_ms);
   void observe_complete_link_round_(UnitState& unit, uint32_t now_ms);
   void publish_transitions_(UnitState& unit, size_t slot, uint32_t now_ms);
   void publish_incident_transition_(size_t slot, const oq_incidents::IncidentDefinition& definition,
@@ -261,6 +287,10 @@ class OpenQuattIncidentManager : public Component {
   IntGlobal* control_mode_code_{nullptr};
   openquatt_decision_log::OpenQuattDecisionLog* decision_log_{nullptr};
   openquatt_web_auth::OpenQuattWebAuth* web_auth_{nullptr};
+  binary_sensor::BinarySensor* polling_paused_{nullptr};
+  uint32_t minimum_off_ms_{240000U};
+  std::atomic<bool> restart_requested_{false};
+  bool restarting_{false};
   bool fallback_requested_{false};
   bool fallback_active_{false};
   uint8_t fallback_block_reason_{0U};

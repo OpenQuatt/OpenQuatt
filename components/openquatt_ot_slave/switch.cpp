@@ -3,7 +3,7 @@
 
 namespace esphome {
 namespace OpenQuattOTSlave {
-static const char* const TAG = "OpenQuattOTSlave.switch";
+static const char* const TAG = "oq.ot.thermostat.switch";
 
 void OpenQuattOTSlaveSwitch::write_state(bool state) {
   if (this->write_callback_) {

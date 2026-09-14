@@ -13,15 +13,21 @@ if (( ${#sources[@]} == 0 )); then
   exit 1
 fi
 
+compiler_args=(-std=c++17 -Wall -Wextra -Werror)
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  sdk_root="${SDKROOT:-$(xcrun --sdk macosx --show-sdk-path)}"
+  libcxx_headers="${sdk_root}/usr/include/c++/v1"
+  if [[ -f "${libcxx_headers}/cstdint" ]]; then
+    compiler_args+=(-isystem "${libcxx_headers}")
+  fi
+fi
+
 for source in "${sources[@]}"; do
   test_name="$(basename "${source}" .cpp)"
   binary="${build_root}/${test_name}"
   echo "[build] ${test_name}"
   "${CXX:-c++}" \
-    -std=c++17 \
-    -Wall \
-    -Wextra \
-    -Werror \
+    "${compiler_args[@]}" \
     -I"${repo_root}" \
     -I"${repo_root}/openquatt" \
     "${source}" \

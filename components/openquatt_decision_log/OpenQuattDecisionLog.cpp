@@ -446,14 +446,19 @@ void OpenQuattDecisionLog::process_urgent_flush_() {
     return;
   }
   bool urgent_target_persisted = false;
-  if (this->flush_pending_events_(URGENT_FLUSH_MAX_BATCHES, true, urgent_target_seq, &urgent_target_persisted) &&
-      urgent_target_persisted) {
+  const bool wrote =
+      this->flush_pending_events_(URGENT_FLUSH_MAX_BATCHES, true, urgent_target_seq, &urgent_target_persisted);
+  if (wrote && urgent_target_persisted) {
     this->complete_urgent_flush_(now_us, urgent_target_seq);
     return;
   }
 
   portENTER_CRITICAL(&this->mux_);
-  this->urgent_flush_.mark_failure(now_us, URGENT_FLUSH_RETRY_US);
+  if (wrote) {
+    this->urgent_flush_.schedule_continuation(now_us);
+  } else {
+    this->urgent_flush_.mark_failure(now_us, URGENT_FLUSH_RETRY_US);
+  }
   portEXIT_CRITICAL(&this->mux_);
 }
 
@@ -790,8 +795,13 @@ bool OpenQuattDecisionLog::write_flash_events_(const DecisionEvent* events, size
   const uint32_t sequence = this->next_flash_sequence_;
   const uint32_t slot_index = sequence % FLASH_SLOT_COUNT;
   const size_t slot_offset = FLASH_PARTITION_OFFSET + static_cast<size_t>(slot_index) * FLASH_SLOT_SIZE;
+  int64_t erase_duration_us = 0;
   if ((slot_index % FLASH_SLOTS_PER_SECTOR) == 0) {
+    const int64_t erase_started_us = esp_timer_get_time();
     const esp_err_t erase_result = esp_partition_erase_range(this->flash_partition_, slot_offset, FLASH_SECTOR_SIZE);
+    erase_duration_us = esp_timer_get_time() - erase_started_us;
+    ESP_LOGD(TAG, "Decision-log flash sector erase: slot=%u duration=%" PRId64 " ms", static_cast<unsigned>(slot_index),
+             erase_duration_us / 1000);
     if (erase_result != ESP_OK) {
       ESP_LOGW(TAG, "Could not erase decision-log flash sector: %s", esp_err_to_name(erase_result));
       return false;
@@ -824,8 +834,13 @@ bool OpenQuattDecisionLog::write_flash_events_(const DecisionEvent* events, size
   slot_buffer.fill(0xFF);
   std::memcpy(slot_buffer.data(), &header, sizeof(header));
   std::memcpy(slot_buffer.data() + sizeof(header), records.data(), event_count * sizeof(FlashEventRecord));
+  const int64_t write_started_us = esp_timer_get_time();
   const esp_err_t write_result =
       esp_partition_write(this->flash_partition_, slot_offset, slot_buffer.data(), slot_buffer.size());
+  const int64_t write_duration_us = esp_timer_get_time() - write_started_us;
+  ESP_LOGD(TAG, "Decision-log flash slot write: slot=%u events=%u duration=%" PRId64 " ms erase=%" PRId64 " ms",
+           static_cast<unsigned>(slot_index), static_cast<unsigned>(event_count), write_duration_us / 1000,
+           erase_duration_us / 1000);
   if (write_result != ESP_OK) {
     ESP_LOGW(TAG, "Could not write decision-log flash slot %u: %s", static_cast<unsigned>(slot_index),
              esp_err_to_name(write_result));
@@ -1195,6 +1210,8 @@ const char* OpenQuattDecisionLog::subject_to_string_(uint8_t value) {
 
 const char* OpenQuattDecisionLog::reason_to_string_(uint8_t value) {
   switch (value) {
+    case REASON_FREQUENCY_CAP_BELOW_MINIMUM:
+      return "frequency_cap_below_minimum";
     case REASON_KEEP_CURRENT:
       return "keep_current";
     case REASON_HOLD_ACTIVE:
@@ -1299,6 +1316,10 @@ const char* OpenQuattDecisionLog::reason_to_string_(uint8_t value) {
       return "hp_persistence_failure";
     case REASON_HP_RECOVERED:
       return "hp_recovered";
+    case REASON_ROOM_DEMAND:
+      return "room_demand";
+    case REASON_SETPOINT_RAISE:
+      return "setpoint_raise";
     default:
       return "unknown";
   }

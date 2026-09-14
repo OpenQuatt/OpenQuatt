@@ -4,7 +4,10 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PROFILE = (ROOT / "configs/hil/input_sources_fast_duo_wifi.yaml").read_text()
+V2_PROFILE = (ROOT / "configs/hil/issue_667_v2_performance_duo_wifi.yaml").read_text()
+HIL_CONTROLLER = (ROOT / "configs/heatpump_controller_q/duo_wifi_hil.yaml").read_text()
 RUNNER = (ROOT / "scripts/hil/run-input-sources.mjs").read_text()
+V2_RUNNER = (ROOT / "scripts/hil/run-v2-performance.mjs").read_text()
 REST_CLIENT = (ROOT / "scripts/hil/rest-client.mjs").read_text()
 SUBSTITUTIONS = (ROOT / "openquatt/oq_substitutions_common.yaml").read_text()
 TARGETS = (ROOT / "build_targets.yaml").read_text()
@@ -44,11 +47,24 @@ class HilHarnessContractTest(unittest.TestCase):
     def test_mutations_are_gated_and_targets_have_no_defaults(self):
         self.assertIn("mutating HIL runs require --apply", RUNNER)
         self.assertIn("--device and --restore-config", RUNNER)
-        self.assertIn("openquatt-modbus-opentherm-v1", RUNNER)
+        self.assertIn("openquatt-modbus-opentherm-v2", RUNNER)
         self.assertIn("simulator contract differs", RUNNER)
         self.assertIn("writeIntervalMs < 1000", REST_CLIENT)
         self.assertNotIn("192.168.", RUNNER)
         self.assertNotIn("192.168.", REST_CLIENT)
+
+    def test_issue_667_profile_and_runner_are_test_only(self):
+        self.assertIn("HIL TEST ONLY", V2_PROFILE)
+        self.assertIn("issue-667-v2-performance-v1", V2_PROFILE)
+        self.assertIn("HIL HP1 Power Input quality", V2_PROFILE)
+        self.assertIn("HIL Low-load Pmin", V2_PROFILE)
+        self.assertIn("id(cic_component).stop_poller();", V2_PROFILE)
+        self.assertIn("id(cic_component).start_poller();", V2_PROFILE)
+        self.assertIn("flash_write_interval: 1s", HIL_CONTROLLER)
+        self.assertIn("openquatt-modbus-opentherm-v2", V2_RUNNER)
+        self.assertIn("v2PerformanceScenario", V2_RUNNER)
+        self.assertNotIn("192.168.", V2_RUNNER)
+        self.assertNotIn("issue_667_v2_performance_duo_wifi.yaml", TARGETS)
 
     def test_harness_is_documented_and_checked_in_ci(self):
         self.assertIn("snapshot.json", DOCS)

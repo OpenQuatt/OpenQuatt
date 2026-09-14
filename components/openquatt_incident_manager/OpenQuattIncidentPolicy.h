@@ -11,6 +11,13 @@ inline bool link_round_timeout_elapsed(uint32_t now_ms, uint32_t last_round_ms, 
   return static_cast<uint32_t>(now_ms - last_round_ms) >= timeout_ms;
 }
 
+inline bool restored_credit_acquisition_active(bool credit_pending, bool transport_seen, bool transport_online,
+                                               uint32_t now_ms, uint32_t pending_since_ms,
+                                               uint32_t acquisition_timeout_ms) {
+  return credit_pending && (!transport_seen || transport_online) &&
+         static_cast<uint32_t>(now_ms - pending_since_ms) < acquisition_timeout_ms;
+}
+
 inline bool feedback_generation_is_newer(uint32_t generation, uint32_t baseline) {
   return static_cast<int32_t>(generation - baseline) > 0;
 }

@@ -8,7 +8,7 @@ import { state } from "../core/state.js";
 import { renderSettingsFieldCard, renderSettingsSection } from "./controls.js";
 
 export const ELECTRICAL_LIMIT_KNOWN_GENERATIONS = ["V1", "V1.5", "V2"];
-export const ELECTRICAL_LIMIT_MIN_A = 10;
+export const ELECTRICAL_LIMIT_MIN_A = 6;
 // Absolute OpenQuatt ceiling for Duo V2 (2 x 13 A published per-ODU max);
 // spiegelt oq_duo_current_limit_v2_max_a. De officiële Quatt Duo-specificatie
 // (20 A) blijft de standaard- en waarschuwingsgrens.
@@ -163,7 +163,7 @@ export function resolveElectricalLimitView() {
 }
 
 export function renderElectricalLimitRestore(view) {
-  const busy = state.busyAction === "save-electricalCurrentLimit" || state.busyAction === "electricalCurrentLimitReset";
+  const busy = state.busyAction === "save-electricalCurrentLimit";
   const button = view.showRestore
     ? `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="reset-electrical-limit-to-default" ${busy || state.loadingEntities ? "disabled" : ""}>Standaardwaarde herstellen (${formatDutchAmps(view.info.standardA)})</button>`
     : "";

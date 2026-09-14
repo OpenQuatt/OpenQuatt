@@ -1,10 +1,15 @@
 #!/usr/bin/env node
 
-import { mkdir, unlink } from 'node:fs/promises';
+import { access, chmod, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { flashFirmware } from './firmware.mjs';
+import {
+  flashFirmware,
+  flashFirmwareArtifact,
+  prepareFirmwareRestore,
+  verifyFirmwareArtifact,
+} from './firmware.mjs';
 import {
   HilRestClient,
   RequestGate,
@@ -18,6 +23,7 @@ import {
   restoreSettings,
   runDirectory,
   snapshotSettings,
+  verifyRestoredSettings,
   writeJsonAtomic,
 } from './session.mjs';
 import { waitFor } from './wait.mjs';
@@ -27,7 +33,8 @@ import {
 } from '../../tests/hil/scenarios/input-sources.mjs';
 
 const HIL_PROFILE = 'input-sources-fast-v1';
-const SIMULATOR_CONTRACT = 'openquatt-modbus-opentherm-v1';
+const SIMULATOR_CONTRACT = 'openquatt-modbus-opentherm-v2';
+const HIL_PREFERENCE_SETTLE_MS = 2000;
 const VALID_STAGES = new Set([
   'smoke',
   'inputs',
@@ -79,12 +86,16 @@ function requiredValue(argv, index, option) {
   return value;
 }
 
-export function parseArgs(argv) {
+export function parseArgs(argv, {
+  validStages = VALID_STAGES,
+  defaultProfile = HIL_PROFILE,
+  defaultSimulatorContract = SIMULATOR_CONTRACT,
+} = {}) {
   const options = {
     stage: 'smoke',
     apply: false,
-    expectedProfile: HIL_PROFILE,
-    expectedSimulatorContract: SIMULATOR_CONTRACT,
+    expectedProfile: defaultProfile,
+    expectedSimulatorContract: defaultSimulatorContract,
     writeIntervalMs: 1500,
     outputRoot: '.tmp/hil',
     settingsOnly: false,
@@ -125,7 +136,7 @@ export function parseArgs(argv) {
   }
   options.controller = normalizeBaseUrl(options.controller, 'controller');
   options.simulator = normalizeBaseUrl(options.simulator, 'simulator');
-  if (!VALID_STAGES.has(options.stage)) throw new Error(`unsupported stage: ${options.stage}`);
+  if (!validStages.has(options.stage)) throw new Error(`unsupported stage: ${options.stage}`);
   if (!Number.isFinite(options.writeIntervalMs) || options.writeIntervalMs < 1000) {
     throw new Error('--write-interval-ms must be at least 1000');
   }
@@ -168,6 +179,59 @@ export function verifyRestoredFirmware(actual, expected) {
     `restored firmware differs: expected ${expected}, received ${actual ?? 'missing'}`,
   );
   return actual;
+}
+
+export function verifyRestoreArtifact(expectedFirmware, configHash) {
+  const expectedHash = String(expectedFirmware).match(/config hash (0x[0-9a-fA-F]{8})/i)?.[1]?.toLowerCase();
+  assert(expectedHash, `baseline firmware identity has no config hash: ${expectedFirmware}`);
+  assert(
+    configHash === expectedHash,
+    `restore artifact differs: expected ${expectedHash}, compiled ${configHash ?? 'missing'}`,
+  );
+  return configHash;
+}
+
+export async function runGuardedMutation({ interrupted, arm = async () => {}, mutate }) {
+  if (interrupted()) throw new Error('HIL run interrupted before device mutation');
+  await arm();
+  if (interrupted()) throw new Error('HIL run interrupted before device mutation');
+  return mutate();
+}
+
+async function waitForDurableSettings(controller, simulator, snapshot) {
+  await new Promise((resolve) => setTimeout(resolve, HIL_PREFERENCE_SETTLE_MS));
+  await verifyRestoredSettings({ controller, simulator, snapshot });
+}
+
+export async function waitForSafeCm0Persisted(controller) {
+  await new Promise((resolve) => setTimeout(resolve, HIL_PREFERENCE_SETTLE_MS));
+  const values = await controller.values([
+    { key: 'override', domain: 'select', name: 'CM Override' },
+    { key: 'mode', domain: 'text_sensor', name: 'Control Mode' },
+  ]);
+  assert(
+    values.override === 'Force CM0',
+    `safe CM0 persistence check failed: CM Override is ${JSON.stringify(values.override)}`,
+  );
+  assert(
+    values.mode === 'CM0',
+    `safe CM0 persistence check failed: Control Mode is ${JSON.stringify(values.mode)}`,
+  );
+}
+
+async function restoreArtifactPath(snapshot, runDir) {
+  const fileName = snapshot.restoreArtifact?.file;
+  assert(
+    typeof fileName === 'string' && path.basename(fileName) === fileName,
+    'snapshot has no safe prevalidated restore artifact',
+  );
+  verifyRestoreArtifact(snapshot.firmware, snapshot.restoreArtifact.configHash);
+  const artifactPath = path.join(runDir, fileName);
+  await access(artifactPath).catch((error) => {
+    throw new Error(`prevalidated restore artifact is unavailable: ${artifactPath} (${error.message})`);
+  });
+  await verifyFirmwareArtifact(artifactPath, snapshot.restoreArtifact);
+  return artifactPath;
 }
 
 async function waitNormalFirmware(controller, expectedFirmware, interrupted) {
@@ -248,12 +312,22 @@ function assertSnapshotTargets(snapshot, options) {
   assert(snapshot.targets?.simulator === options.simulator, 'snapshot simulator URL differs');
 }
 
-async function restoreFirmwareAndSettings({
+export function assertSnapshotScenario(snapshot, scenario) {
+  assert(
+    snapshot.scenario === scenario.name,
+    `snapshot scenario differs: expected ${scenario.name}, received ${snapshot.scenario ?? 'missing'}`,
+  );
+}
+
+export async function restoreFirmwareAndSettings({
   options,
   controller,
   simulator,
   snapshot,
   interrupted,
+  restoreSettingsImpl = restoreSettings,
+  flashFirmwareArtifactImpl = flashFirmwareArtifact,
+  waitForSafeCm0PersistedImpl = waitForSafeCm0Persisted,
 }) {
   const errors = [];
   let restoredFirmware = null;
@@ -267,14 +341,38 @@ async function restoreFirmwareAndSettings({
     }
   };
   if (options.settingsOnly) {
-    await attempt('restore settings', () => restoreSettings({ controller, simulator, snapshot }));
+    const safeSettingsRestored = await attempt('restore settings while keeping safe CM0', () =>
+      restoreSettingsImpl({ controller, simulator, snapshot, restoreCmOverride: false }),
+    );
+    if (!safeSettingsRestored) {
+      throw new AggregateError(errors, 'safe CM0 restore failed; firmware mutation blocked');
+    }
     restoredFirmware = snapshot.firmware;
   } else {
-    await attempt('restore settings in safe CM0 before firmware OTA', () =>
-      restoreSettings({ controller, simulator, snapshot, restoreCmOverride: false }),
+    const safeSettingsRestored = await attempt('restore settings in safe CM0 before firmware OTA', () =>
+      restoreSettingsImpl({ controller, simulator, snapshot, restoreCmOverride: false }),
     );
+    if (!safeSettingsRestored) {
+      throw new AggregateError(errors, 'safe CM0 restore failed; firmware OTA blocked');
+    }
+    const safeCm0Persisted = await attempt('confirm persisted safe CM0 before firmware OTA', () =>
+      waitForSafeCm0PersistedImpl(controller),
+    );
+    if (!safeCm0Persisted) {
+      throw new AggregateError(errors, 'safe CM0 persistence failed; firmware OTA blocked');
+    }
+    const artifactVerified = await attempt('verify restore artifact immediately before OTA', () =>
+      verifyFirmwareArtifact(options.restoreArtifactPath, snapshot.restoreArtifact),
+    );
+    if (!artifactVerified) {
+      throw new AggregateError(errors, 'restore artifact verification failed; firmware OTA blocked');
+    }
     const firmwareRestored = await attempt('restore normal firmware', () =>
-      flashFirmware({ config: options.restoreConfig, device: options.device }),
+      flashFirmwareArtifactImpl({
+        config: options.restoreConfig,
+        device: options.device,
+        artifact: options.restoreArtifactPath,
+      }),
     );
     const normalFirmwareConfirmed = firmwareRestored
       ? await attempt('wait for normal firmware', async () => {
@@ -282,8 +380,8 @@ async function restoreFirmwareAndSettings({
         })
       : false;
     if (normalFirmwareConfirmed) {
-      await attempt('verify settings after normal firmware reboot', () =>
-        restoreSettings({ controller, simulator, snapshot }),
+      await attempt('restore settings after normal firmware reboot while keeping safe CM0', () =>
+        restoreSettingsImpl({ controller, simulator, snapshot, restoreCmOverride: false }),
       );
     }
   }
@@ -303,16 +401,21 @@ async function verifySettingsOnlyFirmware(controller, snapshot) {
   );
 }
 
-async function run(options) {
+export async function run(options, scenario = {
+  name: 'input-sources',
+  prepare: prepareInputSourceScenario,
+  execute: runInputSourceScenarios,
+}) {
   const startedAt = new Date();
   const outputRoot = path.resolve(options.outputRoot);
   const runDir = options.restoreSnapshot
     ? path.dirname(path.resolve(options.restoreSnapshot))
-    : runDirectory(outputRoot, startedAt);
+    : runDirectory(outputRoot, startedAt, scenario.name);
   const reportPath = options.restoreSnapshot
     ? path.join(runDir, `recovery-${startedAt.toISOString().replace(/[:.]/g, '-')}.json`)
     : path.join(runDir, 'report.json');
-  await mkdir(runDir, { recursive: true });
+  await mkdir(runDir, { recursive: true, mode: 0o700 });
+  await chmod(runDir, 0o700);
   const requests = [];
   const gate = new RequestGate({ writeIntervalMs: options.writeIntervalMs });
   const clientOptions = {
@@ -344,21 +447,35 @@ async function run(options) {
   let recoverySucceeded = false;
   let before;
   let after;
+  let scenarioResult;
   let restoredFirmware;
   try {
     if (options.restoreSnapshot) {
-      recoveryLock = await acquireRecoveryLock(path.dirname(runDir), runDir);
       snapshot = await readSnapshot(path.resolve(options.restoreSnapshot));
       assertSnapshotTargets(snapshot, options);
-      if (options.settingsOnly) await verifySettingsOnlyFirmware(controller, snapshot);
+      assertSnapshotScenario(snapshot, scenario);
+      const recoveryOptions = options.settingsOnly
+        ? options
+        : { ...options, restoreArtifactPath: await restoreArtifactPath(snapshot, runDir) };
+      recoveryLock = await acquireRecoveryLock(
+        { controller: options.controller, simulator: options.simulator },
+        runDir,
+      );
+      await recoveryLock.markMutationStarted();
       mutationStarted = true;
+      if (options.settingsOnly) await verifySettingsOnlyFirmware(controller, snapshot);
       restoredFirmware = await restoreFirmwareAndSettings({
-        options,
+        options: recoveryOptions,
         controller,
         simulator,
         snapshot,
         interrupted,
       });
+      if (scenario.afterRestore) {
+        await scenario.afterRestore({ controller, simulator, snapshot, interrupted });
+      }
+      await restoreSettings({ controller, simulator, snapshot });
+      await waitForDurableSettings(controller, simulator, snapshot);
       recoverySucceeded = true;
       success = true;
     } else {
@@ -368,26 +485,56 @@ async function run(options) {
       if (options.stage === 'smoke') {
         success = true;
       } else {
-        lock = await acquireLock(outputRoot, runDir);
+        lock = await acquireLock(
+          { controller: options.controller, simulator: options.simulator },
+          runDir,
+        );
         snapshot = await snapshotSettings({
           controller,
           simulator,
           targets: { controller: options.controller, simulator: options.simulator },
           firmware: before.firmware,
+          scenario: scenario.name,
         });
+        const preparedRestore = await prepareFirmwareRestore({
+          config: options.restoreConfig,
+          artifactDirectory: runDir,
+        });
+        verifyRestoreArtifact(snapshot.firmware, preparedRestore.configHash);
+        snapshot.restoreArtifact = {
+          file: path.basename(preparedRestore.artifact),
+          configHash: preparedRestore.configHash,
+          sha256: preparedRestore.sha256,
+          size: preparedRestore.size,
+        };
         await writeJsonAtomic(path.join(runDir, 'snapshot.json'), snapshot);
         console.log(`SNAPSHOT ${path.join(runDir, 'snapshot.json')}`);
 
         if (options.testConfig) {
-          mutationStarted = true;
-          await flashFirmware({ config: options.testConfig, device: options.device });
+          await runGuardedMutation({
+            interrupted,
+            arm: async () => {
+              await lock.markMutationStarted();
+              mutationStarted = true;
+            },
+            mutate: () => flashFirmware({ config: options.testConfig, device: options.device }),
+          });
         }
         await waitProfile(controller, options.expectedProfile, interrupted);
-        mutationStarted = true;
-        await prepareInputSourceScenario(controller, simulator, interrupted);
-        await runInputSourceScenarios({
+        await runGuardedMutation({
+          interrupted,
+          arm: mutationStarted
+            ? undefined
+            : async () => {
+                await lock.markMutationStarted();
+                mutationStarted = true;
+              },
+          mutate: () => scenario.prepare(controller, simulator, interrupted, snapshot),
+        });
+        scenarioResult = await scenario.execute({
           stage: options.stage,
           controller,
+          simulator,
           interrupted,
           waitForProfile: () => waitProfile(controller, options.expectedProfile, interrupted),
         });
@@ -403,12 +550,20 @@ async function run(options) {
     if (snapshot && mutationStarted && !options.restoreSnapshot) {
       try {
         restoredFirmware = await restoreFirmwareAndSettings({
-          options,
+          options: {
+            ...options,
+            restoreArtifactPath: await restoreArtifactPath(snapshot, runDir),
+          },
           controller,
           simulator,
           snapshot,
           interrupted: () => false,
         });
+        if (scenario.afterRestore) {
+          await scenario.afterRestore({ controller, simulator, snapshot, interrupted: () => false });
+        }
+        await restoreSettings({ controller, simulator, snapshot });
+        await waitForDurableSettings(controller, simulator, snapshot);
         recoverySucceeded = true;
       } catch (restoreError) {
         failure = failure
@@ -424,11 +579,9 @@ async function run(options) {
         : cleanupError;
       success = false;
     };
-    let recoveryLockReleased = !recoveryLock;
-    if (recoveryLock) {
+    if (recoveryLock && recoveryComplete) {
       try {
         await recoveryLock.release();
-        recoveryLockReleased = true;
       } catch (cleanupError) {
         recordCleanupFailure(cleanupError);
       }
@@ -436,17 +589,12 @@ async function run(options) {
     if (lock && recoveryComplete) {
       await lock.release().catch(recordCleanupFailure);
     }
-    if (options.restoreSnapshot && recoverySucceeded && recoveryLockReleased) {
-      await unlink(path.join(path.dirname(runDir), 'input-sources.lock')).catch((error) => {
-        if (error.code !== 'ENOENT') recordCleanupFailure(error);
-      });
-    }
     if (snapshot && !recoveryComplete) {
       console.error(`RECOVERY REQUIRED: ${path.join(runDir, 'snapshot.json')}`);
     }
     const report = {
       schema: 1,
-      scenario: 'input-sources',
+      scenario: scenario.name,
       stage: options.stage,
       startedAt: startedAt.toISOString(),
       finishedAt: new Date().toISOString(),
@@ -458,6 +606,7 @@ async function run(options) {
         write: gate.writeIntervalMs,
       },
       diagnostics: { before, after },
+      scenarioResult,
       restoredFirmware,
       requests,
     };
@@ -478,7 +627,7 @@ async function run(options) {
   } else if (options.stage === 'smoke') {
     console.log(`PASS read-only HIL smoke; report: ${reportPath}`);
   } else {
-    console.log(`PASS input/source HIL ${options.stage}; report: ${reportPath}`);
+    console.log(`PASS ${scenario.name} HIL ${options.stage}; report: ${reportPath}`);
   }
 }
 

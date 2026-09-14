@@ -143,6 +143,8 @@ class Runtime {
       id(oq_cooling_request_owner_hp) = 0;
       id(oq_cooling_owner_hp) = 0;
       id(oq_cooling_request_reason_code) = 0;
+      id(oq_cooling_start_status_d_reason) = 0;
+      id(oq_cooling_start_status_d_remaining_s) = 0;
       return;
     }
     const uint32_t global_remaining_ms = oq_cooling::global_minimum_off_time_remaining_ms(
@@ -182,13 +184,23 @@ class Runtime {
     dispatch.cooling_mode = true;
     dispatch.lead_is_hp1 = lead_is_hp1;
     dispatch.stop_confirmation_pending = stop_confirmation_pending;
+    dispatch.hp1_startup_inhibited = id(oq_incident_manager).startup_inhibited(1U);
+    dispatch.hp1_startup_remaining_ms = id(oq_incident_manager).minimum_off_remaining_ms(1U, now_ms);
     dispatch.hp1 = {hp1_candidate, id(hp1_last_start_ms), id(hp1_last_stop_ms), any_level_allowed(true)};
 #if OQ_TOPOLOGY_DUO
     dispatch.duo = true;
+    dispatch.hp2_startup_inhibited = id(oq_incident_manager).startup_inhibited(2U);
+    dispatch.hp2_startup_remaining_ms = id(oq_incident_manager).minimum_off_remaining_ms(2U, now_ms);
     dispatch.hp2 = {hp2_candidate, id(hp2_last_start_ms), id(hp2_last_stop_ms), any_level_allowed(false)};
 #endif
     const auto routing = oq_cooling::dispatch_tick(dispatch);
     if (!routing.evaluated) return;
+    // Issue #642: always publish this dispatch's own verdict, including an
+    // inhibited owner with start_blocked == false. DispatchOutput defaults to
+    // NONE/0, so no branch is needed and routing is untouched. The actuator
+    // (final gate) owns the `_a_` slot and wins on refuse.
+    id(oq_cooling_start_status_d_reason) = routing.start_status_reason;
+    id(oq_cooling_start_status_d_remaining_s) = routing.start_status_remaining_s;
     id(oq_demand_filtered_prev) = id(oq_demand_filtered);
     id(oq_demand_filtered) = routing.raw_demand;
     id(oq_heating_demand_filtered) = 0;

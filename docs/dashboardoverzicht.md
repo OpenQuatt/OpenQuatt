@@ -1,9 +1,5 @@
 # Dashboard gebruiken
 
-De actuele dashboardhandleiding staat in de Home Assistant companion-repository:
+De dashboardhandleiding staat nu op [Dashboard gebruiken](dashboard/dashboard.md).
 
-**[Dashboard gebruiken in OpenQuatt Home Assistant](https://github.com/OpenQuatt/home-assistant-openquatt/blob/main/docs/dashboard.md)**
-
-De companion-repository is de primaire bron voor dashboards, Home Assistant-
-packages en de bijbehorende installatie- en gebruiksdocumentatie. Deze pagina
-blijft als korte doorverwijzing bestaan zodat bestaande links bruikbaar blijven.
+Deze oude link blijft beschikbaar voor bestaande bladwijzers. De dashboardbestanden en Home Assistant-packages staan in [OpenQuatt/home-assistant-openquatt](https://github.com/OpenQuatt/home-assistant-openquatt).

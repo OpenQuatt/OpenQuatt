@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 
+#include "../odu/oq_odu_generation.h"
 #include "hp_perf_map.h"
 
 namespace oq_perf {
@@ -49,31 +50,93 @@ inline float model_frequency_hz(bool use_v2_map, int level) {
 
 inline float model_frequency_hz(int level) { return model_frequency_hz(uses_v2_map(), level); }
 
-inline float interp_power_th_w_hz(float frequency_hz, float Tamb, float Tsup) {
-  if (uses_v2_map()) {
-    return interp_frequency_axis(V2_HEATING_FREQUENCIES_HZ, frequency_hz,
-                                 [=](int level) { return interp_power_th_w(level, Tamb, Tsup); });
+struct HeatingPrediction {
+  float pth_w{NAN};
+  float cop{NAN};
+  float pel_w{NAN};
+  bool available{false};
+  bool low_supply_boundary_estimate{false};
+};
+
+struct CandidatePrediction {
+  int runtime_frequency_hz{-1};
+  bool runtime_frequency_known{false};
+  bool frequency_policy_allowed{false};
+  HeatingPrediction performance{};
+
+  bool usable_for_running_optimization() const {
+    return runtime_frequency_known && frequency_policy_allowed && performance.available &&
+           std::isfinite(performance.pth_w) && performance.pth_w > 0.0f && std::isfinite(performance.pel_w) &&
+           performance.pel_w >= 0.0f;
   }
-  return interp_frequency_axis(V1_HEATING_FREQUENCIES_HZ, frequency_hz,
-                               [=](int level) { return interp_power_th_w(level, Tamb, Tsup); });
+};
+
+inline HeatingPrediction predict_heating_hz(oq_odu::Variant variant, float frequency_hz, float Tamb, float Tsup,
+                                            bool allow_low_supply_boundary_estimate = false) {
+  if (variant == oq_odu::Variant::V2_OLD_MODEL || variant == oq_odu::Variant::V2_NEW_MODEL) {
+    const auto prediction =
+        oq_v2_model::predict_heating_for_control(frequency_hz, Tamb, Tsup, allow_low_supply_boundary_estimate);
+    return {prediction.pth_w, prediction.cop, prediction.pel_w,
+            prediction.status == oq_v2_model::Status::VALID || prediction.status == oq_v2_model::Status::OFF,
+            prediction.low_supply_boundary_estimate};
+  }
+  if (variant != oq_odu::Variant::V1 && variant != oq_odu::Variant::V1_5) return {};
+  const float pth_w = interp_frequency_axis(V1_HEATING_FREQUENCIES_HZ, frequency_hz, [=](int level) {
+    return oq_perf_v1::interp_power_th_w(level, Tamb, Tsup);
+  });
+  const float cop = interp_frequency_axis(V1_HEATING_FREQUENCIES_HZ, frequency_hz,
+                                          [=](int level) { return oq_perf_v1::interp_cop(level, Tamb, Tsup); });
+  const float pel_w = interp_frequency_axis(V1_HEATING_FREQUENCIES_HZ, frequency_hz, [=](int level) {
+    return oq_perf_v1::interp_power_el_w(level, Tamb, Tsup);
+  });
+  return {pth_w, cop, pel_w,
+          std::isfinite(pth_w) && pth_w >= 0.0f && std::isfinite(cop) && cop >= 0.0f && std::isfinite(pel_w) &&
+              pel_w >= 0.0f,
+          false};
+}
+
+inline HeatingPrediction predict_heating_hz(float frequency_hz, float Tamb, float Tsup) {
+  return predict_heating_hz(uses_v2_map() ? oq_odu::Variant::V2_OLD_MODEL : oq_odu::Variant::V1, frequency_hz, Tamb,
+                            Tsup);
+}
+
+inline float interp_power_th_w_hz(float frequency_hz, float Tamb, float Tsup) {
+  return predict_heating_hz(frequency_hz, Tamb, Tsup).pth_w;
 }
 
 inline float interp_cop_hz(float frequency_hz, float Tamb, float Tsup) {
-  if (uses_v2_map()) {
-    return interp_frequency_axis(V2_HEATING_FREQUENCIES_HZ, frequency_hz,
-                                 [=](int level) { return interp_cop(level, Tamb, Tsup); });
-  }
-  return interp_frequency_axis(V1_HEATING_FREQUENCIES_HZ, frequency_hz,
-                               [=](int level) { return interp_cop(level, Tamb, Tsup); });
+  return predict_heating_hz(frequency_hz, Tamb, Tsup).cop;
 }
 
 inline float interp_power_el_w_hz(float frequency_hz, float Tamb, float Tsup, float cop_fallback = 3.0f) {
-  if (uses_v2_map()) {
-    return interp_frequency_axis(V2_HEATING_FREQUENCIES_HZ, frequency_hz,
-                                 [=](int level) { return interp_power_el_w(level, Tamb, Tsup, cop_fallback); });
+  if (uses_v2_map()) return predict_heating_hz(frequency_hz, Tamb, Tsup).pel_w;
+  return interp_frequency_axis(V1_HEATING_FREQUENCIES_HZ, frequency_hz, [=](int level) {
+    return oq_perf_v1::interp_power_el_w(level, Tamb, Tsup, cop_fallback);
+  });
+}
+
+template <typename FrequencyContext>
+inline CandidatePrediction predict_candidate(const FrequencyContext& frequency, oq_odu::Variant variant, bool hp1,
+                                             int control_level, float Tamb, float Tsup,
+                                             bool allow_low_supply_boundary_estimate = false) {
+  CandidatePrediction result;
+  if (variant == oq_odu::Variant::UNKNOWN) return result;
+  if (control_level < 0 || control_level > 10) return result;
+  if (control_level == 0) {
+    result.runtime_frequency_hz = 0;
+    result.runtime_frequency_known = true;
+    result.frequency_policy_allowed = true;
+    result.performance = predict_heating_hz(variant, 0.0f, Tamb, Tsup);
+    return result;
   }
-  return interp_frequency_axis(V1_HEATING_FREQUENCIES_HZ, frequency_hz,
-                               [=](int level) { return interp_power_el_w(level, Tamb, Tsup, cop_fallback); });
+  const int frequency_hz = frequency.automatic_frequency_hz(hp1, 2, control_level);
+  if (frequency_hz <= 0) return result;
+  result.runtime_frequency_hz = frequency_hz;
+  result.runtime_frequency_known = true;
+  result.frequency_policy_allowed = frequency.frequency_allowed(hp1, 2, control_level);
+  result.performance =
+      predict_heating_hz(variant, static_cast<float>(frequency_hz), Tamb, Tsup, allow_low_supply_boundary_estimate);
+  return result;
 }
 
 }  // namespace oq_perf

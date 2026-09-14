@@ -1,11 +1,13 @@
+import { patchFrequencyLimitWarnings } from "../features/frequency-limits.js";
 import { hasEntity } from "./app-shared.js";
 import { ENTITY_DEFS } from "./config.js";
 import { getInputDraftValue } from "./control-drafts.js";
 import { reportUnknownAction } from "./action-router.js";
 import { commitQuickStartStrategySelection, handleControlAction } from "./control-actions.js";
 import { isCurveMode } from "./domain-helpers.js";
-import { formatValue, getEntityValue, getNumberMeta, normalizeDateTimeValue, normalizeNumber, normalizeTimeValue, parseLooseNumber } from "./entity-store.js";
-import { commitDateTime, commitNumber, commitSelect, commitText, commitTime, disableRange, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
+import { formatValue, getEntityValue, getNumberMeta, normalizeDateTimeValue, normalizeNumber, parseLooseNumber } from "./entity-store.js";
+import { commitDateTime, commitNumber, commitSelect, commitText, disableRange, triggerNamedButton, updateCurveDraftFromPointer } from "./entity-write-actions.js";
+import { finishTimeInput, handleTimeInputFocus } from "./time-input.js";
 import { handleNamedButtonAction } from "./named-button-actions.js";
 import { state } from "./state.js";
 import { formatDutchAmps, getCommittedElectricalLimitRaw, getElectricalLimitChangePlan, renderElectricalLimitEstimate, renderElectricalLimitFooter, renderElectricalLimitRestore, resolveElectricalLimitView } from "../settings/electrical-limit.js";
@@ -18,6 +20,7 @@ import { getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNu
 import { handleMqttAction, syncMqttDraftFromInput } from "../features/mqtt-actions.js";
 import { handleOduEepromDumpAction } from "../features/odu-eeprom-dump.js";
 import { handleOduRuntimeFrequencyAction, handleOduRuntimeFrequencyInputKeyDown, updateOduRuntimeFrequencyDraft } from "../features/odu-runtime-frequency.js";
+import { handleOduSettingsAction, updateOduSettingsDraft } from "../features/odu-settings.js";
 import { handleQuickStartAction } from "../features/quickstart-ui-actions.js";
 import { handleSecurityAction, stopLoginAuthStatusPolling } from "../features/security-actions.js";
 import { clearSettingsBackupDraft, handleSettingsBackupFileSelection, handleStorageHistoryAction, normalizeEnergyHistoryExportMode } from "../features/storage-history.js";
@@ -36,6 +39,7 @@ const actionDelegates = [
   handleDebugRecordingAction,
   handleOduEepromDumpAction,
   handleOduRuntimeFrequencyAction,
+  handleOduSettingsAction,
   handleSecurityAction,
   handleMqttAction,
   (action) => handleStorageHistoryAction(action, { triggerNamedButton }),
@@ -134,7 +138,8 @@ function updateFrequencyRangeControl(input) {
     }
   }
 
-  export function handleFocusChange() {
+  export function handleFocusChange(event) {
+    handleTimeInputFocus(event);
     window.setTimeout(() => {
       const active = document.activeElement;
       state.focusedField = active && active.dataset ? active.dataset.oqField || "" : "";
@@ -174,6 +179,11 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleInput(event) {
+    if (event.target.dataset.oqOduSettingsHp) {
+      updateOduSettingsDraft(event.target);
+      return;
+    }
+
     if (event.target.dataset.oqOduRuntimeHp) {
       updateOduRuntimeFrequencyDraft(event.target);
       return;
@@ -299,7 +309,7 @@ function updateFrequencyRangeControl(input) {
       return;
     }
 
-    if (ENTITY_DEFS[field]?.domain === "text") {
+    if (["text", "time"].includes(ENTITY_DEFS[field]?.domain)) {
       state.inputDrafts[field] = String(event.target.value || "");
       return;
     }
@@ -316,6 +326,7 @@ function updateFrequencyRangeControl(input) {
       if (!Number.isNaN(numeric)) {
         const normalized = normalizeNumber(field, event.target.value);
         state.drafts[field] = normalized;
+        if (field === "silentMaxHz" || field === "dayMaxHz") patchFrequencyLimitWarnings();
         if (event.target.type === "range") {
           if (field === "electricalCurrentLimit") {
             const sliderValue = event.target.closest("[data-oq-settings-field]")?.querySelector(".oq-helper-slider-meta strong");
@@ -335,6 +346,11 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleKeyDown(event) {
+    if (event.key === "Enter" && event.target.type === "time") {
+      event.preventDefault();
+      event.target.blur();
+      return;
+    }
     handleOduRuntimeFrequencyInputKeyDown(event);
   }
 
@@ -384,6 +400,11 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleChange(event) {
+    if (event.target.dataset.oqOduSettingsHp) {
+      updateOduSettingsDraft(event.target);
+      return;
+    }
+
     if (__OQ_PREVIEW__ && event.target.dataset.oqDevControl === "boiler" && typeof window.__OQ_SET_MOCK_BOILER__ === "function") {
       window.__OQ_SET_MOCK_BOILER__(event.target.value);
       return;
@@ -474,13 +495,8 @@ function updateFrequencyRangeControl(input) {
     }
 
     if (entity.domain === "time") {
-      const normalized = normalizeTimeValue(event.target.value);
-      if (!normalized) {
-        state.controlError = `${entity.name} verwacht tijd als HH:MM.`;
-        render();
-        return;
-      }
-      commitTime(field, normalized);
+      state.inputDrafts[field] = event.target.value;
+      if (document.activeElement !== event.target) finishTimeInput(event.target);
       return;
     }
 

@@ -155,6 +155,11 @@
       { value: "connections", label: "Verbindingen" },
       { value: "hp-fault", label: "Warmtepompstoring" },
     ],
+    oduWriteState: [
+      { value: "scenario", label: "Scenario volgen" },
+      { value: "standby", label: "Standby · 0 Hz" },
+      { value: "running", label: "Heating · 30 Hz" },
+    ],
     oduGeneration: [
       { value: "V1", label: "V1 (0x0037)" },
       { value: "V1.5", label: "V1.5 (0x0E37)" },

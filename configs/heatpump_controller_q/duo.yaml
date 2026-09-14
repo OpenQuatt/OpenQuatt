@@ -33,3 +33,11 @@ packages:
   openquatt_connection_wifi_eth: !include ../../openquatt/connection/wifi_eth.yaml
   openquatt_packages_common: !include ../../openquatt/oq_packages_common.yaml
   openquatt_topology_duo_packages: !include ../../openquatt/topology/duo_packages.yaml
+
+uart:
+  - id: !extend uart_bus
+    rx_pin:
+      number: ${uart_rx_pin}
+      mode:
+        input: true
+        pullup: true

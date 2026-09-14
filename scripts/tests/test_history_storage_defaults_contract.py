@@ -35,7 +35,7 @@ class HistoryStorageDefaultsContractTest(unittest.TestCase):
         self.assertIn("URGENT_FLUSH_COALESCE_US = 2ULL * 1000ULL * 1000ULL", DECISION_LOG_HEADER)
         self.assertIn("URGENT_FLUSH_MIN_INTERVAL_US = 15ULL * 1000ULL * 1000ULL", DECISION_LOG_HEADER)
         self.assertIn("URGENT_FLUSH_RETRY_US = 30ULL * 1000ULL * 1000ULL", DECISION_LOG_HEADER)
-        self.assertIn("URGENT_FLUSH_MAX_BATCHES = 4U", DECISION_LOG_HEADER)
+        self.assertIn("URGENT_FLUSH_MAX_BATCHES = 1U", DECISION_LOG_HEADER)
 
 
 if __name__ == "__main__":

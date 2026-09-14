@@ -30,11 +30,12 @@ export function waitValue(client, domain, name, expected, label, options = {}) {
   );
 }
 
-export function waitNumber(controller, name, predicate, label, options = {}) {
-  return waitFor(async () => {
+export async function waitNumber(controller, name, predicate, label, options = {}) {
+  const match = await waitFor(async () => {
     const current = asFiniteNumber(await controller.value('sensor', name));
-    return current !== null && predicate(current) ? current : false;
+    return current !== null && predicate(current) ? { value: current } : false;
   }, label, options);
+  return match.value;
 }
 
 export function waitUnavailable(controller, name, label, options = {}) {

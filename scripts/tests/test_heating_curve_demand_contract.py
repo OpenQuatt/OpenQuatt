@@ -7,7 +7,7 @@ class HeatingCurveDemandContractTest(unittest.TestCase):
     def test_yaml_delegates_demand_core_without_moving_wiring(self) -> None:
         for marker in ("platform: pid", "write_action:", "oq_heating_curve_runtime::runtime().write_pid_output"):
             self.assertIn(marker, YAML)
-        for marker in ("room_temperature_fresh_", "room_setpoint_fresh_", "oq_curve::decide_demand("):
+        for marker in ("oq_heat_intent_runtime::room_temperature_fresh", "oq_heat_intent_runtime::evaluate", "oq_curve::decide_demand("):
             self.assertIn(marker, RUNTIME)
         for old_inline in ("recovery_reenter_min_f", "above_stop_band", "restart_bypass_delta_c", "maintain_cap = demand_max"):
             self.assertNotIn(old_inline, YAML)

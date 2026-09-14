@@ -18,8 +18,9 @@ class UrgentFlushPolicy {
   }
 
   bool should_attempt(uint64_t now_us, uint64_t coalesce_us, uint64_t min_interval_us) const {
+    const bool continuation_due = this->continuation_pending_ && now_us >= this->retry_after_us_;
     return this->pending_ && now_us >= this->requested_us_ && now_us - this->requested_us_ >= coalesce_us &&
-           (!this->attempted_ ||
+           (continuation_due || !this->attempted_ ||
             (now_us >= this->last_attempt_us_ && now_us - this->last_attempt_us_ >= min_interval_us)) &&
            (this->retry_after_us_ == 0U || now_us >= this->retry_after_us_);
   }
@@ -33,6 +34,7 @@ class UrgentFlushPolicy {
     this->attempted_ = true;
     this->last_attempt_us_ = now_us;
     this->retry_after_us_ = 0U;
+    this->continuation_pending_ = false;
     if (this->pending_ && persisted_event_seq == this->requested_event_seq_) {
       this->pending_ = false;
       this->requested_us_ = 0U;
@@ -48,6 +50,15 @@ class UrgentFlushPolicy {
     this->attempted_ = true;
     this->last_attempt_us_ = now_us;
     this->retry_after_us_ = now_us + retry_delay_us;
+    this->continuation_pending_ = false;
+  }
+
+  // A bounded flush made progress but has not reached its exact urgent target.
+  // Permit the next ESPHome loop to continue, without allowing multiple flash
+  // operations in the current loop or treating progress as a failed write.
+  void schedule_continuation(uint64_t now_us) {
+    this->retry_after_us_ = now_us;
+    this->continuation_pending_ = true;
   }
 
   void clear(uint64_t now_us) {
@@ -55,6 +66,7 @@ class UrgentFlushPolicy {
     this->requested_us_ = 0U;
     this->requested_event_seq_ = 0U;
     this->retry_after_us_ = 0U;
+    this->continuation_pending_ = false;
     this->attempted_ = true;
     this->last_attempt_us_ = now_us;
   }
@@ -79,6 +91,7 @@ class UrgentFlushPolicy {
   uint64_t last_attempt_us_{0U};
   uint64_t retry_after_us_{0U};
   uint32_t requested_event_seq_{0U};
+  bool continuation_pending_{false};
 };
 
 }  // namespace openquatt_decision_log

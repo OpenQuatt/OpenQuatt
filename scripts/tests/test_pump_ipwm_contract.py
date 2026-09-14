@@ -27,6 +27,15 @@ def yaml_block(source: str, start_marker: str, end_marker: str) -> str:
 
 
 class PumpIpwmContractTest(unittest.TestCase):
+    def test_b13_is_not_an_ot_fault_or_failure_message(self) -> None:
+        ot_fault = yaml_block(HP_IO, "id: ${hp_id}_ot_fault_active", "text_sensor:")
+        self.assertNotIn("has_bit(status_2121, 0x2000u)", ot_fault)
+        self.assertNotIn('add("DC water pump failure")', HP_IO)
+        # The raw word still reaches diagnostics and the engine unmodified.
+        self.assertIn("${hp_index}, 2121U, fault_word, now_ms", HP_IO)
+        self.assertIn("has_bit(status_2121, 0x1000u)", ot_fault)
+        self.assertIn("has_bit(status_2120, 0x2000u)", ot_fault)
+
     def test_r2137_is_preserved_raw_and_cic_passes_it_through(self) -> None:
         raw = yaml_block(
             HP_IO,
@@ -65,7 +74,10 @@ class PumpIpwmContractTest(unittest.TestCase):
         )
         self.assertIn("oq_pump_ipwm::decode", pump_power)
         self.assertIn("feedback.power_valid ? feedback.power_w : NAN", pump_power)
-        self.assertIn("id(${hp_id}_pump_power).state", power_input)
+        self.assertIn("id(${hp_id}_pump_ipwm_feedback_raw).state", power_input)
+        self.assertIn("oq_pump_ipwm::decode", power_input)
+        self.assertIn("pump_feedback.power_valid", power_input)
+        self.assertNotIn("id(${hp_id}_pump_power).state", power_input)
         self.assertNotIn("power_contribution_w", power_input)
 
     def test_pump_context_is_captured_only_when_r2121_b13_is_active(self) -> None:

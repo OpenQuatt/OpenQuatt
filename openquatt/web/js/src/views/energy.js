@@ -11,6 +11,7 @@ import { updateEnergyHistoryState } from "../core/feature-state.js";
 import { escapeHtml } from "../core/html.js";
 import { render } from "../core/render-scheduler.js";
 import { replaceOuterHtmlIfSignatureChanged } from "./view-utils.js";
+import { renderStatCard } from "./stat-card.js";
 
   export function renderOverviewEnergyRow([label, key]) {
     const derived = getDerivedEfficiencyValue(key);
@@ -72,7 +73,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "./view-utils.js";
       `
       : "";
     return `
-      <article class="oq-overview-energy-column oq-overview-energy-column--${escapeHtml(column.tone)}">
+      <article class="oq-overview-energy-column">
         <div class="oq-overview-energy-column-copy">
           <h4>${escapeHtml(column.label)}</h4>
           ${counterResetMarkup}
@@ -881,13 +882,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "./view-utils.js";
   }
 
   export function renderEnergyHistoryStat(label, value, note = "") {
-    return `
-      <div class="oq-energy-history-stat">
-        <span>${escapeHtml(label)}</span>
-        <strong>${escapeHtml(value)}</strong>
-        ${note ? `<p>${escapeHtml(note)}</p>` : ""}
-      </div>
-    `;
+    return renderStatCard({ label, value, note });
   }
 
   export function renderEnergyHistoryPeriodSelect(periodModel, label, options) {
@@ -1371,12 +1366,12 @@ import { replaceOuterHtmlIfSignatureChanged } from "./view-utils.js";
     }
 
     const model = getEnergySectionModel();
-    const energyChanged = replaceOuterHtmlIfSignatureChanged(
+    replaceOuterHtmlIfSignatureChanged(
       energy,
       getEnergySectionRenderSignature(model),
-      renderEnergySection(model),
+      () => renderEnergySection(model),
     );
-    return energyChanged;
+    return true;
   }
 
   export function patchResultsDom() {
@@ -1397,14 +1392,14 @@ import { replaceOuterHtmlIfSignatureChanged } from "./view-utils.js";
 
     const historyModel = getEnergyHistoryPanelModel();
     const periodControlFocused = isEnergyHistoryPeriodControlFocused();
-    const historyChanged = periodControlFocused
-      ? false
-      : replaceOuterHtmlIfSignatureChanged(
+    if (!periodControlFocused) {
+      replaceOuterHtmlIfSignatureChanged(
         history,
         getEnergyHistoryRenderSignature(historyModel),
-        renderEnergyHistoryPanel(historyModel),
+        () => renderEnergyHistoryPanel(historyModel),
       );
-    return historyChanged || periodControlFocused;
+    }
+    return true;
   }
 
   setViewPatchControls({ patchEnergyDom, patchResultsDom });

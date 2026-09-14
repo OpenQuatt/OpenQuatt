@@ -13,12 +13,16 @@ struct Context {
   int cap_hz{-1};
   oq_frequency_policy::FrequencyRange hp1_excluded{};
   oq_frequency_policy::FrequencyRange hp2_excluded{};
+  oq_odu::Variant hp1_variant{oq_odu::Variant::UNKNOWN};
+  oq_odu::Variant hp2_variant{oq_odu::Variant::UNKNOWN};
 
   const oq_odu::RuntimeFrequencySnapshot& snapshot(bool is_hp1) const { return is_hp1 ? hp1_snapshot : hp2_snapshot; }
 
   const oq_frequency_policy::FrequencyRange& excluded_range(bool is_hp1) const {
     return is_hp1 ? hp1_excluded : hp2_excluded;
   }
+
+  oq_odu::Variant performance_variant(bool is_hp1) const { return is_hp1 ? hp1_variant : hp2_variant; }
 
   int automatic_frequency_hz(bool is_hp1, int mode_code, int level) const {
     return oq_frequency_policy::automatic_frequency_hz(configured_v2, snapshot(is_hp1), mode_code, level);
@@ -44,14 +48,19 @@ inline int read_hz(const Number& number) {
 inline Context capture() {
   const bool configured_v2 = id(hp_generation).has_state() && id(hp_generation).current_option() == "V2";
   const auto hp1_snapshot = oq_odu::decode_runtime_frequency_snapshot(id(hp1_runtime_frequency_snapshot_storage));
+  const auto hp1_variant =
+      oq_odu::confirmed_variant(id(hp1_odu_generation_detection_complete), id(hp1_generation_variant_code));
 #if OQ_TOPOLOGY_DUO
   const auto hp2_snapshot = oq_odu::decode_runtime_frequency_snapshot(id(hp2_runtime_frequency_snapshot_storage));
+  const auto hp2_variant =
+      oq_odu::confirmed_variant(id(hp2_odu_generation_detection_complete), id(hp2_generation_variant_code));
   const oq_frequency_policy::FrequencyRange hp2_excluded = {
       read_hz(id(hp2_excluded_frequency_min_hz)),
       read_hz(id(hp2_excluded_frequency_max_hz)),
   };
 #else
   const auto hp2_snapshot = hp1_snapshot;
+  const auto hp2_variant = oq_odu::Variant::UNKNOWN;
   const oq_frequency_policy::FrequencyRange hp2_excluded{};
 #endif
   const auto& cap = id(oq_silent_active).state ? id(oq_silent_max_frequency_hz) : id(oq_day_max_frequency_hz);
@@ -62,6 +71,8 @@ inline Context capture() {
       read_hz(cap),
       {read_hz(id(hp1_excluded_frequency_min_hz)), read_hz(id(hp1_excluded_frequency_max_hz))},
       hp2_excluded,
+      hp1_variant,
+      hp2_variant,
   };
 }
 #endif

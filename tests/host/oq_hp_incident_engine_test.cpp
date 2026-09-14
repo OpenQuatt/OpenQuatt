@@ -64,14 +64,131 @@ void test_catalog_classification() {
   assert(lock.clear_policy == ClearPolicy::AFTER_CONFIRMED_ODU_POWER_CYCLE);
 
   const IncidentDefinition pump = definition_for(2121U, 13U);
-  assert(has_effect(pump.effects, IncidentEffect::PUMP_UNAVAILABLE));
-  assert(has_effect(pump.effects, IncidentEffect::ALLOW_CM4));
+  assert(pump.effects == effect_mask(IncidentEffect::NONE));
+  assert(pump.fallback_policy == FallbackPolicy::NEVER);
+  assert(pump.user_action == UserAction::NONE);
 
   const IncidentDefinition unknown = definition_for(2121U, 12U);
   assert(unknown.documentation_confidence == DocumentationConfidence::REVIEW_REQUIRED);
   assert(has_effect(unknown.effects, IncidentEffect::BLOCK_START));
   assert(!has_effect(unknown.effects, IncidentEffect::STOP_COMPRESSOR));
   assert(unknown.fallback_policy == FallbackPolicy::NEVER);
+}
+
+void test_pump_diagnostic_never_alarms_or_controls() {
+  for (const bool running : {false, true}) {
+    HpIncidentEngine engine;
+    // A bit already present at boot must not leave a fault or recovery latch.
+    engine.observe_fault_words(words(1U, 0U, 0U, 0x2000U));
+    engine.observe_fault_words(words(2U, 0U, 0U, 0x2000U));
+    establish_healthy_link(engine, 100U);
+    confirm_stopped(engine, 60101U);
+    if (running) {
+      assert(engine.request_start(80100U));
+      engine.observe_run(frequency(80101U, 20.0F));
+    }
+
+    uint32_t now_ms = 90000U;
+    for (const uint16_t raw : {0x2000U, 0x2000U, 0U, 0x2000U, 0U, 0U, 0U, 0x2000U}) {
+      engine.observe_fault_words(words(now_ms, 0U, 0U, raw));
+      // Missing/stale polls must neither promote nor clear diagnostic state.
+      engine.observe_fault_words(words(now_ms + 1U, 0U, 0U, 0U, false));
+      engine.tick(now_ms + 2U);
+      const IncidentRuntime& diagnostic = engine.incident(2121U, 13U);
+      assert(diagnostic.raw_active == (raw != 0U));
+      assert(!diagnostic.confirmed_active);
+      assert(!diagnostic.latched);
+      assert(diagnostic.occurrence_count == 0U);
+      const DerivedOutputs& output = engine.outputs();
+      assert(output.active_incident_count == 0U);
+      assert(output.primary_incident_id == kNoIncident);
+      assert(output.active_effects == effect_mask(IncidentEffect::NONE));
+      assert(!output.fault_active && !output.protection_active);
+      assert(output.protection_state == ProtectionState::CLEAR);
+      assert(!output.must_stop && !output.stop_confirmation_pending);
+      assert(output.available_for_start);
+      assert(!output.fallback_cause_present && !output.fallback_eligible);
+      assert(output.run_state == (running ? RunState::RUNNING : RunState::STOPPED));
+      now_ms += 10000U;
+    }
+    // No acknowledgement, clean-read streak, or recovery wait is needed.
+    assert(engine.request_start(now_ms));
+  }
+}
+
+void test_pump_diagnostic_cannot_trip_during_startup() {
+  HpIncidentEngine engine;
+  establish_healthy_link(engine, 100U);
+  confirm_stopped(engine, 60101U);
+  auto assert_diagnostic_only = [&](uint32_t now_ms, uint16_t raw) {
+    // R2121 can arrive before mode, relay, flow, or the other fault banks.
+    auto observation = words(now_ms, 0U, 0U, raw);
+    observation.fresh = {{false, false, true}};
+    engine.observe_fault_words(observation);
+    assert(engine.outputs().protection_state == ProtectionState::CLEAR);
+    assert(engine.outputs().active_incident_count == 0U);
+    assert(engine.outputs().active_effects == effect_mask(IncidentEffect::NONE));
+    assert(!engine.outputs().must_stop);
+    assert(!engine.outputs().stop_confirmation_pending);
+    assert(!engine.outputs().fallback_cause_present);
+    assert(engine.outputs().available_for_start);
+    assert(!engine.incident(2121U, 13U).confirmed_active);
+    assert(!engine.incident(2121U, 13U).latched);
+    assert(engine.incident(2121U, 13U).occurrence_count == 0U);
+  };
+  assert_diagnostic_only(80100U, 0x2000U);
+  assert_diagnostic_only(80101U, 0x2000U);
+  assert(engine.request_start(80102U));
+  assert(engine.outputs().run_state == RunState::START_REQUESTED);
+  assert_diagnostic_only(80103U, 0x2000U);
+  engine.observe_run(frequency(80104U, 0.0F, false));
+  assert(engine.outputs().run_state == RunState::WAIT_MODE);
+  assert_diagnostic_only(80105U, 0x2000U);
+  engine.observe_run(frequency(80106U, 0.0F));
+  assert(engine.outputs().run_state == RunState::WAIT_COMPRESSOR);
+  assert_diagnostic_only(80107U, 0U);
+  assert_diagnostic_only(80108U, 0x2000U);
+  engine.observe_run(frequency(80109U, 20.0F));
+  assert(engine.outputs().run_state == RunState::RUNNING);
+  assert_diagnostic_only(80110U, 0x2000U);
+  assert_diagnostic_only(80111U, 0U);
+  assert(engine.outputs().run_state == RunState::RUNNING);
+}
+
+void test_pump_diagnostic_does_not_mask_other_faults_or_extend_their_recovery() {
+  HpIncidentEngine engine;
+  establish_healthy_link(engine, 100U);
+  confirm_stopped(engine, 60101U);
+  // The other bit is deliberately in the same register as b13.
+  engine.observe_fault_words(words(80100U, 0U, 0U, 0x2001U));
+  engine.observe_fault_words(words(90100U, 0U, 0U, 0x2001U));
+  assert(engine.outputs().must_stop);
+  assert(!engine.outputs().available_for_start);
+  assert(engine.outputs().active_incident_count == 1U);
+  assert(engine.outputs().primary_incident_id == incident_id(2121U, 0U));
+  assert(engine.outputs().fallback_cause_present);
+  engine.request_stop(90101U);
+  confirm_stopped(engine, 90102U);
+  for (const uint32_t now_ms : {110100U, 120100U, 130100U}) {
+    engine.observe_fault_words(words(now_ms, 0U, 0U, 0x2000U));
+  }
+  assert(engine.outputs().protection_state == ProtectionState::FAULT_RECOVERY);
+  assert(!engine.outputs().available_for_start);
+  engine.observe_fault_words(words(160100U, 0U, 0U, 0x2000U));
+  engine.observe_fault_words(words(190100U, 0U, 0U, 0x2000U));
+  assert(engine.outputs().protection_state == ProtectionState::CLEAR);
+  assert(engine.outputs().available_for_start);
+  assert(!engine.outputs().fallback_cause_present);
+  assert(!engine.incident(2121U, 13U).latched);
+  assert(engine.incident(2121U, 0U).latched);
+
+  // Unclassified bits must still fail closed, even alongside b13.
+  engine.observe_fault_words(words(200100U, 0U, 0U, 0x3000U));
+  engine.observe_fault_words(words(210100U, 0U, 0U, 0x3000U));
+  assert(engine.outputs().protection_state == ProtectionState::START_BLOCKED);
+  assert(!engine.outputs().available_for_start);
+  assert(engine.outputs().active_incident_count == 1U);
+  assert(engine.outputs().primary_incident_id == incident_id(2121U, 12U));
 }
 
 void test_short_link_dip_and_confirmed_loss() {
@@ -650,6 +767,9 @@ void test_power_cycle_latch_requires_explicit_confirmation() {
 
 int main() {
   test_catalog_classification();
+  test_pump_diagnostic_never_alarms_or_controls();
+  test_pump_diagnostic_cannot_trip_during_startup();
+  test_pump_diagnostic_does_not_mask_other_faults_or_extend_their_recovery();
   test_short_link_dip_and_confirmed_loss();
   test_link_loss_invalidates_old_stop_confirmation();
   test_link_loss_rearms_an_inflight_stop();

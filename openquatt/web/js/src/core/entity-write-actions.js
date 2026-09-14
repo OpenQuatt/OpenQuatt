@@ -1,9 +1,10 @@
 import { hasEntity } from "./app-shared.js";
+import { fetchWithTimeout } from "./browser-utils.js";
 import { CURVE_POINTS, ENTITY_DEFS, FIRMWARE_ENTITY_KEYS, FLOW_SETTING_KEYS, HEADER_ENTITY_KEYS, LIMIT_KEYS, OPENQUATT_RESUME_CLEAR_VALUE, OVERVIEW_KEYS, POWER_HOUSE_KEYS, QUICK_STEPS } from "./config.js";
 import { armRestartRefresh, awaitRestartEvidence, beginDeviceReconnect, clearRestartRefresh } from "./device-reconnect.js";
 import { buildEntityPath, isCurveMode } from "./domain-helpers.js";
 import { formatOpenQuattResumeDateTime, getEntityValue, normalizeDateTimeValue, normalizeNumber, normalizeTimeValue, parseLooseNumber, toDateTimeInputValue } from "./entity-store.js";
-import { getSettingsRefreshKeys, isLikelyDeviceConnectionError, refreshEntities, refreshIncidentMonitoringData, syncEntities } from "./entity-sync.js";
+import { ENTITY_REQUEST_TIMEOUT_MS, getSettingsRefreshKeys, isLikelyDeviceConnectionError, refreshEntities, refreshIncidentMonitoringData, syncEntities } from "./entity-sync.js";
 import {
   createIncidentActionRequestId,
   postIncidentActionRequest,
@@ -346,30 +347,45 @@ export async function disableRange(minKey, maxKey) {
 export async function commitTime(key, value) {
   const entity = ENTITY_DEFS[key];
   const normalized = normalizeTimeValue(value);
+  if (!normalized || state.savingTimeFields.has(key)) return false;
+  state.savingTimeFields.add(key);
+  state.timeWriteRevision += 1;
+  state.inputDrafts[key] = String(value);
   state.busyAction = `save-${key}`;
   state.controlNotice = "";
   state.controlError = "";
   render();
 
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${buildEntityPath(entity.domain, entity.name, "set")}?value=${encodeURIComponent(normalized)}`,
-      { method: "POST" }
+      { method: "POST" }, ENTITY_REQUEST_TIMEOUT_MS
     );
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    state.controlNotice = `${entity.name} bijgewerkt.`;
-    await refreshEntities(
-      state.appView === "settings"
-        ? getSettingsRefreshKeys()
-        : [key, "setupComplete"],
-      "state"
+    const payload = await fetchWithTimeout(
+      buildEntityPath(entity.domain, entity.name), { cache: "no-store" }, ENTITY_REQUEST_TIMEOUT_MS, "",
+      async (confirmation) => {
+        if (!confirmation.ok) throw new Error(`HTTP ${confirmation.status}`);
+        return confirmation.json();
+      }
     );
+    state.entities[key] = { ...(state.entities[key] || {}), ...payload, value: payload.value ?? payload.state ?? "" };
+    if (normalizeTimeValue(payload.value ?? payload.state) !== normalized) {
+      throw new Error("de controller heeft de ingestelde tijd niet bevestigd");
+    }
+    delete state.inputDrafts[key];
+    state.controlNotice = `${entity.name} bijgewerkt.`;
+    return true;
   } catch (error) {
+    // Keep the attempted value visible so the user can retry without retyping.
     state.controlError = `${entity.name} kon niet worden bijgewerkt. ${error.message}`;
+    return false;
   } finally {
-    state.busyAction = "";
+    state.savingTimeFields.delete(key);
+    state.timeWriteRevision += 1;
+    if (state.busyAction === `save-${key}`) state.busyAction = "";
     render();
   }
 }

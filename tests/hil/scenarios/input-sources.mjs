@@ -182,7 +182,6 @@ async function testActiveSourceSwitch(controller, interrupted) {
   await controller.setSelect('Heating Control Mode', 'Power House');
   await controller.setNumber('Power House temperature reaction', 0);
   await controller.setNumber('Power House demand rise time', 2);
-  await controller.setNumber('Demand filter ramp up', 20);
   await controller.setSelect('External Heat Demand Source', 'API input');
   await controller.setSelect('Outside Temperature Source', 'API input');
   await controller.setSelect('Room Temperature Source', 'API input');

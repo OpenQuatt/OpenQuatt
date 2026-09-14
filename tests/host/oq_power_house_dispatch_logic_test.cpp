@@ -24,6 +24,8 @@ void expect_safe(const DispatchDecision& out, const DispatchInput& in, const Dis
   if (in.demand_level <= 0) assert(out.hp1_level == 0 && out.hp2_level == 0);
   if (in.hp1.candidate.must_stop) assert(out.hp1_level == 0);
   if (in.hp2.candidate.must_stop) assert(out.hp2_level == 0);
+  if (!in.hp1.candidate.minimum_off_ready && in.hp1.candidate.previous_applied_level <= 0) assert(out.hp1_level == 0);
+  if (!in.hp2.candidate.minimum_off_ready && in.hp2.candidate.previous_applied_level <= 0) assert(out.hp2_level == 0);
   if (out.output_valid) assert(isfinite(out.expected_w));
   if (!out.output_valid || out.hp1_level + out.hp2_level == 0) return;
   float electrical_w = 0.0f;
@@ -80,8 +82,12 @@ void test_single_and_failures() {
   in.hp2.candidate.previous_applied_level = 3;
   auto out = decide_dispatch(in, cfg, {});
   assert(out.hp1_level == 4 && out.hp2_level == 3 && out.reason == Reason::FALLBACK_DUO && !out.output_valid);
+  assert(isnan(out.capacity_w) && isnan(out.deficit_w) && !out.saturated);
+  in.hp2.candidate.previous_applied_level = 0;
+  out = decide_dispatch(in, cfg, {});
+  assert(out.hp1_level == 4 && out.hp2_level == 0 && out.reason == Reason::FALLBACK_HP1);
   in.hp1.candidate.must_stop = true;
-  assert(decide_dispatch(in, cfg, {}).reason == Reason::FALLBACK_HP2);
+  assert(decide_dispatch(in, cfg, {}).reason == Reason::FALLBACK_IDLE);
   in.hp2.candidate = {};
   for (int previous : {-1, 11, 20}) {
     in.hp1.candidate = {previous, true, false, false};
@@ -99,6 +105,13 @@ void test_single_and_failures() {
   in.hp1.candidate = {11, false, false, true};
   out = decide_dispatch(in, cfg, {});
   assert(out.hp1_level == 0 && out.hp2_level > 0);
+  in = input(true);
+  in.hp1.candidate.minimum_off_ready = false;
+  out = decide_dispatch(in, cfg, {});
+  assert(out.hp1_level == 0 && out.hp2_level > 0);
+  in.hp2.candidate.minimum_off_ready = false;
+  out = decide_dispatch(in, cfg, {});
+  assert(out.hp1_level == 0 && out.hp2_level == 0 && out.reason == Reason::NO_CANDIDATE);
   cfg = tuning();
   in = input();
   assert(decide_dispatch(in, cfg, {}).hp1_level == 3);

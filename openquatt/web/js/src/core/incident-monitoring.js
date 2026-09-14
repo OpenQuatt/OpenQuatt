@@ -73,6 +73,7 @@ const INCIDENT_CATALOG = [
   [1002, "hp_start_failed", "Warmtepompstart niet bevestigd"],
   [1003, "hp_stop_unconfirmed", "Warmtepompstop niet bevestigd"],
   [1004, "hp_manual_reset_persistence_failure", "Opslag van handmatige resetstatus mislukt"],
+  [1005, "hp_runtime_frequency_mapping", "ODU-frequentietabel moet opnieuw worden gevalideerd"],
 ];
 const INCIDENT_LABEL_BY_ID = new Map(INCIDENT_CATALOG.map(([id, , label]) => [id, label]));
 const INCIDENT_LABEL_BY_KEY = Object.freeze(Object.fromEntries(

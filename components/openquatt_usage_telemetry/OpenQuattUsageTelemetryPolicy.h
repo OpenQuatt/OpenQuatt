@@ -164,8 +164,14 @@ inline const char* configured_source_wire_value(const std::string& option) {
   if (option == "CIC or HA input") {
     return "cic_or_home_assistant";
   }
+  if (option == "Schedule") {
+    return "schedule";
+  }
   if (option == "Disabled") {
     return "disabled";
+  }
+  if (option == "Heating curve") {
+    return "heating_curve";
   }
   return nullptr;
 }

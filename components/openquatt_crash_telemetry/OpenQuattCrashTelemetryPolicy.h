@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string_view>
 
 namespace esphome::openquatt_crash_telemetry {
 
@@ -9,6 +10,20 @@ enum class CrashPublishKind : uint8_t {
   CRASH = 1U,
   TOMBSTONE = 2U,
 };
+
+inline constexpr const char* active_connection_wire_value(std::string_view connection) {
+  if (connection == "WiFi") return "wifi";
+  if (connection == "Ethernet") return "eth";
+  if (connection == "Not connected") return "none";
+  return nullptr;
+}
+
+inline constexpr const char* connection_preference_wire_value(std::string_view preference) {
+  if (preference == "Automatic") return "auto";
+  if (preference == "WiFi") return "wifi";
+  if (preference == "Ethernet") return "eth";
+  return nullptr;
+}
 
 inline constexpr CrashPublishKind select_crash_publish_kind(bool tombstone_pending, bool consent_enabled,
                                                             bool setup_complete, bool crash_pending) {

@@ -37,12 +37,12 @@ body.oq-surface-native {
   color: var(--oq-helper-ink);
 }
 
-.oq-helper-shell--dark {
+.oq-helper-shell--dark,
+.oq-helper-modal-backdrop--dark {
   --oq-helper-bg: #202d3f;
   --oq-helper-card: #26364a;
   --oq-helper-card-muted: #304155;
   --oq-helper-line: rgba(148, 163, 184, 0.24);
-  --oq-helper-line-strong: rgba(148, 163, 184, 0.4);
   --oq-helper-ink: #f8fafc;
   --oq-helper-soft: #dbe4ef;
   --oq-helper-faint: #aec0d4;

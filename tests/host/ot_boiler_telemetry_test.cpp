@@ -103,21 +103,30 @@ int main() {
   assert(state.field_is_fresh(oq_otb::FIELD_BOILER_WATER_TEMPERATURE, 4, 10));
   assert(!state.field_is_fresh(oq_otb::FIELD_BOILER_WATER_TEMPERATURE, 5, 10));
 
-  // Only warnings emitted by the ESPHome OpenTherm component are counted.
+  // Only warnings emitted by the boiler-side OpenTherm master are counted.
   state.record_log_message(1000, "wifi", "NO_TRANSITION");
-  state.record_log_message(1001, "opentherm", "Unrelated warning");
+  state.record_log_message(1001, "oq.ot.boiler", "Unrelated warning");
   assert(state.transport_error_count() == 0);
 
-  state.record_log_message(1010, "opentherm", "Protocol error occured while receiving response: NO_TRANSITION");
-  state.record_log_message(1020, "opentherm", "Protocol error occured while receiving response: NO_CHANGE_TOO_LONG");
-  state.record_log_message(1030, "opentherm", "Protocol error occured while receiving response: INVALID_STOP_BIT");
-  state.record_log_message(1040, "opentherm", "Protocol error occured while receiving response: PARITY_ERROR");
-  state.record_log_message(1050, "opentherm",
+  // Legacy and thermostat-side tags must not count as boiler transport errors.
+  state.record_log_message(1002, "opentherm", "Protocol error occured while receiving response: NO_TRANSITION");
+  state.record_log_message(1003, "oq.ot.thermostat", "Timeout while waiting for response from device");
+  state.record_log_message(1004, "oq.ot.thermostat.transport", "Timeout while waiting for response from device");
+  state.record_log_message(1005, "oq.ot.boiler.number", "Timeout while waiting for response from device");
+  state.record_log_message(1006, "oq.ot.boiler.switch", "Timeout while waiting for response from device");
+  assert(state.transport_error_count() == 0);
+
+  state.record_log_message(1010, "oq.ot.boiler", "Protocol error occured while receiving response: NO_TRANSITION");
+  state.record_log_message(1020, "oq.ot.boiler", "Protocol error occured while receiving response: NO_CHANGE_TOO_LONG");
+  state.record_log_message(1030, "oq.ot.boiler", "Protocol error occured while receiving response: INVALID_STOP_BIT");
+  state.record_log_message(1040, "oq.ot.boiler", "Protocol error occured while receiving response: PARITY_ERROR");
+  state.record_log_message(1050, "oq.ot.boiler",
                            "Timeout while waiting for response from device: no frame captured before the receive "
                            "deadline");
-  state.record_log_message(1060, "opentherm", "Hub timeout triggered during send");
-  state.record_log_message(1070, "opentherm", "Hub timeout triggered during receive");
-  state.record_log_message(1080, "opentherm", "Error occured while manipulating timer (TIMER_START_ERROR): ESP_FAIL");
+  state.record_log_message(1060, "oq.ot.boiler", "Hub timeout triggered during send");
+  state.record_log_message(1070, "oq.ot.boiler", "Hub timeout triggered during receive");
+  state.record_log_message(1080, "oq.ot.boiler",
+                           "Error occured while manipulating timer (TIMER_START_ERROR): ESP_FAIL");
 
   assert(state.transport_error_count() == 8);
   assert(state.protocol_error_count() == 4);

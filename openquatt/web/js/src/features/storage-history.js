@@ -1,15 +1,15 @@
 import { getSetupCompleteState, hasEntity, isEntityActive, isTrendHistoryEnabled } from "../core/app-shared.js";
 import { invokeActionMap } from "../core/action-router.js";
 import { downloadBlobFile, downloadJsonFile } from "../core/browser-utils.js";
-import { ENTITY_DEFS, FAST_VIEW_ENTITY_REFRESH_CONCURRENCY, SETTINGS_BACKUP_KEY_SET, SETTINGS_BACKUP_KEYS, SETTINGS_BACKUP_SCHEMA_VERSION, SETTINGS_BACKUP_SECTIONS, TREND_HISTORY_REFRESH_INTERVAL_MS } from "../core/config.js";
+import { COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS, ENTITY_DEFS, FAST_VIEW_ENTITY_REFRESH_CONCURRENCY, SETTINGS_BACKUP_KEY_SET, SETTINGS_BACKUP_KEYS, SETTINGS_BACKUP_SCHEMA_VERSION, SETTINGS_BACKUP_SECTIONS, TREND_HISTORY_REFRESH_INTERVAL_MS } from "../core/config.js";
 import { buildEntityPath } from "../core/domain-helpers.js";
 import { getEnergyHistoryRequestQuery } from "../core/energy-history-query.js";
 import { getEnergyHistoryDateKeyFromDate, parseEnergyHistoryDateKey } from "../core/energy-history-domain.js";
 import { updateEnergyHistoryState } from "../core/feature-state.js";
-import { setEntityBackupValue, verifyEntityBackupSwitchState } from "../core/entity-backup.js";
+import { setEntityBackupValue, verifyEntityBackupSelectState, verifyEntityBackupSwitchState } from "../core/entity-backup.js";
 import { formatValue, getEntityValue, normalizeDateTimeValue, normalizeTimeValue, parseLooseNumber } from "../core/entity-store.js";
 import { refreshEntities, syncEntities } from "../core/entity-sync.js";
-import { buildSettingsBackupMqttConfig, collectUnknownSettingsBackupItems, isSettingsBackupMqttSourceSelection, normalizeSettingsBackupMqttConfig, SETTINGS_BACKUP_MIN_SCHEMA_VERSION, SETTINGS_BACKUP_MQTT_INPUT_KEYS, SETTINGS_BACKUP_MQTT_RETAINED_KEYS, settingsBackupMqttNeedsPassword } from "../core/settings-backup-domain.js";
+import { buildSettingsBackupMqttConfig, collectUnknownSettingsBackupItems, isSettingsBackupMqttSourceSelection, normalizeSettingsBackupMqttConfig, normalizeSettingsBackupOduProfiles, SETTINGS_BACKUP_MIN_SCHEMA_VERSION, SETTINGS_BACKUP_MQTT_INPUT_KEYS, SETTINGS_BACKUP_MQTT_RETAINED_KEYS, settingsBackupMqttNeedsPassword } from "../core/settings-backup-domain.js";
 import { DEFAULT_TREND_WINDOW_HOURS, state } from "../core/state.js";
 import { ENERGY_HISTORY_VIEW_KEYS, getSettingsStorageRefreshKeys, SETTINGS_STORAGE_KEYS, TREND_HISTORY_VIEW_KEYS } from "../core/storage-history-keys.js";
 import { setStorageHistoryControls } from "../core/storage-history-controls.js";
@@ -18,7 +18,10 @@ import { normalizeTrendWindowHours, setTrendWindowHours } from "../core/trend-wi
 import { getBasePath } from "../core/url-path.js";
 import { getFirmwareDeviceLabel, getInstallationLabel, getInstallationTopology } from "./device-context.js";
 import { getFirmwareCurrentVersion } from "./firmware-update.js";
+import { getOduSettingsBackupProfiles, restoreOduSettingsBackupProfiles } from "./odu-settings.js";
 import { render } from "../core/render-scheduler.js";
+
+const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
 
   export function energyHistoryImportRecordHasHour(row) {
     return Object.prototype.hasOwnProperty.call(row, "hour") ||
@@ -100,48 +103,61 @@ import { render } from "../core/render-scheduler.js";
     };
   }
 
-  export async function refreshDecisionLogStorageMetadata(options = {}) {
-    const force = options.force === true;
-    const now = Date.now();
-    if (!force && state.decisionLogStorageMetadataFetchPromise) {
-      return state.decisionLogStorageMetadataFetchPromise;
+  async function fetchHistoryResource(path, format = "text") {
+    const response = await fetch(`${getBasePath()}${path}`, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
-    if (!force && (state.decisionLogStorageMetadataSignature || state.decisionLogStorageMetadataError) &&
-        (now - Number(state.decisionLogStorageMetadataLastFetchAt || 0)) < TREND_HISTORY_REFRESH_INTERVAL_MS) {
-      return false;
+    return response[format]();
+  }
+
+  async function refreshHistoryMetadata(prefix, options, load, errorPrefix) {
+    const promiseKey = prefix + "FetchPromise";
+    const signatureKey = prefix + "Signature";
+    const errorKey = prefix + "Error";
+    const timestampKey = prefix + "LastFetchAt";
+    if (options.force !== true) {
+      if (state[promiseKey]) return state[promiseKey];
+      if ((state[signatureKey] || state[errorKey])
+          && Date.now() - Number(state[timestampKey] || 0) < TREND_HISTORY_REFRESH_INTERVAL_MS) {
+        return false;
+      }
     }
 
-    state.decisionLogStorageMetadataFetchPromise = (async () => {
-      const response = await fetch(`${getBasePath()}/openquatt/decision-log?meta=1`, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+    const request = (async () => {
+      try {
+        const { metadata, signature } = await load();
+        // A forced refresh can supersede this request while its response is pending.
+        if (state[promiseKey] !== request) return false;
+        const changed = signature !== state[signatureKey] || state[errorKey] !== "";
+        state[prefix] = metadata;
+        state[errorKey] = "";
+        state[signatureKey] = signature;
+        state[timestampKey] = Date.now();
+        return changed;
+      } catch (error) {
+        if (state[promiseKey] !== request) return false;
+        const nextError = `${errorPrefix} ${error.message}`;
+        const changed = state[errorKey] !== nextError;
+        state[prefix] = {};
+        state[errorKey] = nextError;
+        state[signatureKey] = "";
+        state[timestampKey] = Date.now();
+        return changed;
+      } finally {
+        if (state[promiseKey] === request) state[promiseKey] = null;
       }
-      const payload = await response.json();
-      if (!payload?.ok) {
-        throw new Error("ongeldig antwoord");
-      }
-      const signature = JSON.stringify(payload);
-      const changed = signature !== state.decisionLogStorageMetadataSignature || state.decisionLogStorageMetadataError !== "";
-      state.decisionLogStorageMetadata = parseDecisionLogStorageMetadata(payload);
-      state.decisionLogStorageMetadataError = "";
-      state.decisionLogStorageMetadataSignature = signature;
-      state.decisionLogStorageMetadataLastFetchAt = Date.now();
-      return changed;
     })();
+    state[promiseKey] = request;
+    return request;
+  }
 
-    try {
-      return await state.decisionLogStorageMetadataFetchPromise;
-    } catch (error) {
-      const nextError = `Beslisloghistorie kon niet worden geladen. ${error.message}`;
-      const changed = state.decisionLogStorageMetadataError !== nextError;
-      state.decisionLogStorageMetadata = {};
-      state.decisionLogStorageMetadataError = nextError;
-      state.decisionLogStorageMetadataSignature = "";
-      state.decisionLogStorageMetadataLastFetchAt = Date.now();
-      return changed;
-    } finally {
-      state.decisionLogStorageMetadataFetchPromise = null;
-    }
+  export async function refreshDecisionLogStorageMetadata(options = {}) {
+    return refreshHistoryMetadata("decisionLogStorageMetadata", options, async () => {
+      const payload = await fetchHistoryResource("/openquatt/decision-log?meta=1", "json");
+      if (!payload?.ok) throw new Error("ongeldig antwoord");
+      return { metadata: parseDecisionLogStorageMetadata(payload), signature: JSON.stringify(payload) };
+    }, "Beslisloghistorie kon niet worden geladen.");
   }
 
   export function parseTrendHistoryMetadata(raw) {
@@ -183,6 +199,7 @@ import { render } from "../core/render-scheduler.js";
   export async function refreshTrendHistoryMetadata(options = {}) {
     if (!hasEntity("trendHistoryEnabled") && !isDevPreviewEnvironmentForFetches()) {
       const changed = Boolean(state.trendHistoryMetadataSignature || state.trendHistoryMetadataError);
+      state.trendHistoryMetadataFetchPromise = null;
       state.trendHistoryMetadata = {};
       state.trendHistoryMetadataError = "";
       state.trendHistoryMetadataSignature = "";
@@ -190,45 +207,13 @@ import { render } from "../core/render-scheduler.js";
       return changed;
     }
 
-    const force = options.force === true;
-    const now = Date.now();
-    if (!force && state.trendHistoryMetadataFetchPromise) {
-      return state.trendHistoryMetadataFetchPromise;
-    }
-    if (!force && (state.trendHistoryMetadataSignature || state.trendHistoryMetadataError) &&
-        (now - Number(state.trendHistoryMetadataLastFetchAt || 0)) < TREND_HISTORY_REFRESH_INTERVAL_MS) {
-      return false;
-    }
-
-    state.trendHistoryMetadataFetchPromise = (async () => {
-      const response = await fetch(`${getBasePath()}/trends/history?meta=1`, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const raw = await response.text();
-      const metadata = parseTrendHistoryMetadata(raw);
-      const signature = `${raw.length}|${raw.slice(0, 120)}|${raw.slice(-120)}`;
-      const changed = signature !== state.trendHistoryMetadataSignature || state.trendHistoryMetadataError !== "";
-      state.trendHistoryMetadata = metadata;
-      state.trendHistoryMetadataError = "";
-      state.trendHistoryMetadataSignature = signature;
-      state.trendHistoryMetadataLastFetchAt = Date.now();
-      return changed;
-    })();
-
-    try {
-      return await state.trendHistoryMetadataFetchPromise;
-    } catch (error) {
-      const nextError = `Trendhistorie metadata kon niet worden geladen. ${error.message}`;
-      const changed = state.trendHistoryMetadataError !== nextError;
-      state.trendHistoryMetadata = {};
-      state.trendHistoryMetadataError = nextError;
-      state.trendHistoryMetadataSignature = "";
-      state.trendHistoryMetadataLastFetchAt = Date.now();
-      return changed;
-    } finally {
-      state.trendHistoryMetadataFetchPromise = null;
-    }
+    return refreshHistoryMetadata("trendHistoryMetadata", options, async () => {
+      const raw = await fetchHistoryResource("/trends/history?meta=1");
+      return {
+        metadata: parseTrendHistoryMetadata(raw),
+        signature: `${raw.length}|${raw.slice(0, 120)}|${raw.slice(-120)}`,
+      };
+    }, "Trendhistorie metadata kon niet worden geladen.");
   }
 
   export async function refreshSettingsStorageState(options = {}) {
@@ -1083,7 +1068,7 @@ import { render } from "../core/render-scheduler.js";
     return text || undefined;
   }
 
-  export function buildSettingsBackupSnapshot(mqtt = null) {
+  export function buildSettingsBackupSnapshot(mqtt = null, oduBottomPlate = {}) {
     const settings = {};
     SETTINGS_BACKUP_SECTIONS.forEach((section) => {
       const values = {};
@@ -1102,6 +1087,7 @@ import { render } from "../core/render-scheduler.js";
       source: getSettingsBackupSourceMeta(),
       settings,
       mqtt,
+      odu_bottom_plate: oduBottomPlate,
     };
   }
 
@@ -1321,12 +1307,14 @@ import { render } from "../core/render-scheduler.js";
 
     const settings = parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {};
     const mqtt = schemaVersion >= 2 ? normalizeSettingsBackupMqttConfig(parsed.mqtt) : null;
+    const oduBottomPlate = schemaVersion >= 3 ? normalizeSettingsBackupOduProfiles(parsed.odu_bottom_plate) : {};
     const snapshot = {
       schema_version: schemaVersion,
       exported_at: String(parsed.exported_at || ""),
       source: parsed.source && typeof parsed.source === "object" ? parsed.source : {},
       settings,
       mqtt,
+      odu_bottom_plate: oduBottomPlate,
       file_name: fileName || "",
     };
     snapshot.summary = getSettingsBackupSelectionSummary(snapshot);
@@ -1341,8 +1329,11 @@ import { render } from "../core/render-scheduler.js";
 
     try {
       await refreshEntities(SETTINGS_BACKUP_KEYS, "all");
-      const mqttStatus = await fetchSettingsBackupMqttStatus();
-      return buildSettingsBackupSnapshot(buildSettingsBackupMqttConfig(mqttStatus));
+      const [mqttStatus, oduBottomPlate] = await Promise.all([
+        fetchSettingsBackupMqttStatus(),
+        getOduSettingsBackupProfiles(),
+      ]);
+      return buildSettingsBackupSnapshot(buildSettingsBackupMqttConfig(mqttStatus), oduBottomPlate);
     } finally {
       state.settingsBackupBusy = false;
       render();
@@ -1397,6 +1388,8 @@ import { render } from "../core/render-scheduler.js";
   export function createSettingsBackupRestoreItem(key, section, reason, detail = "", severity = "warning") {
     const mqttLabels = {
       "mqtt.config": "MQTT-configuratie",
+      "odu_bottom_plate.hp1": "HP1 bodemplaatverwarming",
+      "odu_bottom_plate.hp2": "HP2 bodemplaatverwarming",
     };
     return {
       key,
@@ -1497,6 +1490,22 @@ import { render } from "../core/render-scheduler.js";
     return !shouldDisableUsageTelemetryForSetupRestore(shouldCompleteSetup, setupWasComplete) || telemetryAvailable;
   }
 
+  async function setVerifiedCoolingValue(key, value, normalize) {
+    await setEntityBackupValue(key, value);
+    if (!await verifyEntityBackupSelectState(key, value, normalize)) {
+      throw new Error("Niet bevestigd.");
+    }
+  }
+
+  async function guardCoolingSchedule() {
+    try {
+      await setVerifiedCoolingValue(COOLING_SCHEDULE_SOURCE_KEY, "Disabled");
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
   export async function restoreSettingsBackup() {
     const draft = state.settingsBackupDraft;
     if (!draft || state.settingsBackupBusy) {
@@ -1520,6 +1529,9 @@ import { render } from "../core/render-scheduler.js";
     const skipped = [];
     const unknown = getSettingsBackupUnknownItems(draft);
     const deferredMqttSources = [];
+    let verifiedCoolingTimes = 0;
+    let deferredCoolingSource = null;
+    let coolingGuarded = null;
     let shouldCompleteSetup = false;
     let setupWasComplete = false;
     let setupCompletionSafe = true;
@@ -1530,6 +1542,27 @@ import { render } from "../core/render-scheduler.js";
     try {
       await refreshEntities([...SETTINGS_BACKUP_KEYS, "usageTelemetryEnabled"], "all");
       setupWasComplete = isEntityActive("setupComplete");
+
+      const coolingSourceValue = draft.settings?.sensor_sources?.[COOLING_SCHEDULE_SOURCE_KEY];
+      const coolingScheduleRequested = String(coolingSourceValue || "").trim() === "Schedule";
+      const coolingTimesRequested = COOLING_SCHEDULE_TIME_KEYS.some(
+        (key) => draft.settings?.cooling?.[key] !== undefined,
+      );
+      if (coolingTimesRequested || coolingScheduleRequested) {
+        coolingGuarded = false;
+      } else if (coolingSourceValue !== undefined) {
+        try {
+          coolingGuarded = await verifyEntityBackupSelectState(
+            COOLING_SCHEDULE_SOURCE_KEY,
+            "Schedule",
+          ) ? false : null;
+        } catch (_error) {
+          coolingGuarded = false;
+        }
+      }
+      if (coolingGuarded === false) {
+        coolingGuarded = await guardCoolingSchedule();
+      }
 
       if (draft.mqtt) {
         try {
@@ -1557,7 +1590,7 @@ import { render } from "../core/render-scheduler.js";
               key,
               section.label,
               "Ontbreekt in backup",
-              "De huidige firmwarewaarde of firmware-default is behouden.",
+              "Niet toegepast.",
             ));
             continue;
           }
@@ -1570,6 +1603,31 @@ import { render } from "../core/render-scheduler.js";
 
           if (key === "openquattEnabled") {
             continue;
+          }
+
+          if (key === COOLING_SCHEDULE_SOURCE_KEY && coolingGuarded !== null) {
+            const target = { key, value, section };
+            if (isSettingsBackupMqttSourceSelection(key, value)) {
+              deferredMqttSources.push(target);
+            } else {
+              deferredCoolingSource = target;
+            }
+            continue;
+          }
+
+          const coolingScheduleTime = COOLING_SCHEDULE_TIME_KEYS.includes(key);
+          if (coolingScheduleTime && coolingGuarded !== null) {
+            coolingGuarded = await guardCoolingSchedule();
+            if (!coolingGuarded) {
+              skipped.push(createSettingsBackupRestoreItem(
+                key,
+                section.label,
+                COOLING_GUARD_ERROR,
+                "",
+                "error",
+              ));
+              continue;
+            }
           }
 
           if (isSettingsBackupMqttSourceSelection(key, value)) {
@@ -1589,7 +1647,12 @@ import { render } from "../core/render-scheduler.js";
           }
 
           try {
-            await setEntityBackupValue(key, value);
+            if (coolingScheduleTime) {
+              await setVerifiedCoolingValue(key, value, normalizeTimeValue);
+              verifiedCoolingTimes += 1;
+            } else {
+              await setEntityBackupValue(key, value);
+            }
             applied.push(key);
           } catch (error) {
             skipped.push(createSettingsBackupRestoreItem(
@@ -1600,6 +1663,24 @@ import { render } from "../core/render-scheduler.js";
               "error",
             ));
           }
+        }
+      }
+
+      if (deferredCoolingSource) {
+        const { key, value, section } = deferredCoolingSource;
+        let detail = "";
+        try {
+          if (!coolingGuarded || (coolingScheduleRequested &&
+              verifiedCoolingTimes < COOLING_SCHEDULE_TIME_KEYS.length) || !await guardCoolingSchedule()) {
+            throw new Error(COOLING_GUARD_ERROR);
+          }
+          await setVerifiedCoolingValue(key, value);
+          applied.push(key);
+        } catch (error) {
+          detail = await guardCoolingSchedule()
+            ? String(error?.message || error)
+            : COOLING_GUARD_ERROR;
+          skipped.push(createSettingsBackupRestoreItem(key, section.label, "Bron niet toegepast", detail, "error"));
         }
       }
 
@@ -1620,19 +1701,20 @@ import { render } from "../core/render-scheduler.js";
       }
 
       for (const { key, value, section } of deferredMqttSources) {
-        if (!mqttRestoreReady) {
+        const guardedCoolingSource = key === COOLING_SCHEDULE_SOURCE_KEY && coolingGuarded !== null;
+        if (!mqttRestoreReady || (guardedCoolingSource && (!coolingGuarded || !await guardCoolingSchedule()))) {
           skipped.push(createSettingsBackupRestoreItem(
             key,
             section.label,
             "MQTT-bron niet toegepast",
-            `${mqttRestoreFailureDetail || "MQTT kon niet worden hersteld."} De huidige bronselectie is behouden.`,
+            mqttRestoreFailureDetail || "MQTT kon niet veilig worden hersteld.",
             "error",
           ));
           continue;
         }
 
         const entity = ENTITY_DEFS[key];
-        if (!entity || !hasEntity(key)) {
+        if (!entity || (!hasEntity(key) && !guardedCoolingSource)) {
           skipped.push(createSettingsBackupRestoreItem(
             key,
             section.label,
@@ -1643,17 +1725,51 @@ import { render } from "../core/render-scheduler.js";
         }
 
         try {
-          await setEntityBackupValue(key, value);
+          if (guardedCoolingSource) {
+            await setVerifiedCoolingValue(key, value);
+          } else {
+            await setEntityBackupValue(key, value);
+          }
           applied.push(key);
         } catch (error) {
+          let detail = String(error?.message || error);
+          if (guardedCoolingSource && !await guardCoolingSchedule()) {
+            detail = COOLING_GUARD_ERROR;
+          }
           skipped.push(createSettingsBackupRestoreItem(
             key,
             section.label,
             "Schrijven mislukt",
-            String(error?.message || error),
+            detail,
             "error",
           ));
         }
+      }
+
+      try {
+        const oduResults = await restoreOduSettingsBackupProfiles(draft.odu_bottom_plate || {});
+        oduResults.forEach((result) => {
+          const resultKey = `odu_bottom_plate.${result.key}`;
+          if (result.applied) {
+            applied.push(resultKey);
+          } else {
+            skipped.push(createSettingsBackupRestoreItem(
+              resultKey,
+              "Buitenunit",
+              "Niet toegepast",
+              result.reason,
+              "error",
+            ));
+          }
+        });
+      } catch (error) {
+        skipped.push(createSettingsBackupRestoreItem(
+          "odu_bottom_plate",
+          "Buitenunit",
+          "Herstellen mislukt",
+          String(error?.message || error),
+          "error",
+        ));
       }
 
       const operationValues = draft.settings?.operation || {};
@@ -1756,6 +1872,7 @@ import { render } from "../core/render-scheduler.js";
         skipped,
         unknown,
         mqttIncluded: Boolean(draft.mqtt),
+        oduBottomPlateIncluded: Object.keys(draft.odu_bottom_plate || {}).length > 0,
         sourceSchemaVersion: draft.schema_version,
       };
       state.systemModal = "settings-backup-success";
@@ -1806,11 +1923,7 @@ import { render } from "../core/render-scheduler.js";
       if (windowHours !== state.trendWindowHours) {
         setTrendWindowHours(windowHours);
       }
-      const response = await fetch(`${getBasePath()}/trends/history?hours=${encodeURIComponent(String(windowHours))}`, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const raw = await response.text();
+      const raw = await fetchHistoryResource(`/trends/history?hours=${encodeURIComponent(String(windowHours))}`);
       const lines = raw.split(/\r?\n/);
       let nowMs = Number.NaN;
       let body = raw;
@@ -1879,13 +1992,7 @@ import { render } from "../core/render-scheduler.js";
 
     state.energyHistoryFetchQuery = query;
     state.energyHistoryFetchPromise = (async () => {
-      const fetchEnergyHistoryText = async (requestQuery) => {
-        const response = await fetch(`${getBasePath()}/energy/history${requestQuery}`, { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        return response.text();
-      };
+      const fetchEnergyHistoryText = (requestQuery) => fetchHistoryResource(`/energy/history${requestQuery}`);
       let finalQuery = query;
       let raw = await fetchEnergyHistoryText(finalQuery);
       if (options.metaOnly !== true && finalQuery.includes("meta=1") && typeof getEnergyHistoryRequestQuery === "function") {

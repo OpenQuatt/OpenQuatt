@@ -20,6 +20,7 @@ inline void connection_changed(bool opentherm_selected) {
       id(oq_otb_startup_probe_active) = false;
       id(oq_boiler_connection_mismatch_state) = false;
       id(oq_boiler_connection_mismatch).publish_state(false);
+      id(oq_otb_hub).set_no_response_expected(false);
       id(oq_otb_hub).resume_polling();
     } else {
       id(oq_otb_withdraw_and_flush).execute();
@@ -28,6 +29,8 @@ inline void connection_changed(bool opentherm_selected) {
       id(oq_boiler_connection_mismatch_state) = false;
       id(oq_boiler_connection_mismatch).publish_state(false);
       id(boiler_relay).turn_off();
+      id(oq_otb_hub).set_no_response_expected(true);
+      ESP_LOGI("quatt.boiler", "Verifying boiler OpenTherm connection before enabling R1");
       id(oq_otb_hub)
           .start_priority_polling(esphome::opentherm::MessageId::STATUS, esphome::opentherm::MessageId::CH_SETPOINT);
     }
@@ -111,6 +114,13 @@ inline void link_watch(uint32_t link_timeout_ms, uint32_t field_timeout_ms) {
       auto call = id(oq_otb_t_set_command).make_call();
       call.set_value(0.0f);
       call.perform();
+    }
+    if (available) {
+      // Session-scoped init-only fields (e.g. ID15 max capacity/min modulation)
+      // are cleared on a real link timeout but never re-polled by the repeating
+      // sequence. Re-run the initial message sequence on recovery so they come
+      // back without requiring a reboot or new session.
+      id(oq_otb_hub).resume_polling();
     }
   }
   if (!available) id(oq_otb_invalidate_telemetry).execute();

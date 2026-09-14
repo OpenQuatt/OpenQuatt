@@ -8,7 +8,7 @@ import { isLikelyDeviceConnectionError, refreshEntities } from "../core/entity-s
 import { armOtaRefresh, awaitOtaEvidence, beginDeviceReconnect, clearOtaRefresh } from "../core/device-reconnect.js";
 import { clearQuickStartSetupInstall, state, storeQuickStartSetupInstall } from "../core/state.js";
 import { getFirmwareConnectionLabel, getFirmwareTopologyLabel, getInstallationTopology } from "./device-context.js";
-import { beginFirmwareOtaQuietWindow, clearFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareRunningChannelLabel, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasFirmwareTestLegacyCapability, hasFirmwareTestManifestCapability, hasKnownFirmwareTargetVersion, isFirmwareDowngradeAvailable, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, isQuickStartSetupFirmwareCurrent, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection, wait } from "./firmware-update.js";
+import { beginFirmwareOtaQuietWindow, clearFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareRunningChannelLabel, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasFirmwareTestLegacyCapability, hasFirmwareTestManifestCapability, hasKnownFirmwareTargetVersion, isFirmwareChannelTransition, isFirmwareDowngradeAvailable, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, isQuickStartSetupFirmwareCurrent, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection, wait } from "./firmware-update.js";
 import { render } from "../core/render-scheduler.js";
 
   export async function requestFirmwareOta(path, options) {
@@ -164,6 +164,7 @@ import { render } from "../core/render-scheduler.js";
 
     const targetVersion = getFirmwareLatestVersion(entity);
     const downgrade = isFirmwareDowngradeAvailable(entity);
+    const channelSwitch = isFirmwareChannelTransition(entity);
     if (downgrade && state.firmwareDowngradeConfirmedVersion !== targetVersion) {
       state.controlError = "Bevestig opnieuw dat je naar de oudere main-firmware wilt teruggaan.";
       render();
@@ -184,7 +185,7 @@ import { render } from "../core/render-scheduler.js";
     state.updateInstallBusy = true;
     state.updateInstallTargetVersion = targetVersion;
     primeFirmwareInstallProgressHints();
-    state.updateInstallMode = downgrade ? "downgrade" : "normal";
+    state.updateInstallMode = downgrade ? "downgrade" : channelSwitch ? "channel-switch" : "normal";
     state.updateInstallTargetConnection = "";
     state.updateInstallTargetTopology = "";
     state.controlError = "";
@@ -206,7 +207,13 @@ import { render } from "../core/render-scheduler.js";
         state.updateInstallTargetVersion = refreshedTargetVersion;
       } else {
         await setFirmwareUpdateTarget("current build", { poll: false, force: true });
-        state.updateInstallTargetVersion = getFirmwareLatestVersion(getFirmwareUpdateEntity() || {}) || state.updateInstallTargetVersion;
+        if (channelSwitch) {
+          if (!isFirmwareChannelTransition() || getFirmwareLatestVersion() !== targetVersion) {
+            throw new Error("De dev-doelversie is gewijzigd of niet meer beschikbaar. Controleer de getoonde versie opnieuw.");
+          }
+        } else {
+          state.updateInstallTargetVersion = getFirmwareLatestVersion(getFirmwareUpdateEntity() || {}) || state.updateInstallTargetVersion;
+        }
       }
       beginFirmwareOtaQuietWindow();
       const installButtonEntity = ENTITY_DEFS.installFirmwareUpdateTarget;

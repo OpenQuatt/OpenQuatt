@@ -42,17 +42,22 @@ esphome:
             id(oq_otb_startup_probe_active) = false;
             id(oq_boiler_connection_mismatch_state) = false;
             id(oq_boiler_connection_mismatch).publish_state(false);
+            id(oq_otb_hub).set_no_response_expected(false);
             id(oq_otb_hub).resume_polling();
           } else {
             // Before R1 can become available, actively check whether an
             // OpenTherm boiler is physically responding. STATUS(CH=off) and
             // TSet=0 are prioritized; a matching complete STATUS response
             // latches the connection, including a valid negative acknowledgement.
+            // Missing boiler responses are expected during this bounded probe and
+            // stay below WARN; TX failures and late frames still warn.
             oq_otb::startup_probe_state.begin(millis());
             id(oq_otb_startup_probe_active) = true;
             id(oq_boiler_connection_mismatch_state) = false;
             id(oq_boiler_connection_mismatch).publish_state(false);
             id(boiler_relay).turn_off();
+            id(oq_otb_hub).set_no_response_expected(true);
+            ESP_LOGI("quatt.boiler", "Verifying boiler OpenTherm connection before enabling R1");
             id(oq_otb_hub).start_priority_polling(
                 esphome::opentherm::MessageId::STATUS,
                 esphome::opentherm::MessageId::CH_SETPOINT);
@@ -64,9 +69,12 @@ esphome:
           // A normal shutdown gets one bounded opportunity to deliver and
           // acknowledge STATUS(CH=off) plus TSet=0 before the hub is stopped.
           // Hard power loss remains inherently fail-silent.
+          // Clear probe suppression first so the off-handshake timeouts warn normally.
+          id(oq_otb_hub).set_no_response_expected(false);
           id(oq_otb_withdraw_and_flush).execute();
           oq_otb::startup_probe_state.end();
           id(oq_otb_startup_probe_active) = false;
+          id(oq_otb_hub).set_no_response_expected(false);
           id(oq_boiler_transport_active) = false;
 
 logger:
@@ -740,6 +748,9 @@ interval:
 
           oq_otb::startup_probe_state.end();
           id(oq_otb_startup_probe_active) = false;
+          // Probe over (any outcome): missing responses are no longer expected.
+          // Clear before normal polling continues so real timeouts warn again.
+          id(oq_otb_hub).set_no_response_expected(false);
           id(boiler_relay).turn_off();
           id(oq_boiler_output_request) = false;
           id(oq_boiler_output_target_temperature_c) = NAN;

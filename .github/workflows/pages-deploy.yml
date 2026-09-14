@@ -31,9 +31,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-pages:
+  resolve-stable-release:
     runs-on: ubuntu-latest
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      tag: ${{ steps.stable_release.outputs.tag }}
+
+    steps:
+      - name: Checkout site source
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Resolve latest complete stable release
+        id: stable_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          expected="$(python3 scripts/build_targets.py factory-files --status enabled | jq -R . | jq -s .)"
+          releases="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate --slurp)"
+          release_tag="$(jq -r --argjson expected "${expected}" '
+              add
+              | map(
+                  select(.draft == false and .prerelease == false)
+                  | . as $release
+                  | select(($expected - ($release.assets | map(.name)) | length) == 0)
+                )
+              | first
+              | .tag_name // empty
+            ' <<< "${releases}")"
+          if [[ -z "${release_tag}" ]]; then
+            if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+              echo "No complete stable release matches the current target matrix; waiting for Release Build."
+              exit 0
+            fi
+            echo "No complete stable release with all expected factory binaries was found." >&2
+            exit 1
+          fi
+          echo "tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+
+  build-pages:
+    runs-on: ubuntu-latest
+    needs: resolve-stable-release
+    if: ${{ needs.resolve-stable-release.outputs.tag != '' }}
 
     steps:
       - name: Checkout site source
@@ -44,12 +84,13 @@ jobs:
       - name: Check documentation contracts
         run: npm run check:docs
 
-      - name: Download latest stable factory binaries
+      - name: Download stable factory binaries
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve-stable-release.outputs.tag }}
         run: |
           mkdir -p .tmp/pages-firmware
-          gh release download \
+          gh release download "${RELEASE_TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
             --pattern "*.firmware.factory.bin" \
             --dir .tmp/pages-firmware \
@@ -58,9 +99,10 @@ jobs:
       - name: Capture latest stable release metadata
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve-stable-release.outputs.tag }}
         run: |
-          VERSION="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)"
-          RELEASE_URL="$(gh release view --repo "${GITHUB_REPOSITORY}" --json url --jq .url)"
+          VERSION="$(gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)"
+          RELEASE_URL="$(gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json url --jq .url)"
           mkdir -p .tmp/pages-metadata
           cat > .tmp/pages-metadata/version.json <<EOF
           {

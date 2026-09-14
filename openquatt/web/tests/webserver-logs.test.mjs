@@ -14,11 +14,13 @@ const {
   closeWebServerLogStream,
   createWebServerLogEntry,
   getWebServerLogClearUrl,
+  getWebServerLogStatusLabel,
   normalizeRecentWebServerLogPayload,
   openWebServerLogsModal,
   refreshWebServerLogHistory,
   renderWebServerLogHistoryControls,
   renderWebServerLoggerLevelControl,
+  renderWebServerLogsModal,
   scheduleWebServerLogPoll,
   syncWebServerLogStream,
 } =
@@ -824,6 +826,47 @@ test("normale modalopening haalt de historie direct precies één keer op", asyn
   await flushHistoryRequests();
 
   assert.deepEqual(historyRequests, ["/openquatt/logs/recent"]);
+});
+
+test("preview-logboek gebruikt alleen demo-inhoud en start geen firmwarepoll", async (t) => {
+  const originalWindow = globalThis.window;
+  const originalPreview = globalThis.__OQ_PREVIEW__;
+  t.after(() => {
+    closeWebServerLogStream();
+    globalThis.window = originalWindow;
+    globalThis.__OQ_PREVIEW__ = originalPreview;
+  });
+
+  seedLogState();
+  state.webServerLogEntries = [];
+  globalThis.__OQ_PREVIEW__ = true;
+  const requests = [];
+  globalThis.window = {
+    __OQ_DEV_WEBSERVER_LOGS__: ["[I][preview:1]: demo-regel"],
+    location: { pathname: "/" },
+    fetch: async (url) => {
+      requests.push(String(url));
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ entities: {}, missing: [] }),
+      };
+    },
+  };
+
+  assert.equal(getWebServerLogStatusLabel(), "Voorbeeld");
+  openWebServerLogsModal();
+  await flushHistoryRequests();
+
+  assert.deepEqual(state.webServerLogEntries.map(({ raw }) => raw), ["[I][preview:1]: demo-regel"]);
+  assert.equal(requests.some((url) => url.includes("/openquatt/logs/recent")), false);
+  assert.match(renderWebServerLogsModal(), /voorbeeldmeldingen uit de lokale preview/);
+
+  syncWebServerLogStream();
+  assert.equal(state.webServerLogPollTimer, null);
+  assert.equal(await clearWebServerLogHistory(), true);
+  assert.deepEqual(state.webServerLogEntries, []);
+  assert.equal(requests.some((url) => url.includes("/openquatt/logs/clear")), false);
 });
 
 test("identieke tekst met verschillende seq blijft behouden", () => {

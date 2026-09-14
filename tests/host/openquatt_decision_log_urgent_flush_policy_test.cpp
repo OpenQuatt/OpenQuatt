@@ -40,12 +40,22 @@ int main() {
   policy.mark_target_persisted(50ULL * kSecond, 12U);
   assert(!policy.pending());
 
+  // A bounded flush that made progress may continue in the next loop instead
+  // of waiting for the regular 15 s interval or the 30 s failure retry.
+  policy.request(70ULL * kSecond, 13U);
+  assert(policy.should_attempt(72ULL * kSecond, kCoalesce, kMinInterval));
+  policy.mark_attempt(72ULL * kSecond);
+  policy.schedule_continuation(72ULL * kSecond);
+  assert(policy.should_attempt(72ULL * kSecond, kCoalesce, kMinInterval));
+  policy.mark_target_persisted(72ULL * kSecond, 13U);
+  assert(!policy.pending());
+
   // Sequence comparisons remain valid across uint32 wraparound.
-  policy.request(60ULL * kSecond, UINT32_MAX);
-  policy.request(61ULL * kSecond, 0U);
+  policy.request(80ULL * kSecond, UINT32_MAX);
+  policy.request(81ULL * kSecond, 0U);
   assert(policy.requested_event_seq() == 0U);
 
-  policy.clear(62ULL * kSecond);
+  policy.clear(82ULL * kSecond);
   assert(!policy.pending());
   assert(!policy.protects_unpersisted_sequence(0U, UINT32_MAX - 1U));
   return 0;

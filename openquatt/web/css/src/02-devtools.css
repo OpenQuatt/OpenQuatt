@@ -260,3 +260,30 @@
   border-color: rgba(74, 222, 128, 0.26);
   color: #86efac;
 }
+
+@media (max-width: 860px) {
+  .oq-helper-devdock,
+  .oq-helper-devdock--collapsed {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    width: min(300px, calc(100vw - 20px));
+  }
+
+  .oq-helper-devdock--collapsed {
+    display: block;
+  }
+
+  .oq-helper-devdock-toggle {
+    width: auto;
+  }
+
+  .oq-helper-hub-dev-grid,
+  .oq-helper-hub-dev-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .oq-helper-devdock .oq-helper-hub-dev-actions {
+    grid-template-columns: 1fr;
+  }
+}

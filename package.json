@@ -27,6 +27,9 @@
   },
   "homepage": "https://github.com/OpenQuatt/OpenQuatt#readme",
   "devDependencies": {
-    "esbuild": "^0.28.0"
+    "acorn": "^8.18.0",
+    "esbuild": "^0.28.0",
+    "lightningcss": "^1.33.0",
+    "terser": "^5.51.2"
   }
 }

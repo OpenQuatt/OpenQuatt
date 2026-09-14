@@ -53,15 +53,14 @@ openquatt_odu_runtime_frequency:
     hp_index: ${hp_index}
     on_write_started:
       - lambda: |-
-          // A write makes the control snapshot stale until verified.
+          // Keep the last validated snapshot for diagnostics, but block control
+          // through the incident manager until the write is read back fully.
           id(${hp_id}_compressor_level_profile_request_token) =
               oq_odu::next_request_token(
                   id(${hp_id}_compressor_level_profile_request_token));
           id(${hp_id}_compressor_level_profile_request_pending) = false;
-          id(${hp_id}_runtime_frequency_snapshot_storage) =
-              oq_odu::RuntimeFrequencySnapshotStorage{};
-          id(${hp_id}_compressor_level_profile).publish_state(
-              oq_odu::compressor_level_profile_label(
-                  oq_odu::CompressorLevelProfile::UNKNOWN));
+          id(${hp_id}_runtime_frequency_revalidation_required) = true;
+          id(oq_incident_manager).observe_runtime_frequency_mapping(
+              ${hp_index}, false, millis());
     on_write_applied:
       - script.execute: ${hp_id}_load_runtime_frequency_table_once

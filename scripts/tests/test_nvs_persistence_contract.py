@@ -18,6 +18,15 @@ ODU_RUNTIME_SOURCE = (
     ROOT
     / "components/openquatt_odu_runtime_frequency/OpenQuattOduRuntimeFrequency.cpp"
 ).read_text()
+ODU_SETTINGS_HEADER = (
+    ROOT / "components/openquatt_odu_settings/OpenQuattOduSettings.h"
+).read_text()
+ODU_SETTINGS_SOURCE = (
+    ROOT / "components/openquatt_odu_settings/OpenQuattOduSettings.cpp"
+).read_text()
+ODU_SETTINGS_LOGIC = (
+    ROOT / "openquatt/includes/odu/oq_odu_bottom_plate_settings.h"
+).read_text()
 HP_IO = (ROOT / "openquatt/oq_HP_io.yaml").read_text()
 API_INGRESS = (ROOT / "openquatt/oq_api_ingress.yaml").read_text()
 FLOW_CONTROL = (ROOT / "openquatt/oq_flow_control.yaml").read_text()
@@ -42,6 +51,19 @@ class NvsPersistenceContractTest(unittest.TestCase):
         self.assertEqual(API_INGRESS.count("restore_mode: ALWAYS_OFF"), 2)
         self.assertNotIn("restore_mode: RESTORE_DEFAULT_OFF", API_INGRESS)
         self.assertIn('"API ingress enable state"', API_INGRESS)
+
+    def test_bottom_plate_profiles_are_small_verified_preferences(self) -> None:
+        settings_service = ODU_SETTINGS_HEADER + ODU_SETTINGS_SOURCE
+        self.assertIn(
+            "sizeof(BottomPlateProfileStorage) == 16U", ODU_SETTINGS_LOGIC
+        )
+        self.assertIn("make_preference<oq_odu::BottomPlateProfileStorage>", settings_service)
+        self.assertIn("global_preferences->sync()", settings_service)
+        self.assertIn("profile_pref_.load(&verify)", settings_service)
+        self.assertIn("identity_matches_profile_", settings_service)
+        self.assertIn("pending_profile_", settings_service)
+        self.assertIn("manual_apply_pending_", settings_service)
+        self.assertEqual(check_nvs_budget.CUSTOM_PREFERENCE_ENTRIES, 42)
 
     def test_retired_flow_pwm_preferences_are_cleaned_up(self) -> None:
         self.assertIn("435184091U", FLOW_CONTROL)

@@ -40,10 +40,6 @@ struct DemandDecision {
   bool external = false;
   bool valid = false;
 };
-struct FilterDecision {
-  int previous = 0, filtered = 0;
-  float ramp_budget = 0.0f;
-};
 inline float clamp_power(float value, float low, float high) {
   if (value < low) return low;
   if (value > high) return high;
@@ -142,32 +138,6 @@ inline DemandDecision decide_demand(const DemandInput& in, const DemandTuning& t
   out.external = feedforward.external;
   out.valid = true;
   out.next = {out.requested_w, out.next.last_ms, memory_c};
-  return out;
-}
-inline FilterDecision filter_demand(int raw, int current, float ramp_budget, float ramp_step_min, float dt_s,
-                                    int demand_max) {
-  FilterDecision out;
-  if (demand_max <= 0) return out;
-  raw = raw < 0 ? 0 : (raw > demand_max ? demand_max : raw);
-  current = current < 0 ? 0 : (current > demand_max ? demand_max : current);
-  out.previous = current;
-  const bool ramp_valid = isfinite(ramp_budget) && isfinite(ramp_step_min) && isfinite(dt_s) && dt_s >= 0.0f;
-  float budget = ramp_valid ? clamp_power(ramp_budget, 0.0f, static_cast<float>(demand_max)) : 0.0f;
-  int steps = 0;
-  if (ramp_valid) {
-    const float step_min = lroundf(clamp_power(ramp_step_min, 1.0f, static_cast<float>(demand_max)));
-    budget = fminf(static_cast<float>(demand_max), budget + step_min * dt_s / 60.0f);
-    steps = static_cast<int>(floorf(budget));
-    budget -= static_cast<float>(steps);
-  }
-  if (raw > current && steps > 0)
-    current = current + steps < raw ? current + steps : raw;
-  else if (raw == 0 && current == 1)
-    current = 0;
-  else if (raw <= current - 2)
-    current = raw;
-  out.filtered = current;
-  out.ramp_budget = budget;
   return out;
 }
 }  // namespace oq_power_house

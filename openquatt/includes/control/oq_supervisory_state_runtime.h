@@ -9,8 +9,10 @@
 #include "../performance/hp_perf_frequency.h"
 #include "../service/oq_service_logic.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
+#include "oq_cold_start_probe.h"
+#include "oq_compressor_frequency_runtime.h"
+#include "oq_hp_candidate_logic.h"
 #include "oq_supervisory_state_logic.h"
-
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_supervisory_state_runtime {
 
@@ -33,6 +35,7 @@ struct TickConfig {
   float low_load_fallback_on_w;
   uint32_t low_load_dyn_cache_max_s;
   uint32_t ph_start_confirm_s;
+  uint32_t hp_min_off_s;
   uint32_t cm2_idle_exit_s;
   uint32_t cm2_min_run_s;
   uint32_t cm_flow_fault_s;
@@ -59,14 +62,6 @@ struct TickConfig {
 class Runtime {
  public:
   void tick(const TickConfig& tick) {
-    // -------------------------------------------------
-    // Main phases:
-    // 1) Power limiter (safety net on total input power)
-    // 2) Flow interlock + frost detection
-    // 3) resolve_desired_cm() (override + CM1 timers + CM3 promote/demote)
-    // 4) apply_silent_window() (diagnostics + low-noise mode)
-    // 5) apply_sticky_pump_policy() (CM0 sticky + pump/PWM ownership)
-    // -------------------------------------------------
     const uint32_t now_ms = (uint32_t)millis();
 
     auto now_time = id(oq_time).now();
@@ -86,9 +81,6 @@ class Runtime {
 
     const uint32_t prepost_ms = (uint32_t)(tick.cm_prepost_s * 1000UL);
     const float min_flow_lph = tick.cm_min_flow_lph;
-    // -------------------------------------------------
-    // Helpers: minimize Modbus writes (write-on-change)
-    // -------------------------------------------------
     auto set_select_option = [&](auto& sel, const char* opt) {
       if (!sel.has_state() || sel.current_option() != opt) {
         auto c = sel.make_call();
@@ -151,13 +143,6 @@ class Runtime {
       return static_cast<uint32_t>(until_ms - now_ms) < 0x80000000UL;
     };
 
-    // -------------------------------------------------
-    // 1) Thermal demand
-    //    Baseline heating demand: demand_filtered > 0
-    //    Baseline cooling demand: selected enable + request + permit
-    //    CM2 idle-exit: if both HPs are commanded/measured idle
-    //    for a while, force demand false to allow CM2->CM1->CM0.
-    // -------------------------------------------------
     const char* cur_cm_state = id(oq_control_mode).state.c_str();
     const bool in_cm2 = strcmp(cur_cm_state, "CM2") == 0;
     const bool openquatt_enabled = id(oq_enabled).state;
@@ -224,12 +209,37 @@ class Runtime {
     const bool both_units_idle = !any_hp_active_guard;
 
     const float p_req_w = power_house_active ? id(oq_strategy_requested_power_w) : NAN;
-    const float outside_c = id(outside_temp_selected).state;
-    const float supply_c = id(oq_system_supply_temp).state;
+    const float outside_c = id(outside_temp_selected).state, supply_c = id(oq_system_supply_temp).state;
     float live_minimum_power_w = NAN;
     if (power_house_active && std::isfinite(outside_c) && std::isfinite(supply_c)) {
-      live_minimum_power_w = oq_perf::interp_power_th_w_hz(oq_perf::model_frequency_hz(1), outside_c, supply_c);
-      if (!std::isfinite(live_minimum_power_w) || live_minimum_power_w <= 0.0f) live_minimum_power_w = NAN;
+      const auto frequency = oq_frequency_runtime::capture();
+      const uint32_t minimum_off_ms = oq_supervisory_state::seconds_to_ms(tick.hp_min_off_s);
+      auto hp1_candidate = oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(1), hp1_lvl);
+      hp1_candidate.minimum_off_ready =
+          oq_hp_candidate::minimum_off_ready(now_ms, id(hp1_last_stop_ms), minimum_off_ms, hp1_lvl);
+#if OQ_TOPOLOGY_DUO
+      auto hp2_candidate = oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(2), hp2_lvl);
+      hp2_candidate.minimum_off_ready =
+          oq_hp_candidate::minimum_off_ready(now_ms, id(hp2_last_stop_ms), minimum_off_ms, hp2_lvl);
+#else
+      const oq_hp_candidate::HpCandidateState hp2_candidate;
+#endif
+      const bool allow_low_supply_boundary_estimate = id(oq_cold_start_session_active) && !id(oq_cold_start_hp_blocked);
+      const auto include_minimum = [&](bool hp1, const oq_hp_candidate::HpCandidateState& candidate) {
+        if (!oq_hp_candidate::may_serve_candidate(candidate)) return;
+        for (int level = 1; level <= 10; ++level) {
+          const auto prediction = oq_perf::predict_candidate(frequency, frequency.performance_variant(hp1), hp1, level,
+                                                             outside_c, supply_c, allow_low_supply_boundary_estimate);
+          if (!prediction.usable_for_running_optimization()) continue;
+          const float power_w = prediction.performance.pth_w;
+          live_minimum_power_w =
+              std::isfinite(live_minimum_power_w) ? std::min(live_minimum_power_w, power_w) : power_w;
+        }
+      };
+      include_minimum(true, hp1_candidate);
+#if OQ_TOPOLOGY_DUO
+      include_minimum(false, hp2_candidate);
+#endif
     }
     const auto low_load = oq_supervisory_state::update_low_load(
         {
@@ -261,9 +271,16 @@ class Runtime {
     id(oq_low_load_on_dyn_w) = low_load.on_threshold_w;
     id(oq_low_load_dyn_source_state) = low_load.source_code;
     bool heating_req = low_load.heating_request;
+    bool heating_preflow_req = false;
     const float low_load_off_w = low_load.off_threshold_w;
     bool reentry_block_active = low_load.reentry_block_active;
     if (!power_house_active) id(oq_ph_start_confirm_since_ms) = 0;
+
+    const bool heating_enable_valid_now = id(heating_enable_valid).has_state() && id(heating_enable_valid).state;
+    const bool heating_enable_selected_now =
+        id(heating_enable_selected).has_state() && id(heating_enable_selected).state;
+    heating_req = oq_hp_supervisory::apply_heating_enable_gate(heating_req, heating_enable_valid_now,
+                                                               heating_enable_selected_now);
 
     // Power House startup confirmation:
     // from a non-heating state, demand must stay active briefly before we enter CM1/CM2.
@@ -271,18 +288,14 @@ class Runtime {
     // before they turn into a real compressor start.
     if (power_house_active) {
       const bool start_pending_scope = !in_cm2 && !any_hp_active_guard;
-      const auto confirmation = oq_supervisory_state::confirm_request(
-          now_ms, heating_req, start_pending_scope, oq_supervisory_state::seconds_to_ms(tick.ph_start_confirm_s),
+      const auto startup = oq_supervisory_state::power_house_start(
+          now_ms, heating_req, start_pending_scope, id(oq_ph_fast_intent_code) != 0,
+          oq_supervisory_state::seconds_to_ms(tick.ph_start_confirm_s),
           {id(oq_ph_start_confirm_since_ms) != 0, id(oq_ph_start_confirm_since_ms)});
-      id(oq_ph_start_confirm_since_ms) = confirmation.state.timing ? confirmation.state.since_ms : 0;
-      heating_req = confirmation.confirmed;
+      id(oq_ph_start_confirm_since_ms) = startup.state.timing ? startup.state.since_ms : 0;
+      heating_preflow_req = startup.preflow_request;
+      heating_req = startup.heating_request;
     }
-
-    const bool heating_enable_valid_now = id(heating_enable_valid).has_state() && id(heating_enable_valid).state;
-    const bool heating_enable_selected_now =
-        id(heating_enable_selected).has_state() && id(heating_enable_selected).state;
-    heating_req = oq_hp_supervisory::apply_heating_enable_gate(heating_req, heating_enable_valid_now,
-                                                               heating_enable_selected_now);
 
     const bool curve_mode_active = (strategy_active_code == 2);
     const uint32_t cm2_startup_grace_ms = oq_supervisory_state::seconds_to_ms(tick.cm2_min_run_s);
@@ -316,19 +329,23 @@ class Runtime {
       // During active block, CM2 may not be re-entered from non-CM2 states.
       if (!in_cm2 && reentry_block_active) {
         heating_req = false;
+        heating_preflow_req = false;
       }
     }
+    const bool actuator_request_active = id(oq_actuator_hp1_req) > 0 || id(oq_actuator_hp2_req) > 0;
     const bool manual_hp_thermal_req =
-        oq_manual_hp::owns_control() &&
-        ((int)roundf(id(oq_manual_hp1_level).state) > 0 || (int)roundf(id(oq_manual_hp2_level).state) > 0 ||
-         id(oq_actuator_hp1_req) > 0 || id(oq_actuator_hp2_req) > 0);
-    const bool thermal_req = heating_req || cooling_req || manual_hp_thermal_req;
+        oq_manual_hp::owns_control() && ((int)roundf(id(oq_manual_hp1_level).state) > 0 ||
+                                         (int)roundf(id(oq_manual_hp2_level).state) > 0 || actuator_request_active);
+    const bool heating_flow_req = heating_req || heating_preflow_req;
+    const bool thermal_req = heating_flow_req || cooling_req || manual_hp_thermal_req;
+    const bool flow_guard_required =
+        oq_supervisory_state::flow_guard_required(thermal_req, any_hp_compressor_active, actuator_request_active);
 
     // -------------------------------------------------
     // 2) Flow interlock status + timers
     // -------------------------------------------------
     const auto safety = oq_supervisory_safety_runtime::runtime().tick(
-        {now_ms, thermal_req, min_flow_lph, tick.cm_flow_fault_s, tick.cm_flow_recover_s, tick.cm_frost_on_c,
+        {now_ms, flow_guard_required, min_flow_lph, tick.cm_flow_fault_s, tick.cm_flow_recover_s, tick.cm_frost_on_c,
          tick.cm_frost_off_c, tick.cm_frost_nan_grace_s});
     const bool flow_valid = safety.flow_valid;
     const bool flow_low = safety.flow_low;
@@ -347,7 +364,7 @@ class Runtime {
     bool cold_start_below_minimum = false;
     bool cold_start_assist_requested = false;
     bool cold_start_released_now = false;
-    if (!heating_req) {
+    if (!heating_flow_req) {
       id(oq_cold_start_session_active) = false;
       id(oq_cold_start_pending) = false;
       id(oq_cold_start_sample_after_ms) = 0;
@@ -362,6 +379,8 @@ class Runtime {
       }
 
       if (id(oq_cold_start_pending)) {
+        // After flow loss, require another sample taken after flow recovers.
+        if (!flow_ok) id(oq_cold_start_sample_after_ms) = 0;
         if (flow_ok && id(oq_cold_start_sample_after_ms) == 0) {
           id(oq_cold_start_sample_after_ms) = now_ms;
         }
@@ -397,6 +416,17 @@ class Runtime {
       }
       id(oq_cold_start_hp_blocked) = cold_start_blocked;
     }
+    const bool probe_allowed = heating_flow_req && id(oq_cold_start_pending) && flow_ok &&
+                               !id(oq_runtime_polling_paused).state && openquatt_enabled &&
+                               id(oq_cm_override).current_option() == "Auto" && id(oq_control_mode_code) != 100;
+    this->hp1_water_probe_.poll(now_ms, id(oq_cold_start_sample_after_ms),
+                                probe_allowed && id(hp1_is_online) && !id(hp1_odu_eeprom_dump).is_active(), &id(hp1),
+                                &id(hp1_water_out_temp_raw));
+#if OQ_TOPOLOGY_DUO
+    this->hp2_water_probe_.poll(now_ms, id(oq_cold_start_sample_after_ms),
+                                probe_allowed && id(hp2_is_online) && !id(hp2_odu_eeprom_dump).is_active(), &id(hp2),
+                                &id(hp2_water_out_temp_raw));
+#endif
     // -------------------------------------------------
     // 4) CM selection with CM1 timer (pre/postflow) + flow interlock
     // -------------------------------------------------
@@ -427,6 +457,8 @@ class Runtime {
       // Determine base target (without CM1 timer)
       int base_target = oq_hp_supervisory::base_control_mode(cooling_req, heating_req, frost);
 
+      if (heating_preflow_req) base_target = 1;
+
       if (heating_req && cold_start_blocked) {
         base_target = 1;
       }
@@ -439,8 +471,6 @@ class Runtime {
       // Handle CM1 window:
       // - If we're currently in CM1 and timer is running, keep CM1 until expiry.
       // - When CM1 expires, move to oq_cm1_next_after (but recompute if heating/frost changed).
-      const bool now_before_until = ms_window_active(id(oq_cm1_until_ms));
-
       // Supervisory override (test/commissioning)
       // - Auto (normal logic)
       // - Force CM0 / Force CM1 / Force CM98 (auto-expire)
@@ -540,14 +570,20 @@ class Runtime {
           desired_local = 100;
           cm_transition_reason = "commissioning task active";
         } else {
+          // Start the 30 s circulation window on the first heating request,
+          // while flow and fresh ODU samples are still being acquired.
+          if (oq_supervisory_state::start_heating_preflow(heating_flow_req, cooling_req, any_hp_active_guard,
+                                                          current_cm_code, id(oq_cm1_until_ms), base_target)) {
+            start_cm1(2);
+          }
           // Snapshot CM1 timer state (before we touch globals)
           const bool cm1_timer_active = (id(oq_cm1_until_ms) != 0);
-          const bool cm1_timer_running = cm1_timer_active && now_before_until;
-          const bool cm1_timer_expired = cm1_timer_active && !now_before_until;
+          const bool cm1_timer_running = cm1_timer_active && ms_window_active(id(oq_cm1_until_ms));
+          const bool cm1_timer_expired = cm1_timer_active && !cm1_timer_running;
           const int cm1_next_after = id(oq_cm1_next_after);
 
           // 1) If we're in CM1 and timer is still running -> stay CM1
-          if (cm1_timer_running && strcmp(cur_cm, "CM1") == 0) {
+          if (cm1_timer_running && (strcmp(cur_cm, "CM1") == 0 || (id(oq_cm1_next_after) == 2 && heating_flow_req))) {
             desired_local = 1;
             cm_transition_reason = "CM1 hold timer active";
 
@@ -560,6 +596,9 @@ class Runtime {
             } else if (cm1_next_after == 2) {
               if (heating_req && base_target == 2)
                 desired_local = 2;
+              else if (oq_supervisory_state::hold_expired_heating_preflow(cm1_next_after, heating_flow_req,
+                                                                          base_target))
+                desired_local = 1;
               else if (base_target == 98)
                 desired_local = 98;
               else
@@ -604,9 +643,12 @@ class Runtime {
                      "CM1 hold expired: next_after=%d, heating_req=%d, cooling_req=%d, base_target=%d -> desired=%d",
                      cm1_next_after, (int)heating_req, (int)cooling_req, base_target, desired_local);
 
-            // Clear CM1 window only AFTER we have used next_after
-            id(oq_cm1_until_ms) = 0;
-            id(oq_cm1_next_after) = 0;
+            // Keep completed preflow while confirmation, flow or fresh water
+            // samples are pending. Guards must pass on this tick to enter CM2.
+            if (!oq_supervisory_state::hold_expired_heating_preflow(cm1_next_after, heating_flow_req, base_target)) {
+              id(oq_cm1_until_ms) = 0;
+              id(oq_cm1_next_after) = 0;
+            }
           } else {
             // 3) Not in CM1 (or no CM1 window active) -> normal transition logic
             if (cm1_timer_expired) {
@@ -632,6 +674,10 @@ class Runtime {
                                                                : openquatt_decision_log::REASON_FLOW_PREFLOW;
                 cm_transition_reason = "cooling request held by flow interlock";
               }
+            } else if (heating_preflow_req && !heating_req) {
+              if (strcmp(cur_cm, "CM1") != 0) start_cm1(2);
+              desired_local = 1;
+              cm_transition_reason = "Power House demand confirmation overlaps heating preflow";
             } else if (heating_req) {
               const auto heating_mode = oq_hp_supervisory::decide_heating_mode({
                   current_cm_code,
@@ -664,9 +710,10 @@ class Runtime {
             }
           }
 
-          // Safety: never leave CM1 to CM0 while any HP still reports/targets activity.
+          // Safety: never leave CM1 to CM0/CM98 while any HP still reports/targets activity.
           // Keep CM1 (pump-on holding state) until both HPs are effectively idle.
-          if (strcmp(cur_cm, "CM1") == 0 && !thermal_req && base_target == 0 && any_hp_active_guard) {
+          if (oq_supervisory_state::hold_cm1_until_hp_idle(strcmp(cur_cm, "CM1") == 0, thermal_req, base_target,
+                                                           any_hp_active_guard || actuator_request_active)) {
             desired_local = 1;
           }
 
@@ -1081,6 +1128,10 @@ class Runtime {
   }
 
  private:
+  oq_cold_start::WaterProbe hp1_water_probe_;
+#if OQ_TOPOLOGY_DUO
+  oq_cold_start::WaterProbe hp2_water_probe_;
+#endif
   static void shutdown_boiler_transport_() {
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
     id(oq_otb_ch_enable).turn_off();

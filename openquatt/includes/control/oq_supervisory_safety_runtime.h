@@ -11,7 +11,7 @@ namespace oq_supervisory_safety_runtime {
 
 struct TickConfig {
   uint32_t now_ms;
-  bool thermal_request;
+  bool flow_guard_required;
   float minimum_flow_lph;
   uint32_t low_flow_fault_s;
   uint32_t flow_recover_s;
@@ -31,7 +31,7 @@ class Runtime {
 
     const oq_supervisory_safety::Input input{
         tick.now_ms,
-        tick.thermal_request,
+        tick.flow_guard_required,
         id(flow_rate_selected).has_state(),
         id(flow_rate_selected).state,
         id(outside_temp_selected).has_state(),

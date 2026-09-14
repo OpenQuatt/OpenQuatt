@@ -69,6 +69,17 @@ number:
       - lambda: |-
           oq_api_ingress::runtime().observe(oq_api_ingress::Slot::EXTERNAL_HEAT_DEMAND, (uint32_t) millis());
 
+  - platform: template
+    id: api_input_heating_supply_target
+    min_value: 20
+    max_value: 70
+    step: 0.5
+    restore_value: false
+    optimistic: true
+    on_value:
+      - lambda: |-
+          oq_api_ingress::runtime().observe(oq_api_ingress::Slot::HEATING_SUPPLY_TARGET, (uint32_t) millis());
+
 switch:
   - platform: template
     id: api_input_heating_enable
@@ -158,6 +169,11 @@ binary_sensor:
     name: "API Input External Heat Demand Valid"
     internal: true
 
+  - platform: template
+    id: api_input_heating_supply_target_valid
+    name: "API Input Heating Supply Target Valid"
+    internal: true
+
 sensor:
   - platform: template
     id: api_input_cooling_dew_point_age
@@ -215,16 +231,25 @@ sensor:
     accuracy_decimals: 0
     update_interval: never
 
+  - platform: template
+    id: api_input_heating_supply_target_age
+    name: "API Input Heating Supply Target Age"
+    internal: true
+    unit_of_measurement: "s"
+    accuracy_decimals: 0
+    update_interval: never
+
 interval:
   - interval: 5s
     then:
       - lambda: |-
           oq_api_ingress::runtime().tick(
               (uint32_t) millis(),
-              {(uint32_t) ${api_input_cooling_dew_point_stale_s}UL,
-               (uint32_t) ${api_input_outside_temperature_stale_s}UL,
-               (uint32_t) ${api_input_room_temperature_stale_s}UL,
-               (uint32_t) ${api_input_room_setpoint_stale_s}UL,
-               (uint32_t) ${api_input_heating_enable_stale_s}UL,
-               (uint32_t) ${api_input_cooling_enable_stale_s}UL,
-               (uint32_t) ${api_input_external_heat_demand_stale_s}UL});
+               {(uint32_t) ${api_input_cooling_dew_point_stale_s}UL,
+                (uint32_t) ${api_input_outside_temperature_stale_s}UL,
+                (uint32_t) ${api_input_room_temperature_stale_s}UL,
+                (uint32_t) ${api_input_room_setpoint_stale_s}UL,
+                (uint32_t) ${api_input_heating_enable_stale_s}UL,
+                (uint32_t) ${api_input_cooling_enable_stale_s}UL,
+                (uint32_t) ${api_input_external_heat_demand_stale_s}UL,
+                (uint32_t) ${api_input_heating_supply_target_stale_s}UL});

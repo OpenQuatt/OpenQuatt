@@ -108,8 +108,9 @@ test("boiler-test card keeps result provenance out of the user interface", () =>
 
   const task = getSettingsServiceModel().tasks.find(({ key }) => key === "boiler");
   assert.equal(task.summary, "Meet het vermogen dat de cv-ketel afgeeft.");
-  assert.match(task.cardMarkup, /De test stabiliseert eerst de flow/);
-  assert.doesNotMatch(task.cardMarkup, /Herkomst en kwaliteit|ID15|empirisch/i);
+  const markup = task.renderCard();
+  assert.match(markup, /De test stabiliseert eerst de flow/);
+  assert.doesNotMatch(markup, /Herkomst en kwaliteit|ID15|empirisch/i);
 });
 
 test("getBoilerTestStatusCopy exact ABORTED is handmatig", () => {

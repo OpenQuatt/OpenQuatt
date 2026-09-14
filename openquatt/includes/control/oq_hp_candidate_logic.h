@@ -1,12 +1,21 @@
 #pragma once
 
+#include <cstdint>
+
 namespace oq_hp_candidate {
 
 inline bool may_start(bool available_for_start, bool must_stop) { return available_for_start && !must_stop; }
 
-inline bool may_serve_candidate(bool available_for_start, bool must_stop, int previous_applied_level) {
+inline bool may_serve_candidate(bool available_for_start, bool must_stop, int previous_applied_level,
+                                bool minimum_off_ready = true) {
   if (must_stop) return false;
-  return available_for_start || previous_applied_level > 0;
+  return previous_applied_level > 0 || (available_for_start && minimum_off_ready);
+}
+
+inline bool minimum_off_ready(uint32_t now_ms, uint32_t last_stop_ms, uint32_t minimum_off_ms,
+                              int previous_applied_level) {
+  if (previous_applied_level > 0 || last_stop_ms == 0 || minimum_off_ms == 0) return true;
+  return static_cast<uint32_t>(now_ms - last_stop_ms) >= minimum_off_ms;
 }
 
 struct HpCandidateState {
@@ -14,6 +23,7 @@ struct HpCandidateState {
   bool available_for_start = false;
   bool must_stop = false;
   bool link_suspect = false;
+  bool minimum_off_ready = true;
 };
 
 template <typename IncidentOutputs>
@@ -24,11 +34,38 @@ inline HpCandidateState candidate_state(const IncidentOutputs& outputs, int prev
       outputs.available_for_start,
       outputs.must_stop,
       outputs.link_state == LinkState::SUSPECT,
+      true,
   };
 }
 
 inline bool may_serve_candidate(const HpCandidateState& candidate) {
-  return may_serve_candidate(candidate.available_for_start, candidate.must_stop, candidate.previous_applied_level);
+  return may_serve_candidate(candidate.available_for_start, candidate.must_stop, candidate.previous_applied_level,
+                             candidate.minimum_off_ready);
+}
+
+struct ModelUnavailableHold {
+  int hp1_level = 0;
+  int hp2_level = 0;
+  int owner_hp = 0;
+  int capacity_mode = 0;
+};
+
+// Missing model data must not start or swap heat pumps. Keep only already
+// active units running; incident-manager must-stop decisions still win.
+inline ModelUnavailableHold preserve_active_topology_without_model(bool demand_active, const HpCandidateState& hp1,
+                                                                   const HpCandidateState& hp2) {
+  ModelUnavailableHold decision;
+  if (demand_active) {
+    decision.hp1_level = !hp1.must_stop && hp1.previous_applied_level > 0 ? hp1.previous_applied_level : 0;
+    decision.hp2_level = !hp2.must_stop && hp2.previous_applied_level > 0 ? hp2.previous_applied_level : 0;
+  }
+  decision.owner_hp = (decision.hp1_level > 0 && decision.hp2_level <= 0)   ? 1
+                      : (decision.hp2_level > 0 && decision.hp1_level <= 0) ? 2
+                                                                            : 0;
+  decision.capacity_mode = (decision.hp1_level > 0 && decision.hp2_level > 0)
+                               ? 2
+                               : ((decision.hp1_level > 0 || decision.hp2_level > 0) ? 1 : 0);
+  return decision;
 }
 
 struct SuspectTopologyHold {

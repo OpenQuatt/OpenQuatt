@@ -6,6 +6,7 @@ OpenQuatt heeft geen volledige MQTT-export. De firmware gebruikt wel een kleine 
 - buitentemperatuur;
 - kamertemperatuur;
 - kamer-setpoint;
+- aanvoertarget;
 - warmtetoestemming;
 - koeltoestemming.
 
@@ -39,6 +40,7 @@ openquatt/<device_name>/input/cooling/dew_point
 openquatt/<device_name>/input/weather/outdoor_temperature
 openquatt/<device_name>/input/thermostat/room_temperature
 openquatt/<device_name>/input/thermostat/room_setpoint
+openquatt/<device_name>/input/heating/supply_target
 openquatt/<device_name>/input/thermostat/heating_enable
 openquatt/<device_name>/input/thermostat/cooling_enable
 ```
@@ -50,6 +52,7 @@ openquatt/openquatt/input/cooling/dew_point
 openquatt/openquatt/input/weather/outdoor_temperature
 openquatt/openquatt/input/thermostat/room_temperature
 openquatt/openquatt/input/thermostat/room_setpoint
+openquatt/openquatt/input/heating/supply_target
 openquatt/openquatt/input/thermostat/heating_enable
 openquatt/openquatt/input/thermostat/cooling_enable
 ```
@@ -92,7 +95,8 @@ Waarden buiten de geldige range worden genegeerd en maken die MQTT-bron ongeldig
 - koelingsdauwpunt: `-20..35°C`;
 - buitentemperatuur: `-40..60°C`;
 - kamertemperatuur: `0..50°C`;
-- kamer-setpoint: `5..35°C`.
+- kamer-setpoint: `5..35°C`;
+- aanvoertarget: `20..70°C`.
 
 ## Geldigheid
 
@@ -102,6 +106,7 @@ Een geldige MQTT-waarde blijft beperkt geldig. Komt er in die tijd geen nieuwe M
 - buitentemperatuur: 30 minuten;
 - kamertemperatuur: 10 minuten;
 - kamer-setpoint: 30 minuten;
+- aanvoertarget: 15 minuten;
 - warmtetoestemming: 10 minuten;
 - koeltoestemming: 10 minuten.
 
@@ -121,6 +126,8 @@ Bij `Koelingsdauwpunt` kies je:
 In `Auto` is de hoogste geldige dauwpuntwaarde bewust leidend, omdat die voor koeling de veiligste ondergrens geeft.
 
 Bij `Buitentemperatuur` gebruikt `Auto` de laagste geldige waarde uit buitenunit, Home Assistant, API-invoer en MQTT. Dat houdt verwarming en vorstbeveiliging conservatief. Bij `Kamertemperatuur` en `Kamer setpoint` kun je MQTT of API input expliciet als bron kiezen.
+
+Bij `Aanvoertarget` is `Heating curve` de standaard. Kies je `MQTT`, dan gebruikt de stooklijnregeling jouw aanvoertemperatuur in plaats van het eigen stooklijntarget (inclusief kamertrim), zolang die geldig is. Verloopt de waarde, dan valt de regeling terug op de stooklijn. Zie [Water Temperature Control](water-temperature-control.md#extern-aanvoertarget-optioneel).
 
 Kies je `MQTT` expliciet als buitentemperatuurbron, dan is die bron na een (her)start pas geldig zodra OpenQuatt een nieuwe live publicatie ontvangt. Tot die tijd ontbreekt de buitentemperatuur en kan de regeling naar `CM98` (antivriescirculatie) gaan. De wachttijd hangt af van het publicatie-interval van de zender. Overweeg daarom `Auto`; dan kan OpenQuatt tijdens het wachten een andere geldige buitentemperatuurbron gebruiken.
 

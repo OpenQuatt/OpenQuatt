@@ -94,9 +94,7 @@ inline oq_hp_candidate::HpCandidateState sanitized_candidate(const HpInput& hp) 
   candidate.previous_applied_level = applied_level(hp);
   return candidate;
 }
-inline bool hp_may_serve(const HpInput& hp) {
-  return !hp.candidate.must_stop && (hp.candidate.available_for_start || applied_level(hp) > 0);
-}
+inline bool hp_may_serve(const HpInput& hp) { return oq_hp_candidate::may_serve_candidate(sanitized_candidate(hp)); }
 inline void observe_tail(TimedTail& tail, bool active, uint32_t now_ms, uint32_t duration_ms) {
   if (active || tail.previous_active) {
     tail.armed = true;
@@ -212,9 +210,9 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
                                         const DispatchState& state) {
   DispatchDecision out;
   const bool request_valid = std::isfinite(in.requested_w) && in.requested_w >= 0.0f;
-  out.capacity_w = dispatch_capacity(in, tuning);
-  out.deficit_w = request_valid ? std::max(0.0f, in.requested_w - out.capacity_w) : 0.0f;
-  out.saturated = in.demand_level > 0 && out.deficit_w > 0.0f;
+  out.capacity_w = in.performance_valid ? dispatch_capacity(in, tuning) : NAN;
+  out.deficit_w = request_valid && in.performance_valid ? std::max(0.0f, in.requested_w - out.capacity_w) : NAN;
+  out.saturated = in.demand_level > 0 && std::isfinite(out.deficit_w) && out.deficit_w > 0.0f;
   if (in.demand_level <= 0) {
     out.output_valid = request_valid && in.performance_valid;
     if (out.output_valid) out.expected_w = 0.0f;

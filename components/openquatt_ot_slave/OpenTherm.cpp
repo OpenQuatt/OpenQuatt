@@ -9,7 +9,7 @@ Copyright 2018, Ihor Melnyk
 #include "esp_err.h"
 #include "esp_private/esp_clk.h"
 #include "esp_timer.h"
-static const char* TAG = "OpenThermV2";
+static const char* TAG = "oq.ot.thermostat.transport";
 using namespace esphome;
 
 namespace {

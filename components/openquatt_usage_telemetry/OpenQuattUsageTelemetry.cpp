@@ -303,9 +303,6 @@ void OpenQuattUsageTelemetry::dump_config() {
   ESP_LOGCONFIG(TAG, "  Broker configured: %s", YESNO(this->is_configured()));
   ESP_LOGCONFIG(TAG, "  Transport: %s", this->tls_ ? "MQTT/TLS" : "MQTT");
   ESP_LOGCONFIG(TAG, "  Port: %u", this->port_);
-  if (!this->tls_ && this->is_configured()) {
-    ESP_LOGW(TAG, "Usage statistics transport is not encrypted");
-  }
   ESP_LOGCONFIG(TAG, "  Choice configured: %s", YESNO(this->choice_configured_.load()));
   ESP_LOGCONFIG(TAG, "  Quick Start complete: %s", YESNO(this->is_setup_complete_()));
   ESP_LOGCONFIG(TAG, "  Publish interval: %" PRIu32 " seconds", this->interval_ms_ / 1000U);
@@ -877,6 +874,8 @@ bool OpenQuattUsageTelemetry::build_payload_() {
   append_json_optional_select_(payload, "cooling_dew_point_source", this->cooling_dew_point_source_select_,
                                configured_source_wire_value);
   append_json_optional_select_(payload, "external_heat_demand_source", this->external_heat_demand_source_select_,
+                               configured_source_wire_value);
+  append_json_optional_select_(payload, "heating_supply_target_source", this->heating_supply_target_source_select_,
                                configured_source_wire_value);
   append_json_uint_(payload, "heap_free_b", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
   append_json_uint_(payload, "heap_min_free_b", heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));

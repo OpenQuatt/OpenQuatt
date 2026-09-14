@@ -171,6 +171,16 @@ import { renderModalShell } from "../core/modal-shell.js";
         payloadInfo: 'Publiceer een setpoint in °C. Voorbeelden: 21.0, 21,0, 21.0 °C of {"value":21.0}. Geldig bereik: 5..35 °C.',
       },
       {
+        topicKey: "heating_supply_target",
+        label: "Aanvoertarget",
+        valueKey: "mqttHeatingSupplyTarget",
+        ageKey: "mqttHeatingSupplyTargetAge",
+        validKey: "mqttHeatingSupplyTargetValid",
+        staleCopy: "15 minuten",
+        payloadInfoTitle: "Temperatuurpayload",
+        payloadInfo: 'Publiceer live een aanvoertemperatuur in °C. Voorbeelden: 42.0, 42,0, 42.0 °C of {"value":42.0}. Geldig bereik: 20..70 °C. Retained berichten worden niet gebruikt voor regeling.',
+      },
+      {
         topicKey: "heating_enable",
         label: "Warmtetoestemming",
         valueKey: "mqttHeatingEnable",

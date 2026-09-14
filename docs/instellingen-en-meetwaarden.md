@@ -50,6 +50,7 @@ Deze groep bepaalt hoeveel ruimte OpenQuatt krijgt:
 
 - `OpenQuatt Enabled`
 - `Manual Cooling Enable`
+- `Cooling Enable Source`
 - `Silent Mode Override`
 - `Day max frequency`
 - `Silent max frequency`
@@ -60,7 +61,7 @@ Deze groep bepaalt hoeveel ruimte OpenQuatt krijgt:
 
 Gebruik deze groep vooral om gedrag te begrenzen of te verklaren, niet om fijn te tunen.
 
-`Electrical current limit` begrenst als `Maximale gezamenlijke netstroom` het gezamenlijke elektrische ingangsvermogen van de buitenunits. Standaard blijft de bestaande grens actief: 16 A voor Single en voor Duo V1/V1.5, 20 A voor Duo V2. Een hogere waarde is alleen mogelijk tot de absolute OpenQuatt-bovengrens, afgeleid van de gepubliceerde maximale stroom per buitenunit (2 × 10 A voor V1/V1.5, dus 20 A; 2 × 13 A voor V2, dus 26 A), en alleen wanneer beide buitenunits betrouwbaar als die familie zijn gedetecteerd. De officiële Quatt Duo-specificatie (16 A respectievelijk 20 A) blijft de standaard; gebruik daarboven vereist een daarvoor geschikte volledige elektrische installatie. Zonder bevestigde detectie blijft de installatieafhankelijke standaard (16 of 20 A) het plafond. Een hogere waarde toont direct een waarschuwing en vraagt een expliciete bevestiging. `Standaardwaarde herstellen` wist de handmatige override en volgt daarna weer automatisch de standaard. Power House gebruikt de grens voorspellend én via gemeten feedback; stooklijn en koelen alleen via gemeten feedback. Het is een softwarematige regelgrens en geen vervanging voor zekeringen, aardlekbeveiliging of load balancing; korte overschrijdingen door meetvertraging zijn niet volledig uit te sluiten.
+`Electrical current limit` begrenst als `Maximale gezamenlijke netstroom` het gezamenlijke elektrische ingangsvermogen van de buitenunits. Standaard blijft de bestaande grens actief: 16 A voor Single en voor Duo V1/V1.5, 20 A voor Duo V2. Een hogere waarde is alleen mogelijk tot de absolute OpenQuatt-bovengrens, afgeleid van de gepubliceerde maximale stroom per buitenunit (2 × 10 A voor V1/V1.5, dus 20 A; 2 × 13 A voor V2, dus 26 A), en alleen wanneer beide buitenunits betrouwbaar als die familie zijn gedetecteerd. De officiële Quatt Duo-specificatie (16 A respectievelijk 20 A) blijft de standaard; gebruik daarboven vereist een daarvoor geschikte volledige elektrische installatie. Zonder bevestigde detectie blijft de installatieafhankelijke standaard (16 of 20 A) het plafond. Een hogere waarde toont direct een waarschuwing en vraagt een expliciete bevestiging. `Standaardwaarde herstellen` zet de actuele standaardwaarde opnieuw in. Power House gebruikt de grens voorspellend én via gemeten feedback; stooklijn en koelen alleen via gemeten feedback. Het is een softwarematige regelgrens en geen vervanging voor zekeringen, aardlekbeveiliging of load balancing; korte overschrijdingen door meetvertraging zijn niet volledig uit te sluiten.
 
 ### 2. Verwarmingsstrategie
 
@@ -95,6 +96,9 @@ Voor beide strategieën blijft belangrijk:
 
 Voor koeling zijn vooral belangrijk:
 
+- `Cooling Enable Source`
+- `Cooling schedule start time`
+- `Cooling schedule end time`
 - `Cooling Minimum Supply Temp`
 - `Cooling Demand Max`
 - `Cooling Restart Mode`
@@ -107,6 +111,14 @@ Voor koeling zijn vooral belangrijk:
 
 Met `Cooling Restart Mode` kies je tussen herstart op watertemperatuur en herstart na een minimale uit-tijd. In de eerste modus bepaalt `Cooling Restart Delta` hoeveel de aanvoer na een waterzijdige stop moet opwarmen. In de tweede modus bepaalt `Cooling Minimum Off Time` hoe lang een werkelijk gestopte koelcyclus uit blijft; bij Duo blokkeert die tijd beide warmtepompen. Los daarvan bewaakt OpenQuatt altijd de vaste minimale uit-tijd per compressor (4 minuten). Een compressor start dus pas wanneer zowel de gekozen koelherstartvoorwaarde als zijn eigen minimale uit-tijd is vrijgegeven. De normale dauwpunt-, flow- en veiligheidsgrenzen blijven in beide modi actief.
 
+Kies `Schedule` bij `Cooling Enable Source` om de koeltoestemming lokaal tot een dagelijks venster te beperken. Het begin is inbegrepen en het einde niet (`[start,end)`). Een begintijd die later is dan de eindtijd loopt over middernacht; gelijke tijden schakelen het venster uit. De standaard is daarom veilig `00:00-00:00`.
+
+Het schema is een toestemmingsbron, geen aparte koelstrategie of veiligheidsoverride. `Cooling Room Request Required` staat standaard aan, zodat binnen het venster ook een geldige kamerkoelvraag nodig blijft. Alleen wanneer je die instelling bewust uitzet, wordt het actieve venster zelf de vraag. Dauwpunt-, minimale aanvoer-, flow- en overige beveiligingen blijven altijd gelden.
+
+De controller beoordeelt het schema met zijn lokale, via SNTP gesynchroniseerde klok. Na een offline herstart is de bron ongeldig en blijft koeltoestemming via `Schedule` uit totdat de tijd geldig is; na synchronisatie loopt de lokale klok op de controller door. Bij het sluiten van het venster gebruikt OpenQuatt de normale gecontroleerde overgang. Een nog geldige minimale compressortijd kan de compressor kort voorbij de eindtijd laten lopen, tenzij een harde veiligheidsingreep direct stoppen vereist; daarna kan de pomp nog de normale postflow uitvoeren.
+
+`Manual Cooling Enable` omzeilt de gekozen toestemmingsbron, ook `Schedule`, maar geen enkele koelbeveiliging en ook `OpenQuatt Enabled` niet. De stand wordt met `RESTORE_DEFAULT_OFF` opgeslagen: na een herstart keert een eerder opgeslagen ingeschakelde stand terug; uit is alleen de standaard wanneer nog geen stand is opgeslagen.
+
 ### 3. Duo en looptijdgedrag
 
 Deze groep speelt vooral mee als je twee warmtepompen gebruikt of onrustig compressorgedrag ziet.
@@ -114,7 +126,6 @@ Deze groep speelt vooral mee als je twee warmtepompen gebruikt of onrustig compr
 Belangrijke instellingen:
 
 - `Minimum runtime`
-- `Demand filter ramp up`
 - `Dual HP Enable Level`
 - `Dual HP Enable Hold`
 - `Dual HP Disable Hold`
@@ -124,6 +135,8 @@ Raak deze groep pas aan nadat de strategie zelf logisch voelt.
 ### 4. Flow en pomp
 
 Deze groep bepaalt hoe de circulatiepomp wordt aangestuurd.
+
+Het ODU-bit `R2121.b13` (`DC water pump failure`) is uitsluitend technische diagnostiek. Sommige pomp-/ODU-combinaties melden dit bit ook bij normale stilstand; de ODU-generatie identificeert het pomptype niet betrouwbaar. Daarom veroorzaakt dit bit op zichzelf geen storingsmelding, startblokkade, compressorstop, ketelfallback of herstelwachttijd. De bestaande flowbeveiliging en overige beveiligingen blijven gelden.
 
 Belangrijke instellingen:
 
@@ -152,8 +165,10 @@ Belangrijke keuzes:
 - `Room Temperature Source`
 - `Room Setpoint Source`
 - `Heating Enable Source`
+- `Cooling Enable Source`
 - `Cooling Dew Point Source`
 - `External Heat Demand Source`
+- `Heating Supply Target Source`
 
 En indirect alles wat bepaalt waar buiten-, kamer- en waterwaarden vandaan komen.
 
@@ -170,6 +185,7 @@ De betekenis van dezelfde bron verschilt per verwarmingsstrategie:
 | Flow | Vereist | Vereist |
 | Warmtetoestemming (`Heating Enable Source`) | Meestal `Niet gebruiken` | Meestal externe thermostaat/zonevraag |
 | Externe warmtevraag | Optioneel (`HA`/`API`) | Niet van toepassing |
+| Extern aanvoertarget | Niet van toepassing | Optioneel (`OT`/`HA`/`API`/`MQTT`) |
 
 Tijdens Quick Start vervangt een strategieswitch de warmtetoestemming automatisch: `Heating Enable Source = Niet gebruiken` bij `Power House` (OpenQuatt bepaalt zelf de vraag), of de eerder gekozen, gekoppelde en actieve thermostaatbron bij `Water Temperature Control` (`OT thermostat` op Q-edition, anders `CIC`/`HA input`). Een uitgeschakelde of niet-geconfigureerde bron wordt niet automatisch als harde gate gekozen. Buiten Quick Start overschrijft de web-app een bestaande keuze niet stil; daar verschijnt alleen een advies met een knop om het over te nemen. Afwijkende combinaties blijven bewust mogelijk (bijv. Power House met zone-gate, stooklijn volledig weersafhankelijk).
 
@@ -182,6 +198,8 @@ Voor `Heating Enable Source` betekent `Niet gebruiken` / `Disabled`: geen extern
 Voor `Cooling Dew Point Source` is `Auto` meestal ook de veiligste keuze. OpenQuatt gebruikt dan de hoogste geldige dauwpuntwaarde van Home Assistant, API-invoer en MQTT. Kies `Home Assistant`, `API input` of `MQTT` alleen als je die bron expliciet wilt vereisen.
 
 Voor `External Heat Demand Source` is `Disabled` de standaard, en voor de meeste installaties ook de juiste keuze. Kies je `HA input` of `API input`, dan neemt een externe voorspelling de vermogensschatting van het huismodel in `Power House` over. De rest van de regeling blijft ongewijzigd, en bij een wegvallende of verouderde bron valt `Power House` terug op het eigen huismodel. Zie [Power House](power-house.md).
+
+Voor `Heating Supply Target Source` is `Heating curve` de standaard, en voor de meeste installaties ook de juiste keuze. Kies je `OT thermostat`, `HA input`, `API input` of `MQTT`, dan neemt een externe regelaar het aanvoerdoel van de stooklijn over, inclusief kamertrim. Limieten, PID en Duo-dispatch blijven van OpenQuatt, en bij een wegvallende of verouderde bron valt de regeling terug op de eigen stooklijn. Zie [Water Temperature Control](water-temperature-control.md#extern-aanvoertarget-optioneel).
 
 De temperatuurkalibratie neemt ook de actieve aanvoertemperatuurbron mee. OpenQuatt bewaart daarvoor vier afzonderlijke offsets: voor de lokale PT1000, lokale DS18B20, CIC-feed en Home Assistant-invoer. Bij een bronwissel activeert OpenQuatt automatisch de eerder opgeslagen correctie voor die bron. De CIC-correctie blijft geldig na een gewijzigde feed-URL; na een andere Home Assistant-entiteit blijft die correctie uitgeschakeld totdat je de HA-invoer opnieuw kalibreert. Een tijdelijke automatische fallback naar de water-uitmeting van de warmtepomp gebruikt geen aanvoercorrectie en wist geen opgeslagen kalibratie.
 
@@ -238,6 +256,10 @@ Alleen als het probleem daar lijkt te zitten:
 - gedrag rond stille uren of begrenzing.
 
 ### Voor compressorpendelen
+
+OpenQuatt geeft per compressor maximaal zes startopdrachten per voortschrijdend uur vrij. Een zevende start wacht totdat de oudste van die zes starts een uur geleden is, én alle bestaande startvoorwaarden zijn vrijgegeven. De minimale draaitijd (standaard 300 s) en minimale uit-tijd (standaard 240 s) blijven gelden. Verdwijnt de vraag tijdens het wachten, dan volgt geen start. De begrenzer geldt ook bij handmatige HP-bediening; stops blijven mogelijk.
+
+De begrenzer telt vrijgegeven opdrachten van stand 0 naar een actieve stand. Een mislukte start telt conservatief mee; modulatie en herhaalde actieve opdrachten tellen niet opnieuw. De beslislog meldt een geblokkeerde start met de reden `start_stop_rate_high`; handmatige HP-bediening toont de resterende wachttijd. De uurhistorie wordt bij een controllerherstart gewist. De bestaande stilstandbeveiliging blijft gelden, maar er is geen uurgrens over reboots heen of voor autonome herstarts binnen de ODU.
 
 De diagnostische pendelwaarschuwingen zijn in Home Assistant standaard
 uitgeschakeld. Schakel `Compressor cycling warning` in om één samengesteld

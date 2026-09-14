@@ -24,7 +24,7 @@ namespace openquatt_mqtt_config {
 class OpenQuattMqttConfig : public Component {
  public:
   static constexpr size_t PAYLOAD_MAX_LEN = 128;
-  static constexpr size_t NUMERIC_INPUT_COUNT = 4;
+  static constexpr size_t NUMERIC_INPUT_COUNT = 5;
   static constexpr size_t BINARY_INPUT_COUNT = 2;
 
   enum class NumericInputKind : uint8_t {
@@ -32,6 +32,7 @@ class OpenQuattMqttConfig : public Component {
     OUTSIDE_TEMPERATURE = 1,
     ROOM_TEMPERATURE = 2,
     ROOM_SETPOINT = 3,
+    HEATING_SUPPLY_TARGET = 4,
   };
 
   enum class BinaryInputKind : uint8_t {
@@ -102,6 +103,21 @@ class OpenQuattMqttConfig : public Component {
   }
   void set_room_setpoint_valid_binary_sensor(binary_sensor::BinarySensor* binary_sensor) {
     this->set_numeric_input_valid_binary_sensor_(NumericInputKind::ROOM_SETPOINT, binary_sensor);
+  }
+  void set_heating_supply_target_topic(const std::string& topic) {
+    this->set_numeric_input_topic_(NumericInputKind::HEATING_SUPPLY_TARGET, topic);
+  }
+  void set_heating_supply_target_stale_ms(uint32_t stale_ms) {
+    this->set_numeric_input_stale_ms_(NumericInputKind::HEATING_SUPPLY_TARGET, stale_ms);
+  }
+  void set_heating_supply_target_sensor(sensor::Sensor* sensor) {
+    this->set_numeric_input_sensor_(NumericInputKind::HEATING_SUPPLY_TARGET, sensor);
+  }
+  void set_heating_supply_target_age_sensor(sensor::Sensor* sensor) {
+    this->set_numeric_input_age_sensor_(NumericInputKind::HEATING_SUPPLY_TARGET, sensor);
+  }
+  void set_heating_supply_target_valid_binary_sensor(binary_sensor::BinarySensor* binary_sensor) {
+    this->set_numeric_input_valid_binary_sensor_(NumericInputKind::HEATING_SUPPLY_TARGET, binary_sensor);
   }
   void set_heating_enable_topic(const std::string& topic) {
     this->set_binary_input_topic_(BinaryInputKind::HEATING_ENABLE, topic);
@@ -191,12 +207,18 @@ class OpenQuattMqttConfig : public Component {
   static constexpr size_t BROKER_MAX_LEN = 64;
   static constexpr size_t USERNAME_MAX_LEN = 64;
   static constexpr size_t PASSWORD_MAX_LEN = 128;
-  static constexpr uint8_t INPUT_MASK_ALL =
-      static_cast<uint8_t>((1U << (NUMERIC_INPUT_COUNT + BINARY_INPUT_COUNT)) - 1U);
+  // Frozen v1 storage bit layout for the enable/retained masks. Bit positions
+  // must never shift when inputs are added: bits 0..3 are the original numeric
+  // inputs and bits 4..5 the binary enables from before the heating supply
+  // target existed. That input owns the previously unused bit 6, so stored
+  // masks from older firmware stay valid without a storage migration.
+  static constexpr uint8_t HEATING_SUPPLY_TARGET_BIT = 6U;
+  static constexpr uint8_t BINARY_INPUT_BIT_BASE = 4U;
+  static constexpr uint8_t INPUT_MASK_ALL = 0x7FU;
   static constexpr uint8_t STATEFUL_INPUT_MASK =
       static_cast<uint8_t>((1U << static_cast<uint8_t>(NumericInputKind::ROOM_SETPOINT)) |
-                           (1U << (NUMERIC_INPUT_COUNT + static_cast<uint8_t>(BinaryInputKind::HEATING_ENABLE))) |
-                           (1U << (NUMERIC_INPUT_COUNT + static_cast<uint8_t>(BinaryInputKind::COOLING_ENABLE))));
+                           (1U << (BINARY_INPUT_BIT_BASE + static_cast<uint8_t>(BinaryInputKind::HEATING_ENABLE))) |
+                           (1U << (BINARY_INPUT_BIT_BASE + static_cast<uint8_t>(BinaryInputKind::COOLING_ENABLE))));
 
   struct Storage {
     uint32_t magic;
@@ -330,6 +352,14 @@ class OpenQuattMqttConfig : public Component {
   const BinaryInput& binary_input_(BinaryInputKind kind) const;
   static uint8_t numeric_input_mask_(NumericInputKind kind);
   static uint8_t binary_input_mask_(BinaryInputKind kind);
+  static constexpr uint8_t numeric_input_bit_(size_t index) {
+    return static_cast<uint8_t>(index >= static_cast<size_t>(NumericInputKind::HEATING_SUPPLY_TARGET)
+                                    ? (1U << HEATING_SUPPLY_TARGET_BIT)
+                                    : (1U << index));
+  }
+  static constexpr uint8_t binary_input_bit_(size_t index) {
+    return static_cast<uint8_t>(1U << (BINARY_INPUT_BIT_BASE + index));
+  }
   bool is_numeric_input_enabled_(size_t input_index) const;
   bool is_binary_input_enabled_(size_t input_index) const;
   bool is_numeric_input_accept_retained_(size_t input_index) const;
@@ -426,6 +456,7 @@ class OpenQuattMqttConfig : public Component {
       NumericInput("outside_temperature", "outside temperature", -40.0f, 60.0f),
       NumericInput("room_temperature", "room temperature", 0.0f, 50.0f),
       NumericInput("room_setpoint", "room setpoint", 5.0f, 35.0f),
+      NumericInput("heating_supply_target", "heating supply target", 20.0f, 70.0f),
   }};
   std::array<BinaryInput, BINARY_INPUT_COUNT> binary_inputs_{{
       BinaryInput("heating_enable", "heating enable"),

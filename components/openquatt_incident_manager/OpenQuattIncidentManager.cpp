@@ -10,6 +10,7 @@
 #include "esphome/components/web_server/web_server.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/core/log.h"
+#include "esphome/core/application.h"
 #include "includes/incidents/oq_hp_incident_sources.h"
 
 namespace esphome {
@@ -521,8 +522,14 @@ void OpenQuattIncidentManager::setup() {
   this->units_()[1].configured = OQ_TOPOLOGY_DUO != 0;
   const uint32_t now_ms = millis();
   this->rotate_action_csrf_token_();
-  for (UnitState& unit : this->units_()) {
+  for (size_t slot = 0U; slot < this->units_().size(); ++slot) {
+    UnitState& unit = this->units_()[slot];
     unit.last_link_round_ms = now_ms;
+    unit.restart_guard.configure(this->minimum_off_ms_, LINK_ROUND_TIMEOUT_MS);
+    const uint32_t restored_credit_ms = restored_off_credit_ms(static_cast<uint8_t>(slot + 1U));
+    unit.restart_guard.restore_credit(restored_credit_ms, true);
+    unit.restart_credit_pending = restored_credit_ms != 0U;
+    unit.restart_credit_pending_since_ms = now_ms;
   }
   this->setup_manual_reset_persistence_(now_ms);
   for (size_t slot = 0U; slot < this->units_().size(); ++slot) {
@@ -535,6 +542,10 @@ void OpenQuattIncidentManager::setup() {
 }
 
 void OpenQuattIncidentManager::loop() {
+  if (this->restart_requested_.exchange(false)) {
+    this->perform_restart_(millis());
+    return;
+  }
   if (!this->storage_ready_()) return;
   const uint32_t now_ms = millis();
   if (elapsed_ms_(now_ms, this->last_loop_ms_) < 1000U) return;
@@ -553,14 +564,70 @@ void OpenQuattIncidentManager::loop() {
       this->process_fault_snapshot_(unit, slot, now_ms, true);
     }
 
+    const bool credit_acquisition_active = restored_credit_acquisition_active(
+        unit.restart_credit_pending, unit.transport_seen, unit.transport_online, now_ms,
+        unit.restart_credit_pending_since_ms, RESTART_CREDIT_ACQUISITION_TIMEOUT_MS);
+    if (unit.restart_credit_pending && !credit_acquisition_active) invalidate_restart_credit_(unit);
     if (link_round_timeout_elapsed(now_ms, unit.last_link_round_ms, LINK_ROUND_TIMEOUT_MS)) {
+      if (!credit_acquisition_active) unit.restart_guard.invalidate();
       unit.engine.observe_link_round(now_ms, false);
       unit.last_link_round_ms = now_ms;
     }
     unit.engine.tick(now_ms);
+    if (!unit.startup_released && unit.restart_guard.can_start(now_ms)) {
+      unit.startup_released = true;
+      ESP_LOGI(TAG, "HP%u startup minimum off-time confirmed", static_cast<unsigned>(slot + 1U));
+    }
     this->publish_transitions_(unit, slot, now_ms);
   }
   this->publish_snapshot_(now_ms);
+}
+
+bool OpenQuattIncidentManager::startup_inhibited(uint8_t hp_index) const {
+  const UnitState* unit = this->unit_(hp_index);
+  return unit == nullptr || !unit->startup_released;
+}
+
+uint32_t OpenQuattIncidentManager::minimum_off_remaining_ms(uint8_t hp_index, uint32_t now_ms) const {
+  const UnitState* unit = this->unit_(hp_index);
+  return unit == nullptr ? this->minimum_off_ms_ : unit->restart_guard.remaining_ms(now_ms);
+}
+
+void OpenQuattIncidentManager::invalidate_restart_credit(uint8_t hp_index) {
+  UnitState* unit = this->unit_(hp_index);
+  if (unit != nullptr) invalidate_restart_credit_(*unit);
+}
+
+void OpenQuattIncidentManager::invalidate_restart_credit_(UnitState& unit) {
+  unit.restart_credit_pending = false;
+  unit.restart_guard.invalidate();
+}
+
+void OpenQuattIncidentManager::perform_restart_(uint32_t now_ms) {
+  // Runs synchronously on the ESPHome loop. No controller/strategy loop can
+  // enqueue another start between this snapshot and safe_reboot().
+  this->restarting_ = true;
+  std::array<uint32_t, 2U> credit{};
+  for (uint8_t hp = 1U; hp <= this->configured_hp_count(); ++hp) {
+    if (this->polling_paused_ == nullptr || !this->polling_paused_->has_state() || this->polling_paused_->state) break;
+    const UnitState* unit = this->unit_(hp);
+    if (unit == nullptr) continue;
+    const auto outputs = this->get_outputs(hp);
+    // Telemetry reads and safe-stop writes may still be in flight. Every active
+    // mode/level write invalidates the guard before it enters the Modbus queue;
+    // start_feedback_armed additionally covers the incident start lifecycle.
+    if (outputs.link_state == oq_incidents::LinkState::HEALTHY && outputs.stop_confirmed &&
+        !outputs.stop_confirmation_pending && !unit->start_feedback_armed) {
+      credit[hp - 1U] = unit->restart_guard.snapshot_credit_ms(now_ms);
+    }
+  }
+  const bool saved = arm_restart_handoff(credit[0], credit[1]);
+  ESP_LOGI(TAG, "Controlled restart: confirmed off-time credit HP1=%us HP2=%us (%s)",
+           static_cast<unsigned>(credit[0] / 1000U), static_cast<unsigned>(credit[1] / 1000U),
+           saved ? "saved" : "conservative fallback");
+  // Even a failed write may have changed flash. Never resume normal control
+  // here; the next boot consumes any possible record before enabling services.
+  App.safe_reboot();
 }
 
 void OpenQuattIncidentManager::dump_config() {
@@ -700,6 +767,7 @@ void OpenQuattIncidentManager::observe_transport(uint8_t hp_index, bool online, 
   unit->transport_seen = true;
   unit->transport_online = online;
   if (!online) {
+    invalidate_restart_credit_(*unit);
     unit->pump_context = {};
     unit->engine.observe_link_round(now_ms, false);
     unit->last_link_round_ms = now_ms;
@@ -708,18 +776,46 @@ void OpenQuattIncidentManager::observe_transport(uint8_t hp_index, bool online, 
   }
 }
 
+void OpenQuattIncidentManager::observe_runtime_frequency_mapping(uint8_t hp_index, bool valid, uint32_t now_ms) {
+  UnitState* unit = this->unit_(hp_index);
+  if (unit == nullptr || (unit->runtime_frequency_mapping_observed && unit->runtime_frequency_mapping_valid == valid)) {
+    return;
+  }
+  unit->runtime_frequency_mapping_valid = valid;
+  unit->runtime_frequency_mapping_observed = true;
+  if (!valid) invalidate_restart_credit_(*unit);
+  if (valid) {
+    ESP_LOGI(TAG, "HP%u runtime frequency mapping validated", hp_index);
+  } else {
+    ESP_LOGW(TAG, "HP%u runtime frequency mapping unusable", hp_index);
+  }
+  this->publish_transitions_(*unit, hp_slot_(hp_index), now_ms);
+  this->publish_snapshot_(now_ms);
+}
+
 void OpenQuattIncidentManager::observe_working_mode(uint8_t hp_index, float working_mode, uint32_t now_ms) {
   UnitState* unit = this->unit_(hp_index);
-  if (unit == nullptr || !std::isfinite(working_mode)) return;
+  if (unit == nullptr) return;
+  if (!std::isfinite(working_mode)) {
+    unit->working_mode_valid = false;
+    invalidate_restart_credit_(*unit);
+    return;
+  }
+  if (static_cast<int>(std::lround(working_mode)) != 0) invalidate_restart_credit_(*unit);
   unit->working_mode = working_mode;
   unit->working_mode_valid = true;
   ++unit->working_mode_generation;
-  (void)now_ms;
+  unit->rest_mode_observed_ms = now_ms;
 }
 
 void OpenQuattIncidentManager::observe_compressor_frequency(uint8_t hp_index, float frequency_hz, uint32_t now_ms) {
   UnitState* unit = this->unit_(hp_index);
-  if (unit == nullptr || !std::isfinite(frequency_hz)) return;
+  if (unit == nullptr) return;
+  if (!std::isfinite(frequency_hz) || frequency_hz < 0.0F) {
+    unit->compressor_frequency_valid = false;
+    invalidate_restart_credit_(*unit);
+    return;
+  }
   unit->compressor_frequency_hz = frequency_hz;
   unit->compressor_frequency_valid = true;
   ++unit->compressor_frequency_generation;
@@ -747,6 +843,18 @@ void OpenQuattIncidentManager::observe_compressor_frequency(uint8_t hp_index, fl
   observation.stop_mode_confirmed =
       unit->working_mode_valid && post_command_mode && static_cast<uint8_t>(std::lround(unit->working_mode)) == 0U;
   unit->engine.observe_run(observation);
+  // Rest evidence requires a new mode sample as well as this frequency sample.
+  // Cached STOPPED alone is insufficient after a communication gap.
+  if (frequency_hz > 0.5F) {
+    invalidate_restart_credit_(*unit);
+  } else if (unit->transport_online && observation.fresh && observation.stop_mode_confirmed &&
+             unit->engine.outputs().stop_confirmed &&
+             static_cast<uint32_t>(now_ms - unit->rest_mode_observed_ms) <= LINK_ROUND_TIMEOUT_MS &&
+             feedback_generation_is_newer(unit->working_mode_generation, unit->rest_mode_generation)) {
+    unit->restart_guard.observe_stopped(now_ms);
+    unit->restart_credit_pending = false;
+    unit->rest_mode_generation = unit->working_mode_generation;
+  }
   this->publish_transitions_(*unit, hp_slot_(hp_index), now_ms);
   if (unit->engine.outputs().run_state == oq_incidents::RunState::RUNNING) {
     unit->start_feedback_armed = false;
@@ -861,7 +969,10 @@ void OpenQuattIncidentManager::observe_complete_link_round_(UnitState& unit, uin
 bool OpenQuattIncidentManager::request_start(uint8_t hp_index, uint8_t expected_mode, uint32_t now_ms) {
   UnitState* unit = this->unit_(hp_index);
   const bool newly_armed = unit != nullptr && unit->engine.outputs().run_state == oq_incidents::RunState::STOPPED;
+  if (this->restarting_ || !restart_handoff_storage_ready() || (newly_armed && !unit->restart_guard.can_start(now_ms)))
+    return false;
   if (unit == nullptr || !unit->engine.request_start(now_ms)) return false;
+  if (newly_armed) invalidate_restart_credit_(*unit);
   unit->expected_mode = expected_mode;
   unit->active_command_mode = expected_mode;
   unit->command_mode_generation = unit->working_mode_generation;
@@ -1142,6 +1253,8 @@ size_t OpenQuattIncidentManager::synthetic_slot_(oq_incidents::IncidentId incide
       return 2U;
     case PERSISTENCE_FAILURE_INCIDENT_ID:
       return 3U;
+    case RUNTIME_FREQUENCY_MAPPING_INCIDENT_ID:
+      return 4U;
     default:
       return SYNTHETIC_INCIDENT_COUNT;
   }
@@ -1228,6 +1341,22 @@ oq_incidents::IncidentDefinition OpenQuattIncidentManager::synthetic_definition_
               DocumentationConfidence::DESCRIBED,
               UserAction::CONTACT_INSTALLER,
               RecoveryCondition::REVIEW_REQUIRED};
+    case 4U:
+      return {RUNTIME_FREQUENCY_MAPPING_INCIDENT_ID,
+              0U,
+              0U,
+              "hp_runtime_frequency_mapping",
+              "hp.runtime_frequency_mapping",
+              IncidentCategory::FAULT,
+              IncidentSeverity::FAULT,
+              fallback_fault_effects,
+              1U,
+              1U,
+              ClearPolicy::AFTER_STABLE_READS,
+              FallbackPolicy::AFTER_SYSTEM_GUARDS,
+              DocumentationConfidence::DESCRIBED,
+              UserAction::CHECK_INSTALLATION,
+              RecoveryCondition::STABLE_TELEMETRY};
     default:
       return {};
   }
@@ -1243,6 +1372,8 @@ uint8_t OpenQuattIncidentManager::reason_for_incident_id_(oq_incidents::Incident
       return openquatt_decision_log::REASON_HP_STOP_UNCONFIRMED;
     case PERSISTENCE_FAILURE_INCIDENT_ID:
       return openquatt_decision_log::REASON_HP_PERSISTENCE_FAILURE;
+    case RUNTIME_FREQUENCY_MAPPING_INCIDENT_ID:
+      return openquatt_decision_log::REASON_HP_FAULT;
     default:
       return openquatt_decision_log::REASON_UNKNOWN;
   }
@@ -1398,6 +1529,8 @@ void OpenQuattIncidentManager::publish_transitions_(UnitState& unit, size_t slot
       !this->manual_reset_persistence_.initialization_pending() &&
       (!this->manual_reset_persistence_.ready() || (this->manual_reset_persistence_.fault_mask() & hp_mask) != 0U);
   this->publish_synthetic_incident_(unit, slot, 3U, persistence_failure, now_ms);
+  this->publish_synthetic_incident_(
+      unit, slot, 4U, unit.runtime_frequency_mapping_observed && !unit.runtime_frequency_mapping_valid, now_ms);
 
   const bool stop_confirmation_edge = should_emit_stop_confirmation(
       unit.stop_feedback_armed, unit.previous_outputs.stop_confirmed, current_outputs.stop_confirmed);
@@ -1677,7 +1810,40 @@ oq_incidents::DerivedOutputs OpenQuattIncidentManager::outputs_for_slot_(size_t 
   const bool persistence_blocks =
       !this->manual_reset_persistence_.initialization_pending() &&
       (!this->manual_reset_persistence_.ready() || (this->manual_reset_persistence_.fault_mask() & hp_mask) != 0U);
-  return apply_persistence_safety_gate(outputs, persistence_blocks);
+  outputs = apply_persistence_safety_gate(outputs, persistence_blocks);
+  const UnitState& unit = this->units_()[slot];
+  if (outputs.run_state == oq_incidents::RunState::STOPPED || !unit.startup_released) {
+    outputs.available_for_start = outputs.available_for_start && unit.restart_guard.can_start(millis());
+  }
+  if (!unit.runtime_frequency_mapping_valid) {
+    // A missing or interrupted mapping is a control-safety condition. The
+    // actuator receives this only through the incident-manager outputs, so a
+    // policy lookup never becomes an untracked compressor stop.
+    outputs.available_for_start = false;
+    outputs.must_stop = true;
+    outputs.fault_active = true;
+    outputs.protection_active = true;
+    outputs.fallback_cause_present = true;
+    outputs.fallback_eligible = outputs.stop_confirmed && !outputs.stop_unconfirmed;
+    outputs.active_effects |= oq_incidents::IncidentEffect::DISPLAY | oq_incidents::IncidentEffect::BLOCK_START |
+                              oq_incidents::IncidentEffect::STOP_COMPRESSOR |
+                              oq_incidents::IncidentEffect::MARK_HP_UNAVAILABLE;
+    outputs.active_incident_count = outputs.active_incident_count == UINT8_MAX
+                                        ? outputs.active_incident_count
+                                        : static_cast<uint8_t>(outputs.active_incident_count + 1U);
+    if (outputs.primary_incident_id == oq_incidents::kNoIncident) {
+      outputs.primary_incident_id = oq_incidents::kRuntimeFrequencyMappingIncidentId;
+    }
+    if (outputs.protection_state == oq_incidents::ProtectionState::CLEAR ||
+        outputs.protection_state == oq_incidents::ProtectionState::LIMITED) {
+      outputs.protection_state = oq_incidents::ProtectionState::FAULT_ACTIVE;
+    }
+  }
+  if (this->restarting_ || !restart_handoff_storage_ready()) {
+    outputs.available_for_start = false;
+    outputs.must_stop = true;
+  }
+  return outputs;
 }
 
 void OpenQuattIncidentManager::publish_snapshot_(uint32_t now_ms) {

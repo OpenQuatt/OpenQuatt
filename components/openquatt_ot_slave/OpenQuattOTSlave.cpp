@@ -99,7 +99,7 @@ unsigned int write_f88(const float value, const unsigned int data) { return (uns
 
 namespace esphome {
 namespace OpenQuattOTSlave {
-static const char* TAG = "OpenQuattOTSlave";
+static const char* TAG = "oq.ot.thermostat";
 // The T6 can go several seconds without polling ID 0 while it cycles through
 // other IDs. Keep the last known master status long enough to avoid a spurious
 // CH-enable "blinking" effect in Home Assistant.
@@ -148,6 +148,7 @@ void OpenQuattOTSlave::stop_opentherm_() {
   m_lastSuccessfulFrameMs = 0;
   m_lastMasterRoomTemperatureMs = 0;
   m_lastMasterRoomSetpointMs = 0;
+  m_lastMasterControlSetpointMs = 0;
   if (m_ot_thermostat_ == NULL || !m_otStarted) {
     return;
   }
@@ -169,6 +170,14 @@ bool OpenQuattOTSlave::master_room_setpoint_fresh() const {
       m_lastSuccessfulFrameMs != 0 && (now_ms - m_lastSuccessfulFrameMs) <= OT_LINK_PROBLEM_TIMEOUT_MS;
   return link_fresh && oq_ot_slave::room_signal_fresh(m_enabled, m_otStarted, m_otaActive || m_updatePrepareActive,
                                                       m_lastMasterRoomSetpointMs, now_ms);
+}
+
+bool OpenQuattOTSlave::master_control_setpoint_fresh() const {
+  const unsigned long now_ms = now_millis();
+  const bool link_fresh =
+      m_lastSuccessfulFrameMs != 0 && (now_ms - m_lastSuccessfulFrameMs) <= OT_LINK_PROBLEM_TIMEOUT_MS;
+  return link_fresh && oq_ot_slave::room_signal_fresh(m_enabled, m_otStarted, m_otaActive || m_updatePrepareActive,
+                                                      m_lastMasterControlSetpointMs, now_ms);
 }
 
 void OpenQuattOTSlave::try_start_opentherm_() {
@@ -356,6 +365,7 @@ void OpenQuattOTSlave::parseRequest(OpenThermMessageType type, OpenThermMessageI
   switch (dataID) {
     case OpenThermMessageID::TSet:
       m_master_state.t_set = message_data::parse_f88(data);
+      m_lastMasterControlSetpointMs = now_millis();
       break;
 
     case OpenThermMessageID::MaxRelModLevelSetting:
@@ -697,13 +707,19 @@ unsigned long OpenQuattOTSlave::build_slave_response_(OpenThermMessageType type,
         responseData = 0x0000;
         break;
       case OpenThermMessageID::TdhwSetUBTdhwSetLB:
-        // Some thermostats keep probing this DHW bounds ID even when the slave
-        // does not advertise DHW support. Return conservative bounds as a
-        // compatibility response instead of DATA_INVALID.
-        responseData = 0x3C0A;
+        // OpenQuatt has no DHW setpoint bounds: no R1 DHW and no
+        // OTB polling for DHW bounds. Answer DATA_INVALID instead
+        // of invented 10-60 C.
+        responseType = OpenThermMessageType::DATA_INVALID;
+        responseData = 0x0000;
         break;
       case OpenThermMessageID::TdhwSet:
-        responseData = message_data::encode_f88(m_slave_state.t_dhw_set);
+        if (!m_slave_state.t_dhw_set_valid) {
+          responseType = OpenThermMessageType::DATA_INVALID;
+          responseData = 0x0000;
+        } else {
+          responseData = message_data::encode_f88(m_slave_state.t_dhw_set);
+        }
         break;
       case OpenThermMessageID::RemoteOverrideFunction:
         // OpenQuatt does not actively drive thermostat-side remote override
@@ -721,7 +737,16 @@ unsigned long OpenQuattOTSlave::build_slave_response_(OpenThermMessageType type,
         responseData = 0x0000;
         break;
       case OpenThermMessageID::MaxCapacityMinModLevel:
-        responseData = 0x1400;
+        if (!m_slave_state.max_capacity_valid || !m_slave_state.min_modulation_valid) {
+          responseType = OpenThermMessageType::DATA_INVALID;
+          responseData = 0x0000;
+        } else {
+          const long max_cap = lroundf(m_slave_state.max_capacity);
+          const long min_mod = lroundf(m_slave_state.min_modulation);
+          const uint8_t max_cap_u8 = static_cast<uint8_t>(max_cap < 0 ? 0 : (max_cap > 255 ? 255 : max_cap));
+          const uint8_t min_mod_u8 = static_cast<uint8_t>(min_mod < 0 ? 0 : (min_mod > 255 ? 255 : min_mod));
+          responseData = (static_cast<uint16_t>(max_cap_u8) << 8) | min_mod_u8;
+        }
         break;
       case OpenThermMessageID::CHPressure:
         if (!m_slave_state.ch_pressure_valid) {
@@ -756,10 +781,16 @@ unsigned long OpenQuattOTSlave::build_slave_response_(OpenThermMessageType type,
         }
         break;
       case OpenThermMessageID::MaxTSetUBMaxTSetLB:
-        responseData = 0x500A;
+        // Align with max_water_temp_limit_c (25-75 C). UB=75 (0x4B), LB=25 (0x19).
+        responseData = 0x4B19;
         break;
       case OpenThermMessageID::MaxTSet:
-        responseData = message_data::encode_f88(m_slave_state.max_t_set);
+        if (!m_slave_state.max_t_set_valid) {
+          responseType = OpenThermMessageType::DATA_INVALID;
+          responseData = 0x0000;
+        } else {
+          responseData = message_data::encode_f88(m_slave_state.max_t_set);
+        }
         break;
       case OpenThermMessageID::OpenThermVersionSlave:
         responseData = message_data::encode_f88(SUPPORTED_OPENTHERM_VERSION);

@@ -8,6 +8,7 @@
 
 namespace {
 
+using oq_odu::confirmed_variant;
 using oq_odu::CoreIdentity;
 using oq_odu::customer_model_label;
 using oq_odu::CustomerModelPrefix;
@@ -141,6 +142,11 @@ void test_labels_and_request_tokens() {
   assert(std::string(variant_label(Variant::V2_OLD_MODEL)) == "V2 old model");
   assert(std::string(variant_label(Variant::V2_NEW_MODEL)) == "V2 new model");
   assert(std::string(variant_label(Variant::UNKNOWN)) == "Unknown");
+  assert(confirmed_variant(true, static_cast<int>(Variant::V2_OLD_MODEL)) == Variant::V2_OLD_MODEL);
+  assert(confirmed_variant(true, static_cast<int>(Variant::V2_NEW_MODEL)) == Variant::V2_NEW_MODEL);
+  assert(confirmed_variant(false, static_cast<int>(Variant::V2_NEW_MODEL)) == Variant::UNKNOWN);
+  assert(confirmed_variant(true, -1) == Variant::UNKNOWN);
+  assert(confirmed_variant(true, 99) == Variant::UNKNOWN);
 
   assert(next_request_token(0U) == 1U);
   assert(next_request_token(41U) == 42U);

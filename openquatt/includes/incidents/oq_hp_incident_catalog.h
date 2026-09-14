@@ -44,6 +44,14 @@ constexpr IncidentDefinition make_limit(uint16_t register_address, uint8_t bit, 
           RecoveryCondition::AFTER_STABLE_READS};
 }
 
+constexpr IncidentDefinition make_diagnostic(uint16_t register_address, uint8_t bit, const char* key,
+                                             const char* presentation_key) {
+  IncidentDefinition definition = make_status(register_address, bit, key, presentation_key);
+  definition.effects = effect_mask(IncidentEffect::NONE);
+  definition.documentation_confidence = DocumentationConfidence::NAME_ONLY;
+  return definition;
+}
+
 constexpr IncidentDefinition make_start_block(uint16_t register_address, uint8_t bit, const char* key,
                                               const char* presentation_key) {
   return {incident_id(register_address, bit),
@@ -148,8 +156,10 @@ static constexpr std::array<IncidentDefinition, 41U> kHpIncidentCatalog{{
                     DocumentationConfidence::NAME_ONLY),
     make_hard_fault(2121U, 11U, "inner_coil_temperature_sensor", "hp.inner_coil_temperature_sensor_fault",
                     DocumentationConfidence::NAME_ONLY),
-    make_hard_fault(2121U, 13U, "dc_water_pump", "hp.dc_water_pump_fault", DocumentationConfidence::NAME_ONLY,
-                    effect_mask(IncidentEffect::PUMP_UNAVAILABLE)),
+    // Some ODU/pump combinations assert this bit during normal pump standby.
+    // The pump type cannot be inferred from the ODU generation. Keep the raw
+    // diagnostic, but never turn this bit alone into an alarm or control gate.
+    make_diagnostic(2121U, 13U, "dc_water_pump", "hp.dc_water_pump_fault"),
 }};
 
 inline const IncidentDefinition* catalog_definition(uint16_t register_address, uint8_t bit) {

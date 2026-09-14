@@ -8,41 +8,44 @@
 
 #include "../performance/hp_perf_frequency.h"
 #include "oq_compressor_frequency_runtime.h"
+#include "oq_heat_intent_runtime.h"
 #include "oq_heating_curve_logic.h"
+#include "oq_heating_supply_target_logic.h"
 #include "oq_hp_candidate_logic.h"
 #include "oq_thermal_request_logic.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_heating_curve_runtime {
-
 struct DispatchConfig {
   uint32_t loop_ms;
+  uint32_t minimum_off_ms;
   int demand_max_f;
 };
-
 class Runtime {
  public:
   void reset_profile() {
     this->reset_control_();
     id(oq_curve_oil_return_hold_until_ms) = 0;
+    id(oq_curve_supply_external) = false;
     this->reset_outside_ema_();
     this->reset_request_(0);
   }
-
   void write_pid_output(float pid_output, int demand_max_f, bool ot_room_temperature_fresh,
                         bool ot_room_setpoint_fresh) {
     if (id(oq_heat_mode_code) != 1) {
       this->reset_control_();
+      id(oq_curve_supply_external) = false;
       return;
     }
-    const float target_c = id(oq_supply_target_temp).state;
+    this->last_pid_output_ = pid_output;
+    const float target_c = this->effective_supply_target(id(oq_supply_target_temp).state);
     const float supply_c = id(oq_system_supply_temp).state;
     const auto tuning = this->tuning_();
     const float room_c = id(room_temp_selected).state;
     const float room_setpoint_c = id(room_setpoint_selected).state;
     const bool room_data_fresh = std::isfinite(room_c) && std::isfinite(room_setpoint_c) &&
-                                 this->room_temperature_fresh_(ot_room_temperature_fresh) &&
-                                 this->room_setpoint_fresh_(ot_room_setpoint_fresh);
+                                 oq_heat_intent_runtime::room_temperature_fresh(ot_room_temperature_fresh) &&
+                                 oq_heat_intent_runtime::room_setpoint_fresh(ot_room_setpoint_fresh);
     const uint32_t now_ms = static_cast<uint32_t>(millis());
     bool oil_return_active = id(hp1_prot_oil_return).state;
 #if OQ_TOPOLOGY_DUO
@@ -54,12 +57,25 @@ class Runtime {
 #if OQ_TOPOLOGY_DUO
     applied_total += std::max(0, static_cast<int>(id(hp2_last_applied_level)));
 #endif
-    const oq_curve::DemandState previous{id(oq_curve_heat_request_active),
-                                         id(oq_curve_stop_arm_ms),
-                                         id(oq_curve_off_since_ms),
-                                         id(oq_curve_restart_inhibit_active),
-                                         id(oq_curve_restart_blocked_by_room),
-                                         id(oq_curve_regime_code)};
+    oq_curve::DemandState previous{id(oq_curve_heat_request_active),
+                                   id(oq_curve_stop_arm_ms),
+                                   id(oq_curve_off_since_ms),
+                                   id(oq_curve_restart_inhibit_active),
+                                   id(oq_curve_restart_blocked_by_room),
+                                   id(oq_curve_regime_code)};
+    const bool compressor_active = applied_total > 0;
+    const auto intent =
+        oq_heat_intent_runtime::evaluate(now_ms, compressor_active, tuning.room_resume_heat_c, 0,
+                                         ot_room_temperature_fresh, ot_room_setpoint_fresh, this->intent_state_);
+    this->intent_state_ = intent.next;
+    id(oq_curve_fast_intent_code) = static_cast<int>(intent.reason);
+    if (intent.setpoint_raise_cancelled && this->setpoint_started_request_ && !compressor_active) {
+      previous.heat_request_active = false;
+      previous.stop_arm_ms = 0;
+      previous.off_since_ms = oq_curve::timestamp_ms(now_ms);
+      previous.regime_code = 0;
+      this->setpoint_started_request_ = false;
+    }
     const auto demand = oq_curve::decide_demand({now_ms, pid_output, target_c, supply_c, room_c, room_setpoint_c,
                                                  room_data_fresh, oil_return.mask_active, applied_total, demand_max_f},
                                                 tuning, previous);
@@ -75,8 +91,11 @@ class Runtime {
     id(oq_curve_restart_blocked_by_room) = demand.next.restart_blocked_by_room;
     id(oq_curve_regime_code) = demand.next.regime_code;
     id(oq_demand_curve) = demand.demand;
+    if (!previous.heat_request_active && demand.next.heat_request_active &&
+        intent.reason == oq_heat_intent::SETPOINT_RAISE)
+      this->setpoint_started_request_ = true;
+    if (compressor_active || !demand.next.heat_request_active) this->setpoint_started_request_ = false;
   }
-
   float filtered_outside_temperature() {
     const auto decision = oq_curve::update_outside_ema(
         static_cast<uint32_t>(millis()), id(outside_temp_selected).state, this->tuning_().outside_tau_s,
@@ -86,7 +105,6 @@ class Runtime {
     id(oq_curve_outside_ema_last_ms) = decision.next.last_ms;
     return decision.value_c;
   }
-
   float supply_target() const {
     const std::array<oq_curve::CurvePoint, 6> points{{
         {-20.0f, id(curve_tsupply_m20).state},
@@ -100,8 +118,20 @@ class Runtime {
                                    points, id(room_temp_selected).state, id(room_setpoint_selected).state,
                                    this->tuning_(), id(max_water_temp_limit_c).state);
   }
+  float effective_supply_target(float local_curve_c) const {
+    // An external target replaces the local curve output as-is (no second
+    // room-trim); downstream limits, PID, demand and dispatch are untouched.
+    const bool has_selected = id(heating_supply_target_selected).has_state();
+    const float external_c = has_selected ? id(heating_supply_target_selected).state : NAN;
+    const float max_water_c = id(max_water_temp_limit_c).has_state() ? id(max_water_temp_limit_c).state : NAN;
+    const float ceiling_c = std::isfinite(max_water_c) ? max_water_c : 70.0f;
+    const auto effective = oq_heating_supply::select_effective_target(
+        local_curve_c, external_c, has_selected && std::isfinite(external_c), 20.0f, ceiling_c);
+    id(oq_curve_supply_external) = effective.external;
+    return effective.supply_target_c;
+  }
 
-  void strategy_tick(int demand_max_f) {
+  void strategy_tick(int demand_max_f, bool ot_room_temperature_fresh, bool ot_room_setpoint_fresh) {
     const bool active = id(oq_control_mode_code) != 5 && id(oq_heat_mode_code) == 1;
     const uint32_t now_ms = static_cast<uint32_t>(millis());
     if (!active) {
@@ -111,10 +141,10 @@ class Runtime {
         call.perform();
       }
       this->reset_control_();
+      id(oq_curve_supply_external) = false;
       return;
     }
-
-    const float target_c = id(oq_supply_target_temp).state;
+    const float target_c = this->effective_supply_target(id(oq_supply_target_temp).state);
     const float supply_c = id(oq_system_supply_temp).state;
     if (!std::isfinite(target_c) || !std::isfinite(supply_c)) {
       this->reset_control_();
@@ -128,7 +158,8 @@ class Runtime {
         call.perform();
       }
     }
-
+    if (std::isfinite(this->last_pid_output_))
+      this->write_pid_output(this->last_pid_output_, demand_max_f, ot_room_temperature_fresh, ot_room_setpoint_fresh);
     int demand = std::max(0, std::min(demand_max_f, static_cast<int>(id(oq_demand_curve))));
     if (id(oq_water_temp_hard_trip_active)) demand = 0;
     id(oq_demand_raw) = demand;
@@ -142,21 +173,21 @@ class Runtime {
     id(oq_strategy_output_valid) = std::isfinite(target_c) && std::isfinite(supply_c);
     id(oq_strategy_output_source_code) = 2;
     id(oq_strategy_output_updated_ms) = now_ms;
-
     const char* regime = oq_curve::regime_name(id(oq_curve_regime_code));
     id(oq_strategy_phase_text).publish_state(regime);
     ESP_LOGD("quatt.strategy", "curve phase=%s reg=%s d=%.2f/%d pre=%d sp=%.2f pv=%.2f",
              !id(oq_curve_heat_request_active) ? "off" : (id(oq_curve_regime_code) == 1 ? "heat" : "coast"), regime,
              id(oq_curve_demand_continuous), demand, id(oq_curve_demand_pre_guardrail), target_c, supply_c);
   }
-
   bool integral_reset_required() const {
     if (id(oq_heat_mode_code) != 1) return false;
     if (id(oq_water_temp_hard_trip_active)) return true;
     const int control_mode = id(oq_control_mode_code);
     if (control_mode != 2 && control_mode != 3) return true;
     if (!id(oq_curve_heat_request_active)) return true;
-    if (!std::isfinite(id(oq_supply_target_temp).state) || !std::isfinite(id(oq_system_supply_temp).state)) return true;
+    if (!std::isfinite(this->effective_supply_target(id(oq_supply_target_temp).state)) ||
+        !std::isfinite(id(oq_system_supply_temp).state))
+      return true;
     const bool hp1_delivering =
         id(hp1_last_applied_level) > 0 && this->working_mode_heating_(id(hp1_working_mode).state);
 #if OQ_TOPOLOGY_DUO
@@ -167,7 +198,6 @@ class Runtime {
 #endif
     return !hp1_delivering && !hp2_delivering;
   }
-
   void dispatch_tick(const DispatchConfig& config) {
     const bool active = id(oq_control_mode_code) != 5 && id(oq_heat_mode_code) == 1;
     if (!active) {
@@ -175,7 +205,30 @@ class Runtime {
       return;
     }
     const uint32_t now_ms = static_cast<uint32_t>(millis());
-    if (!oq_curve::cadence_due(now_ms, id(oq_curve_request_last_loop_ms), config.loop_ms)) return;
+    auto hp1_candidate =
+        oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(1), id(hp1_last_applied_level));
+    hp1_candidate.minimum_off_ready = oq_hp_candidate::minimum_off_ready(
+        now_ms, id(hp1_last_stop_ms), config.minimum_off_ms, id(hp1_last_applied_level));
+    const bool hp1_available = oq_hp_candidate::may_serve_candidate(hp1_candidate);
+#if OQ_TOPOLOGY_DUO
+    auto hp2_candidate =
+        oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(2), id(hp2_last_applied_level));
+    hp2_candidate.minimum_off_ready = oq_hp_candidate::minimum_off_ready(
+        now_ms, id(hp2_last_stop_ms), config.minimum_off_ms, id(hp2_last_applied_level));
+    const bool hp2_available = oq_hp_candidate::may_serve_candidate(hp2_candidate);
+#else
+    const oq_hp_candidate::HpCandidateState hp2_candidate;
+    const bool hp2_available = false;
+#endif
+    const bool demand_active_now = id(oq_curve_heat_request_active);
+    const bool urgent = !this->dispatch_snapshot_initialized_ || demand_active_now != this->last_dispatch_demand_ ||
+                        (demand_active_now &&
+                         (hp1_available != this->last_hp1_available_ || hp2_available != this->last_hp2_available_));
+    this->dispatch_snapshot_initialized_ = true;
+    this->last_dispatch_demand_ = demand_active_now;
+    this->last_hp1_available_ = hp1_available;
+    this->last_hp2_available_ = hp2_available;
+    if (!urgent && !oq_curve::cadence_due(now_ms, id(oq_curve_request_last_loop_ms), config.loop_ms)) return;
     id(oq_curve_request_last_loop_ms) = oq_curve::timestamp_ms(now_ms);
 
     constexpr int level_cap = 10;
@@ -192,6 +245,7 @@ class Runtime {
 #endif
     id(oq_last_lead_hp) = lead_is_hp1 ? 1 : 2;
     const auto frequency = oq_frequency_runtime::capture();
+    const bool allow_low_supply_boundary_estimate = id(oq_cold_start_session_active) && !id(oq_cold_start_hp_blocked);
     const bool hp1_valve_defrost = id(hp1_4_way_valve).state;
 #if OQ_TOPOLOGY_DUO
     const bool hp2_valve_defrost = id(hp2_4_way_valve).state;
@@ -200,18 +254,6 @@ class Runtime {
 #endif
     id(oq_P_hp_cap_w) = 0.0f;
     id(oq_P_deficit_w) = 0.0f;
-    const auto hp1_candidate =
-        oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(1), id(hp1_last_applied_level));
-    const bool hp1_available = oq_hp_candidate::may_serve_candidate(hp1_candidate);
-#if OQ_TOPOLOGY_DUO
-    const auto hp2_candidate =
-        oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(2), id(hp2_last_applied_level));
-    const bool hp2_available = oq_hp_candidate::may_serve_candidate(hp2_candidate);
-#else
-    const oq_hp_candidate::HpCandidateState hp2_candidate;
-    const bool hp2_available = false;
-#endif
-
     int owner = 0;
     int hp1_level = 0;
     int hp2_level = 0;
@@ -220,24 +262,29 @@ class Runtime {
     const bool demand_active = demand_u > 0.0f;
 #if OQ_TOPOLOGY_DUO
     const auto tuning = this->tuning_();
-    const float target_c = id(oq_supply_target_temp).state;
+    const float target_c = this->effective_supply_target(id(oq_supply_target_temp).state);
     const float supply_c = id(oq_system_supply_temp).state;
     const float temperature_error_c = std::isfinite(target_c) && std::isfinite(supply_c) ? target_c - supply_c : NAN;
     const bool heat_phase = demand_active && id(oq_curve_regime_code) == 1;
     const int previous_capped = id(oq_demand_filtered_prev);
-    const auto level_allowed = [&](bool hp1, int level) { return frequency.frequency_allowed(hp1, 2, level); };
-    const auto maximum_level = [&](bool hp1) {
-      if ((hp1 && !hp1_available) || (!hp1 && !hp2_available)) return 0;
-      for (int level = level_cap; level >= 1; --level)
-        if (level_allowed(hp1, level)) return level;
-      return 0;
-    };
+    bool hp1_model_available = false;
+    bool hp2_model_available = false;
     const auto level_power_w = [&](bool hp1, int level) {
       if (level <= 0) return 0.0f;
-      if (!level_allowed(hp1, level) || !std::isfinite(id(outside_temp_selected).state) || !std::isfinite(target_c))
-        return NAN;
-      return oq_perf::interp_power_th_w_hz(oq_perf::model_frequency_hz(level), id(outside_temp_selected).state,
-                                           target_c);
+      const auto prediction =
+          oq_perf::predict_candidate(frequency, frequency.performance_variant(hp1), hp1, level,
+                                     id(outside_temp_selected).state, target_c, allow_low_supply_boundary_estimate);
+      bool& model_available = hp1 ? hp1_model_available : hp2_model_available;
+      model_available |= prediction.runtime_frequency_known && prediction.performance.available;
+      return prediction.usable_for_running_optimization() ? prediction.performance.pth_w : NAN;
+    };
+    const auto maximum_level = [&](bool hp1) {
+      if ((hp1 && !hp1_available) || (!hp1 && !hp2_available)) return 0;
+      for (int level = level_cap; level >= 1; --level) {
+        const float power_w = level_power_w(hp1, level);
+        if (std::isfinite(power_w) && power_w > 0.0f) return level;
+      }
+      return 0;
     };
     const int previous_hp1 = id(hp1_last_applied_level);
     const int previous_hp2 = id(hp2_last_applied_level);
@@ -359,6 +406,19 @@ class Runtime {
       hp2_level = best_single.valid ? best_single.hp2_level : 0;
       id(oq_curve_capacity_mode_code) = best_single.valid && (hp1_level > 0 || hp2_level > 0) ? 1 : 0;
     }
+    const bool active_model_missing = (previous_hp1 > 0 && !hp1_candidate.must_stop && !hp1_model_available) ||
+                                      (previous_hp2 > 0 && !hp2_candidate.must_stop && !hp2_model_available);
+    const bool idle_model_missing =
+        previous_hp1 <= 0 && previous_hp2 <= 0 && !hp1_model_available && !hp2_model_available;
+    if (demand_active && (active_model_missing || (!best_single.valid && !best_duo.valid && idle_model_missing))) {
+      const auto model_hold =
+          oq_hp_candidate::preserve_active_topology_without_model(true, hp1_candidate, hp2_candidate);
+      hp1_level = model_hold.hp1_level;
+      hp2_level = model_hold.hp2_level;
+      owner = model_hold.owner_hp;
+      id(oq_curve_capacity_mode_code) = model_hold.capacity_mode;
+      id(oq_curve_single_owner_hp) = owner;
+    }
 #else
     oq_request::reset_dual_runtime_state(id(oq_dual_hp_enabled), id(oq_dual_hp_enable_hold_elapsed_accum_min),
                                          id(oq_dual_hp_disable_hold_elapsed_accum_min),
@@ -387,60 +447,27 @@ class Runtime {
 
  private:
   static constexpr uint32_t kOilReturnHoldMs = 180000UL;
-
   oq_curve::ControlProfileTuning tuning_() const {
     return oq_curve::control_profile(
         id(oq_curve_control_profile).has_state() ? id(oq_curve_control_profile).current_option() : std::string());
   }
-
   static bool working_mode_heating_(float mode) { return std::isfinite(mode) && std::lround(mode) == 2; }
-
-  bool room_temperature_fresh_(bool ot_fresh) const {
-    if (!id(room_temp_source).has_state()) return false;
-    const auto source = id(room_temp_source).current_option();
-    return (source == "HA input" && id(room_temp_valid_ha).state && id(thermostat_room_temp_ha).has_state() &&
-            std::isfinite(id(thermostat_room_temp_ha).state) && !id(oq_room_temp_selected_hold_active)) ||
-           (source == "OT thermostat" && ot_fresh && id(ot_thermostat_room_temp).has_state() &&
-            std::isfinite(id(ot_thermostat_room_temp).state)) ||
-           (source == "CIC" && id(feed_ok).has_state() && id(feed_ok).state && id(cic_data_stale).has_state() &&
-            !id(cic_data_stale).state && id(cic_room_temp).has_state() && std::isfinite(id(cic_room_temp).state)) ||
-           (source == "API input" && id(api_input_room_temperature_valid).has_state() &&
-            id(api_input_room_temperature_valid).state && id(api_input_room_temperature).has_state() &&
-            std::isfinite(id(api_input_room_temperature).state)) ||
-           (source == "MQTT" && id(mqtt_room_temperature_valid).has_state() && id(mqtt_room_temperature_valid).state &&
-            id(mqtt_room_temperature).has_state() && std::isfinite(id(mqtt_room_temperature).state));
-  }
-
-  bool room_setpoint_fresh_(bool ot_fresh) const {
-    if (!id(room_setpoint_source).has_state()) return false;
-    const auto source = id(room_setpoint_source).current_option();
-    return (source == "HA input" && id(room_setpoint_valid_ha).state && id(thermostat_setpoint_ha).has_state() &&
-            std::isfinite(id(thermostat_setpoint_ha).state) && !id(oq_room_setpoint_selected_hold_active)) ||
-           (source == "OT thermostat" && ot_fresh && id(ot_thermostat_room_setpoint).has_state() &&
-            std::isfinite(id(ot_thermostat_room_setpoint).state)) ||
-           (source == "CIC" && id(feed_ok).has_state() && id(feed_ok).state && id(cic_data_stale).has_state() &&
-            !id(cic_data_stale).state && id(cic_room_setpoint).has_state() &&
-            std::isfinite(id(cic_room_setpoint).state)) ||
-           (source == "API input" && id(api_input_room_setpoint_valid).has_state() &&
-            id(api_input_room_setpoint_valid).state && id(api_input_room_setpoint).has_state() &&
-            std::isfinite(id(api_input_room_setpoint).state)) ||
-           (source == "MQTT" && id(mqtt_room_setpoint_valid).has_state() && id(mqtt_room_setpoint_valid).state &&
-            id(mqtt_room_setpoint).has_state() && std::isfinite(id(mqtt_room_setpoint).state));
-  }
-
   void reset_control_() {
+    this->last_pid_output_ = NAN;
+    this->intent_state_ = {};
+    this->setpoint_started_request_ = false;
+    id(oq_curve_fast_intent_code) = 0;
     oq_curve::reset_control_state(
         id(oq_curve_demand_continuous), id(oq_demand_curve), id(oq_curve_demand_pre_guardrail),
         id(oq_curve_heat_request_active), id(oq_curve_stop_arm_ms), id(oq_curve_off_since_ms),
         id(oq_curve_restart_inhibit_active), id(oq_curve_restart_blocked_by_room), id(oq_curve_regime_code));
   }
-
   void reset_outside_ema_() {
     oq_curve::reset_outside_ema_state(id(oq_curve_outside_ema_c), id(oq_curve_outside_ema_initialized),
                                       id(oq_curve_outside_ema_last_ms));
   }
-
   void reset_request_(int owner) {
+    this->dispatch_snapshot_initialized_ = false;
     oq_curve::reset_request_state(id(oq_curve_request_last_loop_ms), id(oq_curve_request_total_level),
                                   id(oq_curve_request_owner_hp), id(oq_curve_dispatch_hp1_level),
                                   id(oq_curve_dispatch_hp2_level), id(oq_curve_capacity_mode_code));
@@ -483,6 +510,13 @@ class Runtime {
   }
 
   bool last_oil_return_mask_active_{false};
+  float last_pid_output_{NAN};
+  oq_heat_intent::State intent_state_;
+  bool setpoint_started_request_{false};
+  bool dispatch_snapshot_initialized_{false};
+  bool last_dispatch_demand_{false};
+  bool last_hp1_available_{false};
+  bool last_hp2_available_{false};
 };
 
 inline Runtime& runtime() {

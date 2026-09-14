@@ -112,6 +112,31 @@ Tijdens Quick Start zet een strategieswitch naar `Water Temperature Control` de 
 
 Buiten Quick Start toont `Instellingen → Verwarmen` bij een afwijkende keuze alleen een advies (`Aanbevolen instelling` / `Controleer configuratie`) en wordt de instelling niet stil overschreven. Voor de volledige matrix zie [Instellingen en meetwaarden](instellingen-en-meetwaarden.md#5-bronselectie).
 
+## Extern aanvoertarget (optioneel)
+
+Standaard bepaalt de stooklijn het aanvoerdoel uit de buitentemperatuur, met een kleine kamertrim erbovenop. Laat je dat doel liever door een externe regelaar bepalen — bijvoorbeeld een OpenTherm-thermostaat die zelf al kamerafwijking in `TSet` verwerkt, een buffervatregeling in Home Assistant of een MPC-optimalisatie — dan kun je dat target rechtstreeks doorgeven.
+
+Zet daarvoor `Heating Supply Target Source` op `OT thermostat`, `HA input`, `API input` of `MQTT` en lever een waarde in graden Celsius. Staat de bron op `Heating curve`, dan verandert er niets aan het gedrag dat je nu kent.
+
+Voor `HA input` luistert OpenQuatt naar twee vaste entiteiten in Home Assistant:
+
+- `sensor.openquatt_ext_heating_supply_target` — het gewenste aanvoerdoel in graden Celsius;
+- `binary_sensor.openquatt_ext_heating_supply_target_valid` — moet `on` staan, anders negeert OpenQuatt de waarde en valt hij terug op de stooklijn.
+
+Die tweede entiteit is jouw eigen geldigheidsschakelaar: zet hem `off` zodra je berekening verouderd of onbetrouwbaar is. Uitzetten werkt direct: een eerder vastgehouden waarde wordt meteen ingetrokken en de stooklijn neemt het weer over, zonder overbruggingsvenster. Alleen waarden binnen 20…70 °C tellen mee.
+
+Publiceer de waarde periodiek opnieuw (bijvoorbeeld elke minuut), ook als hij niet verandert. Na 15 minuten zonder nieuwe Home Assistant-publicatie wordt de waarde ongeldig. Bij een korte Home Assistant-herlaadactie kan OpenQuatt de laatst geldige waarde daarna nog maximaal 5 minuten overbruggen; zet de geldigheidsentiteit expliciet `off` om die overbrugging direct te beëindigen. Zo valt een bevroren waarde uiterlijk na 20 minuten terug op de stooklijn. Na een herstart is de ingang ongeldig tot de eerste publicatie binnen is. Voor `API input` en `MQTT` stuur je de waarde naar een lokaal endpoint of topic; zie [API inputbronnen](api-input.md) en [MQTT inputbronnen](mqtt.md). Die wegen hebben geen aparte geldigheidsentiteit en vervallen zonder extra overbrugging na 15 minuten. Voor `OT thermostat` gebruikt OpenQuatt de al ontvangen `OT - Control Setpoint` (`TSet`), met een eigen versheidsbewaking: zonder recent `TSet`-bericht valt de regeling terug op de stooklijn. Ook hier telt alleen een `TSet` binnen 20…70 °C mee: `TSet=0` (thermostaat zonder warmtevraag) of een andere waarde buiten bereik valt terug op de stooklijn in plaats van als extern minimumtarget te gelden.
+
+Wat die externe waarde wel en niet doet:
+
+- Hij vervangt alleen het berekende stooklijntarget, inclusief kamertrim. De trim wordt bij een externe target niet nogmaals toegepast, anders zou de correctie dubbel tellen.
+- `Maximum water temperature`, de water-temperatuurlimieten en trips, de PID, de demandlogica en de compressor- en Duo-dispatch blijven van OpenQuatt zelf.
+- Valt de bron weg, wordt hij te oud of stuurt hij een onbruikbare waarde, dan gaat de regeling terug naar de eigen stooklijn. Niet naar nul of uit.
+
+Dit staat los van `Heating Enable`: die bepaalt *of* er verwarmd mag worden, het aanvoertarget bepaalt *hoe warm* het water moet zijn. Voorbeeld buffervat: onder 38 °C buffer­temperatuur `Heating Enable` aan met een aanvoertarget van 42 °C, boven 40 °C `Heating Enable` uit.
+
+Kijk bij twijfel naar `Heating Supply – target source`. Die staat op `external` zolang het externe target echt gebruikt wordt, en op `curve` zodra de stooklijn weer rekent. `Heating Curve Supply Target` blijft altijd het lokale stooklijnreferentie­doel tonen, ook terwijl een extern target actief is.
+
 ## Welke instellingen zijn voor de meeste gebruikers het belangrijkst?
 
 Als je deze strategie afstelt, begin dan bijna altijd hier:
@@ -169,6 +194,8 @@ Als deze strategie niet logisch voelt, kijk dan eerst naar:
 - `Outside Temperature (Selected)`
 - `Water Supply Temp (Selected)`
 - `Heating Curve Supply Target`
+- `Heating Supply Target (Selected)`
+- `Heating Supply – target source`
 - de actieve `Heating Control Mode`
 
 Controleer daarna pas of de PID of `Duo`-grenzen te scherp staan.

@@ -348,29 +348,33 @@ class MqttConfigHandler : public AsyncWebHandler {
       const auto outside_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::OUTSIDE_TEMPERATURE);
       const auto room_temp_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::ROOM_TEMPERATURE);
       const auto room_setpoint_index = static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::ROOM_SETPOINT);
+      const auto supply_target_index =
+          static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::HEATING_SUPPLY_TARGET);
       const auto heating_enable_index = static_cast<size_t>(OpenQuattMqttConfig::BinaryInputKind::HEATING_ENABLE);
       const auto cooling_enable_index = static_cast<size_t>(OpenQuattMqttConfig::BinaryInputKind::COOLING_ENABLE);
       const std::string topic = json_escape_(status.dew_point_topic);
       const std::string outside_topic = json_escape_(status.input_topics[outside_index]);
       const std::string room_temp_topic = json_escape_(status.input_topics[room_temp_index]);
       const std::string room_setpoint_topic = json_escape_(status.input_topics[room_setpoint_index]);
+      const std::string supply_target_topic = json_escape_(status.input_topics[supply_target_index]);
       const std::string heating_enable_topic = json_escape_(status.binary_input_topics[heating_enable_index]);
       const std::string cooling_enable_topic = json_escape_(status.binary_input_topics[cooling_enable_index]);
       const std::string source = json_escape_(status.config_source);
       const std::string csrf_token = json_escape_(status.csrf_token);
       auto* stream = request->beginResponseStream("application/json");
       stream->printf(
-          R"({"enabled":%s,"connected":%s,"runtime_pending":%s,"broker":"%s","port":%u,"username":"%s","password_set":%s,"dew_point_topic":"%s","input_topics":{"cooling_dew_point":"%s","outside_temperature":"%s","room_temperature":"%s","room_setpoint":"%s","heating_enable":"%s","cooling_enable":"%s"},"input_enabled":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_enable":%s,"cooling_enable":%s},"input_retained":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_enable":%s,"cooling_enable":%s},"input_accept_retained":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_enable":%s,"cooling_enable":%s},"non_retained_stateful_timeout_s":%u,"source":"%s","csrf_token":"%s"})",
+          R"({"enabled":%s,"connected":%s,"runtime_pending":%s,"broker":"%s","port":%u,"username":"%s","password_set":%s,"dew_point_topic":"%s","input_topics":{"cooling_dew_point":"%s","outside_temperature":"%s","room_temperature":"%s","room_setpoint":"%s","heating_supply_target":"%s","heating_enable":"%s","cooling_enable":"%s"},"input_enabled":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_supply_target":%s,"heating_enable":%s,"cooling_enable":%s},"input_retained":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_supply_target":%s,"heating_enable":%s,"cooling_enable":%s},"input_accept_retained":{"cooling_dew_point":%s,"outside_temperature":%s,"room_temperature":%s,"room_setpoint":%s,"heating_supply_target":%s,"heating_enable":%s,"cooling_enable":%s},"non_retained_stateful_timeout_s":%u,"source":"%s","csrf_token":"%s"})",
           status.enabled ? "true" : "false", status.connected ? "true" : "false",
           status.runtime_pending ? "true" : "false", broker.c_str(), status.port, username.c_str(),
           status.password_set ? "true" : "false", topic.c_str(), topic.c_str(), outside_topic.c_str(),
-          room_temp_topic.c_str(), room_setpoint_topic.c_str(), heating_enable_topic.c_str(),
-          cooling_enable_topic.c_str(),
+          room_temp_topic.c_str(), room_setpoint_topic.c_str(), supply_target_topic.c_str(),
+          heating_enable_topic.c_str(), cooling_enable_topic.c_str(),
           status.input_enabled[static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::COOLING_DEW_POINT)] ? "true"
                                                                                                               : "false",
           status.input_enabled[outside_index] ? "true" : "false",
           status.input_enabled[room_temp_index] ? "true" : "false",
           status.input_enabled[room_setpoint_index] ? "true" : "false",
+          status.input_enabled[supply_target_index] ? "true" : "false",
           status.binary_input_enabled[heating_enable_index] ? "true" : "false",
           status.binary_input_enabled[cooling_enable_index] ? "true" : "false",
           status.input_retained[static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::COOLING_DEW_POINT)]
@@ -379,6 +383,7 @@ class MqttConfigHandler : public AsyncWebHandler {
           status.input_retained[outside_index] ? "true" : "false",
           status.input_retained[room_temp_index] ? "true" : "false",
           status.input_retained[room_setpoint_index] ? "true" : "false",
+          status.input_retained[supply_target_index] ? "true" : "false",
           status.binary_input_retained[heating_enable_index] ? "true" : "false",
           status.binary_input_retained[cooling_enable_index] ? "true" : "false",
           status.input_accept_retained[static_cast<size_t>(OpenQuattMqttConfig::NumericInputKind::COOLING_DEW_POINT)]
@@ -387,6 +392,7 @@ class MqttConfigHandler : public AsyncWebHandler {
           status.input_accept_retained[outside_index] ? "true" : "false",
           status.input_accept_retained[room_temp_index] ? "true" : "false",
           status.input_accept_retained[room_setpoint_index] ? "true" : "false",
+          status.input_accept_retained[supply_target_index] ? "true" : "false",
           status.binary_input_accept_retained[heating_enable_index] ? "true" : "false",
           status.binary_input_accept_retained[cooling_enable_index] ? "true" : "false",
           static_cast<unsigned>(30U * 60U), source.c_str(), csrf_token.c_str());
@@ -1701,18 +1707,18 @@ const OpenQuattMqttConfig::BinaryInput& OpenQuattMqttConfig::binary_input_(Binar
 }
 
 uint8_t OpenQuattMqttConfig::numeric_input_mask_(NumericInputKind kind) {
-  return static_cast<uint8_t>(1U << static_cast<uint8_t>(kind));
+  return numeric_input_bit_(static_cast<size_t>(kind));
 }
 
 uint8_t OpenQuattMqttConfig::binary_input_mask_(BinaryInputKind kind) {
-  return static_cast<uint8_t>(1U << (NUMERIC_INPUT_COUNT + static_cast<uint8_t>(kind)));
+  return binary_input_bit_(static_cast<size_t>(kind));
 }
 
 bool OpenQuattMqttConfig::is_numeric_input_enabled_(size_t input_index) const {
   if (input_index >= this->numeric_inputs_.size()) {
     return false;
   }
-  const uint8_t mask = static_cast<uint8_t>(1U << input_index);
+  const uint8_t mask = numeric_input_bit_(input_index);
   return (this->input_disabled_mask_.load() & mask) == 0U;
 }
 
@@ -1720,7 +1726,7 @@ bool OpenQuattMqttConfig::is_binary_input_enabled_(size_t input_index) const {
   if (input_index >= this->binary_inputs_.size()) {
     return false;
   }
-  const uint8_t mask = static_cast<uint8_t>(1U << (NUMERIC_INPUT_COUNT + input_index));
+  const uint8_t mask = binary_input_bit_(input_index);
   return (this->input_disabled_mask_.load() & mask) == 0U;
 }
 
@@ -1728,7 +1734,7 @@ bool OpenQuattMqttConfig::is_numeric_input_accept_retained_(size_t input_index) 
   if (input_index != static_cast<size_t>(NumericInputKind::ROOM_SETPOINT)) {
     return false;
   }
-  const uint8_t mask = static_cast<uint8_t>(1U << input_index);
+  const uint8_t mask = numeric_input_bit_(input_index);
   return (this->retained_disabled_mask_.load() & mask) == 0U;
 }
 
@@ -1736,7 +1742,7 @@ bool OpenQuattMqttConfig::is_binary_input_accept_retained_(size_t input_index) c
   if (input_index >= this->binary_inputs_.size()) {
     return false;
   }
-  const uint8_t mask = static_cast<uint8_t>(1U << (NUMERIC_INPUT_COUNT + input_index));
+  const uint8_t mask = binary_input_bit_(input_index);
   return (this->retained_disabled_mask_.load() & mask) == 0U;
 }
 
@@ -1746,13 +1752,13 @@ bool OpenQuattMqttConfig::input_mask_for_key_(const std::string& key, uint8_t* m
   }
   for (size_t i = 0; i < this->numeric_inputs_.size(); i++) {
     if (key == this->numeric_inputs_[i].key) {
-      *mask = static_cast<uint8_t>(1U << i);
+      *mask = numeric_input_bit_(i);
       return true;
     }
   }
   for (size_t i = 0; i < this->binary_inputs_.size(); i++) {
     if (key == this->binary_inputs_[i].key) {
-      *mask = static_cast<uint8_t>(1U << (NUMERIC_INPUT_COUNT + i));
+      *mask = binary_input_bit_(i);
       return true;
     }
   }
@@ -1786,7 +1792,7 @@ void OpenQuattMqttConfig::clear_disabled_inputs_() {
   const uint8_t disabled_mask = this->input_disabled_mask_.load() & INPUT_MASK_ALL;
   portENTER_CRITICAL(&this->pending_lock_);
   for (size_t i = 0; i < this->numeric_inputs_.size(); i++) {
-    if ((disabled_mask & static_cast<uint8_t>(1U << i)) == 0U) {
+    if ((disabled_mask & numeric_input_bit_(i)) == 0U) {
       continue;
     }
     auto& input = this->numeric_inputs_[i];
@@ -1799,7 +1805,7 @@ void OpenQuattMqttConfig::clear_disabled_inputs_() {
     input.last_valid_retained = false;
   }
   for (size_t i = 0; i < this->binary_inputs_.size(); i++) {
-    const uint8_t mask = static_cast<uint8_t>(1U << (NUMERIC_INPUT_COUNT + i));
+    const uint8_t mask = binary_input_bit_(i);
     if ((disabled_mask & mask) == 0U) {
       continue;
     }
@@ -1818,7 +1824,7 @@ void OpenQuattMqttConfig::clear_disabled_inputs_() {
 void OpenQuattMqttConfig::clear_input_(uint8_t input_mask) {
   portENTER_CRITICAL(&this->pending_lock_);
   for (size_t i = 0; i < this->numeric_inputs_.size(); i++) {
-    if ((input_mask & static_cast<uint8_t>(1U << i)) == 0U) {
+    if ((input_mask & numeric_input_bit_(i)) == 0U) {
       continue;
     }
     auto& input = this->numeric_inputs_[i];
@@ -1831,7 +1837,7 @@ void OpenQuattMqttConfig::clear_input_(uint8_t input_mask) {
     input.last_valid_retained = false;
   }
   for (size_t i = 0; i < this->binary_inputs_.size(); i++) {
-    const uint8_t mask = static_cast<uint8_t>(1U << (NUMERIC_INPUT_COUNT + i));
+    const uint8_t mask = binary_input_bit_(i);
     if ((input_mask & mask) == 0U) {
       continue;
     }
@@ -1851,7 +1857,7 @@ void OpenQuattMqttConfig::clear_session_scoped_inputs_() {
   const uint8_t session_scoped_mask = this->retained_disabled_mask_.load() & STATEFUL_INPUT_MASK;
   portENTER_CRITICAL(&this->pending_lock_);
   for (size_t i = 0; i < this->numeric_inputs_.size(); i++) {
-    if ((session_scoped_mask & static_cast<uint8_t>(1U << i)) == 0U) {
+    if ((session_scoped_mask & numeric_input_bit_(i)) == 0U) {
       continue;
     }
     auto& input = this->numeric_inputs_[i];
@@ -1860,7 +1866,7 @@ void OpenQuattMqttConfig::clear_session_scoped_inputs_() {
     input.last_valid_retained = false;
   }
   for (size_t i = 0; i < this->binary_inputs_.size(); i++) {
-    const uint8_t mask = static_cast<uint8_t>(1U << (NUMERIC_INPUT_COUNT + i));
+    const uint8_t mask = binary_input_bit_(i);
     if ((session_scoped_mask & mask) == 0U) {
       continue;
     }

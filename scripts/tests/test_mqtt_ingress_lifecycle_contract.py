@@ -295,6 +295,26 @@ class MqttIngressLifecycleContractTest(unittest.TestCase):
         self.assertIn("!this->is_numeric_input_enabled_(input_index)", numeric)
         self.assertIn("!this->is_binary_input_enabled_(input_index)", binary)
 
+    def test_storage_bit_positions_are_frozen_for_upgrade(self) -> None:
+        # Stored enable/retained masks must keep their meaning when inputs are
+        # added: bits 0..3 are the original numeric inputs, bits 4..5 the
+        # binary enables, and the heating supply target owns bit 6 (issue #649).
+        # Shifting positions instead would re-enable a disabled heating topic
+        # or reject the stored config outright, without any migration.
+        self.assertIn("HEATING_SUPPLY_TARGET_BIT = 6U", HEADER)
+        self.assertIn("BINARY_INPUT_BIT_BASE = 4U", HEADER)
+        self.assertIn("INPUT_MASK_ALL = 0x7FU", HEADER)
+        for token in (
+            "1U << (NUMERIC_INPUT_COUNT",
+            "1U << input_index",
+            "1U << i)",
+        ):
+            self.assertNotIn(token, CPP)
+        self.assertIn("numeric_input_bit_(input_index)", CPP)
+        self.assertIn("binary_input_bit_(input_index)", CPP)
+        self.assertIn("numeric_input_bit_(i)", CPP)
+        self.assertIn("binary_input_bit_(i)", CPP)
+
     def test_idempotent_retry_reconciles_an_unresolved_client(self) -> None:
         apply_start = CPP.index(
             "OpenQuattMqttConfig::apply_storage_("

@@ -33,6 +33,7 @@ Sommige `curl`-versies vereisen bij `POST` een expliciete `Content-Length`. Gebr
 | Kamertemperatuur | `/number/api_input_room_temperature/set?value=<temperatuur>` | `0..50` graden Celsius |
 | Kamer-setpoint | `/number/api_input_room_setpoint/set?value=<temperatuur>` | `5..35` graden Celsius |
 | Warmtevraag | `/number/api_input_external_heat_demand/set?value=<vermogen>` | `0..15000` watt |
+| Aanvoertarget | `/number/api_input_heating_supply_target/set?value=<temperatuur>` | `20..70` graden Celsius |
 
 Toestemmingssignalen zijn `switch`-entiteiten. Zet ze met een `POST` naar `/turn_on` of `/turn_off`.
 
@@ -84,6 +85,7 @@ De geldigheidsduur is:
 - kamertemperatuur: 10 minuten;
 - kamer-setpoint: blijft geldig tot herstart of nieuwe waarde;
 - warmtevraag: 15 minuten;
+- aanvoertarget: 15 minuten;
 - warmtetoestemming: blijft geldig tot herstart of nieuwe waarde;
 - koeltoestemming: blijft geldig tot herstart of nieuwe waarde.
 
@@ -101,6 +103,8 @@ Bij `Koelingsdauwpunt` kies je:
 Bij `Buitentemperatuur` gebruikt `Auto` de laagste geldige waarde uit buitenunit, Home Assistant, API-invoer en MQTT. Bij `Kamertemperatuur` en `Kamer setpoint` kun je `API input` expliciet als bron kiezen.
 
 Bij `Warmtevraag` is `Disabled` de standaard. Kies je `API input`, dan gebruikt `Power House` jouw waarde in plaats van de eigen vermogensschatting, zolang die geldig is. Verloopt de waarde, dan valt de regeling terug op het huismodel en niet op nul.
+
+Bij `Aanvoertarget` is `Heating curve` de standaard. Kies je `API input`, dan gebruikt de stooklijnregeling jouw aanvoertemperatuur in plaats van het eigen stooklijntarget (inclusief kamertrim), zolang die geldig is. Verloopt de waarde, dan valt de regeling terug op de stooklijn. Zie [Water Temperature Control](water-temperature-control.md#extern-aanvoertarget-optioneel).
 
 Bij `Warmtetoestemming` en `Koeltoestemming` telt API-invoer alleen mee als de waarde geldig is. Handmatige koeltoestemming blijft daarnaast een override.
 

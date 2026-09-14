@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[2]
 YAML = (ROOT / "openquatt/oq_supervisory_controlmode.yaml").read_text()
 LOGIC = (ROOT / "openquatt/includes/control/oq_supervisory_state_logic.h").read_text()
 RUNTIME = (ROOT / "openquatt/includes/control/oq_supervisory_state_runtime.h").read_text()
+PROBE = (ROOT / "openquatt/includes/control/oq_cold_start_probe.h").read_text()
 HOST_TEST = (ROOT / "tests/host/supervisory_state_logic_test.cpp").read_text()
 
 
@@ -20,7 +21,7 @@ class SupervisoryStateRuntimeContractTest(unittest.TestCase):
             "power_house_assist(",
         ):
             self.assertNotIn(implementation_marker, YAML)
-        self.assertLessEqual(len(YAML.splitlines()), 700)
+        self.assertLessEqual(len(YAML.splitlines()), 720)
 
     def test_runtime_owns_complete_supervisory_side_effects(self) -> None:
         self.assertIn('#include "../performance/hp_perf_frequency.h"', RUNTIME)
@@ -53,9 +54,26 @@ class SupervisoryStateRuntimeContractTest(unittest.TestCase):
             self.assertIn(marker, HOST_TEST)
         self.assertIn("UINT32_MAX - 20", HOST_TEST)
 
+    def test_flow_guard_covers_heating_preflow_and_compressor_wind_down(self) -> None:
+        self.assertIn("const bool heating_flow_req = heating_req || heating_preflow_req;", RUNTIME)
+        self.assertIn("const bool thermal_req = heating_flow_req || cooling_req || manual_hp_thermal_req;", RUNTIME)
+        self.assertIn(
+            "oq_supervisory_state::flow_guard_required(thermal_req, any_hp_compressor_active, actuator_request_active)",
+            RUNTIME,
+        )
+        self.assertIn("{now_ms, flow_guard_required, min_flow_lph", RUNTIME)
+
+    def test_dynamic_pmin_only_uses_servable_heat_pumps(self) -> None:
+        self.assertIn("uint32_t hp_min_off_s;", RUNTIME)
+        self.assertIn("${oq_hp_min_off_s},", YAML)
+        self.assertIn("oq_hp_candidate::candidate_state", RUNTIME)
+        self.assertIn("oq_hp_candidate::minimum_off_ready", RUNTIME)
+        self.assertIn("if (!oq_hp_candidate::may_serve_candidate(candidate)) return;", RUNTIME)
+
     def test_production_sources_remain_bounded(self) -> None:
-        total = sum(len(source.splitlines()) for source in (YAML, LOGIC, RUNTIME))
-        self.assertLessEqual(total, 2150)
+        # Include the bounded Modbus reader added for first-start water samples.
+        total = sum(len(source.splitlines()) for source in (YAML, LOGIC, RUNTIME, PROBE))
+        self.assertLessEqual(total, 2275)
 
 
 if __name__ == "__main__":

@@ -141,6 +141,8 @@ Zie je hier al vreemde waarden, ga dan niet meteen tunen. Controleer eerst de br
 - schakelt het systeem vaak;
 - reageert de regeling logisch op setpoint en kamertemperatuur.
 
+Gebruik bij een probleem dat je opnieuw kunt veroorzaken ook het **Logboek**. Nieuwe regels verschijnen daar live; valt de verbinding kort weg, dan vult OpenQuatt de gemiste recente regels weer aan. Het logboek is vluchtige diagnose-informatie: bewaar voor support daarnaast altijd een debugopname.
+
 Via `Instellingen → Systeem → Gegevens bewaren` beheer je welke historie OpenQuatt bewaart. OpenQuatt maakt daarbij onderscheid tussen twee soorten geheugen:
 
 - **PSRAM (tijdelijk, vluchtig)** — snelle opslag voor recente diagnosegegevens en RAM-logs. Deze historie is direct beschikbaar zolang de controller online is en verdwijnt na een herstart.
@@ -172,7 +174,7 @@ Onder `Instellingen` staan de onderdelen bewust gescheiden. Het idee is: eerst d
 
 Hier staan basiskeuzes zoals Quatt Hybrid-versie, flowregeling, een aanvullende warmtebron, stille uren, watergrenzen en compressorinstellingen.
 
-Bij `Elektrische ingangsgrens` stel je met `Maximale gezamenlijke netstroom` de gezamenlijke stroomgrens van de buitenunits in. De standaard blijft 16 A voor Single en Duo V1/V1.5 en 20 A voor Duo V2 (de officiële Quatt Duo-specificatie); de kaart toont het indicatieve vermogen bij 230 V als benadering. Hoger instellen kan tot de absolute OpenQuatt-bovengrens (20 respectievelijk 26 A, afgeleid van 2 × de gepubliceerde maximale stroom per buitenunit) en alleen bij betrouwbaar gedetecteerde buitenunits van dezelfde familie. Een waarde boven de standaard waarschuwt direct en vraagt een expliciete bevestiging met oude en nieuwe waarde; alleen een zwaardere installatieautomaat plaatsen is niet voldoende. `Standaardwaarde herstellen` schakelt terug naar automatisch volgen van de standaard. Ook een backup met een grens boven de standaard vermeldt dit expliciet bij het herstellen. Power House houdt er vooraf en via gemeten vermogen rekening mee; stooklijn en koelen alleen via gemeten vermogen. Deze instelling is een softwarematige regelgrens, geen elektrische beveiliging; korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten.
+Bij `Elektrische ingangsgrens` stel je met `Maximale gezamenlijke netstroom` de gezamenlijke stroomgrens van de buitenunits in. De standaard blijft 16 A voor Single en Duo V1/V1.5 en 20 A voor Duo V2 (de officiële Quatt Duo-specificatie); de kaart toont het indicatieve vermogen bij 230 V als benadering. Hoger instellen kan tot de absolute OpenQuatt-bovengrens (20 respectievelijk 26 A, afgeleid van 2 × de gepubliceerde maximale stroom per buitenunit) en alleen bij betrouwbaar gedetecteerde buitenunits van dezelfde familie. Een waarde boven de standaard waarschuwt direct en vraagt een expliciete bevestiging met oude en nieuwe waarde; alleen een zwaardere installatieautomaat plaatsen is niet voldoende. `Standaardwaarde herstellen` zet de actuele standaardwaarde opnieuw in. Ook een backup met een grens boven de standaard vermeldt dit expliciet bij het herstellen. Power House houdt er vooraf en via gemeten vermogen rekening mee; stooklijn en koelen alleen via gemeten vermogen. Deze instelling is een softwarematige regelgrens, geen elektrische beveiliging; korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten.
 
 Bij `Aanvullende warmtebron` leg je eerst vast of OpenQuatt een warmtebron fysiek kan aansturen. Daarna kies je afzonderlijk voor `Hybride verwarmen bij vermogenstekort` en `Overnemen wanneer de warmtepomp niet beschikbaar is`. Overname staat standaard uit. OpenQuatt schakelt pas over nadat de warmtepompen veilig zijn gestopt en flow, aanvoertemperatuur en aansturing geldig zijn. Een korte communicatiedip telt niet als uitval.
 
@@ -192,6 +194,14 @@ Hier kies en verfijn je de verwarmingsstrategie:
 ### Koelen
 
 Hier staan de instellingen voor koeling en dauwpuntbeveiliging.
+
+Het blok **Dagelijks koelvenster** onder **Instellingen → Koelen** combineert de aan/uit-schakelaar met de start- en eindtijd. Het tandwiel bij **Koeltoestemming** op het overzicht opent dezelfde bediening in een popup. Inschakelen komt technisch overeen met `Cooling Enable Source = Schedule`; uitschakelen kiest `Disabled`. De starttijd is inbegrepen en de eindtijd niet; een venster kan over middernacht lopen. Gelijke tijden betekenen uit, waardoor de standaard `00:00-00:00` na installatie of update geen koeltoestemming geeft.
+
+Bij het koelvenster en stille uren kun je uren en minuten rustig na elkaar wijzigen. De tijd wordt opgeslagen zodra je het veld verlaat of op Enter drukt. Bij een schrijffout blijft je invoer staan om opnieuw te proberen.
+
+Het schema geeft alleen toestemming. `Cooling Room Request Required` blijft standaard aan, zodat er binnen het venster nog steeds een kamerkoelvraag nodig is. Zet je die instelling bewust uit, dan geldt het actieve venster als koelvraag. In beide gevallen blijven `OpenQuatt Enabled` en alle dauwpunt-, water- en flowbeveiligingen van kracht. `Manual Cooling Enable` omzeilt alleen de gekozen toestemmingsbron; deze opgeslagen override kan na een herstart terugkomen en omzeilt nooit de veiligheidsbewaking.
+
+Voor het schema gebruikt OpenQuatt zijn via SNTP gesynchroniseerde lokale klok. Na een herstart zonder geldige netwerktijd blijft de schematoestemming uit totdat synchronisatie lukt. Bij het bereiken van de eindtijd stopt OpenQuatt gecontroleerd: een nog lopende minimale compressortijd kan de compressor kort laten doorlopen en daarna kan de pomp nog de normale postflow uitvoeren.
 
 Koeling is gevoeliger dan verwarming, omdat condensrisico een echte beperking is. Normaal gebruikt OpenQuatt een dauwpuntbron plus veiligheidsmarge. Zonder goede dauwpuntinformatie blijft koeling standaard geblokkeerd.
 
@@ -213,11 +223,13 @@ Hier beheer je de directe gegevensbronnen en integraties:
 
 - `OpenTherm`: zet de lokale OpenTherm-thermostaatkoppeling aan of uit;
 - `CIC-polling`: zet het uitlezen van een externe CIC JSON-feed aan of uit en pas de feed-URL aan;
-- `MQTT inputbronnen`: configureer een broker voor externe MQTT-bronwaarden zoals dauwpunt, buiten- en kamerwaarden en toestemmingssignalen, en zet ongebruikte topics uit;
+- `MQTT inputbronnen`: configureer een broker voor externe MQTT-bronwaarden zoals dauwpunt, buiten- en kamerwaarden, het aanvoertarget en toestemmingssignalen, en zet ongebruikte topics uit;
 - `API inputbronnen`: lever dezelfde externe bronwaarden via lokale HTTP-endpoints aan;
 - `CiC-compatibiliteit`: gebruik dit alleen als de Quatt app via de CiC moet blijven meekijken.
 
-Onder `Sensorselectie` in dezelfde groep kies je per signaal welke bron OpenQuatt gebruikt. Naast de kaarten voor buiten-, kamer- en aanvoerwaarden staat daar `Warmtevraag`: een optionele externe vermogensvraag voor Power House, standaard op `Niet gebruiken`. Zet je die op Home Assistant of API-invoer, dan vervangt jouw waarde uitsluitend de vermogensschatting van het huismodel; de kaart laat zien of Power House die externe waarde daadwerkelijk gebruikt of is teruggevallen op het model. Zie [Power House](power-house.md).
+Onder `Sensorselectie` in dezelfde groep kies je per signaal welke bron OpenQuatt gebruikt. Naast de kaarten voor buiten-, kamer- en aanvoerwaarden staat daar `Externe warmtevraag (Power House)`: een optionele externe vermogensvraag, alleen voor de Power House-strategie, standaard op `Niet gebruiken`. Zet je die op Home Assistant of API-invoer, dan vervangt jouw waarde uitsluitend de vermogensschatting van het huismodel; de kaart laat zien of Power House die externe waarde daadwerkelijk gebruikt of is teruggevallen op het model. Zie [Power House](power-house.md).
+
+Daarnaast staat er `Aanvoertarget (stooklijn)`: een optionele externe aanvoertemperatuur, alleen voor de stooklijnregeling, standaard op `Stooklijn`. Zet je die op OpenTherm-thermostaat, Home Assistant, API-invoer of MQTT, dan vervangt jouw waarde uitsluitend het berekende stooklijntarget; de kaart laat zien of de regeling dat externe target daadwerkelijk gebruikt of is teruggevallen op de stooklijn. Zie [Water Temperature Control](water-temperature-control.md#extern-aanvoertarget-optioneel).
 
 Voor `Warmtetoestemming` (`Heating Enable Source`) betekent `Niet gebruiken`: geen externe gate; de strategie bepaalt zelf of warmte nodig is. Tijdens Quick Start vervangt een strategieswitch deze keuze automatisch door `Niet gebruiken` voor `Power House`, of door de gekoppelde en actieve thermostaatbron voor `Water Temperature Control`. Buiten Quick Start toont `Instellingen → Verwarmen` alleen een advies met knop en wordt de instelling niet stil overschreven. Afwijkende combinaties (zone-regeling, volledig weersafhankelijk) blijven mogelijk. De buitentemperatuur staat normaliter op `Auto` en gebruikt de buitenunit.
 
@@ -266,7 +278,7 @@ Het bericht bevat uitsluitend:
 - `quatt_hybrid_generation_config`: `v1`, `v1_5` of `v2` volgens de ingestelde Quatt Hybrid-versie;
 - `flow_source_config`: `cic`, `controller_local` of `outdoor_unit`, afgeleid uit de algemene en (bij Q) Q-specifieke flowselectie;
 - `heating_strategy`: `power_house` of `heating_curve`;
-- de gekozen regelbronnen in `room_temperature_source`, `room_setpoint_source`, `outside_temperature_source`, `heating_enable_source`, `cooling_enable_source`, `cooling_dew_point_source` en `external_heat_demand_source`, genormaliseerd naar vaste waarden zoals `auto`, `local`, `outdoor_unit`, `cic`, `opentherm`, `home_assistant`, `api_input`, `mqtt`, `cic_or_home_assistant` en `disabled`;
+- de gekozen regelbronnen in `room_temperature_source`, `room_setpoint_source`, `outside_temperature_source`, `heating_enable_source`, `cooling_enable_source`, `cooling_dew_point_source`, `external_heat_demand_source` en `heating_supply_target_source`, genormaliseerd naar vaste waarden zoals `auto`, `local`, `outdoor_unit`, `cic`, `opentherm`, `home_assistant`, `api_input`, `mqtt`, `cic_or_home_assistant`, `schedule`, `disabled` en `heating_curve`;
 - vrij heapgeheugen, het minimum sinds de start, het grootste vrije heapblok en vrij PSRAM;
 - maximale looptijd van de firmwareloop, ESP-chiptemperatuur en reden van de laatste herstart;
 - bij Wi-Fi: de signaalsterkte in dBm;
@@ -301,7 +313,7 @@ Maak een backup voordat je grotere wijzigingen doet of voordat je een factory-up
 
 De backup bevat de instellingen die de web-app beheert, inclusief de vier warmtepompoffsets en iedere geldige aanvoeroffset die per bron is opgeslagen. De MQTT-configuratie wordt ook meegenomen, maar het MQTT-wachtwoord nooit. Bij restore vergelijkt OpenQuatt de backup met de huidige installatie, zodat je verschillen kunt controleren voordat je ze terugzet.
 
-Externe invoerwaarden die je live aanlevert, zoals een warmtevraag of een kamertemperatuur via MQTT of de API, zijn geen instellingen en gaan niet mee in de backup. De gekozen bron blijft wel bewaard: na een restore staat `Warmtevraag` weer op dezelfde bron, zonder dat er een verouderde vermogensvraag wordt teruggezet.
+Externe invoerwaarden die je live aanlevert, zoals een warmtevraag, een aanvoertarget of een kamertemperatuur via MQTT of de API, zijn geen instellingen en gaan niet mee in de backup. De gekozen bron blijft wel bewaard: na een restore staan `Externe warmtevraag (Power House)` en `Aanvoertarget (stooklijn)` weer op dezelfde bron, zonder dat er een verouderde vraag of target wordt teruggezet.
 
 De kalibratiewaarden worden op dezelfde manier als de overige instellingen hersteld, vóór de opgeslagen aanvoerbron wordt geselecteerd. Kalibreer na restore opnieuw als de controller of een temperatuursensor fysiek is vervangen; een gewone bron- of CIC-URL-wijziging verwijdert een geldige kalibratie niet.
 
@@ -315,6 +327,8 @@ Een backup is vooral handig bij:
 ## Updates
 
 De web-app toont update-informatie via de firmware-updatefunctie. Normaal volg je het stabiele kanaal.
+
+Na het kiezen van `dev` kun je de aangeboden dev-build ook installeren wanneer deze dezelfde basisversie heeft als de draaiende main-release (bijvoorbeeld `v0.49.1` → `v0.49.1-dev.780`). De web-app bevestigt de kanaalwissel pas wanneer het device de bedoelde dev-build en het dev-kanaal meldt.
 
 Gebruik een dev-kanaal alleen als je bewust test en weet dat de firmware nog kan veranderen. Voor releasegebruik is het stabiele kanaal de route.
 

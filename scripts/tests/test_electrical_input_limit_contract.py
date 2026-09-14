@@ -17,13 +17,18 @@ COOLING_RUNTIME = (ROOT / "openquatt/includes/control/oq_cooling_runtime.h").rea
 HP_IO = (ROOT / "openquatt" / "oq_HP_io.yaml").read_text()
 SUBSTITUTIONS = (ROOT / "openquatt" / "oq_substitutions_common.yaml").read_text()
 WEB_LIMIT = (ROOT / "openquatt" / "web" / "js" / "src" / "settings" / "electrical-limit.js").read_text()
+SYSTEM_ACTIONS = (ROOT / "openquatt" / "web" / "js" / "src" / "features" / "system-actions.js").read_text()
 
 class ElectricalInputLimitContractTest(unittest.TestCase):
     def test_setting_is_persistent_and_keeps_generation_defaults(self) -> None:
         self.assertIn("id: oq_electrical_current_limit_configured_a", SUPERVISOR)
         self.assertIn("restore_value: true\n    initial_value: 'NAN'", SUPERVISOR)
         self.assertIn("id: oq_electrical_current_limit_a", SUPERVISOR)
-        self.assertIn("id: oq_electrical_current_limit_reset", SUPERVISOR)
+        self.assertNotIn("id: oq_electrical_current_limit_reset", SUPERVISOR)
+        electrical_limit = SUPERVISOR.split("id: oq_electrical_current_limit_a", 1)[1].split("  - platform: template", 1)[0]
+        self.assertIn("disabled_by_default: true", electrical_limit)
+        self.assertNotIn("electricalCurrentLimitReset", SYSTEM_ACTIONS)
+        self.assertIn('commitNumber("electricalCurrentLimit", info.standardA', SYSTEM_ACTIONS)
         self.assertIn("id(hp_generation).current_option() == \"V2\"", LIMITER_RUNTIME)
         self.assertIn("standard_current_a(", LIMITER_LOGIC)
         self.assertIn("absolute_maximum_current_a(", LIMITER_LOGIC)
@@ -38,8 +43,8 @@ class ElectricalInputLimitContractTest(unittest.TestCase):
     def test_firmware_and_web_share_absolute_limits(self) -> None:
         self.assertIn('oq_duo_current_limit_v2_max_a: "26.0"', SUBSTITUTIONS)
         self.assertIn("ELECTRICAL_LIMIT_V2_MAX_A = 26", WEB_LIMIT)
-        self.assertIn('oq_electrical_current_limit_min_a: "10.0"', SUBSTITUTIONS)
-        self.assertIn("ELECTRICAL_LIMIT_MIN_A = 10", WEB_LIMIT)
+        self.assertIn('oq_electrical_current_limit_min_a: "6.0"', SUBSTITUTIONS)
+        self.assertIn("ELECTRICAL_LIMIT_MIN_A = 6", WEB_LIMIT)
         self.assertIn("oq_duo_current_limit_v2_max_a", SUPERVISOR)
 
     def test_single_and_duo_share_measured_feedback_limiter(self) -> None:

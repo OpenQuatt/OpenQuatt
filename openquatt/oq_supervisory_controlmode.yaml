@@ -76,7 +76,7 @@ esphome:
 time:
   - platform: sntp
     id: oq_time
-    timezone: Europe/Amsterdam
+    timezone: ${oq_timezone}
 
 # ----------------------------
 # INTERNAL STATE
@@ -348,25 +348,6 @@ switch:
             id: oq_openquatt_resume_at
             datetime: "2000-01-01 00:00:00"
 # ----------------------------
-# ACTIONS
-# ----------------------------
-button:
-  - platform: template
-    id: oq_electrical_current_limit_reset
-    name: "Reset electrical current limit"
-    icon: mdi:restore
-    entity_category: config
-    on_press:
-      then:
-        - lambda: |-
-            // Back to automatic: NAN follows the generation-dependent standard,
-            // so a later generation change is picked up without a stored override.
-            id(oq_electrical_current_limit_configured_a) = NAN;
-            id(oq_electrical_current_limit_a).publish_state(
-                oq_supervisory_power_runtime::configured_current_a(
-                    ${oq_electrical_current_limit_min_a}, ${oq_duo_current_limit_v1_a},
-                    ${oq_duo_current_limit_v2_a}, ${oq_duo_current_limit_v2_max_a}));
-# ----------------------------
 # TUNING
 # ----------------------------
 # Sticky pump iPWM is a fixed compile-time fallback for CM0 sticky circulation.
@@ -413,6 +394,7 @@ number:
     max_value: ${oq_duo_current_limit_v2_max_a}
     step: 0.5
     update_interval: ${oq_supervisory_loop_s}s
+    disabled_by_default: true
     entity_category: config
     lambda: |-
       const float max_current_a = oq_supervisory_power_runtime::maximum_current_a(
@@ -558,6 +540,16 @@ binary_sensor:
     device_class: problem
     entity_category: diagnostic
 
+  # Power-House low-load latch for the debug recorder (no control change).
+  # True while the low-load hysteresis keeps heating requested despite
+  # P_req below the off threshold; false otherwise (including inactive).
+  - platform: template
+    id: oq_lowload_heat_latch_bs
+    name: "Low-load latch"
+    internal: true
+    lambda: |-
+      return id(oq_lowload_heat_latch);
+
 text_sensor:
   - platform: template
     id: oq_control_mode
@@ -627,6 +619,44 @@ sensor:
     lambda: |-
       return (float) id(oq_power_cap_f);
 
+  # Numeric low-load thresholds for the debug recorder (no control change).
+  # The existing "Low-load dynamic thresholds" text is kept for backward
+  # compatibility; these separate numeric fields allow precise cycle analysis
+  # (which Pmin/off/on held when a stop occurred). NAN (missing) when
+  # inactive or without a live/cached minimum; never invent values.
+  - platform: template
+    id: oq_low_load_pmin_dyn_w_sensor
+    name: "Low-load Pmin"
+    internal: true
+    unit_of_measurement: "W"
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return id(oq_low_load_pmin_dyn_w);
+
+  - platform: template
+    id: oq_low_load_off_dyn_w_sensor
+    name: "Low-load off threshold"
+    internal: true
+    unit_of_measurement: "W"
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return id(oq_low_load_off_dyn_w);
+
+  - platform: template
+    id: oq_low_load_on_dyn_w_sensor
+    name: "Low-load on threshold"
+    internal: true
+    unit_of_measurement: "W"
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: 5s
+    lambda: |-
+      return id(oq_low_load_on_dyn_w);
+
 # ----------------------------
 # MAIN LOOP
 # ----------------------------
@@ -655,6 +685,7 @@ interval:
               ${oq_low_load_fallback_on_w},
               ${oq_low_load_dyn_cache_max_s},
               ${oq_ph_start_confirm_s},
+              ${oq_hp_min_off_s},
               ${oq_cm2_idle_exit_s},
               ${oq_cm2_min_run_s},
               ${oq_cm_flow_fault_s},

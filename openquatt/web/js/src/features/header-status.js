@@ -11,9 +11,12 @@ import { formatDeviceClock, formatUptimeFromMeta, getDeviceIpAddress, getInstall
 import { getFirmwareUpdateEntity, getUpdateStatus, isFirmwareUpdateAvailable } from "./firmware-update.js";
 import { renderMqttModal, renderMqttSensorsModal } from "./mqtt.js";
 import { renderOduEepromDumpModal } from "./odu-eeprom-dump.js";
+import { renderOduRuntimeFrequencyModal } from "./odu-runtime-frequency.js";
+import { renderOduSettingsModal } from "./odu-settings.js";
 import { renderApiSecurityModal, renderLoginModal } from "./security-access.js";
 import { getWebServerLogStatusLabel, renderWebServerLogsModal } from "./webserver-logs.js";
 import { getControlModeOverrideLabel, renderSettingsServiceTaskModal } from "../settings/service.js";
+import { renderCoolingScheduleSettingsFields } from "../settings/cooling.js";
 import { renderSilentSettingsFields } from "../settings/silent.js";
 import { renderSettingsBackupImportModal, renderSettingsBackupRestoreModal, renderSettingsHistoryStorageModal } from "../settings/storage.js";
 import { renderHpWaterSensorOffsetsModal } from "../settings/water.js";
@@ -501,6 +504,14 @@ import { render } from "../core/render-scheduler.js";
       return renderOduEepromDumpModal();
     }
 
+    if (state.systemModal === "odu-bottom-plate-settings") {
+      return renderOduSettingsModal();
+    }
+
+    if (state.systemModal === "odu-frequency-settings") {
+      return renderOduRuntimeFrequencyModal();
+    }
+
     if (String(state.systemModal || "").startsWith("service-task-")) {
       return renderSettingsServiceTaskModal();
     }
@@ -641,17 +652,60 @@ import { render } from "../core/render-scheduler.js";
       });
     }
 
+    if (state.systemModal === "factory-reset-confirm") {
+      const busy = state.busyAction === "factoryResetButton";
+      return renderModalShell({
+        modalId: "system",
+        titleId: "oq-factory-reset-modal-title",
+        kicker: "Onderhoud",
+        title: "Controller terugzetten naar fabrieksinstellingen?",
+        closeAction: "close-system-modal",
+        closeLabel: "Sluit factory-resetpopup",
+        bodyMarkup: `
+          <p class="oq-helper-modal-copy">Alle opgeslagen OpenQuatt-instellingen, netwerkgegevens en koppelingen worden gewist. De huidige firmware blijft geïnstalleerd. Instellingen die in de warmtepomp zelf zijn opgeslagen worden niet gewijzigd. De controller herstart en moet daarna opnieuw worden ingesteld.</p>
+          ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
+          <div class="oq-helper-modal-actions">
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>Annuleren</button>
+            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-factory-reset" ${busy ? "disabled" : ""}>${busy ? "Resetten..." : "Factory reset"}</button>
+          </div>
+        `,
+      });
+    }
+
+    if (state.systemModal === "cooling-schedule") {
+      return renderModalShell({
+        modalId: "system",
+        titleId: "oq-cooling-schedule-modal-title",
+        kicker: "Koeltoestemming",
+        title: "Koelvenster instellen",
+        modalClass: "oq-helper-modal--wide",
+        closeAction: "close-system-modal",
+        closeLabel: "Sluit koelvenster-popup",
+        bodyMarkup: `
+          <p class="oq-helper-modal-copy">Kies wanneer OpenQuatt lokaal koeltoestemming mag geven. Een tijd wordt opgeslagen zodra je het veld verlaat of op Enter drukt.</p>
+          ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
+          <div class="oq-helper-modal-body">
+            ${renderCoolingScheduleSettingsFields("oq-settings-grid oq-settings-grid--modal")}
+          </div>
+          <div class="oq-helper-modal-actions">
+            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">Gereed</button>
+          </div>
+        `,
+      });
+    }
+
     if (state.systemModal === "silent-settings") {
       return renderModalShell({
         modalId: "system",
         titleId: "oq-silent-settings-modal-title",
         kicker: "Stille uren",
         title: "Stille uren instellen",
-        modalClass: "oq-helper-modal--wide",
+        modalClass: "oq-helper-modal--wide oq-helper-modal--scrollable",
         closeAction: "close-system-modal",
         closeLabel: "Sluit stille-uren-popup",
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">Kies wanneer het systeem stiller moet werken, en hoe ver het dan nog mag opschalen. Wijzigingen worden direct toegepast.</p>
+          <p class="oq-helper-modal-copy">Kies wanneer het systeem stiller moet werken, en hoe ver het dan nog mag opschalen. Een tijd wordt opgeslagen zodra je het veld verlaat of op Enter drukt.</p>
+          ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
           <div class="oq-helper-modal-body">
             ${renderSilentSettingsFields()}
           </div>

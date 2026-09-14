@@ -15,17 +15,17 @@ Firmware should expose its channel explicitly via `release_channel` so Home Assi
 ## Workflows
 
 - `/.github/workflows/ci-build.yml`
-  - Trigger: push to `main` or `dev`, pull requests
+  - Trigger: push to `main`, pull requests
   - Actions:
     - validate and compile every enabled target from `build_targets.yaml`
     - upload compiled firmware artifacts per enabled target
 - `/.github/workflows/release-build.yml`
-  - Trigger: tag push `v*` and manual dispatch
+  - Trigger: tag push `v*`, or manual dispatch from an existing semantic-version tag
   - Actions:
-    - validate + compile every enabled target from `build_targets.yaml`
+    - validate + compile every enabled target from `build_targets.yaml` without compiler cache
     - publish target-specific OTA/factory release assets
     - generate target-specific `*-ota.manifest.json` files for OTA update checks
-    - create/update GitHub Release
+    - create the GitHub Release as a draft and publish it only after every expected asset is present
     - attach release firmware binaries and OTA manifests to the release
 - `/.github/workflows/dev-build.yml`
   - Trigger: push to `dev`, manual dispatch
@@ -106,7 +106,7 @@ The repository now backs that URL with `/.github/workflows/dev-build.yml`, which
 ## How To Cut a Release
 
 1. Update `project_version` in `openquatt/oq_substitutions_common.yaml` on `dev`.
-2. Push `dev` and wait for `CI` and `Dev Build` to go green.
+2. Push `dev` and wait for `Dev Build` to go green. `CI` runs on pull requests and `main`, not on direct pushes to `dev`.
 3. Promote the validated `dev` commit to `main`. Recommended path: fast-forward `main` to `origin/dev`:
 
 ```bash
@@ -120,7 +120,7 @@ git push origin main
 You may still use a release PR when you want a reviewed release summary on GitHub, but the ruleset no longer requires that path.
 
 4. Wait for `CI` on `main` to go green.
-5. Create and push a tag from the merged `main` commit:
+5. Create and push a tag from the merged `main` commit. Do not create the GitHub Release manually; `Release Build` owns publication after its cache-free compile gate:
 
 ```bash
 git fetch origin
@@ -128,14 +128,16 @@ git tag v0.13.0 origin/main
 git push origin v0.13.0
 ```
 
-6. Check GitHub Actions:
+6. Wait for `Release Build` to finish. It creates a draft, uploads and verifies all expected assets, and only then publishes the GitHub Release. Add the prepared release notes after successful publication.
+7. Check GitHub Actions:
    - CI should be green.
    - Release workflow should publish artifacts.
-7. Verify GitHub Release contains:
+   - Pages Deploy should succeed after Release Build.
+8. Verify GitHub Release contains:
    - one `*-ota.manifest.json` per enabled target
    - one `*.firmware.ota.bin` per enabled target
    - one `*.firmware.factory.bin` per enabled target
-8. If `main` and `dev` no longer point to the same release content, realign `dev` with the released `main` commit before bumping to the next development version:
+9. If `main` and `dev` no longer point to the same release content, realign `dev` with the released `main` commit before bumping to the next development version:
 
 ```bash
 git fetch origin

@@ -83,6 +83,27 @@ int main() {
   assert(!manual_result.mode_allowed && manual_result.reason == oq_request::MANUAL_STARTUP_INHIBIT);
   assert(manual_result.desired_hp1_level == 4 && manual_result.hp1_level == 0);
 
+  // An inhibited HP1 cooling request must not conflict with or select the mode for HP2's heating runtime hold.
+  manual = {true, 1, 0, 4, 0, 10, 10, 5, 3, true, false, false, false, false, true, false};
+  manual_result = oq_request::arbitrate_manual_request(manual);
+  assert(manual_result.mode_allowed && !manual_result.mode_conflict);
+  assert(manual_result.mode_code == 2 && manual_result.hp1_level == 0 && manual_result.hp2_level == 3);
+  assert(manual_result.desired_hp1_level == 4 && manual_result.desired_hp2_level == 0);
+
+  // The mirrored case keeps HP1's cooling runtime hold independent of an inhibited HP2 heating request and hold.
+  manual = {true, 0, 2, 0, 4, 10, 10, 3, 5, true, false, false, false, false, false, true};
+  manual_result = oq_request::arbitrate_manual_request(manual);
+  assert(manual_result.mode_allowed && !manual_result.mode_conflict);
+  assert(manual_result.mode_code == 1 && manual_result.hp1_level == 3 && manual_result.hp2_level == 0);
+  assert(manual_result.desired_hp1_level == 0 && manual_result.desired_hp2_level == 4);
+
+  // An inhibited opposite-mode request also cannot conflict with an active request on the released HP.
+  manual = {true, 1, 2, 4, 3, 10, 10, 0, 0, false, false, false, false, false, true, false};
+  manual_result = oq_request::arbitrate_manual_request(manual);
+  assert(manual_result.mode_allowed && !manual_result.mode_conflict);
+  assert(manual_result.mode_code == 2 && manual_result.hp1_level == 0 && manual_result.hp2_level == 3);
+  assert(manual_result.desired_hp1_level == 4 && manual_result.desired_hp2_level == 3);
+
   assert(!oq_request::thermal_mode_matches(std::numeric_limits<float>::infinity(), 1));
   assert(!oq_request::thermal_mode_matches(std::numeric_limits<float>::quiet_NaN(), 1));
   assert(oq_request::thermal_mode_matches(1.0f, 1));

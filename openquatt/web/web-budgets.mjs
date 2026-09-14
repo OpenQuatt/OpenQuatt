@@ -25,15 +25,25 @@ export const WEB_BUNDLE_BUDGETS = [
     // the issue-516 boiler/OpenTherm debug-recording fields,
     // the issue-536 boiler-result quality and confirmed empirical Apply flow,
     // the compact per-ODU compressor profile for safe manual F-levels,
+    // the generation-bound bottom-plate profile editor and backup/restore,
     // the unified Q-firmware network preference and active-connection controls,
     // the issue-471 grouped source focus panel with configured/effective paths,
     // relevant-source diagnostics, warnings and stable keyboard focus,
-    // and frequency-based day/silent limits and exclusion ranges per ODU.
+    // frequency-based day/silent limits and exclusion ranges per ODU,
+    // and the grouped issue-541 cooling-window settings block.
+    // plus the issue-642 published cooling start block (reason + M:SS
+    // countdown on the existing Ready location, preflow/active distinction).
     // plus bounded webserver-log history polling (single scheduler, retry
     // back-off and authoritative refresh without a second /events stream).
-    // The validated bundle is 987085 B; the raw budget keeps ~1.9 kB margin
-    // for build-environment variance.
-    raw: 989_000,
+    // plus twaalf compacte V2/Power-House debug-recordingvelden (gevraagd/
+    // toegepast niveau, tabel-Hz, intentcode, latch, Pmin/off/on, snapshot).
+    // Includes stable native time editing and confirmed, stale-poll-safe saves.
+    // Compact pipeline plus the bottom-plate editor/backup: ~914 kB.
+    // the issue-649 heating supply target source card with OT/HA/API/MQTT rows:
+    // measured +3.668 kB over its compact baseline.
+    // Keep a narrow margin for the merged issue-642, V2 and issue-649 set;
+    // do not restore the pre-compaction 1 MB ceiling.
+    raw: 930_000,
     // One-time migration ceiling for structured incident monitoring, replay,
     // the CSRF-protected deferred recovery actions, and their compact editor.
     // Once this bundle is the base, the normal gzip growth limit applies again.
@@ -43,6 +53,9 @@ export const WEB_BUNDLE_BUDGETS = [
   // the warmtetoestemming-advies modal (3 summary cards, comparison, matrix, sticky footer),
   // the issue-615 electrical-limit slider with red above-standard zone,
   // matching estimate/entry boxes, label icons and aligned vertical rhythm,
-  // and the responsive issue-471 master/detail source focus panel.
-  { file: "css/openquatt-app.css", raw: 305_000 },
+  // the responsive issue-471 master/detail source focus panel,
+  // the per-ODU bottom-plate settings modal,
+  // and the grouped issue-541 cooling-window settings block.
+  // Preserve the source-level symbol compaction and dead-CSS reduction.
+  { file: "css/openquatt-app.css", raw: 200_000 },
 ];

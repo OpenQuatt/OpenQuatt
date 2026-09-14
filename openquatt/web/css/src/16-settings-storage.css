@@ -226,7 +226,8 @@
   background: var(--oq-theme-surface-1src, rgba(255, 255, 255, 0.72));
 }
 
-.oq-settings-storage-advanced {
+.oq-settings-storage-advanced,
+.oq-settings-storage-technical {
   margin-top: 14px;
   overflow: hidden;
   border: 1px solid var(--oq-helper-line);
@@ -247,17 +248,6 @@
   border-top: 1px solid var(--oq-helper-line);
 }
 
-.oq-settings-storage-domain-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0;
-  margin-top: 18px;
-  overflow: hidden;
-  border: 1px solid var(--oq-helper-line);
-  border-radius: 18px;
-  background: var(--oq-theme-surface-1hci, rgba(255, 255, 255, 0.76));
-}
-
 .oq-settings-storage-domain {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -268,30 +258,6 @@
 
 .oq-settings-storage-domain + .oq-settings-storage-domain {
   border-left: 1px solid var(--oq-helper-line);
-}
-
-.oq-settings-storage-domain-head {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-
-.oq-settings-storage-domain-head .oq-helper-label {
-  margin-bottom: 0;
-}
-
-.oq-settings-storage-domain-head h3 {
-  margin: 0;
-  color: var(--oq-theme-color-1w4r, var(--oq-helper-ink));
-  font-size: 1.18rem;
-  line-height: 1.2;
-}
-
-.oq-settings-storage-domain-head p:last-child {
-  margin: 0;
-  color: var(--oq-helper-soft);
-  font-size: 0.92rem;
-  line-height: 1.38;
 }
 
 .oq-settings-storage-domain-rows {
@@ -375,13 +341,6 @@
   min-width: 0;
   display: grid;
   gap: 5px;
-}
-
-.oq-settings-storage-action-stack {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 .oq-settings-storage-import {
@@ -473,14 +432,6 @@
 
 .oq-settings-storage-inline-action--danger p {
   color: var(--oq-theme-color-cfj0, #7f1d1d);
-}
-
-.oq-settings-storage-technical {
-  margin-top: 14px;
-  overflow: hidden;
-  border: 1px solid var(--oq-helper-line);
-  border-radius: 16px;
-  background: var(--oq-theme-surface-1src, rgba(248, 250, 252, 0.7));
 }
 
 .oq-settings-storage-technical > summary {

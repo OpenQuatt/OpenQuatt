@@ -161,6 +161,7 @@ import { render } from "../core/render-scheduler.js";
         outside_temperature: false,
         room_temperature: false,
         room_setpoint: true,
+        heating_supply_target: false,
         heating_enable: true,
         cooling_enable: true,
       };

@@ -111,6 +111,40 @@ void test_request_confirmation() {
   ConfirmationState rollover{true, UINT32_MAX - 20};
   output = confirm_request(29, true, true, 50, rollover);
   assert(output.confirmed);
+
+  auto startup = power_house_start(2000, true, true, false, 30000, {});
+  assert(!startup.heating_request && startup.preflow_request && startup.state.timing);
+  startup = power_house_start(31999, true, true, false, 30000, startup.state);
+  assert(!startup.heating_request && startup.preflow_request);
+  startup = power_house_start(32000, true, true, false, 30000, startup.state);
+  assert(startup.heating_request && !startup.preflow_request);
+  startup = power_house_start(33000, true, true, true, 30000, {});
+  assert(startup.heating_request && !startup.preflow_request && !startup.state.timing);
+  startup = power_house_start(34000, false, true, false, 30000, startup.state);
+  assert(!startup.heating_request && !startup.preflow_request && !startup.state.timing);
+}
+
+void test_first_heating_preflow_overlaps_sensor_acquisition() {
+  using namespace oq_supervisory_state;
+  assert(start_heating_preflow(true, false, false, 0, 0, 1));
+  const uint32_t until = 31000;
+  assert(window_active(30000, until));
+  // Getting flow and new samples during preflow cannot start a second window.
+  assert(!start_heating_preflow(true, false, false, 1, until, 2));
+  assert(!window_active(31001, until));
+  assert(!hold_expired_heating_preflow(2, true, 2));
+  // Missing/unsafe samples keep CM1 after 30 s. Cancellation discards the window.
+  assert(hold_expired_heating_preflow(2, true, 1));
+  assert(!start_heating_preflow(true, false, false, 1, until, 1));
+  assert(!hold_expired_heating_preflow(2, false, 1));
+  assert(!start_heating_preflow(false, false, false, 0, 0, 1));
+  // Postflow, active compressors, cooling, CM4 and service retain ownership.
+  assert(!hold_expired_heating_preflow(0, true, 1));
+  assert(!hold_expired_heating_preflow(2, true, 4));
+  assert(!start_heating_preflow(true, true, false, 0, 0, 1));
+  assert(!start_heating_preflow(true, false, true, 1, 0, 1));
+  assert(!start_heating_preflow(true, false, false, 4, 0, 2));
+  assert(!start_heating_preflow(true, false, false, 100, 0, 2));
 }
 
 void test_idle_exit_boundaries() {
@@ -190,6 +224,20 @@ void test_silent_window() {
   assert(!output.active && std::string(output.status) == "forced_off");
 }
 
+void test_flow_guard_and_cm1_idle_hold() {
+  using namespace oq_supervisory_state;
+  assert(flow_guard_required(true, false, false));
+  assert(flow_guard_required(false, true, false));
+  assert(flow_guard_required(false, false, true));
+  assert(!flow_guard_required(false, false, false));
+
+  assert(hold_cm1_until_hp_idle(true, false, 0, true));
+  assert(hold_cm1_until_hp_idle(true, false, 98, true));
+  assert(!hold_cm1_until_hp_idle(true, false, 98, false));
+  assert(!hold_cm1_until_hp_idle(false, false, 98, true));
+  assert(!hold_cm1_until_hp_idle(true, true, 98, true));
+}
+
 void test_sticky_pump_timing() {
   using namespace oq_supervisory_state;
   auto output = update_sticky_pump(0, true, 1000, 500, {});
@@ -229,9 +277,11 @@ int main() {
   test_low_load_hysteresis_and_cache();
   test_low_load_reentry_release_and_invalid_tuning();
   test_request_confirmation();
+  test_first_heating_preflow_overlaps_sensor_acquisition();
   test_idle_exit_boundaries();
   test_override_timeout();
   test_silent_window();
+  test_flow_guard_and_cm1_idle_hold();
   test_sticky_pump_timing();
   return 0;
 }
