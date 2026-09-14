@@ -42,6 +42,9 @@ Draadkleuren in de schema's en stappenhulp zijn illustratief. De klemmarkeringen
 > [!NOTE]
 > Bij de OpenTherm-verbindingen (`OTT` en `OTB`) en het aan/uit-contact (`R1`: `COM` + `NO`) maakt de polariteit of volgorde van de twee aders niet uit. Gebruik wel de genoemde aansluitklemmen.
 
+> [!WARNING]
+> Een ZJ-B10-flowmeter kan niet rechtstreeks op `Q` worden aangesloten. Voor deze vervanging moet de kabel worden aangepast met een BC547-transistor en een weerstand van 4,7 kΩ. Volg hiervoor de [ZJ-B10-aansluithandleiding en pinbezetting](hcq-io-overzicht.md#zj-b10-aansluiten).
+
 > [!IMPORTANT]
 > Kies voor de CV-ketel óf `OTB` óf `R1`; gebruik beide routes niet tegelijk.
 

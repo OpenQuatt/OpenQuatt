@@ -3,7 +3,7 @@
 Technische naslag voor ontwikkeling en diagnose van de Electropaultje Heatpump Controller Q-edition (HCQ). Dit overzicht beschrijft de aansluiting en GPIO-koppeling van de huidige OpenQuatt-firmware. Gebruik voor het veilig aansluiten altijd eerst de [aansluitgids voor de HCQ](q-edition.md).
 
 > [!WARNING]
-> Deze pagina is geen bedradingsinstructie. Schakel de CiC en buitenunit(s) spanningsloos voordat je kabels verplaatst. Twijfel je over de bedrading, laat het werk dan door een vakbekwaam installateur uitvoeren.
+> Schakel de CiC, controller en buitenunit(s) spanningsloos voordat je kabels verplaatst, doormeet of soldeert. De ZJ-B10-aanpassing hieronder is een hardwaremodificatie. Controleer vóór het inschakelen de pinbezetting en alle verbindingen met een multimeter. Twijfel je over de bedrading, laat het werk dan door een vakbekwaam installateur uitvoeren.
 
 ## Externe aansluitingen
 
@@ -46,12 +46,65 @@ Gebruik voor de CV-ketel altijd precies één route: `OTB` of `R1`, nooit beide 
 
 De `Q`-sensorstekker bevat de PT1000 voor de lokale aanvoertemperatuur en de flowmeter-puls van Quatt V1. De PT1000 gebruikt een MAX31865 met een referentieweerstand van 1500 Ω, een nominale weerstand van 1000 Ω en 2-draadsbedrading. De firmware leest hem alleen wanneer **Lokale aanvoertemperatuur** op `PT1000` staat.
 
+De 6-polige Molex MX3.0-stekker van de `Q`-aansluiting heeft deze pinbezetting:
+
+| Pin | Functie | Aansluiting |
+|---|---|---|
+| `1` | `+5V` | Rode voedingsdraad van de flowmeter |
+| `2` | PT1000 | Eerste draad van de 2-draads PT1000 |
+| `3` | Flowpuls | Collector van de BC547 bij gebruik van een ZJ-B10 |
+| `4` | `GND` | Zwarte draad van de flowmeter en emitter van de BC547 |
+| `5` | PT1000 | Tweede draad van de 2-draads PT1000 |
+| `6` | Niet gebruikt | Niet aansluiten |
+
+De twee PT1000-draden op pin 2 en 5 mogen worden verwisseld. Bepaal de pinnummers aan de hand van de markeringen op de stekker; ga niet alleen af op links/rechts, omdat dit afhangt van de kijkrichting.
+
 De pulslezer op `GPIO15` heeft een interne pull-up en een filter van 100 µs. Kies in de web-app onder **Instellingen → Bronnen / integraties → Sensorselectie → Flow → Lokale flowmeter** het aangesloten type. In Home Assistant en de standaard ESPHome-webinterface heet deze instelling **Controller Flow Meter**:
 
 - **Huba Control** (standaard): behoudt de bestaande omrekening met 0,05 l/min per Hz en eventuele Huba-configuratieaanpassingen.
 - **ZJ-B10**: voor het [TinyTronics-model](https://www.tinytronics.nl/nl/sensoren/vloeistof/yf-b10-water-flow-sensor-messing-g1), met 7,9 Hz per l/min. De firmware deelt het aantal pulsen per minuut door 7,9 om l/h te berekenen. Een pulswaarde van nul blijft nul; de bestaande timeout van 5 seconden blijft behouden.
 
 De keuze blijft bewaard na een herstart. De bestaande middeling over 10 seconden blijft actief; wacht na wisselen tot de meting is bijgewerkt. De keuze past alleen de lokale pulsmeting aan. Bij V1.5 en V2 gebruikt OpenQuatt normaal de flowmeting uit de buitenunit; de keuze is instelbaar via **Q Flow Source** (`Auto`, `Local` of `Outdoor unit`). Kies `Local` om de aangesloten controller-flowmeter expliciet te gebruiken.
+
+#### ZJ-B10 aansluiten
+
+De ZJ-B10 is niet rechtstreeks plug-and-play op de `Q`-aansluiting. Plaats een BC547 NPN-transistor en een weerstand van 4,7 kΩ in de signaalkabel. De transistor maakt van het 5V-signaal van de flowmeter een door de controller opgetrokken pulsingang. De pulsfrequentie blijft daarbij gelijk.
+
+Benodigd:
+
+- BC547 NPN-transistor;
+- weerstand van 4,7 kΩ;
+- geschikte draad, soldeerverbindingen en krimpkous of vergelijkbare isolatie;
+- 6-polige Molex MX3.0-stekker voor de `Q`-aansluiting.
+
+Sluit de draden als volgt aan:
+
+1. Verbind de rode `+5V`-draad van de ZJ-B10 rechtstreeks met pin 1.
+2. Verbind de gele signaaldraad via de weerstand van 4,7 kΩ met de basis (`B`) van de BC547.
+3. Verbind de emitter (`E`) van de BC547 met de zwarte `GND`-draad en met pin 4.
+4. Verbind de collector (`C`) van de BC547 met de flowpulsingang op pin 3.
+5. Verbind de twee draden van de PT1000 met pin 2 en pin 5. De volgorde maakt niet uit.
+6. Laat pin 6 vrij.
+
+Controleer de `C`-, `B`- en `E`-aansluitingen aan de hand van de datasheet van jouw BC547. De pootvolgorde kan per behuizing of fabrikant verschillen.
+
+```text
+ZJ-B10                                      Q-stekker (Molex MX3.0)
+
+rood   +5V  --------------------------------  pin 1  +5V
+
+geel   SIG  ----[ 4,7 kΩ ]---- B
+                                  BC547 NPN
+zwart  GND  ------------------- E
+          |                       C ---------  pin 3  FLOW / GPIO15
+          +---------------------------------  pin 4  GND
+
+PT1000 draad 1  -----------------------------  pin 2  PT1000
+PT1000 draad 2  -----------------------------  pin 5  PT1000
+                                                 pin 6  niet gebruikt
+```
+
+Isoleer na het doormeten iedere soldeerverbinding afzonderlijk. Schakel de controller daarna in, kies **ZJ-B10** als lokale flowmeter en controleer de gemeten flow terwijl de circulatiepomp draait.
 
 ### R1 en R2: relais
 
