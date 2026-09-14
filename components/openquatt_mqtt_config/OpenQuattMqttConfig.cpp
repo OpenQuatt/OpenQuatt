@@ -855,7 +855,8 @@ void OpenQuattMqttConfig::process_storage_transaction_() {
              static_cast<unsigned>(attempt + 1U), static_cast<unsigned>(STORAGE_MAX_ATTEMPTS));
     failure_result = MutationResult::SYNC_FAILED;
   }
-  ESP_LOGD(TAG, "MQTT preferences transaction: attempts=%u duration=%" PRId64 " ms durable=%s",
+  // This phase excludes runtime apply and any subsequent rollback.
+  ESP_LOGD(TAG, "MQTT preferences save/sync phase: attempts=%u duration=%" PRId64 " ms candidate_synced=%s",
            static_cast<unsigned>(attempts), (esp_timer_get_time() - persistence_started_us) / 1000,
            durable ? "yes" : "no");
 
