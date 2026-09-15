@@ -8,6 +8,7 @@
 #include <esp_http_server.h>
 #include <freertos/FreeRTOS.h>
 
+#include "esphome/components/modbus/modbus.h"
 #include "esphome/components/modbus_controller/modbus_controller.h"
 #include "esphome/components/openquatt_odu_eeprom_dump/OpenQuattOduEepromDump.h"
 #include "esphome/components/openquatt_web_auth/OpenQuattWebAuth.h"
@@ -103,6 +104,27 @@ class OpenQuattOduSettings : public Component {
   void handle_settings_read_(const oq_odu::BottomPlateSettings& settings, uint32_t operation_token);
   void queue_next_write_(uint32_t operation_token);
   void queue_readback_(uint32_t operation_token);
+
+  // ESPHome 2026.9 migration
+  class SettingsModbusDevice : public modbus::ModbusClientDevice {
+   public:
+    void set_parent_component(OpenQuattOduSettings* parent) { this->parent_ = parent; }
+
+   protected:
+    void on_response(std::span<const uint8_t> request_pdu, std::span<const uint8_t> response_pdu) override;
+    void on_error(std::span<const uint8_t> request_pdu, modbus::ExceptionCode ec) override;
+    bool on_no_response(std::span<const uint8_t> request_pdu) override;
+    void on_not_sent(std::span<const uint8_t> request_pdu) override;
+
+   private:
+    OpenQuattOduSettings* parent_{nullptr};
+  };
+  SettingsModbusDevice modbus_device_{};
+  uint32_t pending_modbus_token_{0};
+  std::function<void(modbus::EntityType, uint16_t, std::span<const uint8_t>)> pending_modbus_handler_{};
+  modbus::EntityType pending_modbus_type_{modbus::EntityType::HOLDING};
+  uint16_t pending_modbus_start_{0};
+  bool pending_modbus_is_write_{false};
 };
 
 }  // namespace openquatt_odu_settings

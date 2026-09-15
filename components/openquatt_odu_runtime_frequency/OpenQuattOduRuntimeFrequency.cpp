@@ -261,6 +261,11 @@ void OpenQuattOduRuntimeFrequency::setup() {
     ESP_LOGE(TAG, "HP%u runtime frequency service is unavailable", this->hp_index_);
     return;
   }
+  if (this->controller_ != nullptr && this->controller_->hub() != nullptr) {
+    this->modbus_device_.set_parent(this->controller_->hub());
+    this->modbus_device_.set_address(this->controller_->device_address());
+    this->modbus_device_.set_parent_component(this);
+  }
   web_server_base::global_web_server_base->add_handler(new RuntimeFrequencyRequestHandler(this, this->hp_index_));
 }
 
@@ -550,49 +555,57 @@ void OpenQuattOduRuntimeFrequency::fail_operation_(const char* status, uint32_t 
 }
 
 void OpenQuattOduRuntimeFrequency::queue_load_base_(uint32_t operation_token) {
-  auto command = modbus_controller::ModbusCommandItem::create_read_command(
-      this->controller_, modbus::EntityType::HOLDING, oq_odu_runtime_frequency::BASE_TABLE_START_ADDRESS,
-      oq_odu_runtime_frequency::BASE_TABLE_REGISTER_COUNT,
-      [this, operation_token](modbus::EntityType, uint16_t start_address, std::span<const uint8_t> data) {
-        if (!this->token_matches_(operation_token) ||
-            start_address != oq_odu_runtime_frequency::BASE_TABLE_START_ADDRESS) {
-          return;
-        }
-        oq_odu_runtime_frequency::RuntimeFrequencyTables tables;
-        size_t loaded = 0U;
-        if (!oq_odu_runtime_frequency::parse_base_runtime_table(data.data(), data.size(), tables, loaded)) {
-          this->fail_operation_("Loading failed: incomplete compressor frequency table received", operation_token);
-          return;
-        }
-        if (this->extended_layout_.load(std::memory_order_acquire)) {
-          this->queue_load_extension_(tables, operation_token);
-          return;
-        }
-        this->finish_load_(tables, operation_token);
-      });
-  this->controller_->queue_command(std::move(command));
+  this->pending_modbus_token_ = operation_token;
+  this->pending_modbus_type_ = modbus::EntityType::HOLDING;
+  this->pending_modbus_start_ = oq_odu_runtime_frequency::BASE_TABLE_START_ADDRESS;
+  this->pending_modbus_is_write_ = false;
+  this->pending_modbus_handler_ = [this, operation_token](modbus::EntityType, uint16_t start_address,
+                                                          std::span<const uint8_t> data) {
+    if (!this->token_matches_(operation_token) || start_address != oq_odu_runtime_frequency::BASE_TABLE_START_ADDRESS) {
+      return;
+    }
+    oq_odu_runtime_frequency::RuntimeFrequencyTables tables;
+    size_t loaded = 0U;
+    if (!oq_odu_runtime_frequency::parse_base_runtime_table(data.data(), data.size(), tables, loaded)) {
+      this->fail_operation_("Loading failed: incomplete compressor frequency table received", operation_token);
+      return;
+    }
+    if (this->extended_layout_.load(std::memory_order_acquire)) {
+      this->queue_load_extension_(tables, operation_token);
+      return;
+    }
+    this->finish_load_(tables, operation_token);
+  };
+  const bool accepted = this->modbus_device_.read_holding_registers(
+      oq_odu_runtime_frequency::BASE_TABLE_START_ADDRESS, oq_odu_runtime_frequency::BASE_TABLE_REGISTER_COUNT);
+  if (!accepted) ESP_LOGW(TAG, "HP%u Modbus read not accepted for base table", this->hp_index_);
 }
-
 void OpenQuattOduRuntimeFrequency::queue_load_extension_(oq_odu_runtime_frequency::RuntimeFrequencyTables tables,
                                                          uint32_t operation_token) {
-  auto command = modbus_controller::ModbusCommandItem::create_read_command(
-      this->controller_, modbus::EntityType::HOLDING, oq_odu_runtime_frequency::EXTENDED_TABLE_START_ADDRESS,
-      oq_odu_runtime_frequency::EXTENDED_TABLE_REGISTER_COUNT,
-      [this, tables, operation_token](modbus::EntityType, uint16_t start_address,
-                                      std::span<const uint8_t> data) mutable {
-        if (!this->token_matches_(operation_token) ||
-            start_address != oq_odu_runtime_frequency::EXTENDED_TABLE_START_ADDRESS) {
-          return;
-        }
-        size_t loaded = 0U;
-        if (!oq_odu_runtime_frequency::parse_extended_runtime_table(data.data(), data.size(), tables, loaded)) {
-          this->fail_operation_("Loading failed: incomplete compressor frequency table extension received",
-                                operation_token);
-          return;
-        }
-        this->finish_load_(tables, operation_token);
-      });
-  this->controller_->queue_command(std::move(command));
+  this->pending_modbus_token_ = operation_token;
+  this->pending_modbus_type_ = modbus::EntityType::HOLDING;
+  this->pending_modbus_start_ = oq_odu_runtime_frequency::EXTENDED_TABLE_START_ADDRESS;
+  this->pending_modbus_is_write_ = false;
+  this->pending_extension_tables_ = tables;
+  this->pending_modbus_handler_ = [this, operation_token](modbus::EntityType, uint16_t start_address,
+                                                          std::span<const uint8_t> data) {
+    if (!this->token_matches_(operation_token) ||
+        start_address != oq_odu_runtime_frequency::EXTENDED_TABLE_START_ADDRESS) {
+      return;
+    }
+    size_t loaded = 0U;
+    // Use the stored base tables as input; extension parsing mutates the copy.
+    auto tables_copy = this->pending_extension_tables_;
+    if (!oq_odu_runtime_frequency::parse_extended_runtime_table(data.data(), data.size(), tables_copy, loaded)) {
+      this->fail_operation_("Loading failed: incomplete compressor frequency table extension received",
+                            operation_token);
+      return;
+    }
+    this->finish_load_(tables_copy, operation_token);
+  };
+  const bool accepted = this->modbus_device_.read_holding_registers(
+      oq_odu_runtime_frequency::EXTENDED_TABLE_START_ADDRESS, oq_odu_runtime_frequency::EXTENDED_TABLE_REGISTER_COUNT);
+  if (!accepted) ESP_LOGW(TAG, "HP%u Modbus read not accepted for extension table", this->hp_index_);
 }
 
 void OpenQuattOduRuntimeFrequency::finish_load_(const oq_odu_runtime_frequency::RuntimeFrequencyTables& tables,
@@ -618,33 +631,36 @@ void OpenQuattOduRuntimeFrequency::finish_load_(const oq_odu_runtime_frequency::
 }
 
 void OpenQuattOduRuntimeFrequency::queue_guard_(uint32_t operation_token) {
-  auto command = modbus_controller::ModbusCommandItem::create_read_command(
-      this->controller_, modbus::EntityType::HOLDING, GUARD_START_ADDRESS, GUARD_REGISTER_COUNT,
-      [this, operation_token](modbus::EntityType, uint16_t start_address, std::span<const uint8_t> data) {
-        if (!this->token_matches_(operation_token) || start_address != GUARD_START_ADDRESS) return;
-        uint16_t working_mode = 0U;
-        uint16_t compressor_hz = 0U;
-        if (!oq_odu_runtime_frequency::read_u16_word(data.data(), data.size(), GUARD_WORKING_MODE_INDEX,
-                                                     working_mode)) {
-          this->finish_without_write_("Write blocked: ODU operating mode unknown", operation_token, true);
-          return;
-        }
-        if (!oq_odu_runtime_frequency::read_u16_word(data.data(), data.size(), GUARD_COMPRESSOR_FREQUENCY_INDEX,
-                                                     compressor_hz)) {
-          this->finish_without_write_("Write blocked: compressor frequency unknown", operation_token, true);
-          return;
-        }
-        if (working_mode != 0U) {
-          this->finish_without_write_("Write blocked: ODU is not in standby", operation_token, false);
-          return;
-        }
-        if (compressor_hz > 0U) {
-          this->finish_without_write_("Write blocked: compressor is running", operation_token, false);
-          return;
-        }
-        this->begin_write_(operation_token);
-      });
-  this->controller_->queue_command(std::move(command));
+  this->pending_modbus_token_ = operation_token;
+  this->pending_modbus_type_ = modbus::EntityType::HOLDING;
+  this->pending_modbus_start_ = GUARD_START_ADDRESS;
+  this->pending_modbus_is_write_ = false;
+  this->pending_modbus_handler_ = [this, operation_token](modbus::EntityType, uint16_t start_address,
+                                                          std::span<const uint8_t> data) {
+    if (!this->token_matches_(operation_token) || start_address != GUARD_START_ADDRESS) return;
+    uint16_t working_mode = 0U;
+    uint16_t compressor_hz = 0U;
+    if (!oq_odu_runtime_frequency::read_u16_word(data.data(), data.size(), GUARD_WORKING_MODE_INDEX, working_mode)) {
+      this->finish_without_write_("Write blocked: ODU operating mode unknown", operation_token, true);
+      return;
+    }
+    if (!oq_odu_runtime_frequency::read_u16_word(data.data(), data.size(), GUARD_COMPRESSOR_FREQUENCY_INDEX,
+                                                 compressor_hz)) {
+      this->finish_without_write_("Write blocked: compressor frequency unknown", operation_token, true);
+      return;
+    }
+    if (working_mode != 0U) {
+      this->finish_without_write_("Write blocked: ODU is not in standby", operation_token, false);
+      return;
+    }
+    if (compressor_hz > 0U) {
+      this->finish_without_write_("Write blocked: compressor is running", operation_token, false);
+      return;
+    }
+    this->begin_write_(operation_token);
+  };
+  const bool accepted = this->modbus_device_.read_holding_registers(GUARD_START_ADDRESS, GUARD_REGISTER_COUNT);
+  if (!accepted) ESP_LOGW(TAG, "HP%u Modbus read not accepted for guard", this->hp_index_);
 }
 
 void OpenQuattOduRuntimeFrequency::begin_write_(uint32_t operation_token) {
@@ -686,57 +702,73 @@ void OpenQuattOduRuntimeFrequency::queue_write_register_(size_t write_index, uin
     this->fail_operation_("Verification failed: internal register mapping error", operation_token);
     return;
   }
-  auto command = modbus_controller::ModbusCommandItem::create_write_single_command(this->controller_, target.address,
-                                                                                   target.value);
-  command.on_data_func = [this, write_index, operation_token](modbus::EntityType, uint16_t, std::span<const uint8_t>) {
+  this->pending_modbus_token_ = operation_token;
+  this->pending_modbus_type_ = modbus::EntityType::HOLDING;
+  this->pending_modbus_start_ = target.address;
+  this->pending_modbus_is_write_ = true;
+  this->pending_modbus_handler_ = [this, write_index, operation_token](modbus::EntityType, uint16_t,
+                                                                       std::span<const uint8_t>) {
+    if (!this->token_matches_(operation_token) ||
+        this->pending_modbus_start_ !=
+            oq_odu_runtime_frequency::runtime_write_register(this->operation_tables_, write_index).address)
+      return;
+    // Write ack received; queue next.
     this->queue_write_register_(write_index + 1U, operation_token);
   };
-  this->controller_->queue_command(std::move(command));
+  const bool accepted = this->modbus_device_.write_single_register(target.address, target.value);
+  if (!accepted) ESP_LOGW(TAG, "HP%u Modbus write not accepted for addr %u", this->hp_index_, target.address);
 }
 
 void OpenQuattOduRuntimeFrequency::queue_readback_base_(uint32_t operation_token) {
-  auto command = modbus_controller::ModbusCommandItem::create_read_command(
-      this->controller_, modbus::EntityType::HOLDING, oq_odu_runtime_frequency::BASE_TABLE_START_ADDRESS,
-      oq_odu_runtime_frequency::BASE_TABLE_REGISTER_COUNT,
-      [this, operation_token](modbus::EntityType, uint16_t start_address, std::span<const uint8_t> data) {
-        if (!this->token_matches_(operation_token) ||
-            start_address != oq_odu_runtime_frequency::BASE_TABLE_START_ADDRESS) {
-          return;
-        }
-        oq_odu_runtime_frequency::RuntimeFrequencyTables actual;
-        size_t loaded = 0U;
-        if (!oq_odu_runtime_frequency::parse_base_runtime_table(data.data(), data.size(), actual, loaded)) {
-          this->fail_operation_("Verification failed: incomplete readback from ODU", operation_token);
-          return;
-        }
-        if (this->operation_tables_.level_count == oq_odu_runtime_frequency::EXTENDED_LEVEL_COUNT) {
-          this->queue_readback_extension_(actual, operation_token);
-          return;
-        }
-        this->finish_apply_(actual, operation_token);
-      });
-  this->controller_->queue_command(std::move(command));
+  this->pending_modbus_token_ = operation_token;
+  this->pending_modbus_type_ = modbus::EntityType::HOLDING;
+  this->pending_modbus_start_ = oq_odu_runtime_frequency::BASE_TABLE_START_ADDRESS;
+  this->pending_modbus_is_write_ = false;
+  this->pending_modbus_handler_ = [this, operation_token](modbus::EntityType, uint16_t start_address,
+                                                          std::span<const uint8_t> data) {
+    if (!this->token_matches_(operation_token) || start_address != oq_odu_runtime_frequency::BASE_TABLE_START_ADDRESS) {
+      return;
+    }
+    oq_odu_runtime_frequency::RuntimeFrequencyTables actual;
+    size_t loaded = 0U;
+    if (!oq_odu_runtime_frequency::parse_base_runtime_table(data.data(), data.size(), actual, loaded)) {
+      this->fail_operation_("Verification failed: incomplete readback from ODU", operation_token);
+      return;
+    }
+    if (this->operation_tables_.level_count == oq_odu_runtime_frequency::EXTENDED_LEVEL_COUNT) {
+      this->queue_readback_extension_(actual, operation_token);
+      return;
+    }
+    this->finish_apply_(actual, operation_token);
+  };
+  const bool accepted = this->modbus_device_.read_holding_registers(
+      oq_odu_runtime_frequency::BASE_TABLE_START_ADDRESS, oq_odu_runtime_frequency::BASE_TABLE_REGISTER_COUNT);
+  if (!accepted) ESP_LOGW(TAG, "HP%u Modbus read not accepted for base readback", this->hp_index_);
 }
-
 void OpenQuattOduRuntimeFrequency::queue_readback_extension_(oq_odu_runtime_frequency::RuntimeFrequencyTables actual,
                                                              uint32_t operation_token) {
-  auto command = modbus_controller::ModbusCommandItem::create_read_command(
-      this->controller_, modbus::EntityType::HOLDING, oq_odu_runtime_frequency::EXTENDED_TABLE_START_ADDRESS,
-      oq_odu_runtime_frequency::EXTENDED_TABLE_REGISTER_COUNT,
-      [this, actual, operation_token](modbus::EntityType, uint16_t start_address,
-                                      std::span<const uint8_t> data) mutable {
-        if (!this->token_matches_(operation_token) ||
-            start_address != oq_odu_runtime_frequency::EXTENDED_TABLE_START_ADDRESS) {
-          return;
-        }
-        size_t loaded = 0U;
-        if (!oq_odu_runtime_frequency::parse_extended_runtime_table(data.data(), data.size(), actual, loaded)) {
-          this->fail_operation_("Verification failed: incomplete extended readback from ODU", operation_token);
-          return;
-        }
-        this->finish_apply_(actual, operation_token);
-      });
-  this->controller_->queue_command(std::move(command));
+  this->pending_modbus_token_ = operation_token;
+  this->pending_modbus_type_ = modbus::EntityType::HOLDING;
+  this->pending_modbus_start_ = oq_odu_runtime_frequency::EXTENDED_TABLE_START_ADDRESS;
+  this->pending_modbus_is_write_ = false;
+  this->pending_readback_tables_ = actual;
+  this->pending_modbus_handler_ = [this, operation_token](modbus::EntityType, uint16_t start_address,
+                                                          std::span<const uint8_t> data) {
+    if (!this->token_matches_(operation_token) ||
+        start_address != oq_odu_runtime_frequency::EXTENDED_TABLE_START_ADDRESS) {
+      return;
+    }
+    size_t loaded = 0U;
+    auto tables_copy = this->pending_readback_tables_;
+    if (!oq_odu_runtime_frequency::parse_extended_runtime_table(data.data(), data.size(), tables_copy, loaded)) {
+      this->fail_operation_("Verification failed: incomplete extended readback from ODU", operation_token);
+      return;
+    }
+    this->finish_apply_(tables_copy, operation_token);
+  };
+  const bool accepted = this->modbus_device_.read_holding_registers(
+      oq_odu_runtime_frequency::EXTENDED_TABLE_START_ADDRESS, oq_odu_runtime_frequency::EXTENDED_TABLE_REGISTER_COUNT);
+  if (!accepted) ESP_LOGW(TAG, "HP%u Modbus read not accepted for extension readback", this->hp_index_);
 }
 
 void OpenQuattOduRuntimeFrequency::finish_apply_(const oq_odu_runtime_frequency::RuntimeFrequencyTables& actual,
@@ -812,6 +844,56 @@ void OpenQuattOduRuntimeFrequency::write_status(httpd_req_t* req) const {
   write_frequency_values(writer, tables.heating, loaded ? level_count : 0U);
   writer.write_literal("}");
   writer.finish();
+}
+
+void OpenQuattOduRuntimeFrequency::RuntimeModbusDevice::on_response(std::span<const uint8_t> request_pdu,
+                                                                    std::span<const uint8_t> response_pdu) {
+  if (this->parent_ == nullptr || this->parent_->controller_ == nullptr) return;
+  auto addr_opt = modbus::helpers::client_pdu_start_address(request_pdu);
+  const uint16_t start_address = addr_opt.has_value() ? *addr_opt : this->parent_->pending_modbus_start_;
+  const uint8_t fc = modbus::helpers::pdu_function_code(request_pdu);
+  this->parent_->controller_->set_online(true, static_cast<int>(fc), static_cast<int>(start_address));
+  auto payload = modbus::helpers::server_pdu_payload(response_pdu);
+  if (this->parent_->pending_modbus_handler_) {
+    this->parent_->pending_modbus_handler_(modbus::EntityType::HOLDING, start_address, payload);
+  }
+}
+
+void OpenQuattOduRuntimeFrequency::RuntimeModbusDevice::on_error(std::span<const uint8_t> request_pdu,
+                                                                 modbus::ExceptionCode ec) {
+  if (this->parent_ == nullptr || this->parent_->controller_ == nullptr) return;
+  auto addr_opt = modbus::helpers::client_pdu_start_address(request_pdu);
+  const uint16_t start_address = addr_opt.has_value() ? *addr_opt : this->parent_->pending_modbus_start_;
+  const uint8_t fc = modbus::helpers::pdu_function_code(request_pdu);
+  this->parent_->controller_->set_online(true, static_cast<int>(fc), static_cast<int>(start_address));
+  ESP_LOGW(TAG, "HP%u runtime Modbus exception %u", this->parent_->hp_index_, static_cast<uint8_t>(ec));
+  if (this->parent_->pending_modbus_is_write_) {
+    // Write exception must not continue the sequence; fail the operation explicitly.
+    this->parent_->fail_operation_("Verification failed: ODU rejected the write", this->parent_->pending_modbus_token_);
+    return;
+  }
+  if (this->parent_->pending_modbus_handler_) {
+    this->parent_->pending_modbus_handler_(modbus::EntityType::HOLDING, start_address, std::span<const uint8_t>{});
+  }
+}
+
+bool OpenQuattOduRuntimeFrequency::RuntimeModbusDevice::on_no_response(std::span<const uint8_t> request_pdu) {
+  if (this->parent_ == nullptr || this->parent_->controller_ == nullptr) return false;
+  auto addr_opt = modbus::helpers::client_pdu_start_address(request_pdu);
+  const uint16_t start_address = addr_opt.has_value() ? *addr_opt : this->parent_->pending_modbus_start_;
+  const uint8_t fc = modbus::helpers::pdu_function_code(request_pdu);
+  auto* ctrl = this->parent_->controller_;
+  ctrl->increment_non_response_count();
+  if (ctrl->can_send()) return true;
+  ctrl->set_online(false, static_cast<int>(fc), static_cast<int>(start_address));
+  ESP_LOGW(TAG, "HP%u runtime Modbus no response", this->parent_->hp_index_);
+  return false;
+}
+
+void OpenQuattOduRuntimeFrequency::RuntimeModbusDevice::on_not_sent(std::span<const uint8_t> request_pdu) {
+  if (this->parent_ == nullptr) return;
+  ESP_LOGW(TAG, "HP%u runtime Modbus not sent", this->parent_->hp_index_);
+  // Not-sent is not a transport failure; just surface it, the pending operation will timeout/retry via loop.
 }
 
 }  // namespace openquatt_odu_runtime_frequency

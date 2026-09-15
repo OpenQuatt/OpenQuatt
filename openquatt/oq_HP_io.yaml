@@ -302,7 +302,7 @@ script:
             return;
           }
 
-          auto command = esphome::modbus_controller::ModbusCommandItem::create_read_command(
+          openquatt_modbus_shim::queue_modbus_read(
               id(${hp_id}), esphome::modbus::EntityType::HOLDING,
               oq_odu::CORE_IDENTITY_REGISTER,
               oq_odu::CORE_IDENTITY_REGISTER_COUNT,
@@ -384,8 +384,7 @@ script:
                   return;
                 }
 
-                auto customer_model_command =
-                    esphome::modbus_controller::ModbusCommandItem::create_read_command(
+                openquatt_modbus_shim::queue_modbus_read(
                         id(${hp_id}), esphome::modbus::EntityType::HOLDING,
                         oq_odu::CUSTOMER_MODEL_REGISTER,
                         oq_odu::CUSTOMER_MODEL_REGISTER_COUNT,
@@ -418,9 +417,7 @@ script:
                               oq_odu::customer_model_label(customer_model));
                           id(${hp_id}_load_runtime_frequency_table_once).execute();
                         });
-                id(${hp_id}).queue_command(std::move(customer_model_command));
               });
-          id(${hp_id}).queue_command(std::move(command));
       - delay: 30s
       - lambda: |-
           if (!id(${hp_id}_odu_generation_request_pending)) return;
@@ -458,8 +455,7 @@ script:
             ESP_LOGW("quatt.odu", "%sRuntime frequency table load blocked while runtime polling is paused", "${prefix}");
             return;
           }
-          auto command =
-              esphome::modbus_controller::ModbusCommandItem::create_read_command(
+          openquatt_modbus_shim::queue_modbus_read(
                   id(${hp_id}), esphome::modbus::EntityType::HOLDING,
                   oq_odu::BASE_FREQUENCY_TABLE_REGISTER,
                   oq_odu::BASE_FREQUENCY_TABLE_REGISTER_COUNT,
@@ -495,8 +491,7 @@ script:
                       return;
                     }
 
-                    auto extension_command =
-                        esphome::modbus_controller::ModbusCommandItem::create_read_command(
+                    openquatt_modbus_shim::queue_modbus_read(
                             id(${hp_id}), esphome::modbus::EntityType::HOLDING,
                             oq_odu::EXTENDED_FREQUENCY_TABLE_REGISTER,
                             oq_odu::EXTENDED_FREQUENCY_TABLE_REGISTER_COUNT,
@@ -545,9 +540,7 @@ script:
                               id(${hp_id}_compressor_level_profile_request_pending) =
                                   false;
                             });
-                    id(${hp_id}).queue_command(std::move(extension_command));
                   });
-          id(${hp_id}).queue_command(std::move(command));
       - delay: 30s
       - lambda: |-
           if (!id(${hp_id}_compressor_level_profile_request_pending)) return;
@@ -1816,7 +1809,7 @@ interval:
           }
 
           id(${hp_id}_last_offline_probe_ms) = now == 0U ? 1U : now;
-          auto probe = esphome::modbus_controller::ModbusCommandItem::create_read_command(
+          openquatt_modbus_shim::queue_modbus_read(
               id(${hp_id}), esphome::modbus::EntityType::HOLDING, 2099, 1,
               [=](esphome::modbus::EntityType, uint16_t, std::span<const uint8_t>) {
                 id(${hp_id}_is_online) = true;
@@ -1826,4 +1819,3 @@ interval:
                   id(${hp_id}_detect_odu_generation_once).execute();
                 }
               });
-          id(${hp_id}).queue_command(std::move(probe));

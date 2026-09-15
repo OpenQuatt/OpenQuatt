@@ -114,7 +114,12 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
         self.assertNotIn("const std::vector<uint8_t> &", custom_modbus)
 
     def test_runtime_table_uses_confirmed_single_register_writes(self) -> None:
-        self.assertIn("create_write_single_command", ODU_RUNTIME_SOURCE)
+        # PR3: migrated to ModbusClientDevice typed helpers (2026.9)
+        self.assertIn("write_single_register", ODU_RUNTIME_SOURCE)
+        self.assertIn("read_holding_registers", ODU_RUNTIME_SOURCE)
+        self.assertIn("ModbusClientDevice", ODU_RUNTIME_HEADER)
+        self.assertNotIn("ModbusCommandItem", ODU_RUNTIME_SOURCE)
+        self.assertNotIn("create_write_single_command", ODU_RUNTIME_SOURCE)
         self.assertIn(
             "queue_write_register_(write_index + 1U, operation_token)",
             ODU_RUNTIME_SOURCE,
@@ -126,7 +131,12 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
         self.assertNotIn("create_write_multiple_command", ODU_RUNTIME_SOURCE)
 
     def test_bottom_plate_writes_allow_running_compressor_and_remain_verified(self) -> None:
-        self.assertIn("create_write_single_command", ODU_SETTINGS_SOURCE)
+        # PR3: migrated to ModbusClientDevice typed helpers
+        self.assertIn("write_single_register", ODU_SETTINGS_SOURCE)
+        self.assertIn("read_holding_registers", ODU_SETTINGS_SOURCE)
+        self.assertIn("ModbusClientDevice", ODU_SETTINGS_HEADER)
+        self.assertNotIn("ModbusCommandItem", ODU_SETTINGS_SOURCE)
+        self.assertNotIn("create_write_single_command", ODU_SETTINGS_SOURCE)
         self.assertNotIn("queue_guard_", ODU_SETTINGS_SOURCE + ODU_SETTINGS_HEADER)
         self.assertNotIn("PENDING_SAFE", ODU_SETTINGS_SOURCE)
         self.assertIn("this->queue_next_write_(operation_token)", ODU_SETTINGS_SOURCE)

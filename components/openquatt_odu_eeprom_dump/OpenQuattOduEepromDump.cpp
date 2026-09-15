@@ -244,6 +244,12 @@ void OpenQuattOduEepromDump::setup() {
     ESP_LOGE(TAG, "HP%u EEPROM snapshot storage could not be allocated in PSRAM", this->hp_index_);
   }
 
+  if (this->controller_ != nullptr && this->controller_->hub() != nullptr) {
+    this->modbus_device_.set_parent(this->controller_->hub());
+    this->modbus_device_.set_address(this->device_address_);
+    this->modbus_device_.set_parent_component(this);
+  }
+
   if (web_server_base::global_web_server_base == nullptr) {
     ESP_LOGE(TAG, "global_web_server_base is unavailable");
     return;
@@ -462,13 +468,11 @@ void OpenQuattOduEepromDump::queue_current_request_() {
   this->queue_empty_since_ms_ = 0U;
   this->queued_ms_ = millis();
   const uint16_t expected_start = this->request_start_address_;
-  const uint32_t request_token = this->request_token_.fetch_add(1U, std::memory_order_acq_rel) + 1U;
-  auto command = modbus_controller::ModbusCommandItem::create_read_command(
-      this->controller_, modbus::EntityType::HOLDING, expected_start, this->request_register_count_,
-      [this, expected_start, request_token](modbus::EntityType, uint16_t start_address, std::span<const uint8_t> data) {
-        if (start_address == expected_start) this->on_response_(request_token, start_address, data);
-      });
-  this->controller_->queue_command(std::move(command));
+  this->pending_modbus_token_ = this->request_token_.fetch_add(1U, std::memory_order_acq_rel) + 1U;
+  const bool accepted = this->modbus_device_.read_holding_registers(expected_start, this->request_register_count_);
+  if (!accepted) {
+    ESP_LOGW(TAG, "HP%u Modbus read not accepted for addr %u", this->hp_index_, expected_start);
+  }
 }
 
 uint16_t OpenQuattOduEepromDump::read_word_(std::span<const uint8_t> data, size_t index) {
@@ -940,6 +944,52 @@ void OpenQuattOduEepromDump::write_download(httpd_req_t* req) const {
   }
   writer.write_literal("]}}");
   writer.finish();
+}
+
+void OpenQuattOduEepromDump::EepromModbusDevice::on_response(std::span<const uint8_t> request_pdu,
+                                                             std::span<const uint8_t> response_pdu) {
+  if (this->parent_ == nullptr || this->parent_->controller_ == nullptr) return;
+  auto addr_opt = modbus::helpers::client_pdu_start_address(request_pdu);
+  if (!addr_opt.has_value()) return;
+  const uint16_t start_address = *addr_opt;
+  const uint8_t fc = modbus::helpers::pdu_function_code(request_pdu);
+  this->parent_->controller_->set_online(true, static_cast<int>(fc), static_cast<int>(start_address));
+  auto payload = modbus::helpers::server_pdu_payload(response_pdu);
+  this->parent_->on_response_(this->parent_->pending_modbus_token_, start_address, payload);
+}
+
+void OpenQuattOduEepromDump::EepromModbusDevice::on_error(std::span<const uint8_t> request_pdu,
+                                                          modbus::ExceptionCode ec) {
+  if (this->parent_ == nullptr || this->parent_->controller_ == nullptr) return;
+  auto addr_opt = modbus::helpers::client_pdu_start_address(request_pdu);
+  const uint16_t start_address = addr_opt.has_value() ? *addr_opt : this->parent_->request_start_address_;
+  const uint8_t fc = modbus::helpers::pdu_function_code(request_pdu);
+  this->parent_->controller_->set_online(true, static_cast<int>(fc), static_cast<int>(start_address));
+  ESP_LOGW(TAG, "HP%u EEPROM Modbus exception %u", this->parent_->hp_index_, static_cast<uint8_t>(ec));
+  this->parent_->response_valid_.store(false, std::memory_order_relaxed);
+  this->parent_->response_received_.store(true, std::memory_order_release);
+}
+
+bool OpenQuattOduEepromDump::EepromModbusDevice::on_no_response(std::span<const uint8_t> request_pdu) {
+  if (this->parent_ == nullptr || this->parent_->controller_ == nullptr) return false;
+  auto addr_opt = modbus::helpers::client_pdu_start_address(request_pdu);
+  const uint16_t start_address = addr_opt.has_value() ? *addr_opt : this->parent_->request_start_address_;
+  const uint8_t fc = modbus::helpers::pdu_function_code(request_pdu);
+  auto* ctrl = this->parent_->controller_;
+  ctrl->increment_non_response_count();
+  if (ctrl->can_send()) return true;
+  ctrl->set_online(false, static_cast<int>(fc), static_cast<int>(start_address));
+  ESP_LOGW(TAG, "HP%u EEPROM Modbus no response", this->parent_->hp_index_);
+  this->parent_->response_valid_.store(false, std::memory_order_relaxed);
+  this->parent_->response_received_.store(true, std::memory_order_release);
+  return false;
+}
+
+void OpenQuattOduEepromDump::EepromModbusDevice::on_not_sent(std::span<const uint8_t> request_pdu) {
+  if (this->parent_ == nullptr) return;
+  ESP_LOGW(TAG, "HP%u EEPROM Modbus not sent", this->parent_->hp_index_);
+  this->parent_->response_valid_.store(false, std::memory_order_relaxed);
+  this->parent_->response_received_.store(true, std::memory_order_release);
 }
 
 }  // namespace openquatt_odu_eeprom_dump

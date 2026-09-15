@@ -10,6 +10,7 @@
 #include <esp_http_server.h>
 #include <freertos/FreeRTOS.h>
 
+#include "esphome/components/modbus/modbus.h"
 #include "esphome/components/modbus_controller/modbus_controller.h"
 #include "esphome/components/openquatt_odu_eeprom_dump/OpenQuattOduEepromDump.h"
 #include "esphome/components/openquatt_web_auth/OpenQuattWebAuth.h"
@@ -71,6 +72,29 @@ class OpenQuattOduRuntimeFrequency : public Component {
   openquatt_odu_eeprom_dump::OpenQuattOduEepromDump* eeprom_dump_{nullptr};
   openquatt_web_auth::OpenQuattWebAuth* web_auth_{nullptr};
   uint8_t hp_index_{0U};
+
+  // ESPHome 2026.9: persistent Modbus client replaces ModbusCommandItem one-shots.
+  class RuntimeModbusDevice : public modbus::ModbusClientDevice {
+   public:
+    void set_parent_component(OpenQuattOduRuntimeFrequency* parent) { this->parent_ = parent; }
+
+   protected:
+    void on_response(std::span<const uint8_t> request_pdu, std::span<const uint8_t> response_pdu) override;
+    void on_error(std::span<const uint8_t> request_pdu, modbus::ExceptionCode ec) override;
+    bool on_no_response(std::span<const uint8_t> request_pdu) override;
+    void on_not_sent(std::span<const uint8_t> request_pdu) override;
+
+   private:
+    OpenQuattOduRuntimeFrequency* parent_{nullptr};
+  };
+  RuntimeModbusDevice modbus_device_{};
+  uint32_t pending_modbus_token_{0};
+  std::function<void(modbus::EntityType, uint16_t, std::span<const uint8_t>)> pending_modbus_handler_{};
+  modbus::EntityType pending_modbus_type_{modbus::EntityType::HOLDING};
+  uint16_t pending_modbus_start_{0};
+  bool pending_modbus_is_write_{false};
+  oq_odu_runtime_frequency::RuntimeFrequencyTables pending_extension_tables_{};
+  oq_odu_runtime_frequency::RuntimeFrequencyTables pending_readback_tables_{};
 
   std::atomic<bool> available_{false};
   std::atomic<bool> busy_{false};

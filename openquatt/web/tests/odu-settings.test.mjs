@@ -255,9 +255,11 @@ test("firmwarecontract schrijft sheet 3237-3239 via Modbus 3236-3238", async () 
   ]);
   assert.match(logic, /BOTTOM_PLATE_START_ADDRESS = 3236U/);
   assert.match(logic, /variant == Variant::V1 \? 1U : 3U/);
-  assert.match(source, /create_write_single_command/);
+  assert.match(source, /write_single_register/);
+  assert.match(source, /read_holding_registers/);
   assert.match(source, /queue_readback_/);
   assert.doesNotMatch(source, /PENDING_SAFE|queue_guard_/);
+  assert.doesNotMatch(source, /ModbusCommandItem|create_write_single_command/);
   assert.match(packageSource, /set_odu_identity/);
   assert.match(packageSource, /notify_odu_offline/);
   assert.match(webAccess, /openquatt_odu_settings/);
