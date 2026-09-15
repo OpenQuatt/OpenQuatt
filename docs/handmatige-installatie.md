@@ -57,6 +57,8 @@ Als Wi-Fi niet direct via de browserflow lukt, gebruikt een Wi-Fi-capabele build
 - SSID: `OpenQuatt`
 - wachtwoord: `openquatt`
 
+Dit access point is beschikbaar zolang OpenQuatt nog niet volledig is ingesteld, tot uiterlijk ca. 10 minuten na het opstarten (instelvenster). Is het venster gesloten, herstart de controller dan eerst of stel Wi-Fi via USB in.
+
 Open daarna de web-app via:
 
 ```text

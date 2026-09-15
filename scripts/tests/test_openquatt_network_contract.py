@@ -110,6 +110,18 @@ class OpenQuattNetworkContractTest(unittest.TestCase):
         self.assertIn("wifiProvisioning: true", INSTALLER)
         self.assertIn("zonder opgeslagen Wi-Fi-gegevens", INSTALLER_PAGE)
 
+    def test_fallback_ap_texts_mention_the_provisioning_window(self) -> None:
+        # Sinds ESPHome 2026.9 sluit het fallback access point zodra het
+        # instelvenster (ca. 10 minuten na opstarten) sluit. De herstelteksten
+        # moeten dat venster noemen, zodat niemand op een verdwenen AP wacht.
+        installer_page = (ROOT / "docs" / "install" / "index.html").read_text()
+        manual = (ROOT / "docs" / "handmatige-installatie.md").read_text()
+        troubleshooting = (ROOT / "docs" / "problemen-oplossen.md").read_text()
+        for text in (installer_page, manual, troubleshooting):
+            with self.subTest():
+                self.assertIn("instelvenster", text)
+                self.assertIn("10 minuten", text)
+
 
 if __name__ == "__main__":
     unittest.main()
