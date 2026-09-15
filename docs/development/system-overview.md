@@ -105,7 +105,7 @@ Configured startup delays are relative to the ESPHome scheduler becoming active.
 
 | Subsystem | First configured activity after scheduler start | Steady cadence / gate |
 |---|---:|---|
-| HP1 Modbus | `${oq_modbus_startup_delay_ms}` (default 0ms) | Base poll every `${oq_modbus_update_interval_s}` (default 5s), commands throttled by `${oq_modbus_command_throttle_ms}` (default 500ms) |
+| HP1 Modbus | `${oq_modbus_startup_delay_ms}` (default 0ms) | Base poll every `${oq_modbus_update_interval_s}` (default 10s), commands throttled by `${oq_modbus_command_throttle_ms}` (default 500ms) |
 | HP2 Modbus (Duo) | 2500ms | Same base cadence; the offset intentionally stages HP1 and HP2 traffic |
 | OpenTherm thermostat slave (OTT) | Component setup | Runtime validation every 2s |
 | OpenTherm boiler master (OTB) | Enabled at late boot for normal OpenTherm control, or temporarily for the bounded R1 startup verification | R1 remains unavailable until the safe `STATUS(CH=off)` probe completes; a matching response latches a connection mismatch and keeps both R1 and OpenTherm CH off. Normal link/freshness checks start after 2s and run every `${oq_otb_link_watch_s}` (default 1s) |

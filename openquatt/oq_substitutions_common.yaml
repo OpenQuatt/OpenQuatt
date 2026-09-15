@@ -300,11 +300,8 @@ ha_heating_supply_target_valid_entity_id: "binary_sensor.openquatt_ext_heating_s
 # ----------------------------
 # HP IO (MODBUS POLLING)
 # ----------------------------
-oq_modbus_update_interval_s: "5"                    # Base Modbus controller polling interval [s].
+oq_modbus_update_interval_s: "10"                   # Base Modbus controller polling interval [s]; regular online reads every 10s (ESPHome 2026.9, no skip_updates).
 oq_modbus_offline_probe_interval_s: "30"             # Sparse single-register probe while an HP is offline [s].
 oq_modbus_command_throttle_ms: "500"                 # Minimum spacing between Modbus commands [ms].
 oq_modbus_max_cmd_retries: "1"                       # Retries per Modbus command; keep low to avoid long blocking on bad links.
 oq_modbus_startup_delay_ms: "0"                      # Default startup offset for staged Modbus polling [ms].
-oq_modbus_telemetry_skip: "1"                        # 2099-2138: 1 skipped base update, effective polling every 10s.
-oq_modbus_target_readback_skip: "1"                  # 3999 safety-relevant target readback every 10s.
-oq_modbus_control_readback_skip: "5"                 # 1999/2006/2010/2015 readback every 30s.

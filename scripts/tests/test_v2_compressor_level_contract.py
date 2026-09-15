@@ -50,10 +50,13 @@ class V2CompressorLevelContractTest(unittest.TestCase):
         block = yaml_block(
             HP_IO,
             "id: ${hp_id}_compressor_level",
-            "skip_updates: ${oq_modbus_control_readback_skip}",
+            "id: ${hp_id}_low_noise_mode",
         )
         for level in range(21):
             self.assertIn(f'"{level}": {level}', block)
+        # ESPHome 2026.9: regular online readbacks use the 10s planner; no per-entity skip.
+        self.assertNotIn("skip_updates:", block)
+        self.assertNotIn("register_count:", block)
 
     def test_manual_request_surface_exposes_f20(self) -> None:
         self.assertEqual(MANUAL_HP.count("max_value: 20"), 2)
@@ -150,12 +153,15 @@ class V2CompressorLevelContractTest(unittest.TestCase):
         self.assertIn("!id(${hp_id}_compressor_level_profile_request_pending)", HP_IO)
 
     def test_frequency_telemetry_accepts_f20(self) -> None:
-        for entity_id in (
-            "${hp_id}_compressor_frequency_demand",
-            "${hp_id}_compressor_frequency",
-        ):
-            block = yaml_block(HP_IO, f"id: {entity_id}", "skip_updates: ${oq_modbus_telemetry_skip}")
+        # ESPHome 2026.9: no per-entity skip_updates; bound each block by the next entity id.
+        cases = (
+            ("${hp_id}_compressor_frequency_demand", "${hp_id}_compressor_frequency"),
+            ("${hp_id}_compressor_frequency", "${hp_id}_fan_speed_max"),
+        )
+        for entity_id, next_id in cases:
+            block = yaml_block(HP_IO, f"id: {entity_id}", f"id: {next_id}")
             self.assertIn("max_value: 120", block)
+            self.assertNotIn("skip_updates:", block)
 
     def test_profile_label_matches_service_ui_gate(self) -> None:
         self.assertIn('"V2 F0-F20"', LEVEL_HEADER)

@@ -106,11 +106,12 @@ class PumpIpwmContractTest(unittest.TestCase):
             "id: ${hp_id}_status_2115_raw",
             "id: ${hp_id}_status_2120_raw",
         )
-        self.assertIn("address: 2113", flow_switch)
-        self.assertIn("offset: 4", flow_switch)
-        self.assertIn("register_count: 3", flow_switch)
-        self.assertNotIn("register_count: 1", flow_switch)
-        self.assertNotIn("address: 2115", flow_switch)
+        self.assertIn("address: 2115", flow_switch)
+        self.assertIn("value_type: U_WORD", flow_switch)
+        self.assertIn("reuse_previous_range: true", flow_switch)
+        self.assertNotIn("offset: 4", flow_switch)
+        self.assertNotIn("register_count", flow_switch)
+        self.assertNotIn("address: 2113", flow_switch)
         self.assertNotIn("water_flow_switch", HP_IO)
         self.assertIn("next.units[slot].pump_context =", MANAGER_CPP)
 

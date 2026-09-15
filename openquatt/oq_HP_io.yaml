@@ -587,7 +587,6 @@ select:
       "Standby": 0
       "Cooling": 1
       "Heating": 2
-    skip_updates: ${oq_modbus_target_readback_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -619,7 +618,6 @@ select:
       "18": 18
       "19": 19
       "20": 20
-    skip_updates: ${oq_modbus_control_readback_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -632,7 +630,6 @@ select:
     optionsmap:
       "Off": 0
       "On": 1
-    skip_updates: ${oq_modbus_control_readback_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -645,7 +642,6 @@ select:
     optionsmap:
       "Off": 0
       "On": 4096
-    skip_updates: ${oq_modbus_control_readback_skip}
 
 # One shared range applies to heating and cooling. A zero boundary disables it.
 number:
@@ -691,7 +687,6 @@ number:
     min_value: 0
     max_value: 1000
     mode: slider
-    skip_updates: ${oq_modbus_control_readback_skip}
 
 # ----------------------------
 # SENSOR
@@ -719,7 +714,6 @@ sensor:
     state_class: measurement
     register_type: holding
     address: 2099
-    skip_updates: ${oq_modbus_telemetry_skip}
     on_value:
       then:
         - lambda: |-
@@ -745,7 +739,6 @@ sensor:
           min_value: 0
           max_value: 300
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
     on_value:
       then:
         - lambda: |-
@@ -769,7 +762,6 @@ sensor:
           min_value: 0
           max_value: 16
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
     on_value:
       then:
         - lambda: |-
@@ -824,7 +816,6 @@ sensor:
           min_value: 0
           max_value: 120
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -843,7 +834,6 @@ sensor:
           min_value: 0
           max_value: 120
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
     on_value:
       then:
         - lambda: |-
@@ -872,7 +862,6 @@ sensor:
           min_value: 0
           max_value: 1000
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -884,14 +873,12 @@ sensor:
     unit_of_measurement: "RPM"
     state_class: "measurement"
     accuracy_decimals: 0
-    register_count: 2  # 2105-2106; bridge reserved register 2106.
     filters:
       - multiply: 1
       - clamp:
           min_value: 0
           max_value: 1000
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
     on_value:
       then:
         - lambda: |-
@@ -904,6 +891,7 @@ sensor:
     icon: mdi:valve
     register_type: holding
     address: 2107
+    reuse_previous_range: true  # Bridge reserved 2106; keep 2099-2138 in one efficient range.
     unit_of_measurement: "p"
     state_class: "measurement"
     accuracy_decimals: 0
@@ -913,7 +901,6 @@ sensor:
           min_value: 0
           max_value: 1000
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -922,6 +909,7 @@ sensor:
     icon: mdi:thermometer
     register_type: holding
     address: 2110
+    reuse_previous_range: true  # Bridge reserved 2109; keep 2099-2138 in one efficient range.
     #skip_updates: 0
     unit_of_measurement: "°C"
     device_class: "temperature"
@@ -934,7 +922,6 @@ sensor:
           min_value: -30
           max_value: 100
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
     on_value:
       then:
         - lambda: |-
@@ -960,7 +947,6 @@ sensor:
           min_value: -30
           max_value: 100
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -980,7 +966,6 @@ sensor:
           min_value: -30
           max_value: 150
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -993,7 +978,6 @@ sensor:
     device_class: "temperature"
     state_class: "measurement"
     accuracy_decimals: 2
-    register_count: 3  # 2113-2115; includes the R2115 status word.
     filters:
       - offset: -3000
       - multiply: 0.01
@@ -1001,7 +985,6 @@ sensor:
           min_value: -30
           max_value: 100
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -1020,7 +1003,6 @@ sensor:
           min_value: 0
           max_value: 20
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -1040,14 +1022,12 @@ sensor:
           min_value: 0
           max_value: 60
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
     id: ${hp_id}_pcb_firmware_raw
     register_type: holding
     address: 2122
-    skip_updates: ${oq_modbus_telemetry_skip}
     value_type: U_WORD
     internal: true
 
@@ -1056,9 +1036,7 @@ sensor:
     name: "${prefix}Firmware EEPROM"
     internal: true
     register_type: holding
-    register_count: 4  # 2123 - 2127
     address: 2123
-    skip_updates: ${oq_modbus_telemetry_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -1066,11 +1044,9 @@ sensor:
     name: "${prefix}Control board item number"
     internal: true
     register_type: holding
-    # Read span 2127-2130 to keep the Modbus range contiguous with 2131.
-    # Only register 2127 is decoded as this U_WORD diagnostic value.
-    register_count: 4
+    # Span 2123-2131 via range reuse; only register 2127 is decoded as this U_WORD value.
     address: 2127
-    skip_updates: ${oq_modbus_telemetry_skip}
+    reuse_previous_range: true  # Bridge 2124-2126; keep 2099-2138 in one efficient range.
     value_type: U_WORD
 
   - platform: modbus_controller
@@ -1081,6 +1057,7 @@ sensor:
     disabled_by_default: true
     register_type: holding
     address: 2131
+    reuse_previous_range: true  # Bridge 2128-2130; keep 2099-2138 in one efficient range.
     unit_of_measurement: "°C"
     device_class: "temperature"
     state_class: "measurement"
@@ -1092,7 +1069,6 @@ sensor:
           min_value: -30
           max_value: 100
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -1112,7 +1088,6 @@ sensor:
           min_value: -30
           max_value: 100
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -1132,7 +1107,6 @@ sensor:
           min_value: -10
           max_value: 100
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -1156,7 +1130,6 @@ sensor:
       then:
         - lambda: |-
             id(${hp_id}_water_out_temp_last_update_ms) = millis();
-    skip_updates: ${oq_modbus_telemetry_skip}
 
   - platform: template
     id: ${hp_id}_water_in_temp
@@ -1199,7 +1172,6 @@ sensor:
     device_class: "temperature"
     state_class: "measurement"
     accuracy_decimals: 2
-    register_count: 2  # 2135-2136; bridge reserved register 2136.
     filters:
       - offset: -3000
       - multiply: 0.01
@@ -1207,7 +1179,6 @@ sensor:
           min_value: -30
           max_value: 100
           ignore_out_of_range: true
-    skip_updates: ${oq_modbus_telemetry_skip}
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -1216,9 +1187,9 @@ sensor:
     internal: true
     register_type: holding
     address: 2137
+    reuse_previous_range: true  # Bridge reserved 2136; keep 2099-2138 in one efficient range.
     value_type: U_WORD
     accuracy_decimals: 0
-    skip_updates: ${oq_modbus_telemetry_skip}
     on_value:
       then:
         - lambda: |-
@@ -1248,8 +1219,6 @@ sensor:
     icon: mdi:water-pump
     register_type: holding
     address: 2138
-    force_new_range: false
-    skip_updates: ${oq_modbus_telemetry_skip}
     unit_of_measurement: "L/h"
     device_class: "volume_flow_rate"
     state_class: "measurement"
@@ -1376,8 +1345,6 @@ sensor:
     register_type: holding
     address: 2108
     value_type: U_WORD
-    register_count: 2  # 2108-2109; bridge reserved register 2109.
-    skip_updates: ${oq_modbus_telemetry_skip}
     internal: true
     on_value:
       then:
@@ -1399,7 +1366,6 @@ sensor:
     register_type: holding
     address: 2119
     value_type: U_WORD
-    skip_updates: ${oq_modbus_telemetry_skip}
     internal: true
     on_value:
       then:
@@ -1412,12 +1378,10 @@ sensor:
     modbus_controller_id: ${hp_id}
     id: ${hp_id}_status_2115_raw
     register_type: holding
-    # Share the existing 2113-2115 range; byte offset 4 is register R2115.
-    address: 2113
-    offset: 4
+    # Decode physical register R2115 explicitly; 2114 is bridged via range reuse below.
+    address: 2115
+    reuse_previous_range: true  # Bridge reserved 2114; keep 2099-2138 in one efficient range.
     value_type: U_WORD
-    register_count: 3
-    skip_updates: ${oq_modbus_telemetry_skip}
     internal: true
 
   - platform: modbus_controller
@@ -1426,7 +1390,6 @@ sensor:
     register_type: holding
     address: 2120
     value_type: U_WORD
-    skip_updates: ${oq_modbus_telemetry_skip}
     internal: true
     on_value:
       then:
@@ -1441,7 +1404,6 @@ sensor:
     register_type: holding
     address: 2121
     value_type: U_WORD
-    skip_updates: ${oq_modbus_telemetry_skip}
     internal: true
     on_value:
       then:
@@ -1532,7 +1494,6 @@ binary_sensor:
     device_class: running
     register_type: holding
     address: 2118
-    skip_updates: ${oq_modbus_telemetry_skip}
     on_state:
       then:
         - lambda: |-
