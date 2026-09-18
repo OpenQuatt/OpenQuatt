@@ -763,6 +763,204 @@ void test_power_cycle_latch_requires_explicit_confirmation() {
   assert(engine.outputs().protection_state == ProtectionState::FAULT_RECOVERY);
 }
 
+void test_confirmed_link_loss_provenance() {
+  HpIncidentEngine engine;
+  assert(!engine.outputs().confirmed_link_loss_active);
+
+  establish_healthy_link(engine, 100U);
+  confirm_stopped(engine, 60101U);
+  assert(!engine.outputs().confirmed_link_loss_active);
+
+  // A short dip (SUSPECT) is not a confirmed loss.
+  engine.observe_link_round(90100U, false);
+  assert(engine.outputs().link_state == LinkState::SUSPECT);
+  assert(!engine.outputs().confirmed_link_loss_active);
+  engine.observe_link_round(100100U, true);
+  assert(engine.outputs().link_state == LinkState::HEALTHY);
+  assert(!engine.outputs().confirmed_link_loss_active);
+
+  // Confirmed loss raises provenance.
+  engine.observe_link_round(110100U, false);
+  engine.observe_link_round(141100U, false);
+  engine.observe_link_round(142100U, false);
+  assert(engine.outputs().link_state == LinkState::LOST);
+  assert(engine.outputs().confirmed_link_loss_active);
+  // No stop revalidation is involved here, so the causal flag stays clear.
+  assert(!engine.outputs().stop_unconfirmed_due_to_link_loss);
+
+  // Recovery after a real loss keeps provenance until fully HEALTHY, so a
+  // degraded CM4 fallback does not flap on the first successful polls.
+  engine.observe_link_round(152100U, true);
+  assert(engine.outputs().link_state == LinkState::RECOVERING);
+  assert(engine.outputs().confirmed_link_loss_active);
+  engine.observe_link_round(182100U, true);
+  assert(engine.outputs().link_state == LinkState::RECOVERING);
+  assert(engine.outputs().confirmed_link_loss_active);
+  engine.observe_link_round(212100U, true);
+  assert(engine.outputs().link_state == LinkState::HEALTHY);
+  assert(!engine.outputs().confirmed_link_loss_active);
+}
+
+void test_bootstrap_recovery_sets_no_link_loss_provenance() {
+  HpIncidentEngine engine;
+  engine.observe_link_round(100U, false);
+  assert(!engine.outputs().confirmed_link_loss_active);
+  engine.observe_link_round(10100U, true);
+  assert(engine.outputs().link_state == LinkState::RECOVERING);
+  assert(!engine.outputs().confirmed_link_loss_active);
+  engine.observe_link_round(40100U, true);
+  engine.observe_link_round(70100U, true);
+  assert(engine.outputs().link_state == LinkState::HEALTHY);
+  assert(!engine.outputs().confirmed_link_loss_active);
+}
+
+void test_link_loss_stop_timeout_keeps_provenance_without_fallback_eligibility() {
+  EngineTuning tuning;
+  tuning.stop_confirm_timeout_ms = 60000U;
+  HpIncidentEngine engine(tuning);
+  establish_healthy_link(engine, 100U);
+  confirm_stopped(engine, 60101U);
+  assert(engine.request_start(80101U));
+  engine.observe_run(frequency(80102U, 12.0F));
+  assert(engine.outputs().run_state == RunState::RUNNING);
+
+  // Confirmed link loss invalidates the old stop confirmation and re-arms it.
+  engine.observe_link_round(110100U, false);
+  engine.observe_link_round(141100U, false);
+  engine.observe_link_round(142100U, false);
+  assert(engine.outputs().link_state == LinkState::LOST);
+  assert(engine.outputs().confirmed_link_loss_active);
+  assert(engine.outputs().stop_confirmation_pending);
+  assert(!engine.outputs().stop_unconfirmed);
+  // The engine itself stays strict: HP-local fallback eligibility must not
+  // silently become true just because telemetry is unreachable.
+  assert(!engine.outputs().fallback_eligible);
+
+  // The retried safe stop never gets telemetry. After the regular timeout the
+  // state is STOP_UNCONFIRMED with link-loss provenance intact.
+  assert(engine.request_stop(142101U));
+  engine.tick(202102U);
+  assert(engine.outputs().run_state == RunState::STOP_UNCONFIRMED);
+  assert(engine.outputs().stop_unconfirmed);
+  assert(!engine.outputs().stop_confirmation_pending);
+  assert(engine.outputs().confirmed_link_loss_active);
+  assert(engine.outputs().stop_unconfirmed_due_to_link_loss);
+  assert(engine.outputs().fallback_cause_present);
+  assert(!engine.outputs().available_for_start);
+  assert(!engine.outputs().fallback_eligible);
+  // Link loss is the root-cause presentation while the stop stays
+  // unconfirmed; incident 1003 remains active as the consequence state.
+  assert(engine.outputs().primary_incident_id == kLinkLossIncidentId);
+}
+
+void test_reachable_stop_failure_then_link_loss_stays_blocked() {
+  // A genuine stop failure while communication is healthy must never be
+  // laundered into a degraded fallback permission by a later link loss.
+  EngineTuning tuning;
+  tuning.stop_confirm_timeout_ms = 60000U;
+  HpIncidentEngine engine(tuning);
+  establish_healthy_link(engine, 100U);
+  confirm_stopped(engine, 60101U);
+  assert(engine.request_start(80101U));
+  engine.observe_run(frequency(80102U, 12.0F));
+  assert(engine.request_stop(90101U));
+
+  // The reachable HP demonstrably keeps running: genuine stop failure.
+  engine.observe_run(frequency(100101U, 12.0F));
+  engine.tick(150102U);
+  assert(engine.outputs().run_state == RunState::STOP_UNCONFIRMED);
+  assert(engine.outputs().stop_unconfirmed);
+  assert(!engine.outputs().stop_confirmation_pending);
+  assert(!engine.outputs().confirmed_link_loss_active);
+  assert(!engine.outputs().stop_unconfirmed_due_to_link_loss);
+
+  // Communication drops only afterwards: still no degraded permission, even
+  // though every naive gate input (loss + cause + unconfirmed, not pending)
+  // is now set.
+  engine.observe_link_round(160100U, false);
+  engine.observe_link_round(191100U, false);
+  engine.observe_link_round(192100U, false);
+  assert(engine.outputs().link_state == LinkState::LOST);
+  assert(engine.outputs().confirmed_link_loss_active);
+  assert(engine.outputs().stop_unconfirmed);
+  assert(!engine.outputs().stop_confirmation_pending);
+  assert(!engine.outputs().stop_unconfirmed_due_to_link_loss);
+  assert(engine.outputs().fallback_cause_present);
+  assert(!engine.outputs().fallback_eligible);
+
+  // Flapping the link must not launder the predating failure either.
+  engine.observe_link_round(202100U, true);
+  assert(engine.outputs().link_state == LinkState::RECOVERING);
+  assert(!engine.outputs().stop_unconfirmed_due_to_link_loss);
+  engine.observe_link_round(202101U, false);
+  assert(engine.outputs().link_state == LinkState::LOST);
+  assert(!engine.outputs().stop_unconfirmed_due_to_link_loss);
+}
+
+void test_interrupted_recovery_keeps_link_loss_permission() {
+  // Same outage episode: LOST -> timeout -> brief RECOVERING -> LOST again
+  // keeps the causal permission, because the unconfirmed stop stems from
+  // the original loss revalidation rather than a predating failure.
+  EngineTuning tuning;
+  tuning.stop_confirm_timeout_ms = 60000U;
+  HpIncidentEngine engine(tuning);
+  establish_healthy_link(engine, 100U);
+  confirm_stopped(engine, 60101U);
+  assert(engine.request_start(80101U));
+  engine.observe_run(frequency(80102U, 12.0F));
+  engine.observe_link_round(110100U, false);
+  engine.observe_link_round(141100U, false);
+  engine.observe_link_round(142100U, false);
+  assert(engine.request_stop(142101U));
+  engine.tick(202102U);
+  assert(engine.outputs().stop_unconfirmed_due_to_link_loss);
+
+  engine.observe_link_round(212102U, true);
+  assert(engine.outputs().link_state == LinkState::RECOVERING);
+  assert(engine.outputs().stop_unconfirmed_due_to_link_loss);
+  engine.observe_link_round(212103U, false);
+  assert(engine.outputs().link_state == LinkState::LOST);
+  assert(engine.outputs().stop_unconfirmed_due_to_link_loss);
+}
+
+void test_recovering_running_telemetry_ends_link_loss_permission() {
+  EngineTuning tuning;
+  tuning.stop_confirm_timeout_ms = 60000U;
+  HpIncidentEngine engine(tuning);
+  establish_healthy_link(engine, 100U);
+  confirm_stopped(engine, 60101U);
+  assert(engine.request_start(80101U));
+  engine.observe_run(frequency(80102U, 12.0F));
+
+  engine.observe_link_round(110100U, false);
+  engine.observe_link_round(141100U, false);
+  engine.observe_link_round(142100U, false);
+  assert(engine.outputs().link_state == LinkState::LOST);
+  assert(engine.request_stop(142101U));
+  engine.tick(202102U);
+  assert(engine.outputs().stop_unconfirmed_due_to_link_loss);
+
+  // First polls after recovery must not flap the permission by themselves.
+  engine.observe_link_round(212102U, true);
+  assert(engine.outputs().link_state == LinkState::RECOVERING);
+  assert(engine.outputs().stop_unconfirmed_due_to_link_loss);
+
+  // Fresh telemetry proving a running compressor ends the permission
+  // immediately, even though the link still recovers and the stop stays
+  // formally unconfirmed.
+  engine.observe_run(frequency(212103U, 20.0F));
+  assert(!engine.outputs().stop_unconfirmed_due_to_link_loss);
+  assert(engine.outputs().stop_unconfirmed);
+  assert(!engine.outputs().fallback_eligible);
+
+  // A later fresh stop confirmation still uses the normal route.
+  engine.observe_run(frequency(212104U, 0.0F));
+  engine.observe_run(frequency(212105U, 0.0F));
+  assert(engine.outputs().run_state == RunState::STOPPED);
+  assert(engine.outputs().stop_confirmed);
+  assert(!engine.outputs().stop_unconfirmed_due_to_link_loss);
+}
+
 }  // namespace
 
 int main() {
@@ -793,6 +991,12 @@ int main() {
   test_start_timeout_requires_safe_stop_and_explicit_recovery();
   test_start_failure_retry_waits_for_fault_recovery();
   test_stop_unconfirmed_blocks_fallback();
+  test_confirmed_link_loss_provenance();
+  test_bootstrap_recovery_sets_no_link_loss_provenance();
+  test_link_loss_stop_timeout_keeps_provenance_without_fallback_eligibility();
+  test_reachable_stop_failure_then_link_loss_stays_blocked();
+  test_interrupted_recovery_keeps_link_loss_permission();
+  test_recovering_running_telemetry_ends_link_loss_permission();
   test_power_cycle_latch_requires_explicit_confirmation();
   std::cout << "oq_hp_incident_engine_test: ok\n";
   return 0;

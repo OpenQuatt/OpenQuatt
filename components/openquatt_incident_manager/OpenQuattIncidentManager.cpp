@@ -1657,6 +1657,15 @@ bool OpenQuattIncidentManager::all_fallback_outputs_safe() const {
   return all_hp_outputs_safe_for_fallback(outputs.data(), configured_count);
 }
 
+bool OpenQuattIncidentManager::all_fallback_output_gates_clear() const {
+  std::array<oq_incidents::DerivedOutputs, 2U> outputs{};
+  const size_t configured_count = this->configured_hp_count();
+  for (size_t slot = 0U; slot < configured_count; ++slot) {
+    outputs[slot] = this->get_outputs(static_cast<uint8_t>(slot + 1U));
+  }
+  return all_hp_fallback_output_gates_clear(outputs.data(), configured_count);
+}
+
 void OpenQuattIncidentManager::set_fallback_status(bool requested, bool active, uint8_t block_reason) {
   this->fallback_requested_ = requested;
   this->fallback_active_ = active;
@@ -1949,44 +1958,45 @@ void OpenQuattIncidentManager::write_snapshot(httpd_req_t* req) const {
   bool first_hp = true;
   for (size_t slot = 0U; ok && slot < this->configured_hp_count(); ++slot) {
     const oq_incidents::DerivedOutputs& outputs = snapshot.units[slot].outputs;
-    ok = (first_hp || write_raw(req, ",")) && write_raw(req, R"({"index":)") && write_uint(req, slot + 1U) &&
-         write_raw(req, R"(,"link_state":)") && write_json_string(req, link_state_name(outputs.link_state)) &&
-         write_raw(req, R"(,"protection_state":)") &&
-         write_json_string(req, protection_state_name(outputs.protection_state)) &&
-         write_raw(req, R"(,"run_state":)") && write_json_string(req, run_state_name(outputs.run_state)) &&
-         write_raw(req, R"(,"availability":)") && write_json_string(req, availability_name(outputs)) &&
-         write_raw(req, R"(,"available_for_start":)") && write_bool(req, outputs.available_for_start) &&
-         write_raw(req, R"(,"must_stop":)") && write_bool(req, outputs.must_stop) &&
-         write_raw(req, R"(,"fault_active":)") && write_bool(req, outputs.fault_active) &&
-         write_raw(req, R"(,"protection_active":)") && write_bool(req, outputs.protection_active) &&
-         write_raw(req, R"(,"running_confirmed":)") && write_bool(req, outputs.running_confirmed) &&
-         write_raw(req, R"(,"stop_confirmed":)") && write_bool(req, outputs.stop_confirmed) &&
-         write_raw(req, R"(,"stop_confirmation_pending":)") && write_bool(req, outputs.stop_confirmation_pending) &&
-         write_raw(req, R"(,"stop_unconfirmed":)") && write_bool(req, outputs.stop_unconfirmed) &&
-         write_raw(req, R"(,"fallback_cause_present":)") && write_bool(req, outputs.fallback_cause_present) &&
-         write_raw(req, R"(,"fallback_eligible":)") && write_bool(req, outputs.fallback_eligible) &&
-         write_raw(req, R"(,"primary_incident_id":)") && write_uint(req, outputs.primary_incident_id) &&
-         write_raw(req, R"(,"pump_context":{"request_on":)") &&
-         write_optional_bool(req, snapshot.units[slot].pump_context.request_valid,
-                             snapshot.units[slot].pump_context.request_on) &&
-         write_raw(req, R"(,"relay_on":)") &&
-         write_optional_bool(req, snapshot.units[slot].pump_context.relay_valid,
-                             snapshot.units[slot].pump_context.relay_on) &&
-         write_raw(req, R"(,"flow_switch_on":)") &&
-         write_optional_bool(req, snapshot.units[slot].pump_context.flow_switch_valid,
-                             snapshot.units[slot].pump_context.flow_switch_on) &&
-         write_raw(req, R"(,"ipwm_feedback_raw":)") &&
-         write_optional_uint(req, snapshot.units[slot].pump_context.feedback_valid,
-                             snapshot.units[slot].pump_context.feedback_raw) &&
-         write_raw(req, R"(,"ipwm_status":)") &&
-         write_json_string(req, oq_pump_ipwm::status_name(snapshot.units[slot].pump_context.status)) &&
-         write_raw(req, R"(,"pump_power_w":)") &&
-         write_optional_float(req, snapshot.units[slot].pump_context.power_valid,
-                              snapshot.units[slot].pump_context.power_w) &&
-         write_raw(req, R"(,"flow_lph":)") &&
-         write_optional_float(req, snapshot.units[slot].pump_context.flow_valid,
-                              snapshot.units[slot].pump_context.flow_lph) &&
-         write_raw(req, R"(},"last_action_result":)");
+    ok =
+        (first_hp || write_raw(req, ",")) && write_raw(req, R"({"index":)") && write_uint(req, slot + 1U) &&
+        write_raw(req, R"(,"link_state":)") && write_json_string(req, link_state_name(outputs.link_state)) &&
+        write_raw(req, R"(,"protection_state":)") &&
+        write_json_string(req, protection_state_name(outputs.protection_state)) && write_raw(req, R"(,"run_state":)") &&
+        write_json_string(req, run_state_name(outputs.run_state)) && write_raw(req, R"(,"availability":)") &&
+        write_json_string(req, availability_name(outputs)) && write_raw(req, R"(,"available_for_start":)") &&
+        write_bool(req, outputs.available_for_start) && write_raw(req, R"(,"must_stop":)") &&
+        write_bool(req, outputs.must_stop) && write_raw(req, R"(,"fault_active":)") &&
+        write_bool(req, outputs.fault_active) && write_raw(req, R"(,"protection_active":)") &&
+        write_bool(req, outputs.protection_active) && write_raw(req, R"(,"running_confirmed":)") &&
+        write_bool(req, outputs.running_confirmed) && write_raw(req, R"(,"stop_confirmed":)") &&
+        write_bool(req, outputs.stop_confirmed) && write_raw(req, R"(,"stop_confirmation_pending":)") &&
+        write_bool(req, outputs.stop_confirmation_pending) && write_raw(req, R"(,"stop_unconfirmed":)") &&
+        write_bool(req, outputs.stop_unconfirmed) && write_raw(req, R"(,"stop_unconfirmed_due_to_link_loss":)") &&
+        write_bool(req, outputs.stop_unconfirmed_due_to_link_loss) && write_raw(req, R"(,"fallback_cause_present":)") &&
+        write_bool(req, outputs.fallback_cause_present) && write_raw(req, R"(,"fallback_eligible":)") &&
+        write_bool(req, outputs.fallback_eligible) && write_raw(req, R"(,"primary_incident_id":)") &&
+        write_uint(req, outputs.primary_incident_id) && write_raw(req, R"(,"pump_context":{"request_on":)") &&
+        write_optional_bool(req, snapshot.units[slot].pump_context.request_valid,
+                            snapshot.units[slot].pump_context.request_on) &&
+        write_raw(req, R"(,"relay_on":)") &&
+        write_optional_bool(req, snapshot.units[slot].pump_context.relay_valid,
+                            snapshot.units[slot].pump_context.relay_on) &&
+        write_raw(req, R"(,"flow_switch_on":)") &&
+        write_optional_bool(req, snapshot.units[slot].pump_context.flow_switch_valid,
+                            snapshot.units[slot].pump_context.flow_switch_on) &&
+        write_raw(req, R"(,"ipwm_feedback_raw":)") &&
+        write_optional_uint(req, snapshot.units[slot].pump_context.feedback_valid,
+                            snapshot.units[slot].pump_context.feedback_raw) &&
+        write_raw(req, R"(,"ipwm_status":)") &&
+        write_json_string(req, oq_pump_ipwm::status_name(snapshot.units[slot].pump_context.status)) &&
+        write_raw(req, R"(,"pump_power_w":)") &&
+        write_optional_float(req, snapshot.units[slot].pump_context.power_valid,
+                             snapshot.units[slot].pump_context.power_w) &&
+        write_raw(req, R"(,"flow_lph":)") &&
+        write_optional_float(req, snapshot.units[slot].pump_context.flow_valid,
+                             snapshot.units[slot].pump_context.flow_lph) &&
+        write_raw(req, R"(},"last_action_result":)");
     if (ok && snapshot.units[slot].last_action_seq == 0U) {
       ok = write_raw(req, "null");
     } else if (ok) {

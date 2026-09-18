@@ -177,6 +177,77 @@ void test_fallback_evaluation_and_recovering_handover() {
   assert(!evaluation.decision.cm4_allowed);
 }
 
+void test_degraded_link_loss_cm4_evaluation() {
+  using oq_hp_fallback::FallbackBlockReason;
+  using oq_hp_supervisory::evaluate_fallback;
+
+  // Single HP, confirmed link loss, stop confirmation still pending: the
+  // fallback is requested but CM4 stays blocked on the HP output state.
+  auto inputs = eligible_fallback_evaluation_inputs();
+  inputs.all_hp_outputs_safe = false;
+  auto evaluation = evaluate_fallback(inputs);
+  assert(evaluation.fallback_requested);
+  assert(!evaluation.decision.cm4_allowed);
+  assert(evaluation.decision.block_reason == FallbackBlockReason::HP_OUTPUT_STATE_UNSAFE);
+
+  // After the stop-confirmation timeout the degraded output gate clears and
+  // CM4 is allowed while every other guard stays green.
+  inputs.all_hp_outputs_safe = true;
+  evaluation = evaluate_fallback(inputs);
+  assert(evaluation.fallback_requested);
+  assert(evaluation.decision.cm4_allowed);
+
+  // RECOVERING after a confirmed loss keeps CM4: raw availability is still
+  // incomplete, but the degraded gate completes it.
+  inputs.raw_availability_complete = false;
+  evaluation = evaluate_fallback(inputs);
+  assert(evaluation.availability_complete);
+  assert(evaluation.no_hp_available_confirmed);
+  assert(evaluation.decision.cm4_allowed);
+
+  // Every independent CM4 guard still blocks with a clear degraded gate.
+  const auto degraded = inputs;
+  const auto assert_still_blocked = [&](const oq_hp_supervisory::FallbackEvaluationInputs& candidate,
+                                        FallbackBlockReason expected) {
+    const auto blocked = evaluate_fallback(candidate);
+    assert(!blocked.decision.cm4_allowed);
+    assert(blocked.decision.block_reason == expected);
+  };
+  auto candidate = degraded;
+  candidate.flow_valid = false;
+  assert_still_blocked(candidate, FallbackBlockReason::FLOW_UNAVAILABLE);
+  candidate = degraded;
+  candidate.flow_sufficient = false;
+  assert_still_blocked(candidate, FallbackBlockReason::FLOW_INSUFFICIENT);
+  candidate = degraded;
+  candidate.supply_temperature_valid = false;
+  assert_still_blocked(candidate, FallbackBlockReason::SUPPLY_TEMPERATURE_UNAVAILABLE);
+  candidate = degraded;
+  candidate.boiler_guards_clear = false;
+  assert_still_blocked(candidate, FallbackBlockReason::BOILER_GUARD_BLOCKED);
+  candidate = degraded;
+  candidate.cooling_active = true;
+  assert_still_blocked(candidate, FallbackBlockReason::COOLING_ACTIVE);
+  candidate = degraded;
+  candidate.frost_active = true;
+  assert_still_blocked(candidate, FallbackBlockReason::FROST_ACTIVE);
+  candidate = degraded;
+  candidate.commissioning_active = true;
+  assert_still_blocked(candidate, FallbackBlockReason::COMMISSIONING_ACTIVE);
+  candidate = degraded;
+  candidate.override_active = true;
+  assert_still_blocked(candidate, FallbackBlockReason::OVERRIDE_ACTIVE);
+  candidate = degraded;
+  candidate.heating_demand = false;
+  assert_still_blocked(candidate, FallbackBlockReason::NO_HEATING_DEMAND);
+  candidate = degraded;
+  candidate.fallback_enabled = false;
+  assert_still_blocked(candidate, FallbackBlockReason::FALLBACK_DISABLED);
+  candidate = degraded;
+  candidate.available_hp_count = 1;
+  assert_still_blocked(candidate, FallbackBlockReason::HP_AVAILABLE);
+}
+
 void test_heating_mode_decisions() {
   using oq_hp_supervisory::decide_heating_mode;
   using oq_hp_supervisory::HeatingModeInputs;
@@ -330,6 +401,7 @@ int main() {
   assert(recovered_heating_mode(3, false, true, true) == 1);
 
   test_fallback_evaluation_and_recovering_handover();
+  test_degraded_link_loss_cm4_evaluation();
   test_heating_mode_decisions();
   test_control_mode_log_classification();
   return 0;

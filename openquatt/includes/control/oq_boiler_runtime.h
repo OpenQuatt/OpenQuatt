@@ -97,7 +97,11 @@ class Runtime {
     const bool flow_valid = !isnan(flow_lph);
     const bool flow_sufficient = flow_valid && flow_lph >= config.minimum_flow_lph && !id(oq_lowflow_fault_active);
     const bool target_valid = !isnan(target_c) && target_c > 0.0f && target_c <= 90.0f && flow_sufficient;
-    const bool fallback_outputs_safe = id(oq_incident_manager).all_fallback_outputs_safe();
+    // Same degraded gate as the supervisor: confirmed stops pass, and
+    // STOP_UNCONFIRMED after a confirmed link-loss timeout passes. Both call
+    // sites must stay in sync so CM4 selection and the physical boiler output
+    // cannot disagree.
+    const bool fallback_outputs_safe = id(oq_incident_manager).all_fallback_output_gates_clear();
     const auto thermal = start_thermal_decision_(command, opentherm_selected, supply_c, target_c, now_ms, config);
     publish_start_thermal_decision_(thermal, command, supply_c, target_c);
 

@@ -59,11 +59,22 @@ OpenQuatt gaat pas naar `CM4` wanneer:
 
 - geen warmtepomp meer veilig beschikbaar is;
 - de fout of verbindingsuitval voldoende lang en meermaals is bevestigd;
-- een eventueel draaiende compressor aantoonbaar is gestopt;
+- een bereikbare warmtepomp aantoonbaar is gestopt; bij bevestigd langdurig
+  verbindingsverlies geldt na de stopwachttijd de hieronder beschreven
+  fallbackroute;
 - de normale flow-, temperatuur- en ketelbeveiligingen akkoord zijn;
 - foutfallback door de gebruiker is ingeschakeld.
 
 Die laatste opt-in staat los van de schakelaar voor normale `CM3`-ketelondersteuning.
+
+Is de warmtepomp langdurig volledig onbereikbaar, dan kan de stop niet meer
+via metingen worden bevestigd. Als die stoploosheid pas door dat
+verbindingsverlies zelf is ontstaan, mag de ketel na de veilige stopwachttijd
+alsnog als fallback draaien, mits alle overige beveiligingen hierboven
+akkoord zijn. Zodra verse metingen weer een draaiende compressor tonen,
+vervalt die toestemming direct. Een bereikbare warmtepomp die niet
+aantoonbaar stopt, blijft de ketelfallback blokkeren — ook als de verbinding
+daarna wegvalt.
 
 Een kort wegvallend communicatiebericht leidt daarom niet direct tot stoppen of
 ketelfallback. Bij een Duo-installatie blijft een gezonde warmtepomp eerst

@@ -113,6 +113,44 @@ inline bool all_hp_outputs_safe_for_fallback(const oq_incidents::DerivedOutputs*
   return true;
 }
 
+inline bool hp_fallback_output_gate_clear(const oq_incidents::DerivedOutputs& output) {
+  // An explicit hard boiler veto always dominates, including the degraded
+  // link-loss route below.
+  if (oq_incidents::has_effect(output.active_effects, oq_incidents::IncidentEffect::BLOCK_BOILER)) {
+    return false;
+  }
+
+  // Normal route: a freshly confirmed stop with no pending unconfirmed state.
+  if (output.stop_confirmed && !output.stop_unconfirmed) {
+    return true;
+  }
+
+  // Degraded route for confirmed link loss only: the current STOP_UNCONFIRMED
+  // was itself produced by this link-loss revalidation (never a stop failure
+  // predating the loss), the regular stop-confirmation timeout has elapsed,
+  // telemetry cannot confirm the stop because the HP is unreachable, and
+  // link loss itself is a valid fallback cause. Fresh proof of a running
+  // compressor clears the engine provenance and closes this route again.
+  // All other supervisory guards (flow, temperature, boiler, topology)
+  // still apply.
+  const bool degraded_link_loss = output.stop_unconfirmed_due_to_link_loss && !output.available_for_start &&
+                                  output.fallback_cause_present && output.stop_unconfirmed &&
+                                  !output.stop_confirmation_pending;
+  return degraded_link_loss;
+}
+
+inline bool all_hp_fallback_output_gates_clear(const oq_incidents::DerivedOutputs* outputs, size_t configured_count) {
+  if (outputs == nullptr || configured_count == 0U) {
+    return false;
+  }
+  for (size_t index = 0U; index < configured_count; ++index) {
+    if (!hp_fallback_output_gate_clear(outputs[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 inline oq_incidents::DerivedOutputs incident_storage_failure_outputs() {
   oq_incidents::DerivedOutputs outputs{};
   outputs.protection_state = oq_incidents::ProtectionState::FAULT_ACTIVE;

@@ -205,6 +205,16 @@ struct DerivedOutputs {
   bool stop_unconfirmed = false;
   bool start_mode_ack_timed_out = false;
   bool start_timed_out = false;
+  // True from confirmed LOST until link-loss recovery has fully completed
+  // (so also during RECOVERING after a real loss). Provenance for the
+  // degraded CM4 fallback gate; never a claim that the HP has stopped.
+  bool confirmed_link_loss_active = false;
+  // True only when the current STOP_UNCONFIRMED was itself produced by this
+  // link-loss stop revalidation: loss while not already unconfirmed, stop
+  // re-armed, regular timeout elapsed without fresh confirmation, and no
+  // fresh proof of a running compressor since. A stop failure predating the
+  // loss never sets this. Consumed by the degraded CM4 fallback gate.
+  bool stop_unconfirmed_due_to_link_loss = false;
   // These are HP-local facts only. CM4 still requires supervisory heating,
   // flow, temperature, boiler and topology guards.
   bool fallback_cause_present = false;

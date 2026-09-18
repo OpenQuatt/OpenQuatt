@@ -136,6 +136,11 @@ class HpIncidentEngine {
 
     const bool compressor_active = observation.compressor_frequency_hz > tuning_.compressor_running_threshold_hz;
     if (compressor_active) {
+      // Fresh telemetry proving a running compressor ends any degraded
+      // link-loss permission immediately, even while the link still
+      // recovers. A later fresh stop confirmation may still use the normal
+      // route.
+      link_loss_revalidation_armed_ = false;
       stopped_read_streak_ = 0U;
       if (stop_requested_) {
         run_state_ = run_state_ == RunState::STOP_UNCONFIRMED ? RunState::STOP_UNCONFIRMED : RunState::STOPPING;
@@ -193,6 +198,7 @@ class HpIncidentEngine {
       stop_confirmation_pending_ = false;
       stopped_read_streak_ = 0U;
       wrong_mode_compressor_active_ = false;
+      link_loss_revalidation_armed_ = false;
     } else {
       // A real stop-confirmation timeout remains active until the complete
       // two-read confirmation succeeds. A single stopped observation must not
@@ -408,6 +414,7 @@ class HpIncidentEngine {
     if (link_state_ == LinkState::SUSPECT) {
       if (ever_healthy_) {
         link_state_ = LinkState::HEALTHY;
+        link_loss_revalidation_armed_ = false;
         return;
       }
       link_state_ = LinkState::RECOVERING;
@@ -429,6 +436,7 @@ class HpIncidentEngine {
       link_state_ = LinkState::HEALTHY;
       link_recovery_rounds_ = 0U;
       recovering_from_loss_ = false;
+      link_loss_revalidation_armed_ = false;
       ever_healthy_ = true;
     }
   }
@@ -458,12 +466,18 @@ class HpIncidentEngine {
   }
 
   void mark_link_lost() {
+    // A stop failure that predates this loss must never be laundered into a
+    // degraded fallback permission. Only a loss that gets its own stop
+    // revalidation — or continues an interrupted recovery episode — arms it.
+    const bool continues_loss_episode = recovering_from_loss_ && link_loss_revalidation_armed_;
+    const bool fresh_revalidation = run_state_ != RunState::STOP_UNCONFIRMED;
     link_state_ = LinkState::LOST;
     link_recovery_rounds_ = 0U;
     recovering_from_loss_ = true;
     // A stop observation made before link loss is stale by definition. Always
     // re-arm the command so the manager records new feedback baselines.
     invalidate_stop_confirmation_();
+    link_loss_revalidation_armed_ = fresh_revalidation || continues_loss_episode;
   }
 
   void invalidate_stop_confirmation_() {
@@ -638,6 +652,9 @@ class HpIncidentEngine {
     }
 
     const bool link_recovery_after_loss = link_state_ == LinkState::RECOVERING && recovering_from_loss_;
+    outputs_.confirmed_link_loss_active = link_state_ == LinkState::LOST || link_recovery_after_loss;
+    outputs_.stop_unconfirmed_due_to_link_loss = link_loss_revalidation_armed_ && outputs_.confirmed_link_loss_active &&
+                                                 outputs_.stop_unconfirmed && !outputs_.stop_confirmation_pending;
     outputs_.must_stop = hard_fault || start_timed_out_ || outputs_.stop_confirmation_pending ||
                          outputs_.stop_unconfirmed || link_state_ == LinkState::LOST || link_recovery_after_loss;
     outputs_.available_for_start = link_state_ == LinkState::HEALTHY &&
@@ -678,6 +695,11 @@ class HpIncidentEngine {
   uint8_t link_recovery_rounds_ = 0U;
   bool recovering_from_loss_ = false;
   bool ever_healthy_ = false;
+  // True only while a stop revalidation armed by a confirmed link loss (and
+  // not by a predating stop failure) is still unresolved. Cleared by a fresh
+  // stop confirmation, fresh proof of a running compressor, or completed
+  // link recovery.
+  bool link_loss_revalidation_armed_ = false;
 
   bool hard_fault_seen_ = false;
   bool fault_recovery_active_ = false;

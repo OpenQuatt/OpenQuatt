@@ -430,6 +430,7 @@ function normalizeHeatPump(raw) {
     mustStop,
     faultActive: normalizeBoolean(raw.fault_active),
     stopConfirmationPending: normalizeBoolean(raw.stop_confirmation_pending),
+    stopUnconfirmedDueToLinkLoss: normalizeBoolean(raw.stop_unconfirmed_due_to_link_loss),
     pumpContext: normalizePumpContext(raw.pump_context),
     lastActionResult,
     actionResults,
@@ -719,6 +720,35 @@ const incidentVisible = (incident) => incident.active
   || incident.recovering
   || (incident.lifecycle === "cleared" && incident.latched && !incident.acknowledged);
 
+// Presentation-side grouping for issue #706. Shared by the summary problem
+// list and the detail cards so control truth and presentation truth stay
+// identical: group only when the firmware reports the stop as unconfirmed
+// *due to* this link loss, while the outage is live and the stop entry
+// itself is still open. A stop failure predating the loss, or an already
+// recovered stop entry, keeps its standalone entry.
+const LINK_LOSS_GROUP = Object.freeze({
+  linkLossId: "1001",
+  stopUnconfirmedId: "1003",
+  copy: "De warmtepomp is niet bereikbaar. De stopstatus kon daardoor niet opnieuw worden bevestigd. Na de veilige wachttijd gebruikt OpenQuatt, indien nodig en toegestaan, de ketel als fallback.",
+});
+
+export function getLinkLossConsequenceForHeatPump(heatPump) {
+  if (!isObject(heatPump)) return null;
+  if (heatPump.linkState !== "lost" && heatPump.linkState !== "recovering") return null;
+  if (heatPump.stopUnconfirmedDueToLinkLoss !== true) return null;
+  const visible = (heatPump.incidents || []).filter(
+    (incident) => incident.category !== "status" && incidentVisible(incident),
+  );
+  const linkLoss = visible.find(
+    (incident) => incident.id === LINK_LOSS_GROUP.linkLossId && (incident.active || incident.recovering),
+  ) || null;
+  const consequence = visible.find(
+    (incident) => incident.id === LINK_LOSS_GROUP.stopUnconfirmedId && (incident.active || incident.recovering),
+  ) || null;
+  if (!linkLoss || !consequence) return null;
+  return { linkLoss, consequence, copy: LINK_LOSS_GROUP.copy };
+}
+
 export function summarizeIncidentMonitoring(input) {
   const snapshot = isObject(input)
     && typeof input.valid === "boolean"
@@ -755,12 +785,42 @@ export function summarizeIncidentMonitoring(input) {
   ), "normal");
   const severity = maxSeverity(incidentSeverity, actionPresentation.severity);
   const actionAttention = actionPresentation.severity !== "normal";
-  const problems = visible.map((incident) => ({
-    key: `incident:${incident.subject}:${incident.id}`,
-    label: `${incident.subject === "hp1" ? "Warmtepomp 1" : "Warmtepomp 2"}: ${getIncidentDisplayLabel(incident)}`,
-    severity: recoveredIncidents.includes(incident) ? "attention" : incident.severity,
-      incidentId: incident.id,
-  }));
+  const groupedBySubject = new Map();
+  for (const heatPump of snapshot.heatPumps) {
+    const pair = getLinkLossConsequenceForHeatPump(heatPump);
+    if (pair) groupedBySubject.set(heatPump.subject, pair);
+  }
+  const problems = visible
+    .filter((incident) => {
+      const pair = groupedBySubject.get(incident.subject);
+      return !pair || incident.id !== pair.consequence.id;
+    })
+    .map((incident) => {
+      const entry = {
+        key: `incident:${incident.subject}:${incident.id}`,
+        label: `${incident.subject === "hp1" ? "Warmtepomp 1" : "Warmtepomp 2"}: ${getIncidentDisplayLabel(incident)}`,
+        severity: recoveredIncidents.includes(incident) ? "attention" : incident.severity,
+        incidentId: incident.id,
+      };
+      const pair = groupedBySubject.get(incident.subject);
+      if (pair && incident.id === pair.linkLoss.id) {
+        entry.copy = pair.copy;
+        entry.groupedIncidentIds = [pair.linkLoss.id, pair.consequence.id];
+      }
+      return entry;
+    });
+  // Grouped consequences stay part of the firmware-truth counts above, but
+  // the user-facing copy counts what the problem list actually shows. Every
+  // hidden consequence pairs with a still-displayed live outage, so a shown
+  // count can never drop to zero inside a taken branch.
+  let hiddenActiveIncidentCount = 0;
+  let hiddenRecoveredIncidentCount = 0;
+  for (const pair of groupedBySubject.values()) {
+    if (pair.consequence.active || pair.consequence.recovering) hiddenActiveIncidentCount += 1;
+    else hiddenRecoveredIncidentCount += 1;
+  }
+  const shownActiveIncidentCount = activeIncidents.length - hiddenActiveIncidentCount;
+  const shownRecoveredIncidentCount = recoveredIncidents.length - hiddenRecoveredIncidentCount;
   if (actionAttention) {
     problems.unshift({
       key: `system-action:${action}`,
@@ -777,13 +837,13 @@ export function summarizeIncidentMonitoring(input) {
     copy = actionPresentation.copy;
   } else if (activeIncidents.some((incident) => incident.severity === "fault")) {
     title = "Storing actief";
-    copy = `${activeIncidents.length} actief incident${activeIncidents.length === 1 ? "" : "en"} zichtbaar.`;
+    copy = `${shownActiveIncidentCount} actief incident${shownActiveIncidentCount === 1 ? "" : "en"} zichtbaar.`;
   } else if (activeIncidents.length) {
     title = "Aandacht nodig";
-    copy = `${activeIncidents.length} actief aandachtspunt${activeIncidents.length === 1 ? "" : "en"} zichtbaar.`;
+    copy = `${shownActiveIncidentCount} actief aandachtspunt${shownActiveIncidentCount === 1 ? "" : "en"} zichtbaar.`;
   } else if (recoveredIncidents.length) {
     title = "Eerdere melding nog niet bevestigd";
-    copy = `${recoveredIncidents.length} hersteld incident${recoveredIncidents.length === 1 ? "" : "en"} blijft zichtbaar tot bevestiging.`;
+    copy = `${shownRecoveredIncidentCount} hersteld incident${shownRecoveredIncidentCount === 1 ? "" : "en"} blijft zichtbaar tot bevestiging.`;
   }
   if (action === "fallback_blocked") {
     const reason = snapshot.system.fallbackBlockReason;

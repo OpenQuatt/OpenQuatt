@@ -3,7 +3,7 @@ import { HP_GENERATION_IMAGE_V1, HP_GENERATION_IMAGE_V2 } from "../core/embedded
 import { getInputDraftValue } from "../core/control-drafts.js";
 import { isCurveMode } from "../core/domain-helpers.js";
 import { getEntityValue, getNumberMeta } from "../core/entity-store.js";
-import { formatIncidentOccurrenceTime, getFallbackBlockReasonLabel, getHeatPumpStatusPresentation, getIncidentActionPresentation, getIncidentCategoryLabel, getIncidentDisplayLabel, getIncidentEffectLabels, getIncidentLifecyclePresentation, getIncidentRecoveryLabel, getIncidentTechnicalCode, getIncidentUserActionLabel, getPumpIncidentContextRows, getSystemActionPresentation } from "../core/incident-monitoring.js";
+import { formatIncidentOccurrenceTime, getFallbackBlockReasonLabel, getHeatPumpStatusPresentation, getIncidentActionPresentation, getIncidentCategoryLabel, getIncidentDisplayLabel, getIncidentEffectLabels, getIncidentLifecyclePresentation, getIncidentRecoveryLabel, getIncidentTechnicalCode, getIncidentUserActionLabel, getLinkLossConsequenceForHeatPump, getPumpIncidentContextRows, getSystemActionPresentation } from "../core/incident-monitoring.js";
 import { getInstallationMonitoringFailureText, getInstallationMonitoringModel, isInstallationMonitoringBinaryActive, isInstallationMonitoringFailureActive, isInstallationMonitoringIntegrationEnabled, syncInstallationMonitoringDetailsState } from "../core/installation-monitoring.js";
 import { renderNumberInputControl } from "../core/number-controls.js";
 import { state } from "../core/state.js";
@@ -85,7 +85,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     ));
   }
 
-  export function renderInstallationMonitoringHpIncident(incident, pumpContext = null) {
+  export function renderInstallationMonitoringHpIncident(incident, pumpContext = null, consequenceNote = "") {
     const lifecycle = getIncidentLifecyclePresentation(incident);
     const effects = getIncidentEffectLabels(incident.effects);
     const firstSeen = formatIncidentOccurrenceTime(incident.firstSeenS, incident.firstSeenMs);
@@ -95,6 +95,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
       technicalCode ? ["ODU-code", technicalCode] : null,
       incident.technicalDescription ? ["ODU-omschrijving", incident.technicalDescription] : null,
       effects.length ? ["Effect", effects.join(", ")] : null,
+      consequenceNote ? ["Gevolg", consequenceNote] : null,
       firstSeen ? ["Eerste optreden", firstSeen] : null,
       lastSeen ? ["Laatste optreden", lastSeen] : null,
       incident.recoveryCondition ? ["Herstel", getIncidentRecoveryLabel(incident.recoveryCondition)] : null,
@@ -128,6 +129,12 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
   function renderInstallationMonitoringHeatPumpUnit(heatPump) {
     const presentation = getHeatPumpStatusPresentation(heatPump);
     const incidents = getVisibleHpIncidents(heatPump);
+    // Issue #706: a stop-unconfirmed caused by a live link loss is rendered
+    // nested inside the outage card, never as a second standalone card.
+    const linkLossConsequence = getLinkLossConsequenceForHeatPump(heatPump);
+    const shownIncidents = linkLossConsequence
+      ? incidents.filter((incident) => incident.id !== linkLossConsequence.consequence.id)
+      : incidents;
     const retryStartRequired = incidents.some((incident) => (
       incident.id === "1002" && incident.active
     ));
@@ -155,9 +162,12 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
             presentation.tone,
           )}
         </div>
-        ${incidents.map((incident) => renderInstallationMonitoringHpIncident(
+        ${shownIncidents.map((incident) => renderInstallationMonitoringHpIncident(
           incident,
           heatPump.pumpContext,
+          linkLossConsequence && incident.id === linkLossConsequence.linkLoss.id
+            ? linkLossConsequence.copy
+            : "",
         )).join("")}
         ${retryStartRequired ? `
           <div class="oq-settings-monitoring-incident">
@@ -533,7 +543,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           </summary>
         ${monitoring.active ? `
           <div class="oq-settings-monitoring-active-list">
-            ${monitoring.problems.map((problem) => `<span>${escapeHtml(problem.label)}</span>`).join("")}
+            ${monitoring.problems.map((problem) => `<span>${escapeHtml(problem.label)}${problem.copy ? ` — ${escapeHtml(problem.copy)}` : ""}</span>`).join("")}
           </div>
         ` : ""}
         <div class="oq-settings-monitoring-grid">

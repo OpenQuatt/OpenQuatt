@@ -1,5 +1,7 @@
 #include "components/openquatt_decision_log/OpenQuattUrgentFlushPolicy.h"
 #include "components/openquatt_incident_manager/OpenQuattIncidentPolicy.h"
+#include "openquatt/includes/boiler/oq_boiler_logic.h"
+#include "openquatt/includes/control/oq_hp_supervisory_logic.h"
 #include "openquatt/includes/incidents/oq_manual_reset_latch_policy.h"
 
 #include <array>
@@ -9,11 +11,13 @@
 #include <limits>
 
 using esphome::openquatt_decision_log::UrgentFlushPolicy;
+using esphome::openquatt_incident_manager::all_hp_fallback_output_gates_clear;
 using esphome::openquatt_incident_manager::all_hp_outputs_safe_for_fallback;
 using esphome::openquatt_incident_manager::all_unavailable_hps_allow_fallback;
 using esphome::openquatt_incident_manager::apply_persistence_initialization_gate;
 using esphome::openquatt_incident_manager::apply_persistence_safety_gate;
 using esphome::openquatt_incident_manager::availability_baseline_ready;
+using esphome::openquatt_incident_manager::hp_fallback_output_gate_clear;
 using esphome::openquatt_incident_manager::HpThermalCommand;
 using esphome::openquatt_incident_manager::incident_storage_failure_outputs;
 using esphome::openquatt_incident_manager::link_round_timeout_elapsed;
@@ -202,6 +206,163 @@ void test_fallback_output_confirmation() {
 
   outputs[1].stop_unconfirmed = true;
   assert(!all_hp_outputs_safe_for_fallback(outputs.data(), outputs.size()));
+}
+
+void test_fallback_output_gate_normal_route() {
+  oq_incidents::DerivedOutputs output{};
+  output.stop_confirmed = true;
+  assert(hp_fallback_output_gate_clear(output));
+
+  // A reachable HP with an unconfirmed stop stays blocked.
+  output.stop_unconfirmed = true;
+  assert(!hp_fallback_output_gate_clear(output));
+
+  oq_incidents::DerivedOutputs healthy_pending{};
+  healthy_pending.link_state = oq_incidents::LinkState::HEALTHY;
+  healthy_pending.stop_confirmation_pending = true;
+  assert(!hp_fallback_output_gate_clear(healthy_pending));
+
+  oq_incidents::DerivedOutputs empty{};
+  assert(!hp_fallback_output_gate_clear(empty));
+}
+
+void test_fallback_output_gate_degraded_link_loss_route() {
+  // LOST while the retried stop is still pending: the regular confirmation
+  // timeout has not elapsed yet, so the gate stays closed.
+  oq_incidents::DerivedOutputs output{};
+  output.link_state = oq_incidents::LinkState::LOST;
+  output.confirmed_link_loss_active = true;
+  output.fallback_cause_present = true;
+  output.stop_confirmation_pending = true;
+  assert(!hp_fallback_output_gate_clear(output));
+
+  // LOST after the stop-confirmation timeout, with the unconfirmed stop
+  // caused by this link-loss revalidation: the degraded gate clears.
+  output.stop_confirmation_pending = false;
+  output.stop_unconfirmed = true;
+  output.stop_unconfirmed_due_to_link_loss = true;
+  assert(hp_fallback_output_gate_clear(output));
+
+  // The strict output check stays fail-closed for the very same state: the
+  // engine itself is deliberately not relaxed.
+  const std::array<oq_incidents::DerivedOutputs, 1U> strict{output};
+  assert(!all_hp_outputs_safe_for_fallback(strict.data(), strict.size()));
+
+  // A stop failure predating the loss (naive inputs identical, but no
+  // causal provenance) stays blocked.
+  output.stop_unconfirmed_due_to_link_loss = false;
+  assert(!hp_fallback_output_gate_clear(output));
+  output.stop_unconfirmed_due_to_link_loss = true;
+
+  // RECOVERING after a confirmed loss keeps the gate clear until recovery
+  // completes, so CM4 does not flap on the first successful polls.
+  output.link_state = oq_incidents::LinkState::RECOVERING;
+  assert(hp_fallback_output_gate_clear(output));
+
+  // Fresh proof of a running compressor during recovery ends the
+  // permission, even though the stop stays formally unconfirmed.
+  output.stop_unconfirmed_due_to_link_loss = false;
+  assert(!hp_fallback_output_gate_clear(output));
+  output.stop_unconfirmed_due_to_link_loss = true;
+
+  // An explicit hard boiler veto dominates the degraded route.
+  output.active_effects = oq_incidents::effect_mask(oq_incidents::IncidentEffect::BLOCK_BOILER);
+  assert(!hp_fallback_output_gate_clear(output));
+  output.active_effects = oq_incidents::effect_mask(oq_incidents::IncidentEffect::NONE);
+  assert(hp_fallback_output_gate_clear(output));
+
+  // Storage/persistence failure stays blocked.
+  const oq_incidents::DerivedOutputs failed = incident_storage_failure_outputs();
+  assert(!hp_fallback_output_gate_clear(failed));
+  const std::array<oq_incidents::DerivedOutputs, 1U> failed_single{failed};
+  assert(!all_hp_fallback_output_gates_clear(failed_single.data(), failed_single.size()));
+  assert(!all_hp_fallback_output_gates_clear(nullptr, failed_single.size()));
+  assert(!all_hp_fallback_output_gates_clear(failed_single.data(), 0U));
+}
+
+void test_fallback_output_gate_duo_coverage() {
+  // One HP degraded after link loss while the other is still available:
+  // no full CM4 gate.
+  std::array<oq_incidents::DerivedOutputs, 2U> outputs{};
+  outputs[0].link_state = oq_incidents::LinkState::LOST;
+  outputs[0].confirmed_link_loss_active = true;
+  outputs[0].fallback_cause_present = true;
+  outputs[0].stop_unconfirmed = true;
+  outputs[0].stop_unconfirmed_due_to_link_loss = true;
+  outputs[1].available_for_start = true;
+  assert(hp_fallback_output_gate_clear(outputs[0]));
+  assert(!hp_fallback_output_gate_clear(outputs[1]));
+  assert(!all_hp_fallback_output_gates_clear(outputs.data(), outputs.size()));
+
+  // Both HPs timed out after link loss: the gate clears.
+  outputs[1] = {};
+  outputs[1].link_state = oq_incidents::LinkState::LOST;
+  outputs[1].confirmed_link_loss_active = true;
+  outputs[1].fallback_cause_present = true;
+  outputs[1].stop_unconfirmed = true;
+  outputs[1].stop_unconfirmed_due_to_link_loss = true;
+  assert(all_hp_fallback_output_gates_clear(outputs.data(), outputs.size()));
+
+  // Lost/timed-out HP plus a faulted but confirmed-stopped HP: clears.
+  outputs[1] = {};
+  outputs[1].stop_confirmed = true;
+  outputs[1].fallback_cause_present = true;
+  assert(all_hp_fallback_output_gates_clear(outputs.data(), outputs.size()));
+}
+
+void test_degraded_gate_drives_supervisor_and_boiler_together() {
+  // The same degraded gate value that lets the supervisor select CM4 must
+  // also let the boiler output controller energize the fallback source.
+  // Both runtime call sites read it from all_fallback_output_gates_clear(),
+  // so they cannot disagree.
+  oq_incidents::DerivedOutputs degraded{};
+  degraded.link_state = oq_incidents::LinkState::LOST;
+  degraded.confirmed_link_loss_active = true;
+  degraded.fallback_cause_present = true;
+  degraded.stop_unconfirmed = true;
+  degraded.stop_unconfirmed_due_to_link_loss = true;
+  const std::array<oq_incidents::DerivedOutputs, 1U> single{degraded};
+  const bool gate = all_hp_fallback_output_gates_clear(single.data(), single.size());
+  assert(gate);
+  assert(!all_hp_outputs_safe_for_fallback(single.data(), single.size()));
+
+  oq_hp_supervisory::FallbackEvaluationInputs fallback_inputs;
+  fallback_inputs.heating_demand = true;
+  fallback_inputs.fallback_enabled = true;
+  fallback_inputs.available_hp_count = 0;
+  fallback_inputs.raw_availability_complete = true;
+  fallback_inputs.every_unavailable_hp_has_fallback_cause = true;
+  fallback_inputs.all_hp_outputs_safe = gate;
+  fallback_inputs.flow_valid = true;
+  fallback_inputs.flow_sufficient = true;
+  fallback_inputs.supply_temperature_valid = true;
+  fallback_inputs.boiler_guards_clear = true;
+  const auto evaluation = oq_hp_supervisory::evaluate_fallback(fallback_inputs);
+  assert(evaluation.fallback_requested);
+  assert(evaluation.decision.cm4_allowed);
+
+  oq_boiler::BoilerCommand command{};
+  command.valid = true;
+  command.demand_present = true;
+  command.heat_request = true;
+  command.source = oq_boiler::COMMAND_SOURCE_FALLBACK;
+  command.updated_at_ms = 1000;
+  oq_boiler::ControllerInput boiler_input{};
+  boiler_input.source_present = true;
+  boiler_input.fallback_enabled = true;
+  boiler_input.supply_temperature_valid = true;
+  boiler_input.flow_valid = true;
+  boiler_input.flow_sufficient = true;
+  boiler_input.fallback_outputs_safe = gate;
+  boiler_input.transport_available = true;
+  boiler_input.transport_settled = true;
+  boiler_input.command_rearmed = true;
+  boiler_input.boiler_start_thermal_state = oq_boiler::BOILER_START_THERMAL_SAFE;
+  boiler_input.now_ms = 1500;
+  boiler_input.command_max_age_ms = 15000;
+  const auto boiler_decision = oq_boiler::evaluate(command, boiler_input);
+  assert(boiler_decision.output_active);
+  assert(boiler_decision.block_reason == oq_boiler::BLOCK_NONE);
 }
 
 void test_persistence_overlay_is_fail_closed_and_causally_consistent() {
@@ -456,6 +617,10 @@ int main() {
   test_duo_fallback_coverage_fails_closed();
   test_incident_storage_failure_forces_safe_outputs();
   test_fallback_output_confirmation();
+  test_fallback_output_gate_normal_route();
+  test_fallback_output_gate_degraded_link_loss_route();
+  test_fallback_output_gate_duo_coverage();
+  test_degraded_gate_drives_supervisor_and_boiler_together();
   test_persistence_overlay_is_fail_closed_and_causally_consistent();
   test_persistence_failure_vetoes_real_fault_fallback();
   test_first_urgent_flush_is_not_delayed_by_boot_interval();

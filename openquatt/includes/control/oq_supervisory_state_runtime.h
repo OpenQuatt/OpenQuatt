@@ -497,7 +497,9 @@ class Runtime {
       const uint8_t available_hp_count = id(oq_incident_manager).available_hp_count();
       const bool raw_availability_complete = id(oq_incident_manager).availability_complete();
       const bool every_unavailable_hp_allows_fallback = id(oq_incident_manager).all_unavailable_hps_allow_fallback();
-      const bool fallback_outputs_safe = id(oq_incident_manager).all_fallback_outputs_safe();
+      // Degraded gate (confirmed stops + timed-out link loss). Must match
+      // the boiler output controller gate so CM4 selection cannot disagree.
+      const bool fallback_outputs_safe = id(oq_incident_manager).all_fallback_output_gates_clear();
       const bool fallback_opentherm_selected =
           id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
       const bool fallback_transport_available = oq_boiler::transport_available_for_selection(

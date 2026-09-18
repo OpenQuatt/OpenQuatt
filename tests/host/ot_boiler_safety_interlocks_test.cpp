@@ -308,6 +308,26 @@ void test_fallback_and_flow_guards() {
   assert_decision(decision, false, true, oq_boiler::BLOCK_HP_STOP_UNCONFIRMED);
 }
 
+void test_fallback_degraded_link_loss_gate() {
+  // The degraded output gate (STOP_UNCONFIRMED after a confirmed link-loss
+  // timeout) is computed by the incident policy and fed into
+  // fallback_outputs_safe by the boiler runtime. The supervisor reads the
+  // very same gate for CM4 selection, so selection and the physical boiler
+  // output cannot disagree: a clear gate energizes the fallback source,
+  // a closed gate keeps BLOCK_HP_STOP_UNCONFIRMED.
+  auto command = active_command(1000);
+  command.source = oq_boiler::COMMAND_SOURCE_FALLBACK;
+
+  auto input = safe_input(1500);
+  input.fallback_outputs_safe = true;
+  auto decision = oq_boiler::evaluate(command, input);
+  assert_decision(decision, true, false, oq_boiler::BLOCK_NONE);
+
+  input.fallback_outputs_safe = false;
+  decision = oq_boiler::evaluate(command, input);
+  assert_decision(decision, false, true, oq_boiler::BLOCK_HP_STOP_UNCONFIRMED);
+}
+
 void test_cold_start_requires_assist_permission() {
   auto command = active_command(1500);
   command.source = oq_boiler::COMMAND_SOURCE_COLD_START;
@@ -437,6 +457,7 @@ int main() {
   test_fail_safe_priority();
   test_transport_selection_guard();
   test_fallback_and_flow_guards();
+  test_fallback_degraded_link_loss_gate();
   test_cold_start_requires_assist_permission();
   test_minimum_times_and_ownership_loss();
   test_commissioning_wait_state();

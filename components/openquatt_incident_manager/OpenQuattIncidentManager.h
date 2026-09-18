@@ -91,6 +91,7 @@ class OpenQuattIncidentManager : public Component {
   bool availability_complete() const;
   bool all_unavailable_hps_allow_fallback() const;
   bool all_fallback_outputs_safe() const;
+  bool all_fallback_output_gates_clear() const;
 
   void set_fallback_status(bool requested, bool active, uint8_t block_reason);
   void set_boiler_status(uint8_t role, bool command_active, bool output_continuous);

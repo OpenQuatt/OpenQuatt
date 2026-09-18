@@ -15,6 +15,7 @@ import {
   getIncidentMonitoringUnsupportedUpdate,
   getIncidentRecoveryLabel,
   getIncidentTechnicalCode,
+  getLinkLossConsequenceForHeatPump,
   getPumpIncidentContextRows,
   normalizeIncidentMonitoringSnapshot,
   postIncidentActionRequest,
@@ -370,6 +371,212 @@ test("CM4 role without active boiler command is presented as blocked, not as del
   assert.equal(summary.snapshot.system.boilerCommandActive, false);
   assert.match(summary.copy, /Waterflow onvoldoende/);
   assert.equal(getFallbackBlockReasonLabel(12), "Waterflow onvoldoende");
+});
+
+function linkLossSnapshot(linkState, extraHeatPumps = [], stopUnconfirmedDueToLinkLoss = true) {
+  const incident = (id, key, label) => ({
+    definition: {
+      id,
+      key,
+      category: "fault",
+      severity: "fault",
+      display_label: label,
+    },
+    runtime: { lifecycle: "active", confirmed_active: true },
+  });
+  return snapshot({
+    heat_pumps: [
+      {
+        index: 1,
+        link_state: linkState,
+        stop_unconfirmed_due_to_link_loss: stopUnconfirmedDueToLinkLoss,
+        incidents: [
+          incident(1001, "hp_link_loss", "Verbinding met warmtepomp bevestigd weg"),
+          incident(1003, "hp_stop_unconfirmed", "Warmtepompstop niet bevestigd"),
+        ],
+      },
+      ...extraHeatPumps,
+    ],
+  });
+}
+
+test("link-loss stop consequence is grouped under the connection outage", () => {
+  const summary = summarizeIncidentMonitoring(linkLossSnapshot("lost"));
+
+  // Internally both incidents stay visible for counts and severity ...
+  assert.equal(summary.activeIncidentCount, 2);
+  assert.equal(summary.severity, "fault");
+  // ... but the problem list shows one grouped entry, and the user-facing
+  // copy counts what is actually displayed.
+  assert.equal(summary.problemCount, 1);
+  assert.deepEqual(
+    summary.problems.map((problem) => problem.incidentId),
+    ["1001"],
+  );
+  assert.match(summary.problems[0].label, /Verbinding met warmtepomp bevestigd weg/);
+  assert.match(summary.problems[0].copy, /stopstatus kon daardoor niet opnieuw worden bevestigd/);
+  assert.match(summary.problems[0].copy, /ketel als fallback/);
+  assert.deepEqual(summary.problems[0].groupedIncidentIds, ["1001", "1003"]);
+  assert.match(summary.copy, /1 actief incident zichtbaar/);
+});
+
+test("link-loss grouping holds during recovery and stays per heat pump", () => {
+  const recovering = summarizeIncidentMonitoring(linkLossSnapshot("recovering"));
+  assert.deepEqual(
+    recovering.problems.map((problem) => problem.incidentId),
+    ["1001"],
+  );
+  assert.deepEqual(recovering.problems[0].groupedIncidentIds, ["1001", "1003"]);
+
+  const duo = summarizeIncidentMonitoring(linkLossSnapshot("lost", [{
+    index: 2,
+    link_state: "healthy",
+    incidents: [{
+      definition: {
+        id: 1003,
+        key: "hp_stop_unconfirmed",
+        category: "fault",
+        severity: "fault",
+        display_label: "Warmtepompstop niet bevestigd",
+      },
+      runtime: { lifecycle: "active", confirmed_active: true },
+    }],
+  }]));
+  // HP1 grouped, HP2 (reachable) keeps its standalone stop entry.
+  assert.deepEqual(
+    duo.problems.map((problem) => problem.incidentId),
+    ["1001", "1003"],
+  );
+  assert.deepEqual(
+    duo.problems.map((problem) => problem.key),
+    ["incident:hp1:1001", "incident:hp2:1003"],
+  );
+  assert.equal(duo.problems[1].copy, undefined);
+  // Three firmware-active incidents, one hidden consequence: the copy
+  // reports the two displayed problems.
+  assert.equal(duo.activeIncidentCount, 3);
+  assert.match(duo.copy, /2 actief incidenten zichtbaar/);
+});
+
+test("stop unconfirmed without link loss stays a standalone problem", () => {
+  const summary = summarizeIncidentMonitoring(snapshot({
+    heat_pumps: [{
+      index: 1,
+      link_state: "healthy",
+      incidents: [{
+        definition: {
+          id: 1003,
+          key: "hp_stop_unconfirmed",
+          category: "fault",
+          severity: "fault",
+          display_label: "Warmtepompstop niet bevestigd",
+        },
+        runtime: { lifecycle: "active", confirmed_active: true },
+      }],
+    }],
+  }));
+
+  assert.equal(summary.problemCount, 1);
+  assert.equal(summary.problems[0].incidentId, "1003");
+  assert.match(summary.problems[0].label, /Warmtepompstop niet bevestigd/);
+  assert.equal(summary.problems[0].copy, undefined);
+  assert.equal(summary.problems[0].groupedIncidentIds, undefined);
+});
+
+test("link-loss consequence helper only pairs a live outage with its consequence", () => {
+  const grouped = normalizeIncidentMonitoringSnapshot(linkLossSnapshot("lost"));
+  assert.equal(grouped.heatPumps[0].stopUnconfirmedDueToLinkLoss, true);
+  const pair = getLinkLossConsequenceForHeatPump(grouped.heatPumps[0]);
+  assert.equal(pair.linkLoss.id, "1001");
+  assert.equal(pair.consequence.id, "1003");
+  assert.match(pair.copy, /stopstatus kon daardoor niet opnieuw worden bevestigd/);
+
+  // Reachable HP: never grouped.
+  const healthy = normalizeIncidentMonitoringSnapshot(linkLossSnapshot("healthy"));
+  assert.equal(getLinkLossConsequenceForHeatPump(healthy.heatPumps[0]), null);
+
+  // Stop failure predating the loss (firmware reports no causal provenance):
+  // both stay visible on their own, even with an active outage.
+  const predatingFailure = normalizeIncidentMonitoringSnapshot(linkLossSnapshot("lost", [], false));
+  assert.equal(predatingFailure.heatPumps[0].stopUnconfirmedDueToLinkLoss, false);
+  assert.equal(getLinkLossConsequenceForHeatPump(predatingFailure.heatPumps[0]), null);
+  const predatingSummary = summarizeIncidentMonitoring(linkLossSnapshot("lost", [], false));
+  assert.deepEqual(
+    predatingSummary.problems.map((problem) => problem.incidentId),
+    ["1001", "1003"],
+  );
+  assert.equal(predatingSummary.problems[0].copy, undefined);
+  assert.match(predatingSummary.copy, /2 actief incidenten zichtbaar/);
+
+  // Stop entry already recovered while the outage is live: no grouping.
+  const recoveredStop = normalizeIncidentMonitoringSnapshot(snapshot({
+    heat_pumps: [{
+      index: 1,
+      link_state: "recovering",
+      stop_unconfirmed_due_to_link_loss: true,
+      incidents: [
+        {
+          definition: { id: 1001, key: "hp_link_loss", category: "fault", severity: "fault" },
+          runtime: { lifecycle: "active", confirmed_active: true },
+        },
+        {
+          definition: { id: 1003, key: "hp_stop_unconfirmed", category: "fault", severity: "fault" },
+          runtime: { lifecycle: "cleared", latched: true, acknowledged: false },
+        },
+      ],
+    }],
+  }));
+  assert.equal(getLinkLossConsequenceForHeatPump(recoveredStop.heatPumps[0]), null);
+  const recoveredStopSummary = summarizeIncidentMonitoring(snapshot({
+    heat_pumps: [{
+      index: 1,
+      link_state: "recovering",
+      stop_unconfirmed_due_to_link_loss: true,
+      incidents: [
+        {
+          definition: { id: 1001, key: "hp_link_loss", category: "fault", severity: "fault" },
+          runtime: { lifecycle: "active", confirmed_active: true },
+        },
+        {
+          definition: { id: 1003, key: "hp_stop_unconfirmed", category: "fault", severity: "fault" },
+          runtime: { lifecycle: "cleared", latched: true, acknowledged: false },
+        },
+      ],
+    }],
+  }));
+  assert.deepEqual(
+    recoveredStopSummary.problems.map((problem) => problem.incidentId),
+    ["1001", "1003"],
+  );
+  assert.match(recoveredStopSummary.copy, /1 actief incident zichtbaar/);
+
+  // Outage already cleared (latched history) while the stop entry is still
+  // open: no grouping, both stay visible on their own.
+  const clearedOutage = normalizeIncidentMonitoringSnapshot(snapshot({
+    heat_pumps: [{
+      index: 1,
+      link_state: "recovering",
+      incidents: [
+        {
+          definition: { id: 1001, key: "hp_link_loss", category: "fault", severity: "fault" },
+          runtime: { lifecycle: "cleared", latched: true, acknowledged: false },
+        },
+        {
+          definition: { id: 1003, key: "hp_stop_unconfirmed", category: "fault", severity: "fault" },
+          runtime: { lifecycle: "active", confirmed_active: true },
+        },
+      ],
+    }],
+  }));
+  assert.equal(getLinkLossConsequenceForHeatPump(clearedOutage.heatPumps[0]), null);
+  const clearedSummary = summarizeIncidentMonitoring(clearedOutage);
+  assert.deepEqual(
+    clearedSummary.problems.map((problem) => problem.incidentId),
+    ["1001", "1003"],
+  );
+
+  assert.equal(getLinkLossConsequenceForHeatPump(null), null);
+  assert.equal(getLinkLossConsequenceForHeatPump({}), null);
 });
 
 test("catalog and synthetic incident fallbacks never expose a bare incident id", () => {
