@@ -30,11 +30,12 @@ class OpenQuattDebugRecorder : public Component {
   bool configure(const std::string& entities, bool reset);
   bool start(uint32_t duration_s);
   bool start_rolling();
+  bool restart_rolling();
   void freeze();
   void stop();
   const std::string& get_csrf_token() const { return this->csrf_token_; }
   void write_status(httpd_req_t* req) const;
-  void write_recording(httpd_req_t* req) const;
+  void write_recording(httpd_req_t* req, uint32_t last_minutes, uint32_t start_index) const;
 
  protected:
   static constexpr uint32_t SAMPLE_INTERVAL_MS = 10000;

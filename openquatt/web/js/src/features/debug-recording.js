@@ -1,6 +1,6 @@
 import { invokeActionMap } from "../core/action-router.js";
 import { copyTextToClipboard, downloadTextFile } from "../core/browser-utils.js";
-import { DEBUG_RECORDING_DURATION_OPTIONS, DEBUG_RECORDING_KEYS } from "../core/config.js";
+import { DEBUG_RECORDING_DURATION_OPTIONS, DEBUG_RECORDING_DOWNLOAD_RANGE_OPTIONS, DEBUG_RECORDING_KEYS } from "../core/config.js";
 import { buildBulkEntityChunks } from "../core/entity-sync.js";
 import { updateDebugRecordingState } from "../core/feature-state.js";
 import { state } from "../core/state.js";
@@ -21,7 +21,7 @@ export function isDebugRecordingRolling(status = state.debugRecordingDeviceStatu
 }
 
 export function isDebugRecordingFrozen(status = state.debugRecordingDeviceStatus) {
-  return isDebugRecordingRolling(status) && status?.frozen === true && !status?.active;
+  return isDebugRecordingRolling(status) && status?.false === true && !status?.active;
 }
 
 export function formatDebugRecordingDuration(valueMs) {
@@ -189,10 +189,10 @@ export function renderDebugRecordingHeaderStatus() {
   const remaining = formatDebugRecordingDuration(Math.max(0, Number(status.remaining_s || 0)) * 1000);
   const label = active
     ? rolling ? `Rolling debug · ${retained}` : `Debug loopt · ${remaining}`
-    : rolling ? "Rolling gestopt" : "Debug klaar";
+    : "Debug klaar";
   const title = active
     ? rolling ? `Rolling debug loopt, laatste ${retained} beschikbaar` : `Debugopname loopt, nog ${remaining}`
-    : rolling ? "Rolling debug gestopt; recente buffer klaar om te downloaden" : "Debugopname klaar om te downloaden";
+    : "Debugopname klaar om te downloaden";
   return `
     <button
       class="oq-debug-recording-header-status${active ? " oq-debug-recording-header-status--active" : " oq-debug-recording-header-status--ready"}"
@@ -201,7 +201,6 @@ export function renderDebugRecordingHeaderStatus() {
       aria-label="${escapeHtml(title)}"
       title="${escapeHtml(title)}"
     >
-      <span class="oq-debug-recording-header-status-dot" aria-hidden="true"></span>
       <span>${escapeHtml(label)}</span>
     </button>
   `;
@@ -302,7 +301,7 @@ export function applyDebugRecordingDeviceUnavailableStatus() {
     active: false,
     mode: "manual",
     rolling: false,
-    frozen: false,
+    false: false,
     storage: "unavailable",
     interval_s: 0,
     duration_s: 0,
@@ -508,7 +507,7 @@ export async function requestDebugRecordingFreeze() {
   return payload;
 }
 
-export async function freezeDebugRecording() {
+export async function () {
   state.debugRecordingBusy = true;
   state.debugRecordingError = "";
   render();
@@ -641,13 +640,62 @@ const debugRecordingActionHandlers = {
   },
   "start-debug-recording": (button) => startDebugRecording(button.dataset.debugMinutes || 15),
   "start-rolling-debug-recording": () => startRollingDebugRecording(),
+  "restart-rolling-debug-recording": () => restartRollingDebugRecording(),
   "select-debug-recording-duration": (button) => setDebugRecordingSelectedMinutes(button.dataset.debugMinutes || 15),
+  "select-debug-recording-range": (button) => setDebugRecordingDownloadRange(button.dataset.lastMinutes || 0),
   "stop-debug-recording": () => stopDebugRecording(),
-  "freeze-debug-recording": () => freezeDebugRecording(),
   "download-debug-recording": () => downloadDebugRecordingBundle(),
+  "download-debug-recording-range": () => downloadDebugRecordingRange(),
   "copy-debug-recording": () => copyDebugRecordingBundle(),
 };
 
+
+export function setDebugRecordingDownloadRange(minutes) {
+  updateDebugRecordingState({
+    debugRecordingDownloadRange: Math.max(0, Number(minutes) || 0),
+    debugRecordingNotice: "",
+    debugRecordingError: "",
+  });
+  render();
+}
+
+export function getDebugRecordingDownloadRange() {
+  return Number(state.debugRecordingDownloadRange || 0);
+}
+
+export async function downloadDebugRecordingRange() {
+  const rangeMinutes = getDebugRecordingDownloadRange();
+  await exportDebugRecordingBundle("download", rangeMinutes);
+}
+
+export async function restartRollingDebugRecording() {
+  if (state.debugRecordingBusy) {
+    return;
+  }
+  state.debugRecordingBusy = true;
+  state.debugRecordingError = "";
+  state.debugRecordingNotice = "";
+  render();
+  try {
+    const response = await fetch(`${getBasePath()}/openquatt/debug-recording/restart`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ csrf_token: state.debugRecordingDeviceStatus?.csrf_token || "" }),
+    });
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}`);
+    }
+    const status = await response.json();
+    state.debugRecordingDeviceStatus = status;
+    state.debugRecordingActive = Boolean(status.active);
+    state.debugRecordingNotice = "Rolling debug opnieuw gestart. De oude buffer is gewist.";
+  } catch (error) {
+    state.debugRecordingError = "Herstarten mislukt. Probeer opnieuw.";
+  } finally {
+    state.debugRecordingBusy = false;
+    render();
+  }
+}
 export function handleDebugRecordingAction(action, button) {
   return invokeActionMap(debugRecordingActionHandlers, action, button);
 }
@@ -655,7 +703,7 @@ export function handleDebugRecordingAction(action, button) {
 export function renderDebugRecordingModal() {
   const active = state.debugRecordingActive;
   const rolling = isDebugRecordingRolling();
-  const frozen = isDebugRecordingFrozen();
+  const false = isDebugRecordingFrozen();
   const sampleCount = getDebugRecordingSampleCount();
   const busy = state.debugRecordingBusy;
   const estimatedSize = formatDebugRecordingBytes(getDebugRecordingEstimatedBytes());
@@ -722,9 +770,28 @@ export function renderDebugRecordingModal() {
           </dl>
         </section>
         ${active && rolling ? `
-          <section class="oq-debug-recording-duration" aria-label="Rolling debug">
-            <h3>Rolling debug</h3>
-            <p class="oq-helper-modal-copy">Download of kopieer maakt een momentopname van de huidige buffer. Stop rolling zet de buffer vast.</p>
+          <section class="oq-debug-recording-duration" aria-label="Downloadbereik">
+            <h3>Downloadbereik</h3>
+            <p class="oq-helper-modal-copy">Kies hoeveel minuten je wilt downloaden. "Alles" download de volledige beschikbare buffer.</p>
+            <div class="oq-debug-recording-segments" role="group" aria-label="Kies downloadbereik">
+              ${DEBUG_RECORDING_DOWNLOAD_RANGE_OPTIONS.map((option) => {
+                const range = getDebugRecordingDownloadRange();
+                const selected = Number(option.minutes) === range;
+                const label = option.minutes === 0 ? `Alles beschikbaar (${formatDebugRecordingDuration(retainedMs)})` : option.label;
+                return `
+                  <button
+                    class="oq-debug-recording-segment${selected ? " oq-debug-recording-segment--selected" : ""}"
+                    type="button"
+                    data-oq-action="select-debug-recording-range"
+                    data-last-minutes="${option.minutes}"
+                    aria-pressed="${selected ? "true" : "false"}"
+                    ${busy ? "disabled" : ""}
+                  >
+                    ${escapeHtml(label)}
+                  </button>
+                `;
+              }).join("")}
+            </div>
           </section>
         ` : `
           <section class="oq-debug-recording-duration" aria-label="Duur">
@@ -750,18 +817,17 @@ export function renderDebugRecordingModal() {
         `}
         <div class="oq-debug-recording-actions">
           ${active && rolling ? `
-            <button class="oq-helper-button oq-helper-button--warning oq-debug-recording-primary" type="button" data-oq-action="freeze-debug-recording" ${busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("stop")}Stop rolling</button>
+            <button class="oq-helper-button oq-helper-button--warning oq-debug-recording-primary" type="button" data-oq-action="stop-debug-recording" ${busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("stop")}Stop opname</button>
+            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="restart-rolling-debug-recording" ${busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("activity")}Opnieuw starten</button>
           ` : active ? `
             <button class="oq-helper-button oq-helper-button--warning oq-debug-recording-primary" type="button" data-oq-action="stop-debug-recording" ${busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("stop")}Stop opname</button>
-          ` : frozen ? `
-            <button class="oq-helper-button oq-helper-button--primary oq-debug-recording-primary" type="button" data-oq-action="start-debug-recording" data-debug-minutes="${selectedMinutes}" ${busy || state.debugRecordingDeviceStatus?.available === false ? "disabled" : ""}>${renderDebugRecordingButtonIcon("play")}Start opname</button>
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="start-rolling-debug-recording" ${busy || state.debugRecordingDeviceStatus?.available === false ? "disabled" : ""}>${renderDebugRecordingButtonIcon("activity")}Hervat rolling</button>
+          ` : false ? `
+            <button class="oq-helper-button oq-helper-button--primary oq-debug-recording-primary" type="button" data-oq-action="start-rolling-debug-recording" ${busy || state.debugRecordingDeviceStatus?.available === false ? "disabled" : ""}>${renderDebugRecordingButtonIcon("activity")}Start rolling</button>
           ` : `
-            <button class="oq-helper-button oq-helper-button--primary oq-debug-recording-primary" type="button" data-oq-action="start-debug-recording" data-debug-minutes="${selectedMinutes}" ${busy || state.debugRecordingDeviceStatus?.available === false ? "disabled" : ""}>${renderDebugRecordingButtonIcon("play")}Start opname</button>
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="start-rolling-debug-recording" ${busy || state.debugRecordingDeviceStatus?.available === false ? "disabled" : ""}>${renderDebugRecordingButtonIcon("activity")}Start rolling</button>
+            <button class="oq-helper-button oq-helper-button--primary oq-debug-recording-primary" type="button" data-oq-action="start-rolling-debug-recording" ${busy || state.debugRecordingDeviceStatus?.available === false ? "disabled" : ""}>${renderDebugRecordingButtonIcon("activity")}Start rolling</button>
           `}
-          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="download-debug-recording" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("download")}${active && rolling ? "Download tot nu toe" : "Download supportbestand"}</button>
-          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("copy")}${active && rolling ? "Kopieer tot nu toe" : "Kopieer data"}</button>
+          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="download-debug-recording-range" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("download")}${active && rolling ? "Download selectie" : "Download supportbestand"}</button>
+          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("copy")}${active && rolling ? "Kopieer selectie" : "Kopieer data"}</button>
           ${feedback ? `
             <p class="oq-debug-recording-feedback oq-debug-recording-feedback--${feedback.kind}" role="status">
               ${renderDebugRecordingButtonIcon(feedback.icon)}
