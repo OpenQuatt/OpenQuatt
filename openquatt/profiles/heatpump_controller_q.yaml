@@ -7,6 +7,7 @@ substitutions:
   oq_otb_supported: "true"                             # GPIO47/GPIO48 provide the boiler OpenTherm master transport.
   oq_boiler_transport_selection_extra: "oq_boiler_otb_runtime::connection_changed(x == \"OpenTherm\");" # Start or stop the selected Q-edition transport lifecycle.
   oq_boiler_transport_shutdown_extra: "oq_boiler_otb_runtime::withdraw_command();" # Withdraw OTB synchronously on every transport edge.
+  oq_aux_heat_source_presence_extra: "oq_boiler_otb_runtime::source_presence_changed(id(oq_aux_heat_source_present).state);" # Start or stop OTB when physical source presence changes.
   oq_local_supply_temp_sensor_id: "water_supply_temp_pt1000" # Q-edition local PT1000 source.
   oq_local_supply_temp_selector_id: "oq_local_supply_temp_source" # Explicit local physical-sensor selection.
   esp_board: "esp32-s3-devkitc-1"                       # PlatformIO board for the Q-edition.

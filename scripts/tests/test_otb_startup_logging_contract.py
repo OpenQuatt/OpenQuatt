@@ -109,17 +109,20 @@ class OtbStartupLoggingContractTest(unittest.TestCase):
         self.assertIn("set_no_response_expected(false);", window)
 
     def test_connection_change_covers_both_directions(self) -> None:
-        self.assertEqual(OTB_RUNTIME.count("set_no_response_expected(true);"), 1)
-        self.assertEqual(OTB_RUNTIME.count("set_no_response_expected(false);"), 1)
-        ot_branch = OTB_RUNTIME.index("if (opentherm_selected) {")
-        r1_branch = OTB_RUNTIME.index("} else {", ot_branch)
+        method_start = OTB_RUNTIME.index("inline void connection_changed")
+        method_end = OTB_RUNTIME.index("inline void source_presence_changed", method_start)
+        method = OTB_RUNTIME[method_start:method_end]
+        self.assertEqual(method.count("set_no_response_expected(true);"), 1)
+        self.assertEqual(method.count("set_no_response_expected(false);"), 1)
+        ot_branch = method.index("if (opentherm_selected) {")
+        r1_branch = method.index("} else {", ot_branch)
         self.assertLess(
-            OTB_RUNTIME.index("set_no_response_expected(false);", ot_branch),
-            OTB_RUNTIME.index("resume_polling();", ot_branch),
+            method.index("set_no_response_expected(false);", ot_branch),
+            method.index("resume_polling();", ot_branch),
         )
         self.assertLess(
-            OTB_RUNTIME.index("set_no_response_expected(true);", r1_branch),
-            OTB_RUNTIME.index("start_priority_polling(", r1_branch),
+            method.index("set_no_response_expected(true);", r1_branch),
+            method.index("start_priority_polling(", r1_branch),
         )
 
     def test_shutdown_clears_suppression(self) -> None:
