@@ -285,7 +285,8 @@ class OpenQuattDebugRecorderRequestHandler : public AsyncWebHandler {
       return request->method() == HTTP_POST;
     }
     return (url_path_matches(url_buf, "/openquatt/debug-recording/download") ||
-            url_path_matches(url_buf, "/openquatt/debug-recording/download-range")) && request->method() == HTTP_GET;
+            url_path_matches(url_buf, "/openquatt/debug-recording/download-range")) &&
+           request->method() == HTTP_GET;
   }
 
   void handleRequest(AsyncWebServerRequest* request) override {
@@ -1371,7 +1372,8 @@ void OpenQuattDebugRecorder::write_recording(httpd_req_t* req, uint32_t last_min
   this->end_export_();
 }
 
-void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t last_minutes, uint32_t start_index) const {
+void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t last_minutes,
+                                                     uint32_t start_index) const {
   RecordingSnapshot snapshot;
   if (!this->capture_snapshot_(&snapshot)) {
     ESP_LOGW(TAG, "Failed to allocate or capture immutable debug recording snapshot");
@@ -1394,25 +1396,26 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
   // Calculate range for partial export
   size_t export_start_index = 0;
   size_t export_count = snapshot.count;
-  
+
   if (last_minutes > 0 && snapshot.rolling && snapshot.count > 0) {
     // For rolling recordings, calculate how many samples correspond to last_minutes
-    const uint32_t samples_per_minute = 60 * 1000U / SAMPLE_INTERVAL_MS; // 6 samples per minute (10s interval)
+    const uint32_t samples_per_minute = 60 * 1000U / SAMPLE_INTERVAL_MS;  // 6 samples per minute (10s interval)
     const size_t total_samples_to_keep = last_minutes * samples_per_minute;
-    
+
     if (total_samples_to_keep < snapshot.count) {
       export_start_index = snapshot.count - total_samples_to_keep;
       export_count = total_samples_to_keep;
     }
   }
-  
+
   // For range-based export, use the first sample in the range as initial
-  const uint8_t* range_initial = (export_start_index < snapshot.count) ? snapshot.sample_at(export_start_index) : snapshot.sample_at(0);
+  const uint8_t* range_initial =
+      (export_start_index < snapshot.count) ? snapshot.sample_at(export_start_index) : snapshot.sample_at(0);
   const uint8_t* full_initial = snapshot.sample_at(0);
-  
+
   // Determine which initial to use
   const uint8_t* initial = (export_start_index > 0 && range_initial != nullptr) ? range_initial : full_initial;
-  
+
   auto write_field_value = [&](const DebugField& field, uint32_t value) -> bool {
     if (value == MISSING_VALUE) {
       return writer.write_literal("null");
@@ -1455,7 +1458,7 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
             writer.write_literal(R"(,"active":)") && writer.write_bool(snapshot.active) &&
             writer.write_literal(R"(,"mode":")") && writer.write_literal(snapshot.rolling ? "rolling" : "manual") &&
             writer.write_literal(R"(","rolling":)") && writer.write_bool(snapshot.rolling) &&
-      
+
             writer.write_literal(R"(,"duration_s":)") && writer.write_uint32(snapshot.duration_s) &&
             writer.write_literal(R"(,"retained_duration_s":)") && writer.write_uint32(snapshot.retained_duration_s) &&
             writer.write_literal(R"(,"retention_capacity_s":)") && writer.write_uint32(snapshot.retention_capacity_s) &&
@@ -1514,8 +1517,9 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
   for (size_t sample_index = 0; ok && sample_index < export_count; ++sample_index) {
     const size_t absolute_sample_index = export_start_index + sample_index;
     const uint8_t* sample = snapshot.sample_at(absolute_sample_index);
-    const uint8_t* previous = (sample_index > 0) ? snapshot.sample_at(absolute_sample_index - 1) : 
-                              (export_start_index > 0) ? snapshot.sample_at(export_start_index - 1) : nullptr;
+    const uint8_t* previous = (sample_index > 0)         ? snapshot.sample_at(absolute_sample_index - 1)
+                              : (export_start_index > 0) ? snapshot.sample_at(export_start_index - 1)
+                                                         : nullptr;
     ok = (sample_index == 0 || writer.write_char(',')) && writer.write_char('[') &&
          writer.write_uint32(sample_offset_(sample)) && writer.write_literal(",[");
     bool first_delta = true;
