@@ -34,10 +34,25 @@ esphome:
             call.set_value(0.0f);
             call.perform();
           }
+          const bool source_present = id(oq_aux_heat_source_present).state;
           const bool opentherm_selected =
               id(oq_boiler_connection).has_state() &&
               id(oq_boiler_connection).current_option() == "OpenTherm";
-          if (opentherm_selected) {
+          if (!source_present) {
+            // Physical absence is the top-level transport lifecycle gate. Keep
+            // the restored connection choice, but do not probe or poll a bus
+            // that the installation explicitly says is not connected.
+            oq_otb::startup_probe_state.end();
+            id(oq_otb_startup_probe_active) = false;
+            id(oq_boiler_connection_mismatch_state) = false;
+            id(oq_boiler_connection_mismatch).publish_state(false);
+            id(boiler_relay).turn_off();
+            id(oq_otb_hub).set_no_response_expected(false);
+            id(oq_otb_hub).suspend_polling();
+            ESP_LOGI(
+                "quatt.boiler",
+                "Auxiliary heat source not connected; OpenTherm boiler polling disabled");
+          } else if (opentherm_selected) {
             oq_otb::startup_probe_state.end();
             id(oq_otb_startup_probe_active) = false;
             id(oq_boiler_connection_mismatch_state) = false;
@@ -730,10 +745,12 @@ interval:
             id(oq_otb_startup_probe_active) = startup_probe_active;
           }
 
+          const bool source_present = id(oq_aux_heat_source_present).state;
           const bool opentherm_selected =
               id(oq_boiler_connection).has_state() &&
               id(oq_boiler_connection).current_option() == "OpenTherm";
           const bool keep_polling = oq_otb::should_keep_opentherm_polling(
+              source_present,
               opentherm_selected,
               startup_probe_active,
               id(oq_boiler_connection_mismatch_state));
@@ -741,7 +758,9 @@ interval:
             if (id(oq_otb_hub).is_polling_enabled()) {
               ESP_LOGW(
                   "quatt.boiler",
-                  "Stopping stray OpenTherm polling while R1 is selected");
+                  source_present
+                      ? "Stopping stray OpenTherm polling while R1 is selected"
+                      : "Stopping stray OpenTherm polling because auxiliary heat source is not connected");
               id(oq_otb_hub).suspend_polling();
             }
             return;

@@ -15,7 +15,42 @@ inline void withdraw_command() {
   call.perform();
 }
 
+inline void reset_link_state() {
+  oq_otb::telemetry_state.reset_link_session();
+  id(oq_otb_link_initialized) = true;
+  id(oq_otb_link_available_state) = false;
+  id(otb_link_available).publish_state(false);
+  id(oq_otb_invalidate_telemetry).execute();
+}
+
+inline void enter_dormant_state() {
+  if (id(oq_otb_hub_ready)) {
+    // If OpenTherm was active, use the existing bounded off handshake before
+    // silencing the physical bus. With no live link this returns immediately
+    // after withdrawing CH and TSet locally.
+    id(oq_otb_hub).set_no_response_expected(false);
+    id(oq_otb_withdraw_and_flush).execute();
+    oq_otb::startup_probe_state.end();
+    id(oq_otb_startup_probe_active) = false;
+    id(oq_boiler_connection_mismatch_state) = false;
+    id(oq_boiler_connection_mismatch).publish_state(false);
+    id(oq_boiler_connection_auto_selected_state) = false;
+    id(oq_boiler_connection_auto_selected).publish_state(false);
+    id(boiler_relay).turn_off();
+    id(oq_otb_hub).set_no_response_expected(false);
+    id(oq_otb_hub).suspend_polling();
+  }
+  id(oq_otb_applied_command_active) = false;
+  id(oq_boiler_transport_active) = false;
+  reset_link_state();
+}
+
 inline void connection_changed(bool opentherm_selected) {
+  if (!id(oq_aux_heat_source_present).state) {
+    enter_dormant_state();
+    return;
+  }
+
   if (id(oq_otb_hub_ready)) {
     if (opentherm_selected) {
       oq_otb::startup_probe_state.end();
@@ -37,11 +72,19 @@ inline void connection_changed(bool opentherm_selected) {
           .start_priority_polling(esphome::opentherm::MessageId::STATUS, esphome::opentherm::MessageId::CH_SETPOINT);
     }
   }
-  oq_otb::telemetry_state.reset_link_session();
-  id(oq_otb_link_initialized) = true;
-  id(oq_otb_link_available_state) = false;
-  id(otb_link_available).publish_state(false);
-  id(oq_otb_invalidate_telemetry).execute();
+  reset_link_state();
+}
+
+inline void source_presence_changed(bool source_present) {
+  if (!source_present) {
+    enter_dormant_state();
+    ESP_LOGI("quatt.boiler", "Auxiliary heat source not connected; OpenTherm boiler polling disabled");
+    return;
+  }
+
+  const bool opentherm_selected =
+      id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
+  connection_changed(opentherm_selected);
 }
 
 inline void apply_dhw_permission(bool opentherm_selected) {
@@ -64,8 +107,8 @@ inline void apply_dhw_permission(bool opentherm_selected) {
 }
 
 inline void apply_command(float minimum_flow_lph, uint32_t status_timeout_ms) {
-  const bool opentherm_selected =
-      id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
+  const bool opentherm_selected = id(oq_aux_heat_source_present).state && id(oq_boiler_connection).has_state() &&
+                                  id(oq_boiler_connection).current_option() == "OpenTherm";
   apply_dhw_permission(opentherm_selected);
   const auto decision = oq_boiler_transport::evaluate_command_adapter({
       opentherm_selected,
@@ -116,6 +159,14 @@ inline void apply_command(float minimum_flow_lph, uint32_t status_timeout_ms) {
 }
 
 inline void link_watch(uint32_t link_timeout_ms, uint32_t field_timeout_ms) {
+  if (!id(oq_aux_heat_source_present).state) {
+    if (id(oq_otb_hub_ready) && id(oq_otb_hub).is_polling_enabled()) {
+      id(oq_otb_hub).suspend_polling();
+    }
+    if (id(oq_otb_link_available_state)) reset_link_state();
+    return;
+  }
+
   const uint32_t now_ms = (uint32_t)millis();
   oq_otb::telemetry_state.expire_response_session_if_stale(now_ms, link_timeout_ms);
   const bool available = oq_otb::telemetry_state.transport_is_available(now_ms, link_timeout_ms, field_timeout_ms);
