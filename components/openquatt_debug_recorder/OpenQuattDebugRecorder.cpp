@@ -280,7 +280,6 @@ class OpenQuattDebugRecorderRequestHandler : public AsyncWebHandler {
     }
     if (url_path_matches(url_buf, "/openquatt/debug-recording/configure") ||
         url_path_matches(url_buf, "/openquatt/debug-recording/start") ||
-        url_path_matches(url_buf, "/openquatt/debug-recording/freeze") ||
         url_path_matches(url_buf, "/openquatt/debug-recording/stop") ||
         url_path_matches(url_buf, "/openquatt/debug-recording/restart")) {
       return request->method() == HTTP_POST;
@@ -320,12 +319,6 @@ class OpenQuattDebugRecorderRequestHandler : public AsyncWebHandler {
         request->send(409, "application/json", R"({"ok":false,"error":"recorder_not_configured"})");
         return;
       }
-      this->parent_->write_status(*request);
-      return;
-    }
-
-    if (url_path_matches(url_buf, "/openquatt/debug-recording/freeze")) {
-      this->parent_->freeze();
       this->parent_->write_status(*request);
       return;
     }
@@ -1054,7 +1047,6 @@ bool OpenQuattDebugRecorder::start(uint32_t duration_s) {
   }
   this->active_ = true;
   this->rolling_ = false;
-  this->frozen_ = false;
   const uint64_t next_recording_id = this->current_time_ms_();
   this->recording_id_ = std::max(this->recording_id_ + 1U, next_recording_id);
   this->duration_s_ = this->sanitize_duration_s_(duration_s);
@@ -1077,7 +1069,6 @@ bool OpenQuattDebugRecorder::start_rolling() {
   }
   this->active_ = true;
   this->rolling_ = true;
-  this->frozen_ = false;
   const uint64_t next_recording_id = this->current_time_ms_();
   this->recording_id_ = std::max(this->recording_id_ + 1U, next_recording_id);
   this->duration_s_ = 0;
@@ -1100,7 +1091,6 @@ bool OpenQuattDebugRecorder::restart_rolling() {
   }
   this->active_ = true;
   this->rolling_ = true;
-  this->frozen_ = false;
   const uint64_t next_recording_id = this->current_time_ms_();
   this->recording_id_ = std::max(this->recording_id_ + 1U, next_recording_id);
   this->duration_s_ = 0;
@@ -1112,25 +1102,12 @@ bool OpenQuattDebugRecorder::restart_rolling() {
   return true;
 }
 
-void OpenQuattDebugRecorder::freeze() {
-  if (!this->lock_state_()) {
-    return;
-  }
-  if (this->active_) {
-    this->active_ = false;
-    this->frozen_ = this->rolling_;
-    this->stopped_ms_ = millis();
-  }
-  this->unlock_state_();
-}
-
 void OpenQuattDebugRecorder::stop() {
   if (!this->lock_state_()) {
     return;
   }
   if (this->active_) {
     this->active_ = false;
-    this->frozen_ = this->rolling_;
     this->stopped_ms_ = millis();
   }
   this->unlock_state_();
@@ -1237,7 +1214,6 @@ bool OpenQuattDebugRecorder::capture_snapshot_(RecordingSnapshot* snapshot) cons
   snapshot->available = true;
   snapshot->active = this->active_;
   snapshot->rolling = this->rolling_;
-  snapshot->frozen = this->frozen_;
   snapshot->string_overflow = this->string_overflow_;
   snapshot->recording_id = this->recording_id_;
   snapshot->exported_at_ms = this->current_time_ms_();
@@ -1270,7 +1246,6 @@ void OpenQuattDebugRecorder::write_status(httpd_req_t* req) const {
     bool available{false};
     bool active{false};
     bool rolling{false};
-    bool frozen{false};
     bool configuration_pending{false};
     bool string_overflow{false};
     uint64_t recording_id{0};
@@ -1301,7 +1276,6 @@ void OpenQuattDebugRecorder::write_status(httpd_req_t* req) const {
   status.available = this->available_();
   status.active = this->active_;
   status.rolling = this->rolling_;
-  status.frozen = this->frozen_;
   status.configuration_pending = this->configuration_pending_;
   status.string_overflow = this->string_overflow_;
   status.recording_id = this->recording_id_;
@@ -1341,7 +1315,7 @@ void OpenQuattDebugRecorder::write_status(httpd_req_t* req) const {
       writer.write_literal(R"(,"active":)") && writer.write_bool(status.active) &&
       writer.write_literal(R"(,"mode":")") && writer.write_literal(status.rolling ? "rolling" : "manual") &&
       writer.write_literal(R"(","rolling":)") && writer.write_bool(status.rolling) &&
-      writer.write_literal(R"(,"frozen":)") && writer.write_bool(status.frozen) &&
+
       writer.write_literal(R"(,"recording_id":)") && writer.write_uint64(status.recording_id) &&
       writer.write_literal(R"(,"storage":")") && writer.write_literal(status.available ? "psram" : "unavailable") &&
       writer.write_literal(R"(","interval_s":)") && writer.write_uint32(SAMPLE_INTERVAL_MS / 1000U) &&
@@ -1481,7 +1455,7 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
             writer.write_literal(R"(,"active":)") && writer.write_bool(snapshot.active) &&
             writer.write_literal(R"(,"mode":")") && writer.write_literal(snapshot.rolling ? "rolling" : "manual") &&
             writer.write_literal(R"(","rolling":)") && writer.write_bool(snapshot.rolling) &&
-            writer.write_literal(R"(,"frozen":)") && writer.write_bool(snapshot.frozen) &&
+      
             writer.write_literal(R"(,"duration_s":)") && writer.write_uint32(snapshot.duration_s) &&
             writer.write_literal(R"(,"retained_duration_s":)") && writer.write_uint32(snapshot.retained_duration_s) &&
             writer.write_literal(R"(,"retention_capacity_s":)") && writer.write_uint32(snapshot.retention_capacity_s) &&

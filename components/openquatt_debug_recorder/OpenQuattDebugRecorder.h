@@ -31,7 +31,6 @@ class OpenQuattDebugRecorder : public Component {
   bool start(uint32_t duration_s);
   bool start_rolling();
   bool restart_rolling();
-  void freeze();
   void stop();
   const std::string& get_csrf_token() const { return this->csrf_token_; }
   void write_status(httpd_req_t* req) const;
@@ -96,7 +95,7 @@ class OpenQuattDebugRecorder : public Component {
     bool available{false};
     bool active{false};
     bool rolling{false};
-    bool frozen{false};
+
     bool string_overflow{false};
     uint64_t recording_id{0};
     uint64_t exported_at_ms{0};
@@ -128,7 +127,7 @@ class OpenQuattDebugRecorder : public Component {
   PsramBuffer<char> string_data_{};
   bool active_{false};
   bool rolling_{false};
-  bool frozen_{false};
+
   bool configuration_pending_{false};
   bool string_overflow_{false};
   mutable bool export_in_progress_{false};

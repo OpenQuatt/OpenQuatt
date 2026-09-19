@@ -20,9 +20,7 @@ export function isDebugRecordingRolling(status = state.debugRecordingDeviceStatu
   return status?.rolling === true || String(status?.mode || "").toLowerCase() === "rolling";
 }
 
-export function isDebugRecordingFrozen(status = state.debugRecordingDeviceStatus) {
-  return isDebugRecordingRolling(status) && status?.false === true && !status?.active;
-}
+
 
 export function formatDebugRecordingDuration(valueMs) {
   const totalSeconds = Math.max(0, Math.round(Number(valueMs || 0) / 1000));
@@ -53,9 +51,6 @@ export function getDebugRecordingStatusLabel() {
   if (state.debugRecordingDeviceStatus && state.debugRecordingDeviceStatus.available === false) {
     return "Niet beschikbaar";
   }
-  if (isDebugRecordingFrozen()) {
-    return "Rolling gestopt";
-  }
   if (state.debugRecordingActive && isDebugRecordingRolling()) {
     return "Rolling actief";
   }
@@ -70,9 +65,6 @@ export function getDebugRecordingStatusLabel() {
 }
 
 export function getDebugRecordingStatusCopy() {
-  if (isDebugRecordingFrozen()) {
-    return "Rolling debug is gestopt. De recente samples blijven bewaard tot je downloadt, kopieert, hervat of een nieuwe opname start.";
-  }
   if (state.debugRecordingActive && isDebugRecordingRolling()) {
     return "Rolling debug bewaart continu de recente samples. Download of kopieer maakt een momentopname; rolling blijft daarna doorlopen.";
   }
@@ -89,9 +81,6 @@ export function getDebugRecordingStatusCopy() {
 }
 
 export function getDebugRecordingHubStatusLabel() {
-  if (isDebugRecordingFrozen()) {
-    return "Gestopt";
-  }
   if (state.debugRecordingActive && isDebugRecordingRolling()) {
     return `Rolling · ${formatDebugRecordingDuration(getDebugRecordingRetainedDurationMs())}`;
   }
@@ -301,7 +290,7 @@ export function applyDebugRecordingDeviceUnavailableStatus() {
     active: false,
     mode: "manual",
     rolling: false,
-    false: false,
+
     storage: "unavailable",
     interval_s: 0,
     duration_s: 0,
@@ -499,15 +488,6 @@ export function startRollingDebugRecording() {
   return startDebugRecordingMode({ rolling: true });
 }
 
-export async function requestDebugRecordingFreeze() {
-  debugRecordingMutationGeneration += 1;
-  const payload = await postDebugRecordingDevice("freeze");
-  applyDebugRecordingDeviceStatus(payload);
-  clearDebugRecordingDevicePollTimer();
-  return payload;
-}
-
-export async function () {
   state.debugRecordingBusy = true;
   state.debugRecordingError = "";
   render();
@@ -703,7 +683,7 @@ export function handleDebugRecordingAction(action, button) {
 export function renderDebugRecordingModal() {
   const active = state.debugRecordingActive;
   const rolling = isDebugRecordingRolling();
-  const false = isDebugRecordingFrozen();
+
   const sampleCount = getDebugRecordingSampleCount();
   const busy = state.debugRecordingBusy;
   const estimatedSize = formatDebugRecordingBytes(getDebugRecordingEstimatedBytes());
