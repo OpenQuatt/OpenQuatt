@@ -1339,6 +1339,13 @@
     { minutes: 30, label: "30 min" },
     { minutes: 60, label: "1 uur" },
   ];
+
+  export const DEBUG_RECORDING_DOWNLOAD_RANGE_OPTIONS = [
+    { minutes: 15, label: "Laatste 15 minuten" },
+    { minutes: 30, label: "Laatste 30 minuten" },
+    { minutes: 60, label: "Laatste 60 minuten" },
+    { minutes: 0, label: "Alles beschikbaar" },
+  ];
   export const DEBUG_RECORDING_KEYS = [
     "projectVersionText",
     "releaseChannelText",

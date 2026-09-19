@@ -1,0 +1,19 @@
+# Build context for the OpenQuatt development image.
+# Only what the Dockerfile needs should reach the Docker daemon.
+.git
+.esphome
+.idea
+.pio
+.venv
+node_modules
+output
+.tmp
+.cache
+tmp
+**/__pycache__
+*.pyc
+/secrets.yaml
+docs/_local_reference
+references
+openquatt/web/js/openquatt-app.js
+openquatt/web/css/openquatt-app.css

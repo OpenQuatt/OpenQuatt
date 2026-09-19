@@ -189,7 +189,6 @@
     debugRecording: {
       active: false,
       mode: "manual",
-      frozen: false,
       startedAt: 0,
       stoppedAt: 0,
       durationS: 15 * 60,
@@ -5152,7 +5151,7 @@
       active: Boolean(recording.active),
       mode: rolling ? "rolling" : "manual",
       rolling,
-      frozen: Boolean(recording.frozen),
+
       recording_id: Number(recording.startedAt || 0),
       storage: "psram",
       interval_s: 10,
@@ -5235,7 +5234,6 @@
     state.debugRecording = {
       active: true,
       mode: rolling ? "rolling" : "manual",
-      frozen: false,
       startedAt: Date.now(),
       stoppedAt: 0,
       durationS,
@@ -5252,23 +5250,12 @@
     return mockResponse(200, getDebugRecordingStatusPayload());
   }
 
-  function handleDebugRecordingFreeze() {
-    const recording = state.debugRecording;
-    syncDebugRecordingSamples();
-    if (recording.active) {
-      recording.active = false;
-      recording.frozen = recording.mode === "rolling";
-      recording.stoppedAt = Date.now();
-    }
-    return mockResponse(200, getDebugRecordingStatusPayload());
-  }
-
   function handleDebugRecordingStop() {
     const recording = state.debugRecording;
     syncDebugRecordingSamples();
     if (recording.active) {
       recording.active = false;
-      recording.frozen = recording.mode === "rolling";
+
       recording.stoppedAt = Date.now();
     }
     return mockResponse(200, getDebugRecordingStatusPayload());
@@ -5307,7 +5294,7 @@
         active: Boolean(recording.active),
         mode: recording.mode === "rolling" ? "rolling" : "manual",
         rolling: recording.mode === "rolling",
-        frozen: Boolean(recording.frozen),
+  
         duration_s: Math.max(0, Math.floor((endedAtMs - startedAtMs) / 1000)),
         retained_duration_s: initial && recording.samples.length
           ? Math.max(0, recording.samples[recording.samples.length - 1].offset_s - initial.offset_s)
@@ -5618,10 +5605,6 @@
       if (url.pathname.endsWith("/openquatt/debug-recording/start") && method === "POST") {
         if (!hasValidDebugRecordingCsrf(init)) return mockResponse(403, { ok: false, error: "csrf_rejected" });
         return handleDebugRecordingStart(url);
-      }
-      if (url.pathname.endsWith("/openquatt/debug-recording/freeze") && method === "POST") {
-        if (!hasValidDebugRecordingCsrf(init)) return mockResponse(403, { ok: false, error: "csrf_rejected" });
-        return handleDebugRecordingFreeze();
       }
       if (url.pathname.endsWith("/openquatt/debug-recording/stop") && method === "POST") {
         if (!hasValidDebugRecordingCsrf(init)) return mockResponse(403, { ok: false, error: "csrf_rejected" });

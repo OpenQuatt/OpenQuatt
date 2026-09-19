@@ -280,11 +280,13 @@ class OpenQuattDebugRecorderRequestHandler : public AsyncWebHandler {
     }
     if (url_path_matches(url_buf, "/openquatt/debug-recording/configure") ||
         url_path_matches(url_buf, "/openquatt/debug-recording/start") ||
-        url_path_matches(url_buf, "/openquatt/debug-recording/freeze") ||
-        url_path_matches(url_buf, "/openquatt/debug-recording/stop")) {
+        url_path_matches(url_buf, "/openquatt/debug-recording/stop") ||
+        url_path_matches(url_buf, "/openquatt/debug-recording/restart")) {
       return request->method() == HTTP_POST;
     }
-    return url_path_matches(url_buf, "/openquatt/debug-recording/download") && request->method() == HTTP_GET;
+    return (url_path_matches(url_buf, "/openquatt/debug-recording/download") ||
+            url_path_matches(url_buf, "/openquatt/debug-recording/download-range")) &&
+           request->method() == HTTP_GET;
   }
 
   void handleRequest(AsyncWebServerRequest* request) override {
@@ -322,20 +324,26 @@ class OpenQuattDebugRecorderRequestHandler : public AsyncWebHandler {
       return;
     }
 
-    if (url_path_matches(url_buf, "/openquatt/debug-recording/freeze")) {
-      this->parent_->freeze();
-      this->parent_->write_status(*request);
-      return;
-    }
-
     if (url_path_matches(url_buf, "/openquatt/debug-recording/stop")) {
       this->parent_->stop();
       this->parent_->write_status(*request);
       return;
     }
 
+    if (url_path_matches(url_buf, "/openquatt/debug-recording/restart")) {
+      if (!this->parent_->restart_rolling()) {
+        request->send(409, "application/json", R"({"ok":false,"error":"recorder_not_available"})");
+        return;
+      }
+      this->parent_->write_status(*request);
+      return;
+    }
+
     if (url_path_matches(url_buf, "/openquatt/debug-recording/download")) {
-      this->parent_->write_recording(*request);
+      this->parent_->write_recording(*request, 0, 0);
+    } else if (url_path_matches(url_buf, "/openquatt/debug-recording/download-range")) {
+      const uint32_t last_minutes = parse_uint_arg(request, "last_minutes", 0);
+      this->parent_->write_recording(*request, last_minutes, 0);
     } else {
       this->parent_->write_status(*request);
     }
@@ -1040,7 +1048,6 @@ bool OpenQuattDebugRecorder::start(uint32_t duration_s) {
   }
   this->active_ = true;
   this->rolling_ = false;
-  this->frozen_ = false;
   const uint64_t next_recording_id = this->current_time_ms_();
   this->recording_id_ = std::max(this->recording_id_ + 1U, next_recording_id);
   this->duration_s_ = this->sanitize_duration_s_(duration_s);
@@ -1063,7 +1070,6 @@ bool OpenQuattDebugRecorder::start_rolling() {
   }
   this->active_ = true;
   this->rolling_ = true;
-  this->frozen_ = false;
   const uint64_t next_recording_id = this->current_time_ms_();
   this->recording_id_ = std::max(this->recording_id_ + 1U, next_recording_id);
   this->duration_s_ = 0;
@@ -1075,16 +1081,26 @@ bool OpenQuattDebugRecorder::start_rolling() {
   return true;
 }
 
-void OpenQuattDebugRecorder::freeze() {
+bool OpenQuattDebugRecorder::restart_rolling() {
   if (!this->lock_state_()) {
-    return;
+    return false;
   }
-  if (this->active_) {
-    this->active_ = false;
-    this->frozen_ = this->rolling_;
-    this->stopped_ms_ = millis();
+  if (!this->available_() || !this->activate_pending_configuration_()) {
+    this->unlock_state_();
+    ESP_LOGW(TAG, "Rolling debug recording restart unavailable or configuration not committed");
+    return false;
   }
+  this->active_ = true;
+  this->rolling_ = true;
+  const uint64_t next_recording_id = this->current_time_ms_();
+  this->recording_id_ = std::max(this->recording_id_ + 1U, next_recording_id);
+  this->duration_s_ = 0;
+  this->started_ms_ = millis();
+  this->stopped_ms_ = 0;
+  this->clear_();
+  this->capture_sample_();
   this->unlock_state_();
+  return true;
 }
 
 void OpenQuattDebugRecorder::stop() {
@@ -1093,7 +1109,6 @@ void OpenQuattDebugRecorder::stop() {
   }
   if (this->active_) {
     this->active_ = false;
-    this->frozen_ = this->rolling_;
     this->stopped_ms_ = millis();
   }
   this->unlock_state_();
@@ -1141,6 +1156,8 @@ void OpenQuattDebugRecorder::setup() {
     ESP_LOGE(TAG, "Failed to allocate debug recording storage in PSRAM");
   } else {
     this->clear_strings_();
+    // Auto-start rolling recording on boot
+    this->start_rolling();
   }
   this->rotate_csrf_token_();
   web_server_base::global_web_server_base->add_handler(new OpenQuattDebugRecorderRequestHandler(this));
@@ -1198,7 +1215,6 @@ bool OpenQuattDebugRecorder::capture_snapshot_(RecordingSnapshot* snapshot) cons
   snapshot->available = true;
   snapshot->active = this->active_;
   snapshot->rolling = this->rolling_;
-  snapshot->frozen = this->frozen_;
   snapshot->string_overflow = this->string_overflow_;
   snapshot->recording_id = this->recording_id_;
   snapshot->exported_at_ms = this->current_time_ms_();
@@ -1231,7 +1247,6 @@ void OpenQuattDebugRecorder::write_status(httpd_req_t* req) const {
     bool available{false};
     bool active{false};
     bool rolling{false};
-    bool frozen{false};
     bool configuration_pending{false};
     bool string_overflow{false};
     uint64_t recording_id{0};
@@ -1262,7 +1277,6 @@ void OpenQuattDebugRecorder::write_status(httpd_req_t* req) const {
   status.available = this->available_();
   status.active = this->active_;
   status.rolling = this->rolling_;
-  status.frozen = this->frozen_;
   status.configuration_pending = this->configuration_pending_;
   status.string_overflow = this->string_overflow_;
   status.recording_id = this->recording_id_;
@@ -1302,7 +1316,7 @@ void OpenQuattDebugRecorder::write_status(httpd_req_t* req) const {
       writer.write_literal(R"(,"active":)") && writer.write_bool(status.active) &&
       writer.write_literal(R"(,"mode":")") && writer.write_literal(status.rolling ? "rolling" : "manual") &&
       writer.write_literal(R"(","rolling":)") && writer.write_bool(status.rolling) &&
-      writer.write_literal(R"(,"frozen":)") && writer.write_bool(status.frozen) &&
+
       writer.write_literal(R"(,"recording_id":)") && writer.write_uint64(status.recording_id) &&
       writer.write_literal(R"(,"storage":")") && writer.write_literal(status.available ? "psram" : "unavailable") &&
       writer.write_literal(R"(","interval_s":)") && writer.write_uint32(SAMPLE_INTERVAL_MS / 1000U) &&
@@ -1347,18 +1361,19 @@ void OpenQuattDebugRecorder::write_status(httpd_req_t* req) const {
   httpd_resp_send_chunk(req, nullptr, 0);
 }
 
-void OpenQuattDebugRecorder::write_recording(httpd_req_t* req) const {
+void OpenQuattDebugRecorder::write_recording(httpd_req_t* req, uint32_t last_minutes, uint32_t start_index) const {
   if (!this->begin_export_()) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, "application/json; charset=utf-8");
     httpd_resp_sendstr(req, R"({"ok":false,"error":"snapshot_unavailable"})");
     return;
   }
-  this->write_recording_export_(req);
+  this->write_recording_export_(req, last_minutes, start_index);
   this->end_export_();
 }
 
-void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req) const {
+void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t last_minutes,
+                                                     uint32_t start_index) const {
   RecordingSnapshot snapshot;
   if (!this->capture_snapshot_(&snapshot)) {
     ESP_LOGW(TAG, "Failed to allocate or capture immutable debug recording snapshot");
@@ -1378,7 +1393,29 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req) const {
   httpd_resp_set_type(req, "application/json; charset=utf-8");
   httpd_resp_set_hdr(req, "Cache-Control", "no-store");
 
-  const uint8_t* initial = snapshot.sample_at(0);
+  // Calculate range for partial export
+  size_t export_start_index = 0;
+  size_t export_count = snapshot.count;
+
+  if (last_minutes > 0 && snapshot.rolling && snapshot.count > 0) {
+    // For rolling recordings, calculate how many samples correspond to last_minutes
+    const uint32_t samples_per_minute = 60 * 1000U / SAMPLE_INTERVAL_MS;  // 6 samples per minute (10s interval)
+    const size_t total_samples_to_keep = last_minutes * samples_per_minute;
+
+    if (total_samples_to_keep < snapshot.count) {
+      export_start_index = snapshot.count - total_samples_to_keep;
+      export_count = total_samples_to_keep;
+    }
+  }
+
+  // For range-based export, use the first sample in the range as initial
+  const uint8_t* range_initial =
+      (export_start_index < snapshot.count) ? snapshot.sample_at(export_start_index) : snapshot.sample_at(0);
+  const uint8_t* full_initial = snapshot.sample_at(0);
+
+  // Determine which initial to use
+  const uint8_t* initial = (export_start_index > 0 && range_initial != nullptr) ? range_initial : full_initial;
+
   auto write_field_value = [&](const DebugField& field, uint32_t value) -> bool {
     if (value == MISSING_VALUE) {
       return writer.write_literal("null");
@@ -1403,22 +1440,30 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req) const {
     }
   };
 
+  // Calculate the actual time range for the export
+  uint64_t range_started_at_ms = snapshot.started_at_ms;
+  if (export_start_index > 0 && snapshot.count > 0 && snapshot.sample_stride > 0) {
+    // Estimate the timestamp of the start of our range
+    const uint32_t interval_ms = SAMPLE_INTERVAL_MS;
+    range_started_at_ms = snapshot.started_at_ms + (export_start_index * interval_ms);
+  }
+
   bool ok = writer.write_literal(R"({"format":"openquatt-debug-device-v1","schema_version":1)") &&
             writer.write_literal(R"(,"kind":"openquatt_debug_recording","encoding":"device-psram-delta-json-v1")") &&
             writer.write_literal(R"(,"exported_at_ms":)") && writer.write_uint64(snapshot.exported_at_ms) &&
             writer.write_literal(R"(,"source":{"device":"OpenQuatt","storage":"psram"})") &&
-            writer.write_literal(R"(,"recording":{"started_at_ms":)") && writer.write_uint64(snapshot.started_at_ms) &&
+            writer.write_literal(R"(,"recording":{"started_at_ms":)") && writer.write_uint64(range_started_at_ms) &&
             writer.write_literal(R"(,"recording_id":)") && writer.write_uint64(snapshot.recording_id) &&
             writer.write_literal(R"(,"ended_at_ms":)") && writer.write_uint64(snapshot.ended_at_ms) &&
             writer.write_literal(R"(,"active":)") && writer.write_bool(snapshot.active) &&
             writer.write_literal(R"(,"mode":")") && writer.write_literal(snapshot.rolling ? "rolling" : "manual") &&
             writer.write_literal(R"(","rolling":)") && writer.write_bool(snapshot.rolling) &&
-            writer.write_literal(R"(,"frozen":)") && writer.write_bool(snapshot.frozen) &&
+
             writer.write_literal(R"(,"duration_s":)") && writer.write_uint32(snapshot.duration_s) &&
             writer.write_literal(R"(,"retained_duration_s":)") && writer.write_uint32(snapshot.retained_duration_s) &&
             writer.write_literal(R"(,"retention_capacity_s":)") && writer.write_uint32(snapshot.retention_capacity_s) &&
             writer.write_literal(R"(,"interval_s":)") && writer.write_uint32(SAMPLE_INTERVAL_MS / 1000U) &&
-            writer.write_literal(R"(,"sample_count":)") && writer.write_uint32(static_cast<uint32_t>(snapshot.count)) &&
+            writer.write_literal(R"(,"sample_count":)") && writer.write_uint32(static_cast<uint32_t>(export_count)) &&
             writer.write_literal(R"(,"sample_capacity":)") &&
             writer.write_uint32(static_cast<uint32_t>(snapshot.sample_capacity)) &&
             writer.write_literal(R"(,"sample_row_bytes":)") &&
@@ -1469,9 +1514,12 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req) const {
   }
 
   ok = ok && writer.write_literal(R"(],"samples":[)");
-  for (size_t sample_index = 0; ok && sample_index < snapshot.count; ++sample_index) {
-    const uint8_t* sample = snapshot.sample_at(sample_index);
-    const uint8_t* previous = sample_index > 0 ? snapshot.sample_at(sample_index - 1) : initial;
+  for (size_t sample_index = 0; ok && sample_index < export_count; ++sample_index) {
+    const size_t absolute_sample_index = export_start_index + sample_index;
+    const uint8_t* sample = snapshot.sample_at(absolute_sample_index);
+    const uint8_t* previous = (sample_index > 0)         ? snapshot.sample_at(absolute_sample_index - 1)
+                              : (export_start_index > 0) ? snapshot.sample_at(export_start_index - 1)
+                                                         : nullptr;
     ok = (sample_index == 0 || writer.write_char(',')) && writer.write_char('[') &&
          writer.write_uint32(sample_offset_(sample)) && writer.write_literal(",[");
     bool first_delta = true;
