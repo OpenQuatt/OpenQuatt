@@ -10,6 +10,7 @@
 #include "oq_heat_intent_runtime.h"
 #include "oq_power_house_demand_logic.h"
 #include "oq_power_house_dispatch_logic.h"
+#include "oq_power_house_run_extension_logic.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_power_house_runtime {
@@ -247,8 +248,93 @@ class Runtime {
     } else if (applied_total == 0) {
       this->fast_floor_w_ = 0.0f;
     }
+    // #608 run extension: keep base (house need) and effective (HP target) apart.
+    // Power House decides what the house needs; #608 may only decide what the
+    // heat pump minimally delivers. The floor is never fed back into the house
+    // model and never counts as house deficit for boiler assist.
+    const float base_requested_w = requested_w;
+    const int base_raw_demand = raw_demand;
+    const float base_last_w = next_last_w;
+    const float room_c = id(room_temp_selected).state;
+    const float setpoint_c = id(room_setpoint_selected).state;
+    const bool run_ext_enabled = id(ph_run_extension_enabled).has_state() && id(ph_run_extension_enabled).state;
+    float stop_margin_c = 0.5f;
+    if (id(ph_run_extension_stop_margin_c).has_state() && std::isfinite(id(ph_run_extension_stop_margin_c).state))
+      stop_margin_c = std::max(0.1f, std::min(1.0f, id(ph_run_extension_stop_margin_c).state));
+    const bool room_inputs_valid = std::isfinite(room_c) && std::isfinite(setpoint_c) &&
+                                   oq_heat_intent_runtime::room_temperature_fresh(config.ot_room_temperature_fresh) &&
+                                   oq_heat_intent_runtime::room_setpoint_fresh(config.ot_room_setpoint_fresh);
+    const bool heating_allowed = id(heating_enable_valid).has_state() && id(heating_enable_valid).state &&
+                                 id(heating_enable_selected).has_state() && id(heating_enable_selected).state;
+    const bool defrost_hold = oq_power_house_dispatch::tail_active(this->dispatch_state_.hp1_defrost, now_ms,
+                                                                   oq_power_house_dispatch::kDefrostHoldMs) ||
+                              oq_power_house_dispatch::tail_active(this->dispatch_state_.hp2_defrost, now_ms,
+                                                                   oq_power_house_dispatch::kDefrostHoldMs) ||
+                              oq_power_house_dispatch::tail_active(this->dispatch_state_.oil_return, now_ms,
+                                                                   oq_power_house_dispatch::kOilReturnHoldMs) ||
+                              oq_power_house_dispatch::topology_hold_active(this->dispatch_state_, now_ms,
+                                                                            oq_power_house_dispatch::kTopologyHoldMs);
+    const bool run_cycle_active =
+        applied_total > 0 || defrost_hold || hp1_valve_defrost || hp2_valve_defrost || hp1_oil_return || hp2_oil_return;
+    oq_power_house_run_extension::Input run_ext_input;
+    run_ext_input.enabled = run_ext_enabled;
+    run_ext_input.cycle_active = run_cycle_active;
+    run_ext_input.actual_heating_active = applied_total > 0;
+    run_ext_input.inputs_valid = room_inputs_valid;
+    run_ext_input.heating_allowed = heating_allowed;
+    run_ext_input.room_c = room_c;
+    run_ext_input.setpoint_c = setpoint_c;
+    run_ext_input.base_requested_w = base_requested_w;
+    run_ext_input.minimum_viable_w = minimum_viable_w;
+    run_ext_input.water_limit_factor = id(oq_water_temp_limit_factor);
+    const auto run_ext_decision = oq_power_house_run_extension::evaluate(
+        run_ext_input, {stop_margin_c, oq_power_house_run_extension::kRestartHysteresisC}, this->run_extension_state_);
+    if (run_ext_decision.next.phase != this->last_run_ext_phase_) {
+      ESP_LOGI("quatt.strategy", "ph run extension %s -> %s (room %.2f stop %.2f restart %.2f base %.0f floor %.0f)",
+               oq_power_house_run_extension::phase_name(this->last_run_ext_phase_),
+               oq_power_house_run_extension::phase_name(run_ext_decision.next.phase), (double)room_c,
+               (double)run_ext_decision.comfort_stop_c, (double)run_ext_decision.warm_restart_c,
+               (double)base_requested_w, (double)run_ext_decision.floor_w);
+      this->last_run_ext_phase_ = run_ext_decision.next.phase;
+    }
+    this->run_extension_state_ = run_ext_decision.next;
+    this->run_ext_enabled_ = run_ext_enabled;
+    this->run_ext_base_w_ = base_requested_w;
+    this->run_ext_floor_w_ = run_ext_decision.floor_active ? run_ext_decision.floor_w : 0.0f;
+    this->run_ext_comfort_stop_c_ = run_ext_decision.comfort_stop_c;
+    this->run_ext_warm_restart_c_ = run_ext_decision.warm_restart_c;
+    // Blocked diagnostic: enabled and armed below Pmin, but water limiter or
+    // missing Pmin prevents the floor from being applied.
+    this->run_ext_blocked_ = run_ext_enabled && room_inputs_valid && heating_allowed &&
+                             this->run_extension_state_.cycle_armed && std::isfinite(minimum_viable_w) == false &&
+                             base_requested_w > 0.0f;
+    if (run_ext_enabled && room_inputs_valid && heating_allowed && this->run_extension_state_.cycle_armed &&
+        oq_power_house_run_extension::pmin_valid(minimum_viable_w) && base_requested_w < minimum_viable_w &&
+        !oq_power_house_run_extension::water_floor_allowed(id(oq_water_temp_limit_factor)) && std::isfinite(room_c) &&
+        std::isfinite(run_ext_decision.comfort_stop_c) && room_c < run_ext_decision.comfort_stop_c)
+      this->run_ext_blocked_ = true;
+    float effective_requested_w = base_requested_w;
+    int effective_raw_demand = base_raw_demand;
+    if (run_ext_decision.force_comfort_stop) {
+      effective_requested_w = 0.0f;
+      effective_raw_demand = 0;
+    } else if (run_ext_decision.floor_active) {
+      effective_requested_w = std::max(base_requested_w, run_ext_decision.floor_w);
+      const float rated_tmp_w = id(house_rated_power_w).state;
+      if (std::isfinite(rated_tmp_w) && rated_tmp_w > 0.0f && config.demand_max_f > 0)
+        effective_raw_demand =
+            std::max(base_raw_demand,
+                     std::min(config.demand_max_f,
+                              static_cast<int>(std::ceil(effective_requested_w * config.demand_max_f / rated_tmp_w))));
+    }
+    this->run_ext_effective_w_ = effective_requested_w;
+    requested_w = effective_requested_w;
+    raw_demand = effective_raw_demand;
     id(oq_phouse_req_w) = requested_w;
-    id(oq_phouse_last_w) = next_last_w;
+    id(oq_phouse_last_w) = base_last_w;
+    id(oq_ph_run_ext_base_w) = base_requested_w;
+    id(oq_ph_run_ext_floor_w) = this->run_ext_floor_w_;
+    id(oq_ph_run_ext_state_code) = static_cast<int>(this->run_extension_state_.phase);
     id(oq_demand_raw) = raw_demand;
     id(oq_demand_filtered_prev) = id(oq_demand_filtered);
     id(oq_demand_filtered) = raw_demand;
@@ -272,7 +358,18 @@ class Runtime {
     id(oq_ph_request_owner_hp) = dispatch.owner_hp;
     id(oq_ph_request_reason_code) = static_cast<int>(dispatch.reason);
     id(oq_P_hp_cap_w) = dispatch.capacity_w;
-    id(oq_P_deficit_w) = dispatch.deficit_w;
+    // House deficit stays on base house need after caps, never on the #608 floor.
+    const int base_capped_demand =
+        std::min(base_raw_demand, std::max(0, std::min(config.demand_max_f, static_cast<int>(id(oq_power_cap_f)))));
+    float base_capped_w = base_requested_w;
+    if (std::isfinite(base_capped_w) && std::isfinite(rated_w) && rated_w > 0.0f && config.demand_max_f > 0)
+      base_capped_w = std::min(base_capped_w, rated_w * static_cast<float>(base_capped_demand) / config.demand_max_f);
+    const float house_deficit_w =
+        std::isfinite(base_capped_w) && std::isfinite(dispatch.capacity_w) && dispatch.output_valid
+            ? std::max(0.0f, base_capped_w - dispatch.capacity_w)
+            : dispatch.deficit_w;
+    const bool house_saturated = base_capped_demand > 0 && std::isfinite(house_deficit_w) && house_deficit_w > 0.0f;
+    id(oq_P_deficit_w) = house_deficit_w;
 
 #if OQ_TOPOLOGY_DUO
     const std::string optimizer_reason(oq_power_house_dispatch::request_reason_name(static_cast<int>(dispatch.reason)));
@@ -288,14 +385,15 @@ class Runtime {
     id(oq_strategy_heat_request_active) = capped_demand > 0;
     id(oq_strategy_hp_expected_power_w) = dispatch.expected_w;
     id(oq_strategy_hp_max_power_w) = dispatch.capacity_w;
-    id(oq_strategy_hp_saturated) = dispatch.saturated;
+    id(oq_strategy_hp_saturated) = house_saturated;
     id(oq_strategy_output_valid) = dispatch.output_valid;
     id(oq_strategy_output_source_code) = 3;
     id(oq_strategy_output_updated_ms) = now_ms;
     id(oq_strategy_phase_text).publish_state(capped_demand > 0 ? "heat" : "idle");
-    ESP_LOGD("quatt.strategy", "ph f=%d raw=%d preq=%.0f intent=%s owner=%d reason=%d", capped_demand, raw_demand,
-             requested_w, oq_heat_intent::reason_name(intent.reason), dispatch.owner_hp,
-             static_cast<int>(dispatch.reason));
+    ESP_LOGD("quatt.strategy", "ph f=%d raw=%d preq=%.0f base=%.0f floor=%.0f ext=%d intent=%s owner=%d reason=%d",
+             capped_demand, raw_demand, requested_w, (double)base_requested_w, (double)this->run_ext_floor_w_,
+             static_cast<int>(this->run_extension_state_.phase), oq_heat_intent::reason_name(intent.reason),
+             dispatch.owner_hp, static_cast<int>(dispatch.reason));
   }
 
   void reset() {
@@ -304,6 +402,13 @@ class Runtime {
     this->intent_state_ = {};
     this->demand_state_ = {};
     this->fast_floor_w_ = 0.0f;
+    this->run_extension_state_ = {};
+    this->run_ext_base_w_ = 0.0f;
+    this->run_ext_effective_w_ = 0.0f;
+    this->run_ext_floor_w_ = 0.0f;
+    this->run_ext_comfort_stop_c_ = NAN;
+    this->run_ext_warm_restart_c_ = NAN;
+    this->last_run_ext_phase_ = oq_power_house_run_extension::Phase::INACTIVE;
     id(oq_ph_fast_intent_code) = 0;
     id(oq_ph_request_last_loop_ms) = 0;
     id(oq_ph_request_hp1_level) = 0;
@@ -317,6 +422,18 @@ class Runtime {
     id(oq_P_hp_cap_w) = 0.0f;
     id(oq_P_deficit_w) = 0.0f;
   }
+
+  std::string run_extension_status() const {
+    if (!this->run_ext_enabled_) return "inactive";
+    if (this->run_ext_blocked_) return "blocked";
+    return std::string(oq_power_house_run_extension::phase_name(this->run_extension_state_.phase));
+  }
+
+  float run_extension_base_w() const { return this->run_ext_base_w_; }
+  float run_extension_floor_w() const { return this->run_ext_floor_w_; }
+  float run_extension_effective_w() const { return this->run_ext_effective_w_; }
+  float run_extension_comfort_stop_c() const { return this->run_ext_comfort_stop_c_; }
+  float run_extension_warm_restart_c() const { return this->run_ext_warm_restart_c_; }
 
  private:
   static bool near_(float value, float expected) { return std::isfinite(value) && std::fabs(value - expected) < 0.25f; }
@@ -333,6 +450,15 @@ class Runtime {
   oq_power_house::DemandState demand_state_;
   float fast_floor_w_{0.0f};
   std::string last_optimizer_reason_;
+  oq_power_house_run_extension::State run_extension_state_;
+  oq_power_house_run_extension::Phase last_run_ext_phase_{oq_power_house_run_extension::Phase::INACTIVE};
+  bool run_ext_enabled_{false};
+  bool run_ext_blocked_{false};
+  float run_ext_base_w_{0.0f};
+  float run_ext_effective_w_{0.0f};
+  float run_ext_floor_w_{0.0f};
+  float run_ext_comfort_stop_c_{NAN};
+  float run_ext_warm_restart_c_{NAN};
 };
 
 inline Runtime& runtime() {

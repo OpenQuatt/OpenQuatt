@@ -26,14 +26,14 @@ class StrategyRuntimeContractTest(unittest.TestCase):
     def test_yaml_is_a_compact_runtime_contract(self) -> None:
         calls = {
             "curve": ("oq_heating_curve_runtime::runtime()", 7),
-            "power_house": ("oq_power_house_runtime::runtime()", 3),
+            "power_house": ("oq_power_house_runtime::runtime()", 4),
             "cooling": ("oq_cooling_runtime::runtime()", 3),
             "manager": ("oq_strategy_runtime::runtime()", 3),
         }
         for name, (marker, expected) in calls.items():
             self.assertEqual(YAMLS[name].count(marker), expected)
-        # Measured 1554 lines after issue #649 was combined with current dev.
-        self.assertLessEqual(sum(len(source.splitlines()) for source in YAMLS.values()), 1560)
+        # Measured 1634 lines after issue #608 run extension added switch/number/status entities.
+        self.assertLessEqual(sum(len(source.splitlines()) for source in YAMLS.values()), 1650)
         for implementation_marker in (
             "DispatchState dispatch_state",
             "publish_cooling_limiter_event",
@@ -83,7 +83,9 @@ class StrategyRuntimeContractTest(unittest.TestCase):
         # naming from the incident manager) into status globals here.
         # Measured 1318 lines after the bounded Power House single-HP
         # performance-supply fallback added for issue #713.
-        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1320)
+        # Measured 1442 lines after issue #608 run extension integrated
+        # base/effective demand, comfort stop and house-deficit semantics.
+        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1460)
         self.assertLessEqual(len(HEAT_INTENT_RUNTIME.splitlines()), 90)
         self.assertLessEqual(len(LOGIC.splitlines()), 60)
 

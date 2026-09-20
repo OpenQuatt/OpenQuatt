@@ -208,6 +208,30 @@ Voor de meeste gebruikers is vooral dit belangrijk:
 - twee warmtepompen tegelijk zijn niet per definitie beter;
 - het systeem probeert een praktische en zuinige keuze te maken.
 
+## Langer doorverwarmen (optioneel)
+
+`Power House run extension` is een optionele uitbreiding op `Power House` en staat standaard uit. Bestaande installaties blijven zonder deze schakelaar exact hetzelfde werken.
+
+Als de functie aan staat, mag een al draaiende verwarmingsrun bij weinig warmtevraag rustig op het laagste geschikte vermogen blijven doorverwarmen, ook als de berekende huisvraag tijdelijk onder dat minimum of zelfs op nul zit.
+
+Belangrijk in gewone taal:
+
+- de functie verlengt alleen een bestaande run; inschakelen start een stilstaande warmtepomp niet zelfstandig;
+- de kamer mag daardoor bewust iets boven het setpoint uitkomen;
+- de stopmarge is geen gegarandeerde maximumkamertemperatuur; restwarmte kan nog voor overshoot zorgen;
+- na een comfortstop wacht het systeem op afkoeling en mag het daarna alleen warm herstarten als de woning echt weer warmte vraagt;
+- `comfort above` en de nieuwe stopmarge zijn verschillende instellingen;
+- er is geen garantie op lager elektriciteitsverbruik.
+
+Instellingen:
+
+- `Power House run extension` (aan/uit, standaard uit);
+- `Power House run extension stop margin` (0,1–1,0 °C in stapjes van 0,1, standaard 0,5 °C).
+
+Bij een setpoint van 20,5 °C en een marge van 0,5 °C stopt een verlengde run bij 21,0 °C. Daarna mag een warme herstart vanaf 20,8 °C plaatsvinden als de woning nog warmte nodig heeft. Die 0,2 K hysteresis ligt vast en is geen aparte instelling.
+
+Alle bestaande beveiligingen blijven leidend: waterbegrenzing, stroomlimieten, minimum aan/uit-tijden, defrost en olieretour gaan altijd voor. De extra vraag telt bovendien niet mee als woningtekort voor ketelbijschakeling.
+
 ## Wat hoef je meestal niet aan te raken?
 
 Voor de meeste gebruikers zijn dit geen eerste afstelknoppen:
