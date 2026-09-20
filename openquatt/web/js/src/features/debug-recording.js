@@ -277,6 +277,39 @@ export function patchDebugRecordingSettingsStatus() {
   }
 }
 
+// Silent status polls must not re-render the open modal: a full render
+// replaces every DOM node, which visibly flickers hovered buttons and steals
+// focus. Only the running numbers are patched in place; structural changes
+// (enabled/active/available/overflow) still trigger a full render.
+export function getDebugRecordingChromeSignature(status = state.debugRecordingDeviceStatus) {
+  return [
+    status?.available !== false,
+    status?.enabled !== false,
+    Boolean(status?.active),
+    isDebugRecordingRolling(status),
+    status?.string_overflow === true,
+  ].join("|");
+}
+
+export function patchDebugRecordingModalNumbers() {
+  if (!state.root || state.systemModal !== "debug-recording") {
+    return false;
+  }
+  const modal = state.root.querySelector(".oq-debug-recording-modal");
+  if (!modal) {
+    return false;
+  }
+  const availability = modal.querySelector("[data-oq-recorder-availability]");
+  if (availability) {
+    availability.textContent = `${formatDebugRecordingDuration(getDebugRecordingRetainedDurationMs())} (${getDebugRecordingSampleCount()} samples)`;
+  }
+  const range = modal.querySelector("[data-oq-recorder-range]");
+  if (range) {
+    range.textContent = getDebugRecordingRangeLabel();
+  }
+  return true;
+}
+
 const DEBUG_RECORDING_ICONS = {
   activity: '<svg viewBox="0 0 24 24" focusable="false"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>',
   status: '<svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="4"/></svg>',
@@ -371,11 +404,17 @@ export async function refreshDebugRecordingDeviceStatus(options = {}) {
     state.debugRecordingError = "";
     render();
   }
+  const chromeBefore = getDebugRecordingChromeSignature();
+  let modalPatched = false;
   try {
     await fetchDebugRecordingDeviceStatus();
     debugRecordingStatusFailureCount = 0;
     if (String(state.debugRecordingError || "").startsWith("Status kon niet worden opgehaald.")) {
       state.debugRecordingError = "";
+    }
+    if (options.silent && state.systemModal === "debug-recording"
+      && getDebugRecordingChromeSignature() === chromeBefore) {
+      modalPatched = patchDebugRecordingModalNumbers();
     }
     scheduleDebugRecordingDeviceStatusPoll();
   } catch (error) {
@@ -391,9 +430,9 @@ export async function refreshDebugRecordingDeviceStatus(options = {}) {
     if (!options.silent) {
       state.debugRecordingBusy = false;
     }
-    if (!options.silent || state.systemModal === "debug-recording") {
+    if (!options.silent || (state.systemModal === "debug-recording" && !modalPatched)) {
       render();
-    } else {
+    } else if (state.systemModal !== "debug-recording") {
       patchDebugRecordingHeaderStatus();
       patchDebugRecordingSettingsStatus();
     }
@@ -813,7 +852,7 @@ export function renderDebugRecordingModal() {
           ` : `
             <div class="oq-debug-recording-availability">
               <span>Beschikbaar</span>
-              <strong>${escapeHtml(formatDebugRecordingDuration(retainedMs))} (${sampleCount} samples)</strong>
+              <strong data-oq-recorder-availability>${escapeHtml(formatDebugRecordingDuration(retainedMs))} (${sampleCount} samples)</strong>
             </div>
             <p class="oq-debug-recording-subtle">Apparaatgeheugen · sample-interval ${escapeHtml(String(intervalS))} s</p>
             ${!enabled ? `
@@ -851,7 +890,7 @@ export function renderDebugRecordingModal() {
               `;
             }).join("")}
           </div>
-          <p class="oq-debug-recording-rangelabel"><strong>${escapeHtml(getDebugRecordingRangeLabel(downloadRange))}</strong></p>
+          <p class="oq-debug-recording-rangelabel"><strong data-oq-recorder-range>${escapeHtml(getDebugRecordingRangeLabel(downloadRange))}</strong></p>
           <div class="oq-debug-recording-exportactions">
             <button class="oq-helper-button oq-helper-button--primary oq-debug-recording-primary" type="button" data-oq-action="download-debug-recording-range" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("download")}Download diagnosebestand</button>
             <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("copy")}Kopieer gegevens</button>

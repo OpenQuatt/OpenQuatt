@@ -438,6 +438,78 @@ test("rangebeschrijving benoemt het venster voluit", () => {
   assert.match(getDebugRecordingRangeLabel(0), /Volledige beschikbare historie · /);
 });
 
+test("stille poll rendert de open modal niet opnieuw maar patcht de getallen", async (t) => {
+  const restoreTimers = seedFeatureStatus({
+    available: true,
+    enabled: true,
+    active: true,
+    mode: "rolling",
+    rolling: true,
+    sample_count: 500,
+    retained_duration_s: 4500,
+  });
+  applyDebugRecordingDeviceStatus(state.debugRecordingDeviceStatus);
+  const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
+  const originalFetch = window.fetch;
+  const originalRoot = state.root;
+  t.after(() => {
+    window.fetch = originalFetch;
+    state.root = originalRoot;
+    setRenderCallback(null);
+    restoreTimers();
+  });
+  let renders = 0;
+  setRenderCallback(() => { renders += 1; });
+  const availabilityEl = { textContent: "oud" };
+  const rangeEl = { textContent: "oud" };
+  state.root = {
+    querySelector: (selector) => (selector === ".oq-debug-recording-modal"
+      ? { querySelector: (inner) => (inner === "[data-oq-recorder-availability]" ? availabilityEl : rangeEl) }
+      : null),
+  };
+  window.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      ...state.debugRecordingDeviceStatus,
+      sample_count: 520,
+      retained_duration_s: 4700,
+    }),
+  });
+
+  const { refreshDebugRecordingDeviceStatus } = await import("../js/src/features/debug-recording.js");
+  await refreshDebugRecordingDeviceStatus({ silent: true });
+
+  assert.equal(renders, 0, "geen volledige re-render bij ongewijzigde toestand");
+  assert.equal(availabilityEl.textContent, "1u 18m (520 samples)");
+  assert.equal(rangeEl.textContent, "Laatste 15 minuten");
+});
+
+test("stille poll rendert wel opnieuw bij een toestandswissel", async (t) => {
+  const restoreTimers = seedFeatureStatus({ available: true, enabled: true, active: true });
+  applyDebugRecordingDeviceStatus(state.debugRecordingDeviceStatus);
+  const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
+  const originalFetch = window.fetch;
+  t.after(() => {
+    window.fetch = originalFetch;
+    setRenderCallback(null);
+    restoreTimers();
+  });
+  let renders = 0;
+  setRenderCallback(() => { renders += 1; });
+  window.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ ...state.debugRecordingDeviceStatus, enabled: false, active: false }),
+  });
+
+  const { refreshDebugRecordingDeviceStatus } = await import("../js/src/features/debug-recording.js");
+  await refreshDebugRecordingDeviceStatus({ silent: true });
+
+  assert.ok(renders > 0, "wel opnieuw renderen bij toestandswissel");
+  assert.equal(state.debugRecordingActive, false);
+});
+
 test("statuslabels volgen enabled/active zonder frozen-toestanden", () => {
   seedFeatureStatus({ available: true, enabled: true, active: true });
   applyDebugRecordingDeviceStatus(state.debugRecordingDeviceStatus);
