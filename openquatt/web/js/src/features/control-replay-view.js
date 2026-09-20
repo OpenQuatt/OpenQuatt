@@ -717,6 +717,88 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     `;
   }
 
+  function getControlWorkingBlockingReasons(current) {
+    const reasons = [];
+
+    if (current.primaryReason === "startup_inhibit" && current.startupInhibit) {
+      const remainingS = current.startupInhibit.remainingS;
+      if (remainingS > 0) {
+        reasons.push(`Wachttijd na herstart: nog ${Math.max(1, Math.ceil(remainingS / 60))} minuten`);
+      } else {
+        reasons.push("Wachttijd na herstart: wachttijd actief");
+      }
+    }
+
+    if (current.primaryReason === "min_rest_active") {
+      reasons.push("Minimum rusttijd actief: de warmtepomp wacht om korte starts te voorkomen");
+    }
+
+    if (current.primaryReason === "no_candidate") {
+      reasons.push("Nog geen veilige start: wachttijd of bescherming is actief");
+    }
+
+    if (current.primaryReason === "candidate_in_rest") {
+      reasons.push("Rusttijd loopt nog: de warmtepomp is kort geleden gestopt");
+    }
+
+    if (current.primaryReason === "candidate_in_defrost") {
+      reasons.push("Warmtepomp ontdooit: moet eerst afronden voordat deze kan starten");
+    }
+
+    if (current.primaryReason === "candidate_unavailable") {
+      reasons.push("Warmtepomp niet beschikbaar: technische begrenzing of beschikbaarheid");
+    }
+
+    if (current.primaryReason === "flow_preflow") {
+      reasons.push("Voorloop actief: pomp bouwt waterflow op voordat warmtepomp mag starten");
+    }
+
+    if (current.primaryReason === "flow_too_low") {
+      reasons.push("Waterflow blijft te laag: start geblokkeerd tot flow voldoende is");
+    }
+
+    if (current.primaryReason === "sensor_fallback") {
+      reasons.push("Sensorwaarde onzeker: het systeem kiest voorzichtig gedrag");
+    }
+
+    if (current.primaryReason === "soft_guard") {
+      reasons.push("Veilige marge bewaakt: systeem begrenst zichzelf binnen temperatuur- en flowgrenzen");
+    }
+
+    if (current.primaryReason === "restart_wait") {
+      reasons.push("Wacht op veilige herstart: dauwpuntmarge moet stabiel herstellen");
+    }
+
+    if (current.primaryReason === "frost_protection") {
+      reasons.push("Vorstbescherming actief: water circuleren om bevriezing te voorkomen");
+    }
+
+    if (current.coolingProtection && current.cooling) {
+      if (current.cooling.reasonCode === "restart_wait") {
+        reasons.push("Koeling wacht op veilige herstart: marge moet herstellen");
+      } else if (current.cooling.reasonCode === "dew_stop") {
+        reasons.push("Dauwpuntstop: verder koelen zou te dicht bij dauwpunt komen");
+      } else if (current.cooling.reasonCode === "buffer_stop") {
+        reasons.push("Water al koud genoeg: koelvraag blijft actief maar start niet nodig");
+      } else if (current.cooling.reasonCode !== "inactive" && current.cooling.reasonCode !== "ready") {
+        const reasonMeta = getControlWorkingReasonMeta(current.cooling.reasonCode);
+        if (reasonMeta && reasonMeta.summary) {
+          reasons.push(`Koeling beperkt: ${reasonMeta.summary}`);
+        }
+      }
+    }
+
+    if (current.primaryReason === "sticky_protection") {
+      reasons.push("Pompbescherming: pomp draait kort om vastzitten te voorkomen (geen warmte/koelvraag)");
+    }
+
+    if (reasons.length === 0 && !current.hp1Running && !current.hp2Running) {
+      reasons.push("Geen warmtevraag: het systeem wacht op nieuwe vraag");
+    }
+
+    return reasons;
+  }
+
   function getControlWorkingActiveStartupInhibit(nowMs = Date.now()) {
     const events = getDecisionLogEvents()
       .filter((event) => ["startup_inhibit_start", "startup_inhibit_refresh", "startup_inhibit_clear"].includes(String(event?.event_type || "")))
@@ -2629,6 +2711,16 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
 
   function renderControlWorkingNowCard(current) {
     const status = getControlWorkingSeverityMeta(current.severity);
+    const heatPumpsOff = !current.hp1Running && !current.hp2Running;
+    const blockingReasons = heatPumpsOff ? getControlWorkingBlockingReasons(current) : [];
+    const blockingSection = heatPumpsOff && blockingReasons.length > 0 ? `
+        <div class="oq-working-now-blocking">
+          <span>Waarom staat mijn warmtepomp uit?</span>
+          <ul class="oq-working-blocking-list">
+            ${blockingReasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}
+          </ul>
+        </div>
+    ` : "";
     return `
       <section class="oq-working-now oq-working-now--${escapeHtml(status.tone)}">
         <div class="oq-working-now-main">
@@ -2641,6 +2733,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
             ${renderControlWorkingPill(current.sinceLabel, "context")}
           </div>
         </div>
+        ${blockingSection}
         <div class="oq-working-now-next">
           <span>Wat doet het systeem daarna?</span>
           <strong>${escapeHtml(current.expectation)}</strong>
