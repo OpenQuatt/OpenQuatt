@@ -3,6 +3,8 @@
 #include <math.h>
 #include <stdint.h>
 
+#include "oq_house_model_logic.h"
+
 namespace oq_power_house {
 constexpr uint8_t kDemandSourceNone = 0;
 constexpr uint8_t kDemandSourceHaInput = 1;
@@ -33,12 +35,24 @@ struct DemandState {
   uint32_t last_ms = 0;
   float comfort_memory_c = 0.0f;
 };
+// Separate contributions keep a future temporary correction independent of the
+// structural HouseLine and existing room feedback. Adaptive control is not
+// implemented: adaptive_w remains zero and has no setter or persistent state.
+struct DemandContributions {
+  // Input to the composition path. The legacy adapter preserves its historical
+  // base clipping; house_line_power_w() exposes the uncapped structural line.
+  float modelled_base_w = NAN;
+  float selected_feedforward_w = NAN;
+  float adaptive_w = 0.0f;
+  float room_feedback_w = NAN;
+};
 struct DemandDecision {
   DemandState next;
   float requested_w = 0.0f;
   int raw_demand = 0;
   bool external = false;
   bool valid = false;
+  DemandContributions contributions;
 };
 inline float clamp_power(float value, float low, float high) {
   if (value < low) return low;
@@ -78,19 +92,22 @@ inline CadenceDecision decide_cadence(uint32_t now_ms, uint32_t last_ms, uint32_
   if (elapsed_ms < target_ms) return {};
   return {true, static_cast<float>(elapsed_ms) / 1000.0f};
 }
-inline DemandDecision decide_demand(const DemandInput& in, const DemandTuning& tuning, const DemandState& state) {
+// Shared control path. Only the feedforward line may differ; the installation
+// envelope owns clipping, normalization and slew independently of that line.
+inline DemandDecision decide_demand_with_power(const DemandInput& in, const DemandTuning& tuning,
+                                               const DemandState& state, float modelled_w,
+                                               const PowerHouseEnvelope& envelope) {
   DemandDecision out;
   out.next.last_ms = in.now_ms == 0 ? UINT32_MAX : in.now_ms;
-  const bool valid =
-      isfinite(in.outside_c) && isfinite(in.cold_c) && isfinite(in.zero_power_c) && isfinite(in.rated_w) &&
-      in.rated_w > 0.0f && isfinite(in.room_c) && isfinite(in.setpoint_c) && isfinite(in.water_limit_factor) &&
-      isfinite(tuning.temperature_guard_c) && tuning.temperature_guard_c >= 0.0f && isfinite(tuning.reaction_w_per_k) &&
-      tuning.reaction_w_per_k >= 0.0f && isfinite(tuning.comfort_below_c) && isfinite(tuning.comfort_above_c) &&
-      isfinite(tuning.rise_time_min) && isfinite(tuning.fall_time_min) && tuning.demand_max > 0 &&
-      in.zero_power_c > in.cold_c + tuning.temperature_guard_c;
+  const bool valid = isfinite(modelled_w) && valid_house_envelope(envelope) && isfinite(in.room_c) &&
+                     isfinite(in.setpoint_c) && isfinite(in.water_limit_factor) &&
+                     isfinite(tuning.temperature_guard_c) && tuning.temperature_guard_c >= 0.0f &&
+                     isfinite(tuning.reaction_w_per_k) && tuning.reaction_w_per_k >= 0.0f &&
+                     isfinite(tuning.comfort_below_c) && isfinite(tuning.comfort_above_c) &&
+                     isfinite(tuning.rise_time_min) && isfinite(tuning.fall_time_min) && tuning.demand_max > 0;
   if (!valid) return out;
-  const float modelled_w = modelled_house_power_w(in.zero_power_c, in.cold_c, in.outside_c, in.rated_w);
-  const Feedforward feedforward = select_feedforward(modelled_w, in.external_w, in.external_valid, in.rated_w);
+  const Feedforward feedforward = select_feedforward(clamp_power(modelled_w, 0.0f, envelope.request_max_w),
+                                                     in.external_w, in.external_valid, envelope.request_max_w);
   if (!isfinite(modelled_w) || !isfinite(feedforward.house_power_w)) return out;
   const float below_c = clamp_power(tuning.comfort_below_c, 0.0f, 2.0f);
   const float above_c = clamp_power(tuning.comfort_above_c, 0.0f, 2.0f);
@@ -104,7 +121,7 @@ inline DemandDecision decide_demand(const DemandInput& in, const DemandTuning& t
   float last_w = feedforward.house_power_w;
   if (state.last_ms != 0) {
     dt_s = static_cast<float>(static_cast<uint32_t>(in.now_ms - state.last_ms)) / 1000.0f;
-    if (isfinite(state.last_w)) last_w = clamp_power(state.last_w, 0.0f, in.rated_w);
+    if (isfinite(state.last_w)) last_w = clamp_power(state.last_w, 0.0f, envelope.request_max_w);
   }
   if (in.room_c < low_base_c) {
     const float undershoot = clamp_power((low_base_c - in.room_c) / 0.45f, 0.0f, 1.0f);
@@ -122,22 +139,48 @@ inline DemandDecision decide_demand(const DemandInput& in, const DemandTuning& t
     error_c = low_c - in.room_c;
   else if (in.room_c > in.setpoint_c)
     error_c = in.setpoint_c - in.room_c;
-  const float raw_w = clamp_power(feedforward.house_power_w + tuning.reaction_w_per_k * error_c, 0.0f, in.rated_w);
+  out.contributions = {modelled_w, feedforward.house_power_w, 0.0f, tuning.reaction_w_per_k * error_c};
+  // Future adaptive bias belongs at this composition boundary, before the
+  // existing envelope, slew, water limit and dispatch. It never rewrites H/T0.
+  const float raw_w = clamp_power(
+      out.contributions.selected_feedforward_w + out.contributions.adaptive_w + out.contributions.room_feedback_w, 0.0f,
+      envelope.request_max_w);
   if (!isfinite(error_c) || !isfinite(raw_w)) return out;
   const float rise_min = clamp_power(tuning.rise_time_min, 2.0f, 20.0f);
   const float fall_min = clamp_power(tuning.fall_time_min, 1.0f, 10.0f);
   float limited_w = raw_w;
   if (dt_s > 0.0f && raw_w > last_w)
-    limited_w = fminf(raw_w, last_w + in.rated_w * dt_s / (rise_min * 60.0f));
+    limited_w = fminf(raw_w, last_w + envelope.slew_scale_w * dt_s / (rise_min * 60.0f));
   else if (dt_s > 0.0f && raw_w < last_w)
-    limited_w = fmaxf(raw_w, last_w - in.rated_w * dt_s / (fall_min * 60.0f));
+    limited_w = fmaxf(raw_w, last_w - envelope.slew_scale_w * dt_s / (fall_min * 60.0f));
   out.requested_w = limited_w * clamp_power(in.water_limit_factor, 0.0f, 1.0f);
-  out.raw_demand = static_cast<int>(lroundf(tuning.demand_max * (out.requested_w / in.rated_w)));
+  const float scaled_demand = tuning.demand_max * (out.requested_w / envelope.demand_scale_w);
+  // A separate request ceiling can exceed the demand scale. Saturate before
+  // converting to integer, including an overflowing positive ratio.
+  out.raw_demand = scaled_demand >= static_cast<float>(tuning.demand_max) ? tuning.demand_max
+                                                                          : static_cast<int>(lroundf(scaled_demand));
   if (out.raw_demand < 0) out.raw_demand = 0;
   if (out.raw_demand > tuning.demand_max) out.raw_demand = tuning.demand_max;
   out.external = feedforward.external;
   out.valid = true;
   out.next = {out.requested_w, out.next.last_ms, memory_c};
   return out;
+}
+// Legacy compatibility deliberately retains the original divide-then-multiply
+// evaluation order. Computing H first can move a half-level rounding boundary.
+inline DemandDecision decide_demand(const DemandInput& in, const DemandTuning& tuning, const DemandState& state) {
+  const bool valid_reference =
+      isfinite(in.cold_c) && isfinite(in.zero_power_c) && in.zero_power_c > in.cold_c + tuning.temperature_guard_c;
+  const float watts =
+      valid_reference ? modelled_house_power_w(in.zero_power_c, in.cold_c, in.outside_c, in.rated_w) : NAN;
+  return decide_demand_with_power(in, tuning, state, watts, house_envelope_from_legacy(in.rated_w));
+}
+
+// Pure entry point for evaluating a separately supplied line. Runtime activation
+// and persistence are intentionally not provided by this mathematical helper.
+inline DemandDecision decide_demand_with_line(const DemandInput& in, const DemandTuning& tuning,
+                                              const DemandState& state, const HouseLine& line,
+                                              const PowerHouseEnvelope& envelope) {
+  return decide_demand_with_power(in, tuning, state, house_line_power_w(line, in.outside_c), envelope);
 }
 }  // namespace oq_power_house

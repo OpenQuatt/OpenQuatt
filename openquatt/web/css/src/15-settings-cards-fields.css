@@ -639,6 +639,58 @@
   fill: var(--oq-helper-soft);
 }
 
+.oq-house-learning-chart-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--oq-helper-line);
+}
+
+.oq-house-learning-chart-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.oq-house-learning-chart-head h5 { margin: 0; color: var(--oq-helper-ink); font-size: 0.98rem; }
+.oq-house-learning-chart-head p { max-width: 660px; margin: 5px 0 0; color: var(--oq-helper-soft); font-size: 0.86rem; line-height: 1.45; }
+.oq-house-learning-chart-head .oq-helper-button { flex: 0 0 auto; }
+
+.oq-house-learning-chart-wrap { position: relative; }
+.oq-house-learning-chart { display: block; width: 100%; height: auto; overflow: visible; }
+.oq-house-learning-chart-range { fill: var(--oq-helper-sky); opacity: 0.045; }
+.oq-house-learning-chart-grid { stroke: color-mix(in srgb, var(--oq-helper-line) 86%, transparent); stroke-width: 1; }
+.oq-house-learning-chart-axis, .oq-house-learning-chart-unit { fill: var(--oq-helper-faint); font-family: inherit; font-size: 12px; font-weight: 400; }
+.oq-house-learning-chart-unit { font-size: 11px; }
+.oq-house-learning-chart-line { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.5; }
+.oq-house-learning-chart-line--configured { stroke: #2563eb; }
+.oq-house-learning-chart-line--learned { stroke: #16a34a; }
+.oq-house-learning-chart-line--learned-dashed { stroke: #16a34a; stroke-dasharray: 7 7; opacity: 0.78; }
+.oq-helper-shell--dark .oq-house-learning-chart-line--configured { stroke: #60a5fa; }
+.oq-helper-shell--dark .oq-house-learning-chart-line--learned,
+.oq-helper-shell--dark .oq-house-learning-chart-line--learned-dashed { stroke: #4ade80; }
+.oq-helper-shell--dark .oq-house-learning-chart-swatch--configured { background: #60a5fa; }
+.oq-helper-shell--dark .oq-house-learning-chart-swatch--learned { background: #4ade80; }
+.oq-house-learning-chart-point { cursor: crosshair; }
+.oq-house-learning-chart-hit { fill: transparent; pointer-events: all; }
+.oq-house-learning-chart-dot { fill: #ea580c; stroke: var(--oq-helper-surface, #fff); stroke-width: 1.5; }
+.oq-house-learning-chart-point:hover .oq-house-learning-chart-dot, .oq-house-learning-chart-point:focus-visible .oq-house-learning-chart-dot { fill: #c2410c; r: 4.5px; }
+.oq-house-learning-chart-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--oq-helper-soft); font-size: 0.82rem; font-weight: 700; }
+.oq-house-learning-chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.oq-house-learning-chart-swatch { width: 18px; height: 3px; border-radius: 2px; background: #2563eb; }
+.oq-house-learning-chart-swatch--records { width: 8px; height: 8px; border-radius: 50%; background: #ea580c; }
+.oq-house-learning-chart-swatch--learned { background: #16a34a; }
+.oq-house-learning-chart-note { margin: -5px 0 0; color: var(--oq-helper-faint); font-size: 0.82rem; }
+.oq-house-learning-chart-freshness { margin: -5px 0 0; color: var(--oq-helper-faint); font-size: 0.78rem; }
+.oq-house-learning-chart-empty { display: grid; place-items: center; min-height: 150px; gap: 5px; padding: 22px; border-radius: 14px; background: color-mix(in srgb, var(--oq-helper-surface) 82%, var(--oq-helper-line)); color: var(--oq-helper-soft); text-align: center; }
+.oq-house-learning-chart-empty strong { color: var(--oq-helper-ink); }
+.oq-house-learning-chart-empty span { font-size: 0.86rem; }
+.oq-house-learning-chart-tooltip { position: absolute; top: 0; left: 0; z-index: 2; display: grid; gap: 3px; min-width: 172px; max-width: min(260px, calc(100% - 16px)); padding: 9px 11px; border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 10px; background: rgba(15, 23, 42, 0.94); color: #e5e7eb; box-shadow: 0 12px 28px rgba(15, 23, 42, 0.25); font-size: 0.8rem; line-height: 1.3; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+.oq-house-learning-chart-tooltip.is-visible { opacity: 1; }
+.oq-house-learning-chart-tooltip strong { color: #fff; font-size: 0.86rem; }
+
 .oq-ph-concept-tick-value {
   fill: var(--oq-helper-ink);
   font-family: inherit;
