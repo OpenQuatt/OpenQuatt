@@ -229,6 +229,18 @@ test("opnieuw inschakelen start een nieuwe opname en wist de oude buffer", async
   assert.ok(enabled.sample_count < before.sample_count, "oude buffer is gewist");
 });
 
+test("oude start-route respecteert de opt-out", async () => {
+  const mock = await loadMockRecorder();
+  const csrf = await mockCsrf(mock);
+  await mock.post("/openquatt/debug-recording/enabled", { enabled: "0", csrf_token: csrf });
+  const rolling = await mock.post("/openquatt/debug-recording/start?rolling=1", { csrf_token: csrf });
+  assert.equal(rolling.status, 409);
+  assert.equal(rolling.body.error, "recorder_disabled");
+  const after = (await mock.getStatus()).body;
+  assert.equal(after.enabled, false);
+  assert.equal(after.active, false);
+});
+
 test("dubbel inschakelen is idempotent en wist niets", async () => {
   const mock = await loadMockRecorder();
   const csrf = await mockCsrf(mock);
@@ -636,17 +648,17 @@ test("kopieer-en-open gebruikt het bereik en opent daarna de analyser", async (t
     window.open = originalOpen;
     restoreTimers();
   });
-  const requestedUrls = [];
+  const calls = [];
   let copiedText = "";
-  const opened = [];
+  const analyserTab = { closed: false, location: {}, close: () => { analyserTab.closed = true; } };
   window.navigator.clipboard = { writeText: async (text) => { copiedText = text; } };
   window.isSecureContext = true;
   window.open = (url, target, features) => {
-    opened.push({ url: String(url), target, features });
-    return null;
+    calls.push({ kind: "open", url: String(url), target, features });
+    return analyserTab;
   };
   window.fetch = async (url) => {
-    requestedUrls.push(String(url));
+    calls.push({ kind: "fetch", url: String(url) });
     return { ok: true, status: 200, json: async () => ({ recording: { active: true, recording_id: 7 } }) };
   };
 
@@ -655,8 +667,36 @@ test("kopieer-en-open gebruikt het bereik en opent daarna de analyser", async (t
   const copied = await copyDebugRecordingAndOpenAnalyser();
 
   assert.equal(copied, true);
-  assert.equal(requestedUrls.length, 1);
-  assert.match(requestedUrls[0], /download-range\?last_minutes=60/);
+  // Tab wordt synchroon uit de klik geopend (popup-veilig), pas daarna kopie.
+  assert.deepEqual(calls[0], { kind: "open", url: "about:blank", target: "_blank", features: "noopener,noreferrer" });
+  assert.match(calls[1].url, /download-range\?last_minutes=60/);
   assert.ok(copiedText.includes("recording"));
-  assert.deepEqual(opened, [{ url: "https://openheatpumps.nl", target: "_blank", features: "noopener,noreferrer" }]);
+  assert.equal(analyserTab.location.href, "https://openheatpumps.nl");
+});
+
+test("kopieer-en-open sluit de tab bij een mislukte kopie", async (t) => {
+  const restoreTimers = seedFeatureStatus();
+  const originalFetch = window.fetch;
+  const originalClipboard = window.navigator.clipboard;
+  const originalOpen = window.open;
+  t.after(() => {
+    window.fetch = originalFetch;
+    window.navigator.clipboard = originalClipboard;
+    window.open = originalOpen;
+    restoreTimers();
+  });
+  const analyserTab = { closed: false, location: {}, close: () => { analyserTab.closed = true; } };
+  window.navigator.clipboard = { writeText: async () => { throw new Error("geen klembord"); } };
+  window.isSecureContext = true;
+  window.open = () => analyserTab;
+  window.fetch = async () => ({
+    ok: true, status: 200, json: async () => ({ recording: { active: true, recording_id: 7 } }),
+  });
+
+  const { copyDebugRecordingAndOpenAnalyser } = await import("../js/src/features/debug-recording.js");
+  const copied = await copyDebugRecordingAndOpenAnalyser();
+
+  assert.equal(copied, false);
+  assert.equal(analyserTab.closed, true);
+  assert.equal(analyserTab.location.href, undefined);
 });

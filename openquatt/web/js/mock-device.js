@@ -5228,6 +5228,9 @@
 
   function handleDebugRecordingStart(url) {
     const pending = state.debugRecording;
+    if (pending.enabled === false) {
+      return mockResponse(409, { ok: false, error: "recorder_disabled" });
+    }
     if (!pending.configurationPending || pending.pendingFields.length <= DEBUG_RECORDING_SYSTEM_FIELD_COUNT) {
       return mockResponse(409, { ok: false, error: "configuration_not_ready" });
     }

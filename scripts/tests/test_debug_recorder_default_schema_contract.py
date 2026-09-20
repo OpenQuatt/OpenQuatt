@@ -117,6 +117,19 @@ class DebugRecorderDefaultSchemaContractTest(unittest.TestCase):
         self.assertNotIn("stopped_ms_", RECORDER_SOURCE)
         self.assertNotIn("last_sample_ms_", RECORDER_SOURCE)
 
+    def test_wallclock_fallback_is_wrap_safe_without_rtc(self) -> None:
+        current = RECORDER_SOURCE[RECORDER_SOURCE.index("uint64_t OpenQuattDebugRecorder::current_time_ms_"):]
+        current = current[: current.index("uint64_t OpenQuattDebugRecorder::started_time_ms_")]
+        self.assertIn("extend_millis_(millis())", current)
+        self.assertNotIn("static_cast<uint64_t>(millis())", RECORDER_SOURCE)
+
+    def test_start_routes_refuse_opt_out(self) -> None:
+        for name in ("bool OpenQuattDebugRecorder::start(uint32_t", "bool OpenQuattDebugRecorder::start_rolling()"):
+            fn = RECORDER_SOURCE[RECORDER_SOURCE.index(name):]
+            fn = fn[: fn.index("\n}\n")]
+            self.assertIn("!this->enabled_", fn)
+        self.assertIn('"recorder_disabled"', RECORDER_SOURCE)
+
     def test_sync_failure_is_reported_not_silent(self) -> None:
         save = RECORDER_SOURCE[RECORDER_SOURCE.index("bool OpenQuattDebugRecorder::save_enabled_preference_"):]
         save = save[: save.index("bool OpenQuattDebugRecorder::set_enabled")]

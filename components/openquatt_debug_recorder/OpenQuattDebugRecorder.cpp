@@ -328,6 +328,10 @@ class OpenQuattDebugRecorderRequestHandler : public AsyncWebHandler {
         const uint32_t minutes = parse_uint_arg(request, "minutes", 15);
         duration_s = minutes > std::numeric_limits<uint32_t>::max() / 60U ? 0 : minutes * 60U;
       }
+      if (!this->parent_->enabled()) {
+        request->send(409, "application/json", R"({"ok":false,"error":"recorder_disabled"})");
+        return;
+      }
       const bool started = rolling ? this->parent_->start_rolling() : this->parent_->start(duration_s);
       if (!started) {
         request->send(409, "application/json", R"({"ok":false,"error":"recorder_not_configured"})");
@@ -453,7 +457,10 @@ uint64_t OpenQuattDebugRecorder::current_time_ms_() const {
   if (this->time_is_valid_()) {
     return static_cast<uint64_t>(this->clock_->now().timestamp) * 1000ULL;
   }
-  return static_cast<uint64_t>(millis());
+  // Without valid RTC time the wall-clock reconstruction still needs a
+  // wrap-safe base: a bare millis() would collapse started/ended metadata
+  // after the ~49.7 day wrap.
+  return this->extend_millis_(millis());
 }
 
 uint64_t OpenQuattDebugRecorder::extend_millis_(uint32_t now_ms) const {
@@ -1225,9 +1232,16 @@ bool OpenQuattDebugRecorder::start(uint32_t duration_s) {
   if (!this->lock_state_()) {
     return false;
   }
-  if (!this->available_() || this->active_ || !this->activate_pending_configuration_()) {
+  // A stale client must not bypass the persistent user opt-out; fail fast
+  // before consuming any pending browser configuration.
+  if (!this->available_() || this->active_ || !this->enabled_) {
     this->unlock_state_();
-    ESP_LOGW(TAG, "Debug recording unavailable or configuration not committed");
+    ESP_LOGW(TAG, "Debug recording unavailable, active or disabled by user preference");
+    return false;
+  }
+  if (!this->activate_pending_configuration_()) {
+    this->unlock_state_();
+    ESP_LOGW(TAG, "Debug recording configuration not committed");
     return false;
   }
   this->active_ = true;
@@ -1259,9 +1273,14 @@ bool OpenQuattDebugRecorder::start_rolling() {
   if (!this->lock_state_()) {
     return false;
   }
-  if (!this->available_() || this->active_ || !this->activate_pending_configuration_()) {
+  if (!this->available_() || this->active_ || !this->enabled_) {
     this->unlock_state_();
-    ESP_LOGW(TAG, "Rolling debug recording unavailable or configuration not committed");
+    ESP_LOGW(TAG, "Rolling debug recording unavailable, active or disabled by user preference");
+    return false;
+  }
+  if (!this->activate_pending_configuration_()) {
+    this->unlock_state_();
+    ESP_LOGW(TAG, "Rolling debug recording configuration not committed");
     return false;
   }
   this->start_rolling_locked_();

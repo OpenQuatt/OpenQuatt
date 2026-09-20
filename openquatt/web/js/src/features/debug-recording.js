@@ -801,9 +801,18 @@ export function copyDebugRecordingBundle(rangeMinutes) {
 }
 
 export async function copyDebugRecordingAndOpenAnalyser(rangeMinutes) {
+  // Open the tab synchronously from the click: opening it only after the
+  // async export/copy may be blocked as a popup once click-activation expired.
+  const analyserTab = typeof window.open === "function"
+    ? window.open("about:blank", "_blank", "noopener,noreferrer")
+    : null;
   const copied = await exportDebugRecordingBundle("copy", rangeMinutes);
-  if (copied && typeof window.open === "function") {
-    window.open(SYSTEM_RECORDER_ANALYSER_URL, "_blank", "noopener,noreferrer");
+  if (analyserTab && !analyserTab.closed) {
+    if (copied) {
+      analyserTab.location.href = SYSTEM_RECORDER_ANALYSER_URL;
+    } else {
+      analyserTab.close();
+    }
   }
   return copied;
 }
