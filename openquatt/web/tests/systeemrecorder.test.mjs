@@ -401,13 +401,15 @@ test("modal spreekt Systeemrecorder met export als hoofdactie", () => {
   assert.match(markup, /Doorlopende opname/);
   assert.match(markup, /role="switch"/);
   assert.match(markup, /Beschikbaar/);
-  assert.match(markup, /Apparaatgeheugen · sample-interval 10 s/);
+  assert.match(markup, /Lokaal opgeslagen · elke 10 s/);
+  assert.match(markup, /oq-debug-recording-samples/);
   assert.match(markup, /Kies hoeveel van de beschikbare historie je wilt exporteren/);
   assert.match(markup, /Laatste 15 minuten/);
   assert.match(markup, /Download diagnosebestand/);
   assert.match(markup, /Kopieer gegevens/);
-  assert.match(markup, /Kopieer gegevens en open analyser/);
+  assert.match(markup, /Kopieer &amp; open analyser/);
   assert.match(markup, /data-oq-action="copy-debug-recording-analyser"/);
+  assert.doesNotMatch(markup, /oq-debug-recording-switchlabel/);
   assert.match(markup, /<details class="oq-debug-recording-manage">/);
   assert.match(markup, /Recorderbeheer/);
   assert.match(markup, /Nieuwe opname starten/);
@@ -501,7 +503,16 @@ test("stille poll rendert de open modal niet opnieuw maar patcht de getallen", a
   });
   let renders = 0;
   setRenderCallback(() => { renders += 1; });
-  const availabilityEl = { textContent: "oud" };
+  const retainedEl = { textContent: "oud" };
+  const samplesEl = { textContent: "oud" };
+  const availabilityEl = {
+    textContent: "oud",
+    querySelector: (inner) => {
+      if (inner === "[data-oq-recorder-retained]") return retainedEl;
+      if (inner === "[data-oq-recorder-samples]") return samplesEl;
+      return null;
+    },
+  };
   const rangeEl = { textContent: "oud" };
   state.root = {
     querySelector: (selector) => (selector === ".oq-debug-recording-modal"
@@ -522,7 +533,8 @@ test("stille poll rendert de open modal niet opnieuw maar patcht de getallen", a
   await refreshDebugRecordingDeviceStatus({ silent: true });
 
   assert.equal(renders, 0, "geen volledige re-render bij ongewijzigde toestand");
-  assert.equal(availabilityEl.textContent, "1u 18m (520 samples)");
+  assert.equal(retainedEl.textContent, "1u 18m");
+  assert.equal(samplesEl.textContent, "(520 samples)");
   assert.equal(rangeEl.textContent, "Laatste 15 minuten");
 });
 
@@ -549,6 +561,46 @@ test("stille poll rendert wel opnieuw bij een toestandswissel", async (t) => {
 
   assert.ok(renders > 0, "wel opnieuw renderen bij toestandswissel");
   assert.equal(state.debugRecordingActive, false);
+});
+
+test("een verloren restartantwoord wordt via status gereconcilieerd", async (t) => {
+  const restoreTimers = seedFeatureStatus({ active: true, rolling: true, recording_id: 41, sample_count: 60 });
+  const originalFetch = window.fetch;
+  const originalSetTimeout = window.setTimeout;
+  const originalClearTimeout = window.clearTimeout;
+  t.after(() => {
+    window.fetch = originalFetch;
+    window.setTimeout = originalSetTimeout;
+    window.clearTimeout = originalClearTimeout;
+    state.debugRecordingDevicePollTimer = null;
+    restoreTimers();
+  });
+  window.setTimeout = () => 0;
+  window.clearTimeout = () => {};
+  window.fetch = async (_url, options = {}) => {
+    if (options.method === "POST") throw new Error("antwoord verloren");
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        available: true,
+        enabled: true,
+        active: true,
+        mode: "rolling",
+        rolling: true,
+        recording_id: 42,
+        sample_count: 1,
+        csrf_token: "feature-csrf-token",
+      }),
+    };
+  };
+
+  await restartRollingDebugRecording();
+
+  assert.equal(state.debugRecordingActive, true);
+  assert.equal(state.debugRecordingError, "");
+  assert.match(state.debugRecordingNotice, /bevestiging was vertraagd/);
 });
 
 test("statuslabels volgen enabled/active zonder frozen-toestanden", () => {

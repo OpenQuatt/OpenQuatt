@@ -315,7 +315,17 @@ export function patchDebugRecordingModalNumbers() {
   }
   const availability = modal.querySelector("[data-oq-recorder-availability]");
   if (availability) {
-    availability.textContent = `${formatDebugRecordingDuration(getDebugRecordingRetainedDurationMs())} (${getDebugRecordingSampleCount()} samples)`;
+    const retained = availability.querySelector("[data-oq-recorder-retained]");
+    const samples = availability.querySelector("[data-oq-recorder-samples]");
+    if (retained) {
+      retained.textContent = formatDebugRecordingDuration(getDebugRecordingRetainedDurationMs());
+    }
+    if (samples) {
+      samples.textContent = `(${getDebugRecordingSampleCount()} samples)`;
+    }
+    if (!retained && !samples) {
+      availability.textContent = `${formatDebugRecordingDuration(getDebugRecordingRetainedDurationMs())} (${getDebugRecordingSampleCount()} samples)`;
+    }
   }
   const range = modal.querySelector("[data-oq-recorder-range]");
   if (range) {
@@ -673,6 +683,7 @@ export async function restartRollingDebugRecording() {
   if (state.debugRecordingBusy) {
     return;
   }
+  const previousRecordingId = getDebugRecordingId();
   debugRecordingMutationGeneration += 1;
   clearDebugRecordingDevicePollTimer();
   state.debugRecordingBusy = true;
@@ -686,7 +697,15 @@ export async function restartRollingDebugRecording() {
     state.debugRecordingNotice = "Nieuwe opname gestart. De oude historie is gewist.";
     scheduleDebugRecordingDeviceStatusPoll();
   } catch (error) {
-    state.debugRecordingError = `Nieuwe opname starten mislukt. ${error.message || String(error)}`;
+    const reconciled = await reconcileDebugRecordingMutation((status) => (
+      Boolean(status?.active)
+      && getDebugRecordingId(status) !== previousRecordingId
+    ));
+    if (reconciled) {
+      state.debugRecordingNotice = "Nieuwe opname gestart; alleen de bevestiging was vertraagd.";
+    } else {
+      state.debugRecordingError = `Nieuwe opname starten mislukt. ${error.message || String(error)}`;
+    }
   } finally {
     state.debugRecordingBusy = false;
     render();
@@ -858,7 +877,6 @@ export function renderDebugRecordingModal() {
             <span class="oq-debug-recording-heading-icon" aria-hidden="true">${renderDebugRecordingSvgIcon("activity")}</span>
             <h3>Doorlopende opname</h3>
             <span class="oq-debug-recording-switchwrap">
-              <span class="oq-debug-recording-switchlabel" aria-hidden="true">${enabled ? "AAN" : "UIT"}</span>
               <button
                 class="oq-settings-toggle-switch${enabled ? " is-on" : ""}"
                 type="button"
@@ -877,9 +895,9 @@ export function renderDebugRecordingModal() {
           ` : `
             <div class="oq-debug-recording-availability">
               <span>Beschikbaar</span>
-              <strong data-oq-recorder-availability>${escapeHtml(formatDebugRecordingDuration(retainedMs))} (${sampleCount} samples)</strong>
+              <strong data-oq-recorder-availability><span data-oq-recorder-retained>${escapeHtml(formatDebugRecordingDuration(retainedMs))}</span> <span class="oq-debug-recording-samples" data-oq-recorder-samples>(${sampleCount} samples)</span></strong>
             </div>
-            <p class="oq-debug-recording-subtle">Apparaatgeheugen · sample-interval ${escapeHtml(String(intervalS))} s</p>
+            <p class="oq-debug-recording-subtle">Lokaal opgeslagen · elke ${escapeHtml(String(intervalS))} s</p>
             ${!enabled ? `
               <p class="oq-debug-recording-subtle">Er worden momenteel geen nieuwe systeemgegevens opgeslagen.</p>
             ` : ""}
@@ -923,7 +941,7 @@ export function renderDebugRecordingModal() {
             <button class="oq-helper-button oq-helper-button--primary oq-debug-recording-primary" type="button" data-oq-action="download-debug-recording-range" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("download")}Download diagnosebestand</button>
             <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("copy")}Kopieer gegevens</button>
           </div>
-          <button class="oq-debug-recording-linkaction" type="button" data-oq-action="copy-debug-recording-analyser" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("external")}Kopieer gegevens en open analyser</button>
+          <button class="oq-debug-recording-linkaction" type="button" data-oq-action="copy-debug-recording-analyser" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("external")}Kopieer &amp; open analyser</button>
           ${feedback ? `
             <p class="oq-debug-recording-feedback oq-debug-recording-feedback--${feedback.kind}" role="status">
               ${renderDebugRecordingButtonIcon(feedback.icon)}

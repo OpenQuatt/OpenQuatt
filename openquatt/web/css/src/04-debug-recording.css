@@ -41,15 +41,7 @@
 .oq-debug-recording-switchwrap {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
   flex: 0 0 auto;
-}
-
-.oq-debug-recording-switchlabel {
-  color: var(--oq-theme-color-d7d8, var(--oq-helper-soft));
-  font-size: 0.8rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
 }
 
 .oq-debug-recording-availability {
@@ -68,6 +60,12 @@
   font-size: 1.05rem;
   font-weight: 800;
   text-align: right;
+}
+
+.oq-debug-recording-samples {
+  color: var(--oq-theme-color-d7d8, var(--oq-helper-soft));
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 .oq-debug-recording-subtle {
