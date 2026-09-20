@@ -228,13 +228,24 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
         next.cycle_armed = false;
         break;
       }
-      // A normal Power House start (e.g. after a setpoint raise) may take over.
+      // Room pushed back above the stop while the compressor runs: re-latch
+      // the comfort stop instead of waiting.
+      if (room_at_stop && in.actual_heating_active) {
+        next.phase = Phase::COMFORT_STOP;
+        out.force_comfort_stop = true;
+        break;
+      }
+      // An unexpectedly running compressor above the restart threshold must
+      // not lift the hysteresis: keep suppressing until it stops or the room
+      // reaches the restart threshold. Only a run at/below the restart
+      // threshold (e.g. after a setpoint raise shifted the thresholds) may be
+      // accepted as a normal takeover.
       if (in.cycle_active && in.actual_heating_active) {
-        if (room_at_stop) {
-          next.phase = Phase::COMFORT_STOP;
-          out.force_comfort_stop = true;
-        } else {
+        if (room_ready_restart) {
           next.phase = Phase::RUNNING;
+        } else {
+          next.phase = Phase::WAIT_WARM_RESTART;
+          out.force_comfort_stop = true;
         }
         break;
       }
@@ -248,7 +259,12 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
           out.floor_w = in.minimum_viable_w;
         }
       } else {
+        // Suppress the normal space-heating request until the room cooled down
+        // to the restart threshold. Passing base_requested_w through here would
+        // let the normal start logic restart above the hysteresis, e.g. at
+        // 20.9 C with 2000 W of modelled demand while the restart is at 20.8 C.
         next.phase = Phase::WAIT_WARM_RESTART;
+        out.force_comfort_stop = true;
       }
       break;
     }

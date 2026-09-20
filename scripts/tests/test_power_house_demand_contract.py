@@ -35,6 +35,8 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         self.assertIn("test_comfort_stop_latched_while_compressor_active", run_ext_test)
         # Review #726: pending warm restart drops when house need returns to 0.
         self.assertIn("test_warm_restart_reverts_when_base_drops_to_zero", run_ext_test)
+        # Review #726 follow-up: WAIT suppresses base demand above the restart threshold.
+        self.assertIn("test_wait_suppresses_base_above_restart_threshold", run_ext_test)
         # Review #726: CM3 invariant executable, not string-only.
         self.assertIn("test_house_deficit_ignores_comfort_floor", run_ext_test)
         self.assertIn("compute_house_deficit_w(", text)

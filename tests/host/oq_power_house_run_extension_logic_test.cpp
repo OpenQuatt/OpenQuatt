@@ -165,6 +165,50 @@ void test_warm_restart_hands_back_to_run() {
   assert(out.next.phase == Phase::EXTENDING);
 }
 
+void test_wait_suppresses_base_above_restart_threshold() {
+  // Comfort stop at 21.0, compressor stopped, room 20.9 with 2500 W of modelled
+  // house demand: WAIT must hold the normal request at 0 instead of passing
+  // base through, otherwise the normal start logic restarts above the 20.8 C
+  // hysteresis. At 20.8 C with house need the warm restart may go ahead.
+  State wait;
+  wait.phase = Phase::WAIT_WARM_RESTART;
+  wait.cycle_armed = true;
+  wait.last_setpoint_c = 20.5f;
+  Input idle = base_input();
+  idle.cycle_active = false;
+  idle.actual_heating_active = false;
+  idle.room_c = 20.9f;
+  idle.base_requested_w = 2500.0f;
+  const auto held = evaluate(idle, tuning(), wait);
+  assert(held.next.phase == Phase::WAIT_WARM_RESTART);
+  assert(held.force_comfort_stop);
+  assert(!held.floor_active);
+  assert(!held.warm_restart_intent);
+  // An unexpectedly running compressor at 20.9 must not lift the hysteresis.
+  Input running = idle;
+  running.cycle_active = true;
+  running.actual_heating_active = true;
+  const auto held_running = evaluate(running, tuning(), wait);
+  assert(held_running.next.phase == Phase::WAIT_WARM_RESTART);
+  assert(held_running.force_comfort_stop);
+  // Room at the restart threshold with house need: warm restart.
+  Input cooled = idle;
+  cooled.room_c = 20.8f;
+  const auto restart = evaluate(cooled, tuning(), wait);
+  assert(restart.next.phase == Phase::WARM_RESTART);
+  assert(restart.warm_restart_intent);
+  // A run already going at/below the restart threshold is a normal takeover.
+  Input takeover = running;
+  takeover.room_c = 20.7f;
+  assert(evaluate(takeover, tuning(), wait).next.phase == Phase::RUNNING);
+  // Room back above the stop with the compressor running re-latches the stop.
+  Input overrun = running;
+  overrun.room_c = 21.0f;
+  const auto relatch = evaluate(overrun, tuning(), wait);
+  assert(relatch.next.phase == Phase::COMFORT_STOP);
+  assert(relatch.force_comfort_stop);
+}
+
 void test_warm_restart_reverts_when_base_drops_to_zero() {
   // Requested restart during minimum off-time: if house need falls to zero
   // before the compressor runs again, drop the intent and the floor instead of
@@ -292,6 +336,7 @@ int main() {
   test_comfort_stop_latched_while_compressor_active();
   test_comfort_stop_transitions_to_wait();
   test_wait_needs_cooldown_and_base();
+  test_wait_suppresses_base_above_restart_threshold();
   test_warm_restart_keeps_intent_on_jitter();
   test_warm_restart_reverts_when_base_drops_to_zero();
   test_warm_restart_confirmed_run_allows_zero_base();
