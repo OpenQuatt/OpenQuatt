@@ -727,6 +727,10 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     const boilerConnectionAutoSelected =
       boilerConnection === "OpenTherm" &&
       isEntityActive("otbConnectionAutoSelected");
+    const otbConnectionStateAvailable = hasEntity("otbConnectionState");
+    const otbConnectionState = otbConnectionStateAvailable
+      ? String(getEntityValue("otbConnectionState") || "")
+      : "";
     const boilerConnectionOptions = boilerConnectionAvailable
       ? getSupportedBoilerConnectionOptions(
           getSelectEntityOptions(state.entities.boilerConnection || {}),
@@ -768,25 +772,51 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     const boilerPowerFooter = sourcePresent && boilerPowerEntityAvailable
       ? `<p class="oq-settings-boiler-power-note">Je kunt deze waarde altijd handmatig aanpassen.</p>`
       : "";
-    const boilerConnectionFooter = boilerConnectionAutoSelected
-      ? `
-        <div class="oq-settings-boiler-connection-note is-success" role="status" aria-live="polite">
-          <strong>OpenTherm-ketel gedetecteerd</strong>
-          <p>OpenTherm (OTB) is automatisch als ketelaansluiting geselecteerd.</p>
-        </div>
-      `
-      : boilerConnection === "R1" && openthermBoilerSupported
-        ? boilerConnectionMismatch
+    const boilerConnectionFooter = boilerConnection === "OpenTherm" && otbConnectionStateAvailable
+      ? otbConnectionState === "ot_verified"
         ? `
-          <div class="oq-settings-boiler-connection-note is-warning" role="alert">
-            <strong>OpenTherm-ketel gevonden</strong>
-            <p>Kies OpenTherm (OTB).</p>
+          <div class="oq-settings-boiler-connection-note is-success" role="status" aria-live="polite">
+            <strong>OpenTherm-ketel gedetecteerd</strong>
+            <p>${boilerConnectionAutoSelected ? "OpenTherm (OTB) is automatisch als ketelaansluiting geselecteerd." : "OpenTherm-verbinding geverifieerd."}</p>
           </div>
         `
-        : `
-          <p class="oq-settings-boiler-connection-note">OT-controle bij opstart actief.</p>
+        : otbConnectionState === "ot_no_response"
+          ? `
+            <div class="oq-settings-boiler-connection-note is-warning" role="alert">
+              <strong>Geen OpenTherm-ketel gevonden</strong>
+              <p>Controleer of OTB is aangesloten op de OpenTherm-aansluiting van je ketel. Heeft je ketel een gewone aan/uit-thermostaataansluiting? Gebruik dan R1.</p>
+            </div>
+          `
+          : otbConnectionState === "ot_link_lost"
+            ? `
+              <div class="oq-settings-boiler-connection-note is-warning" role="alert">
+                <strong>OpenTherm-verbinding verloren</strong>
+                <p>De ketel reageerde eerder via OpenTherm. Controleer OTB en de ketel.</p>
+              </div>
+            `
+            : `
+              <div class="oq-settings-boiler-connection-note" role="status" aria-live="polite">
+                <strong>OpenTherm-verbinding controleren…</strong>
+                <p>Wachten op een geldige reactie van de ketel.</p>
+              </div>
+            `
+      : boilerConnectionAutoSelected
+        ? `
+          <div class="oq-settings-boiler-connection-note is-success" role="status" aria-live="polite">
+            <strong>OpenTherm-ketel gedetecteerd</strong>
+            <p>OpenTherm (OTB) is automatisch als ketelaansluiting geselecteerd.</p>
+          </div>
         `
-        : "";
+        : boilerConnection === "R1" && openthermBoilerSupported
+          ? boilerConnectionMismatch
+            ? `
+              <div class="oq-settings-boiler-connection-note is-warning" role="alert">
+                <strong>OpenTherm-ketel gevonden</strong>
+                <p>Kies OpenTherm (OTB).</p>
+              </div>
+            `
+            : `<p class="oq-settings-boiler-connection-note">OT-controle bij opstart actief.</p>`
+          : "";
     const supportSwitchingFields = !isCurveMode() && sourcePresent && assistEnabled
       ? [
           renderSettingsNumberField(
@@ -828,7 +858,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
             !openthermBoilerCapabilityKnown
               ? "OpenQuatt controleert welke aansturingen deze hardware ondersteunt."
               : openthermBoilerSupported
-              ? "Kies de route waarmee de warmtebron fysiek is verbonden. OpenQuatt gebruikt nooit beide routes tegelijk."
+              ? "OTB is voor OpenTherm; R1 voor een gewone aan/uit-thermostaataansluiting."
               : "Deze hardware ondersteunt alleen de aan/uit-aansluiting via R1.",
             boilerConnectionControl,
             "oq-settings-field--compact",

@@ -10,11 +10,11 @@ Technische naslag voor ontwikkeling en diagnose van de Electropaultje Heatpump C
 | Aansluiting | Functie in de huidige firmware | Signaal |
 |---|---|---|
 | `Q` | Lokale aanvoertemperatuur en, bij Quatt V1, flowmeting | PT1000 en flowmeter-puls |
-| `R1` | CV-ketel via aan/uit | Potentiaalvrij relais: `COM` + `NO` |
+| `R1` | CV-ketel via aan/uit | Potentiaalvrij relais voor een aan/uit-kamerthermostaatingang (bijv. RT, RT24 of TA): `COM` + `NO` |
 | `R2` | Configureerbaar hulprelais, standaard uit | Potentiaalvrij wisselrelais: `NC` / `COM` / `NO` |
 | `T` | Optionele lokale temperatuursensor | 1-Wire Dallas/DS18B20: `+3.3V`, `GND`, `DATA` |
 | `OTT` | Kamerthermostaat | OpenTherm slave, twee aders |
-| `OTB` | CV-ketel | OpenTherm master, twee aders |
+| `OTB` | CV-ketel | OpenTherm master, twee aders; alleen aansluiten op de digitale OpenTherm-klemmen van de ketel |
 | `M1` | Quatt-buitenunit(s) | RS485 Modbus: `GND` / `A` / `B` |
 | `M2` | Quatt-app via CiC (optioneel) | RS485 Modbus: `GND` / `A` / `B` |
 | Ethernet | Netwerk in Ethernet-builds | W5500 met RJ45 |

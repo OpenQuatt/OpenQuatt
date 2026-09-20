@@ -187,6 +187,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "otbLinkAvailable",
       "otbConnectionAutoSelected",
       "otbConnectionMismatch",
+      "otbConnectionState",
       "auxRelayFunction",
       "flowControlMode",
       "flowSetpoint",
@@ -216,7 +217,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       COOLING_SCHEDULE_VALID_KEY,
       COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY,
     ],
-    integrations: ["otEnabled", "cicPollingEnabled", "flowSource", "boilerConnection", "boilerCommandValid", "otbLinkAvailable"],
+    integrations: ["otEnabled", "cicPollingEnabled", "flowSource", "boilerConnection", "boilerCommandValid", "otbLinkAvailable", "otbConnectionState"],
     system: ["setupComplete", "projectVersionText", "releaseChannelText", "firmwareUpdateChannel", "statusLedsEnabled", "usageTelemetryEnabled", "usageTelemetryChoiceConfigured", "usageTelemetryInstallationId", "performanceTelemetryEnabled"],
   };
 
@@ -235,6 +236,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "otbLinkAvailable",
       "otbConnectionAutoSelected",
       "otbConnectionMismatch",
+      "otbConnectionState",
       ...BOILER_SUPPORT_SWITCHING_KEYS,
       ...AUX_RELAY_SETTING_KEYS,
       ...AUX_RELAY_STATE_KEYS,

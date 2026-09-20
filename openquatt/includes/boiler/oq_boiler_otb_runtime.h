@@ -1,6 +1,7 @@
 #pragma once
 
 #include "oq_boiler_transport_logic.h"
+#include "oq_otb_connection_state.h"
 #include "oq_otb_start_handshake.h"
 #include "oq_otb_startup_probe.h"
 #include "../control/oq_boiler_runtime.h"
@@ -42,6 +43,7 @@ inline void enter_dormant_state() {
   }
   id(oq_otb_applied_command_active) = false;
   id(oq_boiler_transport_active) = false;
+  oq_otb::connection_verification_state.reset();
   reset_link_state();
 }
 
@@ -53,6 +55,7 @@ inline void connection_changed(bool opentherm_selected) {
 
   if (id(oq_otb_hub_ready)) {
     if (opentherm_selected) {
+      oq_otb::connection_verification_state.begin_opentherm((uint32_t)millis());
       oq_otb::startup_probe_state.end();
       id(oq_otb_startup_probe_active) = false;
       id(oq_boiler_connection_mismatch_state) = false;
@@ -60,6 +63,7 @@ inline void connection_changed(bool opentherm_selected) {
       id(oq_otb_hub).set_no_response_expected(false);
       id(oq_otb_hub).resume_polling();
     } else {
+      oq_otb::connection_verification_state.begin_r1_probe();
       id(oq_otb_withdraw_and_flush).execute();
       oq_otb::startup_probe_state.begin((uint32_t)millis());
       id(oq_otb_startup_probe_active) = true;
@@ -158,17 +162,30 @@ inline void apply_command(float minimum_flow_lph, uint32_t status_timeout_ms) {
   }
 }
 
-inline void link_watch(uint32_t link_timeout_ms, uint32_t field_timeout_ms) {
+inline void link_watch(uint32_t link_timeout_ms, uint32_t field_timeout_ms, uint32_t verification_timeout_ms) {
   if (!id(oq_aux_heat_source_present).state) {
     if (id(oq_otb_hub_ready) && id(oq_otb_hub).is_polling_enabled()) {
       id(oq_otb_hub).suspend_polling();
     }
+    oq_otb::connection_verification_state.reset();
     if (id(oq_otb_link_available_state)) reset_link_state();
     return;
   }
 
   const uint32_t now_ms = (uint32_t)millis();
   oq_otb::telemetry_state.expire_response_session_if_stale(now_ms, link_timeout_ms);
+
+  const bool connection_state_changed =
+      oq_otb::connection_verification_state.update_opentherm(now_ms, verification_timeout_ms, link_timeout_ms);
+  if (connection_state_changed) {
+    const auto connection_state = oq_otb::connection_verification_state.state();
+    if (connection_state == oq_otb::BOILER_CONNECTION_OT_NO_RESPONSE) {
+      ESP_LOGW("quatt.otb", "OpenTherm connection not verified: no correlated boiler response received");
+    } else if (connection_state == oq_otb::BOILER_CONNECTION_OT_LINK_LOST) {
+      ESP_LOGW("quatt.otb", "OpenTherm connection lost after earlier verification");
+    }
+  }
+
   const bool available = oq_otb::telemetry_state.transport_is_available(now_ms, link_timeout_ms, field_timeout_ms);
   const bool changed = !id(oq_otb_link_initialized) || available != id(oq_otb_link_available_state);
   if (!changed) return;
@@ -181,7 +198,10 @@ inline void link_watch(uint32_t link_timeout_ms, uint32_t field_timeout_ms) {
   const bool opentherm_selected =
       id(oq_boiler_connection).has_state() && id(oq_boiler_connection).current_option() == "OpenTherm";
   if (opentherm_selected) {
-    oq_boiler_runtime::runtime().selected_transport_link_changed(available);
+    const uint8_t unavailable_reason = oq_boiler::refine_opentherm_transport_block_reason(
+        oq_boiler::BLOCK_TRANSPORT_UNAVAILABLE, true, oq_otb::connection_verification_state.ever_verified(),
+        oq_otb::connection_verification_state.currently_verified());
+    oq_boiler_runtime::runtime().selected_transport_link_changed(available, unavailable_reason);
     id(oq_otb_ch_enable).turn_off();
     if (!id(oq_otb_t_set_command).has_state() || fabsf(id(oq_otb_t_set_command).state) >= 0.05f) {
       auto call = id(oq_otb_t_set_command).make_call();

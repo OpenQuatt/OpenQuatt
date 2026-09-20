@@ -16,6 +16,7 @@ external_components:
 esphome:
   includes:
     - ../../openquatt/includes/boiler/oq_boiler_transport_logic.h
+    - ../../openquatt/includes/boiler/oq_otb_connection_state.h
   on_boot:
     priority: -100
     then:
@@ -39,6 +40,7 @@ esphome:
               id(oq_boiler_connection).has_state() &&
               id(oq_boiler_connection).current_option() == "OpenTherm";
           if (!source_present) {
+            oq_otb::connection_verification_state.reset();
             // Physical absence is the top-level transport lifecycle gate. Keep
             // the restored connection choice, but do not probe or poll a bus
             // that the installation explicitly says is not connected.
@@ -53,6 +55,7 @@ esphome:
                 "quatt.boiler",
                 "Auxiliary heat source not connected; OpenTherm boiler polling disabled");
           } else if (opentherm_selected) {
+            oq_otb::connection_verification_state.begin_opentherm((uint32_t)millis());
             oq_otb::startup_probe_state.end();
             id(oq_otb_startup_probe_active) = false;
             id(oq_boiler_connection_mismatch_state) = false;
@@ -60,6 +63,7 @@ esphome:
             id(oq_otb_hub).set_no_response_expected(false);
             id(oq_otb_hub).resume_polling();
           } else {
+            oq_otb::connection_verification_state.begin_r1_probe();
             // Before R1 can become available, actively check whether an
             // OpenTherm boiler is physically responding. STATUS(CH=off) and
             // TSet=0 are prioritized; a matching complete STATUS response
@@ -189,6 +193,7 @@ opentherm:
                 response_id, response_type, x.valueHB, x.valueLB);
 
             if (oq_otb::telemetry_state.last_response_is_correlated()) {
+              oq_otb::connection_verification_state.record_correlated_response((uint32_t)millis());
               oq_otb::off_flush_state.record_response(
                   response_id, response_type, x.valueHB, x.valueLB);
               oq_otb::startup_probe_state.record_response(
@@ -690,6 +695,14 @@ sensor:
 
 text_sensor:
   - platform: template
+    id: otb_connection_state
+    name: "OTB - Boiler Connection State"
+    internal: true
+    update_interval: 1s
+    lambda: |-
+      return {oq_otb::boiler_connection_state_text(oq_otb::connection_verification_state.state())};
+
+  - platform: template
     id: otb_last_response_type
     name: "OTB - Last Response Type"
     internal: true
@@ -788,6 +801,7 @@ interval:
           id(oq_boiler_rearm_after_command_ms) = now_ms;
 
           if (result == oq_otb::STARTUP_PROBE_OPENTHERM_DETECTED) {
+            oq_otb::connection_verification_state.mark_r1_opentherm_detected();
             if (oq_otb::should_auto_select_opentherm(
                     result, id(oq_setup_complete))) {
               // During onboarding a matching response is positive evidence for
@@ -823,6 +837,7 @@ interval:
 
           // No valid STATUS response was observed during the bounded probe.
           // This is the only path that makes an R1 selection available.
+          oq_otb::connection_verification_state.mark_r1_ready();
           id(oq_boiler_connection_auto_selected_state) = false;
           id(oq_boiler_connection_auto_selected).publish_state(false);
           id(oq_boiler_connection_mismatch_state) = false;
@@ -927,4 +942,5 @@ interval:
       - lambda: |-
           oq_boiler_otb_runtime::link_watch(
               (uint32_t) (${oq_otb_link_timeout_s} * 1000UL),
-              (uint32_t) (${oq_otb_field_timeout_s} * 1000UL));
+              (uint32_t) (${oq_otb_field_timeout_s} * 1000UL),
+              (uint32_t) (${oq_otb_connection_verify_timeout_s} * 1000UL));

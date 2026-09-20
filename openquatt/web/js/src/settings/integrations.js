@@ -15,7 +15,7 @@ import { escapeHtml } from "../core/html.js";
     const hasOpenThermConfig = hasEntity("otEnabled");
     const hasCicConfig = hasEntity("cicPollingEnabled") || hasEntity("cicFeedUrl");
     const hasCicCompatibilityConfig = hasEntity("cicCompatibilityMode");
-    const hasStatus = hasEntity("otLinkProblem") || hasEntity("otbLinkAvailable") || hasEntity("boilerCommandValid") || hasEntity("cicDataStale") || hasEntity("cicJsonFeedOk");
+    const hasStatus = hasEntity("otLinkProblem") || hasEntity("otbLinkAvailable") || hasEntity("otbConnectionState") || hasEntity("boilerCommandValid") || hasEntity("cicDataStale") || hasEntity("cicJsonFeedOk");
     if (!hasOpenThermConfig && !hasCicConfig && !hasCicCompatibilityConfig && !hasStatus) {
       return "";
     }
@@ -24,6 +24,8 @@ import { escapeHtml } from "../core/html.js";
     const otEnabled = isInstallationMonitoringIntegrationEnabled("otEnabled");
     const boilerConnection = String(getEntityValue("boilerConnection") || "R1");
     const otbSelected = boilerConnection === "OpenTherm";
+    const otbConnectionState = String(getEntityValue("otbConnectionState") || "");
+    const otbConnectionProblem = otbSelected && ["ot_no_response", "ot_link_lost"].includes(otbConnectionState);
     const renderDiagnosticItem = ({ label, value, active = false }) => `
       <div class="oq-settings-integration-diagnostic-item${active ? " is-warning" : ""}">
         <dt>${escapeHtml(label)}</dt>
@@ -126,6 +128,15 @@ import { escapeHtml } from "../core/html.js";
     ]);
 
     const otbDiagnosticRows = [
+      otbSelected && hasEntity("otbConnectionState") ? renderDiagnosticItem({
+        label: "Fysieke aansluiting",
+        value: otbConnectionState === "ot_verified"
+          ? "Geverifieerd"
+          : otbConnectionState === "ot_no_response"
+            ? "Geen reactie"
+            : otbConnectionState === "ot_link_lost" ? "Verbinding verloren" : "Controleren",
+        active: otbConnectionProblem,
+      }) : "",
       hasEntity("otbLinkAvailable") ? renderDiagnosticItem({
         label: "Ketellink",
         value: !otbSelected

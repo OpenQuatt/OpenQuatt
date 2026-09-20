@@ -106,6 +106,7 @@
     ["boilerConnection", DOMAIN_SELECT, "Boiler connection"],
     ["otbConnectionAutoSelected", DOMAIN_BINARY_SENSOR, "OTB - Boiler Connection Auto-selected"],
     ["otbConnectionMismatch", DOMAIN_BINARY_SENSOR, "OTB - Boiler Connection Mismatch"],
+    ["otbConnectionState", DOMAIN_TEXT_SENSOR, "OTB - Boiler Connection State"],
     ["manualCoolingEnable", DOMAIN_SWITCH, "Manual Cooling Enable"],
     ["coolingScheduleStartTime", DOMAIN_TIME, "Cooling schedule start time"],
     ["coolingScheduleEndTime", DOMAIN_TIME, "Cooling schedule end time"],
@@ -880,6 +881,7 @@
     "otEnabled",
     "otThermostatStatusValid",
     "otLinkProblem",
+    "otbConnectionState",
     "roomTempSource",
     "roomSetpointSource",
     "heatingEnableSource",
@@ -1063,6 +1065,7 @@
     "boilerStartThermalSafeCeiling",
   ];
   export const OTB_DIAGNOSTIC_KEYS = [
+    "otbConnectionState",
     "otbLinkAvailable",
     "otbChCommand",
     "otbControlSetpointCommand",
@@ -1491,6 +1494,7 @@
     "boilerCommandTargetTemperature",
     "boilerBlockReason",
     "otbLinkAvailable",
+    "otbConnectionState",
     "otbChCommand",
     "otbControlSetpointCommand",
     "otbFlameOn",

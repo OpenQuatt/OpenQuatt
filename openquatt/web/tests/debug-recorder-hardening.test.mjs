@@ -19,13 +19,14 @@ test("packed rows vergroten de retentie van de volledige dev-debugset", () => {
   );
   const capacity = Math.floor((1024 * 1024) / rowBytes);
 
-  assert.equal(rowBytes, 714);
-  assert.equal(capacity, 1468);
+  assert.equal(rowBytes, 716);
+  assert.equal(capacity, 1464);
   // Issue #649 voegt drie velden toe (ingestelde bron, geselecteerde waarde,
   // actieve tak) en issue #642 twee diagnosevelden (gepubliceerde
   // startblokkade + resterende tijd). De V2 Power Input-keten voegt per HP
   // acht compacte kolommen toe
-  // (4x sensor, 3x binary, 1x text = +21 B/rij). De retentie blijft ruim
+  // (4x sensor, 3x binary, 1x text = +21 B/rij). Issue #720 voegt één
+  // compacte text-state toe (+2 B/rij). De retentie blijft ruim
   // boven de maximaal instelbare opnameduur van 1 uur.
   assert.ok((capacity - 1) * 10 >= 4.0 * 60 * 60);
   assert.match(header, /PsramBuffer<uint8_t> samples_/);

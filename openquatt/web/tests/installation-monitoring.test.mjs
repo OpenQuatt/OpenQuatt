@@ -39,6 +39,48 @@ test("actieve aanvoertemperatuurfallback verschijnt in de installatiebewaking", 
   }]);
 });
 
+test("onbevestigde OpenTherm-ketelaansluiting verschijnt op de overview-bewaking", () => {
+  state.entities = {
+    auxHeatSourcePresent: { value: true, state: "ON" },
+    boilerConnection: { value: "OpenTherm", state: "OpenTherm" },
+    otbConnectionState: { value: "ot_no_response", state: "ot_no_response" },
+  };
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, true);
+  assert.deepEqual(monitoring.problems, [{
+    key: "otbConnectionState",
+    label: "Geen OpenTherm-ketel gevonden",
+  }]);
+});
+
+test("weggevallen geverifieerde OpenTherm-link verschijnt op de overview-bewaking", () => {
+  state.entities = {
+    auxHeatSourcePresent: { value: true, state: "ON" },
+    boilerConnection: { value: "OpenTherm", state: "OpenTherm" },
+    otbConnectionState: { value: "ot_link_lost", state: "ot_link_lost" },
+  };
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, true);
+  assert.equal(monitoring.problems[0]?.label, "OpenTherm-verbinding met ketel weggevallen");
+});
+
+test("OTB-verificatie geeft geen overview-waarschuwing als de warmtebron niet aangesloten is", () => {
+  state.entities = {
+    auxHeatSourcePresent: { value: false, state: "OFF" },
+    boilerConnection: { value: "OpenTherm", state: "OpenTherm" },
+    otbConnectionState: { value: "ot_no_response", state: "ot_no_response" },
+  };
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, false);
+  assert.deepEqual(monitoring.problems, []);
+});
+
 test("ongeldige OTT-status geeft geen melding wanneer alleen de kamertemperatuur via OTT komt", () => {
   state.entities = {
     otEnabled: { value: true, state: "ON" },
