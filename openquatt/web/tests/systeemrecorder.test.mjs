@@ -365,7 +365,6 @@ test("modal spreekt Systeemrecorder met export als hoofdactie", () => {
   assert.match(markup, /Apparaatgeheugen · sample-interval 10 s/);
   assert.match(markup, /Kies hoeveel van de beschikbare historie je wilt exporteren/);
   assert.match(markup, /Laatste 15 minuten/);
-  assert.match(markup, /Geschatte bestandsgrootte:/);
   assert.match(markup, /Download diagnosebestand/);
   assert.match(markup, /Kopieer gegevens/);
   assert.match(markup, /<details class="oq-debug-recording-manage">/);

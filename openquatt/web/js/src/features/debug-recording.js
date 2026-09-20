@@ -644,21 +644,6 @@ export function getDebugRecordingCompactJson(payload) {
   return JSON.stringify(payload);
 }
 
-export function getDebugRecordingEstimatedBytes() {
-  return Math.max(0, Number(state.debugRecordingDeviceStatus?.estimated_size || 0));
-}
-
-export function formatDebugRecordingBytes(bytes) {
-  const value = Math.max(0, Number(bytes) || 0);
-  if (value >= 1024 * 1024) {
-    return `${(value / 1024 / 1024).toFixed(1)} MB`;
-  }
-  if (value >= 1024) {
-    return `${(value / 1024).toFixed(1)} kB`;
-  }
-  return `${Math.round(value)} B`;
-}
-
 export function getDebugRecordingFilename(bundle) {
   const exportedAt = bundle?.exported_at || (bundle?.exported_at_ms ? new Date(Number(bundle.exported_at_ms)).toISOString() : new Date().toISOString());
   const stamp = String(exportedAt)
@@ -775,7 +760,6 @@ export function renderDebugRecordingModal() {
   const available = isSystemRecorderAvailable();
   const sampleCount = getDebugRecordingSampleCount();
   const busy = state.debugRecordingBusy;
-  const estimatedSize = formatDebugRecordingBytes(getDebugRecordingEstimatedBytes());
   const stringOverflow = state.debugRecordingDeviceStatus?.string_overflow === true;
   const retainedMs = getDebugRecordingRetainedDurationMs();
   const downloadRange = getDebugRecordingDownloadRange();
@@ -868,7 +852,6 @@ export function renderDebugRecordingModal() {
             }).join("")}
           </div>
           <p class="oq-debug-recording-rangelabel"><strong>${escapeHtml(getDebugRecordingRangeLabel(downloadRange))}</strong></p>
-          <p class="oq-debug-recording-subtle">Geschatte bestandsgrootte: ± ${escapeHtml(estimatedSize)}.</p>
           <div class="oq-debug-recording-exportactions">
             <button class="oq-helper-button oq-helper-button--primary oq-debug-recording-primary" type="button" data-oq-action="download-debug-recording-range" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("download")}Download diagnosebestand</button>
             <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("copy")}Kopieer gegevens</button>
