@@ -88,12 +88,31 @@ void test_comfort_stop_at_threshold() {
   assert(out.force_comfort_stop);
 }
 
+void test_comfort_stop_latched_while_compressor_active() {
+  // 21.0 comfort stop, compressor still spinning down, quantised dip to 20.9:
+  // the stop must not be aborted and the 0.2 K hysteresis must not be bypassed.
+  State state;
+  state.phase = Phase::COMFORT_STOP;
+  state.cycle_armed = true;
+  state.last_setpoint_c = 20.5f;
+  Input in = base_input();
+  in.room_c = 20.9f;
+  in.base_requested_w = 700.0f;
+  const auto out = evaluate(in, tuning(), state);
+  assert(out.next.phase == Phase::COMFORT_STOP);
+  assert(out.force_comfort_stop);
+  assert(!out.warm_restart_intent);
+}
+
 void test_comfort_stop_transitions_to_wait() {
   State state;
   state.phase = Phase::COMFORT_STOP;
   state.cycle_armed = true;
   state.last_setpoint_c = 20.5f;
-  const auto out = evaluate(base_input(), tuning(), state);
+  Input in = base_input();
+  in.actual_heating_active = false;
+  in.cycle_active = false;
+  const auto out = evaluate(in, tuning(), state);
   assert(out.next.phase == Phase::WAIT_WARM_RESTART);
   assert(out.force_comfort_stop);
 }
@@ -144,6 +163,51 @@ void test_warm_restart_hands_back_to_run() {
   in.base_requested_w = 700.0f;
   const auto out = evaluate(in, tuning(), restart);
   assert(out.next.phase == Phase::EXTENDING);
+}
+
+void test_warm_restart_reverts_when_base_drops_to_zero() {
+  // Requested restart during minimum off-time: if house need falls to zero
+  // before the compressor runs again, drop the intent and the floor instead of
+  // forcing Pmin into a start.
+  State restart;
+  restart.phase = Phase::WARM_RESTART;
+  restart.cycle_armed = true;
+  restart.last_setpoint_c = 20.5f;
+  Input in = base_input();
+  in.cycle_active = false;
+  in.actual_heating_active = false;
+  in.room_c = 20.7f;
+  in.base_requested_w = 0.0f;
+  const auto out = evaluate(in, tuning(), restart);
+  assert(out.next.phase == Phase::WAIT_WARM_RESTART);
+  assert(!out.warm_restart_intent);
+  assert(!out.floor_active);
+}
+
+void test_warm_restart_confirmed_run_allows_zero_base() {
+  // Once the new run is actually going, base == 0 may extend again.
+  State restart;
+  restart.phase = Phase::WARM_RESTART;
+  restart.cycle_armed = true;
+  restart.last_setpoint_c = 20.5f;
+  Input in = base_input();
+  in.room_c = 20.7f;
+  in.base_requested_w = 0.0f;
+  const auto out = evaluate(in, tuning(), restart);
+  assert(out.next.phase == Phase::EXTENDING);
+  assert(out.floor_active);
+}
+
+void test_house_deficit_ignores_comfort_floor() {
+  // CM3 invariant: the #608 floor must never count as house deficit.
+  assert(compute_house_deficit_w(900.0f, 1500.0f, true, 800.0f) == 0.0f);
+  assert(compute_house_deficit_w(4000.0f, 3000.0f, true, 0.0f) == 1000.0f);
+  assert(compute_house_deficit_w(NAN, 1500.0f, true, 42.0f) == 42.0f);
+  assert(compute_house_deficit_w(900.0f, NAN, true, 42.0f) == 42.0f);
+  assert(compute_house_deficit_w(900.0f, 1500.0f, false, 42.0f) == 42.0f);
+  assert(compute_house_saturated(5, 1000.0f));
+  assert(!compute_house_saturated(5, 0.0f));
+  assert(!compute_house_saturated(0, 1000.0f));
 }
 
 void test_disable_clears_extending() {
@@ -225,15 +289,19 @@ int main() {
   test_active_run_below_pmin_floor();
   test_extending_allows_zero_base();
   test_comfort_stop_at_threshold();
+  test_comfort_stop_latched_while_compressor_active();
   test_comfort_stop_transitions_to_wait();
   test_wait_needs_cooldown_and_base();
   test_warm_restart_keeps_intent_on_jitter();
+  test_warm_restart_reverts_when_base_drops_to_zero();
+  test_warm_restart_confirmed_run_allows_zero_base();
   test_warm_restart_hands_back_to_run();
   test_disable_clears_extending();
   test_stale_inputs_fail_closed();
   test_setpoint_drop_cancels_restart();
   test_water_limit_blocks_floor();
   test_missing_pmin_no_floor();
+  test_house_deficit_ignores_comfort_floor();
   test_no_restart_after_reboot_reset();
   return 0;
 }

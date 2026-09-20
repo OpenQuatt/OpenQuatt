@@ -5,8 +5,8 @@ import { getCurveFallbackSuggestion, getEntityValue, normalizeNumber } from "../
 import { getHeatingEnableAdvice, getHeatingEnableCurrent, getHeatingEnableRecommendation } from "../core/heating-strategy-matrix.js";
 import { renderNumberInputField } from "../core/number-controls.js";
 import { state } from "../core/state.js";
-import { getSettingsSelectModel, getSettingsSwitchModel } from "./field-models.js";
-import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsCompactSwitchControl, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField } from "./controls.js";
+import { getSettingsSelectModel } from "./field-models.js";
+import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField } from "./controls.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
 
@@ -434,109 +434,44 @@ import { escapeHtml } from "../core/html.js";
 
   export function formatRunExtensionTemp(value) {
     const numeric = Number(value);
-    if (!Number.isFinite(numeric)) {
-      return "—";
-    }
-    return `${numeric.toFixed(1).replace(".", ",")} °C`;
+    return Number.isFinite(numeric) ? `${numeric.toFixed(1).replace(".", ",")} °C` : "—";
   }
 
   export function getRunExtensionThresholds() {
-    const hasSetpoint = hasEntity("roomSetpoint");
-    const setpoint = hasSetpoint ? getEntityNumericValue("roomSetpoint") : NaN;
+    const setpoint = hasEntity("roomSetpoint") ? getEntityNumericValue("roomSetpoint") : NaN;
     const marginRaw = hasEntity("phRunExtensionStopMargin") ? getEntityNumericValue("phRunExtensionStopMargin") : NaN;
     const margin = Number.isFinite(marginRaw) ? marginRaw : 0.5;
-    const hysteresis = 0.2;
-    if (!Number.isFinite(setpoint)) {
-      return { setpoint: NaN, margin, hysteresis, stop: NaN, restart: NaN };
-    }
+    if (!Number.isFinite(setpoint)) return { setpoint: NaN, margin, hysteresis: 0.2, stop: NaN, restart: NaN };
     const stop = setpoint + margin;
-    return { setpoint, margin, hysteresis, stop, restart: stop - hysteresis };
+    return { setpoint, margin, hysteresis: 0.2, stop, restart: stop - 0.2 };
   }
 
+  const RUN_EXTENSION_STATUS_COPY = {
+    extending: "Langer doorverwarmen actief",
+    comfort_stop: "Comfortstop",
+    wait_warm_restart: "Wacht op afkoeling",
+    warm_restart: "Warme herstart",
+    normal: "Normaal verwarmen",
+    blocked: "Geblokkeerd door beveiliging",
+  };
+
   export function getRunExtensionStatusCopy(status) {
-    const normalized = String(status || "").trim().toLowerCase();
-    if (normalized === "extending") {
-      return "Langer doorverwarmen actief";
-    }
-    if (normalized === "comfort_stop") {
-      return "Comfortstop";
-    }
-    if (normalized === "wait_warm_restart") {
-      return "Wacht op afkoeling";
-    }
-    if (normalized === "warm_restart") {
-      return "Warme herstart";
-    }
-    if (normalized === "normal") {
-      return "Normaal verwarmen";
-    }
-    if (normalized === "blocked") {
-      return "Geblokkeerd door beveiliging";
-    }
-    return "Uitgeschakeld";
+    return RUN_EXTENSION_STATUS_COPY[String(status || "").trim().toLowerCase()] || "Uitgeschakeld";
   }
 
   export function renderPowerHouseRunExtensionField() {
-    if (!hasEntity("phRunExtension")) {
-      return "";
-    }
-    const { enabled, busy } = getSettingsSwitchModel("phRunExtension");
-    const thresholds = getRunExtensionThresholds();
-    const status = getSettingsTextStatValue("phRunExtensionStatus", "inactive");
-    const statusCopy = getRunExtensionStatusCopy(status);
-    const normalizedStatus = String(status || "").trim().toLowerCase();
-    const showActive = enabled && ["extending", "comfort_stop", "wait_warm_restart", "warm_restart"].includes(normalizedStatus);
-    const marginField = enabled ? renderSettingsNumberField("phRunExtensionStopMargin", "Stop boven gewenste temperatuur", "Hoeveel de kamer boven het setpoint mag komen voordat een lopende run bewust wordt gestopt.") : "";
-    const absoluteRow = enabled && Number.isFinite(thresholds.stop)
-      ? `
-        <div class="oq-settings-system-row">
-          <div class="oq-settings-system-row-copy">
-            <p class="oq-settings-system-row-label">Gewenst · Warme herstart · Stop</p>
-            <strong class="oq-settings-system-row-value">${escapeHtml(formatRunExtensionTemp(thresholds.setpoint))} · ${escapeHtml(formatRunExtensionTemp(thresholds.restart))} · ${escapeHtml(formatRunExtensionTemp(thresholds.stop))}</strong>
-            <p class="oq-settings-system-row-note">De warmtepomp mag op laag vermogen blijven draaien tot ${escapeHtml(formatRunExtensionTemp(thresholds.stop))}. Na een comfortstop mag hij vanaf ${escapeHtml(formatRunExtensionTemp(thresholds.restart))} weer rustig starten als de woning nog warmte nodig heeft.</p>
-          </div>
-        </div>
-      `
-      : enabled
-        ? `
-          <div class="oq-settings-system-row">
-            <div class="oq-settings-system-row-copy">
-              <p class="oq-settings-system-row-label">Stopgrens</p>
-              <strong class="oq-settings-system-row-value">setpoint + ${escapeHtml(String(thresholds.margin).replace(".", ","))} °C</strong>
-            </div>
-          </div>
-        `
-        : "";
-    const statusRow = showActive
-      ? `
-        <div class="oq-settings-system-row">
-          <div class="oq-settings-system-row-copy">
-            <p class="oq-settings-system-row-label">● ${escapeHtml(statusCopy)}</p>
-            <strong class="oq-settings-system-row-value">${escapeHtml(String(status))}</strong>
-          </div>
-        </div>
-      `
-      : "";
-    return `
-      <div class="oq-settings-subpanel oq-settings-subpanel--nested">
-        <div class="oq-settings-subpanel-head">
-          <p class="oq-helper-label">Power House</p>
-          <h4>Langer doorverwarmen</h4>
-          <p>Laat een lopende warmtepomp bij weinig warmtevraag op de laagste geschikte stand doorverwarmen. Dit kan langere rustige runs geven, vooral bij vloerverwarming. Inschakelen start een stilstaande warmtepomp niet zelfstandig.</p>
-        </div>
-        <div class="oq-settings-grid">
-          <article class="oq-helper-surface oq-settings-field" data-oq-settings-field="phRunExtension">
-            <div class="oq-settings-field-head"><h3>Langer doorverwarmen</h3></div>
-            <div class="oq-settings-field-control">
-              ${renderSettingsCompactSwitchControl("phRunExtension", "Langer doorverwarmen", enabled, busy)}
-            </div>
-          </article>
-          ${marginField}
-        </div>
-        ${absoluteRow}
-        ${statusRow}
-      </div>
-    `;
+    if (!hasEntity("phRunExtension")) return "";
+    const enabled = Boolean(getEntityValue("phRunExtension"));
+    const t = getRunExtensionThresholds();
+    const n = String(getSettingsTextStatValue("phRunExtensionStatus", "inactive") || "").trim().toLowerCase();
+    const show = enabled && ["extending", "comfort_stop", "wait_warm_restart", "warm_restart", "blocked"].includes(n);
+    const temps = !enabled ? "" : Number.isFinite(t.stop)
+      ? `${escapeHtml(formatRunExtensionTemp(t.setpoint))} · ${escapeHtml(formatRunExtensionTemp(t.restart))} · ${escapeHtml(formatRunExtensionTemp(t.stop))}`
+      : `setpoint + ${escapeHtml(String(t.margin).replace(".", ","))} °C`;
+    const detail = !enabled ? "" : `<div class="oq-settings-system-row"><div class="oq-settings-system-row-copy"><p class="oq-settings-system-row-label">Gewenst · Herstart · Stop${show ? ` — ● ${escapeHtml(getRunExtensionStatusCopy(n))}` : ""}</p><strong class="oq-settings-system-row-value">${temps}</strong></div></div>`;
+    return renderSettingsSwitchField("phRunExtension", "Langer doorverwarmen", "Houdt een draaiende run op minimumvermogen vast. Start nooit zelfstandig.")
+      + (enabled ? renderSettingsNumberField("phRunExtensionStopMargin", "Stop boven gewenste temperatuur", "Stopmarge boven het setpoint.") : "")
+      + detail;
   }
 
   export function renderSettingsHeatPumpLimiterCard(title, hpPrefix) {

@@ -29,6 +29,7 @@ struct TickConfig {
   int defrost_comp_boost_steps;
   bool ot_room_temperature_fresh;
   bool ot_room_setpoint_fresh;
+  float run_extension_restart_hysteresis_c;
 };
 
 class Runtime {
@@ -266,16 +267,17 @@ class Runtime {
                                    oq_heat_intent_runtime::room_setpoint_fresh(config.ot_room_setpoint_fresh);
     const bool heating_allowed = id(heating_enable_valid).has_state() && id(heating_enable_valid).state &&
                                  id(heating_enable_selected).has_state() && id(heating_enable_selected).state;
-    const bool defrost_hold = oq_power_house_dispatch::tail_active(this->dispatch_state_.hp1_defrost, now_ms,
-                                                                   oq_power_house_dispatch::kDefrostHoldMs) ||
-                              oq_power_house_dispatch::tail_active(this->dispatch_state_.hp2_defrost, now_ms,
-                                                                   oq_power_house_dispatch::kDefrostHoldMs) ||
-                              oq_power_house_dispatch::tail_active(this->dispatch_state_.oil_return, now_ms,
-                                                                   oq_power_house_dispatch::kOilReturnHoldMs) ||
-                              oq_power_house_dispatch::topology_hold_active(this->dispatch_state_, now_ms,
-                                                                            oq_power_house_dispatch::kTopologyHoldMs);
-    const bool run_cycle_active =
-        applied_total > 0 || defrost_hold || hp1_valve_defrost || hp2_valve_defrost || hp1_oil_return || hp2_oil_return;
+    // Defrost and oil-return continuity only: a topology-optimizer hold must
+    // never count as an active #608 run, otherwise #608 could request Pmin
+    // from a true standstill after both compressors already stopped.
+    const bool protection_hold = oq_power_house_dispatch::tail_active(this->dispatch_state_.hp1_defrost, now_ms,
+                                                                      oq_power_house_dispatch::kDefrostHoldMs) ||
+                                 oq_power_house_dispatch::tail_active(this->dispatch_state_.hp2_defrost, now_ms,
+                                                                      oq_power_house_dispatch::kDefrostHoldMs) ||
+                                 oq_power_house_dispatch::tail_active(this->dispatch_state_.oil_return, now_ms,
+                                                                      oq_power_house_dispatch::kOilReturnHoldMs);
+    const bool run_cycle_active = applied_total > 0 || protection_hold || hp1_valve_defrost || hp2_valve_defrost ||
+                                  hp1_oil_return || hp2_oil_return;
     oq_power_house_run_extension::Input run_ext_input;
     run_ext_input.enabled = run_ext_enabled;
     run_ext_input.cycle_active = run_cycle_active;
@@ -287,8 +289,11 @@ class Runtime {
     run_ext_input.base_requested_w = base_requested_w;
     run_ext_input.minimum_viable_w = minimum_viable_w;
     run_ext_input.water_limit_factor = id(oq_water_temp_limit_factor);
+    const float restart_hysteresis_c = std::isfinite(config.run_extension_restart_hysteresis_c)
+                                           ? config.run_extension_restart_hysteresis_c
+                                           : oq_power_house_run_extension::kRestartHysteresisC;
     const auto run_ext_decision = oq_power_house_run_extension::evaluate(
-        run_ext_input, {stop_margin_c, oq_power_house_run_extension::kRestartHysteresisC}, this->run_extension_state_);
+        run_ext_input, {stop_margin_c, restart_hysteresis_c}, this->run_extension_state_);
     if (run_ext_decision.next.phase != this->last_run_ext_phase_) {
       ESP_LOGI("quatt.strategy", "ph run extension %s -> %s (room %.2f stop %.2f restart %.2f base %.0f floor %.0f)",
                oq_power_house_run_extension::phase_name(this->last_run_ext_phase_),
@@ -364,11 +369,10 @@ class Runtime {
     float base_capped_w = base_requested_w;
     if (std::isfinite(base_capped_w) && std::isfinite(rated_w) && rated_w > 0.0f && config.demand_max_f > 0)
       base_capped_w = std::min(base_capped_w, rated_w * static_cast<float>(base_capped_demand) / config.demand_max_f);
-    const float house_deficit_w =
-        std::isfinite(base_capped_w) && std::isfinite(dispatch.capacity_w) && dispatch.output_valid
-            ? std::max(0.0f, base_capped_w - dispatch.capacity_w)
-            : dispatch.deficit_w;
-    const bool house_saturated = base_capped_demand > 0 && std::isfinite(house_deficit_w) && house_deficit_w > 0.0f;
+    const float house_deficit_w = oq_power_house_run_extension::compute_house_deficit_w(
+        base_capped_w, dispatch.capacity_w, dispatch.output_valid, dispatch.deficit_w);
+    const bool house_saturated =
+        oq_power_house_run_extension::compute_house_saturated(base_capped_demand, house_deficit_w);
     id(oq_P_deficit_w) = house_deficit_w;
 
 #if OQ_TOPOLOGY_DUO
@@ -403,6 +407,8 @@ class Runtime {
     this->demand_state_ = {};
     this->fast_floor_w_ = 0.0f;
     this->run_extension_state_ = {};
+    this->run_ext_enabled_ = false;
+    this->run_ext_blocked_ = false;
     this->run_ext_base_w_ = 0.0f;
     this->run_ext_effective_w_ = 0.0f;
     this->run_ext_floor_w_ = 0.0f;

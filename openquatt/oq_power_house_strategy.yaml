@@ -482,4 +482,5 @@ interval:
               (int) roundf(${oq_defrost_comp_boost_steps}),
               (${oq_ot_room_temperature_fresh_expr}),
               (${oq_ot_room_setpoint_fresh_expr}),
+              ${oq_ph_run_extension_restart_hysteresis_c}f,
           });

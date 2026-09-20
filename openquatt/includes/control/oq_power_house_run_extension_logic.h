@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 
@@ -76,6 +77,18 @@ inline bool water_floor_allowed(float water_limit_factor) {
 }
 
 inline State reset_state() { return {}; }
+
+inline float compute_house_deficit_w(float base_capped_w, float capacity_w, bool output_valid,
+                                     float fallback_deficit_w) {
+  if (std::isfinite(base_capped_w) && std::isfinite(capacity_w) && output_valid) {
+    return std::max(0.0f, base_capped_w - capacity_w);
+  }
+  return fallback_deficit_w;
+}
+
+inline bool compute_house_saturated(int base_capped_demand, float house_deficit_w) {
+  return base_capped_demand > 0 && std::isfinite(house_deficit_w) && house_deficit_w > 0.0f;
+}
 
 inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
   Decision out;
@@ -195,10 +208,18 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
       break;
     }
     case Phase::COMFORT_STOP: {
-      // Transient: the runtime zeroes the normal space-heating request and the
-      // central stop/postflow logic handles the compressor stop.
+      // Latched: the runtime zeroes the normal space-heating request and the
+      // central stop/postflow logic handles the compressor stop. Stay here
+      // while the compressor is still active so a 0.1 K quantised dip just
+      // below the stop (e.g. 21.0 -> 20.9 C) cannot abort the stop and bypass
+      // the 0.2 K restart hysteresis. Only once the run has actually stopped
+      // do we wait for a warm restart.
       out.force_comfort_stop = true;
-      next.phase = Phase::WAIT_WARM_RESTART;
+      if (in.actual_heating_active) {
+        next.phase = Phase::COMFORT_STOP;
+      } else {
+        next.phase = Phase::WAIT_WARM_RESTART;
+      }
       break;
     }
     case Phase::WAIT_WARM_RESTART: {
@@ -237,9 +258,10 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
         next.cycle_armed = false;
         break;
       }
-      out.warm_restart_intent = true;
-      // Run confirmed: hand back to normal demand plus optional floor.
+      // Run confirmed: hand back to normal demand plus optional floor. Once the
+      // new run is actually going, base == 0 may extend again via EXTENDING.
       if (in.cycle_active && in.actual_heating_active) {
+        out.warm_restart_intent = true;
         if (room_at_stop) {
           next.phase = Phase::COMFORT_STOP;
           out.force_comfort_stop = true;
@@ -254,8 +276,21 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
         }
         break;
       }
+      // Not yet restarted (e.g. minimum off-time / re-entry block): the warm
+      // restart only exists while the house actually needs heat. If base demand
+      // falls back to zero before the compressor runs again, drop the intent
+      // and the floor instead of forcing Pmin into a start.
+      if (in.base_requested_w <= 0.0f) {
+        next.phase = Phase::WAIT_WARM_RESTART;
+        out.warm_restart_intent = false;
+        out.floor_active = false;
+        out.floor_w = 0.0f;
+        break;
+      }
+      out.warm_restart_intent = true;
       // Keep intent across sensor jitter: do not flap on room noise once warm
-      // restart is active. Only a comfort stop, setpoint drop or reset clears it.
+      // restart is active. Only a comfort stop, lost house demand, a setpoint
+      // drop or reset clears it.
       if (room_at_stop) {
         next.phase = Phase::COMFORT_STOP;
         out.force_comfort_stop = true;

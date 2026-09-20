@@ -31,6 +31,15 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         self.assertIn("enum class Phase", run_ext_logic)
         self.assertIn("WAIT_WARM_RESTART", run_ext_logic)
         self.assertIn("test_comfort_stop_at_threshold", run_ext_test)
+        # Review #726: comfort stop stays latched while the compressor runs.
+        self.assertIn("test_comfort_stop_latched_while_compressor_active", run_ext_test)
+        # Review #726: pending warm restart drops when house need returns to 0.
+        self.assertIn("test_warm_restart_reverts_when_base_drops_to_zero", run_ext_test)
+        # Review #726: CM3 invariant executable, not string-only.
+        self.assertIn("test_house_deficit_ignores_comfort_floor", run_ext_test)
+        self.assertIn("compute_house_deficit_w(", text)
+        # Review #726: topology-optimizer hold is not a #608 run right.
+        self.assertNotIn("topology_hold_active", text)
         for marker in ("filter_demand(", "oq_demand_filter_ramp_up", "now_ms > id(oq_ph_request_last_loop_ms)", "fminf(requested_w", "struct DuoCandidate"):
             self.assertNotIn(marker, text)
             self.assertNotIn(marker, yaml)
