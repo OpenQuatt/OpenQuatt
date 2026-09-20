@@ -1345,7 +1345,7 @@
   // Download window selection for the Systeemrecorder. minutes === 0 means
   // everything retained on the device.
   export const DEBUG_RECORDING_DOWNLOAD_RANGE_OPTIONS = [
-    { minutes: 15, label: "Laatste 15 min" },
+    { minutes: 15, label: "15 min" },
     { minutes: 30, label: "30 min" },
     { minutes: 60, label: "60 min" },
     { minutes: 0, label: "Alles" },

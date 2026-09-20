@@ -23,6 +23,8 @@ const {
   getDebugRecordingDownloadEndpoint,
   getDebugRecordingRangeLabel,
   getDebugRecordingStatusLabel,
+  getSystemRecorderIntroHtml,
+  handleDebugRecordingAction,
   renderDebugRecordingHeaderStatus,
   renderDebugRecordingModal,
   restartRollingDebugRecording,
@@ -352,26 +354,64 @@ test("normaal actieve recorder geeft geen headerbadge, afwijking wel", () => {
   assert.match(renderDebugRecordingHeaderStatus(), /Systeemrecorder niet beschikbaar/);
 });
 
-test("modal spreekt Systeemrecorder met diagnosebestand en analyser", () => {
+test("modal spreekt Systeemrecorder met export als hoofdactie", () => {
   seedFeatureStatus({ available: true, enabled: true, active: true });
   applyDebugRecordingDeviceStatus(state.debugRecordingDeviceStatus);
   const markup = renderDebugRecordingModal();
   assert.match(markup, /Systeemrecorder/);
   assert.match(markup, /Doorlopende opname/);
+  assert.match(markup, /role="switch"/);
+  assert.match(markup, /Beschikbaar/);
+  assert.match(markup, /Apparaatgeheugen · sample-interval 10 s/);
+  assert.match(markup, /Kies hoeveel van de beschikbare historie je wilt exporteren/);
+  assert.match(markup, /Laatste 15 minuten/);
+  assert.match(markup, /Geschatte bestandsgrootte:/);
   assert.match(markup, /Download diagnosebestand/);
-  assert.match(markup, /Open analyser/);
   assert.match(markup, /Kopieer gegevens/);
+  assert.match(markup, /<details class="oq-debug-recording-manage">/);
+  assert.match(markup, /Recorderbeheer/);
   assert.match(markup, /Nieuwe opname starten/);
-  assert.match(markup, /https:\/\/openheatpumps\.nl/);
-  assert.match(markup, /rel="noopener noreferrer"/);
+  assert.match(markup, /Wist de huidige historie en start een nieuwe opname/);
+  // Analyser is een inline link in de intro, geen losse knop.
+  assert.match(markup, /<a href="https:\/\/openheatpumps\.nl" target="_blank" rel="noopener noreferrer">/);
+  assert.match(markup, /OpenHeatPumps analyser/);
   assert.match(markup, /niet automatisch verzonden/);
+  assert.doesNotMatch(markup, /Open analyser<\/a>|Open analyser<\/button>/);
   assert.doesNotMatch(markup, /Debugopname/);
   assert.doesNotMatch(markup, /Start rolling/);
+  assert.doesNotMatch(markup, /Statuswijzigingen/);
   assert.doesNotMatch(markup, /freeze-debug-recording/);
+  assert.doesNotMatch(markup, /toggle-system-recorder/);
   for (const option of DEBUG_RECORDING_DOWNLOAD_RANGE_OPTIONS) {
     assert.ok(markup.includes(`data-last-minutes="${option.minutes}"`), `bereik ${option.minutes} aanwezig`);
   }
-  assert.match(markup, new RegExp(`Alles \\(${getDebugRecordingRangeLabel(0).replace(/[()]/g, "\\$&")}\\)|Alles \\(`));
+  assert.equal(getSystemRecorderIntroHtml().includes("https://openheatpumps.nl"), true);
+});
+
+test("uitschakelen vraagt eerst om bevestiging", () => {
+  seedFeatureStatus({ available: true, enabled: true, active: true });
+  applyDebugRecordingDeviceStatus(state.debugRecordingDeviceStatus);
+  state.debugRecordingConfirmDisable = false;
+
+  handleDebugRecordingAction("request-disable-system-recorder");
+  assert.equal(state.debugRecordingConfirmDisable, true);
+  const markup = renderDebugRecordingModal();
+  assert.match(markup, /Doorlopende opname uitschakelen\?/);
+  assert.match(markup, /De huidige historie blijft beschikbaar/);
+  assert.match(markup, /Annuleren/);
+  assert.match(markup, /Uitschakelen/);
+
+  handleDebugRecordingAction("cancel-disable-system-recorder");
+  assert.equal(state.debugRecordingConfirmDisable, false);
+  assert.doesNotMatch(renderDebugRecordingModal(), /Doorlopende opname uitschakelen\?/);
+});
+
+test("rangebeschrijving benoemt het venster voluit", () => {
+  seedFeatureStatus({ available: true, enabled: true, active: true, retained_duration_s: 4500 });
+  applyDebugRecordingDeviceStatus(state.debugRecordingDeviceStatus);
+  assert.equal(getDebugRecordingRangeLabel(15), "Laatste 15 minuten");
+  assert.equal(getDebugRecordingRangeLabel(30), "Laatste 30 minuten");
+  assert.match(getDebugRecordingRangeLabel(0), /Volledige beschikbare historie · /);
 });
 
 test("statuslabels volgen enabled/active zonder frozen-toestanden", () => {
