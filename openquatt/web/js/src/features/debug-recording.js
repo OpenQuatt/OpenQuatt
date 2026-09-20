@@ -811,16 +811,16 @@ export function copyDebugRecordingBundle(rangeMinutes) {
 }
 
 export async function copyDebugRecordingAndOpenAnalyser(rangeMinutes) {
-  // Open the analyser URL synchronously from the click: with `noopener` the
-  // browser returns a null handle, so a tab opened after the async copy could
-  // never be navigated. The copy itself still runs first-class afterwards.
-  if (getDebugRecordingSampleCount() === 0) {
-    return exportDebugRecordingBundle("copy", rangeMinutes);
-  }
-  if (typeof window.open === "function") {
+  // Copy first, then open: opening the analyser tab upfront steals document
+  // focus, after which browsers refuse the clipboard write. Opening the URL
+  // directly needs no window handle, so `noopener` returning null is fine.
+  // Popup-wise this relies on transient click-activation surviving the fast
+  // local export fetch.
+  const copied = await exportDebugRecordingBundle("copy", rangeMinutes);
+  if (copied && typeof window.open === "function") {
     window.open(SYSTEM_RECORDER_ANALYSER_URL, "_blank", "noopener,noreferrer");
   }
-  return exportDebugRecordingBundle("copy", rangeMinutes);
+  return copied;
 }
 
 const debugRecordingActionHandlers = {

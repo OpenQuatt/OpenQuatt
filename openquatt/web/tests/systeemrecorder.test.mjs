@@ -675,7 +675,7 @@ test("statuslabels volgen enabled/active zonder frozen-toestanden", () => {
   assert.equal(getDebugRecordingStatusLabel(), "Niet beschikbaar");
 });
 
-test("kopieer-en-open gebruikt het bereik en opent de analyser-URL direct", async (t) => {
+test("kopieer-en-open gebruikt het bereik en opent daarna de analyser", async (t) => {
   const restoreTimers = seedFeatureStatus();
   const originalFetch = window.fetch;
   const originalClipboard = window.navigator.clipboard;
@@ -704,35 +704,47 @@ test("kopieer-en-open gebruikt het bereik en opent de analyser-URL direct", asyn
   const copied = await copyDebugRecordingAndOpenAnalyser();
 
   assert.equal(copied, true);
-  // URL wordt synchroon uit de klik geopend (popup-veilig, geen handle nodig
-  // dankzij noopener), pas daarna loopt de kopie.
-  assert.deepEqual(calls[0], {
+  // Eerst kopiëren (document houdt focus), pas daarna openen: anders weigert
+  // de browser de clipboard-write vanuit een niet-gefocust document.
+  assert.match(calls[0].url, /download-range\?last_minutes=60/);
+  assert.ok(copiedText.includes("recording"));
+  assert.deepEqual(calls[1], {
     kind: "open",
     url: "https://openheatpumps.nl",
     target: "_blank",
     features: "noopener,noreferrer",
   });
-  assert.match(calls[1].url, /download-range\?last_minutes=60/);
-  assert.ok(copiedText.includes("recording"));
 });
 
-test("kopieer-en-open zonder opname opent geen tab", async (t) => {
-  const restoreTimers = seedFeatureStatus({ sample_count: 0 });
+test("kopieer-en-open opent geen tab bij een mislukte kopie", async (t) => {
+  const restoreTimers = seedFeatureStatus();
+  const originalFetch = window.fetch;
+  const originalClipboard = window.navigator.clipboard;
   const originalOpen = window.open;
+  const originalDocument = globalThis.document;
   t.after(() => {
+    window.fetch = originalFetch;
+    window.navigator.clipboard = originalClipboard;
     window.open = originalOpen;
+    globalThis.document = originalDocument;
     restoreTimers();
   });
+  window.navigator.clipboard = { writeText: async () => { throw new Error("geen klembord"); } };
+  window.isSecureContext = true;
+  globalThis.document = undefined;
   let opened = 0;
   window.open = () => {
     opened += 1;
     return null;
   };
+  window.fetch = async () => ({
+    ok: true, status: 200, json: async () => ({ recording: { active: true, recording_id: 7 } }),
+  });
 
   const { copyDebugRecordingAndOpenAnalyser } = await import("../js/src/features/debug-recording.js");
   const copied = await copyDebugRecordingAndOpenAnalyser();
 
   assert.equal(copied, false);
   assert.equal(opened, 0);
-  assert.match(state.debugRecordingError, /nog geen opname/);
+  assert.match(state.debugRecordingError, /Kopiëren mislukt/);
 });
