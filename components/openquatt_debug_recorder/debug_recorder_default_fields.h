@@ -2,6 +2,7 @@
 // Do not edit manually. Source of truth: openquatt/web/js/src/core/config.js
 // (ENTITY_DEFS + DEBUG_RECORDING_KEYS).
 // Field count: 225.
+// clang-format off: generated X-macro list, stable by construction.
 OQ_DEBUG_RECORDER_DEFAULT_FIELD("projectVersionText", "text_sensor", "OpenQuatt Version")
 OQ_DEBUG_RECORDER_DEFAULT_FIELD("releaseChannelText", "text_sensor", "OpenQuatt Release Channel")
 OQ_DEBUG_RECORDER_DEFAULT_FIELD("installationTopology", "text_sensor", "OpenQuatt Installation Topology")
@@ -227,3 +228,4 @@ OQ_DEBUG_RECORDER_DEFAULT_FIELD("hp2PumpPower", "sensor", "HP2 - Pump Power")
 OQ_DEBUG_RECORDER_DEFAULT_FIELD("hp2PumpRelay", "binary_sensor", "HP2 - DC Pump Relay")
 OQ_DEBUG_RECORDER_DEFAULT_FIELD("hp2BottomPlate", "binary_sensor", "HP2 - Bottom plate heater")
 OQ_DEBUG_RECORDER_DEFAULT_FIELD("hp2Crankcase", "binary_sensor", "HP2 - Crankcase heater")
+// clang-format on

@@ -4,7 +4,7 @@
 Single source of truth: `openquatt/web/js/src/core/config.js`
 (`ENTITY_DEFS` + `DEBUG_RECORDING_KEYS`).
 
-Output: `components/openquatt_debug_recorder/debug_recorder_default_fields.inc`
+Output: `components/openquatt_debug_recorder/debug_recorder_default_fields.h`
 as an X-macro list:
 
     OQ_DEBUG_RECORDER_DEFAULT_FIELD("key", "domain", "name")
@@ -28,7 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_JS = ROOT / "openquatt" / "web" / "js" / "src" / "core" / "config.js"
-OUTPUT = ROOT / "components" / "openquatt_debug_recorder" / "debug_recorder_default_fields.inc"
+OUTPUT = ROOT / "components" / "openquatt_debug_recorder" / "debug_recorder_default_fields.h"
 
 SUPPORTED_DOMAINS = {
     "sensor",
@@ -91,11 +91,13 @@ def render(entries: list[tuple[str, str, str]]) -> str:
         "// Do not edit manually. Source of truth: openquatt/web/js/src/core/config.js",
         "// (ENTITY_DEFS + DEBUG_RECORDING_KEYS).",
         f"// Field count: {len(entries)}.",
+        "// clang-format off: generated X-macro list, stable by construction.",
     ]
     for key, domain, name in entries:
         lines.append(
             f'OQ_DEBUG_RECORDER_DEFAULT_FIELD("{c_escape(key)}", "{c_escape(domain)}", "{c_escape(name)}")'
         )
+    lines.append("// clang-format on")
     return "\n".join(lines) + "\n"
 
 

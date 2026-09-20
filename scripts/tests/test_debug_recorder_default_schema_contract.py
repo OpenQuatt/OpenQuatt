@@ -13,7 +13,7 @@ RECORDER_SOURCE = (
 RECORDER_HEADER = (
     ROOT / "components" / "openquatt_debug_recorder" / "OpenQuattDebugRecorder.h"
 ).read_text()
-GENERATED_INC = ROOT / "components" / "openquatt_debug_recorder" / "debug_recorder_default_fields.inc"
+GENERATED_INC = ROOT / "components" / "openquatt_debug_recorder" / "debug_recorder_default_fields.h"
 
 SUPPORTED_DOMAINS = {
     "sensor",

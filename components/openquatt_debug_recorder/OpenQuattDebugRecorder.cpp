@@ -1002,7 +1002,7 @@ bool OpenQuattDebugRecorder::configure_default_schema_() {
   };
   static constexpr DefaultField kDefaultFields[] = {
 #define OQ_DEBUG_RECORDER_DEFAULT_FIELD(key, domain, name) {key, domain, name},
-#include "debug_recorder_default_fields.inc"
+#include "debug_recorder_default_fields.h"
 #undef OQ_DEBUG_RECORDER_DEFAULT_FIELD
   };
 
