@@ -46,11 +46,11 @@ test("alle muterende debugrequests sturen het firmware-CSRF-token mee", async (t
     return { ok: true, status: 200, json: async () => ({ ok: true }) };
   };
 
-  for (const path of ["configure?reset=1", "start?rolling=1", "freeze", "stop"]) {
-    await postDebugRecordingDevice(path, { entities: "key\tsensor\tName" });
+  for (const path of ["configure?reset=1", "start?rolling=1", "restart", "stop", "enabled"]) {
+    await postDebugRecordingDevice(path, path === "enabled" ? { enabled: "1" } : { entities: "key\tsensor\tName" });
   }
 
-  assert.equal(requests.length, 4);
+  assert.equal(requests.length, 5);
   for (const { options } of requests) {
     assert.equal(options.method, "POST");
     assert.equal(new URLSearchParams(options.body).get("csrf_token"), "test-debug-csrf-token");

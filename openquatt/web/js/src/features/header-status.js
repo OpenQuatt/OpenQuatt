@@ -177,7 +177,7 @@ import { render } from "../core/render-scheduler.js";
       ["connectivity", "Connectiviteit", getConnectivityStatus()],
       ["time", "Tijd", formatDeviceClock()],
       ["version", "Versie", getFirmwareVersionChipValue(), Boolean(getFirmwareUpdateEntity())],
-      ["debugRecording", "Debugopname", getDebugRecordingHubStatusLabel(), true],
+      ["debugRecording", "Systeemrecorder", getDebugRecordingHubStatusLabel(), true],
       ["webserverLog", "Logboek", getWebServerLogStatusLabel(), true],
     ];
   }

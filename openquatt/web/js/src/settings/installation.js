@@ -1090,7 +1090,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           })}
           ${renderSettingsSystemRow({
             dataValue: "debugRecording",
-            label: "Debugopname",
+            label: "Systeemrecorder",
             value: getDebugRecordingStatusLabel(),
             note: getDebugRecordingStatusCopy(),
             action: renderSettingsSystemOpenAction("open-debug-recording-modal"),

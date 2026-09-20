@@ -1,6 +1,11 @@
 import { invokeActionMap } from "../core/action-router.js";
 import { copyTextToClipboard, downloadTextFile } from "../core/browser-utils.js";
-import { DEBUG_RECORDING_DURATION_OPTIONS, DEBUG_RECORDING_KEYS } from "../core/config.js";
+import {
+  DEBUG_RECORDING_DOWNLOAD_RANGE_OPTIONS,
+  DEBUG_RECORDING_DURATION_OPTIONS,
+  DEBUG_RECORDING_KEYS,
+  SYSTEM_RECORDER_ANALYSER_URL,
+} from "../core/config.js";
 import { buildBulkEntityChunks } from "../core/entity-sync.js";
 import { updateDebugRecordingState } from "../core/feature-state.js";
 import { state } from "../core/state.js";
@@ -20,8 +25,21 @@ export function isDebugRecordingRolling(status = state.debugRecordingDeviceStatu
   return status?.rolling === true || String(status?.mode || "").toLowerCase() === "rolling";
 }
 
-export function isDebugRecordingFrozen(status = state.debugRecordingDeviceStatus) {
-  return isDebugRecordingRolling(status) && status?.frozen === true && !status?.active;
+// The recorder is enabled by default (firmware auto-starts on boot). Only an
+// explicit user opt-out disables it, so an unknown status is treated as
+// enabled until the device reports otherwise.
+export function isSystemRecorderEnabled(status = state.debugRecordingDeviceStatus) {
+  if (!status) {
+    return true;
+  }
+  return status.enabled !== false;
+}
+
+export function isSystemRecorderAvailable(status = state.debugRecordingDeviceStatus) {
+  if (!status) {
+    return true;
+  }
+  return status.available !== false;
 }
 
 export function formatDebugRecordingDuration(valueMs) {
@@ -53,53 +71,43 @@ export function getDebugRecordingStatusLabel() {
   if (state.debugRecordingDeviceStatus && state.debugRecordingDeviceStatus.available === false) {
     return "Niet beschikbaar";
   }
-  if (isDebugRecordingFrozen()) {
-    return "Rolling gestopt";
+  if (!isSystemRecorderEnabled()) {
+    return "Uitgeschakeld";
   }
   if (state.debugRecordingActive && isDebugRecordingRolling()) {
-    return "Rolling actief";
+    return "Actief";
   }
   if (state.debugRecordingActive) {
     return "Bezig met opnemen";
   }
-  const count = getDebugRecordingSampleCount();
-  if (count > 0) {
-    return "Voltooid";
+  if (getDebugRecordingSampleCount() > 0) {
+    return "Beschikbaar";
   }
-  return "Niet gestart";
+  return "Starten…";
 }
 
 export function getDebugRecordingStatusCopy() {
-  if (isDebugRecordingFrozen()) {
-    return "Rolling debug is gestopt. De recente samples blijven bewaard tot je downloadt, kopieert, hervat of een nieuwe opname start.";
-  }
-  if (state.debugRecordingActive && isDebugRecordingRolling()) {
-    return "Rolling debug bewaart continu de recente samples. Download of kopieer maakt een momentopname; rolling blijft daarna doorlopen.";
-  }
-  if (state.debugRecordingActive) {
-    return "De opname loopt in apparaatgeheugen. Je kunt deze pagina sluiten en later het bestand downloaden.";
-  }
-  if (getDebugRecordingSampleCount() > 0) {
-    return "De opname is klaar. Download het supportbestand en voeg dit toe aan je supportverzoek.";
-  }
   if (state.debugRecordingDeviceStatus && state.debugRecordingDeviceStatus.available === false) {
-    return "Debugopname in apparaatgeheugen is niet beschikbaar op deze firmware.";
+    return "Systeemrecorder in apparaatgeheugen is niet beschikbaar op deze firmware.";
   }
-  return "Neem tijdelijk supportgegevens op voor analyse. De opname wordt lokaal in het apparaatgeheugen opgeslagen. Er wordt niets automatisch verzonden.";
+  if (!isSystemRecorderEnabled()) {
+    return "Doorlopende opname uitgeschakeld — Er worden momenteel geen nieuwe systeemgegevens opgeslagen. De huidige opname blijft beschikbaar totdat een nieuwe opname wordt gestart of het apparaat opnieuw opstart.";
+  }
+  return "De Systeemrecorder bewaart continu recente systeemgegevens voor diagnose en analyse. De gegevens blijven lokaal op het apparaat en worden niet automatisch verzonden.";
 }
 
 export function getDebugRecordingHubStatusLabel() {
-  if (isDebugRecordingFrozen()) {
-    return "Gestopt";
+  if (state.debugRecordingDeviceStatus && state.debugRecordingDeviceStatus.available === false) {
+    return "Niet beschikbaar";
   }
-  if (state.debugRecordingActive && isDebugRecordingRolling()) {
-    return `Rolling · ${formatDebugRecordingDuration(getDebugRecordingRetainedDurationMs())}`;
+  if (!isSystemRecorderEnabled()) {
+    return "Uitgeschakeld";
   }
   if (state.debugRecordingActive) {
-    return `Loopt · ${formatDebugRecordingDuration(getDebugRecordingRemainingMs())}`;
+    return "Actief";
   }
   if (getDebugRecordingSampleCount() > 0) {
-    return "Klaar";
+    return "Beschikbaar";
   }
   return getDebugRecordingStatusLabel();
 }
@@ -116,6 +124,21 @@ export function setDebugRecordingSelectedMinutes(minutes) {
   }
   updateDebugRecordingState({
     debugRecordingSelectedMinutes: Math.max(1, Number(minutes) || 15),
+    debugRecordingNotice: "",
+    debugRecordingError: "",
+  });
+  render();
+}
+
+export function getDebugRecordingDownloadRange() {
+  const selected = Number(state.debugRecordingDownloadRange ?? 15);
+  const allowed = DEBUG_RECORDING_DOWNLOAD_RANGE_OPTIONS.map((option) => Number(option.minutes));
+  return allowed.includes(selected) ? selected : 15;
+}
+
+export function setDebugRecordingDownloadRange(minutes) {
+  updateDebugRecordingState({
+    debugRecordingDownloadRange: Math.max(0, Number(minutes) || 0),
     debugRecordingNotice: "",
     debugRecordingError: "",
   });
@@ -173,38 +196,42 @@ export function acknowledgeDebugRecording(bundle) {
   }
 }
 
+// An active recorder is the normal situation, so no permanent header badge.
+// Only a deviating state (disabled / unavailable) is surfaced.
 export function renderDebugRecordingHeaderStatus() {
   const status = state.debugRecordingDeviceStatus;
-  const sampleCount = Math.max(0, Number(status?.sample_count || 0));
-  if (!status || status.available === false || (!status.active && sampleCount === 0)) {
+  if (!status) {
     return "";
   }
-
-  const active = Boolean(status.active);
-  if (!active && getDebugRecordingId(status) === state.debugRecordingAcknowledgedId) {
-    return "";
-  }
-  const rolling = isDebugRecordingRolling(status);
-  const retained = formatDebugRecordingDuration(Math.max(0, Number(status.retained_duration_s || 0)) * 1000);
-  const remaining = formatDebugRecordingDuration(Math.max(0, Number(status.remaining_s || 0)) * 1000);
-  const label = active
-    ? rolling ? `Rolling debug · ${retained}` : `Debug loopt · ${remaining}`
-    : rolling ? "Rolling gestopt" : "Debug klaar";
-  const title = active
-    ? rolling ? `Rolling debug loopt, laatste ${retained} beschikbaar` : `Debugopname loopt, nog ${remaining}`
-    : rolling ? "Rolling debug gestopt; recente buffer klaar om te downloaden" : "Debugopname klaar om te downloaden";
-  return `
+  if (status.available === false) {
+    const title = "Systeemrecorder niet beschikbaar op deze firmware";
+    return `
     <button
-      class="oq-debug-recording-header-status${active ? " oq-debug-recording-header-status--active" : " oq-debug-recording-header-status--ready"}"
+      class="oq-debug-recording-header-status oq-debug-recording-header-status--ready"
       type="button"
       data-oq-action="open-debug-recording-modal"
       aria-label="${escapeHtml(title)}"
       title="${escapeHtml(title)}"
     >
-      <span class="oq-debug-recording-header-status-dot" aria-hidden="true"></span>
-      <span>${escapeHtml(label)}</span>
+      <span>Systeemrecorder niet beschikbaar</span>
     </button>
   `;
+  }
+  if (status.enabled === false) {
+    const title = "Systeemrecorder uitgeschakeld — er worden geen nieuwe systeemgegevens opgeslagen";
+    return `
+    <button
+      class="oq-debug-recording-header-status oq-debug-recording-header-status--ready"
+      type="button"
+      data-oq-action="open-debug-recording-modal"
+      aria-label="${escapeHtml(title)}"
+      title="${escapeHtml(title)}"
+    >
+      <span>Systeemrecorder uitgeschakeld</span>
+    </button>
+  `;
+  }
+  return "";
 }
 
 export function patchDebugRecordingHeaderStatus() {
@@ -299,10 +326,10 @@ export function applyDebugRecordingDeviceUnavailableStatus() {
   applyDebugRecordingDeviceStatus({
     ok: false,
     available: false,
+    enabled: false,
     active: false,
     mode: "manual",
     rolling: false,
-    frozen: false,
     storage: "unavailable",
     interval_s: 0,
     duration_s: 0,
@@ -333,7 +360,7 @@ export async function fetchDebugRecordingDeviceStatus() {
 
 export function scheduleDebugRecordingDeviceStatusPoll(delayMs = 2000) {
   clearDebugRecordingDevicePollTimer();
-  if (!state.debugRecordingActive) {
+  if (!state.debugRecordingActive && state.systemModal !== "debug-recording") {
     return;
   }
   state.debugRecordingDevicePollTimer = window.setTimeout(() => {
@@ -353,9 +380,6 @@ export async function refreshDebugRecordingDeviceStatus(options = {}) {
     if (String(state.debugRecordingError || "").startsWith("Status kon niet worden opgehaald.")) {
       state.debugRecordingError = "";
     }
-    if (!state.debugRecordingActive && options.silent) {
-      state.debugRecordingNotice = "Debugopname is afgerond.";
-    }
     scheduleDebugRecordingDeviceStatusPoll();
   } catch (error) {
     debugRecordingStatusFailureCount += 1;
@@ -363,7 +387,7 @@ export async function refreshDebugRecordingDeviceStatus(options = {}) {
       applyDebugRecordingDeviceUnavailableStatus();
     }
     state.debugRecordingError = `Status kon niet worden opgehaald. ${error.message || String(error)}`;
-    if (state.debugRecordingActive) {
+    if (state.debugRecordingActive || state.systemModal === "debug-recording") {
       scheduleDebugRecordingDeviceStatusPoll(Math.min(30000, 2000 * (2 ** debugRecordingStatusFailureCount)));
     }
   } finally {
@@ -482,9 +506,9 @@ export async function startDebugRecordingMode({ rolling = false, durationMinutes
       && getDebugRecordingId(status) !== previousRecordingId
     ));
     if (reconciled) {
-      state.debugRecordingNotice = `${rolling ? "Rolling debug" : "Debugopname"} is gestart; alleen de bevestiging was vertraagd.`;
+      state.debugRecordingNotice = `${rolling ? "Doorlopende opname" : "Opname"} is gestart; alleen de bevestiging was vertraagd.`;
     } else {
-      state.debugRecordingError = `${rolling ? "Rolling debug" : "Debugopname"} kon niet worden gestart. ${error.message || String(error)}`;
+      state.debugRecordingError = `${rolling ? "Doorlopende opname" : "Opname"} kon niet worden gestart. ${error.message || String(error)}`;
     }
   } finally {
     state.debugRecordingBusy = false;
@@ -500,34 +524,6 @@ export function startRollingDebugRecording() {
   return startDebugRecordingMode({ rolling: true });
 }
 
-export async function requestDebugRecordingFreeze() {
-  debugRecordingMutationGeneration += 1;
-  const payload = await postDebugRecordingDevice("freeze");
-  applyDebugRecordingDeviceStatus(payload);
-  clearDebugRecordingDevicePollTimer();
-  return payload;
-}
-
-export async function freezeDebugRecording() {
-  state.debugRecordingBusy = true;
-  state.debugRecordingError = "";
-  render();
-  try {
-    await requestDebugRecordingFreeze();
-    state.debugRecordingNotice = "Rolling debug is gestopt. De recente buffer blijft bewaard.";
-  } catch (error) {
-    const reconciled = await reconcileDebugRecordingMutation((status) => !status?.active);
-    if (reconciled) {
-      state.debugRecordingNotice = "Rolling debug is gestopt; alleen de bevestiging was vertraagd.";
-    } else {
-      state.debugRecordingError = `Rolling debug kon niet worden gestopt. ${error.message || String(error)}`;
-    }
-  } finally {
-    state.debugRecordingBusy = false;
-    render();
-  }
-}
-
 export async function stopDebugRecording(options = {}) {
   debugRecordingMutationGeneration += 1;
   clearDebugRecordingDevicePollTimer();
@@ -537,14 +533,74 @@ export async function stopDebugRecording(options = {}) {
   try {
     const payload = await postDebugRecordingDevice("stop");
     applyDebugRecordingDeviceStatus(payload);
-    state.debugRecordingNotice = options.completed ? "Debugopname is afgerond." : "Debugopname is gestopt.";
+    state.debugRecordingNotice = options.completed ? "Opname is afgerond." : "Opname is gestopt.";
   } catch (error) {
     const reconciled = await reconcileDebugRecordingMutation((status) => !status?.active);
     if (reconciled) {
-      state.debugRecordingNotice = "Debugopname is gestopt; alleen de bevestiging was vertraagd.";
+      state.debugRecordingNotice = "Opname is gestopt; alleen de bevestiging was vertraagd.";
     } else {
-      state.debugRecordingError = `Debugopname kon niet worden gestopt. ${error.message || String(error)}`;
+      state.debugRecordingError = `Opname kon niet worden gestopt. ${error.message || String(error)}`;
     }
+  } finally {
+    state.debugRecordingBusy = false;
+    render();
+  }
+}
+
+export async function setSystemRecorderEnabled(enabled) {
+  debugRecordingMutationGeneration += 1;
+  clearDebugRecordingDevicePollTimer();
+  state.debugRecordingBusy = true;
+  state.debugRecordingError = "";
+  state.debugRecordingNotice = "";
+  render();
+  try {
+    const payload = await postDebugRecordingDevice("enabled", { enabled: enabled ? "1" : "0" });
+    applyDebugRecordingDeviceStatus(payload);
+    debugRecordingStatusFailureCount = 0;
+    state.debugRecordingNotice = enabled
+      ? "Doorlopende opname ingeschakeld. Er is een nieuwe opname gestart; de oude buffer is gewist."
+      : "Doorlopende opname uitgeschakeld. De huidige opname blijft beschikbaar totdat een nieuwe opname wordt gestart of het apparaat opnieuw opstart.";
+    scheduleDebugRecordingDeviceStatusPoll();
+  } catch (error) {
+    const reconciled = await reconcileDebugRecordingMutation(
+      (status) => (status?.enabled !== false) === enabled,
+    );
+    if (reconciled) {
+      state.debugRecordingNotice = enabled
+        ? "Doorlopende opname is ingeschakeld; alleen de bevestiging was vertraagd."
+        : "Doorlopende opname is uitgeschakeld; alleen de bevestiging was vertraagd.";
+    } else {
+      state.debugRecordingError = `Doorlopende opname kon niet worden ${enabled ? "ingeschakeld" : "uitgeschakeld"}. ${error.message || String(error)}`;
+    }
+  } finally {
+    state.debugRecordingBusy = false;
+    render();
+  }
+}
+
+export function toggleSystemRecorder() {
+  return setSystemRecorderEnabled(!isSystemRecorderEnabled());
+}
+
+export async function restartRollingDebugRecording() {
+  if (state.debugRecordingBusy) {
+    return;
+  }
+  debugRecordingMutationGeneration += 1;
+  clearDebugRecordingDevicePollTimer();
+  state.debugRecordingBusy = true;
+  state.debugRecordingError = "";
+  state.debugRecordingNotice = "";
+  render();
+  try {
+    const payload = await postDebugRecordingDevice("restart");
+    applyDebugRecordingDeviceStatus(payload);
+    debugRecordingStatusFailureCount = 0;
+    state.debugRecordingNotice = "Nieuwe opname gestart. De oude historie is gewist.";
+    scheduleDebugRecordingDeviceStatusPoll();
+  } catch (error) {
+    state.debugRecordingError = `Nieuwe opname starten mislukt. ${error.message || String(error)}`;
   } finally {
     state.debugRecordingBusy = false;
     render();
@@ -580,18 +636,34 @@ export function getDebugRecordingFilename(bundle) {
   return `${installation}-debug-recording-${stamp}.oqdebug.json`;
 }
 
-export async function exportDebugRecordingBundle(mode) {
+export function getDebugRecordingDownloadEndpoint(rangeMinutes = getDebugRecordingDownloadRange()) {
+  const range = Math.max(0, Number(rangeMinutes) || 0);
+  return range > 0
+    ? getDebugRecordingEndpoint(`download-range?last_minutes=${encodeURIComponent(range)}`)
+    : getDebugRecordingEndpoint("download");
+}
+
+export function getDebugRecordingRangeLabel(rangeMinutes = getDebugRecordingDownloadRange()) {
+  const range = Math.max(0, Number(rangeMinutes) || 0);
+  if (range <= 0) {
+    return `Alles beschikbaar (${formatDebugRecordingDuration(getDebugRecordingRetainedDurationMs())})`;
+  }
+  const option = DEBUG_RECORDING_DOWNLOAD_RANGE_OPTIONS.find((entry) => Number(entry.minutes) === range);
+  return option ? option.label : `Laatste ${range} min`;
+}
+
+export async function exportDebugRecordingBundle(mode, rangeMinutes = getDebugRecordingDownloadRange()) {
   if (getDebugRecordingSampleCount() === 0) {
-    state.debugRecordingError = `Er is nog geen debugopname om te ${mode === "copy" ? "kopiëren" : "downloaden"}.`;
+    state.debugRecordingError = `Er is nog geen opname om te ${mode === "copy" ? "kopiëren" : "downloaden"}.`;
     render();
     return;
   }
   state.debugRecordingBusy = true;
   state.debugRecordingError = "";
-  const rollingActive = state.debugRecordingActive && isDebugRecordingRolling();
+  const rangeLabel = getDebugRecordingRangeLabel(rangeMinutes);
   render();
   try {
-    const response = await window.fetch(getDebugRecordingEndpoint("download"), {
+    const response = await window.fetch(getDebugRecordingDownloadEndpoint(rangeMinutes), {
       cache: "no-store",
       headers: { "Cache-Control": "no-store" },
     });
@@ -610,25 +682,27 @@ export async function exportDebugRecordingBundle(mode) {
     }
     acknowledgeDebugRecording(bundle);
     const action = mode === "copy" ? "gekopieerd" : "gedownload";
-    state.debugRecordingNotice = rollingActive
-      ? `Momentopname ${action}. Rolling debug loopt door.`
-      : mode === "copy" ? "Supportbestand gekopieerd." : "Supportbestand gedownload.";
+    state.debugRecordingNotice = `Diagnosebestand (${rangeLabel}) ${action}.`;
   } catch (error) {
     state.debugRecordingError = mode === "copy"
-      ? "Kopiëren mislukt. Probeer opnieuw of download het supportbestand."
-      : "Download mislukt. Probeer opnieuw of kopieer de data.";
+      ? "Kopiëren mislukt. Probeer opnieuw of download het diagnosebestand."
+      : "Download mislukt. Probeer opnieuw of kopieer de gegevens.";
   } finally {
     state.debugRecordingBusy = false;
     render();
   }
 }
 
-export function downloadDebugRecordingBundle() {
-  return exportDebugRecordingBundle("download");
+export function downloadDebugRecordingBundle(rangeMinutes) {
+  return exportDebugRecordingBundle("download", rangeMinutes);
 }
 
-export function copyDebugRecordingBundle() {
-  return exportDebugRecordingBundle("copy");
+export function downloadDebugRecordingRange() {
+  return exportDebugRecordingBundle("download", getDebugRecordingDownloadRange());
+}
+
+export function copyDebugRecordingBundle(rangeMinutes) {
+  return exportDebugRecordingBundle("copy", rangeMinutes);
 }
 
 const debugRecordingActionHandlers = {
@@ -641,10 +715,13 @@ const debugRecordingActionHandlers = {
   },
   "start-debug-recording": (button) => startDebugRecording(button.dataset.debugMinutes || 15),
   "start-rolling-debug-recording": () => startRollingDebugRecording(),
+  "restart-rolling-debug-recording": () => restartRollingDebugRecording(),
+  "toggle-system-recorder": () => toggleSystemRecorder(),
   "select-debug-recording-duration": (button) => setDebugRecordingSelectedMinutes(button.dataset.debugMinutes || 15),
+  "select-debug-recording-range": (button) => setDebugRecordingDownloadRange(button.dataset.lastMinutes || 0),
   "stop-debug-recording": () => stopDebugRecording(),
-  "freeze-debug-recording": () => freezeDebugRecording(),
-  "download-debug-recording": () => downloadDebugRecordingBundle(),
+  "download-debug-recording": () => downloadDebugRecordingRange(),
+  "download-debug-recording-range": () => downloadDebugRecordingRange(),
   "copy-debug-recording": () => copyDebugRecordingBundle(),
 };
 
@@ -653,28 +730,26 @@ export function handleDebugRecordingAction(action, button) {
 }
 
 export function renderDebugRecordingModal() {
+  const enabled = isSystemRecorderEnabled();
+  const available = isSystemRecorderAvailable();
   const active = state.debugRecordingActive;
   const rolling = isDebugRecordingRolling();
-  const frozen = isDebugRecordingFrozen();
   const sampleCount = getDebugRecordingSampleCount();
   const busy = state.debugRecordingBusy;
   const estimatedSize = formatDebugRecordingBytes(getDebugRecordingEstimatedBytes());
   const eventCount = Math.max(0, Number(state.debugRecordingDeviceStatus?.event_count || 0));
   const missingFieldCount = Math.max(0, Number(state.debugRecordingDeviceStatus?.missing_field_count || 0));
   const stringOverflow = state.debugRecordingDeviceStatus?.string_overflow === true;
-  const selectedMinutes = getDebugRecordingSelectedMinutes();
-  const remainingMs = getDebugRecordingRemainingMs();
   const retainedMs = getDebugRecordingRetainedDurationMs();
-  const progressPercent = getDebugRecordingProgressPercent();
+  const downloadRange = getDebugRecordingDownloadRange();
   const hasRecording = sampleCount > 0;
-  const progressWidth = `${progressPercent.toFixed(1)}%`;
+  const deviceUnavailable = !available;
   const stats = [
     { icon: "status", label: "Status", value: getDebugRecordingStatusLabel() },
-    { icon: "clock", label: rolling ? "Retentie" : "Duur", value: formatDebugRecordingDuration(rolling ? retainedMs : getDebugRecordingDurationMs()) },
+    { icon: "clock", label: "Beschikbaar", value: formatDebugRecordingDuration(retainedMs) },
     { icon: "samples", label: "Samples", value: String(sampleCount) },
     { icon: "changes", label: "Statuswijzigingen", value: String(eventCount) },
-    { icon: "file", label: "Geschatte grootte", value: `± ${estimatedSize}` },
-    { icon: "storage", label: "Opslag", value: state.debugRecordingDeviceStatus?.available === false ? "Niet beschikbaar" : "Apparaatgeheugen" },
+    { icon: "storage", label: "Opslag", value: deviceUnavailable ? "Niet beschikbaar" : "Apparaatgeheugen" },
   ];
   const dataWarning = stringOverflow
     ? "De stringopslag is volgelopen; enkele tekstwaarden ontbreken in de opname."
@@ -690,28 +765,17 @@ export function renderDebugRecordingModal() {
     id: "system",
     titleId: "oq-debug-recording-modal-title",
     kicker: "Diagnostiek",
-    title: "Debugopname",
+    title: "Systeemrecorder",
     copy: getDebugRecordingStatusCopy(),
     className: "oq-debug-recording-modal",
     closeAction: "close-system-modal",
-    closeLabel: "Sluit debugopname",
+    closeLabel: "Sluit Systeemrecorder",
     body: `
-        <section class="oq-debug-recording-card" aria-label="Opname">
+        <section class="oq-debug-recording-card" aria-label="Doorlopende opname">
           <div class="oq-debug-recording-card-head">
             <span class="oq-debug-recording-heading-icon" aria-hidden="true">${renderDebugRecordingSvgIcon("activity")}</span>
-            <h3>Opname</h3>
+            <h3>Doorlopende opname</h3>
           </div>
-          ${active ? `
-            <div class="oq-debug-recording-progress">
-              <div class="oq-debug-recording-progress-head">
-                <span>${escapeHtml(rolling ? `Laatste ${formatDebugRecordingDuration(retainedMs)} bewaard` : `Nog ${formatDebugRecordingDuration(remainingMs)}`)}</span>
-                <strong>${escapeHtml(rolling ? `${sampleCount}/${Number(state.debugRecordingDeviceStatus?.sample_capacity || 0)}` : `${Math.round(progressPercent)}%`)}</strong>
-              </div>
-              <div class="oq-debug-recording-progress-track" aria-hidden="true">
-                <span class="oq-debug-recording-progress-fill" style="width: ${escapeHtml(progressWidth)}"></span>
-              </div>
-            </div>
-          ` : ""}
           <dl class="oq-debug-recording-stats">
             ${stats.map((item) => `
               <div class="oq-debug-recording-stat">
@@ -720,48 +784,50 @@ export function renderDebugRecordingModal() {
               </div>
             `).join("")}
           </dl>
+          <div class="oq-debug-recording-actions">
+            <button
+              class="oq-helper-button ${enabled ? "oq-helper-button--warning" : "oq-helper-button--primary"} oq-debug-recording-primary"
+              type="button"
+              data-oq-action="toggle-system-recorder"
+              aria-pressed="${enabled ? "true" : "false"}"
+              ${busy || deviceUnavailable ? "disabled" : ""}
+            >${renderDebugRecordingButtonIcon(enabled ? "stop" : "play")}${enabled ? "Doorlopende opname uitschakelen" : "Doorlopende opname inschakelen"}</button>
+          </div>
+          ${!enabled ? `
+            <p class="oq-helper-modal-copy">Bij opnieuw inschakelen wordt een nieuwe opname gestart en de bestaande buffer gewist.</p>
+          ` : ""}
         </section>
-        ${active && rolling ? `
-          <section class="oq-debug-recording-duration" aria-label="Rolling debug">
-            <h3>Rolling debug</h3>
-            <p class="oq-helper-modal-copy">Download of kopieer maakt een momentopname van de huidige buffer. Stop rolling zet de buffer vast.</p>
-          </section>
-        ` : `
-          <section class="oq-debug-recording-duration" aria-label="Duur">
-            <h3>Duur</h3>
-            <div class="oq-debug-recording-segments" role="group" aria-label="Kies opnameduur">
-              ${DEBUG_RECORDING_DURATION_OPTIONS.map((option) => {
-                const selected = Number(option.minutes) === selectedMinutes;
-                return `
-                  <button
-                    class="oq-debug-recording-segment${selected ? " oq-debug-recording-segment--selected" : ""}"
-                    type="button"
-                    data-oq-action="select-debug-recording-duration"
-                    data-debug-minutes="${option.minutes}"
-                    aria-pressed="${selected ? "true" : "false"}"
-                    ${active || busy ? "disabled" : ""}
-                  >
-                    ${escapeHtml(option.label)}
-                  </button>
-                `;
-              }).join("")}
-            </div>
-          </section>
-        `}
+        <section class="oq-debug-recording-duration" aria-label="Exporteren">
+          <h3>Exporteren</h3>
+          <div class="oq-debug-recording-segments" role="group" aria-label="Kies exportbereik">
+            ${DEBUG_RECORDING_DOWNLOAD_RANGE_OPTIONS.map((option) => {
+              const minutes = Number(option.minutes);
+              const selected = minutes === downloadRange;
+              const label = minutes === 0 ? `Alles (${formatDebugRecordingDuration(retainedMs)})` : option.label;
+              return `
+                <button
+                  class="oq-debug-recording-segment${selected ? " oq-debug-recording-segment--selected" : ""}"
+                  type="button"
+                  data-oq-action="select-debug-recording-range"
+                  data-last-minutes="${minutes}"
+                  aria-pressed="${selected ? "true" : "false"}"
+                  ${busy ? "disabled" : ""}
+                >
+                  ${escapeHtml(label)}
+                </button>
+              `;
+            }).join("")}
+          </div>
+          <p class="oq-helper-modal-copy">Geschatte grootte: ± ${escapeHtml(estimatedSize)}.</p>
+        </section>
         <div class="oq-debug-recording-actions">
-          ${active && rolling ? `
-            <button class="oq-helper-button oq-helper-button--warning oq-debug-recording-primary" type="button" data-oq-action="freeze-debug-recording" ${busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("stop")}Stop rolling</button>
-          ` : active ? `
-            <button class="oq-helper-button oq-helper-button--warning oq-debug-recording-primary" type="button" data-oq-action="stop-debug-recording" ${busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("stop")}Stop opname</button>
-          ` : frozen ? `
-            <button class="oq-helper-button oq-helper-button--primary oq-debug-recording-primary" type="button" data-oq-action="start-debug-recording" data-debug-minutes="${selectedMinutes}" ${busy || state.debugRecordingDeviceStatus?.available === false ? "disabled" : ""}>${renderDebugRecordingButtonIcon("play")}Start opname</button>
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="start-rolling-debug-recording" ${busy || state.debugRecordingDeviceStatus?.available === false ? "disabled" : ""}>${renderDebugRecordingButtonIcon("activity")}Hervat rolling</button>
-          ` : `
-            <button class="oq-helper-button oq-helper-button--primary oq-debug-recording-primary" type="button" data-oq-action="start-debug-recording" data-debug-minutes="${selectedMinutes}" ${busy || state.debugRecordingDeviceStatus?.available === false ? "disabled" : ""}>${renderDebugRecordingButtonIcon("play")}Start opname</button>
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="start-rolling-debug-recording" ${busy || state.debugRecordingDeviceStatus?.available === false ? "disabled" : ""}>${renderDebugRecordingButtonIcon("activity")}Start rolling</button>
-          `}
-          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="download-debug-recording" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("download")}${active && rolling ? "Download tot nu toe" : "Download supportbestand"}</button>
-          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("copy")}${active && rolling ? "Kopieer tot nu toe" : "Kopieer data"}</button>
+          <button class="oq-helper-button oq-helper-button--primary oq-debug-recording-primary" type="button" data-oq-action="download-debug-recording-range" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("download")}Download diagnosebestand</button>
+          <a class="oq-helper-button oq-helper-button--ghost" href="${escapeHtml(SYSTEM_RECORDER_ANALYSER_URL)}" target="_blank" rel="noopener noreferrer">${renderDebugRecordingButtonIcon("activity")}Open analyser</a>
+          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("copy")}Kopieer gegevens</button>
+          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="restart-rolling-debug-recording" ${busy || deviceUnavailable || !enabled ? "disabled" : ""}>${renderDebugRecordingButtonIcon("activity")}Nieuwe opname starten</button>
+          ${enabled && active && rolling ? `
+            <p class="oq-helper-modal-copy">De huidige historie wordt gewist en een nieuwe opname wordt gestart.</p>
+          ` : ""}
           ${feedback ? `
             <p class="oq-debug-recording-feedback oq-debug-recording-feedback--${feedback.kind}" role="status">
               ${renderDebugRecordingButtonIcon(feedback.icon)}

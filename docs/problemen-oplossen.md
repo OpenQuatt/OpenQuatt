@@ -225,7 +225,7 @@ Vermeld bij een hulpvraag of bugmelding:
 - het tijdstip en de stappen om het probleem te herhalen;
 - relevante screenshots uit `Diagnose` of `Beslislog` en recente wijzigingen;
 - houd bij een reproduceerbaar probleem het `Logboek` open en vermeld het tijdstip waarop de relevante regels verschenen;
-- bij een reproduceerbaar probleem: een [debugopname uit de web-app](web-app.md#debugopname-voor-support);
+- bij een probleem: een [diagnosebestand uit de Systeemrecorder](web-app.md#systeemrecorder-voor-support);
 - bij een ontbrekende warmtepompverbinding met de HCQ: een scherpe foto van `M1` en de Modbusverbinding met de warmtepomp.
 
 Deel nooit Wi-Fi-wachtwoorden, API-sleutels of andere geheimen.

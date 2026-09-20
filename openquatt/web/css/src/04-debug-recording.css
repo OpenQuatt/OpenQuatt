@@ -66,41 +66,6 @@
   vector-effect: non-scaling-stroke;
 }
 
-.oq-debug-recording-progress {
-  display: grid;
-  gap: 8px;
-  padding: 14px 18px 16px;
-}
-
-.oq-debug-recording-progress-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--oq-theme-color-d7d8, var(--oq-helper-soft));
-  font-size: 0.9rem;
-  font-weight: 700;
-}
-
-.oq-debug-recording-progress-head strong {
-  color: var(--oq-theme-color-1w4r, var(--oq-helper-ink));
-}
-
-.oq-debug-recording-progress-track {
-  overflow: hidden;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--oq-theme-surface-1b2j, rgba(148, 163, 184, 0.18));
-}
-
-.oq-debug-recording-progress-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--oq-helper-accent);
-  transition: width 180ms ease;
-}
-
 .oq-debug-recording-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -174,7 +139,7 @@
 
 .oq-debug-recording-segments {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   overflow: hidden;
   width: min(100%, 500px);
   min-height: 50px;
@@ -299,13 +264,7 @@
 
 @media (max-width: 720px) {
   .oq-debug-recording-header-status {
-    width: 36px;
-    padding: 0;
-    justify-content: center;
-  }
-
-  .oq-debug-recording-header-status > span:last-child {
-    display: none;
+    max-width: 100%;
   }
 
   .oq-debug-recording-modal {

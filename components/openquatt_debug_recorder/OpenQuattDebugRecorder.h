@@ -12,6 +12,7 @@
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/core/component.h"
+#include "esphome/core/preferences.h"
 
 namespace esphome {
 namespace openquatt_debug_recorder {
@@ -30,11 +31,17 @@ class OpenQuattDebugRecorder : public Component {
   bool configure(const std::string& entities, bool reset);
   bool start(uint32_t duration_s);
   bool start_rolling();
-  void freeze();
+  bool restart_rolling();
   void stop();
+  // Persistent user opt-out for the always-on rolling recorder. Only writes
+  // to flash when the user changes the setting, never periodically.
+  // Disabling stops sampling but keeps the current buffer downloadable until
+  // reboot or restart. Enabling starts a new rolling recording.
+  void set_enabled(bool enabled);
+  bool enabled() const { return this->enabled_; }
   const std::string& get_csrf_token() const { return this->csrf_token_; }
   void write_status(httpd_req_t* req) const;
-  void write_recording(httpd_req_t* req) const;
+  void write_recording(httpd_req_t* req, uint32_t last_minutes) const;
 
  protected:
   static constexpr uint32_t SAMPLE_INTERVAL_MS = 10000;
@@ -95,7 +102,6 @@ class OpenQuattDebugRecorder : public Component {
     bool available{false};
     bool active{false};
     bool rolling{false};
-    bool frozen{false};
     bool string_overflow{false};
     uint64_t recording_id{0};
     uint64_t exported_at_ms{0};
@@ -118,6 +124,7 @@ class OpenQuattDebugRecorder : public Component {
   };
 
   time::RealTimeClock* clock_{nullptr};
+  ESPPreferenceObject enabled_pref_{};
   PsramBuffer<uint8_t> samples_{};
   PsramBuffer<DebugField> fields_{};
   PsramBuffer<DebugField> pending_fields_{};
@@ -125,9 +132,12 @@ class OpenQuattDebugRecorder : public Component {
   PsramBuffer<uint16_t> string_buckets_{};
   PsramBuffer<uint16_t> string_compaction_order_{};
   PsramBuffer<char> string_data_{};
+  // enabled_ is the persistent user preference (default on). active_ reports
+  // whether sampling is actually running. available_() reports whether the
+  // recorder is technically usable (PSRAM allocation succeeded).
+  bool enabled_{true};
   bool active_{false};
   bool rolling_{false};
-  bool frozen_{false};
   bool configuration_pending_{false};
   bool string_overflow_{false};
   mutable bool export_in_progress_{false};
@@ -166,6 +176,15 @@ class OpenQuattDebugRecorder : public Component {
   void unlock_state_() const;
   bool begin_export_() const;
   void end_export_() const;
+  bool load_enabled_preference_();
+  void save_enabled_preference_();
+  // Builds the firmware-owned default recording schema from the generated
+  // field list, resolving entities by name. Missing entities are counted and
+  // skipped, so partial topologies still record.
+  bool configure_default_schema_();
+  // Starts rolling recording; caller must hold the state lock and the field
+  // configuration must already be active.
+  void start_rolling_locked_();
   bool time_is_valid_() const;
   uint64_t current_time_ms_() const;
   uint64_t started_time_ms_() const;
@@ -197,7 +216,7 @@ class OpenQuattDebugRecorder : public Component {
   uint8_t* writable_sample_at_(size_t physical_index);
   const uint8_t* sample_at_(size_t index) const;
   bool capture_snapshot_(RecordingSnapshot* snapshot) const;
-  void write_recording_export_(httpd_req_t* req) const;
+  void write_recording_export_(httpd_req_t* req, uint32_t last_minutes) const;
   void rotate_csrf_token_();
 };
 

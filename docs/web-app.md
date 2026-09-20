@@ -140,7 +140,7 @@ Zie je hier al vreemde waarden, ga dan niet meteen tunen. Controleer eerst de br
 - schakelt het systeem vaak;
 - reageert de regeling logisch op setpoint en kamertemperatuur.
 
-Gebruik bij een probleem dat je opnieuw kunt veroorzaken ook het **Logboek**. Nieuwe regels verschijnen daar live; valt de verbinding kort weg, dan vult OpenQuatt de gemiste recente regels weer aan. Het logboek is vluchtige diagnose-informatie: bewaar voor support daarnaast altijd een debugopname.
+Gebruik bij een probleem dat je opnieuw kunt veroorzaken ook het **Logboek**. Nieuwe regels verschijnen daar live; valt de verbinding kort weg, dan vult OpenQuatt de gemiste recente regels weer aan. Het logboek is vluchtige diagnose-informatie: bewaar voor support daarnaast altijd een Systeemrecorder-diagnosebestand.
 
 Via `Instellingen → Systeem → Gegevens bewaren` beheer je welke historie OpenQuatt bewaart. OpenQuatt maakt daarbij onderscheid tussen twee soorten geheugen:
 
@@ -311,14 +311,14 @@ Wanneer delen voor het eerst actief wordt, maakt de controller met de hardware-r
 
 De statistiekenclient staat los van de configureerbare [MQTT inputbronnen](mqtt.md): hij publiceert alleen dit ene bericht, subscribed nergens op en schakelt ESPHome MQTT-discovery, entiteitspublicaties en logexport niet in. Het JSON-bericht wordt met QoS 1 en zonder retain gepubliceerd op `openquatt/devices/<installation-id>/telemetry`. De broker bewaart het daardoor niet als retained state voor later verbindende subscribers; de loggingserver slaat ieder ontvangen bericht zelf op. Een eerder door oude firmware retained opgeslagen payload wordt door een non-retained publicatie niet gewist en moet zo nodig eenmalig op de centrale broker worden verwijderd. Een build zonder geconfigureerde centrale loggingserver maakt ook wanneer delen aanstaat geen externe verbinding.
 
-#### Debugopname voor support
+#### Systeemrecorder voor support
 
-Bij een reproduceerbaar probleem kun je tijdelijk supportgegevens opnemen:
+De Systeemrecorder bewaart continu recente systeemgegevens, dus je hoeft een opname niet vooraf te starten:
 
-1. Open **Instellingen → Systeem → Systeemstatus → Debugopname**.
-2. Start de opname voordat je het probleem opnieuw veroorzaakt. Gebruik rolling debug als het probleem maar af en toe optreedt.
-3. Stop de opname nadat het probleem zichtbaar is en download het supportbestand.
-4. Voeg het gedownloade `.oqdebug.json`-bestand toe aan je Discord-vraag of GitHub-issue.
+1. Open **Diagnostiek → Systeemrecorder**.
+2. Kies het venster dat het probleem afdekt: laatste 15, 30 of 60 minuten, of alles wat beschikbaar is.
+3. Download het diagnosebestand.
+4. Voeg het gedownloade `.oqdebug.json`-bestand toe aan je Discord-vraag of GitHub-issue. Via **Open analyser** kun je het bestand zelf alvast bekijken op OpenHeatPumps; er wordt niets automatisch verzonden.
 
 De opname wordt lokaal in het apparaatgeheugen opgeslagen en niets wordt automatisch verzonden. Deel het bestand alleen binnen het supportverzoek waarvoor je het hebt gemaakt.
 
