@@ -229,6 +229,42 @@ test("opnieuw inschakelen start een nieuwe opname en wist de oude buffer", async
   assert.ok(enabled.sample_count < before.sample_count, "oude buffer is gewist");
 });
 
+test("dubbel inschakelen is idempotent en wist niets", async () => {
+  const mock = await loadMockRecorder();
+  const csrf = await mockCsrf(mock);
+  const before = (await mock.getStatus()).body;
+  assert.ok(before.sample_count > 100);
+  const again = (await mock.post("/openquatt/debug-recording/enabled", { enabled: "1", csrf_token: csrf })).body;
+  assert.equal(again.enabled, true);
+  assert.equal(again.active, true);
+  assert.equal(again.recording_id, before.recording_id, "geen nieuwe opname");
+  assert.equal(again.sample_count, before.sample_count, "buffer ongewijzigd");
+});
+
+test("herstarten respecteert de opt-out", async () => {
+  const mock = await loadMockRecorder();
+  const csrf = await mockCsrf(mock);
+  const before = (await mock.getStatus()).body;
+  await mock.post("/openquatt/debug-recording/enabled", { enabled: "0", csrf_token: csrf });
+  const restarted = await mock.post("/openquatt/debug-recording/restart", { csrf_token: csrf });
+  assert.equal(restarted.status, 409);
+  const after = (await mock.getStatus()).body;
+  assert.equal(after.enabled, false);
+  assert.equal(after.active, false, "geen sampling na geweigerde restart");
+  assert.equal(after.sample_count, before.sample_count, "buffer ongewijzigd");
+});
+
+test("volledige export beschrijft het bewaarde venster, niet de looptijd", async () => {
+  const mock = await loadMockRecorder();
+  const full = (await mock.call("/openquatt/debug-recording/download")).body;
+  assert.ok(full.recording.sample_count > 100);
+  assert.equal(full.recording.duration_s, full.recording.retained_duration_s);
+  assert.equal(
+    full.recording.duration_s,
+    full.samples[full.samples.length - 1][0] - full.samples[0][0],
+  );
+});
+
 test("nieuwe opname starten wist historie zonder browserconfiguratie", async () => {
   const mock = await loadMockRecorder();
   const csrf = await mockCsrf(mock);
@@ -350,6 +386,9 @@ test("normaal actieve recorder geeft geen headerbadge, afwijking wel", () => {
   applyDebugRecordingDeviceStatus({ ...state.debugRecordingDeviceStatus, enabled: false, active: false });
   assert.match(renderDebugRecordingHeaderStatus(), /Systeemrecorder uitgeschakeld/);
 
+  applyDebugRecordingDeviceStatus({ ...state.debugRecordingDeviceStatus, enabled: true, active: false });
+  assert.match(renderDebugRecordingHeaderStatus(), /Systeemrecorder niet actief/);
+
   applyDebugRecordingDeviceStatus({ available: false });
   assert.match(renderDebugRecordingHeaderStatus(), /Systeemrecorder niet beschikbaar/);
 });
@@ -367,6 +406,8 @@ test("modal spreekt Systeemrecorder met export als hoofdactie", () => {
   assert.match(markup, /Laatste 15 minuten/);
   assert.match(markup, /Download diagnosebestand/);
   assert.match(markup, /Kopieer gegevens/);
+  assert.match(markup, /Kopieer gegevens en open analyser/);
+  assert.match(markup, /data-oq-action="copy-debug-recording-analyser"/);
   assert.match(markup, /<details class="oq-debug-recording-manage">/);
   assert.match(markup, /Recorderbeheer/);
   assert.match(markup, /Nieuwe opname starten/);
@@ -518,6 +559,52 @@ test("statuslabels volgen enabled/active zonder frozen-toestanden", () => {
   applyDebugRecordingDeviceStatus({ ...state.debugRecordingDeviceStatus, enabled: false, active: false });
   assert.equal(getDebugRecordingStatusLabel(), "Uitgeschakeld");
 
+  applyDebugRecordingDeviceStatus({
+    ...state.debugRecordingDeviceStatus,
+    enabled: true,
+    active: false,
+    sample_count: 120,
+  });
+  state.debugRecordingActive = false;
+  assert.equal(getDebugRecordingStatusLabel(), "Niet actief");
+  assert.match(renderDebugRecordingModal(), /De opname is momenteel niet actief/);
+
   applyDebugRecordingDeviceStatus({ available: false });
   assert.equal(getDebugRecordingStatusLabel(), "Niet beschikbaar");
+});
+
+test("kopieer-en-open gebruikt het bereik en opent daarna de analyser", async (t) => {
+  const restoreTimers = seedFeatureStatus();
+  const originalFetch = window.fetch;
+  const originalClipboard = window.navigator.clipboard;
+  const originalOpen = window.open;
+  t.after(() => {
+    window.fetch = originalFetch;
+    window.navigator.clipboard = originalClipboard;
+    window.open = originalOpen;
+    restoreTimers();
+  });
+  const requestedUrls = [];
+  let copiedText = "";
+  const opened = [];
+  window.navigator.clipboard = { writeText: async (text) => { copiedText = text; } };
+  window.isSecureContext = true;
+  window.open = (url, target, features) => {
+    opened.push({ url: String(url), target, features });
+    return null;
+  };
+  window.fetch = async (url) => {
+    requestedUrls.push(String(url));
+    return { ok: true, status: 200, json: async () => ({ recording: { active: true, recording_id: 7 } }) };
+  };
+
+  const { copyDebugRecordingAndOpenAnalyser } = await import("../js/src/features/debug-recording.js");
+  setDebugRecordingDownloadRange(60);
+  const copied = await copyDebugRecordingAndOpenAnalyser();
+
+  assert.equal(copied, true);
+  assert.equal(requestedUrls.length, 1);
+  assert.match(requestedUrls[0], /download-range\?last_minutes=60/);
+  assert.ok(copiedText.includes("recording"));
+  assert.deepEqual(opened, [{ url: "https://openheatpumps.nl", target: "_blank", features: "noopener,noreferrer" }]);
 });

@@ -1239,9 +1239,9 @@ bool OpenQuattDebugRecorder::restart_rolling() {
   if (!this->lock_state_()) {
     return false;
   }
-  if (!this->available_()) {
+  if (!this->available_() || !this->enabled_) {
     this->unlock_state_();
-    ESP_LOGW(TAG, "Rolling debug recording restart unavailable");
+    ESP_LOGW(TAG, "Rolling debug recording restart unavailable or disabled by user preference");
     return false;
   }
   // Restart reuses the active (or firmware default) schema; it never needs a
@@ -1301,14 +1301,9 @@ void OpenQuattDebugRecorder::set_enabled(bool enabled) {
     return;
   }
   if (enabled == this->enabled_) {
-    // Re-enabling while already enabled restarts with a fresh buffer so the
-    // user always gets a clean "nieuwe opname starten" semantic.
-    if (enabled && this->available_()) {
-      if (this->field_count_ == 0) {
-        this->configure_default_schema_();
-      }
-      this->start_rolling_locked_();
-    }
+    // Idempotent: repeating the current value must never wipe the buffer.
+    // A fresh recording is only started by an explicit restart or by the
+    // Uit → Aan transition below.
     this->unlock_state_();
     return;
   }
@@ -1662,14 +1657,18 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
   const uint32_t first_offset = initial != nullptr ? sample_offset_(initial) : 0;
   const uint32_t last_offset = export_count > 0 ? sample_offset_(snapshot.sample_at(snapshot.count - 1)) : 0;
   const uint64_t range_started_at_ms = snapshot.started_at_ms + static_cast<uint64_t>(first_offset) * 1000U;
-  uint32_t export_duration_s = snapshot.duration_s;
-  uint32_t export_retained_s = snapshot.retained_duration_s;
+  // Export metadata always describes the exported window, never the total
+  // recorder runtime: once the ring buffer has wrapped, those differ and the
+  // runtime figure would misdescribe the file contents.
+  const uint32_t window_duration_s = export_count > 0 && last_offset >= first_offset ? last_offset - first_offset : 0;
+  const uint32_t export_duration_s = window_duration_s;
+  const uint32_t export_retained_s = window_duration_s;
   uint32_t export_event_count = snapshot.event_count;
   if (export_start_index > 0 && export_count > 0) {
-    export_duration_s = last_offset >= first_offset ? last_offset - first_offset : 0;
-    export_retained_s = export_duration_s;
+    // The first window sample becomes the new initial without deltas, so its
+    // original event count (measured against a pre-window sample) is skipped.
     export_event_count = 0;
-    for (size_t index = 0; index < export_count; ++index) {
+    for (size_t index = 1; index < export_count; ++index) {
       export_event_count += sample_event_count_(snapshot.sample_at(export_start_index + index));
     }
   }

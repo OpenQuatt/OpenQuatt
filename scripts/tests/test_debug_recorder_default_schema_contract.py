@@ -84,6 +84,26 @@ class DebugRecorderDefaultSchemaContractTest(unittest.TestCase):
         self.assertIn("range_started_at_ms", RECORDER_SOURCE)
         self.assertIn("first_offset", RECORDER_SOURCE)
 
+    def test_export_duration_describes_window_not_runtime(self) -> None:
+        # Ook bij Alles (export_start_index == 0) is duration_s het venster.
+        self.assertIn("window_duration_s", RECORDER_SOURCE)
+        self.assertIn('writer.write_uint32(export_duration_s)', RECORDER_SOURCE)
+        self.assertNotIn('writer.write_uint32(snapshot.duration_s)', RECORDER_SOURCE)
+
+    def test_partial_event_count_skips_window_initial(self) -> None:
+        self.assertIn("for (size_t index = 1; index < export_count; ++index)", RECORDER_SOURCE)
+
+    def test_set_enabled_is_idempotent(self) -> None:
+        setter = RECORDER_SOURCE[RECORDER_SOURCE.index("void OpenQuattDebugRecorder::set_enabled"):]
+        setter = setter[: setter.index("void OpenQuattDebugRecorder::rotate_csrf_token_")]
+        same_value_branch = setter[: setter.index("this->enabled_ = enabled;")]
+        self.assertNotIn("start_rolling_locked_", same_value_branch)
+
+    def test_restart_respects_opt_out(self) -> None:
+        restart = RECORDER_SOURCE[RECORDER_SOURCE.index("bool OpenQuattDebugRecorder::restart_rolling()"):]
+        restart = restart[: restart.index("void OpenQuattDebugRecorder::stop()")]
+        self.assertIn("!this->enabled_", restart)
+
 
 if __name__ == "__main__":
     unittest.main()

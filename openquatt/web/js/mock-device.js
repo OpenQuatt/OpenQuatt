@@ -5305,6 +5305,9 @@
   }
 
   function handleDebugRecordingRestart() {
+    if (state.debugRecording.enabled === false) {
+      return mockResponse(409, { ok: false, error: "recorder_not_available" });
+    }
     ensureMockRecorderAutostart();
     const recording = state.debugRecording;
     state.debugRecording = {
@@ -5331,9 +5334,7 @@
     const enabled = params.get("enabled") === "1" || url.searchParams.get("enabled") === "1";
     const recording = state.debugRecording;
     if (enabled === (recording.enabled !== false)) {
-      if (enabled) {
-        return handleDebugRecordingRestart();
-      }
+      // Idempotent: repeating the current value never wipes the buffer.
       return mockResponse(200, getDebugRecordingStatusPayload());
     }
     if (!enabled) {
