@@ -456,32 +456,54 @@ uint64_t OpenQuattDebugRecorder::current_time_ms_() const {
   return static_cast<uint64_t>(millis());
 }
 
+uint64_t OpenQuattDebugRecorder::extend_millis_(uint32_t now_ms) const {
+  uint64_t extended = (static_cast<uint64_t>(this->millis_wrap_count_) << 32) | now_ms;
+  if (now_ms < this->last_millis_32_) {
+    // A wrap happened since the last tracking update; account for it here
+    // without mutating state.
+    extended += (static_cast<uint64_t>(1) << 32);
+  }
+  return extended;
+}
+
+void OpenQuattDebugRecorder::track_millis_(uint32_t now_ms) {
+  if (now_ms < this->last_millis_32_) {
+    this->millis_wrap_count_++;
+  }
+  this->last_millis_32_ = now_ms;
+}
+
+uint64_t OpenQuattDebugRecorder::monotonic_ms_(uint32_t now_ms) {
+  this->track_millis_(now_ms);
+  return this->extend_millis_(now_ms);
+}
+
 uint64_t OpenQuattDebugRecorder::started_time_ms_() const {
-  if (this->started_ms_ == 0) {
+  if (this->started_monotonic_ms_ == 0) {
     return 0;
   }
-  const uint32_t now_ms = millis();
   const uint64_t now_time_ms = this->current_time_ms_();
-  const uint32_t elapsed_ms = now_ms - this->started_ms_;
+  const uint64_t elapsed_ms = this->extend_millis_(millis()) - this->started_monotonic_ms_;
   return now_time_ms >= elapsed_ms ? now_time_ms - elapsed_ms : 0;
 }
 
 uint64_t OpenQuattDebugRecorder::ended_time_ms_() const {
-  if (this->started_ms_ == 0) {
+  if (this->started_monotonic_ms_ == 0) {
     return 0;
   }
   if (this->active_) {
     return this->current_time_ms_();
   }
-  return this->started_time_ms_() + static_cast<uint64_t>(this->stopped_ms_ - this->started_ms_);
+  return this->started_time_ms_() + (this->stopped_monotonic_ms_ - this->started_monotonic_ms_);
 }
 
 uint32_t OpenQuattDebugRecorder::elapsed_s_() const {
-  if (this->started_ms_ == 0) {
+  if (this->started_monotonic_ms_ == 0) {
     return 0;
   }
-  const uint32_t end_ms = this->active_ ? millis() : this->stopped_ms_;
-  return (end_ms - this->started_ms_) / 1000U;
+  const uint64_t end_ms = this->active_ ? this->extend_millis_(millis()) : this->stopped_monotonic_ms_;
+  const uint64_t elapsed_ms = end_ms >= this->started_monotonic_ms_ ? end_ms - this->started_monotonic_ms_ : 0;
+  return static_cast<uint32_t>(std::min<uint64_t>(elapsed_ms / 1000U, std::numeric_limits<uint32_t>::max()));
 }
 
 uint32_t OpenQuattDebugRecorder::remaining_s_() const {
@@ -581,6 +603,14 @@ uint32_t OpenQuattDebugRecorder::sample_offset_(const uint8_t* sample) {
   return value;
 }
 
+uint32_t OpenQuattDebugRecorder::sample_offset_s_(uint64_t now_ms) const {
+  if (now_ms < this->started_monotonic_ms_) {
+    return 0;
+  }
+  const uint64_t offset_s = (now_ms - this->started_monotonic_ms_) / 1000U;
+  return static_cast<uint32_t>(std::min<uint64_t>(offset_s, std::numeric_limits<uint32_t>::max()));
+}
+
 uint16_t OpenQuattDebugRecorder::sample_change_count_(const uint8_t* sample) {
   uint16_t value = 0;
   if (sample != nullptr) {
@@ -633,7 +663,7 @@ void OpenQuattDebugRecorder::clear_strings_() {
 void OpenQuattDebugRecorder::clear_() {
   this->count_ = 0;
   this->write_index_ = 0;
-  this->last_sample_ms_ = 0;
+  this->last_sample_monotonic_ms_ = 0;
   this->total_change_count_ = 0;
   this->total_event_count_ = 0;
   this->clear_strings_();
@@ -1139,7 +1169,7 @@ void OpenQuattDebugRecorder::capture_sample_() {
   if (!this->active_ || !this->samples_ || this->sample_capacity_ == 0) {
     return;
   }
-  const uint32_t now_ms = millis();
+  const uint64_t now_ms = this->monotonic_ms_(millis());
   const uint8_t* previous = this->count_ > 0 ? this->sample_at_(this->count_ - 1) : nullptr;
   uint8_t* sample = this->writable_sample_at_(this->write_index_);
   if (sample == nullptr) {
@@ -1181,14 +1211,14 @@ void OpenQuattDebugRecorder::capture_sample_() {
       }
     }
   }
-  write_sample_header_(sample, (now_ms - this->started_ms_) / 1000U, change_count, event_count);
+  write_sample_header_(sample, sample_offset_s_(now_ms), change_count, event_count);
   this->total_change_count_ += change_count;
   this->total_event_count_ += event_count;
   this->write_index_ = (this->write_index_ + 1) % this->sample_capacity_;
   if (this->count_ < this->sample_capacity_) {
     this->count_++;
   }
-  this->last_sample_ms_ = now_ms;
+  this->last_sample_monotonic_ms_ = now_ms;
 }
 
 bool OpenQuattDebugRecorder::start(uint32_t duration_s) {
@@ -1205,8 +1235,8 @@ bool OpenQuattDebugRecorder::start(uint32_t duration_s) {
   const uint64_t next_recording_id = this->current_time_ms_();
   this->recording_id_ = std::max(this->recording_id_ + 1U, next_recording_id);
   this->duration_s_ = this->sanitize_duration_s_(duration_s);
-  this->started_ms_ = millis();
-  this->stopped_ms_ = 0;
+  this->started_monotonic_ms_ = this->monotonic_ms_(millis());
+  this->stopped_monotonic_ms_ = 0;
   this->clear_();
   this->capture_sample_();
   this->unlock_state_();
@@ -1219,8 +1249,8 @@ void OpenQuattDebugRecorder::start_rolling_locked_() {
   const uint64_t next_recording_id = this->current_time_ms_();
   this->recording_id_ = std::max(this->recording_id_ + 1U, next_recording_id);
   this->duration_s_ = 0;
-  this->started_ms_ = millis();
-  this->stopped_ms_ = 0;
+  this->started_monotonic_ms_ = this->monotonic_ms_(millis());
+  this->stopped_monotonic_ms_ = 0;
   this->clear_();
   this->capture_sample_();
 }
@@ -1267,7 +1297,7 @@ void OpenQuattDebugRecorder::stop() {
   }
   if (this->active_) {
     this->active_ = false;
-    this->stopped_ms_ = millis();
+    this->stopped_monotonic_ms_ = this->monotonic_ms_(millis());
   }
   this->unlock_state_();
 }
@@ -1333,7 +1363,7 @@ bool OpenQuattDebugRecorder::set_enabled(bool enabled) {
     // reboot or the next start.
     if (this->active_) {
       this->active_ = false;
-      this->stopped_ms_ = millis();
+      this->stopped_monotonic_ms_ = this->monotonic_ms_(millis());
     }
   } else {
     if (this->field_count_ == 0 && !this->configure_default_schema_()) {
@@ -1420,18 +1450,21 @@ void OpenQuattDebugRecorder::loop() {
   if (!this->lock_state_(0)) {
     return;
   }
+  // Track every iteration, even while disabled: a missed wrap would corrupt
+  // the monotonic clock used for all recording timing.
+  this->track_millis_(millis());
   if (!this->active_) {
     this->unlock_state_();
     return;
   }
-  const uint32_t now_ms = millis();
-  if (!this->rolling_ && now_ms - this->started_ms_ >= this->duration_s_ * 1000U) {
-    if (this->last_sample_ms_ != now_ms) {
+  const uint64_t now_ms = this->monotonic_ms_(millis());
+  if (!this->rolling_ && now_ms - this->started_monotonic_ms_ >= static_cast<uint64_t>(this->duration_s_) * 1000U) {
+    if (this->last_sample_monotonic_ms_ != now_ms) {
       this->capture_sample_();
     }
     this->active_ = false;
-    this->stopped_ms_ = now_ms;
-  } else if (this->last_sample_ms_ == 0 || now_ms - this->last_sample_ms_ >= SAMPLE_INTERVAL_MS) {
+    this->stopped_monotonic_ms_ = now_ms;
+  } else if (this->last_sample_monotonic_ms_ == 0 || now_ms - this->last_sample_monotonic_ms_ >= SAMPLE_INTERVAL_MS) {
     this->capture_sample_();
   }
   this->unlock_state_();

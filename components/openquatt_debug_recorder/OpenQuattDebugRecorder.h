@@ -145,10 +145,15 @@ class OpenQuattDebugRecorder : public Component {
   bool string_overflow_{false};
   mutable bool export_in_progress_{false};
   uint64_t recording_id_{0};
-  uint32_t started_ms_{0};
-  uint32_t stopped_ms_{0};
+  // All recording timing runs on a 64-bit monotonic clock extended from
+  // 32-bit millis(), so an always-on recording survives the ~49.7 day
+  // millis() wrap with monotonic sample offsets.
+  uint64_t started_monotonic_ms_{0};
+  uint64_t stopped_monotonic_ms_{0};
   uint32_t duration_s_{DEFAULT_DURATION_S};
-  uint32_t last_sample_ms_{0};
+  uint64_t last_sample_monotonic_ms_{0};
+  uint32_t last_millis_32_{0};
+  uint32_t millis_wrap_count_{0};
   uint32_t total_change_count_{0};
   uint32_t total_event_count_{0};
   size_t count_{0};
@@ -190,6 +195,14 @@ class OpenQuattDebugRecorder : public Component {
   void start_rolling_locked_();
   bool time_is_valid_() const;
   uint64_t current_time_ms_() const;
+  // Extends a 32-bit millis() reading to the tracked 64-bit monotonic clock
+  // without mutating the wrap tracking (for const contexts).
+  uint64_t extend_millis_(uint32_t now_ms) const;
+  // Records the current millis() for wrap detection; callers must hold the
+  // state lock. loop() calls this on every iteration so no wrap is missed.
+  void track_millis_(uint32_t now_ms);
+  // Tracked 64-bit monotonic now.
+  uint64_t monotonic_ms_(uint32_t now_ms);
   uint64_t started_time_ms_() const;
   uint64_t ended_time_ms_() const;
   uint32_t elapsed_s_() const;
@@ -213,6 +226,8 @@ class OpenQuattDebugRecorder : public Component {
   static uint32_t read_value_(const uint8_t* sample, const DebugField& field);
   static void write_value_(uint8_t* sample, const DebugField& field, uint32_t value);
   static uint32_t sample_offset_(const uint8_t* sample);
+  // Sample offset in whole seconds since recording start for a monotonic now.
+  uint32_t sample_offset_s_(uint64_t now_ms) const;
   static uint16_t sample_change_count_(const uint8_t* sample);
   static uint16_t sample_event_count_(const uint8_t* sample);
   static void write_sample_header_(uint8_t* sample, uint32_t offset_s, uint16_t change_count, uint16_t event_count);

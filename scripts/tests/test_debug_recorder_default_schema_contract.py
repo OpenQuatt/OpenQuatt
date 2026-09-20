@@ -104,6 +104,19 @@ class DebugRecorderDefaultSchemaContractTest(unittest.TestCase):
         restart = restart[: restart.index("void OpenQuattDebugRecorder::stop()")]
         self.assertIn("!this->enabled_", restart)
 
+    def test_monotonic_clock_survives_millis_wrap(self) -> None:
+        # Always-on recordings outlive the ~49.7 day millis() wrap; all
+        # recording timing must run on the extended 64-bit monotonic clock.
+        self.assertIn("started_monotonic_ms_", RECORDER_HEADER)
+        self.assertIn("millis_wrap_count_", RECORDER_HEADER)
+        self.assertIn("extend_millis_", RECORDER_SOURCE)
+        self.assertIn("track_millis_(millis())", RECORDER_SOURCE)
+        self.assertIn("monotonic_ms_(millis())", RECORDER_SOURCE)
+        self.assertIn("sample_offset_s_", RECORDER_SOURCE)
+        self.assertNotIn("started_ms_", RECORDER_SOURCE)
+        self.assertNotIn("stopped_ms_", RECORDER_SOURCE)
+        self.assertNotIn("last_sample_ms_", RECORDER_SOURCE)
+
     def test_sync_failure_is_reported_not_silent(self) -> None:
         save = RECORDER_SOURCE[RECORDER_SOURCE.index("bool OpenQuattDebugRecorder::save_enabled_preference_"):]
         save = save[: save.index("bool OpenQuattDebugRecorder::set_enabled")]
