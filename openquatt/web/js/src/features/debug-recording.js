@@ -603,6 +603,19 @@ export function confirmSystemRecorderDisable() {
   return setSystemRecorderEnabled(false);
 }
 
+export function toggleRecorderManage(event, button) {
+  if (event && typeof event.preventDefault === "function") {
+    event.preventDefault();
+  }
+  const details = button && typeof button.closest === "function"
+    ? button.closest(".oq-debug-recording-manage")
+    : null;
+  updateDebugRecordingState({
+    debugRecordingManageOpen: !(details && details.hasAttribute("open")),
+  });
+  render();
+}
+
 export async function restartRollingDebugRecording() {
   if (state.debugRecordingBusy) {
     return;
@@ -734,6 +747,7 @@ const debugRecordingActionHandlers = {
     state.debugRecordingError = "";
     state.debugRecordingNotice = "";
     state.debugRecordingConfirmDisable = false;
+    state.debugRecordingManageOpen = false;
     render();
     return refreshDebugRecordingDeviceStatus();
   },
@@ -743,6 +757,7 @@ const debugRecordingActionHandlers = {
   "request-disable-system-recorder": () => requestSystemRecorderDisable(),
   "cancel-disable-system-recorder": () => cancelSystemRecorderDisable(),
   "confirm-disable-system-recorder": () => confirmSystemRecorderDisable(),
+  "toggle-recorder-manage": (button, event) => toggleRecorderManage(event, button),
   "select-debug-recording-duration": (button) => setDebugRecordingSelectedMinutes(button.dataset.debugMinutes || 15),
   "select-debug-recording-range": (button) => setDebugRecordingDownloadRange(button.dataset.lastMinutes || 0),
   "stop-debug-recording": () => stopDebugRecording(),
@@ -751,8 +766,8 @@ const debugRecordingActionHandlers = {
   "copy-debug-recording": () => copyDebugRecordingBundle(),
 };
 
-export function handleDebugRecordingAction(action, button) {
-  return invokeActionMap(debugRecordingActionHandlers, action, button);
+export function handleDebugRecordingAction(action, button, event) {
+  return invokeActionMap(debugRecordingActionHandlers, action, button, event);
 }
 
 export function renderDebugRecordingModal() {
@@ -865,8 +880,8 @@ export function renderDebugRecordingModal() {
             </p>
           ` : ""}
         </section>
-        <details class="oq-debug-recording-manage">
-          <summary>Recorderbeheer</summary>
+        <details class="oq-debug-recording-manage"${state.debugRecordingManageOpen ? " open" : ""}>
+          <summary data-oq-action="toggle-recorder-manage">Recorderbeheer</summary>
           <p class="oq-debug-recording-subtle">Wist de huidige historie en start een nieuwe opname.</p>
           <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="restart-rolling-debug-recording" ${busy || deviceUnavailable || !enabled ? "disabled" : ""}>${renderDebugRecordingButtonIcon("activity")}Nieuwe opname starten</button>
         </details>`,

@@ -406,6 +406,31 @@ test("uitschakelen vraagt eerst om bevestiging", () => {
   assert.doesNotMatch(renderDebugRecordingModal(), /Doorlopende opname uitschakelen\?/);
 });
 
+test("recorderbeheer klapt state-gestuurd open en blijft open bij re-render", () => {
+  seedFeatureStatus({ available: true, enabled: true, active: true });
+  applyDebugRecordingDeviceStatus(state.debugRecordingDeviceStatus);
+  state.debugRecordingManageOpen = false;
+  assert.doesNotMatch(renderDebugRecordingModal(), /<details class="oq-debug-recording-manage" open>/);
+
+  let prevented = false;
+  const summary = {
+    closest: (selector) => (selector === ".oq-debug-recording-manage" ? { hasAttribute: () => false } : null),
+  };
+  handleDebugRecordingAction("toggle-recorder-manage", summary, { preventDefault: () => { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(state.debugRecordingManageOpen, true);
+  // Re-render (zoals de statuspoll doet) moet de open toestand behouden.
+  assert.match(renderDebugRecordingModal(), /<details class="oq-debug-recording-manage" open>/);
+  assert.match(renderDebugRecordingModal(), /Nieuwe opname starten/);
+
+  const openSummary = {
+    closest: (selector) => (selector === ".oq-debug-recording-manage" ? { hasAttribute: () => true } : null),
+  };
+  handleDebugRecordingAction("toggle-recorder-manage", openSummary, { preventDefault: () => {} });
+  assert.equal(state.debugRecordingManageOpen, false);
+  assert.doesNotMatch(renderDebugRecordingModal(), /<details class="oq-debug-recording-manage" open>/);
+});
+
 test("rangebeschrijving benoemt het venster voluit", () => {
   seedFeatureStatus({ available: true, enabled: true, active: true, retained_duration_s: 4500 });
   applyDebugRecordingDeviceStatus(state.debugRecordingDeviceStatus);

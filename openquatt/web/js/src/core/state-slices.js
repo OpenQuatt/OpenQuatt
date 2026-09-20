@@ -100,6 +100,7 @@ export function createDiagnosticsState(debugRecordingAcknowledgedId) {
     debugRecordingSelectedMinutes: 15,
     debugRecordingDownloadRange: 15,
     debugRecordingConfirmDisable: false,
+    debugRecordingManageOpen: false,
     debugRecordingDeviceStatus: null,
     debugRecordingAcknowledgedId,
     debugRecordingDeviceBundle: null,
