@@ -218,6 +218,7 @@ struct OpenQuattUsageTelemetry {
   void clear_payload_() {}
   void schedule_regular_publish_() {}
   void schedule_retry_() {}
+  void commit_modbus_counter_snapshot_() {}
   bool request_external_publish(const char*, const char*, size_t);
   void cancel_external_publish();
   void complete_publish_session_();

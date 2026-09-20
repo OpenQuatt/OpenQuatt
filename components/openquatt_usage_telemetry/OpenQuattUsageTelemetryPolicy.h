@@ -12,6 +12,10 @@ namespace openquatt_usage_telemetry {
 
 inline constexpr int MQTT_PUBLISH_RETAIN = 0;
 
+inline uint32_t modbus_counter_delta(uint32_t current, uint32_t baseline) {
+  return current >= baseline ? current - baseline : current;
+}
+
 enum class MqttCleanupDecision : uint8_t {
   DESTROY = 0U,
   FORCE_DISCONNECT = 1U,
