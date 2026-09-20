@@ -649,6 +649,20 @@ import { renderPerformanceTelemetryConsent, renderPerformanceTelemetryDisclosure
 
   export function renderBoilerWorkspace() {
     const boilerConnectionMismatch = isEntityActive("otbConnectionMismatch");
+    const boilerConnection = String(getEntityValue("boilerConnection") || "R1");
+    const sourcePresent = hasEntity("auxHeatSourcePresent")
+      ? isEntityActive("auxHeatSourcePresent")
+      : isEntityActive("boilerCvAssistEnabled");
+    const otbConnectionStatePresent = hasEntity("otbConnectionState");
+    const otbConnectionState = otbConnectionStatePresent
+      ? String(getEntityValue("otbConnectionState") || "")
+      : "";
+    const openthermNotVerified = sourcePresent && boilerConnection === "OpenTherm"
+      && otbConnectionStatePresent && otbConnectionState !== "ot_verified";
+    const openthermChecking =
+      !otbConnectionState ||
+      otbConnectionState === "unknown" ||
+      otbConnectionState === "ot_checking";
     return `
       <section class="oq-helper-panel">
         <p class="oq-helper-label">${escapeHtml(getQuickStepKicker("boiler"))}</p>
@@ -656,7 +670,10 @@ import { renderPerformanceTelemetryConsent, renderPerformanceTelemetryDisclosure
         <p class="oq-helper-section-copy">Dit kan bijvoorbeeld een cv-ketel, elektrische cv-ketel (e-cv) of doorstroomverwarmer zijn. Kies of de warmtebron hybride meeverwarmt bij een vermogenstekort en of deze mag overnemen wanneer geen warmtepomp beschikbaar is.</p>
         ${renderBoilerCvFields("oq-settings-grid oq-settings-grid--quickstart oq-settings-boiler-simple-grid", true)}
         ${renderQuickStartStepNav({
-          nextDisabled: boilerConnectionMismatch,
+          nextDisabled: boilerConnectionMismatch || openthermNotVerified,
+          nextDisabledLabel: openthermNotVerified
+            ? openthermChecking ? "OpenTherm controleren..." : "Controleer ketelaansluiting"
+            : "Kies OpenTherm (OTB)",
         })}
       </section>
     `;

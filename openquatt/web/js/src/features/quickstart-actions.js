@@ -42,6 +42,9 @@ import { render } from "../core/render-scheduler.js";
         "boilerConnection",
         "boilerRatedHeatPower",
         "otbLinkAvailable",
+        "otbConnectionState",
+        "otbConnectionAutoSelected",
+        "otbConnectionMismatch",
       ])];
     }
     if (stepId === "strategy") {

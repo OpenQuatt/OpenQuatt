@@ -2,6 +2,7 @@
 
 #include "oq_boiler_control_logic.h"
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+#include "../boiler/oq_otb_connection_state.h"
 #include "../boiler/oq_otb_telemetry.h"
 #endif
 
@@ -61,15 +62,15 @@ class Runtime {
     return true;
   }
 
-  void selected_transport_link_changed(bool available) {
+  void selected_transport_link_changed(bool available,
+                                       uint8_t unavailable_reason = oq_boiler::BLOCK_TRANSPORT_UNAVAILABLE) {
     const uint32_t now_ms = (uint32_t)millis();
     id(oq_boiler_transport_change_ms) = now_ms;
     id(oq_boiler_transport_settle_required) = true;
     id(oq_boiler_rearm_required) = true;
     id(oq_boiler_rearm_after_command_ms) = now_ms;
     withdraw_output_(now_ms);
-    id(oq_boiler_block_reason_code) =
-        available ? oq_boiler::BLOCK_AWAITING_FRESH_COMMAND : oq_boiler::BLOCK_TRANSPORT_UNAVAILABLE;
+    id(oq_boiler_block_reason_code) = available ? oq_boiler::BLOCK_AWAITING_FRESH_COMMAND : unavailable_reason;
   }
 
   bool command_is_fresh(uint32_t maximum_age_ms) const {
@@ -134,7 +135,12 @@ class Runtime {
         minimum_on_ms,
         minimum_off_ms,
     };
-    const auto decision = oq_boiler::evaluate(command, input);
+    auto decision = oq_boiler::evaluate(command, input);
+#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
+    decision.block_reason = oq_boiler::refine_opentherm_transport_block_reason(
+        decision.block_reason, opentherm_selected, oq_otb::connection_verification_state.ever_verified(),
+        oq_otb::connection_verification_state.currently_verified());
+#endif
     const auto role = oq_boiler::boiler_role_for_source(command.source);
     const bool output_changed = id(oq_boiler_output_request) != decision.output_active;
     id(oq_boiler_output_request) = decision.output_active;

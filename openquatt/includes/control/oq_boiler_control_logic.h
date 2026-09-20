@@ -173,6 +173,8 @@ inline BoilerLogDecision classify_boiler_controller_log(const BoilerControllerLo
     case BLOCK_TRANSPORT_SETTLING:
     case BLOCK_AWAITING_FRESH_COMMAND:
     case BLOCK_CONNECTION_MISMATCH:
+    case BLOCK_OPENTHERM_NOT_VERIFIED:
+    case BLOCK_OPENTHERM_LINK_LOST:
     case BLOCK_BOILER_TEMPERATURE_UNAVAILABLE:
       reason = BoilerLogReason::SENSOR_FALLBACK;
       break;

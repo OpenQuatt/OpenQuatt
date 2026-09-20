@@ -63,6 +63,15 @@ export function getInstallationMonitoringModel() {
   addBinaryProblem("pt1000ReadProblem", "PT1000-aanvoersensor geeft geen geldige meting");
   addBinaryProblem("waterSupplyTempFallbackActive", "Aanvoertemperatuur gebruikt de warmtepompuitlaat als fallback");
   addBinaryProblem("flowMismatch", "Flowverschil tussen warmtepomp 1 en 2");
+  const otbState = String(getEntityValue("otbConnectionState") || "");
+  if (isInstallationMonitoringBinaryActive("auxHeatSourcePresent")
+      && getEntityValue("boilerConnection") === "OpenTherm"
+      && (otbState === "ot_no_response" || otbState === "ot_link_lost")) {
+    problems.push({
+      key: "otbConnectionState",
+      label: otbState === "ot_no_response" ? "Geen OpenTherm-ketel gevonden" : "OpenTherm-verbinding met ketel weggevallen",
+    });
+  }
   if (cicPollingEnabled) {
     addBinaryProblem("cicDataStale", "CIC-data is verouderd");
   }

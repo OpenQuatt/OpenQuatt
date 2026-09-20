@@ -39,6 +39,8 @@ enum BlockReason : uint8_t {
   BLOCK_SOURCE_NOT_CONNECTED = 20,
   BLOCK_BOILER_TOO_HOT_FOR_START = 21,
   BLOCK_BOILER_TEMPERATURE_UNAVAILABLE = 22,
+  BLOCK_OPENTHERM_NOT_VERIFIED = 23,
+  BLOCK_OPENTHERM_LINK_LOST = 24,
 };
 
 enum BoilerStartThermalState : uint8_t {
@@ -248,6 +250,13 @@ inline bool relay_must_be_off(bool opentherm_selected, bool startup_probe_active
   return opentherm_selected || connection_guard_active(startup_probe_active, connection_mismatch);
 }
 
+inline uint8_t refine_opentherm_transport_block_reason(uint8_t block_reason, bool opentherm_selected,
+                                                       bool ever_verified, bool currently_verified) {
+  if (!opentherm_selected || block_reason != BLOCK_TRANSPORT_UNAVAILABLE) return block_reason;
+  if (!ever_verified) return BLOCK_OPENTHERM_NOT_VERIFIED;
+  return currently_verified ? BLOCK_TRANSPORT_UNAVAILABLE : BLOCK_OPENTHERM_LINK_LOST;
+}
+
 inline bool minimum_time_active(uint32_t now_ms, uint32_t last_change_ms, uint32_t minimum_time_ms) {
   if (minimum_time_ms == 0 || last_change_ms == 0) return false;
   return (uint32_t)(now_ms - last_change_ms) < minimum_time_ms;
@@ -395,6 +404,10 @@ inline const char* block_reason_text(uint8_t reason) {
       return "awaiting fresh boiler command";
     case BLOCK_CONNECTION_MISMATCH:
       return "OpenTherm boiler detected while R1 is selected";
+    case BLOCK_OPENTHERM_NOT_VERIFIED:
+      return "OpenTherm connection not verified";
+    case BLOCK_OPENTHERM_LINK_LOST:
+      return "OpenTherm link lost after verified connection";
     case BLOCK_FALLBACK_DISABLED:
       return "boiler fallback disabled";
     case BLOCK_FLOW_UNAVAILABLE:

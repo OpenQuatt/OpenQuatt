@@ -23,3 +23,4 @@ export function getSupportedBoilerConnectionOptions(options = [], capability = B
   }
   return options.filter((option) => option !== "OpenTherm");
 }
+

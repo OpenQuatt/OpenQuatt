@@ -41,6 +41,7 @@ const OBSERVABILITY_KEYS = [
   "boilerCommandTargetTemperature",
   "boilerBlockReason",
   "otbLinkAvailable",
+  "otbConnectionState",
   "otbChCommand",
   "otbControlSetpointCommand",
   "otbFlameOn",
@@ -239,6 +240,7 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
 test("OpenTherm-opname bewaart signalen zonder afleidbare doublures", () => {
   assert.ok(DEBUG_RECORDING_KEYS.includes("boilerActive"));
   assert.ok(DEBUG_RECORDING_KEYS.includes("otbLinkAvailable"));
+  assert.ok(DEBUG_RECORDING_KEYS.includes("otbConnectionState"));
   assert.ok(DEBUG_RECORDING_KEYS.includes("otbLastResponseAge"));
   assert.ok(DEBUG_RECORDING_KEYS.includes("otbTransportErrorCount"));
   assert.ok(DEBUG_RECORDING_KEYS.includes("otbStartHandshakeDetail"));

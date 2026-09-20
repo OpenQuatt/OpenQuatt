@@ -327,6 +327,7 @@ test("integration diagnostics separates thermostat, boiler control, OTB and CiC"
     boilerCommandValid: { value: true },
     boilerCommandSource: { value: "Power House" },
     otbLinkAvailable: { value: true },
+    otbConnectionState: { value: "ot_verified" },
     otbFlameOn: { value: true },
     otbChPressure: { value: 1.6, uom: "bar" },
     cicPollingEnabled: { value: true },
@@ -342,6 +343,7 @@ test("integration diagnostics separates thermostat, boiler control, OTB and CiC"
     assert.match(html, /Geblokkeerd/);
     assert.match(html, /Ketelregeling/);
     assert.match(html, /OpenTherm ketel \(OTB\)/);
+    assert.match(html, />Geverifieerd</);
     assert.match(html, /CiC-feed/);
     assert.match(html, /Waterdruk/);
     assert.match(html, /De aansluiting van de cv-ketel/);
@@ -368,10 +370,12 @@ test("settings hydration loads boiler setup and diagnostics before rendering", (
   assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.installation.includes("otbLinkAvailable"));
   assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.installation.includes("otbConnectionAutoSelected"));
   assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.installation.includes("otbConnectionMismatch"));
+  assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.installation.includes("otbConnectionState"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("boilerConnection"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("otbLinkAvailable"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("otbConnectionAutoSelected"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("otbConnectionMismatch"));
+  assert.ok(SETTINGS_GROUP_KEY_MAP.installation.includes("otbConnectionState"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("boilerCommandValid"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("otbChPressure"));
   assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.service.includes("boilerFaultFallbackEnabled"));
@@ -384,6 +388,10 @@ test("settings hydration loads boiler setup and diagnostics before rendering", (
   assert.match(
     quickStartActionsSource,
     /if \(stepId === "boiler"\)[\s\S]*?"boilerFaultFallbackEnabled"/,
+  );
+  assert.match(
+    quickStartActionsSource,
+    /if \(stepId === "boiler"\)[\s\S]*?"otbConnectionState"[\s\S]*?"otbConnectionMismatch"/,
   );
   assert.match(
     quickStartActionsSource,
@@ -452,7 +460,23 @@ test("fault fallback is editable in Installation and the shared Quick Start boil
 test("Quick Start blocks R1 after a boiler answers the safe OpenTherm probe", () => {
   assert.match(installationSource, /OpenTherm-ketel gevonden/);
   assert.match(installationSource, /Kies OpenTherm \(OTB\)/);
-  assert.match(quickStartSource, /nextDisabled:\s*boilerConnectionMismatch/);
+  assert.match(quickStartSource, /nextDisabled:\s*boilerConnectionMismatch \|\| openthermNotVerified/);
+});
+
+test("Quick Start gates OpenTherm verification only for a connected heat source", () => {
+  assert.match(
+    quickStartSource,
+    /sourcePresent && boilerConnection === "OpenTherm"[\s\S]*?otbConnectionState !== "ot_verified"/,
+  );
+});
+
+test("installation explains the OpenTherm wiring error in user-friendly terms", () => {
+  assert.match(installationSource, /Geen OpenTherm-ketel gevonden/);
+  assert.match(installationSource, /Controleer of OTB is aangesloten op de OpenTherm-aansluiting van je ketel/);
+  assert.match(installationSource, /gewone aan\/uit-thermostaataansluiting\? Gebruik dan R1/);
+  assert.doesNotMatch(installationSource, /24V\/RT/);
+  assert.match(installationSource, /OpenTherm-verbinding verloren/);
+  assert.doesNotMatch(installationSource, /RT24|\bTA\b/);
 });
 
 test("onboarding auto-selects a detected OpenTherm boiler and explains the choice", () => {

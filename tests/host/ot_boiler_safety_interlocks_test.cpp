@@ -431,6 +431,26 @@ void test_commissioning_wait_state() {
   assert_decision(decision, true, false, oq_boiler::BLOCK_NONE);
 }
 
+void test_opentherm_transport_block_reason() {
+  const uint8_t not_verified =
+      oq_boiler::refine_opentherm_transport_block_reason(oq_boiler::BLOCK_TRANSPORT_UNAVAILABLE, true, false, false);
+  const uint8_t link_lost =
+      oq_boiler::refine_opentherm_transport_block_reason(oq_boiler::BLOCK_TRANSPORT_UNAVAILABLE, true, true, false);
+  const uint8_t still_available =
+      oq_boiler::refine_opentherm_transport_block_reason(oq_boiler::BLOCK_TRANSPORT_UNAVAILABLE, true, true, true);
+  const uint8_t r1_unavailable =
+      oq_boiler::refine_opentherm_transport_block_reason(oq_boiler::BLOCK_TRANSPORT_UNAVAILABLE, false, false, false);
+
+  assert(not_verified == oq_boiler::BLOCK_OPENTHERM_NOT_VERIFIED);
+  assert(link_lost == oq_boiler::BLOCK_OPENTHERM_LINK_LOST);
+  assert(still_available == oq_boiler::BLOCK_TRANSPORT_UNAVAILABLE);
+  assert(r1_unavailable == oq_boiler::BLOCK_TRANSPORT_UNAVAILABLE);
+  assert(strcmp(oq_boiler::block_reason_text(oq_boiler::BLOCK_OPENTHERM_NOT_VERIFIED),
+                "OpenTherm connection not verified") == 0);
+  assert(strcmp(oq_boiler::block_reason_text(oq_boiler::BLOCK_OPENTHERM_LINK_LOST),
+                "OpenTherm link lost after verified connection") == 0);
+}
+
 void test_commissioning_start_failure_reason() {
   assert(
       strcmp(oq_boiler::commissioning_start_failure_reason(oq_boiler::BLOCK_TRANSPORT_UNAVAILABLE, true, false, false),
@@ -461,6 +481,7 @@ int main() {
   test_cold_start_requires_assist_permission();
   test_minimum_times_and_ownership_loss();
   test_commissioning_wait_state();
+  test_opentherm_transport_block_reason();
   test_commissioning_start_failure_reason();
   return 0;
 }
