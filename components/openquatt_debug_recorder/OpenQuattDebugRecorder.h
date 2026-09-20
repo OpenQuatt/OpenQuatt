@@ -37,7 +37,10 @@ class OpenQuattDebugRecorder : public Component {
   // to flash when the user changes the setting, never periodically.
   // Disabling stops sampling but keeps the current buffer downloadable until
   // reboot or restart. Enabling starts a new rolling recording.
-  void set_enabled(bool enabled);
+  // Returns false when the preference could not be persisted; the in-memory
+  // state is then left untouched so a failed opt-out is never reported as
+  // successful.
+  bool set_enabled(bool enabled);
   bool enabled() const { return this->enabled_; }
   const std::string& get_csrf_token() const { return this->csrf_token_; }
   void write_status(httpd_req_t* req) const;
@@ -177,7 +180,7 @@ class OpenQuattDebugRecorder : public Component {
   bool begin_export_() const;
   void end_export_() const;
   bool load_enabled_preference_();
-  void save_enabled_preference_();
+  bool save_enabled_preference_();
   // Builds the firmware-owned default recording schema from the generated
   // field list, resolving entities by name. Missing entities are counted and
   // skipped, so partial topologies still record.

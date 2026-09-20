@@ -94,7 +94,7 @@ class DebugRecorderDefaultSchemaContractTest(unittest.TestCase):
         self.assertIn("for (size_t index = 1; index < export_count; ++index)", RECORDER_SOURCE)
 
     def test_set_enabled_is_idempotent(self) -> None:
-        setter = RECORDER_SOURCE[RECORDER_SOURCE.index("void OpenQuattDebugRecorder::set_enabled"):]
+        setter = RECORDER_SOURCE[RECORDER_SOURCE.index("bool OpenQuattDebugRecorder::set_enabled"):]
         setter = setter[: setter.index("void OpenQuattDebugRecorder::rotate_csrf_token_")]
         same_value_branch = setter[: setter.index("this->enabled_ = enabled;")]
         self.assertNotIn("start_rolling_locked_", same_value_branch)
@@ -103,6 +103,17 @@ class DebugRecorderDefaultSchemaContractTest(unittest.TestCase):
         restart = RECORDER_SOURCE[RECORDER_SOURCE.index("bool OpenQuattDebugRecorder::restart_rolling()"):]
         restart = restart[: restart.index("void OpenQuattDebugRecorder::stop()")]
         self.assertIn("!this->enabled_", restart)
+
+    def test_sync_failure_is_reported_not_silent(self) -> None:
+        save = RECORDER_SOURCE[RECORDER_SOURCE.index("bool OpenQuattDebugRecorder::save_enabled_preference_"):]
+        save = save[: save.index("bool OpenQuattDebugRecorder::set_enabled")]
+        self.assertIn("global_preferences->sync()", save)
+        self.assertIn("bool OpenQuattDebugRecorder::set_enabled(bool enabled)", RECORDER_SOURCE)
+        setter = RECORDER_SOURCE[RECORDER_SOURCE.index("bool OpenQuattDebugRecorder::set_enabled"):]
+        setter = setter[: setter.index("void OpenQuattDebugRecorder::rotate_csrf_token_")]
+        self.assertIn("this->enabled_ = previous;", setter)
+        self.assertIn('"persistence_failed"', RECORDER_SOURCE)
+        self.assertIn("bool set_enabled(bool enabled);", RECORDER_HEADER)
 
 
 if __name__ == "__main__":

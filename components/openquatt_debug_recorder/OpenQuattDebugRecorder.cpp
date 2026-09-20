@@ -353,8 +353,12 @@ class OpenQuattDebugRecorderRequestHandler : public AsyncWebHandler {
     }
 
     if (url_path_matches(url_buf, "/openquatt/debug-recording/enabled")) {
-      // Persistent user opt-out. Only this path writes the preference.
-      this->parent_->set_enabled(parse_uint_arg(request, "enabled", 0) != 0);
+      // Persistent user opt-out. Only this path writes the preference, and a
+      // persistence failure is reported instead of a silent success.
+      if (!this->parent_->set_enabled(parse_uint_arg(request, "enabled", 0) != 0)) {
+        request->send(500, "application/json", R"({"ok":false,"error":"persistence_failed"})");
+        return;
+      }
       this->parent_->write_status(*request);
       return;
     }
@@ -1281,37 +1285,48 @@ bool OpenQuattDebugRecorder::load_enabled_preference_() {
   return stored.enabled != 0;
 }
 
-void OpenQuattDebugRecorder::save_enabled_preference_() {
+bool OpenQuattDebugRecorder::save_enabled_preference_() {
   if (global_preferences == nullptr) {
-    return;
+    return true;
   }
   this->enabled_pref_ = global_preferences->make_preference<RecorderEnabledStorage>(ENABLED_STORAGE_KEY, true);
   RecorderEnabledStorage stored{};
   stored.magic = ENABLED_STORAGE_MAGIC;
   stored.enabled = this->enabled_ ? 1 : 0;
-  if (this->enabled_pref_.save(&stored)) {
-    global_preferences->sync();
-  } else {
-    ESP_LOGW(TAG, "Failed to persist systeemrecorder preference");
+  if (!this->enabled_pref_.save(&stored)) {
+    ESP_LOGW(TAG, "Failed to save systeemrecorder preference");
+    return false;
   }
+  // A successful save without sync may still lose the opt-out on reboot,
+  // while the UI promises persistence and never retries an unchanged value.
+  if (!global_preferences->sync()) {
+    ESP_LOGW(TAG, "Failed to sync systeemrecorder preference");
+    return false;
+  }
+  return true;
 }
 
-void OpenQuattDebugRecorder::set_enabled(bool enabled) {
+bool OpenQuattDebugRecorder::set_enabled(bool enabled) {
   if (!this->lock_state_()) {
-    return;
+    return false;
   }
   if (enabled == this->enabled_) {
     // Idempotent: repeating the current value must never wipe the buffer.
     // A fresh recording is only started by an explicit restart or by the
     // Uit → Aan transition below.
     this->unlock_state_();
-    return;
+    return true;
   }
+  const bool previous = this->enabled_;
   this->enabled_ = enabled;
-  this->save_enabled_preference_();
+  if (!this->save_enabled_preference_()) {
+    this->enabled_ = previous;
+    this->unlock_state_();
+    return false;
+  }
   if (!this->available_()) {
     this->unlock_state_();
-    return;
+    return true;
   }
   if (!enabled) {
     // Opt-out: stop sampling, but keep the current buffer downloadable until
@@ -1322,13 +1337,16 @@ void OpenQuattDebugRecorder::set_enabled(bool enabled) {
     }
   } else {
     if (this->field_count_ == 0 && !this->configure_default_schema_()) {
+      this->enabled_ = previous;
+      this->save_enabled_preference_();
       this->unlock_state_();
       ESP_LOGW(TAG, "Systeemrecorder could not configure default schema on enable");
-      return;
+      return false;
     }
     this->start_rolling_locked_();
   }
   this->unlock_state_();
+  return true;
 }
 
 void OpenQuattDebugRecorder::rotate_csrf_token_() {
