@@ -185,6 +185,7 @@ class OpenQuattUsageTelemetry : public switch_::Switch,
   void finish_publish_session_(bool succeeded);
   void complete_publish_session_();
   bool build_payload_();
+  void commit_modbus_counter_snapshot_();
   void clear_payload_();
   std::string read_hardware_revision_() const;
   static bool time_reached_(uint32_t now_ms, uint32_t target_ms);
@@ -244,6 +245,12 @@ class OpenQuattUsageTelemetry : public switch_::Switch,
   openquatt_common::PsramBuffer<char> payload_;
   size_t payload_size_{0U};
   std::string payload_message_id_;
+  uint32_t modbus_partial_response_count_baseline_{0U};
+  uint32_t modbus_parse_failed_count_baseline_{0U};
+  uint32_t modbus_offline_count_baseline_{0U};
+  uint32_t modbus_partial_response_count_snapshot_{0U};
+  uint32_t modbus_parse_failed_count_snapshot_{0U};
+  uint32_t modbus_offline_count_snapshot_{0U};
   openquatt_common::PsramBuffer<char> external_publish_topic_;
   openquatt_common::PsramBuffer<char> external_payload_;
   size_t external_payload_size_{0U};
