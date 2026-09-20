@@ -403,6 +403,10 @@ test("normaal actieve recorder geeft geen headerbadge, afwijking wel", () => {
 
   applyDebugRecordingDeviceStatus({ available: false });
   assert.match(renderDebugRecordingHeaderStatus(), /Systeemrecorder niet beschikbaar/);
+
+  // Afwijkende toestanden zijn warnings, geen groene success-stijl.
+  applyDebugRecordingDeviceStatus({ ...state.debugRecordingDeviceStatus, enabled: false, active: false });
+  assert.doesNotMatch(renderDebugRecordingHeaderStatus(), /--ready/);
 });
 
 test("modal spreekt Systeemrecorder met export als hoofdactie", () => {
@@ -615,6 +619,40 @@ test("een verloren restartantwoord wordt via status gereconcilieerd", async (t) 
   assert.match(state.debugRecordingNotice, /bevestiging was vertraagd/);
 });
 
+test("mislukte eerste statusfetch plant een begrensde retry", async (t) => {
+  const restoreTimers = seedFeatureStatus();
+  const originalFetch = window.fetch;
+  const originalSetTimeout = window.setTimeout;
+  const originalClearTimeout = window.clearTimeout;
+  t.after(() => {
+    window.fetch = originalFetch;
+    window.setTimeout = originalSetTimeout;
+    window.clearTimeout = originalClearTimeout;
+    state.debugRecordingDevicePollTimer = null;
+    state.debugRecordingDeviceStatus = null;
+    restoreTimers();
+  });
+  state.debugRecordingDeviceStatus = null;
+  state.debugRecordingActive = false;
+  state.systemModal = "";
+  const delays = [];
+  window.fetch = async () => {
+    throw new Error("boot-transient");
+  };
+  window.setTimeout = (_callback, delay) => {
+    delays.push(delay);
+    return 7;
+  };
+  window.clearTimeout = () => {};
+
+  const { refreshDebugRecordingDeviceStatus } = await import("../js/src/features/debug-recording.js");
+  await refreshDebugRecordingDeviceStatus({ silent: true });
+
+  assert.equal(state.debugRecordingDeviceStatus.available, false);
+  assert.match(state.debugRecordingError, /boot-transient/);
+  assert.deepEqual(delays, [4000], "één begrensde retry na initieel falen");
+});
+
 test("statuslabels volgen enabled/active zonder frozen-toestanden", () => {
   seedFeatureStatus({ available: true, enabled: true, active: true });
   applyDebugRecordingDeviceStatus(state.debugRecordingDeviceStatus);
@@ -637,7 +675,7 @@ test("statuslabels volgen enabled/active zonder frozen-toestanden", () => {
   assert.equal(getDebugRecordingStatusLabel(), "Niet beschikbaar");
 });
 
-test("kopieer-en-open gebruikt het bereik en opent daarna de analyser", async (t) => {
+test("kopieer-en-open gebruikt het bereik en opent de analyser-URL direct", async (t) => {
   const restoreTimers = seedFeatureStatus();
   const originalFetch = window.fetch;
   const originalClipboard = window.navigator.clipboard;
@@ -650,12 +688,11 @@ test("kopieer-en-open gebruikt het bereik en opent daarna de analyser", async (t
   });
   const calls = [];
   let copiedText = "";
-  const analyserTab = { closed: false, location: {}, close: () => { analyserTab.closed = true; } };
   window.navigator.clipboard = { writeText: async (text) => { copiedText = text; } };
   window.isSecureContext = true;
   window.open = (url, target, features) => {
     calls.push({ kind: "open", url: String(url), target, features });
-    return analyserTab;
+    return null;
   };
   window.fetch = async (url) => {
     calls.push({ kind: "fetch", url: String(url) });
@@ -667,36 +704,35 @@ test("kopieer-en-open gebruikt het bereik en opent daarna de analyser", async (t
   const copied = await copyDebugRecordingAndOpenAnalyser();
 
   assert.equal(copied, true);
-  // Tab wordt synchroon uit de klik geopend (popup-veilig), pas daarna kopie.
-  assert.deepEqual(calls[0], { kind: "open", url: "about:blank", target: "_blank", features: "noopener,noreferrer" });
+  // URL wordt synchroon uit de klik geopend (popup-veilig, geen handle nodig
+  // dankzij noopener), pas daarna loopt de kopie.
+  assert.deepEqual(calls[0], {
+    kind: "open",
+    url: "https://openheatpumps.nl",
+    target: "_blank",
+    features: "noopener,noreferrer",
+  });
   assert.match(calls[1].url, /download-range\?last_minutes=60/);
   assert.ok(copiedText.includes("recording"));
-  assert.equal(analyserTab.location.href, "https://openheatpumps.nl");
 });
 
-test("kopieer-en-open sluit de tab bij een mislukte kopie", async (t) => {
-  const restoreTimers = seedFeatureStatus();
-  const originalFetch = window.fetch;
-  const originalClipboard = window.navigator.clipboard;
+test("kopieer-en-open zonder opname opent geen tab", async (t) => {
+  const restoreTimers = seedFeatureStatus({ sample_count: 0 });
   const originalOpen = window.open;
   t.after(() => {
-    window.fetch = originalFetch;
-    window.navigator.clipboard = originalClipboard;
     window.open = originalOpen;
     restoreTimers();
   });
-  const analyserTab = { closed: false, location: {}, close: () => { analyserTab.closed = true; } };
-  window.navigator.clipboard = { writeText: async () => { throw new Error("geen klembord"); } };
-  window.isSecureContext = true;
-  window.open = () => analyserTab;
-  window.fetch = async () => ({
-    ok: true, status: 200, json: async () => ({ recording: { active: true, recording_id: 7 } }),
-  });
+  let opened = 0;
+  window.open = () => {
+    opened += 1;
+    return null;
+  };
 
   const { copyDebugRecordingAndOpenAnalyser } = await import("../js/src/features/debug-recording.js");
   const copied = await copyDebugRecordingAndOpenAnalyser();
 
   assert.equal(copied, false);
-  assert.equal(analyserTab.closed, true);
-  assert.equal(analyserTab.location.href, undefined);
+  assert.equal(opened, 0);
+  assert.match(state.debugRecordingError, /nog geen opname/);
 });

@@ -207,7 +207,7 @@ export function renderDebugRecordingHeaderStatus() {
     const title = "Systeemrecorder niet beschikbaar op deze firmware";
     return `
     <button
-      class="oq-debug-recording-header-status oq-debug-recording-header-status--ready"
+      class="oq-debug-recording-header-status"
       type="button"
       data-oq-action="open-debug-recording-modal"
       aria-label="${escapeHtml(title)}"
@@ -221,7 +221,7 @@ export function renderDebugRecordingHeaderStatus() {
     const title = "Systeemrecorder uitgeschakeld — er worden geen nieuwe systeemgegevens opgeslagen";
     return `
     <button
-      class="oq-debug-recording-header-status oq-debug-recording-header-status--ready"
+      class="oq-debug-recording-header-status"
       type="button"
       data-oq-action="open-debug-recording-modal"
       aria-label="${escapeHtml(title)}"
@@ -235,7 +235,7 @@ export function renderDebugRecordingHeaderStatus() {
     const title = "Systeemrecorder niet actief — er wordt momenteel niets opgenomen";
     return `
     <button
-      class="oq-debug-recording-header-status oq-debug-recording-header-status--ready"
+      class="oq-debug-recording-header-status"
       type="button"
       data-oq-action="open-debug-recording-modal"
       aria-label="${escapeHtml(title)}"
@@ -412,14 +412,17 @@ export async function fetchDebugRecordingDeviceStatus() {
   return payload;
 }
 
-export function scheduleDebugRecordingDeviceStatusPoll(delayMs = 2000) {
+export function scheduleDebugRecordingDeviceStatusPoll(delayMs = 2000, options = {}) {
   clearDebugRecordingDevicePollTimer();
-  if (!state.debugRecordingActive && state.systemModal !== "debug-recording") {
+  if (!options.force && !state.debugRecordingActive && state.systemModal !== "debug-recording") {
     return;
   }
+  const cadenceMs = options.force
+    ? Math.max(0, Number(delayMs) || 0)
+    : Math.max(0, Number(state.systemModal === "debug-recording" ? delayMs : 5000) || 0);
   state.debugRecordingDevicePollTimer = window.setTimeout(() => {
     void refreshDebugRecordingDeviceStatus({ silent: true });
-  }, Math.max(0, Number(state.systemModal === "debug-recording" ? delayMs : 5000) || 0));
+  }, cadenceMs);
 }
 
 export async function refreshDebugRecordingDeviceStatus(options = {}) {
@@ -443,12 +446,19 @@ export async function refreshDebugRecordingDeviceStatus(options = {}) {
     scheduleDebugRecordingDeviceStatusPoll();
   } catch (error) {
     debugRecordingStatusFailureCount += 1;
-    if (!state.debugRecordingDeviceStatus) {
+    const hadStatus = Boolean(state.debugRecordingDeviceStatus);
+    if (!hadStatus) {
       applyDebugRecordingDeviceUnavailableStatus();
     }
     state.debugRecordingError = `Status kon niet worden opgehaald. ${error.message || String(error)}`;
-    if (state.debugRecordingActive || state.systemModal === "debug-recording") {
-      scheduleDebugRecordingDeviceStatusPoll(Math.min(30000, 2000 * (2 ** debugRecordingStatusFailureCount)));
+    // A failed first fetch must not freeze the recorder as permanently
+    // unavailable: retry boundedly so boot transients recover on their own.
+    const initialRetry = !hadStatus && debugRecordingStatusFailureCount <= 5;
+    if (state.debugRecordingActive || state.systemModal === "debug-recording" || initialRetry) {
+      scheduleDebugRecordingDeviceStatusPoll(
+        Math.min(30000, 2000 * (2 ** debugRecordingStatusFailureCount)),
+        { force: initialRetry },
+      );
     }
   } finally {
     if (!options.silent) {
@@ -801,20 +811,16 @@ export function copyDebugRecordingBundle(rangeMinutes) {
 }
 
 export async function copyDebugRecordingAndOpenAnalyser(rangeMinutes) {
-  // Open the tab synchronously from the click: opening it only after the
-  // async export/copy may be blocked as a popup once click-activation expired.
-  const analyserTab = typeof window.open === "function"
-    ? window.open("about:blank", "_blank", "noopener,noreferrer")
-    : null;
-  const copied = await exportDebugRecordingBundle("copy", rangeMinutes);
-  if (analyserTab && !analyserTab.closed) {
-    if (copied) {
-      analyserTab.location.href = SYSTEM_RECORDER_ANALYSER_URL;
-    } else {
-      analyserTab.close();
-    }
+  // Open the analyser URL synchronously from the click: with `noopener` the
+  // browser returns a null handle, so a tab opened after the async copy could
+  // never be navigated. The copy itself still runs first-class afterwards.
+  if (getDebugRecordingSampleCount() === 0) {
+    return exportDebugRecordingBundle("copy", rangeMinutes);
   }
-  return copied;
+  if (typeof window.open === "function") {
+    window.open(SYSTEM_RECORDER_ANALYSER_URL, "_blank", "noopener,noreferrer");
+  }
+  return exportDebugRecordingBundle("copy", rangeMinutes);
 }
 
 const debugRecordingActionHandlers = {
