@@ -907,6 +907,10 @@ void OpenQuattUsageTelemetry::complete_publish_session_() {
   }
   this->session_kind_.store(SessionKind::NONE);
 
+  if (succeeded) {
+    this->commit_modbus_counter_snapshot_();
+  }
+
   if (!this->enabled_.load()) {
     this->clear_payload_();
     this->payload_message_id_.clear();
@@ -1050,12 +1054,19 @@ bool OpenQuattUsageTelemetry::build_payload_() {
                                configured_source_wire_value);
   append_json_optional_select_(payload, "heating_supply_target_source", this->heating_supply_target_source_select_,
                                configured_source_wire_value);
+  const uint32_t partial_response_count =
+      this->modbus_hub_ != nullptr ? this->modbus_hub_->partial_response_count() : 0U;
+  const uint32_t parse_failed_count = this->modbus_hub_ != nullptr ? this->modbus_hub_->parse_failed_count() : 0U;
+  const uint32_t offline_count = this->modbus_hub_ != nullptr ? this->modbus_hub_->offline_count() : 0U;
+  this->modbus_partial_response_count_snapshot_ = partial_response_count;
+  this->modbus_parse_failed_count_snapshot_ = parse_failed_count;
+  this->modbus_offline_count_snapshot_ = offline_count;
   append_json_uint_(payload, "modbus_partial_response_count",
-                    this->modbus_hub_ != nullptr ? this->modbus_hub_->partial_response_count() : 0U);
+                    modbus_counter_delta(partial_response_count, this->modbus_partial_response_count_baseline_));
   append_json_uint_(payload, "modbus_parse_failed_count",
-                    this->modbus_hub_ != nullptr ? this->modbus_hub_->parse_failed_count() : 0U);
+                    modbus_counter_delta(parse_failed_count, this->modbus_parse_failed_count_baseline_));
   append_json_uint_(payload, "modbus_offline_count",
-                    this->modbus_hub_ != nullptr ? this->modbus_hub_->offline_count() : 0U);
+                    modbus_counter_delta(offline_count, this->modbus_offline_count_baseline_));
   append_json_uint_(payload, "heap_free_b", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
   append_json_uint_(payload, "heap_min_free_b", heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
   append_json_uint_(payload, "heap_largest_block_b", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
@@ -1089,6 +1100,12 @@ bool OpenQuattUsageTelemetry::build_payload_() {
   }
   this->payload_size_ = payload.size();
   return true;
+}
+
+void OpenQuattUsageTelemetry::commit_modbus_counter_snapshot_() {
+  this->modbus_partial_response_count_baseline_ = this->modbus_partial_response_count_snapshot_;
+  this->modbus_parse_failed_count_baseline_ = this->modbus_parse_failed_count_snapshot_;
+  this->modbus_offline_count_baseline_ = this->modbus_offline_count_snapshot_;
 }
 
 void OpenQuattUsageTelemetry::clear_payload_() {

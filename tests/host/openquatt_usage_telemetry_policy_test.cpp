@@ -10,6 +10,7 @@ using esphome::openquatt_usage_telemetry::configured_source_wire_value;
 using esphome::openquatt_usage_telemetry::FixedBufferWriter;
 using esphome::openquatt_usage_telemetry::flow_source_config_wire_value;
 using esphome::openquatt_usage_telemetry::heating_strategy_wire_value;
+using esphome::openquatt_usage_telemetry::modbus_counter_delta;
 using esphome::openquatt_usage_telemetry::mqtt_cleanup_decision;
 using esphome::openquatt_usage_telemetry::MQTT_PUBLISH_RETAIN;
 using esphome::openquatt_usage_telemetry::MqttCleanupDecision;
@@ -17,6 +18,10 @@ using esphome::openquatt_usage_telemetry::quatt_hybrid_generation_wire_value;
 
 int main() {
   assert(MQTT_PUBLISH_RETAIN == 0);
+
+  assert(modbus_counter_delta(12U, 5U) == 7U);
+  assert(modbus_counter_delta(5U, 5U) == 0U);
+  assert(modbus_counter_delta(2U, 5U) == 2U);
 
   assert(mqtt_cleanup_decision(true, false, false, 0U, false) == MqttCleanupDecision::DESTROY);
   assert(mqtt_cleanup_decision(false, true, false, 1U, false) == MqttCleanupDecision::FORCE_DISCONNECT);
