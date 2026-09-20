@@ -792,6 +792,34 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       reasons.push("Pompbescherming: pomp draait kort om vastzitten te voorkomen (geen warmte/koelvraag)");
     }
 
+    const lowLoadOnW = getEntityNumericValue("lowLoadOnW");
+    const lowLoadOffW = getEntityNumericValue("lowLoadOffW");
+    const lowLoadPminW = getEntityNumericValue("lowLoadPminW");
+    const lowLoadLatch = getEntityStateText("lowLoadLatch", "");
+    const lowLoadReentryBlock = getEntityNumericValue("lowLoadCm2ReentryBlock");
+    const cm2ReentryBlockUntilMs = getEntityNumericValue("oq_cm2_reentry_block_until_ms");
+
+    if (current.primaryReason === "keep_current" && !current.hp1Running && !current.hp2Running) {
+      if (lowLoadLatch === "ON" || lowLoadLatch === "on" || lowLoadLatch === "1") {
+        if (!Number.isNaN(lowLoadOnW) && !Number.isNaN(lowLoadOffW)) {
+          reasons.push(`Low-load beveiliging actief: warmtevraag is onder de ${Math.round(lowLoadOffW)} W stookgrens (terugstart vanaf ${Math.round(lowLoadOnW)} W)`);
+        } else {
+          reasons.push("Low-load beveiliging actief: warmtevraag is te laag voor de ingestelde stookgrens");
+        }
+      }
+
+      if (!Number.isNaN(cm2ReentryBlockUntilMs) && cm2ReentryBlockUntilMs > 0) {
+        const nowMs = Date.now();
+        const remainingMs = cm2ReentryBlockUntilMs - nowMs;
+        if (remainingMs > 0) {
+          const remainingMin = Math.ceil(remainingMs / 60000);
+          reasons.push(`CM2 herintreding geblokkeerd: nog ${remainingMin} minuut${remainingMin !== 1 ? "en" : ""} door recent low-load stop`);
+        } else {
+          reasons.push("CM2 herintreding geblokkeerd: wachttijd actief na recent low-load stop");
+        }
+      }
+    }
+
     if (reasons.length === 0 && !current.hp1Running && !current.hp2Running) {
       reasons.push("Geen warmtevraag: het systeem wacht op nieuwe vraag");
     }
