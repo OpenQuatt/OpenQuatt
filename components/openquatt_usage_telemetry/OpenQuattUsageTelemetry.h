@@ -247,9 +247,11 @@ class OpenQuattUsageTelemetry : public switch_::Switch,
   std::string payload_message_id_;
   uint32_t modbus_partial_response_count_baseline_{0U};
   uint32_t modbus_parse_failed_count_baseline_{0U};
+  uint32_t modbus_recovered_response_count_baseline_{0U};
   uint32_t modbus_offline_count_baseline_{0U};
   uint32_t modbus_partial_response_count_snapshot_{0U};
   uint32_t modbus_parse_failed_count_snapshot_{0U};
+  uint32_t modbus_recovered_response_count_snapshot_{0U};
   uint32_t modbus_offline_count_snapshot_{0U};
   openquatt_common::PsramBuffer<char> external_publish_topic_;
   openquatt_common::PsramBuffer<char> external_payload_;
