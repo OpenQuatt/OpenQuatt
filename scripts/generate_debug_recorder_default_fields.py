@@ -91,12 +91,17 @@ def render(entries: list[tuple[str, str, str]]) -> str:
         "// Do not edit manually. Source of truth: openquatt/web/js/src/core/config.js",
         "// (ENTITY_DEFS + DEBUG_RECORDING_KEYS).",
         f"// Field count: {len(entries)}.",
+        "// This file is intentionally inert unless OQ_DEBUG_RECORDER_DEFAULT_FIELD",
+        "// is defined by the includer: ESPHome includes every component header",
+        "// from esphome.h, where the macro is not defined.",
         "// clang-format off: generated X-macro list, stable by construction.",
+        "#ifdef OQ_DEBUG_RECORDER_DEFAULT_FIELD",
     ]
     for key, domain, name in entries:
         lines.append(
             f'OQ_DEBUG_RECORDER_DEFAULT_FIELD("{c_escape(key)}", "{c_escape(domain)}", "{c_escape(name)}")'
         )
+    lines.append("#endif  // OQ_DEBUG_RECORDER_DEFAULT_FIELD")
     lines.append("// clang-format on")
     return "\n".join(lines) + "\n"
 
@@ -119,14 +124,17 @@ def build() -> str:
 
 def main(argv: list[str]) -> int:
     content = build()
+    field_lines = sum(
+        1 for line in content.splitlines() if line.startswith("OQ_DEBUG_RECORDER_DEFAULT_FIELD(")
+    )
     if "--check" in argv:
         if not OUTPUT.is_file() or OUTPUT.read_text(encoding="utf-8") != content:
             print(f"{OUTPUT} is out of sync; run the generator without --check")
             return 1
-        print(f"{OUTPUT} is in sync ({content.count('OQ_DEBUG_RECORDER_DEFAULT_FIELD')} fields)")
+        print(f"{OUTPUT} is in sync ({field_lines} fields)")
         return 0
     OUTPUT.write_text(content, encoding="utf-8")
-    print(f"Wrote {OUTPUT} ({content.count('OQ_DEBUG_RECORDER_DEFAULT_FIELD')} fields)")
+    print(f"Wrote {OUTPUT} ({field_lines} fields)")
     return 0
 
 
