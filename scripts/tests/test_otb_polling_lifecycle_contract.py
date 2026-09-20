@@ -13,6 +13,9 @@ TRANSPORT_LOGIC = (
     ROOT / "openquatt" / "includes" / "boiler" / "oq_boiler_transport_logic.h"
 ).read_text()
 COMMON_PACKAGE = (ROOT / "openquatt" / "oq_common.yaml").read_text()
+SUPERVISORY_PACKAGE = (
+    ROOT / "openquatt" / "oq_supervisory_controlmode.yaml"
+).read_text()
 Q_PROFILE = (
     ROOT / "openquatt" / "profiles" / "heatpump_controller_q.yaml"
 ).read_text()
@@ -194,6 +197,44 @@ class OtbPollingLifecycleContractTest(unittest.TestCase):
         self.assertIn(
             "id(oq_otb_hub).suspend_polling();",
             OTB_PACKAGE,
+        )
+
+    def test_source_presence_owns_otb_lifecycle(self) -> None:
+        source_start = SUPERVISORY_PACKAGE.index("id: oq_aux_heat_source_present")
+        source_end = SUPERVISORY_PACKAGE.index("id: oq_boiler_assist_enabled", source_start)
+        source_block = SUPERVISORY_PACKAGE[source_start:source_end]
+        self.assertEqual(source_block.count("${oq_aux_heat_source_presence_extra}"), 2)
+        self.assertIn(
+            'oq_aux_heat_source_presence_extra: "oq_boiler_otb_runtime::source_presence_changed(',
+            Q_PROFILE,
+        )
+        self.assertIn("id(oq_aux_heat_source_present).state", Q_PROFILE)
+
+        dormant_start = OTB_RUNTIME.index("inline void enter_dormant_state()")
+        dormant_end = OTB_RUNTIME.index("inline void connection_changed", dormant_start)
+        dormant_block = OTB_RUNTIME[dormant_start:dormant_end]
+        self.assertIn("id(oq_otb_withdraw_and_flush).execute();", dormant_block)
+        self.assertIn("id(oq_otb_hub).suspend_polling();", dormant_block)
+        self.assertLess(
+            dormant_block.index("id(oq_otb_withdraw_and_flush).execute();"),
+            dormant_block.index("id(oq_otb_hub).suspend_polling();"),
+        )
+        self.assertIn("id(oq_boiler_connection_mismatch_state) = false;", dormant_block)
+
+        boot_start = OTB_PACKAGE.index("on_boot:")
+        boot_end = OTB_PACKAGE.index("on_shutdown:", boot_start)
+        boot_block = OTB_PACKAGE[boot_start:boot_end]
+        self.assertIn("const bool source_present = id(oq_aux_heat_source_present).state;", boot_block)
+        self.assertIn("if (!source_present) {", boot_block)
+        self.assertIn("id(oq_otb_hub).suspend_polling();", boot_block)
+
+        self.assertIn(
+            "should_keep_opentherm_polling(\n              source_present,",
+            OTB_PACKAGE,
+        )
+        self.assertIn(
+            "id(oq_aux_heat_source_present).state && id(oq_boiler_connection).has_state()",
+            OTB_RUNTIME,
         )
 
     def test_transport_transitions_use_hub_lifecycle_methods(self) -> None:

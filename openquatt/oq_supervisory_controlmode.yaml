@@ -298,10 +298,15 @@ switch:
     optimistic: true
     entity_category: config
     on_turn_off:
-      # Physical absence is the top-level fail-closed gate. Also clear both
-      # permissions so a later reconnect requires an explicit choice.
+      # Physical absence is the top-level fail-closed gate. Revoke both use
+      # permissions and make the selected boiler transport dormant.
       - switch.turn_off: oq_boiler_assist_enabled
       - switch.turn_off: oq_boiler_fault_fallback_enabled
+      - lambda: |-
+          ${oq_aux_heat_source_presence_extra}
+    on_turn_on:
+      - lambda: |-
+          ${oq_aux_heat_source_presence_extra}
 
   - platform: template
     id: oq_boiler_assist_enabled

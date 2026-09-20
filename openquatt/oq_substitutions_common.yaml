@@ -20,6 +20,7 @@ oq_firmware_periodic_check_interval: "4h"              # Automatic manifest-chec
 oq_hardware_profile: "unknown"                        # Compile-time hardware profile id.
 oq_hardware_build_flag: "-DOQ_HARDWARE_HEATPUMP_CONTROLLER_Q=0" # Hardware capability flag for C++ lambdas.
 oq_boiler_transport_shutdown_extra: ""                 # Optional profile-specific synchronous actuator shutdown statements.
+oq_aux_heat_source_presence_extra: "(void)0;"           # Optional profile-specific lifecycle hook after auxiliary-source presence changes.
 oq_local_supply_temp_sensor_id: "water_supply_temp_ds18b20" # Profile-safe local supply-temperature sensor used by shared lambdas.
 oq_local_supply_temp_selector_id: "water_supply_source"     # Validation-safe placeholder outside Q profiles.
 oq_connection: "unknown"                              # Compile-time connection profile id (`wifi` or `eth`).

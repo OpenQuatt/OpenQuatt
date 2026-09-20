@@ -12,18 +12,22 @@ int main() {
   assert(!oq_otb::should_auto_select_opentherm(oq_otb::STARTUP_PROBE_OPENTHERM_DETECTED, true));
   assert(!oq_otb::should_auto_select_opentherm(oq_otb::STARTUP_PROBE_TIMED_OUT, false));
 
-  // R1 must leave the master completely idle outside the bounded startup
-  // probe. A proven physical mismatch deliberately keeps safe polling active.
-  assert(!oq_otb::should_keep_opentherm_polling(false, false, false));
-  assert(oq_otb::should_keep_opentherm_polling(true, false, false));
-  assert(oq_otb::should_keep_opentherm_polling(false, true, false));
-  assert(oq_otb::should_keep_opentherm_polling(false, false, true));
+  // Physical source absence is the top-level lifecycle gate. With a source
+  // present, R1 stays idle outside the bounded probe while a proven mismatch
+  // deliberately keeps safe polling active.
+  assert(!oq_otb::should_keep_opentherm_polling(false, true, false, false));
+  assert(!oq_otb::should_keep_opentherm_polling(false, false, true, false));
+  assert(!oq_otb::should_keep_opentherm_polling(false, false, false, true));
+  assert(!oq_otb::should_keep_opentherm_polling(true, false, false, false));
+  assert(oq_otb::should_keep_opentherm_polling(true, true, false, false));
+  assert(oq_otb::should_keep_opentherm_polling(true, false, true, false));
+  assert(oq_otb::should_keep_opentherm_polling(true, false, false, true));
 
   assert(state.result(0, 8000) == oq_otb::STARTUP_PROBE_IDLE);
   state.begin(1000);
   assert(state.active());
   // The probe object is authoritative even if a diagnostic mirror is stale.
-  assert(oq_otb::should_keep_opentherm_polling(false, state.active(), false));
+  assert(oq_otb::should_keep_opentherm_polling(true, false, state.active(), false));
   assert(state.result(1000, 8000) == oq_otb::STARTUP_PROBE_RUNNING);
 
   // A response cannot prove the link unless this probe first emitted its own
@@ -51,7 +55,7 @@ int main() {
 
   state.end();
   assert(!state.active());
-  assert(!oq_otb::should_keep_opentherm_polling(false, state.active(), false));
+  assert(!oq_otb::should_keep_opentherm_polling(true, false, state.active(), false));
   assert(state.result(1002, 8000) == oq_otb::STARTUP_PROBE_IDLE);
 
   // A valid negative acknowledgement still proves that a boiler is connected.
