@@ -26,11 +26,76 @@
 }
 
 .oq-debug-recording-card-head h3,
-.oq-debug-recording-duration h3 {
+.oq-debug-recording-export h3 {
   margin: 0;
   color: var(--oq-theme-color-1w4r, var(--oq-helper-ink));
   font-size: 1rem;
   line-height: 1.2;
+}
+
+.oq-debug-recording-card-head h3 {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.oq-debug-recording-switchwrap {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.oq-debug-recording-availability {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px 0;
+  color: var(--oq-theme-color-d7d8, var(--oq-helper-soft));
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.oq-debug-recording-availability strong {
+  color: var(--oq-theme-color-1w4r, var(--oq-helper-ink));
+  font-size: 1.05rem;
+  font-weight: 800;
+  text-align: right;
+}
+
+.oq-debug-recording-samples {
+  color: var(--oq-theme-color-d7d8, var(--oq-helper-soft));
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.oq-debug-recording-subtle {
+  margin: 6px 0 0;
+  padding: 0 18px;
+  color: var(--oq-theme-color-d7d8, var(--oq-helper-soft));
+  font-size: 0.84rem;
+}
+
+section.oq-debug-recording-card > .oq-debug-recording-subtle:last-child {
+  padding-bottom: 14px;
+}
+
+.oq-debug-recording-confirm {
+  margin: 12px 18px 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(234, 88, 12, 0.28);
+  border-radius: var(--oq-helper-radius-sm);
+  background: var(--oq-theme-surface-q7ee, rgba(255, 247, 237, 0.86));
+}
+
+.oq-debug-recording-confirm p {
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+}
+
+.oq-debug-recording-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .oq-debug-recording-heading-icon {
@@ -43,7 +108,6 @@
 }
 
 .oq-debug-recording-heading-icon svg,
-.oq-debug-recording-icon svg,
 .oq-debug-recording-button-icon svg {
   width: 100%;
   height: 100%;
@@ -54,127 +118,62 @@
   stroke-linejoin: round;
 }
 
-.oq-debug-recording-icon svg {
-  width: 17px;
-  height: 17px;
-}
-
-.oq-debug-recording-icon svg path,
-.oq-debug-recording-icon svg circle,
-.oq-debug-recording-icon svg rect,
-.oq-debug-recording-icon svg ellipse {
-  vector-effect: non-scaling-stroke;
-}
-
-.oq-debug-recording-progress {
-  display: grid;
-  gap: 8px;
-  padding: 14px 18px 16px;
-}
-
-.oq-debug-recording-progress-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--oq-theme-color-d7d8, var(--oq-helper-soft));
-  font-size: 0.9rem;
-  font-weight: 700;
-}
-
-.oq-debug-recording-progress-head strong {
-  color: var(--oq-theme-color-1w4r, var(--oq-helper-ink));
-}
-
-.oq-debug-recording-progress-track {
-  overflow: hidden;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--oq-theme-surface-1b2j, rgba(148, 163, 184, 0.18));
-}
-
-.oq-debug-recording-progress-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--oq-helper-accent);
-  transition: width 180ms ease;
-}
-
-.oq-debug-recording-stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin: 0;
-  padding: 4px 18px 10px;
-}
-
-.oq-debug-recording-stat {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  align-items: center;
-  gap: 12px;
-  min-height: 50px;
-  margin: 0;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
-}
-
-.oq-debug-recording-stat:nth-child(odd) {
-  padding-right: 18px;
-  border-right: 1px solid rgba(226, 232, 240, 0.82);
-}
-
-.oq-debug-recording-stat:nth-child(even) {
-  padding-left: 18px;
-}
-
-.oq-helper-shell--dark .oq-debug-recording-stat,
-.oq-helper-shell--dark .oq-debug-recording-stat:nth-child(odd),
-.oq-helper-modal-backdrop--dark .oq-debug-recording-stat,
-.oq-helper-modal-backdrop--dark .oq-debug-recording-stat:nth-child(odd) {
-  border-color: rgba(71, 85, 105, 0.5);
-}
-
-.oq-debug-recording-stat dt {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  gap: 10px;
-  color: var(--oq-theme-color-d7d8, var(--oq-helper-soft));
-  font-size: 0.86rem;
-  font-weight: 700;
-}
-
-.oq-debug-recording-stat dd {
-  min-width: 0;
-  margin: 0;
-  color: var(--oq-theme-color-1w4r, var(--oq-helper-ink));
-  font-size: 0.95rem;
-  font-weight: 800;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.oq-debug-recording-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  border-radius: 9px;
-  background: var(--oq-theme-surface-2e6b, rgba(241, 245, 249, 0.9));
-  color: var(--oq-theme-color-d7d8, #475569);
-}
-
-.oq-debug-recording-duration {
+.oq-debug-recording-export {
   display: grid;
   gap: 10px;
   margin-top: 20px;
 }
 
+.oq-debug-recording-rangelabel {
+  margin: 2px 0 0;
+  font-size: 0.95rem;
+}
+
+.oq-debug-recording-exportactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.oq-debug-recording-exportactions .oq-helper-button {
+  gap: 9px;
+  min-height: 44px;
+  padding-inline: 18px;
+  flex: 1 1 auto;
+}
+
+.oq-debug-recording-manage {
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.oq-helper-shell--dark .oq-debug-recording-manage,
+.oq-helper-modal-backdrop--dark .oq-debug-recording-manage {
+  border-top-color: rgba(71, 85, 105, 0.5);
+}
+
+.oq-debug-recording-manage summary {
+  cursor: pointer;
+  color: var(--oq-theme-color-d7d8, var(--oq-helper-soft));
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.oq-debug-recording-manage .oq-debug-recording-subtle {
+  padding: 0;
+}
+
+.oq-debug-recording-manage .oq-helper-button {
+  margin-top: 10px;
+}
+
 .oq-debug-recording-segments {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   overflow: hidden;
   width: min(100%, 500px);
   min-height: 50px;
@@ -230,26 +229,6 @@
   opacity: 0.72;
 }
 
-.oq-debug-recording-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin: 24px -26px -26px;
-  padding: 20px 26px 24px;
-  border-top: 1px solid rgba(226, 232, 240, 0.9);
-}
-
-.oq-helper-shell--dark .oq-debug-recording-actions,
-.oq-helper-modal-backdrop--dark .oq-debug-recording-actions {
-  border-top-color: rgba(71, 85, 105, 0.5);
-}
-
-.oq-debug-recording-actions .oq-helper-button {
-  gap: 9px;
-  min-height: 44px;
-  padding-inline: 18px;
-}
-
 .oq-debug-recording-primary {
   min-width: 148px;
 }
@@ -299,43 +278,18 @@
 
 @media (max-width: 720px) {
   .oq-debug-recording-header-status {
-    width: 36px;
-    padding: 0;
-    justify-content: center;
-  }
-
-  .oq-debug-recording-header-status > span:last-child {
-    display: none;
+    max-width: 100%;
   }
 
   .oq-debug-recording-modal {
     padding: 22px;
   }
 
-  .oq-debug-recording-stats {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .oq-debug-recording-stat,
-  .oq-debug-recording-stat:nth-child(odd),
-  .oq-debug-recording-stat:nth-child(even) {
-    padding-right: 0;
-    padding-left: 0;
-    border-right: 0;
-  }
-
   .oq-debug-recording-segments {
     width: 100%;
   }
 
-  .oq-debug-recording-actions {
-    margin-right: -22px;
-    margin-left: -22px;
-    margin-bottom: -22px;
-    padding: 18px 22px 22px;
-  }
-
-  .oq-debug-recording-actions .oq-helper-button {
+  .oq-debug-recording-exportactions .oq-helper-button {
     width: 100%;
   }
 

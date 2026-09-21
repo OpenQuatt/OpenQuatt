@@ -49,7 +49,7 @@ test("exports zijn immutable, gesynchroniseerd en falen zonder interne-heapfallb
   assert.match(source, /"snapshot_unavailable"/);
   assert.match(header, /mutable bool export_in_progress_/);
   assert.match(source, /const bool can_start = this->available_\(\) && !this->export_in_progress_/);
-  assert.match(source, /this->write_recording_export_\(req\)/);
+  assert.match(source, /this->write_recording_export_\(req, last_minutes\)/);
   assert.doesNotMatch(source, /allocate_fallback|heap_caps_malloc\([^\n]*MALLOC_CAP_8BIT/);
 });
 

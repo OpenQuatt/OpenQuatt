@@ -77,3 +77,43 @@ test("clipboard fallback keeps focus on the invoking control without scrolling",
     ["origin", { preventScroll: true }],
   ]);
 });
+
+test("rejected clipboard API falls back to execCommand instead of failing", async (t) => {
+  const originalDocument = globalThis.document;
+  const originalWindow = globalThis.window;
+  t.after(() => {
+    globalThis.document = originalDocument;
+    globalThis.window = originalWindow;
+  });
+
+  let apiCalls = 0;
+  globalThis.window = {
+    isSecureContext: true,
+    navigator: {
+      clipboard: {
+        writeText: async () => {
+          apiCalls += 1;
+          throw new Error("NotAllowedError");
+        },
+      },
+    },
+  };
+  globalThis.document = {
+    activeElement: null,
+    body: {
+      appendChild() {},
+      removeChild() {},
+    },
+    createElement: () => ({
+      style: {},
+      setAttribute() {},
+      focus() {},
+      select() {},
+      value: "",
+    }),
+    execCommand: () => true,
+  };
+
+  assert.equal(await copyTextToClipboard("OpenQuatt"), true);
+  assert.equal(apiCalls, 1);
+});
