@@ -7,7 +7,7 @@ import { state } from "../core/state.js";
 import { getInstallationLabel, getInstallationTopology } from "../features/device-context.js";
 import { getFirmwareCurrentVersion } from "../features/firmware-update.js";
 import { ENERGY_HISTORY_EXPORT_MODES, getSettingsBackupSelectionSummary, normalizeEnergyHistoryExportMode } from "../features/storage-history.js";
-import { getSettingsStatValue, renderSettingsCompactSwitchControl, renderSettingsFieldCard, renderSettingsSection, renderSettingsSelectControl, renderSettingsSwitchCopy } from "./controls.js";
+import { getSettingsStatValue, renderSettingsCompactSwitchControl, renderSettingsSection, renderSettingsSelectControl, renderSettingsSwitchCopy } from "./controls.js";
 import { getSettingsSelectModel } from "./field-models.js";
 import { getElectricalLimitBackupRestoreWarning } from "./electrical-limit.js";
 import { escapeHtml } from "../core/html.js";

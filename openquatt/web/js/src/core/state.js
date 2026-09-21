@@ -1,14 +1,6 @@
 import { SETTINGS_GROUP_IDS, SETTINGS_GROUPS } from "./config.js";
 import { createDiagnosticsState, createFirmwareState, createHistoryState, createMotionState, createSecurityState, createSettingsState } from "./state-slices.js";
 
-function getStoredDebugRecordingAcknowledgedId() {
-  try {
-    return String(window.localStorage.getItem("oq-debug-recording-acknowledged-id") || "");
-  } catch (_error) {
-    return "";
-  }
-}
-
 export const DEFAULT_TREND_WINDOW_HOURS = 24;
 export const TREND_WINDOW_HOURS_OPTIONS = [3, 12, 24, 72, 168, 336, 720];
 const QUICK_START_SETUP_INSTALL_STORAGE_KEY = "oq-quickstart-setup-install";
@@ -131,7 +123,7 @@ export const state = {
   busyAction: "",
   controlError: "",
   controlNotice: "",
-  ...createDiagnosticsState(getStoredDebugRecordingAcknowledgedId()),
+  ...createDiagnosticsState(),
   ...createSettingsState(),
   quickStartSetupUpdateComplete: initialQuickStartSetupComplete,
   updateModalOpen: false,

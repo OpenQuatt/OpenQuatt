@@ -1337,11 +1337,6 @@
     "resetRuntimeCountersHp1",
     "resetRuntimeCountersHp1Hp2",
   ];
-  export const DEBUG_RECORDING_DURATION_OPTIONS = [
-    { minutes: 15, label: "15 min" },
-    { minutes: 30, label: "30 min" },
-    { minutes: 60, label: "1 uur" },
-  ];
   // Download window selection for the Systeemrecorder. minutes === 0 means
   // everything retained on the device.
   export const DEBUG_RECORDING_DOWNLOAD_RANGE_OPTIONS = [

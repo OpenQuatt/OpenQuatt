@@ -1,12 +1,10 @@
 import { describeFrequencyLimit } from "./frequency-limits.js";
 import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon } from "../core/config.js";
-import { getEntityValue } from "../core/entity-store.js";
 import { escapeHtml } from "../core/html.js";
 import { getRenderSignature } from "../core/render-signatures.js";
 import { state } from "../core/state.js";
 import { setViewPatchControls } from "../core/view-patch-controls.js";
-import { getInstallationTopology } from "./device-context.js";
 import { getControlReplayIncidentDisplaySeverity, getControlReplayIncidentEventCopy, getControlReplayIncidentModeAfterEvent, getControlReplayIncidentModeTransition, getControlReplayIncidentReasonMeta } from "./control-replay-incidents.js";
 import { formatWorkingMode, getHeatPumpPanels } from "../views/heatpump.js";
 import { isCoolingOverviewActive } from "../views/overview.js";

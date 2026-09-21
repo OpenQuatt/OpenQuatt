@@ -359,7 +359,7 @@ async function checkStateSliceContracts() {
   const slices = context.module.exports;
   const groups = [
     slices.createHistoryState(24),
-    slices.createDiagnosticsState("recording-id"),
+    slices.createDiagnosticsState(),
     slices.createSettingsState(),
     slices.createSecurityState(),
     slices.createFirmwareState(),
@@ -374,7 +374,7 @@ async function checkStateSliceContracts() {
       seenKeys.add(key);
     });
   });
-  if (groups[0].trendWindowHours !== 24 || groups[1].debugRecordingAcknowledgedId !== "recording-id" || groups[5].reducedMotion !== true) {
+  if (groups[0].trendWindowHours !== 24 || groups[5].reducedMotion !== true) {
     throw new Error("State slice input values are not preserved");
   }
 

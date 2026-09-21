@@ -9,7 +9,7 @@ import { formatDiagnosticsDateTime, formatUptimeFromMeta, getDeviceIpAddress, ge
 import { getUpdateStatus } from "../features/firmware-update.js";
 import { getEspTemperatureLabel } from "../features/header-status.js";
 import { getWebAuthStatusDetail, getWebAuthStatusLabel } from "../features/security-access.js";
-import { getCommissioningStatusValue, patchSettingsChoiceOption, patchSettingsSelectControl, renderSettingsSection } from "./controls.js";
+import { getCommissioningStatusValue, patchSettingsChoiceOption, patchSettingsSelectControl } from "./controls.js";
 import { renderSettingsCoolingSection } from "./cooling.js";
 import { renderSettingsFlowSection, renderSettingsHeatingSection } from "./heating.js";
 import { renderSettingsElectricalCurrentLimitSection } from "./electrical-limit.js";

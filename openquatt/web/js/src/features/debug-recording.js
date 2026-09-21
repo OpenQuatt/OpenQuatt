@@ -128,30 +128,6 @@ export function getDebugRecordingId(source = state.debugRecordingDeviceStatus) {
   return String(source?.recording_id ?? source?.recording?.recording_id ?? "").trim();
 }
 
-export function getStoredDebugRecordingAcknowledgedId() {
-  try {
-    return String(window.localStorage.getItem("oq-debug-recording-acknowledged-id") || "");
-  } catch (_error) {
-    return "";
-  }
-}
-
-export function acknowledgeDebugRecording(bundle) {
-  if (bundle?.recording?.active) {
-    return;
-  }
-  const recordingId = getDebugRecordingId(bundle);
-  if (!recordingId) {
-    return;
-  }
-  state.debugRecordingAcknowledgedId = recordingId;
-  try {
-    window.localStorage.setItem("oq-debug-recording-acknowledged-id", recordingId);
-  } catch (_error) {
-    // The acknowledgement still applies for the current browser session.
-  }
-}
-
 // An active recorder is the normal situation, so no permanent header badge.
 // Only a deviating state (disabled / unavailable) is surfaced.
 export function renderDebugRecordingHeaderStatus() {
@@ -521,10 +497,6 @@ export async function setSystemRecorderEnabled(enabled) {
   }
 }
 
-export function toggleSystemRecorder() {
-  return setSystemRecorderEnabled(!isSystemRecorderEnabled());
-}
-
 export function requestSystemRecorderDisable() {
   if (!isSystemRecorderEnabled()) {
     return setSystemRecorderEnabled(true);
@@ -645,7 +617,6 @@ export async function exportDebugRecordingBundle(mode, rangeMinutes = getDebugRe
       throw new Error(`HTTP ${response.status}`);
     }
     const bundle = await response.json();
-    state.debugRecordingDeviceBundle = bundle;
     if (mode === "copy") {
       const copied = await copyTextToClipboard(getDebugRecordingCompactJson(bundle));
       if (!copied) {
@@ -654,7 +625,6 @@ export async function exportDebugRecordingBundle(mode, rangeMinutes = getDebugRe
     } else {
       downloadTextFile(getDebugRecordingFilename(bundle), getDebugRecordingCompactJson(bundle), "application/json");
     }
-    acknowledgeDebugRecording(bundle);
     const action = mode === "copy" ? "gekopieerd" : "gedownload";
     state.debugRecordingNotice = `Diagnosebestand (${rangeLabel}) ${action}.`;
     return true;
@@ -667,10 +637,6 @@ export async function exportDebugRecordingBundle(mode, rangeMinutes = getDebugRe
     state.debugRecordingBusy = false;
     render();
   }
-}
-
-export function downloadDebugRecordingBundle(rangeMinutes) {
-  return exportDebugRecordingBundle("download", rangeMinutes);
 }
 
 export function downloadDebugRecordingRange() {
@@ -710,7 +676,6 @@ const debugRecordingActionHandlers = {
   "confirm-disable-system-recorder": () => confirmSystemRecorderDisable(),
   "toggle-recorder-manage": (button, event) => toggleRecorderManage(event, button),
   "select-debug-recording-range": (button) => setDebugRecordingDownloadRange(button.dataset.lastMinutes || 0),
-  "download-debug-recording": () => downloadDebugRecordingRange(),
   "download-debug-recording-range": () => downloadDebugRecordingRange(),
   "copy-debug-recording": () => copyDebugRecordingBundle(),
   "copy-debug-recording-analyser": () => copyDebugRecordingAndOpenAnalyser(),
