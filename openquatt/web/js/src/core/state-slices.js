@@ -97,7 +97,6 @@ export function createDiagnosticsState(debugRecordingAcknowledgedId) {
     debugRecordingError: "",
     debugRecordingNotice: "",
     debugRecordingBusy: false,
-    debugRecordingSelectedMinutes: 15,
     debugRecordingDownloadRange: 15,
     debugRecordingConfirmDisable: false,
     debugRecordingManageOpen: false,
