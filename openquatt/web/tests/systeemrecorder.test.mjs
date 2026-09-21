@@ -428,7 +428,7 @@ test("modal spreekt Systeemrecorder met export als hoofdactie", () => {
     markup,
     /oq-debug-recording-exportactions">[\s\S]*?Download bestand<\/button>[\s\S]*?Kopieer gegevens<\/button>[\s\S]*?Kopieer \+ analyser<\/button>/,
   );
-  assert.match(markup, /Kopieer &amp; open analyser/);
+  assert.match(markup, /Kopieer \+ analyser<\/button>/);
   assert.match(markup, /data-oq-action="copy-debug-recording-analyser"/);
   assert.doesNotMatch(markup, /oq-debug-recording-switchlabel/);
   assert.match(markup, /<details class="oq-debug-recording-manage">/);
