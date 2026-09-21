@@ -1,6 +1,6 @@
 import { hasEntity } from "../core/app-shared.js";
 import { setEntityBackupValue, verifyEntityBackupSelectState } from "../core/entity-backup.js";
-import { getOpenQuattPauseDraftValue, getOpenQuattPausePresetValue, getEntityValue, parseLooseNumber } from "../core/entity-store.js";
+import { getOpenQuattPauseDraftValue, getOpenQuattPausePresetValue } from "../core/entity-store.js";
 import { commitNumber, commitOpenQuattRegulationPause, commitOpenQuattRegulationResumeNow, commitSelect, triggerNamedButton } from "../core/entity-write-actions.js";
 import { refreshEntities } from "../core/entity-sync.js";
 import { invokeActionMap } from "../core/action-router.js";

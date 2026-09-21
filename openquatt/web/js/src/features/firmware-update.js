@@ -4,7 +4,6 @@ import { getEntityValue } from "../core/entity-store.js";
 import { refreshEntities } from "../core/entity-sync.js";
 import { awaitOtaEvidence, beginDeviceReconnect, clearOtaRefresh, getDeviceReconnectCopy, getDeviceReconnectStatusCopy, getDeviceReconnectStatusLabel, getDeviceReconnectTitle, scheduleOtaRefresh } from "../core/device-reconnect.js";
 import { startEntityPolling, stopEntityPolling } from "../core/entity-polling-controls.js";
-import { isFirmwareOtaQuietActive } from "../core/firmware-quiet.js";
 import { updateFirmwareState } from "../core/feature-state.js";
 import { renderModalShell } from "../core/modal-shell.js";
 import { clearQuickStartSetupInstall, getStoredQuickStartSetupInstall, state, storeQuickStartSetupInstall } from "../core/state.js";
