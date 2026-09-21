@@ -184,6 +184,7 @@ export function createUsageTelemetryPreview(values = {}, options = {}) {
     heating_supply_target_source: configuredSourceWireValue(values.heatingSupplyTargetSource),
     modbus_partial_response_count: null,
     modbus_parse_failed_count: null,
+    modbus_recovered_response_count: null,
     modbus_offline_count: null,
     heap_free_b: optionalNumber(values.heapFree),
     heap_min_free_b: optionalNumber(values.heapMinFree),
