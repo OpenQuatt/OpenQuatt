@@ -142,36 +142,6 @@ section.oq-debug-recording-card > .oq-debug-recording-subtle:last-child {
   padding-inline: 18px;
 }
 
-.oq-debug-recording-linkaction {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 10px 0 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--oq-helper-accent-deep);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.88rem;
-  font-weight: 700;
-}
-
-.oq-debug-recording-linkaction:hover {
-  text-decoration: underline;
-}
-
-.oq-debug-recording-linkaction:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-.oq-debug-recording-linkaction .oq-debug-recording-button-icon {
-  width: 15px;
-  height: 15px;
-}
-
 .oq-debug-recording-manage {
   margin-top: 22px;
   padding-top: 14px;
