@@ -717,9 +717,10 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     `;
   }
 
-  function getControlWorkingBlockingReasons(current) {
+    function getControlWorkingBlockingReasons(current) {
     const reasons = [];
 
+    // Check startup inhibit
     if (current.primaryReason === "startup_inhibit" && current.startupInhibit) {
       const remainingS = current.startupInhibit.remainingS;
       if (remainingS > 0) {
@@ -729,50 +730,67 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       }
     }
 
+    // Check minimum rest time
     if (current.primaryReason === "min_rest_active") {
       reasons.push("Minimum rusttijd actief: de warmtepomp wacht om korte starts te voorkomen");
     }
 
+    // Check no candidate
     if (current.primaryReason === "no_candidate") {
       reasons.push("Nog geen veilige start: wachttijd of bescherming is actief");
     }
 
+    // Check candidate in rest
     if (current.primaryReason === "candidate_in_rest") {
       reasons.push("Rusttijd loopt nog: de warmtepomp is kort geleden gestopt");
     }
 
+    // Check candidate in defrost
     if (current.primaryReason === "candidate_in_defrost") {
       reasons.push("Warmtepomp ontdooit: moet eerst afronden voordat deze kan starten");
     }
 
+    // Check candidate unavailable
     if (current.primaryReason === "candidate_unavailable") {
       reasons.push("Warmtepomp niet beschikbaar: technische begrenzing of beschikbaarheid");
     }
 
+    // Check flow preflow
     if (current.primaryReason === "flow_preflow") {
       reasons.push("Voorloop actief: pomp bouwt waterflow op voordat warmtepomp mag starten");
     }
 
+    // Check flow too low
     if (current.primaryReason === "flow_too_low") {
       reasons.push("Waterflow blijft te laag: start geblokkeerd tot flow voldoende is");
     }
 
+    // Check sensor fallback
     if (current.primaryReason === "sensor_fallback") {
       reasons.push("Sensorwaarde onzeker: het systeem kiest voorzichtig gedrag");
     }
 
+    // Check soft guard
     if (current.primaryReason === "soft_guard") {
       reasons.push("Veilige marge bewaakt: systeem begrenst zichzelf binnen temperatuur- en flowgrenzen");
     }
 
+    // Check restart wait
     if (current.primaryReason === "restart_wait") {
       reasons.push("Wacht op veilige herstart: dauwpuntmarge moet stabiel herstellen");
     }
 
+    // Check frost protection
     if (current.primaryReason === "frost_protection") {
       reasons.push("Vorstbescherming actief: water circuleren om bevriezing te voorkomen");
     }
 
+    // Check sticky protection
+    if (current.primaryReason === "sticky_protection") {
+      reasons.push("Pompbescherming: pomp draait kort om vastzitten te voorkomen (geen warmte/koelvraag)");
+    }
+
+    // Check cooling-specific blocking reasons
     if (current.coolingProtection && current.cooling) {
       if (current.cooling.reasonCode === "restart_wait") {
         reasons.push("Koeling wacht op veilige herstart: marge moet herstellen");
@@ -788,39 +806,34 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       }
     }
 
-    if (current.primaryReason === "sticky_protection") {
-      reasons.push("Pompbescherming: pomp draait kort om vastzitten te voorkomen (geen warmte/koelvraag)");
-    }
-
+    // Check low-load protection
     const lowLoadOnW = getEntityNumericValue("lowLoadOnW");
     const lowLoadOffW = getEntityNumericValue("lowLoadOffW");
     const lowLoadPminW = getEntityNumericValue("lowLoadPminW");
     const lowLoadLatch = getEntityStateText("lowLoadLatch", "");
-    const lowLoadReentryBlock = getEntityNumericValue("lowLoadCm2ReentryBlock");
     const cm2ReentryBlockUntilMs = getEntityNumericValue("oq_cm2_reentry_block_until_ms");
 
-    if (current.primaryReason === "keep_current" && !current.hp1Running && !current.hp2Running) {
-      if (lowLoadLatch === "ON" || lowLoadLatch === "on" || lowLoadLatch === "1") {
-        if (!Number.isNaN(lowLoadOnW) && !Number.isNaN(lowLoadOffW)) {
-          reasons.push(`Low-load beveiliging actief: warmtevraag is onder de ${Math.round(lowLoadOffW)} W stookgrens (terugstart vanaf ${Math.round(lowLoadOnW)} W)`);
-        } else {
-          reasons.push("Low-load beveiliging actief: warmtevraag is te laag voor de ingestelde stookgrens");
-        }
-      }
-
-      if (!Number.isNaN(cm2ReentryBlockUntilMs) && cm2ReentryBlockUntilMs > 0) {
-        const nowMs = Date.now();
-        const remainingMs = cm2ReentryBlockUntilMs - nowMs;
-        if (remainingMs > 0) {
-          const remainingMin = Math.ceil(remainingMs / 60000);
-          reasons.push(`CM2 herintreding geblokkeerd: nog ${remainingMin} minuut${remainingMin !== 1 ? "en" : ""} door recent low-load stop`);
-        } else {
-          reasons.push("CM2 herintreding geblokkeerd: wachttijd actief na recent low-load stop");
-        }
+    if (lowLoadLatch === "ON" || lowLoadLatch === "on" || lowLoadLatch === "1") {
+      if (!Number.isNaN(lowLoadOnW) && !Number.isNaN(lowLoadOffW)) {
+        reasons.push(`Low-load beveiliging actief: warmtevraag is onder de ${Math.round(lowLoadOffW)} W stookgrens (terugstart vanaf ${Math.round(lowLoadOnW)} W)`);
+      } else {
+        reasons.push("Low-load beveiliging actief: warmtevraag is te laag voor de ingestelde stookgrens");
       }
     }
 
-    if (reasons.length === 0 && !current.hp1Running && !current.hp2Running) {
+    if (!Number.isNaN(cm2ReentryBlockUntilMs) && cm2ReentryBlockUntilMs > 0) {
+      const nowMs = Date.now();
+      const remainingMs = cm2ReentryBlockUntilMs - nowMs;
+      if (remainingMs > 0) {
+        const remainingMin = Math.ceil(remainingMs / 60000);
+        reasons.push(`CM2 herintreding geblokkeerd: nog ${remainingMin} minuut${remainingMin !== 1 ? "en" : ""} door recent low-load stop`);
+      } else {
+        reasons.push("CM2 herintreding geblokkeerd: wachttijd actief na recent low-load stop");
+      }
+    }
+
+    // If no specific reasons found but heat pumps are off, add generic reason
+    if (reasons.length === 0) {
       reasons.push("Geen warmtevraag: het systeem wacht op nieuwe vraag");
     }
 
@@ -2741,8 +2754,8 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const status = getControlWorkingSeverityMeta(current.severity);
     const heatPumpsOff = !current.hp1Running && !current.hp2Running;
     const blockingReasons = heatPumpsOff ? getControlWorkingBlockingReasons(current) : [];
-    const blockingSection = heatPumpsOff && blockingReasons.length > 0 ? `
-        <div class="oq-working-now-blocking">
+    const blockingSection = blockingReasons.length > 0 ? `
+        <div class="oq-working-now-next">
           <span>Waarom staat mijn warmtepomp uit?</span>
           <ul class="oq-working-blocking-list">
             ${blockingReasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}
