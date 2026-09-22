@@ -9,6 +9,8 @@ import {
   minifyJavaScriptBundle,
 } from "./bundle-minifiers.mjs";
 import { resolveCssSources } from "./css-source-list.mjs";
+import en from "./js/src/i18n/en.js";
+import nl from "./js/src/i18n/nl.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const webDir = path.dirname(__filename);
@@ -347,7 +349,9 @@ async function checkWriteActionContracts() {
   assertContains(entityWriteActions, "export async function commitOpenQuattRegulationResumeNow", "OpenQuatt resume write helper");
   assertContains(oduRuntimeFrequency, "getOduRuntimeFrequencyEndpoint", "ODU runtime native endpoint");
   assertContains(oduRuntimeFrequency, 'body.set("csrf_token", status.csrfToken)', "ODU runtime CSRF write guard");
-  assertContains(webServerLogs, "kan DEBUG zoveel logging produceren dat de web-app en Home Assistant traag of onbereikbaar worden.", "Debug logger safety warning");
+  assertContains(webServerLogs, 't("weblog.levelInfo")', "Debug logger safety warning translation");
+  assertContains(nl.weblog.levelInfo, "kan DEBUG zoveel logging produceren", "Dutch debug logger safety warning");
+  assertContains(en.weblog.levelInfo, "DEBUG can produce so much logging", "English debug logger safety warning");
 }
 
 async function checkStateSliceContracts() {
