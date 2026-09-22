@@ -303,12 +303,19 @@ import { render } from "../core/render-scheduler.js";
     const prefix = wifi ? "wifiReset" : "apiSecurity";
     state[`${prefix}Busy`] = true;
     state[`${prefix}Error`] = "";
+    state[`${prefix}ActionError`] = "";
     state[`${prefix}Notice`] = "Reset aanvragen…";
     render();
     try {
       const body = new URLSearchParams({ csrf_token: state.authStatus.csrf_token, confirm: wifi ? "RESET_WIFI" : "RESET_API_SECURITY" });
       const response = await fetch(wifi ? "/wifi/reset" : "/api-security/reset", { method: "POST", body });
-      if (response.status !== 202) throw new Error(`HTTP ${response.status}`);
+      if (response.status !== 202) {
+        state[`${prefix}Busy`] = false;
+        state[`${prefix}Notice`] = "";
+        state[`${prefix}ActionError`] = `Reset is afgewezen. HTTP ${response.status}. Je kunt opnieuw proberen.`;
+        render();
+        return;
+      }
       state[`${prefix}Notice`] = wifi
         ? "Reset aangevraagd. Verbind na de herstart met het OpenQuatt access point en stel Wi-Fi opnieuw in. Web-login en API-beveiliging blijven behouden."
         : "Reset aangevraagd. Bij succes herstart de controller. Open daarna de web-app opnieuw en koppel Home Assistant binnen 10 minuten.";
@@ -319,7 +326,7 @@ import { render } from "../core/render-scheduler.js";
       if (result.error) {
         state[`${prefix}Busy`] = false;
         state[`${prefix}Notice`] = "";
-        state[`${prefix}Error`] = "Reset mislukt; er is niet herstart. Je kunt opnieuw proberen.";
+        state[`${prefix}ActionError`] = "Reset mislukt; er is niet herstart. Je kunt opnieuw proberen.";
       }
     } catch (error) {
       state[`${prefix}Notice`] = "Controleer of de controller is herstart en open de web-app opnieuw. De reset wordt niet automatisch herhaald.";

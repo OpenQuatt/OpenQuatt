@@ -481,7 +481,7 @@ import { render } from "../core/render-scheduler.js";
             <p class="oq-helper-modal-note">Wi-Fi wissen herstart de controller. Stel daarna Wi-Fi opnieuw in via het OpenQuatt access point. Web-login, API-beveiliging en overige instellingen blijven behouden.</p>
             ${state.authStatus?.enabled ? `<button class="oq-helper-button" type="button" data-oq-action="reset-wifi" ${state.wifiResetBusy || state.apiSecurityBusy ? "disabled" : ""}>Wi-Fi wissen en herstarten</button>` : `<p class="oq-helper-modal-note">Voor wissen via de web-app is een web-login nodig. Zonder login: houd de fysieke herstelknop 10 seconden vast, of open <a href="/recovery">herstel</a>.</p>`}
           ` : ""}
-          ${state.wifiResetError || state.wifiResetNotice ? `<p class="${state.wifiResetError ? "oq-helper-error" : "oq-helper-notice"}" role="status">${escapeHtml(state.wifiResetError || state.wifiResetNotice)}</p>` : ""}
+          ${state.wifiResetError || state.wifiResetActionError || state.wifiResetNotice ? `<p class="${state.wifiResetError || state.wifiResetActionError ? "oq-helper-error" : "oq-helper-notice"}" role="status">${escapeHtml(state.wifiResetError || state.wifiResetActionError || state.wifiResetNotice)}</p>` : ""}
           <div class="oq-helper-modal-actions">
             <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">Gereed</button>
           </div>

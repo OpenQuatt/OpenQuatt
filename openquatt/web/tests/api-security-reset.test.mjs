@@ -3,7 +3,7 @@ import test from "node:test";
 
 globalThis.__OQ_PREVIEW__ = false;
 const { state } = await import("../js/src/core/state.js");
-const { resetApiSecurity, resetWifi } = await import("../js/src/features/security-actions.js");
+const { refreshApiSecurityStatus, resetApiSecurity, resetWifi } = await import("../js/src/features/security-actions.js");
 
 function setup(t, handler, confirm = true) {
   const originalWindow = globalThis.window;
@@ -14,9 +14,11 @@ function setup(t, handler, confirm = true) {
   state.wifiResetBusy = false;
   state.wifiResetAvailable = true;
   state.wifiResetError = "";
+  state.wifiResetActionError = "";
   state.wifiResetNotice = "";
   state.apiSecurityNotice = "";
   state.apiSecurityError = "";
+  state.apiSecurityActionError = "";
   globalThis.window = { confirm: () => confirm, setTimeout: callback => callback() };
   globalThis.fetch = handler;
 }
@@ -45,7 +47,7 @@ test("API reset sends one confirmed request and reports persistence failure", as
   await resetApiSecurity();
   assert.deepEqual(requests, ["/api-security/reset", "/recovery/status"]);
   assert.equal(state.apiSecurityBusy, false);
-  assert.match(state.apiSecurityError, /niet herstart/);
+  assert.match(state.apiSecurityActionError, /niet herstart/);
 });
 
 test("API reset never retries an ambiguous accepted request", async t => {
@@ -84,7 +86,27 @@ test("Wi-Fi reset uses its own confirmation and reports checked failure", async 
   await resetWifi();
   assert.deepEqual(requests, ["/wifi/reset", "/recovery/status"]);
   assert.equal(state.wifiResetBusy, false);
-  assert.match(state.wifiResetError, /niet herstart/);
+  assert.match(state.wifiResetActionError, /niet herstart/);
+});
+
+test("a definitive reset rejection permits an explicit retry", async t => {
+  setup(t, async () => ({ status: 403 }));
+  await resetApiSecurity();
+  assert.equal(state.apiSecurityBusy, false);
+  assert.match(state.apiSecurityActionError, /afgewezen/);
+  await resetWifi();
+  assert.equal(state.wifiResetBusy, false);
+  assert.match(state.wifiResetActionError, /afgewezen/);
+});
+
+test("API reset failure survives a successful status refresh", async t => {
+  setup(t, async () => ({
+    ok: true,
+    json: async () => ({ transport_active: true, key_present: true, provisioning_pending: false, provisioning_closed: false }),
+  }));
+  state.apiSecurityActionError = "Reset mislukt; er is niet herstart. Je kunt opnieuw proberen.";
+  await refreshApiSecurityStatus({ force: true });
+  assert.match(state.apiSecurityActionError, /niet herstart/);
 });
 
 test("Wi-Fi reset never retries an ambiguous request or overlaps API reset", async t => {

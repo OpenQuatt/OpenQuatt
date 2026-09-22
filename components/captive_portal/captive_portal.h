@@ -47,7 +47,10 @@ class CaptivePortal final : public AsyncWebHandler, public Component {
     // Handle all GET requests when captive portal is active
     // This allows us to respond with the portal page for any URL,
     // triggering OS captive portal detection
-    return this->active_ && request->method() == HTTP_GET;
+    if (!this->active_ || request->method() != HTTP_GET) return false;
+    char url_buffer[AsyncWebServerRequest::URL_BUF_SIZE];
+    const auto url = request->url_to(url_buffer);
+    return url != "/recovery" && url != "/recovery/status";
   }
 
   void handle_config(AsyncWebServerRequest* request);

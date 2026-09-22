@@ -75,6 +75,9 @@ void OpenQuattRecovery::opened_() {
   if (httpd_queue_work(server->get_server(), activate_on_httpd_, this) != ESP_OK) {
     this->activating_ = false;
     this->state_.end();
+    this->csrf_token_.clear();
+    this->auth_->end_recovery_guard();
+    web_server_base::global_web_server_base->set_recovery_active(false);
     this->error_ = "activation_failed";
   }
 }
