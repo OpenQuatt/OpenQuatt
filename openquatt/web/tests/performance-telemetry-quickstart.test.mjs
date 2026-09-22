@@ -12,7 +12,7 @@ const {
   waitForPerformanceTelemetryChoiceConfirmation,
 } = await import("../js/src/core/performance-telemetry-domain.js");
 
-test("performance telemetry is a default-off Quick Start step before confirm", () => {
+test("performance telemetry is a default-off Quick Start step before confirm", async () => {
   const ids = QUICK_STEPS.map((step) => step.id);
   assert.deepEqual(ids.slice(ids.indexOf("usage-telemetry"), ids.indexOf("confirm") + 1), [
     "usage-telemetry",
@@ -20,9 +20,11 @@ test("performance telemetry is a default-off Quick Start step before confirm", (
     "confirm",
   ]);
   const step = QUICK_STEPS.find((entry) => entry.id === "performance-telemetry");
-  assert.equal(step?.title, "Prestatiemetingen");
+  assert.equal(step?.titleKey, "quickStart.performanceTelemetry.title");
   assert.equal(step?.optionalEntity, "performanceTelemetryEnabled");
-  assert.match(step?.copy || "", /standaard uit/);
+  const { default: nlCatalogue } = await import("../js/src/i18n/nl.js");
+  assert.equal(nlCatalogue.quickStart.performanceTelemetry.title, "Prestatiemetingen");
+  assert.match(nlCatalogue.quickStart.performanceTelemetry.copy || "", /standaard uit/);
   assert.deepEqual(ENTITY_DEFS.performanceTelemetryChoiceConfigured, {
     domain: "binary_sensor",
     name: "Performance model validation choice configured",
@@ -127,14 +129,14 @@ test("performance telemetry mirrors the usage telemetry Quick Start wiring", asy
   assert.match(quickStartSource, /activeStep === "performance-telemetry"/);
   assert.match(quickStartSource, /data-oq-action="confirm-no-performance-telemetry"/);
   assert.match(quickStartSource, /data-oq-action="retry-performance-telemetry-choice"/);
-  assert.match(quickStartSource, /\["Prestatiemetingen delen", isEntityActive\("performanceTelemetryEnabled"\) \? "Aan" : "Uit"\]/);
+  assert.match(quickStartSource, /t\("quickStart\.reviewPerfSharing"\), isEntityActive\("performanceTelemetryEnabled"\) \? t\("common\.on"\) : t\("common\.off"\)/);
   assert.match(quickStartActionsSource, /initializeQuickStartPerformanceTelemetryChoice/);
   assert.match(quickStartActionsSource, /setQuickStartSwitch\("performanceTelemetryEnabled", false\)/);
   assert.match(quickStartUiActionsSource, /preparesPerformanceTelemetry/);
   assert.match(quickStartUiActionsSource, /"retry-performance-telemetry-choice": \(\) => prepareQuickStartStep\("performance-telemetry"\)/);
   assert.match(entityWriteSource, /commitPerformanceTelemetrySwitch/);
   assert.match(entityWriteSource, /key === "performanceTelemetryEnabled"/);
-  assert.match(consentSource, /Standaard uit\. Na inschakelen bundelt OpenQuatt stabiele verwarmingsminuten/);
+  assert.match(consentSource, /t\("performance\.consentWizardCopy"\)/);
   assert.match(mockSource, /setEntity\("switch", "Performance model validation", \{ value: false, state: false \}\)/);
   assert.match(mockSource, /setEntity\("binary_sensor", "Performance model validation choice configured", \{ value: false, state: false \}\)/);
   assert.match(mockSource, /if \(name === "Performance model validation"\)/);

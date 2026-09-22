@@ -6,6 +6,7 @@ import { formatSettingsNumberValue, getCommissioningStatusValue, getSettingsStat
 import { getHpWaterRawValue } from "./water.js";
 import { escapeHtml } from "../core/html.js";
 import { renderModalShell } from "../core/modal-shell.js";
+import { formatNumber, t } from "../i18n/index.js";
 
   export function getManualHpActualValue(levelKey, frequencyKey) {
     const level = getEntityNumericValue(levelKey);
@@ -99,54 +100,54 @@ import { renderModalShell } from "../core/modal-shell.js";
 
     const progressMaps = {
       boiler: [
-        { match: ["REQUESTED", "WAITING_FOR_CM100", "REFUSED"], phase: "Voorbereiden", percent: 12 },
-        { match: ["FLOW_SETTLING"], phase: "Flow stabiliseren", percent: 28 },
-        { match: ["BOILER_SETTLING"], phase: "Ketel starten", percent: 48 },
-        { match: ["MEASURING"], phase: "Vermogen meten", percent: 72 },
-        { match: ["COOLDOWN"], phase: "Test afronden", percent: 90 },
-        { match: ["DONE", "APPLIED"], phase: "Klaar", percent: 100 },
-        { match: ["ABORTED", "FAILED", "ABORT"], phase: "Afgebroken", percent: 100 },
+        { match: ["REQUESTED", "WAITING_FOR_CM100", "REFUSED"], phase: t("settingsService.phasePrep"), percent: 12 },
+        { match: ["FLOW_SETTLING"], phase: t("settingsService.phaseFlowSettle"), percent: 28 },
+        { match: ["BOILER_SETTLING"], phase: t("settingsService.phaseBoilerSettle"), percent: 48 },
+        { match: ["MEASURING"], phase: t("settingsService.phaseMeasuring"), percent: 72 },
+        { match: ["COOLDOWN"], phase: t("settingsService.phaseCooldown"), percent: 90 },
+        { match: ["DONE", "APPLIED"], phase: t("settingsService.phaseDone"), percent: 100 },
+        { match: ["ABORTED", "FAILED", "ABORT"], phase: t("settingsService.phaseAborted"), percent: 100 },
       ],
       autotune: [
-        { match: ["REQUESTED", "WAITING_FOR_CM100", "REFUSED"], phase: "Voorbereiden", percent: 10 },
-        { match: ["WAITING_FOR_FLOW", "SETTLING"], phase: "Flow stabiliseren", percent: 26 },
-        { match: ["STEP2"], phase: "Staptest 2", percent: 56 },
-        { match: ["STEP", "STEP1"], phase: "Staptest 1", percent: 42 },
-        { match: ["VALIDATING_SETTLING"], phase: "Flow valideren", percent: 70 },
-        { match: ["VALIDATING"], phase: "Flow valideren", percent: 84 },
-        { match: ["RECOVERING"], phase: "Herstellen", percent: 92 },
-        { match: ["DONE", "APPLIED"], phase: "Klaar", percent: 100 },
-        { match: ["ABORTED", "FAILED", "ABORT"], phase: "Afgebroken", percent: 100 },
+        { match: ["REQUESTED", "WAITING_FOR_CM100", "REFUSED"], phase: t("settingsService.phasePrep"), percent: 10 },
+        { match: ["WAITING_FOR_FLOW", "SETTLING"], phase: t("settingsService.phaseFlowSettle"), percent: 26 },
+        { match: ["STEP2"], phase: t("settingsService.phaseStep2"), percent: 56 },
+        { match: ["STEP", "STEP1"], phase: t("settingsService.phaseStep1"), percent: 42 },
+        { match: ["VALIDATING_SETTLING"], phase: t("settingsService.phaseValidating"), percent: 70 },
+        { match: ["VALIDATING"], phase: t("settingsService.phaseValidating"), percent: 84 },
+        { match: ["RECOVERING"], phase: t("settingsService.phaseRecovering"), percent: 92 },
+        { match: ["DONE", "APPLIED"], phase: t("settingsService.phaseDone"), percent: 100 },
+        { match: ["ABORTED", "FAILED", "ABORT"], phase: t("settingsService.phaseAborted"), percent: 100 },
       ],
       purge: [
-        { match: ["REQUESTED", "STARTED", "REFUSED"], phase: "Voorbereiden", percent: 8 },
-        { match: ["PHASE1", "STEADY"], phase: "Rustige doorstroming", percent: 22 },
-        { match: ["PHASE2", "PULSE"], phase: "Pulsen", percent: 62 },
-        { match: ["PHASE3", "STABILIZE"], phase: "Stabiliseren", percent: 90 },
-        { match: ["DONE"], phase: "Klaar", percent: 100 },
-        { match: ["ABORTED", "FAILED", "ABORT"], phase: "Afgebroken", percent: 100 },
+        { match: ["REQUESTED", "STARTED", "REFUSED"], phase: t("settingsService.phasePrep"), percent: 8 },
+        { match: ["PHASE1", "STEADY"], phase: t("settingsService.phaseQuiet"), percent: 22 },
+        { match: ["PHASE2", "PULSE"], phase: t("settingsService.phasePulse"), percent: 62 },
+        { match: ["PHASE3", "STABILIZE"], phase: t("settingsService.phaseStab"), percent: 90 },
+        { match: ["DONE"], phase: t("settingsService.phaseDone"), percent: 100 },
+        { match: ["ABORTED", "FAILED", "ABORT"], phase: t("settingsService.phaseAborted"), percent: 100 },
       ],
       "hp-water-calibration": [
-        { match: ["REQUESTED", "STARTED", "REFUSED"], phase: "Voorbereiden", percent: 8 },
-        { match: ["MIXING"], phase: "Water mengen", percent: 42 },
-        { match: ["MEASURING"], phase: "Sensoren meten", percent: 78 },
-        { match: ["DONE", "APPLIED"], phase: "Klaar", percent: 100 },
-        { match: ["ABORTED", "FAILED", "ABORT"], phase: "Afgebroken", percent: 100 },
+        { match: ["REQUESTED", "STARTED", "REFUSED"], phase: t("settingsService.phasePrep"), percent: 8 },
+        { match: ["MIXING"], phase: t("settingsService.phaseMixing"), percent: 42 },
+        { match: ["MEASURING"], phase: t("settingsService.phaseSensors"), percent: 78 },
+        { match: ["DONE", "APPLIED"], phase: t("settingsService.phaseDone"), percent: 100 },
+        { match: ["ABORTED", "FAILED", "ABORT"], phase: t("settingsService.phaseAborted"), percent: 100 },
       ],
       cm100: [
-        { match: ["REQUESTED"], phase: "Wachten op CM100", percent: 0 },
-        { match: ["WAITING_FOR_CM100"], phase: "Wachten op CM100", percent: 0 },
-        { match: ["CM100 READY"], phase: "Klaar", percent: 100 },
-        { match: ["IDLE"], phase: "Klaar", percent: 100 },
+        { match: ["REQUESTED"], phase: t("settingsService.phaseWaitCm100"), percent: 0 },
+        { match: ["WAITING_FOR_CM100"], phase: t("settingsService.phaseWaitCm100"), percent: 0 },
+        { match: ["CM100 READY"], phase: t("settingsService.phaseDone"), percent: 100 },
+        { match: ["IDLE"], phase: t("settingsService.phaseDone"), percent: 100 },
       ],
     };
 
     if (!value || value === "—" || value === "UNKNOWN" || value === "UNAVAILABLE" || value === "NAN") {
-      return { phase: "Wachten", percent: 0 };
+      return { phase: t("settingsService.phaseWaiting"), percent: 0 };
     }
 
     if (value.includes("WAITING") || value.includes("WACHTEN")) {
-      return { phase: "Wachten", percent: 0 };
+      return { phase: t("settingsService.phaseWaiting"), percent: 0 };
     }
 
     if (taskType !== "cm100" && (
@@ -156,7 +157,7 @@ import { renderModalShell } from "../core/modal-shell.js";
       || value === "CM100 STOPPED"
       || value === "GEPAUZEERD"
     )) {
-      return { phase: "Wachten", percent: 0 };
+      return { phase: t("settingsService.phaseWaiting"), percent: 0 };
     }
 
     const selected = progressMaps[taskType] || [];
@@ -166,13 +167,13 @@ import { renderModalShell } from "../core/modal-shell.js";
     }
 
     if (value.includes("DONE") || value.includes("APPLIED")) {
-      return { phase: "Klaar", percent: 100 };
+      return { phase: t("settingsService.phaseDone"), percent: 100 };
     }
     if (value.includes("ABORT") || value.includes("FAILED") || value.includes("REFUSED")) {
-      return { phase: "Afgebroken", percent: 100 };
+      return { phase: t("settingsService.phaseAborted"), percent: 100 };
     }
     if (taskType === "cm100" && value.includes("CM100")) {
-      return { phase: "Klaar", percent: 100 };
+      return { phase: t("settingsService.phaseDone"), percent: 100 };
     }
     return { phase: statusText, percent: 0 };
   }
@@ -204,7 +205,7 @@ import { renderModalShell } from "../core/modal-shell.js";
         <div class="oq-settings-quickstart-status oq-settings-quickstart-status--compact oq-settings-commissioning-card-status">
           <div class="oq-settings-quickstart-status-row">
             <div>
-              <p class="oq-settings-quickstart-status-label">Huidige status</p>
+              <p class="oq-settings-quickstart-status-label">${escapeHtml(t("settingsService.currentStatus"))}</p>
               <strong class="oq-settings-quickstart-status-value">${escapeHtml(status)}</strong>
               <p class="oq-settings-quickstart-status-copy">${escapeHtml(statusCopy)}</p>
             </div>
@@ -252,47 +253,47 @@ import { renderModalShell } from "../core/modal-shell.js";
       ? getSettingsTemperatureValue("hpWaterCalibrationResultSpreadBefore", 2)
       : getSettingsTemperatureValue("hpWaterCalibrationSpread", 2);
     const stableCopy = mixing
-      ? "Water mengen"
+      ? t("settingsService.stableMixing")
       : Number.isFinite(stableProgress) && Number.isFinite(stableRequired) && stableRequired > 0
         ? (stableProgress > 0
-        ? `${Math.round(Math.max(0, stableProgress))} / ${Math.round(stableRequired)} s binnen grenzen`
-        : "Nog niet binnen grenzen")
-        : "Wachten op stabiel venster";
+        ? t("settingsService.stableProgress", { done: formatNumber(Math.max(0, stableProgress), { maximumFractionDigits: 0 }), required: formatNumber(stableRequired, { maximumFractionDigits: 0 }) })
+        : t("settingsService.stableNone"))
+        : t("settingsService.stableWait");
     const stepIndex = resultReady ? 3 : running ? 2 : 1;
     const statusTitle = applied
-      ? "Offsets toegepast"
+      ? t("settingsService.appliedTitle")
       : resultReady
-      ? `Meting klaar - spreiding ${spreadValue}`
+      ? t("settingsService.readyTitle", { spread: spreadValue })
       : running
         ? (mixing
-          ? `Water mengen${Number.isFinite(mixingRemaining) && mixingRemaining > 0 ? ` - meting start over ${Math.round(mixingRemaining)} s` : ""}`
-          : `Meting bezig - ${Number.isFinite(remaining) && remaining > 0 ? `max. ${Math.round(remaining)} s resterend` : stableCopy}`)
+          ? `${t("settingsService.mixingTitle")}${Number.isFinite(mixingRemaining) && mixingRemaining > 0 ? t("settingsService.mixingRemaining", { s: formatNumber(Math.round(mixingRemaining), { maximumFractionDigits: 0 }) }) : ""}`
+          : t("settingsService.measuringTitle", { detail: Number.isFinite(remaining) && remaining > 0 ? t("settingsService.measuringRemaining", { s: formatNumber(Math.round(remaining), { maximumFractionDigits: 0 }) }) : stableCopy }))
         : failed
-          ? "Meting niet voltooid"
-          : "Voorbereiding";
+          ? t("settingsService.failedTitle")
+          : t("settingsService.prepTitle");
     const statusCopy = applied
-      ? "De voorgestelde offsets zijn opgeslagen. De aanvoercorrectie blijft alleen actief voor deze bron."
+      ? t("settingsService.appliedCopy")
       : resultReady
-      ? "Controleer de voorgestelde offsets en pas ze toe."
+      ? t("settingsService.readyCopy")
       : running
         ? (mixing
-          ? "De waterpomp circuleert zonder compressor zodat de watertemperaturen eerst kunnen mengen."
-          : "De firmware stopt zodra het laatste meetvenster binnen de spreiding- en driftgrenzen valt.")
+          ? t("settingsService.mixingCopy")
+          : t("settingsService.measuringCopy"))
         : failed
-          ? getSettingsTextStatValue("hpWaterCalibrationStatus", "Controleer de voorwaarden en start opnieuw.")
+          ? getSettingsTextStatValue("hpWaterCalibrationStatus", t("settingsService.failedCopyDefault"))
           : (hasHp2
-            ? "Start alleen wanneer compressor en boiler uit zijn. HP1, HP2 en de actieve aanvoerbron worden samen naar een relatieve referentie gebracht."
-            : "Start alleen wanneer compressor en boiler uit zijn. HP1 water in/out en de actieve aanvoerbron worden samen gekalibreerd.");
+            ? t("settingsService.idleCopyDual")
+            : t("settingsService.idleCopySingle"));
     const supplySource = getSettingsTextStatValue(
       "hpWaterCalibrationResultSupplySource",
-      getSettingsTextStatValue("waterSupplyTempEffectiveSource", "Actieve bron"),
+      getSettingsTextStatValue("waterSupplyTempEffectiveSource", t("settingsWater.sourceActive")),
     );
     const sensorRows = [
-      { label: "HP1 water in", rawKey: "hp1WaterInRaw", liveKey: "hp1WaterIn", resultRawKey: "hpWaterCalibrationResultHp1InRawAvg", offsetKey: "hp1WaterInOffset", suggestedKey: "hp1WaterInOffsetSuggested" },
-      { label: "HP1 water uit", rawKey: "hp1WaterOutRaw", liveKey: "hp1WaterOut", resultRawKey: "hpWaterCalibrationResultHp1OutRawAvg", offsetKey: "hp1WaterOutOffset", suggestedKey: "hp1WaterOutOffsetSuggested" },
-      { label: "HP2 water in", rawKey: "hp2WaterInRaw", liveKey: "hp2WaterIn", resultRawKey: "hpWaterCalibrationResultHp2InRawAvg", offsetKey: "hp2WaterInOffset", suggestedKey: "hp2WaterInOffsetSuggested" },
-      { label: "HP2 water uit", rawKey: "hp2WaterOutRaw", liveKey: "hp2WaterOut", resultRawKey: "hpWaterCalibrationResultHp2OutRawAvg", offsetKey: "hp2WaterOutOffset", suggestedKey: "hp2WaterOutOffsetSuggested" },
-      { label: `Aanvoer (${supplySource})`, rawKey: "supplyTemp", liveKey: "supplyTemp", resultRawKey: "hpWaterCalibrationResultSupplyRawAvg", offsetKey: "waterSupplyCalibrationOffset", suggestedKey: "waterSupplyCalibrationOffsetSuggested" },
+      { label: t("settingsWater.hp1WaterIn"), rawKey: "hp1WaterInRaw", liveKey: "hp1WaterIn", resultRawKey: "hpWaterCalibrationResultHp1InRawAvg", offsetKey: "hp1WaterInOffset", suggestedKey: "hp1WaterInOffsetSuggested" },
+      { label: t("settingsWater.hp1WaterOut"), rawKey: "hp1WaterOutRaw", liveKey: "hp1WaterOut", resultRawKey: "hpWaterCalibrationResultHp1OutRawAvg", offsetKey: "hp1WaterOutOffset", suggestedKey: "hp1WaterOutOffsetSuggested" },
+      { label: t("settingsWater.hp2WaterIn"), rawKey: "hp2WaterInRaw", liveKey: "hp2WaterIn", resultRawKey: "hpWaterCalibrationResultHp2InRawAvg", offsetKey: "hp2WaterInOffset", suggestedKey: "hp2WaterInOffsetSuggested" },
+      { label: t("settingsWater.hp2WaterOut"), rawKey: "hp2WaterOutRaw", liveKey: "hp2WaterOut", resultRawKey: "hpWaterCalibrationResultHp2OutRawAvg", offsetKey: "hp2WaterOutOffset", suggestedKey: "hp2WaterOutOffsetSuggested" },
+      { label: t("settingsWater.supplyTitle", { source: supplySource }), rawKey: "supplyTemp", liveKey: "supplyTemp", resultRawKey: "hpWaterCalibrationResultSupplyRawAvg", offsetKey: "waterSupplyCalibrationOffset", suggestedKey: "waterSupplyCalibrationOffsetSuggested" },
     ].filter((row) => hasEntity(row.liveKey) || hasEntity(row.rawKey) || hasEntity(row.offsetKey));
 
     const renderStep = (index, label) => {
@@ -339,9 +340,9 @@ import { renderModalShell } from "../core/modal-shell.js";
     return `
       <div class="oq-settings-hp-calibration">
         <div class="oq-settings-hp-calibration-steps">
-          ${renderStep(1, "Voorbereiding")}
-          ${renderStep(2, "Meting")}
-          ${renderStep(3, "Offsets toepassen")}
+          ${renderStep(1, t("settingsService.step1"))}
+          ${renderStep(2, t("settingsService.step2"))}
+          ${renderStep(3, t("settingsService.step3"))}
         </div>
 
         <div class="oq-settings-hp-calibration-status${resultReady ? " is-success" : running ? " is-active" : failed ? " is-warning" : ""}">
@@ -349,7 +350,7 @@ import { renderModalShell } from "../core/modal-shell.js";
             <strong>${escapeHtml(statusTitle)}</strong>
             <p>${escapeHtml(statusCopy)}</p>
           </div>
-          ${running || resultReady ? `<span>${escapeHtml(running ? stableCopy : "Resultaat beschikbaar")}</span>` : ""}
+          ${running || resultReady ? `<span>${escapeHtml(running ? stableCopy : t("settingsService.resultAvailable"))}</span>` : ""}
           ${running ? `<div class="oq-settings-hp-calibration-progress"><i style="width: ${progressValue.toFixed(0)}%"></i></div>` : ""}
         </div>
 
@@ -357,28 +358,28 @@ import { renderModalShell } from "../core/modal-shell.js";
           <div class="oq-settings-hp-calibration-live-grid">
             ${sensorRows.map(renderLiveCard).join("")}
             <article class="oq-settings-hp-calibration-live-card is-highlight">
-              <span>Spreiding</span>
+              <span>${escapeHtml(t("settingsService.spreadLabel"))}</span>
               <strong>${escapeHtml(getSettingsTemperatureValue("hpWaterCalibrationSpread", 2))}</strong>
             </article>
           </div>
-          <p class="oq-settings-hp-calibration-note">De actieve aanvoerbron wordt raw gemeten. Een bestaande aanvoercorrectie telt niet mee in het nieuwe voorstel.</p>
+          <p class="oq-settings-hp-calibration-note">${escapeHtml(t("settingsService.liveNote"))}</p>
         ` : ""}
 
         ${resultReady ? `
           <div class="oq-settings-hp-calibration-results">
             <div class="oq-settings-hp-calibration-result-summary">
-              <span>Referentie ${escapeHtml(getSettingsTemperatureValue("hpWaterCalibrationResultReference", 2))}</span>
-              <span>Aanvoerbron ${escapeHtml(supplySource)}</span>
+              <span>${escapeHtml(t("settingsService.refLabel", { value: getSettingsTemperatureValue("hpWaterCalibrationResultReference", 2) }))}</span>
+              <span>${escapeHtml(t("settingsService.supplySourceLabel", { source: supplySource }))}</span>
             </div>
             <div class="oq-settings-hp-calibration-table-wrap">
               <table class="oq-settings-hp-calibration-table">
                 <thead>
                   <tr>
-                    <th scope="col">Sensor</th>
-                    <th scope="col">Raw gemiddelde</th>
-                    <th scope="col">Huidig actief</th>
-                    <th scope="col">Voorstel</th>
-                    <th scope="col">Na toepassen</th>
+                    <th scope="col">${escapeHtml(t("settingsService.colSensor"))}</th>
+                    <th scope="col">${escapeHtml(t("settingsService.colRawAvg"))}</th>
+                    <th scope="col">${escapeHtml(t("settingsService.colCurrent"))}</th>
+                    <th scope="col">${escapeHtml(t("settingsService.colProposal"))}</th>
+                    <th scope="col">${escapeHtml(t("settingsService.colAfter"))}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -395,12 +396,12 @@ import { renderModalShell } from "../core/modal-shell.js";
               active: running,
               startKey: "hpWaterCalibrationStart",
               stopKey: "hpWaterCalibrationAbort",
-              startLabel: "Kalibratie starten",
-              stopLabel: "Meting stoppen",
+              startLabel: t("settingsService.startCal"),
+              stopLabel: t("settingsService.stopMeasure"),
               startDisabled: busy || startDisabled,
               stopDisabled: busy || abortDisabled,
             })}
-            ${state.entities.hpWaterCalibrationApply ? renderNamedActionButton("hpWaterCalibrationApply", "Offsets toepassen", "oq-helper-button oq-helper-button--primary", busy || applyDisabled) : ""}
+            ${state.entities.hpWaterCalibrationApply ? renderNamedActionButton("hpWaterCalibrationApply", t("settingsService.applyOffsets"), "oq-helper-button oq-helper-button--primary", busy || applyDisabled) : ""}
           </div>
         ` : ""}
       </div>
@@ -412,25 +413,25 @@ import { renderModalShell } from "../core/modal-shell.js";
     const upper = status.toUpperCase();
     const flow = Number(flowLph);
     const target = Number(targetLph);
-    const flowText = Number.isFinite(flow) ? `${Math.round(flow)} L/h` : "— L/h";
-    const targetText = Number.isFinite(target) ? `${Math.round(target)} L/h` : "800 L/h";
+    const flowText = Number.isFinite(flow) ? t("settingsService.flowValue", { value: formatNumber(Math.round(flow), { maximumFractionDigits: 0 }) }) : t("settingsService.flowUnknown");
+    const targetText = Number.isFinite(target) ? t("settingsService.flowValue", { value: formatNumber(Math.round(target), { maximumFractionDigits: 0 }) }) : t("settingsService.flowDefault");
 
     if (upper.includes("FLOW_SETTLING")) {
-      return `Flow naar ${targetText} ±40. Ketel start daarna. Min. 2 min. Nu ${flowText}.`;
+      return t("settingsService.boilerFlowSettling", { target: targetText, flow: flowText });
     }
     if (upper.includes("BOILER_SETTLING")) {
-      return `Warmtevraag verstuurd; maximaal 150 sec wachten op ketel. Flow ${flowText} (doel ±40).`;
+      return t("settingsService.boilerBoilerSettling", { flow: flowText });
     }
     if (upper.includes("MEASURING")) {
       const heat = getSettingsStatValue("boilerHeatPower");
-      return `Ketel actief; meten.${heat && heat !== "—" ? ` Nu ${heat}.` : ""} Min. 3 min; daarna auto uit zodra meting compleet is.`;
+      return t("settingsService.boilerMeasuringBase", { heat: heat && heat !== "—" ? t("settingsService.boilerMeasuringHeat", { heat }) : "" });
     }
     if (upper.includes("COOLDOWN")) {
       const result = getSettingsStatValue("boilerPowerTestResult");
-      return `Metingen klaar; ketel uit.${result && result !== "—" ? ` ${result}.` : ""} 15s afkoelen.`;
+      return t("settingsService.boilerCooldownBase", { result: result && result !== "—" ? t("settingsService.boilerCooldownResult", { result }) : "" });
     }
     if (upper.startsWith("CONFIRM_REQUIRED")) {
-      return "Bevestig binnen 30 seconden nogmaals dat je dit resultaat wilt toepassen.";
+      return t("settingsService.boilerConfirmRequired");
     }
     if (upper.startsWith("DONE:") || upper === "DONE" || upper.includes("APPLIED")) {
       const result = getSettingsStatValue("boilerPowerTestResult");
@@ -438,36 +439,36 @@ import { renderModalShell } from "../core/modal-shell.js";
       const isFlowLimited = upper.includes("FLOW LIMITED");
       if (result && result !== "—") {
         if (isFlowLimited) {
-          return `Klaar - ${result}${conf && conf !== "—" ? ` (${conf})` : ""} - test begrensd door flow/temperatuurmarge.`;
+          return t("settingsService.boilerDoneFlowLimited", { result, conf: conf && conf !== "—" ? t("settingsService.boilerConfSuffix", { conf }) : "" });
         }
-        return `Klaar - ${result}${conf && conf !== "—" ? ` (${conf})` : ""}. Ketel automatisch uit.`;
+        return t("settingsService.boilerDoneAuto", { result, conf: conf && conf !== "—" ? t("settingsService.boilerConfSuffix", { conf }) : "" });
       }
-      return upper.includes("APPLIED") ? "Resultaat toegepast." : "Klaar - ketel automatisch uit.";
+      return upper.includes("APPLIED") ? t("settingsService.boilerAppliedResult") : t("settingsService.boilerDoneOff");
     }
     if (upper === "ABORTED" || upper === "ABORT") {
-      return "Handmatig gestopt. Flow en ketel zijn hersteld naar vorige instelling.";
+      return t("settingsService.boilerAbortedManual");
     }
     if (upper.startsWith("ABORTED:") || upper.startsWith("ABORT:")) {
       const reason = status.slice(status.indexOf(":") + 1).trim();
-      return `Afgebroken: ${reason}`;
+      return t("settingsService.boilerAbortedReason", { reason });
     }
     if (upper.startsWith("REFUSED:")) {
       const reason = status.slice(status.indexOf(":") + 1).trim();
-      return `Start geweigerd: ${reason}`;
+      return t("settingsService.boilerRefusedReason", { reason });
     }
     if (upper.includes("FAILED: BOILER POWER DID NOT STABILISE")) {
-      return "Mislukt: het ketelvermogen werd niet stabiel binnen de testtijd.";
+      return t("settingsService.boilerFailedStabilise");
     }
     if (upper.includes("FAILED")) {
       const colonIdx = status.indexOf(":");
       if (colonIdx > 0) {
         const reason = status.slice(colonIdx + 1).trim();
-        return `Mislukt: ${reason}`;
+        return t("settingsService.boilerFailedReason", { reason });
       }
-      return `Mislukt: ${status}`;
+      return t("settingsService.boilerFailedRaw", { status });
     }
     if (upper === "REFUSED") {
-      return `Start geweigerd: ${status}`;
+      return t("settingsService.boilerRefusedRaw", { status });
     }
     return status;
   }
@@ -535,11 +536,11 @@ import { renderModalShell } from "../core/modal-shell.js";
     const airPurgeRemaining = getSettingsStatValue("airPurgeRemaining", { decimals: 0 });
     const airPurgePhaseCode = getEntityNumericValue("airPurgePhase");
     const airPurgePhase = airPurgePhaseCode === 1
-      ? "Rustig"
+      ? t("settingsService.phaseQuiet")
       : airPurgePhaseCode === 2
-        ? "Pulsen"
+        ? t("settingsService.phasePulse")
         : airPurgePhaseCode === 3
-          ? "Stabiliseren"
+          ? t("settingsService.phaseStab")
           : airPurgeProgress.phase;
     const manualFlowStatus = getStatusTextValue("manualFlowStatus", "IDLE");
     const manualFlowActive = isEntityActive("manualFlowActive");
@@ -583,40 +584,40 @@ import { renderModalShell } from "../core/modal-shell.js";
     const autotuneResultReady = /DONE|APPLIED/.test(String(autotuneStatus || "").toUpperCase());
     const boilerStatusDisplay = (() => {
       const upper = String(boilerStatus || "").toUpperCase();
-      if (upper.includes("FAILED")) return "Mislukt";
-      if (upper.startsWith("REFUSED:") || upper === "REFUSED") return "Start geweigerd";
-      if (upper === "ABORTED" || upper === "ABORT") return "Handmatig gestopt";
-      if (upper.startsWith("ABORTED:") || upper.startsWith("ABORT:")) return "Afgebroken";
-      if (upper.includes("CONFIRM_REQUIRED")) return "Bevestiging nodig";
-      if (upper.startsWith("DONE:") || upper === "DONE" || upper.includes("APPLIED")) return "Klaar";
-      if (boilerTaskWaitingForCm100) return "Wachten op CM100";
+      if (upper.includes("FAILED")) return t("settingsService.boilerFailed");
+      if (upper.startsWith("REFUSED:") || upper === "REFUSED") return t("settingsService.boilerRefused");
+      if (upper === "ABORTED" || upper === "ABORT") return t("settingsService.boilerAborted");
+      if (upper.startsWith("ABORTED:") || upper.startsWith("ABORT:")) return t("settingsService.boilerAbortedShort");
+      if (upper.includes("CONFIRM_REQUIRED")) return t("settingsService.boilerConfirm");
+      if (upper.startsWith("DONE:") || upper === "DONE" || upper.includes("APPLIED")) return t("settingsService.boilerDone");
+      if (boilerTaskWaitingForCm100) return t("settingsService.waitCm100");
       if (boilerTaskRunning) return boilerProgress.phase;
-      if (boilerResultReady) return "Klaar om toe te passen";
-      return cm100Ready ? "Klaar om te starten" : "Wachten op CM100";
+      if (boilerResultReady) return t("settingsService.readyToApply");
+      return cm100Ready ? t("settingsService.readyToStart") : t("settingsService.waitCm100");
     })();
     const autotuneStatusDisplay = cm100Ready
       ? (autotuneTaskWaitingForCm100
-        ? "Wachten op CM100"
+        ? t("settingsService.waitCm100")
         : (autotuneTaskRunning
           ? autotuneProgress.phase
-          : (autotuneResultReady ? "Klaar om toe te passen" : "Klaar om te starten")))
-      : "Wachten op CM100";
+          : (autotuneResultReady ? t("settingsService.readyToApply") : t("settingsService.readyToStart"))))
+      : t("settingsService.waitCm100");
     const airPurgeStatusDisplay = cm100Ready
       ? (airPurgeTaskRunning
         ? airPurgeProgress.phase
-        : (airPurgeResultReady ? "Klaar" : "Klaar om te starten"))
-      : "Wachten op CM100";
+        : (airPurgeResultReady ? t("settingsService.boilerDone") : t("settingsService.readyToStart")))
+      : t("settingsService.waitCm100");
     const manualFlowStatusDisplay = cm100Ready
-      ? (manualFlowTaskRunning ? "Actief" : "Klaar om te starten")
-      : "Wachten op CM100";
+      ? (manualFlowTaskRunning ? t("settingsService.flowActive") : t("settingsService.readyToStart"))
+      : t("settingsService.waitCm100");
     const manualHpStatusDisplay = cm100Ready
-      ? (manualHpTaskRunning ? (manualHpStopping ? "Bezig met stoppen" : (manualHpSafetyStopped ? "Veiligheidsstop" : "Actief")) : "Klaar om te starten")
-      : "Wachten op CM100";
+      ? (manualHpTaskRunning ? (manualHpStopping ? t("settingsService.stopping") : (manualHpSafetyStopped ? t("settingsService.safetyStop") : t("settingsService.flowActive"))) : t("settingsService.readyToStart"))
+      : t("settingsService.waitCm100");
     const hpWaterCalibrationStatusDisplay = cm100Ready
       ? (hpWaterCalibrationTaskRunning
         ? hpWaterCalibrationProgress.phase
-        : (hpWaterCalibrationApplied ? "Offsets toegepast" : (hpWaterCalibrationResultReady ? "Klaar om toe te passen" : "Klaar om te starten")))
-      : "Wachten op CM100";
+        : (hpWaterCalibrationApplied ? t("settingsService.offsetsApplied") : (hpWaterCalibrationResultReady ? t("settingsService.readyToApply") : t("settingsService.readyToStart"))))
+      : t("settingsService.waitCm100");
     const serviceTaskStates = [
       ["boiler", boilerTaskRunning, boilerTaskLocked],
       ["autotune", autotuneTaskRunning, autotuneTaskLocked],
@@ -687,29 +688,29 @@ import { renderModalShell } from "../core/modal-shell.js";
       state.commissioningTaskLock = "";
     }
 
-    const cm100StatusDisplay = cm100WaitingForCm100 ? "Wachten op CM100" : cm100Status;
+    const cm100StatusDisplay = cm100WaitingForCm100 ? t("settingsService.waitCm100") : cm100Status;
     const serviceStatusCopy = cm100WaitingForCm100
-      ? "Service-stand wordt geopend. Wacht tot CM100 klaar staat."
-      : (cm100Ready ? "CM100 is actief en klaar voor service-taken." : "Start de service-stand voordat je een taak uitvoert.");
+      ? t("settingsService.cm100WaitingCopy")
+      : (cm100Ready ? t("settingsService.cm100ReadyCopy") : t("settingsService.cm100StartCopy"));
 
     const tasks = [
       {
         key: "hp-water-calibration",
-        title: "Temperatuursensoren kalibreren",
-        label: "Sensor kalibratie",
-        summary: "Laat de waterpomp draaien zonder compressor en bepaal offsets voor HP1/HP2 water in/out en de actieve aanvoerbron.",
+        title: t("settingsService.calTitle"),
+        label: t("settingsService.calLabel"),
+        summary: t("settingsService.calSummary"),
         status: hpWaterCalibrationStatusDisplay,
         available: Boolean(hpWaterCalibrationControls || state.entities.hpWaterCalibrationStatus),
         openDisabled: !cm100Ready,
         renderCard: () => renderCommissioningTaskCard({
           taskKey: "hp-water-calibration",
-          title: "Temperatuursensoren kalibreren",
-          copy: "Reken op ongeveer 3 tot 5 minuten. Eerst mengt het water 3 minuten; daarna stopt de meting zodra de sensoren stabiel genoeg zijn.",
-          subcopy: "De voorgestelde waarden worden pas actief wanneer je ze toepast. De aanvoer-offset wordt per bron opgeslagen en bij een latere bronwissel automatisch teruggezet; een CIC-URL-wijziging verwijdert hem niet.",
+          title: t("settingsService.calTitle"),
+          copy: t("settingsService.calCopy"),
+          subcopy: t("settingsService.calSubcopy"),
           status: hpWaterCalibrationStatusDisplay,
           statusCopy: hpWaterCalibrationTaskRunning
-            ? "De pomp draait en de firmware wacht op een stabiel temperatuurbeeld."
-            : (hpWaterCalibrationResultReady ? "Controleer de voorgestelde offsets voordat je ze toepast." : (cm100Ready ? "CM100 staat klaar. Start de meting wanneer compressor en boiler uit zijn." : "Start CM100 eerst.")),
+            ? t("settingsService.calRunning")
+            : (hpWaterCalibrationResultReady ? t("settingsService.calCheck") : (cm100Ready ? t("settingsService.calReady") : t("settingsService.calStartCm100"))),
           progressTask: "hp-water-calibration",
           controls: renderHpWaterCalibrationWizard({
             status: hpWaterCalibrationStatus,
@@ -726,76 +727,76 @@ import { renderModalShell } from "../core/modal-shell.js";
       },
       {
         key: "manual-flow",
-        title: "Handmatige flowregeling",
-        label: "Handmatige flow",
-        summary: "Laat de waterpomp draaien op een tijdelijk flow-setpoint en luister naar het leidingwerk.",
+        title: t("settingsService.flowTitle"),
+        label: t("settingsService.flowLabel"),
+        summary: t("settingsService.flowSummary"),
         status: manualFlowStatusDisplay,
         available: Boolean(manualFlowControls || state.entities.manualFlowStatus),
         openDisabled: !cm100Ready,
         renderCard: () => renderCommissioningTaskCard({
           taskKey: "manual-flow",
-          title: "Handmatige flowregeling",
-          copy: "Gebruik een tijdelijk flow-setpoint om het leidingwerk rustig te controleren. De normale instellingen wijzigen pas wanneer je een waarde bewust overneemt.",
-          subcopy: "De bestaande PI-regeling blijft de pomp aansturen.",
+          title: t("settingsService.flowTitle"),
+          copy: t("settingsService.flowCopy"),
+          subcopy: t("settingsService.flowSubcopy"),
           status: manualFlowStatusDisplay,
           statusCopy: manualFlowTaskRunning
-            ? "De waterpomp draait. Pas het tijdelijke setpoint aan en controleer de gemeten flow."
-            : (cm100Ready ? "CM100 staat klaar. Kies een tijdelijk setpoint en start de waterpomp." : "Start CM100 eerst."),
+            ? t("settingsService.flowRunning")
+            : (cm100Ready ? t("settingsService.flowReady") : t("settingsService.calStartCm100")),
           progressTask: "",
           controls: `
             <div class="oq-settings-manual-flow-control">
-              ${renderSettingsSliderField("manualFlowSetpoint", "Tijdelijke gewenste flow", "Pas deze waarde aan terwijl de waterpomp draait.", "oq-settings-field--compact")}
+              ${renderSettingsSliderField("manualFlowSetpoint", t("settingsService.flowTempTitle"), t("settingsService.flowTempCopy"), "oq-settings-field--compact")}
               ${state.entities.manualFlowStart || state.entities.manualFlowAbort ? renderNamedToggleActionButton({
                 active: manualFlowTaskRunning,
                 startKey: "manualFlowStart",
                 stopKey: "manualFlowAbort",
-                startLabel: "Waterpomp starten",
-                stopLabel: "Waterpomp stoppen",
+                startLabel: t("settingsService.pumpStart"),
+                stopLabel: t("settingsService.pumpStop"),
                 startDisabled: manualFlowBusy || manualFlowStartDisabled,
                 stopDisabled: manualFlowBusy || manualFlowAbortDisabled,
               }) : ""}
             </div>
           `,
           metrics: `
-            <p class="oq-settings-manual-flow-results-title">Resultaten</p>
-            ${renderSettingsStaticField("flowSelected", "Gemeten flow", "Actuele doorstroming in het watercircuit.", getSettingsStatValue("flowSelected"), "oq-settings-field--compact")}
-            ${renderSettingsStaticField("manualFlowTargetIpwm", "Actuele pompstand", "Door de PI-regeling aangevraagde pompstand.", getSettingsStatValue("manualFlowTargetIpwm"), "oq-settings-field--compact")}
+            <p class="oq-settings-manual-flow-results-title">${escapeHtml(t("settingsService.resultsTitle"))}</p>
+            ${renderSettingsStaticField("flowSelected", t("settingsService.measuredFlow"), t("settingsService.measuredFlowCopy"), getSettingsStatValue("flowSelected"), "oq-settings-field--compact")}
+            ${renderSettingsStaticField("manualFlowTargetIpwm", t("settingsService.pumpLevel"), t("settingsService.pumpLevelCopy"), getSettingsStatValue("manualFlowTargetIpwm"), "oq-settings-field--compact")}
           `,
         }),
         renderModalActions: () => `
-          ${state.entities.manualFlowApplyHeating ? renderNamedActionButton("manualFlowApplyHeating", "Overnemen voor verwarmen", "oq-helper-button oq-helper-button--ghost", manualFlowBusy) : ""}
-          ${state.entities.manualFlowApplyCooling ? renderNamedActionButton("manualFlowApplyCooling", "Overnemen voor koelen", "oq-helper-button oq-helper-button--ghost", manualFlowBusy) : ""}
+          ${state.entities.manualFlowApplyHeating ? renderNamedActionButton("manualFlowApplyHeating", t("settingsService.applyHeat"), "oq-helper-button oq-helper-button--ghost", manualFlowBusy) : ""}
+          ${state.entities.manualFlowApplyCooling ? renderNamedActionButton("manualFlowApplyCooling", t("settingsService.applyCool"), "oq-helper-button oq-helper-button--ghost", manualFlowBusy) : ""}
         `,
       },
       {
         key: "manual-hp",
-        title: "Handmatige warmtepompbediening",
-        label: "Handmatige warmtepomp",
-        summary: "Selecteer een werkmodus en vraag per warmtepomp een compressorstand aan binnen de bestaande bewaking.",
+        title: t("settingsService.hpTitle"),
+        label: t("settingsService.hpLabel"),
+        summary: t("settingsService.hpSummary"),
         status: manualHpStatusDisplay,
         available: Boolean(manualHpControls || state.entities.manualHpStatus),
         openDisabled: !cm100Ready,
         renderCard: () => renderCommissioningTaskCard({
           taskKey: "manual-hp",
-          title: "Handmatige warmtepompbediening",
-          copy: "Start eerst de service-taak zodat de waterpomp draait. Zodra voldoende flow is gemeten kun je per warmtepomp vanuit Standby naar verwarmen of koelen schakelen en daarna een compressorstand aanvragen.",
-          subcopy: "Low-flow, maximale watertemperatuur, minimum draaitijd, minimum uit-tijd en veilige modusovergangen blijven actief. De koelvloer, silent-modus, dag/nacht-cap en normaal uitgesloten frequentiebereiken worden voor deze handmatige test bewust genegeerd.",
+          title: t("settingsService.hpTitle"),
+          copy: t("settingsService.hpCopy"),
+          subcopy: t("settingsService.hpSubcopy"),
           status: manualHpStatusDisplay,
           statusCopy: manualHpTaskRunning
             ? (manualHpStopping
-              ? "De compressorvraag staat op 0. De waterpomp blijft draaien totdat de minimale draaitijd veilig is afgerond."
+              ? t("settingsService.hpStopping")
               : manualHpSafetyStopped
-              ? "De bewaking heeft de aangevraagde standen teruggezet naar 0. Controleer de oorzaak voordat je opnieuw opschaalt."
-              : "De service-taak is actief. Een veiligheidsstop zet de aangevraagde standen terug naar 0; opnieuw opschalen vereist een bewuste handeling.")
-            : (cm100Ready ? "CM100 staat klaar. Start de taak om handmatige warmtepompbediening vrij te geven." : "Start CM100 eerst."),
+              ? t("settingsService.hpSafety")
+              : t("settingsService.hpActive"))
+            : (cm100Ready ? t("settingsService.hpReady") : t("settingsService.calStartCm100")),
           progressTask: "",
           actions: `
             ${state.entities.manualHpStart || state.entities.manualHpAbort ? renderNamedToggleActionButton({
               active: manualHpTaskRunning,
               startKey: "manualHpStart",
               stopKey: "manualHpAbort",
-              startLabel: "Bediening starten",
-              stopLabel: "Bediening stoppen",
+              startLabel: t("settingsService.hpStart"),
+              stopLabel: t("settingsService.hpStop"),
               startDisabled: manualHpBusy || manualHpStartDisabled,
               stopDisabled: manualHpBusy || manualHpAbortDisabled,
             }) : ""}
@@ -803,129 +804,129 @@ import { renderModalShell } from "../core/modal-shell.js";
           controls: `
             <div class="oq-settings-manual-hp-controls">
               <div class="oq-settings-manual-hp-unit">
-                ${renderSettingsSelectField("manualHp1Mode", "Warmtepomp 1 werkmodus", "Start in Standby. Verwarmen of koelen kan pas worden gekozen zodra voldoende flow is gemeten.", "oq-settings-field--compact")}
-                ${renderSettingsSliderField("manualHp1Level", "Warmtepomp 1 compressorstand", `F0-F${hp1ManualMaxLevel}. F11-F20 vereisen V2-selectie plus bevestigd uitgebreid profiel.`, "oq-settings-field--compact", { maxValue: hp1ManualMaxLevel })}
+                ${renderSettingsSelectField("manualHp1Mode", t("settingsService.hp1Mode"), t("settingsService.hpModeCopy"), "oq-settings-field--compact")}
+                ${renderSettingsSliderField("manualHp1Level", t("settingsService.hp1Level"), t("settingsService.hpLevelCopy", { max: formatNumber(hp1ManualMaxLevel, { maximumFractionDigits: 0 }) }), "oq-settings-field--compact", { maxValue: hp1ManualMaxLevel })}
               </div>
               ${hasEntity("manualHp2Mode") ? `
                 <div class="oq-settings-manual-hp-unit">
-                  ${renderSettingsSelectField("manualHp2Mode", "Warmtepomp 2 werkmodus", "Start in Standby. Verwarmen of koelen kan pas worden gekozen zodra voldoende flow is gemeten.", "oq-settings-field--compact")}
-                  ${renderSettingsSliderField("manualHp2Level", "Warmtepomp 2 compressorstand", `F0-F${hp2ManualMaxLevel}. F11-F20 vereisen V2-selectie plus bevestigd uitgebreid profiel.`, "oq-settings-field--compact", { maxValue: hp2ManualMaxLevel })}
+                  ${renderSettingsSelectField("manualHp2Mode", t("settingsService.hp2Mode"), t("settingsService.hpModeCopy"), "oq-settings-field--compact")}
+                  ${renderSettingsSliderField("manualHp2Level", t("settingsService.hp2Level"), t("settingsService.hpLevelCopy", { max: formatNumber(hp2ManualMaxLevel, { maximumFractionDigits: 0 }) }), "oq-settings-field--compact", { maxValue: hp2ManualMaxLevel })}
                 </div>
               ` : ""}
             </div>
           `,
           metrics: `
-            <p class="oq-settings-manual-flow-results-title">Resultaten</p>
+            <p class="oq-settings-manual-flow-results-title">${escapeHtml(t("settingsService.resultsTitle"))}</p>
             <div class="oq-settings-manual-hp-results">
-              ${renderSettingsStaticField("flowSelected", "Gemeten flow", "Actuele doorstroming in het watercircuit.", getSettingsStatValue("flowSelected"), "oq-settings-field--compact")}
-              ${renderSettingsStaticField("hp1Compressor", "Warmtepomp 1 actueel", "Door de actuator werkelijk toegepaste compressorstand en gemeten compressorfrequentie.", getManualHpActualValue("hp1Compressor", "hp1Freq"), "oq-settings-field--compact")}
-              ${hasEntity("hp2Compressor") ? renderSettingsStaticField("hp2Compressor", "Warmtepomp 2 actueel", "Door de actuator werkelijk toegepaste compressorstand en gemeten compressorfrequentie.", getManualHpActualValue("hp2Compressor", "hp2Freq"), "oq-settings-field--compact") : ""}
+              ${renderSettingsStaticField("flowSelected", t("settingsService.measuredFlow"), t("settingsService.measuredFlowCopy"), getSettingsStatValue("flowSelected"), "oq-settings-field--compact")}
+              ${renderSettingsStaticField("hp1Compressor", t("settingsService.hp1Actual"), t("settingsService.hpActualCopy"), getManualHpActualValue("hp1Compressor", "hp1Freq"), "oq-settings-field--compact")}
+              ${hasEntity("hp2Compressor") ? renderSettingsStaticField("hp2Compressor", t("settingsService.hp2Actual"), t("settingsService.hpActualCopy"), getManualHpActualValue("hp2Compressor", "hp2Freq"), "oq-settings-field--compact") : ""}
             </div>
-            ${renderSettingsStaticField("manualHpGuardStatus", "Bewaking", "Toont waarom een handmatig verzoek tijdelijk niet of nog niet volledig wordt toegepast.", getEntityValue("manualHpGuardStatus") || "Vrijgegeven", "oq-settings-field--compact oq-settings-field--full")}
+            ${renderSettingsStaticField("manualHpGuardStatus", t("settingsService.guardTitle"), t("settingsService.guardCopy"), getEntityValue("manualHpGuardStatus") || t("settingsService.guardReleased"), "oq-settings-field--compact oq-settings-field--full")}
             <div class="oq-settings-manual-hp-statuses">
-              ${renderSettingsStaticField("hp1Failures", "Warmtepomp 1 statusmelding", "Actuele melding die de warmtepomp zelf rapporteert.", formatFailures(getEntityStateText("hp1Failures", "None")), "oq-settings-field--compact")}
-              ${hasEntity("hp2Failures") ? renderSettingsStaticField("hp2Failures", "Warmtepomp 2 statusmelding", "Actuele melding die de warmtepomp zelf rapporteert.", formatFailures(getEntityStateText("hp2Failures", "None")), "oq-settings-field--compact") : ""}
+              ${renderSettingsStaticField("hp1Failures", t("settingsService.hp1Failure"), t("settingsService.hpFailureCopy"), formatFailures(getEntityStateText("hp1Failures", "None")), "oq-settings-field--compact")}
+              ${hasEntity("hp2Failures") ? renderSettingsStaticField("hp2Failures", t("settingsService.hp2Failure"), t("settingsService.hpFailureCopy"), formatFailures(getEntityStateText("hp2Failures", "None")), "oq-settings-field--compact") : ""}
             </div>
           `,
         }),
       },
       {
         key: "autotune",
-        title: "Flow autotune",
-        label: "Autotune",
-        summary: "Berekent een voorstel voor de flowregeling en kan Kp/Ki daarna toepassen.",
+        title: t("settingsService.autotuneTitle"),
+        label: t("settingsService.autotuneLabel"),
+        summary: t("settingsService.autotuneSummary"),
         status: autotuneStatusDisplay,
         available: true,
         openDisabled: isCommissioningTaskStatusWaitingForCm100(autotuneStatusDisplay),
         renderCard: () => renderCommissioningTaskCard({
           taskKey: "autotune",
-          title: "Flow autotune",
-          copy: "Bereken een voorstel voor de flowregeling en pas dat daarna toe in de installatie-instellingen. Autotune duurt meestal ongeveer 5 tot 10 minuten.",
-          subcopy: "Na toepassen worden de flow-instellingen bijgewerkt.",
+          title: t("settingsService.autotuneTitle"),
+          copy: t("settingsService.autotuneCopy"),
+          subcopy: t("settingsService.autotuneSubcopy"),
           status: autotuneStatusDisplay,
           statusCopy: autotuneTaskWaitingForCm100
-            ? "Wacht totdat CM100 actief is voordat je autotune start."
+            ? t("settingsService.autotuneWait")
             : (autotuneTaskRunning
-              ? "Autotune draait op dit moment."
-              : (cm100Ready ? "CM100 staat klaar. Start de autotune wanneer je wilt." : "Start CM100 eerst en voer daarna autotune uit.")),
+              ? t("settingsService.autotuneRunning")
+              : (cm100Ready ? t("settingsService.autotuneReady") : t("settingsService.autotuneStartFirst"))),
           progressTask: "autotune",
           actions: `
             ${state.entities.flowAutotuneStart || state.entities.flowAutotuneAbort ? renderNamedToggleActionButton({
               active: autotuneTaskRunning,
               startKey: "flowAutotuneStart",
               stopKey: "flowAutotuneAbort",
-              startLabel: "Autotune starten",
-              stopLabel: "Autotune stoppen",
+              startLabel: t("settingsService.autotuneStart"),
+              stopLabel: t("settingsService.autotuneStop"),
               startDisabled: autotuneBusy || autotuneStartDisabled,
               stopDisabled: autotuneBusy || autotuneAbortDisabled,
             }) : ""}
-            ${state.entities.flowAutotuneApply ? renderNamedActionButton("flowAutotuneApply", "Toepassen", "oq-helper-button oq-helper-button--ghost", autotuneBusy || autotuneApplyDisabled) : ""}
+            ${state.entities.flowAutotuneApply ? renderNamedActionButton("flowAutotuneApply", t("settingsService.applyBtn"), "oq-helper-button oq-helper-button--ghost", autotuneBusy || autotuneApplyDisabled) : ""}
           `,
           metrics: `
-            ${renderSettingsStaticField("flowKpSuggested", "Voorgestelde Kp", "Kp bepaalt hoe sterk de regeling meteen corrigeert.", flowKpSuggested, "oq-settings-field--compact")}
-            ${renderSettingsStaticField("flowKiSuggested", "Voorgestelde Ki", "Ki corrigeert kleine afwijkingen langzaam weg.", flowKiSuggested, "oq-settings-field--compact")}
+            ${renderSettingsStaticField("flowKpSuggested", t("settingsService.kpSuggested"), t("settingsService.kpCopy"), flowKpSuggested, "oq-settings-field--compact")}
+            ${renderSettingsStaticField("flowKiSuggested", t("settingsService.kiSuggested"), t("settingsService.kiCopy"), flowKiSuggested, "oq-settings-field--compact")}
           `,
         }),
       },
       {
         key: "boiler",
-        title: "Boiler power test",
-        label: "Boiler test",
-        summary: "Meet het vermogen dat de cv-ketel afgeeft.",
+        title: t("settingsService.boilerTitle"),
+        label: t("settingsService.boilerLabel"),
+        summary: t("settingsService.boilerSummary"),
         status: boilerStatusDisplay,
         available: hasBoilerAssist,
         openDisabled: isCommissioningTaskStatusWaitingForCm100(boilerStatusDisplay),
         renderCard: () => renderCommissioningTaskCard({
           taskKey: "boiler",
-          title: "Boiler power test",
-          copy: "De test stabiliseert eerst de flow en meet daarna het afgegeven ketelvermogen. Duur: meestal 5 tot 15 minuten.",
-          subcopy: `Ingesteld ketelvermogen: ${escapeHtml(boilerRatedPower)}`,
+          title: t("settingsService.boilerTitle"),
+          copy: t("settingsService.boilerCopy"),
+          subcopy: t("settingsService.boilerRated", { value: boilerRatedPower }),
           status: boilerStatusDisplay,
           statusCopy: boilerTaskWaitingForCm100
-            ? "Wacht totdat CM100 actief is voordat je de boiler-test start."
+            ? t("settingsService.boilerWait")
             : (isCommissioningTaskStatusTerminal(boilerStatus) || boilerTaskRunning
               ? getBoilerTestStatusCopy(
                   boilerStatus,
                   getEntityNumericValue("flowSelected"),
                   getEntityNumericValue("flowSetpoint") || 800,
                 )
-              : (cm100Ready ? "CM100 staat klaar. Start de boiler-test wanneer je wilt." : "Start CM100 eerst en voer daarna de boilervermogentest uit.")),
+              : (cm100Ready ? t("settingsService.boilerReady") : t("settingsService.boilerStartFirst"))),
           progressTask: "boiler",
           actions: `
             ${state.entities.boilerPowerTestStart || state.entities.boilerPowerTestAbort ? renderNamedToggleActionButton({
               active: boilerTaskRunning,
               startKey: "boilerPowerTestStart",
               stopKey: "boilerPowerTestAbort",
-              startLabel: "Boiler test starten",
-              stopLabel: "Boiler test stoppen",
+              startLabel: t("settingsService.boilerStart"),
+              stopLabel: t("settingsService.boilerStop"),
               startDisabled: boilerBusy || boilerStartDisabled,
               stopDisabled: boilerBusy || boilerAbortDisabled,
             }) : ""}
-            ${state.entities.boilerPowerTestApply ? renderNamedActionButton("boilerPowerTestApply", boilerConfirmationRequired ? "Bevestig toepassen" : "Toepassen", "oq-helper-button oq-helper-button--ghost", boilerBusy || boilerApplyDisabled) : ""}
+            ${state.entities.boilerPowerTestApply ? renderNamedActionButton("boilerPowerTestApply", boilerConfirmationRequired ? t("settingsService.boilerConfirmApply") : t("settingsService.applyBtn"), "oq-helper-button oq-helper-button--ghost", boilerBusy || boilerApplyDisabled) : ""}
           `,
           metrics: `
-            ${renderSettingsStaticField("boilerHeatPower", "Actueel vermogen", "Live meting tijdens de boiler-test.", boilerHeatPower)}
-            ${renderSettingsStaticField("boilerPowerTestResult", "Gemeten testresultaat", "Afgerond resultaat van de laatste boiler-test.", getSettingsStatValue("boilerPowerTestResult"))}
+            ${renderSettingsStaticField("boilerHeatPower", t("settingsService.boilerPower"), t("settingsService.boilerPowerCopy"), boilerHeatPower)}
+            ${renderSettingsStaticField("boilerPowerTestResult", t("settingsService.boilerResult"), t("settingsService.boilerResultCopy"), getSettingsStatValue("boilerPowerTestResult"))}
           `,
         }),
       },
       {
         key: "purge",
-        title: "Ontluchten",
-        label: "Ontluchten",
-        summary: "Draait een vaste ontluchtingsrun van 5 minuten met rustige flow, pomp-pulsen en stabilisatie.",
+        title: t("settingsService.purgeTitle"),
+        label: t("settingsService.purgeTitle"),
+        summary: t("settingsService.purgeSummary"),
         status: airPurgeStatusDisplay,
         available: airPurgeAvailable,
         openDisabled: isCommissioningTaskStatusWaitingForCm100(airPurgeStatusDisplay),
         renderCard: () => renderCommissioningTaskCard({
           taskKey: "purge",
-          title: "Ontluchten",
-          copy: "Draait 5 minuten met rustige doorstroming, korte pomp-pulsen en een stabilisatiefase.",
-          subcopy: "Na afloop kan OpenQuatt de service mode (CM100) afsluiten of actief laten.",
+          title: t("settingsService.purgeTitle"),
+          copy: t("settingsService.purgeCopy"),
+          subcopy: t("settingsService.purgeSubcopy"),
           status: airPurgeStatusDisplay,
           statusCopy: airPurgeTaskRunning
-            ? "Ontluchten loopt vast 5 minuten door en stopt daarna automatisch."
-            : (cm100Ready ? "CM100 staat klaar. Start ontluchten wanneer het circuit open staat." : "Start CM100 eerst en voer daarna ontluchten uit."),
+            ? t("settingsService.purgeRunning")
+            : (cm100Ready ? t("settingsService.purgeReady") : t("settingsService.purgeStartFirst")),
           progressTask: "purge",
           className: "oq-settings-commissioning-card--air-purge",
           actions: `
@@ -933,21 +934,21 @@ import { renderModalShell } from "../core/modal-shell.js";
               active: airPurgeTaskRunning,
               startKey: "airPurgeStart",
               stopKey: "airPurgeAbort",
-              startLabel: "Ontluchten starten",
-              stopLabel: "Ontluchten stoppen",
+              startLabel: t("settingsService.purgeStart"),
+              stopLabel: t("settingsService.purgeStop"),
               startDisabled: airPurgeBusy || airPurgeStartDisabled,
               stopDisabled: airPurgeBusy || airPurgeAbortDisabled,
             }) : ""}
           `,
           metrics: `
-            ${renderSettingsStaticField("airPurgeRemaining", "Resterende tijd", "Ontluchten loopt maximaal 5 minuten.", airPurgeRemaining, "oq-settings-field--compact")}
-            ${renderSettingsStaticField("airPurgePhase", "Fase", "Laat zien welk deel van het ontluchten nu actief is.", airPurgePhase, "oq-settings-field--compact")}
-            ${renderSettingsStaticField("flowSelected", "Actuele flow", "Gemeten flow tijdens het ontluchten.", getSettingsStatValue("flowSelected"), "oq-settings-field--compact")}
+            ${renderSettingsStaticField("airPurgeRemaining", t("settingsService.purgeRemaining"), t("settingsService.purgeRemainingCopy"), airPurgeRemaining, "oq-settings-field--compact")}
+            ${renderSettingsStaticField("airPurgePhase", t("settingsService.purgePhase"), t("settingsService.purgePhaseCopy"), airPurgePhase, "oq-settings-field--compact")}
+            ${renderSettingsStaticField("flowSelected", t("settingsService.purgeFlow"), t("settingsService.purgeFlowCopy"), getSettingsStatValue("flowSelected"), "oq-settings-field--compact")}
             ${renderSettingsCheckboxSwitchField(
               "airPurgeReturnToAuto",
-              "Na afloop",
+              t("settingsService.purgeAfter"),
               "",
-              "Service mode (CM100) afsluiten",
+              t("settingsService.purgeCloseCm100"),
               "oq-settings-field--span-2 oq-settings-field--compact"
             )}
           `,
@@ -979,19 +980,19 @@ import { renderModalShell } from "../core/modal-shell.js";
           data-service-task="${escapeHtml(task.key)}"
           ${task.openDisabled ? "disabled" : ""}
         >
-          ${task.openDisabled ? "Wachten op CM100" : "Openen"}
+          ${task.openDisabled ? escapeHtml(t("settingsService.taskWaitCm100")) : escapeHtml(t("settingsService.taskOpen"))}
         </button>`,
     });
   }
 
   export function getControlModeOverrideLabel(value) {
     const labels = {
-      Auto: "Automatische regeling",
-      "Force CM0": "CM0 · stand-by",
-      "Force CM1": "CM1 · alleen circulatie",
-      "Force CM98": "CM98 · vorstcirculatie",
+      Auto: t("settingsService.overrideAuto"),
+      "Force CM0": t("settingsService.overrideCm0"),
+      "Force CM1": t("settingsService.overrideCm1"),
+      "Force CM98": t("settingsService.overrideCm98"),
     };
-    return labels[String(value || "")] || String(value || "Onbekend");
+    return labels[String(value || "")] || String(value || t("common.unknown"));
   }
 
   export function renderSettingsControlModeOverridePanel() {
@@ -1009,16 +1010,16 @@ import { renderModalShell } from "../core/modal-shell.js";
     return `
       <div class="oq-settings-service-override${active ? " is-active" : ""}">
         <div class="oq-settings-service-override-copy">
-          <p class="oq-helper-label">${active ? "Testmodus actief" : "Tijdelijke testmodus"}</p>
-          <h4>${escapeHtml(active ? getControlModeOverrideLabel(currentValue) : "Regelmodus tijdelijk forceren")}</h4>
+          <p class="oq-helper-label">${escapeHtml(active ? t("header.testModeActive") : t("settingsService.overrideIdleKicker"))}</p>
+          <h4>${escapeHtml(active ? getControlModeOverrideLabel(currentValue) : t("settingsService.overrideForceTitle"))}</h4>
           <p>${escapeHtml(active
-            ? "De normale moduskeuze is overruled. De controller keert uiterlijk 30 minuten na activering automatisch terug naar de normale regeling."
-            : "Alleen voor een gerichte test. Een geforceerde modus omzeilt tijdelijk de normale moduskeuze en verloopt automatisch na maximaal 30 minuten.")}</p>
+            ? t("settingsService.overrideActiveCopy")
+            : t("settingsService.overrideIdleCopy"))}</p>
         </div>
         <div class="oq-settings-service-override-actions">
           ${options.map((option) => {
             if (option === "Auto") {
-              return active ? `<button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="clear-control-mode-override" ${busy ? "disabled" : ""}>Terug naar automatisch</button>` : "";
+              return active ? `<button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="clear-control-mode-override" ${busy ? "disabled" : ""}>${escapeHtml(t("header.backToAuto"))}</button>` : "";
             }
             if (option === currentValue) {
               return "";
@@ -1041,13 +1042,13 @@ import { renderModalShell } from "../core/modal-shell.js";
     const hasRuntimeDifference = Number.isFinite(hp1Hours) && Number.isFinite(hp2Hours);
     const runtimeDifference = hasRuntimeDifference ? Math.abs(hp1Hours - hp2Hours) : Number.NaN;
     const runtimeDifferenceLabel = hasRuntimeDifference
-      ? `${Number.isInteger(runtimeDifference) ? runtimeDifference.toFixed(0) : runtimeDifference.toFixed(1).replace(".", ",")} h verschil`
-      : "Verschil onbekend";
+      ? t("settingsService.runtimeDiff", { value: formatNumber(runtimeDifference, { maximumFractionDigits: 1 }) })
+      : t("settingsService.runtimeDiffUnknown");
     const runtimeDifferenceDetail = hasRuntimeDifference
       ? hp1Hours === hp2Hours
-        ? "Beide warmtepompen hebben evenveel gedraaid."
-        : `${hp1Hours > hp2Hours ? "HP1" : "HP2"} heeft meer gedraaid.`
-      : "De runtimebalans wordt geladen.";
+        ? t("settingsService.runtimeEven")
+        : t("settingsService.runtimeLeader", { hp: hp1Hours > hp2Hours ? "HP1" : "HP2" })
+      : t("settingsService.runtimeLoading");
     const runtimeDifferenceClass = !hasRuntimeDifference || hp1Hours === hp2Hours
       ? "is-even"
       : hp1Hours > hp2Hours ? "is-hp1-higher" : "is-hp2-higher";
@@ -1057,16 +1058,16 @@ import { renderModalShell } from "../core/modal-shell.js";
     const runtimeLeadValue = hasEntity("runtimeLeadHp") ? getSettingsTextStatValue("runtimeLeadHp", "") : "";
     const runtimeLead = ["HP1", "HP2"].includes(runtimeLeadValue) ? runtimeLeadValue : "";
     const runtimeLeadMarkup = runtimeLead
-      ? `<span class="oq-settings-runtime-lead"><span aria-hidden="true"></span>${escapeHtml(`${runtimeLead} leidend`)}</span>`
+      ? `<span class="oq-settings-runtime-lead"><span aria-hidden="true"></span>${escapeHtml(t("settingsService.runtimeLead", { hp: runtimeLead }))}</span>`
       : "";
     const runtimeResetMarkup = runtimeResetKey
-      ? `<button class="oq-settings-runtime-reset" type="button" data-oq-action="open-runtime-reset-confirm" aria-label="Draaiurentellers resetten" ${state.busyAction === runtimeResetKey ? "disabled" : ""}>${state.busyAction === runtimeResetKey ? "Resetten…" : "Balans resetten"}</button>`
+      ? `<button class="oq-settings-runtime-reset" type="button" data-oq-action="open-runtime-reset-confirm" aria-label="${escapeHtml(t("settingsService.runtimeResetAria"))}" ${state.busyAction === runtimeResetKey ? "disabled" : ""}>${state.busyAction === runtimeResetKey ? escapeHtml(t("settingsService.runtimeResetBusy")) : escapeHtml(t("settingsService.runtimeReset"))}</button>`
       : "";
     const runtimeMarkup = hasHp1Runtime || hasHp2Runtime
       ? `
         <div class="oq-settings-runtime-balance${hasHp2Runtime ? "" : " is-single"}">
           <div class="oq-settings-runtime-balance-head">
-            <p>Runtimebalans</p>
+            <p>${escapeHtml(t("settingsService.runtimeBalance"))}</p>
             <div class="oq-settings-runtime-balance-head-actions">
               ${runtimeLeadMarkup}
               ${runtimeResetMarkup}
@@ -1089,7 +1090,7 @@ import { renderModalShell } from "../core/modal-shell.js";
                 <span>HP2</span>
                 <strong>${escapeHtml(getSettingsStatValue("hp2RuntimeHours"))}</strong>
               </div>
-            ` : `<p class="oq-settings-runtime-single-copy">Opgetelde compressorlooptijd.</p>`}
+            ` : `<p class="oq-settings-runtime-single-copy">${escapeHtml(t("settingsService.runtimeSingle"))}</p>`}
           </div>
         </div>
       `
@@ -1100,9 +1101,9 @@ import { renderModalShell } from "../core/modal-shell.js";
     }
 
     return renderSettingsSection(
-      "Onderhoud",
-      "Draaiuren",
-      "Bekijk de runtimebalans. Begin de interne balans alleen opnieuw na onderhoud.",
+      t("settingsService.counterGroup"),
+      t("settingsService.counterTitle"),
+      t("settingsService.counterCopy"),
       `
         <div class="oq-settings-maintenance-shell" id="oq-settings-maintenance">
           ${runtimeMarkup}
@@ -1117,21 +1118,21 @@ import { renderModalShell } from "../core/modal-shell.js";
     const service = getSettingsServiceModel();
 
     return renderSettingsSection(
-      "Service",
-      "Service & commissioning",
-      "Gebruik de service-stand (controlmode CM100) voor testen, afstelling en onderhoudstaken.",
+      t("settingsService.serviceGroup"),
+      t("settingsService.serviceTitle"),
+      t("settingsService.serviceCopy"),
       `
         <div class="oq-settings-service-shell">
           ${renderSettingsControlModeOverridePanel()}
           <div class="oq-settings-service-toolbar">
             <div class="oq-settings-commissioning-teaser-status">
-              <span class="oq-settings-commissioning-teaser-status-label">Huidige status</span>
+              <span class="oq-settings-commissioning-teaser-status-label">${escapeHtml(t("settings.qsCurrentStatus"))}</span>
               <strong>${escapeHtml(service.cm100Status)}</strong>
               <p>${escapeHtml(service.serviceStatusCopy)}</p>
             </div>
             <div class="oq-settings-commissioning-hero-actions oq-settings-service-toolbar-actions">
-              ${state.entities.commissioningCm100Start ? renderNamedActionButton("commissioningCm100Start", "Service starten", "oq-helper-button oq-helper-button--primary", service.cm100StartDisabled) : ""}
-              ${state.entities.commissioningCm100Stop ? renderNamedActionButton("commissioningCm100Stop", "Service stoppen", "oq-helper-button oq-helper-button--ghost", service.cm100StopDisabled) : ""}
+              ${state.entities.commissioningCm100Start ? renderNamedActionButton("commissioningCm100Start", t("settingsService.serviceStart"), "oq-helper-button oq-helper-button--primary", service.cm100StartDisabled) : ""}
+              ${state.entities.commissioningCm100Stop ? renderNamedActionButton("commissioningCm100Stop", t("settingsService.serviceStop"), "oq-helper-button oq-helper-button--ghost", service.cm100StopDisabled) : ""}
             </div>
           </div>
 
@@ -1147,10 +1148,10 @@ import { renderModalShell } from "../core/modal-shell.js";
   export function renderSettingsOduEepromDumpRow() {
     return renderSettingsSystemRow({
       className: "oq-settings-service-row oq-settings-odu-eeprom-row",
-      label: "ODU EEPROM-export",
-      value: "Alleen-lezen diagnose",
-      note: "Lees de volledige EEPROM-shadow uit en download deze als JSON voor hardware- en firmwarevergelijking.",
-      action: '<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="open-odu-eeprom-dump-modal">Openen</button>',
+      label: t("settingsService.eepromLabel"),
+      value: t("settingsService.eepromValue"),
+      note: t("settingsService.eepromNote"),
+      action: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="open-odu-eeprom-dump-modal">${escapeHtml(t("settingsInstallation.openAction"))}</button>`,
     });
   }
 
@@ -1165,14 +1166,14 @@ import { renderModalShell } from "../core/modal-shell.js";
     return renderModalShell({
       id: "system",
       titleId: "oq-service-task-modal-title",
-      kicker: "Service",
+      kicker: t("settingsService.taskModalKicker"),
       title: task.title,
       copy: task.summary,
       className: "oq-helper-modal--wide oq-helper-modal--scrollable oq-helper-modal--service-task",
       sectionAttributes: "data-oq-service-task-scroller",
       closeAction: "close-system-modal",
-      closeLabel: `Sluit ${task.title}`,
+      closeLabel: t("settingsService.taskModalClose", { title: task.title }),
       body: `<div class="oq-settings-service-task-modal-body">${task.renderCard()}</div>`,
-      actions: `${task.renderModalActions?.() || ""}<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal">Sluiten</button>`,
+      actions: `${task.renderModalActions?.() || ""}<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal">${escapeHtml(t("common.close"))}</button>`,
     });
   }

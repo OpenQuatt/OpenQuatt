@@ -1,7 +1,8 @@
 import { describeFrequencyLimit } from "./frequency-limits.js";
 import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon } from "../core/config.js";
-import { getEntityValue, parseLooseNumber } from "../core/entity-store.js";
+import { parseLooseNumber } from "../core/entity-store.js";
+import { getCoolingStartBlockModel } from "../settings/cooling.js";
 import { escapeHtml } from "../core/html.js";
 import { getRenderSignature } from "../core/render-signatures.js";
 import { state } from "../core/state.js";
@@ -10,6 +11,7 @@ import { getControlReplayIncidentDisplaySeverity, getControlReplayIncidentEventC
 import { formatWorkingMode, getHeatPumpPanels } from "../views/heatpump.js";
 import { isCoolingOverviewActive } from "../views/overview.js";
 import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
+import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } from "../i18n/index.js";
 
   function clampControlReplayPercent(value) {
     const numeric = Number(value);
@@ -38,7 +40,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     if (!Number.isFinite(numeric)) {
       return fallback;
     }
-    return `${numeric.toFixed(decimals)}${unit ? ` ${unit}` : ""}`;
+    return `${formatNumber(numeric, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}${unit ? ` ${unit}` : ""}`;
   }
 
   function formatControlReplayRuntimeHours(key, fallback = "—") {
@@ -49,7 +51,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     if (!Number.isFinite(hours)) {
       return fallback;
     }
-    return `${Math.round(hours)} u`;
+    return t("controlReplay.runtimeHours", { value: formatNumber(Math.round(hours), { maximumFractionDigits: 0 }) });
   }
 
   function isControlReplayHpRunning(panel) {
@@ -58,10 +60,10 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     }
     const mode = formatWorkingMode(getEntityStateText(panel.keys.mode, "Unknown"));
     const compressorLevel = getEntityNumericValue(panel.keys.freq);
-    return mode === "Verwarmen"
-      || mode === "Koelen"
+    return mode === t("heatpump.modeHeating")
+      || mode === t("heatpump.modeCooling")
       || isEntityActive(panel.keys.defrost)
-      || (mode === "Onbekend" && Number.isFinite(compressorLevel) && compressorLevel > 0);
+      || (mode === t("overview.statusUnknown") && Number.isFinite(compressorLevel) && compressorLevel > 0);
   }
 
   const CONTROL_WORKING_COOLING_LIMITER_REASONS = Object.freeze({
@@ -126,8 +128,8 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const defrostActive = heatPumpPanels.some((panel) => isEntityActive(panel.keys.defrost));
     const boilerActive = hasEntity("boilerActive") && isEntityActive("boilerActive");
     return {
-      title: "Control mode",
-      copy: "De tab toont dezelfde eventlogica voor elke control mode.",
+      title: t("controlReplay.modeTitle"),
+      copy: t("controlReplay.modeCopy"),
       hpRunningCount,
       hp2Available,
       defrostActive,
@@ -157,9 +159,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
 
   function formatControlReplayStrategyLabel() {
     const code = Math.round(getEntityNumericValue("strategyActiveCode"));
-    if (code === 1) return "Koeling";
-    if (code === 2) return "Stooklijn";
-    if (code === 3) return "Power House";
+    if (code === 1) return t("overview.strategyCooling");
+    if (code === 2) return t("overview.strategyCurve");
+    if (code === 3) return optionLabel("Power House");
     return getEntityStateText("strategy", "—");
   }
 
@@ -169,41 +171,57 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
   }
 
   const CONTROL_WORKING_TABS = Object.freeze([
-    ["status", "Actueel", "shield"],
-    ["timeline", "Tijdlijn", "activity"],
-    ["graphs", "Grafieken", "bar-chart"],
-  ].map(([id, label, icon]) => Object.freeze({ id, label, icon })));
+    ["status", "controlReplay.tabStatus", "shield"],
+    ["timeline", "controlReplay.tabTimeline", "activity"],
+    ["graphs", "controlReplay.tabGraphs", "bar-chart"],
+  ].map(([id, labelKey, icon]) => Object.freeze({ id, labelKey, icon })));
 
   const CONTROL_WORKING_WINDOW_OPTIONS = Object.freeze([
-    ["last1", "Laatste 1 uur", "1 uur", "Laatste 1 uur", "Recente beslismomenten in het afgelopen uur.", "De gekozen tijd verbindt grafiek en uitleg over het laatste uur.", { durationMinutes: 60 }],
-    ["last2", "Laatste 2 uur", "2 uur", "Laatste 2 uur", "Recente beslismomenten in de afgelopen twee uur.", "De gekozen tijd verbindt grafiek en uitleg over de laatste twee uur.", { durationMinutes: 120 }],
-    ["last4", "Laatste 4 uur", "4 uur", "Laatste 4 uur", "Recente momenten en periodes voor een gerichte diagnose.", "De gekozen tijd verbindt grafiek en uitleg over de laatste vier uur.", { durationMinutes: 240, quick: true }],
-    ["last8", "Laatste 8 uur", "8 uur", "Laatste 8 uur", "Een compacte terugblik op de laatste acht uur.", "De gekozen tijd verbindt grafiek en uitleg over de laatste acht uur.", { durationMinutes: 480 }],
-    ["last12", "Laatste 12 uur", "12 uur", "Laatste 12 uur", "Een dagdeel met alle belangrijke beslismomenten.", "De gekozen tijd verbindt grafiek en uitleg over de laatste twaalf uur.", { durationMinutes: 720 }],
-    ["last24", "Afgelopen 24 uur", "24 uur", "Afgelopen 24 uur", "Gebeurtenissen die verklaren hoe het systeem in de huidige situatie kwam.", "De gekozen tijd verbindt grafiek en uitleg over de laatste 24 uur.", { durationMinutes: 1440, quick: true }],
-    ["last48", "Afgelopen 48 uur", "48 uur", "Afgelopen 48 uur", "Twee dagen met belangrijke momenten en perioden.", "De gekozen tijd verbindt grafiek en uitleg over de laatste 48 uur.", { durationMinutes: 2880 }],
-    ["last3d", "Afgelopen 3 dagen", "3 dagen", "Afgelopen 3 dagen", "Een terugblik op patronen over drie dagen.", "De gekozen tijd verbindt grafiek en uitleg over de laatste drie dagen.", { durationMinutes: 4320 }],
-    ["today", "Vandaag", "Vandaag", "Vandaag", "Belangrijke momenten en periodes sinds middernacht.", "De gekozen tijd verbindt grafiek en uitleg voor vandaag.", { calendarDay: "today", quick: true }],
-    ["yesterday", "Gisteren", "Gisteren", "Gisteren", "Terugkijken naar een volledige kalenderdag.", "De gekozen tijd verbindt grafiek en uitleg voor gisteren.", { calendarDay: "yesterday", quick: true }],
-    ["week", "7 dagen", "7 dagen", "Afgelopen 7 dagen", "Patronen zoals defrosts, starts/stops en bescherming over meerdere dagen.", "De gekozen tijd verbindt grafiek en uitleg binnen de weekselectie.", { durationMinutes: 7 * 24 * 60, quick: true }],
-    ["custom", "Eigen periode", "Eigen periode", "Eigen periode", "Een zelfgekozen begin- en eindmoment.", "De gekozen tijd verbindt grafiek en uitleg over de gekozen periode.", { custom: true }],
-  ].map(([id, label, shortLabel, eyebrow, copy, graphCopy, options]) => Object.freeze({
+    ["last1", "controlReplay.windowLast1", "controlReplay.windowShort1", "controlReplay.windowLast1", "controlReplay.windowCopyLast1", "controlReplay.windowGraphLast1", { durationMinutes: 60 }],
+    ["last2", "controlReplay.windowLast2", "controlReplay.windowShort2", "controlReplay.windowLast2", "controlReplay.windowCopyLast2", "controlReplay.windowGraphLast2", { durationMinutes: 120 }],
+    ["last4", "controlReplay.windowLast4", "controlReplay.windowShort4", "controlReplay.windowLast4", "controlReplay.windowCopyLast4", "controlReplay.windowGraphLast4", { durationMinutes: 240, quick: true }],
+    ["last8", "controlReplay.windowLast8", "controlReplay.windowShort8", "controlReplay.windowLast8", "controlReplay.windowCopyLast8", "controlReplay.windowGraphLast8", { durationMinutes: 480 }],
+    ["last12", "controlReplay.windowLast12", "controlReplay.windowShort12", "controlReplay.windowLast12", "controlReplay.windowCopyLast12", "controlReplay.windowGraphLast12", { durationMinutes: 720 }],
+    ["last24", "controlReplay.windowLast24", "controlReplay.windowShort24", "controlReplay.windowLast24", "controlReplay.windowCopyLast24", "controlReplay.windowGraphLast24", { durationMinutes: 1440, quick: true }],
+    ["last48", "controlReplay.windowLast48", "controlReplay.windowShort48", "controlReplay.windowLast48", "controlReplay.windowCopyLast48", "controlReplay.windowGraphLast48", { durationMinutes: 2880 }],
+    ["last3d", "controlReplay.windowLast3d", "controlReplay.windowShort3d", "controlReplay.windowLast3d", "controlReplay.windowCopyLast3d", "controlReplay.windowGraphLast3d", { durationMinutes: 4320 }],
+    ["today", "controlReplay.windowToday", "controlReplay.windowToday", "controlReplay.windowToday", "controlReplay.windowCopyToday", "controlReplay.windowGraphToday", { calendarDay: "today", quick: true }],
+    ["yesterday", "controlReplay.windowYesterday", "controlReplay.windowYesterday", "controlReplay.windowYesterday", "controlReplay.windowCopyYesterday", "controlReplay.windowGraphYesterday", { calendarDay: "yesterday", quick: true }],
+    ["week", "controlReplay.windowWeek", "controlReplay.windowWeek", "controlReplay.windowWeekAgo", "controlReplay.windowCopyWeek", "controlReplay.windowGraphWeek", { durationMinutes: 7 * 24 * 60, quick: true }],
+    ["custom", "controlReplay.windowCustom", "controlReplay.windowCustom", "controlReplay.windowCustom", "controlReplay.windowCopyCustom", "controlReplay.windowGraphCustom", { custom: true }],
+  ].map(([id, labelKey, shortLabelKey, eyebrowKey, copyKey, graphCopyKey, options]) => Object.freeze({
     id,
-    label,
-    shortLabel,
-    eyebrow,
-    title: "Tijdlijn",
-    copy,
-    graphCopy,
+    labelKey,
+    shortLabelKey,
+    eyebrowKey,
+    titleKey: "controlReplay.timelineTitle",
+    copyKey,
+    graphCopyKey,
     ...options,
   })));
 
+  function resolveControlWorkingTab(tab) {
+    return { ...tab, label: t(tab.labelKey) };
+  }
+
+  function resolveControlWorkingWindowOption(option) {
+    return {
+      ...option,
+      label: t(option.labelKey),
+      shortLabel: t(option.shortLabelKey),
+      eyebrow: t(option.eyebrowKey),
+      title: t(option.titleKey),
+      copy: t(option.copyKey),
+      graphCopy: t(option.graphCopyKey),
+    };
+  }
+
   function getControlWorkingTabs() {
-    return CONTROL_WORKING_TABS;
+    return CONTROL_WORKING_TABS.map(resolveControlWorkingTab);
   }
 
   function getControlWorkingWindowOptions() {
-    return CONTROL_WORKING_WINDOW_OPTIONS;
+    return CONTROL_WORKING_WINDOW_OPTIONS.map(resolveControlWorkingWindowOption);
   }
 
   function getControlWorkingQuickWindowOptions() {
@@ -247,7 +265,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
   function renderControlWorkingHourOptions(selectedHour) {
     return Array.from({ length: 24 }, (_value, hour) => {
       const value = String(hour).padStart(2, "0");
-      return `<option value="${value}"${value === selectedHour ? " selected" : ""}>${value} uur</option>`;
+      return `<option value="${value}"${value === selectedHour ? " selected" : ""}>${value} ${escapeHtml(t("controlReplay.hourUnit"))}</option>`;
     }).join("");
   }
 
@@ -310,12 +328,13 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
   }
 
   function formatControlWorkingAxisTime(epochMs, includeDay = false) {
+    const intlLocale = getIntlLocale();
     const date = new Date(epochMs);
-    const time = date.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+    const time = date.toLocaleTimeString(intlLocale, { hour: "2-digit", minute: "2-digit" });
     if (!includeDay) {
       return time;
     }
-    const day = date.toLocaleDateString("nl-NL", { weekday: "short" }).replace(".", "");
+    const day = date.toLocaleDateString(intlLocale, { weekday: "short" }).replace(".", "");
     return `${day} ${time}`;
   }
 
@@ -328,7 +347,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const includeDay = durationMinutes > 24 * 60 || selectedWindow === "custom";
     return [0, 0.25, 0.5, 0.75, 1].map((fraction, index) => {
       if (index === 4 && selectedWindow !== "custom") {
-        return "Nu";
+        return t("controlReplay.relNow");
       }
       return formatControlWorkingAxisTime(bounds.start + ((bounds.end - bounds.start) * fraction), includeDay);
     });
@@ -361,75 +380,90 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
   }
 
   const CONTROL_WORKING_SEVERITY_METAS = Object.freeze({
-    normal: { label: "Normaal", tone: "normal" },
-    limited: { label: "Bescherming actief", tone: "limited" },
-    attention: { label: "Aandacht", tone: "attention" },
-    fault: { label: "Storing", tone: "fault" },
+    normal: { labelKey: "controlReplay.sevNormal", tone: "normal" },
+    limited: { labelKey: "controlReplay.sevLimited", tone: "limited" },
+    attention: { labelKey: "controlReplay.sevAttention", tone: "attention" },
+    fault: { labelKey: "controlReplay.sevFault", tone: "fault" },
   });
 
   function getControlWorkingSeverityMeta(severity = "normal") {
-    return CONTROL_WORKING_SEVERITY_METAS[severity] || CONTROL_WORKING_SEVERITY_METAS.normal;
+    const meta = CONTROL_WORKING_SEVERITY_METAS[severity] || CONTROL_WORKING_SEVERITY_METAS.normal;
+    return { label: t(meta.labelKey), tone: meta.tone };
   }
 
   function createControlWorkingReasonMetas(definitions) {
-    return Object.freeze(Object.fromEntries(definitions.map(([code, label, summary, ...checks]) => [
+    return Object.freeze(Object.fromEntries(definitions.map(([code, labelKey, summaryKey, ...checkKeys]) => [
       code,
-      { label, summary, checks },
+      { labelKey, summaryKey, checkKeys },
     ])));
   }
 
   const CONTROL_WORKING_REASON_METAS = createControlWorkingReasonMetas([
-    ["frequency_cap_below_minimum", "Frequentielimiet te laag", "De ingestelde maximumfrequentie ligt onder de laagste compressorfrequentie. Hierdoor kan de warmtepomp niet starten.", "Controleer de limiet bij Stille uren", "Vergelijk met het minimum van de buitenunit"],
-    ["keep_current", "Huidige keuze blijft logisch", "De huidige stand past bij de vraag in huis. Wisselen zou nu weinig voordeel geven.", "Vraag blijft binnen de band", "Geen betere keuze nodig", "Rustig door laten lopen"],
-    ["hold_active", "Wissel bewust uitgesteld", "Het systeem wacht bewust even, zodat warmtepompen niet onnodig vaak starten en stoppen.", "Vraag is nog niet duidelijk anders", "Minimale looptijd telt mee", "Actieve bron werkt nog goed"],
-    ["defrost_hold", "Ontdooien rustig laten verlopen", "Een warmtepomp ontdooit kort. Dat is normaal wintergedrag en herstelt vanzelf.", "Ontdooien actief of net klaar", "Warmte kan kort lager zijn", "Herstart gebeurt automatisch"],
-    ["better_heat", "Twee pompen passen beter", "De warmtevraag blijft hoog. Twee warmtepompen kunnen die vraag rustiger leveren dan één pomp op hoge belasting.", "Warmtevraag blijft hoog", "Beide warmtepompen beschikbaar", "Samen leveren ze rustiger vermogen"],
-    ["soft_guard", "Veilige marge bewaakt", "Het systeem begrenst zichzelf om veilig binnen de temperatuur- en flowgrenzen te blijven.", "Veiligheidsmarge bewaakt", "Geen storing", "Begrenzing verdwijnt vanzelf"],
-    ["less_power", "Minder vermogen nodig", "De vraag neemt af. Eén warmtepomp kan de resterende vraag weer rustig dragen.", "Vraag neemt af", "Eén warmtepomp is genoeg", "Minder elektrisch vermogen nodig"],
-    ["cooling_request_cleared", "Geen koelvraag meer", "De koelvraag is weggevallen. De warmtepomp mag stoppen en de pomp kan nog kort nalopen.", "Koelvraag weg", "Warmtepomp stopt", "Naloop kan normaal zijn"],
-    ["heating_request_cleared", "Geen warmtevraag meer", "De warmtevraag is weggevallen. De warmtepomp mag stoppen en de pomp kan nog kort nalopen.", "Warmtevraag weg", "Warmtepomp stopt", "Naloop kan normaal zijn"],
-    ["no_candidate", "Nog geen veilige start", "Er is vraag, maar een start is nu nog niet verstandig door wachttijd of bescherming.", "Beschikbaarheid gecontroleerd", "Bescherming of wachttijd actief", "Straks opnieuw beoordelen"],
-    ["candidate_in_rest", "Rusttijd loopt nog", "De warmtepomp is kort geleden gestopt en wacht nog even om korte cycli te voorkomen.", "Vorige stop is recent", "Start wordt uitgesteld", "Bij blijvende vraag opnieuw beoordelen"],
-    ["candidate_in_defrost", "Warmtepomp ontdooit", "Deze warmtepomp kan nu niet starten of wisselen omdat ontdooien eerst rustig moet afronden.", "Ontdooien actief", "Niet onnodig wisselen", "Automatisch opnieuw beoordelen"],
-    ["candidate_unavailable", "Warmtepomp niet beschikbaar", "De warmtepomp is nu geen geschikte kandidaat door beschikbaarheid of technische begrenzing.", "Kandidaat gecontroleerd", "Voorwaarde niet vrij", "Andere keuze blijft mogelijk"],
-    ["defrost_boost", "Ontdooien opgevangen", "Een andere bron kan tijdelijk helpen terwijl een warmtepomp ontdooit.", "Ontdooien verlaagt kort vermogen", "Andere bron beschikbaar", "Comfort blijft beschermd"],
-    ["boiler_assist", "CV ondersteunt tijdelijk", "De CV-ketel helpt alleen wanneer de warmtevraag tijdelijk meer vermogen vraagt dan de warmtepompen rustig kunnen leveren.", "Warmtevraag blijft hoog", "Warmtepompen leveren maximaal rustig vermogen", "CV stopt zodra ondersteuning niet meer nodig is"],
-    ["runtime_lead", "Draaiurenbalans", "De warmtepompen zijn gelijkwaardig. Het systeem kiest de pomp die het beste past bij draaiuren, beschikbaarheid en wachttijd.", "Draaiuren vergeleken", "Warmtepomp beschikbaar", "Wachttijd vrij"],
-    ["oil_return_hold", "Compressor beschermen", "De warmtepomp blijft kort doorlopen om de compressor netjes te beschermen.", "Minimale looptijd actief", "Stop wordt uitgesteld", "Korte cyclus voorkomen"],
-    ["single_topology", "Eén warmtepomp aanwezig", "Er is maar één warmtepomp beschikbaar. Keuzes met twee warmtepompen zijn dan niet van toepassing.", "Opstelling gecontroleerd", "Geen tweede warmtepomp", "Keuze blijft beperkt"],
-    ["demand_decreased", "Warmtevraag nam af", "De vraag zakte terug. Minder vermogen is genoeg om de woning op temperatuur te houden.", "Vraag is lager", "Stopvertraging verlopen", "Andere warmtepomp blijft actief"],
-    ["min_rest_active", "Minimum rusttijd actief", "De warmtepomp wacht nog even om korte starts en onnodige belasting te voorkomen.", "Vorige stop is recent", "Rusttijd loopt", "Start volgt als vraag blijft"],
-    ["start_stop_rate_high", "Veel starts/stops", "De warmtepomp start vaker dan wenselijk. Dat is niet direct een storing, maar wel nuttig om te bekijken.", "Startteller hoog", "Geen acute storing", "Nuttig voor support"],
-    ["sticky_protection", "Pompbescherming", "De pomp draait kort zodat hij na lange stilstand niet vast gaat zitten. Dit is geen verwarmings- of koelvraag.", "Geen comfortvraag", "Dagelijkse bescherming actief", "Alleen korte pomprun"],
-    ["frost_protection", "Vorstbescherming", "Het systeem laat water circuleren om bevriezing van het watercircuit te voorkomen.", "Geen comfortvraag nodig", "Vorstrisico bewaakt", "Water blijft circuleren"],
-    ["flow_preflow", "Voorloop actief", "De pomp bouwt eerst waterflow op voordat de warmtepomp mag starten.", "Waterflow opbouwen", "Warmtepomp nog niet vrij", "Start volgt automatisch"],
-    ["flow_postflow", "Naloop actief", "De pomp blijft kort nadraaien zodat warmte netjes uit het systeem wordt afgevoerd.", "Warmtepomp stopt", "Pomp draait kort door", "Daarna standby"],
-    ["flow_too_low", "Waterflow blijft te laag", "De normale voorlooptijd is verstreken, maar de waterflow is nog niet voldoende voor een veilige start.", "Voorlooptijd verstreken", "Start blijft geblokkeerd", "Flow wordt opnieuw beoordeeld"],
-    ["startup_inhibit", "Wachttijd na herstart", "Na een herstart blijft de compressor kort uit om een te snelle herstart te voorkomen.", "Comfortvraag is aanwezig", "Compressor wacht nog", "Start volgt automatisch"],
-    ["capacity_cap", "Ingesteld koelmaximum", "Er is koelvraag. Het systeem blijft binnen het maximale koelniveau dat in de software is ingesteld.", "Koelvraag actief", "Softwaremaximum actief", "Dauwpunt blijft bewaakt"],
-    ["falling_gap", "Dauwpuntmarge daalt", "De marge tot het dauwpunt wordt kleiner. Het systeem grijpt vroeg in om condens te voorkomen.", "Marge daalt", "Aanvoer blijft veilig", "Koeling blijft voorzichtig actief"],
-    ["projected_floor", "Aanvoer nadert veilige ondergrens", "De aanvoer dreigt te koud te worden. Het systeem verlaagt de koeling preventief.", "Aanvoer voorspeld", "Veilige grens leidend", "Geen storing"],
-    ["simmer", "Koeling rustig bijgesteld", "De koeling blijft op een laag niveau zodat de temperatuur rustig richting setpoint kan bewegen.", "Lage koelvraag", "Geen abrupte stop", "Rustige regeling"],
-    ["buffer_stop", "Water al koud genoeg", "Er is koelvraag, maar het water is al koud genoeg. De warmtepomp hoeft daarom nu niet te starten.", "Koelvraag blijft actief", "Water is al koud genoeg", "Start volgt automatisch"],
-    ["dew_stop", "Dauwpuntstop", "De warmtepomp stopt kort omdat verder koelen te dicht bij het dauwpunt zou komen.", "Condensrisico voorkomen", "Koelvraag blijft bestaan", "Herstart na veilige marge"],
-    ["cooling_limiter", "Softwaremaximum actief", "Er is koelvraag. Het systeem koelt binnen het actuele softwaremaximum en blijft de veiligheidsmarges bewaken.", "Koelvraag actief", "Softwaremaximum actief", "Marge blijft bewaakt"],
-    ["sensor_fallback", "Sensorwaarde onzeker", "Een meting is tijdelijk minder zeker. Het systeem kiest daarom voorzichtig gedrag.", "Metingen gecontroleerd", "Veilige keuze voorrang", "Herstel zodra data stabiel is"],
-    ["restart_wait", "Koeling wacht op veilige herstart", "De koelvraag is nog aanwezig. Na de koelstop wacht het systeem tot de veilige marge voldoende is hersteld.", "Herstart wacht bewust", "Marge moet stabiel blijven", "Daarna opnieuw beoordelen"],
-    ["level1_hold", "Voorzichtig blijven koelen", "De koeling blijft nog even laag totdat duidelijk is dat de veilige marge terug is.", "Even wachten met opschalen", "Geen snelle sprong omhoog", "Comfortvraag blijft bewaakt"],
-    ["room_cap", "Kamervraag begrenst", "De kamer vraagt koeling, maar niet genoeg om harder te gaan koelen.", "Kamer koelt richting setpoint", "Vraag blijft beperkt", "Rustige regeling"],
-    ["oil_return_recovery", "Compressorherstel", "Het systeem geeft compressorherstel tijdelijk voorrang en blijft de veiligheid bewaken.", "Compressorprotectie actief", "Gecontroleerd herstel", "Veiligheid blijft bewaakt"],
+["frequency_cap_below_minimum", "controlReplay.reasonFrequencyCapBelowMinimum", "controlReplay.reasonFrequencyCapBelowMinimumCopy", "controlReplay.reasonFrequencyCapBelowMinimumCheck1", "controlReplay.reasonFrequencyCapBelowMinimumCheck2"],
+["keep_current", "controlReplay.reasonKeepCurrent", "controlReplay.reasonKeepCurrentCopy", "controlReplay.reasonKeepCurrentCheck1", "controlReplay.reasonKeepCurrentCheck2", "controlReplay.reasonKeepCurrentCheck3"],
+["hold_active", "controlReplay.reasonHoldActive", "controlReplay.reasonHoldActiveCopy", "controlReplay.reasonHoldActiveCheck1", "controlReplay.reasonHoldActiveCheck2", "controlReplay.reasonHoldActiveCheck3"],
+["defrost_hold", "controlReplay.reasonDefrostHold", "controlReplay.reasonDefrostHoldCopy", "controlReplay.reasonDefrostHoldCheck1", "controlReplay.reasonDefrostHoldCheck2", "controlReplay.reasonDefrostHoldCheck3"],
+["better_heat", "controlReplay.reasonBetterHeat", "controlReplay.reasonBetterHeatCopy", "controlReplay.reasonBetterHeatCheck1", "controlReplay.reasonBetterHeatCheck2", "controlReplay.reasonBetterHeatCheck3"],
+["soft_guard", "controlReplay.reasonSoftGuard", "controlReplay.reasonSoftGuardCopy", "controlReplay.reasonSoftGuardCheck1", "controlReplay.reasonSoftGuardCheck2", "controlReplay.reasonSoftGuardCheck3"],
+["less_power", "controlReplay.reasonLessPower", "controlReplay.reasonLessPowerCopy", "controlReplay.reasonLessPowerCheck1", "controlReplay.reasonLessPowerCheck2", "controlReplay.reasonLessPowerCheck3"],
+["cooling_request_cleared", "controlReplay.reasonCoolingCleared", "controlReplay.reasonCoolingClearedCopy", "controlReplay.reasonCoolingClearedCheck1", "controlReplay.reasonCoolingClearedCheck2", "controlReplay.reasonCoolingClearedCheck3"],
+["heating_request_cleared", "controlReplay.reasonHeatingCleared", "controlReplay.reasonHeatingClearedCopy", "controlReplay.reasonHeatingClearedCheck1", "controlReplay.reasonHeatingClearedCheck2", "controlReplay.reasonHeatingClearedCheck3"],
+["no_candidate", "controlReplay.reasonNoCandidate", "controlReplay.reasonNoCandidateCopy", "controlReplay.reasonNoCandidateCheck1", "controlReplay.reasonNoCandidateCheck2", "controlReplay.reasonNoCandidateCheck3"],
+["candidate_in_rest", "controlReplay.reasonCandidateRest", "controlReplay.reasonCandidateRestCopy", "controlReplay.reasonCandidateRestCheck1", "controlReplay.reasonCandidateRestCheck2", "controlReplay.reasonCandidateRestCheck3"],
+["candidate_in_defrost", "controlReplay.reasonCandidateDefrost", "controlReplay.reasonCandidateDefrostCopy", "controlReplay.reasonCandidateDefrostCheck1", "controlReplay.reasonCandidateDefrostCheck2", "controlReplay.reasonCandidateDefrostCheck3"],
+["candidate_unavailable", "controlReplay.reasonCandidateUnavailable", "controlReplay.reasonCandidateUnavailableCopy", "controlReplay.reasonCandidateUnavailableCheck1", "controlReplay.reasonCandidateUnavailableCheck2", "controlReplay.reasonCandidateUnavailableCheck3"],
+["defrost_boost", "controlReplay.reasonDefrostBoost", "controlReplay.reasonDefrostBoostCopy", "controlReplay.reasonDefrostBoostCheck1", "controlReplay.reasonDefrostBoostCheck2", "controlReplay.reasonDefrostBoostCheck3"],
+["boiler_assist", "controlReplay.reasonBoilerAssist", "controlReplay.reasonBoilerAssistCopy", "controlReplay.reasonBoilerAssistCheck1", "controlReplay.reasonBoilerAssistCheck2", "controlReplay.reasonBoilerAssistCheck3"],
+["runtime_lead", "controlReplay.reasonRuntimeLead", "controlReplay.reasonRuntimeLeadCopy", "controlReplay.reasonRuntimeLeadCheck1", "controlReplay.reasonRuntimeLeadCheck2", "controlReplay.reasonRuntimeLeadCheck3"],
+["oil_return_hold", "controlReplay.reasonOilReturnHold", "controlReplay.reasonOilReturnHoldCopy", "controlReplay.reasonOilReturnHoldCheck1", "controlReplay.reasonOilReturnHoldCheck2", "controlReplay.reasonOilReturnHoldCheck3"],
+["single_topology", "controlReplay.reasonSingleTopology", "controlReplay.reasonSingleTopologyCopy", "controlReplay.reasonSingleTopologyCheck1", "controlReplay.reasonSingleTopologyCheck2", "controlReplay.reasonSingleTopologyCheck3"],
+["demand_decreased", "controlReplay.reasonDemandDecreased", "controlReplay.reasonDemandDecreasedCopy", "controlReplay.reasonDemandDecreasedCheck1", "controlReplay.reasonDemandDecreasedCheck2", "controlReplay.reasonDemandDecreasedCheck3"],
+["min_rest_active", "controlReplay.reasonMinRest", "controlReplay.reasonMinRestCopy", "controlReplay.reasonMinRestCheck1", "controlReplay.reasonMinRestCheck2", "controlReplay.reasonMinRestCheck3"],
+["start_stop_rate_high", "controlReplay.reasonStartStopRate", "controlReplay.reasonStartStopRateCopy", "controlReplay.reasonStartStopRateCheck1", "controlReplay.reasonStartStopRateCheck2", "controlReplay.reasonStartStopRateCheck3"],
+["sticky_protection", "controlReplay.reasonSticky", "controlReplay.reasonStickyCopy", "controlReplay.reasonStickyCheck1", "controlReplay.reasonStickyCheck2", "controlReplay.reasonStickyCheck3"],
+["frost_protection", "controlReplay.reasonFrost", "controlReplay.reasonFrostCopy", "controlReplay.reasonFrostCheck1", "controlReplay.reasonFrostCheck2", "controlReplay.reasonFrostCheck3"],
+["flow_preflow", "controlReplay.reasonPreflow", "controlReplay.reasonPreflowCopy", "controlReplay.reasonPreflowCheck1", "controlReplay.reasonPreflowCheck2", "controlReplay.reasonPreflowCheck3"],
+["flow_postflow", "controlReplay.reasonPostflow", "controlReplay.reasonPostflowCopy", "controlReplay.reasonPostflowCheck1", "controlReplay.reasonPostflowCheck2", "controlReplay.reasonPostflowCheck3"],
+["flow_too_low", "controlReplay.reasonFlowLow", "controlReplay.reasonFlowLowCopy", "controlReplay.reasonFlowLowCheck1", "controlReplay.reasonFlowLowCheck2", "controlReplay.reasonFlowLowCheck3"],
+["startup_inhibit", "controlReplay.reasonStartupInhibit", "controlReplay.reasonStartupInhibitCopy", "controlReplay.reasonStartupInhibitCheck1", "controlReplay.reasonStartupInhibitCheck2", "controlReplay.reasonStartupInhibitCheck3"],
+["capacity_cap", "controlReplay.reasonCapacityCap", "controlReplay.reasonCapacityCapCopy", "controlReplay.reasonCapacityCapCheck1", "controlReplay.reasonCapacityCapCheck2", "controlReplay.reasonCapacityCapCheck3"],
+["falling_gap", "controlReplay.reasonFallingGap", "controlReplay.reasonFallingGapCopy", "controlReplay.reasonFallingGapCheck1", "controlReplay.reasonFallingGapCheck2", "controlReplay.reasonFallingGapCheck3"],
+["projected_floor", "controlReplay.reasonProjectedFloor", "controlReplay.reasonProjectedFloorCopy", "controlReplay.reasonProjectedFloorCheck1", "controlReplay.reasonProjectedFloorCheck2", "controlReplay.reasonProjectedFloorCheck3"],
+["simmer", "controlReplay.reasonSimmer", "controlReplay.reasonSimmerCopy", "controlReplay.reasonSimmerCheck1", "controlReplay.reasonSimmerCheck2", "controlReplay.reasonSimmerCheck3"],
+["buffer_stop", "controlReplay.reasonBufferStop", "controlReplay.reasonBufferStopCopy", "controlReplay.reasonBufferStopCheck1", "controlReplay.reasonBufferStopCheck2", "controlReplay.reasonBufferStopCheck3"],
+["dew_stop", "controlReplay.reasonDewStop", "controlReplay.reasonDewStopCopy", "controlReplay.reasonDewStopCheck1", "controlReplay.reasonDewStopCheck2", "controlReplay.reasonDewStopCheck3"],
+["cooling_limiter", "controlReplay.reasonCoolingLimiter", "controlReplay.reasonCoolingLimiterCopy", "controlReplay.reasonCoolingLimiterCheck1", "controlReplay.reasonCoolingLimiterCheck2", "controlReplay.reasonCoolingLimiterCheck3"],
+["sensor_fallback", "controlReplay.reasonSensorFallback", "controlReplay.reasonSensorFallbackCopy", "controlReplay.reasonSensorFallbackCheck1", "controlReplay.reasonSensorFallbackCheck2", "controlReplay.reasonSensorFallbackCheck3"],
+["restart_wait", "controlReplay.reasonRestartWait", "controlReplay.reasonRestartWaitCopy", "controlReplay.reasonRestartWaitCheck1", "controlReplay.reasonRestartWaitCheck2", "controlReplay.reasonRestartWaitCheck3"],
+["level1_hold", "controlReplay.reasonLevel1Hold", "controlReplay.reasonLevel1HoldCopy", "controlReplay.reasonLevel1HoldCheck1", "controlReplay.reasonLevel1HoldCheck2", "controlReplay.reasonLevel1HoldCheck3"],
+["room_cap", "controlReplay.reasonRoomCap", "controlReplay.reasonRoomCapCopy", "controlReplay.reasonRoomCapCheck1", "controlReplay.reasonRoomCapCheck2", "controlReplay.reasonRoomCapCheck3"],
+["oil_return_recovery", "controlReplay.reasonOilRecovery", "controlReplay.reasonOilRecoveryCopy", "controlReplay.reasonOilRecoveryCheck1", "controlReplay.reasonOilRecoveryCheck2", "controlReplay.reasonOilRecoveryCheck3"],
   ]);
 
   const CONTROL_WORKING_REASON_FALLBACK = Object.freeze({
-    label: "Keuze van het systeem",
-    summary: "Keuze van het systeem",
-    checks: [],
+    labelKey: "controlReplay.reasonFallbackLabel",
+    summaryKey: "controlReplay.reasonFallbackCopy",
+    checkKeys: [],
   });
 
+  function resolveControlWorkingReasonMeta(meta) {
+    if (!meta) return { label: t("controlReplay.reasonFallbackLabel"), summary: t("controlReplay.reasonFallbackCopy"), checks: [] };
+    if (meta.labelKey) {
+      return {
+        label: t(meta.labelKey),
+        summary: t(meta.summaryKey),
+        checks: (meta.checkKeys || []).map((key) => t(key)),
+      };
+    }
+    return meta;
+  }
+
   function getControlWorkingReasonMeta(reasonCode) {
-    return CONTROL_WORKING_REASON_METAS[reasonCode]
+    return resolveControlWorkingReasonMeta(
+      CONTROL_WORKING_REASON_METAS[reasonCode]
       || getControlReplayIncidentReasonMeta(reasonCode)
-      || CONTROL_WORKING_REASON_FALLBACK;
+      || CONTROL_WORKING_REASON_FALLBACK,
+    );
   }
 
   function getControlWorkingReasonLabel(reasonCode) {
@@ -514,11 +548,11 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
 
   function getControlWorkingKindLabel(kind) {
     const labels = {
-      event: "Moment",
-      span: "Periode",
-      aggregate: "Samenvatting",
+      event: t("controlReplay.kindEvent"),
+      span: t("controlReplay.kindSpan"),
+      aggregate: t("controlReplay.kindAggregate"),
     };
-    return labels[kind] || "Record";
+    return labels[kind] || t("controlReplay.kindRecord");
   }
 
   function renderControlWorkingPill(label, tone = "neutral", icon = "") {
@@ -535,7 +569,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     if (!shouldShowControlWorkingModeBadge(item)) {
       return "";
     }
-    return `<span class="oq-working-mode-badge" aria-label="Technische mode CM98">CM98</span>`;
+    return `<span class="oq-working-mode-badge" aria-label="${t("controlReplay.modeBadgeCm98")}">CM98</span>`;
   }
 
   function getControlWorkingOptimizerModel(target) {
@@ -543,46 +577,46 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const source = target?.source || "HP1 + HP2";
     if (reasonCode === "better_heat") {
       return {
-        title: "Keuze van het systeem",
-        verdict: "Twee warmtepompen actief",
-        summary: "Omdat de warmtevraag hoog blijft, leveren twee warmtepompen rustiger vermogen dan één warmtepomp op hoge belasting.",
+        title: t("controlReplay.optSystemChoice"),
+        verdict: t("controlReplay.optTwoHpActive"),
+        summary: t("controlReplay.optTwoHpCopy"),
         rows: [
-          { option: "Eén warmtepomp", result: "Te weinig reserve", code: "better_heat", detail: "De vraag bleef langer hoog dan één warmtepomp rustig kan dragen.", tone: "muted" },
-          { option: "Andere losse pomp", result: "Geen voordeel", code: "hold_active", detail: "Wisselen naar de andere pomp zou geen rustiger gedrag geven.", tone: "muted" },
-          { option: "Twee warmtepompen", result: "Gekozen", code: "better_heat", detail: "Samen leveren ze meer reserve en minder belasting per pomp.", tone: "selected" },
+          { option: t("controlReplay.optOneHp"), result: t("controlReplay.optTooLittleReserve"), code: "better_heat", detail: t("controlReplay.optDemandHigh"), tone: "muted" },
+          { option: t("controlReplay.optOtherPump"), result: t("controlReplay.optNoBenefit"), code: "hold_active", detail: t("controlReplay.optSwitchNoBenefit"), tone: "muted" },
+          { option: t("controlReplay.optTwoHp"), result: t("controlReplay.optChosen"), code: "better_heat", detail: t("controlReplay.optTogetherReserve"), tone: "selected" },
         ],
       };
     }
     if (reasonCode === "demand_decreased" || reasonCode === "less_power") {
       return {
-        title: "Keuze van het systeem",
-        verdict: "Eén warmtepomp is genoeg",
-        summary: "De warmtevraag is gezakt. Eén warmtepomp kan de resterende warmte rustiger en zuiniger leveren.",
+        title: t("controlReplay.optSystemChoice"),
+        verdict: t("controlReplay.optOneHpEnough"),
+        summary: t("controlReplay.optOneHpEnoughCopy"),
         rows: [
-          { option: "Twee warmtepompen", result: "Niet meer nodig", code: "less_power", detail: "Samen leveren ze meer vermogen dan nu nodig is.", tone: "muted" },
-          { option: source, result: "Blijft actief", code: "less_power", detail: "Eén warmtepomp dekt de lagere vraag rustiger.", tone: "selected" },
+          { option: t("controlReplay.optTwoHp"), result: t("controlReplay.optNoLongerNeeded"), code: "less_power", detail: t("controlReplay.optTogetherTooMuch"), tone: "muted" },
+          { option: source, result: t("controlReplay.optStaysActive"), code: "less_power", detail: t("controlReplay.optOneHpCovers"), tone: "selected" },
         ],
       };
     }
     if (reasonCode === "runtime_lead") {
       return {
-        title: "Keuze van het systeem",
-        verdict: `${source} gestart`,
-        summary: "De warmtepompen zijn gelijkwaardig. De keuze volgt uit draaiuren, beschikbaarheid en wachttijden.",
+        title: t("controlReplay.optSystemChoice"),
+        verdict: t("controlReplay.optStarted", { source }),
+        summary: t("controlReplay.optHpEqual"),
         rows: [
-          { option: "HP1", result: source === "HP1" ? "Gekozen" : "Niet nu", code: "runtime_lead", detail: "Past het beste bij de actuele draaiurenbalans.", tone: source === "HP1" ? "selected" : "muted" },
-          { option: "HP2", result: source === "HP2" ? "Gekozen" : "Niet nu", code: "runtime_lead", detail: "Gelijkwaardige pomp, maar nu minder gunstig in balans of wachttijd.", tone: source === "HP2" ? "selected" : "muted" },
+          { option: "HP1", result: source === "HP1" ? t("controlReplay.optChosen") : t("controlReplay.optNotNow"), code: "runtime_lead", detail: t("controlReplay.optFitsBalance"), tone: source === "HP1" ? "selected" : "muted" },
+          { option: "HP2", result: source === "HP2" ? t("controlReplay.optChosen") : t("controlReplay.optNotNow"), code: "runtime_lead", detail: t("controlReplay.optEqualLessGood"), tone: source === "HP2" ? "selected" : "muted" },
         ],
       };
     }
     if (["min_rest_active", "no_candidate", "candidate_in_rest", "candidate_in_defrost", "candidate_unavailable"].includes(reasonCode)) {
       return {
-        title: "Startcontrole",
-        verdict: "Start uitgesteld",
+        title: t("controlReplay.optStartCheck"),
+        verdict: t("controlReplay.optStartDelayed"),
         summary: getControlWorkingReasonMeta(reasonCode).summary,
         rows: [
-          { option: source, result: "Wacht nog", code: reasonCode, detail: getControlWorkingReasonMeta(reasonCode).summary, tone: "limited" },
-          { option: "Opnieuw beoordelen", result: "Straks", code: "hold_active", detail: "Het systeem probeert opnieuw zodra starten verstandig is.", tone: "muted" },
+          { option: source, result: t("controlReplay.optWaitStill"), code: reasonCode, detail: getControlWorkingReasonMeta(reasonCode).summary, tone: "limited" },
+          { option: t("controlReplay.optReassess"), result: t("controlReplay.optLater"), code: "hold_active", detail: t("controlReplay.optReassessCopy"), tone: "muted" },
         ],
       };
     }
@@ -592,100 +626,100 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       const postflow = reasonCode === "flow_postflow";
       if (flowCleared) {
         return {
-          title: postflow ? "Waterflow afronden" : "Waterflow bevestigd",
-          verdict: postflow ? "Naloop klaar" : "Start vrijgegeven",
+          title: postflow ? t("controlReplay.optFlowDoneTitle") : t("controlReplay.optFlowConfirmedTitle"),
+          verdict: postflow ? t("controlReplay.optFlowDoneVerdict") : t("controlReplay.optFlowGoVerdict"),
           summary: postflow
-            ? "De pompnaloop is afgerond. Het systeem kan terug naar standby."
-            : "De waterflow is voldoende. De regelaar kan doorgaan met de volgende stap.",
+            ? t("controlReplay.optFlowDoneCopy")
+            : t("controlReplay.optFlowGoCopy"),
           rows: [
-            { option: "Waterflow", result: "Voldoende", code: reasonCode, detail: "De gemeten circulatie is vrijgegeven voor de volgende stap.", tone: "selected" },
-            { option: "Warmtepomp", result: postflow ? "Gestopt" : "Vrijgegeven", code: reasonCode, detail: postflow ? "De warmtepomp is gestopt; de naloop is nu ook klaar." : "De compressor mag nu volgens de normale regeling starten.", tone: "selected" },
-            { option: "Regelaar", result: "Gaat verder", code: "keep_current", detail: "De controller vervolgt automatisch de normale regeling.", tone: "muted" },
+            { option: t("controlReplay.optFlow"), result: t("controlReplay.optFlowEnough"), code: reasonCode, detail: t("controlReplay.optFlowReleased"), tone: "selected" },
+            { option: t("controlReplay.optHeatpump"), result: postflow ? t("controlReplay.optStopped") : t("controlReplay.optReleased"), code: reasonCode, detail: postflow ? t("controlReplay.optStoppedPostflow") : t("controlReplay.optCompressorMayStart"), tone: "selected" },
+            { option: t("controlReplay.optController"), result: t("controlReplay.optContinues"), code: "keep_current", detail: t("controlReplay.optControllerAuto"), tone: "muted" },
           ],
         };
       }
       const lowFlowFault = reasonCode === "flow_too_low";
       return {
-        title: "Waterflow eerst",
-        verdict: postflow ? "Naloop actief" : lowFlowFault ? "Start geblokkeerd" : "Voorloop actief",
+        title: t("controlReplay.optFlowFirst"),
+        verdict: postflow ? t("controlReplay.optFlowPostActive") : lowFlowFault ? t("controlReplay.optFlowBlocked") : t("controlReplay.optFlowPreActive"),
         summary: getControlWorkingReasonMeta(reasonCode).summary,
         rows: [
-          { option: "Waterflow", result: lowFlowFault ? "Blijft te laag" : postflow ? "Wordt afgerond" : "Wordt opgebouwd", code: reasonCode, detail: "De pomp zorgt voor circulatie voordat de volgende stap vrij is.", tone: lowFlowFault ? "limited" : "selected" },
-          { option: "Warmtepomp", result: postflow ? "Gestopt" : lowFlowFault ? "Start geblokkeerd" : "Wacht op voorloop", code: reasonCode, detail: "De compressor start pas als de flowconditie veilig is.", tone: lowFlowFault ? "limited" : "muted" },
-          { option: "Regelaar", result: lowFlowFault ? "Blijft controleren" : "Controleert automatisch", code: "keep_current", detail: "De controller beoordeelt de waterflow automatisch opnieuw.", tone: "muted" },
+          { option: t("controlReplay.optFlow"), result: lowFlowFault ? t("controlReplay.optStaysLow") : postflow ? t("controlReplay.optRoundingOff") : t("controlReplay.optBuildingUp"), code: reasonCode, detail: t("controlReplay.optPumpCirculates"), tone: lowFlowFault ? "limited" : "selected" },
+          { option: t("controlReplay.optHeatpump"), result: postflow ? t("controlReplay.optStopped") : lowFlowFault ? t("controlReplay.optFlowBlocked") : t("controlReplay.optWaitPreflow"), code: reasonCode, detail: t("controlReplay.optCompressorWaits"), tone: lowFlowFault ? "limited" : "muted" },
+          { option: t("controlReplay.optController"), result: lowFlowFault ? t("controlReplay.optKeepsChecking") : t("controlReplay.optChecksAuto"), code: "keep_current", detail: t("controlReplay.optFlowAuto"), tone: "muted" },
         ],
       };
     }
     if (reasonCode === "defrost_hold" || reasonCode === "defrost_boost") {
       return {
-        title: "Bescherming",
-        verdict: "Ontdooien krijgt voorrang",
-        summary: "Tijdens ontdooien houdt het systeem de regeling rustig, zodat de warmtepomp vanzelf kan herstellen.",
+        title: t("controlReplay.optProtection"),
+        verdict: t("controlReplay.optDefrostPriority"),
+        summary: t("controlReplay.optDefrostCalm"),
         rows: [
-          { option: "Actieve warmtepomp", result: "Rustig laten herstellen", code: "defrost_hold", detail: "Niet wisselen zolang ontdooien of herstel actief is.", tone: "selected" },
-          { option: "Extra bron", result: reasonCode === "defrost_boost" ? "Helpt mee" : "Stand-by", code: reasonCode, detail: "Alleen inzetten als comfort of vermogen daarom vraagt.", tone: reasonCode === "defrost_boost" ? "selected" : "muted" },
+          { option: t("controlReplay.optActiveHp"), result: t("controlReplay.optRecoverCalmly"), code: "defrost_hold", detail: t("controlReplay.optNoSwitch"), tone: "selected" },
+          { option: t("controlReplay.optExtraSource"), result: reasonCode === "defrost_boost" ? t("controlReplay.optHelps") : t("controlReplay.optStandby"), code: reasonCode, detail: t("controlReplay.optDeployIfNeeded"), tone: reasonCode === "defrost_boost" ? "selected" : "muted" },
         ],
       };
     }
     if (reasonCode === "boiler_assist") {
       return {
-        title: "Bronkeuze",
-        verdict: "CV ondersteunt tijdelijk",
-        summary: "De warmtepompen blijven de basis leveren. CV vult alleen aan zolang extra vermogen nodig is.",
+        title: t("controlReplay.optSourceChoice"),
+        verdict: t("controlReplay.optBoilerSupports"),
+        summary: t("controlReplay.optBoilerBase"),
         rows: [
-          { option: "Alleen warmtepompen", result: "Te weinig reserve", code: "better_heat", detail: "De vraag bleef hoger dan de warmtepompen rustig konden leveren.", tone: "muted" },
-          { option: "CV-ketel", result: "Tijdelijk bij", code: "boiler_assist", detail: "CV levert extra vermogen en stopt zodra de vraag zakt.", tone: "selected" },
-          { option: "Na piek", result: "Terug naar HP", code: "less_power", detail: "De warmtepompen nemen het weer over als ondersteuning niet meer nodig is.", tone: "muted" },
+          { option: t("controlReplay.optOnlyHps"), result: t("controlReplay.optTooLittleReserve"), code: "better_heat", detail: t("controlReplay.optDemandHigh"), tone: "muted" },
+          { option: t("controlReplay.optBoiler"), result: t("controlReplay.optTempExtra"), code: "boiler_assist", detail: t("controlReplay.optBoilerExtra"), tone: "selected" },
+          { option: t("controlReplay.optAfterPeak"), result: t("controlReplay.optBackToHp"), code: "less_power", detail: t("controlReplay.optHpTakeOver"), tone: "muted" },
         ],
       };
     }
     if (reasonCode === "sticky_protection") {
       return {
-        title: "Pompbescherming",
-        verdict: "Korte pomprun",
-        summary: "Alleen de pomp draait kort. De warmtepompen blijven uit omdat er geen verwarmings- of koelvraag is.",
+        title: t("controlReplay.optPumpProtection"),
+        verdict: t("controlReplay.optBriefRun"),
+        summary: t("controlReplay.optPumpOnly"),
         rows: [
-          { option: "Verwarmen", result: "Niet nodig", code: "keep_current", detail: "Geen warmtevraag vanuit kamer of regeling.", tone: "muted" },
-          { option: "Koelen", result: "Niet nodig", code: "keep_current", detail: "Geen koelvraag vanuit de kamer.", tone: "muted" },
-          { option: "Pomp", result: "Kort aan", code: "sticky_protection", detail: "De dagelijkse bescherming laat de pomp ongeveer 1 minuut draaien.", tone: "selected" },
+          { option: t("controlReplay.optHeating"), result: t("controlReplay.optNotNeeded"), code: "keep_current", detail: t("controlReplay.optNoHeatDemand"), tone: "muted" },
+          { option: t("controlReplay.optCooling"), result: t("controlReplay.optNotNeeded"), code: "keep_current", detail: t("controlReplay.optNoCoolDemand"), tone: "muted" },
+          { option: t("controlReplay.optPump"), result: t("controlReplay.optBriefOn"), code: "sticky_protection", detail: t("controlReplay.optDailyPump"), tone: "selected" },
         ],
       };
     }
     if (["capacity_cap", "room_cap", "cooling_limiter"].includes(reasonCode)) {
       const cooling = getControlWorkingCoolingContext();
       return {
-        title: "Koelregeling",
-        verdict: `Maximaal ingesteld niveau ${cooling.allowedMax}`,
-        summary: "De koelvraag wordt uitgevoerd binnen het ingestelde maximum. Dit is normale regeling, geen aandachtspunt.",
+        title: t("controlReplay.optCoolControl"),
+        verdict: t("controlReplay.optMaxLevel", { max: cooling.allowedMax }),
+        summary: t("controlReplay.optCoolNormal"),
         rows: [
-          { option: "Gevraagd koelniveau", result: cooling.rawDemand, code: "coolingDemandRaw", detail: "Wat de kamer vraagt voordat het ingestelde maximum meetelt.", tone: "muted" },
-          { option: "Ingesteld maximum", result: cooling.allowedMax, code: reasonCode, detail: "Het hoogste niveau dat de software nu toestaat.", tone: "selected" },
-          { option: "Uitgestuurd niveau", result: cooling.limitedDemand, code: "coolingLimitedDemand", detail: "Het niveau dat de warmtepomp op dit moment krijgt.", tone: "normal" },
+          { option: t("controlReplay.optAskedLevel"), result: cooling.rawDemand, code: "coolingDemandRaw", detail: t("controlReplay.optAskedBeforeMax"), tone: "muted" },
+          { option: t("controlReplay.optSetMax"), result: cooling.allowedMax, code: reasonCode, detail: t("controlReplay.optHighestAllowed"), tone: "selected" },
+          { option: t("controlReplay.optSentLevel"), result: cooling.limitedDemand, code: "coolingLimitedDemand", detail: t("controlReplay.optLevelNow"), tone: "normal" },
         ],
       };
     }
     if (reasonCode === "buffer_stop") {
       return {
-        title: "Koelregeling",
-        verdict: "Water al koud genoeg",
-        summary: "Er is koelvraag, maar de actuele watertemperatuur vraagt nu geen extra koeling.",
+        title: t("controlReplay.optCoolControl"),
+        verdict: t("controlReplay.optWaterCold"),
+        summary: t("controlReplay.optWaterNoCool"),
         rows: [
-          { option: "Koelvraag", result: "Blijft actief", code: "coolingDemandRaw", detail: "De kamer blijft om koeling vragen.", tone: "muted" },
-          { option: "Watertemperatuur", result: "Koud genoeg", code: "buffer_stop", detail: "De aanvoer is al koud genoeg voor dit moment.", tone: "selected" },
-          { option: "Warmtepomp", result: "Wacht", code: "keep_current", detail: "De warmtepomp start automatisch zodra opnieuw actieve koeling nodig is.", tone: "muted" },
+          { option: t("controlReplay.optCoolDemand"), result: t("controlReplay.optStaysActive"), code: "coolingDemandRaw", detail: t("controlReplay.optRoomKeepsAsking"), tone: "muted" },
+          { option: t("controlReplay.optWaterTemp"), result: t("controlReplay.optColdEnough"), code: "buffer_stop", detail: t("controlReplay.optSupplyCold"), tone: "selected" },
+          { option: t("controlReplay.optHeatpump"), result: t("controlReplay.optWait"), code: "keep_current", detail: t("controlReplay.optHpAutoCool"), tone: "muted" },
         ],
       };
     }
     if (["falling_gap", "projected_floor", "dew_stop", "restart_wait", "level1_hold", "oil_return_recovery", "sensor_fallback"].includes(reasonCode)) {
       const cooling = getControlWorkingCoolingContext();
       return {
-        title: "Koelbewaking",
-        verdict: cooling.permitted ? `Maximaal koelniveau ${cooling.allowedMax}` : "Koeling tijdelijk gepauzeerd",
-        summary: "De koelvraag blijft actief, maar dauwpunt, aanvoer of compressorconditie vraagt tijdelijk voorzichtig gedrag.",
+        title: t("controlReplay.optCoolMonitor"),
+        verdict: cooling.permitted ? t("controlReplay.optMaxCoolLevel", { max: cooling.allowedMax }) : t("controlReplay.optCoolPaused"),
+        summary: t("controlReplay.optCoolCareful"),
         rows: [
-          { option: "Gevraagd koelniveau", result: cooling.rawDemand, code: "coolingDemandRaw", detail: "Wat de kamer vraagt voordat bewaking meetelt.", tone: "muted" },
-          { option: "Maximaal veilig", result: cooling.allowedMax, code: reasonCode, detail: "Het hoogste niveau dat nu veilig is met de huidige dauwpuntmarge.", tone: "selected" },
-          { option: "Uitgestuurd niveau", result: cooling.limitedDemand, code: "coolingLimitedDemand", detail: "Het niveau dat de warmtepomp op dit moment krijgt.", tone: "limited" },
+          { option: t("controlReplay.optAskedLevel"), result: cooling.rawDemand, code: "coolingDemandRaw", detail: t("controlReplay.optAskedBeforeMonitor"), tone: "muted" },
+          { option: t("controlReplay.optMaxSafe"), result: cooling.allowedMax, code: reasonCode, detail: t("controlReplay.optHighestSafe"), tone: "selected" },
+          { option: t("controlReplay.optSentLevel"), result: cooling.limitedDemand, code: "coolingLimitedDemand", detail: t("controlReplay.optLevelNow"), tone: "limited" },
         ],
       };
     }
@@ -716,181 +750,75 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     `;
   }
 
-    function getControlWorkingBlockingNumber(key) {
-    return parseLooseNumber(getEntityValue(key));
+  // Diagnostics use confirmed device values, never unsaved setting drafts.
+  function getControlWorkingBlockingNumber(key) {
+    const entity = state.entities[key];
+    return parseLooseNumber(entity?.value ?? entity?.state);
   }
 
-    function getControlWorkingBlockingReasons(current) {
+  function getControlWorkingBlockingFlag(key) {
+    const entity = state.entities[key];
+    const value = String(entity?.value ?? entity?.state ?? "").trim().toLowerCase();
+    if (["true", "on", "1"].includes(value)) return true;
+    if (["false", "off", "0"].includes(value)) return false;
+    return null;
+  }
+
+  function getControlWorkingBlockingReasons(current) {
+    if (current.hp1Running || current.hp2Running) return [];
     const reasons = [];
+    if (getControlWorkingBlockingFlag("openquattEnabled") === false) reasons.push(t("blocking.disabled"));
+    const override = state.entities.controlModeOverride;
+    if ((override?.value ?? override?.state) === "Force CM0") reasons.push(t("blocking.forcedOff"));
 
-    // Check startup inhibit
-    if (current.primaryReason === "startup_inhibit" && current.startupInhibit) {
-      const remainingS = current.startupInhibit.remainingS;
-      if (remainingS > 0) {
-        reasons.push(`Wachttijd na herstart: nog ${Math.max(1, Math.ceil(remainingS / 60))} minuten`);
-      } else {
-        reasons.push("Wachttijd na herstart: wachttijd actief");
+    if (current.startupInhibit) {
+      const seconds = current.startupInhibit.remainingS;
+      reasons.push(seconds > 0
+        ? t("blocking.startupMinutes", { minutes: Math.max(1, Math.ceil(seconds / 60)) })
+        : t("blocking.startup"));
+    }
+
+    // These are live mode explanations. Historical decision-log events cannot
+    // establish that a rest/flow/candidate block is still active.
+    const copyReasons = ["boiler_fallback", "fallback_blocked", "boiler_assist",
+      "defrost_hold", "buffer_stop", "frost_protection", "sticky_protection"];
+    if (copyReasons.includes(current.primaryReason) && current.copy) reasons.push(current.copy);
+    else if (current.coolingProtection && current.copy) reasons.push(current.copy);
+
+    const cooling = getControlWorkingBlockingNumber("strategyActiveCode") === 1
+      || getControlWorkingBlockingFlag("coolingRequestActive") === true;
+    if (cooling) {
+      const block = getCoolingStartBlockModel();
+      if (block.blocked) reasons.push(block.display);
+    }
+    if (!cooling) {
+      if (getControlWorkingBlockingFlag("heatingBlockedByThermostat") === true) reasons.push(t("blocking.thermostat"));
+      if (getControlWorkingBlockingFlag("strategyWaterHardTripActive") === true
+        || getControlWorkingBlockingFlag("strategyWaterTripActive") === true) reasons.push(t("blocking.waterTrip"));
+      if (getControlWorkingBlockingNumber("strategyActiveCode") === 2) {
+        if (getControlWorkingBlockingNumber("curveRestartInhibit") === 1) reasons.push(t("blocking.curveRestart"));
+        if (getControlWorkingBlockingNumber("curveRestartBlockedByRoom") === 1) reasons.push(t("blocking.curveRoom"));
+      }
+
+      // ON means heat is latched ON (permission), not a low-load blockade.
+      const power = getControlWorkingBlockingNumber("strategyRequestedPower");
+      const on = getControlWorkingBlockingNumber("lowLoadOnW");
+      const off = getControlWorkingBlockingNumber("lowLoadOffW");
+      if (getControlWorkingBlockingNumber("strategyActiveCode") === 3
+        && getControlWorkingBlockingFlag("strategyRequestActive") === true
+        && getControlWorkingBlockingFlag("lowLoadLatch") === false
+        && Number.isFinite(power) && Number.isFinite(on) && power < on) {
+        reasons.push(t("blocking.lowLoad", { power: Math.round(power), on: Math.round(on) }));
+        if (Number.isFinite(off)) reasons.push(t("blocking.thresholds", { off: Math.round(off), on: Math.round(on) }));
       }
     }
 
-    // Check minimum rest time
-    if (current.primaryReason === "min_rest_active") {
-      reasons.push("Minimum rusttijd actief: de warmtepomp wacht om korte starts te voorkomen");
+    if (!reasons.length) {
+      const request = getControlWorkingBlockingFlag("strategyRequestActive");
+      if (!cooling && request === false) reasons.push(t("blocking.noDemand"));
+      else reasons.push(t("blocking.unconfirmed"));
     }
-
-    // Check no candidate
-    if (current.primaryReason === "no_candidate") {
-      reasons.push("Nog geen veilige start: wachttijd of bescherming is actief");
-    }
-
-    // Check candidate in rest
-    if (current.primaryReason === "candidate_in_rest") {
-      reasons.push("Rusttijd loopt nog: de warmtepomp is kort geleden gestopt");
-    }
-
-    // Check candidate in defrost
-    if (current.primaryReason === "candidate_in_defrost") {
-      reasons.push("Warmtepomp ontdooit: moet eerst afronden voordat deze kan starten");
-    }
-
-    // Check candidate unavailable
-    if (current.primaryReason === "candidate_unavailable") {
-      reasons.push("Warmtepomp niet beschikbaar: technische begrenzing of beschikbaarheid");
-    }
-
-    // Check flow preflow
-    if (current.primaryReason === "flow_preflow") {
-      reasons.push("Voorloop actief: pomp bouwt waterflow op voordat warmtepomp mag starten");
-    }
-
-    // Check flow too low
-    if (current.primaryReason === "flow_too_low") {
-      reasons.push("Waterflow blijft te laag: start geblokkeerd tot flow voldoende is");
-    }
-
-    // Check sensor fallback
-    if (current.primaryReason === "sensor_fallback") {
-      reasons.push("Sensorwaarde onzeker: het systeem kiest voorzichtig gedrag");
-    }
-
-    // Check soft guard
-    if (current.primaryReason === "soft_guard") {
-      const guardLimits = [];
-      const maxWater = getControlWorkingBlockingNumber("maxWater");
-      if (Number.isFinite(maxWater)) {
-        const supplyTemp = getControlWorkingBlockingNumber("supplyTemp");
-        guardLimits.push(`maximaal water ${Math.round(maxWater)} °C${Number.isFinite(supplyTemp) ? ` (aanvoer nu ${supplyTemp.toFixed(1)} °C)` : ""}`);
-      }
-      const flowSetpoint = getControlWorkingBlockingNumber("flowSetpoint");
-      if (Number.isFinite(flowSetpoint)) {
-        const flowSelected = getControlWorkingBlockingNumber("flowSelected");
-        guardLimits.push(`flowdoel ${Math.round(flowSetpoint)} L/h${Number.isFinite(flowSelected) ? ` (actueel ${Math.round(flowSelected)} L/h)` : ""}`);
-      }
-      if (guardLimits.length > 0) {
-        reasons.push(`Veilige marge bewaakt: ${guardLimits.join("; ")}`);
-      } else {
-        reasons.push("Veilige marge bewaakt: systeem begrenst zichzelf binnen temperatuur- en flowgrenzen");
-      }
-      const lowLoadOnW = getControlWorkingBlockingNumber("lowLoadOnW");
-      const lowLoadOffW = getControlWorkingBlockingNumber("lowLoadOffW");
-      const lowLoadLatch = getEntityStateText("lowLoadLatch", "");
-      const lowLoadLatchActive = lowLoadLatch === "ON" || lowLoadLatch === "on" || lowLoadLatch === "1";
-      if (!lowLoadLatchActive && Number.isFinite(lowLoadOffW) && Number.isFinite(lowLoadOnW)) {
-        reasons.push(`Laaglastband: uit onder ${Math.round(lowLoadOffW)} W, terugstart vanaf ${Math.round(lowLoadOnW)} W`);
-      }
-    }
-
-    // Check restart wait
-    if (current.primaryReason === "restart_wait") {
-      reasons.push("Wacht op veilige herstart: dauwpuntmarge moet stabiel herstellen");
-    }
-
-    // Check frost protection
-    if (current.primaryReason === "frost_protection") {
-      reasons.push("Vorstbescherming actief: water circuleren om bevriezing te voorkomen");
-    }
-
-    // Check sticky protection
-    if (current.primaryReason === "sticky_protection") {
-      reasons.push("Pompbescherming: pomp draait kort om vastzitten te voorkomen (geen warmte/koelvraag)");
-    }
-
-    // Check cooling-specific blocking reasons
-    if (current.coolingProtection && current.cooling) {
-      if (current.cooling.reasonCode === "restart_wait") {
-        reasons.push("Koeling wacht op veilige herstart: marge moet herstellen");
-      } else if (current.cooling.reasonCode === "dew_stop") {
-        reasons.push("Dauwpuntstop: verder koelen zou te dicht bij dauwpunt komen");
-      } else if (current.cooling.reasonCode === "buffer_stop") {
-        reasons.push("Water al koud genoeg: koelvraag blijft actief maar start niet nodig");
-      } else if (current.cooling.reasonCode !== "inactive" && current.cooling.reasonCode !== "ready") {
-        const reasonMeta = getControlWorkingReasonMeta(current.cooling.reasonCode);
-        if (reasonMeta && reasonMeta.summary) {
-          reasons.push(`Koeling beperkt: ${reasonMeta.summary}`);
-        }
-      }
-    }
-
-    // Check low-load protection
-    const lowLoadOnW = getEntityNumericValue("lowLoadOnW");
-    const lowLoadOffW = getEntityNumericValue("lowLoadOffW");
-    const lowLoadPminW = getEntityNumericValue("lowLoadPminW");
-    const lowLoadLatch = getEntityStateText("lowLoadLatch", "");
-    const cm2ReentryBlockUntilMs = getEntityNumericValue("oq_cm2_reentry_block_until_ms");
-
-    if (lowLoadLatch === "ON" || lowLoadLatch === "on" || lowLoadLatch === "1") {
-      if (!Number.isNaN(lowLoadOnW) && !Number.isNaN(lowLoadOffW)) {
-        reasons.push(`Low-load beveiliging actief: warmtevraag is onder de ${Math.round(lowLoadOffW)} W stookgrens (terugstart vanaf ${Math.round(lowLoadOnW)} W)`);
-      } else {
-        reasons.push("Low-load beveiliging actief: warmtevraag is te laag voor de ingestelde stookgrens");
-      }
-    }
-
-    if (!Number.isNaN(cm2ReentryBlockUntilMs) && cm2ReentryBlockUntilMs > 0) {
-      const nowMs = Date.now();
-      const remainingMs = cm2ReentryBlockUntilMs - nowMs;
-      if (remainingMs > 0) {
-        const remainingMin = Math.ceil(remainingMs / 60000);
-        reasons.push(`CM2 herintreding geblokkeerd: nog ${remainingMin} minuut${remainingMin !== 1 ? "en" : ""} door recent low-load stop`);
-      } else {
-        reasons.push("CM2 herintreding geblokkeerd: wachttijd actief na recent low-load stop");
-      }
-    }
-
-    // If no specific reasons found but heat pumps are off, add generic reason
-    if (reasons.length === 0) {
-      reasons.push(getControlWorkingNoDemandReason());
-    }
-
-    return reasons;
-  }
-
-  function getControlWorkingNoDemandReason() {
-    if (getControlWorkingBlockingNumber("strategyActiveCode") !== 3) {
-      return "Geen warmtevraag: het systeem wacht op nieuwe vraag";
-    }
-
-    const parts = [];
-    const roomTemp = getControlWorkingBlockingNumber("roomTemp");
-    if (Number.isFinite(roomTemp)) {
-      const roomSetpoint = getControlWorkingBlockingNumber("roomSetpoint");
-      parts.push(`kamer ${roomTemp.toFixed(1)} °C${Number.isFinite(roomSetpoint) ? ` (setpoint ${roomSetpoint.toFixed(1)} °C)` : ""}`);
-    }
-    const outsideTemp = getControlWorkingBlockingNumber("outsideTempSelected");
-    if (Number.isFinite(outsideTemp)) {
-      const housePower = getControlWorkingBlockingNumber("phouseHouse");
-      parts.push(`buiten ${outsideTemp.toFixed(1)} °C${Number.isFinite(housePower) ? ` (huismodel vraagt ~${Math.round(housePower)} W)` : ""}`);
-    }
-    const lowLoadOnW = getControlWorkingBlockingNumber("lowLoadOnW");
-    const lowLoadOffW = getControlWorkingBlockingNumber("lowLoadOffW");
-    const restUntilOn = Number.isFinite(lowLoadOnW)
-      ? `boven de ${Math.round(lowLoadOnW)} W stookgrens${Number.isFinite(lowLoadOffW) ? ` (uit onder ${Math.round(lowLoadOffW)} W)` : ""}`
-      : "boven de stookgrens";
-
-    if (parts.length === 0) {
-      return "Geen warmtevraag: het systeem wacht op nieuwe vraag";
-    }
-    return `Geen warmtevraag: ${parts.join(", ")}. Het systeem start pas ${restUntilOn}, of als de kamer duidelijk onder het setpoint zakt.`;
+    return [...new Set(reasons)];
   }
 
   function getControlWorkingActiveStartupInhibit(nowMs = Date.now()) {
@@ -913,7 +841,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       subject: String(latest?.subject || "SYSTEM").toUpperCase(),
       targetMode: Number(latest?.value_a) || 0,
       remainingS,
-      remainingLabel: remainingS > 0 ? `Nog ${Math.max(1, Math.ceil(remainingS / 60))} min` : "Wachttijd actief",
+      remainingLabel: remainingS > 0 ? t("controlReplay.curWaitRemaining", { minutes: formatNumber(Math.max(1, Math.ceil(remainingS / 60)), { maximumFractionDigits: 0 }) }) : t("controlReplay.curWaitActive"),
     };
   }
 
@@ -935,113 +863,113 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const stickyActive = hasEntity("stickyActive") && isEntityActive("stickyActive");
     const boilerActive = modeModel.boilerActive;
     const startupInhibit = getControlWorkingActiveStartupInhibit();
-    let title = "Eén warmtepomp actief";
-    let copy = "De actuele vraag past binnen één warmtepomp. De andere warmtepomp blijft beschikbaar als extra capaciteit nodig is.";
-    let expectation = "Een extra warmtepomp schakelt bij zodra de vraag lang genoeg hoog blijft en alle wachttijden vrij zijn.";
+    let title = t("controlReplay.curOneHp");
+    let copy = t("controlReplay.curOneHpCopy");
+    let expectation = t("controlReplay.curOneHpExpect");
     let severity = "normal";
     let primaryReason = "keep_current";
-    let sinceLabel = "Live";
+    let sinceLabel = t("controlReplay.curLive");
 
     if (currentModeId === "cm98") {
-      title = "Vorstbescherming actief";
-      copy = "Het systeem laat water circuleren om bevriezing van het watercircuit te voorkomen.";
-      expectation = "Vorstbescherming stopt zodra het risico weg is of de normale regeling weer voorrang krijgt.";
+      title = t("controlReplay.curFrostTitle");
+      copy = t("controlReplay.curFrostCopy");
+      expectation = t("controlReplay.curFrostExpect");
       severity = "limited";
       primaryReason = "frost_protection";
-      sinceLabel = "Bescherming actief";
+      sinceLabel = t("controlReplay.curFrostSince");
     } else if (stickyActive) {
-      title = "Pompbescherming actief";
-      copy = "Er is geen warmte- of koelvraag. De pomp draait kort om vastzitten na lange stilstand te voorkomen.";
-      expectation = "Na ongeveer 1 minuut stopt de pomp en blijft het systeem standby tot er comfortvraag of bescherming nodig is.";
+      title = t("controlReplay.curStickyTitle");
+      copy = t("controlReplay.curStickyCopy");
+      expectation = t("controlReplay.curStickyExpect");
       primaryReason = "sticky_protection";
-      sinceLabel = "Dagelijkse run";
+      sinceLabel = t("controlReplay.curStickySince");
     } else if (startupInhibit) {
       const coolingWait = startupInhibit.targetMode === 1;
-      title = coolingWait ? "Koeling wacht na herstart" : "Verwarming wacht na herstart";
+      title = coolingWait ? t("controlReplay.curCoolWaitTitle") : t("controlReplay.curHeatWaitTitle");
       copy = coolingWait
-        ? "Er is koelvraag, maar de compressor blijft na de herstart nog kort uit om een te snelle herstart te voorkomen."
-        : "Er is warmtevraag, maar de compressor blijft na de herstart nog kort uit om een te snelle herstart te voorkomen.";
+        ? t("controlReplay.curCoolWaitCopy")
+        : t("controlReplay.curHeatWaitCopy");
       expectation = coolingWait
-        ? "De warmtepomp start automatisch met koelen zodra de wachttijd voorbij is."
-        : "De warmtepomp start automatisch met verwarmen zodra de wachttijd voorbij is.";
+        ? t("controlReplay.curCoolWaitExpect")
+        : t("controlReplay.curHeatWaitExpect");
       primaryReason = "startup_inhibit";
-      sinceLabel = startupInhibit.remainingLabel || "Wachttijd actief";
+      sinceLabel = startupInhibit.remainingLabel || t("controlReplay.curWaitActive");
     } else if (coolingContext.reasonCode === "buffer_stop") {
-      title = "Koeling wacht: water al koud genoeg";
-      copy = "Er is koelvraag, maar het water is al koud genoeg. De warmtepomp hoeft daarom nu niet te starten.";
-      expectation = "De warmtepomp start automatisch zodra opnieuw actieve koeling nodig is.";
+      title = t("controlReplay.curBufferTitle");
+      copy = t("controlReplay.curBufferCopy");
+      expectation = t("controlReplay.curBufferExpect");
       primaryReason = "buffer_stop";
-      sinceLabel = "Koelvraag actief";
+      sinceLabel = t("controlReplay.curCoolDemandSince");
     } else if (coolingProtection) {
       const limiterReason = coolingContext.reasonCode && coolingContext.reasonCode !== "inactive" ? coolingContext.reasonCode : "soft_guard";
       const waitingForRestart = limiterReason === "restart_wait";
       title = waitingForRestart
-        ? "Koeling wacht op veilige herstart"
-        : coolingContext.permitted ? "Koeling tijdelijk beperkt" : "Koeling tijdelijk gepauzeerd";
+        ? t("controlReplay.curRestartWaitTitle")
+        : coolingContext.permitted ? t("controlReplay.curLimitedTitle") : t("controlReplay.curPausedTitle");
       copy = waitingForRestart
-        ? "De koelvraag is nog aanwezig. Na de koelstop wacht het systeem tot de veilige marge voldoende is hersteld."
-        : `Er is koelvraag, maar het systeem koelt nu maximaal op niveau ${coolingContext.allowedMax} om condens te voorkomen.`;
+        ? t("controlReplay.curRestartWaitCopy")
+        : t("controlReplay.curCappedCopy", { max: coolingContext.allowedMax });
       expectation = waitingForRestart
-        ? "De warmtepomp start automatisch opnieuw zodra de veilige marge voldoende en stabiel is."
-        : "Koeling neemt stap voor stap toe zodra de dauwpuntmarge veilig en stabiel is.";
+        ? t("controlReplay.curRestartExpect")
+        : t("controlReplay.curRampExpect");
       severity = "limited";
       primaryReason = limiterReason;
-      sinceLabel = "Koelvraag actief";
+      sinceLabel = t("controlReplay.curCoolDemandSince");
     } else if (coolingCapped) {
       const coolingMaxLabel = coolingContext.allowedMax && coolingContext.allowedMax !== "—"
-        ? `niveau ${coolingContext.allowedMax}`
-        : "het ingestelde maximum";
+        ? t("controlReplay.curCappedLevel", { max: coolingContext.allowedMax })
+        : t("controlReplay.curCappedMax");
       const cappedReason = ["capacity_cap", "room_cap", "cooling_limiter"].includes(coolingContext.reasonCode)
         ? coolingContext.reasonCode
         : "capacity_cap";
-      title = "Koeling actief op ingesteld maximum";
-      copy = `Er is koelvraag. Het systeem koelt maximaal op ${coolingMaxLabel}, zoals ingesteld in de software.`;
-      expectation = "Koeling blijft binnen dit maximum. Dauwpunt, aanvoer en waterflow worden op de achtergrond bewaakt.";
+      title = t("controlReplay.curCappedTitle");
+      copy = t("controlReplay.curCappedCopy", { level: coolingMaxLabel });
+      expectation = t("controlReplay.curCappedExpect");
       primaryReason = cappedReason;
-      sinceLabel = "Koelvraag actief";
+      sinceLabel = t("controlReplay.curCoolDemandSince");
     } else if (coolingActive) {
-      title = "Koeling actief";
-      copy = "Er is koelvraag en dauwpuntbewaking geeft koeling vrij. Het systeem blijft marge en waterflow bewaken.";
-      expectation = "Koeling blijft actief tot de kamertemperatuur richting setpoint zakt of bescherming ingrijpt.";
+      title = t("controlReplay.curCoolingTitle");
+      copy = t("controlReplay.curCoolingCopy");
+      expectation = t("controlReplay.curCoolingExpect");
       primaryReason = "keep_current";
-      sinceLabel = "Koelen";
+      sinceLabel = t("controlReplay.curCoolingSince");
     } else if (currentModeId === "cm4") {
-      title = boilerActive ? "Ketelfallback actief" : "Ketelfallbackrol niet actief";
+      title = boilerActive ? t("controlReplay.curFallbackOnTitle") : t("controlReplay.curFallbackOffTitle");
       copy = boilerActive
-        ? "Geen warmtepomp is inzetbaar; de CV-ketel krijgt in CM4 de verwarmingsopdracht."
-        : "CM4 is als regelrol gekozen, maar de keteluitvoer is op dit moment niet actief.";
+        ? t("controlReplay.curFallbackOnCopy")
+        : t("controlReplay.curFallbackOffCopy");
       expectation = boilerActive
-        ? "OpenQuatt blijft warmtepompherstel en alle veiligheidsvoorwaarden bewaken."
-        : "De uitvoer blijft uit totdat de benodigde veiligheidsvoorwaarden geldig zijn.";
+        ? t("controlReplay.curFallbackOnExpect")
+        : t("controlReplay.curFallbackOffExpect");
       severity = "fault";
       primaryReason = boilerActive ? "boiler_fallback" : "fallback_blocked";
-      sinceLabel = boilerActive ? "Fallback actief" : "Uitvoer geblokkeerd";
+      sinceLabel = boilerActive ? t("controlReplay.curFallbackOnSince") : t("controlReplay.curFallbackOffSince");
     } else if (boilerActive) {
-      title = "CV-ketel ondersteunt";
-      copy = "De CV-ketel helpt tijdelijk omdat de warmtevraag meer vermogen vraagt dan de warmtepompen nu leveren.";
-      expectation = "De CV-ketel stopt zodra de warmtepompen de vraag weer zelf kunnen dragen.";
+      title = t("controlReplay.curBoilerTitle");
+      copy = t("controlReplay.curBoilerCopy");
+      expectation = t("controlReplay.curBoilerExpect");
       severity = "limited";
       primaryReason = "boiler_assist";
-      sinceLabel = "Ondersteuning actief";
+      sinceLabel = t("controlReplay.curBoilerSince");
     } else if (defrostActive) {
-      title = "Ontdooien actief";
-      copy = "Een warmtepomp ontdooit tijdelijk. Het systeem houdt de keuze rustig zodat het ontdooien vanzelf kan afronden.";
-      expectation = "De warmtepomp hervat automatisch zodra het ontdooien klaar is.";
+      title = t("controlReplay.curDefrostTitle");
+      copy = t("controlReplay.curDefrostCopy");
+      expectation = t("controlReplay.curDefrostExpect");
       severity = "limited";
       primaryReason = "defrost_hold";
-      sinceLabel = "Tijdelijk";
+      sinceLabel = t("controlReplay.curDefrostSince");
     } else if (duoActive) {
-      title = "Duo-bedrijf actief";
-      copy = "Beide warmtepompen draaien omdat de warmtevraag hoog blijft. Dit is normaal winterbedrijf.";
-      expectation = "Eén warmtepomp stopt zodra de warmtevraag voldoende afneemt of single-bedrijf weer efficiënter is.";
+      title = t("controlReplay.curDuoTitle");
+      copy = t("controlReplay.curDuoCopy");
+      expectation = t("controlReplay.curDuoExpect");
       primaryReason = "better_heat";
-      sinceLabel = "Actief";
+      sinceLabel = t("controlReplay.curDuoSince");
     } else if (!hp1Running && !hp2Running) {
-      title = "Geen warmtepomp actief";
-      copy = "Er is nu geen warmtepompactie nodig, of het systeem wacht door bescherming of rusttijd.";
-      expectation = "Bij nieuwe vraag kiest het systeem opnieuw de best passende warmtepomp.";
+      title = t("controlReplay.curNoneTitle");
+      copy = t("controlReplay.curNoneCopy");
+      expectation = t("controlReplay.curNoneExpect");
       primaryReason = "keep_current";
-      sinceLabel = "Stand-by";
+      sinceLabel = t("controlReplay.curNoneSince");
     }
 
     const hp1Waiting = startupInhibit && ["HP1", "BOTH"].includes(startupInhibit.subject);
@@ -1059,16 +987,16 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       hp1Running,
       hp2Running,
       hp2Available: Boolean(hp2Panel),
-      hp1Status: hp1Running ? "Actief" : hp1Waiting ? "Wacht" : "Beschikbaar",
-      hp2Status: hp2Panel ? (hp2Running ? "Actief" : hp2Waiting ? "Wacht" : "Beschikbaar") : "Niet aanwezig",
-      cvStatus: boilerActive ? (currentModeId === "cm4" ? "Fallback" : "Actief") : "Uit",
+      hp1Status: hp1Running ? t("controlReplay.curHpActive") : hp1Waiting ? t("controlReplay.curHpWait") : t("controlReplay.curHpAvailable"),
+      hp2Status: hp2Panel ? (hp2Running ? t("controlReplay.curHpActive") : hp2Waiting ? t("controlReplay.curHpWait") : t("controlReplay.curHpAvailable")) : t("controlReplay.curHpMissing"),
+      cvStatus: boilerActive ? (currentModeId === "cm4" ? t("controlReplay.curCvFallback") : t("controlReplay.curCvActive")) : t("controlReplay.curCvOff"),
       outsideTemp: formatControlReplayNumber("outsideTempSelected", 1, "°C", "—"),
       supplyTemp: formatControlReplayNumber("supplyTemp", 1, "°C", "—"),
       flow: formatControlReplayNumber("flowSelected", 0, "L/h", "—"),
       hp1Starts: getControlReplayCounterValue("hp1CompressorStarts24h", "—"),
-      hp2Starts: getControlReplayCounterValue("hp2CompressorStarts24h", hp2Panel ? "—" : "n.v.t."),
+      hp2Starts: getControlReplayCounterValue("hp2CompressorStarts24h", hp2Panel ? "—" : t("controlReplay.cardNotApplicable")),
       hp1Hours: formatControlReplayRuntimeHours("hp1RuntimeHours", "—"),
-      hp2Hours: hp2Panel ? formatControlReplayRuntimeHours("hp2RuntimeHours", "—") : "n.v.t.",
+      hp2Hours: hp2Panel ? formatControlReplayRuntimeHours("hp2RuntimeHours", "—") : t("controlReplay.curNa"),
       cooling: coolingContext,
       coolingProtection,
       startupInhibit,
@@ -1135,15 +1063,15 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
 
   function formatControlWorkingAbsoluteTimeLabel(epochMs, nowMs = Date.now(), mode = "auto") {
     if (!Number.isFinite(epochMs)) {
-      return "Onbekend";
+      return t("overview.statusUnknown");
     }
     const date = new Date(epochMs);
-    const time = date.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+    const time = formatTime(date, { hour: "2-digit", minute: "2-digit" });
     if (mode === "time") {
       return time;
     }
     if (mode === "weekday") {
-      const day = date.toLocaleDateString("nl-NL", { weekday: "short" }).replace(".", "");
+      const day = formatDate(date, { weekday: "short" }).replace(".", "");
       return `${day} ${time}`;
     }
     const today = new Date(nowMs);
@@ -1153,9 +1081,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       return time;
     }
     if (isControlWorkingSameLocalDay(date, yesterday)) {
-      return `gisteren ${time}`;
+      return t("controlReplay.yesterdayPrefix", { time });
     }
-    const day = date.toLocaleDateString("nl-NL", { weekday: "short" }).replace(".", "");
+    const day = formatDate(date, { weekday: "short" }).replace(".", "");
     return `${day} ${time}`;
   }
 
@@ -1197,7 +1125,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const epochMs = getDecisionEventEpochMs(event);
     if (!Number.isFinite(epochMs)) {
       const ageMinutes = getDecisionEventAgeMinutes(event, nowMs);
-      return Number.isFinite(ageMinutes) ? formatControlWorkingRelativeOffset(ageMinutes) : "Onbekend";
+      return Number.isFinite(ageMinutes) ? formatControlWorkingRelativeOffset(ageMinutes) : t("controlReplay.timeUnknown");
     }
     if (selectedWindow === "week" || selectedWindow === "last48" || selectedWindow === "last3d" || selectedWindow === "custom") {
       return formatControlWorkingAbsoluteTimeLabel(epochMs, nowMs, "weekday");
@@ -1214,29 +1142,31 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       return "";
     }
     if (normalized < 60) {
-      return `${normalized}s`;
+      return t("controlReplay.durationSeconds", { value: formatNumber(normalized, { maximumFractionDigits: 0 }) });
     }
     if (normalized < 3600) {
-      return `${Math.round(normalized / 60)} min`;
+      return t("controlReplay.durationMinutes", { value: formatNumber(Math.round(normalized / 60), { maximumFractionDigits: 0 }) });
     }
     const hours = Math.floor(normalized / 3600);
     const minutes = Math.round((normalized % 3600) / 60);
-    return minutes ? `${hours}u ${minutes}m` : `${hours}u`;
+    return minutes
+      ? t("controlReplay.durationHoursMinutes", { hours: formatNumber(hours, { maximumFractionDigits: 0 }), minutes: formatNumber(minutes, { maximumFractionDigits: 0 }) })
+      : t("controlReplay.durationHours", { hours: formatNumber(hours, { maximumFractionDigits: 0 }) });
   }
 
   function getDecisionSubjectLabel(subject) {
     const normalized = String(subject || "").toUpperCase();
     const labels = {
-      SYSTEM: "Systeem",
+      SYSTEM: t("controlReplay.subjSystem"),
       HP1: "HP1",
       HP2: "HP2",
       BOTH: "HP1 + HP2",
-      CV: "CV-ketel",
-      COOLING: "Koeling",
-      PUMP: "Pomp",
-      CONTROLLER: "Regelaar",
+      CV: t("controlReplay.subjBoiler"),
+      COOLING: t("controlReplay.subjCooling"),
+      PUMP: t("controlReplay.subjPump"),
+      CONTROLLER: t("controlReplay.subjController"),
     };
-    return labels[normalized] || "Systeem";
+    return labels[normalized] || t("controlReplay.subjSystem");
   }
 
   function getDecisionModeSubjectLabel(subject, contextCm) {
@@ -1246,10 +1176,10 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       return subjectLabel;
     }
     if (Number(contextCm) === 5) {
-      return `${subjectLabel} (koelen)`;
+      return t("controlReplay.subjCoolSuffix", { label: subjectLabel });
     }
     if (Number(contextCm) > 0) {
-      return `${subjectLabel} (verwarmen)`;
+      return t("controlReplay.subjHeatSuffix", { label: subjectLabel });
     }
     return subjectLabel;
   }
@@ -1272,8 +1202,8 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const subject = getDecisionSubjectLabel(event?.subject);
     const reasonCode = String(event?.reason || "unknown");
     const isCoolingModeEvent = Number(event?._oq_context_cm ?? event?.cm) === 5;
-    const activeCoolingSource = event?._oq_active_cooling_source || "De warmtepomp";
-    const activeHeatingSource = event?._oq_active_heating_source || "De warmtepomp";
+    const activeCoolingSource = event?._oq_active_cooling_source || t("controlReplay.subjHp");
+    const activeHeatingSource = event?._oq_active_heating_source || t("controlReplay.subjHp");
     const coolingStopReason = String(event?._oq_cooling_stop_reason || (reasonCode === "dew_stop" ? "dew_stop" : ""));
     const coolingDemandEnded = ["less_power", "demand_decreased", "cooling_request_cleared"].includes(reasonCode);
     const heatingDemandEnded = reasonCode === "heating_request_cleared";
@@ -1291,437 +1221,437 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     if (reasonCode === "frequency_cap_below_minimum") {
       const silent = (Number(event?.flags) & 1) !== 0;
       return {
-        title: `${subject} kan niet starten: frequentielimiet`,
+        title: t("controlReplay.freqCantStart", { subject }),
         summary: describeFrequencyLimit(Number(event.value_a), {
           unit: event.subject === "HP2" ? "hp2" : "hp1",
           mode: Number(event.cm) === 5 ? "cooling" : "heating",
           minimum: Number(event.value_b),
         }),
-        detail: `De maximale compressorfrequentie ${silent ? "tijdens stille uren" : "overdag"} sloot alle compressorstanden voor deze bedrijfsmodus uit.`,
-        next: `Controleer bij Stille uren de maximale compressorfrequentie ${silent ? "tijdens stille uren" : "overdag"}. Deze moet minstens gelijk zijn aan het genoemde minimum.`,
+        detail: silent ? t("controlReplay.freqDetailSilent") : t("controlReplay.freqDetailDay"),
+        next: silent ? t("controlReplay.freqNextSilent") : t("controlReplay.freqNextDay"),
       };
     }
     const fallback = {
-      title: "Keuze van het systeem",
-      summary: "De regelaar heeft een keuze vastgelegd.",
+      title: t("controlReplay.evFallbackTitle"),
+      summary: t("controlReplay.evFallbackCopy"),
       detail: reason.summary,
-      next: "Het systeem beoordeelt opnieuw zodra vraag, marge of beschikbaarheid verandert.",
+      next: t("controlReplay.evFallbackNext"),
     };
     switch (eventType) {
       case "source_start":
         return {
-        title: isCoolingModeEvent ? `Koeling gestart (${subject})` : `${subject} gestart`,
-        reasonLabel: isCoolingModeEvent ? "Koeling gestart" : "",
-        reasonSummary: isCoolingModeEvent ? "Koeling is vrijgegeven en de gekozen warmtepomp start met koelen." : "",
+        title: isCoolingModeEvent ? t("controlReplay.evCoolStarted", { subject }) : t("controlReplay.evHpStarted", { subject }),
+        reasonLabel: isCoolingModeEvent ? t("controlReplay.evCoolStartedLabel") : "",
+        reasonSummary: isCoolingModeEvent ? t("controlReplay.evCoolStartedCopy") : "",
         summary: isCoolingModeEvent
-          ? `${subject} is gestart om te koelen. Dauwpunt, waterflow en aanvoertemperatuur blijven bewaakt.`
-          : `${subject} is gekozen op basis van beschikbaarheid, wachttijd en draaiurenbalans.`,
+          ? t("controlReplay.evCoolStartCopy", { subject })
+          : t("controlReplay.evHpChosenCopy", { subject }),
         detail: isCoolingModeEvent
-          ? "De koelvraag is vrijgegeven. HP1 en HP2 zijn gelijkwaardig; de regelaar kiest de beschikbare bron die nu het beste past."
-          : "HP1 en HP2 zijn gelijkwaardig. De regelaar kiest de beschikbare bron die op dat moment het beste past.",
+          ? t("controlReplay.evCoolReleasedCopy")
+          : t("controlReplay.evHpEqualCopy"),
         next: isCoolingModeEvent
-          ? "Koeling blijft actief zolang er koelvraag is en de veilige marges vrij blijven."
-          : "Als de vraag hoog blijft, beoordeelt het systeem of extra vermogen nodig is.",
+          ? t("controlReplay.evCoolStaysActive")
+          : t("controlReplay.evHighDemand"),
       };
       case "source_stop":
         return {
         title: isCoolingModeEvent
           ? coolingStopReason === "dew_stop"
-            ? `${subject} gestopt door dauwpunt`
+            ? t("controlReplay.evCoolDewTitle", { subject })
             : coolingDemandEnded
-            ? `Koeling gestopt: geen koelvraag`
-            : `Koeling afgerond (${subject})`
+            ? t("controlReplay.evCoolNoDemandTitle")
+            : t("controlReplay.evCoolDoneTitle", { subject })
           : heatingDemandEnded
-          ? "Verwarming gestopt: geen warmtevraag"
+          ? t("controlReplay.evHeatStoppedTitle")
           : reasonCode === "less_power"
-          ? "Eén warmtepomp stopt"
-          : `${subject} gestopt`,
+          ? t("controlReplay.evOneHpStops")
+          : t("controlReplay.evHpStoppedTitle", { subject }),
         reasonLabel: isCoolingModeEvent
           ? coolingStopReason === "dew_stop"
-            ? "Dauwpuntstop"
+            ? t("controlReplay.evDewStopLabel")
             : coolingDemandEnded
-            ? "Geen koelvraag"
-            : "Koeling afgerond"
+            ? t("controlReplay.evNoCoolLabel")
+            : t("controlReplay.evCoolDoneLabel")
           : heatingDemandEnded
-          ? "Geen warmtevraag"
+          ? t("controlReplay.evNoHeatLabel")
           : reasonCode === "less_power"
-          ? "Eén warmtepomp is genoeg"
+          ? t("controlReplay.evOneHpEnoughLabel")
           : "",
         reasonSummary: isCoolingModeEvent
           ? coolingStopReason === "dew_stop"
-            ? "De warmtepomp stopte omdat de dauwpuntbewaking koelen pauzeerde."
+            ? t("controlReplay.evDewPausedCopy")
             : coolingDemandEnded
-            ? "De koelvraag is weggevallen of voldoende afgenomen."
-            : "De koelactie is afgerond. Een korte pompnaloop kan daarna normaal zijn."
+            ? t("controlReplay.evCoolGoneCopy")
+            : t("controlReplay.evCoolRoundedCopy")
           : heatingDemandEnded
-          ? "De warmtevraag is weggevallen. Een korte pompnaloop kan daarna normaal zijn."
+          ? t("controlReplay.evHeatGoneCopy")
           : reasonCode === "less_power"
-          ? "De warmtevraag is afgenomen; één warmtepomp kan de resterende vraag dragen."
+          ? t("controlReplay.evDemandLowerCopy")
           : "",
         summary: isCoolingModeEvent
           ? coolingStopReason === "dew_stop"
-            ? `${subject} stopte omdat verder koelen te dicht bij het dauwpunt kwam.`
+            ? t("controlReplay.evCoolDewSummary", { subject })
             : coolingDemandEnded
-            ? "Er is geen koelvraag meer; de warmtepomp stopt met koelen."
-            : `${subject} is klaar met koelen.`
+            ? t("controlReplay.evNoCoolLeft")
+            : t("controlReplay.evCoolReadySummary", { subject })
           : heatingDemandEnded
-          ? "Er is geen warmtevraag meer; de warmtepomp stopt met verwarmen."
+          ? t("controlReplay.evNoHeatLeft")
           : reasonCode === "less_power"
-          ? "De vraag is lager. Eén warmtepomp kan de resterende warmtevraag rustig dragen."
-          : `${subject} is gestopt omdat minder vermogen voldoende is of bescherming voorrang kreeg.`,
+          ? t("controlReplay.evDemandLowerSummary")
+          : t("controlReplay.evStoppedLessPower", { subject }),
         detail: isCoolingModeEvent
           ? coolingStopReason === "dew_stop"
-            ? "Dit is beschermingsgedrag. Het systeem voorkomt condens en kan later opnieuw koelen zodra de marge veilig is."
-            : "De pomp kan daarna nog kort nalopen om het watercircuit netjes af te ronden."
+            ? t("controlReplay.evProtectionBehavior")
+            : t("controlReplay.evPumpRerun")
           : heatingDemandEnded
-          ? "De regeling vraagt geen warmte meer. De pomp kan daarna nog kort nalopen om het watercircuit netjes af te ronden."
-          : "De regelaar voorkomt onnodig doordraaien en houdt tegelijk wachttijden en bescherming in de gaten.",
+          ? t("controlReplay.evNoHeatControl")
+          : t("controlReplay.evNoIdleRun"),
         next: isCoolingModeEvent
           ? coolingStopReason === "dew_stop"
-            ? "Bij blijvende koelvraag start koeling opnieuw zodra de dauwpuntmarge veilig genoeg is."
-            : "Het systeem blijft standby of rondt de naloop af totdat er opnieuw koelvraag is."
+            ? t("controlReplay.evDewRestart")
+            : t("controlReplay.evStandbyRerun")
           : heatingDemandEnded
-          ? "Het systeem blijft standby totdat er opnieuw warmtevraag is."
-          : "Bij stijgende vraag kan dezelfde of de andere warmtepomp opnieuw starten.",
+          ? t("controlReplay.evStandbyHeat")
+          : t("controlReplay.evRisingRestart"),
       };
       case "topology_change":
         return {
         title: isCoolingModeEvent
           ? event?.to === "idle"
             ? reasonCode === "cooling_request_cleared"
-              ? "Koeling gestopt: geen koelvraag"
+              ? t("controlReplay.evTopoCoolNoDemandTitle")
               : reasonCode === "dew_stop"
-              ? "Koeling gestopt door dauwpunt"
-              : "Koeling gestopt"
-            : "Koeling actief"
+              ? t("controlReplay.evTopoCoolDewTitle")
+              : t("controlReplay.evTopoCoolStoppedTitle")
+            : t("controlReplay.evTopoCoolActiveTitle")
           : event?.to === "idle" && heatingDemandEnded
-          ? "Verwarming gestopt: geen warmtevraag"
+          ? t("controlReplay.evTopoHeatStoppedTitle")
           : event?.to === "duo"
-          ? "Twee warmtepompen verwarmen"
-          : "Eén warmtepomp verwarmt",
+          ? t("controlReplay.evTopoTwoHpTitle")
+          : t("controlReplay.evTopoOneHpTitle"),
         reasonLabel: isCoolingModeEvent
           ? event?.to === "idle"
             ? reasonCode === "cooling_request_cleared"
-              ? "Geen koelvraag"
+              ? t("controlReplay.evNoCoolLabel")
               : reasonCode === "dew_stop"
-              ? "Dauwpuntstop"
-              : "Koeling gestopt"
-            : "Koeling actief"
+              ? t("controlReplay.evDewStopLabel")
+              : t("controlReplay.evTopoCoolStoppedTitle")
+            : t("controlReplay.evTopoCoolActive")
           : event?.to === "idle" && heatingDemandEnded
-          ? "Geen warmtevraag"
+          ? t("controlReplay.evNoHeatLabel")
           : "",
         reasonSummary: isCoolingModeEvent
           ? event?.to === "idle"
             ? reasonCode === "cooling_request_cleared"
-              ? "De koelvraag is weggevallen. Eventuele naloop is normaal."
+              ? t("controlReplay.evTopoCoolGone")
               : reasonCode === "dew_stop"
-              ? "Koeling pauzeert om condens te voorkomen. Herstart kan zodra de marge veilig is."
-              : "Er is geen warmtepomp meer actief voor koeling. Eventuele naloop is normaal."
-            : "Koeling is actief. Het systeem bewaakt tegelijk de veilige marges."
+              ? t("controlReplay.evTopoCoolPause")
+              : t("controlReplay.evTopoNoHpCool")
+            : t("controlReplay.evTopoCoolMargins")
           : event?.to === "idle" && heatingDemandEnded
-          ? "De warmtevraag is weggevallen. Eventuele naloop is normaal."
+          ? t("controlReplay.evTopoHeatGone")
           : "",
         summary: isCoolingModeEvent
           ? event?.to === "idle"
             ? reasonCode === "cooling_request_cleared"
-              ? "De koelvraag is weg. Er is geen warmtepomp meer actief voor koeling."
+              ? t("controlReplay.evTopoCoolGoneSummary")
               : reasonCode === "dew_stop"
-              ? "Koeling stopt tijdelijk omdat verder koelen te dicht bij het dauwpunt komt."
-              : "Er is geen warmtepomp meer actief voor koeling."
-            : `${subject} koelt. Het systeem blijft dauwpunt, waterflow en aanvoertemperatuur bewaken.`
+              ? t("controlReplay.evTopoCoolDewSummary")
+              : t("controlReplay.evTopoNoHpCoolSummary")
+            : t("controlReplay.evTopoCoolingSummary", { subject })
           : event?.to === "duo"
-          ? "Samen leveren de warmtepompen rustiger vermogen dan één warmtepomp op hoge belasting."
+          ? t("controlReplay.evTopoTwoHpSummary")
           : event?.to === "idle" && heatingDemandEnded
-          ? "Er is geen warmtepomp meer actief voor verwarmen."
-          : "De vraag is lager. Eén warmtepomp kan de resterende vraag weer rustig dragen.",
+          ? t("controlReplay.evTopoNoHpHeatSummary")
+          : t("controlReplay.evTopoLowerSummary"),
         detail: isCoolingModeEvent
-          ? "Koelen gebruikt dezelfde bronkeuze-logica als verwarmen: de warmtepompen zijn gelijkwaardig en de controller kiest de rustigste beschikbare bron."
-          : "De duo-keuze gaat niet over hoofd- en hulppomp. De warmtepompen zijn gelijkwaardig; het systeem kiest de rustigste combinatie.",
+          ? t("controlReplay.evTopoCoolLogic")
+          : t("controlReplay.evTopoDuoLogic"),
         next: isCoolingModeEvent
-          ? "Koeling blijft actief zolang er koelvraag is en bescherming geen beperking vraagt."
+          ? t("controlReplay.evTopoCoolStays")
           : event?.to === "duo"
-          ? "Duo-bedrijf blijft actief zolang de extra reserve nuttig is."
+          ? t("controlReplay.evTopoDuoStays")
           : event?.to === "idle" && heatingDemandEnded
-          ? "Het systeem blijft standby totdat er opnieuw warmtevraag is."
-          : "De tweede warmtepomp blijft beschikbaar als de vraag opnieuw stijgt.",
+          ? t("controlReplay.evTopoStandbyHeat")
+          : t("controlReplay.evTopoSecondAvailable"),
       };
       case "decision_hold":
         return {
-        title: reasonCode === "defrost_hold" ? "Keuze kort vastgehouden" : "Start of wissel uitgesteld",
+        title: reasonCode === "defrost_hold" ? t("controlReplay.evHoldDefrostTitle") : t("controlReplay.evHoldDelayedTitle"),
         summary: reasonCode === "defrost_hold"
-          ? "De regelaar laat ontdooien rustig afronden voordat hij opnieuw schakelt."
-          : "De regelaar wacht bewust even om korte cycli en onrustig gedrag te voorkomen.",
+          ? t("controlReplay.evHoldDefrostCopy")
+          : t("controlReplay.evHoldWaitCopy"),
         detail: reason.summary,
-        next: "Na de wachttijd beoordeelt het systeem opnieuw wat de rustigste keuze is.",
+        next: t("controlReplay.evHoldNext"),
       };
       case "decision_blocked":
         return {
         title: reasonCode === "flow_too_low"
-          ? "Start geblokkeerd: waterflow te laag"
-          : subject === "CV-ketel" ? "CV-ketel niet vrijgegeven" : "Actie geblokkeerd",
-        reasonLabel: reasonCode === "flow_too_low" ? "Waterflow blijft te laag" : "",
+          ? t("controlReplay.evBlockedFlowTitle")
+          : subject === t("controlReplay.subjBoiler") ? t("controlReplay.evBlockedBoilerTitle") : t("controlReplay.evBlockedGenericTitle"),
+        reasonLabel: reasonCode === "flow_too_low" ? t("controlReplay.evBlockedFlowLabel") : "",
         reasonSummary: reasonCode === "flow_too_low"
-          ? "De normale voorlooptijd is verstreken. De warmtepomp blijft veilig uit totdat voldoende water circuleert."
+          ? t("controlReplay.evBlockedFlowCopy")
           : "",
         summary: reasonCode === "flow_too_low"
-          ? "De pomp draait, maar na de normale voorlooptijd is nog niet genoeg waterflow gemeten."
-          : subject === "CV-ketel"
-          ? "Er was een mogelijke hulpvraag, maar de CV-ketel was niet vrijgegeven."
-          : "De gevraagde actie is tijdelijk niet toegestaan door een voorwaarde of bescherming.",
+          ? t("controlReplay.evBlockedFlowSummary")
+          : subject === t("controlReplay.subjBoiler")
+          ? t("controlReplay.evBlockedBoilerSummary")
+          : t("controlReplay.evBlockedGenericSummary"),
         detail: reasonCode === "flow_too_low"
-          ? "Dit is pas een blokkade nadat de normale opbouwtijd is verstreken; een korte lage flow direct na het starten hoort hier niet bij."
+          ? t("controlReplay.evBlockedFlowDetail")
           : reason.summary,
         next: reasonCode === "flow_too_low"
-          ? "De regelaar blijft de waterflow volgen en geeft de start automatisch vrij zodra de circulatie voldoende en stabiel is."
-          : "De regelaar probeert opnieuw zodra de voorwaarden vrij zijn.",
+          ? t("controlReplay.evBlockedFlowNext")
+          : t("controlReplay.evBlockedRetryNext"),
         checks: reasonCode === "flow_too_low"
-          ? ["Voorlooptijd verstreken", "Warmtepomp blijft veilig uit", "Waterflow wordt opnieuw beoordeeld"]
+          ? [t("controlReplay.evBlockedFlowChecks"), t("controlReplay.evBlockedSafeOff"), t("controlReplay.evBlockedFlowReassess")]
           : null,
       };
       case "candidate_blocked":
         return {
-        title: `${subject} wacht nog`,
+        title: t("controlReplay.evCandidateWaiting", { subject }),
         summary: reasonCode === "candidate_in_rest"
-          ? `${subject} zit nog in rusttijd na een vorige stop.`
-          : `${subject} is nu nog geen veilige kandidaat om te starten.`,
+          ? t("controlReplay.evCandidateRest", { subject })
+          : t("controlReplay.evCandidateUnsafe", { subject }),
         detail: reason.summary,
-        next: "De regelaar probeert opnieuw zodra de voorwaarde vrij is en de vraag blijft bestaan.",
+        next: t("controlReplay.evCandidateRetry"),
       };
       case "flow_hold_start":
         return {
         title: reasonCode === "flow_postflow"
-          ? coolingRuntimeHold ? "Koeling loopt nog kort door" : heatingRuntimeHold ? "Verwarming loopt nog kort door" : isCoolingModeEvent ? "Naloop na koelen actief" : "Naloop actief"
-          : isFlowFault ? "Start wacht op voldoende waterflow"
-          : isCoolingModeEvent ? "Voorloop voor koelen" : "Voorloop voor start",
+          ? coolingRuntimeHold ? t("controlReplay.evFlowPostCoolShort") : heatingRuntimeHold ? t("controlReplay.evFlowPostHeatShort") : isCoolingModeEvent ? t("controlReplay.evFlowPostCoolActive") : t("controlReplay.evFlowPostActive")
+          : isFlowFault ? t("controlReplay.evFlowStartWait")
+          : isCoolingModeEvent ? t("controlReplay.evFlowPreCool") : t("controlReplay.evFlowPreStart"),
         reasonLabel: reasonCode === "flow_postflow"
-          ? coolingRuntimeHold || heatingRuntimeHold ? "Minimale looptijd" : isCoolingModeEvent ? "Naloop na koelen" : "Naloop actief"
-          : isFlowFault ? "Waterflow blijft te laag"
-          : isCoolingModeEvent ? "Voorloop voor koelen" : "Voorloop actief",
+          ? coolingRuntimeHold || heatingRuntimeHold ? t("controlReplay.evFlowPostLabel") : isCoolingModeEvent ? t("controlReplay.evFlowPostCoolLabel") : t("controlReplay.evFlowPostLabelActive")
+          : isFlowFault ? t("controlReplay.evFlowLowLabel")
+          : isCoolingModeEvent ? t("controlReplay.evFlowPreCoolLabel") : t("controlReplay.evFlowPreLabel"),
         reasonSummary: isCoolingModeEvent
           ? reasonCode === "flow_postflow"
             ? coolingRuntimeHold
-              ? `${activeCoolingSource} staat nog op Cooling terwijl het systeem al in CM1 naloop zit.`
-              : "De pomp draait kort na om het koelbedrijf netjes af te ronden."
-            : "De pomp draait eerst kort zodat de flow stabiel is voordat de warmtepomp met koelen start."
+              ? t("controlReplay.evRuntimeCoolCopy", { source: activeCoolingSource })
+              : t("controlReplay.evPumpPostCoolCopy")
+            : t("controlReplay.evPumpPreCoolCopy")
           : heatingRuntimeHold
-          ? `${activeHeatingSource} verwarmt nog terwijl de regelaar al in CM1 naloop zit.`
+          ? t("controlReplay.evRuntimeHeatCopy", { source: activeHeatingSource })
           : "",
         summary: isCoolingModeEvent
           ? reasonCode === "flow_postflow"
             ? coolingRuntimeHold
-              ? `${activeCoolingSource} koelt nog kort door door minimale looptijd; het systeem zit al in naloop.`
-              : "De pomp draait kort na zodat het koelbedrijf netjes wordt afgerond."
+              ? t("controlReplay.evRuntimeCoolSummary", { source: activeCoolingSource })
+              : t("controlReplay.evPumpPostCoolSummary")
             : isFlowFault
-            ? "De voorlooptijd is verstreken, maar de waterflow is nog niet voldoende om veilig met koelen te starten."
-            : "De pomp draait eerst kort voor. Daarna mag de warmtepomp met koelen starten."
+            ? t("controlReplay.evFlowLowCoolSummary")
+            : t("controlReplay.evPumpPreCoolSummary")
           : isFlowFault
-          ? "De voorlooptijd is verstreken, maar de waterflow is nog niet voldoende om de warmtepomp veilig te starten."
+          ? t("controlReplay.evFlowLowHeatSummary")
           : isFlowPreStart
-            ? "De pomp draait eerst kort voor zodat de flow stabiel is voordat de warmtepomp start."
+            ? t("controlReplay.evPumpPreHeatSummary")
           : heatingRuntimeHold
-          ? `${activeHeatingSource} verwarmt nog kort door door minimale looptijd; het systeem zit al in naloop.`
+          ? t("controlReplay.evRuntimeHeatSummary", { source: activeHeatingSource })
           : reason.summary,
         detail: isCoolingModeEvent
           ? coolingRuntimeHold
-            ? "De controller vraagt geen nieuwe koelactie meer, maar stopt de buitenunit niet abrupt. Eerst wordt de minimale looptijd afgerond; daarna volgt de normale pompnaloop."
-            : "Dit is een normale startstap. De pomp krijgt eerst ongeveer 30 seconden om waterflow op te bouwen; daarna wordt de koelactie vrijgegeven."
+            ? t("controlReplay.evControllerNoNewCool")
+            : t("controlReplay.evNormalStartCool")
           : heatingRuntimeHold
-          ? "De regelaar vraagt geen nieuwe warmte meer, maar stopt de buitenunit niet abrupt. Eerst wordt de minimale looptijd afgerond; daarna volgt de normale pompnaloop."
-          : "CM1 wordt gebruikt als korte flowfase. De pomp krijgt eerst even tijd om waterflow op te bouwen voordat de warmtepomp start of stopt.",
+          ? t("controlReplay.evControllerNoNewHeat")
+          : t("controlReplay.evCm1FlowPhase"),
         next: isCoolingModeEvent
           ? reasonCode === "flow_postflow"
             ? coolingRuntimeHold
-              ? `${activeCoolingSource} stopt zodra de minimale looptijd vrij is; daarna rondt de pomp de naloop af.`
-              : "Daarna blijft het systeem standby of beoordeelt het een nieuwe koelvraag."
-            : "Na de korte voorloop gaat het systeem automatisch door met koelen."
+              ? t("controlReplay.evRuntimeCoolStops", { source: activeCoolingSource })
+              : t("controlReplay.evStandbyNewCool")
+            : t("controlReplay.evAutoContinueCool")
           : heatingRuntimeHold
-          ? `${activeHeatingSource} stopt zodra de minimale looptijd vrij is; daarna rondt de pomp de naloop af.`
-          : "De regelaar gaat automatisch verder zodra de flowfase klaar is.",
+          ? t("controlReplay.evRuntimeHeatStops", { source: activeHeatingSource })
+          : t("controlReplay.evAutoContinueFlow"),
       };
       case "flow_hold_clear":
         return {
         title: reasonCode === "flow_postflow"
-          ? isCoolingModeEvent ? "Naloop na koelen klaar" : "Naloop klaar"
-          : isFlowFault ? "Waterflow hersteld"
-          : isCoolingModeEvent ? "Voorloop voor koelen klaar" : "Voorloop klaar",
+          ? isCoolingModeEvent ? t("controlReplay.evFlowPostCoolDone") : t("controlReplay.evFlowPostDone")
+          : isFlowFault ? t("controlReplay.evFlowRecovered")
+          : isCoolingModeEvent ? t("controlReplay.evFlowPreCoolDone") : t("controlReplay.evFlowPreDone"),
         reasonLabel: reasonCode === "flow_postflow"
-          ? isCoolingModeEvent ? "Naloop na koelen" : "Naloop actief"
-          : isFlowFault ? "Waterflow hersteld"
-          : isCoolingModeEvent ? "Koelen vrijgegeven" : "Voorloop klaar",
+          ? isCoolingModeEvent ? t("controlReplay.evFlowPostCoolLabelDone") : t("controlReplay.evFlowPostLabelActive")
+          : isFlowFault ? t("controlReplay.evFlowRecoveredLabel")
+          : isCoolingModeEvent ? t("controlReplay.evCoolReleasedLabel") : t("controlReplay.evFlowPreDoneLabel"),
         reasonSummary: reasonCode === "flow_postflow"
-          ? isCoolingModeEvent ? "De korte pompnaloop na koelen is afgerond." : "De korte pompnaloop is afgerond."
+          ? isCoolingModeEvent ? t("controlReplay.evFlowPostCoolDoneCopy") : t("controlReplay.evFlowPostDoneCopy")
           : isFlowFault
-          ? "De waterflow is hersteld en de tijdelijke startblokkade is opgeheven."
+          ? t("controlReplay.evFlowRecoveredCopy")
           : isCoolingModeEvent
-          ? "De waterflow is voldoende; de warmtepomp kan met koelen verder."
-          : "De waterflow is voldoende; de warmtepomp is vrijgegeven voor de volgende stap.",
+          ? t("controlReplay.evFlowPreCoolDoneCopy")
+          : t("controlReplay.evFlowPreDoneCopy"),
         summary: isCoolingModeEvent
           ? reasonCode === "flow_postflow"
-            ? "De pomp heeft kort nagedraaid; het koelbedrijf is afgerond."
-            : "De waterflow is voldoende; koeling kan verder."
+            ? t("controlReplay.evPumpPostCoolDone")
+            : t("controlReplay.evFlowPreCoolDoneCopy")
           : reasonCode === "flow_postflow"
-          ? "De pomp heeft kort nagedraaid; het systeem kan terug naar standby."
-          : "De waterflowfase is afgerond; de normale regeling kan verder.",
+          ? t("controlReplay.evPumpPostDone")
+          : t("controlReplay.evFlowPhaseDone"),
         detail: isCoolingModeEvent
-          ? "De flowfase hoort bij het koeltraject. Dit is normaal gedrag rond starten of stoppen van koeling."
+          ? t("controlReplay.evFlowCoolTrajectory")
           : reasonCode === "flow_postflow"
-          ? "De warmtepomp is gestopt en de pomp heeft de korte naloop afgerond."
-          : "De pomp heeft voldoende circulatie opgebouwd. De startvoorwaarde voor waterflow is nu vrij.",
+          ? t("controlReplay.evHpStoppedPostDone")
+          : t("controlReplay.evFlowBuiltUp"),
         next: isCoolingModeEvent
           ? reasonCode === "flow_postflow"
-            ? "Het systeem blijft standby totdat er opnieuw koelvraag of bescherming nodig is."
-            : "De controller vervolgt met koelen en blijft dauwpunt en aanvoer bewaken."
-          : "De controller vervolgt met verwarmen, koelen, vorstbescherming of standby.",
+            ? t("controlReplay.evStandbyNewCoolDemand")
+            : t("controlReplay.evContinueCoolMonitor")
+          : t("controlReplay.evContinueAllModes"),
         checks: reasonCode === "flow_postflow"
-          ? ["Naloop afgerond", "Warmtepomp gestopt", "Regeling gaat naar standby"]
+          ? [t("controlReplay.evPostChecks"), t("controlReplay.evHpStoppedCheck"), t("controlReplay.evToStandbyCheck")]
           : isFlowFault
-          ? ["Waterflow hersteld", "Startblokkade opgeheven", "Regeling gaat verder"]
-          : ["Waterflow voldoende", "Warmtepomp vrijgegeven", "Regeling gaat verder"],
+          ? [t("controlReplay.evRecoveredCheck"), t("controlReplay.evBlockLiftedCheck"), t("controlReplay.evContinueCheck")]
+          : [t("controlReplay.evFlowEnoughCheck"), t("controlReplay.evHpReleasedCheck"), t("controlReplay.evContinueCheck")],
       };
       case "startup_inhibit_start":
         return {
-        title: Number(event?.value_a) === 1 ? "Koeling wacht na herstart" : "Verwarming wacht na herstart",
-        reasonLabel: "Wachttijd na herstart",
-        reasonSummary: "De compressor blijft na een herstart kort uit om een te snelle herstart te voorkomen.",
+        title: Number(event?.value_a) === 1 ? t("controlReplay.evInhibitCoolTitle") : t("controlReplay.evInhibitHeatTitle"),
+        reasonLabel: t("controlReplay.evInhibitWaitLabel"),
+        reasonSummary: t("controlReplay.evInhibitWaitCopy"),
         summary: Number(event?.value_a) === 1
-          ? "Er is koelvraag, maar de warmtepomp wacht nog kort na de herstart."
-          : "Er is warmtevraag, maar de warmtepomp wacht nog kort na de herstart.",
-        detail: "De controller kent na een reboot de voorgaande stoptijd niet meer. Daarom houdt hij eenmaal de ingestelde minimale uit-tijd aan voordat een compressor mag starten.",
+          ? t("controlReplay.evInhibitCoolSummary")
+          : t("controlReplay.evInhibitHeatSummary"),
+        detail: t("controlReplay.evInhibitRebootCopy"),
         next: Number(event?.value_a) === 1
-          ? "De warmtepomp start automatisch met koelen zodra de wachttijd voorbij is."
-          : "De warmtepomp start automatisch met verwarmen zodra de wachttijd voorbij is.",
-        checks: ["Comfortvraag aanwezig", "Compressor blijft nog uit", "Start volgt automatisch"],
+          ? t("controlReplay.evInhibitCoolNext")
+          : t("controlReplay.evInhibitHeatNext"),
+        checks: [t("controlReplay.evInhibitChecks"), t("controlReplay.evInhibitCompressorWaits"), t("controlReplay.evInhibitAutoStart")],
       };
       case "startup_inhibit_clear":
         return {
-        title: "Wachttijd na herstart voorbij",
-        reasonLabel: "Wachttijd afgerond",
-        reasonSummary: "De compressor mag weer starten als de vraag nog aanwezig is.",
-        summary: "De wachttijd na de herstart is verstreken.",
-        detail: "De minimale uit-tijd na de reboot is afgerond. Alle normale startvoorwaarden blijven van toepassing.",
-        next: "Bij aanhoudende vraag gaat de controller automatisch verder met de gekozen warmtepomp.",
-        checks: ["Wachttijd verstreken", "Start weer toegestaan", "Regeling gaat verder"],
+        title: t("controlReplay.evInhibitDoneTitle"),
+        reasonLabel: t("controlReplay.evInhibitDoneLabel"),
+        reasonSummary: t("controlReplay.evInhibitDoneCopy"),
+        summary: t("controlReplay.evInhibitDoneSummary"),
+        detail: t("controlReplay.evInhibitDoneDetail"),
+        next: t("controlReplay.evInhibitDoneNext"),
+        checks: [t("controlReplay.evInhibitElapsed"), t("controlReplay.evInhibitStartAllowed"), t("controlReplay.evContinueCheck")],
       };
       case "startup_inhibit_refresh":
         return {
-        title: Number(event?.value_a) === 1 ? "Koelvraag tijdens wachttijd gewijzigd" : "Warmtevraag tijdens wachttijd gewijzigd",
-        reasonLabel: "Wachttijd blijft actief",
-        reasonSummary: "De gekozen warmtepomp of doelmodus veranderde, maar de wachttijd na de herstart loopt door.",
-        summary: "De controller heeft de actuele vraag opnieuw beoordeeld. De compressor blijft wachten tot dezelfde wachttijd voorbij is.",
-        detail: "Tijdens de wachttijd veranderde welke warmtepomp of doelmodus gewenst is. De blokkering is niet opgeheven; alleen de context van de wachtperiode is bijgewerkt.",
-        next: "Zodra de wachttijd voorbij is, mag de dan gekozen warmtepomp automatisch starten.",
-        checks: ["Vraag opnieuw beoordeeld", "Wachttijd blijft actief", "Start volgt automatisch"],
+        title: Number(event?.value_a) === 1 ? t("controlReplay.evInhibitRefreshCoolTitle") : t("controlReplay.evInhibitRefreshHeatTitle"),
+        reasonLabel: t("controlReplay.evInhibitStaysLabel"),
+        reasonSummary: t("controlReplay.evInhibitRefreshCopy"),
+        summary: t("controlReplay.evInhibitRefreshSummary"),
+        detail: t("controlReplay.evInhibitRefreshDetail"),
+        next: t("controlReplay.evInhibitRefreshNext"),
+        checks: [t("controlReplay.evInhibitReassessed"), t("controlReplay.evInhibitStaysLabel"), t("controlReplay.evInhibitAutoStart")],
       };
       case "defrost_seen_start":
         return {
-        title: `Ontdooien gestart (${subject})`,
-        summary: `${subject} ontdooit kort. Dat is normaal bij koud en vochtig weer.`,
-        detail: "De buitenunit bepaalt zelf hoe lang ontdooien duurt. De regelaar voorkomt ondertussen onnodige wissels.",
-        next: "Na ontdooien levert de warmtepomp automatisch weer normaal mee.",
+        title: t("controlReplay.evDefrostStarted", { subject }),
+        summary: t("controlReplay.evDefrostBrief", { subject }),
+        detail: t("controlReplay.evDefrostSelf"),
+        next: t("controlReplay.evDefrostAutoResume"),
       };
       case "defrost_seen_clear":
         return {
-        title: `Ontdooien klaar (${subject})`,
-        summary: `${subject} heeft ontdooien afgerond en kan weer normaal vermogen leveren.`,
-        detail: "De regelaar ziet dat de ontdooifase voorbij is en laat de normale regeling weer doorlopen.",
-        next: "Bij aanhoudende vraag blijft de warmtepomp actief of schakelt duo-bedrijf bij.",
+        title: t("controlReplay.evDefrostDone", { subject }),
+        summary: t("controlReplay.evDefrostDoneCopy", { subject }),
+        detail: t("controlReplay.evDefrostSeesEnd"),
+        next: t("controlReplay.evDefrostDuoNext"),
       };
       case "cooling_limited":
         return {
         title: reasonCode === "dew_stop"
-          ? "Koeling gestopt door dauwpunt"
+          ? t("controlReplay.evCoolLimitedDewTitle")
           : reasonCode === "restart_wait"
-          ? "Koeling wacht op veilige herstart"
+          ? t("controlReplay.evCoolLimitedRestartTitle")
           : reasonCode === "buffer_stop"
-          ? "Koeling wacht: water al koud genoeg"
-          : coolingProtectionReason ? "Koeling tijdelijk beperkt" : "Koeling op ingesteld maximum",
+          ? t("controlReplay.evCoolLimitedBufferTitle")
+          : coolingProtectionReason ? t("controlReplay.evCoolLimitedCappedTitle") : t("controlReplay.evCoolLimitedMaxTitle"),
         summary: reasonCode === "dew_stop"
-          ? `${activeCoolingSource} stopt omdat verder koelen te dicht bij het dauwpunt komt.`
+          ? t("controlReplay.evCoolLimitedDewSummary", { source: activeCoolingSource })
           : reasonCode === "restart_wait"
-          ? "De koelvraag is nog aanwezig. Het systeem wacht met opnieuw starten tot de veilige marge voldoende is hersteld."
+          ? t("controlReplay.evCoolLimitedRestartSummary")
           : reasonCode === "buffer_stop"
-          ? "Er is koelvraag, maar het water is al koud genoeg. De warmtepomp hoeft daarom nu niet te starten."
+          ? t("controlReplay.evCoolLimitedBufferSummary")
           : coolingProtectionReason
-          ? "Er is koelvraag, maar het systeem houdt het koelvermogen tijdelijk lager."
-          : "Er is koelvraag. Het systeem koelt binnen het actuele softwaremaximum.",
+          ? t("controlReplay.evCoolLimitedCappedSummary")
+          : t("controlReplay.evCoolLimitedMaxSummary"),
         detail: reason.summary,
         next: reasonCode === "restart_wait"
-          ? "De warmtepomp start automatisch opnieuw zodra de veilige marge voldoende en stabiel is."
+          ? t("controlReplay.curRestartExpect")
           : reasonCode === "buffer_stop"
-          ? "De warmtepomp start automatisch zodra opnieuw actieve koeling nodig is."
+          ? t("controlReplay.curBufferExpect")
           : coolingProtectionReason
-          ? "Koeling wordt vrijgegeven zodra de veilige marge stabiel genoeg is."
-          : "Koeling blijft binnen dit maximum zolang de instelling en koelvraag gelijk blijven.",
+          ? t("controlReplay.evCoolingReleasedNext")
+          : t("controlReplay.evCoolingMaxNext"),
       };
       case "cooling_released":
         return {
-        title: "Koeling vrijgegeven",
-        summary: "De veilige marge is terug. De warmtepomp mag weer normaal koelen.",
-        detail: "De dauwpunt- en temperatuurmarge is voldoende hersteld om de begrenzing los te laten.",
-        next: "De regelaar blijft koelen zolang de kamer daarom vraagt.",
+        title: t("controlReplay.evCoolReleasedTitle"),
+        summary: t("controlReplay.evCoolReleasedCopy"),
+        detail: t("controlReplay.evCoolReleasedDetail"),
+        next: t("controlReplay.evCoolReleasedNext"),
       };
       case "sticky_pump_run":
         return {
-        title: "Pompbescherming uitgevoerd",
-        summary: "De pomp draaide kort na langere stilstand. Dit is geen verwarmings- of koelvraag.",
-        detail: "Deze korte run voorkomt dat de pomp na stilstand vast gaat zitten.",
-        next: "De volgende preventieve run volgt pas na de ingestelde beschermingstijd.",
+        title: t("controlReplay.evStickyDoneTitle"),
+        summary: t("controlReplay.evStickyDoneCopy"),
+        detail: t("controlReplay.evStickyDoneDetail"),
+        next: t("controlReplay.evStickyDoneNext"),
       };
       case "frost_protection_start":
         return {
-        title: "Vorstbescherming actief",
-        summary: "Het systeem laat water circuleren om bevriezing te voorkomen.",
-        detail: "Dit is beschermingsgedrag. Er hoeft geen verwarmings- of koelvraag te zijn.",
-        next: "Vorstbescherming stopt zodra het risico weg is of de normale regeling weer voorrang krijgt.",
+        title: t("controlReplay.evFrostOnTitle"),
+        summary: t("controlReplay.evFrostOnCopy"),
+        detail: t("controlReplay.evFrostOnDetail"),
+        next: t("controlReplay.evFrostOnNext"),
       };
       case "frost_protection_clear":
         return {
-        title: "Vorstbescherming gestopt",
-        summary: "Het systeem verlaat de vorstbescherming en gaat terug naar normale regeling.",
-        detail: "Het watercircuit hoeft niet langer apart beschermd te worden.",
-        next: "Bij nieuw vorstrisico kan de bescherming automatisch opnieuw starten.",
+        title: t("controlReplay.evFrostOffTitle"),
+        summary: t("controlReplay.evFrostOffCopy"),
+        detail: t("controlReplay.evFrostOffDetail"),
+        next: t("controlReplay.evFrostOffNext"),
       };
       case "boiler_assist_start":
         return {
-        title: "CV-ketel ondersteunt tijdelijk",
-        summary: "De CV-ketel helpt omdat extra capaciteit tijdelijk nuttig is.",
-        detail: "De warmtepompen blijven de basis leveren. De CV-ketel vult alleen aan zolang de vraag daar om vraagt.",
-        next: "De CV-ketel stopt zodra de warmtepompen de vraag weer rustig zelf kunnen dragen.",
+        title: t("controlReplay.evBoilerStartTitle"),
+        summary: t("controlReplay.evBoilerStartCopy"),
+        detail: t("controlReplay.evBoilerStartDetail"),
+        next: t("controlReplay.evBoilerStartNext"),
       };
       case "boiler_assist_stop":
         return boilerStopBlocked
         ? {
           title: reasonCode === "sensor_fallback"
-            ? "CV-ondersteuning gestopt: meting ontbreekt"
+            ? t("controlReplay.evBoilerStopNoMeasure")
             : reasonCode === "no_candidate"
-            ? "CV-ondersteuning niet beschikbaar"
+            ? t("controlReplay.evBoilerStopUnavailable")
             : reasonCode === "flow_preflow"
-            ? "CV-ondersteuning wacht op voorloop"
-            : "CV-ondersteuning veilig gestopt",
+            ? t("controlReplay.evBoilerStopPreflow")
+            : t("controlReplay.evBoilerStopSafe"),
           summary: reasonCode === "sensor_fallback"
-            ? "De CV-ketel is gestopt omdat een betrouwbare aanvoertemperatuur ontbreekt."
+            ? t("controlReplay.evBoilerStopNoMeasureCopy")
             : reasonCode === "no_candidate"
-            ? "De CV-ketel is uitgeschakeld of kan nu niet worden ingezet."
+            ? t("controlReplay.evBoilerStopUnavailableCopy")
             : reasonCode === "flow_preflow"
-            ? "De CV-ketel wacht tijdens de test kort tot de waterflow stabiel is."
-            : "De CV-ketel is gestopt omdat een veiligheidsgrens voor de watertemperatuur actief is.",
-          detail: "Dit is een beschermende of configuratiegebonden keuze, niet een teken dat de warmtevraag vanzelf is afgenomen.",
-          next: "De regelaar beoordeelt automatisch opnieuw zodra de blokkade is opgeheven.",
+            ? t("controlReplay.evBoilerStopPreflowCopy")
+            : t("controlReplay.evBoilerStopSafeCopy"),
+          detail: t("controlReplay.evBoilerStopDetail"),
+          next: t("controlReplay.evBoilerStopNext"),
         }
         : {
-          title: "CV-ondersteuning gestopt",
-          summary: "De extra ondersteuning is niet meer nodig.",
-          detail: "De warmtevraag is genoeg gedaald of de warmtepompen kunnen het weer zelf dragen.",
-          next: "De CV-ketel blijft beschikbaar als er later opnieuw extra capaciteit nodig is.",
+          title: t("controlReplay.evBoilerStoppedTitle"),
+          summary: t("controlReplay.evBoilerStoppedCopy"),
+          detail: t("controlReplay.evBoilerStoppedDetail"),
+          next: t("controlReplay.evBoilerStoppedNext"),
         };
       case "attention_pattern":
         return {
-        title: "Aandachtspunt gezien",
+        title: t("controlReplay.evAttentionTitle"),
         summary: reasonCode === "start_stop_rate_high"
-          ? "Er zijn relatief veel starts/stops gezien. Dat is nuttig om te volgen."
-          : "Het systeem ziet een patroon dat extra aandacht verdient.",
+          ? t("controlReplay.evAttentionManyCopy")
+          : t("controlReplay.evAttentionPatternCopy"),
         detail: reason.summary,
-        next: "Als het patroon aanhoudt, blijft dit zichtbaar voor support en analyse.",
+        next: t("controlReplay.evAttentionNext"),
       };
       default:
         return fallback;
@@ -1807,7 +1737,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       time: formatDecisionLogTimeLabel(event, selectedWindow, nowMs),
       title: copy.title,
       summary: copy.summary,
-      detailTitle: "Waarom gebeurde dit?",
+      detailTitle: t("controlReplay.evDetailWhy"),
       detail: copy.detail,
       next: copy.next,
       source,
@@ -1864,10 +1794,10 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       duration: formatDecisionDuration(range.durationS),
       title: config.title,
       summary: config.summary,
-      detailTitle: config.detailTitle || "Waarom liep deze periode?",
+      detailTitle: config.detailTitle || t("controlReplay.spanWhy"),
       detail: config.detail,
       next: config.next,
-      source: config.source || "Systeem",
+      source: config.source || t("controlReplay.subjSystem"),
       reasonCode: config.reasonCode || "keep_current",
       reasonLabel: config.reasonLabel || "",
       reasonSummary: config.reasonSummary || "",
@@ -2016,22 +1946,22 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         isOpen: Boolean(interval.isOpen),
         startEvent: interval.startEvent,
         severity: "normal",
-        title: interval.isOpen ? "Warmtepomp wacht na herstart" : "Warmtepomp wachtte na herstart",
+        title: interval.isOpen ? t("controlReplay.spanInhibitOpen") : t("controlReplay.spanInhibitClosed"),
         summary: coolingWait
-          ? "Er was koelvraag, maar de compressor bleef na de herstart nog kort uit."
-          : "Er was warmtevraag, maar de compressor bleef na de herstart nog kort uit.",
-        detail: "Na een reboot houdt de controller eenmaal de minimale uit-tijd aan. Zo kan een compressor niet te snel opnieuw starten wanneer de vorige stoptijd onbekend is.",
+          ? t("controlReplay.spanInhibitCoolOpen")
+          : t("controlReplay.spanInhibitHeatOpen"),
+        detail: t("controlReplay.spanInhibitDetail"),
         next: interval.isOpen
           ? coolingWait
-            ? "De warmtepomp start automatisch met koelen zodra de wachttijd voorbij is."
-            : "De warmtepomp start automatisch met verwarmen zodra de wachttijd voorbij is."
+            ? t("controlReplay.spanInhibitOpenCoolNext")
+            : t("controlReplay.spanInhibitOpenHeatNext")
           : contextRefreshed
-          ? "De gewenste warmtepomp of doelmodus veranderde, maar de wachttijd bleef actief."
-          : "Na deze periode ging de normale regeling automatisch verder.",
+          ? t("controlReplay.spanInhibitRefreshedNext")
+          : t("controlReplay.spanInhibitClosedNext"),
         source: getDecisionModeSubjectLabel(interval.startEvent?.subject, coolingWait ? 5 : 2),
         reasonCode: "startup_inhibit",
-        reasonLabel: "Wachttijd na herstart",
-        reasonSummary: "De compressor werd bewust nog niet gestart.",
+        reasonLabel: t("controlReplay.spanInhibitLabel"),
+        reasonSummary: t("controlReplay.spanInhibitReasonCopy"),
         modeLabel: coolingWait ? "CM5" : "CM2",
         minDurationS: 1,
       }, selectedWindow, nowMs));
@@ -2046,17 +1976,17 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         isOpen: Boolean(interval.isOpen),
         startEvent: interval.startEvent,
         severity: isFallback ? "limited" : "normal",
-        title: isFallback ? "CV-ketel nam verwarming tijdelijk over" : "CV-ketel ondersteunde tijdelijk",
+        title: isFallback ? t("controlReplay.spanBoilerFallbackTitle") : t("controlReplay.spanBoilerSupportTitle"),
         summary: isFallback
-          ? "Geen warmtepomp was veilig inzetbaar; de CV-ketel verwarmde tijdelijk in CM4."
-          : "De CV-ketel hielp tijdelijk mee toen extra vermogen nuttig was.",
+          ? t("controlReplay.spanBoilerFallbackCopy")
+          : t("controlReplay.spanBoilerSupportCopy"),
         detail: isFallback
-          ? "De foutfallback start pas na bevestigde HP-uitval, verse stopbevestiging en geldige installatiebeveiligingen."
-          : "De warmtepompen blijven de basis leveren. De CV-ketel vult alleen aan zolang de vraag daar om vraagt.",
+          ? t("controlReplay.spanBoilerFallbackDetail")
+          : t("controlReplay.spanBoilerSupportDetail"),
         next: isFallback
-          ? "OpenQuatt stopt CM4 zodra een warmtepomp stabiel is hersteld of een veiligheidsvoorwaarde de fallback blokkeert."
-          : "De CV-ketel stopt zodra de warmtepompen de vraag weer rustig zelf kunnen dragen.",
-        source: "CV-ketel",
+          ? t("controlReplay.spanBoilerFallbackNext")
+          : t("controlReplay.spanBoilerSupportNext"),
+        source: t("controlReplay.subjBoiler"),
         reasonCode: isFallback ? "boiler_fallback" : "boiler_assist",
         modeLabel: isFallback ? "CM4" : "CM3",
         minDurationS: isFallback ? 1 : 120,
@@ -2071,14 +2001,14 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         isOpen: Boolean(interval.isOpen),
         startEvent: interval.startEvent,
         severity: "normal",
-        title: "Koeling actief",
-        summary: "Er was koelvraag en de warmtepomp koelde binnen de normale regeling.",
-        detail: "Tijdens koelen bewaakt de controller continu waterflow, aanvoertemperatuur en dauwpuntmarge. Een tijdelijk softwaremaximum hoort bij die normale regeling.",
-        next: "Koeling stopt zodra de koelvraag wegvalt of tijdelijk pauzeert als een veiligheidsmarge daarom vraagt.",
+        title: t("controlReplay.spanCoolingTitle"),
+        summary: t("controlReplay.spanCoolingCopy"),
+        detail: t("controlReplay.spanCoolingDetail"),
+        next: t("controlReplay.spanCoolingNext"),
         source: getCoolingIntervalSource(interval),
         reasonCode: "keep_current",
-        reasonLabel: "Koeling gestart",
-        reasonSummary: "De koelrun is gestart en liep binnen de normale regeling.",
+        reasonLabel: t("controlReplay.spanCoolingLabel"),
+        reasonSummary: t("controlReplay.spanCoolingRunCopy"),
         modeLabel: "CM5",
         // An active run must be visible immediately; only completed micro-runs
         // are suppressed to keep historical timelines calm.
@@ -2094,11 +2024,11 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         isOpen: Boolean(interval.isOpen),
         startEvent: interval.startEvent,
         severity: "limited",
-        title: "Vorstbescherming actief",
-        summary: "Het systeem liet water circuleren om bevriezing te voorkomen.",
-        detail: "Dit is beschermingsgedrag. Er hoeft geen verwarmings- of koelvraag te zijn.",
-        next: "Vorstbescherming stopt zodra het risico weg is of de normale regeling weer voorrang krijgt.",
-        source: "Systeem",
+        title: t("controlReplay.spanFrostTitle"),
+        summary: t("controlReplay.spanFrostCopy"),
+        detail: t("controlReplay.spanFrostDetail"),
+        next: t("controlReplay.spanFrostNext"),
+        source: t("controlReplay.subjSystem"),
         reasonCode: "frost_protection",
         modeLabel: "CM98",
         minDurationS: 60,
@@ -2124,10 +2054,10 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           isOpen,
           startEvent,
           severity: "normal",
-          title: "Twee warmtepompen verwarmen",
-          summary: "HP1 en HP2 draaiden tegelijk omdat extra capaciteit nuttig was.",
-          detail: "De warmtepompen zijn gelijkwaardig. Twee bronnen verdelen de belasting wanneer één warmtepomp de vraag minder rustig kan dragen.",
-          next: "Het systeem schakelt terug naar één warmtepomp zodra single-bedrijf weer voldoende of rustiger is.",
+          title: t("controlReplay.spanDuoTitle"),
+          summary: t("controlReplay.spanDuoCopy"),
+          detail: t("controlReplay.spanDuoDetail"),
+          next: t("controlReplay.spanDuoNext"),
           source: getDecisionModeSubjectLabel("BOTH", 2),
           reasonCode: "better_heat",
           modeLabel: "CM2",
@@ -2362,18 +2292,18 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
   function formatControlWorkingRelativeOffset(minutesBeforeNow) {
     const normalized = Math.max(0, Math.round(Number(minutesBeforeNow) || 0));
     if (normalized <= 5) {
-      return "Nu";
+      return t("controlReplay.relNow");
     }
     const days = Math.floor(normalized / 1440);
     const hours = Math.floor((normalized % 1440) / 60);
     const minutes = normalized % 60;
     if (days > 0) {
-      return hours > 0 ? `${days}d ${hours}u geleden` : `${days}d geleden`;
+      return hours > 0 ? t("controlReplay.relDaysHours", { days, hours }) : t("controlReplay.relDays", { days });
     }
     if (hours > 0) {
-      return minutes > 0 ? `${hours}u ${minutes}m geleden` : `${hours}u geleden`;
+      return minutes > 0 ? t("controlReplay.relHoursMinutes", { hours, minutes }) : t("controlReplay.relHours", { hours });
     }
-    return `${minutes}m geleden`;
+    return t("controlReplay.relMinutes", { minutes });
   }
 
   function formatControlWorkingGraphCursorLabel(minute, windowModel = getControlWorkingWindowModel()) {
@@ -2457,7 +2387,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const windowModel = getControlWorkingWindowModel();
     const start = formatControlWorkingGraphCursorLabel(startMinute, windowModel);
     const end = isOpen || endMinute >= 1440
-      ? "nu"
+      ? t("controlReplay.intervalOpenEnd")
       : formatControlWorkingGraphCursorLabel(endMinute, windowModel);
     return `${start}-${end}`;
   }
@@ -2593,63 +2523,65 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const endMinute = Math.min(...activeIntervals.map((interval) => interval.end));
     let source = [
       ...hpLabels,
-      cvActive ? "CV-ketel" : "",
-      coolingActive ? "Koeling" : "",
+      cvActive ? t("controlReplay.subjBoiler") : "",
+      coolingActive ? t("controlReplay.subjCooling") : "",
     ].filter(Boolean).join(" + ");
-    let title = "Bron actief";
-    let summary = "Deze bron was op dit tijdstip actief.";
-    let detail = "De grafiek toont hier een lopende periode. De start of stop staat als los beslismoment in de tijdlijn.";
-    let next = "De controller blijft opnieuw beoordelen of deze bron nodig blijft.";
+    let title = t("controlReplay.graphCtxActive");
+    let summary = t("controlReplay.graphCtxActiveCopy");
+    let detail = t("controlReplay.graphCtxActiveDetail");
+    let next = t("controlReplay.graphCtxActiveNext");
     let reasonCode = primaryInterval.item?.reasonCode || "keep_current";
     let severity = "normal";
 
     if (coolingActive) {
-      title = "Koeling actief";
-      summary = hpLabels.length
-        ? `${hpLabels.join(" en ")} koelde${hpLabels.length === 1 ? "" : "n"} op dit tijdstip binnen de normale regeling.`
-        : "De koeling was op dit tijdstip actief.";
-      detail = "De controller bewaakt daarbij waterflow, aanvoertemperatuur en dauwpuntmarge. Een tijdelijk softwaremaximum hoort bij de normale regeling.";
-      next = "Koeling gaat door zolang er koelvraag is en de veiligheidsmarges vrij blijven.";
+      title = t("controlReplay.spanCoolingTitle");
+      summary = hpLabels.length === 2
+        ? t("controlReplay.graphCtxCoolingRunMany", { sources: hpLabels.join(" + ") })
+        : hpLabels.length === 1
+        ? t("controlReplay.graphCtxCoolingRunOne", { source: hpLabels[0] })
+        : t("controlReplay.graphCtxCoolingNone");
+      detail = t("controlReplay.graphCtxCoolingDetail");
+      next = t("controlReplay.graphCtxCoolingNext");
       source = hpLabels.length === 2
         ? getDecisionModeSubjectLabel("BOTH", 5)
         : hpLabels.length === 1
         ? getDecisionModeSubjectLabel(hpLabels[0], 5)
-        : "Koeling";
+        : t("controlReplay.subjCooling");
       reasonCode = primaryInterval.item?.reasonCode || "keep_current";
       severity = primaryInterval.item?.severity || "normal";
     } else if (hpLabels.length === 2 && cvActive) {
-      title = "Warmtepompen en CV-ketel actief";
-      summary = "Beide warmtepompen draaiden en de CV-ketel ondersteunde tijdelijk.";
-      detail = "De warmtepompen leverden de basis. De CV-ketel vulde alleen aan zolang extra vermogen nodig was.";
-      next = "CV-ondersteuning stopt zodra de warmtepompen de vraag weer zelf rustig kunnen dragen.";
+      title = t("controlReplay.graphCtxDuoBoilerTitle");
+      summary = t("controlReplay.graphCtxDuoBoilerCopy");
+      detail = t("controlReplay.graphCtxDuoBoilerDetail");
+      next = t("controlReplay.graphCtxDuoBoilerNext");
       reasonCode = "boiler_assist";
       severity = "limited";
     } else if (hpLabels.length === 2) {
-      title = "Twee warmtepompen verwarmen";
-      summary = "HP1 en HP2 verwarmden tegelijk op dit tijdstip.";
-      detail = "Twee gelijkwaardige warmtepompen kunnen hoge vraag rustiger leveren dan één warmtepomp op hoge belasting.";
-      next = "Eén warmtepomp stopt zodra single-bedrijf weer voldoende of rustiger is.";
+      title = t("controlReplay.spanDuoTitle");
+      summary = t("controlReplay.graphCtxDuoCopy");
+      detail = t("controlReplay.graphCtxDuoDetail");
+      next = t("controlReplay.graphCtxDuoNext");
       source = getDecisionModeSubjectLabel("BOTH", 2);
       reasonCode = "better_heat";
     } else if (hpLabels.length === 1 && cvActive) {
-      title = `${hpLabels[0]} en CV-ketel actief`;
-      summary = "De warmtepomp draaide en de CV-ketel ondersteunde tijdelijk.";
-      detail = "De CV-ketel vult alleen aan wanneer de warmtepomp de actuele vraag niet rustig genoeg kan dragen.";
-      next = "De CV-ketel stopt zodra aanvullende ondersteuning niet meer nodig is.";
+      title = t("controlReplay.graphCtxSingleBoilerTitle", { source: hpLabels[0], boiler: t("controlReplay.subjBoiler") });
+      summary = t("controlReplay.graphCtxSingleBoilerCopy");
+      detail = t("controlReplay.graphCtxSingleBoilerDetail");
+      next = t("controlReplay.graphCtxSingleBoilerNext");
       reasonCode = "boiler_assist";
       severity = "limited";
     } else if (hpLabels.length === 1) {
-      title = `${hpLabels[0]} verwarmt`;
-      summary = `${hpLabels[0]} leverde op dit tijdstip warmte.`;
-      detail = "De andere warmtepomp blijft beschikbaar. De controller schakelt pas bij of wisselt pas wanneer dat rustiger of nuttiger is.";
-      next = "Bij stijgende vraag kan een tweede warmtepomp bijschakelen; bij dalende vraag stopt deze bron.";
+      title = t("controlReplay.graphCtxSingleTitle", { source: hpLabels[0] });
+      summary = t("controlReplay.graphCtxSingleCopy", { source: hpLabels[0] });
+      detail = t("controlReplay.graphCtxSingleDetail");
+      next = t("controlReplay.graphCtxSingleNext");
       source = getDecisionModeSubjectLabel(hpLabels[0], 2);
       reasonCode = primaryInterval.item?.reasonCode || "runtime_lead";
     } else if (cvActive) {
-      title = "CV-ketel ondersteunt";
-      summary = "De CV-ketel leverde op dit tijdstip extra vermogen.";
-      detail = "CV-ondersteuning is aanvullend op de warmtepompen en blijft tijdelijk.";
-      next = "De CV-ketel stopt zodra de extra capaciteit niet meer nodig is.";
+      title = t("controlReplay.graphCtxBoilerTitle");
+      summary = t("controlReplay.graphCtxBoilerCopy");
+      detail = t("controlReplay.graphCtxBoilerDetail");
+      next = t("controlReplay.graphCtxBoilerNext");
       reasonCode = "boiler_assist";
       severity = "limited";
     }
@@ -2662,10 +2594,10 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       duration: "",
       title,
       summary,
-      detailTitle: "Wat gebeurt hier?",
+      detailTitle: t("controlReplay.graphCtxWhat"),
       detail,
       next,
-      source: source || "Systeem",
+      source: source || t("controlReplay.subjSystem"),
       reasonCode,
       modeLabel: primaryInterval.item?.modeLabel || "CM?",
       graphStart: startMinute,
@@ -2677,8 +2609,8 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const selectedTab = getControlWorkingSelectedTab();
     return `
       <div class="oq-working-control-group">
-        <span class="oq-working-control-label">Weergave</span>
-        <div class="oq-working-tabs" role="tablist" aria-label="Beslislog weergave">
+        <span class="oq-working-control-label">${t("controlReplay.chromeView")}</span>
+        <div class="oq-working-tabs" role="tablist" aria-label="${t("controlReplay.chromeDecisionsView")}">
           ${getControlWorkingTabs().map((tab) => `
             <button
               class="oq-working-tab${selectedTab === tab.id ? " is-active" : ""}"
@@ -2708,15 +2640,15 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const customEnd = getControlWorkingCustomDateTimeParts(customDraft.end);
     const menuOpen = state.controlReplayPeriodMenuOpen;
     const menuLabel = selectedWindow === "custom"
-      ? "Eigen periode"
+      ? t("controlReplay.chromeCustomPeriod")
       : quickOptions.some((option) => option.id === selectedWindow)
-      ? "Kies periode"
+      ? t("controlReplay.chromeChoosePeriod")
       : selectedModel.shortLabel;
     return `
       <div class="oq-working-control-group oq-working-control-group--period">
-        <span class="oq-working-control-label">Periode</span>
-        <div class="oq-working-window-controls" role="group" aria-label="Periode">
-          <div class="oq-working-window-choices" aria-label="Snelle periodekeuzes">
+        <span class="oq-working-control-label">${t("controlReplay.chromePeriod")}</span>
+        <div class="oq-working-window-controls" role="group" aria-label="${t("controlReplay.chromePeriod")}">
+          <div class="oq-working-window-choices" aria-label="${t("controlReplay.chromeQuickChoices")}">
           ${quickOptions.map((option) => `
             <button
               class="oq-working-window-choice${selectedWindow === option.id ? " is-active" : ""}"
@@ -2742,9 +2674,9 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
               <span class="oq-working-period-menu-chevron" aria-hidden="true"></span>
             </button>
             ${menuOpen ? `
-              <section class="oq-working-period-popover" role="dialog" aria-label="Kies periode">
+              <section class="oq-working-period-popover" role="dialog" aria-label="${t("controlReplay.chromeChoosePeriod")}">
                 <div class="oq-working-period-popover-head">
-                  <strong>Ander tijdvenster</strong>
+                  <strong>${t("controlReplay.chromeOtherWindow")}</strong>
                 </div>
                 <div class="oq-working-period-option-grid">
                   ${moreOptions.map((option) => `
@@ -2764,33 +2696,33 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
                     aria-expanded="${state.controlReplayCustomPeriodOpen ? "true" : "false"}"
                     data-oq-action="toggle-control-replay-custom-period"
                   >
-                    <span>Eigen periode</span>
-                    <span class="oq-working-period-custom-toggle-copy">Datum en uur</span>
+                    <span>${t("controlReplay.chromeCustomPeriod")}</span>
+                    <span class="oq-working-period-custom-toggle-copy">${t("controlReplay.chromeDateHour")}</span>
                   </button>
                   ${state.controlReplayCustomPeriodOpen ? `
                     <div class="oq-working-period-custom-fields">
                       <label>
-                        <span>Van</span>
+                        <span>${t("controlReplay.chromeFrom")}</span>
                         <div class="oq-working-period-date-hour">
                           <input type="date" min="${escapeHtml(customInputBounds.earliestDate)}" max="${escapeHtml(customInputBounds.startMaxDate)}" value="${escapeHtml(customStart.date)}" data-oq-control-replay-custom-start-date data-oq-control-replay-custom-input>
-                          <select aria-label="Uur van" data-oq-control-replay-custom-start-hour data-oq-control-replay-custom-input>
+                          <select aria-label="${t("controlReplay.chromeHourFrom")}" data-oq-control-replay-custom-start-hour data-oq-control-replay-custom-input>
                             ${renderControlWorkingHourOptions(customStart.hour)}
                           </select>
                         </div>
                       </label>
                       <label>
-                        <span>Tot</span>
+                        <span>${t("controlReplay.chromeUntil")}</span>
                         <div class="oq-working-period-date-hour">
                           <input type="date" min="${escapeHtml(customInputBounds.endMinDate)}" max="${escapeHtml(customInputBounds.endMaxDate)}" value="${escapeHtml(customEnd.date)}" data-oq-control-replay-custom-end-date data-oq-control-replay-custom-input>
-                          <select aria-label="Uur tot" data-oq-control-replay-custom-end-hour data-oq-control-replay-custom-input>
+                          <select aria-label="${t("controlReplay.chromeHourUntil")}" data-oq-control-replay-custom-end-hour data-oq-control-replay-custom-input>
                             ${renderControlWorkingHourOptions(customEnd.hour)}
                           </select>
                         </div>
                       </label>
                     </div>
                     <div class="oq-working-period-custom-actions">
-                      <span>Maximaal 7 dagen</span>
-                      <button class="oq-working-period-apply" type="button" data-oq-action="apply-control-replay-custom-period">Toepassen</button>
+                      <span>${t("controlReplay.chromeMaxRange")}</span>
+                      <button class="oq-working-period-apply" type="button" data-oq-action="apply-control-replay-custom-period">${t("controlReplay.chromeApply")}</button>
                     </div>
                     ${state.controlReplayCustomPeriodError ? `<p class="oq-working-period-error" role="alert">${escapeHtml(state.controlReplayCustomPeriodError)}</p>` : ""}
                   ` : ""}
@@ -2809,14 +2741,14 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const blockingReasons = heatPumpsOff ? getControlWorkingBlockingReasons(current) : [];
     const blockingSection = blockingReasons.length > 0 ? `
         <div class="oq-working-now-next">
-          <span>Waarom staat mijn warmtepomp uit?</span>
+          <span>${t("blocking.title")}</span>
           ${blockingReasons.map((reason) => `<div>${escapeHtml(reason)}</div>`).join("")}
         </div>
     ` : "";
     return `
       <section class="oq-working-now oq-working-now--${escapeHtml(status.tone)}">
         <div class="oq-working-now-main">
-          <span class="oq-working-eyebrow">Actuele situatie</span>
+          <span class="oq-working-eyebrow">${t("controlReplay.nowTitle")}</span>
           <h2>${escapeHtml(current.title)}${renderControlWorkingModeBadge(current)}</h2>
           <p>${escapeHtml(current.copy)}</p>
           <div class="oq-working-pill-row">
@@ -2827,7 +2759,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         </div>
         ${blockingSection}
         <div class="oq-working-now-next">
-          <span>Wat doet het systeem daarna?</span>
+          <span>${t("controlReplay.nowNext")}</span>
           <strong>${escapeHtml(current.expectation)}</strong>
           <div class="oq-working-source-strip">
             <span>HP1 · ${escapeHtml(current.hp1Status)}</span>
@@ -2867,7 +2799,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
             <span>${escapeHtml(item.source)}</span>
             ${modeMetaLabel ? `<span class="oq-working-entry-meta-mode">${escapeHtml(modeMetaLabel)}</span>` : ""}
             <span>${escapeHtml(item.reasonLabel || getControlWorkingReasonLabel(item.reasonCode))}</span>
-            ${item.duration ? `<span>Duur: ${escapeHtml(item.duration)}</span>` : ""}
+            ${item.duration ? `<span>${escapeHtml(t("controlReplay.entryDuration", { value: item.duration }))}</span>` : ""}
           </span>
         </span>
         <span class="oq-working-entry-status">${escapeHtml(status.label)}</span>
@@ -2889,25 +2821,25 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     return `
       <aside class="oq-working-detail oq-working-detail--${escapeHtml(status.tone)}">
         <div>
-          <span class="oq-working-eyebrow">Geselecteerd</span>
+          <span class="oq-working-eyebrow">${t("controlReplay.detailSelected")}</span>
           <h3>${escapeHtml(item.title)}${renderControlWorkingModeBadge(item)}</h3>
           <p>${escapeHtml(item.summary)}</p>
         </div>
         <div class="oq-working-detail-block">
-          <strong>Waarom?</strong>
+          <strong>${t("controlReplay.detailWhy")}</strong>
           <span>${escapeHtml(item.detail)}</span>
         </div>
         <div class="oq-working-detail-block">
-          <strong>Is dit normaal?</strong>
+          <strong>${t("controlReplay.detailNormal")}</strong>
           <span>${escapeHtml(reasonSummary)}</span>
         </div>
         <div class="oq-working-detail-block">
-          <strong>Wat gebeurt daarna?</strong>
+          <strong>${t("controlReplay.detailNext")}</strong>
           <span>${escapeHtml(item.next)}</span>
         </div>
         ${renderControlWorkingOptimizer(optimizer)}
         ${checks.length ? `
-          <div class="oq-working-checks" aria-label="Beslisfactoren">
+          <div class="oq-working-checks" aria-label="${t("controlReplay.detailFactors")}">
             ${checks.map((check) => `<span>${renderOqIcon("shield", "oq-working-reason-icon")} ${escapeHtml(check)}</span>`).join("")}
           </div>
         ` : ""}
@@ -2917,13 +2849,13 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           ${renderControlWorkingPill(item.source, "context")}
         </div>
         <details class="oq-working-support" data-replay-support-item="${escapeHtml(item.id)}"${state.controlReplaySupportDetailsItemId === item.id ? " open" : ""}>
-          <summary data-oq-action="toggle-control-replay-support-details">Details voor support</summary>
+          <summary data-oq-action="toggle-control-replay-support-details">${t("controlReplay.detailSupport")}</summary>
           <dl>
-            <div><dt>Record</dt><dd>${escapeHtml(getControlWorkingKindLabel(item.kind))}</dd></div>
-            <div><dt>Bron</dt><dd>${escapeHtml(item.source)}</dd></div>
-            <div><dt>Control mode</dt><dd>${escapeHtml(item.modeLabel)}</dd></div>
-            ${modeMetaLabel ? `<div><dt>CM wijziging</dt><dd>${escapeHtml(modeMetaLabel)}</dd></div>` : ""}
-            <div><dt>Reason code</dt><dd>${escapeHtml(item.reasonCode)}</dd></div>
+            <div><dt>${t("controlReplay.detailRecord")}</dt><dd>${escapeHtml(getControlWorkingKindLabel(item.kind))}</dd></div>
+            <div><dt>${t("controlReplay.detailSource")}</dt><dd>${escapeHtml(item.source)}</dd></div>
+            <div><dt>${t("controlReplay.detailControlMode")}</dt><dd>${escapeHtml(item.modeLabel)}</dd></div>
+            ${modeMetaLabel ? `<div><dt>${t("controlReplay.detailCmChange")}</dt><dd>${escapeHtml(modeMetaLabel)}</dd></div>` : ""}
+            <div><dt>${t("controlReplay.detailReasonCode")}</dt><dd>${escapeHtml(item.reasonCode)}</dd></div>
           </dl>
         </details>
       </aside>
@@ -2934,13 +2866,13 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     return `
       <aside class="oq-working-detail">
         <div>
-          <span class="oq-working-eyebrow">Tussen beslismomenten</span>
-          <h3>Geen nieuw beslismoment om ${escapeHtml(timeLabel)}</h3>
-          <p>Op dit moment veranderde de controller niets. De laatst gekozen situatie blijft gelden.</p>
+          <span class="oq-working-eyebrow">${t("controlReplay.graphGapEyebrow")}</span>
+          <h3>${escapeHtml(t("controlReplay.graphGapTitle", { time: timeLabel }))}</h3>
+          <p>${t("controlReplay.graphGapCopy")}</p>
         </div>
         <div class="oq-working-detail-block">
-          <strong>Wat betekent dit?</strong>
-          <span>In deze grafiek worden alleen controllerkeuzes, bescherming en bronwissels toegelicht. Tussen die momenten blijft de laatste keuze gewoon gelden.</span>
+          <strong>${t("controlReplay.graphGapWhat")}</strong>
+          <span>${t("controlReplay.graphGapWhatCopy")}</span>
         </div>
       </aside>
     `;
@@ -2976,10 +2908,10 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
                 ${timelineItems.map((item) => renderControlWorkingTimelineItem(item, selectedItem)).join("")}
               </div>`
             : decisionLogError
-            ? renderControlWorkingEmptyState("Beslislog niet beschikbaar", `De firmwarelog kon niet worden geladen (${decisionLogError}). Dit betekent niet dat deze periode leeg is.`)
+            ? renderControlWorkingEmptyState(t("controlReplay.emptyLogUnavailable"), t("controlReplay.emptyLogUnavailableCopy", { error: decisionLogError }))
             : waitingForDecisionLog
-            ? renderControlWorkingEmptyState("Beslislog laden", "De controllerkeuzes worden opgehaald. Dit duurt meestal maar heel kort.")
-            : renderControlWorkingEmptyState("Nog geen gebeurtenissen", "De beslislog is leeg voor deze periode. Nieuwe controllerkeuzes verschijnen hier zodra de firmware ze vastlegt.")}
+            ? renderControlWorkingEmptyState(t("controlReplay.emptyLogLoading"), t("controlReplay.emptyLogLoadingCopy"))
+            : renderControlWorkingEmptyState(t("controlReplay.emptyLogEmpty"), t("controlReplay.emptyLogEmptyCopy"))}
         </section>
         ${selectedItem ? renderControlWorkingDetails(selectedItem) : ""}
       </div>
@@ -2994,8 +2926,8 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
           <strong>${escapeHtml(status)}</strong>
         </div>
         ${note ? `<p class="oq-working-source-card-note">${escapeHtml(note)}</p>` : `<dl>
-          <div><dt>Starts 24u</dt><dd>${escapeHtml(starts)}</dd></div>
-          <div><dt>Draaiuren</dt><dd>${escapeHtml(hours)}</dd></div>
+          <div><dt>${t("controlReplay.cardStarts24h")}</dt><dd>${escapeHtml(starts)}</dd></div>
+          <div><dt>${t("controlReplay.cardRuntimeHours")}</dt><dd>${escapeHtml(hours)}</dd></div>
         </dl>`}
       </article>
     `;
@@ -3005,7 +2937,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const reason = getControlWorkingReasonMeta(current.primaryReason);
     const optimizer = getControlWorkingOptimizerModel({
       primaryReason: current.primaryReason,
-      source: current.hp1Running && current.hp2Running ? "HP1 + HP2" : current.hp1Running ? "HP1" : current.hp2Running ? "HP2" : "Geen bron",
+      source: current.hp1Running && current.hp2Running ? "HP1 + HP2" : current.hp1Running ? "HP1" : current.hp2Running ? "HP2" : t("controlReplay.statusNoSource"),
     });
     const isCoolingGuard = Boolean(current.coolingProtection);
     const isCoolingCap = Boolean(current.coolingCapped);
@@ -3013,85 +2945,85 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const isCoolingWaterSatisfied = current.primaryReason === "buffer_stop";
     const isStartupInhibit = current.primaryReason === "startup_inhibit";
     const isSticky = current.primaryReason === "sticky_protection";
-    const guardEyebrow = isStartupInhibit ? "Startvoorwaarde" : isCoolingWaterSatisfied ? "Koelregeling" : "Bescherming";
+    const guardEyebrow = isStartupInhibit ? t("controlReplay.guardStartCond") : isCoolingWaterSatisfied ? t("controlReplay.guardCooling") : t("controlReplay.guardProtection");
     const guardTitle = isStartupInhibit
-      ? "Wacht na herstart"
+      ? t("controlReplay.guardInhibitTitle")
       : isCoolingWaterSatisfied
-      ? "Water al koud genoeg"
+      ? t("controlReplay.guardWaterColdTitle")
       : isCoolingGuard
-      ? isCoolingRestartWait ? "Wacht op veilige herstart" : "Koeling tijdelijk beperkt"
+      ? isCoolingRestartWait ? t("controlReplay.guardRestartWaitTitle") : t("controlReplay.guardCoolLimitedTitle")
       : isCoolingCap
-      ? "Koeling met ingesteld maximum"
+      ? t("controlReplay.guardCoolCappedTitle")
       : isSticky
-      ? "Geen comfortvraag actief"
-      : "Geen beperking actief";
+      ? t("controlReplay.guardStickyTitle")
+      : t("controlReplay.guardNoneTitle");
     const guardCopy = isStartupInhibit
-      ? "Na een reboot blijft de compressor eenmaal de minimale uit-tijd uit. Bij aanhoudende vraag start de gekozen warmtepomp daarna automatisch."
+      ? t("controlReplay.guardInhibitCopy")
       : isCoolingWaterSatisfied
-      ? "Dit is normale regeling. De koelvraag blijft actief, maar de warmtepomp hoeft nu geen extra koude aan het water toe te voegen."
+      ? t("controlReplay.guardWaterColdCopy")
       : isCoolingGuard
       ? isCoolingRestartWait
-        ? "De koelvraag blijft aanwezig. De warmtepomp start opnieuw zodra de veilige marge voldoende is hersteld."
-        : "De aanvoer blijft boven de veilige grens. Daarom koelt het systeem tijdelijk minder hard."
+        ? t("controlReplay.guardRestartWaitCopy")
+        : t("controlReplay.guardCoolLimitedCopy")
       : isCoolingCap
-      ? "Dit is normale koeling binnen de ingestelde softwaregrens. Dauwpunt en waterflow blijven wel gewoon bewaakt."
+      ? t("controlReplay.guardCoolCappedCopy")
       : isSticky
-      ? "Alleen de pomp draait kort. De warmtepompen blijven uit en er worden geen compressorstarts geteld."
-      : "Ontdooien, minimum rusttijd, dauwpunt en waterflow blijven bewaakt. Ze verschijnen hier zodra ze gedrag begrenzen.";
+      ? t("controlReplay.guardStickyCopy")
+      : t("controlReplay.guardNoneCopy");
     const guardPills = isStartupInhibit
       ? [
-        ["Vraag actief", "info", "activity"],
-        [current.startupInhibit?.remainingLabel || "Wachttijd actief", "normal", "clock"],
-        ["Automatische start", "context", "play"],
+        [t("controlReplay.pillDemandActive"), "info", "activity"],
+        [current.startupInhibit?.remainingLabel || t("controlReplay.curWaitActive"), "normal", "clock"],
+        [t("controlReplay.pillAutoStart"), "context", "play"],
       ]
       : isCoolingWaterSatisfied
       ? [
-        ["Koelvraag actief", "info", "snowflake"],
-        ["Water koud genoeg", "normal", "droplet"],
-        ["Automatische herstart", "context", "activity"],
+        [t("controlReplay.pillCoolDemand"), "info", "snowflake"],
+        [t("controlReplay.pillWaterCold"), "normal", "droplet"],
+        [t("controlReplay.pillAutoRestart"), "context", "activity"],
       ]
       : isCoolingGuard
       ? [
-        ["Dauwpunt bewaakt", "limited", "droplet"],
-        [`Max. niveau ${current.cooling.allowedMax}`, "info", "target"],
-        [`Nu niveau ${current.cooling.limitedDemand}`, "context", "bar-chart"],
+        [t("controlReplay.pillDewMonitored"), "limited", "droplet"],
+        [t("controlReplay.pillMaxLevel", { value: current.cooling.allowedMax }), "info", "target"],
+        [t("controlReplay.pillNowLevel", { value: current.cooling.limitedDemand }), "context", "bar-chart"],
       ]
       : isCoolingCap
       ? [
-        [`Ingesteld max. ${current.cooling.allowedMax}`, "info", "target"],
-        [`Nu niveau ${current.cooling.limitedDemand}`, "normal", "bar-chart"],
-        ["Marge bewaakt", "context", "shield"],
+        [t("controlReplay.pillSetMax", { value: current.cooling.allowedMax }), "info", "target"],
+        [t("controlReplay.pillNowLevel", { value: current.cooling.limitedDemand }), "normal", "bar-chart"],
+        [t("controlReplay.pillMarginMonitored"), "context", "shield"],
       ]
       : isSticky
       ? [
-        ["Korte pomprun", "normal", "shield"],
-        ["Geen koelvraag", "context", "snowflake"],
-        ["Geen warmtepompstart", "info", "activity"],
+        [t("controlReplay.pillShortPumpRun"), "normal", "shield"],
+        [t("controlReplay.pillNoCoolDemand"), "context", "snowflake"],
+        [t("controlReplay.pillNoHpStart"), "info", "activity"],
       ]
       : [
-        ["Ontdooien vrij", "normal", "snowflake"],
-        ["Rusttijd vrij", "normal", "activity"],
-        ["Waterflow bewaakt", "info", "waves"],
+        [t("controlReplay.pillDefrostFree"), "normal", "snowflake"],
+        [t("controlReplay.pillRestFree"), "normal", "activity"],
+        [t("controlReplay.pillFlowMonitored"), "info", "waves"],
       ];
-    const coolingContextActive = current.cooling.requestActive || isCoolingGuard || isCoolingCap || current.strategyLabel === "Koeling";
+    const coolingContextActive = current.cooling.requestActive || isCoolingGuard || isCoolingCap || current.strategyLabel === t("overview.strategyCooling");
     const telemetryRows = [
-      ["Aanvoer", current.supplyTemp],
-      ["Buiten", current.outsideTemp],
-      ["Flow", current.flow],
+      [t("controlReplay.telSupply"), current.supplyTemp],
+      [t("controlReplay.telOutside"), current.outsideTemp],
+      [t("controlReplay.telFlow"), current.flow],
     ];
     if (!coolingContextActive) {
-      telemetryRows.push(["Strategie", current.strategyLabel]);
+      telemetryRows.push([t("controlReplay.telStrategy"), current.strategyLabel]);
     }
     if (coolingContextActive) {
-      telemetryRows.push(["Dauwpunt", current.cooling.dewPoint]);
-      telemetryRows.push(["Veilige min.", current.cooling.safeSupply]);
+      telemetryRows.push([t("controlReplay.telDewPoint"), current.cooling.dewPoint]);
+      telemetryRows.push([t("controlReplay.telSafeMin"), current.cooling.safeSupply]);
     }
     return `
       <div class="oq-working-status">
         ${renderControlWorkingNowCard(current)}
         <div class="oq-working-status-grid">
           <section class="oq-working-status-main${optimizer ? "" : " oq-working-status-main--wide"}">
-            <span class="oq-working-eyebrow">Waarom deze keuze?</span>
+            <span class="oq-working-eyebrow">${t("controlReplay.statusWhy")}</span>
             <h3>${escapeHtml(reason.label)}</h3>
             <p>${escapeHtml(reason.summary)}</p>
             <div class="oq-working-reason-list">
@@ -3103,10 +3035,10 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
               ${renderControlWorkingOptimizer(optimizer)}
             </section>
           ` : ""}
-          <section class="oq-working-source-grid" aria-label="Bronnen">
+          <section class="oq-working-source-grid" aria-label="${t("controlReplay.statusSources")}">
             ${renderControlWorkingSourceCard("HP1", current.hp1Status, current.hp1Starts, current.hp1Hours, current.hp1Running)}
             ${renderControlWorkingSourceCard("HP2", current.hp2Status, current.hp2Starts, current.hp2Hours, current.hp2Running)}
-            ${renderControlWorkingSourceCard("CV", current.cvStatus, "", "", current.cvStatus === "Actief", coolingContextActive ? "Geen rol bij koelen." : "Tijdelijke ondersteuning bij extra warmtevraag.")}
+            ${renderControlWorkingSourceCard("CV", current.cvStatus, "", "", current.cvStatus === t("controlReplay.curCvActive"), coolingContextActive ? t("controlReplay.statusCvNoCooling") : t("controlReplay.statusCvSupport"))}
           </section>
           <section class="oq-working-guard-panel">
             <span class="oq-working-eyebrow">${escapeHtml(guardEyebrow)}</span>
@@ -3117,7 +3049,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
             </div>
           </section>
           <section class="oq-working-telemetry">
-            <span class="oq-working-eyebrow">Context</span>
+            <span class="oq-working-eyebrow">${t("controlReplay.statusContext")}</span>
             <dl>
               ${telemetryRows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}
             </dl>
@@ -3127,10 +3059,18 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     `;
   }
 
+  function getControlWorkingChartLaneDisplayLabel(label) {
+    if (label === "CV-ketel") return t("controlReplay.subjBoiler");
+    if (label === "Koeling") return t("controlReplay.subjCooling");
+    if (label === "Ontdooien") return t("controlReplay.laneDefrost");
+    if (label === "Bescherming") return t("controlReplay.laneProtection");
+    return label;
+  }
+
   function renderControlWorkingChartLane(label, tone, segments) {
     return `
       <div class="oq-working-chart-lane">
-        <span>${escapeHtml(label)}</span>
+        <span>${escapeHtml(getControlWorkingChartLaneDisplayLabel(label))}</span>
         <div class="oq-working-chart-track">
           ${segments.map((segment) => `
             <i class="oq-working-chart-segment oq-working-chart-segment--${escapeHtml(segment.tone || tone)}" style="--oq-chart-left:${clampControlReplayPercent(segment.start)}%;--oq-chart-width:${clampControlReplayPercent(segment.width)}%;"></i>
@@ -3376,14 +3316,14 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const lanes = getControlWorkingChartLanes(items);
     const chartBody = lanes.length
       ? lanes.map((lane) => renderControlWorkingChartLane(lane.label, lane.tone, lane.segments)).join("")
-      : renderControlWorkingEmptyState("Nog geen grafiekdata", "De grafiek gebruikt alleen echte beslislog-records. Nieuwe bronwissels, defrosts of begrenzingen verschijnen hier vanzelf.");
+      : renderControlWorkingEmptyState(t("controlReplay.emptyGraphTitle"), t("controlReplay.emptyGraphCopy"));
     return `
       <div class="oq-working-graphs">
         <section class="oq-working-chart-panel">
           <div class="oq-working-chart-head">
             <div>
               <span class="oq-working-eyebrow">${escapeHtml(windowModel.eyebrow)}</span>
-              <h3>Grafieken met beslismomenten</h3>
+              <h3>${t("controlReplay.graphsTitle")}</h3>
             </div>
             <p>${escapeHtml(windowModel.graphCopy)}</p>
           </div>
@@ -3399,7 +3339,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
                 max="1440"
                 step="5"
                 value="${escapeHtml(String(graphMinute))}"
-                aria-label="Tijd in grafiek"
+                aria-label="${t("controlReplay.graphsTimeAria")}"
                 data-oq-control-replay-time="true"
               >
               <span class="oq-working-chart-cursor" style="--oq-chart-left:${escapeHtml(String(graphPercent))}%;">
@@ -3433,6 +3373,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
       hp1Status: current.hp1Status,
       hp2Status: current.hp2Status,
       reason: current.primaryReason,
+      blockingReasons: getControlWorkingBlockingReasons(current),
       hp1Running: current.hp1Running,
       hp2Running: current.hp2Running,
       hp1Starts: current.hp1Starts,
@@ -3471,11 +3412,11 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
         <header class="oq-working-head">
           <div class="oq-working-head-copy">
             <span class="oq-working-kicker">
-              <span class="oq-working-eyebrow">Beslislog</span>
+              <span class="oq-working-eyebrow">${t("controlReplay.panelEyebrow")}</span>
               <span class="oq-working-beta">BETA</span>
             </span>
-            <h2>Keuzes van de controller, uitgelegd</h2>
-            <p>Actueel toont wat het systeem nu doet. Tijdlijn toont hoe het zover kwam. Grafieken tonen het verloop.</p>
+            <h2>${t("controlReplay.panelTitle")}</h2>
+            <p>${t("controlReplay.panelCopy")}</p>
           </div>
           <div class="oq-working-head-actions">
             ${renderControlWorkingTabs()}

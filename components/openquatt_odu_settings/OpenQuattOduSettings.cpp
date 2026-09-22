@@ -321,10 +321,12 @@ OpenQuattOduSettings::RequestResult OpenQuattOduSettings::request_load() {
   if (!this->available_.load(std::memory_order_acquire) || !this->online_.load(std::memory_order_acquire)) {
     return RequestResult::UNAVAILABLE;
   }
+  const uint32_t epoch = web_server_base::global_web_server_base->recovery_epoch();
   uint32_t request_token = 0U;
   if (!this->begin_request_(request_token)) return RequestResult::BUSY;
   portENTER_CRITICAL(&this->state_mux_);
   this->pending_action_ = PendingAction::LOAD;
+  this->pending_recovery_epoch_ = epoch;
   this->pending_request_token_ = request_token;
   this->set_status_locked_("LOAD_REQUESTED");
   portEXIT_CRITICAL(&this->state_mux_);
@@ -338,6 +340,7 @@ OpenQuattOduSettings::RequestResult OpenQuattOduSettings::request_save(const oq_
     return RequestResult::UNAVAILABLE;
   }
   if (!this->identity_ready_.load(std::memory_order_acquire)) return RequestResult::IDENTITY_REQUIRED;
+  const uint32_t epoch = web_server_base::global_web_server_base->recovery_epoch();
   uint32_t request_token = 0U;
   if (!this->begin_request_(request_token)) return RequestResult::BUSY;
 
@@ -348,6 +351,7 @@ OpenQuattOduSettings::RequestResult OpenQuattOduSettings::request_save(const oq_
     this->pending_profile_ =
         oq_odu::make_bottom_plate_profile(settings, this->variant_, this->control_board_item_, auto_reapply);
     this->pending_action_ = PendingAction::SAVE;
+    this->pending_recovery_epoch_ = epoch;
     this->pending_request_token_ = request_token;
     this->set_status_locked_("SAVE_REQUESTED");
     accepted = true;
@@ -405,14 +409,21 @@ void OpenQuattOduSettings::loop() {
 
   PendingAction pending = PendingAction::NONE;
   uint32_t request_token = 0U;
+  uint32_t epoch = 0U;
   portENTER_CRITICAL(&this->state_mux_);
   pending = this->pending_action_;
   request_token = this->pending_request_token_;
+  epoch = this->pending_recovery_epoch_;
   this->pending_action_ = PendingAction::NONE;
   this->pending_request_token_ = 0U;
   portEXIT_CRITICAL(&this->state_mux_);
 
   if (pending != PendingAction::NONE) {
+    if (pending != PendingAction::RECONCILE && (web_server_base::global_web_server_base->is_recovery_active() ||
+                                                epoch != web_server_base::global_web_server_base->recovery_epoch())) {
+      this->finish_operation_("RECOVERY_CANCELLED", request_token);
+      return;
+    }
     const Operation operation = pending == PendingAction::LOAD
                                     ? Operation::LOAD
                                     : (pending == PendingAction::RECONCILE ? Operation::RECONCILE : Operation::APPLY);
@@ -502,6 +513,14 @@ void OpenQuattOduSettings::handle_settings_read_(const oq_odu::BottomPlateSettin
   this->actual_ = settings;
   this->loaded_.store(true, std::memory_order_release);
   const Operation operation = this->operation_;
+  if (operation == Operation::APPLY &&
+      (web_server_base::global_web_server_base->is_recovery_active() ||
+       this->pending_recovery_epoch_ != web_server_base::global_web_server_base->recovery_epoch())) {
+    this->manual_apply_pending_.store(false, std::memory_order_release);
+    portEXIT_CRITICAL(&this->state_mux_);
+    this->finish_operation_("RECOVERY_CANCELLED", operation_token);
+    return;
+  }
   const bool matches = oq_odu::bottom_plate_settings_match(settings, this->desired_);
   if (operation != Operation::LOAD && !matches) this->set_status_locked_("APPLYING");
   portEXIT_CRITICAL(&this->state_mux_);

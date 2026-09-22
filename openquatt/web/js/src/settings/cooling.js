@@ -4,6 +4,7 @@ import { formatValue, toTimeInputValue } from "../core/entity-store.js";
 import { formatSettingsOptionLabel, renderSettingsAdvancedDisclosure, renderSettingsFieldCard, renderSettingsNumberField, renderSettingsOptionCardsField, renderSettingsSection, renderSettingsSelectField, renderSettingsSliderField, renderSettingsSwitchField, renderSettingsTimeField } from "./controls.js";
 import { escapeHtml } from "../core/html.js";
 import { state } from "../core/state.js";
+import { t } from "../i18n/index.js";
 
   export function renderSettingsCoolingFact(label, value) {
     return `
@@ -21,38 +22,40 @@ import { state } from "../core/state.js";
     }
 
     const labels = {
-      Ready: "Gereed om te koelen",
-      "Waiting for room request": "Koeling toegestaan, wacht op kamertemperatuur boven koel-setpoint",
-      "Cooling enabled, waiting for room temperature above cooling setpoint": "Koeling toegestaan, wacht op kamertemperatuur boven koel-setpoint",
-      "No dew point source": "Geen dauwpuntbron",
-      "OpenQuatt paused": "OpenQuatt gepauzeerd",
-      "Cooling disabled": "Koeling uitgeschakeld",
-      "Cooling minimum unavailable": "Minimale koel-aanvoer onbekend",
-      "Flow too low": "Flow te laag",
-      "Fallback active": "Dauwpuntsbenadering actief",
-      "Fallback active (+0.5°C warm night)": "Dauwpuntsbenadering actief (+0,5°C warme nacht)",
-      "Fallback active (+1.0°C very warm night)": "Dauwpuntsbenadering actief (+1,0°C zeer warme nacht)",
-      "Fallback active (+1.5°C tropical night)": "Dauwpuntsbenadering actief (+1,5°C tropische nacht)",
-      "User responsibility (no dew point or fallback)": "Expliciet toegestaan (geen dauwpunt of benadering)",
-      "Fallback cooling active": "Dauwpuntsbenadering actief",
-      "Fallback corrected by warm night": "Dauwpuntsbenadering gecorrigeerd door warme nacht",
-      "Fallback blocked by tropical night": "Dauwpuntsbenadering geblokkeerd door tropische nacht",
-      ...COOLING_START_BLOCK_LABELS,
+      Ready: t("settingsCooling.blockReady"),
+      "Waiting for room request": t("settingsCooling.blockWaitingRoom"),
+      "Cooling enabled, waiting for room temperature above cooling setpoint": t("settingsCooling.blockWaitingRoom"),
+      "No dew point source": t("settingsCooling.blockNoDewPoint"),
+      "OpenQuatt paused": t("settingsCooling.blockPaused"),
+      "Cooling disabled": t("settingsCooling.blockDisabled"),
+      "Cooling minimum unavailable": t("settingsCooling.blockMinUnavailable"),
+      "Flow too low": t("settingsCooling.blockFlowLow"),
+      "Fallback active": t("settingsCooling.blockFallback"),
+      "Fallback active (+0.5°C warm night)": t("settingsCooling.blockFallbackWarmNight"),
+      "Fallback active (+1.0°C very warm night)": t("settingsCooling.blockFallbackVeryWarmNight"),
+      "Fallback active (+1.5°C tropical night)": t("settingsCooling.blockFallbackTropicalNight"),
+      "User responsibility (no dew point or fallback)": t("settingsCooling.blockUserResponsibility"),
+      "Fallback cooling active": t("settingsCooling.blockFallback"),
+      "Fallback corrected by warm night": t("settingsCooling.blockFallbackCorrected"),
+      "Fallback blocked by tropical night": t("settingsCooling.blockFallbackBlocked"),
+      ...getCoolingStartBlockLabels(),
     };
 
     return labels[value] || value;
   }
 
   export const COOLING_START_BLOCK_REASON_READY = "Ready";
-  export const COOLING_START_BLOCK_LABELS = {
-    Ready: "Gereed om te koelen",
-    "Cooling minimum off-time": "Wachten op koel-herstartbeveiliging",
-    "Waiting for confirmed cooling stop": "Wachten op bevestigde koelstop",
-    "Compressor restart protection": "Wachten op compressor-herstartbeveiliging",
-    "Startup inhibit after reboot": "Wachten op opstartvrijgave na herstart",
-    "Compressor start limit (6/hour)": "Startlimiet bereikt (6/uur)",
-    "Compressor start blocked": "Compressorstart geblokkeerd",
-  };
+  export function getCoolingStartBlockLabels() {
+    return {
+      Ready: t("settingsCooling.startReady"),
+      "Cooling minimum off-time": t("settingsCooling.startMinOffTime"),
+      "Waiting for confirmed cooling stop": t("settingsCooling.startConfirmedStop"),
+      "Compressor restart protection": t("settingsCooling.startRestartProtection"),
+      "Startup inhibit after reboot": t("settingsCooling.startInhibitReboot"),
+      "Compressor start limit (6/hour)": t("settingsCooling.startLimit"),
+      "Compressor start blocked": t("settingsCooling.startBlocked"),
+    };
+  }
 
   export function formatCoolingStartBlockCountdown(seconds) {
     const total = Math.max(0, Math.ceil(Number(seconds) || 0));
@@ -78,13 +81,13 @@ import { state } from "../core/state.js";
     if (!value) {
       return "";
     }
-    const label = COOLING_START_BLOCK_LABELS[value] || value;
+    const label = getCoolingStartBlockLabels()[value] || value;
     // Firmwarecontract: tijdgebonden redenen dragen altijd remaining_s > 0,
     // de overige altijd 0. De tabel hierboven houdt bovendien een oude timer
     // weg bij niet-tijdgebonden redenen.
     const remaining = Math.ceil(Number(remainingS) || 0);
     if (remaining > 0 && COOLING_START_BLOCK_COUNTDOWN_REASONS.has(value)) {
-      return `${label} — nog ${formatCoolingStartBlockCountdown(remaining)}`;
+      return t("settingsCooling.startCountdown", { label, time: formatCoolingStartBlockCountdown(remaining) });
     }
     return label;
   }
@@ -129,27 +132,27 @@ import { state } from "../core/state.js";
     const start = toTimeInputValue(getEntityStateText(COOLING_SCHEDULE_TIME_KEYS[0], ""));
     const end = toTimeInputValue(getEntityStateText(COOLING_SCHEDULE_TIME_KEYS[1], ""));
     const effective = getEntityStateText(COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, "");
-    return !start || !end ? "Niet beschikbaar"
-      : start === end ? "Uitgeschakeld"
-      : getEntityStateText(COOLING_SCHEDULE_SOURCE_KEY, "") !== "Schedule" ? "Niet geselecteerd"
-      : !isEntityActive(COOLING_SCHEDULE_VALID_KEY) ? "Tijd ongeldig"
-      : !effective || /unknown|unavailable/i.test(effective) ? "Niet beschikbaar"
-      : effective.includes("Schedule") ? "Open" : "Gesloten";
+    return !start || !end ? t("settingsCooling.statusUnavailable")
+      : start === end ? t("settingsCooling.statusDisabled")
+      : getEntityStateText(COOLING_SCHEDULE_SOURCE_KEY, "") !== "Schedule" ? t("settingsCooling.statusNotSelected")
+      : !isEntityActive(COOLING_SCHEDULE_VALID_KEY) ? t("settingsCooling.statusInvalidTime")
+      : !effective || /unknown|unavailable/i.test(effective) ? t("settingsCooling.statusUnavailable")
+      : effective.includes("Schedule") ? t("settingsCooling.statusOpen") : t("settingsCooling.statusClosed");
   }
 
   function getCoolingScheduleStatusCopy(status, start, end) {
-    if (status === "Open") {
-      return `Open van ${start} tot ${end}; koeltoestemming is nu actief.`;
+    if (status === t("settingsCooling.statusOpen")) {
+      return t("settingsCooling.statusCopyOpen", { start, end });
     }
-    if (status === "Gesloten") {
-      return `Open van ${start} tot ${end}; koeltoestemming is nu niet actief.`;
+    if (status === t("settingsCooling.statusClosed")) {
+      return t("settingsCooling.statusCopyClosed", { start, end });
     }
-    if (status === "Uitgeschakeld") {
-      return "Start en einde zijn gelijk. Kies verschillende tijden om een venster te openen.";
+    if (status === t("settingsCooling.statusDisabled")) {
+      return t("settingsCooling.statusCopyDisabled");
     }
-    return status === "Tijd ongeldig"
-      ? "De lokale klok is nog niet geldig; koeltoestemming blijft uit."
-      : "Het koelvenster is nog niet beschikbaar; koeltoestemming blijft uit.";
+    return status === t("settingsCooling.statusInvalidTime")
+      ? t("settingsCooling.statusCopyInvalidTime")
+      : t("settingsCooling.statusCopyUnavailable");
   }
 
   export function renderCoolingScheduleSettingsFields(gridClass = "oq-settings-grid") {
@@ -162,14 +165,14 @@ import { state } from "../core/state.js";
     const end = toTimeInputValue(getEntityStateText(COOLING_SCHEDULE_TIME_KEYS[1], ""));
     const status = getCoolingScheduleStatus();
     const busy = state.loadingEntities || state.busyAction === `save-${COOLING_SCHEDULE_SOURCE_KEY}`;
-    const stateLabel = enabled ? "Aan" : "Uit";
+    const stateLabel = enabled ? t("overview.coolingOn") : t("overview.coolingOff");
     return `
       <section class="oq-settings-cooling-schedule${enabled ? " is-enabled" : ""}">
         <div class="oq-settings-subpanel-head oq-settings-cooling-schedule-head">
           <div>
-            <p class="oq-helper-label">Koeltoestemming</p>
-            <h4>Dagelijks koelvenster</h4>
-            <p>Laat OpenQuatt alleen binnen dit lokale tijdvenster koelen. Kamerinstelling en koelbeveiligingen blijven altijd gelden.</p>
+            <p class="oq-helper-label">${escapeHtml(t("settingsCooling.scheduleKicker"))}</p>
+            <h4>${escapeHtml(t("settingsCooling.scheduleTitle"))}</h4>
+            <p>${escapeHtml(t("settingsCooling.scheduleCopy"))}</p>
           </div>
           <div class="oq-settings-compact-switch-row">
             <span class="oq-settings-toggle-state${enabled ? " is-on" : ""}">${stateLabel}</span>
@@ -181,7 +184,7 @@ import { state } from "../core/state.js";
               data-control-key="${escapeHtml(COOLING_SCHEDULE_SOURCE_KEY)}"
               data-control-option="${enabled ? "Disabled" : "Schedule"}"
               aria-checked="${enabled ? "true" : "false"}"
-              aria-label="Dagelijks koelvenster: ${stateLabel}"
+              aria-label="${escapeHtml(t("settingsCooling.scheduleAria", { state: stateLabel }))}"
               ${busy ? "disabled" : ""}
             >
               <span class="oq-settings-toggle-switch-track" aria-hidden="true"><span class="oq-settings-toggle-switch-knob"></span></span>
@@ -190,8 +193,8 @@ import { state } from "../core/state.js";
         </div>
         ${enabled ? `
           <div class="${escapeHtml(gridClass)}">
-            ${renderSettingsTimeField(COOLING_SCHEDULE_TIME_KEYS[0], "Start koelvenster", "De starttijd is inbegrepen.")}
-            ${renderSettingsTimeField(COOLING_SCHEDULE_TIME_KEYS[1], "Einde koelvenster", "De eindtijd is niet inbegrepen. Een nachtvenster mag over middernacht lopen.")}
+            ${renderSettingsTimeField(COOLING_SCHEDULE_TIME_KEYS[0], t("settingsCooling.scheduleStartTitle"), t("settingsCooling.scheduleStartCopy"))}
+            ${renderSettingsTimeField(COOLING_SCHEDULE_TIME_KEYS[1], t("settingsCooling.scheduleEndTitle"), t("settingsCooling.scheduleEndCopy"))}
           </div>
           <p class="oq-settings-cooling-schedule-status"><strong>${escapeHtml(status)}</strong><span>${escapeHtml(getCoolingScheduleStatusCopy(status, start, end))}</span></p>
         ` : ""}
@@ -210,9 +213,9 @@ import { state } from "../core/state.js";
       return "";
     }
     const prefix = isEntityActive("silentActive")
-      ? "Stille modus is nu actief. Koelen wordt"
-      : "Tijdens stille modus wordt koelen";
-    return `<p class="oq-settings-cooling-limit-warning"><span class="oq-settings-cooling-limit-warning-icon" aria-hidden="true">!</span><span>${prefix} begrensd op een compressorfrequentie van ${escapeHtml(formatValue("silentMaxHz"))}.</span></p>`;
+      ? t("settingsCooling.silentLimitNow")
+      : t("settingsCooling.silentLimitDuring");
+    return `<p class="oq-settings-cooling-limit-warning"><span class="oq-settings-cooling-limit-warning-icon" aria-hidden="true">!</span><span>${escapeHtml(prefix)} ${escapeHtml(t("settingsCooling.silentLimitSuffix", { value: formatValue("silentMaxHz") }))}</span></p>`;
   }
 
   export function renderSettingsCoolingSection() {
@@ -221,62 +224,62 @@ import { state } from "../core/state.js";
       getEntityStateText("coolingRestartMode", "Water temperature") === "Minimum off time";
     const scheduleFields = renderCoolingScheduleSettingsFields();
     const tuningFields = [
-      renderSettingsNumberField("coolingMinimumSupplyTemp", "Minimale koel-aanvoer", "Ondergrens voor het koeldoel. OpenQuatt gebruikt de hoogste waarde van deze instelling en de dauwpuntveilige grens."),
-      renderSettingsSliderField("coolingDemandMax", "Maximale koelsterkte", "Bepaalt hoe krachtig OpenQuatt mag koelen. Lager geeft langere, rustigere runs; hoger geeft meer koelvermogen bij warm weer.", "", {
-        minLabel: "Rustig",
-        maxLabel: "Krachtig",
-        valueLabel: `${formatValue("coolingDemandMax")} max`,
+      renderSettingsNumberField("coolingMinimumSupplyTemp", t("settingsCooling.minSupplyTitle"), t("settingsCooling.minSupplyCopy")),
+      renderSettingsSliderField("coolingDemandMax", t("settingsCooling.demandMaxTitle"), t("settingsCooling.demandMaxCopy"), "", {
+        minLabel: t("settingsCooling.demandMinLabel"),
+        maxLabel: t("settingsCooling.demandMaxLabel"),
+        valueLabel: t("settingsCooling.demandValueSuffix", { value: formatValue("coolingDemandMax") }),
         footerMarkup: renderCoolingSilentLimitWarning(),
       }),
-      hasEntity("coolingRestartMode") ? renderSettingsSelectField("coolingRestartMode", "Herstartvoorwaarde", "Kies of koeling herstart nadat het water voldoende is opgewarmd of na een vaste minimale uit-tijd. Een minimale uit-tijd remt snelle opeenvolgende koelstarts af en helpt zo pendelgedrag te verminderen. De vaste minimale uit-tijd van iedere compressor (4 minuten) blijft in beide modi altijd gelden.") : "",
+      hasEntity("coolingRestartMode") ? renderSettingsSelectField("coolingRestartMode", t("settingsCooling.restartModeTitle"), t("settingsCooling.restartModeCopy")) : "",
       restartByMinimumOffTime
-        ? renderSettingsNumberField("coolingMinimumOffTime", "Minimale uit-tijd koelen", "Na een werkelijke koelstop blijft de warmtepomp gedurende deze tijd uit. Bij Duo geldt dit voor beide warmtepompen. OpenQuatt start pas wanneer ook de vaste minimale compressor-uit-tijd (4 minuten) voorbij is.")
-        : renderSettingsNumberField("coolingRestartDelta", "Herstartmarge watertemperatuur", "Na het bereiken van het koel-aanvoerdoel start de watercyclus pas opnieuw zodra de aanvoer deze marge boven het doel ligt."),
-      renderSettingsNumberField("coolingSafetyMargin", "Dauwpunt veiligheidsmarge", "Extra marge boven het geselecteerde dauwpunt voor de minimale veilige watertemperatuur."),
+        ? renderSettingsNumberField("coolingMinimumOffTime", t("settingsCooling.minOffTimeTitle"), t("settingsCooling.minOffTimeCopy"))
+        : renderSettingsNumberField("coolingRestartDelta", t("settingsCooling.restartDeltaTitle"), t("settingsCooling.restartDeltaCopy")),
+      renderSettingsNumberField("coolingSafetyMargin", t("settingsCooling.safetyMarginTitle"), t("settingsCooling.safetyMarginCopy")),
     ].filter(Boolean);
     const roomRequestFields = [
       hasEntity("coolingRoomRequestRequired") ? renderSettingsSwitchField(
         "coolingRoomRequestRequired",
-        "Koelvraag via kamerthermostaat",
-        "Aan: OpenQuatt wacht op echte koelvraag vanuit de kamer. Uit: koeltoestemming geldt direct als koelvraag.",
-        "Koelvraag start en stopt met de marges hieronder.",
-        "Koeltoestemming geldt direct als koelvraag. De start- en stopmarge worden nu niet gebruikt.",
+        t("settingsCooling.roomRequestTitle"),
+        t("settingsCooling.roomRequestOn"),
+        t("settingsCooling.roomRequestOffOn"),
+        t("settingsCooling.roomRequestOffOff"),
         "oq-settings-field--span-2",
       ) : "",
-      roomRequestRequired ? renderSettingsNumberField("coolingRequestOnDelta", "Koelvraag start boven setpoint", "Koelvraag wordt actief zodra de kamer warmer is dan setpoint plus deze marge.") : "",
-      roomRequestRequired ? renderSettingsNumberField("coolingRequestOffDelta", "Koelvraag stopt boven setpoint", "Koelvraag valt weer af zodra de kamer koeler is dan setpoint plus deze marge.") : "",
+      roomRequestRequired ? renderSettingsNumberField("coolingRequestOnDelta", t("settingsCooling.requestOnDeltaTitle"), t("settingsCooling.requestOnDeltaCopy")) : "",
+      roomRequestRequired ? renderSettingsNumberField("coolingRequestOffDelta", t("settingsCooling.requestOffDeltaTitle"), t("settingsCooling.requestOffDeltaCopy")) : "",
     ].filter(Boolean);
     const hasRoomRequestSettings = roomRequestFields.length > 0;
     const hasFallbackSettings = hasEntity("coolingWithoutDewPointMode");
     const guardStatusFacts = [
-      hasEntity("coolingGuardMode") ? renderSettingsCoolingFact("Route", formatSettingsOptionLabel(getEntityStateText("coolingGuardMode", "Onbekend"))) : "",
-      hasEntity("coolingEffectiveMinSupplyTemp") ? renderSettingsCoolingFact("Actieve ondergrens", getEntityStateText("coolingEffectiveMinSupplyTemp", "—")) : "",
+      hasEntity("coolingGuardMode") ? renderSettingsCoolingFact(t("settingsCooling.guardRoute"), formatSettingsOptionLabel(getEntityStateText("coolingGuardMode", t("overview.statusUnknown")))) : "",
+      hasEntity("coolingEffectiveMinSupplyTemp") ? renderSettingsCoolingFact(t("settingsCooling.guardFloor"), getEntityStateText("coolingEffectiveMinSupplyTemp", "—")) : "",
     ].filter(Boolean);
     const guardStatusPanel = guardStatusFacts.length ? renderSettingsFieldCard(
       "coolingGuardStatus",
-      "Actuele beveiliging",
-      "Laat zien welke route koeling nu begrenst en welke ondergrens daadwerkelijk geldt.",
+      t("settingsCooling.guardStatusTitle"),
+      t("settingsCooling.guardStatusCopy"),
       `<div class="oq-settings-cooling-facts">${guardStatusFacts.join("")}</div>`,
       "oq-settings-field--span-2 oq-settings-field--cooling-status",
     ) : "";
     const fallbackMetricFacts = [
-      hasEntity("outsideTempSelected") ? renderSettingsCoolingFact("Actuele buitentemperatuur", getEntityStateText("outsideTempSelected", "—")) : "",
-      hasEntity("coolingFallbackNightMinOutdoorTemp") ? renderSettingsCoolingFact("Nachtminimum buitentemperatuur", getEntityStateText("coolingFallbackNightMinOutdoorTemp", "—")) : "",
-      hasEntity("coolingFallbackMinSupplyTemp") ? renderSettingsCoolingFact("Berekende minimum watertemperatuur", getEntityStateText("coolingFallbackMinSupplyTemp", "—")) : "",
+      hasEntity("outsideTempSelected") ? renderSettingsCoolingFact(t("settingsCooling.metricOutside"), getEntityStateText("outsideTempSelected", "—")) : "",
+      hasEntity("coolingFallbackNightMinOutdoorTemp") ? renderSettingsCoolingFact(t("settingsCooling.metricNightMin"), getEntityStateText("coolingFallbackNightMinOutdoorTemp", "—")) : "",
+      hasEntity("coolingFallbackMinSupplyTemp") ? renderSettingsCoolingFact(t("settingsCooling.metricMinSupply"), getEntityStateText("coolingFallbackMinSupplyTemp", "—")) : "",
     ].filter(Boolean);
     const fallbackMetricsMarkup = fallbackMetricFacts.length ? `<div class="oq-settings-cooling-fallback-metrics">${fallbackMetricFacts.join("")}</div>` : "";
     const hasFallbackDetails = hasFallbackSettings || fallbackMetricFacts.length > 0;
     const activeCoolingGuardMode = getEntityStateText("coolingGuardMode", "");
     const openFallbackDetails = activeCoolingGuardMode.toLowerCase().includes("fallback");
     const pidFields = [
-      renderSettingsNumberField("coolingPidKp", "Proportionele reactie (Kp)", "Bepaalt hoe sterk de koelregeling direct reageert op het verschil tussen gewenste en gemeten aanvoertemperatuur."),
-      renderSettingsNumberField("coolingPidKi", "Langdurige correctie (Ki)", "Corrigeert een klein temperatuurverschil dat langere tijd blijft bestaan. Verhoog alleen in kleine stappen."),
-      renderSettingsNumberField("coolingPidKd", "Demping (Kd)", "Remt snelle veranderingen af. Een te hoge waarde kan de koelregeling onnodig traag of onrustig maken."),
+      renderSettingsNumberField("coolingPidKp", t("settingsCooling.pidKpTitle"), t("settingsCooling.pidKpCopy")),
+      renderSettingsNumberField("coolingPidKi", t("settingsCooling.pidKiTitle"), t("settingsCooling.pidKiCopy")),
+      renderSettingsNumberField("coolingPidKd", t("settingsCooling.pidKdTitle"), t("settingsCooling.pidKdCopy")),
     ].filter(Boolean).join("");
     const advancedPidMarkup = renderSettingsAdvancedDisclosure(
       "cooling",
-      "Geavanceerde koelafstelling",
-      "Deze PID-waarden verfijnen hoe OpenQuatt het koel-aanvoerdoel volgt. Laat ze op de standaardwaarden staan zolang koeling stabiel en zonder pendelen werkt.",
+      t("settingsCooling.advancedTitle"),
+      t("settingsCooling.advancedCopy"),
       pidFields ? `<div class="oq-settings-grid oq-settings-grid--pid">${pidFields}</div>` : "",
     );
 
@@ -285,17 +288,17 @@ import { state } from "../core/state.js";
     }
 
     const fallbackModeCopy = {
-      "Dew point required": "Gebruik alleen een betrouwbare dauwpuntmeting. Zonder meting blijft koeling uit.",
-      "Allow without dew point": "Gebruik dauwpunt waar mogelijk. Zonder meting geldt de conservatieve benadering hieronder.",
-      "Allow without dew point, use fallback": "Gebruik dauwpunt waar mogelijk. Zonder meting geldt de conservatieve benadering hieronder.",
-      "Allow without dew point, use dew point approximation": "Gebruik dauwpunt waar mogelijk. Zonder meting geldt de conservatieve benadering hieronder.",
-      "Allow without dew point, user responsibility": "Negeer dauwpunt en benadering; alleen de ingestelde minimale koel-aanvoer geldt.",
+      "Dew point required": t("settingsCooling.fallbackDewRequired"),
+      "Allow without dew point": t("settingsCooling.fallbackAllow"),
+      "Allow without dew point, use fallback": t("settingsCooling.fallbackAllow"),
+      "Allow without dew point, use dew point approximation": t("settingsCooling.fallbackAllow"),
+      "Allow without dew point, user responsibility": t("settingsCooling.fallbackUserResponsibility"),
     };
 
     return renderSettingsSection(
-      "Koeling",
-      "Koelingsinstellingen",
-      "Stel hier in wanneer koelvraag ontstaat, hoe koud het water mag worden en wanneer een gestopte koelcyclus opnieuw mag starten.",
+      t("settingsCooling.sectionGroup"),
+      t("settingsCooling.sectionTitle"),
+      t("settingsCooling.sectionCopy"),
       `
         ${scheduleFields}
         ${tuningFields.length ? `
@@ -306,9 +309,9 @@ import { state } from "../core/state.js";
         ${hasRoomRequestSettings ? `
           <div class="oq-settings-subpanel oq-settings-subpanel--nested">
             <div class="oq-settings-subpanel-head">
-              <p class="oq-helper-label">Koelvraag</p>
-              <h4>Kamerthermostaat</h4>
-              <p>Bepaalt of koelen pas start bij kamervraag, of dat koeltoestemming direct als koelvraag telt.</p>
+              <p class="oq-helper-label">${escapeHtml(t("settingsCooling.roomRequestKicker"))}</p>
+              <h4>${escapeHtml(t("settingsCooling.roomRequestPanelTitle"))}</h4>
+              <p>${escapeHtml(t("settingsCooling.roomRequestPanelCopy"))}</p>
             </div>
             <div class="oq-settings-grid">
               ${roomRequestFields.join("")}
@@ -317,53 +320,53 @@ import { state } from "../core/state.js";
         ` : ""}
         ${(hasFallbackSettings || guardStatusPanel || hasFallbackDetails) ? `
           <div class="oq-settings-grid">
-            ${hasFallbackSettings ? renderSettingsOptionCardsField("coolingWithoutDewPointMode", "Keuze koelbeveiliging", "Kies welke veiligheidsgrens OpenQuatt gebruikt: dauwpuntmeting, dauwpuntsbenadering bij ontbrekende meting, of expliciet toestaan zonder dauwpuntgrens.", fallbackModeCopy, "oq-settings-field--span-2 oq-settings-field--cooling-guard-choice") : ""}
+            ${hasFallbackSettings ? renderSettingsOptionCardsField("coolingWithoutDewPointMode", t("settingsCooling.guardChoiceTitle"), t("settingsCooling.guardChoiceCopy"), fallbackModeCopy, "oq-settings-field--span-2 oq-settings-field--cooling-guard-choice") : ""}
             ${guardStatusPanel}
             ${hasFallbackDetails ? `
               <details class="oq-settings-callout oq-settings-callout--cooling oq-settings-callout--inline"${openFallbackDetails ? " open" : ""}>
-              <summary>Dauwpuntsbenadering bekijken</summary>
+              <summary>${escapeHtml(t("settingsCooling.fallbackDetails"))}</summary>
               <div class="oq-settings-callout-body">
                 ${fallbackMetricsMarkup}
-                <p>Zonder dauwpuntmeting weet OpenQuatt niet zeker hoe koud het water mag worden zonder condensrisico. De dauwpuntsbenadering gebruikt daarom een voorzichtige minimum watertemperatuur.</p>
-                <p>Onder de 20°C buiten blijft koeling via deze benadering uit. Daarboven loopt de ondergrens geleidelijk op van 19°C bij 20°C buiten naar 22°C bij 32°C buiten. Warme nachten verhogen die grens nog iets.</p>
-                <p>Wordt die grens hoger dan zinvol is voor de kamer, dan verlaagt OpenQuatt hem beperkt: ongeveer 1°C onder de kamertemperatuur, maar nooit lager dan 20°C. Voorbeeld: bij 22°C kamer en een berekende grens van 23,5°C wordt de grens ongeveer 21°C. Zo kan OpenQuatt nog voorzichtig koelen. Een echte dauwpuntmeting blijft veiliger.</p>
-                <p>Kies je expliciet toestaan, dan gebruikt OpenQuatt geen dauwpuntgrens: ook een beschikbare dauwpuntmeting wordt genegeerd. Koeling mag dan doorgaan op basis van de ingestelde minimale koel-aanvoer. Dat kan nuttig zijn bij een installatie die je zelf goed bewaakt, maar het condensrisico ligt dan volledig bij jou.</p>
+                <p>${escapeHtml(t("settingsCooling.fallbackP1"))}</p>
+                <p>${escapeHtml(t("settingsCooling.fallbackP2"))}</p>
+                <p>${escapeHtml(t("settingsCooling.fallbackP3"))}</p>
+                <p>${escapeHtml(t("settingsCooling.fallbackP4"))}</p>
                 <div class="oq-settings-rule-groups">
                   <section class="oq-settings-rule-group">
-                    <h4>Buitentemperatuur</h4>
+                    <h4>${escapeHtml(t("settingsCooling.ruleOutsideTitle"))}</h4>
                     <div class="oq-settings-rule-table">
                       <div class="oq-settings-rule-row">
-                        <span class="oq-settings-rule-key">Onder 20°C</span>
-                        <span class="oq-settings-rule-value">Uit</span>
+                        <span class="oq-settings-rule-key">${escapeHtml(t("settingsCooling.ruleBelow20"))}</span>
+                        <span class="oq-settings-rule-value">${escapeHtml(t("settingsCooling.ruleOff"))}</span>
                       </div>
                       <div class="oq-settings-rule-row">
-                        <span class="oq-settings-rule-key">20-32°C</span>
-                        <span class="oq-settings-rule-value">19°C → 22°C</span>
+                        <span class="oq-settings-rule-key">${escapeHtml(t("settingsCooling.ruleRange20to32"))}</span>
+                        <span class="oq-settings-rule-value">${escapeHtml(t("settingsCooling.ruleRangeValue"))}</span>
                       </div>
                       <div class="oq-settings-rule-row">
-                        <span class="oq-settings-rule-key">Vanaf 32°C</span>
-                        <span class="oq-settings-rule-value">Min. water 22°C</span>
+                        <span class="oq-settings-rule-key">${escapeHtml(t("settingsCooling.ruleFrom32"))}</span>
+                        <span class="oq-settings-rule-value">${escapeHtml(t("settingsCooling.ruleMinWater22"))}</span>
                       </div>
                     </div>
                   </section>
                   <section class="oq-settings-rule-group">
-                    <h4>Nachtcorrectie</h4>
+                    <h4>${escapeHtml(t("settingsCooling.ruleNightTitle"))}</h4>
                     <div class="oq-settings-rule-table">
                       <div class="oq-settings-rule-row">
-                        <span class="oq-settings-rule-key">Onder 18°C</span>
-                        <span class="oq-settings-rule-value">+0°C</span>
+                        <span class="oq-settings-rule-key">${escapeHtml(t("settingsCooling.ruleBelow18"))}</span>
+                        <span class="oq-settings-rule-value">${escapeHtml(t("settingsCooling.rulePlus0"))}</span>
                       </div>
                       <div class="oq-settings-rule-row">
-                        <span class="oq-settings-rule-key">18-19°C</span>
-                        <span class="oq-settings-rule-value">+0,5°C</span>
+                        <span class="oq-settings-rule-key">${escapeHtml(t("settingsCooling.rule18to19"))}</span>
+                        <span class="oq-settings-rule-value">${escapeHtml(t("settingsCooling.rulePlus05"))}</span>
                       </div>
                       <div class="oq-settings-rule-row">
-                        <span class="oq-settings-rule-key">19-20°C</span>
-                        <span class="oq-settings-rule-value">+1,0°C</span>
+                        <span class="oq-settings-rule-key">${escapeHtml(t("settingsCooling.rule19to20"))}</span>
+                        <span class="oq-settings-rule-value">${escapeHtml(t("settingsCooling.rulePlus10"))}</span>
                       </div>
                       <div class="oq-settings-rule-row">
-                        <span class="oq-settings-rule-key">Vanaf 20°C</span>
-                        <span class="oq-settings-rule-value">+1,5°C</span>
+                        <span class="oq-settings-rule-key">${escapeHtml(t("settingsCooling.ruleFrom20"))}</span>
+                        <span class="oq-settings-rule-value">${escapeHtml(t("settingsCooling.rulePlus15"))}</span>
                       </div>
                     </div>
                   </section>

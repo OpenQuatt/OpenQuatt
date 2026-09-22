@@ -1,6 +1,7 @@
 import { hasEntity, isEntityActive } from "./app-shared.js";
 import { isCurveMode } from "./domain-helpers.js";
 import { getEntityValue } from "./entity-store.js";
+import { t } from "../i18n/index.js";
 
 export const HEATING_ENABLE_RECOMMENDED_POWER_HOUSE = "Disabled";
 export const HEATING_ENABLE_RECOMMENDED_CURVE_OT = "OT thermostat";
@@ -64,8 +65,8 @@ export function getHeatingEnableAdvice(strategyValue = getEntityValue("strategy"
     if (!recommended) {
       return {
         tone: "warning",
-        title: "Geen actieve thermostaatbron beschikbaar",
-        copy: "Configureer of activeer eerst één gekoppelde bron voor kamertemperatuur en kamer-setpoint. Warmtetoestemming wordt niet automatisch op een inactieve bron gezet.",
+        title: t("heatingAdvice.matrixNoSourceTitle"),
+        copy: t("heatingAdvice.matrixNoSourceCopy"),
         recommended: "",
         deviant: true,
       };
@@ -73,8 +74,8 @@ export function getHeatingEnableAdvice(strategyValue = getEntityValue("strategy"
     if (current === "Disabled") {
       return {
         tone: "warning",
-        title: "Warmtetoestemming staat op Niet gebruiken",
-        copy: "Zonder thermostaat kan de stooklijn verwarmen terwijl de kamer al warm is. Met een thermostaat als toestemming voorkom je dat.",
+        title: t("heatingAdvice.matrixDisabledTitle"),
+        copy: t("heatingAdvice.matrixDisabledCopy"),
         recommended,
         deviant,
       };
@@ -82,16 +83,16 @@ export function getHeatingEnableAdvice(strategyValue = getEntityValue("strategy"
     if (deviant) {
       return {
         tone: "info",
-        title: "Andere toestemming dan aanbevolen",
-        copy: `Voor stooklijn adviseren we ${recommended}. Je gebruikt nu ${current || "onbekend"}.`,
+        title: t("heatingAdvice.matrixOtherTitle"),
+        copy: t("heatingAdvice.matrixOtherCopy", { recommended, current: current || t("heatpump.summaryUnknown") }),
         recommended,
         deviant,
       };
     }
     return {
       tone: "info",
-      title: "Goed zo — thermostaat en stooklijn vullen elkaar aan",
-      copy: "Thermostaat bepaalt óf er verwarmd wordt, de stooklijn hoe warm.",
+      title: t("heatingAdvice.matrixOkCurveTitle"),
+      copy: t("heatingAdvice.matrixOkCurveCopy"),
       recommended,
       deviant: false,
     };
@@ -100,26 +101,33 @@ export function getHeatingEnableAdvice(strategyValue = getEntityValue("strategy"
   if (current !== "Disabled" && current) {
     return {
       tone: "warning",
-      title: "Externe toestemming bij Power House",
-      copy: "Power House bepaalt zelf of verwarmen nodig is. Een extra thermostaat als harde schakelaar laat de pomp vaker aan en uit gaan. Alleen handig bij zone-verwarming.",
+      title: t("heatingAdvice.matrixExternalTitle"),
+      copy: t("heatingAdvice.matrixExternalCopy"),
       recommended,
       deviant,
     };
   }
   return {
     tone: "info",
-    title: "Goed zo — Power House regelt de warmtevraag zelf",
-    copy: "Geen extra toestemming nodig. Power House kijkt zelf naar kamer en buitentemperatuur.",
+    title: t("heatingAdvice.matrixOkPhTitle"),
+    copy: t("heatingAdvice.matrixOkPhCopy"),
     recommended,
     deviant: false,
   };
 }
 
+function localizedMatrixEntry(powerHouseKey, curveKey) {
+  return {
+    get powerHouse() { return t(powerHouseKey); },
+    get curve() { return t(curveKey); },
+  };
+}
+
 export const STRATEGY_CONFIG_MATRIX = {
-  roomTemp: { powerHouse: "vereist", curve: "aanbevolen" },
-  roomSetpoint: { powerHouse: "vereist", curve: "aanbevolen" },
-  outsideTemp: { powerHouse: "vereist", curve: "vereist" },
-  waterSupply: { powerHouse: "nodig voor begrenzing", curve: "vereist" },
-  flow: { powerHouse: "vereist", curve: "vereist" },
-  heatingEnable: { powerHouse: "meestal Niet gebruiken", curve: "meestal externe thermostaat/zonevraag" },
+  roomTemp: localizedMatrixEntry("heatingAdvice.matrixRequired", "heatingAdvice.matrixRecommended"),
+  roomSetpoint: localizedMatrixEntry("heatingAdvice.matrixRequired", "heatingAdvice.matrixRecommended"),
+  outsideTemp: localizedMatrixEntry("heatingAdvice.matrixRequired", "heatingAdvice.matrixRequired"),
+  waterSupply: localizedMatrixEntry("heatingAdvice.matrixNeededForLimit", "heatingAdvice.matrixRequired"),
+  flow: localizedMatrixEntry("heatingAdvice.matrixRequired", "heatingAdvice.matrixRequired"),
+  heatingEnable: localizedMatrixEntry("heatingAdvice.matrixUsuallyDisabled", "heatingAdvice.matrixUsuallyExternal"),
 };

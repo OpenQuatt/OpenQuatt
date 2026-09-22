@@ -137,6 +137,7 @@ class OpenQuattNetworkManager : public Component {
   bool active_published_{false};
   bool ethernet_prepared_{false};
   bool w5500_powered_down_{false};
+  bool provisioning_override_{false};
 };
 
 }  // namespace openquatt_network

@@ -1,3 +1,5 @@
+import { t } from "../i18n/index.js";
+
 export const NON_WARNING_FAILURE_NAMES = new Set([
   "compressor oil return",
 ]);
@@ -5,14 +7,14 @@ export const NON_WARNING_FAILURE_NAMES = new Set([
 export function formatFailures(value) {
   const raw = String(value || "").trim();
   if (!raw || raw === "None") {
-    return "Geen actieve storingen";
+    return t("failures.none");
   }
   return raw;
 }
 
 export function getWarningFailureItems(value) {
   const formatted = formatFailures(value);
-  if (formatted === "Geen actieve storingen") {
+  if (formatted === t("failures.none")) {
     return [];
   }
   return formatted
@@ -23,5 +25,5 @@ export function getWarningFailureItems(value) {
 
 export function formatWarningFailures(value) {
   const warningItems = getWarningFailureItems(value);
-  return warningItems.length > 0 ? warningItems.join(", ") : "Geen actieve storingen";
+  return warningItems.length > 0 ? warningItems.join(", ") : t("failures.none");
 }

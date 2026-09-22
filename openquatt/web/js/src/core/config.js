@@ -10,20 +10,20 @@
   export const STRATEGY_OPTION_CURVE = "Water Temperature Control (heating curve)";
 
   export const QUICK_STEPS = [
-    ["setup", "Configuratie en software-update", "Kies Single of Duo en Wi-Fi of Ethernet. OpenQuatt controleert daarna de stabiele main-release en installeert deze alleen als dat nodig is."],
-    ["generation", "Kies je Quatt Hybrid", "Geef hier aan welke Quatt Hybrid je hebt. Dan zet OpenQuatt de juiste regeling klaar."],
-    ["flow-source", "Flowmeting configureren", "Controleer en activeer de flowbron die bij jouw Quatt-versie en controller hoort."],
-    ["thermostat-source", "Thermostaatgegevens configureren", "Leg vast waar OpenQuatt de kamertemperatuur en het kamer-setpoint samen vandaan haalt."],
-    ["boiler", "Aanvullende warmtebron", "Leg vast of een aanvullende warmtebron is aangesloten en wanneer OpenQuatt die mag gebruiken.", "auxHeatSourcePresent"],
-    ["strategy", "Kies de verwarmingsstrategie", "Kies hier hoe OpenQuatt je verwarming regelt. Daarna lopen we samen de belangrijkste instellingen langs."],
-    ["heating", "Werk de regeling uit", "Stel nu de gekozen regeling verder in. De inhoud hieronder past zich aan aan je keuze."],
-    ["flow", "Flowregeling en afstelling", "Leg daarna vast hoe de pomp geregeld moet worden en welke waarden daarbij horen. De autotune staat later onder Instellingen → Installatie → Service & commissioning."],
-    ["water", "Watertemperatuur beveiligen", "Controleer de normale bovengrens en de tripgrens voor het watercircuit."],
-    ["silent", "Stille uren en niveaus", "Stel daarna het stille venster en de compressorlimieten voor dag en nacht in."],
-    ["usage-telemetry", "Gebruiksstatistieken", "Kies of OpenQuatt beperkte technische gebruiksstatistieken mag delen. Tijdens een nieuwe Quick Start staat delen standaard aan.", "usageTelemetryEnabled"],
-    ["performance-telemetry", "Prestatiemetingen", "Kies of OpenQuatt stabiele verwarmingsmetingen mag delen voor validatie van het prestatiemodel. Tijdens een nieuwe Quick Start staat delen standaard uit.", "performanceTelemetryEnabled"],
-    ["confirm", "Bevestigen en afronden", "Controleer nog één keer je keuzes. Met afronden markeer je Quick Start als voltooid."],
-  ].map(([id, title, copy, optionalEntity], index) => ({ id, kicker: `Stap ${index + 1}`, title, copy, ...(optionalEntity ? { optionalEntity } : {}) }));
+    ["setup", "quickStart.setup.title", "quickStart.setup.copy"],
+    ["generation", "quickStart.generation.title", "quickStart.generation.copy"],
+    ["flow-source", "quickStart.flowSource.title", "quickStart.flowSource.copy"],
+    ["thermostat-source", "quickStart.thermostatSource.title", "quickStart.thermostatSource.copy"],
+    ["boiler", "quickStart.boiler.title", "quickStart.boiler.copy", "auxHeatSourcePresent"],
+    ["strategy", "quickStart.strategy.title", "quickStart.strategy.copy"],
+    ["heating", "quickStart.heating.title", "quickStart.heating.copy"],
+    ["flow", "quickStart.flow.title", "quickStart.flow.copy"],
+    ["water", "quickStart.water.title", "quickStart.water.copy"],
+    ["silent", "quickStart.silent.title", "quickStart.silent.copy"],
+    ["usage-telemetry", "quickStart.usageTelemetry.title", "quickStart.usageTelemetry.copy", "usageTelemetryEnabled"],
+    ["performance-telemetry", "quickStart.performanceTelemetry.title", "quickStart.performanceTelemetry.copy", "performanceTelemetryEnabled"],
+    ["confirm", "quickStart.confirm.title", "quickStart.confirm.copy"],
+  ].map(([id, titleKey, copyKey, optionalEntity]) => ({ id, titleKey, copyKey, ...(optionalEntity ? { optionalEntity } : {}) }));
 
   const DOMAIN_BINARY_SENSOR = "binary_sensor";
   const DOMAIN_BUTTON = "button";
@@ -549,6 +549,9 @@
     ["phComfortAbove", DOMAIN_NUMBER, "Power House comfort above setpoint", false],
     ["phDemandRiseTime", DOMAIN_NUMBER, "Power House demand rise time", false],
     ["phDemandFallTime", DOMAIN_NUMBER, "Power House demand fall time", false],
+    ["phRunExtension", DOMAIN_SWITCH, "Power House run extension"],
+    ["phRunExtensionStopMargin", DOMAIN_NUMBER, "Power House run extension stop margin"],
+    ["phRunExtensionStatus", DOMAIN_TEXT_SENSOR, "Power House run extension status"],
     ["lowLoadDynamicThresholds", DOMAIN_TEXT_SENSOR, "Low-load dynamic thresholds"],
     ["lowLoadDynamicOffFactor", DOMAIN_NUMBER, "Low-load dynamic OFF factor"],
     ["lowLoadDynamicOnFactor", DOMAIN_NUMBER, "Low-load dynamic ON factor"],
@@ -660,12 +663,12 @@
   export const COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY = "coolingEnableEffectiveSource";
   export const COOLING_SCHEDULE_TIME_KEYS = ["coolingScheduleStartTime", "coolingScheduleEndTime"];
   export const APP_VIEWS = [
-    { id: "overview", label: "Overzicht", icon: "monitor-dashboard" },
-    { id: "energy", label: "Energie", icon: "zap" },
-    { id: "results", label: "Resultaten", icon: "bar-chart" },
-    { id: "control", label: "Beslislog", icon: "activity", badge: "BETA" },
-    { id: "diagnosis", label: "Diagnose", icon: "activity" },
-    { id: "settings", label: "Instellingen", icon: "settings" },
+    { id: "overview", labelKey: "navigation.overview", icon: "monitor-dashboard" },
+    { id: "energy", labelKey: "navigation.energy", icon: "zap" },
+    { id: "results", labelKey: "navigation.results", icon: "bar-chart" },
+    { id: "control", labelKey: "navigation.control", icon: "activity", badge: "BETA" },
+    { id: "diagnosis", labelKey: "navigation.diagnosis", icon: "activity" },
+    { id: "settings", labelKey: "navigation.settings", icon: "settings" },
   ];
   export const APP_VIEW_IDS = new Set(APP_VIEWS.map((view) => view.id));
 
@@ -717,12 +720,12 @@
       .replaceAll("'", "&#39;");
   }
   export const SETTINGS_GROUPS = [
-    { id: "installation", label: "Installatie", icon: "home-cog" },
-    { id: "heating", label: "Verwarmen", icon: "flame" },
-    { id: "cooling", label: "Koelen", icon: "snowflake" },
-    { id: "integrations", label: "Bronnen / integraties", icon: "link" },
-    { id: "service", label: "Service", icon: "tool" },
-    { id: "system", label: "Systeem", icon: "server" },
+    { id: "installation", labelKey: "settingsGroups.installation", icon: "home-cog" },
+    { id: "heating", labelKey: "settingsGroups.heating", icon: "flame" },
+    { id: "cooling", labelKey: "settingsGroups.cooling", icon: "snowflake" },
+    { id: "integrations", labelKey: "settingsGroups.integrations", icon: "link" },
+    { id: "service", labelKey: "settingsGroups.service", icon: "tool" },
+    { id: "system", labelKey: "settingsGroups.system", icon: "server" },
   ];
   export const SETTINGS_GROUP_IDS = new Set(SETTINGS_GROUPS.map((group) => group.id));
   export const HP_PANEL_CONFIGS = [
@@ -813,6 +816,9 @@
     "phComfortAbove",
     "phDemandRiseTime",
     "phDemandFallTime",
+    "phRunExtension",
+    "phRunExtensionStopMargin",
+    "phRunExtensionStatus",
   ];
   export const FREQUENCY_CAP_KEYS = ["dayMaxHz", "silentMaxHz"];
   export const FREQUENCY_MINIMUM_KEYS = ["hp1MinimumHeatingHz", "hp1MinimumCoolingHz", "hp2MinimumHeatingHz", "hp2MinimumCoolingHz"];
@@ -1343,7 +1349,7 @@
     { minutes: 15, label: "15 min" },
     { minutes: 30, label: "30 min" },
     { minutes: 60, label: "60 min" },
-    { minutes: 0, label: "Alles" },
+    { minutes: 0, label: "Alles", labelKey: "debugRecording.rangeAll" },
   ];
   export const SYSTEM_RECORDER_ANALYSER_URL = "https://openheatpumps.nl";
   export const DEBUG_RECORDING_KEYS = [
@@ -1694,6 +1700,16 @@
   ];
   export const CONTROL_REPLAY_STATE_KEYS = [
     "strategyActiveCode",
+    "strategyRequestActive",
+    "strategyWaterTripActive",
+    "strategyWaterHardTripActive",
+    "heatingBlockedByThermostat",
+    "controlModeOverride",
+    "lowLoadLatch",
+    "lowLoadOnW",
+    "lowLoadOffW",
+    "curveRestartInhibit",
+    "curveRestartBlockedByRoom",
     "hp1CompressorStarts24h",
     "hp2CompressorStarts24h",
     "hp1RuntimeHours",
@@ -1820,68 +1836,68 @@
   ];
   export const OVERVIEW_ENERGY_COLUMN_CONFIGS = [
     {
-      label: "Nu",
+      labelKey: "energy.colNow",
       tone: "blue",
       categories: [
         {
-          title: "Verwarmen",
+          titleKey: "energy.catHeating",
           tone: "orange",
           groups: [
-            { title: "Warmtepomp", rows: [["Elektrisch vermogen", "heatingPowerInput"], ["Warmteafgifte", "totalHeat"], ["COP", "totalCop"]] },
-            { title: "CV-ketel", rows: [["Warmteafgifte", "boilerHeatPower"]] },
-            { title: "Systeem", rows: [["Warmteafgifte", "systemHeatPower"]] },
+            { titleKey: "energy.groupHeatpump", rows: [["energy.rowPower", "heatingPowerInput"], ["energy.rowHeatOutput", "totalHeat"], ["energy.rowCop", "totalCop"]] },
+            { titleKey: "energy.groupBoiler", rows: [["energy.rowHeatOutput", "boilerHeatPower"]] },
+            { titleKey: "energy.groupSystem", rows: [["energy.rowHeatOutput", "systemHeatPower"]] },
           ],
         },
         {
-          title: "Koelen",
+          titleKey: "energy.catCooling",
           tone: "blue",
           groups: [
-            { title: "Warmtepomp", rows: [["Elektrisch vermogen", "coolingPowerInput"], ["Koelafgifte", "totalCoolingPower"], ["COP (EER)", "totalEer"]] },
+            { titleKey: "energy.groupHeatpump", rows: [["energy.rowPower", "coolingPowerInput"], ["energy.rowCoolingOutput", "totalCoolingPower"], ["energy.rowCopEer", "totalEer"]] },
           ],
         },
       ],
     },
     {
-      label: "Vandaag",
+      labelKey: "energy.colToday",
       tone: "orange",
       categories: [
         {
-          title: "Verwarmen",
+          titleKey: "energy.catHeating",
           tone: "orange",
           groups: [
-            { title: "Warmtepomp", rows: [["Elektriciteit", "heatingElectricalEnergyDaily"], ["Warmte", "heatpumpThermalEnergyDaily"], ["COP", "heatpumpCopDaily"]] },
-            { title: "CV-ketel", rows: [["Warmte", "boilerThermalEnergyDaily"]] },
-            { title: "Systeem", rows: [["Warmte", "systemThermalEnergyDaily"]] },
+            { titleKey: "energy.groupHeatpump", rows: [["energy.rowElectricity", "heatingElectricalEnergyDaily"], ["energy.rowHeat", "heatpumpThermalEnergyDaily"], ["energy.rowCop", "heatpumpCopDaily"]] },
+            { titleKey: "energy.groupBoiler", rows: [["energy.rowHeat", "boilerThermalEnergyDaily"]] },
+            { titleKey: "energy.groupSystem", rows: [["energy.rowHeat", "systemThermalEnergyDaily"]] },
           ],
         },
         {
-          title: "Koelen",
+          titleKey: "energy.catCooling",
           tone: "blue",
           groups: [
-            { title: "Warmtepomp", rows: [["Elektriciteit", "coolingElectricalEnergyDaily"], ["Koeling", "heatpumpCoolingEnergyDaily"], ["COP (EER)", "heatpumpEerDaily"]] },
+            { titleKey: "energy.groupHeatpump", rows: [["energy.rowElectricity", "coolingElectricalEnergyDaily"], ["energy.rowCooling", "heatpumpCoolingEnergyDaily"], ["energy.rowCopEer", "heatpumpEerDaily"]] },
           ],
         },
       ],
     },
     {
-      label: "Cumulatief",
+      labelKey: "energy.colCumulative",
       tone: "green",
       counterResetKey: "resetCumulativeEnergyCounters",
       categories: [
         {
-          title: "Verwarmen",
+          titleKey: "energy.catHeating",
           tone: "orange",
           groups: [
-            { title: "Warmtepomp", rows: [["Elektriciteit", "heatingElectricalEnergyCumulative"], ["Warmte", "heatpumpThermalEnergyCumulative"], ["COP", "heatpumpCopCumulative"]] },
-            { title: "CV-ketel", rows: [["Warmte", "boilerThermalEnergyCumulative"]] },
-            { title: "Systeem", rows: [["Warmte", "systemThermalEnergyCumulative"]] },
+            { titleKey: "energy.groupHeatpump", rows: [["energy.rowElectricity", "heatingElectricalEnergyCumulative"], ["energy.rowHeat", "heatpumpThermalEnergyCumulative"], ["energy.rowCop", "heatpumpCopCumulative"]] },
+            { titleKey: "energy.groupBoiler", rows: [["energy.rowHeat", "boilerThermalEnergyCumulative"]] },
+            { titleKey: "energy.groupSystem", rows: [["energy.rowHeat", "systemThermalEnergyCumulative"]] },
           ],
         },
         {
-          title: "Koelen",
+          titleKey: "energy.catCooling",
           tone: "blue",
           groups: [
-            { title: "Warmtepomp", rows: [["Elektriciteit", "coolingElectricalEnergyCumulative"], ["Koeling", "heatpumpCoolingEnergyCumulative"], ["COP (EER)", "heatpumpEerCumulative"]] },
+            { titleKey: "energy.groupHeatpump", rows: [["energy.rowElectricity", "coolingElectricalEnergyCumulative"], ["energy.rowCooling", "heatpumpCoolingEnergyCumulative"], ["energy.rowCopEer", "heatpumpEerCumulative"]] },
           ],
         },
       ],
@@ -1971,7 +1987,7 @@
   export const SETTINGS_BACKUP_SECTIONS = [
     {
       id: "installation",
-      label: "Installatie",
+      labelKey: "backupSections.installation",
       keys: [
         "setupComplete",
         "hpGeneration",
@@ -1985,7 +2001,7 @@
     },
     {
       id: "operation",
-      label: "Bediening",
+      labelKey: "backupSections.operation",
       keys: [
         "strategy",
         "openquattEnabled",
@@ -1996,7 +2012,7 @@
     },
     {
       id: "integrations",
-      label: "Integraties",
+      labelKey: "backupSections.integrations",
       keys: [
         "otEnabled",
         "cicPollingEnabled",
@@ -2006,7 +2022,7 @@
     },
     {
       id: "sensor_sources",
-      label: "Sensorbronnen",
+      labelKey: "backupSections.sensorSources",
       keys: [
         ...SENSOR_CALIBRATION_KEYS,
         ...SUPPLY_CALIBRATION_BACKUP_KEYS,
@@ -2035,7 +2051,7 @@
     },
     {
       id: "comfort",
-      label: "Comfort",
+      labelKey: "backupSections.comfort",
       keys: [
         "silentStartTime",
         "silentEndTime",
@@ -2045,7 +2061,7 @@
     },
     {
       id: "heatingCurve",
-      label: "Stooklijn",
+      labelKey: "backupSections.heatingCurve",
       keys: [
         "curveControlProfile",
         "curveFallbackSupply",
@@ -2057,7 +2073,7 @@
     },
     {
       id: "powerHouse",
-      label: "Power House",
+      labelKey: "backupSections.powerHouse",
       keys: [
         "housePower",
         "houseColdTemp",
@@ -2068,16 +2084,18 @@
         "phComfortAbove",
         "phDemandRiseTime",
         "phDemandFallTime",
+        "phRunExtension",
+        "phRunExtensionStopMargin",
       ],
     },
     {
       id: "flow",
-      label: "Flow",
+      labelKey: "backupSections.flow",
       keys: ["flowControlMode", "flowSetpoint", "coolingFlowSetpoint", "manualIpwm", "flowKp", "flowKi"],
     },
     {
       id: "cooling",
-      label: "Koeling",
+      labelKey: "backupSections.cooling",
       keys: [
         ...COOLING_SCHEDULE_TIME_KEYS,
         "coolingMinimumSupplyTemp",
@@ -2097,12 +2115,12 @@
     },
     {
       id: "compressor",
-      label: "Compressor",
+      labelKey: "backupSections.compressor",
       keys: ["minRuntime", "compressorStarts2hWarningLimit", "compressorStarts72hWarningLimit", ...EXCLUDED_FREQUENCY_KEYS],
     },
     {
       id: "system",
-      label: "Systeem",
+      labelKey: "backupSections.system",
       keys: [
         "trendHistoryEnabled",
         "trendHistoryFlashEnabled",

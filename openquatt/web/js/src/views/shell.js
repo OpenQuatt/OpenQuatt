@@ -21,6 +21,7 @@ import { renderEnergyView, renderResultsView } from "./energy.js";
 import { renderControlReplayView } from "../features/control-replay-view.js";
 import { renderOverviewView, syncTechTooltipLayers } from "./heatpump.js";
 import { renderDiagnosisView, syncOverviewTrendInteractions } from "./overview.js";
+import { t } from "../i18n/index.js";
 
 const captureFocusedSettingsField = () => captureSettingsFocusContinuity(state.root, state.appView);
 const restoreFocusedSettingsField = (focusState) => restoreSettingsFocusContinuity(state.root, focusState);
@@ -28,9 +29,9 @@ const restoreFocusedSettingsField = (focusState) => restoreSettingsFocusContinui
 export function renderSettingsView() {
     return `
       <section class="oq-helper-panel">
-        <p class="oq-helper-label">Instellingen</p>
-        <h2 class="oq-helper-section-title">Kies een onderdeel</h2>
-        <p class="oq-helper-section-copy">Werk installatie, service, regeling, koeling en systeem apart bij. Wijzigingen worden direct toegepast.</p>
+        <p class="oq-helper-label">${escapeHtml(t("shell.settingsLabel"))}</p>
+        <h2 class="oq-helper-section-title">${escapeHtml(t("shell.settingsTitle"))}</h2>
+        <p class="oq-helper-section-copy">${escapeHtml(t("shell.settingsCopy"))}</p>
         ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
         ${state.controlNotice ? `<p class="oq-helper-notice" role="status">${escapeHtml(state.controlNotice)}</p>` : ""}
         ${renderSettingsGroupNav()}
@@ -43,19 +44,19 @@ export function renderSettingsView() {
     return renderModalShell({
       modalId: "initial-load",
       titleId: "oq-loading-modal-title",
-      kicker: "OpenQuatt",
-      title: "OpenQuatt laden",
+      kicker: t("navigation.appName"),
+      title: t("shell.loadingTitle"),
       backdropClass: "oq-helper-modal-backdrop--loading",
       modalClass: "oq-helper-modal--reconnect oq-helper-modal--loading",
       role: "status",
       ariaLive: "polite",
       bodyMarkup: `
-        <p class="oq-helper-modal-copy">We wachten tot de zichtbare gegevens compleet zijn, zodat de interface niet half gevuld verschijnt. Dit kan enkele seconden duren.</p>
+        <p class="oq-helper-modal-copy">${escapeHtml(t("shell.loadingCopy"))}</p>
         <div class="oq-helper-reconnect-status oq-helper-loading-status">
           <span class="oq-helper-reconnect-spinner" aria-hidden="true"></span>
           <div>
-            <strong>Eerste synchronisatie</strong>
-            <span>De velden op dit scherm worden compleet klaargezet.</span>
+            <strong>${escapeHtml(t("shell.firstSync"))}</strong>
+            <span>${escapeHtml(t("shell.firstSyncCopy"))}</span>
           </div>
         </div>
       `,
@@ -82,14 +83,14 @@ export function renderSettingsView() {
       ? `<span class="oq-helper-footer-version">OpenQuatt ${escapeHtml(version)}</span>`
       : "";
     return `
-      <footer class="oq-helper-powered-by" aria-label="Platform">
+      <footer class="oq-helper-powered-by" aria-label="${escapeHtml(t("shell.platformAria"))}">
         ${versionMarkup}
-        <nav class="oq-helper-footer-links" aria-label="OpenQuatt links">
+        <nav class="oq-helper-footer-links" aria-label="${escapeHtml(t("shell.linksAria"))}">
           <a href="https://openquatt.github.io/OpenQuatt/" target="_blank" rel="noreferrer">Docs</a>
           <a href="https://github.com/OpenQuatt/OpenQuatt" target="_blank" rel="noreferrer">GitHub</a>
         </nav>
-        <a class="oq-helper-powered-by-link" href="https://esphome.io/" target="_blank" rel="noreferrer" aria-label="Built with ESPHome">
-          <span>Built with</span>
+        <a class="oq-helper-powered-by-link" href="https://esphome.io/" target="_blank" rel="noreferrer" aria-label="${escapeHtml(t("shell.builtWithAria"))}">
+          <span>${escapeHtml(t("shell.builtWith"))}</span>
           <img class="oq-helper-powered-by-logo" src="https://media.esphome.io/logo/logo-text-on-light.svg" alt="ESPHome" loading="lazy" decoding="async">
         </a>
       </footer>
@@ -259,7 +260,7 @@ export function renderSettingsView() {
               <div class="oq-helper-logo-lockup">
                 <div data-oq-action="matrix-version-tap" style="display:contents">${LOGO_MARKUP}</div>
               </div>
-              <p class="oq-helper-lead">Stel je OpenQuatt in, volg live wat er gebeurt en verfijn de regeling wanneer nodig.</p>
+              <p class="oq-helper-lead">${escapeHtml(t("shell.lead"))}</p>
             </div>
             ${renderHeaderStatus()}
           </div>

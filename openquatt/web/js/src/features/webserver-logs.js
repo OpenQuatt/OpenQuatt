@@ -10,6 +10,7 @@ import { render } from "../core/render-scheduler.js";
 import { createScrollKeeper } from "../core/scroll-keeper.js";
 import { renderModalShell } from "../core/modal-shell.js";
 import { renderSettingsInfoToggle } from "../settings/controls.js";
+import { formatDateTime, formatNumber, t } from "../i18n/index.js";
 
 export const WEB_SERVER_LOG_MAX_ENTRIES = 250;
 
@@ -56,15 +57,15 @@ export function getWebServerLogClearUrl() {
 
 export function getWebServerLogStatusLabel() {
   if (state.nativeOpen) {
-    return "Niet beschikbaar";
+    return t("weblog.statusUnavailable");
   }
   if (__OQ_PREVIEW__ && isWebServerLogDemoMode()) {
-    return "Voorbeeld";
+    return t("weblog.statusPreview");
   }
   if (state.webServerLogEnabled === false) {
-    return "Niet beschikbaar";
+    return t("weblog.statusUnavailable");
   }
-  return "Beschikbaar";
+  return t("weblog.statusAvailable");
 }
 
 export function formatWebServerLogDuration(value) {
@@ -87,11 +88,7 @@ export function formatWebServerLogDateTime(value) {
       minute: "2-digit",
       second: "2-digit",
     };
-    try {
-      return new Intl.DateTimeFormat("nl-NL", options).format(date);
-    } catch (_error) {
-      return date.toLocaleString("nl-NL", options);
-    }
+    return formatDateTime(date, options);
   }
 
   return formatWebServerLogDuration(numeric);
@@ -100,7 +97,7 @@ export function formatWebServerLogDateTime(value) {
 export function getWebServerLogTimeTooltip(value) {
   const numeric = Number(value) || 0;
   if (numeric > 946684800000) {
-    return new Date(numeric).toLocaleString("nl-NL", {
+    return formatDateTime(numeric, {
       day: "numeric",
       month: "short",
       year: "numeric",
@@ -278,7 +275,7 @@ export async function refreshWebServerLogHistory(options = {}) {
       getWebServerLogHistoryUrl(),
       { headers: { "Cache-Control": "no-store" } },
       WEB_SERVER_LOG_REQUEST_TIMEOUT_MS,
-      "Recente logs reageerden niet binnen 8 seconden.",
+      t("weblog.historyTimeout"),
       null,
       { fetch: window.fetch.bind(window), timerHost: globalThis },
     );
@@ -306,9 +303,9 @@ export async function refreshWebServerLogHistory(options = {}) {
     if (state.systemModal === "webserver-logs" && state.webServerLogHistoryRequestToken === requestToken) {
       state.webServerLogConnected = false;
       if (background) {
-        state.webServerLogError = "Live bijwerken onderbroken. Nieuwe poging volgt automatisch.";
+        state.webServerLogError = t("weblog.liveInterrupted");
       } else {
-        state.webServerLogHistoryError = error instanceof Error ? error.message : "Recente logs konden niet worden opgehaald.";
+        state.webServerLogHistoryError = error instanceof Error ? error.message : t("weblog.fetchFail");
       }
     }
   } finally {
@@ -426,14 +423,14 @@ export async function clearWebServerLogHistory() {
   }
 
   if (typeof window.fetch !== "function") {
-    state.webServerLogHistoryError = "De RAM-logbuffer kan niet vanuit deze browser worden geleegd.";
+    state.webServerLogHistoryError = t("weblog.clearNoBrowser");
     render();
     return false;
   }
 
   const csrfToken = String(state.webServerLogCsrfToken || "");
   if (!csrfToken) {
-    state.webServerLogHistoryError = "De beveiligingstoken voor de RAM-logbuffer ontbreekt. Open het logboek opnieuw.";
+    state.webServerLogHistoryError = t("weblog.clearNoToken");
     render();
     return false;
   }
@@ -478,7 +475,7 @@ export async function clearWebServerLogHistory() {
       webServerLogHistoryLoaded: false,
       webServerLogHistoryNeedsReconcile: true,
     });
-    state.webServerLogHistoryError = `De RAM-logbuffer kon niet worden geleegd (${error instanceof Error ? error.message : "onbekende fout"}).`;
+    state.webServerLogHistoryError = t("weblog.clearFail", { error: error instanceof Error ? error.message : t("weblog.unknownError") });
   } finally {
     state.busyAction = "";
     if (state.systemModal === "webserver-logs") {
@@ -679,7 +676,7 @@ export function renderWebServerLogEntry(entry) {
 export function renderWebServerLogEntries(entries = state.webServerLogEntries) {
   if (!entries.length) {
     return `
-      <p class="oq-webserver-log-empty">Nog geen logregels ontvangen. Open de log en wacht op een nieuwe melding.</p>
+      <p class="oq-webserver-log-empty">${escapeHtml(t("weblog.emptyLog"))}</p>
     `;
   }
 
@@ -689,12 +686,12 @@ export function renderWebServerLogEntries(entries = state.webServerLogEntries) {
 export function renderWebServerLogStatusBanner() {
   const rows = [];
   if (state.webServerLogHistoryLoading) {
-    rows.push(`<p class="oq-helper-modal-note">Recente firmwarelogs worden opgehaald...</p>`);
+    rows.push(`<p class="oq-helper-modal-note">${escapeHtml(t("weblog.loadingRecent"))}</p>`);
   }
   if (state.webServerLogCopyMessage) {
     rows.push(`
       <div class="oq-helper-modal-success oq-helper-modal-success--compact" aria-live="polite">
-        <strong>Kopiëren</strong>
+        <strong>${escapeHtml(t("weblog.copyTitle"))}</strong>
         <span>${escapeHtml(state.webServerLogCopyMessage)}</span>
       </div>
     `);
@@ -734,16 +731,16 @@ export function renderWebServerLoggerLevelControl() {
   const value = getWebServerLoggerLevelValue(entity);
   const busy = state.loadingEntities || Boolean(state.busyAction);
   const warning = value === "DEBUG"
-    ? "DEBUG kan de web-app en Home Assistant vertragen."
+    ? t("weblog.levelWarn")
     : "";
 
   return `
     ${renderWebServerLogControlCard({
       dataValue: "debugLevel",
-      label: "Logger level",
-      value: value || "Onbekend",
+      label: t("weblog.levelLabel"),
+      value: value || t("common.unknown"),
       infoId: "webserverLoggerLevel",
-      infoCopy: "DEBUG is tijdelijk en wordt na een herstart teruggezet naar INFO. Bij veel Modbusverkeer kan DEBUG zoveel logging produceren dat de web-app en Home Assistant traag of onbereikbaar worden.",
+      infoCopy: t("weblog.levelInfo"),
       note: warning,
       action: `<label class="oq-webserver-log-level-control" aria-label="Logger level">
         <select class="oq-helper-select" data-oq-field="debugLevel" ${busy ? "disabled" : ""}>
@@ -774,7 +771,7 @@ export async function copyWebServerLogOutput() {
   state.webServerLogCopyError = "";
 
   if (!text) {
-    state.webServerLogCopyError = "Er zijn nog geen logregels om te kopiëren.";
+    state.webServerLogCopyError = t("weblog.copyEmpty");
     render();
     return;
   }
@@ -782,11 +779,11 @@ export async function copyWebServerLogOutput() {
   try {
     const copied = await copyTextToClipboard(text);
     if (!copied) {
-      throw new Error("Kopiëren naar het klembord is niet gelukt.");
+      throw new Error(t("weblog.copyFail"));
     }
-    state.webServerLogCopyMessage = `${state.webServerLogEntries.length} logregel${state.webServerLogEntries.length === 1 ? "" : "s"} gekopieerd.`;
+    state.webServerLogCopyMessage = t("weblog.copiedLines", { count: formatNumber(state.webServerLogEntries.length, { maximumFractionDigits: 0 }), plural: state.webServerLogEntries.length === 1 ? "" : "s" });
   } catch (error) {
-    state.webServerLogCopyError = error instanceof Error ? error.message : "Kopiëren naar het klembord is niet gelukt.";
+    state.webServerLogCopyError = error instanceof Error ? error.message : t("weblog.copyFail");
   }
 
   if (state.systemModal === "webserver-logs") {
@@ -812,14 +809,14 @@ export function renderWebServerLogsModal() {
   return renderModalShell({
     id: "system",
     titleId: "oq-webserver-log-modal-title",
-    kicker: "Diagnostiek",
-    title: "OpenQuatt log",
+    kicker: t("weblog.modalKicker"),
+    title: t("weblog.modalTitle"),
     copy: demoMode
-      ? "Hier zie je voorbeeldmeldingen uit de lokale preview."
-      : "Hier zie je recente meldingen van OpenQuatt. Handig als je wilt terugzoeken wat er net gebeurde.",
+      ? t("weblog.modalDemo")
+      : t("weblog.modalCopy"),
     className: "oq-helper-modal--wide oq-helper-modal--scrollable oq-webserver-log-modal",
     closeAction: "close-system-modal",
-    closeLabel: "Sluit logboek",
+    closeLabel: t("weblog.modalClose"),
     body: `
         ${renderWebServerLogHistoryControls()}
         ${renderWebServerLogStatusBanner()}
@@ -829,9 +826,9 @@ export function renderWebServerLogsModal() {
           </div>
         </div>`,
     actions: `
-      <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-webserver-log-output" ${state.webServerLogEntries.length === 0 ? "disabled" : ""}>Kopieer log</button>
-      <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="clear-webserver-log-output" ${clearDisabled ? "disabled" : ""}>${clearBusy ? "Legen..." : "Legen"}</button>
-      <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">Gereed</button>
+      <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-webserver-log-output" ${state.webServerLogEntries.length === 0 ? "disabled" : ""}>${escapeHtml(t("weblog.copyAction"))}</button>
+      <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="clear-webserver-log-output" ${clearDisabled ? "disabled" : ""}>${clearBusy ? escapeHtml(t("weblog.clearBusy")) : escapeHtml(t("weblog.clearAction"))}</button>
+      <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">${escapeHtml(t("header.done"))}</button>
     `,
   });
 }

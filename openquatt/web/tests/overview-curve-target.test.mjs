@@ -37,7 +37,7 @@ test("overzicht gebruikt het effectieve target bij een extern aanvoerdoel", () =
 
   const model = getCurveOverviewModel();
   assert.equal(model.targetText, "42 °C");
-  assert.equal(model.deltaText, "-2.0 °C");
+  assert.equal(model.deltaText, "−2,0 °C");
   assert.equal(model.statusTitle, "Nog onder doel");
 });
 
@@ -46,7 +46,7 @@ test("overzicht valt terug op het stooklijntarget zonder strategietarget", () =>
 
   const model = getCurveOverviewModel();
   assert.equal(model.targetText, "33 °C");
-  assert.equal(model.deltaText, "+7.0 °C");
+  assert.equal(model.deltaText, "+7,0 °C");
   assert.equal(model.statusTitle, "Boven doel");
 });
 

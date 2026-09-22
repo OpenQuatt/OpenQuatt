@@ -28,7 +28,7 @@ In `Instellingen → Toegang & Beveiliging` zie je:
 - `Wacht op koppeling`: open Home Assistant om dit apparaat toe te voegen;
 - `Niet beschikbaar`: de koppeltijd is verlopen of de status kan tijdelijk niet worden opgehaald.
 
-De web-app toont deze geheime sleutel nooit. Er is geen HTTPS op de lokale webinterface. Als de sleutel op het apparaat onbekend is, is fysieke USB/serial-recovery van het apparaat nodig; daarna kan Home Assistant opnieuw koppelen. Een oude OpenQuatt-sleutel wordt niet automatisch overgenomen. Als alleen Home Assistant nog een oude sleutel bewaart, moet die oude sleutel daar eenmalig worden verwijderd voordat opnieuw koppelen lukt.
+De web-app toont deze geheime sleutel nooit. Er is geen HTTPS op de lokale webinterface. Als de sleutel op het apparaat onbekend is, kun je API-beveiliging resetten via een web-login of de fysieke herstelpagina; daarna kan Home Assistant opnieuw koppelen. Een oude OpenQuatt-sleutel wordt niet automatisch overgenomen. Home Assistant kan tijdens opnieuw koppelen dezelfde sleutel terugzetten; verwijder een ongewenste oude sleutel daarom ook daar.
 
 Bij de migratie geldt deze matrix:
 
@@ -38,7 +38,7 @@ Bij de migratie geldt deze matrix:
 | Alleen oude OpenQuatt-key aanwezig | Geen native key | Oude key wordt genegeerd; Home Assistant provisiont een nieuwe native key. |
 | Geen key | Geen key | Home Assistant provisiont automatisch binnen de provisioning window. |
 | Geen key | Stale key | Eenmalig opnieuw koppelen of de stale key in Home Assistant verwijderen. |
-| Native key aanwezig | Key onbekend | Verplichte fysieke USB/serial-reset van de sleutel op het apparaat; daarna opnieuw koppelen. OpenQuatt neemt de onbekende sleutel niet over. |
+| Native key aanwezig | Key onbekend | Reset API-beveiliging via een web-login of de fysieke [herstelpagina](#herstelomgeving); daarna opnieuw koppelen. OpenQuatt neemt de onbekende sleutel niet over. |
 
 De oude OpenQuatt-preference wordt bij deze firmwareversie niet gewist, maar ook niet meer gelezen of toegepast. Dat houdt rollback mogelijk zonder een tweede bron van waarheid te activeren.
 
@@ -71,6 +71,12 @@ http://<ip-adres>
 De web-app draait lokaal op je eigen netwerk. Je gebruikt dus geen cloudaccount en hoeft niets externs open te zetten.
 
 Wil je de interface eerst rustig bekijken zonder echte hardware, open dan de [web-app demo op GitHub Pages](https://openquatt.github.io/OpenQuatt/demo/). Die gebruikt dezelfde look-and-feel in mockmodus.
+
+## Taal kiezen
+
+De web-app is volledig beschikbaar in het Nederlands en Engels. Open rechtsboven het paneel **Weergave en systeem** en kies onder **Taal / Language** voor `Nederlands` of `English`. De keuze wordt lokaal in de browser bewaard en blijft na herladen en een controllerherstart actief. Zonder opgeslagen keuze blijft Nederlands de standaardtaal.
+
+De taalkeuze vertaalt de interface, meldingen, statussen en datum-/getalopmaak. Technische firmwarewaarden, entitynamen en API-/MQTT-waarden blijven ongewijzigd zodat koppelingen en backupbestanden compatibel blijven.
 
 ## Eerste keer: Quick Start
 
@@ -358,6 +364,81 @@ Als de verbinding voor de firmwaredownload niet kan worden geopend, probeert Ope
 Onder `Instellingen -> Systeem -> Toegang & Beveiliging` kun je de web-login en ESPHome API-encryptie aanpassen.
 
 Vanaf de ESPHome 2026.7-build gebruikt de web-login HTTP Digest-authenticatie. De browserlogin blijft hetzelfde, maar losse REST-clients moeten Digest ondersteunen en kunnen niet meer met Basic-authenticatie aanmelden.
+
+### Web-login herstellen
+
+Op de HeatPump Controller Q edition is de herstelknop de **linker van de twee knoppen**.
+
+Houd de fysieke herstelknop **5 seconden** vast en laat hem los. Open daarna
+`http://openquatt.local/recovery` of `http://<IP-adres>/recovery`.
+Gebruik bij een aangepaste apparaatnaam de bijbehorende hostnaam, bijvoorbeeld
+`http://openquatt-test.local/recovery` voor een testcontroller.
+De herstelpagina is zonder bestaande web-login bereikbaar, maar herstelacties
+worden pas beschikbaar nadat je de fysieke knop hebt bediend. Zonder actief
+herstelvenster toont de pagina de instructie om de knop in te drukken.
+Je hebt 10 minuten om een nieuwe gebruikersnaam en wachtwoord op te slaan.
+Sluit herstel daarna af; pas dan, of na afloop van het venster, geldt de nieuwe login.
+Bij een opslagfout blijft de bestaande runtime-login behouden en kun je opnieuw proberen.
+
+De gewone webinterface, REST-acties en webstreams zijn tijdens herstel afgeschermd.
+Een nog geopende gewone webpagina kan daardoor een browser-inlogvenster tonen.
+Annuleer dat venster en open rechtstreeks `/recovery`; de gewone login geeft
+tijdens herstel geen toegang tot de normale webinterface.
+Herstel opent geen algemene onbeveiligde beheeromgeving en wist geen andere instellingen.
+Iedereen op hetzelfde netwerk kan tijdens het fysiek geopende venster de beperkte
+herstelpagina gebruiken: voer dit alleen op een vertrouwd netwerk uit.
+Een knop die tijdens boot al ingedrukt is moet eerst worden losgelaten.
+Met **Herstel afsluiten**, of automatisch na 10 minuten, sluit het herstelvenster.
+Open daarna de gewone webinterface zonder `/recovery`. Heb je geen nieuwe login
+opgeslagen, dan blijft de eerdere web-login of open toegang gelden.
+
+### API-beveiliging resetten
+
+Kies **API-beveiliging resetten** bij Toegang & Beveiliging (web-login vereist),
+of op de fysieke herstelpagina. Bevestig het wissen en herstarten.
+Dit wist uitsluitend de native API-sleutel, niet je web-login of Wi-Fi-instellingen.
+Alle API-clients worden losgekoppeld. Bij een opslagfout wordt niet herstart;
+controleer de melding voordat je opnieuw probeert.
+
+Na de herstart heeft Home Assistant 10 minuten om de beveiligde verbinding
+opnieuw in te stellen. Home Assistant kan daarbij dezelfde sleutel terugzetten.
+Een fysieke reset keert eenmalig terug naar herstel; een reset met web-login niet.
+
+Bij een bestaande koppeling kan Home Assistant melden dat het apparaat transportencryptie
+heeft uitgeschakeld en vragen de oude sleutel te verwijderen. Bevestig dit alleen als
+je zelf deze reset hebt gestart en het juiste apparaat wordt genoemd. Home Assistant
+kan daarna opnieuw encryptie instellen. Controleer bij **Toegang & Beveiliging** dat
+API-encryptie weer actief is; alleen bereikbaarheid bewijst dit niet.
+
+### Wi-Fi opnieuw instellen
+
+Kies met een ingestelde web-login **Connectiviteit → Wi-Fi wissen en herstarten**,
+of gebruik de fysieke herstelpagina na 5 seconden indrukken. Zonder browser kan
+het ook: houd de herstelknop **10 seconden** vast. Laat hem bij 5 seconden los
+als je alleen web-login/API wilt herstellen. Een knop die bij opstart al vastzit
+moet eerst losgelaten worden.
+
+De reset wist alleen opgeslagen Wi-Fi-gegevens en fast-connect metadata.
+Web-login, API-beveiliging, de verbindingsvoorkeur en overige instellingen blijven
+behouden. Na succesvolle opslag herstart de controller. Verbind met het OpenQuatt
+access point en stel Wi-Fi in; de AP blijft beschikbaar totdat de nieuwe gegevens
+werken én zijn opgeslagen, ook bij Ethernetvoorkeur en na een stroomonderbreking.
+Dit instelvenster staat los van het 10 minuten durende API-koppelvenster.
+Targets zonder Wi-Fi tonen deze actie niet.
+
+Na het wissen van Wi-Fi:
+
+1. Verbind je telefoon of laptop met het Wi-Fi-netwerk **OpenQuatt**, wachtwoord **`openquatt`**.
+2. Kies zo nodig om verbonden te blijven als je apparaat meldt dat dit netwerk geen internet heeft.
+3. Open het instelscherm dat verschijnt, of ga naar **`http://192.168.4.1`** terwijl je met dit netwerk verbonden bent.
+4. Kies je eigen Wi-Fi-netwerk en voer daar het bijbehorende wachtwoord in.
+5. Verbind je telefoon of laptop weer met je eigen netwerk. Open de controller via zijn hostnaam of het IP-adres in je router; dit adres kan veranderd zijn.
+
+Bij verkeerde Wi-Fi-gegevens blijft het instelnetwerk beschikbaar om ze te corrigeren.
+Een reset vanuit fysieke recovery opent na de herstart opnieuw een herstelvenster;
+gebruik `/recovery` om dit af te sluiten of wacht tot het verloopt. Een reset vanuit
+normaal beheer opent dit venster niet. Controleer na terugkeer ook of de bestaande
+Home Assistant-koppeling weer werkt. Wi-Fi wissen is geen factory reset.
 
 Wijzigingen aan beveiliging kunnen een herstart nodig hebben. Bewaar nieuwe gegevens goed, want Home Assistant moet dezelfde API-sleutel gebruiken als API-encryptie actief is.
 

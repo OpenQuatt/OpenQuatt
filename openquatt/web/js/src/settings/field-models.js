@@ -1,5 +1,6 @@
 import { getEntityValue, hasEntity } from "../core/entity-store.js";
 import { state } from "../core/state.js";
+import { t } from "../i18n/index.js";
 
 function getFieldBusy(key, action = "save") {
   return state.loadingEntities
@@ -29,7 +30,7 @@ export function getSettingsChoiceModel(key, option, { model = getSettingsSelectM
   };
 }
 
-export function getSettingsSwitchModel(key, { enabled = Boolean(getEntityValue(key)), busy = getFieldBusy(key, "switch"), title = key, onLabel = "Aan", offLabel = "Uit" } = {}) {
+export function getSettingsSwitchModel(key, { enabled = Boolean(getEntityValue(key)), busy = getFieldBusy(key, "switch"), title = key, onLabel = t("common.on"), offLabel = t("common.off") } = {}) {
   const label = enabled ? onLabel : offLabel;
   return {
     enabled,

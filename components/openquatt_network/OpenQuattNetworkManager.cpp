@@ -31,7 +31,8 @@ void OpenQuattNetworkManager::setup() {
   // Ethernet must initialize even for WiFi preference so its own SPI driver can
   // put the W5500 PHY into Power Down. For Ethernet preference, WiFi can remain
   // lazily uninitialized until failover is actually needed.
-  if (this->preference_ == Preference::ETHERNET && wifi::global_wifi_component != nullptr) {
+  this->provisioning_override_ = wifi::global_wifi_component->requires_provisioning();
+  if (this->preference_ == Preference::ETHERNET && !this->provisioning_override_) {
     wifi::global_wifi_component->set_enable_on_boot(false);
   }
 
@@ -48,6 +49,20 @@ void OpenQuattNetworkManager::loop() {
   }
 
   this->update_connection_stability_(now);
+
+  if (this->provisioning_override_) {
+    this->ensure_wifi_enabled_();
+    if (wifi::global_wifi_component->requires_provisioning()) {
+      this->active_ = this->is_connected_(Connection::ETHERNET) ? Connection::ETHERNET : Connection::NONE;
+      this->publish_active_connection_();
+      return;
+    }
+    // Successful STA provisioning ends the temporary override without writing
+    // the user's stored Wi-Fi/Ethernet preference.
+    this->provisioning_override_ = false;
+    this->phase_ = Phase::STARTUP;
+    this->phase_started_ms_ = now;
+  }
 
   switch (this->phase_) {
     case Phase::STARTUP:
@@ -342,6 +357,7 @@ bool OpenQuattNetworkManager::ensure_ethernet_enabled_() {
 }
 
 void OpenQuattNetworkManager::disable_wifi_() {
+  if (this->provisioning_override_) return;
   if (wifi::global_wifi_component != nullptr) {
     wifi::global_wifi_component->disable();
   }

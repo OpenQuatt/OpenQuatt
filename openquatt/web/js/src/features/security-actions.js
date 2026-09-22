@@ -4,6 +4,7 @@ import { state } from "../core/state.js";
 import { shouldRefreshSupplementaryStatus } from "../core/supplementary-refresh.js";
 import { isSystemSettingsGroupActive } from "../core/surface-state.js";
 import { render } from "../core/render-scheduler.js";
+import { t } from "../i18n/index.js";
 
   export function getAuthStatusSignature(status = state.authStatus || {}) {
     return [
@@ -70,7 +71,7 @@ import { render } from "../core/render-scheduler.js";
       return previousSignature !== nextSignature;
     } catch (error) {
       if (state.systemModal === "login") {
-        state.authError = `Loginstatus kon niet worden geladen. ${error.message}`;
+        state.authError = t("securityAccess.authLoadFail", { error: error.message });
       }
       return false;
     }
@@ -154,7 +155,7 @@ import { render } from "../core/render-scheduler.js";
       }
       return previousSignature !== nextSignature;
     } catch (error) {
-      state.apiSecurityError = `API-beveiliging kon niet worden geladen. ${error.message}`;
+      state.apiSecurityError = t("securityAccess.apiLoadFail", { error: error.message });
       if (state.systemModal === "api-security") {
         render();
       }
@@ -172,27 +173,27 @@ import { render } from "../core/render-scheduler.js";
     const confirmPassword = String(state.authDraftConfirmPassword || "");
 
     if (!newUsername || !newPassword) {
-      state.authError = "Vul een gebruikersnaam en wachtwoord in.";
+      state.authError = t("securityAccess.needUserPass");
       render();
       return;
     }
     if (newPassword !== confirmPassword) {
-      state.authError = "De twee wachtwoorden zijn niet gelijk.";
+      state.authError = t("securityAccess.passMismatch");
       render();
       return;
     }
     if (authEnabled && !currentPassword) {
-      state.authError = "Vul je huidige wachtwoord in.";
+      state.authError = t("securityAccess.needCurrent");
       render();
       return;
     }
     if (!authEnabled && !setupWindowActive) {
-      state.authError = "Houd de herstelknop 5 seconden vast.";
+      state.authError = t("securityAccess.needWindow");
       render();
       return;
     }
     if (!status.csrf_token) {
-      state.authError = "Logingegevens laden nog. Probeer het zo opnieuw.";
+      state.authError = t("securityAccess.stillLoading");
       render();
       return;
     }
@@ -224,12 +225,12 @@ import { render } from "../core/render-scheduler.js";
       state.authDraftConfirmPassword = "";
       state.authDraftUsername = String(state.authStatus?.username || newUsername).trim();
       state.authNotice = authEnabled
-        ? "Login aangepast."
-        : "Login staat nu aan.";
+        ? t("securityAccess.loginChanged")
+        : t("securityAccess.loginOn");
       state.authError = "";
       render();
     } catch (error) {
-      state.authError = `Opslaan is mislukt. ${error.message}`;
+      state.authError = t("securityAccess.saveFailed", { error: error.message });
       render();
     } finally {
       state.authBusy = false;
@@ -240,7 +241,7 @@ import { render } from "../core/render-scheduler.js";
   export async function commitDisableWebAuth() {
     const status = state.authStatus || {};
     if (!status.enabled) {
-      state.authNotice = "Login staat al uit.";
+      state.authNotice = t("securityAccess.alreadyOff");
       state.authError = "";
       render();
       return;
@@ -248,12 +249,12 @@ import { render } from "../core/render-scheduler.js";
 
     const currentPassword = String(state.authDraftCurrentPassword || "");
     if (!currentPassword) {
-      state.authError = "Vul je huidige wachtwoord in.";
+      state.authError = t("securityAccess.needCurrent");
       render();
       return;
     }
     if (!status.csrf_token) {
-      state.authError = "Logingegevens laden nog. Probeer het zo opnieuw.";
+      state.authError = t("securityAccess.stillLoading");
       render();
       return;
     }
@@ -282,17 +283,60 @@ import { render } from "../core/render-scheduler.js";
       state.authDraftNewPassword = "";
       state.authDraftConfirmPassword = "";
       state.authDraftUsername = "";
-      state.authNotice = "Login staat nu uit.";
+      state.authNotice = t("securityAccess.loginOff");
       state.authError = "";
       render();
     } catch (error) {
-      state.authError = `Uitzetten is mislukt. ${error.message}`;
+      state.authError = t("securityAccess.disableFailed", { error: error.message });
       render();
     } finally {
       state.authBusy = false;
       render();
     }
   }
+
+  async function resetCredentials(wifi) {
+    if (state.apiSecurityBusy || state.wifiResetBusy || !state.authStatus?.enabled || !state.authStatus?.csrf_token) return;
+    if (wifi && !state.wifiResetAvailable) return;
+    if (!window.confirm(wifi
+      ? t("recoveryUi.wifiResetConfirm")
+      : t("recoveryUi.apiResetConfirm"))) return;
+    const prefix = wifi ? "wifiReset" : "apiSecurity";
+    state[`${prefix}Busy`] = true;
+    state[`${prefix}Error`] = "";
+    state[`${prefix}ActionError`] = "";
+    state[`${prefix}Notice`] = t("recoveryUi.resetRequesting");
+    render();
+    try {
+      const body = new URLSearchParams({ csrf_token: state.authStatus.csrf_token, confirm: wifi ? "RESET_WIFI" : "RESET_API_SECURITY" });
+      const response = await fetch(wifi ? "/wifi/reset" : "/api-security/reset", { method: "POST", body });
+      if (response.status !== 202) {
+        state[`${prefix}Busy`] = false;
+        state[`${prefix}Notice`] = "";
+        state[`${prefix}ActionError`] = t("recoveryUi.resetRejected", { status: response.status });
+        render();
+        return;
+      }
+      state[`${prefix}Notice`] = wifi
+        ? t("recoveryUi.wifiResetRequested")
+        : t("recoveryUi.apiResetRequested");
+      render();
+      await new Promise(resolve => window.setTimeout(resolve, 1000));
+      // One status check, never retry a destructive request after an ambiguous response.
+      const result = await fetch("/recovery/status", { cache: "no-store" }).then(response => response.json());
+      if (result.error) {
+        state[`${prefix}Busy`] = false;
+        state[`${prefix}Notice`] = "";
+        state[`${prefix}ActionError`] = t("recoveryUi.resetFailed");
+      }
+    } catch (error) {
+      state[`${prefix}Notice`] = t("recoveryUi.resetUncertain");
+    }
+    render();
+  }
+
+  export function resetApiSecurity() { return resetCredentials(false); }
+  export function resetWifi() { return resetCredentials(true); }
 
   const securityActionHandlers = {
     "open-login-modal": () => {
@@ -315,6 +359,8 @@ import { render } from "../core/render-scheduler.js";
     },
     "save-web-auth": () => commitWebAuthChanges(),
     "disable-web-auth": () => commitDisableWebAuth(),
+    "reset-api-security": () => resetApiSecurity(),
+    "reset-wifi": () => resetWifi(),
   };
 
   export function handleSecurityAction(action) {

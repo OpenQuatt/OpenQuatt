@@ -91,7 +91,7 @@ export const state = {
   lastApiSecurityStatusRefreshAt: 0,
   lastMqttStatusRefreshAt: 0,
   summary: "",
-  stage: "Laden...",
+  stage: "",
   interfacePanelOpen: getStoredInterfacePanelOpen(),
   devPanelOpen: __OQ_PREVIEW__ && getStoredDevPanelOpen(),
   nativeOpen: getStoredSurface() === "native",

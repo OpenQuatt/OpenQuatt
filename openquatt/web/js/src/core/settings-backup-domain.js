@@ -1,3 +1,5 @@
+import { t } from "../i18n/index.js";
+
 export const SETTINGS_BACKUP_MIN_SCHEMA_VERSION = 1;
 
 export const SETTINGS_BACKUP_MQTT_INPUT_KEYS = Object.freeze([
@@ -57,7 +59,7 @@ export function normalizeSettingsBackupMqttConfig(value) {
     return null;
   }
   if (!isObject(value)) {
-    throw new Error("MQTT-configuratie in backup is ongeldig.");
+    throw new Error(t("settingsBackup.invalidMqttConfig"));
   }
 
   const broker = String(value.broker || "").trim();
@@ -65,13 +67,13 @@ export function normalizeSettingsBackupMqttConfig(value) {
   const port = Number(value.port);
   const enabled = value.enabled === true;
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error("MQTT-poort in backup is ongeldig.");
+    throw new Error(t("settingsBackup.invalidMqttPort"));
   }
   if (broker.length > 64 || (enabled && !broker)) {
-    throw new Error("MQTT-broker in backup is ongeldig.");
+    throw new Error(t("settingsBackup.invalidMqttBroker"));
   }
   if (username.length > 64) {
-    throw new Error("MQTT-gebruikersnaam in backup is ongeldig.");
+    throw new Error(t("settingsBackup.invalidMqttUsername"));
   }
 
   return {
@@ -91,7 +93,7 @@ export function settingsBackupMqttNeedsPassword(mqtt) {
 
 export function normalizeSettingsBackupOduProfiles(value) {
   if (value === null || value === undefined) return {};
-  if (!isObject(value)) throw new Error("Bodemplaatinstellingen in backup zijn ongeldig.");
+  if (!isObject(value)) throw new Error(t("settingsBackup.invalidOduSettings"));
   const profiles = {};
   for (const hpKey of ["hp1", "hp2"]) {
     if (!Object.prototype.hasOwnProperty.call(value, hpKey)) continue;
@@ -108,7 +110,7 @@ export function normalizeSettingsBackupOduProfiles(value) {
         || !Number.isInteger(startTemperatureC) || startTemperatureC < -30 || startTemperatureC > 30
         || !Number.isInteger(stopDeltaC) || stopDeltaC < 0 || stopDeltaC > 30
         || typeof profile.auto_reapply !== "boolean") {
-      throw new Error(`${hpKey.toUpperCase()} bodemplaatinstellingen in backup zijn ongeldig.`);
+      throw new Error(t("settingsBackup.invalidOduProfile", { hp: hpKey.toUpperCase() }));
     }
     profiles[hpKey] = {
       variant,
