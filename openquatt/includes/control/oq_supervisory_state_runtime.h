@@ -11,7 +11,10 @@
 #include "../service/tasks/oq_manual_hp_logic.h"
 #include "oq_cold_start_probe.h"
 #include "oq_compressor_frequency_runtime.h"
+#include "oq_control_mode_log_logic.h"
 #include "oq_hp_candidate_logic.h"
+#include "oq_supervisory_power_limiter_runtime.h"
+#include "oq_supervisory_safety_runtime.h"
 #include "oq_supervisory_state_logic.h"
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_supervisory_state_runtime {
