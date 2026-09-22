@@ -270,7 +270,7 @@ async function checkJavaScriptBundleFresh() {
   const expected = `${header}\n${minified}\n`;
   const actual = await readFile(outputPath, "utf8");
   if (actual !== expected) {
-    throw new Error("JS bundle is stale. Run: rtk npm run build:web");
+    throw new Error("JS bundle is stale. Run: rtk pnpm run build:web");
   }
 }
 
@@ -286,7 +286,7 @@ async function checkCssBundleFresh() {
   const expected = `${header}\n${minified}\n`;
   const actual = await readFile(outputPath, "utf8");
   if (actual !== expected) {
-    throw new Error("CSS bundle is stale. Run: rtk npm run build:web");
+    throw new Error("CSS bundle is stale. Run: rtk pnpm run build:web");
   }
 }
 
@@ -458,7 +458,7 @@ async function checkPreviewAssetsAvailable() {
       await stat(path.join(webDir, ...relativePath.split("/")));
     } catch (error) {
       if (error.code === "ENOENT") {
-        throw new Error(`Missing preview asset ${relativePath}. Run: rtk npm run build:web:preview`);
+        throw new Error(`Missing preview asset ${relativePath}. Run: rtk pnpm run build:web:preview`);
       }
       throw error;
     }
@@ -468,7 +468,7 @@ async function checkPreviewAssetsAvailable() {
 async function checkPagesDemoContracts() {
   const devScript = await readFile(path.join(repoDir, "scripts", "dev.py"), "utf8");
   const pagesWorkflow = await readFile(path.join(repoDir, ".github", "workflows", "pages-deploy.yml"), "utf8");
-  assertContains(devScript, '["npm", "run", "build:web:preview"]', "Pages preview build");
+  assertContains(devScript, '["pnpm", "run", "build:web:preview"]', "Pages preview build");
   for (const relativePath of [
     "css/openquatt-preview.css",
     "js/mock-scenarios.js",
@@ -480,7 +480,7 @@ async function checkPagesDemoContracts() {
   ]) {
     assertContains(devScript, `"${relativePath}"`, `Pages demo asset ${relativePath}`);
   }
-  assertContains(pagesWorkflow, "run: npm ci", "Pages web build dependency install");
+  assertContains(pagesWorkflow, "run: pnpm install --frozen-lockfile", "Pages web build dependency install");
 }
 
 async function checkEmbeddedAssetContracts() {

@@ -36,5 +36,5 @@ for source in "${sources[@]}"; do
   "${binary}"
 done
 
-# Python-contracten (scripts/tests/test_*.py) draaien separaat via `python-contracts` job / `npm run check:python-contracts` (zie #518).
+# Python-contracten (scripts/tests/test_*.py) draaien separaat via `python-contracts` job (zie #518).
 echo "Host regression tests passed (${#sources[@]})."

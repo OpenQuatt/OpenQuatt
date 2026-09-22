@@ -152,7 +152,7 @@ def main() -> int:
     if return_code != 0:
         if args.mode == "check":
             print("Formatting differences detected.", file=sys.stderr)
-            print("Run: npm run fix:cpp-format", file=sys.stderr)
+            print("Run: pnpm run fix:cpp-format", file=sys.stderr)
             return 1
         return return_code
 

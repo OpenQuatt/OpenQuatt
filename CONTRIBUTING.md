@@ -126,10 +126,10 @@ For C/C++ source files, install the exact version from `.clang-format-version` a
 
 - `uv tool install --force clang-format==22.1.8`
 - `clang-format --version`
-- `npm run check:cpp-format`
-- `npm run fix:cpp-format`
+- `pnpm run check:cpp-format`
+- `pnpm run fix:cpp-format`
 
-The formatting commands reject any version other than the one pinned in `.clang-format-version` and include both tracked and new, non-ignored C/C++ files. If `clang-format` is installed but not in `PATH`, set `CLANG_FORMAT_BIN` to the executable path before running the npm command. CI enforces the same version and formatting, so run the local fix command before opening or updating a pull request.
+The formatting commands reject any version other than the one pinned in `.clang-format-version` and include both tracked and new, non-ignored C/C++ files. If `clang-format` is installed but not in `PATH`, set `CLANG_FORMAT_BIN` to the executable path before running the pnpm command. CI enforces the same version and formatting, so run the local fix command before opening or updating a pull request.
 
 For quick iterations, the standalone checks remain useful:
 
@@ -147,7 +147,7 @@ The files `openquatt/web/js/openquatt-app.js` and `openquatt/web/css/openquatt-a
 
 When you change web sources, validate the generated output locally with:
 
-- `rtk npm run build:web`
-- `rtk npm run check:web`
+- `rtk pnpm run build:web`
+- `rtk pnpm run check:web`
 
 CI runs the same checks and rebuilds bundles during the pipeline.

@@ -31,8 +31,8 @@ For every cell verify:
 Automated prerequisites:
 
 ```sh
-npm run check:web
-npm run smoke:web
+pnpm run check:web
+pnpm run smoke:web
 node openquatt/web/build-assets.mjs --check
 ```
 

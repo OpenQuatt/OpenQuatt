@@ -33,10 +33,10 @@ Gebruik deze commando's als primaire lokale workflow:
 python3 scripts/dev.py validate
 python3 scripts/dev.py validate --config-only
 python3 scripts/dev.py preview-pages --no-serve
-npm run check:cpp-format
+pnpm run check:cpp-format
 ```
 
-Gebruik `npm run fix:cpp-format` om C/C++ formatting lokaal toe te passen voordat je een pull request bijwerkt; CI faalt als de formatter-check verschillen vindt. De vereiste versie staat in `.clang-format-version`; de check weigert een andere versie en controleert ook nieuwe, nog niet getrackte C/C++-bestanden. Als `clang-format` niet automatisch in `PATH` staat, kun je `CLANG_FORMAT_BIN` op het door `uv tool dir --bin` getoonde pad naar `clang-format` zetten.
+Gebruik `pnpm run fix:cpp-format` om C/C++ formatting lokaal toe te passen voordat je een pull request bijwerkt; CI faalt als de formatter-check verschillen vindt. De vereiste versie staat in `.clang-format-version`; de check weigert een andere versie en controleert ook nieuwe, nog niet getrackte C/C++-bestanden. Als `clang-format` niet automatisch in `PATH` staat, kun je `CLANG_FORMAT_BIN` op het door `uv tool dir --bin` getoonde pad naar `clang-format` zetten.
 
 De bash-wrappers blijven beschikbaar voor de meest gebruikte taken:
 

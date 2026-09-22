@@ -341,7 +341,7 @@ def build_pages_site(site_dir: Path, factory_dir: Path, helper_python: Sequence[
     root_dir = repo_root()
     available_factory_files = ensure_factory_dir(factory_dir)
 
-    run_command(["npm", "run", "build:web:preview"], cwd=root_dir)
+    run_command(["pnpm", "run", "build:web:preview"], cwd=root_dir)
 
     if site_dir.exists():
         shutil.rmtree(site_dir)
@@ -489,7 +489,7 @@ def validate_command(args: argparse.Namespace) -> int:
         label="web/docs contract",
     )
     run_logged(
-        ["npm", "run", "build:web"],
+        ["pnpm", "run", "build:web"],
         cwd=command_root,
         env=env,
         log_path=log_dir / "web-bundles.log",

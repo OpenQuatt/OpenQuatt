@@ -26,7 +26,7 @@
 - Firmware config-only check:
   - `rtk python3 scripts/dev.py validate --config-only --config configs/<hardware>/<target>.yaml`
 - Web bundle:
-  - `rtk npm run build:web`
+  - `rtk pnpm run build:web`
 - Full local validation:
   - `rtk python3 scripts/dev.py validate`
   - Vraag dit expliciet; het kan veel tijd en output kosten.

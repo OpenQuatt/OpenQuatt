@@ -187,7 +187,7 @@ const staleBundles = (await Promise.all(bundles.map(buildBundle))).filter(Boolea
 
 if (checkOnly) {
   if (staleBundles.length) {
-    console.error(`Generated web bundles are out of date:\n- ${staleBundles.join("\n- ")}\nRun: rtk npm run build:web`);
+    console.error(`Generated web bundles are out of date:\n- ${staleBundles.join("\n- ")}\nRun: rtk pnpm run build:web`);
     process.exitCode = 1;
   } else {
     console.log("Generated web bundles are up to date");

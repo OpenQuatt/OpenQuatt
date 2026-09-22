@@ -153,7 +153,7 @@ waarna de normale integratie nieuwe API-waarden moet aanleveren.
 ## Lokale validatie zonder hardware
 
 ```bash
-npm run check:hil
+node --test tests/hil/*.test.mjs
 python3 scripts/dev.py validate --config-only \
   --config configs/hil/input_sources_fast_duo_wifi.yaml
 python3 scripts/dev.py validate --config-only \

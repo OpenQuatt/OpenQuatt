@@ -27,10 +27,10 @@
 ## Tests And Builds
 
 - Run the smallest check that matches the change.
-- C/C++ code must conform to the repository `.clang-format` configuration. For C/C++ changes, run `npm run check:cpp-format`; if required, run `npm run fix:cpp-format` and verify that no unrelated files changed.
+- C/C++ code must conform to the repository `.clang-format` configuration. For C/C++ changes, run `pnpm run check:cpp-format`; if required, run `pnpm run fix:cpp-format` and verify that no unrelated files changed.
 - For firmware/YAML changes, prefer `python3 scripts/dev.py validate --config-only --config <target.yaml>`.
 - Run ESPHome compile or full `scripts/dev.py validate` only when explicitly requested or clearly necessary.
-- For web source changes, run `npm run build:web`.
+- For web source changes, run `pnpm run build:web`.
 - For docs/tooling changes, prefer the specific script touched by the task.
 - Summarize build/test output by command, pass/fail, and the few relevant error lines.
 

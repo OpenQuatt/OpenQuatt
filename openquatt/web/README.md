@@ -87,11 +87,11 @@ opt-invoorwaarden voor gedeelde select-controls.
 ## Validatie en onderhoud
 
 Voer vanuit de repository-root uit na webcodewijzigingen (dependencies installeren
-met `npm ci` indien nodig):
+met `pnpm install --frozen-lockfile` indien nodig):
 
 ```sh
-npm run check:web
-npm run smoke:web
+pnpm run check:web
+pnpm run smoke:web
 node openquatt/web/build-assets.mjs --check
 ```
 
@@ -110,7 +110,7 @@ zonder basisvergelijking bewijst niet dat de PR binnen het relatieve groeibudget
 - Houd de complete PR-diff klein en review die tegen de actuele doelbranch, gevolgd
   door een afzonderlijke koude nacontrole. Vermeld validatie en resterende risico's.
 - Bij uitsluitend documentatie: controleer links en commando's en voer
-  `npm run check:docs` uit; webbuilds, browserchecks en firmwarecompiles zijn dan
+  `pnpm run check:docs` uit; webbuilds, browserchecks en firmwarecompiles zijn dan
   niet nodig.
 
 Leg algemene afspraken hier vast, implementatiedetails in de JS/CSS-README's en

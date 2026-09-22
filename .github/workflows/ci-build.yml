@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Check documentation contracts
-        run: npm run check:docs
+        run: python3 scripts/check_docs_consistency.py && node scripts/check_web_docs_sync.mjs
 
   docs-impact:
     runs-on: ubuntu-latest
@@ -59,7 +59,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run Python contract tests
-        run: npm run check:python-contracts
+        run: python3 -m unittest discover -s scripts/tests -p "test_*.py"
 
   validate-web-settings-backup:
     runs-on: ubuntu-latest
@@ -72,14 +72,23 @@ jobs:
       - name: Run settings-backup consistency check
         run: node openquatt/web/check-settings-backup.mjs
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: pnpm
+
       - name: Install web build dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build and test web bundles
-        run: npm run check:web
+        run: pnpm run check:web
 
       - name: Run web smoke checks
-        run: npm run smoke:web
+        run: pnpm run smoke:web
 
   host-regression-tests:
     runs-on: ubuntu-latest
@@ -88,7 +97,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Test HIL harness without hardware
-        run: npm run check:hil
+        run: node --test tests/hil/*.test.mjs
 
       - name: Compile and run host regression tests
         run: ./scripts/run_host_regression_tests.sh

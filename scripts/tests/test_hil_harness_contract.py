@@ -87,7 +87,7 @@ class HilHarnessContractTest(unittest.TestCase):
         host_job = WORKFLOW.split("  host-regression-tests:", 1)[1].split(
             "\n  validate-and-compile:", 1
         )[0]
-        self.assertIn("npm run check:hil", host_job)
+        self.assertIn("node --test tests/hil/*.test.mjs", host_job)
         self.assertIn("./scripts/run_host_regression_tests.sh", host_job)
         self.assertIn("Validate Duo HIL config", ESPHOME_BUILD_WORKFLOW)
         self.assertIn(

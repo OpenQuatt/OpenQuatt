@@ -1,0 +1,12 @@
+# Dependency build/install script policy.
+#
+# pnpm denies lifecycle/build scripts by default. Only packages listed here may
+# execute install/build scripts during `pnpm install`. A new dependency that needs
+# a build script must be reviewed first and explicitly approved here; otherwise
+# installation fails instead of silently running its script.
+allowBuilds:
+  esbuild: true
+
+# Fail the install when a dependency runs a build script that is not approved in
+# `allowBuilds` (default true; kept explicit so the policy is reviewable here).
+strictDepBuilds: true
