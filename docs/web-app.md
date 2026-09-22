@@ -361,6 +361,8 @@ Vanaf de ESPHome 2026.7-build gebruikt de web-login HTTP Digest-authenticatie. D
 
 ### Web-login herstellen
 
+Op de HeatPump Controller Q edition is de herstelknop de **linker van de twee knoppen**.
+
 Houd de fysieke herstelknop **5 seconden** vast en laat hem los. Open daarna
 `http://openquatt.local/recovery` (of het IP-adres met `/recovery`).
 Je hebt 10 minuten om een nieuwe gebruikersnaam en wachtwoord op te slaan.
@@ -384,6 +386,12 @@ controleer de melding voordat je opnieuw probeert.
 Na de herstart heeft Home Assistant 10 minuten om de beveiligde verbinding
 opnieuw in te stellen. Home Assistant kan daarbij dezelfde sleutel terugzetten.
 Een fysieke reset keert eenmalig terug naar herstel; een reset met web-login niet.
+
+Bij een bestaande koppeling kan Home Assistant melden dat het apparaat transportencryptie
+heeft uitgeschakeld en vragen de oude sleutel te verwijderen. Bevestig dit alleen als
+je zelf deze reset hebt gestart en het juiste apparaat wordt genoemd. Home Assistant
+kan daarna opnieuw encryptie instellen. Controleer bij **Toegang & Beveiliging** dat
+API-encryptie weer actief is; alleen bereikbaarheid bewijst dit niet.
 
 ### Wi-Fi opnieuw instellen
 
