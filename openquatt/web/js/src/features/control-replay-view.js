@@ -1,7 +1,7 @@
 import { describeFrequencyLimit } from "./frequency-limits.js";
 import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon } from "../core/config.js";
-import { getEntityValue } from "../core/entity-store.js";
+import { getEntityValue, parseLooseNumber } from "../core/entity-store.js";
 import { escapeHtml } from "../core/html.js";
 import { getRenderSignature } from "../core/render-signatures.js";
 import { state } from "../core/state.js";
@@ -717,6 +717,10 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     `;
   }
 
+    function getControlWorkingBlockingNumber(key) {
+    return parseLooseNumber(getEntityValue(key));
+  }
+
     function getControlWorkingBlockingReasons(current) {
     const reasons = [];
 
@@ -772,7 +776,29 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
 
     // Check soft guard
     if (current.primaryReason === "soft_guard") {
-      reasons.push("Veilige marge bewaakt: systeem begrenst zichzelf binnen temperatuur- en flowgrenzen");
+      const guardLimits = [];
+      const maxWater = getControlWorkingBlockingNumber("maxWater");
+      if (Number.isFinite(maxWater)) {
+        const supplyTemp = getControlWorkingBlockingNumber("supplyTemp");
+        guardLimits.push(`maximaal water ${Math.round(maxWater)} °C${Number.isFinite(supplyTemp) ? ` (aanvoer nu ${supplyTemp.toFixed(1)} °C)` : ""}`);
+      }
+      const flowSetpoint = getControlWorkingBlockingNumber("flowSetpoint");
+      if (Number.isFinite(flowSetpoint)) {
+        const flowSelected = getControlWorkingBlockingNumber("flowSelected");
+        guardLimits.push(`flowdoel ${Math.round(flowSetpoint)} L/h${Number.isFinite(flowSelected) ? ` (actueel ${Math.round(flowSelected)} L/h)` : ""}`);
+      }
+      if (guardLimits.length > 0) {
+        reasons.push(`Veilige marge bewaakt: ${guardLimits.join("; ")}`);
+      } else {
+        reasons.push("Veilige marge bewaakt: systeem begrenst zichzelf binnen temperatuur- en flowgrenzen");
+      }
+      const lowLoadOnW = getControlWorkingBlockingNumber("lowLoadOnW");
+      const lowLoadOffW = getControlWorkingBlockingNumber("lowLoadOffW");
+      const lowLoadLatch = getEntityStateText("lowLoadLatch", "");
+      const lowLoadLatchActive = lowLoadLatch === "ON" || lowLoadLatch === "on" || lowLoadLatch === "1";
+      if (!lowLoadLatchActive && Number.isFinite(lowLoadOffW) && Number.isFinite(lowLoadOnW)) {
+        reasons.push(`Laaglastband: uit onder ${Math.round(lowLoadOffW)} W, terugstart vanaf ${Math.round(lowLoadOnW)} W`);
+      }
     }
 
     // Check restart wait
@@ -834,10 +860,38 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
 
     // If no specific reasons found but heat pumps are off, add generic reason
     if (reasons.length === 0) {
-      reasons.push("Geen warmtevraag: het systeem wacht op nieuwe vraag");
+      reasons.push(getControlWorkingNoDemandReason());
     }
 
     return reasons;
+  }
+
+  function getControlWorkingNoDemandReason() {
+    if (getControlWorkingBlockingNumber("strategyActiveCode") !== 3) {
+      return "Geen warmtevraag: het systeem wacht op nieuwe vraag";
+    }
+
+    const parts = [];
+    const roomTemp = getControlWorkingBlockingNumber("roomTemp");
+    if (Number.isFinite(roomTemp)) {
+      const roomSetpoint = getControlWorkingBlockingNumber("roomSetpoint");
+      parts.push(`kamer ${roomTemp.toFixed(1)} °C${Number.isFinite(roomSetpoint) ? ` (setpoint ${roomSetpoint.toFixed(1)} °C)` : ""}`);
+    }
+    const outsideTemp = getControlWorkingBlockingNumber("outsideTempSelected");
+    if (Number.isFinite(outsideTemp)) {
+      const housePower = getControlWorkingBlockingNumber("phouseHouse");
+      parts.push(`buiten ${outsideTemp.toFixed(1)} °C${Number.isFinite(housePower) ? ` (huismodel vraagt ~${Math.round(housePower)} W)` : ""}`);
+    }
+    const lowLoadOnW = getControlWorkingBlockingNumber("lowLoadOnW");
+    const lowLoadOffW = getControlWorkingBlockingNumber("lowLoadOffW");
+    const restUntilOn = Number.isFinite(lowLoadOnW)
+      ? `boven de ${Math.round(lowLoadOnW)} W stookgrens${Number.isFinite(lowLoadOffW) ? ` (uit onder ${Math.round(lowLoadOffW)} W)` : ""}`
+      : "boven de stookgrens";
+
+    if (parts.length === 0) {
+      return "Geen warmtevraag: het systeem wacht op nieuwe vraag";
+    }
+    return `Geen warmtevraag: ${parts.join(", ")}. Het systeem start pas ${restUntilOn}, of als de kamer duidelijk onder het setpoint zakt.`;
   }
 
   function getControlWorkingActiveStartupInhibit(nowMs = Date.now()) {
