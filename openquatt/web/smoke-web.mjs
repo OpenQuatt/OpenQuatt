@@ -4,11 +4,12 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { build, transform } from "esbuild";
 import {
-  compactHtmlTemplateWhitespacePlugin,
+  compactHtmlTemplateWhitespace,
   minifyCssBundle,
   minifyJavaScriptBundle,
 } from "./bundle-minifiers.mjs";
 import { resolveCssSources } from "./css-source-list.mjs";
+import { compactI18nSourcePlugin } from "./i18n-bundle.mjs";
 import en from "./js/src/i18n/en.js";
 import nl from "./js/src/i18n/nl.js";
 
@@ -262,7 +263,7 @@ async function checkJavaScriptBundleFresh() {
     target: "es2020",
     define: { __OQ_PREVIEW__: "false" },
     write: false,
-    plugins: [compactHtmlTemplateWhitespacePlugin(), embeddedAssetsPlugin()],
+    plugins: [compactI18nSourcePlugin(compactHtmlTemplateWhitespace), embeddedAssetsPlugin()],
   });
   const header = [
     `/* Generated minified bundle: ${toBundlePath(path.relative(webDir, outputPath))}. */`,

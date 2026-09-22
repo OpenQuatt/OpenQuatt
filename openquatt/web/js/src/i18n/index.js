@@ -20,6 +20,10 @@ const INTL_LOCALES = {
   en: "en-GB",
 };
 
+// De web-build vervangt deze markers door compacte tabellen. Rechtstreekse
+// bronimports en tests blijven de leesbare objectcatalogi gebruiken.
+const COMPACT_KEY_INDEX = null;
+const COMPACT_OPTION_INDEX = null;
 const CATALOGUES = { nl, en };
 
 let currentLocale = DEFAULT_LOCALE;
@@ -152,6 +156,11 @@ export function resetLocaleForTests() {
 }
 
 function lookupKey(catalogue, key) {
+  if (Array.isArray(catalogue)) {
+    const index = Number.isInteger(key) ? key : COMPACT_KEY_INDEX?.[String(key || "")];
+    const value = Number.isInteger(index) ? catalogue[index] : undefined;
+    return typeof value === "string" ? value : undefined;
+  }
   const parts = String(key || "").split(".");
   let node = catalogue;
   for (const part of parts) {
@@ -202,11 +211,16 @@ export function optionLabel(value) {
     return "";
   }
   const locale = getLocale();
-  const primary = CATALOGUES[locale]?.options?.[raw];
+  const compactKey = COMPACT_OPTION_INDEX?.[raw];
+  const primary = compactKey === undefined
+    ? CATALOGUES[locale]?.options?.[raw]
+    : lookupKey(CATALOGUES[locale], compactKey);
   if (typeof primary === "string") {
     return primary;
   }
-  const fallback = CATALOGUES[DEFAULT_LOCALE]?.options?.[raw];
+  const fallback = compactKey === undefined
+    ? CATALOGUES[DEFAULT_LOCALE]?.options?.[raw]
+    : lookupKey(CATALOGUES[DEFAULT_LOCALE], compactKey);
   if (typeof fallback === "string") {
     return fallback;
   }
