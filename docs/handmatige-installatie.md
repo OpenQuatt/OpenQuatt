@@ -57,7 +57,7 @@ Als Wi-Fi niet direct via de browserflow lukt, gebruikt een Wi-Fi-capabele build
 - SSID: `OpenQuatt`
 - wachtwoord: `openquatt`
 
-Als dit fallback access point actief is, blijft het alleen beschikbaar binnen het instelvenster: uiterlijk circa 10 minuten na opstarten, en het kan eerder verdwijnen zodra normale Wi-Fi-connectiviteit/provisioning slaagt. Is het venster gesloten, herstart de controller dan eerst of stel Wi-Fi via USB in.
+Zonder opgeslagen Wi-Fi-gegevens start het access point direct en blijft het beschikbaar totdat nieuwe gegevens werken én opgeslagen zijn, ook met Ethernet aangesloten. Bij eerder ingestelde maar onbereikbare Wi-Fi verschijnt de fallback-AP na 90 seconden. Het Wi-Fi-instelvenster staat los van het Home Assistant-koppelvenster van 10 minuten.
 
 Open daarna de web-app via:
 

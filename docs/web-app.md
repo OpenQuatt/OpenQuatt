@@ -385,6 +385,22 @@ Na de herstart heeft Home Assistant 10 minuten om de beveiligde verbinding
 opnieuw in te stellen. Home Assistant kan daarbij dezelfde sleutel terugzetten.
 Een fysieke reset keert eenmalig terug naar herstel; een reset met web-login niet.
 
+### Wi-Fi opnieuw instellen
+
+Kies met een ingestelde web-login **Connectiviteit → Wi-Fi wissen en herstarten**,
+of gebruik de fysieke herstelpagina na 5 seconden indrukken. Zonder browser kan
+het ook: houd de herstelknop **10 seconden** vast. Laat hem bij 5 seconden los
+als je alleen web-login/API wilt herstellen. Een knop die bij opstart al vastzit
+moet eerst losgelaten worden.
+
+De reset wist alleen opgeslagen Wi-Fi-gegevens en fast-connect metadata.
+Web-login, API-beveiliging, de verbindingsvoorkeur en overige instellingen blijven
+behouden. Na succesvolle opslag herstart de controller. Verbind met het OpenQuatt
+access point en stel Wi-Fi in; de AP blijft beschikbaar totdat de nieuwe gegevens
+werken én zijn opgeslagen, ook bij Ethernetvoorkeur en na een stroomonderbreking.
+Dit instelvenster staat los van het 10 minuten durende API-koppelvenster.
+Targets zonder Wi-Fi tonen deze actie niet.
+
 Wijzigingen aan beveiliging kunnen een herstart nodig hebben. Bewaar nieuwe gegevens goed, want Home Assistant moet dezelfde API-sleutel gebruiken als API-encryptie actief is.
 
 ## Bij problemen

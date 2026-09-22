@@ -59,12 +59,12 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
             (
                 "wifi",
                 WIFI_PROFILE,
-                "components: [openquatt_captive_portal_router]",
+                "components: [wifi, captive_portal, openquatt_captive_portal_router]",
             ),
             (
                 "wifi_eth",
                 WIFI_ETH_PROFILE,
-                "components: [openquatt_network, openquatt_captive_portal_router]",
+                "components: [wifi, captive_portal, openquatt_network, openquatt_captive_portal_router]",
             ),
         )
         for profile_name, profile, component_declaration in profiles:

@@ -48,7 +48,19 @@ sleuteleigenaar. De sleutel wordt nergens via HTTP teruggegeven. Home Assistant
 krijgt na reboot 10 minuten om opnieuw te provisionen en kan dezelfde sleutel
 opnieuw instellen. Alle API-clients worden geraakt.
 
-Wi-Fi-reset komt in fase 4. De 10s-drempel is nog niet aangesloten.
+## Fase 4: Wi-Fi opnieuw instellen
+
+`POST /wifi/reset` gebruikt dezelfde autorisatie/job met `confirm=RESET_WIFI`.
+Een fysieke hold van 10 seconden reserveert dezelfde actie, éénmaal per druk.
+Targets zonder Wi-Fi adverteren geen capability en weigeren de route.
+Native STA en fast-connect metadata worden gecontroleerd gewist; web-login,
+API-key en andere instellingen blijven behouden. Alleen daarna volgt reboot.
+
+Zonder opgeslagen STA houdt Wi-Fi de AP beschikbaar totdat nieuwe gegevens
+daadwerkelijk werken én opgeslagen zijn. Dit blijft werken na koude start en
+staat los van de API-key timer. De NetworkManager schakelt de AP tijdelijk niet
+uit, ook bij Ethernetvoorkeur; de opgeslagen verbindingsvoorkeur blijft intact.
+Zie `../wifi/README.md` voor de minimale ESPHome-patches en opslaggrenzen.
 
 ## Validatie
 

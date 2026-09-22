@@ -127,7 +127,7 @@ import { renderModalShell } from "../core/modal-shell.js";
           <p>Resetten wist de opgeslagen sleutel en herstart de controller. Alle API-clients worden losgekoppeld. Daarna kan Home Assistant 10 minuten lang opnieuw koppelen; het kan dezelfde sleutel opnieuw instellen.</p>
           ${!state.authStatus?.enabled ? `<p>Resetten vereist een web-login of de fysieke <a href="/recovery">herstelpagina</a>.</p>` : ""}
         </div>`,
-      actions: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="reset-api-security" ${!state.authStatus?.enabled || state.apiSecurityBusy ? "disabled" : ""}>API-beveiliging resetten</button><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal">Gereed</button>`,
+      actions: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="reset-api-security" ${!state.authStatus?.enabled || state.apiSecurityBusy || state.wifiResetBusy ? "disabled" : ""}>API-beveiliging resetten</button><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal">Gereed</button>`,
     });
   }
 

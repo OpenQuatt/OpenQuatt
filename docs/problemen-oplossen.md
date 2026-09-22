@@ -35,7 +35,7 @@ Net na het flashen kan OpenQuatt ook nog op het fallback access point zitten:
 - SSID: `OpenQuatt`
 - wachtwoord: `openquatt`
 
-Heb je het access point eerder wel gezien en verdwijnt het daarna, dan kan het instelvenster van circa 10 minuten gesloten zijn (of de controller heeft inmiddels normale Wi-Fi-connectiviteit). Herstart de controller en verbind direct opnieuw als je de fallback-route nog nodig hebt.
+Het Wi-Fi-instelvenster sluit niet na 10 minuten: die timer geldt alleen voor een nieuwe Home Assistant-koppeling. Zonder opgeslagen Wi-Fi-gegevens blijft de AP beschikbaar totdat nieuwe gegevens werken én opgeslagen zijn. Bij bekende maar onbereikbare Wi-Fi verschijnt de fallback-AP na 90 seconden, zolang Wi-Fi actief is. Houd de herstelknop 10 seconden vast om Wi-Fi te wissen en opnieuw in te stellen; dit bewaart web-login en overige instellingen.
 
 ## Controller terugzetten naar fabrieksinstellingen
 

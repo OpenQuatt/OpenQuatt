@@ -21,7 +21,7 @@ class OpenQuattRecovery : public Component, public AsyncWebHandler {
   void handleRequest(AsyncWebServerRequest* request) override;
 
  protected:
-  enum class Action { NONE, WEB_AUTH, END, API_RESET };
+  enum class Action { NONE, WEB_AUTH, END, API_RESET, WIFI_RESET };
   void opened_();
   static void activate_on_httpd_(void* context);
   void prepare_reboot_handoff_();
