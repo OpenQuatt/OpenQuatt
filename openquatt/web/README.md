@@ -48,6 +48,41 @@ opt-invoorwaarden voor gedeelde select-controls.
 - Controleer labels, eenheden, toetsenbordbediening, lange teksten en zichtbare
   sluitknoppen op mobiel én desktop, in licht en donker.
 
+## Nederlands en Engels
+
+- Alle nieuwe of gewijzigde zichtbare appteksten gebruiken `t()` uit
+  [i18n/index.js](js/src/i18n/index.js), inclusief foutmeldingen, bevestigingen,
+  lege toestanden, tooltips en toegankelijkheidslabels. Voeg semantische sleutels
+  met dezelfde placeholders toe aan zowel [nl.js](js/src/i18n/nl.js) als
+  [en.js](js/src/i18n/en.js). Nederlands blijft de standaard- en fallbacktaal.
+- Vertaal alleen de presentatie. Firmware-/API-waarden, entity-ID's, opgeslagen
+  opties en interne logica-ID's blijven stabiel. Gebruik `optionLabel()` of
+  `translateFirmwareText()` voor bekende firmwareteksten; vergelijk logica met de
+  oorspronkelijke waarde, niet met een vertaald label.
+- Bewaar vertaalsleutels in statische configuratie en haal de tekst tijdens renderen
+  of het opstellen van een melding op. Cache geen vertalingen bij module-import.
+  Een taalwissel moet ook bestaande views, modals en live veldpatches bijwerken,
+  zonder drafts te verliezen of device-writes te starten.
+- Gebruik `formatNumber()`, `formatDate()`, `formatTime()`, `formatDateTime()` of
+  `getIntlLocale()` voor presentatie. Houd invoer-, opslag- en wireformaten
+  taal-onafhankelijk. Escape vertaalde tekst en geïnterpoleerde onbetrouwbare
+  waarden passend bij de HTML-context; `t()` doet geen HTML-escaping.
+- Gebruik volledige statische sleutels waar mogelijk. De
+  [i18n-build](i18n-bundle.mjs) zet deze om naar numerieke IDs en compacte catalogi.
+  Dynamisch samengestelde sleutels vereisen expliciete ondersteuning in de
+  runtime-index en een test tegen de gebouwde compacte bundle. Gebruik nooit
+  gegenereerde IDs als bron-, opslag- of testcontract.
+- Beide talen blijven offline beschikbaar in dezelfde firmware. Pas de compacte
+  build toe en bewaak het bestaande raw/gzip-budget; voeg geen aparte taalfirmware
+  of externe afhankelijkheid voor het ophalen van vertalingen toe.
+- Controleer gewijzigde schermen in NL én EN, inclusief taalwisselen, behoud na
+  herladen en langere Engelse teksten. Voer de onderstaande webvalidatie uit:
+  `npm run check:web` omvat cataloguspariteit, sleutel-/hardcoded-copychecks en
+  compacte-bundletests. Voeg gerichte locale-regressietests toe waar gedrag,
+  formattering of dynamische sleutels geraakt worden. Controleer bij merges ook
+  nieuwe UI-copy uit de doelbranch; een conflictvrije merge garandeert geen
+  volledige vertaling.
+
 ## Requests, bevestiging en compatibiliteit
 
 - Gebruik de bestaande request- en statehelpers. Begrens wachttijden, voorkom
