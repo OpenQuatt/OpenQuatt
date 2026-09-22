@@ -11,6 +11,7 @@ import { getDeviceMeta, getFirmwareAlternateConnection, getFirmwareAlternateTopo
 import { closeWebServerLogStream } from "./webserver-logs.js";
 import { escapeHtml } from "../core/html.js";
 import { render } from "../core/render-scheduler.js";
+import { t } from "../i18n/index.js";
 
   export function getFirmwareUpdateTargetOptions() {
     const targetEntity = state.entities.firmwareUpdateTarget || {};
@@ -173,8 +174,8 @@ import { render } from "../core/render-scheduler.js";
     if (topology !== "single" && topology !== "duo") {
       return {
         available: false,
-        label: "Onbekend target",
-        error: "Deze firmware meldt geen herkenbaar hardware- of opstellingsprofiel.",
+        label: t("firmwareUpdate.testTargetUnknown"),
+        error: t("firmwareUpdate.testTargetNoProfile"),
       };
     }
     const topologyLabel = topology === "duo" ? "Duo" : "Single";
@@ -200,8 +201,8 @@ import { render } from "../core/render-scheduler.js";
       if (connection !== "wifi" && connection !== "eth") {
         return {
           available: false,
-          label: "Onbekend target",
-          error: "Deze firmware meldt geen herkenbaar hardware-, opstelling- of verbindingsprofiel.",
+          label: t("firmwareUpdate.testTargetUnknown"),
+          error: t("firmwareUpdate.testTargetNoFullProfile"),
         };
       }
       const artifactName = `openquatt-heatpump-controller-q-${topology}-${connection}`;
@@ -215,8 +216,8 @@ import { render } from "../core/render-scheduler.js";
     }
     return {
       available: false,
-      label: "Onbekend target",
-      error: "Deze firmware meldt geen herkenbaar hardware-, opstelling- of verbindingsprofiel.",
+      label: t("firmwareUpdate.testTargetUnknown"),
+      error: t("firmwareUpdate.testTargetNoFullProfile"),
     };
   }
 
@@ -248,43 +249,43 @@ import { render } from "../core/render-scheduler.js";
 
   export function getUpdateStatus() {
     if (isFirmwareUpdateChecking()) {
-      return "Controleren";
+      return t("firmwareUpdate.statusChecking");
     }
     const progress = getFirmwareProgressModel();
     if (progress) {
       return progress.phaseLabel;
     }
     if (isFirmwareUpdateJustCompleted()) {
-      return "Bijgewerkt";
+      return t("firmwareUpdate.statusUpdated");
     }
     if (isFirmwareUpdateInstalling()) {
-      return "Bezig";
+      return t("firmwareUpdate.statusBusy");
     }
     if (isFirmwareDowngradeAvailable()) {
-      return "Downgrade beschikbaar";
+      return t("firmwareUpdate.statusDowngrade");
     }
     if (isFirmwareUpdateAvailable()) {
-      return "Beschikbaar";
+      return t("firmwareUpdate.statusAvailable");
     }
     const relation = getFirmwareVersionRelation();
     if (relation !== null && relation <= 0) {
-      return "Actueel";
+      return t("firmwareUpdate.statusCurrent");
     }
     const meta = getDeviceMeta();
     if (typeof meta.updateLabel === "string" && meta.updateLabel.trim()) {
       return meta.updateLabel.trim();
     }
     if (meta.updateAvailable === true) {
-      return "Beschikbaar";
+      return t("firmwareUpdate.statusAvailable");
     }
     if (meta.updateAvailable === false) {
-      return "Actueel";
+      return t("firmwareUpdate.statusCurrent");
     }
     if (isFirmwareEffectivelyCurrent()) {
-      return "Actueel";
+      return t("firmwareUpdate.statusCurrent");
     }
     if (getFirmwareUpdateEntity()) {
-      return "Nog niet gecontroleerd";
+      return t("firmwareUpdate.statusNotChecked");
     }
     return "—";
   }
@@ -449,7 +450,7 @@ import { render } from "../core/render-scheduler.js";
     if (record.startedAt && Date.now() - record.startedAt > 600000) {
       clearQuickStartSetupInstall();
       resetFirmwareInstallUiState();
-      state.controlError = "De eerdere software-update kon niet worden bevestigd. Controleer de verbinding en probeer opnieuw.";
+      state.controlError = t("firmwareUpdate.confirmStaleUpdate");
     }
     return false;
   }
@@ -533,7 +534,7 @@ import { render } from "../core/render-scheduler.js";
       return;
     }
 
-    if (state.controlNotice.includes("opnieuw is opgestart")) {
+    if (state.controlNotice.includes(t("firmwareUpdate.waitRebootMatch"))) {
       state.updateInstallPhaseHint = "rebooting";
       state.updateInstallProgressHint = 100;
     }
@@ -547,10 +548,10 @@ import { render } from "../core/render-scheduler.js";
   export function getFirmwareInstallFailureMessage() {
     const phase = getFirmwareProgressPhase();
     if (phase === "error") {
-      return "De firmware-installatie op het device is mislukt. Controleer de netwerkverbinding en probeer opnieuw.";
+      return t("firmwareUpdate.installFailed");
     }
     if (phase === "aborted") {
-      return "De firmware-installatie is door het device afgebroken. Probeer de installatie opnieuw.";
+      return t("firmwareUpdate.installAborted");
     }
     return "";
   }
@@ -584,67 +585,67 @@ import { render } from "../core/render-scheduler.js";
 
     if (phase === "rebooting") {
       return {
-        phaseLabel: "Herstarten",
+        phaseLabel: t("firmwareUpdate.phaseRebooting"),
         percent: Math.max(basePercent, 100),
         copy: state.updateInstallMode === "test-firmware"
-          ? "Testfirmware is geplaatst. Het device start opnieuw op en komt daarna vanzelf terug."
+          ? t("firmwareUpdate.rebootTestCopy")
           : state.updateInstallMode === "downgrade"
-          ? "De stabiele main-firmware is geplaatst. Het device start opnieuw op en komt daarna vanzelf terug."
+          ? t("firmwareUpdate.rebootMainCopy")
           : state.updateInstallMode === "connection-switch"
-          ? "Firmware is geplaatst. Het device start opnieuw op en komt daarna via de gekozen verbinding terug."
+          ? t("firmwareUpdate.rebootConnectionCopy")
           : quickStartSetup
-          ? `De stabiele main-software voor ${quickStartTargetBuildLabel} is geplaatst. De controller start opnieuw op met deze configuratie.`
+          ? t("firmwareUpdate.rebootQsCopy", { build: quickStartTargetBuildLabel })
           : switchesBuild
-          ? "Firmware is geplaatst. Het device start opnieuw op en komt daarna met de gekozen opstelling terug."
-          : "Firmware is geplaatst. Het device start nu opnieuw op en komt daarna vanzelf terug.",
+          ? t("firmwareUpdate.rebootBuildCopy")
+          : t("firmwareUpdate.rebootGenericCopy"),
       };
     }
 
     if (phase === "retrying") {
       return {
-        phaseLabel: "Opnieuw proberen",
+        phaseLabel: t("firmwareUpdate.phaseRetrying"),
         percent: 0,
         copy: state.updateInstallMode === "downgrade"
-          ? "De eerste verbinding voor de main-firmwaredownload mislukte. OpenQuatt probeert het automatisch nog één keer."
-          : "De eerste verbinding voor de firmwaredownload mislukte. OpenQuatt probeert het automatisch nog één keer.",
+          ? t("firmwareUpdate.retryMainCopy")
+          : t("firmwareUpdate.retryGenericCopy"),
       };
     }
 
     if (phase === "uploading") {
       return {
-        phaseLabel: "Uploaden",
+        phaseLabel: t("firmwareUpdate.phaseUploading"),
         percent: basePercent,
         copy: state.updateInstallMode === "test-firmware"
-          ? `Testfirmware wordt nu door ${getFirmwareDeviceLabel()} gedownload en geïnstalleerd.`
+          ? t("firmwareUpdate.uploadTestCopy", { device: getFirmwareDeviceLabel() })
           : state.updateInstallMode === "downgrade"
-          ? `De stabiele main-firmware wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
+          ? t("firmwareUpdate.uploadMainCopy", { device: getFirmwareDeviceLabel() })
           : state.updateInstallMode === "connection-switch"
-          ? `De ${getFirmwareConnectionLabel(state.updateInstallTargetConnection)}-build wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
+          ? t("firmwareUpdate.uploadConnectionCopy", { connection: getFirmwareConnectionLabel(state.updateInstallTargetConnection), device: getFirmwareDeviceLabel() })
           : quickStartSetup
-          ? `De stabiele main-build voor ${quickStartTargetBuildLabel} wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
+          ? t("firmwareUpdate.uploadQsCopy", { build: quickStartTargetBuildLabel, device: getFirmwareDeviceLabel() })
           : switchesBuild
-          ? `De ${getFirmwareBuildLabelFor(state.updateInstallTargetTopology, state.updateInstallTargetConnection)}-build wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`
-          : `Firmware wordt nu naar ${getFirmwareDeviceLabel()} verzonden.`,
+          ? t("firmwareUpdate.uploadBuildCopy", { build: getFirmwareBuildLabelFor(state.updateInstallTargetTopology, state.updateInstallTargetConnection), device: getFirmwareDeviceLabel() })
+          : t("firmwareUpdate.uploadGenericCopy", { device: getFirmwareDeviceLabel() }),
       };
     }
 
     const quickStartSetupChecking = quickStartSetup && !quickStartSetupRecord;
     return {
-      phaseLabel: quickStartSetupChecking ? "Controleren" : "Installeren",
+      phaseLabel: quickStartSetupChecking ? t("firmwareUpdate.phaseChecking") : t("firmwareUpdate.phaseInstalling"),
       percent: basePercent,
       copy: state.updateInstallMode === "test-firmware"
-        ? `Testfirmware-installatie is gestart voor ${getFirmwareDeviceLabel()}.`
+        ? t("firmwareUpdate.installTestCopy", { device: getFirmwareDeviceLabel() })
         : state.updateInstallMode === "downgrade"
-        ? `Downgrade naar de stabiele main-firmware is gestart voor ${getFirmwareDeviceLabel()}.`
+        ? t("firmwareUpdate.installDowngradeCopy", { device: getFirmwareDeviceLabel() })
         : state.updateInstallMode === "connection-switch"
-        ? `Verbindingswissel naar ${getFirmwareConnectionLabel(state.updateInstallTargetConnection)} is gestart.`
+        ? t("firmwareUpdate.installConnectionCopy", { connection: getFirmwareConnectionLabel(state.updateInstallTargetConnection) })
         : quickStartSetup
         ? quickStartSetupChecking
-          ? `OpenQuatt controleert de main-versie en doelbuild voor ${quickStartTargetBuildLabel}.`
-          : `De main-release voor ${quickStartTargetBuildLabel} is gecontroleerd en de installatie is gestart.`
+          ? t("firmwareUpdate.installQsCheckCopy", { build: quickStartTargetBuildLabel })
+          : t("firmwareUpdate.installQsCopy", { build: quickStartTargetBuildLabel })
         : switchesBuild
-        ? `Opstellingswissel naar ${getFirmwareTopologyLabel(state.updateInstallTargetTopology)} is gestart.`
-        : `OTA-update is gestart voor ${getFirmwareDeviceLabel()}.`,
+        ? t("firmwareUpdate.installTopologyCopy", { topology: getFirmwareTopologyLabel(state.updateInstallTargetTopology) })
+        : t("firmwareUpdate.installOtaCopy", { device: getFirmwareDeviceLabel() }),
     };
   }
 
@@ -985,7 +986,7 @@ import { render } from "../core/render-scheduler.js";
     return renderModalShell({
       modalId: "reconnect",
       titleId: "oq-reconnect-modal-title",
-      kicker: "Systeem",
+      kicker: t("settingsGroups.system"),
       title: getDeviceReconnectTitle(),
       modalClass: "oq-helper-modal--reconnect",
       role: "status",
@@ -1028,7 +1029,7 @@ import { render } from "../core/render-scheduler.js";
       const knownTarget = hasKnownFirmwareTargetVersion();
       const checking = isFirmwareUpdateChecking();
       const status = getUpdateStatus();
-      if (entityAligned && targetAligned && (knownTarget || (!checking && status !== "Nog niet gecontroleerd"))) {
+      if (entityAligned && targetAligned && (knownTarget || (!checking && status !== t("firmwareUpdate.statusNotChecked")))) {
         return true;
       }
     }
@@ -1117,7 +1118,7 @@ import { render } from "../core/render-scheduler.js";
           throw error;
         }
         if (!waitingForReconnect) {
-          state.controlNotice = "Wachten tot het device opnieuw is opgestart...";
+          state.controlNotice = t("firmwareUpdate.waitReboot");
           render();
           waitingForReconnect = true;
         }
@@ -1137,30 +1138,30 @@ import { render } from "../core/render-scheduler.js";
     }
     if (isFirmwareUpdateJustCompleted()) {
       const version = state.updateInstallCompletedVersion || getFirmwareCurrentVersion() || getFirmwareChannelLabel();
-      return `${getFirmwareDeviceLabel()} draait nu op ${version}.`;
+      return t("firmwareUpdate.modalNowOn", { device: getFirmwareDeviceLabel(), version });
     }
     if (isFirmwareUpdateInstalling()) {
-      return `OTA-update wordt voorbereid voor ${getFirmwareDeviceLabel()}. Het device kan kort herstarten.`;
+      return t("firmwareUpdate.modalPreparing", { device: getFirmwareDeviceLabel() });
     }
     if (isFirmwareUpdateChecking()) {
-      return `We controleren of er op kanaal ${channel} een nieuwe firmware beschikbaar is.`;
+      return t("firmwareUpdate.modalChecking", { channel });
     }
     if (isFirmwareDowngradeAvailable()) {
       const { current, latest } = getFirmwareUpdateVersions();
-      return `De stabiele main-release ${latest} is ouder dan de draaiende dev-build ${current}. Je kunt bewust teruggaan naar main.`;
+      return t("firmwareUpdate.modalDowngrade", { latest, current });
     }
     if (isFirmwareChannelTransition()) {
       return parseFirmwareVersion(getFirmwareCurrentVersion())?.prereleaseTag.toLowerCase() === "pr"
-        ? "Dev-firmware kan de PR-testfirmware vervangen."
-        : "Dev-firmware kan de huidige main-firmware vervangen.";
+        ? t("firmwareUpdate.modalToPr")
+        : t("firmwareUpdate.modalToDev");
     }
     if (isFirmwareUpdateAvailable()) {
-      return "Er staat een nieuwere firmware klaar.";
+      return t("firmwareUpdate.modalAvailable");
     }
     if (isFirmwareEffectivelyCurrent()) {
-      return `Je draait al de nieuwste firmware op kanaal ${channel}.`;
+      return t("firmwareUpdate.modalCurrent", { channel });
     }
-    return "Kies een kanaal en controleer of er een nieuwere firmware klaarstaat.";
+    return t("firmwareUpdate.modalChooseChannel");
   }
 
   export function isFirmwareAdvancedOpen() {
@@ -1200,17 +1201,17 @@ import { render } from "../core/render-scheduler.js";
       <div class="oq-helper-modal-callout oq-helper-modal-callout--subtle oq-firmware-advanced-panel">
         <div class="oq-firmware-advanced-head">
           <div>
-            <strong>Geavanceerd</strong>
-            <span>Gebruik deze opties alleen als je bewust van de normale OTA-flow afwijkt.</span>
+            <strong>${escapeHtml(t("firmwareUpdate.advancedTitle"))}</strong>
+            <span>${escapeHtml(t("firmwareUpdate.advancedCopy"))}</span>
           </div>
-          <button class="oq-helper-button oq-helper-button--ghost oq-firmware-advanced-hide" type="button" data-oq-action="toggle-firmware-advanced" ${busy ? "disabled" : ""}>Verbergen</button>
+          <button class="oq-helper-button oq-helper-button--ghost oq-firmware-advanced-hide" type="button" data-oq-action="toggle-firmware-advanced" ${busy ? "disabled" : ""}>${escapeHtml(t("firmwareUpdate.advancedHide"))}</button>
         </div>
         <div class="oq-firmware-advanced-options">
           ${showConnectionSwitchAction
             ? renderFirmwareAdvancedOption(
               "toggle-firmware-connection-switch",
-              "Verbinding wisselen",
-              `Naar ${connectionSwitchModel.targetLabel}`,
+              t("firmwareUpdate.advancedConnection"),
+              t("firmwareUpdate.advancedConnectionTo", { target: connectionSwitchModel.targetLabel }),
               state.firmwareConnectionSwitchOpen,
               busy,
             )
@@ -1218,14 +1219,14 @@ import { render } from "../core/render-scheduler.js";
           ${showTopologySwitchAction
             ? renderFirmwareAdvancedOption(
               "toggle-firmware-topology-switch",
-              "Opstelling wisselen",
-              `Naar ${topologySwitchModel.targetLabel}`,
+              t("firmwareUpdate.advancedTopology"),
+              t("firmwareUpdate.advancedTopologyTo", { target: topologySwitchModel.targetLabel }),
               state.firmwareTopologySwitchOpen,
               busy,
             )
             : ""}
-          ${renderFirmwareAdvancedOption("toggle-firmware-upload", "Handmatige upload", "Lokaal OTA-bestand", state.updateManualUploadOpen, busy)}
-          ${renderFirmwareAdvancedOption("toggle-firmware-test", "Testfirmware", "PR-release installeren", state.updateTestFirmwareOpen, busy)}
+          ${renderFirmwareAdvancedOption("toggle-firmware-upload", t("firmwareUpdate.advancedUpload"), t("firmwareUpdate.advancedUploadCopy"), state.updateManualUploadOpen, busy)}
+          ${renderFirmwareAdvancedOption("toggle-firmware-test", t("firmwareUpdate.advancedTest"), t("firmwareUpdate.advancedTestCopy"), state.updateTestFirmwareOpen, busy)}
         </div>
         ${renderFirmwareConnectionSwitchSection()}
         ${renderFirmwareTopologySwitchSection()}
@@ -1247,25 +1248,25 @@ import { render } from "../core/render-scheduler.js";
     const targetIsEthernet = model.targetConnection === "eth";
     const unavailable = !model.canSwitch;
     const warning = targetIsEthernet
-      ? "Sluit eerst de netwerkkabel aan. Na de herstart verdwijnt Wi-Fi uit deze firmware."
-      : "Na de herstart verdwijnt Ethernet uit deze firmware. Als er geen Wi-Fi-gegevens bekend zijn, start het OpenQuatt fallback access point.";
+      ? t("firmwareUpdate.connWarnEth")
+      : t("firmwareUpdate.connWarnWifi");
     const statusNote = unavailable
-      ? '<p class="oq-helper-modal-note oq-helper-modal-note--muted">Verbindingswissel wordt geladen. Open deze modal opnieuw of wacht een moment als de knop disabled blijft.</p>'
+      ? `<p class="oq-helper-modal-note oq-helper-modal-note--muted">${escapeHtml(t("firmwareUpdate.connLoading"))}</p>`
       : "";
 
     return `
       <div class="oq-firmware-advanced-detail">
         <div class="oq-firmware-advanced-detail-head">
-          <strong>Verbinding wisselen</strong>
-          <span>Installeer dezelfde ${escapeHtml(getFirmwareChannelLabel())}-build voor de andere netwerkverbinding.</span>
+          <strong>${escapeHtml(t("firmwareUpdate.advancedConnection"))}</strong>
+          <span>${escapeHtml(t("firmwareUpdate.connCopy", { channel: getFirmwareChannelLabel() }))}</span>
         </div>
         <div class="oq-helper-modal-grid">
           <div class="oq-helper-modal-row">
-            <span class="oq-helper-modal-label">Huidige build</span>
+            <span class="oq-helper-modal-label">${escapeHtml(t("firmwareUpdate.connCurrent"))}</span>
             <strong class="oq-helper-modal-value">${escapeHtml(model.currentBuildLabel)}</strong>
           </div>
           <div class="oq-helper-modal-row">
-            <span class="oq-helper-modal-label">Alternatief</span>
+            <span class="oq-helper-modal-label">${escapeHtml(t("firmwareUpdate.connAlt"))}</span>
             <strong class="oq-helper-modal-value">${escapeHtml(model.targetBuildLabel)}</strong>
           </div>
         </div>
@@ -1273,7 +1274,7 @@ import { render } from "../core/render-scheduler.js";
         ${statusNote}
         <label class="oq-helper-modal-check">
           <input type="checkbox" data-oq-firmware-connection-confirm="true" ${confirmed ? "checked" : ""} ${busy || unavailable ? "disabled" : ""}>
-          <span>${escapeHtml(targetIsEthernet ? "De netwerkkabel is aangesloten." : "Ik begrijp dat Ethernet na reboot verdwijnt.")}</span>
+          <span>${escapeHtml(targetIsEthernet ? t("firmwareUpdate.connConfirmEth") : t("firmwareUpdate.connConfirmWifi"))}</span>
         </label>
         <div class="oq-firmware-advanced-footer">
           <button
@@ -1282,7 +1283,7 @@ import { render } from "../core/render-scheduler.js";
             data-oq-action="install-firmware-connection-switch"
             ${busy || unavailable || !confirmed ? "disabled" : ""}
           >
-            ${escapeHtml(`Wissel naar ${model.targetLabel}`)}
+            ${escapeHtml(t("firmwareUpdate.connSwitchTo", { target: model.targetLabel }))}
           </button>
         </div>
       </div>
@@ -1301,25 +1302,25 @@ import { render } from "../core/render-scheduler.js";
     const unavailable = !model.canSwitch;
     const targetIsDuo = model.targetTopology === "duo";
     const warning = targetIsDuo
-      ? "Controleer eerst dat de tweede warmtepomp is aangesloten en geconfigureerd. Na de herstart bevat deze firmware HP2-regeling en HP2-diagnostiek."
-      : "Na de herstart verdwijnt HP2-regeling en HP2-diagnostiek uit deze firmware. Gebruik dit alleen als deze controller als Single-installatie verder moet draaien.";
+      ? t("firmwareUpdate.topoWarnDuo")
+      : t("firmwareUpdate.topoWarnSingle");
     const statusNote = unavailable
-      ? '<p class="oq-helper-modal-note oq-helper-modal-note--muted">Opstellingswissel vereist firmware met de target-optie alternate topology. Werk eerst normaal bij als de knop disabled blijft.</p>'
+      ? `<p class="oq-helper-modal-note oq-helper-modal-note--muted">${escapeHtml(t("firmwareUpdate.topoLoading"))}</p>`
       : "";
 
     return `
       <div class="oq-firmware-advanced-detail">
         <div class="oq-firmware-advanced-detail-head">
-          <strong>Opstelling wisselen</strong>
-          <span>Installeer dezelfde ${escapeHtml(getFirmwareChannelLabel())}-build voor de andere Single/Duo-opstelling.</span>
+          <strong>${escapeHtml(t("firmwareUpdate.advancedTopology"))}</strong>
+          <span>${escapeHtml(t("firmwareUpdate.topoCopy", { channel: getFirmwareChannelLabel() }))}</span>
         </div>
         <div class="oq-helper-modal-grid">
           <div class="oq-helper-modal-row">
-            <span class="oq-helper-modal-label">Huidige build</span>
+            <span class="oq-helper-modal-label">${escapeHtml(t("firmwareUpdate.topoCurrent"))}</span>
             <strong class="oq-helper-modal-value">${escapeHtml(model.currentBuildLabel)}</strong>
           </div>
           <div class="oq-helper-modal-row">
-            <span class="oq-helper-modal-label">Alternatief</span>
+            <span class="oq-helper-modal-label">${escapeHtml(t("firmwareUpdate.topoAlt"))}</span>
             <strong class="oq-helper-modal-value">${escapeHtml(model.targetBuildLabel)}</strong>
           </div>
         </div>
@@ -1327,7 +1328,7 @@ import { render } from "../core/render-scheduler.js";
         ${statusNote}
         <label class="oq-helper-modal-check">
           <input type="checkbox" data-oq-firmware-topology-confirm="true" ${confirmed ? "checked" : ""} ${busy || unavailable ? "disabled" : ""}>
-          <span>${escapeHtml(targetIsDuo ? "De tweede warmtepomp is aangesloten en hoort bij deze controller." : "Ik begrijp dat HP2-bediening na reboot verdwijnt.")}</span>
+          <span>${escapeHtml(targetIsDuo ? t("firmwareUpdate.topoConfirmDuo") : t("firmwareUpdate.topoConfirmSingle"))}</span>
         </label>
         <div class="oq-firmware-advanced-footer">
           <button
@@ -1336,7 +1337,7 @@ import { render } from "../core/render-scheduler.js";
             data-oq-action="install-firmware-topology-switch"
             ${busy || unavailable || !confirmed ? "disabled" : ""}
           >
-            ${escapeHtml(`Wissel naar ${model.targetLabel}`)}
+            ${escapeHtml(t("firmwareUpdate.topoSwitchTo", { target: model.targetLabel }))}
           </button>
         </div>
       </div>
@@ -1359,17 +1360,17 @@ import { render } from "../core/render-scheduler.js";
     const targetLabel = target.available ? target.label : target.error;
     const assetNote = urls
       ? target.otaFileName
-      : "Vul een PR-nummer in om de OTA-build te kiezen.";
+      : t("firmware.testPrPrompt");
 
     return `
       <div class="oq-firmware-advanced-detail">
         <div class="oq-firmware-advanced-detail-head">
-          <strong>Testfirmware</strong>
-          <span>PR-release voor gericht testen. Gebruik dit alleen als iemand je expliciet vraagt om een PR te testen.</span>
+          <strong>${escapeHtml(t("firmwareUpdate.testTitle"))}</strong>
+          <span>${escapeHtml(t("firmwareUpdate.testCopy"))}</span>
         </div>
         <div class="oq-firmware-test-grid">
           <label class="oq-firmware-advanced-card">
-            <span class="oq-helper-modal-label">PR-nummer</span>
+            <span class="oq-helper-modal-label">${escapeHtml(t("firmwareUpdate.testPrLabel"))}</span>
             <input
               class="oq-helper-input oq-helper-input--compact-number oq-firmware-test-pr-input"
               type="text"
@@ -1382,11 +1383,11 @@ import { render } from "../core/render-scheduler.js";
             >
           </label>
           <div class="oq-firmware-advanced-card">
-            <span class="oq-helper-modal-label">Doelbuild</span>
+            <span class="oq-helper-modal-label">${escapeHtml(t("firmwareUpdate.testTargetLabel"))}</span>
             <strong class="oq-helper-modal-value">${escapeHtml(targetLabel)}</strong>
           </div>
           <div class="oq-firmware-advanced-card oq-firmware-test-card--asset">
-            <span class="oq-helper-modal-label">OTA-bestand</span>
+            <span class="oq-helper-modal-label">${escapeHtml(t("firmwareUpdate.testAssetLabel"))}</span>
             <strong class="oq-helper-modal-value" data-oq-firmware-test-asset-note="true">${escapeHtml(assetNote)}</strong>
           </div>
           ${build ? `
@@ -1396,15 +1397,15 @@ import { render } from "../core/render-scheduler.js";
             </div>
           ` : ""}
         </div>
-        <p class="oq-helper-modal-note oq-firmware-test-note">De webapp zet alleen de URL klaar; het device downloadt en flasht daarna zelf via dezelfde OTA-backend.</p>
-        ${!controlsAvailable ? `<p class="oq-helper-modal-note oq-helper-modal-note--error">${escapeHtml(target.available ? "Deze firmware mist de testfirmware-bediening. Installeer eerst een nieuwere build." : target.error)}</p>` : ""}
+        <p class="oq-helper-modal-note oq-firmware-test-note">${escapeHtml(t("firmwareUpdate.testNote"))}</p>
+        ${!controlsAvailable ? `<p class="oq-helper-modal-note oq-helper-modal-note--error">${escapeHtml(target.available ? t("firmwareUpdate.testNoControls") : target.error)}</p>` : ""}
         ${state.updateTestFirmwareError ? `<p class="oq-helper-modal-note oq-helper-modal-note--error" data-oq-firmware-test-runtime-error="true">${escapeHtml(state.updateTestFirmwareError)}</p>` : ""}
         <div class="oq-firmware-advanced-footer">
           <label class="oq-helper-modal-check oq-firmware-advanced-check">
             <input type="checkbox" data-oq-firmware-test-confirm="true" ${state.updateTestFirmwareConfirmed ? "checked" : ""} ${busy || !controlsAvailable ? "disabled" : ""}>
-            <span>Ik begrijp dat dit testfirmware uit een PR is.</span>
+            <span>${escapeHtml(t("firmwareUpdate.testConfirmCopy"))}</span>
           </label>
-          <button class="oq-helper-button" type="button" data-oq-action="install-firmware-test" ${busy || !ready || !state.updateTestFirmwareConfirmed ? "disabled" : ""}>PR-firmware installeren</button>
+          <button class="oq-helper-button" type="button" data-oq-action="install-firmware-test" ${busy || !ready || !state.updateTestFirmwareConfirmed ? "disabled" : ""}>${escapeHtml(t("firmwareUpdate.testInstall"))}</button>
         </div>
       </div>
     `;
@@ -1422,11 +1423,11 @@ import { render } from "../core/render-scheduler.js";
     return `
       <div class="oq-firmware-advanced-detail">
         <div class="oq-firmware-advanced-detail-head">
-          <strong>Handmatige upload</strong>
-          <span>Gebruik dit alleen als je een geschikte OTA-firmware hebt gedownload, bij voorkeur een *.firmware.ota.bin uit de release.</span>
+          <strong>${escapeHtml(t("firmwareUpdate.uploadTitle"))}</strong>
+          <span>${escapeHtml(t("firmwareUpdate.uploadCopy"))}</span>
         </div>
         <div class="oq-firmware-advanced-card">
-          <span class="oq-helper-modal-label">Firmwarebestand</span>
+          <span class="oq-helper-modal-label">${escapeHtml(t("firmwareUpdate.uploadFileLabel"))}</span>
           <input
             class="oq-settings-backup-input oq-settings-backup-import-input"
             type="file"
@@ -1434,12 +1435,12 @@ import { render } from "../core/render-scheduler.js";
             data-oq-firmware-upload-file-input="true"
             ${busy ? "disabled" : ""}
           >
-          <span class="oq-helper-modal-subvalue">${escapeHtml(selectedFileName ? `Gekozen bestand: ${selectedFileName}` : "Nog geen bestand gekozen")}</span>
+          <span class="oq-helper-modal-subvalue">${escapeHtml(selectedFileName ? t("firmwareUpdate.uploadChosen", { file: selectedFileName }) : t("firmwareUpdate.uploadNoFile"))}</span>
         </div>
-        <p class="oq-helper-modal-note">De upload gebruikt dezelfde OTA-flow als de normale update. Laat deze pagina open tot het device weer terug is.</p>
+        <p class="oq-helper-modal-note">${escapeHtml(t("firmwareUpdate.uploadNote"))}</p>
         ${state.updateManualUploadError ? `<p class="oq-helper-modal-note oq-helper-modal-note--error">${escapeHtml(state.updateManualUploadError)}</p>` : ""}
         <div class="oq-firmware-advanced-footer">
-          <button class="oq-helper-button" type="button" data-oq-action="upload-firmware-file" ${busy || !state.updateManualUploadFile ? "disabled" : ""}>Upload en installeer</button>
+          <button class="oq-helper-button" type="button" data-oq-action="upload-firmware-file" ${busy || !state.updateManualUploadFile ? "disabled" : ""}>${escapeHtml(t("firmwareUpdate.uploadAction"))}</button>
         </div>
       </div>
     `;
@@ -1464,15 +1465,15 @@ import { render } from "../core/render-scheduler.js";
     const justCompleted = isFirmwareUpdateJustCompleted();
     const releaseUrl = getFirmwareReleaseUrl();
     const title = justCompleted
-      ? "Firmware-update afgerond"
+      ? t("firmwareUpdate.modalDoneTitle")
       : progress
-      ? "Firmware-update bezig"
+      ? t("firmwareUpdate.modalBusyTitle")
       : installing
-      ? "Firmware-update bezig"
+      ? t("firmwareUpdate.modalBusyTitle")
       : checking
-        ? "Controleren op firmware-update"
+        ? t("firmwareUpdate.modalCheckTitle")
         : downgradeAvailable
-          ? "Terug naar main"
+          ? t("firmwareUpdate.modalDowngradeTitle")
         : getFirmwareTitle();
     const channelOptions = channelEntity
       ? (Array.isArray(channelEntity.option) ? channelEntity.option : Array.isArray(channelEntity.options) ? channelEntity.options : [])
@@ -1485,18 +1486,18 @@ import { render } from "../core/render-scheduler.js";
     return renderModalShell({
       id: "firmware-update",
       titleId: "oq-update-modal-title",
-      kicker: "OTA-update",
+      kicker: t("firmwareUpdate.modalKicker"),
       title,
       copy: summary,
       backdropClass: checking || installing || progress ? "is-busy" : "",
       className: "oq-helper-modal--firmware oq-helper-modal--scrollable",
       closeAction: "close-update-modal",
-      closeLabel: "Sluit update-popup",
+      closeLabel: t("firmwareUpdate.modalClose"),
       body: `
           ${justCompleted ? `
             <div class="oq-helper-modal-success" aria-live="polite">
-              <strong>Bijgewerkt</strong>
-              <span>De nieuwe firmware draait nu op het device.</span>
+              <strong>${escapeHtml(t("firmwareUpdate.modalUpdated"))}</strong>
+              <span>${escapeHtml(t("firmwareUpdate.modalUpdatedCopy"))}</span>
             </div>
           ` : ""}
           ${progress ? `
@@ -1512,25 +1513,25 @@ import { render } from "../core/render-scheduler.js";
           ` : ""}
           <div class="oq-helper-modal-grid">
             <div class="oq-helper-modal-row">
-              <span class="oq-helper-modal-label">Status</span>
+              <span class="oq-helper-modal-label">${escapeHtml(t("firmwareUpdate.modalStatus"))}</span>
               <strong class="oq-helper-modal-value">${escapeHtml(getUpdateStatus())}</strong>
             </div>
             <div class="oq-helper-modal-row">
-              <span class="oq-helper-modal-label">Huidige versie</span>
+              <span class="oq-helper-modal-label">${escapeHtml(t("firmwareUpdate.modalCurrent"))}</span>
               <strong class="oq-helper-modal-value">${escapeHtml(current)}</strong>
             </div>
             <div class="oq-helper-modal-row">
-              <span class="oq-helper-modal-label">Beschikbare versie</span>
+              <span class="oq-helper-modal-label">${escapeHtml(t("firmwareUpdate.modalLatest"))}</span>
               <strong class="oq-helper-modal-value">${escapeHtml(latest)}</strong>
             </div>
             <div class="oq-helper-modal-row">
-              <span class="oq-helper-modal-label">Kanaal</span>
+              <span class="oq-helper-modal-label">${escapeHtml(t("firmwareUpdate.modalChannel"))}</span>
               <strong class="oq-helper-modal-value">${escapeHtml(getFirmwareChannelLabel())}</strong>
             </div>
           </div>
           ${channelOptions.length ? `
             <label class="oq-helper-modal-channel">
-              <span class="oq-helper-modal-label">Releasekanaal</span>
+              <span class="oq-helper-modal-label">${escapeHtml(t("firmwareUpdate.modalReleaseChannel"))}</span>
               <select data-oq-field="firmwareUpdateChannel">
                 ${channelOptions.map((option) => `
                   <option value="${escapeHtml(option)}" ${String(getEntityValue("firmwareUpdateChannel") || "") === option ? "selected" : ""}>${escapeHtml(option)}</option>
@@ -1540,30 +1541,30 @@ import { render } from "../core/render-scheduler.js";
           ` : ""}
           ${downgradeAvailable && !installing && !progress ? `
             <div class="oq-helper-modal-callout oq-firmware-downgrade-callout">
-              <strong>Bewuste downgrade</strong>
-              <span>Main ${escapeHtml(latest)} vervangt de nieuwere dev-build ${escapeHtml(current)}. Functies en instellingen die alleen in dev bestaan, zijn daarna mogelijk niet meer beschikbaar.</span>
+              <strong>${escapeHtml(t("firmwareUpdate.downgradeTitle"))}</strong>
+              <span>${escapeHtml(t("firmwareUpdate.downgradeCopy", { latest, current }))}</span>
               <label class="oq-helper-modal-check">
                 <input type="checkbox" data-oq-firmware-downgrade-confirm="true" ${downgradeConfirmed ? "checked" : ""} ${checking ? "disabled" : ""}>
-                <span>Ik begrijp dat ik terugga naar een oudere stabiele firmwareversie.</span>
+                <span>${escapeHtml(t("firmwareUpdate.downgradeConfirm"))}</span>
               </label>
             </div>
           ` : ""}
           <p class="oq-helper-modal-note">${downgradeAvailable
-            ? "Maak zo nodig eerst een instellingenbackup. Laat deze pagina open; het device herstart na de downgrade en komt daarna vanzelf weer terug."
-            : "Laat deze pagina open tijdens de OTA-update. Het device kan na installatie kort herstarten en daarna vanzelf weer terugkomen. Bestaande OpenQuatt-instellingen blijven behouden."}</p>
+            ? escapeHtml(t("firmwareUpdate.downgradeNote"))
+            : escapeHtml(t("firmwareUpdate.otaNote"))}</p>
           <div class="oq-helper-modal-actions oq-firmware-modal-actions">
             <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="run-firmware-check" ${checking || installing || progress ? "disabled" : ""}>
-              ${checking ? "Controleren..." : "Controleer opnieuw"}
+              ${checking ? escapeHtml(t("firmwareUpdate.checkBusy")) : escapeHtml(t("firmwareUpdate.checkAgain"))}
             </button>
             ${justCompleted
-              ? '<button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-update-modal">Gereed</button>'
+              ? `<button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-update-modal">${escapeHtml(t("header.done"))}</button>`
               : `<button class="oq-helper-button${downgradeAvailable ? " oq-helper-button--warning" : ""}" type="button" data-oq-action="install-firmware-update" ${(!available && !downgradeAvailable) || (downgradeAvailable && !downgradeConfirmed) || installing || checking || progress || !entity ? "disabled" : ""}>
-              ${installing ? (state.updateInstallMode === "downgrade" ? "Downgraden..." : "Bijwerken...") : downgradeAvailable ? `Terug naar main ${escapeHtml(latest)}` : "Nu bijwerken"}
+              ${installing ? (state.updateInstallMode === "downgrade" ? escapeHtml(t("firmwareUpdate.installBusyDowngrade")) : escapeHtml(t("firmwareUpdate.installBusyUpdate"))) : downgradeAvailable ? escapeHtml(t("firmwareUpdate.installBackToMain", { latest })) : escapeHtml(t("firmwareUpdate.installNow"))}
             </button>`}
             ${releaseUrl ? `<a class="oq-helper-button oq-helper-button--ghost oq-helper-modal-link" href="${escapeHtml(releaseUrl)}" target="_blank" rel="noreferrer">Release notes</a>` : ""}
             ${isFirmwareAdvancedOpen() ? "" : `
               <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="toggle-firmware-advanced" ${checking || installing || progress ? "disabled" : ""}>
-                Geavanceerd
+                ${escapeHtml(t("firmwareUpdate.advancedShow"))}
               </button>
             `}
           </div>

@@ -5,6 +5,7 @@ import { renderModalShell } from "../core/modal-shell.js";
 import { renderNumberInputControl } from "../core/number-controls.js";
 import { formatSettingsNumberValue, getSettingsTemperatureValue, renderSettingsNumberField, renderSettingsSection, renderSettingsSystemRow } from "./controls.js";
 import { escapeHtml } from "../core/html.js";
+import { t } from "../i18n/index.js";
 
   export function getHpWaterRawValue(rawKey, finalKey, offsetKey) {
     const finalValue = getEntityNumericValue(finalKey);
@@ -17,7 +18,7 @@ import { escapeHtml } from "../core/html.js";
   }
 
   export function getWaterSupplyCorrectionView() {
-    const source = getEntityStateText("waterSupplyTempEffectiveSource", "Actieve bron");
+    const source = getEntityStateText("waterSupplyTempEffectiveSource", t("settingsWater.sourceActive"));
     const status = getEntityStateText("waterSupplyCalibrationStatus", "");
     const activeValue = getEntityNumericValue("supplyTemp");
     const storedOffset = getEntityNumericValue("waterSupplyCalibrationOffset");
@@ -26,13 +27,13 @@ import { escapeHtml } from "../core/html.js";
     const calibrationActive = status.startsWith("Calibrated:") && !calibrationRequired && !fallbackActive && Number.isFinite(storedOffset);
     const activeOffset = calibrationActive ? storedOffset : 0;
 
-    let statusLabel = "Geen actieve aanvoercorrectie";
+    let statusLabel = t("settingsWater.statusNone");
     if (fallbackActive) {
-      statusLabel = "Fallback actief; correctie tijdelijk uit";
+      statusLabel = t("settingsWater.statusFallback");
     } else if (calibrationRequired) {
-      statusLabel = "Opnieuw kalibreren";
+      statusLabel = t("settingsWater.statusRecalibrate");
     } else if (calibrationActive) {
-      statusLabel = "Brongebonden kalibratie actief";
+      statusLabel = t("settingsWater.statusSourceBound");
     }
 
     return {
@@ -50,17 +51,17 @@ import { escapeHtml } from "../core/html.js";
   export function renderWaterSettingsFields(className = "oq-settings-grid", { includeSensorCorrections = true } = {}) {
     const offsetLauncher = includeSensorCorrections && hasHpWaterSensorOffsetSettings()
       ? renderSettingsSystemRow({
-          label: "Sensorcorrecties",
-          value: "Watertemperatuurcorrecties",
-          note: "Bekijk en wijzig de water in/uit-correcties en controleer de actieve aanvoercorrectie.",
-          action: '<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="open-water-sensor-corrections-modal">Correcties openen</button>',
+          label: t("settingsWater.launcherTitle"),
+          value: t("settingsWater.launcherValue"),
+          note: t("settingsWater.launcherNote"),
+          action: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="open-water-sensor-corrections-modal">${escapeHtml(t("settingsWater.launcherAction"))}</button>`,
           className: "oq-settings-hp-offset-launcher",
           dataAttribute: "",
         })
       : "";
     return `
       <div class="${escapeHtml(className)}">
-        ${renderSettingsNumberField("maxWater", "Maximale watertemperatuur", "Normale bovengrens voor de watertemperatuur tijdens bedrijf. OpenQuatt begint enkele graden eerder al terug te regelen en bewaakt een harde trip op 5°C boven deze grens.")}
+        ${renderSettingsNumberField("maxWater", t("settingsWater.maxWaterTitle"), t("settingsWater.maxWaterCopy"))}
       </div>
       ${offsetLauncher}
     `;
@@ -79,10 +80,10 @@ import { escapeHtml } from "../core/html.js";
 
   export function renderHpWaterSensorOffsetSettings({ showHeader = true } = {}) {
     const rows = [
-      { label: "HP1 water in", rawKey: "hp1WaterInRaw", offsetKey: "hp1WaterInOffset", finalKey: "hp1WaterIn" },
-      { label: "HP1 water uit", rawKey: "hp1WaterOutRaw", offsetKey: "hp1WaterOutOffset", finalKey: "hp1WaterOut" },
-      { label: "HP2 water in", rawKey: "hp2WaterInRaw", offsetKey: "hp2WaterInOffset", finalKey: "hp2WaterIn" },
-      { label: "HP2 water uit", rawKey: "hp2WaterOutRaw", offsetKey: "hp2WaterOutOffset", finalKey: "hp2WaterOut" },
+      { label: t("settingsWater.hp1WaterIn"), rawKey: "hp1WaterInRaw", offsetKey: "hp1WaterInOffset", finalKey: "hp1WaterIn" },
+      { label: t("settingsWater.hp1WaterOut"), rawKey: "hp1WaterOutRaw", offsetKey: "hp1WaterOutOffset", finalKey: "hp1WaterOut" },
+      { label: t("settingsWater.hp2WaterIn"), rawKey: "hp2WaterInRaw", offsetKey: "hp2WaterInOffset", finalKey: "hp2WaterIn" },
+      { label: t("settingsWater.hp2WaterOut"), rawKey: "hp2WaterOutRaw", offsetKey: "hp2WaterOutOffset", finalKey: "hp2WaterOut" },
     ].filter((row) => hasEntity(row.offsetKey) && hasEntity(row.finalKey));
     const hasSupplyCorrection = hasEntity("supplyTemp") && hasEntity("waterSupplyCalibrationOffset");
 
@@ -106,16 +107,16 @@ import { escapeHtml } from "../core/html.js";
         <article class="oq-settings-hp-offset-row">
           <div class="oq-settings-hp-offset-copy">
             <strong>${escapeHtml(row.label)}</strong>
-            <span>${escapeHtml(getSettingsTemperatureValue(row.finalKey, 2))} actief</span>
+            <span>${escapeHtml(t("settingsWater.rowActiveSuffix", { value: getSettingsTemperatureValue(row.finalKey, 2) }))}</span>
           </div>
-          <div class="oq-settings-hp-offset-equation" aria-label="${escapeHtml(`${row.label} correctie`)}">
+          <div class="oq-settings-hp-offset-equation" aria-label="${escapeHtml(t("settingsWater.rowCorrectionAria", { label: row.label }))}">
             <div class="oq-settings-hp-offset-readout">
-              <span>Raw</span>
+              <span>${escapeHtml(t("settingsWater.rawLabel"))}</span>
               <strong>${escapeHtml(Number.isFinite(raw) ? formatSettingsNumberValue(raw, meta.uom || "°C", 2) : getSettingsTemperatureValue(row.rawKey, 2))}</strong>
             </div>
             <span class="oq-settings-hp-offset-operator">+</span>
             <label class="oq-settings-hp-offset-input">
-              <span>Correctie</span>
+              <span>${escapeHtml(t("settingsWater.correctionLabel"))}</span>
               ${renderNumberInputControl({
                 key: row.offsetKey,
                 value: getInputDraftValue(row.offsetKey),
@@ -127,7 +128,7 @@ import { escapeHtml } from "../core/html.js";
             </label>
             <span class="oq-settings-hp-offset-operator">=</span>
             <div class="oq-settings-hp-offset-readout oq-settings-hp-offset-final">
-              <span>Na wijziging</span>
+              <span>${escapeHtml(t("settingsWater.afterChangeLabel"))}</span>
               <strong>${escapeHtml(finalFromDraft)}</strong>
             </div>
           </div>
@@ -140,22 +141,22 @@ import { escapeHtml } from "../core/html.js";
       return `
         <article class="oq-settings-hp-offset-row is-readonly">
           <div class="oq-settings-hp-offset-copy">
-            <strong>Aanvoer (${escapeHtml(view.source)})</strong>
-            <span>${escapeHtml(`${formatSupplyValue(view.activeValue, view.uom)} actief · ${view.statusLabel}`)}</span>
+            <strong>${escapeHtml(t("settingsWater.supplyTitle", { source: view.source }))}</strong>
+            <span>${escapeHtml(t("settingsWater.supplyActiveSuffix", { value: formatSupplyValue(view.activeValue, view.uom), status: view.statusLabel }))}</span>
           </div>
-          <div class="oq-settings-hp-offset-equation" aria-label="Aanvoer brongebonden correctie">
+          <div class="oq-settings-hp-offset-equation" aria-label="${escapeHtml(t("settingsWater.supplyCorrectionAria"))}">
             <div class="oq-settings-hp-offset-readout">
-              <span>Raw</span>
+              <span>${escapeHtml(t("settingsWater.rawLabel"))}</span>
               <strong>${escapeHtml(formatSupplyValue(view.rawValue, view.uom))}</strong>
             </div>
             <span class="oq-settings-hp-offset-operator">+</span>
             <div class="oq-settings-hp-offset-readout">
-              <span>Actieve correctie</span>
+              <span>${escapeHtml(t("settingsWater.supplyCorrectionActive"))}</span>
               <strong>${escapeHtml(formatSupplyValue(view.offsetValue, view.uom))}</strong>
             </div>
             <span class="oq-settings-hp-offset-operator">=</span>
             <div class="oq-settings-hp-offset-readout oq-settings-hp-offset-final">
-              <span>Actief</span>
+              <span>${escapeHtml(t("settingsWater.supplyActiveLabel"))}</span>
               <strong>${escapeHtml(formatSupplyValue(view.activeValue, view.uom))}</strong>
             </div>
           </div>
@@ -166,9 +167,9 @@ import { escapeHtml } from "../core/html.js";
     return `
       <div class="oq-settings-subpanel oq-settings-hp-offset-panel">
         ${showHeader ? `<div class="oq-settings-subpanel-head">
-          <p class="oq-helper-label">Sensorcorrecties</p>
-          <h4>Watertemperatuurcorrecties</h4>
-          <p>Raw is de ongecorrigeerde sensorwaarde. Actief is de temperatuur die OpenQuatt nu gebruikt: raw plus correctie.</p>
+          <p class="oq-helper-label">${escapeHtml(t("settingsWater.panelKicker"))}</p>
+          <h4>${escapeHtml(t("settingsWater.panelTitle"))}</h4>
+          <p>${escapeHtml(t("settingsWater.panelCopy"))}</p>
         </div>` : ""}
         <div class="oq-settings-hp-offset-list">
           ${rows.map(renderRow).join("")}
@@ -176,8 +177,8 @@ import { escapeHtml } from "../core/html.js";
         </div>
         ${hasSupplyCorrection ? `
           <aside class="oq-settings-hp-offset-supply-note">
-            <strong>Waarom is de aanvoercorrectie niet handmatig aanpasbaar?</strong>
-            <p>OpenQuatt bewaart een aparte correctie voor lokale PT1000, lokale DS18B20, CIC en Home Assistant. Een CIC-correctie blijft geldig na een URL-wijziging; een andere Home Assistant-invoer moet opnieuw worden gekalibreerd. Daarom is deze waarde hier alleen-lezen en wijzig je haar via de taak Temperatuursensoren kalibreren onder Service.</p>
+            <strong>${escapeHtml(t("settingsWater.supplyNoteTitle"))}</strong>
+            <p>${escapeHtml(t("settingsWater.supplyNoteCopy"))}</p>
           </aside>
         ` : ""}
       </div>
@@ -192,23 +193,23 @@ import { escapeHtml } from "../core/html.js";
     return renderModalShell({
       id: "system",
       titleId: "oq-water-sensor-corrections-modal-title",
-      kicker: "Sensorcorrecties",
-      title: "Watertemperatuurcorrecties",
-      copy: "Bekijk de ruwe en actieve sensortemperaturen en pas de water in/uit-correcties aan.",
+      kicker: t("settingsWater.modalKicker"),
+      title: t("settingsWater.modalTitle"),
+      copy: t("settingsWater.modalCopy"),
       className: "oq-helper-modal--wide oq-helper-modal--scrollable oq-settings-hp-offset-modal",
       sectionAttributes: "data-oq-water-offset-modal",
       closeAction: "close-system-modal",
-      closeLabel: "Sluit watertemperatuurcorrecties",
+      closeLabel: t("settingsWater.modalClose"),
       body,
-      actions: '<button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">Gereed</button>',
+      actions: `<button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">${escapeHtml(t("settingsWater.modalDone"))}</button>`,
     });
   }
 
   export function renderSettingsWaterSection() {
     return renderSettingsSection(
-      "Beveiliging",
-      "Watertemperatuur",
-      "Beschermt het systeem tegen te hoge aanvoertemperaturen. OpenQuatt regelt richting deze grens terug en grijpt 5°C erboven hard in.",
+      t("settingsWater.sectionGroup"),
+      t("settingsWater.sectionTitle"),
+      t("settingsWater.sectionCopy"),
       renderWaterSettingsFields(),
     );
   }

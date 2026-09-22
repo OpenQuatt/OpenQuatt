@@ -1,3 +1,5 @@
+import { formatDateTime, formatNumber, hasTranslation, t } from "../i18n/index.js";
+
 export const INCIDENT_MONITORING_SCHEMA_VERSION = 1;
 export const INCIDENT_MONITORING_FAILURE_THRESHOLD = 3;
 
@@ -8,158 +10,104 @@ const SEVERITY_RANK = Object.freeze({
   fault: 3,
 });
 
-const SYSTEM_ACTIONS = Object.freeze({
-  none: { label: "Geen bijzondere systeemactie", copy: "", severity: "normal" },
-  boiler_assist: {
-    label: "CV ondersteunt tijdelijk",
-    copy: "De warmtepomp blijft de basis leveren; de CV-ketel ondersteunt tijdelijk.",
-    severity: "normal",
-  },
-  boiler_fallback: {
-    label: "Ketel neemt verwarming over",
-    copy: "De warmtepomp is niet beschikbaar. De CV-ketel krijgt tijdelijk de verwarmingsopdracht.",
-    severity: "fault",
-  },
-  fallback_blocked: {
-    label: "Ketelfallback niet vrijgegeven",
-    copy: "OpenQuatt kan de ketel niet veilig vrijgeven.",
-    severity: "fault",
-  },
+// Systeemacties zijn taal-onafhankelijke codes; presentatie (label/copy)
+// komt uit de i18n-catalogus (incidents.system*).
+const SYSTEM_ACTION_SEVERITY = Object.freeze({
+  none: "normal",
+  boiler_assist: "normal",
+  boiler_fallback: "fault",
+  fallback_blocked: "fault",
 });
 
+function systemActionSuffix(action) {
+  if (action === "boiler_assist") return "BoilerAssist";
+  if (action === "boiler_fallback") return "BoilerFallback";
+  if (action === "fallback_blocked") return "FallbackBlocked";
+  return "None";
+}
+
+function isKnownSystemAction(action) {
+  return Object.prototype.hasOwnProperty.call(SYSTEM_ACTION_SEVERITY, action);
+}
+
+// Incidentcatalogus: taal-onafhankelijke [id, key]-paren; labels leven in
+// de i18n-catalogus (incidents.label.<key>).
 const INCIDENT_CATALOG = [
-  [1, "main_line_current", "Netstroombeveiliging"],
-  [2, "compressor_phase_current", "Compressorfasestroom"],
-  [3, "ipm_module", "IPM-vermogensmodule"],
-  [4, "compressor_oil_return", "Olie-retour actief"],
-  [5, "high_pressure_switch", "Hogedrukbeveiliging"],
-  [6, "high_pressure_speed_limit", "Toerental begrensd door hoge druk"],
-  [7, "first_start_preheat", "Eerste-startvoorverwarming"],
-  [8, "gas_discharge_temperature", "Persgastemperatuur te hoog"],
-  [9, "evaporator_coil_temperature", "Verdampertemperatuur buiten bereik"],
-  [10, "ac_voltage", "Netspanning buiten bereik"],
-  [11, "ambient_temperature_range", "Buitentemperatuur buiten werkgebied"],
-  [12, "ambient_temperature_frequency_limit", "Vermogen begrensd door buitentemperatuur"],
-  [13, "low_pressure_switch", "Lagedrukbeveiliging"],
-  [14, "low_pressure_speed_limit", "Toerental begrensd door lage druk"],
-  [17, "ambient_temperature_sensor", "Buitentemperatuursensor"],
-  [18, "evaporator_coil_temperature_sensor", "Verdampertemperatuursensor"],
-  [19, "gas_discharge_temperature_sensor", "Persgastemperatuursensor"],
-  [20, "gas_return_temperature_sensor", "Zuiggastemperatuursensor"],
-  [21, "evaporator_pressure_sensor_lock", "Verdamperdruksensor vergrendeld"],
-  [22, "condenser_pressure_sensor", "Condensordruksensor"],
-  [23, "high_pressure_switch_lock", "Hogedrukbeveiliging vergrendeld"],
-  [24, "low_pressure_switch_lock", "Lagedrukbeveiliging vergrendeld"],
-  [25, "fan", "Ventilatorstoring"],
-  [27, "evaporating_pressure_lock", "Verdamperdruk vergrendeld"],
-  [28, "condenser_pressure_lock", "Condensordruk vergrendeld"],
-  [30, "evi_pressure_sensor", "EVI-druksensor"],
-  [31, "evi_inlet_temperature_sensor", "EVI-inlaattemperatuursensor"],
-  [32, "evi_outlet_temperature_sensor", "EVI-uitlaattemperatuursensor"],
-  [33, "odu_master_slave_communication", "Communicatie tussen buitenunits"],
-  [34, "odu_control_pcb_communication", "Communicatie met ODU-regelprint"],
-  [35, "compressor_phase_current_failure", "Compressorfasestroomstoring"],
-  [36, "compressor_phase_current_overload", "Compressorfasestroom overbelast"],
-  [37, "compressor_driver", "Compressordriver"],
-  [38, "module_vdc_voltage", "DC-tussenkringspanning"],
-  [39, "ac_current", "AC-stroommeting"],
-  [40, "eeprom", "ODU-geheugen"],
-  [41, "fan_drive_pcb", "Ventilatorregelprint"],
-  [42, "inlet_water_temperature_sensor", "Inlaatwatertemperatuursensor"],
-  [43, "outlet_water_temperature_sensor", "Uitlaatwatertemperatuursensor"],
-  [44, "inner_coil_temperature_sensor", "Binnenste-wisselaartemperatuursensor"],
-  [46, "dc_water_pump", "Waterpomp in buitenunit"],
-  [1001, "hp_link_loss", "Verbinding met warmtepomp bevestigd weg"],
-  [1002, "hp_start_failed", "Warmtepompstart niet bevestigd"],
-  [1003, "hp_stop_unconfirmed", "Warmtepompstop niet bevestigd"],
-  [1004, "hp_manual_reset_persistence_failure", "Opslag van handmatige resetstatus mislukt"],
-  [1005, "hp_runtime_frequency_mapping", "ODU-frequentietabel moet opnieuw worden gevalideerd"],
+  [1, "main_line_current"],
+  [2, "compressor_phase_current"],
+  [3, "ipm_module"],
+  [4, "compressor_oil_return"],
+  [5, "high_pressure_switch"],
+  [6, "high_pressure_speed_limit"],
+  [7, "first_start_preheat"],
+  [8, "gas_discharge_temperature"],
+  [9, "evaporator_coil_temperature"],
+  [10, "ac_voltage"],
+  [11, "ambient_temperature_range"],
+  [12, "ambient_temperature_frequency_limit"],
+  [13, "low_pressure_switch"],
+  [14, "low_pressure_speed_limit"],
+  [17, "ambient_temperature_sensor"],
+  [18, "evaporator_coil_temperature_sensor"],
+  [19, "gas_discharge_temperature_sensor"],
+  [20, "gas_return_temperature_sensor"],
+  [21, "evaporator_pressure_sensor_lock"],
+  [22, "condenser_pressure_sensor"],
+  [23, "high_pressure_switch_lock"],
+  [24, "low_pressure_switch_lock"],
+  [25, "fan"],
+  [27, "evaporating_pressure_lock"],
+  [28, "condenser_pressure_lock"],
+  [30, "evi_pressure_sensor"],
+  [31, "evi_inlet_temperature_sensor"],
+  [32, "evi_outlet_temperature_sensor"],
+  [33, "odu_master_slave_communication"],
+  [34, "odu_control_pcb_communication"],
+  [35, "compressor_phase_current_failure"],
+  [36, "compressor_phase_current_overload"],
+  [37, "compressor_driver"],
+  [38, "module_vdc_voltage"],
+  [39, "ac_current"],
+  [40, "eeprom"],
+  [41, "fan_drive_pcb"],
+  [42, "inlet_water_temperature_sensor"],
+  [43, "outlet_water_temperature_sensor"],
+  [44, "inner_coil_temperature_sensor"],
+  [46, "dc_water_pump"],
+  [1001, "hp_link_loss"],
+  [1002, "hp_start_failed"],
+  [1003, "hp_stop_unconfirmed"],
+  [1004, "hp_manual_reset_persistence_failure"],
+  [1005, "hp_runtime_frequency_mapping"],
 ];
-const INCIDENT_LABEL_BY_ID = new Map(INCIDENT_CATALOG.map(([id, , label]) => [id, label]));
-const INCIDENT_LABEL_BY_KEY = Object.freeze(Object.fromEntries(
-  INCIDENT_CATALOG.map(([, key, label]) => [key, label]),
+const INCIDENT_KEY_BY_ID = new Map(INCIDENT_CATALOG.map(([id, key]) => [id, key]));
+const INCIDENT_ID_BY_KEY = Object.freeze(Object.fromEntries(
+  INCIDENT_CATALOG.map(([id, key]) => [key, id]),
 ));
 
-const CATEGORY_LABELS = Object.freeze({
-  status: "Status",
-  protection: "Beveiliging",
-  warning: "Waarschuwing",
-  fault: "Storing",
-  unknown: "Technische melding",
-});
-const EFFECT_LABELS = Object.freeze({
-  limit_capacity: "ODU begrenst het vermogen",
-  block_start: "start blokkeren",
-  stop_compressor: "compressor stoppen",
-  mark_hp_unavailable: "warmtepomp niet beschikbaar",
-  allow_cm4: "CM4 na systeemcontroles toestaan",
-  block_boiler: "ketel blokkeren",
-  require_confirmed_odu_power_cycle: "bevestigde ODU-powercycle vereist",
-  pump_unavailable: "ODU-waterpomp niet beschikbaar",
-});
-const RECOVERY_LABELS = Object.freeze({
-  when_bit_clears: "automatisch zodra de ODU-melding verdwijnt",
-  stable_reads_and_recovery_window: "automatisch na stabiele herstelmetingen",
-  after_stable_reads: "automatisch na meerdere stabiele metingen",
-  preheat_complete: "automatisch zodra de voorverwarming klaar is",
-  confirmed_odu_power_cycle: "na een uitgevoerde en bevestigde ODU-powercycle",
-  stable_telemetry: "automatisch na stabiele telemetrie",
-  explicit_retry_after_safe_stop: "na een veilige stop en expliciete herstart",
-  fresh_stop_confirmation: "na een nieuwe bevestigde stopstatus",
-  review_required: "na technische beoordeling",
-});
-const USER_ACTION_LABELS = Object.freeze({
-  none: "",
-  wait_for_automatic_recovery: "Wacht op automatisch herstel.",
-  check_installation: "Controleer de installatie.",
-  contact_installer: "Neem contact op met de installateur.",
-});
-const ACTION_RESULT_LABELS = Object.freeze({
-  start_failure_cleared: "De startblokkering is vrijgegeven. De normale startvoorwaarden blijven gelden.",
-  no_start_failure: "Er is geen startfout meer om vrij te geven.",
-  stop_not_confirmed: "De warmtepomp is nog niet veilig als gestopt bevestigd.",
-  link_not_healthy: "De verbinding met de warmtepomp is nog niet stabiel genoeg.",
-  hard_fault_active: "Er is nog een actieve warmtepompstoring.",
-  fault_recovery_pending: "Het automatische storingsherstel is nog niet afgerond.",
-  odu_power_cycle_confirmed: "De bevestigde ODU-powercycle is verwerkt.",
-  no_cleared_manual_reset_latch: "Er is geen herstelde powercycle-latch om vrij te geven.",
-  persistence_unavailable: "De resetstatus kan momenteel niet veilig worden opgeslagen.",
-  persistence_write_failed: "Het opslaan van de resetstatus is mislukt; de blokkering blijft actief.",
-  incident_state_changed: "De incidentstatus veranderde tijdens de actie; controleer de actuele melding.",
-  invalid_hp: "De gekozen warmtepomp is ongeldig.",
-  hp_not_configured: "Deze warmtepomp is niet geconfigureerd.",
-  queue_unavailable: "De controller kan de actie momenteel niet in de hoofdloop plaatsen.",
-  action_in_progress: "Voor deze warmtepomp wordt al een incidentactie verwerkt.",
-  invalid_request_id: "De incidentactie heeft geen geldig actienummer.",
-  forbidden: "De beveiligingscontrole van de actie is mislukt.",
-});
-const FALLBACK_BLOCK_LABELS = Object.freeze([
-  "Geen blokkade",
-  "Handmatige override actief",
-  "Commissioning actief",
-  "Koeling actief",
-  "Vorstbescherming actief",
-  "Geen warmtevraag",
-  "Ketelfallback staat uit",
-  "Er is nog een warmtepomp beschikbaar",
-  "Beschikbaarheid warmtepompen nog niet zeker",
-  "Nog geen bevestigde fallbackoorzaak",
-  "Stopstatus warmtepomp nog niet veilig bevestigd",
-  "Flowmeting niet beschikbaar",
-  "Waterflow onvoldoende",
-  "Aanvoertemperatuur niet beschikbaar",
-  "Ketelbeveiliging geeft niet vrij",
-]);
-const PUMP_IPWM_STATUS_LABELS = Object.freeze({
-  unknown: "Onbekend",
-  pwm_short: "PWM-interface kortgesloten",
-  standby: "Stand-by",
-  running: "Pomp draait",
+const CATEGORY_CODES = Object.freeze(["status", "protection", "warning", "fault", "unknown"]);
+const PUMP_IPWM_STATUS_FALLBACK = Object.freeze({
   pump_on_abnormal: "PumpOnAbnormal",
   pump_off_abnormal: "PumpOffAbnormal",
   pump_off_failure: "PumpOffFailure",
-  pwm_open: "PWM-interface open",
 });
+
+function pickTranslation(base, code, fallback = "") {
+  const key = `${base}.${code}`;
+  return hasTranslation(key) ? t(key) : fallback;
+}
+
+function formatIncidentNumber(value) {
+  return formatNumber(Number(value), { maximumFractionDigits: 0 });
+}
+
+function capitalizeStatusKey(value) {
+  return String(value || "")
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
+}
 
 const isObject = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const normalizeInteger = (value, fallback = null) => {
@@ -202,27 +150,27 @@ export function getPumpIncidentContextRows(incident = {}, pumpContext = null) {
   if (!isPumpIncident || !isObject(pumpContext)) return [];
 
   const rows = [];
-  const onOff = (value) => value ? "AAN" : "UIT";
+  const onOff = (value) => value ? t("incidents.pumpOn") : t("incidents.pumpOff");
   if (typeof pumpContext.requestOn === "boolean") {
-    rows.push(["Pompaanvraag (OpenQuatt) · R2010.b12", onOff(pumpContext.requestOn)]);
+    rows.push([t("incidents.pumpRequest"), onOff(pumpContext.requestOn)]);
   }
   if (typeof pumpContext.relayOn === "boolean") {
-    rows.push(["Pomprelais · R2108.b11", onOff(pumpContext.relayOn)]);
+    rows.push([t("incidents.pumpRelay"), onOff(pumpContext.relayOn)]);
   }
   if (typeof pumpContext.flowSwitchOn === "boolean") {
-    rows.push(["Flowswitch · R2115.b13", onOff(pumpContext.flowSwitchOn)]);
+    rows.push([t("incidents.pumpFlowSwitch"), onOff(pumpContext.flowSwitchOn)]);
   }
   const statusKey = String(pumpContext.ipwmStatus || "unknown");
   if (pumpContext.feedbackRaw !== null || statusKey !== "unknown") {
-    const raw = pumpContext.feedbackRaw !== null ? `${pumpContext.feedbackRaw} raw` : "Raw onbekend";
-    const status = PUMP_IPWM_STATUS_LABELS[statusKey] || statusKey;
-    rows.push(["iPWM-feedback · R2137", `${raw} · ${status}`]);
+    const raw = pumpContext.feedbackRaw !== null ? `${pumpContext.feedbackRaw} raw` : t("incidents.pumpRawUnknown");
+    const status = pickTranslation("incidents.pumpStatus", statusKey, PUMP_IPWM_STATUS_FALLBACK[statusKey] || statusKey);
+    rows.push([t("incidents.pumpFeedback"), `${raw} · ${status}`]);
   }
   if (pumpContext.pumpPowerW !== null) {
-    rows.push(["Afgeleid pompvermogen", `${pumpContext.pumpPowerW.toLocaleString("nl-NL")} W`]);
+    rows.push([t("incidents.pumpDerivedPower"), `${formatIncidentNumber(pumpContext.pumpPowerW)} W`]);
   }
   if (pumpContext.flowLph !== null) {
-    rows.push(["Flow · R2138", `${pumpContext.flowLph.toLocaleString("nl-NL")} L/h`]);
+    rows.push([t("incidents.pumpFlow"), `${formatIncidentNumber(pumpContext.flowLph)} L/h`]);
   }
   return rows;
 }
@@ -234,115 +182,119 @@ export function getIncidentDisplayLabel(incident = {}) {
   const key = String(incident.key || "").trim().toLowerCase();
   if (key === "unclassified_odu_fault") {
     const code = technicalIncidentCode(id);
-    return code ? `Niet-geclassificeerde ODU-melding (${code})` : "Niet-geclassificeerde ODU-melding";
+    return code ? t("incidents.unclassifiedOduWithCode", { code }) : t("incidents.unclassifiedOdu");
   }
-  if (INCIDENT_LABEL_BY_KEY[key]) return INCIDENT_LABEL_BY_KEY[key];
-  if (INCIDENT_LABEL_BY_ID.has(id)) return INCIDENT_LABEL_BY_ID.get(id);
+  if (INCIDENT_ID_BY_KEY[key]) return t(`incidents.label.${key}`);
+  if (INCIDENT_KEY_BY_ID.has(id)) return t(`incidents.label.${INCIDENT_KEY_BY_ID.get(id)}`);
   if (key) {
     const words = key.replace(/^odu_/, "").replaceAll("_", " ");
-    return `ODU-melding: ${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+    return t("incidents.oduReport", { label: `${words.charAt(0).toUpperCase()}${words.slice(1)}` });
   }
   const code = technicalIncidentCode(id);
-  return code ? `Niet-geclassificeerde ODU-melding (${code})` : "Niet-geclassificeerde warmtepompmelding";
+  return code ? t("incidents.unclassifiedOduWithCode", { code }) : t("incidents.unclassifiedHeatpump");
 }
 
 export function getIncidentCategoryLabel(category) {
-  return CATEGORY_LABELS[String(category || "").toLowerCase()] || CATEGORY_LABELS.unknown;
+  const normalized = String(category || "").toLowerCase();
+  return t(`incidents.category.${CATEGORY_CODES.includes(normalized) ? normalized : "unknown"}`);
 }
 
 export function getIncidentEffectLabels(effects = []) {
   const normalized = effects.map((effect) => String(effect).toLowerCase());
   const controlling = normalized
     .filter((effect) => effect !== "display")
-    .map((effect) => EFFECT_LABELS[effect] || "")
+    .map((effect) => pickTranslation("incidents.effect", effect))
     .filter(Boolean);
-  return controlling.length ? controlling : normalized.includes("display") ? ["alleen tonen"] : [];
+  return controlling.length ? controlling : normalized.includes("display") ? [t("incidents.effectDisplayOnly")] : [];
 }
 
 export function getIncidentRecoveryLabel(value) {
-  return RECOVERY_LABELS[String(value || "").toLowerCase()] || String(value || "").replaceAll("_", " ");
+  const normalized = String(value || "").toLowerCase();
+  return pickTranslation("incidents.recovery", normalized, String(value || "").replaceAll("_", " "));
 }
 
 export function getIncidentUserActionLabel(value) {
-  return USER_ACTION_LABELS[String(value || "").toLowerCase()] ?? String(value || "").replaceAll("_", " ");
+  const normalized = String(value || "").toLowerCase();
+  if (!normalized || normalized === "none") return "";
+  return pickTranslation("incidents.userAction", normalized, String(value || "").replaceAll("_", " "));
 }
 
 export function formatIncidentOccurrenceTime(epochS, uptimeMs) {
   const epoch = Number(epochS);
   if (Number.isFinite(epoch) && epoch >= 946684800) {
-    return new Intl.DateTimeFormat("nl-NL", {
+    return formatDateTime(new Date(epoch * 1000), {
       day: "2-digit",
       month: "short",
       hour: "2-digit",
       minute: "2-digit",
-    }).format(new Date(epoch * 1000));
+    });
   }
   const uptime = Number(uptimeMs);
   if (!Number.isFinite(uptime) || uptime < 0) return "";
   const minutes = Math.round(uptime / 60000);
-  return `${minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)}u ${minutes % 60}m`} na controllerstart`;
+  const span = minutes < 60
+    ? t("incidents.occurrenceMinutes", { minutes })
+    : t("incidents.occurrenceHoursMinutes", { hours: Math.floor(minutes / 60), minutes: minutes % 60 });
+  return t("incidents.occurrenceAfterBoot", { span });
 }
 
 export function getFallbackBlockReasonLabel(reason) {
-  return FALLBACK_BLOCK_LABELS[Number(reason)] || "Onbekende veiligheidsblokkade";
+  const index = Number(reason);
+  const key = `incidents.fallbackBlock.${index}`;
+  if (Number.isInteger(index) && hasTranslation(key)) {
+    return t(key);
+  }
+  return t("incidents.fallbackBlockUnknown");
 }
 
 export function getSystemActionPresentation(action) {
-  return SYSTEM_ACTIONS[String(action || "").toLowerCase()] || SYSTEM_ACTIONS.none;
+  const code = String(action || "").toLowerCase();
+  const known = isKnownSystemAction(code) ? code : "none";
+  const suffix = systemActionSuffix(known);
+  return {
+    label: t(`incidents.system${suffix}Label`),
+    copy: known === "none" ? "" : t(`incidents.system${suffix}Copy`),
+    severity: SYSTEM_ACTION_SEVERITY[known],
+  };
 }
 
 export function getIncidentLifecyclePresentation(incident = {}) {
   if (incident.active) {
-    return { label: "Actief", tone: incident.severity === "fault" ? "fault" : "warning" };
+    return { label: t("incidents.lifecycleActive"), tone: incident.severity === "fault" ? "fault" : "warning" };
   }
-  if (incident.recovering) return { label: "Herstelt", tone: "warning" };
+  if (incident.recovering) return { label: t("incidents.lifecycleRecovering"), tone: "warning" };
   if (incident.latched && !incident.acknowledged) {
-    return { label: "Hersteld · vastgehouden", tone: "warning" };
+    return { label: t("incidents.lifecycleLatched"), tone: "warning" };
   }
-  return { label: "Hersteld", tone: "clear" };
+  return { label: t("incidents.lifecycleCleared"), tone: "clear" };
 }
 
 export function getHeatPumpStatusPresentation(heatPump = {}) {
-  const links = {
-    bootstrap: "Verbinding wordt opgebouwd",
-    healthy: "Verbinding gezond",
-    suspect: "Korte hapering wordt eerst bevestigd",
-    lost: "Verbinding bevestigd weg",
-    recovering: "Verbinding herstelt",
-    unknown: "Verbindingsstatus onbekend",
-  };
-  const runs = {
-    unknown: "Compressorstatus onbekend",
-    stopped: "Compressor gestopt",
-    start_requested: "Start aangevraagd",
-    wait_mode: "Wacht op bedrijfsmodus",
-    wait_compressor: "Wacht op compressorbevestiging",
-    running: "Compressor draait",
-    stopping: "Stop aangevraagd",
-    stop_unconfirmed: "Stop nog niet bevestigd",
-  };
+  const linkState = String(heatPump.linkState || "unknown");
+  const runState = String(heatPump.runState || "unknown");
+  const linkLabel = pickTranslation("incidents", `link${capitalizeStatusKey(linkState)}`, t("incidents.linkUnknown"));
   const runStatus = heatPump.stopConfirmationPending
-    ? "Stopstatus wordt opnieuw bevestigd"
-    : runs[heatPump.runState] || runs.unknown;
-  const note = `${links[heatPump.linkState] || links.unknown} · ${runStatus}`;
+    ? t("incidents.runReconfirm")
+    : pickTranslation("incidents", `run${capitalizeStatusKey(runState)}`, t("incidents.runUnknown"));
+  const note = `${linkLabel} · ${runStatus}`;
   if (heatPump.faultActive || heatPump.protectionState === "fault_active") {
-    return { label: "Storing actief", note, tone: "fault" };
+    return { label: t("incidents.hpFaultActive"), note, tone: "fault" };
   }
-  if (heatPump.linkState === "lost") return { label: "Niet beschikbaar", note, tone: "fault" };
+  if (heatPump.linkState === "lost") return { label: t("incidents.hpUnavailable"), note, tone: "fault" };
   if (heatPump.protectionState === "start_blocked") {
-    return { label: "Start tijdelijk geblokkeerd", note, tone: "warning" };
+    return { label: t("incidents.hpStartBlocked"), note, tone: "warning" };
   }
   if (heatPump.protectionState === "limited") {
-    return { label: "Vermogen begrensd", note, tone: "warning" };
+    return { label: t("incidents.hpLimited"), note, tone: "warning" };
   }
   if (heatPump.availability === "recovering" || heatPump.linkState === "recovering") {
-    return { label: "Herstel wordt bevestigd", note, tone: "warning" };
+    return { label: t("incidents.hpRecovering"), note, tone: "warning" };
   }
   if (heatPump.availableForStart || heatPump.availability === "available") {
-    return { label: "Beschikbaar", note, tone: "clear" };
+    return { label: t("incidents.hpAvailable"), note, tone: "clear" };
   }
   return {
-    label: "Status wordt bepaald",
+    label: t("incidents.hpDetermining"),
     note,
     tone: heatPump.linkState === "suspect" ? "clear" : "warning",
   };
@@ -354,7 +306,7 @@ function normalizeIncident(raw, subject) {
   const runtime = raw.runtime;
   const id = normalizeInteger(definition.id);
   if (id === null) return null;
-  const category = CATEGORY_LABELS[definition.category] ? definition.category : "unknown";
+  const category = CATEGORY_CODES.includes(definition.category) ? definition.category : "unknown";
   const severity = definition.severity;
   const runtimeLifecycle = ["active", "recovering", "latched"].includes(runtime.lifecycle)
     ? runtime.lifecycle
@@ -478,7 +430,7 @@ function normalizeIncidentActionResult(raw) {
 function normalizeSystem(raw) {
   const system = isObject(raw) ? raw : {};
   const controlMode = normalizeInteger(system.control_mode, 0);
-  const rawAction = SYSTEM_ACTIONS[system.action] ? system.action : "none";
+  const rawAction = isKnownSystemAction(system.action) ? system.action : "none";
   const rawRole = String(system.boiler_role || "off");
   const boilerRole = controlMode === 3 ? "assist" : controlMode === 4 ? "fallback" : rawRole;
   const previousBoilerRole = String(system.previous_boiler_role || "off");
@@ -547,33 +499,33 @@ export function getIncidentActionPresentation(action = {}, hpIndex = null) {
     return { visible: false, label: "", copy: "", tone: "clear" };
   }
   const kindLabel = action.kind === "confirm_odu_power_cycle"
-    ? "ODU-powercycle"
-    : "Startfout";
+    ? t("incidents.actionKindPowerCycle")
+    : t("incidents.actionKindStartFault");
   if (action.pending) {
     return {
       visible: true,
       label: action.outcomeUnknown
-        ? `${kindLabel}: uitkomst controleren`
-        : `${kindLabel}: verwerking loopt`,
+        ? t("incidents.actionPendingCheck", { kind: kindLabel })
+        : t("incidents.actionPendingBusy", { kind: kindLabel }),
       copy: action.outcomeUnknown
-        ? "Het antwoord ging verloren. OpenQuatt controleert met hetzelfde actienummer of de controller de actie heeft verwerkt."
-        : "De controller heeft het verzoek geaccepteerd; OpenQuatt wacht op het resultaat met hetzelfde actienummer.",
+        ? t("incidents.actionPendingCopyUnknown")
+        : t("incidents.actionPendingCopy"),
       tone: "warning",
     };
   }
   if (action.ok === true) {
     return {
       visible: true,
-      label: `${kindLabel}: uitgevoerd`,
-      copy: ACTION_RESULT_LABELS[action.result] || "De controller heeft de actie bevestigd.",
+      label: t("incidents.actionDone", { kind: kindLabel }),
+      copy: pickTranslation("incidents.actionResult", String(action.result || ""), t("incidents.actionConfirmed")),
       tone: "clear",
     };
   }
   if (action.ok === false) {
     return {
       visible: true,
-      label: `${kindLabel}: niet uitgevoerd`,
-      copy: ACTION_RESULT_LABELS[action.result] || String(action.message || "De controller heeft de actie geweigerd."),
+      label: t("incidents.actionFailed", { kind: kindLabel }),
+      copy: pickTranslation("incidents.actionResult", String(action.result || ""), String(action.message || t("incidents.actionRefused"))),
       tone: "fault",
     };
   }
@@ -636,11 +588,11 @@ export async function postIncidentActionRequest(
   refreshCsrfToken,
 ) {
   const hpIndex = normalizeInteger(hp, 0);
-  if (hpIndex !== 1 && hpIndex !== 2) throw new Error(ACTION_RESULT_LABELS.invalid_hp);
+  if (hpIndex !== 1 && hpIndex !== 2) throw new Error(t("incidents.actionResult.invalid_hp"));
   const actionRequestId = normalizeInteger(requestId, 0);
   if (actionRequestId < 1) {
     throw incidentActionRequestError(
-      ACTION_RESULT_LABELS.invalid_request_id,
+      t("incidents.actionResult.invalid_request_id"),
       true,
     );
   }
@@ -649,7 +601,7 @@ export async function postIncidentActionRequest(
     : endpoint.endsWith("/confirm-odu-power-cycle")
       ? "confirm_odu_power_cycle"
       : "";
-  if (!expectedAction) throw new Error("Onbekende incidentactie.");
+  if (!expectedAction) throw new Error(t("incidents.unknownAction"));
 
   const post = (token) => fetcher(endpoint, {
     method: "POST",
@@ -675,7 +627,7 @@ export async function postIncidentActionRequest(
   }
   if (!response) {
     throw incidentActionRequestError(
-      networkError?.message || "Geen antwoord van de controller.",
+      networkError?.message || t("incidents.noControllerResponse"),
       false,
     );
   }
@@ -685,7 +637,7 @@ export async function postIncidentActionRequest(
       response = await post(token);
     } catch (error) {
       throw incidentActionRequestError(
-        error?.message || "Geen antwoord van de controller.",
+        error?.message || t("incidents.noControllerResponse"),
         false,
       );
     }
@@ -699,8 +651,7 @@ export async function postIncidentActionRequest(
   if (response.status !== 202 || payload?.accepted !== true) {
     const result = String(payload?.result || "");
     throw incidentActionRequestError(
-      ACTION_RESULT_LABELS[result]
-        || `Incidentactie HTTP ${response.status}`,
+      pickTranslation("incidents.actionResult", result, t("incidents.actionHttp", { status: response.status })),
       true,
     );
   }
@@ -709,7 +660,7 @@ export async function postIncidentActionRequest(
       || payload.action !== expectedAction
       || actionId !== actionRequestId) {
     throw incidentActionRequestError(
-      "De controller gaf geen geldige actiebevestiging terug.",
+      t("incidents.noValidConfirmation"),
       false,
     );
   }
@@ -729,7 +680,7 @@ const incidentVisible = (incident) => incident.active
 const LINK_LOSS_GROUP = Object.freeze({
   linkLossId: "1001",
   stopUnconfirmedId: "1003",
-  copy: "De warmtepomp is niet bereikbaar. De stopstatus kon daardoor niet opnieuw worden bevestigd. Na de veilige wachttijd gebruikt OpenQuatt, indien nodig en toegestaan, de ketel als fallback.",
+  copyKey: "incidents.linkLossGroupCopy",
 });
 
 export function getLinkLossConsequenceForHeatPump(heatPump) {
@@ -746,7 +697,7 @@ export function getLinkLossConsequenceForHeatPump(heatPump) {
     (incident) => incident.id === LINK_LOSS_GROUP.stopUnconfirmedId && (incident.active || incident.recovering),
   ) || null;
   if (!linkLoss || !consequence) return null;
-  return { linkLoss, consequence, copy: LINK_LOSS_GROUP.copy };
+  return { linkLoss, consequence, copy: t(LINK_LOSS_GROUP.copyKey) };
 }
 
 export function summarizeIncidentMonitoring(input) {
@@ -760,13 +711,13 @@ export function summarizeIncidentMonitoring(input) {
       available: false,
       active: false,
       severity: "normal",
-      title: "Geen incidentgegevens",
+      title: t("incidents.summaryNoData"),
       copy: "",
       problemCount: 0,
       activeIncidentCount: 0,
       recoveredIncidentCount: 0,
       systemAction: "none",
-      systemActionLabel: SYSTEM_ACTIONS.none.label,
+      systemActionLabel: getSystemActionPresentation("none").label,
       boilerRole: "off",
       boilerTransition: "none",
       problems: [],
@@ -798,7 +749,7 @@ export function summarizeIncidentMonitoring(input) {
     .map((incident) => {
       const entry = {
         key: `incident:${incident.subject}:${incident.id}`,
-        label: `${incident.subject === "hp1" ? "Warmtepomp 1" : "Warmtepomp 2"}: ${getIncidentDisplayLabel(incident)}`,
+        label: `${incident.subject === "hp1" ? t("incidents.hp1Label") : t("incidents.hp2Label")}: ${getIncidentDisplayLabel(incident)}`,
         severity: recoveredIncidents.includes(incident) ? "attention" : incident.severity,
         incidentId: incident.id,
       };
@@ -830,30 +781,31 @@ export function summarizeIncidentMonitoring(input) {
     });
   }
 
-  let title = "Geen bijzonderheden";
-  let copy = "OpenQuatt ziet op dit moment geen actieve incidenten.";
+  const pluralize = (count) => count === 1 ? "" : t("incidents.pluralSuffix");
+  let title = t("incidents.summaryClear");
+  let copy = t("incidents.summaryClearCopy");
   if (action === "boiler_fallback" || action === "fallback_blocked") {
     title = actionPresentation.label;
     copy = actionPresentation.copy;
   } else if (activeIncidents.some((incident) => incident.severity === "fault")) {
-    title = "Storing actief";
-    copy = `${shownActiveIncidentCount} actief incident${shownActiveIncidentCount === 1 ? "" : "en"} zichtbaar.`;
+    title = t("incidents.summaryFaultActive");
+    copy = t("incidents.summaryFaultCopy", { count: shownActiveIncidentCount, plural: pluralize(shownActiveIncidentCount) });
   } else if (activeIncidents.length) {
-    title = "Aandacht nodig";
-    copy = `${shownActiveIncidentCount} actief aandachtspunt${shownActiveIncidentCount === 1 ? "" : "en"} zichtbaar.`;
+    title = t("incidents.summaryAttention");
+    copy = t("incidents.summaryAttentionCopy", { count: shownActiveIncidentCount, plural: pluralize(shownActiveIncidentCount) });
   } else if (recoveredIncidents.length) {
-    title = "Eerdere melding nog niet bevestigd";
-    copy = `${shownRecoveredIncidentCount} hersteld incident${shownRecoveredIncidentCount === 1 ? "" : "en"} blijft zichtbaar tot bevestiging.`;
+    title = t("incidents.summaryRecovered");
+    copy = t("incidents.summaryRecoveredCopy", { count: shownRecoveredIncidentCount, plural: pluralize(shownRecoveredIncidentCount) });
   }
   if (action === "fallback_blocked") {
     const reason = snapshot.system.fallbackBlockReason;
     copy = `${copy} ${reason
-      ? `Blokkade: ${getFallbackBlockReasonLabel(reason)}.`
-      : "Er is geen blokkadereden aangeleverd; de ketelopdracht blijft inactief."}`;
+      ? t("incidents.summaryBlockPrefix", { reason: getFallbackBlockReasonLabel(reason) })
+      : t("incidents.summaryBlockedNoReason")}`;
   }
   if (snapshot.system.boilerCommandActive
       && snapshot.system.boilerTransition === "assist_to_fallback_continuous") {
-    copy = `${copy} De controller gaf tijdens de rolwisseling geen uit/aan-puls.`;
+    copy = `${copy} ${t("incidents.summaryNoPulse")}`;
   }
   return {
     available: true,
@@ -890,9 +842,9 @@ export function combineInstallationMonitoringModel(baseModel, incidentInput) {
     && SEVERITY_RANK[incidentMonitoring.severity] > SEVERITY_RANK[baseSeverity];
   let copy = incidentDominates ? incidentMonitoring.copy : (base.copy || incidentMonitoring.copy);
   if (incidentDominates && base.active && base.problems?.length) {
-    copy += ` Daarnaast zijn ${base.problems.length} bestaande aandachtspunt${base.problems.length === 1 ? "" : "en"} zichtbaar.`;
+    copy += ` ${t("incidents.summaryAlsoBase", { count: base.problems.length, plural: base.problems.length === 1 ? "" : t("incidents.pluralSuffix") })}`;
   } else if (!incidentDominates && incidentMonitoring.active) {
-    copy += ` Daarnaast zijn ${incidentMonitoring.problemCount} incidentmelding${incidentMonitoring.problemCount === 1 ? "" : "en"} zichtbaar.`;
+    copy += ` ${t("incidents.summaryAlsoIncidents", { count: incidentMonitoring.problemCount, plural: incidentMonitoring.problemCount === 1 ? "" : t("incidents.pluralSuffix") })}`;
   }
   return {
     ...base,
@@ -931,7 +883,7 @@ export function getIncidentMonitoringSuccessUpdate(current = {}, payload, now = 
 export function getIncidentMonitoringFailureUpdate(current = {}, error, now = Date.now()) {
   const failureCount = Number(current.incidentMonitoringFailureCount || 0) + 1;
   const previousError = String(current.incidentMonitoringError || "");
-  const failureMessage = String(error?.message || error || "Incidentgegevens konden niet worden bijgewerkt.");
+  const failureMessage = String(error?.message || error || t("incidents.summaryUpdateFailed"));
   const authenticationFailed = /\bHTTP (?:401|403)\b/i.test(failureMessage);
   const message = authenticationFailed || failureCount >= INCIDENT_MONITORING_FAILURE_THRESHOLD
     ? failureMessage

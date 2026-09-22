@@ -18,6 +18,7 @@ import { handleFirmwareAction } from "../features/firmware-actions.js";
 import { updateFirmwareState, updateEnergyHistoryState } from "./feature-state.js";
 import { getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, resetFirmwareManualUploadSelection, resetFirmwareTestSelection } from "../features/firmware-update.js";
 import { handleMqttAction, syncMqttDraftFromInput } from "../features/mqtt-actions.js";
+import { setLocale, t } from "../i18n/index.js";
 import { handleOduEepromDumpAction } from "../features/odu-eeprom-dump.js";
 import { handleOduRuntimeFrequencyAction, handleOduRuntimeFrequencyInputKeyDown, updateOduRuntimeFrequencyDraft } from "../features/odu-runtime-frequency.js";
 import { handleOduSettingsAction, updateOduSettingsDraft } from "../features/odu-settings.js";
@@ -87,7 +88,7 @@ function updateFrequencyRangeControl(input) {
   control.style.setProperty("--oq-range-end", `${((maxValue - scaleMin) / span) * 100}%`);
   const value = control.querySelector("[data-oq-range-value]");
   if (value) {
-    value.textContent = disabled ? "Geen uitsluiting" : `${minValue}–${maxValue} Hz`;
+    value.textContent = disabled ? t("settings.noExclusion") : `${minValue}–${maxValue} Hz`;
   }
 }
 
@@ -249,7 +250,7 @@ function updateFrequencyRangeControl(input) {
       const urls = getFirmwareTestAssetUrls(getFirmwareTestPrNumber(), target);
       const assetNote = section?.querySelector('[data-oq-firmware-test-asset-note="true"]');
       if (assetNote) {
-        assetNote.textContent = urls ? target.otaFileName : "Vul een PR-nummer in om de OTA-build te kiezen.";
+        assetNote.textContent = urls ? target.otaFileName : t("firmware.testPrPrompt");
       }
       section?.querySelector('[data-oq-firmware-test-build-row="true"]')?.remove();
       section?.querySelector('[data-oq-firmware-test-runtime-error="true"]')?.remove();
@@ -268,7 +269,7 @@ function updateFrequencyRangeControl(input) {
       const restoreButton = event.target.closest(".oq-helper-modal")?.querySelector('[data-oq-action="confirm-settings-backup-restore"]');
       if (restoreButton) {
         restoreButton.disabled = !state.settingsBackupMqttPassword;
-        restoreButton.textContent = state.settingsBackupMqttPassword ? "Herstellen" : "Vul MQTT-wachtwoord in";
+        restoreButton.textContent = state.settingsBackupMqttPassword ? t("settingsStorage.restoreConfirm") : t("settingsStorage.restoreNeedPass");
       }
       event.target.closest(".oq-helper-modal")?.querySelector(".oq-settings-backup-error")?.remove();
       return;
@@ -503,7 +504,7 @@ function updateFrequencyRangeControl(input) {
     if (entity.domain === "datetime") {
       const normalized = normalizeDateTimeValue(event.target.value);
       if (!normalized) {
-        state.controlError = `${entity.name} verwacht datum en tijd.`;
+        state.controlError = t("actions.dateTimeExpected", { name: entity.name });
         render();
         return;
       }
@@ -514,6 +515,13 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleClick(event) {
+    const localeButton = event.target.closest("[data-oq-locale]");
+    if (localeButton) {
+      setLocale(localeButton.dataset.oqLocale);
+      render();
+      return;
+    }
+
     const dateTimeControl = event.target.closest(".oq-settings-control--time, .oq-settings-control--datetime");
     if (dateTimeControl) {
       const pickerInput = dateTimeControl.querySelector('input[data-oq-field]');

@@ -9,6 +9,7 @@ import { state } from "../core/state.js";
 import { getBasePath } from "../core/url-path.js";
 import { getInstallationTopology } from "./device-context.js";
 import { renderOduEditorAction, renderOduEditorModal, renderOduEditorPanel } from "./odu-editor-ui.js";
+import { formatNumber, t } from "../i18n/index.js";
 
 export const ODU_RUNTIME_FREQUENCY_LEVELS = Array.from({ length: 21 }, (_item, index) => index);
 export const ODU_RUNTIME_FREQUENCY_MODES = ["cooling", "heating"];
@@ -93,7 +94,7 @@ async function fetchStatus(hp) {
     getOduRuntimeFrequencyEndpoint(hp, "status"),
     { cache: "no-store", headers: { "Cache-Control": "no-store" } },
     8000,
-    `HP${hp} status reageert niet`,
+    t("oduFrequency.statusTimeout", { hp }),
   );
   if (response.status === 404) {
     return normalizeOduRuntimeFrequencyStatus({ available: false, unsupported: true, hp }, hp);
@@ -124,7 +125,7 @@ export async function refreshOduRuntimeFrequencyStatuses(options = {}) {
       if (changed && shouldRefreshOduRuntimeFrequencySurface()) render();
       return changed;
     } catch (error) {
-      state.oduRuntimeFrequencyError = `Status mislukt. ${error.message || String(error)}`;
+      state.oduRuntimeFrequencyError = t("oduFrequency.statusFailed", { error: error.message || String(error) });
       if (!options.silent) render();
       return false;
     } finally {
@@ -135,12 +136,12 @@ export async function refreshOduRuntimeFrequencyStatuses(options = {}) {
 }
 
 function getRequestErrorMessage(error) {
-  if (error === "busy") return "ODU of Modbus-bus is bezig";
-  if (error === "load_required") return "laad de actuele ODU-tabel eerst";
-  if (error === "arm_required") return "geef runtime writes eerst vrij";
-  if (error === "invalid_table") return "de frequentietabel is ongeldig";
-  if (error === "forbidden") return "de beveiligingscontrole is verlopen; laad de pagina opnieuw";
-  return error || "actie geweigerd";
+  if (error === "busy") return t("oduFrequency.reqBusy");
+  if (error === "load_required") return t("oduFrequency.reqLoad");
+  if (error === "arm_required") return t("oduFrequency.reqArm");
+  if (error === "invalid_table") return t("oduFrequency.reqInvalid");
+  if (error === "forbidden") return t("oduFrequency.reqForbidden");
+  return error || t("oduFrequency.reqDefault");
 }
 
 async function postAction(hp, action, values = {}) {
@@ -149,7 +150,7 @@ async function postAction(hp, action, values = {}) {
     status = await fetchStatus(hp);
     storeStatus(hp, status);
   }
-  if (!status.csrfToken) throw new Error("CSRF ontbreekt");
+  if (!status.csrfToken) throw new Error(t("oduFrequency.reqNoCsrf"));
 
   const body = new URLSearchParams();
   body.set("csrf_token", status.csrfToken);
@@ -166,7 +167,7 @@ async function postAction(hp, action, values = {}) {
       body: body.toString(),
     },
     8000,
-    `HP${hp} actie reageert niet`,
+    t("oduFrequency.reqTimeout", { hp }),
   );
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(getRequestErrorMessage(payload.error || `HTTP ${response.status}`));
@@ -184,7 +185,7 @@ async function waitForOperation(hp) {
     render();
     if (!status.busy) return status;
   }
-  throw new Error("firmware bleef langer dan 65 seconden bezig");
+  throw new Error(t("oduFrequency.reqLongBusy"));
 }
 
 function collectDraftTable(hp) {
@@ -216,10 +217,10 @@ async function runOperation(hp, action) {
       throw new Error(status.status);
     }
     state.controlNotice = action === "load"
-      ? `HP${hp}: frequentietabel geladen.`
-      : `HP${hp}: frequentietabel gecontroleerd en toegepast.`;
+      ? t("oduFrequency.opLoaded", { hp })
+      : t("oduFrequency.opApplied", { hp });
   } catch (error) {
-    state.controlError = `HP${hp}: actie mislukt. ${error.message || String(error)}`;
+    state.controlError = t("oduFrequency.opFailed", { hp, error: error.message || String(error) });
   } finally {
     state.busyAction = "";
     state.oduRuntimeFrequencyLastFetchAt = 0;
@@ -235,9 +236,9 @@ async function toggleArm(hp) {
   render();
   try {
     await postAction(hp, "arm", { enabled });
-    state.controlNotice = `HP${hp}: wijzigingen ${enabled ? "vrijgegeven" : "vergrendeld"}.`;
+    state.controlNotice = t("oduFrequency.armChanged", { hp, state: enabled ? t("oduFrequency.armOn") : t("oduFrequency.armOff") });
   } catch (error) {
-    state.controlError = `HP${hp} write-lock aanpassen mislukt. ${error.message || String(error)}`;
+    state.controlError = t("oduFrequency.armFailed", { hp, error: error.message || String(error) });
   } finally {
     state.busyAction = "";
     render();
@@ -290,14 +291,14 @@ function getOperationState(hp) {
   return {
     safe: standby && stopped,
     copy: !modeKnown
-      ? "De toestand van de buitenunit is nog niet bekend."
+      ? t("oduFrequency.unknownState")
       : !standby
-        ? `De buitenunit staat in ${mode}.`
+        ? t("oduFrequency.inMode", { mode })
         : !frequencyKnown
-          ? "De compressorfrequentie is nog niet bekend."
+          ? t("oduFrequency.unknownFreq")
           : !stopped
-            ? `De compressor draait op ${frequency.toFixed(0)} Hz.`
-            : "De buitenunit staat stil en kan veilig worden gewijzigd.",
+            ? t("oduFrequency.runningFreq", { freq: formatNumber(frequency, { maximumFractionDigits: 0 }) })
+            : t("oduFrequency.idleSafe"),
   };
 }
 
@@ -320,19 +321,19 @@ function getTableValidation(hp) {
 
 export function getStatusPresentation(status) {
   const code = String(status || "").toUpperCase();
-  if (code.includes("VERIFIED SUCCESSFULLY")) return ["De gekozen waarden zijn actief", "success"];
-  if (code.includes("LOADED")) return ["Waarden uit de buitenunit geladen", "success"];
+  if (code.includes("VERIFIED SUCCESSFULLY")) return [t("oduFrequency.verified"), "success"];
+  if (code.includes("LOADED")) return [t("oduFrequency.loaded"), "success"];
   if (code.includes("OPERATING MODE UNKNOWN") || code.includes("FREQUENCY UNKNOWN")
     || code.includes("SAFETY CHECK TIMED OUT")) {
-    return ["Veilige toestand van de buitenunit kon niet worden vastgesteld", "warning"];
+    return [t("oduFrequency.unknownSafe"), "warning"];
   }
-  if (code.includes("BLOCKED")) return ["Wacht tot de buitenunit stilstaat", "warning"];
-  if (code.includes("FAILED")) return ["Toepassen kon niet worden bevestigd", "warning"];
-  if (code.includes("WRITES ENABLED")) return ["Wijzigingen vrijgegeven", ""];
-  if (code.includes("WRITES DISABLED")) return ["Wijzigingen vergrendeld", ""];
+  if (code.includes("BLOCKED")) return [t("oduFrequency.blocked"), "warning"];
+  if (code.includes("FAILED")) return [t("oduFrequency.failed"), "warning"];
+  if (code.includes("WRITES ENABLED")) return [t("oduFrequency.writesOn"), ""];
+  if (code.includes("WRITES DISABLED")) return [t("oduFrequency.writesOff"), ""];
   if (code.includes("WRITING") || code.includes("READING") || code.includes("CHECKING")
-    || code.includes("VERIFYING")) return ["Bezig met controleren", ""];
-  return ["Laad eerst de actuele waarden", ""];
+    || code.includes("VERIFYING")) return [t("oduFrequency.checking"), ""];
+  return [t("oduFrequency.loadFirst"), ""];
 }
 
 function renderFrequencyInput(hp, mode, level, tabIndex) {
@@ -344,7 +345,7 @@ function renderFrequencyInput(hp, mode, level, tabIndex) {
     inputClass: "oq-helper-input oq-helper-input--compact-number oq-settings-odu-runtime-input",
     inputAttributes: `inputmode="numeric" data-oq-odu-runtime-hp="${hp}" data-oq-odu-runtime-mode="${mode}"
         data-oq-odu-runtime-level="${level}" data-oq-odu-runtime-tab-index="${tabIndex}"
-        aria-label="${escapeHtml(`HP${hp} ${mode === "cooling" ? "koelen" : "verwarmen"} F${level} in Hz`)}"`,
+        aria-label="${escapeHtml(t("oduFrequency.inputAria", { hp, mode: mode === "cooling" ? t("oduFrequency.inputCooling") : t("oduFrequency.inputHeating"), level }))}"`,
     disabled: !status?.loaded || status.busy,
   });
 }
@@ -353,9 +354,9 @@ function renderFrequencyTable(hp) {
   const status = getOduRuntimeFrequencyStatus(hp);
   const levels = ODU_RUNTIME_FREQUENCY_LEVELS.slice(0, status?.levelCount === 21 ? 21 : 11);
   return `
-    <div class="oq-settings-odu-runtime-table" role="table" aria-label="${escapeHtml(`HP${hp} frequentietabel`)}">
+    <div class="oq-settings-odu-runtime-table" role="table" aria-label="${escapeHtml(t("oduFrequency.tableAria", { hp }))}">
       <div class="oq-settings-odu-runtime-row oq-settings-odu-runtime-row--head" role="row">
-        <span role="columnheader">Niveau</span><span role="columnheader">Koelen<br>Hz</span><span role="columnheader">Verwarmen<br>Hz</span>
+        <span role="columnheader">${escapeHtml(t("oduFrequency.colLevel"))}</span><span role="columnheader">${t("oduFrequency.colCooling")}</span><span role="columnheader">${t("oduFrequency.colHeating")}</span>
       </div>
       ${levels.map((level) => `
         <div class="oq-settings-odu-runtime-row" role="row">
@@ -376,14 +377,14 @@ function renderFrequencyPanel(hp) {
   const [statusLabel, statusTone] = getStatusPresentation(status?.status);
   const applyDisabled = busy || !status?.loaded || !armed || !validation.valid || !operation.safe || !available;
   return renderOduEditorPanel({
-    hp, title: "Frequentietabel", copy: operation.copy,
-    actions: renderOduEditorAction(hp, "odu-runtime-load", "Uit buitenunit laden", busy || !available)
-      + renderOduEditorAction(hp, "odu-runtime-arm", armed ? "Wijzigingen vergrendelen" : "Wijzigingen vrijgeven", busy || !status?.loaded || !available)
-      + renderOduEditorAction(hp, "odu-runtime-apply", busy ? "Bezig..." : "Toepassen", applyDisabled, "warning"),
+    hp, title: t("oduFrequency.panelTitle"), copy: operation.copy,
+    actions: renderOduEditorAction(hp, "odu-runtime-load", t("oduFrequency.loadAction"), busy || !available)
+      + renderOduEditorAction(hp, "odu-runtime-arm", armed ? t("oduFrequency.armLock") : t("oduFrequency.armRelease"), busy || !status?.loaded || !available)
+      + renderOduEditorAction(hp, "odu-runtime-apply", busy ? t("oduFrequency.applyBusy") : t("oduFrequency.applyAction"), applyDisabled, "warning"),
     statusLabel, tone: statusTone,
     body: `
-      ${status?.loaded ? renderFrequencyTable(hp) : '<p class="oq-settings-odu-runtime-validation is-warning">Laad eerst de actuele tabel; er worden geen standaardwaarden ingevuld.</p>'}
-      ${!status?.loaded || validation.valid ? "" : `<p class="oq-settings-odu-runtime-validation is-warning">Controleer ${escapeHtml(validation.invalid.slice(0, 6).join(", "))}.</p>`}
+      ${status?.loaded ? renderFrequencyTable(hp) : `<p class="oq-settings-odu-runtime-validation is-warning">${escapeHtml(t("oduFrequency.loadTableFirst"))}</p>`}
+      ${!status?.loaded || validation.valid ? "" : `<p class="oq-settings-odu-runtime-validation is-warning">${escapeHtml(t("oduFrequency.checkInvalid", { items: validation.invalid.slice(0, 6).join(", ") }))}</p>`}
     `,
   });
 }
@@ -393,15 +394,15 @@ export function renderOduRuntimeFrequencyModal() {
   return renderOduEditorModal({
     modalId: "odu-frequency-settings",
     titleId: "oq-odu-frequency-title",
-    title: "Frequentietabel",
-    closeLabel: "Sluit frequentietabel",
+    title: t("oduFrequency.modalTitle"),
+    closeLabel: t("oduFrequency.modalClose"),
     warning: `
-          <strong>Niet permanent opgeslagen</strong>
-          <p>Als de buitenunit volledig stroomloos is geweest, worden jouw aanpassingen teruggezet naar de oorspronkelijke frequenties.</p>
-          <p>Wijzig alleen waarden waarvan je het effect op de compressor kent. Toepassen is alleen mogelijk in standby met de compressor uit.</p>
-          <p>Wees bij Quatt buitenunits V1 en V1.5 voorzichtig met koelwaarden onder 30 Hz: bij een te lage frequentie kan vloeibaar koudemiddel terugstromen en de compressor beschadigen. Bij V2 is 20 Hz toegestaan.</p>`,
+          <strong>${escapeHtml(t("oduFrequency.modalWarnTitle"))}</strong>
+          <p>${escapeHtml(t("oduFrequency.modalWarn1"))}</p>
+          <p>${escapeHtml(t("oduFrequency.modalWarn2"))}</p>
+          <p>${escapeHtml(t("oduFrequency.modalWarn3"))}</p>`,
     error: state.oduRuntimeFrequencyError,
     panels: hpIndexes.map(renderFrequencyPanel).join(""),
-    footer: `<details class="oq-settings-odu-technical"${state.oduRuntimeFrequencyTechnicalDetailsOpen ? " open" : ""}><summary data-oq-action="toggle-odu-frequency-technical-details">Technische details</summary><p>De tabel wordt direct naar tijdelijke Modbus-registers van de buitenunit geschreven. OpenQuatt bewaart deze frequenties niet.</p></details>`,
+    footer: `<details class="oq-settings-odu-technical"${state.oduRuntimeFrequencyTechnicalDetailsOpen ? " open" : ""}><summary data-oq-action="toggle-odu-frequency-technical-details">${escapeHtml(t("oduFrequency.techTitle"))}</summary><p>${escapeHtml(t("oduFrequency.techCopy"))}</p></details>`,
   });
 }

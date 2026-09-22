@@ -9,6 +9,7 @@ import { state } from "../core/state.js";
 import { clearDebugRecordingDevicePollTimer, scheduleDebugRecordingDeviceStatusPoll } from "./debug-recording.js";
 import { stopLoginAuthStatusPolling } from "./security-actions.js";
 import { clearSettingsBackupDraft } from "./storage-history.js";
+import { t } from "../i18n/index.js";
 
 function closeSystemModal() {
   stopLoginAuthStatusPolling();
@@ -92,8 +93,8 @@ const systemActionHandlers = {
       return;
     }
     return triggerNamedButton(key, {
-      successNotice: "De draaitijdbalans is teruggezet. Nieuwe tellerwaarden kunnen binnen ongeveer één minuut zichtbaar worden.",
-      errorPrefix: "Draaiurentellers resetten mislukt",
+      successNotice: t("system.runtimeResetDone"),
+      errorPrefix: t("system.runtimeResetFail"),
     });
   },
   "open-energy-counter-reset-confirm": () => {
@@ -103,8 +104,8 @@ const systemActionHandlers = {
     render();
   },
   "confirm-energy-counter-reset": () => triggerNamedButton("resetCumulativeEnergyCounters", {
-    successNotice: "De cumulatieve energietellers zijn teruggezet.",
-    errorPrefix: "Energietellers resetten mislukt",
+    successNotice: t("system.energyResetDone"),
+    errorPrefix: t("system.energyResetFail"),
   }),
   "confirm-electrical-limit": () => {
     const pending = state.pendingElectricalLimit || {};
@@ -115,7 +116,7 @@ const systemActionHandlers = {
     }
     state.pendingElectricalLimit = null;
     state.systemModal = "";
-    return commitNumber("electricalCurrentLimit", toA, "Elektrische ingangsgrens bijgewerkt.");
+    return commitNumber("electricalCurrentLimit", toA, t("system.electricalUpdated"));
   },
   "reset-electrical-limit-to-default": async () => {
     state.pendingElectricalLimit = null;
@@ -124,7 +125,7 @@ const systemActionHandlers = {
     }
     const { getElectricalLimitTopologyInfo } = await import("../settings/electrical-limit.js");
     const info = getElectricalLimitTopologyInfo();
-    return commitNumber("electricalCurrentLimit", info.standardA, "Elektrische ingangsgrens teruggezet op de standaardwaarde.");
+    return commitNumber("electricalCurrentLimit", info.standardA, t("system.electricalDefault"));
   },
   "open-silent-settings-modal": () => {
     state.systemModal = "silent-settings";
@@ -152,13 +153,13 @@ const systemActionHandlers = {
     try {
       const applied = await setEntityBackupValue("heatingEnableSource", target);
       if (!await verifyEntityBackupSelectState("heatingEnableSource", applied)) {
-        throw new Error("de controller heeft de gekozen bron niet bevestigd.");
+        throw new Error(t("system.adviceNotConfirmed"));
       }
       state.entities.heatingEnableSource = { ...(state.entities.heatingEnableSource || {}), value: applied, state: applied };
-      state.controlNotice = target === "Disabled" ? "Warmtetoestemming op Niet gebruiken gezet — je ziet nu ‘Komt overeen’." : `Warmtetoestemming op ${target} gezet — je ziet nu ‘Komt overeen’.`;
+      state.controlNotice = target === "Disabled" ? t("system.adviceSetDisabled") : t("system.adviceSetSource", { target });
       await refreshEntities(["heatingEnableSource", "heatingEnableValid", "heatingEnableSelected"], "all");
     } catch (error) {
-      state.controlError = `Warmtetoestemming kon niet worden opgeslagen. ${error.message}`;
+      state.controlError = t("system.adviceSaveFail", { error: error.message });
     } finally {
       state.busyAction = "";
       render();
@@ -173,7 +174,7 @@ const systemActionHandlers = {
   "apply-openquatt-indefinite": () => commitOpenQuattRegulationPause(""),
   "apply-openquatt-custom-pause": () => {
     if (!String(state.pauseResumeDraft || "").trim()) {
-      state.controlError = "Kies eerst een datum en tijd om automatisch te hervatten.";
+      state.controlError = t("system.pausePickTime");
       render();
       return;
     }
@@ -181,13 +182,13 @@ const systemActionHandlers = {
   },
   "close-system-modal": () => closeSystemModal(),
   "confirm-restart": () => triggerNamedButton("restartAction", {
-    successNotice: "OpenQuatt wordt opnieuw opgestart. Wacht even tot de webinterface weer terugkomt.",
-    errorPrefix: "Herstart mislukt",
+    successNotice: t("system.restartDone"),
+    errorPrefix: t("system.restartFail"),
     reconnectMode: "restart",
   }),
   "confirm-factory-reset": () => triggerNamedButton("factoryResetButton", {
-    successNotice: "De controller wordt teruggezet naar fabrieksinstellingen en herstart. Stel daarna alles opnieuw in.",
-    errorPrefix: "Factory reset mislukt",
+    successNotice: t("system.factoryDone"),
+    errorPrefix: t("system.factoryFail"),
   }),
 };
 

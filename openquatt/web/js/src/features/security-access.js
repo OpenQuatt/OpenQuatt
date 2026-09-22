@@ -1,94 +1,95 @@
 import { state } from "../core/state.js";
 import { escapeHtml } from "../core/html.js";
 import { renderModalShell } from "../core/modal-shell.js";
+import { t } from "../i18n/index.js";
 
   export function getWebAuthStatusLabel() {
     const authStatus = state.authStatus;
     if (!authStatus) {
-      return "Laden...";
+      return t("securityAccess.webLoading");
     }
     if (authStatus.enabled) {
-      return authStatus.setup_window_active ? "Instelvenster" : "Beveiligd";
+      return authStatus.setup_window_active ? t("securityAccess.webSetupWindow") : t("securityAccess.webSecured");
     }
-    return "Onbeveiligd";
+    return t("securityAccess.webUnsecured");
   }
 
   export function getWebAuthModalTitle() {
-    return "Login";
+    return t("securityAccess.webTitle");
   }
 
   export function getWebAuthModalCopy() {
     const authStatus = state.authStatus;
     if (!authStatus) {
-      return "We halen de huidige loginstatus op.";
+      return t("securityAccess.webCopyLoading");
     }
     if (authStatus.enabled) {
-      return "De web-app vraagt nu een login voordat beheer beschikbaar is. Je kunt die hier aanpassen of uitzetten.";
+      return t("securityAccess.webCopyEnabled");
     }
-    return "De web-app staat open op je netwerk. Houd de herstelknop 5 seconden vast om een login toe te voegen.";
+    return t("securityAccess.webCopyOpen");
   }
 
   export function getWebAuthStatusDetail() {
     const authStatus = state.authStatus;
     if (!authStatus) {
-      return "Logingegevens laden...";
+      return t("securityAccess.webDetailLoading");
     }
     if (authStatus.enabled) {
       return authStatus.setup_window_active
-        ? "Login actief. Tijdelijk instelvenster is open."
-        : `Login actief${authStatus.source ? ` via ${authStatus.source}` : ""}.`;
+        ? t("securityAccess.webDetailSetup")
+        : t("securityAccess.webDetailActive", { source: authStatus.source ? t("securityAccess.webDetailSource", { source: authStatus.source }) : "" });
     }
     return authStatus.setup_window_active
-      ? "Login uit. Tijdelijk instelvenster is open."
-      : "Login uit. Webtoegang is open / onbeveiligd op het netwerk.";
+      ? t("securityAccess.webDetailOffSetup")
+      : t("securityAccess.webDetailOffOpen");
   }
 
   export function getApiSecurityStatusLabel() {
     if (state.apiSecurityError) {
-      return "Niet beschikbaar";
+      return t("securityAccess.apiUnavailable");
     }
     const status = state.apiSecurityStatus;
     if (!status) {
-      return "Laden...";
+      return t("securityAccess.webLoading");
     }
     if (status.transport_active === true) {
-      return "Actief";
+      return t("securityAccess.apiActive");
     }
     if (status.provisioning_closed === true) {
-      return "Niet beschikbaar";
+      return t("securityAccess.apiUnavailable");
     }
     if (status.provisioning_pending === true) {
-      return "Wacht op koppeling";
+      return t("securityAccess.apiWaitLink");
     }
-    return "Niet beschikbaar";
+    return t("securityAccess.apiUnavailable");
   }
 
   export function getApiSecurityStatusDetail() {
     if (state.apiSecurityError) {
-      return "De beveiligingsstatus kon niet worden opgehaald. Controleer de verbinding met het apparaat en probeer het opnieuw.";
+      return t("securityAccess.apiErrorCopy");
     }
     const status = state.apiSecurityStatus;
     if (!status) {
-      return "Beveiligde verbinding wordt gecontroleerd.";
+      return t("securityAccess.apiCheckingCopy");
     }
     if (status.transport_active === true) {
-      return "De beveiliging voor Home Assistant is ingesteld.";
+      return t("securityAccess.apiSetCopy");
     }
     if (status.provisioning_pending === true) {
-      return "Dit apparaat is nog niet gekoppeld. Na een opstart kan Home Assistant 10 minuten lang de beveiligde verbinding instellen. Daarna worden nieuwe koppelpogingen geweigerd.";
+      return t("securityAccess.apiPendingCopy");
     }
     if (status.provisioning_closed === true) {
-      return "De eerste koppeling is niet binnen 10 minuten gelukt. Zet het apparaat kort uit en weer aan om opnieuw te proberen.";
+      return t("securityAccess.apiClosedCopy");
     }
-    return "De beveiligde verbinding is tijdelijk niet beschikbaar.";
+    return t("securityAccess.apiTempCopy");
   }
 
   export function getApiSecurityModalTitle() {
-    return "Beveiligde verbinding met Home Assistant";
+    return t("securityAccess.apiTitle");
   }
 
   export function getApiSecurityModalCopy() {
-    return "Home Assistant regelt deze beveiliging automatisch. Je hoeft hier niets in te stellen.";
+    return t("securityAccess.apiCopy");
   }
 
   export function renderLoginStatusRow(label, value, copy = "", loading = false) {
@@ -110,20 +111,20 @@ import { renderModalShell } from "../core/modal-shell.js";
     return renderModalShell({
       id: "system",
       titleId: "oq-api-security-modal-title",
-      kicker: "Toegang",
+      kicker: t("securityAccess.apiKicker"),
       title: getApiSecurityModalTitle(),
       copy: getApiSecurityModalCopy(),
       className: "oq-helper-modal--wide",
       closeAction: "close-system-modal",
-      closeLabel: "Sluit API-beveiliging popup",
+      closeLabel: t("securityAccess.apiClose"),
       body: `
         <div class="oq-settings-api-security-shell oq-settings-api-security-shell--modal">
           <div class="oq-helper-modal-grid">
-            ${renderLoginStatusRow("Status", getApiSecurityStatusLabel(), getApiSecurityStatusDetail())}
-            ${renderLoginStatusRow("Beheer", "Automatisch door Home Assistant", "De beveiligingssleutel wordt automatisch ingesteld en bewaard.")}
+            ${renderLoginStatusRow(t("securityAccess.apiStatusRow"), getApiSecurityStatusLabel(), getApiSecurityStatusDetail())}
+            ${renderLoginStatusRow(t("securityAccess.apiManageRow"), t("securityAccess.apiManageValue"), t("securityAccess.apiManageCopy"))}
           </div>
         </div>`,
-      actions: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal">Gereed</button>`,
+      actions: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal">${escapeHtml(t("header.done"))}</button>`,
     });
   }
 
@@ -134,13 +135,13 @@ import { renderModalShell } from "../core/modal-shell.js";
     const canEdit = authEnabled || setupWindowActive;
     const usernameValue = authEnabled ? String(authStatus.username || "").trim() : "";
     const noticeMarkup = state.authNotice
-      ? `<div class="oq-helper-modal-success oq-helper-modal-success--compact" aria-live="polite"><strong>Opgeslagen</strong><span>${escapeHtml(state.authNotice)}</span></div>`
+      ? `<div class="oq-helper-modal-success oq-helper-modal-success--compact" aria-live="polite"><strong>${escapeHtml(t("securityAccess.loginSaved"))}</strong><span>${escapeHtml(state.authNotice)}</span></div>`
       : "";
     const errorMarkup = state.authError
       ? `<div class="oq-helper-modal-note oq-helper-modal-note--error" aria-live="assertive">${escapeHtml(state.authError)}</div>`
       : "";
     const authFormIntro = canEdit
-      ? `<p class="oq-helper-modal-intro">${authEnabled ? "Pas hier je login aan." : "Vul hier je nieuwe login in."}</p>`
+      ? `<p class="oq-helper-modal-intro">${escapeHtml(authEnabled ? t("securityAccess.loginEditIntro") : t("securityAccess.loginNewIntro"))}</p>`
       : "";
     const authFormMarkup = canEdit
       ? `
@@ -149,7 +150,7 @@ import { renderModalShell } from "../core/modal-shell.js";
           ${authEnabled
             ? `
               <label class="oq-helper-modal-auth-field">
-                <span>Huidig wachtwoord</span>
+                <span>${escapeHtml(t("securityAccess.loginCurrentPass"))}</span>
                 <input
                   class="oq-helper-input"
                   type="password"
@@ -162,7 +163,7 @@ import { renderModalShell } from "../core/modal-shell.js";
             `
             : ""}
           <label class="oq-helper-modal-auth-field">
-            <span>Nieuwe gebruikersnaam</span>
+            <span>${escapeHtml(t("securityAccess.loginNewUser"))}</span>
             <input
               class="oq-helper-input"
               type="text"
@@ -174,7 +175,7 @@ import { renderModalShell } from "../core/modal-shell.js";
             >
           </label>
           <label class="oq-helper-modal-auth-field">
-            <span>Nieuw wachtwoord</span>
+            <span>${escapeHtml(t("securityAccess.loginNewPass"))}</span>
             <input
               class="oq-helper-input"
               type="password"
@@ -186,7 +187,7 @@ import { renderModalShell } from "../core/modal-shell.js";
             >
           </label>
           <label class="oq-helper-modal-auth-field">
-            <span>Herhaal nieuw wachtwoord</span>
+            <span>${escapeHtml(t("securityAccess.loginRepeatPass"))}</span>
             <input
               class="oq-helper-input"
               type="password"
@@ -201,34 +202,34 @@ import { renderModalShell } from "../core/modal-shell.js";
       `
       : `
         <div class="oq-helper-modal-callout oq-helper-modal-callout--subtle">
-          <strong>Login toevoegen</strong>
-          <span>Houd de herstelknop 5 seconden vast om het instelvenster te openen.</span>
+          <strong>${escapeHtml(t("securityAccess.loginAddTitle"))}</strong>
+          <span>${escapeHtml(t("securityAccess.loginAddCopy"))}</span>
         </div>
       `;
 
     return renderModalShell({
       id: "system",
       titleId: "oq-login-modal-title",
-      kicker: "Systeem",
+      kicker: t("securityAccess.loginKicker"),
       title: getWebAuthModalTitle(),
       copy: getWebAuthModalCopy(),
       closeAction: "close-system-modal",
-      closeLabel: "Sluit login-popup",
+      closeLabel: t("securityAccess.loginClose"),
       body: `
           ${noticeMarkup}
           ${errorMarkup}
           <div class="oq-helper-modal-grid">
-            ${renderLoginStatusRow("Beveiligingsstatus", getWebAuthStatusLabel(), getWebAuthStatusDetail())}
-            ${renderLoginStatusRow("Gebruiker", authEnabled ? (usernameValue || "Geen naam") : "Geen login", authEnabled ? "Deze naam gebruik je om in te loggen." : "Er staat nog geen login op het device.")}
+            ${renderLoginStatusRow(t("securityAccess.loginStatusRow"), getWebAuthStatusLabel(), getWebAuthStatusDetail())}
+            ${renderLoginStatusRow(t("securityAccess.loginUserRow"), authEnabled ? (usernameValue || t("securityAccess.loginNoName")) : t("securityAccess.loginNoLogin"), authEnabled ? t("securityAccess.loginNameCopy") : t("securityAccess.loginNoLoginCopy"))}
           </div>
           ${authFormMarkup}`,
       actions: `
-        <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${state.authBusy ? "disabled" : ""}>Gereed</button>
+        <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${state.authBusy ? "disabled" : ""}>${escapeHtml(t("header.done"))}</button>
         ${authEnabled
-              ? `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="disable-web-auth" ${state.authBusy ? "disabled" : ""}>Uitzetten</button>`
+              ? `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="disable-web-auth" ${state.authBusy ? "disabled" : ""}>${escapeHtml(t("securityAccess.loginDisable"))}</button>`
               : ""}
         ${canEdit
-              ? `<button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="save-web-auth" ${state.authBusy ? "disabled" : ""}>${authEnabled ? "Opslaan" : "Login opslaan"}</button>`
+              ? `<button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="save-web-auth" ${state.authBusy ? "disabled" : ""}>${escapeHtml(authEnabled ? t("securityAccess.loginSave") : t("securityAccess.loginSaveNew"))}</button>`
               : ""}`,
     });
   }

@@ -1,5 +1,6 @@
 import { escapeHtml } from "../core/html.js";
 import { renderModalShell } from "../core/modal-shell.js";
+import { t } from "../i18n/index.js";
 
 // Presentation only: each service keeps its own write, identity and busy gates.
 export function renderOduEditorAction(hp, action, label, disabled, variant = "ghost") {
@@ -23,7 +24,7 @@ export function renderOduEditorModal({ modalId, titleId, title, closeLabel, warn
   return renderModalShell({
     modalId,
     titleId,
-    kicker: "Instellingen buitenunit",
+    kicker: t("oduSettings.editorKicker"),
     title,
     titleBadge: "Experimenteel",
     closeAction: "close-system-modal",

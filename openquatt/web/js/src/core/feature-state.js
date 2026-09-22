@@ -12,7 +12,7 @@ function updateFeatureState(domain, patch) {
   const ownsKey = stateDomains[domain];
   const foreignKey = Object.keys(patch).find((key) => !ownsKey(key));
   if (foreignKey) {
-    throw new Error(`${domain} state beheert sleutel ${foreignKey} niet.`);
+    throw new Error(`${domain} state does not own key ${foreignKey}.`);
   }
   Object.assign(state, patch);
 }

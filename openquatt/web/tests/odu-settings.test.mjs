@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { setLocale, t } from "../js/src/i18n/index.js";
 
 globalThis.__OQ_PREVIEW__ = false;
 globalThis.window = {
@@ -53,6 +54,16 @@ test("lege of ongeldige temperatuur blokkeert opslaan", () => {
     const model = getOduSettingsEditorModel(1);
     assert.equal(model.saveDisabled, ["", "invalid"].includes(value));
   }
+});
+
+test("bodemplaatcopy volgt de gekozen taal", () => {
+  state.oduSettingsStatuses = { 1: { available: true, identityReady: true, loaded: true } };
+  state.oduSettingsDrafts = { 1: { mode: "1", startTemperatureC: "4", stopDeltaC: "3" } };
+  setLocale("nl", { persist: false, notify: false });
+  assert.equal(t("oduSettings.mode1"), "Volgt buitentemperatuur");
+  setLocale("en", { persist: false, notify: false });
+  assert.equal(t("oduSettings.mode1"), "Follows outdoor temperature");
+  setLocale("nl", { persist: false, notify: false });
 });
 
 test("bodemplaatservice gebruikt per-HP endpoints en de installatie-topologie", () => {
@@ -248,8 +259,10 @@ test("firmwarecontract schrijft sheet 3237-3239 via Modbus 3236-3238", async () 
 test("netwerkfout vervangt de laadstatus door duidelijke niet-beschikbaarcopy", async () => {
   const featureSource = await readFile(new URL("../js/src/features/odu-settings.js", import.meta.url), "utf8");
   const mockSource = await readFile(new URL("../js/mock-device.js", import.meta.url), "utf8");
+  const { default: nlCatalogue } = await import("../js/src/i18n/nl.js");
   assert.match(featureSource, /failed to fetch\|networkerror\|load failed/i);
-  assert.match(featureSource, /Status ophalen mislukt\. Controleer de verbinding met OpenQuatt\./);
+  assert.match(featureSource, /t\("oduSettings\.fetchError"\)/);
+  assert.equal(nlCatalogue.oduSettings.fetchError, "Status ophalen mislukt. Controleer de verbinding met OpenQuatt.");
   assert.match(featureSource, /changed \|\| hadError/);
   assert.match(mockSource, /pathname\.match\(\/\\\/openquatt\\\/odu-settings/);
 });

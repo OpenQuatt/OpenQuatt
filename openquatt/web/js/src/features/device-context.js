@@ -3,6 +3,7 @@ import { TOPOLOGY_HINT_KEYS } from "../core/config.js";
 import { getEntityValue, isDeviceTimeValid } from "../core/entity-store.js";
 import { formatDurationFromMinutes } from "../core/formatting.js";
 import { state } from "../core/state.js";
+import { formatDate, formatTime, t } from "../i18n/index.js";
 
   export function getDeviceMeta() {
     const meta = __OQ_PREVIEW__ && typeof window !== "undefined" && window.__OQ_DEV_META && typeof window.__OQ_DEV_META === "object"
@@ -112,7 +113,7 @@ import { state } from "../core/state.js";
     if (connection === "eth") {
       return "Ethernet";
     }
-    return "Onbekend";
+    return t("device.unknown");
   }
 
   export function getFirmwareTopologyLabel(topology = getInstallationTopology()) {
@@ -122,7 +123,7 @@ import { state } from "../core/state.js";
     if (topology === "duo") {
       return "Duo";
     }
-    return "Onbekende opstelling";
+    return t("device.unknownTopology");
   }
 
   export function getFirmwareHardwareProfile() {
@@ -179,28 +180,24 @@ import { state } from "../core/state.js";
       return deviceClock;
     }
     if (hasEntity("timeNowHhmm")) {
-      return "Geen tijdsync";
+      return t("device.noTimeSync");
     }
-    try {
-      return new Intl.DateTimeFormat("nl-NL", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(new Date());
-    } catch (_error) {
-      return new Date().toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
-    }
+    return formatTime(new Date(), {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   }
 
   export function formatDiagnosticsDateTime() {
     if (hasEntity("timeNowHhmm") && !isDeviceTimeValid(getEntityValue("timeNowHhmm"))) {
-      return "Geen tijdsync";
+      return t("device.noTimeSync");
     }
 
-    const datePart = new Intl.DateTimeFormat("nl-NL", {
+    const datePart = formatDate(new Date(), {
       day: "numeric",
       month: "short",
       year: "numeric",
-    }).format(new Date());
+    });
     return `${datePart} · ${formatDeviceClock()}`;
   }
 
