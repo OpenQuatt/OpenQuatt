@@ -82,7 +82,7 @@ test("compact i18n build keeps both locales and dynamic incident keys", async ()
 });
 
 test("compact i18n build uses a bounded runtime key index", () => {
-  assert.equal(COMPACT_I18N_STATS.keys, 4370);
+  assert.equal(COMPACT_I18N_STATS.keys, flattenCatalogue(nl).size);
   assert.equal(COMPACT_I18N_STATS.dynamicKeys, 195);
   assert.ok(COMPACT_I18N_STATS.optionKeys > 50);
 });

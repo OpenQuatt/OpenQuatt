@@ -5,10 +5,10 @@ import { getCurveFallbackSuggestion, getEntityValue, normalizeNumber } from "../
 import { getHeatingEnableAdvice } from "../core/heating-strategy-matrix.js";
 import { state } from "../core/state.js";
 import { getSettingsSelectModel } from "./field-models.js";
-import { renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField } from "./controls.js";
+import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField } from "./controls.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
-import { t } from "../i18n/index.js";
+import { formatNumber, t } from "../i18n/index.js";
 
   export function renderCurveFallbackSuggestionMarkup(helper = false) {
     const suggestion = getCurveFallbackSuggestion();
@@ -432,6 +432,69 @@ import { t } from "../i18n/index.js";
     `;
   }
 
+  export function formatRunExtensionTemp(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? `${formatNumber(numeric, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} °C` : "—";
+  }
+
+  export function getRunExtensionThresholds() {
+    const setpoint = hasEntity("roomSetpoint") ? getEntityNumericValue("roomSetpoint") : NaN;
+    const marginRaw = hasEntity("phRunExtensionStopMargin") ? getEntityNumericValue("phRunExtensionStopMargin") : NaN;
+    const margin = Number.isFinite(marginRaw) ? marginRaw : 0.5;
+    if (!Number.isFinite(setpoint)) return { setpoint: NaN, margin, hysteresis: 0.2, stop: NaN, restart: NaN };
+    const stop = setpoint + margin;
+    return { setpoint, margin, hysteresis: 0.2, stop, restart: stop - 0.2 };
+  }
+
+  const RUN_EXTENSION_STATUS_COPY = {
+    extending: "runExtension.extending",
+    comfort_stop: "runExtension.comfortStop",
+    wait_warm_restart: "runExtension.waitRestart",
+    warm_restart: "runExtension.warmRestart",
+    normal: "runExtension.normal",
+    blocked: "runExtension.blocked",
+  };
+
+  export function getRunExtensionStatusCopy(status) {
+    return t(RUN_EXTENSION_STATUS_COPY[String(status || "").trim().toLowerCase()] || "runExtension.disabled");
+  }
+
+  export function renderPowerHouseRunExtensionField() {
+    if (!hasEntity("phRunExtension")) return "";
+    const enabled = Boolean(getEntityValue("phRunExtension"));
+    const thresholdsModel = getRunExtensionThresholds();
+    const n = String(getSettingsTextStatValue("phRunExtensionStatus", "inactive") || "").trim().toLowerCase();
+    const status = enabled ? (n === "inactive" ? t("runExtension.waiting") : getRunExtensionStatusCopy(n)) : t("runExtension.disabled");
+    const relative = (offset) => `setpoint ${offset < 0 ? "−" : "+"} ${formatRunExtensionTemp(Math.abs(offset))}`;
+    const thresholds = [
+      [t("runExtension.desired"), Number.isFinite(thresholdsModel.setpoint) ? formatRunExtensionTemp(thresholdsModel.setpoint) : t("runExtension.roomSetpoint"), t("runExtension.desiredNote")],
+      [t("runExtension.stop"), Number.isFinite(thresholdsModel.stop) ? formatRunExtensionTemp(thresholdsModel.stop) : relative(thresholdsModel.margin), t("runExtension.stopNote")],
+      [t("runExtension.restart"), Number.isFinite(thresholdsModel.restart) ? formatRunExtensionTemp(thresholdsModel.restart) : relative(thresholdsModel.margin - thresholdsModel.hysteresis), t("runExtension.restartNote")],
+    ];
+    return `
+      <section class="oq-settings-subpanel oq-settings-subpanel--nested oq-run-extension" aria-label="${escapeHtml(t("runExtension.title"))}">
+        <div class="oq-run-extension-intro">
+          <div class="oq-settings-subpanel-head">
+            <h4>${escapeHtml(t("runExtension.title"))}</h4>
+            <p>${escapeHtml(t("runExtension.copy"))}</p>
+          </div>
+          <span class="oq-run-extension-status">${escapeHtml(status)}</span>
+        </div>
+        <div class="oq-settings-grid">
+          ${renderSettingsSwitchField("phRunExtension", t("runExtension.allow"), t("runExtension.allowCopy"), t("runExtension.on"), t("runExtension.off"))}
+          ${enabled ? renderSettingsNumberField("phRunExtensionStopMargin", t("runExtension.margin"), t("runExtension.marginCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.residual"))}</p>` }) : ""}
+        </div>
+        ${enabled ? `
+          <div class="oq-run-extension-thresholds">
+            ${thresholds.map(([label, value, note]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></div>`).join("")}
+          </div>
+          <p class="oq-run-extension-note">${escapeHtml(t("runExtension.hysteresis"))}</p>
+        ` : ""}
+        <p class="oq-run-extension-note">${escapeHtml(t("runExtension.disableCopy"))}</p>
+      </section>
+    `;
+  }
+
   export function renderSettingsHeatPumpLimiterCard(title, hpPrefix) {
     const firstFrequencyKey = `${hpPrefix}ExcludeMinHz`;
     const fields = renderSettingsFrequencyRangeField(
@@ -527,6 +590,7 @@ import { t } from "../i18n/index.js";
           </div>
           ${renderPowerHouseBaseFields()}
           ${renderPowerHouseAdvancedField()}
+          ${renderPowerHouseRunExtensionField()}
         </div>
       `;
 

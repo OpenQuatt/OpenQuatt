@@ -7,7 +7,7 @@ import { invokeActionMap } from "../core/action-router.js";
 import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { clearDebugRecordingDevicePollTimer, scheduleDebugRecordingDeviceStatusPoll } from "./debug-recording.js";
-import { stopLoginAuthStatusPolling } from "./security-actions.js";
+import { refreshAuthStatus, stopLoginAuthStatusPolling } from "./security-actions.js";
 import { clearSettingsBackupDraft } from "./storage-history.js";
 import { t } from "../i18n/index.js";
 
@@ -36,11 +36,18 @@ function closeSystemModal() {
 }
 
 const systemActionHandlers = {
-  "open-connectivity-modal": () => {
+  "open-connectivity-modal": async () => {
     state.controlError = "";
     state.controlNotice = "";
     state.systemModal = "connectivity";
+    state.wifiResetAvailable = false;
     render();
+    await refreshAuthStatus({ force: true });
+    try {
+      const response = await fetch("/recovery/status", { cache: "no-store" });
+      if (response.ok) state.wifiResetAvailable = (await response.json()).capabilities?.wifi_reset === true;
+    } catch (_) { /* No capability confirmation: keep the destructive action hidden. */ }
+    if (state.systemModal === "connectivity") render();
   },
   "open-water-sensor-corrections-modal": () => {
     state.systemModal = "water-sensor-corrections";

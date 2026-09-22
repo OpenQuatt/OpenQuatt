@@ -486,6 +486,11 @@ import { render } from "../core/render-scheduler.js";
           </div>
           ${preferenceMarkup ? `<p class="oq-helper-modal-note">${t("header.connFallbackNote", { installUrl: "https://openquatt.github.io/OpenQuatt/install/" })}</p>` : ""}
           ${preferenceFeedback ? `<p class="${state.controlError ? "oq-helper-error" : "oq-helper-notice"}" role="status">${escapeHtml(preferenceFeedback)}</p>` : ""}
+          ${state.wifiResetAvailable ? `
+            <p class="oq-helper-modal-note">${t("recoveryUi.wifiResetCopy")}</p>
+            ${state.authStatus?.enabled ? `<button class="oq-helper-button" type="button" data-oq-action="reset-wifi" ${state.wifiResetBusy || state.apiSecurityBusy ? "disabled" : ""}>${t("recoveryUi.wifiResetButton")}</button>` : `<p class="oq-helper-modal-note">${t("recoveryUi.wifiResetLogin")}</p>`}
+          ` : ""}
+          ${state.wifiResetError || state.wifiResetActionError || state.wifiResetNotice ? `<p class="${state.wifiResetError || state.wifiResetActionError ? "oq-helper-error" : "oq-helper-notice"}" role="status">${escapeHtml(state.wifiResetError || state.wifiResetActionError || state.wifiResetNotice)}</p>` : ""}
           <div class="oq-helper-modal-actions">
             <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">${escapeHtml(t("header.done"))}</button>
           </div>

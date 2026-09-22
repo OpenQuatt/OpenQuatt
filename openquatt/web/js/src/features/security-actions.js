@@ -295,6 +295,49 @@ import { t } from "../i18n/index.js";
     }
   }
 
+  async function resetCredentials(wifi) {
+    if (state.apiSecurityBusy || state.wifiResetBusy || !state.authStatus?.enabled || !state.authStatus?.csrf_token) return;
+    if (wifi && !state.wifiResetAvailable) return;
+    if (!window.confirm(wifi
+      ? t("recoveryUi.wifiResetConfirm")
+      : t("recoveryUi.apiResetConfirm"))) return;
+    const prefix = wifi ? "wifiReset" : "apiSecurity";
+    state[`${prefix}Busy`] = true;
+    state[`${prefix}Error`] = "";
+    state[`${prefix}ActionError`] = "";
+    state[`${prefix}Notice`] = t("recoveryUi.resetRequesting");
+    render();
+    try {
+      const body = new URLSearchParams({ csrf_token: state.authStatus.csrf_token, confirm: wifi ? "RESET_WIFI" : "RESET_API_SECURITY" });
+      const response = await fetch(wifi ? "/wifi/reset" : "/api-security/reset", { method: "POST", body });
+      if (response.status !== 202) {
+        state[`${prefix}Busy`] = false;
+        state[`${prefix}Notice`] = "";
+        state[`${prefix}ActionError`] = t("recoveryUi.resetRejected", { status: response.status });
+        render();
+        return;
+      }
+      state[`${prefix}Notice`] = wifi
+        ? t("recoveryUi.wifiResetRequested")
+        : t("recoveryUi.apiResetRequested");
+      render();
+      await new Promise(resolve => window.setTimeout(resolve, 1000));
+      // One status check, never retry a destructive request after an ambiguous response.
+      const result = await fetch("/recovery/status", { cache: "no-store" }).then(response => response.json());
+      if (result.error) {
+        state[`${prefix}Busy`] = false;
+        state[`${prefix}Notice`] = "";
+        state[`${prefix}ActionError`] = t("recoveryUi.resetFailed");
+      }
+    } catch (error) {
+      state[`${prefix}Notice`] = t("recoveryUi.resetUncertain");
+    }
+    render();
+  }
+
+  export function resetApiSecurity() { return resetCredentials(false); }
+  export function resetWifi() { return resetCredentials(true); }
+
   const securityActionHandlers = {
     "open-login-modal": () => {
       state.systemModal = "login";
@@ -316,6 +359,8 @@ import { t } from "../i18n/index.js";
     },
     "save-web-auth": () => commitWebAuthChanges(),
     "disable-web-auth": () => commitDisableWebAuth(),
+    "reset-api-security": () => resetApiSecurity(),
+    "reset-wifi": () => resetWifi(),
   };
 
   export function handleSecurityAction(action) {

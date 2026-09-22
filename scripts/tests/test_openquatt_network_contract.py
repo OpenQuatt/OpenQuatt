@@ -112,9 +112,7 @@ class OpenQuattNetworkContractTest(unittest.TestCase):
         self.assertIn("zonder opgeslagen Wi-Fi-gegevens", INSTALLER_PAGE)
 
 
-    def test_fallback_ap_texts_match_the_provisioning_window(self) -> None:
-        # OpenQuatt explicitly configures a 10 minute ESPHome provisioning
-        # window. Keep the recovery copy tied to that runtime contract.
+    def test_wifi_setup_is_separate_from_the_api_provisioning_window(self) -> None:
         self.assertIn("provisioning:\n  timeout: 10min", COMMON)
 
         installer_page = (ROOT / "docs" / "install" / "index.html").read_text()
@@ -124,6 +122,9 @@ class OpenQuattNetworkContractTest(unittest.TestCase):
             with self.subTest():
                 self.assertIn("instelvenster", text)
                 self.assertIn("10 minuten", text)
+                self.assertIn("90 seconden", text)
+                self.assertIn("opgeslagen", text)
+                self.assertNotIn("instelvenster uiterlijk ongeveer 10 minuten", text)
 
 
 if __name__ == "__main__":

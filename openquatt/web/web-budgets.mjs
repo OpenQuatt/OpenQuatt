@@ -9,5 +9,6 @@ export const WEB_BUNDLE_BUDGETS = [
     raw: 1_210_000,
     gzipBaselineCeiling: 340_000,
   },
-  { file: "css/openquatt-app.css", raw: 203_000 },
+  // Responsive run-extension group: ~203.3 kB raw.
+  { file: "css/openquatt-app.css", raw: 204_000 },
 ];

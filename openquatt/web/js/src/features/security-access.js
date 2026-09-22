@@ -119,20 +119,24 @@ import { t } from "../i18n/index.js";
       closeLabel: t("securityAccess.apiClose"),
       body: `
         <div class="oq-settings-api-security-shell oq-settings-api-security-shell--modal">
+          ${state.apiSecurityNotice ? `<p role="status">${escapeHtml(state.apiSecurityNotice)}</p>` : ""}
+          ${state.apiSecurityError ? `<p role="alert">${escapeHtml(state.apiSecurityError)}</p>` : ""}
+          ${state.apiSecurityActionError ? `<p role="alert">${escapeHtml(state.apiSecurityActionError)}</p>` : ""}
           <div class="oq-helper-modal-grid">
             ${renderLoginStatusRow(t("securityAccess.apiStatusRow"), getApiSecurityStatusLabel(), getApiSecurityStatusDetail())}
             ${renderLoginStatusRow(t("securityAccess.apiManageRow"), t("securityAccess.apiManageValue"), t("securityAccess.apiManageCopy"))}
           </div>
+          <p>${t("recoveryUi.apiResetCopy")}</p>
+          ${!state.authStatus?.enabled ? `<p>${t("recoveryUi.apiResetLogin")}</p>` : ""}
         </div>`,
-      actions: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal">${escapeHtml(t("header.done"))}</button>`,
+      actions: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="reset-api-security" ${!state.authStatus?.enabled || state.apiSecurityBusy || state.wifiResetBusy ? "disabled" : ""}>${t("recoveryUi.apiResetButton")}</button><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal">${escapeHtml(t("header.done"))}</button>`,
     });
   }
 
   export function renderLoginModal() {
     const authStatus = state.authStatus || {};
     const authEnabled = authStatus.enabled === true;
-    const setupWindowActive = authStatus.setup_window_active === true;
-    const canEdit = authEnabled || setupWindowActive;
+    const canEdit = authEnabled;
     const usernameValue = authEnabled ? String(authStatus.username || "").trim() : "";
     const noticeMarkup = state.authNotice
       ? `<div class="oq-helper-modal-success oq-helper-modal-success--compact" aria-live="polite"><strong>${escapeHtml(t("securityAccess.loginSaved"))}</strong><span>${escapeHtml(state.authNotice)}</span></div>`
@@ -203,7 +207,7 @@ import { t } from "../i18n/index.js";
       : `
         <div class="oq-helper-modal-callout oq-helper-modal-callout--subtle">
           <strong>${escapeHtml(t("securityAccess.loginAddTitle"))}</strong>
-          <span>${escapeHtml(t("securityAccess.loginAddCopy"))}</span>
+          <span>${t("securityAccess.loginAddCopy")}</span>
         </div>
       `;
 

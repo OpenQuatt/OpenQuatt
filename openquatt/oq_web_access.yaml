@@ -9,13 +9,18 @@ external_components:
   - source:
       type: local
       path: ${external_components_path}
-    components: [openquatt_web_auth, openquatt_trends, openquatt_energy_history, openquatt_log_history, openquatt_debug_recorder, openquatt_entities, openquatt_service_status, openquatt_mqtt_config, openquatt_decision_log, openquatt_incident_manager, openquatt_odu_eeprom_dump, openquatt_odu_runtime_frequency, openquatt_odu_settings]
+    components: [web_server, web_server_base, openquatt_web_auth, openquatt_recovery, openquatt_trends, openquatt_energy_history, openquatt_log_history, openquatt_debug_recorder, openquatt_entities, openquatt_service_status, openquatt_mqtt_config, openquatt_decision_log, openquatt_incident_manager, openquatt_odu_eeprom_dump, openquatt_odu_runtime_frequency, openquatt_odu_settings]
 
 openquatt_web_auth:
   id: oq_web_auth_store
   bootstrap_username: "${web_auth_bootstrap_username}"
   bootstrap_password: "${web_auth_bootstrap_password}"
   default_auth_enabled: ${web_auth_default_enabled}
+
+openquatt_recovery:
+  id: oq_recovery
+  web_auth: oq_web_auth_store
+  button: oq_web_auth_recovery_button
 
 openquatt_log_history:
   id: oq_log_history
@@ -101,12 +106,4 @@ binary_sensor:
       inverted: true
       ignore_strapping_warning: true
     filters:
-      - delayed_on: 5s
-    on_press:
-      then:
-        - lambda: |-
-            if (id(oq_web_auth_store).start_recovery_window()) {
-              ESP_LOGI("openquatt.web_auth", "Login recovery window armed from temporary recovery pin");
-            } else {
-              ESP_LOGW("openquatt.web_auth", "Failed to arm login recovery window from temporary recovery pin");
-            }
+      - delayed_on_off: 30ms

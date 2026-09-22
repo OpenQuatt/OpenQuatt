@@ -33,6 +33,12 @@ function resetConnectivityState(connection) {
   state.lastEntityResponseAt = Date.now();
   state.lastEntitySyncAt = state.lastEntityResponseAt;
   state.systemModal = "connectivity";
+  state.wifiResetAvailable = false;
+  state.wifiResetBusy = false;
+  state.apiSecurityBusy = false;
+  state.wifiResetError = "";
+  state.wifiResetNotice = "";
+  state.authStatus = { enabled: true };
 }
 
 test("Ethernet verbergt verouderde WiFi-details in de connectiviteitsmodal", () => {
@@ -126,4 +132,23 @@ test("een open connectiviteitsmodal wordt volledig ververst bij een verbindingsw
   state.root = {};
   assert.equal(patchHeaderDom(), false);
   state.root = null;
+});
+
+test("Wi-Fi wissen volgt build-capability, niet de actieve interface", () => {
+  resetConnectivityState("Ethernet");
+  assert.doesNotMatch(renderSystemModal(), /data-oq-action="reset-wifi"/);
+  state.wifiResetAvailable = true;
+  assert.match(renderSystemModal(), /data-oq-action="reset-wifi"/);
+  state.authStatus.enabled = false;
+  assert.doesNotMatch(renderSystemModal(), /data-oq-action="reset-wifi"/);
+  assert.match(renderSystemModal(), /herstelknop 10 seconden/);
+});
+
+test("lopende reset blokkeert Wi-Fi-knop en toont fout zonder succesclaim", () => {
+  resetConnectivityState("WiFi");
+  state.wifiResetAvailable = true;
+  state.apiSecurityBusy = true;
+  state.wifiResetError = "Reset mislukt; er is niet herstart.";
+  assert.match(renderSystemModal(), /data-oq-action="reset-wifi" disabled/);
+  assert.match(renderSystemModal(), /Reset mislukt; er is niet herstart/);
 });
