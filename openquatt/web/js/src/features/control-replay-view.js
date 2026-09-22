@@ -1,6 +1,8 @@
 import { describeFrequencyLimit } from "./frequency-limits.js";
 import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon } from "../core/config.js";
+import { parseLooseNumber } from "../core/entity-store.js";
+import { getCoolingStartBlockModel } from "../settings/cooling.js";
 import { escapeHtml } from "../core/html.js";
 import { getRenderSignature } from "../core/render-signatures.js";
 import { state } from "../core/state.js";
@@ -746,6 +748,77 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
         </div>
       </div>
     `;
+  }
+
+  // Diagnostics use confirmed device values, never unsaved setting drafts.
+  function getControlWorkingBlockingNumber(key) {
+    const entity = state.entities[key];
+    return parseLooseNumber(entity?.value ?? entity?.state);
+  }
+
+  function getControlWorkingBlockingFlag(key) {
+    const entity = state.entities[key];
+    const value = String(entity?.value ?? entity?.state ?? "").trim().toLowerCase();
+    if (["true", "on", "1"].includes(value)) return true;
+    if (["false", "off", "0"].includes(value)) return false;
+    return null;
+  }
+
+  function getControlWorkingBlockingReasons(current) {
+    if (current.hp1Running || current.hp2Running) return [];
+    const reasons = [];
+    if (getControlWorkingBlockingFlag("openquattEnabled") === false) reasons.push(t("blocking.disabled"));
+    const override = state.entities.controlModeOverride;
+    if ((override?.value ?? override?.state) === "Force CM0") reasons.push(t("blocking.forcedOff"));
+
+    if (current.startupInhibit) {
+      const seconds = current.startupInhibit.remainingS;
+      reasons.push(seconds > 0
+        ? t("blocking.startupMinutes", { minutes: Math.max(1, Math.ceil(seconds / 60)) })
+        : t("blocking.startup"));
+    }
+
+    // These are live mode explanations. Historical decision-log events cannot
+    // establish that a rest/flow/candidate block is still active.
+    const copyReasons = ["boiler_fallback", "fallback_blocked", "boiler_assist",
+      "defrost_hold", "buffer_stop", "frost_protection", "sticky_protection"];
+    if (copyReasons.includes(current.primaryReason) && current.copy) reasons.push(current.copy);
+    else if (current.coolingProtection && current.copy) reasons.push(current.copy);
+
+    const cooling = getControlWorkingBlockingNumber("strategyActiveCode") === 1
+      || getControlWorkingBlockingFlag("coolingRequestActive") === true;
+    if (cooling) {
+      const block = getCoolingStartBlockModel();
+      if (block.blocked) reasons.push(block.display);
+    }
+    if (!cooling) {
+      if (getControlWorkingBlockingFlag("heatingBlockedByThermostat") === true) reasons.push(t("blocking.thermostat"));
+      if (getControlWorkingBlockingFlag("strategyWaterHardTripActive") === true
+        || getControlWorkingBlockingFlag("strategyWaterTripActive") === true) reasons.push(t("blocking.waterTrip"));
+      if (getControlWorkingBlockingNumber("strategyActiveCode") === 2) {
+        if (getControlWorkingBlockingNumber("curveRestartInhibit") === 1) reasons.push(t("blocking.curveRestart"));
+        if (getControlWorkingBlockingNumber("curveRestartBlockedByRoom") === 1) reasons.push(t("blocking.curveRoom"));
+      }
+
+      // ON means heat is latched ON (permission), not a low-load blockade.
+      const power = getControlWorkingBlockingNumber("strategyRequestedPower");
+      const on = getControlWorkingBlockingNumber("lowLoadOnW");
+      const off = getControlWorkingBlockingNumber("lowLoadOffW");
+      if (getControlWorkingBlockingNumber("strategyActiveCode") === 3
+        && getControlWorkingBlockingFlag("strategyRequestActive") === true
+        && getControlWorkingBlockingFlag("lowLoadLatch") === false
+        && Number.isFinite(power) && Number.isFinite(on) && power < on) {
+        reasons.push(t("blocking.lowLoad", { power: Math.round(power), on: Math.round(on) }));
+        if (Number.isFinite(off)) reasons.push(t("blocking.thresholds", { off: Math.round(off), on: Math.round(on) }));
+      }
+    }
+
+    if (!reasons.length) {
+      const request = getControlWorkingBlockingFlag("strategyRequestActive");
+      if (!cooling && request === false) reasons.push(t("blocking.noDemand"));
+      else reasons.push(t("blocking.unconfirmed"));
+    }
+    return [...new Set(reasons)];
   }
 
   function getControlWorkingActiveStartupInhibit(nowMs = Date.now()) {
@@ -2664,6 +2737,14 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
 
   function renderControlWorkingNowCard(current) {
     const status = getControlWorkingSeverityMeta(current.severity);
+    const heatPumpsOff = !current.hp1Running && !current.hp2Running;
+    const blockingReasons = heatPumpsOff ? getControlWorkingBlockingReasons(current) : [];
+    const blockingSection = blockingReasons.length > 0 ? `
+        <div class="oq-working-now-next">
+          <span>${t("blocking.title")}</span>
+          ${blockingReasons.map((reason) => `<div>${escapeHtml(reason)}</div>`).join("")}
+        </div>
+    ` : "";
     return `
       <section class="oq-working-now oq-working-now--${escapeHtml(status.tone)}">
         <div class="oq-working-now-main">
@@ -2676,6 +2757,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
             ${renderControlWorkingPill(current.sinceLabel, "context")}
           </div>
         </div>
+        ${blockingSection}
         <div class="oq-working-now-next">
           <span>${t("controlReplay.nowNext")}</span>
           <strong>${escapeHtml(current.expectation)}</strong>
@@ -3291,6 +3373,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       hp1Status: current.hp1Status,
       hp2Status: current.hp2Status,
       reason: current.primaryReason,
+      blockingReasons: getControlWorkingBlockingReasons(current),
       hp1Running: current.hp1Running,
       hp2Running: current.hp2Running,
       hp1Starts: current.hp1Starts,

@@ -1,6 +1,21 @@
 // English translation catalogue (en-GB).
 // Must contain the same key set as nl.js. Dutch remains the default/fallback.
 export default {
+  blocking: {
+    title: "Why is my heat pump off?",
+    disabled: "OpenQuatt is disabled.",
+    forcedOff: "CM0 is forced manually: the heat pumps remain off.",
+    startupMinutes: "Startup waiting time: {minutes} min remaining.",
+    startup: "Startup waiting time is active.",
+    thermostat: "The thermostat does not permit heating.",
+    waterTrip: "Water temperature protection is active: heating is blocked.",
+    curveRestart: "Heating curve: restart inhibit is active.",
+    curveRoom: "Heating curve: restart is waiting for the room to cool.",
+    lowLoad: "Low load: requested power of {power} W is below the restart threshold of {on} W.",
+    thresholds: "Low-load band: stop at or below {off} W; release from {on} W. Other start conditions still apply.",
+    noDemand: "The heating strategy is not currently requesting heat.",
+    unconfirmed: "No heat pump is running. Current telemetry does not confirm a specific start block; a start condition or waiting time may still apply.",
+  },
   recoveryUi: {
     wifiResetCopy: "Clearing Wi-Fi restarts the controller. Then configure Wi-Fi again through the OpenQuatt access point. Web login, API security and other settings are retained.",
     wifiResetButton: "Clear Wi-Fi and restart",

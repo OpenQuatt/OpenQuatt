@@ -2,6 +2,21 @@
 // Keys zijn stabiel en semantisch; nooit de firmware/API-wire values vertalen,
 // alleen de presentatie. Zie i18n/index.js en docs/web-app.md.
 export default {
+  blocking: {
+    title: "Waarom staat mijn warmtepomp uit?",
+    disabled: "OpenQuatt is uitgeschakeld.",
+    forcedOff: "CM0 is handmatig afgedwongen: de warmtepompen blijven uit.",
+    startupMinutes: "Wachttijd na herstart: nog {minutes} min.",
+    startup: "Wachttijd na herstart actief.",
+    thermostat: "De thermostaat geeft verwarmen niet vrij.",
+    waterTrip: "Watertemperatuurbeveiliging actief: verwarmen is geblokkeerd.",
+    curveRestart: "Stooklijn: herstartblokkering actief.",
+    curveRoom: "Stooklijn: herstart wacht op afkoeling van de kamer.",
+    lowLoad: "Laaglast: gevraagd vermogen {power} W ligt onder de terugstartdrempel van {on} W.",
+    thresholds: "Laaglastband: stoppen bij of onder {off} W; vrijgave vanaf {on} W. Overige startvoorwaarden blijven gelden.",
+    noDemand: "De verwarmingsstrategie vraagt momenteel geen warmte.",
+    unconfirmed: "Er draait geen warmtepomp. De actuele telemetrie bevestigt geen specifieke startblokkade; er kan nog een startvoorwaarde of wachttijd gelden.",
+  },
   recoveryUi: {
     wifiResetCopy: "Wi-Fi wissen herstart de controller. Stel daarna Wi-Fi opnieuw in via het OpenQuatt access point. Web-login, API-beveiliging en overige instellingen blijven behouden.",
     wifiResetButton: "Wi-Fi wissen en herstarten",

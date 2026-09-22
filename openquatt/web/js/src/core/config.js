@@ -1700,6 +1700,16 @@
   ];
   export const CONTROL_REPLAY_STATE_KEYS = [
     "strategyActiveCode",
+    "strategyRequestActive",
+    "strategyWaterTripActive",
+    "strategyWaterHardTripActive",
+    "heatingBlockedByThermostat",
+    "controlModeOverride",
+    "lowLoadLatch",
+    "lowLoadOnW",
+    "lowLoadOffW",
+    "curveRestartInhibit",
+    "curveRestartBlockedByRoom",
     "hp1CompressorStarts24h",
     "hp2CompressorStarts24h",
     "hp1RuntimeHours",

@@ -70,7 +70,8 @@ class Runtime {
     id(oq_boiler_rearm_required) = true;
     id(oq_boiler_rearm_after_command_ms) = now_ms;
     withdraw_output_(now_ms);
-    id(oq_boiler_block_reason_code) = available ? oq_boiler::BLOCK_AWAITING_FRESH_COMMAND : unavailable_reason;
+    id(oq_boiler_block_reason_code) =
+        available ? static_cast<uint8_t>(oq_boiler::BLOCK_AWAITING_FRESH_COMMAND) : unavailable_reason;
   }
 
   bool command_is_fresh(uint32_t maximum_age_ms) const {

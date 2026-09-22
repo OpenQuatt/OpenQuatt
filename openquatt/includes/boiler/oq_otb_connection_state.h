@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef OPENQUATT_OQ_OTB_CONNECTION_STATE_H_
+#define OPENQUATT_OQ_OTB_CONNECTION_STATE_H_
+
 #include <stdint.h>
 
 namespace oq_otb {
@@ -115,3 +118,5 @@ class BoilerConnectionVerificationState {
 inline BoilerConnectionVerificationState connection_verification_state{};
 
 }  // namespace oq_otb
+
+#endif  // OPENQUATT_OQ_OTB_CONNECTION_STATE_H_
