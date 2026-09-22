@@ -47,7 +47,7 @@ class OpenQuattOduRuntimeFrequency : public Component {
   bool request_is_authenticated(AsyncWebServerRequest* request) const {
     return this->web_auth_ != nullptr && this->web_auth_->request_is_authenticated(request);
   }
-  const std::string& get_csrf_token() const { return this->web_auth_->get_csrf_token(); }
+  std::string get_csrf_token() const { return this->web_auth_->get_csrf_token(); }
   void write_status(httpd_req_t* req) const;
 
   void add_on_write_started_callback(std::function<void()> callback) {
