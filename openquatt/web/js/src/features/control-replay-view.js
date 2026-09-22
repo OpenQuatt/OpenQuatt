@@ -2810,9 +2810,7 @@ import { replaceOuterHtmlIfSignatureChanged } from "../views/view-utils.js";
     const blockingSection = blockingReasons.length > 0 ? `
         <div class="oq-working-now-next">
           <span>Waarom staat mijn warmtepomp uit?</span>
-          <ul class="oq-working-blocking-list">
-            ${blockingReasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}
-          </ul>
+          ${blockingReasons.map((reason) => `<div>${escapeHtml(reason)}</div>`).join("")}
         </div>
     ` : "";
     return `

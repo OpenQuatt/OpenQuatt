@@ -440,6 +440,7 @@
 }
 
 .oq-working-now-next {
+  grid-column: 1 / -1;
   padding: 14px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 8px;
