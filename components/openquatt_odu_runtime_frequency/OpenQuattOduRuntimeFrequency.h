@@ -108,6 +108,7 @@ class OpenQuattOduRuntimeFrequency : public Component {
   oq_odu_runtime_frequency::RuntimeFrequencyTables tables_{};
   oq_odu_runtime_frequency::RuntimeFrequencyTables operation_tables_{};
   PendingAction pending_action_{PendingAction::NONE};
+  uint32_t request_recovery_epoch_{0U};
   uint32_t pending_request_token_{0U};
   Operation operation_{Operation::NONE};
   std::atomic<uint32_t> bus_reservation_token_{0U};
