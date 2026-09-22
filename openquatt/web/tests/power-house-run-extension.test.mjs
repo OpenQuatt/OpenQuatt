@@ -57,6 +57,7 @@ test("switch aanwezig toont de card, OFF verbergt stop-margin", () => {
   resetSettingsState({ phRunExtension: switchEntity(false) });
   const markup = renderPowerHouseRunExtensionField();
   assert.match(markup, /Langer doorverwarmen/);
+  assert.match(markup, /na een comfortstop kan Power House bij nieuwe warmtevraag wel herstarten/);
   assert.doesNotMatch(markup, /Stop boven gewenste temperatuur/);
 });
 

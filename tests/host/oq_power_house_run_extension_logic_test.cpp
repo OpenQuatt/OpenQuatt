@@ -292,6 +292,27 @@ void test_setpoint_drop_cancels_restart() {
   assert(evaluate(in, tuning(), wait).next.phase == Phase::INACTIVE);
 }
 
+void test_setpoint_drop_comfort_stop_does_not_arm_restart() {
+  State extending;
+  extending.phase = Phase::EXTENDING;
+  extending.cycle_armed = true;
+  extending.last_setpoint_c = 20.5f;
+  Input lowered = base_input();
+  lowered.setpoint_c = 19.5f;
+  lowered.room_c = 20.4f;
+  lowered.base_requested_w = 700.0f;
+  const auto stopping = evaluate(lowered, tuning(), extending);
+  assert(stopping.next.phase == Phase::COMFORT_STOP);
+  assert(stopping.force_comfort_stop);
+  assert(!stopping.next.cycle_armed);
+
+  lowered.actual_heating_active = false;
+  lowered.cycle_active = false;
+  const auto stopped = evaluate(lowered, tuning(), stopping.next);
+  assert(stopped.next.phase == Phase::INACTIVE);
+  assert(!stopped.warm_restart_intent);
+}
+
 void test_water_limit_blocks_floor() {
   Input in = base_input();
   in.water_limit_factor = 0.8f;
@@ -344,6 +365,7 @@ int main() {
   test_disable_clears_extending();
   test_stale_inputs_fail_closed();
   test_setpoint_drop_cancels_restart();
+  test_setpoint_drop_comfort_stop_does_not_arm_restart();
   test_water_limit_blocks_floor();
   test_missing_pmin_no_floor();
   test_house_deficit_ignores_comfort_floor();

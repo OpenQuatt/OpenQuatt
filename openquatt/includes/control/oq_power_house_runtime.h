@@ -282,7 +282,7 @@ class Runtime {
     run_ext_input.enabled = run_ext_enabled;
     run_ext_input.cycle_active = run_cycle_active;
     run_ext_input.actual_heating_active = applied_total > 0;
-    run_ext_input.inputs_valid = room_inputs_valid;
+    run_ext_input.inputs_valid = demand.valid && room_inputs_valid;
     run_ext_input.heating_allowed = heating_allowed;
     run_ext_input.room_c = room_c;
     run_ext_input.setpoint_c = setpoint_c;
@@ -416,6 +416,9 @@ class Runtime {
     this->run_ext_warm_restart_c_ = NAN;
     this->last_run_ext_phase_ = oq_power_house_run_extension::Phase::INACTIVE;
     id(oq_ph_fast_intent_code) = 0;
+    id(oq_ph_run_ext_base_w) = 0.0f;
+    id(oq_ph_run_ext_floor_w) = 0.0f;
+    id(oq_ph_run_ext_state_code) = 0;
     id(oq_ph_request_last_loop_ms) = 0;
     id(oq_ph_request_hp1_level) = 0;
     id(oq_ph_request_hp2_level) = 0;

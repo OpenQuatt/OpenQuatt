@@ -469,7 +469,7 @@ import { escapeHtml } from "../core/html.js";
       ? `${escapeHtml(formatRunExtensionTemp(t.setpoint))} · ${escapeHtml(formatRunExtensionTemp(t.restart))} · ${escapeHtml(formatRunExtensionTemp(t.stop))}`
       : `setpoint + ${escapeHtml(String(t.margin).replace(".", ","))} °C`;
     const detail = !enabled ? "" : `<div class="oq-settings-system-row"><div class="oq-settings-system-row-copy"><p class="oq-settings-system-row-label">Gewenst · Herstart · Stop${show ? ` — ● ${escapeHtml(getRunExtensionStatusCopy(n))}` : ""}</p><strong class="oq-settings-system-row-value">${temps}</strong></div></div>`;
-    return renderSettingsSwitchField("phRunExtension", "Langer doorverwarmen", "Houdt een draaiende run op minimumvermogen vast. Start nooit zelfstandig.")
+    return renderSettingsSwitchField("phRunExtension", "Langer doorverwarmen", "Houdt een draaiende run op minimumvermogen vast. Inschakelen start een stilstaande warmtepomp niet; na een comfortstop kan Power House bij nieuwe warmtevraag wel herstarten.")
       + (enabled ? renderSettingsNumberField("phRunExtensionStopMargin", "Stop boven gewenste temperatuur", "Stopmarge boven het setpoint.") : "")
       + detail;
   }

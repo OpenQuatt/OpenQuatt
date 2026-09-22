@@ -119,7 +119,9 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
 
   // Arming: only a confirmed normal heating run arms a #608 cycle.
   // Enabling while idle must not start anything.
-  if (in.cycle_active && in.actual_heating_active && in.inputs_valid && in.heating_allowed) {
+  const bool phase_can_arm =
+      state.phase == Phase::INACTIVE || state.phase == Phase::RUNNING || state.phase == Phase::EXTENDING;
+  if (phase_can_arm && in.cycle_active && in.actual_heating_active && in.inputs_valid && in.heating_allowed) {
     next.cycle_armed = true;
   }
 
@@ -147,6 +149,7 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
       }
       if (room_at_stop) {
         next.phase = Phase::COMFORT_STOP;
+        if (setpoint_drop) next.cycle_armed = false;
         out.force_comfort_stop = true;
       } else if (floor_candidate && in.base_requested_w < in.minimum_viable_w && room_below_stop) {
         next.phase = Phase::EXTENDING;
@@ -165,6 +168,7 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
       }
       if (room_at_stop) {
         next.phase = Phase::COMFORT_STOP;
+        if (setpoint_drop) next.cycle_armed = false;
         out.force_comfort_stop = true;
         break;
       }
@@ -185,6 +189,7 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
       }
       if (room_at_stop) {
         next.phase = Phase::COMFORT_STOP;
+        if (setpoint_drop) next.cycle_armed = false;
         out.force_comfort_stop = true;
         break;
       }
@@ -215,8 +220,11 @@ inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
       // the 0.2 K restart hysteresis. Only once the run has actually stopped
       // do we wait for a warm restart.
       out.force_comfort_stop = true;
+      if (setpoint_drop) next.cycle_armed = false;
       if (in.actual_heating_active) {
         next.phase = Phase::COMFORT_STOP;
+      } else if (!next.cycle_armed) {
+        next.phase = Phase::INACTIVE;
       } else {
         next.phase = Phase::WAIT_WARM_RESTART;
       }

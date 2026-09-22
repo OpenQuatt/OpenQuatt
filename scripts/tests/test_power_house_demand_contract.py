@@ -21,6 +21,8 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         self.assertIn("test_performance_supply_fallback", dispatch_test)
         # #608 run extension: base house need stays apart from effective HP target.
         self.assertIn("oq_power_house_run_extension::evaluate(", text)
+        self.assertIn("run_ext_input.inputs_valid = demand.valid && room_inputs_valid;", text)
+        self.assertIn("id(oq_ph_run_ext_state_code) = 0;", text)
         self.assertIn("house_deficit_w", text)
         self.assertIn("base_requested_w", text)
         self.assertIn("ph_run_extension_enabled", yaml)
@@ -37,6 +39,7 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         self.assertIn("test_warm_restart_reverts_when_base_drops_to_zero", run_ext_test)
         # Review #726 follow-up: WAIT suppresses base demand above the restart threshold.
         self.assertIn("test_wait_suppresses_base_above_restart_threshold", run_ext_test)
+        self.assertIn("test_setpoint_drop_comfort_stop_does_not_arm_restart", run_ext_test)
         # Review #726: CM3 invariant executable, not string-only.
         self.assertIn("test_house_deficit_ignores_comfort_floor", run_ext_test)
         self.assertIn("compute_house_deficit_w(", text)
