@@ -732,7 +732,10 @@ void WebServer::handle_switch_request(AsyncWebServerRequest* request, const UrlM
     }
 
     if (action != SWITCH_ACTION_NONE) {
-      this->defer([obj, action]() { execute_switch_action(obj, action); });
+      this->defer([this, obj, action, epoch = this->base_->recovery_epoch()]() {
+        if (!this->base_->is_recovery_active() && epoch == this->base_->recovery_epoch())
+          execute_switch_action(obj, action);
+      });
       request->send(200);
     } else {
       request->send(404);
@@ -1647,7 +1650,10 @@ void WebServer::handle_lock_request(AsyncWebServerRequest* request, const UrlMat
     }
 
     if (action != LOCK_ACTION_NONE) {
-      this->defer([obj, action]() { execute_lock_action(obj, action); });
+      this->defer([this, obj, action, epoch = this->base_->recovery_epoch()]() {
+        if (!this->base_->is_recovery_active() && epoch == this->base_->recovery_epoch())
+          execute_lock_action(obj, action);
+      });
       request->send(200);
     } else {
       request->send(404);
@@ -1999,7 +2005,9 @@ void WebServer::handle_infrared_request(AsyncWebServerRequest* request, const Ur
     // it outlives the call - set_raw_timings_base64url stores a pointer, so the string
     // must remain valid until perform() completes.
     // ESP8266 also needs this because ESPAsyncWebServer callbacks run in "sys" context.
-    this->defer([call, encoded = std::string(data_arg.c_str(), data_arg.length())]() mutable {
+    this->defer([this, call, encoded = std::string(data_arg.c_str(), data_arg.length()),
+                 epoch = this->base_->recovery_epoch()]() mutable {
+      if (this->base_->is_recovery_active() || epoch != this->base_->recovery_epoch()) return;
       call.set_raw_timings_base64url(encoded);
       call.perform();
     });
@@ -2090,7 +2098,9 @@ void WebServer::handle_radio_frequency_request(AsyncWebServerRequest* request, c
     // it outlives the call - set_raw_timings_base64url stores a pointer, so the string
     // must remain valid until perform() completes.
     // ESP8266 also needs this because ESPAsyncWebServer callbacks run in "sys" context.
-    this->defer([call, encoded = std::string(data_arg.c_str(), data_arg.length())]() mutable {
+    this->defer([this, call, encoded = std::string(data_arg.c_str(), data_arg.length()),
+                 epoch = this->base_->recovery_epoch()]() mutable {
+      if (this->base_->is_recovery_active() || epoch != this->base_->recovery_epoch()) return;
       call.set_raw_timings_base64url(encoded);
       call.perform();
     });

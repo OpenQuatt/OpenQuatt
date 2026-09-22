@@ -81,6 +81,7 @@ class OpenQuattOduSettings : public Component {
   oq_odu::Variant variant_{oq_odu::Variant::UNKNOWN};
   uint16_t control_board_item_{0U};
   PendingAction pending_action_{PendingAction::NONE};
+  uint32_t pending_recovery_epoch_{0U};
   uint32_t pending_request_token_{0U};
   Operation operation_{Operation::NONE};
   bool write_started_{false};

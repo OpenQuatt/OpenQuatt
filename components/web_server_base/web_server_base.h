@@ -137,8 +137,8 @@ class WebServerBase final {
   AsyncWebServer* get_server() const { return this->server_; }
   // Changed on the HTTPD task, observed by main-loop deferred entity actions.
   void set_recovery_active(bool active) {
-    if (active) this->recovery_epoch_.fetch_add(1);
     this->recovery_active_.store(active);
+    if (active) this->recovery_epoch_.fetch_add(1);
   }
   bool is_recovery_active() const { return this->recovery_active_.load(); }
   uint32_t recovery_epoch() const { return this->recovery_epoch_.load(); }

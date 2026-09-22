@@ -26,6 +26,16 @@ static void invoke_all(AsyncWebHandler* handler, AsyncWebServerRequest* request)
 
 int main() {
   WebServerBase base;
+  // A queued web action stays invalid after recovery closes; a new action may run.
+  const auto before_recovery = base.recovery_epoch();
+  base.set_recovery_active(true);
+  assert(base.is_recovery_active());
+  assert(before_recovery != base.recovery_epoch());
+  base.set_recovery_active(false);
+  assert(!base.is_recovery_active());
+  assert(before_recovery != base.recovery_epoch());
+  const auto after_recovery = base.recovery_epoch();
+  assert(after_recovery == base.recovery_epoch());
   Handler early;
   Handler late;
   Handler portal;
