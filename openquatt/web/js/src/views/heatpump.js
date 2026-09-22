@@ -1,5 +1,5 @@
 import { getEntityDisplayUnit, getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
-import { HP_PANEL_CONFIGS, renderOqIcon } from "../core/config.js";
+import { HP_PANEL_CONFIGS } from "../core/config.js";
 import { getEntityValue } from "../core/entity-store.js";
 import { formatFailures, formatWarningFailures } from "../core/failure-format.js";
 import { getOverviewControlsRenderSignature, getRenderSignature } from "../core/render-signatures.js";
@@ -9,7 +9,7 @@ import { getInstallationMonitoringModel } from "../core/installation-monitoring.
 import { setViewPatchControls } from "../core/view-patch-controls.js";
 import { getInstallationTopology } from "../features/device-context.js";
 import { formatNumericState } from "../core/formatting.js";
-import { getHeatPumpPanelStatusLabel, getOverviewStatusCards, getOverviewStrategyLabel, getOverviewStrategySectionModel, getOverviewTempsModel, getOverviewTempsRenderSignature, getOverviewTopCards, getOverviewTrendRenderSignature, isCoolingOverviewActive, patchHpPanelStatusRow, patchOverviewTrendCurrentValues, renderHpPanelStatusRow, renderOverviewControlPanels, renderOverviewInstallationMonitoringNotice, renderOverviewNarrativePanel, renderOverviewStatCards, renderOverviewStatusPanel, renderOverviewSummaryShell, renderOverviewTempsPanel, renderOverviewTrendsPanel, renderTempRow, syncOverviewTrendInteractions } from "./overview.js";
+import { getHeatPumpPanelStatusLabel, getOverviewStatusCards, getOverviewStrategyLabel, getOverviewStrategySectionModel, getOverviewTempsModel, getOverviewTempsRenderSignature, getOverviewTopCards, getOverviewTrendRenderSignature, patchHpPanelStatusRow, patchOverviewTrendCurrentValues, renderHpPanelStatusRow, renderOverviewControlPanels, renderOverviewInstallationMonitoringNotice, renderOverviewNarrativePanel, renderOverviewStatCards, renderOverviewStatusPanel, renderOverviewSummaryShell, renderOverviewTempsPanel, renderOverviewTrendsPanel, renderTempRow, syncOverviewTrendInteractions } from "./overview.js";
 import { escapeHtml } from "../core/html.js";
 import { render } from "../core/render-scheduler.js";
 import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./view-utils.js";

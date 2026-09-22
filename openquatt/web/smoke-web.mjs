@@ -338,9 +338,9 @@ async function checkWriteActionContracts() {
   assertContains(mqttActions, 'fetch("/mqtt/input/save"', "MQTT input save");
   assertContains(firmwareActions, 'buildEntityPath(installButtonEntity.domain, installButtonEntity.name, "press")', "Firmware install button endpoint");
   assertContains(debugRecording, 'body.set("csrf_token", csrfToken)', "Debug recording CSRF protection");
-  assertContains(debugRecording, 'const path = rolling ? "start?rolling=1" : `start?duration_s=${encodeURIComponent(minutes * 60)}`', "Debug recording start path");
-  assertContains(debugRecording, "await postDebugRecordingDevice(path)", "Debug recording start");
-  assertContains(debugRecording, 'postDebugRecordingDevice("stop")', "Debug recording stop");
+  assertContains(debugRecording, 'postDebugRecordingDevice("restart")', "Systeemrecorder restart");
+  assertContains(debugRecording, 'postDebugRecordingDevice("enabled"', "Systeemrecorder opt-out");
+  assertContains(debugRecording, "download-range?last_minutes=", "Systeemrecorder range download");
   assertContains(debugRecording, 'getDebugRecordingEndpoint("download")', "Debug recording download");
   assertContains(systemActions, 'triggerNamedButton("restartAction"', "Restart confirm");
   assertContains(entityWriteActions, "export async function commitOpenQuattRegulationPause", "OpenQuatt pause write helper");
@@ -359,7 +359,7 @@ async function checkStateSliceContracts() {
   const slices = context.module.exports;
   const groups = [
     slices.createHistoryState(24),
-    slices.createDiagnosticsState("recording-id"),
+    slices.createDiagnosticsState(),
     slices.createSettingsState(),
     slices.createSecurityState(),
     slices.createFirmwareState(),
@@ -374,7 +374,7 @@ async function checkStateSliceContracts() {
       seenKeys.add(key);
     });
   });
-  if (groups[0].trendWindowHours !== 24 || groups[1].debugRecordingAcknowledgedId !== "recording-id" || groups[5].reducedMotion !== true) {
+  if (groups[0].trendWindowHours !== 24 || groups[5].reducedMotion !== true) {
     throw new Error("State slice input values are not preserved");
   }
 

@@ -25,32 +25,43 @@ export async function copyTextToClipboard(text) {
   if (!text) {
     return false;
   }
-  if (window.navigator?.clipboard?.writeText && window.isSecureContext) {
-    await window.navigator.clipboard.writeText(text);
-    return true;
-  }
-
-  const focusOrigin = document.activeElement;
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "");
-  textarea.style.position = "fixed";
-  textarea.style.top = "-1000px";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
-  textarea.focus({ preventScroll: true });
-  textarea.select();
-
-  let success = false;
-  try {
-    success = document.execCommand("copy");
-  } finally {
-    document.body.removeChild(textarea);
-    if (focusOrigin?.isConnected && typeof focusOrigin.focus === "function") {
-      focusOrigin.focus({ preventScroll: true });
+  // Prefer the async Clipboard API whenever exposed; fall through to the
+  // legacy path when it rejects (e.g. permissions) instead of failing hard.
+  const clipboard = window.navigator?.clipboard;
+  if (clipboard && typeof clipboard.writeText === "function") {
+    try {
+      await clipboard.writeText(text);
+      return true;
+    } catch (_error) {
+      // Continue with the legacy fallback below.
     }
   }
-  return success;
+
+  try {
+    const focusOrigin = document.activeElement;
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.top = "-1000px";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus({ preventScroll: true });
+    textarea.select();
+
+    let success = false;
+    try {
+      success = document.execCommand("copy") === true;
+    } finally {
+      document.body.removeChild(textarea);
+      if (focusOrigin?.isConnected && typeof focusOrigin.focus === "function") {
+        focusOrigin.focus({ preventScroll: true });
+      }
+    }
+    return success;
+  } catch (_error) {
+    return false;
+  }
 }
 
 export function downloadBlobFile(blob, filename) {

@@ -1,6 +1,6 @@
 import { FAST_POLL_INTERVAL_MS, HIDDEN_POLL_INTERVAL_MS, OFFICIAL_ESPHOME_UI_URL, POLL_JITTER_MAX_MS, POLL_JITTER_MIN_MS, SETTINGS_GROUP_IDS, SETTINGS_GROUPS } from "./config.js";
 import { setEntityPollingControls } from "./entity-polling-controls.js";
-import { getPrefersReducedMotion, getReducedMotionMedia, getStoredHpLayoutMode, getStoredHpVisualMode, getStoredOverviewTheme, getStoredSurface, getStoredTrendWindowHours, state } from "./state.js";
+import { getReducedMotionMedia, state } from "./state.js";
 export { DEFAULT_TREND_WINDOW_HOURS, TREND_WINDOW_HOURS_OPTIONS, state } from "./state.js";
 import { handleChange, handleClick, handleFocusChange, handleInput, handleKeyDown, handlePointerDown, handlePointerMove, handlePointerUp, handleSettingsInteractionEnd, handleSettingsInteractionStart, handleWheel } from "./event-handlers.js";
 import { getDefaultAppView, getUrlAppView, getUrlControlReplayCustomRange, getUrlControlReplayTab, getUrlControlReplayWindow, getUrlSettingsGroup, setAppView, syncUrlAppView } from "./navigation.js";

@@ -69,47 +69,10 @@
   background: #fff7ed;
 }
 
-.oq-debug-recording-header-status-dot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: #ea580c;
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.14);
-}
-
-.oq-debug-recording-header-status--active .oq-debug-recording-header-status-dot {
-  animation: oq-debug-recording-status-pulse 1.8s ease-in-out infinite;
-}
-
-.oq-debug-recording-header-status--ready {
-  border-color: rgba(22, 163, 74, 0.24);
-  background: rgba(240, 253, 244, 0.96);
-  color: #166534;
-  box-shadow: 0 8px 18px rgba(22, 163, 74, 0.06);
-}
-
-.oq-debug-recording-header-status--ready .oq-debug-recording-header-status-dot {
-  background: #16a34a;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
-}
-
 .oq-helper-shell--dark .oq-debug-recording-header-status {
   border-color: rgba(251, 146, 60, 0.35);
   background: rgba(67, 35, 20, 0.92);
   color: #fed7aa;
-}
-
-.oq-helper-shell--dark .oq-debug-recording-header-status--ready {
-  border-color: rgba(74, 222, 128, 0.28);
-  background: rgba(20, 56, 38, 0.92);
-  color: #bbf7d0;
-}
-
-@keyframes oq-debug-recording-status-pulse {
-  50% {
-    opacity: 0.45;
-  }
 }
 
 .oq-helper-hub-title {

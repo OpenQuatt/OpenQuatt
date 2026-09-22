@@ -43,18 +43,15 @@ test("rendering en live invoer delen dezelfde bodemplaatwaarden en save-gates", 
     });
     assert.equal(saveButton.disabled, model.saveDisabled);
     assert.doesNotMatch(markup, /data-oq-field=/);
-    assert.match(markup, /data-oq-odu-stop-temperature>7 °C of warmer/);
   }
 });
 
-test("lege of ongeldige temperatuur toont dezelfde onbekende grens bij render en live invoer", () => {
+test("lege of ongeldige temperatuur blokkeert opslaan", () => {
   state.oduSettingsStatuses = { 1: { available: true, identityReady: true, loaded: true } };
   for (const value of ["", "invalid", "0", "-30", "30"]) {
     state.oduSettingsDrafts = { 1: { mode: "1", startTemperatureC: value, stopDeltaC: "3" } };
     const model = getOduSettingsEditorModel(1);
     assert.equal(model.saveDisabled, ["", "invalid"].includes(value));
-    assert.ok(renderOduSettingsModal().includes(`data-oq-odu-start-temperature>${model.startCopy}</strong>`));
-    assert.ok(renderOduSettingsModal().includes(`data-oq-odu-stop-temperature>${model.stopCopy}</strong>`));
   }
 });
 
@@ -105,20 +102,29 @@ test("modal maakt modus en grenzen instelbaar en berekent de stoptemperatuur", (
   state.oduSettingsDrafts = {};
   const modal = renderOduSettingsModal();
   assert.match(modal, /1 · Volgt buitentemperatuur/);
-  assert.match(modal, /2 · Tijdens ontdooien/);
-  assert.match(modal, /3 · Onbekend \(standaard V1\.5 en V2\)/);
+  assert.match(modal, /2 · Tijdens en na ontdooien/);
+  assert.match(modal, /3 · Automatische vorst- en ontdooiregeling \(standaard V1\.5\/V2\)/);
   assert.doesNotMatch(modal, /0 · Uit/);
-  assert.match(modal, /niet officieel gedocumenteerd/);
-  assert.match(modal, /onder 0 °C aan te gaan, boven 0 °C uit te gaan en tijdens ontdooien actief te zijn/);
-  assert.match(modal, /standaardinstelling voor Quatt buitenunit V1\.5 en V2/);
+  assert.match(modal, /Bij normaal verwarmen schakelt de bodemplaat rond 0 °C/);
+  assert.match(modal, /Tussen 0 °C en de ingestelde bovengrens kan ze tijdens ontdooien nog inschakelen/);
+  assert.match(modal, /onder −5 °C gelden aanvullende voorwaarden/);
+  assert.match(modal, /Bovengrens bij ontdooien/);
+  assert.doesNotMatch(modal, /hysterese-instelling wordt in deze modus niet gebruikt/);
+  assert.doesNotMatch(modal, /onderzochte ODU-firmware/);
   assert.match(modal, /data-oq-odu-settings-field="mode"/);
   assert.match(modal, /data-oq-odu-settings-field="startTemperatureC"/);
   assert.match(modal, /data-oq-odu-settings-field="stopDeltaC"/);
-  assert.match(modal, /data-oq-odu-temperature-settings hidden/);
-  assert.match(modal, /7 °C/);
-  assert.match(modal, /Na herstart automatisch opnieuw toepassen/);
-  assert.match(modal, /ook aanpassen terwijl de compressor draait/);
-  assert.match(modal, /opnieuw toe, ook als de compressor draait/);
+  assert.match(modal, /data-oq-odu-temperature-settings>/);
+  assert.match(modal, /data-oq-odu-stop-delta-setting hidden/);
+  assert.doesNotMatch(modal, /oq-settings-odu-thresholds/);
+  assert.doesNotMatch(modal, /data-oq-odu-mode3-temperature-note/);
+  assert.match(modal, /Na herstart opnieuw toepassen/);
+  assert.match(modal, /Actuele waarden uitlezen/);
+  assert.match(modal, /Opslaan en toepassen/);
+  assert.match(modal, /Tijdelijke instellingen/);
+  assert.match(modal, /werkgeheugen/);
+  assert.match(modal, /EEPROM blijft ongewijzigd/);
+  assert.doesNotMatch(modal, /veilig opnieuw/);
   assert.doesNotMatch(modal, /zodra de buitenunit in standby/);
   assert.match(modal, /Quatt buitenunit V1\.5/);
   assert.match(modal, /oq-helper-modal--wide oq-settings-odu-modal/);
@@ -135,7 +141,6 @@ test("modal maakt modus en grenzen instelbaar en berekent de stoptemperatuur", (
     dirty: true,
   };
   const invalidModal = renderOduSettingsModal();
-  assert.match(invalidModal, /data-oq-odu-stop-temperature>—<\/strong>/);
   assert.match(invalidModal, /data-oq-action="odu-settings-save" data-hp="1" disabled/);
 
   state.oduSettingsDrafts[1] = { ...state.oduSettingsDrafts[1], mode: "0", startTemperatureC: "4" };
@@ -150,49 +155,15 @@ test("modal maakt modus en grenzen instelbaar en berekent de stoptemperatuur", (
   assert.doesNotMatch(failedModal, /Status laden\.\.\./);
 });
 
-test("voorbeeld volgt gewijzigde temperatuurgrenzen direct", () => {
-  const startOutput = { textContent: "4 °C of kouder" };
-  const stopOutput = { textContent: "7 °C of warmer" };
-  const panel = {
-    querySelector(selector) {
-      if (selector === "[data-oq-odu-temperature-settings]") return null;
-      if (selector === "[data-oq-odu-mode-description]") return null;
-      if (selector === "[data-oq-odu-start-temperature]") return startOutput;
-      if (selector === "[data-oq-odu-stop-temperature]") return stopOutput;
-      return null;
-    },
-  };
-  const input = {
-    dataset: { oqOduSettingsHp: "1", oqOduSettingsField: "startTemperatureC" },
-    value: "3",
-    checked: false,
-    closest(selector) {
-      assert.equal(selector, ".oq-settings-odu-runtime-panel");
-      return panel;
-    },
-  };
-  state.oduSettingsDrafts = {
-    1: { mode: "3", startTemperatureC: "4", stopDeltaC: "3", autoReapply: false, dirty: false },
-  };
-
-  assert.equal(updateOduSettingsDraft(input), true);
-  assert.equal(startOutput.textContent, "3 °C of kouder");
-  assert.equal(stopOutput.textContent, "6 °C of warmer");
-
-  input.dataset.oqOduSettingsField = "stopDeltaC";
-  input.value = "4";
-  assert.equal(updateOduSettingsDraft(input), true);
-  assert.equal(startOutput.textContent, "3 °C of kouder");
-  assert.equal(stopOutput.textContent, "7 °C of warmer");
-});
-
-test("regelmethode wisselt toelichting en temperatuurvelden direct", () => {
+test("regelmethode wisselt toelichting en modusafhankelijke temperatuurvelden direct", () => {
   const temperatureSettings = { hidden: false };
+  const stopDeltaSetting = { hidden: false };
   const modeOutput = { textContent: "" };
   const panel = {
     querySelector(selector) {
       if (selector === "[data-oq-odu-temperature-settings]") return temperatureSettings;
       if (selector === "[data-oq-odu-mode-description]") return modeOutput;
+      if (selector === "[data-oq-odu-stop-delta-setting]") return stopDeltaSetting;
       return null;
     },
   };
@@ -208,12 +179,21 @@ test("regelmethode wisselt toelichting en temperatuurvelden direct", () => {
 
   assert.equal(updateOduSettingsDraft(input), true);
   assert.equal(temperatureSettings.hidden, true);
-  assert.equal(modeOutput.textContent, "De verwarming schakelt in zodra een ontdooicyclus start en twee minuten nadat deze is afgelopen weer uit.");
+  assert.equal(stopDeltaSetting.hidden, true);
+  assert.equal(modeOutput.textContent, "Actief tijdens ontdooien en nog ongeveer tien minuten daarna.");
+
+  input.value = "3";
+  assert.equal(updateOduSettingsDraft(input), true);
+  assert.equal(temperatureSettings.hidden, false);
+  assert.equal(stopDeltaSetting.hidden, true);
+  assert.match(modeOutput.textContent, /Bij normaal verwarmen schakelt de bodemplaat rond 0 °C/);
+  assert.match(modeOutput.textContent, /Tussen 0 °C en de ingestelde bovengrens kan ze tijdens ontdooien nog inschakelen/);
 
   input.value = "1";
   assert.equal(updateOduSettingsDraft(input), true);
   assert.equal(temperatureSettings.hidden, false);
-  assert.equal(modeOutput.textContent, "De verwarming schakelt op basis van de ingestelde buitentemperatuurgrenzen.");
+  assert.equal(stopDeltaSetting.hidden, false);
+  assert.equal(modeOutput.textContent, "Schakelt in onder de ingestelde temperatuurgrens en uit na de ingestelde hysterese.");
 });
 
 test("opslaan herstelt na geldige invoer maar blijft geblokkeerd bij onbeschikbare of bezige buitenunit", () => {

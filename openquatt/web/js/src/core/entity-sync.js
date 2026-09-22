@@ -21,7 +21,7 @@ import { refreshEnergyHistoryData, refreshSettingsStorageState, refreshTrendHist
 import { patchControlReplayDom, patchDiagnosisDom, patchEnergyDom, patchOverviewDom, patchResultsDom } from "./view-patch-controls.js";
 import { clearWebServerLogOutput, closeWebServerLogStream, resetWebServerLogRecoveryState } from "./webserver-log-controls.js";
 import { getMqttSensorsModalRenderSignature, refreshMqttStatus, shouldRefreshMqttStatusForCurrentSurface } from "../features/mqtt-actions.js";
-import { getApiSecurityStatusSignature, refreshApiSecurityStatus, refreshAuthStatus, shouldRefreshApiSecurityStatusForCurrentSurface, shouldRefreshAuthStatusForCurrentSurface } from "../features/security-actions.js";
+import { refreshApiSecurityStatus, refreshAuthStatus, shouldRefreshApiSecurityStatusForCurrentSurface, shouldRefreshAuthStatusForCurrentSurface } from "../features/security-actions.js";
 import { refreshOduEepromDumpStatuses, shouldRefreshOduEepromDumpSurface } from "../features/odu-eeprom-dump.js";
 import { refreshOduRuntimeFrequencyStatuses, shouldRefreshOduRuntimeFrequencySurface } from "../features/odu-runtime-frequency.js";
 import { refreshOduSettingsStatuses, shouldRefreshOduSettingsSurface } from "../features/odu-settings.js";

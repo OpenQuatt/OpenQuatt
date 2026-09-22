@@ -140,7 +140,7 @@ Zie je hier al vreemde waarden, ga dan niet meteen tunen. Controleer eerst de br
 - schakelt het systeem vaak;
 - reageert de regeling logisch op setpoint en kamertemperatuur.
 
-Gebruik bij een probleem dat je opnieuw kunt veroorzaken ook het **Logboek**. Nieuwe regels verschijnen daar live; valt de verbinding kort weg, dan vult OpenQuatt de gemiste recente regels weer aan. Het logboek is vluchtige diagnose-informatie: bewaar voor support daarnaast altijd een debugopname.
+Gebruik bij een probleem dat je opnieuw kunt veroorzaken ook het **Logboek**. Nieuwe regels verschijnen daar live; valt de verbinding kort weg, dan vult OpenQuatt de gemiste recente regels weer aan. Het logboek is vluchtige diagnose-informatie: bewaar voor support daarnaast altijd een Systeemrecorder-diagnosebestand.
 
 Via `Instellingen → Systeem → Gegevens bewaren` beheer je welke historie OpenQuatt bewaart. OpenQuatt maakt daarbij onderscheid tussen twee soorten geheugen:
 
@@ -295,7 +295,7 @@ Het bericht bevat uitsluitend:
 - de gekozen regelbronnen in `room_temperature_source`, `room_setpoint_source`, `outside_temperature_source`, `heating_enable_source`, `cooling_enable_source`, `cooling_dew_point_source`, `external_heat_demand_source` en `heating_supply_target_source`, genormaliseerd naar vaste waarden zoals `auto`, `local`, `outdoor_unit`, `cic`, `opentherm`, `home_assistant`, `api_input`, `mqtt`, `cic_or_home_assistant`, `schedule`, `disabled` en `heating_curve`;
 - vrij heapgeheugen, het minimum sinds de start, het grootste vrije heapblok en vrij PSRAM;
 - maximale looptijd van de firmwareloop, ESP-chiptemperatuur en reden van de laatste herstart;
-- drie cumulatieve Modbus-betrouwbaarheidstellers sinds de laatste boot, rechtstreeks op de primaire ODU-bus geteld en onafhankelijk van het ingestelde logniveau: partial responses, parse failures en offline-transities;
+- vier Modbus-betrouwbaarheidstellers, rechtstreeks op de primaire ODU-bus geteld en onafhankelijk van het ingestelde logniveau: partial responses, parse failures, succesvol herstelde responses met voor- of naloopruis en offline-transities. Per bericht wordt de toename sinds de vorige succesvolle publicatie verstuurd;
 - bij Wi-Fi: de signaalsterkte in dBm;
 - of CiC JSON-feed inlezen, Quatt-app via CiC en de OpenTherm-thermostaatkoppeling aanstaan;
 - `boiler_assist_enabled`: of CV-ketel-/boilerondersteuning aanstaat;
@@ -305,20 +305,20 @@ Het bericht bevat uitsluitend:
 
 Een niet-ondersteunde functie, tijdelijk nog niet geïnitialiseerde keuze, onbekende keuze of niet-beschikbare sensor krijgt de waarde `null`; `false` betekent dat de functie beschikbaar maar uitgeschakeld is. Dit geldt ook afzonderlijk voor de nieuwe configuratievelden. `flow_source_config` is `null` zolang de benodigde flowselectie nog geen bekende toestand heeft. Zo is de Wi-Fi-signaalsterkte bij Ethernet `null`. `boiler_connection` is alleen `null` wanneer de OTB-select bestaat maar tijdelijk nog geen geldige toestand heeft, of een onbekende optie bevat.
 
-Het bericht bevat nooit een MAC-adres, lokaal IP-adres, wifi-netwerknaam, wifi-wachtwoord, gebruikersnaam, ander wachtwoord of andere inloggegevens. Ook MQTT-servergegevens, topics, ontvangen MQTT-waarden, ingestelde temperaturen of grenzen, verwarmingsmetingen, regelwaarden, Modbus-frames en gewone logregels gaan niet mee. Alleen de hierboven genoemde cumulatieve communicatiefouttellers worden gedeeld. De OpenQuatt-loggingserver ziet bij een netwerkverbinding technisch wel het bron-IP-adres, maar dit staat niet in de payload en OpenQuatt slaat het niet op. In de web-app staat onder **Welke gegevens worden gedeeld?** (in Quick Start **Wat gaat er mee?**) een eenmalige momentopname van de JSON-vorm. De drie Modbus-tellers worden rechtstreeks uit de ODU-bus gelezen bij de echte verzending en zijn bewust geen web-/Home Assistant-entiteiten; daarom staan alleen deze drie velden in de lokale preview op `null`. Het getoonde `message_id` en `timestamp_s` worden voor een echte verzending opnieuw bepaald; `reset_reason` is niet via de lokale web-API beschikbaar en staat in deze preview eveneens op `null`.
+Het bericht bevat nooit een MAC-adres, lokaal IP-adres, wifi-netwerknaam, wifi-wachtwoord, gebruikersnaam, ander wachtwoord of andere inloggegevens. Ook MQTT-servergegevens, topics, ontvangen MQTT-waarden, ingestelde temperaturen of grenzen, verwarmingsmetingen, regelwaarden, Modbus-frames en gewone logregels gaan niet mee. Alleen de hierboven genoemde communicatiebetrouwbaarheidstellers worden gedeeld. De OpenQuatt-loggingserver ziet bij een netwerkverbinding technisch wel het bron-IP-adres, maar dit staat niet in de payload en OpenQuatt slaat het niet op. In de web-app staat onder **Welke gegevens worden gedeeld?** (in Quick Start **Wat gaat er mee?**) een eenmalige momentopname van de JSON-vorm. De vier Modbus-tellers worden rechtstreeks uit de ODU-bus gelezen bij de echte verzending en zijn bewust geen web-/Home Assistant-entiteiten; daarom staan alleen deze vier velden in de lokale preview op `null`. Het getoonde `message_id` en `timestamp_s` worden voor een echte verzending opnieuw bepaald; `reset_reason` is niet via de lokale web-API beschikbaar en staat in deze preview eveneens op `null`.
 
 Wanneer delen voor het eerst actief wordt, maakt de controller met de hardware-randomgenerator een UUIDv4 aan en bewaart die lokaal. Een UUIDv4 heeft 122 willekeurige bits; zelfs bij één miljoen installaties is de kans op minstens één dubbel ID kleiner dan ongeveer `10^-25`. Dit ID blijft gelijk na een OTA-update en wanneer je delen tijdelijk uitzet. Je kunt het bekijken via **Instellingen → Systeem → Gebruiksstatistieken**. Een fabrieksreset maakt een nieuw ID. De keuze en het ID worden niet via een instellingenbackup naar een andere controller gekopieerd. Uitzetten stopt nieuwe berichten direct; er wordt geen wachtrij voor later opgeslagen. Na een mislukte verzending maakt iedere retry een verse momentopname, maar behoudt binnen dezelfde retryreeks het `message_id` zodat een verloren QoS 1-bevestiging kan worden gededupliceerd.
 
 De statistiekenclient staat los van de configureerbare [MQTT inputbronnen](mqtt.md): hij publiceert alleen dit ene bericht, subscribed nergens op en schakelt ESPHome MQTT-discovery, entiteitspublicaties en logexport niet in. Het JSON-bericht wordt met QoS 1 en zonder retain gepubliceerd op `openquatt/devices/<installation-id>/telemetry`. De broker bewaart het daardoor niet als retained state voor later verbindende subscribers; de loggingserver slaat ieder ontvangen bericht zelf op. Een eerder door oude firmware retained opgeslagen payload wordt door een non-retained publicatie niet gewist en moet zo nodig eenmalig op de centrale broker worden verwijderd. Een build zonder geconfigureerde centrale loggingserver maakt ook wanneer delen aanstaat geen externe verbinding.
 
-#### Debugopname voor support
+#### Systeemrecorder voor support
 
-Bij een reproduceerbaar probleem kun je tijdelijk supportgegevens opnemen:
+De Systeemrecorder bewaart continu recente systeemgegevens, dus je hoeft een opname niet vooraf te starten:
 
-1. Open **Instellingen → Systeem → Systeemstatus → Debugopname**.
-2. Start de opname voordat je het probleem opnieuw veroorzaakt. Gebruik rolling debug als het probleem maar af en toe optreedt.
-3. Stop de opname nadat het probleem zichtbaar is en download het supportbestand.
-4. Voeg het gedownloade `.oqdebug.json`-bestand toe aan je Discord-vraag of GitHub-issue.
+1. Open **Diagnostiek → Systeemrecorder**.
+2. Kies het venster dat het probleem afdekt: laatste 15, 30 of 60 minuten, of alles wat beschikbaar is.
+3. Download het diagnosebestand.
+4. Voeg het gedownloade `.oqdebug.json`-bestand toe aan je Discord-vraag of GitHub-issue. Via **Open analyser** kun je het bestand zelf alvast bekijken op OpenHeatPumps; er wordt niets automatisch verzonden.
 
 De opname wordt lokaal in het apparaatgeheugen opgeslagen en niets wordt automatisch verzonden. Deel het bestand alleen binnen het supportverzoek waarvoor je het hebt gemaakt.
 

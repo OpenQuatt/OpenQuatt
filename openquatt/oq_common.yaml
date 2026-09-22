@@ -244,7 +244,9 @@ uart:
     data_bits: 8
     stop_bits: 1
     parity: EVEN
-    rx_full_threshold: 1
+    # Keep rx_timeout at one character, but let ESPHome choose its native
+    # RX-full threshold (~16 bytes at 19200 8E1) instead of interrupting on
+    # every byte.
     rx_timeout: 1
 
 openquatt_modbus:
