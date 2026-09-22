@@ -344,6 +344,69 @@
   background: var(--oq-settings-subpanel-background);
 }
 
+.oq-run-extension {
+  display: grid;
+  gap: 18px;
+}
+
+.oq-run-extension-intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.oq-run-extension-intro .oq-settings-subpanel-head {
+  flex: 1 1 360px;
+}
+
+.oq-run-extension-status {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--oq-helper-card-muted);
+  border: 1px solid var(--oq-helper-line);
+  color: var(--oq-helper-soft);
+  font-size: 12px;
+}
+
+.oq-run-extension-thresholds {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding: 18px 0;
+  border-top: 1px solid var(--oq-helper-line);
+  border-bottom: 1px solid var(--oq-helper-line);
+}
+
+.oq-run-extension-thresholds > div {
+  display: grid;
+  gap: 6px;
+}
+
+.oq-run-extension-thresholds span,
+.oq-run-extension-thresholds small,
+.oq-run-extension-note {
+  color: var(--oq-helper-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.oq-run-extension-thresholds strong {
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.oq-run-extension-note {
+  margin: 0;
+}
+
+@media (max-width: 600px) {
+  .oq-run-extension-thresholds {
+    grid-template-columns: 1fr;
+  }
+}
+
 .oq-settings-cooling-schedule {
   display: grid;
   gap: 16px;
