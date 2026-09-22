@@ -3,63 +3,64 @@ import { renderOqIcon } from "../core/config.js";
 import { state } from "../core/state.js";
 import { escapeHtml } from "../core/html.js";
 import { renderModalShell } from "../core/modal-shell.js";
+import { formatNumber, t } from "../i18n/index.js";
 
   export function getMqttStatusLabel() {
     const status = state.mqttStatus;
     if (!status) {
-      return "Laden...";
+      return t("mqtt.statusLoading");
     }
     if (status.enabled && status.connected) {
-      return "Verbonden";
+      return t("mqtt.statusConnected");
     }
     if (status.enabled) {
-      return "Ingeschakeld";
+      return t("mqtt.statusEnabled");
     }
     if (status.broker) {
-      return "Uit";
+      return t("mqtt.statusOff");
     }
-    return "Niet ingesteld";
+    return t("mqtt.statusUnset");
   }
 
   export function getMqttStatusDetail() {
     const status = state.mqttStatus;
     if (!status) {
-      return "MQTT-status wordt geladen.";
+      return t("mqtt.detailLoading");
     }
     const broker = String(status.broker || "").trim();
     const port = Number(status.port || 1883);
-    const endpoint = broker ? `${broker}:${port}` : "geen broker";
+    const endpoint = broker ? `${broker}:${port}` : t("mqtt.detailNoBroker");
     if (status.enabled && status.connected) {
-      return `Verbonden met ${endpoint}.`;
+      return t("mqtt.detailConnected", { endpoint });
     }
     if (status.enabled) {
       return broker
-        ? `MQTT staat aan; verbinding met ${endpoint} is nog niet bevestigd.`
-        : "MQTT staat aan, maar er is nog geen broker ingesteld.";
+        ? t("mqtt.detailNotConfirmed", { endpoint })
+        : t("mqtt.detailNoBrokerSet");
     }
     if (broker) {
-      return `Broker ${endpoint} is opgeslagen, maar MQTT inputbronnen staan uit.`;
+      return t("mqtt.detailStoredOff", { endpoint });
     }
-    return "MQTT inputbronnen staan uit. Stel een broker in om externe bronwaarden te ontvangen.";
+    return t("mqtt.detailOffNoBroker");
   }
 
   export function renderMqttNumericValue(key, decimals = 2) {
     const value = getEntityNumericValue(key);
     if (!Number.isFinite(value)) {
-      return '<span class="oq-settings-mqtt-sensor-value-missing">Geen meting</span>';
+      return `<span class="oq-settings-mqtt-sensor-value-missing">${escapeHtml(t("mqtt.noReading"))}</span>`;
     }
     return `
-      <span class="oq-settings-mqtt-sensor-value-number">${escapeHtml(value.toFixed(decimals))}</span>
+      <span class="oq-settings-mqtt-sensor-value-number">${escapeHtml(formatNumber(value, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }))}</span>
       <span class="oq-settings-mqtt-sensor-value-unit">°C</span>
     `;
   }
 
   export function renderMqttBooleanValue(sensor) {
     if (!hasEntity(sensor.valueKey) || !isEntityActive(sensor.validKey)) {
-      return '<span class="oq-settings-mqtt-sensor-value-missing">Geen meting</span>';
+      return `<span class="oq-settings-mqtt-sensor-value-missing">${escapeHtml(t("mqtt.noReading"))}</span>`;
     }
-    const activeLabel = sensor.activeLabel || "Toegestaan";
-    const inactiveLabel = sensor.inactiveLabel || "Geblokkeerd";
+    const activeLabel = sensor.activeLabel || t("settingsIntegrations.diagAllowed");
+    const inactiveLabel = sensor.inactiveLabel || t("settingsIntegrations.diagBlocked");
     return `<span class="oq-settings-mqtt-sensor-value-boolean">${escapeHtml(isEntityActive(sensor.valueKey) ? activeLabel : inactiveLabel)}</span>`;
   }
 
@@ -86,9 +87,9 @@ import { renderModalShell } from "../core/modal-shell.js";
 
   export function getMqttValidityLabel(validKey) {
     if (!hasEntity(validKey)) {
-      return "Nog geen status";
+      return t("mqtt.validityNoStatus");
     }
-    return isEntityActive(validKey) ? "Geldig" : "Ontbreekt of verouderd";
+    return isEntityActive(validKey) ? t("mqtt.validityValid") : t("mqtt.validityStale");
   }
 
   export function getMqttInputTopic(key) {
@@ -131,96 +132,100 @@ import { renderModalShell } from "../core/modal-shell.js";
     return [
       {
         topicKey: "cooling_dew_point",
-        label: "Dauwpunt",
+        label: t("mqtt.sensorDewPoint"),
         valueKey: "mqttCoolingDewPoint",
         ageKey: "mqttCoolingDewPointAge",
         validKey: "mqttCoolingDewPointValid",
-        staleCopy: "15 minuten",
-        payloadInfoTitle: "Temperatuurpayload",
-        payloadInfo: 'Publiceer live een temperatuur in °C. Voorbeelden: 16.2, 16,2, 16.2 °C of {"value":16.2}. Geldig bereik: -20..35 °C. Retained berichten worden niet gebruikt voor regeling.',
+        staleCopy: t("mqtt.stale15min"),
+        payloadInfoTitle: t("mqtt.payloadTempTitle"),
+        payloadInfo: t("mqtt.payloadDew"),
       },
       {
         topicKey: "outside_temperature",
-        label: "Buitentemperatuur",
+        label: t("mqtt.sensorOutside"),
         valueKey: "mqttOutsideTemperature",
         ageKey: "mqttOutsideTemperatureAge",
         validKey: "mqttOutsideTemperatureValid",
-        staleCopy: "30 minuten",
-        payloadInfoTitle: "Temperatuurpayload",
-        payloadInfo: 'Publiceer live een temperatuur in °C. Voorbeelden: 15.0, 15,0, 15.0 °C of {"value":15.0}. Geldig bereik: -40..60 °C. Retained berichten worden niet gebruikt voor regeling.',
+        staleCopy: t("mqtt.stale30min"),
+        payloadInfoTitle: t("mqtt.payloadTempTitle"),
+        payloadInfo: t("mqtt.payloadOutside"),
       },
       {
         topicKey: "room_temperature",
-        label: "Kamertemperatuur",
+        label: t("mqtt.sensorRoom"),
         valueKey: "mqttRoomTemperature",
         ageKey: "mqttRoomTemperatureAge",
         validKey: "mqttRoomTemperatureValid",
-        staleCopy: "10 minuten",
-        payloadInfoTitle: "Temperatuurpayload",
-        payloadInfo: 'Publiceer live een temperatuur in °C. Voorbeelden: 21.1, 21,1, 21.1 °C of {"value":21.1}. Geldig bereik: 0..50 °C. Retained berichten worden niet gebruikt voor regeling.',
+        staleCopy: t("mqtt.stale10min"),
+        payloadInfoTitle: t("mqtt.payloadTempTitle"),
+        payloadInfo: t("mqtt.payloadRoom"),
       },
       {
         topicKey: "room_setpoint",
-        label: "Kamer setpoint",
+        label: t("mqtt.sensorRoomSetpoint"),
         valueKey: "mqttRoomSetpoint",
         ageKey: "mqttRoomSetpointAge",
         validKey: "mqttRoomSetpointValid",
-        staleCopy: "nieuw bericht",
+        staleCopy: t("mqtt.staleNew"),
         stateful: true,
-        payloadInfoTitle: "Temperatuurpayload",
-        payloadInfo: 'Publiceer een setpoint in °C. Voorbeelden: 21.0, 21,0, 21.0 °C of {"value":21.0}. Geldig bereik: 5..35 °C.',
+        payloadInfoTitle: t("mqtt.payloadTempTitle"),
+        payloadInfo: t("mqtt.payloadRoomSetpoint"),
       },
       {
         topicKey: "heating_supply_target",
-        label: "Aanvoertarget",
+        label: t("mqtt.sensorSupplyTarget"),
         valueKey: "mqttHeatingSupplyTarget",
         ageKey: "mqttHeatingSupplyTargetAge",
         validKey: "mqttHeatingSupplyTargetValid",
-        staleCopy: "15 minuten",
-        payloadInfoTitle: "Temperatuurpayload",
-        payloadInfo: 'Publiceer live een aanvoertemperatuur in °C. Voorbeelden: 42.0, 42,0, 42.0 °C of {"value":42.0}. Geldig bereik: 20..70 °C. Retained berichten worden niet gebruikt voor regeling.',
+        staleCopy: t("mqtt.stale15min"),
+        payloadInfoTitle: t("mqtt.payloadTempTitle"),
+        payloadInfo: t("mqtt.payloadSupply"),
       },
       {
         topicKey: "heating_enable",
-        label: "Warmtetoestemming",
+        label: t("mqtt.sensorHeatEnable"),
         valueKey: "mqttHeatingEnable",
         ageKey: "mqttHeatingEnableAge",
         validKey: "mqttHeatingEnableValid",
-        staleCopy: "nieuw bericht",
+        staleCopy: t("mqtt.staleNew"),
         kind: "binary",
         stateful: true,
-        payloadInfoTitle: "Booleanpayload",
-        payloadInfo: 'Publiceer warmtetoestemming als boolean. Geaccepteerd: true/false, 1/0, on/off, yes/no of {"value":true}.',
+        payloadInfoTitle: t("mqtt.payloadBoolTitle"),
+        payloadInfo: t("mqtt.payloadHeatBool"),
       },
       {
         topicKey: "cooling_enable",
-        label: "Koeltoestemming",
+        label: t("mqtt.sensorCoolEnable"),
         valueKey: "mqttCoolingEnable",
         ageKey: "mqttCoolingEnableAge",
         validKey: "mqttCoolingEnableValid",
-        staleCopy: "nieuw bericht",
+        staleCopy: t("mqtt.staleNew"),
         kind: "binary",
         stateful: true,
-        payloadInfoTitle: "Booleanpayload",
-        payloadInfo: 'Publiceer koeltoestemming als boolean. Geaccepteerd: true/false, 1/0, on/off, yes/no of {"value":true}.',
+        payloadInfoTitle: t("mqtt.payloadBoolTitle"),
+        payloadInfo: t("mqtt.payloadCoolBool"),
       },
     ];
   }
 
   export function formatMqttSensorValiditySummary(sensors = getMqttInputSensors()) {
     if (!sensors.length) {
-      return "Geen sensoren";
+      return t("mqtt.summaryNone");
     }
     const enabledSensors = sensors.filter((sensor) => isMqttInputEnabled(sensor.topicKey));
     const disabledCount = sensors.length - enabledSensors.length;
     if (!enabledSensors.length) {
-      return `${disabledCount} ${disabledCount === 1 ? "topic" : "topics"} uitgeschakeld`;
+      return disabledCount === 1
+        ? t("mqtt.summaryDisabledOne", { count: formatNumber(disabledCount, { maximumFractionDigits: 0 }) })
+        : t("mqtt.summaryDisabledOther", { count: formatNumber(disabledCount, { maximumFractionDigits: 0 }) });
     }
     const validCount = enabledSensors.filter((sensor) => isEntityActive(sensor.validKey)).length;
     const validityText = validCount === enabledSensors.length
-      ? `${validCount} ${validCount === 1 ? "sensor" : "sensoren"} geldig`
-      : `${validCount} van ${enabledSensors.length} sensoren geldig`;
-    return disabledCount ? `${validityText} · ${disabledCount} uit` : validityText;
+      ? validCount === 1
+        ? t("mqtt.summaryValidOne", { count: formatNumber(validCount, { maximumFractionDigits: 0 }) })
+        : t("mqtt.summaryValidOther", { count: formatNumber(validCount, { maximumFractionDigits: 0 }) })
+      : t("mqtt.summaryValidPart", { valid: formatNumber(validCount, { maximumFractionDigits: 0 }), total: formatNumber(enabledSensors.length, { maximumFractionDigits: 0 }) });
+    return disabledCount ? `${validityText} · ${t("mqtt.summaryDisabledShort", { count: formatNumber(disabledCount, { maximumFractionDigits: 0 }) })}` : validityText;
   }
 
   export function renderMqttModal() {
@@ -228,10 +233,10 @@ import { renderModalShell } from "../core/modal-shell.js";
     const enabled = Boolean(state.mqttDraftEnabled);
     const clearPassword = Boolean(state.mqttDraftClearPassword);
     const passwordPlaceholder = status.password_set
-      ? "Leeg laten om huidig wachtwoord te behouden"
-      : "Optioneel";
+      ? t("mqtt.passKeep")
+      : t("mqtt.passOptional");
     const noticeMarkup = state.mqttNotice
-      ? `<div class="oq-helper-modal-success oq-helper-modal-success--compact" aria-live="polite"><strong>Status</strong><span>${escapeHtml(state.mqttNotice)}</span></div>`
+      ? `<div class="oq-helper-modal-success oq-helper-modal-success--compact" aria-live="polite"><strong>${escapeHtml(t("mqtt.modalStatus"))}</strong><span>${escapeHtml(state.mqttNotice)}</span></div>`
       : "";
     const errorMarkup = state.mqttError
       ? `<div class="oq-helper-modal-note oq-helper-modal-note--error" aria-live="assertive">${escapeHtml(state.mqttError)}</div>`
@@ -240,11 +245,11 @@ import { renderModalShell } from "../core/modal-shell.js";
     return renderModalShell({
       id: "system",
       titleId: "oq-mqtt-modal-title",
-      kicker: "Integratie",
-      title: "MQTT brokerconfiguratie",
-      copy: "Stel de broker in waarop OpenQuatt MQTT-inputs beluistert.",
+      kicker: t("mqtt.modalKicker"),
+      title: t("mqtt.modalTitle"),
+      copy: t("mqtt.modalCopy"),
       closeAction: "close-system-modal",
-      closeLabel: "Sluit MQTT brokerconfiguratie",
+      closeLabel: t("mqtt.modalClose"),
       body: `
           ${noticeMarkup}
           ${errorMarkup}
@@ -256,10 +261,10 @@ import { renderModalShell } from "../core/modal-shell.js";
                 ${enabled ? "checked" : ""}
                 ${state.mqttBusy ? "disabled" : ""}
               >
-              <span>MQTT inputbronnen inschakelen</span>
+              <span>${escapeHtml(t("mqtt.enableLabel"))}</span>
             </label>
             <label class="oq-helper-modal-auth-field oq-settings-mqtt-field">
-              <span>Broker</span>
+              <span>${escapeHtml(t("mqtt.brokerLabel"))}</span>
               <input
                 class="oq-helper-input"
                 type="text"
@@ -271,7 +276,7 @@ import { renderModalShell } from "../core/modal-shell.js";
               >
             </label>
             <label class="oq-helper-modal-auth-field oq-settings-mqtt-field oq-settings-mqtt-field--port">
-              <span>Poort</span>
+              <span>${escapeHtml(t("mqtt.portLabel"))}</span>
               <input
                 class="oq-helper-input"
                 type="number"
@@ -285,7 +290,7 @@ import { renderModalShell } from "../core/modal-shell.js";
               >
             </label>
             <label class="oq-helper-modal-auth-field oq-settings-mqtt-field">
-              <span>Gebruikersnaam</span>
+              <span>${escapeHtml(t("mqtt.userLabel"))}</span>
               <input
                 class="oq-helper-input"
                 type="text"
@@ -296,7 +301,7 @@ import { renderModalShell } from "../core/modal-shell.js";
               >
             </label>
             <label class="oq-helper-modal-auth-field oq-settings-mqtt-field">
-              <span>Wachtwoord</span>
+              <span>${escapeHtml(t("mqtt.passLabel"))}</span>
               <input
                 class="oq-helper-input"
                 type="password"
@@ -315,13 +320,13 @@ import { renderModalShell } from "../core/modal-shell.js";
                   ${clearPassword ? "checked" : ""}
                   ${state.mqttBusy ? "disabled" : ""}
                 >
-                <span>Opgeslagen wachtwoord wissen</span>
+                <span>${escapeHtml(t("mqtt.clearPass"))}</span>
               </label>
             ` : ""}
           </div>`,
       actions: `
-        <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${state.mqttBusy ? "disabled" : ""}>Gereed</button>
-        <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="save-mqtt-config" ${state.mqttBusy || !status.csrf_token ? "disabled" : ""}>${state.mqttBusy ? "Opslaan..." : "Opslaan"}</button>
+        <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${state.mqttBusy ? "disabled" : ""}>${escapeHtml(t("header.done"))}</button>
+        <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="save-mqtt-config" ${state.mqttBusy || !status.csrf_token ? "disabled" : ""}>${state.mqttBusy ? escapeHtml(t("mqtt.saving")) : escapeHtml(t("common.save"))}</button>
       `,
     });
   }
@@ -338,7 +343,7 @@ import { renderModalShell } from "../core/modal-shell.js";
     const sensorValiditySummary = formatMqttSensorValiditySummary(sensors);
     const sensorMarkup = sensors.map((sensor) => {
       const topic = getMqttInputTopic(sensor.topicKey);
-      const topicDisplay = topic || "Wordt geladen...";
+      const topicDisplay = topic || t("mqtt.topicLoading");
       const age = formatMqttAge(sensor.ageKey);
       const inputEnabled = isMqttInputEnabled(sensor.topicKey);
       const valid = isEntityActive(sensor.validKey);
@@ -349,28 +354,29 @@ import { renderModalShell } from "../core/modal-shell.js";
       const busy = state.mqttInputToggleBusyKey === sensor.topicKey ||
         state.mqttRetainedToggleBusyKey === sensor.topicKey;
       const statusTone = inputEnabled ? (valid ? "valid" : "invalid") : "disabled";
-      const statusLabel = inputEnabled ? (valid ? "geldig" : "ongeldig") : "uit";
-      const validityTitle = inputEnabled ? getMqttValidityLabel(sensor.validKey) : "Uitgeschakeld";
+      const statusLabel = inputEnabled ? (valid ? t("mqtt.statusValidShort") : t("mqtt.statusInvalidShort")) : t("mqtt.statusOffShort");
+      const validityTitle = inputEnabled ? getMqttValidityLabel(sensor.validKey) : t("mqtt.statusDisabledLong");
+      const ageText = age === "—" ? t("mqtt.ageUnknown") : t("mqtt.ageAgo", { age });
       const statusTitle = inputEnabled
         ? valid
           ? sensor.stateful
             ? acceptRetained
-              ? `Laatste MQTT-publicatie ${age === "—" ? "onbekend" : `${age} geleden`}. De waarde blijft geldig tot een nieuwe payload, uitschakelen of herstart.`
-              : `Laatste live MQTT-publicatie ${age === "—" ? "onbekend" : `${age} geleden`}. De waarde blijft maximaal ${nonRetainedTimeoutMinutes} minuten geldig en vervalt bij een MQTT-disconnect.`
-            : `Laatste MQTT-publicatie ${age === "—" ? "onbekend" : `${age} geleden`}. Zonder nieuwe MQTT-publicatie wordt de waarde na ${sensor.staleCopy} ongeldig.`
+              ? t("mqtt.statefulRetained", { age: ageText })
+              : t("mqtt.statefulLive", { age: ageText, minutes: formatNumber(nonRetainedTimeoutMinutes, { maximumFractionDigits: 0 }) })
+            : t("mqtt.plainStale", { age: ageText, stale: sensor.staleCopy })
           : age === "—"
-            ? "Nog geen geldige MQTT-publicatie ontvangen."
-            : `Laatste MQTT-publicatie ${age} geleden; de waarde is niet meer geldig.`
-        : "Dit topic wordt niet gebruikt. OpenQuatt subscribed er niet op.";
-      const toggleTitle = inputEnabled ? "Topic uitschakelen" : "Topic gebruiken";
-      const retainedTitle = "Retained MQTT-waarde: ontvangen bij verbinden met de broker.";
+            ? t("mqtt.noValid")
+            : t("mqtt.staleAge", { age })
+        : t("mqtt.topicUnused");
+      const toggleTitle = inputEnabled ? t("mqtt.toggleOff") : t("mqtt.toggleOn");
+      const retainedTitle = t("mqtt.retainedInfo");
       const retainedBehavior = acceptRetained
-        ? "Brokerwaarde wordt na reconnect of herstart opnieuw gebruikt."
-        : `Alleen live waarden; maximaal ${nonRetainedTimeoutMinutes} minuten geldig en direct ongeldig bij disconnect.`;
+        ? t("mqtt.retainedKept")
+        : t("mqtt.retainedLiveOnly", { minutes: formatNumber(nonRetainedTimeoutMinutes, { maximumFractionDigits: 0 }) });
       const payloadInfo = sensor.stateful
         ? `${sensor.payloadInfo} ${acceptRetained
-            ? "Retained berichten worden geaccepteerd."
-            : `Retained berichten worden genegeerd; live waarden verlopen na ${nonRetainedTimeoutMinutes} minuten.`}`
+          ? t("mqtt.retainedAccept")
+          : t("mqtt.retainedReject", { minutes: formatNumber(nonRetainedTimeoutMinutes, { maximumFractionDigits: 0 }) })}`
         : sensor.payloadInfo;
       return `
         <article class="oq-settings-mqtt-sensor-row${expanded ? " is-open" : ""}${inputEnabled ? "" : " is-disabled"}">
@@ -411,7 +417,7 @@ import { renderModalShell } from "../core/modal-shell.js";
               ${sensor.stateful ? `
                 <div class="oq-settings-mqtt-retained-setting">
                   <span class="oq-settings-mqtt-retained-setting-copy">
-                    <strong>Retained waarde gebruiken</strong>
+                    <strong>${escapeHtml(t("mqtt.retainedUse"))}</strong>
                     <small>${escapeHtml(retainedBehavior)}</small>
                   </span>
                   <button
@@ -420,8 +426,8 @@ import { renderModalShell } from "../core/modal-shell.js";
                     data-oq-action="toggle-mqtt-retained"
                     data-oq-mqtt-topic-key="${escapeHtml(sensor.topicKey)}"
                     aria-pressed="${acceptRetained ? "true" : "false"}"
-                    aria-label="${escapeHtml(`${sensor.label}: retained waarde ${acceptRetained ? "uitschakelen" : "gebruiken"}`)}"
-                    title="${acceptRetained ? "Retained waarde negeren" : "Retained waarde gebruiken"}"
+                    aria-label="${escapeHtml(t("mqtt.retainedUseAria", { label: sensor.label, action: acceptRetained ? t("mqtt.retainedActionOff") : t("mqtt.retainedActionOn") }))}"
+                    title="${escapeHtml(acceptRetained ? t("mqtt.retainedIgnore") : t("mqtt.retainedUse"))}"
                     ${busy || !state.mqttStatus?.csrf_token ? "disabled" : ""}
                   >
                     <span class="oq-settings-toggle-switch-track"><span class="oq-settings-toggle-switch-knob"></span></span>
@@ -429,7 +435,7 @@ import { renderModalShell } from "../core/modal-shell.js";
                 </div>
               ` : ""}
               <div class="oq-settings-mqtt-sensor-topic-head">
-                <span class="oq-settings-mqtt-sensor-topic-label">Subscribe-topic</span>
+                <span class="oq-settings-mqtt-sensor-topic-label">${escapeHtml(t("mqtt.subTopic"))}</span>
               </div>
               <div class="oq-settings-mqtt-topic-row">
                 <div class="oq-settings-mqtt-topic-field${copied ? " is-copied" : ""}">
@@ -439,17 +445,17 @@ import { renderModalShell } from "../core/modal-shell.js";
                     type="button"
                     data-oq-action="copy-mqtt-topic"
                     data-oq-mqtt-topic-key="${escapeHtml(sensor.topicKey)}"
-                    aria-label="${escapeHtml(copied ? `MQTT-topic voor ${sensor.label} gekopieerd` : `Kopieer MQTT-topic voor ${sensor.label}`)}"
-                    title="${copied ? "Gekopieerd" : "Kopieer topic"}"
+                    aria-label="${escapeHtml(copied ? t("mqtt.copiedAria", { label: sensor.label }) : t("mqtt.copyAria", { label: sensor.label }))}"
+                    title="${escapeHtml(copied ? t("mqtt.copiedTitle") : t("mqtt.copyTitle"))}"
                     ${!topic ? "disabled" : ""}
                   >
                     ${renderOqIcon(copied ? "clipboard-check" : "clipboard", "oq-settings-mqtt-topic-copy-icon")}
                   </button>
                 </div>
                 <details class="oq-settings-mqtt-topic-info">
-                  <summary aria-label="${escapeHtml(`Payloadinformatie voor ${sensor.label}`)}">i</summary>
+                  <summary aria-label="${escapeHtml(t("mqtt.payloadInfoAria", { label: sensor.label }))}">i</summary>
                   <div class="oq-settings-mqtt-topic-info-popover">
-                    <strong>${escapeHtml(sensor.payloadInfoTitle || "Payload")}</strong>
+                    <strong>${escapeHtml(sensor.payloadInfoTitle || t("mqtt.payloadFallback"))}</strong>
                     <p>${escapeHtml(payloadInfo || "")}</p>
                   </div>
                 </details>
@@ -466,24 +472,24 @@ import { renderModalShell } from "../core/modal-shell.js";
     return renderModalShell({
       id: "system",
       titleId: "oq-mqtt-sensors-modal-title",
-      kicker: "Integratie",
-      title: "MQTT sensoren",
+      kicker: t("mqtt.modalKicker"),
+      title: t("mqtt.sensorsTitle"),
       className: "oq-helper-modal--mqtt-sensors",
       headerMarkup: `<div class="oq-settings-mqtt-modal-head">
             <span class="oq-settings-mqtt-modal-icon">${renderMqttLogoIcon("oq-settings-mqtt-modal-logo")}</span>
             <div>
-              <p class="oq-helper-modal-kicker">Integratie</p>
-              <h2 class="oq-helper-modal-title" id="oq-mqtt-sensors-modal-title">MQTT sensoren</h2>
+              <p class="oq-helper-modal-kicker">${escapeHtml(t("mqtt.modalKicker"))}</p>
+              <h2 class="oq-helper-modal-title" id="oq-mqtt-sensors-modal-title">${escapeHtml(t("mqtt.sensorsTitle"))}</h2>
             </div>
-            <button class="oq-helper-modal-close" type="button" data-oq-action="close-system-modal" aria-label="Sluit MQTT sensoren">×</button>
+            <button class="oq-helper-modal-close" type="button" data-oq-action="close-system-modal" aria-label="${escapeHtml(t("mqtt.sensorsClose"))}">×</button>
           </div>`,
       body: `
           ${errorMarkup}
           <div class="oq-settings-mqtt-sensor-table">
             <div class="oq-settings-mqtt-sensor-table-head" aria-hidden="true">
-              <span>Sensor</span>
-              <span>Waarde</span>
-              <span>Status</span>
+              <span>${escapeHtml(t("mqtt.tableSensor"))}</span>
+              <span>${escapeHtml(t("mqtt.tableValue"))}</span>
+              <span>${escapeHtml(t("mqtt.tableStatus"))}</span>
               <span></span>
               <span></span>
             </div>
@@ -491,7 +497,7 @@ import { renderModalShell } from "../core/modal-shell.js";
           </div>
           <div class="oq-settings-mqtt-sensor-footer">
             <span>${escapeHtml(sensorValiditySummary)}</span>
-            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">Gereed</button>
+            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">${escapeHtml(t("header.done"))}</button>
           </div>`,
     });
   }

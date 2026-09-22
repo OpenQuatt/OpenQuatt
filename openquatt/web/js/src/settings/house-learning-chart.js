@@ -1,4 +1,5 @@
 import { escapeHtml } from "../core/html.js";
+import { formatDateTime, formatNumber, t } from "../i18n/index.js";
 
 const REQUIRED_COLUMNS = ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w"];
 const WIDTH = 720;
@@ -7,19 +8,22 @@ const PADDING = { top: 26, right: 24, bottom: 42, left: 52 };
 
 const finite = (value) => Number.isFinite(value) ? value : null;
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
-const format = (value, digits = 1) => Number(value).toLocaleString("nl-NL", { maximumFractionDigits: digits, minimumFractionDigits: 0 });
-const formatDate = (epoch) => new Date(epoch * 1000).toLocaleString("nl-NL", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const translatedError = (translationKey) => Object.assign(new Error(t(translationKey)), { translationKey });
+const format = (value, digits = 1) => formatNumber(value, { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+const formatRecordDate = (epoch) => formatDateTime(epoch * 1000, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const formatDuration = (seconds) => {
   const minutes = Math.max(0, Math.round(seconds / 60));
-  return minutes >= 60 ? `${Math.floor(minutes / 60)} u ${minutes % 60} min` : `${minutes} min`;
+  return minutes >= 60
+    ? t("houseLearning.chart.durationHoursMinutes", { hours: formatNumber(Math.floor(minutes / 60)), minutes: formatNumber(minutes % 60) })
+    : t("houseLearning.chart.durationMinutes", { minutes: formatNumber(minutes) });
 };
 
 export function normalizeHouseLearningExport(payload = {}) {
   if (Number(payload.schema) !== 1 || payload.mode !== "passive" || !Array.isArray(payload.record_columns) || !Array.isArray(payload.records)) {
-    throw new Error("onbekend exportformaat");
+    throw translatedError("houseLearning.errors.unknownExportFormat");
   }
   const columns = payload.record_columns.map((column) => String(column));
-  if (!REQUIRED_COLUMNS.every((column) => columns.includes(column))) throw new Error("export mist meetkolommen");
+  if (!REQUIRED_COLUMNS.every((column) => columns.includes(column))) throw translatedError("houseLearning.errors.exportMissingColumns");
   const index = Object.fromEntries(columns.map((column, position) => [column, position]));
   return payload.records.map((row) => {
     if (!Array.isArray(row)) return null;
@@ -58,17 +62,17 @@ function pathFor(model, from, to, power, zeroC) {
 
 function chartTooltip(record) {
   return [
-    formatDate(record.startEpoch),
-    `Duur: ${formatDuration(record.endEpoch - record.startEpoch)}`,
-    `Buiten: ${format(record.outsideC)} °C`,
-    `Warmte: ${format(record.heatW, 0)} W`,
+    formatRecordDate(record.startEpoch),
+    t("houseLearning.chart.tooltipDuration", { duration: formatDuration(record.endEpoch - record.startEpoch) }),
+    t("houseLearning.chart.tooltipOutside", { value: format(record.outsideC) }),
+    t("houseLearning.chart.tooltipHeat", { value: format(record.heatW, 0) }),
   ].join("\n");
 }
 
 export function renderHouseLearningChart(records, configured, learned) {
   const compact = typeof window !== "undefined" && window.innerWidth < 640;
   const model = getHouseLearningChartModel(records, configured, learned, compact ? 360 : WIDTH);
-  if (!records.length && !model.configuredValid) return '<div class="oq-house-learning-chart-empty"><strong>Nog geen grafiek beschikbaar</strong><span>Er zijn geen geaccepteerde batchperioden en de Power House-instellingen zijn onvolledig.</span></div>';
+  if (!records.length && !model.configuredValid) return `<div class="oq-house-learning-chart-empty"><strong>${escapeHtml(t("houseLearning.chart.emptyTitle"))}</strong><span>${escapeHtml(t("houseLearning.chart.emptyCopy"))}</span></div>`;
   const measuredMin = records.length ? Math.min(...records.map((record) => record.outsideC)) : null;
   const measuredMax = records.length ? Math.max(...records.map((record) => record.outsideC)) : null;
   const yGrid = Array.from({ length: Math.round(model.axisMaxY / model.yStep) + 1 }, (_, index) => index * model.yStep);
@@ -87,21 +91,23 @@ export function renderHouseLearningChart(records, configured, learned) {
   const visibleRecords = records.filter((record) => record.outsideC >= model.minX && record.outsideC <= model.maxX);
   const tooltip = visibleRecords.map((record) => `<g class="oq-house-learning-chart-point" data-oq-house-learning-tip="${escapeHtml(chartTooltip(record))}" tabindex="0" role="button" aria-label="${escapeHtml(chartTooltip(record))}"><title>${escapeHtml(chartTooltip(record))}</title><circle cx="${model.x(record.outsideC).toFixed(1)}" cy="${model.y(record.heatW).toFixed(1)}" r="12" class="oq-house-learning-chart-hit"/><circle cx="${model.x(record.outsideC).toFixed(1)}" cy="${model.y(record.heatW).toFixed(1)}" r="3.2" class="oq-house-learning-chart-dot"/></g>`).join("");
   const notes = [
-    "De blauwe lijn toont de ingestelde basiswarmtevraag, vóór kamercorrectie en vermogensbegrenzing.",
-    !records.length ? `Nog geen geaccepteerde stabiele meetperioden.${model.learnedValid ? " De groene lijn is volledig een extrapolatie." : ""}` : `${records.length} meetperioden. Gestippeld: buiten het gemeten temperatuurbereik.`,
-    visibleRecords.length < records.length ? `${records.length - visibleRecords.length} meetperioden liggen buiten de getoonde as (−10 tot 20 °C).` : "",
-    !model.configuredValid ? "De ingestelde Power House-lijn is onvolledig." : "",
-    !model.learnedValid ? "Nog geen batchschatting voor H en T₀." : !model.ready ? "De groene H/T₀-lijn is voorlopig en nog niet gevalideerd." : "",
+    t("houseLearning.chart.configuredLineNote"),
+    !records.length
+      ? t(model.learnedValid ? "houseLearning.chart.noPeriodsWithExtrapolation" : "houseLearning.chart.noPeriods")
+      : t(records.length === 1 ? "houseLearning.chart.periodCountOne" : "houseLearning.chart.periodCountMany", { count: formatNumber(records.length) }),
+    visibleRecords.length < records.length ? t("houseLearning.chart.outsideAxis", { count: formatNumber(records.length - visibleRecords.length) }) : "",
+    !model.configuredValid ? t("houseLearning.chart.configuredLineIncomplete") : "",
+    !model.learnedValid ? t("houseLearning.chart.noBatchEstimate") : !model.ready ? t("houseLearning.chart.provisionalLine") : "",
   ].filter(Boolean);
   return `
-    <div class="oq-house-learning-chart-legend"><span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--configured"></i>Ingestelde woninglijn</span><span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--records"></i>Meetpunten</span><span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--learned"></i>${model.ready ? "Geleerde woninglijn" : "Geleerde woninglijn · voorlopig"}</span></div>
+    <div class="oq-house-learning-chart-legend"><span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--configured"></i>${escapeHtml(t("houseLearning.chart.legendConfigured"))}</span><span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--records"></i>${escapeHtml(t("houseLearning.chart.legendRecords"))}</span><span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--learned"></i>${escapeHtml(t(model.ready ? "houseLearning.chart.legendLearned" : "houseLearning.chart.legendLearnedProvisional"))}</span></div>
     <div class="oq-house-learning-chart-wrap">
-      <svg class="oq-house-learning-chart" viewBox="0 0 ${model.width} ${HEIGHT}" role="img" aria-label="Power House-lijn en geaccepteerde batchmetingen">
+      <svg class="oq-house-learning-chart" viewBox="0 0 ${model.width} ${HEIGHT}" role="img" aria-label="${escapeHtml(t("houseLearning.chart.ariaLabel"))}">
         ${records.length && learnedEnd > learnedStart ? `<rect x="${model.x(learnedStart)}" y="${PADDING.top}" width="${model.x(learnedEnd) - model.x(learnedStart)}" height="${model.plotHeight}" class="oq-house-learning-chart-range"/>` : ""}
         ${xGrid.map((value) => `<line x1="${model.x(value)}" x2="${model.x(value)}" y1="${PADDING.top}" y2="${HEIGHT - PADDING.bottom}" class="oq-house-learning-chart-grid"/>`).join("")}
         ${yGrid.map((value) => `<line x1="${PADDING.left}" y1="${model.y(value).toFixed(1)}" x2="${model.width - PADDING.right}" y2="${model.y(value).toFixed(1)}" class="oq-house-learning-chart-grid"/><text x="${PADDING.left - 9}" y="${(model.y(value) + 4).toFixed(1)}" text-anchor="end" class="oq-house-learning-chart-axis">${escapeHtml(format(value / 1000))}</text>`).join("")}
         ${xGrid.map((value) => `<text x="${model.x(value).toFixed(1)}" y="${HEIGHT - 16}" text-anchor="middle" class="oq-house-learning-chart-axis">${escapeHtml(format(value))}°</text>`).join("")}
-        <text x="${PADDING.left}" y="16" class="oq-house-learning-chart-unit">kW</text><text x="${model.width - PADDING.right}" y="${HEIGHT - 3}" text-anchor="end" class="oq-house-learning-chart-unit">Buitentemperatuur (°C)</text>
+        <text x="${PADDING.left}" y="16" class="oq-house-learning-chart-unit">kW</text><text x="${model.width - PADDING.right}" y="${HEIGHT - 3}" text-anchor="end" class="oq-house-learning-chart-unit">${escapeHtml(t("houseLearning.chart.outsideTemperatureAxis"))}</text>
         ${model.configuredValid ? `<path d="${pathFor(model, model.minX, model.maxX, configuredPower, model.zeroC)}" class="oq-house-learning-chart-line oq-house-learning-chart-line--configured"/>` : ""}
         ${learnedLine}
         ${tooltip}

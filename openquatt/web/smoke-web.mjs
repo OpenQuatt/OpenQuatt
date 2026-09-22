@@ -4,11 +4,14 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { build, transform } from "esbuild";
 import {
-  compactHtmlTemplateWhitespacePlugin,
+  compactHtmlTemplateWhitespace,
   minifyCssBundle,
   minifyJavaScriptBundle,
 } from "./bundle-minifiers.mjs";
 import { resolveCssSources } from "./css-source-list.mjs";
+import { compactI18nSourcePlugin } from "./i18n-bundle.mjs";
+import en from "./js/src/i18n/en.js";
+import nl from "./js/src/i18n/nl.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const webDir = path.dirname(__filename);
@@ -264,7 +267,7 @@ async function checkJavaScriptBundleFresh() {
     target: "es2020",
     define: { __OQ_PREVIEW__: "false" },
     write: false,
-    plugins: [compactHtmlTemplateWhitespacePlugin(), embeddedAssetsPlugin()],
+    plugins: [compactI18nSourcePlugin(compactHtmlTemplateWhitespace), embeddedAssetsPlugin()],
   });
   const header = [
     `/* Generated minified bundle: ${toBundlePath(path.relative(webDir, outputPath))}. */`,
@@ -342,16 +345,18 @@ async function checkWriteActionContracts() {
   assertContains(mqttActions, 'fetch("/mqtt/input/save"', "MQTT input save");
   assertContains(firmwareActions, 'buildEntityPath(installButtonEntity.domain, installButtonEntity.name, "press")', "Firmware install button endpoint");
   assertContains(debugRecording, 'body.set("csrf_token", csrfToken)', "Debug recording CSRF protection");
-  assertContains(debugRecording, 'const path = rolling ? "start?rolling=1" : `start?duration_s=${encodeURIComponent(minutes * 60)}`', "Debug recording start path");
-  assertContains(debugRecording, "await postDebugRecordingDevice(path)", "Debug recording start");
-  assertContains(debugRecording, 'postDebugRecordingDevice("stop")', "Debug recording stop");
+  assertContains(debugRecording, 'postDebugRecordingDevice("restart")', "Systeemrecorder restart");
+  assertContains(debugRecording, 'postDebugRecordingDevice("enabled"', "Systeemrecorder opt-out");
+  assertContains(debugRecording, "download-range?last_minutes=", "Systeemrecorder range download");
   assertContains(debugRecording, 'getDebugRecordingEndpoint("download")', "Debug recording download");
   assertContains(systemActions, 'triggerNamedButton("restartAction"', "Restart confirm");
   assertContains(entityWriteActions, "export async function commitOpenQuattRegulationPause", "OpenQuatt pause write helper");
   assertContains(entityWriteActions, "export async function commitOpenQuattRegulationResumeNow", "OpenQuatt resume write helper");
   assertContains(oduRuntimeFrequency, "getOduRuntimeFrequencyEndpoint", "ODU runtime native endpoint");
   assertContains(oduRuntimeFrequency, 'body.set("csrf_token", status.csrfToken)', "ODU runtime CSRF write guard");
-  assertContains(webServerLogs, "kan DEBUG zoveel logging produceren dat de web-app en Home Assistant traag of onbereikbaar worden.", "Debug logger safety warning");
+  assertContains(webServerLogs, 't("weblog.levelInfo")', "Debug logger safety warning translation");
+  assertContains(nl.weblog.levelInfo, "kan DEBUG zoveel logging produceren", "Dutch debug logger safety warning");
+  assertContains(en.weblog.levelInfo, "DEBUG can produce so much logging", "English debug logger safety warning");
 }
 
 async function checkStateSliceContracts() {
@@ -363,7 +368,7 @@ async function checkStateSliceContracts() {
   const slices = context.module.exports;
   const groups = [
     slices.createHistoryState(24),
-    slices.createDiagnosticsState("recording-id"),
+    slices.createDiagnosticsState(),
     slices.createSettingsState(),
     slices.createSecurityState(),
     slices.createFirmwareState(),
@@ -378,7 +383,7 @@ async function checkStateSliceContracts() {
       seenKeys.add(key);
     });
   });
-  if (groups[0].trendWindowHours !== 24 || groups[1].debugRecordingAcknowledgedId !== "recording-id" || groups[5].reducedMotion !== true) {
+  if (groups[0].trendWindowHours !== 24 || groups[5].reducedMotion !== true) {
     throw new Error("State slice input values are not preserved");
   }
 

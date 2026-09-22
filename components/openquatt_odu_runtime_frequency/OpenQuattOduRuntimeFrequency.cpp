@@ -308,6 +308,7 @@ bool OpenQuattOduRuntimeFrequency::begin_request_(uint32_t& request_token) {
 
 OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::request_load() {
   if (!this->available_.load(std::memory_order_acquire)) return RequestResult::UNAVAILABLE;
+  const uint32_t epoch = web_server_base::global_web_server_base->recovery_epoch();
   uint32_t request_token = 0U;
   if (!this->begin_request_(request_token)) return RequestResult::BUSY;
   bool accepted = false;
@@ -318,6 +319,7 @@ OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::reques
     this->armed_.store(false, std::memory_order_release);
     this->set_status_locked_("Reading compressor frequency table from ODU");
     this->pending_action_ = PendingAction::LOAD;
+    this->request_recovery_epoch_ = epoch;
     this->pending_request_token_ = request_token;
     accepted = true;
   }
@@ -358,6 +360,7 @@ OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::reques
 OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::request_apply(
     const oq_odu_runtime_frequency::RuntimeFrequencyTables& tables) {
   if (!this->available_.load(std::memory_order_acquire)) return RequestResult::UNAVAILABLE;
+  const uint32_t epoch = web_server_base::global_web_server_base->recovery_epoch();
   uint32_t request_token = 0U;
   if (!this->begin_request_(request_token)) return RequestResult::BUSY;
   RequestResult result = RequestResult::ACCEPTED;
@@ -380,6 +383,7 @@ OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::reques
       this->operation_tables_ = tables;
       this->set_status_locked_("Checking whether ODU is safe to modify");
       this->pending_action_ = PendingAction::APPLY;
+      this->request_recovery_epoch_ = epoch;
       this->pending_request_token_ = request_token;
     }
   }
@@ -484,13 +488,20 @@ void OpenQuattOduRuntimeFrequency::loop() {
 
   PendingAction pending = PendingAction::NONE;
   uint32_t pending_request_token = 0U;
+  uint32_t epoch = 0U;
   portENTER_CRITICAL(&this->state_mux_);
   pending = this->pending_action_;
   pending_request_token = this->pending_request_token_;
+  epoch = this->request_recovery_epoch_;
   this->pending_action_ = PendingAction::NONE;
   this->pending_request_token_ = 0U;
   portEXIT_CRITICAL(&this->state_mux_);
 
+  if (pending != PendingAction::NONE && (web_server_base::global_web_server_base->is_recovery_active() ||
+                                         epoch != web_server_base::global_web_server_base->recovery_epoch())) {
+    this->finish_without_write_("Request cancelled by recovery", pending_request_token, false);
+    return;
+  }
   if (pending == PendingAction::LOAD) {
     if (this->begin_operation_(Operation::LOAD, pending_request_token)) {
       this->queue_load_base_(pending_request_token);
@@ -668,6 +679,13 @@ void OpenQuattOduRuntimeFrequency::begin_write_(uint32_t operation_token) {
   if (!this->busy_.load(std::memory_order_acquire) ||
       this->operation_token_.load(std::memory_order_acquire) != operation_token) {
     portEXIT_CRITICAL(&this->state_mux_);
+    return;
+  }
+  // The safety read may complete after recovery invalidated this request.
+  if (web_server_base::global_web_server_base->is_recovery_active() ||
+      this->request_recovery_epoch_ != web_server_base::global_web_server_base->recovery_epoch()) {
+    portEXIT_CRITICAL(&this->state_mux_);
+    this->finish_without_write_("Request cancelled by recovery", operation_token, false);
     return;
   }
   this->armed_.store(false, std::memory_order_release);

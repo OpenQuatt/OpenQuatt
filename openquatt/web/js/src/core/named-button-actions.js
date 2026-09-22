@@ -3,6 +3,7 @@ import { getEntityValue, hasEntity } from "./entity-store.js";
 import { triggerIncidentAction, triggerNamedButton, triggerNamedButtonGroup } from "./entity-write-actions.js";
 import { normalizeDetectedOduGeneration, ODU_CUSTOMER_MODEL_CODE_KEYS, ODU_GENERATION_DETECT_KEYS, ODU_GENERATION_KEYS, ODU_GENERATION_VARIANT_KEYS } from "./odu-generation.js";
 import { state } from "./state.js";
+import { t } from "../i18n/index.js";
 
 const commissioningRefreshGroups = [
   {
@@ -186,9 +187,9 @@ function triggerOduGenerationDetection(detectKeys) {
     refreshIntervalMs: 1200,
     refreshTimeoutMs: 33000,
     refreshUntil: () => generationKeys.every((key) => normalizeDetectedOduGeneration(getEntityValue(key)) !== "Unknown"),
-    refreshTimeoutMessage: "ODU-detectie niet binnen 33 seconden voltooid",
-    successNotice: "ODU-detectie voltooid.",
-    errorPrefix: "ODU-detectie niet volledig uitgevoerd",
+    refreshTimeoutMessage: t("oduDetect.timeout"),
+    successNotice: t("oduDetect.completed"),
+    errorPrefix: t("oduDetect.incomplete"),
   });
 }
 
@@ -201,7 +202,7 @@ function triggerOduGenerationDetection(detectKeys) {
       : "confirm_odu_power_cycle";
     if (kind === "confirm_odu_power_cycle") {
       const confirmed = window.confirm(
-        `HP${hpIndex} ODU-powercycle bevestigen?\n\nBevestig alleen als deze buitenunit werkelijk spanningsloos is geweest. Hiermee geef je uitsluitend de herstelde safety-latch van HP${hpIndex} vrij; een actieve fout blijft staan.`,
+        t("oduDetect.powerCycleConfirm", { hp: hpIndex }),
       );
       if (!confirmed) return true;
     }

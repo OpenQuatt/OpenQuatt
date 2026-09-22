@@ -59,12 +59,12 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
             (
                 "wifi",
                 WIFI_PROFILE,
-                "components: [openquatt_captive_portal_router]",
+                "components: [wifi, captive_portal, openquatt_captive_portal_router]",
             ),
             (
                 "wifi_eth",
                 WIFI_ETH_PROFILE,
-                "components: [openquatt_network, openquatt_captive_portal_router]",
+                "components: [wifi, captive_portal, openquatt_network, openquatt_captive_portal_router]",
             ),
         )
         for profile_name, profile, component_declaration in profiles:
@@ -80,23 +80,12 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
         self.assertIn("request->url_to(url_buffer)", CAPTIVE_PORTAL_ROUTER_CPP)
         self.assertIn('== "/";', CAPTIVE_PORTAL_ROUTER_CPP)
 
-    def test_web_auth_credentials_have_component_lifetime(self) -> None:
-        self.assertIn("AuthStorage runtime_storage_{};", WEB_AUTH_HEADER)
-        self.assertIn(
-            "std::memcpy(&this->runtime_storage_, &storage, "
-            "sizeof(this->runtime_storage_));",
-            WEB_AUTH_CPP,
-        )
-        self.assertIn(
-            "set_auth_username(this->runtime_storage_.username)",
-            WEB_AUTH_CPP,
-        )
-        self.assertIn(
-            "set_auth_password(this->runtime_storage_.password)",
-            WEB_AUTH_CPP,
-        )
-        self.assertNotIn("set_auth_username(storage.username)", WEB_AUTH_CPP)
-        self.assertNotIn("set_auth_password(storage.password)", WEB_AUTH_CPP)
+    def test_web_auth_updates_owned_credentials_atomically(self) -> None:
+        self.assertIn("set_auth_credentials(storage.username, storage.password)", WEB_AUTH_CPP)
+        self.assertIn('set_auth_credentials("recovery", password.c_str())', WEB_AUTH_CPP)
+        self.assertNotIn("set_auth_username(", WEB_AUTH_CPP)
+        self.assertNotIn("set_auth_password(", WEB_AUTH_CPP)
+        self.assertIn("request_is_authenticated(request, true)", WEB_AUTH_HEADER)
 
     def test_modbus_spacing_is_owned_by_the_hub(self) -> None:
         self.assertIn(

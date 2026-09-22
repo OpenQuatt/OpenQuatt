@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { setLocale, t } from "../js/src/i18n/index.js";
 
 import { DEBUG_RECORDING_KEYS, ENTITY_DEFS, FAST_OVERVIEW_KEYS, HEADER_ENTITY_KEYS, OVERVIEW_KEYS, QUICK_STEPS, SETTINGS_KEYS } from "../js/src/core/config.js";
 
@@ -104,6 +105,7 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
     heating_supply_target_source: "heating_curve",
     modbus_partial_response_count: null,
     modbus_parse_failed_count: null,
+    modbus_recovered_response_count: null,
     modbus_offline_count: null,
     heap_free_b: 178432,
     heap_min_free_b: 151008,
@@ -130,6 +132,7 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
   assert.equal(configuredSourceWireValue("Schedule"), "schedule");
   assert.ok(USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("psramFree"));
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("modbusPartialResponseCount"));
+  assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("modbusRecoveredResponseCount"));
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("modbusOfflineCount"));
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("webServerLogHistoryEnabled"));
 });
@@ -350,20 +353,16 @@ test("usage telemetry disclosure matches the hourly payload scope", async () => 
   assert.match(telemetryYaml, /name: "Usage statistics installation ID"[\s\S]*internal: true/);
   assert.match(disclosureSource, /settings && enabled && hasEntity\("usageTelemetryInstallationId"\)/);
   assert.match(disclosureSource, /oq-usage-consent-installation-id/);
-  assert.match(disclosureSource, /vrijwel direct en daarna ongeveer elk uur/);
-  assert.match(disclosureSource, /OpenQuatt-loggingserver/);
-  assert.match(disclosureSource, /actieve verbinding, verbindingsmodus/);
-  assert.match(disclosureSource, /wifi-signaal/);
-  assert.match(disclosureSource, /Quatt Hybrid-versie, verwarmingsstrategie, flowbron en regelbronnen/);
-  assert.match(disclosureSource, /Aan\/uit-status van CiC, OpenTherm-thermostaat, ketelondersteuning, MQTT-inputs en lokale historie/);
-  assert.match(disclosureSource, /ketelaansluiting \(aan\/uit of OpenTherm\)/);
-  assert.match(disclosureSource, /drie cumulatieve Modbus-betrouwbaarheidstellers sinds opstart/);
-  assert.match(disclosureSource, /Geen gemeten of ingestelde temperaturen, grenzen, MQTT-topics, logregels of Modbus-frames/);
-  assert.match(disclosureSource, /alleen cumulatieve communicatiefouttellers/);
-  assert.match(disclosureSource, /Nooit een wifi-netwerknaam, wifi-wachtwoord, gebruikersnaam, ander wachtwoord of inloggegevens/);
-  assert.match(disclosureSource, /Voorbeeld van het verzonden bericht \(JSON\)/);
-  assert.match(disclosureSource, /Live momentopname bij het openen van deze pagina/);
-  assert.match(disclosureSource, /Modbus-tellers worden bij verzending rechtstreeks uit de ODU-bus gelezen/);
+  for (const key of ["oftenCopy", "networkNote", "inStatusCopy", "inFeaturesCopy", "inPlatformCopy", "inCrashCopy", "exLocalCopy", "exIdentityCopy", "exampleTitle", "exampleLive", "exampleCounters"]) {
+    assert.match(disclosureSource, new RegExp(`usage\\.${key}`));
+  }
+  setLocale("nl", { persist: false, notify: false });
+  assert.match(t("usage.oftenCopy"), /vrijwel direct en daarna ongeveer elk uur/);
+  assert.match(t("usage.networkNote"), /OpenQuatt-loggingserver/);
+  setLocale("en", { persist: false, notify: false });
+  assert.match(t("usage.oftenCopy"), /almost immediately and then about every hour/);
+  assert.match(t("usage.networkNote"), /OpenQuatt logging server/);
+  setLocale("nl", { persist: false, notify: false });
   assert.match(previewSource, /captureUsageTelemetryPreview/);
   assert.match(previewSource, /schema_version/);
   assert.match(previewSource, /timestamp_s/);
@@ -382,6 +381,7 @@ test("usage telemetry disclosure matches the hourly payload scope", async () => 
     "heating_supply_target_source",
     "modbus_partial_response_count",
     "modbus_parse_failed_count",
+    "modbus_recovered_response_count",
     "modbus_offline_count",
   ];
   for (const field of configFields) {
@@ -390,7 +390,9 @@ test("usage telemetry disclosure matches the hourly payload scope", async () => 
   }
   assert.match(disclosureSource, /oq-usage-consent-details/);
   assert.match(disclosureSource, /data-oq-action="toggle-usage-telemetry-details"/);
-  assert.match(disclosureSource, /technisch wel het bron-IP-adres zien/);
-  assert.match(disclosureSource, /OpenQuatt slaat dit IP-adres niet op/);
+  assert.match(disclosureSource, /usage\.networkNote/);
+  setLocale("nl", { persist: false, notify: false });
+  assert.match(t("usage.networkNote"), /technisch wel het bron-IP-adres zien/);
+  assert.match(t("usage.networkNote"), /OpenQuatt slaat dit IP-adres niet op/);
   assert.doesNotMatch(disclosureSource, /poort 1883|brokercredential|MQTT-broker|startvertraging|jitter/);
 });

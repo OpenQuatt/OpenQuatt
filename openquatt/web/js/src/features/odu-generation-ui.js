@@ -2,6 +2,7 @@ import { getEntityValue, hasEntity } from "../core/entity-store.js";
 import { createOduGenerationDetectionModel } from "../core/odu-generation.js";
 import { state } from "../core/state.js";
 import { escapeHtml } from "../core/html.js";
+import { t } from "../i18n/index.js";
 import { getInstallationTopology } from "./device-context.js";
 
 export function getOduGenerationDetectionModel() {
@@ -21,45 +22,45 @@ export function getOduGenerationDetectionAdvice(model = getOduGenerationDetectio
   if (model.status === "unknown") {
     return {
       warning: true,
-      copy: "Niet alle buitenunits zijn herkend. Daarom wordt geen versie geadviseerd.",
+      copy: t("oduGeneration.adviceUnknown"),
     };
   }
   if (model.status === "mixed") {
     return {
       warning: true,
-      copy: "Deze combinatie geeft geen veilig advies. Controleer de gekozen versie.",
+      copy: t("oduGeneration.adviceMixed"),
     };
   }
   if (model.status === "mismatch") {
     return {
       warning: true,
-      copy: `${model.recommendation} wordt aanbevolen; ${model.configuredGeneration} is geselecteerd. Er wordt niets automatisch gewijzigd.`,
+      copy: t("oduGeneration.adviceMismatch", { recommendation: model.recommendation, configured: model.configuredGeneration }),
     };
   }
   if (model.status === "match") {
     return {
       warning: false,
-      copy: `${model.recommendation} komt overeen met de detectie.`,
+      copy: t("oduGeneration.adviceMatch", { recommendation: model.recommendation }),
     };
   }
   if (model.status === "detected") {
     return {
       warning: false,
-      copy: `${model.recommendation} wordt aanbevolen. Selecteer deze versie om de keuze op te slaan.`,
+      copy: t("oduGeneration.adviceDetected", { recommendation: model.recommendation }),
     };
   }
   return {
     warning: true,
-    copy: "Nog geen betrouwbare detectie; er wordt geen versie geadviseerd.",
+    copy: t("oduGeneration.adviceNone"),
   };
 }
 
 export function getOduGenerationChoiceMeta(option, selectedGeneration, recommendedGeneration) {
   const selected = option === selectedGeneration;
   const recommended = option === recommendedGeneration;
-  if (selected && recommended) return "Geselecteerd · aanbevolen";
-  if (recommended) return "Aanbevolen";
-  if (selected) return "Geselecteerd";
+  if (selected && recommended) return t("oduGeneration.metaSelectedRecommended");
+  if (recommended) return t("oduGeneration.metaRecommended");
+  if (selected) return t("oduGeneration.metaSelected");
   return "";
 }
 
@@ -77,25 +78,25 @@ export function renderOduGenerationDetectionStatus({ embedded = false } = {}) {
     ? {
         warning: false,
         copy: model.heatPumps.length > 1
-          ? "OpenQuatt leest de buitenunits opnieuw uit. Dit kan enkele seconden duren."
-          : "OpenQuatt leest de buitenunit opnieuw uit. Dit kan enkele seconden duren.",
+          ? t("oduGeneration.detectingDuo")
+          : t("oduGeneration.detectingSingle"),
       }
     : getOduGenerationDetectionAdvice(model);
   const match = !isDetecting && model.status === "match";
   const title = isDetecting
-    ? "Detectie bezig"
-    : !model.complete ? "Detectie onvolledig" : model.mixed ? "Gemengde Duo" : "Automatisch gevonden";
+    ? t("oduGeneration.titleDetecting")
+    : !model.complete ? t("oduGeneration.titleIncomplete") : model.mixed ? t("oduGeneration.titleMixed") : t("oduGeneration.titleFound");
   const badge = isDetecting
-    ? "Even geduld"
-    : match ? "Komt overeen" : model.recommendation ? `Advies ${model.recommendation}` : "Geen advies";
+    ? t("oduGeneration.badgeWait")
+    : match ? t("oduGeneration.badgeMatch") : model.recommendation ? t("oduGeneration.badgeAdvice", { recommendation: model.recommendation }) : t("oduGeneration.badgeNone");
   const badgeTone = match ? " is-success" : model.recommendation || isDetecting ? "" : " is-neutral";
   const detectButton = canDetect
-    ? `<button class="oq-gen-reset" type="button" data-oq-action="press-odu-generation-detect-all" aria-label="ODU-generatie opnieuw detecteren" ${busy ? "disabled" : ""} aria-busy="${isDetecting ? "true" : "false"}">${escapeHtml(isDetecting ? "Detecteren…" : "Opnieuw detecteren")}</button>`
+    ? `<button class="oq-gen-reset" type="button" data-oq-action="press-odu-generation-detect-all" aria-label="${escapeHtml(t("oduGeneration.detectAria"))}" ${busy ? "disabled" : ""} aria-busy="${isDetecting ? "true" : "false"}">${escapeHtml(isDetecting ? t("oduGeneration.detectingLabel") : t("oduGeneration.redetectLabel"))}</button>`
     : "";
   const rows = model.heatPumps.map((heatPump) => {
-    const value = isDetecting ? "Detecteren…" : heatPump.known ? `Quatt ODU ${heatPump.generation}` : "Unknown";
+    const value = isDetecting ? t("oduGeneration.rowDetecting") : heatPump.known ? `Quatt ODU ${heatPump.generation}` : "Unknown";
     return `<div class="oq-settings-source-row oq-gen-unit${heatPump.known || isDetecting ? "" : " is-warning"}" data-oq-odu-generation="hp${heatPump.index}"><span class="oq-settings-source-row-label">HP${heatPump.index}</span><strong>${escapeHtml(value)}</strong></div>`;
   }).join("");
 
-  return `<section class="oq-gen-detection oq-settings-field--span-2${embedded ? " is-embedded" : " oq-helper-surface oq-settings-field"}" data-oq-settings-field="oduGenerationDetection" aria-label="ODU-detectie"><div class="oq-gen-hd"><strong>${escapeHtml(title)}</strong><div class="oq-gen-hd-actions"><span class="oq-settings-section-badge oq-gen-badge${badgeTone}">${escapeHtml(badge)}</span>${detectButton}</div></div><div class="oq-gen-units${model.heatPumps.length > 1 ? " is-duo" : ""}" role="group" aria-label="Gedetecteerde buitenunits">${rows}</div>${match ? "" : `<p class="oq-settings-action-note${advice.warning ? " oq-settings-action-note--warning" : ""}" aria-live="polite">${escapeHtml(advice.copy)}</p>`}</section>`;
+  return `<section class="oq-gen-detection oq-settings-field--span-2${embedded ? " is-embedded" : " oq-helper-surface oq-settings-field"}" data-oq-settings-field="oduGenerationDetection" aria-label="${escapeHtml(t("oduGeneration.sectionAria"))}"><div class="oq-gen-hd"><strong>${escapeHtml(title)}</strong><div class="oq-gen-hd-actions"><span class="oq-settings-section-badge oq-gen-badge${badgeTone}">${escapeHtml(badge)}</span>${detectButton}</div></div><div class="oq-gen-units${model.heatPumps.length > 1 ? " is-duo" : ""}" role="group" aria-label="${escapeHtml(t("oduGeneration.unitsAria"))}">${rows}</div>${match ? "" : `<p class="oq-settings-action-note${advice.warning ? " oq-settings-action-note--warning" : ""}" aria-live="polite">${escapeHtml(advice.copy)}</p>`}</section>`;
 }

@@ -1057,14 +1057,19 @@ bool OpenQuattUsageTelemetry::build_payload_() {
   const uint32_t partial_response_count =
       this->modbus_hub_ != nullptr ? this->modbus_hub_->partial_response_count() : 0U;
   const uint32_t parse_failed_count = this->modbus_hub_ != nullptr ? this->modbus_hub_->parse_failed_count() : 0U;
+  const uint32_t recovered_response_count =
+      this->modbus_hub_ != nullptr ? this->modbus_hub_->recovered_response_count() : 0U;
   const uint32_t offline_count = this->modbus_hub_ != nullptr ? this->modbus_hub_->offline_count() : 0U;
   this->modbus_partial_response_count_snapshot_ = partial_response_count;
   this->modbus_parse_failed_count_snapshot_ = parse_failed_count;
+  this->modbus_recovered_response_count_snapshot_ = recovered_response_count;
   this->modbus_offline_count_snapshot_ = offline_count;
   append_json_uint_(payload, "modbus_partial_response_count",
                     modbus_counter_delta(partial_response_count, this->modbus_partial_response_count_baseline_));
   append_json_uint_(payload, "modbus_parse_failed_count",
                     modbus_counter_delta(parse_failed_count, this->modbus_parse_failed_count_baseline_));
+  append_json_uint_(payload, "modbus_recovered_response_count",
+                    modbus_counter_delta(recovered_response_count, this->modbus_recovered_response_count_baseline_));
   append_json_uint_(payload, "modbus_offline_count",
                     modbus_counter_delta(offline_count, this->modbus_offline_count_baseline_));
   append_json_uint_(payload, "heap_free_b", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
@@ -1105,6 +1110,7 @@ bool OpenQuattUsageTelemetry::build_payload_() {
 void OpenQuattUsageTelemetry::commit_modbus_counter_snapshot_() {
   this->modbus_partial_response_count_baseline_ = this->modbus_partial_response_count_snapshot_;
   this->modbus_parse_failed_count_baseline_ = this->modbus_parse_failed_count_snapshot_;
+  this->modbus_recovered_response_count_baseline_ = this->modbus_recovered_response_count_snapshot_;
   this->modbus_offline_count_baseline_ = this->modbus_offline_count_snapshot_;
 }
 

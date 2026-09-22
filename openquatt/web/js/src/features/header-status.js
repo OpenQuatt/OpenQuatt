@@ -25,11 +25,13 @@ import { formatDutchAmps } from "../settings/electrical-limit.js";
 import { renderHeatingStrategyAdviceModal } from "./heating-strategy-advice.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
+import { getIntlLocale, getLocale, t } from "../i18n/index.js";
 import { render } from "../core/render-scheduler.js";
 
   export function getHeaderRenderSignature() {
     return [
       state.interfacePanelOpen ? "open" : "closed",
+      getLocale(),
       state.nativeOpen ? "native" : "app",
       state.appView,
       state.complete ? "complete" : "incomplete",
@@ -68,13 +70,13 @@ import { render } from "../core/render-scheduler.js";
     return `
       <aside class="oq-control-mode-override-banner" role="status" aria-live="polite">
         <div>
-          <span>Testmodus actief</span>
+          <span>${escapeHtml(t("header.testModeActive"))}</span>
           <strong>${escapeHtml(getControlModeOverrideLabel(value))}</strong>
-          <p>De normale moduskeuze is tijdelijk overruled. De controller keert uiterlijk 30 minuten na activering automatisch terug naar automatisch.</p>
+          <p>${escapeHtml(t("header.overrideCopy"))}</p>
           ${feedbackMarkup}
         </div>
         <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="clear-control-mode-override" ${busy ? "disabled" : ""}>
-          ${busy ? "Bezig..." : "Terug naar automatisch"}
+          ${busy ? escapeHtml(t("common.busy")) : escapeHtml(t("header.backToAuto"))}
         </button>
       </aside>
     `;
@@ -84,21 +86,21 @@ import { render } from "../core/render-scheduler.js";
     const lastEntityResponseAt = Math.max(Number(state.lastEntityResponseAt || 0), Number(state.lastEntitySyncAt || 0));
     const reconnectStartedAt = Number(state.deviceReconnectStartedAt || 0);
     if (state.entitySyncFailureCount > 0 && !state.deviceReconnectMode) {
-      return "Bezig";
+      return t("header.statusBusy");
     }
     if (lastEntityResponseAt > 0 && (!state.deviceReconnectMode || lastEntityResponseAt >= reconnectStartedAt)) {
-      return "Verbonden";
+      return t("header.statusConnected");
     }
     if (state.deviceReconnectMode) {
       if (isDeviceReconnectRecovering()) {
-        return "Verbonden";
+        return t("header.statusConnected");
       }
-      return state.deviceReconnectMode === "reconnect" ? "Offline" : "Bezig";
+      return state.deviceReconnectMode === "reconnect" ? t("header.statusOffline") : t("header.statusBusy");
     }
     if (hasEntity("status") && !isEntityActive("status")) {
-      return "Offline";
+      return t("header.statusOffline");
     }
-    return "Bezig";
+    return t("header.statusBusy");
   }
 
   export function getDeviceVersionLabel() {
@@ -128,24 +130,24 @@ import { render } from "../core/render-scheduler.js";
 
   export function getConnectivityModalRows() {
     const rows = [
-      ["Netwerkstatus", getConnectivityStatus()],
+      [t("header.connNetworkStatus"), getConnectivityStatus()],
     ];
     const hasActiveConnection = hasEntity("connectionText");
-    const activeConnection = getEntityStateText("connectionText", "Niet verbonden").replace("Not connected", "Niet verbonden");
+    const activeConnection = getEntityStateText("connectionText", t("header.connNotConnected")).replace("Not connected", t("header.connNotConnected"));
     if (hasActiveConnection) {
-      rows.push(["Actieve verbinding", activeConnection]);
+      rows.push([t("header.connActiveConnection"), activeConnection]);
     }
-    rows.push(["IP-adres", getDeviceIpAddress()]);
+    rows.push([t("header.connIpAddress"), getDeviceIpAddress()]);
     const showWifiDetails = !hasActiveConnection || activeConnection === "WiFi";
     const ssid = String(getEntityValue("wifiSsid") || "").trim();
     if (showWifiDetails && ssid) {
-      rows.push(["WiFi SSID", ssid]);
+      rows.push([t("header.connWifiSsid"), ssid]);
     }
     const signalEntity = state.entities.wifiSignal;
     if (showWifiDetails && signalEntity) {
       const signal = getEntityNumericValue("wifiSignal");
       if (!Number.isNaN(signal)) {
-        rows.push(["WiFi signaal", formatNumericState(signal, 0, signalEntity.uom || " dBm")]);
+        rows.push([t("header.connWifiSignal"), formatNumericState(signal, 0, signalEntity.uom || " dBm")]);
       }
     }
     return rows;
@@ -172,13 +174,13 @@ import { render } from "../core/render-scheduler.js";
 
   export function getHeaderStatusItems() {
     return [
-      ["installation", "Installatie", getInstallationLabel()],
-      ["uptime", "Uptime", formatUptimeFromMeta()],
-      ["connectivity", "Connectiviteit", getConnectivityStatus()],
-      ["time", "Tijd", formatDeviceClock()],
-      ["version", "Versie", getFirmwareVersionChipValue(), Boolean(getFirmwareUpdateEntity())],
-      ["debugRecording", "Debugopname", getDebugRecordingHubStatusLabel(), true],
-      ["webserverLog", "Logboek", getWebServerLogStatusLabel(), true],
+      ["installation", t("header.itemInstallation"), getInstallationLabel()],
+      ["uptime", t("header.itemUptime"), formatUptimeFromMeta()],
+      ["connectivity", t("header.itemConnectivity"), getConnectivityStatus()],
+      ["time", t("header.itemTime"), formatDeviceClock()],
+      ["version", t("header.itemVersion"), getFirmwareVersionChipValue(), Boolean(getFirmwareUpdateEntity())],
+      ["debugRecording", t("header.itemDebugRecording"), getDebugRecordingHubStatusLabel(), true],
+      ["webserverLog", t("header.itemLog"), getWebServerLogStatusLabel(), true],
     ];
   }
 
@@ -206,7 +208,7 @@ import { render } from "../core/render-scheduler.js";
             ${isInteractive ? `type="button" data-oq-action="${escapeHtml(action)}"` : ""}
           >
             <span class="oq-helper-status-label">${escapeHtml(label)}</span>
-            <strong class="oq-helper-status-value">${hasBadge ? `<span class="oq-helper-status-value-text">${escapeHtml(value)}</span><span class="oq-helper-status-badge" aria-label="Update beschikbaar" title="Update beschikbaar"></span>` : escapeHtml(value)}</strong>
+            <strong class="oq-helper-status-value">${hasBadge ? `<span class="oq-helper-status-value-text">${escapeHtml(value)}</span><span class="oq-helper-status-badge" aria-label="${escapeHtml(t("header.updateAvailable"))}" title="${escapeHtml(t("header.updateAvailable"))}"></span>` : escapeHtml(value)}</strong>
           </${isInteractive ? "button" : "div"}>
         `;
         }).join("")}
@@ -259,7 +261,7 @@ import { render } from "../core/render-scheduler.js";
       }
       const hasBadge = hasHeaderStatusBadge(key);
       const desiredValueMarkup = hasBadge
-        ? `<span class="oq-helper-status-value-text">${escapeHtml(value)}</span><span class="oq-helper-status-badge" aria-label="Update beschikbaar" title="Update beschikbaar"></span>`
+        ? `<span class="oq-helper-status-value-text">${escapeHtml(value)}</span><span class="oq-helper-status-badge" aria-label="${escapeHtml(t("header.updateAvailable"))}" title="${escapeHtml(t("header.updateAvailable"))}"></span>`
         : escapeHtml(value);
       if (valueNode.innerHTML !== desiredValueMarkup) {
         valueNode.innerHTML = desiredValueMarkup;
@@ -298,31 +300,31 @@ import { render } from "../core/render-scheduler.js";
 
     if (!state.devPanelOpen) {
       return `
-        <aside class="oq-helper-devdock oq-helper-devdock--collapsed" aria-label="Preview en test">
+        <aside class="oq-helper-devdock oq-helper-devdock--collapsed" aria-label="${escapeHtml(t("header.devCollapsedLabel"))}">
           <button
             class="oq-helper-devdock-toggle"
             type="button"
             data-oq-action="toggle-dev-panel"
             aria-expanded="false"
-            aria-label="Open previewpaneel"
-          >Preview</button>
+            aria-label="${escapeHtml(t("header.devOpenLabel"))}"
+          >${escapeHtml(t("header.devToggle"))}</button>
         </aside>
       `;
     }
 
     return `
-      <aside class="oq-helper-devdock" aria-label="Preview en test">
+      <aside class="oq-helper-devdock" aria-label="${escapeHtml(t("header.devCollapsedLabel"))}">
         <div class="oq-helper-devdock-head">
           <div>
-            <p class="oq-helper-devdock-kicker">Preview en test</p>
-            <h2 class="oq-helper-devdock-title">Mockbediening</h2>
+            <p class="oq-helper-devdock-kicker">${escapeHtml(t("header.devKicker"))}</p>
+            <h2 class="oq-helper-devdock-title">${escapeHtml(t("header.devTitle"))}</h2>
           </div>
           <button
             class="oq-helper-devdock-toggle oq-helper-devdock-toggle--close"
             type="button"
             data-oq-action="toggle-dev-panel"
             aria-expanded="true"
-            aria-label="Sluit previewpaneel"
+            aria-label="${escapeHtml(t("header.devCloseLabel"))}"
           >×</button>
         </div>
         ${controlsMarkup}
@@ -336,7 +338,7 @@ import { render } from "../core/render-scheduler.js";
     if (!state.interfacePanelOpen) {
       const debugRecordingStatus = renderDebugRecordingHeaderStatus();
       return `
-        <aside class="oq-helper-hub oq-helper-hub--collapsed" aria-label="Weergave en systeem">
+        <aside class="oq-helper-hub oq-helper-hub--collapsed" aria-label="${escapeHtml(t("header.panelLabel"))}">
           <div class="oq-helper-hub-head-actions">
             ${debugRecordingStatus}
             <button
@@ -344,8 +346,8 @@ import { render } from "../core/render-scheduler.js";
               type="button"
               data-oq-action="toggle-interface-panel"
               aria-expanded="false"
-              aria-label="Open interfacepaneel"
-              title="Open interfacepaneel"
+              aria-label="${escapeHtml(t("header.openPanel"))}"
+              title="${escapeHtml(t("header.openPanel"))}"
             >${renderOqIcon("more-horizontal", "oq-helper-hub-toggle-icon")}${hasUpdateAttention ? '<span class="oq-helper-hub-toggle-dot" aria-hidden="true"></span>' : ""}</button>
           </div>
         </aside>
@@ -353,41 +355,48 @@ import { render } from "../core/render-scheduler.js";
     }
 
     return `
-      <aside class="oq-helper-hub" aria-label="Weergave en systeem">
+      <aside class="oq-helper-hub" aria-label="${escapeHtml(t("header.panelLabel"))}">
         <div class="oq-helper-hub-head">
-          <h2 class="oq-helper-hub-title">Weergave en systeem</h2>
+          <h2 class="oq-helper-hub-title">${escapeHtml(t("header.panelTitle"))}</h2>
           <div class="oq-helper-hub-head-actions">
             <button
               class="oq-helper-hub-toggle oq-helper-hub-toggle--close"
               type="button"
               data-oq-action="toggle-interface-panel"
               aria-expanded="true"
-              aria-label="Sluit interfacepaneel"
-              title="Sluit interfacepaneel"
+              aria-label="${escapeHtml(t("header.closePanel"))}"
+              title="${escapeHtml(t("header.closePanel"))}"
             >×</button>
           </div>
         </div>
         <div class="oq-helper-hub-block">
-          <p class="oq-helper-hub-kicker">Weergave</p>
+          <p class="oq-helper-hub-kicker">${escapeHtml(t("header.displaySection"))}</p>
           <div class="oq-helper-hub-switches">
-            <button class="oq-helper-hub-chip${surface === "app" ? " is-active" : ""}" type="button" data-oq-action="select-surface" data-surface="app">OpenQuatt-app</button>
-            <button class="oq-helper-hub-chip${surface === "native" ? " is-active" : ""}" type="button" data-oq-action="select-surface" data-surface="native">ESPHome fallback</button>
+            <button class="oq-helper-hub-chip${surface === "app" ? " is-active" : ""}" type="button" data-oq-action="select-surface" data-surface="app">${escapeHtml(t("header.openquattApp"))}</button>
+            <button class="oq-helper-hub-chip${surface === "native" ? " is-active" : ""}" type="button" data-oq-action="select-surface" data-surface="native">${escapeHtml(t("header.esphomeFallback"))}</button>
           </div>
         </div>
         <div class="oq-helper-hub-block">
-          <p class="oq-helper-hub-kicker">Uiterlijk en overzicht</p>
+          <p class="oq-helper-hub-kicker">${escapeHtml(t("header.languageSection"))}</p>
+          <div class="oq-helper-hub-switches" role="group" aria-label="${escapeHtml(t("header.languageLabel"))}">
+            <button class="oq-helper-hub-chip${getLocale() === "nl" ? " is-active" : ""}" type="button" data-oq-locale="nl">${escapeHtml(t("header.languageNl"))}</button>
+            <button class="oq-helper-hub-chip${getLocale() === "en" ? " is-active" : ""}" type="button" data-oq-locale="en">${escapeHtml(t("header.languageEn"))}</button>
+          </div>
+        </div>
+        <div class="oq-helper-hub-block">
+          <p class="oq-helper-hub-kicker">${escapeHtml(t("header.appearanceSection"))}</p>
           <div class="oq-helper-hub-actions">
             <button class="oq-helper-button oq-helper-button--ghost oq-helper-hub-action" type="button" data-oq-action="toggle-overview-theme">
-              ${state.overviewTheme === "light" ? "Donkere modus" : "Lichte modus"}
+              ${state.overviewTheme === "light" ? escapeHtml(t("header.darkMode")) : escapeHtml(t("header.lightMode"))}
             </button>
           </div>
         </div>
         <div class="oq-helper-hub-block">
-          <p class="oq-helper-hub-kicker">Systeem</p>
+          <p class="oq-helper-hub-kicker">${escapeHtml(t("header.systemSection"))}</p>
           ${renderHeaderStatusGrid()}
           <div class="oq-helper-hub-actions oq-helper-hub-actions--single">
             <button class="oq-helper-hub-action oq-helper-hub-action--warning" type="button" data-oq-action="open-restart-confirm">
-              Herstart OpenQuatt
+              ${escapeHtml(t("header.restart"))}
             </button>
           </div>
         </div>
@@ -398,8 +407,8 @@ import { render } from "../core/render-scheduler.js";
   export function renderNativeSurfaceShell() {
     const surface = state.nativeOpen ? "native" : "app";
     const statusCopy = state.nativeFrontendLoading
-      ? "ESPHome fallback wordt geladen. Daarna blijft alleen de native webinterface actief."
-      : "De OpenQuatt-app is tijdelijk uitgeschakeld, zodat de ESPHome fallback zelfstandig en zonder extra interfacebelasting kan draaien.";
+      ? t("header.nativeLoading")
+      : t("header.nativeDisabled");
     const errorMarkup = state.controlError
       ? `<p class="oq-native-surface-note oq-native-surface-note--error">${escapeHtml(state.controlError)}</p>`
       : "";
@@ -409,18 +418,18 @@ import { render } from "../core/render-scheduler.js";
         <div class="oq-helper-card oq-native-surface-card">
           <div class="oq-native-surface-head">
             <div class="oq-native-surface-copy">
-              <p class="oq-helper-kicker">Weergave</p>
-              <h1>ESPHome fallback actief</h1>
+              <p class="oq-helper-kicker">${escapeHtml(t("header.nativeKicker"))}</p>
+              <h1>${escapeHtml(t("header.nativeTitle"))}</h1>
               <p>${escapeHtml(statusCopy)}</p>
             </div>
             <div class="oq-native-surface-controls">
               <div class="oq-helper-hub-switches">
-                <button class="oq-helper-hub-chip${surface === "app" ? " is-active" : ""}" type="button" data-oq-action="select-surface" data-surface="app">OpenQuatt-app</button>
-                <button class="oq-helper-hub-chip${surface === "native" ? " is-active" : ""}" type="button" data-oq-action="select-surface" data-surface="native">ESPHome fallback</button>
+                <button class="oq-helper-hub-chip${surface === "app" ? " is-active" : ""}" type="button" data-oq-action="select-surface" data-surface="app">${escapeHtml(t("header.openquattApp"))}</button>
+                <button class="oq-helper-hub-chip${surface === "native" ? " is-active" : ""}" type="button" data-oq-action="select-surface" data-surface="native">${escapeHtml(t("header.esphomeFallback"))}</button>
               </div>
             </div>
           </div>
-          <p class="oq-native-surface-note">Schakel terug naar OpenQuatt-app om tuning, live overzicht en instellingen weer te activeren.</p>
+          <p class="oq-native-surface-note">${escapeHtml(t("header.nativeBack"))}</p>
           ${errorMarkup}
         </div>
       </div>
@@ -453,18 +462,18 @@ import { render } from "../core/render-scheduler.js";
       const rows = getConnectivityModalRows();
       const preferenceMarkup = renderSettingsSelectField(
         "preferredConnection",
-        "Verbindingsmodus",
-        "Automatisch detecteert bij opstart en herstel. Kabel later aangesloten? Kies Ethernet of herstart.",
+        t("header.connModeTitle"),
+        t("header.connModeCopy"),
       );
       const preferenceFeedback = state.controlError || state.controlNotice ||
-        (state.busyAction === "save-preferredConnection" ? "Bezig..." : "");
+        (state.busyAction === "save-preferredConnection" ? t("common.busy") : "");
       return renderModalShell({
         modalId: "system",
         titleId: "oq-system-modal-title",
-        kicker: "Systeem",
-        title: "Connectiviteit",
+        kicker: t("header.connKicker"),
+        title: t("header.connTitle"),
         closeAction: "close-system-modal",
-        closeLabel: "Sluit systeem-popup",
+        closeLabel: t("header.connCloseLabel"),
         bodyMarkup: `
           <div class="oq-helper-modal-grid">
             ${rows.map(([label, value]) => `
@@ -475,10 +484,15 @@ import { render } from "../core/render-scheduler.js";
             `).join("")}
             ${preferenceMarkup}
           </div>
-          ${preferenceMarkup ? `<p class="oq-helper-modal-note"><strong>WiFi-fallback:</strong> werkt alleen als WiFi vooraf is ingesteld. Gebruik daarvoor de <a href="https://openquatt.github.io/OpenQuatt/install/" target="_blank" rel="noreferrer">installatiehulp</a> en laat Ethernet tijdens het instellen tijdelijk los.</p>` : ""}
+          ${preferenceMarkup ? `<p class="oq-helper-modal-note">${t("header.connFallbackNote", { installUrl: "https://openquatt.github.io/OpenQuatt/install/" })}</p>` : ""}
           ${preferenceFeedback ? `<p class="${state.controlError ? "oq-helper-error" : "oq-helper-notice"}" role="status">${escapeHtml(preferenceFeedback)}</p>` : ""}
+          ${state.wifiResetAvailable ? `
+            <p class="oq-helper-modal-note">${t("recoveryUi.wifiResetCopy")}</p>
+            ${state.authStatus?.enabled ? `<button class="oq-helper-button" type="button" data-oq-action="reset-wifi" ${state.wifiResetBusy || state.apiSecurityBusy ? "disabled" : ""}>${t("recoveryUi.wifiResetButton")}</button>` : `<p class="oq-helper-modal-note">${t("recoveryUi.wifiResetLogin")}</p>`}
+          ` : ""}
+          ${state.wifiResetError || state.wifiResetActionError || state.wifiResetNotice ? `<p class="${state.wifiResetError || state.wifiResetActionError ? "oq-helper-error" : "oq-helper-notice"}" role="status">${escapeHtml(state.wifiResetError || state.wifiResetActionError || state.wifiResetNotice)}</p>` : ""}
           <div class="oq-helper-modal-actions">
-            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">Gereed</button>
+            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">${escapeHtml(t("header.done"))}</button>
           </div>
         `,
       });
@@ -517,15 +531,15 @@ import { render } from "../core/render-scheduler.js";
     }
 
     if (state.systemModal === "settings-backup-success") {
-      const notice = state.controlNotice || "Backup hersteld.";
+      const notice = state.controlNotice || t("system.backupRestored");
       const result = state.settingsBackupRestoreResult || { applied: [], skipped: [], unknown: [], mqttIncluded: false };
       const resultItems = [...result.skipped, ...result.unknown];
       const resultDetails = resultItems.length ? `
         <details class="oq-settings-backup-result-details" open>
           <summary>
             <span>
-              <strong>Niet toegepast</strong>
-              <em>${escapeHtml(`${result.skipped.length} overgeslagen · ${result.unknown.length} onbekend`)}</em>
+              <strong>${escapeHtml(t("system.backupNotApplied"))}</strong>
+              <em>${escapeHtml(t("system.backupSkippedUnknown", { skipped: result.skipped.length, unknown: result.unknown.length }))}</em>
             </span>
           </summary>
           <div class="oq-settings-backup-result-list">
@@ -533,10 +547,10 @@ import { render } from "../core/render-scheduler.js";
               <div class="oq-settings-backup-result-item oq-settings-backup-result-item--${escapeHtml(item.severity || "warning")}">
                 <div>
                   <strong>${escapeHtml(item.label || item.key)}</strong>
-                  <code>${escapeHtml(`${item.section || "Onbekend"} · ${item.key}`)}</code>
+                  <code>${escapeHtml(`${item.section || t("system.backupUnknownSection")} · ${item.key}`)}</code>
                 </div>
                 <div>
-                  <strong>${escapeHtml(item.reason || "Niet toegepast")}</strong>
+                  <strong>${escapeHtml(item.reason || t("system.backupNotApplied"))}</strong>
                   ${item.detail ? `<span>${escapeHtml(item.detail)}</span>` : ""}
                 </div>
               </div>
@@ -547,22 +561,22 @@ import { render } from "../core/render-scheduler.js";
       return renderModalShell({
         modalId: "system",
         titleId: "oq-backup-success-modal-title",
-        kicker: "Beheer",
-        title: "Backup hersteld",
+        kicker: t("system.backupKicker"),
+        title: t("system.backupTitle"),
         closeAction: "close-system-modal",
-        closeLabel: "Sluit bevestiging",
+        closeLabel: t("system.backupCloseLabel"),
         className: "oq-helper-modal--wide oq-helper-modal--scrollable",
         bodyMarkup: `
           <p class="oq-helper-modal-copy">${escapeHtml(notice)}</p>
           <div class="oq-settings-backup-result-summary">
-            <div><span>Toegepast</span><strong>${escapeHtml(String(result.applied.length))}</strong></div>
-            <div><span>Niet toegepast</span><strong>${escapeHtml(String(result.skipped.length))}</strong></div>
-            <div><span>Onbekend</span><strong>${escapeHtml(String(result.unknown.length))}</strong></div>
+            <div><span>${escapeHtml(t("system.backupApplied"))}</span><strong>${escapeHtml(String(result.applied.length))}</strong></div>
+            <div><span>${escapeHtml(t("system.backupNotApplied"))}</span><strong>${escapeHtml(String(result.skipped.length))}</strong></div>
+            <div><span>${escapeHtml(t("system.backupUnknown"))}</span><strong>${escapeHtml(String(result.unknown.length))}</strong></div>
           </div>
           ${resultDetails}
-          ${result.mqttIncluded ? "" : `<p class="oq-settings-action-note oq-settings-action-note--warning">Deze backup bevatte geen MQTT-configuratie. Bestaande MQTT-instellingen en MQTT-afhankelijke bronselecties zijn behouden.</p>`}
+          ${result.mqttIncluded ? "" : `<p class="oq-settings-action-note oq-settings-action-note--warning">${escapeHtml(t("system.backupMqttMissing"))}</p>`}
           <div class="oq-helper-modal-actions">
-            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">Gereed</button>
+            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">${escapeHtml(t("header.done"))}</button>
           </div>
         `,
       });
@@ -574,16 +588,16 @@ import { render } from "../core/render-scheduler.js";
       return renderModalShell({
         modalId: "system",
         titleId: "oq-control-mode-override-modal-title",
-        kicker: "Service · tijdelijke testmodus",
-        title: `${getControlModeOverrideLabel(option)} activeren?`,
+        kicker: t("system.overrideKicker"),
+        title: t("system.overrideTitle", { label: getControlModeOverrideLabel(option) }),
         closeAction: "close-system-modal",
-        closeLabel: "Sluit testmodus-popup",
+        closeLabel: t("system.overrideCloseLabel"),
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">Deze keuze omzeilt tijdelijk de normale regelmodus. Gebruik dit alleen voor een gerichte test en houd de installatie tijdens de test in de gaten.</p>
-          <p class="oq-settings-action-note oq-settings-action-note--warning">De override stopt automatisch na maximaal 30 minuten. Je kunt hem eerder beëindigen via de waarschuwing bovenaan de web-app.</p>
+          <p class="oq-helper-modal-copy">${escapeHtml(t("system.overrideCopy"))}</p>
+          <p class="oq-settings-action-note oq-settings-action-note--warning">${escapeHtml(t("system.overrideWarnCopy"))}</p>
           <div class="oq-helper-modal-actions">
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>Annuleren</button>
-            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-control-mode-override" ${busy ? "disabled" : ""}>${busy ? "Activeren..." : "Tijdelijk activeren"}</button>
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>${escapeHtml(t("common.cancel"))}</button>
+            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-control-mode-override" ${busy ? "disabled" : ""}>${busy ? escapeHtml(t("system.overrideBusy")) : escapeHtml(t("system.overrideConfirm"))}</button>
           </div>
         `,
       });
@@ -596,17 +610,17 @@ import { render } from "../core/render-scheduler.js";
       return renderModalShell({
         modalId: "system",
         titleId: "oq-runtime-reset-modal-title",
-        kicker: "Onderhoud",
-        title: `${duo ? "Beide draaitijdbalansen" : "Draaitijdbalans"} resetten?`,
+        kicker: t("system.runtimeKicker"),
+        title: duo ? t("system.runtimeTitleBoth") : t("system.runtimeTitleSingle"),
         closeAction: "close-system-modal",
-        closeLabel: "Sluit draaitijd-resetpopup",
+        closeLabel: t("system.runtimeCloseLabel"),
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">De in OpenQuatt bijgehouden compressorlooptijd wordt op nul gezet${duo ? " voor beide warmtepompen" : ""}. Gebruik dit alleen na vervanging of wanneer de runtimebalans bewust opnieuw moet beginnen.</p>
-          <p class="oq-settings-action-note oq-settings-action-note--warning">Dit wijzigt geen fysieke teller in de warmtepomp zelf. De nieuwe waarden kunnen binnen ongeveer één minuut zichtbaar worden.</p>
+          <p class="oq-helper-modal-copy">${escapeHtml(t("system.runtimeCopy", { duoSuffix: duo ? t("system.runtimeDuoSuffix") : "" }))}</p>
+          <p class="oq-settings-action-note oq-settings-action-note--warning">${escapeHtml(t("system.runtimeWarnCopy"))}</p>
           ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
           <div class="oq-helper-modal-actions">
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>Annuleren</button>
-            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-runtime-reset" ${busy ? "disabled" : ""}>${busy ? "Resetten..." : "Tellers resetten"}</button>
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>${escapeHtml(t("common.cancel"))}</button>
+            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-runtime-reset" ${busy ? "disabled" : ""}>${busy ? escapeHtml(t("system.runtimeBusy")) : escapeHtml(t("system.runtimeConfirm"))}</button>
           </div>
         `,
       });
@@ -617,17 +631,17 @@ import { render } from "../core/render-scheduler.js";
       return renderModalShell({
         modalId: "system",
         titleId: "oq-energy-counter-reset-modal-title",
-        kicker: "Onderhoud",
-        title: "Cumulatieve energietellers resetten?",
+        kicker: t("system.energyKicker"),
+        title: t("system.energyTitle"),
         closeAction: "close-system-modal",
-        closeLabel: "Sluit energieteller-resetpopup",
+        closeLabel: t("system.energyCloseLabel"),
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">De cumulatieve elektriciteits-, warmte- en koelenergiemeters van OpenQuatt beginnen opnieuw bij nul.</p>
-          <p class="oq-settings-action-note oq-settings-action-note--warning">Eerder opgebouwde totalen blijven niet beschikbaar in deze tellers. Externe historie in Home Assistant wordt hiermee niet verwijderd.</p>
+          <p class="oq-helper-modal-copy">${escapeHtml(t("system.energyCopy"))}</p>
+          <p class="oq-settings-action-note oq-settings-action-note--warning">${escapeHtml(t("system.energyWarnCopy"))}</p>
           ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
           <div class="oq-helper-modal-actions">
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>Annuleren</button>
-            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-energy-counter-reset" ${busy ? "disabled" : ""}>${busy ? "Resetten..." : "Energietellers resetten"}</button>
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>${escapeHtml(t("common.cancel"))}</button>
+            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-energy-counter-reset" ${busy ? "disabled" : ""}>${busy ? escapeHtml(t("system.energyBusy")) : escapeHtml(t("system.energyConfirm"))}</button>
           </div>
         `,
       });
@@ -638,15 +652,15 @@ import { render } from "../core/render-scheduler.js";
       return renderModalShell({
         modalId: "system",
         titleId: "oq-restart-modal-title",
-        kicker: "Systeem",
-        title: "OpenQuatt herstarten?",
+        kicker: t("system.restartKicker"),
+        title: t("system.restartTitle"),
         closeAction: "close-system-modal",
-        closeLabel: "Sluit herstart-popup",
+        closeLabel: t("system.restartCloseLabel"),
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">De webinterface en regeling zijn tijdens de herstart kort niet bereikbaar. Daarna komt OpenQuatt vanzelf terug.</p>
+          <p class="oq-helper-modal-copy">${escapeHtml(t("system.restartCopy"))}</p>
           <div class="oq-helper-modal-actions">
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>Annuleren</button>
-            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="confirm-restart" ${busy ? "disabled" : ""}>${busy ? "Herstarten..." : "Herstarten"}</button>
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>${escapeHtml(t("common.cancel"))}</button>
+            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="confirm-restart" ${busy ? "disabled" : ""}>${busy ? escapeHtml(t("system.restartBusy")) : escapeHtml(t("system.restartConfirm"))}</button>
           </div>
         `,
       });
@@ -657,16 +671,16 @@ import { render } from "../core/render-scheduler.js";
       return renderModalShell({
         modalId: "system",
         titleId: "oq-factory-reset-modal-title",
-        kicker: "Onderhoud",
-        title: "Controller terugzetten naar fabrieksinstellingen?",
+        kicker: t("system.factoryKicker"),
+        title: t("system.factoryTitle"),
         closeAction: "close-system-modal",
-        closeLabel: "Sluit factory-resetpopup",
+        closeLabel: t("system.factoryCloseLabel"),
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">Alle opgeslagen OpenQuatt-instellingen, netwerkgegevens en koppelingen worden gewist. De huidige firmware blijft geïnstalleerd. Instellingen die in de warmtepomp zelf zijn opgeslagen worden niet gewijzigd. De controller herstart en moet daarna opnieuw worden ingesteld.</p>
+          <p class="oq-helper-modal-copy">${escapeHtml(t("system.factoryCopy"))}</p>
           ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
           <div class="oq-helper-modal-actions">
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>Annuleren</button>
-            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-factory-reset" ${busy ? "disabled" : ""}>${busy ? "Resetten..." : "Factory reset"}</button>
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>${escapeHtml(t("common.cancel"))}</button>
+            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-factory-reset" ${busy ? "disabled" : ""}>${busy ? escapeHtml(t("system.factoryBusy")) : escapeHtml(t("system.factoryConfirm"))}</button>
           </div>
         `,
       });
@@ -676,19 +690,19 @@ import { render } from "../core/render-scheduler.js";
       return renderModalShell({
         modalId: "system",
         titleId: "oq-cooling-schedule-modal-title",
-        kicker: "Koeltoestemming",
-        title: "Koelvenster instellen",
+        kicker: t("system.coolingScheduleKicker"),
+        title: t("system.coolingScheduleTitle"),
         modalClass: "oq-helper-modal--wide",
         closeAction: "close-system-modal",
-        closeLabel: "Sluit koelvenster-popup",
+        closeLabel: t("system.coolingScheduleCloseLabel"),
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">Kies wanneer OpenQuatt lokaal koeltoestemming mag geven. Een tijd wordt opgeslagen zodra je het veld verlaat of op Enter drukt.</p>
+          <p class="oq-helper-modal-copy">${escapeHtml(t("system.coolingScheduleCopy"))}</p>
           ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
           <div class="oq-helper-modal-body">
             ${renderCoolingScheduleSettingsFields("oq-settings-grid oq-settings-grid--modal")}
           </div>
           <div class="oq-helper-modal-actions">
-            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">Gereed</button>
+            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">${escapeHtml(t("header.done"))}</button>
           </div>
         `,
       });
@@ -698,19 +712,19 @@ import { render } from "../core/render-scheduler.js";
       return renderModalShell({
         modalId: "system",
         titleId: "oq-silent-settings-modal-title",
-        kicker: "Stille uren",
-        title: "Stille uren instellen",
+        kicker: t("system.silentKicker"),
+        title: t("system.silentTitle"),
         modalClass: "oq-helper-modal--wide oq-helper-modal--scrollable",
         closeAction: "close-system-modal",
-        closeLabel: "Sluit stille-uren-popup",
+        closeLabel: t("system.silentCloseLabel"),
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">Kies wanneer het systeem stiller moet werken, en hoe ver het dan nog mag opschalen. Een tijd wordt opgeslagen zodra je het veld verlaat of op Enter drukt.</p>
+          <p class="oq-helper-modal-copy">${escapeHtml(t("system.silentModalCopy"))}</p>
           ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
           <div class="oq-helper-modal-body">
             ${renderSilentSettingsFields()}
           </div>
           <div class="oq-helper-modal-actions">
-            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">Gereed</button>
+            <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">${escapeHtml(t("header.done"))}</button>
           </div>
         `,
       });
@@ -740,18 +754,18 @@ import { render } from "../core/render-scheduler.js";
       return renderModalShell({
         modalId: "system",
         titleId: "oq-electrical-limit-modal-title",
-        kicker: "Elektrische installatie",
-        title: "Hogere elektrische ingangsgrens instellen?",
+        kicker: t("system.electricalKicker"),
+        title: t("system.electricalTitle"),
         closeAction: "close-system-modal",
-        closeLabel: "Sluit elektrische-ingangsgrens-popup",
+        closeLabel: t("system.electricalCloseLabel"),
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">Je verhoogt de grens van <strong>${escapeHtml(fromLabel)}</strong> naar <strong>${escapeHtml(toLabel)}</strong>.</p>
-          <p class="oq-settings-action-note oq-settings-action-note--warning">Bevestig alleen wanneer de volledige elektrische aansluiting geschikt is voor minimaal ${escapeHtml(toLabel)}. Bij een standaard ${escapeHtml(standardLabel)}-groep kan de installatieautomaat uitschakelen. Bij onjuist gedimensioneerde bekabeling of aansluitmaterialen kan oververhitting of brandgevaar ontstaan.</p>
-          <p class="oq-helper-modal-copy">OpenQuatt vervangt nooit de elektrische beveiliging van de installatie.</p>
+          <p class="oq-helper-modal-copy">${t("system.electricalRaiseCopy", { from: escapeHtml(fromLabel), to: escapeHtml(toLabel) })}</p>
+          <p class="oq-settings-action-note oq-settings-action-note--warning">${escapeHtml(t("system.electricalWarnCopy", { to: toLabel, standard: standardLabel }))}</p>
+          <p class="oq-helper-modal-copy">${escapeHtml(t("system.electricalNoteCopy"))}</p>
           ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
           <div class="oq-helper-modal-actions">
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>Annuleren</button>
-            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-electrical-limit" ${busy ? "disabled" : ""}>${busy ? "Instellen..." : `${escapeHtml(toLabel)} instellen`}</button>
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>${escapeHtml(t("common.cancel"))}</button>
+            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-electrical-limit" ${busy ? "disabled" : ""}>${busy ? escapeHtml(t("system.electricalBusy")) : escapeHtml(t("system.electricalSetLabel", { to: toLabel }))}</button>
           </div>
         `,
       });
@@ -769,41 +783,41 @@ import { render } from "../core/render-scheduler.js";
       return renderModalShell({
         modalId: "system",
         titleId: "oq-openquatt-pause-modal-title",
-        kicker: "Bediening",
-        title: "Openquatt regeling",
+        kicker: t("system.pauseKicker"),
+        title: t("system.pauseTitle"),
         modalClass: "oq-helper-modal--wide",
         closeAction: "close-system-modal",
-        closeLabel: "Sluit regeling-popup",
+        closeLabel: t("system.pauseCloseLabel"),
         bodyMarkup: `
-          <p class="oq-helper-modal-copy">${enabled
-              ? "Kies hoe lang de regeling uit moet blijven. Verwarmen en koelen stoppen dan, maar beveiligingen (inclusief vorstbeveiliging) blijven actief."
-              : "De regeling staat nu tijdelijk uit. Je kunt meteen weer inschakelen of een nieuw hervatmoment plannen."
-          }</p>
+          <p class="oq-helper-modal-copy">${escapeHtml(enabled
+              ? t("system.pauseCopyEnabled")
+              : t("system.pauseCopyDisabled")
+          )}</p>
           ${resumeScheduled
             ? `<div class="oq-helper-modal-success oq-helper-modal-success--compact">
-                <strong>Hervat nu automatisch</strong>
+                <strong>${escapeHtml(t("system.pauseResumeAuto"))}</strong>
                 <span>${escapeHtml(resumeLabel)}</span>
               </div>`
             : ""
           }
           ${!resumeEntityReady
-            ? `<p class="oq-helper-modal-note" aria-live="polite">Hervatopties laden...</p>`
+            ? `<p class="oq-helper-modal-note" aria-live="polite">${escapeHtml(t("system.pauseLoadingOptions"))}</p>`
             : hasResumeEntity
             ? `
               <div class="oq-helper-modal-presets">
-                <button class="oq-helper-button" type="button" data-oq-action="apply-openquatt-preset" data-pause-preset="2h" ${busy ? "disabled" : ""}>2 uur</button>
-                <button class="oq-helper-button" type="button" data-oq-action="apply-openquatt-preset" data-pause-preset="8h" ${busy ? "disabled" : ""}>8 uur</button>
-                <button class="oq-helper-button" type="button" data-oq-action="apply-openquatt-preset" data-pause-preset="tomorrow-morning" ${busy ? "disabled" : ""}>Tot morgenochtend</button>
+                <button class="oq-helper-button" type="button" data-oq-action="apply-openquatt-preset" data-pause-preset="2h" ${busy ? "disabled" : ""}>${escapeHtml(t("system.pausePreset2h"))}</button>
+                <button class="oq-helper-button" type="button" data-oq-action="apply-openquatt-preset" data-pause-preset="8h" ${busy ? "disabled" : ""}>${escapeHtml(t("system.pausePreset8h"))}</button>
+                <button class="oq-helper-button" type="button" data-oq-action="apply-openquatt-preset" data-pause-preset="tomorrow-morning" ${busy ? "disabled" : ""}>${escapeHtml(t("system.pausePresetMorning"))}</button>
               </div>
               <div class="oq-helper-modal-channel oq-helper-modal-channel--datetime">
-                <span class="oq-helper-modal-label">Hervatten op</span>
+                <span class="oq-helper-modal-label">${escapeHtml(t("system.pauseResumeAt"))}</span>
                 <div class="oq-helper-modal-inline">
                   <label class="oq-settings-control oq-settings-control--datetime">
                     <input
                       class="oq-helper-input"
                       type="datetime-local"
                       step="60"
-                      lang="nl-NL"
+                      lang="${escapeHtml(getIntlLocale())}"
                       data-oq-field="openquattPauseDraft"
                       data-oq-pause-draft="resume"
                       value="${escapeHtml(draftValue)}"
@@ -816,19 +830,19 @@ import { render } from "../core/render-scheduler.js";
                       </svg>
                     </span>
                   </label>
-                  <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="apply-openquatt-custom-pause" ${busy ? "disabled" : ""}>Plan moment</button>
+                  <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="apply-openquatt-custom-pause" ${busy ? "disabled" : ""}>${escapeHtml(t("system.pausePlanMoment"))}</button>
                 </div>
               </div>
             `
-            : `<p class="oq-helper-modal-note">Automatisch hervatten is nog niet beschikbaar op deze firmware. Je kunt de regeling wel zonder eindtijd uitschakelen.</p>`
+            : `<p class="oq-helper-modal-note">${escapeHtml(t("system.pauseNoAutoResume"))}</p>`
           }
           <div class="oq-helper-modal-actions">
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>Annuleren</button>
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>${escapeHtml(t("common.cancel"))}</button>
             ${!enabled
-              ? `<button class="oq-helper-button" type="button" data-oq-action="enable-openquatt-now" ${busy ? "disabled" : ""}>Nu inschakelen</button>`
+              ? `<button class="oq-helper-button" type="button" data-oq-action="enable-openquatt-now" ${busy ? "disabled" : ""}>${escapeHtml(t("system.pauseEnableNow"))}</button>`
               : ""
             }
-            <button class="oq-helper-button" type="button" data-oq-action="apply-openquatt-indefinite" ${busy ? "disabled" : ""}>${enabled ? "Zonder eindtijd uitschakelen" : "Zonder eindtijd"}</button>
+            <button class="oq-helper-button" type="button" data-oq-action="apply-openquatt-indefinite" ${busy ? "disabled" : ""}>${enabled ? escapeHtml(t("system.pauseDisableIndefinite")) : escapeHtml(t("system.pauseWithoutEnd"))}</button>
           </div>
         `,
       });

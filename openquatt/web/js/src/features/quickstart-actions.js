@@ -11,6 +11,7 @@ import { shouldInitializeQuickStartUsageTelemetryChoice, waitForUsageTelemetryCh
 import { USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS } from "../core/usage-telemetry-preview.js";
 import { getQuickStartFlowSourceModel, getQuickStartThermostatSourceModel } from "./quickstart.js";
 import { render } from "../core/render-scheduler.js";
+import { formatNumber, t } from "../i18n/index.js";
 
   export function getQuickStartStepHydrationKeys(stepId = state.currentStep) {
     const base = ["setupComplete", "strategy", "usageTelemetryEnabled", "usageTelemetryChoiceConfigured", "performanceTelemetryEnabled", "performanceTelemetryChoiceConfigured", ...HEADER_ENTITY_KEYS];
@@ -144,7 +145,7 @@ import { render } from "../core/render-scheduler.js";
     try {
       await setQuickStartSwitch("usageTelemetryEnabled", true);
       if (!await confirmChoice(true)) {
-        throw new Error("De controller heeft de keuze niet bevestigd.");
+        throw new Error(t("quickStartActions.controllerNotConfirmed"));
       }
       state.controlError = "";
     } catch (error) {
@@ -157,9 +158,9 @@ import { render } from "../core/render-scheduler.js";
       }
       if (disabledConfirmed) {
         state.controlError = "";
-        state.controlNotice = "De standaardkeuze kon niet worden ingeschakeld. Delen is bevestigd uitgeschakeld; je kunt doorgaan of het opnieuw inschakelen.";
+        state.controlNotice = t("quickStartActions.defaultNotEnabled");
       } else {
-        state.controlError = `De keuze kon niet veilig worden bevestigd. Controleer de verbinding en probeer opnieuw. ${error.message}`;
+        state.controlError = t("quickStartActions.choiceNotConfirmed", { message: error.message });
       }
     } finally {
       state.busyAction = "";
@@ -195,12 +196,12 @@ import { render } from "../core/render-scheduler.js";
         expectedEnabled: false,
       });
       if (!confirmed) {
-        throw new Error("De controller heeft de keuze niet bevestigd.");
+        throw new Error(t("quickStartActions.controllerNotConfirmed"));
       }
       state.controlError = "";
-      state.controlNotice = "Delen staat standaard uit. Zet delen hier aan als je prestatiemetingen wilt delen.";
+      state.controlNotice = t("quickStartActions.perfDefaultOff");
     } catch (error) {
-      state.controlError = `De keuze kon niet veilig worden bevestigd. Controleer de verbinding en probeer opnieuw. ${error.message}`;
+      state.controlError = t("quickStartActions.choiceNotConfirmed", { message: error.message });
     } finally {
       state.busyAction = "";
       render();
@@ -211,8 +212,8 @@ import { render } from "../core/render-scheduler.js";
     const model = getQuickStartFlowSourceModel();
     if (!model.canApply) {
       state.controlError = model.requiresCic
-        ? "Vul eerst een geldig CiC-adres of een geldige feed-URL in."
-        : "De vereiste flowbroninstelling is niet beschikbaar in deze firmware.";
+        ? t("quickStartActions.flowNeedCic")
+        : t("quickStartActions.flowNotAvailable");
       render();
       return;
     }
@@ -245,19 +246,19 @@ import { render } from "../core/render-scheduler.js";
         await applyValue("cicPollingEnabled", true);
         await applyValue("flowSource", "CIC");
         state.quickStartCicFeedUrlDraft = null;
-        state.controlNotice = "CiC-flowmeting ingesteld. OpenQuatt controleert nu de JSON-feed.";
+        state.controlNotice = t("quickStartActions.flowCicApplied");
       } else {
         if (model.qFlowTarget) {
           await applyValue("qFlowSource", model.qFlowTarget);
         }
         await applyValue("flowSource", "Outdoor unit");
         state.controlNotice = model.qFlowTarget === "Local"
-          ? "De lokale flowmeter op de Q-edition controller is ingesteld."
-          : "De flowmeter in de buitenunit is ingesteld als Modbus-bron.";
+          ? t("quickStartActions.flowLocalApplied")
+          : t("quickStartActions.flowOduApplied");
       }
       await refreshEntities(QUICK_START_FLOW_SOURCE_KEYS, "all");
     } catch (error) {
-      state.controlError = `Flowconfiguratie kon niet volledig worden toegepast. ${error.message}`;
+      state.controlError = t("quickStartActions.flowApplyFailed", { message: error.message });
     } finally {
       state.busyAction = "";
       render();
@@ -274,12 +275,12 @@ import { render } from "../core/render-scheduler.js";
       await refreshEntities(QUICK_START_FLOW_SOURCE_KEYS, "all");
       const model = getQuickStartFlowSourceModel();
       state.controlNotice = !model.flowAvailable
-        ? "Nog geen actuele flowwaarde ontvangen."
+        ? t("quickStartActions.flowNoValue")
         : model.flowValue > 0
-          ? `Flowsignaal bijgewerkt: ${Math.round(model.flowValue)} L/h.`
-          : "Het flowsignaal is beschikbaar; momenteel is er geen circulatie.";
+          ? t("quickStartActions.flowUpdated", { value: formatNumber(Math.round(model.flowValue), { maximumFractionDigits: 0 }) })
+          : t("quickStartActions.flowAvailableNoCirculation");
     } catch (error) {
-      state.controlError = `Flowsignaal controleren mislukt. ${error.message}`;
+      state.controlError = t("quickStartActions.flowCheckFailed", { message: error.message });
     } finally {
       state.busyAction = "";
       render();
@@ -289,7 +290,7 @@ import { render } from "../core/render-scheduler.js";
   export async function setQuickStartSwitch(key, enabled) {
     const entity = ENTITY_DEFS[key];
     if (!entity || !hasEntity(key)) {
-      throw new Error("Deze firmware bevat de vereiste testbediening niet.");
+      throw new Error(t("quickStartActions.switchNotAvailable"));
     }
     const response = await fetch(buildEntityPath(entity.domain, entity.name, enabled ? "turn_on" : "turn_off"), {
       method: "POST",
@@ -311,7 +312,7 @@ import { render } from "../core/render-scheduler.js";
     const missingKeys = keys.filter((key) => !state.entities[key]);
     if (missingKeys.length) {
       const missingNames = missingKeys.map((key) => ENTITY_DEFS[key]?.name || key).join(", ");
-      throw new Error(`Interne waterpomptestbediening ontbreekt: ${missingNames}.`);
+      throw new Error(t("quickStartActions.flowTestControlsMissing", { names: missingNames }));
     }
   }
 
@@ -327,7 +328,7 @@ import { render } from "../core/render-scheduler.js";
         continue;
       }
       if (state.busyAction !== "quickstart-flow-test-abort") {
-        state.controlNotice = "Waterpomptest afgerond. OpenQuatt is teruggekeerd naar de normale regeling.";
+        state.controlNotice = t("quickStartActions.flowTestDone");
       }
       render();
       return;
@@ -337,7 +338,7 @@ import { render } from "../core/render-scheduler.js";
   export async function startQuickStartFlowTest() {
     const model = getQuickStartFlowSourceModel();
     if (!model.canRunFlowTest) {
-      state.controlError = "Activeer eerst de flowconfiguratie of installeer firmware met de waterpomptest.";
+      state.controlError = t("quickStartActions.flowTestActivateFirst");
       render();
       return;
     }
@@ -354,7 +355,7 @@ import { render } from "../core/render-scheduler.js";
         const cm100 = ENTITY_DEFS.commissioningCm100Start;
         const response = await fetch(buildEntityPath(cm100.domain, cm100.name, "press"), { method: "POST" });
         if (!response.ok) {
-          throw new Error(`CM100 starten gaf HTTP ${response.status}`);
+          throw new Error(t("quickStartActions.cm100StartFailed", { status: response.status }));
         }
         openedCm100 = true;
       }
@@ -370,18 +371,18 @@ import { render } from "../core/render-scheduler.js";
       if (!ready) {
         const status = String(getEntityValue("commissioningStatus") || "").trim();
         if (status) {
-          throw new Error(`Service-stand werd niet gereed: ${status}.`);
+          throw new Error(t("quickStartActions.cm100NotReady", { status }));
         }
-        throw new Error("Service-stand CM100 werd niet op tijd gereed.");
+        throw new Error(t("quickStartActions.cm100NotReadyInTime"));
       }
 
       await setQuickStartSwitch("quickFlowTest", true);
       await refreshEntities(QUICK_START_FLOW_SOURCE_KEYS, "all");
       const status = String(getEntityValue("commissioningStatus") || "").trim();
       if (!isEntityActive("quickFlowTest")) {
-        throw new Error(status || "De waterpomptest kon niet worden gestart.");
+        throw new Error(status || t("quickStartActions.flowTestCouldNotStart"));
       }
-      state.controlNotice = "Waterpomptest gestart: alleen de pomp draait 30 seconden op 400 iPWM.";
+      state.controlNotice = t("quickStartActions.flowTestStarted");
       void monitorQuickStartFlowTest();
     } catch (error) {
       if (openedCm100 && !isEntityActive("quickFlowTest")) {
@@ -392,7 +393,7 @@ import { render } from "../core/render-scheduler.js";
           // Firmware safety behavior remains the final fallback.
         }
       }
-      state.controlError = `Waterpomptest starten mislukt. ${error.message}`;
+      state.controlError = t("quickStartActions.flowTestStartFailed", { message: error.message });
     } finally {
       state.busyAction = "";
       render();
@@ -408,9 +409,9 @@ import { render } from "../core/render-scheduler.js";
     try {
       await setQuickStartSwitch("quickFlowTest", false);
       await refreshEntities(QUICK_START_FLOW_SOURCE_KEYS, "all");
-      state.controlNotice = "Waterpomptest gestopt. OpenQuatt keert terug naar de normale regeling.";
+      state.controlNotice = t("quickStartActions.flowTestStopped");
     } catch (error) {
-      state.controlError = `Waterpomptest stoppen mislukt. ${error.message}`;
+      state.controlError = t("quickStartActions.flowTestStopFailed", { message: error.message });
     } finally {
       state.busyAction = "";
       render();
@@ -424,7 +425,7 @@ import { render } from "../core/render-scheduler.js";
   const recommended = getHeatingEnableRecommendation();
   const value = desired && desired !== "—" ? desired : recommended;
   if (!hasEntity("heatingEnableSource")) {
-    state.controlError = "Heating Enable-bron niet beschikbaar in deze firmware.";
+    state.controlError = t("quickStartActions.heatingEnableNotAvailable");
     render();
     return;
   }
@@ -443,11 +444,11 @@ import { render } from "../core/render-scheduler.js";
       };
     }
     state.controlNotice = value === "Disabled"
-      ? "Warmtetoestemming op Niet gebruiken gezet: de strategie bepaalt zelf wanneer warmte nodig is."
-      : `Warmtetoestemming op ${value} gezet.`;
+      ? t("quickStartActions.heatingEnableDisabled")
+      : t("quickStartActions.heatingEnableSet", { value });
     await refreshEntities(["heatingEnableSource", "heatingEnableValid", "heatingEnableSelected", "heatingBlockedByThermostat"], "all");
   } catch (error) {
-    state.controlError = `Warmtetoestemming kon niet worden opgeslagen. ${error.message}`;
+    state.controlError = t("quickStartActions.heatingEnableSaveFailed", { message: error.message });
   } finally {
     state.busyAction = "";
     render();
@@ -458,8 +459,8 @@ export async function applyQuickStartThermostatSourceConfiguration() {
     const model = getQuickStartThermostatSourceModel();
     if (!model.canApply) {
       state.controlError = model.selectedSource === "CIC"
-        ? "Vul eerst een geldig CiC-adres of een geldige feed-URL in."
-        : "De vereiste thermostaatbroninstelling is niet beschikbaar in deze firmware.";
+        ? t("quickStartActions.thermostatNeedCic")
+        : t("quickStartActions.thermostatNotAvailable");
       render();
       return;
     }
@@ -497,13 +498,13 @@ export async function applyQuickStartThermostatSourceConfiguration() {
       await applyValue("roomTempSource", model.selectedSource);
       await applyValue("roomSetpointSource", model.selectedSource);
       state.controlNotice = model.selectedSource === "OT thermostat"
-        ? "Kamertemperatuur en setpoint zijn gekoppeld aan OpenTherm."
+        ? t("quickStartActions.thermostatOtApplied")
         : model.selectedSource === "CIC"
-          ? "Kamertemperatuur en setpoint zijn gekoppeld aan de CiC JSON-feed."
-          : "Kamertemperatuur en setpoint zijn gekoppeld aan Home Assistant.";
+          ? t("quickStartActions.thermostatCicApplied")
+          : t("quickStartActions.thermostatHaApplied");
       await refreshEntities(QUICK_START_THERMOSTAT_SOURCE_KEYS, "all");
     } catch (error) {
-      state.controlError = `Thermostaatconfiguratie kon niet volledig worden toegepast. ${error.message}`;
+      state.controlError = t("quickStartActions.thermostatApplyFailed", { message: error.message });
     } finally {
       state.busyAction = "";
       render();

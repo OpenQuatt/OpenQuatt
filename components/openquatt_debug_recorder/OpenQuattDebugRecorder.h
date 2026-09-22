@@ -12,6 +12,7 @@
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/core/component.h"
+#include "esphome/core/preferences.h"
 
 namespace esphome {
 namespace openquatt_debug_recorder {
@@ -30,11 +31,20 @@ class OpenQuattDebugRecorder : public Component {
   bool configure(const std::string& entities, bool reset);
   bool start(uint32_t duration_s);
   bool start_rolling();
-  void freeze();
+  bool restart_rolling();
   void stop();
+  // Persistent user opt-out for the always-on rolling recorder. Only writes
+  // to flash when the user changes the setting, never periodically.
+  // Disabling stops sampling but keeps the current buffer downloadable until
+  // reboot or restart. Enabling starts a new rolling recording.
+  // Returns false when the preference could not be persisted; the in-memory
+  // state is then left untouched so a failed opt-out is never reported as
+  // successful.
+  bool set_enabled(bool enabled);
+  bool enabled() const { return this->enabled_; }
   const std::string& get_csrf_token() const { return this->csrf_token_; }
   void write_status(httpd_req_t* req) const;
-  void write_recording(httpd_req_t* req) const;
+  void write_recording(httpd_req_t* req, uint32_t last_minutes) const;
 
  protected:
   static constexpr uint32_t SAMPLE_INTERVAL_MS = 10000;
@@ -95,7 +105,6 @@ class OpenQuattDebugRecorder : public Component {
     bool available{false};
     bool active{false};
     bool rolling{false};
-    bool frozen{false};
     bool string_overflow{false};
     uint64_t recording_id{0};
     uint64_t exported_at_ms{0};
@@ -118,6 +127,7 @@ class OpenQuattDebugRecorder : public Component {
   };
 
   time::RealTimeClock* clock_{nullptr};
+  ESPPreferenceObject enabled_pref_{};
   PsramBuffer<uint8_t> samples_{};
   PsramBuffer<DebugField> fields_{};
   PsramBuffer<DebugField> pending_fields_{};
@@ -125,17 +135,25 @@ class OpenQuattDebugRecorder : public Component {
   PsramBuffer<uint16_t> string_buckets_{};
   PsramBuffer<uint16_t> string_compaction_order_{};
   PsramBuffer<char> string_data_{};
+  // enabled_ is the persistent user preference (default on). active_ reports
+  // whether sampling is actually running. available_() reports whether the
+  // recorder is technically usable (PSRAM allocation succeeded).
+  bool enabled_{true};
   bool active_{false};
   bool rolling_{false};
-  bool frozen_{false};
   bool configuration_pending_{false};
   bool string_overflow_{false};
   mutable bool export_in_progress_{false};
   uint64_t recording_id_{0};
-  uint32_t started_ms_{0};
-  uint32_t stopped_ms_{0};
+  // All recording timing runs on a 64-bit monotonic clock extended from
+  // 32-bit millis(), so an always-on recording survives the ~49.7 day
+  // millis() wrap with monotonic sample offsets.
+  uint64_t started_monotonic_ms_{0};
+  uint64_t stopped_monotonic_ms_{0};
   uint32_t duration_s_{DEFAULT_DURATION_S};
-  uint32_t last_sample_ms_{0};
+  uint64_t last_sample_monotonic_ms_{0};
+  uint32_t last_millis_32_{0};
+  uint32_t millis_wrap_count_{0};
   uint32_t total_change_count_{0};
   uint32_t total_event_count_{0};
   size_t count_{0};
@@ -166,8 +184,25 @@ class OpenQuattDebugRecorder : public Component {
   void unlock_state_() const;
   bool begin_export_() const;
   void end_export_() const;
+  bool load_enabled_preference_();
+  bool save_enabled_preference_();
+  // Builds the firmware-owned default recording schema from the generated
+  // field list, resolving entities by name. Missing entities are counted and
+  // skipped, so partial topologies still record.
+  bool configure_default_schema_();
+  // Starts rolling recording; caller must hold the state lock and the field
+  // configuration must already be active.
+  void start_rolling_locked_();
   bool time_is_valid_() const;
   uint64_t current_time_ms_() const;
+  // Extends a 32-bit millis() reading to the tracked 64-bit monotonic clock
+  // without mutating the wrap tracking (for const contexts).
+  uint64_t extend_millis_(uint32_t now_ms) const;
+  // Records the current millis() for wrap detection; callers must hold the
+  // state lock. loop() calls this on every iteration so no wrap is missed.
+  void track_millis_(uint32_t now_ms);
+  // Tracked 64-bit monotonic now.
+  uint64_t monotonic_ms_(uint32_t now_ms);
   uint64_t started_time_ms_() const;
   uint64_t ended_time_ms_() const;
   uint32_t elapsed_s_() const;
@@ -191,13 +226,15 @@ class OpenQuattDebugRecorder : public Component {
   static uint32_t read_value_(const uint8_t* sample, const DebugField& field);
   static void write_value_(uint8_t* sample, const DebugField& field, uint32_t value);
   static uint32_t sample_offset_(const uint8_t* sample);
+  // Sample offset in whole seconds since recording start for a monotonic now.
+  uint32_t sample_offset_s_(uint64_t now_ms) const;
   static uint16_t sample_change_count_(const uint8_t* sample);
   static uint16_t sample_event_count_(const uint8_t* sample);
   static void write_sample_header_(uint8_t* sample, uint32_t offset_s, uint16_t change_count, uint16_t event_count);
   uint8_t* writable_sample_at_(size_t physical_index);
   const uint8_t* sample_at_(size_t index) const;
   bool capture_snapshot_(RecordingSnapshot* snapshot) const;
-  void write_recording_export_(httpd_req_t* req) const;
+  void write_recording_export_(httpd_req_t* req, uint32_t last_minutes) const;
   void rotate_csrf_token_();
 };
 

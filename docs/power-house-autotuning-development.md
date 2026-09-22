@@ -140,6 +140,11 @@ zelf in C++; de MPC-output, horizon, forecasts en aanvoertemperatuursturing word
 De batch-ankering van `U` bij weinig warmtevraag is evenmin bruikbaar als kruisvalidatiebewijs.
 De aanvullende RLS heeft geen pad naar `P_request`; `P_adaptive = 0` blijft gelden.
 
+Bij een fysieke ombouw tussen Q Single en Q Duo blijft de oude leerstand behouden.
+Gebruik dan eerst `Leerdata wissen` voordat je passief leren opnieuw inschakelt of
+modelschattingen beoordeelt. Het journal herkent deze ombouw niet automatisch.
+Gewone bron- en kalibratiewijzigingen behouden afgeronde historie bewust.
+
 De firmware bewaart batchrecords én de 1R1C-leerstand in hetzelfde A/B-journal:
 U/C-coëfficiënten, covariance, informatie voor kwaliteitsbeoordeling en sampletellers.
 Er zijn twee slots van 8 KiB; schema 5 voegt 152 bytes toe aan het recordformaat.
@@ -244,7 +249,7 @@ Fase 1 van het product omvat stappen 1–4. Fase 2 is Adaptive Power House. Onde
 
 Voor latere activatie geldt: een complete, gevalideerde trial-intent met bevestigd herstelmodel moet aantoonbaar persistent zijn **vóór** de control-task de kandidaat activeert. Verlies van betrouwbare monitoring tijdens een trial moet herstel naar het bevestigde model geven. Een herhaalde request mag geen extra activatie of flashcyclus veroorzaken. Handmatige wijzigingen krijgen voorrang en mogen niet als een half samengestelde configuratie gecommit worden. Coalescing alleen bewijst geen volledige batch.
 
-Bij toekomstige modelactivatie worden handmatige basis, actief en laatst bevestigd structureel model apart opgeslagen. Het huidige journal bevat alleen passieve meetrecords. Een toekomstige adaptive bias valt bij reboot standaard terug naar nul. Een tijdelijke afwijking wordt alleen na onafhankelijke, langdurige validatie input voor een nieuw structureel model.
+Bij toekomstige modelactivatie worden handmatige basis, actief en laatst bevestigd structureel model apart opgeslagen. Het huidige journal bevat passieve meetrecords en de 1R1C-leerstand, geen actief regelmodel. Een toekomstige adaptive bias valt bij reboot standaard terug naar nul. Een tijdelijke afwijking wordt alleen na onafhankelijke, langdurige validatie input voor een nieuw structureel model.
 
 Begrens toekomstige adaptive bias in beide richtingen en in verandering per tijdseenheid. Laat hem vervallen bij slechte metingen, storingen, overrides of ongeldige modus. Hij mag nooit de envelope of bestaande veiligheidsgrenzen verhogen. De kernrepresentatie van `HouseLine` en de dispatcharchitectuur blijven daarbij bruikbaar.
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getHouseLearningChartModel, normalizeHouseLearningExport, renderHouseLearningChart } from "../js/src/settings/house-learning-chart.js";
+import { setLocale } from "../js/src/i18n/index.js";
 
 const payload = {
   schema: 1,
@@ -8,6 +9,8 @@ const payload = {
   record_columns: ["start_epoch_s", "end_epoch_s", "mean_room_c", "mean_setpoint_c", "mean_outside_c", "mean_heat_w", "room_trend_k_per_h", "context_revision"],
   records: [[1700000000, 1700001800, 20.1, 20.5, 5.2, 2200, 0.01, 4], [1700003600, 1700005400, 20.2, 20.5, 8.1, 1650, 0.01, 4]],
 };
+
+test.afterEach(() => setLocale("nl", { persist: false, applyDocument: false, notify: false }));
 
 test("batchexport gebruikt alleen de firmwarekolommen en verwerpt ontbrekende waarden", () => {
   assert.deepEqual(normalizeHouseLearningExport(payload), [{ startEpoch: 1700000000, endEpoch: 1700001800, outsideC: 5.2, heatW: 2200 }, { startEpoch: 1700003600, endEpoch: 1700005400, outsideC: 8.1, heatW: 1650 }]);
@@ -34,6 +37,20 @@ test("groene lijn wordt binnen het meetbereik doorgetrokken en daarbuiten gestre
   assert.match(markup, /chart-line--learned\"/);
   assert.match(markup, /chart-line--learned-dashed/);
   assert.match(markup, /Duur: 30 min/);
+});
+
+test("grafiektekst en getallen volgen de actieve locale", () => {
+  const records = normalizeHouseLearningExport(payload);
+  setLocale("nl", { persist: false, applyDocument: false, notify: false });
+  const nl = renderHouseLearningChart(records, { coldC: -10, zeroC: 16, ratedW: 5200 }, { h: 186, t0: 16.8, ready: true });
+  assert.match(nl, /Duur: 30 min/);
+  assert.match(nl, /Buiten: 5,2 °C/);
+
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  const en = renderHouseLearningChart(records, { coldC: -10, zeroC: 16, ratedW: 5200 }, { h: 186, t0: 16.8, ready: true });
+  assert.match(en, /Duration: 30 min/);
+  assert.match(en, /Outside: 5\.2 °C/);
+  assert.match(en, /Configured home line/);
 });
 
 

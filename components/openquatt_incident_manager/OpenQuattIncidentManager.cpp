@@ -1029,6 +1029,7 @@ oq_incidents::StartFailureResetResult OpenQuattIncidentManager::retry_start_fail
 
 OpenQuattIncidentManager::DeferredActionQueueResult OpenQuattIncidentManager::defer_start_failure_retry(
     uint8_t hp_index, uint32_t request_id) {
+  const uint32_t epoch = web_server_base::global_web_server_base->recovery_epoch();
   UnitState* unit = this->unit_(hp_index);
   if (unit == nullptr) return DeferredActionQueueResult::INVALID;
   const DeferredActionQueueResult queue_result =
@@ -1036,7 +1037,15 @@ OpenQuattIncidentManager::DeferredActionQueueResult OpenQuattIncidentManager::de
   if (queue_result != DeferredActionQueueResult::ACCEPTED) {
     return queue_result;
   }
-  this->defer([this, hp_index, request_id]() { this->retry_start_failure(hp_index, millis(), request_id); });
+  this->defer([this, unit, hp_index, request_id, epoch]() {
+    if (web_server_base::global_web_server_base->is_recovery_active() ||
+        epoch != web_server_base::global_web_server_base->recovery_epoch()) {
+      this->record_action_result_(*unit, "start_failure_retry", "recovery_cancelled", false, millis(), request_id);
+      this->publish_snapshot_(millis());
+      return;
+    }
+    this->retry_start_failure(hp_index, millis(), request_id);
+  });
   return queue_result;
 }
 
@@ -1158,6 +1167,7 @@ bool OpenQuattIncidentManager::confirm_odu_power_cycle(uint8_t hp_index, uint32_
 
 OpenQuattIncidentManager::DeferredActionQueueResult OpenQuattIncidentManager::defer_odu_power_cycle_confirmation(
     uint8_t hp_index, uint32_t request_id) {
+  const uint32_t epoch = web_server_base::global_web_server_base->recovery_epoch();
   UnitState* unit = this->unit_(hp_index);
   if (unit == nullptr) return DeferredActionQueueResult::INVALID;
   const DeferredActionQueueResult queue_result =
@@ -1165,7 +1175,15 @@ OpenQuattIncidentManager::DeferredActionQueueResult OpenQuattIncidentManager::de
   if (queue_result != DeferredActionQueueResult::ACCEPTED) {
     return queue_result;
   }
-  this->defer([this, hp_index, request_id]() { this->confirm_odu_power_cycle(hp_index, millis(), request_id); });
+  this->defer([this, unit, hp_index, request_id, epoch]() {
+    if (web_server_base::global_web_server_base->is_recovery_active() ||
+        epoch != web_server_base::global_web_server_base->recovery_epoch()) {
+      this->record_action_result_(*unit, "confirm_odu_power_cycle", "recovery_cancelled", false, millis(), request_id);
+      this->publish_snapshot_(millis());
+      return;
+    }
+    this->confirm_odu_power_cycle(hp_index, millis(), request_id);
+  });
   return queue_result;
 }
 

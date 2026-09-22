@@ -11,6 +11,7 @@ import {
 } from "./incident-monitoring.js";
 import { setAppView } from "./navigation.js";
 import { render } from "./render-scheduler.js";
+import { t } from "../i18n/index.js";
 import { clearQuickStartSetupInstall, state } from "./state.js";
 import { pollFirmwareUpdateState, primeFirmwareUpdateState } from "../features/firmware-update.js";
 import { updateFirmwareState } from "./feature-state.js";
@@ -41,10 +42,10 @@ async function commitTelemetrySwitch({ key, choiceKey, extraRefreshKeys = [], wa
       throw new Error(`HTTP ${response.status}`);
     }
     if (!await confirmChoice(enabled)) {
-      throw new Error("de controller heeft de opgeslagen keuze niet bevestigd");
+      throw new Error(t("actions.savedChoiceNotConfirmed"));
     }
     state.controlError = "";
-    state.controlNotice = `${entity.name} ${enabled ? "ingeschakeld" : "uitgeschakeld"}.`;
+    state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name: entity.name });
   } catch (error) {
     let disabledConfirmed = false;
     try {
@@ -59,15 +60,15 @@ async function commitTelemetrySwitch({ key, choiceKey, extraRefreshKeys = [], wa
     if (disabledConfirmed) {
       state.controlError = "";
       state.controlNotice = enabled
-        ? "Inschakelen kon niet worden bevestigd. Delen is veilig uitgeschakeld."
-        : "Delen is uitgeschakeld.";
+        ? t("actions.sharingEnableUnconfirmed")
+        : t("actions.sharingDisabled");
     } else {
       if (previousEntity) {
         state.entities[key] = previousEntity;
       } else {
         delete state.entities[key];
       }
-      state.controlError = `De keuze kon niet veilig worden bevestigd. Controleer de verbinding en probeer opnieuw (${error.message}).`;
+      state.controlError = t("actions.choiceConfirmFailed", { error: error.message });
     }
   } finally {
     state.busyAction = "";
@@ -139,7 +140,7 @@ export async function commitSelect(key, option) {
           state: uncertainValue,
           value: uncertainValue,
         };
-        throw new Error(`de controllerstatus kon niet worden bevestigd (${error.message})`);
+        throw new Error(t("actions.controllerStatusUnconfirmed", { error: error.message }));
       }
       const confirmedValue = String(confirmationPayload?.value ?? confirmationPayload?.state ?? "");
       state.entities[key] = {
@@ -147,20 +148,20 @@ export async function commitSelect(key, option) {
         ...(confirmationPayload || {}),
       };
       if (confirmedValue !== option) {
-        throw new Error(`de controller meldt nog "${confirmedValue || "onbekend"}"`);
+        throw new Error(t("actions.controllerMismatch", { value: confirmedValue || t("common.unknown") }));
       }
     }
     delete state.drafts[key];
     delete state.inputDrafts[key];
     state.controlNotice = verifyControlModeOverride
       ? option === "Auto"
-        ? "De normale moduskeuze is weer actief."
-        : `${option} is tijdelijk actief en verloopt automatisch na maximaal 30 minuten.`
+        ? t("actions.overrideRestored")
+        : t("actions.overrideTemp", { option })
       : key === "preferredConnection"
         ? option === "Automatic"
-          ? "Automatische detectie gestart."
-          : `Omschakelen naar ${option} is gestart. De actieve verbinding wordt bijgewerkt zodra ${option} beschikbaar is.`
-      : `${entity.name} bijgewerkt.`;
+          ? t("actions.autoDetect")
+          : t("actions.switchStarted", { option })
+      : t("actions.entityUpdated", { name: entity.name });
     if (key === "firmwareUpdateChannel") {
       updateFirmwareState({ updateInstallCompleted: false, updateInstallCompletedVersion: "" });
       state.entities.firmwareUpdateChannel = {
@@ -171,9 +172,9 @@ export async function commitSelect(key, option) {
       primeFirmwareUpdateState(option);
       render();
       await pollFirmwareUpdateState();
-      state.controlNotice = "Releasekanaal bijgewerkt.";
+      state.controlNotice = t("actions.releaseChannelUpdated");
     } else if (key === "debugLevel") {
-      state.controlNotice = "Logger level bijgewerkt.";
+      state.controlNotice = t("actions.loggerLevelUpdated");
       if (state.systemModal === "webserver-logs") {
         void refreshWebServerLogHistory();
       }
@@ -192,7 +193,7 @@ export async function commitSelect(key, option) {
     if (!verifyControlModeOverride && previousEntity) {
       state.entities[key] = previousEntity;
     }
-    state.controlError = `${entity.name} kon niet worden bijgewerkt. ${error.message}`;
+    state.controlError = t("actions.entityUpdateFailed", { name: entity.name, error: error.message });
     return false;
   } finally {
     state.busyAction = "";
@@ -208,13 +209,13 @@ export function getNumberSettingValidationError(key, value, entities = state.ent
   if (key === "boilerSupportStartThreshold") {
     const stopThreshold = parseLooseNumber(entities.boilerSupportStopThreshold?.value ?? entities.boilerSupportStopThreshold?.state);
     if (Number.isFinite(stopThreshold) && normalized <= stopThreshold) {
-      return `De startgrens moet hoger zijn dan de stopgrens (${stopThreshold} W).`;
+      return t("actions.startAboveStop", { value: stopThreshold });
     }
   }
   if (key === "boilerSupportStopThreshold") {
     const startThreshold = parseLooseNumber(entities.boilerSupportStartThreshold?.value ?? entities.boilerSupportStartThreshold?.state);
     if (Number.isFinite(startThreshold) && normalized >= startThreshold) {
-      return `De stopgrens moet lager zijn dan de startgrens (${startThreshold} W).`;
+      return t("actions.stopBelowStart", { value: startThreshold });
     }
   }
   const exclusionBoundary = key.match(/^hp[12]Exclude(Min|Max)Hz$/);
@@ -224,10 +225,10 @@ export function getNumberSettingValidationError(key, value, entities = state.ent
     const pairedValue = parseLooseNumber(entities[pairedKey]?.value ?? entities[pairedKey]?.state);
     if (Number.isFinite(pairedValue) && pairedValue > 0) {
       if (isMinimum && normalized > pairedValue) {
-        return `De ondergrens mag niet hoger zijn dan de bovengrens (${pairedValue} Hz).`;
+        return t("actions.minBelowMax", { value: pairedValue });
       }
       if (!isMinimum && normalized < pairedValue) {
-        return `De bovengrens mag niet lager zijn dan de ondergrens (${pairedValue} Hz).`;
+        return t("actions.maxAboveMin", { value: pairedValue });
       }
     }
   }
@@ -264,7 +265,7 @@ export async function commitSwitch(key, enabled) {
       value: enabled,
       state: enabled,
     };
-    state.controlNotice = `${entity.name} ${enabled ? "ingeschakeld" : "uitgeschakeld"}.`;
+    state.controlNotice = t(enabled ? "actions.entityEnabled" : "actions.entityDisabled", { name: entity.name });
     state.busyAction = "";
     if (state.appView === "overview") {
       await refreshEntities([...OVERVIEW_KEYS, ...HEADER_ENTITY_KEYS, "setupComplete", ...FIRMWARE_ENTITY_KEYS], "state");
@@ -278,7 +279,7 @@ export async function commitSwitch(key, enabled) {
     }
     render();
   } catch (error) {
-    state.controlError = `${entity.name} aanpassen mislukt (${error.message}).`;
+    state.controlError = t("actions.entityAdjustFailed", { name: entity.name, error: error.message });
     render();
   } finally {
     state.busyAction = "";
@@ -317,7 +318,7 @@ export async function commitNumber(key, value, successNotice = "") {
     delete state.drafts[key];
     delete state.inputDrafts[key];
     succeeded = true;
-    state.controlNotice = successNotice || `${entity.name} bijgewerkt.`;
+    state.controlNotice = successNotice || t("actions.entityUpdated", { name: entity.name });
     await refreshEntities(
       state.appView === "settings"
         ? getSettingsRefreshKeys()
@@ -327,7 +328,7 @@ export async function commitNumber(key, value, successNotice = "") {
     );
   } catch (error) {
     state.inputDrafts[key] = String(normalized).replace(".", ",");
-    state.controlError = `${entity.name} kon niet worden bijgewerkt. ${error.message}`;
+    state.controlError = t("actions.entityUpdateFailed", { name: entity.name, error: error.message });
   } finally {
     state.busyAction = "";
     render();
@@ -357,14 +358,14 @@ export async function disableRange(minKey, maxKey) {
     verificationError = error.message;
   }
   if (minStored && maxStored && valuesConfirmed) {
-    state.controlNotice = "Frequentie-uitsluiting uitgeschakeld.";
+    state.controlNotice = t("actions.frequencyExclusionDisabled");
     state.controlError = "";
     render();
     return true;
   }
 
   state.controlNotice = "";
-  state.controlError = writeError || verificationError || "Frequentie-uitsluiting kon niet volledig worden uitgeschakeld of bevestigd.";
+  state.controlError = writeError || verificationError || t("actions.frequencyExclusionDisableFailed");
   render();
   return false;
 }
@@ -398,14 +399,14 @@ export async function commitTime(key, value) {
     );
     state.entities[key] = { ...(state.entities[key] || {}), ...payload, value: payload.value ?? payload.state ?? "" };
     if (normalizeTimeValue(payload.value ?? payload.state) !== normalized) {
-      throw new Error("de controller heeft de ingestelde tijd niet bevestigd");
+      throw new Error(t("actions.timeNotConfirmed"));
     }
     delete state.inputDrafts[key];
-    state.controlNotice = `${entity.name} bijgewerkt.`;
+    state.controlNotice = t("actions.entityUpdated", { name: entity.name });
     return true;
   } catch (error) {
     // Keep the attempted value visible so the user can retry without retyping.
-    state.controlError = `${entity.name} kon niet worden bijgewerkt. ${error.message}`;
+    state.controlError = t("actions.entityUpdateFailed", { name: entity.name, error: error.message });
     return false;
   } finally {
     state.savingTimeFields.delete(key);
@@ -440,7 +441,7 @@ export async function commitText(key, value) {
     };
     delete state.drafts[key];
     delete state.inputDrafts[key];
-    state.controlNotice = `${entity.name} bijgewerkt.`;
+    state.controlNotice = t("actions.entityUpdated", { name: entity.name });
     await refreshEntities(
       state.appView === "settings"
         ? getSettingsRefreshKeys()
@@ -449,7 +450,7 @@ export async function commitText(key, value) {
     );
   } catch (error) {
     state.inputDrafts[key] = normalized;
-    state.controlError = `${entity.name} kon niet worden bijgewerkt. ${error.message}`;
+    state.controlError = t("actions.entityUpdateFailed", { name: entity.name, error: error.message });
   } finally {
     state.busyAction = "";
     render();
@@ -506,7 +507,7 @@ export async function commitDateTime(key, value) {
 
   try {
     await postDateTimeValue(key, normalized);
-    state.controlNotice = `${entity.name} bijgewerkt.`;
+    state.controlNotice = t("actions.entityUpdated", { name: entity.name });
     await refreshEntities(
       state.appView === "settings"
         ? getSettingsRefreshKeys()
@@ -514,7 +515,7 @@ export async function commitDateTime(key, value) {
       "state"
     );
   } catch (error) {
-    state.controlError = `${entity.name} kon niet worden bijgewerkt. ${error.message}`;
+    state.controlError = t("actions.entityUpdateFailed", { name: entity.name, error: error.message });
   } finally {
     state.busyAction = "";
     render();
@@ -524,12 +525,12 @@ export async function commitDateTime(key, value) {
 export async function commitOpenQuattRegulationPause(rawResumeValue) {
   const scheduledValue = normalizeDateTimeValue(rawResumeValue);
   if (rawResumeValue && !scheduledValue) {
-    state.controlError = "Kies een geldig hervatmoment om automatisch weer in te schakelen.";
+    state.controlError = t("actions.pauseInvalidMoment");
     render();
     return;
   }
   if (scheduledValue && !hasEntity("openquattResumeAt")) {
-    state.controlError = "Automatisch hervatten is op deze firmware nog niet beschikbaar.";
+    state.controlError = t("actions.pauseUnavailableFw");
     render();
     return;
   }
@@ -549,8 +550,8 @@ export async function commitOpenQuattRegulationPause(rawResumeValue) {
     state.pauseResumeDraft = scheduledValue ? toDateTimeInputValue(scheduledValue) : "";
     state.systemModal = "";
     state.controlNotice = scheduledValue
-      ? `Openquatt regeling is tijdelijk uitgeschakeld tot ${formatOpenQuattResumeDateTime(scheduledValue)}.`
-      : "Openquatt regeling is uitgeschakeld zonder eindmoment.";
+      ? t("actions.pauseUntil", { when: formatOpenQuattResumeDateTime(scheduledValue) })
+      : t("actions.pauseIndefinite");
     await refreshOpenQuattControlState();
   } catch (error) {
     if (resumeScheduled && hasEntity("openquattResumeAt")) {
@@ -560,7 +561,7 @@ export async function commitOpenQuattRegulationPause(rawResumeValue) {
         // Best effort rollback to avoid leaving a stray resume moment behind.
       }
     }
-    state.controlError = `Openquatt regeling kon niet worden bijgewerkt. ${error.message}`;
+    state.controlError = t("actions.regulationUpdateFailed", { error: error.message });
   } finally {
     state.busyAction = "";
     render();
@@ -577,10 +578,10 @@ export async function commitOpenQuattRegulationResumeNow() {
     await postSwitchState("openquattEnabled", true);
     state.pauseResumeDraft = "";
     state.systemModal = "";
-    state.controlNotice = "Openquatt regeling is weer actief.";
+    state.controlNotice = t("actions.regulationResumed");
     await refreshOpenQuattControlState();
   } catch (error) {
-    state.controlError = `Openquatt regeling kon niet worden ingeschakeld. ${error.message}`;
+    state.controlError = t("actions.regulationEnableFailed", { error: error.message });
   } finally {
     state.busyAction = "";
     render();
@@ -602,8 +603,8 @@ export async function triggerButton(action) {
       throw new Error(`HTTP ${response.status}`);
     }
     state.controlNotice = action === "apply"
-      ? "Setup gemarkeerd als afgerond."
-      : "Quick Start teruggezet naar het begin. Huidige tuningwaarden blijven voorlopig staan.";
+      ? t("actions.setupCompleted")
+      : t("actions.quickStartReset");
     await refreshEntities(["setupComplete"], "state");
     clearQuickStartSetupInstall();
     state.quickStartSetupUpdateComplete = false;
@@ -618,7 +619,7 @@ export async function triggerButton(action) {
     setAppView("overview", { syncMode: "replace" });
     syncEntities({ forceFast: true });
   } catch (error) {
-    state.controlError = `Actie mislukt voor "${entity.name}". ${error.message}`;
+    state.controlError = t("actions.actionFailedFor", { name: entity.name, error: error.message });
   } finally {
     state.busyAction = "";
     render();
@@ -694,7 +695,7 @@ export async function triggerIncidentAction(hpIndex, kind) {
       ok: null,
       result: "",
     };
-    state.controlNotice = `Actie voor HP${hpIndex} geaccepteerd; resultaat wordt gecontroleerd.`;
+    state.controlNotice = t("actions.hpActionAccepted", { hp: hpIndex });
     render();
 
   } catch (error) {
@@ -720,9 +721,9 @@ export async function triggerIncidentAction(hpIndex, kind) {
           message: error.message || String(error),
         };
     if (definitive) {
-      state.controlError = `Actie voor HP${hpIndex} niet uitgevoerd. ${error.message || error}`;
+      state.controlError = t("actions.hpActionFailed", { hp: hpIndex, error: error.message || error });
     } else {
-      state.controlNotice = `Antwoord voor HP${hpIndex} ging verloren; resultaat wordt met hetzelfde actienummer gecontroleerd.`;
+      state.controlNotice = t("actions.hpActionResponseLost", { hp: hpIndex });
     }
   } finally {
     for (const delayMs of [0, 500, 1500]) {
@@ -840,7 +841,7 @@ export async function triggerNamedButton(key, options = {}) {
       if (refreshAfterRestart) {
         clearRestartRefresh();
       }
-      state.controlError = `${options.errorPrefix || `Actie mislukt voor "${entity.name}"`}. ${error.message}`;
+      state.controlError = t("actions.actionFailedWithPrefix", { prefix: options.errorPrefix || t("actions.actionFailedName", { name: entity.name }), error: error.message });
     }
   } finally {
     state.busyAction = "";
@@ -884,18 +885,18 @@ export async function triggerNamedButtonGroup(keys, options = {}) {
     while (refreshUntil && !refreshUntil()) {
       if (state.busyAction !== busyAction) return;
       if (Date.now() - refreshStartedAt >= refreshTimeoutMs) {
-        throw new Error(options.refreshTimeoutMessage || "Resultaat niet binnen de verwachte tijd ontvangen");
+        throw new Error(options.refreshTimeoutMessage || t("actions.resultTimeout"));
       }
       await new Promise((resolve) => window.setTimeout(resolve, refreshIntervalMs));
       await refreshEntities(options.refreshKeys, "state");
     }
 
     if (state.busyAction === busyAction) {
-      state.controlNotice = options.successNotice || "Acties gestart.";
+      state.controlNotice = options.successNotice || t("actions.actionsStarted");
     }
   } catch (error) {
     if (state.busyAction === busyAction) {
-      state.controlError = `${options.errorPrefix || "Actie mislukt"}. ${error.message}`;
+      state.controlError = t("actions.actionFailedWithPrefix", { prefix: options.errorPrefix || t("actions.actionFailed"), error: error.message });
     }
   } finally {
     if (state.busyAction === busyAction) state.busyAction = "";

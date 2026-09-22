@@ -3,6 +3,7 @@ import { handleChange, handleClick, handleFocusChange, handleInput, handleKeyDow
 import { FAVICON_DATA_URL } from "./core/embedded-assets.js";
 import { setEventHandlers } from "./core/event-handlers.js";
 import { boot } from "./core/runtime.js";
+import { applyLocaleToDocument } from "./i18n/index.js";
 
 function ensureFavicon() {
   if (!document.head) {
@@ -34,4 +35,5 @@ setEventHandlers({
 });
 
 ensureFavicon();
+applyLocaleToDocument();
 boot();

@@ -1,5 +1,5 @@
 import { getEntityDisplayUnit, getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
-import { HP_PANEL_CONFIGS, renderOqIcon } from "../core/config.js";
+import { HP_PANEL_CONFIGS } from "../core/config.js";
 import { getEntityValue } from "../core/entity-store.js";
 import { formatFailures, formatWarningFailures } from "../core/failure-format.js";
 import { getOverviewControlsRenderSignature, getRenderSignature } from "../core/render-signatures.js";
@@ -9,9 +9,10 @@ import { getInstallationMonitoringModel } from "../core/installation-monitoring.
 import { setViewPatchControls } from "../core/view-patch-controls.js";
 import { getInstallationTopology } from "../features/device-context.js";
 import { formatNumericState } from "../core/formatting.js";
-import { getHeatPumpPanelStatusLabel, getOverviewStatusCards, getOverviewStrategyLabel, getOverviewStrategySectionModel, getOverviewTempsModel, getOverviewTempsRenderSignature, getOverviewTopCards, getOverviewTrendRenderSignature, isCoolingOverviewActive, patchHpPanelStatusRow, patchOverviewTrendCurrentValues, renderHpPanelStatusRow, renderOverviewControlPanels, renderOverviewInstallationMonitoringNotice, renderOverviewNarrativePanel, renderOverviewStatCards, renderOverviewStatusPanel, renderOverviewSummaryShell, renderOverviewTempsPanel, renderOverviewTrendsPanel, renderTempRow, syncOverviewTrendInteractions } from "./overview.js";
+import { getHeatPumpPanelStatusLabel, getOverviewStatusCards, getOverviewStrategyLabel, getOverviewStrategySectionModel, getOverviewTempsModel, getOverviewTempsRenderSignature, getOverviewTopCards, getOverviewTrendRenderSignature, patchHpPanelStatusRow, patchOverviewTrendCurrentValues, renderHpPanelStatusRow, renderOverviewControlPanels, renderOverviewInstallationMonitoringNotice, renderOverviewNarrativePanel, renderOverviewStatCards, renderOverviewStatusPanel, renderOverviewSummaryShell, renderOverviewTempsPanel, renderOverviewTrendsPanel, renderTempRow, syncOverviewTrendInteractions } from "./overview.js";
 import { escapeHtml } from "../core/html.js";
 import { render } from "../core/render-scheduler.js";
+import { formatNumber, t } from "../i18n/index.js";
 import { replaceOuterHtmlIfSignatureChanged, setInnerHtmlIfChanged } from "./view-utils.js";
 import { renderStatCard } from "./stat-card.js";
 
@@ -20,14 +21,14 @@ import { renderStatCard } from "./stat-card.js";
     const defrostActive = isEntityActive(keys.defrost);
     const failures = formatFailures(getEntityStateText(keys.failures, "None"));
     const warningFailures = formatWarningFailures(failures);
-    const running = mode === "Verwarmen" || mode === "Koelen" || defrostActive;
+    const running = mode === t("heatpump.modeHeating") || mode === t("heatpump.modeCooling") || defrostActive;
     return {
       mode,
       defrostActive,
       failures,
       warningFailures,
       running,
-      thermalKey: mode === "Koelen" ? keys.cooling : keys.heat,
+      thermalKey: mode === t("heatpump.modeCooling") ? keys.cooling : keys.heat,
       schematic: buildHeatPumpSchematicModel(title, keys, accent, mode, defrostActive, warningFailures, running),
     };
   }
@@ -42,18 +43,18 @@ import { renderStatCard } from "./stat-card.js";
 
   export function formatHeatPumpSummaryMode(mode, defrostActive) {
     if (defrostActive) {
-      return "ontdooit";
+      return t("heatpump.summaryDefrost");
     }
-    if (mode === "Verwarmen") {
-      return "verwarmt";
+    if (mode === t("heatpump.modeHeating")) {
+      return t("heatpump.summaryHeating");
     }
-    if (mode === "Koelen") {
-      return "koelt";
+    if (mode === t("heatpump.modeCooling")) {
+      return t("heatpump.summaryCooling");
     }
-    if (mode === "Stand-by") {
-      return "stand-by";
+    if (mode === t("heatpump.modeStandby")) {
+      return t("heatpump.summaryStandby");
     }
-    return "onbekend";
+    return t("heatpump.summaryUnknown");
   }
 
   export function renderHeatPumpSummary(heatPumpPanels) {
@@ -66,35 +67,35 @@ import { renderStatCard } from "./stat-card.js";
   export function formatComponentPositionLabel(key) {
     const entity = state.entities[key];
     if (!entity) {
-      return "Positie: —";
+      return t("heatpump.position", { value: "—" });
     }
     const numeric = getEntityNumericValue(key);
     if (!Number.isNaN(numeric)) {
-      return `Positie: ${formatNumericState(numeric, 0, entity.uom || "")}`;
+      return t("heatpump.position", { value: formatNumericState(numeric, 0, entity.uom || "") });
     }
-    return `Positie: ${getEntityStateText(key)}`;
+    return t("heatpump.position", { value: getEntityStateText(key) });
   }
 
   export function formatFourWayPositionLabel(key) {
     if (!hasEntity(key)) {
-      return "Positie: —";
+      return t("heatpump.position", { value: "—" });
     }
-    return `Positie: ${isEntityActive(key) ? "Koelen/Defrost" : "Verwarmen"}`;
+    return t("heatpump.position", { value: isEntityActive(key) ? t("heatpump.positionCooling") : t("heatpump.positionHeating") });
   }
 
   export function formatWorkingMode(value) {
     const raw = String(value || "").trim();
     if (!raw || raw === "Unknown") {
-      return "Onbekend";
+      return t("overview.statusUnknown");
     }
     if (raw === "Standby") {
-      return "Stand-by";
+      return t("heatpump.modeStandby");
     }
     if (raw === "Heating") {
-      return "Verwarmen";
+      return t("heatpump.modeHeating");
     }
     if (raw === "Cooling") {
-      return "Koelen";
+      return t("heatpump.modeCooling");
     }
     return raw;
   }
@@ -272,7 +273,7 @@ import { renderStatCard } from "./stat-card.js";
   }
 
   export function renderTechWaterReading({ bind, x, y, width, value, label, ariaLabel = "", align = "start" }) {
-    const resolvedAriaLabel = ariaLabel || `${label} temperatuur ${value}`;
+    const resolvedAriaLabel = ariaLabel || t("heatpump.temperatureAria", { label, value });
     const isEndAligned = align === "end";
     const isCenterAligned = align === "center";
     const textAnchor = isCenterAligned ? "middle" : isEndAligned ? "end" : "start";
@@ -373,13 +374,13 @@ import { renderStatCard } from "./stat-card.js";
     const coolingValue = getEntityNumericValue(keys.cooling);
     const flowReading = getHeatPumpFlowReading(keys.flow);
     const flowValue = flowReading.value;
-    const thermalValue = mode === "Koelen" ? coolingValue : heatValue;
+    const thermalValue = mode === t("heatpump.modeCooling") ? coolingValue : heatValue;
     const animated = running || (!Number.isNaN(freqValue) && freqValue > 0) || (!Number.isNaN(powerValue) && powerValue > 80) || (!Number.isNaN(heatValue) && heatValue > 150);
     const waterFlowActive = !Number.isNaN(flowValue) && flowValue > 0;
     const statusText = getHeatPumpPanelStatusLabel(mode, animated);
-    const failureText = failures === "Geen actieve storingen" ? "Geen storingen" : failures;
-    const warningActive = failureText !== "Geen storingen";
-    const defrostText = defrostActive ? "Actief" : "Uit";
+    const failureText = failures === t("failures.none") ? t("failures.noneShort") : failures;
+    const warningActive = failureText !== t("failures.noneShort");
+    const defrostText = defrostActive ? t("heatpump.activeOn") : t("heatpump.activeOff");
     const waterOutText = formatHeatPumpReading(keys.waterOut, 1, "°C");
     const waterInText = formatHeatPumpReading(keys.waterIn, 1, "°C");
     const flowText = flowReading.text;
@@ -396,21 +397,21 @@ import { renderStatCard } from "./stat-card.js";
     const fourWayPositionText = formatFourWayPositionLabel(keys.fourWay);
     const powerText = formatNumericState(powerValue, 0, "W");
     const heatText = formatNumericState(thermalValue, 0, "W");
-    const efficiencyValue = mode === "Koelen"
+    const efficiencyValue = mode === t("heatpump.modeCooling")
       ? ((!Number.isNaN(powerValue) && powerValue >= 5.0 && !Number.isNaN(coolingValue)) ? (coolingValue / powerValue) : Number.NaN)
       : getEntityNumericValue(keys.cop);
     const efficiencyText = formatNumericState(efficiencyValue, 1);
-    const efficiencyLabel = mode === "Koelen" ? "COP (EER)" : "COP";
-    const heatLabel = mode === "Koelen" ? "Koelafgifte" : "Warmteafgifte";
-    const heatDescription = mode === "Koelen" ? "afgegeven koeling" : "afgegeven warmte";
+    const efficiencyLabel = mode === t("heatpump.modeCooling") ? t("overview.topCopEer") : t("overview.topCop");
+    const heatLabel = mode === t("heatpump.modeCooling") ? t("heatpump.heatCoolLabel") : t("heatpump.heatWarmLabel");
+    const heatDescription = mode === t("heatpump.modeCooling") ? t("heatpump.heatCoolNote") : t("heatpump.heatWarmNote");
     const fanRpmValue = getEntityNumericValue(keys.fanSpeed);
     const fanRunning = !Number.isNaN(fanRpmValue) && fanRpmValue > 0;
     const fanRpmText = Number.isNaN(fanRpmValue)
       ? "—"
       : `${Math.round(fanRpmValue)} rpm`;
-    const reverseCycle = defrostActive || mode === "Koelen";
-    const leftExchangerTitle = reverseCycle ? "Verdamper" : "Condensor";
-    const rightExchangerTitle = reverseCycle ? "Condensor" : "Verdamper";
+    const reverseCycle = defrostActive || mode === t("heatpump.modeCooling");
+    const leftExchangerTitle = reverseCycle ? t("heatpump.exchangerEvaporator") : t("heatpump.exchangerCondenser");
+    const rightExchangerTitle = reverseCycle ? t("heatpump.exchangerCondenser") : t("heatpump.exchangerEvaporator");
     const supplyLineTone = reverseCycle ? "return" : "supply";
     const returnLineTone = reverseCycle ? "supply" : "return";
     const lineJumpLeft = 360;
@@ -497,21 +498,35 @@ import { renderStatCard } from "./stat-card.js";
   }
 
   const HEAT_PUMP_READINGS = [
-    { bind: "flow", x: 52, y: 308, width: 72, valueKey: "flowText", label: "Flow", align: "center", tooltip: { modifierKey: "returnLineTone", icon: "flow", x: 110, y: 276, width: 126, kicker: "Flow", detail: "CV-circuit", direction: "left" } },
-    { bind: "discharge-pressure", x: 218, y: 138, width: 50, valueKey: "dischargePressureText", label: "Persdruk", align: "end", tooltip: { modifier: "warm", icon: "pressure", x: 82, y: 120, width: 118, kicker: "Druk", detail: "Perszijde", direction: "right" } },
-    { bind: "discharge-temp", x: 218, y: 166, width: 50, valueKey: "dischargeTempText", label: "Perstemperatuur", align: "end", tooltip: { modifier: "warm", icon: "temperature", x: 80, y: 174, width: 142, kicker: "Temperatuur", detail: "Perszijde", direction: "right" } },
-    { bind: "suction-pressure", x: 378, y: 138, width: 50, valueKey: "suctionPressureText", label: "Zuigdruk", tooltip: { modifier: "component", icon: "pressure", x: 438, y: 120, width: 118, kicker: "Druk", detail: "Zuigzijde", direction: "left" } },
-    { bind: "suction-temp", x: 378, y: 166, width: 50, valueKey: "suctionTempText", label: "Zuigtemperatuur", tooltip: { modifier: "component", icon: "temperature", x: 414, y: 174, width: 142, kicker: "Temperatuur", detail: "Zuigzijde", direction: "left" } },
-    { bind: "inner-coil-temp", x: 120, y: 166, width: 52, valueKey: "innerCoilTempText", label: "Inner coil temperatuur", align: "center", tooltip: { modifier: "component", icon: "temperature", x: 174, y: 148, width: 132, kicker: "Temperatuur", detail: "Condensor", direction: "right" } },
-    { bind: "evaporator-temp", x: 484, y: 166, width: 52, valueKey: "evaporatorCoilTempText", label: "Verdampertemperatuur", align: "center", tooltip: { modifier: "component", icon: "temperature", x: 344, y: 148, width: 132, kicker: "Temperatuur", detail: "Verdamper", direction: "right" } },
-    { bind: "outside-temp", x: 548, y: 110, width: 48, valueKey: "outsideTempText", label: "Buitentemperatuur", align: "center", tooltip: { modifier: "component", icon: "temperature", x: 424, y: 92, width: 136, kicker: "Temperatuur", detail: "Buitenlucht", direction: "right" } },
-    { bind: "fan-speed", x: 520, y: 258, width: 60, valueKey: "fanRpmText", label: "Ventilatorsnelheid", align: "center", tooltip: { modifier: "component", icon: "fan", x: 410, y: 236, width: 118, kicker: "Ventilator", detail: "Toerental", direction: "right" } },
-    { bind: "supply", x: 22, y: 114, width: 58, valueKey: "waterOutText", label: "Aanvoer", ariaLabel: "Aanvoer temperatuur", tooltip: { modifierKey: "supplyLineTone", icon: "temperature", x: 96, y: 96, width: 124, kicker: "Temperatuur", detail: "Aanvoer", direction: "left" } },
-    { bind: "return", x: 22, y: 274, width: 58, valueKey: "waterInText", label: "Retour", ariaLabel: "Retour temperatuur", tooltip: { modifierKey: "returnLineTone", icon: "temperature", x: 96, y: 252, width: 124, kicker: "Temperatuur", detail: "Retour", direction: "left" } },
+    { bind: "flow", x: 52, y: 308, width: 72, valueKey: "flowText", labelKey: "heatpump.readingFlow", align: "center", tooltip: { modifierKey: "returnLineTone", icon: "flow", x: 110, y: 276, width: 126, kickerKey: "heatpump.readingFlow", detailKey: "heatpump.readingFlowDetail", direction: "left" } },
+    { bind: "discharge-pressure", x: 218, y: 138, width: 50, valueKey: "dischargePressureText", labelKey: "heatpump.readingDischargePressure", align: "end", tooltip: { modifier: "warm", icon: "pressure", x: 82, y: 120, width: 118, kickerKey: "heatpump.detailPressure", detailKey: "heatpump.detailDischargeSide", direction: "right" } },
+    { bind: "discharge-temp", x: 218, y: 166, width: 50, valueKey: "dischargeTempText", labelKey: "heatpump.readingDischargeTemp", align: "end", tooltip: { modifier: "warm", icon: "temperature", x: 80, y: 174, width: 142, kickerKey: "heatpump.detailTemperature", detailKey: "heatpump.detailDischargeSide", direction: "right" } },
+    { bind: "suction-pressure", x: 378, y: 138, width: 50, valueKey: "suctionPressureText", labelKey: "heatpump.readingSuctionPressure", tooltip: { modifier: "component", icon: "pressure", x: 438, y: 120, width: 118, kickerKey: "heatpump.detailPressure", detailKey: "heatpump.detailSuctionSide", direction: "left" } },
+    { bind: "suction-temp", x: 378, y: 166, width: 50, valueKey: "suctionTempText", labelKey: "heatpump.readingSuctionTemp", tooltip: { modifier: "component", icon: "temperature", x: 414, y: 174, width: 142, kickerKey: "heatpump.detailTemperature", detailKey: "heatpump.detailSuctionSide", direction: "left" } },
+    { bind: "inner-coil-temp", x: 120, y: 166, width: 52, valueKey: "innerCoilTempText", labelKey: "heatpump.readingInnerCoil", align: "center", tooltip: { modifier: "component", icon: "temperature", x: 174, y: 148, width: 132, kickerKey: "heatpump.detailTemperature", detailKey: "heatpump.detailCondenser", direction: "right" } },
+    { bind: "evaporator-temp", x: 484, y: 166, width: 52, valueKey: "evaporatorCoilTempText", labelKey: "heatpump.readingEvaporator", align: "center", tooltip: { modifier: "component", icon: "temperature", x: 344, y: 148, width: 132, kickerKey: "heatpump.detailTemperature", detailKey: "heatpump.detailEvaporator", direction: "right" } },
+    { bind: "outside-temp", x: 548, y: 110, width: 48, valueKey: "outsideTempText", labelKey: "heatpump.readingOutside", align: "center", tooltip: { modifier: "component", icon: "temperature", x: 424, y: 92, width: 136, kickerKey: "heatpump.detailTemperature", detailKey: "heatpump.detailOutsideAir", direction: "right" } },
+    { bind: "fan-speed", x: 520, y: 258, width: 60, valueKey: "fanRpmText", labelKey: "heatpump.readingFan", align: "center", tooltip: { modifier: "component", icon: "fan", x: 410, y: 236, width: 118, kickerKey: "heatpump.detailFan", detailKey: "heatpump.detailFanSpeed", direction: "right" } },
+    { bind: "supply", x: 22, y: 114, width: 58, valueKey: "waterOutText", labelKey: "heatpump.readingSupply", ariaKey: "heatpump.readingSupplyAria", tooltip: { modifierKey: "supplyLineTone", icon: "temperature", x: 96, y: 96, width: 124, kickerKey: "heatpump.detailTemperature", detailKey: "heatpump.readingSupply", direction: "left" } },
+    { bind: "return", x: 22, y: 274, width: 58, valueKey: "waterInText", labelKey: "heatpump.readingReturn", ariaKey: "heatpump.readingReturnAria", tooltip: { modifierKey: "returnLineTone", icon: "temperature", x: 96, y: 252, width: 124, kickerKey: "heatpump.detailTemperature", detailKey: "heatpump.readingReturn", direction: "left" } },
   ];
 
+  function resolveHeatPumpReading(reading) {
+    return {
+      ...reading,
+      label: t(reading.labelKey),
+      ariaLabel: reading.ariaKey ? t(reading.ariaKey) : undefined,
+      tooltip: {
+        ...reading.tooltip,
+        kicker: t(reading.tooltip.kickerKey),
+        detail: t(reading.tooltip.detailKey),
+      },
+    };
+  }
+
   function getHeatPumpReadingAria(reading, model) {
-    return `${reading.ariaLabel || reading.label} ${model[reading.valueKey]}`;
+    const resolved = resolveHeatPumpReading(reading);
+    return `${resolved.ariaLabel || resolved.label} ${model[reading.valueKey]}`;
   }
 
   export function renderHeatPumpSchematic(model) {
@@ -521,12 +536,12 @@ import { renderStatCard } from "./stat-card.js";
     const condRefGradientId = `${svgIdBase}-cond-ref`;
     const activeCondWaterGradientId = model.reverseCycle ? condWaterCoolGradientId : condWaterHeatGradientId;
     const footerItems = [
-      { label: "Werkmodus", value: model.mode, valueBind: "footer-mode" },
-      { label: "Stroomverbruik", ariaLabel: "Stroomverbruik", labelMarkup: "Stroom<br>verbruik", value: model.powerText, valueBind: "footer-power" },
-      { label: model.heatLabel, ariaLabel: model.heatLabel, labelBind: "footer-heat-label", labelMarkup: model.heatLabel === "Koelafgifte" ? "Koel<br>afgifte" : "Warmte<br>afgifte", value: model.heatText, valueBind: "footer-heat" },
+      { label: t("heatpump.footerMode"), value: model.mode, valueBind: "footer-mode" },
+      { label: t("heatpump.compactPower"), ariaLabel: t("heatpump.compactPower"), labelMarkup: t("heatpump.footerPowerShort"), value: model.powerText, valueBind: "footer-power" },
+      { label: model.heatLabel, ariaLabel: model.heatLabel, labelBind: "footer-heat-label", labelMarkup: model.heatLabel === t("heatpump.heatCoolLabel") ? t("heatpump.footerHeatCool") : t("heatpump.footerHeatWarm"), value: model.heatText, valueBind: "footer-heat" },
       { label: model.efficiencyLabel, labelBind: "footer-efficiency-label", value: model.efficiencyText, valueBind: "footer-efficiency" },
     ];
-    const readings = HEAT_PUMP_READINGS.map((reading) => ({
+    const readings = HEAT_PUMP_READINGS.map((reading) => resolveHeatPumpReading(reading)).map((reading) => ({
       ...reading,
       value: model[reading.valueKey],
       ariaLabel: getHeatPumpReadingAria(reading, model),
@@ -536,15 +551,15 @@ import { renderStatCard } from "./stat-card.js";
       },
     }));
     const hotspots = [
-      { bind: "compressor-freq", ariaLabel: `Compressorfrequentie ${model.compressorFreqText}`, x: 300, y: 148, width: 52, height: 26, rx: 12, tooltip: { modifier: "component", icon: "fan", x: 366, y: 130, width: 136, kicker: "Frequentie", detail: "Compressor", direction: "left" } },
-      { bind: "fourway", ariaLabel: `4-wegklep, ${model.fourWayPositionText}`, x: 252, y: 208, width: 52, height: 52, rx: 16, tooltip: { modifier: "component", icon: "fourway", x: 308, y: 198, width: 196, kicker: "4-wegklep", detail: model.fourWayPositionText, detailBind: "fourway-detail", direction: "left" } },
-      { bind: "eev", ariaLabel: `Expansieventiel, ${model.eevPositionText}`, x: 301, y: 275, width: 50, height: 38, rx: 12, tooltip: { modifier: "component", icon: "eev", x: 340, y: 252, width: 202, kicker: "Expansieventiel", detail: model.eevPositionText, detailBind: "eev-detail", direction: "left" } },
+      { bind: "compressor-freq", ariaLabel: t("heatpump.readingFreq", { value: model.compressorFreqText }), x: 300, y: 148, width: 52, height: 26, rx: 12, tooltip: { modifier: "component", icon: "fan", x: 366, y: 130, width: 136, kicker: t("heatpump.detailFrequency"), detail: t("heatpump.detailCompressor"), direction: "left" } },
+      { bind: "fourway", ariaLabel: t("heatpump.readingFourWay", { value: model.fourWayPositionText }), x: 252, y: 208, width: 52, height: 52, rx: 16, tooltip: { modifier: "component", icon: "fourway", x: 308, y: 198, width: 196, kicker: t("heatpump.detailFourWay"), detail: model.fourWayPositionText, detailBind: "fourway-detail", direction: "left" } },
+      { bind: "eev", ariaLabel: t("heatpump.readingEev", { value: model.eevPositionText }), x: 301, y: 275, width: 50, height: 38, rx: 12, tooltip: { modifier: "component", icon: "eev", x: 340, y: 252, width: 202, kicker: t("heatpump.detailEev"), detail: model.eevPositionText, detailBind: "eev-detail", direction: "left" } },
     ];
     return `
       <div class="${escapeHtml(model.boardClass)}" data-oq-hp-board="${escapeHtml(model.title)}">
         <div class="oq-hp-tech-shell">
           <div class="oq-hp-tech-visual">
-            <svg class="oq-hp-tech-svg" viewBox="0 0 620 360" role="img" aria-label="${escapeHtml(model.title)} technische schematic">
+            <svg class="oq-hp-tech-svg" viewBox="0 0 620 360" role="img" aria-label="${escapeHtml(t("heatpump.schematicAria", { title: model.title }))}">
               <defs>
               <linearGradient id="${escapeHtml(condWaterHeatGradientId)}" x1="0" y1="1" x2="0" y2="0">
                 <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.92"></stop>
@@ -569,7 +584,7 @@ import { renderStatCard } from "./stat-card.js";
               <rect class="oq-hp-tech-frame" x="18" y="28" width="584" height="314" rx="22" />
 
             <text class="oq-hp-tech-title" x="134" y="76" data-oq-bind="left-exchanger-title">${escapeHtml(model.leftExchangerTitle)}</text>
-            <text class="oq-hp-tech-title" x="326" y="76">Compressor</text>
+            <text class="oq-hp-tech-title" x="326" y="76">${escapeHtml(t("heatpump.exchangerCompressor"))}</text>
             <text class="oq-hp-tech-title" x="510" y="76" data-oq-bind="right-exchanger-title">${escapeHtml(model.rightExchangerTitle)}</text>
 
             <g class="oq-hp-tech-condensor">
@@ -635,30 +650,30 @@ import { renderStatCard } from "./stat-card.js";
               bind: "bottom-heater",
               className: "oq-hp-tech-bottom-heater",
               active: model.bottomPlateActive,
-              ariaLabel: "Bottom plate heater actief",
+              ariaLabel: t("heatpump.bottomHeaterActive"),
               content: `
                 <path class="oq-hp-tech-bottom-heater-glow" d="M475 320 L485 314 L495 320 L505 314 L515 320 L525 314 L535 320 L545 314" />
                 <path class="oq-hp-tech-bottom-heater-core" d="M475 320 L485 314 L495 320 L505 314 L515 320 L525 314 L535 320 L545 314" />
               `,
-              tooltip: { modifier: "warm", x: 372, y: 269, width: 210, kicker: "Verwarming", detail: "Bodemplaatverwarming aan" },
+              tooltip: { modifier: "warm", x: 372, y: 269, width: 210, kicker: t("heatpump.heatingKicker"), detail: t("heatpump.bottomHeaterDetail") },
             })}
             ${renderTechTooltipTriggerGroup({
               bind: "crankcase-heater",
               className: "oq-hp-tech-crankcase-heater",
               active: model.crankcaseActive,
-              ariaLabel: "Crank case heater actief",
+              ariaLabel: t("heatpump.crankcaseActive"),
               content: `
                 <path class="oq-hp-tech-crankcase-heater-glow" d="M302 194 L310 189 L318 194 L326 189 L334 194 L342 189 L350 194" />
                 <path class="oq-hp-tech-crankcase-heater-core" d="M302 194 L310 189 L318 194 L326 189 L334 194 L342 189 L350 194" />
               `,
-              tooltip: { modifier: "warm", x: 224, y: 142, width: 172, kicker: "Verwarming", detail: "Carterverwarming aan" },
+              tooltip: { modifier: "warm", x: 224, y: 142, width: 172, kicker: t("heatpump.heatingKicker"), detail: t("heatpump.crankcaseDetail") },
             })}
             ${renderTechTooltipTriggerGroup({
               bind: "defrost-badge",
               className: "oq-hp-tech-defrost-badge",
               active: model.defrostActive,
               activeClass: "",
-              ariaLabel: model.defrostActive ? "Defrost actief" : "Defrost uit",
+              ariaLabel: model.defrostActive ? t("heatpump.defrostOn") : t("heatpump.defrostOff"),
               attrs: 'transform="translate(532 288)"',
               content: `
                 <circle class="oq-hp-tech-defrost-hit" cx="0" cy="0" r="12" />
@@ -694,7 +709,7 @@ import { renderStatCard } from "./stat-card.js";
                   </g>
                 </g>
               `,
-              tooltip: { modifier: "return", icon: "defrost", x: 398, y: 266, width: 118, kicker: "Defrost", detail: "Actief", direction: "left" },
+              tooltip: { modifier: "return", icon: "defrost", x: 398, y: 266, width: 118, kicker: t("heatpump.defrostKicker"), detail: t("heatpump.defrostDetail"), direction: "left" },
             })}
 
             ${hotspots.map(renderTechHotspotWithTooltip).join("")}
@@ -743,28 +758,28 @@ import { renderStatCard } from "./stat-card.js";
         </div>
         <div class="oq-overview-hp-stats">
           ${renderOverviewStatCards([
-            { key: keys.power, label: "Stroomverbruik", tone: "blue", note: "elektrisch verbruik" },
+            { key: keys.power, label: t("heatpump.compactPower"), tone: "blue", note: t("heatpump.compactPowerNote") },
             { key: thermalKey, label: schematicModel.heatLabel, tone: "orange", note: schematicModel.heatDescription },
-            { label: schematicModel.efficiencyLabel, value: schematicModel.efficiencyText, tone: "green", note: "actueel" },
+            { label: schematicModel.efficiencyLabel, value: schematicModel.efficiencyText, tone: "green", note: t("heatpump.compactEfficiencyNote") },
           ])}
         </div>
         <div class="oq-overview-hp-meta">
           <div class="oq-overview-hp-meta-chip">
-            <span>Werkmodus</span>
+            <span>${escapeHtml(t("heatpump.footerMode"))}</span>
             <strong>${escapeHtml(mode)}</strong>
           </div>
           <div class="oq-overview-hp-meta-chip">
-            <span>Comp. freq</span>
+            <span>${escapeHtml(t("heatpump.compactFreq"))}</span>
             <strong>${escapeHtml(getEntityStateText(keys.freq))}</strong>
           </div>
           <div class="oq-overview-hp-meta-chip">
-            <span>Defrost</span>
-            <strong>${defrostActive ? "Actief" : "Uit"}</strong>
+            <span>${escapeHtml(t("heatpump.defrostKicker"))}</span>
+            <strong>${defrostActive ? escapeHtml(t("heatpump.activeOn")) : escapeHtml(t("heatpump.activeOff"))}</strong>
           </div>
         </div>
         <div class="oq-overview-temps-list">
-          ${renderTempRow("Water in", keys.waterIn)}
-          ${renderTempRow("Water out", keys.waterOut)}
+          ${renderTempRow(t("heatpump.waterIn"), keys.waterIn)}
+          ${renderTempRow(t("heatpump.waterOut"), keys.waterOut)}
         </div>
       </section>
     `;
@@ -809,22 +824,22 @@ import { renderStatCard } from "./stat-card.js";
     blockReason,
   }) {
     if (opentherm && fault) {
-      return { code: "fault", text: "Storing", copy: "Ketel meldt een storing", tone: "danger" };
+      return { code: "fault", text: t("heatpump.boilerFaultText"), copy: t("heatpump.boilerFaultCopy"), tone: "danger" };
     }
     if (opentherm && !linkAvailable) {
-      return { code: "offline", text: "Geen verbinding", copy: "Geen OpenTherm-reactie", tone: "offline" };
+      return { code: "offline", text: t("heatpump.boilerOfflineText"), copy: t("heatpump.boilerOfflineCopy"), tone: "offline" };
     }
     if (opentherm && dhwActive) {
-      return { code: "dhw", text: "Tapwater", copy: "Ketel verwarmt tapwater", tone: "dhw" };
+      return { code: "dhw", text: t("heatpump.boilerDhwText"), copy: t("heatpump.boilerDhwCopy"), tone: "dhw" };
     }
     if (opentherm && flameOn) {
-      return { code: "heating", text: "Verwarmt", copy: "Vlam actief voor CV", tone: "active" };
+      return { code: "heating", text: t("heatpump.boilerHeatingText"), copy: t("heatpump.boilerHeatingFlameCopy"), tone: "active" };
     }
     if (chActive) {
-      return { code: "heating", text: "CV actief", copy: opentherm ? "CV-circulatie actief" : "Levert ondersteuning", tone: "active" };
+      return { code: "heating", text: t("heatpump.boilerHeatingChText"), copy: opentherm ? t("heatpump.boilerHeatingOtCopy") : t("heatpump.boilerHeatingR1Copy"), tone: "active" };
     }
     if (commandActive) {
-      return { code: "starting", text: "Start gevraagd", copy: opentherm ? "Wacht op de ketel" : "Ketel wordt aangestuurd", tone: "waiting" };
+      return { code: "starting", text: t("heatpump.boilerStartingText"), copy: opentherm ? t("heatpump.boilerStartingOtCopy") : t("heatpump.boilerStartingR1Copy"), tone: "waiting" };
     }
 
     const normalizedBlockReason = String(blockReason || "").trim().toLowerCase();
@@ -836,9 +851,9 @@ import { renderStatCard } from "./stat-card.js";
       )
     );
     if (hasBlockedRequest) {
-      return { code: "blocked", text: "Wacht", copy: "Warmtevraag is tijdelijk geblokkeerd", tone: "waiting" };
+      return { code: "blocked", text: t("heatpump.boilerBlockedText"), copy: t("heatpump.boilerBlockedCopy"), tone: "waiting" };
     }
-    return { code: "idle", text: "Uit", copy: "Geen ondersteuning", tone: "neutral" };
+    return { code: "idle", text: t("heatpump.boilerIdleText"), copy: t("heatpump.boilerIdleCopy"), tone: "neutral" };
   }
 
   export function getBoilerPanelModel() {
@@ -899,7 +914,7 @@ import { renderStatCard } from "./stat-card.js";
     );
     const modulationText = formatNumericState(getFreshOtbValue("otbRelativeModulation"), 0, "%");
     const dhwTempText = formatNumericState(getFreshOtbValue("otbDhwTemp"), 1, "°C");
-    const diagnosticCopy = diagnostic && !fault ? "Diagnostische melding beschikbaar" : "";
+    const diagnosticCopy = diagnostic && !fault ? t("heatpump.boilerDiagnostic") : "";
     const boardClass = [
       "oq-boiler-card",
       chActive ? "is-running" : "is-idle",
@@ -928,9 +943,9 @@ import { renderStatCard } from "./stat-card.js";
       targetText,
       modulationText,
       dhwTempText,
-      returnTempLabel: opentherm ? "Ketelretour" : "Retour",
-      supplyTempLabel: opentherm ? "Ketelwater" : "Aanvoer",
-      transportText: opentherm ? "OpenTherm" : "Aan/uit R1",
+      returnTempLabel: opentherm ? t("heatpump.boilerReturnOt") : t("heatpump.boilerReturnR1"),
+      supplyTempLabel: opentherm ? t("heatpump.boilerSupplyOt") : t("heatpump.boilerSupplyR1"),
+      transportText: opentherm ? t("heatpump.boilerTransportOt") : t("heatpump.boilerTransportR1"),
       statusText: status.text,
       statusCopy: status.copy,
       statusCode: status.code,
@@ -997,7 +1012,7 @@ import { renderStatCard } from "./stat-card.js";
     }
     const returnReading = panel.querySelector('[data-oq-bind="boiler-return-reading"]');
     if (returnReading) {
-      returnReading.setAttribute("aria-label", `${model.returnTempLabel} ${model.returnTempText}`);
+      returnReading.setAttribute("aria-label", t("heatpump.ariaValue", { label: model.returnTempLabel, value: model.returnTempText }));
     }
     const supplyTemp = panel.querySelector('[data-oq-bind="boiler-supply-value"]');
     if (supplyTemp && supplyTemp.textContent !== model.supplyTempText) {
@@ -1005,11 +1020,11 @@ import { renderStatCard } from "./stat-card.js";
     }
     const supplyReading = panel.querySelector('[data-oq-bind="boiler-supply-reading"]');
     if (supplyReading) {
-      supplyReading.setAttribute("aria-label", `${model.supplyTempLabel} ${model.supplyTempText}`);
+      supplyReading.setAttribute("aria-label", t("heatpump.ariaValue", { label: model.supplyTempLabel, value: model.supplyTempText }));
     }
     const schematic = panel.querySelector(".oq-boiler-mini-svg");
     if (schematic) {
-      schematic.setAttribute("aria-label", `CV-ketel: ${model.statusCopy}`);
+      schematic.setAttribute("aria-label", t("heatpump.boilerSchematicAria", { status: model.statusCopy }));
     }
     const statusDetail = panel.querySelector("[data-oq-boiler-status-detail]");
     if (statusDetail) {
@@ -1037,15 +1052,15 @@ import { renderStatCard } from "./stat-card.js";
       <section class="oq-overview-hp oq-overview-boiler oq-overview-boiler--compact" data-oq-boiler-panel data-oq-matrix-target="boiler" data-render-signature="${escapeHtml(getBoilerPanelRenderSignature(model))}">
         <div class="oq-overview-hp-head">
           <div>
-            <span class="oq-boiler-eyebrow">${escapeHtml(model.transportText)}</span>
-            <h3>CV-ketel / boiler</h3>
+            <span class="oq-boiler-eyebrow">${escapeHtml(t("heatpump.boilerEyebrow", { transport: model.transportText }))}</span>
+            <h3>${escapeHtml(t("heatpump.boilerTitle"))}</h3>
           </div>
           <span class="oq-overview-chip oq-overview-chip--${model.statusTone}">${escapeHtml(model.statusText)}</span>
         </div>
         <div class="oq-overview-hp-stats">
-          ${renderStatCard({ label: "Warmteafgifte", value: model.heatText, tone: "orange", note: "afgegeven warmte", valueData: { "oq-boiler-heat-value": "" } })}
-          ${renderStatCard({ label: model.returnTempLabel, value: model.returnTempText, tone: "blue", note: "retour naar boiler", valueData: { "oq-bind": "boiler-return-value" } })}
-          ${renderStatCard({ label: model.supplyTempLabel, value: model.supplyTempText, tone: "sky", note: model.opentherm ? "gemeten door ketel" : "naar het systeem", valueData: { "oq-bind": "boiler-supply-value" } })}
+          ${renderStatCard({ label: t("heatpump.boilerHeatOutput"), value: model.heatText, tone: "orange", note: t("heatpump.boilerHeatNote"), valueData: { "oq-boiler-heat-value": "" } })}
+          ${renderStatCard({ label: model.returnTempLabel, value: model.returnTempText, tone: "blue", note: t("heatpump.boilerReturnNote"), valueData: { "oq-bind": "boiler-return-value" } })}
+          ${renderStatCard({ label: model.supplyTempLabel, value: model.supplyTempText, tone: "sky", note: model.opentherm ? t("heatpump.boilerSupplyMeasured") : t("heatpump.boilerSupplySystem"), valueData: { "oq-bind": "boiler-supply-value" } })}
         </div>
         ${model.opentherm ? renderBoilerTelemetry(model) : ""}
         <p class="oq-boiler-status-detail" data-oq-boiler-status-detail${model.statusDetail ? "" : " hidden"}>${escapeHtml(model.statusDetail)}</p>
@@ -1055,22 +1070,22 @@ import { renderStatCard } from "./stat-card.js";
 
   export function renderBoilerTelemetry(model) {
     return `
-      <div class="oq-boiler-telemetry" aria-label="OpenTherm ketelwaarden">
+      <div class="oq-boiler-telemetry" aria-label="${escapeHtml(t("heatpump.boilerTelemetryLabel"))}">
         <div class="oq-boiler-telemetry-item">
-          <span>Druk</span>
+          <span>${escapeHtml(t("heatpump.boilerPressure"))}</span>
           <strong data-oq-boiler-pressure-value>${escapeHtml(model.pressureText)}</strong>
         </div>
         <div class="oq-boiler-telemetry-item">
-          <span>CV-doel</span>
+          <span>${escapeHtml(t("heatpump.boilerTarget"))}</span>
           <strong data-oq-boiler-target-value>${escapeHtml(model.targetText)}</strong>
         </div>
         <div class="oq-boiler-telemetry-item">
-          <span>Modulatie</span>
+          <span>${escapeHtml(t("heatpump.boilerModulation"))}</span>
           <strong data-oq-boiler-modulation-value>${escapeHtml(model.modulationText)}</strong>
         </div>
         ${model.dhwActive ? `
           <div class="oq-boiler-telemetry-item oq-boiler-telemetry-item--dhw">
-            <span>Tapwater</span>
+            <span>${escapeHtml(t("heatpump.boilerDhw"))}</span>
             <strong data-oq-boiler-dhw-value>${escapeHtml(model.dhwTempText)}</strong>
           </div>
         ` : ""}
@@ -1094,14 +1109,14 @@ import { renderStatCard } from "./stat-card.js";
           <div class="oq-boiler-card-main">
             <div class="oq-boiler-card-head">
               <div>
-                <span class="oq-boiler-eyebrow">Ondersteuning · ${escapeHtml(model.transportText)}</span>
-                <h3>CV-ketel / boiler</h3>
+                <span class="oq-boiler-eyebrow">${escapeHtml(t("heatpump.boilerEyebrow", { transport: model.transportText }))}</span>
+                <h3>${escapeHtml(t("heatpump.boilerTitle"))}</h3>
               </div>
               <span class="oq-overview-chip oq-overview-chip--${model.statusTone}">${escapeHtml(model.statusText)}</span>
             </div>
-            <p class="oq-boiler-copy">${model.opentherm ? "Live ketelstatus en ondersteuning naast de warmtepomp." : "De ketel geeft ondersteuning wanneer de warmtepomp extra hulp nodig heeft."}</p>
+            <p class="oq-boiler-copy">${escapeHtml(model.opentherm ? t("heatpump.boilerCopyOt") : t("heatpump.boilerCopyR1"))}</p>
             <div class="oq-boiler-mini-schematic">
-              <svg class="oq-boiler-mini-svg" viewBox="0 0 420 132" role="img" aria-label="CV-ketel: ${escapeHtml(model.statusCopy)}">
+              <svg class="oq-boiler-mini-svg" viewBox="0 0 420 132" role="img" aria-label="${escapeHtml(t("heatpump.boilerSchematicAria", { status: model.statusCopy }))}">
                 <defs>
                   <linearGradient id="oq-boiler-card-body" x1="0" y1="1" x2="0" y2="0">
                     <stop offset="0%" stop-color="#111827"></stop>
@@ -1125,18 +1140,18 @@ import { renderStatCard } from "./stat-card.js";
                     <path class="oq-boiler-card-flame-inner" d="M0 14 C-5 9 -3 3 2 -4 C2 4 8 6 6 12 C4 16 -2 16 0 14 Z" />
                   </g>
                 </g>
-                ${renderTechWaterReading({ bind: "boiler-return", x: 22, y: 70, width: 78, value: model.returnTempText, label: model.returnTempLabel, ariaLabel: `${model.returnTempLabel} ${model.returnTempText}`, align: "start" })}
-                ${renderTechTooltip({ bind: "boiler-return", modifier: "return", icon: "temperature", x: 82, y: 70, width: 124, kicker: "Temperatuur", detail: model.returnTempLabel, direction: "left" })}
-                ${renderTechWaterReading({ bind: "boiler-supply", x: 320, y: 16, width: 76, value: model.supplyTempText, label: model.supplyTempLabel, ariaLabel: `${model.supplyTempLabel} ${model.supplyTempText}`, align: "end" })}
-                ${renderTechTooltip({ bind: "boiler-supply", modifier: "supply", icon: "temperature", x: 294, y: 14, width: 124, kicker: "Temperatuur", detail: model.supplyTempLabel, direction: "right" })}
+                ${renderTechWaterReading({ bind: "boiler-return", x: 22, y: 70, width: 78, value: model.returnTempText, label: model.returnTempLabel, ariaLabel: t("heatpump.ariaValue", { label: model.returnTempLabel, value: model.returnTempText }), align: "start" })}
+                ${renderTechTooltip({ bind: "boiler-return", modifier: "return", icon: "temperature", x: 82, y: 70, width: 124, kicker: t("heatpump.detailTemperature"), detail: model.returnTempLabel, direction: "left" })}
+                ${renderTechWaterReading({ bind: "boiler-supply", x: 320, y: 16, width: 76, value: model.supplyTempText, label: model.supplyTempLabel, ariaLabel: t("heatpump.ariaValue", { label: model.supplyTempLabel, value: model.supplyTempText }), align: "end" })}
+                ${renderTechTooltip({ bind: "boiler-supply", modifier: "supply", icon: "temperature", x: 294, y: 14, width: 124, kicker: t("heatpump.detailTemperature"), detail: model.supplyTempLabel, direction: "right" })}
               </svg>
               <div class="oq-boiler-summary-grid">
                 <div class="oq-boiler-summary-box oq-boiler-summary-box--power">
-                  <span>Geleverd vermogen</span>
+                  <span>${escapeHtml(t("heatpump.boilerPowerDelivered"))}</span>
                   <strong data-oq-boiler-heat-value>${escapeHtml(model.heatText)}</strong>
                 </div>
                 <div class="oq-boiler-summary-box oq-boiler-summary-box--support ${model.active ? "is-active" : "is-idle"}" data-status="${escapeHtml(model.statusCode)}">
-                  <span>Ondersteuning</span>
+                  <span>${escapeHtml(t("heatpump.boilerSupport"))}</span>
                   <strong data-oq-boiler-status-value>${escapeHtml(model.statusCopy)}</strong>
                 </div>
               </div>
@@ -1186,12 +1201,12 @@ import { renderStatCard } from "./stat-card.js";
 
     const emphasis = getHeatPumpPanelEmphasis(index, heatPumpPanels, layoutMode);
     if (emphasis === "focus") {
-      return { layout: "equal", label: "Toon beide" };
+      return { layout: "equal", label: t("heatpump.layoutShowBoth") };
     }
 
     return {
       layout: index === 0 ? "focus-hp1" : "focus-hp2",
-      label: "Vergroot",
+      label: t("heatpump.layoutZoom"),
     };
   }
 
@@ -1221,12 +1236,12 @@ import { renderStatCard } from "./stat-card.js";
     return `
       <div class="oq-overview-hp-tools-head">
         <div class="oq-overview-hp-tools-copy">
-          <h3>Warmtepompen</h3>
+          <h3>${escapeHtml(t("heatpump.toolsTitle"))}</h3>
           ${renderHeatPumpSummary(heatPumpPanels)}
         </div>
         <div class="oq-overview-hp-tool-switches">
-          <button class="oq-overview-hp-tool-chip${state.hpVisualMode === "schematic" ? " is-active" : ""}" type="button" data-oq-action="select-hp-visual" data-hp-visual="schematic">Schematisch</button>
-          <button class="oq-overview-hp-tool-chip${state.hpVisualMode === "compact" ? " is-active" : ""}" type="button" data-oq-action="select-hp-visual" data-hp-visual="compact">Compact</button>
+          <button class="oq-overview-hp-tool-chip${state.hpVisualMode === "schematic" ? " is-active" : ""}" type="button" data-oq-action="select-hp-visual" data-hp-visual="schematic">${escapeHtml(t("heatpump.visualSchematic"))}</button>
+          <button class="oq-overview-hp-tool-chip${state.hpVisualMode === "compact" ? " is-active" : ""}" type="button" data-oq-action="select-hp-visual" data-hp-visual="compact">${escapeHtml(t("heatpump.visualCompact"))}</button>
         </div>
       </div>
     `;
@@ -1247,7 +1262,7 @@ import { renderStatCard } from "./stat-card.js";
     }
 
     setInnerHtmlIfChanged(copy, `
-      <h3>Warmtepompen</h3>
+      <h3>${escapeHtml(t("heatpump.toolsTitle"))}</h3>
       ${renderHeatPumpSummary(heatPumpPanels)}
     `);
     schematicButton.classList.toggle("is-active", state.hpVisualMode === "schematic");
@@ -1485,7 +1500,7 @@ import { renderStatCard } from "./stat-card.js";
     const footerHeatLabel = board.querySelector('[data-oq-bind="footer-heat-label"]');
     if (footerHeatLabel) {
       syncAttribute(footerHeatLabel, "aria-label", model.heatLabel);
-      const nextHeatLabelMarkup = model.heatLabel === "Koelafgifte" ? "Koel<br>afgifte" : "Warmte<br>afgifte";
+      const nextHeatLabelMarkup = model.heatLabel === t("heatpump.heatCoolLabel") ? t("heatpump.footerHeatCool") : t("heatpump.footerHeatWarm");
       if (footerHeatLabel.innerHTML !== nextHeatLabelMarkup) {
         footerHeatLabel.innerHTML = nextHeatLabelMarkup;
       }
@@ -1496,7 +1511,7 @@ import { renderStatCard } from "./stat-card.js";
     const defrostBadge = board.querySelector('[data-oq-bind="defrost-badge"]');
     if (defrostBadge) {
       syncAttribute(defrostBadge, "tabindex", model.defrostActive ? "0" : "-1");
-      syncAttribute(defrostBadge, "aria-label", model.defrostActive ? "Defrost actief" : "Defrost uit");
+      syncAttribute(defrostBadge, "aria-label", model.defrostActive ? t("heatpump.defrostOn") : t("heatpump.defrostOff"));
       if (!model.defrostActive) {
         hideTechTooltip(board.querySelector('[data-oq-bind="defrost-badge-tooltip"]'));
       }
@@ -1507,9 +1522,9 @@ import { renderStatCard } from "./stat-card.js";
     });
     syncBoundAria(board, [
       ...HEAT_PUMP_READINGS.map((reading) => [`${reading.bind}-reading`, getHeatPumpReadingAria(reading, model)]),
-      ["compressor-freq-trigger", `Compressorfrequentie ${model.compressorFreqText}`],
-      ["fourway-trigger", `4-wegklep, ${model.fourWayPositionText}`],
-      ["eev-trigger", `Expansieventiel, ${model.eevPositionText}`],
+      ["compressor-freq-trigger", t("heatpump.readingFreq", { value: model.compressorFreqText })],
+      ["fourway-trigger", t("heatpump.readingFourWay", { value: model.fourWayPositionText })],
+      ["eev-trigger", t("heatpump.readingEev", { value: model.eevPositionText })],
     ]);
     setVariantClass(board.querySelector(".oq-hp-tech-pump"), "oq-hp-tech-pump--", model.returnLineTone, ["supply", "return"]);
     const svgIdBase = String(model.title || "hp").toLowerCase().replace(/[^a-z0-9]+/g, "-");

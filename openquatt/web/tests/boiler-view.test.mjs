@@ -44,6 +44,8 @@ const boilerTransportLogic = await readFile(new URL("../../includes/boiler/oq_bo
 const quickStartSource = await readFile(new URL("../js/src/features/quickstart.js", import.meta.url), "utf8");
 const quickStartActionsSource = await readFile(new URL("../js/src/features/quickstart-actions.js", import.meta.url), "utf8");
 const installationSource = await readFile(new URL("../js/src/settings/installation.js", import.meta.url), "utf8");
+const { default: nlCatalogue } = await import("../js/src/i18n/nl.js");
+const nlInstallation = nlCatalogue.settingsInstallation;
 
 function status(overrides = {}) {
   return getBoilerStatusModel({
@@ -406,7 +408,7 @@ test("auxiliary heat source setting remains editable on legacy firmware", () => 
   );
   assert.match(
     installationSource,
-    /renderSettingsCompactSwitchControl\(sourcePresenceKey, "Warmtebron aangesloten"/,
+    /renderSettingsCompactSwitchControl\(sourcePresenceKey, t\("settingsInstallation\.sourceTitle"\)/,
   );
   assert.match(
     installationSource,
@@ -415,20 +417,23 @@ test("auxiliary heat source setting remains editable on legacy firmware", () => 
 });
 
 test("fallback heating setting explains its guarded scope", () => {
-  assert.match(installationSource, /Overnemen wanneer de warmtepomp niet beschikbaar is/);
-  assert.match(installationSource, /wanneer geen warmtepomp veilig beschikbaar is/);
-  assert.match(installationSource, /koude opstart onder 5 °C/);
-  assert.match(installationSource, /koude opstart van 5 tot 12 °C/);
+  assert.match(installationSource, /t\("settingsInstallation\.backupTitle"\)/);
+  assert.equal(nlInstallation.backupTitle, "Overnemen wanneer de warmtepomp niet beschikbaar is");
+  assert.match(installationSource, /t\("settingsInstallation\.backupCopy"\)/);
+  assert.match(nlInstallation.backupCopy, /wanneer geen warmtepomp veilig beschikbaar is/);
+  assert.match(nlInstallation.backupCopy, /koude opstart onder 5 °C/);
+  assert.match(nlInstallation.assistCopy, /koude opstart van 5 tot 12 °C/);
   assert.match(commonSubstitutionsYaml, /oq_hp_cold_start_min_c: "5\.0"/);
   assert.match(commonSubstitutionsYaml, /oq_hp_cold_start_assist_release_c: "12\.0"/);
-  assert.match(installationSource, /na een veilige stop/);
-  assert.match(installationSource, /Een korte communicatiedip telt niet als uitval/);
+  assert.match(nlInstallation.backupCopy, /na een veilige stop/);
+  assert.match(nlInstallation.backupCopy, /Een korte communicatiedip telt niet als uitval/);
 });
 
 test("auxiliary heat source copy names common examples and explains hybrid heating", () => {
-  assert.match(installationSource, /cv-ketel, elektrische cv-ketel \(e-cv\) of doorstroomverwarmer/);
-  assert.match(installationSource, /Hybride verwarmen bij vermogenstekort/);
-  assert.match(installationSource, /het beschikbare warmtepompvermogen niet genoeg is/);
+  assert.match(nlInstallation.sourceCopy, /cv-ketel, elektrische cv-ketel \(e-cv\) of doorstroomverwarmer/);
+  assert.equal(nlInstallation.assistTitle, "Hybride verwarmen bij vermogenstekort");
+  assert.match(nlInstallation.assistCopy, /het beschikbare warmtepompvermogen niet genoeg is/);
+  assert.match(installationSource, /t\("settingsInstallation\.assistTitle"\)/);
 });
 
 test("fault fallback is editable in Installation and the shared Quick Start boiler fields", () => {
@@ -449,7 +454,7 @@ test("fault fallback is editable in Installation and the shared Quick Start boil
   );
   assert.match(
     quickStartSource,
-    /\["Overnemen wanneer de warmtepomp niet beschikbaar is", isEntityActive\("boilerFaultFallbackEnabled"\) \? "Aan" : "Uit"\]/,
+    /\[\s*t\("quickStart\.reviewFaultFallback"\),\s*isEntityActive\("boilerFaultFallbackEnabled"\)\s*\?\s*t\("common\.on"\)\s*:\s*t\("common\.off"\)\s*\]/,
   );
   assert.match(servicePanelSource, /renderInstallationMonitoringStatusRow/);
   assert.doesNotMatch(servicePanelSource, /boilerFaultFallbackEnabled/);
@@ -458,8 +463,9 @@ test("fault fallback is editable in Installation and the shared Quick Start boil
 });
 
 test("Quick Start blocks R1 after a boiler answers the safe OpenTherm probe", () => {
-  assert.match(installationSource, /OpenTherm-ketel gevonden/);
-  assert.match(installationSource, /Kies OpenTherm \(OTB\)/);
+  assert.match(installationSource, /t\("settingsInstallation\.otFoundTitle"\)/);
+  assert.equal(nlInstallation.otFoundTitle, "OpenTherm-ketel gevonden");
+  assert.match(installationSource, /t\("settingsInstallation\.otFoundCopy"\)/);
   assert.match(quickStartSource, /nextDisabled:\s*boilerConnectionMismatch \|\| openthermNotVerified/);
 });
 
@@ -471,11 +477,14 @@ test("Quick Start gates OpenTherm verification only for a connected heat source"
 });
 
 test("installation explains the OpenTherm wiring error in user-friendly terms", () => {
-  assert.match(installationSource, /Geen OpenTherm-ketel gevonden/);
-  assert.match(installationSource, /Controleer of OTB is aangesloten op de OpenTherm-aansluiting van je ketel/);
-  assert.match(installationSource, /gewone aan\/uit-thermostaataansluiting\? Gebruik dan R1/);
+  assert.match(installationSource, /t\("settingsInstallation\.otNoResponseTitle"\)/);
+  assert.equal(nlInstallation.otNoResponseTitle, "Geen OpenTherm-ketel gevonden");
+  assert.match(installationSource, /t\("settingsInstallation\.otNoResponseCopy"\)/);
+  assert.match(nlInstallation.otNoResponseCopy, /Controleer of OTB is aangesloten op de OpenTherm-aansluiting van je ketel/);
+  assert.match(nlInstallation.otNoResponseCopy, /gewone aan\/uit-thermostaataansluiting\? Gebruik dan R1/);
   assert.doesNotMatch(installationSource, /24V\/RT/);
-  assert.match(installationSource, /OpenTherm-verbinding verloren/);
+  assert.match(installationSource, /t\("settingsInstallation\.otLostTitle"\)/);
+  assert.equal(nlInstallation.otLostTitle, "OpenTherm-verbinding verloren");
   assert.doesNotMatch(installationSource, /RT24|\bTA\b/);
 });
 
@@ -487,8 +496,10 @@ test("onboarding auto-selects a detected OpenTherm boiler and explains the choic
   assert.match(boilerOpenThermYaml, /call\.set_option\("OpenTherm"\)/);
   assert.match(installationSource, /boilerConnection === "OpenTherm"/);
   assert.match(installationSource, /isEntityActive\("otbConnectionAutoSelected"\)/);
-  assert.match(installationSource, /OpenTherm-ketel gedetecteerd/);
-  assert.match(installationSource, /automatisch als ketelaansluiting geselecteerd/);
+  assert.match(installationSource, /t\("settingsInstallation\.otVerifiedTitle"\)/);
+  assert.equal(nlInstallation.otVerifiedTitle, "OpenTherm-ketel gedetecteerd");
+  assert.match(installationSource, /t\("settingsInstallation\.otVerifiedAuto"\)/);
+  assert.match(nlInstallation.otVerifiedAuto, /automatisch als ketelaansluiting geselecteerd/);
   assert.match(
     installationSource,
     /sourcePresent \|\| boilerConnectionMismatch \|\| boilerConnectionAutoSelected/,
@@ -515,11 +526,12 @@ test("Quick Start keeps the mismatch remedy visible when the source is disconnec
     installationSource,
     /\(sourcePresent \|\| boilerConnectionMismatch \|\| boilerConnectionAutoSelected\) && boilerConnectionAvailable \? renderSettingsFieldCard/,
   );
-  assert.match(installationSource, /OpenTherm-ketel gevonden/);
+  assert.match(installationSource, /t\("settingsInstallation\.otFoundTitle"\)/);
 });
 
 test("R1 setup explains its bounded OpenTherm startup check", () => {
-  assert.match(installationSource, /OT-controle bij opstart actief/);
+  assert.match(installationSource, /t\("settingsInstallation\.otCheckActive"\)/);
+  assert.equal(nlInstallation.otCheckActive, "OT-controle bij opstart actief.");
 });
 
 test("installation keeps OpenTherm selectable when the supported boiler link is offline", () => {
@@ -534,8 +546,10 @@ test("installation keeps OpenTherm selectable when the supported boiler link is 
 test("installation does not silently present R1 while OpenTherm capability is unresolved", () => {
   const capability = getBoilerOpenThermCapability();
   assert.equal(capability, BOILER_OPENTHERM_CAPABILITY.UNKNOWN);
-  assert.match(installationSource, /Beschikbaarheid controleren/);
-  assert.match(installationSource, /aansluitingskeuze is tijdelijk geblokkeerd/);
+  assert.match(installationSource, /t\("settingsInstallation\.boilerCheckingTitle"\)/);
+  assert.equal(nlInstallation.boilerCheckingTitle, "Beschikbaarheid controleren…");
+  assert.match(installationSource, /t\("settingsInstallation\.boilerCheckingCopy"\)/);
+  assert.match(nlInstallation.boilerCheckingCopy, /aansluitingskeuze is tijdelijk geblokkeerd/);
 });
 
 test("installation offers only R1 after OpenTherm capability is confirmed absent", () => {

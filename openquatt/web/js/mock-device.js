@@ -187,9 +187,9 @@
     energyCountersReset: false,
     logHistoryEntries: [],
     debugRecording: {
+      enabled: true,
       active: false,
       mode: "manual",
-      frozen: false,
       startedAt: 0,
       stoppedAt: 0,
       durationS: 15 * 60,
@@ -1983,6 +1983,8 @@
       option: ["Auto", "Force CM0", "Force CM1", "Force CM98"],
     });
     setEntity("switch", "OpenQuatt Enabled", { value: true, state: true });
+    setEntity("switch", "Power House run extension", { value: false, state: false });
+    setEntity("text_sensor", "Power House run extension status", { value: "inactive", state: "inactive" });
     setEntity("switch", "Boiler assist enabled", { value: true, state: true });
     setEntity("switch", "Boiler fallback on heat-pump fault", { value: false, state: false });
     setEntity("select", "Boiler connection", {
@@ -2248,6 +2250,7 @@
       ["Power House comfort above setpoint", 0.3, 0, 2, 0.05, "°C"],
       ["Power House demand rise time", 8, 2, 20, 1, "min"],
       ["Power House demand fall time", 3, 1, 10, 1, "min"],
+      ["Power House run extension stop margin", 0.5, 0.1, 1, 0.1, "°C"],
       ["Cooling Minimum Supply Temp", 18, 5, 24, 0.5, "°C"],
       ["Cooling Demand Max", 4, 1, 10, 1, "step"],
       ["Cooling Restart Delta", 1.0, 0, 5, 0.1, "°C"],
@@ -5173,6 +5176,7 @@
   }
 
   function getDebugRecordingStatusPayload() {
+    ensureMockRecorderAutostart();
     syncDebugRecordingSamples();
     const recording = state.debugRecording;
     const rolling = recording.mode === "rolling";
@@ -5187,10 +5191,10 @@
     return {
       ok: true,
       available: true,
+      enabled: recording.enabled !== false,
       active: Boolean(recording.active),
       mode: rolling ? "rolling" : "manual",
       rolling,
-      frozen: Boolean(recording.frozen),
       recording_id: Number(recording.startedAt || 0),
       storage: "psram",
       interval_s: 10,
@@ -5265,15 +5269,18 @@
 
   function handleDebugRecordingStart(url) {
     const pending = state.debugRecording;
+    if (pending.enabled === false) {
+      return mockResponse(409, { ok: false, error: "recorder_disabled" });
+    }
     if (!pending.configurationPending || pending.pendingFields.length <= DEBUG_RECORDING_SYSTEM_FIELD_COUNT) {
       return mockResponse(409, { ok: false, error: "configuration_not_ready" });
     }
     const rolling = url.searchParams.get("rolling") === "1";
     const durationS = rolling ? 0 : Math.max(60, Math.min(3600, Number(url.searchParams.get("duration_s") || 15 * 60)));
     state.debugRecording = {
+      enabled: pending.enabled !== false,
       active: true,
       mode: rolling ? "rolling" : "manual",
-      frozen: false,
       startedAt: Date.now(),
       stoppedAt: 0,
       durationS,
@@ -5290,44 +5297,146 @@
     return mockResponse(200, getDebugRecordingStatusPayload());
   }
 
-  function handleDebugRecordingFreeze() {
-    const recording = state.debugRecording;
-    syncDebugRecordingSamples();
-    if (recording.active) {
-      recording.active = false;
-      recording.frozen = recording.mode === "rolling";
-      recording.stoppedAt = Date.now();
-    }
-    return mockResponse(200, getDebugRecordingStatusPayload());
-  }
-
   function handleDebugRecordingStop() {
     const recording = state.debugRecording;
     syncDebugRecordingSamples();
     if (recording.active) {
       recording.active = false;
-      recording.frozen = recording.mode === "rolling";
       recording.stoppedAt = Date.now();
     }
     return mockResponse(200, getDebugRecordingStatusPayload());
   }
 
-  function buildDebugRecordingDownloadPayload() {
+  // Firmware-owned auto-start: without any web app interaction the mock boots
+  // into a rolling recording, mirroring the device behavior.
+  function ensureMockRecorderAutostart() {
+    const recording = state.debugRecording;
+    if (recording.enabled === false || recording.startedAt || recording.fields.length) {
+      return;
+    }
+    const fields = [...getDebugRecordingSystemFields()];
+    for (const [domain, name] of mockEntityDefs) {
+      if (fields.length >= DEBUG_RECORDING_FIELD_CAPACITY) {
+        break;
+      }
+      if (domain !== "sensor" && domain !== "number" && domain !== "binary_sensor"
+        && domain !== "switch" && domain !== "text_sensor" && domain !== "select") {
+        continue;
+      }
+      if (!getEntity(domain, name)) {
+        continue;
+      }
+      fields.push({ key: name, domain, name, unit: "" });
+    }
+    state.debugRecording = {
+      ...recording,
+      enabled: true,
+      active: true,
+      mode: "rolling",
+      startedAt: state.bootedAt,
+      stoppedAt: 0,
+      durationS: 0,
+      nextOffsetS: 0,
+      fields,
+      samples: [],
+      missingFieldCount: 0,
+      pendingFields: [],
+      pendingRequestedFieldCount: 0,
+      pendingMissingFieldCount: 0,
+      configurationPending: false,
+    };
+    syncDebugRecordingSamples();
+  }
+
+  function handleDebugRecordingRestart() {
+    if (state.debugRecording.enabled === false) {
+      return mockResponse(409, { ok: false, error: "recorder_not_available" });
+    }
+    ensureMockRecorderAutostart();
+    const recording = state.debugRecording;
+    state.debugRecording = {
+      ...recording,
+      active: true,
+      mode: "rolling",
+      startedAt: Date.now(),
+      stoppedAt: 0,
+      durationS: 0,
+      nextOffsetS: 0,
+      samples: [],
+      missingFieldCount: Number(recording.missingFieldCount || 0),
+      pendingFields: [],
+      pendingRequestedFieldCount: 0,
+      pendingMissingFieldCount: 0,
+      configurationPending: false,
+    };
+    syncDebugRecordingSamples();
+    return mockResponse(200, getDebugRecordingStatusPayload());
+  }
+
+  function handleDebugRecordingEnabled(url, init) {
+    const params = new URLSearchParams(String(init?.body || ""));
+    const enabled = params.get("enabled") === "1" || url.searchParams.get("enabled") === "1";
+    const recording = state.debugRecording;
+    if (enabled === (recording.enabled !== false)) {
+      // Idempotent: repeating the current value never wipes the buffer.
+      return mockResponse(200, getDebugRecordingStatusPayload());
+    }
+    if (!enabled) {
+      syncDebugRecordingSamples();
+      recording.enabled = false;
+      if (recording.active) {
+        recording.active = false;
+        recording.stoppedAt = Date.now();
+      }
+      return mockResponse(200, getDebugRecordingStatusPayload());
+    }
+    ensureMockRecorderAutostart();
+    state.debugRecording = {
+      ...state.debugRecording,
+      enabled: true,
+      active: true,
+      mode: "rolling",
+      startedAt: Date.now(),
+      stoppedAt: 0,
+      durationS: 0,
+      nextOffsetS: 0,
+      samples: [],
+    };
+    syncDebugRecordingSamples();
+    return mockResponse(200, getDebugRecordingStatusPayload());
+  }
+
+  function buildDebugRecordingDownloadPayload(lastMinutes = 0) {
+    ensureMockRecorderAutostart();
     syncDebugRecordingSamples();
     const recording = state.debugRecording;
-    const startedAtMs = Number(recording.startedAt || Date.now());
+    const rangeS = Math.max(0, Number(lastMinutes) || 0) * 60;
+    let startIndex = 0;
+    if (rangeS > 0 && recording.samples.length) {
+      const lastOffset = recording.samples[recording.samples.length - 1].offset_s;
+      const cutoff = Math.max(0, lastOffset - rangeS);
+      startIndex = recording.samples.findIndex((sample) => sample.offset_s >= cutoff);
+      if (startIndex < 0) {
+        startIndex = 0;
+      }
+    }
+    const windowSamples = recording.samples.slice(startIndex);
+    const firstOffset = windowSamples.length ? windowSamples[0].offset_s : 0;
+    const lastOffset = windowSamples.length ? windowSamples[windowSamples.length - 1].offset_s : 0;
+    const startedAtMs = Number(recording.startedAt || Date.now()) + firstOffset * 1000;
     const endedAtMs = recording.active ? Date.now() : Number(recording.stoppedAt || startedAtMs);
-    const initial = recording.samples[0] || null;
-    const samples = recording.samples.map((sample, index) => {
-      const previous = index > 0 ? recording.samples[index - 1] : initial;
+    const initial = windowSamples[0] || null;
+    const samples = windowSamples.map((sample, index) => {
+      const previous = index > 0 ? windowSamples[index - 1] : null;
       const deltas = [];
       sample.values.forEach((value, valueIndex) => {
         if (previous && !Object.is(value, previous.values[valueIndex])) {
           deltas.push([valueIndex, value]);
         }
       });
-      return [sample.offset_s, deltas];
+      return [sample.offset_s - firstOffset, deltas];
     });
+    const windowEventCount = windowSamples.reduce((total, sample) => total + Number(sample.event_count || 0), 0);
     return {
       format: "openquatt-debug-device-v1",
       schema_version: 1,
@@ -5345,18 +5454,16 @@
         active: Boolean(recording.active),
         mode: recording.mode === "rolling" ? "rolling" : "manual",
         rolling: recording.mode === "rolling",
-        frozen: Boolean(recording.frozen),
-        duration_s: Math.max(0, Math.floor((endedAtMs - startedAtMs) / 1000)),
-        retained_duration_s: initial && recording.samples.length
-          ? Math.max(0, recording.samples[recording.samples.length - 1].offset_s - initial.offset_s)
-          : 0,
+        duration_s: Math.max(0, lastOffset - firstOffset),
+        retained_duration_s: Math.max(0, lastOffset - firstOffset),
         retention_capacity_s: Math.max(0, getDebugRecordingSampleCapacity(recording.fields) - 1) * 10,
         interval_s: 10,
-        sample_count: recording.samples.length,
+        sample_count: windowSamples.length,
         sample_capacity: getDebugRecordingSampleCapacity(recording.fields),
         sample_row_bytes: getDebugRecordingSampleBytes(recording.fields),
         buffer_size: DEBUG_RECORDING_BUFFER_BYTES,
         column_count: recording.fields.length,
+        event_count: windowEventCount,
         storage: "psram",
       },
       columns: recording.fields.map((field) => field.key),
@@ -5367,8 +5474,9 @@
     };
   }
 
-  function handleDebugRecordingDownload() {
-    return mockResponse(200, buildDebugRecordingDownloadPayload());
+  function handleDebugRecordingDownload(url) {
+    const lastMinutes = Number(url.searchParams.get("last_minutes") || 0);
+    return mockResponse(200, buildDebugRecordingDownloadPayload(lastMinutes));
   }
 
   function calculateMockCrc(words) {
@@ -5706,16 +5814,23 @@
         if (!hasValidDebugRecordingCsrf(init)) return mockResponse(403, { ok: false, error: "csrf_rejected" });
         return handleDebugRecordingStart(url);
       }
-      if (url.pathname.endsWith("/openquatt/debug-recording/freeze") && method === "POST") {
-        if (!hasValidDebugRecordingCsrf(init)) return mockResponse(403, { ok: false, error: "csrf_rejected" });
-        return handleDebugRecordingFreeze();
-      }
       if (url.pathname.endsWith("/openquatt/debug-recording/stop") && method === "POST") {
         if (!hasValidDebugRecordingCsrf(init)) return mockResponse(403, { ok: false, error: "csrf_rejected" });
         return handleDebugRecordingStop();
       }
+      if (url.pathname.endsWith("/openquatt/debug-recording/restart") && method === "POST") {
+        if (!hasValidDebugRecordingCsrf(init)) return mockResponse(403, { ok: false, error: "csrf_rejected" });
+        return handleDebugRecordingRestart();
+      }
+      if (url.pathname.endsWith("/openquatt/debug-recording/enabled") && method === "POST") {
+        if (!hasValidDebugRecordingCsrf(init)) return mockResponse(403, { ok: false, error: "csrf_rejected" });
+        return handleDebugRecordingEnabled(url, init || {});
+      }
+      if (url.pathname.endsWith("/openquatt/debug-recording/download-range") && method === "GET") {
+        return handleDebugRecordingDownload(url);
+      }
       if (url.pathname.endsWith("/openquatt/debug-recording/download") && method === "GET") {
-        return handleDebugRecordingDownload();
+        return handleDebugRecordingDownload(url);
       }
       if (url.pathname.endsWith("/openquatt/learning/status") && method === "GET") {
         return hasHouseLearningCapability()

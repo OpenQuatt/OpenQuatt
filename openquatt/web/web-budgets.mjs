@@ -4,11 +4,11 @@ export const WEB_BUNDLE_GZIP_GROWTH_LIMIT = { bytes: 7_680, ratio: 0.03 };
 export const WEB_BUNDLE_BUDGETS = [
   {
     file: "js/openquatt-app.js",
-    // Passive Power House learning adds the chart/status/export UI on top of
-    // the current Matrix-enabled web app. Candidate: 985517 B raw / 282193 B gzip.
-    raw: 990_000,
-    gzipBaselineCeiling: 286_000,
+    // Includes compact NL/EN catalogues and passive-learning status/chart/export.
+    // PR #728: ~1.233 MB raw / 344 kB gzip; dev: ~1.199 MB / 334 kB.
+    raw: 1_250_000,
+    gzipBaselineCeiling: 350_000,
   },
-  // Candidate with the learning panel/chart: 205258 B raw.
+  // Includes the passive-learning chart and responsive cards: ~204.6 kB raw.
   { file: "css/openquatt-app.css", raw: 207_000 },
 ];

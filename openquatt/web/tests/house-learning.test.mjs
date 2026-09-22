@@ -26,12 +26,14 @@ const {
 const { patchHouseLearningSettingsStatus, renderHouseLearningSettings, renderHouseLearningStatusMarkup } = await import("../js/src/settings/house-learning.js");
 const { SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
 const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
+const { setLocale } = await import("../js/src/i18n/index.js");
 
 function switchEntity(value = false) {
   return { value, state: value };
 }
 
 test.afterEach(() => {
+  setLocale("nl", { persist: false, applyDocument: false, notify: false });
   document.hidden = false;
   state.busyAction = "";
   state.controlError = "";
@@ -424,8 +426,8 @@ test("voorlopige 1R1C-data staat boven batchdiagnostiek", () => {
   assert.match(markup, /Modelstatus[\s\S]*Voorlopige schatting/);
   assert.match(markup, /5 geaccepteerde perioden van 30 minuten/);
   assert.match(markup, /1R1C-perioden[\s\S]*>5</);
-  assert.match(markup, /Warmteverlies \(U\)[\s\S]*196.3 W\/K/);
-  assert.match(markup, /Warmteopslag \(C\)[\s\S]*4803.5 Wh\/K/);
+  assert.match(markup, /Warmteverlies \(U\)[\s\S]*196,3 W\/K/);
+  assert.match(markup, /Warmteopslag \(C\)[\s\S]*4\.803,5 Wh\/K/);
   assert.doesNotMatch(markup, /Nog geen metingen/);
   assert.ok(markup.indexOf("Warmteverlies (U)") < markup.indexOf("Modeldiagnostiek"));
   assert.ok(markup.indexOf("Modeldiagnostiek") < markup.indexOf("Batch warmteverlies (H)"));
@@ -447,6 +449,23 @@ test("leerstatus toont actuele verzameling, losse bronnen en wachtredenen", () =
   assert.match(markup, /Kamer[\s\S]*Geldig/);
   assert.match(markup, /Kamer setpoint[\s\S]*Ongeldig/);
   assert.doesNotMatch(markup, /kamer: .* · setpoint:/);
+});
+
+test("leerstatus vertaalt labels, routes en getallen tijdens een localewissel", () => {
+  const status = normalizeHouseLearningStatus(statusPayload({
+    enabled: true,
+    control_mode: 2,
+    status: "collecting",
+    invalid_reasons: [],
+    c_rls_wh_per_k: 4803.5,
+    sources: { ...statusPayload().sources, flow: { route: "selected_flow", valid: true } },
+  }));
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  const markup = renderHouseLearningStatusMarkup(status);
+  assert.match(markup, /Collecting now/);
+  assert.match(markup, /Home line \(stable heating\)/);
+  assert.match(markup, /Room temperature[\s\S]*Via selected room source/);
+  assert.match(markup, /Heat storage \(C\)[\s\S]*4,803\.5 Wh\/K/);
 });
 
 test("setpointherstel vertraagt alleen de woninglijn terwijl 1R1C verzamelt", () => {
@@ -705,4 +724,20 @@ test("grafiekpatch behoudt meetpuntfocus bij ongewijzigde data en volgt nieuwe f
   state.houseLearningStatus.hBatch = 210;
   patchHouseLearningSettingsStatus();
   assert.equal(writes, 2);
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  patchHouseLearningSettingsStatus();
+  assert.equal(writes, 3, "een localewissel vernieuwt de charttekst");
+});
+
+test("een bestaande grafiekfout wordt na taalwissel opnieuw vertaald", async () => {
+  state.entities = { strategy: { value: "Power House" }, houseLearningEnabled: switchEntity(true) };
+  state.houseLearningEndpointAvailable = true;
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ schema: 2 }) });
+
+  setLocale("nl", { persist: false, applyDocument: false, notify: false });
+  assert.equal(await loadHouseLearningChart(), false);
+  assert.match(renderHouseLearningSettings(), /Meetgegevens konden niet worden geladen\. onbekend exportformaat/);
+
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  assert.match(renderHouseLearningSettings(), /Measurement data could not be loaded\. unknown export format/);
 });

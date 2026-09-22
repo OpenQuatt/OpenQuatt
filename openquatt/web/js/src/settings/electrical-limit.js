@@ -5,6 +5,7 @@ import { getEntityValue, getNumberMeta, parseLooseNumber } from "../core/entity-
 import { escapeHtml } from "../core/html.js";
 import { createOduGenerationDetectionModel } from "../core/odu-generation.js";
 import { state } from "../core/state.js";
+import { formatNumber, t } from "../i18n/index.js";
 import { renderSettingsFieldCard, renderSettingsSection } from "./controls.js";
 
 export const ELECTRICAL_LIMIT_KNOWN_GENERATIONS = ["V1", "V1.5", "V2"];
@@ -49,13 +50,13 @@ export function getElectricalLimitTopologyInfo() {
   // blijft de standaard. Zonder bevestigde detectie blijft de
   // installatiestandaard het plafond.
   const absoluteMaxA = elevationConfirmed ? (isV2 ? ELECTRICAL_LIMIT_V2_MAX_A : 20) : standardA;
-  let standardLabel = "Single";
+  let standardLabel = t("settingsElectrical.topoSingle");
   if (isDuo && isV2) {
-    standardLabel = "Duo V2";
+    standardLabel = t("settingsElectrical.topoDuoV2");
   } else if (isDuo && generationKnown) {
-    standardLabel = "Duo V1/V1.5";
+    standardLabel = t("settingsElectrical.topoDuoV1");
   } else if (isDuo) {
-    standardLabel = "Duo (onbekende versie)";
+    standardLabel = t("settingsElectrical.topoDuoUnknown");
   }
   return { topology, generation, isDuo, isV2, generationKnown, standardA, absoluteMaxA, standardLabel };
 }
@@ -74,7 +75,7 @@ export function formatIndicativeKw(currentA) {
   if (!Number.isFinite(numeric)) {
     return "—";
   }
-  return `${((numeric * 230) / 1000).toFixed(1).replace(".", ",")} kW`;
+  return `${formatNumber((numeric * 230) / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kW`;
 }
 
 export function isElectricalLimitAboveStandard(value, info = null) {
@@ -135,7 +136,7 @@ export function getElectricalLimitBackupRestoreWarning(settings) {
   if (!Number.isFinite(backupA) || backupA <= info.standardA + 1e-9) {
     return "";
   }
-  return `Let op: deze backup zet de elektrische ingangsgrens op ${formatDutchAmps(backupA)}, boven de standaard ${formatDutchAmps(info.standardA)} voor deze installatie (${info.standardLabel}). Herstellen vereist dezelfde controle als handmatig verhogen: bevestig alleen wanneer de volledige elektrische aansluiting hiervoor geschikt is. Alleen een zwaardere installatieautomaat plaatsen is niet voldoende.`;
+  return t("settingsElectrical.backupWarning", { limit: formatDutchAmps(backupA), standard: formatDutchAmps(info.standardA), label: info.standardLabel });
 }
 
 export function resolveElectricalLimitView() {
@@ -165,7 +166,7 @@ export function resolveElectricalLimitView() {
 export function renderElectricalLimitRestore(view) {
   const busy = state.busyAction === "save-electricalCurrentLimit";
   const button = view.showRestore
-    ? `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="reset-electrical-limit-to-default" ${busy || state.loadingEntities ? "disabled" : ""}>Standaardwaarde herstellen (${formatDutchAmps(view.info.standardA)})</button>`
+    ? `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="reset-electrical-limit-to-default" ${busy || state.loadingEntities ? "disabled" : ""}>${escapeHtml(t("settingsElectrical.restoreButton", { limit: formatDutchAmps(view.info.standardA) }))}</button>`
     : "";
   return `<div class="oq-settings-electrical-restore">${button}</div>`;
 }
@@ -174,22 +175,22 @@ export function renderElectricalLimitEntry(view = resolveElectricalLimitView()) 
   const { info, currentA } = view;
   const span = Math.max(1e-9, info.absoluteMaxA - view.minA);
   const standardPct = ((info.standardA - view.minA) / span) * 100;
-  return `<div class="oq-settings-electrical-entry"><span class="oq-settings-electrical-entry-label">${renderOqIcon("pencil", "oq-settings-electrical-label-icon")}Ingestelde stroom</span><div class="oq-settings-electrical-slider-block"><div class="oq-helper-slider-meta"><span>${formatDutchAmps(view.minA)}</span><strong>${formatDutchAmps(currentA)}</strong><span>${formatDutchAmps(info.absoluteMaxA)}</span></div><div class="oq-settings-electrical-slider-track" style="--oq-electrical-standard-pct:${standardPct.toFixed(1)}%"><input class="oq-helper-range oq-settings-electrical-slider" type="range" data-oq-field="electricalCurrentLimit" min="${view.meta.min}" max="${view.meta.max}" step="${view.meta.step}" value="${escapeHtml(currentA)}" aria-label="Ingestelde stroom" ${state.loadingEntities ? "disabled" : ""}></div></div><span class="oq-settings-electrical-entry-caption">Standaard voor deze installatie: ${formatDutchAmps(info.standardA)} · ${escapeHtml(info.standardLabel)}</span></div>`;
+  return `<div class="oq-settings-electrical-entry"><span class="oq-settings-electrical-entry-label">${renderOqIcon("pencil", "oq-settings-electrical-label-icon")}${escapeHtml(t("settingsElectrical.entryLabel"))}</span><div class="oq-settings-electrical-slider-block"><div class="oq-helper-slider-meta"><span>${formatDutchAmps(view.minA)}</span><strong>${formatDutchAmps(currentA)}</strong><span>${formatDutchAmps(info.absoluteMaxA)}</span></div><div class="oq-settings-electrical-slider-track" style="--oq-electrical-standard-pct:${standardPct.toFixed(1)}%"><input class="oq-helper-range oq-settings-electrical-slider" type="range" data-oq-field="electricalCurrentLimit" min="${view.meta.min}" max="${view.meta.max}" step="${view.meta.step}" value="${escapeHtml(currentA)}" aria-label="${escapeHtml(t("settingsElectrical.entryLabel"))}" ${state.loadingEntities ? "disabled" : ""}></div></div><span class="oq-settings-electrical-entry-caption">${escapeHtml(t("settingsElectrical.entryCaption", { limit: formatDutchAmps(info.standardA), label: info.standardLabel }))}</span></div>`;
 }
 
 export function renderElectricalLimitEstimate(view = resolveElectricalLimitView()) {
-  return `<div class="oq-settings-electrical-estimate"><span>${renderOqIcon("calculator", "oq-settings-electrical-label-icon")}Indicatief vermogen</span><strong>circa ${formatIndicativeKw(view.currentA)} bij 230 V</strong><em>Benadering bij de ingestelde stroom; geen harde begrenzing.</em></div>`;
+  return `<div class="oq-settings-electrical-estimate"><span>${renderOqIcon("calculator", "oq-settings-electrical-label-icon")}${escapeHtml(t("settingsElectrical.estimateLabel"))}</span><strong>${escapeHtml(t("settingsElectrical.estimateValue", { value: formatIndicativeKw(view.currentA) }))}</strong><em>${escapeHtml(t("settingsElectrical.estimateNote"))}</em></div>`;
 }
 
 export function renderElectricalLimitFooter(view = resolveElectricalLimitView()) {
   const { info } = view;
   const warningMarkup = view.aboveStandard
-    ? `<div class="oq-settings-electrical-warning" role="alert"><span class="oq-settings-cooling-limit-warning-icon" aria-hidden="true">!</span><div class="oq-settings-electrical-warning-copy"><strong>Hogere waarde dan de standaard elektrische aansluiting</strong><span>Je hebt een waarde gekozen boven de standaard ${formatDutchAmps(info.standardA)} voor een ${escapeHtml(info.standardLabel)}. Verhoog deze grens alleen wanneer de warmtepomp is aangesloten op een daarvoor ontworpen, zwaarder afgezekerde groep en ook de bekabeling, werkschakelaar en het overige aansluitmateriaal hiervoor geschikt zijn. Alleen de installatieautomaat vervangen door een zwaarder exemplaar is niet voldoende en kan gevaarlijk zijn.</span></div></div>`
+    ? `<div class="oq-settings-electrical-warning" role="alert"><span class="oq-settings-cooling-limit-warning-icon" aria-hidden="true">!</span><div class="oq-settings-electrical-warning-copy"><strong>${escapeHtml(t("settingsElectrical.warningTitle"))}</strong><span>${escapeHtml(t("settingsElectrical.warningCopy", { limit: formatDutchAmps(info.standardA), label: info.standardLabel }))}</span></div></div>`
     : "";
   const belowMarkup = !view.aboveStandard && view.belowStandard
-    ? `<p class="oq-settings-electrical-note">Een lagere waarde kan het maximale verwarmings- en koelvermogen beperken.</p>`
+    ? `<p class="oq-settings-electrical-note">${escapeHtml(t("settingsElectrical.belowNote"))}</p>`
     : "";
-  return `<div class="oq-settings-electrical-body">${warningMarkup}${belowMarkup}<p class="oq-settings-electrical-safety">${renderOqIcon("triangle-alert", "oq-settings-electrical-safety-icon")}<strong>Let op:</strong> dit is een softwarematige regelgrens en geen elektrische beveiliging. De groepzekering, bekabeling en elektrische aansluiting moeten altijd geschikt zijn voor de ingestelde stroom. Korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten.</p></div>`;
+  return `<div class="oq-settings-electrical-body">${warningMarkup}${belowMarkup}<p class="oq-settings-electrical-safety">${renderOqIcon("triangle-alert", "oq-settings-electrical-safety-icon")}<strong>${escapeHtml(t("settingsElectrical.safetyPrefix"))}</strong> ${escapeHtml(t("settingsElectrical.safetyCopy"))}</p></div>`;
 }
 
 export function renderSettingsElectricalCurrentLimitSection() {
@@ -200,13 +201,13 @@ export function renderSettingsElectricalCurrentLimitSection() {
   const view = resolveElectricalLimitView();
 
   return renderSettingsSection(
-    "Elektrische installatie",
-    "Elektrische ingangsgrens",
-    "Beperk de gezamenlijke elektrische belasting van de buitenunits. OpenQuatt verlaagt zo nodig het compressorvermogen om het stroomverbruik rond deze grens te houden.",
+    t("settingsElectrical.sectionGroup"),
+    t("settingsElectrical.sectionTitle"),
+    t("settingsElectrical.sectionCopy"),
     renderSettingsFieldCard(
       "electricalCurrentLimit",
-      "Maximale gezamenlijke netstroom",
-      "Deze grens geldt voor alle buitenunits samen, niet per warmtepomp. Power House gebruikt de grens vooraf bij de vermogensverdeling en regelt daarna bij op basis van gemeten feedback. Stooklijnbedrijf en koelen gebruiken alleen de gemeten feedback. Een lagere waarde kan het beschikbare verwarmings- en koelvermogen beperken. Door meetvertraging en korte stroompieken kan de werkelijke stroom tijdelijk boven de ingestelde waarde komen. Dit is een softwarematige regelgrens en geen elektrische beveiliging.",
+      t("settingsElectrical.cardTitle"),
+      t("settingsElectrical.cardCopy"),
       `<div class="oq-settings-electrical-control-row">${renderElectricalLimitEntry(view)}${renderElectricalLimitEstimate(view)}</div>${renderElectricalLimitRestore(view)}`,
       "",
       renderElectricalLimitFooter(view),

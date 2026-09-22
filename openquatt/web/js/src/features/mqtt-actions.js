@@ -7,6 +7,7 @@ import { shouldRefreshSupplementaryStatus } from "../core/supplementary-refresh.
 import { isIntegrationsSettingsGroupActive } from "../core/surface-state.js";
 import { getMqttInputTopic, isMqttInputAcceptRetained, isMqttInputEnabled } from "./mqtt.js";
 import { render } from "../core/render-scheduler.js";
+import { t } from "../i18n/index.js";
 
   export function getMqttStatusSignature(status = state.mqttStatus || {}) {
     const inputTopics = status.input_topics && typeof status.input_topics === "object"
@@ -198,7 +199,7 @@ import { render } from "../core/render-scheduler.js";
       state.mqttError = "";
       return previousSignature !== nextSignature;
     } catch (error) {
-      state.mqttError = `MQTT-status kon niet worden geladen. ${error.message}`;
+      state.mqttError = t("mqtt.statusLoadFailed", { error: error.message });
       return false;
     }
   }
@@ -206,7 +207,7 @@ import { render } from "../core/render-scheduler.js";
   export async function copyMqttTopic(topicKey = "cooling_dew_point") {
     const topic = getMqttInputTopic(topicKey);
     if (!topic) {
-      state.mqttError = "MQTT-topic is nog niet geladen.";
+      state.mqttError = t("mqtt.topicNotLoaded");
       state.mqttCopiedTopicKey = "";
       render();
       return;
@@ -214,7 +215,7 @@ import { render } from "../core/render-scheduler.js";
     try {
       const copied = await copyTextToClipboard(topic);
       state.mqttNotice = "";
-      state.mqttError = copied ? "" : "Kopiëren is niet gelukt.";
+      state.mqttError = copied ? "" : t("mqtt.copyFailed");
       state.mqttCopiedTopicKey = copied ? topicKey : "";
       if (state.mqttCopiedTopicTimer) {
         window.clearTimeout(state.mqttCopiedTopicTimer);
@@ -229,7 +230,7 @@ import { render } from "../core/render-scheduler.js";
         }, 1800);
       }
     } catch (error) {
-      state.mqttError = `Kopiëren is mislukt. ${error.message}`;
+      state.mqttError = t("mqtt.copyFailedDetail", { error: error.message });
       state.mqttCopiedTopicKey = "";
     }
     render();
@@ -238,7 +239,7 @@ import { render } from "../core/render-scheduler.js";
   export async function commitMqttInputEnabled(topicKey, enabled) {
     const status = state.mqttStatus || {};
     if (!status.csrf_token) {
-      state.mqttError = "MQTT-status wordt nog geladen. Probeer het zo opnieuw.";
+      state.mqttError = t("mqtt.statusStillLoading");
       render();
       return;
     }
@@ -268,7 +269,7 @@ import { render } from "../core/render-scheduler.js";
       state.lastMqttStatusRefreshAt = 0;
       await refreshMqttStatus({ force: true });
     } catch (error) {
-      state.mqttError = `MQTT-topic kon niet worden opgeslagen. ${error.message}`;
+      state.mqttError = t("mqtt.topicSaveFailed", { error: error.message });
     } finally {
       if (state.mqttInputToggleBusyKey === topicKey) {
         state.mqttInputToggleBusyKey = "";
@@ -280,7 +281,7 @@ import { render } from "../core/render-scheduler.js";
   export async function commitMqttInputAcceptRetained(topicKey, acceptRetained) {
     const status = state.mqttStatus || {};
     if (!status.csrf_token) {
-      state.mqttError = "MQTT-status wordt nog geladen. Probeer het zo opnieuw.";
+      state.mqttError = t("mqtt.statusStillLoading");
       render();
       return;
     }
@@ -310,7 +311,7 @@ import { render } from "../core/render-scheduler.js";
       state.lastMqttStatusRefreshAt = 0;
       await refreshMqttStatus({ force: true });
     } catch (error) {
-      state.mqttError = `Retained-instelling kon niet worden opgeslagen. ${error.message}`;
+      state.mqttError = t("mqtt.retainedSaveFailed", { error: error.message });
     } finally {
       if (state.mqttRetainedToggleBusyKey === topicKey) {
         state.mqttRetainedToggleBusyKey = "";
@@ -331,17 +332,17 @@ import { render } from "../core/render-scheduler.js";
     const password = clearPassword ? "" : String(state.mqttDraftPassword || "");
 
     if (!status.csrf_token) {
-      state.mqttError = "MQTT-configuratie laadt nog. Probeer het zo opnieuw.";
+      state.mqttError = t("mqtt.configLoading");
       render();
       return;
     }
     if ((enabled || portText) && (!Number.isInteger(port) || port < 1 || port > 65535)) {
-      state.mqttError = "Vul een geldige poort in.";
+      state.mqttError = t("mqtt.invalidPort");
       render();
       return;
     }
     if (enabled && !broker) {
-      state.mqttError = "Vul een broker in als je MQTT inschakelt.";
+      state.mqttError = t("mqtt.missingBroker");
       render();
       return;
     }
@@ -375,12 +376,12 @@ import { render } from "../core/render-scheduler.js";
       state.mqttDraftPassword = "";
       state.mqttDraftClearPassword = false;
       state.mqttNotice = enabled
-        ? "MQTT-configuratie opgeslagen. De MQTT-verbinding wordt gestart."
-        : "MQTT-configuratie opgeslagen.";
+        ? t("mqtt.configSavedStarting")
+        : t("mqtt.configSaved");
       state.mqttError = "";
       render();
     } catch (error) {
-      state.mqttError = `Opslaan is mislukt. ${error.message}`;
+      state.mqttError = t("mqtt.saveFailed", { error: error.message });
       render();
     } finally {
       state.mqttBusy = false;

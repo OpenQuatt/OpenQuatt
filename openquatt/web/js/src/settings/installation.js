@@ -19,10 +19,7 @@ import { getSelectEntityOptions, renderNamedActionButton, renderSettingsAdvanced
 import { getSettingsSelectModel } from "./field-models.js";
 import { renderSettingsHeatPumpLimiterCard } from "./heating.js";
 import { escapeHtml } from "../core/html.js";
-
-const AUX_HEAT_ASSIST_TITLE = "Hybride verwarmen bij vermogenstekort";
-const AUX_HEAT_BACKUP_TITLE = "Overnemen wanneer de warmtepomp niet beschikbaar is";
-const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer geen warmtepomp veilig beschikbaar is, ook bij een koude opstart onder 5 °C. Dit gebeurt pas na een veilige stop en geldige flow, temperatuur en aansturing. Een korte communicatiedip telt niet als uitval.";
+import { formatDateTime, formatNumber, t } from "../i18n/index.js";
 
   export function renderSettingsOduRuntimeFrequencySection() {
     const hpIndexes = getOduRuntimeFrequencyHpIndexes();
@@ -33,22 +30,22 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     return `
       <section class="oq-settings-section oq-settings-odu-launchers">
         <div class="oq-settings-section-head">
-          <div class="oq-settings-section-head-meta"><p class="oq-helper-label">Buitenunit</p><span class="oq-settings-section-badge oq-settings-section-badge--experimental">Niet permanent opgeslagen</span></div>
-          <h3>Instellingen buitenunit</h3>
-          <p>Hier wijzig je instellingen die direct door de buitenunit worden gebruikt. Na een herstart gebruikt de buitenunit weer de waarden uit haar eigen geheugen.</p>
+          <div class="oq-settings-section-head-meta"><p class="oq-helper-label">${escapeHtml(t("settingsInstallation.oduKicker"))}</p><span class="oq-settings-section-badge oq-settings-section-badge--experimental">${escapeHtml(t("settingsInstallation.oduExperimental"))}</span></div>
+          <h3>${escapeHtml(t("settingsInstallation.oduTitle"))}</h3>
+          <p>${escapeHtml(t("settingsInstallation.oduCopy"))}</p>
         </div>
         <div class="oq-settings-section-body oq-settings-odu-launcher-list">
           ${renderSettingsSystemRow({
-            label: "Bodemplaatverwarming",
-            value: "Regelmethode en temperatuurgrenzen",
-            note: "OpenQuatt kan jouw keuze bewaren en na een herstart veilig opnieuw toepassen.",
-            action: '<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="open-odu-bottom-plate-settings">Instellen</button>',
+            label: t("settingsInstallation.oduBottomTitle"),
+            value: t("settingsInstallation.oduBottomValue"),
+            note: t("settingsInstallation.oduBottomNote"),
+            action: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="open-odu-bottom-plate-settings">${escapeHtml(t("settingsInstallation.oduBottomAction"))}</button>`,
           })}
           ${renderSettingsSystemRow({
-            label: "Frequentietabel",
-            value: `${hpIndexes.length === 2 ? "Twee buitenunits" : "Eén buitenunit"}`,
-            note: "Direct aanpassen voor gecontroleerde tests; OpenQuatt bewaart deze tabel niet.",
-            action: '<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="open-odu-frequency-settings">Openen</button>',
+            label: t("settingsInstallation.oduFreqTitle"),
+            value: hpIndexes.length === 2 ? t("settingsInstallation.oduFreqDual") : t("settingsInstallation.oduFreqSingle"),
+            note: t("settingsInstallation.oduFreqNote"),
+            action: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="open-odu-frequency-settings">${escapeHtml(t("settingsInstallation.oduFreqAction"))}</button>`,
           })}
         </div>
       </section>`;
@@ -56,12 +53,12 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
 
   export function renderInstallationMonitoringBadge(
     active,
-    activeLabel = "Aandacht",
-    clearLabel = "OK",
+    activeLabel = null,
+    clearLabel = null,
     activeTone = "warning",
   ) {
     const tone = active ? activeTone : "clear";
-    return `<span class="oq-settings-monitoring-badge is-${escapeHtml(tone)}">${escapeHtml(active ? activeLabel : clearLabel)}</span>`;
+    return `<span class="oq-settings-monitoring-badge is-${escapeHtml(tone)}">${escapeHtml(active ? (activeLabel ?? t("settingsInstallation.badgeAttention")) : (clearLabel ?? t("settingsInstallation.badgeOk")))}</span>`;
   }
 
   export function renderInstallationMonitoringStatusRow({ label, value, note = "", active = false }) {
@@ -92,17 +89,17 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     const lastSeen = formatIncidentOccurrenceTime(incident.lastSeenS, incident.lastSeenMs);
     const technicalCode = getIncidentTechnicalCode(incident);
     const details = [
-      technicalCode ? ["ODU-code", technicalCode] : null,
-      incident.technicalDescription ? ["ODU-omschrijving", incident.technicalDescription] : null,
-      effects.length ? ["Effect", effects.join(", ")] : null,
-      consequenceNote ? ["Gevolg", consequenceNote] : null,
-      firstSeen ? ["Eerste optreden", firstSeen] : null,
-      lastSeen ? ["Laatste optreden", lastSeen] : null,
-      incident.recoveryCondition ? ["Herstel", getIncidentRecoveryLabel(incident.recoveryCondition)] : null,
+      technicalCode ? [t("settingsInstallation.dtOduCode"), technicalCode] : null,
+      incident.technicalDescription ? [t("settingsInstallation.dtOduDesc"), incident.technicalDescription] : null,
+      effects.length ? [t("settingsInstallation.dtEffect"), effects.join(", ")] : null,
+      consequenceNote ? [t("settingsInstallation.dtConsequence"), consequenceNote] : null,
+      firstSeen ? [t("settingsInstallation.dtFirstSeen"), firstSeen] : null,
+      lastSeen ? [t("settingsInstallation.dtLastSeen"), lastSeen] : null,
+      incident.recoveryCondition ? [t("settingsInstallation.dtRecovery"), getIncidentRecoveryLabel(incident.recoveryCondition)] : null,
       getIncidentUserActionLabel(incident.userAction)
-        ? ["Gebruikersactie", getIncidentUserActionLabel(incident.userAction)]
+        ? [t("settingsInstallation.dtUserAction"), getIncidentUserActionLabel(incident.userAction)]
         : null,
-      incident.occurrenceCount > 1 ? ["Bevestigd", `${incident.occurrenceCount} keer sinds controllerstart`] : null,
+      incident.occurrenceCount > 1 ? [t("settingsInstallation.dtConfirmed"), t("settingsInstallation.dtConfirmedValue", { count: formatNumber(incident.occurrenceCount, { maximumFractionDigits: 0 }) })] : null,
       ...getPumpIncidentContextRows(incident, pumpContext),
     ].filter(Boolean);
     return `
@@ -151,13 +148,13 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
       <div class="oq-settings-monitoring-rows">
         <div class="oq-settings-monitoring-row${presentation.tone === "clear" ? "" : " is-warning"}">
           <div>
-            <p>Warmtepomp ${escapeHtml(heatPump.index)}</p>
+            <p>${escapeHtml(t("settingsInstallation.hpUnitTitle", { index: heatPump.index }))}</p>
             <strong>${escapeHtml(presentation.label)}</strong>
             <span>${escapeHtml(presentation.note)}</span>
           </div>
           ${renderInstallationMonitoringBadge(
             presentation.tone !== "clear",
-            presentation.tone === "fault" ? "Niet beschikbaar" : "Begrensd",
+            presentation.tone === "fault" ? t("settingsInstallation.badgeUnavailable") : t("settingsInstallation.badgeLimited"),
             presentation.label,
             presentation.tone,
           )}
@@ -180,9 +177,9 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
                 ${actionPending ? "disabled" : ""}
               >${state.incidentAction?.pending && state.incidentAction.hp === heatPump.index
                 && state.incidentAction.kind === "start_failure_retry"
-                  ? "Retry wordt verwerkt..."
-                  : `Startretry HP${heatPump.index}`}</button>
-              <span>Alleen na een bevestigde veilige stop; actieve fouten, verbindingsherstel en andere startblokkades blijven gelden.</span>
+                  ? escapeHtml(t("settingsInstallation.retryBusy"))
+                  : escapeHtml(t("settingsInstallation.retryLabel", { index: heatPump.index }))}</button>
+              <span>${escapeHtml(t("settingsInstallation.retryNote"))}</span>
             </div>
           </div>
         ` : ""}
@@ -197,9 +194,9 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
                 ${actionPending ? "disabled" : ""}
               >${state.incidentAction?.pending && state.incidentAction.hp === heatPump.index
                 && state.incidentAction.kind === "confirm_odu_power_cycle"
-                  ? "Bevestiging wordt verwerkt..."
-                  : `ODU-powercycle HP${heatPump.index} bevestigen`}</button>
-              <span>Alleen nadat buitenunit HP${escapeHtml(heatPump.index)} werkelijk spanningsloos is geweest; dit geeft uitsluitend de herstelde safety-latch van deze HP vrij.</span>
+                  ? escapeHtml(t("settingsInstallation.powerBusy"))
+                  : escapeHtml(t("settingsInstallation.powerLabel", { index: heatPump.index }))}</button>
+              <span>${escapeHtml(t("settingsInstallation.powerNote", { index: heatPump.index }))}</span>
             </div>
           </div>
         ` : ""}
@@ -207,13 +204,13 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           <div class="oq-settings-monitoring-incident">
             <div class="oq-settings-monitoring-incident-head">
               <div>
-                <p>Herstelactie</p>
+                <p>${escapeHtml(t("settingsInstallation.recoveryTitle"))}</p>
                 <strong>${escapeHtml(incidentAction.label)}</strong>
               </div>
               ${renderInstallationMonitoringBadge(
                 incidentAction.tone !== "clear",
-                incidentAction.tone === "fault" ? "Geweigerd" : "In behandeling",
-                "Uitgevoerd",
+                incidentAction.tone === "fault" ? t("settingsInstallation.badgeRefused") : t("settingsInstallation.badgePending"),
+                t("settingsInstallation.badgeDone"),
                 incidentAction.tone,
               )}
             </div>
@@ -239,15 +236,15 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     return `
       <article class="oq-settings-monitoring-card">
         <header>
-          <p>Warmtepompen</p>
+          <p>${escapeHtml(t("settingsInstallation.hpPanelTitle"))}</p>
           ${renderInstallationMonitoringBadge(
             visibleIncidents.some((incident) => incident.category !== "status"),
-            "Incident",
-            "OK",
+            t("settingsInstallation.hpPanelBadgeIncident"),
+            t("settingsInstallation.badgeOk"),
             "warning",
           )}
         </header>
-        <span>Bevestigde status per warmtepomp. Een korte communicatiehapering wordt eerst gecontroleerd voordat OpenQuatt ingrijpt.</span>
+        <span>${escapeHtml(t("settingsInstallation.hpPanelCopy"))}</span>
         <div class="oq-settings-monitoring-rows">
           ${heatPumps.map(renderInstallationMonitoringHeatPumpUnit).join("")}
         </div>
@@ -255,10 +252,10 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           <div class="oq-settings-monitoring-incident-action">
             ${renderNamedActionButton(
               "acknowledgeHpIncidents",
-              "Herstelde meldingen bevestigen",
+              t("settingsInstallation.ackButton"),
               "oq-helper-button oq-helper-button--ghost",
             )}
-            <span>Alleen herstelde, vastgehouden meldingen verdwijnen; actieve incidenten blijven staan.</span>
+            <span>${escapeHtml(t("settingsInstallation.ackNote"))}</span>
           </div>
         ` : ""}
       </article>
@@ -273,41 +270,41 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     if (controlMode === 3) {
       return commandActive
         ? {
-          title: "CM3 · CV ondersteunt",
-          copy: "De warmtepomp blijft de primaire warmtebron; de CV-ketel vult tijdelijk aan.",
+          title: t("settingsInstallation.cm3Title"),
+          copy: t("settingsInstallation.cm3Copy"),
           tone: "clear",
         }
         : {
-          title: "CM3 · ondersteuningsrol niet actief",
-          copy: "CM3 is de regelrol, maar de ketel wordt op dit moment niet aangestuurd.",
+          title: t("settingsInstallation.cm3InactiveTitle"),
+          copy: t("settingsInstallation.cm3InactiveCopy"),
           tone: "warning",
         };
     }
     if (controlMode === 4) {
       return commandActive
         ? {
-          title: "CM4 · ketelfallback aangestuurd",
-          copy: "De warmtepompen zijn niet inzetbaar; de CV-ketel krijgt de verwarmingsopdracht.",
+          title: t("settingsInstallation.cm4Title"),
+          copy: t("settingsInstallation.cm4Copy"),
           tone: "fault",
         }
         : {
-          title: "CM4 · fallback niet actief",
+          title: t("settingsInstallation.cm4InactiveTitle"),
           copy: system.fallbackBlockReason
-            ? `De fallbackrol is gekozen, maar de ketel wordt niet aangestuurd. Blokkade: ${getFallbackBlockReasonLabel(system.fallbackBlockReason)}.`
-            : "De fallbackrol is gekozen, maar de ketel wordt niet aangestuurd; er is geen blokkadereden aangeleverd.",
+            ? t("settingsInstallation.cm4InactiveBlocked", { reason: getFallbackBlockReasonLabel(system.fallbackBlockReason) })
+            : t("settingsInstallation.cm4InactiveNoReason"),
           tone: "fault",
         };
     }
     if (action === "fallback_blocked") {
       return {
         title: actionPresentation.label,
-        copy: `${actionPresentation.copy} Blokkade: ${getFallbackBlockReasonLabel(system.fallbackBlockReason)}.`,
+        copy: t("settingsInstallation.fallbackBlockedCopy", { copy: actionPresentation.copy, reason: getFallbackBlockReasonLabel(system.fallbackBlockReason) }),
         tone: "fault",
       };
     }
     return {
-      title: controlMode >= 0 ? `CM${controlMode} · normale regeling` : "Normale regeling",
-      copy: "Er is geen bijzondere ketelreactie voor een warmtepompincident actief.",
+      title: controlMode >= 0 ? t("settingsInstallation.normalTitleMode", { mode: controlMode }) : t("settingsInstallation.normalTitle"),
+      copy: t("settingsInstallation.normalCopy"),
       tone: "clear",
     };
   }
@@ -321,24 +318,24 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     const continuityCopy = system.boilerCommandActive
       && system.boilerTransition === "assist_to_fallback_continuous"
       && system.boilerOutputContinuous === true
-      ? "Overgang CM3 → CM4: de ketelopdracht bleef volgens de controller actief en kreeg geen uit/aan-puls."
+      ? t("settingsInstallation.continuityCopy")
       : "";
     return `
       <article class="oq-settings-monitoring-card oq-settings-monitoring-system">
         <header>
-          <p>Systeemreactie</p>
+          <p>${escapeHtml(t("settingsInstallation.systemPanelTitle"))}</p>
           ${renderInstallationMonitoringBadge(
             reaction.tone !== "clear",
-            reaction.tone === "fault" ? "Fallback" : "Inactief",
-            "Normaal",
+            reaction.tone === "fault" ? t("settingsInstallation.badgeFallback") : t("settingsInstallation.badgeInactive"),
+            t("settingsInstallation.badgeNormal"),
             reaction.tone === "fault" ? "fault" : "warning",
           )}
         </header>
         <strong class="oq-settings-monitoring-card-value">${escapeHtml(reaction.title)}</strong>
         <span>${escapeHtml(reaction.copy)}</span>
         ${continuityCopy ? renderInstallationMonitoringStatusRow({
-          label: "Overgang CM3 → CM4",
-          value: "Geen uit/aan-puls",
+          label: t("settingsInstallation.transitionLabel"),
+          value: t("settingsInstallation.transitionValue"),
           note: continuityCopy,
         }) : ""}
       </article>
@@ -353,30 +350,30 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
   export function formatInstallationMonitoringLastStart(key) {
     const ageMinutes = getEntityNumericValue(key);
     if (Number.isNaN(ageMinutes)) {
-      return "Nog niet gemeten";
+      return t("settingsInstallation.lastStartNever");
     }
     if (ageMinutes < 1) {
-      return "Zojuist";
+      return t("settingsInstallation.lastStartJust");
     }
     if (ageMinutes < 60) {
-      return `${Math.round(ageMinutes)} min geleden`;
+      return t("settingsInstallation.lastStartMinutes", { minutes: formatNumber(Math.round(ageMinutes), { maximumFractionDigits: 0 }) });
     }
     const hours = Math.floor(ageMinutes / 60);
     const minutes = Math.round(ageMinutes % 60);
-    return `${hours}u ${minutes}m geleden`;
+    return t("settingsInstallation.lastStartHours", { hours: formatNumber(hours, { maximumFractionDigits: 0 }), minutes: formatNumber(minutes, { maximumFractionDigits: 0 }) });
   }
 
   export function formatInstallationMonitoringEpoch(key) {
     const epoch = getEntityNumericValue(key);
     if (Number.isNaN(epoch) || epoch <= 0) {
-      return "Tijdstip onbekend";
+      return t("settingsInstallation.epochUnknown");
     }
-    return new Intl.DateTimeFormat("nl-NL", {
+    return formatDateTime(epoch * 1000, {
       day: "2-digit",
       month: "short",
       hour: "2-digit",
       minute: "2-digit",
-    }).format(new Date(epoch * 1000));
+    });
   }
 
   export function renderInstallationMonitoringCyclingIncident(monitoring) {
@@ -396,35 +393,35 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
       <div class="oq-settings-monitoring-incident${monitoring.cyclingAlertActive ? " is-active" : " is-recovered"}">
         <div class="oq-settings-monitoring-incident-head">
           <div>
-            <p>Pendelmelding</p>
-            <strong>${monitoring.cyclingAlertActive ? "Pendelen is nu actief" : "Pendelen is niet meer actief"}</strong>
+            <p>${escapeHtml(t("settingsInstallation.cycleTitle"))}</p>
+            <strong>${escapeHtml(monitoring.cyclingAlertActive ? t("settingsInstallation.cycleActive") : t("settingsInstallation.cycleRecovered"))}</strong>
           </div>
-          ${renderInstallationMonitoringBadge(monitoring.cyclingAlertActive, "Actief", "Hersteld")}
+          ${renderInstallationMonitoringBadge(monitoring.cyclingAlertActive, t("settingsInstallation.cycleBadgeActive"), t("settingsInstallation.cycleBadgeRecovered"))}
         </div>
-        <span>${monitoring.cyclingAlertActive
-          ? "De melding blijft staan nadat de starts weer rustig zijn geworden. Hier zie je de vastgelegde aantallen."
-          : "OpenQuatt bewaart deze melding totdat je haar hieronder bevestigt."}</span>
+        <span>${escapeHtml(monitoring.cyclingAlertActive
+          ? t("settingsInstallation.cycleActiveCopy")
+          : t("settingsInstallation.cycleRecoveredCopy"))}</span>
         <dl>
-          <div><dt>Eerste melding</dt><dd>${escapeHtml(formatInstallationMonitoringEpoch("compressorCyclingAlertFirstSeen"))}</dd></div>
-          <div><dt>Laatste melding</dt><dd>${escapeHtml(formatInstallationMonitoringEpoch("compressorCyclingAlertLastSeen"))}</dd></div>
-          <div><dt>HP1 2 uur</dt><dd>${escapeHtml(hp1Peak2h)} starts</dd></div>
-          <div><dt>HP1 72 uur</dt><dd>${escapeHtml(hp1Peak72h)} starts</dd></div>
-          ${hp2Peak2h ? `<div><dt>HP2 2 uur</dt><dd>${escapeHtml(hp2Peak2h)} starts</dd></div>` : ""}
-          ${hp2Peak72h ? `<div><dt>HP2 72 uur</dt><dd>${escapeHtml(hp2Peak72h)} starts</dd></div>` : ""}
-          ${alternating ? "<div><dt>Patroon</dt><dd>Opvallend vaak om en om</dd></div>" : ""}
+          <div><dt>${escapeHtml(t("settingsInstallation.cycleFirst"))}</dt><dd>${escapeHtml(formatInstallationMonitoringEpoch("compressorCyclingAlertFirstSeen"))}</dd></div>
+          <div><dt>${escapeHtml(t("settingsInstallation.cycleLast"))}</dt><dd>${escapeHtml(formatInstallationMonitoringEpoch("compressorCyclingAlertLastSeen"))}</dd></div>
+          <div><dt>${escapeHtml(t("settingsInstallation.cycleHp1_2h"))}</dt><dd>${escapeHtml(t("settingsInstallation.cycleStartsSuffix", { value: hp1Peak2h }))}</dd></div>
+          <div><dt>${escapeHtml(t("settingsInstallation.cycleHp1_72h"))}</dt><dd>${escapeHtml(t("settingsInstallation.cycleStartsSuffix", { value: hp1Peak72h }))}</dd></div>
+          ${hp2Peak2h ? `<div><dt>${escapeHtml(t("settingsInstallation.cycleHp2_2h"))}</dt><dd>${escapeHtml(t("settingsInstallation.cycleStartsSuffix", { value: hp2Peak2h }))}</dd></div>` : ""}
+          ${hp2Peak72h ? `<div><dt>${escapeHtml(t("settingsInstallation.cycleHp2_72h"))}</dt><dd>${escapeHtml(t("settingsInstallation.cycleStartsSuffix", { value: hp2Peak72h }))}</dd></div>` : ""}
+          ${alternating ? `<div><dt>${escapeHtml(t("settingsInstallation.cyclePattern"))}</dt><dd>${escapeHtml(t("settingsInstallation.cyclePatternValue"))}</dd></div>` : ""}
         </dl>
         <div class="oq-settings-monitoring-incident-action">
           ${state.entities.acknowledgeCompressorCyclingAlert
             ? renderNamedActionButton(
               "acknowledgeCompressorCyclingAlert",
-              "Melding bevestigen",
+              t("settingsInstallation.cycleAck"),
               "oq-helper-button oq-helper-button--ghost",
               monitoring.cyclingAlertActive,
             )
             : ""}
-          <span>${monitoring.cyclingAlertActive
-            ? "Bevestigen wordt beschikbaar zodra het pendelen is gestopt."
-            : "Na bevestigen verdwijnt de herinnering uit het overzicht."}</span>
+          <span>${escapeHtml(monitoring.cyclingAlertActive
+            ? t("settingsInstallation.cycleAckActive")
+            : t("settingsInstallation.cycleAckRecovered"))}</span>
         </div>
       </div>
     `;
@@ -448,40 +445,40 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     const otEnabled = isInstallationMonitoringIntegrationEnabled("otEnabled");
     const hydraulicRows = [
       hasEntity("lowflowFaultActive") ? renderInstallationMonitoringStatusRow({
-        label: "Flow",
-        value: isInstallationMonitoringBinaryActive("lowflowFaultActive") ? "Te lage flow gemeld" : "Geen lage-flowmelding",
+        label: t("settingsInstallation.flowLabel"),
+        value: isInstallationMonitoringBinaryActive("lowflowFaultActive") ? t("settingsInstallation.flowFault") : t("settingsInstallation.flowOk"),
         active: isInstallationMonitoringBinaryActive("lowflowFaultActive"),
       }) : "",
       hasEntity("flowMismatch") ? renderInstallationMonitoringStatusRow({
-        label: "Flowvergelijking duo",
-        value: isInstallationMonitoringBinaryActive("flowMismatch") ? "Afwijking tussen warmtepompen" : "Geen afwijking gemeld",
+        label: t("settingsInstallation.flowDuoLabel"),
+        value: isInstallationMonitoringBinaryActive("flowMismatch") ? t("settingsInstallation.flowDuoFault") : t("settingsInstallation.flowDuoOk"),
         active: isInstallationMonitoringBinaryActive("flowMismatch"),
       }) : "",
     ].filter(Boolean).join("");
     const connectionRows = [
       hasEntity("cicDataStale") ? renderInstallationMonitoringStatusRow({
-        label: "CIC-data",
+        label: t("settingsInstallation.cicLabel"),
         value: !cicPollingEnabled
-          ? "Polling uitgeschakeld"
-          : isInstallationMonitoringBinaryActive("cicDataStale") ? "Verouderd" : "Geen probleem gemeld",
+          ? t("settingsInstallation.cicOff")
+          : isInstallationMonitoringBinaryActive("cicDataStale") ? t("settingsInstallation.cicStale") : t("settingsInstallation.cicOk"),
         active: cicPollingEnabled && isInstallationMonitoringBinaryActive("cicDataStale"),
       }) : "",
       hasEntity("otLinkProblem") ? renderInstallationMonitoringStatusRow({
-        label: "OpenTherm",
+        label: t("settingsInstallation.otLabel"),
         value: !otEnabled
-          ? "Uitgeschakeld"
-          : isInstallationMonitoringBinaryActive("otLinkProblem") ? "Verbindingsprobleem" : "Geen probleem gemeld",
+          ? t("settingsInstallation.otOff")
+          : isInstallationMonitoringBinaryActive("otLinkProblem") ? t("settingsInstallation.otProblem") : t("settingsInstallation.otOk"),
         active: otEnabled && isInstallationMonitoringBinaryActive("otLinkProblem"),
       }) : "",
     ].filter(Boolean).join("");
     const hpRows = structuredIncidentMonitoringAvailable ? "" : [
       hasEntity("hp1Failures") ? renderInstallationMonitoringStatusRow({
-        label: "Warmtepomp 1",
+        label: t("incidents.hp1Label"),
         value: getInstallationMonitoringFailureText("hp1Failures"),
         active: isInstallationMonitoringFailureActive("hp1Failures"),
       }) : "",
       hasEntity("hp2Failures") ? renderInstallationMonitoringStatusRow({
-        label: "Warmtepomp 2",
+        label: t("incidents.hp2Label"),
         value: getInstallationMonitoringFailureText("hp2Failures"),
         active: isInstallationMonitoringFailureActive("hp2Failures"),
       }) : "",
@@ -494,13 +491,13 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
       || monitoring.cyclingAlertLatched;
     const hydraulicPanel = hydraulicRows ? `
       <article class="oq-settings-monitoring-card">
-        <header><p>Hydrauliek</p></header>
+        <header><p>${escapeHtml(t("settingsInstallation.hydraulicsTitle"))}</p></header>
         <div class="oq-settings-monitoring-rows">${hydraulicRows}</div>
       </article>
     ` : "";
     const hpPanel = hpRows ? `
       <article class="oq-settings-monitoring-card">
-        <header><p>Warmtepompen</p></header>
+        <header><p>${escapeHtml(t("settingsInstallation.hpPanelTitle"))}</p></header>
         <div class="oq-settings-monitoring-rows">${hpRows}</div>
       </article>
     ` : "";
@@ -512,34 +509,34 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
       : "";
     const connectionPanel = connectionRows ? `
       <article class="oq-settings-monitoring-card">
-        <header><p>Verbindingen</p></header>
+        <header><p>${escapeHtml(t("settingsInstallation.connectionsTitle"))}</p></header>
         <div class="oq-settings-monitoring-rows">${connectionRows}</div>
       </article>
     ` : "";
 
     return renderSettingsSection(
-      "Bewaking",
-      "Installatiebewaking",
-      "Lokale diagnose van warmtepompincidenten, systeemreactie, compressorstarts, hydrauliek en verbindingen. Hiervoor is geen Home Assistant nodig.",
+      t("settingsInstallation.sectionGroup"),
+      t("settingsInstallation.sectionTitle"),
+      t("settingsInstallation.sectionCopy"),
       `
         <div class="oq-settings-monitoring-summary${monitoring.severity === "fault" ? " is-fault" : monitoring.active ? " is-warning" : " is-clear"}">
           <div>
-            <p>Huidige status</p>
+            <p>${escapeHtml(t("settingsInstallation.summaryKicker"))}</p>
             <strong>${escapeHtml(monitoring.title)}</strong>
             <span>${escapeHtml(monitoring.copy)}</span>
           </div>
           ${renderInstallationMonitoringBadge(
             monitoring.active,
             monitoring.severity === "fault"
-              ? "Storing"
-              : monitoring.incidentMonitoringStale ? "Niet actueel" : "Aandacht nodig",
-            "Alles rustig",
+              ? t("settingsInstallation.badgeFault")
+              : monitoring.incidentMonitoringStale ? t("settingsInstallation.badgeStale") : t("settingsInstallation.badgeAttentionNeeded"),
+            t("settingsInstallation.badgeCalm"),
             monitoring.severity === "fault" ? "fault" : "warning",
           )}
         </div>
         <details class="oq-settings-monitoring-details"${state.installationMonitoringDetailsOpen ? " open" : ""}>
           <summary data-oq-action="toggle-installation-monitoring-details">
-            <strong>Details en systeemreactie</strong>
+            <strong>${escapeHtml(t("settingsInstallation.detailsTitle"))}</strong>
           </summary>
         ${monitoring.active ? `
           <div class="oq-settings-monitoring-active-list">
@@ -552,33 +549,33 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           ${structuredHpPanel}
           <article class="oq-settings-monitoring-card">
             <header>
-              <p>Compressorstarts</p>
+              <p>${escapeHtml(t("settingsInstallation.startsTitle"))}</p>
               ${renderInstallationMonitoringBadge(
                 compressorWarningActive,
               )}
             </header>
-            <span>Starts sinds de laatste controllerherstart.</span>
+            <span>${escapeHtml(t("settingsInstallation.startsCopy"))}</span>
             ${renderInstallationMonitoringCyclingIncident(monitoring)}
             <div class="oq-starts-panel">
-              <table class="oq-starts"><thead><tr><th scope="col">Warmtepomp</th><th scope="col">Laatste</th><th scope="col" class="is-alarm">2 uur</th><th scope="col">6 uur</th><th scope="col">24 uur</th><th scope="col" class="is-alarm">72 uur</th></tr></thead>
+              <table class="oq-starts"><thead><tr><th scope="col">${escapeHtml(t("settingsInstallation.startsColHp"))}</th><th scope="col">${escapeHtml(t("settingsInstallation.startsColLast"))}</th><th scope="col" class="is-alarm">${escapeHtml(t("settingsInstallation.startsCol2h"))}</th><th scope="col">${escapeHtml(t("settingsInstallation.startsCol6h"))}</th><th scope="col">${escapeHtml(t("settingsInstallation.startsCol24h"))}</th><th scope="col" class="is-alarm">${escapeHtml(t("settingsInstallation.startsCol72h"))}</th></tr></thead>
                 <tbody>
-                  ${renderInstallationMonitoringCompressorUnit("Warmtepomp 1", "hp1")}
-                  ${renderInstallationMonitoringCompressorUnit("Warmtepomp 2", "hp2")}
+                  ${renderInstallationMonitoringCompressorUnit(t("incidents.hp1Label"), "hp1")}
+                  ${renderInstallationMonitoringCompressorUnit(t("incidents.hp2Label"), "hp2")}
                 </tbody>
               </table>
               ${state.compressorLimitsOpen ? `
                 <div class="oq-start-editor">
-                  <strong>Alarmgrenzen</strong>
+                  <strong>${escapeHtml(t("settingsInstallation.limitsTitle"))}</strong>
                   <div class="oq-start-fields" id="oq-start-fields">
-                    ${renderSettingsMiniNumberField("compressorStarts2hWarningLimit", "2 uur", "", { compact: true })}
-                    ${renderSettingsMiniNumberField("compressorStarts72hWarningLimit", "72 uur", "", { compact: true })}
+                    ${renderSettingsMiniNumberField("compressorStarts2hWarningLimit", t("settingsInstallation.startsCol2h"), "", { compact: true })}
+                    ${renderSettingsMiniNumberField("compressorStarts72hWarningLimit", t("settingsInstallation.startsCol72h"), "", { compact: true })}
                   </div>
-                  <button type="button" class="oq-helper-button oq-helper-button--ghost oq-start-done" data-oq-action="toggle-compressor-limits" aria-expanded="true" aria-controls="oq-start-fields">Gereed</button>
+                  <button type="button" class="oq-helper-button oq-helper-button--ghost oq-start-done" data-oq-action="toggle-compressor-limits" aria-expanded="true" aria-controls="oq-start-fields">${escapeHtml(t("settingsInstallation.limitsDone"))}</button>
                 </div>
               ` : `
                 <button type="button" class="oq-start-summary" data-oq-action="toggle-compressor-limits" aria-expanded="false">
-                  <span><strong>Alarmgrenzen</strong><span>${Number.isNaN(compressorLimit2h) ? "—" : Math.round(compressorLimit2h)} / 2 uur · ${Number.isNaN(compressorLimit72h) ? "—" : Math.round(compressorLimit72h)} / 72 uur</span></span>
-                  <strong>Aanpassen ›</strong>
+                  <span><strong>${escapeHtml(t("settingsInstallation.limitsTitle"))}</strong><span>${escapeHtml(t("settingsInstallation.limitsSummary", { min: Number.isNaN(compressorLimit2h) ? "—" : Math.round(compressorLimit2h), max: Number.isNaN(compressorLimit72h) ? "—" : Math.round(compressorLimit72h) }))}</span></span>
+                  <strong>${escapeHtml(t("settingsInstallation.limitsAdjust"))}</strong>
                 </button>
               `}
             </div>
@@ -604,25 +601,25 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
 
     const descriptions = {
       V1: {
-        copy: "Voor Quatt V1 en Quatt V1 + V1.5 combinaties.",
+        copy: t("settingsInstallation.genV1Copy"),
         image: HP_GENERATION_IMAGE_V1,
-        alt: "Quatt Hybrid V1 en V1.5",
+        alt: t("settingsInstallation.genV1Alt"),
         infoTitle: "V1",
-        infoCopy: "Model: AMM4\nKenmerken: Flowmeter bij CV-ketel en vorstbeveiligingsklep buiten de buitenunit. Ook geschikt voor gemengde V1/V1.5 duo's.",
+        infoCopy: t("settingsInstallation.genV1Info"),
       },
       "V1.5": {
-        copy: "Voor Quatt V1.5-installaties.",
+        copy: t("settingsInstallation.genV15Copy"),
         image: HP_GENERATION_IMAGE_V1,
-        alt: "Quatt Hybrid V1 en V1.5",
+        alt: t("settingsInstallation.genV1Alt"),
         infoTitle: "V1.5",
-        infoCopy: "Model: AMM4-V1.5\nKenmerken: Flowmeter in de buitenunit geïntegreerd. Onder CV-ketel enkel een kleine clip-on temperatuursensor.",
+        infoCopy: t("settingsInstallation.genV15Info"),
       },
       V2: {
-        copy: "Voor Quatt V2.",
+        copy: t("settingsInstallation.genV2Copy"),
         image: HP_GENERATION_IMAGE_V2,
-        alt: "Quatt Hybrid V2",
+        alt: t("settingsInstallation.genV2Alt"),
         infoTitle: "V2",
-        infoCopy: "Model: AMH6 of AMH6-2\nKenmerken: Flowmeter in de buitenunit geïntegreerd. Onder CV-ketel enkel een kleine clip-on temperatuursensor.",
+        infoCopy: t("settingsInstallation.genV2Info"),
       },
     };
 
@@ -662,15 +659,15 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     }
 
     return renderSettingsSection(
-      "Basis",
-      "Quatt Hybrid-versie",
-      "Kies hier welke Quatt Hybrid je hebt. Deze keuze bepaalt de basis van de regeling.",
+      t("settingsInstallation.genSectionGroup"),
+      t("settingsInstallation.genSectionTitle"),
+      t("settingsInstallation.genSectionCopy"),
       `
         <div class="oq-helper-surface oq-settings-field">
           <div class="oq-gen-current">
             <div>
-              <p class="oq-settings-quickstart-status-label">Huidige versie</p>
-              <strong class="oq-settings-quickstart-status-value">${escapeHtml(currentLabel || "Onbekend")}</strong>
+              <p class="oq-settings-quickstart-status-label">${escapeHtml(t("settingsInstallation.genCurrent"))}</p>
+              <strong class="oq-settings-quickstart-status-value">${escapeHtml(currentLabel || t("settingsInstallation.genUnknown"))}</strong>
             </div>
           <button
             class="oq-helper-button oq-helper-button--ghost"
@@ -678,7 +675,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
             data-oq-action="open-generation-modal"
             ${!canEdit || model.busy ? "disabled" : ""}
           >
-            Aanpassen
+            ${escapeHtml(t("settingsInstallation.genAdjust"))}
           </button>
           </div>
         </div>
@@ -742,7 +739,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
         <select class="oq-helper-select" data-oq-field="boilerConnection" ${state.loadingEntities ? "disabled" : ""}>
           ${boilerConnectionOptions.map((option) => `
             <option value="${escapeHtml(option)}" ${option === boilerConnection ? "selected" : ""}>
-              ${escapeHtml(option === "OpenTherm" ? "OpenTherm (OTB)" : "Aan/uit (R1)")}
+              ${escapeHtml(option === "OpenTherm" ? t("settingsInstallation.boilerConnectionOt") : t("settingsInstallation.boilerConnectionR1"))}
             </option>
           `).join("")}
         </select>
@@ -750,11 +747,11 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
       </label>
     ` : boilerConnectionAvailable ? `
       <div class="oq-settings-boiler-power-empty" role="status" aria-live="polite">
-        <strong>Beschikbaarheid controleren…</strong>
-        <p>De aansluitingskeuze is tijdelijk geblokkeerd.</p>
+        <strong>${escapeHtml(t("settingsInstallation.boilerCheckingTitle"))}</strong>
+        <p>${escapeHtml(t("settingsInstallation.boilerCheckingCopy"))}</p>
       </div>
     ` : "";
-    const boilerPowerMissingHint = "Deze firmware levert nog geen bewerkbare vermogensinstelling voor de warmtebron.";
+    const boilerPowerMissingHint = t("settingsInstallation.boilerPowerMissingHint");
     const boilerPowerControl = boilerPowerEntityAvailable
       ? renderNumberInputControl({
           key: "boilerRatedHeatPower",
@@ -765,76 +762,76 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
         })
       : `
         <div class="oq-settings-boiler-power-empty">
-          <strong>Niet beschikbaar</strong>
+          <strong>${escapeHtml(t("settingsInstallation.boilerPowerMissingTitle"))}</strong>
           <p>${escapeHtml(boilerPowerMissingHint)}</p>
         </div>
       `;
     const boilerPowerFooter = sourcePresent && boilerPowerEntityAvailable
-      ? `<p class="oq-settings-boiler-power-note">Je kunt deze waarde altijd handmatig aanpassen.</p>`
+      ? `<p class="oq-settings-boiler-power-note">${escapeHtml(t("settingsInstallation.boilerPowerNote"))}</p>`
       : "";
     const boilerConnectionFooter = boilerConnection === "OpenTherm" && otbConnectionStateAvailable
       ? otbConnectionState === "ot_verified"
         ? `
           <div class="oq-settings-boiler-connection-note is-success" role="status" aria-live="polite">
-            <strong>OpenTherm-ketel gedetecteerd</strong>
-            <p>${boilerConnectionAutoSelected ? "OpenTherm (OTB) is automatisch als ketelaansluiting geselecteerd." : "OpenTherm-verbinding geverifieerd."}</p>
+            <strong>${escapeHtml(t("settingsInstallation.otVerifiedTitle"))}</strong>
+            <p>${escapeHtml(boilerConnectionAutoSelected ? t("settingsInstallation.otVerifiedAuto") : t("settingsInstallation.otVerifiedManual"))}</p>
           </div>
         `
         : otbConnectionState === "ot_no_response"
           ? `
             <div class="oq-settings-boiler-connection-note is-warning" role="alert">
-              <strong>Geen OpenTherm-ketel gevonden</strong>
-              <p>Controleer of OTB is aangesloten op de OpenTherm-aansluiting van je ketel. Heeft je ketel een gewone aan/uit-thermostaataansluiting? Gebruik dan R1.</p>
+              <strong>${escapeHtml(t("settingsInstallation.otNoResponseTitle"))}</strong>
+              <p>${escapeHtml(t("settingsInstallation.otNoResponseCopy"))}</p>
             </div>
           `
           : otbConnectionState === "ot_link_lost"
             ? `
               <div class="oq-settings-boiler-connection-note is-warning" role="alert">
-                <strong>OpenTherm-verbinding verloren</strong>
-                <p>De ketel reageerde eerder via OpenTherm. Controleer OTB en de ketel.</p>
+                <strong>${escapeHtml(t("settingsInstallation.otLostTitle"))}</strong>
+                <p>${escapeHtml(t("settingsInstallation.otLostCopy"))}</p>
               </div>
             `
             : `
               <div class="oq-settings-boiler-connection-note" role="status" aria-live="polite">
-                <strong>OpenTherm-verbinding controleren…</strong>
-                <p>Wachten op een geldige reactie van de ketel.</p>
+                <strong>${escapeHtml(t("settingsInstallation.otCheckingTitle"))}</strong>
+                <p>${escapeHtml(t("settingsInstallation.otCheckingCopy"))}</p>
               </div>
             `
       : boilerConnectionAutoSelected
         ? `
           <div class="oq-settings-boiler-connection-note is-success" role="status" aria-live="polite">
-            <strong>OpenTherm-ketel gedetecteerd</strong>
-            <p>OpenTherm (OTB) is automatisch als ketelaansluiting geselecteerd.</p>
+            <strong>${escapeHtml(t("settingsInstallation.otVerifiedTitle"))}</strong>
+            <p>${escapeHtml(t("settingsInstallation.otVerifiedAuto"))}</p>
           </div>
         `
         : boilerConnection === "R1" && openthermBoilerSupported
           ? boilerConnectionMismatch
             ? `
               <div class="oq-settings-boiler-connection-note is-warning" role="alert">
-                <strong>OpenTherm-ketel gevonden</strong>
-                <p>Kies OpenTherm (OTB).</p>
+                <strong>${escapeHtml(t("settingsInstallation.otFoundTitle"))}</strong>
+                <p>${escapeHtml(t("settingsInstallation.otFoundCopy"))}</p>
               </div>
             `
-            : `<p class="oq-settings-boiler-connection-note">OT-controle bij opstart actief.</p>`
+            : `<p class="oq-settings-boiler-connection-note">${escapeHtml(t("settingsInstallation.otCheckActive"))}</p>`
           : "";
     const supportSwitchingFields = !isCurveMode() && sourcePresent && assistEnabled
       ? [
           renderSettingsNumberField(
             "boilerSupportStartThreshold",
-            "Ondersteuning starten vanaf",
-            "Standaard 1000 W. Power House moet eerst minimaal 2 minuten zonder aanvullende warmtebron draaien; daarna moet het warmtetekort 5 minuten onafgebroken boven deze grens blijven.",
+            t("settingsInstallation.supportStartTitle"),
+            t("settingsInstallation.supportStartCopy"),
           ),
           renderSettingsNumberField(
             "boilerSupportStopThreshold",
-            "Ondersteuning stoppen onder",
-            "Standaard 400 W. De aanvullende warmtebron blijft minimaal 5 minuten actief en stopt pas wanneer het warmtetekort daarna 2 minuten onder deze grens blijft.",
+            t("settingsInstallation.supportStopTitle"),
+            t("settingsInstallation.supportStopCopy"),
           ),
         ].filter(Boolean).join("")
       : "";
     const supportSwitchingMarkup = renderSettingsAdvancedDisclosure(
       "boiler-support",
-      "Wanneer hybride ondersteuning start en stopt",
-      "Alleen voor Power House. Het warmtetekort is het gevraagde woningvermogen min het maximaal beschikbare warmtepompvermogen, met minimaal 0 W. Tussen beide grenzen blijft de huidige toestand behouden. Deze waarden veranderen het beschikbare verwarmingsvermogen en de aansturing niet.",
+      t("settingsInstallation.supportAdvancedTitle"),
+      t("settingsInstallation.supportAdvancedCopy"),
       supportSwitchingFields ? `<div class="oq-settings-grid">${supportSwitchingFields}</div>` : "",
     );
 
@@ -842,11 +839,11 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
         <div class="${escapeHtml(className)}">
           ${renderSettingsFieldCard(
             sourcePresenceKey,
-            "Warmtebron aangesloten",
-            "Zet dit aan als OpenQuatt een aanvullende warmtebron kan aansturen, zoals een cv-ketel, elektrische cv-ketel (e-cv) of doorstroomverwarmer.",
+            t("settingsInstallation.sourceTitle"),
+            t("settingsInstallation.sourceCopy"),
             `
               <div class="oq-settings-compact-switch-field">
-                ${renderSettingsCompactSwitchControl(sourcePresenceKey, "Warmtebron aangesloten", sourcePresent, sourcePresentBusy)}
+                ${renderSettingsCompactSwitchControl(sourcePresenceKey, t("settingsInstallation.sourceTitle"), sourcePresent, sourcePresentBusy)}
               </div>
             `,
             "oq-settings-field--compact",
@@ -854,12 +851,12 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
 
           ${(sourcePresent || boilerConnectionMismatch || boilerConnectionAutoSelected) && boilerConnectionAvailable ? renderSettingsFieldCard(
             "boilerConnection",
-            "Aansturing warmtebron",
+            t("settingsInstallation.connectionTitle"),
             !openthermBoilerCapabilityKnown
-              ? "OpenQuatt controleert welke aansturingen deze hardware ondersteunt."
+              ? t("settingsInstallation.connectionChecking")
               : openthermBoilerSupported
-              ? "OTB is voor OpenTherm; R1 voor een gewone aan/uit-thermostaataansluiting."
-              : "Deze hardware ondersteunt alleen de aan/uit-aansluiting via R1.",
+              ? t("settingsInstallation.connectionBoth")
+              : t("settingsInstallation.connectionR1Only"),
             boilerConnectionControl,
             "oq-settings-field--compact",
             boilerConnectionFooter,
@@ -867,8 +864,8 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
 
           ${sourcePresent ? renderSettingsFieldCard(
             "boilerRatedHeatPower",
-            "Beschikbaar verwarmingsvermogen",
-            "Vul hier het vermogen in dat OpenQuatt mag meerekenen.",
+            t("settingsInstallation.powerTitle"),
+            t("settingsInstallation.powerCopy"),
             `
               <div class="oq-settings-boiler-power-inline">
                 ${boilerPowerControl}
@@ -879,13 +876,13 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           ) : ""}
           ${sourcePresent && separateSourcePolicyAvailable && assistSettingAvailable ? renderSettingsFieldCard(
             "boilerCvAssistEnabled",
-            AUX_HEAT_ASSIST_TITLE,
-            "Laat de aanvullende warmtebron meeverwarmen wanneer het beschikbare warmtepompvermogen niet genoeg is voor de warmtevraag en tijdens een koude opstart van 5 tot 12 °C.",
+            t("settingsInstallation.assistTitle"),
+            t("settingsInstallation.assistCopy"),
             `
               <div class="oq-settings-compact-switch-field">
                 ${renderSettingsCompactSwitchControl(
                   "boilerCvAssistEnabled",
-                  AUX_HEAT_ASSIST_TITLE,
+                  t("settingsInstallation.assistTitle"),
                   assistEnabled,
                   assistBusy,
                 )}
@@ -895,13 +892,13 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
           ) : ""}
           ${sourcePresent && includeFaultFallback && fallbackSettingAvailable ? renderSettingsFieldCard(
             "boilerFaultFallbackEnabled",
-            AUX_HEAT_BACKUP_TITLE,
-            AUX_HEAT_BACKUP_COPY,
+            t("settingsInstallation.backupTitle"),
+            t("settingsInstallation.backupCopy"),
             `
               <div class="oq-settings-compact-switch-field">
                 ${renderSettingsCompactSwitchControl(
                   "boilerFaultFallbackEnabled",
-                  AUX_HEAT_BACKUP_TITLE,
+                  t("settingsInstallation.backupTitle"),
                   fallbackEnabled,
                   fallbackBusy,
                 )}
@@ -924,11 +921,11 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
       ? isEntityActive("auxHeatSourcePresent")
       : isEntityActive("boilerCvAssistEnabled");
     return renderSettingsSection(
-      "Basis",
-      "Aanvullende warmtebron",
+      t("settingsInstallation.boilerSectionGroup"),
+      t("settingsInstallation.boilerSectionTitle"),
       sourcePresent
-        ? "Bijvoorbeeld een cv-ketel, elektrische cv-ketel (e-cv) of doorstroomverwarmer. Kies wanneer OpenQuatt deze mag gebruiken."
-        : "Geef aan of OpenQuatt een aanvullende warmtebron kan aansturen, zoals een cv-ketel, elektrische cv-ketel (e-cv) of doorstroomverwarmer.",
+        ? t("settingsInstallation.boilerSectionCopyOn")
+        : t("settingsInstallation.boilerSectionCopyOff"),
       renderBoilerCvFields("oq-settings-grid oq-settings-boiler-simple-grid", true),
     );
   }
@@ -940,16 +937,16 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     }
 
     const labels = {
-      Disabled: "Uitgeschakeld",
-      "No thermal demand": "Geen warmte- of koelvraag",
-      "No heating demand": "Geen warmtevraag",
-      "No cooling demand": "Geen koelvraag",
-      "Heating demand active": "Warmtevraag actief",
-      "Cooling demand active": "Koelvraag actief",
-      "External control": "Externe bediening",
-      "Waiting for warm water": "Wacht op warm aanvoerwater",
-      "Waiting for cold water": "Wacht op koud aanvoerwater",
-      "Supply temperature unavailable": "Aanvoertemperatuur niet beschikbaar",
+      Disabled: t("settingsInstallation.auxDisabled"),
+      "No thermal demand": t("settingsInstallation.auxNoThermal"),
+      "No heating demand": t("settingsInstallation.auxNoHeating"),
+      "No cooling demand": t("settingsInstallation.auxNoCooling"),
+      "Heating demand active": t("settingsInstallation.auxHeatingActive"),
+      "Cooling demand active": t("settingsInstallation.auxCoolingActive"),
+      "External control": t("settingsInstallation.auxExternal"),
+      "Waiting for warm water": t("settingsInstallation.auxWaitWarm"),
+      "Waiting for cold water": t("settingsInstallation.auxWaitCold"),
+      "Supply temperature unavailable": t("settingsInstallation.auxSupplyUnavailable"),
     };
 
     return labels[value] || value;
@@ -967,11 +964,11 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     const statusText = hasEntity("auxRelayStatus") ? formatAuxRelayStatus(getEntityStateText("auxRelayStatus", "")) : "";
     const statusPanel = hasEntity("auxRelayActive") || statusText ? renderSettingsFieldCard(
       "auxRelayStatus",
-      "Huidige status",
-      "Actuele toestand van het hulprelais.",
+      t("settingsInstallation.auxStatusTitle"),
+      t("settingsInstallation.auxStatusCopy"),
       `
         <div class="oq-settings-aux-relay-status">
-          <strong>${escapeHtml(relayOn ? "Relais aan (COM–NO gesloten)" : "Relais uit (COM–NC gesloten)")}</strong>
+          <strong>${escapeHtml(relayOn ? t("settingsInstallation.auxRelayOn") : t("settingsInstallation.auxRelayOff"))}</strong>
           ${statusText ? `<p>${escapeHtml(statusText)}</p>` : ""}
         </div>
       `,
@@ -979,27 +976,27 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     const fields = [
       renderSettingsSelectField(
         "auxRelayFunction",
-        "Functie",
-        "Kies wat relais R2 volgt. R2 volgt de effectieve warmte- of koelvraag van OpenQuatt, of kies Externe bediening om R2 via bijvoorbeeld Home Assistant of de REST-API te schakelen.",
+        t("settingsInstallation.auxFunctionTitle"),
+        t("settingsInstallation.auxFunctionCopy"),
       ),
       statusPanel,
       demandFunctionSelected ? renderSettingsSwitchField(
         "auxWaitForSupplyTemp",
-        "Wacht op aanvoertemperatuur",
-        "Aan: R2 schakelt bij vraag pas in zodra het aanvoerwater op temperatuur is (warm genoeg bij verwarmen, koud genoeg bij koelen).",
-        "R2 wacht op de startdrempels hieronder.",
-        "R2 schakelt direct bij vraag, ongeacht de watertemperatuur.",
+        t("settingsInstallation.auxWaitTitle"),
+        t("settingsInstallation.auxWaitOn"),
+        t("settingsInstallation.auxWaitOffOn"),
+        t("settingsInstallation.auxWaitOffOff"),
         "oq-settings-field--span-2",
       ) : "",
-      tempGateEnabled ? renderSettingsNumberField("auxHeatingStartTemp", "Startdrempel verwarmen", "Bij warmtevraag schakelt R2 pas in zodra het aanvoerwater minstens deze temperatuur heeft.") : "",
-      tempGateEnabled ? renderSettingsNumberField("auxCoolingStartTemp", "Startdrempel koelen", "Bij koelvraag schakelt R2 pas in zodra het aanvoerwater maximaal deze temperatuur heeft.") : "",
-      tempGateEnabled ? renderSettingsNumberField("auxTempHysteresis", "Hysterese aanvoertemperatuur", "Marge waarmee de startdrempel weer verlaten moet worden voordat R2 uitschakelt. Voorkomt snel aan/uit schakelen rond de grens.") : "",
+      tempGateEnabled ? renderSettingsNumberField("auxHeatingStartTemp", t("settingsInstallation.auxHeatStartTitle"), t("settingsInstallation.auxHeatStartCopy")) : "",
+      tempGateEnabled ? renderSettingsNumberField("auxCoolingStartTemp", t("settingsInstallation.auxCoolStartTitle"), t("settingsInstallation.auxCoolStartCopy")) : "",
+      tempGateEnabled ? renderSettingsNumberField("auxTempHysteresis", t("settingsInstallation.auxHysteresisTitle"), t("settingsInstallation.auxHysteresisCopy")) : "",
     ].filter(Boolean);
 
     return renderSettingsSection(
-      "Basis",
-      "Hulprelais (R2)",
-      "Gebruik het tweede potentiaalvrije relais van de controller als optionele hulpuitgang, bijvoorbeeld voor een fancoil, pomp of klep. Standaard staat deze functie uit.",
+      t("settingsInstallation.auxSectionGroup"),
+      t("settingsInstallation.auxSectionTitle"),
+      t("settingsInstallation.auxSectionCopy"),
       `
         <div class="oq-settings-grid">
           ${fields.join("")}
@@ -1009,22 +1006,22 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
   }
 
   export function renderSettingsQuickStartSection() {
-    const statusLabel = state.complete === true ? "Afgerond" : state.complete === false ? "Open" : "Laden...";
+    const statusLabel = state.complete === true ? t("settings.qsDone") : state.complete === false ? t("settings.qsOpen") : t("settings.qsLoading");
     const statusCopy = state.complete === true
-      ? "Quick Start is afgerond. Je kunt de status hier altijd weer openen met een reset."
+      ? t("settings.qsDoneCopy")
       : state.complete === false
-        ? "Quick Start staat nog open. Gebruik de resetknop om opnieuw te beginnen."
-        : "De status van Quick Start wordt nog geladen.";
+        ? t("settings.qsOpenCopy")
+        : t("settings.qsLoadingCopy");
 
     return renderSettingsSection(
-      "Setup",
-      "Quick Start",
-      "Bekijk of de Quick Start nog open staat of al is afgerond.",
+      t("settingsInstallation.qsSectionGroup"),
+      t("settingsInstallation.qsSectionTitle"),
+      t("settingsInstallation.qsSectionCopy"),
       `
         <div class="oq-settings-quickstart-status">
           <div class="oq-settings-quickstart-status-row">
             <div>
-              <p class="oq-settings-quickstart-status-label">Huidige status</p>
+              <p class="oq-settings-quickstart-status-label">${escapeHtml(t("settings.qsCurrentStatus"))}</p>
               <strong class="oq-settings-quickstart-status-value">${escapeHtml(statusLabel)}</strong>
             </div>
             <button
@@ -1033,7 +1030,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
               data-oq-action="reset"
               ${state.busyAction === "reset" ? "disabled" : ""}
             >
-              Reset status
+              ${escapeHtml(t("settings.qsReset"))}
             </button>
           </div>
           <p class="oq-settings-quickstart-status-copy">${escapeHtml(statusCopy)}</p>
@@ -1048,7 +1045,7 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
       type="button"
       data-oq-action="${escapeHtml(action)}"
     >
-      Openen
+      ${escapeHtml(t("settingsInstallation.openAction"))}
     </button>`;
   }
 
@@ -1058,82 +1055,82 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
     const busyRestart = state.busyAction === "restartAction";
     const busyFactoryReset = state.busyAction === "factoryResetButton";
     const activeConnection = hasEntity("connectionText")
-      ? getEntityStateText("connectionText", "Niet verbonden").replace("Not connected", "Niet verbonden")
+      ? getEntityStateText("connectionText", t("header.connNotConnected")).replace("Not connected", t("header.connNotConnected"))
       : getConnectivityStatus();
     const ipAddress = getDeviceIpAddress();
 
     return renderSettingsSection(
-      "Diagnostiek",
-      "Systeemstatus",
-      "Snelle statusinformatie voor support, controle en onderhoud.",
+      t("settingsInstallation.diagSectionGroup"),
+      t("settingsInstallation.diagSectionTitle"),
+      t("settingsInstallation.diagSectionCopy"),
       `
         <div class="oq-settings-system-summary">
-          ${renderSettingsSystemRow({ dataValue: "uptime", label: "Uptime", value: formatUptimeFromMeta() })}
+          ${renderSettingsSystemRow({ dataValue: "uptime", label: t("settingsInstallation.diagUptime"), value: formatUptimeFromMeta() })}
           ${renderSettingsSystemRow({
             dataValue: "connectivity",
-            label: "Connectiviteit",
+            label: t("settingsInstallation.diagConnectivity"),
             value: activeConnection,
-            note: ipAddress === "—" ? "" : `IP-adres ${ipAddress}`,
+            note: ipAddress === "—" ? "" : t("settingsInstallation.diagIpPrefix", { ip: ipAddress }),
             action: renderSettingsSystemOpenAction("open-connectivity-modal"),
           })}
           ${renderSettingsSystemRow({
             dataValue: "updates",
-            label: "Updates",
+            label: t("settingsInstallation.diagUpdates"),
             value: updateStatus,
             action: renderSettingsSystemOpenAction("open-update-modal"),
           })}
           ${renderSettingsSystemRow({
             dataValue: "webserverLog",
-            label: "Logboek",
+            label: t("settingsInstallation.diagLog"),
             value: getWebServerLogStatusLabel(),
             action: renderSettingsSystemOpenAction("open-webserver-log-modal"),
           })}
           ${renderSettingsSystemRow({
             dataValue: "debugRecording",
-            label: "Debugopname",
+            label: t("settingsInstallation.diagRecorder"),
             value: getDebugRecordingStatusLabel(),
             note: getDebugRecordingStatusCopy(),
             action: renderSettingsSystemOpenAction("open-debug-recording-modal"),
           })}
-          ${renderSettingsSystemRow({ dataValue: "datetime", label: "Datum/tijd", value: dateTime })}
-          ${renderSettingsSystemRow({ dataValue: "espTemp", label: "ESP-temp", value: getEspTemperatureLabel() })}
+          ${renderSettingsSystemRow({ dataValue: "datetime", label: t("settingsInstallation.diagDatetime"), value: dateTime })}
+          ${renderSettingsSystemRow({ dataValue: "espTemp", label: t("settingsInstallation.diagEspTemp"), value: getEspTemperatureLabel() })}
           ${renderSettingsSystemRow({
             dataValue: "restart",
-            label: "Herstart OpenQuatt",
-            value: "Opnieuw opstarten",
-            note: "Dit onderbreekt de webinterface kort.",
+            label: t("settingsInstallation.diagRestart"),
+            value: t("settingsInstallation.diagRestartValue"),
+            note: t("settingsInstallation.diagRestartNote"),
             action: `<button
               class="oq-helper-button oq-helper-button--warning"
               type="button"
               data-oq-action="open-restart-confirm"
               ${busyRestart ? "disabled" : ""}
             >
-              ${busyRestart ? "Herstarten..." : "Herstarten"}
+              ${busyRestart ? escapeHtml(t("settingsInstallation.diagRestartBusy")) : escapeHtml(t("settingsInstallation.diagRestartNow"))}
             </button>`,
           })}
           ${hasEntity("factoryResetButton") ? renderSettingsSystemRow({
             dataValue: "factory-reset",
-            label: "Factory reset",
-            value: "Terugzetten naar fabrieksinstellingen",
-            note: "Wist alle opgeslagen instellingen en koppelingen. De firmware blijft staan.",
+            label: t("settingsInstallation.diagFactory"),
+            value: t("settingsInstallation.diagFactoryValue"),
+            note: t("settingsInstallation.diagFactoryNote"),
             action: `<button
               class="oq-helper-button oq-helper-button--warning"
               type="button"
               data-oq-action="open-factory-reset-confirm"
               ${busyFactoryReset ? "disabled" : ""}
             >
-              ${busyFactoryReset ? "Resetten..." : "Factory reset"}
+              ${busyFactoryReset ? escapeHtml(t("settingsInstallation.diagFactoryBusy")) : escapeHtml(t("settingsInstallation.diagFactory"))}
             </button>`,
           }) : ""}
           ${hasEntity("statusLedsEnabled") ? `
             ${renderSettingsSystemRow({
               dataValue: "statusLeds",
-              label: "Status-LEDs",
-              value: isEntityActive("statusLedsEnabled") ? "Aan" : "Uit",
-              note: "Schakelt de gele netwerk-LED en rode storings-LED op de Q-edition controller.",
+              label: t("settingsInstallation.diagLeds"),
+              value: isEntityActive("statusLedsEnabled") ? t("common.on") : t("common.off"),
+              note: t("settingsInstallation.diagLedsNote"),
               action: renderSettingsCompactSwitchControl(
                 "statusLedsEnabled",
-                "Status-LEDs",
+                t("settingsInstallation.diagLeds"),
                 isEntityActive("statusLedsEnabled"),
                 state.loadingEntities || state.busyAction === "switch-statusLedsEnabled",
               ),
@@ -1146,30 +1143,30 @@ const AUX_HEAT_BACKUP_COPY = "Laat de warmtebron tijdelijk overnemen wanneer gee
 
   export function renderSettingsCompressorSection() {
     const hpGroups = [
-      renderSettingsHeatPumpLimiterCard("Warmtepomp 1", "hp1"),
-      renderSettingsHeatPumpLimiterCard("Warmtepomp 2", "hp2"),
+      renderSettingsHeatPumpLimiterCard(t("incidents.hp1Label"), "hp1"),
+      renderSettingsHeatPumpLimiterCard(t("incidents.hp2Label"), "hp2"),
     ].filter(Boolean).join("");
 
     return renderSettingsSection(
-      "Installatie",
-      "Compressorinstellingen",
-      "Stel hier de minimale draaitijd in en bepaal per warmtepomp welke compressorfrequenties je wilt overslaan.",
+      t("settingsInstallation.compressorSectionGroup"),
+      t("settingsInstallation.compressorTitle"),
+      t("settingsInstallation.compressorCopy"),
       `
         <div class="oq-settings-subpanel">
           <div class="oq-settings-subpanel-head">
-            <p class="oq-helper-label">Draaitijd</p>
-            <h4>Minimale draaitijd</h4>
-            <p>Voorkomt dat de warmtepomp te kort achter elkaar start en stopt.</p>
+            <p class="oq-helper-label">${escapeHtml(t("settingsInstallation.compressorRuntimeKicker"))}</p>
+            <h4>${escapeHtml(t("settingsInstallation.compressorRuntimeTitle"))}</h4>
+            <p>${escapeHtml(t("settingsInstallation.compressorRuntimeCopy"))}</p>
           </div>
           <div class="oq-settings-grid">
-            ${renderSettingsNumberField("minRuntime", "Minimale draaitijd", "Hoe lang een compressor minimaal moet blijven lopen voordat hij weer mag stoppen.")}
+            ${renderSettingsNumberField("minRuntime", t("settingsInstallation.compressorRuntimeTitle"), t("settingsInstallation.compressorRuntimeFieldCopy"))}
           </div>
         </div>
         <div class="oq-settings-subpanel oq-settings-subpanel--nested">
           <div class="oq-settings-subpanel-head">
-            <p class="oq-helper-label">Uitsluitingen</p>
-            <h4>Frequentiebereiken uitsluiten</h4>
-            <p>Kies per warmtepomp één frequentiebereik dat OpenQuatt moet overslaan.</p>
+            <p class="oq-helper-label">${escapeHtml(t("settingsInstallation.compressorExclKicker"))}</p>
+            <h4>${escapeHtml(t("settingsInstallation.compressorExclTitle"))}</h4>
+            <p>${escapeHtml(t("settingsInstallation.compressorExclCopy"))}</p>
           </div>
           <div class="oq-settings-hp-columns${hasEntity("hp2ExcludeMinHz") ? "" : " oq-settings-hp-columns--single"}">
             ${hpGroups}

@@ -14,6 +14,7 @@ import {
   startQuickStartFlowTest,
 } from "./quickstart-actions.js";
 import { isQuickStartStepSelectionAllowed, selectQuickStepByOffset } from "./quickstart.js";
+import { t } from "../i18n/index.js";
 import { installQuickStartSetupSwitch, keepCurrentQuickStartSetup } from "./firmware-actions.js";
 import { getFirmwareBuildConnection, getInstallationTopology } from "./device-context.js";
 import {
@@ -79,7 +80,7 @@ async function prepareQuickStartStep(stepId) {
 
 function moveQuickStartStep(offset) {
   if (!selectQuickStepByOffset(offset)) {
-    state.controlError = "Rond eerst de configuratie en software-update af.";
+    state.controlError = t("quickStartUi.completeSetupFirst");
     render();
     return;
   }
@@ -113,7 +114,7 @@ const quickStartActionHandlers = {
       state.currentStep = "setup";
       state.quickStartModalMode = "wizard";
       state.quickStartModalOpen = true;
-      state.controlError = "Rond eerst de configuratie en software-update af.";
+      state.controlError = t("quickStartUi.completeSetupFirst");
       render();
       return;
     }
@@ -125,7 +126,7 @@ const quickStartActionHandlers = {
   "select-step": (button) => {
     const stepId = button.dataset.stepId || "generation";
     if (!isQuickStartStepSelectionAllowed(stepId)) {
-      state.controlError = "Rond eerst de configuratie en software-update af.";
+      state.controlError = t("quickStartUi.completeSetupFirst");
       render();
       return;
     }

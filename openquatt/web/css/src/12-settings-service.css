@@ -635,7 +635,8 @@
   gap: 12px;
 }
 
-.oq-settings-odu-temperature-settings[hidden] {
+.oq-settings-odu-temperature-settings[hidden],
+.oq-settings-odu-temperature-settings > [hidden] {
   display: none;
 }
 
@@ -669,22 +670,11 @@
   line-height: 1.5;
 }
 
-.oq-settings-odu-thresholds {
-  display: grid;
-  gap: 6px;
-  padding: 13px 14px;
-  border-left: 3px solid var(--oq-helper-accent);
-  background: var(--oq-helper-card-muted);
-  color: var(--oq-helper-soft);
-}
-
-.oq-settings-odu-thresholds span,
 .oq-settings-odu-auto span {
   display: grid;
   gap: 3px;
 }
 
-.oq-settings-odu-thresholds strong,
 .oq-settings-odu-auto strong {
   color: var(--oq-helper-ink);
 }

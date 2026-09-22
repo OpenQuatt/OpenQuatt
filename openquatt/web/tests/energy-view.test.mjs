@@ -23,7 +23,7 @@ test("Cumulatief bevat de energieteller-reset en hydrateert de knop", () => {
   };
 
   try {
-    const cumulativeColumn = OVERVIEW_ENERGY_COLUMN_CONFIGS.find((column) => column.label === "Cumulatief");
+    const cumulativeColumn = OVERVIEW_ENERGY_COLUMN_CONFIGS.find((column) => column.labelKey === "energy.colCumulative");
     const markup = renderOverviewEnergyColumn(cumulativeColumn);
     assert.match(markup, /data-oq-action="open-energy-counter-reset-confirm"/);
     assert.match(markup, /Tellers resetten/);
@@ -45,9 +45,9 @@ test("energy history tooltip exposes the inputs used by COP and EER", () => {
     boilerHeatOutputWh: 0,
   });
 
-  assert.match(tooltip, /Elektrisch totaal: 4\.9 kWh/);
-  assert.match(tooltip, /Elektrisch koelen: 4\.3 kWh/);
-  assert.match(tooltip, /EER koelen: 4\.94/);
+  assert.match(tooltip, /Elektrisch totaal: 4,9 kWh/);
+  assert.match(tooltip, /Elektrisch koelen: 4,3 kWh/);
+  assert.match(tooltip, /EER koelen: 4,94/);
   assert.doesNotMatch(tooltip, /Output \/ elektrisch/);
 });
 

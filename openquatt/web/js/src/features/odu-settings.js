@@ -8,30 +8,34 @@ import { state } from "../core/state.js";
 import { getBasePath } from "../core/url-path.js";
 import { getInstallationTopology } from "./device-context.js";
 import { renderOduEditorAction, renderOduEditorModal, renderOduEditorPanel } from "./odu-editor-ui.js";
+import { formatNumber, t } from "../i18n/index.js";
 
 const MODE_OPTIONS = [
-  [1, "Volgt buitentemperatuur"],
-  [2, "Tijdens ontdooien"],
-  [3, "Onbekend (standaard V1.5 en V2)"],
+  [1, "oduSettings.mode1"],
+  [2, "oduSettings.mode2"],
+  [3, "oduSettings.mode3"],
 ];
 
 function modeDescription(mode) {
   if (Number(mode) === 1) {
-    return "De verwarming schakelt op basis van de ingestelde buitentemperatuurgrenzen.";
+    return t("oduSettings.modeDesc1");
   }
   if (Number(mode) === 2) {
-    return "De verwarming schakelt in zodra een ontdooicyclus start en twee minuten nadat deze is afgelopen weer uit.";
+    return t("oduSettings.modeDesc2");
   }
   if (Number(mode) === 3) {
-    return "De werking is niet officieel gedocumenteerd. In de praktijk lijkt de verwarming onder 0 °C aan te gaan, boven 0 °C uit te gaan en tijdens ontdooien actief te zijn. Dit is de standaardinstelling voor Quatt buitenunit V1.5 en V2.";
+    return t("oduSettings.modeDesc3");
   }
-  return "De werking van deze waarde is niet bekend.";
+  return t("oduSettings.modeUnknown");
 }
 
 function settingsSummary(settings) {
   const mode = Number(settings?.mode);
-  if (mode !== 1) return `modus ${Number.isInteger(mode) ? mode : "—"}`;
-  return `modus 1, ${settings?.startTemperatureC ?? "—"} °C inschakelen en ${settings?.stopDeltaC ?? "—"} °C verschil`;
+  if (mode === 1) {
+    return t("oduSettings.summaryMode1", { start: settings?.startTemperatureC ?? "—", stop: settings?.stopDeltaC ?? "—" });
+  }
+  if (mode === 3) return t("oduSettings.summaryMode3", { start: settings?.startTemperatureC ?? "—" });
+  return t("oduSettings.summaryOther", { mode: Number.isInteger(mode) ? formatNumber(mode, { maximumFractionDigits: 0 }) : "—" });
 }
 
 export function getOduSettingsEndpoint(hp, action) {
@@ -113,12 +117,12 @@ async function fetchStatus(hp) {
     getOduSettingsEndpoint(hp, "status"),
     { cache: "no-store", headers: { "Cache-Control": "no-store" } },
     8000,
-    `HP${hp} status reageert niet`,
+    t("oduSettings.fetchTimeout", { hp }),
   );
   if (response.status === 404) {
     return normalizeOduSettingsStatus({ available: false, unsupported: true, hp }, hp);
   }
-  if (!response.ok) throw new Error(`HP${hp} status HTTP ${response.status}`);
+  if (!response.ok) throw new Error(t("oduSettings.fetchHttp", { hp, status: response.status }));
   return normalizeOduSettingsStatus(await response.json(), hp);
 }
 
@@ -130,9 +134,9 @@ function storeStatus(status, forceDraft = false) {
 function statusFetchErrorMessage(error) {
   const detail = String(error?.message || error || "").trim();
   if (!detail || /failed to fetch|networkerror|load failed/i.test(detail)) {
-    return "Status ophalen mislukt. Controleer de verbinding met OpenQuatt.";
+    return t("oduSettings.fetchError");
   }
-  return `Status ophalen mislukt. ${detail}`;
+  return t("oduSettings.fetchErrorDetail", { detail });
 }
 
 export function shouldRefreshOduSettingsSurface() {
@@ -167,12 +171,12 @@ export async function refreshOduSettingsStatuses(options = {}) {
 }
 
 function errorMessage(error) {
-  if (error === "busy") return "de Modbus-bus is nog bezig";
-  if (error === "unavailable") return "de buitenunit is niet bereikbaar";
-  if (error === "identity_required") return "het type buitenunit is nog niet vastgesteld";
-  if (error === "invalid_settings") return "de gekozen waarden zijn ongeldig";
-  if (error === "forbidden") return "de beveiligingscontrole is verlopen; laad de pagina opnieuw";
-  return error || "actie geweigerd";
+  if (error === "busy") return t("oduSettings.errBusy");
+  if (error === "unavailable") return t("oduSettings.errUnavailable");
+  if (error === "identity_required") return t("oduSettings.errIdentity");
+  if (error === "invalid_settings") return t("oduSettings.errInvalid");
+  if (error === "forbidden") return t("oduSettings.errForbidden");
+  return error || t("oduSettings.errDefault");
 }
 
 async function postAction(hp, action, values = {}) {
@@ -192,7 +196,7 @@ async function postAction(hp, action, values = {}) {
       body: body.toString(),
     },
     8000,
-    `HP${hp} actie reageert niet`,
+    t("oduSettings.actionTimeout", { hp }),
   );
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(errorMessage(payload.error || `HTTP ${response.status}`));
@@ -210,7 +214,7 @@ async function waitForOperation(hp) {
     render();
     if (!status.busy) return status;
   }
-  throw new Error("de buitenunit bleef langer dan 35 seconden bezig");
+  throw new Error(t("oduSettings.waitLong"));
 }
 
 function parseDraftInteger(value) {
@@ -234,15 +238,13 @@ export function getOduSettingsEditorModel(hp) {
   const draft = getDraft(hp);
   const busy = Boolean(status?.busy || String(state.busyAction || "").startsWith(`odu-settings-hp${hp}-`));
   const enabled = Boolean(status?.available && status.identityReady && !status.unsupported && !busy);
-  const startTemperature = parseDraftInteger(draft.startTemperatureC);
-  const stopDelta = parseDraftInteger(draft.stopDeltaC);
+  const mode = Number(draft.mode);
   return {
     status, draft, busy, enabled,
     saveDisabled: !enabled || !validDraft(draft),
-    temperatureSettingsVisible: Number(draft.mode) === 1,
+    temperatureSettingsVisible: mode === 1 || mode === 3,
+    stopDeltaVisible: mode === 1,
     modeCopy: modeDescription(draft.mode),
-    startCopy: startTemperature !== null ? `${startTemperature} °C of kouder` : "—",
-    stopCopy: startTemperature !== null && stopDelta !== null ? `${startTemperature + stopDelta} °C of warmer` : "—",
   };
 }
 
@@ -252,13 +254,13 @@ function assertOperationCompleted(status, action) {
   const confirmed = status.available && !status.unsupported && !status.busy && status.loaded
     && allowed.includes(status.status)
     && (action === "load" || (status.profileAvailable && status.identityMatches && !status.writeUncertain));
-  if (!confirmed) throw new Error(`Resultaat niet bevestigd (${status.status}).`);
+  if (!confirmed) throw new Error(t("oduSettings.confirmResult", { status: status.status }));
 }
 
 async function runOperation(hp, action) {
   const draft = getDraft(hp);
   if (action === "save" && !validDraft(draft)) {
-    state.oduSettingsError = `HP${hp}: controleer modus, starttemperatuur (-30 tot 30 °C) en temperatuurverschil (0 tot 30 °C).`;
+    state.oduSettingsError = t("oduSettings.invalidDraft", { hp });
     render();
     return;
   }
@@ -277,12 +279,12 @@ async function runOperation(hp, action) {
     storeStatus(status, true);
     assertOperationCompleted(status, action);
     state.controlNotice = status.status === "PENDING_SAFE"
-      ? `HP${hp}: opgeslagen; toepassen wacht tot de buitenunit stilstaat.`
+      ? t("oduSettings.savedPending", { hp })
       : action === "load"
-        ? `HP${hp}: actuele waarden geladen.`
-        : `HP${hp}: waarden opgeslagen en gecontroleerd.`;
+        ? t("oduSettings.loadedValues", { hp })
+        : t("oduSettings.savedChecked", { hp });
   } catch (error) {
-    state.oduSettingsError = `HP${hp}: actie mislukt. ${error.message || String(error)}`;
+    state.oduSettingsError = t("oduSettings.actionFailed", { hp, error: error.message || String(error) });
   } finally {
     state.busyAction = "";
     state.oduSettingsLastFetchAt = 0;
@@ -303,40 +305,38 @@ export function updateOduSettingsDraft(input) {
   const model = getOduSettingsEditorModel(hp);
   const temperatureSettings = panel?.querySelector("[data-oq-odu-temperature-settings]");
   const modeOutput = panel?.querySelector("[data-oq-odu-mode-description]");
-  const startOutput = panel?.querySelector("[data-oq-odu-start-temperature]");
-  const stop = panel?.querySelector("[data-oq-odu-stop-temperature]");
+  const stopDeltaSetting = panel?.querySelector("[data-oq-odu-stop-delta-setting]");
   const saveButton = panel?.querySelector('[data-oq-action="odu-settings-save"]');
   if (temperatureSettings) temperatureSettings.hidden = !model.temperatureSettingsVisible;
   if (modeOutput) modeOutput.textContent = model.modeCopy;
-  if (startOutput) startOutput.textContent = model.startCopy;
-  if (stop) stop.textContent = model.stopCopy;
+  if (stopDeltaSetting) stopDeltaSetting.hidden = !model.stopDeltaVisible;
   if (saveButton) saveButton.disabled = model.saveDisabled;
   return true;
 }
 
 function statusPresentation(status) {
   if (!status) return state.oduSettingsError
-    ? ["Status niet beschikbaar", "warning"]
-    : ["Status laden...", ""];
+    ? [t("oduSettings.statusUnavailable"), "warning"]
+    : [t("oduSettings.statusLoading"), ""];
   const code = String(status?.status || "").toUpperCase();
-  if (status?.writeUncertain || code === "VERIFY_FAILED") return ["Toepassen kon niet worden bevestigd", "warning"];
-  if (code === "IN_SYNC") return ["Jouw waarden zijn actief", "success"];
-  if (code === "PENDING_SAFE") return ["Wacht tot de buitenunit stilstaat", "warning"];
-  if (code === "APPLYING" || status?.busy) return ["Waarden toepassen", ""];
-  if (code === "IDENTITY_MISMATCH") return ["Opgeslagen waarden horen bij een andere buitenunit", "warning"];
-  if (code === "PERSIST_FAILED") return ["Opslaan in OpenQuatt is mislukt", "warning"];
-  if (code === "LOADED") return [status.autoReapply ? "De buitenunit gebruikt andere waarden" : "Automatisch opnieuw toepassen staat uit", ""];
-  if (status?.unsupported) return ["Niet ondersteund door deze firmware", "warning"];
-  if (!status?.available) return ["Buitenunit niet bereikbaar", "warning"];
-  return ["Actuele waarden nog niet geladen", ""];
+  if (status?.writeUncertain || code === "VERIFY_FAILED") return [t("oduSettings.statusUncertain"), "warning"];
+  if (code === "IN_SYNC") return [t("oduSettings.statusInSync"), "success"];
+  if (code === "PENDING_SAFE") return [t("oduSettings.statusPending"), "warning"];
+  if (code === "APPLYING" || status?.busy) return [t("oduSettings.statusApplying"), ""];
+  if (code === "IDENTITY_MISMATCH") return [t("oduSettings.statusMismatch"), "warning"];
+  if (code === "PERSIST_FAILED") return [t("oduSettings.statusPersistFail"), "warning"];
+  if (code === "LOADED") return [status.autoReapply ? t("oduSettings.statusLoadedOn") : t("oduSettings.statusLoadedOff"), ""];
+  if (status?.unsupported) return [t("oduSettings.statusUnsupported"), "warning"];
+  if (!status?.available) return [t("oduSettings.statusUnreachable"), "warning"];
+  return [t("oduSettings.statusNotLoaded"), ""];
 }
 
 function variantLabel(variant) {
-  if (variant === 1) return "Quatt buitenunit V1";
-  if (variant === 2) return "Quatt buitenunit V1.5";
-  if (variant === 3) return "Quatt buitenunit V2 oud model";
-  if (variant === 4) return "Quatt buitenunit V2 nieuw model";
-  return "Onbekend";
+  if (variant === 1) return t("oduSettings.variantV1");
+  if (variant === 2) return t("oduSettings.variantV15");
+  if (variant === 3) return t("oduSettings.variantV2Old");
+  if (variant === 4) return t("oduSettings.variantV2New");
+  return t("oduSettings.variantUnknown");
 }
 
 function renderPanel(hp) {
@@ -344,33 +344,35 @@ function renderPanel(hp) {
   const { status, draft, busy, enabled } = model;
   const [statusLabel, tone] = statusPresentation(status);
   return renderOduEditorPanel({
-    hp, title: "Bodemplaatverwarming", copy: variantLabel(status?.variant),
-    actions: renderOduEditorAction(hp, "odu-settings-load", "Uit buitenunit laden", !enabled),
+    hp, title: t("oduSettings.panelTitle"), copy: variantLabel(status?.variant),
+    actions: renderOduEditorAction(hp, "odu-settings-load", t("oduSettings.loadAction"), !enabled),
     statusLabel, tone,
     body: status?.loaded || status?.profileAvailable ? `
         <div class="oq-settings-odu-fields">
-          <label><span>Regelmethode</span><select class="oq-helper-select" data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="mode" ${!enabled ? "disabled" : ""}>
-            ${MODE_OPTIONS.some(([value]) => value === Number(draft.mode)) ? "" : '<option value="" selected disabled>Kies een regelmethode</option>'}
-            ${MODE_OPTIONS.map(([value, label]) => `<option value="${value}"${Number(draft.mode) === value ? " selected" : ""}>${value} · ${escapeHtml(label)}</option>`).join("")}
+          <label><span>${escapeHtml(t("oduSettings.controlLabel"))}</span><select class="oq-helper-select" data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="mode" ${!enabled ? "disabled" : ""}>
+            ${MODE_OPTIONS.some(([value]) => value === Number(draft.mode)) ? "" : `<option value="" selected disabled>${escapeHtml(t("oduSettings.chooseControl"))}</option>`}
+            ${MODE_OPTIONS.map(([value, labelKey]) => `<option value="${value}"${Number(draft.mode) === value ? " selected" : ""}>${value} · ${escapeHtml(t(labelKey))}</option>`).join("")}
           </select></label>
           <p class="oq-settings-odu-mode-description" data-oq-odu-mode-description aria-live="polite">${escapeHtml(model.modeCopy)}</p>
           <div class="oq-settings-odu-temperature-settings" data-oq-odu-temperature-settings${model.temperatureSettingsVisible ? "" : " hidden"}>
-            ${[
-              ["startTemperatureC", "Temperatuurgrens voor inschakelen", -30],
-              ["stopDeltaC", "Uitschakelen nadat de buitentemperatuur is gestegen met", 0],
-            ].map(([field, label, min]) => `<label><span>${label}</span>${renderNumberInputControl({
-              value: draft[field], meta: { min, max: 30, step: 1 }, disabled: !enabled,
+            <label><span>${escapeHtml(Number(draft.mode) === 1 ? t("oduSettings.limitOn") : t("oduSettings.limitDefrost"))}</span>${renderNumberInputControl({
+              value: draft.startTemperatureC, meta: { min: -30, max: 30, step: 1 }, disabled: !enabled,
               controlTag: "span", controlClass: "oq-helper-control oq-helper-control--suffix",
-              inputAttributes: `data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="${field}"`,
+              inputAttributes: `data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="startTemperatureC"`,
               unitMarkup: '<span class="oq-helper-unit-chip">°C</span>',
-            })}</label>`).join("")}
-            <div class="oq-settings-odu-thresholds"><span>Verwarming aan vanaf <strong data-oq-odu-start-temperature>${escapeHtml(model.startCopy)}</strong></span><span>Verwarming weer uit bij <strong data-oq-odu-stop-temperature>${escapeHtml(model.stopCopy)}</strong></span></div>
+            })}</label>
+            <label data-oq-odu-stop-delta-setting${model.stopDeltaVisible ? "" : " hidden"}><span>${escapeHtml(t("oduSettings.hysteresis"))}</span>${renderNumberInputControl({
+              value: draft.stopDeltaC, meta: { min: 0, max: 30, step: 1 }, disabled: !enabled,
+              controlTag: "span", controlClass: "oq-helper-control oq-helper-control--suffix",
+              inputAttributes: `data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="stopDeltaC"`,
+              unitMarkup: '<span class="oq-helper-unit-chip">°C</span>',
+            })}</label>
           </div>
         </div>
-        <label class="oq-settings-odu-auto"><input type="checkbox" data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="autoReapply" ${draft.autoReapply ? "checked" : ""} ${!enabled ? "disabled" : ""}><span><strong>Na herstart automatisch opnieuw toepassen</strong><small>OpenQuatt bewaart deze waarden en past ze na een herstart opnieuw toe, ook als de compressor draait.</small></span></label>
-        <p class="oq-settings-odu-runtime-validation">Standaard voor ${escapeHtml(variantLabel(status?.variant))}: ${escapeHtml(settingsSummary(status?.defaults))}. Huidige buitenunit: ${escapeHtml(settingsSummary(status?.actual))}.</p>
-        <div class="oq-helper-modal-actions">${renderOduEditorAction(hp, "odu-settings-save", busy ? "Bezig..." : "Opslaan en toepassen", model.saveDisabled, "primary")}</div>
-      ` : '<p class="oq-settings-odu-runtime-validation">Laad de actuele waarden uit de buitenunit voordat je iets wijzigt.</p>',
+        <label class="oq-settings-odu-auto"><input type="checkbox" data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="autoReapply" ${draft.autoReapply ? "checked" : ""} ${!enabled ? "disabled" : ""}><span><strong>${escapeHtml(t("oduSettings.reapplyTitle"))}</strong><small>${escapeHtml(t("oduSettings.reapplyCopy"))}</small></span></label>
+        ${settingsSummary(status?.defaults) === settingsSummary(status?.actual) ? "" : `<p class="oq-settings-odu-runtime-validation">${escapeHtml(t("oduSettings.validationDefault", { defaults: settingsSummary(status?.defaults), actual: settingsSummary(status?.actual) }))}</p>`}
+        <div class="oq-helper-modal-actions">${renderOduEditorAction(hp, "odu-settings-save", busy ? t("common.busy") : t("oduSettings.saveApply"), model.saveDisabled, "primary")}</div>
+      ` : `<p class="oq-settings-odu-runtime-validation">${escapeHtml(t("oduSettings.loadFirst"))}</p>`,
   });
 }
 
@@ -378,9 +380,9 @@ export function renderOduSettingsModal() {
   return renderOduEditorModal({
     modalId: "odu-bottom-plate-settings",
     titleId: "oq-odu-settings-title",
-    title: "Bodemplaatverwarming",
-    closeLabel: "Sluit bodemplaatinstellingen",
-    warning: "<strong>Niet permanent opgeslagen in de buitenunit</strong><p>Na een herstart of stroomonderbreking gebruikt de buitenunit weer haar eigen opgeslagen waarden. OpenQuatt kan jouw keuze daarna veilig opnieuw toepassen.</p><p>Je kunt deze instellingen ook aanpassen terwijl de compressor draait.</p>",
+    title: t("oduSettings.modalTitle"),
+    closeLabel: t("oduSettings.modalClose"),
+    warning: t("oduSettings.modalWarning"),
     error: state.oduSettingsError,
     notice: String(state.controlNotice || "").startsWith("HP") ? state.controlNotice : "",
     panels: getOduSettingsHpIndexes().map(renderPanel).join(""),
@@ -419,7 +421,7 @@ export async function restoreOduSettingsBackupProfiles(profiles = {}) {
   for (const [key, profile] of Object.entries(profiles)) {
     const hp = key === "hp2" ? 2 : key === "hp1" ? 1 : 0;
     if (!hp || !availableHp.has(hp)) {
-      results.push({ key, applied: false, reason: "Buitenunit is niet aanwezig op deze installatie." });
+      results.push({ key, applied: false, reason: t("oduSettings.backupMissing") });
       continue;
     }
     try {
@@ -427,7 +429,7 @@ export async function restoreOduSettingsBackupProfiles(profiles = {}) {
       storeStatus(current);
       if (!current.identityReady || current.variant !== profile.variant
           || current.controlBoardItem !== profile.control_board_item) {
-        results.push({ key, applied: false, reason: "Het opgeslagen profiel hoort bij een andere buitenunit." });
+        results.push({ key, applied: false, reason: t("oduSettings.backupMismatch") });
         continue;
       }
       let status = await postAction(hp, "save", {
@@ -440,7 +442,7 @@ export async function restoreOduSettingsBackupProfiles(profiles = {}) {
       assertOperationCompleted(status, "save");
       results.push({ key, applied: true, pending: status.status === "PENDING_SAFE" });
     } catch (error) {
-      results.push({ key, applied: false, reason: `Resultaat niet bevestigd: ${error.message || String(error)}` });
+      results.push({ key, applied: false, reason: t("oduSettings.backupUnconfirmed", { error: error.message || String(error) }) });
     }
   }
   return results;

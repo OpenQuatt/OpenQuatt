@@ -1,5 +1,6 @@
 import { CURVE_POINTS, OPENQUATT_RESUME_CLEAR_VALUE } from "./config.js";
 import { state } from "./state.js";
+import { getIntlLocale, t } from "../i18n/index.js";
 
   export function hasEntity(key) {
     const entity = state.entities[key];
@@ -168,7 +169,7 @@ import { state } from "./state.js";
     if (!date) {
       return "";
     }
-    return new Intl.DateTimeFormat("nl-NL", short
+    return new Intl.DateTimeFormat(getIntlLocale(), short
       ? { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }
       : { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }
     ).format(date);
@@ -266,7 +267,7 @@ import { state } from "./state.js";
     return {
       value: suggested,
       label: formatValue("curveFallbackSupply", suggested),
-      basis: `Afgeleid uit het midden van je stooklijn (${middleLeft.label} en ${middleRight.label}).`,
+      basis: t("entityStore.curveFallbackBasis", { left: middleLeft.label, right: middleRight.label }),
       isCurrent: normalizeNumber("curveFallbackSupply", getEntityValue("curveFallbackSupply")) === suggested,
     };
   }

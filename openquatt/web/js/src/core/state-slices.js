@@ -67,7 +67,7 @@ export function createHistoryState(trendWindowHours) {
   };
 }
 
-export function createDiagnosticsState(debugRecordingAcknowledgedId) {
+export function createDiagnosticsState() {
   return {
     webServerLogSource: null,
     webServerLogConnected: false,
@@ -97,10 +97,10 @@ export function createDiagnosticsState(debugRecordingAcknowledgedId) {
     debugRecordingError: "",
     debugRecordingNotice: "",
     debugRecordingBusy: false,
-    debugRecordingSelectedMinutes: 15,
+    debugRecordingDownloadRange: 15,
+    debugRecordingConfirmDisable: false,
+    debugRecordingManageOpen: false,
     debugRecordingDeviceStatus: null,
-    debugRecordingAcknowledgedId,
-    debugRecordingDeviceBundle: null,
     debugRecordingDevicePollTimer: null,
     oduEepromDumpStatuses: {},
     oduEepromDumpBusyHp: 0,
@@ -216,8 +216,14 @@ export function createSecurityState() {
     authError: "",
     apiSecurityStatus: null,
     apiSecurityBusy: false,
+    wifiResetAvailable: false,
+    wifiResetBusy: false,
+    wifiResetNotice: "",
+    wifiResetError: "",
+    wifiResetActionError: "",
     apiSecurityNotice: "",
     apiSecurityError: "",
+    apiSecurityActionError: "",
     mqttStatus: null,
     mqttDraftEnabled: false,
     mqttDraftBroker: "",

@@ -5,6 +5,7 @@ import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { getBasePath } from "../core/url-path.js";
 import { normalizeHouseLearningExport } from "../settings/house-learning-chart.js";
+import { t } from "../i18n/index.js";
 
 export const HOUSE_LEARNING_STATUS_INTERVAL_MS = 10000;
 
@@ -14,6 +15,13 @@ const numberOrNull = (value) => value === null || value === undefined || value =
 const stringList = (value) => Array.isArray(value)
   ? value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim()).slice(0, 24)
   : [];
+const localizedMessage = (translationKey, vars = {}) => ({ translationKey, vars });
+const translatedError = (translationKey) => Object.assign(new Error(t(translationKey)), { translationKey });
+const errorDetail = (error, timeoutToken, timeoutKey) => error?.translationKey
+  ? localizedMessage(error.translationKey)
+  : error?.message === timeoutToken
+  ? localizedMessage(timeoutKey)
+  : error?.message || String(error);
 const collectionPhase = (collection, prefix) => {
   const keys = ["active", "elapsed_s", "target_s", "intervals"].map((suffix) => `${prefix}_${suffix}`);
   if (!keys.some((key) => Object.hasOwn(collection, key))) return null;
@@ -26,7 +34,7 @@ const collectionPhase = (collection, prefix) => {
 };
 
 export function normalizeHouseLearningStatus(payload = {}) {
-  if (Number(payload.schema) !== 1 || payload.mode !== "passive") throw new Error("onbekend statusformaat");
+  if (Number(payload.schema) !== 1 || payload.mode !== "passive") throw translatedError("houseLearning.errors.unknownStatusFormat");
   const source = (key) => {
     const item = payload.sources?.[key];
     return item && typeof item === "object"
@@ -85,7 +93,7 @@ export async function loadHouseLearningChart() {
       getHouseLearningExportEndpoint(),
       { cache: "no-store", headers: { "Cache-Control": "no-store" } },
       8000,
-      "leerdata timeout",
+      "house-learning-chart-timeout",
     );
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const records = normalizeHouseLearningExport(await response.json());
@@ -97,7 +105,9 @@ export async function loadHouseLearningChart() {
     if (requestId !== state.houseLearningChartRequestId) return false;
     state.houseLearningChart = null;
     state.houseLearningChartFetchedAt = 0;
-    state.houseLearningChartError = `Meetgegevens konden niet worden geladen. ${error.message || String(error)}`;
+    state.houseLearningChartError = localizedMessage("houseLearning.errors.chartLoadFailed", {
+      error: errorDetail(error, "house-learning-chart-timeout", "houseLearning.errors.chartTimeout"),
+    });
     return false;
   } finally {
     if (requestId === state.houseLearningChartRequestId) {
@@ -117,12 +127,14 @@ export async function downloadHouseLearningExport() {
       getHouseLearningExportEndpoint(),
       { cache: "no-store", headers: { "Cache-Control": "no-store" } },
       8000,
-      "Leerdata reageert niet",
+      "house-learning-export-timeout",
     );
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     downloadJsonFile("openquatt-house-learning.json", await response.json());
   } catch (error) {
-    state.houseLearningStatusError = error.message || String(error);
+    state.houseLearningStatusError = localizedMessage("houseLearning.errors.exportFailed", {
+      error: errorDetail(error, "house-learning-export-timeout", "houseLearning.errors.exportTimeout"),
+    });
   } finally {
     state.busyAction = "";
     render();
@@ -164,7 +176,7 @@ export async function refreshHouseLearningStatus(options = {}) {
         getHouseLearningStatusEndpoint(),
         { cache: "no-store", headers: { "Cache-Control": "no-store" } },
         8000,
-        "leerstatus timeout",
+        "house-learning-status-timeout",
       );
       if ((!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) || requestGeneration !== state.houseLearningRequestId) return false;
       if (response.status === 404) {
@@ -190,7 +202,9 @@ export async function refreshHouseLearningStatus(options = {}) {
     } catch (error) {
       if ((!resetReconcile && !shouldRefreshHouseLearningStatusSurface()) || requestGeneration !== state.houseLearningRequestId) return false;
       state.houseLearningStatus = null;
-      state.houseLearningStatusError = `Leerstatus kon niet worden opgehaald. ${error.message || String(error)}`;
+      state.houseLearningStatusError = localizedMessage("houseLearning.errors.statusLoadFailed", {
+        error: errorDetail(error, "house-learning-status-timeout", "houseLearning.errors.statusTimeout"),
+      });
       probeCompleted = true;
     } finally {
       if (requestGeneration === state.houseLearningRequestId) {
@@ -221,7 +235,7 @@ export function isHouseLearningResetConfirmed(status = state.houseLearningStatus
 export async function resetHouseLearningData(pressNamedButton, options = {}) {
   if (state.houseLearningReset === "pending" || state.busyAction) return false;
   const confirmReset = options.confirmReset || (() => window.confirm(
-    "Leerdata wissen?\n\nAlle leerhistorie wordt verwijderd en passief leren wordt gepauzeerd.",
+    t("houseLearning.reset.confirm"),
   ));
   if (!confirmReset()) return false;
 
@@ -255,14 +269,14 @@ export async function resetHouseLearningData(pressNamedButton, options = {}) {
     if (isHouseLearningResetConfirmed()) {
       state.houseLearningReset = "";
       state.houseLearningResetError = "";
-      state.controlNotice = "Leerdata gewist; passief leren is gepauzeerd.";
+      state.controlNotice = t("houseLearning.reset.success");
       render();
       return true;
     }
   }
 
   state.houseLearningReset = "uncertain";
-  state.houseLearningResetError = "Reset geaccepteerd, maar wissen is nog niet bevestigd. De opdracht is niet herhaald.";
+  state.houseLearningResetError = localizedMessage("houseLearning.reset.uncertain");
   state.controlNotice = "";
   render();
   return false;

@@ -1,7 +1,7 @@
 import { formatOverviewStatValue, getDerivedEfficiencyValue, getEntityNumericValue, getEntityStateText, hasEntity, isEfficiencyKey } from "../core/app-shared.js";
 import { OVERVIEW_ENERGY_COLUMN_CONFIGS } from "../core/config.js";
 import { setEnergyHistoryRequestQueryProvider } from "../core/energy-history-query.js";
-import { ENERGY_HISTORY_VALUE_KEYS, ENERGY_HISTORY_WEEKDAY_LABELS, addEnergyHistoryDays, addEnergyHistoryMonths, formatEnergyHistoryDateLabel, formatEnergyHistoryWeekLabel, getEnergyHistoryDateFromParts, getEnergyHistoryDateInputValue, getEnergyHistoryDateKeyFromDate, getEnergyHistoryDaysInMonth, getEnergyHistoryIsoWeekInfo, getEnergyHistoryMonthKeyFromDate, getEnergyHistoryRecordWh, getEnergyHistoryWeekStart, getEnergyHistoryWeekStartKeyFromDate, parseEnergyHistoryCurrentLine, parseEnergyHistoryDateInputValue, parseEnergyHistoryDateKey, parseEnergyHistoryHourLine, parseEnergyHistoryLine, parseEnergyHistoryMetadata, parseEnergyHistoryMonthInputValue, parseEnergyHistoryMonthKey, parseEnergyHistoryWeekValue } from "../core/energy-history-domain.js";
+import { ENERGY_HISTORY_VALUE_KEYS, addEnergyHistoryDays, addEnergyHistoryMonths, formatEnergyHistoryDateLabel, formatEnergyHistoryWeekLabel, getEnergyHistoryDateFromParts, getEnergyHistoryDateInputValue, getEnergyHistoryDateKeyFromDate, getEnergyHistoryDaysInMonth, getEnergyHistoryIsoWeekInfo, getEnergyHistoryMonthKeyFromDate, getEnergyHistoryRecordWh, getEnergyHistoryWeekStart, getEnergyHistoryWeekStartKeyFromDate, parseEnergyHistoryCurrentLine, parseEnergyHistoryDateInputValue, parseEnergyHistoryDateKey, parseEnergyHistoryHourLine, parseEnergyHistoryLine, parseEnergyHistoryMetadata, parseEnergyHistoryMonthInputValue, parseEnergyHistoryMonthKey, parseEnergyHistoryWeekValue } from "../core/energy-history-domain.js";
 export * from "../core/energy-history-domain.js";
 import { getRenderSignature } from "../core/render-signatures.js";
 import { state } from "../core/state.js";
@@ -10,10 +10,11 @@ import { refreshEnergyHistoryData } from "../features/storage-history.js";
 import { updateEnergyHistoryState } from "../core/feature-state.js";
 import { escapeHtml } from "../core/html.js";
 import { render } from "../core/render-scheduler.js";
+import { formatDate, formatNumber, t } from "../i18n/index.js";
 import { replaceOuterHtmlIfSignatureChanged } from "./view-utils.js";
 import { renderStatCard } from "./stat-card.js";
 
-  export function renderOverviewEnergyRow([label, key]) {
+  export function renderOverviewEnergyRow([labelKey, key]) {
     const derived = getDerivedEfficiencyValue(key);
     if (!hasEntity(key) && Number.isNaN(derived)) {
       return "";
@@ -21,7 +22,7 @@ import { renderStatCard } from "./stat-card.js";
     const value = isEfficiencyKey(key) ? formatOverviewStatValue(key) : getEntityStateText(key);
     return `
       <div class="oq-overview-energy-row">
-        <span>${escapeHtml(label)}</span>
+        <span>${escapeHtml(t(labelKey))}</span>
         <strong>${escapeHtml(value)}</strong>
       </div>
     `;
@@ -34,7 +35,7 @@ import { renderStatCard } from "./stat-card.js";
     }
     return `
       <section class="oq-overview-energy-group">
-        <h5>${escapeHtml(group.title)}</h5>
+        <h5>${escapeHtml(t(group.titleKey))}</h5>
         <div class="oq-overview-energy-rows">
           ${filledRows}
         </div>
@@ -50,7 +51,7 @@ import { renderStatCard } from "./stat-card.js";
     return `
       <section class="oq-overview-energy-category oq-overview-energy-category--${escapeHtml(category.tone)}">
         <div class="oq-overview-energy-category-head">
-          <span>${escapeHtml(category.title)}</span>
+          <span>${escapeHtml(t(category.titleKey))}</span>
         </div>
         <div class="oq-overview-energy-category-groups">
           ${filledGroups}
@@ -67,15 +68,15 @@ import { renderStatCard } from "./stat-card.js";
     const counterResetKey = String(column.counterResetKey || "");
     const counterResetMarkup = counterResetKey && hasEntity(counterResetKey)
       ? `
-        <button class="oq-overview-energy-reset" type="button" data-oq-action="open-energy-counter-reset-confirm" aria-label="Cumulatieve energietellers resetten" ${state.busyAction === counterResetKey ? "disabled" : ""}>
-          Tellers resetten
+        <button class="oq-overview-energy-reset" type="button" data-oq-action="open-energy-counter-reset-confirm" aria-label="${escapeHtml(t("energy.resetCountersLabel"))}" ${state.busyAction === counterResetKey ? "disabled" : ""}>
+          ${escapeHtml(t("energy.resetCounters"))}
         </button>
       `
       : "";
     return `
       <article class="oq-overview-energy-column">
         <div class="oq-overview-energy-column-copy">
-          <h4>${escapeHtml(column.label)}</h4>
+          <h4>${escapeHtml(t(column.labelKey))}</h4>
           ${counterResetMarkup}
         </div>
         <div class="oq-overview-energy-groups">
@@ -111,11 +112,11 @@ import { renderStatCard } from "./stat-card.js";
   }
 
   export const ENERGY_HISTORY_VIEW_OPTIONS = [
-    { id: "day", label: "Dag" },
-    { id: "week", label: "Week" },
-    { id: "month", label: "Maand" },
-    { id: "year", label: "Jaar" },
-    { id: "all", label: "Alles" },
+    { id: "day", labelKey: "energy.viewDay" },
+    { id: "week", labelKey: "energy.viewWeek" },
+    { id: "month", labelKey: "energy.viewMonth" },
+    { id: "year", labelKey: "energy.viewYear" },
+    { id: "all", labelKey: "energy.viewAll" },
   ];
 
   export const ENERGY_HISTORY_PERIOD_VIEW_IDS = new Set(["day", "week", "month", "year"]);
@@ -271,7 +272,7 @@ import { renderStatCard } from "./stat-card.js";
           sortKey: parsed.key,
           source: "hour-summary",
         });
-        bucket.tooltipLabel = `${formatEnergyHistoryDateLabel(record.dateKey)} · uurdata sinds herstart`;
+        bucket.tooltipLabel = `${formatEnergyHistoryDateLabel(record.dateKey)} · ${t("energy.hourDataSinceRestart")}`;
         hourSummaries.set(record.dateKey, bucket);
       }
       mergeEnergyHistoryRecordIntoBucket(bucket, record);
@@ -324,23 +325,24 @@ import { renderStatCard } from "./stat-card.js";
     const numerator = Number(numeratorWh);
     const denominator = Number(denominatorWh);
     if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) {
-      return "—";
+      return t("common.notAvailable");
     }
-    return (numerator / denominator).toFixed(2);
+    return formatNumber(numerator / denominator, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
   export function formatEnergyAdaptiveWh(wh, decimals = 1) {
     const value = Number(wh);
     if (!Number.isFinite(value)) {
-      return "—";
+      return t("common.notAvailable");
     }
     if (Math.abs(value) >= 999500) {
-      return `${(value / 1000000).toFixed(2)} MWh`;
+      return `${formatNumber(value / 1000000, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MWh`;
     }
     if (Math.abs(value) < 1000) {
-      return `${Math.round(value)} Wh`;
+      return `${formatNumber(Math.round(value), { maximumFractionDigits: 0 })} Wh`;
     }
-    return `${(value / 1000).toFixed(decimals)} kWh`;
+    const fractionDigits = Number.isFinite(Number(decimals)) ? Math.max(0, Number(decimals)) : 1;
+    return `${formatNumber(value / 1000, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits })} kWh`;
   }
 
   export function createEnergyHistoryBucket({ dateKey, year, month, day, hour = null, label, tooltipLabel = "", sortKey, source = "bucket" }) {
@@ -496,7 +498,7 @@ import { renderStatCard } from "./stat-card.js";
         }
         options.push({
           value: cursor,
-          label: parsed.date.toLocaleDateString("nl-NL", { month: "long", year: "numeric" }),
+          label: formatDate(parsed.date, { month: "long", year: "numeric" }),
           group: String(parsed.year),
         });
         cursor = addEnergyHistoryMonths(cursor, -1);
@@ -666,13 +668,13 @@ import { renderStatCard } from "./stat-card.js";
     const normalizedView = normalizeEnergyHistoryView(view);
     const byDate = getEnergyHistoryRecordsByDate(records);
     if (!records.length && normalizedView === "all") {
-      return { buckets: [], title: "Geen data", detail: "Lifetime energiehistorie" };
+      return { buckets: [], title: t("energy.noData"), detail: t("energy.lifetimeHistory") };
     }
 
     if (normalizedView === "day") {
       const selected = parseEnergyHistoryDateKey(periodModel.selectedValue);
       if (!selected) {
-        return { buckets: [], title: "Geen data", detail: "Lifetime energiehistorie" };
+        return { buckets: [], title: t("energy.noData"), detail: t("energy.lifetimeHistory") };
       }
       const hourRecords = getEnergyHistoryHourRecordsForDate(selected.key);
       if (hourRecords.length) {
@@ -680,7 +682,7 @@ import { renderStatCard } from "./stat-card.js";
         const buckets = [];
         for (let hour = 0; hour < 24; hour += 1) {
           const hourLabel = String(hour);
-          const tooltipLabel = `${selected.date.toLocaleDateString("nl-NL", { day: "numeric", month: "long" })} · ${String(hour).padStart(2, "0")}:00 - ${String((hour + 1) % 24).padStart(2, "0")}:00`;
+          const tooltipLabel = `${formatDate(selected.date, { day: "numeric", month: "long" })} · ${String(hour).padStart(2, "0")}:00 - ${String((hour + 1) % 24).padStart(2, "0")}:00`;
           const bucket = createEnergyHistoryBucket({
             dateKey: selected.key,
             year: selected.year,
@@ -700,13 +702,13 @@ import { renderStatCard } from "./stat-card.js";
         }
         return {
           buckets,
-          title: "Dag",
-          detail: `${selected.date.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · uurdata sinds herstart`,
+          title: t("energy.viewDay"),
+          detail: `${formatDate(selected.date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · ${t("energy.hourDataSinceRestart")}`,
         };
       }
       const record = byDate.get(selected.key);
       const currentDateKey = getEnergyHistoryCurrentDateKeyFromRaw() || getEnergyHistoryTodayKey();
-      const label = selected.key === currentDateKey ? "Vandaag" : formatEnergyHistoryDateLabel(selected.key);
+      const label = selected.key === currentDateKey ? t("energy.today") : formatEnergyHistoryDateLabel(selected.key);
       const bucket = createEnergyHistoryBucket({
         dateKey: selected.key,
         year: selected.year,
@@ -721,15 +723,15 @@ import { renderStatCard } from "./stat-card.js";
       }
       return {
         buckets: [bucket],
-        title: "Dag",
-        detail: `${selected.date.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · dagtotaal`,
+        title: t("energy.viewDay"),
+        detail: `${formatDate(selected.date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · ${t("energy.dayTotal")}`,
       };
     }
 
     if (normalizedView === "week") {
       const selected = parseEnergyHistoryDateKey(periodModel.selectedValue);
       if (!selected) {
-        return { buckets: [], title: "Geen data", detail: "Lifetime energiehistorie" };
+        return { buckets: [], title: t("energy.noData"), detail: t("energy.lifetimeHistory") };
       }
       const start = getEnergyHistoryWeekStart(selected.date);
       const buckets = [];
@@ -753,7 +755,7 @@ import { renderStatCard } from "./stat-card.js";
       }
       return {
         buckets,
-        title: "Week",
+        title: t("energy.viewWeek"),
         detail: formatEnergyHistoryWeekLabel(periodModel.selectedValue),
       };
     }
@@ -761,7 +763,7 @@ import { renderStatCard } from "./stat-card.js";
     if (normalizedView === "month") {
       const selected = parseEnergyHistoryMonthKey(periodModel.selectedValue);
       if (!selected) {
-        return { buckets: [], title: "Geen data", detail: "Lifetime energiehistorie" };
+        return { buckets: [], title: t("energy.noData"), detail: t("energy.lifetimeHistory") };
       }
       const days = getEnergyHistoryDaysInMonth(selected.year, selected.month);
       const buckets = [];
@@ -784,15 +786,15 @@ import { renderStatCard } from "./stat-card.js";
       }
       return {
         buckets,
-        title: "Maand",
-        detail: selected.date.toLocaleDateString("nl-NL", { month: "long", year: "numeric" }),
+        title: t("energy.viewMonth"),
+        detail: formatDate(selected.date, { month: "long", year: "numeric" }),
       };
     }
 
     if (normalizedView === "year") {
       const selectedYear = Number(periodModel.selectedValue);
       if (!Number.isInteger(selectedYear)) {
-        return { buckets: [], title: "Geen data", detail: "Lifetime energiehistorie" };
+        return { buckets: [], title: t("energy.noData"), detail: t("energy.lifetimeHistory") };
       }
       const buckets = [];
       for (let month = 1; month <= 12; month += 1) {
@@ -813,7 +815,7 @@ import { renderStatCard } from "./stat-card.js";
       }
       return {
         buckets,
-        title: "Jaar",
+        title: t("energy.viewYear"),
         detail: String(selectedYear),
       };
     }
@@ -836,8 +838,8 @@ import { renderStatCard } from "./stat-card.js";
     const buckets = [...years.values()].sort((a, b) => a.sortKey - b.sortKey);
     return {
       buckets,
-      title: "Alles",
-      detail: buckets.length ? `${buckets[0].label} - ${buckets[buckets.length - 1].label}` : "Geen data",
+      title: t("energy.viewAll"),
+      detail: buckets.length ? `${buckets[0].label} - ${buckets[buckets.length - 1].label}` : t("energy.noData"),
     };
   }
 
@@ -869,16 +871,16 @@ import { renderStatCard } from "./stat-card.js";
   export function getEnergyHistoryEfficiencyStat(summary) {
     const cop = formatEnergyRatio(summary.heatOutputWh, summary.heatingInputWh);
     const eer = formatEnergyRatio(summary.coolingOutputWh, summary.coolingInputWh);
-    const hasCop = Number(summary.heatOutputWh || 0) > 0 && cop !== "—";
-    const hasEer = Number(summary.coolingOutputWh || 0) > 0 && eer !== "—";
+    const hasCop = Number(summary.heatOutputWh || 0) > 0 && cop !== t("common.notAvailable");
+    const hasEer = Number(summary.coolingOutputWh || 0) > 0 && eer !== t("common.notAvailable");
 
     if (hasCop && hasEer) {
-      return { label: "COP / EER", value: `${cop} / ${eer}` };
+      return { label: t("energy.copEer"), value: `${cop} / ${eer}` };
     }
     if (hasEer) {
-      return { label: "Gemiddelde EER", value: eer };
+      return { label: t("energy.avgEer"), value: eer };
     }
-    return { label: "Gemiddelde COP", value: cop };
+    return { label: t("energy.avgCop"), value: cop };
   }
 
   export function renderEnergyHistoryStat(label, value, note = "") {
@@ -934,7 +936,7 @@ import { renderStatCard } from "./stat-card.js";
     if (periodModel.view === "day") {
       return `
         <label class="oq-energy-history-period-field">
-          <span>Datum</span>
+          <span>${escapeHtml(t("energy.periodDate"))}</span>
           <input
             class="oq-energy-history-period-input"
             type="date"
@@ -947,18 +949,18 @@ import { renderStatCard } from "./stat-card.js";
       `;
     }
     if (periodModel.view === "week") {
-      return renderEnergyHistoryPeriodSelect(periodModel, "Week", periodModel.options);
+      return renderEnergyHistoryPeriodSelect(periodModel, t("energy.viewWeek"), periodModel.options);
     }
     if (periodModel.view === "month") {
-      return renderEnergyHistoryPeriodSelect(periodModel, "Maand", periodModel.options);
+      return renderEnergyHistoryPeriodSelect(periodModel, t("energy.viewMonth"), periodModel.options);
     }
     if (periodModel.view === "year") {
-      return renderEnergyHistoryPeriodSelect(periodModel, "Jaar", periodModel.options);
+      return renderEnergyHistoryPeriodSelect(periodModel, t("energy.viewYear"), periodModel.options);
     }
     return `
       <div class="oq-energy-history-period-field oq-energy-history-period-field--static">
-        <span>Periode</span>
-        <strong>Volledig bereik</strong>
+        <span>${escapeHtml(t("energy.periodPeriod"))}</span>
+        <strong>${escapeHtml(t("energy.periodFullRange"))}</strong>
       </div>
     `;
   }
@@ -975,27 +977,27 @@ import { renderStatCard } from "./stat-card.js";
     return `
       <div class="oq-energy-history-period oq-energy-history-period--${escapeHtml(periodModel.view)}">
         ${renderEnergyHistoryPeriodInput(periodModel)}
-        <div class="oq-energy-history-period-nav" aria-label="Periode navigatie">
+        <div class="oq-energy-history-period-nav" aria-label="${escapeHtml(t("energy.periodNav"))}">
           <button
             type="button"
             class="oq-energy-history-period-button"
             data-oq-action="shift-energy-history-period"
             data-energy-history-direction="-1"
             ${periodModel.canPrevious ? "" : "disabled"}
-          >&lt; Vorige</button>
+          >${escapeHtml(t("energy.periodPrevious"))}</button>
           <button
             type="button"
             class="oq-energy-history-period-button oq-energy-history-period-button--now"
             data-oq-action="select-energy-history-now"
             ${periodModel.isNow ? "disabled" : ""}
-          >Nu</button>
+          >${escapeHtml(t("energy.periodNow"))}</button>
           <button
             type="button"
             class="oq-energy-history-period-button"
             data-oq-action="shift-energy-history-period"
             data-energy-history-direction="1"
-            ${periodModel.canNext ? "" : "disabled"}
-          >Volgende &gt;</button>
+            ${periodModel.canNext ? "disabled" : ""}
+          >${escapeHtml(t("energy.periodNext"))}</button>
         </div>
       </div>
     `;
@@ -1008,7 +1010,7 @@ import { renderStatCard } from "./stat-card.js";
 
   export function renderEnergyHistoryViewButtons(activeView) {
     return `
-      <div class="oq-energy-history-view-tabs" role="tablist" aria-label="Energiehistorie weergave">
+      <div class="oq-energy-history-view-tabs" role="tablist" aria-label="${escapeHtml(t("energy.historyViewLabel"))}">
         ${ENERGY_HISTORY_VIEW_OPTIONS.map((option) => {
           const active = option.id === activeView;
           return `
@@ -1018,7 +1020,7 @@ import { renderStatCard } from "./stat-card.js";
               data-oq-action="select-energy-history-view"
               data-energy-history-view="${escapeHtml(option.id)}"
               aria-selected="${active ? "true" : "false"}"
-            >${escapeHtml(option.label)}</button>
+            >${escapeHtml(t(option.labelKey))}</button>
           `;
         }).join("")}
       </div>
@@ -1036,18 +1038,18 @@ import { renderStatCard } from "./stat-card.js";
     const share = getEnergyHistoryHeatpumpShare(summary);
     return `
       <div class="oq-energy-history-balance">
-        <div class="oq-energy-history-balance-bar" aria-label="Energiebalans">
+        <div class="oq-energy-history-balance-bar" aria-label="${escapeHtml(t("energy.balanceLabel"))}">
           <span class="oq-energy-history-balance-part oq-energy-history-balance-part--input" style="width: ${widthOf(inputWh)}"></span>
           <span class="oq-energy-history-balance-part oq-energy-history-balance-part--heat" style="width: ${widthOf(heatWh)}"></span>
           <span class="oq-energy-history-balance-part oq-energy-history-balance-part--cooling" style="width: ${widthOf(coolingWh)}"></span>
           <span class="oq-energy-history-balance-part oq-energy-history-balance-part--${escapeHtml(boilerTone)}" style="width: ${widthOf(boilerWh)}"></span>
-          <strong>${Number.isFinite(share) ? `${Math.round(share)}%` : "—"}</strong>
+          <strong>${Number.isFinite(share) ? `${formatNumber(Math.round(share), { maximumFractionDigits: 0 })}%` : t("common.notAvailable")}</strong>
         </div>
         <div class="oq-energy-history-balance-list">
-          <span><i class="oq-energy-history-legend-dot oq-energy-history-legend-dot--heat"></i>${escapeHtml(formatEnergyAdaptiveWh(heatWh, 1))} warmte door warmtepomp</span>
-          <span><i class="oq-energy-history-legend-dot oq-energy-history-legend-dot--input"></i>${escapeHtml(formatEnergyAdaptiveWh(inputWh, 1))} verbruikte elektriciteit</span>
-          <span><i class="oq-energy-history-legend-dot oq-energy-history-legend-dot--cooling"></i>${escapeHtml(formatEnergyAdaptiveWh(coolingWh, 1))} koeling</span>
-          <span><i class="oq-energy-history-legend-dot oq-energy-history-legend-dot--${escapeHtml(boilerTone)}"></i>${escapeHtml(formatEnergyAdaptiveWh(boilerWh, 1))} cv-ketel</span>
+          <span><i class="oq-energy-history-legend-dot oq-energy-history-legend-dot--heat"></i>${escapeHtml(formatEnergyAdaptiveWh(heatWh, 1))} ${escapeHtml(t("energy.balanceHeat"))}</span>
+          <span><i class="oq-energy-history-legend-dot oq-energy-history-legend-dot--input"></i>${escapeHtml(formatEnergyAdaptiveWh(inputWh, 1))} ${escapeHtml(t("energy.balanceInput"))}</span>
+          <span><i class="oq-energy-history-legend-dot oq-energy-history-legend-dot--cooling"></i>${escapeHtml(formatEnergyAdaptiveWh(coolingWh, 1))} ${escapeHtml(t("energy.balanceCooling"))}</span>
+          <span><i class="oq-energy-history-legend-dot oq-energy-history-legend-dot--${escapeHtml(boilerTone)}"></i>${escapeHtml(formatEnergyAdaptiveWh(boilerWh, 1))} ${escapeHtml(t("energy.balanceBoiler"))}</span>
         </div>
       </div>
     `;
@@ -1067,9 +1069,9 @@ import { renderStatCard } from "./stat-card.js";
       return "";
     }
     if (value >= 999500) {
-      return `${Number((value / 1000000).toFixed(1))}`;
+      return formatNumber(value / 1000000, { maximumFractionDigits: 1 });
     }
-    return `${Number((value / 1000).toFixed(1))}`;
+    return formatNumber(value / 1000, { maximumFractionDigits: 1 });
   }
 
   export function getEnergyHistoryAxisUnit(axisMaxWh) {
@@ -1099,14 +1101,14 @@ import { renderStatCard } from "./stat-card.js";
     const coolingEer = formatEnergyRatio(record.heatpumpCoolingOutputWh, record.coolingInputWh);
     return [
       record.tooltipLabel || record.label || formatEnergyHistoryDateLabel(record.dateKey),
-      `Elektrisch totaal: ${formatEnergyAdaptiveWh(record.electricalInputWh, 1)}`,
-      `Elektrisch verwarmen: ${formatEnergyAdaptiveWh(record.heatingInputWh, 1)}`,
-      `Elektrisch koelen: ${formatEnergyAdaptiveWh(record.coolingInputWh, 1)}`,
-      `Warmtepomp warmte: ${formatEnergyAdaptiveWh(record.heatpumpHeatOutputWh, 1)}`,
-      `Warmtepomp koeling: ${formatEnergyAdaptiveWh(record.heatpumpCoolingOutputWh, 1)}`,
-      `Cv-ketel warmte: ${formatEnergyAdaptiveWh(record.boilerHeatOutputWh, 1)}`,
-      `COP verwarmen: ${heatCop}`,
-      `EER koelen: ${coolingEer}`,
+      `${t("energy.tipTotal")}: ${formatEnergyAdaptiveWh(record.electricalInputWh, 1)}`,
+      `${t("energy.tipHeatingInput")}: ${formatEnergyAdaptiveWh(record.heatingInputWh, 1)}`,
+      `${t("energy.tipCoolingInput")}: ${formatEnergyAdaptiveWh(record.coolingInputWh, 1)}`,
+      `${t("energy.tipHeatOutput")}: ${formatEnergyAdaptiveWh(record.heatpumpHeatOutputWh, 1)}`,
+      `${t("energy.tipCoolingOutput")}: ${formatEnergyAdaptiveWh(record.heatpumpCoolingOutputWh, 1)}`,
+      `${t("energy.tipBoilerOutput")}: ${formatEnergyAdaptiveWh(record.boilerHeatOutputWh, 1)}`,
+      `${t("energy.tipCop")}: ${heatCop}`,
+      `${t("energy.tipEer")}: ${coolingEer}`,
     ].join("\n");
   }
 
@@ -1114,8 +1116,8 @@ import { renderStatCard } from "./stat-card.js";
     if (!records.length) {
       return `
         <div class="oq-energy-history-empty">
-          <strong>Geen opgeslagen dagrecords</strong>
-          <span>Zet lifetime energiehistorie aan om langere grafieken op te bouwen.</span>
+          <strong>${escapeHtml(t("energy.chartEmptyTitle"))}</strong>
+          <span>${escapeHtml(t("energy.chartEmptyCopy"))}</span>
         </div>
       `;
     }
@@ -1126,10 +1128,10 @@ import { renderStatCard } from "./stat-card.js";
     const bars = records.map((record, index) => {
       const center = model.left + (model.barSlot * index) + (model.barSlot / 2);
       const stackParts = [
-        { key: "electricalInputWh", className: "input", label: "Verbruikte elektriciteit" },
-        { key: "heatpumpHeatOutputWh", className: "heat", label: "Warmte door warmtepomp" },
-        { key: "heatpumpCoolingOutputWh", className: "cooling", label: "Koeling warmtepomp" },
-        { key: "boilerHeatOutputWh", className: "boiler", label: "Cv-ketel" },
+        { key: "electricalInputWh", className: "input", label: t("energy.stackInput") },
+        { key: "heatpumpHeatOutputWh", className: "heat", label: t("energy.stackHeat") },
+        { key: "heatpumpCoolingOutputWh", className: "cooling", label: t("energy.stackCooling") },
+        { key: "boilerHeatOutputWh", className: "boiler", label: t("energy.stackBoiler") },
       ];
       let stackCursor = model.height - model.bottom;
       const stack = stackParts.map((part) => {
@@ -1173,7 +1175,7 @@ import { renderStatCard } from "./stat-card.js";
     }).join("");
 
     return `
-      <svg class="oq-energy-history-chart oq-energy-history-chart--${escapeHtml(normalizeEnergyHistoryView(activeView))}" viewBox="0 0 ${model.width} ${model.height}" role="img" aria-label="Energiehistorie">
+      <svg class="oq-energy-history-chart oq-energy-history-chart--${escapeHtml(normalizeEnergyHistoryView(activeView))}" viewBox="0 0 ${model.width} ${model.height}" role="img" aria-label="${escapeHtml(t("energy.chartLabel"))}">
         <rect x="0" y="0" width="${model.width}" height="${model.height}" rx="18" class="oq-energy-history-chart-bg"></rect>
         <text x="${model.left}" y="18" class="oq-energy-history-axis-unit">${escapeHtml(axisUnit)}</text>
         ${gridValues.map((value) => {
@@ -1191,10 +1193,10 @@ import { renderStatCard } from "./stat-card.js";
   export function renderEnergyHistoryLegend(summary = null) {
     const boilerTone = Number(summary?.boilerOutputWh || 0) > 0 ? "boiler" : "boiler-zero";
     const items = [
-      ["input", "Elektrisch"],
-      ["heat", "Warmte"],
-      ["cooling", "Koeling"],
-      [boilerTone, "Ketel"],
+      ["input", t("energy.legendInput")],
+      ["heat", t("energy.legendHeat")],
+      ["cooling", t("energy.legendCooling")],
+      [boilerTone, t("energy.legendBoiler")],
     ];
     return `
       <div class="oq-energy-history-legend">
@@ -1248,14 +1250,14 @@ import { renderStatCard } from "./stat-card.js";
   export function renderEnergyHistoryPanel(model = getEnergyHistoryPanelModel()) {
     const summary = model.summary;
     const efficiencyStat = getEnergyHistoryEfficiencyStat(summary);
-    const oldest = model.buckets[0]?.dateKey ? formatEnergyHistoryDateLabel(model.buckets[0].dateKey) : "—";
-    const newest = model.buckets[model.buckets.length - 1]?.dateKey ? formatEnergyHistoryDateLabel(model.buckets[model.buckets.length - 1].dateKey) : "—";
+    const oldest = model.buckets[0]?.dateKey ? formatEnergyHistoryDateLabel(model.buckets[0].dateKey) : t("common.notAvailable");
+    const newest = model.buckets[model.buckets.length - 1]?.dateKey ? formatEnergyHistoryDateLabel(model.buckets[model.buckets.length - 1].dateKey) : t("common.notAvailable");
     return `
       <section class="oq-energy-history" data-render-signature="${escapeHtml(getEnergyHistoryRenderSignature(model))}">
         <div class="oq-energy-history-head">
           <div>
-            <p class="oq-helper-label">Historie</p>
-            <h3>Energiehistorie</h3>
+            <p class="oq-helper-label">${escapeHtml(t("energy.panelKicker"))}</p>
+            <h3>${escapeHtml(t("energy.panelTitle"))}</h3>
             <p>${escapeHtml(model.viewModel.title)} · ${escapeHtml(model.viewModel.detail)}</p>
           </div>
         </div>
@@ -1266,9 +1268,9 @@ import { renderStatCard } from "./stat-card.js";
         ${state.energyHistoryError ? `<p class="oq-energy-history-error">${escapeHtml(state.energyHistoryError)}</p>` : ""}
         <div class="oq-energy-history-stats">
           ${renderEnergyHistoryStat(efficiencyStat.label, efficiencyStat.value, `${escapeHtml(oldest)} - ${escapeHtml(newest)}`)}
-          ${renderEnergyHistoryStat("Elektrisch", formatEnergyAdaptiveWh(summary.electricalInputWh, 1), "verbruikt")}
-          ${renderEnergyHistoryStat("Warmtepomp", formatEnergyAdaptiveWh(summary.heatOutputWh + summary.coolingOutputWh, 1), "warmte en koeling")}
-          ${renderEnergyHistoryStat("Cv-ketel", formatEnergyAdaptiveWh(summary.boilerOutputWh, 1), "thermisch")}
+          ${renderEnergyHistoryStat(t("energy.statElectric"), formatEnergyAdaptiveWh(summary.electricalInputWh, 1), t("energy.statConsumed"))}
+          ${renderEnergyHistoryStat(t("energy.statHeatpump"), formatEnergyAdaptiveWh(summary.heatOutputWh + summary.coolingOutputWh, 1), t("energy.statHeatCooling"))}
+          ${renderEnergyHistoryStat(t("energy.statBoiler"), formatEnergyAdaptiveWh(summary.boilerOutputWh, 1), t("energy.statThermal"))}
         </div>
         ${renderEnergyHistoryBalance(summary)}
         <div class="oq-energy-history-chart-head">
@@ -1321,9 +1323,9 @@ import { renderStatCard } from "./stat-card.js";
         <div class="oq-overview-board oq-overview-board--${escapeHtml(state.overviewTheme)}">
           <div class="oq-overview-head">
           <div>
-            <p class="oq-helper-label">Energie</p>
-            <h2 class="oq-helper-section-title">Actuele energiestromen</h2>
-            <p class="oq-helper-section-copy">Bekijk actuele energiestromen, dagtotalen en cumulatieve tellers.</p>
+            <p class="oq-helper-label">${escapeHtml(t("energy.viewKicker"))}</p>
+            <h2 class="oq-helper-section-title">${escapeHtml(t("energy.viewTitle"))}</h2>
+            <p class="oq-helper-section-copy">${escapeHtml(t("energy.viewCopy"))}</p>
           </div>
           </div>
           ${renderEnergySection()}
@@ -1338,9 +1340,9 @@ import { renderStatCard } from "./stat-card.js";
         <div class="oq-overview-board oq-overview-board--${escapeHtml(state.overviewTheme)}">
           <div class="oq-overview-head">
             <div>
-              <p class="oq-helper-label">Resultaten</p>
-              <h2 class="oq-helper-section-title">Historische resultaten</h2>
-              <p class="oq-helper-section-copy">Vergelijk opbrengst, verbruik, rendement en COP/EER per periode.</p>
+              <p class="oq-helper-label">${escapeHtml(t("energy.resultsKicker"))}</p>
+              <h2 class="oq-helper-section-title">${escapeHtml(t("energy.resultsTitle"))}</h2>
+              <p class="oq-helper-section-copy">${escapeHtml(t("energy.resultsCopy"))}</p>
             </div>
           </div>
           ${renderEnergyHistoryPanel()}

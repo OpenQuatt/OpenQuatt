@@ -7,11 +7,12 @@ import { state } from "../core/state.js";
 import { getInstallationLabel, getInstallationTopology } from "../features/device-context.js";
 import { getFirmwareCurrentVersion } from "../features/firmware-update.js";
 import { ENERGY_HISTORY_EXPORT_MODES, getSettingsBackupSelectionSummary, normalizeEnergyHistoryExportMode } from "../features/storage-history.js";
-import { getSettingsStatValue, renderSettingsCompactSwitchControl, renderSettingsFieldCard, renderSettingsSection, renderSettingsSelectControl, renderSettingsSwitchCopy } from "./controls.js";
+import { getSettingsStatValue, renderSettingsCompactSwitchControl, renderSettingsSection, renderSettingsSelectControl, renderSettingsSwitchCopy } from "./controls.js";
 import { getSettingsSelectModel } from "./field-models.js";
 import { getElectricalLimitBackupRestoreWarning } from "./electrical-limit.js";
 import { escapeHtml } from "../core/html.js";
 import { renderModalShell } from "../core/modal-shell.js";
+import { formatDate, formatNumber, formatTime, t } from "../i18n/index.js";
 
   export function renderSettingsStorageSummaryMetric(label, value, meta = "", enabled = false) {
     return `
@@ -29,7 +30,9 @@ import { renderModalShell } from "../core/modal-shell.js";
     if (!match) {
       return text;
     }
-    return `${match[1]} ${match[1] === "1" ? "dag" : "dagen"}`;
+    return Number(match[1]) === 1
+      ? t("settingsStorage.storedDaysOne", { count: match[1] })
+      : t("settingsStorage.storedDaysOther", { count: match[1] });
   }
 
   export function renderSettingsStorageSwitchRow(key, title, copy, enabledCopy = "", disabledCopy = "", meta = "") {
@@ -117,7 +120,7 @@ import { renderModalShell } from "../core/modal-shell.js";
   }
 
   export function getSettingsStorageLoadingLabel(error) {
-    return error ? "Niet geladen" : "Laden...";
+    return error ? t("settingsStorage.loadingError") : t("settingsStorage.loadingBusy");
   }
 
   export function getSettingsStorageStatOrFallback(key, fallback = "—") {
@@ -134,25 +137,25 @@ import { renderModalShell } from "../core/modal-shell.js";
       if (!hasSettingsTrendHistoryMetadata()) {
         return getSettingsStorageLoadingLabel(state.trendHistoryMetadataError);
       }
-      return trendMetadata.available || "Alleen live";
+      return trendMetadata.available || t("settingsStorage.liveOnly");
     }
     if (key === "trendHistoryFlashOldest") {
       if (!hasSettingsTrendHistoryMetadata()) {
         return getSettingsStorageLoadingLabel(state.trendHistoryMetadataError);
       }
-      return trendMetadata.oldest || "Geen data";
+      return trendMetadata.oldest || t("settingsStorage.noData");
     }
     if (key === "trendHistoryFlashNewest") {
       if (!hasSettingsTrendHistoryMetadata()) {
         return getSettingsStorageLoadingLabel(state.trendHistoryMetadataError);
       }
-      return trendMetadata.newest || "Geen data";
+      return trendMetadata.newest || t("settingsStorage.noData");
     }
     if (key === "trendHistoryFlashLastFlush") {
       if (!hasSettingsTrendHistoryMetadata()) {
         return getSettingsStorageLoadingLabel(state.trendHistoryMetadataError);
       }
-      return trendMetadata.lastFlush || "Geen data";
+      return trendMetadata.lastFlush || t("settingsStorage.noData");
     }
     if (key === "trendHistoryFlashSize") {
       if (!hasSettingsTrendHistoryMetadata()) {
@@ -193,9 +196,9 @@ import { renderModalShell } from "../core/modal-shell.js";
         return getSettingsStorageLoadingLabel(state.energyHistoryError);
       }
       if (hasDayRetentionMetadata && !energyMetadata.dayPartitionAvailable) {
-        return "Niet beschikbaar";
+        return t("settingsStorage.notAvailable");
       }
-      return formatSettingsStorageDayCount(energyMetadata.storedDayCount, "Geen data");
+      return formatSettingsStorageDayCount(energyMetadata.storedDayCount, t("settingsStorage.noData"));
     }
     if (key === "lifetimeEnergyHistoryOldest") {
       if (!hasSettingsEnergyHistoryMetadata()) {
@@ -230,20 +233,27 @@ import { renderModalShell } from "../core/modal-shell.js";
     return null;
   }
 
-  export function formatSettingsStorageDayCount(value, fallback = "Geen data") {
+  export function formatSettingsStorageDayCount(value, fallback = null) {
+    const resolvedFallback = fallback ?? t("settingsStorage.noData");
     const count = Number(value);
     if (!Number.isFinite(count) || count <= 0) {
-      return fallback;
+      return resolvedFallback;
     }
-    return `${Math.round(count)} ${Math.round(count) === 1 ? "dag" : "dagen"}`;
+    const rounded = Math.round(count);
+    return rounded === 1
+      ? t("settingsStorage.dayCountOne", { count: formatNumber(rounded, { maximumFractionDigits: 0 }) })
+      : t("settingsStorage.dayCountOther", { count: formatNumber(rounded, { maximumFractionDigits: 0 }) });
   }
 
-  export function formatSettingsStorageEventCount(value, fallback = "Nog geen historie") {
+  export function formatSettingsStorageEventCount(value, fallback = null) {
+    const resolvedFallback = fallback ?? t("settingsStorage.eventCountNone");
     const count = Math.max(0, Math.round(Number(value) || 0));
     if (count <= 0) {
-      return fallback;
+      return resolvedFallback;
     }
-    return `${count} ${count === 1 ? "gebeurtenis" : "gebeurtenissen"}`;
+    return count === 1
+      ? t("settingsStorage.eventCountOne", { count: formatNumber(count, { maximumFractionDigits: 0 }) })
+      : t("settingsStorage.eventCountOther", { count: formatNumber(count, { maximumFractionDigits: 0 }) });
   }
 
   export function getSettingsDecisionLogStorageMetadata() {
@@ -271,19 +281,20 @@ import { renderModalShell } from "../core/modal-shell.js";
   export function formatSettingsStorageDateKey(dateKey) {
     const parsed = parseEnergyHistoryDateKey(dateKey);
     if (!parsed) {
-      return "Geen data";
+      return t("settingsStorage.noData");
     }
-    return parsed.date.toLocaleDateString("nl-NL", { day: "2-digit", month: "2-digit", year: "numeric" });
+    return formatDate(parsed.date, { day: "2-digit", month: "2-digit", year: "numeric" });
   }
 
-  export function formatSettingsStorageTimestamp(seconds, fallback = "Geen data") {
+  export function formatSettingsStorageTimestamp(seconds, fallback = null) {
+    const resolvedFallback = fallback ?? t("settingsStorage.noData");
     const timestamp = Number(seconds);
     if (!Number.isFinite(timestamp) || timestamp <= 0) {
-      return fallback;
+      return resolvedFallback;
     }
     const date = new Date(timestamp * 1000);
-    const day = date.toLocaleDateString("nl-NL", { day: "2-digit", month: "2-digit" });
-    const time = date.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+    const day = formatDate(date, { day: "2-digit", month: "2-digit" });
+    const time = formatTime(date, { hour: "2-digit", minute: "2-digit" });
     return `${day} ${time}`;
   }
 
@@ -322,8 +333,8 @@ import { renderModalShell } from "../core/modal-shell.js";
       <details class="oq-settings-storage-technical"${state.settingsStorageDetailsOpen ? " open" : ""}>
         <summary data-oq-action="toggle-storage-technical-details">
           <span>
-            <strong>Opslagdetails</strong>
-            <em>Bewaartermijn, ruimte en opslagmomenten</em>
+            <strong>${escapeHtml(t("settingsStorage.technicalTitle"))}</strong>
+            <em>${escapeHtml(t("settingsStorage.technicalCopy"))}</em>
           </span>
           <span class="oq-settings-storage-technical-summary">${escapeHtml(visibleRows.map((row) => `${row.shortLabel}: ${row.primary}`).join(" · "))}</span>
         </summary>
@@ -345,30 +356,30 @@ import { renderModalShell } from "../core/modal-shell.js";
     const lifetimeEnergyHistoryEnabled = lifetimeEnergyHistoryAvailable && isEntityActive("lifetimeEnergyHistoryEnabled");
     const decisionLogHistoryAvailable = hasEntity("decisionLogHistoryEnabled");
     const decisionLogHistoryEnabled = decisionLogHistoryAvailable && isEntityActive("decisionLogHistoryEnabled");
-    const decisionLogMetadata = getSettingsDecisionLogStorageMetadata();
+    const decisionMetadata = getSettingsDecisionLogStorageMetadata();
     const trendAvailableValue = trendHistoryFlashEnabled
-      ? getSettingsStorageStatOrFallback("trendHistoryFlashAvailable", "Alleen live")
-      : "Alleen live";
+      ? getSettingsStorageStatOrFallback("trendHistoryFlashAvailable", t("settingsStorage.liveOnly"))
+      : t("settingsStorage.liveOnly");
     const lifetimeAvailableValue = lifetimeEnergyHistoryAvailable
-      ? formatSettingsStoredDaysLabel(getSettingsStorageStatOrFallback("lifetimeEnergyHistoryAvailable", "Geen data"))
-      : "Geen data";
+      ? formatSettingsStoredDaysLabel(getSettingsStorageStatOrFallback("lifetimeEnergyHistoryAvailable", t("settingsStorage.noData")))
+      : t("settingsStorage.noData");
     return renderSettingsSection(
-      "Diagnose",
-      "Gegevens bewaren",
-      "Bepaal welke gegevens OpenQuatt bewaart voor grafieken, resultaten en hulp bij problemen.",
+      t("settingsStorage.sectionGroup"),
+      t("settingsStorage.sectionTitle"),
+      t("settingsStorage.sectionCopy"),
       `
         <article class="oq-settings-storage-summary">
           <div class="oq-settings-storage-summary-copy">
-            <h3>Wat wordt bewaard?</h3>
-            <p>Kies welke gegevens tijdelijk beschikbaar blijven en wat in permanent geheugen wordt bewaard.</p>
+            <h3>${escapeHtml(t("settingsStorage.summaryTitle"))}</h3>
+            <p>${escapeHtml(t("settingsStorage.summaryCopy"))}</p>
           </div>
-          <div class="oq-settings-storage-summary-metrics" aria-label="Opslagstatus">
-            ${hasEntity("trendHistoryEnabled") ? renderSettingsStorageSummaryMetric("Diagnose", trendHistoryFlashEnabled ? trendAvailableValue : (trendHistoryEnabled ? "Alleen live" : "Uit"), trendHistoryFlashEnabled ? "Blijft bewaard na herstart" : "Tijdelijk", trendHistoryEnabled) : ""}
-            ${decisionLogHistoryAvailable ? renderSettingsStorageSummaryMetric("Beslislog", decisionLogHistoryEnabled ? formatSettingsStorageEventCount(decisionLogMetadata.storedEvents) : "Alleen sinds herstart", decisionLogHistoryEnabled ? "Maximaal 7 dagen" : "Tijdelijk", decisionLogHistoryEnabled) : ""}
-            ${lifetimeEnergyHistoryAvailable ? renderSettingsStorageSummaryMetric("Energie", lifetimeAvailableValue, lifetimeEnergyHistoryEnabled ? "Blijft bewaard na herstart" : "Uit", lifetimeEnergyHistoryEnabled) : ""}
+          <div class="oq-settings-storage-summary-metrics" aria-label="${escapeHtml(t("settingsStorage.summaryStatusLabel"))}">
+            ${hasEntity("trendHistoryEnabled") ? renderSettingsStorageSummaryMetric(t("settingsStorage.metricDiagnosis"), trendHistoryFlashEnabled ? trendAvailableValue : (trendHistoryEnabled ? t("settingsStorage.liveOnly") : t("settingsStorage.offValue")), trendHistoryFlashEnabled ? t("settingsStorage.metricKept") : t("settingsStorage.metricTemporary"), trendHistoryEnabled) : ""}
+            ${decisionLogHistoryAvailable ? renderSettingsStorageSummaryMetric(t("settingsStorage.metricLog"), decisionLogHistoryEnabled ? formatSettingsStorageEventCount(decisionMetadata.storedEvents) : t("settingsStorage.metricLogLive"), decisionLogHistoryEnabled ? t("settingsStorage.metricLogMax") : t("settingsStorage.metricTemporary"), decisionLogHistoryEnabled) : ""}
+            ${lifetimeEnergyHistoryAvailable ? renderSettingsStorageSummaryMetric(t("settingsStorage.metricEnergy"), lifetimeAvailableValue, lifetimeEnergyHistoryEnabled ? t("settingsStorage.metricKept") : t("settingsStorage.offValue"), lifetimeEnergyHistoryEnabled) : ""}
           </div>
           <button class="oq-helper-button oq-helper-button--ghost oq-settings-storage-summary-action" type="button" data-oq-action="open-history-storage-modal">
-            Beheren
+            ${escapeHtml(t("settingsStorage.manageAction"))}
           </button>
         </article>
       `,
@@ -384,10 +395,10 @@ import { renderModalShell } from "../core/modal-shell.js";
     const hourDayCount = new Set(state.energyHistoryImportHourRecords.map((record) => record.dateKey)).size;
     const recordParts = [];
     if (dailyCount > 0) {
-      recordParts.push(`${dailyCount} dagrecords`);
+      recordParts.push(t("settingsStorage.importDayRecords", { count: formatNumber(dailyCount, { maximumFractionDigits: 0 }) }));
     }
     if (hourDayCount > 0) {
-      recordParts.push(`${hourDayCount} uurdagen`);
+      recordParts.push(t("settingsStorage.importHourDays", { count: formatNumber(hourDayCount, { maximumFractionDigits: 0 }) }));
     }
     if (state.energyHistoryImportRange) {
       recordParts.push(state.energyHistoryImportRange);
@@ -396,26 +407,26 @@ import { renderModalShell } from "../core/modal-shell.js";
       recordParts.push(state.energyHistoryImportSource);
     }
     if (state.energyHistoryImportInvalidCount > 0) {
-      recordParts.push(`${state.energyHistoryImportInvalidCount} regels niet gebruikt`);
+      recordParts.push(t("settingsStorage.importInvalidLines", { count: formatNumber(state.energyHistoryImportInvalidCount, { maximumFractionDigits: 0 }) }));
     }
 
     const hasFile = Boolean(state.energyHistoryImportFileName);
     const hasRecords = dailyCount > 0 || hourDayCount > 0;
     const progress = Number(state.energyHistoryImportProgressPercent || 0);
     const importLabel = state.energyHistoryImportBusy
-      ? `Importeren...${progress > 0 ? ` (${progress}%)` : ""}`
-      : "Importeren";
+      ? progress > 0 ? t("settingsStorage.importBusyProgress", { progress }) : t("settingsStorage.importBusy")
+      : t("settingsStorage.importAction");
 
     return `
       <div class="oq-settings-storage-import">
         <div class="oq-settings-storage-import-head">
           <div>
-            <h4>Historie importeren</h4>
-            <p>Vul ontbrekende dagtotalen en uurdetail aan vanuit een OpenQuatt- of Quatt-exportbestand.</p>
+            <h4>${escapeHtml(t("settingsStorage.importTitle"))}</h4>
+            <p>${escapeHtml(t("settingsStorage.importCopy"))}</p>
           </div>
           ${!hasFile ? `
             <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="select-energy-history-import-file">
-              Bestand kiezen
+              ${escapeHtml(t("settingsStorage.importChoose"))}
             </button>
           ` : ""}
         </div>
@@ -429,7 +440,7 @@ import { renderModalShell } from "../core/modal-shell.js";
             </div>
             <div class="oq-settings-storage-import-actions">
               <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="clear-energy-history-import-file" ${state.energyHistoryImportBusy ? "disabled" : ""}>
-                Wissen
+                ${escapeHtml(t("settingsStorage.importClear"))}
               </button>
               <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="import-energy-history-file" ${state.energyHistoryImportBusy || !hasRecords ? "disabled" : ""}>
                 ${escapeHtml(importLabel)}
@@ -452,17 +463,17 @@ import { renderModalShell } from "../core/modal-shell.js";
     const mode = normalizeEnergyHistoryExportMode(state.energyHistoryExportMode);
     const options = ENERGY_HISTORY_EXPORT_MODES.map((option) => `
       <option value="${escapeHtml(option.id)}" ${option.id === mode ? "selected" : ""}>
-        ${escapeHtml(option.label)}
+        ${escapeHtml(option.labelKey ? t(option.labelKey) : option.label)}
       </option>
     `).join("");
-    const exportLabel = state.energyHistoryExportBusy ? "Exporteren..." : "Exporteren";
+    const exportLabel = state.energyHistoryExportBusy ? t("settingsStorage.exportBusy") : t("settingsStorage.exportAction");
 
     return `
       <div class="oq-settings-storage-import oq-settings-storage-export">
         <div class="oq-settings-storage-import-head">
           <div>
-            <h4>Historie exporteren</h4>
-            <p>Download bewaarde energiegegevens om ze later op een andere OpenQuatt te importeren.</p>
+            <h4>${escapeHtml(t("settingsStorage.exportTitle"))}</h4>
+            <p>${escapeHtml(t("settingsStorage.exportCopy"))}</p>
           </div>
           <div class="oq-settings-storage-export-controls">
             <select class="oq-helper-select oq-settings-storage-export-select" data-oq-energy-history-export-mode="true" ${state.energyHistoryExportBusy ? "disabled" : ""}>
@@ -492,10 +503,10 @@ import { renderModalShell } from "../core/modal-shell.js";
     const lifetimeEnergyHistoryAvailable = hasEntity("lifetimeEnergyHistoryEnabled");
     const lifetimeEnergyHistoryEnabled = lifetimeEnergyHistoryAvailable && isEntityActive("lifetimeEnergyHistoryEnabled");
     const lifetimeAvailableLabel = lifetimeEnergyHistoryAvailable
-      ? getSettingsStorageStatOrFallback("lifetimeEnergyHistoryAvailable", "Geen data")
-      : "Geen data";
+      ? getSettingsStorageStatOrFallback("lifetimeEnergyHistoryAvailable", t("settingsStorage.noData"))
+      : t("settingsStorage.noData");
     const lifetimeAvailableDaysLabel = formatSettingsStoredDaysLabel(lifetimeAvailableLabel);
-    const canClearLifetime = hasEntity("lifetimeEnergyHistoryClear") && !["Geen data", "—"].includes(lifetimeAvailableLabel);
+    const canClearLifetime = hasEntity("lifetimeEnergyHistoryClear") && ![t("settingsStorage.noData"), "—"].includes(lifetimeAvailableLabel);
     const canFlushTrend = trendHistoryEnabled && hasEntity("trendHistoryFlush");
     const canFlushDecision = decisionLogHistoryEnabled && hasEntity("decisionLogHistoryFlush");
     const canCaptureLifetime = hasEntity("lifetimeEnergyHistoryCapture");
@@ -503,15 +514,15 @@ import { renderModalShell } from "../core/modal-shell.js";
     const hasHourMetadata = String(state.energyHistoryRaw || "").includes("@hour_retention|");
     const hourFlashUnavailable = hasHourMetadata && !energyMetadata.hourPartitionAvailable;
     const hourStoredLabel = hasHourMetadata
-      ? hourFlashUnavailable ? "Alleen live" : formatSettingsStorageDayCount(energyMetadata.hourStoredDayCount, "Geen uurdata")
-      : "Laden...";
+      ? hourFlashUnavailable ? t("settingsStorage.liveOnly") : formatSettingsStorageDayCount(energyMetadata.hourStoredDayCount, t("settingsStorage.noHourData"))
+      : t("settingsStorage.loadingBusy");
     const hourStorageLabel = hasHourMetadata && !hourFlashUnavailable ? formatSettingsStorageKb(energyMetadata.hourStorageKb) : "—";
     const hourWriteLabel = hasHourMetadata && !hourFlashUnavailable ? formatSettingsStorageCount(energyMetadata.hourWriteCount) : "—";
-    const hourLastWriteLabel = hasHourMetadata && !hourFlashUnavailable ? formatSettingsStorageTimestamp(energyMetadata.hourLastWriteTimestampS) : "Geen data";
+    const hourLastWriteLabel = hasHourMetadata && !hourFlashUnavailable ? formatSettingsStorageTimestamp(energyMetadata.hourLastWriteTimestampS) : t("settingsStorage.noData");
 
     const backButton = page === "overview" ? "" : `
       <button class="oq-settings-storage-back" type="button" data-oq-action="back-storage-overview">
-        <span aria-hidden="true">←</span> Opslagoverzicht
+        <span aria-hidden="true">←</span> ${escapeHtml(t("settingsStorage.backOverview"))}
       </button>`;
     const renderHubItem = (action, eyebrow, title, summary, status, enabled) => `
       <button class="oq-settings-storage-hub-item${enabled ? " is-on" : ""}" type="button" data-oq-action="${escapeHtml(action)}">
@@ -527,121 +538,121 @@ import { renderModalShell } from "../core/modal-shell.js";
       </button>`;
 
     const diagnosisDetails = {
-      title: "Diagnosegeschiedenis",
-      meta: "Technische details",
-      shortLabel: "Diagnose",
-      primary: getSettingsStorageStatOrFallback("trendHistoryFlashAvailable", "Alleen live"),
-      note: `Laatste meting: ${getSettingsStorageStatOrFallback("trendHistoryFlashNewest", "Geen data")}`,
+      title: t("settingsStorage.diagTitle"),
+      meta: t("settingsStorage.diagMeta"),
+      shortLabel: t("settingsStorage.diagShort"),
+      primary: getSettingsStorageStatOrFallback("trendHistoryFlashAvailable", t("settingsStorage.liveOnly")),
+      note: t("settingsStorage.diagNote", { value: getSettingsStorageStatOrFallback("trendHistoryFlashNewest", t("settingsStorage.noData")) }),
       items: [
-        { label: "Bewaarperiode", value: getSettingsStorageStatOrFallback("trendHistoryFlashAvailable", "Alleen live") },
-        { label: "Opslagruimte", value: getSettingsStorageStatOrFallback("trendHistoryFlashSize") },
-        { label: "Opslagacties", value: getSettingsStorageStatOrFallback("trendHistoryFlashWrites", "0") },
-        { label: "Langste volledige opslagactie", value: getSettingsStorageStatOrFallback("trendHistoryFlashMaxFlushDuration", "0 ms") },
-        { label: "Sector-erases sinds start", value: getSettingsStorageStatOrFallback("trendHistoryFlashErases", "0") },
-        { label: "Langste sector-erase", value: getSettingsStorageStatOrFallback("trendHistoryFlashMaxEraseDuration", "0 ms") },
-        { label: "Langste flashwrite", value: getSettingsStorageStatOrFallback("trendHistoryFlashMaxWriteDuration", "0 ms") },
-        { label: "Langste index-update", value: getSettingsStorageStatOrFallback("trendHistoryFlashMaxIndexUpdateDuration", "0 ms") },
-        { label: "Flashfouten sinds start", value: getSettingsStorageStatOrFallback("trendHistoryFlashFailures", "0") },
-        { label: "Laatst opgeslagen", value: getSettingsStorageStatOrFallback("trendHistoryFlashLastFlush", "Geen data") },
+        { label: t("settingsStorage.diagPeriod"), value: getSettingsStorageStatOrFallback("trendHistoryFlashAvailable", t("settingsStorage.liveOnly")) },
+        { label: t("settingsStorage.diagSpace"), value: getSettingsStorageStatOrFallback("trendHistoryFlashSize") },
+        { label: t("settingsStorage.diagActions"), value: getSettingsStorageStatOrFallback("trendHistoryFlashWrites", "0") },
+        { label: t("settingsStorage.diagLongestFlush"), value: getSettingsStorageStatOrFallback("trendHistoryFlashMaxFlushDuration", "0 ms") },
+        { label: t("settingsStorage.diagErases"), value: getSettingsStorageStatOrFallback("trendHistoryFlashErases", "0") },
+        { label: t("settingsStorage.diagLongestErase"), value: getSettingsStorageStatOrFallback("trendHistoryFlashMaxEraseDuration", "0 ms") },
+        { label: t("settingsStorage.diagLongestWrite"), value: getSettingsStorageStatOrFallback("trendHistoryFlashMaxWriteDuration", "0 ms") },
+        { label: t("settingsStorage.diagLongestIndex"), value: getSettingsStorageStatOrFallback("trendHistoryFlashMaxIndexUpdateDuration", "0 ms") },
+        { label: t("settingsStorage.diagFlashErrors"), value: getSettingsStorageStatOrFallback("trendHistoryFlashFailures", "0") },
+        { label: t("settingsStorage.diagLastStored"), value: getSettingsStorageStatOrFallback("trendHistoryFlashLastFlush", t("settingsStorage.noData")) },
       ],
     };
     const decisionDetails = {
-      title: "Beslisloghistorie",
-      meta: "Technische details",
-      shortLabel: "Beslislog",
-      primary: decisionLogHistoryEnabled ? decisionEventsLabel : "Alleen sinds herstart",
-      note: decisionMetadata.lastFlushEpochS ? `Laatst opgeslagen: ${formatSettingsStorageTimestamp(decisionMetadata.lastFlushEpochS)}` : "Nog niet opgeslagen",
+      title: t("settingsStorage.logTitle"),
+      meta: t("settingsStorage.diagMeta"),
+      shortLabel: t("settingsStorage.logShort"),
+      primary: decisionLogHistoryEnabled ? decisionEventsLabel : t("settingsStorage.logLive"),
+      note: decisionMetadata.lastFlushEpochS ? t("settingsStorage.logLastStored", { value: formatSettingsStorageTimestamp(decisionMetadata.lastFlushEpochS) }) : t("settingsStorage.logNeverStored"),
       items: [
-        { label: "Aantal", value: formatSettingsStorageCount(decisionMetadata.storedEvents) },
-        { label: "Ruimte", value: formatSettingsStorageKb(Number(decisionMetadata.storageBytes || 0) / 1024) },
-        { label: "Schrijfacties", value: formatSettingsStorageCount(decisionMetadata.writeCount) },
-        { label: "Laatste opslag", value: formatSettingsStorageTimestamp(decisionMetadata.lastFlushEpochS) },
+        { label: t("settingsStorage.logCount"), value: formatSettingsStorageCount(decisionMetadata.storedEvents) },
+        { label: t("settingsStorage.logSpace"), value: formatSettingsStorageKb(Number(decisionMetadata.storageBytes || 0) / 1024) },
+        { label: t("settingsStorage.logWrites"), value: formatSettingsStorageCount(decisionMetadata.writeCount) },
+        { label: t("settingsStorage.logLastWrite"), value: formatSettingsStorageTimestamp(decisionMetadata.lastFlushEpochS) },
       ],
     };
     const energyDetails = [
       {
-        title: "Dagtotalen",
-        meta: "Technische details",
-        shortLabel: "Dag",
+        title: t("settingsStorage.dayTitle"),
+        meta: t("settingsStorage.diagMeta"),
+        shortLabel: t("settingsStorage.dayShort"),
         primary: lifetimeAvailableDaysLabel,
-        note: `${getSettingsStorageStatOrFallback("lifetimeEnergyHistoryOldest", "Geen data")} t/m ${getSettingsStorageStatOrFallback("lifetimeEnergyHistoryNewest", "Geen data")}`,
+        note: t("settingsStorage.dayRange", { oldest: getSettingsStorageStatOrFallback("lifetimeEnergyHistoryOldest", t("settingsStorage.noData")), newest: getSettingsStorageStatOrFallback("lifetimeEnergyHistoryNewest", t("settingsStorage.noData")) }),
         items: [
-          { label: "Dagen bewaard", value: lifetimeAvailableDaysLabel },
-          { label: "Opslagruimte", value: getSettingsStorageStatOrFallback("lifetimeEnergyHistorySize") },
-          { label: "Opslagacties", value: getSettingsStorageStatOrFallback("lifetimeEnergyHistoryWrites", "0") },
-          { label: "Laatst opgeslagen", value: getSettingsStorageStatOrFallback("lifetimeEnergyHistoryLastWrite", "Geen data") },
+          { label: t("settingsStorage.dayKept"), value: lifetimeAvailableDaysLabel },
+          { label: t("settingsStorage.diagSpace"), value: getSettingsStorageStatOrFallback("lifetimeEnergyHistorySize") },
+          { label: t("settingsStorage.diagActions"), value: getSettingsStorageStatOrFallback("lifetimeEnergyHistoryWrites", "0") },
+          { label: t("settingsStorage.diagLastStored"), value: getSettingsStorageStatOrFallback("lifetimeEnergyHistoryLastWrite", t("settingsStorage.noData")) },
         ],
       },
       hasEntity("lifetimeEnergyHourRetention") ? {
-        title: "Uurdetail",
-        meta: "Technische details",
-        shortLabel: "Uur",
+        title: t("settingsStorage.hourTitle"),
+        meta: t("settingsStorage.diagMeta"),
+        shortLabel: t("settingsStorage.hourShort"),
         primary: hourStoredLabel,
-        note: "Detail voor de daggrafiek",
+        note: t("settingsStorage.hourNote"),
         items: [
-          { label: "Dagen bewaard", value: hourStoredLabel },
-          { label: "Opslagruimte", value: hourStorageLabel },
-          { label: "Opslagacties", value: hourWriteLabel },
-          { label: "Laatst opgeslagen", value: hourLastWriteLabel },
+          { label: t("settingsStorage.dayKept"), value: hourStoredLabel },
+          { label: t("settingsStorage.diagSpace"), value: hourStorageLabel },
+          { label: t("settingsStorage.diagActions"), value: hourWriteLabel },
+          { label: t("settingsStorage.diagLastStored"), value: hourLastWriteLabel },
         ],
       } : null,
     ];
 
-    let title = "Gegevens bewaren";
-    let copy = "Kies welk soort historie je wilt bekijken of aanpassen. Dit verandert niets aan de aansturing van je warmtepomp.";
+    let title = t("settingsStorage.hubTitle");
+    let copy = t("settingsStorage.hubCopy");
     let body = `
       <div class="oq-settings-storage-hub">
-        ${renderHubItem("open-storage-diagnosis", "Diagnose", "Technische meetgegevens", "Temperaturen, doorstroming en vermogen voor grafieken en support.", trendHistoryFlashEnabled ? getSettingsStorageStatOrFallback("trendHistoryFlashAvailable", "Historie actief") : (trendHistoryEnabled ? "Alleen live" : "Uit"), trendHistoryEnabled)}
-        ${decisionLogHistoryAvailable ? renderHubItem("open-storage-decision-log", "Beslislog", "Keuzes van de controller", "Exacte momenten, redenen, bronwissels en bescherming.", decisionLogHistoryEnabled ? `${decisionEventsLabel} · max. 7 dagen` : "Alleen sinds herstart", decisionLogHistoryEnabled) : ""}
-        ${lifetimeEnergyHistoryAvailable ? renderHubItem("open-storage-energy", "Resultaten", "Energiehistorie", "Dagtotalen en uurdetail voor opbrengst, verbruik en rendement.", lifetimeEnergyHistoryEnabled ? lifetimeAvailableDaysLabel : "Uit", lifetimeEnergyHistoryEnabled) : ""}
+        ${renderHubItem("open-storage-diagnosis", t("settingsStorage.hubDiagEyebrow"), t("settingsStorage.hubDiagTitle"), t("settingsStorage.hubDiagCopy"), trendHistoryFlashEnabled ? getSettingsStorageStatOrFallback("trendHistoryFlashAvailable", t("settingsStorage.hubDiagActive")) : (trendHistoryEnabled ? t("settingsStorage.liveOnly") : t("settingsStorage.offValue")), trendHistoryEnabled)}
+        ${decisionLogHistoryAvailable ? renderHubItem("open-storage-decision-log", t("settingsStorage.hubLogEyebrow"), t("settingsStorage.hubLogTitle"), t("settingsStorage.hubLogCopy"), decisionLogHistoryEnabled ? t("settingsStorage.hubLogEnabled", { events: decisionEventsLabel }) : t("settingsStorage.logLive"), decisionLogHistoryEnabled) : ""}
+        ${lifetimeEnergyHistoryAvailable ? renderHubItem("open-storage-energy", t("settingsStorage.hubEnergyEyebrow"), t("settingsStorage.hubEnergyTitle"), t("settingsStorage.hubEnergyCopy"), lifetimeEnergyHistoryEnabled ? lifetimeAvailableDaysLabel : t("settingsStorage.offValue"), lifetimeEnergyHistoryEnabled) : ""}
       </div>
-      <p class="oq-settings-storage-footnote"><strong>Goed om te weten:</strong> gegevens die worden bewaard, blijven beschikbaar na een herstart. Tijdelijke gegevens bestaan alleen zolang de controller online is.</p>`;
+      <p class="oq-settings-storage-footnote"><strong>${escapeHtml(t("settingsStorage.hubFootnote"))}</strong> ${escapeHtml(t("settingsStorage.hubFootnoteCopy"))}</p>`;
 
     if (page === "diagnosis") {
-      title = "Diagnosegegevens";
-      copy = "Beheer technische meetreeksen voor diagnosegrafieken en hulp bij problemen.";
+      title = t("settingsStorage.pageDiagnosisTitle");
+      copy = t("settingsStorage.pageDiagnosisCopy");
       body = `${backButton}<section class="oq-settings-storage-domain oq-settings-storage-domain--single">
         <div class="oq-settings-storage-domain-rows">
-          ${renderSettingsStorageSwitchRow("trendHistoryEnabled", "Recente diagnosegegevens", "Bewaar de laatste meetpunten zolang de controller online is.", "Deze gegevens zijn tijdelijk en verdwijnen na een herstart.", "Nieuwe tijdelijke diagnosegegevens worden niet bijgehouden.", "Tijdelijk")}
-          ${renderSettingsStorageSwitchRow("trendHistoryFlashEnabled", "Diagnosegeschiedenis bewaren", "Bewaar recente diagnosegegevens ook na een herstart of update.", "OpenQuatt slaat ongeveer ieder uur een blok op.", "Bestaande geschiedenis blijft staan.", "Blijft bewaard na herstart")}
-          ${canFlushTrend ? `<div class="oq-settings-storage-inline-action"><div><h4>Diagnose nu opslaan</h4><p>Maak vóór een update of herstart een extra opslagmoment.</p></div>${renderSettingsStorageActionButton("trendHistoryFlush", "Nu opslaan", "flush-trend-history", { disabled: !trendHistoryFlashEnabled, busyLabel: "Opslaan..." })}</div>` : ""}
+          ${renderSettingsStorageSwitchRow("trendHistoryEnabled", t("settingsStorage.rowRecentData"), t("settingsStorage.rowRecentDataCopy"), t("settingsStorage.rowRecentOn"), t("settingsStorage.rowRecentOff"), t("settingsStorage.rowRecentMeta"))}
+          ${renderSettingsStorageSwitchRow("trendHistoryFlashEnabled", t("settingsStorage.rowFlashData"), t("settingsStorage.rowFlashDataCopy"), t("settingsStorage.rowFlashOn"), t("settingsStorage.rowFlashOff"), t("settingsStorage.rowFlashMeta"))}
+          ${canFlushTrend ? `<div class="oq-settings-storage-inline-action"><div><h4>${escapeHtml(t("settingsStorage.flushNowTitle"))}</h4><p>${escapeHtml(t("settingsStorage.flushNowCopy"))}</p></div>${renderSettingsStorageActionButton("trendHistoryFlush", t("settingsStorage.flushNowAction"), "flush-trend-history", { disabled: !trendHistoryFlashEnabled, busyLabel: t("settingsStorage.flushingBusy") })}</div>` : ""}
         </div>
       </section>${renderSettingsStorageTechnicalDetails([diagnosisDetails])}`;
     } else if (page === "decision-log") {
-      title = "Beslisloghistorie";
-      copy = "Bewaar exacte controllerkeuzes en gebeurtenissen, maximaal zeven dagen.";
+      title = t("settingsStorage.pageLogTitle");
+      copy = t("settingsStorage.pageLogCopy");
       body = `${backButton}<section class="oq-settings-storage-domain oq-settings-storage-domain--single">
         <div class="oq-settings-storage-domain-rows">
-          ${renderSettingsStorageSwitchRow("decisionLogHistoryEnabled", "Beslisloghistorie bewaren", "Bewaar exacte momenten en redenen uit de beslislog.", "De laatste zeven dagen blijven beschikbaar na een herstart of update.", "De actuele beslislog blijft tijdelijk beschikbaar; bestaande historie blijft staan.", "Blijft bewaard na herstart")}
-          ${canFlushDecision ? `<div class="oq-settings-storage-inline-action"><div><h4>Beslislog nu opslaan</h4><p>Sla nieuwe gebeurtenissen alvast op vóór een update of herstart.</p></div>${renderSettingsStorageActionButton("decisionLogHistoryFlush", "Nu opslaan", "flush-decision-log-history", { disabled: !decisionLogHistoryEnabled, busyLabel: "Opslaan..." })}</div>` : ""}
+          ${renderSettingsStorageSwitchRow("decisionLogHistoryEnabled", t("settingsStorage.rowLogKeep"), t("settingsStorage.rowLogKeepCopy"), t("settingsStorage.rowLogOn"), t("settingsStorage.rowLogOff"), t("settingsStorage.rowFlashMeta"))}
+          ${canFlushDecision ? `<div class="oq-settings-storage-inline-action"><div><h4>${escapeHtml(t("settingsStorage.flushLogTitle"))}</h4><p>${escapeHtml(t("settingsStorage.flushLogCopy"))}</p></div>${renderSettingsStorageActionButton("decisionLogHistoryFlush", t("settingsStorage.flushNowAction"), "flush-decision-log-history", { disabled: !decisionLogHistoryEnabled, busyLabel: t("settingsStorage.flushingBusy") })}</div>` : ""}
         </div>
       </section>${renderSettingsStorageTechnicalDetails([decisionDetails])}
-      ${hasEntity("decisionLogHistoryClear") ? `<details class="oq-settings-storage-advanced"${state.settingsStorageAdvancedOpen ? " open" : ""}><summary data-oq-action="toggle-storage-advanced">Geavanceerd</summary><div class="oq-settings-storage-inline-action oq-settings-storage-inline-action--danger"><div><h4>Beslisloghistorie wissen</h4><p>Verwijder alle bewaarde gebeurtenissen. De actuele beslislog blijft staan.</p></div>${renderSettingsStorageActionButton("decisionLogHistoryClear", "Historie wissen", "clear-decision-log-history", { disabled: Number(decisionMetadata.storedEvents || 0) <= 0, buttonClass: "oq-helper-button oq-helper-button--warning", busyLabel: "Wissen..." })}</div></details>` : ""}`;
+      ${hasEntity("decisionLogHistoryClear") ? `<details class="oq-settings-storage-advanced"${state.settingsStorageAdvancedOpen ? " open" : ""}><summary data-oq-action="toggle-storage-advanced">${escapeHtml(t("settingsStorage.advancedTitle"))}</summary><div class="oq-settings-storage-inline-action oq-settings-storage-inline-action--danger"><div><h4>${escapeHtml(t("settingsStorage.clearLogTitle"))}</h4><p>${escapeHtml(t("settingsStorage.clearLogCopy"))}</p></div>${renderSettingsStorageActionButton("decisionLogHistoryClear", t("settingsStorage.clearHistoryAction"), "clear-decision-log-history", { disabled: Number(decisionMetadata.storedEvents || 0) <= 0, buttonClass: "oq-helper-button oq-helper-button--warning", busyLabel: t("settingsStorage.clearingBusy") })}</div></details>` : ""}`;
     } else if (page === "energy") {
-      title = "Energiehistorie";
-      copy = "Beheer dagtotalen en uurdetail voor de Resultatenpagina.";
+      title = t("settingsStorage.pageEnergyTitle");
+      copy = t("settingsStorage.pageEnergyCopy");
       body = `${backButton}<section class="oq-settings-storage-domain oq-settings-storage-domain--single">
         <div class="oq-settings-storage-domain-rows">
-          ${renderSettingsStorageSwitchRow("lifetimeEnergyHistoryEnabled", "Dagtotalen bewaren", "Bewaar elke dag een samenvatting van je energiegegevens.", "Resultaten blijven beschikbaar na een herstart of update.", "Nieuwe dagtotalen worden niet bewaard; bestaande historie blijft staan.", "Blijft bewaard na herstart")}
-          ${renderSettingsStorageSelectRow("lifetimeEnergyHourRetention", "Uurdetail bewaren", "Kies hoelang OpenQuatt detail per uur bewaart voor de daggrafiek.", "Bewaartermijn")}
-          ${canCaptureLifetime ? `<div class="oq-settings-storage-inline-action"><div><h4>Vandaag alvast opslaan</h4><p>Maak vóór een update of herstart een extra opslagmoment.</p></div>${renderSettingsStorageActionButton("lifetimeEnergyHistoryCapture", "Vandaag opslaan", "save-lifetime-energy-history", { disabled: !lifetimeEnergyHistoryEnabled, busyLabel: "Opslaan..." })}</div>` : ""}
+          ${renderSettingsStorageSwitchRow("lifetimeEnergyHistoryEnabled", t("settingsStorage.rowDayKeep"), t("settingsStorage.rowDayKeepCopy"), t("settingsStorage.rowDayOn"), t("settingsStorage.rowDayOff"), t("settingsStorage.rowFlashMeta"))}
+          ${renderSettingsStorageSelectRow("lifetimeEnergyHourRetention", t("settingsStorage.rowHourKeep"), t("settingsStorage.rowHourKeepCopy"), t("settingsStorage.rowHourMeta"))}
+          ${canCaptureLifetime ? `<div class="oq-settings-storage-inline-action"><div><h4>${escapeHtml(t("settingsStorage.captureTodayTitle"))}</h4><p>${escapeHtml(t("settingsStorage.captureTodayCopy"))}</p></div>${renderSettingsStorageActionButton("lifetimeEnergyHistoryCapture", t("settingsStorage.captureTodayAction"), "save-lifetime-energy-history", { disabled: !lifetimeEnergyHistoryEnabled, busyLabel: t("settingsStorage.flushingBusy") })}</div>` : ""}
         </div>
       </section>${renderSettingsStorageTechnicalDetails(energyDetails)}
-      <details class="oq-settings-storage-advanced"${state.settingsStorageAdvancedOpen ? " open" : ""}><summary data-oq-action="toggle-storage-advanced">Geavanceerd</summary><div class="oq-settings-storage-advanced-body">${renderSettingsEnergyHistoryExportPanel()}${renderSettingsEnergyHistoryImportPanel()}${hasEntity("lifetimeEnergyHistoryClear") ? `<div class="oq-settings-storage-inline-action oq-settings-storage-inline-action--danger"><div><h4>Energiehistorie wissen</h4><p>Verwijder alle bewaarde dagtotalen en begin opnieuw.</p></div>${renderSettingsStorageActionButton("lifetimeEnergyHistoryClear", "Historie wissen", "clear-lifetime-energy-history", { disabled: !canClearLifetime, buttonClass: "oq-helper-button oq-helper-button--warning", busyLabel: "Wissen..." })}</div>` : ""}</div></details>`;
+      <details class="oq-settings-storage-advanced"${state.settingsStorageAdvancedOpen ? " open" : ""}><summary data-oq-action="toggle-storage-advanced">${escapeHtml(t("settingsStorage.advancedTitle"))}</summary><div class="oq-settings-storage-advanced-body">${renderSettingsEnergyHistoryExportPanel()}${renderSettingsEnergyHistoryImportPanel()}${hasEntity("lifetimeEnergyHistoryClear") ? `<div class="oq-settings-storage-inline-action oq-settings-storage-inline-action--danger"><div><h4>${escapeHtml(t("settingsStorage.clearEnergyTitle"))}</h4><p>${escapeHtml(t("settingsStorage.clearEnergyCopy"))}</p></div>${renderSettingsStorageActionButton("lifetimeEnergyHistoryClear", t("settingsStorage.clearHistoryAction"), "clear-lifetime-energy-history", { disabled: !canClearLifetime, buttonClass: "oq-helper-button oq-helper-button--warning", busyLabel: t("settingsStorage.clearingBusy") })}</div>` : ""}</div></details>`;
     }
 
     return renderModalShell({
       id: "system",
       titleId: "oq-history-storage-modal-title",
-      kicker: page === "overview" ? "Gegevens" : "Gegevens bewaren",
+      kicker: page === "overview" ? t("settingsStorage.modalKicker") : t("settingsStorage.modalKickerSub"),
       title,
       copy,
       className: "oq-helper-modal--scrollable oq-settings-storage-modal",
       sectionAttributes: "data-oq-history-storage-scroller",
       closeAction: "close-system-modal",
-      closeLabel: "Sluit gegevens bewaren",
+      closeLabel: t("settingsStorage.modalClose"),
       body,
-      actions: '<button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">Gereed</button>',
+      actions: `<button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="close-system-modal">${escapeHtml(t("settingsStorage.modalDone"))}</button>`,
     });
   }
 
@@ -651,23 +662,23 @@ import { renderModalShell } from "../core/modal-shell.js";
     const sectionCount = SETTINGS_BACKUP_SECTIONS.length;
 
     return renderSettingsSection(
-      "Beheer",
-      "Backup en restore",
-      "Sla een JSON-backup op van de instellingen die OpenQuatt in deze web-app beheert, en zet die later weer terug na een factory-bin update.",
+      t("settingsStorage.backupGroup"),
+      t("settingsStorage.backupTitle"),
+      t("settingsStorage.backupCopy"),
       `
         <div class="oq-settings-backup-shell">
           <div class="oq-settings-backup-summary">
             <div class="oq-settings-backup-stat">
-              <span class="oq-settings-backup-stat-label">Instellingen</span>
+              <span class="oq-settings-backup-stat-label">${escapeHtml(t("settingsStorage.backupStatSettings"))}</span>
               <strong class="oq-settings-backup-stat-value">${escapeHtml(String(totalFields))}</strong>
             </div>
             <div class="oq-settings-backup-stat">
-              <span class="oq-settings-backup-stat-label">Secties</span>
+              <span class="oq-settings-backup-stat-label">${escapeHtml(t("settingsStorage.backupStatSections"))}</span>
               <strong class="oq-settings-backup-stat-value">${escapeHtml(String(sectionCount))}</strong>
             </div>
             <div class="oq-settings-backup-stat">
-              <span class="oq-settings-backup-stat-label">MQTT</span>
-              <strong class="oq-settings-backup-stat-value">Zonder wachtwoord</strong>
+              <span class="oq-settings-backup-stat-label">${escapeHtml(t("settingsStorage.backupStatMqtt"))}</span>
+              <strong class="oq-settings-backup-stat-value">${escapeHtml(t("settingsStorage.backupStatMqttValue"))}</strong>
             </div>
           </div>
           <div class="oq-settings-backup-actions">
@@ -677,7 +688,7 @@ import { renderModalShell } from "../core/modal-shell.js";
               data-oq-action="download-settings-backup"
               ${busy ? "disabled" : ""}
             >
-              ${busy ? "Bezig..." : "Backup downloaden"}
+              ${busy ? escapeHtml(t("settingsStorage.backupDownloading")) : escapeHtml(t("settingsStorage.backupDownload"))}
             </button>
             <button
               class="oq-helper-button oq-helper-button--ghost"
@@ -685,10 +696,10 @@ import { renderModalShell } from "../core/modal-shell.js";
               data-oq-action="open-settings-backup-import"
               ${busy ? "disabled" : ""}
             >
-              Backup herstellen
+              ${escapeHtml(t("settingsStorage.backupRestore"))}
             </button>
           </div>
-          <p class="oq-settings-action-note">Sensorcorrecties en de MQTT-configuratie worden meegenomen, maar het MQTT-wachtwoord nooit. Ontbrekende en onbekende velden worden na restore benoemd.</p>
+          <p class="oq-settings-action-note">${escapeHtml(t("settingsStorage.backupNote"))}</p>
           ${state.settingsBackupError ? `<p class="oq-settings-backup-error">${escapeHtml(state.settingsBackupError)}</p>` : ""}
         </div>
       `,
@@ -700,15 +711,15 @@ import { renderModalShell } from "../core/modal-shell.js";
     return renderModalShell({
       id: "system",
       titleId: "oq-backup-import-modal-title",
-      kicker: "Beheer",
-      title: "Backup herstellen",
-      copy: "Kies een JSON-backup om de instellingen te vergelijken en daarna gericht terug te zetten.",
+      kicker: t("settingsStorage.restoreImportKicker"),
+      title: t("settingsStorage.restoreImportTitle"),
+      copy: t("settingsStorage.restoreImportCopy"),
       className: "oq-helper-modal--wide",
       closeAction: "close-system-modal",
-      closeLabel: "Sluit backup import popup",
+      closeLabel: t("settingsStorage.restoreImportClose"),
       body: `
           <div class="oq-helper-modal-row">
-            <span class="oq-helper-modal-label">Backupbestand</span>
+            <span class="oq-helper-modal-label">${escapeHtml(t("settingsStorage.restoreImportFileLabel"))}</span>
             <input
               class="oq-settings-backup-input oq-settings-backup-import-input"
               type="file"
@@ -716,10 +727,10 @@ import { renderModalShell } from "../core/modal-shell.js";
               data-oq-backup-file-input="true"
               ${busy ? "disabled" : ""}
             >
-            <span class="oq-helper-modal-subvalue">Na selectie openen we automatisch het vergelijkingsoverzicht.</span>
+            <span class="oq-helper-modal-subvalue">${escapeHtml(t("settingsStorage.restoreImportFileHint"))}</span>
           </div>
           ${state.settingsBackupError ? `<p class="oq-settings-backup-error">${escapeHtml(state.settingsBackupError)}</p>` : ""}`,
-      actions: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>Annuleren</button>`,
+      actions: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>${escapeHtml(t("settingsStorage.restoreCancel"))}</button>`,
     });
   }
 
@@ -730,29 +741,29 @@ import { renderModalShell } from "../core/modal-shell.js";
     }
 
     const summary = draft.summary || getSettingsBackupSelectionSummary(draft);
-    const sourceInstallation = String(draft.source?.installation || draft.source?.device || "Onbekend");
+    const sourceInstallation = String(draft.source?.installation || draft.source?.device || t("common.unknown"));
     const currentInstallation = getInstallationLabel();
-    const sourceVersion = String(draft.source?.firmware_version || "Onbekend");
-    const sourceChannel = String(draft.source?.firmware_channel || "").trim() || "Onbekend";
-    const sourceTopology = String(draft.source?.topology || "").trim() || "Onbekend";
+    const sourceVersion = String(draft.source?.firmware_version || t("common.unknown"));
+    const sourceChannel = String(draft.source?.firmware_channel || "").trim() || t("common.unknown");
+    const sourceTopology = String(draft.source?.topology || "").trim() || t("common.unknown");
     const currentVersion = getFirmwareCurrentVersion();
     const currentTopology = typeof getInstallationTopology === "function"
       ? getInstallationTopology()
       : "";
-    const topologyMismatch = sourceTopology !== "Onbekend" && currentTopology && sourceTopology !== currentTopology;
-    const installationMismatch = sourceInstallation !== "Onbekend" && sourceInstallation !== currentInstallation;
+    const topologyMismatch = sourceTopology !== t("common.unknown") && currentTopology && sourceTopology !== currentTopology;
+    const installationMismatch = sourceInstallation !== t("common.unknown") && sourceInstallation !== currentInstallation;
     const mqtt = draft.mqtt;
     const mqttNeedsPassword = settingsBackupMqttNeedsPassword(mqtt);
     const mqttPasswordMissing = mqttNeedsPassword && !String(state.settingsBackupMqttPassword || "");
-    const mqttValue = mqtt ? (mqtt.enabled ? "Ingeschakeld" : "Uitgeschakeld") : "Niet in backup";
+    const mqttValue = mqtt ? (mqtt.enabled ? t("settingsStorage.restoreMqttOn") : t("settingsStorage.restoreMqttOff")) : t("settingsStorage.restoreMqttMissing");
     const mqttMeta = mqtt
-      ? `${mqtt.broker || "Geen broker"}:${mqtt.port} · ${mqtt.password_was_set ? "Wachtwoord niet opgeslagen" : "Geen wachtwoord ingesteld"}`
-      : "MQTT-configuratie en MQTT-afhankelijke bronselecties worden niet hersteld.";
+      ? t("settingsStorage.restoreMqttMeta", { broker: mqtt.broker || t("settingsStorage.restoreMqttNoBroker"), port: mqtt.port, pass: mqtt.password_was_set ? t("settingsStorage.restoreMqttPassSet") : t("settingsStorage.restoreMqttPassUnset") })
+      : t("settingsStorage.restoreMqttMetaMissing");
     const warningText = topologyMismatch || installationMismatch
-      ? "De backup lijkt van een andere installatie te komen. Je kunt nog steeds doorzetten, maar controleer de secties even goed."
+      ? t("settingsStorage.restoreWarnMismatch")
       : summary.requiredMissing
-        ? "Ontbrekende velden houden hun firmware-default."
-        : "Velden zonder waarde worden overgeslagen.";
+        ? t("settingsStorage.restoreWarnMissing")
+        : t("settingsStorage.restoreWarnSkip");
     const electricalRestoreWarning = hasEntity("electricalCurrentLimit")
       ? getElectricalLimitBackupRestoreWarning(draft.settings)
       : "";
@@ -760,53 +771,53 @@ import { renderModalShell } from "../core/modal-shell.js";
     return renderModalShell({
       id: "system",
       titleId: "oq-backup-modal-title",
-      kicker: "Beheer",
-      title: "Backup herstellen",
-      copy: "Deze backup zet alleen de instellingen terug die OpenQuatt in de web-app beheert. Klap een sectie open om backup- en huidige waarden naast elkaar te vergelijken.",
+      kicker: t("settingsStorage.restoreKicker"),
+      title: t("settingsStorage.restoreTitle"),
+      copy: t("settingsStorage.restoreCopy"),
       className: "oq-helper-modal--wide oq-helper-modal--scrollable",
       sectionAttributes: "data-oq-settings-backup-restore-scroller",
       closeAction: "close-system-modal",
-      closeLabel: "Sluit backup-popup",
+      closeLabel: t("settingsStorage.restoreClose"),
       body: `
           <div class="oq-helper-modal-grid oq-settings-backup-modal-grid">
             <div class="oq-helper-modal-row">
-              <span class="oq-helper-modal-label">Backup van</span>
+              <span class="oq-helper-modal-label">${escapeHtml(t("settingsStorage.restoreFrom"))}</span>
               <strong class="oq-helper-modal-value">${escapeHtml(sourceInstallation)}</strong>
-              <span class="oq-helper-modal-subvalue">Topo: ${escapeHtml(sourceTopology)} · Firmware: ${escapeHtml(sourceVersion)}</span>
+              <span class="oq-helper-modal-subvalue">${escapeHtml(t("settingsStorage.restoreTopo", { topo: sourceTopology, version: sourceVersion }))}</span>
             </div>
             <div class="oq-helper-modal-row">
-              <span class="oq-helper-modal-label">Huidige installatie</span>
+              <span class="oq-helper-modal-label">${escapeHtml(t("settingsStorage.restoreCurrent"))}</span>
               <strong class="oq-helper-modal-value">${escapeHtml(currentInstallation)}</strong>
-              <span class="oq-helper-modal-subvalue">Topo: ${escapeHtml(currentTopology)} · Firmware: ${escapeHtml(currentVersion || "Onbekend")}</span>
+              <span class="oq-helper-modal-subvalue">${escapeHtml(t("settingsStorage.restoreCurrentSub", { topo: currentTopology, version: currentVersion || t("common.unknown") }))}</span>
             </div>
             <div class="oq-helper-modal-row">
-              <span class="oq-helper-modal-label">Backupkanaal</span>
+              <span class="oq-helper-modal-label">${escapeHtml(t("settingsStorage.restoreChannel"))}</span>
               <strong class="oq-helper-modal-value">${escapeHtml(sourceChannel)}</strong>
-              <span class="oq-helper-modal-subvalue">Schema v${escapeHtml(String(draft.schema_version || 1))}</span>
+              <span class="oq-helper-modal-subvalue">${escapeHtml(t("settingsStorage.restoreSchema", { version: String(draft.schema_version || 1) }))}</span>
             </div>
             <div class="oq-helper-modal-row">
-              <span class="oq-helper-modal-label">Backupinstellingen</span>
-              <strong class="oq-helper-modal-value">${escapeHtml(`${summary.total} instellingen`)}</strong>
-              <span class="oq-helper-modal-subvalue">${escapeHtml(summary.differenceCount ? `${summary.differenceCount} ${summary.differenceCount === 1 ? "verschil" : "verschillen"} · ${summary.currentPresent} op huidige installatie · ${summary.unknown} onbekend` : `Alles komt overeen · ${summary.currentPresent} op huidige installatie · ${summary.unknown} onbekend`)}</span>
+              <span class="oq-helper-modal-label">${escapeHtml(t("settingsStorage.restoreSettings"))}</span>
+              <strong class="oq-helper-modal-value">${escapeHtml(t("settingsStorage.restoreSettingsValue", { total: formatNumber(summary.total, { maximumFractionDigits: 0 }) }))}</strong>
+              <span class="oq-helper-modal-subvalue">${escapeHtml(summary.differenceCount ? t("settingsStorage.restoreSettingsDiff", { diff: formatNumber(summary.differenceCount, { maximumFractionDigits: 0 }), unit: summary.differenceCount === 1 ? t("settingsStorage.restoreDiffOne") : t("settingsStorage.restoreDiffOther"), present: formatNumber(summary.currentPresent, { maximumFractionDigits: 0 }), unknown: formatNumber(summary.unknown, { maximumFractionDigits: 0 }) }) : t("settingsStorage.restoreSettingsMatch", { present: formatNumber(summary.currentPresent, { maximumFractionDigits: 0 }), unknown: formatNumber(summary.unknown, { maximumFractionDigits: 0 }) }))}</span>
             </div>
             <div class="oq-helper-modal-row">
-              <span class="oq-helper-modal-label">MQTT-configuratie</span>
+              <span class="oq-helper-modal-label">${escapeHtml(t("settingsStorage.restoreMqtt"))}</span>
               <strong class="oq-helper-modal-value">${escapeHtml(mqttValue)}</strong>
               <span class="oq-helper-modal-subvalue">${escapeHtml(mqttMeta)}</span>
             </div>
           </div>
           ${mqttNeedsPassword ? `
             <label class="oq-settings-backup-mqtt-password">
-              <span class="oq-helper-modal-label">MQTT-wachtwoord</span>
+              <span class="oq-helper-modal-label">${escapeHtml(t("settingsStorage.restoreMqttPassLabel"))}</span>
               <input
                 class="oq-helper-input"
                 type="password"
                 autocomplete="current-password"
                 data-oq-backup-mqtt-password="true"
-                placeholder="Vul het MQTT-wachtwoord opnieuw in"
+                placeholder="${escapeHtml(t("settingsStorage.restoreMqttPassPlaceholder"))}"
                 ${state.settingsBackupBusy ? "disabled" : ""}
               >
-              <span class="oq-helper-modal-subvalue">Het wachtwoord stond bewust niet in de backup en wordt alleen voor deze restore gebruikt.</span>
+              <span class="oq-helper-modal-subvalue">${escapeHtml(t("settingsStorage.restoreMqttPassHint"))}</span>
             </label>
           ` : ""}
           <div class="oq-settings-backup-modal-sections">
@@ -815,11 +826,11 @@ import { renderModalShell } from "../core/modal-shell.js";
                 <summary class="oq-settings-backup-modal-section-head">
                   <span class="oq-settings-backup-modal-section-head-copy">
                     <strong>${escapeHtml(section.label)}</strong>
-                    <em>${escapeHtml(`${section.total} ${section.total === 1 ? "instelling" : "instellingen"} · ${section.differenceCount ? `${section.differenceCount} ${section.differenceCount === 1 ? "verschil" : "verschillen"}` : "Alles gelijk"}`)}</em>
+                    <em>${escapeHtml(t("settingsStorage.restoreSectionSettings", { total: formatNumber(section.total, { maximumFractionDigits: 0 }), unit: section.total === 1 ? t("settingsStorage.restoreSectionOne") : t("settingsStorage.restoreSectionOther"), diff: section.differenceCount ? t("settingsStorage.restoreSectionDiff", { diff: formatNumber(section.differenceCount, { maximumFractionDigits: 0 }), unit: section.differenceCount === 1 ? t("settingsStorage.restoreDiffOne") : t("settingsStorage.restoreDiffOther") }) : t("settingsStorage.restoreSectionMatch") }))}</em>
                   </span>
                 </summary>
                 <div class="oq-settings-backup-modal-section-body">
-                  <p>${escapeHtml(section.differenceCount ? `${section.differenceCount} instelling${section.differenceCount === 1 ? "" : "en"} wijkt af of ontbreekt.` : "Alle instellingen komen overeen.")}</p>
+                  <p>${escapeHtml(section.differenceCount ? (section.differenceCount === 1 ? t("settingsStorage.restoreSectionDiffOneCopy", { count: formatNumber(section.differenceCount, { maximumFractionDigits: 0 }) }) : t("settingsStorage.restoreSectionDiffOtherCopy", { count: formatNumber(section.differenceCount, { maximumFractionDigits: 0 }) })) : t("settingsStorage.restoreSectionMatchCopy"))}</p>
                   <div class="oq-settings-backup-compare-list">
                     ${section.rows.map((row) => `
                       <div class="oq-settings-backup-compare oq-settings-backup-compare--${escapeHtml(row.status)}">
@@ -829,11 +840,11 @@ import { renderModalShell } from "../core/modal-shell.js";
                         </div>
                         <div class="oq-settings-backup-compare-values">
                           <div class="oq-settings-backup-compare-value" data-change="${escapeHtml(row.status)}">
-                            <span>Backup</span>
+                            <span>${escapeHtml(t("settingsStorage.restoreCompareBackup"))}</span>
                             <strong>${escapeHtml(row.backupDisplay)}</strong>
                           </div>
                           <div class="oq-settings-backup-compare-value" data-change="${escapeHtml(row.status)}">
-                            <span>Nu</span>
+                            <span>${escapeHtml(t("settingsStorage.restoreCompareNow"))}</span>
                             <strong>${escapeHtml(row.currentDisplay)}</strong>
                           </div>
                         </div>
@@ -848,8 +859,8 @@ import { renderModalShell } from "../core/modal-shell.js";
           ${electricalRestoreWarning ? `<p class="oq-settings-action-note oq-settings-action-note--warning" role="alert">${escapeHtml(electricalRestoreWarning)}</p>` : ""}
           ${state.settingsBackupError ? `<p class="oq-settings-backup-error">${escapeHtml(state.settingsBackupError)}</p>` : ""}`,
       actions: `
-        <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${state.settingsBackupBusy ? "disabled" : ""}>Annuleren</button>
-        <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="confirm-settings-backup-restore" ${state.settingsBackupBusy || mqttPasswordMissing ? "disabled" : ""}>${state.settingsBackupBusy ? "Herstellen..." : mqttPasswordMissing ? "Vul MQTT-wachtwoord in" : "Herstellen"}</button>
+        <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${state.settingsBackupBusy ? "disabled" : ""}>${escapeHtml(t("settingsStorage.restoreCancel"))}</button>
+        <button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="confirm-settings-backup-restore" ${state.settingsBackupBusy || mqttPasswordMissing ? "disabled" : ""}>${state.settingsBackupBusy ? escapeHtml(t("settingsStorage.restoreBusy")) : mqttPasswordMissing ? escapeHtml(t("settingsStorage.restoreNeedPass")) : escapeHtml(t("settingsStorage.restoreConfirm"))}</button>
       `,
     });
   }

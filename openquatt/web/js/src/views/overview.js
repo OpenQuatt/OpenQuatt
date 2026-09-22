@@ -1,10 +1,11 @@
 import { formatOverviewStatValue, getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive, isTrendHistoryEnabled } from "../core/app-shared.js";
-import { COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS } from "../core/config.js";
+import { COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS, STRATEGY_OPTION_POWER_HOUSE } from "../core/config.js";
 import { isCurveMode } from "../core/domain-helpers.js";
 import { formatOpenQuattResumeDateTime, getEntityValue, hasOpenQuattResumeSchedule, parseDeviceClockMinutes } from "../core/entity-store.js";
 import { getOverviewControlsRenderSignature, getRenderSignature } from "../core/render-signatures.js";
 import { formatDurationFromMinutes, formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
+import { formatDateTime, formatNumber, optionLabel, t } from "../i18n/index.js";
 import { DEFAULT_TREND_WINDOW_HOURS, state, TREND_WINDOW_HOURS_OPTIONS } from "../core/state.js";
 import { isTrendHistoryFlashEnabled, normalizeTrendWindowHours, setTrendWindowHours } from "../core/trend-window.js";
 import { getInstallationMonitoringModel } from "../core/installation-monitoring.js";
@@ -41,11 +42,11 @@ import { renderStatCard } from "./stat-card.js";
     return `
       <aside class="oq-overview-monitoring-notice${monitoring.active ? " is-warning" : " is-hidden"}" data-oq-monitoring-notice data-render-signature="${escapeHtml(getRenderSignature(monitoring))}">
         <div>
-          <p>Installatiebewaking</p>
+          <p>${escapeHtml(t("overview.monitoringTitle"))}</p>
           <strong>${escapeHtml(monitoring.title)}</strong>
           <span>${escapeHtml(monitoring.problems.map((problem) => problem.label).join(" · "))}</span>
         </div>
-        <button type="button" data-oq-action="open-installation-monitoring">Bekijk diagnose</button>
+        <button type="button" data-oq-action="open-installation-monitoring">${escapeHtml(t("overview.monitoringCta"))}</button>
       </aside>
     `;
   }
@@ -63,39 +64,39 @@ import { renderStatCard } from "./stat-card.js";
   function formatOverviewPermissionSource(source) {
     const value = String(source || "").trim();
     const labels = {
-      None: "geen bron",
-      Manual: "handmatig",
-      Disabled: "handmatig",
-      "HA input": "HA-invoer",
-      MQTT: "MQTT",
-      "OT thermostat": "OpenTherm",
-      Schedule: "dagelijks tijdvenster",
-      "HA input + Manual": "HA-invoer + handmatig",
-      "MQTT + Manual": "MQTT + handmatig",
-      "OT thermostat + Manual": "OpenTherm + handmatig",
-      "Schedule + Manual": "dagelijks tijdvenster + handmatig",
+      None: t("overview.permNone"),
+      Manual: t("overview.permManual"),
+      Disabled: t("overview.permManual"),
+      "HA input": t("overview.permHa"),
+      MQTT: t("overview.permMqtt"),
+      "OT thermostat": t("overview.permOt"),
+      Schedule: t("overview.permSchedule"),
+      "HA input + Manual": t("overview.permHaManual"),
+      "MQTT + Manual": t("overview.permMqttManual"),
+      "OT thermostat + Manual": t("overview.permOtManual"),
+      "Schedule + Manual": t("overview.permScheduleManual"),
     };
     return labels[value] || value;
   }
 
   function appendCoolingPermissionSource(copy, sourceLabel) {
-    if (!sourceLabel || sourceLabel === "geen bron") {
+    if (!sourceLabel || sourceLabel === t("overview.permNone")) {
       return copy;
     }
-    return `${copy} Toestemming via ${sourceLabel}.`;
+    return `${copy} ${t("overview.permissionVia", { source: sourceLabel })}`;
   }
 
   export function getHeatPumpPanelStatusLabel(mode, running) {
     if (running) {
-      return "Actief";
+      return t("overview.statusActive");
     }
     if (mode === "Stand-by") {
-      return "Stand-by";
+      return t("overview.statusStandby");
     }
     if (mode === "Onbekend") {
-      return "Onbekend";
+      return t("overview.statusUnknown");
     }
-    return "Niet actief";
+    return t("overview.statusInactive");
   }
 
   export function renderHpPanelStatusChip(mode, running) {
@@ -110,14 +111,14 @@ import { renderStatCard } from "./stat-card.js";
         class="oq-overview-chip oq-overview-chip--warning"
         data-oq-bind="panel-warning"
         tabindex="0"
-        aria-label="${escapeHtml(`Waarschuwing: ${failureText}`)}"
+        aria-label="${escapeHtml(t("overview.warningPrefix", { text: failureText }))}"
       >
         <svg class="oq-overview-chip-warning-icon" viewBox="0 0 20 18" aria-hidden="true">
           <path d="M10 1.6 L18.2 16.4 H1.8 Z" />
           <rect x="9.1" y="5.4" width="1.8" height="5.8" rx="0.9" />
           <circle cx="10" cy="13.6" r="1.1" />
         </svg>
-        <span>Waarschuwing</span>
+        <span>${escapeHtml(t("overview.warningLabel"))}</span>
         <span class="oq-overview-chip-warning-tooltip" role="tooltip">${escapeHtml(failureText)}</span>
       </span>
     `;
@@ -155,7 +156,8 @@ import { renderStatCard } from "./stat-card.js";
     if (Number.isNaN(value)) {
       return "—";
     }
-    return `${value > 0 ? "+" : ""}${value.toFixed(1)} °C`;
+    const formatted = formatNumber(value, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).replace(/^-/, "");
+    return `${value > 0 ? "+" : value < 0 ? "−" : ""}${formatted} °C`;
   }
 
   export const formatOverviewTrendDurationLabel = formatDurationFromMinutes;
@@ -183,12 +185,12 @@ import { renderStatCard } from "./stat-card.js";
     if (clockLabel) {
       return {
         value: clockLabel,
-        note: `${ageLabel} geleden`,
+        note: t("overview.trendPointAgo", { label: ageLabel }),
       };
     }
     return {
-      value: `${ageLabel} geleden`,
-      note: "Geen tijdsync",
+      value: t("overview.trendPointAgo", { label: ageLabel }),
+      note: t("overview.trendNoSync"),
     };
   }
 
@@ -197,8 +199,8 @@ import { renderStatCard } from "./stat-card.js";
     if (Number.isNaN(numeric)) {
       return "—";
     }
-    const prefix = numeric > 0 ? "+" : numeric < 0 ? "-" : "";
-    return `${prefix}${Math.abs(numeric).toFixed(0)} W`;
+    const prefix = numeric > 0 ? "+" : numeric < 0 ? "−" : "";
+    return `${prefix}${formatNumber(Math.abs(numeric), { maximumFractionDigits: 0 })} W`;
   }
 
   export function getOverviewOutsideTempKey() {
@@ -235,7 +237,7 @@ import { renderStatCard } from "./stat-card.js";
   }
 
   export function getOverviewStrategyLabel() {
-    return isCoolingOverviewActive() ? "Koeling" : isCurveMode() ? "Stooklijn" : "Power House";
+    return isCoolingOverviewActive() ? t("overview.strategyCooling") : isCurveMode() ? t("overview.strategyCurve") : optionLabel(STRATEGY_OPTION_POWER_HOUSE);
   }
 
   export function getPowerHouseRequestedPower() {
@@ -256,21 +258,21 @@ import { renderStatCard } from "./stat-card.js";
     const capacity = getEntityNumericValue("hpCapacity");
     const roomCorrection = Number.isNaN(requested) || Number.isNaN(house) ? Number.NaN : requested - house;
 
-    let statusTitle = "Nog aan het opbouwen";
-    let statusCopy = "Zodra alle vermogens beschikbaar zijn, zie je hier hoe de warmtevraag is opgebouwd.";
+    let statusTitle = t("overview.phBuildingTitle");
+    let statusCopy = t("overview.phBuildingCopy");
 
     if (!Number.isNaN(requested) && !Number.isNaN(capacity) && requested > capacity + 150) {
-      statusTitle = "Capaciteit begrenst";
-      statusCopy = "De gevraagde warmtevraag ligt boven wat de warmtepomp nu ongeveer kan leveren.";
+      statusTitle = t("overview.phCapacityTitle");
+      statusCopy = t("overview.phCapacityCopy");
     } else if (!Number.isNaN(requested) && !Number.isNaN(delivered) && delivered < requested - 250) {
-      statusTitle = "Levert minder dan gevraagd";
-      statusCopy = "De actuele warmteafgifte blijft nog onder de gevraagde warmtevraag.";
+      statusTitle = t("overview.phBelowTitle");
+      statusCopy = t("overview.phBelowCopy");
     } else if (!Number.isNaN(requested) && !Number.isNaN(delivered) && delivered > requested + 250) {
-      statusTitle = "Levert meer dan gevraagd";
-      statusCopy = "De actuele warmteafgifte ligt nu boven de gevraagde warmtevraag.";
+      statusTitle = t("overview.phAboveTitle");
+      statusCopy = t("overview.phAboveCopy");
     } else if (!Number.isNaN(requested) && !Number.isNaN(delivered)) {
-      statusTitle = "In balans";
-      statusCopy = "Gevraagde warmtevraag en actuele levering liggen nu dicht bij elkaar.";
+      statusTitle = t("overview.phBalancedTitle");
+      statusCopy = t("overview.phBalancedCopy");
     }
 
     return {
@@ -298,23 +300,23 @@ import { renderStatCard } from "./stat-card.js";
     const fallbackActive = Boolean(outsideKey) && Number.isNaN(outside);
     const externalActive = getEntityStateText("heatingSupplyTargetActiveSource", "") === "external";
 
-    let statusTitle = externalActive ? "Extern doel actief" : "Stuurt op buitentemperatuur";
+    let statusTitle = externalActive ? t("overview.curveExternalTitle") : t("overview.curveOutdoorTitle");
     let statusCopy = externalActive
-      ? "Een externe bron bepaalt het aanvoerdoel; de regeling vergelijkt dat met de actuele aanvoer."
-      : "De doelaanvoer volgt de huidige buitentemperatuur en vergelijkt die met de actuele aanvoer.";
+      ? t("overview.curveExternalCopy")
+      : t("overview.curveOutdoorCopy");
 
     if (fallbackActive) {
-      statusTitle = "Fallback actief";
-      statusCopy = "De buitentemperatuur ontbreekt, dus de regeling valt terug op de ingestelde fallback-aanvoer.";
+      statusTitle = t("overview.curveFallbackTitle");
+      statusCopy = t("overview.curveFallbackCopy");
     } else if (!Number.isNaN(targetDelta) && targetDelta < -1.0) {
-      statusTitle = "Nog onder doel";
-      statusCopy = "De actuele aanvoertemperatuur ligt nog onder de doelaanvoer.";
+      statusTitle = t("overview.curveBelowTitle");
+      statusCopy = t("overview.curveBelowCopy");
     } else if (!Number.isNaN(targetDelta) && targetDelta > 1.0) {
-      statusTitle = "Boven doel";
-      statusCopy = "De actuele aanvoertemperatuur ligt nu boven de doelaanvoer.";
+      statusTitle = t("overview.curveAboveTitle");
+      statusCopy = t("overview.curveAboveCopy");
     } else if (!Number.isNaN(targetDelta)) {
-      statusTitle = "Dicht bij doel";
-      statusCopy = "De actuele aanvoertemperatuur sluit nu goed aan op de doelaanvoer.";
+      statusTitle = t("overview.curveNearTitle");
+      statusCopy = t("overview.curveNearCopy");
     }
 
     return {
@@ -330,18 +332,18 @@ import { renderStatCard } from "./stat-card.js";
   export function getCoolingStartBlockTitle(reasonRaw) {
     const reason = String(reasonRaw || "").trim();
     if (reason === "Cooling minimum off-time") {
-      return "Wacht op koel-herstart";
+      return t("overview.coolingStartWaitTitle");
     }
     if (reason === "Compressor restart protection" || reason === "Startup inhibit after reboot") {
-      return "Wacht op herstartbeveiliging";
+      return t("overview.coolingStartRestartTitle");
     }
     if (reason === "Compressor start limit (6/hour)") {
-      return "Startlimiet bereikt";
+      return t("overview.coolingStartLimitTitle");
     }
     if (reason === "Waiting for confirmed cooling stop") {
-      return "Wacht op bevestigde koelstop";
+      return t("overview.coolingStartStopTitle");
     }
-    return "Start geblokkeerd";
+    return t("overview.coolingStartBlockedTitle");
   }
 
   export function isCoolingPreflowForCooling() {
@@ -360,42 +362,42 @@ import { renderStatCard } from "./stat-card.js";
     const rawDemand = getEntityNumericValue("coolingDemandRaw");
     const permitted = isEntityActive("coolingPermitted");
     const requestActive = isEntityActive("coolingRequestActive");
-    const blockReasonRaw = getEntityStateText("coolingBlockReason", "Onbekend");
+    const blockReasonRaw = getEntityStateText("coolingBlockReason", t("overview.statusUnknown"));
     const blockReason = formatCoolingBlockReason(blockReasonRaw);
     const waitingForRoomRequest = isCoolingWaitingForRoomRequest(blockReasonRaw, requestActive);
     const startBlock = getCoolingStartBlockModel();
     const compressorRunning = getCoolingCompressorRunning();
 
-    let statusTitle = "Wacht op koelvraag";
-    let statusCopy = "Zodra er koelvraag is, zie je hier hoe de regeling de aanvoer richting het koeldoel stuurt.";
+    let statusTitle = t("overview.coolingWaitingTitle");
+    let statusCopy = t("overview.coolingWaitingCopy");
 
     if (waitingForRoomRequest) {
-      statusTitle = "Wacht op koelvraag";
-      statusCopy = "Koeling is toegestaan en wacht tot de kamertemperatuur boven het koel-setpoint komt.";
+      statusTitle = t("overview.coolingWaitingTitle");
+      statusCopy = t("overview.coolingWaitingRoomCopy");
     } else if (!permitted) {
-      statusTitle = "Koeling geblokkeerd";
-      statusCopy = `Blokkade: ${blockReason}.`;
+      statusTitle = t("overview.coolingBlockedTitle");
+      statusCopy = t("overview.coolingBlockedCopy", { reason: blockReason });
     } else if (!requestActive) {
-      statusTitle = "Koeling gereed";
-      statusCopy = "Koeling is toegestaan, maar wacht nog op actieve koelvraag vanuit de kamerregeling.";
+      statusTitle = t("overview.coolingReadyTitle");
+      statusCopy = t("overview.coolingReadyCopy");
     } else if (startBlock.available && startBlock.blocked && !compressorRunning) {
       statusTitle = getCoolingStartBlockTitle(startBlock.reasonRaw);
-      statusCopy = `${startBlock.display}. De compressor start automatisch zodra de blokkade is opgeheven.`;
+      statusCopy = t("overview.coolingStartBlockedCopy", { detail: startBlock.display });
     } else if (!compressorRunning && isCoolingPreflowForCooling()) {
-      statusTitle = "Voorloop voor koelen";
-      statusCopy = "De pomp bouwt eerst waterflow op voordat de compressor voor koelen mag starten.";
+      statusTitle = t("overview.coolingPreflowTitle");
+      statusCopy = t("overview.coolingPreflowCopy");
     } else if (!Number.isNaN(rawDemand) && rawDemand <= 0.0) {
-      statusTitle = "Houdt doel vast";
-      statusCopy = "De koelvraag loopt nog, maar de compressor hoeft nu niet harder te werken.";
+      statusTitle = t("overview.coolingHoldingTitle");
+      statusCopy = t("overview.coolingHoldingCopy");
     } else if (!Number.isNaN(supplyError) && supplyError > 1.0) {
-      statusTitle = "Trekt aanvoer omlaag";
-      statusCopy = "De actuele aanvoertemperatuur ligt nog ruim boven het koeldoel.";
+      statusTitle = t("overview.coolingPullingTitle");
+      statusCopy = t("overview.coolingPullingCopy");
     } else if (!Number.isNaN(supplyError) && supplyError > 0.2) {
-      statusTitle = "Benadert koeldoel";
-      statusCopy = "De regeling koelt nog door, maar zit al dicht bij de gewenste aanvoertemperatuur.";
+      statusTitle = t("overview.coolingApproachingTitle");
+      statusCopy = t("overview.coolingApproachingCopy");
     } else if (!Number.isNaN(supplyError)) {
-      statusTitle = "Koelt rustig door";
-      statusCopy = "De aanvoertemperatuur zit dicht bij het koeldoel en de regeling werkt nu op laag pitje.";
+      statusTitle = t("overview.coolingCalmTitle");
+      statusCopy = t("overview.coolingCalmCopy");
     }
 
     return {
@@ -423,24 +425,24 @@ import { renderStatCard } from "./stat-card.js";
       const unguardedMode = guardMode.includes("user responsibility");
       const fallbackMode = guardMode.includes("fallback");
       return {
-        title: "Koelregeling",
+        title: t("overview.strategyCoolingTitle"),
         copy: unguardedMode
-          ? "Koeling draait expliciet zonder dauwpuntmeting of dauwpuntsbenadering. De ingestelde minimale koel-aanvoer blijft gelden."
-          : "Koeling laat zien op welke aanvoertemperatuur de regeling nu mikt en hoe dicht die bij de veilige grens zit.",
-        focusLabel: "Koeldoel",
+          ? t("overview.strategyCoolingUnguardedCopy")
+          : t("overview.strategyCoolingCopy"),
+        focusLabel: t("overview.strategyCoolingFocus"),
         focusValue: model.targetText,
         focusCopy: model.statusCopy,
         metrics: [
-          { label: "Actuele aanvoertemperatuur", value: model.supplyText, tone: "orange", note: "Wat nu door het systeem loopt." },
+          { label: t("overview.strategyCoolingSupplyLabel"), value: model.supplyText, tone: "orange", note: t("overview.strategyCoolingSupplyNote") },
           {
-            label: unguardedMode ? "Ingestelde grens" : (fallbackMode ? "Berekende grens" : "Veilige aanvoergrens"),
+            label: unguardedMode ? t("overview.strategyCoolingLimitUnguarded") : (fallbackMode ? t("overview.strategyCoolingLimitFallback") : t("overview.strategyCoolingLimitSafe")),
             value: model.safeFloorText,
             tone: "blue",
             note: unguardedMode
-              ? "Geen dauwpuntmeting of benadering; dit is de ingestelde minimale koel-aanvoer."
-              : (fallbackMode ? `Conservatieve dauwpuntsbenadering. Nachtminimum: ${model.fallbackNightMin}.` : "Dauwpunt plus veiligheidsmarge."),
+              ? t("overview.strategyCoolingLimitUnguardedNote")
+              : (fallbackMode ? t("overview.strategyCoolingLimitFallbackNote", { value: model.fallbackNightMin }) : t("overview.strategyCoolingLimitSafeNote")),
           },
-          { label: "Koelvraag", value: model.demandText, tone: "sky", note: "De huidige koelvraag van de regelaar." },
+          { label: t("overview.strategyCoolingDemandLabel"), value: model.demandText, tone: "sky", note: t("overview.strategyCoolingDemandNote") },
         ],
       };
     }
@@ -448,30 +450,30 @@ import { renderStatCard } from "./stat-card.js";
     if (isCurveMode()) {
       const model = getCurveOverviewModel();
       return {
-        title: "Stooklijnregeling",
-        copy: "De stooklijn laat zien op welke aanvoertemperatuur de regeling nu mikt en hoe dicht die al benaderd wordt.",
-        focusLabel: "Doelaanvoer",
+        title: t("overview.strategyCurveTitle"),
+        copy: t("overview.strategyCurveCopy"),
+        focusLabel: t("overview.strategyCurveFocus"),
         focusValue: model.targetText,
-        focusCopy: "De aanvoertemperatuur waar de regeling nu naartoe werkt.",
+        focusCopy: t("overview.strategyCurveFocusCopy"),
         metrics: [
-          { label: "Actuele aanvoertemperatuur", value: model.supplyText, tone: "orange", note: "Wat nu wordt geleverd." },
-          { label: "Afwijking doelaanvoer", value: model.deltaText, tone: "blue", note: "Verschil met het doel." },
-          { label: "Beschikbare warmtecapaciteit", value: model.capacityText, tone: "sky", note: "Bij huidige buitentemperatuur." },
+          { label: t("overview.strategyCurveSupplyLabel"), value: model.supplyText, tone: "orange", note: t("overview.strategyCurveSupplyNote") },
+          { label: t("overview.strategyCurveDeltaLabel"), value: model.deltaText, tone: "blue", note: t("overview.strategyCurveDeltaNote") },
+          { label: t("overview.strategyCapacityLabel"), value: model.capacityText, tone: "sky", note: t("overview.strategyCapacityNote") },
         ],
       };
     }
 
     const model = getPowerHouseOverviewModel();
     return {
-      title: "Vermogensbalans",
-      copy: "Power House laat zien waar de warmtevraag nu vandaan komt en of de warmtepomp dat kan volgen.",
-      focusLabel: "Gevraagd vermogen",
+      title: t("overview.strategyPhTitle"),
+      copy: t("overview.strategyPhCopy"),
+      focusLabel: t("overview.strategyPhFocus"),
       focusValue: model.requestedText,
-      focusCopy: "De warmtevraag waar Power House nu naartoe stuurt.",
+      focusCopy: t("overview.strategyPhFocusCopy"),
       metrics: [
-        { label: "Berekende huisvraag", value: model.houseText, tone: "blue", note: "Op basis van woning en buitentemperatuur." },
-        { label: "Kamercorrectie", value: model.correctionText, tone: "orange", note: "Extra bijsturing rond setpoint." },
-        { label: "Beschikbare warmtecapaciteit", value: model.capacityText, tone: "sky", note: "Bij huidige buitentemperatuur." },
+        { label: t("overview.strategyPhHouseLabel"), value: model.houseText, tone: "blue", note: t("overview.strategyPhHouseNote") },
+        { label: t("overview.strategyPhCorrectionLabel"), value: model.correctionText, tone: "orange", note: t("overview.strategyPhCorrectionNote") },
+        { label: t("overview.strategyCapacityLabel"), value: model.capacityText, tone: "sky", note: t("overview.strategyCapacityNote") },
       ],
     };
   }
@@ -500,8 +502,8 @@ import { renderStatCard } from "./stat-card.js";
   export function getOverviewPrimarySignal() {
     if (!isEntityActive("openquattEnabled")) {
       return {
-        label: "Regeling nu",
-        value: "Regeling tijdelijk uit",
+        label: t("overview.primaryLabel"),
+        value: t("overview.primaryOff"),
         tone: "orange",
       };
     }
@@ -512,33 +514,33 @@ import { renderStatCard } from "./stat-card.js";
         ? "neutral"
         : !model.permitted || startBlocked
         ? "orange"
-        : model.statusTitle === "Koelt rustig door" || model.statusTitle === "Houdt temperatuur vast"
+        : model.statusTitle === t("overview.coolingCalmTitle") || model.statusTitle === t("overview.coolingHoldingTitle")
           ? "green"
-          : model.statusTitle === "Koeling gereed" || model.statusTitle === "Wacht op koelvraag"
+          : model.statusTitle === t("overview.coolingReadyTitle") || model.statusTitle === t("overview.coolingWaitingTitle")
             ? "neutral"
             : "sky";
       return {
-        label: "Regeling nu",
+        label: t("overview.primaryLabel"),
         value: model.statusTitle,
         tone,
       };
     }
     if (isSystemInStandby()) {
       return {
-        label: "Regeling nu",
-        value: "Stand-by",
+        label: t("overview.primaryLabel"),
+        value: t("overview.statusStandby"),
         tone: "neutral",
       };
     }
     const model = isCurveMode() ? getCurveOverviewModel() : getPowerHouseOverviewModel();
     const title = model.statusTitle;
-    const tone = title === "In balans" || title === "Dicht bij doel"
+    const tone = title === t("overview.phBalancedTitle") || title === t("overview.curveNearTitle")
       ? "green"
-      : title === "Nog aan het opbouwen" || title === "Stuurt op buitentemperatuur"
+      : title === t("overview.phBuildingTitle") || title === t("overview.curveOutdoorTitle")
         ? "neutral"
         : "orange";
     return {
-      label: "Regeling nu",
+      label: t("overview.primaryLabel"),
       value: title,
       tone,
     };
@@ -547,49 +549,49 @@ import { renderStatCard } from "./stat-card.js";
   export function getOverviewSystemSignal() {
     if (!isEntityActive("openquattEnabled")) {
       return {
-        label: "Systeem",
-        value: "Vorstbeveiliging blijft actief",
+        label: t("overview.systemLabel"),
+        value: t("overview.systemFrost"),
         tone: "neutral",
       };
     }
     if (isCoolingOverviewActive()) {
       if (!isEntityActive("coolingPermitted")) {
         return {
-          label: "Systeem",
-          value: getEntityStateText("coolingBlockReason", "Koeling geblokkeerd"),
+          label: t("overview.systemLabel"),
+          value: getEntityStateText("coolingBlockReason", t("overview.coolingBlockedFallback")),
           tone: "orange",
         };
       }
       if (isEntityActive("silentActive")) {
         return {
-          label: "Systeem",
-          value: "Stille uren actief",
+          label: t("overview.systemLabel"),
+          value: t("overview.systemSilent"),
           tone: "neutral",
         };
       }
       return {
-        label: "Systeem",
-        value: "Normaal",
+        label: t("overview.systemLabel"),
+        value: t("overview.systemNormal"),
         tone: "neutral",
       };
     }
     if (isEntityActive("silentActive")) {
       return {
-        label: "Systeem",
-        value: "Stille uren actief",
+        label: t("overview.systemLabel"),
+        value: t("overview.systemSilent"),
         tone: "neutral",
       };
     }
     if (isEntityActive("stickyActive")) {
       return {
-        label: "Systeem",
-        value: "Pompbescherming actief",
+        label: t("overview.systemLabel"),
+        value: t("overview.systemPump"),
         tone: "neutral",
       };
     }
     return {
-      label: "Systeem",
-      value: "Normaal",
+      label: t("overview.systemLabel"),
+      value: t("overview.systemNormal"),
       tone: "neutral",
     };
   }
@@ -598,18 +600,18 @@ import { renderStatCard } from "./stat-card.js";
     const primary = getOverviewPrimarySignal();
     const system = getOverviewSystemSignal();
     return [
-      { label: "Strategie", value: strategyLabel, tone: "orange", note: "regelstrategie" },
-      { label: "Controlmode", value: controlModeLabel, tone: "orange", note: "actieve modus" },
-      { label: "Regeling", value: primary.value, tone: "orange", note: "wat OpenQuatt nu doet" },
-      { label: "Systeem", value: system.value, tone: "orange", note: "actieve randvoorwaarde" },
+      { label: t("overview.cardStrategy"), value: strategyLabel, tone: "orange", note: t("overview.cardStrategyNote") },
+      { label: t("overview.cardControlMode"), value: controlModeLabel, tone: "orange", note: t("overview.cardControlModeNote") },
+      { label: t("overview.cardControl"), value: primary.value, tone: "orange", note: t("overview.cardControlNote") },
+      { label: t("overview.cardSystem"), value: system.value, tone: "orange", note: t("overview.cardSystemNote") },
     ];
   }
 
   export function renderOverviewStatusPanel(strategyLabel, controlModeLabel) {
     const cards = getOverviewStatusCards(strategyLabel, controlModeLabel);
     return `
-      <section class="oq-overview-statuspanel" aria-label="Systeemstatus" data-render-signature="${escapeHtml(getRenderSignature(cards))}">
-        ${renderOverviewSectionHead("Systeemstatus")}
+      <section class="oq-overview-statuspanel" aria-label="${escapeHtml(t("overview.statusPanelLabel"))}" data-render-signature="${escapeHtml(getRenderSignature(cards))}">
+        ${renderOverviewSectionHead(t("overview.statusPanelLabel"))}
         <div class="oq-overview-statusgrid">
           ${renderOverviewStatCards(cards, true)}
         </div>
@@ -620,10 +622,10 @@ import { renderStatCard } from "./stat-card.js";
   export function getOverviewTopCards() {
     const coolingActive = isCoolingOverviewActive();
     return [
-      { key: "totalPower", label: "Elektrisch vermogen", tone: "blue", note: "hele systeem" },
-      { key: coolingActive ? "totalCoolingPower" : "totalHeat", label: coolingActive ? "Koelvermogen" : "Verwarmingsvermogen", tone: "orange", note: "thermisch vermogen" },
-      { key: coolingActive ? "totalEer" : "totalCop", label: coolingActive ? "COP (EER)" : "COP", tone: "green", note: "rendement" },
-      { key: "flowSelected", label: "Flow", tone: "sky", note: "watercircuit" },
+      { key: "totalPower", label: t("overview.topPower"), tone: "blue", note: t("overview.topPowerNote") },
+      { key: coolingActive ? "totalCoolingPower" : "totalHeat", label: coolingActive ? t("overview.topCoolingPower") : t("overview.topHeatingPower"), tone: "orange", note: t("overview.topThermalNote") },
+      { key: coolingActive ? "totalEer" : "totalCop", label: coolingActive ? t("overview.topCopEer") : t("overview.topCop"), tone: "green", note: t("overview.topEfficiencyNote") },
+      { key: "flowSelected", label: t("overview.topFlow"), tone: "sky", note: t("overview.topFlowNote") },
     ];
   }
 
@@ -644,60 +646,60 @@ import { renderStatCard } from "./stat-card.js";
     const coolingBlockReasonRaw = getEntityStateText("coolingBlockReason", "");
     const coolingWaitingForRoomRequest = isCoolingWaitingForRoomRequest(coolingBlockReasonRaw, coolingRequestActive);
 
-    let coolingStatus = "Uit";
+    let coolingStatus = t("overview.coolingOff");
     let coolingCopy = coolingConfiguredSourceRaw === "Disabled"
-      ? "Koeltoestemming is niet gegeven: handmatig staat uit."
-      : coolingConfiguredSource && coolingConfiguredSource !== "geen bron"
-      ? `Koeltoestemming is niet gegeven: ${coolingConfiguredSource} geeft geen toestemming en handmatig staat uit.`
-      : "Koeltoestemming is niet gegeven.";
+      ? t("overview.coolingOffNoPermission")
+      : coolingConfiguredSource && coolingConfiguredSource !== t("overview.permNone")
+      ? t("overview.coolingOffSource", { source: coolingConfiguredSource })
+      : t("overview.coolingOffGeneric");
     const coolingIsReady = String(coolingBlockReasonRaw).trim().toLowerCase() === "ready" || String(coolingBlockReasonRaw).trim().toLowerCase() === "gereed" || String(coolingBlockReasonRaw).trim().toLowerCase() === "gereed om te koelen";
     // De enige plek met de startblokkade is het koelregelmodel hierboven; de
     // kaart liegt nooit over draaien (alleen "Actief" bij draaiende compressor).
     const coolingCompressorRunning = getCoolingCompressorRunning();
     if (coolingEnabled && coolingModeActive && coolingCompressorRunning) {
-      coolingStatus = "Actief";
-      coolingCopy = appendCoolingPermissionSource("Koeling draait nu.", coolingEffectiveSource);
+      coolingStatus = t("overview.coolingActive");
+      coolingCopy = appendCoolingPermissionSource(t("overview.coolingActiveCopy"), coolingEffectiveSource);
     } else if (coolingEnabled && coolingModeActive) {
-      coolingStatus = "Aan";
-      coolingCopy = appendCoolingPermissionSource("Er is koelvraag. Koeling start zodra dat kan.", coolingEffectiveSource);
+      coolingStatus = t("overview.coolingOn");
+      coolingCopy = appendCoolingPermissionSource(t("overview.coolingStartingCopy"), coolingEffectiveSource);
     } else if (coolingEnabled && coolingWaitingForRoomRequest) {
-      coolingStatus = "Aan";
-      coolingCopy = appendCoolingPermissionSource("Koeling is toegestaan en wacht op kamertemperatuur boven het koel-setpoint.", coolingEffectiveSource);
+      coolingStatus = t("overview.coolingOn");
+      coolingCopy = appendCoolingPermissionSource(t("overview.coolingWaitingRoomCardCopy"), coolingEffectiveSource);
     } else if (coolingEnabled && coolingBlocked && !coolingIsReady) {
-      coolingStatus = "Geblokkeerd";
-      coolingCopy = appendCoolingPermissionSource(formatCoolingBlockReason(coolingBlockReasonRaw || "Koeling wacht nog op veilige condities."), coolingEffectiveSource);
+      coolingStatus = t("overview.coolingBlockedCard");
+      coolingCopy = appendCoolingPermissionSource(formatCoolingBlockReason(coolingBlockReasonRaw || t("overview.coolingWaitingSafe")), coolingEffectiveSource);
     } else if (coolingEnabled && coolingBlocked && coolingIsReady) {
-      coolingStatus = "Aan";
-      coolingCopy = appendCoolingPermissionSource("Koeltoestemming is gegeven en wacht op koelvraag.", coolingEffectiveSource);
+      coolingStatus = t("overview.coolingOn");
+      coolingCopy = appendCoolingPermissionSource(t("overview.coolingReadyCardCopy"), coolingEffectiveSource);
     } else if (coolingEnabled && coolingRequestActive) {
-      coolingStatus = "Start bijna";
-      coolingCopy = appendCoolingPermissionSource("Er is koelvraag. Koeling start zodra dat kan.", coolingEffectiveSource);
+      coolingStatus = t("overview.coolingStarting");
+      coolingCopy = appendCoolingPermissionSource(t("overview.coolingStartingCopy"), coolingEffectiveSource);
     } else if (coolingEnabled) {
-      coolingStatus = "Aan";
-      coolingCopy = appendCoolingPermissionSource("Koeling is toegestaan en wacht op koelvraag.", coolingEffectiveSource);
+      coolingStatus = t("overview.coolingOn");
+      coolingCopy = appendCoolingPermissionSource(t("overview.coolingWaitingCardCopy"), coolingEffectiveSource);
     }
 
-    let silentStatus = "Uit";
-    let silentCopy = "Stille modus staat uit.";
+    let silentStatus = t("overview.silentOff");
+    let silentCopy = t("overview.silentOffCopy");
     let silentTone = "neutral";
     if (silentModeOverride === "On") {
-      silentStatus = "Aan";
-      silentCopy = "Stille modus staat geforceerd aan, ook buiten het tijdvenster.";
+      silentStatus = t("overview.coolingOn");
+      silentCopy = t("overview.silentForcedCopy");
       silentTone = "orange";
     } else if (silentModeOverride === "Schedule") {
-      silentStatus = "Schema";
+      silentStatus = t("overview.silentSchedule");
       if (isEntityActive("silentActive")) {
-        silentCopy = "Stille modus staat nu aan via het tijdvenster.";
+        silentCopy = t("overview.silentScheduleActiveCopy");
         silentTone = "violet";
       } else {
-        silentCopy = "Stille modus volgt het tijdvenster.";
+        silentCopy = t("overview.silentScheduleCopy");
       }
     }
 
     return [
-      { key: "openquattEnabled", label: "Openquatt regeling", status: openquattEnabled ? "Actief" : "Tijdelijk uit", copy: openquattEnabled ? "Verwarmen en koelen worden automatisch geregeld." : openquattResumeScheduled ? "Verwarming en koeling zijn tijdelijk uitgeschakeld. Beveiligingen (inclusief vorstbeveiliging) blijven actief." : "Verwarming en koeling zijn uitgeschakeld. Beveiligingen (inclusief vorstbeveiliging) blijven actief.", tone: openquattEnabled ? "green" : "orange", kind: "openquatt-control", meta: openquattEnabled ? [] : [openquattResumeLoading ? { label: "Hervatten", value: "Laden…", tone: "neutral", loading: true } : { label: openquattResumeScheduled ? "Hervat automatisch" : "Hervatten", value: openquattResumeScheduled ? formatOpenQuattResumeDateTime(openquattResumeAt, true) : "Handmatig", tone: openquattResumeScheduled ? "orange" : "neutral" }] },
-      { key: "manualCoolingEnable", label: "Koeltoestemming", status: coolingStatus, copy: coolingCopy, buttonLabel: manualCoolingEnabled ? "Handmatig uit" : "Handmatig aan", nextState: manualCoolingEnabled ? "off" : "on", tone: !coolingEnabled ? "neutral" : (coolingStatus === "Geblokkeerd" ? "orange" : (coolingModeActive ? "blue" : "sky")), settingsAction: hasEntity(COOLING_SCHEDULE_SOURCE_KEY) && COOLING_SCHEDULE_TIME_KEYS.every((key) => hasEntity(key)) ? "open-cooling-schedule-modal" : "", settingsLabel: "Koelvenster instellen" },
-      { key: "silentModeOverride", label: "Stille modus", status: silentStatus, copy: silentCopy, tone: silentTone, kind: "select", selectedOption: silentModeOverride, settingsAction: "open-silent-settings-modal", settingsLabel: "Stille uren instellen", options: [{ value: "Off", label: "Uit" }, { value: "On", label: "Aan" }, { value: "Schedule", label: "Schema" }] },
+      { key: "openquattEnabled", label: t("overview.controlCardTitle"), status: openquattEnabled ? t("overview.controlActive") : t("overview.controlPaused"), copy: openquattEnabled ? t("overview.controlAutoCopy") : openquattResumeScheduled ? t("overview.controlPausedScheduledCopy") : t("overview.controlPausedCopy"), tone: openquattEnabled ? "green" : "orange", kind: "openquatt-control", meta: openquattEnabled ? [] : [openquattResumeLoading ? { label: t("overview.resumeLabel"), value: t("overview.resumeLoading"), tone: "neutral", loading: true } : { label: openquattResumeScheduled ? t("overview.resumeAuto") : t("overview.resumeLabel"), value: openquattResumeScheduled ? formatOpenQuattResumeDateTime(openquattResumeAt, true) : t("overview.resumeManual"), tone: openquattResumeScheduled ? "orange" : "neutral" }] },
+      { key: "manualCoolingEnable", label: t("overview.coolingCardTitle"), status: coolingStatus, copy: coolingCopy, buttonLabel: manualCoolingEnabled ? t("overview.coolingManualOff") : t("overview.coolingManualOn"), nextState: manualCoolingEnabled ? "off" : "on", tone: !coolingEnabled ? "neutral" : (coolingStatus === t("overview.coolingBlockedCard") ? "orange" : (coolingModeActive ? "blue" : "sky")), settingsAction: hasEntity(COOLING_SCHEDULE_SOURCE_KEY) && COOLING_SCHEDULE_TIME_KEYS.every((key) => hasEntity(key)) ? "open-cooling-schedule-modal" : "", settingsLabel: t("system.coolingScheduleTitle") },
+      { key: "silentModeOverride", label: t("overview.silentCardTitle"), status: silentStatus, copy: silentCopy, tone: silentTone, kind: "select", selectedOption: silentModeOverride, settingsAction: "open-silent-settings-modal", settingsLabel: t("overview.silentSettingsTitle"), options: [{ value: "Off", label: t("overview.silentOff") }, { value: "On", label: t("overview.coolingOn") }, { value: "Schedule", label: t("overview.silentSchedule") }] },
     ].filter((card) => hasEntity(card.key));
   }
 
@@ -732,7 +734,7 @@ import { renderStatCard } from "./stat-card.js";
           <span class="oq-overview-controlpanel-spinner" aria-hidden="true"></span>
           <span>${escapeHtml(label)}</span>
         </span>
-      ` : escapeHtml(busy ? "Bezig..." : label)}</button>
+      ` : escapeHtml(busy ? t("common.busy") : label)}</button>
     `;
   }
 
@@ -745,13 +747,13 @@ import { renderStatCard } from "./stat-card.js";
       const busy = state.busyAction === "openquatt-regulation";
       const resumeLoading = (state.loadingEntities || state.entitySyncInFlight) && !hasEntity("openquattResumeAt");
       return isEntityActive("openquattEnabled")
-        ? `<div class="oq-overview-controlpanel-actions">${renderOverviewControlButton({ className: "oq-overview-controlpanel-toggle", action: "open-openquatt-pause-modal", label: "Tijdelijk uitschakelen", busy })}</div>`
+        ? `<div class="oq-overview-controlpanel-actions">${renderOverviewControlButton({ className: "oq-overview-controlpanel-toggle", action: "open-openquatt-pause-modal", label: t("overview.pauseControl"), busy })}</div>`
         : `
           <div class="oq-overview-controlpanel-actions oq-overview-controlpanel-actions--split">
-            ${renderOverviewControlButton({ className: "oq-overview-controlpanel-toggle", action: "enable-openquatt-now", label: "Nu inschakelen", busy })}
+            ${renderOverviewControlButton({ className: "oq-overview-controlpanel-toggle", action: "enable-openquatt-now", label: t("overview.enableNow"), busy })}
             ${resumeLoading
-              ? renderOverviewControlButton({ className: "oq-overview-controlpanel-segment oq-overview-controlpanel-segment--loading", action: "", label: "Hervatopties laden…", loading: true })
-              : renderOverviewControlButton({ className: "oq-overview-controlpanel-segment", action: "open-openquatt-pause-modal", label: hasOpenQuattResumeSchedule() ? "Moment wijzigen" : "Automatisch hervatten" })
+              ? renderOverviewControlButton({ className: "oq-overview-controlpanel-segment oq-overview-controlpanel-segment--loading", action: "", label: t("overview.resumeLoadingOptions"), loading: true })
+              : renderOverviewControlButton({ className: "oq-overview-controlpanel-segment", action: "open-openquatt-pause-modal", label: hasOpenQuattResumeSchedule() ? t("overview.resumeChange") : t("overview.resumeSchedule") })
             }
           </div>
         `;
@@ -796,8 +798,8 @@ import { renderStatCard } from "./stat-card.js";
     }
 
     return `
-      <section class="oq-overview-controlpanel-stack" aria-label="Bediening">
-        ${renderOverviewSectionHead("Bediening")}
+      <section class="oq-overview-controlpanel-stack" aria-label="${escapeHtml(t("overview.controlPanelLabel"))}">
+        ${renderOverviewSectionHead(t("overview.controlPanelLabel"))}
         ${cards.map((card) => `
           <article class="oq-overview-controlpanel oq-overview-controlpanel--${escapeHtml(card.tone)}">
             <div class="oq-overview-controlpanel-head">
@@ -819,15 +821,15 @@ import { renderStatCard } from "./stat-card.js";
       <section class="oq-overview-summary-shell">
         <div class="oq-overview-head">
           <div>
-            <p class="oq-helper-label">Overzicht</p>
-            <h2 class="oq-helper-section-title">Live regeling</h2>
-            <p class="oq-helper-section-copy">Hier zie je in één oogopslag hoe OpenQuatt nu werkt.</p>
+            <p class="oq-helper-label">${escapeHtml(t("overview.summaryKicker"))}</p>
+            <h2 class="oq-helper-section-title">${escapeHtml(t("overview.summaryTitle"))}</h2>
+            <p class="oq-helper-section-copy">${escapeHtml(t("overview.summaryCopy"))}</p>
           </div>
         </div>
         <div class="oq-overview-summary-layout">
           <div class="oq-overview-summary-main">
-            <section class="oq-overview-kpis" aria-label="Kerncijfers">
-              ${renderOverviewSectionHead("Kerncijfers")}
+            <section class="oq-overview-kpis" aria-label="${escapeHtml(t("overview.summaryKpis"))}">
+              ${renderOverviewSectionHead(t("overview.summaryKpis"))}
               <div class="oq-overview-top">
                 ${renderOverviewStatCards(getOverviewTopCards())}
               </div>
@@ -847,29 +849,29 @@ import { renderStatCard } from "./stat-card.js";
     const returnTempKey = getOverviewReturnTempKey();
     if (isCoolingOverviewActive()) {
       return {
-        title: "Koeltemperaturen",
-        copy: "De belangrijkste temperaturen voor kamercomfort, koeldoel en dauwpuntveiligheid.",
+        title: t("overview.tempsCoolingTitle"),
+        copy: t("overview.tempsCoolingCopy"),
         rows: [
-          { label: "Kamertemperatuur", key: "roomTemp" },
-          { label: "Kamer setpoint", key: "roomSetpoint" },
-          { label: "Aanvoertemperatuur", key: "supplyTemp" },
-          { label: "Koeldoel", key: "coolingSupplyTarget" },
-          { label: "Veilige aanvoergrens", key: "coolingMinimumSafeSupplyTemp" },
-          { label: "Dauwpunt", key: "coolingDewPointSelected" },
+          { label: t("overview.tempRoom"), key: "roomTemp" },
+          { label: t("overview.tempRoomSetpoint"), key: "roomSetpoint" },
+          { label: t("overview.tempSupply"), key: "supplyTemp" },
+          { label: t("overview.tempCoolingTarget"), key: "coolingSupplyTarget" },
+          { label: t("overview.tempSafeFloor"), key: "coolingMinimumSafeSupplyTemp" },
+          { label: t("overview.tempDewPoint"), key: "coolingDewPointSelected" },
         ],
       };
     }
     return {
-      title: "Temperaturen",
-      copy: "De belangrijkste temperaturen voor comfort en regeling.",
+      title: t("overview.tempsTitle"),
+      copy: t("overview.tempsCopy"),
       rows: [
-        { label: "Kamertemperatuur", key: "roomTemp" },
-        { label: "Kamer setpoint", key: "roomSetpoint" },
-        { label: "Aanvoertemperatuur", key: "supplyTemp" },
-        ...(returnTempKey ? [{ label: "Retourtemperatuur", key: returnTempKey }] : []),
+        { label: t("overview.tempRoom"), key: "roomTemp" },
+        { label: t("overview.tempRoomSetpoint"), key: "roomSetpoint" },
+        { label: t("overview.tempSupply"), key: "supplyTemp" },
+        ...(returnTempKey ? [{ label: t("overview.tempReturn"), key: returnTempKey }] : []),
         outsideTempKey
-          ? { label: "Buitentemperatuur", key: outsideTempKey }
-          : { label: "Buitentemperatuur", key: "", value: "—" },
+          ? { label: t("overview.tempOutside"), key: outsideTempKey }
+          : { label: t("overview.tempOutside"), key: "", value: "—" },
       ],
     };
   }
@@ -914,39 +916,30 @@ import { renderStatCard } from "./stat-card.js";
   export function formatOverviewTrendWindowLabel(windowHours = getOverviewTrendWindowHours()) {
     const hours = Number(windowHours) || 24;
     if (hours >= 72 && hours % 24 === 0) {
-      return `${hours / 24}d`;
+      return t("overview.trendWindowDays", { days: formatNumber(hours / 24, { maximumFractionDigits: 0 }) });
     }
-    return `${hours}u`;
+    return t("overview.trendWindowHours", { hours: formatNumber(hours, { maximumFractionDigits: 0 }) });
   }
 
   export function formatOverviewTrendWindowText(windowHours = getOverviewTrendWindowHours()) {
     const hours = Number(windowHours) || 24;
     if (hours >= 72 && hours % 24 === 0) {
       const days = hours / 24;
-      return `${days} ${days === 1 ? "dag" : "dagen"}`;
+      return days === 1 ? t("overview.trendWindowDayOne", { days: formatNumber(days, { maximumFractionDigits: 0 }) }) : t("overview.trendWindowDayOther", { days: formatNumber(days, { maximumFractionDigits: 0 }) });
     }
-    return `${hours} uur`;
+    return t("overview.trendWindowHoursText", { hours: formatNumber(hours, { maximumFractionDigits: 0 }) });
   }
 
   export function formatOverviewTrendDateTimeLabel(timestamp) {
     if (!Number.isFinite(timestamp)) {
       return "—";
     }
-    const date = new Date(timestamp);
-    if (Number.isNaN(date.getTime())) {
-      return "—";
-    }
-    const options = {
+    return formatDateTime(timestamp, {
       day: "numeric",
       month: "short",
       hour: "2-digit",
       minute: "2-digit",
-    };
-    try {
-      return new Intl.DateTimeFormat("nl-NL", options).format(date);
-    } catch (_error) {
-      return date.toLocaleString("nl-NL", options);
-    }
+    });
   }
 
   export function parseOverviewTrendRow(row) {
@@ -1029,34 +1022,34 @@ import { renderStatCard } from "./stat-card.js";
     return [
       {
         id: "temperatures",
-        title: "Temperaturen",
-        copy: `Buiten- en aanvoertemperatuur van de laatste ${windowText}.`,
+        title: t("overview.trendCardTemperatures"),
+        copy: t("overview.trendCardTemperaturesCopy", { window: windowText }),
         tone: "orange",
         samples,
         mock: isMockData,
         windowHours,
         series: [
-          { id: "outside", sampleKey: "outside", currentKey: "outsideTempSelected", label: "Buiten", tone: "orange", decimals: 1, unit: " °C" },
-          { id: "supply", sampleKey: "supply", currentKey: "supplyTemp", label: "Aanvoer", tone: "blue", decimals: 1, unit: " °C" },
+          { id: "outside", sampleKey: "outside", currentKey: "outsideTempSelected", label: t("overview.trendSeriesOutside"), tone: "orange", decimals: 1, unit: " °C" },
+          { id: "supply", sampleKey: "supply", currentKey: "supplyTemp", label: t("overview.trendSeriesSupply"), tone: "blue", decimals: 1, unit: " °C" },
         ],
       },
       {
         id: "power",
-        title: "Vermogen",
-        copy: `Elektrisch vermogen en verwarmingsvermogen van de laatste ${windowText}.`,
+        title: t("overview.trendCardPower"),
+        copy: t("overview.trendCardPowerCopy", { window: windowText }),
         tone: "green",
         samples,
         mock: isMockData,
         windowHours,
         series: [
-          { id: "input", sampleKey: "input", currentKey: "totalPower", label: "Elektrisch vermogen", tone: "green", decimals: 0, unit: " W" },
-          { id: "output", sampleKey: "output", currentKey: coolingActive ? "totalCoolingPower" : "totalHeat", label: coolingActive ? "Koelvermogen" : "Verwarmingsvermogen", tone: "sky", decimals: 0, unit: " W" },
+          { id: "input", sampleKey: "input", currentKey: "totalPower", label: t("overview.topPower"), tone: "green", decimals: 0, unit: " W" },
+          { id: "output", sampleKey: "output", currentKey: coolingActive ? "totalCoolingPower" : "totalHeat", label: coolingActive ? t("overview.topCoolingPower") : t("overview.topHeatingPower"), tone: "sky", decimals: 0, unit: " W" },
         ],
       },
       {
         id: "rendement",
-        title: "Rendement",
-        copy: `COP van de laatste ${windowText}.`,
+        title: t("overview.trendCardEfficiency"),
+        copy: t("overview.trendCardEfficiencyCopy", { window: windowText }),
         tone: "slate",
         samples,
         mock: isMockData,
@@ -1064,7 +1057,7 @@ import { renderStatCard } from "./stat-card.js";
         series: [
           {
             id: "cop",
-            label: "COP",
+            label: t("overview.topCop"),
             tone: "slate",
             decimals: 1,
             unit: "",
@@ -1082,27 +1075,27 @@ import { renderStatCard } from "./stat-card.js";
       },
       {
         id: "comfort",
-        title: "Comfort",
-        copy: `Kamertemperatuur en setpoint van de laatste ${windowText}.`,
+        title: t("overview.trendCardComfort"),
+        copy: t("overview.trendCardComfortCopy", { window: windowText }),
         tone: "blue",
         samples,
         mock: isMockData,
         windowHours,
         series: [
-          { id: "roomTemp", sampleKey: "room", currentKey: "roomTemp", label: "Kamertemperatuur", tone: "blue", decimals: 1, unit: " °C" },
-          { id: "roomSetpoint", sampleKey: "roomSetpoint", currentKey: "roomSetpoint", label: "Kamer setpoint", tone: "orange", decimals: 1, unit: " °C" },
+          { id: "roomTemp", sampleKey: "room", currentKey: "roomTemp", label: t("overview.tempRoom"), tone: "blue", decimals: 1, unit: " °C" },
+          { id: "roomSetpoint", sampleKey: "roomSetpoint", currentKey: "roomSetpoint", label: t("overview.tempRoomSetpoint"), tone: "orange", decimals: 1, unit: " °C" },
         ],
       },
       {
         id: "flow",
-        title: "Flow",
-        copy: `Flow van de laatste ${windowText}.`,
+        title: t("overview.topFlow"),
+        copy: t("overview.trendCardFlowCopy", { window: windowText }),
         tone: "sky",
         samples,
         mock: isMockData,
         windowHours,
         series: [
-          { id: "flow", sampleKey: "flow", currentKey: "flowSelected", label: "Flow", tone: "sky", decimals: 0, unit: " L/h", axisMin: 0, axisTickStep: 250 },
+          { id: "flow", sampleKey: "flow", currentKey: "flowSelected", label: t("overview.topFlow"), tone: "sky", decimals: 0, unit: " L/h", axisMin: 0, axisTickStep: 250 },
         ],
       },
     ];
@@ -1475,7 +1468,7 @@ import { renderStatCard } from "./stat-card.js";
     }).join("");
 
     return `
-      <svg class="oq-overview-trend-chart" viewBox="0 0 ${model.width} ${model.height}" role="img" aria-label="Trendgrafiek van de laatste ${windowText}">
+      <svg class="oq-overview-trend-chart" viewBox="0 0 ${model.width} ${model.height}" role="img" aria-label="${escapeHtml(t("overview.trendChartLabel", { window: windowText }))}">
         <rect x="0" y="0" width="${model.width}" height="${model.height}" rx="20" class="oq-overview-trend-chart-bg"></rect>
         ${model.gridXs.map((x) => `<line x1="${x.toFixed(1)}" y1="${model.top}" x2="${x.toFixed(1)}" y2="${model.height - model.bottom}" class="oq-overview-trend-grid oq-overview-trend-grid--vertical"></line>`).join("")}
         ${model.gridYs.map((y) => `<line x1="${model.left}" y1="${y.toFixed(1)}" x2="${model.width - model.right}" y2="${y.toFixed(1)}" class="oq-overview-trend-grid oq-overview-trend-grid--horizontal"></line>`).join("")}
@@ -1527,7 +1520,7 @@ import { renderStatCard } from "./stat-card.js";
         ${renderOverviewTrendChart(card.samples, card.series, card.mock, card.windowHours)}
         <div class="oq-overview-trend-hover" data-oq-trend-hover hidden>
           <div class="oq-overview-trend-hover-head">
-            <span class="oq-overview-trend-hover-kicker">Meting</span>
+            <span class="oq-overview-trend-hover-kicker">${escapeHtml(t("overview.hoverMeasurement"))}</span>
             <strong data-oq-trend-hover-time>—</strong>
             <span class="oq-overview-trend-hover-note" data-oq-trend-hover-note></span>
           </div>
@@ -1540,7 +1533,7 @@ import { renderStatCard } from "./stat-card.js";
   export function renderOverviewTrendsPanel() {
     const cards = getOverviewTrendCardsModel();
     return `
-      <section class="oq-overview-trends" aria-label="Diagnose" data-render-signature="${escapeHtml(getOverviewTrendRenderSignature())}">
+      <section class="oq-overview-trends" aria-label="${escapeHtml(t("navigation.diagnosis"))}" data-render-signature="${escapeHtml(getOverviewTrendRenderSignature())}">
         <div class="oq-overview-trends-grid">
           ${cards.map(renderOverviewTrendCard).join("")}
         </div>
@@ -1551,11 +1544,11 @@ import { renderStatCard } from "./stat-card.js";
   export function renderOverviewTrendsDisabledNotice() {
     return `
       <div class="oq-overview-trends-disabled">
-        <p>Trendhistorie</p>
-        <strong>Er is nog geen trendhistorie beschikbaar.</strong>
-        <span>Schakel trendopslag in onder Instellingen &rsaquo; Systeem of wacht tot de controller gegevens heeft opgebouwd.</span>
+        <p>${escapeHtml(t("overview.trendsDisabledTitle"))}</p>
+        <strong>${escapeHtml(t("overview.trendsDisabledStrong"))}</strong>
+        <span>${escapeHtml(t("overview.trendsDisabledCopy", { settings: t("navigation.settings"), system: t("settingsGroups.system") }))}</span>
         <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="select-view" data-view-id="settings">
-          Naar instellingen
+          ${escapeHtml(t("overview.trendsToSettings"))}
         </button>
       </div>
     `;
@@ -1565,13 +1558,13 @@ import { renderStatCard } from "./stat-card.js";
     const windowHours = getOverviewTrendWindowHours();
     const flashHistoryEnabled = isTrendHistoryFlashEnabled();
     return `
-      <div class="oq-overview-trends-windowbar" role="group" aria-label="Kies trendvenster">
+      <div class="oq-overview-trends-windowbar" role="group" aria-label="${escapeHtml(t("overview.trendWindowLabel"))}">
         ${TREND_WINDOW_HOURS_OPTIONS.map((hours) => `
           ${(() => {
             const requiresFlashHistory = hours > 168;
             const disabled = requiresFlashHistory && !flashHistoryEnabled;
             const requiredDays = hours / 24;
-            const title = disabled ? `Beschikbaar zodra er minimaal ${requiredDays} dagen flashhistorie is opgeslagen.` : "";
+            const title = disabled ? t("overview.trendFlashRequired", { days: formatNumber(requiredDays, { maximumFractionDigits: 0 }) }) : "";
             return `
           <button
             class="oq-overview-controlpanel-segment${windowHours === hours ? " is-selected" : ""}${disabled ? " is-disabled" : ""}"
@@ -1593,7 +1586,7 @@ import { renderStatCard } from "./stat-card.js";
   export function renderTrendsInfoToggle() {
     const infoId = "overview-trends-history";
     const open = state.settingsInfoOpen === infoId;
-    const copy = "De waarden boven de grafieken zijn live. De grafieken bewaren elke 5 minuten een meetpunt, standaard 7 dagen in het werkgeheugen. Met flashopslag blijft historie ook na herstart of OTA beschikbaar, tot 30 dagen terug.";
+    const copy = t("overview.trendsInfoCopy");
     return `
       <div class="oq-settings-info oq-overview-trends-info${open ? " is-open" : ""}" data-oq-settings-info="${escapeHtml(infoId)}">
         <button
@@ -1601,7 +1594,7 @@ import { renderStatCard } from "./stat-card.js";
           type="button"
           data-oq-action="toggle-settings-info"
           data-info-id="${escapeHtml(infoId)}"
-          aria-label="${escapeHtml("Uitleg bij Diagnose")}"
+          aria-label="${escapeHtml(t("overview.trendsInfoLabel"))}"
           aria-expanded="${open ? "true" : "false"}"
         >i</button>
         <div class="oq-settings-info-popover" ${open ? "" : "hidden"}>
@@ -1623,14 +1616,14 @@ import { renderStatCard } from "./stat-card.js";
           </div>
           <div class="oq-overview-head oq-overview-trends-head">
             <div>
-              <p class="oq-helper-label">Diagnose</p>
-              <h2 class="oq-helper-section-title">Technische trends</h2>
-              <p class="oq-helper-section-copy">Analyseer temperaturen, vermogen, flow en statuslijnen voor troubleshooting.</p>
+              <p class="oq-helper-label">${escapeHtml(t("navigation.diagnosis"))}</p>
+              <h2 class="oq-helper-section-title">${escapeHtml(t("overview.diagnosisTitle"))}</h2>
+              <p class="oq-helper-section-copy">${escapeHtml(t("overview.diagnosisCopy"))}</p>
             </div>
             <div class="oq-overview-trends-meta">
               ${trendHistoryEnabled ? `
                 <div class="oq-overview-trends-window">
-                  <span>Venster</span>
+                  <span>${escapeHtml(t("overview.trendsWindow"))}</span>
                   ${renderTrendWindowSwitcher()}
                 </div>
               ` : ""}

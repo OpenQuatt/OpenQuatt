@@ -4,6 +4,7 @@ import { verifyEntityBackupSelectState } from "./entity-backup.js";
 import { getCurveFallbackSuggestion, getEntityValue } from "./entity-store.js";
 import { commitNumber, commitSelect, commitSwitch, triggerButton } from "./entity-write-actions.js";
 import { getHeatingEnableRecommendation } from "./heating-strategy-matrix.js";
+import { t } from "../i18n/index.js";
 import { state } from "./state.js";
 
 async function commitConfirmedSelection(key, value, commit, confirm) {
@@ -16,13 +17,13 @@ async function commitConfirmedSelection(key, value, commit, confirm) {
     return {
       ok: confirmed,
       writeAccepted: true,
-      error: confirmed ? "" : `${key === "strategy" ? "Verwarmingsstrategie" : "Warmtetoestemming"} is niet door de controller bevestigd.`,
+      error: confirmed ? "" : t("controlActions.notConfirmed", { field: t(key === "strategy" ? "controlActions.strategy" : "controlActions.heatingEnable") }),
     };
   } catch (error) {
     return {
       ok: false,
       writeAccepted: true,
-      error: `${key === "strategy" ? "Verwarmingsstrategie" : "Warmtetoestemming"} kon niet worden bevestigd. ${error.message}`,
+      error: t("controlActions.confirmFailed", { field: t(key === "strategy" ? "controlActions.strategy" : "controlActions.heatingEnable"), error: error.message }),
     };
   }
 }
@@ -38,8 +39,8 @@ export async function commitQuickStartStrategySelection(option, commit = commitS
     }
     state.controlNotice = "";
     state.controlError = rolledBack
-      ? `${strategyResult.error} De warmtetoestemming is niet aangepast.`
-      : `${strategyResult.error} De vorige strategie kon niet worden hersteld; controleer beide instellingen.`;
+      ? t("controlActions.heatingEnableUnchanged", { error: strategyResult.error })
+      : t("controlActions.strategyRestoreFailed", { error: strategyResult.error });
     return false;
   }
   if (!state.quickStartModalOpen || !hasEntity("heatingEnableSource")) {
@@ -69,8 +70,8 @@ export async function commitQuickStartStrategySelection(option, commit = commitS
       : false;
   state.controlNotice = "";
   state.controlError = heatingEnableRolledBack && strategyRolledBack
-    ? `${heatingEnableResult.error} De strategieswitch is daarom teruggezet.`
-    : `${heatingEnableResult.error} De vorige combinatie kon niet volledig worden hersteld; controleer beide instellingen.`;
+    ? t("controlActions.strategyReverted", { error: heatingEnableResult.error })
+    : t("controlActions.combinationRestoreFailed", { error: heatingEnableResult.error });
   return false;
 }
 
@@ -103,7 +104,7 @@ const controlActionHandlers = {
   "suggest-curve-fallback": () => {
     const suggestion = getCurveFallbackSuggestion();
     if (suggestion) {
-      commitNumber("curveFallbackSupply", suggestion.value, "Fallback-aanvoertemperatuur uit de stooklijn overgenomen.");
+      commitNumber("curveFallbackSupply", suggestion.value, t("controlActions.curveFallbackApplied"));
     }
   },
   apply: () => triggerButton("apply"),

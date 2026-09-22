@@ -17,8 +17,8 @@ in de bronresolver van de regelaar.
 
 Een gekozen waarde mag door die resolver ook een vastgehouden of samengestelde waarde
 zijn. Dat maakt de bron niet apart ongeldig. De volgende stap bepaalt wel zelfstandig
-of een vermogensmeting mogelijk is: nul of ontbrekend debiet levert bijvoorbeeld geen
-bruikbare calorimetrie op.
+of een vermogensmeting mogelijk is: ontbrekend debiet is ongeldig; geldig nuldebiet
+levert tijdens een verwarmingspauze nul watervermogen op.
 
 ## Fysieke meetketen
 

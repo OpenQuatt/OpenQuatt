@@ -1,3 +1,5 @@
+import { formatDate, t } from "../i18n/index.js";
+
 export const ENERGY_HISTORY_VALUE_KEYS = [
   "electricalInputWh",
   "heatingInputWh",
@@ -8,7 +10,18 @@ export const ENERGY_HISTORY_VALUE_KEYS = [
   "systemHeatOutputWh",
 ];
 
-export const ENERGY_HISTORY_WEEKDAY_LABELS = ["Zo", "Ma", "Di", "Wo", "Do", "Vr", "Za"];
+// Weekdagnamen volgen de actieve locale (nl: Zo..Za, en: Sun..Sat).
+// Referentie: zondag 7 januari 2024.
+const WEEKDAY_REFERENCE_SUNDAY = new Date(2024, 0, 7, 12, 0, 0);
+
+export function getEnergyHistoryWeekdayLabels() {
+  return Array.from({ length: 7 }, (_item, index) => {
+    const date = new Date(WEEKDAY_REFERENCE_SUNDAY.getTime());
+    date.setDate(date.getDate() + index);
+    const label = formatDate(date, { weekday: "short" }).replace(/\./g, "");
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  });
+}
 
 export function parseEnergyHistoryMetadata(rawValue) {
   const metadata = {
@@ -170,7 +183,7 @@ export function addEnergyHistoryDays(date, days) {
 }
 
 export function formatEnergyHistoryDayMonth(date) {
-  return date.toLocaleDateString("nl-NL", { day: "numeric", month: "short" }).replace(/\./g, "");
+  return formatDate(date, { day: "numeric", month: "short" }).replace(/\./g, "");
 }
 
 export function getEnergyHistoryIsoWeekInfo(date) {
@@ -200,22 +213,26 @@ export function parseEnergyHistoryWeekValue(value) {
 export function formatEnergyHistoryWeekLabel(weekStartKey) {
   const parsed = parseEnergyHistoryDateKey(weekStartKey);
   if (!parsed) {
-    return "Week";
+    return t("energy.weekLabel");
   }
   const start = getEnergyHistoryWeekStart(parsed.date);
   const end = addEnergyHistoryDays(start, 6);
-  return `Week ${getEnergyHistoryIsoWeekInfo(start).week} (${formatEnergyHistoryDayMonth(start)} - ${formatEnergyHistoryDayMonth(end)})`;
+  return t("energy.weekRange", {
+    week: getEnergyHistoryIsoWeekInfo(start).week,
+    start: formatEnergyHistoryDayMonth(start),
+    end: formatEnergyHistoryDayMonth(end),
+  });
 }
 
 export function formatEnergyHistoryDateLabel(dateKey, mode = "day") {
   const parsed = parseEnergyHistoryDateKey(dateKey);
   if (!parsed) {
-    return "—";
+    return t("common.notAvailable");
   }
-  if (mode === "weekday") return ENERGY_HISTORY_WEEKDAY_LABELS[parsed.date.getDay()] || "";
-  if (mode === "month") return parsed.date.toLocaleDateString("nl-NL", { month: "short" });
+  if (mode === "weekday") return getEnergyHistoryWeekdayLabels()[parsed.date.getDay()] || "";
+  if (mode === "month") return formatDate(parsed.date, { month: "short" });
   if (mode === "year") return String(parsed.year);
-  return parsed.date.toLocaleDateString("nl-NL", { day: "2-digit", month: "short" });
+  return formatDate(parsed.date, { day: "2-digit", month: "short" });
 }
 
 export function normalizeEnergyHistoryWh(rawValue) {
