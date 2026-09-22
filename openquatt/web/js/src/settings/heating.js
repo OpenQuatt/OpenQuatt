@@ -467,30 +467,30 @@ import { escapeHtml } from "../core/html.js";
     const status = enabled ? (n === "inactive" ? "Wacht op een verwarmingsrun" : getRunExtensionStatusCopy(n)) : "Uitgeschakeld";
     const relative = (offset) => `setpoint ${offset < 0 ? "−" : "+"} ${formatRunExtensionTemp(Math.abs(offset))}`;
     const thresholds = [
-      ["Gewenst", Number.isFinite(t.setpoint) ? formatRunExtensionTemp(t.setpoint) : "Kamer-setpoint", "Je ingestelde kamertemperatuur"],
-      ["Herstart mogelijk", Number.isFinite(t.restart) ? formatRunExtensionTemp(t.restart) : relative(t.margin - t.hysteresis), "Na afkoeling, alleen bij warmtevraag"],
-      ["Stop", Number.isFinite(t.stop) ? formatRunExtensionTemp(t.stop) : relative(t.margin), "De verlengde run wordt gestopt"],
+      ["Gewenste temperatuur", Number.isFinite(t.setpoint) ? formatRunExtensionTemp(t.setpoint) : "Kamer-setpoint", "De temperatuur die je hebt ingesteld."],
+      ["Stoppen bij", Number.isFinite(t.stop) ? formatRunExtensionTemp(t.stop) : relative(t.margin), "Bij deze kamertemperatuur stopt het doorverwarmen."],
+      ["Opnieuw starten bij of onder", Number.isFinite(t.restart) ? formatRunExtensionTemp(t.restart) : relative(t.margin - t.hysteresis), "Alleen als Power House berekent dat je woning nog warmte nodig heeft."],
     ];
     return `
       <section class="oq-settings-subpanel oq-settings-subpanel--nested oq-run-extension" aria-label="Langer doorverwarmen">
         <div class="oq-run-extension-intro">
           <div class="oq-settings-subpanel-head">
             <h4>Langer doorverwarmen</h4>
-            <p>Laat een draaiende warmtepomp op minimumvermogen doorverwarmen als de warmtevraag daalt. Dit kan korte runs en vaak starten en stoppen beperken. De kamer mag daarbij iets warmer worden dan de gewenste temperatuur.</p>
+            <p>Heeft je woning nog maar weinig warmte nodig? Met deze optie blijft de warmtepomp op zijn laagste geschikte vermogen draaien, in plaats van te stoppen. Hij mag doorgaan tot de ingestelde stoptemperatuur. Daardoor kan de kamer warmer worden dan je hebt ingesteld.</p>
           </div>
           <span class="oq-run-extension-status">${escapeHtml(status)}</span>
         </div>
         <div class="oq-settings-grid">
-          ${renderSettingsSwitchField("phRunExtension", "Verwarmingsrun verlengen", "Inschakelen start een stilstaande warmtepomp niet. Uitschakelen geeft de regeling terug aan de normale Power House-warmtevraag.", "Actief voor een draaiende verwarmingsrun.", "Power House regelt de warmtevraag zonder verlenging.")}
-          ${enabled ? renderSettingsNumberField("phRunExtensionStopMargin", "Stop boven gewenste temperatuur", "Hoeveel warmer de kamer tijdens de verlengde run mag worden dan het setpoint.", "", { footerMarkup: '<p class="oq-run-extension-note">Kies een marge die je nog comfortabel vindt.</p>' }) : ""}
+          ${renderSettingsSwitchField("phRunExtension", "Langer doorverwarmen toestaan", "Staat de warmtepomp stil? Deze schakelaar laat hem niet meteen starten. Hij moet eerst vanwege de warmtebehoefte van je woning gaan verwarmen.", "Aan: een draaiende warmtepomp mag langer blijven verwarmen.", "Uit: de warmtepomp mag stoppen zodra je woning te weinig warmte nodig heeft om te blijven draaien.")}
+          ${enabled ? renderSettingsNumberField("phRunExtensionStopMargin", "Stop boven gewenste temperatuur", "Dit aantal graden wordt bij je gewenste kamertemperatuur opgeteld om de stoptemperatuur te bepalen.", "", { footerMarkup: '<p class="oq-run-extension-note">Restwarmte kan de kamer na het stoppen nog iets verder opwarmen.</p>' }) : ""}
         </div>
         ${enabled ? `
           <div class="oq-run-extension-thresholds">
             ${thresholds.map(([label, value, note]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></div>`).join("")}
           </div>
-          <p class="oq-run-extension-note">Na de comfortstop moet de kamer eerst 0,2 °C afkoelen. Daarna kan de warmtepomp bij warmtevraag herstarten; de normale wachttijden en beveiligingen blijven gelden.</p>
+          <p class="oq-run-extension-note">Na het stoppen moet de kamer afkoelen tot 0,2 °C onder de stoptemperatuur. Dat kan nog boven je gewenste temperatuur zijn. Pas dan mag de warmtepomp weer starten, als je woning warmte nodig heeft. Wachttijden en beveiligingen kunnen de start uitstellen.</p>
         ` : ""}
-        <p class="oq-run-extension-note">De comfortband stuurt de berekende warmtevraag rond het setpoint bij. Langer doorverwarmen voegt een minimumvermogen toe aan een bestaande run. Bij uitschakelen blijft normale verwarming bij warmtevraag mogelijk.</p>
+        <p class="oq-run-extension-note">Zet je deze optie uit, dan zet je de verwarming niet uit. De warmtepomp kan blijven draaien of later weer starten als je woning warmte nodig heeft.</p>
       </section>
     `;
   }
