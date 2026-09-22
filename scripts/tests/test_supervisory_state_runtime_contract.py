@@ -25,6 +25,9 @@ class SupervisoryStateRuntimeContractTest(unittest.TestCase):
         self.assertLessEqual(len(YAML.splitlines()), 720)
 
     def test_runtime_owns_complete_supervisory_side_effects(self) -> None:
+        for header in ("oq_control_mode_log_logic.h", "oq_supervisory_power_limiter_runtime.h",
+                       "oq_supervisory_safety_runtime.h"):
+            self.assertIn(f'#include "{header}"', RUNTIME)
         self.assertIn('#include "../performance/hp_perf_frequency.h"', RUNTIME)
         for marker in (
             "oq_supervisory_power_runtime::runtime().tick",
@@ -75,7 +78,7 @@ class SupervisoryStateRuntimeContractTest(unittest.TestCase):
         # Include the bounded Modbus reader added for first-start water samples.
         # Duo single-HP cold start (#705) added per-HP availability wiring.
         total = sum(len(source.splitlines()) for source in (YAML, LOGIC, RUNTIME, PROBE))
-        self.assertLessEqual(total, 2310)
+        self.assertLessEqual(total, 2313)  # Three explicit runtime-header dependencies.
 
     def test_cold_start_follows_available_heat_pumps(self) -> None:
         # Regression for #705: Duo cold start required both ODU outlet samples
