@@ -29,7 +29,9 @@ int main() {
   Handler early;
   Handler late;
   Handler portal;
-  // Register before any credentials or HTTP listener exist.
+  // OpenQuatt configures bootstrap auth before setup, then applies open mode.
+  base.set_auth_credentials("bootstrap", "bootstrap");
+  base.set_auth_credentials("", "");
   base.add_handler(&early);
   base.init();
   base.add_handler_without_auth(&portal);

@@ -1,23 +1,15 @@
-from pathlib import Path
-
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import CONF_ID, __version__
 from esphome.core import CORE, coroutine_with_priority
 from esphome.coroutine import CoroPriority
-from esphome.helpers import copy_file_if_changed
 from esphome.types import ConfigType
 
 CODEOWNERS = ["@esphome/core"]
 DEPENDENCIES = ["network"]
 
 
-def AUTO_LOAD() -> list[str]:
-    if CORE.is_esp32:
-        return ["web_server_idf"]
-    if CORE.using_arduino:
-        return ["async_tcp"]
-    return []
+AUTO_LOAD = ["web_server_idf"]
 
 
 web_server_base_ns = cg.esphome_ns.namespace("web_server_base")
@@ -27,11 +19,7 @@ CONF_WEB_SERVER_BASE_ID = "web_server_base_id"
 
 
 def _consume_web_server_base_sockets(config: ConfigType) -> ConfigType:
-    """Register the shared listening socket for the HTTP server.
-
-    web_server_base is the shared HTTP server used by web_server and captive_portal.
-    The listening socket is registered here rather than in each consumer.
-    """
+    """Count the listening socket shared by web_server and captive_portal once."""
     from esphome.components import socket
 
     socket.consume_sockets(1, "web_server_base", socket.SocketType.TCP_LISTEN)(config)
@@ -65,31 +53,5 @@ async def to_code(config: ConfigType) -> None:
     var = cg.new_Pvariable(config[CONF_ID])
     cg.add(cg.RawExpression(f"{web_server_base_ns}::global_web_server_base = {var}"))
 
-    if CORE.is_esp32:
-        # Count for StaticVector in web_server_idf - matches headers added in init()
-        cg.add_define("WEB_SERVER_DEFAULT_HEADERS_COUNT", 1)
-        return
-
-    # ESP32 uses IDF web server (early return above), so this is for other Arduino platforms
-    if CORE.using_arduino:
-        if CORE.is_esp8266:
-            cg.add_library("ESP8266WiFi", None)
-        if CORE.is_libretiny:
-            CORE.add_platformio_option("lib_ignore", ["ESPAsyncTCP", "RPAsyncTCP"])
-        if CORE.is_rp2:
-            # Ignore bundled AsyncTCP libraries - we use RPAsyncTCP from async_tcp component
-            CORE.add_platformio_option(
-                "lib_ignore", ["ESPAsyncTCP", "AsyncTCP", "AsyncTCP_RP2040W"]
-            )
-            # ESPAsyncWebServer uses Hash library for sha1() on RP2040
-            cg.add_library("Hash", None)
-            # Fix Hash.h include conflict: Crypto-no-arduino (used by dsmr)
-            # provides a Hash.h that shadows the framework's Hash library.
-            # Prepend the framework Hash path so it's found first.
-            copy_file_if_changed(
-                Path(__file__).parent / "fix_rp2040_hash.py.script",
-                CORE.relative_build_path("fix_rp2040_hash.py"),
-            )
-            cg.add_platformio_option("extra_scripts", ["pre:fix_rp2040_hash.py"])
-        # https://github.com/ESP32Async/ESPAsyncWebServer/blob/main/library.json
-        cg.add_library("ESP32Async/ESPAsyncWebServer", "3.9.6")
+    # Count for StaticVector in web_server_idf; matches the header added in init().
+    cg.add_define("WEB_SERVER_DEFAULT_HEADERS_COUNT", 1)

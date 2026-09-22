@@ -7,18 +7,10 @@
 
 #include "esphome/core/progmem.h"
 
-#if USE_ESP32
 #include "esphome/core/hal.h"
 #include "esphome/components/web_server_idf/web_server_idf.h"
-#else
-#include <ESPAsyncWebServer.h>
-#endif
 
-#if USE_ESP32
 using PlatformString = std::string;
-#elif USE_ARDUINO
-using PlatformString = String;
-#endif
 
 namespace esphome::web_server_base {
 
@@ -86,13 +78,7 @@ class AuthMiddlewareHandler : public MiddlewareHandler {
   bool check_auth(AsyncWebServerRequest* request) {
     bool success = credentials_->authenticate(request);
     if (!success) {
-#if USE_ESP32
       request->requestAuthentication();
-#elif defined(USE_WEBSERVER_AUTH_DIGEST)
-      request->requestAuthentication(nullptr, true);
-#else
-      request->requestAuthentication(nullptr, false);
-#endif
     }
     return success;
   }
@@ -120,11 +106,8 @@ class AuthMiddlewareHandler : public MiddlewareHandler {
 
 class WebServerBase final {
  public:
-  // The AsyncWebServer is created once and intentionally never deleted: on Arduino
-  // platforms ESPAsyncWebServer owns its registered handlers, so destroying it would
-  // also destroy live components (e.g. the captive portal) out from under us.
-  // init()/deinit() refcount users and start/stop the listener; handlers are
-  // registered once at creation and survive listener restarts.
+  // Share one server between web_server and captive_portal. Reference counting
+  // starts/stops its listener without registering the handlers again.
   void init() {
     this->initialized_++;
     if (this->server_ != nullptr) {
