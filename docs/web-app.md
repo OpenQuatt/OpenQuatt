@@ -38,7 +38,7 @@ Bij de migratie geldt deze matrix:
 | Alleen oude OpenQuatt-key aanwezig | Geen native key | Oude key wordt genegeerd; Home Assistant provisiont een nieuwe native key. |
 | Geen key | Geen key | Home Assistant provisiont automatisch binnen de provisioning window. |
 | Geen key | Stale key | Eenmalig opnieuw koppelen of de stale key in Home Assistant verwijderen. |
-| Native key aanwezig | Key onbekend | Verplichte fysieke USB/serial-reset van de sleutel op het apparaat; daarna opnieuw koppelen. OpenQuatt neemt de onbekende sleutel niet over. |
+| Native key aanwezig | Key onbekend | Reset API-beveiliging via een web-login of de fysieke [herstelpagina](#herstelomgeving); daarna opnieuw koppelen. OpenQuatt neemt de onbekende sleutel niet over. |
 
 De oude OpenQuatt-preference wordt bij deze firmwareversie niet gewist, maar ook niet meer gelezen of toegepast. Dat houdt rollback mogelijk zonder een tweede bron van waarheid te activeren.
 

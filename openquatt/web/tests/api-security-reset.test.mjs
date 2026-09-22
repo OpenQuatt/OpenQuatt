@@ -3,7 +3,7 @@ import test from "node:test";
 
 globalThis.__OQ_PREVIEW__ = false;
 const { state } = await import("../js/src/core/state.js");
-const { resetApiSecurity } = await import("../js/src/features/security-actions.js");
+const { refreshApiSecurityStatus, resetApiSecurity } = await import("../js/src/features/security-actions.js");
 
 function setup(t, handler, confirm = true) {
   const originalWindow = globalThis.window;
@@ -13,6 +13,7 @@ function setup(t, handler, confirm = true) {
   state.apiSecurityBusy = false;
   state.apiSecurityNotice = "";
   state.apiSecurityError = "";
+  state.apiSecurityActionError = "";
   globalThis.window = { confirm: () => confirm, setTimeout: callback => callback() };
   globalThis.fetch = handler;
 }
@@ -41,7 +42,24 @@ test("API reset sends one confirmed request and reports persistence failure", as
   await resetApiSecurity();
   assert.deepEqual(requests, ["/api-security/reset", "/recovery/status"]);
   assert.equal(state.apiSecurityBusy, false);
-  assert.match(state.apiSecurityError, /niet herstart/);
+  assert.match(state.apiSecurityActionError, /niet herstart/);
+});
+
+test("API reset rejection permits an explicit retry", async t => {
+  setup(t, async () => ({ status: 403 }));
+  await resetApiSecurity();
+  assert.equal(state.apiSecurityBusy, false);
+  assert.match(state.apiSecurityActionError, /afgewezen/);
+});
+
+test("API reset failure survives a successful status refresh", async t => {
+  setup(t, async () => ({
+    ok: true,
+    json: async () => ({ transport_active: true, key_present: true, provisioning_pending: false, provisioning_closed: false }),
+  }));
+  state.apiSecurityActionError = "Reset mislukt; er is niet herstart. Je kunt opnieuw proberen.";
+  await refreshApiSecurityStatus({ force: true });
+  assert.match(state.apiSecurityActionError, /niet herstart/);
 });
 
 test("API reset never retries an ambiguous accepted request", async t => {

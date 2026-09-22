@@ -299,12 +299,19 @@ import { render } from "../core/render-scheduler.js";
     if (!window.confirm("API-beveiliging wissen en controller herstarten? Dit verbreekt alle API-koppelingen.")) return;
     state.apiSecurityBusy = true;
     state.apiSecurityError = "";
+    state.apiSecurityActionError = "";
     state.apiSecurityNotice = "Reset aanvragen…";
     render();
     try {
       const body = new URLSearchParams({ csrf_token: state.authStatus.csrf_token, confirm: "RESET_API_SECURITY" });
       const response = await fetch("/api-security/reset", { method: "POST", body });
-      if (response.status !== 202) throw new Error(`HTTP ${response.status}`);
+      if (response.status !== 202) {
+        state.apiSecurityBusy = false;
+        state.apiSecurityNotice = "";
+        state.apiSecurityActionError = `Reset is afgewezen. HTTP ${response.status}. Je kunt opnieuw proberen.`;
+        render();
+        return;
+      }
       state.apiSecurityNotice = "Reset aangevraagd. Bij succes herstart de controller. Open daarna de web-app opnieuw en koppel Home Assistant binnen 10 minuten.";
       render();
       await new Promise(resolve => window.setTimeout(resolve, 1000));
@@ -313,7 +320,7 @@ import { render } from "../core/render-scheduler.js";
       if (result.error) {
         state.apiSecurityBusy = false;
         state.apiSecurityNotice = "";
-        state.apiSecurityError = "Reset mislukt; er is niet herstart. Je kunt opnieuw proberen.";
+        state.apiSecurityActionError = "Reset mislukt; er is niet herstart. Je kunt opnieuw proberen.";
       }
     } catch (error) {
       state.apiSecurityNotice = "Controleer of de controller is herstart en open de web-app opnieuw. De reset wordt niet automatisch herhaald.";

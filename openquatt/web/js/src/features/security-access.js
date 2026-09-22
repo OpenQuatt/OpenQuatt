@@ -120,6 +120,7 @@ import { renderModalShell } from "../core/modal-shell.js";
         <div class="oq-settings-api-security-shell oq-settings-api-security-shell--modal">
           ${state.apiSecurityNotice ? `<p role="status">${escapeHtml(state.apiSecurityNotice)}</p>` : ""}
           ${state.apiSecurityError ? `<p role="alert">${escapeHtml(state.apiSecurityError)}</p>` : ""}
+          ${state.apiSecurityActionError ? `<p role="alert">${escapeHtml(state.apiSecurityActionError)}</p>` : ""}
           <div class="oq-helper-modal-grid">
             ${renderLoginStatusRow("Status", getApiSecurityStatusLabel(), getApiSecurityStatusDetail())}
             ${renderLoginStatusRow("Beheer", "Automatisch door Home Assistant", "De beveiligingssleutel wordt automatisch ingesteld en bewaard.")}
