@@ -20,9 +20,12 @@ input{width:100%}button{cursor:pointer}small{color:#475f68}#message{min-height:2
 <label for="password">Nieuw wachtwoord</label><input id="password" name="new_password" type="password" maxlength="64" required autocomplete="new-password">
 <button>Login opslaan</button></form>
 <small>De nieuwe login wordt actief wanneer je herstel afsluit of het venster verloopt.</small>
+<h2>Home Assistant opnieuw koppelen</h2>
+<p>Verwijder de opgeslagen API-beveiligingssleutel. Alle API-clients verliezen hun koppeling en de controller herstart. Daarna kan Home Assistant 10 minuten lang opnieuw koppelen. Home Assistant kan dezelfde sleutel opnieuw instellen.</p>
+<button id="api-reset" type="button">API-beveiliging resetten</button>
 <button id="end" type="button">Herstel afsluiten</button></fieldset>
 <script>
-let state,waiting=false;
+let state,waiting=false,pendingPath='';
 const status=document.querySelector('#status'),message=document.querySelector('#message'),actions=document.querySelector('#actions');
 async function refresh(){
  try{
@@ -30,7 +33,7 @@ async function refresh(){
   if(!response.ok)throw Error('Status niet beschikbaar');
   state=await response.json();actions.disabled=!state.active||state.busy||waiting;
   status.textContent=state.active?'Herstel actief · '+Math.ceil(state.expires_in_ms/60000)+' min resterend':'Houd de fysieke herstelknop 5 seconden ingedrukt en laat hem daarna los.';
-  if(waiting&&!state.busy){waiting=false;message.textContent=state.active?'Login opgeslagen. Sluit herstel af om hem te gebruiken.':'Herstel afgesloten. Open de gewone webinterface.';actions.disabled=!state.active;}
+  if(waiting&&!state.busy){waiting=false;message.textContent=pendingPath==='/api-security/reset'?'Controller bereikbaar. Controleer de koppeling in Home Assistant.':state.active?'Login opgeslagen. Sluit herstel af om hem te gebruiken.':'Herstel afgesloten. Open de gewone webinterface.';actions.disabled=!state.active;}
   if(state.error)message.textContent='Herstelactie mislukt. Er is niet herstart. Probeer opnieuw.';
  }catch(error){actions.disabled=true;status.textContent='Geen verbinding. Controleer je netwerk.';}
 }
@@ -38,11 +41,12 @@ async function post(path,data=new URLSearchParams()){
  if(!state?.active||state.busy||waiting)return;
  data.set('csrf_token',state.csrf_token);data.set('generation',String(state.generation));
  actions.disabled=true;message.textContent='Bezig…';
- try{const response=await fetch(path,{method:'POST',body:data});if(!response.ok)throw Error();waiting=true;await refresh();}
+ try{const response=await fetch(path,{method:'POST',body:data});if(!response.ok)throw Error();waiting=true;pendingPath=path;await refresh();}
  catch(error){message.textContent='Actie niet bevestigd. Controleer de status voordat je opnieuw probeert.';await refresh();}
 }
 document.querySelector('#login').onsubmit=event=>{event.preventDefault();const data=new URLSearchParams(new FormData(event.target));document.querySelector('#password').value='';post('/recovery/web-auth',data);};
 document.querySelector('#end').onclick=()=>post('/recovery/end');
+document.querySelector('#api-reset').onclick=()=>{if(confirm('API-beveiliging wissen en controller herstarten? Dit verbreekt alle API-koppelingen.'))post('/api-security/reset',new URLSearchParams({confirm:'RESET_API_SECURITY'}));};
 refresh();setInterval(refresh,1000);
 </script></html>)HTML";
 

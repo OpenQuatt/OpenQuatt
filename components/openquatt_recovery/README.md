@@ -33,8 +33,26 @@ login (of de oorspronkelijke open modus); openen wijzigt geen credentials in NVS
   bewijst niet dat flash ongewijzigd bleef; daarom wordt nooit succes gemeld of
   automatisch herstart na die fout.
 
-Fase 2 biedt nog geen HA- of Wi-Fi-reset: capabilityvelden zijn `false`.
-De 10s-drempel is getest in de pure state machine maar nog niet aangesloten.
+## Fase 3: API-beveiliging resetten
+
+`POST /api-security/reset` accepteert een actieve fysieke capability óf een
+geauthenticeerde web-beheerder met web-CSRF, altijd met dezelfde origin en
+`confirm=RESET_API_SECURITY`. Open webtoegang is geen beheerautorisatie.
+
+Na `202 Accepted` wacht de main loop 500 ms, wist de native ESPHome Noise-PSK
+met gecontroleerde save/sync en herstart veilig. Vóór `safe_reboot()` worden
+API-clients voor verwijdering gemarkeerd: API-teardown verwerkt anders nog
+set-key-pakketten. Tussen clear, markeren en reboot wordt niet naar de scheduler
+teruggekeerd. Alleen een fysieke actie schrijft een RTC-handoff; een adminreset
+opent na reboot géén fysieke capability. Bij opslagfout geen reboot of autoretry.
+
+De oude OpenQuatt-key-store wordt sinds de migratie naar native provisioning
+niet meer gelezen; geen migratie/tombstone nodig. Native ESPHome is de enige
+sleuteleigenaar. De sleutel wordt nergens via HTTP teruggegeven. Home Assistant
+krijgt na reboot 10 minuten om opnieuw te provisionen en kan dezelfde sleutel
+opnieuw instellen. Alle API-clients worden geraakt.
+
+Wi-Fi-reset komt in fase 4. De 10s-drempel is nog niet aangesloten.
 
 ## Validatie
 

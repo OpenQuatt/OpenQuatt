@@ -203,6 +203,7 @@ export function createSecurityState() {
     apiSecurityBusy: false,
     apiSecurityNotice: "",
     apiSecurityError: "",
+    apiSecurityActionError: "",
     mqttStatus: null,
     mqttDraftEnabled: false,
     mqttDraftBroker: "",

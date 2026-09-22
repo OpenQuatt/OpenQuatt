@@ -118,12 +118,17 @@ import { renderModalShell } from "../core/modal-shell.js";
       closeLabel: "Sluit API-beveiliging popup",
       body: `
         <div class="oq-settings-api-security-shell oq-settings-api-security-shell--modal">
+          ${state.apiSecurityNotice ? `<p role="status">${escapeHtml(state.apiSecurityNotice)}</p>` : ""}
+          ${state.apiSecurityError ? `<p role="alert">${escapeHtml(state.apiSecurityError)}</p>` : ""}
+          ${state.apiSecurityActionError ? `<p role="alert">${escapeHtml(state.apiSecurityActionError)}</p>` : ""}
           <div class="oq-helper-modal-grid">
             ${renderLoginStatusRow("Status", getApiSecurityStatusLabel(), getApiSecurityStatusDetail())}
             ${renderLoginStatusRow("Beheer", "Automatisch door Home Assistant", "De beveiligingssleutel wordt automatisch ingesteld en bewaard.")}
           </div>
+          <p>Resetten wist de opgeslagen sleutel en herstart de controller. Alle API-clients worden losgekoppeld. Daarna kan Home Assistant 10 minuten lang opnieuw koppelen; het kan dezelfde sleutel opnieuw instellen.</p>
+          ${!state.authStatus?.enabled ? `<p>Resetten vereist een web-login of de fysieke <a href="/recovery">herstelpagina</a>.</p>` : ""}
         </div>`,
-      actions: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal">Gereed</button>`,
+      actions: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="reset-api-security" ${!state.authStatus?.enabled || state.apiSecurityBusy ? "disabled" : ""}>API-beveiliging resetten</button><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal">Gereed</button>`,
     });
   }
 

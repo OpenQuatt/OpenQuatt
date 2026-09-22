@@ -21,7 +21,7 @@ class OpenQuattRecovery : public Component, public AsyncWebHandler {
   void handleRequest(AsyncWebServerRequest* request) override;
 
  protected:
-  enum class Action { NONE, WEB_AUTH, END };
+  enum class Action { NONE, WEB_AUTH, END, API_RESET };
   void opened_();
   static void activate_on_httpd_(void* context);
   void prepare_reboot_handoff_();
@@ -35,6 +35,7 @@ class OpenQuattRecovery : public Component, public AsyncWebHandler {
   openquatt_web_auth::OpenQuattWebAuth* auth_;
   binary_sensor::BinarySensor* button_;
   Action pending_{Action::NONE};
+  uint32_t accepted_at_{0};
   std::string csrf_token_;
   std::string username_;
   std::string password_;

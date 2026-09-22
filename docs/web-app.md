@@ -28,7 +28,7 @@ In `Instellingen → Toegang & Beveiliging` zie je:
 - `Wacht op koppeling`: open Home Assistant om dit apparaat toe te voegen;
 - `Niet beschikbaar`: de koppeltijd is verlopen of de status kan tijdelijk niet worden opgehaald.
 
-De web-app toont deze geheime sleutel nooit. Er is geen HTTPS op de lokale webinterface. Als de sleutel op het apparaat onbekend is, is fysieke USB/serial-recovery van het apparaat nodig; daarna kan Home Assistant opnieuw koppelen. Een oude OpenQuatt-sleutel wordt niet automatisch overgenomen. Als alleen Home Assistant nog een oude sleutel bewaart, moet die oude sleutel daar eenmalig worden verwijderd voordat opnieuw koppelen lukt.
+De web-app toont deze geheime sleutel nooit. Er is geen HTTPS op de lokale webinterface. Als de sleutel op het apparaat onbekend is, kun je API-beveiliging resetten via een web-login of de fysieke herstelpagina; daarna kan Home Assistant opnieuw koppelen. Een oude OpenQuatt-sleutel wordt niet automatisch overgenomen. Home Assistant kan tijdens opnieuw koppelen dezelfde sleutel terugzetten; verwijder een ongewenste oude sleutel daarom ook daar.
 
 Bij de migratie geldt deze matrix:
 
@@ -38,7 +38,7 @@ Bij de migratie geldt deze matrix:
 | Alleen oude OpenQuatt-key aanwezig | Geen native key | Oude key wordt genegeerd; Home Assistant provisiont een nieuwe native key. |
 | Geen key | Geen key | Home Assistant provisiont automatisch binnen de provisioning window. |
 | Geen key | Stale key | Eenmalig opnieuw koppelen of de stale key in Home Assistant verwijderen. |
-| Native key aanwezig | Key onbekend | Verplichte fysieke USB/serial-reset van de sleutel op het apparaat; daarna opnieuw koppelen. OpenQuatt neemt de onbekende sleutel niet over. |
+| Native key aanwezig | Key onbekend | Reset API-beveiliging via een web-login of de fysieke [herstelpagina](#herstelomgeving); daarna opnieuw koppelen. OpenQuatt neemt de onbekende sleutel niet over. |
 
 De oude OpenQuatt-preference wordt bij deze firmwareversie niet gewist, maar ook niet meer gelezen of toegepast. Dat houdt rollback mogelijk zonder een tweede bron van waarheid te activeren.
 
@@ -372,6 +372,18 @@ Herstel opent geen algemene onbeveiligde beheeromgeving en wist geen andere inst
 Iedereen op hetzelfde netwerk kan tijdens het fysiek geopende venster de beperkte
 herstelpagina gebruiken: voer dit alleen op een vertrouwd netwerk uit.
 Een knop die tijdens boot al ingedrukt is moet eerst worden losgelaten.
+
+### API-beveiliging resetten
+
+Kies **API-beveiliging resetten** bij Toegang & Beveiliging (web-login vereist),
+of op de fysieke herstelpagina. Bevestig het wissen en herstarten.
+Dit wist uitsluitend de native API-sleutel, niet je web-login of Wi-Fi-instellingen.
+Alle API-clients worden losgekoppeld. Bij een opslagfout wordt niet herstart;
+controleer de melding voordat je opnieuw probeert.
+
+Na de herstart heeft Home Assistant 10 minuten om de beveiligde verbinding
+opnieuw in te stellen. Home Assistant kan daarbij dezelfde sleutel terugzetten.
+Een fysieke reset keert eenmalig terug naar herstel; een reset met web-login niet.
 
 Wijzigingen aan beveiliging kunnen een herstart nodig hebben. Bewaar nieuwe gegevens goed, want Home Assistant moet dezelfde API-sleutel gebruiken als API-encryptie actief is.
 

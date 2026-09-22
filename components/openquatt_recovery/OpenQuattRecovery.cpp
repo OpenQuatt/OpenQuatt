@@ -9,6 +9,9 @@
 
 #include "recovery_page.h"
 #include "esphome/core/helpers.h"
+#include "esphome/core/application.h"
+#include "esphome/components/api/api_server.h"
+#include "esphome/components/api/api_connection.h"
 
 namespace esphome::openquatt_recovery {
 
@@ -98,7 +101,7 @@ void OpenQuattRecovery::activate_on_httpd_(void* context) {
 }
 
 void OpenQuattRecovery::loop() {
-  std::lock_guard<std::mutex> lock(this->mutex_);
+  std::unique_lock<std::mutex> lock(this->mutex_);
   if (this->state_.active(millis()) && this->csrf_token_.empty() && !this->activating_) this->opened_();
   if (this->activation_complete_) {
     // Publish recovery only after the main loop passed its in-flight action.
@@ -116,6 +119,24 @@ void OpenQuattRecovery::loop() {
     }
   }
   const Action action = this->pending_;
+  if (action == Action::API_RESET) {
+    // Allow the accepted HTTP response to leave before changing connectivity.
+    if (static_cast<uint32_t>(millis()) - this->accepted_at_ < 500) return;
+    this->pending_ = Action::NONE;
+    auto* api = api::global_api_server;
+    if (!api->clear_noise_psk(false)) {
+      this->error_ = "persist_failed";
+      this->state_.job_failed();
+      return;
+    }
+    if (this->state_.active(millis())) this->prepare_reboot_handoff_();
+    // safe_reboot tears down API clients by calling APIServer::loop(). Mark
+    // them first so teardown cannot process a late set-key packet after clear.
+    for (auto& client : api->active_clients()) client->on_fatal_error();
+    lock.unlock();
+    App.safe_reboot();
+    return;
+  }
   this->pending_ = Action::NONE;
   if (action == Action::NONE) return;
   if (action == Action::WEB_AUTH) {
@@ -136,7 +157,8 @@ bool OpenQuattRecovery::canHandle(AsyncWebServerRequest* request) const {
   char buffer[AsyncWebServerRequest::URL_BUF_SIZE];
   const auto url = request->url_to(buffer);
   return (request->method() == HTTP_GET && (url == "/recovery" || url == "/recovery/status")) ||
-         (request->method() == HTTP_POST && (url == "/recovery/web-auth" || url == "/recovery/end"));
+         (request->method() == HTTP_POST &&
+          (url == "/recovery/web-auth" || url == "/recovery/end" || url == "/api-security/reset"));
 }
 
 bool OpenQuattRecovery::authorize_(AsyncWebServerRequest* request, uint32_t now) const {
@@ -168,7 +190,7 @@ void OpenQuattRecovery::handleRequest(AsyncWebServerRequest* request) {
     response->addHeader("Cache-Control", "no-store");
     response->addHeader("Access-Control-Allow-Origin", "");
     response->printf(
-        R"({"active":%s,"expires_in_ms":%u,"generation":%u,"csrf_token":"%s","button_held":%s,"next_threshold_ms":%u,"busy":%s,"error":"%s","capabilities":{"web_auth":true,"api_reset":false,"wifi_reset":false}})",
+        R"({"active":%s,"expires_in_ms":%u,"generation":%u,"csrf_token":"%s","button_held":%s,"next_threshold_ms":%u,"busy":%s,"error":"%s","capabilities":{"web_auth":true,"api_reset":true,"wifi_reset":false}})",
         active ? "true" : "false", static_cast<unsigned>(this->state_.remaining_ms(now)),
         static_cast<unsigned>(this->state_.generation()), active ? this->csrf_token_.c_str() : "",
         this->state_.button_held() ? "true" : "false",
@@ -178,7 +200,30 @@ void OpenQuattRecovery::handleRequest(AsyncWebServerRequest* request) {
     request->send(response);
     return;
   }
-  if (!this->authorize_(request, now)) {
+  const bool physical = this->authorize_(request, now);
+  if (url == "/api-security/reset") {
+    const auto host = request->get_header("Host");
+    const auto origin = request->get_header("Origin");
+    const bool admin = !this->state_.busy() && host.has_value() && !host->empty() && origin.has_value() &&
+                       *origin == "http://" + *host && this->auth_->request_is_authenticated_admin(request) &&
+                       request->arg("csrf_token") == this->auth_->get_csrf_token();
+    if ((!physical && !admin) || request->arg("confirm") != "RESET_API_SECURITY") {
+      lock.unlock();
+      send_json(request, "403 Forbidden", R"({"error":"confirmation_required"})");
+      return;
+    }
+    if (physical)
+      this->state_.begin_job(now, this->state_.generation());
+    else
+      this->state_.begin_admin_job();
+    this->pending_ = Action::API_RESET;
+    this->accepted_at_ = now;
+    this->error_ = "";
+    lock.unlock();
+    send_json(request, "202 Accepted", R"({"accepted":true})");
+    return;
+  }
+  if (!physical) {
     lock.unlock();
     send_json(request, "403 Forbidden", R"({"error":"recovery_required"})");
     return;
