@@ -57,7 +57,7 @@ test("switch aanwezig toont de card, OFF verbergt stop-margin", () => {
   resetSettingsState({ phRunExtension: switchEntity(false) });
   const markup = renderPowerHouseRunExtensionField();
   assert.match(markup, /Langer doorverwarmen/);
-  assert.match(markup, /na een comfortstop kan Power House bij nieuwe warmtevraag wel herstarten/);
+  assert.match(markup, /Inschakelen start een stilstaande warmtepomp niet/);
   assert.doesNotMatch(markup, /Stop boven gewenste temperatuur/);
 });
 
@@ -72,6 +72,8 @@ test("ON toont stop-margin en afgeleide stop/herstart", () => {
   assert.match(markup, /Stop boven gewenste temperatuur/);
   assert.match(markup, /21,0 °C/);
   assert.match(markup, /20,8 °C/);
+  assert.match(markup, /Wacht op een verwarmingsrun/);
+  assert.doesNotMatch(markup, /Uitgeschakeld/);
 });
 
 test("setpoint 20.5 + margin 0.5 geeft stop 21.0 en herstart 20.8", () => {
@@ -100,4 +102,12 @@ test("status extending en wait_warm_restart geven juiste tekst", () => {
   assert.equal(getRunExtensionStatusCopy("wait_warm_restart"), "Wacht op afkoeling");
   assert.equal(getRunExtensionStatusCopy("warm_restart"), "Warme herstart");
   assert.equal(getRunExtensionStatusCopy("comfort_stop"), "Comfortstop");
+});
+
+test("herstart onder setpoint toont een negatieve relatieve marge", () => {
+  resetSettingsState({
+    phRunExtension: switchEntity(true),
+    phRunExtensionStopMargin: numberEntity(0.1, "°C"),
+  });
+  assert.match(renderPowerHouseRunExtensionField(), /setpoint − 0,1 °C/);
 });

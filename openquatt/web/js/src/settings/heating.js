@@ -464,14 +464,35 @@ import { escapeHtml } from "../core/html.js";
     const enabled = Boolean(getEntityValue("phRunExtension"));
     const t = getRunExtensionThresholds();
     const n = String(getSettingsTextStatValue("phRunExtensionStatus", "inactive") || "").trim().toLowerCase();
-    const show = enabled && ["extending", "comfort_stop", "wait_warm_restart", "warm_restart", "blocked"].includes(n);
-    const temps = !enabled ? "" : Number.isFinite(t.stop)
-      ? `${escapeHtml(formatRunExtensionTemp(t.setpoint))} · ${escapeHtml(formatRunExtensionTemp(t.restart))} · ${escapeHtml(formatRunExtensionTemp(t.stop))}`
-      : `setpoint + ${escapeHtml(String(t.margin).replace(".", ","))} °C`;
-    const detail = !enabled ? "" : `<div class="oq-settings-system-row"><div class="oq-settings-system-row-copy"><p class="oq-settings-system-row-label">Gewenst · Herstart · Stop${show ? ` — ● ${escapeHtml(getRunExtensionStatusCopy(n))}` : ""}</p><strong class="oq-settings-system-row-value">${temps}</strong></div></div>`;
-    return renderSettingsSwitchField("phRunExtension", "Langer doorverwarmen", "Houdt een draaiende run op minimumvermogen vast. Inschakelen start een stilstaande warmtepomp niet; na een comfortstop kan Power House bij nieuwe warmtevraag wel herstarten.")
-      + (enabled ? renderSettingsNumberField("phRunExtensionStopMargin", "Stop boven gewenste temperatuur", "Stopmarge boven het setpoint.") : "")
-      + detail;
+    const status = enabled ? (n === "inactive" ? "Wacht op een verwarmingsrun" : getRunExtensionStatusCopy(n)) : "Uitgeschakeld";
+    const relative = (offset) => `setpoint ${offset < 0 ? "−" : "+"} ${formatRunExtensionTemp(Math.abs(offset))}`;
+    const thresholds = [
+      ["Gewenst", Number.isFinite(t.setpoint) ? formatRunExtensionTemp(t.setpoint) : "Kamer-setpoint", "Je ingestelde kamertemperatuur"],
+      ["Herstart mogelijk", Number.isFinite(t.restart) ? formatRunExtensionTemp(t.restart) : relative(t.margin - t.hysteresis), "Na afkoeling, alleen bij warmtevraag"],
+      ["Stop", Number.isFinite(t.stop) ? formatRunExtensionTemp(t.stop) : relative(t.margin), "De verlengde run wordt gestopt"],
+    ];
+    return `
+      <section class="oq-settings-subpanel oq-settings-subpanel--nested oq-run-extension" aria-label="Langer doorverwarmen">
+        <div class="oq-run-extension-intro">
+          <div class="oq-settings-subpanel-head">
+            <h4>Langer doorverwarmen</h4>
+            <p>Laat een draaiende warmtepomp op minimumvermogen doorverwarmen als de warmtevraag daalt. Dit kan korte runs en vaak starten en stoppen beperken. De kamer mag daarbij iets warmer worden dan de gewenste temperatuur.</p>
+          </div>
+          <span class="oq-run-extension-status">${escapeHtml(status)}</span>
+        </div>
+        <div class="oq-settings-grid">
+          ${renderSettingsSwitchField("phRunExtension", "Verwarmingsrun verlengen", "Inschakelen start een stilstaande warmtepomp niet. Uitschakelen geeft de regeling terug aan de normale Power House-warmtevraag.", "Actief voor een draaiende verwarmingsrun.", "Power House regelt de warmtevraag zonder verlenging.")}
+          ${enabled ? renderSettingsNumberField("phRunExtensionStopMargin", "Stop boven gewenste temperatuur", "Hoeveel warmer de kamer tijdens de verlengde run mag worden dan het setpoint.", "", { footerMarkup: '<p class="oq-run-extension-note">Kies een marge die je nog comfortabel vindt.</p>' }) : ""}
+        </div>
+        ${enabled ? `
+          <div class="oq-run-extension-thresholds">
+            ${thresholds.map(([label, value, note]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></div>`).join("")}
+          </div>
+          <p class="oq-run-extension-note">Na de comfortstop moet de kamer eerst 0,2 °C afkoelen. Daarna kan de warmtepomp bij warmtevraag herstarten; de normale wachttijden en beveiligingen blijven gelden.</p>
+        ` : ""}
+        <p class="oq-run-extension-note">De comfortband stuurt de berekende warmtevraag rond het setpoint bij. Langer doorverwarmen voegt een minimumvermogen toe aan een bestaande run. Bij uitschakelen blijft normale verwarming bij warmtevraag mogelijk.</p>
+      </section>
+    `;
   }
 
   export function renderSettingsHeatPumpLimiterCard(title, hpPrefix) {
