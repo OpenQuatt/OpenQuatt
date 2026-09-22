@@ -356,7 +356,7 @@ import { formatDate, formatNumber, formatTime, t } from "../i18n/index.js";
     const lifetimeEnergyHistoryEnabled = lifetimeEnergyHistoryAvailable && isEntityActive("lifetimeEnergyHistoryEnabled");
     const decisionLogHistoryAvailable = hasEntity("decisionLogHistoryEnabled");
     const decisionLogHistoryEnabled = decisionLogHistoryAvailable && isEntityActive("decisionLogHistoryEnabled");
-    const decisionLogMetadata = getSettingsDecisionLogStorageMetadata();
+    const decisionMetadata = getSettingsDecisionLogStorageMetadata();
     const trendAvailableValue = trendHistoryFlashEnabled
       ? getSettingsStorageStatOrFallback("trendHistoryFlashAvailable", t("settingsStorage.liveOnly"))
       : t("settingsStorage.liveOnly");

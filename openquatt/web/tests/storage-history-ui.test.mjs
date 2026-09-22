@@ -5,7 +5,38 @@ globalThis.__OQ_PREVIEW__ = false;
 
 const { state } = await import("../js/src/core/state.js");
 const { handleViewAction } = await import("../js/src/features/view-actions.js");
-const { renderSettingsHistoryStorageModal } = await import("../js/src/settings/storage.js");
+const { renderSettingsHistoryStorageModal, renderSettingsTrendSection } = await import("../js/src/settings/storage.js");
+const { renderHeaderStatus, renderSystemModal } = await import("../js/src/features/header-status.js");
+const { getLocale, setLocale } = await import("../js/src/i18n/index.js");
+
+test("system storage and overlays render with enabled decision history in both languages", () => {
+  const previous = {
+    entities: state.entities,
+    decisionLogStorageMetadata: state.decisionLogStorageMetadata,
+    interfacePanelOpen: state.interfacePanelOpen,
+    systemModal: state.systemModal,
+  };
+  const locale = getLocale();
+  try {
+    for (const language of ["nl", "en"]) {
+      setLocale(language, { persist: false, applyDocument: false, notify: false });
+      for (const metadata of [null, { storedEvents: 42 }]) {
+        state.entities = { decisionLogHistoryEnabled: { value: true } };
+        state.decisionLogStorageMetadata = metadata;
+        const html = renderSettingsTrendSection();
+        assert.match(html, /open-history-storage-modal/);
+        if (metadata) assert.match(html, /42/);
+        state.interfacePanelOpen = true;
+        assert.match(renderHeaderStatus(), /toggle-interface-panel/);
+        state.systemModal = "history-storage";
+        assert.match(renderSystemModal(), /close-system-modal/);
+      }
+    }
+  } finally {
+    Object.assign(state, previous);
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+  }
+});
 
 test("advanced storage details remain open across export renders", () => {
   const previous = {
