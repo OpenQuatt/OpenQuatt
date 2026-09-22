@@ -25,7 +25,7 @@ import { renderModalShell } from "../core/modal-shell.js";
     if (authStatus.enabled) {
       return "De web-app vraagt nu een login voordat beheer beschikbaar is. Je kunt die hier aanpassen of uitzetten.";
     }
-    return "De web-app staat open op je netwerk. Houd de herstelknop 5 seconden vast om een login toe te voegen.";
+    return "De web-app staat open op je netwerk. Houd de herstelknop 5 seconden vast en open de herstelpagina om een login toe te voegen.";
   }
 
   export function getWebAuthStatusDetail() {
@@ -130,8 +130,7 @@ import { renderModalShell } from "../core/modal-shell.js";
   export function renderLoginModal() {
     const authStatus = state.authStatus || {};
     const authEnabled = authStatus.enabled === true;
-    const setupWindowActive = authStatus.setup_window_active === true;
-    const canEdit = authEnabled || setupWindowActive;
+    const canEdit = authEnabled;
     const usernameValue = authEnabled ? String(authStatus.username || "").trim() : "";
     const noticeMarkup = state.authNotice
       ? `<div class="oq-helper-modal-success oq-helper-modal-success--compact" aria-live="polite"><strong>Opgeslagen</strong><span>${escapeHtml(state.authNotice)}</span></div>`
@@ -202,7 +201,7 @@ import { renderModalShell } from "../core/modal-shell.js";
       : `
         <div class="oq-helper-modal-callout oq-helper-modal-callout--subtle">
           <strong>Login toevoegen</strong>
-          <span>Houd de herstelknop 5 seconden vast om het instelvenster te openen.</span>
+          <span>Houd de herstelknop 5 seconden vast en laat hem los. Stel daarna je login in op de <a href="/recovery">herstelpagina</a>.</span>
         </div>
       `;
 

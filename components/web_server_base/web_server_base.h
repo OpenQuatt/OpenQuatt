@@ -3,6 +3,7 @@
 #if defined(USE_NETWORK) && !defined(USE_ZEPHYR)
 #include <vector>
 #include <string>
+#include <atomic>
 #include "esphome/core/helpers.h"
 
 #include "esphome/core/progmem.h"
@@ -134,6 +135,13 @@ class WebServerBase final {
     }
   }
   AsyncWebServer* get_server() const { return this->server_; }
+  // Changed on the HTTPD task, observed by main-loop deferred entity actions.
+  void set_recovery_active(bool active) {
+    this->recovery_active_.store(active);
+    if (active) this->recovery_epoch_.fetch_add(1);
+  }
+  bool is_recovery_active() const { return this->recovery_active_.load(); }
+  uint32_t recovery_epoch() const { return this->recovery_epoch_.load(); }
 
 #ifdef USE_WEBSERVER_AUTH
   void set_auth_username(const char* auth_username) { credentials_.set_username(auth_username); }
@@ -163,6 +171,8 @@ class WebServerBase final {
   uint16_t port_{80};  // Keep in sync with DEFAULT_PORT in web_server/__init__.py
   AsyncWebServer* server_{nullptr};
   std::vector<AsyncWebHandler*> handlers_;
+  std::atomic<bool> recovery_active_{false};
+  std::atomic<uint32_t> recovery_epoch_{0};
 #ifdef USE_WEBSERVER_AUTH
   internal::Credentials credentials_;
 #endif

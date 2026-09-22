@@ -17,7 +17,10 @@ class WebAuthMiddlewareTest(unittest.TestCase):
     def test_component_state_and_storage_failures(self):
         self.compile_and_run("component_test", component=True)
 
-    def compile_and_run(self, name, component=False):
+    def test_recovery_capability_and_failure_boundaries(self):
+        self.compile_and_run("recovery_test", component=True, recovery=True)
+
+    def compile_and_run(self, name, component=False, recovery=False):
         with tempfile.TemporaryDirectory(prefix="openquatt-auth-test-") as directory:
             binary = Path(directory) / name
             command = [os.environ.get("CXX", "c++"), "-std=c++17", "-pthread",
@@ -33,6 +36,7 @@ class WebAuthMiddlewareTest(unittest.TestCase):
             include_root = Path(directory) / "esphome/components"
             include_root.mkdir(parents=True)
             (include_root / "web_server_base").symlink_to(ROOT / "components/web_server_base")
+            (include_root / "openquatt_web_auth").symlink_to(ROOT / "components/openquatt_web_auth")
             command.extend([
                 "-I", str(FIXTURES), "-I", str(ROOT / "components/web_server_base"),
                 "-I", directory, "-I", str(ROOT / "components/openquatt_web_auth"),
@@ -42,6 +46,9 @@ class WebAuthMiddlewareTest(unittest.TestCase):
             ])
             if component:
                 command.append(str(ROOT / "components/openquatt_web_auth/OpenQuattWebAuth.cpp"))
+            if recovery:
+                command.extend(["-I", str(ROOT / "components/openquatt_recovery"),
+                                str(ROOT / "components/openquatt_recovery/OpenQuattRecovery.cpp")])
             result = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             subprocess.run([str(binary)], check=True, timeout=15)

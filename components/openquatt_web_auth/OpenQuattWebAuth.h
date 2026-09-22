@@ -19,13 +19,13 @@ class OpenQuattWebAuth : public Component {
   void set_default_auth_enabled(bool default_auth_enabled) { this->default_auth_enabled_ = default_auth_enabled; }
 
   void setup() override;
-  void loop() override;
   void dump_config() override;
   float get_setup_priority() const override;
 
   bool set_runtime_credentials(const std::string& username, const std::string& password);
   bool set_open_access(const char* source = "runtime-disabled");
-  bool start_recovery_window(uint32_t duration_ms = 600000UL);
+  void begin_recovery_guard(const std::string& password);
+  void end_recovery_guard();
   std::string get_active_username() const {
     std::lock_guard<std::recursive_mutex> lock(this->state_mutex_);
     return this->active_username_;
@@ -42,7 +42,6 @@ class OpenQuattWebAuth : public Component {
     std::lock_guard<std::recursive_mutex> lock(this->state_mutex_);
     return password == this->active_password_;
   }
-  bool is_setup_window_active() const;
   std::string get_csrf_token() const {
     std::lock_guard<std::recursive_mutex> lock(this->state_mutex_);
     return this->csrf_token_;
@@ -87,10 +86,7 @@ class OpenQuattWebAuth : public Component {
   bool is_valid_storage_(const AuthStorage& storage) const;
   void publish_state_();
   void register_http_handlers_();
-  bool suspend_auth_runtime_(const char* source);
-  void clear_setup_window_();
   void rotate_csrf_token_();
-  bool restore_suspended_auth_if_needed_();
 
   std::string bootstrap_username_;
   std::string bootstrap_password_;
@@ -101,9 +97,7 @@ class OpenQuattWebAuth : public Component {
   bool default_auth_enabled_{true};
   ESPPreferenceObject pref_;
   bool handlers_registered_{false};
-  uint32_t setup_window_until_ms_{0};
-  AuthStorage suspended_storage_{};
-  bool has_suspended_storage_{false};
+  bool recovery_guard_active_{false};
 };
 
 }  // namespace openquatt_web_auth

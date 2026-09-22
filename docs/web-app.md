@@ -359,6 +359,20 @@ Onder `Instellingen -> Systeem -> Toegang & Beveiliging` kun je de web-login en 
 
 Vanaf de ESPHome 2026.7-build gebruikt de web-login HTTP Digest-authenticatie. De browserlogin blijft hetzelfde, maar losse REST-clients moeten Digest ondersteunen en kunnen niet meer met Basic-authenticatie aanmelden.
 
+### Web-login herstellen
+
+Houd de fysieke herstelknop **5 seconden** vast en laat hem los. Open daarna
+`http://openquatt.local/recovery` (of het IP-adres met `/recovery`).
+Je hebt 10 minuten om een nieuwe gebruikersnaam en wachtwoord op te slaan.
+Sluit herstel daarna af; pas dan, of na afloop van het venster, geldt de nieuwe login.
+Bij een opslagfout blijft de bestaande runtime-login behouden en kun je opnieuw proberen.
+
+De gewone webinterface, REST-acties en webstreams zijn tijdens herstel afgeschermd.
+Herstel opent geen algemene onbeveiligde beheeromgeving en wist geen andere instellingen.
+Iedereen op hetzelfde netwerk kan tijdens het fysiek geopende venster de beperkte
+herstelpagina gebruiken: voer dit alleen op een vertrouwd netwerk uit.
+Een knop die tijdens boot al ingedrukt is moet eerst worden losgelaten.
+
 Wijzigingen aan beveiliging kunnen een herstart nodig hebben. Bewaar nieuwe gegevens goed, want Home Assistant moet dezelfde API-sleutel gebruiken als API-encryptie actief is.
 
 ## Bij problemen
