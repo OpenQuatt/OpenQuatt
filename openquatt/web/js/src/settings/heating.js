@@ -8,6 +8,7 @@ import { getSettingsSelectModel } from "./field-models.js";
 import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField } from "./controls.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
+import { formatNumber, t } from "../i18n/index.js";
 
   export function renderCurveFallbackSuggestionMarkup(helper = false) {
     const suggestion = getCurveFallbackSuggestion();
@@ -17,7 +18,7 @@ import { escapeHtml } from "../core/html.js";
     return `
       <div class="oq-curve-fallback-suggest oq-curve-fallback-suggest--inside${helper ? " oq-curve-fallback-suggest--helper" : ""}">
         <div class="oq-curve-fallback-suggest-copy">
-          <strong>Suggestie: ${escapeHtml(suggestion.label)}</strong>
+          <strong>${escapeHtml(t("settingsHeating.suggestTitle", { label: suggestion.label }))}</strong>
           <span>${escapeHtml(suggestion.basis)}</span>
         </div>
         <button
@@ -26,7 +27,7 @@ import { escapeHtml } from "../core/html.js";
           data-oq-action="suggest-curve-fallback"
           ${state.loadingEntities || state.busyAction === "save-curveFallbackSupply" || suggestion.isCurrent ? "disabled" : ""}
         >
-          ${suggestion.isCurrent ? "Actief" : "Gebruik suggestie"}
+          ${suggestion.isCurrent ? escapeHtml(t("settingsHeating.suggestActive")) : escapeHtml(t("settingsHeating.suggestUse"))}
         </button>
       </div>
     `;
@@ -35,23 +36,23 @@ import { escapeHtml } from "../core/html.js";
   export function renderSettingsCurveInputs() {
     return `
       <div class="oq-settings-curve-grid">
-        ${CURVE_POINTS.map((point) => renderSettingsNumberField(point.key, `Aanvoertemp. bij ${point.label}`, `Doelaanvoertemperatuur bij ${point.label} buitentemperatuur.`)).join("")}
-        ${renderSettingsNumberField("curveFallbackSupply", "Fallback-aanvoertemperatuur zonder buitentemperatuur", "Aanvoertemperatuur die gebruikt wordt als de buitentemperatuursensor niet beschikbaar is.", "oq-settings-field--curve-fallback-card", { footerMarkup: renderCurveFallbackSuggestionMarkup() })}
+        ${CURVE_POINTS.map((point) => renderSettingsNumberField(point.key, t("settingsHeating.curvePointTitle", { label: point.label }), t("settingsHeating.curvePointCopy", { label: point.label }))).join("")}
+        ${renderSettingsNumberField("curveFallbackSupply", t("settingsHeating.fallbackTitle"), t("settingsHeating.fallbackCopy"), "oq-settings-field--curve-fallback-card", { footerMarkup: renderCurveFallbackSuggestionMarkup() })}
       </div>
     `;
   }
 
   export function renderHeatingCurveAdvancedFields() {
     const fields = [
-      renderSettingsNumberField("heatingCurvePidKp", "Proportionele reactie (Kp)", "Bepaalt hoe sterk de regeling direct reageert op het verschil tussen gewenste en gemeten aanvoertemperatuur."),
-      renderSettingsNumberField("heatingCurvePidKi", "Langdurige correctie (Ki)", "Corrigeert een klein temperatuurverschil dat langere tijd blijft bestaan. Verhoog alleen in kleine stappen."),
-      renderSettingsNumberField("heatingCurvePidKd", "Demping (Kd)", "Remt snelle veranderingen af. Een te hoge waarde kan de regeling onnodig traag of onrustig maken."),
+      renderSettingsNumberField("heatingCurvePidKp", t("settingsHeating.pidKpTitle"), t("settingsHeating.pidKpCopy")),
+      renderSettingsNumberField("heatingCurvePidKi", t("settingsHeating.pidKiTitle"), t("settingsHeating.pidKiCopy")),
+      renderSettingsNumberField("heatingCurvePidKd", t("settingsHeating.pidKdTitle"), t("settingsHeating.pidKdCopy")),
     ].filter(Boolean).join("");
 
     return renderSettingsAdvancedDisclosure(
       "heating-curve",
-      "Geavanceerde stooklijnafstelling",
-      "Deze PID-waarden verfijnen de temperatuurcorrectie boven op de stooklijn. Laat ze op de standaardwaarden staan zolang de regeling stabiel reageert.",
+      t("settingsHeating.advancedCurveTitle"),
+      t("settingsHeating.advancedCurveCopy"),
       fields ? `<div class="oq-settings-grid oq-settings-grid--pid">${fields}</div>` : "",
     );
   }
@@ -59,21 +60,21 @@ import { escapeHtml } from "../core/html.js";
   export function renderStrategySelectionFields(className = "oq-settings-grid") {
     return `
       <div class="${escapeHtml(className)}">
-        ${renderSettingsSelectField("strategy", "Verwarmingsstrategie", "Kies tussen automatisch regelen met Power House of regelen met een stooklijn.")}
+        ${renderSettingsSelectField("strategy", t("settingsHeating.strategyTitle"), t("settingsHeating.strategyCopy"))}
       </div>
     `;
   }
 
   export function renderFlowSettingsFields(className = "oq-settings-grid") {
     const autoFields = [
-      renderSettingsNumberField("flowSetpoint", "Gewenste flow verwarmen", "De flow die OpenQuatt zoveel mogelijk probeert vast te houden buiten koeling."),
-      renderSettingsNumberField("coolingFlowSetpoint", "Gewenste flow koelen", "De flow die OpenQuatt gebruikt tijdens actieve koeling."),
+      renderSettingsNumberField("flowSetpoint", t("settingsHeating.flowHeatTitle"), t("settingsHeating.flowHeatCopy")),
+      renderSettingsNumberField("coolingFlowSetpoint", t("settingsHeating.flowCoolTitle"), t("settingsHeating.flowCoolCopy")),
     ].filter(Boolean).join("");
     return `
       <div class="${escapeHtml(className)}">
-        ${renderSettingsSelectField("flowControlMode", "Regelmodus", "Kies tussen automatische flowregeling en een vaste pompstand.")}
+        ${renderSettingsSelectField("flowControlMode", t("settingsHeating.flowModeTitle"), t("settingsHeating.flowModeCopy"))}
         ${isManualFlowMode()
-          ? renderSettingsNumberField("manualIpwm", "Vaste pompstand", "Deze pompstand wordt gebruikt zolang de regeling op handmatig staat.")
+          ? renderSettingsNumberField("manualIpwm", t("settingsHeating.flowManualTitle"), t("settingsHeating.flowManualCopy"))
           : autoFields}
       </div>
     `;
@@ -81,8 +82,8 @@ import { escapeHtml } from "../core/html.js";
 
   export function renderFlowTuningFields(className = "oq-settings-grid") {
     const fields = [
-      renderSettingsNumberField("flowKp", "Flow PI Kp", "Hoe sterk de regeling direct reageert op een afwijking."),
-      renderSettingsNumberField("flowKi", "Flow PI Ki", "Hoe snel de regeling kleine restfouten wegwerkt."),
+      renderSettingsNumberField("flowKp", t("settingsHeating.flowKpTitle"), t("settingsHeating.flowKpCopy")),
+      renderSettingsNumberField("flowKi", t("settingsHeating.flowKiTitle"), t("settingsHeating.flowKiCopy")),
     ].filter(Boolean);
     if (!fields.length) {
       return "";
@@ -97,9 +98,9 @@ import { escapeHtml } from "../core/html.js";
   export function renderPowerHouseBaseFields(className = "oq-settings-grid") {
     return `
       <div class="${escapeHtml(className)}">
-        ${renderSettingsNumberField("houseColdTemp", "Koude referentietemperatuur", "Bij Quatt is -10 °C de standaard. Samen met het nominale woningvermogen bepaalt deze temperatuur hoe de warmtevraag bij koud weer wordt geschaald.")}
-        ${renderSettingsNumberField("houseOutdoorMax", "Maximum heating outdoor temperature", "Bij deze buitentemperatuur is verwarmen meestal niet meer nodig.")}
-        ${renderSettingsNumberField("housePower", "Nominaal woningvermogen", "Hoeveel warmte je woning ongeveer nodig heeft bij de koude referentietemperatuur hierboven.")}
+        ${renderSettingsNumberField("houseColdTemp", t("settingsHeating.houseColdTitle"), t("settingsHeating.houseColdCopy"))}
+        ${renderSettingsNumberField("houseOutdoorMax", t("settingsHeating.houseOutdoorMaxTitle"), t("settingsHeating.houseOutdoorMaxCopy"))}
+        ${renderSettingsNumberField("housePower", t("settingsHeating.housePowerTitle"), t("settingsHeating.housePowerCopy"))}
         ${renderPowerHouseResponseProfilesField()}
       </div>
     `;
@@ -122,12 +123,12 @@ import { escapeHtml } from "../core/html.js";
           ${model.busy || !model.available ? "disabled" : ""}
         >
           <p class="oq-helper-label">Power House</p>
-          <h4>Automatisch op basis van je woning</h4>
-          <p>Power House schat hoeveel warmte je woning nodig heeft. Dit is meestal de beste keuze als je zonder veel finetuning wilt starten.</p>
+          <h4>${escapeHtml(t("settingsHeating.strategyPhTitle"))}</h4>
+          <p>${escapeHtml(t("settingsHeating.strategyPhCopy"))}</p>
           <ul class="oq-settings-strategy-points">
-            <li>Gebruikt vooral het geschatte warmteverlies van je woning en de buitentemperatuur waarbij verwarmen meestal niet meer nodig is.</li>
-            <li>Reageert meer op het gedrag van je woning dan op een vaste temperatuurcurve.</li>
-            <li>Handig als je vooral comfort wilt en zo min mogelijk handmatig wilt instellen.</li>
+            <li>${escapeHtml(t("settingsHeating.strategyPhPoint1"))}</li>
+            <li>${escapeHtml(t("settingsHeating.strategyPhPoint2"))}</li>
+            <li>${escapeHtml(t("settingsHeating.strategyPhPoint3"))}</li>
           </ul>
         </button>
         <button
@@ -140,13 +141,13 @@ import { escapeHtml } from "../core/html.js";
           aria-pressed="${curveActive ? "true" : "false"}"
           ${model.busy || !model.available ? "disabled" : ""}
         >
-          <p class="oq-helper-label">Stooklijn</p>
-          <h4>Regelen met een stooklijn</h4>
-          <p>Met een stooklijn kies je per buitentemperatuur welke aanvoertemperatuur nodig is. Handig als je dit bewust zelf wilt instellen.</p>
+          <p class="oq-helper-label">${escapeHtml(t("overview.strategyCurve"))}</p>
+          <h4>${escapeHtml(t("settingsHeating.strategyCurveTitle"))}</h4>
+          <p>${escapeHtml(t("settingsHeating.strategyCurveCopy"))}</p>
           <ul class="oq-settings-strategy-points">
-            <li>Gebruikt de curvepunten van <strong>-20°C t/m 15°C</strong> als basis.</li>
-            <li>Voelt herkenbaar voor wie gewend is aan een klassieke stooklijn.</li>
-            <li>Handig als je de aanvoertemperatuur per buitentemperatuur zelf wilt finetunen.</li>
+            <li>${t("settingsHeating.strategyCurvePoint1", { range: `<strong>${escapeHtml(t("settingsHeating.curveRange"))}</strong>` })}</li>
+            <li>${escapeHtml(t("settingsHeating.strategyCurvePoint2"))}</li>
+            <li>${escapeHtml(t("settingsHeating.strategyCurvePoint3"))}</li>
           </ul>
         </button>
       </div>
@@ -162,35 +163,35 @@ import { escapeHtml } from "../core/html.js";
     const options = [
       {
         value: "Calm",
-        label: "Rustig",
+        label: t("settingsHeating.profileCalm"),
         rise: "12 min",
         fall: "5 min",
-        meta: "Opbouw 12 min · Afbouw 5 min",
-        copy: "Reageert minder snel op schommelingen. Fijn voor vloerverwarming of een woning die traag opwarmt en afkoelt.",
+        meta: t("settingsHeating.profileCalmMeta", { rise: "12 min", fall: "5 min" }),
+        copy: t("settingsHeating.profileCalmCopy"),
       },
       {
         value: "Balanced",
-        label: "Gebalanceerd",
+        label: t("settingsHeating.profileBalanced"),
         rise: "8 min",
         fall: "3 min",
-        meta: "Opbouw 8 min · Afbouw 3 min",
-        copy: "Goede middenweg tussen comfort en rust. Meestal het beste startpunt voor dagelijks gebruik.",
+        meta: t("settingsHeating.profileBalancedMeta", { rise: "8 min", fall: "3 min" }),
+        copy: t("settingsHeating.profileBalancedCopy"),
       },
       {
         value: "Responsive",
-        label: "Direct",
+        label: t("settingsHeating.profileResponsive"),
         rise: "5 min",
         fall: "2 min",
-        meta: "Opbouw 5 min · Afbouw 2 min",
-        copy: "Reageert sneller op veranderende warmtevraag. Handig als je woning snel afkoelt of je sneller effect wilt zien.",
+        meta: t("settingsHeating.profileResponsiveMeta", { rise: "5 min", fall: "2 min" }),
+        copy: t("settingsHeating.profileResponsiveCopy"),
       },
       {
         value: "Custom",
-        label: "Aangepast",
-        rise: "Vrij",
-        fall: "Instelbaar",
-        meta: "Opbouw en afbouw instelbaar",
-        copy: "Stel zelf in hoe snel de regeling op- en afbouwt. Handig als de standaardprofielen net niet goed passen.",
+        label: t("settingsHeating.profileCustom"),
+        rise: t("settingsHeating.profileCustomRise"),
+        fall: t("settingsHeating.profileCustomFall"),
+        meta: t("settingsHeating.profileCustomMeta"),
+        copy: t("settingsHeating.profileCustomCopy"),
       },
     ];
     const controlMarkup = `
@@ -206,8 +207,8 @@ import { escapeHtml } from "../core/html.js";
                 </div>
                 <span class="oq-settings-choice-copy">${escapeHtml(option.copy)}</span>
                 <div class="oq-settings-choice-inline-grid oq-settings-choice-inline-grid--inside-card">
-                  ${renderSettingsMiniNumberField("phDemandRiseTime", "Opbouwtijd", "Tijd waarmee de warmtevraag bij oplopende vraag naar het nieuwe niveau toeloopt.", { compact: true, showCopy: false, infoId: "phDemandRiseTime-inline", embedded: true })}
-                  ${renderSettingsMiniNumberField("phDemandFallTime", "Afbouwtijd", "Tijd waarmee de warmtevraag bij afnemende vraag weer terugzakt.", { compact: true, showCopy: false, infoId: "phDemandFallTime-inline", embedded: true })}
+                  ${renderSettingsMiniNumberField("phDemandRiseTime", t("settingsHeating.riseTitle"), t("settingsHeating.riseCopy"), { compact: true, showCopy: false, infoId: "phDemandRiseTime-inline", embedded: true })}
+                  ${renderSettingsMiniNumberField("phDemandFallTime", t("settingsHeating.fallTitle"), t("settingsHeating.fallCopy"), { compact: true, showCopy: false, infoId: "phDemandFallTime-inline", embedded: true })}
                 </div>
               </div>
             `;
@@ -219,8 +220,8 @@ import { escapeHtml } from "../core/html.js";
 
     return renderSettingsFieldCard(
       "phResponseProfile",
-      "Power House responsprofiel",
-      "Kies hoe rustig of direct Power House mag reageren op veranderingen in je woning.",
+      t("settingsHeating.responseProfileTitle"),
+      t("settingsHeating.responseProfileCopy"),
       controlMarkup,
       "oq-settings-field--span-2",
     );
@@ -235,21 +236,21 @@ import { escapeHtml } from "../core/html.js";
     const options = [
       {
         value: "Comfort",
-        label: "Comfort",
-        meta: "Eerder starten · Fijner trimmen",
-        copy: "Reageert wat actiever en laat de aanvoertemperatuur eerder oplopen. Fijn als je vooral comfort wilt.",
+        label: t("settingsHeating.curveComfortLabel"),
+        meta: t("settingsHeating.curveComfortMeta"),
+        copy: t("settingsHeating.curveComfortCopy"),
       },
       {
         value: "Balanced",
-        label: "Gebalanceerd",
-        meta: "Middenweg · Voorspelbaar gedrag",
-        copy: "De standaard middenweg voor dagelijks gebruik. Voorspelbaar en tegelijk vlot genoeg.",
+        label: t("settingsHeating.profileBalanced"),
+        meta: t("settingsHeating.curveBalancedMeta"),
+        copy: t("settingsHeating.curveBalancedCopy"),
       },
       {
         value: "Stable",
-        label: "Stabiel",
-        meta: "Meer filtering · Rustigere stappen",
-        copy: "Reageert rustiger en stuurt minder snel bij. Fijn als je zo min mogelijk schommelingen wilt.",
+        label: t("settingsHeating.curveStableLabel"),
+        meta: t("settingsHeating.curveStableMeta"),
+        copy: t("settingsHeating.curveStableCopy"),
       },
     ];
 
@@ -261,8 +262,8 @@ import { escapeHtml } from "../core/html.js";
 
     return renderSettingsFieldCard(
       "curveControlProfile",
-      "Regelprofiel",
-      "Kies of de stooklijn vooral comfortabel, gebalanceerd of rustig moet reageren.",
+      t("settingsHeating.curveProfileTitle"),
+      t("settingsHeating.curveProfileCopy"),
       controlMarkup,
       "oq-settings-field--span-2",
     );
@@ -333,16 +334,16 @@ import { escapeHtml } from "../core/html.js";
     return `
       <div class="oq-ph-concept-card">
         <div class="oq-ph-concept-visual">
-          <p class="oq-ph-concept-kicker">Kamercorrectie op Power House-huisvraag</p>
+          <p class="oq-ph-concept-kicker">${escapeHtml(t("settingsHeating.conceptKicker"))}</p>
           <div class="oq-ph-concept-caption">
-            Conceptueel: deze grafiek toont de kamercorrectie boven op de berekende Power House-huisvraag. Onder de comfortgrens loopt die correctie op, binnen de comfortband blijft de directe reactie vlak terwijl opgebouwde comfort memory nog kan doorwerken, en boven de bovengrens start warme tegensturing.
+            ${escapeHtml(t("settingsHeating.conceptCaption"))}
           </div>
           <div class="oq-ph-concept-meta">
-            <span class="oq-ph-concept-meta-pill">Setpoint <strong>${escapeHtml(formatNumericState(exampleSetpoint, 1, "°C"))}</strong></span>
-            <span class="oq-ph-concept-meta-pill">Comfortband <strong>${escapeHtml(formatNumericState(quietMin, 1, "°C"))} – ${escapeHtml(formatNumericState(quietMax, 1, "°C"))}</strong></span>
-            <span class="oq-ph-concept-meta-pill">Temperatuurreactie <strong>${escapeHtml(formatNumericState(temperatureReaction, 0, " W/K"))}</strong></span>
+            <span class="oq-ph-concept-meta-pill">${escapeHtml(t("settingsHeating.conceptSetpoint"))} <strong>${escapeHtml(formatNumericState(exampleSetpoint, 1, "°C"))}</strong></span>
+            <span class="oq-ph-concept-meta-pill">${escapeHtml(t("settingsHeating.conceptComfortBand"))} <strong>${escapeHtml(formatNumericState(quietMin, 1, "°C"))} – ${escapeHtml(formatNumericState(quietMax, 1, "°C"))}</strong></span>
+            <span class="oq-ph-concept-meta-pill">${escapeHtml(t("settingsHeating.conceptReaction"))} <strong>${escapeHtml(formatNumericState(temperatureReaction, 0, " W/K"))}</strong></span>
           </div>
-          <svg class="oq-ph-concept-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Grafiek voor Power House tuning">
+          <svg class="oq-ph-concept-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t("settingsHeating.conceptAria"))}">
             <rect x="${leftX.toFixed(1)}" y="${top}" width="${Math.max(20, quietMinX - leftX).toFixed(1)}" height="${(height - top - bottom).toFixed(1)}" rx="18" class="oq-ph-concept-band oq-ph-concept-band--below"></rect>
             <rect x="${quietMinX.toFixed(1)}" y="${top}" width="${Math.max(20, quietMaxX - quietMinX).toFixed(1)}" height="${(height - top - bottom).toFixed(1)}" rx="18" class="oq-ph-concept-band oq-ph-concept-band--calm"></rect>
             <rect x="${quietMaxX.toFixed(1)}" y="${top}" width="${Math.max(20, rightX - quietMaxX).toFixed(1)}" height="${(height - top - bottom).toFixed(1)}" rx="18" class="oq-ph-concept-band oq-ph-concept-band--above"></rect>
@@ -359,14 +360,14 @@ import { escapeHtml } from "../core/html.js";
             ${showQuietMinTick ? `<circle cx="${quietMinX}" cy="${axisY}" r="5" class="oq-ph-concept-point oq-ph-concept-point--below"></circle>` : ""}
             <circle cx="${setpointX}" cy="${axisY}" r="6" class="oq-ph-concept-point oq-ph-concept-point--setpoint"></circle>
             ${showQuietMaxTick ? `<circle cx="${quietMaxX}" cy="${axisY}" r="5" class="oq-ph-concept-point oq-ph-concept-point--above"></circle>` : ""}
-            ${showQuietMinTick ? renderConceptTooltip(quietMinX, "Comfort onder setpoint", formatNumericState(quietMin, 1, "°C"), "below") : ""}
-            ${renderConceptTooltip(setpointX, "Setpoint", formatNumericState(exampleSetpoint, 1, "°C"), "setpoint")}
-            ${showQuietMaxTick ? renderConceptTooltip(quietMaxX, "Comfort boven setpoint", formatNumericState(quietMax, 1, "°C"), "above") : ""}
+            ${showQuietMinTick ? renderConceptTooltip(quietMinX, t("settingsHeating.conceptComfortBelow"), formatNumericState(quietMin, 1, "°C"), "below") : ""}
+            ${renderConceptTooltip(setpointX, t("settingsHeating.conceptSetpoint"), formatNumericState(exampleSetpoint, 1, "°C"), "setpoint")}
+            ${showQuietMaxTick ? renderConceptTooltip(quietMaxX, t("settingsHeating.conceptComfortAbove"), formatNumericState(quietMax, 1, "°C"), "above") : ""}
 
-            <text x="${leftX + 8}" y="${top + 18}" text-anchor="start" class="oq-ph-concept-label oq-ph-concept-label--heat">meer warmte</text>
-            <text x="${leftX + 8}" y="${height - bottom - 8}" text-anchor="start" class="oq-ph-concept-label">minder warmte</text>
-            <text x="${leftX}" y="${height - 26}" text-anchor="start" class="oq-ph-concept-label">kouder</text>
-            <text x="${rightX}" y="${height - 26}" text-anchor="end" class="oq-ph-concept-label">warmer</text>
+            <text x="${leftX + 8}" y="${top + 18}" text-anchor="start" class="oq-ph-concept-label oq-ph-concept-label--heat">${escapeHtml(t("settingsHeating.conceptMoreHeat"))}</text>
+            <text x="${leftX + 8}" y="${height - bottom - 8}" text-anchor="start" class="oq-ph-concept-label">${escapeHtml(t("settingsHeating.conceptLessHeat"))}</text>
+            <text x="${leftX}" y="${height - 26}" text-anchor="start" class="oq-ph-concept-label">${escapeHtml(t("settingsHeating.conceptColder"))}</text>
+            <text x="${rightX}" y="${height - 26}" text-anchor="end" class="oq-ph-concept-label">${escapeHtml(t("settingsHeating.conceptWarmer"))}</text>
 
             ${showQuietMinTick ? `<text x="${quietMinX - 5}" y="${height - 14}" text-anchor="end" class="oq-ph-concept-tick-value">${escapeHtml(formatNumericState(quietMin, 1, "°C"))}</text>` : ""}
             <text x="${setpointX}" y="${height - 14}" text-anchor="middle" class="oq-ph-concept-tick-value oq-ph-concept-tick-value--setpoint">${escapeHtml(formatNumericState(exampleSetpoint, 1, "°C"))}</text>
@@ -375,30 +376,30 @@ import { escapeHtml } from "../core/html.js";
         </div>
         <div class="oq-ph-concept-zones">
           <span class="oq-ph-concept-zone-chip oq-ph-concept-zone-chip--below">
-            <span class="oq-ph-concept-zone-chip-label">extra opwarming</span>
-            <span class="oq-ph-concept-zone-chip-meta">onder ${escapeHtml(formatNumericState(quietMin, 1, "°C"))}</span>
+            <span class="oq-ph-concept-zone-chip-label">${escapeHtml(t("settingsHeating.zoneBelow"))}</span>
+            <span class="oq-ph-concept-zone-chip-meta">${escapeHtml(t("settingsHeating.zoneBelowMeta", { value: formatNumericState(quietMin, 1, "°C") }))}</span>
           </span>
           <span class="oq-ph-concept-zone-chip oq-ph-concept-zone-chip--calm">
-            <span class="oq-ph-concept-zone-chip-label">comfortband</span>
+            <span class="oq-ph-concept-zone-chip-label">${escapeHtml(t("settingsHeating.zoneCalm"))}</span>
             <span class="oq-ph-concept-zone-chip-meta">${escapeHtml(formatNumericState(quietMin, 1, "°C"))} – ${escapeHtml(formatNumericState(quietMax, 1, "°C"))}</span>
           </span>
           <span class="oq-ph-concept-zone-chip oq-ph-concept-zone-chip--above">
-            <span class="oq-ph-concept-zone-chip-label">warme tegensturing</span>
-            <span class="oq-ph-concept-zone-chip-meta">boven ${escapeHtml(formatNumericState(quietMax, 1, "°C"))}</span>
+            <span class="oq-ph-concept-zone-chip-label">${escapeHtml(t("settingsHeating.zoneAbove"))}</span>
+            <span class="oq-ph-concept-zone-chip-meta">${escapeHtml(t("settingsHeating.zoneAboveMeta", { value: formatNumericState(quietMax, 1, "°C") }))}</span>
           </span>
         </div>
         <div class="oq-ph-concept-notes">
           <article class="oq-ph-concept-note">
-            <span class="oq-ph-concept-note-title">Comfort onder</span>
-            <p>Bepaalt wanneer extra opwarming begint onder het setpoint.</p>
+            <span class="oq-ph-concept-note-title">${escapeHtml(t("settingsHeating.noteComfortBelowTitle"))}</span>
+            <p>${escapeHtml(t("settingsHeating.noteComfortBelowCopy"))}</p>
           </article>
           <article class="oq-ph-concept-note">
-            <span class="oq-ph-concept-note-title">Comfortband</span>
-            <p>Binnen deze band blijft de directe temperatuurreactie vlak. Een opgebouwde comfort memory kan hier nog wel even doorwerken en loopt daarna rustig af.</p>
+            <span class="oq-ph-concept-note-title">${escapeHtml(t("settingsHeating.noteBandTitle"))}</span>
+            <p>${escapeHtml(t("settingsHeating.noteBandCopy"))}</p>
           </article>
           <article class="oq-ph-concept-note">
-            <span class="oq-ph-concept-note-title">Temperatuurreactie</span>
-            <p>Bepaalt hoe sterk Power House buiten de comfortband extra of minder warmtevraag als kamercorrectie toevoegt boven op de berekende huisvraag.</p>
+            <span class="oq-ph-concept-note-title">${escapeHtml(t("settingsHeating.noteReactionTitle"))}</span>
+            <p>${escapeHtml(t("settingsHeating.noteReactionCopy"))}</p>
           </article>
         </div>
       </div>
@@ -407,9 +408,9 @@ import { escapeHtml } from "../core/html.js";
 
   export function renderPowerHouseAdvancedField() {
     const fields = [
-      renderSettingsNumberField("phKp", "Temperatuurreactie", "Bepaalt hoe sterk Power House kamertemperatuurafwijking vertaalt naar extra of minder warmtevraag in W/K. Hogere waarden reageren steviger, lagere waarden rustiger.", "", { unitOverride: "W/K" }),
-      renderSettingsNumberField("phComfortBelow", "Comfort onder setpoint", "Extra comfortmarge onder het setpoint. Hiermee kan Power House iets sneller warmte vragen als de kamertemperatuur merkbaar onder het doel zakt."),
-      renderSettingsNumberField("phComfortAbove", "Comfort boven setpoint", "Bovenmarge rond het setpoint. Hiermee bepaal je hoeveel ruimte er boven het setpoint mag ontstaan voordat warme tegensturing begint."),
+      renderSettingsNumberField("phKp", t("settingsHeating.phKpTitle"), t("settingsHeating.phKpCopy"), "", { unitOverride: "W/K" }),
+      renderSettingsNumberField("phComfortBelow", t("settingsHeating.phComfortBelowTitle"), t("settingsHeating.phComfortBelowCopy")),
+      renderSettingsNumberField("phComfortAbove", t("settingsHeating.phComfortAboveTitle"), t("settingsHeating.phComfortAboveCopy")),
     ].filter(Boolean);
 
     if (!fields.length) {
@@ -419,9 +420,9 @@ import { escapeHtml } from "../core/html.js";
     return `
       <div class="oq-settings-subpanel oq-settings-subpanel--nested">
         <div class="oq-settings-subpanel-head">
-          <p class="oq-helper-label">Power House tuning</p>
-          <h4>Geavanceerde Power House tuning</h4>
-          <p>Met deze instellingen verfijn je hoe Power House reageert rond het kamersetpoint. De grafiek hierboven laat meteen zien wat dat betekent.</p>
+          <p class="oq-helper-label">${escapeHtml(t("settingsHeating.tuningKicker"))}</p>
+          <h4>${escapeHtml(t("settingsHeating.tuningTitle"))}</h4>
+          <p>${escapeHtml(t("settingsHeating.tuningCopy"))}</p>
         </div>
         ${renderPowerHouseConceptGraphic()}
         <div class="oq-settings-grid">
@@ -433,7 +434,7 @@ import { escapeHtml } from "../core/html.js";
 
   export function formatRunExtensionTemp(value) {
     const numeric = Number(value);
-    return Number.isFinite(numeric) ? `${numeric.toFixed(1).replace(".", ",")} °C` : "—";
+    return Number.isFinite(numeric) ? `${formatNumber(numeric, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} °C` : "—";
   }
 
   export function getRunExtensionThresholds() {
@@ -446,50 +447,50 @@ import { escapeHtml } from "../core/html.js";
   }
 
   const RUN_EXTENSION_STATUS_COPY = {
-    extending: "Langer doorverwarmen actief",
-    comfort_stop: "Comfortstop",
-    wait_warm_restart: "Wacht op afkoeling",
-    warm_restart: "Warme herstart",
-    normal: "Normaal verwarmen",
-    blocked: "Geblokkeerd door beveiliging",
+    extending: "runExtension.extending",
+    comfort_stop: "runExtension.comfortStop",
+    wait_warm_restart: "runExtension.waitRestart",
+    warm_restart: "runExtension.warmRestart",
+    normal: "runExtension.normal",
+    blocked: "runExtension.blocked",
   };
 
   export function getRunExtensionStatusCopy(status) {
-    return RUN_EXTENSION_STATUS_COPY[String(status || "").trim().toLowerCase()] || "Uitgeschakeld";
+    return t(RUN_EXTENSION_STATUS_COPY[String(status || "").trim().toLowerCase()] || "runExtension.disabled");
   }
 
   export function renderPowerHouseRunExtensionField() {
     if (!hasEntity("phRunExtension")) return "";
     const enabled = Boolean(getEntityValue("phRunExtension"));
-    const t = getRunExtensionThresholds();
+    const thresholdsModel = getRunExtensionThresholds();
     const n = String(getSettingsTextStatValue("phRunExtensionStatus", "inactive") || "").trim().toLowerCase();
-    const status = enabled ? (n === "inactive" ? "Wacht op een verwarmingsrun" : getRunExtensionStatusCopy(n)) : "Uitgeschakeld";
+    const status = enabled ? (n === "inactive" ? t("runExtension.waiting") : getRunExtensionStatusCopy(n)) : t("runExtension.disabled");
     const relative = (offset) => `setpoint ${offset < 0 ? "−" : "+"} ${formatRunExtensionTemp(Math.abs(offset))}`;
     const thresholds = [
-      ["Gewenste temperatuur", Number.isFinite(t.setpoint) ? formatRunExtensionTemp(t.setpoint) : "Kamer-setpoint", "De temperatuur die je hebt ingesteld."],
-      ["Stoppen bij", Number.isFinite(t.stop) ? formatRunExtensionTemp(t.stop) : relative(t.margin), "Bij deze kamertemperatuur stopt het doorverwarmen."],
-      ["Opnieuw starten bij of onder", Number.isFinite(t.restart) ? formatRunExtensionTemp(t.restart) : relative(t.margin - t.hysteresis), "Alleen als Power House berekent dat je woning nog warmte nodig heeft."],
+      [t("runExtension.desired"), Number.isFinite(thresholdsModel.setpoint) ? formatRunExtensionTemp(thresholdsModel.setpoint) : t("runExtension.roomSetpoint"), t("runExtension.desiredNote")],
+      [t("runExtension.stop"), Number.isFinite(thresholdsModel.stop) ? formatRunExtensionTemp(thresholdsModel.stop) : relative(thresholdsModel.margin), t("runExtension.stopNote")],
+      [t("runExtension.restart"), Number.isFinite(thresholdsModel.restart) ? formatRunExtensionTemp(thresholdsModel.restart) : relative(thresholdsModel.margin - thresholdsModel.hysteresis), t("runExtension.restartNote")],
     ];
     return `
-      <section class="oq-settings-subpanel oq-settings-subpanel--nested oq-run-extension" aria-label="Langer doorverwarmen">
+      <section class="oq-settings-subpanel oq-settings-subpanel--nested oq-run-extension" aria-label="${escapeHtml(t("runExtension.title"))}">
         <div class="oq-run-extension-intro">
           <div class="oq-settings-subpanel-head">
-            <h4>Langer doorverwarmen</h4>
-            <p>Heeft je woning nog maar weinig warmte nodig? Met deze optie blijft de warmtepomp op zijn laagste geschikte vermogen draaien, in plaats van te stoppen. Hij mag doorgaan tot de ingestelde stoptemperatuur. Daardoor kan de kamer warmer worden dan je hebt ingesteld.</p>
+            <h4>${escapeHtml(t("runExtension.title"))}</h4>
+            <p>${escapeHtml(t("runExtension.copy"))}</p>
           </div>
           <span class="oq-run-extension-status">${escapeHtml(status)}</span>
         </div>
         <div class="oq-settings-grid">
-          ${renderSettingsSwitchField("phRunExtension", "Langer doorverwarmen toestaan", "Staat de warmtepomp stil? Deze schakelaar laat hem niet meteen starten. Hij moet eerst vanwege de warmtebehoefte van je woning gaan verwarmen.", "Aan: een draaiende warmtepomp mag langer blijven verwarmen.", "Uit: de warmtepomp mag stoppen zodra je woning te weinig warmte nodig heeft om te blijven draaien.")}
-          ${enabled ? renderSettingsNumberField("phRunExtensionStopMargin", "Stop boven gewenste temperatuur", "Dit aantal graden wordt bij je gewenste kamertemperatuur opgeteld om de stoptemperatuur te bepalen.", "", { footerMarkup: '<p class="oq-run-extension-note">Restwarmte kan de kamer na het stoppen nog iets verder opwarmen.</p>' }) : ""}
+          ${renderSettingsSwitchField("phRunExtension", t("runExtension.allow"), t("runExtension.allowCopy"), t("runExtension.on"), t("runExtension.off"))}
+          ${enabled ? renderSettingsNumberField("phRunExtensionStopMargin", t("runExtension.margin"), t("runExtension.marginCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.residual"))}</p>` }) : ""}
         </div>
         ${enabled ? `
           <div class="oq-run-extension-thresholds">
             ${thresholds.map(([label, value, note]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></div>`).join("")}
           </div>
-          <p class="oq-run-extension-note">Na het stoppen moet de kamer afkoelen tot 0,2 °C onder de stoptemperatuur. Dat kan nog boven je gewenste temperatuur zijn. Pas dan mag de warmtepomp weer starten, als je woning warmte nodig heeft. Wachttijden en beveiligingen kunnen de start uitstellen.</p>
+          <p class="oq-run-extension-note">${escapeHtml(t("runExtension.hysteresis"))}</p>
         ` : ""}
-        <p class="oq-run-extension-note">Zet je deze optie uit, dan zet je de verwarming niet uit. De warmtepomp kan blijven draaien of later weer starten als je woning warmte nodig heeft.</p>
+        <p class="oq-run-extension-note">${escapeHtml(t("runExtension.disableCopy"))}</p>
       </section>
     `;
   }
@@ -499,8 +500,8 @@ import { escapeHtml } from "../core/html.js";
     const fields = renderSettingsFrequencyRangeField(
       firstFrequencyKey,
       `${hpPrefix}ExcludeMaxHz`,
-      "Uitgesloten frequentiebereik",
-      "OpenQuatt slaat alle compressorfrequenties binnen dit bereik over, bij verwarmen en koelen.",
+      t("settingsHeating.limiterExcludedTitle"),
+      t("settingsHeating.limiterExcludedCopy"),
     );
 
     if (!fields) {
@@ -510,9 +511,9 @@ import { escapeHtml } from "../core/html.js";
     return `
       <article class="oq-settings-hp-group">
         <header>
-          <p class="oq-helper-label">Warmtepomp</p>
+          <p class="oq-helper-label">${escapeHtml(t("settingsHeating.limiterKicker"))}</p>
           <h4>${escapeHtml(title)}</h4>
-          <p>Kies één frequentiebereik dat OpenQuatt bij verwarmen en koelen moet overslaan.</p>
+          <p>${escapeHtml(t("settingsHeating.limiterCopy"))}</p>
         </header>
         <div class="oq-settings-hp-group-grid">
           ${fields}
@@ -524,16 +525,16 @@ import { escapeHtml } from "../core/html.js";
   export function renderSettingsFlowSection() {
     const flowTuning = renderFlowTuningFields();
     return renderSettingsSection(
-      "Installatie",
-      "Flowregeling",
-      "Kies hoe de pomp wordt geregeld en stel de flow-instellingen direct als installatieparameter in. De autotune vind je later bij Service & commissioning.",
+      t("settingsHeating.flowSectionGroup"),
+      t("settingsHeating.flowSectionTitle"),
+      t("settingsHeating.flowSectionCopy"),
       `
         ${renderFlowSettingsFields()}
         ${flowTuning ? `
           ${renderSettingsAdvancedDisclosure(
             "flow",
-            "Geavanceerde flow-afstelling",
-            "Kp en Ki bepalen hoe stevig de flowregeling corrigeert. Gebruik bij voorkeur eerst de autotune onder Service & commissioning en wijzig daarna alleen in kleine stappen.",
+            t("settingsHeating.flowAdvancedTitle"),
+            t("settingsHeating.flowAdvancedCopy"),
             flowTuning,
           )}
         ` : ""}
@@ -550,12 +551,12 @@ import { escapeHtml } from "../core/html.js";
     return `
       <div class="oq-settings-subpanel oq-settings-subpanel--advice${deviant ? " is-warning" : ""}">
         <div class="oq-settings-subpanel-head">
-          <p class="oq-helper-label">Warmtetoestemming</p>
-          <h4>Welke warmtetoestemming past bij je strategie?</h4>
-          <p>Power House bepaalt zelf de vraag; bij stooklijn bepaalt de thermostaat of er verwarmd wordt. Open de overwegingen en aanbevelingen per strategie.</p>
+          <p class="oq-helper-label">${escapeHtml(t("settingsHeating.adviceKicker"))}</p>
+          <h4>${escapeHtml(t("settingsHeating.adviceTitle"))}</h4>
+          <p>${escapeHtml(t("settingsHeating.adviceCopy"))}</p>
         </div>
         <div class="oq-helper-actions">
-          <button class="oq-helper-button ${deviant ? "oq-helper-button--warning-soft" : "oq-helper-button--ghost"}" type="button" data-oq-action="open-heating-strategy-advice-modal">${deviant ? '<span class="oq-advice-warn-icon"><svg viewBox="0 0 20 18" aria-hidden="true"><path d="M10 1.6 L18.2 16.4 H1.8 Z"/><rect x="9.1" y="5.4" width="1.8" height="5.8" rx="0.9"/><circle cx="10" cy="13.6" r="1.1"/></svg></span> Advies per strategie bekijken' : "Advies per strategie bekijken"}</button>
+          <button class="oq-helper-button ${deviant ? "oq-helper-button--warning-soft" : "oq-helper-button--ghost"}" type="button" data-oq-action="open-heating-strategy-advice-modal">${deviant ? '<span class="oq-advice-warn-icon"><svg viewBox="0 0 20 18" aria-hidden="true"><path d="M10 1.6 L18.2 16.4 H1.8 Z"/><rect x="9.1" y="5.4" width="1.8" height="5.8" rx="0.9"/><circle cx="10" cy="13.6" r="1.1"/></svg></span> ' : ""}${escapeHtml(t("settingsHeating.adviceButton"))}</button>
         </div>
       </div>
     `;
@@ -566,9 +567,9 @@ import { escapeHtml } from "../core/html.js";
       ? `
         <div class="oq-settings-subpanel">
           <div class="oq-settings-subpanel-head">
-            <p class="oq-helper-label">Stooklijn</p>
-            <h4>Stooklijn</h4>
-            <p>Stel hier je stooklijn in en kies wat OpenQuatt moet doen als er geen buitentemperatuur beschikbaar is.</p>
+            <p class="oq-helper-label">${escapeHtml(t("settingsHeating.heatingCurveKicker"))}</p>
+            <h4>${escapeHtml(t("settingsHeating.heatingCurveTitle"))}</h4>
+            <p>${escapeHtml(t("settingsHeating.heatingCurveCopy"))}</p>
           </div>
           <div class="oq-settings-grid">
             ${renderHeatingCurveProfileField()}
@@ -585,7 +586,7 @@ import { escapeHtml } from "../core/html.js";
           <div class="oq-settings-subpanel-head">
             <p class="oq-helper-label">Power House</p>
             <h4>Power House</h4>
-            <p>Met deze waarden schat OpenQuatt hoeveel warmte je woning nodig heeft. Heb je deze gegevens van Quatt, dan kun je ze hier als startpunt gebruiken.</p>
+            <p>${escapeHtml(t("settingsHeating.phouseCopy"))}</p>
           </div>
           ${renderPowerHouseBaseFields()}
           ${renderPowerHouseAdvancedField()}
@@ -594,9 +595,9 @@ import { escapeHtml } from "../core/html.js";
       `;
 
     return renderSettingsSection(
-      "Regeling",
-      "Verwarmingsstrategie",
-      "Kies hier hoe OpenQuatt je verwarming regelt. De instellingen hieronder passen zich automatisch aan.",
+      t("settingsHeating.sectionGroup"),
+      t("settingsHeating.sectionTitle"),
+      t("settingsHeating.sectionCopy"),
       `
         ${renderStrategySelectionFields()}
         ${renderHeatingStrategyExplainCards()}
@@ -659,10 +660,10 @@ import { escapeHtml } from "../core/html.js";
     return `
       <div class="oq-helper-curve-shell">
         <div class="oq-helper-curve-copy">
-          <h3>Stooklijn-editor</h3>
-          <p>Stel de verwarmingscurve in door de punten te verslepen en zo de zes vereiste aanvoertemperaturen te bepalen.</p>
+          <h3>${escapeHtml(t("settingsHeating.curveEditorTitle"))}</h3>
+          <p>${escapeHtml(t("settingsHeating.curveEditorCopy"))}</p>
         </div>
-        <svg class="oq-helper-curve-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Stooklijn-editor">
+        <svg class="oq-helper-curve-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t("settingsHeating.curveEditorAria"))}">
           ${gridLines}
           <polyline points="${linePoints}" class="oq-helper-curve-line" />
           ${circles}

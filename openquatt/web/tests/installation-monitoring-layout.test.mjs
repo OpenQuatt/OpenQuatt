@@ -28,6 +28,6 @@ test("compressor alarm limits use a persistent inline disclosure with exact numb
   assert.match(serviceCss, /\.oq-starts/);
   assert.match(serviceCss, /\.oq-start-fields/);
   assert.match(installationSource, /class="oq-start-editor"/);
-  assert.match(installationSource, />Gereed<\/button>/);
+  assert.match(installationSource, /t\("settingsInstallation\.limitsDone"\)/);
   assert.match(serviceCss, /\.oq-start-summary\s*\{[^}]*cursor:\s*pointer/);
 });

@@ -20,8 +20,11 @@ import { getFirmwareDeviceLabel, getInstallationLabel, getInstallationTopology }
 import { getFirmwareCurrentVersion } from "./firmware-update.js";
 import { getOduSettingsBackupProfiles, restoreOduSettingsBackupProfiles } from "./odu-settings.js";
 import { render } from "../core/render-scheduler.js";
+import { t } from "../i18n/index.js";
 
-const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
+  export function backupSectionLabel(section) {
+    return section?.labelKey ? t(section.labelKey) : String(section?.label || section?.id || "");
+  }
 
   export function energyHistoryImportRecordHasHour(row) {
     return Object.prototype.hasOwnProperty.call(row, "hour") ||
@@ -59,10 +62,10 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
 
   export function getEmptyTrendHistoryMetadata() {
     return {
-      available: "Alleen live",
-      oldest: "Geen data",
-      newest: "Geen data",
-      lastFlush: "Geen data",
+      available: t("storageHistory.liveOnly"),
+      oldest: t("storageHistory.noData"),
+      newest: t("storageHistory.noData"),
+      lastFlush: t("storageHistory.noData"),
       sizeKb: 0,
       writes: 0,
       eraseCount: 0,
@@ -155,9 +158,9 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
   export async function refreshDecisionLogStorageMetadata(options = {}) {
     return refreshHistoryMetadata("decisionLogStorageMetadata", options, async () => {
       const payload = await fetchHistoryResource("/openquatt/decision-log?meta=1", "json");
-      if (!payload?.ok) throw new Error("ongeldig antwoord");
+      if (!payload?.ok) throw new Error(t("storageHistory.invalidResponse"));
       return { metadata: parseDecisionLogStorageMetadata(payload), signature: JSON.stringify(payload) };
-    }, "Beslisloghistorie kon niet worden geladen.");
+    }, t("storageHistory.decisionLogLoadFailed"));
   }
 
   export function parseTrendHistoryMetadata(raw) {
@@ -213,7 +216,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
         metadata: parseTrendHistoryMetadata(raw),
         signature: `${raw.length}|${raw.slice(0, 120)}|${raw.slice(-120)}`,
       };
-    }, "Trendhistorie metadata kon niet worden geladen.");
+    }, t("storageHistory.trendMetadataLoadFailed"));
   }
 
   export async function refreshSettingsStorageState(options = {}) {
@@ -253,17 +256,17 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
   export const ENERGY_HISTORY_IMPORT_MAX_BODY_CHARS = 850;
 
   export const ENERGY_HISTORY_EXPORT_MODES = [
-    { id: "days", label: "Alleen dagtotalen", fileLabel: "daily" },
-    { id: "days_and_hours", label: "Dagtotalen + uurdetail", fileLabel: "daily-hourly" },
-    { id: "hours", label: "Alleen uurdetail", fileLabel: "hourly" },
+    { id: "days", labelKey: "storageHistory.exportDays", fileLabel: "daily" },
+    { id: "days_and_hours", labelKey: "storageHistory.exportDaysHours", fileLabel: "daily-hourly" },
+    { id: "hours", labelKey: "storageHistory.exportHours", fileLabel: "hourly" },
   ];
 
   export const ENERGY_HISTORY_IMPORT_ERROR_LABELS = {
-    forbidden: "Beveiligingstoken ontbreekt of is verlopen. Vernieuw de pagina en probeer opnieuw.",
-    partition_unavailable: "Niet beschikbaar op deze Flash-indeling. Flash de controller eenmalig via USB met de nieuwe indeling.",
-    time_unavailable: "De controller heeft nog geen geldige tijd. Probeer opnieuw zodra de tijdsync klaar is.",
-    empty_records: "Er zijn geen records verstuurd.",
-    payload_too_large: "Deze importbatch is te groot. Probeer het bestand opnieuw te importeren.",
+    forbidden: "storageHistory.importForbidden",
+    partition_unavailable: "storageHistory.importPartitionUnavailable",
+    time_unavailable: "storageHistory.importTimeUnavailable",
+    empty_records: "storageHistory.importEmptyRecords",
+    payload_too_large: "storageHistory.importPayloadTooLarge",
   };
 
   export const ENERGY_HISTORY_IMPORT_VALUE_KEYS = {
@@ -315,7 +318,8 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
 
   export function getEnergyHistoryExportModeMeta(value) {
     const mode = normalizeEnergyHistoryExportMode(value);
-    return ENERGY_HISTORY_EXPORT_MODES.find((option) => option.id === mode) || ENERGY_HISTORY_EXPORT_MODES[1];
+    const meta = ENERGY_HISTORY_EXPORT_MODES.find((option) => option.id === mode) || ENERGY_HISTORY_EXPORT_MODES[1];
+    return { ...meta, label: t(meta.labelKey) };
   }
 
   export function getEnergyHistoryExportFileName(value) {
@@ -341,7 +345,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
 
     if (isDevPreviewEnvironmentForFetches()) {
       state.energyHistoryExportBusy = false;
-      state.energyHistoryExportNotice = `Preview: ${meta.label.toLowerCase()} zou als JSON worden gedownload.`;
+      state.energyHistoryExportNotice = t("storageHistory.exportPreview", { mode: meta.label.toLowerCase() });
       render();
       return;
     }
@@ -355,9 +359,9 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       }
       const blob = await response.blob();
       downloadBlobFile(blob, getEnergyHistoryExportFileName(mode));
-      state.energyHistoryExportNotice = `${meta.label} geëxporteerd.`;
+      state.energyHistoryExportNotice = t("storageHistory.exportComplete", { mode: meta.label });
     } catch (error) {
-      state.energyHistoryExportError = `Exporteren mislukt. ${error.message}`;
+      state.energyHistoryExportError = t("storageHistory.exportFailed", { error: error.message });
     } finally {
       state.energyHistoryExportBusy = false;
       render();
@@ -676,7 +680,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
   export function parseEnergyHistoryImportPayload(fileName, text) {
     const trimmed = String(text || "").trim();
     if (!trimmed) {
-      throw new Error("Bestand is leeg.");
+      throw new Error(t("storageHistory.fileEmpty"));
     }
 
     let dailyRows = [];
@@ -730,7 +734,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
     const records = [...recordsByDate.values()].sort((a, b) => a.dateKey - b.dateKey);
     const hourRecords = [...hourRecordsByKey.values()].sort((a, b) => (a.dateKey - b.dateKey) || (a.hour - b.hour));
     if (!records.length && !hourRecords.length) {
-      throw new Error("Geen ondersteunde dag- of uurrecords gevonden.");
+      throw new Error(t("storageHistory.noSupportedRecords"));
     }
 
     const dateKeys = [...records.map((record) => record.dateKey), ...hourRecords.map((record) => record.dateKey)].sort((a, b) => a - b);
@@ -843,24 +847,26 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
   export function summarizeEnergyHistoryImportResult(result) {
     const parts = [];
     if (result.written > 0) {
-      parts.push(`${result.written} dagrecords`);
+      parts.push(t("storageHistory.importDayRecords", { count: result.written }));
     }
     if (result.hourWritten > 0) {
-      parts.push(`${result.hourWritten} uurdagen`);
+      parts.push(t("storageHistory.importHourDays", { count: result.hourWritten }));
     }
-    const imported = parts.length ? `${parts.join(" en ")} geïmporteerd.` : "Geen nieuwe records geïmporteerd.";
+    const imported = parts.length
+      ? t("storageHistory.importComplete", { records: parts.join(` ${t("common.and")} `) })
+      : t("storageHistory.importNone");
     const details = [];
     if (result.duplicates > 0) {
-      details.push(`${result.duplicates} al aanwezig`);
+      details.push(t("storageHistory.importAlreadyPresent", { count: result.duplicates }));
     }
     if (result.skipped > 0) {
-      details.push(`${result.skipped} overgeslagen`);
+      details.push(t("storageHistory.importSkipped", { count: result.skipped }));
     }
     if (result.invalid > 0) {
-      details.push(`${result.invalid} ongeldig`);
+      details.push(t("storageHistory.importInvalid", { count: result.invalid }));
     }
     if (result.unsupported > 0) {
-      details.push(`${result.unsupported} onbekend`);
+      details.push(t("storageHistory.importUnknown", { count: result.unsupported }));
     }
     return details.length ? `${imported} (${details.join(", ")}.)` : imported;
   }
@@ -881,7 +887,8 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
     }
     if (!response.ok || payload.ok === false) {
       const errorCode = payload.error ? String(payload.error) : "";
-      throw new Error(ENERGY_HISTORY_IMPORT_ERROR_LABELS[errorCode] || errorCode || `HTTP ${response.status}`);
+      const errorKey = ENERGY_HISTORY_IMPORT_ERROR_LABELS[errorCode];
+      throw new Error(errorKey ? t(errorKey) : errorCode || `HTTP ${response.status}`);
     }
     return payload;
   }
@@ -901,7 +908,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
     }
     const token = readEnergyHistoryCsrfToken(await response.text());
     if (!token) {
-      throw new Error("Beveiligingstoken ontbreekt. Vernieuw de pagina en probeer opnieuw.");
+      throw new Error(t("storageHistory.csrfMissing"));
     }
     state.energyHistoryCsrfToken = token;
   }
@@ -918,7 +925,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       return;
     }
 
-    updateEnergyHistoryState({ energyHistoryImportFileName: file.name || "exportbestand" });
+    updateEnergyHistoryState({ energyHistoryImportFileName: file.name || t("storageHistory.exportFile") });
     try {
       const parsed = parseEnergyHistoryImportPayload(file.name || "", await file.text());
       updateEnergyHistoryState({
@@ -930,7 +937,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
         energyHistoryImportInvalidCount: parsed.invalid,
       });
     } catch (error) {
-      state.energyHistoryImportError = `Bestand kon niet worden gelezen. ${error.message}`;
+      state.energyHistoryImportError = t("storageHistory.fileReadFailed", { error: error.message });
     }
     render();
   }
@@ -960,7 +967,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       ...formatEnergyHistoryImportHourDayLines(state.energyHistoryImportHourRecords),
     ];
     if (!lines.length) {
-      state.energyHistoryImportError = "Kies eerst een exportbestand met dag- of uurrecords.";
+      state.energyHistoryImportError = t("storageHistory.chooseExportFile");
       render();
       return;
     }
@@ -975,7 +982,10 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       const hourDayCount = new Set(state.energyHistoryImportHourRecords.map((record) => record.dateKey)).size;
       state.energyHistoryImportBusy = false;
       state.energyHistoryImportProgressPercent = 0;
-      state.energyHistoryImportNotice = `Preview: ${state.energyHistoryImportRecords.length} dagrecords en ${hourDayCount} uurdagen zouden worden geïmporteerd.`;
+      state.energyHistoryImportNotice = t("storageHistory.importPreview", {
+        days: state.energyHistoryImportRecords.length,
+        hourDays: hourDayCount,
+      });
       render();
       return;
     }
@@ -1004,7 +1014,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       state.energyHistoryLastFetchAt = 0;
       await refreshSettingsStorageState({ forceMissing: true, forceEnergyHistory: true });
     } catch (error) {
-      state.energyHistoryImportError = `Importeren mislukt. ${error.message}`;
+      state.energyHistoryImportError = t("storageHistory.importFailed", { error: error.message });
     } finally {
       state.energyHistoryImportBusy = false;
       state.energyHistoryImportProgressPercent = 0;
@@ -1142,7 +1152,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       return normalizeDateTimeValue(value) || "—";
     }
     if (entity.domain === "switch" || entity.domain === "binary_sensor") {
-      return value ? "Aan" : "Uit";
+      return value ? t("common.on") : t("common.off");
     }
 
     const text = String(value).trim();
@@ -1152,18 +1162,18 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
   export function getSettingsBackupFieldStatusLabel(status) {
     switch (status) {
       case "same":
-        return "Gelijk";
+        return t("storageHistory.statusSame");
       case "different":
-        return "Wijkt af";
+        return t("storageHistory.statusDifferent");
       case "missing":
-        return "Ontbreekt in backup";
+        return t("storageHistory.statusMissingBackup");
       case "current-missing":
-        return "Niet op huidige installatie";
+        return t("storageHistory.statusMissingCurrent");
       case "optional-missing":
       case "optional-unavailable":
-        return "Ontbreekt";
+        return t("storageHistory.statusMissing");
       default:
-        return "Onbekend";
+        return t("common.unknown");
     }
   }
 
@@ -1195,10 +1205,12 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
         const backupValue = hasBackupValue ? values[key] : undefined;
         const currentValue = getSettingsBackupValue(key);
         const currentExists = hasEntity(key);
-        const backupDisplay = hasBackupValue ? formatSettingsBackupFieldValue(key, backupValue) : (optional ? "Niet op huidige installatie" : "Ontbreekt in backup");
+        const backupDisplay = hasBackupValue
+          ? formatSettingsBackupFieldValue(key, backupValue)
+          : (optional ? t("storageHistory.statusMissingCurrent") : t("storageHistory.statusMissingBackup"));
         const currentDisplay = currentExists
           ? formatSettingsBackupFieldValue(key, currentValue)
-          : (optional ? "Niet beschikbaar op huidige installatie" : "Ontbreekt op huidige installatie");
+          : (optional ? t("storageHistory.unavailableCurrent") : t("storageHistory.missingCurrent"));
         let status = "same";
         if (!hasBackupValue && optional) {
           status = "optional-missing";
@@ -1249,7 +1261,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       requiredTotal += section.keys.filter((key) => !ENTITY_DEFS[key]?.optional).length;
       return {
         id: section.id,
-        label: section.label,
+        label: backupSectionLabel(section),
         present: sectionRequiredPresent,
         currentPresent: sectionCurrentPresent,
         requiredTotal: section.keys.filter((key) => !ENTITY_DEFS[key]?.optional).length,
@@ -1297,12 +1309,12 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
   export function parseSettingsBackupPayload(rawText, fileName = "") {
     const parsed = JSON.parse(rawText);
     if (!parsed || typeof parsed !== "object") {
-      throw new Error("Backupbestand bevat geen JSON-object.");
+      throw new Error(t("storageHistory.backupNotObject"));
     }
 
     const schemaVersion = Number(parsed.schema_version ?? parsed.schemaVersion ?? 0);
     if (!Number.isInteger(schemaVersion) || schemaVersion < SETTINGS_BACKUP_MIN_SCHEMA_VERSION || schemaVersion > SETTINGS_BACKUP_SCHEMA_VERSION) {
-      throw new Error("Onbekende backupversie.");
+      throw new Error(t("storageHistory.unknownBackupVersion"));
     }
 
     const settings = parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {};
@@ -1348,10 +1360,10 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
     try {
       const snapshot = await prepareSettingsBackupSnapshot();
       downloadJsonFile(getSettingsBackupFilename(snapshot), snapshot);
-      state.controlNotice = "Settings-backup gedownload.";
+      state.controlNotice = t("storageHistory.backupDownloaded");
       render();
     } catch (error) {
-      state.controlError = `Backup exporteren mislukt. ${error.message}`;
+      state.controlError = t("storageHistory.backupExportFailed", { error: error.message });
       render();
     }
   }
@@ -1378,7 +1390,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       state.systemModal = "settings-backup-restore";
     } catch (error) {
       state.settingsBackupDraft = null;
-      state.settingsBackupError = `Backupbestand kon niet worden gelezen. ${error.message}`;
+      state.settingsBackupError = t("storageHistory.backupReadFailed", { error: error.message });
     } finally {
       state.settingsBackupBusy = false;
       render();
@@ -1387,9 +1399,9 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
 
   export function createSettingsBackupRestoreItem(key, section, reason, detail = "", severity = "warning") {
     const mqttLabels = {
-      "mqtt.config": "MQTT-configuratie",
-      "odu_bottom_plate.hp1": "HP1 bodemplaatverwarming",
-      "odu_bottom_plate.hp2": "HP2 bodemplaatverwarming",
+      "mqtt.config": t("storageHistory.mqttConfig"),
+      "odu_bottom_plate.hp1": t("storageHistory.oduBottomPlateHp1"),
+      "odu_bottom_plate.hp2": t("storageHistory.oduBottomPlateHp2"),
     };
     return {
       key,
@@ -1406,8 +1418,8 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       key,
       section,
       label: getSettingsBackupFieldLabel(key),
-      reason: "Onbekend veld",
-      detail: "Deze firmware kent dit veld niet; de waarde is niet toegepast.",
+      reason: t("storageHistory.unknownField"),
+      detail: t("storageHistory.unknownFieldDetail"),
       severity: "warning",
     }));
   }
@@ -1432,12 +1444,12 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       return null;
     }
     if (settingsBackupMqttNeedsPassword(mqtt) && !password) {
-      throw new Error("MQTT-wachtwoord ontbreekt.");
+      throw new Error(t("storageHistory.mqttPasswordMissing"));
     }
     const status = await fetchSettingsBackupMqttStatus();
     const csrfToken = String(status?.csrf_token || "");
     if (!status || !csrfToken) {
-      throw new Error("MQTT-configuratie is niet beschikbaar op deze firmware.");
+      throw new Error(t("storageHistory.mqttUnavailable"));
     }
     await postSettingsBackupMqtt("/mqtt/save", csrfToken, {
       enabled: false,
@@ -1493,7 +1505,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
   async function setVerifiedCoolingValue(key, value, normalize) {
     await setEntityBackupValue(key, value);
     if (!await verifyEntityBackupSelectState(key, value, normalize)) {
-      throw new Error("Niet bevestigd.");
+      throw new Error(t("storageHistory.notConfirmed"));
     }
   }
 
@@ -1514,7 +1526,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
 
     const mqttPassword = String(state.settingsBackupMqttPassword || "");
     if (settingsBackupMqttNeedsPassword(draft.mqtt) && !mqttPassword) {
-      state.settingsBackupError = "Vul het MQTT-wachtwoord in om deze backup te herstellen.";
+      state.settingsBackupError = t("storageHistory.enterMqttPassword");
       render();
       return;
     }
@@ -1537,7 +1549,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
     let setupCompletionSafe = true;
     let mqttContext = null;
     let mqttRestoreReady = false;
-    let mqttRestoreFailureDetail = draft.mqtt ? "" : "Backup bevat geen MQTT-configuratie.";
+    let mqttRestoreFailureDetail = draft.mqtt ? "" : t("storageHistory.backupNoMqtt");
 
     try {
       await refreshEntities([...SETTINGS_BACKUP_KEYS, "usageTelemetryEnabled"], "all");
@@ -1572,7 +1584,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
           skipped.push(createSettingsBackupRestoreItem(
             "mqtt.config",
             "mqtt",
-            "MQTT niet voorbereid",
+            t("storageHistory.mqttNotPrepared"),
             mqttRestoreFailureDetail,
             "error",
           ));
@@ -1588,9 +1600,9 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
           if (!Object.prototype.hasOwnProperty.call(sectionValues, key)) {
             skipped.push(createSettingsBackupRestoreItem(
               key,
-              section.label,
-              "Ontbreekt in backup",
-              "Niet toegepast.",
+              backupSectionLabel(section),
+              t("storageHistory.statusMissingBackup"),
+              t("storageHistory.notApplied"),
             ));
             continue;
           }
@@ -1621,8 +1633,8 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
             if (!coolingGuarded) {
               skipped.push(createSettingsBackupRestoreItem(
                 key,
-                section.label,
-                COOLING_GUARD_ERROR,
+                backupSectionLabel(section),
+                t("storageHistory.coolingGuardError"),
                 "",
                 "error",
               ));
@@ -1639,9 +1651,9 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
           if (!entity || !hasEntity(key)) {
             skipped.push(createSettingsBackupRestoreItem(
               key,
-              section.label,
-              "Niet beschikbaar",
-              "Deze instelling bestaat niet op de huidige installatie of firmware.",
+              backupSectionLabel(section),
+              t("common.unavailable"),
+              t("storageHistory.settingUnavailable"),
             ));
             continue;
           }
@@ -1657,8 +1669,8 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
           } catch (error) {
             skipped.push(createSettingsBackupRestoreItem(
               key,
-              section.label,
-              "Schrijven mislukt",
+              backupSectionLabel(section),
+              t("storageHistory.writeFailed"),
               String(error?.message || error),
               "error",
             ));
@@ -1672,15 +1684,21 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
         try {
           if (!coolingGuarded || (coolingScheduleRequested &&
               verifiedCoolingTimes < COOLING_SCHEDULE_TIME_KEYS.length) || !await guardCoolingSchedule()) {
-            throw new Error(COOLING_GUARD_ERROR);
+            throw new Error(t("storageHistory.coolingGuardError"));
           }
           await setVerifiedCoolingValue(key, value);
           applied.push(key);
         } catch (error) {
           detail = await guardCoolingSchedule()
             ? String(error?.message || error)
-            : COOLING_GUARD_ERROR;
-          skipped.push(createSettingsBackupRestoreItem(key, section.label, "Bron niet toegepast", detail, "error"));
+            : t("storageHistory.coolingGuardError");
+          skipped.push(createSettingsBackupRestoreItem(
+            key,
+            backupSectionLabel(section),
+            t("storageHistory.sourceNotApplied"),
+            detail,
+            "error",
+          ));
         }
       }
 
@@ -1693,8 +1711,8 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
           skipped.push(createSettingsBackupRestoreItem(
             "mqtt.config",
             "mqtt",
-            "MQTT herstellen mislukt",
-            `${mqttRestoreFailureDetail} MQTT blijft uitgeschakeld.`,
+            t("storageHistory.mqttRestoreFailed"),
+            t("storageHistory.mqttRemainsDisabled", { error: mqttRestoreFailureDetail }),
             "error",
           ));
         }
@@ -1705,9 +1723,9 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
         if (!mqttRestoreReady || (guardedCoolingSource && (!coolingGuarded || !await guardCoolingSchedule()))) {
           skipped.push(createSettingsBackupRestoreItem(
             key,
-            section.label,
-            "MQTT-bron niet toegepast",
-            mqttRestoreFailureDetail || "MQTT kon niet veilig worden hersteld.",
+            backupSectionLabel(section),
+            t("storageHistory.mqttSourceNotApplied"),
+            mqttRestoreFailureDetail || t("storageHistory.mqttSafeRestoreFailed"),
             "error",
           ));
           continue;
@@ -1717,9 +1735,9 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
         if (!entity || (!hasEntity(key) && !guardedCoolingSource)) {
           skipped.push(createSettingsBackupRestoreItem(
             key,
-            section.label,
-            "Niet beschikbaar",
-            "Deze instelling bestaat niet op de huidige installatie of firmware.",
+            backupSectionLabel(section),
+            t("common.unavailable"),
+            t("storageHistory.settingUnavailable"),
           ));
           continue;
         }
@@ -1734,12 +1752,12 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
         } catch (error) {
           let detail = String(error?.message || error);
           if (guardedCoolingSource && !await guardCoolingSchedule()) {
-            detail = COOLING_GUARD_ERROR;
+            detail = t("storageHistory.coolingGuardError");
           }
           skipped.push(createSettingsBackupRestoreItem(
             key,
-            section.label,
-            "Schrijven mislukt",
+            backupSectionLabel(section),
+            t("storageHistory.writeFailed"),
             detail,
             "error",
           ));
@@ -1755,8 +1773,8 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
           } else {
             skipped.push(createSettingsBackupRestoreItem(
               resultKey,
-              "Buitenunit",
-              "Niet toegepast",
+              t("storageHistory.outdoorUnit"),
+              t("storageHistory.notAppliedNoPeriod"),
               result.reason,
               "error",
             ));
@@ -1765,8 +1783,8 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       } catch (error) {
         skipped.push(createSettingsBackupRestoreItem(
           "odu_bottom_plate",
-          "Buitenunit",
-          "Herstellen mislukt",
+          t("storageHistory.outdoorUnit"),
+          t("storageHistory.restoreFailed"),
           String(error?.message || error),
           "error",
         ));
@@ -1777,9 +1795,9 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
         if (!hasEntity("openquattEnabled")) {
           skipped.push(createSettingsBackupRestoreItem(
             "openquattEnabled",
-            "Bediening",
-            "Niet beschikbaar",
-            "De OpenQuatt-regeling kon niet naar de backupwaarde worden gezet.",
+            t("backupSections.operation"),
+            t("common.unavailable"),
+            t("storageHistory.controlBackupValueUnavailable"),
           ));
         } else {
           try {
@@ -1788,8 +1806,8 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
           } catch (error) {
             skipped.push(createSettingsBackupRestoreItem(
               "openquattEnabled",
-              "Bediening",
-              "Schrijven mislukt",
+              t("backupSections.operation"),
+              t("storageHistory.writeFailed"),
               String(error?.message || error),
               "error",
             ));
@@ -1803,9 +1821,9 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
         setupCompletionSafe = false;
         skipped.push(createSettingsBackupRestoreItem(
           "usageTelemetryEnabled",
-          "Installatie",
-          "Gebruiksstatistieken niet beschikbaar",
-          "Setup kan niet veilig worden afgerond zolang deze instelling ontbreekt.",
+          t("backupSections.installation"),
+          t("storageHistory.telemetryUnavailable"),
+          t("storageHistory.setupUnsafeWithoutTelemetry"),
           "error",
         ));
       } else if (shouldDisableUsageTelemetry) {
@@ -1813,15 +1831,15 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
           await setEntityBackupValue("usageTelemetryEnabled", false);
           const telemetryDisabled = await verifyEntityBackupSwitchState("usageTelemetryEnabled", false);
           if (!telemetryDisabled) {
-            throw new Error("De controller bevestigde niet dat gebruiksstatistieken uitstaan.");
+            throw new Error(t("storageHistory.telemetryDisableUnconfirmed"));
           }
           applied.push("usageTelemetryEnabled");
         } catch (error) {
           setupCompletionSafe = false;
           skipped.push(createSettingsBackupRestoreItem(
             "usageTelemetryEnabled",
-            "Installatie",
-            "Gebruiksstatistieken uitschakelen mislukt",
+            t("backupSections.installation"),
+            t("storageHistory.telemetryDisableFailed"),
             String(error?.message || error),
             "error",
           ));
@@ -1838,8 +1856,8 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
         } catch (error) {
           skipped.push(createSettingsBackupRestoreItem(
             "setupComplete",
-            "Installatie",
-            "Setup bevestigen mislukt",
+            t("backupSections.installation"),
+            t("storageHistory.setupConfirmFailed"),
             String(error?.message || error),
             "error",
           ));
@@ -1847,17 +1865,17 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       } else if (shouldCompleteSetup && !setupCompletionSafe) {
         skipped.push(createSettingsBackupRestoreItem(
           "setupComplete",
-          "Installatie",
-          "Setup bewust niet afgerond",
-          "Gebruiksstatistieken konden niet veilig worden uitgeschakeld.",
+          t("backupSections.installation"),
+          t("storageHistory.setupDeliberatelyIncomplete"),
+          t("storageHistory.telemetryNotSafelyDisabled"),
           "error",
         ));
       } else if (Object.prototype.hasOwnProperty.call(draft.settings?.installation || {}, "setupComplete")) {
         skipped.push(createSettingsBackupRestoreItem(
           "setupComplete",
-          "Installatie",
-          "Bewust niet toegepast",
-          "De setup stond in de backup niet als voltooid.",
+          t("backupSections.installation"),
+          t("storageHistory.deliberatelyNotApplied"),
+          t("storageHistory.backupSetupIncomplete"),
         ));
       }
 
@@ -1876,10 +1894,14 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
         sourceSchemaVersion: draft.schema_version,
       };
       state.systemModal = "settings-backup-success";
-      state.controlNotice = `Backup hersteld (${applied.length} toegepast${skipped.length ? `, ${skipped.length} niet toegepast` : ""}${unknown.length ? `, ${unknown.length} onbekend` : ""}).`;
+      state.controlNotice = t("storageHistory.backupRestored", {
+        applied: applied.length,
+        skipped: skipped.length ? t("storageHistory.backupRestoredSkipped", { count: skipped.length }) : "",
+        unknown: unknown.length ? t("storageHistory.backupRestoredUnknown", { count: unknown.length }) : "",
+      });
       clearSettingsBackupDraft();
     } catch (error) {
-      state.settingsBackupError = `Backup herstellen mislukt. ${error.message}`;
+      state.settingsBackupError = t("storageHistory.backupRestoreFailed", { error: error.message });
       state.settingsBackupMqttPassword = "";
     } finally {
       state.settingsBackupBusy = false;
@@ -1950,7 +1972,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
     try {
       return await state.trendHistoryFetchPromise;
     } catch (error) {
-      const nextError = `Trendhistorie kon niet worden geladen. ${error.message}`;
+      const nextError = t("storageHistory.trendLoadFailed", { error: error.message });
       const changed = state.trendHistoryError !== nextError;
       state.trendHistoryError = nextError;
       state.trendHistoryRaw = "";
@@ -2035,7 +2057,7 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
     try {
       return await state.energyHistoryFetchPromise;
     } catch (error) {
-      const nextError = `Energiehistorie kon niet worden geladen. ${error.message}`;
+      const nextError = t("storageHistory.energyLoadFailed", { error: error.message });
       const changed = state.energyHistoryError !== nextError;
       state.energyHistoryError = nextError;
       state.energyHistoryRaw = "";
@@ -2061,8 +2083,8 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
   const storageHistoryActionHandlers = {
     "flush-trend-history": ({ triggerNamedButton }) => {
       return triggerNamedButton("trendHistoryFlush", {
-        successNotice: "Diagnosegeschiedenis is opgeslagen.",
-        errorPrefix: "Diagnosegeschiedenis kon niet worden opgeslagen",
+        successNotice: t("storageHistory.diagnosticsSaved"),
+        errorPrefix: t("storageHistory.diagnosticsSaveFailed"),
         refreshKeys: getSettingsStorageRefreshKeys(),
         refreshDelayMs: 500,
       }).then(() => {
@@ -2071,8 +2093,8 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
     },
     "flush-decision-log-history": ({ triggerNamedButton }) => {
       return triggerNamedButton("decisionLogHistoryFlush", {
-        successNotice: "Beslisloghistorie is opgeslagen.",
-        errorPrefix: "Beslisloghistorie kon niet worden opgeslagen",
+        successNotice: t("storageHistory.decisionLogSaved"),
+        errorPrefix: t("storageHistory.decisionLogSaveFailed"),
         refreshKeys: getSettingsStorageRefreshKeys(),
         refreshDelayMs: 500,
       }).then(() => {
@@ -2081,12 +2103,12 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       });
     },
     "clear-decision-log-history": ({ triggerNamedButton }) => {
-      if (!window.confirm("Beslisloghistorie wissen?\n\nAlle bewaarde gebeurtenissen worden verwijderd. De actuele beslislog blijft beschikbaar.")) {
+      if (!window.confirm(t("storageHistory.decisionLogClearConfirm"))) {
         return;
       }
       return triggerNamedButton("decisionLogHistoryClear", {
-        successNotice: "Beslisloghistorie is gewist.",
-        errorPrefix: "Beslisloghistorie kon niet worden gewist",
+        successNotice: t("storageHistory.decisionLogCleared"),
+        errorPrefix: t("storageHistory.decisionLogClearFailed"),
         refreshKeys: getSettingsStorageRefreshKeys(),
         refreshDelayMs: 500,
       }).then(() => {
@@ -2096,8 +2118,8 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
     },
     "save-lifetime-energy-history": ({ triggerNamedButton }) => {
       return triggerNamedButton("lifetimeEnergyHistoryCapture", {
-        successNotice: "Energiehistorie is opgeslagen.",
-        errorPrefix: "Energiehistorie kon niet worden opgeslagen",
+        successNotice: t("storageHistory.energySaved"),
+        errorPrefix: t("storageHistory.energySaveFailed"),
         refreshKeys: getSettingsStorageRefreshKeys(),
         refreshDelayMs: 500,
       }).then(() => {
@@ -2111,12 +2133,12 @@ const COOLING_GUARD_ERROR = "Koelvenster niet veilig.";
       });
     },
     "clear-lifetime-energy-history": ({ triggerNamedButton }) => {
-      if (!window.confirm("Energiehistorie wissen?\n\nAlle bewaarde dagtotalen worden verwijderd. Dit heeft geen invloed op de werking van je warmtepomp.")) {
+      if (!window.confirm(t("storageHistory.energyClearConfirm"))) {
         return;
       }
       return triggerNamedButton("lifetimeEnergyHistoryClear", {
-        successNotice: "Energiehistorie is gewist.",
-        errorPrefix: "Energiehistorie kon niet worden gewist",
+        successNotice: t("storageHistory.energyCleared"),
+        errorPrefix: t("storageHistory.energyClearFailed"),
         refreshKeys: getSettingsStorageRefreshKeys(),
         refreshDelayMs: 500,
       }).then(() => {

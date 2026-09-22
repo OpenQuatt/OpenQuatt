@@ -72,6 +72,12 @@ De web-app draait lokaal op je eigen netwerk. Je gebruikt dus geen cloudaccount 
 
 Wil je de interface eerst rustig bekijken zonder echte hardware, open dan de [web-app demo op GitHub Pages](https://openquatt.github.io/OpenQuatt/demo/). Die gebruikt dezelfde look-and-feel in mockmodus.
 
+## Taal kiezen
+
+De web-app is volledig beschikbaar in het Nederlands en Engels. Open rechtsboven het paneel **Weergave en systeem** en kies onder **Taal / Language** voor `Nederlands` of `English`. De keuze wordt lokaal in de browser bewaard en blijft na herladen en een controllerherstart actief. Zonder opgeslagen keuze blijft Nederlands de standaardtaal.
+
+De taalkeuze vertaalt de interface, meldingen, statussen en datum-/getalopmaak. Technische firmwarewaarden, entitynamen en API-/MQTT-waarden blijven ongewijzigd zodat koppelingen en backupbestanden compatibel blijven.
+
 ## Eerste keer: Quick Start
 
 Na de eerste installatie opent de web-app Quick Start zolang de basisinstallatie nog niet is afgerond.

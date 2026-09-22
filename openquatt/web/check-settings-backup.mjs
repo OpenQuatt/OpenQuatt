@@ -34,11 +34,12 @@ function collectDuplicateBackupKeys(sections) {
 }
 
 function validateSectionShape(section) {
+  const hasLabel = (typeof section.label === "string" && section.label.trim())
+    || (typeof section.labelKey === "string" && section.labelKey.trim());
   return section
     && typeof section.id === "string"
     && section.id.trim()
-    && typeof section.label === "string"
-    && section.label.trim()
+    && Boolean(hasLabel)
     && Array.isArray(section.keys);
 }
 
@@ -90,7 +91,7 @@ export async function checkSettingsBackupConfig(configPath = DEFAULT_CONFIG_PATH
 
   const invalidSections = backupSections
     .filter((section) => !validateSectionShape(section))
-    .map((section) => String(section?.id || section?.label || "<unknown>"));
+    .map((section) => String(section?.id || section?.label || section?.labelKey || "<unknown>"));
   if (invalidSections.length) {
     errors.push(`invalid backup sections: ${formatList(invalidSections)}`);
   }

@@ -10,6 +10,7 @@ import { formatMqttSensorValiditySummary, getMqttStatusDetail, getMqttStatusLabe
 import { formatSettingsOptionLabel, getSelectEntityOptions, getSettingsStatValue, getSettingsTextStatValue, renderSettingsInfoToggle, renderSettingsIntegrationSwitchCard, renderSettingsSection } from "./controls.js";
 import { getWaterSupplyCorrectionView } from "./water.js";
 import { escapeHtml } from "../core/html.js";
+import { formatNumber, optionLabel, t } from "../i18n/index.js";
 
   export function renderSettingsOpenThermCicSection() {
     const hasOpenThermConfig = hasEntity("otEnabled");
@@ -33,14 +34,14 @@ import { escapeHtml } from "../core/html.js";
       </div>
     `;
 
-    const renderBinaryDiagnosticItem = (key, label, activeLabel = "Actief", inactiveLabel = "Normaal", options = {}) => {
+    const renderBinaryDiagnosticItem = (key, label, activeLabel = null, inactiveLabel = null, options = {}) => {
       if (!hasEntity(key)) {
         return "";
       }
       const active = isInstallationMonitoringBinaryActive(key);
       return renderDiagnosticItem({
         label,
-        value: active ? activeLabel : inactiveLabel,
+        value: active ? (activeLabel ?? t("settingsIntegrations.srcActive")) : (inactiveLabel ?? t("settingsIntegrations.srcNormal")),
         active: (options.warningWhenActive && active) || (options.warningWhenInactive && !active),
       });
     };
@@ -71,138 +72,138 @@ import { escapeHtml } from "../core/html.js";
 
     const urlField = hasEntity("cicFeedUrl") ? `
       <details class="oq-settings-cic-address"${state.cicAddressOpen ? " open" : ""}>
-        <summary data-oq-action="toggle-cic-address">Adres aanpassen</summary>
+        <summary data-oq-action="toggle-cic-address">${escapeHtml(t("settingsIntegrations.cicAddressToggle"))}</summary>
       <article class="oq-settings-integration-card oq-settings-integration-card--wide oq-settings-cic-feed-url" data-oq-settings-field="cicFeedUrl">
         <div class="oq-settings-integration-card-head">
-          <h4>Adres van de CiC JSON-feed</h4>
+          <h4>${escapeHtml(t("settingsIntegrations.cicAddressTitle"))}</h4>
         </div>
         <label class="oq-settings-control oq-settings-control--text">
           <input
             class="oq-helper-input oq-settings-integration-url-input"
             type="url"
-            aria-label="Adres van de CiC JSON-feed"
+            aria-label="${escapeHtml(t("settingsIntegrations.cicAddressTitle"))}"
             data-oq-field="cicFeedUrl"
             value="${escapeHtml(String(getInputDraftValue("cicFeedUrl") || ""))}"
-            placeholder="http://<host>:<poort>/beta/feed/data.json"
+            placeholder="${escapeHtml(t("settingsIntegrations.cicAddressPlaceholder"))}"
             autocomplete="off"
             spellcheck="false"
             ${state.loadingEntities ? "disabled" : ""}
           >
         </label>
-        <p>Vul het IP-adres van jouw CiC in. Dit is het adres van de gegevensbron, niet van OpenQuatt.</p>
+        <p>${escapeHtml(t("settingsIntegrations.cicAddressNote"))}</p>
       </article>
       </details>
     ` : "";
 
-    const otDiagnosticPanel = renderDiagnosticGroup("OpenTherm thermostaat (OTT)", [
+    const otDiagnosticPanel = renderDiagnosticGroup(t("settingsIntegrations.diagGroupOt"), [
       hasEntity("otLinkProblem") ? renderDiagnosticItem({
-        label: "Thermostaatlink",
+        label: t("settingsIntegrations.diagOtLink"),
         value: !otEnabled
-          ? "Uitgeschakeld"
-          : isInstallationMonitoringBinaryActive("otLinkProblem") ? "Probleem" : "OK",
+          ? t("settingsIntegrations.diagOff")
+          : isInstallationMonitoringBinaryActive("otLinkProblem") ? t("settingsIntegrations.diagProblem") : t("settingsIntegrations.diagOk"),
         active: otEnabled && isInstallationMonitoringBinaryActive("otLinkProblem"),
       }) : "",
-      renderBinaryDiagnosticItem("otThermostatStatusValid", "Statusbericht (ID 0) actueel", "Ja", "Nee"),
-      renderBinaryDiagnosticItem("otThermostatChEnable", "Thermostaat CH", "Actief", "Normaal"),
-      renderBinaryDiagnosticItem("otThermostatDhwEnable", "Thermostaat tapwater", "Toegestaan", "Geblokkeerd"),
-      renderBinaryDiagnosticItem("otThermostatCoolingEnable", "Thermostaat koeling", "Actief", "Normaal"),
-      renderValueDiagnosticItem("otControlSetpoint", "Control setpoint"),
-      renderValueDiagnosticItem("otRoomSetpoint", "Room setpoint", { fallbackKey: "roomSetpoint" }),
-      renderValueDiagnosticItem("otRoomTemp", "Room temperature", { fallbackKey: "roomTemp" }),
+      renderBinaryDiagnosticItem("otThermostatStatusValid", t("settingsIntegrations.diagOtStatus"), t("settingsIntegrations.diagYes"), t("settingsIntegrations.diagNo")),
+      renderBinaryDiagnosticItem("otThermostatChEnable", t("settingsIntegrations.diagOtCh"), t("settingsIntegrations.diagActive"), t("settingsIntegrations.diagNormal")),
+      renderBinaryDiagnosticItem("otThermostatDhwEnable", t("settingsIntegrations.diagOtDhw"), t("settingsIntegrations.diagAllowed"), t("settingsIntegrations.diagBlocked")),
+      renderBinaryDiagnosticItem("otThermostatCoolingEnable", t("settingsIntegrations.diagOtCool"), t("settingsIntegrations.diagActive"), t("settingsIntegrations.diagNormal")),
+      renderValueDiagnosticItem("otControlSetpoint", t("settingsIntegrations.diagOtControl")),
+      renderValueDiagnosticItem("otRoomSetpoint", t("settingsIntegrations.diagOtRoomSetpoint"), { fallbackKey: "roomSetpoint" }),
+      renderValueDiagnosticItem("otRoomTemp", t("settingsIntegrations.diagOtRoomTemp"), { fallbackKey: "roomTemp" }),
     ]);
 
-    const boilerDiagnosticPanel = renderDiagnosticGroup("Ketelregeling", [
+    const boilerDiagnosticPanel = renderDiagnosticGroup(t("settingsIntegrations.diagGroupBoiler"), [
       hasEntity("boilerConnection") ? renderDiagnosticItem({
-        label: "Aansluiting",
-        value: otbSelected ? "OpenTherm (OTB)" : "Aan/uit (R1)",
+        label: t("settingsIntegrations.diagBoilerConnection"),
+        value: otbSelected ? t("settingsInstallation.boilerConnectionOt") : t("settingsInstallation.boilerConnectionR1"),
       }) : "",
-      renderBinaryDiagnosticItem("boilerCommandValid", "Commando geldig", "Ja", "Nee", { warningWhenInactive: true }),
-      renderBinaryDiagnosticItem("boilerCommandActive", "Warmtevraag", "Actief", "Uit"),
-      renderValueDiagnosticItem("boilerCommandSource", "Bron"),
-      renderValueDiagnosticItem("boilerCommandTargetTemperature", "Doeltemperatuur"),
-      renderValueDiagnosticItem("boilerCommandRequestedPower", "Gevraagd vermogen"),
-      renderValueDiagnosticItem("boilerCommandAge", "Commando-ouderdom"),
-      renderValueDiagnosticItem("boilerBlockReason", "Blokkadereden"),
-      renderValueDiagnosticItem("boilerStartThermalGuard", "Warme-startbeslissing"),
-      renderValueDiagnosticItem("boilerStartThermalSafeCeiling", "Warme-startgrens"),
+      renderBinaryDiagnosticItem("boilerCommandValid", t("settingsIntegrations.diagBoilerCmdValid"), t("settingsIntegrations.diagYes"), t("settingsIntegrations.diagNo"), { warningWhenInactive: true }),
+      renderBinaryDiagnosticItem("boilerCommandActive", t("settingsIntegrations.diagBoilerCmdActive"), t("settingsIntegrations.diagActive"), t("settingsIntegrations.diagOffValue")),
+      renderValueDiagnosticItem("boilerCommandSource", t("settingsIntegrations.diagBoilerCmdSource")),
+      renderValueDiagnosticItem("boilerCommandTargetTemperature", t("settingsIntegrations.diagBoilerTarget")),
+      renderValueDiagnosticItem("boilerCommandRequestedPower", t("settingsIntegrations.diagBoilerPower")),
+      renderValueDiagnosticItem("boilerCommandAge", t("settingsIntegrations.diagBoilerAge")),
+      renderValueDiagnosticItem("boilerBlockReason", t("settingsIntegrations.diagBoilerBlock")),
+      renderValueDiagnosticItem("boilerStartThermalGuard", t("settingsIntegrations.diagBoilerWarmDecision")),
+      renderValueDiagnosticItem("boilerStartThermalSafeCeiling", t("settingsIntegrations.diagBoilerWarmCeiling")),
     ]);
 
     const otbDiagnosticRows = [
       otbSelected && hasEntity("otbConnectionState") ? renderDiagnosticItem({
-        label: "Fysieke aansluiting",
+        label: t("settingsIntegrations.diagOtbPhysical"),
         value: otbConnectionState === "ot_verified"
-          ? "Geverifieerd"
+          ? t("settingsIntegrations.diagOtbVerified")
           : otbConnectionState === "ot_no_response"
-            ? "Geen reactie"
-            : otbConnectionState === "ot_link_lost" ? "Verbinding verloren" : "Controleren",
+            ? t("settingsIntegrations.diagOtbNoResponse")
+            : otbConnectionState === "ot_link_lost" ? t("settingsIntegrations.diagOtbLost") : t("settingsIntegrations.diagOtbChecking"),
         active: otbConnectionProblem,
       }) : "",
       hasEntity("otbLinkAvailable") ? renderDiagnosticItem({
-        label: "Ketellink",
+        label: t("settingsIntegrations.diagOtbLink"),
         value: !otbSelected
-          ? "Niet geselecteerd"
-          : isInstallationMonitoringBinaryActive("otbLinkAvailable") ? "OK" : "Niet verbonden",
+          ? t("settingsIntegrations.diagOtbNotSelected")
+          : isInstallationMonitoringBinaryActive("otbLinkAvailable") ? t("settingsIntegrations.diagOk") : t("header.connNotConnected"),
         active: otbSelected && !isInstallationMonitoringBinaryActive("otbLinkAvailable"),
       }) : "",
     ];
     if (otbSelected) {
       otbDiagnosticRows.push(
-        renderBinaryDiagnosticItem("otbChCommand", "CH-commando", "Actief", "Uit"),
-        renderValueDiagnosticItem("otbControlSetpointCommand", "TSet-commando"),
-        renderBinaryDiagnosticItem("otbChActive", "CV actief", "Actief", "Uit"),
-        renderBinaryDiagnosticItem("otbFlameOn", "Vlam", "Aan", "Uit"),
-        renderBinaryDiagnosticItem("otbDhwActive", "Tapwater actief", "Actief", "Uit"),
-        renderValueDiagnosticItem("otbRelativeModulation", "Modulatie"),
-        renderValueDiagnosticItem("otbChPressure", "Waterdruk"),
-        renderValueDiagnosticItem("otbBoilerWaterTemp", "Keteltemperatuur"),
-        renderValueDiagnosticItem("otbReturnWaterTemp", "Retourtemperatuur"),
-        renderValueDiagnosticItem("otbDhwTemp", "Tapwatertemperatuur"),
-        renderBinaryDiagnosticItem("otbFaultIndication", "Ketelfout", "Actief", "Geen", { warningWhenActive: true }),
-        renderBinaryDiagnosticItem("otbDiagnosticIndication", "Diagnosemelding", "Actief", "Geen", { warningWhenActive: true }),
-        renderBinaryDiagnosticItem("otbServiceRequest", "Service gevraagd", "Ja", "Nee", { warningWhenActive: true }),
-        renderBinaryDiagnosticItem("otbLowWaterPressure", "Lage waterdruk", "Ja", "Nee", { warningWhenActive: true }),
-        renderBinaryDiagnosticItem("otbFlameFault", "Vlamstoring", "Ja", "Nee", { warningWhenActive: true }),
-        renderBinaryDiagnosticItem("otbAirPressureFault", "Luchtdrukstoring", "Ja", "Nee", { warningWhenActive: true }),
-        renderBinaryDiagnosticItem("otbWaterOverTemp", "Overtemperatuur", "Ja", "Nee", { warningWhenActive: true }),
-        renderValueDiagnosticItem("otbOemFaultCode", "OEM-foutcode"),
-        renderValueDiagnosticItem("otbOemDiagnosticCode", "OEM-diagnosecode"),
-        renderValueDiagnosticItem("otbLastResponseAge", "Laatste response"),
-        renderValueDiagnosticItem("otbLastResponseId", "Laatste message-ID"),
-        renderValueDiagnosticItem("otbResponseCount", "Geldige responses"),
+        renderBinaryDiagnosticItem("otbChCommand", t("settingsIntegrations.diagOtbChCmd"), t("settingsIntegrations.diagActive"), t("settingsIntegrations.diagOffValue")),
+        renderValueDiagnosticItem("otbControlSetpointCommand", t("settingsIntegrations.diagOtbTSet")),
+        renderBinaryDiagnosticItem("otbChActive", t("settingsIntegrations.diagOtbChActive"), t("settingsIntegrations.diagActive"), t("settingsIntegrations.diagOffValue")),
+        renderBinaryDiagnosticItem("otbFlameOn", t("settingsIntegrations.diagOtbFlame"), t("settingsIntegrations.diagOn"), t("settingsIntegrations.diagOffValue")),
+        renderBinaryDiagnosticItem("otbDhwActive", t("settingsIntegrations.diagOtbDhw"), t("settingsIntegrations.diagActive"), t("settingsIntegrations.diagOffValue")),
+        renderValueDiagnosticItem("otbRelativeModulation", t("settingsIntegrations.diagOtbMod")),
+        renderValueDiagnosticItem("otbChPressure", t("settingsIntegrations.diagOtbPressure")),
+        renderValueDiagnosticItem("otbBoilerWaterTemp", t("settingsIntegrations.diagOtbBoilerTemp")),
+        renderValueDiagnosticItem("otbReturnWaterTemp", t("settingsIntegrations.diagOtbReturnTemp")),
+        renderValueDiagnosticItem("otbDhwTemp", t("settingsIntegrations.diagOtbDhwTemp")),
+        renderBinaryDiagnosticItem("otbFaultIndication", t("settingsIntegrations.diagOtbFault"), t("settingsIntegrations.diagActive"), t("settingsIntegrations.diagNone"), { warningWhenActive: true }),
+        renderBinaryDiagnosticItem("otbDiagnosticIndication", t("settingsIntegrations.diagOtbDiag"), t("settingsIntegrations.diagActive"), t("settingsIntegrations.diagNone"), { warningWhenActive: true }),
+        renderBinaryDiagnosticItem("otbServiceRequest", t("settingsIntegrations.diagOtbService"), t("settingsIntegrations.diagYes"), t("settingsIntegrations.diagNo"), { warningWhenActive: true }),
+        renderBinaryDiagnosticItem("otbLowWaterPressure", t("settingsIntegrations.diagOtbLowPressure"), t("settingsIntegrations.diagYes"), t("settingsIntegrations.diagNo"), { warningWhenActive: true }),
+        renderBinaryDiagnosticItem("otbFlameFault", t("settingsIntegrations.diagOtbFlameFault"), t("settingsIntegrations.diagYes"), t("settingsIntegrations.diagNo"), { warningWhenActive: true }),
+        renderBinaryDiagnosticItem("otbAirPressureFault", t("settingsIntegrations.diagOtbAirFault"), t("settingsIntegrations.diagYes"), t("settingsIntegrations.diagNo"), { warningWhenActive: true }),
+        renderBinaryDiagnosticItem("otbWaterOverTemp", t("settingsIntegrations.diagOtbOverTemp"), t("settingsIntegrations.diagYes"), t("settingsIntegrations.diagNo"), { warningWhenActive: true }),
+        renderValueDiagnosticItem("otbOemFaultCode", t("settingsIntegrations.diagOtbOemFault")),
+        renderValueDiagnosticItem("otbOemDiagnosticCode", t("settingsIntegrations.diagOtbOemDiag")),
+        renderValueDiagnosticItem("otbLastResponseAge", t("settingsIntegrations.diagOtbLastAge")),
+        renderValueDiagnosticItem("otbLastResponseId", t("settingsIntegrations.diagOtbLastId")),
+        renderValueDiagnosticItem("otbResponseCount", t("settingsIntegrations.diagOtbResponses")),
       );
     }
-    const otbDiagnosticPanel = renderDiagnosticGroup("OpenTherm ketel (OTB)", otbDiagnosticRows);
+    const otbDiagnosticPanel = renderDiagnosticGroup(t("settingsIntegrations.diagGroupOtb"), otbDiagnosticRows);
 
-    const cicDiagnosticPanel = renderDiagnosticGroup("CiC-feed", [
+    const cicDiagnosticPanel = renderDiagnosticGroup(t("settingsIntegrations.diagGroupCic"), [
       hasEntity("cicJsonFeedOk") ? renderDiagnosticItem({
-        label: "JSON-feed",
+        label: t("settingsIntegrations.diagCicJson"),
         value: !cicPollingEnabled
-          ? "Polling uit"
-          : isInstallationMonitoringBinaryActive("cicJsonFeedOk") ? "OK" : "Probleem",
+          ? t("settingsIntegrations.diagCicPollingOff")
+          : isInstallationMonitoringBinaryActive("cicJsonFeedOk") ? t("settingsIntegrations.diagOk") : t("settingsIntegrations.diagProblem"),
         active: cicPollingEnabled && !isInstallationMonitoringBinaryActive("cicJsonFeedOk"),
       }) : "",
       hasEntity("cicDataStale") ? renderDiagnosticItem({
-        label: "Data",
+        label: t("settingsIntegrations.diagCicData"),
         value: !cicPollingEnabled
-          ? "Polling uit"
-          : isInstallationMonitoringBinaryActive("cicDataStale") ? "Verouderd" : "Actueel",
+          ? t("settingsIntegrations.diagCicPollingOff")
+          : isInstallationMonitoringBinaryActive("cicDataStale") ? t("settingsIntegrations.diagCicStale") : t("settingsIntegrations.diagCicCurrent"),
         active: cicPollingEnabled && isInstallationMonitoringBinaryActive("cicDataStale"),
       }) : "",
-      renderBinaryDiagnosticItem("cicChEnabled", "CH-vraag", "Actief", "Normaal"),
-      renderBinaryDiagnosticItem("cicCoolingEnabled", "Koeling", "Actief", "Normaal"),
-      renderValueDiagnosticItem("cicBoilerWaterPressure", "Waterdruk"),
-      renderValueDiagnosticItem("cicControlSetpoint", "Control setpoint"),
-      renderValueDiagnosticItem("cicRoomSetpoint", "Room setpoint"),
-      renderValueDiagnosticItem("cicRoomTemp", "Room temperature"),
-      renderValueDiagnosticItem("cicFlowrate", "Flow"),
-      renderValueDiagnosticItem("cicLastSuccessAge", "Laatste succes"),
+      renderBinaryDiagnosticItem("cicChEnabled", t("settingsIntegrations.diagCicCh"), t("settingsIntegrations.diagActive"), t("settingsIntegrations.diagNormal")),
+      renderBinaryDiagnosticItem("cicCoolingEnabled", t("settingsIntegrations.diagCicCooling"), t("settingsIntegrations.diagActive"), t("settingsIntegrations.diagNormal")),
+      renderValueDiagnosticItem("cicBoilerWaterPressure", t("settingsIntegrations.diagOtbPressure")),
+      renderValueDiagnosticItem("cicControlSetpoint", t("settingsIntegrations.diagOtControl")),
+      renderValueDiagnosticItem("cicRoomSetpoint", t("settingsIntegrations.diagOtRoomSetpoint")),
+      renderValueDiagnosticItem("cicRoomTemp", t("settingsIntegrations.diagOtRoomTemp")),
+      renderValueDiagnosticItem("cicFlowrate", t("settingsIntegrations.diagCicFlow")),
+      renderValueDiagnosticItem("cicLastSuccessAge", t("settingsIntegrations.diagCicLastSuccess")),
     ]);
 
     const diagnosticsPanel = otDiagnosticPanel || boilerDiagnosticPanel || otbDiagnosticPanel || cicDiagnosticPanel ? `
       <details class="oq-settings-integration-diagnostics"${state.integrationDiagnosticsOpen ? " open" : ""}>
         <summary data-oq-action="toggle-integration-diagnostics">
-          <strong>Diagnostiek</strong>
-          <span>Thermostaat-, ketel- en CiC-signalen</span>
+          <strong>${escapeHtml(t("settingsIntegrations.diagTitle"))}</strong>
+          <span>${escapeHtml(t("settingsIntegrations.diagSub"))}</span>
         </summary>
         <div class="oq-settings-integration-diagnostic-grid">
           ${otDiagnosticPanel}
@@ -214,19 +215,19 @@ import { escapeHtml } from "../core/html.js";
     ` : "";
 
     return renderSettingsSection(
-      "Integratie",
-      "OpenTherm en CiC",
-      "Kies welke verbindingen je gebruikt.",
+      t("settingsIntegrations.groupIntegrations"),
+      t("settingsIntegrations.otTitle"),
+      t("settingsIntegrations.otCopy"),
       `
         <div class="oq-settings-cic-connections">
-          ${renderSettingsIntegrationSwitchCard("otEnabled", "OpenTherm-thermostaat", "Thermostaat rechtstreeks op OTT.", "Leest de aangesloten thermostaat. Kies onder Sensorselectie welke thermostaatwaarden je gebruikt. De aansluiting van de cv-ketel stel je in onder Instellingen → Installatie.")}
+          ${renderSettingsIntegrationSwitchCard("otEnabled", t("settingsIntegrations.otSwitchTitle"), t("settingsIntegrations.otSwitchCopy"), t("settingsIntegrations.otSwitchNote"))}
           ${hasCicConfig ? `
             <div class="oq-settings-cic-input">
-              ${renderSettingsIntegrationSwitchCard("cicPollingEnabled", "CiC JSON-feed inlezen", "Gegevens uit de CiC gebruiken in OpenQuatt.", "De CiC is de originele Quatt-controller. OpenQuatt leest via je lokale netwerk onder meer kamerwaarden en flow uit de JSON-feed. Stel het feed-adres in en kies onder Sensorselectie welke CiC-waarden je gebruikt. Dit heette eerder CIC-polling.")}
+              ${renderSettingsIntegrationSwitchCard("cicPollingEnabled", t("settingsIntegrations.cicSwitchTitle"), t("settingsIntegrations.cicSwitchCopy"), t("settingsIntegrations.cicSwitchNote"))}
               ${urlField}
             </div>
           ` : ""}
-          ${renderSettingsIntegrationSwitchCard("cicCompatibilityMode", "Quatt-app via CiC", "Buitenunitgegevens laten zien in de Quatt-app.", "Verbind M2 via een aparte RS485-kabel met de Modbuspoort van de CiC. Deze Modbusverbinding geeft alleen buitenunitgegevens door, geen thermostaatgegevens. OpenQuatt blijft regelen. De CiC heeft voeding en netwerk nodig; JSON-feed inlezen hoeft hiervoor niet aan. Dit heette eerder CiC-compatibiliteit.")}
+          ${renderSettingsIntegrationSwitchCard("cicCompatibilityMode", t("settingsIntegrations.cicCompatTitle"), t("settingsIntegrations.cicCompatCopy"), t("settingsIntegrations.cicCompatNote"))}
         </div>
         ${diagnosticsPanel}
       `,
@@ -289,9 +290,9 @@ import { escapeHtml } from "../core/html.js";
     };
     const getMqttUnavailableSourceReason = (topicKey = "") => {
       if (!mqttAvailable) {
-        return "MQTT staat uit";
+        return t("settingsIntegrations.mqttOff");
       }
-      return isMqttInputTopicEnabled(topicKey) ? "" : "MQTT-topic staat uit";
+      return isMqttInputTopicEnabled(topicKey) ? "" : t("settingsIntegrations.mqttTopicOff");
     };
     const isMqttOption = (option) => /\bMQTT\b/i.test(String(option || ""));
     const isSourceAvailable = (option, config = {}) => {
@@ -323,36 +324,38 @@ import { escapeHtml } from "../core/html.js";
     };
     const getUnavailableSourceReason = (option, config = {}) => {
       if (option === "CIC" && !cicAvailable) {
-        return "CIC-polling staat uit";
+        return t("settingsIntegrations.unavCicOff");
       }
       if (option === "OT thermostat" && !otAvailable) {
-        return "OpenTherm staat uit";
+        return t("settingsIntegrations.unavOtOff");
       }
       if (isHaInputOption(option) && !hasHaSource(config)) {
-        return "HA-bron ongeldig";
+        return t("settingsIntegrations.unavHaInvalid");
       }
       if (option === "CIC or HA input" && !cicAvailable && !hasHaSource(config)) {
-        return "CIC en HA ontbreken";
+        return t("settingsIntegrations.unavCicHaMissing");
       }
       if (isApiInputOption(option) && !hasApiInputSource(config)) {
-        return "API-invoer ontbreekt";
+        return t("settingsIntegrations.unavApiMissing");
       }
       if (isMqttOption(option)) {
         return getMqttUnavailableSourceReason(getMqttTopicKey(config));
       }
       if (option === "Flowmeter HP2" && !hasEntity("hp2Flow")) {
-        return "HP2-flow ontbreekt";
+        return t("settingsIntegrations.unavHp2Flow");
       }
       if (option === "Local aggregate HP1/HP2" && !hasEntity("flowLocal") && !hasEntity("hp2Flow")) {
-        return "Lokale flow ontbreekt";
+        return t("settingsIntegrations.unavLocalFlow");
       }
       return "";
     };
-    const sourceStateText = (key, activeLabel = "Actief", inactiveLabel = "Normaal") => {
+    const sourceStateText = (key, activeLabel = null, inactiveLabel = null) => {
       if (!hasEntity(key)) {
         return "";
       }
-      return isInstallationMonitoringBinaryActive(key) ? activeLabel : inactiveLabel;
+      return isInstallationMonitoringBinaryActive(key)
+        ? (activeLabel ?? t("settingsIntegrations.srcActive"))
+        : (inactiveLabel ?? t("settingsIntegrations.srcNormal"));
     };
     const hasUsableSourceValue = (key) => {
       if (!key || !hasEntity(key)) {
@@ -370,7 +373,7 @@ import { escapeHtml } from "../core/html.js";
     };
     const invalidSourceValueWarning = (key) => hasUsableSourceValue(key)
       ? ""
-      : "De ingestelde bron levert momenteel geen geldige waarde.";
+      : t("settingsIntegrations.srcInvalidValue");
     const formatSourceOptionLabel = (option, config = {}) => {
       const value = String(option || "").trim();
       if (!value) {
@@ -413,11 +416,11 @@ import { escapeHtml } from "../core/html.js";
           const qSource = String(getEntityValue("qFlowSource") || "").trim();
           const hpGeneration = String(getEntityValue("hpGeneration") || "").trim();
           if (qSource === "Local" || (qSource === "Auto" && hpGeneration === "V1")) {
-            return qSource === "Auto" ? "Lokaal (auto)" : "Lokaal";
+            return qSource === "Auto" ? t("settingsIntegrations.flowLocalAuto") : optionLabel("Local");
           }
-          return firstAvailableSourceLabel(formattedSourceValue("outdoorUnitFlowMode"), qSource === "Auto" ? "Buitenunit (auto)" : "Buitenunit");
+          return firstAvailableSourceLabel(formattedSourceValue("outdoorUnitFlowMode"), qSource === "Auto" ? t("settingsIntegrations.flowOutdoorAuto") : optionLabel("Outdoor unit"));
         }
-        return firstAvailableSourceLabel(formattedSourceValue("outdoorUnitFlowMode"), "Quatt-flow");
+        return firstAvailableSourceLabel(formattedSourceValue("outdoorUnitFlowMode"), t("settingsIntegrations.flowQuatt"));
       }
       return formatSettingsOptionLabel(source);
     };
@@ -446,9 +449,9 @@ import { escapeHtml } from "../core/html.js";
         && isInstallationMonitoringBinaryActive("mqttOutsideTemperatureValid")
         && !Number.isNaN(mqttTemp);
       const candidates = [
-        unitValid ? { label: "Buitenunit", value: unitTemp } : null,
-        haValid ? { label: "HA-invoer", value: haTemp } : null,
-        apiValid ? { label: "API-invoer", value: apiTemp } : null,
+        unitValid ? { label: optionLabel("Outdoor unit"), value: unitTemp } : null,
+        haValid ? { label: optionLabel("HA input"), value: haTemp } : null,
+        apiValid ? { label: optionLabel("API input"), value: apiTemp } : null,
         mqttValid ? { label: "MQTT", value: mqttTemp } : null,
       ].filter(Boolean);
       if (candidates.length) {
@@ -481,17 +484,17 @@ import { escapeHtml } from "../core/html.js";
     const getCoolingDewPointUsedSource = () => {
       const source = String(getEntityValue("coolingDewPointSource") || "").trim();
       if (source === "Home Assistant") {
-        return isValidNumericSource("coolingDewPointHa", "coolingDewPointHaValid") ? "HA-invoer" : "HA-invoer ontbreekt";
+        return isValidNumericSource("coolingDewPointHa", "coolingDewPointHaValid") ? optionLabel("HA input") : t("settingsIntegrations.dewHaMissing");
       }
       if (source === "API input") {
-        return isValidNumericSource("apiInputCoolingDewPoint", "apiInputCoolingDewPointValid") ? "API-invoer" : "API-invoer ontbreekt of verouderd";
+        return isValidNumericSource("apiInputCoolingDewPoint", "apiInputCoolingDewPointValid") ? optionLabel("API input") : t("settingsIntegrations.dewApiMissing");
       }
       if (source === "MQTT") {
         const mqttUnavailableReason = getMqttUnavailableSourceReason("cooling_dew_point");
         if (mqttUnavailableReason) {
           return mqttUnavailableReason;
         }
-        return isValidNumericSource("mqttCoolingDewPoint", "mqttCoolingDewPointValid") ? "MQTT" : "MQTT ontbreekt of verouderd";
+        return isValidNumericSource("mqttCoolingDewPoint", "mqttCoolingDewPointValid") ? "MQTT" : t("settingsIntegrations.dewMqttMissing");
       }
 
       const haValid = isValidNumericSource("coolingDewPointHa", "coolingDewPointHaValid");
@@ -499,8 +502,8 @@ import { escapeHtml } from "../core/html.js";
       const mqttValid = isMqttInputTopicEnabled("cooling_dew_point") &&
         isValidNumericSource("mqttCoolingDewPoint", "mqttCoolingDewPointValid");
       const candidates = [
-        haValid ? { label: "HA-invoer", value: getNumericSourceValue("coolingDewPointHa") } : null,
-        apiValid ? { label: "API-invoer", value: getNumericSourceValue("apiInputCoolingDewPoint") } : null,
+        haValid ? { label: optionLabel("HA input"), value: getNumericSourceValue("coolingDewPointHa") } : null,
+        apiValid ? { label: optionLabel("API input"), value: getNumericSourceValue("apiInputCoolingDewPoint") } : null,
         mqttValid ? { label: "MQTT", value: getNumericSourceValue("mqttCoolingDewPoint") } : null,
       ].filter((candidate) => candidate && Number.isFinite(candidate.value));
       if (candidates.length) {
@@ -572,20 +575,20 @@ import { escapeHtml } from "../core/html.js";
     };
     const inputSourceCopy = {
       ha: {
-        label: "HA-invoer",
-        valid: ["Beschikbaar", "Home Assistant geeft dit signaal geldig door. OpenQuatt mag deze HA-invoer gebruiken."],
-        invalid: ["Niet geldig", "Home Assistant geeft dit signaal niet geldig door. OpenQuatt gebruikt deze HA-invoer dan niet als bron."],
+        label: optionLabel("HA input"),
+        valid: [t("settingsIntegrations.haValid"), t("settingsIntegrations.haValidCopy")],
+        invalid: [t("settingsIntegrations.haInvalid"), t("settingsIntegrations.haInvalidCopy")],
       },
       mqtt: {
         label: "MQTT",
-        valid: ["Geldig", "MQTT heeft een geldige, recente waarde ontvangen. OpenQuatt mag deze MQTT-invoer gebruiken."],
-        invalid: ["Ongeldig", "MQTT heeft nog geen geldige recente waarde ontvangen. OpenQuatt gebruikt deze MQTT-invoer dan niet als bron."],
+        valid: [t("settingsIntegrations.mqttValid"), t("settingsIntegrations.mqttValidCopy")],
+        invalid: [t("settingsIntegrations.mqttInvalid"), t("settingsIntegrations.mqttInvalidCopy")],
       },
       api: {
-        label: "API-invoer",
-        valid: ["Beschikbaar", "API-invoer heeft een geldige, recente waarde. OpenQuatt mag deze bron gebruiken."],
-        stale: ["Verouderd", "API-invoer heeft geen geldige recente waarde meer. OpenQuatt gebruikt deze bron dan niet."],
-        missing: ["Wacht op data", "API-invoer heeft nog geen geldige waarde ontvangen. OpenQuatt gebruikt deze bron dan niet."],
+        label: optionLabel("API input"),
+        valid: [t("settingsIntegrations.apiValid"), t("settingsIntegrations.apiValidCopy")],
+        stale: [t("settingsIntegrations.apiStale"), t("settingsIntegrations.apiStaleCopy")],
+        missing: [t("settingsIntegrations.apiMissing"), t("settingsIntegrations.apiMissingCopy")],
       },
     };
     const renderInputSourceRows = ({ kind, label = "", valueKey = "", validKey = "", ageKey = "", value = "", topicKey = "", forceVisible = false, effective = false }) => {
@@ -660,14 +663,14 @@ import { escapeHtml } from "../core/html.js";
         return `<option value="${escapeHtml(option)}" ${option === current ? "selected" : ""}>${escapeHtml(displayLabel)}</option>`;
       }).join("");
       const unavailableCurrentPlaceholder = currentUnavailable && hideUnavailableCurrent
-        ? `<option value="${escapeHtml(current)}" selected disabled>Kies een beschikbare bron</option>`
+        ? `<option value="${escapeHtml(current)}" selected disabled>${escapeHtml(t("settingsIntegrations.chooseSourcePlaceholder"))}</option>`
         : "";
       return {
         markup: `
           <label class="oq-settings-source-select">
             <span class="oq-settings-source-select-head">
-              <span>${escapeHtml(config.label || "Bron")}</span>
-              ${config.infoCopy ? renderSettingsInfoToggle(config.infoId || key, config.infoTitle || config.label || "Bron", config.infoCopy) : ""}
+              <span>${escapeHtml(config.label || t("settingsIntegrations.defaultSourceLabel"))}</span>
+              ${config.infoCopy ? renderSettingsInfoToggle(config.infoId || key, config.infoTitle || config.label || t("settingsIntegrations.defaultSourceLabel"), config.infoCopy) : ""}
             </span>
             <select class="oq-helper-select" data-oq-field="${escapeHtml(key)}" ${state.loadingEntities ? "disabled" : ""}>
               ${unavailableCurrentPlaceholder}${optionMarkup}
@@ -675,10 +678,10 @@ import { escapeHtml } from "../core/html.js";
           </label>
         `,
         warning: currentHidden && currentUnavailable
-          ? `Huidige legacybron niet beschikbaar: ${getUnavailableSourceReason(current, config)}; kies een nieuwe bron.`
+          ? t("settingsIntegrations.legacyHidden", { reason: getUnavailableSourceReason(current, config) })
           : currentHidden
-          ? "Huidige bron is legacy; kies een nieuwe bron."
-          : currentUnavailable ? `Huidige bron niet beschikbaar: ${getUnavailableSourceReason(current, config)}` : "",
+          ? t("settingsIntegrations.legacyCurrent")
+          : currentUnavailable ? t("settingsIntegrations.currentUnavailable", { reason: getUnavailableSourceReason(current, config) }) : "",
       };
     };
     const renderSourceNumber = (key, config = {}) => {
@@ -687,8 +690,8 @@ import { escapeHtml } from "../core/html.js";
       return `
         <label class="oq-settings-source-select">
           <span class="oq-settings-source-select-head">
-            <span>${escapeHtml(config.label || "Waarde")}</span>
-            ${config.infoCopy ? renderSettingsInfoToggle(config.infoId || key, config.infoTitle || config.label || "Waarde", config.infoCopy) : ""}
+            <span>${escapeHtml(config.label || t("settingsIntegrations.defaultValueLabel"))}</span>
+            ${config.infoCopy ? renderSettingsInfoToggle(config.infoId || key, config.infoTitle || config.label || t("settingsIntegrations.defaultValueLabel"), config.infoCopy) : ""}
           </span>
           ${renderNumberInputControl({
             key,
@@ -702,8 +705,7 @@ import { escapeHtml } from "../core/html.js";
     };
     const buildExternalSourceSelect = (stem, externalStem, mqttTopicKey = "", extra = {}) => ({
       key: `${stem}Source`,
-      label: "Bron",
-      optionLabels: { "API input": "API-invoer" },
+      label: t("settingsIntegrations.selSource"),
       haKeys: [`${stem}Ha`, `${stem}HaValid`],
       apiValueKey: `apiInput${externalStem}`,
       apiValidKey: `apiInput${externalStem}Valid`,
@@ -727,7 +729,7 @@ import { escapeHtml } from "../core/html.js";
       summarySource = "",
       summaryInfo = "",
       measurementRows = [],
-      measurementTitle = "Beschikbare metingen",
+      measurementTitle = null,
       warning = "",
       routeWarning = "",
     }) => {
@@ -749,10 +751,10 @@ import { escapeHtml } from "../core/html.js";
       const mqttValidKey = mqttValidKeyByTopicKey[getMqttTopicKey(select || {})] || "";
       const selectedInputWarning = isApiInputOption(current) && select?.apiValidKey
         && (!hasEntity(select.apiValidKey) || !isInstallationMonitoringBinaryActive(select.apiValidKey))
-          ? "De ingestelde API-invoer heeft nog geen geldige, recente waarde."
+          ? t("settingsIntegrations.apiNoValue")
           : isMqttOption(current) && mqttValidKey
             && (!hasEntity(mqttValidKey) || !isInstallationMonitoringBinaryActive(mqttValidKey))
-              ? "De ingestelde MQTT-invoer heeft nog geen geldige, recente waarde."
+              ? t("settingsIntegrations.mqttNoValue")
               : "";
       const warningCopy = mainSelect.warning || secondaryWarning || warning || selectedInputWarning || routeWarning;
       if (!controlsMarkup && !summaryValue && !summarySource && !measurementRows.some(Boolean)) {
@@ -771,7 +773,7 @@ import { escapeHtml } from "../core/html.js";
         controlsMarkup,
         warningCopy,
         measurementRows: measurementRows.filter(Boolean),
-        measurementTitle,
+        measurementTitle: measurementTitle ?? t("settingsIntegrations.measureTitle"),
       };
     };
     const currentWaterSupplySource = String(getEntityValue("waterSupplySource") || "");
@@ -784,39 +786,34 @@ import { escapeHtml } from "../core/html.js";
     const waterSupplyCalibrated = waterSupplyCorrection.calibrationActive;
     const localWaterSupplyWarning = currentWaterSupplySource === "Local" && currentLocalWaterSupplySource === "PT1000"
       && (isInstallationMonitoringBinaryActive("pt1000ReadProblem") || !hasUsableSourceValue("waterSupplyTempPt1000"))
-        ? "De ingestelde lokale PT1000-bron levert geen geldige waarde; OpenQuatt gebruikt een fallback."
+        ? t("settingsIntegrations.pt1000Warn")
         : currentWaterSupplySource === "Local" && currentLocalWaterSupplySource === "DS18B20"
           && !hasUsableSourceValue("waterSupplyTempDs18b20")
-            ? "De ingestelde lokale DS18B20-bron levert geen geldige waarde; OpenQuatt gebruikt een fallback."
+            ? t("settingsIntegrations.dsWarn")
             : "";
     const supplyInfo = waterSupplyCalibrated
-      ? "Gekalibreerd; ruwe metingen hieronder."
+      ? t("settingsIntegrations.supplyCalibrated")
       : waterSupplyCorrection.calibrationRequired
-        ? "Ruwe waarde; kalibreer via Service."
-        : "Ruwe waarde; niet gekalibreerd.";
+        ? t("settingsIntegrations.supplyRawCalibrate")
+        : t("settingsIntegrations.supplyRawUncal");
     const heatingEnableSourceDisabled = String(getEntityValue("heatingEnableSource") || "").trim() === "Disabled";
-    const heatingEnableSourceLabels = {
-      Disabled: "Niet gebruiken",
-      "API input": "API-invoer",
-    };
-    const heatingEnableSourceLabel = formattedSourceValue("heatingEnableSource", { optionLabels: heatingEnableSourceLabels });
+    const heatingEnableSourceLabel = formattedSourceValue("heatingEnableSource");
     const heatingEnableEffectiveSource = formattedEffectivePermissionSourceValue("heatingEnableEffectiveSource");
     const coolingEnableSourceDisabled = String(getEntityValue("coolingEnableSource") || "").trim() === "Disabled";
     const coolingEnableSourceLabels = {
-      Disabled: "Niet gebruiken / handmatig",
-      CIC: "CIC (legacy)",
-      "CIC or HA input": "CIC of HA-invoer (legacy)",
-      "API input": "API-invoer",
+      Disabled: t("settingsIntegrations.optCoolDisabledLegacy"),
+      CIC: t("settingsIntegrations.optCoolCicLegacy"),
+      "CIC or HA input": t("settingsIntegrations.optCoolCicHaLegacy"),
     };
     const coolingEnableSourceLabel = formattedSourceValue("coolingEnableSource", { optionLabels: coolingEnableSourceLabels });
     const coolingEnableEffectiveSource = formattedEffectivePermissionSourceValue("coolingEnableEffectiveSource");
     const outsideTemperatureAutoInfo = mqttAvailable
       ? hasValidHaSource("outsideTempHa", "outsideTempHaValid")
-        ? "Auto gebruikt de laagste geldige buitentemperatuurbron. Zijn buitenunit, HA-invoer, API-invoer en MQTT geldig, dan kiest OpenQuatt de laagste waarde. Is er maar een bron geldig, dan wordt die gebruikt."
-        : "Auto gebruikt de laagste geldige buitentemperatuurbron."
+        ? t("settingsIntegrations.autoOutsideFull")
+        : t("settingsIntegrations.autoOutsideShort")
       : hasValidHaSource("outsideTempHa", "outsideTempHaValid")
-        ? "Auto gebruikt de laagste geldige buitentemperatuurbron van de buitenunit, HA-invoer en API-invoer. Is er maar een bron geldig, dan wordt die gebruikt."
-        : "Auto gebruikt de laagste geldige buitentemperatuurbron.";
+        ? t("settingsIntegrations.autoOutsideNoMqtt")
+        : t("settingsIntegrations.autoOutsideShort");
     const roomTemperatureUsedSource = firstAvailableSourceLabel(
       formattedTextSourceValue("roomTempEffectiveSource"),
       formattedSourceValue("roomTempSource"),
@@ -833,24 +830,22 @@ import { escapeHtml } from "../core/html.js";
       : firstAvailableSourceLabel(heatingEnableEffectiveSource, heatingEnableSourceLabel);
     const coolingEnableUsedSource = firstAvailableSourceLabel(
       coolingEnableEffectiveSource,
-      coolingEnableSourceDisabled ? "Handmatig" : coolingEnableSourceLabel,
+      coolingEnableSourceDisabled ? t("settingsIntegrations.coolManual") : coolingEnableSourceLabel,
     );
     const coolingDewPointUsedSource = getCoolingDewPointUsedSource();
-    const externalHeatDemandConfiguredSource = formattedSourceValue("externalHeatDemandSource", {
-      optionLabels: { Disabled: "Niet gebruiken", "API input": "API-invoer" },
-    });
+    const externalHeatDemandConfiguredSource = formattedSourceValue("externalHeatDemandSource");
     const powerHouseDemandSource = String(getSettingsTextStatValue("powerHouseDemandSource", "") || "").trim().toLowerCase();
     const externalHeatDemandUsedSource = powerHouseDemandSource === "external"
       ? externalHeatDemandConfiguredSource
-      : powerHouseDemandSource === "model" ? "Huismodel" : "—";
+      : powerHouseDemandSource === "model" ? t("settingsIntegrations.homeModel") : "—";
     const heatingSupplyTargetConfiguredSource = formattedSourceValue("heatingSupplyTargetSource", {
-      optionLabels: { "Heating curve": "Stooklijn", "OT thermostat": "OT-thermostaat", "API input": "API-invoer" },
+      optionLabels: { "Heating curve": t("settingsIntegrations.optHeatingCurve"), "OT thermostat": t("settingsIntegrations.optOtThermostat") },
     });
     const heatingSupplyTargetActiveSource = String(getSettingsTextStatValue("heatingSupplyTargetActiveSource", "") || "").trim().toLowerCase();
     const heatingSupplyTargetIsExternal = heatingSupplyTargetActiveSource === "external";
     const heatingSupplyTargetUsedSource = heatingSupplyTargetIsExternal
       ? heatingSupplyTargetConfiguredSource
-      : heatingSupplyTargetActiveSource === "curve" ? "Stooklijn" : "—";
+      : heatingSupplyTargetActiveSource === "curve" ? t("settingsIntegrations.optHeatingCurve") : "—";
     const heatingSupplyTargetSummaryValue = heatingSupplyTargetIsExternal
       ? getSettingsStatValue("heatingSupplyTargetSelected")
       : getSettingsStatValue("curveSupplyTarget");
@@ -890,14 +885,14 @@ import { escapeHtml } from "../core/html.js";
         routeWarning,
         measurementRows: [
           ...measurementRows,
-          ...renderExternalSourceRows(`${stem}Source`, usedSource, buildExternalSourceKeys(stem, externalStem), (key) => sourceStateText(key, "Toegestaan", "Geblokkeerd")),
+          ...renderExternalSourceRows(`${stem}Source`, usedSource, buildExternalSourceKeys(stem, externalStem), (key) => sourceStateText(key, t("settingsIntegrations.diagAllowed"), t("settingsIntegrations.diagBlocked"))),
         ],
       });
     };
     const sourceSignals = [
       buildRoomSignal({
         key: "room-temperature",
-        title: "Kamertemperatuur",
+        title: t("settingsIntegrations.sigRoomTemp"),
         icon: "thermometer",
         stem: "roomTemp",
         externalStem: "RoomTemperature",
@@ -906,7 +901,7 @@ import { escapeHtml } from "../core/html.js";
       }),
       buildRoomSignal({
         key: "room-setpoint",
-        title: "Kamer setpoint",
+        title: t("settingsIntegrations.sigRoomSetpoint"),
         icon: "target",
         stem: "roomSetpoint",
         externalStem: "RoomSetpoint",
@@ -916,29 +911,29 @@ import { escapeHtml } from "../core/html.js";
       buildSourceSignal({
         key: "water-supply",
         group: "water-circuit",
-        title: "Aanvoertemperatuur",
+        title: t("settingsIntegrations.sigSupply"),
         icon: "droplet",
-        select: { key: "waterSupplySource", label: "Bron", haKeys: ["waterSupplyTempHa", "waterSupplyTempHaValid"] },
+        select: { key: "waterSupplySource", label: t("settingsIntegrations.selSource"), haKeys: ["waterSupplyTempHa", "waterSupplyTempHaValid"] },
         secondarySelects: [{
           key: "localWaterSupplyTempSource",
-          label: "Lokale sensor",
+          label: t("settingsIntegrations.selLocalSensor"),
           when: currentWaterSupplySource === "Local" && hasEntity("localWaterSupplyTempSource"),
         }],
         summaryValue: getSettingsStatValue("supplyTemp"),
         summarySource: waterSupplyUsedSource,
         summaryInfo: renderSettingsInfoToggle(
           "supplyTemp-info",
-          "Gebruikte waarde",
+          t("settingsIntegrations.usedFallback"),
           supplyInfo,
           "i",
           `oq-settings-source-info oq-settings-source-info--${waterSupplyCalibrated ? "valid" : "error"} oq-settings-source-info--circle`,
         ),
         warning: localWaterSupplyWarning || (waterSupplyCorrection.calibrationRequired
-          ? "De aanvoerbron of bronconfiguratie is gewijzigd. De oude correctie is uitgeschakeld; voer de temperatuurkalibratie opnieuw uit."
+          ? t("settingsIntegrations.supplyChangedWarn")
           : ""),
         routeWarning: invalidSourceValueWarning("supplyTemp"),
         measurementRows: [
-          renderSourceRow({ label: "Lokale selectie", key: "waterSupplyTempEsp", sourceKind: "local", sourceState: "available", effective: sourcesMatch(waterSupplyUsedSource, "Local") }),
+          renderSourceRow({ label: t("settingsIntegrations.measLocal"), key: "waterSupplyTempEsp", sourceKind: "local", sourceState: "available", effective: sourcesMatch(waterSupplyUsedSource, "Local") }),
           renderSourceRow({ label: "PT1000", key: "waterSupplyTempPt1000", sourceKind: "pt1000", sourceState: "available", effective: sourcesMatch(waterSupplyUsedSource, "PT1000") }),
           renderSourceRow({ label: "DS18B20", key: "waterSupplyTempDs18b20", sourceKind: "ds18b20", sourceState: "available", effective: sourcesMatch(waterSupplyUsedSource, "DS18B20") }),
           cicAvailable ? renderSourceRow({ label: "CIC", key: "cicWaterSupplyTemp", sourceKind: "cic", sourceState: "available", effective: sourcesMatch(waterSupplyUsedSource, "CIC") }) : "",
@@ -946,66 +941,66 @@ import { escapeHtml } from "../core/html.js";
             ha: ["waterSupplyTempHa", "waterSupplyTempHaValid"],
           }),
         ],
-        measurementTitle: "Ruwe metingen",
+        measurementTitle: t("settingsIntegrations.measureRaw"),
       }),
       buildSourceSignal({
         key: "flow-source",
         group: "water-circuit",
-        title: "Flow",
+        title: t("settingsIntegrations.sigFlow"),
         icon: "waves",
-        select: { key: "flowSource", label: "Bron", optionLabels: { "Outdoor unit": "Quatt-flow" }, when: cicAvailable || currentFlowSource === "CIC" },
+        select: { key: "flowSource", label: t("settingsIntegrations.selSource"), optionLabels: { "Outdoor unit": t("settingsIntegrations.flowQuatt") }, when: cicAvailable || currentFlowSource === "CIC" },
         secondarySelects: [
           {
             key: "qFlowSource",
-            label: "Flowpad",
+            label: t("settingsIntegrations.selFlowPath"),
             infoId: "qFlowSource-info",
-            infoCopy: "Auto behoudt het bestaande gedrag: V1 gebruikt de lokale controller-flowmeter, V1.5 gebruikt de flow uit de buitenunit via Modbus. Kies Lokaal of Buitenunit om dit expliciet vast te zetten.",
+            infoCopy: t("settingsIntegrations.selFlowPathInfo"),
             when: currentFlowSource === "Outdoor unit" && hasEntity("qFlowSource"),
           },
           {
             key: "controllerFlowMeter",
-            label: "Lokale flowmeter",
+            label: t("settingsIntegrations.selLocalMeter"),
             infoId: "controllerFlowMeter-info",
-            infoCopy: "De Huba Control 236-flowmeter wordt normaliter door Quatt geïnstalleerd en is de standaardkeuze. Kies Custom voor een andere pulsflowmeter en zoek in de documentatie van de geleverde sensor hoeveel pulsen per liter deze afgeeft. Deze instellingen worden bewaard na een herstart.",
-            optionLabels: { "Huba Control": "Huba Control (door Quatt geïnstalleerd)" },
+            infoCopy: t("settingsIntegrations.selLocalMeterInfo"),
+            optionLabels: { "Huba Control": t("settingsIntegrations.selHubaControl") },
             when: currentFlowSource === "Outdoor unit" && hasEntity("controllerFlowMeter") && currentQFlowSource !== "Outdoor unit",
           },
           {
             key: "outdoorUnitFlowMode",
-            label: "Meterkeuze",
+            label: t("settingsIntegrations.selMeterChoice"),
             infoId: "outdoorUnitFlowMode-info",
-            infoCopy: "Kies welke buitenunit-flowmeting wordt gebruikt. Flowmeter HP1 en HP2 gebruiken direct die meter. Gecombineerde flow HP1/HP2 gebruikt normaal het gemiddelde, met een guard die bij sterk afwijkende meters de meest aannemelijke waarde kiest.",
+            infoCopy: t("settingsIntegrations.selMeterChoiceInfo"),
             when: currentFlowSource === "Outdoor unit" && hasEntity("outdoorUnitFlowMode") && (!hasEntity("qFlowSource") || currentQFlowSource !== "Local"),
           },
         ],
         secondaryNumbers: [{
           key: "customFlowMeterPulsesPerLiter",
-          label: "Pulsen per liter",
+          label: t("settingsIntegrations.selPulses"),
           infoId: "customFlowMeterPulsesPerLiter-info",
-          infoCopy: "Vul het aantal pulsen in dat de flowmeter voor één liter water afgeeft. Deze lineaire kalibratie wordt alleen gebruikt wanneer Lokale flowmeter op Custom staat.",
+          infoCopy: t("settingsIntegrations.selPulsesInfo"),
           when: currentFlowSource === "Outdoor unit" && currentQFlowSource !== "Outdoor unit" && currentControllerFlowMeter === "Custom",
         }],
         summaryValue: getSettingsStatValue("flowSelected"),
         summarySource: flowUsedSource,
         routeWarning: invalidSourceValueWarning("flowSelected"),
         measurementRows: [
-          renderSourceRow({ label: "Controller-flowmeter", key: "controllerFlow", sourceKind: "local", sourceState: "available", effective: sourcesMatch(flowUsedSource, "Lokaal") }),
-          renderSourceRow({ label: "Gecombineerd HP1/HP2", key: "flowLocal", sourceKind: "outdoor", sourceState: "available", effective: /gecombineerd/i.test(flowUsedSource) }),
-          renderSourceRow({ label: "Flowmeter HP1", key: "hp1Flow", sourceKind: "hp1", sourceState: "available", effective: sourcesMatch(flowUsedSource, "HP1") && !sourcesMatch(flowUsedSource, "HP2") }),
-          renderSourceRow({ label: "Flowmeter HP2", key: "hp2Flow", sourceKind: "hp2", sourceState: "available", effective: sourcesMatch(flowUsedSource, "HP2") && !sourcesMatch(flowUsedSource, "HP1") }),
+          renderSourceRow({ label: t("settingsIntegrations.measController"), key: "controllerFlow", sourceKind: "local", sourceState: "available", effective: sourcesMatch(flowUsedSource, optionLabel("Local")) }),
+          renderSourceRow({ label: t("settingsIntegrations.measCombined"), key: "flowLocal", sourceKind: "outdoor", sourceState: "available", effective: /gecombineerd|combined/i.test(flowUsedSource) }),
+          renderSourceRow({ label: t("settingsIntegrations.measHp1"), key: "hp1Flow", sourceKind: "hp1", sourceState: "available", effective: sourcesMatch(flowUsedSource, "HP1") && !sourcesMatch(flowUsedSource, "HP2") }),
+          renderSourceRow({ label: t("settingsIntegrations.measHp2"), key: "hp2Flow", sourceKind: "hp2", sourceState: "available", effective: sourcesMatch(flowUsedSource, "HP2") && !sourcesMatch(flowUsedSource, "HP1") }),
           cicAvailable ? renderSourceRow({ label: "CIC", key: "cicFlowrate", sourceKind: "cic", sourceState: "available", effective: sourcesMatch(flowUsedSource, "CIC") }) : "",
         ],
       }),
       buildSourceSignal({
         key: "outside-temperature",
         group: "room-outside",
-        title: "Buitentemperatuur",
+        title: t("settingsIntegrations.sigOutside"),
         icon: "sun",
         warning: currentOutsideTempSource === "MQTT"
-          ? "Na een (her)start is de MQTT-buitentemperatuur pas geldig na een nieuwe live publicatie. Tot die tijd ontbreekt de buitentemperatuur en kan OpenQuatt naar CM98 (antivriescirculatie) gaan. De wachttijd hangt af van het publicatie-interval. Overweeg daarom Auto; dan kan OpenQuatt tijdens het wachten een andere geldige buitentemperatuurbron gebruiken."
+          ? t("settingsIntegrations.mqttOutsideWarn")
           : "",
         select: buildExternalSourceSelect("outsideTemp", "OutsideTemperature", "outside_temperature", {
-          label: "Buiten bron",
+          label: t("settingsIntegrations.selOutside"),
           infoId: "outsideTempSource-auto-info",
           infoCopy: outsideTemperatureAutoInfo,
         }),
@@ -1013,55 +1008,54 @@ import { escapeHtml } from "../core/html.js";
         summarySource: outsideTemperatureUsedSource,
         routeWarning: invalidSourceValueWarning("outsideTempSelected"),
         measurementRows: [
-          renderSourceRow({ label: "Buitenunit", key: "outsideTempLocalAggregated", sourceKind: "outdoor", sourceState: "available", effective: sourcesMatch(outsideTemperatureUsedSource, "Buitenunit") }),
+          renderSourceRow({ label: optionLabel("Outdoor unit"), key: "outsideTempLocalAggregated", sourceKind: "outdoor", sourceState: "available", effective: sourcesMatch(outsideTemperatureUsedSource, optionLabel("Outdoor unit")) }),
           ...renderExternalSourceRows("outsideTempSource", outsideTemperatureUsedSource, buildExternalSourceKeys("outsideTemp", "OutsideTemperature")),
         ],
       }),
       buildPermissionSignal({
         mode: "heating",
-        title: "Warmtetoestemming",
+        title: t("settingsIntegrations.sigHeatPerm"),
         icon: "flame",
         usedSource: heatingEnableUsedSource,
-        optionLabels: heatingEnableSourceLabels,
         selectExtra: {
           infoId: "heatingEnableSource-info",
-          infoCopy: "Niet gebruiken = geen externe gate; de strategie bepaalt zelf of warmte nodig is.",
+          infoCopy: t("settingsIntegrations.permInfoHeat"),
         },
         summaryValue: heatingEnableSourceDisabled
-          ? "Niet gebruikt"
-          : sourceStateText("heatingEnableSelected", "Toegestaan", "Geblokkeerd"),
+          ? t("settingsIntegrations.sumNotUsed")
+          : sourceStateText("heatingEnableSelected", t("settingsIntegrations.diagAllowed"), t("settingsIntegrations.diagBlocked")),
         routeWarning: heatingEnableSourceDisabled ? "" : invalidSourceValueWarning("heatingEnableSelected"),
         measurementRows: [
-          otAvailable ? renderSourceRow({ label: "OpenTherm", value: sourceStateText("otThermostatChEnable", "Toegestaan", "Geblokkeerd"), sourceKind: "ot", sourceState: "available", effective: sourcesMatch(heatingEnableUsedSource, "OpenTherm") }) : "",
-          cicAvailable ? renderSourceRow({ label: "CIC", value: sourceStateText("cicChEnabled", "Toegestaan", "Geblokkeerd"), sourceKind: "cic", sourceState: "available", effective: sourcesMatch(heatingEnableUsedSource, "CIC") }) : "",
+          otAvailable ? renderSourceRow({ label: "OpenTherm", value: sourceStateText("otThermostatChEnable", t("settingsIntegrations.diagAllowed"), t("settingsIntegrations.diagBlocked")), sourceKind: "ot", sourceState: "available", effective: sourcesMatch(heatingEnableUsedSource, "OpenTherm") }) : "",
+          cicAvailable ? renderSourceRow({ label: "CIC", value: sourceStateText("cicChEnabled", t("settingsIntegrations.diagAllowed"), t("settingsIntegrations.diagBlocked")), sourceKind: "cic", sourceState: "available", effective: sourcesMatch(heatingEnableUsedSource, "CIC") }) : "",
         ],
       }),
       buildPermissionSignal({
         mode: "cooling",
-        title: "Koeltoestemming",
+        title: t("settingsIntegrations.sigCoolPerm"),
         icon: "snowflake",
         usedSource: coolingEnableUsedSource,
         optionLabels: coolingEnableSourceLabels,
         selectExtra: {
           hiddenOptions: ["CIC", "CIC or HA input"],
         },
-        summaryValue: sourceStateText("coolingEnableSelected", "Toegestaan", "Geblokkeerd"),
+        summaryValue: sourceStateText("coolingEnableSelected", t("settingsIntegrations.diagAllowed"), t("settingsIntegrations.diagBlocked")),
         routeWarning: invalidSourceValueWarning("coolingEnableSelected"),
         measurementRows: [
-          renderSourceRow({ label: "Handmatig", value: sourceStateText("manualCoolingEnable", "Aan", "Uit"), sourceKind: "manual", sourceState: "available", effective: sourcesMatch(coolingEnableUsedSource, "Handmatig") }),
-          otAvailable ? renderSourceRow({ label: "OpenTherm", value: sourceStateText("otThermostatCoolingEnable", "Toegestaan", "Geblokkeerd"), sourceKind: "ot", sourceState: "available", effective: sourcesMatch(coolingEnableUsedSource, "OpenTherm") }) : "",
+          renderSourceRow({ label: t("settingsIntegrations.coolManual"), value: sourceStateText("manualCoolingEnable", t("settingsIntegrations.diagOn"), t("settingsIntegrations.diagOffValue")), sourceKind: "manual", sourceState: "available", effective: sourcesMatch(coolingEnableUsedSource, t("settingsIntegrations.coolManual")) }),
+          otAvailable ? renderSourceRow({ label: "OpenTherm", value: sourceStateText("otThermostatCoolingEnable", t("settingsIntegrations.diagAllowed"), t("settingsIntegrations.diagBlocked")), sourceKind: "ot", sourceState: "available", effective: sourcesMatch(coolingEnableUsedSource, "OpenTherm") }) : "",
         ],
       }),
       buildSourceSignal({
         key: "cooling-dew-point",
         group: "cooling",
-        title: "Koelingsdauwpunt",
+        title: t("settingsIntegrations.sigDewPoint"),
         icon: "thermometer",
         select: buildExternalSourceSelect("coolingDewPoint", "CoolingDewPoint", "cooling_dew_point", {
           infoId: "coolingDewPointSource-info",
           infoCopy: mqttAvailable
-            ? "Auto gebruikt de hoogste geldige waarde als Home Assistant, API-invoer en MQTT tegelijk geldig zijn. Kies Home Assistant, API input of MQTT om die bron expliciet te vereisen."
-            : "Auto gebruikt een geldige Home Assistant-waarde wanneer die beschikbaar is. Kies Home Assistant om die bron expliciet te vereisen.",
+            ? t("settingsIntegrations.dewInfoFull")
+            : t("settingsIntegrations.dewInfoHa"),
         }),
         summaryValue: getSettingsStatValue("coolingDewPointSelected"),
         summarySource: coolingDewPointUsedSource,
@@ -1073,14 +1067,13 @@ import { escapeHtml } from "../core/html.js";
       buildSourceSignal({
         key: "external-heat-demand",
         group: "heating",
-        title: "Externe warmtevraag (Power House)",
+        title: t("settingsIntegrations.sigExtDemand"),
         icon: "zap",
         select: buildExternalSourceSelect("externalHeatDemand", "ExternalHeatDemand", "", {
-          optionLabels: { Disabled: "Niet gebruiken", "API input": "API-invoer" },
-          infoCopy: "Vervangt alleen de vermogensschatting van het huismodel in Power House. Valt de bron weg of veroudert hij, dan rekent Power House weer met het huismodel.",
+          infoCopy: t("settingsIntegrations.heatDemandExternalInfo"),
         }),
-        summaryValue: externalHeatDemandConfiguredSource === "Niet gebruiken"
-          ? "Niet gebruikt"
+        summaryValue: externalHeatDemandConfiguredSource === t("settingsIntegrations.optDisabled")
+          ? t("settingsIntegrations.sumNotUsed")
           : getSettingsStatValue("externalHeatDemandSelected"),
         summarySource: externalHeatDemandUsedSource,
         routeWarning: String(getEntityValue("externalHeatDemandSource") || "") === "Disabled"
@@ -1093,11 +1086,11 @@ import { escapeHtml } from "../core/html.js";
       buildSourceSignal({
         key: "heating-supply-target",
         group: "heating",
-        title: "Aanvoertarget (stooklijn)",
+        title: t("settingsIntegrations.sigSupplyTarget"),
         icon: "target",
         select: buildExternalSourceSelect("heatingSupplyTarget", "HeatingSupplyTarget", "heating_supply_target", {
-          optionLabels: { "Heating curve": "Stooklijn", "OT thermostat": "OT-thermostaat", "API input": "API-invoer" },
-          infoCopy: "Een externe regelaar bepaalt dan hoe warm het aanvoerwater moet zijn, in plaats van de eigen stooklijn. Handig bij een buffervat of een thermostaat die zelf al rekent. Valt de bron weg of wordt de waarde te oud, dan neemt de stooklijn het vanzelf weer over. Beveiligingen en de warmtepompregeling blijven altijd van OpenQuatt.",
+          optionLabels: { "Heating curve": t("settingsIntegrations.optHeatingCurve"), "OT thermostat": t("settingsIntegrations.optOtThermostat") },
+          infoCopy: t("settingsIntegrations.supplyTargetInfo"),
         }),
         summaryValue: heatingSupplyTargetSummaryValue,
         summarySource: heatingSupplyTargetUsedSource,
@@ -1105,7 +1098,7 @@ import { escapeHtml } from "../core/html.js";
           ? invalidSourceValueWarning("heatingSupplyTargetSelected")
           : invalidSourceValueWarning("curveSupplyTarget"),
         measurementRows: [
-          renderSourceRow({ label: "Stooklijn", key: "curveSupplyTarget", sourceKind: "local", sourceState: "available", effective: !heatingSupplyTargetIsExternal }),
+          renderSourceRow({ label: t("settingsIntegrations.optHeatingCurve"), key: "curveSupplyTarget", sourceKind: "local", sourceState: "available", effective: !heatingSupplyTargetIsExternal }),
           otAvailable ? renderSourceRow({ label: "OpenTherm", key: "otControlSetpoint", sourceKind: "ot", sourceState: "available", effective: sourcesMatch(heatingSupplyTargetUsedSource, "OpenTherm") }) : "",
           ...renderExternalSourceRows("heatingSupplyTargetSource", heatingSupplyTargetUsedSource, buildExternalSourceKeys("heatingSupplyTarget", "HeatingSupplyTarget")),
         ],
@@ -1117,10 +1110,10 @@ import { escapeHtml } from "../core/html.js";
     }
 
     const sourceCategories = [
-      { id: "room-outside", title: "Ruimte & buiten", icon: "home-cog", keys: ["room-temperature", "room-setpoint", "outside-temperature"] },
-      { id: "water-circuit", title: "Watercircuit", icon: "droplet", keys: ["water-supply", "flow-source"] },
-      { id: "heating", title: "Verwarmen", icon: "flame", keys: ["external-heat-demand", "heating-supply-target", "heating-enable"] },
-      { id: "cooling", title: "Koelen", icon: "snowflake", keys: ["cooling-enable", "cooling-dew-point"] },
+      { id: "room-outside", title: t("settingsIntegrations.catRoomOutside"), icon: "home-cog", keys: ["room-temperature", "room-setpoint", "outside-temperature"] },
+      { id: "water-circuit", title: t("settingsIntegrations.catWater"), icon: "droplet", keys: ["water-supply", "flow-source"] },
+      { id: "heating", title: t("settingsIntegrations.catHeating"), icon: "flame", keys: ["external-heat-demand", "heating-supply-target", "heating-enable"] },
+      { id: "cooling", title: t("settingsIntegrations.catCooling"), icon: "snowflake", keys: ["cooling-enable", "cooling-dew-point"] },
     ];
     const signalByKey = new Map(sourceSignals.map((signal) => [signal.key, signal]));
     const visibleCategories = sourceCategories
@@ -1141,10 +1134,10 @@ import { escapeHtml } from "../core/html.js";
       const signalsMarkup = category.signals.map((signal) => {
         const active = signal.key === focusedSignal.key;
         const showUsedSource = signal.summarySource !== "—"
-          || !sourcesMatch(signal.configuredSource, "Niet gebruiken");
+          || !sourcesMatch(signal.configuredSource, t("settingsIntegrations.optDisabled"));
         const sourcePathLabel = showUsedSource
-          ? `Ingesteld: ${signal.configuredSource}. Gebruikt: ${signal.summarySource}`
-          : `Ingesteld: ${signal.configuredSource}`;
+          ? t("settingsIntegrations.sourcePath", { set: signal.configuredSource, used: signal.summarySource })
+          : t("settingsIntegrations.sourcePathSet", { set: signal.configuredSource });
         return `
           <button
             class="oq-settings-source-signal${signal.warningCopy ? " is-warning" : ""}"
@@ -1158,7 +1151,7 @@ import { escapeHtml } from "../core/html.js";
             <span class="oq-settings-source-signal-name">
               <span class="oq-settings-source-signal-icon">${renderOqIcon(signal.icon, "oq-settings-source-signal-icon-svg")}</span>
               <span class="oq-settings-source-signal-title">${escapeHtml(signal.title)}</span>
-              ${signal.warningCopy ? `<span class="oq-settings-source-signal-warning" aria-label="Bronprobleem: ${escapeHtml(signal.warningCopy)}" title="Waarschuwing: bekijk de details">!</span>` : ""}
+              ${signal.warningCopy ? `<span class="oq-settings-source-signal-warning" aria-label="${escapeHtml(t("settingsIntegrations.sourceProblem", { warning: signal.warningCopy }))}" title="${escapeHtml(t("settingsIntegrations.warnDetails"))}">!</span>` : ""}
             </span>
             <span class="oq-settings-source-signal-summary">
               <strong>${escapeHtml(signal.summaryValue)}</strong>
@@ -1183,7 +1176,7 @@ import { escapeHtml } from "../core/html.js";
             <span class="oq-settings-source-category-icon">${renderOqIcon(category.icon, "oq-settings-source-category-icon-svg")}</span>
             <div class="oq-settings-source-category-copy">
               <h4 id="${escapeHtml(categoryTitleId)}">${escapeHtml(category.title)}</h4>
-              <small class="oq-settings-source-category-count">${count} ${count === 1 ? "signaal" : "signalen"}</small>
+              <small class="oq-settings-source-category-count">${formatNumber(count, { maximumFractionDigits: 0 })} ${count === 1 ? t("settingsIntegrations.sigSingular") : t("settingsIntegrations.sigPlural")}</small>
             </div>
           </header>
           ${signalsMarkup}
@@ -1200,37 +1193,37 @@ import { escapeHtml } from "../core/html.js";
       >
         <button class="oq-settings-source-inspector-back" type="button" data-oq-action="close-settings-source-detail" data-oq-focus-key="settings-source-detail-back">
           <span aria-hidden="true">←</span>
-          Alle signalen
+          ${escapeHtml(t("settingsIntegrations.allSignals"))}
         </button>
-        <p class="oq-settings-source-inspector-kicker">${escapeHtml(focusedCategory?.title || "Bronnen")}</p>
+        <p class="oq-settings-source-inspector-kicker">${escapeHtml(focusedCategory?.title || t("settingsIntegrations.kickerFallback"))}</p>
         <h4>${escapeHtml(focusedSignal.title)}</h4>
         ${focusedSignal.warningCopy ? `<p class="oq-settings-source-warning" data-oq-source-warning>${escapeHtml(focusedSignal.warningCopy)}</p>` : ""}
         <div class="oq-settings-source-inspector-summary">
           <div>
-            <span>Ingesteld</span>
+            <span>${escapeHtml(t("settingsIntegrations.setLabel"))}</span>
             <strong>${escapeHtml(focusedSignal.configuredSource)}</strong>
           </div>
           <div>
-            <span>Gebruikt</span>
+            <span>${escapeHtml(t("settingsIntegrations.usedLabel"))}</span>
             ${focusedSignal.summaryInfo}
             <strong>${escapeHtml(focusedSignal.summaryValue)}</strong>
             <span>${escapeHtml(focusedSignal.summarySource)}</span>
           </div>
         </div>
         ${focusedSignal.controlsMarkup ? `
-          <h5 class="oq-settings-source-inspector-section-title">Bronkeuze</h5>
+          <h5 class="oq-settings-source-inspector-section-title">${escapeHtml(t("settingsIntegrations.choiceTitle"))}</h5>
           <div class="oq-settings-source-controls">${focusedSignal.controlsMarkup}</div>
         ` : ""}
         <h5 class="oq-settings-source-inspector-section-title">${escapeHtml(focusedSignal.measurementTitle)}</h5>
         ${focusedSignal.measurementRows.length
           ? `<div class="oq-settings-source-rows">${focusedSignal.measurementRows.join("")}</div>`
-          : '<p class="oq-settings-source-empty">Nog geen relevante metingen beschikbaar.</p>'}
+          : `<p class="oq-settings-source-empty">${escapeHtml(t("settingsIntegrations.emptyMeasures"))}</p>`}
       </article>
     `;
     const sourceWorkspaceMarkup = `
       <div class="oq-settings-source-shell" data-oq-source-workspace>
         <div class="oq-settings-source-workspace${state.settingsSourceDetailOpen ? " is-detail-open" : ""}">
-          <nav class="oq-settings-source-nav" aria-label="Signalen">
+          <nav class="oq-settings-source-nav" aria-label="${escapeHtml(t("settingsIntegrations.signalsNav"))}">
             ${categoryMarkup}
           </nav>
           ${inspectorMarkup}
@@ -1239,11 +1232,11 @@ import { escapeHtml } from "../core/html.js";
     `;
 
     const heatingAdvice = hasEntity("heatingEnableSource") ? getHeatingEnableAdvice() : null;
-    const heatingAdviceHeaderAction = hasEntity("heatingEnableSource") ? `<button class="oq-helper-button ${heatingAdvice && heatingAdvice.deviant ? "oq-helper-button--warning-soft" : "oq-helper-button--ghost"}" type="button" data-oq-action="open-heating-strategy-advice-modal">${heatingAdvice && heatingAdvice.deviant ? '<span class="oq-advice-warn-icon"><svg viewBox="0 0 20 18" aria-hidden="true"><path d="M10 1.6 L18.2 16.4 H1.8 Z"/><rect x="9.1" y="5.4" width="1.8" height="5.8" rx="0.9"/><circle cx="10" cy="13.6" r="1.1"/></svg></span> Advies per strategie' : "Advies per strategie"}</button>` : "";
+    const heatingAdviceHeaderAction = hasEntity("heatingEnableSource") ? `<button class="oq-helper-button ${heatingAdvice && heatingAdvice.deviant ? "oq-helper-button--warning-soft" : "oq-helper-button--ghost"}" type="button" data-oq-action="open-heating-strategy-advice-modal">${heatingAdvice && heatingAdvice.deviant ? '<span class="oq-advice-warn-icon"><svg viewBox="0 0 20 18" aria-hidden="true"><path d="M10 1.6 L18.2 16.4 H1.8 Z"/><rect x="9.1" y="5.4" width="1.8" height="5.8" rx="0.9"/><circle cx="10" cy="13.6" r="1.1"/></svg></span> ' : ""}${escapeHtml(t("settingsIntegrations.heatAdviceShort"))}</button>` : "";
     return renderSettingsSection(
-      "Bronnen",
-      "Sensorselectie",
-      "Kies welke bron OpenQuatt gebruikt voor metingen en vraag-signalen. Uitgeschakelde integraties verdwijnen uit de keuzes.",
+      t("settingsIntegrations.sectionSources"),
+      t("settingsIntegrations.sectionSensors"),
+      t("settingsIntegrations.sectionSensorsCopy"),
       sourceWorkspaceMarkup,
       "",
       "",
@@ -1258,7 +1251,7 @@ import { escapeHtml } from "../core/html.js";
       <section class="oq-settings-mqtt-panel oq-settings-mqtt-panel--sensors oq-settings-mqtt-panel--compact">
         <div class="oq-settings-quickstart-status-row oq-settings-mqtt-status-row">
           <div>
-            <p class="oq-settings-quickstart-status-label">MQTT sensoren</p>
+            <p class="oq-settings-quickstart-status-label">${escapeHtml(t("settingsIntegrations.mqttSensors"))}</p>
             <strong class="oq-settings-quickstart-status-value">${escapeHtml(sensorSummary)}</strong>
           </div>
           <button
@@ -1266,25 +1259,25 @@ import { escapeHtml } from "../core/html.js";
             type="button"
             data-oq-action="open-mqtt-sensors-modal"
           >
-            Details
+            ${escapeHtml(t("settingsIntegrations.mqttDetails"))}
           </button>
         </div>
       </section>
     ` : "";
 
     return renderSettingsSection(
-      "Integratie",
-      "MQTT inputbronnen",
-      "Beheer de brokerverbinding voor externe MQTT-bronwaarden.",
+      t("settingsIntegrations.mqttGroup"),
+      t("settingsIntegrations.mqttTitle"),
+      t("settingsIntegrations.mqttCopy"),
       `
         <div class="oq-settings-mqtt-shell">
           <section class="oq-settings-mqtt-panel oq-settings-mqtt-panel--broker">
             <div class="oq-settings-field-head">
-              <h3>MQTT brokerconfiguratie</h3>
+              <h3>${escapeHtml(t("settingsIntegrations.mqttBrokerTitle"))}</h3>
             </div>
             <div class="oq-settings-quickstart-status-row oq-settings-mqtt-status-row">
               <div>
-                <p class="oq-settings-quickstart-status-label">Huidige status</p>
+                <p class="oq-settings-quickstart-status-label">${escapeHtml(t("settingsIntegrations.mqttCurrentStatus"))}</p>
                 <strong class="oq-settings-quickstart-status-value">${escapeHtml(getMqttStatusLabel())}</strong>
                 <p class="oq-settings-quickstart-status-copy">${escapeHtml(getMqttStatusDetail())}</p>
               </div>
@@ -1293,7 +1286,7 @@ import { escapeHtml } from "../core/html.js";
                 type="button"
                 data-oq-action="open-mqtt-modal"
               >
-                Aanpassen
+                ${escapeHtml(t("settingsIntegrations.mqttAdjust"))}
               </button>
             </div>
           </section>

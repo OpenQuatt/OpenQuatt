@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { setLocale, t } from "../js/src/i18n/index.js";
 
 // settings/installation.js cannot be imported in plain node (virtual build
 // modules), so detail grouping is covered with source contracts, following
@@ -33,7 +34,12 @@ test("incidentdetail rendert een optionele gevolgtoelichting", () => {
   assert.ok(start >= 0 && end > start);
   const renderer = installationSource.slice(start, end);
   assert.match(renderer, /consequenceNote/);
-  assert.match(renderer, /\["Gevolg", consequenceNote\]/);
+  assert.match(renderer, /\[t\("settingsInstallation\.dtConsequence"\), consequenceNote\]/);
+  setLocale("nl", { persist: false, notify: false });
+  assert.equal(t("settingsInstallation.dtConsequence"), "Gevolg");
+  setLocale("en", { persist: false, notify: false });
+  assert.equal(t("settingsInstallation.dtConsequence"), "Consequence");
+  setLocale("nl", { persist: false, notify: false });
 });
 
 test("instellingenlijst toont de probleemtoelichting wanneer die er is", () => {

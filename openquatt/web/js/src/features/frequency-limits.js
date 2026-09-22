@@ -1,5 +1,6 @@
 import { formatValue, getEntityValue, parseLooseNumber } from "../core/entity-store.js";
 import { state } from "../core/state.js";
+import { t } from "../i18n/index.js";
 import { getInstallationTopology } from "./device-context.js";
 
 function readFrequency(key, useDrafts = false) {
@@ -20,7 +21,12 @@ export function getFrequencyLimitModel(key, { useDrafts = false, mode = "" } = {
 }
 
 export function describeFrequencyLimit(cap, { unit, mode, minimum }) {
-  return `${cap} Hz is lager dan het minimum van ${unit.toUpperCase()} bij ${mode === "cooling" ? "koelen" : "verwarmen"}: ${minimum} Hz. ${unit.toUpperCase()} kan hierdoor niet starten.`;
+  return t("frequencyLimits.describe", {
+    cap,
+    unit: unit.toUpperCase(),
+    mode: mode === "cooling" ? t("frequencyLimits.modeCooling") : t("frequencyLimits.modeHeating"),
+    minimum,
+  });
 }
 
 export function getFrequencyLimitWarning(key) {
@@ -32,11 +38,15 @@ export function getFrequencyLimitWarning(key) {
     groups.get(groupKey).units.push(limit.unit.toUpperCase());
   }
   const minima = [...groups.values()].map(({ units, mode, minimum }) =>
-    `${units.join(" en ")} bij ${mode === "cooling" ? "koelen" : "verwarmen"}: ${minimum} Hz`);
+    t("frequencyLimits.groupUnits", {
+      units: units.join(t("frequencyLimits.unitsAnd")),
+      mode: mode === "cooling" ? t("frequencyLimits.modeCooling") : t("frequencyLimits.modeHeating"),
+      minimum,
+    }));
   const messages = minima.length
-    ? [`${model.cap} Hz is te laag. Minimum: ${minima.join("; ")}. Deze buitenunits kunnen in die bedrijfsmodi niet starten.`]
+    ? [t("frequencyLimits.tooLow", { cap: model.cap, minima: minima.join("; ") })]
     : [];
-  if (model.unknown) messages.push("Minimumfrequentie nog niet beschikbaar voor alle bedrijfsmodi en buitenunits. Een te lage limiet kan starten verhinderen.");
+  if (model.unknown) messages.push(t("frequencyLimits.unknownMin"));
   return { text: messages.join(" "), warning: model.blocked.length > 0 };
 }
 

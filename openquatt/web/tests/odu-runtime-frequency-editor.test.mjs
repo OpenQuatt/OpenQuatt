@@ -102,8 +102,10 @@ test("dev-preview onderscheidt direct toepasbare bodemplaatinstellingen van de g
   assert.match(devSource, /openquatt-preview\.js\?v=cooling-start-block-v1/);
 });
 
-test("buitenunitinstellingen openen beide editors zonder interne termen in de hoofdtekst", () => {
-  assert.match(installationSource, /Instellingen buitenunit/);
+test("buitenunitinstellingen openen beide editors zonder interne termen in de hoofdtekst", async () => {
+  const { default: nlCatalogue } = await import("../js/src/i18n/nl.js");
+  assert.match(installationSource, /t\("settingsInstallation\.oduKicker"\)/);
+  assert.equal(nlCatalogue.settingsInstallation.oduKicker, "Buitenunit");
   assert.match(installationSource, /open-odu-bottom-plate-settings/);
   assert.match(installationSource, /open-odu-frequency-settings/);
   assert.doesNotMatch(installationSource, /runtime shadow/i);
@@ -115,8 +117,10 @@ test("buitenunitinstellingen openen beide editors zonder interne termen in de ho
   assert.match(cssSource, /\.oq-settings-odu-launcher-list \{\s+display: grid;\s+gap: 16px;/);
   assert.match(cssSource, /\.oq-settings-odu-runtime-warning \{[^}]*margin-bottom: 16px;/s);
   assert.match(cssSource, /\.oq-settings-odu-modal > \.oq-helper-modal-head > div \{\s+min-width: 0;\s+overflow-wrap: anywhere;/);
-  assert.match(featureSource, /V1 en V1\.5 voorzichtig met koelwaarden onder 30 Hz/);
-  assert.match(featureSource, /Bij V2 is 20 Hz toegestaan/);
-  assert.match(featureSource, /volledig stroomloos.*oorspronkelijke frequenties/);
+  assert.match(featureSource, /t\("oduFrequency\.modalWarn3"\)/);
+  assert.match(nlCatalogue.oduFrequency.modalWarn3, /V1 en V1\.5 voorzichtig met koelwaarden onder 30 Hz/);
+  assert.match(nlCatalogue.oduFrequency.modalWarn3, /Bij V2 is 20 Hz toegestaan/);
+  assert.match(featureSource, /t\("oduFrequency\.modalWarn1"\)/);
+  assert.match(nlCatalogue.oduFrequency.modalWarn1, /volledig stroomloos.*oorspronkelijke frequenties/);
   assert.doesNotMatch(featureSource, /OEM-ondergrens|suction superheat|natte zuigretour/i);
 });

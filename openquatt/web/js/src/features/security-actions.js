@@ -4,6 +4,7 @@ import { state } from "../core/state.js";
 import { shouldRefreshSupplementaryStatus } from "../core/supplementary-refresh.js";
 import { isSystemSettingsGroupActive } from "../core/surface-state.js";
 import { render } from "../core/render-scheduler.js";
+import { t } from "../i18n/index.js";
 
   export function getAuthStatusSignature(status = state.authStatus || {}) {
     return [
@@ -70,7 +71,7 @@ import { render } from "../core/render-scheduler.js";
       return previousSignature !== nextSignature;
     } catch (error) {
       if (state.systemModal === "login") {
-        state.authError = `Loginstatus kon niet worden geladen. ${error.message}`;
+        state.authError = t("securityAccess.authLoadFail", { error: error.message });
       }
       return false;
     }
@@ -154,7 +155,7 @@ import { render } from "../core/render-scheduler.js";
       }
       return previousSignature !== nextSignature;
     } catch (error) {
-      state.apiSecurityError = `API-beveiliging kon niet worden geladen. ${error.message}`;
+      state.apiSecurityError = t("securityAccess.apiLoadFail", { error: error.message });
       if (state.systemModal === "api-security") {
         render();
       }
@@ -172,27 +173,27 @@ import { render } from "../core/render-scheduler.js";
     const confirmPassword = String(state.authDraftConfirmPassword || "");
 
     if (!newUsername || !newPassword) {
-      state.authError = "Vul een gebruikersnaam en wachtwoord in.";
+      state.authError = t("securityAccess.needUserPass");
       render();
       return;
     }
     if (newPassword !== confirmPassword) {
-      state.authError = "De twee wachtwoorden zijn niet gelijk.";
+      state.authError = t("securityAccess.passMismatch");
       render();
       return;
     }
     if (authEnabled && !currentPassword) {
-      state.authError = "Vul je huidige wachtwoord in.";
+      state.authError = t("securityAccess.needCurrent");
       render();
       return;
     }
     if (!authEnabled && !setupWindowActive) {
-      state.authError = "Houd de herstelknop 5 seconden vast.";
+      state.authError = t("securityAccess.needWindow");
       render();
       return;
     }
     if (!status.csrf_token) {
-      state.authError = "Logingegevens laden nog. Probeer het zo opnieuw.";
+      state.authError = t("securityAccess.stillLoading");
       render();
       return;
     }
@@ -224,12 +225,12 @@ import { render } from "../core/render-scheduler.js";
       state.authDraftConfirmPassword = "";
       state.authDraftUsername = String(state.authStatus?.username || newUsername).trim();
       state.authNotice = authEnabled
-        ? "Login aangepast."
-        : "Login staat nu aan.";
+        ? t("securityAccess.loginChanged")
+        : t("securityAccess.loginOn");
       state.authError = "";
       render();
     } catch (error) {
-      state.authError = `Opslaan is mislukt. ${error.message}`;
+      state.authError = t("securityAccess.saveFailed", { error: error.message });
       render();
     } finally {
       state.authBusy = false;
@@ -240,7 +241,7 @@ import { render } from "../core/render-scheduler.js";
   export async function commitDisableWebAuth() {
     const status = state.authStatus || {};
     if (!status.enabled) {
-      state.authNotice = "Login staat al uit.";
+      state.authNotice = t("securityAccess.alreadyOff");
       state.authError = "";
       render();
       return;
@@ -248,12 +249,12 @@ import { render } from "../core/render-scheduler.js";
 
     const currentPassword = String(state.authDraftCurrentPassword || "");
     if (!currentPassword) {
-      state.authError = "Vul je huidige wachtwoord in.";
+      state.authError = t("securityAccess.needCurrent");
       render();
       return;
     }
     if (!status.csrf_token) {
-      state.authError = "Logingegevens laden nog. Probeer het zo opnieuw.";
+      state.authError = t("securityAccess.stillLoading");
       render();
       return;
     }
@@ -282,11 +283,11 @@ import { render } from "../core/render-scheduler.js";
       state.authDraftNewPassword = "";
       state.authDraftConfirmPassword = "";
       state.authDraftUsername = "";
-      state.authNotice = "Login staat nu uit.";
+      state.authNotice = t("securityAccess.loginOff");
       state.authError = "";
       render();
     } catch (error) {
-      state.authError = `Uitzetten is mislukt. ${error.message}`;
+      state.authError = t("securityAccess.disableFailed", { error: error.message });
       render();
     } finally {
       state.authBusy = false;
@@ -298,13 +299,13 @@ import { render } from "../core/render-scheduler.js";
     if (state.apiSecurityBusy || state.wifiResetBusy || !state.authStatus?.enabled || !state.authStatus?.csrf_token) return;
     if (wifi && !state.wifiResetAvailable) return;
     if (!window.confirm(wifi
-      ? "Wi-Fi-gegevens wissen en controller herstarten? Stel daarna Wi-Fi opnieuw in via het OpenQuatt access point."
-      : "API-beveiliging wissen en controller herstarten? Dit verbreekt alle API-koppelingen.")) return;
+      ? t("recoveryUi.wifiResetConfirm")
+      : t("recoveryUi.apiResetConfirm"))) return;
     const prefix = wifi ? "wifiReset" : "apiSecurity";
     state[`${prefix}Busy`] = true;
     state[`${prefix}Error`] = "";
     state[`${prefix}ActionError`] = "";
-    state[`${prefix}Notice`] = "Reset aanvragen…";
+    state[`${prefix}Notice`] = t("recoveryUi.resetRequesting");
     render();
     try {
       const body = new URLSearchParams({ csrf_token: state.authStatus.csrf_token, confirm: wifi ? "RESET_WIFI" : "RESET_API_SECURITY" });
@@ -312,13 +313,13 @@ import { render } from "../core/render-scheduler.js";
       if (response.status !== 202) {
         state[`${prefix}Busy`] = false;
         state[`${prefix}Notice`] = "";
-        state[`${prefix}ActionError`] = `Reset is afgewezen. HTTP ${response.status}. Je kunt opnieuw proberen.`;
+        state[`${prefix}ActionError`] = t("recoveryUi.resetRejected", { status: response.status });
         render();
         return;
       }
       state[`${prefix}Notice`] = wifi
-        ? "Reset aangevraagd. Verbind na de herstart met het OpenQuatt access point en stel Wi-Fi opnieuw in. Web-login en API-beveiliging blijven behouden."
-        : "Reset aangevraagd. Bij succes herstart de controller. Open daarna de web-app opnieuw en koppel Home Assistant binnen 10 minuten.";
+        ? t("recoveryUi.wifiResetRequested")
+        : t("recoveryUi.apiResetRequested");
       render();
       await new Promise(resolve => window.setTimeout(resolve, 1000));
       // One status check, never retry a destructive request after an ambiguous response.
@@ -326,10 +327,10 @@ import { render } from "../core/render-scheduler.js";
       if (result.error) {
         state[`${prefix}Busy`] = false;
         state[`${prefix}Notice`] = "";
-        state[`${prefix}ActionError`] = "Reset mislukt; er is niet herstart. Je kunt opnieuw proberen.";
+        state[`${prefix}ActionError`] = t("recoveryUi.resetFailed");
       }
     } catch (error) {
-      state[`${prefix}Notice`] = "Controleer of de controller is herstart en open de web-app opnieuw. De reset wordt niet automatisch herhaald.";
+      state[`${prefix}Notice`] = t("recoveryUi.resetUncertain");
     }
     render();
   }

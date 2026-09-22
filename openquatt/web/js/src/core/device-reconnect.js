@@ -2,6 +2,7 @@ import { state } from "./state.js";
 import { render } from "./render-scheduler.js";
 import { updateFirmwareState } from "./feature-state.js";
 import { refreshWebAppCache } from "./app-cache.js";
+import { formatNumber, t } from "../i18n/index.js";
 
 export const DEVICE_RECONNECT_RECOVERY_CLEAR_DELAY_MS = 1500;
 export const OTA_REFRESH_DELAY_MS = 1500;
@@ -154,16 +155,16 @@ export function getDeviceReconnectPhaseStartedAt() {
 }
 
 export function getDeviceReconnectStatusLabel() {
-  return isDeviceReconnectRecovering() ? "Gegevens verversen" : "Wachten op gegevens";
+  return isDeviceReconnectRecovering() ? t("reconnect.statusRefreshing") : t("reconnect.statusWaiting");
 }
 
 export function getDeviceReconnectStatusCopy() {
   const startedAt = getDeviceReconnectPhaseStartedAt();
   const elapsedSeconds = startedAt > 0 ? Math.max(0, Math.round((Date.now() - startedAt) / 1000)) : 0;
   if (isDeviceReconnectRecovering()) {
-    return elapsedSeconds > 0 ? `${elapsedSeconds}s aan het verversen` : "Net weer online";
+    return elapsedSeconds > 0 ? t("reconnect.refreshingElapsed", { s: formatNumber(elapsedSeconds, { maximumFractionDigits: 0 }) }) : t("reconnect.justOnline");
   }
-  return elapsedSeconds > 0 ? `${elapsedSeconds}s bezig` : "Net gestart";
+  return elapsedSeconds > 0 ? t("reconnect.refreshingBusy", { s: formatNumber(elapsedSeconds, { maximumFractionDigits: 0 }) }) : t("reconnect.justStarted");
 }
 
 export function markDeviceReconnectRecovered() {
@@ -214,29 +215,29 @@ export function clearDeviceReconnect() {
 
 export function getDeviceReconnectTitle() {
   if (isDeviceReconnectRecovering()) {
-    return "OpenQuatt is weer online";
+    return t("reconnect.titleOnline");
   }
   if (state.deviceReconnectMode === "ota") {
-    return "OpenQuatt wordt bijgewerkt";
+    return t("reconnect.titleUpdating");
   }
   if (state.deviceReconnectMode === "restart") {
-    return "OpenQuatt herstart";
+    return t("reconnect.titleRestart");
   }
-  return "Verbinding herstellen";
+  return t("reconnect.titleReconnect");
 }
 
 export function getDeviceReconnectCopy() {
   if (isDeviceReconnectRecovering()) {
     if (state.deviceReconnectMode === "ota") {
-      return "De update is bijna klaar. We verversen nu de gegevens en het logboek.";
+      return t("reconnect.copyUpdateDone");
     }
-    return "De controller reageert weer. We verversen nu de gegevens en het logboek.";
+    return t("reconnect.copyBackOnline");
   }
   if (state.deviceReconnectMode === "ota") {
-    return "De controller installeert de update en start daarna opnieuw op. Deze melding verdwijnt zodra de web-app weer gegevens ontvangt.";
+    return t("reconnect.copyOta");
   }
   if (state.deviceReconnectMode === "restart") {
-    return "De controller start opnieuw op. De web-app probeert automatisch opnieuw verbinding te maken.";
+    return t("reconnect.copyRestart");
   }
-  return "De web-app krijgt tijdelijk geen gegevens van de controller. We proberen automatisch opnieuw te verbinden.";
+  return t("reconnect.copyOffline");
 }

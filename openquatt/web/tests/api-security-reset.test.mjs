@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { setLocale } from "../js/src/i18n/index.js";
 
 globalThis.__OQ_PREVIEW__ = false;
 const { state } = await import("../js/src/core/state.js");
@@ -22,6 +23,26 @@ function setup(t, handler, confirm = true) {
   globalThis.window = { confirm: () => confirm, setTimeout: callback => callback() };
   globalThis.fetch = handler;
 }
+
+test("English reset confirmation and failure retain the firmware request contract", async t => {
+  let confirmation = "";
+  setup(t, async (url, options) => {
+    assert.equal(url, "/wifi/reset");
+    assert.equal(options.body.get("confirm"), "RESET_WIFI");
+    assert.equal(options.body.get("csrf_token"), "test-token");
+    return { status: 403 };
+  });
+  window.confirm = text => { confirmation = text; return true; };
+  setLocale("en", { persist: false });
+  try {
+    await resetWifi();
+    assert.match(confirmation, /Clear Wi-Fi credentials and restart/);
+    assert.equal(state.wifiResetActionError, "Reset was rejected. HTTP 403. You can try again.");
+    assert.equal(state.wifiResetBusy, false);
+  } finally {
+    setLocale("nl", { persist: false });
+  }
+});
 
 test("API reset requires configured auth and explicit confirmation", async t => {
   setup(t, () => { throw Error("must not fetch"); }, false);

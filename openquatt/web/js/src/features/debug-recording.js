@@ -4,6 +4,7 @@ import {
   DEBUG_RECORDING_DOWNLOAD_RANGE_OPTIONS,
   SYSTEM_RECORDER_ANALYSER_URL,
 } from "../core/config.js";
+import { formatNumber, t } from "../i18n/index.js";
 import { updateDebugRecordingState } from "../core/feature-state.js";
 import { state } from "../core/state.js";
 import { getBasePath } from "../core/url-path.js";
@@ -66,47 +67,47 @@ export function getDebugRecordingDurationMs() {
 
 export function getDebugRecordingStatusLabel() {
   if (!state.debugRecordingDeviceStatus) {
-    return "Starten…";
+    return t("debugRecording.statusStarting");
   }
   if (state.debugRecordingDeviceStatus.available === false) {
-    return "Niet beschikbaar";
+    return t("debugRecording.statusUnavailable");
   }
   if (!isSystemRecorderEnabled()) {
-    return "Uitgeschakeld";
+    return t("debugRecording.statusDisabled");
   }
   if (!state.debugRecordingActive) {
-    return "Niet actief";
+    return t("debugRecording.statusInactive");
   }
   if (isDebugRecordingRolling()) {
-    return "Actief";
+    return t("debugRecording.statusActive");
   }
-  return "Bezig met opnemen";
+  return t("debugRecording.statusRecording");
 }
 
 export function getDebugRecordingStatusCopy() {
   if (state.debugRecordingDeviceStatus && state.debugRecordingDeviceStatus.available === false) {
-    return "Systeemrecorder in apparaatgeheugen is niet beschikbaar op deze firmware.";
+    return t("debugRecording.copyUnavailable");
   }
   if (!isSystemRecorderEnabled()) {
-    return "Doorlopende opname uitgeschakeld — Er worden momenteel geen nieuwe systeemgegevens opgeslagen. De huidige opname blijft beschikbaar totdat een nieuwe opname wordt gestart of het apparaat opnieuw opstart.";
+    return t("debugRecording.copyDisabled");
   }
-  return "De Systeemrecorder bewaart continu recente systeemgegevens voor diagnose en analyse. De gegevens blijven lokaal op het apparaat en worden niet automatisch verzonden.";
+  return t("debugRecording.copyActive");
 }
 
 export function getDebugRecordingHubStatusLabel() {
   if (state.debugRecordingDeviceStatus && state.debugRecordingDeviceStatus.available === false) {
-    return "Niet beschikbaar";
+    return t("debugRecording.statusUnavailable");
   }
   if (!isSystemRecorderEnabled()) {
-    return "Uitgeschakeld";
+    return t("debugRecording.statusDisabled");
   }
   if (state.debugRecordingActive) {
-    return "Actief";
+    return t("debugRecording.statusActive");
   }
   if (!state.debugRecordingDeviceStatus) {
-    return "Starten…";
+    return t("debugRecording.statusStarting");
   }
-  return "Niet actief";
+  return t("debugRecording.statusInactive");
 }
 
 export function getDebugRecordingDownloadRange() {
@@ -136,7 +137,7 @@ export function renderDebugRecordingHeaderStatus() {
     return "";
   }
   if (status.available === false) {
-    const title = "Systeemrecorder niet beschikbaar op deze firmware";
+    const title = t("debugRecording.hubUnavailable");
     return `
     <button
       class="oq-debug-recording-header-status"
@@ -145,12 +146,12 @@ export function renderDebugRecordingHeaderStatus() {
       aria-label="${escapeHtml(title)}"
       title="${escapeHtml(title)}"
     >
-      <span>Systeemrecorder niet beschikbaar</span>
+      <span>${escapeHtml(t("debugRecording.headerUnavailable"))}</span>
     </button>
   `;
   }
   if (status.enabled === false) {
-    const title = "Systeemrecorder uitgeschakeld — er worden geen nieuwe systeemgegevens opgeslagen";
+    const title = t("debugRecording.headerDisabledTitle");
     return `
     <button
       class="oq-debug-recording-header-status"
@@ -159,12 +160,12 @@ export function renderDebugRecordingHeaderStatus() {
       aria-label="${escapeHtml(title)}"
       title="${escapeHtml(title)}"
     >
-      <span>Systeemrecorder uitgeschakeld</span>
+      <span>${escapeHtml(t("debugRecording.headerDisabled"))}</span>
     </button>
   `;
   }
   if (status.active === false) {
-    const title = "Systeemrecorder niet actief — er wordt momenteel niets opgenomen";
+    const title = t("debugRecording.headerInactiveTitle");
     return `
     <button
       class="oq-debug-recording-header-status"
@@ -173,7 +174,7 @@ export function renderDebugRecordingHeaderStatus() {
       aria-label="${escapeHtml(title)}"
       title="${escapeHtml(title)}"
     >
-      <span>Systeemrecorder niet actief</span>
+      <span>${escapeHtml(t("debugRecording.headerInactive"))}</span>
     </button>
   `;
   }
@@ -368,7 +369,7 @@ export async function refreshDebugRecordingDeviceStatus(options = {}) {
   try {
     await fetchDebugRecordingDeviceStatus();
     debugRecordingStatusFailureCount = 0;
-    if (String(state.debugRecordingError || "").startsWith("Status kon niet worden opgehaald.")) {
+    if (String(state.debugRecordingError || "").startsWith(t("debugRecording.statusFetchPrefix"))) {
       state.debugRecordingError = "";
     }
     if (options.silent && state.systemModal === "debug-recording"
@@ -382,7 +383,7 @@ export async function refreshDebugRecordingDeviceStatus(options = {}) {
     if (!hadStatus) {
       applyDebugRecordingDeviceUnavailableStatus();
     }
-    state.debugRecordingError = `Status kon niet worden opgehaald. ${error.message || String(error)}`;
+    state.debugRecordingError = t("debugRecording.statusFetchFailed", { error: error.message || String(error) });
     // A failed first fetch must not freeze the recorder as permanently
     // unavailable: retry boundedly so boot transients recover on their own.
     const initialRetry = !hadStatus && debugRecordingStatusFailureCount <= 5;
@@ -417,7 +418,7 @@ export async function ensureDebugRecordingCsrfToken() {
   const status = await fetchDebugRecordingDeviceStatus();
   const csrfToken = String(status?.csrf_token || "");
   if (!csrfToken) {
-    throw new Error("beveiligingstoken ontbreekt");
+    throw new Error(t("debugRecording.csrfMissing"));
   }
   return csrfToken;
 }
@@ -477,8 +478,8 @@ export async function setSystemRecorderEnabled(enabled) {
     applyDebugRecordingDeviceStatus(payload);
     debugRecordingStatusFailureCount = 0;
     state.debugRecordingNotice = enabled
-      ? "Doorlopende opname ingeschakeld. Er is een nieuwe opname gestart; de oude buffer is gewist."
-      : "Doorlopende opname uitgeschakeld. De huidige opname blijft beschikbaar totdat een nieuwe opname wordt gestart of het apparaat opnieuw opstart.";
+      ? t("debugRecording.enabledNotice")
+      : t("debugRecording.disabledNotice");
     scheduleDebugRecordingDeviceStatusPoll();
   } catch (error) {
     const reconciled = await reconcileDebugRecordingMutation(
@@ -486,10 +487,10 @@ export async function setSystemRecorderEnabled(enabled) {
     );
     if (reconciled) {
       state.debugRecordingNotice = enabled
-        ? "Doorlopende opname is ingeschakeld; alleen de bevestiging was vertraagd."
-        : "Doorlopende opname is uitgeschakeld; alleen de bevestiging was vertraagd.";
+        ? t("debugRecording.enabledReconciled")
+        : t("debugRecording.disabledReconciled");
     } else {
-      state.debugRecordingError = `Doorlopende opname kon niet worden ${enabled ? "ingeschakeld" : "uitgeschakeld"}. ${error.message || String(error)}`;
+      state.debugRecordingError = t(enabled ? "debugRecording.enableFailed" : "debugRecording.disableFailed", { error: error.message || String(error) });
     }
   } finally {
     state.debugRecordingBusy = false;
@@ -547,7 +548,7 @@ export async function restartRollingDebugRecording() {
     const payload = await postDebugRecordingDevice("restart");
     applyDebugRecordingDeviceStatus(payload);
     debugRecordingStatusFailureCount = 0;
-    state.debugRecordingNotice = "Nieuwe opname gestart. De oude historie is gewist.";
+    state.debugRecordingNotice = t("debugRecording.restartDone");
     scheduleDebugRecordingDeviceStatusPoll();
   } catch (error) {
     const reconciled = await reconcileDebugRecordingMutation((status) => (
@@ -555,9 +556,9 @@ export async function restartRollingDebugRecording() {
       && getDebugRecordingId(status) !== previousRecordingId
     ));
     if (reconciled) {
-      state.debugRecordingNotice = "Nieuwe opname gestart; alleen de bevestiging was vertraagd.";
+      state.debugRecordingNotice = t("debugRecording.restartReconciled");
     } else {
-      state.debugRecordingError = `Nieuwe opname starten mislukt. ${error.message || String(error)}`;
+      state.debugRecordingError = t("debugRecording.restartFailed", { error: error.message || String(error) });
     }
   } finally {
     state.debugRecordingBusy = false;
@@ -589,18 +590,18 @@ export function getDebugRecordingDownloadEndpoint(rangeMinutes = getDebugRecordi
 export function getDebugRecordingRangeLabel(rangeMinutes = getDebugRecordingDownloadRange()) {
   const range = Math.max(0, Number(rangeMinutes) || 0);
   if (range <= 0) {
-    return `Volledige beschikbare historie · ${formatDebugRecordingDuration(getDebugRecordingRetainedDurationMs())}`;
+    return t("debugRecording.rangeFull", { duration: formatDebugRecordingDuration(getDebugRecordingRetainedDurationMs()) });
   }
-  return `Laatste ${range} minuten`;
+  return t("debugRecording.rangeLast", { minutes: formatNumber(range, { maximumFractionDigits: 0 }) });
 }
 
 export function getSystemRecorderIntroHtml() {
-  return `De Systeemrecorder bewaart continu recente systeemgegevens voor diagnose en analyse. De gegevens blijven lokaal op het apparaat en worden niet automatisch verzonden. Een geëxporteerd diagnosebestand kun je verder bekijken met de <a href="${escapeHtml(SYSTEM_RECORDER_ANALYSER_URL)}" target="_blank" rel="noopener noreferrer">OpenHeatPumps analyser${renderDebugRecordingButtonIcon("external")}</a>.`;
+  return `${escapeHtml(t("debugRecording.introPre"))} <a href="${escapeHtml(SYSTEM_RECORDER_ANALYSER_URL)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t("debugRecording.introLink"))}${renderDebugRecordingButtonIcon("external")}</a>.`;
 }
 
 export async function exportDebugRecordingBundle(mode, rangeMinutes = getDebugRecordingDownloadRange()) {
   if (getDebugRecordingSampleCount() === 0) {
-    state.debugRecordingError = `Er is nog geen opname om te ${mode === "copy" ? "kopiëren" : "downloaden"}.`;
+    state.debugRecordingError = t("debugRecording.exportEmpty", { action: mode === "copy" ? t("debugRecording.exportCopy") : t("debugRecording.exportDownload") });
     render();
     return false;
   }
@@ -620,18 +621,18 @@ export async function exportDebugRecordingBundle(mode, rangeMinutes = getDebugRe
     if (mode === "copy") {
       const copied = await copyTextToClipboard(getDebugRecordingCompactJson(bundle));
       if (!copied) {
-        throw new Error("Kopiëren naar het klembord is niet gelukt.");
+        throw new Error(t("debugRecording.copyFailClipboard"));
       }
     } else {
       downloadTextFile(getDebugRecordingFilename(bundle), getDebugRecordingCompactJson(bundle), "application/json");
     }
-    const action = mode === "copy" ? "gekopieerd" : "gedownload";
-    state.debugRecordingNotice = `Diagnosebestand (${rangeLabel}) ${action}.`;
+    const action = mode === "copy" ? t("debugRecording.exportCopied") : t("debugRecording.exportDownloaded");
+    state.debugRecordingNotice = t("debugRecording.exportDone", { range: rangeLabel, action });
     return true;
   } catch (error) {
     state.debugRecordingError = mode === "copy"
-      ? "Kopiëren mislukt. Probeer opnieuw of download het diagnosebestand."
-      : "Download mislukt. Probeer opnieuw of kopieer de gegevens.";
+      ? t("debugRecording.exportCopyFail")
+      : t("debugRecording.exportDownloadFail");
     return false;
   } finally {
     state.debugRecordingBusy = false;
@@ -705,31 +706,31 @@ export function renderDebugRecordingModal() {
         ? {
           kind: "warning",
           icon: "alert",
-          text: "De stringopslag is volgelopen; enkele tekstwaarden ontbreken in de opname.",
+          text: t("debugRecording.stringOverflow"),
         }
         : null;
   return renderModalShell({
     id: "system",
     titleId: "oq-debug-recording-modal-title",
-    kicker: "Diagnostiek",
-    title: "Systeemrecorder",
+    kicker: t("debugRecording.modalKicker"),
+    title: t("debugRecording.modalTitle"),
     copy: "",
     className: "oq-debug-recording-modal",
     closeAction: "close-system-modal",
-    closeLabel: "Sluit Systeemrecorder",
+    closeLabel: t("debugRecording.modalClose"),
     body: `
         <p class="oq-helper-modal-copy">${getSystemRecorderIntroHtml()}</p>
-        <section class="oq-debug-recording-card" aria-label="Doorlopende opname">
+        <section class="oq-debug-recording-card" aria-label="${escapeHtml(t("debugRecording.cardAria"))}">
           <div class="oq-debug-recording-card-head">
             <span class="oq-debug-recording-heading-icon" aria-hidden="true">${renderDebugRecordingSvgIcon("activity")}</span>
-            <h3>Doorlopende opname</h3>
+            <h3>${escapeHtml(t("debugRecording.cardTitle"))}</h3>
             <span class="oq-debug-recording-switchwrap">
               <button
                 class="oq-settings-toggle-switch${enabled ? " is-on" : ""}"
                 type="button"
                 role="switch"
                 aria-checked="${enabled ? "true" : "false"}"
-                aria-label="Doorlopende opname"
+                aria-label="${escapeHtml(t("debugRecording.cardAria"))}"
                 data-oq-action="request-disable-system-recorder"
                 ${busy || deviceUnavailable ? "disabled" : ""}
               >
@@ -738,34 +739,34 @@ export function renderDebugRecordingModal() {
             </span>
           </div>
           ${deviceUnavailable ? `
-            <p class="oq-debug-recording-subtle">Systeemrecorder niet beschikbaar op deze firmware.</p>
+            <p class="oq-debug-recording-subtle">${escapeHtml(t("debugRecording.deviceUnavailable"))}</p>
           ` : `
             <div class="oq-debug-recording-availability">
-              <span>Beschikbaar</span>
-              <strong data-oq-recorder-availability><span data-oq-recorder-retained>${escapeHtml(formatDebugRecordingDuration(retainedMs))}</span> <span class="oq-debug-recording-samples" data-oq-recorder-samples>(${sampleCount} samples)</span></strong>
+              <span>${escapeHtml(t("debugRecording.availableLabel"))}</span>
+              <strong data-oq-recorder-availability><span data-oq-recorder-retained>${escapeHtml(formatDebugRecordingDuration(retainedMs))}</span> <span class="oq-debug-recording-samples" data-oq-recorder-samples>${escapeHtml(t("debugRecording.samples", { count: sampleCount }))}</span></strong>
             </div>
-            <p class="oq-debug-recording-subtle">Lokaal opgeslagen · elke ${escapeHtml(String(intervalS))} s</p>
+            <p class="oq-debug-recording-subtle">${escapeHtml(t("debugRecording.storedLocal", { seconds: formatNumber(intervalS, { maximumFractionDigits: 0 }) }))}</p>
             ${!enabled ? `
-              <p class="oq-debug-recording-subtle">Er worden momenteel geen nieuwe systeemgegevens opgeslagen.</p>
+              <p class="oq-debug-recording-subtle">${escapeHtml(t("debugRecording.notStoring"))}</p>
             ` : ""}
             ${enabled && !state.debugRecordingActive ? `
-              <p class="oq-debug-recording-subtle">De opname is momenteel niet actief.</p>
+              <p class="oq-debug-recording-subtle">${escapeHtml(t("debugRecording.notActive"))}</p>
             ` : ""}
           `}
           ${confirmDisable && enabled ? `
-            <div class="oq-debug-recording-confirm" role="group" aria-label="Doorlopende opname uitschakelen">
-              <p><strong>Doorlopende opname uitschakelen?</strong> Er worden geen nieuwe systeemgegevens meer opgeslagen. De huidige historie blijft beschikbaar.</p>
+            <div class="oq-debug-recording-confirm" role="group" aria-label="${escapeHtml(t("debugRecording.confirmTitle"))}">
+              <p><strong>${escapeHtml(t("debugRecording.confirmTitle"))}</strong> ${escapeHtml(t("debugRecording.confirmCopy"))}</p>
               <div class="oq-debug-recording-confirm-actions">
-                <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="cancel-disable-system-recorder" ${busy ? "disabled" : ""}>Annuleren</button>
-                <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-disable-system-recorder" ${busy ? "disabled" : ""}>Uitschakelen</button>
+                <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="cancel-disable-system-recorder" ${busy ? "disabled" : ""}>${escapeHtml(t("common.cancel"))}</button>
+                <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-disable-system-recorder" ${busy ? "disabled" : ""}>${escapeHtml(t("common.disable"))}</button>
               </div>
             </div>
           ` : ""}
         </section>
-        <section class="oq-debug-recording-export" aria-label="Exporteren">
-          <h3>Exporteren</h3>
-          <p class="oq-helper-modal-copy">Kies hoeveel van de beschikbare historie je wilt exporteren.</p>
-          <div class="oq-debug-recording-segments" role="group" aria-label="Kies exportbereik">
+        <section class="oq-debug-recording-export" aria-label="${escapeHtml(t("debugRecording.exportAria"))}">
+          <h3>${escapeHtml(t("debugRecording.exportTitle"))}</h3>
+          <p class="oq-helper-modal-copy">${escapeHtml(t("debugRecording.exportCopy"))}</p>
+          <div class="oq-debug-recording-segments" role="group" aria-label="${escapeHtml(t("debugRecording.exportRangeAria"))}">
             ${DEBUG_RECORDING_DOWNLOAD_RANGE_OPTIONS.map((option) => {
               const minutes = Number(option.minutes);
               const selected = minutes === downloadRange;
@@ -778,16 +779,16 @@ export function renderDebugRecordingModal() {
                   aria-pressed="${selected ? "true" : "false"}"
                   ${busy ? "disabled" : ""}
                 >
-                  ${escapeHtml(option.label)}
+                  ${escapeHtml(option.labelKey ? t(option.labelKey) : option.label)}
                 </button>
               `;
             }).join("")}
           </div>
           <p class="oq-debug-recording-rangelabel"><strong data-oq-recorder-range>${escapeHtml(getDebugRecordingRangeLabel(downloadRange))}</strong></p>
           <div class="oq-debug-recording-exportactions">
-            <button class="oq-helper-button oq-helper-button--primary oq-debug-recording-primary" type="button" data-oq-action="download-debug-recording-range" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("download")}Download bestand</button>
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("copy")}Kopieer gegevens</button>
-            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording-analyser" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("external")}Kopieer + analyser</button>
+            <button class="oq-helper-button oq-helper-button--primary oq-debug-recording-primary" type="button" data-oq-action="download-debug-recording-range" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("download")}${escapeHtml(t("debugRecording.downloadFile"))}</button>
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("copy")}${escapeHtml(t("debugRecording.copyData"))}</button>
+            <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="copy-debug-recording-analyser" ${!hasRecording || busy ? "disabled" : ""}>${renderDebugRecordingButtonIcon("external")}${escapeHtml(t("debugRecording.copyAnalyser"))}</button>
           </div>
           ${feedback ? `
             <p class="oq-debug-recording-feedback oq-debug-recording-feedback--${feedback.kind}" role="status">
@@ -797,9 +798,9 @@ export function renderDebugRecordingModal() {
           ` : ""}
         </section>
         <details class="oq-debug-recording-manage"${state.debugRecordingManageOpen ? " open" : ""}>
-          <summary data-oq-action="toggle-recorder-manage">Recorderbeheer</summary>
-          <p class="oq-debug-recording-subtle">Wist de huidige historie en start een nieuwe opname.</p>
-          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="restart-rolling-debug-recording" ${busy || deviceUnavailable || !enabled ? "disabled" : ""}>${renderDebugRecordingButtonIcon("activity")}Nieuwe opname starten</button>
+          <summary data-oq-action="toggle-recorder-manage">${escapeHtml(t("debugRecording.manageTitle"))}</summary>
+          <p class="oq-debug-recording-subtle">${escapeHtml(t("debugRecording.manageCopy"))}</p>
+          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="restart-rolling-debug-recording" ${busy || deviceUnavailable || !enabled ? "disabled" : ""}>${renderDebugRecordingButtonIcon("activity")}${escapeHtml(t("debugRecording.manageStart"))}</button>
         </details>`,
   });
 }

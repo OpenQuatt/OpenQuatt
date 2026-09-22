@@ -9,6 +9,7 @@ import { refreshDebugRecordingDeviceStatus } from "../features/debug-recording.j
 import { isFirmwareOtaQuietActive } from "./firmware-quiet.js";
 import { clearLegacyMotionVariables, startMotionLoop, stopMotionLoop } from "./motion.js";
 import { render } from "./render-scheduler.js";
+import { t } from "../i18n/index.js";
 
   export function setOverviewTheme(theme) {
     state.overviewTheme = theme === "dark" ? "dark" : "light";
@@ -381,7 +382,7 @@ import { render } from "./render-scheduler.js";
       await loadScriptOnce(OFFICIAL_ESPHOME_UI_URL);
       state.nativeFrontendLoaded = true;
     } catch (error) {
-      state.controlError = `ESPHome fallback kon niet worden geladen. ${error.message || error}`;
+      state.controlError = t("errors.firmwareFallbackFailed", { message: error.message || error });
       state.nativeOpen = false;
       setStoredSurface("app");
       render();

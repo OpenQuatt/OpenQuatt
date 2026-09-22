@@ -3,38 +3,39 @@ import { isCurveMode } from "./domain-helpers.js";
 import { formatValue, getEntityValue, hasEntity } from "./entity-store.js";
 import { formatNumericState } from "./formatting.js";
 import { escapeHtml } from "./html.js";
+import { t } from "../i18n/index.js";
 import { state } from "./state.js";
 
 export { hasEntity } from "./entity-store.js";
 
   export function renderAppSummary() {
     const parts = [];
-    parts.push(isCurveMode() ? "Stooklijn" : "Power House");
+    parts.push(isCurveMode() ? t("overview.strategyCurve") : "Power House");
     const profile = String(getEntityValue(isCurveMode() ? "curveControlProfile" : "phResponseProfile") || "").trim();
     if (profile) {
-      parts.push(`profiel ${profile}`);
+      parts.push(t("summary.profile", { profile }));
     }
     const flowMode = String(getEntityValue("flowControlMode") || "").trim();
     if (flowMode) {
-      parts.push(`flow ${flowMode === "Manual PWM" ? "handmatig" : "setpoint"}`);
+      parts.push(flowMode === "Manual PWM" ? t("summary.flowManual", { manual: t("summary.manualPwm") }) : t("summary.flowSetpoint", { value: "setpoint" }));
     }
     if (flowMode === "Manual PWM" && hasEntity("manualIpwm")) {
       parts.push(`iPWM ${formatValue("manualIpwm")}`);
     } else if (hasEntity("flowSetpoint")) {
-      parts.push(`flow ${formatValue("flowSetpoint")}`);
+      parts.push(t("summary.flowSetpoint", { value: formatValue("flowSetpoint") }));
     }
 
     if (hasEntity("dayMaxHz")) {
-      parts.push(`dag ${formatValue("dayMaxHz")}`);
+      parts.push(t("summary.day", { value: formatValue("dayMaxHz") }));
     }
     if (hasEntity("silentMaxHz")) {
-      parts.push(`stil ${formatValue("silentMaxHz")}`);
+      parts.push(t("summary.silent", { value: formatValue("silentMaxHz") }));
     }
     if (hasEntity("maxWater")) {
-      parts.push(`max water ${formatValue("maxWater")}`);
+      parts.push(t("summary.maxWater", { value: formatValue("maxWater") }));
     }
 
-    return parts.filter(Boolean).join(", ") || "Instellingen beschikbaar";
+    return parts.filter(Boolean).join(", ") || t("summary.settingsAvailable");
   }
 
   export function getEntityStateText(key, fallback = "—") {
@@ -50,7 +51,7 @@ export { hasEntity } from "./entity-store.js";
       return fallback;
     }
     if (typeof value === "boolean") {
-      return value ? "Aan" : "Uit";
+      return value ? t("common.on") : t("common.off");
     }
     if (typeof value === "number" && !Number.isNaN(value)) {
       return entity.uom ? `${value} ${entity.uom}` : String(value);
@@ -200,7 +201,7 @@ export { hasEntity } from "./entity-store.js";
             data-view-id="${escapeHtml(view.id)}"
           >
             ${renderOqIcon(view.icon, "oq-helper-app-tab-icon")}
-            <span>${escapeHtml(view.label)}</span>
+            <span>${escapeHtml(t(view.labelKey))}</span>
             ${view.badge ? `<span class="oq-helper-app-tab-badge">${escapeHtml(view.badge)}</span>` : ""}
           </button>
         `).join("")}
@@ -209,7 +210,8 @@ export { hasEntity } from "./entity-store.js";
   }
 
   export function getAppViewLabel(view = state.appView) {
-    return APP_VIEWS.find((item) => item.id === view)?.label || "OpenQuatt";
+    const found = APP_VIEWS.find((item) => item.id === view);
+    return found ? t(found.labelKey) : t("navigation.appName");
   }
 
   export function syncDocumentTitle() {

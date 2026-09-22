@@ -3,6 +3,7 @@ import { getEntityValue, normalizeTimeValue } from "./entity-store.js";
 import { commitTime } from "./entity-write-actions.js";
 import { render } from "./render-scheduler.js";
 import { state } from "./state.js";
+import { t } from "../i18n/index.js";
 
 let edit = null;
 
@@ -14,7 +15,7 @@ export function finishTimeInput(input) {
   }
   const value = normalizeTimeValue(input.value);
   if (!value) {
-    state.controlError = `${ENTITY_DEFS[key].name} verwacht tijd als HH:MM.`;
+    state.controlError = t("entityBackup.timeExpected", { name: ENTITY_DEFS[key].name });
     render();
     return;
   }

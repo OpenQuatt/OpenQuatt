@@ -1,11 +1,11 @@
 import { hasEntity, isEntityActive } from "../core/app-shared.js";
-import { STRATEGY_OPTION_CURVE, STRATEGY_OPTION_POWER_HOUSE } from "../core/config.js";
 import { getInputDraftValue } from "../core/control-drafts.js";
 import { formatValue, getEntityValue, getNumberMeta, normalizeNumber, parseLooseNumber, toTimeInputValue } from "../core/entity-store.js";
 import { escapeHtml } from "../core/html.js";
 import { renderNumberInputControl } from "../core/number-controls.js";
 import { state } from "../core/state.js";
 import { getSettingsChoiceModel, getSettingsSelectModel, getSettingsSwitchModel } from "./field-models.js";
+import { optionLabel, t } from "../i18n/index.js";
 
 export { getSelectEntityOptions } from "./field-models.js";
 
@@ -21,7 +21,7 @@ export function renderSettingsInfoToggle(infoId, title, copy, buttonLabel = "i",
         type="button"
         data-oq-action="toggle-settings-info"
         data-info-id="${escapeHtml(infoId)}"
-        aria-label="${escapeHtml(`Uitleg bij ${title}`)}"
+        aria-label="${escapeHtml(t("settingsControls.infoAria", { title }))}"
         aria-expanded="${state.settingsInfoOpen === infoId ? "true" : "false"}"
       >${escapeHtml(buttonLabel)}</button>
       <div class="oq-settings-info-popover" ${state.settingsInfoOpen === infoId ? "" : "hidden"}>
@@ -146,68 +146,7 @@ export function getCommissioningStatusValue() {
 }
 
 export function formatSettingsOptionLabel(option) {
-  const value = String(option || "").trim();
-  if (!value) {
-    return "";
-  }
-
-  const labels = {
-    Automatic: "Automatisch",
-    None: "Geen",
-    Manual: "Handmatig",
-    Schedule: "Dagelijks tijdvenster",
-    Disabled: "Niet gebruiken",
-    "HA input + Manual": "HA-invoer + handmatig",
-    "MQTT + Manual": "MQTT + handmatig",
-    "OT thermostat + Manual": "OT-thermostaat + handmatig",
-    "Schedule + Manual": "Dagelijks tijdvenster + handmatig",
-    "CIC + Manual": "CIC + handmatig",
-    "CIC + HA input + Manual": "CIC + HA-invoer + handmatig",
-    Balanced: "Gebalanceerd",
-    Stable: "Stabiel",
-    Responsive: "Direct",
-    Calm: "Rustig",
-    Custom: "Aangepast",
-    [STRATEGY_OPTION_CURVE]: "Stooklijn",
-    [STRATEGY_OPTION_POWER_HOUSE]: "Power House",
-    "Heating demand": "Warmtevraag",
-    "Cooling demand": "Koelvraag",
-    "Water temperature": "Watertemperatuur",
-    "Minimum off time": "Minimale uit-tijd",
-    "Heating or cooling demand": "Warmte- of koelvraag",
-    "External control": "Externe bediening",
-    "Dew point required": "Dauwpuntmeting vereist",
-    "Dew point": "Dauwpunt",
-    "Dew point (MQTT)": "Dauwpunt (MQTT)",
-    "Dew point (HA)": "Dauwpunt (HA)",
-    "Allow without dew point": "Dauwpuntsbenadering",
-    "Allow without dew point, use fallback": "Dauwpuntsbenadering",
-    "Allow without dew point, use dew point approximation": "Dauwpuntsbenadering",
-    "Allow without dew point, user responsibility": "Expliciet toestaan",
-    Fallback: "Dauwpuntsbenadering",
-    "Fallback blocked": "Dauwpuntsbenadering geblokkeerd",
-    "User responsibility": "Expliciet toegestaan",
-    Local: "Lokaal",
-    CIC: "CIC",
-    "HA input": "HA-invoer",
-    "API input": "API-invoer",
-    "API Input": "API-invoer",
-    "CIC + HA input": "CIC + HA-invoer",
-    "OT thermostat": "OT-thermostaat",
-    "Outdoor unit": "Buitenunit",
-    "Local - PT1000": "Lokaal - PT1000",
-    "Local - DS18B20": "Lokaal - DS18B20",
-    "HP1 water out (fallback)": "HP1 uitgaand water (fallback)",
-    "HP2 water out (fallback)": "HP2 uitgaand water (fallback)",
-    Unavailable: "Niet beschikbaar",
-    Auto: "Auto",
-    "CIC or HA input": "CIC of HA-invoer",
-    "Flowmeter HP1": "Flowmeter HP1",
-    "Flowmeter HP2": "Flowmeter HP2",
-    "Local aggregate HP1/HP2": "Gecombineerde flow HP1/HP2",
-  };
-
-  return labels[value] || value;
+  return optionLabel(option);
 }
 
 export function renderSettingsChoiceOption({ key, option, model = getSettingsSelectModel(key), currentValue, busy, copy = "", meta = "", image = "", imageAlt = "", infoTitle = "", infoCopy = "", infoId = "" }) {
@@ -303,15 +242,17 @@ export function renderSettingsAdvancedDisclosure(id, title, copy, bodyMarkup) {
   `;
 }
 
-export function renderSettingsSwitchPill(key, enabled, onLabel = "Aan", offLabel = "Uit") {
+export function renderSettingsSwitchPill(key, enabled, onLabel = t("common.on"), offLabel = t("common.off")) {
   return `<span class="oq-settings-toggle-state${enabled ? " is-on" : ""}" data-oq-switch-pill="${escapeHtml(key)}" data-on-label="${escapeHtml(onLabel)}" data-off-label="${escapeHtml(offLabel)}">${escapeHtml(enabled ? onLabel : offLabel)}</span>`;
 }
 
-export function renderSettingsCompactSwitchControl(key, title, enabled, busy, onLabel = "Aan", offLabel = "Uit", showStatus = true) {
-  const model = getSettingsSwitchModel(key, { title, enabled, busy, onLabel, offLabel });
+export function renderSettingsCompactSwitchControl(key, title, enabled, busy, onLabel = null, offLabel = null, showStatus = true) {
+  const resolvedOnLabel = onLabel ?? t("common.on");
+  const resolvedOffLabel = offLabel ?? t("common.off");
+  const model = getSettingsSwitchModel(key, { title, enabled, busy, onLabel: resolvedOnLabel, offLabel: resolvedOffLabel });
   return `
     <div class="oq-settings-compact-switch-row">
-      ${showStatus ? renderSettingsSwitchPill(key, model.enabled, onLabel, offLabel) : ""}
+      ${showStatus ? renderSettingsSwitchPill(key, model.enabled, resolvedOnLabel, resolvedOffLabel) : ""}
       <button
         class="oq-settings-toggle-switch${model.enabled ? " is-on" : ""}"
         type="button"
@@ -509,9 +450,9 @@ export function renderSettingsFrequencyRangeField(minKey, maxKey, title, copy) {
   }
   const invalid = !disabled && minValue > maxValue;
   const valueLabel = disabled
-    ? "Geen uitsluiting"
+    ? t("settingsControls.noExclusion")
     : invalid
-      ? "Ongeldig bereik"
+      ? t("settingsControls.invalidRange")
       : `${minValue}–${maxValue} ${meta.uom || "Hz"}`;
   const span = Math.max(1, max - min);
   const start = ((minValue - min) / span) * 100;
@@ -523,7 +464,7 @@ export function renderSettingsFrequencyRangeField(minKey, maxKey, title, copy) {
       style="--oq-range-start:${start}%;--oq-range-end:${end}%"
     >
       <div class="oq-helper-slider-meta" style="position:relative">
-        <span>Uit</span>
+        <span>${escapeHtml(t("common.off"))}</span>
         <span style="position:absolute;left:18.18%;transform:translateX(-50%)">20Hz</span>
         <strong data-oq-range-value>${escapeHtml(valueLabel)}</strong>
         <span>${escapeHtml(`${max}${meta.uom || ""}`)}</span>
@@ -534,7 +475,7 @@ export function renderSettingsFrequencyRangeField(minKey, maxKey, title, copy) {
           type="range"
           data-oq-field="${escapeHtml(minKey)}"
           data-oq-range-role="min"
-          aria-label="Ondergrens bereik"
+          aria-label="${escapeHtml(t("settingsControls.rangeLowerAria"))}"
           min="${min}"
           max="${max}"
           step="${meta.step}"
@@ -546,7 +487,7 @@ export function renderSettingsFrequencyRangeField(minKey, maxKey, title, copy) {
           type="range"
           data-oq-field="${escapeHtml(maxKey)}"
           data-oq-range-role="max"
-          aria-label="Bovengrens bereik"
+          aria-label="${escapeHtml(t("settingsControls.rangeUpperAria"))}"
           min="${min}"
           max="${max}"
           step="${meta.step}"
@@ -556,7 +497,7 @@ export function renderSettingsFrequencyRangeField(minKey, maxKey, title, copy) {
       </div>
     </div>
   `;
-  const disableButton = `<button class="oq-helper-button oq-helper-button--ghost oq-range-disable" type="button" data-oq-action="disable-range" data-oq-range-key="${escapeHtml(minKey)}" ${disabled || state.loadingEntities ? "disabled" : ""}>Uitschakelen</button>`;
+  const disableButton = `<button class="oq-helper-button oq-helper-button--ghost oq-range-disable" type="button" data-oq-action="disable-range" data-oq-range-key="${escapeHtml(minKey)}" ${disabled || state.loadingEntities ? "disabled" : ""}>${escapeHtml(t("common.disable"))}</button>`;
   return renderSettingsFieldCard(minKey, title, copy, markup, "oq-settings-field--frequency-range", "", disableButton);
 }
 

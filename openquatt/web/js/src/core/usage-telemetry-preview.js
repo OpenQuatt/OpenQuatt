@@ -1,6 +1,7 @@
 import { fetchWithTimeout } from "./browser-utils.js";
 import { getEntityValue, isDeviceTimeValid } from "./entity-store.js";
 import { state } from "./state.js";
+import { t } from "../i18n/index.js";
 
 const MQTT_STATUS_TIMEOUT_MS = 3000;
 
@@ -229,7 +230,7 @@ export async function loadUsageTelemetryPreviewMqttEnabled(request = fetchWithTi
       "/mqtt/status",
       { cache: "no-store" },
       MQTT_STATUS_TIMEOUT_MS,
-      "MQTT-status ophalen duurde te lang.",
+      t("usage.previewMqttTimeout"),
       async (response) => {
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);

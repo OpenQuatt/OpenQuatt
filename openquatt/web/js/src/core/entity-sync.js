@@ -1,5 +1,6 @@
 import { FREQUENCY_MINIMUM_KEYS } from "./config.js";
 import { patchFrequencyLimitWarnings } from "../features/frequency-limits.js";
+import { t } from "../i18n/index.js";
 import { getSetupCompleteState, isTrendHistoryEnabled, renderAppSummary } from "./app-shared.js";
 import { AUX_RELAY_SETTING_KEYS, AUX_RELAY_STATE_KEYS, BOILER_DIAGNOSTIC_KEYS, BOILER_SETTING_KEYS, BOILER_SUPPORT_SWITCHING_KEYS, BULK_POLL_INTERVAL_MS, CIC_COMPATIBILITY_KEYS, CIC_POLLING_DIAGNOSTIC_KEYS, CIC_POLLING_SETTING_KEYS, COMMISSIONING_STATE_KEYS, COMPRESSOR_SETTING_KEYS, CONNECTIVITY_PROBE_SUCCESS_TTL_MS, CONNECTIVITY_PROBE_TIMEOUT_MS, CONTROL_REPLAY_STATE_KEYS, COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS, COOLING_SCHEDULE_VALID_KEY, COOLING_SETTING_KEYS, CURVE_POINTS, CURVE_SETTING_KEYS, ENTITY_DEFS, ENTITY_REFRESH_CONCURRENCY, FAST_OVERVIEW_KEYS, FAST_VIEW_ENTITY_REFRESH_CONCURRENCY, FIRMWARE_ENTITY_KEYS, FIRMWARE_MODAL_KEYS, FLOW_SETTING_KEYS, FLOW_TUNING_KEYS, FREQUENCY_CAP_KEYS, HEADER_ENTITY_KEYS, HIDDEN_POLL_INTERVAL_MS, INSTALLATION_MONITORING_STATE_KEYS, LIMIT_KEYS, OPENTHERM_DIAGNOSTIC_KEYS, OPENTHERM_SETTING_KEYS, OTB_DIAGNOSTIC_KEYS, OVERVIEW_ENERGY_COLUMN_CONFIGS, OVERVIEW_KEYS, OVERVIEW_METADATA_KEYS, POWER_HOUSE_KEYS, QUICK_START_FLOW_SOURCE_KEYS, QUICK_START_THERMOSTAT_SOURCE_KEYS, SENSOR_CALIBRATION_KEYS, SENSOR_CALIBRATION_STATE_KEYS, SENSOR_SELECTION_KEYS, SENSOR_SELECTION_STATE_KEYS, SERVICE_CONTROL_KEYS, SERVICE_STATUS_ENTITY_KEYS, SETTINGS_GROUP_IDS, SETTINGS_GROUPS, SETTINGS_KEYS, SILENT_SETTING_KEYS, STATIC_POLL_INTERVAL_MS } from "./config.js";
 import { buildEntityPath, isCurveMode } from "./domain-helpers.js";
@@ -1073,7 +1074,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
             markOptionalMissingEntity(key, now);
           }
         } else if (!firstError) {
-          firstError = `${entity?.name || key} ontbreekt in bulk response`;
+          firstError = t("entitySync.missingBulkField", { name: entity?.name || key });
         }
       });
     });
@@ -1085,7 +1086,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       if (state.deviceReconnectMode) {
         state.controlError = "";
       } else {
-        state.controlError = `Niet alle helpervelden konden worden ververst. ${firstError}`;
+        state.controlError = t("entitySync.refreshIncomplete", { error: firstError });
       }
     } else if (!state.busyAction) {
       noteEntityRefreshSuccess();
@@ -1120,7 +1121,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
 
   export function applyDerivedState() {
     state.complete = getSetupCompleteState();
-    state.stage = state.complete === true ? "Gereed" : state.complete === false ? "Quick Start" : "Laden...";
+    state.stage = state.complete === true ? t("common.done") : state.complete === false ? "Quick Start" : t("common.loading");
     state.summary = renderAppSummary();
     if (state.appView === "diagnosis" && !isTrendHistoryEnabled()) {
       setAppView(getDefaultAppView(), { syncMode: "replace", forceSync: true });
@@ -1480,7 +1481,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       }
     } catch (error) {
       if (!isPrefetchOverview) {
-        state.controlError = `Helperstatus kon niet worden geladen. ${error.message}`;
+        state.controlError = t("entitySync.statusLoadFailed", { error: error.message });
         render();
       }
     } finally {

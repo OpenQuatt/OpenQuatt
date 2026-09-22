@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { setLocale } from "../js/src/i18n/index.js";
 
 globalThis.__OQ_PREVIEW__ = false;
 globalThis.window = {
@@ -30,6 +31,29 @@ function numberEntity(value, uom = "", extra = {}) {
     ...extra,
   };
 }
+
+test("run-extension copy and temperatures follow locale changes without changing thresholds", () => {
+  resetSettingsState({
+    phRunExtension: switchEntity(true),
+    phRunExtensionStopMargin: numberEntity(0.5, "°C"),
+    roomSetpoint: numberEntity(20.5, "°C"),
+    phRunExtensionStatus: { value: "extending", state: "extending" },
+  });
+  const before = getRunExtensionThresholds();
+  try {
+    setLocale("en", { persist: false });
+    const markup = renderPowerHouseRunExtensionField();
+    assert.match(markup, /Extended heating active/);
+    assert.match(markup, /21\.0 °C/);
+    assert.match(markup, /20\.8 °C/);
+    assert.match(markup, /Waiting periods and safety protections may delay the start/);
+    assert.doesNotMatch(markup, /Langer doorverwarmen|Uitgeschakeld/);
+    assert.deepEqual(getRunExtensionThresholds(), before);
+  } finally {
+    setLocale("nl", { persist: false });
+  }
+  assert.match(renderPowerHouseRunExtensionField(), /Langer doorverwarmen actief/);
+});
 
 function switchEntity(enabled) {
   return { value: enabled, state: enabled };
