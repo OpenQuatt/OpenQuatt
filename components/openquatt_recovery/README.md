@@ -16,6 +16,10 @@ login (of de oorspronkelijke open modus); openen wijzigt geen credentials in NVS
   Er wordt geen losse fd naar later werk doorgestuurd.
 - Pas na een main-loopbarrière wordt de fysieke capability zichtbaar. Uitgestelde
   webserver-acties controleren recovery en de generatie opnieuw vóór uitvoering.
+  Dit geldt ook voor ingeplande incidentacties en ODU-editoracties. De editors
+  controleren opnieuw vóór de eerste registerwrite na een uitgestelde read.
+  Een al begonnen registerschrijfreeks wordt veilig afgemaakt; autonome
+  reconciliatie van eerder opgeslagen ODU-instellingen blijft ongewijzigd.
 - POST vereist exact dezelfde HTTP-origin, de actieve generatie en een willekeurige
   CSRF-token. Een open normale webinterface is geen beheerautorisatie.
 - Tijdens het fysieke venster kan iedereen op het lokale netwerk de beperkte

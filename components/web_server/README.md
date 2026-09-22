@@ -5,7 +5,8 @@ C++ is GPLv3 (repository LICENSE); Python is MIT (../web_server_base/LICENSE-MIT
 Copied upstream files retain the existing component and generated index assets;
 C++ is formatted with the OpenQuatt formatter.
 
-The only functional change is `DEFER_ACTION` in `web_server.h`: capture the
+The functional change covers `DEFER_ACTION` in `web_server.h` and the direct
+switch/lock/infrared/radio deferrals in `web_server.cpp`: capture the
 recovery epoch when accepting an entity action, then reject the deferred action
 if recovery is active or its epoch changed. Middleware alone cannot revoke
 actions already queued for the main loop, even after recovery ends.
