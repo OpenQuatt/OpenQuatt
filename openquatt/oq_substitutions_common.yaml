@@ -178,6 +178,7 @@ oq_water_supply_temp_local_cic_hold_s: "15"            # Hold Local/CIC supply t
 oq_hp_water_temp_stale_s: "60"                        # Maximum age for a heat-pump water temperature used as supply fallback [s].
 oq_temp_guard_delta_c: "0.5"                          # Minimum valid margin between T0 and Tc in the house model [°C].
 oq_outside_temp_stale_s: "1200"                       # Ignore a local outdoor reading when it stays frozen while the same HP still shows fresh activity [s].
+oq_ph_run_extension_restart_hysteresis_c: "0.2"       # Warm-restart hysteresis below the comfort stop for #608 run extension [K].
 
 # ----------------------------
 # HEAT CONTROL
