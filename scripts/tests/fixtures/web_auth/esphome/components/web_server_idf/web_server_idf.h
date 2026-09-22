@@ -16,6 +16,8 @@ static constexpr int HTTP_POST = 2;
 class AsyncResponseStream {
  public:
   std::string body;
+  std::map<std::string, std::string> headers;
+  void addHeader(const char* key, const char* value) { headers[key] = value; }
   void printf(const char* format, ...) {
     char buffer[2048];
     va_list args;
@@ -36,6 +38,8 @@ class AsyncWebServerRequest {
   std::string url{"/auth/status"};
   int verb{HTTP_GET};
   int response_code{0};
+  int pending_status{200};
+  std::map<std::string, std::string> response_headers;
   std::string response_body;
   std::function<void()> before_send;
   std::map<std::string, std::string> headers;
@@ -51,9 +55,16 @@ class AsyncWebServerRequest {
   int method() const { return verb; }
   StringRef url_to(char*) const { return url; }
   AsyncResponseStream* beginResponseStream(const char*) { return new AsyncResponseStream; }
+  AsyncResponseStream* beginResponse(int code, const char*, const char* body) {
+    pending_status = code;
+    auto* response = new AsyncResponseStream;
+    response->body = body;
+    return response;
+  }
   void send(AsyncResponseStream* stream) {
     if (before_send) before_send();
-    response_code = 200;
+    response_code = pending_status;
+    response_headers = stream->headers;
     response_body = stream->body;
     delete stream;
   }
@@ -84,6 +95,7 @@ class AsyncWebServer {
   explicit AsyncWebServer(uint16_t) {}
   void begin() {}
   void end() {}
+  void* get_server() { return this; }
   void addHandler(AsyncWebHandler* handler) { handlers.push_back(handler); }
   std::vector<AsyncWebHandler*> handlers;
 };

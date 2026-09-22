@@ -129,8 +129,7 @@ class OpenQuattWebAuthRequestHandler : public AsyncWebHandler {
       const std::string csrf_token = json_escape_string_(this->parent_->get_csrf_token());
       auto* stream = request->beginResponseStream("application/json");
       stream->printf(R"({"enabled":%s,"setup_window_active":%s,"username":"%s","source":"%s","csrf_token":"%s"})",
-                     this->parent_->is_auth_enabled() ? "true" : "false",
-                     this->parent_->is_setup_window_active() ? "true" : "false", username.c_str(), source.c_str(),
+                     this->parent_->is_auth_enabled() ? "true" : "false", "false", username.c_str(), source.c_str(),
                      csrf_token.c_str());
       lock.unlock();
       request->send(stream);
@@ -164,7 +163,7 @@ class OpenQuattWebAuthRequestHandler : public AsyncWebHandler {
           request->send(409, "application/json", R"({"ok":false,"error":"invalid_current_password"})");
           return;
         }
-      } else if (!this->parent_->is_setup_window_active()) {
+      } else {
         lock.unlock();
         request->send(409, "application/json", R"({"ok":false,"error":"setup_window_required"})");
         return;
@@ -283,13 +282,6 @@ void OpenQuattWebAuth::setup() {
 #endif
 }
 
-void OpenQuattWebAuth::loop() {
-  std::lock_guard<std::recursive_mutex> lock(this->state_mutex_);
-  if (this->restore_suspended_auth_if_needed_()) {
-    ESP_LOGW(TAG, "Recovery setup window expired; restored previous protected credentials");
-  }
-}
-
 void OpenQuattWebAuth::dump_config() {
   std::lock_guard<std::recursive_mutex> lock(this->state_mutex_);
   ESP_LOGCONFIG(TAG, "OpenQuatt Web Auth");
@@ -297,7 +289,6 @@ void OpenQuattWebAuth::dump_config() {
                 this->active_username_.empty() ? "<none>" : this->active_username_.c_str());
   ESP_LOGCONFIG(TAG, "  Credential source: %s",
                 this->credential_source_.empty() ? "<unknown>" : this->credential_source_.c_str());
-  ESP_LOGCONFIG(TAG, "  Setup window active: %s", YESNO(this->is_setup_window_active()));
   ESP_LOGCONFIG(TAG, "  HTTP handlers registered: %s", YESNO(this->handlers_registered_));
 }
 
@@ -312,8 +303,6 @@ bool OpenQuattWebAuth::set_runtime_credentials(const std::string& username, cons
   if (!this->save_storage_(storage)) {
     return false;
   }
-  this->clear_setup_window_();
-  this->has_suspended_storage_ = false;
   return this->apply_storage_(storage, "runtime");
 }
 
@@ -327,31 +316,22 @@ bool OpenQuattWebAuth::set_open_access(const char* source) {
     return false;
   }
   ESP_LOGW(TAG, "Runtime web auth disabled; interface is open on the local network");
-  this->clear_setup_window_();
-  this->has_suspended_storage_ = false;
   return this->apply_storage_(storage, source != nullptr ? source : "runtime-disabled");
 }
 
-bool OpenQuattWebAuth::start_recovery_window(uint32_t duration_ms) {
+void OpenQuattWebAuth::begin_recovery_guard(const std::string& password) {
   std::lock_guard<std::recursive_mutex> lock(this->state_mutex_);
-  if (duration_ms == 0) {
-    return false;
-  }
-
-  this->setup_window_until_ms_ = static_cast<uint32_t>(millis()) + duration_ms;
+  this->recovery_guard_active_ = true;
   this->rotate_csrf_token_();
+  web_server_base::global_web_server_base->set_auth_credentials("recovery", password.c_str());
+}
 
-  if (!this->is_auth_enabled()) {
-    ESP_LOGW(TAG, "Armed local setup window for open-access mode");
-    return true;
-  }
-
-  if (!this->build_storage_(this->active_username_, this->active_password_, &this->suspended_storage_)) {
-    return false;
-  }
-  this->has_suspended_storage_ = true;
-  ESP_LOGW(TAG, "Armed recovery window and temporarily suspended protected web auth");
-  return this->suspend_auth_runtime_("recovery-open");
+void OpenQuattWebAuth::end_recovery_guard() {
+  std::lock_guard<std::recursive_mutex> lock(this->state_mutex_);
+  this->recovery_guard_active_ = false;
+  this->rotate_csrf_token_();
+  web_server_base::global_web_server_base->set_auth_credentials(this->active_username_.c_str(),
+                                                                this->active_password_.c_str());
 }
 
 bool OpenQuattWebAuth::load_storage_(AuthStorage* storage) {
@@ -385,23 +365,11 @@ bool OpenQuattWebAuth::apply_storage_(const AuthStorage& storage, const char* so
   this->active_password_ = storage.password;
   this->credential_source_ = source != nullptr ? source : "";
 
-  web_server_base::global_web_server_base->set_auth_credentials(storage.username, storage.password);
-  this->publish_state_();
-
-  return true;
-}
-
-bool OpenQuattWebAuth::suspend_auth_runtime_(const char* source) {
-  if (web_server_base::global_web_server_base == nullptr) {
-    return false;
+  if (!this->recovery_guard_active_) {
+    web_server_base::global_web_server_base->set_auth_credentials(storage.username, storage.password);
   }
-
-  this->active_username_.clear();
-  this->active_password_.clear();
-  this->credential_source_ = source != nullptr ? source : "";
-
-  web_server_base::global_web_server_base->set_auth_credentials("", "");
   this->publish_state_();
+
   return true;
 }
 
@@ -470,13 +438,6 @@ bool OpenQuattWebAuth::is_valid_storage_(const AuthStorage& storage) const {
   return true;
 }
 
-bool OpenQuattWebAuth::is_setup_window_active() const {
-  std::lock_guard<std::recursive_mutex> lock(this->state_mutex_);
-  return this->setup_window_until_ms_ != 0 && static_cast<uint32_t>(millis()) < this->setup_window_until_ms_;
-}
-
-void OpenQuattWebAuth::clear_setup_window_() { this->setup_window_until_ms_ = 0; }
-
 void OpenQuattWebAuth::rotate_csrf_token_() {
   char token[33];
   const uint32_t part_a = esp_random();
@@ -486,20 +447,6 @@ void OpenQuattWebAuth::rotate_csrf_token_() {
   std::snprintf(token, sizeof(token), "%08x%08x%08x%08x", static_cast<unsigned>(part_a), static_cast<unsigned>(part_b),
                 static_cast<unsigned>(part_c), static_cast<unsigned>(part_d));
   this->csrf_token_ = token;
-}
-
-bool OpenQuattWebAuth::restore_suspended_auth_if_needed_() {
-  if (this->setup_window_until_ms_ == 0 || this->is_setup_window_active()) {
-    return false;
-  }
-
-  this->clear_setup_window_();
-  if (!this->has_suspended_storage_) {
-    return false;
-  }
-
-  this->has_suspended_storage_ = false;
-  return this->apply_storage_(this->suspended_storage_, "stored");
 }
 
 void OpenQuattWebAuth::publish_state_() {}

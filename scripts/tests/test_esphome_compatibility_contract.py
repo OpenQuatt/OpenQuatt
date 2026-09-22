@@ -82,7 +82,7 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
 
     def test_web_auth_updates_owned_credentials_atomically(self) -> None:
         self.assertIn("set_auth_credentials(storage.username, storage.password)", WEB_AUTH_CPP)
-        self.assertIn('set_auth_credentials("", "")', WEB_AUTH_CPP)
+        self.assertIn('set_auth_credentials("recovery", password.c_str())', WEB_AUTH_CPP)
         self.assertNotIn("set_auth_username(", WEB_AUTH_CPP)
         self.assertNotIn("set_auth_password(", WEB_AUTH_CPP)
         self.assertIn("request_is_authenticated(request, true)", WEB_AUTH_HEADER)

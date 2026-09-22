@@ -26,10 +26,17 @@ int main() {
   route->handleRequest(&request);
   assert(request.response_code == 409);  // open LAN is not an administrator or setup window
   assert(!auth.request_is_authenticated_admin(&request));
-  assert(auth.start_recovery_window());
+  auth.begin_recovery_guard("random-ram-secret");
+  assert(auth.set_runtime_credentials("admin", "secret"));
+  request.username = "admin";
+  request.password = "secret";
+  assert(!auth.request_is_authenticated_admin(&request));  // stored login does not lift recovery
+  auth.end_recovery_guard();
+  request.username.clear();
+  request.password.clear();
   request.arguments["csrf_token"] = auth.get_csrf_token();
   route->handleRequest(&request);
-  assert(request.response_code == 200);
+  assert(request.challenged);
   const auto username_snapshot = auth.get_active_username();
   assert(username_snapshot == "admin");
   assert(auth.is_auth_enabled());
@@ -85,9 +92,8 @@ int main() {
   std::atomic<bool> done{false};
   std::thread writer([&]() {
     for (int i = 0; i < 2000; ++i) {
-      assert(auth.start_recovery_window(1));
-      test_millis.fetch_add(2);
-      auth.loop();
+      auth.begin_recovery_guard("random-ram-secret");
+      auth.end_recovery_guard();
       assert(auth.set_runtime_credentials("admin", "replacement"));
     }
     done.store(true);
