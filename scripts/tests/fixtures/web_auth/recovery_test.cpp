@@ -114,4 +114,23 @@ int main() {
   restored.loop();
   assert(!base.is_recovery_active());
   assert(auth.request_is_authenticated_admin(&request));
+
+  // If HTTPD cannot accept the post-reboot activation work, the preinstalled
+  // handoff guard must be removed again rather than leaving the UI locked.
+  Recovery handoff_queue_failure_source;
+  handoff_queue_failure_source.set_web_auth(&auth);
+  handoff_queue_failure_source.set_button(&button);
+  handoff_queue_failure_source.setup();
+  handoff_queue_failure_source.handoff();
+  test_reset_reason = ESP_RST_SW;
+  Recovery handoff_queue_failure;
+  handoff_queue_failure.set_web_auth(&auth);
+  handoff_queue_failure.set_button(&button);
+  handoff_queue_failure.setup();
+  assert(base.is_recovery_active());
+  test_queue_ok = false;
+  handoff_queue_failure.loop();
+  assert(!base.is_recovery_active());
+  assert(auth.request_is_authenticated_admin(&request));
+  test_queue_ok = true;
 }
