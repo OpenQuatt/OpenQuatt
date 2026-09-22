@@ -26,6 +26,8 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         self.assertIn("house_deficit_w", text)
         self.assertIn("base_requested_w", text)
         self.assertIn("ph_run_extension_enabled", yaml)
+        self.assertIn("const bool run_ext_enabled = id(ph_run_extension_enabled).state;", text)
+        self.assertNotIn("ph_run_extension_enabled).has_state()", text)
         self.assertIn("ph_run_extension_stop_margin_c", yaml)
         self.assertIn("oq_ph_run_extension_status", yaml)
         run_ext_logic = FILES[9].read_text()

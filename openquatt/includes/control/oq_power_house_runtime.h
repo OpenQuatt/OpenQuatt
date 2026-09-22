@@ -258,7 +258,7 @@ class Runtime {
     const float base_last_w = next_last_w;
     const float room_c = id(room_temp_selected).state;
     const float setpoint_c = id(room_setpoint_selected).state;
-    const bool run_ext_enabled = id(ph_run_extension_enabled).has_state() && id(ph_run_extension_enabled).state;
+    const bool run_ext_enabled = id(ph_run_extension_enabled).state;
     float stop_margin_c = 0.5f;
     if (id(ph_run_extension_stop_margin_c).has_state() && std::isfinite(id(ph_run_extension_stop_margin_c).state))
       stop_margin_c = std::max(0.1f, std::min(1.0f, id(ph_run_extension_stop_margin_c).state));
