@@ -17,9 +17,14 @@ CONFIG_SCHEMA = cv.Schema({
 
 
 def validate_runtime_api_key(config):
-    api = fv.full_config.get()["api"]
+    full = fv.full_config.get()
+    api = full["api"]
     if "key" in api.get("encryption", {}):
         raise cv.Invalid("OpenQuatt recovery requires a runtime-provisioned API key, not api.encryption.key")
+    if full.get("wifi", {}).get("networks"):
+        raise cv.Invalid("OpenQuatt recovery requires runtime-provisioned Wi-Fi, not compiled wifi.networks")
+    if "wifi" in full and ("ap" not in full["wifi"] or "captive_portal" not in full):
+        raise cv.Invalid("OpenQuatt Wi-Fi recovery requires wifi.ap and captive_portal")
     return config
 
 

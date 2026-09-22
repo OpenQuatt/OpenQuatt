@@ -12,6 +12,9 @@
 #include "esphome/core/application.h"
 #include "esphome/components/api/api_server.h"
 #include "esphome/components/api/api_connection.h"
+#ifdef USE_WIFI
+#include "esphome/components/wifi/wifi_component.h"
+#endif
 
 namespace esphome::openquatt_recovery {
 
@@ -23,6 +26,11 @@ struct RecoveryHandoff {
 };
 static RTC_NOINIT_ATTR RecoveryHandoff handoff;
 static constexpr uint32_t HANDOFF_MAGIC = 0x4F515243;
+#ifdef USE_WIFI
+static constexpr bool WIFI_CAPABLE = true;
+#else
+static constexpr bool WIFI_CAPABLE = false;
+#endif
 
 static void send_json(AsyncWebServerRequest* request, const char* status, const char* body) {
   auto* response = request->beginResponse(200, "application/json", body);
@@ -91,6 +99,9 @@ void OpenQuattRecovery::activate_on_httpd_(void* context) {
       for (size_t i = 0; i < count; ++i) shutdown(sockets[i], SHUT_RDWR);
     } else {
       self->error_ = "close_streams_failed";
+      // Cancel a physical 10-second reset queued while HTTPD was activating.
+      self->pending_ = Action::NONE;
+      self->state_.job_failed();
       self->state_.end();
       self->csrf_token_.clear();
       self->auth_->end_recovery_guard();
@@ -110,21 +121,31 @@ void OpenQuattRecovery::loop() {
   }
   // Do not arm from the binary sensor's default false before its first sample.
   if (this->button_->has_state()) {
-    const auto events = this->state_.tick(millis(), this->button_->state, false);
+    const auto events = this->state_.tick(millis(), this->button_->state, WIFI_CAPABLE);
     if (events.opened) this->opened_();
     if (events.expired) {
       this->csrf_token_.clear();
       this->auth_->end_recovery_guard();
       web_server_base::global_web_server_base->set_recovery_active(false);
     }
+    if (events.wifi_reset_requested && this->state_.begin_job(millis(), this->state_.generation())) {
+      this->pending_ = Action::WIFI_RESET;
+      this->accepted_at_ = millis();
+      this->error_ = "";
+    }
   }
   const Action action = this->pending_;
-  if (action == Action::API_RESET) {
+  if (action == Action::API_RESET || action == Action::WIFI_RESET) {
     // Allow the accepted HTTP response to leave before changing connectivity.
     if (static_cast<uint32_t>(millis()) - this->accepted_at_ < 500) return;
     this->pending_ = Action::NONE;
     auto* api = api::global_api_server;
-    if (!api->clear_noise_psk(false)) {
+    bool cleared = false;
+    if (action == Action::API_RESET) cleared = api->clear_noise_psk(false);
+#ifdef USE_WIFI
+    if (action == Action::WIFI_RESET) cleared = wifi::global_wifi_component->clear_saved_sta_checked();
+#endif
+    if (!cleared) {
       this->error_ = "persist_failed";
       this->state_.job_failed();
       return;
@@ -157,8 +178,8 @@ bool OpenQuattRecovery::canHandle(AsyncWebServerRequest* request) const {
   char buffer[AsyncWebServerRequest::URL_BUF_SIZE];
   const auto url = request->url_to(buffer);
   return (request->method() == HTTP_GET && (url == "/recovery" || url == "/recovery/status")) ||
-         (request->method() == HTTP_POST &&
-          (url == "/recovery/web-auth" || url == "/recovery/end" || url == "/api-security/reset"));
+         (request->method() == HTTP_POST && (url == "/recovery/web-auth" || url == "/recovery/end" ||
+                                             url == "/api-security/reset" || url == "/wifi/reset"));
 }
 
 bool OpenQuattRecovery::authorize_(AsyncWebServerRequest* request, uint32_t now) const {
@@ -190,24 +211,26 @@ void OpenQuattRecovery::handleRequest(AsyncWebServerRequest* request) {
     response->addHeader("Cache-Control", "no-store");
     response->addHeader("Access-Control-Allow-Origin", "");
     response->printf(
-        R"({"active":%s,"expires_in_ms":%u,"generation":%u,"csrf_token":"%s","button_held":%s,"next_threshold_ms":%u,"busy":%s,"error":"%s","capabilities":{"web_auth":true,"api_reset":true,"wifi_reset":false}})",
+        R"({"active":%s,"expires_in_ms":%u,"generation":%u,"csrf_token":"%s","button_held":%s,"next_threshold_ms":%u,"busy":%s,"error":"%s","capabilities":{"web_auth":true,"api_reset":true,"wifi_reset":%s}})",
         active ? "true" : "false", static_cast<unsigned>(this->state_.remaining_ms(now)),
         static_cast<unsigned>(this->state_.generation()), active ? this->csrf_token_.c_str() : "",
         this->state_.button_held() ? "true" : "false",
-        static_cast<unsigned>(this->state_.next_threshold_ms(now, false)), this->state_.busy() ? "true" : "false",
-        this->error_);
+        static_cast<unsigned>(this->state_.next_threshold_ms(now, WIFI_CAPABLE)),
+        this->state_.busy() ? "true" : "false", this->error_, WIFI_CAPABLE ? "true" : "false");
     lock.unlock();
     request->send(response);
     return;
   }
   const bool physical = this->authorize_(request, now);
-  if (url == "/api-security/reset") {
+  if (url == "/api-security/reset" || url == "/wifi/reset") {
+    const bool wifi_reset = url == "/wifi/reset";
     const auto host = request->get_header("Host");
     const auto origin = request->get_header("Origin");
     const bool admin = !this->state_.busy() && host.has_value() && !host->empty() && origin.has_value() &&
                        *origin == "http://" + *host && this->auth_->request_is_authenticated_admin(request) &&
                        request->arg("csrf_token") == this->auth_->get_csrf_token();
-    if ((!physical && !admin) || request->arg("confirm") != "RESET_API_SECURITY") {
+    if ((!physical && !admin) || (wifi_reset && !WIFI_CAPABLE) ||
+        request->arg("confirm") != (wifi_reset ? "RESET_WIFI" : "RESET_API_SECURITY")) {
       lock.unlock();
       send_json(request, "403 Forbidden", R"({"error":"confirmation_required"})");
       return;
@@ -216,7 +239,7 @@ void OpenQuattRecovery::handleRequest(AsyncWebServerRequest* request) {
       this->state_.begin_job(now, this->state_.generation());
     else
       this->state_.begin_admin_job();
-    this->pending_ = Action::API_RESET;
+    this->pending_ = wifi_reset ? Action::WIFI_RESET : Action::API_RESET;
     this->accepted_at_ = now;
     this->error_ = "";
     lock.unlock();

@@ -42,7 +42,7 @@ external_components:
   - source:
       type: local
       path: ${external_components_path}
-    components: [openquatt_network, openquatt_captive_portal_router]
+    components: [wifi, captive_portal, openquatt_network, openquatt_captive_portal_router]
 
 openquatt_network:
   id: oq_network_manager

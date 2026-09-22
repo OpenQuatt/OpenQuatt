@@ -20,11 +20,16 @@ class WebAuthMiddlewareTest(unittest.TestCase):
     def test_recovery_capability_and_failure_boundaries(self):
         self.compile_and_run("recovery_test", component=True, recovery=True)
 
-    def compile_and_run(self, name, component=False, recovery=False):
+    def test_wifi_recovery_capability_and_failure_boundaries(self):
+        self.compile_and_run("recovery_test", component=True, recovery=True, wifi=True)
+
+    def compile_and_run(self, name, component=False, recovery=False, wifi=False):
         with tempfile.TemporaryDirectory(prefix="openquatt-auth-test-") as directory:
             binary = Path(directory) / name
             command = [os.environ.get("CXX", "c++"), "-std=c++17", "-pthread",
                        "-Wall", "-Wextra", "-Werror"]
+            if wifi:
+                command.append("-DUSE_WIFI")
             if sys.platform == "darwin":
                 sdk = subprocess.check_output(
                     ["xcrun", "--sdk", "macosx", "--show-sdk-path"], text=True

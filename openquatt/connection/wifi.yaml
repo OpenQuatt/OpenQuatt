@@ -11,7 +11,7 @@ external_components:
   - source:
       type: local
       path: ${external_components_path}
-    components: [openquatt_captive_portal_router]
+    components: [wifi, captive_portal, openquatt_captive_portal_router]
 
 wifi:
   power_save_mode: none

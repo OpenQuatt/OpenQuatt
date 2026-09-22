@@ -7,6 +7,9 @@
 #include "esp_system.h"
 #include "lwip/sockets.h"
 #include "esphome/core/application.h"
+#ifdef USE_WIFI
+#include "esphome/components/wifi/wifi_component.h"
+#endif
 
 using namespace esphome;
 
@@ -61,6 +64,8 @@ int main() {
   assert(request.response_code == 403);  // main-loop barrier still pending
   recovery.loop();
   AsyncWebServerRequest status;
+  button.state = false;
+  recovery.loop();
   status.url = "/recovery/status";
   status.headers["Origin"] = "http://foreign.example";
   recovery.handleRequest(&status);
@@ -193,4 +198,64 @@ int main() {
   physical_reboot.set_button(&button);
   physical_reboot.setup();
   assert(physical_reboot.generation() == admin_reboot.generation() + 1);
+  physical_reboot.loop();
+  test_httpd_work();
+  button.state = false;
+  physical_reboot.loop();
+  request.url = "/wifi/reset";
+  request.arguments["csrf_token"] = physical_reboot.token();
+  request.arguments["generation"] = std::to_string(physical_reboot.generation());
+  request.arguments["confirm"] = "RESET_WIFI";
+#ifdef USE_WIFI
+  api::test_saved_key = true;
+  wifi::test_clear_ok = false;
+  physical_reboot.handleRequest(&request);
+  assert(request.response_code == 202);
+  test_millis.fetch_add(500);
+  physical_reboot.loop();
+  assert(test_reboots == 2 && wifi::test_clears == 0 && api::test_saved_key);
+  wifi::test_clear_ok = true;
+  physical_reboot.handleRequest(&request);
+  assert(request.response_code == 202);
+  physical_reboot.handleRequest(&request);
+  assert(request.response_code == 403);
+  test_millis.fetch_add(500);
+  physical_reboot.loop();
+  assert(test_reboots == 3 && wifi::test_clears == 1 && api::test_saved_key && auth.is_auth_enabled());
+
+  Recovery held;
+  held.set_web_auth(&auth);
+  held.set_button(&button);
+  held.setup();
+  held.loop();
+  test_httpd_work();
+  held.loop();
+  button.state = true;
+  held.loop();
+  test_millis.fetch_add(10000);
+  held.loop();  // 5s + 10s at once, before the activation barrier
+  test_close_ok = false;
+  test_httpd_work();
+  test_millis.fetch_add(500);
+  held.loop();
+  assert(test_reboots == 3 && wifi::test_clears == 1);  // failed activation cancels job
+  test_close_ok = true;
+  button.state = false;
+  held.loop();
+  button.state = true;
+  held.loop();
+  test_millis.fetch_add(5000);
+  held.loop();
+  test_httpd_work();
+  held.loop();
+  test_millis.fetch_add(5000);
+  held.loop();
+  test_millis.fetch_add(500);
+  held.loop();
+  held.loop();
+  assert(test_reboots == 4 && wifi::test_clears == 2 && api::test_saved_key);
+#else
+  physical_reboot.handleRequest(&request);
+  assert(request.response_code == 403);
+#endif
 }
