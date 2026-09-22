@@ -96,6 +96,11 @@ class RecoveryState {
     return true;
   }
   void job_failed() { this->busy_ = false; }
+  bool begin_admin_job() {
+    if (this->busy_) return false;
+    this->busy_ = true;
+    return true;
+  }
   bool busy() const { return this->busy_; }
 
  private:

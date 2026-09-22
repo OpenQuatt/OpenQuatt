@@ -6,6 +6,7 @@
 #include "esp_http_server.h"
 #include "esp_system.h"
 #include "lwip/sockets.h"
+#include "esphome/core/application.h"
 
 using namespace esphome;
 
@@ -17,6 +18,8 @@ class Recovery : public openquatt_recovery::OpenQuattRecovery {
 };
 
 int main() {
+  api::APIServer api;
+  api::global_api_server = &api;
   web_server_base::WebServerBase base;
   web_server_base::global_web_server_base = &base;
   openquatt_web_auth::OpenQuattWebAuth auth;
@@ -36,6 +39,12 @@ int main() {
   request.arguments = {{"new_username", "admin"}, {"new_password", "new-secret"}};
   recovery.handleRequest(&request);
   assert(request.response_code == 403);
+  request.url = "/api-security/reset";
+  request.arguments["csrf_token"] = auth.get_csrf_token();
+  request.arguments["confirm"] = "RESET_API_SECURITY";
+  recovery.handleRequest(&request);
+  assert(request.response_code == 403);  // open mode is not admin
+  request.url = "/recovery/web-auth";
   recovery.loop();  // released first
   button.state = true;
   recovery.loop();
@@ -84,6 +93,20 @@ int main() {
   request.username = "admin";
   request.password = "new-secret";
   assert(!auth.request_is_authenticated_admin(&request));
+  request.url = "/api-security/reset";
+  request.arguments["confirm"] = "wrong";
+  recovery.handleRequest(&request);
+  assert(request.response_code == 403);
+  request.arguments["confirm"] = "RESET_API_SECURITY";
+  api::test_clear_ok = false;
+  recovery.handleRequest(&request);
+  assert(request.response_code == 202);
+  recovery.loop();
+  assert(test_reboots == 0);
+  test_millis.fetch_add(500);
+  recovery.loop();
+  assert(test_reboots == 0 && api::test_saved_key && !api.client.removed);
+  api::test_clear_ok = true;
   request.url = "/recovery/end";
   recovery.handleRequest(&request);
   assert(request.response_code == 202);
@@ -114,4 +137,41 @@ int main() {
   restored.loop();
   assert(!base.is_recovery_active());
   assert(auth.request_is_authenticated_admin(&request));
+
+  // Authenticated admin reset needs no physical window and must not create one.
+  request.url = "/api-security/reset";
+  request.arguments["csrf_token"] = auth.get_csrf_token();
+  consumed.handleRequest(&request);
+  assert(request.response_code == 202);
+  test_millis.fetch_add(500);
+  consumed.loop();
+  assert(test_reboots == 1 && !api::test_saved_key && api::test_runtime_key);
+  assert(api.client.removed);  // hostile packet cannot overwrite the clear in teardown
+  Recovery admin_reboot;
+  admin_reboot.set_web_auth(&auth);
+  admin_reboot.set_button(&button);
+  admin_reboot.setup();
+  assert(admin_reboot.generation() == 0);
+  button.state = false;
+  admin_reboot.loop();
+  button.state = true;
+  admin_reboot.loop();
+  test_millis.fetch_add(5000);
+  admin_reboot.loop();
+  test_httpd_work();
+  admin_reboot.loop();
+  request.arguments["csrf_token"] = admin_reboot.token();
+  request.arguments["generation"] = std::to_string(admin_reboot.generation());
+  api.client.removed = false;
+  api::test_saved_key = true;
+  admin_reboot.handleRequest(&request);
+  assert(request.response_code == 202);
+  test_millis.fetch_add(500);
+  admin_reboot.loop();
+  assert(test_reboots == 2 && !api::test_saved_key && api.client.removed);
+  Recovery physical_reboot;
+  physical_reboot.set_web_auth(&auth);
+  physical_reboot.set_button(&button);
+  physical_reboot.setup();
+  assert(physical_reboot.generation() == admin_reboot.generation() + 1);
 }

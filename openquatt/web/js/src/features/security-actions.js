@@ -294,6 +294,33 @@ import { render } from "../core/render-scheduler.js";
     }
   }
 
+  export async function resetApiSecurity() {
+    if (state.apiSecurityBusy || !state.authStatus?.enabled || !state.authStatus?.csrf_token) return;
+    if (!window.confirm("API-beveiliging wissen en controller herstarten? Dit verbreekt alle API-koppelingen.")) return;
+    state.apiSecurityBusy = true;
+    state.apiSecurityError = "";
+    state.apiSecurityNotice = "Reset aanvragen…";
+    render();
+    try {
+      const body = new URLSearchParams({ csrf_token: state.authStatus.csrf_token, confirm: "RESET_API_SECURITY" });
+      const response = await fetch("/api-security/reset", { method: "POST", body });
+      if (response.status !== 202) throw new Error(`HTTP ${response.status}`);
+      state.apiSecurityNotice = "Reset aangevraagd. Bij succes herstart de controller. Open daarna de web-app opnieuw en koppel Home Assistant binnen 10 minuten.";
+      render();
+      await new Promise(resolve => window.setTimeout(resolve, 1000));
+      // One status check, never retry a destructive request after an ambiguous response.
+      const result = await fetch("/recovery/status", { cache: "no-store" }).then(response => response.json());
+      if (result.error) {
+        state.apiSecurityBusy = false;
+        state.apiSecurityNotice = "";
+        state.apiSecurityError = "Reset mislukt; er is niet herstart. Je kunt opnieuw proberen.";
+      }
+    } catch (error) {
+      state.apiSecurityNotice = "Controleer of de controller is herstart en open de web-app opnieuw. De reset wordt niet automatisch herhaald.";
+    }
+    render();
+  }
+
   const securityActionHandlers = {
     "open-login-modal": () => {
       state.systemModal = "login";
@@ -315,6 +342,7 @@ import { render } from "../core/render-scheduler.js";
     },
     "save-web-auth": () => commitWebAuthChanges(),
     "disable-web-auth": () => commitDisableWebAuth(),
+    "reset-api-security": () => resetApiSecurity(),
   };
 
   export function handleSecurityAction(action) {
