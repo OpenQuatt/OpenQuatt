@@ -37,6 +37,15 @@ Net na het flashen kan OpenQuatt ook nog op het fallback access point zitten:
 
 Het Wi-Fi-instelvenster sluit niet na 10 minuten: die timer geldt alleen voor een nieuwe Home Assistant-koppeling. Zonder opgeslagen Wi-Fi-gegevens blijft de AP beschikbaar totdat nieuwe gegevens werken én opgeslagen zijn. Bij bekende maar onbereikbare Wi-Fi verschijnt de fallback-AP na 90 seconden, zolang Wi-Fi actief is. Houd de herstelknop 10 seconden vast om Wi-Fi te wissen en opnieuw in te stellen; dit bewaart web-login en overige instellingen.
 
+## Web-login of koppeling herstellen
+
+Gebruik eerst de [herstelhandleiding](web-app.md#web-login-herstellen) als je de
+web-login kwijt bent of de Home Assistant-koppeling wilt resetten. Die beschrijft
+`http://openquatt.local/recovery` (of `http://<IP-adres>/recovery`), de linker knop
+op de HeatPump Controller Q edition en het verschil tussen 5 en 10 seconden indrukken.
+Voor Wi-Fi staan daar ook de [stappen om opnieuw te verbinden](web-app.md#wi-fi-opnieuw-instellen).
+Deze gerichte herstelacties wissen niet alle instellingen; een factory reset doet dat wel.
+
 ## Controller terugzetten naar fabrieksinstellingen
 
 Gebruik dit alleen als laatste redmiddel, bij overdracht of om volledig opnieuw te beginnen. Een factory reset wist alle lokaal opgeslagen instellingen, netwerkgegevens en koppelingen van de controller. De firmware blijft staan; instellingen in de warmtepomp zelf worden niet gewijzigd.
