@@ -12,6 +12,7 @@
 #include "oq_cold_start_probe.h"
 #include "oq_compressor_frequency_runtime.h"
 #include "oq_control_mode_log_logic.h"
+#include "oq_defrost_logic.h"
 #include "oq_hp_candidate_logic.h"
 #include "oq_supervisory_power_limiter_runtime.h"
 #include "oq_supervisory_safety_runtime.h"
@@ -162,50 +163,37 @@ class Runtime {
     const int hp1_lvl = id(hp1_last_applied_level);
     const int hp1_cmd_lvl =
         id(hp1_compressor_level).has_state() ? (int)id(hp1_compressor_level).active_index().value_or(-1) : -1;
+    const float hp1_mode_raw = id(hp1_working_mode).state;
+    const bool hp1_mode_valid = !isnan(hp1_mode_raw);
+    const bool hp1_heating = hp1_mode_valid && ((int)roundf(hp1_mode_raw) == 2);
+    const bool hp1_cooling = hp1_mode_valid && ((int)roundf(hp1_mode_raw) == 1);
+    const bool hp1_target_heating =
+        id(hp1_set_working_mode).has_state() && id(hp1_set_working_mode).current_option() == "Heating";
+    const bool hp1_target_cooling =
+        id(hp1_set_working_mode).has_state() && id(hp1_set_working_mode).current_option() == "Cooling";
+    const bool hp1_active_guard =
+        oq_defrost::hp_active(hp1_heating, hp1_cooling, hp1_target_heating, hp1_target_cooling, hp1_lvl,
+                              id(hp1_odu_defrost).holding(), id(hp1_odu_defrost).cycle.observed_active());
 #if OQ_TOPOLOGY_DUO
     const int hp2_lvl = id(hp2_last_applied_level);
     const int hp2_cmd_lvl =
         id(hp2_compressor_level).has_state() ? (int)id(hp2_compressor_level).active_index().value_or(-1) : -1;
     const bool both_levels_off = (hp1_lvl <= 0) && (hp2_lvl <= 0);
-
-    const float hp1_mode_raw = id(hp1_working_mode).state;
     const float hp2_mode_raw = id(hp2_working_mode).state;
-    const bool hp1_mode_valid = !isnan(hp1_mode_raw);
     const bool hp2_mode_valid = !isnan(hp2_mode_raw);
-    const bool hp1_heating = hp1_mode_valid && ((int)roundf(hp1_mode_raw) == 2);
     const bool hp2_heating = hp2_mode_valid && ((int)roundf(hp2_mode_raw) == 2);
-    const bool hp1_cooling = hp1_mode_valid && ((int)roundf(hp1_mode_raw) == 1);
     const bool hp2_cooling = hp2_mode_valid && ((int)roundf(hp2_mode_raw) == 1);
-    const bool hp1_target_heating =
-        id(hp1_set_working_mode).has_state() && id(hp1_set_working_mode).current_option() == "Heating";
     const bool hp2_target_heating =
         id(hp2_set_working_mode).has_state() && id(hp2_set_working_mode).current_option() == "Heating";
-    const bool hp1_target_cooling =
-        id(hp1_set_working_mode).has_state() && id(hp1_set_working_mode).current_option() == "Cooling";
     const bool hp2_target_cooling =
         id(hp2_set_working_mode).has_state() && id(hp2_set_working_mode).current_option() == "Cooling";
-    const bool hp1_active_guard =
-        hp1_heating || hp1_cooling || hp1_target_heating || hp1_target_cooling || (hp1_lvl > 0);
     const bool hp2_active_guard =
-        hp2_heating || hp2_cooling || hp2_target_heating || hp2_target_cooling || (hp2_lvl > 0);
+        oq_defrost::hp_active(hp2_heating, hp2_cooling, hp2_target_heating, hp2_target_cooling, hp2_lvl,
+                              id(hp2_odu_defrost).holding(), id(hp2_odu_defrost).cycle.observed_active());
     const bool any_hp_active_guard = hp1_active_guard || hp2_active_guard;
     const bool any_hp_compressor_active = hp1_lvl > 0 || hp2_lvl > 0 || hp1_cmd_lvl > 0 || hp2_cmd_lvl > 0;
 #else
-    const int hp2_lvl = 0;
-    const int hp2_cmd_lvl = -1;
     const bool both_levels_off = (hp1_lvl <= 0);
-
-    const float hp1_mode_raw = id(hp1_working_mode).state;
-    const bool hp1_mode_valid = !isnan(hp1_mode_raw);
-    const bool hp1_heating = hp1_mode_valid && ((int)roundf(hp1_mode_raw) == 2);
-    const bool hp1_cooling = hp1_mode_valid && ((int)roundf(hp1_mode_raw) == 1);
-    const bool hp1_target_heating =
-        id(hp1_set_working_mode).has_state() && id(hp1_set_working_mode).current_option() == "Heating";
-    const bool hp1_target_cooling =
-        id(hp1_set_working_mode).has_state() && id(hp1_set_working_mode).current_option() == "Cooling";
-    const bool hp1_active_guard =
-        hp1_heating || hp1_cooling || hp1_target_heating || hp1_target_cooling || (hp1_lvl > 0);
-    const bool hp2_active_guard = false;
     const bool any_hp_active_guard = hp1_active_guard;
     const bool any_hp_compressor_active = hp1_lvl > 0 || hp1_cmd_lvl > 0;
 #endif
@@ -747,7 +735,7 @@ class Runtime {
 
           // Safety: never leave CM1 to CM0/CM98 while any HP still reports/targets activity.
           // Keep CM1 (pump-on holding state) until both HPs are effectively idle.
-          if (oq_supervisory_state::hold_cm1_until_hp_idle(strcmp(cur_cm, "CM1") == 0, thermal_req, base_target,
+          if (oq_supervisory_state::hold_cm1_until_hp_idle(strcmp(cur_cm, "CM1") == 0, desired_local,
                                                            any_hp_active_guard || actuator_request_active)) {
             desired_local = 1;
           }
@@ -1146,9 +1134,9 @@ class Runtime {
 #endif
 
       if (strcmp(desired_cm, "CM0") == 0) {
-        const float stop_pwm = tick.cm0_pump_stop_ipwm;
-        const float sticky_pwm = tick.sticky_pwm;
-        const float target_pwm = sticky_active ? sticky_pwm : stop_pwm;
+        // Active HP/defrost keeps the relay On in CM0, so PWM must circulate too.
+        const float target_pwm =
+            oq_defrost::cm0_pump_target(sticky_active, any_hp_active_guard, tick.sticky_pwm, tick.cm0_pump_stop_ipwm);
         set_number_value(id(hp1_pump_speed), target_pwm, 1.0f);
 #if OQ_TOPOLOGY_DUO
         set_number_value(id(hp2_pump_speed), target_pwm, 1.0f);

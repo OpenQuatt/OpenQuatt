@@ -46,6 +46,7 @@ esphome:
           id(${hp_id}_runtime_frequency_snapshot_storage) = {};
           id(${hp_id}_odu_runtime_frequency)->reset_runtime_state();
           id(${hp_id}_odu_settings)->notify_odu_offline();
+          id(${hp_id}_odu_defrost)->set_odu_identity(oq_odu::Variant::UNKNOWN);
           id(${hp_id}_compressor_level_profile_request_pending) = false;
           id(${hp_id}_compressor_level_profile_request_token) = 0U;
           id(${hp_id}_recovery_probe_pending) = false;
@@ -77,6 +78,7 @@ modbus_controller:
             // The hub purges queued frames for this address on transport loss,
             // so an outstanding recovery probe is gone: allow a fresh one.
             id(${hp_id}_recovery_probe_pending) = false;
+            id(${hp_id}_odu_defrost)->offline();
             // Preserve validated control metadata; the incident manager decides
             // whether a transport interruption requires a stop.
             id(${hp_id}_odu_generation_request_token) =
@@ -162,6 +164,13 @@ openquatt_odu_eeprom_dump:
 
 openquatt_odu_settings:
   - id: ${hp_id}_odu_settings
+    controller: ${hp_id}
+    eeprom_dump: ${hp_id}_odu_eeprom_dump
+    web_auth: oq_web_auth_store
+    hp_index: ${hp_index}
+
+openquatt_odu_defrost:
+  - id: ${hp_id}_odu_defrost
     controller: ${hp_id}
     eeprom_dump: ${hp_id}_odu_eeprom_dump
     web_auth: oq_web_auth_store
@@ -413,6 +422,7 @@ script:
                       detection.variant == oq_odu::Variant::V2_NEW_MODEL);
                   id(${hp_id}_odu_settings)->set_odu_identity(
                       core.control_board_item, detection.variant);
+                  id(${hp_id}_odu_defrost)->set_odu_identity(detection.variant);
                   id(${hp_id}_generation_variant_code) =
                       static_cast<int>(detection.variant);
                   id(${hp_id}_validated_control_board_item) = core.control_board_item;
@@ -634,6 +644,13 @@ select:
       "Standby": 0
       "Cooling": 1
       "Heating": 2
+    write_lambda: |-
+      // Final gate also covers supervisory safety's direct select writes.
+      const bool hard_stop = id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) ||
+          id(oq_incident_manager).get_outputs(${hp_index}).must_stop ||
+          id(${hp_id}_odu_defrost)->cycle.telemetry_fault(millis());
+      if (!id(${hp_id}_odu_defrost)->normal_write_allowed(value, hard_stop)) return {};
+      return value;
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}_slow
@@ -643,6 +660,13 @@ select:
     address: 1999
     value_type: U_WORD
     optimistic: true
+    write_lambda: |-
+      // Freeze normal compressor commands during ODU-owned defrost; hard stops retain priority.
+      const bool hard_stop = id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) ||
+          id(oq_incident_manager).get_outputs(${hp_index}).must_stop ||
+          id(${hp_id}_odu_defrost)->cycle.telemetry_fault(millis());
+      if (!id(${hp_id}_odu_defrost)->normal_write_allowed(value, hard_stop)) return {};
+      return value;
     optionsmap:
       "0": 0
       "1": 1
@@ -767,6 +791,7 @@ sensor:
             id(${hp_id}_outside_temp_activity_ms) = millis();
             id(oq_incident_manager).observe_working_mode(
                 ${hp_index}, x, millis());
+            id(${hp_id}_odu_defrost)->cycle.observe_mode(x, millis());
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
@@ -886,6 +911,7 @@ sensor:
         - lambda: |-
             id(oq_incident_manager).observe_compressor_frequency(
                 ${hp_index}, x, millis());
+            id(${hp_id}_odu_defrost)->observe(0, millis());
             if (oq_diagnostics::installation_monitor().observe_compressor_frequency(
                     ${hp_index}, x, millis())) {
               ESP_LOGI("oq_diag", "%sMeasured compressor start.", "${prefix}");
@@ -975,10 +1001,14 @@ sensor:
             const uint32_t now_ms = millis();
             id(${hp_id}_outside_temp_last_change_ms) = now_ms;
             id(${hp_id}_outside_temp_activity_ms) = now_ms;
+            id(${hp_id}_odu_defrost)->observe(1, now_ms);
 
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
     id: ${hp_id}_evaporator_coil_temp
+    on_value:
+      - lambda: |-
+          id(${hp_id}_odu_defrost)->observe(2, millis());
     name: "${prefix}Evaporator coil temperature"
     icon: mdi:thermometer
     register_type: holding
@@ -1120,6 +1150,9 @@ sensor:
   - platform: modbus_controller
     modbus_controller_id: ${hp_id}
     id: ${hp_id}_evaporating_temp
+    on_value:
+      - lambda: |-
+          id(${hp_id}_odu_defrost)->observe(3, millis());
     name: "${prefix}Evaporating temperature"
     icon: mdi:thermometer
     register_type: holding
@@ -1554,6 +1587,10 @@ binary_sensor:
     device_class: running
     register_type: holding
     address: 2118
+    lambda: |-
+      // Runs for each Modbus sample, including unchanged binary values.
+      id(${hp_id}_odu_defrost)->cycle.observe_bit(x, millis());
+      return x;
     on_state:
       then:
         - lambda: |-
@@ -1678,6 +1715,8 @@ text_sensor:
           return std::string("Cooling");
         case 2:
           return std::string("Heating");
+        case 4:
+          return std::string("Defrost");
         default: {
           char buf[24];
           snprintf(buf, sizeof(buf), "Unknown (%d)", working_mode);
@@ -1819,7 +1858,10 @@ interval:
     startup_delay: ${oq_modbus_startup_delay_ms}ms
     then:
       - lambda: |-
-          if (id(${hp_id}_odu_eeprom_dump).is_active()) {
+          // Defrost reserves service access, but needs live mode/bit telemetry
+          // throughout the cycle. Other EEPROM operations still pause polling.
+          if (id(${hp_id}_odu_eeprom_dump).is_active() &&
+              !id(${hp_id}_odu_defrost)->reserved()) {
             return;
           }
           if (id(oq_runtime_polling_paused).state) {
