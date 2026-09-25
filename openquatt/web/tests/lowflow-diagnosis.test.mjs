@@ -9,6 +9,7 @@ globalThis.window = {
 };
 
 const { state } = await import("../js/src/core/state.js");
+const { INSTALLATION_MONITORING_STATE_KEYS } = await import("../js/src/core/config.js");
 const {
   FLOW_IPWM_MIN,
   getLowFlowDiagnosis,
@@ -16,8 +17,24 @@ const {
 } = await import("../js/src/core/lowflow-diagnosis.js");
 
 function setEntities(entities) {
-  state.entities = entities;
+  state.entities = entities.flowOutputIpwm && !entities.flowControlMode
+    ? { ...entities, flowControlMode: { value: "Flow Setpoint", state: "Flow Setpoint" } }
+    : entities;
 }
+
+test("diagnose-entities worden tijdens servicebewaking opgehaald", () => {
+  for (const key of [
+    "flowSelected",
+    "flowSetpoint",
+    "flowOutputIpwm",
+    "flowSource",
+    "qFlowSource",
+    "hp1PumpRelay",
+    "hp2PumpRelay",
+  ]) {
+    assert.ok(INSTALLATION_MONITORING_STATE_KEYS.includes(key), key);
+  }
+});
 
 test("gebruikt centrale actuatorgrenzen zonder magic-numbervergelijking", () => {
   assert.equal(FLOW_IPWM_MIN, 50);
@@ -47,6 +64,7 @@ test("regelaar net boven de ondergrens geldt nog als meer-flow-vraag", () => {
     hp1PumpRelay: { value: true, state: "ON" },
   });
   assert.equal(getLowFlowDiagnosis().requestingMore, true);
+  assert.equal(getLowFlowDiagnosis().scenario, "no-flow");
 
   setEntities({
     lowflowFaultActive: { value: true, state: "ON" },
@@ -55,6 +73,19 @@ test("regelaar net boven de ondergrens geldt nog als meer-flow-vraag", () => {
     hp1PumpRelay: { value: true, state: "ON" },
   });
   assert.equal(getLowFlowDiagnosis().requestingMore, false);
+  assert.equal(getLowFlowDiagnosis().scenario, "no-flow-unconfirmed");
+});
+
+test("handmatige PWM-regeling wordt niet als actieve meer-flow-vraag gediagnosticeerd", () => {
+  setEntities({
+    lowflowFaultActive: { value: true, state: "ON" },
+    flowSelected: { value: 0, state: "0" },
+    flowOutputIpwm: { value: 50, state: "50" },
+    flowControlMode: { value: "Manual PWM", state: "Manual PWM" },
+    hp1PumpRelay: { value: true, state: "ON" },
+  });
+  assert.equal(getLowFlowDiagnosis().requestingMore, false);
+  assert.equal(getLowFlowDiagnosis().scenario, "no-flow-unconfirmed");
 });
 
 test("niet-aangestuurde pomp wordt apart benoemd", () => {
@@ -84,7 +115,7 @@ test("ontbrekende flowmeting wordt apart benoemd", () => {
   assert.equal(getLowFlowDiagnosis().scenario, "no-measurement");
 });
 
-test("duo neemt elke beschikbare pomprelais mee", () => {
+test("duo bewaart per pomprelais de eigen status", () => {
   setEntities({
     lowflowFaultActive: { value: true, state: "ON" },
     flowSelected: { value: 0, state: "0" },
@@ -92,9 +123,54 @@ test("duo neemt elke beschikbare pomprelais mee", () => {
     hp2PumpRelay: { value: true, state: "ON" },
   });
   const diagnosis = getLowFlowDiagnosis();
-  assert.equal(diagnosis.pumpAvailable, true);
-  assert.equal(diagnosis.pumpRunning, true);
-  assert.equal(diagnosis.scenario, "no-flow");
+  assert.deepEqual(diagnosis.pumpRelays, [
+    { label: "HP1", running: false },
+    { label: "HP2", running: true },
+  ]);
+  assert.equal(diagnosis.scenario, "no-flow-unconfirmed");
+});
+
+test("actieve blokkade met voldoende flow wordt als herstelhersteld weergegeven", () => {
+  setEntities({
+    lowflowFaultActive: { value: true, state: "ON" },
+    flowSelected: { value: 300, state: "300" },
+    hp1PumpRelay: { value: true, state: "ON" },
+  });
+  assert.equal(getLowFlowDiagnosis().scenario, "recovering");
+});
+
+test("ontbrekende pompaansturing blijft onbekend in plaats van te concluderen dat de pomp draait", () => {
+  setEntities({
+    lowflowFaultActive: { value: true, state: "ON" },
+    flowSelected: { value: 0, state: "0" },
+    flowOutputIpwm: { value: 50, state: "50" },
+  });
+  assert.equal(getLowFlowDiagnosis().scenario, "pump-unknown");
+});
+
+test("een lege of onbekende flowmeting is geen geldige nulmeting", () => {
+  setEntities({
+    lowflowFaultActive: { value: true, state: "ON" },
+    flowSelected: { value: "", state: "" },
+    hp1PumpRelay: { value: true, state: "ON" },
+  });
+  const diagnosis = getLowFlowDiagnosis();
+  assert.equal(diagnosis.flowAvailable, false);
+  assert.equal(diagnosis.scenario, "no-measurement");
+});
+
+test("Single Q V1 met Auto flowbron toont de effectieve lokale bron", () => {
+  setEntities({
+    lowflowFaultActive: { value: true, state: "ON" },
+    flowSelected: { value: 0, state: "0" },
+    hp1PumpRelay: { value: true, state: "ON" },
+    flowSource: { value: "Outdoor unit", state: "Outdoor unit" },
+    qFlowSource: { value: "Auto", state: "Auto" },
+    hpGeneration: { value: "V1", state: "V1" },
+  });
+  const html = renderLowFlowDiagnosis();
+  assert.equal(getLowFlowDiagnosis().flowSource, "Local");
+  assert.match(html, /Lokaal/);
 });
 
 test("diagnoseblok linkt direct naar de Waterpomptest zonder defect te concluderen", () => {

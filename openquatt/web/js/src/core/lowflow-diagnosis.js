@@ -1,7 +1,7 @@
-import { getEntityNumericValue, hasEntity, isEntityActive } from "./app-shared.js";
-import { getEntityValue } from "./entity-store.js";
+import { hasEntity, isEntityActive } from "./app-shared.js";
+import { getEntityValue, parseLooseNumber } from "./entity-store.js";
 import { escapeHtml } from "./html.js";
-import { formatNumber, t } from "../i18n/index.js";
+import { formatNumber, optionLabel, t } from "../i18n/index.js";
 
 // Centrale diagnoseconstanten voor de low-flow blokkade (issue #745).
 //
@@ -25,14 +25,26 @@ export function isLowFlowFaultActive() {
   return hasEntity("lowflowFaultActive") && isEntityActive("lowflowFaultActive");
 }
 
-function getPumpState() {
-  const relayKeys = ["hp1PumpRelay", "hp2PumpRelay"].filter((key) => hasEntity(key));
-  if (!relayKeys.length) {
-    return { available: false, running: false };
+function getNumericEntityValue(key) {
+  if (!hasEntity(key)) {
+    return NaN;
   }
+  return parseLooseNumber(getEntityValue(key));
+}
+
+function getPumpState() {
+  const relays = [
+    { key: "hp1PumpRelay", label: "HP1" },
+    { key: "hp2PumpRelay", label: "HP2" },
+  ].filter(({ key }) => hasEntity(key));
+  if (!relays.length) {
+    return { available: false, running: false, relays: [] };
+  }
+  const states = relays.map(({ key, label }) => ({ label, running: isEntityActive(key) }));
   return {
     available: true,
-    running: relayKeys.some((key) => isEntityActive(key)),
+    running: states.some((state) => state.running),
+    relays: states,
   };
 }
 
@@ -40,8 +52,7 @@ function getSetpointLph() {
   // Verwarmings- en koelsetpoint delen één diagnoseveld; toon de beschikbare
   // configuratie zonder te gokken welke modus actief is.
   for (const key of ["flowSetpoint", "coolingFlowSetpoint"]) {
-    if (!hasEntity(key)) continue;
-    const value = getEntityNumericValue(key);
+    const value = getNumericEntityValue(key);
     if (Number.isFinite(value)) {
       return { value, available: true };
     }
@@ -49,27 +60,51 @@ function getSetpointLph() {
   return { value: NaN, available: false };
 }
 
+function getEffectiveFlowSource() {
+  const source = String(getEntityValue("flowSource") || "").trim();
+  if (source !== "Outdoor unit" || !hasEntity("qFlowSource")) {
+    return source;
+  }
+  const qSource = String(getEntityValue("qFlowSource") || "").trim();
+  const hpGeneration = String(getEntityValue("hpGeneration") || "").trim();
+  if (qSource === "Local" || (qSource === "Auto" && hpGeneration === "V1")) {
+    return "Local";
+  }
+  if (qSource === "Auto") {
+    return "Outdoor unit";
+  }
+  return qSource;
+}
+
 export function getLowFlowDiagnosis() {
   const active = isLowFlowFaultActive();
-  const flowValue = hasEntity("flowSelected") ? getEntityNumericValue("flowSelected") : NaN;
+  const flowValue = getNumericEntityValue("flowSelected");
   const flowAvailable = Number.isFinite(flowValue);
   const setpoint = getSetpointLph();
-  const outputValue = hasEntity("flowOutputIpwm") ? getEntityNumericValue("flowOutputIpwm") : NaN;
+  const outputValue = getNumericEntityValue("flowOutputIpwm");
   const outputAvailable = Number.isFinite(outputValue);
+  const flowControlMode = String(getEntityValue("flowControlMode") || "").trim();
   const requestingMore = outputAvailable
+    && flowControlMode === "Flow Setpoint"
+    && outputValue >= FLOW_IPWM_MIN
+    && outputValue <= FLOW_IPWM_MAX
     && outputValue <= FLOW_IPWM_MIN + FLOW_IPWM_REQUEST_MARGIN;
   const pump = getPumpState();
-  const flowSourceRaw = hasEntity("flowSource") ? String(getEntityValue("flowSource") || "").trim() : "";
-  const flowSourceAvailable = flowSourceRaw.length > 0;
+  const flowSource = getEffectiveFlowSource();
+  const flowSourceAvailable = flowSource.length > 0;
 
   let scenario = "inactive";
   if (active) {
     if (!flowAvailable) {
       scenario = "no-measurement";
-    } else if (pump.available && !pump.running) {
+    } else if (flowValue >= LOWFLOW_MIN_FLOW_LPH) {
+      scenario = "recovering";
+    } else if (!pump.available) {
+      scenario = "pump-unknown";
+    } else if (!pump.running) {
       scenario = "pump-off";
     } else if (flowValue <= LOWFLOW_NEAR_ZERO_LPH) {
-      scenario = "no-flow";
+      scenario = requestingMore ? "no-flow" : "no-flow-unconfirmed";
     } else {
       scenario = "low-flow";
     }
@@ -87,7 +122,8 @@ export function getLowFlowDiagnosis() {
     requestingMore,
     pumpAvailable: pump.available,
     pumpRunning: pump.running,
-    flowSource: flowSourceRaw,
+    pumpRelays: pump.relays,
+    flowSource,
     flowSourceAvailable,
     minFlowLph: LOWFLOW_MIN_FLOW_LPH,
   };
@@ -100,11 +136,20 @@ export function renderLowFlowDiagnosis() {
   }
   const scenarioCopy = diagnosis.scenario === "pump-off"
     ? t("settingsInstallation.lowflowDiagPumpOff")
-    : diagnosis.scenario === "no-flow"
-      ? t("settingsInstallation.lowflowDiagNoFlow")
-      : diagnosis.scenario === "no-measurement"
-        ? t("settingsInstallation.lowflowDiagNoMeasurement")
-        : t("settingsInstallation.lowflowDiagLowFlow");
+    : diagnosis.scenario === "pump-unknown"
+      ? t("settingsInstallation.lowflowDiagPumpUnknown")
+      : diagnosis.scenario === "no-flow"
+        ? t("settingsInstallation.lowflowDiagNoFlow")
+        : diagnosis.scenario === "no-flow-unconfirmed"
+          ? t("settingsInstallation.lowflowDiagNoFlowUnconfirmed")
+          : diagnosis.scenario === "recovering"
+            ? t("settingsInstallation.lowflowDiagRecovering")
+            : diagnosis.scenario === "no-measurement"
+              ? t("settingsInstallation.lowflowDiagNoMeasurement")
+              : t("settingsInstallation.lowflowDiagLowFlow");
+  const pumpValue = !diagnosis.pumpAvailable
+    ? t("settingsInstallation.lowflowDiagPumpStatusUnknown")
+    : diagnosis.pumpRelays.map(({ label, running }) => `${label} ${running ? t("settingsInstallation.lowflowDiagPumpOn") : t("settingsInstallation.lowflowDiagPumpOffValue")}`).join(" · ");
   const formatFlow = (value) => `${formatNumber(Math.round(value), { maximumFractionDigits: 0 })} L/h`;
   const rows = [
     [t("settingsInstallation.lowflowDiagFlow"), diagnosis.flowAvailable ? formatFlow(diagnosis.flowLph) : "—"],
@@ -115,12 +160,8 @@ export function renderLowFlowDiagnosis() {
     diagnosis.outputAvailable
       ? [t("settingsInstallation.lowflowDiagPumpOutput"), `${formatNumber(Math.round(diagnosis.outputIpwm), { maximumFractionDigits: 0 })} iPWM${diagnosis.requestingMore ? ` · ${t("settingsInstallation.lowflowDiagRequestingMore")}` : ""}`]
       : null,
-    [t("settingsInstallation.lowflowDiagPump"), !diagnosis.pumpAvailable
-      ? t("settingsInstallation.lowflowDiagPumpUnknown")
-      : diagnosis.pumpRunning
-        ? t("settingsInstallation.lowflowDiagPumpOn")
-        : t("settingsInstallation.lowflowDiagPumpOffValue")],
-    [t("settingsInstallation.lowflowDiagSource"), diagnosis.flowSourceAvailable ? diagnosis.flowSource : t("settingsInstallation.lowflowDiagSourceUnknown")],
+    [t("settingsInstallation.lowflowDiagPump"), pumpValue],
+    [t("settingsInstallation.lowflowDiagSource"), diagnosis.flowSourceAvailable ? optionLabel(diagnosis.flowSource) : t("settingsInstallation.lowflowDiagSourceUnknown")],
   ].filter(Boolean);
   return `
       <div class="oq-settings-monitoring-incident is-active">
