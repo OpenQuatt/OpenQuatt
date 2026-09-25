@@ -407,6 +407,7 @@
     ["auxRelayStatus", DOMAIN_TEXT_SENSOR, "Aux relay status"],
     ["systemHeatPower", DOMAIN_SENSOR, "System Heat Power"],
     ["flowSelected", DOMAIN_SENSOR, "Flow average (Selected)", false],
+    ["flowSelectedRoute", DOMAIN_TEXT_SENSOR, "Flow Selected Route"],
     ["flowLocal", DOMAIN_SENSOR, "Flow average (local)"],
     ["controllerFlow", DOMAIN_SENSOR, "Controller Flow"],
     ["trendHistoryEnabled", DOMAIN_SWITCH, "Trendopslag"],
@@ -583,6 +584,7 @@
     ["hp1PumpPower", DOMAIN_SENSOR, "HP1 - Pump Power"],
     ["hp1PumpRelay", DOMAIN_BINARY_SENSOR, "HP1 - DC Pump Relay"],
     ["hp1PumpIpwmCommand", DOMAIN_SENSOR, "HP1 - Pump iPWM command"],
+    ["hp1PumpIpwmFeedback", DOMAIN_SENSOR, "HP1 - Pump iPWM feedback"],
     ["hp1Heat", DOMAIN_SENSOR, "HP1 - Heat Power", false],
     ["hp1Cooling", DOMAIN_SENSOR, "HP1 - Cooling Power", false],
     ["hp1Cop", DOMAIN_SENSOR, "HP1 - COP", false],
@@ -624,6 +626,7 @@
     ["hp2PumpPower", DOMAIN_SENSOR, "HP2 - Pump Power"],
     ["hp2PumpRelay", DOMAIN_BINARY_SENSOR, "HP2 - DC Pump Relay"],
     ["hp2PumpIpwmCommand", DOMAIN_SENSOR, "HP2 - Pump iPWM command"],
+    ["hp2PumpIpwmFeedback", DOMAIN_SENSOR, "HP2 - Pump iPWM feedback"],
     ["hp2Heat", DOMAIN_SENSOR, "HP2 - Heat Power"],
     ["hp2Cooling", DOMAIN_SENSOR, "HP2 - Cooling Power"],
     ["hp2Cop", DOMAIN_SENSOR, "HP2 - COP"],
@@ -1586,11 +1589,14 @@
     "controllerFlowMeter",
     "customFlowMeterPulsesPerLiter",
     "outdoorUnitFlowMode",
+    "flowSelectedRoute",
     "flowLocal",
     "controllerFlow",
     "cicFlowrate",
     "hp1PumpIpwmCommand",
     "hp2PumpIpwmCommand",
+    "hp1PumpIpwmFeedback",
+    "hp2PumpIpwmFeedback",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestManifestUrl", "installFirmwareTestManifest"];

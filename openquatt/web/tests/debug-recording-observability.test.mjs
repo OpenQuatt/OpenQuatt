@@ -163,11 +163,14 @@ const ISSUE_746_FLOW_KEYS = [
   "controllerFlowMeter",
   "customFlowMeterPulsesPerLiter",
   "outdoorUnitFlowMode",
+  "flowSelectedRoute",
   "flowLocal",
   "controllerFlow",
   "cicFlowrate",
   "hp1PumpIpwmCommand",
   "hp2PumpIpwmCommand",
+  "hp1PumpIpwmFeedback",
+  "hp2PumpIpwmFeedback",
 ];
 
 const ADDED_OBSERVABILITY_KEYS = [
@@ -380,6 +383,11 @@ test("issue 746 legt flowbron en pompdiagnostiek volledig vast", async () => {
     name: "Outdoor Unit Flow Mode",
     optional: true,
   });
+  assert.deepEqual(ENTITY_DEFS.flowSelectedRoute, {
+    domain: "text_sensor",
+    name: "Flow Selected Route",
+    optional: true,
+  });
   assert.deepEqual(ENTITY_DEFS.flowLocal, {
     domain: "sensor",
     name: "Flow average (local)",
@@ -402,7 +410,19 @@ test("issue 746 legt flowbron en pompdiagnostiek volledig vast", async () => {
     optional: true,
   });
 
+  assert.deepEqual(ENTITY_DEFS.hp1PumpIpwmFeedback, {
+    domain: "sensor",
+    name: "HP1 - Pump iPWM feedback",
+    optional: true,
+  });
+  assert.deepEqual(ENTITY_DEFS.hp2PumpIpwmFeedback, {
+    domain: "sensor",
+    name: "HP2 - Pump iPWM feedback",
+    optional: true,
+  });
+
   assert.match(sensorSources, /name: "Flow Source"/);
+  assert.match(sensorSources, /name: "Flow Selected Route"/);
   assert.match(sensorSources, /name: "Outdoor Unit Flow Mode"/);
   assert.match(qProfile, /name: "Q Flow Source"/);
   assert.match(qProfile, /name: "Controller Flow Meter"/);
@@ -410,11 +430,14 @@ test("issue 746 legt flowbron en pompdiagnostiek volledig vast", async () => {
   assert.match(qProfile, /name: "Controller Flow"/);
   assert.match(flowPackage, /name: "Flow average \(local\)"/);
   assert.match(cicPackage, /name: "CIC - Flowrate \(filtered\)"/);
+  assert.match(sensorSources, /return \{oq_sensor_source::runtime\(\)\.flow_route\(\)\}/);
+  assert.match(sensorSources, /id: flow_route_selected\r?\n    name: "Flow Selected Route"\r?\n    internal: true/);
   assert.match(hpPackage, /id: \$\{hp_id\}_pump_ipwm_command/);
   assert.match(hpPackage, /name: "\$\{prefix\}Pump iPWM command"/);
+  assert.match(hpPackage, /id: \$\{hp_id\}_pump_ipwm_feedback/);
+  assert.match(hpPackage, /name: "\$\{prefix\}Pump iPWM feedback"/);
+  assert.match(hpPackage, /return isfinite\(raw\) \? raw : NAN/);
 
-  // Selects/numbers blijven config-kolommen; pompower blijft fail-closed
-  // (NAN bij offline/ongeldige feedback) zodat missing als null exporteert.
   assert.match(hpPackage, /id: \$\{hp_id\}_pump_power/);
   assert.match(hpPackage, /return feedback\.power_valid \? feedback\.power_w : NAN/);
   for (const key of ISSUE_746_FLOW_KEYS) {

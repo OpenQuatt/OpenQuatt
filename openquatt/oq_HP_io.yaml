@@ -1243,6 +1243,19 @@ sensor:
             id(${hp_id}_pump_feedback_last_update_ms) = millis();
 
   - platform: template
+    id: ${hp_id}_pump_ipwm_feedback
+    name: "${prefix}Pump iPWM feedback"
+    icon: mdi:speedometer
+    unit_of_measurement: "iPWM"
+    state_class: "measurement"
+    accuracy_decimals: 0
+    update_interval: 10s
+    lambda: |-
+      if (!id(${hp_id}_is_online).state) return NAN;
+      const float raw = id(${hp_id}_pump_ipwm_feedback_raw).state;
+      return isfinite(raw) ? raw : NAN;
+
+  - platform: template
     id: ${hp_id}_pump_power
     name: "${prefix}Pump Power"
     icon: mdi:pump

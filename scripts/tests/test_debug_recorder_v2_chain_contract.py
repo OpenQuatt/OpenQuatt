@@ -83,11 +83,14 @@ FLOW_746_KEYS = [
     "controllerFlowMeter",
     "customFlowMeterPulsesPerLiter",
     "outdoorUnitFlowMode",
+    "flowSelectedRoute",
     "flowLocal",
     "controllerFlow",
     "cicFlowrate",
     "hp1PumpIpwmCommand",
     "hp2PumpIpwmCommand",
+    "hp1PumpIpwmFeedback",
+    "hp2PumpIpwmFeedback",
 ]
 
 
@@ -158,7 +161,7 @@ class DebugRecorderV2ChainContractTest(unittest.TestCase):
         header_system = int(re.search(r"SYSTEM_FIELD_COUNT = (\d+)", RECORDER_HEADER).group(1))
         self.assertEqual(header_capacity, 256)
         self.assertEqual(header_system, 5)
-        self.assertLessEqual(236, header_capacity - header_system)
+        self.assertLessEqual(239, header_capacity - header_system)
 
     def test_power_input_diagnostics_include_model_ids_and_quality(self) -> None:
         self.assertIn('\\"availableModels\\":{\\"v2Thermal\\":\\"oq-v2-heating-r1\\"', POWER_HOUSE)
@@ -186,7 +189,7 @@ class DebugRecorderV2ChainContractTest(unittest.TestCase):
         self.assertIn('"Off": 0', HP_IO)
         self.assertIn('"On": 1', HP_IO)
         # HP2-instanties bestaan alleen op Duo; op Single slaat de recorder
-        # ze veilig over als missing (null).
+        # ze veilig over omdat de firmware-entity compile-time ontbreekt.
         self.assertIn('hp_id: "hp2"', DUO_PACKAGES)
 
     def test_silent_select_is_commanded_not_planned(self) -> None:
@@ -199,17 +202,24 @@ class DebugRecorderV2ChainContractTest(unittest.TestCase):
         sensor_sources = (ROOT / "openquatt" / "oq_sensor_sources.yaml").read_text()
         flow_control = (ROOT / "openquatt" / "oq_flow_control.yaml").read_text()
         cic = (ROOT / "openquatt" / "oq_cic.yaml").read_text()
+        cic_source = (ROOT / "components" / "openquatt_cic" / "OpenQuattCIC.cpp").read_text()
         q_profile = (ROOT / "openquatt" / "profiles" / "heatpump_controller_q.yaml").read_text()
         self.assertIn('name: "Flow Source"', sensor_sources)
+        self.assertIn('name: "Flow Selected Route"', sensor_sources)
         self.assertIn('name: "Outdoor Unit Flow Mode"', sensor_sources)
+        self.assertIn("id: flow_route_selected", sensor_sources)
         self.assertIn('name: "Q Flow Source"', q_profile)
         self.assertIn('name: "Controller Flow Meter"', q_profile)
         self.assertIn('name: "Custom Flow Meter Pulses Per Liter"', q_profile)
         self.assertIn('name: "Controller Flow"', q_profile)
         self.assertIn('name: "Flow average (local)"', flow_control)
         self.assertIn('name: "CIC - Flowrate (filtered)"', cic)
+        self.assertIn("if (payload.flow_rate.present)", cic_source)
+        self.assertIn("this->publish_float_if_changed_(this->flow_rate_, NAN);", cic_source)
         self.assertIn("id: ${hp_id}_pump_ipwm_command", HP_IO)
         self.assertIn('name: "${prefix}Pump iPWM command"', HP_IO)
+        self.assertIn("id: ${hp_id}_pump_ipwm_feedback", HP_IO)
+        self.assertIn('name: "${prefix}Pump iPWM feedback"', HP_IO)
         self.assertIn("return feedback.power_valid ? feedback.power_w : NAN;", HP_IO)
 
 

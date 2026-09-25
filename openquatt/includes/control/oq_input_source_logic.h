@@ -257,6 +257,26 @@ enum class FlowRoute : uint8_t { NONE = 0, CIC, CONTROLLER, HP1, HP2, AGGREGATE,
 enum class ControllerFlowMode : uint8_t { OTHER = 0, LOCAL, AUTO };
 enum class OutdoorFlowMode : uint8_t { AGGREGATE = 0, HP1, HP2 };
 
+inline const char* flow_route_name(FlowRoute route) {
+  switch (route) {
+    case FlowRoute::CIC:
+      return "CIC";
+    case FlowRoute::CONTROLLER:
+      return "Controller";
+    case FlowRoute::HP1:
+      return "HP1";
+    case FlowRoute::HP2:
+      return "HP2";
+    case FlowRoute::AGGREGATE:
+      return "Aggregate";
+    case FlowRoute::PUMPS_STOPPED:
+      return "Pumps stopped";
+    case FlowRoute::NONE:
+    default:
+      return "Unavailable";
+  }
+}
+
 struct FlowInputs {
   Source selected = Source::NONE;
   bool q_hardware = false;

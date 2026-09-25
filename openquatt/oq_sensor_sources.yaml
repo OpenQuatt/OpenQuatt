@@ -256,6 +256,16 @@ sensor:
       return oq_sensor_source::runtime().flow();
 
   - platform: template
+    id: flow_route_selected
+    name: "Flow Selected Route"
+    internal: true
+    icon: mdi:call-split
+    entity_category: diagnostic
+    update_interval: 5s
+    lambda: |-
+      return {oq_sensor_source::runtime().flow_route()};
+
+  - platform: template
     id: outside_temp_selected
     name: "Outside Temperature (Selected)"
     icon: mdi:thermometer

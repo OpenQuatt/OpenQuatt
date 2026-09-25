@@ -194,8 +194,8 @@ class Runtime {
     return NAN;
   }
 
-  float flow() const {
-    if (!id(flow_source).has_state()) return NAN;
+  oq_input_source::FlowSelection flow_selection() const {
+    if (!id(flow_source).has_state()) return {};
     oq_input_source::FlowInputs input;
     input.selected = parse_source(id(flow_source).current_option());
     input.cic = sample(cic_feed_valid(), id(flow_rate_cic));
@@ -227,8 +227,17 @@ class Runtime {
     const oq_flow::PumpRelayState hp2{};
 #endif
     input.all_relevant_pumps_stopped = oq_flow::all_relevant_pumps_stopped(OQ_TOPOLOGY_DUO, hp1, hp2);
-    const auto selected = oq_input_source::select_flow(input);
+    return oq_input_source::select_flow(input);
+  }
+
+  float flow() const {
+    const auto selected = flow_selection();
     return selected.valid ? selected.value : NAN;
+  }
+
+  std::string flow_route() const {
+    if (!id(flow_source).has_state()) return "Unavailable";
+    return oq_input_source::flow_route_name(flow_selection().route);
   }
 
   float outside(uint32_t now_ms, uint32_t hold_ms, uint32_t ha_stale_s) {
