@@ -6,6 +6,7 @@ import { refreshEntities } from "../core/entity-sync.js";
 import { invokeActionMap } from "../core/action-router.js";
 import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
+import { syncUrlAppView } from "../core/navigation.js";
 import { clearDebugRecordingDevicePollTimer, scheduleDebugRecordingDeviceStatusPoll } from "./debug-recording.js";
 import { refreshAuthStatus, stopLoginAuthStatusPolling } from "./security-actions.js";
 import { clearSettingsBackupDraft } from "./storage-history.js";
@@ -15,6 +16,7 @@ function closeSystemModal() {
   stopLoginAuthStatusPolling();
   clearDebugRecordingDevicePollTimer();
   const wasElectricalLimitConfirm = state.systemModal === "electrical-limit-confirm";
+  const wasSystemRecorder = state.systemModal === "debug-recording";
   state.systemModal = "";
   state.authDraftCurrentPassword = "";
   state.authDraftNewPassword = "";
@@ -31,6 +33,9 @@ function closeSystemModal() {
     state.pendingElectricalLimit = null;
   }
   clearSettingsBackupDraft();
+  if (wasSystemRecorder) {
+    syncUrlAppView("replace");
+  }
   render();
   scheduleDebugRecordingDeviceStatusPoll();
 }

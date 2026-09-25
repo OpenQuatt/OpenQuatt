@@ -10,6 +10,7 @@ import { state } from "../core/state.js";
 import { getBasePath } from "../core/url-path.js";
 import { escapeHtml } from "../core/html.js";
 import { render } from "../core/render-scheduler.js";
+import { syncUrlAppView } from "../core/navigation.js";
 import { renderModalShell } from "../core/modal-shell.js";
 
 let debugRecordingMutationGeneration = 0;
@@ -668,6 +669,7 @@ const debugRecordingActionHandlers = {
     state.debugRecordingNotice = "";
     state.debugRecordingConfirmDisable = false;
     state.debugRecordingManageOpen = false;
+    syncUrlAppView("push");
     render();
     return refreshDebugRecordingDeviceStatus();
   },

@@ -328,6 +328,8 @@ De Systeemrecorder bewaart continu recente systeemgegevens, dus je hoeft een opn
 
 De opname wordt lokaal in het apparaatgeheugen opgeslagen en niets wordt automatisch verzonden. Deel het bestand alleen binnen het supportverzoek waarvoor je het hebt gemaakt.
 
+Vanuit de OpenHeatPumps-analyser kun je met een deep link terug naar de Systeemrecorder-popup: `http://<device-ip>/?view=settings&section=system&modal=systeemrecorder` (kort: `http://<device-ip>/#systeemrecorder`). De popup opent dan automatisch.
+
 ## Backup en restore
 
 Maak een backup voordat je grotere wijzigingen doet of voordat je een factory-update uitvoert.
