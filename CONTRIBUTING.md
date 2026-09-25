@@ -122,6 +122,12 @@ Use the project helper for normal local checks:
 - `python3 scripts/dev.py validate --config-only`
 - `python3 scripts/dev.py validate --jobs 2`
 
+JavaScript dependencies are installed with lifecycle scripts disabled. The repository
+`.npmrc` sets `ignore-scripts=true`, and CI also passes `--ignore-scripts`
+explicitly. Do not bypass this for normal builds. The dependency-policy contract in
+`scripts/tests/test_npm_install_policy_contract.py` fails when a new lockfile package
+advertises an install script; review that package before updating the expected set.
+
 For C/C++ source files, install the exact version from `.clang-format-version` and use the repository formatting commands. The cross-platform `uv` tool installer provides the pinned binary:
 
 - `uv tool install --force clang-format==22.1.8`
