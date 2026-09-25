@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <math.h>
+#include <string_view>
 
 #include "../../openquatt/includes/control/oq_input_source_logic.h"
 
@@ -134,6 +135,7 @@ void test_flow_source_routes() {
   input.aggregate = numeric_sample(true, true, 900.0f);
   auto selected = select_flow(input);
   assert(selected.valid && selected.route == FlowRoute::AGGREGATE && selected.value == 900.0f);
+  assert(std::string_view(flow_route_name(selected.route)) == "Aggregate");
 
   input.all_relevant_pumps_stopped = true;
   selected = select_flow(input);

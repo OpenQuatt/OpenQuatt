@@ -416,6 +416,8 @@ void OpenQuattCIC::apply_payload_(const ParsedPayload& payload) {
   }
   if (payload.flow_rate.present) {
     this->publish_float_if_changed_(this->flow_rate_, payload.flow_rate.value);
+  } else {
+    this->publish_float_if_changed_(this->flow_rate_, NAN);
   }
   if (payload.cic_boiler_water_pressure.present) {
     this->publish_float_if_changed_(this->cic_boiler_water_pressure_, payload.cic_boiler_water_pressure.value);

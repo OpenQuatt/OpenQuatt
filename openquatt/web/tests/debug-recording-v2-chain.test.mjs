@@ -55,6 +55,22 @@ const POWER_INPUT_KEYS = [
   "hp2Crankcase",
 ];
 
+const ISSUE_746_FLOW_KEYS = [
+  "flowSource",
+  "qFlowSource",
+  "controllerFlowMeter",
+  "customFlowMeterPulsesPerLiter",
+  "outdoorUnitFlowMode",
+  "flowSelectedRoute",
+  "flowLocal",
+  "controllerFlow",
+  "cicFlowrate",
+  "hp1PumpIpwmCommand",
+  "hp2PumpIpwmCommand",
+  "hp1PumpIpwmFeedback",
+  "hp2PumpIpwmFeedback",
+];
+
 test("V2-ketenvelden zijn compacte numerieke kolommen met delta-encoding", () => {
   const widths = { binary_sensor: 1, switch: 1, text_sensor: 2, select: 2, sensor: 4, number: 4 };
   for (const key of CHAIN_KEYS) {
@@ -75,12 +91,14 @@ test("V2-ketenvelden zijn compacte numerieke kolommen met delta-encoding", () =>
 });
 
 test("startsnapshot bevat tabellen, hash en instellingen eenmalig in initial", () => {
-  for (const key of [...CHAIN_KEYS, ...ODU_REGISTER_KEYS, ...POWER_INPUT_KEYS]) {
+  for (const key of [...CHAIN_KEYS, ...ODU_REGISTER_KEYS, ...POWER_INPUT_KEYS, ...ISSUE_746_FLOW_KEYS]) {
     assert.ok(DEBUG_RECORDING_KEYS.includes(key), `debugset mist ${key}`);
   }
   assert.deepEqual(
-    DEBUG_RECORDING_KEYS.slice(-(CHAIN_KEYS.length + ODU_REGISTER_KEYS.length + POWER_INPUT_KEYS.length)),
-    [...CHAIN_KEYS, ...ODU_REGISTER_KEYS, ...POWER_INPUT_KEYS],
+    DEBUG_RECORDING_KEYS.slice(
+      -(CHAIN_KEYS.length + ODU_REGISTER_KEYS.length + POWER_INPUT_KEYS.length + ISSUE_746_FLOW_KEYS.length),
+    ),
+    [...CHAIN_KEYS, ...ODU_REGISTER_KEYS, ...POWER_INPUT_KEYS, ...ISSUE_746_FLOW_KEYS],
   );
   assert.match(powerHouse, /id: oq_debug_static_snapshot/);
   assert.match(powerHouse, /name: "Debug static snapshot"/);
@@ -141,7 +159,7 @@ test("V2-mapping gebruikt de heating-tabel voor fysieke F-levels", () => {
   assert.ok(!CHAIN_KEYS.includes("hp1Compressor"));
 });
 
-test("Duo legt HP2 vast; Single degradeert HP2 veilig naar null", () => {
+test("Duo legt HP2 vast; Single mist HP2-velden zonder verzonnen waarden", () => {
   assert.match(requestControl, /#if OQ_TOPOLOGY_DUO/);
   assert.match(requestControl, /id\(\$\{secondary_last_applied_level_id\}\)/);
   assert.match(requestControl, /id\(\$\{secondary_runtime_frequency_snapshot_storage_id\}\)/);
@@ -188,8 +206,8 @@ test("ODU-registervelden zijn compacte hergebruik-kolommen zonder nieuwe entitie
   assert.match(supervisoryRuntime, /set_select_option\(id\(hp1_low_noise_mode\), silent_opt\)/);
   assert.match(supervisoryRuntime, /const bool hp_silent_active = silent_active && !oq_manual_hp::owns_control\(\);/);
 
-  // HP2-instanties bestaan alleen op Duo (heatpump2-pakket); op Single slaat
-  // de recorder ze veilig over als missing (null), zonder verzonnen waarden.
+  // HP2-instanties bestaan alleen op Duo (heatpump2-pakket); op Single wordt
+  // de kolom overgeslagen omdat de firmware-entity compile-time niet bestaat.
   for (const key of ["hp2CompressorFrequencyDemand", "hp2LowNoiseMode"]) {
     assert.ok(DEBUG_RECORDING_KEYS.includes(key));
   }
