@@ -89,7 +89,7 @@ jobs:
           cache: npm
 
       - name: Install web build dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Build embedded web bundles
         run: npm run build:web

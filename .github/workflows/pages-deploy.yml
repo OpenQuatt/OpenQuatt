@@ -112,7 +112,7 @@ jobs:
           EOF
 
       - name: Install web build dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Assemble Pages site
         run: python3 scripts/dev.py prepare-pages-site site .tmp/pages-firmware
