@@ -6,6 +6,8 @@ globalThis.window = {
   location: { href: "http://openquatt.local/", pathname: "/" },
   history: {},
   localStorage: { getItem: () => null, setItem: () => {} },
+  setTimeout,
+  clearTimeout,
 };
 
 const {
@@ -15,6 +17,7 @@ const {
   syncUrlAppView,
 } = await import("../js/src/core/navigation.js");
 const { state } = await import("../js/src/core/state.js");
+const { handleSystemAction } = await import("../js/src/features/system-actions.js");
 
 function setHref(href) {
   window.location.href = href;
@@ -62,23 +65,24 @@ test("deep link via hash herkent de recorder-modal", () => {
   assert.equal(getUrlSystemModal(), "");
 });
 
-test("open recorder-modal zet een deelbare modal-param, sluiten ruimt op", () => {
-  let replaced = "";
-  window.history.replaceState = (_data, _title, url) => { replaced = String(url); };
-  window.history.pushState = (_data, _title, url) => { replaced = String(url); };
+test("open recorder-modal zet een deelbare modal-param, sluiten vervangt de history-entry", () => {
+  const calls = [];
+  window.history.replaceState = (_data, _title, url) => { calls.push({ mode: "replace", url: String(url) }); };
+  window.history.pushState = (_data, _title, url) => { calls.push({ mode: "push", url: String(url) }); };
 
   setHref("http://openquatt.local/?view=settings&section=system");
   state.appView = "settings";
   state.settingsGroup = "system";
   state.systemModal = SYSTEM_RECORDER_MODAL_ID;
-  syncUrlAppView("replace");
-  assert.match(replaced, /modal=systeemrecorder/);
-  assert.match(replaced, /view=settings/);
-  assert.match(replaced, /section=system/);
+  syncUrlAppView("push");
+  assert.equal(calls.at(-1).mode, "push");
+  assert.match(calls.at(-1).url, /modal=systeemrecorder/);
+  assert.match(calls.at(-1).url, /view=settings/);
+  assert.match(calls.at(-1).url, /section=system/);
 
-  setHref(replaced);
-  state.systemModal = "";
-  syncUrlAppView("replace");
-  assert.doesNotMatch(replaced, /modal=systeemrecorder/);
-  assert.doesNotMatch(replaced, /systeemrecorder/);
+  setHref(calls.at(-1).url);
+  handleSystemAction("close-system-modal");
+  assert.equal(calls.at(-1).mode, "replace");
+  assert.doesNotMatch(calls.at(-1).url, /modal=systeemrecorder/);
+  assert.doesNotMatch(calls.at(-1).url, /systeemrecorder/);
 });

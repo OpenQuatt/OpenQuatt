@@ -34,7 +34,7 @@ function closeSystemModal() {
   }
   clearSettingsBackupDraft();
   if (wasSystemRecorder) {
-    syncUrlAppView("push");
+    syncUrlAppView("replace");
   }
   render();
   scheduleDebugRecordingDeviceStatusPoll();

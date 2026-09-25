@@ -26,6 +26,7 @@ import { confirmQuickStartSetup, handleQuickStartAction } from "../features/quic
 import { handleSecurityAction, stopLoginAuthStatusPolling } from "../features/security-actions.js";
 import { clearSettingsBackupDraft, handleSettingsBackupFileSelection, handleStorageHistoryAction, normalizeEnergyHistoryExportMode } from "../features/storage-history.js";
 import { handleSystemAction } from "../features/system-actions.js";
+import { syncUrlAppView } from "./navigation.js";
 import { handleShellAction } from "../features/shell-actions.js";
 import { handleViewAction } from "../features/view-actions.js";
 import { handleWebServerLogAction } from "../features/webserver-logs.js";
@@ -584,9 +585,13 @@ function updateFrequencyRangeControl(input) {
           shouldRender = true;
         }
         if (state.systemModal) {
+          const wasSystemRecorder = state.systemModal === "debug-recording";
           clearSettingsBackupDraft();
           stopLoginAuthStatusPolling();
           state.systemModal = "";
+          if (wasSystemRecorder) {
+            syncUrlAppView("replace");
+          }
           shouldRender = true;
         }
       }
