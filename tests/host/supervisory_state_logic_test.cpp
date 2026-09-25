@@ -231,11 +231,14 @@ void test_flow_guard_and_cm1_idle_hold() {
   assert(flow_guard_required(false, false, true));
   assert(!flow_guard_required(false, false, false));
 
-  assert(hold_cm1_until_hp_idle(true, false, 0, true));
-  assert(hold_cm1_until_hp_idle(true, false, 98, true));
-  assert(!hold_cm1_until_hp_idle(true, false, 98, false));
-  assert(!hold_cm1_until_hp_idle(false, false, 98, true));
-  assert(!hold_cm1_until_hp_idle(true, true, 98, true));
+  assert(hold_cm1_until_hp_idle(true, 0, true));
+  assert(hold_cm1_until_hp_idle(true, 98, true));
+  assert(!hold_cm1_until_hp_idle(true, 98, false));
+  assert(!hold_cm1_until_hp_idle(false, 98, true));
+  assert(!hold_cm1_until_hp_idle(true, 2, true));
+  // Recovered demand can still yield CM0 when Power House postflow expires.
+  // Decide from the actual destination, not demand/base_target: keep the pump on.
+  assert(hold_cm1_until_hp_idle(true, 0, true));
 }
 
 void test_sticky_pump_timing() {

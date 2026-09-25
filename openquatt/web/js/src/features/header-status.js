@@ -11,6 +11,7 @@ import { formatDeviceClock, formatUptimeFromMeta, getDeviceIpAddress, getInstall
 import { getFirmwareUpdateEntity, getUpdateStatus, isFirmwareUpdateAvailable } from "./firmware-update.js";
 import { renderMqttModal, renderMqttSensorsModal } from "./mqtt.js";
 import { renderOduEepromDumpModal } from "./odu-eeprom-dump.js";
+import { renderOduDefrostModal } from "./odu-defrost.js";
 import { renderOduRuntimeFrequencyModal } from "./odu-runtime-frequency.js";
 import { renderOduSettingsModal } from "./odu-settings.js";
 import { renderApiSecurityModal, renderLoginModal } from "./security-access.js";
@@ -516,6 +517,10 @@ import { render } from "../core/render-scheduler.js";
 
     if (state.systemModal === "odu-eeprom-dump") {
       return renderOduEepromDumpModal();
+    }
+
+    if (state.systemModal === "odu-defrost" || /^odu-defrost-(?:confirm|save-confirm)-[12]$/.test(state.systemModal || "")) {
+      return renderOduDefrostModal();
     }
 
     if (state.systemModal === "odu-bottom-plate-settings") {

@@ -275,8 +275,8 @@ inline bool flow_guard_required(bool thermal_request, bool compressor_active, bo
   return thermal_request || compressor_active || actuator_request_active;
 }
 
-inline bool hold_cm1_until_hp_idle(bool in_cm1, bool thermal_request, int base_target, bool hp_active) {
-  return in_cm1 && !thermal_request && (base_target == 0 || base_target == 98) && hp_active;
+inline bool hold_cm1_until_hp_idle(bool in_cm1, int desired_mode, bool hp_active) {
+  return in_cm1 && (desired_mode == 0 || desired_mode == 98) && hp_active;
 }
 
 enum class SilentOverride : uint8_t { SCHEDULE, ON, OFF };

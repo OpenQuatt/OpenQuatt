@@ -10,6 +10,7 @@ import { setTrendWindowHours } from "../core/trend-window.js";
 import { setEnergyHistoryPeriodToNow, setEnergyHistoryView, shiftEnergyHistoryPeriod } from "../views/energy.js";
 import { refreshTrendHistoryData } from "./storage-history.js";
 import { refreshOduRuntimeFrequencyStatuses } from "./odu-runtime-frequency.js";
+import { refreshOduDefrostStatuses } from "./odu-defrost.js";
 import { refreshOduSettingsStatuses } from "./odu-settings.js";
 
 function openServiceSettings() {
@@ -165,6 +166,19 @@ const viewActionHandlers = {
     state.systemModal = "odu-frequency-settings";
     render();
     void refreshOduRuntimeFrequencyStatuses({ force: true });
+  },
+  "open-odu-defrost": () => {
+    state.oduDefrostError = "";
+    state.oduDefrostStatusFailed = true;
+    state.systemModal = "odu-defrost";
+    render();
+    void refreshOduDefrostStatuses({ force: true });
+  },
+  "toggle-odu-defrost-details": (button, event) => {
+    event.preventDefault();
+    const hp = Number(button.dataset.hp) === 2 ? 2 : 1;
+    state.oduDefrostDetailsOpen = { ...state.oduDefrostDetailsOpen, [hp]: !button.closest("details").open };
+    render();
   },
   "toggle-odu-frequency-technical-details": (button, event) => {
     toggleDetails(event, button, ".oq-settings-odu-technical", "oduRuntimeFrequencyTechnicalDetailsOpen");

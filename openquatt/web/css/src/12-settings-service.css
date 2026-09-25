@@ -635,6 +635,25 @@
   gap: 12px;
 }
 
+.oq-defrost-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px 16px;
+  margin: 14px 0;
+  font-size: 0.9rem;
+}
+
+.oq-defrost-values dt {
+  color: var(--oq-helper-soft);
+}
+
+.oq-defrost-values dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .oq-settings-odu-temperature-settings[hidden],
 .oq-settings-odu-temperature-settings > [hidden] {
   display: none;
