@@ -337,6 +337,22 @@ test("niet-ondersteunde drukwaarde veroorzaakt geen drukcontext bij lage CV-wate
   assert.equal(monitoring.problems[0]?.label, "Lage CV-waterdruk");
 });
 
+test("stale lage-CV-waterdrukstatus geeft geen installatieprobleem", () => {
+  state.entities = {
+    boilerConnection: { value: "OpenTherm", state: "OpenTherm" },
+    otbLinkAvailable: { value: true, state: "ON" },
+    otbLowWaterPressure: { value: Number.NaN, state: "unavailable" },
+    otbChPressure: { value: Number.NaN, state: "unavailable" },
+  };
+  state.incidentMonitoringSnapshot = null;
+  state.incidentMonitoringError = "";
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, false);
+  assert.deepEqual(monitoring.problems, []);
+});
+
 test("lage numerieke CV-druk zonder ketelmelding geeft geen installatieprobleem", () => {
   state.entities = {
     boilerConnection: { value: "OpenTherm", state: "OpenTherm" },

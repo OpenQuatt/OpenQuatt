@@ -77,8 +77,6 @@ export function getInstallationMonitoringModel() {
   const otbBoilerSelected = getEntityValue("boilerConnection") === "OpenTherm";
   const otbBoilerLinkAvailable = otbBoilerSelected && isInstallationMonitoringBinaryActive("otbLinkAvailable");
   if (otbBoilerLinkAvailable && isInstallationMonitoringBinaryActive("otbLowWaterPressure")) {
-    // De numerieke druk is alleen aanvullende context: lege of niet-ondersteunde
-    // waarden ("" wordt via Number() 0) mogen nooit als 0.0 bar worden getoond.
     const chPressure = hasEntity("otbChPressure") ? parseLooseNumber(getEntityValue("otbChPressure")) : NaN;
     problems.push({
       key: "otbLowWaterPressure",
