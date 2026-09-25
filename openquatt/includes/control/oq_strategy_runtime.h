@@ -33,39 +33,39 @@ class Runtime {
   }
 
   float local_outside_temperature(uint32_t stale_s) const {
-    return oq_strategy::aggregate_local_outside({
+    const auto selected = oq_strategy::select_local_outside({
         static_cast<uint32_t>(millis()),
         stale_s * 1000UL,
 #if OQ_TOPOLOGY_DUO
         true,
-#else
-        false,
-#endif
         id(hp1_outside_temp).state,
-#if OQ_TOPOLOGY_DUO
         id(hp2_outside_temp).state,
-#else
-        NAN,
-#endif
         id(hp1_working_mode).state,
-#if OQ_TOPOLOGY_DUO
         id(hp2_working_mode).state,
-#else
-        NAN,
-#endif
         id(hp1_outside_temp_last_change_ms),
-#if OQ_TOPOLOGY_DUO
         id(hp2_outside_temp_last_change_ms),
-#else
-        0,
-#endif
         id(hp1_outside_temp_activity_ms),
-#if OQ_TOPOLOGY_DUO
         id(hp2_outside_temp_activity_ms),
 #else
+        false,
+        id(hp1_outside_temp).state,
+        NAN,
+        id(hp1_working_mode).state,
+        NAN,
+        id(hp1_outside_temp_last_change_ms),
+        0,
+        id(hp1_outside_temp_activity_ms),
         0,
 #endif
     });
+#if OQ_TOPOLOGY_DUO
+    oq_sources::local_outside_selection.observe(selected.route, selected.operation, selected.valid,
+                                                oq_sources::hp1.outside, oq_sources::hp2.outside);
+#else
+    oq_sources::local_outside_selection.observe(selected.route, selected.operation, selected.valid,
+                                                oq_sources::hp1.outside);
+#endif
+    return selected.value;
   }
 
  private:

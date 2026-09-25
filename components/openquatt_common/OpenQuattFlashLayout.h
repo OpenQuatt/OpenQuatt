@@ -30,6 +30,13 @@ struct OpenQuattFlashLayout {
   static constexpr size_t CRASH_TELEMETRY_SECTOR_COUNT = 2;
   static constexpr uint32_t CRASH_TELEMETRY_END_OFFSET =
       CRASH_TELEMETRY_OFFSET + (CRASH_TELEMETRY_SECTOR_COUNT * SECTOR_SIZE);
+
+  // Two 8 KiB slots; existing archive offsets and the partition table stay stable.
+  static constexpr uint32_t HOUSE_LEARNING_OFFSET = CRASH_TELEMETRY_END_OFFSET;
+  static constexpr size_t HOUSE_LEARNING_SLOT_SIZE = 2U * SECTOR_SIZE;
+  static constexpr size_t HOUSE_LEARNING_SLOT_COUNT = 2U;
+  static constexpr uint32_t HOUSE_LEARNING_END_OFFSET =
+      HOUSE_LEARNING_OFFSET + HOUSE_LEARNING_SLOT_COUNT * HOUSE_LEARNING_SLOT_SIZE;
 };
 
 static_assert(OpenQuattFlashLayout::DECISION_LOG_OFFSET % OpenQuattFlashLayout::SECTOR_SIZE == 0,
@@ -38,5 +45,10 @@ static_assert(OpenQuattFlashLayout::CRASH_TELEMETRY_OFFSET % OpenQuattFlashLayou
               "Crash telemetry storage must start on an erase-sector boundary");
 static_assert(OpenQuattFlashLayout::CRASH_TELEMETRY_END_OFFSET <= 0x1E0000,
               "Persistent archives must fit in the smallest openquatt_data partition");
+static_assert(OpenQuattFlashLayout::HOUSE_LEARNING_OFFSET % OpenQuattFlashLayout::SECTOR_SIZE == 0 &&
+                  OpenQuattFlashLayout::HOUSE_LEARNING_SLOT_SIZE % OpenQuattFlashLayout::SECTOR_SIZE == 0,
+              "Passive learning journal slots must use complete erase sectors");
+static_assert(OpenQuattFlashLayout::HOUSE_LEARNING_END_OFFSET <= 0x1E0000,
+              "Passive learning journal must fit without moving existing archives");
 
 }  // namespace esphome::openquatt_common
