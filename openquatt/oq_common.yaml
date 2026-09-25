@@ -244,9 +244,10 @@ uart:
     data_bits: 8
     stop_bits: 1
     parity: EVEN
-    # Keep rx_timeout at one character, but let ESPHome choose its native
-    # RX-full threshold (~16 bytes at 19200 8E1) instead of interrupting on
-    # every byte.
+    # A/B field test: restore the pre-v0.52 RX-full threshold while keeping
+    # the v0.52 Modbus recovery logic unchanged. This isolates the UART RX
+    # threshold change from the response-recovery change.
+    rx_full_threshold: 1
     rx_timeout: 1
 
 openquatt_modbus:
