@@ -4,6 +4,9 @@
   "description": "OpenQuatt firmware and embedded web UI tooling",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "build:web": "node openquatt/web/build-assets.mjs",
     "build:web:preview": "node openquatt/web/build-assets.mjs --preview",
