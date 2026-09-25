@@ -6,12 +6,11 @@ export const WEB_BUNDLE_BUDGETS = [
     file: "js/openquatt-app.js",
     // Includes both offline catalogues after build-time key compaction. Keep
     // enough margin for ordinary UI work without accepting the uncompressed form again.
-    // 2026-09: 1_218_000. Defrost diagnostics + manual trigger add ~17 kB vs dev
-    // (1,198,452 -> 1,215,321 measured); the defrost mode editor adds ~1,8 kB more
-    // (measured 1,217,080). 11 unused keys removed and label tables
-    // compacted to offset. Gzip 338,463 stays under the 340,000 ceiling.
-    raw: 1_218_000,
-    gzipBaselineCeiling: 340_000,
+    // PR #742 Linux CI: 1,228,950 B raw / 341,500 B gzip for the defrost UI.
+    // Calibrate byte budgets on the Linux CI build; local Windows/CRLF measurements
+    // are not comparable. Keep only a small margin above the measured PR bundle.
+    raw: 1_230_000,
+    gzipBaselineCeiling: 343_000,
   },
   // Responsive run-extension group: ~203.3 kB raw.
   { file: "css/openquatt-app.css", raw: 204_000 },
