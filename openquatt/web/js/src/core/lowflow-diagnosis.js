@@ -49,15 +49,26 @@ function getPumpState() {
 }
 
 function getSetpointLph() {
-  // Verwarmings- en koelsetpoint delen één diagnoseveld; toon de beschikbare
-  // configuratie zonder te gokken welke modus actief is.
-  for (const key of ["flowSetpoint", "coolingFlowSetpoint"]) {
-    const value = getNumericEntityValue(key);
-    if (Number.isFinite(value)) {
-      return { value, available: true };
-    }
+  const heating = getNumericEntityValue("flowSetpoint");
+  const cooling = getNumericEntityValue("coolingFlowSetpoint");
+  const modeLabel = String(getEntityValue("controlModeLabel") || "").trim().toLowerCase();
+  const coolingMode = /cm5|cooling|koeling/.test(modeLabel)
+    || isEntityActive("coolingRequestActive");
+  const setpoints = [];
+  if (Number.isFinite(heating)) {
+    setpoints.push({ kind: "heating", value: heating });
   }
-  return { value: NaN, available: false };
+  if (Number.isFinite(cooling)) {
+    setpoints.push({ kind: "cooling", value: cooling });
+  }
+  const ordered = coolingMode
+    ? [...setpoints].sort((a, b) => Number(a.kind !== "cooling") - Number(b.kind !== "cooling"))
+    : setpoints;
+  return {
+    value: ordered[0]?.value ?? NaN,
+    available: ordered.length > 0,
+    setpoints: ordered,
+  };
 }
 
 function getEffectiveFlowSource() {
@@ -67,7 +78,8 @@ function getEffectiveFlowSource() {
   }
   const qSource = String(getEntityValue("qFlowSource") || "").trim();
   const hpGeneration = String(getEntityValue("hpGeneration") || "").trim();
-  if (qSource === "Local" || (qSource === "Auto" && hpGeneration === "V1")) {
+  const topology = String(getEntityValue("installationTopology") || "").trim().toLowerCase();
+  if (qSource === "Local" || (qSource === "Auto" && hpGeneration === "V1" && topology !== "duo")) {
     return "Local";
   }
   if (qSource === "Auto") {
@@ -117,6 +129,7 @@ export function getLowFlowDiagnosis() {
     flowAvailable,
     setpointLph: setpoint.value,
     setpointAvailable: setpoint.available,
+    setpoints: setpoint.setpoints,
     outputIpwm: outputValue,
     outputAvailable,
     requestingMore,
@@ -154,9 +167,10 @@ export function renderLowFlowDiagnosis() {
   const rows = [
     [t("settingsInstallation.lowflowDiagFlow"), diagnosis.flowAvailable ? formatFlow(diagnosis.flowLph) : "—"],
     [t("settingsInstallation.lowflowDiagMinimum"), formatFlow(diagnosis.minFlowLph)],
-    diagnosis.setpointAvailable
-      ? [t("settingsInstallation.lowflowDiagSetpoint"), formatFlow(diagnosis.setpointLph)]
-      : null,
+    ...diagnosis.setpoints.map(({ kind, value }) => [
+      t(kind === "cooling" ? "settingsInstallation.lowflowDiagCoolingSetpoint" : "settingsInstallation.lowflowDiagHeatingSetpoint"),
+      formatFlow(value),
+    ]),
     diagnosis.outputAvailable
       ? [t("settingsInstallation.lowflowDiagPumpOutput"), `${formatNumber(Math.round(diagnosis.outputIpwm), { maximumFractionDigits: 0 })} iPWM${diagnosis.requestingMore ? ` · ${t("settingsInstallation.lowflowDiagRequestingMore")}` : ""}`]
       : null,
@@ -191,7 +205,7 @@ export function renderLowFlowDiagnosis() {
             class="oq-helper-button oq-helper-button--ghost"
             type="button"
             data-oq-action="select-settings-group"
-            data-group-id="heating"
+            data-group-id="installation"
           >${escapeHtml(t("settingsInstallation.lowflowDiagSettingsAction"))}</button>
         </div>
       </div>

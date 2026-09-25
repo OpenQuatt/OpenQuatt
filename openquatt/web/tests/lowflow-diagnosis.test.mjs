@@ -167,10 +167,49 @@ test("Single Q V1 met Auto flowbron toont de effectieve lokale bron", () => {
     flowSource: { value: "Outdoor unit", state: "Outdoor unit" },
     qFlowSource: { value: "Auto", state: "Auto" },
     hpGeneration: { value: "V1", state: "V1" },
+    installationTopology: { value: "single", state: "single" },
   });
   const html = renderLowFlowDiagnosis();
   assert.equal(getLowFlowDiagnosis().flowSource, "Local");
   assert.match(html, /Lokaal/);
+});
+
+test("Duo V1 met Auto flowbron blijft op de outdoor/aggregate route", () => {
+  setEntities({
+    lowflowFaultActive: { value: true, state: "ON" },
+    flowSelected: { value: 0, state: "0" },
+    hp1PumpRelay: { value: true, state: "ON" },
+    flowSource: { value: "Outdoor unit", state: "Outdoor unit" },
+    qFlowSource: { value: "Auto", state: "Auto" },
+    hpGeneration: { value: "V1", state: "V1" },
+    installationTopology: { value: "duo", state: "duo" },
+  });
+  assert.equal(getLowFlowDiagnosis().flowSource, "Outdoor unit");
+});
+
+test("tijdens koelen wordt het koel-flowsetpoint als eerste setpoint getoond", () => {
+  setEntities({
+    lowflowFaultActive: { value: true, state: "ON" },
+    flowSelected: { value: 0, state: "0" },
+    flowSetpoint: { value: 800, state: "800" },
+    coolingFlowSetpoint: { value: 650, state: "650" },
+    controlModeLabel: { value: "CM5 - Cooling", state: "CM5 - Cooling" },
+    hp1PumpRelay: { value: true, state: "ON" },
+  });
+  const diagnosis = getLowFlowDiagnosis();
+  assert.equal(diagnosis.setpointLph, 650);
+  assert.deepEqual(diagnosis.setpoints.map((setpoint) => setpoint.kind), ["cooling", "heating"]);
+});
+
+test("bij onbekende modus worden beide beschikbare flowsetpoints getoond", () => {
+  setEntities({
+    lowflowFaultActive: { value: true, state: "ON" },
+    flowSelected: { value: 0, state: "0" },
+    flowSetpoint: { value: 800, state: "800" },
+    coolingFlowSetpoint: { value: 650, state: "650" },
+    hp1PumpRelay: { value: true, state: "ON" },
+  });
+  assert.deepEqual(getLowFlowDiagnosis().setpoints.map((setpoint) => setpoint.kind), ["heating", "cooling"]);
 });
 
 test("diagnoseblok linkt direct naar de Waterpomptest zonder defect te concluderen", () => {
@@ -185,6 +224,7 @@ test("diagnoseblok linkt direct naar de Waterpomptest zonder defect te concluder
   const html = renderLowFlowDiagnosis();
   assert.match(html, /data-oq-action="open-service-task-modal"/);
   assert.match(html, /data-service-task="manual-flow"/);
+  assert.match(html, /data-group-id="installation"/);
   assert.match(html, /Waterpomptest openen/);
   assert.doesNotMatch(html, /defecte pomp/);
   assert.doesNotMatch(html, /defecte flowmeter/);
