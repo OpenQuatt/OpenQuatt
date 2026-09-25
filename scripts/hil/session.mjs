@@ -43,6 +43,8 @@ export const simulatorSettings = [
   { key: 'hp2ManualTelemetry', domain: 'switch', name: 'ODU 2 manual telemetry override', kind: 'switch' },
   { key: 'hp1ManualWorkingMode', domain: 'number', name: 'ODU 1 manual working mode 2099', kind: 'number' },
   { key: 'hp2ManualWorkingMode', domain: 'number', name: 'ODU 2 manual working mode 2099', kind: 'number' },
+  { key: 'hp1ManualFrequency', domain: 'number', name: 'ODU 1 manual compressor frequency 2103', kind: 'number' },
+  { key: 'hp2ManualFrequency', domain: 'number', name: 'ODU 2 manual compressor frequency 2103', kind: 'number' },
   { key: 'hp1ManualVoltage', domain: 'number', name: 'ODU 1 manual AC voltage', kind: 'number' },
   { key: 'hp2ManualVoltage', domain: 'number', name: 'ODU 2 manual AC voltage', kind: 'number' },
   { key: 'hp1ManualCurrent', domain: 'number', name: 'ODU 1 manual AC current', kind: 'number' },

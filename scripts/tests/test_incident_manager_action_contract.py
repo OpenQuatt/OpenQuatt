@@ -29,7 +29,8 @@ class IncidentManagerActionContractTest(unittest.TestCase):
         self.assertIn('request->arg("request_id")', handler)
         self.assertIn('"action_in_progress"', handler)
         self.assertIn('"duplicate":%s', handler)
-        self.assertIn("request->send(202", handler)
+        self.assertIn('send_json(request, "202 Accepted"', handler)
+        self.assertNotIn("request->send(202", handler)
 
     def test_incident_endpoint_checks_runtime_auth_on_every_request(self) -> None:
         handler = handler_source()

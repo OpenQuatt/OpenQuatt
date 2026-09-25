@@ -6,6 +6,7 @@
 #include <cstring>
 #include <limits>
 
+#include "esp_http_server.h"
 #include "esp_random.h"
 #include "esphome/components/web_server/web_server.h"
 #include "esphome/components/web_server_base/web_server_base.h"
@@ -112,6 +113,13 @@ uint8_t cleared_command_reason(uint8_t expected_mode) {
       return openquatt_decision_log::REASON_KEEP_CURRENT;
   }
   return openquatt_decision_log::REASON_KEEP_CURRENT;
+}
+
+void send_json(AsyncWebServerRequest* request, const char* status, const char* body) {
+  auto* response = request->beginResponse(200, "application/json", body);
+  httpd_resp_set_status(*request, status);
+  response->addHeader("Cache-Control", "no-store");
+  request->send(response);
 }
 
 bool write_raw(httpd_req_t* req, const char* value) {
@@ -421,7 +429,7 @@ class IncidentManagerRequestHandler : public AsyncWebHandler {
       return;
     }
     if (!this->parent_->storage_ready()) {
-      request->send(503, "application/json", R"({"error":"snapshot_unavailable"})");
+      send_json(request, "503 Service Unavailable", R"({"error":"snapshot_unavailable"})");
       return;
     }
     char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
@@ -430,34 +438,34 @@ class IncidentManagerRequestHandler : public AsyncWebHandler {
     const bool confirm_odu_power_cycle = url_path_matches(url_buf, "/openquatt/incidents/confirm-odu-power-cycle");
     if (retry_start || confirm_odu_power_cycle) {
       if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
-        request->send(403, "application/json", R"({"accepted":false,"result":"forbidden"})");
+        send_json(request, "403 Forbidden", R"({"accepted":false,"result":"forbidden"})");
         return;
       }
 
       const std::string hp_arg = request->arg("hp");
       const uint8_t hp_index = hp_arg == "1" ? 1U : (hp_arg == "2" ? 2U : 0U);
       if (hp_index == 0U) {
-        request->send(400, "application/json", R"({"accepted":false,"result":"invalid_hp"})");
+        send_json(request, "400 Bad Request", R"({"accepted":false,"result":"invalid_hp"})");
         return;
       }
       if (!this->parent_->hp_configured(hp_index)) {
-        request->send(404, "application/json", R"({"accepted":false,"result":"hp_not_configured"})");
+        send_json(request, "404 Not Found", R"({"accepted":false,"result":"hp_not_configured"})");
         return;
       }
       const uint32_t request_id = parse_positive_request_id(request->arg("request_id"));
       if (request_id == 0U) {
-        request->send(400, "application/json", R"({"accepted":false,"result":"invalid_request_id"})");
+        send_json(request, "400 Bad Request", R"({"accepted":false,"result":"invalid_request_id"})");
         return;
       }
       const OpenQuattIncidentManager::DeferredActionQueueResult queue_result =
           retry_start ? this->parent_->defer_start_failure_retry(hp_index, request_id)
                       : this->parent_->defer_odu_power_cycle_confirmation(hp_index, request_id);
       if (queue_result == OpenQuattIncidentManager::DeferredActionQueueResult::BUSY) {
-        request->send(409, "application/json", R"({"accepted":false,"result":"action_in_progress"})");
+        send_json(request, "409 Conflict", R"({"accepted":false,"result":"action_in_progress"})");
         return;
       }
       if (queue_result == OpenQuattIncidentManager::DeferredActionQueueResult::INVALID) {
-        request->send(400, "application/json", R"({"accepted":false,"result":"invalid_request_id"})");
+        send_json(request, "400 Bad Request", R"({"accepted":false,"result":"invalid_request_id"})");
         return;
       }
       char response[192];
@@ -465,7 +473,7 @@ class IncidentManagerRequestHandler : public AsyncWebHandler {
           response, sizeof(response), R"({"accepted":true,"duplicate":%s,"hp":%u,"action":"%s","action_id":%u})",
           queue_result == OpenQuattIncidentManager::DeferredActionQueueResult::DUPLICATE ? "true" : "false", hp_index,
           retry_start ? "start_failure_retry" : "confirm_odu_power_cycle", static_cast<unsigned>(request_id));
-      request->send(202, "application/json", response);
+      send_json(request, "202 Accepted", response);
       return;
     }
 
