@@ -430,13 +430,13 @@ test("issue 746 legt flowbron en pompdiagnostiek volledig vast", async () => {
   assert.match(qProfile, /name: "Controller Flow"/);
   assert.match(flowPackage, /name: "Flow average \(local\)"/);
   assert.match(cicPackage, /name: "CIC - Flowrate \(filtered\)"/);
-  assert.match(sensorSources, /return \{oq_sensor_source::runtime\(\)\.flow_route\(\)\}/);
+  assert.match(sensorSources, /return oq_sensor_source::runtime\(\)\.flow_route\(\);/);
   assert.match(sensorSources, /id: flow_route_selected\r?\n    name: "Flow Selected Route"\r?\n    internal: true/);
   assert.match(hpPackage, /id: \$\{hp_id\}_pump_ipwm_command/);
   assert.match(hpPackage, /name: "\$\{prefix\}Pump iPWM command"/);
   assert.match(hpPackage, /id: \$\{hp_id\}_pump_ipwm_feedback/);
   assert.match(hpPackage, /name: "\$\{prefix\}Pump iPWM feedback"/);
-  assert.match(hpPackage, /return isfinite\(raw\) \? raw : NAN/);
+  assert.match(hpPackage, /if \(!id\(\$\{hp_id\}_is_online\)\) return NAN/);
 
   assert.match(hpPackage, /id: \$\{hp_id\}_pump_power/);
   assert.match(hpPackage, /return feedback\.power_valid \? feedback\.power_w : NAN/);

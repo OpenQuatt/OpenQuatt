@@ -1251,7 +1251,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 10s
     lambda: |-
-      if (!id(${hp_id}_is_online).state) return NAN;
+      if (!id(${hp_id}_is_online)) return NAN;
       const float raw = id(${hp_id}_pump_ipwm_feedback_raw).state;
       return isfinite(raw) ? raw : NAN;
 

@@ -263,7 +263,7 @@ sensor:
     entity_category: diagnostic
     update_interval: 5s
     lambda: |-
-      return {oq_sensor_source::runtime().flow_route()};
+      return oq_sensor_source::runtime().flow_route();
 
   - platform: template
     id: outside_temp_selected

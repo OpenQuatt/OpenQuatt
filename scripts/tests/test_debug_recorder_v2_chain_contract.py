@@ -220,6 +220,7 @@ class DebugRecorderV2ChainContractTest(unittest.TestCase):
         self.assertIn('name: "${prefix}Pump iPWM command"', HP_IO)
         self.assertIn("id: ${hp_id}_pump_ipwm_feedback", HP_IO)
         self.assertIn('name: "${prefix}Pump iPWM feedback"', HP_IO)
+        self.assertIn("if (!id(${hp_id}_is_online)) return NAN;", HP_IO)
         self.assertIn("return feedback.power_valid ? feedback.power_w : NAN;", HP_IO)
 
 
