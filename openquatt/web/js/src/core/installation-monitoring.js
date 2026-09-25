@@ -1,6 +1,7 @@
 import { getEntityStateText, hasEntity, isEntityActive } from "./app-shared.js";
-import { getEntityValue } from "./entity-store.js";
+import { getEntityValue, parseLooseNumber } from "./entity-store.js";
 import { formatFailures, formatWarningFailures } from "./failure-format.js";
+import { formatNumericState } from "./formatting.js";
 import { combineInstallationMonitoringModel } from "./incident-monitoring.js";
 import { state } from "./state.js";
 import { getLocale, t } from "../i18n/index.js";
@@ -71,6 +72,20 @@ export function getInstallationMonitoringModel() {
     problems.push({
       key: "otbConnectionState",
       label: otbState === "ot_no_response" ? t("monitoring.otbNoResponse") : t("monitoring.otbLost"),
+    });
+  }
+  const otbBoilerSelected = getEntityValue("boilerConnection") === "OpenTherm";
+  const otbBoilerLinkAvailable = otbBoilerSelected && isInstallationMonitoringBinaryActive("otbLinkAvailable");
+  if (otbBoilerLinkAvailable && isInstallationMonitoringBinaryActive("otbLowWaterPressure")) {
+    // De numerieke druk is alleen aanvullende context: lege of niet-ondersteunde
+    // waarden ("" wordt via Number() 0) mogen nooit als 0.0 bar worden getoond.
+    const chPressure = hasEntity("otbChPressure") ? parseLooseNumber(getEntityValue("otbChPressure")) : NaN;
+    problems.push({
+      key: "otbLowWaterPressure",
+      label: Number.isFinite(chPressure)
+        ? t("monitoring.lowWaterPressureWithValue", { pressure: formatNumericState(chPressure, 1, "bar") })
+        : t("monitoring.lowWaterPressure"),
+      copy: t("monitoring.lowWaterPressureCopy"),
     });
   }
   if (cicPollingEnabled) {
