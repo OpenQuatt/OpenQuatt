@@ -5,6 +5,7 @@ import { isCurveMode } from "../core/domain-helpers.js";
 import { getEntityValue, getNumberMeta } from "../core/entity-store.js";
 import { formatIncidentOccurrenceTime, getFallbackBlockReasonLabel, getHeatPumpStatusPresentation, getIncidentActionPresentation, getIncidentCategoryLabel, getIncidentDisplayLabel, getIncidentEffectLabels, getIncidentLifecyclePresentation, getIncidentRecoveryLabel, getIncidentTechnicalCode, getIncidentUserActionLabel, getLinkLossConsequenceForHeatPump, getPumpIncidentContextRows, getSystemActionPresentation } from "../core/incident-monitoring.js";
 import { getInstallationMonitoringFailureText, getInstallationMonitoringModel, isInstallationMonitoringBinaryActive, isInstallationMonitoringFailureActive, isInstallationMonitoringIntegrationEnabled, syncInstallationMonitoringDetailsState } from "../core/installation-monitoring.js";
+import { renderLowFlowDiagnosis } from "../core/lowflow-diagnosis.js";
 import { renderNumberInputControl } from "../core/number-controls.js";
 import { state } from "../core/state.js";
 import { getDebugRecordingStatusCopy, getDebugRecordingStatusLabel } from "../features/debug-recording.js";
@@ -493,6 +494,7 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
       <article class="oq-settings-monitoring-card">
         <header><p>${escapeHtml(t("settingsInstallation.hydraulicsTitle"))}</p></header>
         <div class="oq-settings-monitoring-rows">${hydraulicRows}</div>
+        ${renderLowFlowDiagnosis()}
       </article>
     ` : "";
     const hpPanel = hpRows ? `
