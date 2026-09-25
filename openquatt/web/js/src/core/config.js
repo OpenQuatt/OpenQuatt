@@ -582,6 +582,7 @@
     ["hp1AcCurrent", DOMAIN_SENSOR, "HP1 - AC current"],
     ["hp1PumpPower", DOMAIN_SENSOR, "HP1 - Pump Power"],
     ["hp1PumpRelay", DOMAIN_BINARY_SENSOR, "HP1 - DC Pump Relay"],
+    ["hp1PumpIpwmCommand", DOMAIN_SENSOR, "HP1 - Pump iPWM command"],
     ["hp1Heat", DOMAIN_SENSOR, "HP1 - Heat Power", false],
     ["hp1Cooling", DOMAIN_SENSOR, "HP1 - Cooling Power", false],
     ["hp1Cop", DOMAIN_SENSOR, "HP1 - COP", false],
@@ -622,6 +623,7 @@
     ["hp2AcCurrent", DOMAIN_SENSOR, "HP2 - AC current"],
     ["hp2PumpPower", DOMAIN_SENSOR, "HP2 - Pump Power"],
     ["hp2PumpRelay", DOMAIN_BINARY_SENSOR, "HP2 - DC Pump Relay"],
+    ["hp2PumpIpwmCommand", DOMAIN_SENSOR, "HP2 - Pump iPWM command"],
     ["hp2Heat", DOMAIN_SENSOR, "HP2 - Heat Power"],
     ["hp2Cooling", DOMAIN_SENSOR, "HP2 - Cooling Power"],
     ["hp2Cop", DOMAIN_SENSOR, "HP2 - COP"],
@@ -1579,6 +1581,16 @@
     "hp2PumpRelay",
     "hp2BottomPlate",
     "hp2Crankcase",
+    "flowSource",
+    "qFlowSource",
+    "controllerFlowMeter",
+    "customFlowMeterPulsesPerLiter",
+    "outdoorUnitFlowMode",
+    "flowLocal",
+    "controllerFlow",
+    "cicFlowrate",
+    "hp1PumpIpwmCommand",
+    "hp2PumpIpwmCommand",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestManifestUrl", "installFirmwareTestManifest"];

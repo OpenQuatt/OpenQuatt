@@ -77,6 +77,19 @@ POWER_INPUT_KEYS = [
     "hp2Crankcase",
 ]
 
+FLOW_746_KEYS = [
+    "flowSource",
+    "qFlowSource",
+    "controllerFlowMeter",
+    "customFlowMeterPulsesPerLiter",
+    "outdoorUnitFlowMode",
+    "flowLocal",
+    "controllerFlow",
+    "cicFlowrate",
+    "hp1PumpIpwmCommand",
+    "hp2PumpIpwmCommand",
+]
+
 
 class DebugRecorderV2ChainContractTest(unittest.TestCase):
     def test_chain_entities_exist_with_exact_recorder_names(self) -> None:
@@ -133,19 +146,19 @@ class DebugRecorderV2ChainContractTest(unittest.TestCase):
         self.assertIn('std::strcmp(field.key, "debugStaticSnapshot") != 0', RECORDER_SOURCE)
 
     def test_debug_keys_are_additive_compact_and_within_budget(self) -> None:
-        for key in CHAIN_KEYS + REGISTER_KEYS + POWER_INPUT_KEYS:
+        for key in CHAIN_KEYS + REGISTER_KEYS + POWER_INPUT_KEYS + FLOW_746_KEYS:
             self.assertIn(f'"{key}"', CONFIG_JS)
         debug_section = CONFIG_JS[CONFIG_JS.index("export const DEBUG_RECORDING_KEYS"):]
         tail = debug_section[debug_section.index('"boilerPowerTestResultQuality"'):]
-        positions = [tail.index(f'"{key}"') for key in CHAIN_KEYS + REGISTER_KEYS + POWER_INPUT_KEYS]
+        positions = [tail.index(f'"{key}"') for key in CHAIN_KEYS + REGISTER_KEYS + POWER_INPUT_KEYS + FLOW_746_KEYS]
         self.assertEqual(positions, sorted(positions))
-        for key in CHAIN_KEYS + REGISTER_KEYS + POWER_INPUT_KEYS:
+        for key in CHAIN_KEYS + REGISTER_KEYS + POWER_INPUT_KEYS + FLOW_746_KEYS:
             self.assertLess(len(key), 40)
         header_capacity = int(re.search(r"FIELD_CAPACITY = (\d+)", RECORDER_HEADER).group(1))
         header_system = int(re.search(r"SYSTEM_FIELD_COUNT = (\d+)", RECORDER_HEADER).group(1))
-        self.assertEqual(header_capacity, 243)
+        self.assertEqual(header_capacity, 256)
         self.assertEqual(header_system, 5)
-        self.assertLessEqual(222, header_capacity - header_system)
+        self.assertLessEqual(236, header_capacity - header_system)
 
     def test_power_input_diagnostics_include_model_ids_and_quality(self) -> None:
         self.assertIn('\\"availableModels\\":{\\"v2Thermal\\":\\"oq-v2-heating-r1\\"', POWER_HOUSE)
@@ -181,6 +194,23 @@ class DebugRecorderV2ChainContractTest(unittest.TestCase):
         # uitzondering voor manual-HP; silentActive is slechts planning.
         self.assertIn("set_select_option(id(hp1_low_noise_mode), silent_opt)", SUPERVISORY_RUNTIME)
         self.assertIn("silent_active && !oq_manual_hp::owns_control()", SUPERVISORY_RUNTIME)
+
+    def test_issue_746_flow_context_uses_existing_entities(self) -> None:
+        sensor_sources = (ROOT / "openquatt" / "oq_sensor_sources.yaml").read_text()
+        flow_control = (ROOT / "openquatt" / "oq_flow_control.yaml").read_text()
+        cic = (ROOT / "openquatt" / "oq_cic.yaml").read_text()
+        q_profile = (ROOT / "openquatt" / "profiles" / "heatpump_controller_q.yaml").read_text()
+        self.assertIn('name: "Flow Source"', sensor_sources)
+        self.assertIn('name: "Outdoor Unit Flow Mode"', sensor_sources)
+        self.assertIn('name: "Q Flow Source"', q_profile)
+        self.assertIn('name: "Controller Flow Meter"', q_profile)
+        self.assertIn('name: "Custom Flow Meter Pulses Per Liter"', q_profile)
+        self.assertIn('name: "Controller Flow"', q_profile)
+        self.assertIn('name: "Flow average (local)"', flow_control)
+        self.assertIn('name: "CIC - Flowrate (filtered)"', cic)
+        self.assertIn("id: ${hp_id}_pump_ipwm_command", HP_IO)
+        self.assertIn('name: "${prefix}Pump iPWM command"', HP_IO)
+        self.assertIn("return feedback.power_valid ? feedback.power_w : NAN;", HP_IO)
 
 
 if __name__ == "__main__":
