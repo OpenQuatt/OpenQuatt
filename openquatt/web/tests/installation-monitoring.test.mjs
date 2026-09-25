@@ -280,3 +280,143 @@ test("een verouderd incidentsnapshot wordt niet als actuele warmtepompstatus get
   state.incidentMonitoringSnapshot = null;
   state.incidentMonitoringError = "";
 });
+
+test("actieve lage CV-waterdruk verschijnt met drukcontext in de installatiebewaking", () => {
+  state.entities = {
+    boilerConnection: { value: "OpenTherm", state: "OpenTherm" },
+    otbLinkAvailable: { value: true, state: "ON" },
+    otbLowWaterPressure: { value: true, state: "ON" },
+    otbChPressure: { value: 0.0, state: "0.0", uom: "bar" },
+  };
+  state.incidentMonitoringSnapshot = null;
+  state.incidentMonitoringError = "";
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, true);
+  assert.deepEqual(monitoring.problems, [{
+    key: "otbLowWaterPressure",
+    label: "Lage CV-waterdruk (CV-waterdruk: 0.0 bar)",
+    copy: "De ketel meldt dat de waterdruk van het CV-systeem te laag is. Dit kan onvoldoende circulatie veroorzaken en voorkomen dat de warmtepomp start. Controleer de installatiedruk en vul het systeem zo nodig bij. Controleer bij herhaald drukverlies de installatie op de oorzaak.",
+  }]);
+});
+
+test("actieve lage CV-waterdruk zonder drukmeting meldt zonder drukcontext", () => {
+  state.entities = {
+    boilerConnection: { value: "OpenTherm", state: "OpenTherm" },
+    otbLinkAvailable: { value: true, state: "ON" },
+    otbLowWaterPressure: { value: true, state: "ON" },
+  };
+  state.incidentMonitoringSnapshot = null;
+  state.incidentMonitoringError = "";
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, true);
+  assert.equal(monitoring.problems.length, 1);
+  assert.equal(monitoring.problems[0]?.key, "otbLowWaterPressure");
+  assert.equal(monitoring.problems[0]?.label, "Lage CV-waterdruk");
+  assert.match(monitoring.problems[0]?.copy || "", /onvoldoende circulatie/);
+});
+
+test("niet-ondersteunde drukwaarde veroorzaakt geen drukcontext bij lage CV-waterdruk", () => {
+  state.entities = {
+    boilerConnection: { value: "OpenTherm", state: "OpenTherm" },
+    otbLinkAvailable: { value: true, state: "ON" },
+    otbLowWaterPressure: { value: true, state: "ON" },
+    otbChPressure: { value: "unavailable", state: "unavailable" },
+  };
+  state.incidentMonitoringSnapshot = null;
+  state.incidentMonitoringError = "";
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, true);
+  assert.equal(monitoring.problems.length, 1);
+  assert.equal(monitoring.problems[0]?.key, "otbLowWaterPressure");
+  assert.equal(monitoring.problems[0]?.label, "Lage CV-waterdruk");
+});
+
+test("stale lage-CV-waterdrukstatus geeft geen installatieprobleem", () => {
+  state.entities = {
+    boilerConnection: { value: "OpenTherm", state: "OpenTherm" },
+    otbLinkAvailable: { value: true, state: "ON" },
+    otbLowWaterPressure: { value: Number.NaN, state: "unavailable" },
+    otbChPressure: { value: Number.NaN, state: "unavailable" },
+  };
+  state.incidentMonitoringSnapshot = null;
+  state.incidentMonitoringError = "";
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, false);
+  assert.deepEqual(monitoring.problems, []);
+});
+
+test("lage numerieke CV-druk zonder ketelmelding geeft geen installatieprobleem", () => {
+  state.entities = {
+    boilerConnection: { value: "OpenTherm", state: "OpenTherm" },
+    otbLinkAvailable: { value: true, state: "ON" },
+    otbLowWaterPressure: { value: false, state: "OFF" },
+    otbChPressure: { value: 0.0, state: "0.0", uom: "bar" },
+  };
+  state.incidentMonitoringSnapshot = null;
+  state.incidentMonitoringError = "";
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, false);
+  assert.deepEqual(monitoring.problems, []);
+});
+
+test("lage CV-waterdruk zonder geldige OpenTherm-link geeft geen installatieprobleem", () => {
+  state.entities = {
+    boilerConnection: { value: "OpenTherm", state: "OpenTherm" },
+    otbLinkAvailable: { value: false, state: "OFF" },
+    otbLowWaterPressure: { value: true, state: "ON" },
+    otbChPressure: { value: 0.0, state: "0.0", uom: "bar" },
+  };
+  state.incidentMonitoringSnapshot = null;
+  state.incidentMonitoringError = "";
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, false);
+  assert.deepEqual(monitoring.problems, []);
+});
+
+test("lage CV-waterdruk bij een R1-ketel geeft geen installatieprobleem", () => {
+  state.entities = {
+    boilerConnection: { value: "R1", state: "R1" },
+    otbLinkAvailable: { value: true, state: "ON" },
+    otbLowWaterPressure: { value: true, state: "ON" },
+    otbChPressure: { value: 0.0, state: "0.0", uom: "bar" },
+  };
+  state.incidentMonitoringSnapshot = null;
+  state.incidentMonitoringError = "";
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, false);
+  assert.deepEqual(monitoring.problems, []);
+});
+
+test("lage CV-waterdruk blijft zichtbaar naast een actieve low-flow melding", () => {
+  state.entities = {
+    boilerConnection: { value: "OpenTherm", state: "OpenTherm" },
+    otbLinkAvailable: { value: true, state: "ON" },
+    otbLowWaterPressure: { value: true, state: "ON" },
+    otbChPressure: { value: 0.0, state: "0.0", uom: "bar" },
+    lowflowFaultActive: { value: true, state: "ON" },
+  };
+  state.incidentMonitoringSnapshot = null;
+  state.incidentMonitoringError = "";
+
+  const monitoring = getInstallationMonitoringModel();
+
+  assert.equal(monitoring.active, true);
+  assert.deepEqual(monitoring.problems.map((problem) => problem.key), [
+    "lowflowFaultActive",
+    "otbLowWaterPressure",
+  ]);
+});
