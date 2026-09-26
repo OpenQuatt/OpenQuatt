@@ -843,12 +843,16 @@ import { renderStatCard } from "./stat-card.js";
     }
 
     const normalizedBlockReason = String(blockReason || "").trim().toLowerCase();
+    // Reasons that mean "the boiler is simply not needed right now" rather than
+    // "the boiler is held back". A satisfied requested target belongs to the
+    // first group: the command still asks for heat, the relay is not energised.
+    const idleBlockReasons = new Set([
+      "no boiler heat request",
+      "boiler/cv assist disabled",
+      "requested boiler target temperature satisfied",
+    ]);
     const hasBlockedRequest = Number.isFinite(requestedPower) && requestedPower > 0 && (
-      !commandValid || (
-        normalizedBlockReason &&
-        normalizedBlockReason !== "no boiler heat request" &&
-        normalizedBlockReason !== "boiler/cv assist disabled"
-      )
+      !commandValid || (normalizedBlockReason && !idleBlockReasons.has(normalizedBlockReason))
     );
     if (hasBlockedRequest) {
       return { code: "blocked", text: t("heatpump.boilerBlockedText"), copy: t("heatpump.boilerBlockedCopy"), tone: "waiting" };

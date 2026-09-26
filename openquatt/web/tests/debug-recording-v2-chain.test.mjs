@@ -71,6 +71,18 @@ const ISSUE_746_FLOW_KEYS = [
   "hp2PumpIpwmFeedback",
 ];
 
+// Bestaande entities die alleen aan de standaardopname ontbrekten: de 4-way
+// valve die de defrostdetectie draagt en de R1-doelregelvelden.
+const DEFROST_BOOILER_KEYS = ["hp1FourWay", "hp2FourWay", "boilerCommandHeatRequest", "boilerRelayTargetState"];
+
+const TAIL_KEYS = [
+  ...CHAIN_KEYS,
+  ...ODU_REGISTER_KEYS,
+  ...POWER_INPUT_KEYS,
+  ...ISSUE_746_FLOW_KEYS,
+  ...DEFROST_BOOILER_KEYS,
+];
+
 test("V2-ketenvelden zijn compacte numerieke kolommen met delta-encoding", () => {
   const widths = { binary_sensor: 1, switch: 1, text_sensor: 2, select: 2, sensor: 4, number: 4 };
   for (const key of CHAIN_KEYS) {
@@ -91,15 +103,10 @@ test("V2-ketenvelden zijn compacte numerieke kolommen met delta-encoding", () =>
 });
 
 test("startsnapshot bevat tabellen, hash en instellingen eenmalig in initial", () => {
-  for (const key of [...CHAIN_KEYS, ...ODU_REGISTER_KEYS, ...POWER_INPUT_KEYS, ...ISSUE_746_FLOW_KEYS]) {
+  for (const key of TAIL_KEYS) {
     assert.ok(DEBUG_RECORDING_KEYS.includes(key), `debugset mist ${key}`);
   }
-  assert.deepEqual(
-    DEBUG_RECORDING_KEYS.slice(
-      -(CHAIN_KEYS.length + ODU_REGISTER_KEYS.length + POWER_INPUT_KEYS.length + ISSUE_746_FLOW_KEYS.length),
-    ),
-    [...CHAIN_KEYS, ...ODU_REGISTER_KEYS, ...POWER_INPUT_KEYS, ...ISSUE_746_FLOW_KEYS],
-  );
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(-TAIL_KEYS.length), TAIL_KEYS);
   assert.match(powerHouse, /id: oq_debug_static_snapshot/);
   assert.match(powerHouse, /name: "Debug static snapshot"/);
   assert.match(powerHouse, /hp1/);

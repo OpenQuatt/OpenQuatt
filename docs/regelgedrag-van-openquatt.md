@@ -54,6 +54,41 @@ In gewone taal:
 
 De ketel springt dus normaal niet op elk kort dipje direct bij.
 
+## Hoe stuurt OpenQuatt een R1-ketel aan?
+
+Bij een OpenTherm-ketel stuurt OpenQuatt de gevraagde keteltemperatuur mee en
+moduleert de ketel zelf. Een R1-ketel kan alleen aan of uit. Daarom regelt
+OpenQuatt die schakelaar alsnog rond de temperatuur die het systeem al heeft
+berekend:
+
+- het relais gaat aan zodra de gemeten aanvoertemperatuur meer dan 2,0 K onder
+  het gevraagde doel ligt;
+- het relais gaat weer uit zodra de aanvoer binnen 0,5 K van dat doel is
+  teruggekomen;
+- tussen die twee grenzen blijft de vorige stand staan, zodat het relais niet om
+  elke graad schakelt.
+
+Een bereikt doel is een gewone regelstop en volgt daarmee dezelfde
+anti-cyclingregel als het einde van een warmtevraag: een ingestelde minimale
+aantijd houdt het relais dan nog even aan. Alleen een beveiliging of het
+verlies van de eigenaar schakelt meteen uit. De volgorde is dus: beveiliging,
+eigenaar, anti-cycling, temperatuurregeling.
+
+Dat is dezelfde opdracht die OpenTherm krijgt, alleen uitgevoerd via een
+binaire uitgang. De marge is bewust asymmetrisch: een binaire brander mag wat
+verder onder het doel wegzakken voordat hij opnieuw wordt ingeschakeld, en wordt
+weer gestopt zodra de temperatuur is teruggekomen.
+
+Alle bestaande beveiligingen blijven leidend. Bij te weinig flow, een te hoge
+of harde watertemperatuur, een ontbrekende hulpbron of een ongeldige aanvraag
+gaat het relais meteen uit, ook als het doel anders binnen bereik zou liggen.
+
+Een bereikt doel is geen storing. De aanvraag blijft zichtbaar en de ketelvraag
+blijft eigendom van de actieve stand, terwijl het relais uit blijft. In de
+diagnosegegevens zie je dat als "requested boiler target temperature satisfied",
+naast de doelregelstand van de R1-regeling. Zo is een bereikt doel te
+onderscheiden van een ketel die door een beveiliging wordt tegengehouden.
+
 `CM4` heeft een andere betekenis. Deze stand is alleen voor foutfallback.
 OpenQuatt gaat pas naar `CM4` wanneer:
 

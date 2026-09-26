@@ -3,6 +3,8 @@
 #include <math.h>
 #include <stdint.h>
 
+#include "oq_boiler_relay_target_logic.h"
+
 namespace oq_boiler {
 
 enum CommandSource : uint8_t {
@@ -41,6 +43,10 @@ enum BlockReason : uint8_t {
   BLOCK_BOILER_TEMPERATURE_UNAVAILABLE = 22,
   BLOCK_OPENTHERM_NOT_VERIFIED = 23,
   BLOCK_OPENTHERM_LINK_LOST = 24,
+  // The command still asks for heat, but the R1 relay is not energised
+  // because the requested target temperature is already met. This is a
+  // normal outcome of target control, not a safety failure or a fault.
+  BLOCK_TARGET_SATISFIED = 25,
 };
 
 enum BoilerStartThermalState : uint8_t {
@@ -118,6 +124,11 @@ struct ControllerInput {
   uint8_t boiler_start_thermal_state;
   bool target_required;
   bool target_valid;
+  // Pre-computed R1 target-control request. The relay has no target channel, so
+  // the requested target temperature is realised by regulating the binary
+  // output around it. A default-constructed value is "not applicable", which
+  // leaves every other output path and caller untouched.
+  RelayTargetDecision relay_target;
   bool output_active;
   uint32_t now_ms;
   uint32_t command_max_age_ms;
@@ -250,6 +261,17 @@ inline bool relay_must_be_off(bool opentherm_selected, bool startup_probe_active
   return opentherm_selected || connection_guard_active(startup_probe_active, connection_mismatch);
 }
 
+// Which command sources hand the requested target temperature to the R1 relay
+// for local regulation. OpenTherm receives the target over the bus instead, and
+// CM4 fault fallback and CM100 commissioning deliberately keep their existing
+// on/off semantics: they are not normal auxiliary heat and must not change
+// meaning as a side effect of target control.
+inline bool relay_target_control_applies(uint8_t source, bool opentherm_selected) {
+  if (opentherm_selected) return false;
+  return source == COMMAND_SOURCE_POWER_HOUSE || source == COMMAND_SOURCE_HEATING_CURVE ||
+         source == COMMAND_SOURCE_COLD_START;
+}
+
 inline uint8_t refine_opentherm_transport_block_reason(uint8_t block_reason, bool opentherm_selected,
                                                        bool ever_verified, bool currently_verified) {
   if (!opentherm_selected || block_reason != BLOCK_TRANSPORT_UNAVAILABLE) return block_reason;
@@ -353,9 +375,17 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
     decision.desired_active = true;
   }
 
+  // The relay has no target channel, so the requested target is realised by
+  // regulating the binary output around it. target_required is set when
+  // OpenTherm is selected, and that transport realises the target over the bus
+  // instead, so it must be immune here even if a decision is offered.
+  const bool relay_target_withholds_output = decision.desired_active && !input.target_required &&
+                                             input.relay_target.applicable && !input.relay_target.requested_active;
+  const bool relay_target_satisfied = relay_target_withholds_output && input.relay_target.satisfied;
+
   if (decision.force_off) {
     decision.output_active = false;
-  } else if (decision.desired_active) {
+  } else if (decision.desired_active && !relay_target_withholds_output) {
     if (!input.output_active && minimum_time_active(input.now_ms, input.output_last_change_ms, input.min_off_ms)) {
       decision.output_active = false;
       decision.block_reason = BLOCK_MIN_OFF_TIME;
@@ -364,11 +394,21 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
       decision.block_reason = BLOCK_NONE;
     }
   } else if (input.output_active && minimum_time_active(input.now_ms, input.output_last_change_ms, input.min_on_ms)) {
+    // Releasing the relay follows the normal anti-cycling rule, whether the
+    // heat request ended or the requested target is met. Only a safety trip or
+    // a loss of ownership above withdraws heat immediately. Target control
+    // therefore never bypasses a configured minimum on-time.
     decision.output_active = true;
     decision.block_reason = BLOCK_MIN_ON_TIME;
+  } else if (relay_target_withholds_output) {
+    decision.output_active = false;
+    decision.block_reason = relay_target_satisfied ? BLOCK_TARGET_SATISFIED : BLOCK_TARGET_INVALID;
   }
 
-  decision.blocked = decision.demand_present && !decision.output_active;
+  // A satisfied target keeps the boiler demand owned by the active control
+  // mode. It must stay distinguishable from a blocked or faulted boiler, so it
+  // is not reported as blocked even though the physical output is off.
+  decision.blocked = decision.demand_present && !decision.output_active && !relay_target_satisfied;
   return decision;
 }
 
@@ -398,6 +438,8 @@ inline const char* block_reason_text(uint8_t reason) {
       return "selected boiler transport unavailable";
     case BLOCK_TARGET_INVALID:
       return "boiler target temperature invalid";
+    case BLOCK_TARGET_SATISFIED:
+      return "requested boiler target temperature satisfied";
     case BLOCK_TRANSPORT_SETTLING:
       return "boiler transport change settling";
     case BLOCK_AWAITING_FRESH_COMMAND:

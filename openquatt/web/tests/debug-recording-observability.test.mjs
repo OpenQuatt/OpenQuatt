@@ -173,6 +173,12 @@ const ISSUE_746_FLOW_KEYS = [
   "hp2PumpIpwmFeedback",
 ];
 
+// Bestaande getemplatete ODU-entities (geen nieuwe firmware-entities): de
+// 4-way valve die de defrostdetectie draagt, plus de R1-doelregelvelden waarmee
+// een recorder kan zien dat een commando wél om warmte vraagt terwijl het
+// relais uit blijft omdat het gevraagde doel is bereikt.
+const DEFROST_BOOILER_KEYS = ["hp1FourWay", "hp2FourWay", "boilerCommandHeatRequest", "boilerRelayTargetState"];
+
 const ADDED_OBSERVABILITY_KEYS = [
   ...OBSERVABILITY_KEYS,
   ...ISSUE_473_OBSERVABILITY_KEYS,
@@ -187,6 +193,7 @@ const ADDED_OBSERVABILITY_KEYS = [
   ...ODU_REGISTER_KEYS,
   ...POWER_INPUT_KEYS,
   ...ISSUE_746_FLOW_KEYS,
+  ...DEFROST_BOOILER_KEYS,
 ];
 
 test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", async () => {
@@ -206,6 +213,7 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const oduRegisterEndIndex = v2ChainEndIndex + ODU_REGISTER_KEYS.length;
   const powerInputEndIndex = oduRegisterEndIndex + POWER_INPUT_KEYS.length;
   const issue746EndIndex = powerInputEndIndex + ISSUE_746_FLOW_KEYS.length;
+  const defrostBoilerEndIndex = issue746EndIndex + DEFROST_BOOILER_KEYS.length;
 
   assert.equal(legacyTailIndex, 134);
   assert.deepEqual(
@@ -241,7 +249,8 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(v2ChainEndIndex, oduRegisterEndIndex), ODU_REGISTER_KEYS);
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(oduRegisterEndIndex, powerInputEndIndex), POWER_INPUT_KEYS);
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(powerInputEndIndex, issue746EndIndex), ISSUE_746_FLOW_KEYS);
-  assert.equal(DEBUG_RECORDING_KEYS.length, issue746EndIndex);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue746EndIndex, defrostBoilerEndIndex), DEFROST_BOOILER_KEYS);
+  assert.equal(DEBUG_RECORDING_KEYS.length, defrostBoilerEndIndex);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   const recorderHeader = await readFile(
     new URL("../../../components/openquatt_debug_recorder/OpenQuattDebugRecorder.h", import.meta.url),
@@ -250,7 +259,7 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const fieldCapacity = Number(recorderHeader.match(/FIELD_CAPACITY = (\d+)/)?.[1]);
   const systemFieldCount = Number(recorderHeader.match(/SYSTEM_FIELD_COUNT = (\d+)/)?.[1]);
   assert.equal(systemFieldCount, 5);
-  assert.equal(fieldCapacity, 256);
+  assert.equal(fieldCapacity, 272);
   assert.ok(DEBUG_RECORDING_KEYS.length <= fieldCapacity - systemFieldCount);
   assert.ok(
     fieldCapacity - systemFieldCount - DEBUG_RECORDING_KEYS.length >= 12,
@@ -321,9 +330,51 @@ test("elk nieuw debugveld verwijst naar een echte firmware-entity", async () => 
   const firmwareSource = packages.join("\n");
 
   for (const key of ADDED_OBSERVABILITY_KEYS) {
-    if ([...ODU_REGISTER_KEYS, ...POWER_INPUT_KEYS, ...ISSUE_746_FLOW_KEYS].includes(key)) continue;
+    if (
+      [...ODU_REGISTER_KEYS, ...POWER_INPUT_KEYS, ...ISSUE_746_FLOW_KEYS, "hp1FourWay", "hp2FourWay"].includes(key)
+    ) {
+      continue;
+    }
     assert.ok(firmwareSource.includes(`name: "${ENTITY_DEFS[key].name}"`), `firmware-entity ontbreekt voor ${key}`);
   }
+});
+
+test("defrost- en R1-doelregelvelden verwijzen naar bestaande entities", async () => {
+  const [hpPackage, boilerPackage, dispatchPackage] = await Promise.all([
+    readFile(new URL("../../oq_HP_io.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../../oq_boiler_control.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../../oq_boiler_dispatch.yaml", import.meta.url), "utf8"),
+  ]);
+
+  // De 4-way valve is de basis van de defrostdetectie en is al een ODU-entity;
+  // alleen de opname ontbrak nog. HP2 ontbreekt in een single-opstelling.
+  assert.deepEqual(ENTITY_DEFS.hp1FourWay, { domain: "binary_sensor", name: "HP1 - 4-Way valve" });
+  assert.deepEqual(ENTITY_DEFS.hp2FourWay, {
+    domain: "binary_sensor",
+    name: "HP2 - 4-Way valve",
+    optional: true,
+  });
+  assert.match(hpPackage, /id: \$\{hp_id\}_4_way_valve/);
+  assert.match(hpPackage, /name: "\$\{prefix\}4-Way valve"/);
+  assert.match(hpPackage, /id\(\$\{hp_id\}_4_way_valve\)\.publish_state/);
+
+  // Het commando blijft transport-neutraal zichtbaar naast de fysieke uitgang,
+  // zodat een recorder kan onderscheiden dat de R1-doelregeling de oorzaak is
+  // van een inactief relais in plaats van een blokkade.
+  assert.deepEqual(ENTITY_DEFS.boilerCommandHeatRequest, {
+    domain: "binary_sensor",
+    name: "Boiler command heat request",
+    optional: true,
+  });
+  assert.deepEqual(ENTITY_DEFS.boilerRelayTargetState, {
+    domain: "text_sensor",
+    name: "Boiler relay target state",
+    optional: true,
+  });
+  assert.match(dispatchPackage, /id: oq_boiler_command_heat_request/);
+  assert.match(boilerPackage, /id: oq_boiler_relay_target_state_code/);
+  assert.match(boilerPackage, /return id\(oq_boiler_command_heat_request\);/);
+  assert.match(boilerPackage, /return \{oq_boiler::relay_target_state_text\(id\(oq_boiler_relay_target_state_code\)\)\};/);
 });
 
 test("ODU-registervelden verwijzen naar bestaande getemplatete HP-entities", async () => {
