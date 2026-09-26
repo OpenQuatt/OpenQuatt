@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  controlContext, incidentObservation, prepareControlRegression,
+  controlContext, incidentObservation, prepareControlRegression, prepareCommunicationsRegression,
 } from '../../scripts/hil/control-regression.mjs';
 import { parseDuoArgs } from '../../scripts/hil/run-duo.mjs';
 import { parseMonoCommunicationsArgs } from '../../scripts/hil/run-communications-mono.mjs';
@@ -273,7 +273,7 @@ test('domain snapshot restores extra gates, water fixtures and permissions witho
     const controller = new SettingsClient([...controllerSettings, ...controlRegressionControllerSettings]);
     const simulator = new SettingsClient([...simulatorSettings, ...controlRegressionSimulatorSettings]);
     const snapshot = await snapshotSettings({ controller, simulator, scenario, firmware: 'baseline', targets: {} });
-    assert.equal(snapshot.schema, 3);
+    assert.equal(snapshot.schema, scenario === 'input-sources' ? 3 : 4);
     assert.equal('hp1Responses' in snapshot.simulator, scenario !== 'input-sources');
     if (scenario !== 'input-sources') {
       const truncated = structuredClone(snapshot);
@@ -387,4 +387,83 @@ test('CM0 permits zero flow, but heating cannot pass with low or missing selecte
     await assert.rejects(runCommunicationsScenarios({ ...fixture, stage: 'all', hpCount: 1 }), /250 l\/h/);
     assert.deepEqual(fixture.writes, []);
   }
+});
+
+test('transport-aware snapshots restore the original boiler connection and preserve old schema-3 recovery', async () => {
+  const controller = new SettingsClient([...controllerSettings, ...controlRegressionControllerSettings]);
+  const simulator = new SettingsClient([...simulatorSettings, ...controlRegressionSimulatorSettings]);
+  controller.state.set('Boiler connection', 'R1');
+  const snapshot = await snapshotSettings({ controller, simulator, scenario: 'communications', firmware: 'baseline', targets: {} });
+  const truncated = structuredClone(snapshot);
+  delete truncated.controller.boilerConnection;
+  assert.throws(() => validateSnapshot(truncated), /select/);
+  await controller.setSelect('Boiler connection', 'OpenTherm');
+  await restoreSettings({ controller, simulator, snapshot, log: () => {} });
+  assert.equal(controller.state.get('Boiler connection'), 'R1');
+  const legacy = structuredClone(truncated);
+  legacy.schema = 3;
+  validateSnapshot(legacy);
+  await controller.setSelect('Boiler connection', 'OpenTherm');
+  await restoreSettings({ controller, simulator, snapshot: legacy, log: () => {} });
+  assert.equal(controller.state.get('Boiler connection'), 'OpenTherm');
+  await verifyRestoredSettings({ controller, simulator, snapshot: legacy });
+});
+
+test('communications rejects an unsafe baseline or legacy snapshot before transport writes', async () => {
+  const fixture = bench();
+  let writes = 0;
+  fixture.controller.setSelect = async () => { writes++; };
+  await assert.rejects(prepareCommunicationsRegression(fixture.controller, fixture.simulator,
+    () => false, { schema: 3, controller: {} }), /transport-aware/);
+  fixture.controller.value = async () => 'Auto';
+  await assert.rejects(prepareCommunicationsRegression(fixture.controller, fixture.simulator,
+    () => false, { schema: 4, controller: { boilerConnection: 'R1' } }), /safe CM0/);
+  assert.equal(writes, 0);
+});
+
+
+test('communications selects verified OpenTherm and rejects missing mismatch telemetry', async () => {
+  for (const missing of [false, true]) {
+    const controller = new SettingsClient([...controllerSettings, ...controlRegressionControllerSettings]);
+    const simulator = new SettingsClient([...simulatorSettings, ...controlRegressionSimulatorSettings]);
+    for (const name of ['Setup Complete', 'OpenQuatt Enabled', 'Auxiliary heat source connected',
+      'OTB - Boiler Link Available']) controller.state.set(name, true);
+    for (const name of ['Power House run extension', 'Boiler active']) controller.state.set(name, false);
+    if (!missing) controller.state.set('OTB - Boiler Connection Mismatch', false);
+    controller.state.set('CM Override', 'Force CM0');
+    controller.state.set('Boiler connection', 'R1');
+    controller.state.set('Water Supply Temp (Selected)', 22.5);
+    controller.state.set('HP1 - Flow', 0);
+    controller.state.set('HP2 - Flow', 0);
+    for (const name of ['Quatt ODU simulation enabled', 'ODU responses enabled']) simulator.state.set(name, true);
+    for (const name of ['ODU timeout injection enabled', 'ODU exception injection enabled',
+      'ODU reboot on matching request', 'M2 UART fault injection enabled',
+      'ODU 1 freeze measured frequency', 'ODU 2 freeze measured frequency']) simulator.state.set(name, false);
+    controller.request = bench().controller.request;
+    const snapshot = { schema: 4, controller: { boilerConnection: 'R1' },
+      simulatorActive: { hp1: { address: 1, profile: 'V1.5' }, hp2: { address: 2, profile: 'V1.5' } } };
+    if (missing) {
+      await assert.rejects(prepareCommunicationsRegression(controller, simulator, () => false, snapshot), /boolean/);
+      assert.equal(controller.state.get('Q Flow Source'), 'Auto');
+    } else {
+      await prepareCommunicationsRegression(controller, simulator, () => false, snapshot);
+      assert.equal(controller.state.get('Boiler connection'), 'OpenTherm');
+      assert.equal(controller.state.get('Q Flow Source'), 'Outdoor unit');
+    }
+  }
+});
+
+
+test('interrupt during CM0 verification prevents the boiler transport write', async () => {
+  const fixture = bench();
+  let interrupted = false;
+  let writes = 0;
+  fixture.controller.value = async (_domain, name) => {
+    if (name === 'Control Mode') interrupted = true;
+    return name === 'CM Override' ? 'Force CM0' : 'CM0';
+  };
+  fixture.controller.setSelect = async () => { writes++; };
+  await assert.rejects(prepareCommunicationsRegression(fixture.controller, fixture.simulator,
+    () => interrupted, { schema: 4, controller: { boilerConnection: 'R1' } }), /interrupted/);
+  assert.equal(writes, 0);
 });

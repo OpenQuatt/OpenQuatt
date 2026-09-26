@@ -7,6 +7,7 @@ import { asBoolean, asFiniteNumber } from './rest-client.mjs';
 import { waitValue } from './wait.mjs';
 
 export const SNAPSHOT_SCHEMA = 3;
+export const CONTROL_SNAPSHOT_SCHEMA = 4;
 
 export const controllerSettings = [
   { key: 'cmOverride', domain: 'select', name: 'CM Override', kind: 'select' },
@@ -67,6 +68,7 @@ export const simulatorSettings = [
 // Only these new domains mutate response gates and boiler permissions. Keep
 // schema-3 input/performance recovery artifacts usable without new fields.
 export const controlRegressionControllerSettings = [
+  { key: 'boilerConnection', domain: 'select', name: 'Boiler connection', kind: 'select' },
   { key: 'qFlowSource', domain: 'select', name: 'Q Flow Source', kind: 'select' },
   { key: 'boilerAssist', domain: 'switch', name: 'Boiler assist enabled', kind: 'switch' },
   { key: 'boilerFallback', domain: 'switch', name: 'Boiler fallback on heat-pump fault', kind: 'switch' },
@@ -82,10 +84,11 @@ function isControlRegression(scenario) {
   return scenario === 'duo' || scenario === 'communications' || scenario === 'communications-mono';
 }
 
-function settingsForScenario(scenario) {
+function settingsForScenario(scenario, schema = CONTROL_SNAPSHOT_SCHEMA) {
   return {
     controller: isControlRegression(scenario)
-      ? [...controllerSettings, ...controlRegressionControllerSettings] : controllerSettings,
+      ? [...controllerSettings, ...controlRegressionControllerSettings.filter((item) =>
+        schema >= CONTROL_SNAPSHOT_SCHEMA || item.key !== 'boilerConnection')] : controllerSettings,
     simulator: isControlRegression(scenario)
       ? [...simulatorSettings, ...controlRegressionSimulatorSettings] : simulatorSettings,
   };
@@ -156,7 +159,7 @@ export async function snapshotSettings({ controller, simulator, targets, firmwar
     { key: 'hp2', domain: 'text_sensor', name: 'ODU 2 diagnostics' },
   ]);
   return {
-    schema: SNAPSHOT_SCHEMA,
+    schema: isControlRegression(scenario) ? CONTROL_SNAPSHOT_SCHEMA : SNAPSHOT_SCHEMA,
     capturedAt: new Date().toISOString(),
     targets,
     firmware,
@@ -187,7 +190,8 @@ function valuesMatch(setting, actual, expected) {
 }
 
 export function validateSnapshot(snapshot) {
-  if (!snapshot || snapshot.schema !== SNAPSHOT_SCHEMA) {
+  if (!snapshot || (snapshot.schema !== SNAPSHOT_SCHEMA &&
+      !(snapshot.schema === CONTROL_SNAPSHOT_SCHEMA && isControlRegression(snapshot.scenario)))) {
     throw new Error(`unsupported HIL snapshot schema: ${snapshot?.schema ?? 'missing'}`);
   }
   if (typeof snapshot.firmware !== 'string' || snapshot.firmware.length === 0) {
@@ -196,7 +200,7 @@ export function validateSnapshot(snapshot) {
   if (typeof snapshot.scenario !== 'string' || snapshot.scenario.length === 0) {
     throw new Error('HIL snapshot has no scenario identity');
   }
-  const settings = settingsForScenario(snapshot.scenario);
+  const settings = settingsForScenario(snapshot.scenario, snapshot.schema);
   for (const setting of settings.controller) {
     normalizeSettingValue(setting, snapshot.controller?.[setting.key]);
   }
@@ -307,7 +311,7 @@ export async function restoreSettings({
     }
   };
 
-  const settings = settingsForScenario(snapshot.scenario);
+  const settings = settingsForScenario(snapshot.scenario, snapshot.schema);
   await restoreGroup(
     controller,
     settings.controller.filter((item) => item.key !== 'cmOverride'),
@@ -351,7 +355,7 @@ export async function verifyRestoredSettings({ controller, simulator, snapshot }
       }
     }
   };
-  const settings = settingsForScenario(snapshot.scenario);
+  const settings = settingsForScenario(snapshot.scenario, snapshot.schema);
   await verifyGroup(controller, settings.controller, snapshot.controller, 'controller settings');
   await verifyGroup(simulator, settings.simulator, snapshot.simulator, 'simulator settings');
   if (errors.length > 0) {

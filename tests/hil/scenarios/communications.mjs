@@ -1,5 +1,5 @@
 import {
-  assertNoFallback, controlContext, healthy, prepareControlRegression,
+  assertNoFallback, controlContext, healthy, prepareCommunicationsRegression,
 } from '../../../scripts/hil/control-regression.mjs';
 
 export async function runCommunicationsScenarios(options) {
@@ -49,12 +49,12 @@ export async function runCommunicationsScenarios(options) {
 }
 
 export const communicationsScenario = {
-  name: 'communications', prepare: prepareControlRegression, execute: runCommunicationsScenarios,
+  name: 'communications', prepare: prepareCommunicationsRegression, execute: runCommunicationsScenarios,
 };
 
 export const monoCommunicationsScenario = {
   name: 'communications-mono',
   prepare: (controller, simulator, interrupted, snapshot) =>
-    prepareControlRegression(controller, simulator, interrupted, snapshot, 1),
+    prepareCommunicationsRegression(controller, simulator, interrupted, snapshot, 1),
   execute: (options) => runCommunicationsScenarios({ ...options, hpCount: 1 }),
 };

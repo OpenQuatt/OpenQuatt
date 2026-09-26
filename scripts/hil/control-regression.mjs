@@ -210,3 +210,32 @@ export async function prepareControlRegression(controller, simulator, interrupte
     require(flow !== null && flow >= 0, `${key} must have valid stopped-flow telemetry`);
   }
 }
+
+export async function prepareCommunicationsRegression(controller, simulator, interrupted, snapshot, hpCount = 2) {
+  // The fixed desktop boiler answers OpenTherm. R1 with an observed OT peer
+  // correctly raises a mismatch and cannot qualify for CM4 fallback.
+  require(snapshot?.schema === 4 && typeof snapshot.controller?.boilerConnection === 'string',
+    'communications preparation requires a transport-aware snapshot');
+  require(!interrupted(), 'HIL run interrupted before boiler transport selection');
+  incidentObservation(await controller.request('/openquatt/incidents'), hpCount);
+  require(await controller.value('select', 'CM Override') === 'Force CM0' &&
+    await controller.value('text_sensor', 'Control Mode') === 'CM0',
+  'communications requires a safe CM0 baseline before transport selection');
+  require(!interrupted(), 'HIL run interrupted before boiler transport write');
+  await controller.setSelect('Boiler connection', 'OpenTherm');
+  const deadline = Date.now() + 180000;
+  let ready = false;
+  while (Date.now() < deadline) {
+    require(!interrupted(), 'HIL run interrupted during boiler transport verification');
+    const transport = await controller.values([
+      { key: 'connection', domain: 'select', name: 'Boiler connection' },
+      { key: 'link', domain: 'binary_sensor', name: 'OTB - Boiler Link Available' },
+      { key: 'mismatch', domain: 'binary_sensor', name: 'OTB - Boiler Connection Mismatch' },
+    ]);
+    ready = transport.connection === 'OpenTherm' && asBoolean(transport.link) && !asBoolean(transport.mismatch);
+    if (ready) break;
+    await sleep(1500);
+  }
+  require(ready, 'OpenTherm boiler transport did not become available without mismatch');
+  await prepareControlRegression(controller, simulator, interrupted, snapshot, hpCount);
+}

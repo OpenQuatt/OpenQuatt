@@ -125,7 +125,7 @@ firmware-restore. Selecteer alleen het relevante domein en de relevante stage:
 | Runner | Stage | Contract |
 |---|---|---|
 | `run-duo.mjs` | `start` | Vanuit idle starten met één beschikbare ODU; HP1 en HP2 worden afzonderlijk getest. CM2 zonder bevestigde compressorstart is geen PASS. |
-| `run-duo.mjs` | `peer-loss` | Eén ODU valt tijdens verwarmen weg; de resterende ODU verwarmt zonder CM4 of ketelstart. Beide uitvalrichtingen worden getest. |
+| `run-duo.mjs` | `peer-loss` | Eén ODU valt tijdens verwarmen weg; de resterende ODU neemt verwarming over zonder CM4 of ketelstart. CM1 en normale restartguards zijn toegestaan vóór overname. Beide uitvalrichtingen worden getest. |
 | `run-communications-mono.mjs` | `fallback` / `all` | Mono: HP1 weg, causale stop-timeout en CM4; herstel via CM1 naar CM2 met bevestigde compressorfeedback. HP2 wordt niet onderdrukt. |
 | `run-communications.mjs` | `fallback` | Beide ODU's weg: causale onbevestigde stop en CM4 met actieve keteltransportuitgang; na herstel handback via CM1 naar CM2 en causale permissie gewist. |
 
@@ -156,21 +156,25 @@ ververst, zonder achtergrondtimer, en de geselecteerde inputs worden gecontrolee
 Gemeenschappelijke precondities: Setup Complete en OpenQuatt Enabled staan aan, de aanvullende
 warmtebron is aangesloten, run extension staat uit en response-/simulatiegates
 staan aan. Duo vereist beide ODU's op adres 1/2 met V1.5/V2-flowondersteuning;
-Mono vereist dit alleen voor HP1 op adres 1.
+Mono vereist dit alleen voor HP1 op adres 1. Communications vereist vóór
+transportselectie Force CM0 en bevestigde CM0. De desktopketel gebruikt OpenTherm;
+de voorbereiding selecteert dit transport en vereist een beschikbare link zonder
+connection mismatch voordat de vraag wordt ingeschakeld.
 Timeout-, exception-, reboot-, UART-fault- en frequency-freeze-injecties moeten
 uit staan. De setup verifieert veilige CM0, supplyfixture en geldige flowtelemetrie;
 0 l/h is normaal bij stilstand. Tijdens CM2 vereisen de verwarmingscases minstens
 250 l/h geselecteerde flow en bevestigde compressorfeedback. Dit bewijst geen fysieke PT1000 of hydrauliek.
 
-Deze domeinsnapshots bevatten ook Q Flow Source, ketelassist-/fallbackkeuzes,
+Schema-4 domeinsnapshots bevatten ook Boiler connection, Q Flow Source, ketelassist-/fallbackkeuzes,
 responsegates en simulatorwaterinvoer. Een verloren ACK of interrupt herstelt
 alle betrokken gates; een herstelprobleem blijft een fout. Recovery zet de
 responses terug aan vóór stopbevestiging en OTA. Oude schema-3 snapshots van
-input-/performance-runs blijven geldig; Duo-/communications-snapshots zonder
-de extra velden worden vóór herstelwrites afgewezen.
+input-/performance-runs en eerdere domeinruns blijven geldig. Eerdere schema-3
+domeinruns wijzigden Boiler connection niet; hun herstel laat dit veld ongemoeid.
+Schema-4 snapshots zonder de oorspronkelijke transportkeuze worden afgewezen.
 
 Runrapporten bevatten begrensde, geselecteerde incidentobservaties, zonder
-action-CSRF-token. Deze nieuwe cases zijn zonder hardware met fakes getest;
+action-CSRF-token. De cases worden ook zonder hardware met fakes getest;
 een fake-PASS of configvalidatie is geen hardware-PASS.
 
 ## Volledige input-/bronselectietest
