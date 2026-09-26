@@ -151,7 +151,7 @@ export async function prepareControlRegression(controller, simulator, interrupte
       'control regression requires simulator ODU flow support (V1.5/V2)');
   }
   const baseline = await controller.values([
-    { key: 'setup', domain: 'switch', name: 'Setup Complete' },
+    { key: 'setup', domain: 'binary_sensor', name: 'Setup Complete' },
     { key: 'enabled', domain: 'switch', name: 'OpenQuatt Enabled' },
     { key: 'aux', domain: 'switch', name: 'Auxiliary heat source connected' },
     { key: 'extension', domain: 'switch', name: 'Power House run extension' },

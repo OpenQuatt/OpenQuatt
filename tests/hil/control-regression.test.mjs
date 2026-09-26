@@ -219,7 +219,12 @@ class SettingsClient {
     this.state.set('ODU 2 diagnostics', 'addr=2 profile=V1.5');
     this.state.set('Control Mode', 'CM0');
   }
-  async values(settings) { return Object.fromEntries(settings.map((s) => [s.key, this.state.get(s.name)])); }
+  async values(settings) {
+    for (const item of settings) {
+      if (item.name === 'Setup Complete') assert.equal(item.domain, 'binary_sensor');
+    }
+    return Object.fromEntries(settings.map((s) => [s.key, this.state.get(s.name)]));
+  }
   async value(domain, name) { return this.state.get(name); }
   async setSwitch(name, value) { this.state.set(name, value); }
   async setNumber(name, value) { this.state.set(name, value); }
