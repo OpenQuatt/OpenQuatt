@@ -4,12 +4,14 @@ import {
 
 export async function runCommunicationsScenarios(options) {
   if (!['fallback', 'all'].includes(options.stage)) throw new Error('unsupported communications stage');
-  const ctx = controlContext(options);
+  const hpCount = options.hpCount ?? 2;
+  const indices = Array.from({ length: hpCount }, (_, i) => i + 1);
+  const ctx = controlContext({ ...options, hpCount });
   await ctx.idle();
   await ctx.demand();
-  await ctx.until('Duo heating baseline', (s) => healthy(s) && s.mode === 2 &&
+  await ctx.until('heat-pump heating baseline', (s) => healthy(s) && s.mode === 2 &&
     s.hp.some((hp) => hp.running_confirmed), assertNoFallback);
-  await ctx.withLoss([1, 2], async () => {
+  await ctx.withLoss(indices, async () => {
     await ctx.until('causal link-loss fallback', (s) => s.mode === 4 && s.boiler && s.boilerActive &&
       s.hp.every((hp) => hp.link_state === 'lost' && hp.stop_unconfirmed &&
         hp.stop_unconfirmed_due_to_link_loss && !hp.stop_confirmed), (s) => {
@@ -48,4 +50,11 @@ export async function runCommunicationsScenarios(options) {
 
 export const communicationsScenario = {
   name: 'communications', prepare: prepareControlRegression, execute: runCommunicationsScenarios,
+};
+
+export const monoCommunicationsScenario = {
+  name: 'communications-mono',
+  prepare: (controller, simulator, interrupted, snapshot) =>
+    prepareControlRegression(controller, simulator, interrupted, snapshot, 1),
+  execute: (options) => runCommunicationsScenarios({ ...options, hpCount: 1 }),
 };

@@ -117,7 +117,7 @@ Het rapport bevat actuele en minimale interne heap, grootste vrije block,
 fragmentatie, vrije PSRAM en beide ODU-diagnoseregels voor zover de entities
 beschikbaar zijn. Ook simulatorcontract en -versie worden vastgelegd.
 
-## Duo en communicatie
+## Mono, Duo en communicatie
 
 De domeinrunners gebruiken de gedeelde lock, REST-begrenzer, snapshot en
 firmware-restore. Selecteer alleen het relevante domein en de relevante stage:
@@ -126,9 +126,10 @@ firmware-restore. Selecteer alleen het relevante domein en de relevante stage:
 |---|---|---|
 | `run-duo.mjs` | `start` | Vanuit idle starten met één beschikbare ODU; HP1 en HP2 worden afzonderlijk getest. CM2 zonder bevestigde compressorstart is geen PASS. |
 | `run-duo.mjs` | `peer-loss` | Eén ODU valt tijdens verwarmen weg; de resterende ODU verwarmt zonder CM4 of ketelstart. Beide uitvalrichtingen worden getest. |
+| `run-communications-mono.mjs` | `fallback` / `all` | Mono: HP1 weg, causale stop-timeout en CM4; herstel via CM1 naar CM2 met bevestigde compressorfeedback. HP2 wordt niet onderdrukt. |
 | `run-communications.mjs` | `fallback` | Beide ODU's weg: causale onbevestigde stop en CM4 met actieve keteltransportuitgang; na herstel handback via CM1 naar CM2 en causale permissie gewist. |
 
-Beide runners hebben een read-only `smoke`. `all` betekent alleen alle stages
+Alle runners hebben een read-only `smoke`. `all` betekent alleen alle stages
 van die runner; het is geen volledige hardware-regressieset.
 
 ```bash
@@ -145,23 +146,24 @@ Voor de fallback-/handbackcase gebruik je `run-communications.mjs` met
 domeinrunner met `--restore-snapshot .tmp/hil/<run>/snapshot.json --apply` en de
 controller-, simulator-, device- en restoreconfigopties.
 
-De testoverlay hergebruikt de bestaande HIL-CIC-supplyfixture en observaties,
+De Duo-testoverlay hergebruikt de bestaande HIL-CIC-supplyfixture en observaties,
 met marker `control-regression-v1`. Productieguardtijden blijven intact;
 `Power House demand rise time` wordt tijdelijk op de normale minimuminstelling
 van 2 minuten gezet. Een assertionfase kan tot tien minuten wachten; positieve
 uitgangstoestanden worden daarna 30 seconden bewaakt. De API-vraag wordt serieel
 ververst, zonder achtergrondtimer, en de geselecteerde inputs worden gecontroleerd.
 
-Precondities: Setup Complete en OpenQuatt Enabled staan aan, de aanvullende
-warmtebron is aangesloten, run extension staat uit, beide ODU's zijn actief op
-adres 1/2 met V1.5/V2-flowondersteuning, en response-/simulatiegates staan aan.
+Gemeenschappelijke precondities: Setup Complete en OpenQuatt Enabled staan aan, de aanvullende
+warmtebron is aangesloten, run extension staat uit en response-/simulatiegates
+staan aan. Duo vereist beide ODU's op adres 1/2 met V1.5/V2-flowondersteuning;
+Mono vereist dit alleen voor HP1 op adres 1.
 Timeout-, exception-, reboot-, UART-fault- en frequency-freeze-injecties moeten
 uit staan. De setup verifieert veilige CM0, supplyfixture en minstens 250 l/h per
 ODU vóór de verwarmingscases. Dit bewijst geen fysieke PT1000 of hydrauliek.
 
 Deze domeinsnapshots bevatten ook Q Flow Source, ketelassist-/fallbackkeuzes,
 responsegates en simulatorwaterinvoer. Een verloren ACK of interrupt herstelt
-beide betrokken gates; een herstelprobleem blijft een fout. Recovery zet de
+alle betrokken gates; een herstelprobleem blijft een fout. Recovery zet de
 responses terug aan vóór stopbevestiging en OTA. Oude schema-3 snapshots van
 input-/performance-runs blijven geldig; Duo-/communications-snapshots zonder
 de extra velden worden vóór herstelwrites afgewezen.
@@ -345,3 +347,30 @@ node scripts/hil/run-v2-performance.mjs \
   --restore-snapshot .tmp/hil/RUN/snapshot.json \
   --apply
 ```
+
+### Mono-communicatie
+
+Gebruik voor Mono de aparte runner en firmware-identiteit:
+
+```bash
+node scripts/hil/run-communications-mono.mjs \
+  --controller http://openquatt-test.local --simulator http://192.168.2.63 \
+  --device openquatt-test.local \
+  --test-config configs/hil/control_regression_mono_wifi.yaml \
+  --restore-config configs/heatpump_controller_q/single_hil.yaml \
+  --stage all --apply
+```
+
+De test vereist precies één geconfigureerde warmtepomp in de incident-API en
+controleert alleen HP1-flow en het actieve HP1-profiel. Een Duo-snapshot faalt
+vóór de scenario-instellingen veranderen. Alleen de HP1-response gate wordt
+onderdrukt en in de scenario-cleanup hersteld. De vaste labsimulator heeft nog
+steeds twee ODU-slots; de algemene snapshot/restore bewaart beide slots zodat
+ook de oorspronkelijke labinstellingen gecontroleerd terugkomen. Herstel een
+Mono-run met dezelfde Mono-runner (`--restore-snapshot`); een snapshot uit een
+ander domein wordt geweigerd. Het restore-config moet exact overeenkomen met
+de vooraf vastgelegde baselinefirmware, ook als de baseline een andere topologie
+heeft. De runners compileren en toetsen dat vóór de testupload.
+
+Ook de Mono-cases zijn voorlopig uitsluitend met fakes gevalideerd. Voer geen
+nieuwe run of OTA uit terwijl een andere HIL-test het lab gebruikt.

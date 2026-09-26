@@ -4,6 +4,7 @@ import {
   controlContext, incidentObservation, prepareControlRegression,
 } from '../../scripts/hil/control-regression.mjs';
 import { parseDuoArgs } from '../../scripts/hil/run-duo.mjs';
+import { parseMonoCommunicationsArgs } from '../../scripts/hil/run-communications-mono.mjs';
 import { parseCommunicationsArgs } from '../../scripts/hil/run-communications.mjs';
 import {
   controllerSettings, simulatorSettings, controlRegressionControllerSettings,
@@ -13,9 +14,9 @@ import {
 import { runDuoScenarios } from './scenarios/duo.mjs';
 import { runCommunicationsScenarios } from './scenarios/communications.mjs';
 
-function bench() {
+function bench(hpCount = 2) {
   let time = 0;
-  const responses = [true, true];
+  const responses = Array(hpCount).fill(true);
   const writes = [];
   let mode = 0;
   let transition = false;
@@ -263,7 +264,7 @@ test('preparation uses valid flow selectors and fails before settings writes on 
 });
 
 test('domain snapshot restores extra gates, water fixtures and permissions without changing legacy schema-3', async () => {
-  for (const scenario of ['duo', 'communications', 'input-sources']) {
+  for (const scenario of ['duo', 'communications', 'communications-mono', 'input-sources']) {
     const controller = new SettingsClient([...controllerSettings, ...controlRegressionControllerSettings]);
     const simulator = new SettingsClient([...simulatorSettings, ...controlRegressionSimulatorSettings]);
     const snapshot = await snapshotSettings({ controller, simulator, scenario, firmware: 'baseline', targets: {} });
@@ -297,4 +298,77 @@ test('new domain runners enforce apply, firmware restore and domain-specific sta
     assert.equal(options.expectedProfile, 'control-regression-v1');
     assert.throws(() => parse([...targets, '--stage', 'reboot-reset']), /unsupported stage/);
   }
+});
+
+test('Mono communication loss and handback only suppress HP1 and reject Duo firmware', async () => {
+  const fixture = bench(1);
+  const result = await runCommunicationsScenarios({ ...fixture, stage: 'all', hpCount: 1 });
+  assert.deepEqual(fixture.writes, [[1, false], [1, true]]);
+  assert.ok(result.samples.every((s) => s.hp.length === 1));
+  assert.ok(result.samples.some((s) => s.mode === 4 && s.hp[0].stop_unconfirmed_due_to_link_loss));
+  assert.deepEqual(fixture.responses, [true]);
+  const duo = bench();
+  await assert.rejects(runCommunicationsScenarios({ ...duo, stage: 'all', hpCount: 1 }), /exactly 1/);
+  assert.deepEqual(duo.writes, []);
+});
+
+test('Mono rejects early fallback and missing handback feedback, restoring HP1', async () => {
+  for (const fault of ['early', 'feedback', 'ack']) {
+    const fixture = bench(1);
+    const request = fixture.controller.request;
+    fixture.controller.request = async () => {
+      const payload = await request();
+      if (fault === 'early' && payload.system.control_mode === 4) {
+        payload.heat_pumps[0].stop_unconfirmed_due_to_link_loss = false;
+      }
+      if (fault === 'feedback' && fixture.writes.some(([, enabled]) => enabled)) {
+        payload.heat_pumps[0].running_confirmed = false;
+      }
+      return payload;
+    };
+    if (fault === 'ack') {
+      const write = fixture.simulator.setSwitch;
+      fixture.simulator.setSwitch = async (name, enabled) => {
+        await write(name, enabled);
+        if (!enabled) throw new Error('lost ACK');
+      };
+    }
+    await assert.rejects(runCommunicationsScenarios({ ...fixture, stage: 'fallback', hpCount: 1 }),
+      fault === 'early' ? /before causal stop timeout/ : fault === 'ack' ? /lost ACK/ : /timed out/);
+    assert.deepEqual(fixture.responses, [true]);
+    assert.deepEqual(fixture.writes, [[1, false], [1, true]]);
+  }
+});
+
+test('Mono preparation validates topology before writes and does not require HP2 flow/profile', async () => {
+  const controller = new SettingsClient([...controllerSettings, ...controlRegressionControllerSettings]);
+  const simulator = new SettingsClient([...simulatorSettings, ...controlRegressionSimulatorSettings]);
+  for (const name of ['Setup Complete', 'OpenQuatt Enabled', 'Auxiliary heat source connected']) controller.state.set(name, true);
+  controller.state.set('Power House run extension', false);
+  controller.state.set('Boiler active', false);
+  controller.state.set('Water Supply Temp (Selected)', 22.5);
+  controller.state.set('HP1 - Flow', 600);
+  for (const name of ['Quatt ODU simulation enabled', 'ODU responses enabled']) simulator.state.set(name, true);
+  for (const name of ['ODU timeout injection enabled', 'ODU exception injection enabled',
+    'ODU reboot on matching request', 'M2 UART fault injection enabled',
+    'ODU 1 freeze measured frequency']) simulator.state.set(name, false);
+  const waterWrites = [];
+  const write = simulator.setNumber.bind(simulator);
+  simulator.setNumber = async (name, value) => { waterWrites.push(name); await write(name, value); };
+  controller.request = bench().controller.request;
+  let changed = false;
+  const select = controller.setSelect.bind(controller);
+  controller.setSelect = async (...args) => { changed = true; await select(...args); };
+  const snapshot = { simulatorActive: { hp1: { address: 1, profile: 'V1.5' } } };
+  await assert.rejects(prepareControlRegression(controller, simulator, () => false, snapshot, 1), /exactly 1/);
+  assert.equal(changed, false);
+  controller.request = bench(1).controller.request;
+  await prepareControlRegression(controller, simulator, () => false, snapshot, 1);
+  assert.deepEqual(waterWrites, ['ODU 1 water-in temperature']);
+});
+
+test('Mono runner uses distinct firmware marker and recovery domain', () => {
+  const options = parseMonoCommunicationsArgs(['--controller', 'http://controller.local',
+    '--simulator', 'http://simulator.local', '--stage', 'smoke']);
+  assert.equal(options.expectedProfile, 'control-regression-mono-v1');
 });

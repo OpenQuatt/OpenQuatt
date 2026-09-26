@@ -10,14 +10,15 @@ function require(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-export function incidentObservation(payload) {
+export function incidentObservation(payload, hpCount = 2) {
+  require([1, 2].includes(hpCount), 'unsupported control regression topology');
   require(payload?.schema_version === 1 && payload?.catalog_version === 1,
     'unsupported incident snapshot');
   require(Number.isInteger(payload.system?.control_mode), 'missing control mode');
   require(typeof payload.system.boiler_command_active === 'boolean', 'missing boiler command');
-  require(Array.isArray(payload.heat_pumps) && payload.heat_pumps.length === 2,
-    'control regression requires a Duo incident snapshot');
-  const hp = [1, 2].map((index) => {
+  require(Array.isArray(payload.heat_pumps) && payload.heat_pumps.length === hpCount,
+    `control regression requires exactly ${hpCount} configured heat pumps`);
+  const hp = Array.from({ length: hpCount }, (_, i) => i + 1).map((index) => {
     const unit = payload.heat_pumps.find((item) => item.index === index);
     require(unit && ['bootstrap', 'healthy', 'suspect', 'lost', 'recovering'].includes(unit.link_state),
       `missing HP${index} link state`);
@@ -29,7 +30,7 @@ export function incidentObservation(payload) {
 }
 
 export function controlContext({ controller, simulator, interrupted = () => false,
-  now = Date.now, delay = sleep, timeoutMs = 600000, holdMs = 30000, intervalMs = 1500 }) {
+  hpCount = 2, now = Date.now, delay = sleep, timeoutMs = 600000, holdMs = 30000, intervalMs = 1500 }) {
   const samples = [];
   let nextRefresh = 0;
   let heating = false;
@@ -47,7 +48,7 @@ export function controlContext({ controller, simulator, interrupted = () => fals
   async function observe() {
     require(!interrupted(), 'HIL run interrupted; starting recovery');
     await refresh();
-    const state = incidentObservation(await controller.request('/openquatt/incidents'));
+    const state = incidentObservation(await controller.request('/openquatt/incidents'), hpCount);
     state.boilerActive = asBoolean(await controller.value('binary_sensor', 'Boiler active'));
     if (heating) {
       const inputs = await controller.values([
@@ -116,7 +117,7 @@ export function controlContext({ controller, simulator, interrupted = () => fals
     requireInputs = false;
     await controller.setSelect('CM Override', 'Force CM0');
     await controller.setSwitch('api_input_heating_enable', false);
-    return until('healthy stopped Duo', (s) => s.mode === 0 && s.hp.every((h) =>
+    return until('healthy stopped heat pumps', (s) => s.mode === 0 && s.hp.every((h) =>
       h.link_state === 'healthy' && h.stop_confirmed && !h.running_confirmed && !h.must_stop));
   }
   async function demand() {
@@ -138,10 +139,14 @@ export function assertNoFallback(s) {
   require(s.mode !== 4 && !s.boiler && !s.boilerActive, 'partial Duo outage started boiler fallback');
 }
 
-export async function prepareControlRegression(controller, simulator, interrupted, snapshot) {
-  require(snapshot?.simulatorActive?.hp1?.address === 1 && snapshot?.simulatorActive?.hp2?.address === 2,
-    'control regression requires active ODU addresses 1/2');
-  for (const key of ['hp1', 'hp2']) {
+export async function prepareControlRegression(controller, simulator, interrupted, snapshot, hpCount = 2) {
+  // Validate the actual firmware topology before changing any settings.
+  incidentObservation(await controller.request('/openquatt/incidents'), hpCount);
+  const indices = Array.from({ length: hpCount }, (_, i) => i + 1);
+  for (const index of indices) {
+    const key = `hp${index}`;
+    require(snapshot?.simulatorActive?.[key]?.address === index,
+      `control regression requires active ODU address ${index}`);
     require(['V1.5', 'V2 old model', 'V2 new model'].includes(snapshot.simulatorActive[key].profile),
       'control regression requires simulator ODU flow support (V1.5/V2)');
   }
@@ -159,7 +164,7 @@ export async function prepareControlRegression(controller, simulator, interrupte
     { key: 'responses', domain: 'switch', name: 'ODU responses enabled' },
     ...['ODU timeout injection enabled', 'ODU exception injection enabled',
       'ODU reboot on matching request', 'M2 UART fault injection enabled',
-      'ODU 1 freeze measured frequency', 'ODU 2 freeze measured frequency']
+      ...indices.map((index) => `ODU ${index} freeze measured frequency`)]
       .map((name) => ({ key: name, domain: 'switch', name })),
   ]);
   require(asBoolean(gates.simulation) && asBoolean(gates.responses), 'simulator is not responding normally');
@@ -184,19 +189,18 @@ export async function prepareControlRegression(controller, simulator, interrupte
   await controller.setSelect('Q Flow Source', 'Outdoor unit');
   await controller.setSelect('Outdoor Unit Flow Mode', 'Local aggregate HP1/HP2');
   await simulator.setSwitch('ODU external system pump flow', true);
-  for (const index of [1, 2]) await simulator.setNumber(`ODU ${index} water-in temperature`, 22.5);
+  for (const index of indices) await simulator.setNumber(`ODU ${index} water-in temperature`, 22.5);
   await controller.setNumber('HIL CIC Water Supply Fixture', 22.5);
   await controller.setSwitch('HIL CIC Water Supply Fixture Enable', true);
   await controller.setSelect('Water Supply Source', 'CIC');
-  const ctx = controlContext({ controller, simulator, interrupted });
+  const ctx = controlContext({ controller, simulator, interrupted, hpCount });
   await ctx.idle();
   const inputs = await controller.values([
     { key: 'supply', domain: 'sensor', name: 'Water Supply Temp (Selected)' },
-    { key: 'flow1', domain: 'sensor', name: 'HP1 - Flow' },
-    { key: 'flow2', domain: 'sensor', name: 'HP2 - Flow' },
+    ...indices.map((index) => ({ key: `flow${index}`, domain: 'sensor', name: `HP${index} - Flow` })),
   ]);
   require(asFiniteNumber(inputs.supply) !== null && Math.abs(Number(inputs.supply) - 22.5) < 0.2,
     'supply fixture is not selected and fresh');
-  for (const key of ['flow1', 'flow2']) require(asFiniteNumber(inputs[key]) >= 250,
+  for (const key of indices.map((index) => `flow${index}`)) require(asFiniteNumber(inputs[key]) >= 250,
     `${key} must be at least 250 l/h before testing`);
 }

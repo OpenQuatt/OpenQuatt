@@ -45,6 +45,17 @@ class HilHarnessContractTest(unittest.TestCase):
         self.assertIn('project_name: "openquatt.test"', HIL_CONTROLLER)
         self.assertIn("openquatt-test.local", DOCS)
 
+    def test_mono_control_overlay_keeps_test_identity_and_single_topology(self):
+        overlay = (ROOT / "configs/hil/control_regression_mono_wifi.yaml").read_text()
+        baseline = (ROOT / "configs/heatpump_controller_q/single_hil.yaml").read_text()
+        self.assertIn("HIL TEST ONLY", overlay)
+        self.assertIn("!include ../heatpump_controller_q/single_hil.yaml", overlay)
+        self.assertIn('return {"control-regression-mono-v1"};', overlay)
+        self.assertIn('device_name: "openquatt-test"', baseline)
+        self.assertIn("!include single.yaml", baseline)
+        self.assertNotIn("control_regression_mono_wifi.yaml", TARGETS)
+        self.assertIn("esphome config configs/hil/control_regression_mono_wifi.yaml", ESPHOME_BUILD_WORKFLOW)
+
     def test_control_regression_overlay_reuses_test_only_observations(self):
         self.assertIn("HIL TEST ONLY", CONTROL_PROFILE)
         self.assertIn("!include issue_667_v2_performance_duo_wifi.yaml", CONTROL_PROFILE)

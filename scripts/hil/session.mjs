@@ -79,7 +79,7 @@ export const controlRegressionSimulatorSettings = [
 ];
 
 function isControlRegression(scenario) {
-  return scenario === 'duo' || scenario === 'communications';
+  return scenario === 'duo' || scenario === 'communications' || scenario === 'communications-mono';
 }
 
 function settingsForScenario(scenario) {

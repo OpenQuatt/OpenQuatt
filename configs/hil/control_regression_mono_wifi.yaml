@@ -1,0 +1,76 @@
+# ==============================================================================
+# OpenQuatt - HIL TEST ONLY: Q Mono Control Regression Observations
+# ==============================================================================
+# The same CIC fixture as the Duo overlay, with production timing unchanged.
+packages:
+  production_hil_q_single: !include ../heatpump_controller_q/single_hil.yaml
+
+switch:
+  - platform: template
+    id: oq_hil_cic_water_supply_fixture_enabled
+    name: "HIL CIC Water Supply Fixture Enable"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: |-
+          // Stop the CIC poller before publishing the fixture. When merely
+          // disabled, OpenQuattCIC deliberately invalidates these states on
+          // every poll tick and would race this deterministic test source.
+          id(cic_component).stop_poller();
+          id(water_supply_temp_selected).stop_poller();
+          id(water_supply_temp_cic).publish_state(id(oq_hil_cic_water_supply_fixture_c).state);
+          id(feed_ok).publish_state(true);
+          id(cic_data_stale).publish_state(false);
+          id(oq_water_supply_temp_current_source_code) =
+              static_cast<int32_t>(oq_supply_calibration::SOURCE_CIC);
+          id(oq_water_supply_temp_current_source_ready) = true;
+          id(water_supply_temp_calibration_offset).publish_state(0.0f);
+          id(water_supply_temp_selected).publish_state(
+              id(oq_hil_cic_water_supply_fixture_c).state);
+    turn_off_action:
+      - lambda: |-
+          id(water_supply_temp_selected).start_poller();
+          id(water_supply_temp_selected).update();
+          id(cic_component).start_poller();
+
+number:
+  - platform: template
+    id: oq_hil_cic_water_supply_fixture_c
+    name: "HIL CIC Water Supply Fixture"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    optimistic: true
+    restore_value: false
+    initial_value: 22.5
+    min_value: -10
+    max_value: 70
+    step: 0.01
+
+interval:
+  - interval: 2s
+    then:
+      - if:
+          condition:
+            switch.is_on: oq_hil_cic_water_supply_fixture_enabled
+          then:
+            - lambda: |-
+                // Keep the test-only CIC value fresh while the production CIC
+                // poller is explicitly suspended by the fixture switch.
+                id(water_supply_temp_cic).publish_state(id(oq_hil_cic_water_supply_fixture_c).state);
+                id(feed_ok).publish_state(true);
+                id(cic_data_stale).publish_state(false);
+                id(oq_water_supply_temp_current_source_code) =
+                    static_cast<int32_t>(oq_supply_calibration::SOURCE_CIC);
+                id(oq_water_supply_temp_current_source_ready) = true;
+                id(water_supply_temp_calibration_offset).publish_state(0.0f);
+                id(water_supply_temp_selected).publish_state(
+                    id(oq_hil_cic_water_supply_fixture_c).state);
+
+text_sensor:
+  - platform: template
+    id: oq_hil_test_profile
+    name: "HIL Test Profile"
+    internal: true
+    update_interval: 5s
+    lambda: |-
+      return {"control-regression-mono-v1"};
