@@ -9,11 +9,15 @@ OTB_YAML = (ROOT / "openquatt/oq_boiler_opentherm.yaml").read_text()
 CONTROL_RUNTIME = (ROOT / "openquatt/includes/control/oq_boiler_runtime.h").read_text()
 DISPATCH_RUNTIME = (ROOT / "openquatt/includes/control/oq_boiler_dispatch_runtime.h").read_text()
 OTB_RUNTIME = (ROOT / "openquatt/includes/boiler/oq_boiler_otb_runtime.h").read_text()
+BOILER_LOGIC = (ROOT / "openquatt/includes/boiler/oq_boiler_logic.h").read_text()
+RELAY_TARGET_LOGIC = (ROOT / "openquatt/includes/boiler/oq_boiler_relay_target_logic.h").read_text()
+DISPATCH_LOGIC = (ROOT / "openquatt/includes/control/oq_boiler_dispatch_logic.h").read_text()
+SUBSTITUTIONS = (ROOT / "openquatt/oq_substitutions_common.yaml").read_text()
 
 
 class BoilerRuntimeContractTest(unittest.TestCase):
     def test_yaml_is_a_compact_runtime_contract(self) -> None:
-        self.assertLessEqual(len(CONTROL_YAML.splitlines()), 345)
+        self.assertLessEqual(len(CONTROL_YAML.splitlines()), 360)
         self.assertLessEqual(len(DISPATCH_YAML.splitlines()), 60)
         self.assertLessEqual(len(OTB_YAML.splitlines()), 980)
         self.assertEqual(CONTROL_YAML.count("oq_boiler_runtime::runtime().tick("), 1)
@@ -47,6 +51,54 @@ class BoilerRuntimeContractTest(unittest.TestCase):
 
     def test_q_only_otb_binding_is_guarded(self) -> None:
         self.assertIn("#if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q", OTB_RUNTIME)
+
+    def test_relay_target_control_is_isolated_policy(self) -> None:
+        # De hysterese is boiler-specifiek beleid en staat niet als losse
+        # constanten verspreid over de keten.
+        self.assertIn("struct RelayTargetConfig", RELAY_TARGET_LOGIC)
+        self.assertIn("float start_delta_c = 2.0f;", RELAY_TARGET_LOGIC)
+        self.assertIn("float stop_delta_c = 0.5f;", RELAY_TARGET_LOGIC)
+        self.assertIn("bool relay_target_config_valid(", RELAY_TARGET_LOGIC)
+        self.assertIn("RelayTargetConfig relay_target = {};", CONTROL_RUNTIME)
+        # De doelregeling zit in de uitgangsadapter, niet in de ketelketen of
+        # in een YAML-lambda.
+        self.assertIn("oq_boiler::evaluate_relay_target(", CONTROL_RUNTIME)
+        self.assertIn("oq_boiler::relay_target_control_applies(", CONTROL_RUNTIME)
+        self.assertIn("bool relay_target_control_applies(uint8_t source, bool opentherm_selected)", BOILER_LOGIC)
+        self.assertNotIn("relay_target", DISPATCH_LOGIC)
+        self.assertNotIn("RelayTargetConfig{", DISPATCH_YAML)
+        # De OpenTherm-transport blijft onaangeroerd: die ontvangt het doel via
+        # de bus en moduleert zelf.
+        self.assertNotIn("relay_target", OTB_RUNTIME)
+        self.assertNotIn("relay_target", OTB_YAML)
+
+    def test_satisfied_target_is_not_a_safety_failure(self) -> None:
+        self.assertIn("BLOCK_TARGET_SATISFIED = 25", BOILER_LOGIC)
+        self.assertIn("return \"requested boiler target temperature satisfied\";", BOILER_LOGIC)
+        self.assertIn("BLOCK_TARGET_HOLD_OFF = 26", BOILER_LOGIC)
+        self.assertIn("return \"boiler target control holding off inside target band\";", BOILER_LOGIC)
+        # Een bereikt doel en een relais dat binnen de band uit blijft zijn beide
+        # normale gevolgen van de R1-doelregeling en worden daarom niet als
+        # blokkade of fout gerapporteerd. Een niet-beoordeelbare doelregeling
+        # blijft wél een blokkade.
+        self.assertIn(
+            "decision.blocked = decision.demand_present && !decision.output_active && !relay_target_normal_stop;",
+            BOILER_LOGIC,
+        )
+        self.assertIn(
+            "const bool relay_target_failsafe = relay_target_withholds_output && !relay_target_normal_stop;",
+            BOILER_LOGIC,
+        )
+
+    def test_phase_one_keeps_existing_hp_defrost_tunables(self) -> None:
+        # FASE 1 raakt het bestaande defrostgedrag van de warmtepomp niet: de
+        # vermogensderating en de Duo-compensatie blijven op dezelfde waarden.
+        for substitution in (
+            'oq_defrost_power_factor: "0.764"',
+            'oq_defrost_comp_min_f: "6"',
+            'oq_defrost_comp_boost_steps: "1"',
+        ):
+            self.assertIn(substitution, SUBSTITUTIONS)
 
 
 if __name__ == "__main__":

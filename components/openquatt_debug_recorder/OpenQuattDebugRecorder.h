@@ -52,7 +52,11 @@ class OpenQuattDebugRecorder : public Component {
   static constexpr uint32_t MIN_DURATION_S = 60;
   static constexpr uint32_t MAX_DURATION_S = 60 * 60;
   static constexpr size_t BUFFER_BYTES = 1024U * 1024U;
-  static constexpr size_t FIELD_CAPACITY = 256;
+  // 272 keeps the >= 12 spare field slots the debug-recording contract
+  // requires after adding the defrost/R1 target-control fields. Both field
+  // tables live in PSRAM, so this costs 2 x 16 x sizeof(DebugField) external
+  // bytes and no internal DRAM.
+  static constexpr size_t FIELD_CAPACITY = 272;
   static constexpr size_t SYSTEM_FIELD_COUNT = 5;
   static constexpr size_t FIELD_KEY_BYTES = 40;
   static constexpr size_t FIELD_NAME_BYTES = 48;

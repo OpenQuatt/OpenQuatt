@@ -244,6 +244,8 @@ oq_boiler_command_max_age_s: "75"                     # Fail-safe command age; c
 oq_boiler_transport_settle_s: "2"                     # Break-before-make hold after changing R1/OpenTherm transport [s].
 oq_boiler_relay_min_on_s: "0"                         # R1 minimum on-time [s]; zero preserves existing relay behavior in foundation phase.
 oq_boiler_relay_min_off_s: "0"                        # R1 minimum off-time [s]; zero preserves existing relay behavior in foundation phase.
+oq_boiler_relay_target_start_delta_c: "2.0"           # R1 energises once supply is this far below the requested boiler target [K]; deliberately not tied to the Heating Curve CM margins.
+oq_boiler_relay_target_stop_delta_c: "0.5"            # R1 releases once supply recovered to within this of the requested boiler target [K]; must stay below the start delta.
 oq_boiler_otb_min_on_s: "30"                          # OpenTherm minimum requested on-time [s]; safety trips override it.
 oq_boiler_otb_min_off_s: "120"                        # OpenTherm minimum requested off-time [s].
 oq_otb_supported: "false"                             # Compile-time availability of the boiler OpenTherm master transport.

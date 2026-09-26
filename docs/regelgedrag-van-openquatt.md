@@ -54,6 +54,54 @@ In gewone taal:
 
 De ketel springt dus normaal niet op elk kort dipje direct bij.
 
+## Hoe stuurt OpenQuatt een R1-ketel aan?
+
+Bij een OpenTherm-ketel stuurt OpenQuatt de gevraagde keteltemperatuur mee en
+moduleert de ketel zelf. Een R1-ketel kan alleen aan of uit. Daarom regelt
+OpenQuatt die schakelaar alsnog rond de temperatuur die het systeem al heeft
+berekend:
+
+- het relais gaat aan zodra de gemeten aanvoertemperatuur meer dan 2,0 K onder
+  het gevraagde doel ligt;
+- het relais gaat weer uit zodra de aanvoer binnen 0,5 K van dat doel is
+  teruggekomen;
+- tussen die twee grenzen blijft de vorige stand staan, zodat het relais niet om
+  elke graad schakelt.
+
+Staat het relais uit en ligt de aanvoer tussen beide grenzen, dan blijft het
+uit: het is nog niet laag genoeg om opnieuw te starten. Dat is iets anders dan
+een bereikt doel, want de aanvoer kan nog 2,0 K onder het gevraagde doel
+liggen. De diagnosegegevens tonen dat apart als "boiler target control holding
+off inside target band", naast de doelregelstand van de R1-regeling. Zo blijft
+zichtbaar of het doel echt is bereikt of dat het relais alleen uit blijft
+omdat het binnen de band staat.
+
+Een bereikt doel is een gewone regelstop en volgt daarmee dezelfde
+anti-cyclingregel als het einde van een warmtevraag: een ingestelde minimale
+aantijd houdt het relais dan nog even aan. Dat geldt ook voor het vasthouden
+binnen de band. Alleen een beveiliging, het verlies van de eigenaar, of een
+doelregeling die niet kan worden beoordeeld schakelt meteen uit. De volgorde is
+dus: beveiliging, eigenaar, doelregeling, anti-cycling, temperatuurregeling.
+
+Dat is dezelfde opdracht die OpenTherm krijgt, alleen uitgevoerd via een
+binaire uitgang. De marge is bewust asymmetrisch: een binaire brander mag wat
+verder onder het doel wegzakken voordat hij opnieuw wordt ingeschakeld, en wordt
+weer gestopt zodra de temperatuur is teruggekomen.
+
+Alle bestaande beveiligingen blijven leidend. Bij te weinig flow, een te hoge
+of harde watertemperatuur, een ontbrekende hulpbron of een ongeldige aanvraag
+gaat het relais meteen uit, ook als het doel anders binnen bereik zou liggen.
+Dat geldt ook wanneer de R1-regeling zelf niet kan beoordelen wat er moet
+gebeuren, bijvoorbeeld bij een onbruikbare aanvoertemperatuur of een ongeldige
+hysterese. Zo'n onbeoordeelbare aanvraag schakelt dan direct uit, zonder de
+minimale aantijd.
+
+Een bereikt doel is geen storing. De aanvraag blijft zichtbaar en de ketelvraag
+blijft eigendom van de actieve stand, terwijl het relais uit blijft. In de
+diagnosegegevens zie je dat als "requested boiler target temperature satisfied",
+naast de doelregelstand van de R1-regeling. Zo is een bereikt doel te
+onderscheiden van een ketel die door een beveiliging wordt tegengehouden.
+
 `CM4` heeft een andere betekenis. Deze stand is alleen voor foutfallback.
 OpenQuatt gaat pas naar `CM4` wanneer:
 

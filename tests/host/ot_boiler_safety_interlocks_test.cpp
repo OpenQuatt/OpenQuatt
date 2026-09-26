@@ -14,12 +14,25 @@ oq_boiler::BoilerCommand active_command(uint32_t updated_at_ms) {
 }
 
 oq_boiler::ControllerInput safe_input(uint32_t now_ms) {
-  return oq_boiler::ControllerInput{
-      true,   true,  true,  true,   true,  true, true,
-      false,  false, false, true,   true,  true, oq_boiler::BOILER_START_THERMAL_SAFE,
-      true,   true,  false, now_ms, 15000, 0,    30000,
-      120000,
-  };
+  oq_boiler::ControllerInput input{};
+  input.source_present = true;
+  input.assist_enabled = true;
+  input.fallback_enabled = true;
+  input.supply_temperature_valid = true;
+  input.flow_valid = true;
+  input.flow_sufficient = true;
+  input.fallback_outputs_safe = true;
+  input.transport_available = true;
+  input.transport_settled = true;
+  input.command_rearmed = true;
+  input.boiler_start_thermal_state = oq_boiler::BOILER_START_THERMAL_SAFE;
+  input.target_required = true;
+  input.target_valid = true;
+  input.now_ms = now_ms;
+  input.command_max_age_ms = 15000;
+  input.min_on_ms = 30000;
+  input.min_off_ms = 120000;
+  return input;
 }
 
 void assert_decision(const oq_boiler::ControllerDecision& decision, bool output_active, bool force_off,
@@ -258,6 +271,15 @@ void test_fail_safe_priority() {
   input.target_required = false;
   decision = oq_boiler::evaluate(command, input);
   assert_decision(decision, true, false, oq_boiler::BLOCK_NONE);
+
+  // R1 has no TSet, but a heat request it regulates around still needs a usable
+  // target, so it reuses the same guard and the same immediate force-off.
+  input.relay_target.applicable = true;
+  input.relay_target.requested_active = true;
+  input.relay_target.state = oq_boiler::RELAY_TARGET_START;
+  decision = oq_boiler::evaluate(command, input);
+  assert_decision(decision, false, true, oq_boiler::BLOCK_TARGET_INVALID);
+  assert(decision.blocked);
 }
 
 void test_transport_selection_guard() {

@@ -324,6 +324,64 @@ CM3 is normal boiler assistance; CM4 is boiler-only fault fallback.
 Changing between those roles must not toggle the physical relay or the
 OpenTherm CH-enable output while the output safety guards remain unchanged.
 
+### 8.1 Transport-neutral command, target-fulfilling output
+
+The boiler command from `oq_boiler_dispatch` is transport-neutral: it carries
+`demand_present`, `heat_request`, `requested_power_w`, `target_temperature_c`,
+`source` and `updated_at_ms`. Power House, Heating Curve and cold start may
+request heat and a target; CM4 fallback and CM100 commissioning keep their own
+on/off semantics.
+
+`oq_boiler_runtime` owns validation, safety and transport. The selected
+transport decides how the requested target is realised:
+
+- OpenTherm transmits `CH enable` plus the target as TSet and lets the boiler
+  modulate.
+- R1 has no target channel, so `oq_boiler::evaluate_relay_target` in
+  `includes/boiler/oq_boiler_relay_target_logic.h` regulates the binary output
+  around that same target with a Schmitt trigger. `RelayTargetConfig` holds the
+  isolated policy (`oq_boiler_relay_target_start_delta_c`,
+  `oq_boiler_relay_target_stop_delta_c`); both must be positive with the start
+  delta strictly above the stop delta, otherwise the band collapses and the
+  relay would toggle around a single temperature.
+
+A satisfied target is a normal end of the heat request, so it resolves in this
+order: safety, ownership, target control, anti-cycling, then the output. A
+configured minimum on-time therefore still holds the relay, while a safety trip,
+a lost ownership or an unavailable target control withdraws heat immediately.
+The last one deliberately bypasses the minimum on-time: a target control that
+cannot judge the request, because the measurement or the hysteresis policy is
+unusable, must never keep an energised burner. That matches OpenTherm, where an
+invalid TSet forces CH off immediately. Such a command is a real blockade, so it
+reports `BLOCK_TARGET_INVALID` with `ControllerDecision::blocked` true.
+
+An off relay inside the band is not a satisfied target. With the relay off and
+the supply strictly between the two thresholds the relay stays off because the
+supply is not yet low enough to start it, while the requested target can still be
+up to `start_delta_c` below the supply. That is `RELAY_TARGET_HOLD_OFF` /
+`BLOCK_TARGET_HOLD_OFF`, not `RELAY_TARGET_SATISFIED`, so a later analysis can
+tell a genuinely reached target apart from a relay that is only held off inside
+the band. Both are normal control stops: neither is a fault and neither is a
+blocked boiler.
+
+`ControllerDecision::blocked` is deliberately false for a satisfied target and
+for a held-off relay, and the runtime must use that verdict rather than
+recomputing "blocked" from the output state. Otherwise a normal control stop
+would reappear as a `decision_blocked` event and as a "Boiler blocked" log line.
+For the same reason the web status model treats both reasons as idle rather than
+blocked.
+
+A heat request with an invalid target is refused for both transports. The
+`target_valid` guard covers a command that needs a target over OpenTherm and a
+command that R1 target control regulates around, so R1 reuses the existing
+`<= 90 C` and `> 0 C` validation instead of a second bound, and also withdraws
+heat immediately.
+
+Defrost is not a second heating strategy. `oq_supervisory_state_logic` and the
+boiler dispatch contain no defrost input, so an active defrost cannot promote
+CM2 to CM3 or start the boiler on its own; that stays with the normal deficit,
+HP-saturation and cold-start paths.
+
 ## 9. Hardware Profiles and Pin Strategy
 
 The Heatpump Controller Q-edition profile is defined in `openquatt/profiles/heatpump_controller_q.yaml`.

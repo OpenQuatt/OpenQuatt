@@ -15,6 +15,8 @@
 #   - Switch boiler relay via configured output pin (`oq_boiler_relay_pin`)
 #   - Validate command availability/freshness before transport activation
 #   - Keep R1 and OpenTherm mutually exclusive through an explicit selection
+#   - Regulate the R1 relay around the requested target temperature, because a
+#     binary boiler has no channel to receive the target the way OpenTherm does
 #   - Keep boiler role separate from output enable so CM3 <-> CM4 does not
 #     toggle R1 or the OpenTherm CH-enable output
 #   - Follow the shared water-temperature guardrail state from `oq_strategy_manager`
@@ -32,6 +34,7 @@
 #
 # Interaction with Control Modes:
 #   - CM3 -> boiler ON (unless the shared water-temperature guardrail blocks it)
+#     With R1 the relay then regulates around the requested target temperature
 #   - CM4 -> boiler ON only for confirmed and explicitly enabled HP-fault fallback
 #   - CM100 + boiler power test -> boiler ON only while the commissioning task requests it
 #   - CM0/CM1/CM2/CM98 → boiler OFF
@@ -75,6 +78,11 @@ globals:
     type: float
     restore_value: false
     initial_value: 'NAN'
+
+  - id: oq_boiler_relay_target_state_code
+    type: uint8_t
+    restore_value: false
+    initial_value: '0'
 
   - id: oq_boiler_output_last_change_ms
     type: uint32_t
@@ -213,6 +221,13 @@ binary_sensor:
     lambda: |-
       return id(oq_boiler_output_request);
 
+  - platform: template
+    id: boiler_command_heat_request
+    name: "Boiler command heat request"
+    internal: true
+    lambda: |-
+      return id(oq_boiler_command_heat_request);
+
 sensor:
   - platform: template
     id: boiler_command_target_temperature
@@ -310,6 +325,14 @@ text_sensor:
     lambda: |-
       return {oq_boiler::boiler_start_thermal_state_text(id(oq_boiler_start_thermal_state_code))};
 
+  - platform: template
+    id: boiler_relay_target_state
+    name: "Boiler relay target state"
+    internal: true
+    update_interval: 1s
+    lambda: |-
+      return {oq_boiler::relay_target_state_text(id(oq_boiler_relay_target_state_code))};
+
 # ----------------------------
 # MAIN LOOP
 # ----------------------------
@@ -318,6 +341,9 @@ interval:
     startup_delay: 4600ms
     then:
       - lambda: |-
+          // De laatste policy is de R1-doelregeling: die regelt het binaire
+          // relais om het gevraagde keteldoel heen. De OpenTherm-transport
+          // blijft het doel over de bus ontvangen en moduleert zelf.
           oq_boiler_runtime::runtime().tick({
               ${oq_otb_supported},
               ${oq_cm_min_flow_lph},
@@ -328,4 +354,6 @@ interval:
               (uint32_t) (${oq_boiler_otb_min_on_s} * 1000UL),
               (uint32_t) (${oq_boiler_otb_min_off_s} * 1000UL),
               (uint32_t) (${oq_otb_field_timeout_s} * 1000UL),
+              oq_boiler::RelayTargetConfig{${oq_boiler_relay_target_start_delta_c},
+                                           ${oq_boiler_relay_target_stop_delta_c}},
           });
