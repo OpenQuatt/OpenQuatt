@@ -405,6 +405,11 @@ class Runtime {
     return oq_input_source::numeric_sample(enabled, entity.has_state(), entity.state);
   }
 
+  template <typename T>
+  static oq_input_source::NumericSample room_setpoint_sample(bool enabled, const T& entity) {
+    return oq_input_source::room_setpoint_sample(enabled, entity.has_state(), entity.state);
+  }
+
   template <typename B, typename S>
   static bool ha_valid(const B& valid, const S& value) {
     return valid.has_state() && valid.state && value.has_state() && isfinite(value.state);
@@ -464,12 +469,14 @@ class Runtime {
   static oq_input_source::NumericSources room_sources(bool opentherm_fresh, bool setpoint) {
     oq_input_source::NumericSources sources;
     if (setpoint) {
-      sources.ha = sample(ha_valid(id(room_setpoint_valid_ha), id(thermostat_setpoint_ha)), id(thermostat_setpoint_ha));
-      sources.opentherm = sample(opentherm_fresh, id(ot_thermostat_room_setpoint));
-      sources.cic = sample(cic_feed_valid(), id(cic_room_setpoint));
-      sources.api = sample(api_valid(id(api_input_room_setpoint_valid), id(api_input_room_setpoint)),
-                           id(api_input_room_setpoint));
-      sources.mqtt = sample(mqtt_valid(id(mqtt_room_setpoint_valid), id(mqtt_room_setpoint)), id(mqtt_room_setpoint));
+      sources.ha = room_setpoint_sample(ha_valid(id(room_setpoint_valid_ha), id(thermostat_setpoint_ha)),
+                                        id(thermostat_setpoint_ha));
+      sources.opentherm = room_setpoint_sample(opentherm_fresh, id(ot_thermostat_room_setpoint));
+      sources.cic = room_setpoint_sample(cic_feed_valid(), id(cic_room_setpoint));
+      sources.api = room_setpoint_sample(api_valid(id(api_input_room_setpoint_valid), id(api_input_room_setpoint)),
+                                         id(api_input_room_setpoint));
+      sources.mqtt = room_setpoint_sample(mqtt_valid(id(mqtt_room_setpoint_valid), id(mqtt_room_setpoint)),
+                                          id(mqtt_room_setpoint));
     } else {
       sources.ha = sample(ha_valid(id(room_temp_valid_ha), id(thermostat_room_temp_ha)), id(thermostat_room_temp_ha));
       sources.opentherm = sample(opentherm_fresh, id(ot_thermostat_room_temp));

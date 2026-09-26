@@ -30,6 +30,17 @@ inline NumericSample numeric_sample(bool enabled, bool has_state, float value) {
   return {value, enabled && has_state && isfinite(value)};
 }
 
+constexpr float ROOM_SETPOINT_MIN_C = 5.0f;
+constexpr float ROOM_SETPOINT_MAX_C = 35.0f;
+
+inline bool room_setpoint_usable(float value) {
+  return isfinite(value) && value >= ROOM_SETPOINT_MIN_C && value <= ROOM_SETPOINT_MAX_C;
+}
+
+inline NumericSample room_setpoint_sample(bool enabled, bool has_state, float value) {
+  return {value, enabled && has_state && room_setpoint_usable(value)};
+}
+
 struct BinarySample {
   bool value = false;
   bool valid = false;

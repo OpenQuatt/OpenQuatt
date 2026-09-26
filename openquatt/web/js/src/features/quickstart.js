@@ -370,7 +370,10 @@ import { renderPerformanceTelemetryConsent, renderPerformanceTelemetryDisclosure
         : ["roomTempHa", "roomSetpointHa"];
     const roomTempValue = getEntityNumericValue(sourceValueKeys[0]);
     const roomSetpointValue = getEntityNumericValue(sourceValueKeys[1]);
-    const valuesAvailable = Number.isFinite(roomTempValue) && Number.isFinite(roomSetpointValue);
+    const roomSetpointUsable = Number.isFinite(roomSetpointValue)
+      && roomSetpointValue >= 5
+      && roomSetpointValue <= 35;
+    const valuesAvailable = Number.isFinite(roomTempValue) && roomSetpointUsable;
     const sourceHealthy = selectedSource === "OT thermostat"
       ? isEntityActive("otEnabled") && !isEntityActive("otLinkProblem") && valuesAvailable
       : selectedSource === "CIC"

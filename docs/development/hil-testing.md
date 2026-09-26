@@ -28,6 +28,10 @@ firmware uploadt vereist altijd `--apply`. Verder gelden deze grenzen:
   geforceerd in CM0; de oorspronkelijke override wordt pas na profielcontrole
   teruggezet;
 - de testfirmware moet het verwachte `HIL Test Profile` publiceren;
+- het testfirmware bouwt op `duo_hil.yaml` en publiceert dus `openquatt-test`,
+  nooit de productie-hostname `openquatt.local`;
+- het profiel `Thermostat room setpoint` van de simulator moet 0..40 °C
+  kunnen aannemen voordat `setpoint-validity` de afgewezen waarden injecteert;
 - de simulator moet vóór iedere mutatie exact contract
   `openquatt-modbus-opentherm-v2` publiceren;
 - een muterende run vereist een normale restoreconfig en OTA-adres;
@@ -48,6 +52,19 @@ De zelfstandige simulatorbron en testerhandleiding staan in
 [`OpenQuatt-Simulator`](https://github.com/OpenQuatt/OpenQuatt-Simulator). Gebruik
 voor dit contract minimaal simulatorrelease `v0.4.0`.
 
+## Testcontroller-identiteit
+
+Het HIL-testfirmware bouwt altijd op
+`configs/heatpump_controller_q/duo_hil.yaml`. Dat entrypoint pint
+`device_name` op `openquatt-test` en een eigen projectidentiteit, zodat een
+HIL-run nooit de productie-hostname `openquatt.local` claimt. Gebruik daarom
+`openquatt-test.local` als `--device` en `duo_hil.yaml` als `--restore-config`.
+
+De HIL-overlays includen daarom `duo_hil.yaml` en nooit rechtstreeks `duo.yaml`: dat
+entrypoint draagt de productie-identiteit en zou op een netwerk met een echte
+productiecontroller een mDNS-conflict veroorzaken. `configs/hil/` mag alleen
+naar `duo_hil.yaml` (of een shim daarop zoals `duo_wifi_hil.yaml`) verwijzen.
+
 ## Read-only rooktest
 
 Controleer bereikbaarheid, firmware, heap en ODU-protocoldiagnostiek zonder
@@ -55,7 +72,7 @@ iets te wijzigen:
 
 ```bash
 node scripts/hil/run-input-sources.mjs \
-  --controller http://openquatt.local \
+  --controller http://openquatt-test.local \
   --simulator http://SIMULATOR-IP \
   --stage smoke
 ```
@@ -79,11 +96,11 @@ Start de gebundelde run met:
 
 ```bash
 node scripts/hil/run-input-sources.mjs \
-  --controller http://openquatt.local \
+  --controller http://openquatt-test.local \
   --simulator http://SIMULATOR-IP \
-  --device openquatt.local \
+  --device openquatt-test.local \
   --test-config configs/hil/input_sources_fast_duo_wifi.yaml \
-  --restore-config configs/heatpump_controller_q/duo.yaml \
+  --restore-config configs/heatpump_controller_q/duo_hil.yaml \
   --stage all \
   --apply
 ```
@@ -99,13 +116,42 @@ De volgorde is vast:
 7. normale firmware via OTA terugplaatsen;
 8. instellingen na reboot opnieuw herstellen en verifiëren.
 
-Losse scenario's zijn beschikbaar als `inputs`, `enable-expiry`,
-`active-switch` en `reboot-reset`. Ook een losse muterende run herstelt altijd
-de normale firmware. De inputtest raakt alle zeven API-inputslots, inclusief
-het dauwpunt. Met `--min-heap-min-free` en `--min-largest-block` kan een
-vooraf afgesproken profielbudget als harde grens worden meegegeven. Zonder die
-opties rapporteert de runner de waarden, maar noemt hij een geheugentest niet
-automatisch releaseveilig.
+Losse scenario's zijn beschikbaar als `setpoint-validity`, `inputs`,
+`enable-expiry`, `active-switch` en `reboot-reset`. Ook een losse muterende run
+herstelt altijd de normale firmware. De inputtest raakt alle zeven
+API-inputslots, inclusief het dauwpunt. Met `--min-heap-min-free` en
+`--min-largest-block` kan een vooraf afgesproken profielbudget als harde grens
+worden meegegeven. Zonder die opties rapporteert de runner de waarden, maar
+noemt hij een geheugentest niet automatisch releaseveilig.
+
+## OpenTherm kamer-setpoint: `setpoint-validity`
+
+`--stage setpoint-validity` test end-to-end dat een semantisch onbruikbaar
+OpenTherm `TrSet` wel transportmatig binnenkomt en vers blijft, maar niet als
+`Room Setpoint (Selected)` wordt doorgegeven. De productievaliditeit is
+5..35 °C; de grenswaarden zelf worden geaccepteerd.
+
+De stage gebruikt de echte OpenTherm-thermostaatsimulator en controleert:
+
+- basislijn `TrSet = 21 °C` geeft `Room Setpoint (Selected) = 21 °C`;
+- `Room Temperature = 0 °C` blijft numeriek geldig, want de 5..35 °C-grens
+  geldt alleen voor het setpoint;
+- `TrSet = 0.0 °C` en `4.5 °C` komen binnen terwijl de OT-link gezond blijft,
+  maar `Room Setpoint (Selected)` wordt unavailable;
+- `TrSet = 5.0 °C` en `35.0 °C` worden geaccepteerd en `35.5 °C` afgewezen;
+- herstel naar `21.0 °C` werkt direct.
+
+Voorwaarde: de simulator moet `Thermostat room setpoint` over 0..40 °C kunnen
+zetten. Dat is ruimer dan het productiecontract en komt uit
+[OpenQuatt-Simulator#2](https://github.com/OpenQuatt/OpenQuatt-Simulator/pull/2).
+Controleer vooraf de actieve range:
+
+```bash
+curl -fsS 'http://SIMULATOR-IP/number/Thermostat%20room%20setpoint?detail=all'
+```
+
+Staat er `min_value 5.0` en `max_value 35.0`, dan kan deze stage de afgewezen
+waarden niet injeceren. Flash dan een simulatorversie met PR #2 of nieuwer.
 
 ## Afbreken en herstellen
 
@@ -126,10 +172,10 @@ Herstel dan met exact dezelfde doelen:
 
 ```bash
 node scripts/hil/run-input-sources.mjs \
-  --controller http://openquatt.local \
+  --controller http://openquatt-test.local \
   --simulator http://SIMULATOR-IP \
-  --device openquatt.local \
-  --restore-config configs/heatpump_controller_q/duo.yaml \
+  --device openquatt-test.local \
+  --restore-config configs/heatpump_controller_q/duo_hil.yaml \
   --restore-snapshot .tmp/hil/RUN/snapshot.json \
   --apply
 ```

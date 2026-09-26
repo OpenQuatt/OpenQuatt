@@ -8,8 +8,10 @@ API_YAML = (ROOT / "openquatt/oq_api_ingress.yaml").read_text()
 HA_YAML = (ROOT / "openquatt/oq_ha_inputs.yaml").read_text()
 SUBSTITUTIONS_YAML = (ROOT / "openquatt/oq_substitutions_common.yaml").read_text()
 SOURCE_RUNTIME = (ROOT / "openquatt/includes/control/oq_sensor_source_runtime.h").read_text()
+HEAT_INTENT_RUNTIME = (ROOT / "openquatt/includes/control/oq_heat_intent_runtime.h").read_text()
 API_RUNTIME = (ROOT / "openquatt/includes/control/oq_api_ingress_runtime.h").read_text()
 SOURCE_LOGIC = (ROOT / "openquatt/includes/control/oq_input_source_logic.h").read_text()
+QUICKSTART_JS = (ROOT / "openquatt/web/js/src/features/quickstart.js").read_text()
 
 
 def entity_block(source: str, entity_id: str) -> str:
@@ -100,6 +102,13 @@ class InputSourceRuntimeContractTest(unittest.TestCase):
         self.assertIn("oq_input_source::select_outside", SOURCE_RUNTIME)
         self.assertIn("oq_input_source::select_direct", SOURCE_RUNTIME)
 
+    def test_room_setpoint_validity_contract_is_shared(self) -> None:
+        self.assertIn("ROOM_SETPOINT_MIN_C = 5.0f", SOURCE_LOGIC)
+        self.assertIn("ROOM_SETPOINT_MAX_C = 35.0f", SOURCE_LOGIC)
+        self.assertIn("room_setpoint_sample", SOURCE_RUNTIME)
+        self.assertIn("room_setpoint_usable", HEAT_INTENT_RUNTIME)
+        self.assertIn("roomSetpointUsable", QUICKSTART_JS)
+
     def test_safety_and_upgrade_contracts_remain_explicit(self) -> None:
         self.assertEqual(API_YAML.count("restore_mode: ALWAYS_OFF"), 2)
         self.assertIn("oq_nvs_cleanup::erase_entity_preferences(", API_YAML)
@@ -174,6 +183,7 @@ class InputSourceRuntimeContractTest(unittest.TestCase):
             "test_freshness_accepts_timestamp_zero_and_rollover",
             "test_hold_is_bound_to_selected_source",
             "test_non_finite_samples_fail_closed",
+            "test_room_setpoint_contract_is_signal_specific",
             "test_outside_lowest_valid_selection",
             "test_enable_source_selection",
             "test_flow_source_routes",
