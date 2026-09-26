@@ -41,7 +41,82 @@ import {
   heatingPower,
   v2PowerInput,
 } from './scenarios/v2-performance.mjs';
+import { runInputSourceScenarios } from './scenarios/input-sources.mjs';
 import { waitNumber } from '../../scripts/hil/wait.mjs';
+
+test('the setpoint-validity stage receives the simulator client it drives', async () => {
+  // Regression guard for a stage that was registered and documented but could
+  // never run: runInputSourceScenarios forwarded `simulator` to
+  // testRoomSetpointValidity without destructuring it, so both
+  // --stage setpoint-validity and --stage all died with a ReferenceError
+  // before a single assertion ran. Identifier greps cannot catch that, so
+  // this drives the real stage with stub clients and asserts the injected
+  // values actually reach the simulator.
+  const setpoints = [];
+  const temperatures = [];
+  const selects = [];
+  const switches = [];
+  const rejectedReads = [];
+  // Mirrors what the firmware reports back: raw OpenTherm keeps every value,
+  // while Room Setpoint (Selected) rejects anything outside 5..35 degrees.
+  const usable = (value) => value >= 5 && value <= 35;
+  let setpoint = 21;
+  let temperature = 20;
+  const controller = {
+    setSelect: async (name, option) => { selects.push([name, option]); },
+    setSwitch: async (name, value) => { switches.push([name, value]); },
+    value: async (domain, name) => {
+      if (domain !== 'sensor') {
+        if (name === 'OT - Link Problem') return false;
+        return null;
+      }
+      if (name === 'Room Setpoint (Selected)' && !usable(setpoint)) {
+        rejectedReads.push(setpoint);
+        return null;
+      }
+      if (name === 'OT - Room Setpoint') return setpoint;
+      if (name === 'OT - Room Temperature') return temperature;
+      if (name === 'Room Setpoint (Selected)') return setpoint;
+      if (name === 'Room Temperature (Selected)') return temperature;
+      return null;
+    },
+  };
+  const simulator = {
+    setNumber: async (name, value) => {
+      if (name === 'Thermostat room setpoint') {
+        setpoint = value;
+        setpoints.push(value);
+      } else if (name === 'Thermostat room temperature') {
+        temperature = value;
+        temperatures.push(value);
+      } else {
+        throw new Error(`unexpected simulator number: ${name}`);
+      }
+    },
+  };
+
+  await runInputSourceScenarios({
+    stage: 'setpoint-validity',
+    controller,
+    simulator,
+    interrupted: () => false,
+    waitForProfile: async () => 'input-sources-fast-v1',
+  });
+
+  assert.deepEqual(setpoints, [21, 0, 4.5, 5, 35, 35.5, 21]);
+  assert.deepEqual(temperatures, [20, 0, 20]);
+  assert.ok(
+    switches.some(([name, value]) => name === 'OpenTherm Enabled' && value === true),
+    'the stage must enable OpenTherm before driving TrSet',
+  );
+  assert.ok(
+    selects.some(([name, option]) => name === 'Room Setpoint Source' && option === 'OT thermostat'),
+    'the stage must select the OT thermostat setpoint source',
+  );
+  // Proves the rejection assertions really ran against out-of-range values
+  // instead of the stage returning early.
+  assert.deepEqual([...new Set(rejectedReads)].sort((a, b) => a - b), [0, 4.5, 35.5]);
+});
 
 test('target lock excludes runs and recovery, reclaims stale owner, and releases by token', async (context) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'openquatt-hil-lock-'));

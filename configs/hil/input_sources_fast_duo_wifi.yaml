@@ -3,6 +3,13 @@
 # ==============================================================================
 # Shortens only the timers needed by the input/source acceptance scenario.
 # The normal unified Q Duo entrypoint remains the complete firmware base.
+#
+# This overlay builds on the HCQ desktop HIL testcontroller entrypoint, not on
+# the production duo.yaml entrypoint. duo_hil.yaml pins device_name
+# "openquatt-test" and a distinct project identity, so flashing this overlay
+# can never claim the production mDNS hostname "openquatt.local". Use
+# configs/heatpump_controller_q/duo_hil.yaml as --restore-config and
+# openquatt-test.local as --device.
 
 substitutions:
   api_input_cooling_dew_point_stale_s: "45"
@@ -27,7 +34,7 @@ substitutions:
   oq_hp_min_off_s: "10"
 
 packages:
-  production_q_duo: !include ../heatpump_controller_q/duo.yaml
+  hil_testcontroller_q_duo: !include ../heatpump_controller_q/duo_hil.yaml
 
 text_sensor:
   - platform: template
