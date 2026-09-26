@@ -116,16 +116,18 @@ class HilHarnessContractTest(unittest.TestCase):
         self.assertNotIn("issue_667_v2_performance_duo_wifi.yaml", TARGETS)
 
     def test_hil_scenarios_are_domain_oriented_and_selective(self):
-        self.assertIn("HIL is geen archief van issues of PR's", SCENARIO_POLICY)
-        self.assertIn("host- of simulator-only test", SCENARIO_POLICY)
-        self.assertIn("rooktest plus de relevante", SCENARIO_POLICY)
-        self.assertIn("releasekwalificatie", SCENARIO_POLICY)
-        self.assertIn("## Onderhoudsmodel", DOCS)
-        self.assertIn("niet rond issues of pull requests", DOCS)
-        self.assertIn("Het bestaan van een HIL-case betekent nadrukkelijk niet", DOCS)
+        normalized_policy = " ".join(SCENARIO_POLICY.split())
+        normalized_docs = " ".join(DOCS.split())
+        self.assertIn("HIL is geen archief van issues of PR's", normalized_policy)
+        self.assertIn("host- of simulator-only test", normalized_policy)
+        self.assertIn("rooktest plus de relevante", normalized_policy)
+        self.assertIn("releasekwalificatie", normalized_policy)
+        self.assertIn("## Onderhoudsmodel", normalized_docs)
+        self.assertIn("niet rond issues of pull requests", normalized_docs)
+        self.assertIn("Het bestaan van een HIL-case betekent nadrukkelijk niet", normalized_docs)
 
         scenario_files = (ROOT / "tests/hil/scenarios").glob("*.mjs")
-        forbidden = re.compile(r"^(?:issue|pr)[-_]?\\d+", re.IGNORECASE)
+        forbidden = re.compile(r"^(?:issue|pr)[-_]?\d+", re.IGNORECASE)
         for scenario_file in scenario_files:
             self.assertIsNone(
                 forbidden.match(scenario_file.stem),
