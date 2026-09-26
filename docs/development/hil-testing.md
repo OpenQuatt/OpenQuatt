@@ -41,6 +41,10 @@ hij bij iedere wijziging op hardware moet worden uitgevoerd.
 De lokale regels voor scenariostructuur en review staan ook in
 [`tests/hil/scenarios/README.md`](../../tests/hil/scenarios/README.md).
 
+De [regressie-inventarisatie](hil-regression-inventory.md) koppelt eerdere
+hardwarebewijzen aan bestaande lagere tests en een selectieve kernset van
+voorgestelde domeincontracts. Dit plan is geen hardware-PASS.
+
 ## Veiligheidscontract
 
 De runner is standaard read-only. Een scenario dat instellingen wijzigt of
