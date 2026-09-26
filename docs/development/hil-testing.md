@@ -5,6 +5,42 @@ bewijzen dat controller, ODU, OpenTherm en timing samen veilig blijven. Een
 volledige HIL-run is bedoeld voor gebundelde control-wijzigingen en
 releasekandidaten, niet voor iedere kleine pull request.
 
+## Onderhoudsmodel
+
+HIL is de kleinste testlaag in OpenQuatt. Nieuwe regressies horen standaard in
+host- of integratietests. Een hardwaretest wordt alleen toegevoegd wanneer echte
+controller-, ODU-, OpenTherm-, reboot-, timing- of persistentie-eigenschappen
+onderdeel zijn van het contract dat bewezen moet worden.
+
+HIL-scenario's worden georganiseerd rond blijvende systeemcontracten, niet rond
+issues of pull requests. Gebruik inhoudelijke domeinnamen zoals
+`input-sources`, `communications`, `duo`, `defrost`, `boiler` en
+`v2-performance`. Een issue of PR mag in commentaar of documentatie als
+herkomst worden genoemd, maar wordt geen blijvende scenarionaam.
+
+Voeg een nieuwe HIL-case alleen toe wanneer alle onderstaande punten gelden:
+
+1. een host- of simulator-only test bewijst het relevante gedrag onvoldoende;
+2. de case bewaakt een blijvend systeemcontract en niet alleen de historische
+   vorm van één bug;
+3. de setup, assertions en cleanup zijn deterministisch en automatisch;
+4. herstel na mislukking loopt via de gedeelde snapshot/recovery-infrastructuur;
+5. een bestaande case kan niet eenvoudiger worden uitgebreid om hetzelfde
+   contract af te dekken.
+
+Een scenariofile mag meerdere nauw verwante cases bevatten. Maak dus liever één
+`defrost.mjs` met grens-, overlap- en completion-cases dan losse scripts per
+incident. Gedeelde lifecycle-code hoort in `scripts/hil/`; scenariofiles bevatten
+alleen domeinspecifieke voorbereiding en assertions.
+
+Hardware-HIL is bovendien selectief. Een pull request draait de relevante stage(s)
+plus een rooktest; `--stage all` is bedoeld voor brede control-wijzigingen en
+releasekwalificatie. Het bestaan van een HIL-case betekent nadrukkelijk niet dat
+hij bij iedere wijziging op hardware moet worden uitgevoerd.
+
+De lokale regels voor scenariostructuur en review staan ook in
+[`tests/hil/scenarios/README.md`](../../tests/hil/scenarios/README.md).
+
 ## Veiligheidscontract
 
 De runner is standaard read-only. Een scenario dat instellingen wijzigt of
