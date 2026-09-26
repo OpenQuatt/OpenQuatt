@@ -16,6 +16,13 @@ const MODE_OPTIONS = [
   [3, "oduSettings.mode3"],
 ];
 
+// Match the backend capability check; unknown variants are never writable.
+export function isOduSettingsModeSupported(mode, variant) {
+  if (!Number.isInteger(mode) || mode < 0 || mode > 3) return false;
+  if (variant === 1) return mode <= 2;
+  return variant === 2 || variant === 3 || variant === 4;
+}
+
 function modeDescription(mode) {
   if (Number(mode) === 1) {
     return t("oduSettings.modeDesc1");
@@ -29,8 +36,11 @@ function modeDescription(mode) {
   return t("oduSettings.modeUnknown");
 }
 
-function settingsSummary(settings) {
+function settingsSummary(settings, variant) {
   const mode = Number(settings?.mode);
+  if (!isOduSettingsModeSupported(mode, variant)) {
+    return t("oduSettings.summaryOther", { mode: Number.isInteger(mode) ? formatNumber(mode, { maximumFractionDigits: 0 }) : "—" });
+  }
   if (mode === 1) {
     return t("oduSettings.summaryMode1", { start: settings?.startTemperatureC ?? "—", stop: settings?.stopDeltaC ?? "—" });
   }
@@ -224,11 +234,11 @@ function parseDraftInteger(value) {
   return Number.isInteger(parsed) ? parsed : null;
 }
 
-function validDraft(draft) {
+function validDraft(draft, variant) {
   const mode = parseDraftInteger(draft.mode);
   const startTemperatureC = parseDraftInteger(draft.startTemperatureC);
   const stopDeltaC = parseDraftInteger(draft.stopDeltaC);
-  return mode !== null && mode >= 1 && mode <= 3
+  return mode !== null && mode >= 1 && isOduSettingsModeSupported(mode, variant)
     && startTemperatureC !== null && startTemperatureC >= -30 && startTemperatureC <= 30
     && stopDeltaC !== null && stopDeltaC >= 0 && stopDeltaC <= 30;
 }
@@ -238,13 +248,15 @@ export function getOduSettingsEditorModel(hp) {
   const draft = getDraft(hp);
   const busy = Boolean(status?.busy || String(state.busyAction || "").startsWith(`odu-settings-hp${hp}-`));
   const enabled = Boolean(status?.available && status.identityReady && !status.unsupported && !busy);
-  const mode = Number(draft.mode);
+  const mode = parseDraftInteger(draft.mode);
+  const modeSupported = isOduSettingsModeSupported(mode, status?.variant);
   return {
     status, draft, busy, enabled,
-    saveDisabled: !enabled || !validDraft(draft),
-    temperatureSettingsVisible: mode === 1 || mode === 3,
-    stopDeltaVisible: mode === 1,
-    modeCopy: modeDescription(draft.mode),
+    modeOptions: MODE_OPTIONS.filter(([value]) => isOduSettingsModeSupported(value, status?.variant)),
+    saveDisabled: !enabled || !validDraft(draft, status?.variant),
+    temperatureSettingsVisible: modeSupported && (mode === 1 || mode === 3),
+    stopDeltaVisible: modeSupported && mode === 1,
+    modeCopy: modeSupported ? modeDescription(draft.mode) : t("oduSettings.modeUnknown"),
   };
 }
 
@@ -259,7 +271,7 @@ function assertOperationCompleted(status, action) {
 
 async function runOperation(hp, action) {
   const draft = getDraft(hp);
-  if (action === "save" && !validDraft(draft)) {
+  if (action === "save" && !validDraft(draft, getOduSettingsStatus(hp)?.variant)) {
     state.oduSettingsError = t("oduSettings.invalidDraft", { hp });
     render();
     return;
@@ -320,6 +332,10 @@ function statusPresentation(status) {
     : [t("oduSettings.statusLoading"), ""];
   const code = String(status?.status || "").toUpperCase();
   if (status?.writeUncertain || code === "VERIFY_FAILED") return [t("oduSettings.statusUncertain"), "warning"];
+  if (code === "INVALID_SETTINGS" || (status.identityReady && status.loaded
+      && !isOduSettingsModeSupported(status.actual?.mode, status.variant))) {
+    return [t("oduSettings.errInvalid"), "warning"];
+  }
   if (code === "IN_SYNC") return [t("oduSettings.statusInSync"), "success"];
   if (code === "PENDING_SAFE") return [t("oduSettings.statusPending"), "warning"];
   if (code === "APPLYING" || status?.busy) return [t("oduSettings.statusApplying"), ""];
@@ -350,8 +366,8 @@ function renderPanel(hp) {
     body: status?.loaded || status?.profileAvailable ? `
         <div class="oq-settings-odu-fields">
           <label><span>${escapeHtml(t("oduSettings.controlLabel"))}</span><select class="oq-helper-select" data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="mode" ${!enabled ? "disabled" : ""}>
-            ${MODE_OPTIONS.some(([value]) => value === Number(draft.mode)) ? "" : `<option value="" selected disabled>${escapeHtml(t("oduSettings.chooseControl"))}</option>`}
-            ${MODE_OPTIONS.map(([value, labelKey]) => `<option value="${value}"${Number(draft.mode) === value ? " selected" : ""}>${value} · ${escapeHtml(t(labelKey))}</option>`).join("")}
+            ${model.modeOptions.some(([value]) => value === Number(draft.mode)) ? "" : `<option value="" selected disabled>${escapeHtml(t("oduSettings.chooseControl"))}</option>`}
+            ${model.modeOptions.map(([value, labelKey]) => `<option value="${value}"${Number(draft.mode) === value ? " selected" : ""}>${value} · ${escapeHtml(t(labelKey))}</option>`).join("")}
           </select></label>
           <p class="oq-settings-odu-mode-description" data-oq-odu-mode-description aria-live="polite">${escapeHtml(model.modeCopy)}</p>
           <div class="oq-settings-odu-temperature-settings" data-oq-odu-temperature-settings${model.temperatureSettingsVisible ? "" : " hidden"}>
@@ -365,12 +381,12 @@ function renderPanel(hp) {
               value: draft.stopDeltaC, meta: { min: 0, max: 30, step: 1 }, disabled: !enabled,
               controlTag: "span", controlClass: "oq-helper-control oq-helper-control--suffix",
               inputAttributes: `data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="stopDeltaC"`,
-              unitMarkup: '<span class="oq-helper-unit-chip">°C</span>',
+              unitMarkup: '<span class="oq-helper-unit-chip">K</span>',
             })}</label>
           </div>
         </div>
         <label class="oq-settings-odu-auto"><input type="checkbox" data-oq-odu-settings-hp="${hp}" data-oq-odu-settings-field="autoReapply" ${draft.autoReapply ? "checked" : ""} ${!enabled ? "disabled" : ""}><span><strong>${escapeHtml(t("oduSettings.reapplyTitle"))}</strong><small>${escapeHtml(t("oduSettings.reapplyCopy"))}</small></span></label>
-        ${settingsSummary(status?.defaults) === settingsSummary(status?.actual) ? "" : `<p class="oq-settings-odu-runtime-validation">${escapeHtml(t("oduSettings.validationDefault", { defaults: settingsSummary(status?.defaults), actual: settingsSummary(status?.actual) }))}</p>`}
+        ${settingsSummary(status?.defaults, status?.variant) === settingsSummary(status?.actual, status?.variant) ? "" : `<p class="oq-settings-odu-runtime-validation">${escapeHtml(t("oduSettings.validationDefault", { defaults: settingsSummary(status?.defaults, status?.variant), actual: settingsSummary(status?.actual, status?.variant) }))}</p>`}
         <div class="oq-helper-modal-actions">${renderOduEditorAction(hp, "odu-settings-save", busy ? t("common.busy") : t("oduSettings.saveApply"), model.saveDisabled, "primary")}</div>
       ` : `<p class="oq-settings-odu-runtime-validation">${escapeHtml(t("oduSettings.loadFirst"))}</p>`,
   });
@@ -402,7 +418,8 @@ export async function getOduSettingsBackupProfiles() {
   const profiles = {};
   const statuses = await Promise.all(getOduSettingsHpIndexes().map(fetchStatus));
   statuses.forEach((status) => {
-    if (!status.profileAvailable || !status.identityMatches) return;
+    if (!status.profileAvailable || !status.identityMatches
+        || !isOduSettingsModeSupported(status.desired.mode, status.variant)) return;
     profiles[`hp${status.hp}`] = {
       variant: status.variant,
       control_board_item: status.controlBoardItem,
@@ -430,6 +447,10 @@ export async function restoreOduSettingsBackupProfiles(profiles = {}) {
       if (!current.identityReady || current.variant !== profile.variant
           || current.controlBoardItem !== profile.control_board_item) {
         results.push({ key, applied: false, reason: t("oduSettings.backupMismatch") });
+        continue;
+      }
+      if (!isOduSettingsModeSupported(profile.mode, current.variant)) {
+        results.push({ key, applied: false, reason: t("oduSettings.errInvalid") });
         continue;
       }
       let status = await postAction(hp, "save", {

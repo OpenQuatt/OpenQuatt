@@ -76,6 +76,26 @@ void test_non_finite_samples_fail_closed() {
   assert(!numeric_sample(false, true, 20.0f).valid);
 }
 
+void test_room_setpoint_contract_is_signal_specific() {
+  assert(!room_setpoint_usable(NAN));
+  assert(!room_setpoint_usable(INFINITY));
+  assert(!room_setpoint_usable(0.0f));
+  assert(!room_setpoint_usable(4.9f));
+  assert(room_setpoint_usable(5.0f));
+  assert(room_setpoint_usable(20.0f));
+  assert(room_setpoint_usable(35.0f));
+  assert(!room_setpoint_usable(35.1f));
+
+  assert(!room_setpoint_sample(true, true, 0.0f).valid);
+  assert(room_setpoint_sample(true, true, 20.0f).valid);
+  assert(!room_setpoint_sample(false, true, 20.0f).valid);
+
+  // Zero remains a valid generic numeric value. The restriction belongs only
+  // to Room Setpoint, so flow, power and other zero-valued signals are not
+  // accidentally filtered by the shared input-source layer.
+  assert(numeric_sample(true, true, 0.0f).valid);
+}
+
 void test_outside_lowest_valid_selection() {
   NumericSources sources;
   sources.ha = numeric_sample(true, true, 8.0f);
@@ -291,6 +311,7 @@ int main() {
   test_freshness_accepts_timestamp_zero_and_rollover();
   test_hold_is_bound_to_selected_source();
   test_non_finite_samples_fail_closed();
+  test_room_setpoint_contract_is_signal_specific();
   test_outside_lowest_valid_selection();
   test_enable_source_selection();
   test_flow_source_routes();

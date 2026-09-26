@@ -397,6 +397,8 @@
     ["boilerBlockReason", DOMAIN_TEXT_SENSOR, "Boiler block reason"],
     ["boilerStartThermalGuard", DOMAIN_TEXT_SENSOR, "Boiler warm-start guard"],
     ["boilerStartThermalSafeCeiling", DOMAIN_SENSOR, "Boiler warm-start safe ceiling"],
+    ["boilerCommandHeatRequest", DOMAIN_BINARY_SENSOR, "Boiler command heat request"],
+    ["boilerRelayTargetState", DOMAIN_TEXT_SENSOR, "Boiler relay target state"],
     ["boilerHeatPower", DOMAIN_SENSOR, "Boiler Heat Power"],
     ["auxRelayFunction", DOMAIN_SELECT, "Aux Relay Function"],
     ["auxWaitForSupplyTemp", DOMAIN_SWITCH, "Aux Relay Wait For Supply Temp"],
@@ -1618,6 +1620,10 @@
     "hp2PumpIpwmCommand",
     "hp1PumpIpwmFeedback",
     "hp2PumpIpwmFeedback",
+    "hp1FourWay",
+    "hp2FourWay",
+    "boilerCommandHeatRequest",
+    "boilerRelayTargetState",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestManifestUrl", "installFirmwareTestManifest"];

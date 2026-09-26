@@ -37,6 +37,7 @@ const SIMULATOR_CONTRACT = 'openquatt-modbus-opentherm-v2';
 const HIL_PREFERENCE_SETTLE_MS = 2000;
 const VALID_STAGES = new Set([
   'smoke',
+  'setpoint-validity',
   'inputs',
   'enable-expiry',
   'active-switch',
@@ -50,19 +51,22 @@ function usage() {
 
 Mutating run:
   node scripts/hil/run-input-sources.mjs --controller URL --simulator URL \\
-    --device HOST --test-config configs/hil/input_sources_fast_duo_wifi.yaml \\
-    --restore-config configs/heatpump_controller_q/duo_wifi.yaml --stage all --apply
+    --device openquatt-test.local \\
+    --test-config configs/hil/input_sources_fast_duo_wifi.yaml \\
+    --restore-config configs/heatpump_controller_q/duo_hil.yaml \\
+    --stage all --apply
 
 Recovery:
   node scripts/hil/run-input-sources.mjs --controller URL --simulator URL \\
-    --device HOST --restore-config configs/heatpump_controller_q/duo_wifi.yaml \\
+    --device openquatt-test.local \\
+    --restore-config configs/heatpump_controller_q/duo_hil.yaml \\
     --restore-snapshot .tmp/hil/<run>/snapshot.json --apply
 
 Options:
   --controller URL          Controller web-server URL; no default.
   --simulator URL           ODU simulator web-server URL; no default.
-  --stage NAME              smoke, inputs, enable-expiry, active-switch,
-                            reboot-reset, or all (default: smoke).
+  --stage NAME              smoke, setpoint-validity, inputs, enable-expiry,
+                            active-switch, reboot-reset, or all (default: smoke).
   --apply                   Explicitly allow REST writes and OTA uploads.
   --device HOST             ESPHome OTA device address.
   --test-config PATH        Optional test profile to compile and upload first.

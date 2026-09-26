@@ -49,6 +49,124 @@ export async function prepareInputSourceScenario(controller, simulator, interrup
   });
 }
 
+async function testRoomSetpointValidity(controller, simulator, interrupted) {
+  console.log('TEST OpenTherm room setpoint semantic validity and recovery');
+  await controller.setSwitch('OpenTherm Enabled', true);
+  await controller.setSelect('Room Temperature Source', 'OT thermostat');
+  await controller.setSelect('Room Setpoint Source', 'OT thermostat');
+  await simulator.setNumber('Thermostat room temperature', 20);
+  await simulator.setNumber('Thermostat room setpoint', 21);
+
+  await waitNumber(
+    controller,
+    'OT - Room Setpoint',
+    (value) => closeEnough(value, 21),
+    'raw OT room setpoint baseline',
+    { timeoutMs: 40000, interrupted },
+  );
+  await waitNumber(
+    controller,
+    'Room Setpoint (Selected)',
+    (value) => closeEnough(value, 21),
+    'selected OT room setpoint baseline',
+    { timeoutMs: 40000, interrupted },
+  );
+
+  // Zero must remain a valid generic room-temperature value. The 5..35 °C
+  // restriction belongs only to Room Setpoint.
+  await simulator.setNumber('Thermostat room temperature', 0);
+  await waitNumber(
+    controller,
+    'OT - Room Temperature',
+    (value) => closeEnough(value, 0),
+    'raw OT room temperature zero',
+    { timeoutMs: 40000, interrupted },
+  );
+  await waitNumber(
+    controller,
+    'Room Temperature (Selected)',
+    (value) => closeEnough(value, 0),
+    'selected room temperature zero remains valid',
+    { timeoutMs: 40000, interrupted },
+  );
+  await simulator.setNumber('Thermostat room temperature', 20);
+  await waitNumber(
+    controller,
+    'Room Temperature (Selected)',
+    (value) => closeEnough(value, 20),
+    'selected room temperature recovered',
+    { timeoutMs: 40000, interrupted },
+  );
+
+  for (const invalidSetpoint of [0, 4.5]) {
+    await simulator.setNumber('Thermostat room setpoint', invalidSetpoint);
+    await waitNumber(
+      controller,
+      'OT - Room Setpoint',
+      (value) => closeEnough(value, invalidSetpoint),
+      `raw OT room setpoint ${invalidSetpoint} received`,
+      { timeoutMs: 40000, interrupted },
+    );
+    await waitValue(
+      controller,
+      'binary_sensor',
+      'OT - Link Problem',
+      false,
+      `OT link remains healthy at room setpoint ${invalidSetpoint}`,
+      { timeoutMs: 40000, interrupted },
+    );
+    await waitUnavailable(
+      controller,
+      'Room Setpoint (Selected)',
+      `selected room setpoint rejects ${invalidSetpoint}`,
+      { timeoutMs: 40000, interrupted },
+    );
+  }
+
+  for (const validSetpoint of [5, 35]) {
+    await simulator.setNumber('Thermostat room setpoint', validSetpoint);
+    await waitNumber(
+      controller,
+      'OT - Room Setpoint',
+      (value) => closeEnough(value, validSetpoint),
+      `raw OT room setpoint boundary ${validSetpoint}`,
+      { timeoutMs: 40000, interrupted },
+    );
+    await waitNumber(
+      controller,
+      'Room Setpoint (Selected)',
+      (value) => closeEnough(value, validSetpoint),
+      `selected room setpoint accepts boundary ${validSetpoint}`,
+      { timeoutMs: 40000, interrupted },
+    );
+  }
+
+  await simulator.setNumber('Thermostat room setpoint', 35.5);
+  await waitNumber(
+    controller,
+    'OT - Room Setpoint',
+    (value) => closeEnough(value, 35.5),
+    'raw OT room setpoint above upper boundary',
+    { timeoutMs: 40000, interrupted },
+  );
+  await waitUnavailable(
+    controller,
+    'Room Setpoint (Selected)',
+    'selected room setpoint rejects 35.5',
+    { timeoutMs: 40000, interrupted },
+  );
+
+  await simulator.setNumber('Thermostat room setpoint', 21);
+  await waitNumber(
+    controller,
+    'Room Setpoint (Selected)',
+    (value) => closeEnough(value, 21),
+    'selected room setpoint recovers after invalid value',
+    { timeoutMs: 40000, interrupted },
+  );
+  console.log('PASS OpenTherm room setpoint semantic validity and recovery');
+}
+
 async function testNumericIngress(controller, interrupted) {
   console.log('TEST numeric API ingress, expiry, recovery, and source-bound hold');
   await controller.setSelect('External Heat Demand Source', 'API input');
@@ -283,9 +401,13 @@ async function testRebootReset(controller, waitForProfile, interrupted) {
 export async function runInputSourceScenarios({
   stage,
   controller,
+  simulator,
   interrupted,
   waitForProfile,
 }) {
+  if (stage === 'all' || stage === 'setpoint-validity') {
+    await testRoomSetpointValidity(controller, simulator, interrupted);
+  }
   if (stage === 'all' || stage === 'inputs') {
     await testNumericIngress(controller, interrupted);
   }

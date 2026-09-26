@@ -111,6 +111,30 @@ jobs:
         if: ${{ matrix.target.id == 'heatpump_controller_q_duo' }}
         run: esphome config configs/heatpump_controller_q/duo_hil.yaml
 
+      - name: Validate HIL test overlays
+        if: ${{ matrix.target.id == 'heatpump_controller_q_duo' }}
+        run: |
+          esphome config configs/hil/input_sources_fast_duo_wifi.yaml
+          esphome config configs/hil/issue_667_v2_performance_duo_wifi.yaml
+
+      - name: Assert HIL overlays keep the testcontroller identity
+        if: ${{ matrix.target.id == 'heatpump_controller_q_duo' }}
+        run: |
+          set -euo pipefail
+          for overlay in configs/hil/input_sources_fast_duo_wifi.yaml \
+                          configs/hil/issue_667_v2_performance_duo_wifi.yaml; do
+            # duo.yaml carries the production device_name "openquatt"; an
+            # overlay that includes it would republish openquatt.local and
+            # collide with a real production controller.
+            if grep -q 'heatpump_controller_q/duo\.yaml' "$overlay"; then
+              echo "::error file=$overlay::HIL overlay includes the production duo.yaml entrypoint"
+              exit 1
+            fi
+            esphome config "$overlay" > /tmp/hil-overlay.yml
+            grep -q '^  name: openquatt-test$' /tmp/hil-overlay.yml \
+              || { echo "::error file=$overlay::overlay does not resolve to device_name openquatt-test"; exit 1; }
+          done
+
       - name: Resolve ESP-IDF version for cache key
         id: idf_version
         run: |

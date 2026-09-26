@@ -194,6 +194,15 @@ inline BoilerLogDecision classify_boiler_controller_log(const BoilerControllerLo
     case BLOCK_MIN_OFF_TIME:
       reason = BoilerLogReason::MIN_REST_ACTIVE;
       break;
+    case BLOCK_TARGET_SATISFIED:
+    case BLOCK_TARGET_HOLD_OFF:
+      // The command still asks for heat; the relay is simply not needed
+      // because the requested target is met, or because the supply is inside
+      // the band but not yet at the stop threshold. A normal outcome of R1
+      // target control, so it is logged with normal severity rather than as a
+      // fault.
+      reason = BoilerLogReason::LESS_POWER;
+      break;
     default:
       if (inputs.role == BoilerRole::FALLBACK_CM4) {
         reason = inputs.controller_block_reason == BLOCK_NONE ? BoilerLogReason::BOILER_FALLBACK

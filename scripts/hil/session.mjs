@@ -11,6 +11,7 @@ export const SNAPSHOT_SCHEMA = 3;
 export const controllerSettings = [
   { key: 'cmOverride', domain: 'select', name: 'CM Override', kind: 'select' },
   { key: 'cicPolling', domain: 'switch', name: 'CIC - Enable polling', kind: 'switch' },
+  { key: 'otEnabled', domain: 'switch', name: 'OpenTherm Enabled', kind: 'switch' },
   { key: 'waterSupplySource', domain: 'select', name: 'Water Supply Source', kind: 'select' },
   { key: 'outsideSource', domain: 'select', name: 'Outside Temperature Source', kind: 'select' },
   { key: 'roomSource', domain: 'select', name: 'Room Temperature Source', kind: 'select' },
@@ -30,6 +31,8 @@ export const controllerSettings = [
 ];
 
 export const simulatorSettings = [
+  { key: 'thermostatRoomSetpoint', domain: 'number', name: 'Thermostat room setpoint', kind: 'number' },
+  { key: 'thermostatRoomTemp', domain: 'number', name: 'Thermostat room temperature', kind: 'number' },
   { key: 'hp1Profile', domain: 'select', name: 'ODU 1 profile (pending)', kind: 'select' },
   { key: 'hp2Profile', domain: 'select', name: 'ODU 2 profile (pending)', kind: 'select' },
   { key: 'hp1Address', domain: 'number', name: 'ODU 1 Modbus address (pending)', kind: 'number' },

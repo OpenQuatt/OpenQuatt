@@ -81,6 +81,33 @@ test("boiler status follows fault, link, DHW, flame and command priority", () =>
   assert.equal(status().code, "idle");
 });
 
+test("een bereikt keteldoel is geen blokkade in de UI", () => {
+  // De R1-doelregeling kan de ketel uit laten terwijl het commando nog om
+  // warmte vraagt. Dat is een normale regelstop, geen blokkade of fout, dus de
+  // boilerkaart mag daar geen " geblokkeerd" tonen.
+  const satisfied = status({
+    requestedPower: 1400,
+    commandValid: true,
+    blockReason: "requested boiler target temperature satisfied",
+  });
+  assert.notEqual(satisfied.code, "blocked");
+  assert.equal(satisfied.tone, "neutral");
+  // Binnen de band uit blijven is ook een normale regelstop, maar geen bereikt
+  // doel: de reden is een eigen idle-reden en geen blokkade.
+  const holdingOff = status({
+    requestedPower: 1400,
+    commandValid: true,
+    blockReason: "boiler target control holding off inside target band",
+  });
+  assert.notEqual(holdingOff.code, "blocked");
+  assert.equal(holdingOff.tone, "neutral");
+  // Een echte beveiligingsblokkade blijft wel zichtbaar als blokkade.
+  assert.equal(status({ requestedPower: 1400, commandValid: true, blockReason: "flow too low" }).code, "blocked");
+  assert.equal(status({ requestedPower: 1400, commandValid: true, blockReason: "water temperature hard trip active" }).code, "blocked");
+  // Ook zonder requested power blijft een bereikt doel inactief.
+  assert.equal(status({ blockReason: "requested boiler target temperature satisfied" }).code, "idle");
+});
+
 test("OpenTherm boiler model uses actual fresh boiler telemetry and actual flame state", () => {
   const previousEntities = state.entities;
   const previousVisualMode = state.hpVisualMode;

@@ -6,10 +6,10 @@ export const WEB_BUNDLE_BUDGETS = [
     file: "js/openquatt-app.js",
     // Includes both offline catalogues after build-time key compaction. Keep
     // enough margin for ordinary UI work without accepting the uncompressed form again.
-    // PR #742 Linux CI: 1,228,950 B raw / 341,500 B gzip for the defrost UI.
-    // Calibrate byte budgets on the Linux CI build; local Windows/CRLF measurements
-    // are not comparable. Keep only a small margin above the measured PR bundle.
-    raw: 1_230_000,
+    // PR #742 plus dev integration: 1,230,389 B raw / 341,953 B gzip (Node 24).
+    // The merged dev UI adds 1,439 raw bytes over the prior PR build.
+    // Keep a small raw margin; the existing gzip ceiling remains sufficient.
+    raw: 1_232_000,
     gzipBaselineCeiling: 343_000,
   },
   // Responsive run-extension group: ~203.3 kB raw.
