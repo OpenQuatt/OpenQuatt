@@ -1,4 +1,5 @@
 import pathlib
+import re
 import unittest
 
 
@@ -18,6 +19,7 @@ DOCS = (ROOT / "docs/development/hil-testing.md").read_text()
 PACKAGE = (ROOT / "package.json").read_text()
 WORKFLOW = (ROOT / ".github/workflows/ci-build.yml").read_text()
 ESPHOME_BUILD_WORKFLOW = (ROOT / ".github/workflows/esphome-build.yml").read_text()
+SCENARIO_POLICY = (ROOT / "tests/hil/scenarios/README.md").read_text()
 
 
 class HilHarnessContractTest(unittest.TestCase):
@@ -112,6 +114,25 @@ class HilHarnessContractTest(unittest.TestCase):
         self.assertIn("configs/heatpump_controller_q/duo_hil.yaml", V2_RUNNER)
         self.assertNotIn("192.168.", V2_RUNNER)
         self.assertNotIn("issue_667_v2_performance_duo_wifi.yaml", TARGETS)
+
+    def test_hil_scenarios_are_domain_oriented_and_selective(self):
+        normalized_policy = " ".join(SCENARIO_POLICY.split())
+        normalized_docs = " ".join(DOCS.split())
+        self.assertIn("HIL is geen archief van issues of PR's", normalized_policy)
+        self.assertIn("host- of simulator-only test", normalized_policy)
+        self.assertIn("rooktest plus de relevante", normalized_policy)
+        self.assertIn("releasekwalificatie", normalized_policy)
+        self.assertIn("## Onderhoudsmodel", normalized_docs)
+        self.assertIn("niet rond issues of pull requests", normalized_docs)
+        self.assertIn("Het bestaan van een HIL-case betekent nadrukkelijk niet", normalized_docs)
+
+        scenario_files = (ROOT / "tests/hil/scenarios").glob("*.mjs")
+        forbidden = re.compile(r"^(?:issue|pr)[-_]?\d+", re.IGNORECASE)
+        for scenario_file in scenario_files:
+            self.assertIsNone(
+                forbidden.match(scenario_file.stem),
+                f"HIL scenario must describe a durable domain, not {scenario_file.name}",
+            )
 
     def test_harness_is_documented_and_checked_in_ci(self):
         self.assertIn("snapshot.json", DOCS)
