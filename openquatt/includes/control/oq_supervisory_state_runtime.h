@@ -868,6 +868,14 @@ class Runtime {
           }
         }
       }
+      // Every standby entry, including Force CM0, must wait in circulation
+      // until the actuator and ODU confirm idle. Defrost safety stops remain
+      // authoritative in the actuator; this only preserves pump flow.
+      if (oq_supervisory_state::standby_requires_postflow(desired_local,
+                                                          any_hp_active_guard || actuator_request_active)) {
+        desired_local = 1;
+        cm_transition_reason = "standby waiting for heat pumps to become idle";
+      }
       cm4_resume_tracker.finish_after_decision(heating_req,
                                                cooling_req || frost || commissioning_in_progress || override_mode != 0,
                                                fallback_requested, available_hp_count > 0);

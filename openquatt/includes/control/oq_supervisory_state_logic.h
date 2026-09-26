@@ -279,6 +279,8 @@ inline bool hold_cm1_until_hp_idle(bool in_cm1, int desired_mode, bool hp_active
   return in_cm1 && (desired_mode == 0 || desired_mode == 98) && hp_active;
 }
 
+inline bool standby_requires_postflow(int desired_mode, bool hp_active) { return desired_mode == 0 && hp_active; }
+
 enum class SilentOverride : uint8_t { SCHEDULE, ON, OFF };
 
 struct SilentWindowOutput {

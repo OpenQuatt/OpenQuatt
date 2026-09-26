@@ -139,6 +139,11 @@ int main() {
   assert(cm0_pump_target(false, true, 800, 1000) == 800);
   assert(cm0_pump_target(true, false, 800, 1000) == 800);
   assert(cm0_pump_target(false, false, 800, 1000) == 1000);
+  // Force CM0 and normal standby both use CM1 until ODU/actuator idle.
+  assert(oq_supervisory_state::standby_requires_postflow(0, true));
+  assert(!oq_supervisory_state::standby_requires_postflow(0, false));
+  const int non_standby_modes[] = {1, 2, 3, 4, 5, 98, 100};
+  for (int mode : non_standby_modes) assert(!oq_supervisory_state::standby_requires_postflow(mode, true));
   // P1b: manual defrost needs actual valid minimum flow, not only the delayed fault.
   assert(minimum_flow_ready(800, 250));
   assert(!minimum_flow_ready(249, 250));
