@@ -65,6 +65,14 @@ RelayTargetDecision satisfied_target() {
   return oq_boiler::evaluate_relay_target(in);
 }
 
+// A target-control decision that keeps an off relay off because the supply is
+// inside the band but has not reached the stop threshold.
+RelayTargetDecision holding_off_target() {
+  auto in = target_input();
+  in.supply_c = 38.7f;
+  return oq_boiler::evaluate_relay_target(in);
+}
+
 // A controller input whose only remaining job is to prove that the target
 // controller cannot override a guard: every guard starts satisfied.
 oq_boiler::ControllerInput guarded_input(RelayTargetDecision relay_target) {
@@ -123,8 +131,23 @@ void test_relay_starts_below_the_start_threshold() {
 }
 
 void test_relay_stays_off_inside_the_band() {
+  // Target 35.0 C with a start threshold of 33.0 C and a stop threshold of
+  // 34.5 C: the relay correctly stays off at 33.2 C, but the water is 1.8 K
+  // below the requested target, so this is not a satisfied target.
   auto in = target_input();
-  in.supply_c = kStopThresholdC - 0.1f;
+  in.supply_c = 33.2f;
+  in.target_c = 35.0f;
+  const auto decision = oq_boiler::evaluate_relay_target(in);
+  assert(!decision.requested_active);
+  assert(!decision.satisfied);
+  assert(decision.state == oq_boiler::RELAY_TARGET_HOLD_OFF);
+}
+
+void test_relay_off_at_the_stop_threshold_is_satisfied() {
+  // Just across the stop threshold the requested target is met, also when the
+  // relay never came on, so the relay stays off for a genuine reason.
+  auto in = target_input();
+  in.supply_c = kStopThresholdC;
   const auto decision = oq_boiler::evaluate_relay_target(in);
   assert(!decision.requested_active);
   assert(decision.satisfied);
@@ -173,7 +196,9 @@ void test_exact_boundaries_are_deterministic() {
   just_above_start.supply_c = nextafterf(kStartThresholdC, INFINITY);
   const auto still_off = oq_boiler::evaluate_relay_target(just_above_start);
   assert(!still_off.requested_active);
-  assert(still_off.state == oq_boiler::RELAY_TARGET_SATISFIED);
+  // Still inside the band, so the target is not met yet.
+  assert(!still_off.satisfied);
+  assert(still_off.state == oq_boiler::RELAY_TARGET_HOLD_OFF);
 
   auto just_below_stop = target_input();
   just_below_stop.output_active = true;
@@ -241,10 +266,13 @@ void test_target_changes_move_the_request() {
   // A rising target while the relay is off can create a new request.
   auto rising = target_input();
   rising.supply_c = 37.0f;
-  rising.target_c = 38.5f;  // Start threshold 36.5 C: the relay stays off.
+  // Start threshold 36.5 C, stop threshold 38.0 C: the relay stays off, but the
+  // requested target is not met yet.
+  rising.target_c = 38.5f;
   const auto held_off = oq_boiler::evaluate_relay_target(rising);
   assert(!held_off.requested_active);
-  assert(held_off.state == oq_boiler::RELAY_TARGET_SATISFIED);
+  assert(!held_off.satisfied);
+  assert(held_off.state == oq_boiler::RELAY_TARGET_HOLD_OFF);
   rising.target_c = 42.0f;  // Start threshold 40.0 C: the relay may start.
   const auto started = oq_boiler::evaluate_relay_target(rising);
   assert(started.requested_active);
@@ -288,7 +316,8 @@ void test_source_policy_reaches_the_relay_decision() {
     assert(decision.applicable == applies);
     if (applies) {
       assert(!decision.requested_active);
-      assert(decision.state == oq_boiler::RELAY_TARGET_SATISFIED);
+      assert(!decision.satisfied);
+      assert(decision.state == oq_boiler::RELAY_TARGET_HOLD_OFF);
     } else {
       assert(decision.state == oq_boiler::RELAY_TARGET_NOT_APPLICABLE);
       assert(decision.requested_active == in.output_active);
@@ -346,7 +375,7 @@ void test_opentherm_path_is_unaffected_by_relay_target_control() {
   // controller asks for a start, a hold or nothing at all: CH enable and TSet
   // depend on the command target only.
   for (const RelayTargetDecision& relay_target :
-       {RelayTargetDecision{}, requesting_start(), requesting_hold(), satisfied_target()}) {
+       {RelayTargetDecision{}, requesting_start(), requesting_hold(), satisfied_target(), holding_off_target()}) {
     auto input = guarded_input(relay_target);
     input.target_required = true;  // opentherm_selected drives target_required
     const auto decision = oq_boiler::evaluate(power_house_command(), input);
@@ -366,6 +395,37 @@ void test_opentherm_path_is_unaffected_by_relay_target_control() {
   assert(blocked.force_off);
   assert(!blocked.output_active);
   assert(blocked.block_reason == oq_boiler::BLOCK_TARGET_INVALID);
+}
+
+void test_relay_target_control_uses_the_shared_target_validation() {
+  // A heat request that R1 target control regulates around needs a usable
+  // target just as much as one that is sent as TSet, so it is refused by the
+  // same guard and with the same immediate force-off. That reuses the existing
+  // bounds instead of adding a second limit for R1.
+  for (const RelayTargetDecision& relay_target : {requesting_start(), holding_off_target(), satisfied_target()}) {
+    auto input = guarded_input(relay_target);
+    input.target_required = false;  // R1 selected
+    input.target_valid = false;
+    const auto decision = oq_boiler::evaluate(power_house_command(), input);
+    assert(decision.force_off);
+    assert(!decision.output_active);
+    assert(decision.blocked);
+    assert(decision.block_reason == oq_boiler::BLOCK_TARGET_INVALID);
+  }
+
+  // Without target control the command source keeps its own on/off semantics, so
+  // the guard must not fire for CM4 fallback or CM100 commissioning.
+  for (const uint8_t source : {oq_boiler::COMMAND_SOURCE_FALLBACK, oq_boiler::COMMAND_SOURCE_COMMISSIONING}) {
+    auto input = guarded_input(RelayTargetDecision{});
+    input.target_required = false;
+    input.target_valid = false;
+    oq_boiler::BoilerCommand command = power_house_command();
+    command.source = source;
+    const auto decision = oq_boiler::evaluate(command, input);
+    assert(decision.output_active);
+    assert(!decision.force_off);
+    assert(decision.block_reason == oq_boiler::BLOCK_NONE);
+  }
 }
 
 void test_safety_guards_win_over_target_control() {
@@ -568,6 +628,97 @@ void test_unusable_target_control_reason_is_reported_as_a_block() {
   assert(decision.block_reason == oq_boiler::BLOCK_TARGET_INVALID);
 }
 
+// A target control that cannot judge the request is a failsafe, not the end of a
+// heat request: an energised relay is released immediately, so a running minimum
+// on-time may not keep an unjudgeable command burning. The same order is what
+// OpenTherm already uses for an invalid TSet.
+void assert_unavailable_target_forces_off(const RelayTargetInput& in) {
+  const auto unavailable = oq_boiler::evaluate_relay_target(in);
+  assert(!unavailable.requested_active);
+  assert(!unavailable.satisfied);
+  assert(unavailable.state == oq_boiler::RELAY_TARGET_UNAVAILABLE);
+
+  auto input = guarded_input(unavailable);
+  input.output_active = true;
+  input.output_last_change_ms = 4900U;
+  input.min_on_ms = 30000U;
+  const auto decision = oq_boiler::evaluate(power_house_command(), input);
+  assert(!decision.output_active);
+  assert(!decision.force_off);  // Not a guard, but an unjudgeable target.
+  assert(decision.blocked);
+  assert(decision.block_reason == oq_boiler::BLOCK_TARGET_INVALID);
+  // The relay is never kept alive by anti-cycling in this case, so the minimum
+  // on-time reason can never appear for it.
+  assert(decision.block_reason != oq_boiler::BLOCK_MIN_ON_TIME);
+  assert(decision.block_reason != oq_boiler::BLOCK_TARGET_SATISFIED);
+  assert(decision.block_reason != oq_boiler::BLOCK_TARGET_HOLD_OFF);
+
+  // A safety trip still reports the trip, not the unusable target.
+  auto trip = input;
+  trip.hard_trip_active = true;
+  const auto forced = oq_boiler::evaluate(power_house_command(), trip);
+  assert(!forced.output_active);
+  assert(forced.force_off);
+  assert(forced.block_reason == oq_boiler::BLOCK_WATER_TEMP_HARD_TRIP);
+}
+
+void test_unavailable_target_control_withdraws_heat_immediately() {
+  auto no_supply = target_input();
+  no_supply.output_active = true;
+  no_supply.supply_c = NAN;
+  assert_unavailable_target_forces_off(no_supply);
+
+  auto no_target = target_input();
+  no_target.output_active = true;
+  no_target.target_c = NAN;
+  assert_unavailable_target_forces_off(no_target);
+
+  auto invalid_policy = target_input();
+  invalid_policy.output_active = true;
+  invalid_policy.config = RelayTargetConfig{0.5f, 2.0f};
+  assert_unavailable_target_forces_off(invalid_policy);
+}
+
+void test_hold_off_is_not_a_blocked_boiler() {
+  // Off inside the band is a normal control stop, exactly like a satisfied
+  // target, but the published text must not claim the target was reached.
+  const RelayTargetDecision holding_off = holding_off_target();
+  assert(holding_off.state == oq_boiler::RELAY_TARGET_HOLD_OFF);
+  assert(!holding_off.requested_active);
+  assert(!holding_off.satisfied);
+
+  const auto decision = oq_boiler::evaluate(power_house_command(), guarded_input(holding_off));
+  assert(decision.demand_present);
+  assert(decision.desired_active);
+  assert(!decision.output_active);
+  assert(!decision.force_off);
+  assert(!decision.blocked);
+  assert(decision.block_reason == oq_boiler::BLOCK_TARGET_HOLD_OFF);
+  const char* text = oq_boiler::block_reason_text(oq_boiler::BLOCK_TARGET_HOLD_OFF);
+  assert(text[0] != '\0');
+  assert(strcmp(text, oq_boiler::block_reason_text(oq_boiler::BLOCK_TARGET_SATISFIED)) != 0);
+  assert(strstr(text, "satisfied") == nullptr);
+
+  // A minimum on-time that is still running keeps the relay, exactly as for a
+  // satisfied target, because the relay was already energised.
+  auto held = guarded_input(holding_off);
+  held.output_active = true;
+  held.output_last_change_ms = 4900U;
+  held.min_on_ms = 30000U;
+  const auto inside_minimum = oq_boiler::evaluate(power_house_command(), held);
+  assert(inside_minimum.output_active);
+  assert(!inside_minimum.blocked);
+  assert(inside_minimum.block_reason == oq_boiler::BLOCK_MIN_ON_TIME);
+
+  // It is logged with normal severity, never as a fault or a blocked boiler.
+  const oq_boiler::BoilerLogCodes codes{};
+  const auto log = oq_boiler::classify_boiler_controller_log(
+      {oq_boiler::BoilerRole::ASSIST_CM3, oq_boiler::BLOCK_TARGET_HOLD_OFF}, codes);
+  assert(oq_boiler::boiler_log_reason_is_normal(log.reason));
+  assert(log.reason != oq_boiler::BoilerLogReason::SENSOR_FALLBACK);
+  assert(log.reason != oq_boiler::BoilerLogReason::SOFT_GUARD);
+}
+
 void test_power_house_without_a_reachable_target_refuses_to_energise() {
   // Power House keeps a valid command with a heat request even when the
   // hydraulic target cannot be computed, for example because the boiler inlet
@@ -626,8 +777,6 @@ void test_power_house_without_a_reachable_target_refuses_to_energise() {
 // behaviour below models HP1 and HP2 in a defrost.
 struct DefrostCase {
   const char* label;
-  bool hp1_defrost;
-  bool hp2_defrost;
   float hp1_expected_power_w;
   float hp2_expected_power_w;
   float requested_power_w;
@@ -637,9 +786,9 @@ struct DefrostCase {
 // Single: the only outdoor unit is defrosting. Duo: one unit defrosts while the
 // peer is healthy, in both directions.
 constexpr DefrostCase kDefrostCases[] = {
-    {"single/hp1-defrost", true, false, 0.0f, 0.0f, 9000.0f, false},
-    {"duo/hp1-defrost", true, false, 0.0f, 5000.0f, 12000.0f, true},
-    {"duo/hp2-defrost", false, true, 5000.0f, 0.0f, 12000.0f, true},
+    {"single/hp1-defrost", 0.0f, 0.0f, 9000.0f, false},
+    {"duo/hp1-defrost", 0.0f, 5000.0f, 12000.0f, true},
+    {"duo/hp2-defrost", 5000.0f, 0.0f, 12000.0f, true},
 };
 
 oq_boiler_dispatch::Inputs power_house_inputs(const DefrostCase& scenario, uint32_t now_ms) {
@@ -672,10 +821,21 @@ void test_boiler_chain_has_no_defrost_input() {
                 "the R1 target controller must not accept a defrost observation");
 }
 
-void test_defrost_alone_never_activates_the_boiler_from_cm2() {
-  // A defrost observation may only reach the boiler through the normal CM3
-  // promotion. The heat deficit it creates is real, so the contrast case below
-  // proves the same thermal situation does drive the boiler once CM3 owns it.
+void test_cm2_never_owns_the_boiler_under_reduced_hp_capacity() {
+  // What this proves: with reduced HP capacity the boiler chain has no defrost
+  // input at all, so only the owning control mode decides about the boiler.
+  // CM2 holds a heat request, assist permission, valid flow and an available
+  // transport, but no boiler ownership, so the relay stays off. The identical
+  // thermal situation under CM3 does produce a boiler command, which is what
+  // makes the CM2 result meaningful instead of tautological.
+  //
+  // What this does NOT prove: that a real defrost cannot promote CM2 to CM3.
+  // That promotion happens upstream in supervisory / Power House, before the
+  // boiler chain is reached, and the end-to-end proof is HIL scenario F
+  // ("a defrost during normal CM2 operation must keep the existing HP
+  // behaviour"). Proving it here would need a defrost input that the chain must
+  // never have. The static asserts in test_boiler_chain_has_no_defrost_input
+  // are the structural guarantee for that half.
   for (const DefrostCase& scenario : kDefrostCases) {
     const auto inputs = power_house_inputs(scenario, 5000U);
 
@@ -749,6 +909,7 @@ void test_relay_target_state_text_covers_every_state() {
       oq_boiler::relay_target_state_text(oq_boiler::RELAY_TARGET_IDLE),
       oq_boiler::relay_target_state_text(oq_boiler::RELAY_TARGET_START),
       oq_boiler::relay_target_state_text(oq_boiler::RELAY_TARGET_HOLD),
+      oq_boiler::relay_target_state_text(oq_boiler::RELAY_TARGET_HOLD_OFF),
       oq_boiler::relay_target_state_text(oq_boiler::RELAY_TARGET_SATISFIED),
       oq_boiler::relay_target_state_text(oq_boiler::RELAY_TARGET_UNAVAILABLE),
   };
@@ -759,9 +920,12 @@ void test_relay_target_state_text_covers_every_state() {
   assert(strcmp(states[0], "not applicable") == 0);
   assert(strstr(states[1], "idle") != nullptr);
   assert(strstr(states[2], "below target") != nullptr);
-  assert(strstr(states[3], "inside target band") != nullptr);
-  assert(strstr(states[4], "satisfied") != nullptr);
-  assert(strstr(states[5], "unavailable") != nullptr);
+  assert(strstr(states[3], "holding") != nullptr);
+  // The hold-off text must not claim the target was reached.
+  assert(strstr(states[4], "holding off") != nullptr);
+  assert(strstr(states[4], "satisfied") == nullptr);
+  assert(strstr(states[5], "satisfied") != nullptr);
+  assert(strstr(states[6], "unavailable") != nullptr);
 }
 
 }  // namespace
@@ -770,6 +934,7 @@ int main() {
   test_no_heat_request_releases_the_relay();
   test_relay_starts_below_the_start_threshold();
   test_relay_stays_off_inside_the_band();
+  test_relay_off_at_the_stop_threshold_is_satisfied();
   test_relay_stays_on_inside_the_band();
   test_relay_stops_at_the_stop_threshold();
   test_exact_boundaries_are_deterministic();
@@ -781,6 +946,7 @@ int main() {
   test_cm4_fallback_keeps_its_on_off_semantics();
   test_cm100_commissioning_keeps_its_on_off_semantics();
   test_opentherm_path_is_unaffected_by_relay_target_control();
+  test_relay_target_control_uses_the_shared_target_validation();
   test_safety_guards_win_over_target_control();
   test_transport_change_keeps_break_before_make();
   test_satisfied_target_is_not_a_blocked_boiler();
@@ -788,9 +954,11 @@ int main() {
   test_satisfied_target_keeps_the_command_visible();
   test_minimum_off_time_still_delays_a_new_start();
   test_unusable_target_control_reason_is_reported_as_a_block();
+  test_unavailable_target_control_withdraws_heat_immediately();
+  test_hold_off_is_not_a_blocked_boiler();
   test_power_house_without_a_reachable_target_refuses_to_energise();
   test_boiler_chain_has_no_defrost_input();
-  test_defrost_alone_never_activates_the_boiler_from_cm2();
+  test_cm2_never_owns_the_boiler_under_reduced_hp_capacity();
   test_satisfied_target_never_reports_a_blocked_boiler();
   test_relay_target_state_text_covers_every_state();
   return 0;

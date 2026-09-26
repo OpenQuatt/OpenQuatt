@@ -271,6 +271,15 @@ void test_fail_safe_priority() {
   input.target_required = false;
   decision = oq_boiler::evaluate(command, input);
   assert_decision(decision, true, false, oq_boiler::BLOCK_NONE);
+
+  // R1 has no TSet, but a heat request it regulates around still needs a usable
+  // target, so it reuses the same guard and the same immediate force-off.
+  input.relay_target.applicable = true;
+  input.relay_target.requested_active = true;
+  input.relay_target.state = oq_boiler::RELAY_TARGET_START;
+  decision = oq_boiler::evaluate(command, input);
+  assert_decision(decision, false, true, oq_boiler::BLOCK_TARGET_INVALID);
+  assert(decision.blocked);
 }
 
 void test_transport_selection_guard() {

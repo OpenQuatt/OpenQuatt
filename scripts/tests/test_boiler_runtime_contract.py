@@ -75,10 +75,18 @@ class BoilerRuntimeContractTest(unittest.TestCase):
     def test_satisfied_target_is_not_a_safety_failure(self) -> None:
         self.assertIn("BLOCK_TARGET_SATISFIED = 25", BOILER_LOGIC)
         self.assertIn("return \"requested boiler target temperature satisfied\";", BOILER_LOGIC)
-        # Een bereikt doel is een normaal gevolg van de R1-doelregeling en
-        # wordt daarom niet als blokkade of fout gerapporteerd.
+        self.assertIn("BLOCK_TARGET_HOLD_OFF = 26", BOILER_LOGIC)
+        self.assertIn("return \"boiler target control holding off inside target band\";", BOILER_LOGIC)
+        # Een bereikt doel en een relais dat binnen de band uit blijft zijn beide
+        # normale gevolgen van de R1-doelregeling en worden daarom niet als
+        # blokkade of fout gerapporteerd. Een niet-beoordeelbare doelregeling
+        # blijft wél een blokkade.
         self.assertIn(
-            "decision.blocked = decision.demand_present && !decision.output_active && !relay_target_satisfied;",
+            "decision.blocked = decision.demand_present && !decision.output_active && !relay_target_normal_stop;",
+            BOILER_LOGIC,
+        )
+        self.assertIn(
+            "const bool relay_target_failsafe = relay_target_withholds_output && !relay_target_normal_stop;",
             BOILER_LOGIC,
         )
 

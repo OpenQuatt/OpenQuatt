@@ -92,6 +92,15 @@ test("een bereikt keteldoel is geen blokkade in de UI", () => {
   });
   assert.notEqual(satisfied.code, "blocked");
   assert.equal(satisfied.tone, "neutral");
+  // Binnen de band uit blijven is ook een normale regelstop, maar geen bereikt
+  // doel: de reden is een eigen idle-reden en geen blokkade.
+  const holdingOff = status({
+    requestedPower: 1400,
+    commandValid: true,
+    blockReason: "boiler target control holding off inside target band",
+  });
+  assert.notEqual(holdingOff.code, "blocked");
+  assert.equal(holdingOff.tone, "neutral");
   // Een echte beveiligingsblokkade blijft wel zichtbaar als blokkade.
   assert.equal(status({ requestedPower: 1400, commandValid: true, blockReason: "flow too low" }).code, "blocked");
   assert.equal(status({ requestedPower: 1400, commandValid: true, blockReason: "water temperature hard trip active" }).code, "blocked");

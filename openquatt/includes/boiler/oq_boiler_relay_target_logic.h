@@ -36,6 +36,11 @@ enum RelayTargetState : uint8_t {
   RELAY_TARGET_SATISFIED = 4,
   // Target control applies but cannot be judged; fails safe to released.
   RELAY_TARGET_UNAVAILABLE = 5,
+  // The relay is off and the supply sits inside the band but still below the
+  // stop threshold. The relay is correctly held off, but the requested target
+  // is not reached yet, so this is not a satisfied target. Still a normal
+  // control state, because target control did judge the request.
+  RELAY_TARGET_HOLD_OFF = 6,
 };
 
 struct RelayTargetInput {
@@ -103,8 +108,15 @@ inline RelayTargetDecision evaluate_relay_target(const RelayTargetInput& input) 
     decision.state = RELAY_TARGET_START;
     return decision;
   }
-  decision.satisfied = true;
-  decision.state = RELAY_TARGET_SATISFIED;
+  if (input.supply_c >= stop_threshold_c) {
+    decision.satisfied = true;
+    decision.state = RELAY_TARGET_SATISFIED;
+    return decision;
+  }
+  // Strictly between the two thresholds, which relay_target_config_valid keeps
+  // mutually exclusive from the cases above. The relay stays off because the
+  // supply is not yet low enough to start it, not because the target is met.
+  decision.state = RELAY_TARGET_HOLD_OFF;
   return decision;
 }
 
@@ -116,6 +128,8 @@ inline const char* relay_target_state_text(uint8_t state) {
       return "starting: supply below target";
     case RELAY_TARGET_HOLD:
       return "holding: supply inside target band";
+    case RELAY_TARGET_HOLD_OFF:
+      return "holding off: supply inside target band";
     case RELAY_TARGET_SATISFIED:
       return "satisfied: requested target met";
     case RELAY_TARGET_UNAVAILABLE:

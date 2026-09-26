@@ -844,12 +844,14 @@ import { renderStatCard } from "./stat-card.js";
 
     const normalizedBlockReason = String(blockReason || "").trim().toLowerCase();
     // Reasons that mean "the boiler is simply not needed right now" rather than
-    // "the boiler is held back". A satisfied requested target belongs to the
-    // first group: the command still asks for heat, the relay is not energised.
+    // "the boiler is held back". A satisfied requested target and a relay that
+    // is held off inside the target band belong to the first group: the command
+    // still asks for heat, the relay is not energised.
     const idleBlockReasons = new Set([
       "no boiler heat request",
       "boiler/cv assist disabled",
       "requested boiler target temperature satisfied",
+      "boiler target control holding off inside target band",
     ]);
     const hasBlockedRequest = Number.isFinite(requestedPower) && requestedPower > 0 && (
       !commandValid || (normalizedBlockReason && !idleBlockReasons.has(normalizedBlockReason))

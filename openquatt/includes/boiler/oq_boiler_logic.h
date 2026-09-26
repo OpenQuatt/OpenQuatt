@@ -47,6 +47,12 @@ enum BlockReason : uint8_t {
   // because the requested target temperature is already met. This is a
   // normal outcome of target control, not a safety failure or a fault.
   BLOCK_TARGET_SATISFIED = 25,
+  // The command still asks for heat and the R1 relay is not energised
+  // because the supply is inside the target band but not yet at the stop
+  // threshold. The relay is correctly held off, but the requested target is
+  // not reached, so it must not be reported as satisfied. Like
+  // BLOCK_TARGET_SATISFIED this is a normal control stop, not a fault.
+  BLOCK_TARGET_HOLD_OFF = 26,
 };
 
 enum BoilerStartThermalState : uint8_t {
@@ -365,7 +371,11 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
   } else if (!input.command_rearmed) {
     decision.force_off = true;
     decision.block_reason = BLOCK_AWAITING_FRESH_COMMAND;
-  } else if (command.heat_request && input.target_required && !input.target_valid) {
+  } else if (command.heat_request && (input.target_required || input.relay_target.applicable) && !input.target_valid) {
+    // Both transports need a usable target for a heat request: OpenTherm sends
+    // it as TSet, and R1 has to regulate the binary output around it. R1
+    // therefore reuses this same validation instead of a second bound, and
+    // both withdraw heat immediately.
     decision.force_off = true;
     decision.block_reason = BLOCK_TARGET_INVALID;
   } else if (!command.heat_request) {
@@ -382,9 +392,23 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
   const bool relay_target_withholds_output = decision.desired_active && !input.target_required &&
                                              input.relay_target.applicable && !input.relay_target.requested_active;
   const bool relay_target_satisfied = relay_target_withholds_output && input.relay_target.satisfied;
+  const bool relay_target_holding_off =
+      relay_target_withholds_output && input.relay_target.state == RELAY_TARGET_HOLD_OFF;
+  // Both states above withheld the relay on a target control that did judge the
+  // request, so neither of them is a blockade.
+  const bool relay_target_normal_stop = relay_target_satisfied || relay_target_holding_off;
+  // Everything else that withholds the output is a target control that cannot
+  // judge the request at all, because the measurement or the policy is
+  // unusable. That fails safe to released without consulting anti-cycling: an
+  // unjudgeable command must not keep an energised burner, exactly as an
+  // invalid TSet forces CH off immediately on OpenTherm.
+  const bool relay_target_failsafe = relay_target_withholds_output && !relay_target_normal_stop;
 
   if (decision.force_off) {
     decision.output_active = false;
+  } else if (relay_target_failsafe) {
+    decision.output_active = false;
+    decision.block_reason = BLOCK_TARGET_INVALID;
   } else if (decision.desired_active && !relay_target_withholds_output) {
     if (!input.output_active && minimum_time_active(input.now_ms, input.output_last_change_ms, input.min_off_ms)) {
       decision.output_active = false;
@@ -395,20 +419,22 @@ inline ControllerDecision evaluate(const BoilerCommand& command, const Controlle
     }
   } else if (input.output_active && minimum_time_active(input.now_ms, input.output_last_change_ms, input.min_on_ms)) {
     // Releasing the relay follows the normal anti-cycling rule, whether the
-    // heat request ended or the requested target is met. Only a safety trip or
-    // a loss of ownership above withdraws heat immediately. Target control
-    // therefore never bypasses a configured minimum on-time.
+    // heat request ended or a judged target says the relay is not needed. A
+    // safety trip, a loss of ownership, or an unavailable target control above
+    // withdraws heat immediately instead.
     decision.output_active = true;
     decision.block_reason = BLOCK_MIN_ON_TIME;
   } else if (relay_target_withholds_output) {
     decision.output_active = false;
-    decision.block_reason = relay_target_satisfied ? BLOCK_TARGET_SATISFIED : BLOCK_TARGET_INVALID;
+    decision.block_reason = relay_target_satisfied ? BLOCK_TARGET_SATISFIED : BLOCK_TARGET_HOLD_OFF;
   }
 
-  // A satisfied target keeps the boiler demand owned by the active control
-  // mode. It must stay distinguishable from a blocked or faulted boiler, so it
-  // is not reported as blocked even though the physical output is off.
-  decision.blocked = decision.demand_present && !decision.output_active && !relay_target_satisfied;
+  // A satisfied target, and a relay that is held off inside the band, both keep
+  // the boiler demand owned by the active control mode. They must stay
+  // distinguishable from a blocked or faulted boiler, so they are not reported
+  // as blocked even though the physical output is off. An unavailable target
+  // control is a real blockade and keeps the flag.
+  decision.blocked = decision.demand_present && !decision.output_active && !relay_target_normal_stop;
   return decision;
 }
 
@@ -440,6 +466,8 @@ inline const char* block_reason_text(uint8_t reason) {
       return "boiler target temperature invalid";
     case BLOCK_TARGET_SATISFIED:
       return "requested boiler target temperature satisfied";
+    case BLOCK_TARGET_HOLD_OFF:
+      return "boiler target control holding off inside target band";
     case BLOCK_TRANSPORT_SETTLING:
       return "boiler transport change settling";
     case BLOCK_AWAITING_FRESH_COMMAND:
