@@ -50,6 +50,7 @@ export function controlContext({ controller, simulator, interrupted = () => fals
     await refresh();
     const state = incidentObservation(await controller.request('/openquatt/incidents'), hpCount);
     state.boilerActive = asBoolean(await controller.value('binary_sensor', 'Boiler active'));
+    state.flow = asFiniteNumber(await controller.value('sensor', 'Flow average (Selected)'));
     if (heating) {
       const inputs = await controller.values([
         { key: 'outside', domain: 'sensor', name: 'Outside Temperature (Selected)' },
@@ -136,7 +137,8 @@ export function healthy(s) {
 }
 
 export function assertNoFallback(s) {
-  require(s.mode !== 4 && !s.boiler && !s.boilerActive, 'partial Duo outage started boiler fallback');
+  require(s.mode !== 4 && !s.boiler && !s.boilerActive, 'unexpected boiler fallback during heat-pump operation');
+  if (s.mode === 2) require(s.flow !== null && s.flow >= 250, 'CM2 heating requires at least 250 l/h selected flow');
 }
 
 export async function prepareControlRegression(controller, simulator, interrupted, snapshot, hpCount = 2) {
@@ -201,6 +203,10 @@ export async function prepareControlRegression(controller, simulator, interrupte
   ]);
   require(asFiniteNumber(inputs.supply) !== null && Math.abs(Number(inputs.supply) - 22.5) < 0.2,
     'supply fixture is not selected and fresh');
-  for (const key of indices.map((index) => `flow${index}`)) require(asFiniteNumber(inputs[key]) >= 250,
-    `${key} must be at least 250 l/h before testing`);
+  // CM0 normally has stop-PWM and zero flow. Verify usable telemetry here;
+  // assertNoFallback requires actual selected flow >=250 l/h during CM2.
+  for (const key of indices.map((index) => `flow${index}`)) {
+    const flow = asFiniteNumber(inputs[key]);
+    require(flow !== null && flow >= 0, `${key} must have valid stopped-flow telemetry`);
+  }
 }

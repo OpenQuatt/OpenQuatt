@@ -43,7 +43,7 @@ function bench(hpCount = 2) {
         transition = option === 'Auto';
       }
     },
-    async value() { return mode === 4; },
+    async value(domain, name) { return name === 'Flow average (Selected)' ? (mode === 2 ? 600 : 0) : mode === 4; },
     async request() {
       if (mode !== 0) {
         if (responses.every((v) => !v)) mode = 4;
@@ -241,8 +241,8 @@ test('preparation uses valid flow selectors and fails before settings writes on 
     controller.state.set('Power House run extension', unsafe);
     controller.state.set('Boiler active', false);
     controller.state.set('Water Supply Temp (Selected)', 22.5);
-    controller.state.set('HP1 - Flow', 600);
-    controller.state.set('HP2 - Flow', 600);
+    controller.state.set('HP1 - Flow', 0);
+    controller.state.set('HP2 - Flow', 0);
     for (const name of ['Quatt ODU simulation enabled', 'ODU responses enabled']) simulator.state.set(name, true);
     for (const name of ['ODU timeout injection enabled', 'ODU exception injection enabled',
       'ODU reboot on matching request', 'M2 UART fault injection enabled',
@@ -352,7 +352,7 @@ test('Mono preparation validates topology before writes and does not require HP2
   controller.state.set('Power House run extension', false);
   controller.state.set('Boiler active', false);
   controller.state.set('Water Supply Temp (Selected)', 22.5);
-  controller.state.set('HP1 - Flow', 600);
+  controller.state.set('HP1 - Flow', 0);
   for (const name of ['Quatt ODU simulation enabled', 'ODU responses enabled']) simulator.state.set(name, true);
   for (const name of ['ODU timeout injection enabled', 'ODU exception injection enabled',
     'ODU reboot on matching request', 'M2 UART fault injection enabled',
@@ -376,4 +376,15 @@ test('Mono runner uses distinct firmware marker and recovery domain', () => {
   const options = parseMonoCommunicationsArgs(['--controller', 'http://controller.local',
     '--simulator', 'http://simulator.local', '--stage', 'smoke']);
   assert.equal(options.expectedProfile, 'control-regression-mono-v1');
+});
+
+test('CM0 permits zero flow, but heating cannot pass with low or missing selected flow', async () => {
+  for (const flow of [0, 249, null]) {
+    const fixture = bench(1);
+    const read = fixture.controller.value;
+    fixture.controller.value = async (domain, name) =>
+      name === 'Flow average (Selected)' ? flow : read(domain, name);
+    await assert.rejects(runCommunicationsScenarios({ ...fixture, stage: 'all', hpCount: 1 }), /250 l\/h/);
+    assert.deepEqual(fixture.writes, []);
+  }
 });

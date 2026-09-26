@@ -158,8 +158,9 @@ warmtebron is aangesloten, run extension staat uit en response-/simulatiegates
 staan aan. Duo vereist beide ODU's op adres 1/2 met V1.5/V2-flowondersteuning;
 Mono vereist dit alleen voor HP1 op adres 1.
 Timeout-, exception-, reboot-, UART-fault- en frequency-freeze-injecties moeten
-uit staan. De setup verifieert veilige CM0, supplyfixture en minstens 250 l/h per
-ODU vóór de verwarmingscases. Dit bewijst geen fysieke PT1000 of hydrauliek.
+uit staan. De setup verifieert veilige CM0, supplyfixture en geldige flowtelemetrie;
+0 l/h is normaal bij stilstand. Tijdens CM2 vereisen de verwarmingscases minstens
+250 l/h geselecteerde flow en bevestigde compressorfeedback. Dit bewijst geen fysieke PT1000 of hydrauliek.
 
 Deze domeinsnapshots bevatten ook Q Flow Source, ketelassist-/fallbackkeuzes,
 responsegates en simulatorwaterinvoer. Een verloren ACK of interrupt herstelt
