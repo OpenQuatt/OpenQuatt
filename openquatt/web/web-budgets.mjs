@@ -6,6 +6,7 @@ export const WEB_BUNDLE_BUDGETS = [
     file: "js/openquatt-app.js",
     // Includes both offline catalogues after build-time key compaction. Keep
     // enough margin for ordinary UI work without accepting the uncompressed form again.
+    // Ratchet adjusted to the current dev baseline after the latest web UI merge.
     raw: 1_212_000,
     gzipBaselineCeiling: 340_000,
   },
