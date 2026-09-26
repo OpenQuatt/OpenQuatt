@@ -315,6 +315,13 @@ bool OpenQuattNetworkManager::prepare_ethernet_after_setup_() {
 
   this->last_interface_action_ms_ = now;
   ethernet->disable();
+  if (!ethernet->is_driver_stopped()) {
+    // STOP delivery (or a failed stop) must not block WiFi/provisioning.
+    // Normal startup/recovery retries finish the Ethernet transition.
+    this->ethernet_prepared_ = true;
+    this->phase_started_ms_ = now;
+    return true;
+  }
   if (this->preference_ == Preference::WIFI) {
     this->power_down_w5500_();
   } else {
@@ -346,6 +353,9 @@ bool OpenQuattNetworkManager::ensure_ethernet_enabled_() {
   }
 
   if (ethernet->is_disabled()) {
+    if (!ethernet->is_driver_stopped()) {
+      return false;
+    }
     // Always wake a stopped W5500 before restart. A prior Power Down write may
     // have reached the PHY even when its verification read failed.
     if (!this->wake_w5500_()) {
@@ -369,10 +379,16 @@ bool OpenQuattNetworkManager::disable_ethernet_() {
     return false;
   }
   ethernet->disable();
+  if (!ethernet->is_driver_stopped()) {
+    return false;
+  }
   return this->power_down_w5500_();
 }
 
 bool OpenQuattNetworkManager::power_down_w5500_() {
+  if (!ethernet::global_eth_component->is_driver_stopped()) {
+    return false;
+  }
   uint8_t initial = 0;
   if (!this->read_w5500_phycfgr_(&initial) || !this->write_w5500_phycfgr_(W5500_PHYCFGR_POWER_DOWN) ||
       !this->write_w5500_phycfgr_(W5500_PHYCFGR_POWER_DOWN_RESET)) {
@@ -396,6 +412,9 @@ bool OpenQuattNetworkManager::power_down_w5500_() {
 }
 
 bool OpenQuattNetworkManager::wake_w5500_() {
+  if (!ethernet::global_eth_component->is_driver_stopped()) {
+    return false;
+  }
   if (!this->write_w5500_phycfgr_(W5500_PHYCFGR_ALL_CAPABLE) ||
       !this->write_w5500_phycfgr_(W5500_PHYCFGR_ALL_CAPABLE_RESET)) {
     ESP_LOGE(TAG, "W5500 wake sequence failed");
