@@ -415,22 +415,21 @@ test('communications rejects an unsafe baseline or legacy snapshot before transp
   fixture.controller.setSelect = async () => { writes++; };
   await assert.rejects(prepareCommunicationsRegression(fixture.controller, fixture.simulator,
     () => false, { schema: 3, controller: {} }), /transport-aware/);
-  fixture.controller.value = async () => 'Auto';
   await assert.rejects(prepareCommunicationsRegression(fixture.controller, fixture.simulator,
-    () => false, { schema: 4, controller: { boilerConnection: 'R1' } }), /safe CM0/);
+    () => false, { schema: 4, controller: { boilerConnection: 'R1' },
+      simulatorActive: { hp1: { address: 1, profile: 'V1' }, hp2: { address: 2, profile: 'V1.5' } } }), /flow support/);
   assert.equal(writes, 0);
 });
 
 
-test('communications selects verified OpenTherm and rejects missing mismatch telemetry', async () => {
-  for (const missing of [false, true]) {
+function communicationsSettingsFixture(missing = false) {
     const controller = new SettingsClient([...controllerSettings, ...controlRegressionControllerSettings]);
     const simulator = new SettingsClient([...simulatorSettings, ...controlRegressionSimulatorSettings]);
     for (const name of ['Setup Complete', 'OpenQuatt Enabled', 'Auxiliary heat source connected',
       'OTB - Boiler Link Available']) controller.state.set(name, true);
     for (const name of ['Power House run extension', 'Boiler active']) controller.state.set(name, false);
     if (!missing) controller.state.set('OTB - Boiler Connection Mismatch', false);
-    controller.state.set('CM Override', 'Force CM0');
+    controller.state.set('CM Override', 'Auto');
     controller.state.set('Boiler connection', 'R1');
     controller.state.set('Water Supply Temp (Selected)', 22.5);
     controller.state.set('HP1 - Flow', 0);
@@ -442,9 +441,15 @@ test('communications selects verified OpenTherm and rejects missing mismatch tel
     controller.request = bench().controller.request;
     const snapshot = { schema: 4, controller: { boilerConnection: 'R1' },
       simulatorActive: { hp1: { address: 1, profile: 'V1.5' }, hp2: { address: 2, profile: 'V1.5' } } };
+    return { controller, simulator, snapshot };
+}
+
+test('communications selects verified OpenTherm and rejects missing mismatch telemetry', async () => {
+  for (const missing of [false, true]) {
+    const { controller, simulator, snapshot } = communicationsSettingsFixture(missing);
     if (missing) {
       await assert.rejects(prepareCommunicationsRegression(controller, simulator, () => false, snapshot), /boolean/);
-      assert.equal(controller.state.get('Q Flow Source'), 'Auto');
+      assert.equal(controller.state.get('CM Override'), 'Force CM0');
     } else {
       await prepareCommunicationsRegression(controller, simulator, () => false, snapshot);
       assert.equal(controller.state.get('Boiler connection'), 'OpenTherm');
@@ -455,15 +460,21 @@ test('communications selects verified OpenTherm and rejects missing mismatch tel
 
 
 test('interrupt during CM0 verification prevents the boiler transport write', async () => {
-  const fixture = bench();
+  const { controller, simulator, snapshot } = communicationsSettingsFixture();
   let interrupted = false;
-  let writes = 0;
-  fixture.controller.value = async (_domain, name) => {
+  let transportWrites = 0;
+  const value = controller.value.bind(controller);
+  controller.value = async (domain, name) => {
+    const result = await value(domain, name);
     if (name === 'Control Mode') interrupted = true;
-    return name === 'CM Override' ? 'Force CM0' : 'CM0';
+    return result;
   };
-  fixture.controller.setSelect = async () => { writes++; };
-  await assert.rejects(prepareCommunicationsRegression(fixture.controller, fixture.simulator,
-    () => interrupted, { schema: 4, controller: { boilerConnection: 'R1' } }), /interrupted/);
-  assert.equal(writes, 0);
+  const select = controller.setSelect.bind(controller);
+  controller.setSelect = async (name, option) => {
+    if (name === 'Boiler connection') transportWrites++;
+    await select(name, option);
+  };
+  await assert.rejects(prepareCommunicationsRegression(controller, simulator,
+    () => interrupted, snapshot), /interrupted/);
+  assert.equal(transportWrites, 0);
 });

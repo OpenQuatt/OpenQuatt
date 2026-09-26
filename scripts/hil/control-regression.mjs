@@ -217,7 +217,7 @@ export async function prepareCommunicationsRegression(controller, simulator, int
   require(snapshot?.schema === 4 && typeof snapshot.controller?.boilerConnection === 'string',
     'communications preparation requires a transport-aware snapshot');
   require(!interrupted(), 'HIL run interrupted before boiler transport selection');
-  incidentObservation(await controller.request('/openquatt/incidents'), hpCount);
+  await prepareControlRegression(controller, simulator, interrupted, snapshot, hpCount);
   require(await controller.value('select', 'CM Override') === 'Force CM0' &&
     await controller.value('text_sensor', 'Control Mode') === 'CM0',
   'communications requires a safe CM0 baseline before transport selection');
@@ -237,5 +237,4 @@ export async function prepareCommunicationsRegression(controller, simulator, int
     await sleep(1500);
   }
   require(ready, 'OpenTherm boiler transport did not become available without mismatch');
-  await prepareControlRegression(controller, simulator, interrupted, snapshot, hpCount);
 }

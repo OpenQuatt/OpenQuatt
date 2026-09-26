@@ -156,8 +156,8 @@ ververst, zonder achtergrondtimer, en de geselecteerde inputs worden gecontrolee
 Gemeenschappelijke precondities: Setup Complete en OpenQuatt Enabled staan aan, de aanvullende
 warmtebron is aangesloten, run extension staat uit en response-/simulatiegates
 staan aan. Duo vereist beide ODU's op adres 1/2 met V1.5/V2-flowondersteuning;
-Mono vereist dit alleen voor HP1 op adres 1. Communications vereist vóór
-transportselectie Force CM0 en bevestigde CM0. De desktopketel gebruikt OpenTherm;
+Mono vereist dit alleen voor HP1 op adres 1. Communications stelt eerst Force CM0 in en wacht op
+bevestigde CM0 en gestopte ODU’s vóór transportselectie. De desktopketel gebruikt OpenTherm;
 de voorbereiding selecteert dit transport en vereist een beschikbare link zonder
 connection mismatch voordat de vraag wordt ingeschakeld.
 Timeout-, exception-, reboot-, UART-fault- en frequency-freeze-injecties moeten
