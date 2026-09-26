@@ -117,6 +117,59 @@ Het rapport bevat actuele en minimale interne heap, grootste vrije block,
 fragmentatie, vrije PSRAM en beide ODU-diagnoseregels voor zover de entities
 beschikbaar zijn. Ook simulatorcontract en -versie worden vastgelegd.
 
+## Duo en communicatie
+
+De domeinrunners gebruiken de gedeelde lock, REST-begrenzer, snapshot en
+firmware-restore. Selecteer alleen het relevante domein en de relevante stage:
+
+| Runner | Stage | Contract |
+|---|---|---|
+| `run-duo.mjs` | `start` | Vanuit idle starten met één beschikbare ODU; HP1 en HP2 worden afzonderlijk getest. CM2 zonder bevestigde compressorstart is geen PASS. |
+| `run-duo.mjs` | `peer-loss` | Eén ODU valt tijdens verwarmen weg; de resterende ODU verwarmt zonder CM4 of ketelstart. Beide uitvalrichtingen worden getest. |
+| `run-communications.mjs` | `fallback` | Beide ODU's weg: causale onbevestigde stop en CM4 met actieve keteltransportuitgang; na herstel handback via CM1 naar CM2 en causale permissie gewist. |
+
+Beide runners hebben een read-only `smoke`. `all` betekent alleen alle stages
+van die runner; het is geen volledige hardware-regressieset.
+
+```bash
+node scripts/hil/run-duo.mjs \
+  --controller http://openquatt-test.local --simulator http://SIMULATOR-IP \
+  --device openquatt-test.local \
+  --test-config configs/hil/control_regression_duo_wifi.yaml \
+  --restore-config configs/heatpump_controller_q/duo_hil.yaml \
+  --stage start --apply
+```
+
+Voor de fallback-/handbackcase gebruik je `run-communications.mjs` met
+`--stage fallback` en dezelfde overige opties. Voor herstel gebruik je dezelfde
+domeinrunner met `--restore-snapshot .tmp/hil/<run>/snapshot.json --apply` en de
+controller-, simulator-, device- en restoreconfigopties.
+
+De testoverlay hergebruikt de bestaande HIL-CIC-supplyfixture en observaties,
+met marker `control-regression-v1`. Productieguardtijden blijven intact;
+`Power House demand rise time` wordt tijdelijk op de normale minimuminstelling
+van 2 minuten gezet. Een assertionfase kan tot tien minuten wachten; positieve
+uitgangstoestanden worden daarna 30 seconden bewaakt. De API-vraag wordt serieel
+ververst, zonder achtergrondtimer, en de geselecteerde inputs worden gecontroleerd.
+
+Precondities: Setup Complete en OpenQuatt Enabled staan aan, de aanvullende
+warmtebron is aangesloten, run extension staat uit, beide ODU's zijn actief op
+adres 1/2 met V1.5/V2-flowondersteuning, en response-/simulatiegates staan aan.
+Timeout-, exception-, reboot-, UART-fault- en frequency-freeze-injecties moeten
+uit staan. De setup verifieert veilige CM0, supplyfixture en minstens 250 l/h per
+ODU vóór de verwarmingscases. Dit bewijst geen fysieke PT1000 of hydrauliek.
+
+Deze domeinsnapshots bevatten ook Q Flow Source, ketelassist-/fallbackkeuzes,
+responsegates en simulatorwaterinvoer. Een verloren ACK of interrupt herstelt
+beide betrokken gates; een herstelprobleem blijft een fout. Recovery zet de
+responses terug aan vóór stopbevestiging en OTA. Oude schema-3 snapshots van
+input-/performance-runs blijven geldig; Duo-/communications-snapshots zonder
+de extra velden worden vóór herstelwrites afgewezen.
+
+Runrapporten bevatten begrensde, geselecteerde incidentobservaties, zonder
+action-CSRF-token. Deze nieuwe cases zijn zonder hardware met fakes getest;
+een fake-PASS of configvalidatie is geen hardware-PASS.
+
 ## Volledige input-/bronselectietest
 
 De testconfig is uitsluitend voor HIL en wordt niet als releaseprofiel gebouwd.

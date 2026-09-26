@@ -1,0 +1,12 @@
+# ==============================================================================
+# OpenQuatt - HIL TEST ONLY: Q Duo Control Regression Observations
+# ==============================================================================
+# Reuse the existing CIC supply fixture and ODU observations. No production
+# timer/guard is shortened, and this overlay never changes simulator profiles.
+packages:
+  hil_observations: !include issue_667_v2_performance_duo_wifi.yaml
+
+text_sensor:
+  - id: !extend oq_hil_test_profile
+    lambda: |-
+      return {"control-regression-v1"};

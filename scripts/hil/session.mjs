@@ -64,6 +64,33 @@ export const simulatorSettings = [
   { key: 'hp2ManualFlow', domain: 'number', name: 'ODU 2 manual flow', kind: 'number' },
 ];
 
+// Only these new domains mutate response gates and boiler permissions. Keep
+// schema-3 input/performance recovery artifacts usable without new fields.
+export const controlRegressionControllerSettings = [
+  { key: 'qFlowSource', domain: 'select', name: 'Q Flow Source', kind: 'select' },
+  { key: 'boilerAssist', domain: 'switch', name: 'Boiler assist enabled', kind: 'switch' },
+  { key: 'boilerFallback', domain: 'switch', name: 'Boiler fallback on heat-pump fault', kind: 'switch' },
+];
+export const controlRegressionSimulatorSettings = [
+  { key: 'hp1Responses', domain: 'switch', name: 'ODU 1 responses enabled', kind: 'switch' },
+  { key: 'hp2Responses', domain: 'switch', name: 'ODU 2 responses enabled', kind: 'switch' },
+  { key: 'hp1WaterIn', domain: 'number', name: 'ODU 1 water-in temperature', kind: 'number' },
+  { key: 'hp2WaterIn', domain: 'number', name: 'ODU 2 water-in temperature', kind: 'number' },
+];
+
+function isControlRegression(scenario) {
+  return scenario === 'duo' || scenario === 'communications';
+}
+
+function settingsForScenario(scenario) {
+  return {
+    controller: isControlRegression(scenario)
+      ? [...controllerSettings, ...controlRegressionControllerSettings] : controllerSettings,
+    simulator: isControlRegression(scenario)
+      ? [...simulatorSettings, ...controlRegressionSimulatorSettings] : simulatorSettings,
+  };
+}
+
 export function parseOduActiveConfiguration(value, label = 'ODU diagnostics') {
   const text = String(value ?? '');
   const addressMatch = text.match(/(?:^|\s)addr=(\d+)(?:\s|$)/);
@@ -106,7 +133,12 @@ export async function snapshotSettings({ controller, simulator, targets, firmwar
   if (typeof scenario !== 'string' || scenario.length === 0) {
     throw new Error('scenario identity is required for a HIL snapshot');
   }
-  const simulatorState = await readSettings(simulator, simulatorSettings);
+  const settings = settingsForScenario(scenario);
+  const simulatorState = await readSettings(simulator, settings.simulator);
+  if (isControlRegression(scenario) &&
+      (!simulatorState.hp1Responses || !simulatorState.hp2Responses)) {
+    throw new Error('unsafe simulator baseline: both ODU response gates must be on');
+  }
   for (const key of [
     'hp1NoFlow',
     'hp2NoFlow',
@@ -129,7 +161,7 @@ export async function snapshotSettings({ controller, simulator, targets, firmwar
     targets,
     firmware,
     scenario,
-    controller: await readSettings(controller, controllerSettings),
+    controller: await readSettings(controller, settings.controller),
     simulator: simulatorState,
     simulatorActive: {
       hp1: parseOduActiveConfiguration(activeDiagnostics.hp1, 'ODU 1 diagnostics'),
@@ -164,10 +196,11 @@ export function validateSnapshot(snapshot) {
   if (typeof snapshot.scenario !== 'string' || snapshot.scenario.length === 0) {
     throw new Error('HIL snapshot has no scenario identity');
   }
-  for (const setting of controllerSettings) {
+  const settings = settingsForScenario(snapshot.scenario);
+  for (const setting of settings.controller) {
     normalizeSettingValue(setting, snapshot.controller?.[setting.key]);
   }
-  for (const setting of simulatorSettings) {
+  for (const setting of settings.simulator) {
     normalizeSettingValue(setting, snapshot.simulator?.[setting.key]);
   }
   for (const key of ['hp1', 'hp2']) {
@@ -206,6 +239,15 @@ export async function restoreSettings({
   await attempt('disable API cooling input', () =>
     controller.setSwitch('api_input_cooling_enable', false),
   );
+  if (isControlRegression(snapshot.scenario)) {
+    // Restore communication before waiting for safe stop confirmation or OTA.
+    // Try both gates even if the first request fails; failure still blocks OTA.
+    for (const hp of [1, 2]) {
+      await attempt(`restore HP${hp} responses`, () =>
+        simulator.setSwitch(`ODU ${hp} responses enabled`, true),
+      );
+    }
+  }
   await attempt('clear HP1 no-flow injection', () =>
     simulator.setSwitch('ODU 1 force no flow', false),
   );
@@ -265,13 +307,14 @@ export async function restoreSettings({
     }
   };
 
+  const settings = settingsForScenario(snapshot.scenario);
   await restoreGroup(
     controller,
-    controllerSettings.filter((item) => item.key !== 'cmOverride'),
+    settings.controller.filter((item) => item.key !== 'cmOverride'),
     snapshot.controller,
     'controller settings',
   );
-  await restoreGroup(simulator, simulatorSettings, snapshot.simulator, 'simulator settings');
+  await restoreGroup(simulator, settings.simulator, snapshot.simulator, 'simulator settings');
   if (restoreCmOverride && errors.length === 0) {
     const cmOverride = controllerSettings.find((item) => item.key === 'cmOverride');
     await restoreGroup(
@@ -308,8 +351,9 @@ export async function verifyRestoredSettings({ controller, simulator, snapshot }
       }
     }
   };
-  await verifyGroup(controller, controllerSettings, snapshot.controller, 'controller settings');
-  await verifyGroup(simulator, simulatorSettings, snapshot.simulator, 'simulator settings');
+  const settings = settingsForScenario(snapshot.scenario);
+  await verifyGroup(controller, settings.controller, snapshot.controller, 'controller settings');
+  await verifyGroup(simulator, settings.simulator, snapshot.simulator, 'simulator settings');
   if (errors.length > 0) {
     throw new AggregateError(errors, 'one or more HIL settings did not persist');
   }

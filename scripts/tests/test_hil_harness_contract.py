@@ -6,6 +6,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PROFILE = (ROOT / "configs/hil/input_sources_fast_duo_wifi.yaml").read_text()
 V2_PROFILE = (ROOT / "configs/hil/issue_667_v2_performance_duo_wifi.yaml").read_text()
+CONTROL_PROFILE = (ROOT / "configs/hil/control_regression_duo_wifi.yaml").read_text()
 HIL_CONTROLLER = (ROOT / "configs/heatpump_controller_q/duo_hil.yaml").read_text()
 HIL_CONTROLLER_COMPAT = (ROOT / "configs/heatpump_controller_q/duo_wifi_hil.yaml").read_text()
 RUNNER = (ROOT / "scripts/hil/run-input-sources.mjs").read_text()
@@ -43,6 +44,14 @@ class HilHarnessContractTest(unittest.TestCase):
         self.assertIn('device_name: "openquatt-test"', HIL_CONTROLLER)
         self.assertIn('project_name: "openquatt.test"', HIL_CONTROLLER)
         self.assertIn("openquatt-test.local", DOCS)
+
+    def test_control_regression_overlay_reuses_test_only_observations(self):
+        self.assertIn("HIL TEST ONLY", CONTROL_PROFILE)
+        self.assertIn("!include issue_667_v2_performance_duo_wifi.yaml", CONTROL_PROFILE)
+        self.assertIn('return {"control-regression-v1"};', CONTROL_PROFILE)
+        self.assertNotIn("substitutions:", CONTROL_PROFILE)
+        self.assertNotIn("control_regression_duo_wifi.yaml", TARGETS)
+        self.assertIn("esphome config configs/hil/control_regression_duo_wifi.yaml", ESPHOME_BUILD_WORKFLOW)
 
     def test_fast_profile_does_not_change_production_floors(self):
         for marker in (
