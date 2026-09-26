@@ -344,24 +344,28 @@ OpenQuattOduSettings::RequestResult OpenQuattOduSettings::request_save(const oq_
   uint32_t request_token = 0U;
   if (!this->begin_request_(request_token)) return RequestResult::BUSY;
 
-  bool accepted = false;
+  RequestResult result = RequestResult::IDENTITY_REQUIRED;
   portENTER_CRITICAL(&this->state_mux_);
   if (this->token_matches_(request_token) && this->identity_ready_.load(std::memory_order_acquire)) {
-    this->desired_ = settings;
-    this->pending_profile_ =
-        oq_odu::make_bottom_plate_profile(settings, this->variant_, this->control_board_item_, auto_reapply);
-    this->pending_action_ = PendingAction::SAVE;
-    this->pending_recovery_epoch_ = epoch;
-    this->pending_request_token_ = request_token;
-    this->set_status_locked_("SAVE_REQUESTED");
-    accepted = true;
+    if (!oq_odu::valid_bottom_plate_settings(settings, this->variant_)) {
+      result = RequestResult::INVALID_SETTINGS;
+    } else {
+      this->desired_ = settings;
+      this->pending_profile_ =
+          oq_odu::make_bottom_plate_profile(settings, this->variant_, this->control_board_item_, auto_reapply);
+      this->pending_action_ = PendingAction::SAVE;
+      this->pending_recovery_epoch_ = epoch;
+      this->pending_request_token_ = request_token;
+      this->set_status_locked_("SAVE_REQUESTED");
+      result = RequestResult::ACCEPTED;
+    }
   }
   portEXIT_CRITICAL(&this->state_mux_);
-  if (!accepted) {
-    this->finish_operation_("IDENTITY_REQUIRED", request_token);
-    return RequestResult::IDENTITY_REQUIRED;
+  if (result != RequestResult::ACCEPTED) {
+    this->finish_operation_(result == RequestResult::INVALID_SETTINGS ? "INVALID_SETTINGS" : "IDENTITY_REQUIRED",
+                            request_token);
   }
-  return RequestResult::ACCEPTED;
+  return result;
 }
 
 bool OpenQuattOduSettings::identity_matches_profile_() const {
@@ -370,6 +374,7 @@ bool OpenQuattOduSettings::identity_matches_profile_() const {
 }
 
 bool OpenQuattOduSettings::persist_profile_(const oq_odu::BottomPlateProfileStorage& profile) {
+  if (!oq_odu::valid_bottom_plate_profile(profile)) return false;
   const bool queued = this->profile_pref_.save(&profile);
   const bool sync_ok = global_preferences->sync();
   oq_odu::BottomPlateProfileStorage verify{};
@@ -432,7 +437,14 @@ void OpenQuattOduSettings::loop() {
       oq_odu::BottomPlateProfileStorage profile;
       portENTER_CRITICAL(&this->state_mux_);
       profile = this->pending_profile_;
+      const bool identity_matches =
+          this->identity_ready_.load(std::memory_order_acquire) &&
+          oq_odu::bottom_plate_profile_matches_identity(profile, this->control_board_item_, this->variant_);
       portEXIT_CRITICAL(&this->state_mux_);
+      if (!identity_matches) {
+        this->finish_operation_("IDENTITY_MISMATCH", request_token);
+        return;
+      }
       if (!this->persist_profile_(profile)) {
         portENTER_CRITICAL(&this->state_mux_);
         if (this->profile_available_.load(std::memory_order_acquire)) {
@@ -521,6 +533,12 @@ void OpenQuattOduSettings::handle_settings_read_(const oq_odu::BottomPlateSettin
     this->finish_operation_("RECOVERY_CANCELLED", operation_token);
     return;
   }
+  if (operation != Operation::LOAD &&
+      (!this->identity_matches_profile_() || !oq_odu::valid_bottom_plate_settings(this->desired_, this->variant_))) {
+    portEXIT_CRITICAL(&this->state_mux_);
+    this->finish_operation_("IDENTITY_MISMATCH", operation_token);
+    return;
+  }
   const bool matches = oq_odu::bottom_plate_settings_match(settings, this->desired_);
   if (operation != Operation::LOAD && !matches) this->set_status_locked_("APPLYING");
   portEXIT_CRITICAL(&this->state_mux_);
@@ -543,6 +561,14 @@ void OpenQuattOduSettings::handle_settings_read_(const oq_odu::BottomPlateSettin
 
 void OpenQuattOduSettings::queue_next_write_(uint32_t operation_token) {
   if (!this->token_matches_(operation_token)) return;
+  portENTER_CRITICAL(&this->state_mux_);
+  const bool supported = this->identity_ready_.load(std::memory_order_acquire) && this->identity_matches_profile_() &&
+                         oq_odu::valid_bottom_plate_settings(this->desired_, this->variant_);
+  portEXIT_CRITICAL(&this->state_mux_);
+  if (!supported) {
+    this->fail_operation_("IDENTITY_MISMATCH", operation_token);
+    return;
+  }
   const auto targets = oq_odu::bottom_plate_write_targets(this->desired_);
   while (this->write_index_ < targets.size()) {
     const auto target = targets[this->write_index_];
@@ -590,6 +616,12 @@ void OpenQuattOduSettings::queue_readback_(uint32_t operation_token) {
       return;
     }
     portENTER_CRITICAL(&this->state_mux_);
+    if (!this->identity_ready_.load(std::memory_order_acquire) || !this->identity_matches_profile_() ||
+        !oq_odu::valid_bottom_plate_settings(actual, this->variant_)) {
+      portEXIT_CRITICAL(&this->state_mux_);
+      this->fail_operation_("IDENTITY_MISMATCH", operation_token);
+      return;
+    }
     this->actual_ = actual;
     this->loaded_.store(true, std::memory_order_release);
     this->manual_apply_pending_.store(false, std::memory_order_release);

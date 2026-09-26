@@ -32,7 +32,7 @@ test("rendering en live invoer delen dezelfde bodemplaatwaarden en save-gates", 
   state.busyAction = "";
   state.oduSettingsDrafts = { 1: { mode: "1", startTemperatureC: "4", stopDeltaC: "3", autoReapply: false, dirty: true } };
   for (const patch of [{}, { available: false }, { identityReady: false }, { unsupported: true }, { busy: true }]) {
-    state.oduSettingsStatuses = { 1: { available: true, identityReady: true, loaded: true, ...patch } };
+    state.oduSettingsStatuses = { 1: { available: true, identityReady: true, variant: 2, loaded: true, ...patch } };
     const model = getOduSettingsEditorModel(1);
     const markup = renderOduSettingsModal();
     const button = markup.match(/<button[^>]*data-oq-action="odu-settings-save"[^>]*>/)[0];
@@ -48,7 +48,7 @@ test("rendering en live invoer delen dezelfde bodemplaatwaarden en save-gates", 
 });
 
 test("lege of ongeldige temperatuur blokkeert opslaan", () => {
-  state.oduSettingsStatuses = { 1: { available: true, identityReady: true, loaded: true } };
+  state.oduSettingsStatuses = { 1: { available: true, identityReady: true, variant: 2, loaded: true } };
   for (const value of ["", "invalid", "0", "-30", "30"]) {
     state.oduSettingsDrafts = { 1: { mode: "1", startTemperatureC: value, stopDeltaC: "3" } };
     const model = getOduSettingsEditorModel(1);
@@ -57,7 +57,7 @@ test("lege of ongeldige temperatuur blokkeert opslaan", () => {
 });
 
 test("bodemplaatcopy volgt de gekozen taal", () => {
-  state.oduSettingsStatuses = { 1: { available: true, identityReady: true, loaded: true } };
+  state.oduSettingsStatuses = { 1: { available: true, identityReady: true, variant: 2, loaded: true } };
   state.oduSettingsDrafts = { 1: { mode: "1", startTemperatureC: "4", stopDeltaC: "3" } };
   setLocale("nl", { persist: false, notify: false });
   assert.equal(t("oduSettings.mode1"), "Volgt buitentemperatuur");
@@ -116,15 +116,16 @@ test("modal maakt modus en grenzen instelbaar en berekent de stoptemperatuur", (
   assert.match(modal, /2 · Tijdens en na ontdooien/);
   assert.match(modal, /3 · Automatische vorst- en ontdooiregeling \(standaard V1\.5\/V2\)/);
   assert.doesNotMatch(modal, /0 · Uit/);
-  assert.match(modal, /Bij normaal verwarmen schakelt de bodemplaat rond 0 °C/);
-  assert.match(modal, /Tussen 0 °C en de ingestelde bovengrens kan ze tijdens ontdooien nog inschakelen/);
-  assert.match(modal, /onder −5 °C gelden aanvullende voorwaarden/);
+  assert.match(modal, /Bij normaal verwarmen wordt de bodemplaat rond 0 °C gebruikt/);
+  assert.match(modal, /tijdens ontdooien kan ze tot de ingestelde bovengrens actief zijn/);
+  assert.match(modal, /Bij zeer lage buitentemperaturen gelden aanvullende voorwaarden/);
   assert.match(modal, /Bovengrens bij ontdooien/);
   assert.doesNotMatch(modal, /hysterese-instelling wordt in deze modus niet gebruikt/);
   assert.doesNotMatch(modal, /onderzochte ODU-firmware/);
   assert.match(modal, /data-oq-odu-settings-field="mode"/);
   assert.match(modal, /data-oq-odu-settings-field="startTemperatureC"/);
   assert.match(modal, /data-oq-odu-settings-field="stopDeltaC"/);
+  assert.match(modal, /data-oq-odu-settings-field="stopDeltaC"[\s\S]*?oq-helper-unit-chip">K<\/span>/);
   assert.match(modal, /data-oq-odu-temperature-settings>/);
   assert.match(modal, /data-oq-odu-stop-delta-setting hidden/);
   assert.doesNotMatch(modal, /oq-settings-odu-thresholds/);
@@ -167,6 +168,7 @@ test("modal maakt modus en grenzen instelbaar en berekent de stoptemperatuur", (
 });
 
 test("regelmethode wisselt toelichting en modusafhankelijke temperatuurvelden direct", () => {
+  state.oduSettingsStatuses = { 1: { available: true, identityReady: true, variant: 2, loaded: true } };
   const temperatureSettings = { hidden: false };
   const stopDeltaSetting = { hidden: false };
   const modeOutput = { textContent: "" };
@@ -191,20 +193,20 @@ test("regelmethode wisselt toelichting en modusafhankelijke temperatuurvelden di
   assert.equal(updateOduSettingsDraft(input), true);
   assert.equal(temperatureSettings.hidden, true);
   assert.equal(stopDeltaSetting.hidden, true);
-  assert.equal(modeOutput.textContent, "Actief tijdens ontdooien en nog ongeveer tien minuten daarna.");
+  assert.equal(modeOutput.textContent, "Schakelt de bodemplaat in tijdens ontdooien en houdt de verwarming daarna nog gedurende een interne nalooptijd aan. Stand-by kan die naloop beëindigen.");
 
   input.value = "3";
   assert.equal(updateOduSettingsDraft(input), true);
   assert.equal(temperatureSettings.hidden, false);
   assert.equal(stopDeltaSetting.hidden, true);
-  assert.match(modeOutput.textContent, /Bij normaal verwarmen schakelt de bodemplaat rond 0 °C/);
-  assert.match(modeOutput.textContent, /Tussen 0 °C en de ingestelde bovengrens kan ze tijdens ontdooien nog inschakelen/);
+  assert.match(modeOutput.textContent, /Bij normaal verwarmen wordt de bodemplaat rond 0 °C gebruikt/);
+  assert.match(modeOutput.textContent, /tijdens ontdooien kan ze tot de ingestelde bovengrens actief zijn/);
 
   input.value = "1";
   assert.equal(updateOduSettingsDraft(input), true);
   assert.equal(temperatureSettings.hidden, false);
   assert.equal(stopDeltaSetting.hidden, false);
-  assert.equal(modeOutput.textContent, "Schakelt in onder de ingestelde temperatuurgrens en uit na de ingestelde hysterese.");
+  assert.equal(modeOutput.textContent, "Schakelt de bodemplaat in als de buitentemperatuur onder de ingestelde grens komt. Uitschakelen gebeurt pas nadat de buitentemperatuur volgens de ingestelde hysterese voldoende is gestegen.");
 });
 
 test("opslaan herstelt na geldige invoer maar blijft geblokkeerd bij onbeschikbare of bezige buitenunit", () => {
@@ -215,7 +217,7 @@ test("opslaan herstelt na geldige invoer maar blijft geblokkeerd bij onbeschikba
     closest: () => ({ querySelector: (selector) => selector === '[data-oq-action="odu-settings-save"]' ? saveButton : null }),
   };
   state.busyAction = "";
-  state.oduSettingsStatuses = { 1: normalizeOduSettingsStatus({ hp: 1, available: true, identity_ready: true, loaded: true }) };
+  state.oduSettingsStatuses = { 1: normalizeOduSettingsStatus({ hp: 1, available: true, identity_ready: true, variant: 2, loaded: true }) };
   state.oduSettingsDrafts = { 1: { mode: "1", startTemperatureC: "", stopDeltaC: "3", autoReapply: false } };
   updateOduSettingsDraft(input);
   assert.equal(saveButton.disabled, false);
@@ -224,11 +226,11 @@ test("opslaan herstelt na geldige invoer maar blijft geblokkeerd bij onbeschikba
   assert.equal(saveButton.disabled, true);
   input.value = "4";
   for (const blocked of [{ available: false }, { identityReady: false }, { unsupported: true }, { busy: true }]) {
-    state.oduSettingsStatuses[1] = { available: true, identityReady: true, ...blocked };
+    state.oduSettingsStatuses[1] = { available: true, identityReady: true, variant: 2, ...blocked };
     updateOduSettingsDraft(input);
     assert.equal(saveButton.disabled, true);
   }
-  state.oduSettingsStatuses[1] = { available: true, identityReady: true };
+  state.oduSettingsStatuses[1] = { available: true, identityReady: true, variant: 2 };
   state.busyAction = "odu-settings-hp1-save";
   updateOduSettingsDraft(input);
   assert.equal(saveButton.disabled, true);

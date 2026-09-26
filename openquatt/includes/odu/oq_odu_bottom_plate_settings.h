@@ -49,6 +49,22 @@ inline bool valid_bottom_plate_settings(const BottomPlateSettings& settings) {
          settings.stop_delta_c <= BOTTOM_PLATE_MAX_STOP_DELTA_C;
 }
 
+// Keep the variant-free validator for decoding/diagnosing an existing value.
+// A readable register value does not imply that this ODU implements that mode.
+inline bool valid_bottom_plate_settings(const BottomPlateSettings& settings, Variant variant) {
+  if (!valid_bottom_plate_settings(settings)) return false;
+  switch (variant) {
+    case Variant::V1:
+      return settings.mode <= 2U;
+    case Variant::V1_5:
+    case Variant::V2_OLD_MODEL:
+    case Variant::V2_NEW_MODEL:
+      return true;
+    default:
+      return false;
+  }
+}
+
 inline constexpr uint16_t encode_bottom_plate_start_temperature(int8_t temperature_c) {
   return static_cast<uint16_t>(static_cast<int16_t>(temperature_c) + 30);
 }
@@ -128,7 +144,7 @@ inline bool valid_bottom_plate_profile(const BottomPlateProfileStorage& storage)
   return storage.magic == BOTTOM_PLATE_PROFILE_MAGIC && storage.version == BOTTOM_PLATE_PROFILE_VERSION &&
          (storage.flags & static_cast<uint8_t>(~BOTTOM_PLATE_PROFILE_AUTO_REAPPLY)) == 0U && variant >= Variant::V1 &&
          variant <= Variant::V2_NEW_MODEL && storage.control_board_item != 0U &&
-         valid_bottom_plate_settings(settings) && storage.checksum == bottom_plate_profile_checksum(storage);
+         valid_bottom_plate_settings(settings, variant) && storage.checksum == bottom_plate_profile_checksum(storage);
 }
 
 inline bool bottom_plate_profile_matches_identity(const BottomPlateProfileStorage& storage, uint16_t control_board_item,
