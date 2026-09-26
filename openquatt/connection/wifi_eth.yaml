@@ -39,10 +39,17 @@ improv_serial:
   next_url: "http://{{ip_address}}/"
 
 external_components:
+  # ESPHome 2026.9.0 compatibility backport; see openquatt_network/README.md.
+  - source:
+      type: git
+      url: https://github.com/jeroen85/esphome.git
+      ref: 868f33267166971b328cacbe6391f1b815454a9c
+    components: [ethernet]
+    refresh: never
   - source:
       type: local
       path: ${external_components_path}
-    components: [wifi, ethernet, captive_portal, openquatt_network, openquatt_captive_portal_router]
+    components: [wifi, captive_portal, openquatt_network, openquatt_captive_portal_router]
 
 openquatt_network:
   id: oq_network_manager

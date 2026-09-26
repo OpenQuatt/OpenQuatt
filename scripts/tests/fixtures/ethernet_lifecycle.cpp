@@ -7,49 +7,34 @@
 #define ESP_LOGW(...) ((void)0)
 #define ESP_LOGE(...) ((void)0)
 #define ESP_LOGV(...) ((void)0)
-using esp_err_t = int;
-using esp_event_base_t = int;
-constexpr int ESP_OK = 0;
-constexpr int ETHERNET_EVENT_START = 1;
-constexpr int ETHERNET_EVENT_STOP = 2;
-constexpr int ETHERNET_EVENT_CONNECTED = 3;
-constexpr int ETHERNET_EVENT_DISCONNECTED = 4;
-int stop_result = ESP_OK;
-int start_result = ESP_OK;
-int stop_calls = 0;
-int start_calls = 0;
 uint32_t clock_ms = 100;
 uint32_t millis() { return clock_ms; }
 void delay(uint32_t) {}
-esp_err_t esp_eth_stop(void*) {
-  ++stop_calls;
-  return stop_result;
-}
-esp_err_t esp_eth_start(void*) {
-  ++start_calls;
-  return start_result;
-}
-enum class EthernetComponentState { STOPPED, CONNECTED };
+// This is the upstream public API contract, not an implementation copy.
+// Generic driver lifecycle tests belong in ESPHome; this fixture drives the
+// actual OpenQuatt manager through enabled, stopping and confirmed-stop states.
 class EthernetComponent {
  public:
-  void enable();
-  void disable();
-  static void eth_event_handler(void*, esp_event_base_t, int32_t, void*);
+  void enable() {
+    ++start_calls_;
+    stopped_ = false;
+    if (start_succeeds_) disabled_ = false;
+  }
+  void disable() {
+    ++stop_calls_;
+    if (stop_succeeds_) disabled_ = true;
+  }
   bool is_disabled() { return disabled_; }
   bool is_enabled() { return !disabled_; }
-  bool is_driver_stopped() const { return disabled_ && driver_stopped_.load(std::memory_order_acquire); }
-  bool is_connected() { return !disabled_ && state_ == EthernetComponentState::CONNECTED; }
+  bool is_driver_stopped() const { return disabled_ && stopped_; }
   void* get_eth_handle() { return eth_handle_; }
-  void ethernet_lazy_init_() {}
-  void enable_loop() {}
-  void enable_loop_soon_any_context() {}
   void* eth_handle_{this};
   bool disabled_{false};
-  bool ethernet_initialized_{true};
-  bool started_{true};
-  bool connected_{true};
-  std::atomic<bool> driver_stopped_{false};
-  EthernetComponentState state_{EthernetComponentState::CONNECTED};
+  bool stopped_{false};
+  bool stop_succeeds_{true};
+  bool start_succeeds_{true};
+  int start_calls_{0};
+  int stop_calls_{0};
 };
 EthernetComponent* global_eth_component;
 namespace ethernet {
@@ -95,64 +80,55 @@ int main() {
   EthernetComponent eth;
   global_eth_component = &eth;
   OpenQuattNetworkManager manager;
-  stop_result = -1;
+  eth.stop_succeeds_ = false;
   assert(!manager.disable_ethernet_());
-  assert(!eth.is_disabled());
-  assert(eth.is_connected());
   assert(manager.writes_ == 0);
-  assert(manager.prepare_ethernet_after_setup_());  // WiFi startup never blocks.
-  assert(manager.ethernet_prepared_);
+  assert(manager.prepare_ethernet_after_setup_());  // Failed stop never blocks WiFi startup.
+  assert(manager.ethernet_prepared_ && manager.writes_ == 0);
+  assert(!manager.power_down_w5500_() && !manager.wake_w5500_());
   assert(manager.writes_ == 0);
-  assert(!manager.power_down_w5500_());
-  assert(!manager.wake_w5500_());
-  assert(manager.writes_ == 0);
-  stop_result = ESP_OK;
-  assert(!manager.disable_ethernet_());  // Stop accepted, event still pending.
-  assert(eth.is_disabled());
-  assert(!eth.is_connected());  // Reject stale CONNECTED state immediately.
+
+  eth.stop_succeeds_ = true;
+  assert(!manager.disable_ethernet_());  // Stop accepted, STOP acknowledgement delayed/lost.
   assert(!manager.ensure_ethernet_enabled_());
-  assert(start_calls == 0 && manager.writes_ == 0);
-  const int accepted_stop_calls = stop_calls;
-  assert(!manager.disable_ethernet_());
-  assert(stop_calls == accepted_stop_calls);  // No second driver stop.
-  EthernetComponent::eth_event_handler(nullptr, 0, ETHERNET_EVENT_START, nullptr);
-  assert(!eth.is_driver_stopped());  // Queued old START is not a stop boundary.
-  EthernetComponent::eth_event_handler(nullptr, 0, ETHERNET_EVENT_STOP, nullptr);
-  assert(eth.is_driver_stopped());
+  for (int retry = 0; retry < 3; ++retry) {
+    assert(!manager.disable_ethernet_());
+    assert(!manager.ensure_ethernet_enabled_());
+  }
+  assert(eth.start_calls_ == 0 && manager.writes_ == 0);
+  eth.stopped_ = true;  // Upstream delivers the stop barrier.
   assert(manager.disable_ethernet_());
   assert(manager.w5500_powered_down_);
+
   manager.writes_succeed_ = false;
-  assert(!manager.ensure_ethernet_enabled_());  // Failed wake never starts driver.
-  assert(start_calls == 0);
+  assert(!manager.ensure_ethernet_enabled_());  // Failed wake never starts the driver.
+  assert(eth.start_calls_ == 0);
   manager.writes_succeed_ = true;
+  manager.reads_succeed_ = false;
+  assert(!manager.ensure_ethernet_enabled_());  // Unverified wake is also unsafe.
+  assert(eth.start_calls_ == 0);
+  manager.reads_succeed_ = true;
   assert(manager.ensure_ethernet_enabled_());
-  assert(start_calls == 1 && !eth.is_disabled());
-  assert(!eth.is_connected());  // Previous connection stability cannot survive restart.
-  assert(!eth.is_driver_stopped());
+  assert(eth.start_calls_ == 1 && !eth.is_disabled());
   const int awake_writes = manager.writes_;
   assert(!manager.power_down_w5500_() && !manager.wake_w5500_());
   assert(manager.writes_ == awake_writes);
-  // Stop again, then inject ambiguous start failure. No unsafe repeated PHY reset.
+
   assert(!manager.disable_ethernet_());
-  EthernetComponent::eth_event_handler(nullptr, 0, ETHERNET_EVENT_STOP, nullptr);
-  start_result = -1;
-  assert(!manager.ensure_ethernet_enabled_());
-  assert(eth.is_disabled() && !eth.is_driver_stopped());
-  const int failed_start_writes = manager.writes_;
-  assert(!manager.ensure_ethernet_enabled_());
-  assert(manager.writes_ == failed_start_writes && start_calls == 2);
-  // Accepted start cleanup allows retry only after STOP delivery.
-  EthernetComponent::eth_event_handler(nullptr, 0, ETHERNET_EVENT_STOP, nullptr);
-  start_result = ESP_OK;
-  assert(manager.ensure_ethernet_enabled_());
-  assert(start_calls == 3);
-  assert(!manager.disable_ethernet_());
-  EthernetComponent::eth_event_handler(nullptr, 0, ETHERNET_EVENT_STOP, nullptr);
-  start_result = -1;
-  stop_result = -1;
-  assert(!manager.ensure_ethernet_enabled_());
+  eth.stopped_ = true;
+  eth.start_succeeds_ = false;
+  assert(!manager.ensure_ethernet_enabled_());  // Ambiguous partial-start failure.
   const int ambiguous_writes = manager.writes_;
-  start_result = ESP_OK;
-  assert(!manager.ensure_ethernet_enabled_());  // No STOP: do not blindly restart.
-  assert(manager.writes_ == ambiguous_writes && start_calls == 4);
+  assert(!manager.ensure_ethernet_enabled_());
+  assert(manager.writes_ == ambiguous_writes && eth.start_calls_ == 2);
+  eth.stopped_ = true;
+  eth.start_succeeds_ = true;
+  assert(manager.ensure_ethernet_enabled_());  // Recovery requires a real stop boundary.
+
+  eth.eth_handle_ = nullptr;
+  assert(!manager.ensure_ethernet_enabled_() && !manager.disable_ethernet_());
+  assert(manager.prepare_ethernet_after_setup_());  // Unavailable driver allows WiFi fallback.
+  global_eth_component = nullptr;
+  assert(!manager.ensure_ethernet_enabled_() && !manager.disable_ethernet_());
+  assert(manager.prepare_ethernet_after_setup_());
 }

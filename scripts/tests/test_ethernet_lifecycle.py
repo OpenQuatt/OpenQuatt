@@ -1,4 +1,4 @@
-"""Execute production Ethernet lifecycle methods with failing IDF calls."""
+"""Execute OpenQuatt PHY guards with explicit upstream Ethernet lifecycle states."""
 from pathlib import Path
 import os
 import subprocess
@@ -7,7 +7,6 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-CPP = (ROOT / "components/ethernet/ethernet_component_esp32.cpp").read_text()
 NETWORK = (ROOT / "components/openquatt_network/OpenQuattNetworkManager.cpp").read_text()
 
 
@@ -24,12 +23,7 @@ def method(source, signature):
 class EthernetLifecycleTest(unittest.TestCase):
     def test_actual_lifecycle_with_injected_failures(self):
         fixture = (Path(__file__).parent / "fixtures/ethernet_lifecycle.cpp").read_text()
-        methods = "\n".join(method(CPP, signature) for signature in (
-            "void EthernetComponent::enable()",
-            "void EthernetComponent::disable()",
-            "void EthernetComponent::eth_event_handler(",
-        ))
-        methods += "\n" + "\n".join(method(NETWORK, signature) for signature in (
+        methods = "\n".join(method(NETWORK, signature) for signature in (
             "bool OpenQuattNetworkManager::ensure_ethernet_enabled_()",
             "bool OpenQuattNetworkManager::disable_ethernet_()",
             "bool OpenQuattNetworkManager::prepare_ethernet_after_setup_()",
