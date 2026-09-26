@@ -85,7 +85,7 @@ test('Duo stages drive both outage directions and require physical start feedbac
   }
 });
 
-test('communications proves causal fallback and CM1 handback in one outage', async () => {
+test('communications proves causal fallback and recovered heating in one outage', async () => {
   const fixture = bench();
   const result = await runCommunicationsScenarios({ ...fixture, stage: 'fallback' });
   assert.equal(result.cases.length, 2);
@@ -117,7 +117,7 @@ test('unexpected partial-outage boiler activation fails instead of being swallow
   assert.deepEqual(fixture.responses, [true, true]);
 });
 
-test('communications rejects early fallback without provenance and CM4 relapse after CM1', async () => {
+test('communications rejects early fallback without provenance and CM4 relapse after recovered heating', async () => {
   for (const fault of ['early', 'relapse']) {
     const fixture = bench();
     const request = fixture.controller.request;
@@ -130,13 +130,13 @@ test('communications rejects early fallback without provenance and CM4 relapse a
         altered = true;
       }
       if (fault === 'relapse' && fixture.writes.some(([hp, enabled]) => hp === 2 && enabled)) {
-        if (payload.system.control_mode === 1) recovering = true;
+        if (!recovering && payload.system.control_mode === 2) recovering = true;
         else if (recovering && !altered) { payload.system.control_mode = 4; altered = true; }
       }
       return payload;
     };
     await assert.rejects(runCommunicationsScenarios({ ...fixture, stage: 'fallback' }),
-      fault === 'early' ? /before causal stop timeout/ : /handback reverted/);
+      fault === 'early' ? /before causal stop timeout/ : /fallback|CM4/);
     assert.ok(altered);
     assert.deepEqual(fixture.responses, [true, true]);
   }
@@ -477,4 +477,53 @@ test('interrupt during CM0 verification prevents the boiler transport write', as
   await assert.rejects(prepareCommunicationsRegression(controller, simulator,
     () => interrupted, snapshot), /interrupted/);
   assert.equal(transportWrites, 0);
+});
+
+
+test('communications permits direct recovery and CM1/CM4 while peers still recover', async () => {
+  for (const hpCount of [1, 2]) {
+    for (const direct of [false, true]) {
+      const fixture = bench(hpCount);
+      const request = fixture.controller.request;
+      let phase = 0;
+      fixture.controller.request = async () => {
+        const payload = await request();
+        if (fixture.writes.some(([, enabled]) => enabled) && phase < (direct ? 1 : 3)) {
+          if (direct) payload.system.control_mode = 2;
+          else {
+            payload.system.control_mode = phase === 1 ? 4 : 1;
+            payload.system.boiler_command_active = phase === 1;
+            payload.heat_pumps.forEach((hp) => {
+              hp.link_state = 'recovering'; hp.available_for_start = false;
+              hp.running_confirmed = false; hp.stop_unconfirmed_due_to_link_loss = true;
+            });
+          }
+          phase++;
+        }
+        return payload;
+      };
+      const result = await runCommunicationsScenarios({ ...fixture, stage: 'all', hpCount });
+      assert.equal(result.cases.length, 2);
+      assert.ok(result.samples.some((s) => s.mode === 2 && s.hp.every((hp) => hp.link_state === 'healthy')));
+      assert.equal(phase, direct ? 1 : 3);
+    }
+  }
+});
+
+
+test('handback hold rejects a renewed stop obligation on either healthy Duo peer', async () => {
+  for (const flag of ['must_stop', 'stop_unconfirmed']) {
+    const fixture = bench();
+    const request = fixture.controller.request;
+    let recoveredSamples = 0;
+    fixture.controller.request = async () => {
+      const payload = await request();
+      if (fixture.writes.some(([, enabled]) => enabled) && payload.system.control_mode === 2 &&
+          ++recoveredSamples > 1) payload.heat_pumps[0][flag] = true;
+      return payload;
+    };
+    await assert.rejects(runCommunicationsScenarios({ ...fixture, stage: 'all' }), /not stable/);
+    assert.ok(recoveredSamples > 1);
+    assert.deepEqual(fixture.responses, [true, true]);
+  }
 });

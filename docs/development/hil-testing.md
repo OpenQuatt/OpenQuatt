@@ -126,8 +126,8 @@ firmware-restore. Selecteer alleen het relevante domein en de relevante stage:
 |---|---|---|
 | `run-duo.mjs` | `start` | Vanuit idle starten met één beschikbare ODU; HP1 en HP2 worden afzonderlijk getest. CM2 zonder bevestigde compressorstart is geen PASS. |
 | `run-duo.mjs` | `peer-loss` | Eén ODU valt tijdens verwarmen weg; de resterende ODU neemt verwarming over zonder CM4 of ketelstart. CM1 en normale restartguards zijn toegestaan vóór overname. Beide uitvalrichtingen worden getest. |
-| `run-communications-mono.mjs` | `fallback` / `all` | Mono: HP1 weg, causale stop-timeout en CM4; herstel via CM1 naar CM2 met bevestigde compressorfeedback. HP2 wordt niet onderdrukt. |
-| `run-communications.mjs` | `fallback` | Beide ODU's weg: causale onbevestigde stop en CM4 met actieve keteltransportuitgang; na herstel handback via CM1 naar CM2 en causale permissie gewist. |
+| `run-communications-mono.mjs` | `fallback` / `all` | Mono: HP1 weg, causale stop-timeout en CM4; herstel naar CM2 met bevestigde compressorfeedback. HP2 wordt niet onderdrukt. |
+| `run-communications.mjs` | `fallback` | Beide ODU's weg: causale onbevestigde stop en CM4 met actieve keteltransportuitgang; na herstel gezonde ODU’s in CM2, compressorfeedback, ketel uit en causale permissie gewist. |
 
 Alle runners hebben een read-only `smoke`. `all` betekent alleen alle stages
 van die runner; het is geen volledige hardware-regressieset.
@@ -149,7 +149,10 @@ controller-, simulator-, device- en restoreconfigopties.
 De Duo-testoverlay hergebruikt de bestaande HIL-CIC-supplyfixture en observaties,
 met marker `control-regression-v1`. Productieguardtijden blijven intact;
 `Power House demand rise time` wordt tijdelijk op de normale minimuminstelling
-van 2 minuten gezet. Een assertionfase kan tot tien minuten wachten; positieve
+van 2 minuten gezet. Tijdens linkherstel zijn CM1 en tijdelijke CM4 toegestaan zolang herstel nog
+niet bevestigd is; directe CM4→CM2 is geldig. Na bevestigde CM2 worden terugval,
+ketelactivatie en verlies van feedback gedurende 30 seconden afgewezen.
+Een assertionfase kan tot tien minuten wachten; positieve
 uitgangstoestanden worden daarna 30 seconden bewaakt. De API-vraag wordt serieel
 ververst, zonder achtergrondtimer, en de geselecteerde inputs worden gecontroleerd.
 

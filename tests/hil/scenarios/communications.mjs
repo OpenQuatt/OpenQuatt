@@ -27,17 +27,18 @@ export async function runCommunicationsScenarios(options) {
       }
     });
   });
-  let sawCm1 = false;
-  await ctx.until('clean link recovery and handback', (s) => {
-    sawCm1 ||= s.mode === 1;
-    return sawCm1 && healthy(s) && s.mode === 2 && !s.boiler && !s.boilerActive && s.hp.some((hp) => hp.running_confirmed);
-  }, (s) => {
+  // CM1 can be demand confirmation while peers are still recovering. A return
+  // to CM4 before recovered heating is allowed; direct CM4 -> CM2 is also valid.
+  const recoveredHeating = (s) => healthy(s) && s.mode === 2 &&
+    !s.boiler && !s.boilerActive && s.flow !== null && s.flow >= 250 &&
+    s.hp.every((hp) => !hp.stop_unconfirmed && !hp.stop_unconfirmed_due_to_link_loss && !hp.must_stop) &&
+    s.hp.some((hp) => hp.running_confirmed);
+  await ctx.until('clean link recovery and handback', recoveredHeating, (s) => {
     if (s.mode === 0) throw new Error('handback flapped to CM0');
-    if (sawCm1 && ![1, 2].includes(s.mode)) throw new Error('handback reverted after CM1');
   });
   await ctx.hold('handback stable', (s) => {
     assertNoFallback(s);
-    if (!healthy(s) || s.mode !== 2 || !s.hp.some((hp) => hp.running_confirmed)) {
+    if (!recoveredHeating(s)) {
       throw new Error('link recovery or handback not stable');
     }
   });
