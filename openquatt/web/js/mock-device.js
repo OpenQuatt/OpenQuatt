@@ -1777,6 +1777,7 @@
     setBinary("Boiler command valid", true);
     setBinary("Boiler command active", boilerActive);
     setBinary("OTB - Boiler Link Available", otbLinkAvailable);
+    setText("text_sensor", "OTB - Boiler Connection State", openthermSelected ? (otbLinkAvailable ? "ot_verified" : "ot_no_response") : "r1_ready");
     setBinary("OTB - Central Heating Active", otbLinkAvailable && boilerActive);
     setBinary("OTB - Domestic Hot Water Active", false);
     setBinary("OTB - Flame On", otbLinkAvailable && boilerActive);
