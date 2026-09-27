@@ -11,6 +11,7 @@
 #include "oq_compressor_start_limit.h"
 #include "oq_cooling_limiter_logic.h"
 #include "oq_cooling_start_status.h"
+#include "oq_defrost_logic.h"
 #include "oq_incident_actuator_logic.h"
 #include "oq_thermal_actuator_logic.h"
 #include "oq_thermal_request_logic.h"
@@ -58,6 +59,7 @@ class Runtime {
  public:
   void tick(const TickConfig& config) {
     for (auto& limit : this->start_limits_) limit.expire(config.now_ms);
+    this->last_minimum_flow_lph_ = config.minimum_flow_lph;
     const float cooling_off_state = id(cooling_minimum_off_time).state;
     int cooling_off_s = !isfinite(cooling_off_state) ? 600 : static_cast<int>(lroundf(cooling_off_state));
     const int cooling_off_floor_s = oq_cooling::cooling_minimum_off_floor_s(config.cooling_minimum_off_min_s);
@@ -78,6 +80,10 @@ class Runtime {
         this->update_cooling_window(config.now_ms, static_cast<uint32_t>(cooling_off_s) * 1000UL,
                                     restart_by_minimum_off_time),
     };
+    this->update_defrost_(true, config.now_ms);
+#if OQ_TOPOLOGY_DUO
+    this->update_defrost_(false, config.now_ms);
+#endif
     this->publish_defrost_events(config.now_ms);
     this->publish_frequency_limit_block_(true, cycle);
 #if OQ_TOPOLOGY_DUO
@@ -436,17 +442,26 @@ class Runtime {
     const int previous = this->previous_applied_(is_hp1);
     const uint8_t hp_index = is_hp1 ? 1U : 2U;
     const auto incident = id(oq_incident_manager).get_outputs(hp_index);
+    auto* defrost = is_hp1 ? &id(hp1_odu_defrost) : &OQ_ACTUATOR_SECONDARY_ID(odu_defrost);
+    if (defrost->cycle.telemetry_fault(cycle.config.now_ms)) requested = level = 0;
+    // Preserve the current command while the ODU owns the cycle. Hard safety
+    // stops remain authoritative; ordinary demand changes wait for completion.
+    if (!this->defrost_safety_stop_(is_hp1) &&
+        (!defrost->cycle.fresh(cycle.config.now_ms) || defrost->holding() || defrost->cycle.observed_active()))
+      return previous;
     uint32_t& last_safe_write_ms = this->last_safe_stop_write_ms(is_hp1);
     const bool stop_pending = incident.run_state == oq_incidents::RunState::STOPPING ||
                               incident.run_state == oq_incidents::RunState::STOP_UNCONFIRMED;
-    const bool force_safe_write =
-        oq_incident_actuator::safe_stop_write_retry_due(stop_pending, cycle.config.now_ms, last_safe_write_ms, 10000U);
+    const bool force_safe_write = oq_incident_actuator::safe_stop_write_retry_due(
+        stop_pending || defrost->cycle.telemetry_fault(cycle.config.now_ms), cycle.config.now_ms, last_safe_write_ms,
+        10000U);
 
     // Contract order: incident stop -> defrost hold -> cooling rest -> per-HP rest -> start quota
     // -> valid mode -> frequency policy -> start/stop registration -> physical write.
     const auto incident_guard =
         oq_incident_actuator::decide({level, previous, incident.available_for_start,
-                                      incident.must_stop || id(oq_incident_manager).startup_inhibited(hp_index)});
+                                      incident.must_stop || defrost->cycle.telemetry_fault(cycle.config.now_ms) ||
+                                          id(oq_incident_manager).startup_inhibited(hp_index)});
     const bool may_retain =
         oq_thermal_actuator::may_retain_command(previous, incident_guard.bypass_runtime_and_defrost_holds);
     if (!may_retain) this->clear_retained_level(is_hp1);
@@ -745,6 +760,80 @@ class Runtime {
     return is_hp1 ? id(hp1_defrost).state : OQ_ACTUATOR_SECONDARY_ID(defrost).state;
   }
 
+  bool defrost_safety_stop_(bool is_hp1) const {
+    const uint8_t hp = is_hp1 ? 1U : 2U;
+    const auto& cycle = (is_hp1 ? id(hp1_odu_defrost) : OQ_ACTUATOR_SECONDARY_ID(odu_defrost)).cycle;
+    return id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) ||
+           id(oq_incident_manager).get_outputs(hp).must_stop || cycle.telemetry_fault(millis());
+  }
+  void update_defrost_(bool is_hp1, uint32_t now) {
+    auto* service = is_hp1 ? &id(hp1_odu_defrost) : &OQ_ACTUATOR_SECONDARY_ID(odu_defrost);
+    const uint8_t hp = is_hp1 ? 1U : 2U;
+    const auto incident = id(oq_incident_manager).get_outputs(hp);
+    const bool peer =
+#if OQ_TOPOLOGY_DUO
+        (is_hp1 ? id(hp2_odu_defrost) : id(hp1_odu_defrost)).busy() ||
+        (is_hp1 ? id(hp2_odu_defrost) : id(hp1_odu_defrost)).cycle.observed_active() ||
+        !(is_hp1 ? id(hp2_odu_defrost) : id(hp1_odu_defrost)).cycle.fresh(now);
+#else
+        false;
+#endif
+    service->cycle.step(now);
+    const bool trigger = service->take_trigger();
+    int save_desired = -1, save_expected = -2;
+    const bool save = service->take_save(save_desired, save_expected);
+    const float measured_hz =
+        is_hp1 ? id(hp1_compressor_frequency).state : OQ_ACTUATOR_SECONDARY_ID(compressor_frequency).state;
+    const float flow_lph = id(flow_rate_selected).has_state() ? id(flow_rate_selected).state : NAN;
+    const bool start_block =
+        this->defrost_safety_stop_(is_hp1) || !oq_defrost::minimum_flow_ready(flow_lph, this->last_minimum_flow_lph_);
+    oq_defrost::Guard guard{
+        is_hp1 ? id(hp1_is_online) : OQ_ACTUATOR_SECONDARY_ID(is_online),
+        service->cycle.fresh(now) && service->sample_fresh(0, now),
+        is_hp1 ? id(hp1_odu_generation_detection_complete) && !id(hp1_odu_generation_revalidation_required)
+               : OQ_ACTUATOR_SECONDARY_ID(odu_generation_detection_complete) &&
+                     !OQ_ACTUATOR_SECONDARY_ID(odu_generation_revalidation_required),
+        service->automatic(),
+        start_block,
+        id(oq_commissioning_active),
+        peer,
+        service->busy(),
+        service->cycle.mode,
+        incident.running_confirmed && !id(oq_incident_manager).startup_inhibited(hp) ? measured_hz : NAN,
+        service->cycle.observed_active()};
+    const char* refusal = oq_defrost::refusal(guard);
+    if (trigger) {
+      if (std::strcmp(refusal, "READY") == 0) {
+        id(oq_incident_manager).invalidate_restart_credit(hp);
+        service->send_forced_once(now);
+      } else
+        service->reject(refusal);
+    }
+    if (save) {
+      oq_defrost::Guard save_guard = guard;
+      save_guard.incident = this->defrost_safety_stop_(is_hp1);
+      save_guard.hz = !incident.running_confirmed && service->sample_fresh(0, now) ? measured_hz : NAN;
+      const char* save_err =
+          oq_defrost::mode_save_error(save_guard, save_desired, save_expected, service->current_mode(),
+                                      service->loaded(), service->automatic(), service->variant());
+      if (std::strcmp(save_err, "READY") == 0)
+        service->send_mode_once(save_desired, now);
+      else if (std::strcmp(save_err, "NO_CHANGE") == 0)
+        service->confirm_saved();
+      else
+        service->reject(save_err);
+    }
+    openquatt_odu_defrost::Snapshot snapshot{};
+    snapshot.online = guard.online;
+    snapshot.identity = guard.identity;
+    snapshot.guard = refusal;
+    snapshot.can_trigger = std::strcmp(refusal, "READY") == 0 && !service->busy();
+    snapshot.hz = measured_hz;
+    snapshot.ambient = is_hp1 ? id(hp1_outside_temp).state : OQ_ACTUATOR_SECONDARY_ID(outside_temp).state;
+    snapshot.coil = is_hp1 ? id(hp1_evaporator_coil_temp).state : OQ_ACTUATOR_SECONDARY_ID(evaporator_coil_temp).state;
+    snapshot.evaporation = is_hp1 ? id(hp1_evaporating_temp).state : OQ_ACTUATOR_SECONDARY_ID(evaporating_temp).state;
+    service->update(snapshot, now);
+  }
   bool real_defrost_seen_(bool is_hp1) const {
     const bool cooling_active =
         this->mode_is(is_hp1, 1) || this->mode_target_is(is_hp1, 1) || id(oq_control_mode_code) == 5;
@@ -772,8 +861,11 @@ class Runtime {
     if (!active) this->defrost_started_ms_[index] = 0;
     this->last_defrost_seen_[index] = active;
   }
-
   void write_mode_option_(bool is_hp1, const char* option, bool force_write) {
+    auto* service = is_hp1 ? &id(hp1_odu_defrost) : &OQ_ACTUATOR_SECONDARY_ID(odu_defrost);
+    if (!service->normal_write_allowed(std::strcmp(option, "Standby") == 0 ? 0 : 1, this->defrost_safety_stop_(is_hp1)))
+      return;
+    force_write = force_write || service->cycle.phase == oq_defrost::Phase::RESYNC;
     const bool active_mode = std::strcmp(option, "Cooling") == 0 || std::strcmp(option, "Heating") == 0;
     if (is_hp1) {
       if (force_write || id(hp1_set_working_mode).current_option() != option) {
@@ -781,6 +873,10 @@ class Runtime {
         call.set_option(option);
         if (active_mode) id(oq_incident_manager).invalidate_restart_credit(1U);
         call.perform();
+        if (service->cycle.phase == oq_defrost::Phase::RESYNC) {
+          service->cycle.resynced();
+          service->release();
+        }
       }
       return;
     }
@@ -790,6 +886,10 @@ class Runtime {
       call.set_option(option);
       if (active_mode) id(oq_incident_manager).invalidate_restart_credit(2U);
       call.perform();
+      if (service->cycle.phase == oq_defrost::Phase::RESYNC) {
+        service->cycle.resynced();
+        service->release();
+      }
     }
 #else
     (void)option;
@@ -868,6 +968,7 @@ class Runtime {
   }
 
   std::string last_optimizer_reason_;
+  float last_minimum_flow_lph_{0};
   oq_thermal_actuator::CompressorStartLimit start_limits_[OQ_TOPOLOGY_DUO ? 2 : 1]{};
   oq_cooling_start_status::Status cooling_a_refuse_[OQ_TOPOLOGY_DUO ? 2 : 1]{};
   std::string last_block_reasons_[2];

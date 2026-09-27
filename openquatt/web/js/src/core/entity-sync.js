@@ -24,6 +24,7 @@ import { clearWebServerLogOutput, closeWebServerLogStream, resetWebServerLogReco
 import { getMqttSensorsModalRenderSignature, refreshMqttStatus, shouldRefreshMqttStatusForCurrentSurface } from "../features/mqtt-actions.js";
 import { refreshApiSecurityStatus, refreshAuthStatus, shouldRefreshApiSecurityStatusForCurrentSurface, shouldRefreshAuthStatusForCurrentSurface } from "../features/security-actions.js";
 import { refreshOduEepromDumpStatuses, shouldRefreshOduEepromDumpSurface } from "../features/odu-eeprom-dump.js";
+import { refreshOduDefrostStatuses, shouldRefreshOduDefrostSurface } from "../features/odu-defrost.js";
 import { refreshOduRuntimeFrequencyStatuses, shouldRefreshOduRuntimeFrequencySurface } from "../features/odu-runtime-frequency.js";
 import { refreshOduSettingsStatuses, shouldRefreshOduSettingsSurface } from "../features/odu-settings.js";
 import {
@@ -1339,6 +1340,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
         : await refreshMqttStatus({ force: state.systemModal === "mqtt-sensors" });
       if (!shouldDeferSupplementary && shouldRefreshOduEepromDumpSurface()) {
         await refreshOduEepromDumpStatuses();
+      }
+      if (!shouldDeferSupplementary && shouldRefreshOduDefrostSurface()) {
+        await refreshOduDefrostStatuses();
       }
       if (!shouldDeferSupplementary && shouldRefreshOduRuntimeFrequencySurface()) {
         await refreshOduRuntimeFrequencyStatuses();
