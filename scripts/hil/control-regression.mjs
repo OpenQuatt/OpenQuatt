@@ -30,18 +30,23 @@ export function incidentObservation(payload, hpCount = 2) {
 }
 
 export function controlContext({ controller, simulator, interrupted = () => false,
-  hpCount = 2, now = Date.now, delay = sleep, timeoutMs = 600000, holdMs = 30000, intervalMs = 1500 }) {
+  hpCount = 2, now = Date.now, delay = sleep, timeoutMs = 600000, holdMs = 30000, intervalMs = 1500,
+  demandW = 4000, observeExtra }) {
   const samples = [];
   let nextRefresh = 0;
   let heating = false;
+  let requestedDemandW = demandW;
+  let demandTransitionFrom = null;
   let requireInputs = false;
   async function refresh() {
     if (!heating || now() < nextRefresh) return;
     // Serialized through the shared REST gate, never a racing background timer.
-    await controller.setNumber('api_input_outside_temperature', 7);
-    await controller.setNumber('api_input_room_temperature', 20);
-    await controller.setNumber('api_input_room_setpoint', 24);
-    await controller.setNumber('api_input_external_heat_demand', 4000);
+    for (const [name, value] of [['api_input_outside_temperature', 7], ['api_input_room_temperature', 20],
+      ['api_input_room_setpoint', 24], ['api_input_external_heat_demand', requestedDemandW]]) {
+      require(!interrupted(), 'HIL run interrupted during API demand refresh');
+      await controller.setNumber(name, value);
+    }
+    require(!interrupted(), 'HIL run interrupted during API enable refresh');
     await controller.setSwitch('api_input_heating_enable', true);
     nextRefresh = now() + 45000;
   }
@@ -60,12 +65,17 @@ export function controlContext({ controller, simulator, interrupted = () => fals
         { key: 'enable', domain: 'binary_sensor', name: 'Heating Enable (Selected)' },
         { key: 'valid', domain: 'binary_sensor', name: 'Heating Enable Valid' },
       ]);
-      state.inputsReady = Object.entries({ outside: 7, room: 20, setpoint: 24, demand: 4000 })
+      const commonReady = Object.entries({ outside: 7, room: 20, setpoint: 24 })
         .every(([key, expected]) => asFiniteNumber(inputs[key]) !== null &&
           Math.abs(Number(inputs[key]) - expected) < 0.11) &&
         asBoolean(inputs.enable) && asBoolean(inputs.valid);
-      require(!requireInputs || state.inputsReady, 'API demand/source selection became invalid or stale');
+      const matchesDemand = watts => asFiniteNumber(inputs.demand) !== null &&
+        Math.abs(Number(inputs.demand) - watts) < 0.11;
+      state.inputsReady = commonReady && matchesDemand(requestedDemandW);
+      const transitionalReady = demandTransitionFrom !== null && commonReady && matchesDemand(demandTransitionFrom);
+      require(!requireInputs || state.inputsReady || transitionalReady, 'API demand/source selection became invalid or stale');
     }
+    if (observeExtra) await observeExtra(state);
     require(samples.length < 5000, 'control regression sample limit exceeded');
     samples.push({ at: new Date(now()).toISOString(), ...state });
     return state;
@@ -80,8 +90,8 @@ export function controlContext({ controller, simulator, interrupted = () => fals
     }
     throw new Error(`${label} timed out`);
   }
-  async function hold(label, invariant) {
-    const deadline = now() + holdMs;
+  async function hold(label, invariant, durationMs = holdMs) {
+    const deadline = now() + durationMs;
     do {
       invariant(await observe());
       await delay(intervalMs);
@@ -129,7 +139,18 @@ export function controlContext({ controller, simulator, interrupted = () => fals
     requireInputs = true;
     await controller.setSelect('CM Override', 'Auto');
   }
-  return { controller, simulator, samples, until, hold, responses, withLoss, idle, demand };
+  async function setDemand(watts) {
+    require(!interrupted(), 'HIL run interrupted before demand change');
+    require(Number.isFinite(watts) && watts > 0 && watts <= 20000, 'invalid regression demand');
+    demandTransitionFrom = requestedDemandW;
+    requestedDemandW = watts;
+    nextRefresh = 0;
+    try {
+      await refresh();
+      await until('changed API demand selected and fresh', s => s.inputsReady);
+    } finally { demandTransitionFrom = null; }
+  }
+  return { controller, simulator, samples, until, hold, responses, withLoss, idle, demand, setDemand };
 }
 
 export function healthy(s) {

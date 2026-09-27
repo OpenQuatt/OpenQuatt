@@ -98,6 +98,17 @@ class HilHarnessContractTest(unittest.TestCase):
             self.assertIn(marker, SUBSTITUTIONS)
         self.assertNotIn("oq_cooling_minimum_off_min_s", PROFILE)
 
+    def test_boiler_overlay_preserves_real_assist_timers(self):
+        profile = (ROOT / "configs/hil/boiler_regression_duo_wifi.yaml").read_text()
+        self.assertIn("!include control_regression_duo_wifi.yaml", profile)
+        self.assertIn("boiler-regression-v1", profile)
+        self.assertNotIn("substitutions:", profile)
+        self.assertNotIn("boiler_regression_duo_wifi.yaml", TARGETS)
+        self.assertIn("esphome config configs/hil/boiler_regression_duo_wifi.yaml", ESPHOME_BUILD_WORKFLOW)
+        for marker in ['oq_cm3_promote_s: "300"', 'oq_cm3_demote_s: "120"',
+                       'oq_cm3_min_run_s: "300"', 'oq_cm2_min_run_s: "120"']:
+            self.assertIn(marker, SUBSTITUTIONS)
+
     def test_mutations_are_gated_and_targets_have_no_defaults(self):
         self.assertIn("mutating HIL runs require --apply", RUNNER)
         self.assertIn("--device and --restore-config", RUNNER)

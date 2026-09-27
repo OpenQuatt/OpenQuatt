@@ -232,6 +232,53 @@ CM0 tijdelijk uitstellen. De fysieke stopgate geldt ook bij afzonderlijk
 fail-closed en de recoverylock behouden. Tellers en inactieve defrost blijven
 ook tijdens verwarmingsherstel, de 30s hold en de laatste stopcontrole bewaakt.
 
+## Ketelassist en permissies
+
+`run-boiler.mjs` gebruikt `boiler-regression-v1` en een afzonderlijk schema-4
+`boiler`-snapshotdomein. Het selecteert pas na gezonde CM0/stilstand OpenTherm.
+De simulator moet Responses enabled en Automatic boiler model aan hebben;
+Manual telemetry, DHW demand en Fault indication moeten uit staan. Preflight
+controleert de bron-defined entiteiten en tellers vóór instellingen of OTA.
+
+| Stage | Contract |
+|---|---|
+| `assist` | Duurzaam Power House-tekort bij 20000 W vraag promoveert CM2 naar CM3; na verlaging naar 4000 W en gewist tekort volgt CM2 met ketel uit. |
+| `permissions` | Assist uit voorkomt ketelactivatie gedurende 450s gezond bedrijf met tekort; fallback uit voorkomt CM4/keteluitgang na causale stop-onzekerheid bij volledige ODU-linkuitval. |
+| `all` | Alle vier cases; snapshot, response gates en permissies herstellen ook bij verloren ACK of interrupt. |
+
+```bash
+node scripts/hil/run-boiler.mjs \
+  --controller http://openquatt-test.local \
+  --simulator http://SIMULATOR-IP \
+  --device openquatt-test.local \
+  --test-config configs/hil/boiler_regression_duo_wifi.yaml \
+  --restore-config configs/heatpump_controller_q/duo_hil.yaml \
+  --stage all --apply
+```
+
+Geen guardtimer wordt ingekort: 120s minimum CM2 plus 300s promote; 300s minimum
+CM3 plus 120s demote. Het tekort moet werkelijk boven de bestaande ON-drempel
+liggen en bij handback onder de OFF-drempel komen. De tests veranderen geen
+threshold of rated boiler power om een PASS te maken. Reële flow en bevestigde
+compressorfeedback blijven verplicht tijdens CM2/CM3.
+
+Een controllercommando alleen volstaat niet. De simulator moet verse ontvangen
+Master CH Enable, Simulated CH active en geldige masterstatus tonen, met een
+nieuwe rising edge en doorlopende OpenTherm request count. Counterreset, stale
+peer, boilerfallback, onverwachte uitgang of verloren compressorfeedback falen.
+Tijdens verboden ketelbedrijf en handback moet de rising-edge-counter gelijk
+blijven, zodat ook een korte CH-puls tussen metingen faalt. Een gewijzigde
+API-vraag mag begrensd op sensorpublicatie wachten; andere inputs blijven geldig.
+Bij demotie mag ketelvermogen al uit zijn terwijl de CM3-minimumtijd uitloopt;
+CM2-handback moet 30s stabiel zijn met alle keteluitgangen uit. Cleanup probeert
+beide permissies onafhankelijk en beide onderdrukte peers via de gedeelde helper.
+Ook afzonderlijke recovery wacht vóór OTA op fysieke ODU-stilstand en ingetrokken
+controller- én ontvangen keteluitgang. Bij ontbreken van bewijs blijft de lock.
+
+Dit test het OpenTherm-controlcontract op desktop-HIL, geen echte ketel of
+hydrauliek. Host-fakes bewijzen scenario/assertiegedrag; de vier nieuwe cases
+vereisen afzonderlijk fysiek bewijs op deze overlay.
+
 ## Volledige input-/bronselectietest
 
 De testconfig is uitsluitend voor HIL en wordt niet als releaseprofiel gebouwd.

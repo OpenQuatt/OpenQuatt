@@ -1,0 +1,8 @@
+# HIL TEST ONLY. Keep all production CM2/CM3 and compressor timers intact.
+packages:
+  control_observations: !include control_regression_duo_wifi.yaml
+
+text_sensor:
+  - id: !extend oq_hil_test_profile
+    lambda: |-
+      return {"boiler-regression-v1"};

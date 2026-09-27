@@ -269,7 +269,7 @@ test('preparation uses valid flow selectors and fails before settings writes on 
 });
 
 test('domain snapshot restores extra gates, water fixtures and permissions without changing legacy schema-3', async () => {
-  for (const scenario of ['duo', 'communications', 'communications-mono', 'defrost', 'input-sources']) {
+  for (const scenario of ['duo', 'communications', 'communications-mono', 'defrost', 'boiler', 'input-sources']) {
     const controller = new SettingsClient([...controllerSettings, ...controlRegressionControllerSettings]);
     const simulator = new SettingsClient([...simulatorSettings, ...controlRegressionSimulatorSettings]);
     const snapshot = await snapshotSettings({ controller, simulator, scenario, firmware: 'baseline', targets: {} });
