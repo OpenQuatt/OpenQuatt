@@ -224,6 +224,10 @@
       1: { loaded: false, busy: false, status: "READY", profileAvailable: false, autoReapply: false, actual: { mode: 1, startTemperatureC: 4, stopDeltaC: 3 } },
       2: { loaded: false, busy: false, status: "READY", profileAvailable: false, autoReapply: false, actual: { mode: 3, startTemperatureC: 4, stopDeltaC: 3 } },
     },
+    oduDefrostService: {
+      1: { loaded: false, busy: false, state: "IDLE", active: false, manual: false, mode: 0 },
+      2: { loaded: false, busy: false, state: "IDLE", active: false, manual: false, mode: 0 },
+    },
   };
 
   function isCoolingScenario(name = state.scenario) {
@@ -305,6 +309,7 @@
     settings.busy = false;
     settings.status = "READY";
     settings.actual = { mode: profile.generation === "V1" ? 1 : 3, startTemperatureC: 4, stopDeltaC: 3 };
+    state.oduDefrostService[hp === 2 ? 2 : 1] = { loaded: false, busy: false, state: "IDLE", active: false, manual: false, mode: 0 };
     syncMockOduIdentityEntities(hp);
   }
 
@@ -4306,6 +4311,95 @@
     return mockResponse(200, getOduSettingsPayload(hp));
   }
 
+  function getOduDefrostPayload(hp) {
+    const service = state.oduDefrostService[hp];
+    const mode = String(getEntity("text_sensor", `HP${hp} - Working Mode Label`)?.value || "");
+    const compressorHz = Number(getEntity("sensor", `HP${hp} - Compressor frequency`)?.value);
+    const heating = /heating|verwarmen/i.test(mode);
+    const running = Number.isFinite(compressorHz) && compressorHz > 0.5;
+    const guard = !service.loaded ? "READY" : service.active ? "ALREADY_ACTIVE" : !heating ? "NOT_HEATING" : !running ? "COMPRESSOR_NOT_RUNNING" : "READY";
+    return {
+      ok: true, hp, online: true, fresh: true, identity_ready: getMockOduVariant(hp) > 0,
+      variant: getMockOduVariant(hp),
+      loaded: service.loaded, auto_defrost_control_ok: true, busy: service.busy, active: service.active,
+      manual: service.manual, can_trigger: service.loaded && !service.busy && guard === "READY",
+      defrost_mode: service.loaded ? (service.mode ?? 0) : -1, operation_mode: service.active ? 4 : heating ? 2 : 0, state: service.state, guard,
+      elapsed_s: service.active ? 84 : -1, since_last_s: 3600, last_duration_s: 420,
+      ambient_c: 4.2, coil_c: -2.1, evaporation_c: -5.4, compressor_hz: compressorHz,
+      delta_k: 9.6, start_threshold_c: service.loaded ? -3 : null, delta_required_k: null, exit_threshold_c: service.loaded ? 17 : null, alternate_exit_c: service.loaded ? 25 : null,
+      confirmation_s: 0, confirmation_required_s: service.loaded ? 180 : -1, runtime_s: 84, minimum_runtime_s: service.loaded ? 300 : -1,
+      interval_s: -1, max_duration_s: service.loaded ? 480 : -1, exit_confirmation_s: 0, exit_required_s: -1,
+      inferred_end_reason: service.state === "COMPLETE" ? "eindvoorwaarde bereikt" : "",
+      csrf_token: "oq-mock-odu-defrost",
+    };
+  }
+
+  function handleMockOduDefrostRequest(url, method, init) {
+    const match = url.pathname.match(/\/openquatt\/odu-defrost\/hp([12])\/(status|load|trigger|save)$/);
+    if (!match) return null;
+    const hp = Number(match[1]);
+    const action = match[2];
+    if (hp === 2 && state.installation === "single") return mockResponse(404, { ok: false });
+    if (action === "status") return method === "GET" ? mockResponse(200, getOduDefrostPayload(hp)) : mockResponse(405, { ok: false });
+    if (method !== "POST") return mockResponse(405, { ok: false });
+    const params = new URLSearchParams(String(init?.body || ""));
+    if (params.get("csrf_token") !== "oq-mock-odu-defrost") return mockResponse(409, { ok: false, error: "forbidden" });
+    const service = state.oduDefrostService[hp];
+    if (service.busy) return mockResponse(409, { ok: false, error: "busy" });
+    if (action === "save") {
+      const desired = Number(params.get("mode"));
+      const expected = Number(params.get("expected_mode"));
+      const variant = getMockOduVariant(hp);
+      const supported = variant === 1 ? [0, 1, 3] : [0, 1, 3, 4];
+      if (!supported.includes(desired) || ![-1, 0, 1, 2, 3, 4].includes(expected)) return mockResponse(409, { ok: false, error: "invalid_mode" });
+      if (!service.loaded) return mockResponse(409, { ok: false, error: "busy" });
+      if (expected !== (service.mode ?? 0)) return mockResponse(409, { ok: false, error: "stale" });
+      if (desired === (service.mode ?? 0)) {
+        service.state = "SAVED";
+        return mockResponse(200, getOduDefrostPayload(hp));
+      }
+      const compressorHz = Number(getEntity("sensor", `HP${hp} - Compressor frequency`)?.value);
+      if (!Number.isFinite(compressorHz) || compressorHz > 0) {
+        service.state = "COMPRESSOR_RUNNING";
+        service.busy = true;
+        window.setTimeout(() => {
+          service.busy = false;
+          notifyMockUpdated();
+        }, 320);
+        return mockResponse(200, getOduDefrostPayload(hp));
+      }
+      service.busy = true;
+      service.state = "CHECKING";
+      window.setTimeout(() => {
+        service.busy = false;
+        service.mode = desired;
+        service.state = "SAVED";
+        notifyMockUpdated();
+      }, 320);
+      return mockResponse(200, getOduDefrostPayload(hp));
+    }
+    service.busy = true;
+    service.state = action === "load" ? "LOADING" : "CHECKING";
+    window.setTimeout(() => {
+      service.busy = false;
+      if (action === "load") {
+        service.loaded = true;
+        service.state = "LOADED";
+      } else {
+        const payload = getOduDefrostPayload(hp);
+        if (payload.can_trigger) {
+          service.active = true;
+          service.manual = true;
+          service.state = "ACTIVE";
+        } else {
+          service.state = "WAITING";
+        }
+      }
+      notifyMockUpdated();
+    }, 320);
+    return mockResponse(200, getOduDefrostPayload(hp));
+  }
+
   function handleButtonPress(name) {
     const generationDetectMatch = /^HP([12]) - Detect ODU generation$/.exec(name);
     if (generationDetectMatch) {
@@ -5752,6 +5846,10 @@
       const oduSettingsResponse = handleMockOduSettingsRequest(url, method, init || {});
       if (oduSettingsResponse) {
         return oduSettingsResponse;
+      }
+      const oduDefrostResponse = handleMockOduDefrostRequest(url, method, init || {});
+      if (oduDefrostResponse) {
+        return oduDefrostResponse;
       }
       const oduEepromResponse = handleMockOduEepromRequest(url, method);
       if (oduEepromResponse) {

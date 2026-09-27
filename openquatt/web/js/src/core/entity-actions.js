@@ -20,6 +20,7 @@ import { getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNu
 import { handleMqttAction, syncMqttDraftFromInput } from "../features/mqtt-actions.js";
 import { setLocale, t } from "../i18n/index.js";
 import { handleOduEepromDumpAction } from "../features/odu-eeprom-dump.js";
+import { handleOduDefrostAction } from "../features/odu-defrost.js";
 import { handleOduRuntimeFrequencyAction, handleOduRuntimeFrequencyInputKeyDown, updateOduRuntimeFrequencyDraft } from "../features/odu-runtime-frequency.js";
 import { handleOduSettingsAction, updateOduSettingsDraft } from "../features/odu-settings.js";
 import { confirmQuickStartSetup, handleQuickStartAction } from "../features/quickstart-ui-actions.js";
@@ -40,6 +41,7 @@ const actionDelegates = [
   handleQuickStartAction,
   handleDebugRecordingAction,
   handleOduEepromDumpAction,
+  handleOduDefrostAction,
   handleOduRuntimeFrequencyAction,
   handleOduSettingsAction,
   handleSecurityAction,

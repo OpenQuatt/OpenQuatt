@@ -48,6 +48,12 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
             note: t("settingsInstallation.oduFreqNote"),
             action: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="open-odu-frequency-settings">${escapeHtml(t("settingsInstallation.oduFreqAction"))}</button>`,
           })}
+          ${renderSettingsSystemRow({
+            label: t("settingsInstallation.oduDefrostTitle"),
+            value: hpIndexes.length === 2 ? t("settingsInstallation.oduDefrostDual") : t("settingsInstallation.oduDefrostSingle"),
+            note: t("settingsInstallation.oduDefrostNote"),
+            action: `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="open-odu-defrost">${escapeHtml(t("settingsInstallation.oduDefrostAction"))}</button>`,
+          })}
         </div>
       </section>`;
   }
