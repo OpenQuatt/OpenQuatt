@@ -46,31 +46,6 @@ void log_heap_state_(const char* phase) {
            static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
 }
 
-void log_mqtt_failure_(const esp_mqtt_error_codes_t* error) {
-  // The event owns this pointer. Read only the fields valid for its error type
-  // and never retain it across callbacks or log broker credentials/payloads.
-  if (error == nullptr) {
-    ESP_LOGW(TAG, "MQTT failed without transport error details");
-  } else if (error->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
-    ESP_LOGW(TAG, "MQTT transport failed: errno=%d, esp_err=0x%X, tls_err=0x%X, cert_flags=0x%X",
-             error->esp_transport_sock_errno, static_cast<unsigned>(error->esp_tls_last_esp_err),
-             static_cast<unsigned>(error->esp_tls_stack_err), static_cast<unsigned>(error->esp_tls_cert_verify_flags));
-  } else if (error->error_type == MQTT_ERROR_TYPE_CONNECTION_REFUSED) {
-    ESP_LOGW(TAG, "MQTT connection refused: broker_code=%d", static_cast<int>(error->connect_return_code));
-  } else {
-    ESP_LOGW(TAG, "MQTT failed: error_type=%d", static_cast<int>(error->error_type));
-  }
-
-  // A minimum since boot is not the current allocation margin. Keep the
-  // current free bytes and largest block together, sampled at the failure.
-  constexpr uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
-  ESP_LOGW(TAG, "MQTT failure resources: internal_free=%u, internal_min=%u, internal_largest=%u, PSRAM_free=%u",
-           static_cast<unsigned>(heap_caps_get_free_size(caps)),
-           static_cast<unsigned>(heap_caps_get_minimum_free_size(caps)),
-           static_cast<unsigned>(heap_caps_get_largest_free_block(caps)),
-           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
-}
-
 bool uuid_is_present_(const std::array<uint8_t, 16>& bytes) {
   return std::any_of(bytes.begin(), bytes.end(), [](uint8_t byte) { return byte != 0U; });
 }
@@ -1277,7 +1252,6 @@ void OpenQuattUsageTelemetry::mqtt_event_handler_(void* handler_args, esp_event_
       }
       break;
     case MQTT_EVENT_ERROR:
-      log_mqtt_failure_(event->error_handle);
       self->publish_failed_.store(true);
       App.wake_loop_threadsafe();
       break;
