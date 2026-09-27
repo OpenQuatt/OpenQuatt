@@ -25,3 +25,22 @@ of the reported lwIP crash.
 methods against mocked public Ethernet API states. Generic driver lifecycle
 tests belong upstream. Hardware validation must still check actual IDF event
 ordering and repeated interface transitions.
+
+### DNS after inactive-interface DHCP startup
+
+ESP-IDF can clear global main/backup DNS when Ethernet DHCP starts, even while
+WiFi remains the default route. ESPHome's route check does not repair this when
+the route itself is unchanged. The manager checks once per second and restores
+only missing main/backup entries from the current default interface's cached
+DHCP/static DNS. Valid global entries and fallback DNS are preserved.
+
+Selection, route/up checks, reads and writes run in one synchronous
+`esp_netif_tcpip_exec()` operation. No interface pointer or DNS snapshot survives
+the operation; DHCP renewal and failover are serialized with the repair. The
+repair uses no persistent allocation and leaves driver STOP/PHY guards intact.
+It is compiled only with `CONFIG_ESP_NETIF_SET_DNS_PER_DEFAULT_NETIF`.
+
+Run `python3 -m unittest discover -s scripts/tests -p 'test_network_dns_recovery.py'`
+for the startup-order, renewal, failover, unavailable-state and retry regression
+checks. These host checks establish the repair logic; physical network/OTA
+validation is still required to confirm the reported device failure mechanism.
