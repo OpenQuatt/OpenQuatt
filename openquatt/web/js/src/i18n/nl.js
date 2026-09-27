@@ -69,7 +69,7 @@ export default {
     },
     switch: {
       label: "Passief leren",
-      copy: "Pauzeer of hervat. Na herstart staat dit uit.",
+      copy: "Standaard aan. Pauzeer of hervat; je keuze blijft na herstart behouden.",
       on: "Leren ingeschakeld.",
       off: "Geen nieuwe metingen.",
     },
@@ -98,7 +98,7 @@ export default {
     },
     activity: {
       restartRequired: "Herstart nodig",
-      restartCopy: "Herstart de regelaar en schakel passief leren opnieuw in. Opgeslagen leerdata blijft behouden.",
+      restartCopy: "Herstart de regelaar. Je leerkeuze en opgeslagen leerdata blijven behouden.",
       enableToCollect: "Schakel passief leren in om metingen te verzamelen.",
       waterMismatch: "Watertemperaturen sluiten nog niet op elkaar aan.",
       waterMismatchCopy: "Controleer HP1 water uit en HP2 water in.",
@@ -2488,7 +2488,7 @@ export default {
     inCrash: "Na een crash",
     inCrashCopy: "Het technische ESPHome-crashrapport, de ELF-SHA256 en voldoende firmware-identificatie om een passende rebuild te controleren",
     inFeatures: "Functies",
-    inFeaturesCopy: "Aan/uit-status van CiC, OpenTherm-thermostaat, ketelondersteuning, MQTT-inputs en lokale historie; plus de ketelaansluiting (aan/uit of OpenTherm)",
+    inFeaturesCopy: "Aan/uit-status van CiC, OpenTherm-thermostaat, ketelondersteuning, MQTT-inputs, lokale historie en passief leren; plus de ketelaansluiting (aan/uit of OpenTherm)",
     exIdentity: "Identiteit",
     exIdentityCopy: "Geen MAC-adres of netwerkadres",
     exWifi: "Wifi en toegang",

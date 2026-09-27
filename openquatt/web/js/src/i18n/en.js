@@ -68,7 +68,7 @@ export default {
     },
     switch: {
       label: "Passive learning",
-      copy: "Pause or resume. This is off after a restart.",
+      copy: "On by default. Pause or resume; your choice is retained after a restart.",
       on: "Learning enabled.",
       off: "No new measurements.",
     },
@@ -97,7 +97,7 @@ export default {
     },
     activity: {
       restartRequired: "Restart required",
-      restartCopy: "Restart the controller and enable passive learning again. Saved learning data is retained.",
+      restartCopy: "Restart the controller. Your learning choice and saved learning data are retained.",
       enableToCollect: "Enable passive learning to collect measurements.",
       waterMismatch: "The water temperatures do not match yet.",
       waterMismatchCopy: "Check HP1 water out and HP2 water in.",
@@ -2488,7 +2488,7 @@ export default {
     inCrash: "After a crash",
     inCrashCopy: "The technical ESPHome crash report, the ELF SHA256 and enough firmware identification to verify a matching rebuild",
     inFeatures: "Features",
-    inFeaturesCopy: "On/off status of CiC, OpenTherm thermostat, boiler support, MQTT inputs and local history; plus the boiler connection (on/off or OpenTherm)",
+    inFeaturesCopy: "On/off status of CiC, OpenTherm thermostat, boiler support, MQTT inputs, local history and passive learning; plus the boiler connection (on/off or OpenTherm)",
     exIdentity: "Identity",
     exIdentityCopy: "No MAC address or network address",
     exWifi: "Wi-Fi and access",

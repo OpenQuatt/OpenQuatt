@@ -125,8 +125,19 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
     trend_flash_enabled: false,
     decision_log_flash_enabled: false,
     energy_history_flash_enabled: true,
+    house_learning_enabled: null,
     ram_log_history_enabled: true,
   });
+  const largeCounterPayload = {
+    ...preview,
+    message_id: "12345678-1234-1234-1234-123456789abc",
+    house_learning_enabled: false,
+    modbus_partial_response_count: 4294967295,
+    modbus_parse_failed_count: 4294967295,
+    modbus_recovered_response_count: 4294967295,
+    modbus_offline_count: 4294967295,
+  };
+  assert.ok(Buffer.byteLength(JSON.stringify(largeCounterPayload)) < 2048);
   assert.equal(flowSourceConfigWireValue("Outdoor unit", "Auto", true), "outdoor_unit");
   assert.equal(flowSourceConfigWireValue("Outdoor unit", undefined, false), "outdoor_unit");
   assert.equal(configuredSourceWireValue("Schedule"), "schedule");
@@ -135,6 +146,22 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("modbusRecoveredResponseCount"));
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("modbusOfflineCount"));
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("webServerLogHistoryEnabled"));
+});
+
+test("passive learning telemetry contains only the optional switch state", () => {
+  for (const [value, expected] of [["ON", true], ["OFF", false], [undefined, null]]) {
+    const payload = createUsageTelemetryPreview({ houseLearningEnabled: value });
+    assert.equal(payload.house_learning_enabled, expected);
+    for (const key of ["h_batch", "t0_batch", "u_rls", "c_rls_wh_per_k", "records"]) {
+      assert.ok(!(key in payload));
+    }
+  }
+  assert.ok(USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("houseLearningEnabled"));
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale, { persist: false });
+    assert.match(t("usage.inFeaturesCopy"), locale === "nl" ? /passief leren/ : /passive learning/);
+  }
+  setLocale("nl", { persist: false });
 });
 
 test("time validity is derived from the device clock text entity", () => {

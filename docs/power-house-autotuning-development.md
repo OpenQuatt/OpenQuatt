@@ -258,8 +258,9 @@ De hardwarepoort omvat Q Single en Q Duo. Valideer beide firmwaretargets en voer
 ## Bediening en validatiestatus
 
 Op Q staat onder Instellingen → Verwarmen → Power House **Passief leren**. Daar staan
-opt-in, leerstatus, een handmatig te laden grafiek, export en wissen. De gewone geselecteerde bronwaarden blijven leidend; er is geen extra
-formulier voor hydrauliek, warmtebronnen of meetgrenzen. Opt-in start na reboot uit. De reguliere
+de leerschakelaar, leerstatus, een handmatig te laden grafiek, export en wissen. De gewone geselecteerde bronwaarden blijven leidend; er is geen extra
+formulier voor hydrauliek, warmtebronnen of meetgrenzen. Passief leren staat standaard aan;
+de gekozen schakelaarstand blijft na reboot behouden. De reguliere
 Power House-instellingen blijven leidend; automatisch toepassen is altijd uit.
 
 Eén mainloop-leerkern beheert verzamelen, pauzeren, resetten, herstellen en beide modellen. De

@@ -63,7 +63,8 @@ zonder de fysieke metingen te wissen.
 Het journal bewaart batchrecords en de 1R1C-leerstand in twee flashslots met schema en
 CRC, maximaal eenmaal per uur bij nieuwe gegevens. Herstel vereist geldige UTC en een
 ondersteund schema en algoritmeversie; schema-4-batchrecords blijven leesbaar. De
-bronkeuze verhindert herstel niet. Na een reboot staat de opt-in uit. Alle statussen
+bronkeuze verhindert herstel niet. Passief leren staat standaard aan; de gekozen
+schakelaarstand blijft na een reboot behouden. Alle statussen
 publiceren `auto_apply_allowed: false`.
 
 ## Status en export

@@ -2,7 +2,8 @@
 # OpenQuatt – Passive Power House learning
 # ==============================================================================
 # This package is included only by Heatpump Controller Q Single/Duo.
-# It never writes a heating model or actuator. A reboot requires a fresh opt-in.
+# It never writes a heating model or actuator. Learning defaults on and restores
+# the user's choice after reboot.
 external_components:
   - source:
       type: local
@@ -13,6 +14,9 @@ openquatt_house_learning_status:
   id: oq_ph_learning_status_endpoint
   web_auth: oq_web_auth_store
 
+openquatt_usage_telemetry:
+  house_learning_switch: oq_ph_learning_enabled
+
 switch:
   - platform: template
     id: oq_ph_learning_enabled
@@ -20,7 +24,7 @@ switch:
     icon: mdi:school-outline
     entity_category: config
     optimistic: true
-    restore_mode: ALWAYS_OFF
+    restore_mode: RESTORE_DEFAULT_ON
     on_turn_off:
       - lambda: |-
           oq_ph_learning::runtime().pause();
