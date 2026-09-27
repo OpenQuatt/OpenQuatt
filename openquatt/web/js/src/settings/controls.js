@@ -525,7 +525,7 @@ export function renderSettingsMiniNumberField(key, title, copy, options = {}) {
         key,
         value,
         meta,
-        controlClass: "oq-helper-control oq-helper-control--suffix",
+        controlClass: `oq-helper-control${meta.uom ? " oq-helper-control--suffix" : ""}`,
         inputClass: "oq-helper-input oq-helper-input--compact-number",
         unitMarkup: meta.uom ? `<span class="oq-helper-unit-chip">${escapeHtml(meta.uom)}</span>` : "",
       })}

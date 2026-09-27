@@ -67,6 +67,7 @@ CONF_TREND_RAM_SWITCH = "trend_ram_switch"
 CONF_TREND_FLASH_SWITCH = "trend_flash_switch"
 CONF_DECISION_LOG_FLASH_SWITCH = "decision_log_flash_switch"
 CONF_ENERGY_HISTORY_FLASH_SWITCH = "energy_history_flash_switch"
+CONF_HOUSE_LEARNING_SWITCH = "house_learning_switch"
 CONF_MODBUS_HUB = "modbus_hub"
 
 openquatt_usage_telemetry_ns = cg.esphome_ns.namespace("openquatt_usage_telemetry")
@@ -135,6 +136,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_TREND_FLASH_SWITCH): cv.use_id(switch.Switch),
             cv.Required(CONF_DECISION_LOG_FLASH_SWITCH): cv.use_id(switch.Switch),
             cv.Required(CONF_ENERGY_HISTORY_FLASH_SWITCH): cv.use_id(switch.Switch),
+            cv.Optional(CONF_HOUSE_LEARNING_SWITCH): cv.use_id(switch.Switch),
             cv.Required(CONF_MODBUS_HUB): cv.use_id(openquatt_modbus.OpenQuattModbusClientHub),
         }
     )
@@ -257,5 +259,8 @@ async def to_code(config):
     cg.add(var.set_decision_log_flash_switch(decision_log_flash_switch))
     energy_history_flash_switch = await cg.get_variable(config[CONF_ENERGY_HISTORY_FLASH_SWITCH])
     cg.add(var.set_energy_history_flash_switch(energy_history_flash_switch))
+    if house_learning_switch_id := config.get(CONF_HOUSE_LEARNING_SWITCH):
+        house_learning_switch = await cg.get_variable(house_learning_switch_id)
+        cg.add(var.set_house_learning_switch(house_learning_switch))
     modbus_hub = await cg.get_variable(config[CONF_MODBUS_HUB])
     cg.add(var.set_modbus_hub(modbus_hub))

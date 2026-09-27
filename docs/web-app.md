@@ -212,6 +212,42 @@ aparte meetwaarde aan; de web-app toont daarom geen berekende uitsplitsing ervan
 De stooklijn gebruikt een gefilterde buitentemperatuur, die tijdelijk kan afwijken
 van de actuele buitenmeting.
 
+In testfirmware met passief huismodelleren staat bij Power House op Heatpump Controller Q Single en Duo ook
+`Huismodel volgen`. Deze functie verzamelt diagnostiek en schat woningparameters; zij past geen
+regelinstellingen automatisch aan. Water staat vast; Single/Duo volgt uit de firmware en bij Duo
+loopt het water in serie van HP1 naar HP2. Dit zijn geen instelbare keuzes. Technische meetgrenzen
+en kalibratiebewijs horen niet bij deze bediening. Onbekende meetkwaliteit blijft een blokkade.
+De leerfunctie neemt CM0, CM1 en CM2 mee en controleert de bestaande ketelaansturing; er is geen aparte keuze
+voor een andere warmtebron. OpenTherm-telemetrie is hiervoor niet vereist; een actuele melding
+van ketelactiviteit sluit de betreffende meting wel uit.
+
+`Passief leren` staat standaard aan. De gekozen stand blijft na een herstart of
+firmware-update behouden; bewust uitschakelen blijft dus uit. Bij de eerste update
+vanaf de eerdere versie die altijd uit startte, wordt leren standaard ingeschakeld.
+De leerfunctie heeft geen aparte
+kalibratiebevestiging of meetgrensinstellingen; automatisch toepassen bestaat nog niet.
+`Leerdata wissen` pauzeert het leren en wist uitsluitend de leerhistorie.
+Bij een fysieke ombouw van Single naar Duo of andersom blijft de oude leerstand ook behouden.
+Wis dan zelf de leerdata voordat je opnieuw gaat leren of de modelschattingen beoordeelt: de
+waterzijdige meetopstelling is veranderd. Een gewone bronwissel vereist deze reset niet.
+Bij ingeschakelde technische statistieken wordt alleen de aan/uit-stand van passief
+leren gedeeld (`house_learning_enabled`), niet de leerdata of modelwaarden.
+`Diagnostische leerdata downloaden` levert een lokale JSON-export. Voorlopige schattingen zijn nog
+geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](power-house-autotuning-development.md).
+
+De grafiek `Woninglijn en meetresultaten` vergelijkt de ingestelde woninglijn (blauw) met
+de geaccepteerde stabiele meetperioden (punten). Een beschikbare geleerde woninglijn wordt
+groen getoond; buiten het gemeten temperatuurbereik is deze gestippeld. Dit is een
+doortrekking van het model, geen meting. De woninglijn toont de basiswarmtevraag, zonder
+de tijdelijke kamercorrectie of vermogensbegrenzing.
+
+De leerstatus, grafiek, meldingen en bediening volgen de gekozen app-taal (Nederlands of Engels).
+Getallen en datums gebruiken de bijbehorende notatie; de JSON-export behoudt zijn vaste formaat.
+
+Haal de meetpunten op met de knop bij de grafiek. Bij een meetpunt kun je datum, meetduur,
+gemiddelde buitentemperatuur en warmtevermogen bekijken. Zonder voldoende gegevens blijft
+de geleerde lijn weg; de grafiek verandert geen instellingen.
+
 ### Koelen
 
 Hier staan de instellingen voor koeling en dauwpuntbeveiliging.

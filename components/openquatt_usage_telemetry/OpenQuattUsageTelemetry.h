@@ -93,6 +93,7 @@ class OpenQuattUsageTelemetry : public switch_::Switch,
   void set_energy_history_flash_switch(switch_::Switch* feature_switch) {
     this->energy_history_flash_switch_ = feature_switch;
   }
+  void set_house_learning_switch(switch_::Switch* feature_switch) { this->house_learning_switch_ = feature_switch; }
   void set_modbus_hub(openquatt_modbus::OpenQuattModbusClientHub* hub) { this->modbus_hub_ = hub; }
 
   // A second opt-in telemetry feature may reuse this outbound-only client.
@@ -237,6 +238,7 @@ class OpenQuattUsageTelemetry : public switch_::Switch,
   switch_::Switch* trend_flash_switch_{nullptr};
   switch_::Switch* decision_log_flash_switch_{nullptr};
   switch_::Switch* energy_history_flash_switch_{nullptr};
+  switch_::Switch* house_learning_switch_{nullptr};
   openquatt_modbus::OpenQuattModbusClientHub* modbus_hub_{nullptr};
   ESPPreferenceObject pref_;
   std::array<uint8_t, 16> installation_id_bytes_{};

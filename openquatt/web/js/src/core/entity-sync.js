@@ -26,6 +26,7 @@ import { refreshApiSecurityStatus, refreshAuthStatus, shouldRefreshApiSecuritySt
 import { refreshOduEepromDumpStatuses, shouldRefreshOduEepromDumpSurface } from "../features/odu-eeprom-dump.js";
 import { refreshOduDefrostStatuses, shouldRefreshOduDefrostSurface } from "../features/odu-defrost.js";
 import { refreshOduRuntimeFrequencyStatuses, shouldRefreshOduRuntimeFrequencySurface } from "../features/odu-runtime-frequency.js";
+import { refreshHouseLearningStatus, shouldRefreshHouseLearningStatusSurface } from "../features/house-learning.js";
 import { refreshOduSettingsStatuses, shouldRefreshOduSettingsSurface } from "../features/odu-settings.js";
 import {
   captureUsageTelemetryPreview,
@@ -163,6 +164,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
           ? refreshIncidentMonitoringData({ force: true })
           : false,
       ]);
+      if (shouldRefreshHouseLearningStatusSurface()) {
+        void refreshHouseLearningStatus({ force: true });
+      }
       if (state.appView === "settings") {
         await waitForInitialSettingsReady();
       } else {
@@ -269,6 +273,12 @@ import { fetchWithTimeout } from "./browser-utils.js";
     heating: [
       "strategy",
       ...POWER_HOUSE_KEYS,
+      "houseLearningEnabled",
+      "houseLearningReset",
+      "hp1WaterIn",
+      "hp1WaterOut",
+      "hp2WaterIn",
+      "hp2WaterOut",
       ...CURVE_SETTING_KEYS,
       ...FREQUENCY_CAP_KEYS,
       ...FREQUENCY_MINIMUM_KEYS,
@@ -1346,6 +1356,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
       }
       if (!shouldDeferSupplementary && shouldRefreshOduRuntimeFrequencySurface()) {
         await refreshOduRuntimeFrequencyStatuses();
+      }
+      if (!shouldDeferSupplementary && shouldRefreshHouseLearningStatusSurface()) {
+        await refreshHouseLearningStatus();
       }
       if (!shouldDeferSupplementary && shouldRefreshOduSettingsSurface()) {
         await refreshOduSettingsStatuses();

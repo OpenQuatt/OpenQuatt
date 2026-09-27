@@ -44,7 +44,12 @@ substitutions:
   hpcq_status_led_red_pin: "GPIO2"                      # Red status LED output.
   hpcq_status_led_inverted: "false"                     # Set true when the board LED is active-low.
 
+esphome:
+  build_flags:
+    - -DOQ_POWER_HOUSE_LEARNING_TARGET=1
+
 packages:
+  oq_power_house_learning: !include ../oq_power_house_learning.yaml
   oq_hardware_revision: !include heatpump_controller_q_hardware_revision.yaml
   oq_status_leds: !include heatpump_controller_q_status_leds.yaml
   oq_cic_compatibility: !include heatpump_controller_q_cic_compatibility.yaml
@@ -202,19 +207,23 @@ sensor:
         pullup: true
     filters:
       - lambda: |-
+          float lph = NAN;
           if (id(oq_controller_flow_meter).current_option() == "Custom") {
-            return oq_flow_meter::linear_lph(x, id(oq_custom_flow_pulses_per_liter).state);
+            lph = oq_flow_meter::linear_lph(x, id(oq_custom_flow_pulses_per_liter).state);
+          } else {
+            // Preserve the existing Huba Control conversion and substitutions.
+            // pulse_meter publishes pulses/minute. Convert to Hz first:
+            // Qv[l/min] = Kf * f[Hz] + Q0, then convert to l/h.
+            const float hz = x / 60.0f;
+            const float lpm =
+              (static_cast<float>(${hpcq_flow_kf_lpm_per_hz}) * hz)
+              + static_cast<float>(${hpcq_flow_q0_lpm});
+            if (isfinite(lpm)) lph = lpm * 60.0f;
           }
-          // Preserve the existing Huba Control conversion and substitutions.
-          // pulse_meter publishes pulses/minute. Convert to Hz first:
-          // Qv[l/min] = Kf * f[Hz] + Q0, then convert to l/h.
-          const float hz = x / 60.0f;
-          const float lpm =
-            (static_cast<float>(${hpcq_flow_kf_lpm_per_hz}) * hz)
-            + static_cast<float>(${hpcq_flow_q0_lpm});
-          if (isnan(lpm)) return NAN;
-          const float lph = lpm * 60.0f;
-          return lph > 0.0f ? lph : 0.0f;
+          const bool valid = isfinite(lph);
+          const float accepted_lph = valid ? (lph > 0.0f ? lph : 0.0f) : NAN;
+          oq_sources::controller_flow.observe(accepted_lph, oq_sources::monotonic_ms(), valid);
+          return accepted_lph;
       - throttle_average: 10s
       # #648: pulse_meter publishes 0 once after 5 s without pulses. That
       # single zero can be averaged with older non-zero values and then no

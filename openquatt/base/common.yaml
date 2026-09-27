@@ -18,6 +18,7 @@ esphome:
     - ${oq_component_psram_buffer_header}
     - ${oq_component_external_telemetry_transport_header}
     - ${oq_component_flash_layout_header}
+    - ${openquatt_root}/includes/sources/oq_source_receipt_runtime.h
   build_flags:
     # Hard-pinned by the topology entrypoint to prevent accidental topology drift.
     - ${oq_topology_build_flag}

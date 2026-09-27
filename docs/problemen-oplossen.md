@@ -192,6 +192,38 @@ Zie [MQTT inputbronnen](mqtt.md) voor topic en payload.
 
 Start een update pas opnieuw als de controller weer stabiel bereikbaar is.
 
+### Web-app bereikbaar, maar downloaden mislukt
+
+Als manifestchecks en telemetrie allebei mislukken terwijl de web-app werkt:
+
+- bewaar eerst de recente systeemlogs en de actieve firmwareversie;
+- sluit extra webtabs en live logvensters en probeer één firmwarecheck opnieuw;
+- werkt de check dan weer, noteer dat: dit is een aanwijzing voor beperkte netwerkresources, geen bewijs;
+- helpt alleen een herstart, voer die uit wanneer beide compressoren stilstaan en er geen OTA loopt.
+
+Gebruik `DEBUG` alleen kort voor een gerichte controle en zet het daarna terug op `INFO`.
+Dit verhoogt de ESPHome-logging; het schakelt niet alle onderliggende ESP-IDF-netwerklogs in.
+Een geslaagde manifestcheck bewijst nog niet dat een volledige firmwaredownload lukt.
+De melding `ESP_ERR_HTTP_CONNECT` alleen onderscheidt DNS-, TCP-, TLS- en resourceproblemen niet.
+
+Nieuwe firmware herstelt automatisch ontbrekende DNS-adressen van de huidige
+standaardinterface. Dit voorkomt blijvende DNS-uitval wanneer een vertraagde
+Ethernet-DHCP-start de globale DNS wist terwijl WiFi verbonden bleef.
+De systeemlog meldt dan `Restored missing DNS from default interface`.
+
+
+### MQTT-fouten beter diagnosticeren
+
+Nieuwe firmware logt bij een MQTT-foutevent de beschikbare transport- of brokerfoutcode
+plus de actuele interne geheugenmarge: vrije interne heap, minimum sinds boot,
+grootste vrije interne blok en vrije PSRAM. Alleen velden die bij het gemelde
+fouttype horen worden gelezen; credentials, installatie-ID, topics en payloads
+worden niet gelogd.
+
+Gebruik deze regels om onderscheid te maken tussen een socket-/transportfout,
+TLS-fout, brokerweigering en een mogelijk resourceprobleem. De extra logging
+verandert het retrybeleid, consent of de regeling niet.
+
 ## Wanneer niets veranderen?
 
 Verander bij voorkeur niets als:

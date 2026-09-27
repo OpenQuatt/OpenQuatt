@@ -66,6 +66,9 @@ int main() {
   assert(!oq_energy::v2_input_telemetry_fresh(freshness, false));
   assert(oq_energy::measurement_fresh(5U, UINT32_MAX - 4U, 10U));
 
+  assert(near(oq_energy::hydronic_heat_power(20.0f, 25.0f, 360.0f, 4186.0f), 2093.0f));
+  assert(near(oq_energy::hydronic_heat_power(25.0f, 20.0f, 360.0f, 4186.0f), -2093.0f));
+  assert(isnan(oq_energy::hydronic_heat_power(NAN, 25.0f, 360.0f, 4186.0f)));
   assert(near(oq_energy::hp_heating_power(2.0f, 20.0f, 25.0f, 360.0f, 4186.0f), 2093.0f));
   assert(near(oq_energy::hp_heating_power(2.0f, 25.0f, 20.0f, 360.0f, 4186.0f), -2093.0f));
   assert(oq_energy::hp_heating_power(1.0f, 20.0f, 25.0f, 360.0f, 4186.0f) == 0.0f);
