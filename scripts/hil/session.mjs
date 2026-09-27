@@ -96,6 +96,21 @@ function settingsForScenario(scenario, schema = CONTROL_SNAPSHOT_SCHEMA) {
   };
 }
 
+function settingsForSnapshot(snapshot) {
+  const settings = settingsForScenario(snapshot.scenario, snapshot.schema);
+  const frequencyKeys = ['hp1ManualFrequency', 'hp2ManualFrequency'];
+  const present = frequencyKeys.map(key => Object.hasOwn(snapshot.simulator ?? {}, key));
+  if (present.some(Boolean) && !present.every(Boolean)) {
+    throw new Error('incomplete manual-frequency snapshot');
+  }
+  // Both fields were absent in older schema-3/4 artifacts. Restore only captured
+  // values; never manufacture a frequency or silently accept a partial pair.
+  if (!present.some(Boolean)) {
+    settings.simulator = settings.simulator.filter(item => !frequencyKeys.includes(item.key));
+  }
+  return settings;
+}
+
 export function parseOduActiveConfiguration(value, label = 'ODU diagnostics') {
   const text = String(value ?? '');
   const addressMatch = text.match(/(?:^|\s)addr=(\d+)(?:\s|$)/);
@@ -202,7 +217,7 @@ export function validateSnapshot(snapshot) {
   if (typeof snapshot.scenario !== 'string' || snapshot.scenario.length === 0) {
     throw new Error('HIL snapshot has no scenario identity');
   }
-  const settings = settingsForScenario(snapshot.scenario, snapshot.schema);
+  const settings = settingsForSnapshot(snapshot);
   for (const setting of settings.controller) {
     normalizeSettingValue(setting, snapshot.controller?.[setting.key]);
   }
@@ -313,7 +328,7 @@ export async function restoreSettings({
     }
   };
 
-  const settings = settingsForScenario(snapshot.scenario, snapshot.schema);
+  const settings = settingsForSnapshot(snapshot);
   await restoreGroup(
     controller,
     settings.controller.filter((item) => item.key !== 'cmOverride'),
@@ -357,7 +372,7 @@ export async function verifyRestoredSettings({ controller, simulator, snapshot }
       }
     }
   };
-  const settings = settingsForScenario(snapshot.scenario, snapshot.schema);
+  const settings = settingsForSnapshot(snapshot);
   await verifyGroup(controller, settings.controller, snapshot.controller, 'controller settings');
   await verifyGroup(simulator, settings.simulator, snapshot.simulator, 'simulator settings');
   if (errors.length > 0) {

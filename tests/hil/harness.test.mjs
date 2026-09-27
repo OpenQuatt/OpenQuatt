@@ -29,6 +29,8 @@ import {
   acquireLock,
   acquireRecoveryLock,
   controllerSettings,
+  controlRegressionControllerSettings,
+  controlRegressionSimulatorSettings,
   mutationLockPath,
   parseOduActiveConfiguration,
   restoreSettings,
@@ -753,4 +755,30 @@ test('missing physical stop confirmation blocks recovery OTA even with persisted
     flashFirmwareArtifactImpl: async () => { flashCalls++; },
   }), /physical stop confirmation failed; firmware OTA blocked/);
   assert.equal(flashCalls, 0);
+});
+
+
+test('legacy schema-3/4 recovery preserves uncaptured manual frequencies and rejects partial pairs', async () => {
+  for (const schema of [3, 4]) {
+    const controller = new FakeClient([...controllerSettings, ...controlRegressionControllerSettings]);
+    const simulator = new FakeClient([...simulatorSettings, ...controlRegressionSimulatorSettings]);
+    await simulator.setSwitch('ODU 1 responses enabled', true);
+    await simulator.setSwitch('ODU 2 responses enabled', true);
+    const snapshot = await snapshotSettings({ controller, simulator,
+      targets: { controller: 'http://controller.local', simulator: 'http://simulator.local' },
+      firmware: 'baseline', scenario: schema === 3 ? 'input-sources' : 'defrost' });
+    assert.equal(snapshot.schema, schema);
+    delete snapshot.simulator.hp1ManualFrequency;
+    delete snapshot.simulator.hp2ManualFrequency;
+    assert.equal(Object.hasOwn(snapshot.simulator, 'hp1ManualFrequency'), false);
+    validateSnapshot(snapshot);
+    await simulator.setNumber('ODU 1 manual compressor frequency 2103', 61);
+    await simulator.setNumber('ODU 2 manual compressor frequency 2103', 73);
+    await restoreSettings({ controller, simulator, snapshot, log: () => {} });
+    await verifyRestoredSettings({ controller, simulator, snapshot });
+    assert.equal(await simulator.value('number', 'ODU 1 manual compressor frequency 2103'), 61);
+    assert.equal(await simulator.value('number', 'ODU 2 manual compressor frequency 2103'), 73);
+    snapshot.simulator.hp1ManualFrequency = 0;
+    assert.throws(() => validateSnapshot(snapshot), /incomplete manual-frequency/);
+  }
 });

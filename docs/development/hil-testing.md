@@ -175,6 +175,8 @@ responses terug aan vóór stopbevestiging en OTA. Oude schema-3 snapshots van
 input-/performance-runs en eerdere domeinruns blijven geldig. Eerdere schema-3
 domeinruns wijzigden Boiler connection niet; hun herstel laat dit veld ongemoeid.
 Schema-4 snapshots zonder de oorspronkelijke transportkeuze worden afgewezen.
+Oude schema-3/4 snapshots zonder beide manual-frequencyvelden blijven herstelbaar;
+alleen vastgelegde waarden worden hersteld. Een gedeeltelijk frequentiepaar faalt.
 
 Runrapporten bevatten begrensde, geselecteerde incidentobservaties, zonder
 action-CSRF-token. De cases worden ook zonder hardware met fakes getest;
