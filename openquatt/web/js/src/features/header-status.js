@@ -519,7 +519,7 @@ import { render } from "../core/render-scheduler.js";
       return renderOduEepromDumpModal();
     }
 
-    if (state.systemModal === "odu-defrost" || /^odu-defrost-(?:confirm|save-confirm)-[12]$/.test(state.systemModal || "")) {
+    if (state.systemModal === "odu-defrost" || /^odu-defrost-(?:confirm|save-confirm|info)-[12]$/.test(state.systemModal || "")) {
       return renderOduDefrostModal();
     }
 

@@ -639,7 +639,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px 16px;
-  margin: 14px 0;
+  margin: 0;
   font-size: 0.9rem;
 }
 
@@ -652,6 +652,96 @@
   text-align: right;
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.oq-defrost-panel {
+  gap: 12px;
+}
+
+.oq-defrost-info-modal {
+  width: min(100%, 860px);
+}
+
+.oq-defrost-info-modal .oq-helper-modal-copy {
+  max-width: 78ch;
+}
+
+.oq-defrost-panel .oq-settings-odu-runtime-panel-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.oq-defrost-settings {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--oq-helper-line);
+}
+
+.oq-defrost-settings-head,
+.oq-defrost-apply-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.oq-defrost-settings-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.oq-defrost-method-head {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.oq-defrost-settings p {
+  margin: 0;
+  color: var(--oq-helper-soft);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.oq-defrost-mode-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.oq-defrost-mode-field .oq-helper-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--oq-helper-line);
+  border-radius: var(--oq-helper-radius-sm);
+  background: var(--oq-helper-panel);
+  color: var(--oq-helper-ink);
+  font: inherit;
+}
+
+.oq-defrost-apply-row .oq-helper-button {
+  flex: 0 0 auto;
+}
+
+.oq-defrost-panel .oq-settings-odu-technical {
+  margin-top: 0;
+  padding: 12px 0 0;
+}
+
+@media (max-width: 600px) {
+  .oq-defrost-panel .oq-settings-odu-runtime-panel-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .oq-defrost-settings-head,
+  .oq-defrost-apply-row {
+    flex-wrap: wrap;
+  }
 }
 
 .oq-settings-odu-temperature-settings[hidden],

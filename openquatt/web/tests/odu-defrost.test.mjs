@@ -11,6 +11,7 @@ const {
   getOduDefrostEndpoint, getOduDefrostHpIndexes, getOduDefrostPresentation,
   normalizeOduDefrostStatus, renderOduDefrostModal, shouldRefreshOduDefrostSurface,
   refreshOduDefrostStatuses, handleOduDefrostAction, getDefrostModeName, canSaveDefrostMode, isDefrostModeSupported,
+  getOduDefrostEditorModel, updateOduDefrostDraft,
 } = await import("../js/src/features/odu-defrost.js");
 const { state } = await import("../js/src/core/state.js");
 const { renderSystemModal } = await import("../js/src/features/header-status.js");
@@ -32,14 +33,16 @@ test("defrost gebruikt per-HP endpoints en toont alleen ondersteunde modusknoppe
   assert.match(modal, /Ontdooimethode/);
   assert.match(modal, /Ta − Tevap/);
   assert.match(modal, /Instellingen uitlezen/);
-  assert.match(modal, /Alleen de ontdooimethode/);
+  assert.match(modal, /Toepassen kan alleen/);
   assert.match(modal, /Technische metingen/);
   assert.match(modal, /Nog niet waargenomen/);
   assert.doesNotMatch(modal, /Spiraal|Gereconstrueerde drempels|Startbevestiging|Vereiste delta/);
   const beforeDetails = modal.slice(0, modal.indexOf('<details class="oq-settings-odu-technical"'));
   assert.doesNotMatch(beforeDetails, /<dt>Verdampertemperatuur<|Compressorfrequentie|Actieve duur/);
   assert.doesNotMatch(modal, /oq-settings-odu-technical" open/);
-  assert.doesNotMatch(modal, /data-oq-field=|<select/);
+  assert.doesNotMatch(modal, /data-oq-field=/);
+  assert.match(modal, /<select[^>]*data-oq-odu-defrost-hp="1"/);
+  assert.match(modal, /data-oq-action="odu-defrost-apply"/);
   assert.equal(shouldRefreshOduDefrostSurface(), true);
 });
 
@@ -61,9 +64,9 @@ test("V1 verbergt mode 4 maar behoudt handmatige defrost en herstel naar onderst
     ...v1Ready, defrost_mode: 0, operation_mode: 2, compressor_hz: 0,
   }) };
   let modal = renderOduDefrostModal();
-  assert.match(modal, /odu-defrost-save-1/);
-  assert.match(modal, /odu-defrost-save-3/);
-  assert.doesNotMatch(modal, /odu-defrost-save-4/);
+  assert.match(modal, /<option value="1"/);
+  assert.match(modal, /<option value="3"/);
+  assert.doesNotMatch(modal, /<option value="4"/);
   assert.match(modal, /data-oq-action="odu-defrost-trigger"/);
 
   state.oduDefrostStatuses = { 1: normalizeOduDefrostStatus({
@@ -71,10 +74,10 @@ test("V1 verbergt mode 4 maar behoudt handmatige defrost en herstel naar onderst
   }) };
   modal = renderOduDefrostModal();
   assert.match(modal, /Niet-ondersteunde ontdooimethode/);
-  assert.match(modal, /odu-defrost-save-0/);
-  assert.match(modal, /odu-defrost-save-1/);
-  assert.match(modal, /odu-defrost-save-3/);
-  assert.doesNotMatch(modal, /odu-defrost-save-4/);
+  assert.match(modal, /<option value="0"/);
+  assert.match(modal, /<option value="1"/);
+  assert.match(modal, /<option value="3"/);
+  assert.doesNotMatch(modal, /<option value="4"/);
 });
 
 test("eigen wachtende aanvraag wordt niet als andere actie getoond", () => {
@@ -107,7 +110,7 @@ test("defrostpresentatie volgt de actieve taal en localegetallen", () => {
     assert.match(modal, /Manual defrost/);
     assert.match(modal, /Heating/);
     assert.match(modal, /Defrost method/);
-    assert.match(modal, /Only the defrost method/);
+    assert.match(modal, /Apply only when/);
     assert.match(modal, /1.5 °C/);
     assert.deepEqual(getOduDefrostPresentation(status), ["Values loaded", ""]);
   } finally {
@@ -149,6 +152,7 @@ function reset() {
   state.oduDefrostError = "";
   state.oduDefrostStatusFailed = false;
   state.oduDefrostFetchPromise = null;
+  state.oduDefrostDrafts = {};
   state.oduDefrostStatuses = {1: normalizeOduDefrostStatus(ready)};
 }
 const response = (payload) => ({ok:true, status:200, json:async () => payload});
@@ -230,15 +234,16 @@ test("moduskeuze toont alleen bewezen modi en vereist stilstaande compressor", (
   state.oduDefrostStatusFailed = false;
   state.busyAction = "";
   const modal = renderOduDefrostModal();
-  assert.match(modal, /odu-defrost-save-1/);
-  assert.match(modal, /odu-defrost-save-3/);
-  assert.match(modal, /odu-defrost-save-4/);
-  assert.doesNotMatch(modal, /odu-defrost-save-2/);
+  assert.match(modal, /<option value="1"/);
+  assert.match(modal, /<option value="3"/);
+  assert.match(modal, /<option value="4"/);
+  assert.doesNotMatch(modal, /<option value="2"/);
   assert.deepEqual(getOduDefrostPresentation(normalizeOduDefrostStatus({ ...ready, state: "SAVED" })), ["Ontdooimethode opgeslagen en teruggelezen", "success"]);
   assert.deepEqual(getOduDefrostPresentation(normalizeOduDefrostStatus({ ...ready, state: "STALE" })), ["Waarde is intussen gewijzigd; laad opnieuw", "warning"]);
 });
 
 test("modusbevestiging toont oud→nieuw, annuleert zonder POST en blokkeert dubbelklik", async () => {
+  reset();
   state.oduDefrostStatuses = { 1: normalizeOduDefrostStatus({ ...ready, defrost_mode: 0, compressor_hz: 0 }) };
   state.systemModal = "odu-defrost";
   state.busyAction = "";
@@ -252,21 +257,23 @@ test("modusbevestiging toont oud→nieuw, annuleert zonder POST en blokkeert dub
     if (options?.method === "POST") { posts++; lastBody = String(options.body || ""); return response({ ...ready, defrost_mode: 4, state: "SAVED" }); }
     return response(ready);
   };
-  handleOduDefrostAction("odu-defrost-save-4", { dataset: { hp: "1" } });
+  updateOduDefrostDraft({ dataset: { oqOduDefrostHp: "1" }, value: "4" });
+  handleOduDefrostAction("odu-defrost-apply", { dataset: { hp: "1" } });
   assert.equal(state.systemModal, "odu-defrost-save-confirm-1");
-  assert.deepEqual(state.oduDefrostSave, { hp: 1, desired: 4, expected: 0 });
+  assert.deepEqual(state.oduDefrostSave, { hp: 1, desired: 4, expected: 0, autoReapply: false });
   assert.match(renderOduDefrostModal(), /van .* naar .*HP1/s);
   assert.match(renderSystemModal(), /data-oq-action="odu-defrost-save-confirm"/);
   handleOduDefrostAction("odu-defrost-cancel", {});
   assert.equal(state.systemModal, "odu-defrost");
   assert.equal(posts, 0);
-  handleOduDefrostAction("odu-defrost-save-4", { dataset: { hp: "1" } });
+  handleOduDefrostAction("odu-defrost-apply", { dataset: { hp: "1" } });
   handleOduDefrostAction("odu-defrost-save-confirm", {});
   handleOduDefrostAction("odu-defrost-save-confirm", {});
   await flush();
   assert.equal(posts, 1);
   assert.match(lastBody, /mode=4/);
   assert.match(lastBody, /expected_mode=0/);
+  assert.match(lastBody, /auto_reapply=false/);
   assert.equal(state.oduDefrostStatuses[1].state, "SAVED");
 });
 
@@ -277,10 +284,138 @@ test("stale modus en fout geven geen fictief succes", async () => {
     if (options?.method === "POST") return { ok: false, status: 409, json: async () => ({ error: "stale" }) };
     return response(ready);
   };
-  handleOduDefrostAction("odu-defrost-save-4", { dataset: { hp: "1" } });
+  updateOduDefrostDraft({ dataset: { oqOduDefrostHp: "1" }, value: "4" });
+  handleOduDefrostAction("odu-defrost-apply", { dataset: { hp: "1" } });
   handleOduDefrostAction("odu-defrost-save-confirm", {});
   await flush();
   assert.equal(state.oduDefrostStatusFailed, true);
   assert.match(state.oduDefrostError, /gewijzigd|niet bevestigd/);
   assert.notEqual(state.oduDefrostStatuses[1].state, "SAVED");
+});
+
+test("conceptkeuze blijft lokaal en blokkeert zodra de uitgelezen methode wijzigt", () => {
+  reset();
+  state.oduDefrostStatuses[1] = normalizeOduDefrostStatus({ ...ready, defrost_mode: 0, compressor_hz: 0 });
+  updateOduDefrostDraft({ dataset: { oqOduDefrostHp: "1" }, value: "4" });
+  assert.equal(state.systemModal, "odu-defrost");
+  assert.equal(getOduDefrostEditorModel(1).applyDisabled, false);
+  assert.match(renderOduDefrostModal(), /<option value="4" selected/);
+  state.oduDefrostStatuses[1].defrostMode = 1;
+  assert.equal(getOduDefrostEditorModel(1).selected, 4);
+  assert.equal(getOduDefrostEditorModel(1).applyDisabled, true);
+  handleOduDefrostAction("odu-defrost-apply", { dataset: { hp: "1" } });
+  assert.equal(state.systemModal, "odu-defrost");
+  state.oduDefrostStatuses[1].variant = 1;
+  updateOduDefrostDraft({ dataset: { oqOduDefrostHp: "1" }, value: "4" });
+  assert.equal(getOduDefrostEditorModel(1).applyDisabled, true);
+});
+
+test("nog niet uitgelezen is neutraal maar onbereikbaar blijft een waarschuwing", () => {
+  const unloaded = normalizeOduDefrostStatus({ ...ready, loaded: false, guard: "AUTO_CONTROL_UNAVAILABLE" });
+  assert.deepEqual(getOduDefrostPresentation(unloaded), ["Instellingen nog niet uitgelezen", ""]);
+  assert.deepEqual(getOduDefrostPresentation({ ...unloaded, online: false, guard: "OFFLINE" }), ["Buitenunit niet bereikbaar", "warning"]);
+  assert.deepEqual(getOduDefrostPresentation({ ...unloaded, loaded: true, state: "SAVED", online: false, guard: "OFFLINE" }), ["Buitenunit niet bereikbaar", "warning"]);
+});
+
+test("hertoepassen is een lokaal concept en vereist bevestiging ook bij dezelfde methode", async () => {
+  reset();
+  state.oduDefrostStatuses[1] = normalizeOduDefrostStatus({ ...ready, defrost_mode: 1, compressor_hz: 0 });
+  let posts = 0;
+  globalThis.fetch = async (_url, options) => {
+    if (options?.method === "POST") {
+      posts++;
+      assert.match(options.body, /auto_reapply=true/);
+    }
+    return response({ ...ready, defrost_mode: 1, compressor_hz: 0, auto_reapply: true, state: "SAVED" });
+  };
+  updateOduDefrostDraft({ dataset: { oqOduDefrostHp: "1" }, type: "checkbox", checked: true });
+  assert.equal(posts, 0);
+  assert.equal(getOduDefrostEditorModel(1).applyDisabled, false);
+  handleOduDefrostAction("odu-defrost-apply", { dataset: { hp: "1" } });
+  assert.match(renderOduDefrostModal(), /Na herstart opnieuw toepassen: Ja/);
+  handleOduDefrostAction("odu-defrost-save-confirm", {});
+  await flush();
+  assert.equal(posts, 1);
+  assert.equal(state.oduDefrostDrafts[1], null);
+});
+
+test("poll stelt redraw uit tijdens native selectie en haalt die na focusverlies alsnog in", async () => {
+  reset();
+  let selecting = true;
+  globalThis.document = { activeElement: { matches: () => selecting } };
+  globalThis.fetch = async () => response(ready);
+  try {
+    await refreshOduDefrostStatuses({ force: true });
+    assert.equal(state.oduDefrostRenderPending, true);
+    selecting = false;
+    state.oduDefrostLastFetchAt = 0;
+    await refreshOduDefrostStatuses();
+    assert.equal(state.oduDefrostRenderPending, false);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("poll bewaart checkboxfocus en concept ook bij een mislukt statusrequest", async () => {
+  reset();
+  state.oduDefrostStatuses[1] = normalizeOduDefrostStatus({ ...ready, defrost_mode: 1, compressor_hz: 0 });
+  let focused = true;
+  globalThis.document = { activeElement: { type: "checkbox", matches: (selector) => focused && selector === "[data-oq-odu-defrost-hp]" } };
+  updateOduDefrostDraft({ dataset: { oqOduDefrostHp: "1" }, type: "checkbox", checked: true });
+  globalThis.fetch = async () => response({ ...ready, defrost_mode: 1, compressor_hz: 0, coil_c: -5 });
+  try {
+    await refreshOduDefrostStatuses({ force: true });
+    assert.equal(state.oduDefrostRenderPending, true);
+    assert.equal(state.oduDefrostDrafts[1].autoReapply, true);
+    globalThis.fetch = async () => { throw new Error("offline"); };
+    await refreshOduDefrostStatuses({ force: true });
+    assert.equal(state.oduDefrostRenderPending, true);
+    assert.equal(state.oduDefrostStatusFailed, true);
+    assert.equal(getOduDefrostEditorModel(1).applyDisabled, true);
+    assert.equal(state.oduDefrostDrafts[1].autoReapply, true);
+    focused = false;
+    globalThis.fetch = async () => response({ ...ready, defrost_mode: 1, compressor_hz: 0, coil_c: -5 });
+    await refreshOduDefrostStatuses({ force: true });
+    assert.equal(state.oduDefrostRenderPending, false);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
+test("methodeinformatie blijft variantbewust en sluit terug naar het conceptformulier", () => {
+  reset();
+  state.oduDefrostStatuses[1] = normalizeOduDefrostStatus({ ...ready, variant: 1, defrost_mode: 1, compressor_hz: 0 });
+  assert.match(renderOduDefrostModal(), /data-oq-action="odu-defrost-info"[^>]*aria-label=/);
+  handleOduDefrostAction("odu-defrost-info", { dataset: { hp: "1" } });
+  const info = renderOduDefrostModal();
+  assert.match(info, /0 · Adaptief/);
+  assert.match(info, /3 · Adaptieve trend/);
+  assert.doesNotMatch(info, /4 · Ta/);
+  assert.match(renderSystemModal(), /alleen de methoden|alleen de methode|Alleen de methode/);
+  handleOduDefrostAction("odu-defrost-cancel", {});
+  assert.equal(state.systemModal, "odu-defrost");
+});
+
+test("profielstatus maskeert geen actieve cyclus of veiligheidsstop", () => {
+  const status = normalizeOduDefrostStatus({ ...ready, profile_state: "PENDING", auto_reapply: true, active: true });
+  assert.match(getOduDefrostPresentation(status)[0], /Ontdooien actief/);
+  assert.deepEqual(getOduDefrostPresentation({ ...status, active: false, state: "SAFETY_STOP" }), ["Veiligheidsstop aangevraagd", "warning"]);
+});
+
+test("opslagtoestemming toont onbewezen uitschakeling en vereiste herbevestiging in NL en EN", () => {
+  reset();
+  try {
+    for (const [locale, failure, consent] of [["nl", /oude keuze kan na een herstart terugkomen/, /bevestig en sla deze optie opnieuw op/], ["en", /old choice may return after a restart/, /confirm and save this option again/]]) {
+      setLocale(locale, { persist: false, applyDocument: false, notify: false });
+      state.oduDefrostStatuses[1] = normalizeOduDefrostStatus({ ...ready, defrost_mode: 1, compressor_hz: 0, profile_state: "REVOKE_FAILED", auto_reapply: false });
+      assert.match(renderOduDefrostModal(), failure);
+      assert.equal(getOduDefrostEditorModel(1).applyDisabled, false, "failed disable must allow an explicit retry without changing the displayed value");
+      state.oduDefrostStatuses[1].profileState = "CONSENT_REQUIRED";
+      assert.match(renderOduDefrostModal(), consent);
+      assert.equal(getOduDefrostEditorModel(1).applyDisabled, false);
+      assert.doesNotMatch(renderOduDefrostModal(), /oduDefrost\.(?:revokeUnconfirmed|consentRequired)/);
+    }
+  } finally {
+    setLocale("nl", { persist: false, applyDocument: false, notify: false });
+  }
 });

@@ -9,10 +9,10 @@ export function renderOduEditorAction(hp, action, label, disabled, variant = "gh
   return `<button class="oq-helper-button ${buttonClass}" type="button" data-oq-action="${escapeHtml(action)}" data-hp="${hp}" ${disabled ? "disabled" : ""}>${escapeHtml(label)}</button>`;
 }
 
-export function renderOduEditorPanel({ hp, title, copy, actions, statusLabel, tone, body }) {
-  return `<article class="oq-settings-odu-runtime-panel">
+export function renderOduEditorPanel({ hp, title, copy, actions, statusLabel, tone, body, panelClass = "" }) {
+  return `<article class="oq-settings-odu-runtime-panel${panelClass ? ` ${escapeHtml(panelClass)}` : ""}">
     <div class="oq-settings-odu-runtime-panel-head">
-      <div><p class="oq-helper-label">HP${hp}</p><h4>${escapeHtml(title)}</h4><p>${escapeHtml(copy)}</p></div>
+      <div><p class="oq-helper-label">HP${hp}</p><h4>${escapeHtml(title)}</h4>${copy ? `<p>${escapeHtml(copy)}</p>` : ""}</div>
       <div class="oq-settings-odu-runtime-actions">${actions}</div>
     </div>
     <div class="oq-settings-odu-runtime-status${tone ? ` is-${tone}` : ""}" role="status"><strong>${escapeHtml(statusLabel)}</strong></div>
