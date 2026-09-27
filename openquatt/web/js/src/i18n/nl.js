@@ -2488,7 +2488,7 @@ export default {
     inCrash: "Na een crash",
     inCrashCopy: "Het technische ESPHome-crashrapport, de ELF-SHA256 en voldoende firmware-identificatie om een passende rebuild te controleren",
     inFeatures: "Functies",
-    inFeaturesCopy: "Aan/uit-status van CiC, OpenTherm-thermostaat, ketelondersteuning, MQTT-inputs en lokale historie; plus de ketelaansluiting (aan/uit of OpenTherm)",
+    inFeaturesCopy: "Aan/uit-status van CiC, OpenTherm-thermostaat, ketelondersteuning, MQTT-inputs, lokale historie en passief leren; plus de ketelaansluiting (aan/uit of OpenTherm)",
     exIdentity: "Identiteit",
     exIdentityCopy: "Geen MAC-adres of netwerkadres",
     exWifi: "Wifi en toegang",

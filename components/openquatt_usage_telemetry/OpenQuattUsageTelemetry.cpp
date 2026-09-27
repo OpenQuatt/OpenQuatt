@@ -1094,6 +1094,7 @@ bool OpenQuattUsageTelemetry::build_payload_() {
   append_json_optional_bool_(payload, "trend_flash_enabled", this->trend_flash_switch_);
   append_json_optional_bool_(payload, "decision_log_flash_enabled", this->decision_log_flash_switch_);
   append_json_optional_bool_(payload, "energy_history_flash_enabled", this->energy_history_flash_switch_);
+  append_json_optional_bool_(payload, "house_learning_enabled", this->house_learning_switch_);
   append_json_optional_bool_(payload, "ram_log_history_enabled", true, true);
   payload += '}';
 

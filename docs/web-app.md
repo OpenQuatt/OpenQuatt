@@ -214,6 +214,8 @@ kalibratiebevestiging of meetgrensinstellingen; automatisch toepassen bestaat no
 Bij een fysieke ombouw van Single naar Duo of andersom blijft de oude leerstand ook behouden.
 Wis dan zelf de leerdata voordat je opnieuw gaat leren of de modelschattingen beoordeelt: de
 waterzijdige meetopstelling is veranderd. Een gewone bronwissel vereist deze reset niet.
+Bij ingeschakelde technische statistieken wordt alleen de aan/uit-stand van passief
+leren gedeeld (`house_learning_enabled`), niet de leerdata of modelwaarden.
 `Diagnostische leerdata downloaden` levert een lokale JSON-export. Voorlopige schattingen zijn nog
 geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](power-house-autotuning-development.md).
 

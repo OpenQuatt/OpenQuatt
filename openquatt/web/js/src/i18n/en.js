@@ -2488,7 +2488,7 @@ export default {
     inCrash: "After a crash",
     inCrashCopy: "The technical ESPHome crash report, the ELF SHA256 and enough firmware identification to verify a matching rebuild",
     inFeatures: "Features",
-    inFeaturesCopy: "On/off status of CiC, OpenTherm thermostat, boiler support, MQTT inputs and local history; plus the boiler connection (on/off or OpenTherm)",
+    inFeaturesCopy: "On/off status of CiC, OpenTherm thermostat, boiler support, MQTT inputs, local history and passive learning; plus the boiler connection (on/off or OpenTherm)",
     exIdentity: "Identity",
     exIdentityCopy: "No MAC address or network address",
     exWifi: "Wi-Fi and access",

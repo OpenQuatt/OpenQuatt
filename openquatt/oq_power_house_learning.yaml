@@ -14,6 +14,9 @@ openquatt_house_learning_status:
   id: oq_ph_learning_status_endpoint
   web_auth: oq_web_auth_store
 
+openquatt_usage_telemetry:
+  house_learning_switch: oq_ph_learning_enabled
+
 switch:
   - platform: template
     id: oq_ph_learning_enabled
