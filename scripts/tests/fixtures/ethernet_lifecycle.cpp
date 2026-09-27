@@ -55,6 +55,7 @@ class OpenQuattNetworkManager {
   enum class Phase { STARTUP, STEADY, RECOVERY, SWITCHING };
   void loop();
   void update_connection_stability_(uint32_t) {}
+  void restore_default_dns_(uint32_t) {}
   bool ensure_wifi_enabled_() {
     ++wifi_enables_;
     return true;

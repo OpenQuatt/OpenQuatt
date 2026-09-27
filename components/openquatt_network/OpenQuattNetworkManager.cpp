@@ -1,6 +1,9 @@
 #include "OpenQuattNetworkManager.h"
 
 #include "esp_eth_driver.h"
+#include "esp_netif.h"
+#include "esp_netif_net_stack.h"
+#include "lwip/netif.h"
 
 #include "esphome/core/hal.h"
 #include "esphome/core/helpers.h"
@@ -43,6 +46,7 @@ void OpenQuattNetworkManager::setup() {
 
 void OpenQuattNetworkManager::loop() {
   const uint32_t now = millis();
+  this->restore_default_dns_(now);
 
   if (!this->ethernet_prepared_ && !this->prepare_ethernet_after_setup_()) {
     return;
@@ -85,6 +89,60 @@ void OpenQuattNetworkManager::loop() {
   }
 
   this->publish_active_connection_();
+}
+
+void OpenQuattNetworkManager::restore_default_dns_(uint32_t now) {
+#ifdef CONFIG_ESP_NETIF_SET_DNS_PER_DEFAULT_NETIF
+  if ((now - this->last_dns_check_ms_) < 1000) {
+    return;
+  }
+  this->last_dns_check_ms_ = now;
+  bool restored = false;
+  // DHCP startup on an inactive interface can clear lwIP's global DNS without
+  // changing the default route. Keep selection, cached DNS reads and repair in
+  // one TCP/IP operation so a concurrent DHCP renewal or failover cannot race.
+  const esp_err_t result = esp_netif_tcpip_exec(
+      [](void* context) -> esp_err_t {
+        auto* selected = esp_netif_get_default_netif();
+        if (selected == nullptr || !esp_netif_is_netif_up(selected) ||
+            esp_netif_get_netif_impl(selected) != static_cast<void*>(netif_default)) {
+          return ESP_OK;
+        }
+        // Restore only missing main/backup entries. Preserve valid global DNS,
+        // the fallback server and the interface's DHCP/static configuration.
+        for (const auto type : {ESP_NETIF_DNS_MAIN, ESP_NETIF_DNS_BACKUP}) {
+          esp_netif_dns_info_t current{};
+          esp_netif_dns_info_t cached{};
+          esp_err_t error = esp_netif_get_dns_info(nullptr, type, &current);
+          if (error != ESP_OK) {
+            return error;
+          }
+          if (!ESP_IP_IS_ANY(current.ip)) {
+            continue;
+          }
+          error = esp_netif_get_dns_info(selected, type, &cached);
+          if (error != ESP_OK) {
+            return error;
+          }
+          if (ESP_IP_IS_ANY(cached.ip)) {
+            continue;
+          }
+          error = esp_netif_set_dns_info(nullptr, type, &cached);
+          if (error != ESP_OK) {
+            return error;
+          }
+          *static_cast<bool*>(context) = true;
+        }
+        return ESP_OK;
+      },
+      &restored);
+  if (restored) {
+    ESP_LOGI(TAG, "Restored missing DNS from default interface");
+  }
+  if (result != ESP_OK) {
+    ESP_LOGW(TAG, "Default DNS repair failed: %d", static_cast<int>(result));
+  }
+#endif
 }
 
 void OpenQuattNetworkManager::dump_config() {

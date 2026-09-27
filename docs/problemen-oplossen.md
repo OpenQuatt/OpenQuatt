@@ -206,6 +206,11 @@ Dit verhoogt de ESPHome-logging; het schakelt niet alle onderliggende ESP-IDF-ne
 Een geslaagde manifestcheck bewijst nog niet dat een volledige firmwaredownload lukt.
 De melding `ESP_ERR_HTTP_CONNECT` alleen onderscheidt DNS-, TCP-, TLS- en resourceproblemen niet.
 
+Nieuwe firmware herstelt automatisch ontbrekende DNS-adressen van de huidige
+standaardinterface. Dit voorkomt blijvende DNS-uitval wanneer een vertraagde
+Ethernet-DHCP-start de globale DNS wist terwijl WiFi verbonden bleef.
+De systeemlog meldt dan `Restored missing DNS from default interface`.
+
 Nieuwe firmware logt bij een MQTT-foutevent de beschikbare transport- of brokerfoutcode
 en het interne vrije geheugen, het minimum sinds boot en het grootste vrije blok.
 Bewaar die regels samen; alleen het minimum of vrije PSRAM bewijst geen geheugenmarge.

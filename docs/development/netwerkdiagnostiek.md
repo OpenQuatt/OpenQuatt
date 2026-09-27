@@ -4,6 +4,26 @@ Onderzoek van de uitgaande verbindingsfouten op `v0.53.0-dev.872+be17fcb`,
 27 september 2026. Een herstart herstelde een manifestcheck; de oorzaak is niet
 bewezen. De socketlimiet is niet gewijzigd.
 
+## DNS-race bij vertraagde Ethernet-start
+
+De STOP-bevestiging in PR #762 kan de Ethernet-herstart uitstellen tot na de
+WiFi-DHCP-configuratie. ESP-IDF wist bij DHCP-start op Ethernet de globale
+MAIN/BACKUP-DNS, ook zonder Ethernet-link. De WiFi-route en de per-interface
+DNS-cache kunnen daarbij geldig blijven. ESPHome controleert de default route,
+maar herstelt DNS niet wanneer die route al correct is.
+
+`openquatt_network` herstelt nu eenmaal per seconde alleen ontbrekende
+MAIN/BACKUP-adressen uit de huidige standaardinterface. Selectie, routecontrole
+en DNS-herstel gebeuren samen in de TCP/IP-context. Geldige globale DNS en
+FALLBACK blijven behouden; STOP/PHY-beveiligingen blijven actief.
+
+De hosttests reproduceren beide opstartvolgordes en testen herstel bij DHCP-renewal,
+failover en fouten. De daadwerkelijke DNS-toestand op de gemelde controllers is
+niet gemeten; dit is een aangetoond codepad dat de symptomen kan verklaren.
+
+Bronnen: [ESP-IDF DHCP/DNS](https://github.com/espressif/esp-idf/blob/v5.5.5/components/esp_netif/lwip/esp_netif_lwip.c),
+[ESPHome routecontrole](https://github.com/esphome/esphome/blob/2026.9.0/esphome/components/network/network_component.cpp).
+
 ## Begroting van Q Single en Q Duo
 
 ESPHome 2026.9.0 registreert voor de Q-configuratie 21 sockets:
