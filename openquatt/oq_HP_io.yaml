@@ -422,7 +422,7 @@ script:
                       detection.variant == oq_odu::Variant::V2_NEW_MODEL);
                   id(${hp_id}_odu_settings)->set_odu_identity(
                       core.control_board_item, detection.variant);
-                  id(${hp_id}_odu_defrost)->set_odu_identity(detection.variant);
+                  id(${hp_id}_odu_defrost)->set_odu_identity(detection.variant, core.control_board_item);
                   id(${hp_id}_generation_variant_code) =
                       static_cast<int>(detection.variant);
                   id(${hp_id}_validated_control_board_item) = core.control_board_item;

@@ -3,11 +3,13 @@
 #include <esp_http_server.h>
 #include <freertos/FreeRTOS.h>
 #include "esphome/core/component.h"
+#include "esphome/core/preferences.h"
 #include "esphome/components/modbus_controller/modbus_controller.h"
 #include "esphome/components/openquatt_odu_eeprom_dump/OpenQuattOduEepromDump.h"
 #include "esphome/components/openquatt_web_auth/OpenQuattWebAuth.h"
 #include "includes/control/oq_defrost_logic.h"
 #include "includes/odu/oq_odu_defrost_diagnostics.h"
+#include "includes/odu/oq_odu_defrost_profile.h"
 
 namespace esphome::openquatt_odu_defrost {
 
@@ -21,6 +23,9 @@ struct Snapshot {
   int elapsed_s{-1}, since_s{-1}, duration_s{-1};
   const char* state{"IDLE"};
   const char* guard{"OFFLINE"};
+  bool profile_available{false}, auto_reapply{false};
+  int desired_mode{-1};
+  const char* profile_state{"NONE"};
   oq_defrost::Diagnostics diagnostics{};
 };
 
@@ -31,14 +36,14 @@ class OpenQuattOduDefrost : public Component, public modbus::ModbusClientDevice 
   void set_eeprom_dump(openquatt_odu_eeprom_dump::OpenQuattOduEepromDump* value) { dump_ = value; }
   void set_web_auth(openquatt_web_auth::OpenQuattWebAuth* value) { auth_ = value; }
   void set_hp_index(uint8_t value) { hp_ = value; }
-  void set_odu_identity(oq_odu::Variant variant);
+  void set_odu_identity(oq_odu::Variant variant, uint16_t control_board_item = 0U);
   void setup() override;
   void loop() override;
   float get_setup_priority() const override { return setup_priority::WIFI - 2.0f; }
   bool authenticated(AsyncWebServerRequest* request) const { return auth_->request_is_authenticated(request); }
   std::string csrf() const { return auth_->get_csrf_token(); }
   bool enqueue(Action action);
-  bool enqueue_save(int desired, int expected);
+  bool enqueue_save(int desired, int expected, bool auto_reapply);
   bool supports_mode(int mode) const;
   oq_odu::Variant variant() const;
   void write_status(httpd_req_t* req);
@@ -94,6 +99,12 @@ class OpenQuattOduDefrost : public Component, public modbus::ModbusClientDevice 
   bool loading_{false}, trigger_after_load_{false}, trigger_ready_{false}, reserved_{false};
   bool save_after_load_{false}, save_ready_{false}, save_writing_{false}, save_verifying_{false};
   int save_desired_{-1}, save_expected_{-1}, save_write_{-1};
+  bool pending_auto_reapply_{false}, save_auto_reapply_{false}, reconcile_{false}, profile_available_{false};
+  uint16_t control_board_item_{0};
+  ESPPreferenceObject profile_pref_{};
+  oq_defrost::Profile profile_{};
+  const char* profile_state_{"NONE"};
+  uint32_t reconcile_due_ms_{0};
   oq_defrost::Parameters parameters_{};
   oq_defrost::Diagnostics diagnostics_{};
   uint32_t sample_ms_[4]{};
@@ -106,5 +117,7 @@ class OpenQuattOduDefrost : public Component, public modbus::ModbusClientDevice 
   bool read_base_();
   uint8_t parameter_block_count_() const;
   void fail_(const char* reason);
+  bool persist_profile_();
+  void finish_profile_(bool verified);
 };
 }  // namespace esphome::openquatt_odu_defrost

@@ -166,7 +166,9 @@ inline const char* mode_save_error(const Guard& g, int desired, int expected, in
   if (!automatic) return "AUTO_CONTROL_UNAVAILABLE";
   if (!is_supported_defrost_mode(desired, variant)) return "INVALID_MODE";
   if (expected != current) return "STALE";
+  const char* guard = mode_save_guard_refusal(g);
+  if (std::strcmp(guard, "READY") != 0) return guard;
   if (desired == current) return "NO_CHANGE";
-  return mode_save_guard_refusal(g);
+  return "READY";
 }
 }  // namespace oq_defrost

@@ -26,8 +26,36 @@ class DefrostContractTest(unittest.TestCase):
         self.assertIn("is_supported_defrost_mode(desired, variant_)", SERVICE)
         self.assertIn("owner_->supports_mode(desired)", SERVICE)
         self.assertIn("parameter_block_count_()", SERVICE)
-        self.assertIn("set_odu_identity(oq_odu::Variant variant)", header)
-        self.assertIn("id(${hp_id}_odu_defrost)->set_odu_identity(detection.variant);", IO)
+        self.assertIn("set_odu_identity(oq_odu::Variant variant, uint16_t control_board_item", header)
+        self.assertIn("set_odu_identity(detection.variant, core.control_board_item)", IO)
+
+    def test_persistent_consent_is_durable_and_independent_per_hp(self):
+        self.assertIn('req->arg("auto_reapply")', SERVICE)
+        self.assertIn("0x4f514432U : 0x4f514431U", SERVICE)
+        persist = SERVICE[SERVICE.index("bool OpenQuattOduDefrost::persist_profile_"):SERVICE.index("void OpenQuattOduDefrost::finish_profile_")]
+        self.assertIn("global_preferences->sync()", persist)
+        self.assertIn("profile_commit_confirmed(queued, synced, loaded, verified, candidate)", persist)
+        self.assertLess(persist.index("profile_commit_confirmed"), persist.index("profile_ = candidate"))
+        write = SERVICE[SERVICE.index("bool OpenQuattOduDefrost::send_mode_once"):SERVICE.index("bool OpenQuattOduDefrost::normal_write_allowed")]
+        self.assertLess(write.index("persist_profile_()"), write.index("write_single_register("))
+
+    def test_reconcile_uses_existing_guarded_save_not_manual_trigger(self):
+        loop = SERVICE[SERVICE.index("void OpenQuattOduDefrost::loop()"):SERVICE.index("void OpenQuattOduDefrost::release()")]
+        self.assertIn("snapshot.online,", loop)
+        self.assertIn("snapshot.fresh, snapshot.identity, busy(), request_pending", loop)
+        self.assertIn("oq_defrost::profile_matches", loop)
+        self.assertIn("action = Action::SAVE", loop)
+        self.assertIn("profile_reconcile_ready(profile_, profile_state_", loop)
+        identity = SERVICE[SERVICE.index("void OpenQuattOduDefrost::set_odu_identity"):SERVICE.index("oq_odu::Variant OpenQuattOduDefrost::variant")]
+        self.assertIn("profile_state_after_identity(profile_state_, profile_, variant_, control_board_item_)", identity)
+        self.assertIn("if (save_ready_ && reconcile_) save_expected_ = parameters_.mode();", SERVICE)
+        self.assertIn("finish_profile_(true)", SERVICE)
+        self.assertIn("mode_save_error(save_guard", RUNTIME)
+        offline = SERVICE[SERVICE.index("void OpenQuattOduDefrost::offline()"):SERVICE.index("void OpenQuattOduDefrost::fail_(")]
+        self.assertIn("pending_ = Action::NONE", offline)
+        self.assertIn("action_pending_ = false", offline)
+        self.assertLess(offline.index("portENTER_CRITICAL"), offline.index("pending_ = Action::NONE"))
+        self.assertLess(offline.index("action_pending_ = false"), offline.index("portEXIT_CRITICAL"))
 
     def test_mode_save_validates_and_verifies_readback(self):
         header = (ROOT / "components/openquatt_odu_defrost/OpenQuattOduDefrost.h").read_text()

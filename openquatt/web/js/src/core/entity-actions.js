@@ -20,7 +20,7 @@ import { getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNu
 import { handleMqttAction, syncMqttDraftFromInput } from "../features/mqtt-actions.js";
 import { setLocale, t } from "../i18n/index.js";
 import { handleOduEepromDumpAction } from "../features/odu-eeprom-dump.js";
-import { handleOduDefrostAction } from "../features/odu-defrost.js";
+import { handleOduDefrostAction, updateOduDefrostDraft } from "../features/odu-defrost.js";
 import { handleOduRuntimeFrequencyAction, handleOduRuntimeFrequencyInputKeyDown, updateOduRuntimeFrequencyDraft } from "../features/odu-runtime-frequency.js";
 import { handleOduSettingsAction, updateOduSettingsDraft } from "../features/odu-settings.js";
 import { confirmQuickStartSetup, handleQuickStartAction } from "../features/quickstart-ui-actions.js";
@@ -183,6 +183,10 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleInput(event) {
+    if (event.target.dataset.oqOduDefrostHp) {
+      updateOduDefrostDraft(event.target);
+      return;
+    }
     if (event.target.dataset.oqOduSettingsHp) {
       updateOduSettingsDraft(event.target);
       return;
@@ -404,6 +408,10 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleChange(event) {
+    if (event.target.dataset.oqOduDefrostHp) {
+      updateOduDefrostDraft(event.target);
+      return;
+    }
     if (event.target.dataset.oqOduSettingsHp) {
       updateOduSettingsDraft(event.target);
       return;

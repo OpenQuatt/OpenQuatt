@@ -2,21 +2,24 @@
 
 Onder **Instellingen buitenunit → Ontdooien** staan live metingen en een handmatige aanvraag per HP. De buitenunit blijft eigenaar van de ontdooicyclus. OpenQuatt stuurt geen eigen compressorfrequentie, ventilator of vierwegklep tijdens die cyclus.
 
-De UI scheidt status en bediening, **Instellingen** (methode met uitleg; alleen de defrostmethode is wijzigbaar) en ingeklapte **Technische metingen**.
+De UI scheidt status en handmatige bediening, één methodekeuze met korte uitleg en ingeklapte **Technische metingen**. De keuze blijft een concept tot **Toepassen** en de aparte bevestiging; de uitgelezen methode blijft zichtbaar.
+
+Het **i** naast **Ontdooimethode** licht de ondersteunde methoden van deze variant toe, inclusief de grenzen van de startvoorspelling. Interne ODU-kwalificatie blijft leidend; de uitleg toont geen gegarandeerde aftelling of universele drempels.
 
 ## Bediening
 
 - Laad de actuele parameters uit de aangesloten ODU; voorbeeldwaarden zijn geen defaults.
 - Een handmatige aanvraag vereist verse meetwaarden, een bekende ODU, ODU-gestuurde defrost, een draaiende compressor in verwarmen, geldige actuele flow en geen blokkerende incidenten of servicetaak. Bij Duo mag de andere HP niet bezig of onbekend zijn.
 - Na bevestiging wordt eenmaal `3999=4` verzonden. Een verloren antwoord veroorzaakt geen automatische herhaling. `working_mode=4` bevestigt acceptatie; alleen een defrost-bit niet.
-- Alleen de ontdooimethode kan per HP tijdelijk worden gewijzigd. De mogelijkheden zijn variantafhankelijk: **V1 ondersteunt 0, 1 en 3; V1.5 en de bestaande V2-profielen behouden 0, 1, 3 en 4**. De gereserveerde modus is niet selecteerbaar. Vereist zijn verse identiteit/telemetrie, stilstaande compressor, geen actieve/aangevraagde defrost en geen incident of conflicterende serviceactie. Vóór schrijven wordt de actuele methode opnieuw gelezen; wijkt deze af van de getoonde waarde, dan eerst opnieuw laden. Er wordt precies één waarde geschreven en daarna teruggelezen; alleen een overeenkomende readback geldt als succes. Geen retry, rollback, NVS-profiel of automatische hertoepassing.
+- Alleen de ontdooimethode kan per HP worden gewijzigd. De mogelijkheden zijn variantafhankelijk: **V1 ondersteunt 0, 1 en 3; V1.5 en de bestaande V2-profielen behouden 0, 1, 3 en 4**. De gereserveerde modus is niet selecteerbaar. Vereist zijn verse identiteit/telemetrie, stilstaande compressor, geen actieve/aangevraagde defrost en geen incident of conflicterende serviceactie. Vóór schrijven wordt de actuele methode opnieuw gelezen; wijkt deze af van de getoonde waarde, dan eerst opnieuw laden. Er wordt precies één waarde geschreven en daarna teruggelezen; alleen een overeenkomende readback geldt als succes. Een onzeker antwoord wordt niet meteen herhaald of teruggedraaid.
+- **Na herstart opnieuw toepassen** bewaart optioneel per HP alleen de methode en de bijbehorende ODU-identiteit in NVS. Hertoepassing wacht op verse identiteit, een stilstaande compressor en dezelfde veiligheidsvrijgave; een andere variant of control-board-identiteit blokkeert herstel. Opslagfouten worden gemeld en mogen niet als geslaagde toepassing worden getoond. Zonder deze optie wordt de bewaarde methode niet automatisch hersteld. Andere defrostparameters blijven alleen-lezen.
 - De V1-firmware 1.25 heeft wel het legacy interval-/trendpad (waaronder methode 3), maar **niet** de V1.5 mode-4-regeling op `Ta − Tevap`. Een ruwe waarde 4 op een V1 mag daarom niet als dezelfde methode worden geïnterpreteerd of opnieuw worden geschreven. De backend blokkeert dit ook buiten de UI om. Onbekende identiteiten kunnen niet schrijven.
 - Tijdens wachten/ontdooien worden normale mode- en niveaucommando's vastgehouden. Veiligheidsstops blijven mogelijk.
 - Een stopverzoek, ook `Force CM0`, wacht in CM1 met normale circulatie zolang de ODU of actuator nog actief is. De bestaande minimumlooptijd en defrosthold blijven gelden; CM0 volgt pas na stilstand. Veiligheidsstops worden hierdoor niet uitgesteld.
 - Start de cyclus niet binnen 210 seconden, dan gaat de regeling pas na verse niet-actieve terugmelding verder. Na een actieve cyclus moeten beide terugmeldingen opnieuw niet-actief zijn. Vervolgens wordt de **actuele** gewenste werkmodus gestuurd, ook wanneer de warmtevraag inmiddels is verdwenen. Dit is geen bevestiging van fysieke uitvoering van die normale modewrite.
 - Herstart of communicatieverlies wist meetzekerheid en lokale historie. Een nog actieve ODU-cyclus wordt opnieuw herkend. Incidentstops blijven ook bij herstart leidend.
 
-De API gebruikt bestaande webauthenticatie, origincontrole en CSRF voor acties. HTTP en Modbus delen alleen een kleine gesynchroniseerde snapshot; regeling en Modbus-transities lopen op de hoofdloop. Er worden geen NVS-profielen of automatische EEPROM-persistentie toegevoegd; wijzigingen van de defrostmethode zijn tijdelijk en vragen een aparte productkeuze voor opslag/herstel.
+De API gebruikt bestaande webauthenticatie, origincontrole en CSRF voor acties. HTTP en Modbus delen alleen een kleine gesynchroniseerde snapshot; regeling en Modbus-transities lopen op de hoofdloop. Het optionele NVS-profiel wijzigt geen EEPROM-persistentie in de buitenunit en start nooit een handmatige defrostcyclus.
 
 ## Telemetrie-ontwerpkeuze: vasthouden bij stale, stoppen bij langdurige blindheid
 
