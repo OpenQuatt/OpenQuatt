@@ -658,6 +658,14 @@
   gap: 12px;
 }
 
+.oq-defrost-info-modal {
+  width: min(100%, 860px);
+}
+
+.oq-defrost-info-modal .oq-helper-modal-copy {
+  max-width: 78ch;
+}
+
 .oq-defrost-panel .oq-settings-odu-runtime-panel-head {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;

@@ -26,6 +26,11 @@ const GUARD_KEYS = {
   COMPRESSOR_NOT_RUNNING: "oduDefrost.guardCompressorNotRunning", COMPRESSOR_RUNNING: "oduDefrost.guardCompressorRunning",
 };
 
+const MODE_INFO_KEYS = {
+  0: "oduDefrost.mode0Info", 1: "oduDefrost.mode1Info",
+  3: "oduDefrost.mode3Info", 4: "oduDefrost.mode4Info",
+};
+
 function stateLabel(state) {
   return STATE_KEYS[state] ? t(STATE_KEYS[state]) : state;
 }
@@ -355,10 +360,10 @@ export function renderOduDefrostModal() {
     const status = getOduDefrostStatus(hp);
     return renderModalShell({
       modalId: "odu-defrost-info", titleId: "oq-odu-defrost-info-title", kicker: `HP${hp}`,
-      modalClass: "oq-helper-modal--scrollable",
+      modalClass: "oq-helper-modal--scrollable oq-defrost-info-modal",
       title: t("oduDefrost.modeLabel"), closeAction: "odu-defrost-cancel", closeLabel: t("common.close"),
       bodyMarkup: `<p class="oq-helper-modal-copy">${escapeHtml(t("oduDefrost.methodInfo"))}</p>
-        ${[0, 1, 3, 4].filter((mode) => isDefrostModeSupported(mode, status?.variant)).map((mode) => `<section><h3>${mode} · ${escapeHtml(getDefrostModeName(mode))}</h3><p class="oq-helper-modal-copy">${escapeHtml(getDefrostModeCopy(mode, status.variant))} ${escapeHtml(t(`oduDefrost.mode${mode}Info`))}</p></section>`).join("")}
+        ${[0, 1, 3, 4].filter((mode) => isDefrostModeSupported(mode, status?.variant)).map((mode) => `<section><h3>${mode} · ${escapeHtml(getDefrostModeName(mode))}</h3><p class="oq-helper-modal-copy">${escapeHtml(getDefrostModeCopy(mode, status.variant))} ${escapeHtml(t(MODE_INFO_KEYS[mode]))}</p></section>`).join("")}
         <div class="oq-helper-modal-actions">${renderOduEditorAction(hp, "odu-defrost-cancel", t("common.close"), false)}</div>`,
     });
   }

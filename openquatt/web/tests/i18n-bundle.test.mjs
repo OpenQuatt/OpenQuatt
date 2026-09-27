@@ -26,6 +26,14 @@ function flattenCatalogue(value, prefix = "", result = new Map()) {
 async function buildCompactFixture() {
   const source = compactI18nBundleSource(`
     import { optionLabel, setLocale, t } from "./i18n/index.js";
+    import { renderOduDefrostModal } from "./features/odu-defrost.js";
+    import { state } from "./core/state.js";
+    export function readDefrostInfo(locale, variant) {
+      setLocale(locale, { persist: false, applyDocument: false, notify: false });
+      state.systemModal = "odu-defrost-info-1";
+      state.oduDefrostStatuses = { 1: { variant } };
+      return renderOduDefrostModal();
+    }
     export function readTranslations(locale, category) {
       setLocale(locale, { persist: false, applyDocument: false, notify: false });
       return {
@@ -45,6 +53,7 @@ async function buildCompactFixture() {
     format: "esm",
     platform: "node",
     target: "es2020",
+    define: { __OQ_PREVIEW__: "false" },
     write: false,
     plugins: [compactI18nSourcePlugin()],
   });
@@ -85,4 +94,18 @@ test("compact i18n build uses a bounded runtime key index", () => {
   assert.equal(COMPACT_I18N_STATS.keys, flattenCatalogue(nl).size);
   assert.equal(COMPACT_I18N_STATS.dynamicKeys, 195);
   assert.ok(COMPACT_I18N_STATS.optionKeys > 50);
+});
+
+test("compiled defrost method help resolves NL/EN keys for supported variants", async () => {
+  const { module } = await buildCompactFixture();
+  for (const [locale, catalogue] of [["nl", nl], ["en", en]]) {
+    for (const variant of [1, 2, 3, 4]) {
+      const html = module.readDefrostInfo(locale, variant);
+      assert.doesNotMatch(html, /oduDefrost\.mode\dInfo/);
+      for (const mode of [0, 1, 3, 4]) {
+        const copy = catalogue.oduDefrost[`mode${mode}Info`];
+        assert.equal(html.includes(copy), mode !== 4 || variant !== 1);
+      }
+    }
+  }
 });
