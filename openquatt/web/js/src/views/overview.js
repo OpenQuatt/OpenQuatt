@@ -290,22 +290,37 @@ import { renderStatCard } from "./stat-card.js";
     // external supply target while one is driving. The curve target alone
     // would misreport delta and status under an external target (issue #649).
     const strategyTarget = hasEntity("strategySupplyTarget") ? getEntityNumericValue("strategySupplyTarget") : Number.NaN;
-    const curveTarget = getEntityNumericValue("curveSupplyTarget");
+    const curveTarget = hasEntity("curveSupplyTarget") ? getEntityNumericValue("curveSupplyTarget") : Number.NaN;
     const targetKey = Number.isNaN(strategyTarget) ? "curveSupplyTarget" : "strategySupplyTarget";
     const target = Number.isNaN(strategyTarget) ? curveTarget : strategyTarget;
-    const supply = getEntityNumericValue("supplyTemp");
+    const supply = hasEntity("supplyTemp") ? getEntityNumericValue("supplyTemp") : Number.NaN;
     const outsideKey = getOverviewOutsideTempKey();
     const outside = outsideKey ? getEntityNumericValue(outsideKey) : Number.NaN;
     const targetDelta = Number.isNaN(target) || Number.isNaN(supply) ? Number.NaN : supply - target;
     const fallbackActive = Boolean(outsideKey) && Number.isNaN(outside);
-    const externalActive = getEntityStateText("heatingSupplyTargetActiveSource", "") === "external";
+    const activeSource = getEntityStateText("heatingSupplyTargetActiveSource", "");
+    const externalActive = activeSource === "external";
+    const selectedSource = getEntityStateText("heatingSupplyTargetSource", "");
+    const knownExternalSource = ["OT thermostat", "HA input", "API input", "MQTT"].includes(selectedSource);
+    let targetCopy = t("overview.curveTargetUnavailable");
+    if (externalActive && !Number.isNaN(strategyTarget)) {
+      targetCopy = t("overview.curveTargetExternal", {
+        source: knownExternalSource ? optionLabel(selectedSource) : t("overview.curveTargetUnknownSource"),
+        curve: formatOverviewStatValue("curveSupplyTarget"),
+      });
+    } else if (!Number.isNaN(curveTarget) && (activeSource === "curve" || (!hasEntity("heatingSupplyTargetActiveSource") && !hasEntity("strategySupplyTarget")))) {
+      targetCopy = fallbackActive ? t("overview.curveTargetFallback") : t("overview.curveTargetLocal");
+      if (hasEntity("maxWater") && !Number.isNaN(getEntityNumericValue("maxWater"))) {
+        targetCopy += ` ${t("overview.curveTargetMaximum", { maximum: formatOverviewStatValue("maxWater") })}`;
+      }
+    }
 
     let statusTitle = externalActive ? t("overview.curveExternalTitle") : t("overview.curveOutdoorTitle");
     let statusCopy = externalActive
       ? t("overview.curveExternalCopy")
       : t("overview.curveOutdoorCopy");
 
-    if (fallbackActive) {
+    if (fallbackActive && !externalActive) {
       statusTitle = t("overview.curveFallbackTitle");
       statusCopy = t("overview.curveFallbackCopy");
     } else if (!Number.isNaN(targetDelta) && targetDelta < -1.0) {
@@ -321,6 +336,7 @@ import { renderStatCard } from "./stat-card.js";
 
     return {
       targetText: formatOverviewStatValue(targetKey),
+      targetCopy,
       supplyText: formatOverviewStatValue("supplyTemp"),
       deltaText: formatSignedTemperature(targetDelta),
       capacityText: formatOverviewStatValue("hpCapacity"),
@@ -454,7 +470,7 @@ import { renderStatCard } from "./stat-card.js";
         copy: t("overview.strategyCurveCopy"),
         focusLabel: t("overview.strategyCurveFocus"),
         focusValue: model.targetText,
-        focusCopy: t("overview.strategyCurveFocusCopy"),
+        focusCopy: model.targetCopy,
         metrics: [
           { label: t("overview.strategyCurveSupplyLabel"), value: model.supplyText, tone: "orange", note: t("overview.strategyCurveSupplyNote") },
           { label: t("overview.strategyCurveDeltaLabel"), value: model.deltaText, tone: "blue", note: t("overview.strategyCurveDeltaNote") },

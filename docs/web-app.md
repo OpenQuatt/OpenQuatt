@@ -91,7 +91,7 @@ Quick Start begint met de configuratiekeuze en software-update. Daarna volgen de
 | `Flowmeting configureren` | De juiste flowbron | Zorgt dat de regeling de juiste meting gebruikt. |
 | `Thermostaatgegevens configureren` | Eén bron voor kamertemperatuur en setpoint | Voorkomt dat OpenQuatt waarden uit verschillende bronnen combineert. |
 | `Aanvullende warmtebron` | Aansluiting (`R1` of `OTB`), hybride verwarmen en overname | Legt afzonderlijk vast of een warmtebron is aangesloten, of deze bij een vermogenstekort hybride mag meeverwarmen en of deze mag overnemen wanneer geen warmtepomp beschikbaar is. Op Q-hardware controleert OpenQuatt bij een R1-keuze tijdens het opstarten kort of toch een OpenTherm-ketel antwoordt. Tijdens Quick Start wordt een gedetecteerde OT-ketel automatisch als `OpenTherm (OTB)` ingesteld en wordt die keuze toegelicht. Na afgeronde onboarding blijft een onverwachte OT-ketel geblokkeerd totdat de aansluiting handmatig is gecorrigeerd. |
-| `Kies de verwarmingsstrategie` | `Power House` of `Water Temperature Control` | Bepaalt hoe OpenQuatt warmtevraag maakt en vervangt daarbij automatisch de warmtetoestemming (`Niet gebruiken` voor Power House; de eerder gekozen actieve thermostaatbron voor stooklijn). |
+| `Kies de verwarmingsstrategie` | `Power House` of `Stooklijnregeling` | Bepaalt hoe OpenQuatt warmtevraag maakt en vervangt daarbij automatisch de warmtetoestemming (`Niet gebruiken` voor Power House; de eerder gekozen actieve thermostaatbron voor stooklijn). |
 | `Werk de regeling uit` | Strategie-instellingen | Toont alleen de instellingen die bij de gekozen strategie horen. |
 | `Flowregeling en afstelling` | Automatische flow of vaste pompstand | Bepaalt hoe OpenQuatt de waterdoorstroming regelt. |
 | `Watertemperatuur beveiligen` | Maximale watertemperatuur | Laat OpenQuatt terugregelen voordat het water te warm wordt. |
@@ -192,9 +192,25 @@ Gebruik dit deel vooral tijdens de eerste inrichting of als je installatie later
 Hier kies en verfijn je de verwarmingsstrategie:
 
 - `Power House`;
-- `Water Temperature Control`.
+- `Stooklijnregeling`.
 
-`Power House` probeert de warmtevraag van je woning te schatten. `Water Temperature Control` werkt meer als een stooklijnregeling. Begin bij [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md) als je nog niet zeker weet welke strategie bij je past.
+`Power House` probeert de warmtevraag van je woning te schatten. `Stooklijnregeling` stuurt op een aanvoerdoel op basis van de buitentemperatuur. Begin bij [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md) als je nog niet zeker weet welke strategie bij je past.
+
+#### Stooklijn en actueel aanvoerdoel
+
+In de Nederlandse web-app heet de strategie **Stooklijnregeling**; de firmwareoptie
+blijft `Water Temperature Control (heating curve)`. **Stooklijn instellen** bevat de
+curvepunten. **Actueel aanvoerdoel** is het doel waar de regeling nu naartoe werkt;
+**Gemeten aanvoertemperatuur** is de werkelijke meting.
+
+Bij het aanvoerdoel staat de bron: de lokale stooklijn inclusief eventuele
+kamercorrectie en begrenzing, de fallback bij ontbrekende buitentemperatuur, of een
+bevestigd extern doel. Bij een extern doel wordt ook het lokale stooklijndoel
+getoond. Het ingestelde maximum bij een lokaal doel is een grens, geen bevestiging
+dat die grens op dat moment ingrijpt. De firmware levert kamercorrectie niet als
+aparte meetwaarde aan; de web-app toont daarom geen berekende uitsplitsing ervan.
+De stooklijn gebruikt een gefilterde buitentemperatuur, die tijdelijk kan afwijken
+van de actuele buitenmeting.
 
 In testfirmware met passief huismodelleren staat bij Power House op Heatpump Controller Q Single en Duo ook
 `Huismodel volgen`. Deze functie verzamelt diagnostiek en schat woningparameters; zij past geen

@@ -3,7 +3,7 @@ import { renderModalShell } from "../core/modal-shell.js";
 import { isCurveMode } from "../core/domain-helpers.js";
 import { escapeHtml } from "../core/html.js";
 import { state } from "../core/state.js";
-import { t } from "../i18n/index.js";
+import { optionLabel, t } from "../i18n/index.js";
 import { getHeatingEnableAdvice, getHeatingEnableCurrent, getHeatingEnableRecommendation } from "../core/heating-strategy-matrix.js";
 
 function formatLabel(value) {
@@ -35,7 +35,7 @@ export function renderHeatingStrategyAdviceModal() {
   const deviant = Boolean(advice.deviant && hasEntity("heatingEnableSource"));
   const busy = state.busyAction === "quickstart-heating-enable";
 
-  const strategyLabel = isCurve ? "Water Temperature Control" : "Power House";
+  const strategyLabel = optionLabel(isCurve ? "Water Temperature Control (heating curve)" : "Power House");
   const strategySub = isCurve ? t("heatingAdvice.strategySubCurve") : t("heatingAdvice.strategySubPh");
   const isPH = !isCurve;
 
