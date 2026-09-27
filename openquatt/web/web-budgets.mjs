@@ -8,7 +8,8 @@ export const WEB_BUNDLE_BUDGETS = [
     // enough margin for ordinary UI work without accepting the uncompressed form again.
     // Defrost form, restart profile and variant-aware method help (NL/EN).
     // Keep a bounded raw margin; the existing gzip ceiling remains sufficient.
-    raw: 1_237_000,
+    // Supply-target source explanation in both offline catalogues (+1.3 kB raw).
+    raw: 1_239_000,
     gzipBaselineCeiling: 343_000,
   },
   // Responsive run-extension group: ~203.3 kB raw.
