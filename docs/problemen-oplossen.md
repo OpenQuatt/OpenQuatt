@@ -212,6 +212,18 @@ Ethernet-DHCP-start de globale DNS wist terwijl WiFi verbonden bleef.
 De systeemlog meldt dan `Restored missing DNS from default interface`.
 
 
+### MQTT-fouten beter diagnosticeren
+
+Nieuwe firmware logt bij een MQTT-foutevent de beschikbare transport- of brokerfoutcode
+plus de actuele interne geheugenmarge: vrije interne heap, minimum sinds boot,
+grootste vrije interne blok en vrije PSRAM. Alleen velden die bij het gemelde
+fouttype horen worden gelezen; credentials, installatie-ID, topics en payloads
+worden niet gelogd.
+
+Gebruik deze regels om onderscheid te maken tussen een socket-/transportfout,
+TLS-fout, brokerweigering en een mogelijk resourceprobleem. De extra logging
+verandert het retrybeleid, consent of de regeling niet.
+
 ## Wanneer niets veranderen?
 
 Verander bij voorkeur niets als:
