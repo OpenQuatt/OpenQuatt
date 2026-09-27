@@ -1673,7 +1673,7 @@ export default {
     modeAdaptiveTrend: "Adaptive trend",
     modeTaTevap: "Ta − Tevap",
     modeUnsupported: "Unsupported defrost method for this outdoor unit",
-    modeUnsupportedCopy: "This register value is not a supported defrost method for this outdoor unit. Deliberately choose a supported method.",
+    modeUnsupportedCopy: "The defrost method read from this outdoor unit is not supported. Deliberately choose a supported method.",
     operationStandby: "Standby",
     operationCooling: "Cooling",
     operationHeating: "Heating",

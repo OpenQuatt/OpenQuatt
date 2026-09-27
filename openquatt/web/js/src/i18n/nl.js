@@ -1673,7 +1673,7 @@ export default {
     modeAdaptiveTrend: "Adaptieve trend",
     modeTaTevap: "Ta − Tevap",
     modeUnsupported: "Niet-ondersteunde ontdooimethode voor deze buitenunit",
-    modeUnsupportedCopy: "Deze registerwaarde hoort niet bij een ondersteunde ontdooimethode voor deze buitenunit. Kies bewust een ondersteunde methode.",
+    modeUnsupportedCopy: "De uitgelezen ontdooimethode wordt niet ondersteund door deze buitenunit. Kies bewust een ondersteunde methode.",
     operationStandby: "Stand-by",
     operationCooling: "Koelen",
     operationHeating: "Verwarmen",
