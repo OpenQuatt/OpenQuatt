@@ -24,6 +24,7 @@ class EthernetLifecycleTest(unittest.TestCase):
     def test_actual_lifecycle_with_injected_failures(self):
         fixture = (Path(__file__).parent / "fixtures/ethernet_lifecycle.cpp").read_text()
         methods = "\n".join(method(NETWORK, signature) for signature in (
+            "void OpenQuattNetworkManager::loop()",
             "bool OpenQuattNetworkManager::ensure_ethernet_enabled_()",
             "bool OpenQuattNetworkManager::disable_ethernet_()",
             "bool OpenQuattNetworkManager::prepare_ethernet_after_setup_()",

@@ -53,6 +53,11 @@ void OpenQuattNetworkManager::loop() {
   if (this->provisioning_override_) {
     this->ensure_wifi_enabled_();
     if (wifi::global_wifi_component->requires_provisioning()) {
+      if (this->preference_ != Preference::WIFI &&
+          (now - this->last_interface_action_ms_) >= INTERFACE_ACTION_RETRY_MS) {
+        this->last_interface_action_ms_ = now;
+        this->ensure_ethernet_enabled_();
+      }
       this->active_ = this->is_connected_(Connection::ETHERNET) ? Connection::ETHERNET : Connection::NONE;
       this->publish_active_connection_();
       return;

@@ -1,6 +1,7 @@
 #include <atomic>
 #include <cassert>
 #include <cstdint>
+#include <initializer_list>
 
 #define ESP_LOGD(...) ((void)0)
 #define ESP_LOGI(...) ((void)0)
@@ -40,9 +41,36 @@ EthernetComponent* global_eth_component;
 namespace ethernet {
 EthernetComponent*& global_eth_component = ::global_eth_component;
 }
+namespace wifi {
+struct WifiComponent {
+  bool provisioning{true};
+  bool requires_provisioning() { return provisioning; }
+} wifi_component;
+auto* global_wifi_component = &wifi_component;
+}  // namespace wifi
 class OpenQuattNetworkManager {
  public:
-  enum class Preference { WIFI, AUTOMATIC };
+  enum class Preference { WIFI, AUTOMATIC, ETHERNET };
+  enum class Connection { NONE, ETHERNET };
+  enum class Phase { STARTUP, STEADY, RECOVERY, SWITCHING };
+  void loop();
+  void update_connection_stability_(uint32_t) {}
+  bool ensure_wifi_enabled_() {
+    ++wifi_enables_;
+    return true;
+  }
+  bool is_connected_(Connection) { return ethernet::global_eth_component->is_enabled(); }
+  void publish_active_connection_() {}
+  void handle_startup_(uint32_t) { ++phase_calls_; }
+  void handle_steady_(uint32_t) { ++phase_calls_; }
+  void handle_recovery_(uint32_t) { ++phase_calls_; }
+  void handle_switching_(uint32_t) { ++phase_calls_; }
+  bool provisioning_override_{false};
+  Phase phase_{Phase::STARTUP};
+  Connection active_{Connection::NONE};
+  int wifi_enables_{0};
+  int phase_calls_{0};
+  static constexpr uint32_t INTERFACE_ACTION_RETRY_MS = 5000;
   bool ensure_ethernet_enabled_();
   bool disable_ethernet_();
   bool prepare_ethernet_after_setup_();
@@ -77,6 +105,41 @@ class OpenQuattNetworkManager {
 // PRODUCTION_METHODS
 
 int main() {
+  // A pending setup STOP must not strand wired access during provisioning.
+  for (auto preference : {OpenQuattNetworkManager::Preference::AUTOMATIC, OpenQuattNetworkManager::Preference::ETHERNET,
+                          OpenQuattNetworkManager::Preference::WIFI}) {
+    EthernetComponent provision_eth;
+    global_eth_component = &provision_eth;
+    OpenQuattNetworkManager provision_manager;
+    provision_manager.preference_ = preference;
+    provision_manager.provisioning_override_ = true;
+    clock_ms = 100;
+    provision_manager.loop();
+    assert(provision_manager.ethernet_prepared_ && provision_eth.disabled_);
+    clock_ms += OpenQuattNetworkManager::INTERFACE_ACTION_RETRY_MS;
+    provision_manager.loop();  // No STOP yet: no PHY writes or unsafe start.
+    assert(provision_eth.start_calls_ == 0 && provision_manager.writes_ == 0);
+    provision_eth.stopped_ = true;
+    provision_manager.writes_succeed_ = false;
+    clock_ms += OpenQuattNetworkManager::INTERFACE_ACTION_RETRY_MS;
+    provision_manager.loop();  // Partial wake fails: retry remains necessary.
+    assert(provision_eth.start_calls_ == 0);
+    provision_manager.writes_succeed_ = true;
+    provision_manager.loop();  // Same time: do not hammer PHY retries.
+    assert(provision_eth.start_calls_ == 0);
+    clock_ms += OpenQuattNetworkManager::INTERFACE_ACTION_RETRY_MS;
+    provision_manager.loop();
+    const bool wired = preference != OpenQuattNetworkManager::Preference::WIFI;
+    assert(provision_eth.start_calls_ == (wired ? 1 : 0));
+    assert(provision_manager.active_ ==
+           (wired ? OpenQuattNetworkManager::Connection::ETHERNET : OpenQuattNetworkManager::Connection::NONE));
+    assert(provision_manager.wifi_enables_ == 5 && provision_manager.phase_calls_ == 0);
+    if (!wired) assert(provision_manager.writes_ == 0);
+    wifi::wifi_component.provisioning = false;
+    provision_manager.loop();
+    assert(!provision_manager.provisioning_override_ && provision_manager.phase_calls_ == 1);
+    wifi::wifi_component.provisioning = true;
+  }
   EthernetComponent eth;
   global_eth_component = &eth;
   OpenQuattNetworkManager manager;
