@@ -3,6 +3,7 @@
 #include <cstring>
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/core/log.h"
+#include "includes/odu/oq_odu_defrost_status_json.h"
 
 namespace esphome::openquatt_odu_defrost {
 namespace {
@@ -116,15 +117,6 @@ class Handler : public AsyncWebHandler {
   OpenQuattOduDefrost* owner_;
   char path_[40]{};
 };
-const char* boolean(bool value) { return value ? "true" : "false"; }
-void number(httpd_req_t* req, float value) {
-  char out[32];
-  if (std::isfinite(value))
-    snprintf(out, sizeof(out), "%.2f", static_cast<double>(value));
-  else
-    snprintf(out, sizeof(out), "null");
-  httpd_resp_send_chunk(req, out, strlen(out));
-}
 }  // namespace
 
 void OpenQuattOduDefrost::setup() {
@@ -573,47 +565,13 @@ void OpenQuattOduDefrost::write_status(httpd_req_t* req) {
   pending = action_pending_;
   variant = variant_;
   portEXIT_CRITICAL(&mux_);
-  char out[640];
-  snprintf(
-      out, sizeof(out),
-      R"({"hp":%u,"online":%s,"fresh":%s,"identity_ready":%s,"variant":%u,"loaded":%s,"auto_defrost_control_ok":%s,"busy":%s,"active":%s,"manual":%s,"can_trigger":%s,"defrost_mode":%d,"operation_mode":%d,"state":"%s","guard":"%s","elapsed_s":%d,"since_last_s":%d,"last_duration_s":%d,"confidence":"limited","end_reason":"unknown","ambient_c":)",
-      hp_, boolean(s.online), boolean(s.fresh), boolean(s.identity), static_cast<unsigned>(variant), boolean(s.loaded),
-      boolean(s.automatic), boolean(s.busy || pending), boolean(s.active), boolean(s.manual),
-      boolean(s.can_trigger && !pending), s.mode, s.operation_mode, pending ? "QUEUED" : s.state, s.guard, s.elapsed_s,
-      s.since_s, s.duration_s);
-  httpd_resp_send_chunk(req, out, strlen(out));
-  number(req, s.ambient);
-  httpd_resp_send_chunk(req, ",\"coil_c\":", HTTPD_RESP_USE_STRLEN);
-  number(req, s.coil);
-  httpd_resp_send_chunk(req, ",\"evaporation_c\":", HTTPD_RESP_USE_STRLEN);
-  number(req, s.evaporation);
-  httpd_resp_send_chunk(req, ",\"compressor_hz\":", HTTPD_RESP_USE_STRLEN);
-  number(req, s.hz);
-  httpd_resp_send_chunk(req, ",\"delta_k\":", HTTPD_RESP_USE_STRLEN);
-  number(req, s.ambient - s.evaporation);
-  httpd_resp_send_chunk(req, ",\"start_threshold_c\":", HTTPD_RESP_USE_STRLEN);
-  number(req, s.diagnostics.start_c);
-  httpd_resp_send_chunk(req, ",\"delta_required_k\":", HTTPD_RESP_USE_STRLEN);
-  number(req, s.diagnostics.delta_k);
-  httpd_resp_send_chunk(req, ",\"exit_threshold_c\":", HTTPD_RESP_USE_STRLEN);
-  number(req, s.diagnostics.exit_c);
-  httpd_resp_send_chunk(req, ",\"alternate_exit_c\":", HTTPD_RESP_USE_STRLEN);
-  number(req, s.diagnostics.alternate_exit_c);
-  snprintf(
-      out, sizeof(out),
-      R"(,"confirmation_s":%d,"confirmation_required_s":%d,"runtime_s":%d,"minimum_runtime_s":%d,"interval_s":%d,"max_duration_s":%d,"exit_confirmation_s":%d,"exit_required_s":%d,"inferred_end_reason":"%s")",
-      s.diagnostics.confirm_s, s.diagnostics.confirm_required_s, s.diagnostics.runtime_s,
-      s.diagnostics.minimum_runtime_s, s.diagnostics.interval_s, s.diagnostics.max_duration_s,
-      s.diagnostics.exit_confirm_s, s.diagnostics.exit_required_s, s.diagnostics.end_reason);
-  httpd_resp_send_chunk(req, out, strlen(out));
-  snprintf(out, sizeof(out), R"(,"profile_available":%s,"auto_reapply":%s,"desired_mode":%d,"profile_state":"%s")",
-           boolean(s.profile_available), boolean(s.auto_reapply), s.desired_mode, s.profile_state);
-  httpd_resp_send_chunk(req, out, strlen(out));
-  // Auth creates a hexadecimal token; no user-controlled string enters this JSON.
   const auto token = csrf();
-  httpd_resp_send_chunk(req, ",\"csrf_token\":\"", HTTPD_RESP_USE_STRLEN);
-  httpd_resp_send_chunk(req, token.c_str(), token.size());
-  httpd_resp_send_chunk(req, "\"}", 2);
+  // ESP-IDF httpd_resp_send_chunk consumes the buffer before returning.
+  // No shared scratch or allocation is needed; the locked snapshot stays immutable.
+  const bool sent = oq_defrost::write_status_json(
+      s, hp_, static_cast<unsigned>(variant), pending, token.c_str(),
+      [req](const char* chunk, size_t size) { return httpd_resp_send_chunk(req, chunk, size) == ESP_OK; });
+  if (!sent) ESP_LOGW("odu_defrost", "Status response interrupted or exceeded its bounded chunk");
   httpd_resp_send_chunk(req, nullptr, 0);
 }
 }  // namespace esphome::openquatt_odu_defrost

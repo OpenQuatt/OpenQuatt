@@ -124,10 +124,10 @@ class DefrostContractTest(unittest.TestCase):
         self.assertIn("const auto csrf = owner_->csrf();", SERVICE)
         self.assertIn("csrf.empty()", SERVICE)
         self.assertIn("const auto token = csrf();", SERVICE)
-        self.assertIn("token.c_str(), token.size()", SERVICE)
+        self.assertIn("pending, token.c_str()", SERVICE)
 
     def test_http_does_not_perform_modbus_or_mutate_cycle(self):
-        handler = SERVICE[SERVICE.index("class Handler"):SERVICE.index("const char* boolean")]
+        handler = SERVICE[SERVICE.index("class Handler"):SERVICE.index("\n}  // namespace")]
         for forbidden in ("write_single_register", "read_holding_registers", "cycle."):
             self.assertNotIn(forbidden, handler)
         self.assertIn("portENTER_CRITICAL(&mux_)", SERVICE)
