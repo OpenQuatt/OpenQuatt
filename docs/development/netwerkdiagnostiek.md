@@ -75,24 +75,13 @@ Runtime `DEBUG` schakelt dus geen volledige ESP-IDF TCP/TLS-debuglogging in.
 Usage-telemetrie heeft op DEBUG al heapmetingen bij MQTT-start en cleanup en
 task-stackmetingen. Bewaar alleen kort een gerichte opname; zet terug naar INFO.
 
-Bij `MQTT_EVENT_ERROR` logt usage-telemetrie voortaan op WARN:
-
-- TCP-transport: socket-`errno`, ESP-TLS-code, TLS-stackcode en certificaatflags;
-- brokerweigering: de MQTT-CONNACK-code;
-- ontbrekende foutdetails of een ander type: een expliciete melding;
-- interne vrije bytes, minimum sinds boot, grootste vrij blok en vrije PSRAM.
-
-Alleen de velden die bij het fouttype horen worden gelezen. De eventpointer
-wordt niet bewaard; credentials, installatie-ID, topic en payload worden niet
-gelogd. Retrybeleid, consent en controlesturing blijven ongewijzigd.
 
 ## Reproduceer zonder aparte diagnostic build
 
 1. Bewaar firmwareversie, uptime, bestaande foutlogs en actieve clients.
 2. Bij een storing: sluit extra webtabs/logstreams, laat de controller draaien
    en probeer één manifestcheck. Noteer of herstel zonder reboot optreedt.
-3. Leg bij de volgende fout de transportcode en resourcewaarden samen vast.
-   Een lage minimumwatermark is geen bewijs van de huidige vrije marge.
+3. Leg bij de volgende fout de systeemlog en actieve netwerktoestand samen vast.
 4. Reproduceer in de simulator/HIL met gecontroleerde clients en netwerkfouten.
    Controleer dat de regeling veilig doorloopt en vrijgegeven verbindingen
    werkelijk opnieuw bruikbaar zijn. Een geslaagde manifestcheck bewijst geen OTA.
