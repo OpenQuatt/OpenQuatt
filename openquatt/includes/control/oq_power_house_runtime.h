@@ -370,8 +370,10 @@ class Runtime {
     const int base_capped_demand =
         std::min(base_raw_demand, std::max(0, std::min(config.demand_max_f, static_cast<int>(id(oq_power_cap_f)))));
     float base_capped_w = base_requested_w;
-    if (std::isfinite(base_capped_w) && std::isfinite(rated_w) && rated_w > 0.0f && config.demand_max_f > 0)
-      base_capped_w = std::min(base_capped_w, rated_w * static_cast<float>(base_capped_demand) / config.demand_max_f);
+    if (std::isfinite(base_capped_w) && std::isfinite(demand_scale_w) && demand_scale_w > 0.0f &&
+        config.demand_max_f > 0)
+      base_capped_w =
+          std::min(base_capped_w, demand_scale_w * static_cast<float>(base_capped_demand) / config.demand_max_f);
     const float house_deficit_w = oq_power_house_run_extension::compute_house_deficit_w(
         base_capped_w, dispatch.capacity_w, dispatch.output_valid, dispatch.deficit_w);
     const bool house_saturated =

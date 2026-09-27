@@ -214,11 +214,8 @@ class Runtime {
     return NAN;
   }
 
-  float flow() const {
-    if (!id(flow_source).has_state()) {
-      this->resolved_flow_ = {};
-      return NAN;
-    }
+  oq_input_source::FlowSelection flow_selection() const {
+    if (!id(flow_source).has_state()) return {};
     oq_input_source::FlowInputs input;
     input.selected = parse_source(id(flow_source).current_option());
     input.cic = sample(cic_feed_valid(), id(flow_rate_cic));
@@ -241,16 +238,26 @@ class Runtime {
     const oq_flow::PumpRelayState hp2{};
 #endif
     input.all_relevant_pumps_stopped = oq_flow::all_relevant_pumps_stopped(OQ_TOPOLOGY_DUO, hp1, hp2);
-    const auto selected = oq_input_source::select_flow(input);
-    const oq_sources::SourceConfigurationKey configuration{
-        static_cast<uint8_t>(input.selected), static_cast<uint8_t>(input.controller_mode),
-        static_cast<uint8_t>(input.outdoor_mode),
-        input.selected == oq_input_source::Source::CIC ? id(cic_component).source_generation() : 0U};
+    return oq_input_source::select_flow(input);
+  }
+
+  float flow() const {
+    if (!id(flow_source).has_state()) {
+      this->resolved_flow_ = {};
+      return NAN;
+    }
+    const auto selected = flow_selection();
+    const auto configuration = flow_configuration_key();
     const uint32_t generation = this->flow_generation_.observe(configuration);
     this->resolved_flow_ = resolve_flow(selected, generation);
     this->resolved_flow_.configuration = configuration;
     this->resolved_flow_.configuration_generation = this->flow_generation_.observe_resolution(this->resolved_flow_);
     return selected.valid ? selected.value : NAN;
+  }
+
+  std::string flow_route() const {
+    if (!id(flow_source).has_state()) return "Unavailable";
+    return oq_input_source::flow_route_name(flow_selection().route);
   }
 
   float outside(uint32_t now_ms, uint32_t hold_ms, uint32_t ha_stale_s) {
@@ -575,6 +582,11 @@ class Runtime {
     return oq_input_source::numeric_sample(enabled, entity.has_state(), entity.state);
   }
 
+  template <typename T>
+  static oq_input_source::NumericSample room_setpoint_sample(bool enabled, const T& entity) {
+    return oq_input_source::room_setpoint_sample(enabled, entity.has_state(), entity.state);
+  }
+
   template <typename B, typename S>
   static bool ha_valid(const B& valid, const S& value) {
     return valid.has_state() && valid.state && value.has_state() && isfinite(value.state);
@@ -634,12 +646,14 @@ class Runtime {
   static oq_input_source::NumericSources room_sources(bool opentherm_fresh, bool setpoint) {
     oq_input_source::NumericSources sources;
     if (setpoint) {
-      sources.ha = sample(ha_valid(id(room_setpoint_valid_ha), id(thermostat_setpoint_ha)), id(thermostat_setpoint_ha));
-      sources.opentherm = sample(opentherm_fresh, id(ot_thermostat_room_setpoint));
-      sources.cic = sample(cic_feed_valid(), id(cic_room_setpoint));
-      sources.api = sample(api_valid(id(api_input_room_setpoint_valid), id(api_input_room_setpoint)),
-                           id(api_input_room_setpoint));
-      sources.mqtt = sample(mqtt_valid(id(mqtt_room_setpoint_valid), id(mqtt_room_setpoint)), id(mqtt_room_setpoint));
+      sources.ha = room_setpoint_sample(ha_valid(id(room_setpoint_valid_ha), id(thermostat_setpoint_ha)),
+                                        id(thermostat_setpoint_ha));
+      sources.opentherm = room_setpoint_sample(opentherm_fresh, id(ot_thermostat_room_setpoint));
+      sources.cic = room_setpoint_sample(cic_feed_valid(), id(cic_room_setpoint));
+      sources.api = room_setpoint_sample(api_valid(id(api_input_room_setpoint_valid), id(api_input_room_setpoint)),
+                                         id(api_input_room_setpoint));
+      sources.mqtt = room_setpoint_sample(mqtt_valid(id(mqtt_room_setpoint_valid), id(mqtt_room_setpoint)),
+                                          id(mqtt_room_setpoint));
     } else {
       sources.ha = sample(ha_valid(id(room_temp_valid_ha), id(thermostat_room_temp_ha)), id(thermostat_room_temp_ha));
       sources.opentherm = sample(opentherm_fresh, id(ot_thermostat_room_temp));

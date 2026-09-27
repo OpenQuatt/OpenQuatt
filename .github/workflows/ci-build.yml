@@ -32,6 +32,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+
       - name: Check documentation contracts
         run: npm run check:docs
 
@@ -58,6 +64,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+
       - name: Run Python contract tests
         run: npm run check:python-contracts
 
@@ -69,11 +81,17 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+
       - name: Run settings-backup consistency check
         run: node openquatt/web/check-settings-backup.mjs
 
       - name: Install web build dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Build and test web bundles
         run: npm run check:web
@@ -86,6 +104,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.node-version'
+          cache: npm
 
       - name: Test HIL harness without hardware
         run: npm run check:hil

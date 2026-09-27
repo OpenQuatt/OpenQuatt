@@ -21,12 +21,14 @@ import { getFirmwareLatestVersion, getFirmwareTestAssetUrls, getFirmwareTestPrNu
 import { handleMqttAction, syncMqttDraftFromInput } from "../features/mqtt-actions.js";
 import { setLocale, t } from "../i18n/index.js";
 import { handleOduEepromDumpAction } from "../features/odu-eeprom-dump.js";
+import { handleOduDefrostAction, updateOduDefrostDraft } from "../features/odu-defrost.js";
 import { handleOduRuntimeFrequencyAction, handleOduRuntimeFrequencyInputKeyDown, updateOduRuntimeFrequencyDraft } from "../features/odu-runtime-frequency.js";
 import { handleOduSettingsAction, updateOduSettingsDraft } from "../features/odu-settings.js";
 import { confirmQuickStartSetup, handleQuickStartAction } from "../features/quickstart-ui-actions.js";
 import { handleSecurityAction, stopLoginAuthStatusPolling } from "../features/security-actions.js";
 import { clearSettingsBackupDraft, handleSettingsBackupFileSelection, handleStorageHistoryAction, normalizeEnergyHistoryExportMode } from "../features/storage-history.js";
 import { handleSystemAction } from "../features/system-actions.js";
+import { syncUrlAppView } from "./navigation.js";
 import { handleShellAction } from "../features/shell-actions.js";
 import { handleViewAction } from "../features/view-actions.js";
 import { handleWebServerLogAction } from "../features/webserver-logs.js";
@@ -42,6 +44,7 @@ const actionDelegates = [
   handleDebugRecordingAction,
   (action, button) => handleHouseLearningAction(action, button, triggerNamedButton),
   handleOduEepromDumpAction,
+  handleOduDefrostAction,
   handleOduRuntimeFrequencyAction,
   handleOduSettingsAction,
   handleSecurityAction,
@@ -184,6 +187,10 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleInput(event) {
+    if (event.target.dataset.oqOduDefrostHp) {
+      updateOduDefrostDraft(event.target);
+      return;
+    }
     if (event.target.dataset.oqOduSettingsHp) {
       updateOduSettingsDraft(event.target);
       return;
@@ -405,6 +412,10 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleChange(event) {
+    if (event.target.dataset.oqOduDefrostHp) {
+      updateOduDefrostDraft(event.target);
+      return;
+    }
     if (event.target.dataset.oqOduSettingsHp) {
       updateOduSettingsDraft(event.target);
       return;
@@ -588,9 +599,13 @@ function updateFrequencyRangeControl(input) {
           shouldRender = true;
         }
         if (state.systemModal) {
+          const wasSystemRecorder = state.systemModal === "debug-recording";
           clearSettingsBackupDraft();
           stopLoginAuthStatusPolling();
           state.systemModal = "";
+          if (wasSystemRecorder) {
+            syncUrlAppView("replace");
+          }
           shouldRender = true;
         }
       }

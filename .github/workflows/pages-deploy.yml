@@ -16,6 +16,7 @@ on:
       - "scripts/prepare_pages_site.sh"
       - ".github/docs-impact.json"
       - ".github/workflows/pages-deploy.yml"
+      - ".node-version"
   workflow_run:
     workflows: ["Release Build"]
     types: [completed]
@@ -81,6 +82,12 @@ jobs:
         with:
           ref: main
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.node-version'
+          cache: npm
+
       - name: Check documentation contracts
         run: npm run check:docs
 
@@ -112,7 +119,7 @@ jobs:
           EOF
 
       - name: Install web build dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Assemble Pages site
         run: python3 scripts/dev.py prepare-pages-site site .tmp/pages-firmware

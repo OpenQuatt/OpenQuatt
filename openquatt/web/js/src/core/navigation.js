@@ -166,6 +166,60 @@ export function getUrlSettingsGroup() {
   }
 }
 
+export const SYSTEM_RECORDER_MODAL_ID = "debug-recording";
+export const SYSTEM_RECORDER_MODAL_PARAM = "modal";
+export const SYSTEM_RECORDER_DEEP_LINK_TOKEN = "systeemrecorder";
+const SYSTEM_RECORDER_MODAL_TOKENS = new Set([
+  "debug-recording",
+  "systeemrecorder",
+  "system-recorder",
+  "systemrecorder",
+]);
+
+export function normalizeSystemModalToken(value) {
+  const token = normalizeUrlToken(value);
+  if (!token) {
+    return "";
+  }
+  if (token === SYSTEM_RECORDER_MODAL_ID || SYSTEM_RECORDER_MODAL_TOKENS.has(token)) {
+    return SYSTEM_RECORDER_MODAL_ID;
+  }
+  return "";
+}
+
+export function getUrlSystemModal() {
+  try {
+    const url = new URL(window.location.href);
+    const paramCandidates = [
+      url.searchParams.get("modal"),
+      url.searchParams.get("systeemrecorder"),
+      url.searchParams.get("system-recorder"),
+      url.searchParams.get("debug-recording"),
+    ];
+    for (const candidate of paramCandidates) {
+      if (candidate === null || candidate === undefined) {
+        continue;
+      }
+      // `?systeemrecorder` zonder waarde betekent ook de recorder.
+      if (String(candidate).trim() === "" && url.searchParams.has("systeemrecorder")) {
+        return SYSTEM_RECORDER_MODAL_ID;
+      }
+      const normalized = normalizeSystemModalToken(candidate);
+      if (normalized) {
+        return normalized;
+      }
+    }
+    if (url.searchParams.has("systeemrecorder")) {
+      return SYSTEM_RECORDER_MODAL_ID;
+    }
+
+    const hashToken = normalizeUrlToken(decodeURIComponent(url.hash.replace(/^#/, "")));
+    return normalizeSystemModalToken(hashToken);
+  } catch (_error) {
+    return "";
+  }
+}
+
 export function syncUrlAppView(mode = "replace") {
   try {
     const url = new URL(window.location.href);
@@ -199,6 +253,25 @@ export function syncUrlAppView(mode = "replace") {
     }
     if (url.hash && normalizeAppView(url.hash.replace(/^#/, ""))) {
       url.hash = "";
+    }
+    if (state.systemModal === SYSTEM_RECORDER_MODAL_ID) {
+      url.searchParams.set(SYSTEM_RECORDER_MODAL_PARAM, SYSTEM_RECORDER_DEEP_LINK_TOKEN);
+    } else if (!state.systemModal) {
+      if (normalizeSystemModalToken(url.searchParams.get(SYSTEM_RECORDER_MODAL_PARAM) || "")) {
+        url.searchParams.delete(SYSTEM_RECORDER_MODAL_PARAM);
+      }
+      if (url.searchParams.has("systeemrecorder")) {
+        url.searchParams.delete("systeemrecorder");
+      }
+      if (url.searchParams.has("system-recorder")) {
+        url.searchParams.delete("system-recorder");
+      }
+      if (url.searchParams.has("debug-recording")) {
+        url.searchParams.delete("debug-recording");
+      }
+      if (normalizeSystemModalToken(decodeURIComponent(url.hash.replace(/^#/, "")))) {
+        url.hash = "";
+      }
     }
 
     const method = mode === "push" ? "pushState" : "replaceState";

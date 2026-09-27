@@ -157,6 +157,28 @@ const POWER_INPUT_KEYS = [
   "hp2Crankcase",
 ];
 
+const ISSUE_746_FLOW_KEYS = [
+  "flowSource",
+  "qFlowSource",
+  "controllerFlowMeter",
+  "customFlowMeterPulsesPerLiter",
+  "outdoorUnitFlowMode",
+  "flowSelectedRoute",
+  "flowLocal",
+  "controllerFlow",
+  "cicFlowrate",
+  "hp1PumpIpwmCommand",
+  "hp2PumpIpwmCommand",
+  "hp1PumpIpwmFeedback",
+  "hp2PumpIpwmFeedback",
+];
+
+// Bestaande getemplatete ODU-entities (geen nieuwe firmware-entities): de
+// 4-way valve die de defrostdetectie draagt, plus de R1-doelregelvelden waarmee
+// een recorder kan zien dat een commando wél om warmte vraagt terwijl het
+// relais uit blijft omdat het gevraagde doel is bereikt.
+const DEFROST_BOOILER_KEYS = ["hp1FourWay", "hp2FourWay", "boilerCommandHeatRequest", "boilerRelayTargetState"];
+
 const ADDED_OBSERVABILITY_KEYS = [
   ...OBSERVABILITY_KEYS,
   ...ISSUE_473_OBSERVABILITY_KEYS,
@@ -170,6 +192,8 @@ const ADDED_OBSERVABILITY_KEYS = [
   ...V2_CHAIN_KEYS,
   ...ODU_REGISTER_KEYS,
   ...POWER_INPUT_KEYS,
+  ...ISSUE_746_FLOW_KEYS,
+  ...DEFROST_BOOILER_KEYS,
 ];
 
 test("debugobservability wordt additief achter het bestaande opnamecontract geplaatst", async () => {
@@ -187,6 +211,9 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const issue642EndIndex = issue649EndIndex + ISSUE_642_OBSERVABILITY_KEYS.length;
   const v2ChainEndIndex = issue642EndIndex + V2_CHAIN_KEYS.length;
   const oduRegisterEndIndex = v2ChainEndIndex + ODU_REGISTER_KEYS.length;
+  const powerInputEndIndex = oduRegisterEndIndex + POWER_INPUT_KEYS.length;
+  const issue746EndIndex = powerInputEndIndex + ISSUE_746_FLOW_KEYS.length;
+  const defrostBoilerEndIndex = issue746EndIndex + DEFROST_BOOILER_KEYS.length;
 
   assert.equal(legacyTailIndex, 134);
   assert.deepEqual(
@@ -220,7 +247,10 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   );
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue642EndIndex, v2ChainEndIndex), V2_CHAIN_KEYS);
   assert.deepEqual(DEBUG_RECORDING_KEYS.slice(v2ChainEndIndex, oduRegisterEndIndex), ODU_REGISTER_KEYS);
-  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(oduRegisterEndIndex), POWER_INPUT_KEYS);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(oduRegisterEndIndex, powerInputEndIndex), POWER_INPUT_KEYS);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(powerInputEndIndex, issue746EndIndex), ISSUE_746_FLOW_KEYS);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(issue746EndIndex, defrostBoilerEndIndex), DEFROST_BOOILER_KEYS);
+  assert.equal(DEBUG_RECORDING_KEYS.length, defrostBoilerEndIndex);
   assert.equal(new Set(DEBUG_RECORDING_KEYS).size, DEBUG_RECORDING_KEYS.length);
   const recorderHeader = await readFile(
     new URL("../../../components/openquatt_debug_recorder/OpenQuattDebugRecorder.h", import.meta.url),
@@ -229,7 +259,7 @@ test("debugobservability wordt additief achter het bestaande opnamecontract gepl
   const fieldCapacity = Number(recorderHeader.match(/FIELD_CAPACITY = (\d+)/)?.[1]);
   const systemFieldCount = Number(recorderHeader.match(/SYSTEM_FIELD_COUNT = (\d+)/)?.[1]);
   assert.equal(systemFieldCount, 5);
-  assert.equal(fieldCapacity, 243);
+  assert.equal(fieldCapacity, 272);
   assert.ok(DEBUG_RECORDING_KEYS.length <= fieldCapacity - systemFieldCount);
   assert.ok(
     fieldCapacity - systemFieldCount - DEBUG_RECORDING_KEYS.length >= 12,
@@ -300,9 +330,51 @@ test("elk nieuw debugveld verwijst naar een echte firmware-entity", async () => 
   const firmwareSource = packages.join("\n");
 
   for (const key of ADDED_OBSERVABILITY_KEYS) {
-    if ([...ODU_REGISTER_KEYS, ...POWER_INPUT_KEYS].includes(key)) continue;
+    if (
+      [...ODU_REGISTER_KEYS, ...POWER_INPUT_KEYS, ...ISSUE_746_FLOW_KEYS, "hp1FourWay", "hp2FourWay"].includes(key)
+    ) {
+      continue;
+    }
     assert.ok(firmwareSource.includes(`name: "${ENTITY_DEFS[key].name}"`), `firmware-entity ontbreekt voor ${key}`);
   }
+});
+
+test("defrost- en R1-doelregelvelden verwijzen naar bestaande entities", async () => {
+  const [hpPackage, boilerPackage, dispatchPackage] = await Promise.all([
+    readFile(new URL("../../oq_HP_io.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../../oq_boiler_control.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../../oq_boiler_dispatch.yaml", import.meta.url), "utf8"),
+  ]);
+
+  // De 4-way valve is de basis van de defrostdetectie en is al een ODU-entity;
+  // alleen de opname ontbrak nog. HP2 ontbreekt in een single-opstelling.
+  assert.deepEqual(ENTITY_DEFS.hp1FourWay, { domain: "binary_sensor", name: "HP1 - 4-Way valve" });
+  assert.deepEqual(ENTITY_DEFS.hp2FourWay, {
+    domain: "binary_sensor",
+    name: "HP2 - 4-Way valve",
+    optional: true,
+  });
+  assert.match(hpPackage, /id: \$\{hp_id\}_4_way_valve/);
+  assert.match(hpPackage, /name: "\$\{prefix\}4-Way valve"/);
+  assert.match(hpPackage, /id\(\$\{hp_id\}_4_way_valve\)\.publish_state/);
+
+  // Het commando blijft transport-neutraal zichtbaar naast de fysieke uitgang,
+  // zodat een recorder kan onderscheiden dat de R1-doelregeling de oorzaak is
+  // van een inactief relais in plaats van een blokkade.
+  assert.deepEqual(ENTITY_DEFS.boilerCommandHeatRequest, {
+    domain: "binary_sensor",
+    name: "Boiler command heat request",
+    optional: true,
+  });
+  assert.deepEqual(ENTITY_DEFS.boilerRelayTargetState, {
+    domain: "text_sensor",
+    name: "Boiler relay target state",
+    optional: true,
+  });
+  assert.match(dispatchPackage, /id: oq_boiler_command_heat_request/);
+  assert.match(boilerPackage, /id: oq_boiler_relay_target_state_code/);
+  assert.match(boilerPackage, /return id\(oq_boiler_command_heat_request\);/);
+  assert.match(boilerPackage, /return \{oq_boiler::relay_target_state_text\(id\(oq_boiler_relay_target_state_code\)\)\};/);
 });
 
 test("ODU-registervelden verwijzen naar bestaande getemplatete HP-entities", async () => {
@@ -334,6 +406,95 @@ test("ODU-registervelden verwijzen naar bestaande getemplatete HP-entities", asy
   assert.match(hpPackage, /id: \$\{hp_id\}_low_noise_mode/);
   assert.match(hpPackage, /name: "\$\{prefix\}Silent Mode"/);
   assert.match(hpPackage, /address: 2006/);
+});
+
+test("issue 746 legt flowbron en pompdiagnostiek volledig vast", async () => {
+  const [sensorSources, flowPackage, cicPackage, qProfile, hpPackage] = await Promise.all([
+    readFile(new URL("../../oq_sensor_sources.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../../oq_flow_control.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../../oq_cic.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../../profiles/heatpump_controller_q.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../../oq_HP_io.yaml", import.meta.url), "utf8"),
+  ]);
+
+  assert.deepEqual(ENTITY_DEFS.flowSource, { domain: "select", name: "Flow Source", optional: true });
+  assert.deepEqual(ENTITY_DEFS.qFlowSource, { domain: "select", name: "Q Flow Source", optional: true });
+  assert.deepEqual(ENTITY_DEFS.controllerFlowMeter, {
+    domain: "select",
+    name: "Controller Flow Meter",
+    optional: true,
+  });
+  assert.deepEqual(ENTITY_DEFS.customFlowMeterPulsesPerLiter, {
+    domain: "number",
+    name: "Custom Flow Meter Pulses Per Liter",
+    optional: true,
+  });
+  assert.deepEqual(ENTITY_DEFS.outdoorUnitFlowMode, {
+    domain: "select",
+    name: "Outdoor Unit Flow Mode",
+    optional: true,
+  });
+  assert.deepEqual(ENTITY_DEFS.flowSelectedRoute, {
+    domain: "text_sensor",
+    name: "Flow Selected Route",
+    optional: true,
+  });
+  assert.deepEqual(ENTITY_DEFS.flowLocal, {
+    domain: "sensor",
+    name: "Flow average (local)",
+    optional: true,
+  });
+  assert.deepEqual(ENTITY_DEFS.controllerFlow, { domain: "sensor", name: "Controller Flow", optional: true });
+  assert.deepEqual(ENTITY_DEFS.cicFlowrate, {
+    domain: "sensor",
+    name: "CIC - Flowrate (filtered)",
+    optional: true,
+  });
+  assert.deepEqual(ENTITY_DEFS.hp1PumpIpwmCommand, {
+    domain: "sensor",
+    name: "HP1 - Pump iPWM command",
+    optional: true,
+  });
+  assert.deepEqual(ENTITY_DEFS.hp2PumpIpwmCommand, {
+    domain: "sensor",
+    name: "HP2 - Pump iPWM command",
+    optional: true,
+  });
+
+  assert.deepEqual(ENTITY_DEFS.hp1PumpIpwmFeedback, {
+    domain: "sensor",
+    name: "HP1 - Pump iPWM feedback",
+    optional: true,
+  });
+  assert.deepEqual(ENTITY_DEFS.hp2PumpIpwmFeedback, {
+    domain: "sensor",
+    name: "HP2 - Pump iPWM feedback",
+    optional: true,
+  });
+
+  assert.match(sensorSources, /name: "Flow Source"/);
+  assert.match(sensorSources, /name: "Flow Selected Route"/);
+  assert.match(sensorSources, /name: "Outdoor Unit Flow Mode"/);
+  assert.match(qProfile, /name: "Q Flow Source"/);
+  assert.match(qProfile, /name: "Controller Flow Meter"/);
+  assert.match(qProfile, /name: "Custom Flow Meter Pulses Per Liter"/);
+  assert.match(qProfile, /name: "Controller Flow"/);
+  assert.match(flowPackage, /name: "Flow average \(local\)"/);
+  assert.match(cicPackage, /name: "CIC - Flowrate \(filtered\)"/);
+  assert.match(sensorSources, /return oq_sensor_source::runtime\(\)\.flow_route\(\);/);
+  assert.match(sensorSources, /id: flow_route_selected\r?\n    name: "Flow Selected Route"\r?\n    internal: true/);
+  assert.match(hpPackage, /id: \$\{hp_id\}_pump_ipwm_command/);
+  assert.match(hpPackage, /name: "\$\{prefix\}Pump iPWM command"/);
+  assert.match(hpPackage, /id: \$\{hp_id\}_pump_ipwm_feedback/);
+  assert.match(hpPackage, /name: "\$\{prefix\}Pump iPWM feedback"/);
+  assert.match(hpPackage, /if \(!id\(\$\{hp_id\}_is_online\)\) return NAN/);
+
+  assert.match(hpPackage, /id: \$\{hp_id\}_pump_power/);
+  assert.match(hpPackage, /return feedback\.power_valid \? feedback\.power_w : NAN/);
+  for (const key of ISSUE_746_FLOW_KEYS) {
+    assert.ok(DEBUG_RECORDING_KEYS.includes(key), `debugset mist ${key}`);
+    assert.ok(ENTITY_DEFS[key].optional !== false, `${key} moet missing-safe zijn`);
+  }
 });
 
 test("flowOutputIpwm publiceert de bestaande actuatoruitgang zonder tweede regelstate", async () => {

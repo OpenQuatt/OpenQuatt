@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "oq_heat_intent_logic.h"
+#include "oq_input_source_logic.h"
 
 namespace oq_heat_intent_runtime {
 
@@ -27,17 +28,18 @@ inline bool room_setpoint_fresh(bool ot_fresh) {
   if (!id(room_setpoint_source).has_state()) return false;
   const auto source = id(room_setpoint_source).current_option();
   return (source == "HA input" && id(room_setpoint_valid_ha).state && id(thermostat_setpoint_ha).has_state() &&
-          std::isfinite(id(thermostat_setpoint_ha).state) && !id(oq_room_setpoint_selected_hold_active)) ||
+          oq_input_source::room_setpoint_usable(id(thermostat_setpoint_ha).state) &&
+          !id(oq_room_setpoint_selected_hold_active)) ||
          (source == "OT thermostat" && ot_fresh && id(ot_thermostat_room_setpoint).has_state() &&
-          std::isfinite(id(ot_thermostat_room_setpoint).state)) ||
+          oq_input_source::room_setpoint_usable(id(ot_thermostat_room_setpoint).state)) ||
          (source == "CIC" && id(feed_ok).has_state() && id(feed_ok).state && id(cic_data_stale).has_state() &&
           !id(cic_data_stale).state && id(cic_room_setpoint).has_state() &&
-          std::isfinite(id(cic_room_setpoint).state)) ||
+          oq_input_source::room_setpoint_usable(id(cic_room_setpoint).state)) ||
          (source == "API input" && id(api_input_room_setpoint_valid).has_state() &&
           id(api_input_room_setpoint_valid).state && id(api_input_room_setpoint).has_state() &&
-          std::isfinite(id(api_input_room_setpoint).state)) ||
+          oq_input_source::room_setpoint_usable(id(api_input_room_setpoint).state)) ||
          (source == "MQTT" && id(mqtt_room_setpoint_valid).has_state() && id(mqtt_room_setpoint_valid).state &&
-          id(mqtt_room_setpoint).has_state() && std::isfinite(id(mqtt_room_setpoint).state));
+          id(mqtt_room_setpoint).has_state() && oq_input_source::room_setpoint_usable(id(mqtt_room_setpoint).state));
 }
 
 inline uint8_t setpoint_source_code() {
@@ -56,7 +58,7 @@ inline oq_heat_intent::Decision evaluate(uint32_t now_ms, bool compressor_active
                                          bool ot_room_setpoint_fresh, const oq_heat_intent::State& state) {
   const float room_c = id(room_temp_selected).state;
   const float setpoint_c = id(room_setpoint_selected).state;
-  const bool room_fresh = std::isfinite(room_c) && std::isfinite(setpoint_c) &&
+  const bool room_fresh = std::isfinite(room_c) && oq_input_source::room_setpoint_usable(setpoint_c) &&
                           room_temperature_fresh(ot_room_temperature_fresh) &&
                           room_setpoint_fresh(ot_room_setpoint_fresh);
   return oq_heat_intent::evaluate(

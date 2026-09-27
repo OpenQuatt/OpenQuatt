@@ -224,6 +224,16 @@ text_sensor:
     lambda: |-
       return {oq_sensor_source::runtime().selected_hold_status()};
 
+  - platform: template
+    id: flow_route_selected
+    name: "Flow Selected Route"
+    internal: true
+    icon: mdi:call-split
+    entity_category: diagnostic
+    update_interval: 5s
+    lambda: |-
+      return oq_sensor_source::runtime().flow_route();
+
 sensor:
   - platform: template
     id: water_supply_temp_selected

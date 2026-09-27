@@ -122,7 +122,8 @@ opt-invoorwaarden voor gedeelde select-controls.
 ## Validatie en onderhoud
 
 Voer vanuit de repository-root uit na webcodewijzigingen (dependencies installeren
-met `npm ci` indien nodig):
+met `npm ci` indien nodig). Gebruik de Node-versie uit `.node-version` aan de
+repository-root, zodat lokale builds en CI dezelfde web-buildbaseline gebruiken:
 
 ```sh
 npm run check:web

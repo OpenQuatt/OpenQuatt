@@ -13,7 +13,7 @@
 device_name: "openquatt"                              # Internal ESPHome device ID / hostname base.
 friendly_name: OpenQuatt                              # Display name in Home Assistant / UI.
 project_name: "openquatt.openquatt"                   # ESPHome project identifier shown in firmware metadata.
-project_version: "v0.51.1"                            # ESPHome project version shown in firmware metadata.
+project_version: "v0.53.0"                            # ESPHome project version shown in firmware metadata.
 release_channel: "main"                               # Firmware release channel shown in diagnostics (`main` or `dev`).
 oq_firmware_initial_check_delay_s: "300"              # Stable-network delay before the first automatic manifest check [s].
 oq_firmware_periodic_check_interval: "4h"              # Automatic manifest-check cadence after the initial boot window.
@@ -244,6 +244,8 @@ oq_boiler_command_max_age_s: "75"                     # Fail-safe command age; c
 oq_boiler_transport_settle_s: "2"                     # Break-before-make hold after changing R1/OpenTherm transport [s].
 oq_boiler_relay_min_on_s: "0"                         # R1 minimum on-time [s]; zero preserves existing relay behavior in foundation phase.
 oq_boiler_relay_min_off_s: "0"                        # R1 minimum off-time [s]; zero preserves existing relay behavior in foundation phase.
+oq_boiler_relay_target_start_delta_c: "2.0"           # R1 energises once supply is this far below the requested boiler target [K]; deliberately not tied to the Heating Curve CM margins.
+oq_boiler_relay_target_stop_delta_c: "0.5"            # R1 releases once supply recovered to within this of the requested boiler target [K]; must stay below the start delta.
 oq_boiler_otb_min_on_s: "30"                          # OpenTherm minimum requested on-time [s]; safety trips override it.
 oq_boiler_otb_min_off_s: "120"                        # OpenTherm minimum requested off-time [s].
 oq_otb_supported: "false"                             # Compile-time availability of the boiler OpenTherm master transport.

@@ -5,9 +5,9 @@ export const WEB_BUNDLE_BUDGETS = [
   {
     file: "js/openquatt-app.js",
     // Includes compact NL/EN catalogues and passive-learning status/chart/export.
-    // PR #728: ~1.233 MB raw / 344 kB gzip; dev: ~1.199 MB / 334 kB.
-    raw: 1_250_000,
-    gzipBaselineCeiling: 350_000,
+    // PR #728 with current dev: ~1.271 MB raw / 355 kB gzip.
+    raw: 1_285_000,
+    gzipBaselineCeiling: 362_000,
   },
   // Includes the passive-learning chart and responsive cards: ~204.6 kB raw.
   { file: "css/openquatt-app.css", raw: 207_000 },
