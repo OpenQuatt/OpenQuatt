@@ -220,9 +220,9 @@ class Runtime {
           [&state](size_t slot, uint8_t* data, size_t size) { return read_slot_(state.partition, slot, data, size); },
           &state.learner.thermal_state, state.thermal_epoch);
     state.summary = passive_runtime_summary(state.learner, now_ms);
+    publish_(state, enabled, epoch);
     const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - started_us;
     if (elapsed > state.max_tick_us) state.max_tick_us = elapsed;
-    publish_(state, enabled, epoch);
   }
 
  private:
