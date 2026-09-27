@@ -356,6 +356,32 @@ test("poll stelt redraw uit tijdens native selectie en haalt die na focusverlies
   }
 });
 
+test("poll bewaart checkboxfocus en concept ook bij een mislukt statusrequest", async () => {
+  reset();
+  state.oduDefrostStatuses[1] = normalizeOduDefrostStatus({ ...ready, defrost_mode: 1, compressor_hz: 0 });
+  let focused = true;
+  globalThis.document = { activeElement: { type: "checkbox", matches: (selector) => focused && selector === "[data-oq-odu-defrost-hp]" } };
+  updateOduDefrostDraft({ dataset: { oqOduDefrostHp: "1" }, type: "checkbox", checked: true });
+  globalThis.fetch = async () => response({ ...ready, defrost_mode: 1, compressor_hz: 0, coil_c: -5 });
+  try {
+    await refreshOduDefrostStatuses({ force: true });
+    assert.equal(state.oduDefrostRenderPending, true);
+    assert.equal(state.oduDefrostDrafts[1].autoReapply, true);
+    globalThis.fetch = async () => { throw new Error("offline"); };
+    await refreshOduDefrostStatuses({ force: true });
+    assert.equal(state.oduDefrostRenderPending, true);
+    assert.equal(state.oduDefrostStatusFailed, true);
+    assert.equal(getOduDefrostEditorModel(1).applyDisabled, true);
+    assert.equal(state.oduDefrostDrafts[1].autoReapply, true);
+    focused = false;
+    globalThis.fetch = async () => response({ ...ready, defrost_mode: 1, compressor_hz: 0, coil_c: -5 });
+    await refreshOduDefrostStatuses({ force: true });
+    assert.equal(state.oduDefrostRenderPending, false);
+  } finally {
+    delete globalThis.document;
+  }
+});
+
 test("methodeinformatie blijft variantbewust en sluit terug naar het conceptformulier", () => {
   reset();
   state.oduDefrostStatuses[1] = normalizeOduDefrostStatus({ ...ready, variant: 1, defrost_mode: 1, compressor_hz: 0 });
@@ -374,4 +400,22 @@ test("profielstatus maskeert geen actieve cyclus of veiligheidsstop", () => {
   const status = normalizeOduDefrostStatus({ ...ready, profile_state: "PENDING", auto_reapply: true, active: true });
   assert.match(getOduDefrostPresentation(status)[0], /Ontdooien actief/);
   assert.deepEqual(getOduDefrostPresentation({ ...status, active: false, state: "SAFETY_STOP" }), ["Veiligheidsstop aangevraagd", "warning"]);
+});
+
+test("opslagtoestemming toont onbewezen uitschakeling en vereiste herbevestiging in NL en EN", () => {
+  reset();
+  try {
+    for (const [locale, failure, consent] of [["nl", /oude keuze kan na een herstart terugkomen/, /bevestig en sla deze optie opnieuw op/], ["en", /old choice may return after a restart/, /confirm and save this option again/]]) {
+      setLocale(locale, { persist: false, applyDocument: false, notify: false });
+      state.oduDefrostStatuses[1] = normalizeOduDefrostStatus({ ...ready, defrost_mode: 1, compressor_hz: 0, profile_state: "REVOKE_FAILED", auto_reapply: false });
+      assert.match(renderOduDefrostModal(), failure);
+      assert.equal(getOduDefrostEditorModel(1).applyDisabled, false, "failed disable must allow an explicit retry without changing the displayed value");
+      state.oduDefrostStatuses[1].profileState = "CONSENT_REQUIRED";
+      assert.match(renderOduDefrostModal(), consent);
+      assert.equal(getOduDefrostEditorModel(1).applyDisabled, false);
+      assert.doesNotMatch(renderOduDefrostModal(), /oduDefrost\.(?:revokeUnconfirmed|consentRequired)/);
+    }
+  } finally {
+    setLocale("nl", { persist: false, applyDocument: false, notify: false });
+  }
 });

@@ -32,10 +32,18 @@ class DefrostContractTest(unittest.TestCase):
     def test_persistent_consent_is_durable_and_independent_per_hp(self):
         self.assertIn('req->arg("auto_reapply")', SERVICE)
         self.assertIn("0x4f514432U : 0x4f514431U", SERVICE)
+        self.assertIn("0x4f514332U : 0x4f514331U", SERVICE)
         persist = SERVICE[SERVICE.index("bool OpenQuattOduDefrost::persist_profile_"):SERVICE.index("void OpenQuattOduDefrost::finish_profile_")]
         self.assertIn("global_preferences->sync()", persist)
-        self.assertIn("profile_commit_confirmed(queued, synced, loaded, verified, candidate)", persist)
-        self.assertLess(persist.index("profile_commit_confirmed"), persist.index("profile_ = candidate"))
+        self.assertIn("save_profile_transaction(store, candidate)", persist)
+        self.assertLess(persist.index("save_profile_transaction"), persist.index("profile_ = candidate"))
+        self.assertIn('"REVOKE_FAILED" : "PERSIST_FAILED"', persist)
+        setup = SERVICE[SERVICE.index("void OpenQuattOduDefrost::setup()"):SERVICE.index("void OpenQuattOduDefrost::set_odu_identity")]
+        self.assertIn("profile_has_consent(stored, consent_loaded, consent)", setup)
+        self.assertIn("profile_boot_state(stored, consent_loaded, consent)", setup)
+        self.assertIn("values.auto_reapply = profile_available_ && consent_authorized_", SERVICE)
+        no_change = SERVICE[SERVICE.index("void OpenQuattOduDefrost::confirm_saved()"):SERVICE.index("bool OpenQuattOduDefrost::persist_profile_()")]
+        self.assertLess(no_change.index("persist_profile_()"), no_change.index('cycle.result = "SAVED"'))
         write = SERVICE[SERVICE.index("bool OpenQuattOduDefrost::send_mode_once"):SERVICE.index("bool OpenQuattOduDefrost::normal_write_allowed")]
         self.assertLess(write.index("persist_profile_()"), write.index("write_single_register("))
 

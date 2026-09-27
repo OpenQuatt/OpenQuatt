@@ -133,11 +133,16 @@ void OpenQuattOduDefrost::setup() {
   if (global_preferences != nullptr) {
     profile_pref_ =
         global_preferences->make_preference<oq_defrost::Profile>(hp_ == 2U ? 0x4f514432U : 0x4f514431U, true);
+    consent_pref_ =
+        global_preferences->make_preference<oq_defrost::Consent>(hp_ == 2U ? 0x4f514332U : 0x4f514331U, true);
     oq_defrost::Profile stored;
     if (profile_pref_.load(&stored) && oq_defrost::valid_profile(stored)) {
       profile_ = stored;
       profile_available_ = true;
-      profile_state_ = "PENDING";
+      oq_defrost::Consent consent;
+      const bool consent_loaded = consent_pref_.load(&consent);
+      consent_authorized_ = oq_defrost::profile_has_consent(stored, consent_loaded, consent);
+      profile_state_ = oq_defrost::profile_boot_state(stored, consent_loaded, consent);
     }
   }
   web_server_base::global_web_server_base->add_handler(new Handler(this, hp_));
@@ -216,7 +221,7 @@ void OpenQuattOduDefrost::loop() {
     save_auto_reapply = pending_auto_reapply_;
   }
   portEXIT_CRITICAL(&mux_);
-  if (action == Action::NONE && profile_available_ &&
+  if (action == Action::NONE && profile_available_ && consent_authorized_ &&
       oq_defrost::profile_reconcile_ready(profile_, profile_state_, variant_, control_board_item_, snapshot.online,
                                           snapshot.fresh, snapshot.identity, busy(), request_pending) &&
       reconcile_due_ms_ != 0U && static_cast<int32_t>(millis() - reconcile_due_ms_) >= 0) {
@@ -298,7 +303,7 @@ void OpenQuattOduDefrost::offline() {
   save_after_load_ = save_ready_ = save_writing_ = save_verifying_ = false;
   for (auto& seen : sample_seen_) seen = false;
   diagnostics_ = {};
-  if (profile_available_ && std::strcmp(profile_state_, "PERSIST_FAILED") != 0) profile_state_ = "PENDING";
+  if (profile_available_ && !oq_defrost::profile_inhibited(profile_state_)) profile_state_ = "PENDING";
   reconcile_ = false;
   release();
 }
@@ -329,29 +334,36 @@ void OpenQuattOduDefrost::confirm_saved() {
 bool OpenQuattOduDefrost::persist_profile_() {
   if (reconcile_) return oq_defrost::profile_matches(profile_, variant_, control_board_item_);
   const auto candidate = oq_defrost::make_profile(save_desired_, variant_, control_board_item_, save_auto_reapply_);
+  consent_authorized_ = false;
   if (!oq_defrost::valid_profile(candidate) || global_preferences == nullptr) {
-    profile_state_ = "PERSIST_FAILED";
+    profile_state_ = "REVOKE_FAILED";
     return false;
   }
-  // NVS load can see a cached save: sync success is independently required.
-  const bool queued = profile_pref_.save(&candidate);
-  const bool synced = global_preferences->sync();
-  oq_defrost::Profile verified;
-  const bool loaded = profile_pref_.load(&verified);
-  if (!oq_defrost::profile_commit_confirmed(queued, synced, loaded, verified, candidate)) {
-    profile_state_ = "PERSIST_FAILED";
+  struct Store {
+    ESPPreferenceObject& profile;
+    ESPPreferenceObject& consent;
+    bool save_profile(const oq_defrost::Profile& value) { return profile.save(&value); }
+    bool load_profile(oq_defrost::Profile& value) { return profile.load(&value); }
+    bool save_consent(const oq_defrost::Consent& value) { return consent.save(&value); }
+    bool load_consent(oq_defrost::Consent& value) { return consent.load(&value); }
+    bool sync() { return global_preferences->sync(); }
+  } store{profile_pref_, consent_pref_};
+  const auto result = oq_defrost::save_profile_transaction(store, candidate);
+  if (result != oq_defrost::ProfileSaveResult::SAVED) {
+    profile_state_ = result == oq_defrost::ProfileSaveResult::REVOKE_FAILED ? "REVOKE_FAILED" : "PERSIST_FAILED";
     return false;
   }
   profile_ = candidate;
   profile_available_ = true;
+  consent_authorized_ = candidate.flags == 1U;
   profile_state_ = "PENDING";
   return true;
 }
 void OpenQuattOduDefrost::finish_profile_(bool verified) {
-  if (profile_available_ && std::strcmp(profile_state_, "PERSIST_FAILED") != 0)
+  if (profile_available_ && !oq_defrost::profile_inhibited(profile_state_))
     profile_state_ = verified ? "IN_SYNC" : "PENDING";
   reconcile_ = false;
-  if (profile_available_ && profile_.flags == 1U) reconcile_due_ms_ = millis() + 60000U;
+  if (profile_available_ && consent_authorized_) reconcile_due_ms_ = millis() + 60000U;
 }
 bool OpenQuattOduDefrost::take_trigger() {
   // Finish all previously accepted traffic before the single forced command.
@@ -485,7 +497,7 @@ void OpenQuattOduDefrost::on_read_holding_registers(uint16_t address, std::span<
   if (save_ready_ && reconcile_) save_expected_ = parameters_.mode();
   if (save_ready_) save_ms_ = millis();
   cycle.result = (trigger_ready_ || save_ready_) ? "CHECKING" : "LOADED";
-  if (!trigger_ready_ && !save_ready_ && profile_available_ && std::strcmp(profile_state_, "PERSIST_FAILED") != 0) {
+  if (!trigger_ready_ && !save_ready_ && profile_available_ && !oq_defrost::profile_inhibited(profile_state_)) {
     profile_state_ = !oq_defrost::profile_matches(profile_, variant_, control_board_item_)
                          ? "IDENTITY_MISMATCH"
                          : (parameters_.mode() == profile_.mode ? "IN_SYNC" : "PENDING");
@@ -544,7 +556,7 @@ void OpenQuattOduDefrost::update(Snapshot values, uint32_t now) {
                       values.hz, now);
   values.diagnostics = diagnostics_;
   values.profile_available = profile_available_;
-  values.auto_reapply = profile_available_ && profile_.flags == 1U;
+  values.auto_reapply = profile_available_ && consent_authorized_;
   values.desired_mode = profile_available_ ? profile_.mode : -1;
   values.profile_state = profile_state_;
   portENTER_CRITICAL(&mux_);

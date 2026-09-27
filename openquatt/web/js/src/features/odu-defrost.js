@@ -17,6 +17,7 @@ const STATE_KEYS = {
   COMPLETE: "oduDefrost.stateComplete", TIMEOUT: "oduDefrost.stateTimeout", SAFETY_STOP: "oduDefrost.stateSafetyStop",
   READ_FAILED: "oduDefrost.stateReadFailed", WRITE_FAILED: "oduDefrost.stateWriteFailed", WRITE_UNCERTAIN: "oduDefrost.stateWriteUncertain",
   SAVED: "oduDefrost.stateSaved", STALE: "oduDefrost.stateStale",
+  PERSIST_FAILED: "oduSettings.statusPersistFail",
 };
 const GUARD_KEYS = {
   READY: "oduDefrost.guardReady", OFFLINE: "oduDefrost.guardOffline", IDENTITY_REQUIRED: "oduDefrost.guardIdentityRequired",
@@ -113,6 +114,12 @@ export function shouldRefreshOduDefrostSurface() {
   return state.systemModal === "odu-defrost" || /confirm-[12]$/.test(state.systemModal || "");
 }
 
+function renderDefrostStatusUpdate() {
+  const editing = typeof document !== "undefined" && document.activeElement?.matches?.("[data-oq-odu-defrost-hp]");
+  state.oduDefrostRenderPending = Boolean(editing);
+  if (!editing) render();
+}
+
 export async function refreshOduDefrostStatuses(options = {}) {
   if (!shouldRefreshOduDefrostSurface() && options.force !== true) return false;
   if (String(state.busyAction || "").startsWith("odu-defrost-")) return false;
@@ -131,20 +138,15 @@ export async function refreshOduDefrostStatuses(options = {}) {
       state.oduDefrostError = "";
       state.oduDefrostStatusFailed = false;
       const changed = JSON.stringify(state.oduDefrostStatuses || {}) !== previous;
-      const selectingMethod = typeof document !== "undefined" && document.activeElement?.matches?.("select[data-oq-odu-defrost-hp]");
       if ((changed || hadError || options.force || state.oduDefrostRenderPending) && shouldRefreshOduDefrostSurface()) {
-        if (selectingMethod) state.oduDefrostRenderPending = true;
-        else {
-          state.oduDefrostRenderPending = false;
-          render();
-        }
+        renderDefrostStatusUpdate();
       }
       return changed;
     } catch (error) {
       if (epoch !== Number(state.oduDefrostEpoch || 0)) return false;
       state.oduDefrostStatusFailed = true;
       state.oduDefrostError = t("oduDefrost.statusFetchFailed", { error: error.message || String(error) });
-      if (shouldRefreshOduDefrostSurface()) render();
+      if (shouldRefreshOduDefrostSurface()) renderDefrostStatusUpdate();
       return false;
     } finally {
       state.oduDefrostFetchPromise = null;
@@ -228,7 +230,7 @@ export function getOduDefrostPresentation(status, statusFailed = false) {
   if (!status) return [t("oduDefrost.statusLoading"), ""];
   if (status.active) return [t("oduDefrost.stateActive"), "warning"];
   if (status.state === "WAITING") return [stateLabel(status.state), "warning"];
-  if (["READ_FAILED", "WRITE_FAILED", "WRITE_UNCERTAIN", "SAFETY_STOP", "TIMEOUT", "STALE"].includes(status.state)) return [stateLabel(status.state), "warning"];
+  if (["READ_FAILED", "WRITE_FAILED", "WRITE_UNCERTAIN", "PERSIST_FAILED", "SAFETY_STOP", "TIMEOUT", "STALE"].includes(status.state)) return [stateLabel(status.state), "warning"];
   if (["QUEUED", "LOADING", "CHECKING"].includes(status.state)) return [stateLabel(status.state), ""];
   if (status.online && status.fresh && status.identityReady && !status.loaded
       && status.guard === "AUTO_CONTROL_UNAVAILABLE") return [t("oduDefrost.settingsNotLoaded"), ""];
@@ -275,7 +277,7 @@ export function getOduDefrostEditorModel(hp) {
   return {
     selected, expected, options, stale, autoReapply,
     disabled: busy || state.oduDefrostStatusFailed || !status?.online || !status.fresh || !status.identityReady || !status.loaded,
-    applyDisabled: busy || !canSaveDefrostMode(status, state.oduDefrostStatusFailed) || !selectionValid || stale || (selected === status.defrostMode && autoReapply === status.autoReapply),
+    applyDisabled: busy || !canSaveDefrostMode(status, state.oduDefrostStatusFailed) || !selectionValid || stale || (selected === status.defrostMode && autoReapply === status.autoReapply && !["REVOKE_FAILED", "PERSIST_FAILED", "CONSENT_REQUIRED"].includes(status.profileState)),
     copy: getDefrostModeCopy(selected, status?.variant),
   };
 }
@@ -337,7 +339,7 @@ function renderPanel(hp) {
           <p data-oq-defrost-mode-copy>${escapeHtml(model.copy)}</p>
           ${model.stale ? `<p class="oq-helper-error">${escapeHtml(t("oduDefrost.stale"))}</p>` : ""}
           <label class="oq-settings-odu-auto"><input type="checkbox" data-oq-odu-defrost-hp="${hp}" ${model.autoReapply ? "checked" : ""} ${model.disabled ? "disabled" : ""}><span><strong>${escapeHtml(t("oduSettings.reapplyTitle"))}</strong><small>${escapeHtml(t("oduSettings.reapplyCopy"))}</small></span></label>
-          ${status.profileState === "PERSIST_FAILED" ? `<p role="status">${escapeHtml(t("oduSettings.statusPersistFail"))}</p>` : status.profileState === "IDENTITY_MISMATCH" ? `<p role="status">${escapeHtml(t("oduSettings.statusMismatch"))}</p>` : status.autoReapply && status.profileState === "PENDING" ? `<p role="status">${escapeHtml(t("oduSettings.statusPending"))}</p>` : ""}
+          ${status.profileState === "REVOKE_FAILED" ? `<p role="status">${escapeHtml(t("oduDefrost.revokeUnconfirmed"))}</p>` : status.profileState === "CONSENT_REQUIRED" ? `<p role="status">${escapeHtml(t("oduDefrost.consentRequired"))}</p>` : status.profileState === "PERSIST_FAILED" ? `<p role="status">${escapeHtml(t("oduSettings.statusPersistFail"))}</p>` : status.profileState === "IDENTITY_MISMATCH" ? `<p role="status">${escapeHtml(t("oduSettings.statusMismatch"))}</p>` : status.autoReapply && status.profileState === "PENDING" ? `<p role="status">${escapeHtml(t("oduSettings.statusPending"))}</p>` : ""}
           <div class="oq-defrost-apply-row"><p>${escapeHtml(t("oduDefrost.settingsCopy"))}</p>
             ${renderOduEditorAction(hp, "odu-defrost-apply", t("oduDefrost.applyAction"), model.applyDisabled, "warning")}</div>` : ""}
       </section>

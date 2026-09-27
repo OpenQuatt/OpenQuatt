@@ -1682,6 +1682,8 @@ export default {
     loadAction: "Read settings",
     settingsTitle: "Settings",
     settingsCopy: "Apply only when the compressor is stopped.",
+    revokeUnconfirmed: "The new choice was not saved. Automatic reapplication is blocked for this session, but the old choice may return after a restart. Save the choice again.",
+    consentRequired: "Automatic reapplication is off: confirm and save this option again if you want to use it.",
     settingsNotLoaded: "Settings not read yet",
     currentMethod: "Read from unit: {mode}",
     chooseMethod: "Choose a supported method",

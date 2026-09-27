@@ -1682,6 +1682,8 @@ export default {
     loadAction: "Instellingen uitlezen",
     settingsTitle: "Instellingen",
     settingsCopy: "Toepassen kan alleen bij stilstaande compressor.",
+    revokeUnconfirmed: "De nieuwe keuze is niet opgeslagen. Automatisch toepassen is deze sessie geblokkeerd, maar de oude keuze kan na een herstart terugkomen. Sla de keuze opnieuw op.",
+    consentRequired: "Automatisch toepassen staat uit: bevestig en sla deze optie opnieuw op als je hem wilt gebruiken.",
     settingsNotLoaded: "Instellingen nog niet uitgelezen",
     currentMethod: "Uitgelezen: {mode}",
     chooseMethod: "Kies een ondersteunde methode",

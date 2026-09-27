@@ -102,6 +102,8 @@ class OpenQuattOduDefrost : public Component, public modbus::ModbusClientDevice 
   bool pending_auto_reapply_{false}, save_auto_reapply_{false}, reconcile_{false}, profile_available_{false};
   uint16_t control_board_item_{0};
   ESPPreferenceObject profile_pref_{};
+  ESPPreferenceObject consent_pref_{};
+  bool consent_authorized_{false};
   oq_defrost::Profile profile_{};
   const char* profile_state_{"NONE"};
   uint32_t reconcile_due_ms_{0};
