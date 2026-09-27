@@ -515,8 +515,8 @@ test("blijvende runtimeblokkade vraagt ook na pauzeren om herstart met behoud va
       collection: { ...statusPayload().collection, batch_active: false, thermal_active: false },
     })));
     assert.match(markup, /Herstart nodig/);
-    assert.match(markup, /Herstart de regelaar en schakel passief leren opnieuw in/);
-    assert.match(markup, /Opgeslagen leerdata blijft behouden/);
+    assert.match(markup, /Herstart de regelaar\. Je leerkeuze/);
+    assert.match(markup, /opgeslagen leerdata blijven behouden/);
     assert.doesNotMatch(markup, /Wacht op meting/);
   }
   const stale = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(statusPayload({

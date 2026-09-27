@@ -68,7 +68,7 @@ export default {
     },
     switch: {
       label: "Passive learning",
-      copy: "Pause or resume. This is off after a restart.",
+      copy: "On by default. Pause or resume; your choice is retained after a restart.",
       on: "Learning enabled.",
       off: "No new measurements.",
     },
@@ -97,7 +97,7 @@ export default {
     },
     activity: {
       restartRequired: "Restart required",
-      restartCopy: "Restart the controller and enable passive learning again. Saved learning data is retained.",
+      restartCopy: "Restart the controller. Your learning choice and saved learning data are retained.",
       enableToCollect: "Enable passive learning to collect measurements.",
       waterMismatch: "The water temperatures do not match yet.",
       waterMismatchCopy: "Check HP1 water out and HP2 water in.",

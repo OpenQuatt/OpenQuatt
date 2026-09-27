@@ -205,7 +205,10 @@ De leerfunctie neemt CM0, CM1 en CM2 mee en controleert de bestaande ketelaanstu
 voor een andere warmtebron. OpenTherm-telemetrie is hiervoor niet vereist; een actuele melding
 van ketelactiviteit sluit de betreffende meting wel uit.
 
-Na een herstart staat `Passief leren` uit. De testversie heeft geen aparte
+`Passief leren` staat standaard aan. De gekozen stand blijft na een herstart of
+firmware-update behouden; bewust uitschakelen blijft dus uit. Bij de eerste update
+vanaf de eerdere versie die altijd uit startte, wordt leren standaard ingeschakeld.
+De leerfunctie heeft geen aparte
 kalibratiebevestiging of meetgrensinstellingen; automatisch toepassen bestaat nog niet.
 `Leerdata wissen` pauzeert het leren en wist uitsluitend de leerhistorie.
 Bij een fysieke ombouw van Single naar Duo of andersom blijft de oude leerstand ook behouden.
