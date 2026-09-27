@@ -108,6 +108,15 @@ modbus_controller:
             id(${hp_id}_power_input_status_code) =
                 static_cast<int>(oq_energy::HpInputPowerStatus::INVALID_OR_STALE);
             id(${hp_id}_pump_relay).invalidate_state();
+            oq_sources::${hp_id}.working_mode.invalidate();
+            oq_sources::${hp_id}.compressor_frequency.invalidate();
+            oq_sources::${hp_id}.status_2108.invalidate();
+            oq_sources::${hp_id}.defrost.invalidate();
+            oq_sources::${hp_id}.status_2119.invalidate();
+            oq_sources::${hp_id}.water_in.invalidate();
+            oq_sources::${hp_id}.water_out.invalidate();
+            oq_sources::${hp_id}.flow.invalidate();
+            oq_sources::${hp_id}.outside.invalidate();
             id(${hp_id}_status_2108_raw).publish_state(NAN);
             id(${hp_id}_status_2115_raw).publish_state(NAN);
             id(${hp_id}_pump_ipwm_feedback_raw).publish_state(NAN);
@@ -788,6 +797,7 @@ sensor:
     on_value:
       then:
         - lambda: |-
+            oq_sources::${hp_id}.working_mode.observe(x, oq_sources::monotonic_ms(), !isnan(x));
             id(${hp_id}_outside_temp_activity_ms) = millis();
             id(oq_incident_manager).observe_working_mode(
                 ${hp_index}, x, millis());
@@ -902,6 +912,10 @@ sensor:
     accuracy_decimals: 0
     filters:
       - multiply: 1
+      - lambda: |-
+          oq_sources::${hp_id}.compressor_frequency.observe(
+              x, oq_sources::monotonic_ms(), isfinite(x) && x >= 0.0f && x <= 120.0f);
+          return x;
       - clamp:
           min_value: 0
           max_value: 120
@@ -991,6 +1005,10 @@ sensor:
     filters:
       - offset: -3000
       - multiply: 0.01
+      - lambda: |-
+          oq_sources::${hp_id}.outside.observe(
+              x, oq_sources::monotonic_ms(), isfinite(x) && x >= -30.0f && x <= 100.0f);
+          return x;
       - clamp:
           min_value: -30
           max_value: 100
@@ -1183,6 +1201,10 @@ sensor:
     filters:
       - offset: -3000
       - multiply: 0.01
+      - lambda: |-
+          oq_sources::${hp_id}.water_in.observe(
+              x, oq_sources::monotonic_ms(), isfinite(x) && x >= -10.0f && x <= 100.0f);
+          return x;
       - clamp:
           min_value: -10
           max_value: 100
@@ -1202,6 +1224,10 @@ sensor:
     filters:
       - offset: -3000
       - multiply: 0.01
+      - lambda: |-
+          oq_sources::${hp_id}.water_out.observe(
+              x, oq_sources::monotonic_ms(), isfinite(x) && x >= -10.0f && x <= 100.0f);
+          return x;
       - clamp:
           min_value: -10
           max_value: 100
@@ -1318,6 +1344,9 @@ sensor:
     accuracy_decimals: 2
     filters:
       - multiply: 0.618
+      - lambda: |-
+          oq_sources::${hp_id}.flow.observe(x, oq_sources::monotonic_ms(), !isnan(x));
+          return x;
     on_value:
       then:
         - lambda: |-
@@ -1439,6 +1468,15 @@ sensor:
     address: 2108
     value_type: U_WORD
     internal: true
+    filters:
+      - lambda: |-
+          // on_offline publishes a synthetic NaN; keep it out of physical receipt metadata.
+          if (!id(${hp_id}_is_online)) {
+            oq_sources::${hp_id}.status_2108.invalidate();
+            return x;
+          }
+          oq_sources::${hp_id}.status_2108.observe(x, oq_sources::monotonic_ms(), !isnan(x));
+          return x;
     on_value:
       then:
         - lambda: |-
@@ -1463,6 +1501,7 @@ sensor:
     on_value:
       then:
         - lambda: |-
+            oq_sources::${hp_id}.status_2119.observe(x, oq_sources::monotonic_ms(), !isnan(x));
             id(oq_incident_manager).observe_fault_word(
                 ${hp_index}, 2119U,
                 static_cast<uint16_t>(lroundf(x)), millis());
@@ -1588,7 +1627,8 @@ binary_sensor:
     register_type: holding
     address: 2118
     lambda: |-
-      // Runs for each Modbus sample, including unchanged binary values.
+      // Capture every parsed R2118 response before binary state deduplication.
+      oq_sources::${hp_id}.defrost.observe(x ? 1.0f : 0.0f, oq_sources::monotonic_ms(), true);
       id(${hp_id}_odu_defrost)->cycle.observe_bit(x, millis());
       return x;
     on_state:

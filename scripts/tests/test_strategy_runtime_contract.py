@@ -87,7 +87,8 @@ class StrategyRuntimeContractTest(unittest.TestCase):
         # base/effective demand, comfort stop and house-deficit semantics.
         self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1460)
         self.assertLessEqual(len(HEAT_INTENT_RUNTIME.splitlines()), 90)
-        self.assertLessEqual(len(LOGIC.splitlines()), 60)
+        # The selector now returns source provenance alongside its value; keep it local.
+        self.assertLessEqual(len(LOGIC.splitlines()), 75)
 
 
 if __name__ == "__main__":

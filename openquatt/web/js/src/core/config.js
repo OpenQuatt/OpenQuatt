@@ -94,6 +94,8 @@
     ["usageTelemetryEnabled", DOMAIN_SWITCH, "Usage statistics"],
     ["usageTelemetryChoiceConfigured", DOMAIN_BINARY_SENSOR, "Usage statistics choice configured"],
     ["usageTelemetryInstallationId", DOMAIN_TEXT_SENSOR, "Usage statistics installation ID"],
+    ["houseLearningEnabled", DOMAIN_SWITCH, "Power House Passive Learning"],
+    ["houseLearningReset", DOMAIN_BUTTON, "Power House Learning Reset"],
     ["performanceTelemetryEnabled", DOMAIN_SWITCH, "Performance model validation"],
     ["performanceTelemetryChoiceConfigured", DOMAIN_BINARY_SENSOR, "Performance model validation choice configured"],
     ["hpGeneration", DOMAIN_SELECT, "Quatt Hybrid version", false],
@@ -1967,6 +1969,8 @@
     "manualCoolingEnable",
     "usageTelemetryEnabled",
     "usageTelemetryInstallationId",
+    "houseLearningEnabled",
+    "houseLearningReset",
     "performanceTelemetryEnabled",
     "silentModeOverride",
     "silentActive",
@@ -2008,6 +2012,8 @@
   export const SETTINGS_BACKUP_EXCLUDED_KEYS = new Set([
     "installationTopology",
     "preferredConnection",
+    // Passive learning always requires an explicit opt-in after boot.
+    "houseLearningEnabled",
     ...COMMISSIONING_STATE_KEYS,
     "cicDataStale",
     "otLinkProblem",

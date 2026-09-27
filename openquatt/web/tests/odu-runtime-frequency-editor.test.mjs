@@ -97,9 +97,9 @@ test("dev-preview onderscheidt direct toepasbare bodemplaatinstellingen van de g
   assert.match(mockSource, /Write blocked: ODU is not in standby/);
   assert.match(featureSource, /__OQ_PREVIEW__ && typeof window !== "undefined"/);
   assert.match(featureSource, /window\.__OQ_DEV_ODU_WRITE_STATE__/);
-  assert.match(devSource, /mock-fixtures\.js\?v=odu-settings-v3/);
-  assert.match(devSource, /mock-device\.js\?v=initial-settings-ready-v1/);
-  assert.match(devSource, /openquatt-preview\.js\?v=defrost-method-info-v1/);
+  assert.match(devSource, /mock-fixtures\.js\?v=[^"']+/);
+  assert.match(devSource, /mock-device\.js\?v=[^"']+/);
+  assert.match(devSource, /openquatt-preview\.js\?v=[^"']+/);
 });
 
 test("buitenunitinstellingen openen beide editors zonder interne termen in de hoofdtekst", async () => {

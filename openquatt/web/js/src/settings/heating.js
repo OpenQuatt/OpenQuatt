@@ -8,6 +8,7 @@ import { getSettingsSelectModel } from "./field-models.js";
 import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField } from "./controls.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
+import { renderHouseLearningSettings } from "./house-learning.js";
 import { formatNumber, t } from "../i18n/index.js";
 
   export function renderCurveFallbackSuggestionMarkup(helper = false) {
@@ -590,6 +591,7 @@ import { formatNumber, t } from "../i18n/index.js";
           </div>
           ${renderPowerHouseBaseFields()}
           ${renderPowerHouseAdvancedField()}
+          ${renderHouseLearningSettings()}
           ${renderPowerHouseRunExtensionField()}
         </div>
       `;

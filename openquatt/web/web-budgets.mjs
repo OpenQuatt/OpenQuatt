@@ -4,13 +4,11 @@ export const WEB_BUNDLE_GZIP_GROWTH_LIMIT = { bytes: 7_680, ratio: 0.03 };
 export const WEB_BUNDLE_BUDGETS = [
   {
     file: "js/openquatt-app.js",
-    // Includes both offline catalogues after build-time key compaction. Keep
-    // enough margin for ordinary UI work without accepting the uncompressed form again.
-    // Defrost form, restart profile and variant-aware method help (NL/EN).
-    // Keep a bounded raw margin; the existing gzip ceiling remains sufficient.
-    raw: 1_237_000,
-    gzipBaselineCeiling: 343_000,
+    // Includes compact NL/EN catalogues and passive-learning status/chart/export.
+    // PR #728 with current dev: ~1.271 MB raw / 355 kB gzip.
+    raw: 1_285_000,
+    gzipBaselineCeiling: 362_000,
   },
-  // Responsive run-extension group: ~203.3 kB raw.
-  { file: "css/openquatt-app.css", raw: 204_000 },
+  // Includes the passive-learning chart and responsive cards: ~204.6 kB raw.
+  { file: "css/openquatt-app.css", raw: 207_000 },
 ];

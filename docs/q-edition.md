@@ -180,6 +180,16 @@ Bij een koude verwarmingsstart circuleert OpenQuatt eerst water en controleert d
 
 Vanaf dit punt kun je OpenQuatt zelfstandig via de web-app gebruiken. Home Assistant en het dashboard zijn optionele vervolgstappen.
 
+## Passief leren voor Power House
+
+Op Heatpump Controller Q Single en Duo kan Power House optioneel **passief leren**. Je vindt dit onder **Instellingen → Verwarmen → Power House**.
+
+Na inschakelen verzamelt OpenQuatt alleen geschikte verwarmingsperioden en schat het warmteverlies van de woning en een bijbehorende woninglijn. De verzamelde leerdata blijft na een herstart of software-update bewaard, maar **Passief leren staat na iedere herstart weer uit** en moet bewust opnieuw worden ingeschakeld.
+
+De functie is observerend: een geleerd model wordt niet automatisch toegepast en verandert geen warmtevraag, compressorregeling of ketelaansturing. De web-app toont de verzamelstatus, blokkaderedenen, meetpunten en - zodra er voldoende bruikbare data is - een voorlopige geleerde lijn. Via **Leerdata wissen** kan de opgeslagen leerhistorie expliciet worden verwijderd.
+
+De kwaliteit van het model hangt af van voldoende geschikte metingen over verschillende buitentemperaturen. Een beschikbare schatting is daarom diagnostische informatie en geen garantie op energiebesparing.
+
 ## Configuratie later wijzigen
 
 Heb je Quick Start al afgerond en verandert de installatie later, dan kun je dezelfde firmwarewissel alsnog via de web-app starten. Maak voor de zekerheid eerst een backup; de bestaande OpenQuatt-instellingen blijven tijdens de update of wissel behouden.

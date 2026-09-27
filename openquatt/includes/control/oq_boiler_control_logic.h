@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "../boiler/oq_boiler_logic.h"
+#include "../performance/oq_energy_logic.h"
 #include "oq_boiler_output_logic.h"
 
 namespace oq_boiler {
@@ -27,7 +28,7 @@ inline const char* command_source_text(uint8_t source) {
 inline float estimate_boiler_heat_power(bool transport_active, float hp_outlet_c, float supply_c, float flow_lph,
                                         float cp_j_per_kgk) {
   if (!transport_active || isnan(hp_outlet_c) || isnan(supply_c) || isnan(flow_lph)) return 0.0f;
-  const float heat_power_w = (flow_lph / 3600.0f) * cp_j_per_kgk * (supply_c - hp_outlet_c);
+  const float heat_power_w = oq_energy::hydronic_heat_power(hp_outlet_c, supply_c, flow_lph, cp_j_per_kgk);
   return heat_power_w < 0.0f ? 0.0f : heat_power_w;
 }
 

@@ -18,6 +18,7 @@
 #include <freertos/task.h>
 
 #include "OpenQuattCICUrlState.h"
+#include "includes/sources/oq_resolved_learning_source.h"
 
 namespace esphome {
 namespace openquatt_cic {
@@ -70,6 +71,16 @@ class OpenQuattCIC : public PollingComponent {
 
   void notify_url_changed(const std::string& url) { this->notify_url_changed(url.data(), url.size()); }
   bool is_url_ready(const std::string& url) const { return this->url_state_.ready(url.data(), url.size()); }
+  uint32_t source_generation() const { return this->url_state_.generation(); }
+
+  oq_sources::RawFloatReceipt water_supply_temperature_receipt() const { return this->water_supply_receipt_; }
+  oq_sources::RawFloatReceipt flow_rate_receipt() const { return this->flow_rate_receipt_; }
+  oq_sources::RawFloatReceipt boiler_water_pressure_receipt() const { return this->boiler_pressure_receipt_; }
+  oq_sources::RawFloatReceipt control_setpoint_receipt() const { return this->control_setpoint_receipt_; }
+  oq_sources::RawFloatReceipt room_setpoint_receipt() const { return this->room_setpoint_receipt_; }
+  oq_sources::RawFloatReceipt room_temperature_receipt() const { return this->room_temperature_receipt_; }
+  oq_sources::RawFloatReceipt ch_enabled_receipt() const { return this->ch_enabled_receipt_; }
+  oq_sources::RawFloatReceipt cooling_enabled_receipt() const { return this->cooling_enabled_receipt_; }
 
  protected:
   struct MaybeFloat {
@@ -98,6 +109,7 @@ class OpenQuattCIC : public PollingComponent {
     bool ok{false};
     uint32_t url_generation{0};
     uint32_t completed_at_ms{0};
+    uint64_t received_at_ms{0};
     uint32_t duration_ms{0};
     int status_code{0};
     uint32_t stack_high_water_mark{0};
@@ -111,7 +123,7 @@ class OpenQuattCIC : public PollingComponent {
   void finalize_fetch_();
   bool fetch_and_parse_(const std::string& url, FetchResult* result);
   bool parse_payload_(const uint8_t* data, size_t len, ParsedPayload* payload);
-  void apply_payload_(const ParsedPayload& payload);
+  void apply_payload_(const ParsedPayload& payload, uint64_t received_ms);
   void mark_success_(uint32_t now_ms);
   void mark_failure_(uint32_t now_ms);
   void update_runtime_state_(uint32_t now_ms);
@@ -178,6 +190,17 @@ class OpenQuattCIC : public PollingComponent {
   std::atomic<bool> fetch_result_ready_{false};
   OpenQuattCICUrlState url_state_{};
   PsramBuffer<uint8_t> response_buffer_{};
+
+  // Written and read only from the ESPHome main loop. The worker transfers a
+  // parsed payload, never these receipts.
+  oq_sources::RawFloatReceipt water_supply_receipt_{};
+  oq_sources::RawFloatReceipt flow_rate_receipt_{};
+  oq_sources::RawFloatReceipt boiler_pressure_receipt_{};
+  oq_sources::RawFloatReceipt control_setpoint_receipt_{};
+  oq_sources::RawFloatReceipt room_setpoint_receipt_{};
+  oq_sources::RawFloatReceipt room_temperature_receipt_{};
+  oq_sources::RawFloatReceipt ch_enabled_receipt_{};
+  oq_sources::RawFloatReceipt cooling_enabled_receipt_{};
 };
 
 }  // namespace openquatt_cic
