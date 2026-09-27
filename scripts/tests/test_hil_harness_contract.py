@@ -56,6 +56,15 @@ class HilHarnessContractTest(unittest.TestCase):
         self.assertNotIn("control_regression_mono_wifi.yaml", TARGETS)
         self.assertIn("esphome config configs/hil/control_regression_mono_wifi.yaml", ESPHOME_BUILD_WORKFLOW)
 
+    def test_defrost_overlay_is_test_only_and_keeps_the_real_flow_guard(self):
+        overlay = (ROOT / "configs/hil/defrost_regression_duo_wifi.yaml").read_text()
+        self.assertIn("!include control_regression_duo_wifi.yaml", overlay)
+        self.assertIn('oq_cm_min_flow_lph: "250"', overlay)
+        self.assertIn("restore_mode: ALWAYS_OFF", overlay)
+        self.assertIn("defrost-regression-v1", overlay)
+        self.assertNotIn("defrost_regression_duo_wifi.yaml", TARGETS)
+        self.assertIn("esphome config configs/hil/defrost_regression_duo_wifi.yaml", ESPHOME_BUILD_WORKFLOW)
+
     def test_control_regression_overlay_reuses_test_only_observations(self):
         self.assertIn("HIL TEST ONLY", CONTROL_PROFILE)
         self.assertIn("!include issue_667_v2_performance_duo_wifi.yaml", CONTROL_PROFILE)

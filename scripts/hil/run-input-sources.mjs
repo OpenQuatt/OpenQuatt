@@ -329,6 +329,7 @@ export async function restoreFirmwareAndSettings({
   simulator,
   snapshot,
   interrupted,
+  beforeFirmwareRestore,
   restoreSettingsImpl = restoreSettings,
   flashFirmwareArtifactImpl = flashFirmwareArtifact,
   waitForSafeCm0PersistedImpl = waitForSafeCm0Persisted,
@@ -364,6 +365,11 @@ export async function restoreFirmwareAndSettings({
     );
     if (!safeCm0Persisted) {
       throw new AggregateError(errors, 'safe CM0 persistence failed; firmware OTA blocked');
+    }
+    if (beforeFirmwareRestore && !await attempt('confirm physical stop before firmware OTA', () =>
+      beforeFirmwareRestore({ controller, simulator, snapshot, interrupted: () => false }),
+    )) {
+      throw new AggregateError(errors, 'physical stop confirmation failed; firmware OTA blocked');
     }
     const artifactVerified = await attempt('verify restore artifact immediately before OTA', () =>
       verifyFirmwareArtifact(options.restoreArtifactPath, snapshot.restoreArtifact),
@@ -469,6 +475,7 @@ export async function run(options, scenario = {
       mutationStarted = true;
       if (options.settingsOnly) await verifySettingsOnlyFirmware(controller, snapshot);
       restoredFirmware = await restoreFirmwareAndSettings({
+        beforeFirmwareRestore: scenario.beforeFirmwareRestore,
         options: recoveryOptions,
         controller,
         simulator,
@@ -486,6 +493,7 @@ export async function run(options, scenario = {
       before = await diagnostics(controller, simulator);
       console.log(`BASELINE ${JSON.stringify(before)}`);
       verifyDiagnostics(before, options);
+      if (scenario.preflight) await scenario.preflight(controller, simulator);
       if (options.stage === 'smoke') {
         success = true;
       } else {
@@ -550,10 +558,12 @@ export async function run(options, scenario = {
     }
   } catch (error) {
     failure = error;
+    scenarioResult ??= error.scenarioResult;
   } finally {
     if (snapshot && mutationStarted && !options.restoreSnapshot) {
       try {
         restoredFirmware = await restoreFirmwareAndSettings({
+          beforeFirmwareRestore: scenario.beforeFirmwareRestore,
           options: {
             ...options,
             restoreArtifactPath: await restoreArtifactPath(snapshot, runDir),

@@ -1,0 +1,39 @@
+# HIL TEST ONLY. Requires the defrost API from PR #742 / its merged successor.
+# The selected-flow fixture exercises exact guard boundaries, not hydraulics.
+substitutions:
+  oq_cm_min_flow_lph: "250"
+
+packages:
+  control_observations: !include control_regression_duo_wifi.yaml
+
+text_sensor:
+  - id: !extend oq_hil_test_profile
+    lambda: |-
+      return {"defrost-regression-v1"};
+
+switch:
+  - platform: template
+    id: oq_hil_defrost_flow_enable
+    name: "HIL Defrost Flow Fixture Enable"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    entity_category: diagnostic
+
+number:
+  - platform: template
+    id: oq_hil_defrost_flow
+    name: "HIL Defrost Flow Fixture"
+    optimistic: true
+    restore_value: false
+    initial_value: 800
+    min_value: 0
+    max_value: 2000
+    step: 1
+    unit_of_measurement: "L/h"
+    entity_category: diagnostic
+
+sensor:
+  - id: !extend flow_rate_selected
+    filters:
+      - lambda: |-
+          return id(oq_hil_defrost_flow_enable).state ? id(oq_hil_defrost_flow).state : x;

@@ -118,6 +118,7 @@ jobs:
           esphome config configs/hil/issue_667_v2_performance_duo_wifi.yaml
           esphome config configs/hil/control_regression_duo_wifi.yaml
           esphome config configs/hil/control_regression_mono_wifi.yaml
+          esphome config configs/hil/defrost_regression_duo_wifi.yaml
 
       - name: Assert HIL overlays keep the testcontroller identity
         if: ${{ matrix.target.id == 'heatpump_controller_q_duo' }}
@@ -126,7 +127,8 @@ jobs:
           for overlay in configs/hil/input_sources_fast_duo_wifi.yaml \
                           configs/hil/issue_667_v2_performance_duo_wifi.yaml \
                           configs/hil/control_regression_duo_wifi.yaml \
-                          configs/hil/control_regression_mono_wifi.yaml; do
+                          configs/hil/control_regression_mono_wifi.yaml \
+                          configs/hil/defrost_regression_duo_wifi.yaml; do
             # duo.yaml carries the production device_name "openquatt"; an
             # overlay that includes it would republish openquatt.local and
             # collide with a real production controller.

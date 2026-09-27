@@ -180,6 +180,56 @@ Runrapporten bevatten begrensde, geselecteerde incidentobservaties, zonder
 action-CSRF-token. De cases worden ook zonder hardware met fakes getest;
 een fake-PASS of configvalidatie is geen hardware-PASS.
 
+## Defrostregressie
+
+`run-defrost.mjs` gebruikt hetzelfde herstelcontract en een afzonderlijk
+`defrost`-snapshotdomein. De controller moet de defrost-API uit PR #742 of de
+samengevoegde opvolger bevatten. De scenario-PR importeert die productiecode niet;
+voeg de tests pas samen nadat deze afhankelijkheid beschikbaar is.
+
+| Stage | Duurzaam contract |
+|---|---|
+| `flow` | Exact 249 l/h geselecteerde flow weigert de aanvraag zonder cyclusstart; exact 250 l/h accepteert één aanvraag en voltooit die cyclus. |
+| `overlap` | Actieve, verse HP2-defrost blokkeert HP1 met `PEER_DEFROST_ACTIVE`; geen cyclusstart. |
+| `cycle` | Eén aanvraag bereikt mode4/defrostbit, vierwegklep en bodemplaatverwarming, daarna mode2/bit clear en `COMPLETE`; started/completed stijgen exact één en aborted niet. |
+| `all` | Alle vier contracten; acceptatie bij 250 en completion delen één cyclus. |
+
+```bash
+node scripts/hil/run-defrost.mjs \
+  --controller http://openquatt-test.local \
+  --simulator http://SIMULATOR-IP \
+  --device openquatt-test.local \
+  --test-config configs/hil/defrost_regression_duo_wifi.yaml \
+  --restore-config configs/heatpump_controller_q/duo_hil.yaml \
+  --stage all --apply
+```
+
+Voor OTA of scenario-instellingen controleert de runner read-only de geïnstalleerde
+simulatormarker `ODU Defrost Contract=manual-defrost-v1`, de tellers
+`started`, `completed`, `aborted` in `ODU 1 defrost diagnostics`, beide controller-
+statusendpoints en uitgeschakelde injectiebits. Een ontbrekende fixture is
+**BLOCKED coverage**, geen hardware-PASS. Ook `--stage smoke` doet deze controle.
+Een bestaande simulatorversie of broncode alleen bewijst geen geïnstalleerde
+capability. Een controller zonder de API uit #742 voldoet evenmin.
+
+De afzonderlijke overlay behoudt `openquatt-test`, de echte guard en het minimum
+250 l/h. Alleen de geselecteerde-flowmeting kan expliciet op 249/250 gezet worden;
+de rest van de productie-state-machine en timers blijft intact. De fixture start
+altijd uit, heeft geen persistente enable en wordt ook bij fouten uitgezet. Dit
+bewijst de grens van de guard, geen fysieke flowmeter of hydrauliek. Een HTTP-ACK
+bewijst geen cyclus: controllerreadbacks en simulatortellers zijn vereist. De
+versnelde 30s fixture bewijst geen echte ODU-algoritmen of achtminutentijdschalen.
+
+Een trigger krijgt één same-origin POST met een vers CSRF-token; bij een verloren
+ACK volgt geen retry. Tokens komen niet in observaties. Foutobservaties blijven in
+het rapport. Cleanup probeert onafhankelijk zowel de peer-injectie als de
+flowfixture uit te zetten en terug te lezen. Daarna wacht herstel begrensd op
+CM0 en bevestigde stilstand; defrostownership en gewone minimumlooptijd mogen
+CM0 tijdelijk uitstellen. De fysieke stopgate geldt ook bij afzonderlijk
+`--restore-snapshot`-herstel vóór OTA. Mislukt dat, dan blijven firmwareherstel
+fail-closed en de recoverylock behouden. Tellers en inactieve defrost blijven
+ook tijdens verwarmingsherstel, de 30s hold en de laatste stopcontrole bewaakt.
+
 ## Volledige input-/bronselectietest
 
 De testconfig is uitsluitend voor HIL en wordt niet als releaseprofiel gebouwd.

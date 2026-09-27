@@ -741,3 +741,16 @@ test('a transient optional pre-restore read does not invalidate a verified resto
   await restoreSettings({ controller, simulator, snapshot, log: () => {} });
   await verifyRestoredSettings({ controller, simulator, snapshot });
 });
+
+
+test('missing physical stop confirmation blocks recovery OTA even with persisted CM0', async () => {
+  let flashCalls = 0;
+  await assert.rejects(restoreFirmwareAndSettings({
+    options: { settingsOnly: false }, controller: {}, simulator: {}, snapshot: {},
+    interrupted: () => false, restoreSettingsImpl: async () => {},
+    waitForSafeCm0PersistedImpl: async () => {},
+    beforeFirmwareRestore: async () => { throw new Error('stop feedback unavailable'); },
+    flashFirmwareArtifactImpl: async () => { flashCalls++; },
+  }), /physical stop confirmation failed; firmware OTA blocked/);
+  assert.equal(flashCalls, 0);
+});
