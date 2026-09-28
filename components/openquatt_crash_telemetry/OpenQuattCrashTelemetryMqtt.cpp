@@ -1,5 +1,6 @@
 #include "OpenQuattCrashTelemetry.h"
 #include "OpenQuattCrashTelemetryHelpers.h"
+#include "OpenQuattWatchdogDetails.h"
 
 #include "esp_crt_bundle.h"
 #include "esp_memory_utils.h"
@@ -444,6 +445,7 @@ void OpenQuattCrashTelemetry::schedule_retry_() { this->next_attempt_ms_ = milli
 void OpenQuattCrashTelemetry::schedule_immediate_() { this->next_attempt_ms_ = millis() + 1U; }
 
 void OpenQuattCrashTelemetry::loop() {
+  note_crash_telemetry_loop();
   // The loopTask only observes worker completions and asks for cleanup. It
   // never runs MQTT lifecycle calls or waits on network I/O itself.
   if (this->start_task_complete_.exchange(false)) {
