@@ -60,6 +60,17 @@ de volgende boot om details van een eerdere crash niet opnieuw te gebruiken.
 Bij falende flashopslag gevolgd door nog een herstart kan de detailregel daarom
 verloren gaan; het bestaande ESPHome-crashrecord houdt zijn eigen levenscyclus.
 
+Bij een Task-WDT bewaart OpenQuatt daarnaast hoe lang het geleden was dat de
+crashtelemetriecomponent voor het laatst in de hoofdloop draaide. Een lange
+`Crash telemetry loop heartbeat age` laat zien dat deze component niet meer aan
+de beurt kwam, maar identificeert geen blokkerende functie of gemiste
+watchdogtaak. De watchdog-ISR leest hiervoor een eigen atomaire teller en de
+lockvrije ESP32-systeemtimer; de interne ESP-IDF-taaklijst wordt na vrijgave
+van haar lock niet opnieuw doorlopen. Het record kost 20 bytes intern RAM, de
+bootkopie inclusief status 24 bytes en de tijdteller en buildtijd samen 8
+bytes. Een ontbrekende, beschadigde of niet bij deze build passende opname
+wordt weggelaten. Bestaande crashrapporten krijgen deze informatie niet alsnog.
+
 De tijdvelden hebben bewust verschillende betekenissen:
 
 - `crash_timestamp` is de laatste geldige UTC Unix-tijd die vóór de reset in een

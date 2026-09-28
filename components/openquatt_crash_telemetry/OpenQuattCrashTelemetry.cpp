@@ -2,6 +2,7 @@
 #include "OpenQuattAbortDetails.h"
 #include "OpenQuattCrashTelemetryAnsi.h"
 #include "OpenQuattCrashTelemetryHelpers.h"
+#include "OpenQuattWatchdogDetails.h"
 
 #include <algorithm>
 #include <array>
@@ -331,6 +332,7 @@ void OpenQuattCrashTelemetry::capture_pending_crash_() {
   this->capture_active_ = true;
   this->capture_context_ = {};
   esp32::crash_handler_log();
+  if (record->captured_by_reporting_build != 0U) log_watchdog_details();
   if (this->capture_context_.is_abort && record->captured_by_reporting_build != 0U) {
     log_abort_details(this->capture_context_.core);
   }
