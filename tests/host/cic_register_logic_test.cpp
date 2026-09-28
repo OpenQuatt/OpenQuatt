@@ -23,6 +23,9 @@ int main() {
   assert(oq_cic::flow(0.926f) == 1u);
   assert(oq_cic::flow(0.927f) == 2u);
   assert(oq_cic::flow(12.36f) == 20u);
+  assert(oq_cic::flow_for_generation(true, 12.36f, NAN) == 20u);
+  assert(oq_cic::flow_for_generation(false, 12.36f, 0.618f) == 1u);
+  assert(oq_cic::flow_for_generation(true, NAN, 0.618f) == 0u);
 
   assert(oq_cic::on_option("Off") == 0u);
   assert(oq_cic::on_option("On") == 1u);

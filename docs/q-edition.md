@@ -49,7 +49,7 @@ Draadkleuren in de schema's en stappenhulp zijn illustratief. De klemmarkeringen
 > Kies voor de CV-ketel óf `OTB` óf `R1`; gebruik beide routes niet tegelijk.
 
 > [!TIP]
-> De Modbusverbinding tussen `M2` en de CiC is optioneel. Activeer daarna **Quatt-app via CiC** onder **Instellingen → Bronnen / integraties** om buitenunitgegevens in de Quatt-app te blijven bekijken. Deze functie staat standaard uit en geeft alleen buitenunitgegevens door, geen thermostaatgegevens. OpenQuatt blijft regelen. Dit staat los van **CiC JSON-feed inlezen**, waarmee OpenQuatt juist gegevens uit de CiC leest.
+> De Modbusverbinding tussen `M2` en de CiC is optioneel. Activeer daarna **Quatt-app via CiC** onder **Instellingen → Bronnen / integraties** om buitenunitgegevens in de Quatt-app te blijven bekijken. Deze functie staat standaard uit en geeft buitenunitgegevens en flowfeedback door, geen thermostaatgegevens. Bij V1 komt de flowfeedback van de lokale flowmeter op `Q`; bij V1 Duo krijgen beide CiC-adressen dezelfde waarde. OpenQuatt blijft regelen. Dit staat los van **CiC JSON-feed inlezen**, waarmee OpenQuatt juist gegevens uit de CiC leest.
 
 ### M1, M2 en de optionele aansluitingen
 

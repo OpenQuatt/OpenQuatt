@@ -22,6 +22,10 @@ inline uint16_t temperature(float value) {
 
 inline uint16_t flow(float value) { return isnan(value) ? 0u : static_cast<uint16_t>(lroundf(value / 0.618f)); }
 
+inline uint16_t flow_for_generation(bool v1, float controller_flow_lph, float hp_flow_lph) {
+  return flow(v1 ? controller_flow_lph : hp_flow_lph);
+}
+
 inline uint16_t on_option(const char* option, uint16_t on_value = 1u) {
   return option != nullptr && strcmp(option, "On") == 0 ? on_value : 0u;
 }

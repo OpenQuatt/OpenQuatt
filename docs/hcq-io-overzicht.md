@@ -114,7 +114,7 @@ Op `OTT` gedraagt de HCQ zich als OpenTherm-slave tegenover de kamerthermostaat.
 
 `M1` is de primaire RS485-poort voor de buitenunit(s). De HCQ is hier Modbus-master met 19200 baud, 8E1 en DE/RE op `GPIO41`.
 
-`M2` is de optionele tweede RS485-poort voor **Quatt-app via CiC**. Hier is de HCQ Modbus-server met 19200 baud, 8E1 en DE/RE op `GPIO38`. De CiC leest via deze koppeling alleen buitenunitgegevens; thermostaatgegevens gaan niet naar de CiC. Schakel na het aansluiten **Quatt-app via CiC** in als de Quatt-app via de CiC moet blijven meekijken. Dit staat los van **CiC JSON-feed inlezen**.
+`M2` is de optionele tweede RS485-poort voor **Quatt-app via CiC**. Hier is de HCQ Modbus-server met 19200 baud, 8E1 en DE/RE op `GPIO38`. De CiC leest via deze koppeling buitenunitgegevens en flowfeedback; bij V1 komt de flowfeedback van de lokale flowmeter op `Q`, bij V1.5 uit de buitenunit. Bij V1 Duo wordt dezelfde lokale flowwaarde op beide CiC-adressen doorgegeven. Thermostaatgegevens gaan niet naar de CiC. Schakel na het aansluiten **Quatt-app via CiC** in als de Quatt-app via de CiC moet blijven meekijken. Dit staat los van **CiC JSON-feed inlezen**.
 
 ### Ethernet, leds en herstelknop
 

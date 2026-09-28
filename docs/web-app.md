@@ -282,7 +282,7 @@ Hier beheer je de directe gegevensbronnen en integraties:
 - `CiC JSON-feed inlezen`: haalt gegevens uit de CiC op via je lokale netwerk; open `Adres aanpassen` onder deze schakelaar om het feed-adres in te stellen;
 - `MQTT inputbronnen`: configureer een broker voor externe MQTT-bronwaarden zoals dauwpunt, buiten- en kamerwaarden, het aanvoertarget en toestemmingssignalen, en zet ongebruikte topics uit;
 - `API inputbronnen`: lever dezelfde externe bronwaarden via lokale HTTP-endpoints aan;
-- `Quatt-app via CiC`: geeft alleen buitenunitgegevens via de Modbusverbinding op M2 door aan de CiC, zodat de Quatt-app kan meekijken.
+- `Quatt-app via CiC`: geeft buitenunitgegevens en flowfeedback via de Modbusverbinding op M2 door aan de CiC, zodat de Quatt-app kan meekijken. Bij V1 komt de flowfeedback van de lokale flowmeter.
 
 #### CiC: kies de functie die je echt nodig hebt
 
@@ -291,13 +291,13 @@ De CiC is de originele Quatt-controller. Je kunt hem op twee manieren blijven ge
 | Als je dit wilt | Schakel in | Wat gebeurt er? | Niet nodig voor |
 |---|---|---|---|
 | CiC-waarden als bron gebruiken | `CiC JSON-feed inlezen` | OpenQuatt leest de lokale JSON-feed van de CiC. Daaruit kunnen onder meer setpoint, kamerwaarden, aanvoertemperatuur en flow beschikbaar komen. | De Quatt-app behouden. |
-| Buitenunitgegevens in de Quatt-app blijven bekijken | `Quatt-app via CiC` | OpenQuatt geeft via Modbus op M2 alleen buitenunitgegevens door aan de CiC. Thermostaatgegevens gaan niet mee. | CiC-waarden als bron gebruiken. |
+| Buitenunitgegevens in de Quatt-app blijven bekijken | `Quatt-app via CiC` | OpenQuatt geeft via Modbus op M2 buitenunitgegevens en flowfeedback door aan de CiC. Bij V1 komt de flowfeedback van de lokale flowmeter; thermostaatgegevens gaan niet mee. | CiC-waarden als bron gebruiken. |
 
 Je kunt één functie inschakelen, beide combineren, of beide uit laten. Gebruik je geen CiC meer, laat beide schakelaars uit.
 
 Voor **CiC JSON-feed inlezen** open je **Adres aanpassen** en vul je het lokale feed-adres van je CiC in, bijvoorbeeld `http://<ip-adres>:<poort>/beta/feed/data.json`. Zet deze schakelaar alleen aan als je ook werkelijk één of meer CiC-bronnen kiest onder **Sensorselectie**. De infoknop naast iedere verbinding geeft extra uitleg.
 
-Voor **Quatt-app via CiC** verbind je `M2` met een aparte RS485-kabel met de vrijgekomen Modbuspoort van de CiC. Dit is alleen beschikbaar op de Heatpump Controller Q. Deze Modbusverbinding geeft uitsluitend buitenunitgegevens door; thermostaatgegevens zoals kamertemperatuur en kamer-setpoint gaan niet naar de CiC. OpenQuatt blijft de warmtepomp regelen; besturingscommando's via deze M2-koppeling worden niet overgenomen. De CiC heeft zijn eigen voeding en netwerkverbinding nodig om gegevens aan Quatt door te geven. Deze functie heette eerder **CiC-compatibiliteit**. Zie voor de aansluiting [Q-edition aansluiten](q-edition.md#welke-kabel-gaat-waarheen).
+Voor **Quatt-app via CiC** verbind je `M2` met een aparte RS485-kabel met de vrijgekomen Modbuspoort van de CiC. Dit is alleen beschikbaar op de Heatpump Controller Q. Deze Modbusverbinding geeft buitenunitgegevens en flowfeedback door. Bij V1 komt de flowfeedback van de lokale flowmeter; bij V1 Duo staat dezelfde waarde op beide CiC-adressen. Thermostaatgegevens zoals kamertemperatuur en kamer-setpoint gaan niet naar de CiC. OpenQuatt blijft de warmtepomp regelen; besturingscommando's via deze M2-koppeling worden niet overgenomen. De CiC heeft zijn eigen voeding en netwerkverbinding nodig om gegevens aan Quatt door te geven. Deze functie heette eerder **CiC-compatibiliteit**. Zie voor de aansluiting [Q-edition aansluiten](q-edition.md#welke-kabel-gaat-waarheen).
 
 Onder `Sensorselectie` in dezelfde groep kies je per signaal welke bron OpenQuatt gebruikt. Naast de kaarten voor buiten-, kamer- en aanvoerwaarden staat daar `Externe warmtevraag (Power House)`: een optionele externe vermogensvraag, alleen voor de Power House-strategie, standaard op `Niet gebruiken`. Zet je die op Home Assistant of API-invoer, dan vervangt jouw waarde uitsluitend de vermogensschatting van het huismodel; de kaart laat zien of Power House die externe waarde daadwerkelijk gebruikt of is teruggevallen op het model. Zie [Power House](power-house.md).
 

@@ -1615,7 +1615,7 @@ export default {
     cicSwitchNote: "De CiC is de originele Quatt-controller. OpenQuatt leest via je lokale netwerk onder meer kamerwaarden en flow uit de JSON-feed. Stel het feed-adres in en kies onder Sensorselectie welke CiC-waarden je gebruikt. Dit heette eerder CIC-polling.",
     cicCompatTitle: "Quatt-app via CiC",
     cicCompatCopy: "Buitenunitgegevens laten zien in de Quatt-app.",
-    cicCompatNote: "Verbind M2 via een aparte RS485-kabel met de Modbuspoort van de CiC. Deze Modbusverbinding geeft alleen buitenunitgegevens door, geen thermostaatgegevens. OpenQuatt blijft regelen. De CiC heeft voeding en netwerk nodig; JSON-feed inlezen hoeft hiervoor niet aan. Dit heette eerder CiC-compatibiliteit.",
+    cicCompatNote: "Verbind M2 via een aparte RS485-kabel met de Modbuspoort van de CiC. Deze Modbusverbinding geeft buitenunitgegevens en flowfeedback door, geen thermostaatgegevens. Bij V1 komt de flowfeedback van de lokale flowmeter; bij V1 Duo krijgen beide CiC-adressen dezelfde waarde. OpenQuatt blijft regelen. De CiC heeft voeding en netwerk nodig; JSON-feed inlezen hoeft hiervoor niet aan. Dit heette eerder CiC-compatibiliteit.",
     cicAddressToggle: "Adres aanpassen",
     cicAddressTitle: "Adres van de CiC JSON-feed",
     cicAddressPlaceholder: "http://<host>:<poort>/beta/feed/data.json",

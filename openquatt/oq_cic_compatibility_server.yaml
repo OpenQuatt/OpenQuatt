@@ -125,7 +125,7 @@ modbus_server:
         read_lambda: return oq_cic::read(oq_cic::scaled(id(${cic_compat_hp_id}_pump_ipwm_feedback_raw).state));
       - address: 2138
         value_type: U_WORD
-        read_lambda: return oq_cic::read(oq_cic::flow(id(${cic_compat_hp_id}_flow).state));
+        read_lambda: return oq_cic::read(oq_cic::flow_for_generation(id(hp_generation).has_state() && id(hp_generation).current_option() == "V1", id(flow_rate_controller).state, id(${cic_compat_hp_id}_flow).state));
       - address: 11006
         value_type: U_WORD
         read_lambda: return oq_cic::constant(0u);

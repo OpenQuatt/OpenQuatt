@@ -16,7 +16,7 @@ MODULE_FILES = (
     Path(__file__),
 )
 ORIGINAL_YAML_LINES = 468
-REGISTER_CONTRACT_SHA256 = "08bb09cd60102bad0b79c3e94b95606c5d3e15abecf365983dd85019dfff9a58"
+REGISTER_CONTRACT_SHA256 = "1de68649b86c47a49136ddf20db7d68327b143cc286559ecc88ca0968a0fb28c"
 FIXED_ADDRESSES = (
     1999, 2006, 2010, 2015, 3999, 2099, 2100, 2101, 2102, 2103, 2104, 2105,
     2106, 2107, 2108, 2109, 2110, 2111, 2112, 2113, 2114, 2116, 2117, 2118,
@@ -50,6 +50,8 @@ class CicCompatibilityContractTest(unittest.TestCase):
     def test_runtime_preserves_current_dev_sources_and_timestamp(self) -> None:
         self.assertIn("id: cic_compatibility_last_request_ms", MODE.read_text(encoding="utf-8"))
         self.assertIn("id(${cic_compat_hp_id}_pump_ipwm_feedback_raw).state", self.server)
+        self.assertIn("oq_cic::flow_for_generation(id(hp_generation).has_state()", self.server)
+        self.assertIn("id(flow_rate_controller).state, id(${cic_compat_hp_id}_flow).state", self.server)
         self.assertEqual(
             RUNTIME.read_text(encoding="utf-8").count("id(cic_compatibility_last_request_ms) = millis();"), 2
         )
