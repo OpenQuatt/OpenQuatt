@@ -84,7 +84,7 @@ test("voorbeeld toont de installatiegrens zonder hogere opgeslagen curvepunten t
 
 test("de gebouwde firmwarebundel bevat de diagnostische vertalingen", () => {
   const bundle = readFileSync(new URL("../js/openquatt-app.js", import.meta.url), "utf8");
-  for (const label of ["Basisdoel", "Externe modifier", "Kamercorrectie", "Effectief doel"]) {
+  for (const label of ["Basisdoel", "Externe offset", "Kamercorrectie", "Effectief doel"]) {
     assert.ok(bundle.includes(label), `${label} ontbreekt in de compacte bundel`);
   }
 });

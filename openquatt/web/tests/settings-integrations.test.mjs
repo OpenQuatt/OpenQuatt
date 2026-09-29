@@ -178,7 +178,7 @@ test("integraties laden de aanvoerkalibratiestatus direct", () => {
   assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("waterSupplyCalibrationStatus"));
 });
 
-test("stooklijnmodifier toont de gebruikte API-correctie en de meting in °C", () => {
+test("stooklijn-offset toont de gebruikte API-correctie en de meting in °C", () => {
   assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("curveModifier"));
   setSourceSelectionState(false);
   Object.assign(state.entities, {
@@ -190,6 +190,7 @@ test("stooklijnmodifier toont de gebruikte API-correctie en de meting in °C", (
   });
 
   const markup = renderFocusedSource("heating-curve-modifier");
+  assert.match(getSignalMarkup(markup, "heating-curve-modifier"), /Stooklijn-offset/);
   assert.match(getSignalMarkup(markup, "heating-curve-modifier"), /1\.5 °C/);
   assert.equal((getInspectorMarkup(markup).match(/1\.5 °C/g) || []).length, 2);
 });

@@ -120,7 +120,7 @@ toont vooraf de zes punten die `Toepassen` naar de bestaande stooklijn schrijft.
 Onder Advanced kun je alle zes punten rechtstreeks blijven wijzigen. Simple
 opnieuw toepassen vervangt een handmatig gevormde Advanced-curve.
 
-Met `Heating Curve Modifier Source` kun je de lokale stooklijn tijdelijk
+Met **Stooklijn-offset** (`Heating Curve Modifier Source`) kun je de lokale stooklijn tijdelijk
 verschuiven via `HA input`, `API input` of `MQTT`. De aanvoercorrectie wordt
 begrensd op −5…+5 °C en vóór de bestaande kamertrim en waterlimiet verwerkt.
 Bij een ongeldige of verouderde bron geldt 0 °C correctie; de lokale stooklijn
@@ -131,7 +131,7 @@ Gebruik voor HA `sensor.openquatt_ext_heating_curve_modifier` en
 `dynamic-sources`-pakket. De HA-heartbeat moet vers zijn; er is voor deze
 nieuwe bron geen tijdloze legacy-fallback. Een geldig absoluut extern
 aanvoertarget vervangt nog steeds het hele lokale resultaat en krijgt de
-modifier niet nogmaals toegepast.
+offset niet nogmaals toegepast.
 
 De sensoren `Heating Curve Base Target`, `Heating Curve Modifier`,
 `Heating Curve Room Trim` en `Heating Supply Target (Effective)` tonen de

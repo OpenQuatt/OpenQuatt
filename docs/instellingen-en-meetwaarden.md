@@ -189,7 +189,7 @@ De betekenis van dezelfde bron verschilt per verwarmingsstrategie:
 | Warmtetoestemming (`Heating Enable Source`) | Meestal `Niet gebruiken` | Meestal externe thermostaat/zonevraag |
 | Externe warmtevraag | Optioneel (`HA`/`API`) | Niet van toepassing |
 | Extern aanvoertarget | Niet van toepassing | Optioneel (`OT`/`HA`/`API`/`MQTT`) |
-| Stooklijnmodifier | Niet van toepassing | Optioneel (`HA`/`API`/`MQTT`, −5…+5 °C aanvoercorrectie) |
+| Stooklijn-offset | Niet van toepassing | Optioneel (`HA`/`API`/`MQTT`, −5…+5 °C aanvoercorrectie) |
 
 Tijdens Quick Start vervangt een strategieswitch de warmtetoestemming automatisch: `Heating Enable Source = Niet gebruiken` bij `Power House` (OpenQuatt bepaalt zelf de vraag), of de eerder gekozen, gekoppelde en actieve thermostaatbron bij `Water Temperature Control` (`OT thermostat` op Q-edition, anders `CIC`/`HA input`). Een uitgeschakelde of niet-geconfigureerde bron wordt niet automatisch als harde gate gekozen. Buiten Quick Start overschrijft de web-app een bestaande keuze niet stil; daar verschijnt alleen een advies met een knop om het over te nemen. Afwijkende combinaties blijven bewust mogelijk (bijv. Power House met zone-gate, stooklijn volledig weersafhankelijk).
 
