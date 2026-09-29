@@ -195,6 +195,36 @@ test("stooklijn-offset toont de gebruikte API-correctie en de meting in °C", ()
   assert.equal((getInspectorMarkup(markup).match(/1\.5 °C/g) || []).length, 2);
 });
 
+test("stooklijn-offset toont HA niet als geldig of gebruikt na verlopen heartbeat", () => {
+  assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("heatingCurveModifierHaEffectiveValid"));
+  setSourceSelectionState(false);
+  Object.assign(state.entities, {
+    heatingCurveModifierSource: { value: "HA input", option: ["Disabled", "HA input", "API input", "MQTT"] },
+    curveModifier: valueEntity(0, "K"),
+    heatingCurveModifierHa: valueEntity(2.5, "K"),
+    heatingCurveModifierHaValid: binaryEntity(true),
+    heatingCurveModifierHaEffectiveValid: binaryEntity(false),
+  });
+
+  const markup = renderFocusedSource("heating-curve-modifier");
+  assert.match(getSignalMarkup(markup, "heating-curve-modifier"), /HA-bron ongeldig/);
+  const inspector = getInspectorMarkup(markup);
+  assert.match(inspector, /data-source-kind="ha"\s+data-source-state="invalid"/);
+  assert.doesNotMatch(inspector, /data-source-kind="ha"[^>]*data-source-effective="true"/);
+  assert.match(inspector, /<strong>—<\/strong>/);
+
+  state.entities.heatingCurveModifierHaEffectiveValid = binaryEntity(true);
+  const fresh = getInspectorMarkup(renderFocusedSource("heating-curve-modifier"));
+  assert.match(fresh, /data-source-kind="ha"\s+data-source-state="valid"\s+data-source-effective="true"/);
+  assert.match(fresh, /2\.5 °C/);
+
+  delete state.entities.heatingCurveModifierHaEffectiveValid;
+  const unavailable = getInspectorMarkup(renderFocusedSource("heating-curve-modifier"));
+  assert.match(unavailable, /data-source-kind="ha"\s+data-source-state="missing"/);
+  assert.match(unavailable, /<span>Onbekend<\/span>/);
+  assert.doesNotMatch(unavailable, /data-source-kind="ha"[^>]*data-source-effective="true"/);
+});
+
 test("CIC-diagnostiek toont waterdruk alleen wanneer de sensor aanwezig is", () => {
   state.loadingEntities = false;
   state.drafts = {};

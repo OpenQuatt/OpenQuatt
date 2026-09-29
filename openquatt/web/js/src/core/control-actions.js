@@ -81,9 +81,9 @@ export async function commitQuickStartStrategySelection(option, commit = commitS
   return false;
 }
 
-async function submitSimpleCurveBatch(points) {
+export async function submitSimpleCurveBatch(points) {
   if (__OQ_PREVIEW__) return "unsupported";
-  const statusResponse = await fetchWithTimeout("/auth/status", { cache: "no-store" }, 8000);
+  const statusResponse = await fetchWithTimeout(`${getBasePath()}/auth/status`, { cache: "no-store" }, 8000);
   if (!statusResponse.ok) return "rejected";
   const csrfToken = String((await statusResponse.json()).csrf_token || "");
   if (!csrfToken) return "rejected";

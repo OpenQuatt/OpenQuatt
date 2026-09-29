@@ -1536,7 +1536,7 @@ export default {
     haValid: "Beschikbaar",
     haValidCopy: "Home Assistant geeft dit signaal geldig door. OpenQuatt mag deze HA-invoer gebruiken.",
     haInvalid: "Niet geldig",
-    haInvalidCopy: "Home Assistant geeft dit signaal niet geldig door. OpenQuatt gebruikt deze HA-invoer dan niet als bron.",
+    haInvalidCopy: "HA-invoer of heartbeat ongeldig. OpenQuatt gebruikt de bron niet.",
     mqttValid: "Geldig",
     mqttValidCopy: "MQTT heeft een geldige, recente waarde ontvangen. OpenQuatt mag deze MQTT-invoer gebruiken.",
     mqttInvalid: "Ongeldig",

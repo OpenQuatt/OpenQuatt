@@ -7,6 +7,7 @@ export const SETTINGS_BACKUP_MQTT_INPUT_KEYS = Object.freeze([
   "outside_temperature",
   "room_temperature",
   "room_setpoint",
+  "heating_curve_modifier",
   "heating_enable",
   "cooling_enable",
 ]);
@@ -22,6 +23,7 @@ const SETTINGS_BACKUP_MQTT_SOURCE_KEYS = new Set([
   "outsideTempSource",
   "roomTempSource",
   "roomSetpointSource",
+  "heatingCurveModifierSource",
   "heatingEnableSource",
   "coolingEnableSource",
 ]);

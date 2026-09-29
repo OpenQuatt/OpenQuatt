@@ -1536,7 +1536,7 @@ export default {
     haValid: "Available",
     haValidCopy: "Home Assistant passes this signal as valid. OpenQuatt may use this HA input.",
     haInvalid: "Invalid",
-    haInvalidCopy: "Home Assistant does not pass this signal as valid. OpenQuatt then does not use this HA input as a source.",
+    haInvalidCopy: "HA input or heartbeat invalid. OpenQuatt does not use the source.",
     mqttValid: "Valid",
     mqttValidCopy: "MQTT has received a valid, recent value. OpenQuatt may use this MQTT input.",
     mqttInvalid: "Invalid",

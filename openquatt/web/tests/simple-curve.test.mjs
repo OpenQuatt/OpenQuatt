@@ -3,7 +3,12 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 globalThis.__OQ_PREVIEW__ = false;
-globalThis.window = { localStorage: { getItem: () => null } };
+globalThis.window = {
+  localStorage: { getItem: () => null },
+  location: { pathname: "/" },
+  setTimeout: globalThis.setTimeout,
+  clearTimeout: globalThis.clearTimeout,
+};
 
 const { CURVE_POINTS } = await import("../js/src/core/config.js");
 const { INITIAL_SETTINGS_READY_KEY_MAP, SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
@@ -11,6 +16,36 @@ const { state } = await import("../js/src/core/state.js");
 const { normalizeNumber } = await import("../js/src/core/entity-store.js");
 const { applySimpleCurveBatch, applySimpleCurvePoints, generateSimpleCurve, getCurvePointDraft, getSimpleCurveDraft, updateCurvePointDraft, updateSimpleCurveDraft } = await import("../js/src/core/simple-curve.js");
 const { renderSettingsCurveInputs, renderSimpleCurvePreview } = await import("../js/src/settings/heating.js");
+const { submitSimpleCurveBatch } = await import("../js/src/core/control-actions.js");
+
+test("batch haalt CSRF-token en schrijft curvepunten onder hetzelfde proxypad", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  window.location.pathname = "/controller/ui/";
+  try {
+    globalThis.fetch = async (url, options = {}) => {
+      calls.push({ url, options });
+      if (url === "/controller/ui/auth/status") {
+        return { ok: true, json: async () => ({ csrf_token: "test-token" }) };
+      }
+      if (url === "/controller/ui/openquatt/curve/apply") {
+        return { status: 202, json: async () => ({ ok: true, queued: true }) };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    };
+    assert.equal(await submitSimpleCurveBatch(generateSimpleCurve(5, 40)), "accepted");
+    assert.deepEqual(calls.map(({ url }) => url), [
+      "/controller/ui/auth/status",
+      "/controller/ui/openquatt/curve/apply",
+    ]);
+    const body = calls[1].options.body;
+    assert.equal(body.get("csrf_token"), "test-token");
+    assert.equal(body.get("curveM20"), "50.0");
+  } finally {
+    globalThis.fetch = originalFetch;
+    window.location.pathname = "/";
+  }
+});
 
 test("Simple genereert precies de zes canonieke curvepunten met begrenzing", () => {
   const points = generateSimpleCurve(5, 40);
