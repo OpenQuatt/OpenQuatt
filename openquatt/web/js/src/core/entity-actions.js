@@ -663,6 +663,7 @@ function updateFrequencyRangeControl(input) {
       return;
     }
 
+    event.preventDefault();
     state.draggingCurveKey = point.dataset.curveKey || "";
     updateCurveDraftFromPointer(event.clientY);
   }

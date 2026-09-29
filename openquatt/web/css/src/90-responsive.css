@@ -314,10 +314,6 @@
     display: none;
   }
 
-  .oq-helper-curve-grid {
-    grid-template-columns: 1fr;
-  }
-
   .oq-helper-grid--quickstart-modal {
     grid-template-columns: 1fr;
   }

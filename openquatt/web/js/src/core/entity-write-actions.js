@@ -911,9 +911,9 @@ export function updateCurveDraftFromPointer(clientY) {
   }
 
   const rect = svg.getBoundingClientRect();
-  const plotTop = 22;
-  const plotHeight = 180;
-  const localY = ((clientY - rect.top) / rect.height) * 240;
+  const plotTop = 20;
+  const plotHeight = 158;
+  const localY = ((clientY - rect.top) / rect.height) * 186;
   const clampedY = Math.min(plotTop + plotHeight, Math.max(plotTop, localY));
   const value = 70 - ((clampedY - plotTop) / plotHeight) * 50;
   const normalized = normalizeNumber(state.draggingCurveKey, value);

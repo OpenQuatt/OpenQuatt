@@ -6,9 +6,10 @@ globalThis.__OQ_PREVIEW__ = false;
 globalThis.window = { localStorage: { getItem: () => null } };
 
 const { CURVE_POINTS } = await import("../js/src/core/config.js");
+const { INITIAL_SETTINGS_READY_KEY_MAP, SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
 const { state } = await import("../js/src/core/state.js");
 const { applySimpleCurvePoints, generateSimpleCurve, getSimpleCurveDraft, updateSimpleCurveDraft } = await import("../js/src/core/simple-curve.js");
-const { renderSettingsCurveInputs, renderSimpleCurvePreview } = await import("../js/src/settings/heating.js");
+const { renderCurveGraph, renderSettingsCurveInputs, renderSimpleCurvePreview } = await import("../js/src/settings/heating.js");
 
 test("Simple genereert precies de zes canonieke curvepunten met begrenzing", () => {
   const points = generateSimpleCurve(5, 40);
@@ -24,11 +25,41 @@ test("Simple toont live preview en Advanced houdt de zes handmatige velden", () 
   state.entities = Object.fromEntries(CURVE_POINTS.map((point, index) => [point.key, { value: [55, 50, 45, 42.5, 40, 37.5][index] }]));
   assert.deepEqual(getSimpleCurveDraft(), { slope: 5, level: 45 });
   assert.equal(updateSimpleCurveDraft("level", "40"), true);
-  assert.match(renderSimpleCurvePreview(), /0°C → 40\.0 °C/);
+  assert.match(renderSimpleCurvePreview(), /<small>0°C<\/small><strong>40\.0°<\/strong>/);
   const markup = renderSettingsCurveInputs();
   assert.match(markup, /data-oq-action="apply-simple-curve"/);
+  assert.match(markup, /oq-simple-curve-workspace/);
+  assert.doesNotMatch(markup, /maxWater/);
   assert.match(markup, /data-oq-settings-advanced="curve-points"/);
   for (const point of CURVE_POINTS) assert.match(markup, new RegExp(point.key));
+});
+
+test("voorbeeld toont de installatiegrens zonder hogere opgeslagen curvepunten te verbergen", () => {
+  assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.heating.includes("maxWater"));
+  assert.ok(SETTINGS_GROUP_KEY_MAP.heating.includes("maxWater"));
+  state.simpleCurveDraft = { slope: 15, level: 40 };
+  state.entities = { maxWater: { value: 60 } };
+  const preview = renderSimpleCurvePreview();
+  assert.match(preview, /<small>-20°C<\/small><strong>60\.0°<\/strong><small>onbegrensd 70\.0°<\/small>/);
+  assert.match(preview, /stroke-dasharray="4 4"/);
+  assert.match(preview, />70°C<\/text>/);
+  assert.doesNotMatch(preview, /<text[^>]*>−20°C<\/text>/);
+  assert.match(renderSettingsCurveInputs(), /Begrensd op 60 °C uit Installatie/);
+  assert.equal(generateSimpleCurve(15, 40)[0].value, 70);
+  state.simpleCurveDraft = { slope: 5, level: 54 };
+  const line = renderSimpleCurvePreview().match(/<polyline points="([^"]+)" class="oq-simple-curve-line" \/>/)?.[1];
+  assert.ok(line);
+  const positions = line.split(" ").map((position) => position.split(",").map(Number));
+  assert.equal(positions.length, 7);
+  assert.equal(positions[0][1], positions[1][1]);
+  assert.ok(positions[0][0] < positions[1][0] && positions[1][0] < positions[2][0]);
+  state.entities.curveM20 = { value: 64 };
+  const manual = renderCurveGraph();
+  assert.match(manual, /class="oq-simple-curve-chart oq-helper-curve-svg"/);
+  assert.match(manual, /data-curve-key="curveM20"/);
+  assert.match(manual, /begrensd 60\.0°/);
+  assert.doesNotMatch(preview, /is-zero/);
+  state.simpleCurveDraft = null;
 });
 
 test("de gebouwde firmwarebundel bevat de diagnostische vertalingen", () => {
