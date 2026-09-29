@@ -122,8 +122,8 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     if (!hasEntity("curveBaseTarget")) return "";
     const rows = [
       [t("settingsHeating.baseTargetLabel"), "curveBaseTarget", "°C"],
-      [t("settingsHeating.modifierLabel"), "curveModifier", "K"],
-      [t("settingsHeating.roomTrimLabel"), "curveRoomTrim", "K"],
+      [t("settingsHeating.modifierLabel"), "curveModifier", "°C"],
+      [t("settingsHeating.roomTrimLabel"), "curveRoomTrim", "°C"],
       [t("settingsHeating.effectiveTargetLabel"), "curveEffectiveTarget", "°C"],
     ];
     return `<div class="oq-simple-curve-breakdown">

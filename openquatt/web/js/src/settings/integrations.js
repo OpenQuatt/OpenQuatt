@@ -636,6 +636,10 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
         });
       })
     );
+    const formatCurveModifierValue = (key) => {
+      const value = getSettingsStatValue(key);
+      return value === "—" ? value : `${value.replace(/\s*(?:K|°C)$/, "")} °C`;
+    };
     const renderSourceSelect = (key, config = {}) => {
       if (!hasEntity(key)) {
         return { markup: "", warning: "" };
@@ -1113,10 +1117,10 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
         select: buildExternalSourceSelect("heatingCurveModifier", "HeatingCurveModifier", "heating_curve_modifier", {
           infoCopy: t("settingsIntegrations.curveModifierInfo"),
         }),
-        summaryValue: getSettingsStatValue("curveModifier"),
+        summaryValue: formatCurveModifierValue("curveModifier"),
         summarySource: formattedSourceValue("heatingCurveModifierSource"),
         measurementRows: [
-          ...renderExternalSourceRows("heatingCurveModifierSource", formattedSourceValue("heatingCurveModifierSource"), buildExternalSourceKeys("heatingCurveModifier", "HeatingCurveModifier")),
+          ...renderExternalSourceRows("heatingCurveModifierSource", formattedSourceValue("heatingCurveModifierSource"), buildExternalSourceKeys("heatingCurveModifier", "HeatingCurveModifier"), formatCurveModifierValue),
         ],
       }),
     ].filter(Boolean);

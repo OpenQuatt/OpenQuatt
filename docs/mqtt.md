@@ -100,7 +100,7 @@ Waarden buiten de geldige range worden genegeerd en maken die MQTT-bron ongeldig
 - kamertemperatuur: `0..50°C`;
 - kamer-setpoint: `5..35°C`;
 - aanvoertarget: `20..70°C`.
-- stooklijnmodifier: `-5..+5 K`.
+- stooklijnmodifier: `-5..+5 °C` aanvoercorrectie.
 
 ## Geldigheid
 
@@ -111,7 +111,7 @@ Een geldige MQTT-waarde blijft beperkt geldig. Komt er in die tijd geen nieuwe M
 - kamertemperatuur: 10 minuten;
 - kamer-setpoint: 30 minuten;
 - aanvoertarget: 15 minuten;
-- stooklijnmodifier: 15 minuten (daarna 0 K);
+- stooklijnmodifier: 15 minuten (daarna 0 °C correctie);
 - warmtetoestemming: 10 minuten;
 - koeltoestemming: 10 minuten.
 

@@ -1196,6 +1196,7 @@
     "powerHouseDemandSource",
     "heatingSupplyTargetSource",
     "heatingCurveModifierSource",
+    "curveModifier",
     "heatingSupplyTargetSelected",
     "heatingSupplyTargetHa",
     "heatingSupplyTargetHaValid",
