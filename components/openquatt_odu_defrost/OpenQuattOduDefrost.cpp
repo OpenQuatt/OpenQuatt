@@ -1,4 +1,5 @@
 #include "OpenQuattOduDefrost.h"
+#include "PsramBuffer.h"
 #include <cstdio>
 #include <cstring>
 #include "esphome/components/web_server_base/web_server_base.h"
@@ -78,9 +79,18 @@ class Handler : public AsyncWebHandler {
         httpd_resp_send(*req, R"({"error":"forbidden"})", HTTPD_RESP_USE_STRLEN);
         return;
       }
-      char url[AsyncWebServerRequest::URL_BUF_SIZE];
-      req->url_to(url);
-      const char* action_name = url + strlen(path_);
+      // The POST-only URL must not enlarge the status serializer's stack frame.
+      // Allocation failure leaves the control queue untouched.
+      openquatt_common::PsramBuffer<char> url;
+      if (!url.allocate_external(AsyncWebServerRequest::URL_BUF_SIZE)) {
+        httpd_resp_set_status(*req, "503 Service Unavailable");
+        httpd_resp_set_type(*req, "application/json");
+        httpd_resp_send(*req, R"({"error":"psram_unavailable"})", HTTPD_RESP_USE_STRLEN);
+        return;
+      }
+      req->url_to(
+          std::span<char, AsyncWebServerRequest::URL_BUF_SIZE>(url.data(), AsyncWebServerRequest::URL_BUF_SIZE));
+      const char* action_name = url.data() + strlen(path_);
       if (strcmp(action_name, "save") == 0) {
         int desired = -1, expected = -2;
         const auto automatic = req->arg("auto_reapply");

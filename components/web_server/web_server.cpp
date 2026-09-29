@@ -10,6 +10,9 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 #include "esphome/core/util.h"
+#ifdef USE_ESP32
+#include "PsramBuffer.h"
+#endif
 
 #if !defined(USE_ESP32) && defined(USE_ARDUINO)
 #include "StreamString.h"
@@ -2373,8 +2376,19 @@ bool WebServer::canHandle(AsyncWebServerRequest* request) const {
 }
 void WebServer::handleRequest(AsyncWebServerRequest* request) {
 #ifdef USE_ESP32
-  char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-  StringRef url = request->url_to(url_buf);
+  // Keep the decoded URL alive for UrlMatch without retaining a large stack
+  // frame through JSON serialization. Each request owns its buffer; no internal
+  // heap fallback or shared scratch can race with another callback.
+  openquatt_common::PsramBuffer<char> url_buf;
+  if (!url_buf.allocate_external(AsyncWebServerRequest::URL_BUF_SIZE)) {
+    httpd_req_t* raw = *request;
+    httpd_resp_set_status(raw, "503 Service Unavailable");
+    httpd_resp_set_type(raw, "application/json");
+    httpd_resp_send(raw, R"({"error":"psram_unavailable"})", HTTPD_RESP_USE_STRLEN);
+    return;
+  }
+  StringRef url = request->url_to(
+      std::span<char, AsyncWebServerRequest::URL_BUF_SIZE>(url_buf.data(), AsyncWebServerRequest::URL_BUF_SIZE));
 #else
   const auto& url = request->url();
 #endif
