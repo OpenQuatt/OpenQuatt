@@ -277,19 +277,6 @@
     padding: 14px;
   }
 
-  .oq-overview-trendcard-head {
-    grid-template-columns: 1fr;
-  }
-
-  .oq-overview-trendcard-meta {
-    justify-items: flex-start;
-    min-height: 0;
-  }
-
-  .oq-overview-trendcard-latest {
-    justify-content: flex-start;
-  }
-
   
 
   
@@ -826,17 +813,8 @@
     border-radius: 16px;
   }
 
-  .oq-overview-trendcard-copy {
-    min-height: 0;
-  }
-
-  .oq-overview-trendcard-copy p {
-    min-height: 0;
+  .oq-overview-trendcard-copy > p:last-child {
     -webkit-line-clamp: 3;
-  }
-
-  .oq-overview-trendcard-meta {
-    min-height: 0;
   }
 
   .oq-overview-trend-hover {
@@ -857,9 +835,8 @@
   }
 
   .oq-overview-trend-pill {
-    min-width: 72px;
-    padding: 7px 9px;
-    border-radius: 12px;
+    padding: 6px 8px;
+    border-radius: 10px;
   }
 
   .oq-overview-trend-pill span {
@@ -948,6 +925,22 @@
 
   esp-app.oq-native-app {
     width: calc(100vw - 12px);
+  }
+}
+
+@media (max-width: 480px) {
+  .oq-overview-trendcard-head {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "kicker"
+      "title"
+      "description"
+      "meta";
+  }
+
+  .oq-overview-trendcard-meta,
+  .oq-overview-trendcard-latest {
+    justify-content: flex-start;
   }
 }
 

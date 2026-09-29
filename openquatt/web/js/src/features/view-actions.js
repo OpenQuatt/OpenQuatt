@@ -73,6 +73,22 @@ const viewActionHandlers = {
       }
     });
   },
+  "toggle-trend-series": (button) => {
+    const cardId = button.dataset.trendCard;
+    const seriesId = button.dataset.trendSeries;
+    if (!cardId || !seriesId) {
+      return;
+    }
+    const key = `${cardId}:${seriesId}`;
+    const restoreFocus = typeof document !== "undefined" && document.activeElement === button;
+    state.trendHiddenSeries[key] = !state.trendHiddenSeries[key];
+    render();
+    if (restoreFocus) {
+      const replacement = [...(state.root?.querySelectorAll('[data-oq-action="toggle-trend-series"]') || [])]
+        .find((candidate) => candidate.dataset.trendCard === cardId && candidate.dataset.trendSeries === seriesId);
+      replacement?.focus({ preventScroll: true });
+    }
+  },
   "select-energy-history-view": (button) => {
     if (!button.disabled) {
       setEnergyHistoryView(button.dataset.energyHistoryView || "day");

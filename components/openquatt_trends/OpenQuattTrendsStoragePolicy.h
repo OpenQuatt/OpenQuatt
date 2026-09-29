@@ -6,6 +6,22 @@
 namespace esphome {
 namespace openquatt_trends {
 
+enum class TrendBlockFormat : uint8_t { INVALID = 0U, LEGACY_V1 = 1U, CURRENT_V2 = 2U };
+
+constexpr TrendBlockFormat trend_block_format(uint32_t magic, uint16_t version, uint16_t sample_count,
+                                              uint32_t payload_bytes) {
+  if (magic != 0x4F545247U || sample_count == 0U || sample_count > 12U) {
+    return TrendBlockFormat::INVALID;
+  }
+  if (version == 1U && payload_bytes == static_cast<uint32_t>(sample_count) * 22U) {
+    return TrendBlockFormat::LEGACY_V1;
+  }
+  if (version == 2U && payload_bytes == static_cast<uint32_t>(sample_count) * 26U) {
+    return TrendBlockFormat::CURRENT_V2;
+  }
+  return TrendBlockFormat::INVALID;
+}
+
 struct TrendStorageCapabilities {
   bool ram_history_available;
   bool flash_archive_available;

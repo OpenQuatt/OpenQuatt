@@ -37,7 +37,7 @@ class OpenQuattTrends : public Component {
   float get_setup_priority() const override;
 
   void capture_sample(float outside_c, float supply_c, float room_c, float room_setpoint_c, float flow_lph,
-                      float input_w, float output_w, bool force = false);
+                      float input_w, float output_w, float supply_target_c, float phouse_request_w, bool force = false);
   void set_flash_enabled(bool enabled);
   bool force_flush();
   void clear_history();
@@ -52,7 +52,7 @@ class OpenQuattTrends : public Component {
 
  protected:
   static constexpr uint32_t TAG_MAGIC = 0x4F545247;  // "OTRG"
-  static constexpr uint16_t TAG_VERSION = 1;
+  static constexpr uint16_t TAG_VERSION = 2;
   static constexpr uint32_t SAMPLE_INTERVAL_MS = 5UL * 60UL * 1000UL;
   static constexpr float INTERVAL_DEVIATION_RATIO = 0.05f;
   static constexpr uint32_t RAM_WINDOW_MS = 7UL * 24UL * 60UL * 60UL * 1000UL;
@@ -77,6 +77,8 @@ class OpenQuattTrends : public Component {
     uint16_t flow_lph;
     uint16_t input_w;
     uint16_t output_w;
+    int16_t supply_target_c_x10;
+    uint16_t phouse_request_w;
   };
 
   struct __attribute__((packed)) TrendSample {
@@ -134,9 +136,12 @@ class OpenQuattTrends : public Component {
     uint32_t max_index_update_duration_ms{0};
   };
 
-  static_assert(sizeof(TrendValues) == 14, "TrendValues must stay packed");
-  static_assert(sizeof(TrendSample) == 22, "TrendSample must stay packed");
+  static_assert(sizeof(TrendValues) == 18, "TrendValues must stay packed");
+  static_assert(sizeof(TrendSample) == 26, "TrendSample must stay packed");
   static_assert(sizeof(TrendBlockHeader) == 32, "TrendBlockHeader must stay packed");
+  static_assert(trend_block_format(TAG_MAGIC, TAG_VERSION, FLASH_SAMPLES_PER_BLOCK,
+                                   FLASH_SAMPLES_PER_BLOCK * sizeof(TrendSample)) == TrendBlockFormat::CURRENT_V2,
+                "Trend block format policy must match the stored sample layout");
   static_assert(sizeof(TrendBlockHeader) + (FLASH_SAMPLES_PER_BLOCK * sizeof(TrendSample)) <= FLASH_SLOT_SIZE,
                 "Trend block must fit in one flash slot");
 
@@ -160,7 +165,7 @@ class OpenQuattTrends : public Component {
   static void update_last_saved_metric_(IntervalMetricState& state, float value);
 
   TrendValues pack_values_(float outside_c, float supply_c, float room_c, float room_setpoint_c, float flow_lph,
-                           float input_w, float output_w) const;
+                           float input_w, float output_w, float supply_target_c, float phouse_request_w) const;
   TrendSample make_sample_(uint64_t timestamp_ms, const TrendValues& values) const;
 
   void sync_time_state_();
@@ -182,7 +187,8 @@ class OpenQuattTrends : public Component {
   void record_flash_index_update_(uint32_t duration_ms);
   FlashIOMetrics snapshot_flash_io_metrics_();
   bool read_flash_block_(uint32_t slot_index, uint32_t expected_sequence, FlashBlockInfo* info,
-                         std::array<TrendSample, FLASH_SAMPLES_PER_BLOCK>* samples) const;
+                         std::array<TrendSample, FLASH_SAMPLES_PER_BLOCK>* samples, bool* legacy_format_found = nullptr,
+                         bool* read_failure = nullptr) const;
   bool update_flash_index_after_write_(const FlashBlockInfo& info, bool erased_sector);
   void rebuild_flash_metadata_from_index_();
   void invalidate_flash_index_();
@@ -215,6 +221,7 @@ class OpenQuattTrends : public Component {
   bool flash_archive_scanned_{false};
   bool flash_archive_seeded_{false};
   bool flash_dirty_{false};
+  bool flash_archive_blocked_{false};
 
   uint32_t next_flash_sequence_{0};
   uint32_t last_capture_ms_{0};
