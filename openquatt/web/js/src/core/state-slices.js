@@ -128,6 +128,7 @@ export function createSettingsState() {
     settingsSourceDetailOpen: false,
     settingsAdvancedOpen: {},
     simpleCurveDraft: null,
+    curvePointDraft: null,
     simpleCurveApplying: false,
     pendingControlModeOverride: "",
     installationMonitoringDetailsOpen: false,

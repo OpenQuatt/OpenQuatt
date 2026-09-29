@@ -32,7 +32,7 @@ import { handleWebServerLogAction } from "../features/webserver-logs.js";
 import { handleEnergyHistoryPointerMove, setEnergyHistoryPeriodValue } from "../views/energy.js";
 import { escapeHtml } from "./html.js";
 import { render } from "./render-scheduler.js";
-import { updateSimpleCurveDraft } from "./simple-curve.js";
+import { updateCurvePointDraft, updateSimpleCurveDraft } from "./simple-curve.js";
 import { renderSimpleCurvePreview } from "../settings/heating.js";
 
 const actionDelegates = [
@@ -414,6 +414,12 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleChange(event) {
+    if (event.target.dataset.oqCurvePointInput) {
+      const key = event.target.dataset.oqCurvePointInput;
+      updateCurvePointDraft(key, event.target.value);
+      render();
+      return;
+    }
     if (event.target.dataset.oqOduSettingsHp) {
       updateOduSettingsDraft(event.target);
       return;
@@ -659,7 +665,7 @@ function updateFrequencyRangeControl(input) {
     }
 
     const point = event.target.closest("[data-curve-key]");
-    if (!point || !isCurveMode()) {
+    if (!point || !isCurveMode() || state.simpleCurveApplying || state.loadingEntities) {
       return;
     }
 
@@ -693,8 +699,6 @@ function updateFrequencyRangeControl(input) {
       return;
     }
 
-    const key = state.draggingCurveKey;
-    const value = normalizeNumber(key, getEntityValue(key));
     state.draggingCurveKey = "";
-    commitNumber(key, value, "Curvepunt bijgewerkt.");
+    render();
   }

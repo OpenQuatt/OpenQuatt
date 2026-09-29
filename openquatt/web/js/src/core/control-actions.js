@@ -10,7 +10,7 @@ import { getBasePath } from "./url-path.js";
 import { getHeatingEnableRecommendation } from "./heating-strategy-matrix.js";
 import { t } from "../i18n/index.js";
 import { state } from "./state.js";
-import { applySimpleCurveBatch, applySimpleCurvePoints, generateSimpleCurve, getSimpleCurveDraft } from "./simple-curve.js";
+import { applySimpleCurveBatch, applySimpleCurvePoints, getCurvePointDraft } from "./simple-curve.js";
 import { render } from "./render-scheduler.js";
 
 async function commitConfirmedSelection(key, value, commit, confirm) {
@@ -82,6 +82,7 @@ export async function commitQuickStartStrategySelection(option, commit = commitS
 }
 
 async function submitSimpleCurveBatch(points) {
+  if (__OQ_PREVIEW__) return "unsupported";
   const statusResponse = await fetchWithTimeout("/auth/status", { cache: "no-store" }, 8000);
   if (!statusResponse.ok) return "rejected";
   const csrfToken = String((await statusResponse.json()).csrf_token || "");
@@ -102,28 +103,30 @@ async function submitSimpleCurveBatch(points) {
 const controlActionHandlers = {
   "apply-simple-curve": async () => {
     if (state.simpleCurveApplying) return false;
-    const points = generateSimpleCurve(getSimpleCurveDraft().slope, getSimpleCurveDraft().level);
+    const points = getCurvePointDraft();
     const originals = CURVE_POINTS.map((point) => {
       const value = getEntityValue(point.key);
       return value == null || value === "" ? NaN : Number(value);
     });
-    if (!points || originals.some((value) => !Number.isFinite(value))) return false;
+    if (!points || points.some((point) => !Number.isFinite(point.value)) || originals.some((value) => !Number.isFinite(value))) return false;
+    state.draggingCurveKey = "";
     state.simpleCurveApplying = true;
     render();
     const batch = await applySimpleCurveBatch(points, submitSimpleCurveBatch,
       () => refreshEntities(CURVE_POINTS.map((point) => point.key), "state"), getEntityValue);
     const result = batch.unsupported
       ? await applySimpleCurvePoints(points, originals,
-        async (key, value) => (await commitNumber(key, value)) && !state.controlError,
+        (key, value) => commitNumber(key, value),
         getEntityValue)
       : batch;
     if (!result.applied) {
       state.controlError = batch.unsupported
         ? t(result.restored ? "settingsHeating.simpleApplyFailed" : "settingsHeating.simpleRestoreFailed")
         : t("settingsHeating.simpleApplyUnconfirmed");
-    } else {
-      state.simpleCurveDraft = null;
-      state.controlNotice = t("settingsHeating.simpleApplied");
+      } else {
+        state.simpleCurveDraft = null;
+        state.curvePointDraft = null;
+        state.controlNotice = t("settingsHeating.simpleApplied");
     }
     state.simpleCurveApplying = false;
     render();

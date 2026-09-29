@@ -14,15 +14,23 @@ export function generateSimpleCurve(slope, level) {
 
 export function getSimpleCurveDraft() {
   if (state.simpleCurveDraft) return state.simpleCurveDraft;
-  const zeroValue = getEntityValue("curve0");
-  const minusTenValue = getEntityValue("curveM10");
-  const atZero = zeroValue == null || zeroValue === "" ? NaN : Number(zeroValue);
-  const atMinusTen = minusTenValue == null || minusTenValue === "" ? NaN : Number(minusTenValue);
+  const points = getCurvePointDraft();
+  const atZero = points[2].value;
+  const atMinusTen = points[1].value;
   return {
     slope: Number.isFinite(atZero) && Number.isFinite(atMinusTen)
       ? Math.max(0, Math.min(15, Math.round((atMinusTen - atZero) * 2) / 2)) : 5,
     level: Number.isFinite(atZero) ? Math.max(20, Math.min(70, atZero)) : 45,
   };
+}
+
+export function getCurvePointDraft() {
+  const values = state.curvePointDraft;
+  if (!values && state.simpleCurveDraft) return generateSimpleCurve(state.simpleCurveDraft.slope, state.simpleCurveDraft.level);
+  return CURVE_POINTS.map((point, index) => {
+    const raw = values ? values[index] : getEntityValue(point.key);
+    return { ...point, value: raw === null || raw === undefined || raw === "" ? NaN : Number(raw) };
+  });
 }
 
 export function updateSimpleCurveDraft(part, rawValue) {
@@ -32,6 +40,21 @@ export function updateSimpleCurveDraft(part, rawValue) {
   const next = { ...current, [part]: value };
   if (!generateSimpleCurve(next.slope, next.level)) return false;
   state.simpleCurveDraft = next;
+  state.curvePointDraft = generateSimpleCurve(next.slope, next.level).map((point) => point.value);
+  return true;
+}
+
+export function updateCurvePointDraft(key, rawValue) {
+  const index = CURVE_POINTS.findIndex((point) => point.key === key);
+  if (index < 0 || rawValue === "" || rawValue === null || rawValue === undefined) return false;
+  const numeric = Number(rawValue);
+  if (!Number.isFinite(numeric)) return false;
+  const value = Math.max(20, Math.min(70, Math.round(numeric * 2) / 2));
+  const values = getCurvePointDraft().map((point) => point.value);
+  if (values[index] === value) return false;
+  values[index] = value;
+  state.curvePointDraft = values;
+  state.simpleCurveDraft = null;
   return true;
 }
 

@@ -8,8 +8,9 @@ globalThis.window = { localStorage: { getItem: () => null } };
 const { CURVE_POINTS } = await import("../js/src/core/config.js");
 const { INITIAL_SETTINGS_READY_KEY_MAP, SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
 const { state } = await import("../js/src/core/state.js");
-const { applySimpleCurveBatch, applySimpleCurvePoints, generateSimpleCurve, getSimpleCurveDraft, updateSimpleCurveDraft } = await import("../js/src/core/simple-curve.js");
-const { renderCurveGraph, renderSettingsCurveInputs, renderSimpleCurvePreview } = await import("../js/src/settings/heating.js");
+const { normalizeNumber } = await import("../js/src/core/entity-store.js");
+const { applySimpleCurveBatch, applySimpleCurvePoints, generateSimpleCurve, getCurvePointDraft, getSimpleCurveDraft, updateCurvePointDraft, updateSimpleCurveDraft } = await import("../js/src/core/simple-curve.js");
+const { renderSettingsCurveInputs, renderSimpleCurvePreview } = await import("../js/src/settings/heating.js");
 
 test("Simple genereert precies de zes canonieke curvepunten met begrenzing", () => {
   const points = generateSimpleCurve(5, 40);
@@ -20,27 +21,49 @@ test("Simple genereert precies de zes canonieke curvepunten met begrenzing", () 
   assert.equal(generateSimpleCurve(Number.NaN, 40), null);
 });
 
-test("Simple toont live preview en Advanced houdt de zes handmatige velden", () => {
+test("curvepunten behouden halve graden zonder geladen nummermetadata", () => {
+  state.entities = { curve5: { value: 34 } };
+  assert.equal(normalizeNumber("curve5", 44.5), 44.5);
+  assert.equal(normalizeNumber("curve5", 70.5), 70);
+});
+
+test("één editor toont opgeslagen punten, basislijn en handmatige wijzigingen", () => {
   state.simpleCurveDraft = null;
+  state.curvePointDraft = null;
   state.entities = Object.fromEntries(CURVE_POINTS.map((point, index) => [point.key, { value: [55, 50, 45, 42.5, 40, 37.5][index] }]));
+  assert.deepEqual(getCurvePointDraft().map((point) => point.value), [55, 50, 45, 42.5, 40, 37.5]);
+  assert.match(renderSimpleCurvePreview(), /Opgeslagen punten/);
   assert.deepEqual(getSimpleCurveDraft(), { slope: 5, level: 45 });
   assert.equal(updateSimpleCurveDraft("level", "40"), true);
-  assert.match(renderSimpleCurvePreview(), /<small>0°C<\/small><strong>40\.0°<\/strong>/);
+  assert.deepEqual(getCurvePointDraft().map((point) => point.value), [50, 45, 40, 37.5, 35, 32.5]);
+  assert.equal(updateCurvePointDraft("curve5", 44), true);
+  assert.deepEqual(getCurvePointDraft().map((point) => point.value), [50, 45, 40, 44, 35, 32.5]);
+  assert.equal(updateCurvePointDraft("curve5", 44.25), true);
+  assert.equal(getCurvePointDraft()[3].value, 44.5);
+  assert.match(renderSimpleCurvePreview(), /Wijzigingen nog niet opgeslagen/);
+  assert.deepEqual(getSimpleCurveDraft(), { slope: 5, level: 40 });
   const markup = renderSettingsCurveInputs();
   assert.match(markup, /data-oq-action="apply-simple-curve"/);
   assert.match(markup, /oq-simple-curve-workspace/);
   assert.doesNotMatch(markup, /maxWater/);
-  assert.match(markup, /data-oq-settings-advanced="curve-points"/);
-  for (const point of CURVE_POINTS) assert.match(markup, new RegExp(point.key));
+  assert.doesNotMatch(markup, /data-oq-settings-advanced="curve-points"/);
+  assert.equal((markup.match(/oq-helper-curve-svg/g) || []).length, 1);
+  for (const point of CURVE_POINTS) assert.match(markup, new RegExp(`data-oq-curve-point-input="${point.key}"`));
+  assert.equal(updateSimpleCurveDraft("slope", "6"), true);
+  assert.deepEqual(getCurvePointDraft().map((point) => point.value), [52, 46, 40, 37, 34, 31]);
+  state.curvePointDraft = null;
+  state.simpleCurveDraft = null;
 });
 
 test("voorbeeld toont de installatiegrens zonder hogere opgeslagen curvepunten te verbergen", () => {
   assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.heating.includes("maxWater"));
   assert.ok(SETTINGS_GROUP_KEY_MAP.heating.includes("maxWater"));
+  state.curvePointDraft = null;
   state.simpleCurveDraft = { slope: 15, level: 40 };
   state.entities = { maxWater: { value: 60 } };
   const preview = renderSimpleCurvePreview();
-  assert.match(preview, /<small>-20°C<\/small><strong>60\.0°<\/strong><small>onbegrensd 70\.0°<\/small>/);
+  assert.match(preview, /value="70\.0" data-oq-curve-point-input="curveM20"/);
+  assert.match(preview, /begrensd 60\.0°/);
   assert.match(preview, /stroke-dasharray="4 4"/);
   assert.match(preview, />70°C<\/text>/);
   assert.doesNotMatch(preview, /<text[^>]*>−20°C<\/text>/);
@@ -53,11 +76,8 @@ test("voorbeeld toont de installatiegrens zonder hogere opgeslagen curvepunten t
   assert.equal(positions.length, 7);
   assert.equal(positions[0][1], positions[1][1]);
   assert.ok(positions[0][0] < positions[1][0] && positions[1][0] < positions[2][0]);
-  state.entities.curveM20 = { value: 64 };
-  const manual = renderCurveGraph();
-  assert.match(manual, /class="oq-simple-curve-chart oq-helper-curve-svg"/);
-  assert.match(manual, /data-curve-key="curveM20"/);
-  assert.match(manual, /begrensd 60\.0°/);
+  assert.match(preview, /class="oq-simple-curve-chart oq-helper-curve-svg"/);
+  assert.match(preview, /data-curve-key="curveM20"/);
   assert.doesNotMatch(preview, /is-zero/);
   state.simpleCurveDraft = null;
 });

@@ -2241,12 +2241,12 @@
       ["Aux Relay Heating Start Temp", 30, 20, 60, 0.5, "°C"],
       ["Aux Relay Cooling Start Temp", 18, 8, 25, 0.5, "°C"],
       ["Aux Relay Temp Hysteresis", 2, 0.5, 5, 0.5, "°C"],
-      ["Curve Tsupply @ -20°C", 48, 20, 70, 1, "°C"],
-      ["Curve Tsupply @ -10°C", 43, 20, 70, 1, "°C"],
-      ["Curve Tsupply @ 0°C", 38, 20, 70, 1, "°C"],
-      ["Curve Tsupply @ 5°C", 34, 20, 70, 1, "°C"],
-      ["Curve Tsupply @ 10°C", 30, 20, 70, 1, "°C"],
-      ["Curve Tsupply @ 15°C", 27, 20, 70, 1, "°C"],
+      ["Curve Tsupply @ -20°C", 48, 20, 70, 0.5, "°C"],
+      ["Curve Tsupply @ -10°C", 43, 20, 70, 0.5, "°C"],
+      ["Curve Tsupply @ 0°C", 38, 20, 70, 0.5, "°C"],
+      ["Curve Tsupply @ 5°C", 34, 20, 70, 0.5, "°C"],
+      ["Curve Tsupply @ 10°C", 30, 20, 70, 0.5, "°C"],
+      ["Curve Tsupply @ 15°C", 27, 20, 70, 0.5, "°C"],
       ["Curve Fallback Tsupply (No Outside Temp)", 40, 25, 70, 0.5, "°C"],
     ].forEach(([name, value, min, max, step, uom]) => {
       setEntity("number", name, {

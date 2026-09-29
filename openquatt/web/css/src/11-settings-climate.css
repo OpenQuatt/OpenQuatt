@@ -74,8 +74,7 @@
 }
 
 .oq-settings-grid,
-.oq-settings-hp-group-grid,
-.oq-settings-curve-grid {
+.oq-settings-hp-group-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
@@ -84,10 +83,6 @@
 
 .oq-settings-grid--pid {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
-}
-
-.oq-settings-curve-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .oq-simple-curve-editor {
@@ -172,6 +167,13 @@
   font-size: 0.78rem;
 }
 
+.oq-curve-edit-state {
+  margin: 0 0 4px;
+  color: var(--oq-helper-soft);
+  font-size: 0.75rem;
+}
+.oq-curve-edit-state.is-pending { color: var(--oq-helper-accent-deep); }
+
 .oq-simple-curve-chart {
   display: block;
   width: 100%;
@@ -183,22 +185,47 @@
 .oq-simple-curve-area { fill: rgba(234, 88, 12, 0.07); }
 .oq-simple-curve-line { fill: none; stroke: var(--oq-helper-accent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .oq-simple-curve-point { fill: var(--oq-helper-card); stroke: var(--oq-helper-accent); stroke-width: 2.5; }
-.oq-simple-curve-point.oq-helper-curve-point { cursor: ns-resize; touch-action: none; }
+.oq-simple-curve-hit { fill: transparent; cursor: ns-resize; touch-action: none; }
+.oq-simple-curve-point.oq-helper-curve-point { pointer-events: none; }
 .oq-simple-curve-point.oq-helper-curve-point.is-dragging { fill: var(--oq-helper-accent); }
-
-.oq-simple-curve-manual-chart { max-width: 860px; margin: 22px auto 0; }
-.oq-settings-curve-shell .oq-simple-curve-manual { margin-top: 0; }
 
 .oq-simple-curve-points {
   position: relative;
-  height: 52px;
-  margin-top: 4px;
+  height: 84px;
+  margin-top: 8px;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
-.oq-simple-curve-points span { position: absolute; top: 0; transform: translateX(-50%); display: grid; gap: 2px; width: max-content; }
+.oq-simple-curve-points label { position: absolute; top: 0; transform: translateX(-50%); display: grid; justify-items: center; gap: 5px; width: 68px; }
 .oq-simple-curve-points small { color: var(--oq-helper-soft); font-size: 0.7rem; }
+.oq-simple-curve-point-entry {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 5px 4px;
+  border: 1px solid var(--oq-settings-inset-border);
+  border-radius: 8px;
+  background: var(--oq-helper-card);
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+.oq-simple-curve-point-entry:focus-within { border-color: var(--oq-helper-accent); outline: 2px solid rgba(234, 88, 12, 0.14); }
+.oq-simple-curve-point-entry input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  appearance: textfield;
+}
+.oq-simple-curve-point-entry input:focus { outline: 0; }
+.oq-simple-curve-point-entry input::-webkit-inner-spin-button,
+.oq-simple-curve-point-entry input::-webkit-outer-spin-button { appearance: none; margin: 0; }
 
 .oq-simple-curve-breakdown {
   display: grid;
@@ -229,8 +256,8 @@
 @media (max-width: 560px) {
   .oq-simple-curve-editor { padding: 18px; }
   .oq-simple-curve-visual-heading { display: grid; gap: 2px; }
-  .oq-simple-curve-points { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 6px; height: auto; }
-  .oq-simple-curve-points span { position: static; transform: none; width: auto; overflow-wrap: anywhere; }
+  .oq-simple-curve-points { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 8px; height: auto; }
+  .oq-simple-curve-points label { position: static; transform: none; width: 100%; }
   .oq-simple-curve-breakdown { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 }
 

@@ -10,6 +10,7 @@ import {
   postIncidentActionRequest,
 } from "./incident-monitoring.js";
 import { setAppView } from "./navigation.js";
+import { updateCurvePointDraft } from "./simple-curve.js";
 import { render } from "./render-scheduler.js";
 import { t } from "../i18n/index.js";
 import { clearQuickStartSetupInstall, state } from "./state.js";
@@ -916,10 +917,7 @@ export function updateCurveDraftFromPointer(clientY) {
   const localY = ((clientY - rect.top) / rect.height) * 186;
   const clampedY = Math.min(plotTop + plotHeight, Math.max(plotTop, localY));
   const value = 70 - ((clampedY - plotTop) / plotHeight) * 50;
-  const normalized = normalizeNumber(state.draggingCurveKey, value);
-
-  if (String(getEntityValue(state.draggingCurveKey)) !== String(normalized)) {
-    state.drafts[state.draggingCurveKey] = normalized;
+  if (updateCurvePointDraft(state.draggingCurveKey, value)) {
     render();
   }
 }

@@ -10,7 +10,7 @@ import { getDeviceMeta, getFirmwareBuildConnection, getInstallationTopology } fr
 import { getFirmwareBuildSwitchModel, getFirmwareChannelLabel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareProgressModel, getFirmwareUpdateEntity, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, isQuickStartSetupFirmwareCurrent, reconcileStoredQuickStartSetupInstall } from "./firmware-update.js";
 import { getOduGenerationDetectionModel } from "./odu-generation-ui.js";
 import { formatSettingsOptionLabel, renderSettingsFieldCard, renderSettingsInfoToggle } from "../settings/controls.js";
-import { renderCurveGraph, renderFlowSettingsFields, renderHeatingCurveProfileField, renderHeatingStrategyExplainCards, renderPowerHouseAdvancedField, renderPowerHouseBaseFields, renderSettingsCurveInputs, renderStrategySelectionFields } from "../settings/heating.js";
+import { renderFlowSettingsFields, renderHeatingCurveProfileField, renderHeatingStrategyExplainCards, renderPowerHouseAdvancedField, renderPowerHouseBaseFields, renderSettingsCurveInputs, renderStrategySelectionFields } from "../settings/heating.js";
 import { getHeatingEnableAdvice } from "../core/heating-strategy-matrix.js";
 import { renderBoilerCvFields, renderHpGenerationField } from "../settings/installation.js";
 import { renderSilentSettingsGrid } from "../settings/silent.js";
