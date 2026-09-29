@@ -90,6 +90,8 @@ Voor `Water Temperature Control` zijn vooral belangrijk:
 - `Curve Fallback Tsupply (No Outside Temp)`
 - `Heating Curve PID Kp/Ki/Kd`
 
+Met **Stooklijn toepassen** stuurt de webinterface de zes gegenereerde curvepunten in één verzoek. De controller valideert ze samen en werkt ze in één hoofdloopstap bij. Handmatig verslepen of invoeren wijzigt één punt per keer. De zes punten blijven afzonderlijk opgeslagen voor herstart; een stroomuitval tijdens het opslaan kan daardoor een gedeeltelijk bijgewerkte curve achterlaten.
+
 Voor beide strategieën blijft belangrijk:
 
 - `Maximum water temperature`

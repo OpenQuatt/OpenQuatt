@@ -691,6 +691,7 @@ export default {
     simpleApplied: "Zes stooklijnpunten bijgewerkt.",
     simpleApplyFailed: "De stooklijn kon niet worden toegepast; de vorige punten zijn hersteld.",
     simpleRestoreFailed: "De stooklijn kon niet volledig worden toegepast of hersteld. Controleer alle zes punten op de regelaar.",
+    simpleApplyUnconfirmed: "De zes curvepunten konden niet samen worden bevestigd. Controleer de waarden op de regelaar.",
     pointsTitle: "Zes curvepunten handmatig aanpassen",
     pointsCopy: "Versleep de punten of voer hieronder precieze waarden in. Stooklijn toepassen vervangt weer alle zes punten.",
     baseTargetLabel: "Basisdoel",

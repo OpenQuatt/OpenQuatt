@@ -32,6 +32,14 @@ openquatt_debug_recorder:
 
 openquatt_entities:
   id: oq_entities
+  web_auth: oq_web_auth_store
+  curve_points:
+    - curve_tsupply_m20
+    - curve_tsupply_m10
+    - curve_tsupply_0
+    - curve_tsupply_5
+    - curve_tsupply_10
+    - curve_tsupply_15
 
 openquatt_decision_log:
   id: oq_decision_log

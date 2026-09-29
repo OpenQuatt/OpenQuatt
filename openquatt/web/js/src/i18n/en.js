@@ -691,6 +691,7 @@ export default {
     simpleApplied: "Six heating curve points updated.",
     simpleApplyFailed: "The curve could not be applied; the previous points were restored.",
     simpleRestoreFailed: "The curve could not be applied or fully restored. Check all six points on the controller.",
+    simpleApplyUnconfirmed: "The six curve points could not be confirmed together. Check their values on the controller.",
     pointsTitle: "Adjust six curve points manually",
     pointsCopy: "Drag the points or enter precise values below. Apply heating curve will replace all six points again.",
     baseTargetLabel: "Base target",

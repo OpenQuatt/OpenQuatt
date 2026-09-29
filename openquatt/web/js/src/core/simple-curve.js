@@ -54,3 +54,27 @@ export async function applySimpleCurvePoints(points, originals, write, read) {
   if (restored) restored = CURVE_POINTS.every((point, index) => Number(read(point.key)) === originals[index]);
   return { applied: false, restored };
 }
+
+export async function applySimpleCurveBatch(points, submit, refresh, read, wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))) {
+  let result;
+  try {
+    result = await submit(points);
+  } catch (_error) {
+    // The request may have reached the controller even when its reply was lost.
+  }
+  if (result === "unsupported") return { applied: false, unsupported: true };
+  if (result === "rejected") return { applied: false, unsupported: false };
+
+  for (let attempt = 0; attempt < 5; ++attempt) {
+    try {
+      await refresh();
+    } catch (_error) {
+      // Retry the read; a successful POST alone does not confirm the values.
+    }
+    if (points.every((point) => Number(read(point.key)) === point.value)) {
+      return { applied: true, unsupported: false };
+    }
+    if (attempt < 4) await wait(150);
+  }
+  return { applied: false, unsupported: false };
+}

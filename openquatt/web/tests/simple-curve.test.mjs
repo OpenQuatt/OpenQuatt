@@ -8,7 +8,7 @@ globalThis.window = { localStorage: { getItem: () => null } };
 const { CURVE_POINTS } = await import("../js/src/core/config.js");
 const { INITIAL_SETTINGS_READY_KEY_MAP, SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
 const { state } = await import("../js/src/core/state.js");
-const { applySimpleCurvePoints, generateSimpleCurve, getSimpleCurveDraft, updateSimpleCurveDraft } = await import("../js/src/core/simple-curve.js");
+const { applySimpleCurveBatch, applySimpleCurvePoints, generateSimpleCurve, getSimpleCurveDraft, updateSimpleCurveDraft } = await import("../js/src/core/simple-curve.js");
 const { renderCurveGraph, renderSettingsCurveInputs, renderSimpleCurvePreview } = await import("../js/src/settings/heating.js");
 
 test("Simple genereert precies de zes canonieke curvepunten met begrenzing", () => {
@@ -94,4 +94,43 @@ test("Simple meldt onzeker herstel als een terugschrijfopdracht faalt", async ()
     return writes !== 2;
   }, (key) => remote.get(key));
   assert.deepEqual(result, { applied: false, restored: false });
+});
+
+test("batch past alle zes curvepunten met één verzoek toe en bevestigt de teruglezing", async () => {
+  const points = generateSimpleCurve(5, 40);
+  const remote = new Map();
+  let submissions = 0;
+  let refreshes = 0;
+  const result = await applySimpleCurveBatch(points, async (values) => {
+    submissions += 1;
+    for (const point of values) remote.set(point.key, point.value);
+    return "accepted";
+  }, async () => { refreshes += 1; }, (key) => remote.get(key), async () => {});
+  assert.deepEqual(result, { applied: true, unsupported: false });
+  assert.equal(submissions, 1);
+  assert.equal(refreshes, 1);
+});
+
+test("batch controleert ook na een verloren antwoord en meldt onzekere gedeeltelijke toestand", async () => {
+  const points = generateSimpleCurve(5, 40);
+  const remote = new Map();
+  const recovered = await applySimpleCurveBatch(points, async () => {
+    for (const point of points) remote.set(point.key, point.value);
+    throw new Error("lost acknowledgement");
+  }, async () => {}, (key) => remote.get(key), async () => {});
+  assert.equal(recovered.applied, true);
+
+  remote.delete(points[5].key);
+  let refreshes = 0;
+  const uncertain = await applySimpleCurveBatch(points, async () => "accepted",
+    async () => { refreshes += 1; }, (key) => remote.get(key), async () => {});
+  assert.deepEqual(uncertain, { applied: false, unsupported: false });
+  assert.equal(refreshes, 5);
+  assert.equal(remote.has(points[5].key), false);
+});
+
+test("ontbrekende batchendpoint schakelt expliciet over naar de oudere route", async () => {
+  const result = await applySimpleCurveBatch(generateSimpleCurve(5, 40), async () => "unsupported",
+    async () => { throw new Error("refresh should not run"); }, () => NaN, async () => {});
+  assert.deepEqual(result, { applied: false, unsupported: true });
 });
