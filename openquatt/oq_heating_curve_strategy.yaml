@@ -10,6 +10,10 @@ globals:
     restore_value: false
     initial_value: 'false'
 
+  - {id: oq_curve_base_target_c, type: float, restore_value: false, initial_value: 'NAN'}
+  - {id: oq_curve_modifier_applied_k, type: float, restore_value: false, initial_value: '0.0'}
+  - {id: oq_curve_room_trim_k, type: float, restore_value: false, initial_value: '0.0'}
+
   # Continuous PID-derived demand before integer quantization or request guardrails.
   - id: oq_curve_demand_continuous
     type: float
@@ -357,7 +361,49 @@ sensor:
     accuracy_decimals: 1
     update_interval: 10s
     lambda: |-
-      return oq_heating_curve_runtime::runtime().supply_target();
+      return oq_heating_curve_runtime::runtime().supply_target((uint32_t) ${ha_heating_curve_modifier_stale_s}UL);
+
+  - platform: template
+    id: oq_curve_base_target_sensor
+    name: "Heating Curve Base Target"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 10s
+    lambda: |-
+      return id(oq_curve_base_target_c);
+
+  - platform: template
+    id: oq_curve_modifier_sensor
+    name: "Heating Curve Modifier"
+    unit_of_measurement: "K"
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 10s
+    lambda: |-
+      return id(oq_curve_modifier_applied_k);
+
+  - platform: template
+    id: oq_curve_room_trim_sensor
+    name: "Heating Curve Room Trim"
+    unit_of_measurement: "K"
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 10s
+    lambda: |-
+      return -id(oq_curve_room_trim_k);
+
+  - platform: template
+    id: oq_curve_effective_target_sensor
+    name: "Heating Supply Target (Effective)"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 10s
+    lambda: |-
+      return oq_heating_curve_runtime::runtime().effective_supply_target(id(oq_supply_target_temp).state);
 
   - platform: template
     id: oq_curve_demand_continuous_sensor

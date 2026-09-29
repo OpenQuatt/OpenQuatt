@@ -77,7 +77,7 @@ class InputSourceRuntimeContractTest(unittest.TestCase):
             "oq_sensor_source::runtime().heating_supply_target(",
         ):
             self.assertIn(call, SOURCE_YAML)
-        self.assertEqual(API_YAML.count("oq_api_ingress::runtime().observe("), 10)
+        self.assertEqual(API_YAML.count("oq_api_ingress::runtime().observe("), 11)
         self.assertIn("oq_api_ingress::runtime().tick(", API_YAML)
 
     def test_stateful_decisions_live_in_cpp(self) -> None:

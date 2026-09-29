@@ -258,6 +258,7 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
       mqttRoomTemperature: "room_temperature",
       mqttRoomSetpoint: "room_setpoint",
       mqttHeatingSupplyTarget: "heating_supply_target",
+      mqttHeatingCurveModifier: "heating_curve_modifier",
       mqttHeatingEnable: "heating_enable",
       mqttCoolingEnable: "cooling_enable",
     };
@@ -267,6 +268,7 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
       room_temperature: "mqttRoomTemperatureValid",
       room_setpoint: "mqttRoomSetpointValid",
       heating_supply_target: "mqttHeatingSupplyTargetValid",
+      heating_curve_modifier: "mqttHeatingCurveModifierValid",
       heating_enable: "mqttHeatingEnableValid",
       cooling_enable: "mqttCoolingEnableValid",
     };
@@ -1103,6 +1105,20 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
           ...renderExternalSourceRows("heatingSupplyTargetSource", heatingSupplyTargetUsedSource, buildExternalSourceKeys("heatingSupplyTarget", "HeatingSupplyTarget")),
         ],
       }),
+      buildSourceSignal({
+        key: "heating-curve-modifier",
+        group: "heating",
+        title: t("settingsIntegrations.sigCurveModifier"),
+        icon: "target",
+        select: buildExternalSourceSelect("heatingCurveModifier", "HeatingCurveModifier", "heating_curve_modifier", {
+          infoCopy: t("settingsIntegrations.curveModifierInfo"),
+        }),
+        summaryValue: getSettingsStatValue("curveModifier"),
+        summarySource: formattedSourceValue("heatingCurveModifierSource"),
+        measurementRows: [
+          ...renderExternalSourceRows("heatingCurveModifierSource", formattedSourceValue("heatingCurveModifierSource"), buildExternalSourceKeys("heatingCurveModifier", "HeatingCurveModifier")),
+        ],
+      }),
     ].filter(Boolean);
 
     if (!sourceSignals.length) {
@@ -1112,7 +1128,7 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
     const sourceCategories = [
       { id: "room-outside", title: t("settingsIntegrations.catRoomOutside"), icon: "home-cog", keys: ["room-temperature", "room-setpoint", "outside-temperature"] },
       { id: "water-circuit", title: t("settingsIntegrations.catWater"), icon: "droplet", keys: ["water-supply", "flow-source"] },
-      { id: "heating", title: t("settingsIntegrations.catHeating"), icon: "flame", keys: ["external-heat-demand", "heating-supply-target", "heating-enable"] },
+      { id: "heating", title: t("settingsIntegrations.catHeating"), icon: "flame", keys: ["external-heat-demand", "heating-supply-target", "heating-curve-modifier", "heating-enable"] },
       { id: "cooling", title: t("settingsIntegrations.catCooling"), icon: "snowflake", keys: ["cooling-enable", "cooling-dew-point"] },
     ];
     const signalByKey = new Map(sourceSignals.map((signal) => [signal.key, signal]));

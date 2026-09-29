@@ -1,4 +1,5 @@
 import { invokeActionMap } from "./action-router.js";
+import { CURVE_POINTS } from "./config.js";
 import { hasEntity } from "./app-shared.js";
 import { verifyEntityBackupSelectState } from "./entity-backup.js";
 import { getCurveFallbackSuggestion, getEntityValue } from "./entity-store.js";
@@ -6,6 +7,8 @@ import { commitNumber, commitSelect, commitSwitch, triggerButton } from "./entit
 import { getHeatingEnableRecommendation } from "./heating-strategy-matrix.js";
 import { t } from "../i18n/index.js";
 import { state } from "./state.js";
+import { applySimpleCurvePoints, generateSimpleCurve, getSimpleCurveDraft } from "./simple-curve.js";
+import { render } from "./render-scheduler.js";
 
 async function commitConfirmedSelection(key, value, commit, confirm) {
   const writeAccepted = await commit(key, value);
@@ -76,6 +79,30 @@ export async function commitQuickStartStrategySelection(option, commit = commitS
 }
 
 const controlActionHandlers = {
+  "apply-simple-curve": async () => {
+    if (state.simpleCurveApplying) return false;
+    const points = generateSimpleCurve(getSimpleCurveDraft().slope, getSimpleCurveDraft().level);
+    const originals = CURVE_POINTS.map((point) => {
+      const value = getEntityValue(point.key);
+      return value == null || value === "" ? NaN : Number(value);
+    });
+    if (!points || originals.some((value) => !Number.isFinite(value))) return false;
+    state.simpleCurveApplying = true;
+    render();
+    const result = await applySimpleCurvePoints(points, originals,
+      async (key, value) => (await commitNumber(key, value)) && !state.controlError,
+      getEntityValue);
+    if (!result.applied) {
+      const restored = result.restored;
+      state.controlError = t(restored ? "settingsHeating.simpleApplyFailed" : "settingsHeating.simpleRestoreFailed");
+    } else {
+      state.simpleCurveDraft = null;
+      state.controlNotice = t("settingsHeating.simpleApplied");
+    }
+    state.simpleCurveApplying = false;
+    render();
+    return result.applied;
+  },
   "select-settings-option": async (button) => {
     const key = button.dataset.selectKey || "";
     const option = button.dataset.selectOption || "";

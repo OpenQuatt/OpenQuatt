@@ -7,6 +7,7 @@ OpenQuatt heeft geen volledige MQTT-export. De firmware gebruikt wel een kleine 
 - kamertemperatuur;
 - kamer-setpoint;
 - aanvoertarget;
+- stooklijnmodifier;
 - warmtetoestemming;
 - koeltoestemming.
 
@@ -41,6 +42,7 @@ openquatt/<device_name>/input/weather/outdoor_temperature
 openquatt/<device_name>/input/thermostat/room_temperature
 openquatt/<device_name>/input/thermostat/room_setpoint
 openquatt/<device_name>/input/heating/supply_target
+openquatt/<device_name>/input/heating/curve_modifier
 openquatt/<device_name>/input/thermostat/heating_enable
 openquatt/<device_name>/input/thermostat/cooling_enable
 ```
@@ -53,6 +55,7 @@ openquatt/openquatt/input/weather/outdoor_temperature
 openquatt/openquatt/input/thermostat/room_temperature
 openquatt/openquatt/input/thermostat/room_setpoint
 openquatt/openquatt/input/heating/supply_target
+openquatt/openquatt/input/heating/curve_modifier
 openquatt/openquatt/input/thermostat/heating_enable
 openquatt/openquatt/input/thermostat/cooling_enable
 ```
@@ -97,6 +100,7 @@ Waarden buiten de geldige range worden genegeerd en maken die MQTT-bron ongeldig
 - kamertemperatuur: `0..50°C`;
 - kamer-setpoint: `5..35°C`;
 - aanvoertarget: `20..70°C`.
+- stooklijnmodifier: `-5..+5 K`.
 
 ## Geldigheid
 
@@ -107,6 +111,7 @@ Een geldige MQTT-waarde blijft beperkt geldig. Komt er in die tijd geen nieuwe M
 - kamertemperatuur: 10 minuten;
 - kamer-setpoint: 30 minuten;
 - aanvoertarget: 15 minuten;
+- stooklijnmodifier: 15 minuten (daarna 0 K);
 - warmtetoestemming: 10 minuten;
 - koeltoestemming: 10 minuten.
 

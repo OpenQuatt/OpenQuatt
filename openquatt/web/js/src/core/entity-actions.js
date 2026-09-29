@@ -32,6 +32,8 @@ import { handleWebServerLogAction } from "../features/webserver-logs.js";
 import { handleEnergyHistoryPointerMove, setEnergyHistoryPeriodValue } from "../views/energy.js";
 import { escapeHtml } from "./html.js";
 import { render } from "./render-scheduler.js";
+import { updateSimpleCurveDraft } from "./simple-curve.js";
+import { renderSimpleCurvePreview } from "../settings/heating.js";
 
 const actionDelegates = [
   handleViewAction,
@@ -180,6 +182,17 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleInput(event) {
+    if (event.target.dataset.oqSimpleCurve) {
+      const part = event.target.dataset.oqSimpleCurve;
+      if (updateSimpleCurveDraft(part, event.target.value)) {
+        const editor = event.target.closest(".oq-simple-curve-editor");
+        const output = editor?.querySelector(`[data-oq-simple-curve-value="${part}"]`);
+        if (output) output.textContent = `${Number(event.target.value).toFixed(1)} ${part === "slope" ? "K / 10°C" : "°C"}`;
+        const preview = editor?.querySelector("[data-oq-simple-curve-preview]");
+        if (preview) preview.innerHTML = renderSimpleCurvePreview();
+      }
+      return;
+    }
     if (event.target.dataset.oqOduSettingsHp) {
       updateOduSettingsDraft(event.target);
       return;

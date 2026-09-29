@@ -2173,6 +2173,11 @@
       state: "Heating curve",
       option: ["Heating curve", "OT thermostat", "HA input", "API input", "MQTT"],
     });
+    setEntity("select", "Heating Curve Modifier Source", {
+      value: "Disabled",
+      state: "Disabled",
+      option: ["Disabled", "HA input", "API input", "MQTT"],
+    });
     setEntity("select", "Firmware Update Channel", {
       value: "dev",
       state: "dev",
@@ -2341,6 +2346,10 @@
       ["Water Supply Temp (Selected)", 29.5, "°C"],
       ["Outside Temperature (Selected)", 8.2, "°C"],
       ["Heating Curve Supply Target", 33.0, "°C"],
+      ["Heating Curve Base Target", 33.0, "°C"],
+      ["Heating Curve Modifier", 0.0, "K"],
+      ["Heating Curve Room Trim", 0.0, "K"],
+      ["Heating Supply Target (Effective)", 33.0, "°C"],
       ["Heating Supply Target (Selected)", 33.0, "°C"],
       ["Power House – P_house", 2500, "W"],
       ["Power House – P_req", 2800, "W"],

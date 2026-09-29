@@ -112,6 +112,29 @@ Tijdens Quick Start zet een strategieswitch naar `Water Temperature Control` de 
 
 Buiten Quick Start toont `Instellingen → Verwarmen` bij een afwijkende keuze alleen een advies (`Aanbevolen instelling` / `Controleer configuratie`) en wordt de instelling niet stil overschreven. Voor de volledige matrix zie [Instellingen en meetwaarden](instellingen-en-meetwaarden.md#5-bronselectie).
 
+## Stooklijn instellen en tijdelijk verschuiven
+
+De web-app biedt onder `Instellingen → Verwarmen` een Simple-editor met helling
+(K per 10 °C kouder weer) en niveau (aanvoerdoel bij 0 °C buiten). De preview
+toont vooraf de zes punten die `Toepassen` naar de bestaande stooklijn schrijft.
+Onder Advanced kun je alle zes punten rechtstreeks blijven wijzigen. Simple
+opnieuw toepassen vervangt een handmatig gevormde Advanced-curve.
+
+Met `Heating Curve Modifier Source` kun je de lokale stooklijn tijdelijk
+verschuiven via `HA input`, `API input` of `MQTT`. De delta wordt begrensd op
+−5…+5 K en vóór de bestaande kamertrim en waterlimiet verwerkt. Bij een
+ongeldige of verouderde bron geldt 0 K; de lokale stooklijn blijft actief.
+Gebruik voor HA `sensor.openquatt_ext_heating_curve_modifier` en
+`binary_sensor.openquatt_ext_heating_curve_modifier_valid` uit het
+`dynamic-sources`-pakket. De HA-heartbeat moet vers zijn; er is voor deze
+nieuwe bron geen tijdloze legacy-fallback. Een geldig absoluut extern
+aanvoertarget vervangt nog steeds het hele lokale resultaat en krijgt de
+modifier niet nogmaals toegepast.
+
+De sensoren `Heating Curve Base Target`, `Heating Curve Modifier`,
+`Heating Curve Room Trim` en `Heating Supply Target (Effective)` tonen de
+opbouw en het uiteindelijk gekozen doel afzonderlijk.
+
 ## Extern aanvoertarget (optioneel)
 
 Standaard bepaalt de stooklijn het aanvoerdoel uit de buitentemperatuur, met een kleine kamertrim erbovenop. Laat je dat doel liever door een externe regelaar bepalen — bijvoorbeeld een OpenTherm-thermostaat die zelf al kamerafwijking in `TSet` verwerkt, een buffervatregeling in Home Assistant of een MPC-optimalisatie — dan kun je dat target rechtstreeks doorgeven.

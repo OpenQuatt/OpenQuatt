@@ -163,6 +163,7 @@ import { t } from "../i18n/index.js";
         room_temperature: false,
         room_setpoint: true,
         heating_supply_target: false,
+        heating_curve_modifier: false,
         heating_enable: true,
         cooling_enable: true,
       };

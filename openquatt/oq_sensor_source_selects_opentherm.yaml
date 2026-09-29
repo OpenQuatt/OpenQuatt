@@ -72,6 +72,20 @@ select:
     initial_option: Heating curve
 
   - platform: template
+    name: "Heating Curve Modifier Source"
+    id: heating_curve_modifier_source
+    icon: mdi:source-branch
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    options:
+      - Disabled
+      - HA input
+      - API input
+      - MQTT
+    initial_option: Disabled
+
+  - platform: template
     name: "Heating Enable Source"
     id: heating_enable_source
     icon: mdi:source-branch

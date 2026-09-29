@@ -127,6 +127,8 @@ export function createSettingsState() {
     settingsSourceFocusKey: "room-temperature",
     settingsSourceDetailOpen: false,
     settingsAdvancedOpen: {},
+    simpleCurveDraft: null,
+    simpleCurveApplying: false,
     pendingControlModeOverride: "",
     installationMonitoringDetailsOpen: false,
     compressorLimitsOpen: false,

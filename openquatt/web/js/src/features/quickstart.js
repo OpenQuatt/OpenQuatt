@@ -711,9 +711,6 @@ import { renderPerformanceTelemetryConsent, renderPerformanceTelemetryDisclosure
         ${curveMode
           ? `
             <div class="oq-settings-grid oq-settings-grid--quickstart">${renderHeatingCurveProfileField()}</div>
-            <div class="oq-settings-curve-shell">
-              ${renderCurveGraph()}
-            </div>
             ${renderSettingsCurveInputs()}
           `
           : `

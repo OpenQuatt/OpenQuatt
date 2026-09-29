@@ -90,6 +90,35 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.oq-simple-curve-editor {
+  margin-top: 16px;
+}
+
+.oq-simple-curve-control {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--oq-settings-inset-border);
+  border-radius: 12px;
+}
+
+.oq-simple-curve-control input { width: 100%; }
+
+.oq-simple-curve-points {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+
+.oq-simple-curve-breakdown {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 16px;
+  max-width: 420px;
+  margin: 16px 0;
+}
+
 .oq-settings-strategy-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

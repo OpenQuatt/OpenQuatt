@@ -2,6 +2,7 @@
 #include <math.h>
 
 #include "../../openquatt/includes/control/oq_heating_supply_target_logic.h"
+#include "../../openquatt/includes/control/oq_heating_curve_logic.h"
 #include "../../openquatt/includes/control/oq_input_source_logic.h"
 
 namespace {
@@ -13,6 +14,22 @@ void test_external_replaces_local_curve() {
   // room-trim) must not run again on top of it.
   const auto result = select_effective_target(35.0f, 42.0f, true, 20.0f, 55.0f);
   assert(result.external && near(result.supply_target_c, 42.0f));
+}
+
+void test_modifier_stale_and_absolute_priority() {
+  const std::array<oq_curve::CurvePoint, 6> points{
+      {{-10.0f, 50.0f}, {-5.0f, 45.0f}, {0.0f, 40.0f}, {5.0f, 35.0f}, {10.0f, 30.0f}, {15.0f, 25.0f}}};
+  const auto tuning = oq_curve::control_profile("Balanced");
+  const auto fresh =
+      oq_curve::target_breakdown(0.0f, 40.0f, points, curve_modifier_or_zero(3.0f, true), NAN, NAN, tuning, 70.0f);
+  const auto stale =
+      oq_curve::target_breakdown(0.0f, 40.0f, points, curve_modifier_or_zero(3.0f, false), NAN, NAN, tuning, 70.0f);
+  assert(near(fresh.selected_c, 43.0f));
+  assert(near(stale.selected_c, 40.0f));
+  assert(near(curve_modifier_or_zero(8.0f, true), 5.0f));
+  assert(near(curve_modifier_or_zero(NAN, true), 0.0f));
+  const auto external = select_effective_target(fresh.selected_c, 38.0f, true, 20.0f, 70.0f);
+  assert(external.external && near(external.supply_target_c, 38.0f));
 }
 
 void test_external_clamps_to_heating_range() {
@@ -97,6 +114,7 @@ void test_explicit_off_skips_ha_hold_replay() {
 
 int main() {
   test_external_replaces_local_curve();
+  test_modifier_stale_and_absolute_priority();
   test_external_clamps_to_heating_range();
   test_fallback_to_local_curve();
   test_broken_limits_fall_back_to_local();

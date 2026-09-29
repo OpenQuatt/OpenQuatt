@@ -207,13 +207,13 @@ test("focuspaneel groepeert alle signalen in vaste volgorde en rendert één ins
 
   assert.match(markup, /data-oq-source-workspace/);
   assert.equal((markup.match(/data-source-category=/g) || []).length, 4);
-  assert.equal((markup.match(/data-oq-action="select-settings-source"/g) || []).length, 10);
-  assert.equal((markup.match(/data-oq-focus-key="settings-source-[^"]+"/g) || []).length, 11);
+  assert.equal((markup.match(/data-oq-action="select-settings-source"/g) || []).length, 11);
+  assert.equal((markup.match(/data-oq-focus-key="settings-source-[^"]+"/g) || []).length, 12);
   assert.equal((markup.match(/\sdata-oq-source-inspector(?:\s|>)/g) || []).length, 1);
   const expectedSources = [
     ["room-outside", ["room-temperature", "room-setpoint", "outside-temperature"]],
     ["water-circuit", ["water-supply", "flow-source"]],
-    ["heating", ["external-heat-demand", "heating-supply-target", "heating-enable"]],
+    ["heating", ["external-heat-demand", "heating-supply-target", "heating-curve-modifier", "heating-enable"]],
     ["cooling", ["cooling-enable", "cooling-dew-point"]],
   ];
   assertMarkupOrder(markup, expectedSources.map(([category]) => `data-source-category="${category}"`));
