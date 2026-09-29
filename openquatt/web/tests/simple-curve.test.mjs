@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 globalThis.__OQ_PREVIEW__ = false;
@@ -28,6 +29,13 @@ test("Simple toont live preview en Advanced houdt de zes handmatige velden", () 
   assert.match(markup, /data-oq-action="apply-simple-curve"/);
   assert.match(markup, /data-oq-settings-advanced="curve-points"/);
   for (const point of CURVE_POINTS) assert.match(markup, new RegExp(point.key));
+});
+
+test("de gebouwde firmwarebundel bevat de diagnostische vertalingen", () => {
+  const bundle = readFileSync(new URL("../js/openquatt-app.js", import.meta.url), "utf8");
+  for (const label of ["Basisdoel", "Externe modifier", "Kamercorrectie", "Effectief doel"]) {
+    assert.ok(bundle.includes(label), `${label} ontbreekt in de compacte bundel`);
+  }
 });
 
 test("Simple herstelt alle punten na een deels geaccepteerde maar onbevestigde schrijfopdracht", async () => {

@@ -84,13 +84,13 @@ import { generateSimpleCurve, getSimpleCurveDraft } from "../core/simple-curve.j
   function renderCurveTargetBreakdown() {
     if (!hasEntity("curveBaseTarget")) return "";
     const rows = [
-      ["baseTargetLabel", "curveBaseTarget", "°C"],
-      ["modifierLabel", "curveModifier", "K"],
-      ["roomTrimLabel", "curveRoomTrim", "K"],
-      ["effectiveTargetLabel", "curveEffectiveTarget", "°C"],
+      [t("settingsHeating.baseTargetLabel"), "curveBaseTarget", "°C"],
+      [t("settingsHeating.modifierLabel"), "curveModifier", "K"],
+      [t("settingsHeating.roomTrimLabel"), "curveRoomTrim", "K"],
+      [t("settingsHeating.effectiveTargetLabel"), "curveEffectiveTarget", "°C"],
     ];
     return `<div class="oq-simple-curve-breakdown">
-      ${rows.map(([label, key, unit]) => `<span>${escapeHtml(t(`settingsHeating.${label}`))}</span><strong>${escapeHtml(formatNumericState(getEntityNumericValue(key), 1, unit))}</strong>`).join("")}
+      ${rows.map(([label, key, unit]) => `<span>${escapeHtml(label)}</span><strong>${escapeHtml(formatNumericState(getEntityNumericValue(key), 1, unit))}</strong>`).join("")}
     </div>`;
   }
 
