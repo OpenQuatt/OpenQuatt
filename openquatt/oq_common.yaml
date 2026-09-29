@@ -847,6 +847,9 @@ script:
           const float supply_c = id(water_supply_temp_selected).has_state() ? id(water_supply_temp_selected).state : NAN;
           const float flow_lph = id(flow_rate_selected).has_state() ? id(flow_rate_selected).state : NAN;
           const float input_w = id(oq_total_power_input).has_state() ? id(oq_total_power_input).state : NAN;
+          const float supply_target_c = id(oq_strategy_active_code) == 2 ? id(oq_strategy_supply_target_temp) : NAN;
+          const float phouse_request_w = id(oq_strategy_active_code) == 3 && id(oq_strategy_output_source_code) == 3
+                                             ? id(oq_phouse_req_w) : NAN;
 
           float output_w = NAN;
           bool cooling_mode = false;
@@ -867,7 +870,8 @@ script:
             return;
           }
 
-          id(oq_trends_endpoint).capture_sample(outside_c, supply_c, room_c, room_sp_c, flow_lph, input_w, output_w, force_sample);
+          id(oq_trends_endpoint).capture_sample(outside_c, supply_c, room_c, room_sp_c, flow_lph, input_w, output_w,
+                                               supply_target_c, phouse_request_w, force_sample);
 
   - id: oq_capture_energy_history_sample
     mode: single

@@ -73,6 +73,16 @@ const viewActionHandlers = {
       }
     });
   },
+  "toggle-trend-series": (button) => {
+    const cardId = button.dataset.trendCard;
+    const seriesId = button.dataset.trendSeries;
+    if (!cardId || !seriesId) {
+      return;
+    }
+    const key = `${cardId}:${seriesId}`;
+    state.trendHiddenSeries[key] = !state.trendHiddenSeries[key];
+    render();
+  },
   "select-energy-history-view": (button) => {
     if (!button.disabled) {
       setEnergyHistoryView(button.dataset.energyHistoryView || "day");

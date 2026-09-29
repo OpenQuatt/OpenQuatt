@@ -22,6 +22,7 @@ export function createHistoryState(trendWindowHours) {
     decisionLogStorageMetadataLastFetchAt: 0,
     decisionLogStorageMetadataFetchPromise: null,
     trendWindowHours,
+    trendHiddenSeries: {},
     trendHistoryRaw: "",
     trendHistoryError: "",
     trendHistorySignature: "",

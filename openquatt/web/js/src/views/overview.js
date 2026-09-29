@@ -983,6 +983,8 @@ import { renderStatCard } from "./stat-card.js";
       flow: parts.length >= 8 ? parseValue(parts[5]) : null,
       input: parts.length >= 8 ? parseValue(parts[6]) : parseValue(parts[3]),
       output: parts.length >= 8 ? parseValue(parts[7]) : parseValue(parts[4]),
+      supplyTarget: parts.length >= 10 ? parseValue(parts[8]) : null,
+      phouseRequest: parts.length >= 10 ? parseValue(parts[9]) : null,
     };
   }
 
@@ -1047,6 +1049,7 @@ import { renderStatCard } from "./stat-card.js";
         series: [
           { id: "outside", sampleKey: "outside", currentKey: "outsideTempSelected", label: t("overview.trendSeriesOutside"), tone: "orange", decimals: 1, unit: " °C" },
           { id: "supply", sampleKey: "supply", currentKey: "supplyTemp", label: t("overview.trendSeriesSupply"), tone: "blue", decimals: 1, unit: " °C" },
+          { id: "supplyTarget", sampleKey: "supplyTarget", currentKey: "strategySupplyTarget", activeStrategyCode: 2, fallbackToHistory: false, label: t("overview.trendSeriesSupplyTarget"), pillLabel: t("overview.trendPillTarget"), tone: "violet", decimals: 1, unit: " °C" },
         ],
       },
       {
@@ -1058,8 +1061,9 @@ import { renderStatCard } from "./stat-card.js";
         mock: isMockData,
         windowHours,
         series: [
-          { id: "input", sampleKey: "input", currentKey: "totalPower", label: t("overview.topPower"), tone: "green", decimals: 0, unit: " W" },
-          { id: "output", sampleKey: "output", currentKey: coolingActive ? "totalCoolingPower" : "totalHeat", label: coolingActive ? t("overview.topCoolingPower") : t("overview.topHeatingPower"), tone: "sky", decimals: 0, unit: " W" },
+          { id: "input", sampleKey: "input", currentKey: "totalPower", label: t("overview.topPower"), pillLabel: t("overview.trendPillElectric"), tone: "green", decimals: 0, unit: " W" },
+          { id: "output", sampleKey: "output", currentKey: coolingActive ? "totalCoolingPower" : "totalHeat", label: coolingActive ? t("overview.topCoolingPower") : t("overview.topHeatingPower"), pillLabel: coolingActive ? t("overview.trendPillCooling") : t("overview.trendPillHeating"), tone: "sky", decimals: 0, unit: " W" },
+          { id: "phouseRequest", sampleKey: "phouseRequest", currentKey: "phouseReq", requiredCurrentKey: "strategyRequestedPower", activeStrategyCode: 3, fallbackToHistory: false, label: t("overview.trendSeriesPhouseRequest"), pillLabel: t("overview.trendPillPhouseRequest"), tone: "violet", decimals: 0, unit: " W" },
         ],
       },
       {
@@ -1098,8 +1102,8 @@ import { renderStatCard } from "./stat-card.js";
         mock: isMockData,
         windowHours,
         series: [
-          { id: "roomTemp", sampleKey: "room", currentKey: "roomTemp", label: t("overview.tempRoom"), tone: "blue", decimals: 1, unit: " °C" },
-          { id: "roomSetpoint", sampleKey: "roomSetpoint", currentKey: "roomSetpoint", label: t("overview.tempRoomSetpoint"), tone: "orange", decimals: 1, unit: " °C" },
+          { id: "roomTemp", sampleKey: "room", currentKey: "roomTemp", label: t("overview.tempRoom"), pillLabel: t("overview.trendPillRoom"), tone: "blue", decimals: 1, unit: " °C" },
+          { id: "roomSetpoint", sampleKey: "roomSetpoint", currentKey: "roomSetpoint", label: t("overview.tempRoomSetpoint"), pillLabel: t("overview.trendPillSetpoint"), tone: "orange", decimals: 1, unit: " °C" },
         ],
       },
       {
@@ -1134,8 +1138,15 @@ import { renderStatCard } from "./stat-card.js";
         latest.flow,
         latest.input,
         latest.output,
+        latest.supplyTarget,
+        latest.phouseRequest,
       ] : [],
+      hiddenSeries: card.series.map((series) => Boolean(state.trendHiddenSeries[`${card.id}:${series.id}`])),
     });
+  }
+
+  export function getVisibleOverviewTrendSeries(card) {
+    return card.series.filter((series) => !state.trendHiddenSeries[`${card.id}:${series.id}`]);
   }
 
   export function getOverviewTrendSeriesValue(series, sample) {
@@ -1145,6 +1156,9 @@ import { renderStatCard } from "./stat-card.js";
     const raw = typeof series.derive === "function"
       ? series.derive(sample)
       : sample?.[series.sampleKey];
+    if (raw == null || raw === "") {
+      return Number.NaN;
+    }
     const numeric = Number(raw);
     return Number.isFinite(numeric) ? numeric : Number.NaN;
   }
@@ -1381,6 +1395,7 @@ import { renderStatCard } from "./stat-card.js";
       trendSignature: state.trendHistorySignature || "",
       trendNowMs: Number.isFinite(state.trendHistoryNowMs) ? state.trendHistoryNowMs : 0,
       coolingActive: isCoolingOverviewActive(),
+      hiddenSeries: state.trendHiddenSeries,
     });
   }
 
@@ -1407,20 +1422,40 @@ import { renderStatCard } from "./stat-card.js";
 
   export function renderOverviewTrendLatestPill(series, sample) {
     const value = getOverviewTrendSeriesCurrentValue(series, sample);
+    const formattedValue = formatNumericState(value, series.decimals, series.unit);
+    const cardId = series.cardId || "";
+    const hidden = Boolean(state.trendHiddenSeries[`${cardId}:${series.id}`]);
     return `
-      <div class="oq-overview-trend-pill oq-overview-trend-pill--${escapeHtml(series.tone)}" data-oq-trend-current="${escapeHtml(series.id)}">
-        <span>${escapeHtml(series.label)}</span>
-        <strong>${escapeHtml(formatNumericState(value, series.decimals, series.unit))}</strong>
-      </div>
+      <button class="oq-overview-trend-pill oq-overview-trend-pill--${escapeHtml(series.tone)}${hidden ? " is-hidden" : ""}" type="button" data-oq-action="toggle-trend-series" data-trend-card="${escapeHtml(cardId)}" data-trend-series="${escapeHtml(series.id)}" data-oq-trend-current="${escapeHtml(series.id)}" aria-label="${escapeHtml(`${series.label}: ${formattedValue}`)}" aria-pressed="${hidden ? "false" : "true"}">
+        <span>${escapeHtml(series.pillLabel || series.label)}</span>
+        <strong>${escapeHtml(formattedValue)}</strong>
+      </button>
     `;
   }
 
   export function getOverviewTrendSeriesCurrentValue(series, fallbackSample) {
-    if (series?.currentKey && hasEntity(series.currentKey)) {
-      const current = getEntityNumericValue(series.currentKey);
+    const trendEntityValue = (key) => {
+      const raw = hasEntity(key) ? getEntityValue(key) : null;
+      if (raw == null || raw === "") {
+        return Number.NaN;
+      }
+      const numeric = Number(raw);
+      return Number.isFinite(numeric) ? numeric : Number.NaN;
+    };
+    if (series?.activeStrategyCode && trendEntityValue("strategyActiveCode") !== series.activeStrategyCode) {
+      return Number.NaN;
+    }
+    if (series?.requiredCurrentKey && !Number.isFinite(trendEntityValue(series.requiredCurrentKey))) {
+      return Number.NaN;
+    }
+    if (series?.currentKey) {
+      const current = trendEntityValue(series.currentKey);
       if (Number.isFinite(current)) {
         return current;
       }
+    }
+    if (series?.fallbackToHistory === false) {
+      return Number.NaN;
     }
     return getOverviewTrendSeriesValue(series, fallbackSample);
   }
@@ -1445,6 +1480,12 @@ import { renderStatCard } from "./stat-card.js";
         );
         if (valueElement && valueElement.textContent !== nextValue) {
           valueElement.textContent = nextValue;
+        }
+        if (pill) {
+          const nextLabel = `${series.label}: ${nextValue}`;
+          if (pill.getAttribute("aria-label") !== nextLabel) {
+            pill.setAttribute("aria-label", nextLabel);
+          }
         }
       });
     });
@@ -1519,6 +1560,7 @@ import { renderStatCard } from "./stat-card.js";
   export function renderOverviewTrendCard(card) {
     const latest = card.samples[card.samples.length - 1] || null;
     const windowText = formatOverviewTrendWindowText(card.windowHours);
+    const visibleSeries = getVisibleOverviewTrendSeries(card);
     return `
       <article class="oq-overview-trendcard oq-overview-trendcard--${escapeHtml(card.tone)}" data-oq-trend-card="${escapeHtml(card.id)}" data-render-signature="${escapeHtml(getOverviewTrendCardSignature(card))}">
         <div class="oq-overview-trendcard-head">
@@ -1529,11 +1571,11 @@ import { renderStatCard } from "./stat-card.js";
           </div>
           <div class="oq-overview-trendcard-meta">
             <div class="oq-overview-trendcard-latest">
-              ${card.series.map((series) => renderOverviewTrendLatestPill(series, latest)).join("")}
+              ${card.series.map((series) => renderOverviewTrendLatestPill({ ...series, cardId: card.id }, latest)).join("")}
             </div>
           </div>
         </div>
-        ${renderOverviewTrendChart(card.samples, card.series, card.mock, card.windowHours)}
+        ${renderOverviewTrendChart(card.samples, visibleSeries, card.mock, card.windowHours)}
         <div class="oq-overview-trend-hover" data-oq-trend-hover hidden>
           <div class="oq-overview-trend-hover-head">
             <span class="oq-overview-trend-hover-kicker">${escapeHtml(t("overview.hoverMeasurement"))}</span>
@@ -1808,7 +1850,8 @@ import { renderStatCard } from "./stat-card.js";
       if (!cardModel) {
         return;
       }
-      const model = getOverviewTrendChartModel(cardModel.samples, cardModel.series, { mockData: cardModel.mock });
+      const model = getOverviewTrendChartModel(cardModel.samples, getVisibleOverviewTrendSeries(cardModel),
+                                               { mockData: cardModel.mock, windowHours: cardModel.windowHours });
 
       card.__oqTrendModel = model;
       const nodes = getOverviewTrendHoverNodes(card);
