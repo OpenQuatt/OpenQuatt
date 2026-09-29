@@ -866,7 +866,8 @@ script:
             output_w = id(oq_total_heat_power).has_state() ? id(oq_total_heat_power).state : NAN;
           }
 
-          if (isnan(outside_c) && isnan(room_c) && isnan(room_sp_c) && isnan(supply_c) && isnan(flow_lph) && isnan(input_w) && isnan(output_w)) {
+          if (isnan(outside_c) && isnan(room_c) && isnan(room_sp_c) && isnan(supply_c) && isnan(flow_lph) && isnan(input_w) && isnan(output_w) &&
+              isnan(supply_target_c) && isnan(phouse_request_w)) {
             return;
           }
 

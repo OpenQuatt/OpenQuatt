@@ -80,8 +80,14 @@ const viewActionHandlers = {
       return;
     }
     const key = `${cardId}:${seriesId}`;
+    const restoreFocus = typeof document !== "undefined" && document.activeElement === button;
     state.trendHiddenSeries[key] = !state.trendHiddenSeries[key];
     render();
+    if (restoreFocus) {
+      const replacement = [...(state.root?.querySelectorAll('[data-oq-action="toggle-trend-series"]') || [])]
+        .find((candidate) => candidate.dataset.trendCard === cardId && candidate.dataset.trendSeries === seriesId);
+      replacement?.focus({ preventScroll: true });
+    }
   },
   "select-energy-history-view": (button) => {
     if (!button.disabled) {

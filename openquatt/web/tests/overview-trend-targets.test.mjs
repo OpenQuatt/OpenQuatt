@@ -8,6 +8,9 @@ globalThis.window = {
 };
 
 const { state } = await import("../js/src/core/state.js");
+const { getOverviewLikeHydrationKeys } = await import("../js/src/core/entity-sync.js");
+const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
+const { handleViewAction } = await import("../js/src/features/view-actions.js");
 const {
   getOverviewTrendCardsModel,
   getOverviewTrendSeriesCurrentValue,
@@ -21,6 +24,15 @@ const {
 function entity(value) {
   return { value, state: String(value) };
 }
+
+test("diagnosis hydrates the entities needed for current trend values", () => {
+  for (const options of [{ forceFast: true }, { includeBulk: true }]) {
+    const keys = getOverviewLikeHydrationKeys("diagnosis", options);
+    for (const key of ["strategyActiveCode", "strategySupplyTarget", "strategyRequestedPower", "phouseReq"]) {
+      assert.ok(keys.includes(key), `${key} missing from ${JSON.stringify(options)}`);
+    }
+  }
+});
 
 test("new trend fields parse on the same timestamp and missing values stay missing", () => {
   const row = parseOverviewTrendRow("1000|8.1|32.4|19.5|20.0|500|700|2100|35.2|2800");
@@ -89,6 +101,40 @@ test("legend buttons hide a series from the chart while keeping it selectable", 
   assert.match(markup, /aria-label="Stooklijn doel: —"[^>]*>\s*<span>Doel<\/span>/);
   assert.doesNotMatch(markup, /data-oq-trend-hover-dot="supplyTarget"/);
   state.trendHiddenSeries = {};
+});
+
+test("legend toggle restores keyboard focus to the replacement button", () => {
+  const previousDocument = globalThis.document;
+  const previousRoot = state.root;
+  const previousHiddenSeries = state.trendHiddenSeries;
+  const button = { dataset: { trendCard: "temperatures", trendSeries: "supplyTarget" } };
+  const focusCalls = [];
+  const replacement = {
+    dataset: button.dataset,
+    focus: (options) => {
+      focusCalls.push(options);
+      globalThis.document.activeElement = replacement;
+    },
+  };
+  try {
+    globalThis.document = { activeElement: button };
+    state.root = { querySelectorAll: () => [] };
+    state.trendHiddenSeries = {};
+    setRenderCallback(() => {
+      state.root = { querySelectorAll: () => [replacement] };
+      globalThis.document.activeElement = null;
+    });
+
+    assert.equal(handleViewAction("toggle-trend-series", button), true);
+    assert.equal(state.trendHiddenSeries["temperatures:supplyTarget"], true);
+    assert.equal(globalThis.document.activeElement, replacement);
+    assert.deepEqual(focusCalls, [{ preventScroll: true }]);
+  } finally {
+    setRenderCallback(null);
+    state.root = previousRoot;
+    state.trendHiddenSeries = previousHiddenSeries;
+    globalThis.document = previousDocument;
+  }
 });
 
 test("live trend values also update the accessible button label", () => {
