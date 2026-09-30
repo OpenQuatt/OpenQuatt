@@ -62,7 +62,9 @@ export default {
   },
   houseLearning: {
     panel: {
+      details: "Learning status and measurements",
       eyebrow: "Passive learning",
+      experimental: "Experimental",
       title: "Monitor home model",
       copy: "Monitors how much heat your home needs and how quickly it warms up and cools down. No automatic changes.",
     },
@@ -214,6 +216,7 @@ export default {
       panelCopy: "Compare the configured home line with the measurements. Tap a measurement point for its date, duration and values.",
       loading: "Loading measurement data…",
       show: "Show measurement data",
+      hide: "Hide measurement data",
       loadedAt: "Loaded {date}",
       durationHoursMinutes: "{hours} hr {minutes} min",
       durationMinutes: "{minutes} min",

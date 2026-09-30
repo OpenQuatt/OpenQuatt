@@ -201,7 +201,7 @@ function renderHouseLearningChartPanel(busy = Boolean(state.busyAction) || state
     { h: state.houseLearningStatus?.hBatch, t0: state.houseLearningStatus?.t0Batch, ready: state.houseLearningStatus?.batchAdviceReady },
   );
   return `
-        <div class="oq-house-learning-chart-head"><div><h5>${escapeHtml(t("houseLearning.chart.panelTitle"))}</h5><p>${escapeHtml(t("houseLearning.chart.panelCopy"))}</p></div><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="load-house-learning-chart" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>${escapeHtml(t(state.houseLearningChartLoading ? "houseLearning.chart.loading" : "houseLearning.chart.show"))}</button></div>
+        <div class="oq-house-learning-chart-head"><div><h5>${escapeHtml(t("houseLearning.chart.panelTitle"))}</h5><p>${escapeHtml(t("houseLearning.chart.panelCopy"))}</p></div><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="load-house-learning-chart" aria-expanded="${state.houseLearningChart !== null}" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>${escapeHtml(t(state.houseLearningChartLoading ? "houseLearning.chart.loading" : state.houseLearningChart !== null ? "houseLearning.chart.hide" : "houseLearning.chart.show"))}</button></div>
         ${state.houseLearningChartError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningChartError))}</p>` : ""}
         ${chart}${state.houseLearningChartFetchedAt ? `<p class="oq-house-learning-chart-freshness">${escapeHtml(t("houseLearning.chart.loadedAt", { date: formatDateTime(state.houseLearningChartFetchedAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) }))}</p>` : ""}
 `;
@@ -217,20 +217,28 @@ export function renderHouseLearningSettings() {
     ? renderNamedActionButton("houseLearningReset", t(resetting ? "houseLearning.reset.clearingButton" : "houseLearning.reset.button"), "oq-helper-button oq-helper-button--ghost", busy)
     : "";
   return `
-    <div class="oq-settings-subpanel oq-settings-subpanel--nested" data-oq-house-learning>
-      <div class="oq-settings-subpanel-head">
-        <p class="oq-helper-label">${escapeHtml(t("houseLearning.panel.eyebrow"))}</p><h4>${escapeHtml(t("houseLearning.panel.title"))}</h4>
+    <section class="oq-settings-section" data-oq-house-learning>
+      <div class="oq-settings-section-head">
+        <div class="oq-settings-section-head-meta">
+          <p class="oq-helper-label">${escapeHtml(t("houseLearning.panel.eyebrow"))}</p>
+          <span class="oq-settings-section-badge oq-settings-section-badge--experimental">${escapeHtml(t("houseLearning.panel.experimental"))}</span>
+        </div>
+        <h3>${escapeHtml(t("houseLearning.panel.title"))}</h3>
         <p>${escapeHtml(t("houseLearning.panel.copy"))}</p>
       </div>
-      <div class="oq-settings-grid">
-        ${renderSettingsSwitchField("houseLearningEnabled", t("houseLearning.switch.label"), t("houseLearning.switch.copy"), t("houseLearning.switch.on"), t("houseLearning.switch.off"))}
+      <div class="oq-settings-section-body">
+        <div class="oq-settings-grid">
+          ${renderSettingsSwitchField("houseLearningEnabled", t("houseLearning.switch.label"), t("houseLearning.switch.copy"), t("houseLearning.switch.on"), t("houseLearning.switch.off"))}
+        </div>
+        ${renderSettingsAdvancedDisclosure("house-learning-details", t("houseLearning.panel.details"), "", `
+        <div data-oq-house-learning-status>${renderHouseLearningStatusMarkup()}</div>
+        <div class="oq-house-learning-chart-panel" data-oq-house-learning-chart-panel data-oq-chart-signature="${escapeHtml(houseLearningChartSignature(busy))}">${renderHouseLearningChartPanel(busy)}</div>
+        <div class="oq-helper-actions">
+          <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="download-house-learning" ${busy ? "disabled" : ""}>${escapeHtml(t(exporting ? "houseLearning.export.downloading" : "houseLearning.export.button"))}</button>${reset}
+        </div>
+        `)}
       </div>
-      <div data-oq-house-learning-status>${renderHouseLearningStatusMarkup()}</div>
-      <div class="oq-house-learning-chart-panel" data-oq-house-learning-chart-panel data-oq-chart-signature="${escapeHtml(houseLearningChartSignature(busy))}">${renderHouseLearningChartPanel(busy)}</div>
-      <div class="oq-helper-actions">
-        <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="download-house-learning" ${busy ? "disabled" : ""}>${escapeHtml(t(exporting ? "houseLearning.export.downloading" : "houseLearning.export.button"))}</button>${reset}
-      </div>
-    </div>`;
+    </section>`;
 }
 
 export function patchHouseLearningSettingsStatus() {

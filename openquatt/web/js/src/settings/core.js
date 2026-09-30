@@ -13,7 +13,7 @@ import { getCommissioningStatusValue, patchSettingsChoiceOption, patchSettingsSe
 import { t } from "../i18n/index.js";
 import { renderSettingsCoolingSection } from "./cooling.js";
 import { renderSettingsFlowSection, renderSettingsHeatingSection } from "./heating.js";
-import { patchHouseLearningSettingsStatus } from "./house-learning.js";
+import { patchHouseLearningSettingsStatus, renderHouseLearningSettings } from "./house-learning.js";
 import { renderSettingsElectricalCurrentLimitSection } from "./electrical-limit.js";
 import { renderSettingsAuxRelaySection, renderSettingsBoilerCvSection, renderSettingsCompressorSection, renderSettingsDiagnosticsSection, renderSettingsGenerationSection, renderSettingsInstallationMonitoringSection, renderSettingsOduRuntimeFrequencySection, renderSettingsQuickStartSection } from "./installation.js";
 import { renderSettingsMqttSection, renderSettingsOpenThermCicSection, renderSettingsSensorSelectionSection } from "./integrations.js";
@@ -96,7 +96,7 @@ function syncFrequencyRangeControl(control) {
             renderSettingsCounterServiceSection(),
           ]
       : activeGroup === "heating"
-        ? [renderSettingsHeatingSection()]
+        ? [renderSettingsHeatingSection(), isCurveMode() ? "" : renderHouseLearningSettings()]
       : activeGroup === "cooling"
         ? [renderSettingsCoolingSection()]
         : activeGroup === "integrations"

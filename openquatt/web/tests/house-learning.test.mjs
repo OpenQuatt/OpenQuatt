@@ -18,6 +18,7 @@ const {
   downloadHouseLearningExport,
   isHouseLearningResetConfirmed,
   loadHouseLearningChart,
+  handleHouseLearningAction,
   normalizeHouseLearningStatus,
   refreshHouseLearningStatus,
   resetHouseLearningData,
@@ -740,4 +741,23 @@ test("een bestaande grafiekfout wordt na taalwissel opnieuw vertaald", async () 
 
   setLocale("en", { persist: false, applyDocument: false, notify: false });
   assert.match(renderHouseLearningSettings(), /Measurement data could not be loaded\. unknown export format/);
+});
+
+
+test("meetgegevens sluiten verwijdert de grafiek zonder netwerkrequest en kan opnieuw openen", async () => {
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningChart = [];
+  state.houseLearningChartFetchedAt = 100;
+  let requests = 0;
+  globalThis.fetch = async () => { requests += 1; return { ok: true, json: async () => ({ schema: 1, mode: "passive", record_columns: ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w"], records: [] }) }; };
+  assert.match(renderHouseLearningSettings(), /Meetgegevens verbergen/);
+  assert.equal(handleHouseLearningAction("load-house-learning-chart"), true);
+  assert.equal(state.houseLearningChart, null);
+  assert.equal(state.houseLearningChartFetchedAt, 0);
+  assert.equal(requests, 0);
+  assert.match(renderHouseLearningSettings(), /Meetgegevens tonen/);
+  assert.equal(await loadHouseLearningChart(), true);
+  assert.equal(requests, 1);
+  assert.match(renderHouseLearningSettings(), /Meetgegevens verbergen/);
 });

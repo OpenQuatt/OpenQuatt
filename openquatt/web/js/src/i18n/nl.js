@@ -63,7 +63,9 @@ export default {
   },
   houseLearning: {
     panel: {
+      details: "Leerstatus en meetgegevens",
       eyebrow: "Passief leren",
+      experimental: "Experimenteel",
       title: "Huismodel volgen",
       copy: "Volgt hoeveel warmte je woning nodig heeft en hoe snel deze opwarmt en afkoelt. Geen automatische wijzigingen.",
     },
@@ -215,6 +217,7 @@ export default {
       panelCopy: "Vergelijk de ingestelde woninglijn met de metingen. Tik op een meetpunt voor datum, meetduur en waarden.",
       loading: "Meetgegevens laden…",
       show: "Meetgegevens tonen",
+      hide: "Meetgegevens verbergen",
       loadedAt: "Geladen {date}",
       durationHoursMinutes: "{hours} u {minutes} min",
       durationMinutes: "{minutes} min",
