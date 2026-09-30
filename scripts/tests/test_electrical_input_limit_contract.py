@@ -84,7 +84,7 @@ class ElectricalInputLimitContractTest(unittest.TestCase):
             self.assertIn(marker, HEATING_CURVE_RUNTIME)
         self.assertNotIn("if (isnan(demand_continuous))", HEATING_CURVE_RUNTIME)
         paths = ("openquatt/oq_heating_curve_strategy.yaml", "openquatt/includes/control/oq_heating_curve_logic.h", "openquatt/includes/control/oq_heating_curve_runtime.h", "tests/host/heating_curve_restart_logic_test.cpp", "scripts/tests/test_electrical_input_limit_contract.py")
-        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1879)
+        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1900)
 
 if __name__ == "__main__":
     unittest.main()

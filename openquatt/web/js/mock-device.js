@@ -2204,6 +2204,11 @@
       state: "Heating curve",
       option: ["Heating curve", "OT thermostat", "HA input", "API input", "MQTT"],
     });
+    setEntity("select", "Heating Curve Modifier Source", {
+      value: "Disabled",
+      state: "Disabled",
+      option: ["Disabled", "HA input", "API input", "MQTT"],
+    });
     setEntity("select", "Firmware Update Channel", {
       value: "dev",
       state: "dev",
@@ -2267,12 +2272,12 @@
       ["Aux Relay Heating Start Temp", 30, 20, 60, 0.5, "°C"],
       ["Aux Relay Cooling Start Temp", 18, 8, 25, 0.5, "°C"],
       ["Aux Relay Temp Hysteresis", 2, 0.5, 5, 0.5, "°C"],
-      ["Curve Tsupply @ -20°C", 48, 20, 70, 1, "°C"],
-      ["Curve Tsupply @ -10°C", 43, 20, 70, 1, "°C"],
-      ["Curve Tsupply @ 0°C", 38, 20, 70, 1, "°C"],
-      ["Curve Tsupply @ 5°C", 34, 20, 70, 1, "°C"],
-      ["Curve Tsupply @ 10°C", 30, 20, 70, 1, "°C"],
-      ["Curve Tsupply @ 15°C", 27, 20, 70, 1, "°C"],
+      ["Curve Tsupply @ -20°C", 48, 20, 70, 0.5, "°C"],
+      ["Curve Tsupply @ -10°C", 43, 20, 70, 0.5, "°C"],
+      ["Curve Tsupply @ 0°C", 38, 20, 70, 0.5, "°C"],
+      ["Curve Tsupply @ 5°C", 34, 20, 70, 0.5, "°C"],
+      ["Curve Tsupply @ 10°C", 30, 20, 70, 0.5, "°C"],
+      ["Curve Tsupply @ 15°C", 27, 20, 70, 0.5, "°C"],
       ["Curve Fallback Tsupply (No Outside Temp)", 40, 25, 70, 0.5, "°C"],
     ].forEach(([name, value, min, max, step, uom]) => {
       setEntity("number", name, {
@@ -2372,6 +2377,10 @@
       ["Water Supply Temp (Selected)", 29.5, "°C"],
       ["Outside Temperature (Selected)", 8.2, "°C"],
       ["Heating Curve Supply Target", 33.0, "°C"],
+      ["Heating Curve Base Target", 33.0, "°C"],
+      ["Heating Curve Modifier", 0.0, "K"],
+      ["Heating Curve Room Trim", 0.0, "K"],
+      ["Heating Supply Target (Effective)", 33.0, "°C"],
       ["Heating Supply Target (Selected)", 33.0, "°C"],
       ["Power House – P_house", 2500, "W"],
       ["Power House – P_req", 2800, "W"],

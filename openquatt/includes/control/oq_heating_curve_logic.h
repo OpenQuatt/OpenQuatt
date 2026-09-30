@@ -109,6 +109,13 @@ struct CurvePoint {
   float target_c = NAN;
 };
 
+struct TargetBreakdown {
+  float base_c = NAN;
+  float modifier_c = 0.0f;
+  float room_trim_c = 0.0f;
+  float selected_c = NAN;
+};
+
 inline ControlProfileTuning control_profile(const std::string& profile_option) {
   ControlProfileTuning tuning;
   if (profile_option == "Comfort") {
@@ -220,34 +227,45 @@ inline OutsideEmaDecision update_outside_ema(uint32_t now_ms, float outside_c, f
   return out;
 }
 
-inline float supply_target(float outside_c, float fallback_c, const std::array<CurvePoint, 6>& points, float room_c,
-                           float room_setpoint_c, const ControlProfileTuning& tuning, float max_water_c) {
-  float target_c = fallback_c;
+inline TargetBreakdown target_breakdown(float outside_c, float fallback_c, const std::array<CurvePoint, 6>& points,
+                                        float modifier_c, float room_c, float room_setpoint_c,
+                                        const ControlProfileTuning& tuning, float max_water_c) {
+  TargetBreakdown result;
+  result.base_c = fallback_c;
   if (isfinite(outside_c)) {
     if (outside_c <= points.front().outside_c)
-      target_c = points.front().target_c;
+      result.base_c = points.front().target_c;
     else if (outside_c >= points.back().outside_c)
-      target_c = points.back().target_c;
+      result.base_c = points.back().target_c;
     else
       for (size_t i = 0; i + 1 < points.size(); ++i)
         if (outside_c >= points[i].outside_c && outside_c <= points[i + 1].outside_c) {
           const float fraction = (outside_c - points[i].outside_c) / (points[i + 1].outside_c - points[i].outside_c);
-          target_c = points[i].target_c + fraction * (points[i + 1].target_c - points[i].target_c);
+          result.base_c = points[i].target_c + fraction * (points[i + 1].target_c - points[i].target_c);
           break;
         }
   }
+  result.modifier_c = isfinite(modifier_c) ? std::max(-5.0f, std::min(5.0f, modifier_c)) : 0.0f;
+  float target_c = result.base_c + result.modifier_c;
+  if (result.modifier_c != 0.0f && isfinite(target_c)) target_c = fmaxf(target_c, 20.0f);
   if (isfinite(target_c) && isfinite(room_c) && isfinite(room_setpoint_c)) {
     const float warm_error_c = room_c - room_setpoint_c;
     if (warm_error_c > tuning.trim_start_c) {
-      const float trim_c =
+      result.room_trim_c =
           std::max(0.0f, std::min(tuning.trim_max_c, (warm_error_c - tuning.trim_start_c) * tuning.trim_gain));
-      target_c -= trim_c;
+      target_c -= result.room_trim_c;
     }
   }
   if (isfinite(target_c) && tuning.quant_step_c > 0.0f)
     target_c = roundf(target_c / tuning.quant_step_c) * tuning.quant_step_c;
   if (isfinite(target_c) && isfinite(max_water_c)) target_c = fminf(target_c, max_water_c);
-  return target_c;
+  result.selected_c = target_c;
+  return result;
+}
+
+inline float supply_target(float outside_c, float fallback_c, const std::array<CurvePoint, 6>& points, float room_c,
+                           float room_setpoint_c, const ControlProfileTuning& tuning, float max_water_c) {
+  return target_breakdown(outside_c, fallback_c, points, 0.0f, room_c, room_setpoint_c, tuning, max_water_c).selected_c;
 }
 
 inline bool cadence_due(uint32_t now_ms, uint32_t last_ms, uint32_t target_ms) {

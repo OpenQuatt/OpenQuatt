@@ -237,7 +237,9 @@ import { getIntlLocale, t } from "../i18n/index.js";
   }
 
   export function normalizeNumber(key, rawValue) {
-    const meta = getNumberMeta(key);
+    const meta = CURVE_POINTS.some((point) => point.key === key)
+      ? { min: 20, max: 70, step: 0.5 }
+      : getNumberMeta(key);
     const numeric = parseLooseNumber(rawValue);
     if (Number.isNaN(numeric)) {
       const current = parseLooseNumber(state.entities[key]?.value ?? state.entities[key]?.state ?? "");

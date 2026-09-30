@@ -178,6 +178,53 @@ test("integraties laden de aanvoerkalibratiestatus direct", () => {
   assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("waterSupplyCalibrationStatus"));
 });
 
+test("stooklijn-offset toont de gebruikte API-correctie en de meting in °C", () => {
+  assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("curveModifier"));
+  setSourceSelectionState(false);
+  Object.assign(state.entities, {
+    heatingCurveModifierSource: { value: "API input", option: ["Disabled", "HA input", "API input", "MQTT"] },
+    curveModifier: valueEntity(1.5, "K"),
+    apiInputHeatingCurveModifier: valueEntity(1.5),
+    apiInputHeatingCurveModifierValid: binaryEntity(true),
+    apiInputHeatingCurveModifierAge: valueEntity(2, "s"),
+  });
+
+  const markup = renderFocusedSource("heating-curve-modifier");
+  assert.match(getSignalMarkup(markup, "heating-curve-modifier"), /Stooklijn-offset/);
+  assert.match(getSignalMarkup(markup, "heating-curve-modifier"), /1\.5 °C/);
+  assert.equal((getInspectorMarkup(markup).match(/1\.5 °C/g) || []).length, 2);
+});
+
+test("stooklijn-offset toont HA niet als geldig of gebruikt na verlopen heartbeat", () => {
+  assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("heatingCurveModifierHaEffectiveValid"));
+  setSourceSelectionState(false);
+  Object.assign(state.entities, {
+    heatingCurveModifierSource: { value: "HA input", option: ["Disabled", "HA input", "API input", "MQTT"] },
+    curveModifier: valueEntity(0, "K"),
+    heatingCurveModifierHa: valueEntity(2.5, "K"),
+    heatingCurveModifierHaValid: binaryEntity(true),
+    heatingCurveModifierHaEffectiveValid: binaryEntity(false),
+  });
+
+  const markup = renderFocusedSource("heating-curve-modifier");
+  assert.match(getSignalMarkup(markup, "heating-curve-modifier"), /HA-bron ongeldig/);
+  const inspector = getInspectorMarkup(markup);
+  assert.match(inspector, /data-source-kind="ha"\s+data-source-state="invalid"/);
+  assert.doesNotMatch(inspector, /data-source-kind="ha"[^>]*data-source-effective="true"/);
+  assert.match(inspector, /<strong>—<\/strong>/);
+
+  state.entities.heatingCurveModifierHaEffectiveValid = binaryEntity(true);
+  const fresh = getInspectorMarkup(renderFocusedSource("heating-curve-modifier"));
+  assert.match(fresh, /data-source-kind="ha"\s+data-source-state="valid"\s+data-source-effective="true"/);
+  assert.match(fresh, /2\.5 °C/);
+
+  delete state.entities.heatingCurveModifierHaEffectiveValid;
+  const unavailable = getInspectorMarkup(renderFocusedSource("heating-curve-modifier"));
+  assert.match(unavailable, /data-source-kind="ha"\s+data-source-state="missing"/);
+  assert.match(unavailable, /<span>Onbekend<\/span>/);
+  assert.doesNotMatch(unavailable, /data-source-kind="ha"[^>]*data-source-effective="true"/);
+});
+
 test("CIC-diagnostiek toont waterdruk alleen wanneer de sensor aanwezig is", () => {
   state.loadingEntities = false;
   state.drafts = {};
@@ -207,13 +254,13 @@ test("focuspaneel groepeert alle signalen in vaste volgorde en rendert één ins
 
   assert.match(markup, /data-oq-source-workspace/);
   assert.equal((markup.match(/data-source-category=/g) || []).length, 4);
-  assert.equal((markup.match(/data-oq-action="select-settings-source"/g) || []).length, 10);
-  assert.equal((markup.match(/data-oq-focus-key="settings-source-[^"]+"/g) || []).length, 11);
+  assert.equal((markup.match(/data-oq-action="select-settings-source"/g) || []).length, 11);
+  assert.equal((markup.match(/data-oq-focus-key="settings-source-[^"]+"/g) || []).length, 12);
   assert.equal((markup.match(/\sdata-oq-source-inspector(?:\s|>)/g) || []).length, 1);
   const expectedSources = [
     ["room-outside", ["room-temperature", "room-setpoint", "outside-temperature"]],
     ["water-circuit", ["water-supply", "flow-source"]],
-    ["heating", ["external-heat-demand", "heating-supply-target", "heating-enable"]],
+    ["heating", ["external-heat-demand", "heating-supply-target", "heating-curve-modifier", "heating-enable"]],
     ["cooling", ["cooling-enable", "cooling-dew-point"]],
   ];
   assertMarkupOrder(markup, expectedSources.map(([category]) => `data-source-category="${category}"`));

@@ -90,6 +90,8 @@ Voor `Water Temperature Control` zijn vooral belangrijk:
 - `Curve Fallback Tsupply (No Outside Temp)`
 - `Heating Curve PID Kp/Ki/Kd`
 
+De stooklijneditor toont de zes opgeslagen punten in één grafiek. De schuiven maken een rechte basislijn; slepen of invoeren verfijnt losse punten in diezelfde grafiek. Met **Stooklijn opslaan** verstuurt de webinterface de uiteindelijke zes punten in één verzoek. De controller valideert ze samen en werkt ze in één hoofdloopstap bij. De zes punten blijven afzonderlijk opgeslagen voor herstart; een stroomuitval tijdens het opslaan kan daardoor een gedeeltelijk bijgewerkte curve achterlaten.
+
 Voor beide strategieën blijft belangrijk:
 
 - `Maximum water temperature`
@@ -169,6 +171,7 @@ Belangrijke keuzes:
 - `Cooling Dew Point Source`
 - `External Heat Demand Source`
 - `Heating Supply Target Source`
+- `Heating Curve Modifier Source`
 
 En indirect alles wat bepaalt waar buiten-, kamer- en waterwaarden vandaan komen.
 
@@ -186,6 +189,7 @@ De betekenis van dezelfde bron verschilt per verwarmingsstrategie:
 | Warmtetoestemming (`Heating Enable Source`) | Meestal `Niet gebruiken` | Meestal externe thermostaat/zonevraag |
 | Externe warmtevraag | Optioneel (`HA`/`API`) | Niet van toepassing |
 | Extern aanvoertarget | Niet van toepassing | Optioneel (`OT`/`HA`/`API`/`MQTT`) |
+| Stooklijn-offset | Niet van toepassing | Optioneel (`HA`/`API`/`MQTT`, −5…+5 °C aanvoercorrectie) |
 
 Tijdens Quick Start vervangt een strategieswitch de warmtetoestemming automatisch: `Heating Enable Source = Niet gebruiken` bij `Power House` (OpenQuatt bepaalt zelf de vraag), of de eerder gekozen, gekoppelde en actieve thermostaatbron bij `Water Temperature Control` (`OT thermostat` op Q-edition, anders `CIC`/`HA input`). Een uitgeschakelde of niet-geconfigureerde bron wordt niet automatisch als harde gate gekozen. Buiten Quick Start overschrijft de web-app een bestaande keuze niet stil; daar verschijnt alleen een advies met een knop om het over te nemen. Afwijkende combinaties blijven bewust mogelijk (bijv. Power House met zone-gate, stooklijn volledig weersafhankelijk).
 
@@ -201,7 +205,7 @@ Voor `External Heat Demand Source` is `Disabled` de standaard, en voor de meeste
 
 Voor `Heating Supply Target Source` is `Heating curve` de standaard, en voor de meeste installaties ook de juiste keuze. Kies je `OT thermostat`, `HA input`, `API input` of `MQTT`, dan neemt een externe regelaar het aanvoerdoel van de stooklijn over, inclusief kamertrim. Limieten, PID en Duo-dispatch blijven van OpenQuatt, en bij een wegvallende of verouderde bron valt de regeling terug op de eigen stooklijn. Zie [Water Temperature Control](water-temperature-control.md#extern-aanvoertarget-optioneel).
 
-Voor alle live Home Assistant-bronnen (buiten-, water-, kamer- en dauwpunttemperatuur, externe warmtevraag en extern aanvoertarget) bewaakt OpenQuatt één centrale heartbeat: `sensor.openquatt_ha_ingress_heartbeat` uit het `dynamic-sources`-pakket, waarvan de state zelf ongeveer elke minuut verandert. Een constante waarde blijft daardoor bruikbaar zolang die heartbeat binnenkomt; blijft hij te lang uit, dan wordt de waarde ongeldig (per bron 10–30 minuten, zie de betreffende strategiepagina's). Zolang deze firmware na een (her)start nog nooit een heartbeat heeft ontvangen — bijvoorbeeld met een ouder pakket of eigen proxy-entiteiten zonder heartbeat — geldt de oude geldigheidscontrole, zodat een update bestaande HA-ingress nooit plotseling afwijst. Kamer-setpoint, `Heating Enable` en `Cooling Enable` zijn stateful en verlopen nooit op een constante waarde. Voor diagnose zijn er `HA Ingress Age` (seconden sinds de laatste heartbeat) en `HA Ingress Fresh`. Zolang deze boot nog nooit een heartbeat heeft gezien, blijven beide diagnostics `unknown`: dat betekent legacy-modus, niet automatisch een verbroken HA-verbinding.
+Voor alle bestaande live Home Assistant-bronnen (buiten-, water-, kamer- en dauwpunttemperatuur, externe warmtevraag en extern aanvoertarget) bewaakt OpenQuatt één centrale heartbeat: `sensor.openquatt_ha_ingress_heartbeat` uit het `dynamic-sources`-pakket, waarvan de state zelf ongeveer elke minuut verandert. Een constante waarde blijft daardoor bruikbaar zolang die heartbeat binnenkomt; blijft hij te lang uit, dan wordt de waarde ongeldig (per bron 10–30 minuten, zie de betreffende strategiepagina's). Zolang deze firmware na een (her)start nog nooit een heartbeat heeft ontvangen — bijvoorbeeld met een ouder pakket of eigen proxy-entiteiten zonder heartbeat — geldt voor deze bestaande bronnen de oude geldigheidscontrole, zodat een update bestaande HA-ingress nooit plotseling afwijst. De nieuwe `Heating Curve Modifier Source` is hiervan uitgezonderd en vereist altijd een verse heartbeat. Kamer-setpoint, `Heating Enable` en `Cooling Enable` zijn stateful en verlopen nooit op een constante waarde. Voor diagnose zijn er `HA Ingress Age` (seconden sinds de laatste heartbeat) en `HA Ingress Fresh`. Zolang deze boot nog nooit een heartbeat heeft gezien, blijven beide diagnostics `unknown`: dat betekent legacy-modus voor de bestaande bronnen, niet automatisch een verbroken HA-verbinding.
 
 De temperatuurkalibratie neemt ook de actieve aanvoertemperatuurbron mee. OpenQuatt bewaart daarvoor vier afzonderlijke offsets: voor de lokale PT1000, lokale DS18B20, CIC-feed en Home Assistant-invoer. Bij een bronwissel activeert OpenQuatt automatisch de eerder opgeslagen correctie voor die bron. De CIC-correctie blijft geldig na een gewijzigde feed-URL; na een andere Home Assistant-entiteit blijft die correctie uitgeschakeld totdat je de HA-invoer opnieuw kalibreert. Een tijdelijke automatische fallback naar de water-uitmeting van de warmtepomp gebruikt geen aanvoercorrectie en wist geen opgeslagen kalibratie.
 

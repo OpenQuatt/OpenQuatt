@@ -258,6 +258,7 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
       mqttRoomTemperature: "room_temperature",
       mqttRoomSetpoint: "room_setpoint",
       mqttHeatingSupplyTarget: "heating_supply_target",
+      mqttHeatingCurveModifier: "heating_curve_modifier",
       mqttHeatingEnable: "heating_enable",
       mqttCoolingEnable: "cooling_enable",
     };
@@ -267,6 +268,7 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
       room_temperature: "mqttRoomTemperatureValid",
       room_setpoint: "mqttRoomSetpointValid",
       heating_supply_target: "mqttHeatingSupplyTargetValid",
+      heating_curve_modifier: "mqttHeatingCurveModifierValid",
       heating_enable: "mqttHeatingEnableValid",
       cooling_enable: "mqttCoolingEnableValid",
     };
@@ -591,20 +593,23 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
         missing: [t("settingsIntegrations.apiMissing"), t("settingsIntegrations.apiMissingCopy")],
       },
     };
-    const renderInputSourceRows = ({ kind, label = "", valueKey = "", validKey = "", ageKey = "", value = "", topicKey = "", forceVisible = false, effective = false }) => {
+    const renderInputSourceRows = ({ kind, label = "", valueKey = "", validKey = "", ageKey = "", value = "", topicKey = "", forceVisible = false, effective = false, validOverride = null }) => {
       if (!valueKey || !validKey || !hasEntity(valueKey) || !hasEntity(validKey)) {
         return [];
       }
       if (kind === "mqtt" && !isMqttInputTopicEnabled(topicKey || mqttTopicKeyByValueKey[valueKey])) {
         return [];
       }
-      const valid = isInstallationMonitoringBinaryActive(validKey);
+      const valid = validOverride === null ? isInstallationMonitoringBinaryActive(validKey) : validOverride === true;
       if (!valid && !forceVisible && !effective) {
         return [];
       }
       const age = ageKey && hasEntity(ageKey) ? getNumericSourceValue(ageKey) : NaN;
-      const sourceState = valid ? "valid" : kind === "api" ? (Number.isFinite(age) ? "stale" : "missing") : "invalid";
-      const [defaultStatus, statusTitle] = inputSourceCopy[kind][sourceState];
+      const sourceState = valid ? "valid" : validOverride === "missing"
+        ? "missing" : kind === "api" ? (Number.isFinite(age) ? "stale" : "missing") : "invalid";
+      const [defaultStatus, statusTitle] = validOverride === "missing"
+        ? [t("common.unknown"), ""]
+        : inputSourceCopy[kind][sourceState];
       return [renderSourceRow({
         label: label || inputSourceCopy[kind].label,
         key: valueKey,
@@ -618,7 +623,7 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
       })];
     };
     const inputOptionByKind = { ha: "HA input", api: "API input", mqtt: "MQTT" };
-    const renderExternalSourceRows = (selectKey, effectiveSource, sources, formatValue = null) => (
+    const renderExternalSourceRows = (selectKey, effectiveSource, sources, formatValue = null, validOverrides = {}) => (
       Object.entries(sources).flatMap(([kind, keys]) => {
         const [valueKey, validKey, ageKey = "", topicKey = ""] = keys;
         const option = inputOptionByKind[kind];
@@ -631,9 +636,21 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
           value: formatValue ? formatValue(valueKey) : "",
           forceVisible: isConfiguredSource(selectKey, option),
           effective: sourcesMatch(effectiveSource, option),
+          validOverride: validOverrides[kind] ?? null,
         });
       })
     );
+    const formatCurveModifierValue = (key) => {
+      const value = getSettingsStatValue(key);
+      return value === "—" ? value : `${value.replace(/\s*(?:K|°C)$/, "")} °C`;
+    };
+    const curveModifierConfiguredSource = formattedSourceValue("heatingCurveModifierSource");
+    const curveModifierHaStatusMissing = !hasEntity("heatingCurveModifierHaEffectiveValid");
+    const curveModifierHaValid = isInstallationMonitoringBinaryActive("heatingCurveModifierHaEffectiveValid");
+    const curveModifierHaUnavailable = isConfiguredSource("heatingCurveModifierSource", "HA input") && !curveModifierHaValid;
+    const curveModifierUsedSource = curveModifierHaUnavailable
+      ? curveModifierHaStatusMissing ? t("common.unknown") : t("settingsIntegrations.unavHaInvalid")
+      : curveModifierConfiguredSource;
     const renderSourceSelect = (key, config = {}) => {
       if (!hasEntity(key)) {
         return { markup: "", warning: "" };
@@ -1103,6 +1120,23 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
           ...renderExternalSourceRows("heatingSupplyTargetSource", heatingSupplyTargetUsedSource, buildExternalSourceKeys("heatingSupplyTarget", "HeatingSupplyTarget")),
         ],
       }),
+      buildSourceSignal({
+        key: "heating-curve-modifier",
+        group: "heating",
+        title: t("settingsIntegrations.sigCurveModifier"),
+        icon: "target",
+        select: buildExternalSourceSelect("heatingCurveModifier", "HeatingCurveModifier", "heating_curve_modifier", {
+          infoCopy: t("settingsIntegrations.curveModifierInfo"),
+        }),
+        summaryValue: formatCurveModifierValue("curveModifier"),
+        summarySource: curveModifierUsedSource,
+        warning: curveModifierHaUnavailable
+          ? t(curveModifierHaStatusMissing ? "common.unknown" : "settingsIntegrations.haInvalidCopy")
+          : "",
+        measurementRows: [
+          ...renderExternalSourceRows("heatingCurveModifierSource", curveModifierHaUnavailable ? "" : curveModifierConfiguredSource, buildExternalSourceKeys("heatingCurveModifier", "HeatingCurveModifier"), formatCurveModifierValue, { ha: curveModifierHaStatusMissing ? "missing" : curveModifierHaValid }),
+        ],
+      }),
     ].filter(Boolean);
 
     if (!sourceSignals.length) {
@@ -1112,7 +1146,7 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
     const sourceCategories = [
       { id: "room-outside", title: t("settingsIntegrations.catRoomOutside"), icon: "home-cog", keys: ["room-temperature", "room-setpoint", "outside-temperature"] },
       { id: "water-circuit", title: t("settingsIntegrations.catWater"), icon: "droplet", keys: ["water-supply", "flow-source"] },
-      { id: "heating", title: t("settingsIntegrations.catHeating"), icon: "flame", keys: ["external-heat-demand", "heating-supply-target", "heating-enable"] },
+      { id: "heating", title: t("settingsIntegrations.catHeating"), icon: "flame", keys: ["external-heat-demand", "heating-supply-target", "heating-curve-modifier", "heating-enable"] },
       { id: "cooling", title: t("settingsIntegrations.catCooling"), icon: "snowflake", keys: ["cooling-enable", "cooling-dew-point"] },
     ];
     const signalByKey = new Map(sourceSignals.map((signal) => [signal.key, signal]));

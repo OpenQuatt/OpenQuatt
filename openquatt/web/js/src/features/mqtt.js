@@ -182,6 +182,16 @@ import { formatNumber, t } from "../i18n/index.js";
         payloadInfo: t("mqtt.payloadSupply"),
       },
       {
+        topicKey: "heating_curve_modifier",
+        label: t("mqtt.sensorCurveModifier"),
+        valueKey: "mqttHeatingCurveModifier",
+        ageKey: "mqttHeatingCurveModifierAge",
+        validKey: "mqttHeatingCurveModifierValid",
+        staleCopy: t("mqtt.stale15min"),
+        payloadInfoTitle: t("mqtt.payloadTempTitle"),
+        payloadInfo: t("mqtt.payloadCurveModifier"),
+      },
+      {
         topicKey: "heating_enable",
         label: t("mqtt.sensorHeatEnable"),
         valueKey: "mqttHeatingEnable",

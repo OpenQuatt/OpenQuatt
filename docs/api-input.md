@@ -34,6 +34,7 @@ Sommige `curl`-versies vereisen bij `POST` een expliciete `Content-Length`. Gebr
 | Kamer-setpoint | `/number/api_input_room_setpoint/set?value=<temperatuur>` | `5..35` graden Celsius |
 | Warmtevraag | `/number/api_input_external_heat_demand/set?value=<vermogen>` | `0..15000` watt |
 | Aanvoertarget | `/number/api_input_heating_supply_target/set?value=<temperatuur>` | `20..70` graden Celsius |
+| Stooklijn-offset | `/number/api_input_heating_curve_modifier/set?value=<delta>` | `-5..+5` °C aanvoercorrectie |
 
 Toestemmingssignalen zijn `switch`-entiteiten. Zet ze met een `POST` naar `/turn_on` of `/turn_off`.
 
@@ -86,6 +87,7 @@ De geldigheidsduur is:
 - kamer-setpoint: blijft geldig tot herstart of nieuwe waarde;
 - warmtevraag: 15 minuten;
 - aanvoertarget: 15 minuten;
+- stooklijn-offset: 15 minuten (daarna 0 °C correctie);
 - warmtetoestemming: blijft geldig tot herstart of nieuwe waarde;
 - koeltoestemming: blijft geldig tot herstart of nieuwe waarde.
 

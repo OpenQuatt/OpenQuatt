@@ -50,6 +50,11 @@ openquatt_mqtt_config:
   heating_supply_target_sensor: mqtt_heating_supply_target
   heating_supply_target_age_sensor: mqtt_heating_supply_target_age
   heating_supply_target_valid_binary_sensor: mqtt_heating_supply_target_valid
+  heating_curve_modifier_topic: "${mqtt_heating_curve_modifier_topic}"
+  heating_curve_modifier_stale: ${mqtt_heating_curve_modifier_stale_s}s
+  heating_curve_modifier_sensor: mqtt_heating_curve_modifier
+  heating_curve_modifier_age_sensor: mqtt_heating_curve_modifier_age
+  heating_curve_modifier_valid_binary_sensor: mqtt_heating_curve_modifier_valid
   heating_enable_topic: "${mqtt_heating_enable_topic}"
   heating_enable_stale: ${mqtt_heating_enable_stale_s}s
   heating_enable_binary_sensor: mqtt_heating_enable
@@ -159,6 +164,23 @@ sensor:
     update_interval: never
 
   - platform: template
+    id: mqtt_heating_curve_modifier
+    name: "MQTT Heating Curve Modifier"
+    disabled_by_default: true
+    unit_of_measurement: "K"
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+
+  - platform: template
+    id: mqtt_heating_curve_modifier_age
+    name: "MQTT Heating Curve Modifier Age"
+    internal: true
+    unit_of_measurement: "s"
+    accuracy_decimals: 0
+    update_interval: never
+
+  - platform: template
     id: mqtt_heating_enable_age
     name: "MQTT Heating Enable Age"
     internal: true
@@ -198,6 +220,11 @@ binary_sensor:
   - platform: template
     id: mqtt_heating_supply_target_valid
     name: "MQTT Heating Supply Target Valid"
+    internal: true
+
+  - platform: template
+    id: mqtt_heating_curve_modifier_valid
+    name: "MQTT Heating Curve Modifier Valid"
     internal: true
 
   - platform: template

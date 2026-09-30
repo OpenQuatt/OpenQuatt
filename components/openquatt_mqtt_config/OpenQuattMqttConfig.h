@@ -24,7 +24,7 @@ namespace openquatt_mqtt_config {
 class OpenQuattMqttConfig : public Component {
  public:
   static constexpr size_t PAYLOAD_MAX_LEN = 128;
-  static constexpr size_t NUMERIC_INPUT_COUNT = 5;
+  static constexpr size_t NUMERIC_INPUT_COUNT = 6;
   static constexpr size_t BINARY_INPUT_COUNT = 2;
 
   enum class NumericInputKind : uint8_t {
@@ -33,6 +33,7 @@ class OpenQuattMqttConfig : public Component {
     ROOM_TEMPERATURE = 2,
     ROOM_SETPOINT = 3,
     HEATING_SUPPLY_TARGET = 4,
+    HEATING_CURVE_MODIFIER = 5,
   };
 
   enum class BinaryInputKind : uint8_t {
@@ -118,6 +119,21 @@ class OpenQuattMqttConfig : public Component {
   }
   void set_heating_supply_target_valid_binary_sensor(binary_sensor::BinarySensor* binary_sensor) {
     this->set_numeric_input_valid_binary_sensor_(NumericInputKind::HEATING_SUPPLY_TARGET, binary_sensor);
+  }
+  void set_heating_curve_modifier_topic(const std::string& topic) {
+    this->set_numeric_input_topic_(NumericInputKind::HEATING_CURVE_MODIFIER, topic);
+  }
+  void set_heating_curve_modifier_stale_ms(uint32_t stale_ms) {
+    this->set_numeric_input_stale_ms_(NumericInputKind::HEATING_CURVE_MODIFIER, stale_ms);
+  }
+  void set_heating_curve_modifier_sensor(sensor::Sensor* sensor) {
+    this->set_numeric_input_sensor_(NumericInputKind::HEATING_CURVE_MODIFIER, sensor);
+  }
+  void set_heating_curve_modifier_age_sensor(sensor::Sensor* sensor) {
+    this->set_numeric_input_age_sensor_(NumericInputKind::HEATING_CURVE_MODIFIER, sensor);
+  }
+  void set_heating_curve_modifier_valid_binary_sensor(binary_sensor::BinarySensor* binary_sensor) {
+    this->set_numeric_input_valid_binary_sensor_(NumericInputKind::HEATING_CURVE_MODIFIER, binary_sensor);
   }
   void set_heating_enable_topic(const std::string& topic) {
     this->set_binary_input_topic_(BinaryInputKind::HEATING_ENABLE, topic);
@@ -210,11 +226,12 @@ class OpenQuattMqttConfig : public Component {
   // Frozen v1 storage bit layout for the enable/retained masks. Bit positions
   // must never shift when inputs are added: bits 0..3 are the original numeric
   // inputs and bits 4..5 the binary enables from before the heating supply
-  // target existed. That input owns the previously unused bit 6, so stored
-  // masks from older firmware stay valid without a storage migration.
+  // target existed. That input owns bit 6 and the curve modifier owns bit 7.
+  // Stored masks from older firmware stay valid without a storage migration.
   static constexpr uint8_t HEATING_SUPPLY_TARGET_BIT = 6U;
+  static constexpr uint8_t HEATING_CURVE_MODIFIER_BIT = 7U;
   static constexpr uint8_t BINARY_INPUT_BIT_BASE = 4U;
-  static constexpr uint8_t INPUT_MASK_ALL = 0x7FU;
+  static constexpr uint8_t INPUT_MASK_ALL = 0xFFU;
   static constexpr uint8_t STATEFUL_INPUT_MASK =
       static_cast<uint8_t>((1U << static_cast<uint8_t>(NumericInputKind::ROOM_SETPOINT)) |
                            (1U << (BINARY_INPUT_BIT_BASE + static_cast<uint8_t>(BinaryInputKind::HEATING_ENABLE))) |
@@ -352,9 +369,10 @@ class OpenQuattMqttConfig : public Component {
   static uint8_t numeric_input_mask_(NumericInputKind kind);
   static uint8_t binary_input_mask_(BinaryInputKind kind);
   static constexpr uint8_t numeric_input_bit_(size_t index) {
-    return static_cast<uint8_t>(index >= static_cast<size_t>(NumericInputKind::HEATING_SUPPLY_TARGET)
-                                    ? (1U << HEATING_SUPPLY_TARGET_BIT)
-                                    : (1U << index));
+    return static_cast<uint8_t>(
+        index == static_cast<size_t>(NumericInputKind::HEATING_CURVE_MODIFIER)  ? (1U << HEATING_CURVE_MODIFIER_BIT)
+        : index == static_cast<size_t>(NumericInputKind::HEATING_SUPPLY_TARGET) ? (1U << HEATING_SUPPLY_TARGET_BIT)
+                                                                                : (1U << index));
   }
   static constexpr uint8_t binary_input_bit_(size_t index) {
     return static_cast<uint8_t>(1U << (BINARY_INPUT_BIT_BASE + index));
@@ -452,6 +470,7 @@ class OpenQuattMqttConfig : public Component {
       NumericInput("room_temperature", "room temperature", 0.0f, 50.0f),
       NumericInput("room_setpoint", "room setpoint", 5.0f, 35.0f),
       NumericInput("heating_supply_target", "heating supply target", 20.0f, 70.0f),
+      NumericInput("heating_curve_modifier", "heating curve modifier", -5.0f, 5.0f),
   }};
   std::array<BinaryInput, BINARY_INPUT_COUNT> binary_inputs_{{
       BinaryInput("heating_enable", "heating enable"),

@@ -274,12 +274,14 @@ class MqttIngressLifecycleContractTest(unittest.TestCase):
     def test_storage_bit_positions_are_frozen_for_upgrade(self) -> None:
         # Stored enable/retained masks must keep their meaning when inputs are
         # added: bits 0..3 are the original numeric inputs, bits 4..5 the
-        # binary enables, and the heating supply target owns bit 6 (issue #649).
+        # binary enables, heating supply target owns bit 6 (issue #649), and
+        # the heating curve modifier owns bit 7 (issue #765).
         # Shifting positions instead would re-enable a disabled heating topic
         # or reject the stored config outright, without any migration.
         self.assertIn("HEATING_SUPPLY_TARGET_BIT = 6U", HEADER)
+        self.assertIn("HEATING_CURVE_MODIFIER_BIT = 7U", HEADER)
         self.assertIn("BINARY_INPUT_BIT_BASE = 4U", HEADER)
-        self.assertIn("INPUT_MASK_ALL = 0x7FU", HEADER)
+        self.assertIn("INPUT_MASK_ALL = 0xFFU", HEADER)
         for token in (
             "1U << (NUMERIC_INPUT_COUNT",
             "1U << input_index",

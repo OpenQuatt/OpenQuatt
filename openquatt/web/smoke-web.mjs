@@ -40,6 +40,7 @@ const boundaryAllowedEdges = new Set([
   "core/entity-actions.js -> features/webserver-logs.js",
   "core/entity-actions.js -> settings/electrical-limit.js",
   "core/entity-actions.js -> settings/house-learning-chart.js",
+  "core/entity-actions.js -> settings/heating.js",
   "core/entity-actions.js -> views/energy.js",
   "core/entity-sync.js -> features/mqtt-actions.js",
   "core/entity-sync.js -> features/house-learning.js",

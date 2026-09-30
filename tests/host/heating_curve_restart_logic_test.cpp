@@ -190,6 +190,18 @@ void test_outside_filter_target_and_cadence_rollover() {
   assert(near(supply_target(-5.0f, 40.0f, points, 22.0f, 20.0f, tuning(), 39.0f), 39.0f));
   assert(near(supply_target(NAN, 40.0f, points, NAN, NAN, tuning(), 70.0f), 40.0f));
 
+  const auto modified = target_breakdown(-5.0f, 40.0f, points, 1.5f, 22.0f, 20.0f, tuning(), 70.0f);
+  assert(near(modified.base_c, 42.5f) && near(modified.modifier_c, 1.5f));
+  assert(near(modified.room_trim_c, 2.0f) && near(modified.selected_c, 42.0f));
+  assert(near(target_breakdown(-5.0f, 40.0f, points, NAN, NAN, NAN, tuning(), 70.0f).modifier_c, 0.0f));
+  assert(near(target_breakdown(-5.0f, 40.0f, points, 100.0f, NAN, NAN, tuning(), 70.0f).modifier_c, 5.0f));
+  assert(near(target_breakdown(-5.0f, 40.0f, points, -100.0f, NAN, NAN, tuning(), 70.0f).modifier_c, -5.0f));
+  assert(near(target_breakdown(-5.0f, 40.0f, points, 5.0f, NAN, NAN, tuning(), 40.0f).selected_c, 40.0f));
+  const auto low_points = std::array<CurvePoint, 6>{
+      {{-10.0f, 20.0f}, {-5.0f, 20.0f}, {0.0f, 20.0f}, {5.0f, 20.0f}, {10.0f, 20.0f}, {15.0f, 20.0f}}};
+  assert(near(supply_target(0.0f, 20.0f, low_points, 22.0f, 20.0f, tuning(), 70.0f), 18.0f));
+  assert(near(target_breakdown(0.0f, 20.0f, low_points, -5.0f, 22.0f, 20.0f, tuning(), 70.0f).selected_c, 18.0f));
+
   assert(cadence_due(100U, 0U, 30000U));
   assert(!cadence_due(1000U, UINT32_MAX - 1000U, 3000U));
   assert(cadence_due(2000U, UINT32_MAX - 1000U, 3000U));
