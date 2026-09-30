@@ -147,6 +147,12 @@ export function handleHouseLearningAction(action, button, pressNamedButton) {
     return true;
   }
   if (action === "load-house-learning-chart") {
+    if (state.houseLearningChart !== null && !state.houseLearningChartLoading) {
+      state.houseLearningChart = null;
+      state.houseLearningChartFetchedAt = 0;
+      render();
+      return true;
+    }
     void loadHouseLearningChart();
     return true;
   }
