@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
 
 globalThis.__OQ_PREVIEW__ = false;
 globalThis.window = {
@@ -10,13 +12,214 @@ globalThis.window = {
   clearTimeout: globalThis.clearTimeout,
 };
 
-const { CURVE_POINTS } = await import("../js/src/core/config.js");
+const { CURVE_POINTS, ENTITY_DEFS } = await import("../js/src/core/config.js");
 const { INITIAL_SETTINGS_READY_KEY_MAP, SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
 const { state } = await import("../js/src/core/state.js");
 const { normalizeNumber } = await import("../js/src/core/entity-store.js");
 const { applySimpleCurveBatch, applySimpleCurvePoints, generateSimpleCurve, getCurvePointDraft, getSimpleCurveDraft, updateCurvePointDraft, updateSimpleCurveDraft } = await import("../js/src/core/simple-curve.js");
 const { renderSettingsCurveInputs, renderSimpleCurvePreview } = await import("../js/src/settings/heating.js");
-const { submitSimpleCurveBatch } = await import("../js/src/core/control-actions.js");
+const { handleControlAction, submitSimpleCurveBatch } = await import("../js/src/core/control-actions.js");
+const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
+
+test("curve-invoer blijft via gedelegeerde input/focus/change-listeners behouden", async () => {
+  const bundle = await build({
+    bundle: true, write: false, format: "esm", platform: "node", define: { __OQ_PREVIEW__: "false" },
+    stdin: {
+      resolveDir: fileURLToPath(new URL(".", import.meta.url)),
+      contents: `
+        export { state } from "../js/src/core/state.js";
+        export { setRenderCallback } from "../js/src/core/render-scheduler.js";
+        export { renderSimpleCurvePreview } from "../js/src/settings/heating.js";
+        export * as curveEventHandlers from "../js/src/core/entity-actions.js";
+        export * as delegatedEvents from "../js/src/core/event-handlers.js";
+      `,
+    },
+    plugins: [{ name: "test-assets", setup(plugin) {
+      plugin.onResolve({ filter: /^virtual:embedded-assets$/ }, () => ({ path: "assets", namespace: "test-assets" }));
+      plugin.onLoad({ filter: /.*/, namespace: "test-assets" }, () => ({
+        contents: 'export const HP_GENERATION_IMAGE_V1 = "", HP_GENERATION_IMAGE_V2 = "", LOGO_MARKUP = "";',
+      }));
+    } }],
+  });
+  const { state, setRenderCallback, renderSimpleCurvePreview, curveEventHandlers, delegatedEvents } =
+    await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
+  const originalDocument = globalThis.document;
+  const root = new EventTarget();
+  const input = { type: "number", dataset: { oqCurvePointInput: "curve0" }, value: "40", closest: () => null };
+  const dispatch = (type) => {
+    const event = new Event(type);
+    Object.defineProperty(event, "target", { value: input });
+    root.dispatchEvent(event);
+  };
+  let renders = 0;
+  state.entities = Object.fromEntries(CURVE_POINTS.map((point) => [point.key, { value: 38 }]));
+  state.drafts = {};
+  state.simpleCurveDraft = null;
+  state.curvePointDraft = null;
+  state.appView = "settings";
+  delegatedEvents.setEventHandlers(curveEventHandlers);
+  root.addEventListener("input", delegatedEvents.handleInput);
+  root.addEventListener("change", delegatedEvents.handleChange);
+  root.addEventListener("focusin", delegatedEvents.handleFocusChange);
+  root.addEventListener("focusout", delegatedEvents.handleFocusChange);
+  try {
+    globalThis.document = { activeElement: input };
+    setRenderCallback(() => { renders += 1; });
+    dispatch("focusin");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(state.focusedField, "curve0");
+    dispatch("input");
+    assert.equal(state.curvePointDraft[2], 40);
+    assert.equal(renders, 0);
+    state.entities.curve0.value = 38;
+    assert.match(renderSimpleCurvePreview(), /value="40\.0" data-oq-curve-point-input="curve0"/);
+    globalThis.document.activeElement = null;
+    dispatch("focusout");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(state.focusedField, "");
+    dispatch("change");
+    assert.equal(renders, 1);
+    assert.equal(state.curvePointDraft[2], 40);
+    assert.match(renderSimpleCurvePreview(), /Wijzigingen nog niet opgeslagen/);
+  } finally {
+    setRenderCallback(null);
+    delegatedEvents.setEventHandlers({});
+    globalThis.document = originalDocument;
+  }
+});
+
+async function runDelayedCurveSave({ status = 202, edit = () => {}, failWrites = false } = {}) {
+  const originalFetch = globalThis.fetch;
+  const originals = [55, 50, 45, 42.5, 40, 37.5];
+  const remote = new Map(CURVE_POINTS.map((point, index) => [point.key, originals[index]]));
+  let releaseResponse;
+  let requestStarted;
+  let saveCompleted;
+  const responseGate = new Promise((resolve) => { releaseResponse = resolve; });
+  const started = new Promise((resolve) => { requestStarted = resolve; });
+  const completed = new Promise((resolve) => { saveCompleted = resolve; });
+  const response = (payload, code = 200) => ({ ok: code < 400, status: code, json: async () => payload });
+  const writes = [];
+  state.entities = Object.fromEntries(CURVE_POINTS.map((point, index) => [point.key, { value: originals[index] }]));
+  state.drafts = {};
+  state.inputDrafts = {};
+  state.simpleCurveDraft = null;
+  state.curvePointDraft = null;
+  state.simpleCurveApplying = false;
+  state.loadingEntities = false;
+  state.appView = "overview";
+  state.controlError = "";
+  state.controlNotice = "";
+  updateSimpleCurveDraft("level", 40);
+  const submitted = getCurvePointDraft();
+  try {
+    setRenderCallback(() => {
+      if (!state.simpleCurveApplying) saveCompleted();
+    });
+    globalThis.fetch = async (url, options = {}) => {
+      const path = new URL(url, "http://controller.local").pathname;
+      if (path === "/auth/status") return response({ csrf_token: "test-token" });
+      if (path === "/openquatt/curve/apply") {
+        requestStarted();
+        await responseGate;
+        if (status === 202) {
+          const body = new URLSearchParams(options.body);
+          for (const point of CURVE_POINTS) remote.set(point.key, Number(body.get(point.key)));
+        }
+        return response({ ok: status === 202, queued: status === 202 }, status);
+      }
+      if (options.method === "POST" && path.startsWith("/number/")) {
+        const name = decodeURIComponent(path.split("/")[2] || "");
+        const key = CURVE_POINTS.find((item) => name === ENTITY_DEFS[item.key].name)?.key;
+        writes.push(name);
+        if (failWrites) return response({}, 500);
+        const value = Number(new URL(url, "http://controller.local").searchParams.get("value"));
+        if (key) remote.set(key, value);
+        return response({});
+      }
+      return response({ entities: Object.fromEntries([...remote].map(([key, value]) => [key, { value }])) });
+    };
+    handleControlAction("apply-simple-curve", {});
+    await started;
+    assert.equal(state.simpleCurveApplying, true);
+    edit();
+    releaseResponse();
+    await completed;
+    assert.equal(state.simpleCurveApplying, false);
+    return { remote, submitted, writes };
+  } finally {
+    releaseResponse();
+    setRenderCallback(null);
+    globalThis.fetch = originalFetch;
+  }
+}
+
+test("batchbevestiging behoudt een schuifconcept dat tijdens het echte verzoek is gewijzigd", { timeout: 3000 }, async () => {
+  const { remote, submitted } = await runDelayedCurveSave({ edit: () => updateSimpleCurveDraft("level", 50) });
+  assert.deepEqual(CURVE_POINTS.map((point) => remote.get(point.key)), submitted.map((point) => point.value));
+  assert.deepEqual(state.simpleCurveDraft, { slope: 5, level: 50 });
+  assert.deepEqual(state.curvePointDraft, generateSimpleCurve(5, 50).map((point) => point.value));
+  assert.match(renderSimpleCurvePreview(), /Wijzigingen nog niet opgeslagen/);
+});
+
+test("batchbevestiging wist alleen een onaangeraakt concept", { timeout: 3000 }, async () => {
+  await runDelayedCurveSave();
+  assert.equal(state.simpleCurveDraft, null);
+  assert.equal(state.curvePointDraft, null);
+});
+
+test("batchbevestiging behoudt ook nieuwere handmatige curvepunten", { timeout: 3000 }, async () => {
+  await runDelayedCurveSave({ edit: () => updateCurvePointDraft("curve5", 44) });
+  assert.equal(state.simpleCurveDraft, null);
+  assert.equal(state.curvePointDraft[3], 44);
+});
+
+test("een geweigerde batch behoudt het nieuwere concept en geeft de save-state vrij", { timeout: 3000 }, async () => {
+  const { writes } = await runDelayedCurveSave({ status: 409, edit: () => updateSimpleCurveDraft("level", 50) });
+  assert.deepEqual(writes, []);
+  assert.equal(state.simpleCurveDraft.level, 50);
+  assert.match(state.controlError, /konden niet samen worden bevestigd/);
+});
+
+test("de oudere schrijfroutine behoudt nieuwere concepten na een vertraagde 404", { timeout: 3000 }, async () => {
+  const { remote, submitted, writes } = await runDelayedCurveSave({ status: 404, edit: () => updateSimpleCurveDraft("level", 50) });
+  assert.equal(writes.length, 6);
+  assert.deepEqual(CURVE_POINTS.map((point) => remote.get(point.key)), submitted.map((point) => point.value));
+  assert.equal(state.simpleCurveDraft.level, 50);
+  assert.match(renderSimpleCurvePreview(), /Wijzigingen nog niet opgeslagen/);
+});
+
+test("een mislukte oudere schrijfroutine behoudt concepten en geeft de save-state vrij", { timeout: 3000 }, async () => {
+  await runDelayedCurveSave({ status: 404, failWrites: true, edit: () => updateSimpleCurveDraft("level", 50) });
+  assert.equal(state.simpleCurveDraft.level, 50);
+  assert.match(state.controlError, /niet volledig worden toegepast of hersteld/);
+});
+
+test("een onverwachte renderfout laat simpleCurveApplying niet hangen", async () => {
+  const originalConsoleError = console.error;
+  const errors = [];
+  state.entities = Object.fromEntries(CURVE_POINTS.map((point) => [point.key, { value: 40 }]));
+  state.drafts = {};
+  state.simpleCurveDraft = null;
+  state.curvePointDraft = null;
+  state.simpleCurveApplying = false;
+  updateSimpleCurveDraft("level", 45);
+  try {
+    console.error = (...args) => { errors.push(args); };
+    setRenderCallback(() => {
+      if (state.simpleCurveApplying) throw new Error("curve render failed");
+    });
+    handleControlAction("apply-simple-curve", {});
+    await Promise.resolve();
+    assert.equal(state.simpleCurveApplying, false);
+    assert.equal(state.simpleCurveDraft.level, 45);
+    assert.match(state.controlError, /curve render failed/);
+    assert.equal(errors.length, 1);
+  } finally {
+    console.error = originalConsoleError;
+    setRenderCallback(null);
+  }
+});
 
 test("batch haalt CSRF-token en schrijft curvepunten onder hetzelfde proxypad", async () => {
   const originalFetch = globalThis.fetch;

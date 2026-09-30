@@ -152,7 +152,7 @@ function updateFrequencyRangeControl(input) {
     handleHouseLearningChartPointerMove(event);
     window.setTimeout(() => {
       const active = document.activeElement;
-      state.focusedField = active && active.dataset ? active.dataset.oqField || "" : "";
+      state.focusedField = active && active.dataset ? active.dataset.oqField || active.dataset.oqCurvePointInput || "" : "";
       state.settingsInteractionLock = Boolean(active && active.closest && active.closest(".oq-ph-concept-hotspot"));
       if (!state.focusedField
           && state.incidentMonitoringRenderPending
@@ -189,6 +189,10 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleInput(event) {
+    if (event.target.dataset.oqCurvePointInput) {
+      updateCurvePointDraft(event.target.dataset.oqCurvePointInput, event.target.value);
+      return;
+    }
     if (event.target.dataset.oqOduDefrostHp) {
       updateOduDefrostDraft(event.target);
       return;

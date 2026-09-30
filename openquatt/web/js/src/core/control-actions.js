@@ -109,28 +109,36 @@ const controlActionHandlers = {
       return value == null || value === "" ? NaN : Number(value);
     });
     if (!points || points.some((point) => !Number.isFinite(point.value)) || originals.some((value) => !Number.isFinite(value))) return false;
+    const simpleDraft = state.simpleCurveDraft;
+    const pointDraft = state.curvePointDraft;
     state.draggingCurveKey = "";
     state.simpleCurveApplying = true;
-    render();
-    const batch = await applySimpleCurveBatch(points, submitSimpleCurveBatch,
-      () => refreshEntities(CURVE_POINTS.map((point) => point.key), "state"), getEntityValue);
-    const result = batch.unsupported
-      ? await applySimpleCurvePoints(points, originals,
-        (key, value) => commitNumber(key, value),
-        getEntityValue)
-      : batch;
-    if (!result.applied) {
-      state.controlError = batch.unsupported
-        ? t(result.restored ? "settingsHeating.simpleApplyFailed" : "settingsHeating.simpleRestoreFailed")
-        : t("settingsHeating.simpleApplyUnconfirmed");
+    try {
+      render();
+      const batch = await applySimpleCurveBatch(points, submitSimpleCurveBatch,
+        () => refreshEntities(CURVE_POINTS.map((point) => point.key), "state"), getEntityValue);
+      const result = batch.unsupported
+        ? await applySimpleCurvePoints(points, originals,
+          (key, value) => commitNumber(key, value),
+          getEntityValue)
+        : batch;
+      if (!result.applied) {
+        state.controlError = batch.unsupported
+          ? t(result.restored ? "settingsHeating.simpleApplyFailed" : "settingsHeating.simpleRestoreFailed")
+          : t("settingsHeating.simpleApplyUnconfirmed");
       } else {
-        state.simpleCurveDraft = null;
-        state.curvePointDraft = null;
+        // Draft helpers replace their objects; only clear the submitted revision.
+        if (state.simpleCurveDraft === simpleDraft && state.curvePointDraft === pointDraft) {
+          state.simpleCurveDraft = null;
+          state.curvePointDraft = null;
+        }
         state.controlNotice = t("settingsHeating.simpleApplied");
+      }
+      return result.applied;
+    } finally {
+      state.simpleCurveApplying = false;
+      render();
     }
-    state.simpleCurveApplying = false;
-    render();
-    return result.applied;
   },
   "select-settings-option": async (button) => {
     const key = button.dataset.selectKey || "";
