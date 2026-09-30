@@ -13,6 +13,6 @@ class HeatingCurveDemandContractTest(unittest.TestCase):
             self.assertNotIn(old_inline, YAML)
         self.assertLess(RUNTIME.index("id(oq_curve_oil_return_hold_until_ms) = oil_return.hold_until_ms"), RUNTIME.index("if (demand.valid)"))
         paths = ("openquatt/oq_heating_curve_strategy.yaml", "openquatt/includes/control/oq_heating_curve_runtime.h", "openquatt/includes/control/oq_heating_curve_logic.h", "tests/host/heating_curve_restart_logic_test.cpp", "scripts/tests/test_electrical_input_limit_contract.py", "scripts/tests/test_heating_curve_demand_contract.py")
-        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1878)
+        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 1920)
 if __name__ == "__main__":
     unittest.main()

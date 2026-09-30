@@ -209,7 +209,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       "commissioningStatus",
       "cm100Active",
     ],
-    heating: ["strategy"],
+    heating: ["strategy", "maxWater"],
     cooling: [
       "manualCoolingEnable",
       "coolingWithoutDewPointMode",
@@ -267,6 +267,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
     ],
     heating: [
       "strategy",
+      "maxWater",
       ...POWER_HOUSE_KEYS,
       ...CURVE_SETTING_KEYS,
       ...FREQUENCY_CAP_KEYS,

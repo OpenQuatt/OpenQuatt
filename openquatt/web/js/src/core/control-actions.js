@@ -1,11 +1,17 @@
 import { invokeActionMap } from "./action-router.js";
+import { CURVE_POINTS } from "./config.js";
 import { hasEntity } from "./app-shared.js";
 import { verifyEntityBackupSelectState } from "./entity-backup.js";
 import { getCurveFallbackSuggestion, getEntityValue } from "./entity-store.js";
 import { commitNumber, commitSelect, commitSwitch, triggerButton } from "./entity-write-actions.js";
+import { refreshEntities } from "./entity-sync.js";
+import { fetchWithTimeout } from "./browser-utils.js";
+import { getBasePath } from "./url-path.js";
 import { getHeatingEnableRecommendation } from "./heating-strategy-matrix.js";
 import { t } from "../i18n/index.js";
 import { state } from "./state.js";
+import { applySimpleCurveBatch, applySimpleCurvePoints, getCurvePointDraft } from "./simple-curve.js";
+import { render } from "./render-scheduler.js";
 
 async function commitConfirmedSelection(key, value, commit, confirm) {
   const writeAccepted = await commit(key, value);
@@ -75,7 +81,57 @@ export async function commitQuickStartStrategySelection(option, commit = commitS
   return false;
 }
 
+export async function submitSimpleCurveBatch(points) {
+  if (__OQ_PREVIEW__) return "unsupported";
+  const statusResponse = await fetchWithTimeout(`${getBasePath()}/auth/status`, { cache: "no-store" }, 8000);
+  if (!statusResponse.ok) return "rejected";
+  const csrfToken = String((await statusResponse.json()).csrf_token || "");
+  if (!csrfToken) return "rejected";
+  const body = new URLSearchParams({ csrf_token: csrfToken });
+  for (const point of points) body.set(point.key, point.value.toFixed(1));
+  const response = await fetchWithTimeout(`${getBasePath()}/openquatt/curve/apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  }, 8000);
+  if (response.status === 404) return "unsupported";
+  if (response.status !== 202) return "rejected";
+  const result = await response.json();
+  return result.ok === true && result.queued === true ? "accepted" : "rejected";
+}
+
 const controlActionHandlers = {
+  "apply-simple-curve": async () => {
+    if (state.simpleCurveApplying) return false;
+    const points = getCurvePointDraft();
+    const originals = CURVE_POINTS.map((point) => {
+      const value = getEntityValue(point.key);
+      return value == null || value === "" ? NaN : Number(value);
+    });
+    if (!points || points.some((point) => !Number.isFinite(point.value)) || originals.some((value) => !Number.isFinite(value))) return false;
+    state.draggingCurveKey = "";
+    state.simpleCurveApplying = true;
+    render();
+    const batch = await applySimpleCurveBatch(points, submitSimpleCurveBatch,
+      () => refreshEntities(CURVE_POINTS.map((point) => point.key), "state"), getEntityValue);
+    const result = batch.unsupported
+      ? await applySimpleCurvePoints(points, originals,
+        (key, value) => commitNumber(key, value),
+        getEntityValue)
+      : batch;
+    if (!result.applied) {
+      state.controlError = batch.unsupported
+        ? t(result.restored ? "settingsHeating.simpleApplyFailed" : "settingsHeating.simpleRestoreFailed")
+        : t("settingsHeating.simpleApplyUnconfirmed");
+      } else {
+        state.simpleCurveDraft = null;
+        state.curvePointDraft = null;
+        state.controlNotice = t("settingsHeating.simpleApplied");
+    }
+    state.simpleCurveApplying = false;
+    render();
+    return result.applied;
+  },
   "select-settings-option": async (button) => {
     const key = button.dataset.selectKey || "";
     const option = button.dataset.selectOption || "";

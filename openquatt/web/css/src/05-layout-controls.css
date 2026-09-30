@@ -739,11 +739,6 @@
   line-height: 1.5;
 }
 
-.oq-helper-curve-grid {
-  display: grid;
-  gap: 12px;
-}
-
 .oq-helper-control-card {
   display: grid;
   gap: 12px;
@@ -753,14 +748,12 @@
   border: 1px solid var(--oq-helper-line);
 }
 
-.oq-helper-control-copy h3,
-.oq-helper-curve-copy h3 {
+.oq-helper-control-copy h3 {
   margin: 0;
   font-size: 1rem;
 }
 
-.oq-helper-control-copy p,
-.oq-helper-curve-copy p {
+.oq-helper-control-copy p {
   margin: 8px 0 0;
   color: var(--oq-helper-soft);
   line-height: 1.55;
@@ -1015,64 +1008,4 @@
   color: var(--oq-helper-soft);
   font-size: 0.92rem;
   line-height: 1.5;
-}
-
-.oq-helper-curve-shell {
-  display: grid;
-  gap: 14px;
-  margin: 10px 0 18px;
-}
-
-.oq-helper-curve-svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: var(--oq-helper-radius-lg);
-  background: var(--oq-helper-card);
-  border: 1px solid var(--oq-helper-line);
-}
-
-.oq-helper-curve-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.oq-helper-curve-grid .oq-helper-control-card {
-  background: var(--oq-helper-card);
-}
-
-.oq-helper-curve-grid line.oq-helper-curve-grid {
-  stroke: rgba(107, 114, 128, 0.18);
-  stroke-width: 1;
-}
-
-.oq-helper-curve-axis-label {
-  fill: var(--oq-helper-soft);
-  font-size: 11px;
-  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
-}
-
-.oq-helper-curve-line {
-  fill: none;
-  stroke: var(--oq-helper-accent);
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.oq-helper-curve-point {
-  fill: var(--oq-helper-sky);
-  stroke: var(--oq-helper-card);
-  stroke-width: 3;
-  cursor: ns-resize;
-}
-
-.oq-helper-curve-point.is-dragging {
-  fill: var(--oq-helper-accent);
-}
-
-.oq-helper-curve-point-label {
-  fill: var(--oq-helper-ink);
-  font-size: 11px;
-  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
-  font-weight: 700;
 }

@@ -16,6 +16,10 @@ inline float clamp_target(float value, float low, float high) {
   return value;
 }
 
+inline float curve_modifier_or_zero(float value, bool source_valid) {
+  return source_valid && isfinite(value) ? clamp_target(value, -5.0f, 5.0f) : 0.0f;
+}
+
 // Choose the effective supply target. A valid external target replaces the
 // locally computed heating-curve target entirely: the curve math including
 // room-trim must not run again on top of the external value, otherwise the

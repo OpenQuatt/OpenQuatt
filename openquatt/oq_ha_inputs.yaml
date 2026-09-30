@@ -103,6 +103,16 @@ sensor:
       - lambda: |-
           oq_sensor_source::runtime().observe_heating_supply_target_ha((uint32_t) millis());
 
+  - platform: homeassistant
+    id: heating_curve_modifier_ha
+    name: "HA - Heating Curve Modifier"
+    entity_id: ${ha_heating_curve_modifier_entity_id}
+    internal: false
+    disabled_by_default: true
+    unit_of_measurement: "K"
+    state_class: measurement
+    accuracy_decimals: 1
+
   # HA ingress heartbeat: the single freshness signal for all live HA inputs.
   # The state itself changes about once per minute (whole minutes since
   # epoch), because Home Assistant does not forward attribute-only changes to
@@ -198,3 +208,9 @@ binary_sensor:
     on_state:
       - lambda: |-
           oq_sensor_source::runtime().observe_heating_supply_target_ha((uint32_t) millis());
+
+  - platform: homeassistant
+    id: heating_curve_modifier_valid_ha
+    name: "HA - Heating Curve Modifier Valid"
+    entity_id: ${ha_heating_curve_modifier_valid_entity_id}
+    internal: true

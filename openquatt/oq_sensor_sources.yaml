@@ -163,6 +163,15 @@ binary_sensor:
       if (!runtime.ha_ingress_seen()) return {};
       return runtime.ha_ingress_fresh((uint32_t) millis(), (uint32_t) ${ha_ingress_fresh_s}UL);
 
+  - platform: template
+    id: heating_curve_modifier_ha_valid
+    name: "Heating Curve Modifier HA Valid"
+    icon: mdi:check-decagram
+    entity_category: diagnostic
+    lambda: |-
+      return oq_sensor_source::runtime().heating_curve_modifier_ha_valid(
+          (uint32_t) millis(), (uint32_t) ${ha_heating_curve_modifier_stale_s}UL);
+
 text_sensor:
   - platform: template
     id: oq_water_supply_temp_calibration_status

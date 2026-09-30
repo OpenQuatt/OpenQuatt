@@ -1,0 +1,191 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+globalThis.__OQ_PREVIEW__ = false;
+globalThis.window = {
+  localStorage: { getItem: () => null },
+  location: { pathname: "/" },
+  setTimeout: globalThis.setTimeout,
+  clearTimeout: globalThis.clearTimeout,
+};
+
+const { CURVE_POINTS } = await import("../js/src/core/config.js");
+const { INITIAL_SETTINGS_READY_KEY_MAP, SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
+const { state } = await import("../js/src/core/state.js");
+const { normalizeNumber } = await import("../js/src/core/entity-store.js");
+const { applySimpleCurveBatch, applySimpleCurvePoints, generateSimpleCurve, getCurvePointDraft, getSimpleCurveDraft, updateCurvePointDraft, updateSimpleCurveDraft } = await import("../js/src/core/simple-curve.js");
+const { renderSettingsCurveInputs, renderSimpleCurvePreview } = await import("../js/src/settings/heating.js");
+const { submitSimpleCurveBatch } = await import("../js/src/core/control-actions.js");
+
+test("batch haalt CSRF-token en schrijft curvepunten onder hetzelfde proxypad", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  window.location.pathname = "/controller/ui/";
+  try {
+    globalThis.fetch = async (url, options = {}) => {
+      calls.push({ url, options });
+      if (url === "/controller/ui/auth/status") {
+        return { ok: true, json: async () => ({ csrf_token: "test-token" }) };
+      }
+      if (url === "/controller/ui/openquatt/curve/apply") {
+        return { status: 202, json: async () => ({ ok: true, queued: true }) };
+      }
+      throw new Error(`unexpected request: ${url}`);
+    };
+    assert.equal(await submitSimpleCurveBatch(generateSimpleCurve(5, 40)), "accepted");
+    assert.deepEqual(calls.map(({ url }) => url), [
+      "/controller/ui/auth/status",
+      "/controller/ui/openquatt/curve/apply",
+    ]);
+    const body = calls[1].options.body;
+    assert.equal(body.get("csrf_token"), "test-token");
+    assert.equal(body.get("curveM20"), "50.0");
+  } finally {
+    globalThis.fetch = originalFetch;
+    window.location.pathname = "/";
+  }
+});
+
+test("Simple genereert precies de zes canonieke curvepunten met begrenzing", () => {
+  const points = generateSimpleCurve(5, 40);
+  assert.deepEqual(points.map(({ key }) => key), CURVE_POINTS.map(({ key }) => key));
+  assert.deepEqual(points.map(({ value }) => value), [50, 45, 40, 37.5, 35, 32.5]);
+  assert.equal(generateSimpleCurve(15, 20)[0].value, 50);
+  assert.equal(generateSimpleCurve(15, 20)[5].value, 20);
+  assert.equal(generateSimpleCurve(Number.NaN, 40), null);
+});
+
+test("curvepunten behouden halve graden zonder geladen nummermetadata", () => {
+  state.entities = { curve5: { value: 34 } };
+  assert.equal(normalizeNumber("curve5", 44.5), 44.5);
+  assert.equal(normalizeNumber("curve5", 70.5), 70);
+});
+
+test("één editor toont opgeslagen punten, basislijn en handmatige wijzigingen", () => {
+  state.simpleCurveDraft = null;
+  state.curvePointDraft = null;
+  state.entities = Object.fromEntries(CURVE_POINTS.map((point, index) => [point.key, { value: [55, 50, 45, 42.5, 40, 37.5][index] }]));
+  assert.deepEqual(getCurvePointDraft().map((point) => point.value), [55, 50, 45, 42.5, 40, 37.5]);
+  assert.match(renderSimpleCurvePreview(), /Opgeslagen punten/);
+  assert.deepEqual(getSimpleCurveDraft(), { slope: 5, level: 45 });
+  assert.equal(updateSimpleCurveDraft("level", "40"), true);
+  assert.deepEqual(getCurvePointDraft().map((point) => point.value), [50, 45, 40, 37.5, 35, 32.5]);
+  assert.equal(updateCurvePointDraft("curve5", 44), true);
+  assert.deepEqual(getCurvePointDraft().map((point) => point.value), [50, 45, 40, 44, 35, 32.5]);
+  assert.equal(updateCurvePointDraft("curve5", 44.25), true);
+  assert.equal(getCurvePointDraft()[3].value, 44.5);
+  assert.match(renderSimpleCurvePreview(), /Wijzigingen nog niet opgeslagen/);
+  assert.deepEqual(getSimpleCurveDraft(), { slope: 5, level: 40 });
+  const markup = renderSettingsCurveInputs();
+  assert.match(markup, /data-oq-action="apply-simple-curve"/);
+  assert.match(markup, /oq-simple-curve-workspace/);
+  assert.doesNotMatch(markup, /maxWater/);
+  assert.doesNotMatch(markup, /data-oq-settings-advanced="curve-points"/);
+  assert.equal((markup.match(/oq-helper-curve-svg/g) || []).length, 1);
+  for (const point of CURVE_POINTS) assert.match(markup, new RegExp(`data-oq-curve-point-input="${point.key}"`));
+  assert.equal(updateSimpleCurveDraft("slope", "6"), true);
+  assert.deepEqual(getCurvePointDraft().map((point) => point.value), [52, 46, 40, 37, 34, 31]);
+  state.curvePointDraft = null;
+  state.simpleCurveDraft = null;
+});
+
+test("voorbeeld toont de installatiegrens zonder hogere opgeslagen curvepunten te verbergen", () => {
+  assert.ok(INITIAL_SETTINGS_READY_KEY_MAP.heating.includes("maxWater"));
+  assert.ok(SETTINGS_GROUP_KEY_MAP.heating.includes("maxWater"));
+  state.curvePointDraft = null;
+  state.simpleCurveDraft = { slope: 15, level: 40 };
+  state.entities = { maxWater: { value: 60 } };
+  const preview = renderSimpleCurvePreview();
+  assert.match(preview, /value="70\.0" data-oq-curve-point-input="curveM20"/);
+  assert.match(preview, /begrensd 60\.0°/);
+  assert.match(preview, /stroke-dasharray="4 4"/);
+  assert.match(preview, />70°C<\/text>/);
+  assert.doesNotMatch(preview, /<text[^>]*>−20°C<\/text>/);
+  assert.match(renderSettingsCurveInputs(), /Begrensd op 60 °C uit Installatie/);
+  assert.equal(generateSimpleCurve(15, 40)[0].value, 70);
+  state.simpleCurveDraft = { slope: 5, level: 54 };
+  const line = renderSimpleCurvePreview().match(/<polyline points="([^"]+)" class="oq-simple-curve-line" \/>/)?.[1];
+  assert.ok(line);
+  const positions = line.split(" ").map((position) => position.split(",").map(Number));
+  assert.equal(positions.length, 7);
+  assert.equal(positions[0][1], positions[1][1]);
+  assert.ok(positions[0][0] < positions[1][0] && positions[1][0] < positions[2][0]);
+  assert.match(preview, /class="oq-simple-curve-chart oq-helper-curve-svg"/);
+  assert.match(preview, /data-curve-key="curveM20"/);
+  assert.doesNotMatch(preview, /is-zero/);
+  state.simpleCurveDraft = null;
+});
+
+test("de gebouwde firmwarebundel bevat de diagnostische vertalingen", () => {
+  const bundle = readFileSync(new URL("../js/openquatt-app.js", import.meta.url), "utf8");
+  for (const label of ["Basisdoel", "Externe offset", "Kamercorrectie", "Effectief doel"]) {
+    assert.ok(bundle.includes(label), `${label} ontbreekt in de compacte bundel`);
+  }
+});
+
+test("Simple herstelt alle punten na een deels geaccepteerde maar onbevestigde schrijfopdracht", async () => {
+  const originals = [55, 50, 45, 42.5, 40, 37.5];
+  const remote = new Map(CURVE_POINTS.map((point, index) => [point.key, originals[index]]));
+  const writes = [];
+  const result = await applySimpleCurvePoints(generateSimpleCurve(5, 40), originals, async (key, value) => {
+    writes.push([key, value]);
+    remote.set(key, value);
+    return writes.length !== 2;
+  }, (key) => remote.get(key));
+  assert.deepEqual(result, { applied: false, restored: true });
+  assert.deepEqual(CURVE_POINTS.map((point) => remote.get(point.key)), originals);
+  assert.equal(writes.length, 8);
+});
+
+test("Simple meldt onzeker herstel als een terugschrijfopdracht faalt", async () => {
+  const originals = [55, 50, 45, 42.5, 40, 37.5];
+  const remote = new Map(CURVE_POINTS.map((point, index) => [point.key, originals[index]]));
+  let writes = 0;
+  const result = await applySimpleCurvePoints(generateSimpleCurve(5, 40), originals, async (key, value) => {
+    writes += 1;
+    if (writes === 3) return false;
+    remote.set(key, value);
+    return writes !== 2;
+  }, (key) => remote.get(key));
+  assert.deepEqual(result, { applied: false, restored: false });
+});
+
+test("batch past alle zes curvepunten met één verzoek toe en bevestigt de teruglezing", async () => {
+  const points = generateSimpleCurve(5, 40);
+  const remote = new Map();
+  let submissions = 0;
+  let refreshes = 0;
+  const result = await applySimpleCurveBatch(points, async (values) => {
+    submissions += 1;
+    for (const point of values) remote.set(point.key, point.value);
+    return "accepted";
+  }, async () => { refreshes += 1; }, (key) => remote.get(key), async () => {});
+  assert.deepEqual(result, { applied: true, unsupported: false });
+  assert.equal(submissions, 1);
+  assert.equal(refreshes, 1);
+});
+
+test("batch controleert ook na een verloren antwoord en meldt onzekere gedeeltelijke toestand", async () => {
+  const points = generateSimpleCurve(5, 40);
+  const remote = new Map();
+  const recovered = await applySimpleCurveBatch(points, async () => {
+    for (const point of points) remote.set(point.key, point.value);
+    throw new Error("lost acknowledgement");
+  }, async () => {}, (key) => remote.get(key), async () => {});
+  assert.equal(recovered.applied, true);
+
+  remote.delete(points[5].key);
+  let refreshes = 0;
+  const uncertain = await applySimpleCurveBatch(points, async () => "accepted",
+    async () => { refreshes += 1; }, (key) => remote.get(key), async () => {});
+  assert.deepEqual(uncertain, { applied: false, unsupported: false });
+  assert.equal(refreshes, 5);
+  assert.equal(remote.has(points[5].key), false);
+});
+
+test("ontbrekende batchendpoint schakelt expliciet over naar de oudere route", async () => {
+  const result = await applySimpleCurveBatch(generateSimpleCurve(5, 40), async () => "unsupported",
+    async () => { throw new Error("refresh should not run"); }, () => NaN, async () => {});
+  assert.deepEqual(result, { applied: false, unsupported: true });
+});

@@ -237,6 +237,8 @@ import { t } from "../i18n/index.js";
     }
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+    window.addEventListener("blur", handlePointerUp);
     window.addEventListener("popstate", handlePopState);
     if (__OQ_PREVIEW__) {
       window.addEventListener("oq-mock-updated", handleMockUpdated);

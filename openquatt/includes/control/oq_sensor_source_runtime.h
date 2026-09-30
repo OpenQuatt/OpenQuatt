@@ -358,6 +358,25 @@ class Runtime {
     return selected.valid ? selected.value : NAN;
   }
 
+  bool heating_curve_modifier_ha_valid(uint32_t now_ms, uint32_t ha_stale_s) const {
+    return ha_ingress_fresh(now_ms, ha_stale_s) &&
+           ha_valid(id(heating_curve_modifier_valid_ha), id(heating_curve_modifier_ha));
+  }
+
+  float heating_curve_modifier(uint32_t now_ms, uint32_t ha_stale_s) const {
+    if (!id(heating_curve_modifier_source).has_state()) return 0.0f;
+    const auto source = parse_source(id(heating_curve_modifier_source).current_option());
+    if (source == oq_input_source::Source::HA && heating_curve_modifier_ha_valid(now_ms, ha_stale_s))
+      return oq_heating_supply::curve_modifier_or_zero(id(heating_curve_modifier_ha).state, true);
+    if (source == oq_input_source::Source::API &&
+        api_valid(id(api_input_heating_curve_modifier_valid), id(api_input_heating_curve_modifier)))
+      return oq_heating_supply::curve_modifier_or_zero(id(api_input_heating_curve_modifier).state, true);
+    if (source == oq_input_source::Source::MQTT &&
+        mqtt_valid(id(mqtt_heating_curve_modifier_valid), id(mqtt_heating_curve_modifier)))
+      return oq_heating_supply::curve_modifier_or_zero(id(mqtt_heating_curve_modifier).state, true);
+    return 0.0f;
+  }
+
  private:
   struct SupplyFallback {
     bool valid = false;

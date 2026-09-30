@@ -1,7 +1,7 @@
 import { getEntityNumericValue, hasEntity } from "../core/app-shared.js";
-import { CURVE_POINTS, STRATEGY_OPTION_CURVE, STRATEGY_OPTION_POWER_HOUSE } from "../core/config.js";
+import { STRATEGY_OPTION_CURVE, STRATEGY_OPTION_POWER_HOUSE } from "../core/config.js";
 import { isCurveMode, isManualFlowMode } from "../core/domain-helpers.js";
-import { getCurveFallbackSuggestion, getEntityValue, normalizeNumber } from "../core/entity-store.js";
+import { getCurveFallbackSuggestion, getEntityValue } from "../core/entity-store.js";
 import { getHeatingEnableAdvice } from "../core/heating-strategy-matrix.js";
 import { state } from "../core/state.js";
 import { getSettingsSelectModel } from "./field-models.js";
@@ -9,6 +9,7 @@ import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSetti
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
 import { formatNumber, t } from "../i18n/index.js";
+import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js";
 
   export function renderCurveFallbackSuggestionMarkup(helper = false) {
     const suggestion = getCurveFallbackSuggestion();
@@ -34,12 +35,100 @@ import { formatNumber, t } from "../i18n/index.js";
   }
 
   export function renderSettingsCurveInputs() {
+    const draft = getSimpleCurveDraft();
+    const previewLimit = getSimpleCurvePreviewLimit();
     return `
-      <div class="oq-settings-curve-grid">
-        ${CURVE_POINTS.map((point) => renderSettingsNumberField(point.key, t("settingsHeating.curvePointTitle", { label: point.label }), t("settingsHeating.curvePointCopy", { label: point.label }))).join("")}
-        ${renderSettingsNumberField("curveFallbackSupply", t("settingsHeating.fallbackTitle"), t("settingsHeating.fallbackCopy"), "oq-settings-field--curve-fallback-card", { footerMarkup: renderCurveFallbackSuggestionMarkup() })}
+      <div class="oq-simple-curve-editor">
+        <div class="oq-simple-curve-heading">
+          <h4>${escapeHtml(t("settingsHeating.simpleTitle"))}</h4>
+          <p>${escapeHtml(t("settingsHeating.simpleCopy"))}</p>
+        </div>
+        <div class="oq-simple-curve-workspace">
+          <div class="oq-simple-curve-controls">
+            <label class="oq-simple-curve-control">
+              <span>${escapeHtml(t("settingsHeating.simpleSlope"))}</span>
+              <output data-oq-simple-curve-value="slope">${draft.slope.toFixed(1)} K / 10°C</output>
+              <input type="range" min="0" max="15" step="0.5" value="${draft.slope}" data-oq-simple-curve="slope" />
+            </label>
+            <label class="oq-simple-curve-control">
+              <span>${escapeHtml(t("settingsHeating.simpleLevel"))}</span>
+              <output data-oq-simple-curve-value="level">${draft.level.toFixed(1)} °C</output>
+              <input type="range" min="20" max="70" step="0.5" value="${draft.level}" data-oq-simple-curve="level" />
+            </label>
+            <div class="oq-simple-curve-action">
+              <button type="button" class="oq-helper-button oq-helper-button--primary" data-oq-action="apply-simple-curve" ${state.simpleCurveApplying || state.loadingEntities ? "disabled" : ""}>${escapeHtml(t("settingsHeating.simpleApply"))}</button>
+              <p>${escapeHtml(t("settingsHeating.simplePreviewCopy"))}</p>
+            </div>
+          </div>
+          <div class="oq-simple-curve-visual">
+            <div class="oq-simple-curve-visual-heading">
+              <strong>${escapeHtml(t("settingsHeating.simplePreview"))}</strong>
+              <span>${escapeHtml(previewLimit === null ? t("settingsHeating.simpleAxes") : t("settingsHeating.simpleLimit", { value: formatNumber(previewLimit, { maximumFractionDigits: 1 }) }))}</span>
+            </div>
+            <div data-oq-simple-curve-preview>${renderSimpleCurvePreview()}</div>
+          </div>
+        </div>
+        ${renderCurveTargetBreakdown()}
+      </div>
+      ${renderSettingsAdvancedDisclosure("curve-fallback", t("settingsHeating.fallbackTitle"), t("settingsHeating.fallbackCopy"), `
+        <div class="oq-settings-grid">
+          ${renderSettingsNumberField("curveFallbackSupply", t("settingsHeating.fallbackTitle"), t("settingsHeating.fallbackCopy"), "oq-settings-field--curve-fallback-card", { footerMarkup: renderCurveFallbackSuggestionMarkup() })}
+        </div>
+      `)}
+    `;
+  }
+
+  function getSimpleCurvePreviewLimit() {
+    const value = getEntityValue("maxWater");
+    if (value === null || value === undefined || value === "") return null;
+    const limit = Number(value);
+    return Number.isFinite(limit) && limit >= 25 && limit <= 75 ? limit : null;
+  }
+
+  export function renderSimpleCurvePreview() {
+    const points = getCurvePointDraft() || [];
+    return `<div class="oq-curve-edit-state${state.curvePointDraft ? " is-pending" : ""}">${escapeHtml(t(state.curvePointDraft ? "settingsHeating.simpleUnsaved" : "settingsHeating.simpleSaved"))}</div>${renderCurvePreviewChart(points)}`;
+  }
+
+  function renderCurvePreviewChart(points) {
+    const limit = getSimpleCurvePreviewLimit();
+    const x = (outdoor) => 64 + ((outdoor + 20) / 35) * 432;
+    const y = (value) => 20 + ((70 - value) / 50) * 158;
+    const visiblePoints = points.flatMap((point, index) => {
+      if (limit === null || index === 0) return [point];
+      const previous = points[index - 1];
+      if ((previous.value - limit) * (point.value - limit) >= 0) return [point];
+      const outdoor = previous.outdoor + ((limit - previous.value) / (point.value - previous.value)) * (point.outdoor - previous.outdoor);
+      return [{ outdoor, value: limit }, point];
+    });
+    const line = visiblePoints.map((point) => `${x(point.outdoor)},${y(limit === null ? point.value : Math.min(point.value, limit))}`).join(" ");
+    const rawLine = points.map((point) => `${x(point.outdoor)},${y(point.value)}`).join(" ");
+    const clipped = limit !== null && points.some((point) => point.value > limit);
+    return `
+      <div class="oq-simple-curve-plot">
+      <svg class="oq-simple-curve-chart oq-helper-curve-svg" viewBox="0 0 560 186" role="img" aria-label="${escapeHtml(t("settingsHeating.curveEditorAria"))}">
+        ${[20, 30, 40, 50, 60, 70].map((value) => `<line x1="64" y1="${y(value)}" x2="496" y2="${y(value)}" class="oq-simple-curve-gridline" /><text x="54" y="${y(value) + 4}" text-anchor="end" class="oq-simple-curve-axis">${value}°C</text>`).join("")}
+        ${clipped ? `<line x1="64" y1="${y(limit)}" x2="496" y2="${y(limit)}" class="oq-simple-curve-gridline" stroke-dasharray="5 4" /><polyline points="${rawLine}" class="oq-simple-curve-line" stroke-dasharray="4 4" opacity="0.4" />` : ""}
+        <polygon points="64,178 ${line} 496,178" class="oq-simple-curve-area" />
+        <polyline points="${line}" class="oq-simple-curve-line" />
+        ${points.map((point) => `<circle cx="${x(point.outdoor)}" cy="${y(point.value)}" r="16" class="oq-simple-curve-hit" data-curve-key="${escapeHtml(point.key)}" /><circle cx="${x(point.outdoor)}" cy="${y(point.value)}" r="6.5" class="oq-simple-curve-point oq-helper-curve-point${state.draggingCurveKey === point.key ? " is-dragging" : ""}" />`).join("")}
+      </svg>
+      <div class="oq-simple-curve-points">${points.map((point) => `<label style="left:${(x(point.outdoor) / 560) * 100}%"><small>${escapeHtml(point.label)}</small><span class="oq-simple-curve-point-entry"><input type="number" min="20" max="70" step="0.5" inputmode="decimal" value="${point.value.toFixed(1)}" data-oq-curve-point-input="${escapeHtml(point.key)}" aria-label="${escapeHtml(t("settingsHeating.curvePointTitle", { label: point.label }))}" ${state.simpleCurveApplying || state.loadingEntities ? "disabled" : ""} /></span>${limit !== null && point.value > limit ? `<small>${escapeHtml(t("settingsHeating.simpleCappedPoint", { value: limit.toFixed(1) }))}</small>` : ""}</label>`).join("")}</div>
       </div>
     `;
+  }
+
+  function renderCurveTargetBreakdown() {
+    if (!hasEntity("curveBaseTarget")) return "";
+    const rows = [
+      [t("settingsHeating.baseTargetLabel"), "curveBaseTarget", "°C"],
+      [t("settingsHeating.modifierLabel"), "curveModifier", "°C"],
+      [t("settingsHeating.roomTrimLabel"), "curveRoomTrim", "°C"],
+      [t("settingsHeating.effectiveTargetLabel"), "curveEffectiveTarget", "°C"],
+    ];
+    return `<div class="oq-simple-curve-breakdown">
+      ${rows.map(([label, key, unit]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(formatNumericState(getEntityNumericValue(key), 1, unit))}</strong></div>`).join("")}
+    </div>`;
   }
 
   export function renderHeatingCurveAdvancedFields() {
@@ -574,9 +663,6 @@ import { formatNumber, t } from "../i18n/index.js";
           <div class="oq-settings-grid">
             ${renderHeatingCurveProfileField()}
           </div>
-          <div class="oq-settings-curve-shell">
-            ${renderCurveGraph()}
-          </div>
           ${renderSettingsCurveInputs()}
           ${renderHeatingCurveAdvancedFields()}
         </div>
@@ -605,70 +691,4 @@ import { formatNumber, t } from "../i18n/index.js";
         ${strategyContent}
       `,
     );
-  }
-
-  export function renderCurveGraph() {
-    const width = 560;
-    const height = 240;
-    const margin = { top: 22, right: 18, bottom: 38, left: 34 };
-    const plotWidth = width - margin.left - margin.right;
-    const plotHeight = height - margin.top - margin.bottom;
-    const xMin = CURVE_POINTS[0].outdoor;
-    const xMax = CURVE_POINTS[CURVE_POINTS.length - 1].outdoor;
-
-    const toX = (temp) => margin.left + ((temp - xMin) / (xMax - xMin)) * plotWidth;
-    const toY = (value) => margin.top + ((70 - value) / 50) * plotHeight;
-
-    const gridLines = [20, 30, 40, 50, 60, 70]
-      .map((value) => {
-        const y = toY(value);
-        return `
-          <line x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" class="oq-helper-curve-grid" />
-          <text x="8" y="${y + 4}" class="oq-helper-curve-axis-label">${value}°</text>
-        `;
-      })
-      .join("");
-
-    const xLabels = CURVE_POINTS
-      .map((point) => `
-        <text x="${toX(point.outdoor)}" y="${height - 12}" text-anchor="middle" class="oq-helper-curve-axis-label">${escapeHtml(point.label)}</text>
-      `)
-      .join("");
-
-    const linePoints = CURVE_POINTS
-      .map((point) => `${toX(point.outdoor)},${toY(normalizeNumber(point.key, getEntityValue(point.key)))}`)
-      .join(" ");
-
-    const circles = CURVE_POINTS
-      .map((point) => {
-        const value = normalizeNumber(point.key, getEntityValue(point.key));
-        return `
-          <g>
-            <circle
-              cx="${toX(point.outdoor)}"
-              cy="${toY(value)}"
-              r="7"
-              class="oq-helper-curve-point ${state.draggingCurveKey === point.key ? "is-dragging" : ""}"
-              data-curve-key="${escapeHtml(point.key)}"
-            />
-            <text x="${toX(point.outdoor)}" y="${toY(value) - 14}" text-anchor="middle" class="oq-helper-curve-point-label">${value.toFixed(1)}°</text>
-          </g>
-        `;
-      })
-      .join("");
-
-    return `
-      <div class="oq-helper-curve-shell">
-        <div class="oq-helper-curve-copy">
-          <h3>${escapeHtml(t("settingsHeating.curveEditorTitle"))}</h3>
-          <p>${escapeHtml(t("settingsHeating.curveEditorCopy"))}</p>
-        </div>
-        <svg class="oq-helper-curve-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t("settingsHeating.curveEditorAria"))}">
-          ${gridLines}
-          <polyline points="${linePoints}" class="oq-helper-curve-line" />
-          ${circles}
-          ${xLabels}
-        </svg>
-      </div>
-    `;
   }
