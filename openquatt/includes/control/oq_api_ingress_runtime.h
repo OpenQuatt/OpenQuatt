@@ -17,6 +17,7 @@ enum class Slot : uint8_t {
   COOLING_ENABLE,
   EXTERNAL_HEAT_DEMAND,
   HEATING_SUPPLY_TARGET,
+  HEATING_CURVE_MODIFIER,
   COUNT,
 };
 
@@ -29,6 +30,7 @@ struct Config {
   uint32_t cooling_enable_stale_s = 0;
   uint32_t external_heat_demand_stale_s = 0;
   uint32_t heating_supply_target_stale_s = 0;
+  uint32_t heating_curve_modifier_stale_s = 0;
 };
 
 class Runtime {
@@ -87,6 +89,8 @@ class Runtime {
         return config.external_heat_demand_stale_s;
       case Slot::HEATING_SUPPLY_TARGET:
         return config.heating_supply_target_stale_s;
+      case Slot::HEATING_CURVE_MODIFIER:
+        return config.heating_curve_modifier_stale_s;
       default:
         return 0;
     }
@@ -106,6 +110,8 @@ class Runtime {
         return id(api_input_external_heat_demand).has_state() && isfinite(id(api_input_external_heat_demand).state);
       case Slot::HEATING_SUPPLY_TARGET:
         return id(api_input_heating_supply_target).has_state() && isfinite(id(api_input_heating_supply_target).state);
+      case Slot::HEATING_CURVE_MODIFIER:
+        return id(api_input_heating_curve_modifier).has_state() && isfinite(id(api_input_heating_curve_modifier).state);
       case Slot::HEATING_ENABLE:
       case Slot::COOLING_ENABLE:
         return true;
@@ -139,6 +145,9 @@ class Runtime {
         break;
       case Slot::HEATING_SUPPLY_TARGET:
         publish_to(id(api_input_heating_supply_target_age), id(api_input_heating_supply_target_valid), freshness);
+        break;
+      case Slot::HEATING_CURVE_MODIFIER:
+        publish_to(id(api_input_heating_curve_modifier_age), id(api_input_heating_curve_modifier_valid), freshness);
         break;
       default:
         break;

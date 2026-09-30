@@ -9,6 +9,7 @@ globalThis.window = {
 };
 
 const { SENSOR_CALIBRATION_KEYS, SETTINGS_BACKUP_SECTIONS, SUPPLY_CALIBRATION_BACKUP_KEYS } = await import("../js/src/core/config.js");
+const { normalizeSettingsBackupMqttConfig } = await import("../js/src/core/settings-backup-domain.js");
 const { state } = await import("../js/src/core/state.js");
 const { isUsageTelemetrySetupCompletionSafe, parseDecisionLogStorageMetadata, parseTrendHistoryMetadata, restoreSettingsBackup, shouldDisableUsageTelemetryForSetupRestore } = await import("../js/src/features/storage-history.js");
 
@@ -87,6 +88,8 @@ function createCoolingScheduleRestoreFetch({
   failInitialSourceRead = false,
   omitSourceFromBulk = false,
   reactivateAfterStartTimeWrite = false,
+  simulateMqtt = false,
+  failMqttModifierInput = false,
 } = {}) {
   const values = new Map([
     ["Cooling Enable Source", currentSource],
@@ -128,6 +131,24 @@ function createCoolingScheduleRestoreFetch({
     if (url.pathname === "/openquatt/service-status") {
       return response({ entities: {} });
     }
+    if ((simulateMqtt || failMqttModifierInput) && url.pathname === "/mqtt/status") {
+      return response({ csrf_token: "test-token" });
+    }
+    if ((simulateMqtt || failMqttModifierInput) && url.pathname === "/mqtt/save") {
+      calls.push(`POST MQTT config enabled=${new URLSearchParams(options.body).get("enabled")}`);
+      return response({ ok: true });
+    }
+    if ((simulateMqtt || failMqttModifierInput) && url.pathname === "/mqtt/input/save") {
+      const params = new URLSearchParams(options.body);
+      const input = params.get("input");
+      calls.push(`POST MQTT input ${input} enabled=${params.get("enabled")}`);
+      return input === "heating_curve_modifier"
+        && failMqttModifierInput ? response({ ok: false }, false, 500)
+        : response({ ok: true });
+    }
+    if ((simulateMqtt || failMqttModifierInput) && url.pathname === "/mqtt/input/retained/save") {
+      return response({ ok: true });
+    }
 
     const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
     const [domain, name, action] = parts;
@@ -162,6 +183,8 @@ async function runCoolingScheduleRestore(fetchImpl, {
   includeEndTime = true,
   includeSource = true,
   includeStartTime = true,
+  extraSensorSources = {},
+  mqtt = null,
 } = {}) {
   const originalFetch = globalThis.fetch;
   const previousNativeOpen = state.nativeOpen;
@@ -178,13 +201,13 @@ async function runCoolingScheduleRestore(fetchImpl, {
     state.settingsBackupDraft = {
       schema_version: 2,
       settings: {
-        sensor_sources: includeSource ? { coolingEnableSource: backupSource } : {},
+        sensor_sources: { ...(includeSource ? { coolingEnableSource: backupSource } : {}), ...extraSensorSources },
         cooling: {
           ...(includeStartTime ? { coolingScheduleStartTime: "08:00:00" } : {}),
           ...(includeEndTime ? { coolingScheduleEndTime: "18:00:00" } : {}),
         },
       },
-      mqtt: null,
+      mqtt,
     };
     await restoreSettingsBackup();
     return state.settingsBackupRestoreResult;
@@ -228,6 +251,52 @@ test("Schedule restore stays Disabled when one time cannot be confirmed", async 
     key === "coolingScheduleEndTime" && reason === "Schrijven mislukt"));
   assert.ok(result.skipped.some(({ key, reason }) =>
     key === "coolingEnableSource" && reason === "Bron niet toegepast"));
+});
+
+test("MQTT-herstel activeert de stooklijn-offsetbron niet als het inputtopic faalt", async () => {
+  const harness = createCoolingScheduleRestoreFetch({ failMqttModifierInput: true });
+  const mqtt = normalizeSettingsBackupMqttConfig({
+    enabled: true,
+    broker: "mqtt.local",
+    port: 1883,
+    input_enabled: { heating_curve_modifier: false },
+  });
+  const result = await runCoolingScheduleRestore(harness.fetch, {
+    includeSource: false,
+    includeStartTime: false,
+    includeEndTime: false,
+    extraSensorSources: { heatingCurveModifierSource: "MQTT" },
+    mqtt,
+  });
+
+  assert.ok(harness.calls.includes("POST MQTT input heating_curve_modifier enabled=false"));
+  assert.ok(!harness.calls.includes("POST Heating Curve Modifier Source=MQTT"));
+  assert.equal(result.applied.includes("heatingCurveModifierSource"), false);
+  assert.ok(result.skipped.some(({ key }) => key === "heatingCurveModifierSource"));
+});
+
+test("MQTT-herstel schrijft het uitgeschakelde modifiertopic vóór bronactivatie", async () => {
+  const harness = createCoolingScheduleRestoreFetch({ simulateMqtt: true });
+  const mqtt = normalizeSettingsBackupMqttConfig({
+    enabled: true,
+    broker: "mqtt.local",
+    port: 1883,
+    input_enabled: { heating_curve_modifier: false },
+  });
+  const result = await runCoolingScheduleRestore(harness.fetch, {
+    includeSource: false,
+    includeStartTime: false,
+    includeEndTime: false,
+    extraSensorSources: { heatingCurveModifierSource: "MQTT" },
+    mqtt,
+  });
+
+  const topicWrite = harness.calls.indexOf("POST MQTT input heating_curve_modifier enabled=false");
+  const mqttEnable = harness.calls.indexOf("POST MQTT config enabled=true");
+  const sourceWrite = harness.calls.indexOf("POST Heating Curve Modifier Source=MQTT");
+  assert.ok(topicWrite >= 0 && topicWrite < mqttEnable && mqttEnable < sourceWrite);
+  assert.ok(result.applied.includes("mqtt.input_enabled.heating_curve_modifier"));
+  assert.ok(result.applied.includes("heatingCurveModifierSource"));
 });
 
 test("restore defers a non-Schedule cooling source while the current Schedule is active", async () => {

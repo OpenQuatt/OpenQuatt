@@ -12,6 +12,7 @@
 #include "oq_heating_curve_logic.h"
 #include "oq_heating_supply_target_logic.h"
 #include "oq_hp_candidate_logic.h"
+#include "oq_sensor_source_runtime.h"
 #include "oq_thermal_request_logic.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
@@ -105,7 +106,7 @@ class Runtime {
     id(oq_curve_outside_ema_last_ms) = decision.next.last_ms;
     return decision.value_c;
   }
-  float supply_target() const {
+  float supply_target(uint32_t ha_modifier_stale_s) const {
     const std::array<oq_curve::CurvePoint, 6> points{{
         {-20.0f, id(curve_tsupply_m20).state},
         {-10.0f, id(curve_tsupply_m10).state},
@@ -114,9 +115,16 @@ class Runtime {
         {10.0f, id(curve_tsupply_10).state},
         {15.0f, id(curve_tsupply_15).state},
     }};
-    return oq_curve::supply_target(id(oq_curve_outside_temp_filtered).state, id(curve_fallback_supply_temp).state,
-                                   points, id(room_temp_selected).state, id(room_setpoint_selected).state,
+    const float modifier_c =
+        oq_sensor_source::runtime().heating_curve_modifier(static_cast<uint32_t>(millis()), ha_modifier_stale_s);
+    const auto target =
+        oq_curve::target_breakdown(id(oq_curve_outside_temp_filtered).state, id(curve_fallback_supply_temp).state,
+                                   points, modifier_c, id(room_temp_selected).state, id(room_setpoint_selected).state,
                                    this->tuning_(), id(max_water_temp_limit_c).state);
+    id(oq_curve_base_target_c) = target.base_c;
+    id(oq_curve_modifier_applied_k) = target.modifier_c;
+    id(oq_curve_room_trim_k) = target.room_trim_c;
+    return target.selected_c;
   }
   float effective_supply_target(float local_curve_c) const {
     // An external target replaces the local curve output as-is (no second

@@ -36,6 +36,8 @@ import { handleEnergyHistoryPointerMove, setEnergyHistoryPeriodValue } from "../
 import { handleHouseLearningChartPointerMove } from "../settings/house-learning-chart.js";
 import { escapeHtml } from "./html.js";
 import { render } from "./render-scheduler.js";
+import { updateCurvePointDraft, updateSimpleCurveDraft } from "./simple-curve.js";
+import { renderSimpleCurvePreview } from "../settings/heating.js";
 
 const actionDelegates = [
   handleViewAction,
@@ -150,7 +152,7 @@ function updateFrequencyRangeControl(input) {
     handleHouseLearningChartPointerMove(event);
     window.setTimeout(() => {
       const active = document.activeElement;
-      state.focusedField = active && active.dataset ? active.dataset.oqField || "" : "";
+      state.focusedField = active && active.dataset ? active.dataset.oqField || active.dataset.oqCurvePointInput || "" : "";
       state.settingsInteractionLock = Boolean(active && active.closest && active.closest(".oq-ph-concept-hotspot"));
       if (!state.focusedField
           && state.incidentMonitoringRenderPending
@@ -187,8 +189,23 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleInput(event) {
+    if (event.target.dataset.oqCurvePointInput) {
+      updateCurvePointDraft(event.target.dataset.oqCurvePointInput, event.target.value);
+      return;
+    }
     if (event.target.dataset.oqOduDefrostHp) {
       updateOduDefrostDraft(event.target);
+      return;
+    }
+    if (event.target.dataset.oqSimpleCurve) {
+      const part = event.target.dataset.oqSimpleCurve;
+      if (updateSimpleCurveDraft(part, event.target.value)) {
+        const editor = event.target.closest(".oq-simple-curve-editor");
+        const output = editor?.querySelector(`[data-oq-simple-curve-value="${part}"]`);
+        if (output) output.textContent = `${Number(event.target.value).toFixed(1)} ${part === "slope" ? "K / 10°C" : "°C"}`;
+        const preview = editor?.querySelector("[data-oq-simple-curve-preview]");
+        if (preview) preview.innerHTML = renderSimpleCurvePreview();
+      }
       return;
     }
     if (event.target.dataset.oqOduSettingsHp) {
@@ -414,6 +431,12 @@ function updateFrequencyRangeControl(input) {
   export function handleChange(event) {
     if (event.target.dataset.oqOduDefrostHp) {
       updateOduDefrostDraft(event.target);
+      return;
+    }
+    if (event.target.dataset.oqCurvePointInput) {
+      const key = event.target.dataset.oqCurvePointInput;
+      updateCurvePointDraft(key, event.target.value);
+      render();
       return;
     }
     if (event.target.dataset.oqOduSettingsHp) {
@@ -666,10 +689,11 @@ function updateFrequencyRangeControl(input) {
     }
 
     const point = event.target.closest("[data-curve-key]");
-    if (!point || !isCurveMode()) {
+    if (!point || !isCurveMode() || state.simpleCurveApplying || state.loadingEntities) {
       return;
     }
 
+    event.preventDefault();
     state.draggingCurveKey = point.dataset.curveKey || "";
     updateCurveDraftFromPointer(event.clientY);
   }
@@ -700,8 +724,6 @@ function updateFrequencyRangeControl(input) {
       return;
     }
 
-    const key = state.draggingCurveKey;
-    const value = normalizeNumber(key, getEntityValue(key));
     state.draggingCurveKey = "";
-    commitNumber(key, value, "Curvepunt bijgewerkt.");
+    render();
   }

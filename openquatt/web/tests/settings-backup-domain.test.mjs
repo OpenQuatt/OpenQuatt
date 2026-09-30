@@ -19,13 +19,15 @@ test("MQTT backup keeps configuration but excludes runtime and secret fields", (
     password_set: true,
     csrf_token: "secret-token",
     connected: true,
-    input_enabled: { cooling_dew_point: false },
+    input_enabled: { cooling_dew_point: false, heating_curve_modifier: false },
     input_accept_retained: { room_setpoint: false },
   });
 
   assert.equal(backup.password_was_set, true);
   assert.equal(backup.input_enabled.cooling_dew_point, false);
+  assert.equal(backup.input_enabled.heating_curve_modifier, false);
   assert.equal(backup.input_enabled.room_temperature, true);
+  assert.equal(normalizeSettingsBackupMqttConfig(backup).input_enabled.heating_curve_modifier, false);
   assert.equal(backup.input_accept_retained.room_setpoint, false);
   assert.equal(Object.hasOwn(backup, "csrf_token"), false);
   assert.equal(Object.hasOwn(backup, "connected"), false);
@@ -88,6 +90,7 @@ test("MQTT-dependent source selections are identified before restore", () => {
   assert.equal(isSettingsBackupMqttSourceSelection("roomTempSource", "MQTT"), true);
   assert.equal(isSettingsBackupMqttSourceSelection("coolingDewPointSource", "Dew point (MQTT)"), true);
   assert.equal(isSettingsBackupMqttSourceSelection("heatingEnableSource", "MQTT + Manual"), true);
+  assert.equal(isSettingsBackupMqttSourceSelection("heatingCurveModifierSource", "MQTT"), true);
   assert.equal(isSettingsBackupMqttSourceSelection("outsideTempSource", "Auto"), false);
   assert.equal(isSettingsBackupMqttSourceSelection("flowSource", "MQTT"), false);
 });

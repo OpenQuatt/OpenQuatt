@@ -1251,12 +1251,7 @@
   margin-top: 16px;
 }
 
-.oq-settings-curve-shell .oq-helper-curve-shell {
-  margin: 0;
-}
-
-.oq-settings-field--curve-fallback-card,
-.oq-helper-curve-grid .oq-helper-control-card:last-child {
+.oq-settings-field--curve-fallback-card {
   min-height: 0;
 }
 

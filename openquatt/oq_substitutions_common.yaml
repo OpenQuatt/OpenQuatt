@@ -61,6 +61,8 @@ mqtt_cooling_enable_topic: "openquatt/${device_name}/input/thermostat/cooling_en
 mqtt_cooling_enable_stale_s: "0"                      # Maximum age for MQTT cooling-enable [s]; 0 keeps state until a new payload, disable, or restart.
 mqtt_heating_supply_target_topic: "openquatt/${device_name}/input/heating/supply_target" # Fixed MQTT input topic for external heating supply target [degC].
 mqtt_heating_supply_target_stale_s: "900"             # Maximum age for the last valid MQTT heating supply target before it becomes invalid [s].
+mqtt_heating_curve_modifier_topic: "openquatt/${device_name}/input/heating/curve_modifier" # External heating-curve delta [K].
+mqtt_heating_curve_modifier_stale_s: "900"
 api_input_cooling_dew_point_stale_s: "900"            # Maximum age for API-input cooling dew point before it becomes invalid [s].
 api_input_outside_temperature_stale_s: "1800"         # Maximum age for API-input outside temperature before it becomes invalid [s].
 api_input_room_temperature_stale_s: "600"             # Maximum age for API-input room temperature before it becomes invalid [s].
@@ -69,12 +71,14 @@ api_input_heating_enable_stale_s: "0"                 # Maximum age for API-inpu
 api_input_cooling_enable_stale_s: "0"                 # Maximum age for API-input cooling-enable [s]; 0 keeps state until restart or a new payload.
 api_input_external_heat_demand_stale_s: "900"         # Maximum age for API-input external heat demand before it becomes invalid [s].
 api_input_heating_supply_target_stale_s: "900"        # Maximum age for API-input heating supply target before it becomes invalid [s].
+api_input_heating_curve_modifier_stale_s: "900"
 ha_outside_temperature_stale_s: "1800"                # Maximum age for live HA outside temperature without a fresh HA ingress heartbeat before it becomes invalid [s].
 ha_water_supply_temperature_stale_s: "600"            # Maximum age for live HA water supply temperature without a fresh HA ingress heartbeat before it becomes invalid [s]; 10-minute window tolerates normal HA restarts while HP fallback remains available.
 ha_room_temperature_stale_s: "600"                    # Maximum age for live HA room temperature without a fresh HA ingress heartbeat before it becomes invalid [s].
 ha_cooling_dew_point_stale_s: "900"                   # Maximum age for live HA cooling dew point without a fresh HA ingress heartbeat before it becomes invalid [s].
 ha_external_heat_demand_stale_s: "900"                # Maximum age for live HA external heat demand without a fresh HA ingress heartbeat before it becomes invalid [s].
 ha_heating_supply_target_stale_s: "900"               # Maximum age for live HA heating supply target without a fresh HA ingress heartbeat before it becomes invalid [s].
+ha_heating_curve_modifier_stale_s: "900"
 ha_ingress_fresh_s: "300"                             # Diagnostic threshold for the HA ingress heartbeat itself [s]; about 5 missed beats.
 # Stateful HA inputs (room setpoint, heating/cooling enable) intentionally have
 # no stale timeout: they keep plain entity validity, like API/MQTT stale_s = 0.
@@ -299,6 +303,8 @@ ha_external_heat_demand_entity_id: "sensor.openquatt_ext_heat_demand"       # HA
 ha_external_heat_demand_valid_entity_id: "binary_sensor.openquatt_ext_heat_demand_valid"  # HA validity flag for external heat demand.
 ha_heating_supply_target_entity_id: "sensor.openquatt_ext_heating_supply_target" # HA proxy entity for external heating supply target [degC].
 ha_heating_supply_target_valid_entity_id: "binary_sensor.openquatt_ext_heating_supply_target_valid" # HA validity flag for external heating supply target.
+ha_heating_curve_modifier_entity_id: "sensor.openquatt_ext_heating_curve_modifier"
+ha_heating_curve_modifier_valid_entity_id: "binary_sensor.openquatt_ext_heating_curve_modifier_valid"
 ha_ingress_heartbeat_entity_id: "sensor.openquatt_ha_ingress_heartbeat" # HA ingress heartbeat: single freshness signal for all live HA inputs, published by the dynamic-sources package about once per minute.
 
 # ----------------------------
