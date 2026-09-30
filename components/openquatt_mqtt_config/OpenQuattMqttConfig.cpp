@@ -1,4 +1,5 @@
 #include "OpenQuattMqttConfig.h"
+#include "PsramBuffer.h"
 
 #include <algorithm>
 #include <array>
@@ -339,8 +340,18 @@ class MqttConfigHandler : public AsyncWebHandler {
   }
 
   void handleRequest(AsyncWebServerRequest* request) override {
-    char url_buf[AsyncWebServerRequest::URL_BUF_SIZE];
-    StringRef url = request->url_to(url_buf);
+    // This request owns the decoded URL until all synchronous routing returns.
+    // Preserve internal RAM by failing before any mutation if PSRAM is unavailable.
+    openquatt_common::PsramBuffer<char> url_buf;
+    if (!url_buf.allocate_external(AsyncWebServerRequest::URL_BUF_SIZE)) {
+      httpd_req_t* raw = *request;
+      httpd_resp_set_status(raw, "503 Service Unavailable");
+      httpd_resp_set_type(raw, "application/json");
+      httpd_resp_send(raw, R"({"error":"psram_unavailable"})", HTTPD_RESP_USE_STRLEN);
+      return;
+    }
+    StringRef url = request->url_to(
+        std::span<char, AsyncWebServerRequest::URL_BUF_SIZE>(url_buf.data(), AsyncWebServerRequest::URL_BUF_SIZE));
     if (url == "/mqtt/status" && request->method() == HTTP_GET) {
       const auto status = this->parent_->get_status_snapshot();
       const std::string broker = json_escape_(status.broker);
