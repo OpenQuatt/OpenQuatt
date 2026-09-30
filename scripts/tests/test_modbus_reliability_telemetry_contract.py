@@ -29,7 +29,7 @@ class ModbusReliabilityTelemetryContractTest(unittest.TestCase):
         self.assertIn("openquatt_modbus:", COMMON)
         self.assertNotIn("\nmodbus:\n  - uart_id: uart_bus\n    id: mod_bus", COMMON)
         self.assertIn("class OpenQuattModbusClientHub : public modbus::ModbusClientHub", MODBUS_HEADER)
-        self.assertNotIn("rx_full_threshold: 1", COMMON)
+        self.assertIn("rx_full_threshold: 1", COMMON)
         self.assertIn("rx_timeout: 1", COMMON)
 
     def test_transport_counts_at_parser_source_not_logger_output(self) -> None:
