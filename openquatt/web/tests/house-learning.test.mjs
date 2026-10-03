@@ -464,9 +464,9 @@ test("leerstatus vertaalt labels, routes en getallen tijdens een localewissel", 
   setLocale("en", { persist: false, applyDocument: false, notify: false });
   const markup = renderHouseLearningStatusMarkup(status);
   assert.match(markup, /Collecting now/);
-  assert.match(markup, /Home line \(stable heating\)/);
+  assert.match(markup, /Building heat demand curve \(steady heating\)/);
   assert.match(markup, /Room temperature[\s\S]*Via selected room source/);
-  assert.match(markup, /Heat storage \(C\)[\s\S]*4,803\.5 Wh\/K/);
+  assert.match(markup, /Thermal capacity \(C\)[\s\S]*4,803\.5 Wh\/K/);
 });
 
 test("setpointherstel vertraagt alleen de woninglijn terwijl 1R1C verzamelt", () => {

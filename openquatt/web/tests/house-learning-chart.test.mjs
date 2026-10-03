@@ -50,7 +50,7 @@ test("grafiektekst en getallen volgen de actieve locale", () => {
   const en = renderHouseLearningChart(records, { coldC: -10, zeroC: 16, ratedW: 5200 }, { h: 186, t0: 16.8, ready: true });
   assert.match(en, /Duration: 30 min/);
   assert.match(en, /Outside: 5\.2 °C/);
-  assert.match(en, /Configured home line/);
+  assert.match(en, /Configured heat demand curve/);
 });
 
 
