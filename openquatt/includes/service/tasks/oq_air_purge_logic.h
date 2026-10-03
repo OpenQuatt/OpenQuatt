@@ -44,7 +44,7 @@ inline RuntimeConfig make_runtime_config(int sample_time_s) {
                        300,  // total duration
                        60,   // quiet start
                        180,  // pulse window
-                       120,  // no-flow failure guard
+                       120,  // maximum continuous time without flow
                        800,  // quiet start iPWM
                        300,  // hard pulse iPWM
                        800,  // rest iPWM between pulses
@@ -65,6 +65,7 @@ class AirPurgeRuntime {
  public:
   void reset() {
     state_ = STATE_IDLE;
+    last_flow_ms_ = 0;
     last_status_.clear();
     id(oq_air_purge_active) = false;
     id(oq_air_purge_abort) = false;
@@ -109,6 +110,7 @@ class AirPurgeRuntime {
              (int)id(oq_air_purge_return_to_auto).state);
 
     state_ = PHASE_STEADY;
+    last_flow_ms_ = now_ms;
     id(oq_commissioning_task_code) = TASK_AIR_PURGE;
     id(oq_commissioning_request_pending) = false;
     id(oq_commissioning_active) = true;
@@ -172,15 +174,20 @@ class AirPurgeRuntime {
     const int remaining_s = (elapsed_s >= cfg.duration_s) ? 0 : (cfg.duration_s - elapsed_s);
     id(oq_air_purge_remaining_s) = remaining_s;
 
-    if (elapsed_s >= cfg.duration_s) {
-      finish("DONE", STATE_DONE, id(oq_air_purge_return_to_auto).state);
+    // Quiet/rest phases can legitimately have no flow. Keep the guard active,
+    // but measure a continuous no-flow interval instead of testing one sample
+    // after the first two minutes. A later loss of flow must still fail closed.
+    const float flow_lph = id(flow_rate_selected).state;
+    const bool flow_seen = isfinite(flow_lph) && flow_lph >= 20.0f;
+    if (flow_seen) last_flow_ms_ = now_ms;
+    if ((uint32_t)(now_ms - last_flow_ms_) >= (uint32_t)cfg.no_flow_fail_s * 1000UL) {
+      finish("FAILED: no flow detected", STATE_FAILED, false);
       return;
     }
 
-    const float flow_lph = id(flow_rate_selected).state;
-    const bool flow_seen = !isnan(flow_lph) && flow_lph >= 20.0f;
-    if (elapsed_s >= cfg.no_flow_fail_s && !flow_seen) {
-      finish("FAILED: no flow detected", STATE_FAILED, false);
+    // Check the no-flow guard before declaring completion, also after a delayed tick.
+    if (elapsed_s >= cfg.duration_s) {
+      finish("DONE", STATE_DONE, id(oq_air_purge_return_to_auto).state);
       return;
     }
 
@@ -231,6 +238,7 @@ class AirPurgeRuntime {
 
  private:
   int state_ = STATE_IDLE;
+  uint32_t last_flow_ms_ = 0;
   std::string last_status_;
 
   void publish(const char* status) {

@@ -793,7 +793,9 @@ export async function triggerNamedButton(key, options = {}) {
       stopLoginAuthStatusPolling();
       state.systemModal = "";
     }
-    state.controlNotice = options.successNotice || `${entity.name} gestart.`;
+    state.controlNotice = key === "airPurgeStart" || key === "airPurgeAbort"
+      ? ""
+      : options.successNotice || `${entity.name} gestart.`;
     if (options.reconnectMode) {
       beginDeviceReconnect(options.reconnectMode);
     }
