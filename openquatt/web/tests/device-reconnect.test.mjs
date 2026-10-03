@@ -383,3 +383,20 @@ test("an explicit OTA rejection clears its pending refresh", async () => {
   assert.equal(state.ota.ok, 0);
   assert.equal(state.deviceReconnectMode, "");
 });
+
+test("purge HTTP acceptance does not produce a persistent run-success notice", async () => {
+  for (const key of ["airPurgeStart", "airPurgeAbort"]) {
+    globalThis.fetch = async () => ({ ok: true });
+    state.controlNotice = "previous notice";
+    await triggerNamedButton(key);
+    assert.equal(state.controlNotice, "");
+    assert.equal(state.controlError, "");
+  }
+});
+
+test("purge request failure remains visible", async () => {
+  globalThis.fetch = async () => ({ ok: false, status: 503 });
+  await triggerNamedButton("airPurgeStart");
+  assert.match(state.controlError, /HTTP 503/);
+  assert.equal(state.controlNotice, "");
+});

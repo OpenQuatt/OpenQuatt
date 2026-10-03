@@ -67,6 +67,28 @@ import { formatNumber, t } from "../i18n/index.js";
       || normalized.includes("REFUSED");
   }
 
+  export function getAirPurgeTerminalStatus(status) {
+    const raw = String(status || "").trim();
+    const upper = raw.toUpperCase();
+    if (upper === "DONE" || upper.startsWith("DONE:")) return t("settingsService.phaseDone");
+    if (upper === "ABORTED" || upper === "ABORT") return t("settingsService.phaseAborted");
+    if (!upper.startsWith("FAILED") && !upper.startsWith("REFUSED") && !upper.startsWith("ABORT:")) return "";
+    const label = upper.startsWith("ABORT:")
+      ? t("settingsService.phaseAborted")
+      : t(upper.startsWith("FAILED") ? "settingsService.purgeFailed" : "settingsService.purgeRefused");
+    const reason = raw.includes(":") ? raw.slice(raw.indexOf(":") + 1).trim() : "";
+    const reasons = {
+      "NO FLOW DETECTED": t("settingsService.purgeNoFlow"),
+      "WATER TEMPERATURE HARD TRIP": t("settingsService.purgeTemperatureTrip"),
+      "BOILER ACTIVE": t("settingsService.purgeBoilerActive"),
+      "HEAT PUMP ACTIVE": t("settingsService.purgeHeatPumpActive"),
+      "MISSING START TIME": t("settingsService.purgeMissingStartTime"),
+      "NOT CM100": t("settingsService.purgeNotCm100"),
+      "BUSY": t("settingsService.purgeBusy"),
+    };
+    return reason ? `${label}: ${reasons[reason.toUpperCase()] || reason}` : label;
+  }
+
   export function isBoilerTestResultReady(status) {
     return /DONE|APPLIED|CONFIRM_REQUIRED/.test(String(status || "").trim().toUpperCase());
   }
@@ -125,7 +147,8 @@ import { formatNumber, t } from "../i18n/index.js";
         { match: ["PHASE2", "PULSE"], phase: t("settingsService.phasePulse"), percent: 62 },
         { match: ["PHASE3", "STABILIZE"], phase: t("settingsService.phaseStab"), percent: 90 },
         { match: ["DONE"], phase: t("settingsService.phaseDone"), percent: 100 },
-        { match: ["ABORTED", "FAILED", "ABORT"], phase: t("settingsService.phaseAborted"), percent: 100 },
+        { match: ["FAILED"], phase: t("settingsService.purgeFailed"), percent: 100 },
+        { match: ["ABORTED", "ABORT"], phase: t("settingsService.phaseAborted"), percent: 100 },
       ],
       "hp-water-calibration": [
         { match: ["REQUESTED", "STARTED", "REFUSED"], phase: t("settingsService.phasePrep"), percent: 8 },
@@ -535,7 +558,11 @@ import { formatNumber, t } from "../i18n/index.js";
     const airPurgeAvailable = Boolean(airPurgeControls || state.entities.airPurgeStatus || state.entities.airPurgeReturnToAuto);
     const airPurgeRemaining = getSettingsStatValue("airPurgeRemaining", { decimals: 0 });
     const airPurgePhaseCode = getEntityNumericValue("airPurgePhase");
-    const airPurgePhase = airPurgePhaseCode === 1
+    const airPurgePhase = state.busyAction === "airPurgeStart"
+      ? t("settingsService.phasePrep")
+      : airPurgeTaskTerminal
+      ? airPurgeProgress.phase
+      : airPurgePhaseCode === 1
       ? t("settingsService.phaseQuiet")
       : airPurgePhaseCode === 2
         ? t("settingsService.phasePulse")
@@ -602,11 +629,16 @@ import { formatNumber, t } from "../i18n/index.js";
           ? autotuneProgress.phase
           : (autotuneResultReady ? t("settingsService.readyToApply") : t("settingsService.readyToStart"))))
       : t("settingsService.waitCm100");
-    const airPurgeStatusDisplay = cm100Ready
+    const airPurgeTerminalStatus = state.busyAction === "airPurgeStart"
+      ? ""
+      : getAirPurgeTerminalStatus(airPurgeStatus);
+    const airPurgeStatusDisplay = state.busyAction === "airPurgeStart"
+      ? t("settingsService.phasePrep")
+      : airPurgeTerminalStatus || (cm100Ready
       ? (airPurgeTaskRunning
         ? airPurgeProgress.phase
         : (airPurgeResultReady ? t("settingsService.boilerDone") : t("settingsService.readyToStart")))
-      : t("settingsService.waitCm100");
+      : t("settingsService.waitCm100"));
     const manualFlowStatusDisplay = cm100Ready
       ? (manualFlowTaskRunning ? t("settingsService.flowActive") : t("settingsService.readyToStart"))
       : t("settingsService.waitCm100");
@@ -924,7 +956,9 @@ import { formatNumber, t } from "../i18n/index.js";
           copy: t("settingsService.purgeCopy"),
           subcopy: t("settingsService.purgeSubcopy"),
           status: airPurgeStatusDisplay,
-          statusCopy: airPurgeTaskRunning
+          statusCopy: airPurgeTerminalStatus
+            ? t("settingsService.purgeResultCopy")
+            : airPurgeTaskRunning
             ? t("settingsService.purgeRunning")
             : (cm100Ready ? t("settingsService.purgeReady") : t("settingsService.purgeStartFirst")),
           progressTask: "purge",
@@ -943,6 +977,7 @@ import { formatNumber, t } from "../i18n/index.js";
           metrics: `
             ${renderSettingsStaticField("airPurgeRemaining", t("settingsService.purgeRemaining"), t("settingsService.purgeRemainingCopy"), airPurgeRemaining, "oq-settings-field--compact")}
             ${renderSettingsStaticField("airPurgePhase", t("settingsService.purgePhase"), t("settingsService.purgePhaseCopy"), airPurgePhase, "oq-settings-field--compact")}
+            ${hasEntity("airPurgeTargetIpwm") ? renderSettingsStaticField("airPurgeTargetIpwm", t("settingsService.purgeTargetIpwm"), t("settingsService.purgeTargetIpwmCopy"), getSettingsStatValue("airPurgeTargetIpwm", { decimals: 0 }), "oq-settings-field--compact") : ""}
             ${renderSettingsStaticField("flowSelected", t("settingsService.purgeFlow"), t("settingsService.purgeFlowCopy"), getSettingsStatValue("flowSelected"), "oq-settings-field--compact")}
             ${renderSettingsCheckboxSwitchField(
               "airPurgeReturnToAuto",
