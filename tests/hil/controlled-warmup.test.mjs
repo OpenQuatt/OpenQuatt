@@ -7,7 +7,16 @@ import { describeHilFailure, parseArgs, run } from '../../scripts/hil/run-input-
 import { startNativeHaFixture } from '../../scripts/hil/native-ha-fixture.mjs';
 import { controllerSettings, simulatorSettings, SNAPSHOT_SCHEMA } from '../../scripts/hil/session.mjs';
 import { WARMUP_STAGES } from '../../scripts/hil/run-controlled-warmup.mjs';
-import { assertIdleBaseline, controlledWarmupScenario, validateWarmupExtra, warmupExtraSettings, warmupClose, warmupNumber } from './scenarios/controlled-warmup.mjs';
+import { assertIdleBaseline, controlledWarmupScenario, validateWarmupExtra, warmupExtraSettings, warmupClose, warmupNumber, waitDurationHandback } from './scenarios/controlled-warmup.mjs';
+
+test('duration handback waits for coherent status/goal and cannot accept a different cancellation', async () => {
+  let calls = 0;
+  const controller = { values: async () => ++calls === 1 ? { active: false, status: 'Warming', target: 19.1 } : { active: false, status: 'Time limit reached', target: 21 } };
+  await waitDurationHandback(controller, () => false, 2500);
+  assert.equal(calls, 2);
+  controller.values = async () => ({ active: false, status: 'Disabled', target: 21 });
+  await assert.rejects(waitDurationHandback(controller, () => false, 10), /coherent duration deadline handback/);
+});
 
 test('unavailable or boolean actuator telemetry cannot be treated as numeric zero', () => {
   for (const value of [null, undefined, '', ' ', false, true, NaN, [], [0], {}]) {

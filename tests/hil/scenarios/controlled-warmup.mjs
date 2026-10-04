@@ -413,6 +413,10 @@ async function restart(controller, simulator, interrupted, waitForProfile) {
   console.log('PASS real reboot: six settings persisted; runtime session and previous setpoint reset');
 }
 
+export async function waitDurationHandback(controller, interrupted, timeoutMs = 20000) {
+  return waitState(controller, { active: false, status: 'Time limit reached', target: 21 }, 'coherent duration deadline handback', interrupted, timeoutMs);
+}
+
 async function duration(controller, simulator, interrupted) {
   await start(controller, simulator, interrupted, { source: 'OT thermostat', time: 120, maximum: 1 });
   const started = Date.now();
@@ -430,11 +434,12 @@ async function duration(controller, simulator, interrupted) {
     ]);
     heap.push({ elapsedMs: Date.now() - started, ...diagnostics });
     console.log(`MEMORY ${JSON.stringify(heap.at(-1))}`);
-    if (!asBoolean(value.active)) {
-      assert(value.status === 'Time limit reached' && close(value.target, 21), 'duration did not hand back actual thermostat goal');
-      assert(Date.now() - started >= 3550000, 'one-hour duration ended early');
+    if (asBoolean(value.active) === false) {
+      const firstInactiveElapsedMs = Date.now() - started;
+      await waitDurationHandback(controller, interrupted);
+      assert(firstInactiveElapsedMs >= 3550000, 'one-hour duration ended early');
       console.log(`PASS real 1 h deadline; elapsed=${Date.now() - started}ms`);
-      return { durationElapsedMs: Date.now() - started, heap };
+      return { firstInactiveElapsedMs, durationElapsedMs: Date.now() - started, heap };
     }
     assert(close(value.target, 19.1), 'fixed target moved during room-constant one-hour soak');
     await sleep(30000);
