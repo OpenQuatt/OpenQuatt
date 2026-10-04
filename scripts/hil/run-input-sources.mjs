@@ -33,6 +33,13 @@ import {
 } from '../../tests/hil/scenarios/input-sources.mjs';
 
 const HIL_PROFILE = 'input-sources-fast-v1';
+
+export function describeHilFailure(error) {
+  const own = String(error?.stack || error);
+  return error instanceof AggregateError
+    ? `${own}\n${error.errors.map((nested, index) => `Cause ${index + 1}: ${describeHilFailure(nested)}`).join('\n')}`
+    : own;
+}
 const SIMULATOR_CONTRACT = 'openquatt-modbus-opentherm-v2';
 const HIL_PREFERENCE_SETTLE_MS = 2000;
 const VALID_STAGES = new Set([
@@ -454,10 +461,12 @@ export async function run(options, scenario = {
   let scenarioResult;
   let restoredFirmware;
   try {
+    if (!options.restoreSnapshot && scenario.preflight) scenario.preflight(options);
     if (options.restoreSnapshot) {
       snapshot = await readSnapshot(path.resolve(options.restoreSnapshot));
       assertSnapshotTargets(snapshot, options);
       assertSnapshotScenario(snapshot, scenario);
+      if (scenario.validateSnapshot) scenario.validateSnapshot(snapshot);
       const recoveryOptions = options.settingsOnly
         ? options
         : { ...options, restoreArtifactPath: await restoreArtifactPath(snapshot, runDir) };
@@ -468,6 +477,9 @@ export async function run(options, scenario = {
       await recoveryLock.markMutationStarted();
       mutationStarted = true;
       if (options.settingsOnly) await verifySettingsOnlyFirmware(controller, snapshot);
+      if (scenario.beforeRestore) {
+        await scenario.beforeRestore({ controller, simulator, snapshot });
+      }
       restoredFirmware = await restoreFirmwareAndSettings({
         options: recoveryOptions,
         controller,
@@ -500,6 +512,10 @@ export async function run(options, scenario = {
           firmware: before.firmware,
           scenario: scenario.name,
         });
+        if (scenario.captureExtra) {
+          snapshot.extra = await scenario.captureExtra({ controller, simulator });
+        }
+        if (scenario.validateSnapshot) scenario.validateSnapshot(snapshot);
         const preparedRestore = await prepareFirmwareRestore({
           config: options.restoreConfig,
           artifactDirectory: runDir,
@@ -553,6 +569,9 @@ export async function run(options, scenario = {
   } finally {
     if (snapshot && mutationStarted && !options.restoreSnapshot) {
       try {
+        if (scenario.beforeRestore) {
+          await scenario.beforeRestore({ controller, simulator, snapshot });
+        }
         restoredFirmware = await restoreFirmwareAndSettings({
           options: {
             ...options,
@@ -603,7 +622,7 @@ export async function run(options, scenario = {
       startedAt: startedAt.toISOString(),
       finishedAt: new Date().toISOString(),
       success: success && !failure,
-      failure: failure ? String(failure.stack || failure) : null,
+      failure: failure ? describeHilFailure(failure) : null,
       requestCounts: gate.counts,
       requestIntervalMs: {
         read: gate.readIntervalMs,
@@ -645,7 +664,7 @@ if (isMain) {
       await run(options);
     }
   } catch (error) {
-    console.error(`FAIL ${error.stack || error}`);
+    console.error(`FAIL ${describeHilFailure(error)}`);
     process.exitCode = 1;
   }
 }

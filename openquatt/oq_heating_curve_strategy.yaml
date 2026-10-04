@@ -361,7 +361,9 @@ sensor:
     accuracy_decimals: 1
     update_interval: 10s
     lambda: |-
-      return oq_heating_curve_runtime::runtime().supply_target((uint32_t) ${ha_heating_curve_modifier_stale_s}UL);
+      return oq_heating_curve_runtime::runtime().supply_target(
+          (uint32_t) ${ha_heating_curve_modifier_stale_s}UL,
+          (${oq_ot_room_temperature_fresh_expr}), (${oq_ot_room_setpoint_fresh_expr}));
 
   - platform: template
     id: oq_curve_base_target_sensor

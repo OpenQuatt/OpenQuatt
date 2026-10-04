@@ -4,8 +4,8 @@ import { isCurveMode, isManualFlowMode } from "../core/domain-helpers.js";
 import { getCurveFallbackSuggestion, getEntityValue } from "../core/entity-store.js";
 import { getHeatingEnableAdvice } from "../core/heating-strategy-matrix.js";
 import { state } from "../core/state.js";
-import { getSettingsSelectModel } from "./field-models.js";
-import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField } from "./controls.js";
+import { getSettingsSelectModel, getSettingsSwitchModel } from "./field-models.js";
+import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSettingsCompactSwitchControl, renderSettingsSwitchCopy, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField } from "./controls.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
 import { formatNumber, t } from "../i18n/index.js";
@@ -584,6 +584,68 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     `;
   }
 
+  const WARMUP_STATUS_COPY = {
+    "Idle": "warmup.idle",
+    "Disabled": "warmup.disabled",
+    "Warming": "warmup.warming",
+    "Comfort reached": "warmup.comfort",
+    "Setpoint lowered": "warmup.lowered",
+    "Time limit reached": "warmup.timeLimit",
+    "Input unavailable": "warmup.unavailable",
+    "Source changed": "warmup.sourceChanged",
+    "Mode changed": "warmup.modeChanged",
+    "Settings changed": "warmup.settingsChanged",
+  };
+
+  export function getWarmupStatusCopy(status) {
+    return t(WARMUP_STATUS_COPY[String(status || "").trim()] || "warmup.unknown");
+  }
+
+  export function renderControlledWarmupField() {
+    if (!hasEntity("warmupEnabled")) return "";
+    const { enabled, busy } = getSettingsSwitchModel("warmupEnabled");
+    const switchField = renderSettingsFieldCard("warmupEnabled", t("warmup.allow"), t("warmup.allowCopy"), `
+      <div class="oq-settings-compact-switch-field">
+        ${renderSettingsCompactSwitchControl("warmupEnabled", t("warmup.allow"), enabled, busy, t("common.on"), t("common.off"))}
+        ${renderSettingsSwitchCopy("warmupEnabled", enabled, t("warmup.on"), t("warmup.off"))}
+      </div>
+    `);
+    const status = enabled ? getWarmupStatusCopy(getSettingsTextStatValue("warmupStatus", "")) : t("warmup.disabled");
+    const value = (key) => {
+      const numeric = hasEntity(key) ? getEntityNumericValue(key) : NaN;
+      return Number.isFinite(numeric) ? `${formatNumber(numeric, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} °C` : "—";
+    };
+    const readings = [
+      [t("warmup.active"), hasEntity("warmupActive") ? t(Boolean(getEntityValue("warmupActive")) ? "common.yes" : "common.no") : "—"],
+      [t("warmup.finalTarget"), value("roomSetpoint")],
+      [t("warmup.target"), value("warmupEffectiveTarget")],
+      [t("warmup.offset"), value("warmupOffset")],
+    ];
+    return `
+      <section class="oq-settings-subpanel oq-run-extension" aria-label="${escapeHtml(t("warmup.title"))}">
+        <div class="oq-run-extension-intro">
+          <div class="oq-settings-subpanel-head">
+            <h4>${escapeHtml(t("warmup.title"))}</h4>
+            <p>${escapeHtml(t("warmup.copy"))}</p>
+          </div>
+          <span class="oq-run-extension-status">${escapeHtml(status)}</span>
+        </div>
+        <div class="oq-settings-grid">
+          ${switchField}
+          ${enabled ? [
+            renderSettingsNumberField("warmupTrigger", t("warmup.trigger"), t("warmup.triggerCopy")),
+            renderSettingsNumberField("warmupStep", t("warmup.step"), t("warmup.stepCopy")),
+            renderSettingsNumberField("warmupStepTime", t("warmup.stepTime"), t("warmup.stepTimeCopy")),
+            renderSettingsNumberField("warmupMaxOffset", t("warmup.maxOffset"), t("warmup.maxOffsetCopy")),
+            renderSettingsNumberField("warmupMaxDuration", t("warmup.maxDuration"), t("warmup.maxDurationCopy")),
+          ].join("") : ""}
+        </div>
+        ${enabled ? `<div class="oq-run-extension-thresholds oq-warmup-readings">${readings.map(([label, reading]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(reading)}</strong></div>`).join("")}</div>` : ""}
+        <p class="oq-run-extension-note">${escapeHtml(t("warmup.limits"))}</p>
+      </section>
+    `;
+  }
+
   export function renderSettingsHeatPumpLimiterCard(title, hpPrefix) {
     const firstFrequencyKey = `${hpPrefix}ExcludeMinHz`;
     const fields = renderSettingsFrequencyRangeField(
@@ -689,6 +751,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
         ${renderHeatingStrategyExplainCards()}
         ${renderHeatingEnableStrategyAdvice()}
         ${strategyContent}
+        ${renderControlledWarmupField()}
       `,
     );
   }

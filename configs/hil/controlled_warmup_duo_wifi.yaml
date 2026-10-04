@@ -1,0 +1,18 @@
+# ==============================================================================
+# OpenQuatt - HIL TEST ONLY: Controlled Warmup Q Duo, production timers
+# ==============================================================================
+# Names the desktop controller openquatt-test; never use on production.
+packages:
+  hil_testcontroller_q_duo: !include ../heatpump_controller_q/duo_hil.yaml
+
+esphome:
+  build_path: ../../../.esphome/build/controlled_warmup_duo_hil
+
+text_sensor:
+  - platform: template
+    id: oq_hil_test_profile
+    name: "HIL Test Profile"
+    internal: true
+    update_interval: 5s
+    lambda: |-
+      return {"controlled-warmup-production-v1"};

@@ -87,7 +87,8 @@ class StrategyRuntimeContractTest(unittest.TestCase):
         # base/effective demand, comfort stop and house-deficit semantics.
         # Measured 1464 lines after combining the external curve modifier
         # with dev's confirmed-stop transition to CM0.
-        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1470)
+        # Issue #784 adds the shared warmup target to both strategy entry paths.
+        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1490)
         self.assertLessEqual(len(HEAT_INTENT_RUNTIME.splitlines()), 90)
         # The selector now returns source provenance alongside its value; keep it local.
         self.assertLessEqual(len(LOGIC.splitlines()), 75)

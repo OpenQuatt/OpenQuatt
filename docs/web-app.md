@@ -196,6 +196,60 @@ Hier kies en verfijn je de verwarmingsstrategie:
 
 `Power House` probeert de warmtevraag van je woning te schatten. `Stooklijnregeling` stuurt op een aanvoerdoel op basis van de buitentemperatuur. Begin bij [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md) als je nog niet zeker weet welke strategie bij je past.
 
+#### Gecontroleerd opwarmen na nachtverlaging
+
+Met **Gecontroleerd opwarmen** kan OpenQuatt na nachtverlaging of langere afwezigheid
+in kleine stappen naar de gewenste kamertemperatuur werken. De gekozen thermostaat
+of setpointbron bepaalt het einddoel; dit is niet specifiek voor Tado. Er komt geen
+extra internettoegang bij. De schakelaar staat standaard uit en is ook bedienbaar
+via Home Assistant en de API.
+
+Zet de functie vooraf aan. Ze start pas wanneer de gewenste temperatuur meer stijgt
+dan de ingestelde startgrens en de kamer nog onder de comfortband van het einddoel
+ligt. Aan zetten, herstarten of een bron opnieuw verbinden start dus niet vanzelf
+het opwarmen.
+
+| Instelling | Standaard | Betekenis |
+|---|---|---|
+| Start bij verhoging groter dan | 1,5 °C | Vergelijkt de vorige en nieuwe gewenste kamertemperatuur. Precies 1,5 °C is geen start bij deze instelling. |
+| Temperatuurstap | 0,1 °C | Eerste tussendoel: gemeten kamertemperatuur plus deze stap. |
+| Tijd per stap | 45 min | Zonder bereiken van het tussendoel wordt de toegepaste aanwarmstap één temperatuurstap groter. |
+| Maximale aanwarmstap | 0,5 °C | Begrenzing van de toegepaste aanwarmstap bij versnellen; kies minstens de temperatuurstap. Een lagere waarde geldt als één stap. |
+| Maximale opwarmduur | 8 uur | Daarna neemt de normale regeling het over, ook als de kamer nog te koud is. |
+
+Elk tussendoel blijft vast staan tot het bereikt is of de tijd per stap verloopt.
+Na bereiken schuift het verder; het komt nooit boven de gewenste temperatuur.
+De toegepaste aanwarmstap bepaalt een nieuw tussendoel op basis van de kamertemperatuur.
+Een bestaand tussendoel daalt niet bij afkoelen; de werkelijke afstand tot de kamer
+kan daardoor groter worden dan de ingestelde maximale aanwarmstap.
+Binnen de comfortband neemt de normale regeling weer over. Je ziet hier ook
+**Opwarmen bezig**, de status, het einddoel van je thermostaat, het tussendoel en de huidige aanwarmstap.
+
+Een verlaging van de gewenste temperatuur, uitschakelen, ongeldige bronwaarden of
+een wijziging van bronnen, instellingen of regelmodus beëindigt het opwarmen.
+Een verdere verhoging tijdens opwarmen past het einddoel aan. Na beëindigen is een
+nieuwe voldoende grote setpointverhoging nodig; de normale bron- en
+veiligheidsvoorwaarden blijven gelden.
+Bij CIC moeten kamertemperatuur en setpoint in het nieuwste feedantwoord staan.
+Een oude waarde die nog zichtbaar is, houdt de opwarmsessie niet actief.
+
+De functie werkt met Power House op basis van het huismodel en met de lokale
+stooklijn. Externe vermogensvragen of externe aanvoerdoelen, koelen en handbediening
+vallen erbuiten. Bij de stooklijn bepaalt het tussendoel de ruimte-stop en herstart;
+het verlaagt niet rechtstreeks het watertemperatuurdoel of het compressorvermogen.
+Bij geleidelijke opwarming blijft het stooklijn-waterdoel doorgaans gelijk aan
+zonder deze functie; kleine stappen garanderen daar dus geen tragere opwarming.
+Warmtetoestemming, wachttijden, waterlimieten en beveiligingen blijven leidend.
+Ook de bestaande comfortband rond het tussendoel blijft gelden. Is de aanwarmstap
+kleiner dan `Power House comfort below setpoint`, dan kan een gestopte warmtepomp
+bij weinig huisverlies blijven wachten totdat de stap groter wordt of de kamer
+afkoelt. Kies de maximale aanwarmstap daarom minstens zo groot als die comfortband
+als je dit wachten wilt beperken.
+De functie kan al starten wanneer de thermostaat zijn doel verhoogt maar nog geen
+warmtetoestemming geeft. De stap- en totaaltijd lopen ook gedurende die wachttijd.
+De functie garandeert daarom geen lager verbruik of hogere COP; vergelijk comfort,
+opwarmduur en energiegebruik in je eigen installatie.
+
 #### Stooklijn en actueel aanvoerdoel
 
 In de Nederlandse web-app heet de strategie **Stooklijnregeling**; de firmwareoptie

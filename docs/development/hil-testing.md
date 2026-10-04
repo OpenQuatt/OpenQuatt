@@ -160,6 +160,94 @@ API-inputslots, inclusief het dauwpunt. Met `--min-heap-min-free` en
 worden meegegeven. Zonder die opties rapporteert de runner de waarden, maar
 noemt hij een geheugentest niet automatisch releaseveilig.
 
+## Gecontroleerd aanwarmen na nachtverlaging
+
+Deze runner gebruikt de normale productietimers en uitsluitend de benoemde
+testcontroller. De overlay voegt alleen een profielmarker toe.
+
+```bash
+node scripts/hil/run-controlled-warmup.mjs \
+  --controller http://openquatt-test.local \
+  --simulator http://SIMULATOR-IP \
+  --device openquatt-test.local \
+  --test-config configs/hil/controlled_warmup_duo_wifi.yaml \
+  --restore-config configs/heatpump_controller_q/duo_hil.yaml \
+  --stage all \
+  --apply
+```
+
+`boundaries` controleert de startgrens, vaste tussenstappen, afkoelen,
+setpointwijzigingen, bronwissels, handmatige bediening en beide regelstrategieën.
+`curve` herhaalt afzonderlijk de tussenstappen en het waterdoel van de
+verwarmingscurve, met tijd voor de sensoren om hun nieuwe waarde te publiceren.
+`timing` wacht twee echte stappen van vijf minuten; `stale` wacht op het vervallen
+van een API-kamertemperatuur na tien minuten. `restart` controleert opgeslagen
+instellingen en het vervallen van de lopende sessie na een echte reboot.
+`duration` controleert een volledige uurgrens. Reken voor `all` op ruim
+anderhalf uur, plus compilatie, OTA en herstel. De instellingen en firmware
+worden ook na een losse stage hersteld. Na de herstel-OTA worden de instellingen
+opnieuw gezet en teruggelezen; dat is geen tweede persistentieproef na reboot.
+De stage `restart` bewijst afzonderlijk dat de testinstellingen een reboot overleven.
+`timers` combineert `timing`, `stale`, `restart` en `duration` in één run.
+`short-timers` combineert alleen `timing`, `stale` en `restart`, bijvoorbeeld
+wanneer de duurgrens afzonderlijk wordt onderzocht.
+
+OpenTherm en API worden end-to-end getest. Een optionele lokale native-API-fixture
+test ook de HA-inputs via versleuteld ESPHome-verkeer. Daarvoor is afzonderlijke
+labfirmware met een tijdelijke RAM-sleutel nodig, plus een privé aangeleverde
+`OQ_HIL_NATIVE_API_KEY`. De runner wijzigt de opgeslagen API-sleutel niet.
+Sleutels en de afgeleide labconfig horen uitsluitend in genegeerde lokale
+bestanden. Zonder deze fixture omvat de run geen HA-transporttest en slaat `all`
+de stage `regulation` expliciet over. Een losse `regulation` wordt zonder testsleutel
+vóór wijzigingen geweigerd. Deze stage vergelijkt de werkelijke Power House-vraag
+en controleert warmtetoestemming, actuatoruitgangen en de overgang naar koelen.
+De koelproef schakelt tijdelijk `Cooling Room Request Required` uit, zodat
+een afzonderlijk koelverzoek bij de nagebootste lage kamertemperatuur wordt
+toegestaan. De oorspronkelijke instelling wordt meegenomen in het herstel.
+`regulation-tail` herhaalt afzonderlijk de comfortband- en koelproef. Voor de
+comfortbandproef moeten standby, nul toegepaste niveaus en een vrijwel nul
+vermogensvraag eerst daadwerkelijk zijn bereikt.
+Ook met de fixture is dit geen proef van een volledige Home Assistant-installatie.
+MQTT en CIC vereisen afzonderlijke transportproeven.
+
+Gebruik daarvoor de lokale fixture-runner, na afronding en herstel van de eerste
+run. Het voorbeeldadres is het LAN-adres van de labdesktop; pas het aan als dat
+adres verandert. Preflight weigert een adres dat niet bij de desktop hoort en
+weigert controller- en simulatoradressen.
+
+```bash
+OQ_HIL_FIXTURE_HOST=192.168.2.103 node scripts/hil/run-warmup-transports.mjs \
+  --controller http://openquatt-test.local \
+  --simulator http://SIMULATOR-IP \
+  --device openquatt-test.local \
+  --test-config configs/hil/controlled_warmup_duo_wifi.yaml \
+  --restore-config configs/heatpump_controller_q/duo_hil.yaml \
+  --stage transports \
+  --apply
+```
+
+Deze proef gebruikt een kleine lokale CIC-HTTP-feed en een MQTT 3.1.1 QoS0-fixture.
+Zij accepteren alleen de testcontroller. De CIC-proef controleert geldige
+ontvangst, kleine temperatuurwijzigingen en publicatievertraging, ontbrekende kamer-/setpointvelden
+en herstel zonder opnieuw starten. De MQTT-proef controleert echte subscriptions,
+ontvangen kamer-/setpointwaarden en een bronwissel heen en terug.
+Dit test geen productie-CIC of externe broker.
+
+De runner bewaart en herstelt de oorspronkelijke CIC-URL, brokerinstellingen en
+geraakte inputflags in het private snapshot. Hij leest geen MQTT-wachtwoord en
+controleert bij herstel dat `password_set` gelijk blijft. Een lege oorspronkelijke
+broker met een opgeslagen wachtwoord wordt vooraf geweigerd, omdat exact herstel
+dan niet gegarandeerd is. Gebruik voor recovery dezelfde runner, inclusief
+`--stage transports`, met de herstelopties hieronder.
+
+Gebruik voor recovery de runner die het snapshot maakte, met `--restore-snapshot`,
+`--restore-config`, `--device` en `--apply`, zoals hieronder beschreven.
+Een warmup-snapshot bevat tevens de oorspronkelijke zes instellingen,
+broninstellingen en simulatorwarmtevraag. Een ontbrekend of ongeldig blok wordt
+afgewezen voordat het herstel instellingen terugzet.
+Nieuwe extra instellingen gebruiken schema 2. Bij een ouder schema 1 zonder
+`coolingRoomRequired` laat herstel die voorheen ongemoeide instelling staan.
+
 ## OpenTherm kamer-setpoint: `setpoint-validity`
 
 `--stage setpoint-validity` test end-to-end dat een semantisch onbruikbaar

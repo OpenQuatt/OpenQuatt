@@ -571,6 +571,16 @@
     ["phRunExtension", DOMAIN_SWITCH, "Power House run extension"],
     ["phRunExtensionStopMargin", DOMAIN_NUMBER, "Power House run extension stop margin"],
     ["phRunExtensionStatus", DOMAIN_TEXT_SENSOR, "Power House run extension status"],
+    ["warmupEnabled", DOMAIN_SWITCH, "Controlled warmup enabled"],
+    ["warmupTrigger", DOMAIN_NUMBER, "Controlled warmup trigger"],
+    ["warmupStep", DOMAIN_NUMBER, "Controlled warmup step"],
+    ["warmupStepTime", DOMAIN_NUMBER, "Controlled warmup step time"],
+    ["warmupMaxOffset", DOMAIN_NUMBER, "Controlled warmup maximum offset"],
+    ["warmupMaxDuration", DOMAIN_NUMBER, "Controlled warmup maximum duration"],
+    ["warmupActive", DOMAIN_BINARY_SENSOR, "Controlled warmup active"],
+    ["warmupEffectiveTarget", DOMAIN_SENSOR, "Controlled warmup effective target"],
+    ["warmupOffset", DOMAIN_SENSOR, "Controlled warmup offset"],
+    ["warmupStatus", DOMAIN_TEXT_SENSOR, "Controlled warmup status"],
     ["lowLoadDynamicThresholds", DOMAIN_TEXT_SENSOR, "Low-load dynamic thresholds"],
     ["lowLoadDynamicOffFactor", DOMAIN_NUMBER, "Low-load dynamic OFF factor"],
     ["lowLoadDynamicOnFactor", DOMAIN_NUMBER, "Low-load dynamic ON factor"],
@@ -843,6 +853,8 @@
     "phRunExtensionStopMargin",
     "phRunExtensionStatus",
   ];
+  export const WARMUP_SETTING_KEYS = ["warmupEnabled", "warmupTrigger", "warmupStep", "warmupStepTime", "warmupMaxOffset", "warmupMaxDuration"];
+  export const WARMUP_STATE_KEYS = ["warmupActive", "warmupEffectiveTarget", "warmupOffset", "warmupStatus"];
   export const FREQUENCY_CAP_KEYS = ["dayMaxHz", "silentMaxHz"];
   export const FREQUENCY_MINIMUM_KEYS = ["hp1MinimumHeatingHz", "hp1MinimumCoolingHz", "hp2MinimumHeatingHz", "hp2MinimumCoolingHz"];
   export const LIMIT_KEYS = [...FREQUENCY_CAP_KEYS, "maxWater"];
@@ -2035,6 +2047,8 @@
     ...COOLING_SETTING_KEYS,
     ...LIMIT_KEYS,
     ...POWER_HOUSE_KEYS,
+    ...WARMUP_SETTING_KEYS,
+    ...WARMUP_STATE_KEYS,
     ...CURVE_SETTING_KEYS,
     ...COMPRESSOR_SETTING_KEYS,
     ...SILENT_SETTING_KEYS,
@@ -2174,6 +2188,11 @@
         "phRunExtension",
         "phRunExtensionStopMargin",
       ],
+    },
+    {
+      id: "warmup",
+      labelKey: "backupSections.warmup",
+      keys: [...WARMUP_SETTING_KEYS],
     },
     {
       id: "flow",

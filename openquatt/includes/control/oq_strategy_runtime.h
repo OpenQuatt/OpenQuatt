@@ -13,6 +13,7 @@ namespace oq_strategy_runtime {
 class Runtime {
  public:
   void switch_heating_mode(bool heating_curve) {
+    oq_warmup_runtime::runtime().cancel(oq_warmup::Status::MODE_CHANGED);
     id(oq_heat_mode_code) = heating_curve ? 1 : 0;
     this->reset_shared_();
     oq_heating_curve_runtime::runtime().reset_profile();
