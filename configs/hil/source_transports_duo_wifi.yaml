@@ -1,12 +1,19 @@
-# Generic source-fixture diagnostics; no controlled-warmup package dependency.
+# ==============================================================================
+# OpenQuatt - HIL TEST ONLY: Generic source transports Q Duo
+# ==============================================================================
+# Source-fixture diagnostics; no controlled-warmup package dependency.
 packages:
   base: !include ../heatpump_controller_q/duo_hil.yaml
+
+esphome:
+  build_path: ../../../.esphome/build/source_transports_duo_hil
 
 text_sensor:
   - platform: template
     name: "HIL Test Profile"
     update_interval: 5s
-    lambda: return {"source-transports-v1"};
+    lambda: |-
+      return {"source-transports-v1"};
 
 binary_sensor:
   - platform: template
@@ -25,4 +32,5 @@ sensor:
     name: "HIL Setpoint Source Generation"
     accuracy_decimals: 0
     update_interval: 1s
-    lambda: return oq_sensor_source::runtime().resolved_room_setpoint().configuration_generation;
+    lambda: |-
+      return oq_sensor_source::runtime().resolved_room_setpoint().configuration_generation;
