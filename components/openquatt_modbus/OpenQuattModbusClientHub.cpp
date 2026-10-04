@@ -72,10 +72,9 @@ void log_modbus_anomaly(const char* event, const ModbusRequestContext& context, 
   format_noise_bytes(bytes, byte_count, bytes_hex, sizeof(bytes_hex));
 
   if (context.valid && context.has_register && context.has_argument) {
-    ESP_LOGD(TAG, "%s: slave=%u fc=0x%02X reg=%u arg=%u %s[%u]=%s", event,
-             static_cast<unsigned>(context.slave), static_cast<unsigned>(context.function),
-             static_cast<unsigned>(context.register_address), static_cast<unsigned>(context.argument), bytes_label,
-             static_cast<unsigned>(byte_count), bytes_hex);
+    ESP_LOGD(TAG, "%s: slave=%u fc=0x%02X reg=%u arg=%u %s[%u]=%s", event, static_cast<unsigned>(context.slave),
+             static_cast<unsigned>(context.function), static_cast<unsigned>(context.register_address),
+             static_cast<unsigned>(context.argument), bytes_label, static_cast<unsigned>(byte_count), bytes_hex);
     return;
   }
   if (context.valid) {
