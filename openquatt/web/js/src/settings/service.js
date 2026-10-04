@@ -511,7 +511,16 @@ import { formatNumber, t } from "../i18n/index.js";
     const hp1ManualMaxLevel = getManualHpMaximumLevel("hp1CompressorLevelProfile", "manualHp1Mode");
     const hp2ManualMaxLevel = getManualHpMaximumLevel("hp2CompressorLevelProfile", "manualHp2Mode");
     const cm100StartDisabled = cm100Busy || cm100Ready || cm100WaitingForCm100;
-    const cm100StopDisabled = cm100Busy || !cm100Ready;
+    // Prefer the actual control mode over descriptive task/refusal status text.
+    const cm100Entity = state.entities.cm100Active;
+    const cm100RawActive = typeof cm100Entity?.value === "boolean"
+      ? String(cm100Entity.value)
+      : String(cm100Entity?.state ?? cm100Entity?.value ?? "").trim().toLowerCase();
+    const cm100ActiveKnown = /^(on|off|true|false|1|0)$/.test(cm100RawActive);
+    const cm100ControlActive = cm100ActiveKnown ? /^(on|true|1)$/.test(cm100RawActive) : cm100StatusUpper === "CM100 READY";
+    const cm100ControlKnown = cm100ActiveKnown || (!cm100Entity && ["IDLE", "CM100 STOPPED", "CM100 READY"].includes(String(getSettingsTextStatValue("commissioningStatus", "")).trim().toUpperCase()));
+    const cm100Starting = state.busyAction === "commissioningCm100Start" || cm100Pending || cm100WaitingForCm100;
+    const cm100Stopping = state.busyAction === "commissioningCm100Stop" || cm100StatusUpper === "ABORT REQUESTED";
     const boilerStatus = getStatusTextValue("boilerPowerTestStatus", "IDLE");
     const boilerProgress = getCommissioningProgressModel(boilerStatus, "boiler");
     const boilerActive = isEntityActive("boilerPowerTestActive");
@@ -993,8 +1002,11 @@ import { formatNumber, t } from "../i18n/index.js";
 
     return {
       cm100Status: cm100StatusDisplay,
-      cm100StartDisabled,
-      cm100StopDisabled,
+      cm100ControlActive,
+      cm100StartLabel: cm100Starting ? t("settingsService.serviceStarting") : t("settingsService.serviceStart"),
+      cm100StopLabel: cm100Stopping ? t("settingsService.serviceStopping") : t("settingsService.serviceStop"),
+      cm100StartDisabled: cm100StartDisabled || !cm100ControlKnown || !state.entities.commissioningCm100Start,
+      cm100StopDisabled: cm100Busy || cm100WaitingForCm100 || cm100Stopping || !cm100ControlKnown || !state.entities.commissioningCm100Stop,
       serviceStatusCopy,
       tasks,
     };
@@ -1166,8 +1178,16 @@ import { formatNumber, t } from "../i18n/index.js";
               <p>${escapeHtml(service.serviceStatusCopy)}</p>
             </div>
             <div class="oq-settings-commissioning-hero-actions oq-settings-service-toolbar-actions">
-              ${state.entities.commissioningCm100Start ? renderNamedActionButton("commissioningCm100Start", t("settingsService.serviceStart"), "oq-helper-button oq-helper-button--primary", service.cm100StartDisabled) : ""}
-              ${state.entities.commissioningCm100Stop ? renderNamedActionButton("commissioningCm100Stop", t("settingsService.serviceStop"), "oq-helper-button oq-helper-button--ghost", service.cm100StopDisabled) : ""}
+              ${state.entities.commissioningCm100Start || state.entities.commissioningCm100Stop ? renderNamedToggleActionButton({
+                active: service.cm100ControlActive,
+                startKey: "commissioningCm100Start",
+                stopKey: "commissioningCm100Stop",
+                startLabel: service.cm100StartLabel,
+                stopLabel: service.cm100StopLabel,
+                stopClass: "oq-helper-button oq-helper-button--primary",
+                startDisabled: service.cm100StartDisabled,
+                stopDisabled: service.cm100StopDisabled,
+              }) : ""}
             </div>
           </div>
 

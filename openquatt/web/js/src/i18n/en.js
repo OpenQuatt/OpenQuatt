@@ -2192,6 +2192,8 @@ export default {
     serviceCopy: "Use service mode (control mode CM100) for testing, tuning and maintenance tasks.",
     serviceStart: "Start service",
     serviceStop: "Stop service",
+    serviceStarting: "Starting service…",
+    serviceStopping: "Stopping service…",
     eepromLabel: "ODU EEPROM export",
     eepromValue: "Read-only diagnosis",
     eepromNote: "Read the full EEPROM shadow and download it as JSON for hardware and firmware comparison.",
