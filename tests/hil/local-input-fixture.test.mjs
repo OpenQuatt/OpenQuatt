@@ -6,8 +6,8 @@ import path from 'node:path';
 import { parseArgs, run } from '../../scripts/hil/run-input-sources.mjs';
 import { execFileSync } from 'node:child_process';
 import { validateLocalFixtureHost } from '../../scripts/hil/local-input-fixture.mjs';
-import { warmupTransportScenario, validateTransportExtra } from './scenarios/warmup-transports.mjs';
-import { warmupExtraSettings } from './scenarios/controlled-warmup.mjs';
+import { warmupTransportScenario, validateTransportExtra, mqttRetainedWritable } from './scenarios/warmup-transports.mjs';
+import { warmupExtraSettings, controlledWarmupScenario } from './scenarios/controlled-warmup.mjs';
 
 const makeExtra = () => ({ schema: 1, values: Object.fromEntries(warmupExtraSettings.map((setting) => [setting.key, setting.domain === 'number' ? setting.min : setting.domain === 'switch' ? false : setting.options[0]])), localInputs: { cicUrl: '', cicPolling: false, mqtt: { broker: '', username: '', port: 1883, enabled: false, password_set: false, input_enabled: { room_temperature: false, room_setpoint: false }, input_accept_retained: { room_temperature: false, room_setpoint: false } } } });
 
@@ -48,6 +48,9 @@ test('transport snapshot preserves credential flags and rejects unsafe clearing 
   assert.throws(() => validateTransportExtra(extra), /cannot be restored/);
   extra.localInputs.mqtt.broker = 'original.local';
   assert.equal(validateTransportExtra(extra), extra);
+  extra.localInputs.mqtt.input_accept_retained.room_temperature = true;
+  assert.throws(() => validateTransportExtra(extra), /cannot be restored/);
+  extra.localInputs.mqtt.input_accept_retained.room_temperature = false;
   extra.localInputs.mqtt.input_accept_retained.room_setpoint = null;
   assert.throws(() => validateTransportExtra(extra), /input recovery permission/);
 });
@@ -75,4 +78,36 @@ print(json.dumps({'lengths': [f.encode_length(x).hex() for x in [0, 127, 128, 16
   assert.equal(result.publish, '30050001743139');
   assert.deepEqual(result.anonymous, ['20020000']);
   assert.deepEqual(result.credentials, ['20020005']);
+});
+
+test('MQTT retained endpoint is used only for the stateful room goal', () => {
+  assert.equal(mqttRetainedWritable('room_temperature'), false);
+  assert.equal(mqttRetainedWritable('room_setpoint'), true);
+});
+
+test('actual transport recovery writes only the stateful retained flag and checks both readbacks', async () => {
+  const original = controlledWarmupScenario.beforeRestore;
+  controlledWarmupScenario.beforeRestore = async () => {};
+  try {
+    for (const mismatch of [null, 'room_temperature', 'room_setpoint']) {
+      const extra = makeExtra();
+      const posts = [];
+      const controller = {
+        async setSwitch() {},
+        async value(domain) { return domain === 'text' ? '' : false; },
+        async request(endpoint, options = {}) {
+          if (options.method === 'POST') { posts.push({ endpoint, form: Object.fromEntries(new URLSearchParams(options.body)) }); return { ok: true }; }
+          const status = structuredClone(extra.localInputs.mqtt);
+          status.csrf_token = 'unit-token';
+          status.runtime_pending = false;
+          if (mismatch) status.input_accept_retained[mismatch] = true;
+          return status;
+        },
+      };
+      const recovery = warmupTransportScenario.beforeRestore({ controller, snapshot: { extra } });
+      if (mismatch) await assert.rejects(recovery, /local transport recovery failed/);
+      else await recovery;
+      assert.deepEqual(posts.filter((post) => post.endpoint === '/mqtt/input/retained/save').map((post) => post.form.input), ['room_setpoint']);
+    }
+  } finally { controlledWarmupScenario.beforeRestore = original; }
 });

@@ -7,6 +7,8 @@ import { asBoolean } from '../../../scripts/hil/rest-client.mjs';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const close = warmupClose;
 const inputs = ['room_temperature', 'room_setpoint'];
+// Room temperature is a transient input; only the stateful goal has a retained-setting endpoint.
+export const mqttRetainedWritable = (input) => input === 'room_setpoint';
 
 export function validateTransportExtra(extra) {
   validateWarmupExtra(extra);
@@ -21,6 +23,7 @@ export function validateTransportExtra(extra) {
   for (const key of inputs) {
     assert(typeof local.mqtt.input_enabled[key] === 'boolean' && typeof local.mqtt.input_accept_retained[key] === 'boolean', 'invalid local MQTT input recovery permission');
   }
+  assert(local.mqtt.input_accept_retained.room_temperature === false, 'transient room temperature retained flag cannot be restored');
   return extra;
 }
 
@@ -46,7 +49,7 @@ async function restoreLocal(controller, extra) {
   await attempt(() => textWrite(controller, 'CIC - Feed URL', cicUrl));
   for (const input of inputs) {
     await attempt(() => mqttWrite(controller, '/mqtt/input/save', { input, enabled: String(mqtt.input_enabled[input]) }));
-    await attempt(() => mqttWrite(controller, '/mqtt/input/retained/save', { input, accept_retained: String(mqtt.input_accept_retained[input]) }));
+    if (mqttRetainedWritable(input)) await attempt(() => mqttWrite(controller, '/mqtt/input/retained/save', { input, accept_retained: String(mqtt.input_accept_retained[input]) }));
   }
   await attempt(() => mqttWrite(controller, '/mqtt/save', { broker: mqtt.broker, port: String(mqtt.port), username: mqtt.username, password: '', clear_password: 'false', enabled: String(mqtt.enabled) }));
   await attempt(async () => {
@@ -162,7 +165,7 @@ export const warmupTransportScenario = {
       await mqttWrite(controller, '/mqtt/save', { broker: process.env.OQ_HIL_FIXTURE_HOST, port: String(fixture.mqtt_port), username: '', password: '', clear_password: 'false', enabled: 'true' });
       for (const input of inputs) {
         await mqttWrite(controller, '/mqtt/input/save', { input, enabled: 'true' });
-        await mqttWrite(controller, '/mqtt/input/retained/save', { input, accept_retained: 'false' });
+        if (mqttRetainedWritable(input)) await mqttWrite(controller, '/mqtt/input/retained/save', { input, accept_retained: 'false' });
       }
       const status = await waitFor(async () => { check(); const value = await controller.request('/mqtt/status'); return value.connected && !value.runtime_pending ? value : false; }, 'local MQTT broker connected', { timeoutMs: 45000 });
       topics = status.input_topics;
