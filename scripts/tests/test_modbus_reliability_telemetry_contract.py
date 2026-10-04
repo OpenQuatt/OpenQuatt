@@ -42,6 +42,12 @@ class ModbusReliabilityTelemetryContractTest(unittest.TestCase):
         self.assertIn("try_resync_expected_response_()", MODBUS_SOURCE)
         self.assertIn("find_expected_response_offset(", MODBUS_SOURCE)
         self.assertIn("trailing bytes after expected response", MODBUS_SOURCE)
+        self.assertIn("log_modbus_anomaly(\"Resynchronizing expected Modbus response\"", MODBUS_SOURCE)
+        self.assertIn("log_modbus_anomaly(\"Recovered expected Modbus response\"", MODBUS_SOURCE)
+        self.assertIn("log_modbus_anomaly(\"Modbus parse failed\"", MODBUS_SOURCE)
+        self.assertIn("log_modbus_anomaly(\"Modbus partial response timeout\"", MODBUS_SOURCE)
+        self.assertIn("slave=%u fc=0x%02X reg=%u arg=%u", MODBUS_SOURCE)
+        self.assertIn("MAX_LOGGED_NOISE_BYTES = 8U", MODBUS_SOURCE)
         self.assertIn("increment_(this->recovered_response_count_)", MODBUS_SOURCE)
         self.assertIn("Give the bounded request-aware resync one last chance", MODBUS_SOURCE)
         self.assertLess(
