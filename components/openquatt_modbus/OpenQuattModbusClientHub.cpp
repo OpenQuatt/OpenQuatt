@@ -1,5 +1,7 @@
 #include "OpenQuattModbusClientHub.h"
 
+#include <cstdio>
+
 #include "esphome/core/log.h"
 #include "includes/protocol/oq_modbus_recovery.h"
 
