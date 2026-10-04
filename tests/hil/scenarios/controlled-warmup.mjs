@@ -321,6 +321,9 @@ async function regulationTail(controller, simulator, interrupted) {
   await write(controller, 'number', prefix + 'maximum offset', 0.2);
   await write(controller, 'number', 'api_input_outside_temperature', 30);
   await selected(controller, 'Outside Temperature (Selected)', 30, interrupted);
+  // Changed warmup parameters cancel the limiter and restore the actual goal.
+  // Offer the old low goal before waiting for demand to settle to zero.
+  await setpoint(controller, simulator, 'OT thermostat', 18, interrupted);
   await waitFor(async () => {
     controller.haFixture.assertHealthy();
     const settled = await controller.values(warmupStateEntities);
@@ -332,7 +335,6 @@ async function regulationTail(controller, simulator, interrupted) {
     return false;
   }, 'custom-band actual standstill and settled near-zero demand before CH edge', { timeoutMs: 360000, intervalMs: 2000, interrupted });
   // Parameter changes cancel; establish a genuine new thermostat edge.
-  await setpoint(controller, simulator, 'OT thermostat', 18, interrupted);
   await sleep(2500);
   await setpoint(controller, simulator, 'OT thermostat', 21, interrupted);
   await waitState(controller, { active: true, target: 19.1 }, 'custom comfort band retains small limiting step', interrupted);
