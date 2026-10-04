@@ -12,7 +12,6 @@ export const warmupExtraSettings = [
   { key: 'enabled', domain: 'switch', name: `${prefix}enabled` },
   ...[
     ['trigger', 0.5, 5], ['step', 0.1, 0.5], ['step time', 5, 120],
-    ['maximum offset', 0.1, 2], ['maximum duration', 1, 24],
   ].map(([name, min, max]) => ({ key: name, domain: 'number', name: prefix + name, min, max })),
   { key: 'supplySource', domain: 'select', name: 'Heating Supply Target Source', options: ['Heating curve', 'OT thermostat', 'HA input', 'API input', 'MQTT'] },
   { key: 'curveProfile', domain: 'select', name: 'Heating Curve Control Profile', options: ['Comfort', 'Balanced', 'Stable'] },
@@ -149,8 +148,6 @@ async function establish(controller, simulator, interrupted, { source = 'API inp
   await write(controller, 'number', prefix + 'trigger', 1.5);
   await write(controller, 'number', prefix + 'step', 0.1);
   await write(controller, 'number', prefix + 'step time', time);
-  await write(controller, 'number', prefix + 'maximum offset', 0.3);
-  await write(controller, 'number', prefix + 'maximum duration', maximum);
   await write(controller, 'number', 'Power House comfort below setpoint', 0.1);
   await write(controller, 'select', 'Heating Curve Control Profile', 'Comfort');
   await setRoom(controller, simulator, source, room, interrupted);
@@ -259,18 +256,9 @@ async function boundaries(controller, simulator, interrupted) {
 }
 
 async function curve(controller, simulator, interrupted) {
-  await start(controller, simulator, interrupted, { strategy: 'Water Temperature Control (heating curve)' });
-  // Warmup diagnostics and the curve sensor use different scheduling ticks.
-  await healthySleep(controller, 15000, interrupted);
-  const before = await state(controller, 'curve settled active');
-  await setRoom(controller, simulator, 'API input', 19.5, interrupted);
-  await waitState(controller, { active: true, target: 19.6 }, 'curve progresses same shared steps', interrupted);
-  await healthySleep(controller, 15000, interrupted);
-  const after = await state(controller, 'curve settled reached step');
-  assert(close(after.curveWater, before.curveWater, 0.11), 'curve warmup unexpectedly changed weather-based water target');
-  await write(controller, 'select', 'Heating Supply Target Source', 'API input');
-  await waitState(controller, { active: false }, 'external water target bypasses warmup', interrupted);
-  console.log(`PASS Heating Curve shared steps and steady water target, external water bypass ${JSON.stringify({ before, after })}`);
+  await start(controller, simulator, interrupted);
+  await write(controller, 'select', 'Heating Control Mode', 'Water Temperature Control (heating curve)');
+  await waitState(controller, { active: false, status: 'Mode changed' }, 'Heating Curve bypasses v1 warmup', interrupted);
 }
 
 async function healthySleep(controller, milliseconds, interrupted) {
@@ -318,7 +306,6 @@ async function regulationTail(controller, simulator, interrupted) {
   await selected(controller, 'Water Supply Temp (Selected)', 25, interrupted);
   await start(controller, simulator, interrupted, { source: 'OT thermostat' });
   await write(controller, 'number', 'Power House comfort below setpoint', 0.3);
-  await write(controller, 'number', prefix + 'maximum offset', 0.2);
   await write(controller, 'number', 'api_input_outside_temperature', 30);
   await selected(controller, 'Outside Temperature (Selected)', 30, interrupted);
   // Changed warmup parameters cancel the limiter and restore the actual goal.
@@ -371,7 +358,7 @@ async function timing(controller, simulator, interrupted) {
     const value = await state(controller, 'five-minute timeout');
     assert(asBoolean(value.active), 'warmup stopped before real timeout test finished');
     assert(warmupNumber(value.offset) !== null && warmupNumber(value.target) !== null, 'timeout telemetry is unavailable');
-    assert(Number(value.offset) <= 0.31, 'offset exceeded configured maximum');
+    assert(Number(value.offset) <= 0.51, 'offset exceeded fixed maximum');
     assert(Number(value.target) >= 19.075, 'timeout target moved backwards');
     const offset = Number(value.offset);
     if (offset > lastOffset + 0.05) {
@@ -423,10 +410,10 @@ async function duration(controller, simulator, interrupted) {
   await start(controller, simulator, interrupted, { source: 'OT thermostat', time: 120, maximum: 1 });
   const started = Date.now();
   const heap = [];
-  while (Date.now() - started < 3700000) {
+  while (Date.now() - started < 28900000) {
     if (interrupted()) throw new Error('HIL interrupted');
     await write(controller, 'number', 'api_input_outside_temperature', 8);
-    const value = await state(controller, 'one-hour duration');
+    const value = await state(controller, 'eight-hour duration');
     const diagnostics = await controller.values([
       { key: 'free', domain: 'sensor', name: 'Heap Free' },
       { key: 'minimum', domain: 'sensor', name: 'Heap Min Free' },
@@ -439,14 +426,14 @@ async function duration(controller, simulator, interrupted) {
     if (asBoolean(value.active) === false) {
       const firstInactiveElapsedMs = Date.now() - started;
       await waitDurationHandback(controller, interrupted);
-      assert(firstInactiveElapsedMs >= 3550000, 'one-hour duration ended early');
-      console.log(`PASS real 1 h deadline; elapsed=${Date.now() - started}ms`);
+      assert(firstInactiveElapsedMs >= 28750000, 'eight-hour duration ended early');
+      console.log(`PASS real 8 h deadline; elapsed=${Date.now() - started}ms`);
       return { firstInactiveElapsedMs, durationElapsedMs: Date.now() - started, heap };
     }
-    assert(close(value.target, 19.1), 'fixed target moved during room-constant one-hour soak');
+    assert(Number(value.target) >= 19.075 && Number(value.target) <= 19.525, 'timeout target exceeded fixed offset during eight-hour soak');
     await sleep(30000);
   }
-  throw new Error('real one-hour maximum duration did not terminate warmup');
+  throw new Error('real eight-hour maximum duration did not terminate warmup');
 }
 
 export const controlledWarmupScenario = {

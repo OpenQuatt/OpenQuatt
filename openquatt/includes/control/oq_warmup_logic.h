@@ -4,8 +4,6 @@
 #include <cmath>
 #include <cstdint>
 
-#include "../sources/oq_raw_receipt.h"
-
 namespace oq_warmup {
 
 enum class Status : uint8_t {
@@ -70,20 +68,17 @@ inline uint32_t duration_ms(float value, float scale, float low, float high) {
   return std::isfinite(value) && value >= low && value <= high ? static_cast<uint32_t>(value * scale) : 0;
 }
 
-// CIC may retain its public entity when the latest payload omits a room field.
-// Only that field's actual receipt can authorize a controlled warmup session.
-// Match the existing CIC producer's 0.001 C publication tolerance.
-inline bool current_receipt_matches(const oq_sources::RawFloatReceipt& receipt, float producer_c) {
-  return receipt.received && receipt.valid && receipt.received_ms != 0U && std::isfinite(receipt.value) &&
-         std::isfinite(producer_c) && std::fabs(receipt.value - producer_c) <= 0.001f;
-}
-
 // Persisted layout: enabled, trigger, step, step minutes, maximum offset,
 // maximum hours. Invalid storage resets the entire block with permission off.
 inline void normalize_stored_settings(float (&saved)[6]) {
   const Settings settings{saved[1], saved[2], duration_ms(saved[3], 60000.0f, 5.0f, 120.0f), saved[4],
                           duration_ms(saved[5], 3600000.0f, 1.0f, 24.0f)};
-  if ((saved[0] == 0.0f || saved[0] == 1.0f) && valid_settings(settings)) return;
+  if ((saved[0] == 0.0f || saved[0] == 1.0f) && valid_settings(settings)) {
+    // Preserve valid settings from the draft layout, but fix v1 safety limits.
+    saved[4] = 0.5f;
+    saved[5] = 8.0f;
+    return;
+  }
   const float defaults[6] = {0.0f, 1.5f, 0.1f, 45.0f, 0.5f, 8.0f};
   for (int i = 0; i < 6; ++i) saved[i] = defaults[i];
 }

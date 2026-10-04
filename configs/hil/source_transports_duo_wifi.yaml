@@ -1,0 +1,28 @@
+# Generic source-fixture diagnostics; no controlled-warmup package dependency.
+packages:
+  base: !include ../heatpump_controller_q/duo_hil.yaml
+
+text_sensor:
+  - platform: template
+    name: "HIL Test Profile"
+    update_interval: 5s
+    lambda: return {"source-transports-v1"};
+
+binary_sensor:
+  - platform: template
+    name: "HIL Room Control Current"
+    lambda: |-
+      return oq_sensor_source::runtime().room_control_snapshot(
+          (${oq_ot_room_temperature_fresh_expr}), (${oq_ot_room_setpoint_fresh_expr}), (uint32_t) ${ha_room_temperature_stale_s}UL).room.fresh;
+  - platform: template
+    name: "HIL Setpoint Control Current"
+    lambda: |-
+      return oq_sensor_source::runtime().room_control_snapshot(
+          (${oq_ot_room_temperature_fresh_expr}), (${oq_ot_room_setpoint_fresh_expr}), (uint32_t) ${ha_room_temperature_stale_s}UL).setpoint.fresh;
+
+sensor:
+  - platform: template
+    name: "HIL Setpoint Source Generation"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: return oq_sensor_source::runtime().resolved_room_setpoint().configuration_generation;

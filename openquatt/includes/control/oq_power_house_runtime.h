@@ -64,8 +64,7 @@ class Runtime {
       return;
     }
 
-    const float effective_target_c =
-        oq_warmup_runtime::runtime().target(config.ot_room_temperature_fresh, config.ot_room_setpoint_fresh);
+    const float effective_target_c = oq_warmup_runtime::runtime().effective_target(id(room_setpoint_selected).state);
     const bool warming = oq_warmup_runtime::runtime().active();
     const uint32_t now_ms = static_cast<uint32_t>(millis());
     if (id(oq_strategy_output_source_code) != 3) this->dispatch_state_ = {};

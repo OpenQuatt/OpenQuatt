@@ -14,7 +14,7 @@ if (isMain) {
       defaultProfile: 'controlled-warmup-production-v1',
     });
     if (options.help) {
-      console.log('Controlled warmup HIL: smoke, boundaries, curve, regulation and regulation-tail (native HA fixture required), timing (real 5 min), stale (real 10 min), restart, duration (real 1 h), timers (timing/stale/restart/duration), short-timers (timing/stale/restart), all.');
+      console.log('Controlled warmup HIL: smoke, boundaries, curve, regulation and regulation-tail (native HA fixture required), timing (real 5 min), stale (real 10 min), restart, duration (real 8 h), timers (timing/stale/restart/duration), short-timers (timing/stale/restart), all.');
       console.log('Use --controller URL --simulator URL --device HOST --test-config configs/hil/controlled_warmup_duo_wifi.yaml --restore-config configs/heatpump_controller_q/duo_hil.yaml --stage all --apply. Generic input-source runner recovery options apply.');
     } else await run(options, controlledWarmupScenario);
   } catch (error) {

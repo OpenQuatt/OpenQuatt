@@ -1,9 +1,10 @@
 # ==============================================================================
 # OpenQuatt - Controlled Warmup
 # ==============================================================================
-# Controlled warmup is shared by both automatic heating strategies.
+# Controlled warmup is supported by automatic Power House heating.
 # Settings persist; the runtime session and previous setpoint never persist.
-# Pack the six settings in one NVS blob (3 entries, rather than 18).
+# Keep the six-float NVS layout compatible; slots 4/5 hold fixed safety limits.
+# Four public settings still use one blob (3 NVS entries).
 # Ignore template setup callbacks until the restored block is applied.
 esphome:
   on_boot:
@@ -16,11 +17,9 @@ esphome:
           id(oq_warmup_trigger_c).publish_state(saved[1]);
           id(oq_warmup_step_c).publish_state(saved[2]);
           id(oq_warmup_step_minutes).publish_state(saved[3]);
-          id(oq_warmup_max_offset_c).publish_state(saved[4]);
-          id(oq_warmup_max_hours).publish_state(saved[5]);
           id(oq_warmup_enabled).publish_state(saved[0] == 1.0f);
           id(oq_warmup_settings_ready) = true;
-          oq_warmup_runtime::runtime().cancel(oq_warmup::Status::IDLE);
+          oq_warmup_runtime::runtime().invalidate(oq_warmup::Status::IDLE);
 
 globals:
   - id: oq_warmup_settings
@@ -43,11 +42,11 @@ switch:
     on_turn_on:
       - lambda: |-
           if (id(oq_warmup_settings_ready)) id(oq_warmup_settings)[0] = 1.0f;
-          oq_warmup_runtime::runtime().cancel(oq_warmup::Status::IDLE);
+          oq_warmup_runtime::runtime().invalidate(oq_warmup::Status::IDLE);
     on_turn_off:
       - lambda: |-
           if (id(oq_warmup_settings_ready)) id(oq_warmup_settings)[0] = 0.0f;
-          oq_warmup_runtime::runtime().cancel(oq_warmup::Status::DISABLED);
+          oq_warmup_runtime::runtime().invalidate(oq_warmup::Status::DISABLED);
 
 number:
   - platform: template
@@ -65,7 +64,7 @@ number:
     on_value:
       - lambda: |-
           if (id(oq_warmup_settings_ready)) id(oq_warmup_settings)[1] = x;
-          oq_warmup_runtime::runtime().cancel(oq_warmup::Status::SETTINGS_CHANGED);
+          oq_warmup_runtime::runtime().invalidate(oq_warmup::Status::SETTINGS_CHANGED);
 
   - platform: template
     id: oq_warmup_step_c
@@ -82,7 +81,7 @@ number:
     on_value:
       - lambda: |-
           if (id(oq_warmup_settings_ready)) id(oq_warmup_settings)[2] = x;
-          oq_warmup_runtime::runtime().cancel(oq_warmup::Status::SETTINGS_CHANGED);
+          oq_warmup_runtime::runtime().invalidate(oq_warmup::Status::SETTINGS_CHANGED);
 
   - platform: template
     id: oq_warmup_step_minutes
@@ -99,63 +98,27 @@ number:
     on_value:
       - lambda: |-
           if (id(oq_warmup_settings_ready)) id(oq_warmup_settings)[3] = x;
-          oq_warmup_runtime::runtime().cancel(oq_warmup::Status::SETTINGS_CHANGED);
+          oq_warmup_runtime::runtime().invalidate(oq_warmup::Status::SETTINGS_CHANGED);
 
-  - platform: template
-    id: oq_warmup_max_offset_c
-    name: "Controlled warmup maximum offset"
-    icon: mdi:tune
-    unit_of_measurement: "°C"
-    min_value: 0.1
-    max_value: 2
-    step: 0.1
-    initial_value: 0.5
-    optimistic: true
-    restore_value: false
-    entity_category: config
-    on_value:
-      - lambda: |-
-          if (id(oq_warmup_settings_ready)) id(oq_warmup_settings)[4] = x;
-          oq_warmup_runtime::runtime().cancel(oq_warmup::Status::SETTINGS_CHANGED);
-
-  - platform: template
-    id: oq_warmup_max_hours
-    name: "Controlled warmup maximum duration"
-    icon: mdi:tune
-    unit_of_measurement: "h"
-    min_value: 1
-    max_value: 24
-    step: 1
-    initial_value: 8
-    optimistic: true
-    restore_value: false
-    entity_category: config
-    on_value:
-      - lambda: |-
-          if (id(oq_warmup_settings_ready)) id(oq_warmup_settings)[5] = x;
-          oq_warmup_runtime::runtime().cancel(oq_warmup::Status::SETTINGS_CHANGED);
-
+# Invalidate immediately between ticks. The source resolver records generations,
+# including A->B->A; these callbacks only hide the old published limiter.
 select:
   - id: !extend room_temp_source
     on_value:
       - lambda: |-
-          oq_warmup_runtime::runtime().cancel(oq_warmup::Status::SOURCE_CHANGED);
+          oq_warmup_runtime::runtime().invalidate(oq_warmup::Status::SOURCE_CHANGED);
   - id: !extend room_setpoint_source
     on_value:
       - lambda: |-
-          oq_warmup_runtime::runtime().cancel(oq_warmup::Status::SOURCE_CHANGED);
+          oq_warmup_runtime::runtime().invalidate(oq_warmup::Status::SOURCE_CHANGED);
   - id: !extend external_heat_demand_source
     on_value:
       - lambda: |-
-          oq_warmup_runtime::runtime().cancel(oq_warmup::Status::MODE_CHANGED);
-  - id: !extend heating_supply_target_source
-    on_value:
-      - lambda: |-
-          oq_warmup_runtime::runtime().cancel(oq_warmup::Status::MODE_CHANGED);
+          oq_warmup_runtime::runtime().invalidate(oq_warmup::Status::MODE_CHANGED);
   - id: !extend heating_enable_source
     on_value:
       - lambda: |-
-          oq_warmup_runtime::runtime().cancel(oq_warmup::Status::SOURCE_CHANGED);
+          oq_warmup_runtime::runtime().invalidate(oq_warmup::Status::SOURCE_CHANGED);
 
 binary_sensor:
   - platform: template
@@ -177,7 +140,7 @@ sensor:
     entity_category: diagnostic
     update_interval: 5s
     lambda: |-
-        return oq_warmup_runtime::runtime().effective_target();
+        return oq_warmup_runtime::runtime().effective_target(id(room_setpoint_selected).state);
   - platform: template
     id: oq_warmup_offset
     name: "Controlled warmup offset"
@@ -203,5 +166,20 @@ interval:
   - interval: 1s
     then:
       - lambda: |-
-          oq_warmup_runtime::runtime().target(
-              (${oq_ot_room_temperature_fresh_expr}), (${oq_ot_room_setpoint_fresh_expr}));
+          const auto inputs = oq_sensor_source::runtime().room_control_snapshot(
+              (${oq_ot_room_temperature_fresh_expr}), (${oq_ot_room_setpoint_fresh_expr}), (uint32_t) ${ha_room_temperature_stale_s}UL);
+          const int cm = id(oq_control_mode_code);
+          // CH permission is deliberately downstream; observe raises while CH is off.
+          const bool automatic = id(oq_warmup_settings_ready) && cm >= 0 && cm <= 3 &&
+              id(oq_cm_override).current_option() == "Auto" && id(oq_enabled).state &&
+              !id(oq_manual_hp_active) && !id(oq_manual_flow_active) &&
+              id(external_heat_demand_source).current_option() == "Disabled" && id(oq_heat_mode_code) == 0;
+          const auto &room = inputs.room;
+          const auto &setpoint = inputs.setpoint;
+          const bool fresh = room.valid && setpoint.valid && room.fresh && setpoint.fresh && !room.held && !setpoint.held;
+          oq_warmup_runtime::runtime().update(
+              {static_cast<uint32_t>(millis()), id(oq_warmup_enabled).state, automatic, fresh,
+               room.configuration_generation, setpoint.configuration_generation, 3, room.value,
+               setpoint.value, id(ph_comfort_band_below_c).state},
+              {id(oq_warmup_trigger_c).state, id(oq_warmup_step_c).state,
+               oq_warmup::duration_ms(id(oq_warmup_step_minutes).state, 60000.0f, 5.0f, 120.0f)});

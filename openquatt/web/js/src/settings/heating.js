@@ -636,8 +636,6 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
             renderSettingsNumberField("warmupTrigger", t("warmup.trigger"), t("warmup.triggerCopy")),
             renderSettingsNumberField("warmupStep", t("warmup.step"), t("warmup.stepCopy")),
             renderSettingsNumberField("warmupStepTime", t("warmup.stepTime"), t("warmup.stepTimeCopy")),
-            renderSettingsNumberField("warmupMaxOffset", t("warmup.maxOffset"), t("warmup.maxOffsetCopy")),
-            renderSettingsNumberField("warmupMaxDuration", t("warmup.maxDuration"), t("warmup.maxDurationCopy")),
           ].join("") : ""}
         </div>
         ${enabled ? `<div class="oq-run-extension-thresholds oq-warmup-readings">${readings.map(([label, reading]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(reading)}</strong></div>`).join("")}</div>` : ""}
@@ -751,7 +749,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
         ${renderHeatingStrategyExplainCards()}
         ${renderHeatingEnableStrategyAdvice()}
         ${strategyContent}
-        ${renderControlledWarmupField()}
+        ${!isCurveMode() ? renderControlledWarmupField() : ""}
       `,
     );
   }

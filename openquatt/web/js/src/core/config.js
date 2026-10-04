@@ -575,8 +575,6 @@
     ["warmupTrigger", DOMAIN_NUMBER, "Controlled warmup trigger"],
     ["warmupStep", DOMAIN_NUMBER, "Controlled warmup step"],
     ["warmupStepTime", DOMAIN_NUMBER, "Controlled warmup step time"],
-    ["warmupMaxOffset", DOMAIN_NUMBER, "Controlled warmup maximum offset"],
-    ["warmupMaxDuration", DOMAIN_NUMBER, "Controlled warmup maximum duration"],
     ["warmupActive", DOMAIN_BINARY_SENSOR, "Controlled warmup active"],
     ["warmupEffectiveTarget", DOMAIN_SENSOR, "Controlled warmup effective target"],
     ["warmupOffset", DOMAIN_SENSOR, "Controlled warmup offset"],
@@ -853,7 +851,7 @@
     "phRunExtensionStopMargin",
     "phRunExtensionStatus",
   ];
-  export const WARMUP_SETTING_KEYS = ["warmupEnabled", "warmupTrigger", "warmupStep", "warmupStepTime", "warmupMaxOffset", "warmupMaxDuration"];
+  export const WARMUP_SETTING_KEYS = ["warmupEnabled", "warmupTrigger", "warmupStep", "warmupStepTime"];
   export const WARMUP_STATE_KEYS = ["warmupActive", "warmupEffectiveTarget", "warmupOffset", "warmupStatus"];
   export const FREQUENCY_CAP_KEYS = ["dayMaxHz", "silentMaxHz"];
   export const FREQUENCY_MINIMUM_KEYS = ["hp1MinimumHeatingHz", "hp1MinimumCoolingHz", "hp2MinimumHeatingHz", "hp2MinimumCoolingHz"];

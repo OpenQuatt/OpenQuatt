@@ -214,8 +214,8 @@ het opwarmen.
 | Start bij verhoging groter dan | 1,5 °C | Vergelijkt de vorige en nieuwe gewenste kamertemperatuur. Precies 1,5 °C is geen start bij deze instelling. |
 | Temperatuurstap | 0,1 °C | Eerste tussendoel: gemeten kamertemperatuur plus deze stap. |
 | Tijd per stap | 45 min | Zonder bereiken van het tussendoel wordt de toegepaste aanwarmstap één temperatuurstap groter. |
-| Maximale aanwarmstap | 0,5 °C | Begrenzing van de toegepaste aanwarmstap bij versnellen; kies minstens de temperatuurstap. Een lagere waarde geldt als één stap. |
-| Maximale opwarmduur | 8 uur | Daarna neemt de normale regeling het over, ook als de kamer nog te koud is. |
+
+De maximale aanwarmstap is vast 0,5 °C; na maximaal 8 uur neemt de normale regeling over.
 
 Elk tussendoel blijft vast staan tot het bereikt is of de tijd per stap verloopt.
 Na bereiken schuift het verder; het komt nooit boven de gewenste temperatuur.
@@ -233,18 +233,15 @@ veiligheidsvoorwaarden blijven gelden.
 Bij CIC moeten kamertemperatuur en setpoint in het nieuwste feedantwoord staan.
 Een oude waarde die nog zichtbaar is, houdt de opwarmsessie niet actief.
 
-De functie werkt met Power House op basis van het huismodel en met de lokale
-stooklijn. Externe vermogensvragen of externe aanvoerdoelen, koelen en handbediening
-vallen erbuiten. Bij de stooklijn bepaalt het tussendoel de ruimte-stop en herstart;
-het verlaagt niet rechtstreeks het watertemperatuurdoel of het compressorvermogen.
-Bij geleidelijke opwarming blijft het stooklijn-waterdoel doorgaans gelijk aan
-zonder deze functie; kleine stappen garanderen daar dus geen tragere opwarming.
+De eerste versie werkt alleen met Power House op basis van het huismodel.
+Stooklijn, externe vermogensvragen, koelen en handbediening vallen erbuiten.
+Een lager tussendoel vermindert de ruimtegebonden warmtevraag van Power House.
 Warmtetoestemming, wachttijden, waterlimieten en beveiligingen blijven leidend.
 Ook de bestaande comfortband rond het tussendoel blijft gelden. Is de aanwarmstap
 kleiner dan `Power House comfort below setpoint`, dan kan een gestopte warmtepomp
 bij weinig huisverlies blijven wachten totdat de stap groter wordt of de kamer
-afkoelt. Kies de maximale aanwarmstap daarom minstens zo groot als die comfortband
-als je dit wachten wilt beperken.
+afkoelt. Is die comfortband groter dan de vaste maximale stap van 0,5 °C, dan kan de
+warmtepomp blijven wachten tot de kamer verder afkoelt of de sessie eindigt.
 De functie kan al starten wanneer de thermostaat zijn doel verhoogt maar nog geen
 warmtetoestemming geeft. De stap- en totaaltijd lopen ook gedurende die wachttijd.
 De functie garandeert daarom geen lager verbruik of hogere COP; vergelijk comfort,

@@ -233,57 +233,6 @@ static void test_delayed_heating_permission_does_not_authorize_heat() {
   assert(!decision.setpoint_raise_edge);
 }
 
-static void test_cic_missing_payload_and_selected_update_lag() {
-  auto in = input();
-  auto state = start(in);
-  oq_sources::RawFloatReceipt room, goal;
-  room.observe(in.room_c, 1000U, true);
-  goal.observe(in.requested_c, 1000U, true);
-  float producer_room = in.room_c;
-  const float producer_goal = in.requested_c;
-  auto fresh = [&]() {
-    return current_receipt_matches(room, producer_room) && current_receipt_matches(goal, producer_goal);
-  };
-  assert(fresh());
-  // A normal valid CIC payload can precede the 10s selected-sensor update.
-  producer_room = 17.15f;
-  room.observe(producer_room, 2000U, true);
-  in.fresh = fresh();
-  state = evaluate(in, {}, state);
-  assert(state.active && in.room_c == 17.0f);
-  in.room_c = producer_room;
-  in.now_ms += 1000;
-  state = evaluate(in, {}, state);
-  assert(state.active && state.target_c > 17.2f);
-  // CIC intentionally suppresses producer publications within 0.001 C.
-  room.observe(producer_room + 0.0005f, 2500U, true);
-  in.fresh = fresh();
-  state = evaluate(in, {}, state);
-  assert(state.active);
-  for (auto* missing : {&room, &goal}) {
-    // HTTP200 may retain both public entities while omitting one raw field.
-    missing->observe(NAN, 3000U, false);
-    in.fresh = fresh();
-    state = evaluate(in, {}, state);
-    assert(!state.active && state.status == Status::INPUT_UNAVAILABLE);
-    assert(effective_target(state, in.requested_c) == producer_goal);
-    room.observe(producer_room, 4000U, true);
-    goal.observe(producer_goal, 4000U, true);
-    in.fresh = fresh();
-    state = evaluate(in, {}, state);
-    assert(!state.active);  // A recovered feed must not replay the old raise.
-    in.requested_c = producer_goal - 3.0f;
-    state = evaluate(in, {}, state);
-    in.requested_c = producer_goal;
-    state = evaluate(in, {}, state);
-    assert(state.active);
-  }
-  room.received_ms = 0;
-  assert(!current_receipt_matches(room, producer_room));
-  room.observe(producer_room, 5000U, true);
-  assert(!current_receipt_matches(room, producer_room + 1.0f));
-}
-
 static void test_persisted_settings_fail_closed() {
   for (int index = 0; index < 6; ++index) {
     float saved[6] = {1, 2, 0.2f, 60, 1, 12};
@@ -295,7 +244,7 @@ static void test_persisted_settings_fail_closed() {
   float valid[6] = {1, 2, 0.2f, 60, 1, 12};
   normalize_stored_settings(valid);
   assert(valid[0] == 1 && valid[1] == 2 && valid[2] == 0.2f);
-  assert(valid[3] == 60 && valid[4] == 1 && valid[5] == 12);
+  assert(valid[3] == 60 && valid[4] == 0.5f && valid[5] == 8);
   float bad_permission[6] = {2, 2, 0.2f, 60, 1, 12};
   normalize_stored_settings(bad_permission);
   assert(bad_permission[0] == 0);
@@ -303,7 +252,6 @@ static void test_persisted_settings_fail_closed() {
 }
 
 int main() {
-  test_cic_missing_payload_and_selected_update_lag();
   test_delayed_heating_permission_does_not_authorize_heat();
   test_persisted_settings_fail_closed();
   test_fixed_target_and_acceleration();

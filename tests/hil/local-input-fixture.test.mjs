@@ -6,17 +6,37 @@ import path from 'node:path';
 import { parseArgs, run } from '../../scripts/hil/run-input-sources.mjs';
 import { execFileSync } from 'node:child_process';
 import { validateLocalFixtureHost } from '../../scripts/hil/local-input-fixture.mjs';
-import { warmupTransportScenario, validateTransportExtra, mqttRetainedWritable } from './scenarios/warmup-transports.mjs';
-import { warmupExtraSettings, controlledWarmupScenario } from './scenarios/controlled-warmup.mjs';
+import { sourceTransportScenario, validateTransportExtra, mqttRetainedWritable } from './scenarios/source-transports.mjs';
 
-const makeExtra = () => ({ schema: 1, values: Object.fromEntries(warmupExtraSettings.map((setting) => [setting.key, setting.domain === 'number' ? setting.min : setting.domain === 'switch' ? false : setting.options[0]])), localInputs: { cicUrl: '', cicPolling: false, mqtt: { broker: '', username: '', port: 1883, enabled: false, password_set: false, input_enabled: { room_temperature: false, room_setpoint: false }, input_accept_retained: { room_temperature: false, room_setpoint: false } } } });
+const makeExtra = () => ({ schema: 1, localInputs: { cicUrl: '', cicPolling: false, mqtt: { broker: '', username: '', port: 1883, enabled: false, password_set: false, input_enabled: { room_temperature: false, room_setpoint: false }, input_accept_retained: { room_temperature: false, room_setpoint: false } } } });
+
+test('source preparation follows positional runner contract and keeps CM0', async () => {
+  const writes = [];
+  const controller = {
+    async setSelect(name, value) { writes.push([name, value]); },
+    async setSwitch() {},
+    async value() { return 'CM0'; },
+  };
+  const simulator = { async setSwitch() {} };
+  await sourceTransportScenario.prepare(controller, simulator, () => false);
+  assert.deepEqual(writes, [['CM Override', 'Force CM0']]);
+});
+
+test('stored MQTT credentials fail source capture before broker mutation', async () => {
+  const status = { ...makeExtra().localInputs.mqtt, broker: 'original.local', password_set: true };
+  const controller = {
+    async request(endpoint, options) { assert.equal(options, undefined); return status; },
+    async value(domain) { return domain === 'text' ? '' : false; },
+  };
+  await assert.rejects(sourceTransportScenario.captureExtra({ controller }), /password-free baseline/);
+});
 
 test('fixture bind preflight rejects unsafe addresses before requests or mutation', () => {
   const previous = process.env.OQ_HIL_FIXTURE_HOST;
   try {
     for (const host of ['127.0.0.1', '192.168.2.86', '192.168.2.63', '192.168.2.999', '192.168.2.0', '192.168.2.255']) {
       process.env.OQ_HIL_FIXTURE_HOST = host;
-      assert.throws(() => warmupTransportScenario.preflight({ stage: 'transports' }), /Local fixture/);
+      assert.throws(() => sourceTransportScenario.preflight({ stage: 'transports' }), /Local fixture/);
     }
     assert.equal(validateLocalFixtureHost('192.168.2.103'), '192.168.2.103');
   } finally {
@@ -30,7 +50,7 @@ test('invalid fixture binding in the real runner produces zero requests and zero
   try {
     process.env.OQ_HIL_FIXTURE_HOST = '192.168.2.86';
     const options = parseArgs(['--controller', 'http://controller.test', '--simulator', 'http://simulator.test', '--stage', 'transports', '--device', 'controller.test', '--restore-config', 'configs/heatpump_controller_q/duo_hil.yaml', '--output-root', directory, '--apply'], { validStages: new Set(['transports']) });
-    await assert.rejects(run(options, warmupTransportScenario), /Local fixture/);
+    await assert.rejects(run(options, sourceTransportScenario), /Local fixture/);
     const runDir = (await readdir(directory))[0];
     const report = JSON.parse(await readFile(path.join(directory, runDir, 'report.json'), 'utf8'));
     assert.equal(report.requests.length, 0);
@@ -47,6 +67,8 @@ test('transport snapshot preserves credential flags and rejects unsafe clearing 
   extra.localInputs.mqtt.password_set = true;
   assert.throws(() => validateTransportExtra(extra), /cannot be restored/);
   extra.localInputs.mqtt.broker = 'original.local';
+  assert.throws(() => validateTransportExtra(extra), /password-free baseline/);
+  extra.localInputs.mqtt.password_set = false;
   assert.equal(validateTransportExtra(extra), extra);
   extra.localInputs.mqtt.input_accept_retained.room_temperature = true;
   assert.throws(() => validateTransportExtra(extra), /cannot be restored/);
@@ -86,15 +108,14 @@ test('MQTT retained endpoint is used only for the stateful room goal', () => {
 });
 
 test('actual transport recovery writes only the stateful retained flag and checks both readbacks', async () => {
-  const original = controlledWarmupScenario.beforeRestore;
-  controlledWarmupScenario.beforeRestore = async () => {};
-  try {
+  {
     for (const mismatch of [null, 'room_temperature', 'room_setpoint']) {
       const extra = makeExtra();
       const posts = [];
       const controller = {
         async setSwitch() {},
-        async value(domain) { return domain === 'text' ? '' : false; },
+        async setSelect() {},
+        async value(domain) { return domain === 'text_sensor' ? 'CM0' : domain === 'text' ? '' : false; },
         async request(endpoint, options = {}) {
           if (options.method === 'POST') { posts.push({ endpoint, form: Object.fromEntries(new URLSearchParams(options.body)) }); return { ok: true }; }
           const status = structuredClone(extra.localInputs.mqtt);
@@ -104,10 +125,10 @@ test('actual transport recovery writes only the stateful retained flag and check
           return status;
         },
       };
-      const recovery = warmupTransportScenario.beforeRestore({ controller, snapshot: { extra } });
+      const recovery = sourceTransportScenario.beforeRestore({ controller, snapshot: { extra } });
       if (mismatch) await assert.rejects(recovery, /local transport recovery failed/);
       else await recovery;
       assert.deepEqual(posts.filter((post) => post.endpoint === '/mqtt/input/retained/save').map((post) => post.form.input), ['room_setpoint']);
     }
-  } finally { controlledWarmupScenario.beforeRestore = original; }
+  }
 });

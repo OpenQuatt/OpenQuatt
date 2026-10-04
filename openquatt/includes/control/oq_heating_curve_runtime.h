@@ -14,7 +14,6 @@
 #include "oq_hp_candidate_logic.h"
 #include "oq_sensor_source_runtime.h"
 #include "oq_thermal_request_logic.h"
-#include "oq_warmup_runtime.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_heating_curve_runtime {
@@ -44,8 +43,7 @@ class Runtime {
     const float supply_c = id(oq_system_supply_temp).state;
     const auto tuning = this->tuning_();
     const float room_c = id(room_temp_selected).state;
-    const float room_setpoint_c =
-        oq_warmup_runtime::runtime().target(ot_room_temperature_fresh, ot_room_setpoint_fresh);
+    const float room_setpoint_c = id(room_setpoint_selected).state;
     const bool room_data_fresh = std::isfinite(room_c) && std::isfinite(room_setpoint_c) &&
                                  oq_heat_intent_runtime::room_temperature_fresh(ot_room_temperature_fresh) &&
                                  oq_heat_intent_runtime::room_setpoint_fresh(ot_room_setpoint_fresh);
@@ -67,9 +65,9 @@ class Runtime {
                                    id(oq_curve_restart_blocked_by_room),
                                    id(oq_curve_regime_code)};
     const bool compressor_active = applied_total > 0;
-    const auto intent = oq_heat_intent_runtime::evaluate(
-        now_ms, compressor_active, tuning.room_resume_heat_c, 0, ot_room_temperature_fresh, ot_room_setpoint_fresh,
-        this->intent_state_, room_setpoint_c, oq_warmup_runtime::runtime().active());
+    const auto intent =
+        oq_heat_intent_runtime::evaluate(now_ms, compressor_active, tuning.room_resume_heat_c, 0,
+                                         ot_room_temperature_fresh, ot_room_setpoint_fresh, this->intent_state_);
     this->intent_state_ = intent.next;
     id(oq_curve_fast_intent_code) = static_cast<int>(intent.reason);
     if (intent.setpoint_raise_cancelled && this->setpoint_started_request_ && !compressor_active) {
@@ -108,7 +106,7 @@ class Runtime {
     id(oq_curve_outside_ema_last_ms) = decision.next.last_ms;
     return decision.value_c;
   }
-  float supply_target(uint32_t ha_modifier_stale_s, bool ot_room_temperature_fresh, bool ot_room_setpoint_fresh) const {
+  float supply_target(uint32_t ha_modifier_stale_s) const {
     const std::array<oq_curve::CurvePoint, 6> points{{
         {-20.0f, id(curve_tsupply_m20).state},
         {-10.0f, id(curve_tsupply_m10).state},
@@ -119,10 +117,10 @@ class Runtime {
     }};
     const float modifier_c =
         oq_sensor_source::runtime().heating_curve_modifier(static_cast<uint32_t>(millis()), ha_modifier_stale_s);
-    const float room_target_c = oq_warmup_runtime::runtime().target(ot_room_temperature_fresh, ot_room_setpoint_fresh);
-    const auto target = oq_curve::target_breakdown(
-        id(oq_curve_outside_temp_filtered).state, id(curve_fallback_supply_temp).state, points, modifier_c,
-        id(room_temp_selected).state, room_target_c, this->tuning_(), id(max_water_temp_limit_c).state);
+    const auto target =
+        oq_curve::target_breakdown(id(oq_curve_outside_temp_filtered).state, id(curve_fallback_supply_temp).state,
+                                   points, modifier_c, id(room_temp_selected).state, id(room_setpoint_selected).state,
+                                   this->tuning_(), id(max_water_temp_limit_c).state);
     id(oq_curve_base_target_c) = target.base_c;
     id(oq_curve_modifier_applied_k) = target.modifier_c;
     id(oq_curve_room_trim_k) = target.room_trim_c;

@@ -2273,8 +2273,6 @@
       ["Controlled warmup trigger", 1.5, 0.5, 5, 0.1, "°C"],
       ["Controlled warmup step", 0.1, 0.1, 0.5, 0.1, "°C"],
       ["Controlled warmup step time", 45, 5, 120, 5, "min"],
-      ["Controlled warmup maximum offset", 0.5, 0.1, 2, 0.1, "°C"],
-      ["Controlled warmup maximum duration", 8, 1, 24, 1, "h"],
       ["Cooling Minimum Supply Temp", 18, 5, 24, 0.5, "°C"],
       ["Cooling Demand Max", 4, 1, 10, 1, "step"],
       ["Cooling Restart Delta", 1.0, 0, 5, 0.1, "°C"],

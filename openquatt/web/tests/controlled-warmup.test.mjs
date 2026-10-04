@@ -19,7 +19,6 @@ function enabledEntities() {
   return {
     warmupEnabled: { value: true, state: true }, roomSetpoint: number(20.5),
     warmupTrigger: number(1.5), warmupStep: number(0.1), warmupStepTime: number(45, "min"),
-    warmupMaxOffset: number(0.5), warmupMaxDuration: number(8, "h"),
     warmupActive: { value: true, state: true }, warmupEffectiveTarget: number(18.1),
     warmupOffset: number(0.1), warmupStatus: { value: "Warming", state: "Warming" },
   };
@@ -35,10 +34,14 @@ test("old firmware hides warmup; disabled hides tuning fields", () => {
   assert.doesNotMatch(markup, /data-oq-field="warmupStep"/);
 });
 
-test("both strategy panels expose shared warmup fields and real diagnostics", () => {
+test("Power House exposes warmup; Heating Curve hides it", () => {
   for (const strategy of ["Power House", "Water Temperature Control (heating curve)"]) {
     reset({ ...enabledEntities(), strategy: { value: strategy, state: strategy } });
     const markup = renderSettingsHeatingSection();
+    if (strategy !== "Power House") {
+      assert.doesNotMatch(markup, /data-oq-field="warmupStep"/);
+      continue;
+    }
     assert.match(markup, /Gecontroleerd opwarmen/);
     assert.match(markup, /18,1 °C/);
     assert.match(markup, /Einddoel/);
@@ -47,7 +50,8 @@ test("both strategy panels expose shared warmup fields and real diagnostics", ()
     assert.match(markup, /20,5 °C/);
     assert.match(markup, /Opwarmen bezig/);
     assert.match(markup, /data-oq-field="warmupStep"/);
-    assert.match(markup, /niet rechtstreeks watertemperatuur/);
+    assert.match(markup, /na 8 uur/);
+    assert.doesNotMatch(markup, /data-oq-field="warmupMax/);
   }
 });
 
@@ -63,7 +67,7 @@ test("locale switching translates status and numeric presentation without writes
     assert.match(markup, /18\.1 °C/);
     assert.match(markup, /Final target/);
     assert.match(markup, /Current warmup step/);
-    assert.match(markup, /Maximum warmup step/);
+    assert.match(markup, /maximum warmup step is 0.5/);
     assert.match(markup, /does not decrease as the room cools/);
     assert.match(markup, /20\.5 °C/);
     assert.equal(getWarmupStatusCopy("Time limit reached"), "Maximum warmup duration reached");
