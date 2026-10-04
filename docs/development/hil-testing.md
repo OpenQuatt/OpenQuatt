@@ -168,7 +168,7 @@ adres verandert. Preflight weigert een adres dat niet bij de desktop hoort en
 weigert controller- en simulatoradressen.
 
 ```bash
-OQ_HIL_FIXTURE_HOST=192.168.2.103 node scripts/hil/run-source-transports.mjs \
+OQ_HIL_FIXTURE_HOST=192.0.2.1 node scripts/hil/run-source-transports.mjs \
   --controller http://openquatt-test.local \
   --simulator http://SIMULATOR-IP \
   --device openquatt-test.local \
