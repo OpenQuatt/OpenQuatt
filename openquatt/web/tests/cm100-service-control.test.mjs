@@ -128,3 +128,26 @@ test("active but waiting CM100 preserves the existing stop gate", () => {
   setCm100(true, "WAITING_FOR_CM100");
   button("commissioningCm100Stop", "Service stoppen", true);
 });
+
+
+test("binary CM100 representations select the action consistently", () => {
+  for (const value of [true, "ON", " true ", 1, "1"]) {
+    setCm100(value, "IDLE");
+    button("commissioningCm100Stop", "Service stoppen");
+  }
+  for (const value of [false, "OFF", " false ", 0, "0"]) {
+    setCm100(value, "IDLE");
+    button("commissioningCm100Start", "Service starten");
+  }
+});
+
+test("an unknown CM100 entity never enables the legacy status fallback", () => {
+  for (const entity of [{}, { value: "UNKNOWN" }, { value: "UNAVAILABLE" }, { value: "invalid" }, { state: "UNKNOWN", value: "on" }]) {
+    for (const status of ["IDLE", "CM100 STOPPED", "CM100 READY"]) {
+      setCm100(false, status);
+      state.entities.cm100Active = entity;
+      const active = status === "CM100 READY";
+      button(active ? "commissioningCm100Stop" : "commissioningCm100Start", active ? "Service stoppen" : "Service starten", true);
+    }
+  }
+});

@@ -1,4 +1,4 @@
-import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
+import { getBinaryEntityState, getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { getEntityValue } from "../core/entity-store.js";
 import { formatFailures } from "../core/failure-format.js";
 import { state } from "../core/state.js";
@@ -501,7 +501,8 @@ import { formatNumber, t } from "../i18n/index.js";
       ? isEntityActive("auxHeatSourcePresent")
       : hasEntity("boilerCvAssistEnabled") && isEntityActive("boilerCvAssistEnabled");
     const cm100Status = getCommissioningStatusValue();
-    const cm100Active = isEntityActive("cm100Active");
+    const cm100ActiveState = getBinaryEntityState("cm100Active");
+    const cm100Active = cm100ActiveState === true;
     const cm100StatusUpper = String(cm100Status || "").trim().toUpperCase();
     const cm100WaitingForCm100 = isCommissioningTaskStatusWaitingForCm100(cm100Status);
     const cm100Ready = !cm100WaitingForCm100 && (cm100Active || cm100StatusUpper === "CM100 READY");
@@ -513,12 +514,8 @@ import { formatNumber, t } from "../i18n/index.js";
     const cm100StartDisabled = cm100Busy || cm100Ready || cm100WaitingForCm100;
     // Prefer the actual control mode over descriptive task/refusal status text.
     const cm100Entity = state.entities.cm100Active;
-    const cm100RawActive = typeof cm100Entity?.value === "boolean"
-      ? String(cm100Entity.value)
-      : String(cm100Entity?.state ?? cm100Entity?.value ?? "").trim().toLowerCase();
-    const cm100ActiveKnown = /^(on|off|true|false|1|0)$/.test(cm100RawActive);
-    const cm100ControlActive = cm100ActiveKnown ? /^(on|true|1)$/.test(cm100RawActive) : cm100StatusUpper === "CM100 READY";
-    const cm100ControlKnown = cm100ActiveKnown || (!cm100Entity && ["IDLE", "CM100 STOPPED", "CM100 READY"].includes(String(getSettingsTextStatValue("commissioningStatus", "")).trim().toUpperCase()));
+    const cm100ControlActive = cm100ActiveState === null ? cm100StatusUpper === "CM100 READY" : cm100Active;
+    const cm100ControlKnown = cm100ActiveState !== null || (!cm100Entity && ["IDLE", "CM100 STOPPED", "CM100 READY"].includes(String(getSettingsTextStatValue("commissioningStatus", "")).trim().toUpperCase()));
     const cm100Starting = state.busyAction === "commissioningCm100Start" || cm100Pending || cm100WaitingForCm100;
     const cm100Stopping = state.busyAction === "commissioningCm100Stop" || cm100StatusUpper === "ABORT REQUESTED";
     const boilerStatus = getStatusTextValue("boilerPowerTestStatus", "IDLE");

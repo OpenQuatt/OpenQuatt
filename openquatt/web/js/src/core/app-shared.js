@@ -155,6 +155,25 @@ export { hasEntity } from "./entity-store.js";
     return formatNumericState(value, decimals, getEntityDisplayUnit(key));
   }
 
+  // Strict binary state for controls that must distinguish unknown from inactive.
+  export function getBinaryEntityState(key) {
+    const entity = state.entities[key];
+    if (!entity) {
+      return null;
+    }
+    if (typeof entity.value === "boolean") {
+      return entity.value;
+    }
+    const raw = String(entity.state ?? entity.value ?? "").trim().toLowerCase();
+    if (raw === "on" || raw === "true" || raw === "1") {
+      return true;
+    }
+    if (raw === "off" || raw === "false" || raw === "0") {
+      return false;
+    }
+    return null;
+  }
+
   export function isEntityActive(key) {
     const entity = state.entities[key];
     if (!entity) {
