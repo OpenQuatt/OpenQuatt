@@ -135,7 +135,7 @@ async function setpoint(controller, simulator, source, value, interrupted) {
   await selected(controller, 'Room Setpoint (Selected)', value, interrupted);
 }
 
-async function establish(controller, simulator, interrupted, { source = 'API input', strategy = 'Power House', room = 19, goal = 18, time = 5, maximum = 1 } = {}) {
+async function establish(controller, simulator, interrupted, { source = 'API input', strategy = 'Power House', room = 19, goal = 18, time = 5 } = {}) {
   await write(controller, 'number', 'api_input_outside_temperature', 8);
   await write(controller, 'switch', prefix + 'enabled', false);
   await write(controller, 'select', 'CM Override', 'Auto');
@@ -179,7 +179,7 @@ async function prepare(controller, simulator, interrupted) {
 }
 
 async function boundaries(controller, simulator, interrupted) {
-  for (const source of ['API input', 'OT thermostat', ...(controller.haFixture ? ['HA input'] : [])]) {
+  for (const source of ['API input']) {
     await establish(controller, simulator, interrupted, { source });
     await setpoint(controller, simulator, source, 19.5, interrupted);
     await waitState(controller, { active: false, target: 19.5 }, `${source} exact threshold does not activate`, interrupted);
@@ -209,17 +209,6 @@ async function boundaries(controller, simulator, interrupted) {
   await write(controller, 'switch', 'OpenQuatt Enabled', false);
   await waitState(controller, { active: false, applied1: 0, applied2: 0, boiler: false }, 'disabled controller hands back and does not heat', interrupted);
   await write(controller, 'switch', 'OpenQuatt Enabled', true);
-  await start(controller, simulator, interrupted, { source: 'OT thermostat' });
-  await write(simulator, 'number', 'Thermostat room setpoint', 4.5);
-  await waitState(controller, { active: false, status: 'Input unavailable' }, 'invalid OT setpoint cannot retain warmup through selected hold', interrupted);
-  if (controller.haFixture) {
-    await start(controller, simulator, interrupted, { source: 'HA input' });
-    await controller.haFixture.send({ room: 'unavailable' });
-    await waitState(controller, { active: false, status: 'Input unavailable' }, 'invalid HA room cannot retain warmup through selected hold', interrupted);
-    await controller.haFixture.send({ room: 19 });
-    await selected(controller, 'Room Temperature (Selected)', 19, interrupted);
-    await waitState(controller, { active: false, target: 21 }, 'valid HA room recovery establishes baseline only', interrupted);
-  }
   await start(controller, simulator, interrupted);
   await write(simulator, 'switch', 'Thermostat CH demand', true);
   await waitState(controller, { active: true, heatEnable: true }, 'delayed CH permission preserves already started session', interrupted);
@@ -252,7 +241,7 @@ async function boundaries(controller, simulator, interrupted) {
   await waitState(controller, { active: false }, 'service control override bypasses warmup', interrupted);
 
   await curve(controller, simulator, interrupted);
-  console.log('PASS source roundtrip, delayed permission, settings, external power/water, manual, service and Heating Curve');
+  console.log('PASS source roundtrip, delayed permission, settings, external power, manual, service and Heating Curve');
 }
 
 async function curve(controller, simulator, interrupted) {
@@ -332,7 +321,7 @@ async function regulationTail(controller, simulator, interrupted) {
   assert(lowRequest !== null && lowRequest >= 0 && lowRequest < 100, 'low-load demand is unavailable or unexpectedly material');
   await write(simulator, 'switch', 'Thermostat CH demand', false);
   await write(controller, 'number', 'api_input_outside_temperature', 8);
-  console.log(`PASS custom comfort .3/step .1/max .2 low-load no forced floor ${JSON.stringify(low)}`);
+  console.log(`PASS custom comfort .3/step .1/fixed max .5 low-load no forced floor ${JSON.stringify(low)}`);
   await start(controller, simulator, interrupted, { source: 'OT thermostat' });
   await write(controller, 'select', 'Cooling Dew Point Source', 'API input');
   await write(controller, 'number', 'api_input_cooling_dew_point', 10);
@@ -368,7 +357,7 @@ async function timing(controller, simulator, interrupted) {
     if (offset >= 0.29) break;
     await sleep(15000);
   }
-  assert(lastOffset >= 0.29, 'two real five-minute timeouts did not reach max offset');
+  assert(lastOffset >= 0.29, 'two real five-minute timeouts did not reach 0.3 K');
   console.log(`PASS two real 5 min timeouts, elapsed=${Date.now() - started}ms`);
 }
 
@@ -407,7 +396,7 @@ export async function waitDurationHandback(controller, interrupted, timeoutMs = 
 }
 
 async function duration(controller, simulator, interrupted) {
-  await start(controller, simulator, interrupted, { source: 'OT thermostat', time: 120, maximum: 1 });
+  await start(controller, simulator, interrupted, { source: 'OT thermostat', time: 120 });
   const started = Date.now();
   const heap = [];
   while (Date.now() - started < 28900000) {

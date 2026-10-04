@@ -234,8 +234,10 @@ De stage `restart` bewijst afzonderlijk dat de testinstellingen een reboot overl
 `short-timers` combineert alleen `timing`, `stale` en `restart`, bijvoorbeeld
 wanneer de duurgrens afzonderlijk wordt onderzocht.
 
-OpenTherm en API worden end-to-end getest. Een optionele lokale native-API-fixture
-test ook de HA-inputs via versleuteld ESPHome-verkeer. Daarvoor is afzonderlijke
+De featureproef gebruikt API-kamerinput voor de grenzen en OpenTherm voor lange
+timerproeven. Transportcontracten worden apart door source-HIL bewezen. Een
+optionele gedeelde native-API-fixture levert de bench-aanvoertemperatuur voor de
+Power House-integratieproef via versleuteld ESPHome-verkeer. Daarvoor is afzonderlijke
 labfirmware met een tijdelijke RAM-sleutel nodig, plus een privé aangeleverde
 `OQ_HIL_NATIVE_API_KEY`. De runner wijzigt de opgeslagen API-sleutel niet.
 Sleutels en de afgeleide labconfig horen uitsluitend in genegeerde lokale
