@@ -160,6 +160,49 @@ API-inputslots, inclusief het dauwpunt. Met `--min-heap-min-free` en
 worden meegegeven. Zonder die opties rapporteert de runner de waarden, maar
 noemt hij een geheugentest niet automatisch releaseveilig.
 
+## Generieke lokale inputfixtures
+
+Gebruik daarvoor de lokale fixture-runner, na afronding en herstel van de eerste
+run. Het voorbeeldadres is het LAN-adres van de labdesktop; pas het aan als dat
+adres verandert. Preflight weigert een adres dat niet bij de desktop hoort en
+weigert controller- en simulatoradressen.
+
+```bash
+OQ_HIL_FIXTURE_HOST=192.168.2.103 node scripts/hil/run-source-transports.mjs \
+  --controller http://openquatt-test.local \
+  --simulator http://SIMULATOR-IP \
+  --device openquatt-test.local \
+  --test-config configs/hil/source_transports_duo_wifi.yaml \
+  --restore-config configs/heatpump_controller_q/duo_hil.yaml \
+  --stage transports \
+  --apply
+```
+
+Deze proef gebruikt een kleine lokale CIC-HTTP-feed en een MQTT 3.1.1 QoS0-fixture.
+Zij accepteren alleen de testcontroller. De CIC-proef controleert geldige
+ontvangst, kleine temperatuurwijzigingen en publicatievertraging, ontbrekende kamer-/setpointvelden
+en herstel van currentness. De MQTT-proef controleert echte subscriptions,
+ontvangen kamer-/setpointwaarden en een bronwissel heen en terug.
+Dit test geen productie-CIC of externe broker.
+
+De runner bewaart en herstelt de oorspronkelijke CIC-URL, brokerinstellingen en
+geraakte inputflags in het private snapshot. Hij leest geen MQTT-wachtwoord en
+controleert bij herstel dat `password_set` gelijk blijft. Een lege oorspronkelijke
+broker met een opgeslagen wachtwoord wordt vooraf geweigerd. De fixture vereist
+een baseline zonder opgeslagen brokerwachtwoord: ook een niet-lege broker met
+`password_set=true` wordt vóór mutatie geweigerd, omdat clearing niet herstelbaar is
+en de fixture uitsluitend anonieme CONNECT accepteert. Gebruik voor recovery dezelfde runner, inclusief
+`--stage transports`, met de herstelopties hieronder.
+
+De transportproef blijft geforceerd in CM0 en heeft geen warmup-entities nodig.
+De aparte overlay toont de actuele room/setpoint-currentness en source generation.
+Source-hosttests controleren ontbrekende CIC-velden en de publicatietolerantie;
+warmup-hosttests bewijzen stoppen/herstel voor generiek ongeldige input.
+De native-HA-fixture (`scripts/hil/native-ha-fixture.mjs`) is gedeelde
+infrastructuur voor versleutelde ESPHome-inputproeven; hij bewijst geen volledige
+Home Assistant-installatie. Gebruik alleen afzonderlijke labfirmware met een
+tijdelijke RAM-sleutel en private `OQ_HIL_NATIVE_API_KEY`.
+
 ## OpenTherm kamer-setpoint: `setpoint-validity`
 
 `--stage setpoint-validity` test end-to-end dat een semantisch onbruikbaar
