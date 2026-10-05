@@ -229,6 +229,21 @@ Met `Aux Relay Function` volgt R2 de effectieve warmte- of koelvraag van OpenQua
 
 ## Welke meetwaarden wil je meestal zien?
 
+### Geleidelijk opwarmen na nachtverlaging
+
+Optioneel en standaard uit, alleen voor Power House, voor thermostaten en bronnen met een
+geldige kamertemperatuur en setpoint. De thermostaat blijft het einddoel bepalen.
+Instellingen en actuele voortgang staan in **Instellingen → Verwarmen** en zijn ook
+beschikbaar via Home Assistant/API:
+
+- `Controlled warmup enabled`;
+- `Controlled warmup trigger`, `Controlled warmup step`, `Controlled warmup step time`;
+- `Controlled warmup active`, `Controlled warmup effective target`.
+
+Zie [Geleidelijk opwarmen](web-app.md#geleidelijk-opwarmen-na-nachtverlaging)
+voor de werking, standaardwaarden en beperkingen. De maximale opwarmstap is
+vast 0,5 °C en de maximale duur 8 uur; de stooklijn gebruikt deze functie niet.
+
 ### Voor comfort en strategie
 
 Begin bijna altijd met:

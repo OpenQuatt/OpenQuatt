@@ -11,6 +11,7 @@
 #include "oq_power_house_demand_logic.h"
 #include "oq_power_house_dispatch_logic.h"
 #include "oq_power_house_run_extension_logic.h"
+#include "oq_warmup_runtime.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_power_house_runtime {
@@ -63,6 +64,10 @@ class Runtime {
       return;
     }
 
+    const auto warmup = oq_warmup_runtime::runtime().control_target(
+        id(room_setpoint_selected).state, id(oq_warmup_trigger_c).state, id(oq_warmup_enabled).state);
+    const float effective_target_c = warmup.effective_c;
+    const bool warming = warmup.limited;
     const uint32_t now_ms = static_cast<uint32_t>(millis());
     if (id(oq_strategy_output_source_code) != 3) this->dispatch_state_ = {};
     const bool hp1_valve_defrost = id(hp1_4_way_valve).state;
@@ -91,7 +96,7 @@ class Runtime {
         id(house_zero_power_temp_c).state,
         id(house_rated_power_w).state,
         id(room_temp_selected).state,
-        id(room_setpoint_selected).state,
+        effective_target_c,
         id(external_heat_demand_selected).state,
         id(oq_water_temp_limit_factor),
         id(external_heat_demand_selected).has_state(),
@@ -114,14 +119,19 @@ class Runtime {
       this->demand_state_.last_w = std::max(this->demand_state_.last_w, this->fast_floor_w_);
       this->fast_floor_w_ = 0.0f;
     }
-    const auto demand = oq_power_house::decide_demand(demand_input, demand_tuning, this->demand_state_);
+    // Temporary targets must not build comfort memory for the final target.
+    if (warming || this->was_warming_) this->demand_state_.comfort_memory_c = 0.0f;
+    this->was_warming_ = warming;
+    auto demand = oq_power_house::decide_demand(demand_input, demand_tuning, this->demand_state_);
+    if (warming) demand.next.comfort_memory_c = 0.0f;
     this->demand_state_ = demand.next;
     float requested_w = demand.requested_w;
     float next_last_w = demand.next.last_w;
     int raw_demand = demand.raw_demand;
-    const auto intent = oq_heat_intent_runtime::evaluate(
-        now_ms, applied_total > 0, std::max(0.0f, demand_tuning.comfort_below_c), 10000UL,
-        config.ot_room_temperature_fresh, config.ot_room_setpoint_fresh, this->intent_state_);
+    const auto intent =
+        oq_heat_intent_runtime::evaluate(now_ms, applied_total > 0, std::max(0.0f, demand_tuning.comfort_below_c),
+                                         10000UL, config.ot_room_temperature_fresh, config.ot_room_setpoint_fresh,
+                                         this->intent_state_, effective_target_c, warming);
     this->intent_state_ = intent.next;
     // An interrupted recovery re-enters through the normal confirmed path.
     id(oq_ph_fast_intent_code) = intent.fast_start ? static_cast<int>(intent.reason) : 0;
@@ -260,6 +270,8 @@ class Runtime {
     const int base_raw_demand = raw_demand;
     const float base_last_w = next_last_w;
     const float room_c = id(room_temp_selected).state;
+    // Run extension follows the real comfort goal, avoiding an artificial
+    // stop/warm-restart latch at every intermediate target. Its floor is Pmin.
     const float setpoint_c = id(room_setpoint_selected).state;
     const bool run_ext_enabled = id(ph_run_extension_enabled).state;
     float stop_margin_c = 0.5f;
@@ -410,6 +422,7 @@ class Runtime {
     this->last_optimizer_reason_.clear();
     this->intent_state_ = {};
     this->demand_state_ = {};
+    this->was_warming_ = false;
     this->fast_floor_w_ = 0.0f;
     this->run_extension_state_ = {};
     this->run_ext_enabled_ = false;
@@ -460,6 +473,7 @@ class Runtime {
   }
 
   oq_power_house_dispatch::DispatchState dispatch_state_;
+  bool was_warming_ = false;
   oq_heat_intent::State intent_state_;
   oq_power_house::DemandState demand_state_;
   float fast_floor_w_{0.0f};

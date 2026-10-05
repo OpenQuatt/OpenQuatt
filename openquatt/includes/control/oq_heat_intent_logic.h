@@ -36,6 +36,8 @@ struct Input {
   float room_resume_delta_c = 0.0f;
   float setpoint_raise_delta_c = 0.20f;
   uint32_t room_confirm_ms = 0;
+  float requested_setpoint_c = NAN;
+  bool allow_setpoint_raise = true;
 };
 
 struct Decision {
@@ -63,24 +65,27 @@ inline Decision evaluate(const Input& input, State state) {
     return out;
   }
 
+  const float observed_setpoint_c =
+      std::isfinite(input.requested_setpoint_c) ? input.requested_setpoint_c : input.setpoint_c;
   if (!state.initialized || state.setpoint_source != input.setpoint_source || !std::isfinite(state.last_setpoint_c)) {
-    state = {true, input.setpoint_source, input.setpoint_c, false, 0, false, false};
+    state = {true, input.setpoint_source, observed_setpoint_c, false, 0, false, false};
   } else {
-    const float change_c = input.setpoint_c - state.last_setpoint_c;
+    const float change_c = observed_setpoint_c - state.last_setpoint_c;
     if (change_c < -0.01f) {
       out.setpoint_raise_cancelled = state.setpoint_raise_active;
       state.setpoint_raise_active = false;
       state.room_start_armed = false;
       state.room_recovery_active = false;
-    } else if (!input.compressor_active && change_c + 0.0001f >= input.setpoint_raise_delta_c &&
-               input.setpoint_c > input.room_c) {
+    } else if (input.allow_setpoint_raise && !input.compressor_active &&
+               change_c + 0.0001f >= input.setpoint_raise_delta_c && input.setpoint_c > input.room_c) {
       state.setpoint_raise_active = true;
       out.setpoint_raise_edge = true;
     }
-    state.last_setpoint_c = input.setpoint_c;
+    state.last_setpoint_c = observed_setpoint_c;
   }
 
-  if (input.compressor_active || input.setpoint_c <= input.room_c) state.setpoint_raise_active = false;
+  if (!input.allow_setpoint_raise || input.compressor_active || input.setpoint_c <= input.room_c)
+    state.setpoint_raise_active = false;
 
   out.room_condition = input.room_c <= input.setpoint_c - input.room_resume_delta_c;
   if (out.room_condition) {

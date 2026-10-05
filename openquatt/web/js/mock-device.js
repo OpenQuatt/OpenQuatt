@@ -1713,6 +1713,9 @@
     const strategy = String(getEntity("select", "Heating Control Mode")?.value || "");
     const roomTemp = Number(getEntity("sensor", "Room Temperature (Selected)")?.value);
     const roomSetpoint = Number(getEntity("sensor", "Room Setpoint (Selected)")?.value);
+    if (Number.isFinite(roomSetpoint)) {
+      setEntity("sensor", "Controlled warmup effective target", { value: roomSetpoint, uom: "°C" });
+    }
     const housePower = Number(getEntity("number", "Rated maximum house power")?.value);
     const houseCold = Number(getEntity("number", "House cold temp")?.value);
     const outdoorMax = Number(getEntity("number", "Maximum heating outdoor temperature")?.value);
@@ -1989,6 +1992,9 @@
       option: ["Auto", "Force CM0", "Force CM1", "Force CM98"],
     });
     setEntity("switch", "OpenQuatt Enabled", { value: true, state: true });
+    setEntity("switch", "Controlled warmup enabled", { value: false, state: false });
+    setEntity("binary_sensor", "Controlled warmup active", { value: false, state: false });
+    setEntity("sensor", "Controlled warmup effective target", { value: 20.5, uom: "°C" });
     setEntity("switch", "Power House run extension", { value: false, state: false });
     setEntity("text_sensor", "Power House run extension status", { value: "inactive", state: "inactive" });
     setEntity("switch", "Boiler assist enabled", { value: true, state: true });
@@ -2262,6 +2268,9 @@
       ["Power House demand rise time", 8, 2, 20, 1, "min"],
       ["Power House demand fall time", 3, 1, 10, 1, "min"],
       ["Power House run extension stop margin", 0.5, 0.1, 1, 0.1, "°C"],
+      ["Controlled warmup trigger", 1.5, 0.5, 5, 0.1, "°C"],
+      ["Controlled warmup step", 0.1, 0.1, 0.5, 0.1, "°C"],
+      ["Controlled warmup step time", 45, 5, 120, 5, "min"],
       ["Cooling Minimum Supply Temp", 18, 5, 24, 0.5, "°C"],
       ["Cooling Demand Max", 4, 1, 10, 1, "step"],
       ["Cooling Restart Delta", 1.0, 0, 5, 0.1, "°C"],
@@ -4136,6 +4145,11 @@
     entity.state = Boolean(enabled);
     if (name === "Usage statistics") {
       setEntity("binary_sensor", "Usage statistics choice configured", { value: true, state: true });
+    }
+    if (name === "Controlled warmup enabled") {
+      setEntity("binary_sensor", "Controlled warmup active", { value: false, state: false });
+      notifyMockUpdated();
+      return;
     }
     if (name === "Power House Passive Learning") {
       notifyMockUpdated();

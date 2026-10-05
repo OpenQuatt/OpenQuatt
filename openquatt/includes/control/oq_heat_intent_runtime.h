@@ -55,7 +55,8 @@ inline uint8_t setpoint_source_code() {
 
 inline oq_heat_intent::Decision evaluate(uint32_t now_ms, bool compressor_active, float room_resume_delta_c,
                                          uint32_t room_confirm_ms, bool ot_room_temperature_fresh,
-                                         bool ot_room_setpoint_fresh, const oq_heat_intent::State& state) {
+                                         bool ot_room_setpoint_fresh, const oq_heat_intent::State& state,
+                                         float effective_target_c = NAN, bool controlled_warmup = false) {
   const float room_c = id(room_temp_selected).state;
   const float setpoint_c = id(room_setpoint_selected).state;
   const bool room_fresh = std::isfinite(room_c) && oq_input_source::room_setpoint_usable(setpoint_c) &&
@@ -64,8 +65,9 @@ inline oq_heat_intent::Decision evaluate(uint32_t now_ms, bool compressor_active
   return oq_heat_intent::evaluate(
       {now_ms, true, id(heating_enable_valid).has_state() && id(heating_enable_valid).state,
        id(heating_enable_selected).has_state() && id(heating_enable_selected).state, room_fresh,
-       room_setpoint_fresh(ot_room_setpoint_fresh), compressor_active, setpoint_source_code(), room_c, setpoint_c,
-       room_resume_delta_c, 0.20f, room_confirm_ms},
+       room_setpoint_fresh(ot_room_setpoint_fresh), compressor_active, setpoint_source_code(), room_c,
+       std::isfinite(effective_target_c) ? effective_target_c : setpoint_c, room_resume_delta_c, 0.20f, room_confirm_ms,
+       setpoint_c, !controlled_warmup},
       state);
 }
 
