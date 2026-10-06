@@ -210,27 +210,56 @@ Voor de meeste gebruikers is vooral dit belangrijk:
 
 ## Langer doorverwarmen (optioneel)
 
-`Power House run extension` is een optionele uitbreiding op `Power House` en staat standaard uit. Bestaande installaties blijven zonder deze schakelaar exact hetzelfde werken.
+Power House berekent continu hoeveel warmte je woning nodig heeft. **Langer doorverwarmen** bepaalt alleen hoe een bestaande verwarmingsrun bij heel weinig vraag mag doorgaan en daarna opnieuw mag beginnen. De functie staat standaard uit.
 
-Als de functie aan staat, mag een al draaiende verwarmingsrun bij weinig warmtevraag rustig op het laagste geschikte vermogen blijven doorverwarmen, ook als de berekende huisvraag tijdelijk onder dat minimum of zelfs op nul zit.
+### Wat gebeurt er wanneer je het aanzet?
 
-Belangrijk in gewone taal:
+1. De warmtepomp moet eerst vanwege de normale warmtevraag gaan verwarmen. Inschakelen start een stilstaande warmtepomp niet zelfstandig.
+2. Als de woning minder warmte nodig heeft dan het laagste geschikte warmtepompvermogen, mag de run op dat minimumvermogen doorgaan. Dat mag ook wanneer de normale vraag tijdelijk nul is.
+3. Bij **Doorverwarmen tot** bereikt de regeling haar comfortstop. De kamer kan door restwarmte daarna nog verder opwarmen; dit is geen gegarandeerde maximumtemperatuur.
+4. Daarna wacht de regeling op afkoeling. **Afkoelen vóór warme herstart** bepaalt hoeveel de kamer vanaf de stoptemperatuur moet dalen voordat warme herstart mogelijk wordt.
+5. Herstart gebeurt alleen als Power House opnieuw warmte vraagt. Wachttijden en beveiligingen kunnen de daadwerkelijke start uitstellen.
 
-- de functie verlengt alleen een bestaande run; inschakelen start een stilstaande warmtepomp niet zelfstandig;
-- de kamer mag daardoor bewust iets boven het setpoint uitkomen;
-- de stopmarge is geen gegarandeerde maximumkamertemperatuur; restwarmte kan nog voor overshoot zorgen;
-- na een comfortstop wacht het systeem op afkoeling en mag het daarna alleen warm herstarten als de woning echt weer warmte vraagt;
-- `comfort above` en de nieuwe stopmarge zijn verschillende instellingen;
-- er is geen garantie op lager elektriciteitsverbruik.
+### De instellingen
 
-Instellingen:
+| In de web-app | Home Assistant / firmware | Bereik en standaard |
+|---|---|---|
+| Langer doorverwarmen | `Power House run extension` | Aan/uit; standaard uit |
+| Doorverwarmen tot | `Power House run extension stop margin` | 0,1–1,0 °C boven setpoint; standaard 0,5 °C |
+| Afkoelen vóór warme herstart | `Power House run extension restart cooldown` | 0,1–3,0 °C onder de comfortstop; standaard 0,2 °C |
 
-- `Power House run extension` (aan/uit, standaard uit);
-- `Power House run extension stop margin` (0,1–1,0 °C in stapjes van 0,1, standaard 0,5 °C).
+De getalinstellingen hebben stappen van 0,1 °C en blijven na herstart behouden. In Home Assistant zijn deze extension-entities standaard uitgeschakeld; je kunt ze daar zelf inschakelen. De web-app toont stop- en herstarttemperatuur berekend met de getoonde instellingen. Tijdens bewerken is dat een voorvertoning van je wijziging.
 
-Bij een setpoint van 20,5 °C en een marge van 0,5 °C stopt een verlengde run bij 21,0 °C. Daarna mag een warme herstart vanaf 20,8 °C plaatsvinden als de woning nog warmte nodig heeft. Die 0,2 K hysteresis ligt vast en is geen aparte instelling.
+### Voorbeelden: vroeg herstarten of langer afkoelen
 
-Alle bestaande beveiligingen blijven leidend: waterbegrenzing, stroomlimieten, minimum aan/uit-tijden, defrost en olieretour gaan altijd voor. De extra vraag telt bovendien niet mee als woningtekort voor ketelbijschakeling.
+Je gewenste temperatuur is **21,0 °C**, doorverwarmen staat op **+0,7 °C** en je normale comfortmarge onder setpoint is **0,2 °C**. De comfortstop ligt dan op **21,7 °C** en de normale koude comfortgrens op **20,8 °C**.
+
+| Afkoelen vóór warme herstart | Herstart mogelijk vanaf | Betekenis |
+|---|---|---|
+| 0,2 °C | 21,5 °C | Vroege herstart, nog boven je gewenste temperatuur |
+| 0,7 °C | 21,0 °C | Afkoelen tot je gewenste temperatuur |
+| 0,9 °C | 20,8 °C | Afkoelen tot je normale koude comfortgrens |
+| 1,2 °C | 20,8 °C | Begrensd: de berekende 20,5 °C ligt onder je normale koude comfortgrens |
+
+**De normale koude comfortgrens blijft leidend.** Langer doorverwarmen mag normale warmtevraag niet voorbij die grens tegenhouden. Wil je bewust verder laten afkoelen, dan hoort die keuze bij `Power House comfort below setpoint`. Een grotere marge onder setpoint laat meer afkoeling toe. Beveiligingen blijven ook dan gelden; de grens garandeert niet dat de kamer nooit kouder wordt.
+
+De web-app toont de werkelijke begrensde herstarttemperatuur en legt uit wanneer de koude comfortgrens ingrijpt. Voor de standaard stopmarge +0,5 °C en afkoeling 0,2 °C blijft warme herstart mogelijk vanaf setpoint +0,3 °C, zoals voorheen. Bij een kleine stopmarge en kleine comfortmarge kan de nieuwe koude comfortgrens eerder vrijgave geven dan de oude vaste 0,2 °C-afstand.
+
+### Comfortband en doorverwarmen zijn verschillende dingen
+
+`Comfort below/above` beïnvloeden de normale kamercorrectie, verborgen comfort memory en room intent. Ze zijn geen vaste compressor-start- en stoptemperaturen. Warme tegensturing begint al vanaf het setpoint; `comfort above` beïnvloedt comfort memory en de afbouw daarvan.
+
+De stopmarge en herstartafstand horen bij het aparte doorverwarmen-mechanisme. Kleine afkoeling kan passen als je vroeg wilt herstarten; grotere afkoeling geeft opgeslagen warmte meer tijd om af te geven. Er zijn geen aparte regelmodi voor radiatoren, LT-radiatoren en vloerverwarming. Er is geen garantie op lager elektriciteitsverbruik.
+
+### Status, uitschakelen en herstart van de controller
+
+De actuele status laat zien of de regeling normaal verwarmt, doorverwarmt op minimumvermogen, haar comfortstop heeft bereikt, wacht op afkoeling of een warme herstart heeft gevraagd. **Warme herstart gevraagd** betekent dat herstart is vrijgegeven, niet dat de compressor al draait.
+
+Uitschakelen van langer doorverwarmen schakelt de gewone verwarming niet uit: de normale Power House-vraag kan een run laten doorgaan of later opnieuw starten. Verander je de herstartafstand tijdens wachten, dan geldt de nieuwe grens bij de volgende regeltick. Een al vrijgegeven warme herstart houdt zijn bestaande intent vast; vraaguitval, setpointverlaging en beveiligingen blijven die kunnen beëindigen.
+
+Na reboot of firmware-update blijven de instellingen behouden, maar de historische doorverwarmen-cyclus wordt gewist. Er moet eerst weer een echte verwarmingsrun zijn voordat extension een warme herstart mag vrijgeven. De normale comfortregeling kan ondertussen gewoon warmte vragen.
+
+Alle bestaande beveiligingen blijven leidend: waterbegrenzing, stroomlimieten, minimum aan/uit-tijden, defrost en olieretour. De extra minimumvermogenvraag telt niet mee als woningtekort voor ketelbijschakeling.
 
 ## Wat hoef je meestal niet aan te raken?
 

@@ -29,6 +29,11 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         self.assertIn("const bool run_ext_enabled = id(ph_run_extension_enabled).state;", text)
         self.assertNotIn("ph_run_extension_enabled).has_state()", text)
         self.assertIn("ph_run_extension_stop_margin_c", yaml)
+        self.assertIn("ph_run_extension_restart_cooldown_c", yaml)
+        self.assertIn("id(ph_run_extension_restart_cooldown_c).state, room_resume_delta_c", text)
+        cooldown = yaml.split("id: ph_run_extension_restart_cooldown_c", 1)[1].split("text_sensor:", 1)[0]
+        for marker in ("restore_value: true", "disabled_by_default: true", "initial_value: ${oq_ph_run_extension_restart_hysteresis_c}", "min_value: 0.1", "max_value: 3.0"):
+            self.assertIn(marker, cooldown)
         self.assertIn("oq_ph_run_extension_status", yaml)
         run_ext_logic = FILES[9].read_text()
         run_ext_test = FILES[10].read_text()

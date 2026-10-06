@@ -9,6 +9,7 @@ import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSetti
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
 import { formatNumber, t } from "../i18n/index.js";
+import { getInputDraftValue } from "../core/control-drafts.js";
 import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js";
 
   export function renderCurveFallbackSuggestionMarkup(helper = false) {
@@ -416,7 +417,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     const linePath = [
       `M ${leftX.toFixed(1)} ${curveTopY.toFixed(1)}`,
       `L ${quietMinX.toFixed(1)} ${axisY.toFixed(1)}`,
-      `L ${quietMaxX.toFixed(1)} ${axisY.toFixed(1)}`,
+      `L ${setpointX.toFixed(1)} ${axisY.toFixed(1)}`,
       `L ${rightX.toFixed(1)} ${curveBottomY.toFixed(1)}`,
     ].join(" ");
 
@@ -474,7 +475,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
           </span>
           <span class="oq-ph-concept-zone-chip oq-ph-concept-zone-chip--above">
             <span class="oq-ph-concept-zone-chip-label">${escapeHtml(t("settingsHeating.zoneAbove"))}</span>
-            <span class="oq-ph-concept-zone-chip-meta">${escapeHtml(t("settingsHeating.zoneAboveMeta", { value: formatNumericState(quietMax, 1, "°C") }))}</span>
+            <span class="oq-ph-concept-zone-chip-meta">${escapeHtml(t("settingsHeating.zoneAboveMeta", { value: formatNumericState(exampleSetpoint, 1, "°C") }))}</span>
           </span>
         </div>
         <div class="oq-ph-concept-notes">
@@ -507,7 +508,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     }
 
     return `
-      <div class="oq-settings-subpanel oq-settings-subpanel--nested">
+      <div class="oq-settings-subpanel oq-settings-subpanel--nested oq-ph-comfort">
         <div class="oq-settings-subpanel-head">
           <p class="oq-helper-label">${escapeHtml(t("settingsHeating.tuningKicker"))}</p>
           <h4>${escapeHtml(t("settingsHeating.tuningTitle"))}</h4>
@@ -517,22 +518,31 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
         <div class="oq-settings-grid">
           ${fields.join("")}
         </div>
+        ${renderPowerHouseRunExtensionField()}
       </div>
     `;
   }
 
   export function formatRunExtensionTemp(value) {
     const numeric = Number(value);
-    return Number.isFinite(numeric) ? `${formatNumber(numeric, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} °C` : "—";
+    return Number.isFinite(numeric) ? `${formatNumber(numeric, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} °C` : "—";
   }
 
   export function getRunExtensionThresholds() {
-    const setpoint = hasEntity("roomSetpoint") ? getEntityNumericValue("roomSetpoint") : NaN;
-    const marginRaw = hasEntity("phRunExtensionStopMargin") ? getEntityNumericValue("phRunExtensionStopMargin") : NaN;
-    const margin = Number.isFinite(marginRaw) ? marginRaw : 0.5;
-    if (!Number.isFinite(setpoint)) return { setpoint: NaN, margin, hysteresis: 0.2, stop: NaN, restart: NaN };
-    const stop = setpoint + margin;
-    return { setpoint, margin, hysteresis: 0.2, stop, restart: stop - 0.2 };
+    const numeric = (key) => {
+      const value = getInputDraftValue(key);
+      return value === "" || value == null ? NaN : Number(value);
+    };
+    const setpoint = hasEntity("roomSetpoint") ? numeric("roomSetpoint") : NaN;
+    const margin = hasEntity("phRunExtensionStopMargin") ? numeric("phRunExtensionStopMargin") : 0.5;
+    const configurable = hasEntity("phRunExtensionRestartCooldown");
+    const cooldown = configurable ? numeric("phRunExtensionRestartCooldown") : 0.2;
+    const coldEdge = configurable ? setpoint - numeric("phComfortBelow") : NaN;
+    const stop = Number.isFinite(setpoint) && Number.isFinite(margin) ? setpoint + margin : NaN;
+    const configuredRestart = stop - cooldown;
+    // Older firmware still uses its fixed 0.2 K threshold without the new cold-edge guard.
+    const restart = configurable ? Math.max(configuredRestart, coldEdge) : configuredRestart;
+    return { setpoint, margin, cooldown, stop, configuredRestart, coldEdge, restart, limited: restart > configuredRestart };
   }
 
   const RUN_EXTENSION_STATUS_COPY = {
@@ -548,18 +558,32 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     return t(RUN_EXTENSION_STATUS_COPY[String(status || "").trim().toLowerCase()] || "runExtension.disabled");
   }
 
-  export function renderPowerHouseRunExtensionField() {
-    if (!hasEntity("phRunExtension")) return "";
-    const enabled = Boolean(getEntityValue("phRunExtension"));
+  export function renderRunExtensionThresholds() {
     const thresholdsModel = getRunExtensionThresholds();
-    const n = String(getSettingsTextStatValue("phRunExtensionStatus", "inactive") || "").trim().toLowerCase();
-    const status = enabled ? (n === "inactive" ? t("runExtension.waiting") : getRunExtensionStatusCopy(n)) : t("runExtension.disabled");
     const relative = (offset) => `setpoint ${offset < 0 ? "−" : "+"} ${formatRunExtensionTemp(Math.abs(offset))}`;
     const thresholds = [
       [t("runExtension.desired"), Number.isFinite(thresholdsModel.setpoint) ? formatRunExtensionTemp(thresholdsModel.setpoint) : t("runExtension.roomSetpoint"), t("runExtension.desiredNote")],
       [t("runExtension.stop"), Number.isFinite(thresholdsModel.stop) ? formatRunExtensionTemp(thresholdsModel.stop) : relative(thresholdsModel.margin), t("runExtension.stopNote")],
-      [t("runExtension.restart"), Number.isFinite(thresholdsModel.restart) ? formatRunExtensionTemp(thresholdsModel.restart) : relative(thresholdsModel.margin - thresholdsModel.hysteresis), t("runExtension.restartNote")],
+      [t("runExtension.restart"), Number.isFinite(thresholdsModel.restart) ? formatRunExtensionTemp(thresholdsModel.restart) : !hasEntity("phRunExtensionRestartCooldown") ? relative(thresholdsModel.margin - thresholdsModel.cooldown) : "—", t("runExtension.restartNote")],
     ];
+    return `
+          <div class="oq-run-extension-thresholds">
+            ${thresholds.map(([label, value, note]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></div>`).join("")}
+          </div>
+          ${thresholdsModel.limited ? `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.limited", { configured: formatRunExtensionTemp(thresholdsModel.configuredRestart), effective: formatRunExtensionTemp(thresholdsModel.restart) }))}</p>` : ""}
+    `;
+  }
+
+  export function patchRunExtensionThresholds() {
+    const target = state.root?.querySelector("[data-oq-run-extension-thresholds]");
+    if (target) target.innerHTML = renderRunExtensionThresholds();
+  }
+
+  export function renderPowerHouseRunExtensionField() {
+    if (!hasEntity("phRunExtension")) return "";
+    const enabled = Boolean(getEntityValue("phRunExtension"));
+    const n = String(getSettingsTextStatValue("phRunExtensionStatus", "inactive") || "").trim().toLowerCase();
+    const status = enabled ? (n === "inactive" ? t("runExtension.waiting") : getRunExtensionStatusCopy(n)) : t("runExtension.disabled");
     return `
       <section class="oq-settings-subpanel oq-settings-subpanel--nested oq-run-extension" aria-label="${escapeHtml(t("runExtension.title"))}">
         <div class="oq-run-extension-intro">
@@ -572,11 +596,10 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
         <div class="oq-settings-grid">
           ${renderSettingsSwitchField("phRunExtension", t("runExtension.allow"), t("runExtension.allowCopy"), t("runExtension.on"), t("runExtension.off"))}
           ${enabled ? renderSettingsNumberField("phRunExtensionStopMargin", t("runExtension.margin"), t("runExtension.marginCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.residual"))}</p>` }) : ""}
+          ${enabled ? renderSettingsNumberField("phRunExtensionRestartCooldown", t("runExtension.cooldown"), t("runExtension.cooldownCopy")) : ""}
         </div>
         ${enabled ? `
-          <div class="oq-run-extension-thresholds">
-            ${thresholds.map(([label, value, note]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></div>`).join("")}
-          </div>
+          <div data-oq-run-extension-thresholds>${renderRunExtensionThresholds()}</div>
           <p class="oq-run-extension-note">${escapeHtml(t("runExtension.hysteresis"))}</p>
         ` : ""}
         <p class="oq-run-extension-note">${escapeHtml(t("runExtension.disableCopy"))}</p>
@@ -676,7 +699,6 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
           </div>
           ${renderPowerHouseBaseFields()}
           ${renderPowerHouseAdvancedField()}
-          ${renderPowerHouseRunExtensionField()}
         </div>
       `;
 

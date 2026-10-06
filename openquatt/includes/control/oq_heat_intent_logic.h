@@ -51,6 +51,8 @@ struct Decision {
 
 inline uint32_t timestamp_ms(uint32_t now_ms) { return now_ms == 0 ? UINT32_MAX : now_ms; }
 
+inline float room_cold_edge_c(float setpoint_c, float room_resume_delta_c) { return setpoint_c - room_resume_delta_c; }
+
 inline Decision evaluate(const Input& input, State state) {
   Decision out;
   const bool valid = input.strategy_active && input.heating_enable_valid && input.heating_enabled && input.room_fresh &&
@@ -82,7 +84,7 @@ inline Decision evaluate(const Input& input, State state) {
 
   if (input.compressor_active || input.setpoint_c <= input.room_c) state.setpoint_raise_active = false;
 
-  out.room_condition = input.room_c <= input.setpoint_c - input.room_resume_delta_c;
+  out.room_condition = input.room_c <= room_cold_edge_c(input.setpoint_c, input.room_resume_delta_c);
   if (out.room_condition) {
     if (input.room_confirm_ms == 0) {
       state.room_confirm_since_ms = 0;

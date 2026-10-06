@@ -344,6 +344,10 @@
   background: var(--oq-settings-subpanel-background);
 }
 
+.oq-ph-comfort .oq-settings-info-popover {
+  max-width: 100%;
+}
+
 .oq-run-extension {
   display: grid;
   gap: 18px;
