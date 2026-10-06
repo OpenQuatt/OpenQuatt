@@ -18,7 +18,13 @@ Lukt `.local` niet, gebruik dan het IP-adres van de controller:
 http://<ip-adres>
 ```
 
-Als web-login aan staat, gebruik dan dezelfde gebruikersnaam en hetzelfde wachtwoord als voor de web-app. De webserver gebruikt lokale HTTP op poort 80.
+## Authenticatie
+
+Als je een gebruikersnaam en wachtwoord voor de webinterface hebt ingesteld, gebruiken HTTP-clients dezelfde gegevens. De webserver gebruikt lokale HTTP op poort 80.
+
+Vanaf de ESPHome 2026.7-build gebruikt OpenQuatt **HTTP Digest-authenticatie**. Eigen HTTP- en REST-clients moeten Digest ondersteunen; aanmelden met alleen Basic-authenticatie werkt niet. Dit staat los van de encryptiesleutel voor de native ESPHome-verbinding met Home Assistant.
+
+Voor het beheren van toegang zie [Toegang en beveiliging](web-app/instellingen.md#toegang-en-beveiliging). Ben je het wachtwoord vergeten, gebruik dan de [herstelpagina](web-app/herstel.md).
 
 ## Endpoints
 

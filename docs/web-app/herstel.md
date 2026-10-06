@@ -1,13 +1,5 @@
 # Herstelpagina gebruiken
 
-## Web-login en API-beveiliging
-
-Onder `Instellingen -> Systeem -> Toegang & Beveiliging` kun je de web-login en ESPHome API-encryptie aanpassen.
-
-Vanaf de ESPHome 2026.7-build gebruikt de web-login HTTP Digest-authenticatie. De browserlogin blijft hetzelfde, maar losse REST-clients moeten Digest ondersteunen en kunnen niet meer met Basic-authenticatie aanmelden.
-
-## Herstelpagina gebruiken
-
 De herstelpagina is een afzonderlijke pagina op de controller voor als je niet meer kunt inloggen, Home Assistant opnieuw wilt koppelen of Wi-Fi wilt herstellen. Je hoeft hiervoor het bestaande wachtwoord van de OpenQuatt-webinterface niet te weten. Je opent de herstelacties met de fysieke knop op de controller.
 
 ### Herstelpagina openen

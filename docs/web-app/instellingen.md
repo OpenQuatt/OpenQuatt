@@ -166,6 +166,16 @@ Onder `Installatiebewaking` zie je per warmtepomp actieve en herstellende incide
 
 ### Systeem
 
+#### Toegang en beveiliging
+
+Onder **Instellingen -> Systeem -> Toegang & Beveiliging** beheer je de gebruikersnaam en het wachtwoord van de OpenQuatt-webinterface en controleer je de beveiliging van de ESPHome-verbinding met Home Assistant.
+
+Home Assistant stelt de API-encryptie bij de eerste koppeling automatisch in; je hoeft geen sleutel te kopiëren. Volg [OpenQuatt koppelen aan Home Assistant](../dashboard/koppelen.md) voor de koppelprocedure.
+
+Ben je het wachtwoord vergeten of werkt de bestaande Home Assistant-koppeling niet meer door een onbekende sleutel? Gebruik [Herstelpagina gebruiken](herstel.md). Voor authenticatie van eigen HTTP-clients zie [API inputbronnen](../api-input.md#authenticatie).
+
+#### Overig systeembeheer
+
 Zie [Updates en backups](onderhoud.md) voor systeembeheer en gegevensopslag, en [Herstelpagina gebruiken](herstel.md) voor toegang en herstel.
 
 ## Verder
