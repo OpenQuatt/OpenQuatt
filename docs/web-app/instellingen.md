@@ -1,16 +1,33 @@
 # Instellingen aanpassen
 
+Open **Instellingen** in de web-app en kies de groep die bij je vraag past. Voor normaal comfortgebruik zijn vooral **Verwarmen** en **Koelen** relevant. Installatiekeuzes en servicetaken gebruik je bij de inrichting, een wijziging of gericht onderzoek.
+
 ## Instellingen
 
-Onder `Instellingen` staan de onderdelen bewust gescheiden. Het idee is: eerst de gewone installatie-instellingen, daarna pas de scherpere gereedschappen.
+| Wat wil je aanpassen? | Groep |
+| --- | --- |
+| Buitenunits, flowregeling of aanvullende warmtebron | [Installatie](#installatie) |
+| Verwarmingsstrategie, stooklijn of huismodel | [Verwarmen](#verwarmen) |
+| Koelvenster, koelvraag of dauwpuntbeveiliging | [Koelen](#koelen) |
+| Sensoren en externe invoer | [Bronnen / integraties](#bronnen-integraties) |
+| Ontluchten, testen, kalibreren of buitenunitinstellingen | [Service](#service) |
+| Updates, backup, opslag of toegang | [Systeem](#systeem) |
+
+Verander één instelling tegelijk en controleer het effect. Bij onverklaarbaar gedrag begin je bij [Problemen oplossen](../problemen-oplossen.md).
 
 ### Installatie
 
 Hier staan basiskeuzes zoals Quatt Hybrid-versie, flowregeling, een aanvullende warmtebron, stille uren, watergrenzen en compressorinstellingen.
 
+#### Elektrische ingangsgrens
+
 Bij `Elektrische ingangsgrens` stel je met `Maximale gezamenlijke netstroom` de gezamenlijke stroomgrens van de buitenunits in. De standaard blijft 16 A voor Single en Duo V1/V1.5 en 20 A voor Duo V2 (de officiële Quatt Duo-specificatie); de kaart toont het indicatieve vermogen bij 230 V als benadering. Hoger instellen kan tot de absolute OpenQuatt-bovengrens (20 respectievelijk 26 A, afgeleid van 2 × de gepubliceerde maximale stroom per buitenunit) en alleen bij betrouwbaar gedetecteerde buitenunits van dezelfde familie. Een waarde boven de standaard waarschuwt direct en vraagt een expliciete bevestiging met oude en nieuwe waarde; alleen een zwaardere installatieautomaat plaatsen is niet voldoende. `Standaardwaarde herstellen` zet de actuele standaardwaarde opnieuw in. Ook een backup met een grens boven de standaard vermeldt dit expliciet bij het herstellen. Power House houdt er vooraf en via gemeten vermogen rekening mee; stooklijn en koelen alleen via gemeten vermogen. Deze instelling is een softwarematige regelgrens, geen elektrische beveiliging; korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten.
 
+#### Aanvullende warmtebron
+
 Bij `Aanvullende warmtebron` leg je eerst vast of OpenQuatt een warmtebron fysiek kan aansturen. Daarna kies je afzonderlijk voor `Hybride verwarmen bij vermogenstekort` en `Overnemen wanneer de warmtepomp niet beschikbaar is`. Overname staat standaard uit. OpenQuatt schakelt pas over nadat de warmtepompen veilig zijn gestopt en flow, aanvoertemperatuur en aansturing geldig zijn. Een korte communicatiedip telt niet als uitval.
+
+#### Opstarten met koud water
 
 Bij een nieuwe warmtevraag controleert OpenQuatt na het starten van de circulatie de uitgaande watertemperatuur van iedere aangesloten warmtepomp. Onder `5 °C` blijven de compressoren uit; met `Overnemen wanneer de warmtepomp niet beschikbaar is` kan de aanvullende warmtebron het circuit eerst opwarmen. Vanaf `5 °C` mogen de warmtepompen starten. Met `Hybride verwarmen bij vermogenstekort` helpt de aanvullende warmtebron tot alle uitgaande temperaturen minimaal `12 °C` zijn. Zonder aangesloten of toegestane aanvullende warmtebron start de warmtepomp vanaf `5 °C` zelfstandig. De oude algemene startgrens van `18 °C` wordt niet gebruikt.
 
@@ -23,7 +40,7 @@ Hier kies en verfijn je de verwarmingsstrategie:
 - `Power House`;
 - `Stooklijnregeling`.
 
-`Power House` probeert de warmtevraag van je woning te schatten. `Stooklijnregeling` stuurt op een aanvoerdoel op basis van de buitentemperatuur. Begin bij [Verwarmen en koelen uitgelegd](../verwarmen-en-koelen.md) als je nog niet zeker weet welke strategie bij je past.
+`Power House` probeert de warmtevraag van je woning te schatten. `Stooklijnregeling` stuurt op een aanvoerdoel op basis van de buitentemperatuur. Begin bij [Verwarmen en comfort](../dagelijks/verwarmen.md) als je nog niet zeker weet welke strategie bij je past.
 
 #### Stooklijn en actueel aanvoerdoel
 
@@ -40,6 +57,8 @@ dat die grens op dat moment ingrijpt. De firmware levert kamercorrectie niet als
 aparte meetwaarde aan; de web-app toont daarom geen berekende uitsplitsing ervan.
 De stooklijn gebruikt een gefilterde buitentemperatuur, die tijdelijk kan afwijken
 van de actuele buitenmeting.
+
+#### Huismodel volgen en passief leren
 
 In testfirmware met passief huismodelleren staat bij Power House op Heatpump Controller Q Single en Duo ook
 `Huismodel volgen`. Deze functie verzamelt diagnostiek en schat woningparameters; zij past geen
@@ -64,6 +83,8 @@ leren gedeeld (`house_learning_enabled`), niet de leerdata of modelwaarden.
 `Diagnostische leerdata downloaden` levert een lokale JSON-export. Voorlopige schattingen zijn nog
 geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](../power-house-autotuning-development.md).
 
+#### Woninglijn en meetresultaten
+
 De grafiek `Woninglijn en meetresultaten` vergelijkt de ingestelde woninglijn (blauw) met
 de geaccepteerde stabiele meetperioden (punten). Een beschikbare geleerde woninglijn wordt
 groen getoond; buiten het gemeten temperatuurbereik is deze gestippeld. Dit is een
@@ -81,19 +102,29 @@ de geleerde lijn weg; de grafiek verandert geen instellingen.
 
 Hier staan de instellingen voor koeling en dauwpuntbeveiliging.
 
+#### Dagelijks koelvenster
+
 Het blok **Dagelijks koelvenster** onder **Instellingen → Koelen** combineert de aan/uit-schakelaar met de start- en eindtijd. Het tandwiel bij **Koeltoestemming** op het overzicht opent dezelfde bediening in een popup. Inschakelen komt technisch overeen met `Cooling Enable Source = Schedule`; uitschakelen kiest `Disabled`. De starttijd is inbegrepen en de eindtijd niet; een venster kan over middernacht lopen. Gelijke tijden betekenen uit, waardoor de standaard `00:00-00:00` na installatie of update geen koeltoestemming geeft.
 
 Bij het koelvenster en stille uren kun je uren en minuten rustig na elkaar wijzigen. De tijd wordt opgeslagen zodra je het veld verlaat of op Enter drukt. Bij een schrijffout blijft je invoer staan om opnieuw te proberen.
 
+#### Koelvraag en handmatige toestemming
+
 Het schema geeft alleen toestemming. `Cooling Room Request Required` blijft standaard aan, zodat er binnen het venster nog steeds een kamerkoelvraag nodig is. Zet je die instelling bewust uit, dan geldt het actieve venster als koelvraag. In beide gevallen blijven `OpenQuatt Enabled` en alle dauwpunt-, water- en flowbeveiligingen van kracht. `Manual Cooling Enable` omzeilt alleen de gekozen toestemmingsbron; deze opgeslagen override kan na een herstart terugkomen en omzeilt nooit de veiligheidsbewaking.
 
+#### Klok en stoppen aan het einde van het venster
+
 Voor het schema gebruikt OpenQuatt zijn via SNTP gesynchroniseerde lokale klok. Na een herstart zonder geldige netwerktijd blijft de schematoestemming uit totdat synchronisatie lukt. Bij het bereiken van de eindtijd stopt OpenQuatt gecontroleerd: een nog lopende minimale compressortijd kan de compressor kort laten doorlopen en daarna kan de pomp nog de normale postflow uitvoeren.
+
+#### Dauwpuntbeveiliging
 
 Koeling is gevoeliger dan verwarming, omdat condensrisico een echte beperking is. Normaal gebruikt OpenQuatt een dauwpuntbron plus veiligheidsmarge. Zonder goede dauwpuntinformatie blijft koeling standaard geblokkeerd.
 
 Bij `Dauwpuntsbenadering` gebruikt OpenQuatt een echte dauwpuntmeting zodra die beschikbaar is. Alleen als die meting ontbreekt, gebruikt OpenQuatt een conservatieve benadering op basis van buitentemperatuur, nachtminimum en kamertemperatuur.
 
 Bij `Expliciet toestaan` gebruikt OpenQuatt geen dauwpuntgrens: ook een beschikbare dauwpuntmeting wordt dan genegeerd. Alleen de ingestelde minimale koel-aanvoer blijft gelden. Gebruik dit alleen als je de installatie zelf bewaakt en het condensrisico bewust accepteert.
+
+#### Externe koelbronnen
 
 Wil je dauwpuntbronnen uit Home Assistant gebruiken, volg dan de
 [companion-handleiding voor dynamische koelbronnen](https://github.com/OpenQuatt/home-assistant-openquatt/blob/main/docs/cooling.md).
@@ -111,15 +142,25 @@ Zie [Bronnen en integraties](bronnen.md) voor sensorselectie, actieve bronnen en
 
 Hier staan commissioning, tests, kalibratie en andere servicetaken. Gebruik deze groep alleen voor een gerichte controle of afstelling en volg de aanwijzingen in de web-app.
 
+#### Ontluchten
+
 **Ontluchten** draait in CM100 een pomp-only programma van 5 minuten met een rustige start, pomp-pulsen en stabilisatie. Tijdens een rustpuls mag de gemeten flow kort naar nul zakken. De routine stopt met een fout zodra 120 seconden aaneengesloten geen geldige flow van minstens 20 L/h is gedetecteerd. De gevraagde iPWM toont de opdracht van het programma, niet een bevestiging dat de pomp draait of water stroomt. Het resultaat onderscheidt **Mislukt** met foutreden van **Afgebroken**. Na een fout of afbreken keert de routine niet automatisch terug naar Auto; de optie voor terugkeer naar Auto geldt alleen bij normaal afronden.
+
+#### Buitenunitinstellingen en ontdooien
 
 Bij `Instellingen buitenunit` staat `Ontdooien` als derde rij. Het paneel toont per buitenunit de actuele status en cyclusduur. Onder `Instellingen` staan de huidige ontdooimethode met uitleg; `Instellingen uitlezen` leest deze uit de buitenunit. Alleen methoden die de herkende buitenunit daadwerkelijk ondersteunt kunnen tijdelijk worden gekozen na bevestiging van oud→nieuw: V1 biedt 0, 1 en 3; V1.5 en de bestaande V2-profielen bieden 0, 1, 3 en 4. De teruggelezen waarde geldt als bewijs. Sensorgegevens staan ingeklapt onder `Technische metingen`. Onbekende waarden blijven leeg; lokale tellers en mogelijke eindredenen zijn geen exacte weergave van de interne ODU-regeling. Zie [defrostdiagnostiek](../defrost.md) voor de beperkingen.
 
 `Handmatig ontdooien` vraagt na bevestiging één cyclus aan bij een reeds verwarmende buitenunit met bewezen flow. De ODU beslist over acceptatie en uitvoering. OpenQuatt bewaart deze aanvraag niet en herhaalt haar niet automatisch. Veiligheidsstops houden voorrang; na afloop hervat de actuele regeling.
 
+#### Ketelvermogen meten
+
 De `Boiler power test` stabiliseert eerst de flow en meet daarna het afgegeven ketelvermogen. De test duurt meestal 5 tot 15 minuten. Een bruikbaar resultaat kan als voorstel voor `Boiler rated heat power` worden toegepast. Bij een aan/uit-ketel blijft de fysieke aansturing binair.
 
+#### Temperatuursensoren kalibreren
+
 De taak `Temperatuursensoren kalibreren` bepaalt naast de relatieve offsets van HP1/HP2 ook een offset voor de actieve aanvoertemperatuurbron. Het resultaat wordt pas actief na `Offsets toepassen`. OpenQuatt bewaart afzonderlijke aanvoercorrecties voor lokale PT1000, lokale DS18B20, CIC en Home Assistant en activeert bij een bronwissel automatisch de passende correctie. De CIC-correctie blijft geldig na een gewijzigde feed-URL; een andere Home Assistant-invoer vereist wel een nieuwe kalibratie. Een korte automatische fallback tijdens een bronstoring wordt ongecorrigeerd gebruikt en wist geen opgeslagen bronkalibratie.
+
+#### Installatiebewaking
 
 Onder `Installatiebewaking` zie je per warmtepomp actieve en herstellende incidenten, wat daarvan het effect op de regeling is en hoe OpenQuatt erop reageert. Herstelde gelatchte incidenten blijven zichtbaar totdat je de melding als gezien markeert. Als een storing volgens de warmtepomp een echte uit- en inschakeling van de buitenunit vereist, verschijnt een aparte knop waarmee je na uitvoering bevestigt dat de powercycle werkelijk is uitgevoerd. Het paneel toont daarnaast compressorstarts, hydraulische aandachtspunten en verbindingsstatussen. De alarmgrenzen voor compressorstarts zijn uitklapbaar en bedoeld voor incidentele aanpassing.
 
