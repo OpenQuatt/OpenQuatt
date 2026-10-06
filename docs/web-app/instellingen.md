@@ -52,7 +52,7 @@ Bij **Instellingen → Verwarmen → Power House — comfort** staan twee onderd
 
 De **gewenste temperatuur** komt uit je ingestelde temperatuurbron. Dit scherm introduceert geen tweede setpoint.
 
-Met **Reageren op afkoeling** kies je de ondermarge voor extra opwarming. Bij **21,0 °C** gewenst en **0,2 °C** ligt de normale koude grens op **20,8 °C**. **Groter = een lagere grens**. Gewone verwarming kan al eerder actief zijn om de woning op temperatuur te houden, ook bij het setpoint. Na een langdurige temperatuurachterstand kan extra opwarming nog doorwerken.
+Met **Reageren op afkoeling** kies je de ondermarge voor extra opwarming. Bij **21,0 °C** gewenst en **0,2 °C** ligt de normale koude grens op **20,8 °C**. Met een hoger getal mag de kamer verder afkoelen voordat de regeling extra warmte vraagt. Gewone verwarming kan al eerder actief zijn om de woning op temperatuur te houden, ook bij het setpoint. Na een langdurige temperatuurachterstand kan extra opwarming nog doorwerken.
 
 De app toont de gewenste temperatuur en de normale koude grens direct onder het veld. Het is geen simpele aan/uit-band en de koude grens garandeert niet dat de kamer nooit kouder wordt.
 
@@ -61,8 +61,8 @@ De app toont de gewenste temperatuur en de normale koude grens direct onder het 
 Dit blok staat binnen **Power House — comfort**. Het laat een bestaande verwarmingsrun bij weinig vraag op laag vermogen doorgaan. Inschakelen start een stilstaande warmtepomp niet zelfstandig. Er is geen vaste kamertemperatuur waarop het doorverwarmen op minimumvermogen begint: dat hangt af van de berekende warmtevraag en het laagste geschikte warmtepompvermogen.
 
 1. Zet **Langer doorverwarmen** aan als je dit wilt gebruiken; standaard staat het uit.
-2. Kies bij **Stopgrens boven gewenste temperatuur** de stopmarge: 0,1–1,0 °C, standaard +0,5 °C. **Groter = een hogere stopgrens én, bij dezelfde afkoeling, een hogere herstartgrens**.
-3. Kies bij **Afkoeling vóór opnieuw verwarmen** de daling vanaf de ingestelde stopgrens: 0,1–3,0 °C, standaard 0,2 °C. **Groter = een lagere herstartgrens**, tot aan de normale koude grens. Een eventuele hogere piek door restwarmte verschuift die herstartgrens niet.
+2. Kies bij **Stopgrens boven gewenste temperatuur** de stopmarge: 0,1–1,0 °C, standaard +0,5 °C. Met een hoger getal wordt de stop bij een hogere kamertemperatuur aangevraagd. Laat je de afkoeling gelijk, dan kan ook opnieuw verwarmen bij een hogere temperatuur mogelijk worden.
+3. Kies bij **Afkoeling vóór opnieuw verwarmen** de daling vanaf de ingestelde stopgrens: 0,1–3,0 °C, standaard 0,2 °C. Met een hoger getal kan de kamer na de stop verder afkoelen voordat de regeling weer mag verwarmen. De normale koude grens begrenst dit wachten. Een eventuele hogere piek door restwarmte verschuift die herstartgrens niet.
 
 De twee getalvelden verschijnen alleen als langer doorverwarmen aanstaat. Daaronder staan **Stop aanvragen bij** en **Opnieuw verwarmen mogelijk vanaf**, berekend met je actuele setpoint. Tijdens bewerken staat er **Voorvertoning — wijziging nog niet bevestigd**; de laatst bevestigde grenzen blijven daarnaast leesbaar. De informatieknoppen geven uitleg met getalvoorbeelden. De actuele status staat apart: die toont een lopende aanvraag en wordt niet uit je invoer afgeleid.
 
