@@ -25,6 +25,7 @@ enum class CompressorLevelProfile : uint8_t {
   V2_EXTENDED = 1,
   V2_HEATING_EXTENDED = 2,
   V2_COOLING_EXTENDED = 3,
+  V2_LEGACY = 4,
 };
 
 struct LevelCommand {
@@ -50,6 +51,11 @@ inline CompressorLevelProfile compressor_level_profile(const RuntimeFrequencySna
   if (cooling_extended && heating_extended) return CompressorLevelProfile::V2_EXTENDED;
   if (heating_extended) return CompressorLevelProfile::V2_HEATING_EXTENDED;
   if (cooling_extended) return CompressorLevelProfile::V2_COOLING_EXTENDED;
+  if (snapshot.variant == Variant::V2_OLD_MODEL && snapshot.cooling.valid && snapshot.heating.valid &&
+      snapshot.cooling.level_count == LEGACY_FREQUENCY_LEVEL_COUNT &&
+      snapshot.heating.level_count == LEGACY_FREQUENCY_LEVEL_COUNT) {
+    return CompressorLevelProfile::V2_LEGACY;
+  }
   return CompressorLevelProfile::UNKNOWN;
 }
 
@@ -61,6 +67,8 @@ inline const char* compressor_level_profile_label(CompressorLevelProfile profile
       return "V2 heating F0-F20";
     case CompressorLevelProfile::V2_COOLING_EXTENDED:
       return "V2 cooling F0-F20";
+    case CompressorLevelProfile::V2_LEGACY:
+      return "V2 F0-F10";
     default:
       return "Unknown / F0-F10 safe";
   }

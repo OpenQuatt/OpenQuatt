@@ -95,7 +95,29 @@ int main() {
   assert(oq_odu::resolve_manual_level(true, unknown, 2, 20).physical_level == 10);
 
   assert(oq_odu::compressor_level_profile(extended) == oq_odu::CompressorLevelProfile::V2_EXTENDED);
-  assert(oq_odu::compressor_level_profile(old_v2) == oq_odu::CompressorLevelProfile::UNKNOWN);
+  assert(oq_odu::compressor_level_profile(old_v2) == oq_odu::CompressorLevelProfile::V2_LEGACY);
+  assert(!oq_odu::has_extended_compressor_levels(oq_odu::compressor_level_profile(old_v2), 1));
+  assert(!oq_odu::has_extended_compressor_levels(oq_odu::compressor_level_profile(old_v2), 2));
+  assert(oq_odu::compressor_level_profile(unknown) == oq_odu::CompressorLevelProfile::UNKNOWN);
+  assert(oq_odu::compressor_level_profile(invalid_new_v2) == oq_odu::CompressorLevelProfile::UNKNOWN);
+  auto invalid_old_v2 = unknown;
+  invalid_old_v2.variant = oq_odu::Variant::V2_OLD_MODEL;
+  assert(oq_odu::compressor_level_profile(invalid_old_v2) == oq_odu::CompressorLevelProfile::UNKNOWN);
+  for (int mode = 1; mode <= 2; ++mode) {
+    auto incomplete_old_v2 = old_v2;
+    auto& table = mode == 1 ? incomplete_old_v2.cooling : incomplete_old_v2.heating;
+    table.valid = false;
+    assert(oq_odu::compressor_level_profile(incomplete_old_v2) == oq_odu::CompressorLevelProfile::UNKNOWN);
+    table.valid = true;
+    table.level_count = oq_odu::EXTENDED_FREQUENCY_LEVEL_COUNT;
+    assert(oq_odu::compressor_level_profile(incomplete_old_v2) == oq_odu::CompressorLevelProfile::UNKNOWN);
+  }
+  for (const auto variant :
+       {oq_odu::Variant::UNKNOWN, oq_odu::Variant::V1, oq_odu::Variant::V1_5, oq_odu::Variant::V2_NEW_MODEL}) {
+    auto legacy_other_variant = old_v2;
+    legacy_other_variant.variant = variant;
+    assert(oq_odu::compressor_level_profile(legacy_other_variant) == oq_odu::CompressorLevelProfile::UNKNOWN);
+  }
   auto heating_extended = extended;
   heating_extended.cooling.level_count = oq_odu::LEGACY_FREQUENCY_LEVEL_COUNT;
   assert(oq_odu::compressor_level_profile(heating_extended) == oq_odu::CompressorLevelProfile::V2_HEATING_EXTENDED);
