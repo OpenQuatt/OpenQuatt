@@ -104,8 +104,11 @@ logisch na circa 350 s. Dit past bij 300 s minimumlooptijd plus de bestaande
 60s-Power-House-cadence en terugmelding. De eerdere tienminutenafwijking is niet
 gereproduceerd; de historische oorzaak is niet bewezen.
 
-De PR blijft draft voor beoordeling van deze meetgrenzen en het bestaande
-NVS-budget: dev 111 entries vrij, kandidaat 108, vereist 126. Een succesvolle
-herstart-readback kwalificeert geen volledige opslagmarge. Geen fysieke koude
-powercycle of echte achtuursduurproef uitgevoerd; alleen de opwarmklok is in een
-private build ×96 versneld. Host- en harnesstests vervangen hardwarebewijs niet.
+De PR blijft draft voor beoordeling van deze meetgrenzen. De HIL-reeks gebruikte
+de oudere dev-basis met een NVS-eis van 126 entries: dev had 111 entries vrij,
+de kandidaat 108. Na de rebase op dev `8483e0c3`, inclusief de documentatieopbouw
+van #793, slaagt de configuratie-/NVS-controle voor Q WiFi Duo: 108 entries vrij
+bij de inmiddels door dev verlaagde eis van 100. Dit is geen nieuwe hardwareproef
+of bewijs dat de heapbevinding is opgelost. Geen fysieke koude powercycle of
+echte achtuursduurproef uitgevoerd; alleen de opwarmklok is in een private build
+×96 versneld. Host- en harnesstests vervangen hardwarebewijs niet.

@@ -44,6 +44,71 @@ Hier kies en verfijn je de verwarmingsstrategie:
 
 `Power House` probeert de warmtevraag van je woning te schatten. `Stooklijnregeling` stuurt op een aanvoerdoel op basis van de buitentemperatuur. Begin bij [Verwarmen en comfort](../dagelijks/verwarmen.md) als je nog niet zeker weet welke strategie bij je past.
 
+#### Geleidelijk opwarmen na nachtverlaging
+
+Met **Geleidelijk opwarmen** kan OpenQuatt na nachtverlaging of langere afwezigheid
+in kleine stappen naar de gewenste kamertemperatuur werken. De gekozen thermostaat
+of setpointbron bepaalt het einddoel; dit is niet specifiek voor Tado. Er komt geen
+extra internettoegang bij. De schakelaar staat standaard uit en is ook bedienbaar
+via Home Assistant en de API.
+
+Open **Instellingen → Verwarmen → Geleidelijk opwarmen** en zet de functie aan
+vóór de thermostaat vanuit de nachtstand omhoog gaat. De kamer moet nog onder de
+comfortband van het einddoel liggen. Herstarten of een bron opnieuw verbinden
+start geen nieuwe opwarmsessie.
+
+Bij een startgrens van 1,5 °C begint geleidelijk opwarmen bijvoorbeeld wanneer
+de thermostaat van 17 naar 20,5 °C gaat: een verhoging van 3,5 °C.
+Staat de thermostaat al op 20,5 °C wanneer je de functie aanzet? Dan verwarmt
+OpenQuatt gewoon verder naar 20,5 °C. Die opwarming wordt niet alsnog in kleine
+stappen uitgevoerd. 20,5 °C is een voorbeeld, geen vaste startgrens.
+De gewenste temperatuur is de instelling op je thermostaat; de gemeten
+kamertemperatuur kan daarvan afwijken.
+
+| Instelling | Standaard | Betekenis |
+|---|---|---|
+| Start bij verhoging groter dan | 1,5 °C | Thermostaat van 17 naar 20,5 °C: +3,5 °C, dus een start. Van 19 naar 20,5 °C: precies +1,5 °C, dus geen start. |
+| Temperatuurstap | 0,1 °C | Bij 18,0 °C gemeten wordt het eerste tussendoel 18,1 °C. Zodra dat is bereikt, volgt de volgende stap direct. |
+| Tijd per stap | 45 min | Is 18,1 °C na 45 minuten nog niet bereikt en meet de kamer nog 18,0 °C, dan groeit de stap naar 0,2 °C en wordt het tussendoel 18,2 °C. |
+
+De maximale opwarmstap is vast 0,5 °C; na maximaal 8 uur neemt de normale regeling over.
+
+Elk tussendoel blijft vast staan tot het bereikt is of de tijd per stap verloopt.
+Na bereiken schuift het verder; het komt nooit boven de gewenste temperatuur.
+Dit is dus geen vaste verhoging van 0,1 °C per 45 minuten: bij sneller bereiken
+volgt de volgende stap eerder, bij te langzaam opwarmen groeit de stap.
+De toegepaste opwarmstap bepaalt een nieuw tussendoel op basis van de kamertemperatuur.
+Een bestaand tussendoel daalt niet bij afkoelen; de werkelijke afstand tot de kamer
+kan daardoor groter worden dan de ingestelde maximale opwarmstap.
+Binnen de comfortband neemt de normale regeling weer over. Je ziet hier ook
+**Opwarmen in stappen**, de actuele kamertemperatuur, het tussendoel en het einddoel
+van je thermostaat. Deze drie temperaturen worden met twee decimalen weergegeven.
+Bijvoorbeeld: bij 18,06 °C gemeten is een tussendoel van 18,10 °C nog niet bereikt,
+hoewel beide bij afronden op één decimaal 18,1 °C zouden lijken. Meer decimalen in
+de weergave maken de sensor zelf niet nauwkeuriger en veranderen de regeling niet.
+
+Een verlaging van de gewenste temperatuur, uitschakelen, ongeldige bronwaarden of
+een wijziging van bronnen, instellingen of regelmodus beëindigt het opwarmen.
+Een verdere verhoging tijdens opwarmen past het einddoel aan. Na beëindigen is een
+nieuwe voldoende grote setpointverhoging nodig; de normale bron- en
+veiligheidsvoorwaarden blijven gelden.
+Bij CIC moeten kamertemperatuur en setpoint in het nieuwste feedantwoord staan.
+Een oude waarde die nog zichtbaar is, houdt de opwarmsessie niet actief.
+
+De eerste versie werkt alleen met Power House op basis van het huismodel.
+Stooklijn, externe vermogensvragen, koelen en handbediening vallen erbuiten.
+Een lager tussendoel vermindert de ruimtegebonden warmtevraag van Power House.
+Warmtetoestemming, wachttijden, waterlimieten en beveiligingen blijven leidend.
+Ook de bestaande comfortband rond het tussendoel blijft gelden. Is de opwarmstap
+kleiner dan `Power House comfort below setpoint`, dan kan een gestopte warmtepomp
+bij weinig huisverlies blijven wachten totdat de stap groter wordt of de kamer
+afkoelt. Is die comfortband groter dan de vaste maximale stap van 0,5 °C, dan kan de
+warmtepomp blijven wachten tot de kamer verder afkoelt of de sessie eindigt.
+De functie kan al starten wanneer de thermostaat zijn doel verhoogt maar nog geen
+warmtetoestemming geeft. De stap- en totaaltijd lopen ook gedurende die wachttijd.
+De functie garandeert daarom geen lager verbruik of hogere COP; vergelijk comfort,
+opwarmduur en energiegebruik in je eigen installatie.
+
 #### Stooklijn en actueel aanvoerdoel
 
 In de Nederlandse web-app heet de strategie **Stooklijnregeling**; de firmwareoptie

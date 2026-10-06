@@ -240,7 +240,7 @@ beschikbaar via Home Assistant/API:
 - `Controlled warmup trigger`, `Controlled warmup step`, `Controlled warmup step time`;
 - `Controlled warmup active`, `Controlled warmup effective target`.
 
-Zie [Geleidelijk opwarmen](web-app.md#geleidelijk-opwarmen-na-nachtverlaging)
+Zie [Geleidelijk opwarmen](web-app/instellingen.md#geleidelijk-opwarmen-na-nachtverlaging)
 voor de werking, standaardwaarden en beperkingen. De maximale opwarmstap is
 vast 0,5 °C en de maximale duur 8 uur; de stooklijn gebruikt deze functie niet.
 

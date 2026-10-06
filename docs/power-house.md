@@ -62,6 +62,14 @@ Praktisch merk je dan:
 - sneller terugnemen als de ruimte wegdrijft;
 - minder kans dat het systeem te lang blijft doorduwen.
 
+## Na nachtverlaging
+
+Met [Geleidelijk opwarmen](web-app/instellingen.md#geleidelijk-opwarmen-na-nachtverlaging)
+kan Power House tijdelijk een tussendoel voor de kamertemperatuur gebruiken.
+De thermostaat blijft het einddoel bepalen. De functie staat standaard uit;
+zie [Verwarmen en comfort](dagelijks/verwarmen.md#geleidelijk-opwarmen-na-nachtverlaging)
+voor een voorbeeld van 17 naar 20,5 °C.
+
 ## Waar kijkt Power House vooral naar?
 
 De kern bestaat uit vijf onderdelen.
