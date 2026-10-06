@@ -11,7 +11,7 @@ import { formatNumber, optionLabel, t } from "../i18n/index.js";
 // - FLOW_IPWM_MIN / FLOW_IPWM_MAX spiegelen `clamp_ipwm()` in
 //   `openquatt/includes/control/oq_flow_control_logic.h` en de regelaarschaal in
 //   `openquatt/oq_flow_control.yaml` (lagere iPWM = harder pompen).
-export const LOWFLOW_MIN_FLOW_LPH = 250;
+export const LOWFLOW_MIN_FLOW_LPH = 400;
 export const FLOW_IPWM_MIN = 50;
 export const FLOW_IPWM_MAX = 850;
 // Band waarbinnen de regelaar duidelijk om meer flow vraagt. Bewust geen

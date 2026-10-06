@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 globalThis.__OQ_PREVIEW__ = false;
@@ -12,6 +13,7 @@ const { state } = await import("../js/src/core/state.js");
 const { INSTALLATION_MONITORING_STATE_KEYS } = await import("../js/src/core/config.js");
 const {
   FLOW_IPWM_MIN,
+  LOWFLOW_MIN_FLOW_LPH,
   getLowFlowDiagnosis,
   renderLowFlowDiagnosis,
 } = await import("../js/src/core/lowflow-diagnosis.js");
@@ -38,6 +40,13 @@ test("diagnose-entities worden tijdens servicebewaking opgehaald", () => {
 
 test("gebruikt centrale actuatorgrenzen zonder magic-numbervergelijking", () => {
   assert.equal(FLOW_IPWM_MIN, 50);
+});
+
+test("diagnose gebruikt dezelfde minimumflow als de firmware", async () => {
+  const substitutions = await readFile(new URL("../../oq_substitutions_common.yaml", import.meta.url), "utf8");
+  const minimum = substitutions.match(/^oq_cm_min_flow_lph:\s*"([\d.]+)"/m);
+  assert.ok(minimum);
+  assert.equal(LOWFLOW_MIN_FLOW_LPH, Number(minimum[1]));
 });
 
 test("pomp aangestuurd zonder flow wordt als no-flow gediagnosticeerd", () => {
@@ -130,13 +139,16 @@ test("duo bewaart per pomprelais de eigen status", () => {
   assert.equal(diagnosis.scenario, "no-flow-unconfirmed");
 });
 
-test("actieve blokkade met voldoende flow wordt als herstelhersteld weergegeven", () => {
-  setEntities({
-    lowflowFaultActive: { value: true, state: "ON" },
-    flowSelected: { value: 300, state: "300" },
-    hp1PumpRelay: { value: true, state: "ON" },
-  });
-  assert.equal(getLowFlowDiagnosis().scenario, "recovering");
+test("actieve blokkade blijft onder 400 L/h onvoldoende flow en herstelt vanaf de grens", () => {
+  for (const flow of [250, 300, 399, 400, 450, 500]) {
+    setEntities({
+      lowflowFaultActive: { value: true, state: "ON" },
+      flowSelected: { value: flow, state: String(flow) },
+      hp1PumpRelay: { value: true, state: "ON" },
+    });
+    assert.equal(getLowFlowDiagnosis().scenario, flow >= 400 ? "recovering" : "low-flow", `${flow} L/h`);
+    assert.match(renderLowFlowDiagnosis(), /400 L\/h/);
+  }
 });
 
 test("ontbrekende pompaansturing blijft onbekend in plaats van te concluderen dat de pomp draait", () => {

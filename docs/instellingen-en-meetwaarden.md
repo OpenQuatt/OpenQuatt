@@ -151,6 +151,8 @@ Belangrijke instellingen:
 
 `Flow Setpoint` geldt voor verwarmen en normaal automatisch bedrijf. `Cooling Flow Setpoint` geldt alleen tijdens koelen, zodat koeling een eigen hydraulisch werkpunt kan hebben zonder de verwarmingsflow te veranderen.
 
+De standaard minimumflow voor compressorbedrijf is 400 L/h; precies 400 L/h voldoet aan de flowgrens. Een bestaand opgeslagen flowsetpoint onder 400 L/h wordt bij een update niet automatisch verhoogd en kan daardoor warmteproductie blokkeren. Controleer beide flowsetpoints en de werkelijk gemeten flow.
+
 CM98 gebruikt een vaste pompregeling van iPWM 800. AUTO start met de laatst bekende goede iPWM voor verwarmen of koelen en valt bij een ongeldige waarde terug op iPWM 440.
 
 Gebruik deze groep voorzichtig. Bij verkeerde bronwaarden of hydraulische problemen maak je hier snel meer ruis dan winst.
