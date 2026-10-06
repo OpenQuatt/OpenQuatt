@@ -49,7 +49,8 @@ PAGES = [
     Page(PurePosixPath("docs/q-edition.md"), PurePosixPath("q-edition.html"), "Heatpump Controller Q-edition aansluiten", "Aan de slag", "Doorlopende route voor aansluiten, netwerk instellen en Quick Start."),
     Page(PurePosixPath("docs/web-app.md"), PurePosixPath("web-app.html"), "Web-app gebruiken", "Handleiding", "Quick Start, instellingen, updates, backup en beveiliging via openquatt.local."),
     Page(PurePosixPath("docs/dashboard/README.md"), PurePosixPath("dashboard/index.html"), "OpenQuatt in Home Assistant", "Home Assistant", "Dashboards, packages en handleidingen voor OpenQuatt in Home Assistant."),
-    Page(PurePosixPath("docs/dashboard/installation.md"), PurePosixPath("dashboard/installeren.html"), "Dashboard installeren", "Home Assistant", "OpenQuatt toevoegen, kaarten installeren en het juiste dashboard importeren.", PurePosixPath("docs/installation.md")),
+    Page(PurePosixPath("docs/dashboard/koppelen.md"), PurePosixPath("dashboard/koppelen.html"), "OpenQuatt koppelen", "Home Assistant", "ESPHome koppelen binnen 10 minuten, automatische API-beveiliging en koppelproblemen oplossen."),
+    Page(PurePosixPath("docs/dashboard/installation.md"), PurePosixPath("dashboard/installeren.html"), "Dashboard installeren", "Home Assistant", "Kaarten installeren en het juiste Single- of Duo-dashboard importeren."),
     Page(PurePosixPath("docs/dashboard/dashboard.md"), PurePosixPath("dashboard/gebruiken.html"), "Dashboard gebruiken", "Home Assistant", "Een rustige dagelijkse route door het OpenQuatt-dashboard.", PurePosixPath("docs/dashboard.md")),
     Page(PurePosixPath("docs/dashboard/dynamic-sources.md"), PurePosixPath("dashboard/dynamische-bronnen.html"), "Dynamische bronnen", "Home Assistant", "Home Assistant-bronnen tijdens runtime koppelen aan OpenQuatt.", PurePosixPath("docs/dynamic-sources.md")),
     Page(PurePosixPath("docs/dashboard/cooling.md"), PurePosixPath("dashboard/koeling.html"), "Dynamische koelbronnen", "Home Assistant", "Dauwpuntbronnen uit Home Assistant gebruiken voor veilige koeling.", PurePosixPath("docs/cooling.md")),
@@ -89,9 +90,10 @@ SIDEBAR_GROUPS = [
     ),
     (
         "Optioneel: Home Assistant",
-        "Dashboards toevoegen nadat OpenQuatt lokaal werkt.",
+        "OpenQuatt koppelen, dashboards en eigen sensoren gebruiken.",
         [
             PurePosixPath("docs/dashboard/README.md"),
+            PurePosixPath("docs/dashboard/koppelen.md"),
             PurePosixPath("docs/dashboard/installation.md"),
             PurePosixPath("docs/dashboard/dashboard.md"),
             PurePosixPath("docs/dashboard/dynamic-sources.md"),
@@ -469,11 +471,17 @@ def build_sidebar(current_page: Page) -> str:
             linked_page = PAGE_BY_SOURCE[source]
             href = rel_url(current_page.output, linked_page.output)
             current = " current" if current_page.source == source else ""
+            sidebar_label = {
+                "docs/q-edition.md": "Q-edition aansluiten",
+                "docs/dashboard/README.md": "Overzicht",
+                "docs/dashboard/dynamic-sources.md": "Eigen sensoren gebruiken",
+                "docs/dashboard/cooling.md": "Koelbronnen gebruiken",
+            }.get(source.as_posix(), linked_page.label)
             current_attr = ' aria-current="page"' if current else ""
             items.append(
                 f"""
                 <li>
-                  <a class="sidebar-link{current}" href="{href}" data-sidebar-link{current_attr}>{escape(linked_page.label)}</a>
+                  <a class="sidebar-link{current}" href="{href}" data-sidebar-link{current_attr}>{escape(sidebar_label)}</a>
                 </li>
                 """
             )
@@ -542,7 +550,7 @@ def render_template(rendered_page: RenderedPage, rendered_pages: list[RenderedPa
     elif page.source == PurePosixPath("docs/dashboard/README.md"):
         doc_actions = f"""
           <div class="doc-actions" aria-label="Home Assistant starten">
-            <a class="doc-action doc-action-primary" href="{rel_url(page.output, PurePosixPath('dashboard/installeren.html'))}">Dashboard installeren</a>
+            <a class="doc-action doc-action-primary" href="{rel_url(page.output, PurePosixPath('dashboard/koppelen.html'))}">OpenQuatt koppelen</a>
             <a class="doc-action" href="{rel_url(page.output, PurePosixPath('dashboard/gebruiken.html'))}">Dashboard gebruiken</a>
           </div>
         """
