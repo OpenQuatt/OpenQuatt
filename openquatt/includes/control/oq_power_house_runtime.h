@@ -246,9 +246,9 @@ class Runtime {
 #if OQ_TOPOLOGY_DUO
     include_minimum(dispatch_input.hp2);
 #endif
-    // A room recovery follows a room-demand start only; it is released halfway
-    // through the restart band. It therefore cannot turn every below-setpoint
-    // interval into an implicit keep-running-at-minimum mode.
+    // Ordinary room recovery follows a room-demand start and releases halfway
+    // through the restart band. Controlled warmup also retains an existing run
+    // through intermediate steps, until real comfort or session cancellation.
     if ((intent.fast_start || intent.room_recovery_active) && std::isfinite(minimum_viable_w) &&
         id(oq_water_temp_limit_factor) >= 0.999f) {
       requested_w = std::max(requested_w, minimum_viable_w);

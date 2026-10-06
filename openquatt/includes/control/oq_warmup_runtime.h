@@ -36,7 +36,10 @@ class Runtime {
   // A consumer may run after a selected goal changes but before update().
   // Hold the previous goal for a qualifying raise; only update starts a session.
   ControlTarget control_target(float requested_c, float trigger_c, bool enabled) const {
-    const bool active = enabled && this->active();
+    // A lower thermostat goal cancels the limiter for consumers immediately;
+    // update() remains the sole owner of the session/baseline transition.
+    const bool active = enabled && this->active() && std::isfinite(requested_c) &&
+                        requested_c >= this->state_.last_requested_c - 0.0001f;
     const bool pending_raise = enabled && !this->reset_pending_ && this->state_.initialized && !this->state_.active &&
                                std::isfinite(requested_c) && std::isfinite(this->state_.last_requested_c) &&
                                std::isfinite(trigger_c) && trigger_c >= 0.5f && trigger_c <= 5.0f &&

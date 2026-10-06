@@ -60,9 +60,30 @@ vermijden. Validatie van het volledige blok blijft fail-closed; slots 4/5 worden
 na geldige restore genormaliseerd naar de vaste limieten.
 
 Power House gebruikt het effectieve target voor room feedback. Heat intent krijgt
-het echte target voor gebruikersedges; tussenstappen veroorzaken geen fast-start.
+het echte target voor gebruikersedges; tussenstappen zijn geen thermostaatverhoging.
+Tijdens warmup bevestigt een gestopte HP de warmtevraag onder het tussendoel via
+de normale 10s-confirmatie. De comfortband wordt daarvoor niet nogmaals van het
+tussendoel afgetrokken. De minimum-power recovery blijft vervolgens actief tot
+`requested_setpoint_c - room_resume_delta_c`, ook als Power House het bereiken van
+een tussendoel vóór de volgende 1s-warmuptick ziet. Een al draaiende HP mag deze
+recovery direct gebruiken met geldige bronnen en warmtetoestemming; dit is geen
+nieuwe start en omzeilt de downstream guards niet. Bij verlaten van de limiter
+worden recovery en startbevestiging gewist, zodat normaal regelen geen oude
+warmup-floor erft. Een onafhankelijk gestopte HP verliest het warmup-runrecht;
+een herstart moet de warmtevraag opnieuw bevestigen. Buiten warmup blijft de
+bestaande halve restartband gelden.
+`control_target` verbergt de limiter ook direct bij een lager actueel setpoint,
+zonder de sessie in een getter te muteren. Alleen `update` legt die overgang vast.
+De extra session-scope bool past in de bestaande 20 B heat-intent state; er komen
+geen controlbuffers, taken of opslagvelden bij.
 Tijdens en direct na warmup wordt comfort memory gereset. Run extension blijft
 op het echte target werken. Permission, dispatch en boiler support blijven downstream.
+
+De regressiesimulatie `tests/host/warmup_heat_intent_test.cpp` gebruikt de echte
+warmup-runtime, inputadapter, heat intent, Power House demand en low-load helpers.
+De bestaande floor-glue wordt in de fixture nagebootst; fysieke terugmelding,
+dispatch en minimum on/off timing blijven hardwaretestscope. Het
+[voorbereide HIL-scenario](hil-warmup-step-continuity.md) is nog niet uitgevoerd.
 
 ## Releasekwalificatie
 

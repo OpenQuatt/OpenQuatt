@@ -67,7 +67,7 @@ inline oq_heat_intent::Decision evaluate(uint32_t now_ms, bool compressor_active
        id(heating_enable_selected).has_state() && id(heating_enable_selected).state, room_fresh,
        room_setpoint_fresh(ot_room_setpoint_fresh), compressor_active, setpoint_source_code(), room_c,
        std::isfinite(effective_target_c) ? effective_target_c : setpoint_c, room_resume_delta_c, 0.20f, room_confirm_ms,
-       setpoint_c, !controlled_warmup},
+       setpoint_c, !controlled_warmup, controlled_warmup},
       state);
 }
 

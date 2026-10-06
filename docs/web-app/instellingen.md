@@ -99,11 +99,16 @@ De eerste versie werkt alleen met Power House op basis van het huismodel.
 Stooklijn, externe vermogensvragen, koelen en handbediening vallen erbuiten.
 Een lager tussendoel vermindert de ruimtegebonden warmtevraag van Power House.
 Warmtetoestemming, wachttijden, waterlimieten en beveiligingen blijven leidend.
-Ook de bestaande comfortband rond het tussendoel blijft gelden. Is de opwarmstap
-kleiner dan `Power House comfort below setpoint`, dan kan een gestopte warmtepomp
-bij weinig huisverlies blijven wachten totdat de stap groter wordt of de kamer
-afkoelt. Is die comfortband groter dan de vaste maximale stap van 0,5 °C, dan kan de
-warmtepomp blijven wachten tot de kamer verder afkoelt of de sessie eindigt.
+Een tussendoel is geen stopgrens: tijdens opwarmen blijft de minimale warmtevraag
+behouden tot de kamer binnen de comfortband van het echte einddoel komt.
+Bijvoorbeeld: kamer 20,06 °C, stap 0,1 °C en einddoel 22 °C geven eerst een tussendoel
+van 20,16 °C. De regeling laat de minimale warmtevraag niet al bij 20,11 °C los.
+Bij bereiken van het tussendoel schuift dat verder zonder daarvoor een stop en
+herstart te vragen. Met een comfortband van 0,1 °C eindigt het opwarmen bij 21,9 °C.
+Ook als de comfortband groter is dan de stap, kan de warmtepomp na de normale
+startbevestiging opwarmen. Een al draaiende warmtepomp hoeft daarvoor niet eerst
+te stoppen. Het minimaal beschikbare warmtepompvermogen blijft de ondergrens;
+een kleine temperatuurstap kan geen willekeurig laag vermogen afdwingen.
 De functie kan al starten wanneer de thermostaat zijn doel verhoogt maar nog geen
 warmtetoestemming geeft. De stap- en totaaltijd lopen ook gedurende die wachttijd.
 De functie garandeert daarom geen lager verbruik of hogere COP; vergelijk comfort,
