@@ -18,29 +18,9 @@ De web-app blijft altijd de plek waar je OpenQuatt inricht, beheert en controlee
 
 ## Beveiligde verbinding met Home Assistant
 
-OpenQuatt beveiligt de verbinding met Home Assistant automatisch. Bij de eerste koppeling maakt Home Assistant een geheime sleutel aan en bewaart die veilig samen met het apparaat. Je hoeft deze sleutel niet zelf te maken, te kopiëren of in OpenQuatt in te voeren.
+Home Assistant stelt bij de eerste koppeling automatisch de beveiligde ESPHome-verbinding in. Het koppelvenster is maximaal 10 minuten na het opstarten; een bestaande koppeling blijft behouden bij herstarten en updates. Je hoeft geen API-key te kopiëren en de web-app toont de sleutel nooit.
 
-Alleen bij de eerste koppeling staat de koppelmogelijkheid na een opstart maximaal 10 minuten open. Is Home Assistant dan nog niet beschikbaar, dan worden nieuwe koppelpogingen geweigerd. Het apparaat schakelt niet terug naar een onbeveiligde verbinding. Zet het apparaat kort uit en weer aan om opnieuw te proberen. Een bestaande koppeling blijft behouden na een firmware-update, herstart en stroomonderbreking; de timer speelt daarna geen rol meer.
-
-In `Instellingen → Toegang & Beveiliging` zie je:
-
-- `Actief`: de verbinding met Home Assistant is beveiligd;
-- `Wacht op koppeling`: open Home Assistant om dit apparaat toe te voegen;
-- `Niet beschikbaar`: de koppeltijd is verlopen of de status kan tijdelijk niet worden opgehaald.
-
-De web-app toont deze geheime sleutel nooit. Er is geen HTTPS op de lokale webinterface. Als de sleutel op het apparaat onbekend is, kun je API-beveiliging resetten via een web-login of de fysieke herstelpagina; daarna kan Home Assistant opnieuw koppelen. Een oude OpenQuatt-sleutel wordt niet automatisch overgenomen. Home Assistant kan tijdens opnieuw koppelen dezelfde sleutel terugzetten; verwijder een ongewenste oude sleutel daarom ook daar.
-
-Bij de migratie geldt deze matrix:
-
-| Device | Home Assistant | Gedrag |
-|---|---|---|
-| Native key aanwezig | Key bekend | Key behouden; OTA en startup wissen hem nooit. |
-| Alleen oude OpenQuatt-key aanwezig | Geen native key | Oude key wordt genegeerd; Home Assistant provisiont een nieuwe native key. |
-| Geen key | Geen key | Home Assistant provisiont automatisch binnen de provisioning window. |
-| Geen key | Stale key | Eenmalig opnieuw koppelen of de stale key in Home Assistant verwijderen. |
-| Native key aanwezig | Key onbekend | Reset API-beveiliging via een web-login of de fysieke [herstelpagina](#herstelomgeving); daarna opnieuw koppelen. OpenQuatt neemt de onbekende sleutel niet over. |
-
-De oude OpenQuatt-preference wordt bij deze firmwareversie niet gewist, maar ook niet meer gelezen of toegepast. Dat houdt rollback mogelijk zonder een tweede bron van waarheid te activeren.
+Volg [OpenQuatt koppelen aan Home Assistant](dashboard/koppelen.md) voor de volledige procedure, de statuscontrole en problemen met een verlopen koppelvenster of onbekende sleutel. Voor herstel vanuit de web-app of met de fysieke knop zie [API-beveiliging resetten](#api-beveiliging-resetten).
 
 ## Wat doe je waar?
 
@@ -96,232 +76,7 @@ Quick Start begint met de configuratiekeuze en software-update. Daarna volgen de
 | `Flowregeling en afstelling` | Automatische flow of vaste pompstand | Bepaalt hoe OpenQuatt de waterdoorstroming regelt. |
 | `Watertemperatuur beveiligen` | Maximale watertemperatuur | Laat OpenQuatt terugregelen voordat het water te warm wordt. |
 | `Stille uren en niveaus` | Tijdvenster en compressorlimieten | Begrenst de compressor bijvoorbeeld 's nachts. |
-| `Gebruiksstatistieken` | Wel of niet beperkte technische systeemstatus en feature-instellingen delen | Tijdens een nieuwe Quick Start staat delen standaard aan en kan het hier worden uitgezet. |
-| `Prestatiemetingen` | Wel of niet stabiele verwarmingsmetingen delen voor validatie van het prestatiemodel | Tijdens een nieuwe Quick Start staat delen standaard uit en kan het hier worden aangezet. Na inschakelen worden maximaal 15 complete minuutrecords per bericht iedere 15 minuten vanaf deviceboot verstuurd; de planning volgt uptime en niet UTC-kwartiergrenzen. |
-| `Bevestigen en afronden` | Je keuzes controleren | Markeert de basisconfiguratie als klaar. |
-
-Je hoeft niet meteen perfecte waardes te kiezen. Het doel van Quick Start is een veilige, begrijpelijke basis. Fijnregelen kan later.
-
-De installatie is klaar zodra Quick Start is afgerond, `openquatt.local` stabiel bereikbaar blijft en de belangrijkste warmtepompwaarden logisch worden bijgewerkt. Home Assistant en het dashboard zijn optionele vervolgstappen.
-
-## Hoofdschermen
-
-De web-app heeft zes hoofdschermen.
-
-| Scherm | Gebruik |
-|---|---|
-| `Overzicht` | Live zien wat OpenQuatt nu doet en of de belangrijkste waarden logisch zijn. |
-| `Energie` | Vermogen, energie, COP en EER bekijken. |
-| `Resultaten` | Opgeslagen energie- en resultaathistorie over een langere periode bekijken. |
-| `Beslislog` | Terugzien welke regelbeslissingen OpenQuatt nam en waarom. Deze functie is nog beta. |
-| `Diagnose` | Live waarden en korte trendhistorie naast elkaar bekijken om gedrag te onderzoeken. |
-| `Instellingen` | OpenQuatt configureren, bijwerken en beheren. |
-
-Voor dagelijks kijken is `Overzicht` meestal genoeg. Ga pas naar `Instellingen` als je bewust iets wilt veranderen.
-
-## Overzicht
-
-Begin hier als je wilt weten of alles normaal oogt.
-
-Let vooral op:
-
-- OpenQuatt is online;
-- Quatt-data wordt ververst;
-- flow, aanvoertemperatuur, buitentemperatuur en kamertemperatuur zijn geloofwaardig;
-- er is geen onverwachte override actief;
-- de gekozen strategie past bij wat je in huis verwacht.
-
-Zie je hier al vreemde waarden, ga dan niet meteen tunen. Controleer eerst de bronkeuze onder **Instellingen → Bronnen / integraties → Sensorselectie** en, als je Home Assistant gebruikt, de aangeleverde Home Assistant-bronnen.
-
-## Resultaten
-
-`Resultaten` bundelt opgeslagen resultaten en historie. Gebruik dit scherm om prestaties over een langere periode te vergelijken. Voor een snelle diagnose van het actuele regelgedrag is `Diagnose` geschikter.
-
-## Diagnose
-
-`Diagnose` combineert actuele waarden met korte historie. Dat helpt bij vragen zoals:
-
-- loopt de aanvoertemperatuur rustig op;
-- blijft de flow stabiel;
-- schakelt het systeem vaak;
-- reageert de regeling logisch op setpoint en kamertemperatuur.
-
-Gebruik bij een probleem dat je opnieuw kunt veroorzaken ook het **Logboek**. Nieuwe regels verschijnen daar live; valt de verbinding kort weg, dan vult OpenQuatt de gemiste recente regels weer aan. Het logboek is vluchtige diagnose-informatie: bewaar voor support daarnaast altijd een Systeemrecorder-diagnosebestand.
-
-Via `Instellingen → Systeem → Gegevens bewaren` beheer je welke historie OpenQuatt bewaart. OpenQuatt maakt daarbij onderscheid tussen twee soorten geheugen:
-
-- **PSRAM (tijdelijk, vluchtig)** — snelle opslag voor recente diagnosegegevens en RAM-logs. Deze historie is direct beschikbaar zolang de controller online is en verdwijnt na een herstart.
-- **Flash-partitie `openquatt_data` (persistent)** — blijft normaal bewaard na een herstart of update. Hier staan energie-dagtotalen (standaard aan, 180 dagen uurdetail), beslislog (standaard aan, maximaal 7 dagen, per uur gebundeld naar flash) en diagnosehistorie (standaard aan, maximaal 30 dagen). Bij de overstap van diagnosehistorie-formaat v1 naar v2 wordt alleen de oude diagnosehistorie eenmalig gewist; de andere archieven blijven staan.
-
-Tijdelijke PSRAM-historie is op alle ondersteunde profielen standaard aan en wordt niet als aparte keuze in Quick Start getoond; ontbrekende PSRAM wijst op een hardware- of profielprobleem. Persistente flash-historie kun je per domein (Diagnose / Beslislog / Energie) aan of uit zetten onder Gegevens bewaren. Zet je een flash-optie uit, dan blijft bestaande flashhistorie gewoon staan — OpenQuatt stopt alleen met nieuw wegschrijven. Met `Nu opslaan` kun je vóór een herstart of update alvast een extra opslagmoment forceren. De technische opslagdetails tonen voor diagnosehistorie ook de langste volledige opslagactie, sector-erase, flashwrite en index-update sinds de laatste start.
-
-## Beslislog
-
-`Beslislog` laat zien welke regelkeuze OpenQuatt maakte en welke signalen daarbij meespeelden. Gebruik dit scherm vooral om een onverwachte omschakeling of begrenzing te verklaren. De functie is nog beta; combineer de uitleg daarom met de actuele waarden in `Diagnose`.
-
-## Energie
-
-`Energie` geeft inzicht in vermogen en rendement. Gebruik dit vooral om richting te krijgen, niet als gecertificeerde energiemeter.
-
-Voorbeelden:
-
-- elektrisch vermogen van de warmtepomp;
-- thermisch vermogen;
-- COP bij verwarmen;
-- EER bij koelen, als koeling actief en ondersteund is;
-- dag- en totaalwaarden wanneer die entiteiten beschikbaar zijn.
-
-## Instellingen
-
-Onder `Instellingen` staan de onderdelen bewust gescheiden. Het idee is: eerst de gewone installatie-instellingen, daarna pas de scherpere gereedschappen.
-
-### Installatie
-
-Hier staan basiskeuzes zoals Quatt Hybrid-versie, flowregeling, een aanvullende warmtebron, stille uren, watergrenzen en compressorinstellingen.
-
-Bij `Elektrische ingangsgrens` stel je met `Maximale gezamenlijke netstroom` de gezamenlijke stroomgrens van de buitenunits in. De standaard blijft 16 A voor Single en Duo V1/V1.5 en 20 A voor Duo V2 (de officiële Quatt Duo-specificatie); de kaart toont het indicatieve vermogen bij 230 V als benadering. Hoger instellen kan tot de absolute OpenQuatt-bovengrens (20 respectievelijk 26 A, afgeleid van 2 × de gepubliceerde maximale stroom per buitenunit) en alleen bij betrouwbaar gedetecteerde buitenunits van dezelfde familie. Een waarde boven de standaard waarschuwt direct en vraagt een expliciete bevestiging met oude en nieuwe waarde; alleen een zwaardere installatieautomaat plaatsen is niet voldoende. `Standaardwaarde herstellen` zet de actuele standaardwaarde opnieuw in. Ook een backup met een grens boven de standaard vermeldt dit expliciet bij het herstellen. Power House houdt er vooraf en via gemeten vermogen rekening mee; stooklijn en koelen alleen via gemeten vermogen. Deze instelling is een softwarematige regelgrens, geen elektrische beveiliging; korte stroompieken boven de ingestelde waarde zijn niet volledig uit te sluiten.
-
-Bij `Aanvullende warmtebron` leg je eerst vast of OpenQuatt een warmtebron fysiek kan aansturen. Daarna kies je afzonderlijk voor `Hybride verwarmen bij vermogenstekort` en `Overnemen wanneer de warmtepomp niet beschikbaar is`. Overname staat standaard uit. OpenQuatt schakelt pas over nadat de warmtepompen veilig zijn gestopt en flow, aanvoertemperatuur en aansturing geldig zijn. Een korte communicatiedip telt niet als uitval.
-
-Bij een nieuwe warmtevraag controleert OpenQuatt na het starten van de circulatie de uitgaande watertemperatuur van iedere aangesloten warmtepomp. Onder `5 °C` blijven de compressoren uit; met `Overnemen wanneer de warmtepomp niet beschikbaar is` kan de aanvullende warmtebron het circuit eerst opwarmen. Vanaf `5 °C` mogen de warmtepompen starten. Met `Hybride verwarmen bij vermogenstekort` helpt de aanvullende warmtebron tot alle uitgaande temperaturen minimaal `12 °C` zijn. Zonder aangesloten of toegestane aanvullende warmtebron start de warmtepomp vanaf `5 °C` zelfstandig. De oude algemene startgrens van `18 °C` wordt niet gebruikt.
-
-Gebruik dit deel vooral tijdens de eerste inrichting of als je installatie later verandert.
-
-### Verwarmen
-
-Hier kies en verfijn je de verwarmingsstrategie:
-
-- `Power House`;
-- `Stooklijnregeling`.
-
-`Power House` probeert de warmtevraag van je woning te schatten. `Stooklijnregeling` stuurt op een aanvoerdoel op basis van de buitentemperatuur. Begin bij [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md) als je nog niet zeker weet welke strategie bij je past.
-
-#### Stooklijn en actueel aanvoerdoel
-
-In de Nederlandse web-app heet de strategie **Stooklijnregeling**; de firmwareoptie
-blijft `Water Temperature Control (heating curve)`. **Stooklijn instellen** bevat de
-curvepunten. **Actueel aanvoerdoel** is het doel waar de regeling nu naartoe werkt;
-**Gemeten aanvoertemperatuur** is de werkelijke meting.
-
-Bij het aanvoerdoel staat de bron: de lokale stooklijn inclusief eventuele
-kamercorrectie en begrenzing, de fallback bij ontbrekende buitentemperatuur, of een
-bevestigd extern doel. Bij een extern doel wordt ook het lokale stooklijndoel
-getoond. Het ingestelde maximum bij een lokaal doel is een grens, geen bevestiging
-dat die grens op dat moment ingrijpt. De firmware levert kamercorrectie niet als
-aparte meetwaarde aan; de web-app toont daarom geen berekende uitsplitsing ervan.
-De stooklijn gebruikt een gefilterde buitentemperatuur, die tijdelijk kan afwijken
-van de actuele buitenmeting.
-
-In testfirmware met passief huismodelleren staat bij Power House op Heatpump Controller Q Single en Duo ook
-`Huismodel volgen`. Deze functie verzamelt diagnostiek en schat woningparameters; zij past geen
-regelinstellingen automatisch aan. Water staat vast; Single/Duo volgt uit de firmware en bij Duo
-loopt het water in serie van HP1 naar HP2. Dit zijn geen instelbare keuzes. Technische meetgrenzen
-en kalibratiebewijs horen niet bij deze bediening. Onbekende meetkwaliteit blijft een blokkade.
-De leerfunctie neemt CM0, CM1 en CM2 mee en controleert de bestaande ketelaansturing; er is geen aparte keuze
-voor een andere warmtebron. OpenTherm-telemetrie is hiervoor niet vereist; een actuele melding
-van ketelactiviteit sluit de betreffende meting wel uit.
-
-`Passief leren` staat standaard aan. De gekozen stand blijft na een herstart of
-firmware-update behouden; bewust uitschakelen blijft dus uit. Bij de eerste update
-vanaf de eerdere versie die altijd uit startte, wordt leren standaard ingeschakeld.
-De leerfunctie heeft geen aparte
-kalibratiebevestiging of meetgrensinstellingen; automatisch toepassen bestaat nog niet.
-`Leerdata wissen` pauzeert het leren en wist uitsluitend de leerhistorie.
-Bij een fysieke ombouw van Single naar Duo of andersom blijft de oude leerstand ook behouden.
-Wis dan zelf de leerdata voordat je opnieuw gaat leren of de modelschattingen beoordeelt: de
-waterzijdige meetopstelling is veranderd. Een gewone bronwissel vereist deze reset niet.
-Bij ingeschakelde technische statistieken wordt alleen de aan/uit-stand van passief
-leren gedeeld (`house_learning_enabled`), niet de leerdata of modelwaarden.
-`Diagnostische leerdata downloaden` levert een lokale JSON-export. Voorlopige schattingen zijn nog
-geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](power-house-autotuning-development.md).
-
-De grafiek `Woninglijn en meetresultaten` vergelijkt de ingestelde woninglijn (blauw) met
-de geaccepteerde stabiele meetperioden (punten). Een beschikbare geleerde woninglijn wordt
-groen getoond; buiten het gemeten temperatuurbereik is deze gestippeld. Dit is een
-doortrekking van het model, geen meting. De woninglijn toont de basiswarmtevraag, zonder
-de tijdelijke kamercorrectie of vermogensbegrenzing.
-
-De leerstatus, grafiek, meldingen en bediening volgen de gekozen app-taal (Nederlands of Engels).
-Getallen en datums gebruiken de bijbehorende notatie; de JSON-export behoudt zijn vaste formaat.
-
-Haal de meetpunten op met de knop bij de grafiek. Bij een meetpunt kun je datum, meetduur,
-gemiddelde buitentemperatuur en warmtevermogen bekijken. Zonder voldoende gegevens blijft
-de geleerde lijn weg; de grafiek verandert geen instellingen.
-
-### Koelen
-
-Hier staan de instellingen voor koeling en dauwpuntbeveiliging.
-
-Het blok **Dagelijks koelvenster** onder **Instellingen → Koelen** combineert de aan/uit-schakelaar met de start- en eindtijd. Het tandwiel bij **Koeltoestemming** op het overzicht opent dezelfde bediening in een popup. Inschakelen komt technisch overeen met `Cooling Enable Source = Schedule`; uitschakelen kiest `Disabled`. De starttijd is inbegrepen en de eindtijd niet; een venster kan over middernacht lopen. Gelijke tijden betekenen uit, waardoor de standaard `00:00-00:00` na installatie of update geen koeltoestemming geeft.
-
-Bij het koelvenster en stille uren kun je uren en minuten rustig na elkaar wijzigen. De tijd wordt opgeslagen zodra je het veld verlaat of op Enter drukt. Bij een schrijffout blijft je invoer staan om opnieuw te proberen.
-
-Het schema geeft alleen toestemming. `Cooling Room Request Required` blijft standaard aan, zodat er binnen het venster nog steeds een kamerkoelvraag nodig is. Zet je die instelling bewust uit, dan geldt het actieve venster als koelvraag. In beide gevallen blijven `OpenQuatt Enabled` en alle dauwpunt-, water- en flowbeveiligingen van kracht. `Manual Cooling Enable` omzeilt alleen de gekozen toestemmingsbron; deze opgeslagen override kan na een herstart terugkomen en omzeilt nooit de veiligheidsbewaking.
-
-Voor het schema gebruikt OpenQuatt zijn via SNTP gesynchroniseerde lokale klok. Na een herstart zonder geldige netwerktijd blijft de schematoestemming uit totdat synchronisatie lukt. Bij het bereiken van de eindtijd stopt OpenQuatt gecontroleerd: een nog lopende minimale compressortijd kan de compressor kort laten doorlopen en daarna kan de pomp nog de normale postflow uitvoeren.
-
-Koeling is gevoeliger dan verwarming, omdat condensrisico een echte beperking is. Normaal gebruikt OpenQuatt een dauwpuntbron plus veiligheidsmarge. Zonder goede dauwpuntinformatie blijft koeling standaard geblokkeerd.
-
-Bij `Dauwpuntsbenadering` gebruikt OpenQuatt een echte dauwpuntmeting zodra die beschikbaar is. Alleen als die meting ontbreekt, gebruikt OpenQuatt een conservatieve benadering op basis van buitentemperatuur, nachtminimum en kamertemperatuur.
-
-Bij `Expliciet toestaan` gebruikt OpenQuatt geen dauwpuntgrens: ook een beschikbare dauwpuntmeting wordt dan genegeerd. Alleen de ingestelde minimale koel-aanvoer blijft gelden. Gebruik dit alleen als je de installatie zelf bewaakt en het condensrisico bewust accepteert.
-
-Wil je dauwpuntbronnen uit Home Assistant gebruiken, volg dan de
-[companion-handleiding voor dynamische koelbronnen](https://github.com/OpenQuatt/home-assistant-openquatt/blob/main/docs/cooling.md).
-De web-app kiest daarna welke koelingsdauwpuntbron OpenQuatt gebruikt: `Auto`,
-`Home Assistant`, `API input` of `MQTT`. In `Auto` gebruikt OpenQuatt de hoogste geldige
-dauwpuntwaarde.
-
-Wil je externe bronwaarden of toestemmingssignalen via MQTT aanleveren, configureer dan eerst de broker bij **Bronnen / integraties -> MQTT inputbronnen**. In **MQTT sensoren** kun je per topic zien wat OpenQuatt verwacht en ongebruikte topics uitzetten. Zie [MQTT inputbronnen](mqtt.md) voor topics, payload en geldigheid. Zonder MQTT-broker kan hetzelfde via [API inputbronnen](api-input.md).
-
-### Bronnen / integraties
-
-Hier beheer je de directe gegevensbronnen en integraties:
-
-- `OpenTherm`: zet de lokale OpenTherm-thermostaatkoppeling aan of uit;
-- `CiC JSON-feed inlezen`: haalt gegevens uit de CiC op via je lokale netwerk; open `Adres aanpassen` onder deze schakelaar om het feed-adres in te stellen;
-- `MQTT inputbronnen`: configureer een broker voor externe MQTT-bronwaarden zoals dauwpunt, buiten- en kamerwaarden, het aanvoertarget en toestemmingssignalen, en zet ongebruikte topics uit;
-- `API inputbronnen`: lever dezelfde externe bronwaarden via lokale HTTP-endpoints aan;
-- `Quatt-app via CiC`: geeft alleen buitenunitgegevens via de Modbusverbinding op M2 door aan de CiC, zodat de Quatt-app kan meekijken.
-
-#### CiC: kies de functie die je echt nodig hebt
-
-De CiC is de originele Quatt-controller. Je kunt hem op twee manieren blijven gebruiken:
-
-| Als je dit wilt | Schakel in | Wat gebeurt er? | Niet nodig voor |
-|---|---|---|---|
-| CiC-waarden als bron gebruiken | `CiC JSON-feed inlezen` | OpenQuatt leest de lokale JSON-feed van de CiC. Daaruit kunnen onder meer setpoint, kamerwaarden, aanvoertemperatuur en flow beschikbaar komen. | De Quatt-app behouden. |
-| Buitenunitgegevens in de Quatt-app blijven bekijken | `Quatt-app via CiC` | OpenQuatt geeft via Modbus op M2 alleen buitenunitgegevens door aan de CiC. Thermostaatgegevens gaan niet mee. | CiC-waarden als bron gebruiken. |
-
-Je kunt één functie inschakelen, beide combineren, of beide uit laten. Gebruik je geen CiC meer, laat beide schakelaars uit.
-
-Voor **CiC JSON-feed inlezen** open je **Adres aanpassen** en vul je het lokale feed-adres van je CiC in, bijvoorbeeld `http://<ip-adres>:<poort>/beta/feed/data.json`. Zet deze schakelaar alleen aan als je ook werkelijk één of meer CiC-bronnen kiest onder **Sensorselectie**. De infoknop naast iedere verbinding geeft extra uitleg.
-
-Voor **Quatt-app via CiC** verbind je `M2` met een aparte RS485-kabel met de vrijgekomen Modbuspoort van de CiC. Dit is alleen beschikbaar op de Heatpump Controller Q. Deze Modbusverbinding geeft uitsluitend buitenunitgegevens door; thermostaatgegevens zoals kamertemperatuur en kamer-setpoint gaan niet naar de CiC. OpenQuatt blijft de warmtepomp regelen; besturingscommando's via deze M2-koppeling worden niet overgenomen. De CiC heeft zijn eigen voeding en netwerkverbinding nodig om gegevens aan Quatt door te geven. Deze functie heette eerder **CiC-compatibiliteit**. Zie voor de aansluiting [Q-edition aansluiten](q-edition.md#welke-kabel-gaat-waarheen).
-
-Onder `Sensorselectie` in dezelfde groep kies je per signaal welke bron OpenQuatt gebruikt. Naast de kaarten voor buiten-, kamer- en aanvoerwaarden staat daar `Externe warmtevraag (Power House)`: een optionele externe vermogensvraag, alleen voor de Power House-strategie, standaard op `Niet gebruiken`. Zet je die op Home Assistant of API-invoer, dan vervangt jouw waarde uitsluitend de vermogensschatting van het huismodel; de kaart laat zien of Power House die externe waarde daadwerkelijk gebruikt of is teruggevallen op het model. Zie [Power House](power-house.md).
-
-Daarnaast staat er `Aanvoertarget (stooklijn)`: een optionele externe aanvoertemperatuur, alleen voor de stooklijnregeling, standaard op `Stooklijn`. Zet je die op OpenTherm-thermostaat, Home Assistant, API-invoer of MQTT, dan vervangt jouw waarde uitsluitend het berekende stooklijntarget; de kaart laat zien of de regeling dat externe target daadwerkelijk gebruikt of is teruggevallen op de stooklijn. Zie [Water Temperature Control](water-temperature-control.md#extern-aanvoertarget-optioneel).
-
-Voor `Warmtetoestemming` (`Heating Enable Source`) betekent `Niet gebruiken`: geen externe gate; de strategie bepaalt zelf of warmte nodig is. Tijdens Quick Start vervangt een strategieswitch deze keuze automatisch door `Niet gebruiken` voor `Power House`, of door de gekoppelde en actieve thermostaatbron voor `Water Temperature Control`. Buiten Quick Start toont `Instellingen → Verwarmen` alleen een advies met knop en wordt de instelling niet stil overschreven. Afwijkende combinaties (zone-regeling, volledig weersafhankelijk) blijven mogelijk. De buitentemperatuur staat normaliter op `Auto` en gebruikt de buitenunit.
-
-Dezelfde groep toont compacte diagnostiek voor OpenTherm en CIC, zoals linkstatus, JSON-feedstatus, kamertemperatuur, setpoint, flow en waterdruk wanneer de firmware die signalen exposeert.
-
-Laat dit met rust zolang OpenQuatt logisch werkt. Verander liever een instelling per keer en kijk daarna wat het systeem doet.
-
-### Service
-
-Hier staan commissioning, tests, kalibratie en andere servicetaken. Gebruik deze groep alleen voor een gerichte controle of afstelling en volg de aanwijzingen in de web-app.
-
-**Ontluchten** draait in CM100 een pomp-only programma van 5 minuten met een rustige start, pomp-pulsen en stabilisatie. Tijdens een rustpuls mag de gemeten flow kort naar nul zakken. De routine stopt met een fout zodra 120 seconden aaneengesloten geen geldige flow van minstens 20 L/h is gedetecteerd. De gevraagde iPWM toont de opdracht van het programma, niet een bevestiging dat de pomp draait of water stroomt. Het resultaat onderscheidt **Mislukt** met foutreden van **Afgebroken**. Na een fout of afbreken keert de routine niet automatisch terug naar Auto; de optie voor terugkeer naar Auto geldt alleen bij normaal afronden.
-
-Bij `Instellingen buitenunit` staat `Ontdooien` als derde rij. Het paneel toont per buitenunit de actuele status en cyclusduur. Onder `Instellingen` staan de huidige ontdooimethode met uitleg; `Instellingen uitlezen` leest deze uit de buitenunit. Alleen methoden die de herkende buitenunit daadwerkelijk ondersteunt kunnen tijdelijk worden gekozen na bevestiging van oud→nieuw: V1 biedt 0, 1 en 3; V1.5 en de bestaande V2-profielen bieden 0, 1, 3 en 4. De teruggelezen waarde geldt als bewijs. Sensorgegevens staan ingeklapt onder `Technische metingen`. Onbekende waarden blijven leeg; lokale tellers en mogelijke eindredenen zijn geen exacte weergave van de interne ODU-regeling. Zie [defrostdiagnostiek](defrost.md) voor de beperkingen.
-
-`Handmatig ontdooien` vraagt na bevestiging één cyclus aan bij een reeds verwarmende buitenunit met bewezen flow. De ODU beslist over acceptatie en uitvoering. OpenQuatt bewaart deze aanvraag niet en herhaalt haar niet automatisch. Veiligheidsstops houden voorrang; na afloop hervat de actuele regeling.
-
-De `Boiler power test` stabiliseert eerst de flow en meet daarna het afgegeven ketelvermogen. De test duurt meestal 5 tot 15 minuten. Een bruikbaar resultaat kan als voorstel voor `Boiler rated heat power` worden toegepast. Bij een aan/uit-ketel blijft de fysieke aansturing binair.
-
-De taak `Temperatuursensoren kalibreren` bepaalt naast de relatieve offsets van HP1/HP2 ook een offset voor de actieve aanvoertemperatuurbron. Het resultaat wordt pas actief na `Offsets toepassen`. OpenQuatt bewaart afzonderlijke aanvoercorrecties voor lokale PT1000, lokale DS18B20, CIC en Home Assistant en activeert bij een bronwissel automatisch de passende correctie. De CIC-correctie blijft geldig na een gewijzigde feed-URL; een andere Home Assistant-invoer vereist wel een nieuwe kalibratie. Een korte automatische fallback tijdens een bronstoring wordt ongecorrigeerd gebruikt en wist geen opgeslagen bronkalibratie.
+| `Gebruiksstatistieken` | Wel of niet beperkte technische systeemstatus en feature-instellingen delen | Tijdens een nieuwe Quick Start staat delen standaard aan…5617 tokens truncated… een andere Home Assistant-invoer vereist wel een nieuwe kalibratie. Een korte automatische fallback tijdens een bronstoring wordt ongecorrigeerd gebruikt en wist geen opgeslagen bronkalibratie.
 
 Onder `Installatiebewaking` zie je per warmtepomp actieve en herstellende incidenten, wat daarvan het effect op de regeling is en hoe OpenQuatt erop reageert. Herstelde gelatchte incidenten blijven zichtbaar totdat je de melding als gezien markeert. Als een storing volgens de warmtepomp een echte uit- en inschakeling van de buitenunit vereist, verschijnt een aparte knop waarmee je na uitvoering bevestigt dat de powercycle werkelijk is uitgevoerd. Het paneel toont daarnaast compressorstarts, hydraulische aandachtspunten en verbindingsstatussen. De alarmgrenzen voor compressorstarts zijn uitklapbaar en bedoeld voor incidentele aanpassing.
 
@@ -454,21 +209,29 @@ opgeslagen, dan blijft de eerdere web-login of open toegang gelden.
 
 ### API-beveiliging resetten
 
-Kies **API-beveiliging resetten** bij Toegang & Beveiliging (web-login vereist),
-of op de fysieke herstelpagina. Bevestig het wissen en herstarten.
-Dit wist uitsluitend de native API-sleutel, niet je web-login of Wi-Fi-instellingen.
-Alle API-clients worden losgekoppeld. Bij een opslagfout wordt niet herstart;
-controleer de melding voordat je opnieuw probeert.
+Gebruik deze reset als Home Assistant niet meer kan verbinden doordat de opgeslagen API-sleutel onbekend is of niet overeenkomt. Hiermee wis je alleen de sleutel voor de ESPHome-verbinding. Je Wi-Fi-instellingen, overige instellingen en de gebruikersnaam en het wachtwoord van de webinterface blijven behouden.
 
-Na de herstart heeft Home Assistant 10 minuten om de beveiligde verbinding
-opnieuw in te stellen. Home Assistant kan daarbij dezelfde sleutel terugzetten.
-Een fysieke reset keert eenmalig terug naar herstel; een reset met web-login niet.
+**Via de herstelpagina**
 
-Bij een bestaande koppeling kan Home Assistant melden dat het apparaat transportencryptie
-heeft uitgeschakeld en vragen de oude sleutel te verwijderen. Bevestig dit alleen als
-je zelf deze reset hebt gestart en het juiste apparaat wordt genoemd. Home Assistant
-kan daarna opnieuw encryptie instellen. Controleer bij **Toegang & Beveiliging** dat
-API-encryptie weer actief is; alleen bereikbaarheid bewijst dit niet.
+1. Houd op de Heatpump Controller Q de linker knop **5 seconden** ingedrukt en laat hem los. Daarmee open je het herstelvenster van 10 minuten.
+2. Open `http://openquatt.local/recovery` of `http://<IP-adres>/recovery`. Hiervoor hoef je niet in te loggen op de webinterface.
+3. Kies **API-beveiliging resetten** en bevestig het wissen van de sleutel en het herstarten van de controller.
+4. Wacht tot de controller opnieuw bereikbaar is. De herstelpagina wordt na deze herstart nog één keer beschikbaar. Sluit het herstel af wanneer je klaar bent.
+5. Rond het opnieuw koppelen in Home Assistant binnen 10 minuten na de herstart af.
+
+**Via de normale instellingenpagina**
+
+Heb je een gebruikersnaam en wachtwoord ingesteld voor de OpenQuatt-webinterface en ben je daarmee ingelogd? Dan kun je ook **API-beveiliging resetten** kiezen onder **Instellingen -> Systeem -> Toegang & Beveiliging**. Bevestig de reset en rond na de herstart het opnieuw koppelen binnen 10 minuten af. Deze route opent de herstelpagina niet.
+
+Is de webinterface zonder wachtwoord toegankelijk, of ben je het wachtwoord vergeten? Gebruik dan de fysieke herstelroute hierboven. Alleen toegang tot een onbeveiligde webinterface is niet voldoende om de API-sleutel te wissen.
+
+**Opnieuw koppelen in Home Assistant**
+
+De reset verbreekt alle ESPHome API-verbindingen. Home Assistant kan daarna automatisch een sleutel instellen; dat kan dezelfde sleutel zijn als voorheen.
+
+Bij een bestaande koppeling kan Home Assistant melden dat het apparaat transportencryptie heeft uitgeschakeld en vragen de oude sleutel te verwijderen. Bevestig dit alleen als je zelf deze reset hebt gestart en het juiste apparaat wordt genoemd. Controleer na het koppelen in **Instellingen -> Systeem -> Toegang & Beveiliging** dat API-encryptie weer actief is.
+
+Meldt OpenQuatt dat het wissen niet is gelukt? De controller herstart dan niet automatisch. Controleer de melding voordat je opnieuw probeert. Voor verdere koppelproblemen zie [OpenQuatt koppelen aan Home Assistant](dashboard/koppelen.md#problemen-met-koppelen).
 
 ### Wi-Fi opnieuw instellen
 
@@ -514,4 +277,4 @@ Als de web-app niet opent:
 
 Als Quick Start niet verschijnt terwijl je nog niet klaar bent, open `Instellingen -> Systeem -> Quick Start` en reset de setupstatus.
 
-Wil je OpenQuatt ook aan Home Assistant toevoegen? Ga dan optioneel verder met [Dashboard installeren](dashboard/README.md) en [Dashboard gebruiken](dashboardoverzicht.md). Gebruik je Homey Pro, kijk dan bij [OpenQuatt in Homey](homey.md).
+Wil je OpenQuatt ook aan Home Assistant toevoegen? Ga dan optioneel verder met [OpenQuatt in Home Assistant](dashboard/README.md) en [Dashboard gebruiken](dashboardoverzicht.md). Gebruik je Homey Pro, kijk dan bij [OpenQuatt in Homey](homey.md).
