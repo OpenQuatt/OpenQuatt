@@ -171,6 +171,7 @@ STRICT_TOP_LEVEL_ORDER_RULES = {
         "openquatt_usage_telemetry",
         "psram",
         "select",
+        "number",
         "spi",
         "sensor",
         "interval",

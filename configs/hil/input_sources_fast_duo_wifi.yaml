@@ -41,7 +41,6 @@ text_sensor:
     id: oq_hil_test_profile
     name: "HIL Test Profile"
     internal: true
-    entity_category: diagnostic
     update_interval: 5s
     lambda: |-
       return {"input-sources-fast-v1"};
