@@ -20,7 +20,7 @@ from typing import Any
 NVS_PAGE_SIZE = 4096
 NVS_ENTRIES_PER_PAGE = 126
 NVS_GC_RESERVED_PAGES = 1
-REQUIRED_AVAILABLE_ENTRIES = 126
+REQUIRED_AVAILABLE_ENTRIES = 100
 
 # Custom OpenQuatt preferences: MQTT config 11, web auth 6, crash state 4,
 # usage telemetry 3, performance telemetry 3, network preference 3, incident

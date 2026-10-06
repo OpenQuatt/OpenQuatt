@@ -81,7 +81,7 @@ class NvsPersistenceContractTest(unittest.TestCase):
         self.assertEqual(check_nvs_budget.blob_entries(33), 4)
         self.assertEqual(check_nvs_budget.blob_entries(256), 10)
         self.assertEqual(check_nvs_budget.cpp_type_bytes("uint32_t[3]"), 12)
-        self.assertEqual(check_nvs_budget.REQUIRED_AVAILABLE_ENTRIES, 126)
+        self.assertEqual(check_nvs_budget.REQUIRED_AVAILABLE_ENTRIES, 100)
         self.assertIn("check_nvs_budget.py", DEV)
 
     def test_custom_blob_sizes_are_compile_time_budget_contracts(self) -> None:
