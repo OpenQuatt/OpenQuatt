@@ -3729,7 +3729,7 @@ export default {
     titleLatched: "Earlier warning not acknowledged yet",
     titleClear: "No issues",
     copyActive: "{count} issue{plural} visible. See details below.",
-    copyLatched: "Cycling has recovered. The message stays visible until you acknowledge it.",
+    copyLatched: "Cycling has recovered. The message stays visible until you acknowledge it or the controller restarts.",
     copyClear: "OpenQuatt currently sees no active issues in the monitored signals.",
     staleProblem: "Heat pump status is being fetched again",
     staleTitle: "Heat pump status is being refreshed",
