@@ -379,10 +379,6 @@
   border-bottom: 1px solid var(--oq-helper-line);
 }
 
-.oq-run-extension-thresholds.oq-warmup-readings {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .oq-run-extension-thresholds > div {
   display: grid;
   gap: 6px;

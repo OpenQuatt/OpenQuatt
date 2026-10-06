@@ -109,7 +109,7 @@ test("focused settings polls patch live warmup status and targets while preservi
   state.entities = {
     strategy: { value: "Power House" }, setupComplete: { value: true },
     warmupEnabled: { value: true }, warmupActive: { value: false },
-    roomSetpoint: { value: 20.5 }, warmupEffectiveTarget: { value: 18.1 },
+    roomTemp: { value: 18.06 }, roomSetpoint: { value: 20.5 }, warmupEffectiveTarget: { value: 18.1 },
     warmupTrigger: { value: 1.5 },
   };
   for (const key of getSettingsGroupHydrationKeys()) {
@@ -128,10 +128,11 @@ test("focused settings polls patch live warmup status and targets while preservi
   document.activeElement = input;
   const { status, readings } = mount({ inputs: [input], warmupMarkup: renderControlledWarmupField() });
   assert.equal(status.textContent, "Niet actief");
-  assert.equal(readings.warmupEffectiveTarget.textContent, "18,1 °C");
+  assert.equal(readings.warmupEffectiveTarget.textContent, "18,10 °C");
   state.settingsRenderSignature = getSettingsRenderSignature();
   const previousSignature = state.settingsRenderSignature;
-  let deviceValues = { warmupActive: { value: true }, warmupEffectiveTarget: { value: 18.4 }, roomSetpoint: { value: 21 } };
+  assert.equal(readings.roomTemp.textContent, "18,06 °C");
+  let deviceValues = { roomTemp: { value: 18.07 }, warmupActive: { value: true }, warmupEffectiveTarget: { value: 18.4 }, roomSetpoint: { value: 21 } };
   const requested = new Set();
   globalThis.fetch = async (url, options) => {
     assert.equal(url, "/openquatt/entities");
@@ -153,22 +154,30 @@ test("focused settings polls patch live warmup status and targets while preservi
     assert.notEqual(state.settingsRenderSignature, previousSignature);
     assert.equal(state.settingsRenderSignature, getSettingsRenderSignature());
     assert.equal(status.textContent, "Opwarmen in stappen");
-    assert.equal(readings.roomSetpoint.textContent, "21,0 °C");
-    assert.equal(readings.warmupEffectiveTarget.textContent, "18,4 °C");
-    for (const key of ["warmupActive", "warmupEffectiveTarget", "roomSetpoint"]) assert.ok(requested.has(key));
+    assert.equal(readings.roomTemp.textContent, "18,07 °C");
+    assert.equal(readings.roomSetpoint.textContent, "21,00 °C");
+    assert.equal(readings.warmupEffectiveTarget.textContent, "18,40 °C");
+    for (const key of ["warmupActive", "warmupEffectiveTarget", "roomSetpoint", "roomTemp"]) assert.ok(requested.has(key));
+
+    deviceValues = { roomTemp: { value: 18.08 } };
+    await syncEntities();
+    assert.equal(readings.roomTemp.textContent, "18,08 °C");
+    assert.equal(readings.warmupEffectiveTarget.textContent, "18,40 °C");
+    assert.equal(renders, 0);
 
     setLocale("en", { persist: false });
     state.headerRenderSignature = getHeaderRenderSignature();
-    deviceValues = { warmupActive: { value: null, state: null }, warmupEffectiveTarget: { value: null, state: null } };
+    deviceValues = { roomTemp: { value: null, state: null }, warmupActive: { value: null, state: null }, warmupEffectiveTarget: { value: null, state: null } };
     await syncEntities();
     assert.equal(status.textContent, "Status unknown");
     assert.equal(readings.warmupEffectiveTarget.textContent, "—");
-    assert.equal(readings.roomSetpoint.textContent, "21.0 °C");
+    assert.equal(readings.roomTemp.textContent, "—");
+    assert.equal(readings.roomSetpoint.textContent, "21.00 °C");
 
     deviceValues = { warmupEnabled: { value: false }, warmupActive: { value: false }, warmupEffectiveTarget: { value: 21 } };
     await syncEntities();
     assert.equal(status.textContent, "Disabled");
-    assert.equal(readings.warmupEffectiveTarget.textContent, "21.0 °C");
+    assert.equal(readings.warmupEffectiveTarget.textContent, "21.00 °C");
     assert.equal(renders, 0);
     assert.equal(document.activeElement, input);
     assert.equal(state.focusedField, "warmupTrigger");

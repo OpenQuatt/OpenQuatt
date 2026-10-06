@@ -591,11 +591,12 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
       t(active === true ? "warmup.warming" : active === false ? "warmup.idle" : "warmup.unknown");
     const value = (key) => {
       const numeric = hasEntity(key) ? parseLooseNumber(getEntityValue(key)) : NaN;
-      return Number.isFinite(numeric) ? `${formatNumber(numeric, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} °C` : "—";
+      return Number.isFinite(numeric) ? `${formatNumber(numeric, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} °C` : "—";
     };
     const readings = [
-      ["roomSetpoint", t("warmup.finalTarget"), value("roomSetpoint")],
+      ["roomTemp", t("warmup.roomTemperature"), value("roomTemp")],
       ["warmupEffectiveTarget", t("warmup.target"), value("warmupEffectiveTarget")],
+      ["roomSetpoint", t("warmup.finalTarget"), value("roomSetpoint")],
     ];
     return { status, readings };
   }

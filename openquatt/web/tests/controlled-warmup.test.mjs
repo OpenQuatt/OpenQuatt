@@ -17,7 +17,7 @@ function number(value, uom = "°C") {
 }
 function enabledEntities() {
   return {
-    warmupEnabled: { value: true, state: true }, roomSetpoint: number(20.5),
+    warmupEnabled: { value: true, state: true }, roomSetpoint: number(20.5), roomTemp: number(18.06),
     warmupTrigger: number(1.5), warmupStep: number(0.1), warmupStepTime: number(45, "min"),
     warmupActive: { value: true, state: true }, warmupEffectiveTarget: number(18.1),
   };
@@ -42,10 +42,11 @@ test("Power House exposes warmup; Heating Curve hides it", () => {
       continue;
     }
     assert.match(markup, /Geleidelijk opwarmen/);
-    assert.match(markup, /18,1 °C/);
+    assert.match(markup, /data-oq-warmup-reading="roomTemp">18,06 °C/);
+    assert.match(markup, /data-oq-warmup-reading="warmupEffectiveTarget">18,10 °C/);
     assert.match(markup, /Einddoel/);
     assert.match(markup, /Een bestaand tussendoel daalt niet bij afkoelen/);
-    assert.match(markup, /20,5 °C/);
+    assert.match(markup, /data-oq-warmup-reading="roomSetpoint">20,50 °C/);
     assert.match(markup, /Opwarmen in stappen/);
     assert.match(markup, /data-oq-field="warmupStep"/);
     assert.match(markup, /na 8 uur/);
@@ -62,17 +63,18 @@ test("locale switching translates status and numeric presentation without writes
     const markup = renderControlledWarmupField();
     assert.match(markup, /Gradual warmup/);
     assert.match(markup, /Warming up in steps/);
-    assert.match(markup, /18\.1 °C/);
+    assert.match(markup, /data-oq-warmup-reading="roomTemp">18\.06 °C/);
+    assert.match(markup, /data-oq-warmup-reading="warmupEffectiveTarget">18\.10 °C/);
     assert.match(markup, /Final target/);
     assert.match(markup, /maximum warmup step is 0.5/);
     assert.match(markup, /does not decrease as the room cools/);
-    assert.match(markup, /20\.5 °C/);
+    assert.match(markup, /data-oq-warmup-reading="roomSetpoint">20\.50 °C/);
     assert.deepEqual(state.entities, entities);
     assert.equal(state.inputDrafts.warmupStep, "0.2");
   } finally {
     setLocale("nl", { persist: false });
   }
-  assert.match(renderControlledWarmupField(), /18,1 °C/);
+  assert.match(renderControlledWarmupField(), /data-oq-warmup-reading="roomTemp">18,06 °C/);
 });
 
 test("inactive limiter has neutral copy without inventing a cause", () => {
@@ -85,7 +87,7 @@ test("warmup explanations distinguish thermostat changes, measured room steps an
   const examples = {
     nl: [
       /vóór je de gewenste temperatuur op je thermostaat verhoogt/,
-      /al op 20,5 °C[\s\S]+start er nog geen opwarming/,
+      /al op 20,5 °C[\s\S]+normale regeling naar dat doel verwarmen/,
       /niet de gemeten kamertemperatuur/,
       /van 17 naar 20,5 °C[\s\S]+verhoging van 3,5 °C/,
       /Van 19 naar 20,5 °C[\s\S]+precies 1,5 °C[\s\S]+dus geen start/,
@@ -95,7 +97,7 @@ test("warmup explanations distinguish thermostat changes, measured room steps an
     ],
     en: [
       /before raising the desired temperature on your thermostat/,
-      /already set to 20\.5 °C[\s\S]+Warmup does not start yet/,
+      /already set to 20\.5 °C[\s\S]+Normal control continues heating towards that target/,
       /not the measured room temperature/,
       /raising 17 to 20\.5 °C[\s\S]+increase of 3\.5 °C/,
       /Raising 19 to 20\.5 °C[\s\S]+exactly 1\.5 °C[\s\S]+warmup does not start/,
@@ -121,7 +123,9 @@ test("missing diagnostics remain unknown instead of inventing idle or zero value
     reset({ warmupEnabled: { value: true, state: true }, warmupActive: diagnostic });
     const markup = renderControlledWarmupField();
     assert.match(markup, /Status onbekend/);
-    assert.match(markup, /<strong data-oq-warmup-reading="warmupEffectiveTarget">—<\/strong>/);
+    for (const key of ["roomTemp", "warmupEffectiveTarget", "roomSetpoint"]) {
+      assert.match(markup, new RegExp(`<strong data-oq-warmup-reading="${key}">—<\\/strong>`));
+    }
     assert.doesNotMatch(markup, /0,0 °C/);
   }
 });
@@ -134,6 +138,7 @@ test("warmup backup contains settings only and heating hydrates both setting and
   reset();
   const keys = getSettingsGroupHydrationKeys("heating");
   assert.ok(keys.includes("roomSetpoint"));
+  assert.ok(keys.includes("roomTemp"));
   for (const key of [...WARMUP_SETTING_KEYS, ...WARMUP_STATE_KEYS]) {
     assert.ok(ENTITY_DEFS[key]);
     assert.ok(keys.includes(key), key);

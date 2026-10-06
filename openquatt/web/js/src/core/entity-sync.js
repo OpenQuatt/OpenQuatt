@@ -271,6 +271,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
       ...SERVICE_CONTROL_KEYS,
     ],
     heating: [
+      "roomTemp",
       "roomSetpoint",
       ...WARMUP_SETTING_KEYS,
       ...WARMUP_STATE_KEYS,
