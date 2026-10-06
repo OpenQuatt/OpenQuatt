@@ -1,8 +1,8 @@
 # HIL-plan: doorverwarmen tussen opwarmstappen
 
-Status: voorbereid, **niet uitgevoerd**. Het lab is bezet. Geen preflight,
-controller-/simulatorrequests, flash of OTA voor deze wijziging uitgevoerd.
-Dit plan kwalificeert geen firmware en sluit de bestaande geheugenbevinding niet.
+Status: control-HIL uitgevoerd op 6 oktober 2026; aanvullende proeven worden
+hieronder afzonderlijk verantwoord. Dit kwalificeert geen runtime-geheugenbudget
+en sluit de bestaande geheugenbevinding niet.
 
 ## Aanleiding en lokaal bewijs
 
@@ -24,7 +24,8 @@ heat-intent State 20 B, Input 40 B, Decision 28 B. Onafhankelijke koude review v
 de complete PR-diff en de interruptie-/waterherstelgrenzen heeft geen resterende
 codebevindingen. Dit zijn geen nieuwe firmware-heapmetingen. AddressSanitizer
 startte lokaal niet door en is afgebroken; daarvoor is geen resultaat verkregen.
-Geen volledige kandidaat-firmwarecompile of actuele visuele browserproef uitgevoerd.
+Q WiFi Duo en Single zijn volledig gecompileerd en via OTA op het testdevice
+geverifieerd. Geen actuele visuele browserproef uitgevoerd.
 
 ```sh
 bash scripts/run_host_regression_tests.sh
@@ -35,11 +36,11 @@ python3 scripts/dev.py validate --config-only --config configs/heatpump_controll
 Dit is een replay van ingevoerde kamertemperaturen, geen model dat de warmteafgifte
 van een woning voorspelt. De fixture gebruikt de echte lifecycle, inputadapter,
 intent, demand en low-load helpers, met de bestaande PH-floor-glue nagebootst.
-Dispatch, minimum on/off tijden en de fysieke terugmelding moeten nog op HIL worden
-bevestigd. Een onderbroken run wegens toestemming, waterlimiet, defrost of een
+Dispatch, minimum on/off tijden en ODU-terugmelding zijn voor de kernproef ook op
+HIL gecontroleerd. Een onderbroken run wegens toestemming, waterlimiet, defrost of een
 andere guard is niet automatisch het oude tussendoelprobleem.
 
-## Voorbereiding zodra het lab vrij is
+## Testopzet
 
 - Gebruik `configs/heatpump_controller_q/duo_wifi.yaml` voor Jeroens standaardlab.
   Herhaal de kernproef op Single om de topologie van de tester te dekken.
@@ -51,7 +52,7 @@ andere guard is niet automatisch het oude tussendoelprobleem.
   hcq-hil-skill/REST-reference; verzin geen endpoints.
 - Leg bron-SHA, binary-SHA256, config-hash, simulatorversie/SHA, Single/Duo-profiel,
   alle benodigde instellingen en de oorspronkelijke firmware vast. Bouw met
-  testnaam `openquatt-test`. Flash/OTA pas tijdens de latere afgesproken HIL-run.
+  testnaam `openquatt-test`. Flash/OTA alleen met toestemming voor het testdevice.
 - Stel Power House, automatische regeling, warmtetoestemming, geldige ODU- en
   waterwaarden en nul externe demand expliciet in. Zet run extension uit om de
   warmup-floor zelfstandig te kunnen beoordelen. Gebruik een huismodel en
@@ -128,3 +129,79 @@ Bewaar begrensde geredigeerde logs en meetreeksen met checksums. Noteer de
 uiteindelijke controller-/simulatorinstellingen en firmware. Laat geen actieve
 fault injection of ongebruikte fixture achter. Behandel de aparte heap/P1-proef
 en de historische firmwarekwalificatie onafhankelijk van deze controlfix.
+
+## Meetresultaten 6 oktober 2026
+
+Kandidaatbron: `4830dece770b677f6888eef574dcc7ff3db3f09c`. Private overlays gebruiken
+de gewone Q WiFi-configs, testnaam `openquatt-test` en uitsluitend een kortere
+NVS-schrijfvertraging van 1 s. Geen versnelde regel-/veiligheidsklokken en geen
+room-precisieoverlay. Nummer-REST toont 20,06 afgerond als 20,1, maar geselecteerde
+sensor geeft de geschreven 20,06 ongewijzigd door; die geselecteerde waarde is
+na iedere precieze write gecontroleerd.
+
+| Profiel | Config-hash na OTA | OTA binary SHA256 |
+| --- | --- | --- |
+| Q WiFi Duo | `0x57f4228d` | `3709c7b93a4799709d3452c1fcac530bf9247ae9214a0dedb2d62bef502c61ad` |
+| Q WiFi Single | `0xb3fe1313` | `c415626d5c491c7dc0dffaacac1eab7ed46fbb601c8a9edadcdd2029addc1867` |
+
+Simulator: v0.5.0, contract `openquatt-modbus-opentherm-v2`, beide ODU's V1.5,
+adressen 1/2. De exacte geflashte simulatorbron-SHA is niet blootgesteld; een
+lokale checkout-SHA is daarvoor geen bewijs. Identiteit, contract en inactieve
+servicestanden zijn vóór mutaties gecontroleerd; één exclusieve lablock is gebruikt.
+
+Voor de kernproef: kamer/setpoint/buiten/CH via API, Power House, run extension
+uit, buiten 19,6 °C en huisvraag aantoonbaar 0 W. Flow via ODU, 800 L/h gevraagd
+en circa 797 L/h gemeten. Stap 0,1 °C, staptijd 45 min, startgrens 1,5 °C,
+comfort below 0,1 °C, minimumlooptijd 300 s en minimum-uit-tijd 240 s. De behouden
+fixturewaarde `Power House temperature reaction` bleek 0 W/K; de nulmodelproef
+beoordeelt dus de warmup-floor zonder gewone PH-temperatuurfeedback.
+
+| Proef | Resultaat | Waargenomen gedrag |
+| --- | --- | --- |
+| Duo: 20,10 / 20,11 bij tussendoel 20,16 | PASS | Request ≥ Pmin 2.527,63 W; HP1 applied 1, ODU1 mode 2. Frequentie 30 Hz in 45 aparte terugmeldingen over oude-stophold/eerste volgende stap; latere fasen alleen sampled applied/mode-terugmelding. |
+| Duo: vasthouden op 20,11 | PASS | 41 meetpunten over 226 s; laatste meetpunt > 300 s na eerste bevestigde start. Minimumlooptijd maskeert de stop dus niet. |
+| Duo: 20,17 → 20,28 → 20,39 | PASS | Tussendoel 20,27 → 20,38 → 20,49, geen compressorstop tussen stappen. |
+| Single: dezelfde vijf fasen | PASS, kort | Circa 34 s per fase; HP1 applied 1 en ODU1 mode 2 blijven actief, request ≥ Pmin, huisvraag 0 W. De oude-grenshold kwam hier niet voorbij 300 s runleeftijd. |
+| Duo: echte ondergrens 21,90 bij doel 22 | PASS, handoff | Sessie eindigt; tussendoel wordt 22 en de oude run stopt. Normale recovery kan op de inclusieve ondergrens opnieuw starten; geen claim van blijvende uitschakeling. |
+| Duo: gewone recovery vrijgegeven | PASS | Op 21,96 verdwijnen request en latch; definitief stil na CH uit/CM0 en gewone minimumlooptijd. |
+| Single: instellingen wijzigen tijdens bestaande sessie, daarna doel 24 | Continuïteitsproef mislukt | Annulering bij wijziging staptijd valt terug op 0 W/K-feedback/huisvraag 0: CM1-stop is al ingezet vóór nieuwe sessie. Niet als tussendoelregressie of schone running-entry-PASS geïnterpreteerd. |
+| Single: reeds draaiende HP, daarna alleen doel 22 → 24 | PASS | Comfort below 0,2 °C/stap 0,1 °C/staptijd 5 min en reactie 3.000 W/K vooraf ingesteld. 58 meetpunten over circa 322 s: HP1 blijft actief, ODU1 mode 2; request zakt tot Pmin zonder stop. |
+| Single: onbereikt tussendoel na 5 min | PASS | Kamer blijft 20,39 °C; tussendoel 20,49 → 20,59. Eerste nieuwe gepubliceerde meetwaarde 311 s na doelwrite, compressor blijft draaien. Dit is timeoutgroei, geen vaste opwarmsnelheid. |
+| Single: waterlimiet tijdens warmup | PASS | Maximum water 60 → 25 °C bij geselecteerd water 32,24 °C: laatste meetpunten request 0, HP1 applied 0 en ODU1 mode 0, warmup nog actief. |
+| Single: waterlimiet vrij, CH-toestemming uit | PASS | Waterlimiet terug op 60 °C, maar CH uit: 8 meetpunten request/output 0; geen warmup-floor door toestemming heen. |
+| Single: toestemming terug tijdens minimum-uit-tijd | PASS, blokkering | 7 meetpunten fysiek uit, request 0/latch uit. Intent gaat van `none` naar nieuwe `room_demand`; geen oud runrecht. Geen volledige herstart na afloop van minimum-uit-tijd in deze fase gekwalificeerd. |
+| Single: doel 24 → 23 / warmup uit | PASS, sessie | Sessie eindigt en effectief doel wordt respectievelijk 23/24. Met CH uit gecontroleerd; geen afzonderlijke compressorinterruptieproef. |
+| Single: weer inschakelen | PASS, geen replay | Doel blijft 24; sessie blijft uit. Alleen een nieuwe echte verhoging 18 → 24 activeert haar opnieuw. |
+| Single: roombron HA en terug naar API | PASS, ontbrekende invoer | HA-bron geeft `NA`: sessie annuleert; terugkeer naar verse API-waarde bij gelijk doel start haar niet opnieuw. Geen overdracht tussen twee verse bronnen gekwalificeerd. |
+| Single: PH → heating curve → PH | PASS, sessie | Verse API-room blijft 20,39; sessie annuleert en keert niet terug bij gelijk doel. CH blijft uit. |
+| Single: herstart met actieve sessie / CH uit | PASS, herstel | Uptime 0,700438 → 0,017189 h bewijst herstart. Enable/stap/staptijd/startgrens/comfort/PH-reactie/waterlimiet/minimumlooptijd blijven behouden. Sessie blijft uit, ook na opnieuw invoeren van kamer 20,39 en hetzelfde doel 24. Geen reboot met draaiende compressor gekwalificeerd. |
+
+De mislukte aanvullende fase blijft in de meetreeks staan. Bounded SSE toont
+17:40:00 UTC vraag 0 en CM1/postflow; om 17:40:30 is vraag terug maar postflow
+kiest nog standby. ODU-stop om 17:41:03 gaat vooraf aan nieuwe CM2 om 17:41:05.
+De HTTP-sensor `P_req` heeft een andere publicatiecadence dan de interne request;
+gecachete Pmin-vraag tijdens die overgang is geen bewijs van een blijvende vraag.
+De onafhankelijke analyse bevestigt dit onderscheid.
+
+Waterbron bleef `HA input`. De waterproef verlaagt de bestaande grens tegenover
+de daadwerkelijk geselecteerde waterwaarde; dit is geen PT1000-/ODU-sensorproef
+of supply-temperature-API-test. Het waterlimietresultaat beoordeelt de downstream
+guard, geen thermisch woningmodel. Defrost, een volledige freshness-timeout van
+10 min en de 8-uursgrens zijn niet opnieuw op HIL uitgevoerd. Freshness, 8 uur,
+annuleringen en waterinterruptie/herstel zijn wel in de C++-regressie getest.
+
+Eindstand: opnieuw de verzegelde Duo-binary `0x57f4228d`, `Force CM0`, CH uit,
+functie ingeschakeld en sessie inactief, doel 18 °C bij kamer
+20,39 °C. Staptijd terug op 45 min, comfort below 0,1 °C, PH-reactie 3.000 W/K,
+waterlimiet 60 °C. Beide applied levels, ODU-modes en compressorfrequenties nul;
+servicefuncties, manual telemetry, force-no-flow en defrost uit. Flowbron ODU en
+simulator external system pump flow blijven ingesteld. De runner meldde succesvolle
+vrijgave, eindigde met code 0 en afwezigheid van de lablock is afzonderlijk bevestigd.
+
+Bewijs: [545 geredigeerde meetpunten](hil-warmup-step-continuity-2026-10-06.csv)
+en [identiteit, verdicts, herstart-/eindstand en SHA256-manifest](hil-warmup-step-continuity-2026-10-06.json).
+CSV bevat ook de mislukte settingsproef en de startupwaarden; niet alleen de
+geslaagde fasen. Timestamps zijn UTC. De ruwe bounded logstream en detailfeedback
+blijven privé; het manifest verzegelt ze zonder netwerk-/installatiegegevens te publiceren.
+Control- en bewijsreview zijn onafhankelijk uitgevoerd. Deze nominale regelproef
+bevestigt geen heapreserve of historische crashoorzaak: P1 blijft open.
