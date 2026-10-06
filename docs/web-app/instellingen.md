@@ -7,7 +7,7 @@ Open **Instellingen** in de web-app en kies de groep die bij je vraag past. Voor
 | Wat wil je aanpassen? | Groep |
 | --- | --- |
 | Buitenunits, flowregeling of aanvullende warmtebron | [Installatie](#installatie) |
-| Verwarmingsstrategie, stooklijn of huismodel | [Verwarmen](#verwarmen) |
+| Verwarmingsstrategie, comfort, stooklijn of huismodel | [Verwarmen](#verwarmen) |
 | Koelvenster, koelvraag of dauwpuntbeveiliging | [Koelen](#koelen) |
 | Sensoren en externe invoer | [Bronnen / integraties](#bronnen-integraties) |
 | Ontluchten, testen, kalibreren of buitenunitinstellingen | [Service](#service) |
@@ -43,6 +43,34 @@ Hier kies en verfijn je de verwarmingsstrategie:
 - `Stooklijnregeling`.
 
 `Power House` probeert de warmtevraag van je woning te schatten. `Stooklijnregeling` stuurt op een aanvoerdoel op basis van de buitentemperatuur. Begin bij [Verwarmen en comfort](../dagelijks/verwarmen.md) als je nog niet zeker weet welke strategie bij je past.
+
+#### Power House comfortregeling
+
+Bij **Instellingen → Verwarmen → Power House comfortregeling** stel je de reactie op de kamertemperatuur in. **Temperatuurreactie** bepaalt hoe sterk die reactie is. **Comfort onder setpoint** bepaalt de koude comfortgrens: bij 21,0 °C gewenst en 0,2 °C ondermarge ligt die op 20,8 °C. Een grotere ondermarge laat meer afkoeling toe.
+
+**Comfort boven setpoint** beïnvloedt de opgebouwde comfortcorrectie (*comfort memory*) en de afbouw daarvan. Zonder opgebouwde comfortcorrectie begint warme tegensturing al boven het setpoint. Comfort memory kan de extra opwarming langer laten doorwerken, ook boven het setpoint. Deze comfortmarges zijn geen vaste compressor-start- of stoptemperaturen; Power House blijft de benodigde warmte berekenen.
+
+#### Langer doorverwarmen
+
+Dit blok staat binnen **Power House comfortregeling**. Het laat een bestaande verwarmingsrun bij heel weinig vraag doorgaan op minimumvermogen en bepaalt wanneer daarna warme herstart mogelijk wordt.
+
+1. Zet **Langer doorverwarmen** aan als je dit wilt gebruiken; standaard staat het uit.
+2. Kies bij **Doorverwarmen tot** de stopmarge boven je gewenste temperatuur: 0,1–1,0 °C, standaard +0,5 °C.
+3. Kies bij **Afkoelen vóór warme herstart** de daling vanaf die stoptemperatuur: 0,1–3,0 °C, standaard 0,2 °C.
+
+De web-app toont de berekende stop- en herstarttemperatuur bij je actuele setpoint. Tijdens bewerken is dit een voorvertoning. De informatieknoppen bij de velden geven extra uitleg met getalvoorbeelden.
+
+Voorbeeld: je gewenste temperatuur is **21,0 °C**, de stopmarge **+0,7 °C** en **Comfort onder setpoint 0,2 °C**. De comfortstop ligt dan op **21,7 °C** en de koude comfortgrens op **20,8 °C**.
+
+| Afkoelen vóór warme herstart | Herstart mogelijk vanaf | Wat betekent dit? |
+| --- | --- | --- |
+| 0,2 °C | 21,5 °C | Vroeg herstarten, nog boven de gewenste temperatuur |
+| 0,7 °C | 21,0 °C | Afkoelen tot de gewenste temperatuur |
+| 1,2 °C | 20,8 °C | De berekende 20,5 °C ligt onder de koude comfortgrens; die grens gaat voor |
+
+**Herstart mogelijk** betekent dat de regeling weer mag starten zodra er voldoende warmtevraag is en de normale voorwaarden dat toelaten. De comfortstop is geen gegarandeerde maximumtemperatuur: restwarmte kan de kamer verder opwarmen. Een grotere afkoeling stelt normale warmtevraag nooit uit tot onder de koude comfortgrens.
+
+Uitschakelen van langer doorverwarmen laat de gewone verwarming actief. De instellingen blijven na een controllerherstart behouden. Zie [Power House: langer doorverwarmen](../power-house.md#langer-doorverwarmen-optioneel) voor de precieze werking, statussen en het gedrag na een herstart.
 
 #### Stooklijn en actueel aanvoerdoel
 

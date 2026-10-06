@@ -4,6 +4,8 @@ Deze pagina is bedoeld voor gebruikers die `Power House` net iets beter willen b
 
 > Zoek je vooral de korte uitleg? Begin dan bij [Verwarmen en comfort](dagelijks/verwarmen.md).
 
+> Wil je comfort of langer doorverwarmen instellen? Zie [Power House comfortregeling in de web-app](web-app/instellingen.md#power-house-comfortregeling).
+
 ## Wat is Power House in gewone taal?
 
 `Power House` stuurt niet eerst op een vaste aanvoertemperatuur, maar op de warmtevraag van het huis.
@@ -44,7 +46,7 @@ Praktisch merk je dan:
 
 ### Bijna goed
 
-Binnen de comfortband blijft de directe reactie juist rustiger.
+Zonder opgebouwde comfortcorrectie blijft de directe kamercorrectie vlak tussen de koude comfortgrens en het setpoint. Opgebouwde comfort memory kan de extra opwarming langer laten doorwerken, ook boven het setpoint.
 
 Praktisch merk je dan:
 
@@ -54,7 +56,7 @@ Praktisch merk je dan:
 
 ### Te warm
 
-Boven de bovengrens van de comfortband remt `Power House` de warmtevraag af.
+Zonder opgebouwde comfortcorrectie remt `Power House` de warmtevraag al boven het setpoint af. Comfort memory kan die tegensturing nog uitstellen. De bovengrens van de comfortband beïnvloedt comfort memory en de afbouw daarvan; zij is geen compressor-stoptemperatuur.
 
 Praktisch merk je dan:
 
@@ -247,7 +249,7 @@ De web-app toont de werkelijke begrensde herstarttemperatuur en legt uit wanneer
 
 ### Comfortband en doorverwarmen zijn verschillende dingen
 
-`Comfort below/above` beïnvloeden de normale kamercorrectie, verborgen comfort memory en room intent. Ze zijn geen vaste compressor-start- en stoptemperaturen. Warme tegensturing begint al vanaf het setpoint; `comfort above` beïnvloedt comfort memory en de afbouw daarvan.
+`Comfort below/above` beïnvloeden de normale kamercorrectie, verborgen comfort memory en room intent. Ze zijn geen vaste compressor-start- en stoptemperaturen. Zonder opgebouwde comfortcorrectie begint warme tegensturing al boven het setpoint; comfort memory kan de extra opwarming daar nog laten doorwerken. `Comfort above` beïnvloedt comfort memory en de afbouw daarvan.
 
 De stopmarge en herstartafstand horen bij het aparte doorverwarmen-mechanisme. Kleine afkoeling kan passen als je vroeg wilt herstarten; grotere afkoeling geeft opgeslagen warmte meer tijd om af te geven. Er zijn geen aparte regelmodi voor radiatoren, LT-radiatoren en vloerverwarming. Er is geen garantie op lager elektriciteitsverbruik.
 
