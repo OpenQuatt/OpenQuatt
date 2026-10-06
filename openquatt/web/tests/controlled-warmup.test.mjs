@@ -86,8 +86,8 @@ test("inactive limiter has neutral copy without inventing a cause", () => {
 test("warmup explanations distinguish thermostat changes, measured room steps and timeout with numeric examples", () => {
   const examples = {
     nl: [
-      /vóór je de gewenste temperatuur op je thermostaat verhoogt/,
-      /al op 20,5 °C[\s\S]+normale regeling naar dat doel verwarmen/,
+      /vóór de thermostaat vanuit de nachtstand omhoog gaat/,
+      /al op 20,5 °C[\s\S]+gewoon verder naar 20,5 °C[\s\S]+niet alsnog in kleine stappen/,
       /niet de gemeten kamertemperatuur/,
       /van 17 naar 20,5 °C[\s\S]+verhoging van 3,5 °C/,
       /Van 19 naar 20,5 °C[\s\S]+precies 1,5 °C[\s\S]+dus geen start/,
@@ -96,8 +96,8 @@ test("warmup explanations distinguish thermostat changes, measured room steps an
       /na 45 minuten nog 18,0 °C[\s\S]+van 0,1 naar 0,2 °C[\s\S]+nieuwe tussendoel 18,2 °C/,
     ],
     en: [
-      /before raising the desired temperature on your thermostat/,
-      /already set to 20\.5 °C[\s\S]+Normal control continues heating towards that target/,
+      /before the thermostat temperature rises from its night setting/,
+      /already set to 20\.5 °C[\s\S]+continues normal heating towards 20\.5 °C[\s\S]+not converted to small steps/,
       /not the measured room temperature/,
       /raising 17 to 20\.5 °C[\s\S]+increase of 3\.5 °C/,
       /Raising 19 to 20\.5 °C[\s\S]+exactly 1\.5 °C[\s\S]+warmup does not start/,
