@@ -98,23 +98,25 @@ body:
       required: false
 
   - type: textarea
-    id: debug_recording
+    id: system_recording
     attributes:
-      label: Debugopname uit de web-app
+      label: Diagnosebestand uit de Systeemrecorder
       description: |
-        Voeg bij runtime-, control-, sensor-, flow-, boiler-, Modbus-, of dashboardproblemen bij voorkeur een debugopname toe.
+        Voeg bij problemen met de regeling, sensoren, flow, ketel, Modbus of het dashboard bij voorkeur een diagnosebestand uit de Systeemrecorder toe.
+        De Systeemrecorder bewaart continu recente systeemgegevens lokaal op het apparaat; je hoeft niet vooraf een opname te starten.
 
-        Proces:
+        Zo voeg je het bestand toe:
         1. Open de OpenQuatt web-app.
-        2. Ga naar Instellingen/System en zoek onder Diagnostiek naar Debugopname.
-        3. Klik Openen.
-        4. Kies een passende duur. Gebruik liefst een periode waarin het probleem optreedt.
-        5. Klik Start opname en laat de opname doorlopen tot het probleem zichtbaar is geweest.
-        6. Klik Download supportbestand.
-        7. Voeg het gedownloade `*.oqdebug.json` bestand toe aan dit issue door het in dit veld te slepen.
+        2. Ga naar Instellingen > Systeem > Diagnostiek > Systeemrecorder en klik Openen. Je kunt ook Systeemrecorder kiezen via de drie puntjes rechtsboven.
+        3. Kies onder Exporteren de laatste 15, 30 of 60 minuten, of Alles. Kies een periode waarin het probleem optrad.
+        4. Klik Download bestand. Doe dit bij voorkeur voordat je OpenQuatt herstart of een nieuwe opname start: daarmee wordt de bestaande historie gewist.
+        5. Voeg het gedownloade `*.oqdebug.json`-bestand toe door het in dit veld te slepen. Vermeld ook het tijdstip waarop het probleem optrad.
 
-        Deel het bestand alleen als je akkoord bent met het delen van diagnostische statusdata uit je installatie. Controleer bij twijfel op lokale gevoelige data.
-      placeholder: Sleep het gedownloade *.oqdebug.json bestand hierheen, of beschrijf waarom geen debugopname beschikbaar is.
+        Staat Doorlopende opname uit? Schakel deze in en laat het probleem opnieuw optreden voordat je het bestand downloadt.
+        Is de Systeemrecorder niet beschikbaar, vermeld dat dan hieronder.
+
+        Er wordt niets automatisch verzonden. Deel het bestand alleen als je akkoord bent met het delen van diagnostische statusdata uit je installatie. Controleer bij twijfel op lokale gevoelige data.
+      placeholder: Sleep het gedownloade *.oqdebug.json-bestand hierheen en vermeld het tijdstip van het probleem, of beschrijf waarom geen diagnosebestand beschikbaar is.
     validations:
       required: false
 
