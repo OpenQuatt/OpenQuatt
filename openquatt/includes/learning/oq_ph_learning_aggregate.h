@@ -15,6 +15,7 @@ struct SegmentAccumulator {
   uint32_t start_epoch_s = 0;
   uint32_t last_epoch_s = 0;
   uint32_t context_revision = 0;
+  float room_start_c = NAN;
   float last_room_c = NAN;
   float last_setpoint_c = NAN;
   float last_outside_c = NAN;
@@ -30,6 +31,8 @@ struct SegmentAccumulator {
   double setpoint_integral = 0.0;
   double outside_integral = 0.0;
   double heat_integral = 0.0;
+  float hourly_effective_outside_c[24]{};
+  double hour_effective_integral = 0.0;
   double trend_w = 0.0;
   double trend_wt = 0.0;
   double trend_wtt = 0.0;
@@ -55,6 +58,7 @@ inline void seed_segment(SegmentAccumulator& state, const LearningSnapshot& snap
   state.start_epoch_s = snapshot.epoch_s;
   state.last_epoch_s = snapshot.epoch_s;
   state.context_revision = snapshot.context_revision;
+  state.room_start_c = snapshot.room_c;
   state.last_room_c = snapshot.room_c;
   state.last_setpoint_c = snapshot.setpoint_c;
   state.last_outside_c = snapshot.outside_c;
@@ -100,6 +104,58 @@ inline void update_last(SegmentAccumulator& state, const LearningSnapshot& snaps
   state.setpoint_max_c = fmaxf(state.setpoint_max_c, snapshot.setpoint_c);
 }
 
+inline void integrate_interval(SegmentAccumulator& state, const LearningSnapshot& snapshot) {
+  const double dt_s = static_cast<double>(snapshot.monotonic_ms - state.last_monotonic_ms) / 1000.0;
+  const double start_s = static_cast<double>(state.last_monotonic_ms - state.start_monotonic_ms) / 1000.0;
+  const double stop_s = static_cast<double>(snapshot.monotonic_ms - state.start_monotonic_ms) / 1000.0;
+  const double mid_s = start_s + 0.5 * dt_s;
+  const double room = 0.5 * (static_cast<double>(state.last_room_c) + snapshot.room_c);
+  const double outside = 0.5 * (static_cast<double>(state.last_outside_c) + snapshot.outside_c);
+  const double effective_start = state.last_outside_c + kReferenceRoomC - state.last_room_c;
+  const double effective_end = snapshot.outside_c + kReferenceRoomC - snapshot.room_c;
+  double cursor_s = start_s;
+  while (cursor_s < stop_s) {
+    const size_t hour = static_cast<size_t>(cursor_s / 3600.0);
+    const double end_s = fmin(stop_s, (hour + 1U) * 3600.0);
+    const double fraction = ((cursor_s + end_s) * 0.5 - start_s) / dt_s;
+    state.hour_effective_integral +=
+        (effective_start + fraction * (effective_end - effective_start)) * (end_s - cursor_s);
+    if (end_s == (hour + 1U) * 3600.0) {
+      state.hourly_effective_outside_c[hour] = static_cast<float>(state.hour_effective_integral / 3600.0);
+      state.hour_effective_integral = 0.0;
+    }
+    cursor_s = end_s;
+  }
+  state.integrated_duration_s = stop_s;
+  state.room_integral += room * dt_s;
+  state.setpoint_integral += 0.5 * (static_cast<double>(state.last_setpoint_c) + snapshot.setpoint_c) * dt_s;
+  state.outside_integral += outside * dt_s;
+  state.heat_integral += 0.5 * (static_cast<double>(state.last_heat_w) + snapshot.heat_to_water_w) * dt_s;
+  state.trend_w += dt_s;
+  state.trend_wt += dt_s * mid_s;
+  state.trend_wtt += dt_s * mid_s * mid_s;
+  state.trend_wr += dt_s * room;
+  state.trend_wtr += dt_s * mid_s * room;
+  update_last(state, snapshot);
+}
+
+inline LearningSnapshot interpolate_boundary(const SegmentAccumulator& state, const LearningSnapshot& snapshot,
+                                             uint64_t boundary_ms) {
+  LearningSnapshot boundary = snapshot;
+  const double fraction =
+      static_cast<double>(boundary_ms - state.last_monotonic_ms) / (snapshot.monotonic_ms - state.last_monotonic_ms);
+  boundary.monotonic_ms = boundary_ms;
+  // Preserve tolerated UTC drift rather than assigning a synthetic future
+  // timestamp that append_record() would reject as stale.
+  boundary.epoch_s = state.last_epoch_s + static_cast<uint32_t>(fraction * (snapshot.epoch_s - state.last_epoch_s));
+  boundary.room_c = state.last_room_c + fraction * (snapshot.room_c - state.last_room_c);
+  boundary.setpoint_c = state.last_setpoint_c + fraction * (snapshot.setpoint_c - state.last_setpoint_c);
+  boundary.outside_c = state.last_outside_c + fraction * (snapshot.outside_c - state.last_outside_c);
+  boundary.heat_to_water_w = state.last_heat_w + fraction * (snapshot.heat_to_water_w - state.last_heat_w);
+  boundary.mean_water_c = state.water_end_c + fraction * (snapshot.mean_water_c - state.water_end_c);
+  return boundary;
+}
+
 inline SegmentRecord make_record(const SegmentAccumulator& state) {
   SegmentRecord record;
   record.start_epoch_s = state.start_epoch_s;
@@ -121,6 +177,21 @@ inline SegmentRecord make_record(const SegmentAccumulator& state) {
     const double slope_k_per_s = (state.trend_w * state.trend_wtr - state.trend_wt * state.trend_wr) / denominator;
     record.room_trend_k_per_h = static_cast<float>(slope_k_per_s * 3600.0);
   }
+  const float endpoint_trend = (state.last_room_c - state.room_start_c) * 3600.0f / record.duration_s;
+  if (fabsf(endpoint_trend) > fabsf(record.room_trend_k_per_h)) record.room_trend_k_per_h = endpoint_trend;
+  float sorted[24];
+  for (size_t index = 0; index < 24; ++index) {
+    const float value = state.hourly_effective_outside_c[index];
+    size_t insert = index;
+    while (insert > 0 && sorted[insert - 1] > value) {
+      sorted[insert] = sorted[insert - 1];
+      --insert;
+    }
+    sorted[insert] = value;
+  }
+  for (size_t group = 0; group < kDailyTemperatureProfileSize; ++group)
+    record.effective_outside_profile_centi[group] = static_cast<int16_t>(
+        lroundf((sorted[3 * group] + sorted[3 * group + 1] + sorted[3 * group + 2]) * (100.0f / 3.0f)));
   return record;
 }
 
@@ -158,35 +229,27 @@ inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningS
 
   if (measurement_status != LearningStatus::OK) {
     // Never bridge a missing/invalid observation, but restart as soon as valid
-    // data returns instead of waiting for the old four-hour window to expire.
+    // data returns instead of waiting for the old day to expire.
     reset_segment(state);
     result.status = measurement_status;
     return result;
   }
 
-  const double dt_s = static_cast<double>(snapshot.monotonic_ms - state.last_monotonic_ms) / 1000.0;
-  const double elapsed_mid_s =
-      static_cast<double>(state.last_monotonic_ms - state.start_monotonic_ms) / 1000.0 + 0.5 * dt_s;
-  const double mean_room_c = 0.5 * (static_cast<double>(state.last_room_c) + snapshot.room_c);
-  state.integrated_duration_s += dt_s;
-  state.room_integral += mean_room_c * dt_s;
-  state.setpoint_integral += 0.5 * (static_cast<double>(state.last_setpoint_c) + snapshot.setpoint_c) * dt_s;
-  state.outside_integral += 0.5 * (static_cast<double>(state.last_outside_c) + snapshot.outside_c) * dt_s;
-  state.heat_integral += 0.5 * (static_cast<double>(state.last_heat_w) + snapshot.heat_to_water_w) * dt_s;
-  state.trend_w += dt_s;
-  state.trend_wt += dt_s * elapsed_mid_s;
-  state.trend_wtt += dt_s * elapsed_mid_s * elapsed_mid_s;
-  state.trend_wr += dt_s * mean_room_c;
-  state.trend_wtr += dt_s * elapsed_mid_s * mean_room_c;
-  detail::update_last(state, snapshot);
-
-  if (snapshot.monotonic_ms - state.start_monotonic_ms < kSegmentDurationMs) return result;
-
+  const uint64_t boundary_ms = state.start_monotonic_ms + kSegmentDurationMs;
+  if (snapshot.monotonic_ms < boundary_ms) {
+    detail::integrate_interval(state, snapshot);
+    return result;
+  }
+  const LearningSnapshot boundary = detail::interpolate_boundary(state, snapshot, boundary_ms);
+  detail::integrate_interval(state, boundary);
   result.record = detail::make_record(state);
   result.status = validate_segment_record(result.record, config);
   result.has_record = result.status == LearningStatus::OK;
   if (result.has_record) result.status = LearningStatus::SEGMENT_READY;
-  reset_segment(state);
+  // Reuse the endpoint and carry any remainder into the next day: no heat or
+  // time is lost when the sample interval straddles the 24-hour boundary.
+  detail::seed_segment(state, boundary);
+  if (snapshot.monotonic_ms > boundary_ms) detail::integrate_interval(state, snapshot);
   return result;
 }
 

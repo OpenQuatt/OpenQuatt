@@ -47,7 +47,7 @@ void test_time_weighted_signed_heat() {
   double expected_energy_ws = 0.0;
   float previous_heat = 3000.0f;
   ObserveResult result;
-  for (uint32_t step = 0; step <= 48; ++step) {
+  for (uint32_t step = 0; step <= 288; ++step) {
     float heat_w = 0.0f;
     switch (step % 12U) {
       case 0:
@@ -68,8 +68,8 @@ void test_time_weighted_signed_heat() {
     previous_heat = heat_w;
   }
   assert(result.status == LearningStatus::SEGMENT_READY && result.has_record);
-  assert(result.record.duration_s == 14400U);
-  assert(fabs(result.record.mean_heat_w - expected_energy_ws / 14400.0) < 0.1);
+  assert(result.record.duration_s == 86400U);
+  assert(fabs(result.record.mean_heat_w - expected_energy_ws / 86400.0) < 0.1);
   assert(result.record.mean_heat_w < 3000.0f);  // Compressor-off and signed periods were integrated.
 }
 
@@ -78,14 +78,15 @@ void test_midnight_and_quantized_room() {
     SegmentAccumulator accumulator;
     ObserveResult result;
     const uint32_t start = 20000U * 86400U + 22U * 3600U;
-    for (uint32_t minute = 0; minute <= 240; ++minute) {
+    for (uint32_t minute = 0; minute <= 1440; ++minute) {
       auto value = snapshot(1000ULL + minute * 60000ULL, start + minute * 60U, 2500.0f);
       // A thermostat alternating between adjacent readings versus a lasting step.
       value.room_c = rising ? (minute < 120U ? 20.0f : 20.25f) : (minute % 2U == 0U ? 20.0f : 20.25f);
       result = observe_snapshot(accumulator, value, QualityConfig{});
     }
-    assert(result.has_record == !rising);
-    assert(result.status == (rising ? LearningStatus::ROOM_UNSTABLE : LearningStatus::SEGMENT_READY));
+    // Quantized readings and ordinary room changes no longer need to be flat.
+    assert(result.has_record && result.status == LearningStatus::SEGMENT_READY);
+    assert(fabsf(profile_mean_c(result.record) - effective_outside_c(result.record)) < 0.01f);
   }
 }
 
@@ -101,24 +102,24 @@ void test_fail_closed_boundaries() {
   assert(observe_snapshot(accumulator, stale, config).status == LearningStatus::INVALID_MEASUREMENT);
   assert(!accumulator.active);
   ObserveResult result;
-  for (uint32_t step = 2; step <= 48; ++step)
+  for (uint32_t step = 2; step <= 288; ++step)
     result = observe_snapshot(accumulator, snapshot(start_ms + step * 300000ULL, start_epoch + step * 300U, 1000.0f),
                               config);
   assert(result.status == LearningStatus::COLLECTING && !result.has_record && accumulator.active);
-  for (uint32_t step = 49; step <= 50; ++step)
+  for (uint32_t step = 289; step <= 290; ++step)
     result = observe_snapshot(accumulator, snapshot(start_ms + step * 300000ULL, start_epoch + step * 300U, 1000.0f),
                               config);
   assert(result.has_record && result.record.start_epoch_s == start_epoch + 600U);
-  assert(result.record.duration_s == 14400U);
+  assert(result.record.duration_s == 86400U);
   assert(fabsf(result.record.mean_heat_w - 1000.0f) < 0.01f);
 
-  observe_snapshot(accumulator, snapshot(start_ms + 20000000ULL, start_epoch + 20000U, 1000.0f), config);
-  auto changed = snapshot(start_ms + 20300000ULL, start_epoch + 20300U, 1000.0f);
+  observe_snapshot(accumulator, snapshot(start_ms + 100000000ULL, start_epoch + 100000U, 1000.0f), config);
+  auto changed = snapshot(start_ms + 100300000ULL, start_epoch + 100300U, 1000.0f);
   changed.context_revision = 4;
   assert(observe_snapshot(accumulator, changed, config).status == LearningStatus::MIXED_CONTEXT);
   assert(accumulator.active && accumulator.context_revision == 4);
 
-  auto jumped = snapshot(start_ms + 20600000ULL, start_epoch + 30000U, 1000.0f);
+  auto jumped = snapshot(start_ms + 100600000ULL, start_epoch + 200000U, 1000.0f);
   jumped.context_revision = 4;
   assert(observe_snapshot(accumulator, jumped, config).status == LearningStatus::TIME_DISCONTINUITY);
 
@@ -131,11 +132,11 @@ void test_fail_closed_boundaries() {
 }
 
 void test_invalid_sample_restarts_only_unfinished_window() {
-  for (uint32_t invalid_second : {10U, 14390U}) {
+  for (uint32_t invalid_second : {10U, 86390U}) {
     SegmentAccumulator accumulator;
     const uint32_t epoch = 20000U * 86400U;
     const uint32_t first_valid = invalid_second + 20U;
-    for (uint32_t second = 0; second <= first_valid + 14400U; second += 10U) {
+    for (uint32_t second = 0; second <= first_valid + 86400U; second += 10U) {
       auto value = snapshot(1000ULL + second * 1000ULL, epoch + second, 2000.0f);
       // Two consecutive invalid samples cannot be bridged or seed a new window.
       if (second == invalid_second || second == invalid_second + 10U) {
@@ -143,12 +144,12 @@ void test_invalid_sample_restarts_only_unfinished_window() {
         value.heat_to_water_w = 50000.0f;
       }
       const auto result = observe_snapshot(accumulator, value, QualityConfig{});
-      if (second < first_valid + 14400U)
+      if (second < first_valid + 86400U)
         assert(!result.has_record);
       else {
         assert(result.has_record);
         assert(result.record.start_epoch_s == epoch + first_valid);
-        assert(result.record.duration_s == 14400U);
+        assert(result.record.duration_s == 86400U);
         assert(fabsf(result.record.mean_heat_w - 2000.0f) < 0.01f);
       }
       if (value.invalid_reasons != INVALID_NONE) assert(!accumulator.active);
@@ -161,10 +162,10 @@ void test_nonpositive_segment_and_record_bounds() {
   config.max_interval_ms = 5U * 60U * 1000U;
   SegmentAccumulator accumulator;
   ObserveResult result;
-  for (uint32_t step = 0; step <= 48; ++step)
+  for (uint32_t step = 0; step <= 288; ++step)
     result = observe_snapshot(accumulator,
                               snapshot(1000 + step * 300000ULL, 20000U * 86400U + 3600U + step * 300U, 0.0f), config);
-  assert(result.status == LearningStatus::NONPOSITIVE_HEAT && !result.has_record);
+  assert(result.status == LearningStatus::SEGMENT_READY && result.has_record && result.record.mean_heat_w == 0.0f);
 
   SegmentRecord storage[kMaxSegmentRecords];
   RecordBuffer buffer{storage, 0, kMaxSegmentRecords};
@@ -215,9 +216,62 @@ void test_full_dataset_keeps_recent_records_and_temperature_coverage() {
   for (size_t index = kMaxSegmentRecords - kRecentSegmentRecords; index < buffer.count; ++index)
     assert(buffer.records[index].mean_outside_c == 8.0f);
 }
+void test_day_boundary_preserves_energy_and_temperature_profile() {
+  QualityConfig config;
+  config.max_interval_ms = 60000;
+  SegmentAccumulator state;
+  const uint32_t epoch = 23000U * 86400U + 123U;
+  double first_energy = 0.0;
+  ObserveResult closed;
+  for (uint32_t second = 0; second <= 86440U; second += 37U) {
+    auto value = snapshot(1000ULL + second * 1000ULL, epoch + second, 1000.0f + second * 0.01f);
+    value.outside_c = -4.0f + second * 0.0002f;
+    value.room_c = second % 74U == 0U ? 19.8f : 20.1f;
+    value.setpoint_c = second < 43200U ? 20.0f : 18.0f;
+    value.mean_water_c = second < 43200U ? 30.0f : 25.0f;
+    const auto observed = observe_snapshot(state, value, config);
+    if (observed.has_record) closed = observed;
+  }
+  assert(closed.has_record && closed.record.duration_s == 86400U);
+  assert(closed.record.end_epoch_s == epoch + 86400U);
+  first_energy = closed.record.mean_heat_w * 86400.0;
+  assert(fabs(first_energy - (1000.0 * 86400.0 + 0.005 * 86400.0 * 86400.0)) < 10.0);
+  assert(state.active && state.start_epoch_s == closed.record.end_epoch_s);
+  const double remainder_s = state.integrated_duration_s;
+  assert(remainder_s > 0.0 && remainder_s < 37.0);
+  assert(fabs(state.heat_integral - (1864.0 * remainder_s + 0.005 * remainder_s * remainder_s)) < 0.1);
+  assert(fabsf(profile_mean_c(closed.record) - effective_outside_c(closed.record)) < 0.01f);
+  for (size_t index = 1; index < kDailyTemperatureProfileSize; ++index)
+    assert(closed.record.effective_outside_profile_centi[index] >=
+           closed.record.effective_outside_profile_centi[index - 1]);
+}
+
+void test_tolerated_utc_drift_does_not_lose_a_day() {
+  for (int drift_s : {-1, 1}) {
+    SegmentAccumulator state;
+    ObserveResult result;
+    const uint32_t epoch = 24000U * 86400U;
+    for (uint32_t minute = 0; minute <= 1440U; ++minute) {
+      const uint32_t current_epoch = epoch + minute * 60U + (minute == 1440U ? drift_s : 0);
+      result = observe_snapshot(state, snapshot(1000ULL + minute * 60000ULL, current_epoch, 2000.0f), QualityConfig{});
+    }
+    assert(result.has_record && result.record.duration_s == 86400U);
+    const uint32_t now = epoch + 86400U + drift_s;
+    assert(result.record.end_epoch_s == now && state.start_epoch_s == now);
+    SegmentRecord retained[2];
+    RecordBuffer records{retained, 0, 2};
+    assert(append_record(records, result.record, now, QualityConfig{}) == LearningStatus::OK);
+    assert(records.count == 1);
+    assert(observe_snapshot(state, snapshot(1000ULL + 86460000ULL, now + 60U, 2000.0f), QualityConfig{}).status ==
+           LearningStatus::COLLECTING);
+  }
+}
+
 }  // namespace
 
 int main() {
+  test_tolerated_utc_drift_does_not_lose_a_day();
+  test_day_boundary_preserves_energy_and_temperature_profile();
   test_time_weighted_signed_heat();
   test_midnight_and_quantized_room();
   test_fail_closed_boundaries();

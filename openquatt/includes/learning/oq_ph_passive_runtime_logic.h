@@ -85,9 +85,6 @@ struct PassiveTickInput {
   bool context_valid = false;
   bool active_line_valid = false;
   HouseLine active_line;
-  bool reference_context_valid = false;
-  float reference_room_c = NAN;
-  float reference_setpoint_c = NAN;
   bool batch_snapshot_available = false;
   LearningSnapshot batch_snapshot;
   bool dynamic_snapshot_available = false;
@@ -118,8 +115,6 @@ struct PassiveRuntimeStorage {
   bool fit_pending = false;
   bool fit_inputs_bound = false;
   HouseLine fit_active_line;
-  float fit_reference_room_c = NAN;
-  float fit_reference_setpoint_c = NAN;
   AdviceResult batch_result;
   ThermalModelState thermal_state;
   PassiveRuntimeDiagnostics diagnostics;
@@ -147,10 +142,7 @@ inline bool same_context_bytes(const PassiveRuntimeStorage& state, const Passive
 }
 
 inline bool valid_runtime_config(const PassiveRuntimeConfig& config) {
-  FitConfig fit = config.fit;
-  fit.reference_room_c = 0.5f * (config.quality.room_min_c + config.quality.room_max_c);
-  fit.reference_setpoint_c = 0.5f * (config.quality.setpoint_min_c + config.quality.setpoint_max_c);
-  return valid_quality_config(config.quality) && valid_fit_config(fit) &&
+  return valid_quality_config(config.quality) && valid_fit_config(config.fit) &&
          thermal_window_detail::valid_config(config.thermal_window, config.quality) &&
          valid_thermal_model_config(config.thermal_model) &&
          isfinite(config.validation.max_heat_loss_difference_fraction) &&
@@ -166,8 +158,6 @@ inline void cancel_fit(PassiveRuntimeStorage& state) {
   state.fit_pending = false;
   state.fit_inputs_bound = false;
   state.fit_active_line = {};
-  state.fit_reference_room_c = NAN;
-  state.fit_reference_setpoint_c = NAN;
   state.batch_result = {};
 }
 
@@ -210,17 +200,13 @@ inline void invalidate_dynamic(PassiveRuntimeStorage& state, uint64_t now_monoto
 
 inline void start_fit(PassiveRuntimeStorage& state, const PassiveTickInput& input) {
   cancel_fit(state);
-  FitConfig fit = state.config.fit;
-  fit.reference_room_c = input.reference_room_c;
-  fit.reference_setpoint_c = input.reference_setpoint_c;
-  const LearningStatus fit_status = begin_advice_fit(state.records, state.record_count, input.now_epoch_s,
-                                                     input.active_line, state.config.quality, fit, state.fit_workspace);
+  const LearningStatus fit_status =
+      begin_advice_fit(state.records, state.record_count, input.now_epoch_s, input.active_line, state.config.quality,
+                       state.config.fit, state.fit_workspace);
   state.fit_running = fit_status == LearningStatus::FIT_IN_PROGRESS;
   state.fit_pending = false;
   state.fit_inputs_bound = true;
   state.fit_active_line = input.active_line;
-  state.fit_reference_room_c = input.reference_room_c;
-  state.fit_reference_setpoint_c = input.reference_setpoint_c;
   state.batch_result = state.fit_workspace.result;
   if (state.fit_running && state.diagnostics.fit_restart_count != UINT32_MAX) ++state.diagnostics.fit_restart_count;
 }
@@ -255,8 +241,7 @@ inline void pause_passive_runtime(PassiveRuntimeStorage& state, uint64_t now_ms,
   state.status = PassiveRuntimeStatus::PAUSED;
 }
 
-// A changed assessment policy can invalidate a fit or an unfinished window,
-// without changing the physical observations already stored in records[].
+// A changed assessment policy restarts evaluation, not physical collection.
 inline void refresh_passive_evaluation(PassiveRuntimeStorage& state, const PassiveRuntimeConfig& config) {
   state.config = config;
   if (!passive_runtime_detail::valid_runtime_config(config)) {
@@ -264,7 +249,8 @@ inline void refresh_passive_evaluation(PassiveRuntimeStorage& state, const Passi
     state.status = PassiveRuntimeStatus::INVALID_CONFIGURATION;
     return;
   }
-  passive_runtime_detail::clear_transient_collection(state, LearningStatus::MIXED_CONTEXT);
+  passive_runtime_detail::cancel_fit(state);
+  state.fit_pending = state.record_count > 0;
   state.status = state.opted_in ? PassiveRuntimeStatus::COLLECTING : PassiveRuntimeStatus::PAUSED;
 }
 
@@ -398,17 +384,14 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
     state.status = PassiveRuntimeStatus::PAUSED;
     return state.status;
   }
-  if (!input.context_valid || !input.active_line_valid || !valid_house_line(input.active_line) ||
-      !input.reference_context_valid || !isfinite(input.reference_room_c) || !isfinite(input.reference_setpoint_c)) {
+  if (!input.context_valid || !input.active_line_valid || !valid_house_line(input.active_line)) {
     clear_transient_collection(state, LearningStatus::INVALID_MEASUREMENT);
     invalidate_dynamic(state, input.now_monotonic_ms);
     state.status = PassiveRuntimeStatus::PAUSED;
     return state.status;
   }
   if (state.fit_inputs_bound && (state.fit_active_line.heat_loss_w_per_k != input.active_line.heat_loss_w_per_k ||
-                                 state.fit_active_line.zero_power_temp_c != input.active_line.zero_power_temp_c ||
-                                 state.fit_reference_room_c != input.reference_room_c ||
-                                 state.fit_reference_setpoint_c != input.reference_setpoint_c)) {
+                                 state.fit_active_line.zero_power_temp_c != input.active_line.zero_power_temp_c)) {
     cancel_fit(state);
     state.fit_pending = state.record_count > 0;
   }
@@ -451,10 +434,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
     }
   }
 
-  const bool dynamic_current_valid =
-      input.dynamic_snapshot_available && snapshot_matches_tick(input.dynamic_snapshot, input) &&
-      validate_snapshot(input.dynamic_snapshot, state.config.quality) == LearningStatus::OK;
-  state.current_observation_valid = batch_current_valid && dynamic_current_valid;
+  state.current_observation_valid = batch_current_valid;
   if (!input.dynamic_snapshot_available || !snapshot_matches_tick(input.dynamic_snapshot, input)) {
     invalidate_dynamic(state, input.now_monotonic_ms);
     state.diagnostics.last_thermal_window_status = ThermalWindowStatus::INVALID_MEASUREMENT;

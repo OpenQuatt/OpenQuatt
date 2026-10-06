@@ -129,10 +129,6 @@ struct LearningOperationalContext {
   bool active_limit = false;
   bool service_or_ota_valid = false;
   bool service_or_ota = false;
-  bool setpoint_recovery_valid = false;
-  bool setpoint_recovery = false;
-  bool comfort_acceptable_valid = false;
-  bool comfort_acceptable = false;
 };
 
 struct LearningSourceInput {
@@ -199,8 +195,8 @@ struct SnapshotDiagnostics {
 
 inline SnapshotDiagnostics combined_snapshot_diagnostics(const SnapshotBuildResult& batch,
                                                          const SnapshotBuildResult& dynamic) {
-  // Both paths contribute to current_observation_valid. Dynamic learning may
-  // accept recovery/comfort periods that the structural batch must exclude.
+  // Report why either path paused. The API exposes their collection separately:
+  // a measured defrost can pause 1R1C while daily energy collection continues.
   return {dynamic.status != SnapshotSourceStatus::OK ? dynamic.status : batch.status,
           batch.invalid_reasons | dynamic.invalid_reasons};
 }
@@ -335,15 +331,19 @@ inline SnapshotSourceStatus append_heat_pump(const HeatPumpRawMeasurements& heat
   return append_unit_measurement(heat_pump.oil_return_active, expected_unit, now_ms, measurements, count);
 }
 
-inline SnapshotSourceStatus validate_heat_pump_state(const HeatPumpRawMeasurements& heat_pump) {
+inline SnapshotSourceStatus validate_heat_pump_state(const HeatPumpRawMeasurements& heat_pump,
+                                                     SnapshotPurpose purpose) {
   if (!finite_measurement(heat_pump.water_in_c) || !finite_measurement(heat_pump.water_out_c))
     return SnapshotSourceStatus::INVALID_VALUE;
-  if (heat_pump.mode.value == HeatPumpMode::COOLING) return SnapshotSourceStatus::COOLING_ACTIVE;
-  if (heat_pump.mode.value != HeatPumpMode::OFF && heat_pump.mode.value != HeatPumpMode::HEATING)
+  const bool daily_defrost = purpose == SnapshotPurpose::STRUCTURAL_BATCH && heat_pump.defrost_active.value;
+  if (heat_pump.mode.value == HeatPumpMode::COOLING && !daily_defrost) return SnapshotSourceStatus::COOLING_ACTIVE;
+  if (heat_pump.mode.value != HeatPumpMode::OFF && heat_pump.mode.value != HeatPumpMode::HEATING &&
+      !(heat_pump.mode.value == HeatPumpMode::COOLING && daily_defrost))
     return SnapshotSourceStatus::INVALID_MODE;
   if (heat_pump.mode.value == HeatPumpMode::OFF && heat_pump.compressor_active.value)
     return SnapshotSourceStatus::INCONSISTENT_ACTIVITY;
-  if (heat_pump.defrost_active.value || heat_pump.valve_transition_active.value || heat_pump.oil_return_active.value)
+  if (purpose == SnapshotPurpose::THERMAL_DYNAMIC &&
+      (heat_pump.defrost_active.value || heat_pump.valve_transition_active.value || heat_pump.oil_return_active.value))
     return SnapshotSourceStatus::PROTECTION_ACTIVE;
   return SnapshotSourceStatus::OK;
 }
@@ -484,12 +484,9 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
 
   uint32_t unknown_operation_reasons = INVALID_NONE;
   if (!input.operation.control_mode_valid) unknown_operation_reasons |= INVALID_CONTROL_MODE;
-  if (!input.operation.active_limit_valid) unknown_operation_reasons |= INVALID_ACTIVE_LIMIT;
+  if (purpose == SnapshotPurpose::THERMAL_DYNAMIC && !input.operation.active_limit_valid)
+    unknown_operation_reasons |= INVALID_ACTIVE_LIMIT;
   if (!input.operation.service_or_ota_valid) unknown_operation_reasons |= INVALID_SERVICE_OR_OTA;
-  if (purpose == SnapshotPurpose::STRUCTURAL_BATCH) {
-    if (!input.operation.setpoint_recovery_valid) unknown_operation_reasons |= INVALID_SETPOINT_RECOVERY;
-    if (!input.operation.comfort_acceptable_valid) unknown_operation_reasons |= INVALID_CONTROL_MODE;
-  }
   if (unknown_operation_reasons != INVALID_NONE)
     return failure(input, SnapshotSourceStatus::OPERATIONAL_CONTEXT_UNKNOWN, unknown_operation_reasons);
   const uint32_t all_operation_reasons =
@@ -501,13 +498,10 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
     return failure(input, SnapshotSourceStatus::CONTEXT_REVISION_MISMATCH, all_operation_reasons);
   if (input.operation.control_mode != LearningControlMode::HEATING)
     return failure(input, SnapshotSourceStatus::CONTROL_MODE_BLOCKED, INVALID_CONTROL_MODE);
-  if (input.operation.active_limit) return failure(input, SnapshotSourceStatus::ACTIVE_LIMIT, INVALID_ACTIVE_LIMIT);
+  if (purpose == SnapshotPurpose::THERMAL_DYNAMIC && input.operation.active_limit)
+    return failure(input, SnapshotSourceStatus::ACTIVE_LIMIT, INVALID_ACTIVE_LIMIT);
   if (input.operation.service_or_ota)
     return failure(input, SnapshotSourceStatus::SERVICE_OR_OTA_ACTIVE, INVALID_SERVICE_OR_OTA);
-  if (purpose == SnapshotPurpose::STRUCTURAL_BATCH && input.operation.setpoint_recovery)
-    return failure(input, SnapshotSourceStatus::SETPOINT_RECOVERY_ACTIVE, INVALID_SETPOINT_RECOVERY);
-  if (purpose == SnapshotPurpose::STRUCTURAL_BATCH && !input.operation.comfort_acceptable)
-    return failure(input, SnapshotSourceStatus::COMFORT_UNACCEPTABLE, INVALID_CONTROL_MODE);
 
   MeasurementMeta measurements[kMaxSourceMeasurements];
   size_t measurement_count = 0;
@@ -533,9 +527,9 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
       input.setpoint_c.value > quality.setpoint_max_c || input.outside_c.value < quality.outside_min_c ||
       input.outside_c.value > quality.outside_max_c)
     return failure(input, SnapshotSourceStatus::INVALID_VALUE, INVALID_ESSENTIAL_SOURCE);
-  status = validate_heat_pump_state(input.hp1);
+  status = validate_heat_pump_state(input.hp1, purpose);
   if (status == SnapshotSourceStatus::OK && input.topology == HydronicTopology::DUO_SERIES)
-    status = validate_heat_pump_state(input.hp2);
+    status = validate_heat_pump_state(input.hp2, purpose);
   if (status != SnapshotSourceStatus::OK) return failure(input, status, reasons_for_status(status));
   if (input.boiler_heat.value == BoilerHeatState::HEAT_ACTIVE)
     return failure(input, SnapshotSourceStatus::BOILER_ACTIVE, INVALID_BOILER_HEAT);

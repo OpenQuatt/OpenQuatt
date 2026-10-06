@@ -64,8 +64,6 @@ struct RuntimeStorage {
   DiagnosticRow rows[kMaxExportDiagnosticRows];
   DiagnosticCaptureGate diagnostic_capture;
   size_t row_count = 0, row_next = 0;
-  uint64_t recovery_until_ms = 0;
-  float last_setpoint = NAN;
   uint32_t context_revision = 1;
   bool measurement_context_changed = false, evaluation_policy_changed = false, reset_requested = false;
   const esp_partition_t* partition = nullptr;
@@ -109,7 +107,6 @@ class Runtime {
   void evaluation_policy_changed() {
     if (!storage_) return;
     storage_[0].evaluation_policy_changed = true;
-    pause(LearningStatus::MIXED_CONTEXT);
   }
 
   void tick() {
@@ -191,12 +188,6 @@ class Runtime {
     tick.context_valid = context_valid;
     tick.active_line = active_line_();
     tick.active_line_valid = oq_power_house::valid_house_line(tick.active_line);
-    // The nominal room target is deliberately the stable setpoint. Using the
-    // measured room value here would restart the bounded multi-tick fit on
-    // every small sensor update.
-    tick.reference_room_c = input.setpoint_c.value;
-    tick.reference_setpoint_c = input.setpoint_c.value;
-    tick.reference_context_valid = input.setpoint_c.valid && isfinite(input.setpoint_c.value);
     tick.batch_snapshot_available = batch.has_snapshot;
     tick.batch_snapshot = batch.snapshot;
     tick.dynamic_snapshot_available = dynamic.has_snapshot;
@@ -278,8 +269,6 @@ class Runtime {
     watch_policy_number_(id(house_zero_power_temp_c));
     watch_policy_number_(id(house_rated_power_w));
     watch_policy_number_(id(ph_kp_w_per_k));
-    watch_policy_number_(id(ph_comfort_band_below_c));
-    watch_policy_number_(id(ph_comfort_band_above_c));
     watch_policy_number_(id(ph_demand_rise_time_min));
     watch_policy_number_(id(ph_demand_fall_time_min));
     watch_measurement_number_(id(hp1_water_in_temp_offset));
@@ -370,18 +359,6 @@ class Runtime {
     op.service_or_ota = cm >= 98 || id(oq_commissioning_active) || id(oq_hp_water_calibration_active) ||
                         id(oq_runtime_polling_paused).state ||
                         (id(oq_ota_phase_code) >= 1 && id(oq_ota_phase_code) <= 3);
-    if (in.setpoint_c.valid && isfinite(in.setpoint_c.value)) {
-      if (!isfinite(state.last_setpoint) || fabsf(state.last_setpoint - in.setpoint_c.value) > 0.01f)
-        state.recovery_until_ms = now_ms + kSetpointRecoveryMs;
-      state.last_setpoint = in.setpoint_c.value;
-    }
-    op.setpoint_recovery_valid = in.setpoint_c.valid;
-    op.setpoint_recovery = now_ms < state.recovery_until_ms;
-    op.comfort_acceptable_valid = in.room_c.valid && in.setpoint_c.valid &&
-                                  isfinite(id(ph_comfort_band_below_c).state) &&
-                                  isfinite(id(ph_comfort_band_above_c).state);
-    op.comfort_acceptable = in.room_c.value >= in.setpoint_c.value - id(ph_comfort_band_below_c).state &&
-                            in.room_c.value <= in.setpoint_c.value + id(ph_comfort_band_above_c).state;
     state.config.thermal_model.initial_heat_loss_w_per_k =
         thermal_initial_heat_loss_prior(active_line_().heat_loss_w_per_k, state.config.thermal_model);
   }
@@ -618,6 +595,9 @@ class Runtime {
     if (state.learner.thermal_accumulator.active && state.learner.thermal_accumulator.last.epoch_s > last_sample_epoch)
       last_sample_epoch = state.learner.thermal_accumulator.last.epoch_s;
     const uint32_t invalid_reasons = state.source_diagnostics.invalid_reasons;
+    size_t daily_count = 0;
+    for (size_t index = 0; index < state.learner.record_count; ++index)
+      if (is_daily_record(state.learner.records[index])) ++daily_count;
     const uint32_t rls_reasons = summary.thermal.readiness_reasons;
     const auto& batch_window = state.learner.batch_accumulator;
     const auto& thermal_window = state.learner.thermal_accumulator;
@@ -636,6 +616,9 @@ class Runtime {
              snapshot_source_status_name(state.source_diagnostics.status));
     write_reasons(invalid_reasons, INVALID_REASON_NAMES,
                   sizeof(INVALID_REASON_NAMES) / sizeof(INVALID_REASON_NAMES[0]));
+    json.add(",\"daily_record_count\":%u,\"legacy_record_count\":%u,\"reference_room_c\":%.1f",
+             static_cast<unsigned>(daily_count), static_cast<unsigned>(summary.record_count - daily_count),
+             static_cast<double>(kReferenceRoomC));
     json.add(
         ",\"invalid_reasons_mask\":%u,\"records\":%u,\"batch_status\":\"%s\",\"batch_advice_ready\":%s,"
         "\"advice_ready\":%s,\"auto_apply_allowed\":false,\"h_batch\":",
@@ -744,7 +727,9 @@ class Runtime {
         json.number(v);
         json.add(",");
       }
-      json.add("%u]", r.context_revision);
+      json.add("%u,", r.context_revision);
+      json.number(effective_outside_c(r));
+      json.add(",%u]", is_daily_record(r) ? 1U : 0U);
     }
     json.add("%s", kExportDiagnosticsPrefix);
     for (size_t i = 0; i < state.row_count; ++i) {

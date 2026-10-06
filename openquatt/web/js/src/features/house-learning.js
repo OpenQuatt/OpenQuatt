@@ -12,6 +12,12 @@ export const HOUSE_LEARNING_STATUS_INTERVAL_MS = 10000;
 const numberOrNull = (value) => value === null || value === undefined || value === "" || !Number.isFinite(Number(value))
   ? null
   : Number(value);
+const countOrNull = (value) => {
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  if (typeof value === "string" && !value.trim()) return null;
+  const number = numberOrNull(value);
+  return number != null && Number.isInteger(number) && number >= 0 ? number : null;
+};
 const stringList = (value) => Array.isArray(value)
   ? value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim()).slice(0, 24)
   : [];
@@ -51,6 +57,9 @@ export function normalizeHouseLearningStatus(payload = {}) {
     journalStatus: String(payload.journal_status || "unknown"),
     invalidReasons: stringList(payload.invalid_reasons),
     records: Math.max(0, Math.trunc(numberOrNull(payload.records) || 0)),
+    dailyRecordCount: countOrNull(payload.daily_record_count),
+    legacyRecordCount: countOrNull(payload.legacy_record_count),
+    referenceRoomC: typeof payload.reference_room_c === "number" ? numberOrNull(payload.reference_room_c) : null,
     batchAdviceReady: payload.batch_advice_ready === true,
     adviceReady: payload.advice_ready === true,
     hBatch: numberOrNull(payload.h_batch),

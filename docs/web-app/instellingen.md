@@ -117,27 +117,31 @@ Bij Power House op Heatpump Controller Q Single en Duo staat onderaan **Verwarme
 het experimentele blok `Huismodel volgen`. Open `Leerstatus en meetgegevens` voor
 voortgang, bronnen en schattingen. Passief leren verandert geen regelinstellingen.
 
-De functie gebruikt dezelfde geselecteerde bronwaarden als de regeling en neemt
-verwarmen, pompnaloop en verwarmingspauzes (CM0, CM1 en CM2) mee. Ontbrekende of
-ongeldige metingen, ontdooien en ketelwarmte onderbreken een meetperiode.
+De functie gebruikt dezelfde geselecteerde bronwaarden als de regeling.
 OpenTherm-telemetrie is hiervoor niet vereist.
 
 Er zijn twee soorten meetperioden, met elk een eigen teller:
 
 - **Opwarmen en afkoelen:** perioden van 30 minuten, ook als de kamertemperatuur
   verandert. Het eenvoudige huismodel (1R1C) schat warmteverlies en warmteopslag.
-- **Woninglijn uit stabiele perioden:** perioden van vier uur waarin de kamer en
-  het setpoint weinig veranderen. Het gemiddelde warmtevermogen en de
-  buitentemperatuur leveren meetpunten voor de woninglijn. Korte compressorpauses
-  tellen mee; vier uur continu compressorbedrijf is niet vereist.
+  Dit model kan op geschikte metingen wachten, bijvoorbeeld tijdens ontdooien,
+  terwijl een geldige dagmeting doorgaat.
+- **Woninglijn uit dagmetingen:** een volledige, doorlopende periode van 24 uur
+  meet de afgegeven warmte, inclusief verwarmingspauzes en setpointwijzigingen.
+  De totale warmte over die periode bepaalt het gemiddelde warmtevermogen.
+  Buitentemperatuur en warmtevermogen leveren een meetpunt voor de woninglijn,
+  omgerekend naar een referentie van **20 °C in huis**. Een andere comfortinstelling
+  of setpointwijziging start de dagmeting niet opnieuw.
 
-Een onderbroken stabiele periode begint opnieuw bij de volgende geldige meting.
-Eerder opgeslagen meetperioden en modelschattingen blijven behouden. De laatste
-onderbreking of afwijzing blijft zichtbaar totdat een nieuwe stabiele periode is
-opgeslagen; deze melding wordt niet over een herstart bewaard.
-Veel korte meetperioden betekenen dus niet automatisch dat er ook meetpunten voor
-de woninglijn zijn. Beide schattingen zijn voorlopig totdat er voldoende geschikte
-gegevens en onafhankelijke controles zijn.
+Een onbekende of ongeldige meting onderbreekt het lopende 24-uursvenster. Ook na
+herstart begint dat onvoltooide venster opnieuw. Eerder opgeslagen, afgeronde
+metingen en modelschattingen blijven behouden. De laatste onderbreking of afwijzing
+blijft zichtbaar totdat een nieuwe woninglijnperiode is opgeslagen; deze melding
+wordt niet over een herstart bewaard. Oude stabiele vieruursperioden blijven als
+oude metingen beschikbaar in de grafiek en de export.
+Veel korte meetperioden betekenen dus niet automatisch dat er ook dagmetingen voor
+de woninglijn zijn. Beide schattingen hebben eigen kwaliteitscontroles; een voltooide
+dagmeting betekent niet dat het model al voldoende gegevens heeft of wordt toegepast.
 
 `Passief leren` staat standaard aan. De gekozen stand blijft na een herstart of
 firmware-update behouden; bewust uitschakelen blijft dus uit. Bij de eerste update
@@ -156,17 +160,20 @@ geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](../power-house-au
 #### Woninglijn en meetresultaten
 
 De grafiek `Woninglijn en meetresultaten` vergelijkt de ingestelde woninglijn (blauw) met
-de geaccepteerde stabiele vieruursperioden (punten). De korte perioden voor
+de afgeronde dagmetingen van 24 uur (punten). De korte perioden voor
 opwarmen en afkoelen zijn geen punten in deze grafiek. Een beschikbare geleerde woninglijn wordt
 groen getoond; buiten het gemeten temperatuurbereik is deze gestippeld. Dit is een
 doortrekking van het model, geen meting. De woninglijn toont de basiswarmtevraag, zonder
-de tijdelijke kamercorrectie of vermogensbegrenzing.
+de tijdelijke kamercorrectie of vermogensbegrenzing. De dagmetingen en geleerde lijn
+zijn omgerekend naar 20 °C in huis. Oude vieruursmetingen blijven zichtbaar en
+zijn in de puntinformatie gemarkeerd als oude meting.
 
 De leerstatus, grafiek, meldingen en bediening volgen de gekozen app-taal (Nederlands of Engels).
 Getallen en datums gebruiken de bijbehorende notatie; de JSON-export behoudt zijn vaste formaat.
 
 Haal de meetpunten op met de knop bij de grafiek. Bij een meetpunt kun je datum, meetduur,
-gemiddelde buitentemperatuur en warmtevermogen bekijken. Zonder voldoende gegevens blijft
+gemiddelde buitentemperatuur, de naar 20 °C omgerekende buitenwaarde en het
+gemiddelde warmtevermogen bekijken. Zonder voldoende gegevens blijft
 de geleerde lijn weg; de grafiek verandert geen instellingen. `H` beschrijft hoeveel
 extra vermogen per graad kouder nodig is. De `Verwarmingsgrens (T₀)` is het geschatte
 nulpunt van deze lijn, geen schakelinstelling die de verwarming aan- of uitzet.

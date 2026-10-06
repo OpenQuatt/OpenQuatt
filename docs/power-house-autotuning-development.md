@@ -56,7 +56,11 @@ fysieke metingen + ontvangstbewijs + bronidentiteit + bedrijfsstatus
 
 Normale CM0/CM1-pauzes blijven onderdeel van dezelfde meetperiode als CM2. Een pompoploop of pompuitloop wordt met het gemeten watervermogen geïntegreerd; geldig nuldebiet telt mee als nulvermogen. De overgang naar stilstandsdebiet is geen bronwissel. Het actuele ketelcommando en de uitgangen moeten ook tijdens deze pauzes uit staan.
 
-De kern gebruikt maximaal 128 records en 365 dagen historie: 64 recente records en 64 historische plaatsen verdeeld over vier temperatuurgebieden. De batchduur blijft vier uur. Het bestaande journalformaat blijft gelijk; journals met maximaal 64 records blijven leesbaar. Een volledig journal vraagt maximaal 7868 bytes en past in het bestaande 8 KiB-slot. De JSON-exportbuffer is 32 KiB. Teruggaan naar firmware met de oude limiet van 64 records kan een voller journal niet herstellen. De grotere capaciteit vereist nog hardwarekwalificatie van het geheugenbudget. Een ontbrekend essentieel interval maakt het lopende segment ongeschikt. Normale uitperioden en signed calorimetrie blijven onderdeel van de tijdsintegratie. De dataset leert uit gemeten warmte; `P_request`, compressorlevels en de eigen woninglijn zijn geen trainingslabels.
+De kern gebruikt maximaal 128 records en 365 dagen historie: 64 recente records en 64 historische plaatsen verdeeld over vier temperatuurgebieden. De woninglijn gebruikt nu volledige, doorlopende perioden van 24 uur, inclusief compressorpauses, setpointwijzigingen en gemeten signed ontdooiwarmte. De vroegere grenzen aan setpointspreiding, kamerspreiding en watertemperatuur aan begin/einde gelden niet voor dagmetingen. Alleen een grove kamertrend boven 0,20 K/uur maakt een afgeronde dag ongeschikt; onbekende meetwaarden onderbreken het lopende venster.
+
+Elke dag wordt omgerekend naar 20 °C in huis met `effective_outside_c = mean_outside_c + 20 - mean_room_c`. Acht gesorteerde groepen van drie uurmiddelen bewaren het temperatuurverloop compact. De fit middelt de nulbegrensde woninglijn over dit profiel: een warme middag boven T₀ mag de koude ochtend niet wegmiddelen. Er wordt geen geschatte C gebruikt om de dagenergie te corrigeren. De fit vereist ten minste zes trainingsdagen en drie latere controledagen, voldoende temperatuurspreiding en de bestaande fout- en stabiliteitscontroles.
+
+Oude vieruursrecords blijven leesbaar en zichtbaar, maar trainen de nieuwe dagfit niet. Een volledig journal vraagt maximaal 7868 bytes en past in het bestaande 8 KiB-slot; de JSON-exportbuffer blijft 32 KiB. Teruggaan naar oudere firmware kan het nieuwe schema of een voller journal niet herstellen. De geheugenimpact vereist nog hardwarekwalificatie. De dataset leert uit gemeten warmte; `P_request`, compressorlevels en de eigen woninglijn zijn geen trainingslabels.
 
 Eén eigenaar in de ESPHome-mainloop beheert records en fitworkspace in PSRAM. Tijdens een hervatbare fit blijft de recordarray onveranderlijk; append/prune annuleert eerst de fit. HTTP-callbacks krijgen uitsluitend een onder mutex gekopieerde JSON-cache. Een tweede gelijktijdige export krijgt HTTP 429; netwerk-I/O houdt de cachemutex niet vast.
 
@@ -93,7 +97,7 @@ trapeziumintegratie en echte kamertemperaturen aan begin en eind. De kern accept
 overbruggen. Het dynamische bronpad gebruikt `SnapshotPurpose::THERMAL_DYNAMIC`: opwarming, afkoeling,
 setpoint-herstel en comfortafwijkingen zijn daarin niet automatisch ongeschikt. Betrouwbare waarden,
 verwarmingsmodus, geen ketelwarmte/defrost/begrenzing/service en alle fysieke meetvoorwaarden blijven
-vereist. De batch-route houdt zijn strengere quasi-stationaire selectie.
+vereist. De dagroute telt gemeten ontdooiwarmte en begrensd bedrijf wel mee in de energie; echte koeling, service en ketelwarmte blijven uitgesloten.
 
 De RLS gebruikt twee geschaalde parameters en een vaste `double`-covariantiematrix van 2×2, zonder
 allocatie. De actieve `H` en een conservatieve configureerbare `C` zijn uitsluitend startwaarden.
@@ -147,10 +151,11 @@ Gewone bron- en kalibratiewijzigingen behouden afgeronde historie bewust.
 
 De firmware bewaart batchrecords én de 1R1C-leerstand in hetzelfde A/B-journal:
 U/C-coëfficiënten, covariance, informatie voor kwaliteitsbeoordeling en sampletellers.
-Er zijn twee slots van 8 KiB; schema 5 voegt 152 bytes toe aan het recordformaat.
+Er zijn twee slots van 8 KiB. Schema 6 behoudt records van 52 bytes en het 1R1C-checkpoint van 152 bytes; bij dagrecords vervangen acht compacte temperatuurwaarden de vier oude stabiliteitsvelden.
 Schrijven gebeurt alleen bij nieuwe leerdata, maximaal eenmaal per uur. Daardoor
-kan een onverwachte herstart maximaal ongeveer een uur nog niet opgeslagen
-leerwerk verliezen. Er is geen extra write in het OTA-pad.
+kan een onverwachte herstart ongeveer een uur aan nog niet opgeslagen afgerond
+leerwerk verliezen. Een lopende dagmeting staat alleen in RAM en begint na herstart
+volledig opnieuw. Er is geen extra write in het OTA-pad.
 
 Na herstart worden parameters en afgeronde 1R1C-perioden hersteld. Onvoltooide
 meetintervallen en bootlokale tijdstempels worden niet hersteld; een nieuw geldig
@@ -169,8 +174,9 @@ Wissen heeft één pad: beide slots wissen en controleren, of een zichtbare fout
 melden. Bij een mislukte reset kan na reboot oude historie terugkomen; de UI mag
 daarom alleen na `cleared` succes melden.
 
-Herstel vereist geldige UTC. Bestaande schema-4-batchrecords blijven leesbaar,
-ook na een bronwissel; daarin stond nog geen 1R1C-checkpoint. Oudere onbekende
+Herstel vereist geldige UTC. Bestaande schema-4- en schema-5-records blijven leesbaar,
+ook na een bronwissel; schema 4 bevatte nog geen 1R1C-checkpoint. Na een nieuw schema-6-checkpoint
+kan oudere firmware deze leerstand niet herstellen; downgradebehoud is niet gegarandeerd. Oudere onbekende
 recordformaten of beschadigde inhoud worden niet als meetdata geïnterpreteerd.
 De schema/algoritmecontrole blijft bestaan, maar de bronkeuze is geen voorwaarde
 voor het behouden van historie. Een gewoon firmware- of webupdate wist geen data.
@@ -189,7 +195,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -I. scripts/power_house_learning_replay.cpp
 /tmp/power_house_learning_replay --active-h 250 --active-t0 16 --reference-room-c 20 --reference-setpoint-c 20 snapshots.csv
 ```
 
-De waarden in dit commando zijn synthetische voorbeelden. Gebruik de echte handmatige/actieve lijn en vastgelegde kamercontext voor een echte replay.
+De waarden in dit commando zijn synthetische voorbeelden. Gebruik de echte handmatige/actieve lijn voor een echte replay. De historische opties voor kamer en setpoint blijven geaccepteerd, maar de dagfit rekent altijd naar 20 °C om.
 
 Het CSV-contract bevat deze header, in deze volgorde:
 

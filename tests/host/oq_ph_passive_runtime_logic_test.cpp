@@ -38,9 +38,6 @@ PassiveTickInput tick(uint64_t monotonic_ms, uint32_t epoch_s) {
   input.context_valid = true;
   input.active_line_valid = true;
   input.active_line = {150.0f, 15.0f};
-  input.reference_context_valid = true;
-  input.reference_room_c = 20.0f;
-  input.reference_setpoint_c = 20.0f;
   input.batch_snapshot_available = true;
   input.batch_snapshot = snapshot(monotonic_ms, epoch_s);
   input.dynamic_snapshot_available = true;
@@ -73,7 +70,7 @@ void test_collects_fixed_records_and_fit_is_resumable() {
   assert(initialize_passive_runtime(state, context(), config(), true) == PassiveRuntimeStatus::COLLECTING);
   constexpr uint32_t start_epoch = 20000U * 86400U + 3600U;
   constexpr uint64_t start_ms = 1000;
-  for (uint32_t minute = 0; minute <= 240; ++minute) {
+  for (uint32_t minute = 0; minute <= 1440; ++minute) {
     const auto input = tick(start_ms + minute * 60000ULL, start_epoch + minute * 60U);
     tick_passive_runtime(state, input);
   }
@@ -100,9 +97,9 @@ void test_last_batch_rejection_survives_collection_and_clears_on_success_or_rese
   tick_passive_runtime(state, input);
   assert(!state.batch_accumulator.active);
   assert(state.diagnostics.last_batch_rejection == LearningStatus::INVALID_MEASUREMENT);
-  for (uint32_t second = 30; second <= 14430U; second += 10U) {
+  for (uint32_t second = 30; second <= 86430U; second += 10U) {
     tick_passive_runtime(state, tick(1000ULL + second * 1000ULL, epoch + second));
-    if (second < 14430U) {
+    if (second < 86430U) {
       assert(state.record_count == 0);
       assert(state.diagnostics.last_batch_status == LearningStatus::COLLECTING);
       assert(state.diagnostics.last_batch_rejection == LearningStatus::INVALID_MEASUREMENT);
@@ -114,10 +111,10 @@ void test_last_batch_rejection_survives_collection_and_clears_on_success_or_rese
   assert(!passive_runtime_summary(state, state.last_monotonic_ms).auto_apply_allowed);
 
   // Completed quality rejection remains visible when the next window starts.
-  for (uint32_t minute = 0; minute <= 241; ++minute) {
-    const uint32_t second = 14440U + minute * 60U;
+  for (uint32_t minute = 0; minute <= 1441; ++minute) {
+    const uint32_t second = 86440U + minute * 60U;
     auto unstable = tick(1000ULL + second * 1000ULL, epoch + second);
-    unstable.batch_snapshot.room_c = minute < 120U ? 20.0f : 20.25f;
+    unstable.batch_snapshot.room_c = 20.0f + minute * 0.004f;
     tick_passive_runtime(state, unstable);
   }
   assert(state.record_count == 1);
@@ -129,7 +126,7 @@ void test_last_batch_rejection_survives_collection_and_clears_on_success_or_rese
 }
 
 void test_early_collection_exits_replace_the_previous_rejection() {
-  for (int scenario = 0; scenario < 6; ++scenario) {
+  for (int scenario = 0; scenario < 5; ++scenario) {
     PassiveRuntimeStorage state;
     initialize_passive_runtime(state, context(), config(), true);
     constexpr uint32_t epoch = 20000U * 86400U;
@@ -139,7 +136,7 @@ void test_early_collection_exits_replace_the_previous_rejection() {
     auto expected = LearningStatus::INVALID_MEASUREMENT;
     switch (scenario) {
       case 0:
-        input.reference_context_valid = false;
+        input.context_valid = false;
         break;
       case 1:
         input.context = context(2);
@@ -155,10 +152,6 @@ void test_early_collection_exits_replace_the_previous_rejection() {
         break;
       case 4:
         pause_passive_runtime(state, 11000, LearningStatus::MIXED_CONTEXT);
-        expected = LearningStatus::MIXED_CONTEXT;
-        break;
-      default:
-        refresh_passive_evaluation(state, config());
         expected = LearningStatus::MIXED_CONTEXT;
         break;
     }
@@ -203,13 +196,13 @@ void test_source_switch_keeps_real_history_and_starts_a_new_interval() {
   PassiveRuntimeStorage state;
   initialize_passive_runtime(state, context(), config(), true);
   constexpr uint32_t epoch = 20000U * 86400U;
-  for (uint32_t minute = 0; minute <= 240; ++minute)
+  for (uint32_t minute = 0; minute <= 1440; ++minute)
     tick_passive_runtime(state, tick(1000ULL + minute * 60000ULL, epoch + minute * 60));
   assert(state.record_count == 1 && state.thermal_state.accepted_samples > 0);
   const auto samples = state.thermal_state.accepted_samples;
   const auto theta = state.thermal_state.theta_loss_scaled;
   constexpr uint8_t api_to_ot[] = {2, 3};
-  for (uint32_t minute = 241; minute <= 271; ++minute) {
+  for (uint32_t minute = 1441; minute <= 1471; ++minute) {
     auto input = tick(1000ULL + minute * 60000ULL, epoch + minute * 60);
     input.context = {api_to_ot, sizeof(api_to_ot), 2};
     input.batch_snapshot.context_revision = 2;
@@ -220,7 +213,7 @@ void test_source_switch_keeps_real_history_and_starts_a_new_interval() {
     assert(state.thermal_state.accepted_samples == samples);
     assert(state.thermal_state.theta_loss_scaled == theta);
   }
-  auto input = tick(1000ULL + 272ULL * 60000ULL, epoch + 272U * 60);
+  auto input = tick(1000ULL + 1472ULL * 60000ULL, epoch + 1472U * 60);
   input.context = {api_to_ot, sizeof(api_to_ot), 2};
   input.batch_snapshot.context_revision = 2;
   input.batch_snapshot.room_c = 20.5f;
@@ -291,13 +284,13 @@ void test_backward_utc_stays_blocked_after_pause_without_erasing_models() {
   PassiveRuntimeStorage state;
   initialize_passive_runtime(state, context(), config(), true);
   constexpr uint32_t start_epoch = 20000U * 86400U;
-  for (uint32_t minute = 0; minute <= 240; ++minute)
+  for (uint32_t minute = 0; minute <= 1440; ++minute)
     tick_passive_runtime(state, tick(1000ULL + minute * 60000ULL, start_epoch + minute * 60U));
   assert(state.record_count == 1 && state.thermal_state.accepted_samples > 0);
   const auto record = state.records[0];
   const auto thermal = state.thermal_state;
   constexpr uint64_t later_ms = 1000ULL + kSegmentDurationMs + 10000ULL;
-  constexpr uint32_t later_epoch = start_epoch + 4U * 3600U + 10U;
+  constexpr uint32_t later_epoch = start_epoch + 24U * 3600U + 10U;
   tick_passive_runtime(state, tick(later_ms, later_epoch));
   assert(tick_passive_runtime(state, tick(later_ms + 10000ULL, later_epoch - 1U)) ==
          PassiveRuntimeStatus::TIME_DISCONTINUITY);
@@ -333,7 +326,7 @@ void test_evaluation_refresh_keeps_physical_evidence() {
   assert(state.record_count == 1);
   assert(state.thermal_state.accepted_samples == 12);
   assert(state.config.thermal_model.max_residual_rms_k_per_h == 0.75f);
-  assert(!state.batch_accumulator.active && !state.thermal_accumulator.active);
+  assert(state.batch_accumulator.active && state.thermal_accumulator.active);
   assert(!state.fit_running && state.fit_pending && !state.fit_inputs_bound);
   assert(!state.batch_result.advice_ready);
 }
@@ -351,18 +344,16 @@ void test_invalid_evaluation_refresh_stays_paused_until_corrected() {
   assert(tick_passive_runtime(state, tick(2000, 20000U * 86400U + 1U)) == PassiveRuntimeStatus::COLLECTING);
 }
 
-void test_active_or_reference_change_revokes_bound_fit_result() {
+void test_active_line_change_revokes_bound_fit_result() {
   PassiveRuntimeStorage state;
   assert(initialize_passive_runtime(state, context(), config(), true) == PassiveRuntimeStatus::COLLECTING);
   state.fit_inputs_bound = true;
   state.fit_active_line = {150.0f, 15.0f};
-  state.fit_reference_room_c = 20.0f;
-  state.fit_reference_setpoint_c = 20.0f;
   state.batch_result.status = LearningStatus::ADVICE_READY;
   state.batch_result.candidate_available = true;
   state.batch_result.advice_ready = true;
   auto input = tick(1000, 20000U * 86400U);
-  input.reference_room_c = 20.1f;
+  input.active_line.heat_loss_w_per_k = 160.0f;
   assert(tick_passive_runtime(state, input) == PassiveRuntimeStatus::COLLECTING);
   assert(!state.fit_inputs_bound);
   assert(!state.batch_result.advice_ready);
@@ -410,9 +401,31 @@ void test_manual_line_outside_thermal_bounds_does_not_block_initialization() {
   assert(!passive_runtime_summary(state, 1000).auto_apply_allowed);
 }
 
+void test_dynamic_pause_does_not_interrupt_daily_energy() {
+  PassiveRuntimeStorage state;
+  initialize_passive_runtime(state, context(), config(), true);
+  constexpr uint32_t epoch = 24000U * 86400U;
+  for (uint32_t minute = 0; minute <= 1440; ++minute) {
+    auto input = tick(1000ULL + minute * 60000ULL, epoch + minute * 60U);
+    input.batch_snapshot.setpoint_c = minute < 720U ? 20.0f : 18.0f;
+    if (minute >= 600U && minute < 610U) {
+      input.batch_snapshot.heat_to_water_w = -500.0f;
+      input.dynamic_snapshot_available = false;
+    }
+    tick_passive_runtime(state, input);
+    assert(state.current_observation_valid);
+    if (minute < 1440U) assert(state.record_count == 0);
+  }
+  assert(state.record_count == 1 && is_daily_record(state.records[0]));
+  assert(state.records[0].mean_heat_w < 2200.0f);
+  assert(state.thermal_state.accepted_samples > 0);
+  assert(!passive_runtime_summary(state, state.last_monotonic_ms).auto_apply_allowed);
+}
+
 }  // namespace
 
 int main() {
+  test_dynamic_pause_does_not_interrupt_daily_energy();
   test_manual_line_outside_thermal_bounds_does_not_block_initialization();
   test_validation_waits_for_live_observation();
   test_collects_fixed_records_and_fit_is_resumable();
@@ -425,7 +438,7 @@ int main() {
   test_backward_utc_stays_blocked_after_pause_without_erasing_models();
   test_evaluation_refresh_keeps_physical_evidence();
   test_invalid_evaluation_refresh_stays_paused_until_corrected();
-  test_active_or_reference_change_revokes_bound_fit_result();
+  test_active_line_change_revokes_bound_fit_result();
   test_missing_utc_pauses_without_blocking_owner();
   test_summary_never_exposes_readiness_without_live_valid_context();
 }
