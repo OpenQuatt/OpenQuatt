@@ -85,7 +85,9 @@ export default {
     },
     status: {
       waitDailyMeasurement: "Wacht op geldige metingen om een volledige periode van 24 uur te starten.",
-      dailyWindowCopy: "Verwarmingspauzes en setpointwijzigingen tellen mee. Een onbekende meting of herstart begint de lopende 24 uur opnieuw; afgeronde dagmetingen blijven bewaard.",
+      waitShortMeasurement: "Wacht kort op meetwaarde",
+      dailyGapHeld: "Dagmeting blijft kort behouden; wacht op een geldige meetwaarde.",
+      dailyWindowCopy: "Verwarmingspauzes en setpointwijzigingen tellen mee. Een meetonderbreking tot 2 minuten kan worden overbrugd als de bedrijfstoestand bekend is. Langer, onbekende bedrijfstoestand of herstart: de lopende dag begint opnieuw; afgeronde metingen blijven bewaard.",
       paused: "Gepauzeerd",
       stale: "Status verouderd",
       unknown: "Onbekend",

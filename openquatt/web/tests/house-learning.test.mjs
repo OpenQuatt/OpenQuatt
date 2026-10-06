@@ -111,9 +111,64 @@ test("passieve leerstatus normaliseert onbeschikbare getallen naar null", () => 
   assert.equal(status.uRls, null);
   assert.equal(status.records, 42);
   assert.equal(status.sources.flow.valid, false);
-  assert.deepEqual(status.collection.batch, { active: true, elapsedSeconds: 125, targetSeconds: 300, intervals: null });
+  assert.deepEqual(status.collection.batch, { active: true, gapPending: false, elapsedSeconds: 125, targetSeconds: 300, intervals: null });
   assert.equal(normalizeHouseLearningStatus(statusPayload({ collection: undefined })).collection, null);
   assert.throws(() => normalizeHouseLearningStatus({ schema: 2, mode: "passive" }), /statusformaat/);
+});
+
+test("dagmeetgat is optioneel en accepteert uitsluitend een expliciete boolean", () => {
+  for (const value of [undefined, null, false, "true", 1, {}, []]) {
+    const payload = statusPayload();
+    if (value !== undefined) payload.collection.batch_gap_pending = value;
+    assert.equal(normalizeHouseLearningStatus(payload).collection.batch.gapPending, false);
+  }
+  const status = normalizeHouseLearningStatus(statusPayload({ collection: { batch_gap_pending: true } }));
+  assert.equal(status.collection.batch.gapPending, true);
+  assert.equal(status.collection.batch.active, false);
+  assert.equal(status.collection.batch.elapsedSeconds, null);
+  assert.equal(status.collection.thermal, null);
+});
+
+test("kort dagmeetgat houdt voortgang vast en hervatting toont opnieuw verzamelen", () => {
+  const payload = statusPayload({
+    enabled: true, status: "collecting", control_mode: 2, daily_record_count: 3,
+    collection: { batch_active: false, batch_gap_pending: true, batch_elapsed_s: 36000,
+      batch_target_s: 86400, thermal_active: false, thermal_target_s: 1800 },
+  });
+  const waiting = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(payload));
+  assert.match(waiting, /Woninglijn uit dagmetingen[\s\S]*Wacht kort op meetwaarde[\s\S]*10:00:00 \/ 24:00:00/);
+  assert.match(waiting, /Dagmeting blijft kort behouden; wacht op een geldige meetwaarde/);
+  assert.doesNotMatch(waiting, /Verzamelt dagmeting|Verzamelt nu|Verzamelt tijdens/);
+  assert.match(waiting, /Opwarmen en afkoelen[\s\S]*Wacht/);
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  const english = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(payload));
+  assert.match(english, /Heat demand curve from daily measurements[\s\S]*Briefly waiting for a reading[\s\S]*10:00:00 \/ 24:00:00/);
+  assert.match(english, /up to 2 minutes may be bridged if the operating state is known/);
+  assert.doesNotMatch(english, /Wacht kort|Dagmeting blijft/);
+  setLocale("nl", { persist: false, applyDocument: false, notify: false });
+  const resumed = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus({
+    ...payload, collection: { ...payload.collection, batch_active: true,
+      batch_gap_pending: false, batch_elapsed_s: 36060 },
+  }));
+  assert.match(resumed, /Verzamelt dagmeting/);
+  assert.match(resumed, /Woninglijn uit dagmetingen[\s\S]*Verzamelt[\s\S]*10:01:00 \/ 24:00:00/);
+  assert.doesNotMatch(resumed, /Wacht kort op meetwaarde|Dagmeting blijft kort behouden/);
+});
+
+test("oude wachtstatus zonder meetgat claimt geen behouden dag en actuele status blijft nodig", () => {
+  const payload = statusPayload({
+    enabled: true, status: "blocked", daily_record_count: 0,
+    collection: { batch_active: false, batch_elapsed_s: 36000, batch_target_s: 86400 },
+  });
+  const old = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(payload));
+  assert.doesNotMatch(old, /Wacht kort op meetwaarde|Dagmeting blijft kort behouden/);
+  for (const overrides of [{ enabled: false }, { tick_epoch: 1 }]) {
+    const html = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus({
+      ...payload, ...overrides, collection: { ...payload.collection, batch_gap_pending: true },
+    }));
+    assert.doesNotMatch(html, /Wacht kort op meetwaarde|Dagmeting blijft kort behouden/);
+    assert.match(html, overrides.enabled === false ? /Gepauzeerd/ : /Status verouderd/);
+  }
 });
 
 test("leerstatus wordt alleen op het zichtbare Power House instellingenscherm opgehaald", async () => {
@@ -851,7 +906,8 @@ test("dagmeting loopt onafhankelijk door tijdens pauze van het 30-minutenmodel",
   assert.match(html, /Opwarmen en afkoelen[\s\S]*Wacht[\s\S]*na ontdooien of olieretour/);
   assert.match(html, /Dagmetingen \(24 uur\)[\s\S]*>3</);
   assert.match(html, /2 oude 4-uursmetingen/);
-  assert.match(html, /onbekende meting of herstart begint de lopende 24 uur opnieuw/);
+  assert.match(html, /tot 2 minuten kan worden overbrugd als de bedrijfstoestand bekend is/);
+  assert.match(html, /onbekende bedrijfstoestand of herstart: de lopende dag begint opnieuw/);
   assert.doesNotMatch(html, /Wacht op bron|>Ongeldig</);
   assert.match(html, /Voorlopige schatting/);
   assert.doesNotMatch(html, /Warmteverlies komt overeen/);

@@ -422,9 +422,45 @@ void test_dynamic_pause_does_not_interrupt_daily_energy() {
   assert(!passive_runtime_summary(state, state.last_monotonic_ms).auto_apply_allowed);
 }
 
+void test_explicit_daily_gap_does_not_bridge_thermal_windows() {
+  PassiveRuntimeStorage state;
+  initialize_passive_runtime(state, context(), config(), true);
+  constexpr uint32_t epoch = 24000U * 86400U;
+  for (uint32_t minute = 0; minute <= 1440; ++minute) {
+    auto input = tick(1000ULL + minute * 60000ULL, epoch + minute * 60U);
+    if (minute == 720U) {
+      input.batch_snapshot.invalid_reasons = INVALID_SOURCE_STALE;
+      input.dynamic_snapshot = input.batch_snapshot;
+      input.may_bridge_daily_gap = true;
+    }
+    tick_passive_runtime(state, input);
+    if (minute == 720U) {
+      assert(!state.current_observation_valid);
+      assert(state.batch_accumulator.active && state.batch_accumulator.source_gap_pending);
+      assert(!state.thermal_accumulator.active);
+      assert(state.diagnostics.last_batch_rejection == LearningStatus::OK);
+    }
+  }
+  assert(state.record_count == 1 && state.records[0].start_epoch_s == epoch);
+  assert(state.records[0].mean_heat_w == 2200.0f);
+  assert(state.diagnostics.accepted_batch_records == 1);
+  assert(state.thermal_state.accepted_samples > 0);
+  assert(!passive_runtime_summary(state, state.last_monotonic_ms).auto_apply_allowed);
+  auto gap = tick(1000ULL + 1441U * 60000ULL, epoch + 1441U * 60U);
+  gap.batch_snapshot.invalid_reasons = INVALID_ESSENTIAL_SOURCE;
+  gap.may_bridge_daily_gap = true;
+  tick_passive_runtime(state, gap);
+  assert(state.batch_accumulator.source_gap_pending);
+  pause_passive_runtime(state, gap.now_monotonic_ms + 1000U, LearningStatus::SEGMENT_INELIGIBLE);
+  assert(!state.batch_accumulator.active && !state.batch_accumulator.source_gap_pending);
+  assert(state.batch_accumulator.missing_energy_uncertainty_ws == 0.0);
+  assert(state.record_count == 1);
+}
+
 }  // namespace
 
 int main() {
+  test_explicit_daily_gap_does_not_bridge_thermal_windows();
   test_dynamic_pause_does_not_interrupt_daily_energy();
   test_manual_line_outside_thermal_bounds_does_not_block_initialization();
   test_validation_waits_for_live_observation();

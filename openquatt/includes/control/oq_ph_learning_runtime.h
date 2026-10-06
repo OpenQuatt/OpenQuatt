@@ -120,11 +120,10 @@ class Runtime {
     build_context_(state);
     const bool enabled = id(oq_ph_learning_enabled).state;
     auto& input = state.input;
-    // Missing selected values pause collection, not restoration or checkpointing.
-    // A resolver route/provenance change
-    // interrupts unfinished intervals, including changes between learner ticks.
-    bool context_valid = state.context_size > 0;
-    for (const auto& source : state.sources) context_valid = context_valid && source.valid;
+    // Configuration ownership remains valid during a temporary missing value.
+    // Snapshot validation decides whether to hold or interrupt the day. Real
+    // configuration/valid-route changes still interrupt unfinished intervals.
+    const bool context_valid = state.context_size > 0 && source_configuration_available(state.sources);
     const bool sources_changed = context_valid && observe_source_revisions(state.source_revisions, state.sources);
     const bool context_changed =
         state.learner.initialized &&
@@ -189,6 +188,7 @@ class Runtime {
     tick.active_line = active_line_();
     tick.active_line_valid = oq_power_house::valid_house_line(tick.active_line);
     tick.batch_snapshot_available = batch.has_snapshot;
+    tick.may_bridge_daily_gap = batch.may_bridge_daily_gap;
     tick.batch_snapshot = batch.snapshot;
     tick.dynamic_snapshot_available = dynamic.has_snapshot;
     tick.dynamic_snapshot = dynamic.snapshot;
@@ -642,11 +642,12 @@ class Runtime {
     else
       json.add("%u", last_sample_epoch);
     json.add(
-        ",\"collection\":{\"batch_active\":%s,\"batch_elapsed_s\":%llu,\"batch_target_s\":%llu,"
+        ",\"collection\":{\"batch_active\":%s,\"batch_gap_pending\":%s,\"batch_elapsed_s\":%llu,\"batch_target_s\":%"
+        "llu,"
         "\"thermal_active\":%s,\"thermal_elapsed_s\":%llu,\"thermal_target_s\":%llu,\"thermal_intervals\":%u,"
         "\"batch_last_rejection\":",
-        batch_active ? "true" : "false",
-        batch_active && batch_window.active
+        batch_active ? "true" : "false", collecting_enabled && batch_window.source_gap_pending ? "true" : "false",
+        collecting_enabled && batch_window.active
             ? (batch_window.last_monotonic_ms - batch_window.start_monotonic_ms) / 1000ULL
             : 0ULL,
         kSegmentDurationMs / 1000ULL, thermal_active ? "true" : "false",

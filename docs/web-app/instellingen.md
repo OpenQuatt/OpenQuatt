@@ -133,9 +133,12 @@ Er zijn twee soorten meetperioden, met elk een eigen teller:
   omgerekend naar een referentie van **20 °C in huis**. Een andere comfortinstelling
   of setpointwijziging start de dagmeting niet opnieuw.
 
-Een onbekende of ongeldige meting onderbreekt het lopende 24-uursvenster. Ook na
-herstart begint dat onvoltooide venster opnieuw. Eerder opgeslagen, afgeronde
-metingen en modelschattingen blijven behouden. De laatste onderbreking of afwijzing
+Een korte meetonderbreking kan tot maximaal 2 minuten worden overbrugd als de
+bedrijfstoestand bekend is. De dagkaart toont dan **Wacht kort op meetwaarde** met
+behouden voortgang; er worden op dat moment geen geldige meetwaarden verzameld.
+Een langere onderbreking, onbekende bedrijfstoestand of herstart begint het
+onvoltooide 24-uursvenster opnieuw. Ketelwarmte, koelen en service onderbreken de
+dagmeting ook. Eerder opgeslagen, afgeronde metingen en modelschattingen blijven behouden. De laatste onderbreking of afwijzing
 blijft zichtbaar totdat een nieuwe woninglijnperiode is opgeslagen; deze melding
 wordt niet over een herstart bewaard. Oude stabiele vieruursperioden blijven als
 oude metingen beschikbaar in de grafiek en de export.

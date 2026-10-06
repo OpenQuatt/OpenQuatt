@@ -8,8 +8,14 @@
 
 namespace oq_power_house::learning {
 
+constexpr uint32_t kDailyMaximumGapMs = 120000;
+constexpr double kDailyMissingHeatBudgetW = 100.0;
+
 struct SegmentAccumulator {
   bool active = false;
+  bool source_gap_pending = false;
+  uint64_t last_gap_observation_ms = 0;
+  double missing_energy_uncertainty_ws = 0.0;
   uint64_t start_monotonic_ms = 0;
   uint64_t last_monotonic_ms = 0;
   uint32_t start_epoch_s = 0;
@@ -76,10 +82,12 @@ inline bool same_context(const SegmentAccumulator& state, const LearningSnapshot
 }
 
 inline bool coherent_time(const SegmentAccumulator& state, const LearningSnapshot& snapshot,
-                          const QualityConfig& config) {
+                          const QualityConfig& config, uint32_t max_interval_ms = 0) {
   if (snapshot.monotonic_ms <= state.last_monotonic_ms) return false;
   const uint64_t delta_ms = snapshot.monotonic_ms - state.last_monotonic_ms;
-  if (delta_ms > config.max_interval_ms || snapshot.epoch_s < state.last_epoch_s) return false;
+  if (delta_ms > (max_interval_ms == 0 ? config.max_interval_ms : max_interval_ms) ||
+      snapshot.epoch_s < state.last_epoch_s)
+    return false;
   const uint64_t epoch_delta_ms = static_cast<uint64_t>(snapshot.epoch_s - state.last_epoch_s) * 1000ULL;
   const uint64_t mismatch_ms = epoch_delta_ms > delta_ms ? epoch_delta_ms - delta_ms : delta_ms - epoch_delta_ms;
   if (mismatch_ms > static_cast<uint64_t>(config.utc_tolerance_s) * 1000ULL + 999ULL) return false;
@@ -198,7 +206,7 @@ inline SegmentRecord make_record(const SegmentAccumulator& state) {
 }  // namespace detail
 
 inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningSnapshot& snapshot,
-                                      const QualityConfig& config) {
+                                      const QualityConfig& config, bool may_bridge_daily_gap = false) {
   ObserveResult result;
   if (!valid_quality_config(config)) {
     result.status = LearningStatus::INVALID_CONFIGURATION;
@@ -214,7 +222,13 @@ inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningS
     detail::seed_segment(state, snapshot);
     return result;
   }
-  if (!timestamp_valid || !detail::coherent_time(state, snapshot, config)) {
+  const uint64_t last_observation_ms =
+      state.source_gap_pending ? state.last_gap_observation_ms : state.last_monotonic_ms;
+  // Only explicit observations with a known operating state can hold a day.
+  // A completely missing tick still obeys the normal interval limit.
+  if (!timestamp_valid || snapshot.monotonic_ms <= last_observation_ms ||
+      snapshot.monotonic_ms - last_observation_ms > config.max_interval_ms ||
+      !detail::coherent_time(state, snapshot, config, state.source_gap_pending ? kDailyMaximumGapMs : 0)) {
     reset_segment(state);
     if (measurement_status == LearningStatus::OK) detail::seed_segment(state, snapshot);
     result.status = LearningStatus::TIME_DISCONTINUITY;
@@ -228,14 +242,36 @@ inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningS
   }
 
   if (measurement_status != LearningStatus::OK) {
-    // Never bridge a missing/invalid observation, but restart as soon as valid
-    // data returns instead of waiting for the old day to expire.
+    if (may_bridge_daily_gap && snapshot.invalid_reasons != INVALID_NONE &&
+        (snapshot.invalid_reasons & ~(INVALID_ESSENTIAL_SOURCE | INVALID_SOURCE_STALE)) == 0) {
+      state.source_gap_pending = true;
+      state.last_gap_observation_ms = snapshot.monotonic_ms;
+      return result;  // Do not integrate missing values or advance the valid endpoint.
+    }
     reset_segment(state);
     result.status = measurement_status;
     return result;
   }
 
   const uint64_t boundary_ms = state.start_monotonic_ms + kSegmentDurationMs;
+  double remaining_uncertainty_ws = 0.0;
+  if (state.source_gap_pending) {
+    // Conditional bound on missing signed heat, assuming |heat| remains below
+    // max_abs_heat_w. Temperature interpolation has no such error guarantee.
+    const double bound_w = config.max_abs_heat_w + fmax(fabs(state.last_heat_w), fabs(snapshot.heat_to_water_w));
+    const uint64_t end_ms = snapshot.monotonic_ms < boundary_ms ? snapshot.monotonic_ms : boundary_ms;
+    const double uncertainty_ws = bound_w * (end_ms - state.last_monotonic_ms) / 1000.0;
+    remaining_uncertainty_ws = bound_w * (snapshot.monotonic_ms - end_ms) / 1000.0;
+    if (state.missing_energy_uncertainty_ws + uncertainty_ws > kDailyMissingHeatBudgetW * 86400.0 ||
+        remaining_uncertainty_ws > kDailyMissingHeatBudgetW * 86400.0) {
+      detail::seed_segment(state, snapshot);
+      result.status = LearningStatus::SEGMENT_INELIGIBLE;
+      return result;
+    }
+    state.missing_energy_uncertainty_ws += uncertainty_ws;
+    state.source_gap_pending = false;
+    state.last_gap_observation_ms = 0;
+  }
   if (snapshot.monotonic_ms < boundary_ms) {
     detail::integrate_interval(state, snapshot);
     return result;
@@ -249,6 +285,7 @@ inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningS
   // Reuse the endpoint and carry any remainder into the next day: no heat or
   // time is lost when the sample interval straddles the 24-hour boundary.
   detail::seed_segment(state, boundary);
+  state.missing_energy_uncertainty_ws = remaining_uncertainty_ws;
   if (snapshot.monotonic_ms > boundary_ms) detail::integrate_interval(state, snapshot);
   return result;
 }

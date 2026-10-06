@@ -308,7 +308,7 @@ void test_invalid_raw_event_restarts_aggregate() {
     auto input = valid_input(HydronicTopology::DUO_SERIES);
     retime(input, start_ms + static_cast<uint64_t>(step) * 10000ULL);
     input.epoch_s = start_epoch_s + step * 10U;
-    if (step == 720) input.hp2.water_out_c.valid = false;
+    if (step == 720) input.hp2.water_out_c.value = NAN;
     result = observe_source_input(accumulator, input, quality);
     if (step == 720) {
       saw_timestamped_invalid_event = result.source.has_snapshot && !result.source.measurement_valid &&
@@ -398,6 +398,69 @@ void test_daily_defrost_and_combined_diagnostics() {
   assert_failed(build(input), SnapshotSourceStatus::BOILER_ACTIVE);
 }
 
+void test_only_scalar_gaps_can_hold_a_daily_measurement() {
+  auto missing = valid_input(HydronicTopology::DUO_SERIES);
+  missing.room_c.valid = false;
+  assert(build(missing).may_bridge_daily_gap);
+  auto stale = valid_input(HydronicTopology::DUO_SERIES);
+  stale.hp2.water_out_c.received_monotonic_ms = kNowMs - 5001;
+  assert(build(stale).may_bridge_daily_gap);
+  stale.hp2.water_out_c.source.unit = PhysicalUnit::HP1;
+  assert(!build(stale).may_bridge_daily_gap);
+  assert(build(stale).status == SnapshotSourceStatus::SOURCE_UNIT_MISMATCH);
+  auto dynamic = build_learning_snapshot(missing, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC);
+  assert(!dynamic.may_bridge_daily_gap);
+
+  // Simultaneous hard failures must never be hidden by the first missing field.
+  auto fault = missing;
+  fault.outside_c.value = NAN;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.flow_lph.value = kPassiveMaximumFlowLph + 1.0f;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.hp2.water_out_c.value = 100.0f;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.hp2.water_out_c.source = fault.hp2.water_in_c.source;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.setpoint_c.source.id = 0;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.hp1.mode.value = HeatPumpMode::COOLING;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.boiler_heat.value = BoilerHeatState::HEAT_ACTIVE;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.hp2.compressor_active.valid = false;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.hp2.mode.received_monotonic_ms = kNowMs - 2000;
+  assert(!build(fault).may_bridge_daily_gap);  // Operational skew is a hard failure.
+  fault = missing;
+  fault.operation.service_or_ota = true;
+  assert(!build(fault).may_bridge_daily_gap);
+
+  SegmentAccumulator state;
+  auto input = valid_input(HydronicTopology::DUO_SERIES);
+  observe_source_input(state, input, QualityConfig{});
+  retime(input, kNowMs + 60000);
+  input.epoch_s += 60;
+  input.room_c.valid = false;
+  auto held = observe_source_input(state, input, QualityConfig{});
+  assert(!held.source.measurement_valid && state.active && state.source_gap_pending);
+  assert(state.integrated_duration_s == 0.0);
+  retime(input, kNowMs + 120000);
+  input.epoch_s += 60;
+  input.room_c.valid = true;
+  auto recovered = observe_source_input(state, input, QualityConfig{});
+  assert(recovered.source.measurement_valid && state.active && !state.source_gap_pending);
+  assert(state.integrated_duration_s == 120.0);
+  assert(state.missing_energy_uncertainty_ws > 0.0);
+}
+
 }  // namespace
 
 int main() {
@@ -414,5 +477,6 @@ int main() {
   test_invalid_raw_event_restarts_aggregate();
   test_dynamic_learning_keeps_temperature_response_but_not_hidden_heat();
   test_daily_defrost_and_combined_diagnostics();
+  test_only_scalar_gaps_can_hold_a_daily_measurement();
   return 0;
 }

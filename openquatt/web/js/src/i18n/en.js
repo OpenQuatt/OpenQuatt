@@ -84,7 +84,9 @@ export default {
     },
     status: {
       waitDailyMeasurement: "Waiting for valid measurements to start a complete 24-hour period.",
-      dailyWindowCopy: "Heating pauses and setpoint changes count. An unknown measurement or restart starts the current 24 hours again; completed daily measurements remain stored.",
+      waitShortMeasurement: "Briefly waiting for a reading",
+      dailyGapHeld: "Daily measurement is held briefly; waiting for a valid reading.",
+      dailyWindowCopy: "Heating pauses and setpoint changes count. A measurement interruption up to 2 minutes may be bridged if the operating state is known. Longer interruptions, an unknown operating state or a restart start the current day again; completed measurements remain stored.",
       paused: "Paused",
       stale: "Status out of date",
       unknown: "Unknown",

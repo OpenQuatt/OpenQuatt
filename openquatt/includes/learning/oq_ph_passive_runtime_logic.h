@@ -86,6 +86,7 @@ struct PassiveTickInput {
   bool active_line_valid = false;
   HouseLine active_line;
   bool batch_snapshot_available = false;
+  bool may_bridge_daily_gap = false;
   LearningSnapshot batch_snapshot;
   bool dynamic_snapshot_available = false;
   LearningSnapshot dynamic_snapshot;
@@ -407,8 +408,8 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
     if (state.diagnostics.rejected_batch_observations != UINT32_MAX) ++state.diagnostics.rejected_batch_observations;
   } else {
     const bool batch_was_active = state.batch_accumulator.active;
-    const ObserveResult observed =
-        observe_snapshot(state.batch_accumulator, input.batch_snapshot, state.config.quality);
+    const ObserveResult observed = observe_snapshot(state.batch_accumulator, input.batch_snapshot, state.config.quality,
+                                                    input.may_bridge_daily_gap);
     if (batch_was_active && observed.status != LearningStatus::COLLECTING && !observed.has_record)
       state.diagnostics.last_batch_rejection = observed.status;
     state.diagnostics.last_batch_status = observed.status;

@@ -331,11 +331,17 @@ int main() {
   for (auto& source : sources) source.configuration_generation = 1;
   assert(oq_power_house::learning::observe_source_revisions(revisions, sources));
   assert(!oq_power_house::learning::observe_source_revisions(revisions, sources));
+  assert(source_configuration_available(sources));
+  sources[0].valid = false;
+  assert(source_configuration_available(sources));
+  assert(!observe_source_revisions(revisions, sources));
   sources[2].configuration_generation = 3;
   assert(oq_power_house::learning::observe_source_revisions(revisions, sources));
   assert(!oq_power_house::learning::observe_source_revisions(revisions, sources));
 
   test_compile_time_topology_maps_single_and_duo();
+  sources[0].configuration_generation = 0;
+  assert(!source_configuration_available(sources));
   test_every_selected_route_uses_its_selected_value();
   test_selected_hold_uses_the_selected_value();
   test_missing_selection_is_not_a_learning_measurement();
