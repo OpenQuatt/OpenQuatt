@@ -72,7 +72,7 @@ function chartTooltip(record) {
 export function renderHouseLearningChart(records, configured, learned) {
   const compact = typeof window !== "undefined" && window.innerWidth < 640;
   const model = getHouseLearningChartModel(records, configured, learned, compact ? 360 : WIDTH);
-  if (!records.length && !model.configuredValid) return `<div class="oq-house-learning-chart-empty"><strong>${escapeHtml(t("houseLearning.chart.emptyTitle"))}</strong><span>${escapeHtml(t("houseLearning.chart.emptyCopy"))}</span></div>`;
+  if (!records.length && !model.configuredValid && !model.learnedValid) return `<div class="oq-house-learning-chart-empty"><strong>${escapeHtml(t("houseLearning.chart.emptyTitle"))}</strong><span>${escapeHtml(t("houseLearning.chart.emptyCopy"))}</span></div>`;
   const measuredMin = records.length ? Math.min(...records.map((record) => record.outsideC)) : null;
   const measuredMax = records.length ? Math.max(...records.map((record) => record.outsideC)) : null;
   const yGrid = Array.from({ length: Math.round(model.axisMaxY / model.yStep) + 1 }, (_, index) => index * model.yStep);
@@ -91,7 +91,7 @@ export function renderHouseLearningChart(records, configured, learned) {
   const visibleRecords = records.filter((record) => record.outsideC >= model.minX && record.outsideC <= model.maxX);
   const tooltip = visibleRecords.map((record) => `<g class="oq-house-learning-chart-point" data-oq-house-learning-tip="${escapeHtml(chartTooltip(record))}" tabindex="0" role="button" aria-label="${escapeHtml(chartTooltip(record))}"><title>${escapeHtml(chartTooltip(record))}</title><circle cx="${model.x(record.outsideC).toFixed(1)}" cy="${model.y(record.heatW).toFixed(1)}" r="12" class="oq-house-learning-chart-hit"/><circle cx="${model.x(record.outsideC).toFixed(1)}" cy="${model.y(record.heatW).toFixed(1)}" r="3.2" class="oq-house-learning-chart-dot"/></g>`).join("");
   const notes = [
-    t("houseLearning.chart.configuredLineNote"),
+    model.configuredValid ? t("houseLearning.chart.configuredLineNote") : "",
     !records.length
       ? t(model.learnedValid ? "houseLearning.chart.noPeriodsWithExtrapolation" : "houseLearning.chart.noPeriods")
       : t(records.length === 1 ? "houseLearning.chart.periodCountOne" : "houseLearning.chart.periodCountMany", { count: formatNumber(records.length) }),
@@ -100,7 +100,7 @@ export function renderHouseLearningChart(records, configured, learned) {
     !model.learnedValid ? t("houseLearning.chart.noBatchEstimate") : !model.ready ? t("houseLearning.chart.provisionalLine") : "",
   ].filter(Boolean);
   return `
-    <div class="oq-house-learning-chart-legend"><span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--configured"></i>${escapeHtml(t("houseLearning.chart.legendConfigured"))}</span><span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--records"></i>${escapeHtml(t("houseLearning.chart.legendRecords"))}</span><span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--learned"></i>${escapeHtml(t(model.ready ? "houseLearning.chart.legendLearned" : "houseLearning.chart.legendLearnedProvisional"))}</span></div>
+    <div class="oq-house-learning-chart-legend">${model.configuredValid ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--configured"></i>${escapeHtml(t("houseLearning.chart.legendConfigured"))}</span>` : ""}${visibleRecords.length ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--records"></i>${escapeHtml(t("houseLearning.chart.legendRecords"))}</span>` : ""}${model.learnedValid ? `<span><i class="oq-house-learning-chart-swatch oq-house-learning-chart-swatch--learned"></i>${escapeHtml(t(model.ready ? "houseLearning.chart.legendLearned" : "houseLearning.chart.legendLearnedProvisional"))}</span>` : ""}</div>
     <div class="oq-house-learning-chart-wrap">
       <svg class="oq-house-learning-chart" viewBox="0 0 ${model.width} ${HEIGHT}" role="img" aria-label="${escapeHtml(t("houseLearning.chart.ariaLabel"))}">
         ${records.length && learnedEnd > learnedStart ? `<rect x="${model.x(learnedStart)}" y="${PADDING.top}" width="${model.x(learnedEnd) - model.x(learnedStart)}" height="${model.plotHeight}" class="oq-house-learning-chart-range"/>` : ""}

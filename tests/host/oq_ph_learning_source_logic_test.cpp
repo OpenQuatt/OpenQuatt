@@ -307,7 +307,7 @@ void test_power_cap_only_excludes_a_constrained_request() {
   assert(power_cap_binds_filtered_demand(1, 0));
 }
 
-void test_invalid_raw_event_poisoning_reaches_aggregate() {
+void test_invalid_raw_event_restarts_aggregate() {
   QualityConfig quality;
   quality.max_interval_ms = 60000;
   SegmentAccumulator accumulator;
@@ -328,9 +328,17 @@ void test_invalid_raw_event_poisoning_reaches_aggregate() {
     }
   }
   assert(saw_timestamped_invalid_event);
-  assert(result.aggregate.status == LearningStatus::INVALID_MEASUREMENT);
+  assert(result.aggregate.status == LearningStatus::COLLECTING);
   assert(!result.aggregate.has_record);
-  assert(!accumulator.active);
+  assert(accumulator.active && accumulator.start_epoch_s == start_epoch_s + 7210U);
+  for (uint32_t step = 1441; step <= 2161; ++step) {
+    auto input = valid_input(HydronicTopology::DUO_SERIES);
+    retime(input, start_ms + static_cast<uint64_t>(step) * 10000ULL);
+    input.epoch_s = start_epoch_s + step * 10U;
+    result = observe_source_input(accumulator, input, quality);
+  }
+  assert(result.aggregate.has_record);
+  assert(result.aggregate.record.start_epoch_s == start_epoch_s + 7210U);
 }
 
 void test_provenance_and_active_exclusions() {
@@ -424,7 +432,7 @@ int main() {
   test_provenance_and_active_exclusions();
   test_operational_context_is_explicit_and_fail_closed();
   test_power_cap_only_excludes_a_constrained_request();
-  test_invalid_raw_event_poisoning_reaches_aggregate();
+  test_invalid_raw_event_restarts_aggregate();
   test_dynamic_learning_keeps_temperature_response_but_not_hidden_heat();
   test_combined_diagnostics_explain_batch_only_blocks();
   return 0;

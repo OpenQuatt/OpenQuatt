@@ -99,11 +99,18 @@ void test_fail_closed_boundaries() {
   auto stale = snapshot(start_ms + 300000, start_epoch + 300, 1000.0f);
   stale.invalid_reasons = INVALID_SOURCE_STALE;
   assert(observe_snapshot(accumulator, stale, config).status == LearningStatus::INVALID_MEASUREMENT);
+  assert(!accumulator.active);
   ObserveResult result;
   for (uint32_t step = 2; step <= 48; ++step)
     result = observe_snapshot(accumulator, snapshot(start_ms + step * 300000ULL, start_epoch + step * 300U, 1000.0f),
                               config);
-  assert(result.status == LearningStatus::INVALID_MEASUREMENT && !result.has_record && !accumulator.active);
+  assert(result.status == LearningStatus::COLLECTING && !result.has_record && accumulator.active);
+  for (uint32_t step = 49; step <= 50; ++step)
+    result = observe_snapshot(accumulator, snapshot(start_ms + step * 300000ULL, start_epoch + step * 300U, 1000.0f),
+                              config);
+  assert(result.has_record && result.record.start_epoch_s == start_epoch + 600U);
+  assert(result.record.duration_s == 14400U);
+  assert(fabsf(result.record.mean_heat_w - 1000.0f) < 0.01f);
 
   observe_snapshot(accumulator, snapshot(start_ms + 20000000ULL, start_epoch + 20000U, 1000.0f), config);
   auto changed = snapshot(start_ms + 20300000ULL, start_epoch + 20300U, 1000.0f);
@@ -121,6 +128,32 @@ void test_fail_closed_boundaries() {
                               config);
   }
   assert(result.status == LearningStatus::TIME_DISCONTINUITY);  // Small adjacent UTC drift accumulated at the origin.
+}
+
+void test_invalid_sample_restarts_only_unfinished_window() {
+  for (uint32_t invalid_second : {10U, 14390U}) {
+    SegmentAccumulator accumulator;
+    const uint32_t epoch = 20000U * 86400U;
+    const uint32_t first_valid = invalid_second + 20U;
+    for (uint32_t second = 0; second <= first_valid + 14400U; second += 10U) {
+      auto value = snapshot(1000ULL + second * 1000ULL, epoch + second, 2000.0f);
+      // Two consecutive invalid samples cannot be bridged or seed a new window.
+      if (second == invalid_second || second == invalid_second + 10U) {
+        value.invalid_reasons = INVALID_SOURCE_STALE;
+        value.heat_to_water_w = 50000.0f;
+      }
+      const auto result = observe_snapshot(accumulator, value, QualityConfig{});
+      if (second < first_valid + 14400U)
+        assert(!result.has_record);
+      else {
+        assert(result.has_record);
+        assert(result.record.start_epoch_s == epoch + first_valid);
+        assert(result.record.duration_s == 14400U);
+        assert(fabsf(result.record.mean_heat_w - 2000.0f) < 0.01f);
+      }
+      if (value.invalid_reasons != INVALID_NONE) assert(!accumulator.active);
+    }
+  }
 }
 
 void test_nonpositive_segment_and_record_bounds() {
@@ -188,6 +221,7 @@ int main() {
   test_time_weighted_signed_heat();
   test_midnight_and_quantized_room();
   test_fail_closed_boundaries();
+  test_invalid_sample_restarts_only_unfinished_window();
   test_nonpositive_segment_and_record_bounds();
   test_full_dataset_keeps_recent_records_and_temperature_coverage();
   return 0;

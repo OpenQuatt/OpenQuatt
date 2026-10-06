@@ -394,7 +394,7 @@ test("gecombineerde validatie en statusleeftijd bepalen de leerkwaliteit", () =>
   assert.doesNotMatch(renderHouseLearningStatusMarkup(ready), />Warmteverlies komt overeen</);
   assert.match(renderHouseLearningStatusMarkup({ ...ready, adviceReady: true }), />Warmteverlies komt overeen</);
   assert.match(renderHouseLearningStatusMarkup({ ...ready, tickEpoch: Math.floor(Date.now() / 1000) - 31 }), /Status verouderd/);
-  assert.match(renderHouseLearningStatusMarkup({ ...ready, blockedReasons: ["model_disagreement"] }), /1R1C-model verschillen/);
+  assert.match(renderHouseLearningStatusMarkup({ ...ready, blockedReasons: ["model_disagreement"] }), /woninglijn en model voor opwarmen en afkoelen verschillen/);
 });
 
 test("modelovereenstemming valideert C niet, ook bij oude firmware", () => {
@@ -426,12 +426,12 @@ test("voorlopige 1R1C-data staat boven batchdiagnostiek", () => {
   })));
   assert.match(markup, /Modelstatus[\s\S]*Voorlopige schatting/);
   assert.match(markup, /5 geaccepteerde perioden van 30 minuten/);
-  assert.match(markup, /1R1C-perioden[\s\S]*>5</);
+  assert.match(markup, /Perioden voor opwarmen en afkoelen[\s\S]*>5</);
   assert.match(markup, /Warmteverlies \(U\)[\s\S]*196,3 W\/K/);
   assert.match(markup, /Warmteopslag \(C\)[\s\S]*4\.803,5 Wh\/K/);
   assert.doesNotMatch(markup, /Nog geen metingen/);
   assert.ok(markup.indexOf("Warmteverlies (U)") < markup.indexOf("Modeldiagnostiek"));
-  assert.ok(markup.indexOf("Modeldiagnostiek") < markup.indexOf("Batch warmteverlies (H)"));
+  assert.ok(markup.indexOf("Modeldiagnostiek") < markup.indexOf("Warmteverlies per graad (H)"));
 });
 
 test("leerstatus toont actuele verzameling, losse bronnen en wachtredenen", () => {
@@ -446,7 +446,7 @@ test("leerstatus toont actuele verzameling, losse bronnen en wachtredenen", () =
   const markup = renderHouseLearningStatusMarkup(collecting);
   assert.match(markup, /Verzamelt nu/);
   assert.match(markup, /Woninglijn[\s\S]*Wacht[\s\S]*Wacht op kamer setpoint/);
-  assert.match(markup, /Opwarmen en afkoelen \(1R1C\)[\s\S]*Verzamelt/);
+  assert.match(markup, /Opwarmen en afkoelen[\s\S]*Verzamelt/);
   assert.match(markup, /Kamer[\s\S]*Geldig/);
   assert.match(markup, /Kamer setpoint[\s\S]*Ongeldig/);
   assert.doesNotMatch(markup, /kamer: .* · setpoint:/);
@@ -464,7 +464,7 @@ test("leerstatus vertaalt labels, routes en getallen tijdens een localewissel", 
   setLocale("en", { persist: false, applyDocument: false, notify: false });
   const markup = renderHouseLearningStatusMarkup(status);
   assert.match(markup, /Collecting now/);
-  assert.match(markup, /Building heat demand curve \(steady heating\)/);
+  assert.match(markup, /Heat demand curve from stable periods/);
   assert.match(markup, /Room temperature[\s\S]*Via selected room source/);
   assert.match(markup, /Thermal capacity \(C\)[\s\S]*4,803\.5 Wh\/K/);
 });
@@ -478,7 +478,7 @@ test("setpointherstel vertraagt alleen de woninglijn terwijl 1R1C verzamelt", ()
   })));
   assert.match(markup, /Verzamelt nu/);
   assert.match(markup, /Wacht tot de kamer stabiel is na de setpointwijziging/);
-  assert.match(markup, /Opwarmen en afkoelen \(1R1C\)[\s\S]*Verzamelt/);
+  assert.match(markup, /Opwarmen en afkoelen[\s\S]*Verzamelt/);
 });
 
 test("CM0 en CM1 tonen een echte blokkade in plaats van wachten op verwarming", () => {
@@ -589,7 +589,7 @@ test("oude firmware houdt verzamelvoortgang expliciet onbekend", () => {
     invalid_reasons: [],
   })));
   assert.match(markup, /Woninglijn[\s\S]*Onbekend/);
-  assert.match(markup, /Opwarmen en afkoelen \(1R1C\)[\s\S]*Onbekend/);
+  assert.match(markup, /Opwarmen en afkoelen[\s\S]*Onbekend/);
   assert.match(markup, /geeft geen voortgang door/);
 });
 
@@ -760,4 +760,62 @@ test("meetgegevens sluiten verwijdert de grafiek zonder netwerkrequest en kan op
   assert.equal(await loadHouseLearningChart(), true);
   assert.equal(requests, 1);
   assert.match(renderHouseLearningSettings(), /Meetgegevens verbergen/);
+});
+
+
+test("optionele eerdere woninglijnafwijzing blijft compatibel met oude statuspayloads", () => {
+  for (const value of [undefined, null, "", "   ", 17, {}]) {
+    const status = normalizeHouseLearningStatus(statusPayload({
+      collection: { ...statusPayload().collection, batch_last_rejection: value },
+    }));
+    assert.equal(status.collection.batchLastRejection, null);
+    assert.doesNotMatch(renderHouseLearningStatusMarkup(status), /Laatste onderbroken/);
+  }
+  assert.equal(normalizeHouseLearningStatus(statusPayload({
+    collection: { batch_last_rejection: " room_unstable " },
+  })).collection.batchLastRejection, "room_unstable");
+});
+
+test("eerdere onderbreking staat apart van actuele verzameling en geldige bronnen", () => {
+  const status = normalizeHouseLearningStatus(statusPayload({
+    enabled: true, control_mode: 2, status: "collecting", invalid_reasons: [], records: 0, rls_samples: 362,
+    collection: { ...statusPayload().collection, batch_active: true, batch_last_rejection: "room_unstable" },
+    sources: Object.fromEntries(Object.entries(statusPayload().sources).map(([key, value]) => [key, { ...value, valid: true }])),
+  }));
+  const nl = renderHouseLearningStatusMarkup(status);
+  assert.match(nl, /Woninglijn uit stabiele perioden[\s\S]*Verzamelt/);
+  assert.match(nl, /Laatste onderbroken of afgewezen woninglijnperiode: de kamertemperatuur was niet stabiel genoeg/);
+  assert.match(nl, /Actuele status hierboven/);
+  assert.doesNotMatch(nl, />Ongeldig</);
+  assert.match(nl, /Perioden voor opwarmen en afkoelen[\s\S]*>362</);
+  assert.match(nl, /Stabiele perioden voor de woninglijn[\s\S]*>0</);
+  assert.ok(nl.indexOf("Stabiele perioden voor de woninglijn") < nl.indexOf("Modeldiagnostiek"));
+  assert.match(nl, /Verwarmingsgrens \(T₀\)[\s\S]*woninglijn nul raakt; geen inschakelgrens/);
+  assert.doesNotMatch(nl, /batch-|Batch /);
+
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  const en = renderHouseLearningStatusMarkup(status);
+  assert.match(en, /Last interrupted or rejected heat demand period: the room temperature was not stable enough/);
+  assert.match(en, /Current status above/);
+  assert.match(en, /Heating and cooling periods[\s\S]*>362</);
+  assert.match(en, /Stable periods for the heat demand curve[\s\S]*>0</);
+  assert.match(en, /Heating threshold \(T₀\)[\s\S]*curve reaches zero; not the heating switch-on threshold/);
+  assert.doesNotMatch(en, /batch |Batch /);
+
+  assert.doesNotMatch(renderHouseLearningStatusMarkup({ ...status, collection: { ...status.collection, batchLastRejection: null } }), /Last interrupted/);
+});
+
+test("bekende collectieredenen worden vertaald en onbekende waarden blijven intern", () => {
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    for (const reason of ["invalid_measurement", "mixed_context", "time_discontinuity", "segment_ineligible", "nonpositive_heat", "setpoint_changed", "room_unstable", "water_storage_unstable", "invalid_configuration", "stale_data", "toString", "constructor", "__proto__", "<img src=x onerror=alert(1)>"]) {
+      const status = normalizeHouseLearningStatus(statusPayload({
+        collection: { ...statusPayload().collection, batch_last_rejection: reason },
+      }));
+      const markup = renderHouseLearningStatusMarkup(status);
+      assert.doesNotMatch(markup, /onerror=|unknownBlock|undefined/);
+      assert.ok(!markup.includes(reason));
+      assert.match(markup, locale === "nl" ? /Laatste onderbroken/ : /Last interrupted/);
+    }
+  }
 });

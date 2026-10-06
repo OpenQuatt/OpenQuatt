@@ -39,6 +39,18 @@ const REASON_LABEL_KEYS = {
   model_disagreement: "houseLearning.reasons.modelDisagreement",
   thermal_storage_not_stationary: "houseLearning.reasons.thermalStorageNotStationary",
 };
+const COLLECTION_REJECTION_KEYS = {
+  invalid_measurement: "houseLearning.collectionRejections.invalidMeasurement",
+  mixed_context: "houseLearning.collectionRejections.mixedContext",
+  time_discontinuity: "houseLearning.collectionRejections.timeDiscontinuity",
+  segment_ineligible: "houseLearning.collectionRejections.segmentIneligible",
+  nonpositive_heat: "houseLearning.collectionRejections.nonpositiveHeat",
+  setpoint_changed: "houseLearning.collectionRejections.setpointChanged",
+  room_unstable: "houseLearning.collectionRejections.roomUnstable",
+  water_storage_unstable: "houseLearning.collectionRejections.waterStorageUnstable",
+  invalid_configuration: "houseLearning.collectionRejections.invalidConfiguration",
+  stale_data: "houseLearning.collectionRejections.staleData",
+};
 const MODEL_REASONS = ["model_context_mismatch", "insufficient_shared_temperature_range", "model_disagreement", "thermal_storage_not_stationary"];
 const reasons = (values, fallback) => {
   const unique = [...new Set((values || []).map((value) => t(REASON_LABEL_KEYS[value] || "houseLearning.reasons.unknownBlock")))];
@@ -168,23 +180,31 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
   const batchWaiting = invalidSources.length ? t("houseLearning.status.waitForSources", { sources: formatList(invalidSources) })
     : status.invalidReasons.includes("setpoint_recovery") ? t("houseLearning.status.waitStableAfterSetpoint")
     : t("houseLearning.status.waitStableHeatingMeasurement");
+  const lastRejection = status.collection?.batchLastRejection;
+  const rejectionNote = lastRejection
+    ? `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.status.lastStablePeriodRejection", {
+      reason: t(Object.hasOwn(COLLECTION_REJECTION_KEYS, lastRejection)
+        ? COLLECTION_REJECTION_KEYS[lastRejection]
+        : "houseLearning.collectionRejections.unknown"),
+    }))}</p>`
+    : "";
   const summaryCards = [
     [t("houseLearning.cards.learning"), activityValue, activityNote, true, activityTone],
     collectionCard(t("houseLearning.cards.houseLine"), status.collection?.batch, status, batchWaiting),
     collectionCard(t("houseLearning.cards.heatingCooling"), status.collection?.thermal, status, activityNote),
   ];
+  const modelNote = `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.cards.modelStatus"))}: <strong>${escapeHtml(modelStatus(status))}</strong> · ${escapeHtml(modelStatusNote(status))}</p>`;
   const modelCards = [
-    [t("houseLearning.cards.modelStatus"), modelStatus(status), modelStatusNote(status), true, status.adviceReady && !statusIsStale(status) ? "green" : "sky"],
     [t("houseLearning.cards.r1rcPeriods"), formatNumber(status.rlsSamples), t("houseLearning.cards.acceptedThirtyMinutePeriods")],
+    [t("houseLearning.cards.stableBatchPeriods"), formatNumber(status.records), t("houseLearning.cards.stableBatchPeriodsCopy")],
     [t("houseLearning.cards.heatLossU"), metric(status.uRls, "W/K"), estimateNote(status.uRls, status.rlsReady)],
     [t("houseLearning.cards.heatStorageC"), metric(status.cRlsWhPerK, "Wh/K"), status.cRlsWhPerK == null ? t("houseLearning.estimate.none") : t("houseLearning.estimate.provisionalNotValidated")],
   ];
   const batchDiagnosticCards = [
-    [t("houseLearning.cards.stableBatchPeriods"), formatNumber(status.records), t("houseLearning.cards.stableBatchPeriodsCopy")],
     [t("houseLearning.cards.batchHeatLossH"), metric(status.hBatch, "W/K"), t("houseLearning.cards.batchHeatLossCopy")],
     [t("houseLearning.cards.batchStartTemperature"), metric(status.t0Batch, "°C"), t("houseLearning.cards.batchStartTemperatureCopy")],
   ];
-  return `<div class="oq-settings-grid oq-house-learning-summary">${summaryCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div><div class="oq-settings-system-summary oq-house-learning-sources">${Object.entries(status.sources).map(([key, source]) => sourceRow(key, source, status)).join("")}</div>${renderWaterTemperatureCards()}<div class="oq-settings-grid oq-house-learning-model">${modelCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>${renderSettingsAdvancedDisclosure("house-learning-model", t("houseLearning.diagnostics.title"), t("houseLearning.diagnostics.copy"), `<div class="oq-settings-grid">${batchDiagnosticCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>`)}${state.houseLearningStatusError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningStatusError))}</p>` : ""}`;
+  return `<div class="oq-settings-grid oq-house-learning-summary">${summaryCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>${rejectionNote}<div class="oq-settings-system-summary oq-house-learning-sources">${Object.entries(status.sources).map(([key, source]) => sourceRow(key, source, status)).join("")}</div>${renderWaterTemperatureCards()}${modelNote}<div class="oq-settings-grid oq-house-learning-model">${modelCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>${renderSettingsAdvancedDisclosure("house-learning-model", t("houseLearning.diagnostics.title"), t("houseLearning.diagnostics.copy"), `<div class="oq-settings-grid">${batchDiagnosticCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>`)}${state.houseLearningStatusError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningStatusError))}</p>` : ""}`;
 }
 
 function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.houseLearningReset === "pending") {

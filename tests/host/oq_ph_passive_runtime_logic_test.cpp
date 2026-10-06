@@ -85,6 +85,89 @@ void test_collects_fixed_records_and_fit_is_resumable() {
   static_assert(sizeof(PassiveRuntimeStorage) < 32U * 1024U);
 }
 
+void test_last_batch_rejection_survives_collection_and_clears_on_success_or_reset() {
+  PassiveRuntimeStorage state;
+  initialize_passive_runtime(state, context(), config(), true);
+  const uint32_t epoch = 20000U * 86400U;
+  auto input = tick(1000, epoch);
+  input.batch_snapshot_available = false;
+  tick_passive_runtime(state, input);
+  // Waiting before the first window is not a rejected period.
+  assert(state.diagnostics.last_batch_rejection == LearningStatus::OK);
+  tick_passive_runtime(state, tick(11000, epoch + 10U));
+  input = tick(21000, epoch + 20U);
+  input.batch_snapshot.invalid_reasons = INVALID_SOURCE_STALE;
+  tick_passive_runtime(state, input);
+  assert(!state.batch_accumulator.active);
+  assert(state.diagnostics.last_batch_rejection == LearningStatus::INVALID_MEASUREMENT);
+  for (uint32_t second = 30; second <= 14430U; second += 10U) {
+    tick_passive_runtime(state, tick(1000ULL + second * 1000ULL, epoch + second));
+    if (second < 14430U) {
+      assert(state.record_count == 0);
+      assert(state.diagnostics.last_batch_status == LearningStatus::COLLECTING);
+      assert(state.diagnostics.last_batch_rejection == LearningStatus::INVALID_MEASUREMENT);
+    }
+  }
+  assert(state.record_count == 1 && state.records[0].start_epoch_s == epoch + 30U);
+  assert(state.thermal_state.accepted_samples > 0);
+  assert(state.diagnostics.last_batch_rejection == LearningStatus::OK);
+  assert(!passive_runtime_summary(state, state.last_monotonic_ms).auto_apply_allowed);
+
+  // Completed quality rejection remains visible when the next window starts.
+  for (uint32_t minute = 0; minute <= 241; ++minute) {
+    const uint32_t second = 14440U + minute * 60U;
+    auto unstable = tick(1000ULL + second * 1000ULL, epoch + second);
+    unstable.batch_snapshot.room_c = minute < 120U ? 20.0f : 20.25f;
+    tick_passive_runtime(state, unstable);
+  }
+  assert(state.record_count == 1);
+  assert(state.batch_accumulator.active);
+  assert(state.diagnostics.last_batch_status == LearningStatus::COLLECTING);
+  assert(state.diagnostics.last_batch_rejection == LearningStatus::ROOM_UNSTABLE);
+  reset_passive_runtime(state);
+  assert(state.diagnostics.last_batch_rejection == LearningStatus::OK);
+}
+
+void test_early_collection_exits_replace_the_previous_rejection() {
+  for (int scenario = 0; scenario < 6; ++scenario) {
+    PassiveRuntimeStorage state;
+    initialize_passive_runtime(state, context(), config(), true);
+    constexpr uint32_t epoch = 20000U * 86400U;
+    tick_passive_runtime(state, tick(1000, epoch));
+    state.diagnostics.last_batch_rejection = LearningStatus::ROOM_UNSTABLE;
+    auto input = tick(11000, epoch + 10U);
+    auto expected = LearningStatus::INVALID_MEASUREMENT;
+    switch (scenario) {
+      case 0:
+        input.reference_context_valid = false;
+        break;
+      case 1:
+        input.context = context(2);
+        expected = LearningStatus::MIXED_CONTEXT;
+        break;
+      case 2:
+        input.now_epoch_s = 0;
+        expected = LearningStatus::TIME_DISCONTINUITY;
+        break;
+      case 3:
+        input.opted_in = false;
+        expected = LearningStatus::SEGMENT_INELIGIBLE;
+        break;
+      case 4:
+        pause_passive_runtime(state, 11000, LearningStatus::MIXED_CONTEXT);
+        expected = LearningStatus::MIXED_CONTEXT;
+        break;
+      default:
+        refresh_passive_evaluation(state, config());
+        expected = LearningStatus::MIXED_CONTEXT;
+        break;
+    }
+    if (scenario < 4) tick_passive_runtime(state, input);
+    assert(!state.batch_accumulator.active);
+    assert(state.diagnostics.last_batch_rejection == expected);
+  }
+}
+
 void test_pause_revokes_ready_state_without_discarding_records() {
   PassiveRuntimeStorage state;
   assert(initialize_passive_runtime(state, context(), config(), true) == PassiveRuntimeStatus::COLLECTING);
@@ -333,6 +416,8 @@ int main() {
   test_manual_line_outside_thermal_bounds_does_not_block_initialization();
   test_validation_waits_for_live_observation();
   test_collects_fixed_records_and_fit_is_resumable();
+  test_last_batch_rejection_survives_collection_and_clears_on_success_or_reset();
+  test_early_collection_exits_replace_the_previous_rejection();
   test_pause_revokes_ready_state_without_discarding_records();
   test_source_switch_keeps_real_history_and_starts_a_new_interval();
   test_context_change_preserves_both_models_and_rejects_old_input();

@@ -113,14 +113,31 @@ van de actuele buitenmeting.
 
 #### Huismodel volgen en passief leren
 
-In testfirmware met passief huismodelleren staat bij Power House op Heatpump Controller Q Single en Duo ook
-`Huismodel volgen`. Deze functie verzamelt diagnostiek en schat woningparameters; zij past geen
-regelinstellingen automatisch aan. Water staat vast; Single/Duo volgt uit de firmware en bij Duo
-loopt het water in serie van HP1 naar HP2. Dit zijn geen instelbare keuzes. Technische meetgrenzen
-en kalibratiebewijs horen niet bij deze bediening. Onbekende meetkwaliteit blijft een blokkade.
-De leerfunctie neemt CM0, CM1 en CM2 mee en controleert de bestaande ketelaansturing; er is geen aparte keuze
-voor een andere warmtebron. OpenTherm-telemetrie is hiervoor niet vereist; een actuele melding
-van ketelactiviteit sluit de betreffende meting wel uit.
+Bij Power House op Heatpump Controller Q Single en Duo staat onderaan **Verwarmen**
+het experimentele blok `Huismodel volgen`. Open `Leerstatus en meetgegevens` voor
+voortgang, bronnen en schattingen. Passief leren verandert geen regelinstellingen.
+
+De functie gebruikt dezelfde geselecteerde bronwaarden als de regeling en neemt
+verwarmen, pompnaloop en verwarmingspauzes (CM0, CM1 en CM2) mee. Ontbrekende of
+ongeldige metingen, ontdooien en ketelwarmte onderbreken een meetperiode.
+OpenTherm-telemetrie is hiervoor niet vereist.
+
+Er zijn twee soorten meetperioden, met elk een eigen teller:
+
+- **Opwarmen en afkoelen:** perioden van 30 minuten, ook als de kamertemperatuur
+  verandert. Het eenvoudige huismodel (1R1C) schat warmteverlies en warmteopslag.
+- **Woninglijn uit stabiele perioden:** perioden van vier uur waarin de kamer en
+  het setpoint weinig veranderen. Het gemiddelde warmtevermogen en de
+  buitentemperatuur leveren meetpunten voor de woninglijn. Korte compressorpauses
+  tellen mee; vier uur continu compressorbedrijf is niet vereist.
+
+Een onderbroken stabiele periode begint opnieuw bij de volgende geldige meting.
+Eerder opgeslagen meetperioden en modelschattingen blijven behouden. De laatste
+onderbreking of afwijzing blijft zichtbaar totdat een nieuwe stabiele periode is
+opgeslagen; deze melding wordt niet over een herstart bewaard.
+Veel korte meetperioden betekenen dus niet automatisch dat er ook meetpunten voor
+de woninglijn zijn. Beide schattingen zijn voorlopig totdat er voldoende geschikte
+gegevens en onafhankelijke controles zijn.
 
 `Passief leren` staat standaard aan. De gekozen stand blijft na een herstart of
 firmware-update behouden; bewust uitschakelen blijft dus uit. Bij de eerste update
@@ -139,7 +156,8 @@ geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](../power-house-au
 #### Woninglijn en meetresultaten
 
 De grafiek `Woninglijn en meetresultaten` vergelijkt de ingestelde woninglijn (blauw) met
-de geaccepteerde stabiele meetperioden (punten). Een beschikbare geleerde woninglijn wordt
+de geaccepteerde stabiele vieruursperioden (punten). De korte perioden voor
+opwarmen en afkoelen zijn geen punten in deze grafiek. Een beschikbare geleerde woninglijn wordt
 groen getoond; buiten het gemeten temperatuurbereik is deze gestippeld. Dit is een
 doortrekking van het model, geen meting. De woninglijn toont de basiswarmtevraag, zonder
 de tijdelijke kamercorrectie of vermogensbegrenzing.
@@ -149,7 +167,9 @@ Getallen en datums gebruiken de bijbehorende notatie; de JSON-export behoudt zij
 
 Haal de meetpunten op met de knop bij de grafiek. Bij een meetpunt kun je datum, meetduur,
 gemiddelde buitentemperatuur en warmtevermogen bekijken. Zonder voldoende gegevens blijft
-de geleerde lijn weg; de grafiek verandert geen instellingen.
+de geleerde lijn weg; de grafiek verandert geen instellingen. `H` beschrijft hoeveel
+extra vermogen per graad kouder nodig is. De `Verwarmingsgrens (T₀)` is het geschatte
+nulpunt van deze lijn, geen schakelinstelling die de verwarming aan- of uitzet.
 
 ### Koelen
 

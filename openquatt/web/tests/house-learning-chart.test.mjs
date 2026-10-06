@@ -7,14 +7,14 @@ const payload = {
   schema: 1,
   mode: "passive",
   record_columns: ["start_epoch_s", "end_epoch_s", "mean_room_c", "mean_setpoint_c", "mean_outside_c", "mean_heat_w", "room_trend_k_per_h", "context_revision"],
-  records: [[1700000000, 1700001800, 20.1, 20.5, 5.2, 2200, 0.01, 4], [1700003600, 1700005400, 20.2, 20.5, 8.1, 1650, 0.01, 4]],
+  records: [[1700000000, 1700014400, 20.1, 20.5, 5.2, 2200, 0.01, 4], [1700020000, 1700034400, 20.2, 20.5, 8.1, 1650, 0.01, 4]],
 };
 
 test.afterEach(() => setLocale("nl", { persist: false, applyDocument: false, notify: false }));
 
 test("batchexport gebruikt alleen de firmwarekolommen en verwerpt ontbrekende waarden", () => {
-  assert.deepEqual(normalizeHouseLearningExport(payload), [{ startEpoch: 1700000000, endEpoch: 1700001800, outsideC: 5.2, heatW: 2200 }, { startEpoch: 1700003600, endEpoch: 1700005400, outsideC: 8.1, heatW: 1650 }]);
-  assert.deepEqual(normalizeHouseLearningExport({ ...payload, records: [[1700000000, 1700001800, 20.1, 20.5, null, 2200, 0.01, 4]] }), []);
+  assert.deepEqual(normalizeHouseLearningExport(payload), [{ startEpoch: 1700000000, endEpoch: 1700014400, outsideC: 5.2, heatW: 2200 }, { startEpoch: 1700020000, endEpoch: 1700034400, outsideC: 8.1, heatW: 1650 }]);
+  assert.deepEqual(normalizeHouseLearningExport({ ...payload, records: [[1700000000, 1700014400, 20.1, 20.5, null, 2200, 0.01, 4]] }), []);
   assert.throws(() => normalizeHouseLearningExport({ ...payload, record_columns: [] }), /meetkolommen/);
 });
 
@@ -36,19 +36,19 @@ test("groene lijn wordt binnen het meetbereik doorgetrokken en daarbuiten gestre
   const markup = renderHouseLearningChart(normalizeHouseLearningExport(payload), { coldC: -10, zeroC: 16, ratedW: 5200 }, { h: 186, t0: 16.8, ready: true });
   assert.match(markup, /chart-line--learned\"/);
   assert.match(markup, /chart-line--learned-dashed/);
-  assert.match(markup, /Duur: 30 min/);
+  assert.match(markup, /Duur: 4 u 0 min/);
 });
 
 test("grafiektekst en getallen volgen de actieve locale", () => {
   const records = normalizeHouseLearningExport(payload);
   setLocale("nl", { persist: false, applyDocument: false, notify: false });
   const nl = renderHouseLearningChart(records, { coldC: -10, zeroC: 16, ratedW: 5200 }, { h: 186, t0: 16.8, ready: true });
-  assert.match(nl, /Duur: 30 min/);
+  assert.match(nl, /Duur: 4 u 0 min/);
   assert.match(nl, /Buiten: 5,2 °C/);
 
   setLocale("en", { persist: false, applyDocument: false, notify: false });
   const en = renderHouseLearningChart(records, { coldC: -10, zeroC: 16, ratedW: 5200 }, { h: 186, t0: 16.8, ready: true });
-  assert.match(en, /Duration: 30 min/);
+  assert.match(en, /Duration: 4 hr 0 min/);
   assert.match(en, /Outside: 5\.2 °C/);
   assert.match(en, /Configured heat demand curve/);
 });
@@ -68,7 +68,10 @@ test("één meetpunt verbergt een beschikbare fit niet; zonder fit geen groene l
   const records = normalizeHouseLearningExport(payload).slice(0, 1);
   const configured = { coldC: -10, zeroC: 16, ratedW: 5200 };
   assert.match(renderHouseLearningChart(records, configured, { h: 200, t0: 16 }), /<path[^>]+chart-line--learned-dashed/);
-  assert.doesNotMatch(renderHouseLearningChart(records, configured, {}), /<path[^>]+chart-line--learned/);
+  const withoutFit = renderHouseLearningChart(records, configured, {});
+  assert.doesNotMatch(withoutFit, /<path[^>]+chart-line--learned|chart-swatch--learned/);
+  assert.match(withoutFit, /chart-swatch--configured/);
+  assert.match(withoutFit, /chart-swatch--records/);
   assert.doesNotMatch(renderHouseLearningChart([], configured, { h: 200, t0: 16 }), /<path[^>]+chart-line--learned"/);
 });
 
@@ -81,4 +84,28 @@ test("buitenas blijft altijd -10 tot 20; meetpunten buiten beeld blijven buiten 
   const html = renderHouseLearningChart(records, {}, {});
   assert.doesNotMatch(html, /data-oq-house-learning-tip=/);
   assert.match(html, /buiten de getoonde as/);
+});
+
+
+test("lege grafiek verklaart waarom 30-minutenperioden geen meetpunten opleveren", () => {
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    for (const configured of [{}, { coldC: -10, zeroC: 16, ratedW: 5200 }]) {
+      const markup = renderHouseLearningChart([], configured, {});
+      assert.match(markup, locale === "nl" ? /minimaal 4 uur/ : /at least 4 hours/);
+      assert.match(markup, locale === "nl" ? /30 minuten voor opwarmen en afkoelen/ : /30-minute heating and cooling periods/);
+      assert.doesNotMatch(markup, /data-oq-house-learning-tip=|batch|chart-swatch--learned|chart-swatch--records/);
+    }
+  }
+});
+
+
+test("beschikbare woninglijnschatting blijft zichtbaar bij ontbrekende Power House-instellingen", () => {
+  const markup = renderHouseLearningChart([], {}, { h: 186, t0: 16.8, ready: false });
+  assert.match(markup, /<path[^>]+chart-line--learned-dashed/);
+  assert.match(markup, /Power House-lijn is onvolledig/);
+  assert.match(markup, /volledig een extrapolatie/);
+  assert.match(markup, /voorlopig en nog niet gevalideerd/);
+  assert.doesNotMatch(markup, /Nog geen grafiek beschikbaar|chart-swatch--configured|chart-swatch--records|De blauwe lijn toont/);
+  assert.match(markup, /chart-swatch--learned/);
 });

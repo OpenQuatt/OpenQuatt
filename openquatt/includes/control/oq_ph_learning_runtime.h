@@ -75,11 +75,11 @@ struct RuntimeStorage {
 
 class Runtime {
  public:
-  void pause() {
+  void pause(LearningStatus rejection = LearningStatus::SEGMENT_INELIGIBLE) {
     if (!storage_) return;
     auto& state = storage_[0];
     pause_diagnostic_capture(state.diagnostic_capture);
-    if (state.learner.initialized) pause_passive_runtime(state.learner, oq_sources::monotonic_ms());
+    if (state.learner.initialized) pause_passive_runtime(state.learner, oq_sources::monotonic_ms(), rejection);
     publish_paused_status_(state);
   }
 
@@ -103,13 +103,13 @@ class Runtime {
     // Invalidate source caches on every setting event, including A->B->A before
     // the next periodic selection. This does not republish or change controls.
     oq_sensor_source::runtime().source_configuration_changed();
-    pause();
+    pause(LearningStatus::MIXED_CONTEXT);
   }
 
   void evaluation_policy_changed() {
     if (!storage_) return;
     storage_[0].evaluation_policy_changed = true;
-    pause();
+    pause(LearningStatus::MIXED_CONTEXT);
   }
 
   void tick() {
@@ -613,8 +613,7 @@ class Runtime {
     uint32_t last_sample_epoch = 0U;
     if (state.learner.record_count > 0U)
       last_sample_epoch = state.learner.records[state.learner.record_count - 1U].end_epoch_s;
-    if (state.learner.batch_accumulator.active && state.learner.batch_accumulator.last_measurement_valid &&
-        state.learner.batch_accumulator.last_epoch_s > last_sample_epoch)
+    if (state.learner.batch_accumulator.active && state.learner.batch_accumulator.last_epoch_s > last_sample_epoch)
       last_sample_epoch = state.learner.batch_accumulator.last_epoch_s;
     if (state.learner.thermal_accumulator.active && state.learner.thermal_accumulator.last.epoch_s > last_sample_epoch)
       last_sample_epoch = state.learner.thermal_accumulator.last.epoch_s;
@@ -624,7 +623,7 @@ class Runtime {
     const auto& thermal_window = state.learner.thermal_accumulator;
     const bool collecting_enabled = enabled && state.learner.initialized && state.learner.opted_in &&
                                     !state.learner.blocked && state.learner.status != PassiveRuntimeStatus::PAUSED;
-    const bool batch_active = collecting_enabled && !batch_window.poisoned && state.tick.batch_snapshot_available &&
+    const bool batch_active = collecting_enabled && state.tick.batch_snapshot_available &&
                               passive_runtime_detail::snapshot_matches_tick(state.tick.batch_snapshot, state.tick) &&
                               validate_snapshot(state.tick.batch_snapshot, state.config.quality) == LearningStatus::OK;
     const bool thermal_active = collecting_enabled && thermal_window.active && thermal_window.last.epoch_s == epoch;
@@ -661,16 +660,22 @@ class Runtime {
       json.add("%u", last_sample_epoch);
     json.add(
         ",\"collection\":{\"batch_active\":%s,\"batch_elapsed_s\":%llu,\"batch_target_s\":%llu,"
-        "\"thermal_active\":%s,\"thermal_elapsed_s\":%llu,\"thermal_target_s\":%llu,\"thermal_intervals\":%u},"
-        "\"control_mode\":%d,\"context_revision\":%u,\"journal_status\":\"%s\","
-        "\"model_validation_status\":\"%s\",\"sources\":{",
+        "\"thermal_active\":%s,\"thermal_elapsed_s\":%llu,\"thermal_target_s\":%llu,\"thermal_intervals\":%u,"
+        "\"batch_last_rejection\":",
         batch_active ? "true" : "false",
         batch_active && batch_window.active
             ? (batch_window.last_monotonic_ms - batch_window.start_monotonic_ms) / 1000ULL
             : 0ULL,
         kSegmentDurationMs / 1000ULL, thermal_active ? "true" : "false",
         thermal_active ? (thermal_window.last.monotonic_ms - thermal_window.first.monotonic_ms) / 1000ULL : 0ULL,
-        state.config.thermal_window.target_duration_ms / 1000ULL, state.learner.diagnostics.accepted_thermal_intervals,
+        state.config.thermal_window.target_duration_ms / 1000ULL, state.learner.diagnostics.accepted_thermal_intervals);
+    if (state.learner.diagnostics.last_batch_rejection == LearningStatus::OK)
+      json.add("null");
+    else
+      json.add("\"%s\"", learning_status_name(state.learner.diagnostics.last_batch_rejection));
+    json.add(
+        "},\"control_mode\":%d,\"context_revision\":%u,\"journal_status\":\"%s\","
+        "\"model_validation_status\":\"%s\",\"sources\":{",
         id(oq_control_mode_code), state.input.context_revision, state.journal.status,
         model_validation_status_name(summary.validation.status));
     const char* names[]{"room", "setpoint", "outside", "flow"};

@@ -10,9 +10,6 @@ namespace oq_power_house::learning {
 
 struct SegmentAccumulator {
   bool active = false;
-  bool poisoned = false;
-  bool last_measurement_valid = false;
-  LearningStatus poison_status = LearningStatus::OK;
   uint64_t start_monotonic_ms = 0;
   uint64_t last_monotonic_ms = 0;
   uint32_t start_epoch_s = 0;
@@ -53,7 +50,6 @@ namespace detail {
 inline void seed_segment(SegmentAccumulator& state, const LearningSnapshot& snapshot) {
   state = {};
   state.active = true;
-  state.last_measurement_valid = true;
   state.start_monotonic_ms = snapshot.monotonic_ms;
   state.last_monotonic_ms = snapshot.monotonic_ms;
   state.start_epoch_s = snapshot.epoch_s;
@@ -90,11 +86,9 @@ inline bool coherent_time(const SegmentAccumulator& state, const LearningSnapsho
   return span_mismatch_ms <= static_cast<uint64_t>(config.utc_tolerance_s) * 1000ULL + 999ULL;
 }
 
-inline void update_last(SegmentAccumulator& state, const LearningSnapshot& snapshot, bool valid) {
+inline void update_last(SegmentAccumulator& state, const LearningSnapshot& snapshot) {
   state.last_monotonic_ms = snapshot.monotonic_ms;
   state.last_epoch_s = snapshot.epoch_s;
-  state.last_measurement_valid = valid;
-  if (!valid) return;
   state.last_room_c = snapshot.room_c;
   state.last_setpoint_c = snapshot.setpoint_c;
   state.last_outside_c = snapshot.outside_c;
@@ -162,39 +156,31 @@ inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningS
     return result;
   }
 
-  const double dt_s = static_cast<double>(snapshot.monotonic_ms - state.last_monotonic_ms) / 1000.0;
   if (measurement_status != LearningStatus::OK) {
-    state.poisoned = true;
-    state.poison_status = LearningStatus::INVALID_MEASUREMENT;
-    detail::update_last(state, snapshot, false);
-  } else if (!state.last_measurement_valid) {
-    detail::update_last(state, snapshot, true);
-  } else {
-    const double elapsed_mid_s =
-        static_cast<double>(state.last_monotonic_ms - state.start_monotonic_ms) / 1000.0 + 0.5 * dt_s;
-    const double mean_room_c = 0.5 * (static_cast<double>(state.last_room_c) + snapshot.room_c);
-    state.integrated_duration_s += dt_s;
-    state.room_integral += mean_room_c * dt_s;
-    state.setpoint_integral += 0.5 * (static_cast<double>(state.last_setpoint_c) + snapshot.setpoint_c) * dt_s;
-    state.outside_integral += 0.5 * (static_cast<double>(state.last_outside_c) + snapshot.outside_c) * dt_s;
-    state.heat_integral += 0.5 * (static_cast<double>(state.last_heat_w) + snapshot.heat_to_water_w) * dt_s;
-    state.trend_w += dt_s;
-    state.trend_wt += dt_s * elapsed_mid_s;
-    state.trend_wtt += dt_s * elapsed_mid_s * elapsed_mid_s;
-    state.trend_wr += dt_s * mean_room_c;
-    state.trend_wtr += dt_s * elapsed_mid_s * mean_room_c;
-    detail::update_last(state, snapshot, true);
+    // Never bridge a missing/invalid observation, but restart as soon as valid
+    // data returns instead of waiting for the old four-hour window to expire.
+    reset_segment(state);
+    result.status = measurement_status;
+    return result;
   }
 
-  if (snapshot.monotonic_ms - state.start_monotonic_ms < kSegmentDurationMs) {
-    result.status = measurement_status == LearningStatus::OK ? LearningStatus::COLLECTING : measurement_status;
-    return result;
-  }
-  if (state.poisoned) {
-    result.status = state.poison_status;
-    reset_segment(state);
-    return result;
-  }
+  const double dt_s = static_cast<double>(snapshot.monotonic_ms - state.last_monotonic_ms) / 1000.0;
+  const double elapsed_mid_s =
+      static_cast<double>(state.last_monotonic_ms - state.start_monotonic_ms) / 1000.0 + 0.5 * dt_s;
+  const double mean_room_c = 0.5 * (static_cast<double>(state.last_room_c) + snapshot.room_c);
+  state.integrated_duration_s += dt_s;
+  state.room_integral += mean_room_c * dt_s;
+  state.setpoint_integral += 0.5 * (static_cast<double>(state.last_setpoint_c) + snapshot.setpoint_c) * dt_s;
+  state.outside_integral += 0.5 * (static_cast<double>(state.last_outside_c) + snapshot.outside_c) * dt_s;
+  state.heat_integral += 0.5 * (static_cast<double>(state.last_heat_w) + snapshot.heat_to_water_w) * dt_s;
+  state.trend_w += dt_s;
+  state.trend_wt += dt_s * elapsed_mid_s;
+  state.trend_wtt += dt_s * elapsed_mid_s * elapsed_mid_s;
+  state.trend_wr += dt_s * mean_room_c;
+  state.trend_wtr += dt_s * elapsed_mid_s * mean_room_c;
+  detail::update_last(state, snapshot);
+
+  if (snapshot.monotonic_ms - state.start_monotonic_ms < kSegmentDurationMs) return result;
 
   result.record = detail::make_record(state);
   result.status = validate_segment_record(result.record, config);

@@ -67,6 +67,9 @@ export function normalizeHouseLearningStatus(payload = {}) {
     collection: payload.collection && typeof payload.collection === "object"
       ? {
         batch: collectionPhase(payload.collection, "batch"),
+        batchLastRejection: typeof payload.collection.batch_last_rejection === "string"
+          ? payload.collection.batch_last_rejection.trim() || null
+          : null,
         thermal: collectionPhase(payload.collection, "thermal"),
       }
       : null,
