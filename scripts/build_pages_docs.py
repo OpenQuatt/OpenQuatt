@@ -54,6 +54,9 @@ PAGES = [
     Page(PurePosixPath("docs/web-app/energie.md"), PurePosixPath("web-app/energie.html"), "Energie en resultaten", "Handleiding", "Energie en resultaten in OpenQuatt."),
     Page(PurePosixPath("docs/web-app/diagnose.md"), PurePosixPath("web-app/diagnose.html"), "Diagnose en logboeken", "Handleiding", "Diagnose en logboeken in OpenQuatt."),
     Page(PurePosixPath("docs/web-app/onderhoud.md"), PurePosixPath("web-app/onderhoud.html"), "Updates en backups", "Handleiding", "Updates en backups in OpenQuatt."),
+    Page(PurePosixPath("docs/web-app/privacy.md"), PurePosixPath("web-app/privacy.html"), "Gegevens delen en privacy", "Handleiding", "Kiezen welke gegevens je deelt en de keuze controleren."),
+    Page(PurePosixPath("docs/gegevens-delen-technisch.md"), PurePosixPath("gegevens-delen-technisch.html"), "Gegevens delen: technische naslag", "Naslag", "Velden en verzendgedrag van gebruiksstatistieken."),
+    Page(PurePosixPath("docs/koelen-technisch.md"), PurePosixPath("koelen-technisch.html"), "Koelen: technische werking", "Naslag", "Koelvoorwaarden, wachttijden en bronbewaking."),
     Page(PurePosixPath("docs/web-app/herstel.md"), PurePosixPath("web-app/herstel.html"), "Herstelpagina gebruiken", "Handleiding", "Herstelpagina gebruiken in OpenQuatt."),
     Page(PurePosixPath("docs/dagelijks/controleren.md"), PurePosixPath("dagelijks/controleren.html"), "Dagelijkse controle", "Handleiding", "Dagelijkse controle in OpenQuatt."),
     Page(PurePosixPath("docs/dagelijks/verwarmen.md"), PurePosixPath("dagelijks/verwarmen.html"), "Verwarmen en comfort", "Handleiding", "Verwarmen en comfort in OpenQuatt."),
@@ -84,11 +87,11 @@ PAGE_BY_SOURCE = {page.source: page for page in PAGES}
 SIDEBAR_GROUPS = [
     ("Aan de slag", "", [PurePosixPath("README.md"), PurePosixPath("docs/q-edition.md"), PurePosixPath("docs/web-app/quick-start.md")]),
     ("Dagelijks gebruik", "", [PurePosixPath("docs/dagelijks/controleren.md"), PurePosixPath("docs/dagelijks/verwarmen.md"), PurePosixPath("docs/dagelijks/koelen.md")]),
-    ("Web-app", "", [PurePosixPath("docs/web-app.md"), PurePosixPath("docs/web-app/instellingen.md"), PurePosixPath("docs/web-app/bronnen.md"), PurePosixPath("docs/web-app/energie.md")]),
+    ("Web-app", "", [PurePosixPath("docs/web-app.md"), PurePosixPath("docs/web-app/instellingen.md"), PurePosixPath("docs/web-app/bronnen.md"), PurePosixPath("docs/web-app/energie.md"), PurePosixPath("docs/web-app/privacy.md")]),
     ("Home Assistant", "", [PurePosixPath("docs/dashboard/README.md"), PurePosixPath("docs/dashboard/koppelen.md"), PurePosixPath("docs/dashboard/installation.md"), PurePosixPath("docs/dashboard/dashboard.md"), PurePosixPath("docs/dashboard/dynamic-sources.md"), PurePosixPath("docs/dashboard/cooling.md")]),
     ("Homey", "", [PurePosixPath("docs/homey.md")]),
     ("Onderhoud en problemen", "", [PurePosixPath("docs/problemen-oplossen.md"), PurePosixPath("docs/web-app/diagnose.md"), PurePosixPath("docs/web-app/onderhoud.md"), PurePosixPath("docs/web-app/herstel.md")]),
-    ("Technische naslag", "", [PurePosixPath("docs/power-house.md"), PurePosixPath("docs/water-temperature-control.md"), PurePosixPath("docs/regelgedrag-van-openquatt.md"), PurePosixPath("docs/instellingen-en-meetwaarden.md"), PurePosixPath("docs/mqtt.md"), PurePosixPath("docs/api-input.md"), PurePosixPath("docs/crash-telemetry.md"), PurePosixPath("docs/hcq-io-overzicht.md"), PurePosixPath("docs/handmatige-installatie.md")]),
+    ("Technische naslag", "", [PurePosixPath("docs/power-house.md"), PurePosixPath("docs/water-temperature-control.md"), PurePosixPath("docs/regelgedrag-van-openquatt.md"), PurePosixPath("docs/instellingen-en-meetwaarden.md"), PurePosixPath("docs/mqtt.md"), PurePosixPath("docs/api-input.md"), PurePosixPath("docs/crash-telemetry.md"), PurePosixPath("docs/hcq-io-overzicht.md"), PurePosixPath("docs/handmatige-installatie.md"), PurePosixPath("docs/koelen-technisch.md"), PurePosixPath("docs/gegevens-delen-technisch.md")]),
 ]
 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")

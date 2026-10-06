@@ -1,57 +1,48 @@
 # Koelen
 
-## Wat betekent koeling binnen OpenQuatt?
+Bij watergedragen koeling moet je condens voorkomen. OpenQuatt bewaakt daarvoor onder meer dauwpunt, watertemperatuur en waterdoorstroming. Toestemming om te koelen betekent daarom niet dat de compressor meteen start.
 
-Koeling is niet simpelweg "verwarmen maar dan andersom". Bij koeling is vooral het risico op condens belangrijk.
+## Koelen binnen een dagelijks tijdvenster
 
-Daarom werkt OpenQuatt bij koeling terughoudend:
+### Koelen aanzetten
 
-- er moet echt een koelvraag zijn;
-- de flow moet bruikbaar zijn;
-- de minimale veilige watertemperatuur moet bewaakt worden;
-- dauwpuntinformatie is normaal gesproken nodig.
+1. Controleer dat je installatie geschikt is voor koeling en dat de gekozen dauwpuntbron geldige gegevens levert. Zie [Bronnen en integraties](../web-app/bronnen.md).
+2. Open **Instellingen → Koelen → Dagelijks koelvenster**.
+3. Zet het venster aan en kies een start- en eindtijd, bijvoorbeeld 08:00–20:00. Sla ieder tijdveld op door het te verlaten of op Enter te drukken.
+4. Controleer op **Overzicht** de koeltoestemming, kamertemperatuur en gewenste kamertemperatuur.
 
-Standaard gebruikt OpenQuatt de kamertemperatuur en het setpoint om vast te stellen of er echt koelvraag is. Een kleine marge voorkomt dat koeling steeds kort aan en uit schakelt rond het setpoint.
+Standaard begint koeling alleen als de kamer ook daadwerkelijk om koeling vraagt. De veiligheidsbewaking blijft altijd gelden. Gebruik je een externe bron voor koeltoestemming, kies die dan bewust bij de [koelinstellingen](../web-app/instellingen.md#koelen).
 
-Bij koelvraag kijkt OpenQuatt vervolgens naar de watertemperatuur. De regeling start rustig, bouwt alleen op als dat nodig is en remt af of stopt wanneer de aanvoer dicht bij de veilige ondergrens komt.
+## Wat kun je verwachten?
 
-Voor het opnieuw starten na een koelstop kun je kiezen tussen voldoende opwarming van het water en een vaste minimale uit-tijd. Die uit-tijd geldt bij Duo voor beide warmtepompen, zodat de tweede pomp niet direct de gestopte koelcyclus overneemt. Ook bij Single blijft de vaste minimale uit-tijd van de compressor (4 minuten) altijd gelden: OpenQuatt start pas wanneer alle relevante wachttijden en voorwaarden zijn vrijgegeven. De condens-, flow- en andere veiligheidsbewaking blijft altijd gelden.
+Binnen het tijdvenster mag OpenQuatt koelen wanneer er koelvraag is en de voorwaarden kloppen. Buiten het venster trekt het de toestemming in. De compressor kan nog kort doorlopen om zijn minimale looptijd af te maken; daarna kan de circulatiepomp nog draaien.
 
-### Koelen binnen een dagelijks tijdvenster
+Een venster mag over middernacht lopen. Gelijke start- en eindtijden betekenen dat het venster uitstaat. Na een herstart wacht het schema op geldige netwerktijd.
 
-Wil je bijvoorbeeld alleen overdag koelen, zet dan onder **Instellingen → Koelen** het blok **Dagelijks koelvenster** aan en stel de start- en eindtijd in. Het tandwiel bij **Koeltoestemming** op het overzicht opent dezelfde instellingen. Inschakelen kiest intern `Schedule` als `Cooling Enable Source`; uitschakelen kiest `Disabled`. Het schema geeft alleen toestemming om te koelen. Standaard blijft `Cooling Room Request Required` aan en begint koeling dus pas als de kamertemperatuur daadwerkelijk om koeling vraagt. Zet je die instelling bewust uit, dan vormt een actief tijdvenster zelf de koelvraag. De dauwpunt-, water- en flowbeveiligingen en `OpenQuatt Enabled` blijven in beide gevallen leidend.
+### Zo controleer je dat het gelukt is
 
-De starttijd hoort bij het venster, de eindtijd niet: `08:00-20:00` is actief vanaf 08:00 tot vlak voor 20:00. Een venster mag over middernacht lopen, bijvoorbeeld `20:00-07:00`. Zijn start en einde gelijk, dan staat het venster uit; de veilige standaard `00:00-00:00` activeert na een update dus niets onverwacht.
+Controleer dat je tijden na opnieuw openen bewaard zijn en dat **Overzicht** de verwachte koeltoestemming toont. Kijk daarnaast naar de status en reden: een geldige toestemming hoeft zonder koelvraag niet tot koeling te leiden.
 
-Het schema gebruikt de lokale klok van de controller. Na een herstart zonder geldige netwerktijd blijft de schematoestemming veilig uit. Zodra SNTP de tijd heeft gesynchroniseerd, loopt de lokale klok op de controller door en wordt het venster automatisch opnieuw beoordeeld.
+## Waarom start koelen niet?
 
-Aan het einde van het venster trekt OpenQuatt de koeltoestemming gecontroleerd in. Een nog lopende minimale compressortijd kan de compressor kort na de eindtijd laten doorlopen; daarna kan de pomp voor de normale postflow actief blijven. Een harde veiligheidsingreep mag de minimale looptijd wel doorbreken.
+| Wat zie je? | Wat controleer je? |
+| --- | --- |
+| Geen koeltoestemming | Staat het venster aan, valt de huidige tijd erin en is de controllerklok geldig? |
+| Wel toestemming, geen koelvraag | Is de kamer warmer dan de gewenste temperatuur? Rond het setpoint voorkomt een kleine marge steeds aan/uit schakelen. |
+| Koeling geblokkeerd | Is de dauwpuntbron geldig, is de waterdoorstroming bruikbaar en is het water niet al te koud? Lees de getoonde reden. |
+| Koeling is net gestopt | De compressor kan een wachttijd hebben voordat hij opnieuw mag starten. |
 
-Wil je de exacte koelinstellingen, marges en begrenzingen begrijpen of wijzigen? Gebruik dan de technische naslag [Instellingen en meetwaarden](../instellingen-en-meetwaarden.md).
+Blijft de oorzaak onduidelijk, volg [Problemen oplossen](../problemen-oplossen.md) en [Diagnose en logboeken](../web-app/diagnose.md).
 
-### Waarom is dauwpunt zo belangrijk?
+## Wat doet `Manual Cooling Enable`?
 
-Bij vloerkoeling of andere watergedragen koeling wil je voorkomen dat oppervlakken te koud worden en vocht uit de lucht erop condenseert.
+Handmatige koeltoestemming kan ook buiten het gekozen venster gelden. Zij schakelt de veiligheidsbewaking niet uit en vereist standaard nog steeds koelvraag van de kamer. Deze keuze verloopt niet vanzelf en kan na een herstart blijven aanstaan; zet haar zelf weer uit wanneer je klaar bent.
 
-Daarom kijkt OpenQuatt bij koeling niet alleen naar comfort, maar ook naar veiligheid:
+## Verder lezen
 
-- is de lucht in huis vochtig;
-- wat is dan de veilige ondergrens voor de watertemperatuur;
-- mag cooling op dit moment dus wel of niet vrijgegeven worden.
+- [Instellingen aanpassen](../web-app/instellingen.md#koelen) voor bediening en bronkeuze.
+- [Koelen: technische werking](../koelen-technisch.md) voor exacte voorwaarden, wachttijden en bronbewaking.
 
-Een dauwpunt kan uit Home Assistant, API-invoer of MQTT komen. In de web-app kies je de bron. Bij `Auto` gebruikt OpenQuatt de hoogste geldige dauwpuntwaarde, omdat die voor koeling de veiligste ondergrens geeft. Voor Home Assistant geldt de centrale heartbeat (`sensor.openquatt_ha_ingress_heartbeat`): een constante waarde blijft bruikbaar zolang die heartbeat binnenkomt. Bij een verouderde of ontbrekende waarde valt OpenQuatt terug op een andere geldige bron of blokkeert het koelen. Zie [API inputbronnen](../api-input.md) en [MQTT inputbronnen](../mqtt.md) voor de technische geldigheidsduur.
+## Waarom is dauwpunt zo belangrijk?
 
-### Wat doet `Manual Cooling Enable`?
-
-Die schakelaar geeft extra handmatige toestemming en omzeilt daarmee de gekozen `Cooling Enable Source`, dus ook een gesloten of nog niet geldige `Schedule`. Met de standaardinstelling `Cooling Room Request Required` blijft nog steeds een normale koelvraag nodig. De schakelaar omzeilt nooit `OpenQuatt Enabled`, dauwpunt-, water- of flowbeveiligingen.
-
-`Manual Cooling Enable` is geen automatisch aflopende override. De gebruikte herstelmodus `RESTORE_DEFAULT_OFF` betekent dat een opgeslagen stand na een herstart terugkomt; alleen zonder opgeslagen stand is de standaard uit. Zet de schakelaar daarom zelf weer uit wanneer de handmatige toestemming niet meer nodig is.
-
-Kort gezegd:
-
-- handmatig toestaan is niet hetzelfde als onbeperkt mogen koelen.
-
-
-## Bediening en verder lezen
-
-Zie [Instellingen aanpassen](../web-app/instellingen.md) voor de bediening in de web-app en [Dagelijkse controle](controleren.md) voor normaal gebruik.
+Dauwpunt is de temperatuur waaronder vocht uit de lucht kan condenseren. Een geldige dauwpuntbron helpt OpenQuatt voorkomen dat het koelwater te koud wordt. Zie [Dauwpuntbeveiliging](../web-app/instellingen.md#dauwpuntbeveiliging).

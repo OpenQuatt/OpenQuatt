@@ -52,6 +52,7 @@ Voor dagelijks kijken is `Overzicht` meestal genoeg. Ga pas naar `Instellingen` 
 | Vermogen, rendement en historie bekijken | [Energie en resultaten](web-app/energie.md) |
 | Onverwacht gedrag onderzoeken en gegevens bewaren | [Diagnose en logboeken](web-app/diagnose.md) |
 | Firmware bijwerken of instellingen veiligstellen | [Updates en backups](web-app/onderhoud.md) |
+| Kiezen welke gegevens je deelt | [Gegevens delen en privacy](web-app/privacy.md) |
 | Wachtwoord, Home Assistant-koppeling of Wi-Fi herstellen | [Herstelpagina gebruiken](web-app/herstel.md) |
 
 Voor normaal gebruik begin je bij [Dagelijkse controle](dagelijks/controleren.md). Voor uitleg van comfortkeuzes zie [Verwarmen en comfort](dagelijks/verwarmen.md) en [Koelen](dagelijks/koelen.md).

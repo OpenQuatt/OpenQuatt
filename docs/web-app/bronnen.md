@@ -4,7 +4,7 @@ Een bron levert een waarde aan OpenQuatt, bijvoorbeeld de kamertemperatuur. Het 
 
 ## Een bron instellen en controleren
 
-1. Open **Instellingen -> Bronnen / integraties** en stel de benodigde verbinding in.
+1. Open **Instellingen → Bronnen / integraties** en stel de benodigde verbinding in.
 2. Open **Sensorselectie** en kies de bron voor het betreffende signaal.
 3. Controleer of de getoonde waarde geldig en aannemelijk is. De gekozen waarde is wat de regeling daadwerkelijk gebruikt.
 4. Verander één bron tegelijk. Zie je een terugval naar een andere bron, controleer dan de verbinding en de geldigheid van de aangeleverde waarde.
@@ -40,7 +40,7 @@ Voor **Quatt-app via CiC** verbind je `M2` met een aparte RS485-kabel met de vri
 
 Onder `Sensorselectie` in dezelfde groep kies je per signaal welke bron OpenQuatt gebruikt. Naast de kaarten voor buiten-, kamer- en aanvoerwaarden staat daar `Externe warmtevraag (Power House)`: een optionele externe vermogensvraag, alleen voor de Power House-strategie, standaard op `Niet gebruiken`. Zet je die op Home Assistant of API-invoer, dan vervangt jouw waarde uitsluitend de vermogensschatting van het huismodel; de kaart laat zien of Power House die externe waarde daadwerkelijk gebruikt of is teruggevallen op het model. Zie [Power House](../power-house.md).
 
-Daarnaast staat er `Aanvoertarget (stooklijn)`: een optionele externe aanvoertemperatuur, alleen voor de stooklijnregeling, standaard op `Stooklijn`. Zet je die op OpenTherm-thermostaat, Home Assistant, API-invoer of MQTT, dan vervangt jouw waarde uitsluitend het berekende stooklijntarget; de kaart laat zien of de regeling dat externe target daadwerkelijk gebruikt of is teruggevallen op de stooklijn. Zie [Water Temperature Control](../water-temperature-control.md#extern-aanvoertarget-optioneel).
+Daarnaast staat er `Aanvoertarget (stooklijn)`: een optionele externe aanvoertemperatuur, alleen voor de stooklijnregeling, standaard op `Stooklijn`. Zet je die op OpenTherm-thermostaat, Home Assistant, API-invoer of MQTT, dan vervangt jouw waarde uitsluitend het berekende stooklijntarget; de kaart laat zien of de regeling dat externe target daadwerkelijk gebruikt of is teruggevallen op de stooklijn. Zie [Stooklijnregeling](../water-temperature-control.md#extern-aanvoertarget-optioneel).
 
 ## Warmtetoestemming
 
@@ -50,6 +50,10 @@ Dezelfde groep toont compacte diagnostiek voor OpenTherm en CIC, zoals linkstatu
 
 Laat dit met rust zolang OpenQuatt logisch werkt. Verander liever een instelling per keer en kijk daarna wat het systeem doet.
 
+
+## Zo controleer je dat het gelukt is
+
+Open **Overzicht** en vergelijk de gebruikte waarde met de bron. Controleer in **Sensorselectie** of de bedoelde bron actief is of dat OpenQuatt een fallback gebruikt. Bij een ontbrekende of verouderde waarde controleer je eerst de verbinding; zie ook [Problemen oplossen](../problemen-oplossen.md).
 
 ## Verder
 

@@ -27,6 +27,8 @@ Bij `Elektrische ingangsgrens` stel je met `Maximale gezamenlijke netstroom` de 
 
 Bij `Aanvullende warmtebron` leg je eerst vast of OpenQuatt een warmtebron fysiek kan aansturen. Daarna kies je afzonderlijk voor `Hybride verwarmen bij vermogenstekort` en `Overnemen wanneer de warmtepomp niet beschikbaar is`. Overname staat standaard uit. OpenQuatt schakelt pas over nadat de warmtepompen veilig zijn gestopt en flow, aanvoertemperatuur en aansturing geldig zijn. Een korte communicatiedip telt niet als uitval.
 
+Tijdens Quick Start kan een gedetecteerde OpenTherm-ketel automatisch als **OpenTherm (OTB)** worden ingesteld. Na afronden blijft een onverwachte OpenTherm-ketel geblokkeerd totdat je de aansluiting corrigeert. Controleer daarom de getoonde aansluiting voordat je afrondt.
+
 #### Opstarten met koud water
 
 Bij een nieuwe warmtevraag controleert OpenQuatt na het starten van de circulatie de uitgaande watertemperatuur van iedere aangesloten warmtepomp. Onder `5 °C` blijven de compressoren uit; met `Overnemen wanneer de warmtepomp niet beschikbaar is` kan de aanvullende warmtebron het circuit eerst opwarmen. Vanaf `5 °C` mogen de warmtepompen starten. Met `Hybride verwarmen bij vermogenstekort` helpt de aanvullende warmtebron tot alle uitgaande temperaturen minimaal `12 °C` zijn. Zonder aangesloten of toegestane aanvullende warmtebron start de warmtepomp vanaf `5 °C` zelfstandig. De oude algemene startgrens van `18 °C` wordt niet gebruikt.
@@ -114,7 +116,7 @@ Het schema geeft alleen toestemming. `Cooling Room Request Required` blijft stan
 
 #### Klok en stoppen aan het einde van het venster
 
-Voor het schema gebruikt OpenQuatt zijn via SNTP gesynchroniseerde lokale klok. Na een herstart zonder geldige netwerktijd blijft de schematoestemming uit totdat synchronisatie lukt. Bij het bereiken van de eindtijd stopt OpenQuatt gecontroleerd: een nog lopende minimale compressortijd kan de compressor kort laten doorlopen en daarna kan de pomp nog de normale postflow uitvoeren.
+Zie [Koelen](../dagelijks/koelen.md#wat-kun-je-verwachten) voor het gedrag van het tijdvenster en [Koelen: technische werking](../koelen-technisch.md) voor klokvoorwaarden en wachttijden.
 
 #### Dauwpuntbeveiliging
 
@@ -168,7 +170,7 @@ Onder `Installatiebewaking` zie je per warmtepomp actieve en herstellende incide
 
 #### Toegang en beveiliging
 
-Onder **Instellingen -> Systeem -> Toegang & Beveiliging** beheer je de gebruikersnaam en het wachtwoord van de OpenQuatt-webinterface en controleer je de beveiliging van de ESPHome-verbinding met Home Assistant.
+Onder **Instellingen → Systeem → Toegang & Beveiliging** beheer je de gebruikersnaam en het wachtwoord van de OpenQuatt-webinterface en controleer je de beveiliging van de ESPHome-verbinding met Home Assistant.
 
 Home Assistant stelt de API-encryptie bij de eerste koppeling automatisch in; je hoeft geen sleutel te kopiëren. Volg [OpenQuatt koppelen aan Home Assistant](../dashboard/koppelen.md) voor de koppelprocedure.
 
@@ -176,7 +178,7 @@ Ben je het wachtwoord vergeten of werkt de bestaande Home Assistant-koppeling ni
 
 #### Overig systeembeheer
 
-Zie [Updates en backups](onderhoud.md) voor systeembeheer en gegevensopslag, en [Herstelpagina gebruiken](herstel.md) voor toegang en herstel.
+Zie [Gegevens delen en privacy](privacy.md) voor de keuzes over gegevens delen, [Updates en backups](onderhoud.md) voor systeembeheer en gegevensopslag, en [Herstelpagina gebruiken](herstel.md) voor toegang en herstel.
 
 ## Verder
 
