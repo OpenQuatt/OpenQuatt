@@ -160,70 +160,384 @@ Volg de route die de web-app voor jouw installatie toont. De basisstappen zijn:
 3. **Flowmeting configureren:** controleer en activeer de juiste flowbron.
 4. **Thermostaatgegevens configureren:** kies waar kamertemperatuur en kamer-setpoint vandaan komen.
 5. **Aanvullende warmtebron:** leg vast of een warmtebron is aangesloten, of deze hybride mag meeverwarmen bij een vermogenstekort en of deze mag overnemen wanneer geen warmtepomp beschikbaar is.
-6. **Kies de verwarmingsstrategie:** kies hoe OpenQuatt de verwarming regelt.
-7. **Werk de regeling uit:** stel Power House of de stooklijn verder in.
-8. **Flowregeling en afstelling:** leg vast hoe de pomp geregeld moet worden en welke waarden daarbij horen.
-9. **Watertemperatuur beveiligen:** controleer de normale bovengrens en de tripgrens.
-10. **Stille uren en niveaus:** stel het stille venster en de compressorlimieten voor dag en nacht in.
-11. **Gebruiksstatistieken:** controleer of OpenQuatt beperkte technische systeemstatus, aan/uit-statussen van functies en configuratiekeuzes zoals Quatt Hybrid-versie, verwarmingsstrategie, flowbron en regelbronnen mag delen; tijdens een nieuwe Quick Start staat dit standaard aan en kan het hier worden uitgezet. Gemeten of ingestelde temperaturen, wifi-gegevens, gebruikersnamen en wachtwoorden worden nooit meegestuurd.
-12. **Prestatiemetingen:** kies of OpenQuatt stabiele verwarmingsmetingen mag delen voor validatie van het prestatiemodel; tijdens een nieuwe Quick Start staat dit standaard uit en kan het hier worden aangezet.
-13. **Bevestigen en afronden:** controleer je keuzes en markeer Quick Start als voltooid.
+6. **Kies de verwarmingsstrategie:** kies hoe OpenQuatt de …17197 tokens truncated…rows: list[list[str]] = []
+                while idx < len(lines) and lines[idx].lstrip().startswith("|"):
+                    body_rows.append([cell for cell in lines[idx].split("|")[1:-1]])
+                    idx += 1
+                header_html = "".join(f"<th>{render_inline(cell.strip(), self.source, self.output)}</th>" for cell in rows)
+                body_html = []
+                for body_row in body_rows:
+                    row_html = "".join(f"<td>{render_inline(cell.strip(), self.source, self.output)}</td>" for cell in body_row)
+                    body_html.append(f"<tr>{row_html}</tr>")
+                blocks.append(f"<table><thead><tr>{header_html}</tr></thead><tbody>{''.join(body_html)}</tbody></table>")
+                continue
+            if line.lstrip().startswith(">"):
+                quote_lines: list[str] = []
+                while idx < len(lines) and lines[idx].lstrip().startswith(">"):
+                    quote_lines.append(lines[idx].lstrip()[1:].lstrip())
+                    idx += 1
+                if quote_lines and re.fullmatch(r"\[![A-Z]+\]", quote_lines[0]):
+                    raw_label = quote_lines[0][2:-1]
+                    label = CALLOUT_LABELS.get(raw_label, raw_label.title())
+                    variant = CALLOUT_VARIANTS.get(raw_label, "note")
+                    body = [ln for ln in quote_lines[1:] if ln.strip()]
+                    inner = "".join(f"<p>{render_inline(' '.join(body), self.source, self.output)}</p>") if body else ""
+                    blocks.append(f'<div class="callout callout-{variant}"><span class="callout-title">{escape(label)}</span>{inner}</div>')
+                else:
+                    inner = self._render_blocks(quote_lines)
+                    blocks.append(f"<blockquote>{inner}</blockquote>")
+                continue
+            if UL_RE.match(line) or OL_RE.match(line):
+                list_html, idx = self._render_list(lines, idx)
+                blocks.append(list_html)
+                continue
+            para_lines = [line.strip()]
+            idx += 1
+            while idx < len(lines):
+                next_line = lines[idx]
+                if not next_line.strip():
+                    break
+                if any(
+                    (
+                        HEADING_RE.match(next_line),
+                        FENCE_RE.match(next_line),
+                        UL_RE.match(next_line),
+                        OL_RE.match(next_line),
+                        next_line.lstrip().startswith(">"),
+                        next_line.lstrip().startswith("|"),
+                        next_line.lstrip().startswith("<"),
+                    )
+                ):
+                    break
+                para_lines.append(next_line.strip())
+                idx += 1
+            blocks.append(f"<p>{render_inline(' '.join(para_lines), self.source, self.output)}</p>")
+        return "\n".join(blocks)
 
-Bij een koude verwarmingsstart circuleert OpenQuatt eerst water en controleert daarna de uitgaande temperatuur van iedere aangesloten ODU. Onder `5 °C` blijven de compressoren uit; met `Overnemen wanneer de warmtepomp niet beschikbaar is` kan de aanvullende warmtebron voorverwarmen. Tussen `5 en 12 °C` starten de warmtepompen zelfstandig; met `Hybride verwarmen bij vermogenstekort` helpt de aanvullende warmtebron tijdelijk mee. Vanaf `12 °C` geldt de normale warmteregeling. Een algemene startgrens van `18 °C` wordt niet toegepast.
+    def _render_list(self, lines: list[str], start: int) -> tuple[str, int]:
+        ordered = bool(OL_RE.match(lines[start]))
+        match = OL_RE.match(lines[start]) if ordered else UL_RE.match(lines[start])
+        assert match
+        base_indent = len(match.group(1))
+        tag = "ol" if ordered else "ul"
+        items: list[str] = []
+        idx = start
+        while idx < len(lines):
+            current = lines[idx]
+            current_match = OL_RE.match(current) if ordered else UL_RE.match(current)
+            if not current_match:
+                break
+            indent = len(current_match.group(1))
+            if indent != base_indent:
+                break
+            first_text = current_match.group(3) if ordered else current_match.group(2)
+            idx += 1
+            child_lines: list[str] = []
+            while idx < len(lines):
+                upcoming = lines[idx]
+                if not upcoming.strip():
+                    lookahead = idx + 1
+                    while lookahead < len(lines) and not lines[lookahead].strip():
+                        lookahead += 1
+                    if lookahead >= len(lines):
+                        idx = lookahead
+                        break
+                    upcoming = lines[lookahead]
+                    next_ol = OL_RE.match(upcoming)
+                    next_ul = UL_RE.match(upcoming)
+                    next_indent = len(next_ol.group(1)) if next_ol else len(next_ul.group(1)) if next_ul else None
+                    plain_indent = len(upcoming) - len(upcoming.lstrip(" "))
+                    if next_indent is not None and next_indent <= base_indent:
+                        idx = lookahead
+                        break
+                    if next_indent is None and plain_indent <= base_indent:
+                        idx = lookahead
+                        break
+                    child_lines.append("")
+                    idx += 1
+                    continue
+                next_ol = OL_RE.match(upcoming)
+                next_ul = UL_RE.match(upcoming)
+                next_indent = len(next_ol.group(1)) if next_ol else len(next_ul.group(1)) if next_ul else None
+                if next_indent is not None and next_indent == base_indent:
+                    break
+                if next_indent is not None and next_indent < base_indent:
+                    break
+                plain_indent = len(upcoming) - len(upcoming.lstrip(" "))
+                if next_indent is None and plain_indent <= base_indent:
+                    break
+                child_lines.append(upcoming)
+                idx += 1
+            item_parts = [f"<p>{render_inline(first_text.strip(), self.source, self.output)}</p>"]
+            if child_lines:
+                nested = self._render_blocks(strip_list_indent(child_lines, base_indent + 2))
+                if nested:
+                    item_parts.append(nested)
+            items.append(f"<li>{''.join(item_parts)}</li>")
+        return f"<{tag}>{''.join(items)}</{tag}>", idx
 
-## Je installatie is klaar wanneer
 
-- `openquatt.local` stabiel bereikbaar is;
-- Quick Start volledig is afgerond;
-- de warmtepompgegevens worden bijgewerkt;
-- aanvoertemperatuur, flow en buitentemperatuur aannemelijke waarden tonen.
+def github_source_url(page: Page) -> str:
+    if page.remote_source:
+        return f"{COMPANION_REPO_URL}/blob/main/{page.remote_source.as_posix()}"
+    return f"{GITHUB_REPO_URL}/blob/main/{page.source.as_posix()}"
 
-Vanaf dit punt kun je OpenQuatt zelfstandig via de web-app gebruiken. Home Assistant en het dashboard zijn optionele vervolgstappen.
 
-## Passief leren voor Power House
+def read_page_source(page: Page) -> str:
+    if not page.remote_source:
+        return (REPO_ROOT / page.source).read_text(encoding="utf-8")
 
-Op Heatpump Controller Q Single en Duo kan Power House optioneel **passief leren**. Je vindt dit onder **Instellingen → Verwarmen → Power House**.
+    source_url = f"{COMPANION_RAW_URL}/{page.remote_source.as_posix()}"
+    try:
+        with urlopen(source_url, timeout=20) as response:
+            return response.read().decode("utf-8")
+    except (OSError, URLError, UnicodeDecodeError) as error:
+        raise RuntimeError(f"Kan companion-documentatie niet ophalen: {source_url}") from error
 
-Na inschakelen verzamelt OpenQuatt alleen geschikte verwarmingsperioden en schat het warmteverlies van de woning en een bijbehorende woninglijn. De verzamelde leerdata blijft na een herstart of software-update bewaard, maar **Passief leren staat na iedere herstart weer uit** en moet bewust opnieuw worden ingeschakeld.
 
-De functie is observerend: een geleerd model wordt niet automatisch toegepast en verandert geen warmtevraag, compressorregeling of ketelaansturing. De web-app toont de verzamelstatus, blokkaderedenen, meetpunten en - zodra er voldoende bruikbare data is - een voorlopige geleerde lijn. Via **Leerdata wissen** kan de opgeslagen leerhistorie expliciet worden verwijderd.
+def build_sidebar(current_page: Page) -> str:
+    groups_html = []
+    for index, (label, _description, sources) in enumerate(SIDEBAR_GROUPS):
+        expanded = current_page.source in sources or index == 0
+        items = []
+        for source in sources:
+            linked_page = PAGE_BY_SOURCE[source]
+            href = rel_url(current_page.output, linked_page.output)
+            current = " current" if current_page.source == source else ""
+            current_attr = ' aria-current="page"' if current else ""
+            items.append(
+                f"""
+                <li>
+                  <a class="sidebar-link{current}" href="{href}" data-sidebar-link{current_attr}>{escape(linked_page.label)}</a>
+                </li>
+                """
+            )
+        groups_html.append(
+            f"""
+            <section class="sidebar-section">
+              <button class="sidebar-section-toggle" type="button" data-nav-toggle aria-expanded="{'true' if expanded else 'false'}" aria-controls="sidebar-group-{index}">
+                <span class="sidebar-section-title">{escape(label)}</span>
+                <span class="sidebar-section-chevron" aria-hidden="true"></span>
+              </button>
+              <div class="sidebar-section-panel" id="sidebar-group-{index}" data-nav-panel{' hidden' if not expanded else ''}>
+                <ul class="nav-list">
+                  {''.join(items)}
+                </ul>
+              </div>
+            </section>
+            """
+        )
+    return "".join(groups_html)
 
-De kwaliteit van het model hangt af van voldoende geschikte metingen over verschillende buitentemperaturen. Een beschikbare schatting is daarom diagnostische informatie en geen garantie op energiebesparing.
 
-## Configuratie later wijzigen
+def build_toc(toc: list[tuple[int, str, str]]) -> str:
+    if not toc:
+        return """
+        <div class="page-rail-inner">
+          <p class="page-rail-title">Op deze pagina</p>
+          <p class="page-rail-empty">Geen subsecties op deze pagina.</p>
+        </div>
+        """
 
-Heb je Quick Start al afgerond en verandert de installatie later, dan kun je dezelfde firmwarewissel alsnog via de web-app starten. Maak voor de zekerheid eerst een backup; de bestaande OpenQuatt-instellingen blijven tijdens de update of wissel behouden.
+    items = []
+    for level, label, anchor in toc:
+        indent_class = " toc-link-sub" if level == 3 else ""
+        items.append(f'<li><a class="toc-link{indent_class}" href="#{anchor}" data-toc-link>{escape(label)}</a></li>')
+    return f"""
+    <div class="page-rail-inner">
+      <p class="page-rail-title">Op deze pagina</p>
+      <nav aria-label="Inhoudsopgave">
+        <ul class="toc-list">
+          {''.join(items)}
+        </ul>
+      </nav>
+    </div>
+    """
 
-Open in de web-app **Instellingen → Systeem** en kies bij **Updates** voor **Openen**. Onder **Geavanceerd** vind je, wanneer beschikbaar, **Opstelling wisselen** en **Verbinding wisselen**.
 
-- Gebruik **Opstelling wisselen** om tussen `Single` en `Duo` te wisselen.
-- Gebruik **Verbinding wisselen** om tussen Wi-Fi en Ethernet te wisselen. Sluit vóór een wissel naar Ethernet de netwerkkabel aan.
-- Wijzig V1, V1.5 of V2 onder **Instellingen → Installatie**; daarvoor is geen firmwarewissel nodig.
-- Gebruik voor alleen een andere Wi-Fi-netwerknaam of een ander wachtwoord opnieuw **Configureer Wi-Fi via USB** of het OpenQuatt access point.
+def render_template(rendered_page: RenderedPage, rendered_pages: list[RenderedPage]) -> str:
+    page = rendered_page.page
+    asset_prefix = "./" if page.output.parent == PurePosixPath(".") else "../"
+    install_href = rel_url(page.output, PurePosixPath("install/index.html"))
+    q_edition_href = rel_url(page.output, PurePosixPath("q-edition.html"))
+    route_href = f"{rel_url(page.output, PurePosixPath('index.html'))}#kies-je-route"
+    search_index_href = rel_url(page.output, PurePosixPath("search-index.json"))
+    version_href = rel_url(page.output, PurePosixPath("firmware/main/version.json"))
+    body_class = f"page-{slugify(page.output.stem, {})}"
 
-> [!IMPORTANT]
-> Wi-Fi en Ethernet blijven aparte firmware-builds. Een Ethernet-build heeft geen Wi-Fi fallback of captive portal. De web-app voert zo'n wissel daarom uit als firmware-update en toont vooraf de bijbehorende controle.
+    lead_html = f'<p class="doc-lead">{rendered_page.lead}</p>' if rendered_page.lead else ""
+    doc_actions = ""
+    if page.source == PurePosixPath("README.md"):
+        doc_actions = f"""
+          <div class="doc-actions" aria-label="Snel starten">
+            <a class="doc-action doc-action-primary" href="#kies-je-route">Kies je route</a>
+            <a class="doc-action" href="{q_edition_href}">Nieuwe HCQ aansluiten</a>
+          </div>
+        """
+    elif page.source == PurePosixPath("docs/dashboard/README.md"):
+        doc_actions = f"""
+          <div class="doc-actions" aria-label="Home Assistant starten">
+            <a class="doc-action doc-action-primary" href="{rel_url(page.output, PurePosixPath('dashboard/koppelen.html'))}">OpenQuatt koppelen</a>
+            <a class="doc-action" href="{rel_url(page.output, PurePosixPath('dashboard/gebruiken.html'))}">Dashboard gebruiken</a>
+          </div>
+        """
 
-## Optioneel: toevoegen aan Home Assistant
+    return f"""<!DOCTYPE html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{escape(page.label)} | OpenQuatt</title>
+    <meta name="description" content="{escape(page.summary)}" />
+    <meta name="theme-color" content="#0F1724" />
+    <link rel="icon" type="image/svg+xml" href="{asset_prefix}assets/brand/favicon.svg" />
+    <link rel="apple-touch-icon" href="{asset_prefix}assets/brand/apple-touch-icon.png" />
+    <meta property="og:title" content="{escape(page.label)} | OpenQuatt" />
+    <meta property="og:description" content="{escape(page.summary)}" />
+    <meta property="og:image" content="https://openquatt.github.io/OpenQuatt/assets/brand/openquatt-social-card-1280x640.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{asset_prefix}site.css" />
+    <script defer src="{asset_prefix}site.js"></script>
+  </head>
+  <body class="{escape(body_class, quote=True)}" data-search-index-url="{search_index_href}" data-version-url="{version_href}">
+    <a class="skip-link" href="#main-content">Ga naar de inhoud</a>
+    <header class="site-header">
+      <div class="site-header-inner">
+        <div class="site-header-start">
+          <button class="menu-toggle" type="button" data-sidebar-toggle aria-controls="docs-sidebar" aria-expanded="false">
+            <span class="menu-toggle-bar"></span>
+            <span class="menu-toggle-bar"></span>
+            <span class="menu-toggle-bar"></span>
+            <span class="sr-only">Open navigatie</span>
+          </button>
 
-Home Assistant is optioneel voor OpenQuatt zelf en aanbevolen voor dashboards en automatisering. Zodra OpenQuatt en Home Assistant op hetzelfde netwerk zitten, wordt het ESPHome-apparaat meestal automatisch gevonden.
+          <a class="site-brand" href="{rel_url(page.output, PurePosixPath('index.html'))}">
+            <img class="site-brand-logo" src="{asset_prefix}assets/brand/openquatt-logo-compact-dark.svg" alt="OpenQuatt" width="200" height="44" />
+          </a>
+        </div>
 
-Open de melding bij **Instellingen → Apparaten & diensten** en kies **Configureren**. Verschijnt er geen melding, kies dan **Integratie toevoegen → ESPHome** en vul `openquatt.local` of het IP-adres van OpenQuatt in.
+        <div class="site-header-actions">
+          <button class="search-trigger" type="button" data-search-open aria-label="Zoeken" aria-haspopup="dialog" aria-expanded="false">
+            <span class="search-input-icon" aria-hidden="true">{SEARCH_ICON_HTML}</span>
+            <span class="search-trigger-label">Zoeken</span>
+            <kbd aria-hidden="true">/</kbd>
+          </button>
+          <a class="header-link" href="{GITHUB_REPO_URL}">GitHub</a>
+        </div>
+      </div>
+    </header>
 
-Gebruik de bestaande handleidingen voor de vervolgstappen:
+    <div class="docs-shell">
+      <div class="sidebar-backdrop" data-sidebar-backdrop></div>
 
-- [Het juiste Single- of Duo-dashboard installeren](dashboard/README.md)
-- [Het dashboard gebruiken](dashboardoverzicht.md)
+      <aside class="docs-sidebar" id="docs-sidebar" data-sidebar>
+        <div class="sidebar-inner">
+          <section class="sidebar-overview">
+            <p class="sidebar-kicker">OpenQuatt Docs</p>
+            <p class="sidebar-copy">Een korte route voor installeren, begrijpen en rustig bijsturen.</p>
+            <a class="sidebar-utility" href="{route_href}">Kies je route</a>
+            <p class="docs-version" data-docs-version>Docs vanaf main</p>
+          </section>
+          {build_sidebar(page)}
+        </div>
+      </aside>
 
-Selecteer bij de eerste toevoeging nog geen Home Assistant-area. Wacht tot de OpenQuatt-entiteiten zijn aangemaakt en ken daarna pas een area toe.
+      <main class="docs-main" id="main-content" tabindex="-1">
+        <section class="doc-header">
+          <p class="doc-kicker">{escape(page.kind)}</p>
+          <h1>{escape(page.label)}</h1>
+          {lead_html}
+          {doc_actions}
 
-## Als het niet lukt
+        </section>
 
-- **Geen USB-poort zichtbaar:** controleer of je een USB-datakabel gebruikt en probeer een andere USB-poort.
-- **Instabiel of onverklaarbaar gedrag:** een USB-voedingsadapter van onvoldoende kwaliteit of vermogen kan vreemde storingen veroorzaken. Probeer een andere, betrouwbare voedingsadapter.
-- **Geen captive portal:** controleer dat je met `OpenQuatt` bent verbonden en dat je geen Ethernet-build gebruikt.
-- **`openquatt.local` opent niet:** zoek het IP-adres in je router.
-- **Geen warmtepompdata:** controleer voeding, communicatiebedrading en of `Single` of `Duo` klopt.
-- **Niet gevonden in Home Assistant:** controleer eerst of de web-app lokaal bereikbaar is.
+        <article class="doc-content prose">
+          {rendered_page.body_html}
+        </article>
 
-Ga voor verdere diagnose naar [Problemen oplossen](problemen-oplossen.md). Gebruik [Handmatige installatie](handmatige-installatie.md) alleen als de normale installer niet werkt.
+
+      </main>
+
+      <aside class="page-rail">
+        {build_toc(rendered_page.toc)}
+      </aside>
+    </div>
+
+    <div class="search-modal" data-search-modal hidden role="dialog" aria-modal="true" aria-labelledby="site-search-title">
+      <button class="search-scrim" type="button" data-search-close tabindex="-1" aria-label="Zoeken sluiten"></button>
+      <section class="search-panel">
+        <header class="search-head">
+          <div>
+            <p class="search-kicker">OpenQuatt Docs</p>
+            <h2 id="site-search-title">Zoeken in de documentatie</h2>
+          </div>
+          <button class="search-close" type="button" data-search-close aria-label="Zoeken sluiten">×</button>
+        </header>
+        <label class="search-input-wrap">
+          <span class="search-input-icon" aria-hidden="true">{SEARCH_ICON_HTML}</span>
+          <span class="sr-only">Zoekterm</span>
+          <input type="search" data-search-input autocomplete="off" placeholder="Bijvoorbeeld: flow, Quick Start of firmware-update" />
+        </label>
+        <div class="search-results" data-search-results aria-live="polite"></div>
+        <p class="search-foot"><span>Typ om alle handleidingen te doorzoeken.</span><span><kbd>Esc</kbd> sluit zoeken.</span></p>
+      </section>
+    </div>
+
+  </body>
+</html>
+"""
+
+
+def build_site(site_dir: Path) -> None:
+    rendered_pages: list[RenderedPage] = []
+    for page in PAGES:
+        renderer = MarkdownRenderer(page.source, page.output)
+        text = read_page_source(page)
+        lead, body = renderer.render(text)
+        search_text = " ".join(
+            strip_markdown(line)
+            for line in text.splitlines()
+            if line.strip() and not line.lstrip().startswith(("```", "<img"))
+        )
+        rendered_pages.append(RenderedPage(page, lead, body, list(renderer.toc), search_text))
+
+    for rendered_page in rendered_pages:
+        html = render_template(rendered_page, rendered_pages)
+        output_path = site_dir / rendered_page.page.output
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(html, encoding="utf-8")
+
+    search_index = [
+        {
+            "title": rendered.page.label,
+            "summary": rendered.page.summary,
+            "kind": rendered.page.kind,
+            "url": rendered.page.output.as_posix(),
+            "headings": [label for _level, label, _anchor in rendered.toc],
+            "text": rendered.search_text,
+        }
+        for rendered in rendered_pages
+    ]
+    (site_dir / "search-index.json").write_text(
+        json.dumps(search_index, ensure_ascii=False, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 2:
+        print("Usage: build_pages_docs.py <site-dir>", file=sys.stderr)
+        return 64
+    site_dir = Path(argv[1]).resolve()
+    if not site_dir.exists():
+        print(f"Site directory does not exist: {site_dir}", file=sys.stderr)
+        return 65
+    build_site(site_dir)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

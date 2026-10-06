@@ -4,9 +4,12 @@ Gebruik Home Assistant om OpenQuatt te volgen, het dashboard aan je opstelling a
 
 ## Begin hier
 
-1. [Installeer het dashboard](installation.md). Kies daarna het juiste Single- of Duo-bestand.
-2. [Gebruik het dashboard](dashboard.md). Hier staat de dagelijkse route en waar je bij afwijkend gedrag eerst kijkt.
-3. Voeg alleen wanneer nodig [dynamische bronnen](dynamic-sources.md) of [dynamische koelbronnen](cooling.md) toe.
+1. [Koppel OpenQuatt aan Home Assistant](koppelen.md). Hier staan het **koppelvenster van 10 minuten**, automatische API-beveiliging en herstel bij koppelproblemen.
+2. [Installeer het dashboard](installation.md), als je het meegeleverde dashboard wilt gebruiken. Kies Single of Duo en Nederlands of Engels.
+3. [Gebruik het dashboard](dashboard.md) voor dagelijkse controle en diagnose.
+4. Voeg alleen wanneer nodig [eigen sensoren](dynamic-sources.md) of [koelbronnen](cooling.md) toe.
+
+De ESPHome-integratie werkt ook zonder dashboard, HACS of optionele packages. Voor alleen de koppeling heb je geen ESPHome Device Builder-app nodig.
 
 ## Kies je dashboard
 
