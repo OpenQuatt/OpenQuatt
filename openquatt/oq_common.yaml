@@ -18,6 +18,7 @@ esphome:
     then:
       - lambda: |-
           oq_nvs_cleanup::log_stats("boot");
+          oq_nvs_cleanup::retire_openquatt_preferences(id(oq_air_purge_return_to_auto));
           // Always start from a clean paused state after reboot or OTA.
           id(oq_runtime_polling_paused).publish_state(false);
           id(oq_http_ota_begin_observed) = false;

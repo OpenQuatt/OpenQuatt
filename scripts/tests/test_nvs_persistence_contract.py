@@ -1,5 +1,8 @@
 from pathlib import Path
+import hashlib
+import re
 import sys
+import importlib.util
 import unittest
 
 
@@ -34,9 +37,81 @@ NVS_CLEANUP = (ROOT / "openquatt/includes/storage/oq_nvs_cleanup.h").read_text()
 DEV = (ROOT / "scripts/dev.py").read_text()
 CRASH_HEADER = (ROOT / "components/openquatt_crash_telemetry/OpenQuattCrashTelemetry.h").read_text()
 AUTH_HEADER = (ROOT / "components/openquatt_web_auth/OpenQuattWebAuth.h").read_text()
+AIR_PURGE = (ROOT / "openquatt/oq_air_purge.yaml").read_text()
+INSTALLATION_MONITORING = (ROOT / "openquatt/oq_installation_monitoring.yaml").read_text()
+USAGE_TELEMETRY = (ROOT / "openquatt/oq_usage_telemetry.yaml").read_text()
+ENERGY = (ROOT / "openquatt/oq_energy.yaml").read_text()
+HEATING_CURVE = (ROOT / "openquatt/oq_heating_curve_strategy.yaml").read_text()
+
+
+def yaml_entry(source: str, entity_id: str) -> str:
+    """Select one top-level entity/global list item without requiring ESPHome."""
+    for match in re.finditer(r"(?ms)^  - (?:id|platform): .*?(?=^  - |^[a-zA-Z_]|\Z)", source):
+        block = match.group()
+        if re.search(r"(?m)^\s*(?:- )?id: " + re.escape(entity_id) + r"\s*$", block):
+            return block
+    raise AssertionError(f"Missing YAML entry {entity_id}")
 
 
 class NvsPersistenceContractTest(unittest.TestCase):
+    @unittest.skipUnless(importlib.util.find_spec("esphome"), "ESPHome is required for package composition")
+    def test_retirements_survive_real_target_package_composition(self) -> None:
+        from esphome.config import read_config
+        from esphome.core import CORE
+
+        # Raw YAML assertions cannot detect hooks replaced by later packages.
+        for target in ("duo_wifi.yaml", "duo_hil.yaml", "single_wifi.yaml"):
+            with self.subTest(target=target):
+                CORE.reset()
+                CORE.config_path = ROOT / "configs/heatpump_controller_q" / target
+                config = read_config({})
+                self.assertIsNotNone(config)
+                hooks = config["esphome"]["on_boot"]
+                matching = [hook for hook in hooks if "retire_openquatt_preferences" in str(hook["then"])]
+                self.assertEqual(len(matching), 1)
+                self.assertEqual(matching[0]["priority"], -100)
+        CORE.reset()
+
+    def test_cycling_alerts_have_ram_defaults_and_exact_retired_keys(self) -> None:
+        expected_defaults = {
+            "oq_compressor_cycling_alert_latched": "false",
+            "oq_compressor_cycling_alert_first_seen_epoch": "0",
+            "oq_compressor_cycling_alert_last_seen_epoch": "0",
+            "oq_compressor_cycling_alert_alternating": "false",
+            "oq_compressor_cycling_alert_hp1_peak_2h_value": "0",
+            "oq_compressor_cycling_alert_hp1_peak_72h_value": "0",
+            "oq_compressor_cycling_alert_hp2_peak_2h_value": "0",
+            "oq_compressor_cycling_alert_hp2_peak_72h_value": "0",
+        }
+        keys = {name: int(key) for key, name in re.findall(r"(\d+)U,\s*// (oq_compressor_cycling_alert_\w+)", NVS_CLEANUP)}
+        self.assertEqual(keys.keys(), expected_defaults.keys())
+        for entity_id, default in expected_defaults.items():
+            with self.subTest(entity_id=entity_id):
+                block = yaml_entry(INSTALLATION_MONITORING, entity_id)
+                self.assertIn("restore_value: false", block)
+                self.assertIn(f"initial_value: '{default}'", block)
+                name_hash = int(hashlib.md5(entity_id.encode()).hexdigest()[:8], 16)
+                self.assertEqual(keys[entity_id], 1944399030 ^ name_hash)
+        self.assertIn("retired_cycling_alert_preferences", NVS_CLEANUP)
+        self.assertIn("erase_esphome_preferences(", NVS_CLEANUP)
+
+    def test_air_purge_choice_starts_on_and_retires_its_old_entity_preference(self) -> None:
+        block = yaml_entry(AIR_PURGE, "oq_air_purge_return_to_auto")
+        self.assertIn("restore_mode: ALWAYS_ON", block)
+        self.assertNotIn("RESTORE_DEFAULT_ON", block)
+        self.assertIn("retire_openquatt_preferences(id(oq_air_purge_return_to_auto))", USAGE_TELEMETRY)
+        self.assertIn("erase_entity_preferences(", NVS_CLEANUP)
+
+    def test_operational_state_and_user_warning_limits_remain_persistent(self) -> None:
+        for entity_id in ("oq_flow_last_good_pwm", "oq_flow_last_good_pwm_cooling"):
+            self.assertIn("restore_value: true", yaml_entry(FLOW_CONTROL, entity_id))
+        for entity_id in ("oq_compressor_starts_warning_limit_2h", "oq_compressor_starts_warning_limit_72h"):
+            self.assertIn("restore_value: true", yaml_entry(INSTALLATION_MONITORING, entity_id))
+        for entity_id in ("oq_system_thermal_energy_daily", "oq_system_thermal_energy_cumulative"):
+            self.assertIn("restore: true", yaml_entry(ENERGY, entity_id))
+        self.assertIn("id: oq_heating_curve_pid", HEATING_CURVE)
+        self.assertIn("platform: pid", HEATING_CURVE)
+
     def test_odu_editor_is_ram_only_and_requires_a_current_boot_load(self) -> None:
         runtime_service = ODU_RUNTIME_HEADER + ODU_RUNTIME_SOURCE
         self.assertNotIn("restore_value:", ODU_SERVICE)
@@ -63,7 +138,10 @@ class NvsPersistenceContractTest(unittest.TestCase):
         self.assertIn("identity_matches_profile_", settings_service)
         self.assertIn("pending_profile_", settings_service)
         self.assertIn("manual_apply_pending_", settings_service)
-        self.assertEqual(check_nvs_budget.CUSTOM_PREFERENCE_ENTRIES, 45)
+        self.assertEqual(
+            check_nvs_budget.estimate_custom_preferences({"openquatt_odu_settings": [{}, {}]}),
+            {"openquatt_odu_settings": 6},
+        )
 
     def test_retired_flow_pwm_preferences_are_cleaned_up(self) -> None:
         self.assertIn("435184091U", FLOW_CONTROL)

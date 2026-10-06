@@ -3729,7 +3729,7 @@ export default {
     titleLatched: "Eerdere waarschuwing nog niet bevestigd",
     titleClear: "Geen bijzonderheden",
     copyActive: "{count} aandachtspunt{plural} zichtbaar. Bekijk hieronder de details.",
-    copyLatched: "Het pendelen is hersteld. De melding blijft zichtbaar totdat je haar bevestigt.",
+    copyLatched: "Het pendelen is hersteld. De melding blijft zichtbaar totdat je haar bevestigt of de controller herstart.",
     copyClear: "OpenQuatt ziet op dit moment geen actieve aandachtspunten in de bewaakte signalen.",
     staleProblem: "Warmtepompstatus wordt opnieuw opgehaald",
     staleTitle: "Warmtepompstatus wordt vernieuwd",
