@@ -33,11 +33,11 @@ def entity_block(source: str, marker: str) -> str:
 
 
 class Modbus20269ContractTest(unittest.TestCase):
-    def test_esphome_pin_is_explicit_2026_9_stable(self) -> None:
-        # PR 1 uses the pinned 2026.9.0 stable release.
-        self.assertEqual(REQUIREMENTS.strip(), "esphome==2026.9.0")
+    def test_esphome_pin_is_explicit_2026_10_stable(self) -> None:
+        # The header-limit workaround removal requires the 2026.10.0 upgrade.
+        self.assertEqual(REQUIREMENTS.strip(), "esphome==2026.10.0")
         self.assertNotIn("esphome==2026.8.2", REQUIREMENTS)
-        self.assertIn("min_version: 2026.9.0", BASE_COMMON)
+        self.assertIn("min_version: 2026.10.0", BASE_COMMON)
         self.assertNotIn("2026.9.0b4", BASE_COMMON + REQUIREMENTS)
 
     def test_regular_online_polling_is_10s_and_offline_probe_is_30s(self) -> None:
