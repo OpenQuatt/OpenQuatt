@@ -498,10 +498,10 @@ def render_template(rendered_page: RenderedPage, rendered_pages: list[RenderedPa
     version_href = rel_url(page.output, PurePosixPath("firmware/main/version.json"))
     body_class = f"page-{slugify(page.output.stem, {})}"
 
-    legacy_links = ""
+    legacy_links = '<a id="herstelpagina-gebruiken" hidden></a>' if page.source == PurePosixPath("docs/web-app/herstel.md") else ""
     if page.source == PurePosixPath("docs/web-app.md"):
         aliases = json.loads((REPO_ROOT / "docs/web-app-legacy-links.json").read_text(encoding="utf-8"))
-        legacy_links = "".join(
+        legacy_links = '<a id="herstelpagina-gebruiken" hidden></a>' if page.source == PurePosixPath("docs/web-app/herstel.md") else "".join(
             f'<a id="{escape(anchor)}" data-legacy-target="{escape(target)}" href="{escape(target)}" hidden></a>'
             for anchor, target in aliases.items() if anchor not in {entry[2] for entry in rendered_page.toc}
         )
