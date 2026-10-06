@@ -1,5 +1,14 @@
 # Diagnose en logboeken
 
+## Welk hulpmiddel kies je?
+
+| Vraag | Hulpmiddel |
+| --- | --- |
+| Welke waarden veranderen tijdens het probleem? | Diagnose: actuele waarden en grafieken |
+| Waarom schakelt of begrenst de regeling? | Beslislog: regelkeuzes en redenen |
+| Welke technische meldingen verschijnen? | Logboek: live meldingen |
+| Welke gegevens moet ik voor support bewaren? | Systeemrecorder: downloadbaar diagnosebestand |
+
 ## Diagnose
 
 `Diagnose` combineert actuele waarden met korte historie. Dat helpt bij vragen zoals:
@@ -22,6 +31,19 @@ Tijdelijke PSRAM-historie is op alle ondersteunde profielen standaard aan en wor
 
 `Beslislog` laat zien welke regelkeuze OpenQuatt maakte en welke signalen daarbij meespeelden. Gebruik dit scherm vooral om een onverwachte omschakeling of begrenzing te verklaren. De functie is nog beta; combineer de uitleg daarom met de actuele waarden in `Diagnose`.
 
+
+## Systeemrecorder voor support
+
+De Systeemrecorder bewaart continu recente systeemgegevens, dus je hoeft een opname niet vooraf te starten:
+
+1. Open **Diagnostiek → Systeemrecorder**.
+2. Kies het venster dat het probleem afdekt: laatste 15, 30 of 60 minuten, of alles wat beschikbaar is.
+3. Download het diagnosebestand.
+4. Voeg het gedownloade `.oqdebug.json`-bestand toe aan je Discord-vraag of GitHub-issue. Via **Open analyser** kun je het bestand zelf alvast bekijken op OpenHeatPumps; er wordt niets automatisch verzonden.
+
+De opname wordt lokaal in het apparaatgeheugen opgeslagen en niets wordt automatisch verzonden. Deel het bestand alleen binnen het supportverzoek waarvoor je het hebt gemaakt.
+
+Vanuit de OpenHeatPumps-analyser kun je met een deep link terug naar de Systeemrecorder-popup: `http://<device-ip>/?view=settings&section=system&modal=systeemrecorder` (kort: `http://<device-ip>/#systeemrecorder`). De popup opent dan automatisch.
 
 ## Verder
 

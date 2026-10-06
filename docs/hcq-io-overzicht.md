@@ -17,7 +17,7 @@ Technische naslag voor ontwikkeling en diagnose van de Electropaultje Heatpump C
 | `OTB` | CV-ketel | OpenTherm master, twee aders; alleen aansluiten op de digitale OpenTherm-klemmen van de ketel |
 | `M1` | Quatt-buitenunit(s) | RS485 Modbus: `GND` / `A` / `B` |
 | `M2` | Quatt-app via CiC (optioneel) | RS485 Modbus: `GND` / `A` / `B` |
-| Ethernet | Netwerk in Ethernet-builds | W5500 met RJ45 |
+| Ethernet | Lokale netwerkverbinding | W5500 met RJ45 |
 | USB | Voeding, Wi-Fi-provisioning, flashen en herstel | USB |
 
 Gebruik voor de CV-ketel altijd precies één route: `OTB` of `R1`, nooit beide tegelijk. De polariteit van de twee aders op `OTT` en `OTB` maakt niet uit.
@@ -118,9 +118,9 @@ Op `OTT` gedraagt de HCQ zich als OpenTherm-slave tegenover de kamerthermostaat.
 
 ### Ethernet, leds en herstelknop
 
-In een Ethernet-build gebruikt de W5500 de SPI-pinnen in de tabel. In een Wi-Fi-build zet de firmware diezelfde W5500 in power-down; Ethernet en Wi-Fi zijn afzonderlijke firmware-builds.
+De huidige Q-firmware bevat zowel Wi-Fi als Ethernet. De W5500 gebruikt de SPI-pinnen in de tabel; de netwerkvoorkeur wordt tijdens gebruik ingesteld. De oudere Wi-Fi-/Ethernet-bestandsnamen zijn compatibiliteitsnamen voor dezelfde Single- of Duo-firmware.
 
-De gele led brandt wanneer de actieve netwerkverbinding verbonden is. De rode led signaleert een actieve firmware-, sensor-, OpenTherm-, warmtepomp- of veiligheidsfout. Houd de herstelknop vijf seconden ingedrukt om een tijdelijk herstelvenster voor de web-login te openen.
+De gele led brandt wanneer de actieve netwerkverbinding verbonden is. De rode led signaleert een actieve firmware-, sensor-, OpenTherm-, warmtepomp- of veiligheidsfout. Houd de herstelknop vijf seconden ingedrukt en laat hem los om de [herstelpagina](web-app/herstel.md) te activeren voor wachtwoord-, API- of Wi-Fi-herstel. Tien seconden indrukken wist direct de opgeslagen Wi-Fi-gegevens.
 
 ## Bronnen in de firmware
 

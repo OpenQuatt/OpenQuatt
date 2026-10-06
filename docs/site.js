@@ -1,6 +1,12 @@
-// Resolve old web-app bookmarks to the focused guide that owns their content.
-const legacyAnchor = document.querySelector(`[data-legacy-target][id="${CSS.escape(decodeURIComponent(location.hash.slice(1)))}"]`);
-if (legacyAnchor) location.replace(legacyAnchor.dataset.legacyTarget);
+// Resolve old web-app bookmarks without allowing a malformed hash to stop navigation.
+function followLegacyAnchor() {
+  let anchor;
+  try { anchor = decodeURIComponent(location.hash.slice(1)); } catch { return; }
+  const link = document.getElementById(anchor);
+  if (link?.dataset.legacyTarget) location.replace(link.dataset.legacyTarget);
+}
+followLegacyAnchor();
+window.addEventListener("hashchange", followLegacyAnchor);
 
 (() => {
   const body = document.body;

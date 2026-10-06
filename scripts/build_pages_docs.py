@@ -142,6 +142,9 @@ def rewrite_href(source: PurePosixPath, current_output: PurePosixPath, href: str
 
     if normalized in PAGE_BY_SOURCE:
         site_target = PAGE_BY_SOURCE[normalized].output
+    elif normalized.suffix == ".md" and (REPO_ROOT / normalized).is_file():
+        url = f"{GITHUB_REPO_URL}/blob/main/{normalized.as_posix()}"
+        return f"{url}#{hash_part}" if hash_part else url
     elif normalized.parts and normalized.parts[0] == "docs":
         site_target = PurePosixPath(*normalized.parts[1:])
     else:

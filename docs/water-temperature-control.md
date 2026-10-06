@@ -2,7 +2,7 @@
 
 Deze pagina is bedoeld voor gebruikers die de stooklijnregeling van OpenQuatt beter willen begrijpen, zonder meteen in technische details te verdwijnen.
 
-> Zoek je vooral de korte uitleg? Begin dan bij [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md).
+> Zoek je vooral de korte uitleg? Begin dan bij [Verwarmen en comfort](dagelijks/verwarmen.md).
 
 ## Wat is Water Temperature Control?
 
@@ -242,7 +242,7 @@ Controleer daarna pas of de PID of `Duo`-grenzen te scherp staan.
 
 ## Verder lezen
 
-- [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md)
+- [Verwarmen en comfort](dagelijks/verwarmen.md)
 - [Power House](power-house.md)
 - [Regelgedrag van OpenQuatt](regelgedrag-van-openquatt.md)
 - [Instellingen en meetwaarden](instellingen-en-meetwaarden.md)

@@ -24,7 +24,7 @@ Kies alleen de route die bij jouw huidige hardware en situatie hoort. Home Assis
 | Jouw situatie | Begin hier | Wat je gaat doen |
 |---|---|---|
 | Nieuwe Heatpump Controller Q-edition met OpenQuatt voorgeïnstalleerd | [Q-edition aansluiten en in gebruik nemen](docs/q-edition.md) | Controller aansluiten, online brengen en Quick Start afronden. Zelf firmware flashen is normaal niet nodig. |
-| OpenQuatt draait al | [Web-app gebruiken](docs/web-app.md) | Instellingen beheren, updaten, backups maken en diagnose uitvoeren via `openquatt.local`. |
+| OpenQuatt draait al | [Overzicht van de web-app](docs/web-app.md) | Instellingen beheren, updaten, backups maken en diagnose uitvoeren via `openquatt.local`. |
 | Eerst alleen rondkijken | [Web-app demo](https://openquatt.github.io/OpenQuatt/demo/) | De interface bekijken zonder hardware of wijzigingen aan je installatie. |
 
 ## Wat is OpenQuatt?
@@ -81,7 +81,7 @@ Belangrijke beperkingen voor deze fase:
 - OpenQuatt is bedoeld voor Quatt Hybrid `Single` en `Duo`, niet voor Quatt All-Electric, Quatt Chill of Quatt HomeBattery.
 - Alleen de Heatpump Controller Q-edition wordt ondersteund.
 - OpenTherm-aansturing van de ketel via `OTB` is alleen beschikbaar op de Heatpump Controller Q-edition.
-- CV-assist in Heating Curve, CV/boiler-only mode en uitgebreidere storingsafhandeling staan op de roadmap.
+- Normale hybride ketelondersteuning in de stooklijnregeling en handmatig ketel-only gebruik staan op de roadmap. Gerichte ketelovername bij warmtepompuitval is een afzonderlijke, optionele functie.
 - OpenQuatt is geen officiële Quatt-helpdesk of individuele installatieservice.
 
 ## Roadmap
@@ -89,17 +89,17 @@ Belangrijke beperkingen voor deze fase:
 Compacte roadmap:
 
 - CV-assist in Heating Curve;
-- CV/boiler-only mode;
-- betere storingsafhandeling en herstelroutes.
+- handmatig ketel-only gebruik;
+- verdere uitbreiding van storingsafhandeling.
 
 ## Documentatie
 
 Belangrijkste pagina's voor gebruikers:
 
 - [Heatpump Controller Q-edition aansluiten en in gebruik nemen](docs/q-edition.md) voor de normale route met nieuwe OpenQuatt-hardware
-- [Web-app gebruiken](docs/web-app.md) voor Quick Start, instellingen, updates, backup en beveiliging
+- [Overzicht van de web-app](docs/web-app.md) voor Quick Start, instellingen, updates, backup en beveiliging
 - [OpenQuatt Home Assistant](docs/dashboard/README.md) voor dashboards, optionele HA-packages en de companion-repository
-- [Verwarmen en koelen uitgelegd](docs/verwarmen-en-koelen.md) voor een eenvoudige uitleg van `Power House`, stooklijnregeling, koeling, `Single` en `Duo`
+- [Verwarmen en comfort](docs/dagelijks/verwarmen.md) voor de keuze tussen Power House en stooklijnregeling; zie ook [Koelen](docs/dagelijks/koelen.md)
 - [MQTT inputbronnen](docs/mqtt.md) voor externe MQTT-bronwaarden zoals dauwpunt, buiten- en kamerwaarden en toestemmingssignalen
 - [Problemen oplossen](docs/problemen-oplossen.md) voor diagnose zonder meteen te gaan tunen
 

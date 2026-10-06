@@ -2,6 +2,20 @@
 
 Deze pagina helpt je rustig zoeken als OpenQuatt niet zichtbaar is, waarden vreemd lijken of het systeem anders reageert dan verwacht. De hoofdregel: eerst kijken welke informatie OpenQuatt gebruikt, pas daarna instellingen aanpassen.
 
+## Kies je probleem
+
+| Wat zie je? | Begin hier |
+| --- | --- |
+| De controllerpagina opent niet | [OpenQuatt is niet bereikbaar](#openquatt-is-niet-bereikbaar) |
+| Wachtwoord of Home Assistant-sleutel onbekend | [Herstelpagina](web-app/herstel.md) |
+| Home Assistant vindt de controller niet | [Home Assistant ziet OpenQuatt niet](#home-assistant-ziet-openquatt-niet) |
+| Dashboard toont ontbrekende entiteiten | [Ontbrekende dashboardentiteiten](#dashboardkaarten-melden-ontbrekende-entiteiten) |
+| Geen of onlogische meetwaarden | [Geen warmtepompgegevens](#ik-zie-geen-warmtepompgegevens) of [Waarden lijken niet logisch](#waarden-lijken-niet-logisch) |
+| Het huis wordt niet warm genoeg | [Verwarming controleren](#het-huis-wordt-niet-warm-genoeg) |
+| Het wordt te warm of het systeem schakelt onrustig | [Te warm](#het-wordt-te-warm) of [Onrustig schakelen](#het-systeem-schakelt-onrustig) |
+| Koeling start niet | [Koeling blijft geblokkeerd](#koeling-blijft-geblokkeerd) |
+| Software-update mislukt | [Firmware-update controleren](#firmware-update-lijkt-mislukt) |
+
 ## Eerst dit controleren
 
 Controleer in deze volgorde:
@@ -278,5 +292,5 @@ Deel nooit Wi-Fi-wachtwoorden, API-sleutels of andere geheimen.
 
 - [Web-app gebruiken](web-app.md)
 - [Dashboard gebruiken](dashboardoverzicht.md)
-- [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md)
+- [Verwarmen en comfort](dagelijks/verwarmen.md)
 - [Instellingen en meetwaarden](instellingen-en-meetwaarden.md)

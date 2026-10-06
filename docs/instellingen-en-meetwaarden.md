@@ -318,7 +318,7 @@ Als je te veel tegelijk wijzigt, wordt het juist moeilijker om te begrijpen wat 
 ## Verder lezen
 
 - Web-app gebruiken: [Web-app gebruiken](web-app.md)
-- [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md)
+- [Verwarmen en comfort](dagelijks/verwarmen.md)
 - [Power House](power-house.md)
 - [Water Temperature Control](water-temperature-control.md)
 - [Regelgedrag van OpenQuatt](regelgedrag-van-openquatt.md)

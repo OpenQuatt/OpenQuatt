@@ -14,7 +14,7 @@
   "diagnose": "web-app/diagnose.html#diagnose",
   "beslislog": "web-app/diagnose.html#beslislog",
   "gebruiksstatistieken-en-privacy": "web-app/onderhoud.html#gebruiksstatistieken-en-privacy",
-  "systeemrecorder-voor-support": "web-app/onderhoud.html#systeemrecorder-voor-support",
+  "systeemrecorder-voor-support": "web-app/diagnose.html#systeemrecorder-voor-support",
   "backup-en-restore": "web-app/onderhoud.html#backup-en-restore",
   "updates": "web-app/onderhoud.html#updates",
   "web-login-en-api-beveiliging": "web-app/instellingen.html#toegang-en-beveiliging",

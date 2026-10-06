@@ -2,7 +2,7 @@
 
 De herstelpagina is een afzonderlijke pagina op de controller voor als je niet meer kunt inloggen, Home Assistant opnieuw wilt koppelen of Wi-Fi wilt herstellen. Je hoeft hiervoor het bestaande wachtwoord van de OpenQuatt-webinterface niet te weten. Je opent de herstelacties met de fysieke knop op de controller.
 
-### Herstelpagina openen
+## Herstelpagina openen
 
 1. Houd op de Heatpump Controller Q de **linker van de twee knoppen 5 seconden** vast en laat hem los. Houd hem niet tot 10 seconden vast: daarmee wis je direct de Wi-Fi-gegevens.
 2. Open `http://openquatt.local/recovery` of `http://<IP-adres>/recovery`. Gebruik bij een aangepaste apparaatnaam de bijbehorende hostnaam.
@@ -16,9 +16,9 @@ Zonder actief herstelvenster toont de pagina hoe je de fysieke knop moet bediene
 | Home Assistant kan niet koppelen door een onbekende of afwijkende API-sleutel | [API-beveiliging resetten](#api-beveiliging-resetten) | Wis alleen de ESPHome API-sleutel en herstart; koppel daarna binnen 10 minuten opnieuw. |
 | Opgeslagen Wi-Fi-gegevens werken niet meer | [Wi-Fi opnieuw instellen](#wi-fi-opnieuw-instellen) | Wis alleen de Wi-Fi-gegevens en herstart; stel daarna je netwerk opnieuw in via het OpenQuatt access point. |
 
-**Is de controller helemaal niet bereikbaar?** Dan kun je de herstelpagina nog niet openen. Voor Wi-Fi-herstel kun je de linker knop **10 seconden** vasthouden, loslaten en daarna verbinden met het OpenQuatt access point. Volg [Wi-Fi opnieuw instellen](#wi-fi-opnieuw-instellen). Een Ethernet-build heeft geen Wi-Fi access point; controleer daar de kabel, netwerkverbinding en het IP-adres.
+**Is de controller helemaal niet bereikbaar?** Dan kun je de herstelpagina nog niet openen. Voor Wi-Fi-herstel kun je de linker knop **10 seconden** vasthouden, loslaten en daarna verbinden met het OpenQuatt access point. Volg [Wi-Fi opnieuw instellen](#wi-fi-opnieuw-instellen). Gebruik je Ethernet, controleer dan ook de kabel en het IP-adres. De huidige Q-firmware ondersteunt daarnaast Wi-Fi-herstel; oudere firmware met alleen Ethernet heeft geen access point.
 
-### Herstel afsluiten
+## Herstel afsluiten
 
 Tijdens herstel is de gewone webinterface afgeschermd. Verschijnt daar een browser-inlogvenster, annuleer het en open rechtstreeks `/recovery`.
 
@@ -29,7 +29,7 @@ Kies **Herstel afsluiten** om terug te gaan naar de normale webinterface, of wac
 
 Gebruik de herstelpagina op een vertrouwd lokaal netwerk: tijdens het fysiek geopende venster kunnen ook andere apparaten op dat netwerk de beperkte herstelacties uitvoeren. Deze gerichte acties zijn geen factory reset; je hoeft hiervoor niet alle OpenQuatt-instellingen te wissen.
 
-### Web-login herstellen
+## Web-login herstellen
 
 Op de HeatPump Controller Q edition is de herstelknop de **linker van de twee knoppen**.
 
@@ -56,7 +56,7 @@ Met **Herstel afsluiten**, of automatisch na 10 minuten, sluit het herstelvenste
 Open daarna de gewone webinterface zonder `/recovery`. Heb je geen nieuwe login
 opgeslagen, dan blijft de eerdere web-login of open toegang gelden.
 
-### API-beveiliging resetten
+## API-beveiliging resetten
 
 Gebruik deze reset als Home Assistant niet meer kan verbinden doordat de opgeslagen API-sleutel onbekend is of niet overeenkomt. Hiermee wis je alleen de sleutel voor de ESPHome-verbinding. Je Wi-Fi-instellingen, overige instellingen en de gebruikersnaam en het wachtwoord van de webinterface blijven behouden.
 
@@ -82,7 +82,7 @@ Bij een bestaande koppeling kan Home Assistant melden dat het apparaat transport
 
 Meldt OpenQuatt dat het wissen niet is gelukt? De controller herstart dan niet automatisch. Controleer de melding voordat je opnieuw probeert. Voor verdere koppelproblemen zie [OpenQuatt koppelen aan Home Assistant](../dashboard/koppelen.md#problemen-met-koppelen).
 
-### Wi-Fi opnieuw instellen
+## Wi-Fi opnieuw instellen
 
 Kies met een ingestelde web-login **Connectiviteit → Wi-Fi wissen en herstarten**,
 of gebruik de fysieke herstelpagina na 5 seconden indrukken. Zonder browser kan

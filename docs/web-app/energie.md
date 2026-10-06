@@ -1,5 +1,17 @@
 # Energie en resultaten
 
+Gebruik **Energie** om actuele prestaties te bekijken en **Resultaten** om perioden te vergelijken.
+
+| Waarde | Betekenis |
+| --- | --- |
+| Elektrisch vermogen (W) | Hoeveel elektriciteit de warmtepomp op dit moment gebruikt |
+| Thermisch vermogen (W) | Hoeveel warmte de warmtepomp op dit moment levert |
+| Energie (kWh) | Verbruik of geleverde warmte over een periode |
+| COP | Verhouding tussen geleverde warmte en elektrisch verbruik bij verwarmen |
+| EER | Vergelijkbare verhouding bij koelen |
+
+Vergelijk dezelfde periode en let op verschillen in buitentemperatuur en gebruik. Eén kort moment vertelt weinig over de prestaties van een hele dag.
+
 ## Resultaten
 
 `Resultaten` bundelt opgeslagen resultaten en historie. Gebruik dit scherm om prestaties over een langere periode te vergelijken. Voor een snelle diagnose van het actuele regelgedrag is `Diagnose` geschikter.
