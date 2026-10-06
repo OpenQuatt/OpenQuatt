@@ -144,7 +144,7 @@ oq_electrical_current_limit_min_a: "6.0"              # Lowest configurable inst
 oq_power_measurement_stale_s: "60"                    # Maximum age of voltage/current measurements used by the limiter [s].
 oq_mains_voltage_v: "230.0"                           # Nominal mains voltage used to convert current limits to power thresholds [V].
 oq_cm_prepost_s: "30"                                 # Duration of CM1 pre/postflow window [s].
-oq_cm_min_flow_lph: "250.0"                           # Minimum valid flow for compressor operation [L/h].
+oq_cm_min_flow_lph: "400.0"                           # Minimum valid flow for compressor operation [L/h].
 oq_cm_flow_fault_s: "60"                              # Low-flow duration before fault becomes active [s].
 oq_cm_flow_recover_s: "30"                            # Flow recovery duration before fault is cleared [s].
 oq_cm2_idle_exit_s: "90"                              # Exit CM2 if both HPs are idle for this duration while demand remains > 0 [s].
