@@ -1,3 +1,7 @@
+// Resolve old web-app bookmarks to the focused guide that owns their content.
+const legacyAnchor = document.querySelector(`[data-legacy-target][id="${CSS.escape(decodeURIComponent(location.hash.slice(1)))}"]`);
+if (legacyAnchor) location.replace(legacyAnchor.dataset.legacyTarget);
+
 (() => {
   const body = document.body;
   const sidebarToggle = document.querySelector("[data-sidebar-toggle]");

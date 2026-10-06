@@ -40,7 +40,7 @@ Zet de controller één keer kort uit en weer aan. Voeg hem binnen 10 minuten to
 
 ### Home Assistant vraagt om een API-key of heeft een oude sleutel
 
-Een bestaande sleutel wordt bij opstarten niet vervangen. Kun je niet koppelen doordat de sleutel onbekend is of niet overeenkomt? Volg [API-beveiliging resetten](../web-app.md#api-beveiliging-resetten). Daar staat hoe je de sleutel wist via de herstelpagina, of via de instellingen als je met een gebruikersnaam en wachtwoord op de webinterface bent ingelogd. Ook vind je daar uitleg over de eventuele melding in Home Assistant om de oude sleutel te verwijderen.
+Een bestaande sleutel wordt bij opstarten niet vervangen. Kun je niet koppelen doordat de sleutel onbekend is of niet overeenkomt? Volg [API-beveiliging resetten](../web-app/herstel.md#api-beveiliging-resetten). Daar staat hoe je de sleutel wist via de herstelpagina, of via de instellingen als je met een gebruikersnaam en wachtwoord op de webinterface bent ingelogd. Ook vind je daar uitleg over de eventuele melding in Home Assistant om de oude sleutel te verwijderen.
 
 Na de reset en herstart heeft Home Assistant opnieuw 10 minuten om encryptie in te stellen. Controleer daarna dat API-encryptie actief is; alleen bereikbaarheid bewijst dit niet. Een factory reset is hiervoor niet nodig.
 

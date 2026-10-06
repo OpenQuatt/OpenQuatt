@@ -86,3 +86,11 @@ De dashboardinstallatie is nu klaar. Voeg alleen packages toe als je eigen Home 
 - [Koelbronnen gebruiken](cooling.md)
 
 Dashboardbestanden en packages worden onderhouden in [OpenQuatt/home-assistant-openquatt](https://github.com/OpenQuatt/home-assistant-openquatt). De koppel- en dashboardinstallatiehandleiding op deze site wordt bij de firmwaredocumentatie onderhouden.
+
+## Optioneel: dynamische bronselectie via Home Assistant
+
+Volg [Eigen sensoren gebruiken](dynamic-sources.md) voor installatie en configuratie van het optionele bronpakket.
+
+## Optioneel: dynamische koelbronnen via Home Assistant
+
+Volg [Koelbronnen gebruiken](cooling.md) voor installatie en configuratie van het optionele koelpakket.

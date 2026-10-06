@@ -39,13 +39,13 @@ Het Wi-Fi-instelvenster sluit niet na 10 minuten: die timer geldt alleen voor ee
 
 ## Herstelpagina: wachtwoord, Home Assistant of Wi-Fi herstellen
 
-Gebruik [Herstelpagina gebruiken](web-app.md#herstelpagina-gebruiken) voor de gerichte herstelroute. Daar staan het openen van `/recovery`, de linker knop op de Heatpump Controller Q en de keuze tussen:
+Gebruik [Herstelpagina gebruiken](web-app/herstel.md#herstelpagina-gebruiken) voor de gerichte herstelroute. Daar staan het openen van `/recovery`, de linker knop op de Heatpump Controller Q en de keuze tussen:
 
 - een nieuwe gebruikersnaam en wachtwoord voor de webinterface instellen;
 - de API-sleutel wissen en Home Assistant opnieuw koppelen;
 - Wi-Fi-gegevens wissen en je netwerk opnieuw instellen.
 
-De knop **5 seconden** indrukken en loslaten opent het herstelvenster; **10 seconden** indrukken wist direct Wi-Fi. Deze acties zijn geen factory reset. Is de controller niet bereikbaar, begin dan bij [Wi-Fi opnieuw instellen](web-app.md#wi-fi-opnieuw-instellen) of controleer de Ethernetverbinding.
+De knop **5 seconden** indrukken en loslaten opent het herstelvenster; **10 seconden** indrukken wist direct Wi-Fi. Deze acties zijn geen factory reset. Is de controller niet bereikbaar, begin dan bij [Wi-Fi opnieuw instellen](web-app/herstel.md#wi-fi-opnieuw-instellen) of controleer de Ethernetverbinding.
 
 ## Controller terugzetten naar fabrieksinstellingen
 
@@ -269,7 +269,7 @@ Vermeld bij een hulpvraag of bugmelding:
 - het tijdstip en de stappen om het probleem te herhalen;
 - relevante screenshots uit `Diagnose` of `Beslislog` en recente wijzigingen;
 - houd bij een reproduceerbaar probleem het `Logboek` open en vermeld het tijdstip waarop de relevante regels verschenen;
-- bij een probleem: een [diagnosebestand uit de Systeemrecorder](web-app.md#systeemrecorder-voor-support);
+- bij een probleem: een [diagnosebestand uit de Systeemrecorder](web-app/onderhoud.md#systeemrecorder-voor-support);
 - bij een ontbrekende warmtepompverbinding met de HCQ: een scherpe foto van `M1` en de Modbusverbinding met de warmtepomp.
 
 Deel nooit Wi-Fi-wachtwoorden, API-sleutels of andere geheimen.

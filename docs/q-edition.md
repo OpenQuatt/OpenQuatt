@@ -220,6 +220,6 @@ OpenQuatt werkt nu zelfstandig via de web-app. Wil je Home Assistant gebruiken v
 - **Geen warmtepompdata:** controleer voeding, communicatiebedrading en of `Single` of `Duo` klopt.
 - **Niet gevonden in Home Assistant:** controleer eerst of de web-app lokaal bereikbaar is.
 
-Ben je het wachtwoord vergeten of wil je Home Assistant of Wi-Fi herstellen? Volg [Herstelpagina gebruiken](web-app.md#herstelpagina-gebruiken).
+Ben je het wachtwoord vergeten of wil je Home Assistant of Wi-Fi herstellen? Volg [Herstelpagina gebruiken](web-app/herstel.md#herstelpagina-gebruiken).
 
 Ga voor verdere diagnose naar [Problemen oplossen](problemen-oplossen.md). Gebruik [Handmatige installatie](handmatige-installatie.md) alleen als de normale installer niet werkt.
