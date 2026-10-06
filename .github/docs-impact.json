@@ -10,7 +10,17 @@
       ],
       "docs_any_of": [
         "docs/web-app.md",
-        "docs/q-edition.md"
+        "docs/q-edition.md",
+        "docs/web-app/quick-start.md",
+        "docs/web-app/instellingen.md",
+        "docs/web-app/bronnen.md",
+        "docs/web-app/energie.md",
+        "docs/web-app/diagnose.md",
+        "docs/web-app/onderhoud.md",
+        "docs/web-app/herstel.md",
+        "docs/dagelijks/controleren.md",
+        "docs/dagelijks/verwarmen.md",
+        "docs/dagelijks/koelen.md"
       ]
     },
     {
@@ -20,7 +30,17 @@
       ],
       "docs_any_of": [
         "docs/web-app.md",
-        "docs/problemen-oplossen.md"
+        "docs/problemen-oplossen.md",
+        "docs/web-app/quick-start.md",
+        "docs/web-app/instellingen.md",
+        "docs/web-app/bronnen.md",
+        "docs/web-app/energie.md",
+        "docs/web-app/diagnose.md",
+        "docs/web-app/onderhoud.md",
+        "docs/web-app/herstel.md",
+        "docs/dagelijks/controleren.md",
+        "docs/dagelijks/verwarmen.md",
+        "docs/dagelijks/koelen.md"
       ]
     },
     {
@@ -40,7 +60,17 @@
       ],
       "docs_any_of": [
         "docs/web-app.md",
-        "docs/instellingen-en-meetwaarden.md"
+        "docs/instellingen-en-meetwaarden.md",
+        "docs/web-app/quick-start.md",
+        "docs/web-app/instellingen.md",
+        "docs/web-app/bronnen.md",
+        "docs/web-app/energie.md",
+        "docs/web-app/diagnose.md",
+        "docs/web-app/onderhoud.md",
+        "docs/web-app/herstel.md",
+        "docs/dagelijks/controleren.md",
+        "docs/dagelijks/verwarmen.md",
+        "docs/dagelijks/koelen.md"
       ]
     },
     {
@@ -52,7 +82,17 @@
       ],
       "docs_any_of": [
         "docs/web-app.md",
-        "docs/problemen-oplossen.md"
+        "docs/problemen-oplossen.md",
+        "docs/web-app/quick-start.md",
+        "docs/web-app/instellingen.md",
+        "docs/web-app/bronnen.md",
+        "docs/web-app/energie.md",
+        "docs/web-app/diagnose.md",
+        "docs/web-app/onderhoud.md",
+        "docs/web-app/herstel.md",
+        "docs/dagelijks/controleren.md",
+        "docs/dagelijks/verwarmen.md",
+        "docs/dagelijks/koelen.md"
       ]
     },
     {
@@ -73,7 +113,7 @@
       ]
     },
     {
-      "name": "Regelstrategieën en flow",
+      "name": "Regelstrategie\u00ebn en flow",
       "source_patterns": [
         "openquatt/oq_boiler_control.yaml",
         "openquatt/oq_cooling_safety.yaml",
@@ -101,7 +141,17 @@
       "docs_any_of": [
         "docs/instellingen-en-meetwaarden.md",
         "docs/dashboard/README.md",
-        "docs/web-app.md"
+        "docs/web-app.md",
+        "docs/web-app/quick-start.md",
+        "docs/web-app/instellingen.md",
+        "docs/web-app/bronnen.md",
+        "docs/web-app/energie.md",
+        "docs/web-app/diagnose.md",
+        "docs/web-app/onderhoud.md",
+        "docs/web-app/herstel.md",
+        "docs/dagelijks/controleren.md",
+        "docs/dagelijks/verwarmen.md",
+        "docs/dagelijks/koelen.md"
       ]
     },
     {
@@ -113,7 +163,17 @@
       ],
       "docs_any_of": [
         "README.md",
-        "docs/web-app.md"
+        "docs/web-app.md",
+        "docs/web-app/quick-start.md",
+        "docs/web-app/instellingen.md",
+        "docs/web-app/bronnen.md",
+        "docs/web-app/energie.md",
+        "docs/web-app/diagnose.md",
+        "docs/web-app/onderhoud.md",
+        "docs/web-app/herstel.md",
+        "docs/dagelijks/controleren.md",
+        "docs/dagelijks/verwarmen.md",
+        "docs/dagelijks/koelen.md"
       ]
     }
   ]

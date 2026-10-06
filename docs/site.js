@@ -1,3 +1,13 @@
+// Resolve old web-app bookmarks without allowing a malformed hash to stop navigation.
+function followLegacyAnchor() {
+  let anchor;
+  try { anchor = decodeURIComponent(location.hash.slice(1)); } catch { return; }
+  const link = document.getElementById(anchor);
+  if (link?.dataset.legacyTarget) location.replace(link.dataset.legacyTarget);
+}
+followLegacyAnchor();
+window.addEventListener("hashchange", followLegacyAnchor);
+
 (() => {
   const body = document.body;
   const sidebarToggle = document.querySelector("[data-sidebar-toggle]");

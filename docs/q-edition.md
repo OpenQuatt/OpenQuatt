@@ -76,9 +76,9 @@ Laat de USB-poort bereikbaar. Je hebt deze later ook nodig voor Wi-Fi provisioni
 
 ## 2. Wi-Fi instellen
 
-Een Wi-Fi-build biedt twee routes. Op een computer is provisioning via USB meestal het handigst. Op een telefoon of tablet staat de route via het OpenQuatt access point daarom als eerste.
+De huidige Q-firmware ondersteunt Wi-Fi en Ethernet. Voor Wi-Fi zijn er twee instelroutes. Op een computer is provisioning via USB meestal het handigst. Op een telefoon of tablet staat de route via het OpenQuatt access point daarom als eerste.
 
-Wil je de HCQ uiteindelijk via Ethernet gebruiken? Breng de geleverde `Single` + `Wi-Fi`-build ook dan eerst via deze stap online en sluit de netwerkkabel aan. In Quick Start kies je daarna de juiste `Single`- of `Duo`-Ethernetsetup; de web-app installeert dan de bijbehorende firmware.
+Wil je de HCQ uiteindelijk via Ethernet gebruiken? Sluit de netwerkkabel vóór het opstarten aan. Stel ook Wi-Fi in als je die als herstelroute wilt gebruiken. In Quick Start kies je `Single` of `Duo` en de gewenste verbinding. Wi-Fi en Ethernet zitten in dezelfde Q-firmware.
 
 ### Route A: via USB
 
@@ -96,7 +96,7 @@ Gebruik deze route ook als alleen de netwerknaam of het Wi-Fi-wachtwoord is gewi
 
 ### Route B: via het OpenQuatt access point
 
-Kan de controller geen verbinding maken met het ingestelde Wi-Fi-netwerk, dan start een Wi-Fi-build een eigen access point met captive portal:
+Kan de controller geen verbinding maken met het ingestelde Wi-Fi-netwerk, dan kan de controller een eigen instelnetwerk (access point) openen:
 
 - netwerknaam: `OpenQuatt`;
 - wachtwoord: `openquatt`.
@@ -112,7 +112,7 @@ Kan de controller geen verbinding maken met het ingestelde Wi-Fi-netwerk, dan st
 Verschijnt de captive portal niet? Blijf verbonden met `OpenQuatt` en open handmatig [http://192.168.4.1/](http://192.168.4.1/) in je browser.
 
 > [!NOTE]
-> Het access point is een tijdelijke configuratieroute en niet bedoeld als normale netwerkverbinding. Bij Ethernet is deze route niet beschikbaar.
+> Het access point is een tijdelijke configuratieroute en niet bedoeld als normale netwerkverbinding. Ook bij gebruik van Ethernet kan het instelnetwerk beschikbaar zijn. Zonder opgeslagen Wi-Fi-gegevens blijft het open totdat nieuwe gegevens werken en opgeslagen zijn.
 
 ## 3. OpenQuatt voor het eerst openen
 
@@ -184,7 +184,7 @@ Vanaf dit punt kun je OpenQuatt zelfstandig via de web-app gebruiken. Home Assis
 
 Op Heatpump Controller Q Single en Duo kan Power House optioneel **passief leren**. Je vindt dit onder **Instellingen → Verwarmen → Power House**.
 
-Na inschakelen verzamelt OpenQuatt alleen geschikte verwarmingsperioden en schat het warmteverlies van de woning en een bijbehorende woninglijn. De verzamelde leerdata blijft na een herstart of software-update bewaard, maar **Passief leren staat na iedere herstart weer uit** en moet bewust opnieuw worden ingeschakeld.
+Na inschakelen verzamelt OpenQuatt alleen geschikte verwarmingsperioden en schat het warmteverlies van de woning en een bijbehorende woninglijn. De verzamelde leerdata blijft na een herstart of software-update bewaard, en de gekozen aan/uit-stand blijft behouden. **Passief leren staat standaard aan**; bewust uitschakelen blijft ook na een herstart of update behouden.
 
 De functie is observerend: een geleerd model wordt niet automatisch toegepast en verandert geen warmtevraag, compressorregeling of ketelaansturing. De web-app toont de verzamelstatus, blokkaderedenen, meetpunten en - zodra er voldoende bruikbare data is - een voorlopige geleerde lijn. Via **Leerdata wissen** kan de opgeslagen leerhistorie expliciet worden verwijderd.
 
@@ -192,7 +192,7 @@ De kwaliteit van het model hangt af van voldoende geschikte metingen over versch
 
 ## Configuratie later wijzigen
 
-Heb je Quick Start al afgerond en verandert de installatie later, dan kun je dezelfde firmwarewissel alsnog via de web-app starten. Maak voor de zekerheid eerst een backup; de bestaande OpenQuatt-instellingen blijven tijdens de update of wissel behouden.
+Heb je Quick Start al afgerond en verandert de installatie later, dan kun je de opstelling of netwerkvoorkeur alsnog via de web-app wijzigen. Maak voor de zekerheid eerst een backup; de bestaande OpenQuatt-instellingen blijven tijdens de update of wissel behouden.
 
 Open in de web-app **Instellingen → Systeem** en kies bij **Updates** voor **Openen**. Onder **Geavanceerd** vind je, wanneer beschikbaar, **Opstelling wisselen** en **Verbinding wisselen**.
 
@@ -202,28 +202,24 @@ Open in de web-app **Instellingen → Systeem** en kies bij **Updates** voor **O
 - Gebruik voor alleen een andere Wi-Fi-netwerknaam of een ander wachtwoord opnieuw **Configureer Wi-Fi via USB** of het OpenQuatt access point.
 
 > [!IMPORTANT]
-> Wi-Fi en Ethernet blijven aparte firmware-builds. Een Ethernet-build heeft geen Wi-Fi fallback of captive portal. De web-app voert zo'n wissel daarom uit als firmware-update en toont vooraf de bijbehorende controle.
+> De huidige Q-firmware bevat Wi-Fi en Ethernet. Een verbindingswissel verandert de netwerkvoorkeur; een wissel tussen Single en Duo vereist andere firmware. Sluit de Ethernetkabel vóór de wissel aan. Bij oudere firmware kan ook een verbindingswissel nog een firmware-update vereisen.
 
 ## Optioneel: toevoegen aan Home Assistant
 
-Home Assistant is optioneel voor OpenQuatt zelf en aanbevolen voor dashboards en automatisering. Zodra OpenQuatt en Home Assistant op hetzelfde netwerk zitten, wordt het ESPHome-apparaat meestal automatisch gevonden.
+OpenQuatt werkt nu zelfstandig via de web-app. Wil je Home Assistant gebruiken voor monitoring, dashboards en automatisering? Begin bij [OpenQuatt in Home Assistant](dashboard/README.md) en volg [OpenQuatt koppelen](dashboard/koppelen.md).
 
-Open de melding bij **Instellingen → Apparaten & diensten** en kies **Configureren**. Verschijnt er geen melding, kies dan **Integratie toevoegen → ESPHome** en vul `openquatt.local` of het IP-adres van OpenQuatt in.
-
-Gebruik de bestaande handleidingen voor de vervolgstappen:
-
-- [Het juiste Single- of Duo-dashboard installeren](dashboard/README.md)
-- [Het dashboard gebruiken](dashboardoverzicht.md)
-
-Selecteer bij de eerste toevoeging nog geen Home Assistant-area. Wacht tot de OpenQuatt-entiteiten zijn aangemaakt en ken daarna pas een area toe.
+> [!IMPORTANT]
+> Bij de eerste koppeling geldt een venster van 10 minuten na het opstarten. Is dat verlopen, zet de controller één keer kort uit en weer aan voordat je koppelt. Volg de handleiding om OpenQuatt te koppelen. Daar lees je ook hoe de verbinding wordt beveiligd en wanneer je een area kunt selecteren.
 
 ## Als het niet lukt
 
 - **Geen USB-poort zichtbaar:** controleer of je een USB-datakabel gebruikt en probeer een andere USB-poort.
 - **Instabiel of onverklaarbaar gedrag:** een USB-voedingsadapter van onvoldoende kwaliteit of vermogen kan vreemde storingen veroorzaken. Probeer een andere, betrouwbare voedingsadapter.
-- **Geen captive portal:** controleer dat je met `OpenQuatt` bent verbonden en dat je geen Ethernet-build gebruikt.
+- **Geen captive portal:** controleer dat je met `OpenQuatt` bent verbonden en open zo nodig `http://192.168.4.1`.
 - **`openquatt.local` opent niet:** zoek het IP-adres in je router.
 - **Geen warmtepompdata:** controleer voeding, communicatiebedrading en of `Single` of `Duo` klopt.
 - **Niet gevonden in Home Assistant:** controleer eerst of de web-app lokaal bereikbaar is.
+
+Ben je het wachtwoord vergeten of wil je Home Assistant of Wi-Fi herstellen? Volg [Herstelpagina gebruiken](web-app/herstel.md#herstelpagina-gebruiken).
 
 Ga voor verdere diagnose naar [Problemen oplossen](problemen-oplossen.md). Gebruik [Handmatige installatie](handmatige-installatie.md) alleen als de normale installer niet werkt.

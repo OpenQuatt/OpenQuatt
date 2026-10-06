@@ -62,6 +62,8 @@ const webAppPath = "docs/web-app.md";
 const qEditionPath = "docs/q-edition.md";
 const webApp = read(webAppPath);
 const qEdition = read(qEditionPath);
+const quickStartPath = "docs/web-app/quick-start.md";
+const settingsPath = "docs/web-app/instellingen.md";
 
 function resolveNl(key) {
   return String(key || "").split(".").reduce((node, part) => (node && typeof node === "object" ? node[part] : undefined), nl) || "";
@@ -72,9 +74,9 @@ const viewLabels = APP_VIEWS.map((view) => resolveNl(view.labelKey));
 const settingsGroupLabels = SETTINGS_GROUPS.map((group) => resolveNl(group.labelKey));
 
 assertEqual(
-  webAppPath,
+  quickStartPath,
   "De Quick Start-tabel",
-  backtickTableLabels(section(webApp, "Eerste keer: Quick Start")),
+  backtickTableLabels(section(read(quickStartPath), "Eerste keer: Quick Start")),
   quickStepLabels,
 );
 assertEqual(
@@ -90,9 +92,9 @@ assertEqual(
   viewLabels,
 );
 assertEqual(
-  webAppPath,
+  settingsPath,
   "De instellingengroepen",
-  thirdLevelHeadings(section(webApp, "Instellingen")),
+  thirdLevelHeadings(section(read(settingsPath), "Instellingen")),
   settingsGroupLabels,
 );
 

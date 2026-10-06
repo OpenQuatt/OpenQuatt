@@ -2,7 +2,7 @@
 
 Deze pagina is bedoeld voor gebruikers die `Power House` net iets beter willen begrijpen, zonder in interne regelcode te duiken.
 
-> Zoek je vooral de korte uitleg? Begin dan bij [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md).
+> Zoek je vooral de korte uitleg? Begin dan bij [Verwarmen en comfort](dagelijks/verwarmen.md).
 
 ## Wat is Power House in gewone taal?
 
@@ -273,7 +273,7 @@ Controleer daarna pas of de afstelling zelf te scherp of te slap is.
 
 ## Verder lezen
 
-- [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md)
+- [Verwarmen en comfort](dagelijks/verwarmen.md)
 - [Water Temperature Control](water-temperature-control.md)
 - [Regelgedrag van OpenQuatt](regelgedrag-van-openquatt.md)
 - [Instellingen en meetwaarden](instellingen-en-meetwaarden.md)

@@ -2,6 +2,20 @@
 
 Deze pagina helpt je rustig zoeken als OpenQuatt niet zichtbaar is, waarden vreemd lijken of het systeem anders reageert dan verwacht. De hoofdregel: eerst kijken welke informatie OpenQuatt gebruikt, pas daarna instellingen aanpassen.
 
+## Kies je probleem
+
+| Wat zie je? | Begin hier |
+| --- | --- |
+| De controllerpagina opent niet | [OpenQuatt is niet bereikbaar](#openquatt-is-niet-bereikbaar) |
+| Wachtwoord of Home Assistant-sleutel onbekend | [Herstelpagina](web-app/herstel.md) |
+| Home Assistant vindt de controller niet | [Home Assistant ziet OpenQuatt niet](#home-assistant-ziet-openquatt-niet) |
+| Dashboard toont ontbrekende entiteiten | [Ontbrekende dashboardentiteiten](#dashboardkaarten-melden-ontbrekende-entiteiten) |
+| Geen of onlogische meetwaarden | [Geen warmtepompgegevens](#ik-zie-geen-warmtepompgegevens) of [Waarden lijken niet logisch](#waarden-lijken-niet-logisch) |
+| Het huis wordt niet warm genoeg | [Verwarming controleren](#het-huis-wordt-niet-warm-genoeg) |
+| Het wordt te warm of het systeem schakelt onrustig | [Te warm](#het-wordt-te-warm) of [Onrustig schakelen](#het-systeem-schakelt-onrustig) |
+| Koeling start niet | [Koeling blijft geblokkeerd](#koeling-blijft-geblokkeerd) |
+| Software-update mislukt | [Firmware-update controleren](#firmware-update-lijkt-mislukt) |
+
 ## Eerst dit controleren
 
 Controleer in deze volgorde:
@@ -37,14 +51,15 @@ Net na het flashen kan OpenQuatt ook nog op het fallback access point zitten:
 
 Het Wi-Fi-instelvenster sluit niet na 10 minuten: die timer geldt alleen voor een nieuwe Home Assistant-koppeling. Zonder opgeslagen Wi-Fi-gegevens blijft de AP beschikbaar totdat nieuwe gegevens werken én opgeslagen zijn. Bij bekende maar onbereikbare Wi-Fi verschijnt de fallback-AP na 90 seconden, zolang Wi-Fi actief is. Houd de herstelknop 10 seconden vast om Wi-Fi te wissen en opnieuw in te stellen; dit bewaart web-login en overige instellingen.
 
-## Web-login of koppeling herstellen
+## Herstelpagina: wachtwoord, Home Assistant of Wi-Fi herstellen
 
-Gebruik eerst de [herstelhandleiding](web-app.md#web-login-herstellen) als je de
-web-login kwijt bent of de Home Assistant-koppeling wilt resetten. Die beschrijft
-`http://openquatt.local/recovery` (of `http://<IP-adres>/recovery`), de linker knop
-op de HeatPump Controller Q edition en het verschil tussen 5 en 10 seconden indrukken.
-Voor Wi-Fi staan daar ook de [stappen om opnieuw te verbinden](web-app.md#wi-fi-opnieuw-instellen).
-Deze gerichte herstelacties wissen niet alle instellingen; een factory reset doet dat wel.
+Gebruik [Herstelpagina gebruiken](web-app/herstel.md#herstelpagina-gebruiken) voor de gerichte herstelroute. Daar staan het openen van `/recovery`, de linker knop op de Heatpump Controller Q en de keuze tussen:
+
+- een nieuwe gebruikersnaam en wachtwoord voor de webinterface instellen;
+- de API-sleutel wissen en Home Assistant opnieuw koppelen;
+- Wi-Fi-gegevens wissen en je netwerk opnieuw instellen.
+
+De knop **5 seconden** indrukken en loslaten opent het herstelvenster; **10 seconden** indrukken wist direct Wi-Fi. Deze acties zijn geen factory reset. Is de controller niet bereikbaar, begin dan bij [Wi-Fi opnieuw instellen](web-app/herstel.md#wi-fi-opnieuw-instellen) of controleer de Ethernetverbinding.
 
 ## Controller terugzetten naar fabrieksinstellingen
 
@@ -60,14 +75,16 @@ Controleer eerst of de web-app wel bereikbaar is. Als de web-app werkt maar Home
 
 - controleer of Home Assistant op hetzelfde netwerk zit;
 - voeg de ESPHome-integratie handmatig toe met het IP-adres;
-- controleer of API-encryptie in Home Assistant overeenkomt met de web-app;
+- bij een eerste koppeling: controleer of het koppelvenster van 10 minuten na opstarten nog open is;
 - herstart Home Assistant of herlaad de ESPHome-integratie.
+
+Volg [OpenQuatt koppelen aan Home Assistant](dashboard/koppelen.md#problemen-met-koppelen) voor een verlopen koppelvenster of een onbekende API-sleutel. De web-app toont de sleutel niet.
 
 ## Dashboardkaarten melden ontbrekende entiteiten
 
 Controleer een ontbrekende OpenQuatt-entiteit via **Instellingen -> Apparaten & diensten -> Entiteiten**. Begint de `entity_id` met een area, zoals `sensor.zolder_openquatt_flow`, dan is die area waarschijnlijk geselecteerd tijdens de eerste toevoeging in Home Assistant 2026.6 of nieuwer. Het dashboard verwacht `sensor.openquatt_flow`.
 
-Hernoem de betrokken entity-ID's en verwijder alleen de area-prefix. De area mag toegewezen blijven, omdat Home Assistant bestaande entity-ID's niet opnieuw wijzigt wanneer je een area later aanpast. Zie [Dashboard installeren](dashboard/README.md#area-was-al-geselecteerd) voor de volledige herstelroute.
+Hernoem de betrokken entity-ID's en verwijder alleen de area-prefix. De area mag toegewezen blijven, omdat Home Assistant bestaande entity-ID's niet opnieuw wijzigt wanneer je een area later aanpast. Zie [Dashboard installeren](dashboard/installation.md#area-was-al-geselecteerd) voor de volledige herstelroute.
 
 ## Ik zie geen warmtepompgegevens
 
@@ -266,7 +283,7 @@ Vermeld bij een hulpvraag of bugmelding:
 - het tijdstip en de stappen om het probleem te herhalen;
 - relevante screenshots uit `Diagnose` of `Beslislog` en recente wijzigingen;
 - houd bij een reproduceerbaar probleem het `Logboek` open en vermeld het tijdstip waarop de relevante regels verschenen;
-- bij een probleem: een [diagnosebestand uit de Systeemrecorder](web-app.md#systeemrecorder-voor-support);
+- bij een probleem: een [diagnosebestand uit de Systeemrecorder](web-app/onderhoud.md#systeemrecorder-voor-support);
 - bij een ontbrekende warmtepompverbinding met de HCQ: een scherpe foto van `M1` en de Modbusverbinding met de warmtepomp.
 
 Deel nooit Wi-Fi-wachtwoorden, API-sleutels of andere geheimen.
@@ -275,5 +292,5 @@ Deel nooit Wi-Fi-wachtwoorden, API-sleutels of andere geheimen.
 
 - [Web-app gebruiken](web-app.md)
 - [Dashboard gebruiken](dashboardoverzicht.md)
-- [Verwarmen en koelen uitgelegd](verwarmen-en-koelen.md)
+- [Verwarmen en comfort](dagelijks/verwarmen.md)
 - [Instellingen en meetwaarden](instellingen-en-meetwaarden.md)
