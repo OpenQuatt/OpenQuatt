@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
+import re
+import shutil
+import subprocess
 import tempfile
+import textwrap
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -15,7 +20,170 @@ PUBLISH_WORKFLOW = (ROOT / ".github/workflows/pr-test-firmware-publish.yml").rea
 REUSABLE_BUILD_WORKFLOW = (ROOT / ".github/workflows/esphome-build.yml").read_text(encoding="utf-8")
 
 
+def evaluate_build_expression(expression: str, context: dict[str, object]) -> object:
+    """Evaluate the boolean/string subset used by the build gate and group.
+
+    All comparison operands in these fixtures have matching types. Python's
+    short-circuit and/or therefore match the GitHub expressions used here.
+    """
+    for path in sorted(context, key=len, reverse=True):
+        expression = expression.replace(path, repr(context[path]))
+    expression = expression.replace("&&", " and ").replace("||", " or ")
+    expression = re.sub(r"\bnull\b", "None", expression)
+    return eval(
+        " ".join(expression.split()),
+        {"__builtins__": {}},
+        {"contains": lambda values, value: value in values, "format": str.format},
+    )
+
+
 class PrTestFirmwareWorkflowTests(unittest.TestCase):
+    def test_only_build_events_can_replace_the_pr_concurrency_group(self) -> None:
+        group_block = BUILD_WORKFLOW.split("concurrency:\n", 1)[1].split("\njobs:", 1)[0]
+        job_block = BUILD_WORKFLOW.split("  compute-meta:\n", 1)[1].split("    outputs:", 1)[0]
+        group_expression = re.search(r"\$\{\{(.*?)\}\}", group_block, re.DOTALL).group(1)
+        gate_expression = re.search(r"\$\{\{(.*?)\}\}", job_block, re.DOTALL).group(1)
+        for action, changed_base, label, expected_build in (
+            ("opened", None, None, True),
+            ("reopened", None, None, True),
+            ("synchronize", None, None, True),
+            ("labeled", None, "test-firmware", True),
+            ("labeled", None, "bug", False),
+            ("edited", None, None, False),  # Title/body edits.
+            ("edited", {"ref": {"from": "main"}}, None, True),
+        ):
+            for labels in ([], ["test-firmware"], ["bug", "test-firmware"]):
+                for run_id in (1001, 1002):
+                    with self.subTest(action=action, base=changed_base, labels=labels, run_id=run_id):
+                        context = {
+                            "github.event.pull_request.labels.*.name": labels,
+                            "github.event.pull_request.number": 786,
+                            "github.event.action": action,
+                            "github.event.label.name": label,
+                            "github.event.changes.base": changed_base,
+                            "github.run_id": run_id,
+                        }
+                        should_build = expected_build and "test-firmware" in labels
+                        self.assertEqual(should_build, evaluate_build_expression(gate_expression, context))
+                        self.assertEqual(
+                            "pr-test-firmware-786" if should_build else f"pr-test-firmware-noop-{run_id}",
+                            evaluate_build_expression(group_expression, context),
+                        )
+        self.assertIn("cancel-in-progress: true", group_block)
+
+    def test_reruns_replace_named_artifacts(self) -> None:
+        metadata_step = BUILD_WORKFLOW.split("      - name: Upload build metadata\n", 1)[1]
+        self.assertIn("name: pr-test-firmware-meta\n          overwrite: true", metadata_step)
+        upload_steps = [
+            step for step in REUSABLE_BUILD_WORKFLOW.split("      - name: ")[1:]
+            if "uses: actions/upload-artifact@" in step
+        ]
+        self.assertEqual(4, len(upload_steps))
+        for step in upload_steps:
+            with self.subTest(step=step.splitlines()[0]):
+                self.assertIn("overwrite: true", step)
+        self.assertIn("artifact-ids: ${{ steps.metadata.outputs.artifact_id }}", PUBLISH_WORKFLOW)
+        self.assertIn("artifact-ids: ${{ steps.firmware.outputs.artifact_ids }}", PUBLISH_WORKFLOW)
+
+    def run_artifact_selection(
+        self, step_name: str, pages: list[dict], source_run: dict,
+    ) -> tuple[subprocess.CompletedProcess, dict[str, str]]:
+        step = PUBLISH_WORKFLOW.split(f"      - name: {step_name}\n", 1)[1]
+        shell = textwrap.dedent(step.split("        run: |\n", 1)[1].split("\n      - name:", 1)[0])
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "artifacts.json").write_text(json.dumps(pages))
+            (root / "run.json").write_text(json.dumps(source_run))
+            (root / "outputs").write_text("")
+            gh = root / "gh"
+            gh.write_text(
+                '#!/bin/bash\n'
+                'if [[ "$*" == *"/artifacts?"* ]]; then\n'
+                '  exec jq -r "${@: -1}" "${ARTIFACT_FIXTURE}"\n'
+                'else\n'
+                '  exec cat "${RUN_FIXTURE}"\n'
+                'fi\n'
+            )
+            gh.chmod(0o755)
+            result = subprocess.run(
+                ["bash", "-e", "-o", "pipefail", "-c", shell],
+                env={
+                    **os.environ,
+                    "PATH": f"{root}{os.pathsep}{os.environ['PATH']}",
+                    "ARTIFACT_FIXTURE": str(root / "artifacts.json"),
+                    "RUN_FIXTURE": str(root / "run.json"),
+                    "GITHUB_OUTPUT": str(root / "outputs"),
+                    "GITHUB_REPOSITORY": "OpenQuatt/OpenQuatt",
+                    "SOURCE_RUN_ID": "12345",
+                    "PR_NUMBER": "786",
+                },
+                capture_output=True, text=True,
+            )
+            outputs = dict(line.split("=", 1) for line in (root / "outputs").read_text().splitlines())
+            return result, outputs
+
+    @unittest.skipUnless(shutil.which("jq"), "workflow shell tests require jq")
+    def test_metadata_selection_pins_latest_nonexpired_id_across_pages(self) -> None:
+        pages = [
+            {"artifacts": [
+                {"id": 300, "name": "pr-test-firmware-meta", "expired": True},
+                {"id": 200, "name": "pr-test-firmware-meta", "expired": False},
+                {"id": 900, "name": "unrelated", "expired": False},
+            ]},
+            {"artifacts": [{"id": 100, "name": "pr-test-firmware-meta", "expired": False}]},
+        ]
+        result, outputs = self.run_artifact_selection("Find build metadata artifact", pages, {})
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual({"artifact_id": "200", "found": "true"}, outputs)
+        for pages in ([{"artifacts": []}], [{"artifacts": [
+            {"id": 300, "name": "pr-test-firmware-meta", "expired": True},
+        ]}]):
+            result, outputs = self.run_artifact_selection("Find build metadata artifact", pages, {})
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual({"found": "false"}, outputs)
+
+    @unittest.skipUnless(shutil.which("jq"), "workflow shell tests require jq")
+    def test_firmware_selection_uses_latest_per_name_and_rejects_unsuccessful_reruns(self) -> None:
+        duo = "openquatt-heatpump-controller-q-duo-pr-786"
+        single = "openquatt-heatpump-controller-q-single-pr-786"
+        pages = [
+            {"artifacts": [
+                {"id": 500, "name": duo, "expired": True},
+                {"id": 400, "name": "openquatt-other-pr-787", "expired": False},
+                {"id": 300, "name": single, "expired": False},
+                {"id": 200, "name": duo, "expired": False},
+            ]},
+            {"artifacts": [
+                {"id": 100, "name": duo, "expired": False},
+                {"id": 99, "name": "pr-test-firmware-meta", "expired": False},
+            ]},
+        ]
+        result, outputs = self.run_artifact_selection(
+            "Select current firmware artifacts", pages, {"status": "completed", "conclusion": "success"},
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual({"artifact_ids": "200,300"}, outputs)
+        for status, conclusion in (("completed", "failure"), ("completed", "cancelled"), ("in_progress", None), ("queued", None)):
+            with self.subTest(status=status, conclusion=conclusion):
+                result, outputs = self.run_artifact_selection(
+                    "Select current firmware artifacts", pages, {"status": status, "conclusion": conclusion},
+                )
+                self.assertNotEqual(0, result.returncode)
+                self.assertEqual({}, outputs)
+                self.assertIn("Latest source build attempt is not successful", result.stderr)
+        result, outputs = self.run_artifact_selection(
+            "Select current firmware artifacts", [{"artifacts": []}], {"status": "completed", "conclusion": "success"},
+        )
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual({}, outputs)
+        self.assertIn("Missing or invalid firmware artifact IDs", result.stderr)
+
+    def test_latest_attempt_is_checked_inside_publish_lock_and_before_release_mutation(self) -> None:
+        publish_job = PUBLISH_WORKFLOW.split("  publish-pr-test-release:\n", 1)[1].split("  delete-pr-test-release:", 1)[0]
+        self.assertLess(publish_job.index("concurrency:"), publish_job.index("Select current firmware artifacts"))
+        release_step = publish_job.split("      - name: Publish current PR test release\n", 1)[1]
+        self.assertLess(release_step.index(".conclusion == \"success\""), release_step.index("gh release delete"))
+
     def test_untrusted_build_has_read_only_repository_access(self) -> None:
         self.assertIn("permissions:\n  contents: read", BUILD_WORKFLOW)
         self.assertNotIn("contents: write", BUILD_WORKFLOW)
