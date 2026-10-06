@@ -14,7 +14,7 @@ globalThis.window = {
 
 const { state } = await import("../js/src/core/state.js");
 const { commitSelect, disableRange, getNumberSettingValidationError } = await import("../js/src/core/entity-write-actions.js");
-const { SETTINGS_GROUP_KEY_MAP } = await import("../js/src/core/entity-sync.js");
+const { SETTINGS_GROUP_KEY_MAP, getSettingsGroupHydrationKeys, getSettingsRefreshKeys } = await import("../js/src/core/entity-sync.js");
 const { handleSystemAction } = await import("../js/src/features/system-actions.js");
 const { renderControlModeOverrideBanner, renderSystemModal } = await import("../js/src/features/header-status.js");
 const { getCoolingScheduleStatus, renderSettingsCoolingSection } = await import("../js/src/settings/cooling.js");
@@ -59,6 +59,11 @@ function resetSettingsState(entities = {}) {
   state.systemModal = "";
   state.pendingControlModeOverride = "";
 }
+
+test("rechtstreeks openen van comfortinstellingen haalt het gekozen setpoint op", () => {
+  assert.ok(getSettingsGroupHydrationKeys("heating").includes("roomSetpoint"));
+  assert.ok(getSettingsRefreshKeys().includes("roomSetpoint"));
+});
 
 test("Power House toont de instelbare koude referentie met Quatt-standaard", () => {
   resetSettingsState({

@@ -831,6 +831,7 @@
   ];
 
   export const POWER_HOUSE_KEYS = [
+    "roomSetpoint",
     "housePower",
     "houseColdTemp",
     "houseOutdoorMax",
