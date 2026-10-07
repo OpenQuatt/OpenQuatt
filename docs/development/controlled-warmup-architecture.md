@@ -87,6 +87,25 @@ dispatch en minimum on/off timing blijven hardwaretestscope. Het
 bron `4830dece`. Dat verslag kwalificeert niet de latere samenvoeging met
 `dev`, waaronder de comfort- en herstartwijzigingen uit #788.
 
+## Sessiediagnostiek in de web-app
+
+De loop bewaart alleen de laatste eindstatus en vaste sessieduur (acht bytes in
+de runtime). De bestaande service-statuscomponent ontvangt elke owner-tick één
+atomair 32-bit woord: statuscode in de bovenste byte en verstreken seconden in
+de onderste 24 bits. HTTP leest dat woord eenmaal en streamt `warmupStatus` en
+`warmupElapsed` via `/openquatt/service/status`. Het leest geen mutable controlstate.
+De codes 0–9 uit `oq_warmup::Status` zijn een vast wirecontract. Code 0 betekent
+geen sessie sinds boot; 1 is een door uitschakelen afgebroken sessie, 2 actief,
+3 comfort bereikt, 5 tijdslimiet en de overige codes annulering.
+
+Dit voegt geen ESPHome-entities, buffers, taken of NVS-records toe; de snapshot
+gebruikt vier bytes. Het verandert de regeling niet. UI-sleutels zijn uitsluitend
+virtuele statusvelden, opgehaald met de bestaande entity-pollcadence. Volledige
+oude/ontbrekende/falende statusantwoorden verwijderen eerdere timerwaarden. Het
+laatste resultaat blijft vluchtig tot de volgende sessie of boot. Hosttests
+controleren rollover, alle eindroutes, herstart en coherente HTTP-snapshots;
+deze uitbreiding is nog niet afzonderlijk op HIL gekwalificeerd.
+
 ## Releasekwalificatie
 
 Volgens de [werkafspraak bij #761](https://github.com/OpenQuatt/OpenQuatt/blob/9d39292e9fba7c316df0187169bd321402c0e30d/hil-archive-761/README.md)

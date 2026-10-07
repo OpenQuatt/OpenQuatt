@@ -988,6 +988,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
 
   export function mergeServiceStatusPayload(payload = {}) {
     const entities = payload?.entities && typeof payload.entities === "object" ? payload.entities : {};
+    // Old firmware and failed requests must not leave a stale session timer.
+    delete state.entities.warmupStatus;
+    delete state.entities.warmupElapsed;
     Object.entries(entities).forEach(([key, entity]) => {
       if (!SERVICE_STATUS_ENTITY_KEYS.has(key)) {
         return;
@@ -1009,6 +1012,8 @@ import { fetchWithTimeout } from "./browser-utils.js";
       state.lastEntityResponseAt = Date.now();
       return { ok: true, message: "" };
     } catch (error) {
+      delete state.entities.warmupStatus;
+      delete state.entities.warmupElapsed;
       return { ok: false, message: error.message || String(error) };
     }
   }

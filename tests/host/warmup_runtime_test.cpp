@@ -3,6 +3,72 @@
 #include "openquatt/includes/control/oq_heat_intent_logic.h"
 #include "openquatt/includes/control/oq_power_house_demand_logic.h"
 #include "openquatt/includes/control/oq_warmup_runtime.h"
+#include "components/openquatt_service_status/warmup_progress_snapshot.h"
+#include <thread>
+
+static void test_session_diagnostics() {
+  for (auto reason :
+       {oq_warmup::Status::COMFORT_REACHED, oq_warmup::Status::SETPOINT_LOWERED, oq_warmup::Status::TIME_LIMIT,
+        oq_warmup::Status::INPUT_UNAVAILABLE, oq_warmup::Status::SOURCE_CHANGED, oq_warmup::Status::MODE_CHANGED,
+        oq_warmup::Status::SETTINGS_CHANGED, oq_warmup::Status::DISABLED}) {
+    oq_warmup_runtime::Runtime runtime;
+    oq_warmup::Input input{UINT32_MAX - 2000U, true, true, true, 1, 1, 17, 17, 0.2f};
+    oq_warmup::Settings settings;
+    assert(runtime.session_status() == oq_warmup::Status::IDLE && runtime.session_elapsed_s(input.now_ms) == 0);
+    runtime.update(input, settings);
+    input.requested_c = 20;
+    runtime.update(input, settings);
+    input.now_ms += 95000U;  // Cross millis rollover.
+    assert(runtime.session_elapsed_s(input.now_ms) == 95);
+    const float target = runtime.effective_target();
+    assert(runtime.session_status() == oq_warmup::Status::WARMING);
+    assert(runtime.effective_target() == target);  // Diagnostic reads do not advance steps.
+    if (reason == oq_warmup::Status::COMFORT_REACHED)
+      input.room_c = 20;
+    else if (reason == oq_warmup::Status::SETPOINT_LOWERED)
+      input.requested_c = 16;
+    else if (reason == oq_warmup::Status::TIME_LIMIT)
+      input.now_ms += oq_warmup::MAX_DURATION_MS;
+    else if (reason == oq_warmup::Status::INPUT_UNAVAILABLE)
+      input.fresh = false;
+    else if (reason == oq_warmup::Status::DISABLED)
+      input.enabled = false;
+    else
+      runtime.invalidate(reason);
+    runtime.update(input, settings);
+    const uint32_t duration_s = reason == oq_warmup::Status::TIME_LIMIT ? 28800U : 95U;
+    assert(!runtime.active() && runtime.session_status() == reason);
+    assert(runtime.session_elapsed_s(input.now_ms) == duration_s);
+    input.now_ms += 3600000U;
+    runtime.update(input, settings);
+    assert(runtime.session_status() == reason && runtime.session_elapsed_s(input.now_ms) == duration_s);
+    input.enabled = input.fresh = true;
+    input.room_c = input.requested_c = 17;
+    runtime.update(input, settings);
+    input.requested_c = 20;
+    runtime.update(input, settings);
+    assert(runtime.active() && runtime.session_status() == oq_warmup::Status::WARMING);
+    assert(runtime.session_elapsed_s(input.now_ms) == 0);
+    oq_warmup_runtime::Runtime rebooted;
+    assert(rebooted.session_status() == oq_warmup::Status::IDLE && rebooted.session_elapsed_s(input.now_ms) == 0);
+  }
+}
+
+static void test_coherent_http_snapshot() {
+  using esphome::openquatt_service_status::WarmupProgressSnapshot;
+  WarmupProgressSnapshot snapshot;
+  assert(snapshot.read() == WarmupProgressSnapshot::UNAVAILABLE);
+  std::thread publisher([&snapshot]() {
+    for (uint32_t seconds = 0; seconds < 20000; ++seconds) snapshot.publish(seconds % 10U, seconds);
+  });
+  for (int i = 0; i < 50000; ++i) {
+    const uint32_t word = snapshot.read();
+    if (word != WarmupProgressSnapshot::UNAVAILABLE) assert((word >> 24U) == (word & 0x00ffffffU) % 10U);
+  }
+  publisher.join();
+  snapshot.publish(5, UINT32_MAX);
+  assert((snapshot.read() & 0x00ffffffU) == 28800U);
+}
 
 static void test_consumer_before_lifecycle_tick() {
   oq_warmup_runtime::Runtime runtime;
@@ -69,6 +135,8 @@ static void test_readiness_boundaries_and_invalidation() {
 }
 
 int main() {
+  test_session_diagnostics();
+  test_coherent_http_snapshot();
   test_consumer_before_lifecycle_tick();
   test_readiness_boundaries_and_invalidation();
   oq_warmup_runtime::Runtime runtime;

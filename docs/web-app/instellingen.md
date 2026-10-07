@@ -87,6 +87,16 @@ Bijvoorbeeld: bij 18,06 °C gemeten is een tussendoel van 18,10 °C nog niet ber
 hoewel beide bij afronden op één decimaal 18,1 °C zouden lijken. Meer decimalen in
 de weergave maken de sensor zelf niet nauwkeuriger en veranderen de regeling niet.
 
+Bij **Live regeling** op het overzicht en in het opwarmblok zie je de sessieduur
+in uren:minuten, bijvoorbeeld **01:35 bezig · maximaal 08:00**. Dit is de totale
+duur sinds de start, inclusief wachttijd; geen voorspelling wanneer het klaar is.
+Bij bereikt comfort staat er bijvoorbeeld **afgerond na 02:10**. Bij uitschakelen
+of annuleren staat er **afgebroken**; na acht uur staat er **tijdslimiet bereikt**
+en neemt de normale regeling over. De controller levert de duur, dus verversen
+of een andere browser begint de teller niet opnieuw. Het laatste resultaat blijft
+staan tot een nieuwe sessie of controllerherstart. Bij oude firmware of ontbrekende
+statusinformatie toont de app geen geschatte duur.
+
 Een verlaging van de gewenste temperatuur, uitschakelen, ongeldige bronwaarden of
 een wijziging van bronnen, instellingen of regelmodus beëindigt het opwarmen.
 Een verdere verhoging tijdens opwarmen past het einddoel aan. Na beëindigen is een

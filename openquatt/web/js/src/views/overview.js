@@ -9,6 +9,7 @@ import { formatDateTime, formatNumber, optionLabel, t } from "../i18n/index.js";
 import { DEFAULT_TREND_WINDOW_HOURS, state, TREND_WINDOW_HOURS_OPTIONS } from "../core/state.js";
 import { isTrendHistoryFlashEnabled, normalizeTrendWindowHours, setTrendWindowHours } from "../core/trend-window.js";
 import { getInstallationMonitoringModel } from "../core/installation-monitoring.js";
+import { getWarmupProgressText } from "../features/warmup-progress.js";
 import { setViewPatchControls } from "../core/view-patch-controls.js";
 import { formatCoolingBlockReason, getCoolingCompressorRunning, getCoolingStartBlockModel } from "../settings/cooling.js";
 import { render } from "../core/render-scheduler.js";
@@ -833,6 +834,7 @@ import { renderStatCard } from "./stat-card.js";
 
   export function renderOverviewSummaryShell(strategyLabel) {
     const controlModeLabel = getEntityStateText("controlModeLabel");
+    const warmupProgress = getWarmupProgressText();
     return `
       <section class="oq-overview-summary-shell">
         <div class="oq-overview-head">
@@ -840,6 +842,7 @@ import { renderStatCard } from "./stat-card.js";
             <p class="oq-helper-label">${escapeHtml(t("overview.summaryKicker"))}</p>
             <h2 class="oq-helper-section-title">${escapeHtml(t("overview.summaryTitle"))}</h2>
             <p class="oq-helper-section-copy">${escapeHtml(t("overview.summaryCopy"))}</p>
+            <p class="oq-helper-section-copy" data-oq-overview-warmup ${warmupProgress ? "" : "hidden"}>${escapeHtml(warmupProgress)}</p>
           </div>
         </div>
         <div class="oq-overview-summary-layout">

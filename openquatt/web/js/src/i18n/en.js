@@ -52,6 +52,10 @@ export default {
     idle: "Inactive",
     disabled: "Disabled",
     warming: "Warming up in steps",
+    elapsed: "Gradual warmup: {duration} elapsed · maximum 08:00",
+    completed: "Last warmup completed after {duration} · comfort reached",
+    cancelled: "Last warmup cancelled after {duration}",
+    timeLimit: "Last warmup ended after {duration} · time limit reached, normal control resumes",
     unknown: "Status unknown",
   },
   runExtension: {

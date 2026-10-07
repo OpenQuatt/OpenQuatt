@@ -7,16 +7,17 @@
 namespace oq_warmup {
 
 enum class Status : uint8_t {
-  IDLE,
-  DISABLED,
-  WARMING,
-  COMFORT_REACHED,
-  SETPOINT_LOWERED,
-  TIME_LIMIT,
-  INPUT_UNAVAILABLE,
-  SOURCE_CHANGED,
-  MODE_CHANGED,
-  SETTINGS_CHANGED,
+  // Stable diagnostic codes used by the web status API.
+  IDLE = 0,
+  DISABLED = 1,
+  WARMING = 2,
+  COMFORT_REACHED = 3,
+  SETPOINT_LOWERED = 4,
+  TIME_LIMIT = 5,
+  INPUT_UNAVAILABLE = 6,
+  SOURCE_CHANGED = 7,
+  MODE_CHANGED = 8,
+  SETTINGS_CHANGED = 9,
 };
 
 inline constexpr float MAX_OFFSET_C = 0.5f;

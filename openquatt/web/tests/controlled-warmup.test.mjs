@@ -133,8 +133,8 @@ test("missing diagnostics remain unknown instead of inventing idle or zero value
 test("warmup backup contains settings only and heating hydrates both setting and state entities", () => {
   const backup = SETTINGS_BACKUP_SECTIONS.find((section) => section.id === "warmup");
   assert.deepEqual(backup.keys, WARMUP_SETTING_KEYS);
-  assert.deepEqual(WARMUP_STATE_KEYS, ["warmupActive", "warmupEffectiveTarget"]);
-  assert.ok(!ENTITY_DEFS.warmupOffset && !ENTITY_DEFS.warmupStatus);
+  assert.deepEqual(WARMUP_STATE_KEYS, ["warmupActive", "warmupEffectiveTarget", "warmupStatus", "warmupElapsed"]);
+  assert.ok(!ENTITY_DEFS.warmupOffset);
   reset();
   const keys = getSettingsGroupHydrationKeys("heating");
   assert.ok(keys.includes("roomSetpoint"));

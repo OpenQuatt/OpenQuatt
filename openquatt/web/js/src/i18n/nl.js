@@ -53,6 +53,10 @@ export default {
     idle: "Niet actief",
     disabled: "Uitgeschakeld",
     warming: "Opwarmen in stappen",
+    elapsed: "Geleidelijk opwarmen: {duration} bezig · maximaal 08:00",
+    completed: "Laatste opwarming afgerond na {duration} · comfort bereikt",
+    cancelled: "Laatste opwarming afgebroken na {duration}",
+    timeLimit: "Laatste opwarming beëindigd na {duration} · tijdslimiet bereikt, normale regeling neemt over",
     unknown: "Status onbekend",
   },
   runExtension: {

@@ -4,6 +4,7 @@ import { isCurveMode, isManualFlowMode } from "../core/domain-helpers.js";
 import { getCurveFallbackSuggestion, getEntityValue, parseLooseNumber } from "../core/entity-store.js";
 import { getHeatingEnableAdvice } from "../core/heating-strategy-matrix.js";
 import { state } from "../core/state.js";
+import { getWarmupProgressText } from "../features/warmup-progress.js";
 import { getSettingsSelectModel, getSettingsSwitchModel } from "./field-models.js";
 import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSettingsCompactSwitchControl, renderSettingsSwitchCopy, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField } from "./controls.js";
 import { formatNumericState } from "../core/formatting.js";
@@ -507,8 +508,8 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
   function getControlledWarmupDisplayModel() {
     const { enabled } = getSettingsSwitchModel("warmupEnabled");
     const active = getEntityValue("warmupActive");
-    const status = !enabled ? t("warmup.disabled") :
-      t(active === true ? "warmup.warming" : active === false ? "warmup.idle" : "warmup.unknown");
+    const status = getWarmupProgressText() || (!enabled ? t("warmup.disabled") :
+      t(active === true ? "warmup.warming" : active === false ? "warmup.idle" : "warmup.unknown"));
     const value = (key) => {
       const numeric = hasEntity(key) ? parseLooseNumber(getEntityValue(key)) : NaN;
       return Number.isFinite(numeric) ? `${formatNumber(numeric, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} °C` : "—";

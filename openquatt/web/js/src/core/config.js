@@ -578,6 +578,8 @@
     ["warmupStepTime", DOMAIN_NUMBER, "Controlled warmup step time"],
     ["warmupActive", DOMAIN_BINARY_SENSOR, "Controlled warmup active"],
     ["warmupEffectiveTarget", DOMAIN_SENSOR, "Controlled warmup effective target"],
+    ["warmupStatus", DOMAIN_SENSOR, "Controlled warmup status"],
+    ["warmupElapsed", DOMAIN_SENSOR, "Controlled warmup elapsed"],
     ["lowLoadDynamicThresholds", DOMAIN_TEXT_SENSOR, "Low-load dynamic thresholds"],
     ["lowLoadDynamicOffFactor", DOMAIN_NUMBER, "Low-load dynamic OFF factor"],
     ["lowLoadDynamicOnFactor", DOMAIN_NUMBER, "Low-load dynamic ON factor"],
@@ -853,7 +855,7 @@
     "phRunExtensionStatus",
   ];
   export const WARMUP_SETTING_KEYS = ["warmupEnabled", "warmupTrigger", "warmupStep", "warmupStepTime"];
-  export const WARMUP_STATE_KEYS = ["warmupActive", "warmupEffectiveTarget"];
+  export const WARMUP_STATE_KEYS = ["warmupActive", "warmupEffectiveTarget", "warmupStatus", "warmupElapsed"];
   export const FREQUENCY_CAP_KEYS = ["dayMaxHz", "silentMaxHz"];
   export const FREQUENCY_MINIMUM_KEYS = ["hp1MinimumHeatingHz", "hp1MinimumCoolingHz", "hp2MinimumHeatingHz", "hp2MinimumCoolingHz"];
   export const LIMIT_KEYS = [...FREQUENCY_CAP_KEYS, "maxWater"];
@@ -1057,6 +1059,8 @@
     "hp2Mode",
   ];
   export const SERVICE_STATUS_ENTITY_KEYS = new Set([
+    "warmupStatus",
+    "warmupElapsed",
     "commissioningStatus",
     "cm100Active",
     "boilerPowerTestResult",
@@ -1691,6 +1695,8 @@
     "controlModeOverride",
   ];
   export const OVERVIEW_KEYS = [
+    "warmupStatus",
+    "warmupElapsed",
     "strategy",
     "openquattEnabled",
     "usageTelemetryEnabled",
@@ -1806,6 +1812,8 @@
     "hp2RuntimeHours",
   ];
   export const FAST_OVERVIEW_KEYS = [
+    "warmupStatus",
+    "warmupElapsed",
     "strategy",
     "openquattEnabled",
     "usageTelemetryEnabled",

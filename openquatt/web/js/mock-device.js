@@ -1027,6 +1027,8 @@
   }
 
   const SERVICE_STATUS_ENTITY_MAP = {
+    warmupStatus: ["sensor", "Controlled warmup status"],
+    warmupElapsed: ["sensor", "Controlled warmup elapsed"],
     commissioningStatus: ["text_sensor", "Commissioning status"],
     cm100Active: ["binary_sensor", "CM100 active"],
     boilerPowerTestResult: ["sensor", "Boiler power test result"],
@@ -1996,6 +1998,8 @@
     setEntity("switch", "Controlled warmup enabled", { value: false, state: false });
     setEntity("binary_sensor", "Controlled warmup active", { value: false, state: false });
     setEntity("sensor", "Controlled warmup effective target", { value: 20.5, uom: "°C" });
+    setEntity("sensor", "Controlled warmup status", { value: 0 });
+    setEntity("sensor", "Controlled warmup elapsed", { value: 0, uom: "s" });
     setEntity("switch", "Power House run extension", { value: false, state: false });
     setEntity("text_sensor", "Power House run extension status", { value: "inactive", state: "inactive" });
     setEntity("switch", "Boiler assist enabled", { value: true, state: true });

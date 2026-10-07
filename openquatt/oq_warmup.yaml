@@ -210,3 +210,6 @@ interval:
                setpoint.value, id(ph_comfort_band_below_c).state},
               {id(oq_warmup_trigger_c).state, id(oq_warmup_step_c).state,
                oq_warmup::duration_ms(id(oq_warmup_step_minutes).state, 60000.0f, 5.0f, 120.0f)});
+          id(oq_service_status_endpoint).set_warmup_progress(
+              static_cast<uint8_t>(oq_warmup_runtime::runtime().session_status()),
+              oq_warmup_runtime::runtime().session_elapsed_s(static_cast<uint32_t>(millis())));
