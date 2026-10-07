@@ -116,6 +116,7 @@ void log_message(const char*, const char* format, Args... args) {
 #define ESP_LOGI(...) log_message(__VA_ARGS__)
 #define ESP_LOGW(...) log_message(__VA_ARGS__)
 #include "../../openquatt/includes/service/tasks/oq_flow_autotune_logic.h"
+#include "../../openquatt/includes/control/oq_flow_control_logic.h"
 
 namespace {
 const auto cfg = oq_flow_autotune::make_runtime_config(10, 50, 850, 5, 30, 30.0f, 30.0f, 0.001f, 2.0f, 0.0f, 0.1f);
@@ -151,6 +152,15 @@ void reach_step1(oq_flow_autotune::FlowAutotuneRuntime& runtime) {
   for (float pv : {550.0f, 560.0f, 540.0f, 550.0f, 550.0f, 550.0f}) tick(runtime, pv);
   assert(oq_flow_autotune_state == oq_flow_autotune::STATE_STEP1);
   assert(oq_flow_autotune_pwm == 376);
+}
+
+void reach_validation_recover(oq_flow_autotune::FlowAutotuneRuntime& runtime) {
+  reach_step1(runtime);
+  for (int i = 0; i < 7; ++i) tick(runtime, i % 2 ? 582.156f : 579.066f);
+  for (int i = 0; i < 6; ++i) tick(runtime, 551.874f);
+  assert(oq_flow_autotune_state == oq_flow_autotune::STATE_STEP2);
+  for (int i = 0; i < 7; ++i) tick(runtime, i % 2 ? 600.078f : 603.168f);
+  assert(oq_flow_autotune_state == oq_flow_autotune::STATE_VALIDATE_RECOVER);
 }
 
 void expect_terminal(oq_flow_autotune::FlowAutotuneRuntime& runtime, const char* reason) {
@@ -189,6 +199,73 @@ int main() {
   oq_flow_autotune_abort = true;
   tick(runtime, 597);
   expect_terminal(runtime, "ABORTED");
+
+  // Second #799 recording: still approaching 800 L/h when the old 120 s limit expired.
+  // Only this prefix is recorded; the subsequent noisy plateau is a synthetic continuation.
+  reach_validation_recover(runtime);
+  for (float pv : {600.0779f, 603.168f, 612.438f, 633.45f, 651.3719f, 672.384f, 690.924f, 690.924f, 711.936f, 732.9479f,
+                   742.218f, 745.308f, 760.14f, 766.3199f}) {
+    tick(runtime, pv);
+    assert(oq_flow_autotune_state == oq_flow_autotune::STATE_VALIDATE_RECOVER);
+  }
+  for (int i = 0; i < 8 && oq_flow_autotune_state == oq_flow_autotune::STATE_VALIDATE_RECOVER; ++i)
+    tick(runtime, i % 2 ? 794.01f : 790.92f);
+  assert(oq_flow_autotune_state == oq_flow_autotune::STATE_VALIDATE);
+  assert(oq_flow_setpoint_lph.state == 840);
+  assert(isnan(oq_flow_kp_suggested_value));
+  for (int i = 0; i < 30 && runtime.busy(); ++i) tick(runtime, i % 2 ? 843.09f : 840.0f);
+  assert(!runtime.busy());
+  assert(oq_flow_autotune_status_value.find("DONE (CLOSED-LOOP)") == 0);
+  assert(!isnan(oq_flow_kp_suggested_value) && !isnan(oq_flow_ki_suggested_value));
+  assert(oq_flow_kp.state == 0.03f && oq_flow_ki.state == 0.0008f);
+  assert(oq_flow_setpoint_lph.state == 800);
+
+  // The real PI intentionally leaves a 9 L/h offset alone; recovery must accept its plateau.
+  reach_validation_recover(runtime);
+  oq_flow_control::State pi;
+  pi.sp_f = 800;
+  const auto pi_result = oq_flow_control::update_pi(pi, {791, 800, 212, oq_flow_kp.state, oq_flow_ki.state, 10});
+  assert(pi_result.error == 0 && pi_result.pwm == 212);
+  for (int i = 0; i < 7; ++i) tick(runtime, 791);
+  assert(oq_flow_autotune_state == oq_flow_autotune::STATE_VALIDATE);
+  oq_flow_autotune_abort = true;
+  tick(runtime, 791);
+  expect_terminal(runtime, "ABORTED");
+
+  // The minimum step must exceed the recovery/validation bands and the real PI deadband.
+  reach_step1(runtime);
+  oq_flow_setpoint_lph.state = 300;
+  for (int i = 0; i < 7; ++i) tick(runtime, 579);
+  for (int i = 0; i < 6; ++i) tick(runtime, 552);
+  for (int i = 0; i < 7; ++i) tick(runtime, i % 2 ? 600.078f : 603.168f);
+  for (int i = 0; i < 7; ++i) tick(runtime, 309);
+  assert(oq_flow_autotune_state == oq_flow_autotune::STATE_VALIDATE);
+  assert(oq_flow_setpoint_lph.state == 340);
+  for (int i = 0; i < 30; ++i) tick(runtime, 309);
+  assert(oq_flow_autotune_state == oq_flow_autotune::STATE_VALIDATE_RECOVER);
+  assert(oq_flow_setpoint_lph.state == 300);
+  assert(isnan(oq_flow_kp_suggested_value));
+  oq_flow_autotune_abort = true;
+  tick(runtime, 309);
+  tick(runtime, 309);
+  assert(!runtime.busy() && oq_flow_setpoint_lph.state == 300);
+  assert(oq_flow_kp.state == 0.03f && oq_flow_ki.state == 0.0008f);
+
+  // A wider recovery band still rejects an ongoing one-directional drift and a missed target.
+  for (bool drift : {false, true}) {
+    reach_validation_recover(runtime);
+    for (int i = 0; i < 25; ++i) tick(runtime, drift ? 780 + i : 760);
+    expect_terminal(runtime, "FAILED: VALIDATION_BASELINE");
+  }
+  for (float invalid : {0.0f, NAN}) {
+    reach_validation_recover(runtime);
+    tick(runtime, invalid);
+    expect_terminal(runtime, "ABORT: FLOW_INVALID");
+  }
+  reach_validation_recover(runtime);
+  oq_control_mode_code = 0;
+  tick(runtime, 791);
+  expect_terminal(runtime, "ABORT: not CM100");
 
   reach_step1(runtime);
   for (int i = 0; i < 13; ++i) tick(runtime, 580 + 20 * i);

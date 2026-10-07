@@ -222,3 +222,30 @@ test("autotune identifies both step tests and hides the previous failure during 
   assert.equal(task.status, getCommissioningProgressModel("REQUESTED", "autotune").phase);
   assert.doesNotMatch(task.renderCard(), /Failed/);
 });
+
+test("autotune translates validation preparation and visibly identifies temporary gains", () => {
+  for (const [locale, phase, kpLabel, kiLabel, explanation, currentLabel] of [
+    ["nl", "Doelflow bereiken vóór validatie", "Tijdelijke test-Kp", "Tijdelijke test-Ki", "De eerdere instellingen worden na afloop hersteld", "Huidige Kp"],
+    ["en", "Reaching target flow before validation", "Temporary test Kp", "Temporary test Ki", "The previous settings are restored afterwards", "Current Kp"],
+  ]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    state.entities.flowKp = { value: 0.0971 };
+    state.entities.flowKi = { value: 0.0016 };
+    state.entities.flowKpSuggested = { value: 0.12345 };
+    for (const wire of ["VALIDATION_RECOVER", "VALIDATION_RETRY: UNDER_TARGET", "VALIDATION_RETRY: OVERSHOOT", "VALIDATING_SETTLING", "VALIDATING"]) {
+      state.entities.flowAutotuneStatus = { state: wire };
+      const task = getSettingsServiceModel().tasks.find(task => task.key === "autotune");
+      if (/^VALIDATION_/.test(wire)) assert.equal(task.status, phase);
+      const card = task.renderCard();
+      assert.ok(card.includes(kpLabel) && card.includes(kiLabel), `${locale}/${wire}`);
+      assert.ok(card.includes(explanation));
+      assert.doesNotMatch(card, /VALIDATION_RECOVER|VALIDATION_RETRY|0[,.]12345/);
+      assert.match(card.match(/<button\b[^>]*data-oq-button-key="flowAutotuneApply"[^>]*>/)[0], /\bdisabled\b/);
+    }
+    state.entities.flowAutotuneStatus = { state: "FAILED: VALIDATION_BASELINE" };
+    const card = getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard();
+    assert.ok(card.includes(currentLabel));
+    assert.ok(!card.includes(kpLabel));
+    assert.ok(!card.includes(explanation));
+  }
+});

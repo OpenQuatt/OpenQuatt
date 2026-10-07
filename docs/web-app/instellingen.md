@@ -235,7 +235,9 @@ Start de service (CM100) en open **Flow autotune**. De autotune voert twee
 pompstaptests uit en controleert daarna de berekende Kp/Ki met een
 flowdoelstap. Laat kleppen en andere pompen tijdens de test gelijk staan.
 **Huidige Kp/Ki** toont de actieve waarden; tijdens validatie worden tijdelijk
-testwaarden gebruikt. Een nieuw voorstel verschijnt pas na afronden en wordt
+testwaarden gebruikt en als **Tijdelijke test-Kp/Ki** getoond. Vóór de
+validatiestap probeert de regeling maximaal vier minuten de ingestelde doelflow
+te bereiken en te stabiliseren. Een nieuw voorstel verschijnt pas na afronden en wordt
 pas met **Toepassen** opgeslagen als regelinstelling.
 
 Bij afbreken of mislukken blijven de reden en een hersteladvies zichtbaar.

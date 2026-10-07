@@ -63,7 +63,7 @@ inline RuntimeConfig make_runtime_config(int sample_time_s, int pwm_min, int pwm
   return RuntimeConfig{sample_time_s,
                        120,
                        0.05f,
-                       15.0f,
+                       40.0f,  // Keep recovery (+/-15) and validation (+/-10) bands disjoint.
                        40.0f,
                        8.0f,
                        0.15f,
@@ -72,7 +72,7 @@ inline RuntimeConfig make_runtime_config(int sample_time_s, int pwm_min, int pwm
                        2.0f,
                        60.0f,
                        60.0f,
-                       120,
+                       240,
                        60,
                        180,
                        2,
@@ -632,10 +632,12 @@ class FlowAutotuneRuntime {
 
     set_number_value(id(oq_flow_setpoint_lph), sp0);
     const float step_lph = sp1 - sp0;
-    const float recover_band = fmaxf(cfg.validate_band_floor_lph, cfg.validate_band_frac * step_lph);
+    // The PI stops correcting inside 10 L/h; allow that deadband plus quantized meter noise.
+    const float recover_band = fmaxf(15.0f, fmaxf(cfg.validate_band_floor_lph, cfg.validate_band_frac * step_lph));
     push_window(pv);
+    const bool plateau = flow_plateau(pv, recover_band);
 
-    const bool recovered = t_s_ >= 20 && steady_window(recover_band, recover_band) &&
+    const bool recovered = t_s_ >= 20 && steady_window(recover_band, recover_band) && plateau &&
                            fabsf(window_mean() - sp0) <= recover_band && pv <= sp1 - recover_band;
     validate_confirm_cnt_ = recovered ? validate_confirm_cnt_ + 1 : 0;
     if (validate_confirm_cnt_ >= 2) {

@@ -45,6 +45,7 @@ import { formatNumber, t } from "../i18n/index.js";
       || normalized.includes("COOLDOWN")
       || normalized.includes("RUNNING")
       || normalized.includes("VALIDATING")
+      || normalized.includes("VALIDATION_RETRY")
       || normalized.includes("STARTED")
       || normalized.includes("RECOVER")
       || normalized.includes("PHASE")
@@ -180,6 +181,7 @@ import { formatNumber, t } from "../i18n/index.js";
         { match: ["WAITING_FOR_FLOW", "SETTLING"], phase: t("settingsService.phaseFlowSettle"), percent: 26 },
         { match: ["STEP2"], phase: t("settingsService.phaseStep2"), percent: 56 },
         { match: ["STEP", "STEP1"], phase: t("settingsService.phaseStep1"), percent: 42 },
+        { match: ["VALIDATION_RECOVER", "VALIDATION_RETRY"], phase: t("settingsService.autotuneValidationRecover"), percent: 64 },
         { match: ["VALIDATING_SETTLING"], phase: t("settingsService.phaseValidating"), percent: 70 },
         { match: ["VALIDATING"], phase: t("settingsService.phaseValidating"), percent: 84 },
         { match: ["RECOVERING"], phase: t("settingsService.phaseRecovering"), percent: 92 },
@@ -660,6 +662,7 @@ import { formatNumber, t } from "../i18n/index.js";
     const boilerResultQualityRaw = getSettingsTextStatValue("boilerPowerTestResultQuality");
     const boilerResultQualityDenied = String(boilerResultQualityRaw || "").toUpperCase().includes("REJECTED:");
     const autotuneResultReady = /DONE|APPLIED/.test(String(autotuneStatus || "").toUpperCase());
+    const autotuneTestingGains = autotuneTaskRunning && /^(VALIDATION_RECOVER|VALIDATION_RETRY|VALIDATING)/i.test(autotuneStatus);
     const boilerStatusDisplay = (() => {
       const upper = String(boilerStatus || "").toUpperCase();
       if (upper.includes("FAILED")) return t("settingsService.boilerFailed");
@@ -936,7 +939,7 @@ import { formatNumber, t } from "../i18n/index.js";
             : autotuneTaskWaitingForCm100
             ? t("settingsService.autotuneWait")
             : (autotuneTaskRunning
-              ? t("settingsService.autotuneRunning")
+              ? (autotuneTestingGains ? t("settingsService.autotuneTestingGains") : t("settingsService.autotuneRunning"))
               : (cm100Ready ? t("settingsService.autotuneReady") : t("settingsService.autotuneStartFirst"))),
           progressTask: "autotune",
           actions: `
@@ -952,8 +955,8 @@ import { formatNumber, t } from "../i18n/index.js";
             ${state.entities.flowAutotuneApply ? renderNamedActionButton("flowAutotuneApply", t("settingsService.applyBtn"), "oq-helper-button oq-helper-button--ghost", autotuneBusy || autotuneApplyDisabled) : ""}
           `,
           metrics: `
-            ${renderSettingsStaticField("flowKp", t("settingsService.kpCurrent"), t("settingsService.currentGainsCopy"), getAutotuneGainValue("flowKp"), "oq-settings-field--compact")}
-            ${renderSettingsStaticField("flowKi", t("settingsService.kiCurrent"), t("settingsService.currentGainsCopy"), getAutotuneGainValue("flowKi"), "oq-settings-field--compact")}
+            ${renderSettingsStaticField("flowKp", t(autotuneTestingGains ? "settingsService.kpTest" : "settingsService.kpCurrent"), t("settingsService.currentGainsCopy"), getAutotuneGainValue("flowKp"), "oq-settings-field--compact")}
+            ${renderSettingsStaticField("flowKi", t(autotuneTestingGains ? "settingsService.kiTest" : "settingsService.kiCurrent"), t("settingsService.currentGainsCopy"), getAutotuneGainValue("flowKi"), "oq-settings-field--compact")}
             ${renderSettingsStaticField("flowKpSuggested", t("settingsService.kpSuggested"), t("settingsService.kpCopy"), autotuneResultReady && !autotuneStarting ? flowKpSuggested : "—", "oq-settings-field--compact")}
             ${renderSettingsStaticField("flowKiSuggested", t("settingsService.kiSuggested"), t("settingsService.kiCopy"), autotuneResultReady && !autotuneStarting ? flowKiSuggested : "—", "oq-settings-field--compact")}
           `,
