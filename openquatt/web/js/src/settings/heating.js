@@ -383,7 +383,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
             ${renderSettingsNumberField("phComfortBelow", t("settingsHeating.phComfortBelowTitle"), t("settingsHeating.phComfortBelowCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("settingsHeating.phComfortBelowDirection"))}</p>` })}
             ${renderSettingsNumberField("phComfortAbove", t("settingsHeating.phComfortAboveTitle"), t("settingsHeating.phComfortAboveCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("settingsHeating.phComfortAboveDirection"))}</p>` })}
           </div>
-          <div data-oq-power-house-comfort-thresholds>${renderPowerHouseComfortThresholds()}</div>
+          <div class="oq-run-extension-summary" data-oq-power-house-comfort-thresholds>${renderPowerHouseComfortThresholds()}</div>
         </section>
         ${renderPowerHouseRunExtensionField()}
         ${renderSettingsAdvancedDisclosure("power-house", t("settingsHeating.phAdvancedTitle"), t("settingsHeating.phAdvancedCopy"), `<div class="oq-settings-grid">${fields.join("")}</div>`)}
@@ -496,7 +496,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
           ${enabled ? renderSettingsNumberField("phRunExtensionRestartCooldown", t("runExtension.cooldown"), t("runExtension.cooldownCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.cooldownDirection"))}</p>` }) : ""}
         </div>
         ${enabled ? `
-          <div data-oq-run-extension-thresholds>${renderRunExtensionThresholds()}</div>
+          <div class="oq-run-extension-summary" data-oq-run-extension-thresholds>${renderRunExtensionThresholds()}</div>
           <p class="oq-run-extension-note">${escapeHtml(t("runExtension.hysteresis"))}</p>
         ` : ""}
         <p class="oq-run-extension-note">${escapeHtml(t("runExtension.disableCopy"))}</p>
