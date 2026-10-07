@@ -88,9 +88,10 @@ hoewel beide bij afronden op één decimaal 18,1 °C zouden lijken. Meer decimal
 de weergave maken de sensor zelf niet nauwkeuriger en veranderen de regeling niet.
 
 Bij **Live regeling** op het overzicht en in het opwarmblok zie je de sessieduur
-in uren:minuten, bijvoorbeeld **01:35 bezig · maximaal 08:00**. Dit is de totale
+uitgeschreven, bijvoorbeeld **Geleidelijk opwarmen is 1 uur en 35 minuten bezig.
+Na uiterlijk 8 uur neemt de normale regeling over.** Dit is de totale
 duur sinds de start, inclusief wachttijd; geen voorspelling wanneer het klaar is.
-Bij bereikt comfort staat er bijvoorbeeld **afgerond na 02:10**. Bij uitschakelen
+Bij bereikt comfort staat er bijvoorbeeld **afgerond na 2 uur en 10 minuten**. Bij uitschakelen
 of annuleren staat er **afgebroken**; na acht uur staat er **tijdslimiet bereikt**
 en neemt de normale regeling over. De controller levert de duur, dus verversen
 of een andere browser begint de teller niet opnieuw. Het laatste resultaat blijft

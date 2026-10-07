@@ -4,7 +4,14 @@ import { t } from "../i18n/index.js";
 
 function formatWarmupDuration(seconds) {
   const minutes = Math.floor(seconds / 60);
-  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  if (minutes === 0) return t("warmup.durationLessThanMinute");
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  const hourText = hours === 1 ? t("warmup.durationHour") : t("warmup.durationHours", { count: hours });
+  const minuteText = remainder === 1 ? t("warmup.durationMinute") : t("warmup.durationMinutes", { count: remainder });
+  if (hours === 0) return minuteText;
+  if (remainder === 0) return hourText;
+  return t("warmup.durationHoursMinutes", { hours: hourText, minutes: minuteText });
 }
 
 export function getWarmupProgressText() {
