@@ -12,7 +12,7 @@ globalThis.window = {
 
 const { state } = await import("../js/src/core/state.js");
 const { setRenderCallback } = await import("../js/src/core/render-scheduler.js");
-const { installFirmwareTestUpdate, installFirmwareUpdate } = await import("../js/src/features/firmware-actions.js");
+const { installFirmwareTestUpdate, installFirmwareUpdate, triggerFirmwareUpdateCheck } = await import("../js/src/features/firmware-actions.js");
 const {
   getFirmwareModalCopy,
   compareFirmwareVersions,
@@ -575,3 +575,90 @@ test("normal OTA completes after its target version is inactive and installed", 
 
   assert.equal(isFirmwareInstallCompletionConfirmed(), true);
 });
+
+for (const scenario of ["slow-new-version", "unchanged-version", "no-update", "timeout", "reset-target", "missing-revision", "failed-baseline"]) {
+  test(`manual firmware check: ${scenario}`, async (t) => {
+    const originalFetch = globalThis.fetch;
+    const originalTimeout = window.setTimeout;
+    const originalState = { ...state };
+    t.after(() => {
+      globalThis.fetch = originalFetch;
+      window.setTimeout = originalTimeout;
+      Object.assign(state, originalState);
+      setRenderCallback(null);
+    });
+    setPrToDevState();
+    state.entities.firmwareUpdateTarget = { state: scenario === "reset-target" ? "alternate topology" : "current build" };
+    state.entities.firmwareManifestRevision = { state: "10" };
+    state.controlError = "";
+    state.controlNotice = "";
+    state.busyAction = "run-firmware-check";
+    window.location = { pathname: "/" };
+    t.after(() => { delete window.location; });
+    setRenderCallback(() => {});
+    window.setTimeout = (callback, delay) => {
+      if (delay === 900 || delay === 1200) {
+        queueMicrotask(callback);
+        return 0;
+      }
+      return originalTimeout(callback, delay);
+    };
+
+    let polls = 0;
+    const writes = [];
+    const oldVersion = state.entities.firmwareUpdate.latest_version;
+    const newVersion = scenario === "unchanged-version" ? oldVersion : scenario === "no-update" ? "v0.49.0-pr.555.1321+222bde1" : "v0.54.0-dev.900+3b9074b";
+    globalThis.fetch = async (url, options = {}) => {
+      if (url !== "/openquatt/entities") {
+        writes.push(url);
+        return { ok: true };
+      }
+      if (scenario === "failed-baseline") return { ok: false, status: 503 };
+      const keys = new URLSearchParams(options.body).get("entities").split("\n").map((line) => line.split("\t")[0]);
+      const isPoll = keys.includes("firmwareUpdate");
+      if (isPoll) {
+        polls += 1;
+        assert.equal(state.updateCheckBusy, true);
+      }
+      const complete = isPoll && polls >= 3 && scenario !== "timeout";
+      const entities = Object.fromEntries(keys.map((key) => [key, { ...(state.entities[key] || {}) }]));
+      entities.firmwareManifestRevision = { state: complete ? "11" : "10" };
+      if (isPoll) {
+        entities.firmwareUpdate = {
+          state: complete && scenario === "no-update" ? "NO UPDATE" : "UPDATE AVAILABLE",
+          current_version: "v0.49.0-pr.555.1321+222bde1",
+          latest_version: complete ? newVersion : oldVersion,
+          value: complete ? newVersion : oldVersion,
+          release_url: "https://github.com/OpenQuatt/OpenQuatt/releases/tag/dev-latest",
+        };
+      }
+      if (scenario === "missing-revision") delete entities.firmwareManifestRevision;
+      return { ok: true, json: async () => ({ entities, missing: scenario === "missing-revision" ? ["firmwareManifestRevision"] : [] }) };
+    };
+    if (scenario === "missing-revision") delete state.entities.firmwareManifestRevision;
+    const operation = triggerFirmwareUpdateCheck();
+    await triggerFirmwareUpdateCheck(); // An overlapping click must not start another request.
+    await operation;
+    if (scenario === "missing-revision" || scenario === "failed-baseline") {
+      assert.equal(writes.length, 0);
+      assert.equal(state.updateCheckBusy, false);
+      assert.equal(state.controlNotice, "");
+      assert.match(state.controlError, /Geen nieuw controleresultaat/);
+      return;
+    }
+    assert.equal(writes.length, 1);
+    assert.match(writes[0], scenario === "reset-target" ? /select.*set/ : /button.*press/);
+    assert.equal(state.updateCheckBusy, false);
+    if (scenario === "timeout") {
+      assert.equal(polls, 25);
+      assert.equal(state.controlNotice, "");
+      assert.match(state.controlError, /Geen nieuw controleresultaat/);
+    } else {
+      assert.equal(polls, 3);
+      assert.equal(state.controlError, "");
+      assert.equal(state.controlNotice, "Firmwarecontrole bijgewerkt.");
+      assert.equal(state.entities.firmwareUpdate.latest_version, newVersion);
+      assert.match(renderUpdateModal(), new RegExp((newVersion).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    }
+  });
+}

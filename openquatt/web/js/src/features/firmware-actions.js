@@ -33,7 +33,7 @@ import { render } from "../core/render-scheduler.js";
 
   export async function triggerFirmwareUpdateCheck() {
     const entity = ENTITY_DEFS.checkFirmwareUpdates;
-    if (!entity) {
+    if (!entity || state.updateCheckBusy) {
       return;
     }
 
@@ -45,15 +45,28 @@ import { render } from "../core/render-scheduler.js";
     render();
 
     try {
-      await setFirmwareUpdateTarget("current build", { poll: false, force: true });
-      primeFirmwareUpdateState();
-      const response = await fetch(buildEntityPath(entity.domain, entity.name, "press"), {
-        method: "POST",
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      const revisionBeforeRefresh = state.entities.firmwareManifestRevision;
+      await refreshEntities(["firmwareManifestRevision", "firmwareUpdateTarget"], "all", { forceMissing: true });
+      const afterCheckRevision = String(getEntityValue("firmwareManifestRevision") || "");
+      if (!afterCheckRevision || state.entities.firmwareManifestRevision === revisionBeforeRefresh) {
+        throw new Error(t("firmware.checkTimeout"));
       }
-      await pollFirmwareUpdateState();
+      primeFirmwareUpdateState();
+      if (hasEntity("firmwareUpdateTarget") && getEntityValue("firmwareUpdateTarget") !== "current build") {
+        // Changing the target already starts a check in firmware.
+        await setFirmwareUpdateTarget("current build", { poll: false });
+      } else {
+        const response = await fetch(buildEntityPath(entity.domain, entity.name, "press"), {
+          method: "POST",
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+      }
+      const ready = await pollFirmwareUpdateState({ afterCheckRevision });
+      if (!ready) {
+        throw new Error(t("firmware.checkTimeout"));
+      }
       state.controlNotice = t("firmware.checkUpdated");
     } catch (error) {
       state.controlError = t("firmware.checkFailed", { error: error.message });

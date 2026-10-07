@@ -1021,7 +1021,9 @@ import { t } from "../i18n/index.js";
 
   export async function pollFirmwareUpdateState(options = {}) {
     const expectedBuildLabel = String(options.expectedBuildLabel || "").trim();
-    for (let attempt = 0; attempt < 6; attempt += 1) {
+    const afterCheckRevision = String(options.afterCheckRevision || "");
+    const attempts = afterCheckRevision ? 25 : 6;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
       await wait(attempt === 0 ? 900 : 1200);
       await refreshEntities(FIRMWARE_MODAL_KEYS, "all", { forceMissing: true });
       const entityAligned = isFirmwareEntityAlignedWithChannel();
@@ -1029,7 +1031,9 @@ import { t } from "../i18n/index.js";
       const knownTarget = hasKnownFirmwareTargetVersion();
       const checking = isFirmwareUpdateChecking();
       const status = getUpdateStatus();
-      if (entityAligned && targetAligned && (knownTarget || (!checking && status !== t("firmwareUpdate.statusNotChecked")))) {
+      const revision = String(getEntityValue("firmwareManifestRevision") || "");
+      const freshResult = !afterCheckRevision || (revision && revision !== afterCheckRevision);
+      if (freshResult && entityAligned && targetAligned && (knownTarget || (!checking && status !== t("firmwareUpdate.statusNotChecked")))) {
         return true;
       }
     }
