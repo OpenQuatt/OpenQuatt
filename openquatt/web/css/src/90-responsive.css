@@ -405,14 +405,6 @@
     align-items: stretch;
   }
 
-  .oq-ph-concept-card {
-    grid-template-columns: 1fr;
-  }
-
-  .oq-ph-concept-zones {
-    grid-template-columns: 1fr;
-  }
-
   .oq-house-learning-chart-head {
     flex-direction: column;
   }
@@ -652,88 +644,6 @@
 
   .oq-helper-card--wide-flush .oq-overview-hp-grid {
     margin-inline: -4px;
-  }
-
-  .oq-ph-concept-card {
-    margin: 14px 0 16px;
-    padding: 14px 12px;
-    gap: 10px;
-    border-radius: 20px;
-  }
-
-  .oq-ph-concept-kicker {
-    font-size: 0.72rem;
-    letter-spacing: 0.07em;
-  }
-
-  .oq-ph-concept-caption {
-    font-size: 0.88rem;
-    line-height: 1.42;
-  }
-
-  .oq-ph-concept-meta {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
-
-  .oq-ph-concept-meta-pill {
-    width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-    justify-content: space-between;
-    padding: 7px 10px;
-    font-size: 0.79rem;
-  }
-
-  .oq-ph-concept-svg {
-    margin-block: 2px 4px;
-  }
-
-  .oq-ph-concept-label {
-    font-size: 8px;
-  }
-
-  .oq-ph-concept-tick-value {
-    font-size: 7px;
-  }
-
-  .oq-ph-concept-zones {
-    gap: 8px;
-  }
-
-  .oq-ph-concept-zone-chip {
-    min-height: 0;
-    padding: 10px 12px;
-    border-radius: 16px;
-  }
-
-  .oq-ph-concept-zone-chip-label {
-    font-size: 0.84rem;
-  }
-
-  .oq-ph-concept-zone-chip-meta {
-    font-size: 0.75rem;
-  }
-
-  .oq-ph-concept-notes {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-
-  .oq-ph-concept-note {
-    min-height: 0;
-    padding: 12px;
-    gap: 6px;
-  }
-
-  .oq-ph-concept-note-title {
-    font-size: 0.84rem;
-  }
-
-  .oq-ph-concept-note p {
-    font-size: 0.8rem;
-    line-height: 1.4;
   }
 
   .oq-overview-board {

@@ -133,12 +133,13 @@ inline DemandDecision decide_demand_with_power(const DemandInput& in, const Dema
   }
   memory_c = clamp_power(memory_c, 0.0f, memory_max_c);
   const float effective_setpoint_c = in.setpoint_c + memory_c;
-  const float low_c = effective_setpoint_c - below_c;
+  // Recovery may raise the cold edge, but never beyond the user's warm edge.
+  const float low_c = fminf(effective_setpoint_c - below_c, high_base_c);
   float error_c = 0.0f;
   if (in.room_c < low_c)
     error_c = low_c - in.room_c;
-  else if (in.room_c > in.setpoint_c)
-    error_c = in.setpoint_c - in.room_c;
+  else if (in.room_c > high_base_c)
+    error_c = high_base_c - in.room_c;
   out.contributions = {modelled_w, feedforward.house_power_w, 0.0f, tuning.reaction_w_per_k * error_c};
   // Future adaptive bias belongs at this composition boundary, before the
   // existing envelope, slew, water limit and dispatch. It never rewrites H/T0.

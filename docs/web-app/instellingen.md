@@ -7,7 +7,7 @@ Open **Instellingen** in de web-app en kies de groep die bij je vraag past. Voor
 | Wat wil je aanpassen? | Groep |
 | --- | --- |
 | Buitenunits, flowregeling of aanvullende warmtebron | [Installatie](#installatie) |
-| Verwarmingsstrategie, stooklijn of huismodel | [Verwarmen](#verwarmen) |
+| Verwarmingsstrategie, comfort, stooklijn of huismodel | [Verwarmen](#verwarmen) |
 | Koelvenster, koelvraag of dauwpuntbeveiliging | [Koelen](#koelen) |
 | Sensoren en externe invoer | [Bronnen / integraties](#bronnen-integraties) |
 | Ontluchten, testen, kalibreren of buitenunitinstellingen | [Service](#service) |
@@ -43,6 +43,57 @@ Hier kies en verfijn je de verwarmingsstrategie:
 - `Stooklijnregeling`.
 
 `Power House` probeert de warmtevraag van je woning te schatten. `Stooklijnregeling` stuurt op een aanvoerdoel op basis van de buitentemperatuur. Begin bij [Verwarmen en comfort](../dagelijks/verwarmen.md) als je nog niet zeker weet welke strategie bij je past.
+
+#### Power House comfortregeling
+
+Bij **Instellingen → Verwarmen → Power House — comfort** staan twee onderdelen: **Op temperatuur houden** en **Langer doorverwarmen**. De gewone regeling bepaalt hoeveel warmte je woning nodig heeft; langer doorverwarmen is een optionele keuze voor een lopende verwarmingsperiode. De bediening is hetzelfde voor radiatoren, LT-radiatoren en vloerverwarming.
+
+##### Op temperatuur houden
+
+De **gewenste temperatuur** is de kamertemperatuur die je hebt ingesteld, bijvoorbeeld op je thermostaat of in Home Assistant.
+
+Met **Afkoeling onder gewenste temperatuur** kies je hoeveel graden de kamer onder je gewenste temperatuur mag zakken voordat Power House extra warmte vraagt. Voorbeeld: je wilt **21,0 °C** en stelt hier **0,2 °C afkoeling** in. Power House vraagt dan extra warmte als de kamer onder **20,8 °C** komt. Stel je **0,4 °C afkoeling** in, dan gebeurt dat onder **20,6 °C**.
+
+Met **Afremmen boven gewenste temperatuur** kies je hoeveel opwarming boven je gewenste temperatuur de regeling toestaat voordat ze warmte terugneemt. Voorbeeld: je wilt **20,0 °C** en stelt **0,3 °C** in. Boven **20,3 °C** vraagt Power House minder warmte. Met **1,0 °C** begint dat boven **21,0 °C**. Hoe verder de kamer boven deze grens komt, hoe meer warmte wordt teruggenomen. Het getal bepaalt geen vaste stoptemperatuur of gegarandeerde maximumtemperatuur.
+
+De app toont **Warmte terugnemen boven** naast de gewenste temperatuur en de temperatuur voor extra warmte. Beide comfortinstellingen blijven beschikbaar als langer doorverwarmen uitstaat.
+
+Ook zonder extra opwarming kan de warmtepomp draaien om het warmteverlies van je woning te compenseren. Was de kamer langere tijd te koud, dan kan Power House al eerder extra warmte vragen en daarmee nog een tijdje doorgaan terwijl de kamer opwarmt. De app toont de gewenste temperatuur en **Extra warmte bij afkoeling onder** direct onder het veld.
+
+Met **Langer doorverwarmen uit** volgt stoppen uit de berekende warmtevraag. Power House kan bij de gewenste temperatuur blijven verwarmen om het warmteverlies van je woning te compenseren. Bij opwarming boven je ingestelde grens wordt die vraag kleiner. Als er geen verwarming meer wordt gevraagd, volgt een stop; de minimale looptijd kan die uitstellen.
+
+#### Langer doorverwarmen
+
+Dit blok staat binnen **Power House — comfort**. Bij weinig warmtebehoefte kan een draaiende warmtepomp op laag vermogen blijven verwarmen. Je kiest een aparte stoptemperatuur en hoeveel de kamer daarna moet afkoelen. Ook als de comfortregeling al warmte terugneemt, mag de lopende run op laag vermogen doorgaan tot deze stopgrens. Een stilstaande warmtepomp wordt door deze schakelaar niet gestart. De overgang naar laag vermogen hangt af van hoeveel warmte je woning nodig heeft; daarvoor geldt geen vaste kamertemperatuur.
+
+1. Zet **Langer doorverwarmen** aan als je dit wilt gebruiken; standaard staat het uit.
+2. Kies bij **Stopgrens boven gewenste temperatuur** hoeveel graden boven je gewenste temperatuur de stopgrens ligt: 0,1–1,0 °C, standaard +0,5 °C. Voorbeeld: je wilt **21,0 °C** en stelt **0,7 °C** in. De stopgrens wordt **21,7 °C**. Met **0,5 °C** wordt dat **21,5 °C**. Verander je deze instelling, kijk dan ook naar de berekende temperatuur voor opnieuw verwarmen: die kan meeveranderen.
+3. Kies bij **Afkoeling na stoppen** hoeveel graden de kamer na de stop moet afkoelen: 0,1–3,0 °C, standaard 0,2 °C. Voorbeeld: de stopgrens is **21,7 °C** en je stelt **0,2 °C afkoeling** in. Opnieuw verwarmen is dan mogelijk bij **21,5 °C of lager**. Met **0,7 °C afkoeling** wordt dat **21,0 °C**. We rekenen vanaf de ingestelde stopgrens, ook als de kamer na het stoppen nog warmer wordt.
+
+De twee getalvelden verschijnen alleen als langer doorverwarmen aanstaat. Daaronder staan **Stopgrens** en **Opnieuw verwarmen mogelijk bij**, berekend met je gewenste temperatuur. Tijdens bewerken staat er **Voorbeeld van je wijziging — nog niet bevestigd**; de huidige instellingen blijven daarnaast leesbaar. De informatieknoppen geven uitleg met getalvoorbeelden. De status toont wat er nu gebeurt, bijvoorbeeld **Wacht op afkoeling** of **Stop aangevraagd**.
+
+De instelling **Afkoeling onder gewenste temperatuur** gaat voor als je na de stop heel ver wilt laten afkoelen. Voorbeeld: je wilt **21,0 °C** en hebt daar **0,2 °C afkoeling** ingesteld. Ook als je bij **Afkoeling na stoppen** een grotere afkoeling kiest, is opnieuw verwarmen uiterlijk bij **20,8 °C** mogelijk. De warmtepomp start pas als je woning warmte nodig heeft en hij lang genoeg uit is geweest. Daardoor kan de kamer in de praktijk wel kouder worden.
+
+Voorbeelden bij een gewenste temperatuur van **21,0 °C**, een stopgrens van **21,7 °C** en **Afkoeling onder gewenste temperatuur** ingesteld op **0,2 °C**:
+
+| Afkoeling na stoppen | Opnieuw verwarmen mogelijk bij | Wat betekent dit? |
+| --- | --- | --- |
+| 0,2 °C | 21,5 °C | Opnieuw verwarmen is mogelijk terwijl de kamer nog warmer is dan gewenst |
+| 0,7 °C | 21,0 °C | Afkoelen tot de gewenste temperatuur |
+| 0,9 °C | 20,8 °C | Afkoelen tot 0,2 °C onder de gewenste temperatuur |
+| 1,2 °C | 20,8 °C | De instelling **Afkoeling onder gewenste temperatuur** gaat voor: je hoeft niet tot 20,5 °C te wachten |
+
+Bij de stopgrens vraagt Power House de warmtepomp om te stoppen. De warmtepomp stopt later als hij zijn minimale looptijd nog moet afmaken. Ook daarna kunnen de radiatoren of vloer nog warmte afgeven. Bij opnieuw verwarmen bepaalt Power House weer hoeveel vermogen nodig is; de warmtepomp start dus niet altijd op minimumvermogen. De normale beveiligingen blijven gelden.
+
+Uitschakelen van langer doorverwarmen laat de gewone verwarming actief. De instellingen blijven na een controllerherstart behouden. Zie [Power House: langer doorverwarmen](../power-house.md#langer-doorverwarmen-optioneel) voor de precieze werking, statussen en het gedrag na een herstart.
+
+##### Geavanceerd: afstelling van de regeling
+
+**Temperatuurreactie** en **Power House responsprofiel** met opbouw-/afbouwtijd staan onder geavanceerd. Je hoeft ze niet te openen om langer doorverwarmen in te stellen. De bestaande waarden blijven behouden.
+
+Power House houdt automatisch rekening met eerdere afkoeling. Was de kamer langere tijd te koud, dan kan het tijdens het opwarmen nog extra warmte vragen. Dit herstel wordt begrensd door de ingestelde grens voor afremmen. Zie [de technische uitleg over kamercorrectie](../power-house.md#2-kamercorrectie).
+
+**Bij deze update:** de bestaande instelling `Power House comfort above setpoint` heet in de app **Afremmen boven gewenste temperatuur** en bepaalt opnieuw het begin van warmte terugnemen. Voorheen begon de warme correctie bij het setpoint; nu begint die boven het setpoint plus deze instelling. Met de standaardwaarde 0,3 °C wordt dus later afgeremd. Opgeslagen waarden blijven behouden. Kijk na de update of de gekozen bovenmarge bij je gewenste comfort past.
 
 #### Stooklijn en actueel aanvoerdoel
 

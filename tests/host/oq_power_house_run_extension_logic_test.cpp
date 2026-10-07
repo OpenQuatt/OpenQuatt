@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <math.h>
+#include <initializer_list>
 
 #include "../../openquatt/includes/control/oq_power_house_run_extension_logic.h"
 
@@ -345,9 +346,145 @@ void test_no_restart_after_reboot_reset() {
   assert(out.next.phase == Phase::INACTIVE);
   assert(!out.warm_restart_intent);
 }
+
+void test_configurable_restart_and_cold_edge() {
+  Input in = base_input();
+  in.setpoint_c = 21.0f;
+  in.cycle_active = false;
+  in.actual_heating_active = false;
+  State wait{Phase::WAIT_WARM_RESTART, 21.0f, true};
+  for (const auto settings :
+       {Tuning{0.7f, 0.2f, 0.2f}, Tuning{0.7f, 0.7f, 0.2f}, Tuning{0.7f, 0.9f, 0.2f}, Tuning{0.7f, 1.2f, 0.2f}}) {
+    const float expected = std::max(21.7f - settings.restart_cooldown_c, 20.8f);
+    in.room_c = expected + 0.01f;
+    in.base_requested_w = 2500.0f;
+    const auto held = evaluate(in, settings, wait);
+    assert(fabsf(held.warm_restart_c - expected) < 0.001f);
+    assert(held.force_comfort_stop && !held.warm_restart_intent);
+    in.room_c = held.warm_restart_c;
+    in.base_requested_w = 0.0f;
+    assert(!evaluate(in, settings, wait).warm_restart_intent);
+    in.base_requested_w = 900.0f;
+    const auto restart = evaluate(in, settings, wait);
+    assert(restart.warm_restart_intent && !restart.force_comfort_stop);
+    assert(restart.floor_active);
+  }
+  // The new comfort guard intentionally wins even with the default cooldown.
+  in.room_c = 21.0f;
+  assert(evaluate(in, {0.1f, 0.2f, 0.0f}, wait).warm_restart_c == 21.0f);
+}
+
+void test_cold_room_intent_releases_wait() {
+  Input in = base_input();
+  in.cycle_active = false;
+  in.actual_heating_active = false;
+  in.room_c = oq_heat_intent::room_cold_edge_c(in.setpoint_c, 0.2f);
+  in.base_requested_w = 0.0f;
+  const Tuning settings{0.7f, 1.2f, 0.2f};
+  State wait{Phase::WAIT_WARM_RESTART, in.setpoint_c, true};
+  oq_heat_intent::Input room;
+  room.now_ms = 1;
+  room.strategy_active = room.heating_enable_valid = room.heating_enabled = true;
+  room.room_fresh = room.setpoint_fresh = true;
+  room.setpoint_source = 1;
+  room.room_c = in.room_c;
+  room.setpoint_c = in.setpoint_c;
+  room.room_resume_delta_c = settings.room_resume_delta_c;
+  room.room_confirm_ms = 10000;
+  auto intent = oq_heat_intent::evaluate(room, {});
+  assert(intent.room_condition && !intent.fast_start);
+  assert(!evaluate(in, settings, wait).floor_active);
+  room.now_ms += 10000;
+  intent = oq_heat_intent::evaluate(room, intent.next);
+  assert(intent.fast_start);
+  // Runtime promotes normal confirmed room demand before capturing base demand.
+  in.base_requested_w = in.minimum_viable_w;
+  const auto out = evaluate(in, settings, wait);
+  assert(out.warm_restart_intent && !out.force_comfort_stop);
+  assert(!out.floor_active);
+}
+
+void test_restart_setting_changes_and_failure_boundaries() {
+  Input in = base_input();
+  in.cycle_active = false;
+  in.actual_heating_active = false;
+  in.room_c = 20.7f;
+  State wait{Phase::WAIT_WARM_RESTART, in.setpoint_c, true};
+  assert(evaluate(in, {0.5f, 0.2f}, wait).warm_restart_intent);
+  assert(evaluate(in, {0.5f, 0.7f}, wait).force_comfort_stop);
+  State restart{Phase::WARM_RESTART, in.setpoint_c, true};
+  // A permitted restart keeps its existing latch across temperature/settings jitter.
+  assert(evaluate(in, {0.5f, 0.7f}, restart).warm_restart_intent);
+  for (const auto phase : {Phase::EXTENDING, Phase::WAIT_WARM_RESTART, Phase::WARM_RESTART}) {
+    State state{phase, in.setpoint_c, true};
+    Input invalid = in;
+    invalid.inputs_valid = false;
+    const auto stale = evaluate(invalid, tuning(), state);
+    assert(!stale.floor_active && !stale.warm_restart_intent && !stale.next.cycle_armed);
+    invalid = in;
+    invalid.heating_allowed = false;
+    assert(!evaluate(invalid, tuning(), state).next.cycle_armed);
+    invalid = in;
+    invalid.enabled = false;
+    const auto disabled = evaluate(invalid, tuning(), state);
+    assert(disabled.next.phase == Phase::INACTIVE && !disabled.floor_active && !disabled.warm_restart_intent);
+  }
+  for (const bool water_limited : {false, true}) {
+    Input limited = in;
+    if (water_limited)
+      limited.water_limit_factor = 0.8f;
+    else
+      limited.minimum_viable_w = NAN;
+    assert(!evaluate(limited, tuning(), wait).floor_active);
+    assert(!evaluate(limited, tuning(), restart).floor_active);
+  }
+}
+
+void test_same_logic_with_three_emitter_lags() {
+  // Synthetic thermal smoke test, not calibrated emitter-specific control modes.
+  for (const float lag_s : {300.0f, 1200.0f, 3600.0f}) {
+    for (const float cooldown_c : {0.2f, 0.9f, 1.2f}) {
+      const Tuning settings{0.7f, cooldown_c, 0.2f};
+      State state;
+      float room_c = 20.8f;
+      float emitted_w = 0.0f;
+      bool running = true;
+      int stopped_s = 240;
+      bool saw_stop = false, saw_restart = false;
+      for (int tick = 0; tick < 2880; ++tick) {
+        Input in = base_input();
+        in.setpoint_c = 21.0f;
+        in.room_c = room_c;
+        in.cycle_active = in.actual_heating_active = running;
+        in.base_requested_w = std::max(0.0f, 1400.0f + 3000.0f * (21.0f - room_c));
+        const auto out = evaluate(in, settings, state);
+        assert(out.warm_restart_c >= oq_heat_intent::room_cold_edge_c(21.0f, 0.2f));
+        if (state.phase == Phase::WAIT_WARM_RESTART && room_c <= 20.8f && in.base_requested_w > 0.0f)
+          assert(!out.force_comfort_stop);
+        saw_stop |= out.next.phase == Phase::COMFORT_STOP;
+        saw_restart |= out.warm_restart_intent;
+        const float request_w = out.force_comfort_stop ? 0.0f : std::max(in.base_requested_w, out.floor_w);
+        if (request_w == 0.0f)
+          running = false;
+        else if (running || stopped_s >= 240)
+          running = true;
+        stopped_s = running ? 0 : stopped_s + 60;
+        emitted_w += (running ? std::max(request_w, 1700.0f) - emitted_w : -emitted_w) * (60.0f / lag_s);
+        room_c += (emitted_w - 1400.0f) * 60.0f / 10000000.0f;
+        assert(std::isfinite(room_c) && room_c > 19.0f && room_c < 23.0f);
+        state = out.next;
+      }
+      assert(saw_stop && saw_restart);
+    }
+  }
+}
 }  // namespace
 
 int main() {
+  test_configurable_restart_and_cold_edge();
+  test_cold_room_intent_releases_wait();
+  test_restart_setting_changes_and_failure_boundaries();
+  test_same_logic_with_three_emitter_lags();
   test_disabled_keeps_old_behavior();
   test_enabled_while_idle_no_start();
   test_normal_run_above_pmin_no_floor();

@@ -570,6 +570,7 @@
     ["phDemandFallTime", DOMAIN_NUMBER, "Power House demand fall time", false],
     ["phRunExtension", DOMAIN_SWITCH, "Power House run extension"],
     ["phRunExtensionStopMargin", DOMAIN_NUMBER, "Power House run extension stop margin"],
+    ["phRunExtensionRestartCooldown", DOMAIN_NUMBER, "Power House run extension restart cooldown"],
     ["phRunExtensionStatus", DOMAIN_TEXT_SENSOR, "Power House run extension status"],
     ["lowLoadDynamicThresholds", DOMAIN_TEXT_SENSOR, "Low-load dynamic thresholds"],
     ["lowLoadDynamicOffFactor", DOMAIN_NUMBER, "Low-load dynamic OFF factor"],
@@ -830,6 +831,7 @@
   ];
 
   export const POWER_HOUSE_KEYS = [
+    "roomSetpoint",
     "housePower",
     "houseColdTemp",
     "houseOutdoorMax",
@@ -841,6 +843,7 @@
     "phDemandFallTime",
     "phRunExtension",
     "phRunExtensionStopMargin",
+    "phRunExtensionRestartCooldown",
     "phRunExtensionStatus",
   ];
   export const FREQUENCY_CAP_KEYS = ["dayMaxHz", "silentMaxHz"];
@@ -2173,6 +2176,7 @@
         "phDemandFallTime",
         "phRunExtension",
         "phRunExtensionStopMargin",
+        "phRunExtensionRestartCooldown",
       ],
     },
     {

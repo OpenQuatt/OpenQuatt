@@ -2262,6 +2262,7 @@
       ["Power House demand rise time", 8, 2, 20, 1, "min"],
       ["Power House demand fall time", 3, 1, 10, 1, "min"],
       ["Power House run extension stop margin", 0.5, 0.1, 1, 0.1, "°C"],
+      ["Power House run extension restart cooldown", 0.2, 0.1, 3, 0.1, "°C"],
       ["Cooling Minimum Supply Temp", 18, 5, 24, 0.5, "°C"],
       ["Cooling Demand Max", 4, 1, 10, 1, "step"],
       ["Cooling Restart Delta", 1.0, 0, 5, 0.1, "°C"],

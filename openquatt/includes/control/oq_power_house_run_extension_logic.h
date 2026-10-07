@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstdint>
 
+#include "oq_heat_intent_logic.h"
+
 namespace oq_power_house_run_extension {
 
 enum class Phase : uint8_t {
@@ -33,7 +35,8 @@ struct Input {
 
 struct Tuning {
   float stop_margin_c = 0.5f;
-  float restart_hysteresis_c = kRestartHysteresisC;
+  float restart_cooldown_c = kRestartHysteresisC;
+  float room_resume_delta_c = 0.1f;
 };
 
 struct State {
@@ -93,10 +96,13 @@ inline bool compute_house_saturated(int base_capped_demand, float house_deficit_
 inline Decision evaluate(const Input& in, const Tuning& tuning, State state) {
   Decision out;
   const float stop_margin_c = std::isfinite(tuning.stop_margin_c) ? tuning.stop_margin_c : 0.5f;
-  const float hysteresis_c =
-      std::isfinite(tuning.restart_hysteresis_c) ? tuning.restart_hysteresis_c : kRestartHysteresisC;
+  const float hysteresis_c = std::isfinite(tuning.restart_cooldown_c) ? tuning.restart_cooldown_c : kRestartHysteresisC;
   const float comfort_stop_c = std::isfinite(in.setpoint_c) ? in.setpoint_c + stop_margin_c : NAN;
-  const float warm_restart_c = std::isfinite(comfort_stop_c) ? comfort_stop_c - hysteresis_c : NAN;
+  const float cold_edge_c = oq_heat_intent::room_cold_edge_c(in.setpoint_c, tuning.room_resume_delta_c);
+  // Extension may delay a restart inside the comfort zone, never below its cold edge.
+  const float warm_restart_c = std::isfinite(comfort_stop_c) && std::isfinite(cold_edge_c)
+                                   ? std::max(comfort_stop_c - hysteresis_c, cold_edge_c)
+                                   : NAN;
   out.comfort_stop_c = comfort_stop_c;
   out.warm_restart_c = warm_restart_c;
 
