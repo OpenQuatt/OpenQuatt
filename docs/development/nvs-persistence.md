@@ -17,6 +17,37 @@ kleine preferences, nominaal 27 entries. Hun oude keys worden gericht opgeruimd.
 `oq_system_thermal_energy_daily`, `oq_system_thermal_energy_cumulative` en
 `oq_heating_curve_pid` behouden hun bestaande persistentie.
 
+`oq_cooling_fallback_night_min_last_day_key` wordt alleen in RAM onthouden,
+met beginwaarde `-1`. De datum voorkomt herhaald overnemen van een afgeronde
+nacht binnen dezelfde boot; hij controleert niet de ouderdom van de temperatuur.
+Na een reboot overdag ontbreekt ook het lopende nachtvenster in RAM en wordt
+geen nieuw nachtresultaat overgenomen. Na een reboot tijdens de nacht wordt
+het nieuwe venster na 06:00 eenmaal overgenomen. De laatste temperatuur
+`oq_cooling_fallback_night_min_last_c` blijft persistent voor de
+dauwpuntbenadering. De oude datumkey `esphome/1275799272` (vier bytes) wordt
+met type- en lengtecontrole opgeruimd: nominaal drie entries extra besparing.
+Bij een teruggezette klok kan een opnieuw waargenomen nacht met dezelfde datum
+na een reboot opnieuw worden overgenomen; de datum wordt niet over boots heen
+onthouden.
+
+De twee eenmalige migraties en hun vlaggen
+`oq_flow_cooling_settings_migrated` en `oq_aux_heat_source_policy_migrated`
+vervallen. De oude vlagkeys `esphome/515187816` en `esphome/3865822963`
+(elk één byte) worden met type- en lengtecontrole opgeruimd. Dit bespaart
+nog zes entries; bestaande afzonderlijke instellingen en beide flowcaches
+blijven persistent en worden niet overschreven.
+
+**Kleine breaking change bij upgrade vanaf firmware <v0.49.0:** de oude
+gecombineerde ketelinstelling wordt niet meer omgezet naar
+`oq_aux_heat_source_present`. Ontbreekt die afzonderlijke instelling, dan
+begint "Auxiliary heat source connected" standaard op aan. Controleer deze
+instelling na de update, vooral als de ketel eerder uitgeschakeld of afwezig
+was. Ketelondersteuning en storingsfallback behouden hun eigen voorkeuren;
+de standaard aanwezigheidskeuze start op zichzelf geen ketelvraag.
+Ontbreken bij firmware van vóór v0.33.0 ook de afzonderlijke koelrecords,
+dan begint het koelsetpoint op 800 L/h en de koelstartcache op PWM 440.
+De verwarmingswaarden worden niet meer automatisch overgenomen.
+
 Twee aanvullende legacy-blobs kunnen nog ruimte bezetten:
 
 | Namespace en key | Oud record | Blobgrootte | Nominale entries indien aanwezig |
@@ -95,17 +126,23 @@ achtergebleven legacykeys kunnen meer ruimte kosten. Dit is geen bovengrens.
 
 | Q Duo WiFi | Entity entries | Custom | Systeem | Totaal | Nominaal vrij |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Vóór deze sessiestatuswijziging | 460 | 64 | 88 | 612 | 18 |
-| Na de sessiestatuswijziging | 433 | 64 | 88 | 585 | 45 |
-| Na uitfasering van de drie kalibratieglobals | 424 | 64 | 88 | 576 | 54 |
+| Vóór deze sessiestatuswijziging | 463 | 64 | 88 | 615 | 15 |
+| Na de sessiestatuswijziging | 436 | 64 | 88 | 588 | 42 |
+| Na uitfasering van de drie kalibratieglobals | 427 | 64 | 88 | 579 | 51 |
+| Na verplaatsing van de nachtminimumdatum naar RAM | 424 | 64 | 88 | 576 | 54 |
+| Na uitfasering van de twee migratievlaggen | 418 | 64 | 88 | 570 | 60 |
+
+De Q Duo-tabel bevat ook de drie entries van de geneste switch
+`oq_ot_slave_enabled`. Die ontbreekt momenteel in de entitytelling van de
+checker; daarom ligt zijn schatting drie entries lager dan deze inventaris.
 
 De bestaande grens `REQUIRED_AVAILABLE_ENTRIES = 100` blijft behouden.
 Daarom geeft de gecorrigeerde checker voor dit profiel FAIL. Alle waarden zijn
 berekeningen bij volledige bezetting, geen apparaatmetingen. Blobvervanging
-schrijft nieuwe chunks voordat de oude worden vrijgegeven; 54 vrije entries
+schrijft nieuwe chunks voordat de oude worden vrijgegeven; 60 vrije entries
 zijn minder dan de minimaal 62 voor een gewijzigde volledige PHY-blob.
-De huidige Q Single WiFi-configuratie telt 415 entity-entries, 55 custom en
-88 systeem: 558 totaal, nominaal 72 vrij. Ook dat profiel haalt de marge niet.
+Voor Q Single WiFi begroot de checker 406 entity-entries, 55 custom en
+88 systeem: 549 totaal, nominaal 81 vrij. Ook dat profiel haalt de marge niet.
 
 ## Meting op de testcontroller
 

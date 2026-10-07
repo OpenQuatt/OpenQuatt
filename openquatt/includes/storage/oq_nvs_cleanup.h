@@ -135,6 +135,12 @@ inline void retire_openquatt_preferences(esphome::EntityBase* air_purge) {
   // Restoring global oq_cm_frost_prev: retain the guard when a key has
   // an unexpected type/size. Keep this in the merge-safe shared boot path.
   oq_nvs_cleanup::erase_esphome_blob_if_size(2881445393U, 4U, "legacy frost hysteresis");
+  // oq_cooling_fallback_night_min_last_day_key now only deduplicates within
+  // this boot. Keep the separate persistent night-minimum temperature.
+  oq_nvs_cleanup::erase_esphome_blob_if_size(1275799272U, 4U, "session cooling night date");
+  // Removed one-time migrations; current settings keep their own records.
+  oq_nvs_cleanup::erase_esphome_blob_if_size(515187816U, 1U, "retired cooling flow migration flag");
+  oq_nvs_cleanup::erase_esphome_blob_if_size(3865822963U, 1U, "retired auxiliary heat source migration flag");
   // FNV-1("openquatt_api_security_store"): retired 40-byte custom
   // API security blob. Native ESPHome Noise PSK (88491486) stays intact.
   oq_nvs_cleanup::erase_esphome_blob_if_size(1156115452U, 40U, "legacy API security store");

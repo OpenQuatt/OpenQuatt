@@ -135,24 +135,34 @@ int main() {
   records[std::to_string(OLD_API)]={40}; records[std::to_string(NOISE)]={32};
   records[state]={56}; records["current-setting"]={4};
   records["306736601"]={1}; records["2881445393"]={4};
+  records["1275799272"]={4};
+  records["515187816"]={1}; records["3865822963"]={1};
   oq_nvs_cleanup::retire_openquatt_preferences(&air);
-  assert(handles==0 && records.size()==3 && commits==6);
+  assert(handles==0 && records.size()==3 && commits==9);
   assert(records.contains(std::to_string(NOISE)) && records.contains(state));
   assert(records.contains("current-setting"));
   oq_nvs_cleanup::retire_openquatt_preferences(&air);
-  assert(handles==0 && records.size()==3 && commits==6);
+  assert(handles==0 && records.size()==3 && commits==9);
   // Unexpected records under the retired keys are preserved by the boot path.
   records["306736601"]={4}; records["2881445393"]={4,false};
+  records["1275799272"]={8};
+  records["515187816"]={4}; records["3865822963"]={1,false};
   oq_nvs_cleanup::retire_openquatt_preferences(&air);
-  assert(handles==0 && records.size()==5 && commits==6);
+  assert(handles==0 && records.size()==8 && commits==9);
   // Single-key retries use the same failure boundaries as the old cleanup.
   reset(); records["306736601"]={1}; records["2881445393"]={4};
+  records["1275799272"]={4};
+  records["515187816"]={1}; records["3865822963"]={1};
   erase_error=3;
   assert(!cleanup(306736601U,1) && !cleanup(2881445393U,4));
-  assert(records.size()==2 && commits==0);
+  assert(!cleanup(1275799272U,4));
+  assert(!cleanup(515187816U,1) && !cleanup(3865822963U,1));
+  assert(records.size()==5 && commits==0);
   erase_error=0;
   assert(cleanup(306736601U,1) && cleanup(2881445393U,4));
-  assert(records.empty() && commits==2);
+  assert(cleanup(1275799272U,4));
+  assert(cleanup(515187816U,1) && cleanup(3865822963U,1));
+  assert(records.empty() && commits==5);
 }
 '''
         with tempfile.TemporaryDirectory(prefix="openquatt-nvs-cleanup-") as directory:

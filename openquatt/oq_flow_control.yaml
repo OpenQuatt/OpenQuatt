@@ -61,10 +61,6 @@ globals:
     type: int
     restore_value: true
     initial_value: "440"
-  - id: oq_flow_cooling_settings_migrated
-    type: bool
-    restore_value: true
-    initial_value: 'false'
   - id: oq_flow_autotune_active
     type: bool
     restore_value: false

@@ -72,6 +72,20 @@ class NvsPersistenceContractTest(unittest.TestCase):
                 self.assertEqual(matching[0]["priority"], -100)
                 self.assertIn('erase_esphome_blob_if_size(306736601U, 1U', NVS_CLEANUP)
                 self.assertIn('erase_esphome_blob_if_size(2881445393U, 4U', NVS_CLEANUP)
+                night_day_id = "oq_cooling_fallback_night_min_last_day_key"
+                globals_by_id = {str(item["id"]): item for item in config["globals"]}
+                self.assertFalse(globals_by_id[night_day_id]["restore_value"])
+                self.assertEqual(str(globals_by_id[night_day_id]["initial_value"]), "-1")
+                self.assertTrue(globals_by_id["oq_cooling_fallback_night_min_last_c"]["restore_value"])
+                day_key = 1944399030 ^ int(hashlib.md5(night_day_id.encode()).hexdigest()[:8], 16)
+                self.assertIn(f'erase_esphome_blob_if_size({day_key}U, 4U', NVS_CLEANUP)
+                for retired_id in ("oq_flow_cooling_settings_migrated", "oq_aux_heat_source_policy_migrated"):
+                    self.assertNotIn(retired_id, globals_by_id)
+                    self.assertNotIn(f"id({retired_id})", str(hooks))
+                    key = 1944399030 ^ int(hashlib.md5(retired_id.encode()).hexdigest()[:8], 16)
+                    self.assertIn(f'erase_esphome_blob_if_size({key}U, 1U', NVS_CLEANUP)
+                for entity_id in ("oq_flow_last_good_pwm", "oq_flow_last_good_pwm_cooling"):
+                    self.assertTrue(globals_by_id[entity_id]["restore_value"])
         CORE.reset()
 
     def test_cycling_alerts_have_ram_defaults_and_exact_retired_keys(self) -> None:
