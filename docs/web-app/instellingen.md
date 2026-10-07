@@ -229,6 +229,25 @@ Hier staan commissioning, tests, kalibratie en andere servicetaken. Gebruik deze
 
 **Ontluchten** draait in CM100 een pomp-only programma van 5 minuten met een rustige start, pomp-pulsen en stabilisatie. Tijdens een rustpuls mag de gemeten flow kort naar nul zakken. De routine stopt met een fout zodra 120 seconden aaneengesloten geen geldige flow van minstens 20 L/h is gedetecteerd. De gevraagde iPWM toont de opdracht van het programma, niet een bevestiging dat de pomp draait of water stroomt. Het resultaat onderscheidt **Mislukt** met foutreden van **Afgebroken**. Na een fout of afbreken keert de routine niet automatisch terug naar Auto; de optie voor terugkeer naar Auto geldt alleen bij normaal afronden.
 
+#### Flow autotune
+
+Start de service (CM100) en open **Flow autotune**. De autotune voert twee
+pompstaptests uit en controleert daarna de berekende Kp/Ki met een
+flowdoelstap. Laat kleppen en andere pompen tijdens de test gelijk staan.
+**Huidige Kp/Ki** toont de actieve waarden; tijdens validatie worden tijdelijk
+testwaarden gebruikt en als **Tijdelijke test-Kp/Ki** getoond. Vóór de
+validatiestap probeert de regeling maximaal vier minuten de ingestelde doelflow
+te bereiken en te stabiliseren. Een nieuw voorstel verschijnt pas na afronden en wordt
+pas met **Toepassen** opgeslagen als regelinstelling.
+
+Bij afbreken of mislukken blijven de reden en een hersteladvies zichtbaar.
+Eventuele tijdelijke Kp/Ki en het flowdoel worden hersteld. Controleer bij
+ontbrekende of instabiele flow de gekozen flowbron, circulatie en kleppen;
+ontlucht zo nodig en probeer opnieuw. Kleine meetfluctuaties zijn toegestaan,
+maar ontbrekende flow, een onbruikbare pomprespons of een te sterk veranderende
+flow stoppen de meting. Een resultaat met beperkte validatie is geen garantie
+voor iedere bedrijfsconditie; controleer de flowregeling na toepassen.
+
 #### Buitenunitinstellingen en ontdooien
 
 Bij `Instellingen buitenunit` staat `Ontdooien` als derde rij. Het paneel toont per buitenunit de actuele status en cyclusduur. Onder `Instellingen` staan de huidige ontdooimethode met uitleg; `Instellingen uitlezen` leest deze uit de buitenunit. Alleen methoden die de herkende buitenunit daadwerkelijk ondersteunt kunnen tijdelijk worden gekozen na bevestiging van oud→nieuw: V1 biedt 0, 1 en 3; V1.5 en de bestaande V2-profielen bieden 0, 1, 3 en 4. De teruggelezen waarde geldt als bewijs. Sensorgegevens staan ingeklapt onder `Technische metingen`. Onbekende waarden blijven leeg; lokale tellers en mogelijke eindredenen zijn geen exacte weergave van de interne ODU-regeling. Zie [defrostdiagnostiek](../defrost.md) voor de beperkingen.
