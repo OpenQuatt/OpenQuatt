@@ -83,7 +83,9 @@ De regressiesimulatie `tests/host/warmup_heat_intent_test.cpp` gebruikt de echte
 warmup-runtime, inputadapter, heat intent, Power House demand en low-load helpers.
 De bestaande floor-glue wordt in de fixture nagebootst; fysieke terugmelding,
 dispatch en minimum on/off timing blijven hardwaretestscope. Het
-[voorbereide HIL-scenario](hil-warmup-step-continuity.md) is nog niet uitgevoerd.
+[HIL-scenario](hil-warmup-step-continuity.md) is op 6 oktober uitgevoerd op
+bron `4830dece`. Dat verslag kwalificeert niet de latere samenvoeging met
+`dev`, waaronder de comfort- en herstartwijzigingen uit #788.
 
 ## Releasekwalificatie
 

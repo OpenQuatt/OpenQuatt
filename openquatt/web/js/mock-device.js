@@ -2268,6 +2268,7 @@
       ["Power House demand rise time", 8, 2, 20, 1, "min"],
       ["Power House demand fall time", 3, 1, 10, 1, "min"],
       ["Power House run extension stop margin", 0.5, 0.1, 1, 0.1, "°C"],
+      ["Power House run extension restart cooldown", 0.2, 0.1, 3, 0.1, "°C"],
       ["Controlled warmup trigger", 1.5, 0.5, 5, 0.1, "°C"],
       ["Controlled warmup step", 0.1, 0.1, 0.5, 0.1, "°C"],
       ["Controlled warmup step time", 45, 5, 120, 5, "min"],

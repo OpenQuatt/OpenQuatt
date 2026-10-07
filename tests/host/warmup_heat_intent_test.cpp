@@ -5,6 +5,7 @@
 
 #include "openquatt/includes/control/oq_hp_supervisory_logic.h"
 #include "openquatt/includes/control/oq_power_house_demand_logic.h"
+#include "openquatt/includes/control/oq_power_house_run_extension_logic.h"
 #include "openquatt/includes/control/oq_supervisory_state_logic.h"
 #include "openquatt/includes/control/oq_warmup_runtime.h"
 
@@ -293,6 +294,57 @@ void test_interrupted_run_requires_a_new_confirmed_start() {
   assert(decision.fast_start && sim.compressor && sim.starts == 2);
 }
 
+void test_warmup_handoff_to_adjustable_run_extension() {
+  namespace extension = oq_power_house_run_extension;
+  // A 0.1 C step is smaller than the 0.2 C cold comfort margin. The
+  // extension thresholds must still follow the real 22 C thermostat goal.
+  for (float cooldown : {0.2f, 0.7f, 0.9f, 1.2f, 3.0f}) {
+    Simulation sim(20.0f, 0.2f);
+    sim.tick(2000, 20.0f);
+    sim.tick(62000, 20.0f);
+    assert(sim.compressor);
+    extension::State state;
+    const extension::Tuning tuning{0.7f, cooldown, sim.input.comfort_below_c};
+    extension::Input in{true, true, true, true, true, 20.0f, 22.0f, sim.requested_w, kMinimumW, 1.0f};
+    auto result = extension::evaluate(in, tuning, state);
+    state = result.next;
+    for (float room : {20.05f, 20.1f, 20.2f, 21.0f}) {
+      const auto intent = sim.tick(sim.input.now_ms + 60000, room);
+      assert(intent.room_recovery_active && sim.compressor);
+      in.room_c = room;
+      in.base_requested_w = sim.requested_w;
+      result = extension::evaluate(in, tuning, state);
+      state = result.next;
+      assert(!result.force_comfort_stop && !result.warm_restart_intent);
+      assert(result.comfort_stop_c == 22.7f);
+    }
+    sim.tick(sim.input.now_ms + 60000, 21.8f);
+    assert(!sim.warmup.active() && !sim.intent_state.room_recovery_active);
+    in.room_c = 21.8f;
+    in.base_requested_w = 0;
+    result = extension::evaluate(in, tuning, state);
+    assert(result.floor_active && !result.force_comfort_stop);
+    in.room_c = result.comfort_stop_c;
+    result = extension::evaluate(in, tuning, result.next);
+    assert(result.force_comfort_stop);
+    in.cycle_active = in.actual_heating_active = false;
+    result = extension::evaluate(in, tuning, result.next);
+    assert(result.next.phase == extension::Phase::WAIT_WARM_RESTART);
+    const float restart = std::max(22.7f - cooldown, 21.8f);
+    assert(std::fabs(result.warm_restart_c - restart) < 0.00001f);
+    in.base_requested_w = 100;
+    in.room_c = restart + 0.01f;
+    result = extension::evaluate(in, tuning, result.next);
+    assert(result.force_comfort_stop && !result.warm_restart_intent);
+    in.room_c = restart;
+    result = extension::evaluate(in, tuning, result.next);
+    assert(result.warm_restart_intent && result.floor_active);
+    in.heating_allowed = false;
+    result = extension::evaluate(in, tuning, result.next);
+    assert(!result.warm_restart_intent && !result.floor_active && !result.next.cycle_armed);
+  }
+}
+
 void test_warmup_never_fabricates_a_thermostat_raise() {
   oq_heat_intent::Input in{1000, true, true, true, true, true, false, 1, 20, 20.1f, 0.1f, 0.2f, 10000};
   in.requested_setpoint_c = 18;
@@ -326,6 +378,7 @@ int main() {
   test_permission_freshness_water_limit_and_invalid_goal();
   test_cancellation_and_return_to_normal();
   test_interrupted_run_requires_a_new_confirmed_start();
+  test_warmup_handoff_to_adjustable_run_extension();
   test_warmup_never_fabricates_a_thermostat_raise();
   std::printf("warmup intent state: %zu B; all boundary assertions passed\n", sizeof(oq_heat_intent::State));
 }

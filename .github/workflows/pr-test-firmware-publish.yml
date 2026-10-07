@@ -36,25 +36,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
-          ARTIFACT_COUNT="$(gh api \
+          # A rerun can leave older copies behind. Pin the newest nonexpired ID
+          # instead of downloading an ambiguous name; validate its contents below.
+          ARTIFACT_ID="$(gh api --paginate --slurp \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/artifacts?per_page=100" \
-            --jq '[.artifacts[] | select(.name == "pr-test-firmware-meta")] | length')"
-          if [[ "${ARTIFACT_COUNT}" == "0" ]]; then
+            --jq '[.[].artifacts[] | select(.name == "pr-test-firmware-meta" and .expired == false)] | max_by(.id) | .id // empty')"
+          if [[ -z "${ARTIFACT_ID}" ]]; then
             echo "No test-firmware metadata found; publication was not requested."
             echo "found=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
-          if [[ "${ARTIFACT_COUNT}" != "1" ]]; then
-            echo "Expected one test-firmware metadata artifact; found ${ARTIFACT_COUNT}." >&2
+          if [[ ! "${ARTIFACT_ID}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Invalid test-firmware metadata artifact ID." >&2
             exit 1
           fi
+          echo "artifact_id=${ARTIFACT_ID}" >> "${GITHUB_OUTPUT}"
           echo "found=true" >> "${GITHUB_OUTPUT}"
 
       - name: Download build metadata
         if: ${{ steps.metadata.outputs.found == 'true' }}
         uses: actions/download-artifact@v7
         with:
-          name: pr-test-firmware-meta
+          artifact-ids: ${{ steps.metadata.outputs.artifact_id }}
+          merge-multiple: true
           path: ${{ runner.temp }}/metadata
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
@@ -175,10 +179,33 @@ jobs:
           ref: ${{ needs.validate-pr-test-build.outputs.base_sha }}
           fetch-depth: 0
 
+      - name: Select current firmware artifacts
+        id: firmware
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          PR_NUMBER: ${{ needs.validate-pr-test-build.outputs.pr_number }}
+        run: |
+          # The successful event may predate a rerun. Recheck under the publish
+          # lock so failed/pending reruns cannot supply partial replacements.
+          SOURCE_RUN_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}")"
+          if ! jq -e '.status == "completed" and .conclusion == "success"' <<< "${SOURCE_RUN_JSON}" >/dev/null; then
+            echo "Latest source build attempt is not successful." >&2
+            exit 1
+          fi
+          ARTIFACT_IDS="$(gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/artifacts?per_page=100" \
+            --jq "[.[].artifacts[] | select(.expired == false and (.name | startswith(\"openquatt-\") and endswith(\"-pr-${PR_NUMBER}\")))] | group_by(.name) | map(max_by(.id)) | map(.id | tostring) | join(\",\")")"
+          if [[ ! "${ARTIFACT_IDS}" =~ ^[1-9][0-9]*(,[1-9][0-9]*)*$ ]]; then
+            echo "Missing or invalid firmware artifact IDs." >&2
+            exit 1
+          fi
+          echo "artifact_ids=${ARTIFACT_IDS}" >> "${GITHUB_OUTPUT}"
+
       - name: Download firmware artifacts
         uses: actions/download-artifact@v7
         with:
-          pattern: openquatt-*-pr-${{ needs.validate-pr-test-build.outputs.pr_number }}
+          artifact-ids: ${{ steps.firmware.outputs.artifact_ids }}
           path: ${{ runner.temp }}/firmware
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
@@ -205,7 +232,13 @@ jobs:
           PR_NUMBER: ${{ needs.validate-pr-test-build.outputs.pr_number }}
           SHORT_SHA: ${{ needs.validate-pr-test-build.outputs.short_sha }}
           VERSION: ${{ needs.validate-pr-test-build.outputs.version }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
+          SOURCE_RUN_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}")"
+          if ! jq -e '.status == "completed" and .conclusion == "success"' <<< "${SOURCE_RUN_JSON}" >/dev/null; then
+            echo "Latest source build attempt is no longer successful." >&2
+            exit 1
+          fi
           PR_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           if [[ "$(jq -r '.state' <<< "${PR_JSON}")" != "open" ]] || \
              ! jq -e '.labels | any(.name == "test-firmware")' <<< "${PR_JSON}" >/dev/null || \

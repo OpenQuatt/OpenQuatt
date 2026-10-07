@@ -149,11 +149,20 @@ void compare_case(const ActualInput& input, const ActualTuning& tuning, const Ac
   const auto expected = baseline_0282c2e9::decide_demand(frozen_input, frozen_tuning, frozen_state);
   assert(actual.valid == expected.valid);
   assert(actual.external == expected.external);
-  assert(actual.raw_demand == expected.raw_demand);
   assert(actual.next.last_ms == expected.next.last_ms);
+  assert_close(actual.next.comfort_memory_c, expected.next.comfort_memory_c, "comfort_memory_c");
+  // The warm pullback intentionally moved from setpoint to setpoint + above.
+  // Keep the frozen baseline intact; all other paths still require equivalence.
+  // Numeric warm-edge and recovery-boundary cases live in the demand core test.
+  if (actual.valid && input.room_c > input.setpoint_c) {
+    assert(actual.requested_w >= expected.requested_w - 0.001f);
+    assert(actual.raw_demand >= expected.raw_demand);
+    assert(actual.requested_w >= 0.0f && actual.requested_w <= input.rated_w);
+    return;
+  }
+  assert(actual.raw_demand == expected.raw_demand);
   assert_close(actual.requested_w, expected.requested_w, "requested_w");
   assert_close(actual.next.last_w, expected.next.last_w, "next.last_w");
-  assert_close(actual.next.comfort_memory_c, expected.next.comfort_memory_c, "comfort_memory_c");
 }
 
 ActualTuning tuning() { return {0.15f, 1800.0f, 0.35f, 0.55f, 8.0f, 5.0f, 10}; }

@@ -11,6 +11,13 @@ substitutions:
   build_source_commit: "unknown"
   build_target: "unknown"
 
+esphome:
+  on_boot:
+    - priority: -100
+      then:
+        - lambda: |-
+            oq_nvs_cleanup::retire_openquatt_preferences(id(oq_air_purge_return_to_auto));
+
 external_components:
   - source:
       type: local

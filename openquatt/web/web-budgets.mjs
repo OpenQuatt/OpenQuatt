@@ -6,8 +6,8 @@ export const WEB_BUNDLE_BUDGETS = [
     file: "js/openquatt-app.js",
     // Includes passive learning, trend goals, the curve editor and air-purge status.
     // With revised English terminology: ~1.291 MB raw / 359 kB gzip on Node 24.19.0.
-    // Controlled warmup (#784): +3.8 kB raw / +0.9 kB gzip against dev on Node 24.14.1.
-    raw: 1_300_000,
+    // Controlled warmup (#784) combined with #788: +7.4 kB raw / +2.1 kB gzip against dev.
+    raw: 1_310_000,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

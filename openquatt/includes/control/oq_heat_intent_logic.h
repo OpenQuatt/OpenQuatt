@@ -57,6 +57,8 @@ struct Decision {
 
 inline uint32_t timestamp_ms(uint32_t now_ms) { return now_ms == 0 ? UINT32_MAX : now_ms; }
 
+inline float room_cold_edge_c(float setpoint_c, float room_resume_delta_c) { return setpoint_c - room_resume_delta_c; }
+
 inline Decision evaluate(const Input& input, State state) {
   Decision out;
   const bool valid =
@@ -114,9 +116,10 @@ inline Decision evaluate(const Input& input, State state) {
 
   // An intermediate target is a step-completion point, not a new comfort band.
   // In particular a 0.1 C step must still request heat with a 0.2 C comfort band.
-  out.room_condition = input.controlled_warmup ? input.room_c < input.setpoint_c &&
-                                                     input.room_c < observed_setpoint_c - input.room_resume_delta_c
-                                               : input.room_c <= input.setpoint_c - input.room_resume_delta_c;
+  out.room_condition =
+      input.controlled_warmup
+          ? input.room_c < input.setpoint_c && input.room_c < observed_setpoint_c - input.room_resume_delta_c
+          : input.room_c <= room_cold_edge_c(input.setpoint_c, input.room_resume_delta_c);
   if (out.room_condition) {
     if (input.room_confirm_ms == 0) {
       state.room_confirm_since_ms = 0;

@@ -4,48 +4,48 @@
 # Curated local diagnostics. Compressor starts are tracked from measured
 # compressor frequency transitions and reset after reboot. Short-term and
 # structural cycling incidents remain available in the local web UI until the
-# user explicitly acknowledges them.
+# user explicitly acknowledges them or the controller restarts.
 # ==============================================================================
 
 globals:
   - id: oq_compressor_cycling_alert_latched
     type: bool
-    restore_value: true
+    restore_value: false
     initial_value: 'false'
 
   - id: oq_compressor_cycling_alert_first_seen_epoch
     type: uint32_t
-    restore_value: true
+    restore_value: false
     initial_value: '0'
 
   - id: oq_compressor_cycling_alert_last_seen_epoch
     type: uint32_t
-    restore_value: true
+    restore_value: false
     initial_value: '0'
 
   - id: oq_compressor_cycling_alert_alternating
     type: bool
-    restore_value: true
+    restore_value: false
     initial_value: 'false'
 
   - id: oq_compressor_cycling_alert_hp1_peak_2h_value
     type: int
-    restore_value: true
+    restore_value: false
     initial_value: '0'
 
   - id: oq_compressor_cycling_alert_hp1_peak_72h_value
     type: int
-    restore_value: true
+    restore_value: false
     initial_value: '0'
 
   - id: oq_compressor_cycling_alert_hp2_peak_2h_value
     type: int
-    restore_value: true
+    restore_value: false
     initial_value: '0'
 
   - id: oq_compressor_cycling_alert_hp2_peak_72h_value
     type: int
-    restore_value: true
+    restore_value: false
     initial_value: '0'
 
 script:

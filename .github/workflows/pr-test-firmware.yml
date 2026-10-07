@@ -8,7 +8,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: pr-test-firmware-${{ github.event.pull_request.number }}
+  # Concurrency is applied before job conditions. Give skipped events their own
+  # group so PR text edits or unrelated labels cannot cancel a build/publication.
+  group: >-
+    ${{
+      contains(github.event.pull_request.labels.*.name, 'test-firmware') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'test-firmware') &&
+      (github.event.action != 'edited' || github.event.changes.base != null) &&
+      format('pr-test-firmware-{0}', github.event.pull_request.number) ||
+      format('pr-test-firmware-noop-{0}', github.run_id)
+    }}
   cancel-in-progress: true
 
 jobs:
@@ -17,6 +26,7 @@ jobs:
     if: >-
       ${{
         contains(github.event.pull_request.labels.*.name, 'test-firmware') &&
+        (github.event.action != 'labeled' || github.event.label.name == 'test-firmware') &&
         (github.event.action != 'edited' || github.event.changes.base != null)
       }}
     outputs:
@@ -83,6 +93,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: pr-test-firmware-meta
+          overwrite: true
           if-no-files-found: error
           retention-days: 1
           path: ${{ runner.temp }}/pr-test-firmware-meta.json

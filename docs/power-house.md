@@ -4,6 +4,8 @@ Deze pagina is bedoeld voor gebruikers die `Power House` net iets beter willen b
 
 > Zoek je vooral de korte uitleg? Begin dan bij [Verwarmen en comfort](dagelijks/verwarmen.md).
 
+> Wil je comfort of langer doorverwarmen instellen? Zie [Power House comfortregeling in de web-app](web-app/instellingen.md#power-house-comfortregeling).
+
 ## Wat is Power House in gewone taal?
 
 `Power House` stuurt niet eerst op een vaste aanvoertemperatuur, maar op de warmtevraag van het huis.
@@ -30,11 +32,11 @@ Werk je liever direct met een stooklijn en aanvoertemperatuur, dan past [Water T
 
 ## Wat doet het systeem bij te koud, goed of te warm?
 
-`Power House` werkt rond de ingestelde kamertemperatuur met een comfortband.
+`Power House` berekent de warmtevraag uit de woningbehoefte en een kamercorrectie. De gewenste kamertemperatuur is geen automatische uitknop. In **Power House — comfort** staan daarom **Op temperatuur houden** en het optionele **Langer doorverwarmen** apart herkenbaar bij elkaar.
 
 ### Te koud
 
-Onder de comfortband vraagt OpenQuatt extra warmte boven op de normale huisvraag.
+Onder de normale koude grens vraagt OpenQuatt extra warmte boven op de normale huisvraag. Die grens is het setpoint min `Power House comfort below setpoint`, in de web-app **Afkoeling onder gewenste temperatuur**.
 
 Praktisch merk je dan:
 
@@ -44,7 +46,7 @@ Praktisch merk je dan:
 
 ### Bijna goed
 
-Binnen de comfortband blijft de directe reactie juist rustiger.
+Zonder opgebouwde comfortcorrectie blijft de directe kamercorrectie vlak tussen de koude en warme comfortgrens. Opgebouwde comfort memory kan de extra opwarming langer laten doorwerken, ook boven het setpoint.
 
 Praktisch merk je dan:
 
@@ -54,7 +56,7 @@ Praktisch merk je dan:
 
 ### Te warm
 
-Boven de bovengrens van de comfortband remt `Power House` de warmtevraag af.
+`Power House` remt de warmtevraag boven de warme comfortgrens af. Die grens is het setpoint plus `Power House comfort above setpoint`, in de web-app **Afremmen boven gewenste temperatuur**. Hoe verder de kamer erboven komt, hoe groter de aftrek van de warmtevraag. Deze grens is geen compressor-stoptemperatuur of gegarandeerde maximumkamertemperatuur.
 
 Praktisch merk je dan:
 
@@ -97,6 +99,49 @@ Belangrijke instellingen:
 - `Power House temperature reaction`
 
 Dit deel bepaalt vooral hoe fel of juist rustig de regeling op kamerafwijking reageert.
+
+**Afkoeling onder gewenste temperatuur** staat direct in de gewone bediening. **Afremmen boven gewenste temperatuur** staat ernaast. **Temperatuurreactie** en het responsprofiel staan onder **Geavanceerd: afstelling van de regeling**. De firmware-entiteiten en opgeslagen waarden blijven hetzelfde.
+
+#### Directe correctie en herstel van eerdere achterstand
+
+Zonder opgebouwde herstelcorrectie geldt:
+
+```text
+koude grens = setpoint − comfort below
+kamer onder koude grens: correctie = (koude grens − kamer) × temperatuurreactie
+warme grens = setpoint + comfort above
+kamer tussen koude grens en warme grens: directe correctie = 0 W
+kamer boven warme grens: correctie = (warme grens − kamer) × temperatuurreactie
+```
+
+Die correctie komt boven op de woningbehoefte. Daarna volgen vermogensbegrenzing, opbouw-/afbouwvertraging, waterbegrenzing en de keuze van een geschikte warmtepompcombinatie.
+
+![Directe kamercorrectie zonder opgebouwde herstelcorrectie](assets/powerhouse-kamercorrectie.svg)
+
+Bij aanhoudend te koud zijn bouwt de regeling een kleine herstelcorrectie (*comfort memory*) op. Die verschuift intern de koude correctiegrens omhoog; de ingestelde gewenste temperatuur verandert niet. De eerdere achterstand kan daardoor nog extra opwarming geven als de kamer inmiddels dichter bij het setpoint zit.
+
+`Comfort above` heeft meerdere effecten. Met onder- en bovenmarge begrensd op 0–2 °C is de maximale interne verschuiving `clamp(0,05 + 0,50 × comfort above, 0,08, 0,20) °C`. De opbouw hangt af van de achterstand en duurt bij constante achterstand ongeveer 24–90 minuten tot dit maximum. Afbouw begint boven het midden van `setpoint − comfort below` en `setpoint + comfort above`: op een tempo van het maximum per 40 minuten, of per 12 minuten boven de laatste grens. Een grotere bovenmarge geeft dus niet onbeperkt meer herstelcorrectie en is geen toegestane temperatuuroverschrijding.
+
+De directe berekening gebruikt `min(setpoint + memory − comfort below, warme grens)` als koude correctiegrens. Op of boven de warme grens is geen positieve kamercorrectie mogelijk; erboven wordt warmte teruggenomen. De gewenste temperatuur blijft ongewijzigd. Bij ondermarge **0,1 °C** en opgebouwde verschuiving **0,2 °C** kan bij **21,05 °C** en setpoint **21,0 °C** dus nog positieve correctie bestaan. Bij ondermarge **0,2 °C** en hetzelfde maximum is dat boven het setpoint niet mogelijk.
+
+#### Rekenvoorbeeld van warmtevraag
+
+Illustratief: setpoint **21,0 °C**, ondermarge **0,2 °C**, bovenmarge **0,3 °C**, woningbehoefte **2.400 W**, temperatuurreactie **3.000 W/K**. De tabel toont de berekening vóór verdere vertraging en begrenzing, niet het onmiddellijk geleverde vermogen.
+
+| Kamer en voorgeschiedenis | Directe correctie | Vraag vóór verdere begrenzing |
+| --- | --- | --- |
+| 21,0 °C, geen herstelcorrectie | 0 W | 2.400 W: het setpoint bereiken betekent niet automatisch stoppen |
+| 20,9 °C, geen herstelcorrectie | 0 W | 2.400 W: nog boven de koude grens |
+| 20,7 °C, geen herstelcorrectie | +300 W | 2.700 W: 0,1 °C onder de koude grens |
+| 20,9 °C, aangenomen herstelcorrectie 0,15 °C | +150 W | 2.550 W: extra opwarming werkt nog door |
+| 21,3 °C, geen herstelcorrectie | 0 W | 2.400 W: de warme grens is bereikt, maar nog niet overschreden |
+| 21,6 °C, geen herstelcorrectie | −900 W | 1.500 W: warmte wordt teruggenomen |
+
+Dezelfde actuele kamertemperatuur kan dus een andere vraag geven na een eerdere achterstand. Bij een aangenomen laagste geschikt vermogen van **1.700 W** mag langer doorverwarmen bij een stopmarge van **0,7 °C** een lopende run in de laatste rij tot **1.700 W** ondersteunen. Er bestaat geen vaste temperatuurgrens waar dat minimumvermogen begint.
+
+#### Wijziging van de bovenmarge
+
+Deze PR herstelt de warme correctiegrens op `setpoint + comfort above`. De vorige regeling begon boven het oorspronkelijke setpoint met warmte terugnemen. De bovenmarge heeft daardoor opnieuw een rechtstreeks merkbaar effect, ook als langer doorverwarmen uitstaat. Bestaande waarden en entitynamen blijven behouden; met een positieve bovenmarge wordt later afgeremd. Deze update is dus ook een wijziging van het gewone regelgedrag.
 
 ### 3. Reactiesnelheid
 
@@ -165,7 +210,7 @@ Wat die externe waarde wel en niet doet:
 - De kamercorrectie, de begrenzing op `Rated maximum house power`, de reactiesnelheid, de waterbegrenzing en de vorstbeveiliging blijven van OpenQuatt zelf.
 - Valt de bron weg, wordt hij te oud of stuurt hij een onbruikbare waarde, dan gaat `Power House` terug naar het eigen huismodel. Niet naar nul.
 
-Reken de kamercorrectie niet als begrenzing. Komt de kamer boven het setpoint, dan trekt hij `Power House temperature reaction` watt per graad van de vraag af — met de standaardinstellingen 3000 W per graad. Van een externe vraag van 7020 W blijft bij een halve graad overschrijding dus nog 5520 W over, en pas rond 2,3 graden erboven valt de vraag helemaal weg. Een te hoge externe vraag wordt gedempt, maar kan de kamer wel degelijk warmer maken dan gevraagd.
+Reken de kamercorrectie niet als begrenzing. Komt de kamer boven `setpoint + comfort above`, dan trekt hij `Power House temperature reaction` watt per graad van de vraag af — met de standaardinstellingen 3000 W per graad. Van een externe vraag van 7020 W blijft bij een halve graad boven die warme grens dus nog 5520 W over, en pas rond 2,3 graden boven die grens valt de vraag helemaal weg. Een te hoge externe vraag wordt gedempt, maar kan de kamer wel degelijk warmer maken dan gevraagd.
 
 Wil je warmte in de tijd verschuiven, bijvoorbeeld voorverwarmen bij veel zon, dan is het kamer-setpoint daarvoor de juiste knop en niet de warmtevraag.
 
@@ -178,15 +223,14 @@ Als je `Power House` wilt afstellen, begin dan bijna altijd hier:
 1. `Rated maximum house power`
 2. `House cold temp`
 3. `Maximum heating outdoor temperature`
-4. `Power House temperature reaction`
-5. `Power House comfort below setpoint`
+4. **Afkoeling onder gewenste temperatuur** (`Power House comfort below setpoint`)
+5. **Afremmen boven gewenste temperatuur** (`Power House comfort above setpoint`)
+6. Eventueel **Langer doorverwarmen**, met stopmarge en afkoeling
 
 Daarna eventueel:
 
-6. `Power House comfort above setpoint`
-7. `Power House demand rise time`
-8. `Power House demand fall time`
-9. `Maximum water temperature`
+7. **Geavanceerd**: `Power House temperature reaction` en het reactieprofiel met opbouw-/afbouwtijd
+8. `Maximum water temperature`
 
 Verander liever niet meerdere van deze groepen tegelijk.
 
@@ -218,27 +262,66 @@ Voor de meeste gebruikers is vooral dit belangrijk:
 
 ## Langer doorverwarmen (optioneel)
 
-`Power House run extension` is een optionele uitbreiding op `Power House` en staat standaard uit. Bestaande installaties blijven zonder deze schakelaar exact hetzelfde werken.
+Power House berekent continu hoeveel warmte je woning nodig heeft. **Langer doorverwarmen** bepaalt alleen hoe een bestaande verwarmingsrun bij heel weinig vraag mag doorgaan en daarna opnieuw mag beginnen. De functie staat standaard uit.
 
-Als de functie aan staat, mag een al draaiende verwarmingsrun bij weinig warmtevraag rustig op het laagste geschikte vermogen blijven doorverwarmen, ook als de berekende huisvraag tijdelijk onder dat minimum of zelfs op nul zit.
+### Wat gebeurt er wanneer je het aanzet?
 
-Belangrijk in gewone taal:
+1. De warmtepomp moet eerst vanwege de normale warmtevraag gaan verwarmen. Inschakelen start een stilstaande warmtepomp niet zelfstandig.
+2. Als de woning minder warmte nodig heeft dan het laagste geschikte warmtepompvermogen, mag de run op dat minimumvermogen doorgaan. Dat mag ook wanneer de normale vraag tijdelijk nul is.
+3. Bij **Stopgrens boven gewenste temperatuur** wordt een comfortstop aangevraagd. Dit geldt in de geactiveerde cyclus ook als de gewone vraag nog boven het minimumvermogen ligt. De minimumlooptijd kan de daadwerkelijke stop uitstellen. Restwarmte kan de kamer daarna nog verder opwarmen; dit is geen gegarandeerde maximumtemperatuur.
+4. Daarna wacht de regeling op afkoeling. **Afkoeling na stoppen** wordt gerekend vanaf de ingestelde stopgrens, niet vanaf een eventuele hogere temperatuurpiek door restwarmte.
+5. Herstart gebeurt alleen als Power House opnieuw warmte vraagt. Wachttijden en beveiligingen kunnen de daadwerkelijke start uitstellen.
 
-- de functie verlengt alleen een bestaande run; inschakelen start een stilstaande warmtepomp niet zelfstandig;
-- de kamer mag daardoor bewust iets boven het setpoint uitkomen;
-- de stopmarge is geen gegarandeerde maximumkamertemperatuur; restwarmte kan nog voor overshoot zorgen;
-- na een comfortstop wacht het systeem op afkoeling en mag het daarna alleen warm herstarten als de woning echt weer warmte vraagt;
-- `comfort above` en de nieuwe stopmarge zijn verschillende instellingen;
-- er is geen garantie op lager elektriciteitsverbruik.
+### De instellingen
 
-Instellingen:
+| In de web-app | Home Assistant / firmware | Bereik en standaard |
+|---|---|---|
+| Langer doorverwarmen | `Power House run extension` | Aan/uit; standaard uit |
+| Stopgrens boven gewenste temperatuur | `Power House run extension stop margin` | 0,1–1,0 °C boven setpoint; standaard 0,5 °C |
+| Afkoeling na stoppen | `Power House run extension restart cooldown` | 0,1–3,0 °C onder de comfortstop; standaard 0,2 °C |
 
-- `Power House run extension` (aan/uit, standaard uit);
-- `Power House run extension stop margin` (0,1–1,0 °C in stapjes van 0,1, standaard 0,5 °C).
+De getalinstellingen hebben stappen van 0,1 °C en blijven na herstart behouden. In Home Assistant zijn deze extension-entities standaard uitgeschakeld; je kunt ze daar zelf inschakelen. De web-app toont stop- en herstarttemperatuur berekend met de getoonde instellingen. Tijdens bewerken is dat een voorvertoning van je wijziging.
 
-Bij een setpoint van 20,5 °C en een marge van 0,5 °C stopt een verlengde run bij 21,0 °C. Daarna mag een warme herstart vanaf 20,8 °C plaatsvinden als de woning nog warmte nodig heeft. Die 0,2 K hysteresis ligt vast en is geen aparte instelling.
+```text
+stopgrens = setpoint + stopmarge
+normale koude grens = setpoint − comfort below
+herstartgrens = max(stopgrens − afkoeling, normale koude grens)
+```
 
-Alle bestaande beveiligingen blijven leidend: waterbegrenzing, stroomlimieten, minimum aan/uit-tijden, defrost en olieretour gaan altijd voor. De extra vraag telt bovendien niet mee als woningtekort voor ketelbijschakeling.
+Een hogere stopmarge kan bij gelijke afkoeling ook de herstartgrens verhogen. Een grotere afkoeling verlaagt de herstartgrens tot de normale koude grens; daarna heeft verder verhogen geen effect op die grens. Een grotere ondermarge verlaagt de normale koude grens en kan daardoor ook verder afkoelen na een comfortstop mogelijk maken.
+
+### Voorbeelden: vroeg herstarten of langer afkoelen
+
+Je gewenste temperatuur is **21,0 °C**, doorverwarmen staat op **+0,7 °C** en je normale comfortmarge onder setpoint is **0,2 °C**. De comfortstop ligt dan op **21,7 °C** en de normale koude comfortgrens op **20,8 °C**.
+
+| Afkoeling na stoppen | Opnieuw verwarmen mogelijk bij | Betekenis |
+|---|---|---|
+| 0,2 °C | 21,5 °C | Vroege herstart, nog boven je gewenste temperatuur |
+| 0,7 °C | 21,0 °C | Afkoelen tot je gewenste temperatuur |
+| 0,9 °C | 20,8 °C | Afkoelen tot je normale koude comfortgrens |
+| 1,2 °C | 20,8 °C | Begrensd: de berekende 20,5 °C ligt onder je normale koude comfortgrens |
+
+**De normale koude comfortgrens blijft leidend.** Langer doorverwarmen mag normale warmtevraag niet voorbij die grens tegenhouden. Wil je bewust verder laten afkoelen, dan hoort die keuze bij `Power House comfort below setpoint`. Een grotere marge onder setpoint laat meer afkoeling toe. Beveiligingen blijven ook dan gelden; de grens garandeert niet dat de kamer nooit kouder wordt.
+
+De web-app toont de werkelijke begrensde herstarttemperatuur en legt uit wanneer de koude comfortgrens ingrijpt. Voor de standaard stopmarge +0,5 °C en afkoeling 0,2 °C blijft warme herstart mogelijk vanaf setpoint +0,3 °C, zoals voorheen. Bij een kleine stopmarge en kleine comfortmarge kan de nieuwe koude comfortgrens eerder vrijgave geven dan de oude vaste 0,2 °C-afstand.
+
+Bij een piek van **22,0 °C** door restwarmte blijft de herstartgrens met stopgrens **21,7 °C** en afkoeling **0,7 °C** dus **21,0 °C**. In het vermogensvoorbeeld hierboven is de gewone vraag bij **21,5 °C** slechts **900 W**, zodat herstart tot het minimumvermogen kan worden ondersteund. Bij **21,0 °C** is de vraag **2.400 W**; die hogere vraag mag worden gevolgd. Herstart betekent niet automatisch draaien op minimumvermogen. Een run hoeft bovendien niet altijd tot de stopgrens op te warmen.
+
+### Comfortband en doorverwarmen zijn verschillende dingen
+
+De historische namen `Comfort below/above` beschrijven geen symmetrische aan/uit-band. `Comfort below` beïnvloedt de normale koude grens, kamercorrectie en room intent; `Comfort above` bepaalt de warme correctiegrens en beïnvloedt ook de automatische herstelcorrectie en afbouw daarvan. De eerste staat in de web-app als **Afkoeling onder gewenste temperatuur**, de tweede als **Afremmen boven gewenste temperatuur** ernaast. Zonder opgebouwde herstelcorrectie begint warme tegensturing boven het setpoint plus de bovenmarge; herstelcorrectie kan extra opwarming laten doorwerken tot binnen de comfortband, maar nooit boven de warme grens.
+
+De stopmarge en herstartafstand horen bij het aparte doorverwarmen-mechanisme. Kleine afkoeling kan passen als je vroeg wilt herstarten; grotere afkoeling geeft opgeslagen warmte meer tijd om af te geven. Er zijn geen aparte regelmodi voor radiatoren, LT-radiatoren en vloerverwarming. Er is geen garantie op lager elektriciteitsverbruik.
+
+### Status, uitschakelen en herstart van de controller
+
+De actuele status laat zien of de regeling **Normaal verwarmt**, **Doorverwarmt op minimumvermogen**, een **Stop heeft aangevraagd**, **Wacht op afkoeling** of een **Herstart heeft aangevraagd**. De firmwarewaarden blijven `normal`, `extending`, `comfort_stop`, `wait_warm_restart` en `warm_restart`. **Herstart aangevraagd** betekent dat herstart is vrijgegeven, niet dat de compressor al draait. De berekende grenzen in het instellingenblok zijn geen bewijs dat een bestaande aanvraag is ingetrokken.
+
+Uitschakelen van langer doorverwarmen schakelt de gewone verwarming niet uit: de normale Power House-vraag kan een run laten doorgaan of later opnieuw starten. Verander je de herstartafstand tijdens wachten, dan geldt de nieuwe grens bij de volgende regeltick. Een al vrijgegeven warme herstart houdt zijn bestaande intent vast; vraaguitval, setpointverlaging en beveiligingen blijven die kunnen beëindigen.
+
+Na reboot of firmware-update blijven de instellingen behouden, maar de historische doorverwarmen-cyclus wordt gewist. Er moet eerst weer een echte verwarmingsrun zijn voordat extension een warme herstart mag vrijgeven. De normale comfortregeling kan ondertussen gewoon warmte vragen.
+
+Alle bestaande beveiligingen blijven leidend: waterbegrenzing, stroomlimieten, minimum aan/uit-tijden, defrost en olieretour. De extra minimumvermogenvraag telt niet mee als woningtekort voor ketelbijschakeling.
 
 ## Wat hoef je meestal niet aan te raken?
 

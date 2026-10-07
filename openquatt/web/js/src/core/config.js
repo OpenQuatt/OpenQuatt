@@ -570,6 +570,7 @@
     ["phDemandFallTime", DOMAIN_NUMBER, "Power House demand fall time", false],
     ["phRunExtension", DOMAIN_SWITCH, "Power House run extension"],
     ["phRunExtensionStopMargin", DOMAIN_NUMBER, "Power House run extension stop margin"],
+    ["phRunExtensionRestartCooldown", DOMAIN_NUMBER, "Power House run extension restart cooldown"],
     ["phRunExtensionStatus", DOMAIN_TEXT_SENSOR, "Power House run extension status"],
     ["warmupEnabled", DOMAIN_SWITCH, "Controlled warmup enabled"],
     ["warmupTrigger", DOMAIN_NUMBER, "Controlled warmup trigger"],
@@ -836,6 +837,7 @@
   ];
 
   export const POWER_HOUSE_KEYS = [
+    "roomSetpoint",
     "housePower",
     "houseColdTemp",
     "houseOutdoorMax",
@@ -847,6 +849,7 @@
     "phDemandFallTime",
     "phRunExtension",
     "phRunExtensionStopMargin",
+    "phRunExtensionRestartCooldown",
     "phRunExtensionStatus",
   ];
   export const WARMUP_SETTING_KEYS = ["warmupEnabled", "warmupTrigger", "warmupStep", "warmupStepTime"];
@@ -2183,6 +2186,7 @@
         "phDemandFallTime",
         "phRunExtension",
         "phRunExtensionStopMargin",
+        "phRunExtensionRestartCooldown",
       ],
     },
     {

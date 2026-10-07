@@ -9,6 +9,7 @@ import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSetti
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
 import { formatNumber, t } from "../i18n/index.js";
+import { getInputDraftValue } from "../core/control-drafts.js";
 import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js";
 
   export function renderCurveFallbackSuggestionMarkup(helper = false) {
@@ -190,7 +191,6 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
         ${renderSettingsNumberField("houseColdTemp", t("settingsHeating.houseColdTitle"), t("settingsHeating.houseColdCopy"))}
         ${renderSettingsNumberField("houseOutdoorMax", t("settingsHeating.houseOutdoorMaxTitle"), t("settingsHeating.houseOutdoorMaxCopy"))}
         ${renderSettingsNumberField("housePower", t("settingsHeating.housePowerTitle"), t("settingsHeating.housePowerCopy"))}
-        ${renderPowerHouseResponseProfilesField()}
       </div>
     `;
   }
@@ -358,181 +358,61 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     );
   }
 
-  export function renderPowerHouseConceptGraphic() {
-    const safe = (key, fallback = 0) => {
-      const numeric = getEntityNumericValue(key);
-      return Number.isNaN(numeric) ? fallback : Math.max(0, numeric);
-    };
-    const exampleSetpoint = 20;
-    const comfortBelow = safe("phComfortBelow", 0.1);
-    const comfortAbove = safe("phComfortAbove", 0.3);
-    const temperatureReaction = safe("phKp", 3000);
-
-    const quietMin = exampleSetpoint - comfortBelow;
-    const quietMax = exampleSetpoint + comfortAbove;
-
-    const width = 620;
-    const height = 184;
-    const left = 46;
-    const right = 24;
-    const top = 18;
-    const bottom = 40;
-    const axisY = 96;
-    const plotWidth = width - left - right;
-    const minTemp = Math.min(exampleSetpoint - 1.2, quietMin - 0.35);
-    const maxTemp = Math.max(exampleSetpoint + 1.2, quietMax + 0.35);
-    const toX = (temp) => left + ((temp - minTemp) / Math.max(0.01, maxTemp - minTemp)) * plotWidth;
-
-    const leftX = toX(minTemp);
-    const rightX = toX(maxTemp);
-    const quietMinX = toX(quietMin);
-    const setpointX = toX(exampleSetpoint);
-    const quietMaxX = toX(quietMax);
-    const showQuietMinTick = Math.abs(quietMin - exampleSetpoint) > 0.001;
-    const showQuietMaxTick = Math.abs(quietMax - exampleSetpoint) > 0.001;
-    const curveTopY = top + 24;
-    const curveBottomY = height - bottom;
-    const tooltipY = axisY - 44;
-    const renderConceptTooltip = (x, kicker, detail, modifier = "") => {
-      const width = 110;
-      const height = 36;
-      const tooltipX = Math.max(leftX + 4, Math.min(rightX - width - 4, x - width / 2));
-      const hitX = x - 14;
-      const hitY = tooltipY;
-      const hitWidth = 28;
-      const hitHeight = axisY - tooltipY + 16;
-      return `
-        <g class="oq-ph-concept-hotspot" tabindex="0" role="img" aria-label="${escapeHtml(`${kicker} ${detail}`)}">
-          <rect class="oq-ph-concept-hit" x="${hitX}" y="${hitY}" width="${hitWidth}" height="${hitHeight}" rx="10"></rect>
-          <circle class="oq-ph-concept-hit" cx="${x}" cy="${axisY}" r="14"></circle>
-          <g class="oq-ph-concept-tooltip${modifier ? ` oq-ph-concept-tooltip--${modifier}` : ""}" transform="translate(${tooltipX} ${tooltipY})">
-            <rect class="oq-ph-concept-tooltip-panel" width="${width}" height="${height}" rx="10"></rect>
-            <text x="${width / 2}" y="14" text-anchor="middle" class="oq-ph-concept-tooltip-kicker">${escapeHtml(kicker)}</text>
-            <text x="${width / 2}" y="27" text-anchor="middle" class="oq-ph-concept-tooltip-detail">${escapeHtml(detail)}</text>
-          </g>
-        </g>
-      `;
-    };
-    const linePath = [
-      `M ${leftX.toFixed(1)} ${curveTopY.toFixed(1)}`,
-      `L ${quietMinX.toFixed(1)} ${axisY.toFixed(1)}`,
-      `L ${quietMaxX.toFixed(1)} ${axisY.toFixed(1)}`,
-      `L ${rightX.toFixed(1)} ${curveBottomY.toFixed(1)}`,
-    ].join(" ");
-
-    return `
-      <div class="oq-ph-concept-card">
-        <div class="oq-ph-concept-visual">
-          <p class="oq-ph-concept-kicker">${escapeHtml(t("settingsHeating.conceptKicker"))}</p>
-          <div class="oq-ph-concept-caption">
-            ${escapeHtml(t("settingsHeating.conceptCaption"))}
-          </div>
-          <div class="oq-ph-concept-meta">
-            <span class="oq-ph-concept-meta-pill">${escapeHtml(t("settingsHeating.conceptSetpoint"))} <strong>${escapeHtml(formatNumericState(exampleSetpoint, 1, "°C"))}</strong></span>
-            <span class="oq-ph-concept-meta-pill">${escapeHtml(t("settingsHeating.conceptComfortBand"))} <strong>${escapeHtml(formatNumericState(quietMin, 1, "°C"))} – ${escapeHtml(formatNumericState(quietMax, 1, "°C"))}</strong></span>
-            <span class="oq-ph-concept-meta-pill">${escapeHtml(t("settingsHeating.conceptReaction"))} <strong>${escapeHtml(formatNumericState(temperatureReaction, 0, " W/K"))}</strong></span>
-          </div>
-          <svg class="oq-ph-concept-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(t("settingsHeating.conceptAria"))}">
-            <rect x="${leftX.toFixed(1)}" y="${top}" width="${Math.max(20, quietMinX - leftX).toFixed(1)}" height="${(height - top - bottom).toFixed(1)}" rx="18" class="oq-ph-concept-band oq-ph-concept-band--below"></rect>
-            <rect x="${quietMinX.toFixed(1)}" y="${top}" width="${Math.max(20, quietMaxX - quietMinX).toFixed(1)}" height="${(height - top - bottom).toFixed(1)}" rx="18" class="oq-ph-concept-band oq-ph-concept-band--calm"></rect>
-            <rect x="${quietMaxX.toFixed(1)}" y="${top}" width="${Math.max(20, rightX - quietMaxX).toFixed(1)}" height="${(height - top - bottom).toFixed(1)}" rx="18" class="oq-ph-concept-band oq-ph-concept-band--above"></rect>
-
-            <line x1="${leftX}" y1="${top}" x2="${leftX}" y2="${height - bottom}" class="oq-ph-concept-axis"></line>
-            <line x1="${leftX}" y1="${axisY}" x2="${rightX}" y2="${axisY}" class="oq-ph-concept-axis"></line>
-            <line x1="${setpointX}" y1="${top}" x2="${setpointX}" y2="${height - bottom}" class="oq-ph-concept-axis oq-ph-concept-axis--vertical"></line>
-
-            <path d="${linePath}" class="oq-ph-concept-curve"></path>
-
-            ${showQuietMinTick ? `<line x1="${quietMinX}" y1="${axisY - 12}" x2="${quietMinX}" y2="${axisY + 12}" class="oq-ph-concept-marker oq-ph-concept-marker--below"></line>` : ""}
-            <line x1="${setpointX}" y1="${axisY - 14}" x2="${setpointX}" y2="${axisY + 14}" class="oq-ph-concept-marker oq-ph-concept-marker--setpoint"></line>
-            ${showQuietMaxTick ? `<line x1="${quietMaxX}" y1="${axisY - 12}" x2="${quietMaxX}" y2="${axisY + 12}" class="oq-ph-concept-marker oq-ph-concept-marker--above"></line>` : ""}
-            ${showQuietMinTick ? `<circle cx="${quietMinX}" cy="${axisY}" r="5" class="oq-ph-concept-point oq-ph-concept-point--below"></circle>` : ""}
-            <circle cx="${setpointX}" cy="${axisY}" r="6" class="oq-ph-concept-point oq-ph-concept-point--setpoint"></circle>
-            ${showQuietMaxTick ? `<circle cx="${quietMaxX}" cy="${axisY}" r="5" class="oq-ph-concept-point oq-ph-concept-point--above"></circle>` : ""}
-            ${showQuietMinTick ? renderConceptTooltip(quietMinX, t("settingsHeating.conceptComfortBelow"), formatNumericState(quietMin, 1, "°C"), "below") : ""}
-            ${renderConceptTooltip(setpointX, t("settingsHeating.conceptSetpoint"), formatNumericState(exampleSetpoint, 1, "°C"), "setpoint")}
-            ${showQuietMaxTick ? renderConceptTooltip(quietMaxX, t("settingsHeating.conceptComfortAbove"), formatNumericState(quietMax, 1, "°C"), "above") : ""}
-
-            <text x="${leftX + 8}" y="${top + 18}" text-anchor="start" class="oq-ph-concept-label oq-ph-concept-label--heat">${escapeHtml(t("settingsHeating.conceptMoreHeat"))}</text>
-            <text x="${leftX + 8}" y="${height - bottom - 8}" text-anchor="start" class="oq-ph-concept-label">${escapeHtml(t("settingsHeating.conceptLessHeat"))}</text>
-            <text x="${leftX}" y="${height - 26}" text-anchor="start" class="oq-ph-concept-label">${escapeHtml(t("settingsHeating.conceptColder"))}</text>
-            <text x="${rightX}" y="${height - 26}" text-anchor="end" class="oq-ph-concept-label">${escapeHtml(t("settingsHeating.conceptWarmer"))}</text>
-
-            ${showQuietMinTick ? `<text x="${quietMinX - 5}" y="${height - 14}" text-anchor="end" class="oq-ph-concept-tick-value">${escapeHtml(formatNumericState(quietMin, 1, "°C"))}</text>` : ""}
-            <text x="${setpointX}" y="${height - 14}" text-anchor="middle" class="oq-ph-concept-tick-value oq-ph-concept-tick-value--setpoint">${escapeHtml(formatNumericState(exampleSetpoint, 1, "°C"))}</text>
-            ${showQuietMaxTick ? `<text x="${quietMaxX + 5}" y="${height - 14}" text-anchor="start" class="oq-ph-concept-tick-value">${escapeHtml(formatNumericState(quietMax, 1, "°C"))}</text>` : ""}
-          </svg>
-        </div>
-        <div class="oq-ph-concept-zones">
-          <span class="oq-ph-concept-zone-chip oq-ph-concept-zone-chip--below">
-            <span class="oq-ph-concept-zone-chip-label">${escapeHtml(t("settingsHeating.zoneBelow"))}</span>
-            <span class="oq-ph-concept-zone-chip-meta">${escapeHtml(t("settingsHeating.zoneBelowMeta", { value: formatNumericState(quietMin, 1, "°C") }))}</span>
-          </span>
-          <span class="oq-ph-concept-zone-chip oq-ph-concept-zone-chip--calm">
-            <span class="oq-ph-concept-zone-chip-label">${escapeHtml(t("settingsHeating.zoneCalm"))}</span>
-            <span class="oq-ph-concept-zone-chip-meta">${escapeHtml(formatNumericState(quietMin, 1, "°C"))} – ${escapeHtml(formatNumericState(quietMax, 1, "°C"))}</span>
-          </span>
-          <span class="oq-ph-concept-zone-chip oq-ph-concept-zone-chip--above">
-            <span class="oq-ph-concept-zone-chip-label">${escapeHtml(t("settingsHeating.zoneAbove"))}</span>
-            <span class="oq-ph-concept-zone-chip-meta">${escapeHtml(t("settingsHeating.zoneAboveMeta", { value: formatNumericState(quietMax, 1, "°C") }))}</span>
-          </span>
-        </div>
-        <div class="oq-ph-concept-notes">
-          <article class="oq-ph-concept-note">
-            <span class="oq-ph-concept-note-title">${escapeHtml(t("settingsHeating.noteComfortBelowTitle"))}</span>
-            <p>${escapeHtml(t("settingsHeating.noteComfortBelowCopy"))}</p>
-          </article>
-          <article class="oq-ph-concept-note">
-            <span class="oq-ph-concept-note-title">${escapeHtml(t("settingsHeating.noteBandTitle"))}</span>
-            <p>${escapeHtml(t("settingsHeating.noteBandCopy"))}</p>
-          </article>
-          <article class="oq-ph-concept-note">
-            <span class="oq-ph-concept-note-title">${escapeHtml(t("settingsHeating.noteReactionTitle"))}</span>
-            <p>${escapeHtml(t("settingsHeating.noteReactionCopy"))}</p>
-          </article>
-        </div>
-      </div>
-    `;
-  }
-
   export function renderPowerHouseAdvancedField() {
     const fields = [
       renderSettingsNumberField("phKp", t("settingsHeating.phKpTitle"), t("settingsHeating.phKpCopy"), "", { unitOverride: "W/K" }),
-      renderSettingsNumberField("phComfortBelow", t("settingsHeating.phComfortBelowTitle"), t("settingsHeating.phComfortBelowCopy")),
-      renderSettingsNumberField("phComfortAbove", t("settingsHeating.phComfortAboveTitle"), t("settingsHeating.phComfortAboveCopy")),
+      renderPowerHouseResponseProfilesField(),
     ].filter(Boolean);
 
-    if (!fields.length) {
+    if (!fields.length && !hasEntity("phComfortBelow") && !hasEntity("phComfortAbove") && !hasEntity("phRunExtension")) {
       return "";
     }
 
     return `
-      <div class="oq-settings-subpanel oq-settings-subpanel--nested">
+      <div class="oq-settings-subpanel oq-settings-subpanel--nested oq-ph-comfort">
         <div class="oq-settings-subpanel-head">
-          <p class="oq-helper-label">${escapeHtml(t("settingsHeating.tuningKicker"))}</p>
           <h4>${escapeHtml(t("settingsHeating.tuningTitle"))}</h4>
           <p>${escapeHtml(t("settingsHeating.tuningCopy"))}</p>
         </div>
-        ${renderPowerHouseConceptGraphic()}
-        <div class="oq-settings-grid">
-          ${fields.join("")}
-        </div>
+        <section class="oq-settings-subpanel oq-settings-subpanel--nested" aria-label="${escapeHtml(t("settingsHeating.maintainTitle"))}">
+          <div class="oq-settings-subpanel-head">
+            <h4>${escapeHtml(t("settingsHeating.maintainTitle"))}</h4>
+            <p>${escapeHtml(t("settingsHeating.maintainCopy"))}</p>
+          </div>
+          <div class="oq-settings-grid">
+            ${renderSettingsNumberField("phComfortBelow", t("settingsHeating.phComfortBelowTitle"), t("settingsHeating.phComfortBelowCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("settingsHeating.phComfortBelowDirection"))}</p>` })}
+            ${renderSettingsNumberField("phComfortAbove", t("settingsHeating.phComfortAboveTitle"), t("settingsHeating.phComfortAboveCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("settingsHeating.phComfortAboveDirection"))}</p>` })}
+          </div>
+          <div class="oq-run-extension-summary" data-oq-power-house-comfort-thresholds>${renderPowerHouseComfortThresholds()}</div>
+        </section>
+        ${renderPowerHouseRunExtensionField()}
+        ${renderSettingsAdvancedDisclosure("power-house", t("settingsHeating.phAdvancedTitle"), t("settingsHeating.phAdvancedCopy"), `<div class="oq-settings-grid">${fields.join("")}</div>`)}
       </div>
     `;
   }
 
   export function formatRunExtensionTemp(value) {
     const numeric = Number(value);
-    return Number.isFinite(numeric) ? `${formatNumber(numeric, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} °C` : "—";
+    return Number.isFinite(numeric) ? `${formatNumber(numeric, { minimumFractionDigits: 1, maximumFractionDigits: 2 })} °C` : "—";
   }
 
-  export function getRunExtensionThresholds() {
-    const setpoint = hasEntity("roomSetpoint") ? getEntityNumericValue("roomSetpoint") : NaN;
-    const marginRaw = hasEntity("phRunExtensionStopMargin") ? getEntityNumericValue("phRunExtensionStopMargin") : NaN;
-    const margin = Number.isFinite(marginRaw) ? marginRaw : 0.5;
-    if (!Number.isFinite(setpoint)) return { setpoint: NaN, margin, hysteresis: 0.2, stop: NaN, restart: NaN };
-    const stop = setpoint + margin;
-    return { setpoint, margin, hysteresis: 0.2, stop, restart: stop - 0.2 };
+  export function getRunExtensionThresholds(useDrafts = true) {
+    const numeric = (key) => {
+      const entity = state.entities[key];
+      const value = useDrafts ? getInputDraftValue(key) : entity?.value ?? entity?.state ?? "";
+      return value === "" || value == null ? NaN : Number(value);
+    };
+    const setpoint = hasEntity("roomSetpoint") ? numeric("roomSetpoint") : NaN;
+    const margin = hasEntity("phRunExtensionStopMargin") ? numeric("phRunExtensionStopMargin") : 0.5;
+    const configurable = hasEntity("phRunExtensionRestartCooldown");
+    const cooldown = configurable ? numeric("phRunExtensionRestartCooldown") : 0.2;
+    const coldEdge = setpoint - numeric("phComfortBelow");
+    const warmEdge = setpoint + numeric("phComfortAbove");
+    const stop = Number.isFinite(setpoint) && Number.isFinite(margin) ? setpoint + margin : NaN;
+    const configuredRestart = stop - cooldown;
+    // Older firmware still uses its fixed 0.2 K threshold without the new cold-edge guard.
+    const restart = configurable ? Math.max(configuredRestart, coldEdge) : configuredRestart;
+    return { setpoint, margin, cooldown, stop, configuredRestart, coldEdge, warmEdge, restart, limited: restart > configuredRestart };
   }
 
   const RUN_EXTENSION_STATUS_COPY = {
@@ -548,18 +428,59 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     return t(RUN_EXTENSION_STATUS_COPY[String(status || "").trim().toLowerCase()] || "runExtension.disabled");
   }
 
+  function getRunExtensionCurrentStatus() {
+    if (!getEntityValue("phRunExtension")) return t("runExtension.disabled");
+    const status = String(getSettingsTextStatValue("phRunExtensionStatus", "inactive") || "").trim().toLowerCase();
+    return status === "inactive" ? t("runExtension.waiting") : getRunExtensionStatusCopy(status);
+  }
+
+  export function renderPowerHouseComfortThresholds() {
+    const model = getRunExtensionThresholds();
+    const active = getRunExtensionThresholds(false);
+    const preview = ["setpoint", "coldEdge", "warmEdge"].some((key) => !Object.is(model[key], active[key]));
+    return `
+      <p class="oq-run-extension-note">${escapeHtml(t(preview ? "runExtension.preview" : "runExtension.confirmed"))}</p>
+      <div class="oq-run-extension-thresholds">
+        <div><span>${escapeHtml(t("runExtension.desired"))}</span><strong>${escapeHtml(formatRunExtensionTemp(model.setpoint))}</strong><small>${escapeHtml(t("settingsHeating.desiredSource"))}</small></div>
+        <div><span>${escapeHtml(t("settingsHeating.coldEdgeTitle"))}</span><strong>${escapeHtml(formatRunExtensionTemp(model.coldEdge))}</strong><small>${escapeHtml(t("settingsHeating.coldEdgeCopy"))}</small></div>
+        ${hasEntity("phComfortAbove") ? `<div><span>${escapeHtml(t("settingsHeating.warmEdgeTitle"))}</span><strong>${escapeHtml(formatRunExtensionTemp(model.warmEdge))}</strong><small>${escapeHtml(t("settingsHeating.warmEdgeCopy"))}</small></div>` : ""}
+      </div>
+      ${preview ? `<p class="oq-run-extension-note">${escapeHtml(t("settingsHeating.activeColdEdge", { value: formatRunExtensionTemp(active.coldEdge) }))}</p>` : ""}
+      ${preview && hasEntity("phComfortAbove") ? `<p class="oq-run-extension-note">${escapeHtml(t("settingsHeating.activeWarmEdge", { value: formatRunExtensionTemp(active.warmEdge) }))}</p>` : ""}
+    `;
+  }
+
+  export function renderRunExtensionThresholds() {
+    const thresholdsModel = getRunExtensionThresholds();
+    const active = getRunExtensionThresholds(false);
+    const preview = ["setpoint", "margin", "cooldown", "coldEdge"].some((key) => !Object.is(thresholdsModel[key], active[key]));
+    const relative = (offset) => `setpoint ${offset < 0 ? "−" : "+"} ${formatRunExtensionTemp(Math.abs(offset))}`;
+    const thresholds = [
+      [t("runExtension.stop"), Number.isFinite(thresholdsModel.stop) ? formatRunExtensionTemp(thresholdsModel.stop) : relative(thresholdsModel.margin), t("runExtension.stopNote")],
+      [t("runExtension.restart"), Number.isFinite(thresholdsModel.restart) ? formatRunExtensionTemp(thresholdsModel.restart) : !hasEntity("phRunExtensionRestartCooldown") ? relative(thresholdsModel.margin - thresholdsModel.cooldown) : "—", t("runExtension.restartNote")],
+    ];
+    return `
+          <p class="oq-run-extension-note">${escapeHtml(t(preview ? "runExtension.preview" : "runExtension.confirmed"))}</p>
+          <div class="oq-run-extension-thresholds">
+            ${thresholds.map(([label, value, note]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></div>`).join("")}
+          </div>
+          ${thresholdsModel.limited ? `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.limited", { configured: formatRunExtensionTemp(thresholdsModel.configuredRestart), effective: formatRunExtensionTemp(thresholdsModel.restart) }))}</p>` : ""}
+          ${preview ? `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.activeThresholds", { stop: formatRunExtensionTemp(active.stop), restart: formatRunExtensionTemp(active.restart) }))}</p>` : ""}
+    `;
+  }
+
+  export function patchRunExtensionThresholds() {
+    const comfort = state.root?.querySelector("[data-oq-power-house-comfort-thresholds]");
+    if (comfort) comfort.innerHTML = renderPowerHouseComfortThresholds();
+    const target = state.root?.querySelector("[data-oq-run-extension-thresholds]");
+    if (target) target.innerHTML = renderRunExtensionThresholds();
+    const status = state.root?.querySelector("[data-oq-run-extension-status]");
+    if (status) status.textContent = getRunExtensionCurrentStatus();
+  }
+
   export function renderPowerHouseRunExtensionField() {
     if (!hasEntity("phRunExtension")) return "";
     const enabled = Boolean(getEntityValue("phRunExtension"));
-    const thresholdsModel = getRunExtensionThresholds();
-    const n = String(getSettingsTextStatValue("phRunExtensionStatus", "inactive") || "").trim().toLowerCase();
-    const status = enabled ? (n === "inactive" ? t("runExtension.waiting") : getRunExtensionStatusCopy(n)) : t("runExtension.disabled");
-    const relative = (offset) => `setpoint ${offset < 0 ? "−" : "+"} ${formatRunExtensionTemp(Math.abs(offset))}`;
-    const thresholds = [
-      [t("runExtension.desired"), Number.isFinite(thresholdsModel.setpoint) ? formatRunExtensionTemp(thresholdsModel.setpoint) : t("runExtension.roomSetpoint"), t("runExtension.desiredNote")],
-      [t("runExtension.stop"), Number.isFinite(thresholdsModel.stop) ? formatRunExtensionTemp(thresholdsModel.stop) : relative(thresholdsModel.margin), t("runExtension.stopNote")],
-      [t("runExtension.restart"), Number.isFinite(thresholdsModel.restart) ? formatRunExtensionTemp(thresholdsModel.restart) : relative(thresholdsModel.margin - thresholdsModel.hysteresis), t("runExtension.restartNote")],
-    ];
     return `
       <section class="oq-settings-subpanel oq-settings-subpanel--nested oq-run-extension" aria-label="${escapeHtml(t("runExtension.title"))}">
         <div class="oq-run-extension-intro">
@@ -567,16 +488,15 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
             <h4>${escapeHtml(t("runExtension.title"))}</h4>
             <p>${escapeHtml(t("runExtension.copy"))}</p>
           </div>
-          <span class="oq-run-extension-status">${escapeHtml(status)}</span>
+          <span class="oq-run-extension-status" data-oq-run-extension-status>${escapeHtml(getRunExtensionCurrentStatus())}</span>
         </div>
         <div class="oq-settings-grid">
           ${renderSettingsSwitchField("phRunExtension", t("runExtension.allow"), t("runExtension.allowCopy"), t("runExtension.on"), t("runExtension.off"))}
-          ${enabled ? renderSettingsNumberField("phRunExtensionStopMargin", t("runExtension.margin"), t("runExtension.marginCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.residual"))}</p>` }) : ""}
+          ${enabled ? renderSettingsNumberField("phRunExtensionStopMargin", t("runExtension.margin"), t("runExtension.marginCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.marginDirection"))}</p>` }) : ""}
+          ${enabled ? renderSettingsNumberField("phRunExtensionRestartCooldown", t("runExtension.cooldown"), t("runExtension.cooldownCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("runExtension.cooldownDirection"))}</p>` }) : ""}
         </div>
         ${enabled ? `
-          <div class="oq-run-extension-thresholds">
-            ${thresholds.map(([label, value, note]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></div>`).join("")}
-          </div>
+          <div class="oq-run-extension-summary" data-oq-run-extension-thresholds>${renderRunExtensionThresholds()}</div>
           <p class="oq-run-extension-note">${escapeHtml(t("runExtension.hysteresis"))}</p>
         ` : ""}
         <p class="oq-run-extension-note">${escapeHtml(t("runExtension.disableCopy"))}</p>
@@ -736,9 +656,8 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
             <p>${escapeHtml(t("settingsHeating.phouseCopy"))}</p>
           </div>
           ${renderPowerHouseBaseFields()}
-          ${renderPowerHouseAdvancedField()}
-          ${renderPowerHouseRunExtensionField()}
         </div>
+        ${renderPowerHouseAdvancedField()}
       `;
 
     return renderSettingsSection(

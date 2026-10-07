@@ -30,7 +30,6 @@ struct TickConfig {
   int defrost_comp_boost_steps;
   bool ot_room_temperature_fresh;
   bool ot_room_setpoint_fresh;
-  float run_extension_restart_hysteresis_c;
 };
 
 class Runtime {
@@ -128,10 +127,10 @@ class Runtime {
     float requested_w = demand.requested_w;
     float next_last_w = demand.next.last_w;
     int raw_demand = demand.raw_demand;
-    const auto intent =
-        oq_heat_intent_runtime::evaluate(now_ms, applied_total > 0, std::max(0.0f, demand_tuning.comfort_below_c),
-                                         10000UL, config.ot_room_temperature_fresh, config.ot_room_setpoint_fresh,
-                                         this->intent_state_, effective_target_c, warming);
+    const float room_resume_delta_c = std::max(0.0f, demand_tuning.comfort_below_c);
+    const auto intent = oq_heat_intent_runtime::evaluate(
+        now_ms, applied_total > 0, room_resume_delta_c, 10000UL, config.ot_room_temperature_fresh,
+        config.ot_room_setpoint_fresh, this->intent_state_, effective_target_c, warming);
     this->intent_state_ = intent.next;
     // An interrupted recovery re-enters through the normal confirmed path.
     id(oq_ph_fast_intent_code) = intent.fast_start ? static_cast<int>(intent.reason) : 0;
@@ -304,11 +303,9 @@ class Runtime {
     run_ext_input.base_requested_w = base_requested_w;
     run_ext_input.minimum_viable_w = minimum_viable_w;
     run_ext_input.water_limit_factor = id(oq_water_temp_limit_factor);
-    const float restart_hysteresis_c = std::isfinite(config.run_extension_restart_hysteresis_c)
-                                           ? config.run_extension_restart_hysteresis_c
-                                           : oq_power_house_run_extension::kRestartHysteresisC;
     const auto run_ext_decision = oq_power_house_run_extension::evaluate(
-        run_ext_input, {stop_margin_c, restart_hysteresis_c}, this->run_extension_state_);
+        run_ext_input, {stop_margin_c, id(ph_run_extension_restart_cooldown_c).state, room_resume_delta_c},
+        this->run_extension_state_);
     if (run_ext_decision.next.phase != this->last_run_ext_phase_) {
       ESP_LOGI("quatt.strategy", "ph run extension %s -> %s (room %.2f stop %.2f restart %.2f base %.0f floor %.0f)",
                oq_power_house_run_extension::phase_name(this->last_run_ext_phase_),

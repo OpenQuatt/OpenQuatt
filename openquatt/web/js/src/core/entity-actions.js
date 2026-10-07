@@ -37,7 +37,7 @@ import { handleHouseLearningChartPointerMove } from "../settings/house-learning-
 import { escapeHtml } from "./html.js";
 import { render } from "./render-scheduler.js";
 import { updateCurvePointDraft, updateSimpleCurveDraft } from "./simple-curve.js";
-import { renderSimpleCurvePreview } from "../settings/heating.js";
+import { patchRunExtensionThresholds, renderSimpleCurvePreview } from "../settings/heating.js";
 
 const actionDelegates = [
   handleViewAction,
@@ -370,6 +370,9 @@ function updateFrequencyRangeControl(input) {
             }
           }
         }
+      }
+      if (["roomSetpoint", "phComfortBelow", "phComfortAbove", "phRunExtensionStopMargin", "phRunExtensionRestartCooldown"].includes(field)) {
+        patchRunExtensionThresholds();
       }
     }
   }

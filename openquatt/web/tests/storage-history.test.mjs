@@ -8,7 +8,7 @@ globalThis.window = {
   setTimeout: globalThis.setTimeout,
 };
 
-const { SENSOR_CALIBRATION_KEYS, SETTINGS_BACKUP_SECTIONS, SUPPLY_CALIBRATION_BACKUP_KEYS } = await import("../js/src/core/config.js");
+const { SENSOR_CALIBRATION_KEYS, SETTINGS_BACKUP_SECTIONS, SUPPLY_CALIBRATION_BACKUP_KEYS, ENTITY_DEFS } = await import("../js/src/core/config.js");
 const { normalizeSettingsBackupMqttConfig } = await import("../js/src/core/settings-backup-domain.js");
 const { state } = await import("../js/src/core/state.js");
 const { isUsageTelemetrySetupCompletionSafe, parseDecisionLogStorageMetadata, parseTrendHistoryMetadata, restoreSettingsBackup, shouldDisableUsageTelemetryForSetupRestore } = await import("../js/src/features/storage-history.js");
@@ -428,4 +428,11 @@ test("decision log storage metadata clamps invalid counters", () => {
   assert.equal(metadata.capacityEvents, 5120);
   assert.equal(metadata.retentionDays, 7);
   assert.equal(metadata.storageBytes, 0);
+});
+
+test("Power House backup includes the optional restart cooldown without changing its schema", () => {
+  const keys = SETTINGS_BACKUP_SECTIONS.find(({ id }) => id === "powerHouse").keys;
+  assert.ok(keys.includes("phRunExtensionRestartCooldown"));
+  assert.equal(ENTITY_DEFS.phRunExtensionRestartCooldown.name, "Power House run extension restart cooldown");
+  assert.equal(ENTITY_DEFS.phRunExtensionRestartCooldown.optional, true);
 });

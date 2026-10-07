@@ -32,8 +32,8 @@ class StrategyRuntimeContractTest(unittest.TestCase):
         }
         for name, (marker, expected) in calls.items():
             self.assertEqual(YAMLS[name].count(marker), expected)
-        # Measured 1634 lines after issue #608 run extension added switch/number/status entities.
-        self.assertLessEqual(sum(len(source.splitlines()) for source in YAMLS.values()), 1690)
+        # Measured 1694 lines with the persistent run-extension restart cooldown entity.
+        self.assertLessEqual(sum(len(source.splitlines()) for source in YAMLS.values()), 1705)
         for implementation_marker in (
             "DispatchState dispatch_state",
             "publish_cooling_limiter_event",
