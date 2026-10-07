@@ -17,9 +17,9 @@ constexpr size_t kMaxAdviceFitSteps = kMaxCalendarDays + 2U;
 struct FitConfig {
   uint8_t huber_passes = kMaxHuberPasses;
   float huber_delta_w = 300.0f;
-  uint8_t min_train_segments = 12;
+  uint8_t min_train_segments = 6;
   uint8_t min_train_days = 6;
-  uint8_t min_holdout_segments = 6;
+  uint8_t min_holdout_segments = 3;
   uint8_t min_holdout_days = 3;
   float min_outside_p90_p10_k = 6.0f;
   uint8_t min_segments_per_temperature_bin = 2;
@@ -33,10 +33,6 @@ struct FitConfig {
   float min_holdout_improvement_w = 50.0f;
   float max_lodo_heat_loss_relative_deviation = 0.20f;
   float max_lodo_zero_power_range_k = 2.0f;
-  float reference_room_c = NAN;
-  float reference_setpoint_c = NAN;
-  float max_room_context_delta_c = 0.30f;
-  float max_setpoint_context_delta_c = 0.30f;
 };
 
 struct AdviceResult {
@@ -52,6 +48,7 @@ struct AdviceResult {
   uint8_t holdout_days = 0;
   float observed_temp_min_c = NAN;
   float observed_temp_max_c = NAN;
+  // Actual outdoor range shared with 1R1C; fit/plot coordinates are normalized.
   float validated_temp_min_c = NAN;
   float validated_temp_max_c = NAN;
   float train_p10_c = NAN;
@@ -118,13 +115,7 @@ inline bool valid_fit_config(const FitConfig& config) {
          isfinite(config.max_lodo_heat_loss_relative_deviation) &&
          config.max_lodo_heat_loss_relative_deviation >= 0.0f && config.max_lodo_heat_loss_relative_deviation <= 1.0f &&
          isfinite(config.max_lodo_zero_power_range_k) && config.max_lodo_zero_power_range_k >= 0.0f &&
-         config.max_lodo_zero_power_range_k <= 20.0f && isfinite(config.reference_room_c) &&
-         config.reference_room_c >= -20.0f && config.reference_room_c <= 60.0f &&
-         isfinite(config.reference_setpoint_c) && config.reference_setpoint_c >= -20.0f &&
-         config.reference_setpoint_c <= 60.0f && isfinite(config.max_room_context_delta_c) &&
-         config.max_room_context_delta_c >= 0.0f && config.max_room_context_delta_c <= 2.0f &&
-         isfinite(config.max_setpoint_context_delta_c) && config.max_setpoint_context_delta_c >= 0.0f &&
-         config.max_setpoint_context_delta_c <= 2.0f;
+         config.max_lodo_zero_power_range_k <= 20.0f;
 }
 
 namespace detail {
@@ -147,53 +138,46 @@ inline double record_base_weight(const AdviceFitWorkspace& workspace, size_t ind
   return 1.0 / workspace.day_record_counts[day_index];
 }
 
+// The day prediction averages max(0, H * (T0 - effective temperature)).
+// For a fixed set of temperatures below T0 this is linear in H*T0 and H.
+// Re-evaluate that set on each of the existing bounded Huber passes.
 inline bool fit_huber_line(const AdviceFitWorkspace& workspace, int omitted_day_index, HouseLine& output) {
   HouseLine current;
   for (uint8_t pass = 0; pass < workspace.config.huber_passes; ++pass) {
-    double sum_w = 0.0;
-    double sum_x = 0.0;
-    double sum_y = 0.0;
+    double aa = 0.0, ab = 0.0, bb = 0.0, ay = 0.0, by = 0.0;
     for (size_t index = 0; index < workspace.train_count; ++index) {
       if (workspace.record_day_index[index] == omitted_day_index) continue;
       const SegmentRecord& record = fit_record(workspace, index);
-      double robust_weight = 1.0;
-      if (valid_house_line(current)) {
-        const double predicted = current.heat_loss_w_per_k * (current.zero_power_temp_c - record.mean_outside_c);
-        const double residual = fabs(predicted - record.mean_heat_w);
-        if (residual > workspace.config.huber_delta_w) robust_weight = workspace.config.huber_delta_w / residual;
+      const float correction = effective_outside_c(record) - profile_mean_c(record);
+      double a = 0.0, b = 0.0;
+      for (size_t point = 0; point < kDailyTemperatureProfileSize; ++point) {
+        const double temperature = profile_temperature_c(record, point, correction);
+        if (pass == 0 || temperature < current.zero_power_temp_c) {
+          a += 1.0 / kDailyTemperatureProfileSize;
+          b += temperature / kDailyTemperatureProfileSize;
+        }
       }
-      const double weight = record_base_weight(workspace, index) * robust_weight;
-      sum_w += weight;
-      sum_x += weight * record.mean_outside_c;
-      sum_y += weight * record.mean_heat_w;
-    }
-    if (!(sum_w > 0.0)) return false;
-    const double center_x = sum_x / sum_w;
-    const double center_y = sum_y / sum_w;
-    double covariance = 0.0;
-    double variance = 0.0;
-    for (size_t index = 0; index < workspace.train_count; ++index) {
-      if (workspace.record_day_index[index] == omitted_day_index) continue;
-      const SegmentRecord& record = fit_record(workspace, index);
-      double robust_weight = 1.0;
-      if (valid_house_line(current)) {
-        const double predicted = current.heat_loss_w_per_k * (current.zero_power_temp_c - record.mean_outside_c);
-        const double residual = fabs(predicted - record.mean_heat_w);
-        if (residual > workspace.config.huber_delta_w) robust_weight = workspace.config.huber_delta_w / residual;
+      double weight = record_base_weight(workspace, index);
+      if (pass > 0) {
+        const double residual = fabs(record_house_line_power_w(current, record) - record.mean_heat_w);
+        if (residual > workspace.config.huber_delta_w) weight *= workspace.config.huber_delta_w / residual;
       }
-      const double weight = record_base_weight(workspace, index) * robust_weight;
-      const double centered_x = record.mean_outside_c - center_x;
-      covariance += weight * centered_x * (record.mean_heat_w - center_y);
-      variance += weight * centered_x * centered_x;
+      aa += weight * a * a;
+      ab += weight * a * b;
+      bb += weight * b * b;
+      ay += weight * a * record.mean_heat_w;
+      by += weight * b * record.mean_heat_w;
     }
-    if (!(variance > 1e-9)) return false;
-    const double heat_loss = -covariance / variance;
-    const double zero_power = center_x + center_y / heat_loss;
-    if (!isfinite(heat_loss) || !isfinite(zero_power)) return false;
-    current = {static_cast<float>(heat_loss), static_cast<float>(zero_power)};
+    const double determinant = aa * bb - ab * ab;
+    if (!(determinant > 1e-9)) return false;
+    const double heat_loss = (ab * ay - aa * by) / determinant;
+    const double intercept = (bb * ay - ab * by) / determinant;
+    if (!(heat_loss > 0.0) || !isfinite(heat_loss) || !isfinite(intercept)) return false;
+    current = {static_cast<float>(heat_loss), static_cast<float>(intercept / heat_loss)};
+    if (!valid_house_line(current)) return false;
   }
   output = current;
-  return valid_house_line(output);
+  return true;
 }
 
 inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
@@ -202,16 +186,11 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
       !valid_fit_config(workspace.config))
     return LearningStatus::INVALID_CONFIGURATION;
   if (!plausible_line(workspace.active_line, workspace.config)) return LearningStatus::INVALID_ACTIVE_MODEL;
-  if (workspace.config.reference_room_c < workspace.quality_config.room_min_c ||
-      workspace.config.reference_room_c > workspace.quality_config.room_max_c ||
-      workspace.config.reference_setpoint_c < workspace.quality_config.setpoint_min_c ||
-      workspace.config.reference_setpoint_c > workspace.quality_config.setpoint_max_c)
-    return LearningStatus::INVALID_CONFIGURATION;
   uint32_t previous_end = 0;
   uint32_t context_revision = 0;
   size_t selected_count = 0;
-  // Retain every validated record in the owner. Evaluate only observations near
-  // the current room/setpoint; day/night history must not poison the whole fit.
+  // Retain legacy measurements for diagnostics; only normalized full days
+  // enter the new model and its independent validation.
   for (size_t index = 0; index < workspace.record_count; ++index) {
     const SegmentRecord& record = workspace.records[index];
     const LearningStatus record_status = validate_segment_record(record, workspace.quality_config);
@@ -224,10 +203,7 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
     else if (record.context_revision != context_revision)
       return LearningStatus::MIXED_CONTEXT;
     previous_end = record.end_epoch_s;
-    if (fabsf(record.mean_room_c - workspace.config.reference_room_c) > workspace.config.max_room_context_delta_c ||
-        fabsf(record.mean_setpoint_c - workspace.config.reference_setpoint_c) >
-            workspace.config.max_setpoint_context_delta_c)
-      continue;
+    if (!is_daily_record(record)) continue;
     workspace.selected_record_indices[selected_count++] = static_cast<uint8_t>(index);
   }
   workspace.record_count = selected_count;
@@ -238,12 +214,13 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
   workspace.result.max_abs_room_trend_per_heat_k_per_h_w = 0.0f;
   for (size_t index = 0; index < workspace.record_count; ++index) {
     const SegmentRecord& record = fit_record(workspace, index);
-    workspace.result.observed_temp_min_c = fminf(workspace.result.observed_temp_min_c, record.mean_outside_c);
-    workspace.result.observed_temp_max_c = fmaxf(workspace.result.observed_temp_max_c, record.mean_outside_c);
+    workspace.result.observed_temp_min_c = fminf(workspace.result.observed_temp_min_c, effective_outside_c(record));
+    workspace.result.observed_temp_max_c = fmaxf(workspace.result.observed_temp_max_c, effective_outside_c(record));
     workspace.result.max_abs_room_trend_k_per_h =
         fmaxf(workspace.result.max_abs_room_trend_k_per_h, fabsf(record.room_trend_k_per_h));
-    workspace.result.max_abs_room_trend_per_heat_k_per_h_w = fmaxf(
-        workspace.result.max_abs_room_trend_per_heat_k_per_h_w, fabsf(record.room_trend_k_per_h) / record.mean_heat_w);
+    workspace.result.max_abs_room_trend_per_heat_k_per_h_w =
+        fmaxf(workspace.result.max_abs_room_trend_per_heat_k_per_h_w,
+              fabsf(record.room_trend_k_per_h) / fmaxf(1.0f, fabsf(record.mean_heat_w)));
     const uint32_t day = record_day(record);
     if (workspace.day_count == 0 || workspace.day_ids[workspace.day_count - 1] != day) {
       if (workspace.day_count >= kMaxCalendarDays) return LearningStatus::INVALID_CONFIGURATION;
@@ -278,7 +255,7 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
     return LearningStatus::DAY_DOMINANCE;
 
   for (size_t index = 0; index < workspace.train_count; ++index) {
-    const float value = fit_record(workspace, index).mean_outside_c;
+    const float value = effective_outside_c(fit_record(workspace, index));
     size_t insert_at = index;
     while (insert_at > 0 && workspace.sorted_train_temperatures[insert_at - 1] > value) {
       workspace.sorted_train_temperatures[insert_at] = workspace.sorted_train_temperatures[insert_at - 1];
@@ -296,7 +273,7 @@ inline LearningStatus prepare_workspace(AdviceFitWorkspace& workspace) {
   uint8_t bins[3]{};
   const float bin_width = (workspace.result.train_p90_c - workspace.result.train_p10_c) / 3.0f;
   for (size_t index = 0; index < workspace.train_count; ++index) {
-    const float temperature = fit_record(workspace, index).mean_outside_c;
+    const float temperature = effective_outside_c(fit_record(workspace, index));
     uint8_t bin = 0;
     if (temperature >= workspace.result.train_p90_c)
       bin = 2;
@@ -332,8 +309,8 @@ inline void evaluate_holdout(AdviceFitWorkspace& workspace) {
   for (size_t index = workspace.train_count; index < workspace.record_count; ++index) {
     const SegmentRecord& record = fit_record(workspace, index);
     const double weight = record.duration_s;
-    const double candidate_w = house_line_power_w(workspace.result.candidate, record.mean_outside_c);
-    const double active_w = house_line_power_w(workspace.active_line, record.mean_outside_c);
+    const double candidate_w = record_house_line_power_w(workspace.result.candidate, record);
+    const double active_w = record_house_line_power_w(workspace.active_line, record);
     const double candidate_error = candidate_w - record.mean_heat_w;
     const double active_error = active_w - record.mean_heat_w;
     duration_sum += weight;
@@ -344,10 +321,10 @@ inline void evaluate_holdout(AdviceFitWorkspace& workspace) {
     workspace.result.validated_temp_min_c = fminf(workspace.result.validated_temp_min_c, record.mean_outside_c);
     workspace.result.validated_temp_max_c = fmaxf(workspace.result.validated_temp_max_c, record.mean_outside_c);
     uint8_t bin = 0;
-    if (record.mean_outside_c >= workspace.result.train_p90_c)
+    if (effective_outside_c(record) >= workspace.result.train_p90_c)
       bin = 2;
-    else if (record.mean_outside_c > workspace.result.train_p10_c)
-      bin = static_cast<uint8_t>(3.0f * (record.mean_outside_c - workspace.result.train_p10_c) /
+    else if (effective_outside_c(record) > workspace.result.train_p10_c)
+      bin = static_cast<uint8_t>(3.0f * (effective_outside_c(record) - workspace.result.train_p10_c) /
                                  (workspace.result.train_p90_c - workspace.result.train_p10_c));
     if (bin > 2) bin = 2;
     bin_duration[bin] += weight;

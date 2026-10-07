@@ -4,6 +4,13 @@
 # This package is included only by Heatpump Controller Q Single/Duo.
 # It never writes a heating model or actuator. Learning defaults on and restores
 # the user's choice after reboot.
+esphome:
+  on_shutdown:
+    priority: -100
+    then:
+      - lambda: |-
+          oq_ph_learning::runtime().prepare_restart();
+
 external_components:
   - source:
       type: local

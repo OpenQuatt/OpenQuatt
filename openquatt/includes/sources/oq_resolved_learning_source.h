@@ -92,6 +92,10 @@ class SourceConfigurationGeneration {
   }
 
   uint32_t observe_resolution(const ResolvedLearningSource& source) {
+    // Temporary absence is not a route change. Configuration changes are still
+    // observed separately; a different valid route on recovery advances this
+    // generation before learning can integrate its first value.
+    if (!source.valid) return this->generation_;
     // The outdoor resolver reports zero while every relevant pump is stopped.
     // This is a normal operating phase of the selected flow source, not a new
     // source. Keep its last running identity so a real route change on restart

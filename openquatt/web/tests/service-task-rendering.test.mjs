@@ -125,3 +125,155 @@ test("a new purge start hides the previous failure while its request is in fligh
   assert.equal(task.status, getCommissioningProgressModel("REQUESTED", "purge").phase);
   assert.doesNotMatch(task.renderCard(), /Mislukt/);
 });
+
+test("autotune preserves failure and advice after CM100 ends and clears the task lock", () => {
+  state.entities.cm100Active = { value: false };
+  state.entities.commissioningStatus = { state: "CM100 STOPPED" };
+  state.entities.flowAutotuneStatus = { state: "ABORT: NO_STEADY_STATE" };
+  state.pendingFlowAutotuneStart = true;
+  state.commissioningTaskLock = "autotune";
+  const task = getSettingsServiceModel().tasks.find(task => task.key === "autotune");
+  assert.equal(task.status, "Afgebroken: flow stabiliseert niet");
+  assert.match(task.renderCard(), /Houd kleppen en pompen/);
+  assert.doesNotMatch(task.renderCard(), /CM100 staat klaar/);
+  assert.equal(state.pendingFlowAutotuneStart, false);
+  assert.equal(state.commissioningTaskLock, "");
+  assert.match(startButton(task, "flowAutotune"), /\bdisabled\b/);
+});
+
+test("autotune terminal reasons and advice translate without losing failure or enabling apply", () => {
+  for (const [wire, expected] of [
+    ["ABORT: FLOW_INVALID", "Afgebroken: flowmeting ongeldig"],
+    ["FAILED: INVALID_GAIN", "Mislukt: geen bruikbare pomprespons"],
+    ["REFUSED: BUSY", "Niet gestart: andere servicetaak actief"],
+    ["ABORTED", "Afgebroken"],
+    ["FAILED: <unsafe>", "Mislukt: <unsafe>"],
+  ]) {
+    state.entities.flowAutotuneStatus = { state: wire };
+    const task = getSettingsServiceModel().tasks.find(task => task.key === "autotune");
+    assert.equal(task.status, expected);
+    assert.match(task.renderCard().match(/<button\b[^>]*data-oq-button-key="flowAutotuneApply"[^>]*>/)[0], /\bdisabled\b/);
+    assert.doesNotMatch(task.renderCard(), /<unsafe>/);
+  }
+  state.entities.flowAutotuneStatus = { state: "ABORT: NO_STEADY_STATE" };
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  let task = getSettingsServiceModel().tasks.find(task => task.key === "autotune");
+  assert.equal(task.status, "Aborted: flow did not stabilise");
+  assert.match(task.renderCard(), /Keep valves and pumps/);
+  setLocale("nl", { persist: false, applyDocument: false, notify: false });
+  task = getSettingsServiceModel().tasks.find(task => task.key === "autotune");
+  assert.equal(task.status, "Afgebroken: flow stabiliseert niet");
+});
+
+test("autotune shows current gains and hides old suggestions until a result is ready", () => {
+  state.entities.flowKp = { value: 0.03 };
+  state.entities.flowKi = { value: 0.0008 };
+  state.entities.flowKpSuggested = { value: 0.12345 };
+  state.entities.flowKiSuggested = { value: 0.00678 };
+  for (const wire of ["IDLE", "STEP", "STEP2", "ABORT: NO_STEADY_STATE"]) {
+    state.entities.flowAutotuneStatus = { state: wire };
+    const card = getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard();
+    assert.match(card, /Huidige Kp/);
+    assert.match(card, /Huidige Ki/);
+    assert.match(card, /0,03/);
+    assert.match(card, /0,0008/);
+    assert.doesNotMatch(card, /0,12345|0,00678/);
+  }
+  state.entities.flowAutotuneStatus = { state: "DONE (CLOSED-LOOP)" };
+  const card = getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard();
+  assert.match(card, /0,12345/);
+  assert.match(card, /0,00678/);
+  delete state.entities.flowKp;
+  delete state.entities.flowKi;
+  assert.doesNotMatch(getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard(), /0,03|0,0008/);
+});
+
+test("autotune result copy explains applying the proposal and distinguishes an applied result", () => {
+  for (const [locale, resultCopy, appliedStatus, appliedCopy, idleCopy] of [
+    ["nl", "Bekijk de voorgestelde Kp/Ki en kies Toepassen", "Voorstel toegepast", "zijn toegepast als regelinstellingen", "Start de autotune wanneer je wilt"],
+    ["en", "Review the suggested Kp/Ki and select Apply", "Suggestion applied", "have been applied as controller settings", "Start autotune whenever you like"],
+  ]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    for (const wire of ["DONE (CLOSED-LOOP)", "DONE (LIMITED)", "DONE (CLAMPED)"]) {
+      state.entities.flowAutotuneStatus = { state: wire };
+      const card = getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard();
+      assert.ok(card.includes(resultCopy));
+      assert.ok(!card.includes(idleCopy));
+    }
+    state.entities.flowAutotuneStatus = { state: "APPLIED" };
+    const task = getSettingsServiceModel().tasks.find(task => task.key === "autotune");
+    assert.equal(task.status, appliedStatus);
+    assert.ok(task.renderCard().includes(appliedCopy));
+    assert.ok(!task.renderCard().includes(resultCopy));
+    for (const wire of ["IDLE", "ABORTED"]) {
+      state.entities.flowAutotuneStatus = { state: wire };
+      assert.ok(!getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard().includes(resultCopy));
+    }
+    state.entities.flowAutotuneStatus = { state: "DONE (CLOSED-LOOP)" };
+    state.busyAction = "flowAutotuneStart";
+    assert.ok(!getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard().includes(resultCopy));
+    state.busyAction = "";
+  }
+});
+
+test("autotune missing or empty gains are unavailable while a real zero remains valid", () => {
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    state.entities.flowAutotuneStatus = { state: "DONE (CLOSED-LOOP)" };
+    for (const key of ["flowKp", "flowKi", "flowKpSuggested", "flowKiSuggested"]) {
+      const valueFor = () => {
+        const card = getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard();
+        return card.match(new RegExp(`data-oq-settings-field="${key}"[\\s\\S]*?oq-settings-static-value">([^<]+)`))[1];
+      };
+      delete state.entities[key];
+      assert.equal(valueFor(), "—", `${locale}/${key}/missing`);
+      for (const raw of ["", "   ", null, "unknown", "NaN", "unavailable"]) {
+        state.entities[key] = { value: raw };
+        assert.equal(valueFor(), "—", `${locale}/${key}/${raw}`);
+      }
+      state.entities[key] = { value: 0 };
+      assert.equal(valueFor(), "0", `${locale}/${key}/real zero`);
+    }
+  }
+});
+
+test("autotune identifies both step tests and hides the previous failure during a new start", () => {
+  for (const [wire, expected] of [["STEP", "Staptest 1 van 2"], ["STEP2", "Staptest 2 van 2"]]) {
+    state.entities.flowAutotuneStatus = { state: wire };
+    assert.equal(getSettingsServiceModel().tasks.find(task => task.key === "autotune").status, expected);
+  }
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  assert.equal(getCommissioningProgressModel("STEP2", "autotune").phase, "Step test 2 of 2");
+  state.entities.flowAutotuneStatus = { state: "FAILED: INVALID_GAIN" };
+  state.busyAction = "flowAutotuneStart";
+  const task = getSettingsServiceModel().tasks.find(task => task.key === "autotune");
+  assert.equal(task.status, getCommissioningProgressModel("REQUESTED", "autotune").phase);
+  assert.doesNotMatch(task.renderCard(), /Failed/);
+});
+
+test("autotune translates validation preparation and visibly identifies temporary gains", () => {
+  for (const [locale, phase, kpLabel, kiLabel, explanation, currentLabel] of [
+    ["nl", "Doelflow bereiken vóór validatie", "Tijdelijke test-Kp", "Tijdelijke test-Ki", "De eerdere instellingen worden na afloop hersteld", "Huidige Kp"],
+    ["en", "Reaching target flow before validation", "Temporary test Kp", "Temporary test Ki", "The previous settings are restored afterwards", "Current Kp"],
+  ]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    state.entities.flowKp = { value: 0.0971 };
+    state.entities.flowKi = { value: 0.0016 };
+    state.entities.flowKpSuggested = { value: 0.12345 };
+    for (const wire of ["VALIDATION_RECOVER", "VALIDATION_RETRY: UNDER_TARGET", "VALIDATION_RETRY: OVERSHOOT", "VALIDATING_SETTLING", "VALIDATING"]) {
+      state.entities.flowAutotuneStatus = { state: wire };
+      const task = getSettingsServiceModel().tasks.find(task => task.key === "autotune");
+      if (/^VALIDATION_/.test(wire)) assert.equal(task.status, phase);
+      const card = task.renderCard();
+      assert.ok(card.includes(kpLabel) && card.includes(kiLabel), `${locale}/${wire}`);
+      assert.ok(card.includes(explanation));
+      assert.doesNotMatch(card, /VALIDATION_RECOVER|VALIDATION_RETRY|0[,.]12345/);
+      assert.match(card.match(/<button\b[^>]*data-oq-button-key="flowAutotuneApply"[^>]*>/)[0], /\bdisabled\b/);
+    }
+    state.entities.flowAutotuneStatus = { state: "FAILED: VALIDATION_BASELINE" };
+    const card = getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard();
+    assert.ok(card.includes(currentLabel));
+    assert.ok(!card.includes(kpLabel));
+    assert.ok(!card.includes(explanation));
+  }
+});

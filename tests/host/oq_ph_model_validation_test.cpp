@@ -6,29 +6,28 @@
 using namespace oq_power_house;
 using namespace oq_power_house::learning;
 
-static AdviceResult batch_fit(float room_trend = 0.0f) {
-  SegmentRecord records[18];
+static AdviceResult batch_fit(float room_trend = 0.0f, float reference_room = 20.0f) {
+  SegmentRecord records[9];
   for (unsigned day = 0; day < 9; ++day) {
-    for (unsigned slot = 0; slot < 2; ++slot) {
-      auto& record = records[day * 2 + slot];
-      record.start_epoch_s = (20000U + day) * 86400U + slot * 28800U;
-      record.end_epoch_s = record.start_epoch_s + 14400U;
-      record.duration_s = 14400;
-      record.context_revision = 1;
-      record.mean_room_c = record.mean_setpoint_c = 20.0f;
-      record.mean_outside_c = -5.0f + 2.0f * day;
-      record.mean_heat_w = 200.0f * (20.0f - record.mean_outside_c);
-      record.room_trend_k_per_h = room_trend;
-      record.room_range_k = fabsf(room_trend) * 4.0f;
-      record.setpoint_range_c = 0.0f;
-      record.water_start_c = record.water_end_c = 35.0f;
-    }
+    auto& record = records[day];
+    record.start_epoch_s = (20000U + day) * 86400U;
+    record.end_epoch_s = record.start_epoch_s + 86400U;
+    record.duration_s = 86400;
+    record.context_revision = 1;
+    record.mean_room_c = record.mean_setpoint_c = reference_room;
+    record.mean_outside_c = -5.0f + 2.0f * day + reference_room - 20.0f;
+    for (auto& point : record.effective_outside_profile_centi)
+      point = static_cast<int16_t>(lroundf(effective_outside_c(record) * 100.0f));
+    record.mean_heat_w = 200.0f * (reference_room - record.mean_outside_c);
+    record.room_trend_k_per_h = room_trend;
+    record.room_range_k = fabsf(room_trend) * 24.0f;
+    record.setpoint_range_c = 0.0f;
+    record.water_start_c = record.water_end_c = 35.0f;
   }
   FitConfig config;
-  config.reference_room_c = config.reference_setpoint_c = 20.0f;
   AdviceFitWorkspace workspace;
   auto status =
-      begin_advice_fit(records, 18, 20009U * 86400U, HouseLine{150.0f, 18.0f}, QualityConfig{}, config, workspace);
+      begin_advice_fit(records, 9, 20009U * 86400U, HouseLine{150.0f, 18.0f}, QualityConfig{}, config, workspace);
   while (status == LearningStatus::FIT_IN_PROGRESS) status = advance_advice_fit(workspace);
   assert(status == LearningStatus::ADVICE_READY);
   assert(fabs(workspace.result.candidate.heat_loss_w_per_k - 200.0f) < 0.01);
@@ -36,16 +35,16 @@ static AdviceResult batch_fit(float room_trend = 0.0f) {
   return workspace.result;
 }
 
-static ThermalModelState dynamic_fit(double heat_loss, const ThermalModelConfig& config) {
+static ThermalModelState dynamic_fit(double heat_loss, const ThermalModelConfig& config, double reference_room = 20.0) {
   constexpr double capacity = 6000.0;
   ThermalModelState state;
   assert(initialize_thermal_model(state, config));
-  double indoor = 20.0;
+  double indoor = reference_room;
   uint64_t now = 1000;
   for (unsigned i = 0; i < 400; ++i) {
     const double hours = i % 2 == 0 ? 0.25 : 0.75;
-    const double outside = 4.0 + 9.0 * sin(i * 0.13);
-    const double heat = heat_loss * (20.0 - outside) + 1200.0 * sin(i * 0.61);
+    const double outside = 4.0 + 9.0 * sin(i * 0.13) + reference_room - 20.0;
+    const double heat = heat_loss * (reference_room - outside) + 1200.0 * sin(i * 0.61);
     const double equilibrium = outside + heat / heat_loss;
     const double decay = exp(-heat_loss / capacity * hours);
     const double end_indoor = equilibrium + (indoor - equilibrium) * decay;
@@ -72,6 +71,15 @@ static ThermalModelState dynamic_fit(double heat_loss, const ThermalModelConfig&
 }
 
 int main() {
+  // Normalized daily coordinates differ from actual outdoor temperatures.
+  // Comparing models must use the same actual outside range on both sides.
+  ThermalModelConfig shifted_config;
+  auto shifted_thermal = dynamic_fit(200.0, shifted_config, 17.0);
+  const auto shifted_batch = batch_fit(0.0f, 17.0f);
+  assert(shifted_batch.validated_temp_min_c == 4.0f && shifted_batch.validated_temp_max_c == 8.0f);
+  assert(validate_house_models(shifted_batch, shifted_thermal, shifted_config,
+                               shifted_thermal.last_interval_end_monotonic_ms, 1)
+             .cross_validated_advice_ready);
   const auto batch = batch_fit();
   ThermalModelConfig config;
   config.initial_heat_loss_w_per_k = 150.0;

@@ -9,6 +9,7 @@
 namespace oq_power_house::learning {
 
 constexpr uint64_t kJournalSaveIntervalMs = 60ULL * 60ULL * 1000ULL;
+constexpr uint64_t kJournalDailySaveIntervalMs = 15ULL * 60ULL * 1000ULL;
 
 // Reset has one outcome: both slots erased, or an explicit failure. There are
 // no alternate tombstones, NVS transactions or background recovery attempts.
@@ -33,9 +34,13 @@ struct LearningJournalStore {
   int active_slot = -1;
   uint32_t sequence = 0;
   size_t persisted_records = 0;
+  uint32_t persisted_latest_end_epoch = 0;
   uint32_t persisted_revision = 0;
   uint32_t persisted_thermal_samples = 0;
+  uint32_t persisted_daily_checkpoint_epoch = 0;
+  uint32_t persisted_daily_start_epoch = 0;
   uint64_t last_write_ms = 0;
+  uint64_t last_daily_write_ms = 0;
   const char* status = "not_initialized";
 
   void setup(bool storage_available) {
@@ -67,29 +72,58 @@ struct LearningJournalStore {
     sequence = selected.metadata.sequence;
     persisted_records = selected.metadata.record_count;
     records = {slots[active_slot], selected.metadata.context_size, selected.metadata.record_count};
-    last_write_ms = now_ms;
+    persisted_latest_end_epoch = records.record_count == 0 ? 0 : records[records.record_count - 1].end_epoch_s;
+    persisted_daily_checkpoint_epoch = records.daily_checkpoint_epoch();
+    persisted_daily_start_epoch = records.daily_checkpoint_start_epoch();
+    last_write_ms = last_daily_write_ms = now_ms;
     status = "restored";
     return true;
   }
 
-  bool save_due(uint64_t now_ms, size_t record_count, uint32_t revision, uint32_t thermal_samples = 0) const {
-    return available && loaded &&
-           (record_count != persisted_records || revision != persisted_revision ||
-            thermal_samples != persisted_thermal_samples) &&
-           (last_write_ms == 0 || (now_ms >= last_write_ms && now_ms - last_write_ms >= kJournalSaveIntervalMs));
+  bool save_due(uint64_t now_ms, size_t record_count, uint32_t revision, uint32_t thermal_samples = 0,
+                uint32_t latest_end_epoch = 0, const SegmentAccumulator* daily = nullptr, bool force = false) const {
+    if (!available || !loaded) return false;
+    if (force) return true;
+    const uint32_t daily_epoch = daily != nullptr && daily->active ? daily->last_epoch_s : 0;
+    // Discarding or completing a day must durably clear its old checkpoint,
+    // otherwise the next reboot could resurrect the discarded accumulator.
+    if (persisted_daily_checkpoint_epoch != 0 &&
+        (daily_epoch == 0 || daily->start_epoch_s != persisted_daily_start_epoch))
+      return true;
+    const bool daily_dirty = daily_epoch != persisted_daily_checkpoint_epoch;
+    const bool history_dirty = record_count != persisted_records || latest_end_epoch != persisted_latest_end_epoch ||
+                               revision != persisted_revision || thermal_samples != persisted_thermal_samples;
+    const bool daily_due = last_daily_write_ms == 0 || (now_ms >= last_daily_write_ms &&
+                                                        now_ms - last_daily_write_ms >= kJournalDailySaveIntervalMs);
+    const bool history_due =
+        last_write_ms == 0 || (now_ms >= last_write_ms && now_ms - last_write_ms >= kJournalSaveIntervalMs);
+    return (daily_dirty && daily_due) || (history_dirty && history_due);
   }
 
   template <typename Erase, typename Write, typename Read>
   bool save(const LearningDatasetView& dataset, const QualityConfig& quality, uint32_t epoch, uint64_t now_ms,
             uint32_t revision, Erase erase, Write write, Read read, const ThermalModelState* thermal = nullptr,
-            uint32_t thermal_epoch = 0) {
+            uint32_t thermal_epoch = 0, const SegmentAccumulator* daily = nullptr, bool force = false) {
     const uint32_t thermal_samples = thermal != nullptr ? thermal->accepted_samples : 0;
-    if (!save_due(now_ms, dataset.record_count, revision, thermal_samples)) return false;
+    // At full capacity, append+evict changes the newest record while the count
+    // stays constant. Completed records are immutable and ordered by time.
+    const uint32_t latest_end_epoch =
+        dataset.records != nullptr && dataset.record_count > 0 && dataset.record_count <= kMaxSegmentRecords
+            ? dataset.records[dataset.record_count - 1].end_epoch_s
+            : 0;
+    if (!save_due(now_ms, dataset.record_count, revision, thermal_samples, latest_end_epoch, daily, force))
+      return false;
     if (sequence == UINT32_MAX) return fail("sequence_exhausted");
+    // A break can discard and reseed in one tick. Clear the stored day first;
+    // checkpointing the replacement still observes the 15-minute write budget.
+    const SegmentAccumulator* checkpoint = daily;
+    if (!force && persisted_daily_checkpoint_epoch != 0 && daily != nullptr && daily->active &&
+        daily->start_epoch_s != persisted_daily_start_epoch)
+      checkpoint = nullptr;
     const int slot = active_slot == 0 ? 1 : 0;
     size_t size = 0;
     if (encode_learning_journal(dataset, quality, sequence + 1, epoch, bytes[slot], sizeof(bytes[slot]), size, thermal,
-                                thermal_epoch) != LearningJournalStatus::OK)
+                                thermal_epoch, checkpoint) != LearningJournalStatus::OK)
       return fail("encode_failed");
     // The previous flash slot is untouched. Reuse its RAM cache for readback.
     if (!erase(slot) || !write(slot, bytes[slot], size) || !read(slot, bytes[1 - slot], size) ||
@@ -98,9 +132,13 @@ struct LearningJournalStore {
     active_slot = slot;
     ++sequence;
     persisted_records = dataset.record_count;
+    persisted_latest_end_epoch = latest_end_epoch;
     persisted_revision = revision;
     persisted_thermal_samples = thermal_samples;
+    persisted_daily_checkpoint_epoch = checkpoint != nullptr && checkpoint->active ? checkpoint->last_epoch_s : 0;
+    persisted_daily_start_epoch = checkpoint != nullptr && checkpoint->active ? checkpoint->start_epoch_s : 0;
     last_write_ms = now_ms;
+    last_daily_write_ms = now_ms;
     status = "saved_verified";
     return true;
   }
@@ -113,9 +151,13 @@ struct LearningJournalStore {
     active_slot = -1;
     sequence = 0;
     persisted_records = 0;
+    persisted_latest_end_epoch = 0;
     persisted_revision = 0;
     persisted_thermal_samples = 0;
+    persisted_daily_checkpoint_epoch = 0;
+    persisted_daily_start_epoch = 0;
     last_write_ms = 0;
+    last_daily_write_ms = 0;
     status = "cleared";
     return true;
   }

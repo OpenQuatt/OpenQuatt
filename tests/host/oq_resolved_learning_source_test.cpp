@@ -35,6 +35,7 @@ void test_resolution_generation_observes_route_a_b_a_between_learner_ticks() {
   const SourceConfigurationKey configuration{2U, 0U, 0U, 0U};
   owner.observe(configuration);
   ResolvedLearningSource source;
+  source.valid = true;
   source.route = LearningSourceRoute::HP1_FLOW;
   source.provenance = LearningSourceProvenance::PHYSICAL_RECEIPT;
   const uint32_t first_a = owner.observe_resolution(source);
@@ -93,9 +94,8 @@ void test_selected_zero_flow_keeps_running_source_identity() {
     assert(owner.observe_resolution(switched) == selected_generation);
     auto invalid = stopped;
     invalid.valid = false;
-    assert(owner.observe_resolution(invalid) > selected_generation);
-    const uint32_t invalid_generation = owner.current();
-    assert(owner.observe_resolution(switched) > invalid_generation);
+    assert(owner.observe_resolution(invalid) == selected_generation);
+    assert(owner.observe_resolution(switched) == selected_generation);
   }
 }
 
@@ -161,7 +161,34 @@ void test_cached_sources_fail_closed_when_current_receipt_is_revoked() {
   assert(validate_current_receipts(single_component, hp1).valid);
 }
 
+void test_absence_keeps_resolution_but_not_configuration_changes() {
+  SourceConfigurationGeneration owner;
+  SourceConfigurationKey key{1U, 0U, 0U, 0U};
+  owner.observe(key);
+  auto a = selected_source(20.0f, true, LearningSourceRoute::API_ROOM, owner.current());
+  const uint32_t baseline = owner.observe_resolution(a);
+  auto absent = selected_source(NAN, false, LearningSourceRoute::NONE, baseline);
+  assert(owner.observe_resolution(absent) == baseline);
+  assert(owner.observe_resolution(a) == baseline);
+  auto b = a;
+  b.route = LearningSourceRoute::OPENTHERM_ROOM;
+  owner.observe_resolution(absent);
+  assert(owner.observe_resolution(b) > baseline);
+  const uint32_t b_generation = owner.current();
+  owner.observe_resolution(absent);
+  ++key.selected;
+  assert(owner.observe(key) > b_generation);
+  const uint32_t changed = owner.current();
+  assert(owner.observe_resolution(absent) == changed);
+  --key.selected;
+  assert(owner.observe(key) > changed);  // A -> B -> A during absence remains visible.
+  const uint32_t reverted = owner.current();
+  assert(owner.observe_resolution(b) == reverted);
+  assert(owner.observe_resolution(a) > reverted);
+}
+
 int main() {
+  test_absence_keeps_resolution_but_not_configuration_changes();
   test_optional_receipt_replaces_missing_and_invalid_fields();
   test_configuration_generation_observes_a_b_a();
   test_resolution_generation_observes_route_a_b_a_between_learner_ticks();

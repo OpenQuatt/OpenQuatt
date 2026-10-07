@@ -92,6 +92,7 @@ void reset() {
 int main() {
   assert(fnv1("openquatt_crash_telemetry_record")==CRASH);
   assert(fnv1("openquatt_api_security_store")==OLD_API);
+  assert(fnv1("ram_log_history")==306736601U);
   const auto state=std::to_string(fnv1("openquatt_crash_telemetry_state"));
   reset(); namespace_exists=false;
   assert(cleanup() && !namespace_exists && write_opens==0);
@@ -133,12 +134,43 @@ int main() {
   records[std::to_string(CRASH)]={2812};
   records[std::to_string(OLD_API)]={40}; records[std::to_string(NOISE)]={32};
   records[state]={56}; records["current-setting"]={4};
+  records["306736601"]={1}; records["2881445393"]={1};
+  records["1275799272"]={4};
+  records["515187816"]={1}; records["3865822963"]={1};
+  records["2609287369"]={4}; records["3358605580"]={4}; records["909863605"]={4};
+  const unsigned current_calibration_keys[] = {291797858U, 3766055637U, 3464536190U, 3192510929U};
+  for (auto key : current_calibration_keys) records[std::to_string(key)]={12};
   oq_nvs_cleanup::retire_openquatt_preferences(&air);
-  assert(handles==0 && records.size()==3 && commits==4);
+  assert(handles==0 && records.size()==7 && commits==12);
   assert(records.contains(std::to_string(NOISE)) && records.contains(state));
   assert(records.contains("current-setting"));
+  for (auto key : current_calibration_keys) assert(records.contains(std::to_string(key)));
   oq_nvs_cleanup::retire_openquatt_preferences(&air);
-  assert(handles==0 && records.size()==3 && commits==4);
+  assert(handles==0 && records.size()==7 && commits==12);
+  // Unexpected records under the retired keys are preserved by the boot path.
+  records["306736601"]={4}; records["2881445393"]={4};
+  records["1275799272"]={8};
+  records["515187816"]={4}; records["3865822963"]={1,false};
+  records["2609287369"]={8}; records["3358605580"]={4,false}; records["909863605"]={1};
+  oq_nvs_cleanup::retire_openquatt_preferences(&air);
+  assert(handles==0 && records.size()==15 && commits==12);
+  // Single-key retries use the same failure boundaries as the old cleanup.
+  reset(); records["306736601"]={1}; records["2881445393"]={1};
+  records["1275799272"]={4};
+  records["515187816"]={1}; records["3865822963"]={1};
+  records["2609287369"]={4}; records["3358605580"]={4}; records["909863605"]={4};
+  erase_error=3;
+  assert(!cleanup(306736601U,1) && !cleanup(2881445393U,1));
+  assert(!cleanup(1275799272U,4));
+  assert(!cleanup(515187816U,1) && !cleanup(3865822963U,1));
+  assert(!cleanup(2609287369U,4) && !cleanup(3358605580U,4) && !cleanup(909863605U,4));
+  assert(records.size()==8 && commits==0);
+  erase_error=0;
+  assert(cleanup(306736601U,1) && cleanup(2881445393U,1));
+  assert(cleanup(1275799272U,4));
+  assert(cleanup(515187816U,1) && cleanup(3865822963U,1));
+  assert(cleanup(2609287369U,4) && cleanup(3358605580U,4) && cleanup(909863605U,4));
+  assert(records.empty() && commits==8);
 }
 '''
         with tempfile.TemporaryDirectory(prefix="openquatt-nvs-cleanup-") as directory:

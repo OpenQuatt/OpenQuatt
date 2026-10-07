@@ -55,9 +55,6 @@ LearningSourceInput observation(uint64_t now_ms, uint32_t epoch_s, float outside
   input.operation.control_mode = LearningControlMode::HEATING;
   input.operation.active_limit_valid = true;
   input.operation.service_or_ota_valid = true;
-  input.operation.setpoint_recovery_valid = true;
-  input.operation.comfort_acceptable_valid = true;
-  input.operation.comfort_acceptable = true;
   return input;
 }
 
@@ -67,22 +64,17 @@ void raw_series_observations_to_advice() {
   RecordBuffer buffer{records, 0, kMaxSegmentRecords};
   SegmentAccumulator aggregate;
   QualityConfig quality;
-  for (uint32_t day = 0; day < 9; ++day) {
-    for (uint32_t slot = 0; slot < 2; ++slot) {
-      for (uint32_t minute = 0; minute <= 240; ++minute) {
-        const uint32_t seconds = day * 86400U + slot * 28800U + minute * 60U;
-        const auto raw = observation(1000ULL + seconds * 1000ULL, start_epoch + seconds, -5.0f + 2.0f * day);
-        const auto event = observe_source_input(aggregate, raw, quality);
-        assert(event.source.measurement_valid);
-        if (event.aggregate.has_record)
-          assert(append_record(buffer, event.aggregate.record, raw.epoch_s, quality) == LearningStatus::OK);
-      }
-    }
+  for (uint32_t minute = 0; minute <= 9U * 1440U; ++minute) {
+    const uint32_t day = minute / 1440U < 9U ? minute / 1440U : 8U;
+    const uint32_t seconds = minute * 60U;
+    const auto raw = observation(1000ULL + seconds * 1000ULL, start_epoch + seconds, -5.0f + 2.0f * day);
+    const auto event = observe_source_input(aggregate, raw, quality);
+    assert(event.source.measurement_valid);
+    if (event.aggregate.has_record)
+      assert(append_record(buffer, event.aggregate.record, raw.epoch_s, quality) == LearningStatus::OK);
   }
-  assert(buffer.count == 18);
+  assert(buffer.count == 9);
   FitConfig config;
-  config.reference_room_c = 20.0f;
-  config.reference_setpoint_c = 20.0f;
   AdviceFitWorkspace workspace;
   const HouseLine active{150.0f, 15.0f};
   auto status = begin_advice_fit(records, buffer.count, start_epoch + 9U * 86400U, active, quality, config, workspace);
@@ -98,6 +90,46 @@ void raw_series_observations_to_advice() {
   assert(active.heat_loss_w_per_k == 150.0f && active.zero_power_temp_c == 15.0f);
 }
 
+void raw_daily_profiles_cross_zero_power_temperature() {
+  constexpr uint32_t start_epoch = 20000U * 86400U;
+  const float day_mean[]{-4.0f, -1.0f, 2.0f, 5.0f, 8.0f, 11.0f, 14.0f, 17.0f, 20.0f, 5.0f, 17.0f, 29.0f};
+  SegmentRecord records[kMaxSegmentRecords];
+  RecordBuffer buffer{records, 0, kMaxSegmentRecords};
+  SegmentAccumulator aggregate;
+  QualityConfig quality;
+  for (uint32_t minute = 0; minute <= 12U * 1440U; ++minute) {
+    const uint32_t day = minute / 1440U < 12U ? minute / 1440U : 11U;
+    const uint32_t hour_group = (minute % 1440U) / 180U;
+    const float effective = day_mean[day] - 7.0f + 2.0f * hour_group;
+    const float room = 18.0f + static_cast<float>(day % 5U);
+    auto raw = observation(1000ULL + minute * 60000ULL, start_epoch + minute * 60U, effective);
+    raw.room_c.value = room;
+    raw.setpoint_c.value = 17.0f + day % 7U;
+    raw.outside_c.value += room - 20.0f;
+    const float heat = fmaxf(0.0f, 200.0f * (16.0f - effective));
+    const float delta = heat * 3600.0f / (1000.0f * 4180.0f);
+    raw.hp1 = unit(PhysicalUnit::HP1, raw.monotonic_ms, 30.0f, 30.0f + delta / 2.0f);
+    raw.hp2 = unit(PhysicalUnit::HP2, raw.monotonic_ms, 30.0f + delta / 2.0f, 30.0f + delta);
+    const auto event = observe_source_input(aggregate, raw, quality);
+    assert(event.source.measurement_valid);
+    if (event.aggregate.has_record)
+      assert(append_record(buffer, event.aggregate.record, raw.epoch_s, quality) == LearningStatus::OK);
+  }
+  assert(buffer.count == 12);
+  assert(records[11].mean_heat_w == 0.0f);
+  assert(records[7].mean_heat_w > 250.0f);
+  assert(records[7].effective_outside_profile_centi[0] < 1600 && records[7].effective_outside_profile_centi[7] > 1600);
+  AdviceFitWorkspace workspace;
+  auto status =
+      begin_advice_fit(records, buffer.count, start_epoch + 12U * 86400U, {150.0f, 15.0f}, quality, {}, workspace);
+  assert(status == LearningStatus::FIT_IN_PROGRESS);
+  while (status == LearningStatus::FIT_IN_PROGRESS) status = advance_advice_fit(workspace);
+  assert(status == LearningStatus::ADVICE_READY);
+  assert(fabsf(workspace.result.candidate.heat_loss_w_per_k - 200.0f) < 1.0f);
+  assert(fabsf(workspace.result.candidate.zero_power_temp_c - 16.0f) < 0.1f);
+  assert(workspace.result.holdout_candidate_mae_w < 10.0f);
+}
+
 void heating_cycles_keep_idle_time_and_pump_runout(bool interrupt_idle = false) {
   PassiveRuntimeStorage state;
   PassiveRuntimeConfig config;
@@ -111,9 +143,9 @@ void heating_cycles_keep_idle_time_and_pump_runout(bool interrupt_idle = false) 
       0.0f, true, oq_sources::LearningSourceRoute::SYNTHESIZED_ZERO_FLOW, flow_generation.current());
   const uint32_t initial_flow_generation = flow_generation.observe_resolution(startup_flow);
   constexpr uint32_t epoch = 20000U * 86400U;
-  // Four hourly cycles: 30 min heating, 5 min pump runout with signed loss,
+  // Twenty-four hourly cycles: 30 min heating, 5 min pump runout with signed loss,
   // 25 min zero flow. Mean water temperature stays at 30 C at the boundaries.
-  for (uint32_t minute = 0; minute <= 240; ++minute) {
+  for (uint32_t minute = 0; minute <= 1440; ++minute) {
     const uint32_t phase = minute % 60;
     const int cm = phase < 30 ? 2 : phase < 35 ? 1 : 0;
     const uint64_t now = 1000ULL + minute * 60000ULL;
@@ -157,9 +189,8 @@ void heating_cycles_keep_idle_time_and_pump_runout(bool interrupt_idle = false) 
     input.context = context;
     input.now_monotonic_ms = now;
     input.now_epoch_s = raw.epoch_s;
-    input.opted_in = input.context_valid = input.active_line_valid = input.reference_context_valid = true;
+    input.opted_in = input.context_valid = input.active_line_valid = true;
     input.active_line = {150.0f, 16.0f};
-    input.reference_room_c = input.reference_setpoint_c = 20.0f;
     input.batch_snapshot_available = batch.has_snapshot;
     input.dynamic_snapshot_available = thermal.has_snapshot;
     input.batch_snapshot = batch.snapshot;
@@ -170,14 +201,14 @@ void heating_cycles_keep_idle_time_and_pump_runout(bool interrupt_idle = false) 
   }
   if (interrupt_idle) {
     assert(state.record_count == 0);
-    assert(state.thermal_state.accepted_samples < 8);
+    assert(state.thermal_state.accepted_samples < 48);
     return;
   }
   assert(state.record_count == 1);
-  assert(state.records[0].duration_s == 14400U);
+  assert(state.records[0].duration_s == 86400U);
   const float expected_mean = (4000.0f * 30.0f - (1000.0f / 3600.0f * 4180.0f * 0.2f) * 5.0f) / 60.0f;
   assert(fabsf(state.records[0].mean_heat_w - expected_mean) < 0.1f);
-  assert(state.thermal_state.accepted_samples == 8);
+  assert(state.thermal_state.accepted_samples == 48);
 }
 
 // A host-side size guard for the pure data only. This is not an ESP32 footprint
@@ -188,6 +219,7 @@ static_assert(sizeof(SegmentRecord) * kMaxSegmentRecords + sizeof(AdviceFitWorks
 
 int main() {
   raw_series_observations_to_advice();
+  raw_daily_profiles_cross_zero_power_temperature();
   heating_cycles_keep_idle_time_and_pump_runout();
   heating_cycles_keep_idle_time_and_pump_runout(true);
 }

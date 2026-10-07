@@ -9,6 +9,7 @@ Q_PROFILE = (ROOT / "openquatt/profiles/heatpump_controller_q.yaml").read_text()
 RAW_RECEIPT = (ROOT / "openquatt/includes/sources/oq_raw_receipt.h").read_text()
 RECEIPT_RUNTIME = (ROOT / "openquatt/includes/sources/oq_source_receipt_runtime.h").read_text()
 COMMON_BASE = (ROOT / "openquatt/base/common.yaml").read_text()
+COMMON_SUBSTITUTIONS = (ROOT / "openquatt/oq_substitutions_common.yaml").read_text()
 OT_SLAVE_HEADER = (ROOT / "components/openquatt_ot_slave/OpenQuattOTSlave.h").read_text()
 OT_SLAVE_CPP = (ROOT / "components/openquatt_ot_slave/OpenQuattOTSlave.cpp").read_text()
 OTB_YAML = (ROOT / "openquatt/oq_boiler_opentherm.yaml").read_text()
@@ -114,7 +115,9 @@ class LearningReceiptContractTest(unittest.TestCase):
         )
 
     def test_receipt_storage_is_header_owned_before_esphome_codegen(self) -> None:
-        self.assertIn("oq_source_receipt_runtime.h", COMMON_BASE)
+        self.assertIn("- ${oq_cpp_headers_dir}", COMMON_BASE)
+        self.assertIn('oq_cpp_headers_dir: "${openquatt_root}/includes"', COMMON_SUBSTITUTIONS)
+        self.assertNotIn("/includes/sources/oq_source_receipt_runtime.h", COMMON_BASE)
         self.assertNotIn("type: oq_sources::RawFloatReceipt", HP_IO)
         self.assertNotIn("type: oq_sources::RawFloatReceipt", Q_PROFILE)
         self.assertIn("struct HeatPumpReceipts", RECEIPT_RUNTIME)

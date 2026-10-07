@@ -17,6 +17,37 @@ kleine preferences, nominaal 27 entries. Hun oude keys worden gericht opgeruimd.
 `oq_system_thermal_energy_daily`, `oq_system_thermal_energy_cumulative` en
 `oq_heating_curve_pid` behouden hun bestaande persistentie.
 
+`oq_cooling_fallback_night_min_last_day_key` wordt alleen in RAM onthouden,
+met beginwaarde `-1`. De datum voorkomt herhaald overnemen van een afgeronde
+nacht binnen dezelfde boot; hij controleert niet de ouderdom van de temperatuur.
+Na een reboot overdag ontbreekt ook het lopende nachtvenster in RAM en wordt
+geen nieuw nachtresultaat overgenomen. Na een reboot tijdens de nacht wordt
+het nieuwe venster na 06:00 eenmaal overgenomen. De laatste temperatuur
+`oq_cooling_fallback_night_min_last_c` blijft persistent voor de
+dauwpuntbenadering. De oude datumkey `esphome/1275799272` (vier bytes) wordt
+met type- en lengtecontrole opgeruimd: nominaal drie entries extra besparing.
+Bij een teruggezette klok kan een opnieuw waargenomen nacht met dezelfde datum
+na een reboot opnieuw worden overgenomen; de datum wordt niet over boots heen
+onthouden.
+
+De twee eenmalige migraties en hun vlaggen
+`oq_flow_cooling_settings_migrated` en `oq_aux_heat_source_policy_migrated`
+vervallen. De oude vlagkeys `esphome/515187816` en `esphome/3865822963`
+(elk één byte) worden met type- en lengtecontrole opgeruimd. Dit bespaart
+nog zes entries; bestaande afzonderlijke instellingen en beide flowcaches
+blijven persistent en worden niet overschreven.
+
+**Kleine breaking change bij upgrade vanaf firmware <v0.49.0:** de oude
+gecombineerde ketelinstelling wordt niet meer omgezet naar
+`oq_aux_heat_source_present`. Ontbreekt die afzonderlijke instelling, dan
+begint "Auxiliary heat source connected" standaard op aan. Controleer deze
+instelling na de update, vooral als de ketel eerder uitgeschakeld of afwezig
+was. Ketelondersteuning en storingsfallback behouden hun eigen voorkeuren;
+de standaard aanwezigheidskeuze start op zichzelf geen ketelvraag.
+Ontbreken bij firmware van vóór v0.33.0 ook de afzonderlijke koelrecords,
+dan begint het koelsetpoint op 800 L/h en de koelstartcache op PWM 440.
+De verwarmingswaarden worden niet meer automatisch overgenomen.
+
 Twee aanvullende legacy-blobs kunnen nog ruimte bezetten:
 
 | Namespace en key | Oud record | Blobgrootte | Nominale entries indien aanwezig |
@@ -42,6 +73,41 @@ Controleer API-beveiliging afzonderlijk bij zo'n historische downgrade.
 Teruggewonnen legacyruimte telt niet nogmaals als verlaging van de hieronder
 berekende huidige dataset.
 
+## Aanvullende legacycleanup
+
+De drie oude globals `oq_water_supply_temp_calibration_source_code`,
+`oq_water_supply_temp_calibration_source_fingerprint` en
+`oq_water_supply_temp_calibration_checksum` worden niet meer aangemaakt of
+bij een nieuwe kalibratie bijgewerkt. Dit verlaagt de huidige dataset met negen
+entries. De vier brongebonden kalibratierecords en de offsetnumber blijven behouden.
+
+De oude keys `esphome/2609287369`, `esphome/3358605580` en
+`esphome/909863605` (elk vier bytes) worden met type- en lengtecontrole
+opgeruimd. Er is geen import, opslagmigratie of migratievlag meer. Onverwachte
+typen en groottes blijven behouden; bij een wis- of commitfout probeert een
+volgende boot de cleanup opnieuw. Gedeeltelijke cleanup wijzigt geen huidig
+brongebonden record.
+
+**Breaking change voor uitsluitend legacy-aanvoerkalibratie:** een kalibratie
+die alleen in het oude formaat bestaat vervalt bij de update. Zonder geldig
+brongebonden record gebruikt de huidige bron een offset van 0 °C. Het ontbreken
+van een record zet niet automatisch de melding "kalibratie vereist" aan;
+gebruikers met een oude kalibratie moeten de aanvoerkalibratie opnieuw uitvoeren.
+Bestaande geldige brongebonden kalibraties blijven behouden, inclusief hun
+offset en bronbinding.
+
+De voormalige `oq_ram_log_history_switch` (`esphome/306736601`, één byte) kan
+nog drie entries gebruiken. RAM-loghistorie staat al permanent aan. De oude
+vorststatus `oq_cm_frost_prev` (`esphome/2881445393`, één byte) kan eveneens
+drie entries gebruiken. Beide keys worden met type- en lengtecontrole in de
+gedeelde bootactie opgeruimd. De oude afzonderlijke vorsthook viel bij
+package-samenvoeging uit de Q Duo WiFi-configuratie weg.
+
+Behoud van kalibratie bij een downgrade naar uitsluitend het oude formaat
+wordt niet ondersteund.
+De 61 gemeten WiFi-driverentries, PHY-opslag en
+keys met onbewezen herkomst vallen buiten deze cleanup.
+
 ## Budgetberekening
 
 Een NVS-pagina bevat 126 entries. Van de zes pagina's blijft één beschikbaar
@@ -61,16 +127,23 @@ achtergebleven legacykeys kunnen meer ruimte kosten. Dit is geen bovengrens.
 
 | Q Duo WiFi | Entity entries | Custom | Systeem | Totaal | Nominaal vrij |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Vóór deze sessiestatuswijziging | 460 | 64 | 88 | 612 | 18 |
-| Na deze sessiestatuswijziging | 433 | 64 | 88 | 585 | 45 |
+| Vóór deze sessiestatuswijziging | 463 | 64 | 88 | 615 | 15 |
+| Na de sessiestatuswijziging | 436 | 64 | 88 | 588 | 42 |
+| Na uitfasering van de drie kalibratieglobals | 427 | 64 | 88 | 579 | 51 |
+| Na verplaatsing van de nachtminimumdatum naar RAM | 424 | 64 | 88 | 576 | 54 |
+| Na uitfasering van de twee migratievlaggen | 418 | 64 | 88 | 570 | 60 |
+
+De Q Duo-tabel bevat ook de drie entries van de geneste switch
+`oq_ot_slave_enabled`. Die ontbreekt momenteel in de entitytelling van de
+checker; daarom ligt zijn schatting drie entries lager dan deze inventaris.
 
 De bestaande grens `REQUIRED_AVAILABLE_ENTRIES = 100` blijft behouden.
 Daarom geeft de gecorrigeerde checker voor dit profiel FAIL. Alle waarden zijn
 berekeningen bij volledige bezetting, geen apparaatmetingen. Blobvervanging
-schrijft nieuwe chunks voordat de oude worden vrijgegeven; 45 vrije entries
+schrijft nieuwe chunks voordat de oude worden vrijgegeven; 60 vrije entries
 zijn minder dan de minimaal 62 voor een gewijzigde volledige PHY-blob.
-De huidige Q Single WiFi-configuratie telt 424 entity-entries, 55 custom en
-88 systeem: 567 totaal, nominaal 63 vrij. Ook dat profiel haalt de marge niet.
+Voor Q Single WiFi begroot de checker 406 entity-entries, 55 custom en
+88 systeem: 549 totaal, nominaal 81 vrij. Ook dat profiel haalt de marge niet.
 
 ## Meting op de testcontroller
 
@@ -147,9 +220,10 @@ Dit was een rustige CM0-persistentietest: gelijktijdige HA/web/API/MQTT/bus/OTA-
 belasting en stack-watermarks zijn niet gemeten. Hieruit volgt geen bewezen
 runtime-geheugenmarge voor een release.
 
-De gemeten 169 beschikbare entries gelden voor deze testcontroller met zijn
-huidige records en historie. Ze vervangen de volledige-bezettingsschatting van
-45 entries voor Q Duo niet; de budgetgate van 100 blijft FAIL.
+De gemeten 169 beschikbare entries gelden voor de testcontroller met de
+records en firmware van die eerdere HIL-run. Ze vervangen de huidige
+volledige-bezettingsschatting van 60 vrije entries voor Q Duo niet; de
+budgetgate van 100 blijft FAIL.
 
 ## Vervolgontwerp voor gebundelde opslag
 
@@ -161,8 +235,8 @@ hangt af van de definitieve veldlayout.
 
 Kandidaten voor een aparte inventarisatie zijn samenhangende diagnostische
 grenzen en instellingen per feature. Start niet met flow-startcaches,
-energietellers of de calibratiemigratie: hun herstel- en downgradegedrag moet
-behouden blijven. Verwijder migratiemarkers alleen als hun oorspronkelijke
+energietellers of brongebonden kalibratierecords: hun herstelgedrag en
+bronbinding moeten behouden blijven. Verwijder migratiemarkers alleen als hun oorspronkelijke
 migratie aantoonbaar niet opnieuw kan worden gestart.
 
 De huidige inventaris geeft deze concrete instellingenclusters. De schatting
@@ -177,7 +251,7 @@ feature gescheiden. Alle waarden blijven persistent.
 | Compressor-start warning limits 2h en 72h | 2 | 6 | 3 | 3 |
 
 Deze vier clusters leveren theoretisch samen 35 entries op: Q Duo zou daarmee
-van 45 naar 80 nominaal vrij gaan. Ze halen op zichzelf de marge van 100 dus
+van 60 naar 95 nominaal vrij gaan. Ze halen op zichzelf de marge van 100 dus
 nog niet. Power House, PID en Flow hebben invloed op de regeling; hun volledige
 configuratie moet vóór de eerste controlcyclus beschikbaar zijn. Begin een
 prototype met de twee diagnostische grenzen, en beoordeel controlclusters

@@ -234,15 +234,7 @@ class HpWaterCalibrationRuntime {
     set_number_value(id(hp2_water_out_temp_offset), hp2_out);
 #endif
 
-    // Persist the compatibility record first. A downgrade can use it directly;
-    // a later upgrade can import it if an older firmware calibrated this source.
-    id(oq_water_supply_temp_calibration_source_code) = 0;
-    id(oq_water_supply_temp_calibration_checksum) = 0;
     set_number_value(id(water_supply_temp_calibration_offset), supply_offset);
-    id(oq_water_supply_temp_calibration_source_fingerprint) = supply_source.fingerprint;
-    id(oq_water_supply_temp_calibration_source_code) = result_source;
-    id(oq_water_supply_temp_calibration_checksum) =
-        oq_supply_calibration::record_checksum(result_source, supply_source.fingerprint, supply_offset);
 
     bool supply_record_stored = false;
     switch (supply_source.code) {

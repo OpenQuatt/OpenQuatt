@@ -183,14 +183,38 @@ van de actuele buitenmeting.
 
 #### Huismodel volgen en passief leren
 
-In testfirmware met passief huismodelleren staat bij Power House op Heatpump Controller Q Single en Duo ook
-`Huismodel volgen`. Deze functie verzamelt diagnostiek en schat woningparameters; zij past geen
-regelinstellingen automatisch aan. Water staat vast; Single/Duo volgt uit de firmware en bij Duo
-loopt het water in serie van HP1 naar HP2. Dit zijn geen instelbare keuzes. Technische meetgrenzen
-en kalibratiebewijs horen niet bij deze bediening. Onbekende meetkwaliteit blijft een blokkade.
-De leerfunctie neemt CM0, CM1 en CM2 mee en controleert de bestaande ketelaansturing; er is geen aparte keuze
-voor een andere warmtebron. OpenTherm-telemetrie is hiervoor niet vereist; een actuele melding
-van ketelactiviteit sluit de betreffende meting wel uit.
+Bij Power House op Heatpump Controller Q Single en Duo staat onderaan **Verwarmen**
+het experimentele blok `Huismodel volgen`. Open `Leerstatus en meetgegevens` voor
+voortgang, bronnen en schattingen. Passief leren verandert geen regelinstellingen.
+
+De functie gebruikt dezelfde geselecteerde bronwaarden als de regeling.
+OpenTherm-telemetrie is hiervoor niet vereist.
+
+Er zijn twee soorten meetperioden, met elk een eigen teller:
+
+- **Opwarmen en afkoelen:** perioden van 30 minuten, ook als de kamertemperatuur
+  verandert. Het eenvoudige huismodel (1R1C) schat warmteverlies en warmteopslag.
+  Dit model kan op geschikte metingen wachten, bijvoorbeeld tijdens ontdooien,
+  terwijl een geldige dagmeting doorgaat.
+- **Woninglijn uit dagmetingen:** een volledige, doorlopende periode van 24 uur
+  meet de afgegeven warmte, inclusief verwarmingspauzes en setpointwijzigingen.
+  De totale warmte over die periode bepaalt het gemiddelde warmtevermogen.
+  Buitentemperatuur en warmtevermogen leveren een meetpunt voor de woninglijn,
+  omgerekend naar een referentie van **20 °C in huis**. Een andere comfortinstelling
+  of setpointwijziging start de dagmeting niet opnieuw.
+
+Een korte meetonderbreking kan tot maximaal 2 minuten worden overbrugd als de
+bedrijfstoestand bekend is. De dagkaart toont dan **Wacht kort op meetwaarde** met
+behouden voortgang; er worden op dat moment geen geldige meetwaarden verzameld.
+Een langere onderbreking, onbekende bedrijfstoestand of herstart begint het
+onvoltooide 24-uursvenster opnieuw. Ketelwarmte, koelen en service onderbreken de
+dagmeting ook. Eerder opgeslagen, afgeronde metingen en modelschattingen blijven behouden. De laatste onderbreking of afwijzing
+blijft zichtbaar totdat een nieuwe woninglijnperiode is opgeslagen; deze melding
+wordt niet over een herstart bewaard. Oude stabiele vieruursperioden blijven als
+oude metingen beschikbaar in de grafiek en de export.
+Veel korte meetperioden betekenen dus niet automatisch dat er ook dagmetingen voor
+de woninglijn zijn. Beide schattingen hebben eigen kwaliteitscontroles; een voltooide
+dagmeting betekent niet dat het model al voldoende gegevens heeft of wordt toegepast.
 
 `Passief leren` staat standaard aan. De gekozen stand blijft na een herstart of
 firmware-update behouden; bewust uitschakelen blijft dus uit. Bij de eerste update
@@ -209,17 +233,23 @@ geen bruikbaar advies; zie [de ontwikkelstatus en testgrenzen](../power-house-au
 #### Woninglijn en meetresultaten
 
 De grafiek `Woninglijn en meetresultaten` vergelijkt de ingestelde woninglijn (blauw) met
-de geaccepteerde stabiele meetperioden (punten). Een beschikbare geleerde woninglijn wordt
+de afgeronde dagmetingen van 24 uur (punten). De korte perioden voor
+opwarmen en afkoelen zijn geen punten in deze grafiek. Een beschikbare geleerde woninglijn wordt
 groen getoond; buiten het gemeten temperatuurbereik is deze gestippeld. Dit is een
 doortrekking van het model, geen meting. De woninglijn toont de basiswarmtevraag, zonder
-de tijdelijke kamercorrectie of vermogensbegrenzing.
+de tijdelijke kamercorrectie of vermogensbegrenzing. De dagmetingen en geleerde lijn
+zijn omgerekend naar 20 °C in huis. Oude vieruursmetingen blijven zichtbaar en
+zijn in de puntinformatie gemarkeerd als oude meting.
 
 De leerstatus, grafiek, meldingen en bediening volgen de gekozen app-taal (Nederlands of Engels).
 Getallen en datums gebruiken de bijbehorende notatie; de JSON-export behoudt zijn vaste formaat.
 
 Haal de meetpunten op met de knop bij de grafiek. Bij een meetpunt kun je datum, meetduur,
-gemiddelde buitentemperatuur en warmtevermogen bekijken. Zonder voldoende gegevens blijft
-de geleerde lijn weg; de grafiek verandert geen instellingen.
+gemiddelde buitentemperatuur, de naar 20 °C omgerekende buitenwaarde en het
+gemiddelde warmtevermogen bekijken. Zonder voldoende gegevens blijft
+de geleerde lijn weg; de grafiek verandert geen instellingen. `H` beschrijft hoeveel
+extra vermogen per graad kouder nodig is. De `Verwarmingsgrens (T₀)` is het geschatte
+nulpunt van deze lijn, geen schakelinstelling die de verwarming aan- of uitzet.
 
 ### Koelen
 
@@ -268,6 +298,25 @@ Hier staan commissioning, tests, kalibratie en andere servicetaken. Gebruik deze
 #### Ontluchten
 
 **Ontluchten** draait in CM100 een pomp-only programma van 5 minuten met een rustige start, pomp-pulsen en stabilisatie. Tijdens een rustpuls mag de gemeten flow kort naar nul zakken. De routine stopt met een fout zodra 120 seconden aaneengesloten geen geldige flow van minstens 20 L/h is gedetecteerd. De gevraagde iPWM toont de opdracht van het programma, niet een bevestiging dat de pomp draait of water stroomt. Het resultaat onderscheidt **Mislukt** met foutreden van **Afgebroken**. Na een fout of afbreken keert de routine niet automatisch terug naar Auto; de optie voor terugkeer naar Auto geldt alleen bij normaal afronden.
+
+#### Flow autotune
+
+Start de service (CM100) en open **Flow autotune**. De autotune voert twee
+pompstaptests uit en controleert daarna de berekende Kp/Ki met een
+flowdoelstap. Laat kleppen en andere pompen tijdens de test gelijk staan.
+**Huidige Kp/Ki** toont de actieve waarden; tijdens validatie worden tijdelijk
+testwaarden gebruikt en als **Tijdelijke test-Kp/Ki** getoond. Vóór de
+validatiestap probeert de regeling maximaal vier minuten de ingestelde doelflow
+te bereiken en te stabiliseren. Een nieuw voorstel verschijnt pas na afronden en wordt
+pas met **Toepassen** opgeslagen als regelinstelling.
+
+Bij afbreken of mislukken blijven de reden en een hersteladvies zichtbaar.
+Eventuele tijdelijke Kp/Ki en het flowdoel worden hersteld. Controleer bij
+ontbrekende of instabiele flow de gekozen flowbron, circulatie en kleppen;
+ontlucht zo nodig en probeer opnieuw. Kleine meetfluctuaties zijn toegestaan,
+maar ontbrekende flow, een onbruikbare pomprespons of een te sterk veranderende
+flow stoppen de meting. Een resultaat met beperkte validatie is geen garantie
+voor iedere bedrijfsconditie; controleer de flowregeling na toepassen.
 
 #### Buitenunitinstellingen en ontdooien
 

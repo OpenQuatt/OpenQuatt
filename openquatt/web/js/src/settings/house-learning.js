@@ -39,6 +39,18 @@ const REASON_LABEL_KEYS = {
   model_disagreement: "houseLearning.reasons.modelDisagreement",
   thermal_storage_not_stationary: "houseLearning.reasons.thermalStorageNotStationary",
 };
+const COLLECTION_REJECTION_KEYS = {
+  invalid_measurement: "houseLearning.collectionRejections.invalidMeasurement",
+  mixed_context: "houseLearning.collectionRejections.mixedContext",
+  time_discontinuity: "houseLearning.collectionRejections.timeDiscontinuity",
+  segment_ineligible: "houseLearning.collectionRejections.segmentIneligible",
+  nonpositive_heat: "houseLearning.collectionRejections.nonpositiveHeat",
+  setpoint_changed: "houseLearning.collectionRejections.setpointChanged",
+  room_unstable: "houseLearning.collectionRejections.roomUnstable",
+  water_storage_unstable: "houseLearning.collectionRejections.waterStorageUnstable",
+  invalid_configuration: "houseLearning.collectionRejections.invalidConfiguration",
+  stale_data: "houseLearning.collectionRejections.staleData",
+};
 const MODEL_REASONS = ["model_context_mismatch", "insufficient_shared_temperature_range", "model_disagreement", "thermal_storage_not_stationary"];
 const reasons = (values, fallback) => {
   const unique = [...new Set((values || []).map((value) => t(REASON_LABEL_KEYS[value] || "houseLearning.reasons.unknownBlock")))];
@@ -76,7 +88,9 @@ function collectionCard(label, phase, status, waitingNote = "") {
   const target = duration(phase.targetSeconds);
   const progress = elapsed && target ? `${elapsed} / ${target}` : elapsed || target || t("houseLearning.status.timeUnknown");
   const intervals = Number.isFinite(phase.intervals) ? ` · ${t("houseLearning.status.intervalsCompleted", { count: formatNumber(phase.intervals) })}` : "";
-  if (phase.active) return [label, t("houseLearning.status.collecting"), `${progress}${intervals}`, true, "green"];
+  if (phase.restorePending) return [label, t("houseLearning.status.restoringDay"), `${progress} · ${t("houseLearning.status.restoringDayCopy")}`, true, "orange"];
+  if (phase.gapPending) return [label, t("houseLearning.status.waitShortMeasurement"), `${progress} · ${t("houseLearning.status.dailyGapHeld")}`, true, "orange"];
+  if (phase.active) return [label, t("houseLearning.status.collecting"), `${progress}${intervals}${phase.resumeStatus === "restored" ? ` · ${t("houseLearning.status.dayRestored")}` : ""}`, true, "green"];
   return [label, t("houseLearning.status.waiting"), waitingNote || (elapsed && target ? `${progress}${intervals} · ${t("houseLearning.status.waitValidMeasurementLower")}` : t("houseLearning.status.waitValidMeasurement")), true, "orange"];
 }
 
@@ -101,17 +115,7 @@ function renderWaterTemperatureCards() {
   }).join("")}</div>`;
 }
 
-function activity(status) {
-  if (status.blockedReasons.includes("runtime_blocked") && !statusIsStale(status)) return [t("houseLearning.activity.restartRequired"), t("houseLearning.activity.restartCopy"), "orange"];
-  if (!status.enabled) return [t("houseLearning.status.paused"), t("houseLearning.activity.enableToCollect"), ""];
-  if (statusIsStale(status)) return [t("houseLearning.status.stale"), t("houseLearning.status.waitCurrentController"), "orange"];
-  if (status.sourceStatus === "series_junction_mismatch") return [t("houseLearning.activity.waterMismatch"), t("houseLearning.activity.waterMismatchCopy"), "orange"];
-  if (status.status === "collecting") {
-    if (status.controlMode === 0 || status.controlMode === 1) return [t("houseLearning.activity.collectingDuringPause"), t("houseLearning.activity.pauseCounts"), "green"];
-    return [t("houseLearning.activity.collectingNow"), t("houseLearning.activity.processingMeasurement"), "green"];
-  }
-  const missing = Object.entries(status.sources).filter(([, source]) => !source.valid).map(([key]) => sourceLabel(key).toLocaleLowerCase(getIntlLocale()));
-  if (missing.length) return [t("houseLearning.activity.waitingForSource"), t("houseLearning.activity.noValidSourceValue", { sources: formatList(missing) }), "orange"];
+function measurementWaitingNote(status) {
   const waitingNoteKeys = {
     defrost_or_oil_return: "houseLearning.waiting.defrostOrOilReturn",
     service_or_ota: "houseLearning.waiting.serviceOrOta",
@@ -122,7 +126,26 @@ function activity(status) {
     persistence_unavailable: "houseLearning.waiting.persistenceUnavailable",
   };
   const reason = [...status.invalidReasons, ...status.blockedReasons].find((key) => waitingNoteKeys[key]);
-  return [t("houseLearning.activity.waitingForMeasurement"), reason ? t(waitingNoteKeys[reason]) : t("houseLearning.waiting.default"), "orange"];
+  return reason ? t(waitingNoteKeys[reason]) : t("houseLearning.waiting.default");
+}
+
+function activity(status) {
+  if (status.blockedReasons.includes("runtime_blocked") && !statusIsStale(status)) return [t("houseLearning.activity.restartRequired"), t("houseLearning.activity.restartCopy"), "orange"];
+  if (!status.enabled) return [t("houseLearning.status.paused"), t("houseLearning.activity.enableToCollect"), ""];
+  if (statusIsStale(status)) return [t("houseLearning.status.stale"), t("houseLearning.status.waitCurrentController"), "orange"];
+  if (status.collection?.batch?.gapPending) return [t("houseLearning.status.waitShortMeasurement"), t("houseLearning.status.dailyGapHeld"), "orange"];
+  if (status.collection?.batch?.active && !status.collection?.thermal?.active && (status.dailyRecordCount != null || status.collection.batch.targetSeconds === 86400)) {
+    return [t("houseLearning.activity.collectingDaily"), t(status.collection?.thermal?.active === false
+      ? "houseLearning.activity.dailyOnlyCopy" : "houseLearning.activity.processingMeasurement"), "green"];
+  }
+  if (status.sourceStatus === "series_junction_mismatch") return [t("houseLearning.activity.waterMismatch"), t("houseLearning.activity.waterMismatchCopy"), "orange"];
+  if (status.status === "collecting") {
+    if (status.controlMode === 0 || status.controlMode === 1) return [t("houseLearning.activity.collectingDuringPause"), t("houseLearning.activity.pauseCounts"), "green"];
+    return [t("houseLearning.activity.collectingNow"), t("houseLearning.activity.processingMeasurement"), "green"];
+  }
+  const missing = Object.entries(status.sources).filter(([, source]) => !source.valid).map(([key]) => sourceLabel(key).toLocaleLowerCase(getIntlLocale()));
+  if (missing.length) return [t("houseLearning.activity.waitingForSource"), t("houseLearning.activity.noValidSourceValue", { sources: formatList(missing) }), "orange"];
+  return [t("houseLearning.activity.waitingForMeasurement"), measurementWaitingNote(status), "orange"];
 }
 
 function modelStatus(status) {
@@ -165,32 +188,47 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
     : "";
   const [activityValue, activityNote, activityTone] = activity(status);
   const invalidSources = Object.entries(status.sources).filter(([, source]) => !source.valid).map(([key]) => sourceLabel(key).toLocaleLowerCase(getIntlLocale()));
-  const batchWaiting = invalidSources.length ? t("houseLearning.status.waitForSources", { sources: formatList(invalidSources) })
+  const dailyCollection = status.dailyRecordCount != null || status.collection?.batch?.targetSeconds === 86400;
+  const batchWaiting = dailyCollection ? t("houseLearning.status.waitDailyMeasurement")
+    : invalidSources.length ? t("houseLearning.status.waitForSources", { sources: formatList(invalidSources) })
     : status.invalidReasons.includes("setpoint_recovery") ? t("houseLearning.status.waitStableAfterSetpoint")
     : t("houseLearning.status.waitStableHeatingMeasurement");
+  const lastRejection = status.collection?.batchLastRejection;
+  const rejectionNote = lastRejection
+    ? `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.status.lastStablePeriodRejection", {
+      reason: t(Object.hasOwn(COLLECTION_REJECTION_KEYS, lastRejection)
+        ? COLLECTION_REJECTION_KEYS[lastRejection]
+        : "houseLearning.collectionRejections.unknown"),
+    }))}</p>`
+    : "";
   const summaryCards = [
     [t("houseLearning.cards.learning"), activityValue, activityNote, true, activityTone],
-    collectionCard(t("houseLearning.cards.houseLine"), status.collection?.batch, status, batchWaiting),
-    collectionCard(t("houseLearning.cards.heatingCooling"), status.collection?.thermal, status, activityNote),
+    collectionCard(t(dailyCollection ? "houseLearning.cards.houseLine" : "houseLearning.cards.legacyHouseLine"), status.collection?.batch, status, batchWaiting),
+    collectionCard(t("houseLearning.cards.heatingCooling"), status.collection?.thermal, status, measurementWaitingNote(status)),
   ];
+  const modelNote = `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.cards.modelStatus"))}: <strong>${escapeHtml(modelStatus(status))}</strong> · ${escapeHtml(modelStatusNote(status))}</p>`;
   const modelCards = [
-    [t("houseLearning.cards.modelStatus"), modelStatus(status), modelStatusNote(status), true, status.adviceReady && !statusIsStale(status) ? "green" : "sky"],
     [t("houseLearning.cards.r1rcPeriods"), formatNumber(status.rlsSamples), t("houseLearning.cards.acceptedThirtyMinutePeriods")],
+    [t("houseLearning.cards.dailyPeriods"), status.dailyRecordCount == null ? "—" : formatNumber(status.dailyRecordCount), t(status.dailyRecordCount == null ? "houseLearning.cards.dailyCountUnavailable" : "houseLearning.cards.dailyPeriodsCopy")],
     [t("houseLearning.cards.heatLossU"), metric(status.uRls, "W/K"), estimateNote(status.uRls, status.rlsReady)],
     [t("houseLearning.cards.heatStorageC"), metric(status.cRlsWhPerK, "Wh/K"), status.cRlsWhPerK == null ? t("houseLearning.estimate.none") : t("houseLearning.estimate.provisionalNotValidated")],
   ];
+  const legacyCount = status.legacyRecordCount ?? (status.dailyRecordCount == null ? status.records : null);
+  const historyNote = legacyCount > 0
+    ? `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.cards.legacyRecords", { count: formatNumber(legacyCount) }))}</p>`
+    : "";
+  const collectionNote = dailyCollection ? `<p class="oq-settings-action-note">${escapeHtml(t(status.collection?.batch?.resumeStatus != null ? "houseLearning.status.dailyRestartWindowCopy" : "houseLearning.status.dailyWindowCopy"))}</p>` : "";
   const batchDiagnosticCards = [
-    [t("houseLearning.cards.stableBatchPeriods"), formatNumber(status.records), t("houseLearning.cards.stableBatchPeriodsCopy")],
-    [t("houseLearning.cards.batchHeatLossH"), metric(status.hBatch, "W/K"), t("houseLearning.cards.batchHeatLossCopy")],
+    [t("houseLearning.cards.batchHeatLossH"), metric(status.hBatch, "W/K"), t(dailyCollection ? "houseLearning.cards.batchHeatLossCopy" : "houseLearning.cards.stableBatchPeriodsCopy")],
     [t("houseLearning.cards.batchStartTemperature"), metric(status.t0Batch, "°C"), t("houseLearning.cards.batchStartTemperatureCopy")],
   ];
-  return `<div class="oq-settings-grid oq-house-learning-summary">${summaryCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div><div class="oq-settings-system-summary oq-house-learning-sources">${Object.entries(status.sources).map(([key, source]) => sourceRow(key, source, status)).join("")}</div>${renderWaterTemperatureCards()}<div class="oq-settings-grid oq-house-learning-model">${modelCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>${renderSettingsAdvancedDisclosure("house-learning-model", t("houseLearning.diagnostics.title"), t("houseLearning.diagnostics.copy"), `<div class="oq-settings-grid">${batchDiagnosticCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>`)}${state.houseLearningStatusError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningStatusError))}</p>` : ""}`;
+  return `<div class="oq-settings-grid oq-house-learning-summary">${summaryCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>${collectionNote}${rejectionNote}<div class="oq-settings-system-summary oq-house-learning-sources">${Object.entries(status.sources).map(([key, source]) => sourceRow(key, source, status)).join("")}</div>${renderWaterTemperatureCards()}${modelNote}<div class="oq-settings-grid oq-house-learning-model">${modelCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>${historyNote}${renderSettingsAdvancedDisclosure("house-learning-model", t("houseLearning.diagnostics.title"), t(dailyCollection ? "houseLearning.diagnostics.copy" : "houseLearning.diagnostics.legacyCopy"), `<div class="oq-settings-grid">${batchDiagnosticCards.map(([label, value, note, cardStatus, tone]) => renderStatCard({ label, value, note, status: cardStatus, tone })).join("")}</div>`)}${state.houseLearningStatusError ? `<p class="oq-settings-action-note oq-settings-action-note--error">${escapeHtml(localizeStateMessage(state.houseLearningStatusError))}</p>` : ""}`;
 }
 
 function houseLearningChartSignature(busy = Boolean(state.busyAction) || state.houseLearningReset === "pending") {
   return JSON.stringify([getLocale(), busy, state.houseLearningChartFetchedAt, state.houseLearningChart?.length,
     state.houseLearningChartLoading, state.houseLearningChartError,
-    state.houseLearningStatus?.hBatch, state.houseLearningStatus?.t0Batch, state.houseLearningStatus?.batchAdviceReady,
+    state.houseLearningStatus?.hBatch, state.houseLearningStatus?.t0Batch, state.houseLearningStatus?.batchAdviceReady, state.houseLearningStatus?.referenceRoomC,
     ...["houseColdTemp", "houseOutdoorMax", "housePower"].map(getEntityNumericValue)]);
 }
 
@@ -198,7 +236,7 @@ function renderHouseLearningChartPanel(busy = Boolean(state.busyAction) || state
   const chart = state.houseLearningChart === null ? "" : renderHouseLearningChart(
     state.houseLearningChart,
     { coldC: getEntityNumericValue("houseColdTemp"), zeroC: getEntityNumericValue("houseOutdoorMax"), ratedW: getEntityNumericValue("housePower") },
-    { h: state.houseLearningStatus?.hBatch, t0: state.houseLearningStatus?.t0Batch, ready: state.houseLearningStatus?.batchAdviceReady },
+    { h: state.houseLearningStatus?.hBatch, t0: state.houseLearningStatus?.t0Batch, ready: state.houseLearningStatus?.batchAdviceReady, referenceRoomC: state.houseLearningStatus?.referenceRoomC },
   );
   return `
         <div class="oq-house-learning-chart-head"><div><h5>${escapeHtml(t("houseLearning.chart.panelTitle"))}</h5><p>${escapeHtml(t("houseLearning.chart.panelCopy"))}</p></div><button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="load-house-learning-chart" aria-expanded="${state.houseLearningChart !== null}" ${state.houseLearningChartLoading || busy ? "disabled" : ""}>${escapeHtml(t(state.houseLearningChartLoading ? "houseLearning.chart.loading" : state.houseLearningChart !== null ? "houseLearning.chart.hide" : "houseLearning.chart.show"))}</button></div>

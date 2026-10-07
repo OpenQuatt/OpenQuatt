@@ -111,9 +111,85 @@ test("passieve leerstatus normaliseert onbeschikbare getallen naar null", () => 
   assert.equal(status.uRls, null);
   assert.equal(status.records, 42);
   assert.equal(status.sources.flow.valid, false);
-  assert.deepEqual(status.collection.batch, { active: true, elapsedSeconds: 125, targetSeconds: 300, intervals: null });
+  assert.deepEqual(status.collection.batch, { active: true, gapPending: false, elapsedSeconds: 125, targetSeconds: 300, intervals: null });
   assert.equal(normalizeHouseLearningStatus(statusPayload({ collection: undefined })).collection, null);
   assert.throws(() => normalizeHouseLearningStatus({ schema: 2, mode: "passive" }), /statusformaat/);
+});
+
+test("dagmeetgat is optioneel en accepteert uitsluitend een expliciete boolean", () => {
+  for (const value of [undefined, null, false, "true", 1, {}, []]) {
+    const payload = statusPayload();
+    if (value !== undefined) payload.collection.batch_gap_pending = value;
+    assert.equal(normalizeHouseLearningStatus(payload).collection.batch.gapPending, false);
+  }
+  const status = normalizeHouseLearningStatus(statusPayload({ collection: { batch_gap_pending: true } }));
+  assert.equal(status.collection.batch.gapPending, true);
+  assert.equal(status.collection.batch.active, false);
+  assert.equal(status.collection.batch.elapsedSeconds, null);
+  assert.equal(status.collection.thermal, null);
+});
+
+test("kort dagmeetgat houdt voortgang vast en hervatting toont opnieuw verzamelen", () => {
+  const payload = statusPayload({
+    enabled: true, status: "collecting", control_mode: 2, daily_record_count: 3,
+    collection: { batch_active: false, batch_gap_pending: true, batch_elapsed_s: 36000,
+      batch_target_s: 86400, thermal_active: false, thermal_target_s: 1800 },
+  });
+  const waiting = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(payload));
+  assert.match(waiting, /Woninglijn uit dagmetingen[\s\S]*Wacht kort op meetwaarde[\s\S]*10:00:00 \/ 24:00:00/);
+  assert.match(waiting, /Dagmeting blijft kort behouden; wacht op een geldige meetwaarde/);
+  assert.doesNotMatch(waiting, /Verzamelt dagmeting|Verzamelt nu|Verzamelt tijdens/);
+  assert.match(waiting, /Opwarmen en afkoelen[\s\S]*Wacht/);
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  const english = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(payload));
+  assert.match(english, /Heat demand curve from daily measurements[\s\S]*Briefly waiting for a reading[\s\S]*10:00:00 \/ 24:00:00/);
+  assert.match(english, /up to 2 minutes may be bridged if the operating state is known/);
+  assert.doesNotMatch(english, /Wacht kort|Dagmeting blijft/);
+  setLocale("nl", { persist: false, applyDocument: false, notify: false });
+  const resumed = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus({
+    ...payload, collection: { ...payload.collection, batch_active: true,
+      batch_gap_pending: false, batch_elapsed_s: 36060 },
+  }));
+  assert.match(resumed, /Verzamelt dagmeting/);
+  assert.match(resumed, /Woninglijn uit dagmetingen[\s\S]*Verzamelt[\s\S]*10:01:00 \/ 24:00:00/);
+  assert.doesNotMatch(resumed, /Wacht kort op meetwaarde|Dagmeting blijft kort behouden/);
+});
+
+test("dagherstel toont opgeslagen voortgang en ondersteunt beide talen", () => {
+  const payload = statusPayload({ enabled: true, daily_record_count: 0,
+    collection: { batch_active: false, batch_restore_pending: true, batch_resume_status: "waiting_for_sources",
+      batch_elapsed_s: 64800, batch_target_s: 86400, batch_missing_energy_uncertainty_wh: 0 },
+  });
+  const waiting = normalizeHouseLearningStatus(payload);
+  assert.equal(waiting.collection.batch.restorePending, true);
+  assert.equal(waiting.collection.batch.missingEnergyUncertaintyWh, 0);
+  assert.match(renderHouseLearningStatusMarkup(waiting), /Dagmeting herstellen[\s\S]*18:00:00 \/ 24:00:00/);
+  const resumed = { ...payload, collection: { ...payload.collection, batch_active: true,
+    batch_restore_pending: false, batch_resume_status: "restored", batch_elapsed_s: 64890 } };
+  assert.match(renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(resumed)), /Hervat na OTA of herstart/);
+  assert.match(renderHouseLearningStatusMarkup(waiting), /Bij OTA of een normale herstart wordt de lopende dag opgeslagen/);
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  assert.match(renderHouseLearningStatusMarkup(waiting), /Restoring daily measurement[\s\S]*18:00:00 \/ 24:00:00/);
+  assert.match(renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(resumed)), /Resumed after OTA or restart/);
+  for (const override of [{ enabled: false }, { tick_epoch: 1 }]) {
+    assert.doesNotMatch(renderHouseLearningStatusMarkup(normalizeHouseLearningStatus({ ...payload, ...override })), /Restoring daily measurement/);
+  }
+});
+
+test("oude wachtstatus zonder meetgat claimt geen behouden dag en actuele status blijft nodig", () => {
+  const payload = statusPayload({
+    enabled: true, status: "blocked", daily_record_count: 0,
+    collection: { batch_active: false, batch_elapsed_s: 36000, batch_target_s: 86400 },
+  });
+  const old = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(payload));
+  assert.doesNotMatch(old, /Wacht kort op meetwaarde|Dagmeting blijft kort behouden/);
+  for (const overrides of [{ enabled: false }, { tick_epoch: 1 }]) {
+    const html = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus({
+      ...payload, ...overrides, collection: { ...payload.collection, batch_gap_pending: true },
+    }));
+    assert.doesNotMatch(html, /Wacht kort op meetwaarde|Dagmeting blijft kort behouden/);
+    assert.match(html, overrides.enabled === false ? /Gepauzeerd/ : /Status verouderd/);
+  }
 });
 
 test("leerstatus wordt alleen op het zichtbare Power House instellingenscherm opgehaald", async () => {
@@ -394,7 +470,7 @@ test("gecombineerde validatie en statusleeftijd bepalen de leerkwaliteit", () =>
   assert.doesNotMatch(renderHouseLearningStatusMarkup(ready), />Warmteverlies komt overeen</);
   assert.match(renderHouseLearningStatusMarkup({ ...ready, adviceReady: true }), />Warmteverlies komt overeen</);
   assert.match(renderHouseLearningStatusMarkup({ ...ready, tickEpoch: Math.floor(Date.now() / 1000) - 31 }), /Status verouderd/);
-  assert.match(renderHouseLearningStatusMarkup({ ...ready, blockedReasons: ["model_disagreement"] }), /1R1C-model verschillen/);
+  assert.match(renderHouseLearningStatusMarkup({ ...ready, blockedReasons: ["model_disagreement"] }), /woninglijn en model voor opwarmen en afkoelen verschillen/);
 });
 
 test("modelovereenstemming valideert C niet, ook bij oude firmware", () => {
@@ -426,12 +502,12 @@ test("voorlopige 1R1C-data staat boven batchdiagnostiek", () => {
   })));
   assert.match(markup, /Modelstatus[\s\S]*Voorlopige schatting/);
   assert.match(markup, /5 geaccepteerde perioden van 30 minuten/);
-  assert.match(markup, /1R1C-perioden[\s\S]*>5</);
+  assert.match(markup, /Perioden voor opwarmen en afkoelen[\s\S]*>5</);
   assert.match(markup, /Warmteverlies \(U\)[\s\S]*196,3 W\/K/);
   assert.match(markup, /Warmteopslag \(C\)[\s\S]*4\.803,5 Wh\/K/);
   assert.doesNotMatch(markup, /Nog geen metingen/);
   assert.ok(markup.indexOf("Warmteverlies (U)") < markup.indexOf("Modeldiagnostiek"));
-  assert.ok(markup.indexOf("Modeldiagnostiek") < markup.indexOf("Batch warmteverlies (H)"));
+  assert.ok(markup.indexOf("Modeldiagnostiek") < markup.indexOf("Warmteverlies per graad (H)"));
 });
 
 test("leerstatus toont actuele verzameling, losse bronnen en wachtredenen", () => {
@@ -446,7 +522,7 @@ test("leerstatus toont actuele verzameling, losse bronnen en wachtredenen", () =
   const markup = renderHouseLearningStatusMarkup(collecting);
   assert.match(markup, /Verzamelt nu/);
   assert.match(markup, /Woninglijn[\s\S]*Wacht[\s\S]*Wacht op kamer setpoint/);
-  assert.match(markup, /Opwarmen en afkoelen \(1R1C\)[\s\S]*Verzamelt/);
+  assert.match(markup, /Opwarmen en afkoelen[\s\S]*Verzamelt/);
   assert.match(markup, /Kamer[\s\S]*Geldig/);
   assert.match(markup, /Kamer setpoint[\s\S]*Ongeldig/);
   assert.doesNotMatch(markup, /kamer: .* · setpoint:/);
@@ -464,12 +540,12 @@ test("leerstatus vertaalt labels, routes en getallen tijdens een localewissel", 
   setLocale("en", { persist: false, applyDocument: false, notify: false });
   const markup = renderHouseLearningStatusMarkup(status);
   assert.match(markup, /Collecting now/);
-  assert.match(markup, /Building heat demand curve \(steady heating\)/);
+  assert.match(markup, /Heat demand curve \(old 4-hour measurement\)/);
   assert.match(markup, /Room temperature[\s\S]*Via selected room source/);
   assert.match(markup, /Thermal capacity \(C\)[\s\S]*4,803\.5 Wh\/K/);
 });
 
-test("setpointherstel vertraagt alleen de woninglijn terwijl 1R1C verzamelt", () => {
+test("oude firmware toont setpointherstel voor de oude woninglijn terwijl 1R1C verzamelt", () => {
   const markup = renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(statusPayload({
     enabled: true, control_mode: 2, status: "collecting",
     invalid_reasons: ["setpoint_recovery"], blocked_reasons: [],
@@ -478,7 +554,7 @@ test("setpointherstel vertraagt alleen de woninglijn terwijl 1R1C verzamelt", ()
   })));
   assert.match(markup, /Verzamelt nu/);
   assert.match(markup, /Wacht tot de kamer stabiel is na de setpointwijziging/);
-  assert.match(markup, /Opwarmen en afkoelen \(1R1C\)[\s\S]*Verzamelt/);
+  assert.match(markup, /Opwarmen en afkoelen[\s\S]*Verzamelt/);
 });
 
 test("CM0 en CM1 tonen een echte blokkade in plaats van wachten op verwarming", () => {
@@ -589,7 +665,7 @@ test("oude firmware houdt verzamelvoortgang expliciet onbekend", () => {
     invalid_reasons: [],
   })));
   assert.match(markup, /Woninglijn[\s\S]*Onbekend/);
-  assert.match(markup, /Opwarmen en afkoelen \(1R1C\)[\s\S]*Onbekend/);
+  assert.match(markup, /Opwarmen en afkoelen[\s\S]*Onbekend/);
   assert.match(markup, /geeft geen voortgang door/);
 });
 
@@ -760,4 +836,181 @@ test("meetgegevens sluiten verwijdert de grafiek zonder netwerkrequest en kan op
   assert.equal(await loadHouseLearningChart(), true);
   assert.equal(requests, 1);
   assert.match(renderHouseLearningSettings(), /Meetgegevens verbergen/);
+});
+
+
+test("optionele eerdere woninglijnafwijzing blijft compatibel met oude statuspayloads", () => {
+  for (const value of [undefined, null, "", "   ", 17, {}]) {
+    const status = normalizeHouseLearningStatus(statusPayload({
+      collection: { ...statusPayload().collection, batch_last_rejection: value },
+    }));
+    assert.equal(status.collection.batchLastRejection, null);
+    assert.doesNotMatch(renderHouseLearningStatusMarkup(status), /Laatste onderbroken/);
+  }
+  assert.equal(normalizeHouseLearningStatus(statusPayload({
+    collection: { batch_last_rejection: " room_unstable " },
+  })).collection.batchLastRejection, "room_unstable");
+});
+
+test("eerdere onderbreking staat apart van actuele verzameling en geldige bronnen", () => {
+  const status = normalizeHouseLearningStatus(statusPayload({
+    enabled: true, control_mode: 2, status: "collecting", invalid_reasons: [], records: 0, daily_record_count: 0, legacy_record_count: 0, rls_samples: 362,
+    collection: { ...statusPayload().collection, batch_active: true, batch_target_s: 86400, batch_last_rejection: "room_unstable" },
+    sources: Object.fromEntries(Object.entries(statusPayload().sources).map(([key, value]) => [key, { ...value, valid: true }])),
+  }));
+  const nl = renderHouseLearningStatusMarkup(status);
+  assert.match(nl, /Woninglijn uit dagmetingen[\s\S]*Verzamelt/);
+  assert.match(nl, /Laatste onderbroken of afgewezen woninglijnperiode: de kamertemperatuur was niet stabiel genoeg/);
+  assert.match(nl, /Actuele status hierboven/);
+  assert.doesNotMatch(nl, />Ongeldig</);
+  assert.match(nl, /Perioden voor opwarmen en afkoelen[\s\S]*>362</);
+  assert.match(nl, /Dagmetingen \(24 uur\)[\s\S]*>0</);
+  assert.ok(nl.indexOf("Dagmetingen (24 uur)") < nl.indexOf("Modeldiagnostiek"));
+  assert.match(nl, /Verwarmingsgrens \(T₀\)[\s\S]*woninglijn nul raakt; geen inschakelgrens/);
+  assert.doesNotMatch(nl, /batch-|Batch /);
+
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  const en = renderHouseLearningStatusMarkup(status);
+  assert.match(en, /Last interrupted or rejected heat demand period: the room temperature was not stable enough/);
+  assert.match(en, /Current status above/);
+  assert.match(en, /Heating and cooling periods[\s\S]*>362</);
+  assert.match(en, /Daily measurements \(24 hours\)[\s\S]*>0</);
+  assert.match(en, /Heating threshold \(T₀\)[\s\S]*curve reaches zero; not the heating switch-on threshold/);
+  assert.doesNotMatch(en, /batch |Batch /);
+
+  assert.doesNotMatch(renderHouseLearningStatusMarkup({ ...status, collection: { ...status.collection, batchLastRejection: null } }), /Last interrupted/);
+});
+
+test("bekende collectieredenen worden vertaald en onbekende waarden blijven intern", () => {
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    for (const reason of ["invalid_measurement", "mixed_context", "time_discontinuity", "segment_ineligible", "nonpositive_heat", "setpoint_changed", "room_unstable", "water_storage_unstable", "invalid_configuration", "stale_data", "toString", "constructor", "__proto__", "<img src=x onerror=alert(1)>"]) {
+      const status = normalizeHouseLearningStatus(statusPayload({
+        collection: { ...statusPayload().collection, batch_last_rejection: reason },
+      }));
+      const markup = renderHouseLearningStatusMarkup(status);
+      assert.doesNotMatch(markup, /onerror=|unknownBlock|undefined/);
+      assert.ok(!markup.includes(reason));
+      assert.match(markup, locale === "nl" ? /Laatste onderbroken/ : /Last interrupted/);
+    }
+  }
+});
+
+
+test("dagtelling blijft onbekend bij oude firmware en legacyhistorie blijft zichtbaar", () => {
+  const old = normalizeHouseLearningStatus(statusPayload());
+  assert.equal(old.dailyRecordCount, null);
+  assert.equal(old.legacyRecordCount, null);
+  assert.equal(old.referenceRoomC, null);
+  const markup = renderHouseLearningStatusMarkup(old);
+  assert.match(markup, /Dagmetingen \(24 uur\)[\s\S]*>—</);
+  assert.match(markup, /Dagtelling ontbreekt/);
+  assert.match(markup, /42 oude 4-uursmetingen blijven bewaard/);
+  for (const value of [null, -1, 1.5, "NaN", "   ", {}, true, false]) {
+    assert.equal(normalizeHouseLearningStatus(statusPayload({ daily_record_count: value })).dailyRecordCount, null);
+  }
+});
+
+test("dagmeting loopt onafhankelijk door tijdens pauze van het 30-minutenmodel", () => {
+  const status = normalizeHouseLearningStatus(statusPayload({
+    enabled: true, control_mode: 2, status: "blocked", source_status: "blocked",
+    daily_record_count: 3, legacy_record_count: 2, reference_room_c: 20, records: 5,
+    invalid_reasons: ["defrost_or_oil_return"],
+    collection: { ...statusPayload().collection, batch_active: true, batch_target_s: 86400,
+      batch_elapsed_s: 36000, thermal_active: false, thermal_target_s: 1800 },
+    sources: Object.fromEntries(Object.entries(statusPayload().sources).map(([key, value]) => [key, { ...value, valid: true }])),
+  }));
+  assert.equal(status.referenceRoomC, 20);
+  const html = renderHouseLearningStatusMarkup(status);
+  assert.match(html, /Verzamelt dagmeting/);
+  assert.match(html, /Woninglijn uit dagmetingen[\s\S]*Verzamelt[\s\S]*10:00:00 \/ 24:00:00/);
+  assert.match(html, /Opwarmen en afkoelen[\s\S]*Wacht[\s\S]*na ontdooien of olieretour/);
+  assert.match(html, /Dagmetingen \(24 uur\)[\s\S]*>3</);
+  assert.match(html, /2 oude 4-uursmetingen/);
+  assert.match(html, /tot 2 minuten kan worden overbrugd als de bedrijfstoestand bekend is/);
+  assert.match(html, /onbekende bedrijfstoestand of herstart: de lopende dag begint opnieuw/);
+  assert.doesNotMatch(html, /Wacht op bron|>Ongeldig</);
+  assert.match(html, /Voorlopige schatting/);
+  assert.doesNotMatch(html, /Warmteverlies komt overeen/);
+});
+
+test("setpointwijziging onderbreekt dagverzameling niet en dagtelling lokaliseert zonder schrijftoegang", () => {
+  const status = normalizeHouseLearningStatus(statusPayload({
+    enabled: true, status: "collecting", control_mode: 2, daily_record_count: 0, legacy_record_count: 0,
+    invalid_reasons: ["setpoint_recovery"],
+    collection: { ...statusPayload().collection, batch_active: true, batch_target_s: 86400, thermal_active: true },
+  }));
+  const nl = renderHouseLearningStatusMarkup(status);
+  assert.match(nl, /Woninglijn uit dagmetingen[\s\S]*Verzamelt/);
+  assert.doesNotMatch(nl, /Wacht tot de kamer stabiel/);
+  assert.match(nl, /Verwarmingspauzes en setpointwijzigingen tellen mee/);
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  const en = renderHouseLearningStatusMarkup(status);
+  assert.match(en, /Daily measurements \(24 hours\)[\s\S]*>0</);
+  assert.match(en, /Heating pauses and setpoint changes count/);
+  assert.doesNotMatch(en, /old 4-hour measurements remain/);
+});
+
+test("preview export en status beschrijven expliciet dagmetingen naast legacyhistorie", async () => {
+  const source = await readFile(new URL("../js/mock-device.js", import.meta.url), "utf8");
+  const functionSource = (name) => {
+    const start = source.indexOf(`  function ${name}(`);
+    return source.slice(start, source.indexOf("\n  function ", start + 1));
+  };
+  const mock = runInNewContext(`${functionSource("getHouseLearningStatusPayload")}\n${functionSource("getHouseLearningExportPayload")}\n({ getHouseLearningStatusPayload, getHouseLearningExportPayload })`, {
+    state: { boiler: "off", houseLearning: { records: 32, rlsSamples: 174, journalStatus: "ready" } },
+    isSwitchEnabled: () => true, getEntity: () => ({ value: "CM2 - Heatpump" }),
+  });
+  const status = normalizeHouseLearningStatus(mock.getHouseLearningStatusPayload());
+  const { normalizeHouseLearningExport } = await import("../js/src/settings/house-learning-chart.js");
+  const records = normalizeHouseLearningExport(mock.getHouseLearningExportPayload());
+  assert.equal(status.collection.batch.targetSeconds, 86400);
+  assert.equal(status.collection.thermal.targetSeconds, 1800);
+  assert.equal(records.filter((record) => record.recordKind === 1).length, status.dailyRecordCount);
+  assert.equal(records.filter((record) => record.recordKind === 0).length, status.legacyRecordCount);
+  for (const record of records.filter((record) => record.recordKind === 1)) {
+    assert.equal(record.endEpoch - record.startEpoch, 86400);
+    assert.equal(record.referenceRoomC, 20);
+  }
+});
+
+
+test("ontbrekende thermische voortgang wordt niet als bevestigde pauze gepresenteerd", () => {
+  const status = normalizeHouseLearningStatus(statusPayload({
+    enabled: true, daily_record_count: 0, status: "blocked",
+    collection: { batch_active: true, batch_elapsed_s: 60, batch_target_s: 86400 },
+  }));
+  const html = renderHouseLearningStatusMarkup(status);
+  assert.match(html, /Verzamelt dagmeting/);
+  assert.match(html, /Opwarmen en afkoelen[\s\S]*Onbekend/);
+  assert.doesNotMatch(html, /opwarmen en afkoelen wacht op geschikte metingen/);
+});
+
+
+test("negatief dagpunt blijft beschikbaar na grafiek sluiten en opnieuw laden", async () => {
+  state.entities = { houseLearningEnabled: switchEntity(true) };
+  state.houseLearningEndpointAvailable = true;
+  state.houseLearningStatus = normalizeHouseLearningStatus(statusPayload({
+    enabled: true, daily_record_count: 1, legacy_record_count: 0, reference_room_c: 20,
+  }));
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests += 1;
+    return { ok: true, json: async () => ({
+      schema: 1, mode: "passive", reference_room_c: 20,
+      record_columns: ["start_epoch_s", "end_epoch_s", "mean_outside_c", "mean_heat_w", "effective_outside_c", "record_kind"],
+      records: [[1, 86401, 5, -20, 4, 1]],
+    }) };
+  };
+  assert.equal(await loadHouseLearningChart(), true);
+  assert.equal(state.houseLearningChart[0].heatW, -20);
+  assert.match(renderHouseLearningSettings(), /Netto warmte: -20 W/);
+  assert.equal(handleHouseLearningAction("load-house-learning-chart"), true);
+  assert.equal(state.houseLearningChart, null);
+  assert.equal(requests, 1);
+  assert.match(renderHouseLearningSettings(), /Meetgegevens tonen/);
+  assert.equal(await loadHouseLearningChart(), true);
+  assert.equal(requests, 2);
+  assert.equal(state.houseLearningChart[0].heatW, -20);
+  assert.match(renderHouseLearningSettings(), /Netto warmte: -20 W/);
 });

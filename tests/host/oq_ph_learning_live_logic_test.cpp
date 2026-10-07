@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <math.h>
+#include <string.h>
 
 #define OQ_PH_LEARNING_HOST_TEST 1
 #include "../../openquatt/includes/learning/oq_ph_learning_live_logic.h"
@@ -321,6 +322,170 @@ void test_diagnostic_heat_rejects_incoherent_inputs() {
   assert(zero.valid && zero.heat_to_water_w == 0.0f);
 }
 
+void test_delayed_initial_resolution_does_not_look_like_a_route_change() {
+  uint32_t valid_revisions[4]{};
+  oq_sources::ResolvedLearningSource sources[4];
+  for (auto& source : sources) source.configuration_generation = 1;
+  assert(!observe_valid_source_revisions(valid_revisions, sources));
+  sources[0] = selected_source(oq_sources::LearningSourceRoute::HA_ROOM, 20.0f, 2);
+  assert(!observe_valid_source_revisions(valid_revisions, sources));
+  sources[1] = selected_source(oq_sources::LearningSourceRoute::OPENTHERM_SETPOINT, 20.0f, 2);
+  assert(!observe_valid_source_revisions(valid_revisions, sources));
+  sources[0].valid = false;
+  sources[0].configuration_generation = 3;
+  assert(!observe_valid_source_revisions(valid_revisions, sources));
+  sources[0].valid = true;
+  sources[0].configuration_generation = 4;  // Includes intermediate A -> B -> A.
+  assert(observe_valid_source_revisions(valid_revisions, sources));
+}
+
+void test_positive_unsafe_evidence_during_sntp_startup_prevents_recovery() {
+  auto input = diagnostic_input();
+  input.epoch_s = 0;  // SNTP is not ready; positive evidence remains meaningful.
+  input.operation.control_mode_valid = false;
+  assert(!known_daily_restart_interruption(input, false));
+  assert(known_daily_restart_interruption(input, true));
+  assert(strcmp(daily_restart_interruption_reason(input, true), "boiler_heat") == 0);
+  input.operation.control_mode_valid = true;
+  input.operation.control_mode = LearningControlMode::HEATING;
+  assert(!known_daily_restart_interruption(input, false));
+  input.operation.control_mode = LearningControlMode::UNKNOWN;
+  assert(known_daily_restart_interruption(input, false));
+  assert(strcmp(daily_restart_interruption_reason(input, false), "control_mode") == 0);
+  input.operation.control_mode = LearningControlMode::HEATING;
+  input.hp1.mode = physical_measurement(HeatPumpMode::COOLING, 2099, PhysicalUnit::HP1);
+  assert(known_daily_restart_interruption(input, false));
+  assert(strcmp(daily_restart_interruption_reason(input, false), "hp_mode") == 0);
+  input.hp1.defrost_active = physical_measurement(true, 2118, PhysicalUnit::HP1);
+  assert(!known_daily_restart_interruption(input, false));  // Signed daily defrost remains valid.
+  input.hp1.defrost_active.received_monotonic_ms = kNowMs - kHpLearningTiming.max_age_ms - 1;
+  assert(known_daily_restart_interruption(input, false));
+  input.hp1.mode.received_monotonic_ms = kNowMs - kHpLearningTiming.max_age_ms - 1;
+  assert(!known_daily_restart_interruption(input, false));
+  input.hp1.mode = physical_measurement(HeatPumpMode::OFF, 2099, PhysicalUnit::HP1);
+  input.hp1.compressor_active = physical_measurement(true, 2103, PhysicalUnit::HP1);
+  assert(known_daily_restart_interruption(input, false));
+  assert(strcmp(daily_restart_interruption_reason(input, false), "off_compressor_active") == 0);
+  input.hp1.compressor_active.value = false;
+  assert(!known_daily_restart_interruption(input, false));
+  assert(daily_restart_interruption_reason(input, false) == nullptr);
+}
+
+LearningSourceInput boot_input() {
+  auto input = diagnostic_input(HydronicTopology::DUO_SERIES);
+  input.epoch_s = 20000U * 86400U;
+  input.context_revision = 1;
+  input.room_c = physical_measurement(20.0f, 1U);
+  input.setpoint_c = physical_measurement(21.0f, 2U);
+  input.outside_c = physical_measurement(7.0f, 3U);
+  HeatPumpRawMeasurements* pumps[]{&input.hp1, &input.hp2};
+  const PhysicalUnit units[]{PhysicalUnit::HP1, PhysicalUnit::HP2};
+  for (size_t index = 0; index < 2; ++index) {
+    auto& hp = *pumps[index];
+    hp.mode = physical_measurement(HeatPumpMode::HEATING, 2099U, units[index]);
+    hp.compressor_active = physical_measurement(true, 2103U, units[index]);
+    hp.defrost_active = physical_measurement(false, 2118U, units[index]);
+    hp.valve_transition_active = physical_measurement(false, 2108U, units[index]);
+    hp.oil_return_active = physical_measurement(false, 2119U, units[index]);
+  }
+  input.boiler_heat = physical_measurement(BoilerHeatState::NO_HEAT, 4U);
+  input.operation.captured_monotonic_ms = input.monotonic_ms;
+  input.operation.captured_context_revision = input.context_revision;
+  input.operation.control_mode_valid = input.operation.active_limit_valid = input.operation.service_or_ota_valid = true;
+  input.operation.control_mode = LearningControlMode::HEATING;
+  assert(build_learning_snapshot(input, QualityConfig{}).measurement_valid);
+  return input;
+}
+
+template <typename T>
+void missing_boot_receipt(PhysicalMeasurement<T>& value) {
+  value.valid = false;
+  value.received_monotonic_ms = 0;
+}
+
+void test_boot_receipt_gaps_wait_without_changing_running_day_bridging() {
+  for (int gap = 0; gap < 5; ++gap) {
+    auto input = boot_input();
+    if (gap == 0) missing_boot_receipt(input.hp1.mode);
+    if (gap == 1) missing_boot_receipt(input.hp2.compressor_active);
+    if (gap == 2) missing_boot_receipt(input.boiler_heat);
+    if (gap == 3) input.hp2.mode.received_monotonic_ms = kNowMs - kHpLearningTiming.max_age_ms - 1U;
+    if (gap == 4) input.hp2.mode.received_monotonic_ms = kNowMs - kHpLearningTiming.max_skew_ms - 101U;
+    const auto batch = build_learning_snapshot(input, QualityConfig{});
+    assert(!batch.measurement_valid && !batch.may_bridge_daily_gap);
+    assert(!known_daily_restart_interruption(input, false));
+    assert(daily_boot_sources_pending(input, batch));
+  }
+  auto input = boot_input();
+  input.boiler_heat.source = {PhysicalSourceKind::CONTROL_CONTRACT, 2U, PhysicalUnit::SYSTEM};
+  input.boiler_heat.provenance = MeasurementProvenance::CONTROL_CONTRACT;
+  input.boiler_heat.valid = false;  // Fresh controller contract is not yet ready.
+  assert(daily_boot_sources_pending(input, build_learning_snapshot(input, QualityConfig{})));
+  const auto complete = boot_input();
+  assert(!daily_boot_sources_pending(complete, build_learning_snapshot(complete, QualityConfig{})));
+}
+
+void test_boot_missing_first_receipt_never_hides_unsafe_or_malformed_operation() {
+  for (int fault = 0; fault < 11; ++fault) {
+    auto input = boot_input();
+    missing_boot_receipt(input.hp1.mode);
+    if (fault == 0) input.hp2.mode.value = HeatPumpMode::COOLING;
+    if (fault == 1) input.hp2.mode.value = HeatPumpMode::OFF;  // Compressor is still active.
+    if (fault == 2) input.hp2.mode.source.unit = PhysicalUnit::HP1;
+    if (fault == 3) input.hp2.compressor_active.source.id = 0;
+    if (fault == 4) input.hp2.defrost_active.provenance = MeasurementProvenance::REPUBLISHED;
+    if (fault == 5) input.hp2.oil_return_active.timing.max_age_ms = 0;
+    if (fault == 6) input.hp2.valve_transition_active.received_monotonic_ms = kNowMs + 1U;
+    if (fault == 7) input.hp2.mode.valid = false;  // A received invalid value, not an initial absence.
+    if (fault == 8) input.hp2.mode.source_generation = 0;
+    if (fault == 9) input.boiler_heat.value = BoilerHeatState::UNKNOWN;
+    if (fault == 10) input.hp2.defrost_active.source.kind = PhysicalSourceKind::UNKNOWN;
+    const auto batch = build_learning_snapshot(input, QualityConfig{});
+    assert(batch.status == SnapshotSourceStatus::MISSING_MEASUREMENT);
+    assert(!daily_boot_sources_pending(input, batch));
+    input.epoch_s = 0;  // The permanent runtime latch must see faults before UTC is ready.
+    assert(known_daily_restart_interruption(input, false));
+    const char* expected = fault == 0 ? "hp_mode" : fault == 1 ? "off_compressor_active" : "invalid_operating_receipt";
+    assert(strcmp(daily_restart_interruption_reason(input, false), expected) == 0);
+  }
+  auto boiler = boot_input();
+  missing_boot_receipt(boiler.hp1.mode);
+  boiler.boiler_heat.value = BoilerHeatState::HEAT_ACTIVE;
+  assert(!daily_boot_sources_pending(boiler, build_learning_snapshot(boiler, QualityConfig{})));
+  auto service = boiler;
+  service.boiler_heat.value = BoilerHeatState::NO_HEAT;
+  service.operation.service_or_ota = true;
+  assert(known_daily_restart_interruption(service, false));
+  assert(strcmp(daily_restart_interruption_reason(service, false), "service_or_ota") == 0);
+  assert(!daily_boot_sources_pending(service, build_learning_snapshot(service, QualityConfig{})));
+}
+
+void test_boot_received_invalid_operation_cannot_be_forgotten_before_clock_start() {
+  auto input = boot_input();
+  input.epoch_s = 0;
+  input.hp2.compressor_active.valid = false;
+  bool recovery_allowed = true;
+  if (known_daily_restart_interruption(input, false)) recovery_allowed = false;
+  input.hp2.compressor_active.valid = true;
+  assert(!known_daily_restart_interruption(input, false));
+  assert(!recovery_allowed);
+}
+
+void test_boot_missing_operation_does_not_hide_hard_scalar_failure() {
+  for (int fault = 0; fault < 5; ++fault) {
+    auto input = boot_input();
+    missing_boot_receipt(input.hp1.mode);
+    if (fault == 0) input.hp2.water_out_c.value = 100.0f;
+    if (fault == 1) input.flow_lph.value = kPassiveMaximumFlowLph + 1.0f;
+    if (fault == 2) input.room_c.provenance = MeasurementProvenance::REPUBLISHED;
+    if (fault == 3) input.hp2.water_out_c.source = input.hp2.water_in_c.source;
+    if (fault == 4) input.hp2.water_out_c.value = 80.0f;  // Individually valid, but heat exceeds its existing bound.
+    const auto batch = build_learning_snapshot(input, QualityConfig{});
+    assert(batch.status == SnapshotSourceStatus::MISSING_MEASUREMENT);
+    assert(!daily_boot_sources_pending(input, batch));
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -331,11 +496,23 @@ int main() {
   for (auto& source : sources) source.configuration_generation = 1;
   assert(oq_power_house::learning::observe_source_revisions(revisions, sources));
   assert(!oq_power_house::learning::observe_source_revisions(revisions, sources));
+  assert(source_configuration_available(sources));
+  sources[0].valid = false;
+  assert(source_configuration_available(sources));
+  assert(!observe_source_revisions(revisions, sources));
   sources[2].configuration_generation = 3;
   assert(oq_power_house::learning::observe_source_revisions(revisions, sources));
   assert(!oq_power_house::learning::observe_source_revisions(revisions, sources));
 
+  test_positive_unsafe_evidence_during_sntp_startup_prevents_recovery();
+  test_boot_receipt_gaps_wait_without_changing_running_day_bridging();
+  test_boot_missing_first_receipt_never_hides_unsafe_or_malformed_operation();
+  test_boot_received_invalid_operation_cannot_be_forgotten_before_clock_start();
+  test_boot_missing_operation_does_not_hide_hard_scalar_failure();
+  test_delayed_initial_resolution_does_not_look_like_a_route_change();
   test_compile_time_topology_maps_single_and_duo();
+  sources[0].configuration_generation = 0;
+  assert(!source_configuration_available(sources));
   test_every_selected_route_uses_its_selected_value();
   test_selected_hold_uses_the_selected_value();
   test_missing_selection_is_not_a_learning_measurement();

@@ -4,6 +4,7 @@ import math
 import os
 import pathlib
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -35,33 +36,18 @@ def replay(binary, csv_path, now_epoch=2_000_000_000, active_h="150", active_t0=
 
 
 def sufficient_rows():
+    """Twelve complete days, including setpoint and room variation."""
     rows = []
-    monotonic = 1_000
-    epoch = 1_700_000_000
+    epoch = 20000 * 86400
     temperatures = (-6, -3, 0, 3, 6, 9, 12, 15, 10, 5, 1, -4)
-    for segment in range(54):
-        outside = float(temperatures[segment % len(temperatures)])
-        heat = 200.0 * (18.0 - outside)
-        for sample in range(241):
-            rows.append(
-                [
-                    monotonic,
-                    epoch,
-                    1,
-                    1,
-                    1,
-                    0,
-                    20.0,
-                    20.0,
-                    outside,
-                    heat,
-                    35.0,
-                ]
-            )
-            monotonic += 60_000
-            epoch += 60
-        # Keep the next segment coherent while allowing the previous one to close.
-    return rows, epoch + 1
+    for minute in range(12 * 1440 + 1):
+        day = min(11, minute // 1440)
+        room = 18.0 + 0.5 * (day % 5)
+        outside = float(temperatures[day]) + room - 20.0
+        heat = 200.0 * (18.0 - temperatures[day])
+        rows.append([1000 + minute * 60000, epoch + minute * 60,
+                     1, 1, 1, 0, room, 17.0 + day % 7, outside, heat, 35.0])
+    return rows, epoch + 12 * 86400 + 1
 
 
 def dynamic_and_stationary_rows():
@@ -75,7 +61,8 @@ def dynamic_and_stationary_rows():
             outside = 4.0 + 9.0 * math.sin(2 * math.pi * hours / 30.0)
         else:
             room, room_rate = 20.0, 0.0
-            outside = -5.0 + 2.0 * min(8, (minute - 48 * 60) // (24 * 60))
+            outside = (-5.0, -2.0, 1.0, 4.0, 7.0, 10.0, -3.0, 4.0, 11.0)[
+                min(8, (minute - 48 * 60) // (24 * 60))]
         heat = 200.0 * (room - outside) + 6000.0 * room_rate
         yield [1000 + minute * 60000, start_epoch + minute * 60, 1, 1, 1, 0,
                room, 20.0, outside, heat, 35.0]
@@ -87,8 +74,10 @@ class LearningReplayTest(unittest.TestCase):
         cls.tempdir = tempfile.TemporaryDirectory()
         cls.binary = pathlib.Path(cls.tempdir.name) / "power_house_learning_replay"
         compiler = os.environ.get("CXX", "c++")
+        sdk_flags = (["-isystem", "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1"]
+                     if sys.platform == "darwin" else [])
         result = subprocess.run(
-            [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-I.", "-Iopenquatt", str(SOURCE), "-o", str(cls.binary)],
+            [compiler, *sdk_flags, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-I.", "-Iopenquatt", str(SOURCE), "-o", str(cls.binary)],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -113,11 +102,29 @@ class LearningReplayTest(unittest.TestCase):
         self.assertFalse(output["advice_ready"])
         self.assertFalse(output["auto_apply_allowed"])
         self.assertFalse(output["rls_ready"])
-        self.assertGreaterEqual(output["accepted_windows"], 40)
+        self.assertGreaterEqual(output["accepted_windows"], 12)
         self.assertEqual(output["rejected_observations"], 0)  # UTC midnight does not reject a segment.
         self.assertAlmostEqual(output["candidate_h"], 200.0, delta=1.0)
         self.assertAlmostEqual(output["candidate_t0"], 18.0, delta=0.2)
         self.assertLess(output["holdout_candidate_mae_w"], output["holdout_active_mae_w"])
+
+    def test_reference_options_are_optional_and_do_not_select_a_room_cohort(self):
+        rows, now_epoch = sufficient_rows()
+        path = pathlib.Path(self.tempdir.name) / "normalization.csv"
+        write_csv(path, rows)
+        args = [str(self.binary), str(path), "--active-h", "150", "--active-t0", "16",
+                "--now-epoch", str(now_epoch)]
+        baseline = subprocess.run(args, capture_output=True, text=True, check=False)
+        legacy = subprocess.run(args + ["--reference-room-c", "23", "--reference-setpoint-c", "22"],
+                                capture_output=True, text=True, check=False)
+        self.assertEqual(baseline.returncode, 0, baseline.stderr)
+        self.assertEqual(legacy.returncode, 0, legacy.stderr)
+        expected = json.loads(baseline.stdout)
+        self.assertEqual(json.loads(legacy.stdout), expected)
+        self.assertEqual(expected["reference_room_c"], 20)
+        self.assertEqual(expected["reference_setpoint_c"], 20)
+        self.assertAlmostEqual(expected["candidate_h"], 200, delta=1)
+        self.assertAlmostEqual(expected["candidate_t0"], 18, delta=0.2)
 
     def test_implausible_active_line_cannot_produce_advice(self):
         rows, now_epoch = sufficient_rows()
