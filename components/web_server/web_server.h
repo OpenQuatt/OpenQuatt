@@ -12,6 +12,7 @@
 #include "esphome/components/logger/logger.h"
 #endif
 
+#include <atomic>
 #include <functional>
 #include <list>
 #include <map>
@@ -202,6 +203,14 @@ class WebServer final : public Controller, public Component, public AsyncWebHand
 
  public:
   WebServer(web_server_base::WebServerBase* base);
+
+#ifdef USE_UPDATE
+  // The firmware callback runs on the main task; HTTP serialization may run on another core.
+  // One fixed word replaces an extra entity, its state string and publication allocations.
+  static void record_firmware_manifest_publication() {
+    firmware_manifest_revision_.fetch_add(1, std::memory_order_relaxed);
+  }
+#endif
 
 #if USE_WEBSERVER_VERSION == 1
   /** Set the URL to the CSS <link> that's sent to each client. Defaults to
@@ -626,6 +635,9 @@ class WebServer final : public Controller, public Component, public AsyncWebHand
   bool is_request_origin_allowed_(AsyncWebServerRequest* request, const std::string& origin);
 
  private:
+#ifdef USE_UPDATE
+  inline static std::atomic<uint32_t> firmware_manifest_revision_{0};
+#endif
 #ifdef USE_SENSOR
   json::SerializationBuffer<> sensor_json_(sensor::Sensor* obj, float value, JsonDetail start_config);
 #endif

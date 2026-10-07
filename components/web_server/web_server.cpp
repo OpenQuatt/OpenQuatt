@@ -2239,6 +2239,7 @@ json::SerializationBuffer<> WebServer::update_json_(update::UpdateEntity* obj, J
 
   set_json_icon_state_value(root, obj, "update", json_state_str(update::update_state_to_string(obj->state)),
                             obj->update_info.latest_version, start_config);
+  root[ESPHOME_F("manifest_revision")] = firmware_manifest_revision_.load(std::memory_order_relaxed);
   if (start_config == DETAIL_ALL) {
     root[ESPHOME_F("current_version")] = obj->update_info.current_version;
     root[ESPHOME_F("title")] = obj->update_info.title;

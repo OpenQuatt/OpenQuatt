@@ -943,8 +943,25 @@ import { t } from "../i18n/index.js";
     return text.includes(expected);
   }
 
-  export function wait(ms) {
-    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  export function wait(ms, signal) {
+    if (!signal) return new Promise((resolve) => window.setTimeout(resolve, ms));
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) return reject(signal.reason);
+      const abort = () => {
+        window.clearTimeout(timer);
+        reject(signal.reason);
+      };
+      const timer = window.setTimeout(() => {
+        signal.removeEventListener("abort", abort);
+        resolve();
+      }, ms);
+      signal.addEventListener("abort", abort, { once: true });
+    });
+  }
+
+  export function getFirmwareManifestRevision(entity = getFirmwareUpdateEntity()) {
+    const revision = entity?.manifest_revision;
+    return Number.isInteger(revision) && revision >= 0 && revision <= 0xffffffff ? String(revision) : "";
   }
 
   export function beginFirmwareOtaQuietWindow(durationMs = FIRMWARE_OTA_START_QUIET_MS) {
@@ -1021,15 +1038,22 @@ import { t } from "../i18n/index.js";
 
   export async function pollFirmwareUpdateState(options = {}) {
     const expectedBuildLabel = String(options.expectedBuildLabel || "").trim();
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      await wait(attempt === 0 ? 900 : 1200);
+    const afterCheckRevision = String(options.afterCheckRevision || "");
+    const attempts = afterCheckRevision ? 25 : 6;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      options.signal?.throwIfAborted();
+      await wait(attempt === 0 ? 900 : 1200, options.signal);
+      options.signal?.throwIfAborted();
       await refreshEntities(FIRMWARE_MODAL_KEYS, "all", { forceMissing: true });
+      options.signal?.throwIfAborted();
       const entityAligned = isFirmwareEntityAlignedWithChannel();
       const targetAligned = !expectedBuildLabel || isFirmwareUpdateEntityForBuild(expectedBuildLabel);
       const knownTarget = hasKnownFirmwareTargetVersion();
       const checking = isFirmwareUpdateChecking();
       const status = getUpdateStatus();
-      if (entityAligned && targetAligned && (knownTarget || (!checking && status !== t("firmwareUpdate.statusNotChecked")))) {
+      const revision = getFirmwareManifestRevision();
+      const freshResult = !afterCheckRevision || (revision && revision !== afterCheckRevision);
+      if (freshResult && entityAligned && targetAligned && (knownTarget || (!checking && status !== t("firmwareUpdate.statusNotChecked")))) {
         return true;
       }
     }

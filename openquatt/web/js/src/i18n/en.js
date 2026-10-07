@@ -2710,6 +2710,7 @@ export default {
   },
   firmware: {
     testPrPrompt: "Enter a PR number to choose the OTA build.",
+    checkTimeout: "No fresh check result received. Please try again.",
     checkUpdated: "Firmware check updated.",
     checkFailed: "Firmware check failed. {error}",
     confirmDowngrade: "Confirm again that you want to go back to the older main firmware.",

@@ -2710,6 +2710,7 @@ export default {
   },
   firmware: {
     testPrPrompt: "Vul een PR-nummer in om de OTA-build te kiezen.",
+    checkTimeout: "Geen nieuw controleresultaat ontvangen. Probeer het opnieuw.",
     checkUpdated: "Firmwarecontrole bijgewerkt.",
     checkFailed: "Firmwarecontrole mislukte. {error}",
     confirmDowngrade: "Bevestig opnieuw dat je naar de oudere main-firmware wilt teruggaan.",
