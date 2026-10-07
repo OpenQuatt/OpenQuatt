@@ -169,8 +169,7 @@ class NvsPersistenceContractTest(unittest.TestCase):
         self.assertIn("nvs_erase_key", NVS_CLEANUP)
         self.assertNotIn("nvs_flash_erase", NVS_CLEANUP)
 
-    def test_calibration_migration_uses_original_global_keys_without_new_legacy_writers(self) -> None:
-        source = (ROOT / "openquatt/includes/storage/oq_supply_calibration_migration_logic.h").read_text()
+    def test_retired_calibration_keys_are_cleaned_without_import_or_current_record_deletion(self) -> None:
         legacy_ids = (
             "oq_water_supply_temp_calibration_source_code",
             "oq_water_supply_temp_calibration_source_fingerprint",
@@ -180,10 +179,10 @@ class NvsPersistenceContractTest(unittest.TestCase):
             f"oq_water_supply_temp_calibration_{kind}_record"
             for kind in ("pt1000", "ds18b20", "cic", "ha_input")
         )
-        for entity_id in legacy_ids + current_ids:
+        for entity_id in legacy_ids:
             with self.subTest(entity_id=entity_id):
                 key = 1944399030 ^ int(hashlib.md5(entity_id.encode()).hexdigest()[:8], 16)
-                self.assertRegex(source, rf"\b{key}U\b")
+                self.assertIn(f'erase_esphome_blob_if_size({key}U, 4U', NVS_CLEANUP)
         yaml = (ROOT / "openquatt/oq_sensor_sources.yaml").read_text()
         calibration = (ROOT / "openquatt/includes/service/tasks/oq_hp_water_calibration_logic.h").read_text()
         for entity_id in legacy_ids:
@@ -191,6 +190,11 @@ class NvsPersistenceContractTest(unittest.TestCase):
             self.assertNotIn(f"id({entity_id})", calibration)
         for entity_id in current_ids:
             self.assertIn(entity_id, yaml)
+            key = 1944399030 ^ int(hashlib.md5(entity_id.encode()).hexdigest()[:8], 16)
+            self.assertNotRegex(NVS_CLEANUP, rf"\b{key}U\b")
+        runtime = (ROOT / "openquatt/includes/control/oq_sensor_source_runtime.h").read_text()
+        self.assertNotIn("migrate_legacy_calibration", runtime)
+        self.assertNotIn("oq_supply_calibration_migration", runtime)
         self.assertIn("id(water_supply_temp_calibration_offset)", calibration)
 
     def test_budget_math_and_validation_integration(self) -> None:

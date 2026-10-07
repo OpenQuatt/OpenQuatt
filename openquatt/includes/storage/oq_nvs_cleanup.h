@@ -141,6 +141,11 @@ inline void retire_openquatt_preferences(esphome::EntityBase* air_purge) {
   // Removed one-time migrations; current settings keep their own records.
   oq_nvs_cleanup::erase_esphome_blob_if_size(515187816U, 1U, "retired cooling flow migration flag");
   oq_nvs_cleanup::erase_esphome_blob_if_size(3865822963U, 1U, "retired auxiliary heat source migration flag");
+  // Retire the legacy calibration format without importing it. Existing
+  // per-source records remain untouched; missing records use zero offset.
+  oq_nvs_cleanup::erase_esphome_blob_if_size(2609287369U, 4U, "retired supply calibration source code");
+  oq_nvs_cleanup::erase_esphome_blob_if_size(3358605580U, 4U, "retired supply calibration fingerprint");
+  oq_nvs_cleanup::erase_esphome_blob_if_size(909863605U, 4U, "retired supply calibration checksum");
   // FNV-1("openquatt_api_security_store"): retired 40-byte custom
   // API security blob. Native ESPHome Noise PSK (88491486) stays intact.
   oq_nvs_cleanup::erase_esphome_blob_if_size(1156115452U, 40U, "legacy API security store");

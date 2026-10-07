@@ -156,21 +156,6 @@ inline bool store_record(uint32_t (&storage)[kRecordStorageWords], const SourceI
   return true;
 }
 
-inline bool migrate_legacy_record(uint32_t (&storage)[kRecordStorageWords], int32_t source_code,
-                                  uint32_t source_fingerprint, uint32_t checksum, float offset_c,
-                                  float max_offset_c = 2.0f) {
-  const CalibrationRecord current = load_record(storage);
-  // Legacy migration is a one-time seed. A valid source slot is authoritative
-  // and must never be overwritten by the compatibility record.
-  if (record_valid(current, source_code, max_offset_c)) return false;
-
-  CalibrationRecord legacy{source_fingerprint, checksum, offset_c};
-  if (!record_valid(legacy, source_code, max_offset_c)) return false;
-
-  const SourceIdentity legacy_source{static_cast<SourceCode>(source_code), source_fingerprint, true};
-  return store_record(storage, legacy_source, offset_c, max_offset_c);
-}
-
 inline bool record_matches(int32_t source_code, uint32_t source_fingerprint, uint32_t checksum, float offset_c,
                            const SourceIdentity& current, float max_offset_c = 2.0f) {
   const bool fingerprint_matches = current.code == SOURCE_CIC || source_fingerprint == current.fingerprint;

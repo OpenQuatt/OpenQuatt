@@ -81,19 +81,20 @@ De drie oude globals `oq_water_supply_temp_calibration_source_code`,
 bij een nieuwe kalibratie bijgewerkt. Dit verlaagt de huidige dataset met negen
 entries. De vier brongebonden kalibratierecords en de offsetnumber blijven behouden.
 
-Bij upgrade leest de migratie oude keys rechtstreeks uit NVS. Een geldig
-brongebonden record in RAM blijft leidend. Bij ongeldig RAM wordt eerst een
-geldig bestaand bronrecord uit NVS hersteld. Alleen als beide ontbreken of
-ongeldig zijn, wordt een geldig oud record met de duurzaam opgeslagen offset
-geïmporteerd. Opruimen gebeurt pas nadat het
-nieuwe record is opgeslagen en rechtstreeks uit NVS is teruggelezen en
-geverifieerd. Bij tijdelijke opslagfouten volgt na minimaal 30 seconden een
-nieuwe poging. Onverwachte typen en groottes blijven behouden. Ongeldige
-legacygegevens worden alleen opgeruimd als een geldig brongebonden record
-duurzaam is geverifieerd; anders blijven ze staan. Ook drie oude nulwaarden
-zonder kalibratie kunnen worden opgeruimd.
-De oude broncode wordt als laatste gewist, zodat cleanup na een onderbroken
-boot kan worden afgemaakt. Er komt geen permanente migratievlag bij.
+De oude keys `esphome/2609287369`, `esphome/3358605580` en
+`esphome/909863605` (elk vier bytes) worden met type- en lengtecontrole
+opgeruimd. Er is geen import, opslagmigratie of migratievlag meer. Onverwachte
+typen en groottes blijven behouden; bij een wis- of commitfout probeert een
+volgende boot de cleanup opnieuw. Gedeeltelijke cleanup wijzigt geen huidig
+brongebonden record.
+
+**Breaking change voor uitsluitend legacy-aanvoerkalibratie:** een kalibratie
+die alleen in het oude formaat bestaat vervalt bij de update. Zonder geldig
+brongebonden record gebruikt de huidige bron een offset van 0 °C. Het ontbreken
+van een record zet niet automatisch de melding "kalibratie vereist" aan;
+gebruikers met een oude kalibratie moeten de aanvoerkalibratie opnieuw uitvoeren.
+Bestaande geldige brongebonden kalibraties blijven behouden, inclusief hun
+offset en bronbinding.
 
 De voormalige `oq_ram_log_history_switch` (`esphome/306736601`, één byte) kan
 nog drie entries gebruiken. RAM-loghistorie staat al permanent aan. De oude
@@ -102,9 +103,9 @@ drie entries gebruiken. Beide keys worden met type- en lengtecontrole in de
 gedeelde bootactie opgeruimd. De oude afzonderlijke vorsthook viel bij
 package-samenvoeging uit de Q Duo WiFi-configuratie weg.
 
-Downgrade naar firmware met uitsluitend het oude kalibratieformaat bewaart de
-brongebonden aanvoerkalibratie niet gegarandeerd. Een upgrade vanaf dat oude
-formaat blijft ondersteund. De 61 gemeten WiFi-driverentries, PHY-opslag en
+Behoud van kalibratie bij een downgrade naar uitsluitend het oude formaat
+wordt niet ondersteund.
+De 61 gemeten WiFi-driverentries, PHY-opslag en
 keys met onbewezen herkomst vallen buiten deze cleanup.
 
 ## Budgetberekening
@@ -233,8 +234,8 @@ hangt af van de definitieve veldlayout.
 
 Kandidaten voor een aparte inventarisatie zijn samenhangende diagnostische
 grenzen en instellingen per feature. Start niet met flow-startcaches,
-energietellers of de calibratiemigratie: hun herstel- en downgradegedrag moet
-behouden blijven. Verwijder migratiemarkers alleen als hun oorspronkelijke
+energietellers of brongebonden kalibratierecords: hun herstelgedrag en
+bronbinding moeten behouden blijven. Verwijder migratiemarkers alleen als hun oorspronkelijke
 migratie aantoonbaar niet opnieuw kan worden gestart.
 
 De huidige inventaris geeft deze concrete instellingenclusters. De schatting
