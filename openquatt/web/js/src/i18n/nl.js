@@ -4751,7 +4751,7 @@ export default {
     topPower: "Elektrisch vermogen",
     topPowerNote: "hele systeem",
     topCoolingPower: "Koelvermogen",
-    topHeatingPower: "Verwarmingsvermogen",
+    topHeatingPower: "Verwarmings\u00advermogen",
     topThermalNote: "thermisch vermogen",
     topCop: "COP",
     topCopEer: "COP (EER)",

@@ -436,6 +436,21 @@
   }
 }
 
+@media (min-width: 741px) and (max-width: 1200px) {
+  .oq-overview-summary-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.7fr);
+  }
+
+  .oq-overview-top,
+  .oq-overview-statusgrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .oq-overview-controlpanel-state {
+    flex-shrink: 0;
+  }
+}
+
 @media (max-width: 640px) {
   #oq-helper-root {
     width: calc(100vw - 6px);
