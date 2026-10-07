@@ -1969,6 +1969,7 @@
     setEntity("sensor", "Lifetime energiehistorie grootte", { value: state.energyHistoryStoredKiB, uom: "kB" });
     setEntity("sensor", "Lifetime energiehistorie schrijfacties", { value: state.energyHistoryWrites });
     setEntity("update", "Firmware Update", {
+      manifest_revision: 0,
       state: "up_to_date",
       value: "up_to_date",
       current_version: MOCK_DEV_VERSION,
@@ -4015,6 +4016,7 @@
       const currentVersion = String(getEntity("text_sensor", "OpenQuatt Version")?.value || MOCK_STABLE_VERSION);
       const latestVersion = value === "main" ? MOCK_STABLE_VERSION : MOCK_DEV_VERSION;
       if (updateEntity) {
+        updateEntity.manifest_revision = ((updateEntity.manifest_revision || 0) + 1) >>> 0;
         updateEntity.current_version = currentVersion;
         updateEntity.latest_version = latestVersion;
         updateEntity.release_url = getMockReleaseUrl(value);
@@ -4047,6 +4049,7 @@
         : state.installation;
       const targetLabel = `Heatpump Controller Q ${targetTopology === "duo" ? "Duo" : "Single"} ${targetConnection === "eth" ? "Ethernet" : "Wi-Fi"}`;
       if (updateEntity) {
+        updateEntity.manifest_revision = ((updateEntity.manifest_revision || 0) + 1) >>> 0;
         updateEntity.current_version = currentVersion;
         updateEntity.latest_version = latestVersion;
         updateEntity.release_url = getMockReleaseUrl(channel);
@@ -5068,6 +5071,7 @@
       setText("text_sensor", "Firmware Update Status", "Idle");
       setNumber("Firmware Update Progress", 0, "%");
       if (updateEntity) {
+        updateEntity.manifest_revision = ((updateEntity.manifest_revision || 0) + 1) >>> 0;
         updateEntity.current_version = currentVersion;
         updateEntity.latest_version = latestVersion;
         updateEntity.release_url = getMockReleaseUrl(channel);

@@ -1,3 +1,4 @@
+import { createCancellationController } from "../core/browser-utils.js";
 import { hasEntity } from "../core/app-shared.js";
 import { invokeActionMap } from "../core/action-router.js";
 import { ENTITY_DEFS, ENTITY_REFRESH_CONCURRENCY, FIRMWARE_MODAL_KEYS, FIRMWARE_OTA_INSTALL_POLL_INTERVAL_MS, FIRMWARE_OTA_START_QUIET_MS } from "../core/config.js";
@@ -9,7 +10,7 @@ import { armOtaRefresh, awaitOtaEvidence, beginDeviceReconnect, clearOtaRefresh 
 import { clearQuickStartSetupInstall, state, storeQuickStartSetupInstall } from "../core/state.js";
 import { getFirmwareBuildConnection, getFirmwareConnectionLabel, getFirmwareTopologyLabel, getInstallationTopology } from "./device-context.js";
 import { formatNumber, t } from "../i18n/index.js";
-import { beginFirmwareOtaQuietWindow, clearFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareRunningChannelLabel, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasFirmwareTestLegacyCapability, hasFirmwareTestManifestCapability, hasKnownFirmwareTargetVersion, isFirmwareChannelTransition, isFirmwareDowngradeAvailable, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, isQuickStartSetupFirmwareCurrent, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection, wait } from "./firmware-update.js";
+import { beginFirmwareOtaQuietWindow, clearFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareManifestRevision, getFirmwareRunningChannelLabel, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasFirmwareTestLegacyCapability, hasFirmwareTestManifestCapability, hasKnownFirmwareTargetVersion, isFirmwareChannelTransition, isFirmwareDowngradeAvailable, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, isQuickStartSetupFirmwareCurrent, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection, wait } from "./firmware-update.js";
 import { render } from "../core/render-scheduler.js";
 
   export async function requestFirmwareOta(path, options) {
@@ -31,24 +32,29 @@ import { render } from "../core/render-scheduler.js";
     }
   }
 
+  let activeFirmwareCheck = null;
+
   export async function triggerFirmwareUpdateCheck() {
     const entity = ENTITY_DEFS.checkFirmwareUpdates;
-    if (!entity || state.updateCheckBusy) {
+    if (!entity || state.updateCheckBusy || activeFirmwareCheck) {
       return;
     }
 
     state.updateInstallCompleted = false;
     state.updateInstallCompletedVersion = "";
+    const controller = createCancellationController();
+    activeFirmwareCheck = controller;
     state.updateCheckBusy = true;
     state.controlError = "";
     state.controlNotice = "";
     render();
 
     try {
-      const revisionBeforeRefresh = state.entities.firmwareManifestRevision;
-      await refreshEntities(["firmwareManifestRevision", "firmwareUpdateTarget"], "all", { forceMissing: true });
-      const afterCheckRevision = String(getEntityValue("firmwareManifestRevision") || "");
-      if (!afterCheckRevision || state.entities.firmwareManifestRevision === revisionBeforeRefresh) {
+      const entityBeforeRefresh = state.entities.firmwareUpdate;
+      await refreshEntities(["firmwareUpdate", "firmwareUpdateTarget"], "all", { forceMissing: true });
+      controller.signal.throwIfAborted();
+      const afterCheckRevision = getFirmwareManifestRevision();
+      if (!afterCheckRevision || state.entities.firmwareUpdate === entityBeforeRefresh) {
         throw new Error(t("firmware.checkTimeout"));
       }
       primeFirmwareUpdateState();
@@ -63,15 +69,22 @@ import { render } from "../core/render-scheduler.js";
           throw new Error(`HTTP ${response.status}`);
         }
       }
-      const ready = await pollFirmwareUpdateState({ afterCheckRevision });
+      // Do not abort an issued write: closing only cancels UI polling. Reopening hydrates live state.
+      controller.signal.throwIfAborted();
+      const ready = await pollFirmwareUpdateState({ afterCheckRevision, signal: controller.signal });
       if (!ready) {
         throw new Error(t("firmware.checkTimeout"));
       }
       state.controlNotice = t("firmware.checkUpdated");
     } catch (error) {
-      state.controlError = t("firmware.checkFailed", { error: error.message });
+      if (!controller.signal.aborted) {
+        state.controlError = t("firmware.checkFailed", { error: error.message });
+      }
     } finally {
-      state.updateCheckBusy = false;
+      if (activeFirmwareCheck === controller) {
+        activeFirmwareCheck = null;
+        state.updateCheckBusy = false;
+      }
       render();
     }
   }
@@ -757,6 +770,8 @@ import { render } from "../core/render-scheduler.js";
       return hydrateFirmwareUpdateModal();
     },
     "close-update-modal": () => {
+      activeFirmwareCheck?.abort();
+      state.updateCheckBusy = false;
       state.updateModalOpen = false;
       state.updateInstallCompleted = false;
       state.updateInstallCompletedVersion = "";

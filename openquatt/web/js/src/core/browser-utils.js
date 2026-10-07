@@ -1,3 +1,7 @@
+export function createCancellationController() {
+  return new AbortController();
+}
+
 export async function fetchWithTimeout(input, options = {}, timeoutMs = 0, timeoutMessage = "", consumeResponse = null, runtime = {}) {
   const fetchImplementation = typeof runtime.fetch === "function" ? runtime.fetch : fetch;
   const timerHost = runtime.timerHost || window;
