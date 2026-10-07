@@ -33,6 +33,7 @@ struct LearningJournalStore {
   int active_slot = -1;
   uint32_t sequence = 0;
   size_t persisted_records = 0;
+  uint32_t persisted_latest_end_epoch = 0;
   uint32_t persisted_revision = 0;
   uint32_t persisted_thermal_samples = 0;
   uint64_t last_write_ms = 0;
@@ -67,15 +68,17 @@ struct LearningJournalStore {
     sequence = selected.metadata.sequence;
     persisted_records = selected.metadata.record_count;
     records = {slots[active_slot], selected.metadata.context_size, selected.metadata.record_count};
+    persisted_latest_end_epoch = records.record_count == 0 ? 0 : records[records.record_count - 1].end_epoch_s;
     last_write_ms = now_ms;
     status = "restored";
     return true;
   }
 
-  bool save_due(uint64_t now_ms, size_t record_count, uint32_t revision, uint32_t thermal_samples = 0) const {
+  bool save_due(uint64_t now_ms, size_t record_count, uint32_t revision, uint32_t thermal_samples = 0,
+                uint32_t latest_end_epoch = 0) const {
     return available && loaded &&
-           (record_count != persisted_records || revision != persisted_revision ||
-            thermal_samples != persisted_thermal_samples) &&
+           (record_count != persisted_records || latest_end_epoch != persisted_latest_end_epoch ||
+            revision != persisted_revision || thermal_samples != persisted_thermal_samples) &&
            (last_write_ms == 0 || (now_ms >= last_write_ms && now_ms - last_write_ms >= kJournalSaveIntervalMs));
   }
 
@@ -84,7 +87,13 @@ struct LearningJournalStore {
             uint32_t revision, Erase erase, Write write, Read read, const ThermalModelState* thermal = nullptr,
             uint32_t thermal_epoch = 0) {
     const uint32_t thermal_samples = thermal != nullptr ? thermal->accepted_samples : 0;
-    if (!save_due(now_ms, dataset.record_count, revision, thermal_samples)) return false;
+    // At full capacity, append+evict changes the newest record while the count
+    // stays constant. Completed records are immutable and ordered by time.
+    const uint32_t latest_end_epoch =
+        dataset.records != nullptr && dataset.record_count > 0 && dataset.record_count <= kMaxSegmentRecords
+            ? dataset.records[dataset.record_count - 1].end_epoch_s
+            : 0;
+    if (!save_due(now_ms, dataset.record_count, revision, thermal_samples, latest_end_epoch)) return false;
     if (sequence == UINT32_MAX) return fail("sequence_exhausted");
     const int slot = active_slot == 0 ? 1 : 0;
     size_t size = 0;
@@ -98,6 +107,7 @@ struct LearningJournalStore {
     active_slot = slot;
     ++sequence;
     persisted_records = dataset.record_count;
+    persisted_latest_end_epoch = latest_end_epoch;
     persisted_revision = revision;
     persisted_thermal_samples = thermal_samples;
     last_write_ms = now_ms;
@@ -113,6 +123,7 @@ struct LearningJournalStore {
     active_slot = -1;
     sequence = 0;
     persisted_records = 0;
+    persisted_latest_end_epoch = 0;
     persisted_revision = 0;
     persisted_thermal_samples = 0;
     last_write_ms = 0;

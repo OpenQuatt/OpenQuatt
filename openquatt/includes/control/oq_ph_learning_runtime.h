@@ -64,8 +64,6 @@ struct RuntimeStorage {
   DiagnosticRow rows[kMaxExportDiagnosticRows];
   DiagnosticCaptureGate diagnostic_capture;
   size_t row_count = 0, row_next = 0;
-  uint64_t recovery_until_ms = 0;
-  float last_setpoint = NAN;
   uint32_t context_revision = 1;
   bool measurement_context_changed = false, evaluation_policy_changed = false, reset_requested = false;
   const esp_partition_t* partition = nullptr;
@@ -75,11 +73,11 @@ struct RuntimeStorage {
 
 class Runtime {
  public:
-  void pause() {
+  void pause(LearningStatus rejection = LearningStatus::SEGMENT_INELIGIBLE) {
     if (!storage_) return;
     auto& state = storage_[0];
     pause_diagnostic_capture(state.diagnostic_capture);
-    if (state.learner.initialized) pause_passive_runtime(state.learner, oq_sources::monotonic_ms());
+    if (state.learner.initialized) pause_passive_runtime(state.learner, oq_sources::monotonic_ms(), rejection);
     publish_paused_status_(state);
   }
 
@@ -103,13 +101,12 @@ class Runtime {
     // Invalidate source caches on every setting event, including A->B->A before
     // the next periodic selection. This does not republish or change controls.
     oq_sensor_source::runtime().source_configuration_changed();
-    pause();
+    pause(LearningStatus::MIXED_CONTEXT);
   }
 
   void evaluation_policy_changed() {
     if (!storage_) return;
     storage_[0].evaluation_policy_changed = true;
-    pause();
   }
 
   void tick() {
@@ -123,11 +120,10 @@ class Runtime {
     build_context_(state);
     const bool enabled = id(oq_ph_learning_enabled).state;
     auto& input = state.input;
-    // Missing selected values pause collection, not restoration or checkpointing.
-    // A resolver route/provenance change
-    // interrupts unfinished intervals, including changes between learner ticks.
-    bool context_valid = state.context_size > 0;
-    for (const auto& source : state.sources) context_valid = context_valid && source.valid;
+    // Configuration ownership remains valid during a temporary missing value.
+    // Snapshot validation decides whether to hold or interrupt the day. Real
+    // configuration/valid-route changes still interrupt unfinished intervals.
+    const bool context_valid = state.context_size > 0 && source_configuration_available(state.sources);
     const bool sources_changed = context_valid && observe_source_revisions(state.source_revisions, state.sources);
     const bool context_changed =
         state.learner.initialized &&
@@ -191,13 +187,8 @@ class Runtime {
     tick.context_valid = context_valid;
     tick.active_line = active_line_();
     tick.active_line_valid = oq_power_house::valid_house_line(tick.active_line);
-    // The nominal room target is deliberately the stable setpoint. Using the
-    // measured room value here would restart the bounded multi-tick fit on
-    // every small sensor update.
-    tick.reference_room_c = input.setpoint_c.value;
-    tick.reference_setpoint_c = input.setpoint_c.value;
-    tick.reference_context_valid = input.setpoint_c.valid && isfinite(input.setpoint_c.value);
     tick.batch_snapshot_available = batch.has_snapshot;
+    tick.may_bridge_daily_gap = batch.may_bridge_daily_gap;
     tick.batch_snapshot = batch.snapshot;
     tick.dynamic_snapshot_available = dynamic.has_snapshot;
     tick.dynamic_snapshot = dynamic.snapshot;
@@ -278,8 +269,6 @@ class Runtime {
     watch_policy_number_(id(house_zero_power_temp_c));
     watch_policy_number_(id(house_rated_power_w));
     watch_policy_number_(id(ph_kp_w_per_k));
-    watch_policy_number_(id(ph_comfort_band_below_c));
-    watch_policy_number_(id(ph_comfort_band_above_c));
     watch_policy_number_(id(ph_demand_rise_time_min));
     watch_policy_number_(id(ph_demand_fall_time_min));
     watch_measurement_number_(id(hp1_water_in_temp_offset));
@@ -370,18 +359,6 @@ class Runtime {
     op.service_or_ota = cm >= 98 || id(oq_commissioning_active) || id(oq_hp_water_calibration_active) ||
                         id(oq_runtime_polling_paused).state ||
                         (id(oq_ota_phase_code) >= 1 && id(oq_ota_phase_code) <= 3);
-    if (in.setpoint_c.valid && isfinite(in.setpoint_c.value)) {
-      if (!isfinite(state.last_setpoint) || fabsf(state.last_setpoint - in.setpoint_c.value) > 0.01f)
-        state.recovery_until_ms = now_ms + kSetpointRecoveryMs;
-      state.last_setpoint = in.setpoint_c.value;
-    }
-    op.setpoint_recovery_valid = in.setpoint_c.valid;
-    op.setpoint_recovery = now_ms < state.recovery_until_ms;
-    op.comfort_acceptable_valid = in.room_c.valid && in.setpoint_c.valid &&
-                                  isfinite(id(ph_comfort_band_below_c).state) &&
-                                  isfinite(id(ph_comfort_band_above_c).state);
-    op.comfort_acceptable = in.room_c.value >= in.setpoint_c.value - id(ph_comfort_band_below_c).state &&
-                            in.room_c.value <= in.setpoint_c.value + id(ph_comfort_band_above_c).state;
     state.config.thermal_model.initial_heat_loss_w_per_k =
         thermal_initial_heat_loss_prior(active_line_().heat_loss_w_per_k, state.config.thermal_model);
   }
@@ -613,18 +590,20 @@ class Runtime {
     uint32_t last_sample_epoch = 0U;
     if (state.learner.record_count > 0U)
       last_sample_epoch = state.learner.records[state.learner.record_count - 1U].end_epoch_s;
-    if (state.learner.batch_accumulator.active && state.learner.batch_accumulator.last_measurement_valid &&
-        state.learner.batch_accumulator.last_epoch_s > last_sample_epoch)
+    if (state.learner.batch_accumulator.active && state.learner.batch_accumulator.last_epoch_s > last_sample_epoch)
       last_sample_epoch = state.learner.batch_accumulator.last_epoch_s;
     if (state.learner.thermal_accumulator.active && state.learner.thermal_accumulator.last.epoch_s > last_sample_epoch)
       last_sample_epoch = state.learner.thermal_accumulator.last.epoch_s;
     const uint32_t invalid_reasons = state.source_diagnostics.invalid_reasons;
+    size_t daily_count = 0;
+    for (size_t index = 0; index < state.learner.record_count; ++index)
+      if (is_daily_record(state.learner.records[index])) ++daily_count;
     const uint32_t rls_reasons = summary.thermal.readiness_reasons;
     const auto& batch_window = state.learner.batch_accumulator;
     const auto& thermal_window = state.learner.thermal_accumulator;
     const bool collecting_enabled = enabled && state.learner.initialized && state.learner.opted_in &&
                                     !state.learner.blocked && state.learner.status != PassiveRuntimeStatus::PAUSED;
-    const bool batch_active = collecting_enabled && !batch_window.poisoned && state.tick.batch_snapshot_available &&
+    const bool batch_active = collecting_enabled && state.tick.batch_snapshot_available &&
                               passive_runtime_detail::snapshot_matches_tick(state.tick.batch_snapshot, state.tick) &&
                               validate_snapshot(state.tick.batch_snapshot, state.config.quality) == LearningStatus::OK;
     const bool thermal_active = collecting_enabled && thermal_window.active && thermal_window.last.epoch_s == epoch;
@@ -637,6 +616,9 @@ class Runtime {
              snapshot_source_status_name(state.source_diagnostics.status));
     write_reasons(invalid_reasons, INVALID_REASON_NAMES,
                   sizeof(INVALID_REASON_NAMES) / sizeof(INVALID_REASON_NAMES[0]));
+    json.add(",\"daily_record_count\":%u,\"legacy_record_count\":%u,\"reference_room_c\":%.1f",
+             static_cast<unsigned>(daily_count), static_cast<unsigned>(summary.record_count - daily_count),
+             static_cast<double>(kReferenceRoomC));
     json.add(
         ",\"invalid_reasons_mask\":%u,\"records\":%u,\"batch_status\":\"%s\",\"batch_advice_ready\":%s,"
         "\"advice_ready\":%s,\"auto_apply_allowed\":false,\"h_batch\":",
@@ -660,17 +642,24 @@ class Runtime {
     else
       json.add("%u", last_sample_epoch);
     json.add(
-        ",\"collection\":{\"batch_active\":%s,\"batch_elapsed_s\":%llu,\"batch_target_s\":%llu,"
-        "\"thermal_active\":%s,\"thermal_elapsed_s\":%llu,\"thermal_target_s\":%llu,\"thermal_intervals\":%u},"
-        "\"control_mode\":%d,\"context_revision\":%u,\"journal_status\":\"%s\","
-        "\"model_validation_status\":\"%s\",\"sources\":{",
-        batch_active ? "true" : "false",
-        batch_active && batch_window.active
+        ",\"collection\":{\"batch_active\":%s,\"batch_gap_pending\":%s,\"batch_elapsed_s\":%llu,\"batch_target_s\":%"
+        "llu,"
+        "\"thermal_active\":%s,\"thermal_elapsed_s\":%llu,\"thermal_target_s\":%llu,\"thermal_intervals\":%u,"
+        "\"batch_last_rejection\":",
+        batch_active ? "true" : "false", collecting_enabled && batch_window.source_gap_pending ? "true" : "false",
+        collecting_enabled && batch_window.active
             ? (batch_window.last_monotonic_ms - batch_window.start_monotonic_ms) / 1000ULL
             : 0ULL,
         kSegmentDurationMs / 1000ULL, thermal_active ? "true" : "false",
         thermal_active ? (thermal_window.last.monotonic_ms - thermal_window.first.monotonic_ms) / 1000ULL : 0ULL,
-        state.config.thermal_window.target_duration_ms / 1000ULL, state.learner.diagnostics.accepted_thermal_intervals,
+        state.config.thermal_window.target_duration_ms / 1000ULL, state.learner.diagnostics.accepted_thermal_intervals);
+    if (state.learner.diagnostics.last_batch_rejection == LearningStatus::OK)
+      json.add("null");
+    else
+      json.add("\"%s\"", learning_status_name(state.learner.diagnostics.last_batch_rejection));
+    json.add(
+        "},\"control_mode\":%d,\"context_revision\":%u,\"journal_status\":\"%s\","
+        "\"model_validation_status\":\"%s\",\"sources\":{",
         id(oq_control_mode_code), state.input.context_revision, state.journal.status,
         model_validation_status_name(summary.validation.status));
     const char* names[]{"room", "setpoint", "outside", "flow"};
@@ -739,7 +728,9 @@ class Runtime {
         json.number(v);
         json.add(",");
       }
-      json.add("%u]", r.context_revision);
+      json.add("%u,", r.context_revision);
+      json.number(effective_outside_c(r));
+      json.add(",%u]", is_daily_record(r) ? 1U : 0U);
     }
     json.add("%s", kExportDiagnosticsPrefix);
     for (size_t i = 0; i < state.row_count; ++i) {

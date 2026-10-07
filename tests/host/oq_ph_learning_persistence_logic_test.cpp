@@ -79,6 +79,11 @@ void test_full_capacity_journal_survives_torn_write_and_reboot() {
     const uint32_t offset = static_cast<uint32_t>(kMaxSegmentRecords - 1U - index) * 86400U;
     records[index].start_epoch_s -= offset;
     records[index].end_epoch_s -= offset;
+    if (index % 2U != 0U) {
+      records[index].start_epoch_s = records[index].end_epoch_s - 86400U;
+      records[index].duration_s = 86400U;
+      for (int16_t& point : records[index].effective_outside_profile_centi) point = 500;
+    }
   }
   const LearningDatasetView dataset{records, kMaxSegmentRecords, {max_context, sizeof(max_context), 1}};
   auto write = [&](uint64_t now, uint32_t revision) {
@@ -97,6 +102,77 @@ void test_full_capacity_journal_survives_torn_write_and_reboot() {
   assert(view.record_count == kMaxSegmentRecords);
   assert(view[kMaxSegmentRecords - 1U].mean_heat_w == 2200);
   assert(view[0].end_epoch_s == records[0].end_epoch_s);
+}
+
+void test_full_daily_buffer_append_checkpoints_without_revision_or_thermal_progress() {
+  Flash flash;
+  LearningJournalStore store;
+  LearningJournalRecords view;
+  assert(!load(store, flash, view));
+  SegmentRecord records[kMaxSegmentRecords];
+  for (size_t index = 0; index < kMaxSegmentRecords; ++index) {
+    records[index] = sample();
+    const uint32_t offset = static_cast<uint32_t>(kMaxSegmentRecords - 1U - index) * 86400U;
+    records[index].end_epoch_s -= offset;
+    records[index].start_epoch_s = records[index].end_epoch_s - 86400U;
+    records[index].duration_s = 86400U;
+    for (int16_t& point : records[index].effective_outside_profile_centi) point = 500;
+  }
+  auto checkpoint = [&](uint32_t epoch, uint64_t now) {
+    return store.save(
+        {records, kMaxSegmentRecords, context()}, QualityConfig{}, epoch, now, 0,
+        [&](size_t slot) { return flash.erase(slot); },
+        [&](size_t slot, const uint8_t* data, size_t size) { return flash.write(slot, data, size); },
+        [&](size_t slot, uint8_t* data, size_t size) { return flash.read(slot, data, size); });
+  };
+  assert(checkpoint(kEpoch, 1000));
+  assert(store.persisted_latest_end_epoch == kEpoch && store.persisted_revision == 0);
+  assert(!checkpoint(kEpoch, kLater));
+  for (size_t index = 1; index < kMaxSegmentRecords; ++index) records[index - 1] = records[index];
+  records[kMaxSegmentRecords - 1].start_epoch_s = kEpoch;
+  records[kMaxSegmentRecords - 1].end_epoch_s = kEpoch + 86400U;
+  records[kMaxSegmentRecords - 1].mean_heat_w = 3000;
+  assert(!checkpoint(kEpoch + 86400U, 2000));  // Same one-hour write throttle.
+  assert(checkpoint(kEpoch + 86400U, kLater));
+  assert(flash.writes == 2 && store.sequence == 2);
+  assert(store.persisted_records == kMaxSegmentRecords && store.persisted_revision == 0);
+  assert(store.persisted_thermal_samples == 0 && store.persisted_latest_end_epoch == kEpoch + 86400U);
+
+  LearningJournalStore reboot;
+  reboot.setup(true);
+  assert(reboot.load(
+      context(), QualityConfig{}, kEpoch + 86400U,
+      [&](size_t slot, uint8_t* data, size_t size) { return flash.read(slot, data, size); }, view, 1000));
+  assert(view.record_count == kMaxSegmentRecords);
+  assert(view[kMaxSegmentRecords - 1].end_epoch_s == kEpoch + 86400U);
+  assert(view[kMaxSegmentRecords - 1].mean_heat_w == 3000);
+  assert(reboot.persisted_latest_end_epoch == kEpoch + 86400U);
+  assert(!reboot.save_due(kLater, kMaxSegmentRecords, 0, 0, kEpoch + 86400U));
+  assert(reset(reboot, flash));
+  assert(reboot.persisted_latest_end_epoch == 0);
+}
+
+void test_daily_record_checkpoint_survives_torn_write_and_reboot() {
+  Flash flash;
+  LearningJournalStore store;
+  LearningJournalRecords view;
+  assert(!load(store, flash, view));
+  auto record = sample();
+  record.start_epoch_s = kEpoch - 86400U;
+  record.duration_s = 86400U;
+  for (int16_t& point : record.effective_outside_profile_centi) point = 500;
+  assert(save(store, flash, record));
+  record.mean_heat_w = 2300;
+  for (int16_t& point : record.effective_outside_profile_centi) point = 600;
+  record.mean_outside_c = 6;
+  flash.fault = Fault::TORN_WRITE;
+  assert(!save(store, flash, record, kLater, 2));
+  flash.fault = Fault::NONE;
+  LearningJournalStore reboot;
+  assert(load(reboot, flash, view));
+  assert(view.record_count == 1 && is_daily_record(view[0]));
+  assert(view[0].mean_heat_w == 2200);
+  for (int16_t point : view[0].effective_outside_profile_centi) assert(point == 500);
 }
 
 void test_save_restore_and_write_rate() {
@@ -279,6 +355,8 @@ void test_thermal_only_checkpoint_survives_reboot_and_torn_write() {
 }  // namespace
 
 int main() {
+  test_full_daily_buffer_append_checkpoints_without_revision_or_thermal_progress();
+  test_daily_record_checkpoint_survives_torn_write_and_reboot();
   test_full_capacity_journal_survives_torn_write_and_reboot();
   test_thermal_only_checkpoint_survives_reboot_and_torn_write();
   test_save_restore_and_write_rate();

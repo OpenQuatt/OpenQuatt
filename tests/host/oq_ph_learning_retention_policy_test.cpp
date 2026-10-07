@@ -19,13 +19,14 @@ struct Dataset {
 SegmentRecord season_record(uint16_t day, float outside_c, const HouseLine& line, float noise_w = 0.0f,
                             uint32_t context_revision = 1) {
   SegmentRecord value;
-  value.start_epoch_s = kBaseEpoch + static_cast<uint32_t>(day) * 86400U + 12U * 3600U;
-  value.end_epoch_s = value.start_epoch_s + 4U * 3600U;
-  value.duration_s = 4U * 3600U;
+  value.start_epoch_s = kBaseEpoch + static_cast<uint32_t>(day) * 86400U;
+  value.end_epoch_s = value.start_epoch_s + 24U * 3600U;
+  value.duration_s = 24U * 3600U;
   value.context_revision = context_revision;
   value.mean_room_c = 20.0f;
   value.mean_setpoint_c = 20.0f;
   value.mean_outside_c = outside_c;
+  for (auto& point : value.effective_outside_profile_centi) point = static_cast<int16_t>(lroundf(outside_c * 100.0f));
   value.mean_heat_w = house_line_power_w(line, outside_c) + noise_w;
   value.room_trend_k_per_h = 0.0f;
   value.room_range_k = 0.0f;
@@ -62,13 +63,10 @@ HouseLine fit_for_comparison(const Dataset& dataset) {
   AdviceFitWorkspace workspace;
   workspace.records = dataset.records;
   workspace.train_count = dataset.count;
-  workspace.config.reference_room_c = 20.0f;
-  workspace.config.reference_setpoint_c = 20.0f;
   // This is the production Huber line fit, evaluated against an external recent holdout.
-  // Day-normalization keeps this benchmark focused on record selection rather than
-  // the incidental density of calendar days in each synthetic season.
+  // Each completed day contributes one equally weighted observation.
   for (size_t index = 0; index < dataset.count; ++index) {
-    const uint8_t day = static_cast<uint8_t>(index / 2U);
+    const uint8_t day = static_cast<uint8_t>(index);
     assert(day < kMaxCalendarDays);
     workspace.selected_record_indices[index] = static_cast<uint8_t>(index);
     workspace.record_day_index[index] = day;
@@ -82,7 +80,7 @@ HouseLine fit_for_comparison(const Dataset& dataset) {
 float mean_absolute_error(const HouseLine& line, const SegmentRecord* heldout, size_t count) {
   double total = 0.0;
   for (size_t index = 0; index < count; ++index)
-    total += fabsf(house_line_power_w(line, heldout[index].mean_outside_c) - heldout[index].mean_heat_w);
+    total += fabs(record_house_line_power_w(line, heldout[index]) - heldout[index].mean_heat_w);
   return static_cast<float>(total / count);
 }
 

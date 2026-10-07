@@ -12,6 +12,12 @@ export const HOUSE_LEARNING_STATUS_INTERVAL_MS = 10000;
 const numberOrNull = (value) => value === null || value === undefined || value === "" || !Number.isFinite(Number(value))
   ? null
   : Number(value);
+const countOrNull = (value) => {
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  if (typeof value === "string" && !value.trim()) return null;
+  const number = numberOrNull(value);
+  return number != null && Number.isInteger(number) && number >= 0 ? number : null;
+};
 const stringList = (value) => Array.isArray(value)
   ? value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim()).slice(0, 24)
   : [];
@@ -24,9 +30,11 @@ const errorDetail = (error, timeoutToken, timeoutKey) => error?.translationKey
   : error?.message || String(error);
 const collectionPhase = (collection, prefix) => {
   const keys = ["active", "elapsed_s", "target_s", "intervals"].map((suffix) => `${prefix}_${suffix}`);
+  if (prefix === "batch") keys.push("batch_gap_pending");
   if (!keys.some((key) => Object.hasOwn(collection, key))) return null;
   return {
     active: collection[`${prefix}_active`] === true,
+    ...(prefix === "batch" ? { gapPending: collection.batch_gap_pending === true } : {}),
     elapsedSeconds: numberOrNull(collection[`${prefix}_elapsed_s`]),
     targetSeconds: numberOrNull(collection[`${prefix}_target_s`]),
     intervals: numberOrNull(collection[`${prefix}_intervals`]),
@@ -51,6 +59,9 @@ export function normalizeHouseLearningStatus(payload = {}) {
     journalStatus: String(payload.journal_status || "unknown"),
     invalidReasons: stringList(payload.invalid_reasons),
     records: Math.max(0, Math.trunc(numberOrNull(payload.records) || 0)),
+    dailyRecordCount: countOrNull(payload.daily_record_count),
+    legacyRecordCount: countOrNull(payload.legacy_record_count),
+    referenceRoomC: typeof payload.reference_room_c === "number" ? numberOrNull(payload.reference_room_c) : null,
     batchAdviceReady: payload.batch_advice_ready === true,
     adviceReady: payload.advice_ready === true,
     hBatch: numberOrNull(payload.h_batch),
@@ -67,6 +78,9 @@ export function normalizeHouseLearningStatus(payload = {}) {
     collection: payload.collection && typeof payload.collection === "object"
       ? {
         batch: collectionPhase(payload.collection, "batch"),
+        batchLastRejection: typeof payload.collection.batch_last_rejection === "string"
+          ? payload.collection.batch_last_rejection.trim() || null
+          : null,
         thermal: collectionPhase(payload.collection, "thermal"),
       }
       : null,

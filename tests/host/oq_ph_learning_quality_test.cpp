@@ -77,6 +77,25 @@ int main() {
   record.end_epoch_s = record.start_epoch_s + 14400U;
   assert(validate_segment_record(record, config) == LearningStatus::OK);
 
+  // Full-day energy does not require thermostat steps, water endpoints or
+  // zero-load periods to look stationary. Gross room drift remains excluded.
+  record = valid_record();
+  record.duration_s = 86400U;
+  record.end_epoch_s = record.start_epoch_s + record.duration_s;
+  record.mean_heat_w = 0.0f;
+  record.setpoint_range_c = 3.0f;
+  record.room_range_k = 1.0f;
+  record.water_start_c = record.water_end_c = NAN;
+  for (auto& value : record.effective_outside_profile_centi) value = 500;
+  assert(validate_segment_record(record, config) == LearningStatus::OK);
+  record.mean_heat_w = -50.0f;
+  assert(validate_segment_record(record, config) == LearningStatus::OK);
+  record.room_trend_k_per_h = 0.21f;
+  assert(validate_segment_record(record, config) == LearningStatus::ROOM_UNSTABLE);
+  record = valid_record();
+  record.room_range_k = 20.1f - 19.8f;
+  assert(validate_segment_record(record, config) == LearningStatus::OK);
+
   snapshot = valid_snapshot();
   snapshot.context_revision = 0;
   assert(validate_snapshot(snapshot, config) == LearningStatus::INVALID_MEASUREMENT);

@@ -23,12 +23,14 @@ constexpr size_t kMaxPassiveContextBytes = 1024;
 // A representative dataset may span a heating season, but it can never contain
 // more distinct UTC days than stored records.
 constexpr size_t kMaxCalendarDays = kMaxSegmentRecords;
-constexpr uint64_t kSegmentDurationMs = 4ULL * 60ULL * 60ULL * 1000ULL;
+constexpr uint64_t kSegmentDurationMs = 24ULL * 60ULL * 60ULL * 1000ULL;
+constexpr uint64_t kLegacySegmentDurationMs = 4ULL * 60ULL * 60ULL * 1000ULL;
+constexpr float kReferenceRoomC = 20.0f;
+constexpr size_t kDailyTemperatureProfileSize = 8;
 constexpr uint32_t kMaxRecordAgeS = 365U * 24U * 60U * 60U;
 constexpr uint8_t kMaxHuberPasses = 6;
-constexpr uint64_t kSetpointRecoveryMs = 60ULL * 60ULL * 1000ULL;
 constexpr uint16_t kEarliestRestorableLearningAlgorithmVersion = 2;
-constexpr uint16_t kLearningAlgorithmVersion = 3;
+constexpr uint16_t kLearningAlgorithmVersion = 4;
 
 enum class LearningStatus : uint8_t {
   OK = 0,
@@ -69,7 +71,7 @@ enum InvalidReason : uint32_t {
   INVALID_SERVICE_OR_OTA = 1U << 7,
   INVALID_COOLING = 1U << 8,
   INVALID_SOURCE_UNCERTAIN = 1U << 9,
-  // The source keeps this asserted for the full post-setpoint recovery period.
+  // Retained for diagnostic compatibility with older firmware.
   INVALID_SETPOINT_RECOVERY = 1U << 10,
 };
 
@@ -99,7 +101,35 @@ struct SegmentRecord {
   float setpoint_range_c = NAN;
   float water_start_c = NAN;
   float water_end_c = NAN;
+  // Eight equally weighted, sorted groups of three hourly means. Only daily
+  // records use this profile; the journal reuses the four legacy quality fields.
+  int16_t effective_outside_profile_centi[kDailyTemperatureProfileSize]{};
 };
+
+inline bool is_daily_record(const SegmentRecord& record) { return record.duration_s == kSegmentDurationMs / 1000ULL; }
+
+inline float effective_outside_c(const SegmentRecord& record) {
+  return record.mean_outside_c + kReferenceRoomC - record.mean_room_c;
+}
+
+inline float profile_mean_c(const SegmentRecord& record) {
+  int32_t sum = 0;
+  for (int16_t value : record.effective_outside_profile_centi) sum += value;
+  return static_cast<float>(sum) / (100.0f * kDailyTemperatureProfileSize);
+}
+
+inline float profile_temperature_c(const SegmentRecord& record, size_t index, float mean_correction) {
+  return record.effective_outside_profile_centi[index] * 0.01f + mean_correction;
+}
+
+inline double record_house_line_power_w(const HouseLine& line, const SegmentRecord& record) {
+  if (!is_daily_record(record)) return house_line_power_w(line, record.mean_outside_c);
+  const float correction = effective_outside_c(record) - profile_mean_c(record);
+  double sum = 0.0;
+  for (size_t index = 0; index < kDailyTemperatureProfileSize; ++index)
+    sum += house_line_power_w(line, profile_temperature_c(record, index, correction));
+  return sum / kDailyTemperatureProfileSize;
+}
 
 struct RecordBuffer {
   SegmentRecord* records = nullptr;

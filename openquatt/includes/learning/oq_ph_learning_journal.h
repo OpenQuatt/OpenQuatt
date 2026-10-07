@@ -15,9 +15,12 @@
 namespace oq_power_house::learning {
 
 constexpr uint32_t kLearningJournalMagic = 0x4F514C4AU;  // OQLJ
-constexpr uint16_t kLearningJournalSchemaVersion = 5;
+// Schema 6 retains legacy records and the thermal tail; older firmware cannot read it.
+constexpr uint16_t kLearningJournalSchemaVersion = 6;
 constexpr size_t kLearningJournalHeaderBytes = 32;
 constexpr size_t kLearningJournalRecordBytes = 52;
+static_assert(kDailyTemperatureProfileSize * sizeof(int16_t) == 16U,
+              "daily profile must preserve the 52-byte journal record");
 constexpr size_t kLearningJournalCrcBytes = 4;
 // 17 doubles, three counters and last accepted UTC timestamp; no boot-local clocks.
 constexpr size_t kLearningJournalThermalBytes = 152;
@@ -224,13 +227,17 @@ inline void write_record(Writer& writer, const SegmentRecord& record) {
   write_float(writer, record.mean_outside_c);
   write_float(writer, record.mean_heat_w);
   write_float(writer, record.room_trend_k_per_h);
-  write_float(writer, record.room_range_k);
-  write_float(writer, record.setpoint_range_c);
-  write_float(writer, record.water_start_c);
-  write_float(writer, record.water_end_c);
+  if (is_daily_record(record)) {
+    for (int16_t value : record.effective_outside_profile_centi) write_u16(writer, static_cast<uint16_t>(value));
+  } else {
+    write_float(writer, record.room_range_k);
+    write_float(writer, record.setpoint_range_c);
+    write_float(writer, record.water_start_c);
+    write_float(writer, record.water_end_c);
+  }
 }
 
-inline SegmentRecord read_record(Reader& reader) {
+inline SegmentRecord read_record(Reader& reader, uint16_t schema) {
   SegmentRecord record;
   record.start_epoch_s = read_u32(reader);
   record.end_epoch_s = read_u32(reader);
@@ -241,10 +248,18 @@ inline SegmentRecord read_record(Reader& reader) {
   record.mean_outside_c = read_float(reader);
   record.mean_heat_w = read_float(reader);
   record.room_trend_k_per_h = read_float(reader);
-  record.room_range_k = read_float(reader);
-  record.setpoint_range_c = read_float(reader);
-  record.water_start_c = read_float(reader);
-  record.water_end_c = read_float(reader);
+  if (schema >= 6 && is_daily_record(record)) {
+    for (int16_t& value : record.effective_outside_profile_centi) {
+      const uint16_t bits = read_u16(reader);
+      const int32_t signed_value = bits <= INT16_MAX ? static_cast<int32_t>(bits) : static_cast<int32_t>(bits) - 65536;
+      value = static_cast<int16_t>(signed_value);
+    }
+  } else {
+    record.room_range_k = read_float(reader);
+    record.setpoint_range_c = read_float(reader);
+    record.water_start_c = read_float(reader);
+    record.water_end_c = read_float(reader);
+  }
   return record;
 }
 
@@ -272,7 +287,8 @@ inline LearningJournalStatus parse_metadata(const LearningJournalSlotView& slot,
   const uint16_t reserved = read_u16(reader);
   metadata.context_revision = read_u32(reader);
   metadata.encoded_size = encoded_size;
-  if (!reader.ok || magic != kLearningJournalMagic || (schema != 4 && schema != kLearningJournalSchemaVersion) ||
+  if (!reader.ok || magic != kLearningJournalMagic ||
+      (schema != 4 && schema != 5 && schema != kLearningJournalSchemaVersion) ||
       header_size != kLearningJournalHeaderBytes ||
       metadata.algorithm_version < kEarliestRestorableLearningAlgorithmVersion ||
       metadata.algorithm_version > kLearningAlgorithmVersion || reserved != 0)
@@ -302,8 +318,11 @@ inline LearningJournalStatus parse_metadata(const LearningJournalSlotView& slot,
   reader.position = kLearningJournalHeaderBytes + metadata.context_size;
   uint32_t previous_end_epoch_s = 0;
   for (uint16_t index = 0; index < metadata.record_count; ++index) {
-    SegmentRecord record = read_record(reader);
-    if (!reader.ok || validate_segment_record(record, quality) != LearningStatus::OK)
+    SegmentRecord record = read_record(reader, schema);
+    // Schemas 4/5 always contain the original four-hour float layout. A
+    // forged daily duration must not make those bytes a valid daily profile.
+    if (!reader.ok || (schema < 6 && is_daily_record(record)) ||
+        validate_segment_record(record, quality) != LearningStatus::OK)
       return LearningJournalStatus::INVALID_RECORD;
     if (record.context_revision != metadata.context_revision) return LearningJournalStatus::INVALID_RECORD;
     if (record.end_epoch_s > now_epoch_s) return LearningJournalStatus::TIME_DISCONTINUITY;
@@ -467,8 +486,10 @@ struct LearningJournalRecords {
 
   SegmentRecord operator[](size_t index) const {
     learning_journal_detail::Reader reader{slot.bytes, slot.size};
+    reader.position = 4;
+    const uint16_t schema = learning_journal_detail::read_u16(reader);
     reader.position = kLearningJournalHeaderBytes + context_size + index * kLearningJournalRecordBytes;
-    return learning_journal_detail::read_record(reader);
+    return learning_journal_detail::read_record(reader, schema);
   }
 };
 

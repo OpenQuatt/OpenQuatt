@@ -140,8 +140,9 @@ int main(int argc, char** argv) {
   const char* path = nullptr;
   float active_h = NAN;
   float active_t0 = NAN;
-  float reference_room_c = NAN;
-  float reference_setpoint_c = NAN;
+  // Legacy reference options remain accepted; daily measurements always normalize to 20 C.
+  float reference_room_c = learning::kReferenceRoomC;
+  float reference_setpoint_c = learning::kReferenceRoomC;
   uint32_t now_epoch_s = static_cast<uint32_t>(time(nullptr));
   for (int index = 1; index < argc; ++index) {
     if (strcmp(argv[index], "--active-h") == 0 && index + 1 < argc) {
@@ -164,9 +165,8 @@ int main(int argc, char** argv) {
       return fprintf(stderr, "usage: replay CSV --active-h W/K --active-t0 C [--now-epoch S]\n"), 2;
     }
   }
-  if (path == nullptr || !isfinite(active_h) || active_h <= 0.0f || !isfinite(active_t0) ||
-      !isfinite(reference_room_c) || !isfinite(reference_setpoint_c))
-    return fprintf(stderr, "CSV, active line and reference room/setpoint are required\n"), 2;
+  if (path == nullptr || !isfinite(active_h) || active_h <= 0.0f || !isfinite(active_t0))
+    return fprintf(stderr, "CSV and active line are required\n"), 2;
   FILE* file = fopen(path, "rb");
   if (file == nullptr) return fprintf(stderr, "cannot open CSV\n"), 2;
 
@@ -188,10 +188,8 @@ int main(int argc, char** argv) {
     config.thermal_model.initial_heat_loss_w_per_k = active_h;
   learning::PassiveRuntimeStorage learner;
   learning::PassiveTickInput input;
-  input.opted_in = input.context_valid = input.active_line_valid = input.reference_context_valid = true;
+  input.opted_in = input.context_valid = input.active_line_valid = true;
   input.active_line = {active_h, active_t0};
-  input.reference_room_c = reference_room_c;
-  input.reference_setpoint_c = reference_setpoint_c;
   constexpr uint8_t context_bytes[] = {1};
   Counters counters;
   uint64_t previous_monotonic = 0;
@@ -272,9 +270,9 @@ int main(int argc, char** argv) {
       "windows\":%llu,\"discarded_cohort_records\":%llu,\"cohort_changes\":%llu,\"reference_room_c\":",
       counters.rows, counters.accepted_windows, counters.rejected_observations, counters.malformed_rows,
       counters.incomplete_windows, counters.discarded_cohort_records, counters.cohort_changes);
-  print_float(reference_room_c);
+  print_float(learning::kReferenceRoomC);
   printf(",\"reference_setpoint_c\":");
-  print_float(reference_setpoint_c);
+  print_float(learning::kReferenceRoomC);
   printf(",");
   print_status(status);
   printf(",\"status\":\"%s\"", result.advice_ready ? learning::model_validation_status_name(validation.status)

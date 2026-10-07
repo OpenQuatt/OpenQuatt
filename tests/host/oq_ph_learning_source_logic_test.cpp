@@ -55,9 +55,6 @@ LearningSourceInput valid_input(HydronicTopology topology = HydronicTopology::SI
   input.operation.control_mode = LearningControlMode::HEATING;
   input.operation.active_limit_valid = true;
   input.operation.service_or_ota_valid = true;
-  input.operation.setpoint_recovery_valid = true;
-  input.operation.comfort_acceptable_valid = true;
-  input.operation.comfort_acceptable = true;
   return input;
 }
 
@@ -261,7 +258,9 @@ void test_invalid_values_contracts_and_unknowns_never_become_zero() {
 void test_operational_context_is_explicit_and_fail_closed() {
   auto unknown = valid_input();
   unknown.operation.active_limit_valid = false;
-  assert_failed(build(unknown), SnapshotSourceStatus::OPERATIONAL_CONTEXT_UNKNOWN);
+  assert(build(unknown).measurement_valid);
+  assert_failed(build_learning_snapshot(unknown, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC),
+                SnapshotSourceStatus::OPERATIONAL_CONTEXT_UNKNOWN);
 
   auto wrong_mode = valid_input();
   wrong_mode.operation.control_mode = LearningControlMode::OTHER;
@@ -269,23 +268,13 @@ void test_operational_context_is_explicit_and_fail_closed() {
 
   auto limited = valid_input();
   limited.operation.active_limit = true;
-  assert_failed(build(limited), SnapshotSourceStatus::ACTIVE_LIMIT);
+  assert(build(limited).measurement_valid);
+  assert_failed(build_learning_snapshot(limited, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC),
+                SnapshotSourceStatus::ACTIVE_LIMIT);
 
   auto maintenance = valid_input();
   maintenance.operation.service_or_ota = true;
   assert_failed(build(maintenance), SnapshotSourceStatus::SERVICE_OR_OTA_ACTIVE);
-
-  auto recovery = valid_input();
-  recovery.operation.setpoint_recovery = true;
-  assert_failed(build(recovery), SnapshotSourceStatus::SETPOINT_RECOVERY_ACTIVE);
-
-  auto comfort_unknown = valid_input();
-  comfort_unknown.operation.comfort_acceptable_valid = false;
-  assert_failed(build(comfort_unknown), SnapshotSourceStatus::OPERATIONAL_CONTEXT_UNKNOWN);
-
-  auto uncomfortable = valid_input();
-  uncomfortable.operation.comfort_acceptable = false;
-  assert_failed(build(uncomfortable), SnapshotSourceStatus::COMFORT_UNACCEPTABLE);
 
   auto stale = valid_input();
   stale.operation.captured_monotonic_ms = kNowMs - QualityConfig{}.max_interval_ms - 1U;
@@ -307,7 +296,7 @@ void test_power_cap_only_excludes_a_constrained_request() {
   assert(power_cap_binds_filtered_demand(1, 0));
 }
 
-void test_invalid_raw_event_poisoning_reaches_aggregate() {
+void test_invalid_raw_event_restarts_aggregate() {
   QualityConfig quality;
   quality.max_interval_ms = 60000;
   SegmentAccumulator accumulator;
@@ -315,11 +304,11 @@ void test_invalid_raw_event_poisoning_reaches_aggregate() {
   const uint32_t start_epoch_s = 1800000000;
   SourceObserveResult result;
   bool saw_timestamped_invalid_event = false;
-  for (uint32_t step = 0; step <= 1440; ++step) {
+  for (uint32_t step = 0; step <= 8640; ++step) {
     auto input = valid_input(HydronicTopology::DUO_SERIES);
     retime(input, start_ms + static_cast<uint64_t>(step) * 10000ULL);
     input.epoch_s = start_epoch_s + step * 10U;
-    if (step == 720) input.hp2.water_out_c.valid = false;
+    if (step == 720) input.hp2.water_out_c.value = NAN;
     result = observe_source_input(accumulator, input, quality);
     if (step == 720) {
       saw_timestamped_invalid_event = result.source.has_snapshot && !result.source.measurement_valid &&
@@ -328,9 +317,17 @@ void test_invalid_raw_event_poisoning_reaches_aggregate() {
     }
   }
   assert(saw_timestamped_invalid_event);
-  assert(result.aggregate.status == LearningStatus::INVALID_MEASUREMENT);
+  assert(result.aggregate.status == LearningStatus::COLLECTING);
   assert(!result.aggregate.has_record);
-  assert(!accumulator.active);
+  assert(accumulator.active && accumulator.start_epoch_s == start_epoch_s + 7210U);
+  for (uint32_t step = 8641; step <= 9361; ++step) {
+    auto input = valid_input(HydronicTopology::DUO_SERIES);
+    retime(input, start_ms + static_cast<uint64_t>(step) * 10000ULL);
+    input.epoch_s = start_epoch_s + step * 10U;
+    result = observe_source_input(accumulator, input, quality);
+  }
+  assert(result.aggregate.has_record);
+  assert(result.aggregate.record.start_epoch_s == start_epoch_s + 7210U);
 }
 
 void test_provenance_and_active_exclusions() {
@@ -343,7 +340,9 @@ void test_provenance_and_active_exclusions() {
 
   auto protection = valid_input();
   protection.hp1.oil_return_active.value = true;
-  assert_failed(build(protection), SnapshotSourceStatus::PROTECTION_ACTIVE);
+  assert(build(protection).measurement_valid);
+  assert_failed(build_learning_snapshot(protection, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC),
+                SnapshotSourceStatus::PROTECTION_ACTIVE);
   auto boiler = valid_input();
   boiler.boiler_heat.value = BoilerHeatState::HEAT_ACTIVE;
   assert_failed(build(boiler), SnapshotSourceStatus::BOILER_ACTIVE);
@@ -355,15 +354,13 @@ void test_provenance_and_active_exclusions() {
 
 void test_dynamic_learning_keeps_temperature_response_but_not_hidden_heat() {
   auto input = valid_input();
-  input.operation.setpoint_recovery = true;
-  input.operation.comfort_acceptable = false;
-  assert_failed(build(input), SnapshotSourceStatus::SETPOINT_RECOVERY_ACTIVE);
+  input.room_c.value = 18.0f;
+  input.setpoint_c.value = 21.0f;
+  assert(build(input).measurement_valid);
   const auto dynamic = [](const LearningSourceInput& value) {
     return build_learning_snapshot(value, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC);
   };
   assert(dynamic(input).measurement_valid);
-  input.operation.setpoint_recovery_valid = false;
-  input.operation.comfort_acceptable_valid = false;
   assert(dynamic(input).measurement_valid);
   input.boiler_heat.value = BoilerHeatState::HEAT_ACTIVE;
   assert_failed(dynamic(input), SnapshotSourceStatus::BOILER_ACTIVE);
@@ -383,32 +380,85 @@ void test_dynamic_learning_keeps_temperature_response_but_not_hidden_heat() {
                 SnapshotSourceStatus::INVALID_CONFIGURATION);
 }
 
-void test_combined_diagnostics_explain_batch_only_blocks() {
+void test_daily_defrost_and_combined_diagnostics() {
   auto input = valid_input();
-  const auto diagnostics = [](const LearningSourceInput& value) {
-    return combined_snapshot_diagnostics(
-        build_learning_snapshot(value, QualityConfig{}, SnapshotPurpose::STRUCTURAL_BATCH),
-        build_learning_snapshot(value, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC));
-  };
-  auto result = diagnostics(input);
-  assert(result.status == SnapshotSourceStatus::OK && result.invalid_reasons == INVALID_NONE);
-
-  input.operation.setpoint_recovery = true;
-  result = diagnostics(input);
-  assert(result.status == SnapshotSourceStatus::SETPOINT_RECOVERY_ACTIVE);
-  assert((result.invalid_reasons & INVALID_SETPOINT_RECOVERY) != 0U);
-
-  input.boiler_heat.value = BoilerHeatState::HEAT_ACTIVE;
-  result = diagnostics(input);
-  assert(result.status == SnapshotSourceStatus::BOILER_ACTIVE);
-  assert((result.invalid_reasons & INVALID_BOILER_HEAT) != 0U);
-  assert((result.invalid_reasons & INVALID_SETPOINT_RECOVERY) != 0U);
-
+  input.hp1.defrost_active.value = true;
+  input.hp1.mode.value = HeatPumpMode::COOLING;
+  input.hp1.water_out_c.value = input.hp1.water_in_c.value - 2.0f;
+  const auto daily = build(input);
+  const auto dynamic = build_learning_snapshot(input, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC);
+  assert(daily.measurement_valid && daily.snapshot.heat_to_water_w < 0.0f);
+  assert(!dynamic.measurement_valid);
+  const auto diagnostics = combined_snapshot_diagnostics(daily, dynamic);
+  assert(diagnostics.status == dynamic.status && diagnostics.invalid_reasons == dynamic.invalid_reasons);
+  input.hp1.mode.value = HeatPumpMode::UNKNOWN;
+  assert_failed(build(input), SnapshotSourceStatus::INVALID_MODE);
   input = valid_input();
-  input.operation.comfort_acceptable = false;
-  result = diagnostics(input);
-  assert(result.status == SnapshotSourceStatus::COMFORT_UNACCEPTABLE);
-  assert((result.invalid_reasons & INVALID_CONTROL_MODE) != 0U);
+  input.boiler_heat.value = BoilerHeatState::HEAT_ACTIVE;
+  assert_failed(build(input), SnapshotSourceStatus::BOILER_ACTIVE);
+}
+
+void test_only_scalar_gaps_can_hold_a_daily_measurement() {
+  auto missing = valid_input(HydronicTopology::DUO_SERIES);
+  missing.room_c.valid = false;
+  assert(build(missing).may_bridge_daily_gap);
+  auto stale = valid_input(HydronicTopology::DUO_SERIES);
+  stale.hp2.water_out_c.received_monotonic_ms = kNowMs - 5001;
+  assert(build(stale).may_bridge_daily_gap);
+  stale.hp2.water_out_c.source.unit = PhysicalUnit::HP1;
+  assert(!build(stale).may_bridge_daily_gap);
+  assert(build(stale).status == SnapshotSourceStatus::SOURCE_UNIT_MISMATCH);
+  auto dynamic = build_learning_snapshot(missing, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC);
+  assert(!dynamic.may_bridge_daily_gap);
+
+  // Simultaneous hard failures must never be hidden by the first missing field.
+  auto fault = missing;
+  fault.outside_c.value = NAN;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.flow_lph.value = kPassiveMaximumFlowLph + 1.0f;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.hp2.water_out_c.value = 100.0f;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.hp2.water_out_c.source = fault.hp2.water_in_c.source;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.setpoint_c.source.id = 0;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.hp1.mode.value = HeatPumpMode::COOLING;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.boiler_heat.value = BoilerHeatState::HEAT_ACTIVE;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.hp2.compressor_active.valid = false;
+  assert(!build(fault).may_bridge_daily_gap);
+  fault = missing;
+  fault.hp2.mode.received_monotonic_ms = kNowMs - 2000;
+  assert(!build(fault).may_bridge_daily_gap);  // Operational skew is a hard failure.
+  fault = missing;
+  fault.operation.service_or_ota = true;
+  assert(!build(fault).may_bridge_daily_gap);
+
+  SegmentAccumulator state;
+  auto input = valid_input(HydronicTopology::DUO_SERIES);
+  observe_source_input(state, input, QualityConfig{});
+  retime(input, kNowMs + 60000);
+  input.epoch_s += 60;
+  input.room_c.valid = false;
+  auto held = observe_source_input(state, input, QualityConfig{});
+  assert(!held.source.measurement_valid && state.active && state.source_gap_pending);
+  assert(state.integrated_duration_s == 0.0);
+  retime(input, kNowMs + 120000);
+  input.epoch_s += 60;
+  input.room_c.valid = true;
+  auto recovered = observe_source_input(state, input, QualityConfig{});
+  assert(recovered.source.measurement_valid && state.active && !state.source_gap_pending);
+  assert(state.integrated_duration_s == 120.0);
+  assert(state.missing_energy_uncertainty_ws > 0.0);
 }
 
 }  // namespace
@@ -424,8 +474,9 @@ int main() {
   test_provenance_and_active_exclusions();
   test_operational_context_is_explicit_and_fail_closed();
   test_power_cap_only_excludes_a_constrained_request();
-  test_invalid_raw_event_poisoning_reaches_aggregate();
+  test_invalid_raw_event_restarts_aggregate();
   test_dynamic_learning_keeps_temperature_response_but_not_hidden_heat();
-  test_combined_diagnostics_explain_batch_only_blocks();
+  test_daily_defrost_and_combined_diagnostics();
+  test_only_scalar_gaps_can_hold_a_daily_measurement();
   return 0;
 }

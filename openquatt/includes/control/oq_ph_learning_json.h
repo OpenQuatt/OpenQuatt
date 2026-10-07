@@ -22,7 +22,7 @@ constexpr size_t kMaxSerializedBoolChars = 5U;
 static constexpr char kExportRecordsPrefix[] =
     "{\"schema\":1,\"mode\":\"passive\",\"auto_apply_allowed\":false,\"record_columns\":[\"start_epoch_s\",\"end_"
     "epoch_s\",\"mean_room_c\",\"mean_setpoint_c\",\"mean_outside_c\",\"mean_heat_w\","
-    "\"room_trend_k_per_h\",\"context_revision\"],\"records\":[";
+    "\"room_trend_k_per_h\",\"context_revision\",\"effective_outside_c\",\"record_kind\"],\"records\":[";
 static constexpr char kExportDiagnosticsPrefix[] =
     "],\"diagnostic_columns\":[\"epoch_s\",\"invalid_reasons\",\"control_mode\",\"room_c\",\"setpoint_c\","
     "\"outside_c\",\"actual_signed_heat_w\",\"heat_valid\",\"training_qualified\",\"base_w\",\"request_w\","
@@ -36,7 +36,8 @@ constexpr size_t delimited_rows_max(size_t row_size, size_t count) {
   return count == 0U ? 0U : row_size * count + count - 1U;
 }
 
-constexpr size_t kExportRecordRowMaxBytes = 2U + 7U + 3U * kMaxSerializedUint32Chars + 5U * kMaxSerializedFloatChars;
+constexpr size_t kExportRecordRowMaxBytes =
+    2U + 9U + 3U * kMaxSerializedUint32Chars + 6U * kMaxSerializedFloatChars + 1U;
 constexpr size_t kExportDiagnosticRowMaxBytes = 2U + 25U + 4U * kMaxSerializedUint32Chars + kMaxSerializedInt32Chars +
                                                 8U * kMaxSerializedFloatChars + 13U * kMaxSerializedBoolChars;
 constexpr size_t kMaxExportJsonBytes =

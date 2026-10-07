@@ -134,6 +134,9 @@ void test_previous_64_record_capacity_restores_without_reset() {
   size_t size = 0;
   assert(encode_learning_journal(passive_runtime_dataset(original), original.config.quality, 1, now, bytes,
                                  sizeof(bytes), size) == LearningJournalStatus::OK);
+  write_u16(bytes, 4, 5);
+  write_u16(bytes, 20, 3);
+  repair_crc(bytes, size);
   const auto metadata = inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality);
   assert(metadata.status == LearningJournalStatus::OK && metadata.record_count == 64U);
   PassiveRuntimeStorage restored;
@@ -242,6 +245,129 @@ void test_two_slot_selection_survives_torn_new_write_and_rejects_sequence_aba() 
   assert(selection.status == LearningJournalStatus::AMBIGUOUS_SEQUENCE && selection.selected_slot == -1);
 }
 
+SegmentRecord daily_record(uint32_t end_epoch_s) {
+  auto value = record(end_epoch_s - 86400U, 0.0f);
+  value.end_epoch_s = end_epoch_s;
+  value.duration_s = 86400U;
+  const int16_t profile[] = {-1500, -1200, -800, -100, 100, 700, 1200, 1600};
+  memcpy(value.effective_outside_profile_centi, profile, sizeof(profile));
+  return value;
+}
+
+ThermalModelState learned_thermal_model() {
+  ThermalModelState model;
+  const auto thermal_config = config().thermal_model;
+  assert(initialize_thermal_model(model, thermal_config));
+  ThermalInterval interval;
+  interval.start_monotonic_ms = 1000;
+  interval.end_monotonic_ms = 1801000;
+  interval.context_revision = 1;
+  interval.complete = interval.inputs_fresh = interval.generations_consistent = true;
+  interval.operational_gates_passed = interval.hidden_heat_exclusion_valid = interval.hidden_heat_excluded = true;
+  interval.indoor_start_c = 20;
+  interval.indoor_end_c = 20.1;
+  interval.mean_indoor_c = 20.05;
+  interval.mean_outside_c = 5;
+  interval.mean_heat_w = 4200;
+  assert(observe_thermal_interval(model, interval, thermal_config).accepted);
+  return model;
+}
+
+void test_schema_five_legacy_layout_and_thermal_survive_upgrade() {
+  constexpr uint32_t now = 20000U * 86400U;
+  auto legacy = record(now - 4U * 3600U, -4.0f);
+  legacy.room_range_k = 0.1f;
+  legacy.setpoint_range_c = 0.025f;
+  legacy.water_start_c = 31;
+  legacy.water_end_c = 30.5f;
+  const auto thermal = learned_thermal_model();
+  uint8_t bytes[kLearningJournalMaxBytes];
+  size_t size = 0;
+  assert(encode_learning_journal({&legacy, 1, context()}, config().quality, 3, now, bytes, sizeof(bytes), size,
+                                 &thermal, now) == LearningJournalStatus::OK);
+  // Schema 6 preserves each legacy record and the schema-5 thermal tail byte for byte.
+  write_u16(bytes, 4, 5);
+  write_u16(bytes, 20, 3);
+  repair_crc(bytes, size);
+  const auto metadata = inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality);
+  assert(metadata.status == LearningJournalStatus::OK && metadata.schema_version == 5);
+  LearningJournalRecords view{{bytes, size}, metadata.context_size, metadata.record_count};
+  const auto restored = view[0];
+  assert(!is_daily_record(restored));
+  assert(restored.room_range_k == legacy.room_range_k && restored.setpoint_range_c == legacy.setpoint_range_c);
+  assert(restored.water_start_c == legacy.water_start_c && restored.water_end_c == legacy.water_end_c);
+  ThermalModelState restored_thermal;
+  uint32_t thermal_epoch = 0;
+  assert(view.restore_thermal(restored_thermal, config().thermal_model, 500, 7, thermal_epoch));
+  assert(thermal_epoch == now && restored_thermal.accepted_samples == thermal.accepted_samples);
+  assert(restored_thermal.theta_loss_scaled == thermal.theta_loss_scaled);
+  assert(restored_thermal.theta_heat_scaled == thermal.theta_heat_scaled);
+  assert(restored_thermal.covariance_00 == thermal.covariance_00);
+  assert(restored_thermal.information_11 == thermal.information_11);
+  assert(restored_thermal.context_revision == 7 && !restored_thermal.recent_data_valid);
+
+  uint8_t upgraded[kLearningJournalMaxBytes];
+  size_t upgraded_size = 0;
+  assert(encode_learning_journal({&restored, 1, context()}, config().quality, 4, now, upgraded, sizeof(upgraded),
+                                 upgraded_size, &thermal, now) == LearningJournalStatus::OK);
+  assert(upgraded_size == size && upgraded[4] == 6);
+  const size_t records_offset = kLearningJournalHeaderBytes + sizeof(kContext);
+  assert(memcmp(bytes + records_offset, upgraded + records_offset,
+                kLearningJournalRecordBytes + kLearningJournalThermalBytes) == 0);
+}
+
+void test_schema_six_mixed_records_signed_profile_and_thermal_round_trip() {
+  constexpr uint32_t now = 20000U * 86400U;
+  const SegmentRecord records[] = {record(now - 3U * 86400U, -4.0f), daily_record(now)};
+  const auto thermal = learned_thermal_model();
+  uint8_t bytes[kLearningJournalMaxBytes];
+  size_t size = 0;
+  assert(encode_learning_journal({records, 2, context()}, config().quality, 8, now, bytes, sizeof(bytes), size,
+                                 &thermal, now) == LearningJournalStatus::OK);
+  assert(size == kLearningJournalHeaderBytes + sizeof(kContext) + 2 * 52U + kLearningJournalThermalBytes + 4U);
+  const auto metadata = inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality);
+  assert(metadata.status == LearningJournalStatus::OK && metadata.schema_version == 6);
+  LearningJournalRecords view{{bytes, size}, metadata.context_size, metadata.record_count};
+  assert(!is_daily_record(view[0]) && is_daily_record(view[1]));
+  assert(view[0].water_start_c == records[0].water_start_c);
+  assert(view[1].mean_room_c == records[1].mean_room_c && view[1].mean_heat_w == records[1].mean_heat_w);
+  assert(memcmp(view[1].effective_outside_profile_centi, records[1].effective_outside_profile_centi,
+                sizeof(records[1].effective_outside_profile_centi)) == 0);
+  const size_t profile_offset = kLearningJournalHeaderBytes + sizeof(kContext) + kLearningJournalRecordBytes + 36U;
+  assert(bytes[profile_offset] == static_cast<uint8_t>(-1500));
+  assert(bytes[profile_offset + 1] == static_cast<uint8_t>(static_cast<uint16_t>(-1500) >> 8U));
+  assert(bytes[profile_offset + 14] == static_cast<uint8_t>(1600));
+  ThermalModelState restored;
+  uint32_t thermal_epoch = 0;
+  assert(view.restore_thermal(restored, config().thermal_model, 500, 9, thermal_epoch));
+  assert(restored.accepted_samples == thermal.accepted_samples &&
+         restored.theta_loss_scaled == thermal.theta_loss_scaled);
+  assert(thermal_epoch == now && !restored.recent_data_valid);
+
+  uint8_t changed[kLearningJournalMaxBytes];
+  memcpy(changed, bytes, size);
+  changed[profile_offset] ^= 1;
+  assert(inspect_learning_journal({changed, size}, kContext, sizeof(kContext), now, config().quality).status ==
+         LearningJournalStatus::CORRUPT);
+  memcpy(changed, bytes, size);
+  write_u16(changed, profile_offset, 0x8000U);
+  repair_crc(changed, size);
+  assert(inspect_learning_journal({changed, size}, kContext, sizeof(kContext), now, config().quality).status ==
+         LearningJournalStatus::INVALID_RECORD);
+  memcpy(changed, bytes, size);
+  write_u16(changed, profile_offset, 1600U);  // Unsorted profile, still within the temperature limits.
+  repair_crc(changed, size);
+  assert(inspect_learning_journal({changed, size}, kContext, sizeof(kContext), now, config().quality).status ==
+         LearningJournalStatus::INVALID_RECORD);
+  // A schema-5 header cannot reinterpret a schema-6 daily profile as a legacy record.
+  memcpy(changed, bytes, size);
+  write_u16(changed, 4, 5);
+  write_u16(changed, 20, 3);
+  repair_crc(changed, size);
+  assert(inspect_learning_journal({changed, size}, kContext, sizeof(kContext), now, config().quality).status ==
+         LearningJournalStatus::INVALID_RECORD);
+}
+
 void test_schema_four_records_migrate_without_thermal_state() {
   constexpr uint32_t now = 20000U * 86400U + 12U * 3600U;
   auto state = populated(now);
@@ -252,6 +378,7 @@ void test_schema_four_records_migrate_without_thermal_state() {
   // Schema 4 had the identical record layout and CRC, without the thermal tail.
   size -= kLearningJournalThermalBytes;
   write_u16(bytes, 4, 4);
+  write_u16(bytes, 20, 2);
   write_u32(bytes, 8, size);
   repair_crc(bytes, size);
   constexpr uint8_t new_source[] = {9};
@@ -268,6 +395,8 @@ void test_schema_four_records_migrate_without_thermal_state() {
 }  // namespace
 
 int main() {
+  test_schema_five_legacy_layout_and_thermal_survive_upgrade();
+  test_schema_six_mixed_records_signed_profile_and_thermal_round_trip();
   test_previous_64_record_capacity_restores_without_reset();
   test_schema_four_records_migrate_without_thermal_state();
   test_round_trip_and_reboot_remap_never_restores_readiness();

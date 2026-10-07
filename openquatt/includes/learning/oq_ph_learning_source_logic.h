@@ -129,10 +129,6 @@ struct LearningOperationalContext {
   bool active_limit = false;
   bool service_or_ota_valid = false;
   bool service_or_ota = false;
-  bool setpoint_recovery_valid = false;
-  bool setpoint_recovery = false;
-  bool comfort_acceptable_valid = false;
-  bool comfort_acceptable = false;
 };
 
 struct LearningSourceInput {
@@ -188,6 +184,7 @@ struct SnapshotBuildResult {
   // A timestamped invalid snapshot is still an observation and must be passed to the aggregate.
   bool has_snapshot = false;
   bool measurement_valid = false;
+  bool may_bridge_daily_gap = false;
   uint32_t invalid_reasons = INVALID_ESSENTIAL_SOURCE;
   LearningSnapshot snapshot;
 };
@@ -199,8 +196,8 @@ struct SnapshotDiagnostics {
 
 inline SnapshotDiagnostics combined_snapshot_diagnostics(const SnapshotBuildResult& batch,
                                                          const SnapshotBuildResult& dynamic) {
-  // Both paths contribute to current_observation_valid. Dynamic learning may
-  // accept recovery/comfort periods that the structural batch must exclude.
+  // Report why either path paused. The API exposes their collection separately:
+  // a measured defrost can pause 1R1C while daily energy collection continues.
   return {dynamic.status != SnapshotSourceStatus::OK ? dynamic.status : batch.status,
           batch.invalid_reasons | dynamic.invalid_reasons};
 }
@@ -299,10 +296,8 @@ template <typename T>
 inline SnapshotSourceStatus append_unit_measurement(const PhysicalMeasurement<T>& measurement,
                                                     PhysicalUnit expected_unit, uint64_t now_ms,
                                                     MeasurementMeta* measurements, size_t& count) {
-  const SnapshotSourceStatus status = append_measurement(measurement, now_ms, measurements, count);
-  if (status != SnapshotSourceStatus::OK) return status;
-  return measurement.source.unit == expected_unit ? SnapshotSourceStatus::OK
-                                                  : SnapshotSourceStatus::SOURCE_UNIT_MISMATCH;
+  if (measurement.valid && measurement.source.unit != expected_unit) return SnapshotSourceStatus::SOURCE_UNIT_MISMATCH;
+  return append_measurement(measurement, now_ms, measurements, count);
 }
 
 inline SnapshotSourceStatus validate_skew(const MeasurementMeta* measurements, size_t count) {
@@ -315,16 +310,22 @@ inline SnapshotSourceStatus validate_skew(const MeasurementMeta* measurements, s
   return SnapshotSourceStatus::OK;
 }
 
-inline bool finite_measurement(const PhysicalMeasurement<float>& measurement) { return isfinite(measurement.value); }
+inline SnapshotSourceStatus validate_available_value(const PhysicalMeasurement<float>& measurement, float low,
+                                                     float high) {
+  return !measurement.valid || (isfinite(measurement.value) && measurement.value >= low && measurement.value <= high)
+             ? SnapshotSourceStatus::OK
+             : SnapshotSourceStatus::INVALID_VALUE;
+}
 
-inline SnapshotSourceStatus append_heat_pump(const HeatPumpRawMeasurements& heat_pump, PhysicalUnit expected_unit,
-                                             uint64_t now_ms, MeasurementMeta* measurements, size_t& count) {
-  SnapshotSourceStatus status =
-      append_unit_measurement(heat_pump.water_in_c, expected_unit, now_ms, measurements, count);
-  if (status != SnapshotSourceStatus::OK) return status;
-  status = append_unit_measurement(heat_pump.water_out_c, expected_unit, now_ms, measurements, count);
-  if (status != SnapshotSourceStatus::OK) return status;
-  status = append_unit_measurement(heat_pump.mode, expected_unit, now_ms, measurements, count);
+inline bool scalar_gap_status(SnapshotSourceStatus status) {
+  return status == SnapshotSourceStatus::MISSING_MEASUREMENT || status == SnapshotSourceStatus::SOURCE_STALE ||
+         status == SnapshotSourceStatus::TIME_SKEW;
+}
+
+inline SnapshotSourceStatus append_heat_pump_operation(const HeatPumpRawMeasurements& heat_pump,
+                                                       PhysicalUnit expected_unit, uint64_t now_ms,
+                                                       MeasurementMeta* measurements, size_t& count) {
+  SnapshotSourceStatus status = append_unit_measurement(heat_pump.mode, expected_unit, now_ms, measurements, count);
   if (status != SnapshotSourceStatus::OK) return status;
   status = append_unit_measurement(heat_pump.compressor_active, expected_unit, now_ms, measurements, count);
   if (status != SnapshotSourceStatus::OK) return status;
@@ -335,15 +336,17 @@ inline SnapshotSourceStatus append_heat_pump(const HeatPumpRawMeasurements& heat
   return append_unit_measurement(heat_pump.oil_return_active, expected_unit, now_ms, measurements, count);
 }
 
-inline SnapshotSourceStatus validate_heat_pump_state(const HeatPumpRawMeasurements& heat_pump) {
-  if (!finite_measurement(heat_pump.water_in_c) || !finite_measurement(heat_pump.water_out_c))
-    return SnapshotSourceStatus::INVALID_VALUE;
-  if (heat_pump.mode.value == HeatPumpMode::COOLING) return SnapshotSourceStatus::COOLING_ACTIVE;
-  if (heat_pump.mode.value != HeatPumpMode::OFF && heat_pump.mode.value != HeatPumpMode::HEATING)
+inline SnapshotSourceStatus validate_heat_pump_state(const HeatPumpRawMeasurements& heat_pump,
+                                                     SnapshotPurpose purpose) {
+  const bool daily_defrost = purpose == SnapshotPurpose::STRUCTURAL_BATCH && heat_pump.defrost_active.value;
+  if (heat_pump.mode.value == HeatPumpMode::COOLING && !daily_defrost) return SnapshotSourceStatus::COOLING_ACTIVE;
+  if (heat_pump.mode.value != HeatPumpMode::OFF && heat_pump.mode.value != HeatPumpMode::HEATING &&
+      !(heat_pump.mode.value == HeatPumpMode::COOLING && daily_defrost))
     return SnapshotSourceStatus::INVALID_MODE;
   if (heat_pump.mode.value == HeatPumpMode::OFF && heat_pump.compressor_active.value)
     return SnapshotSourceStatus::INCONSISTENT_ACTIVITY;
-  if (heat_pump.defrost_active.value || heat_pump.valve_transition_active.value || heat_pump.oil_return_active.value)
+  if (purpose == SnapshotPurpose::THERMAL_DYNAMIC &&
+      (heat_pump.defrost_active.value || heat_pump.valve_transition_active.value || heat_pump.oil_return_active.value))
     return SnapshotSourceStatus::PROTECTION_ACTIVE;
   return SnapshotSourceStatus::OK;
 }
@@ -390,6 +393,47 @@ inline CalorimetryResult evaluate_calorimetry(const LearningSourceInput& input, 
       !input.hp1.present || (input.topology == HydronicTopology::DUO_SERIES && !input.hp2.present) ||
       (input.topology == HydronicTopology::SINGLE && input.hp2.present))
     return result;
+  const PhysicalMeasurement<float>* water[] = {&input.hp1.water_in_c, &input.hp1.water_out_c, &input.hp2.water_in_c,
+                                               &input.hp2.water_out_c};
+  const size_t water_count = input.topology == HydronicTopology::DUO_SERIES ? 4 : 2;
+  if (source_detail::validate_available_value(input.flow_lph, 0.0f, kPassiveMaximumFlowLph) !=
+      SnapshotSourceStatus::OK) {
+    result.status = isfinite(input.flow_lph.value) && input.flow_lph.value > kPassiveMaximumFlowLph
+                        ? SnapshotSourceStatus::FLOW_OUT_OF_RANGE
+                        : SnapshotSourceStatus::INVALID_VALUE;
+    return result;
+  }
+  bool values_available = input.flow_lph.valid;
+  double water_sum_c = 0.0;
+  for (size_t index = 0; index < water_count; ++index) {
+    if (source_detail::validate_available_value(*water[index], quality.water_min_c, quality.water_max_c) !=
+        SnapshotSourceStatus::OK) {
+      result.status = SnapshotSourceStatus::INVALID_VALUE;
+      return result;
+    }
+    values_available = values_available && water[index]->valid;
+    water_sum_c += water[index]->value;
+    for (size_t other = 0; other < index; ++other) {
+      if (water[index]->valid && water[other]->valid &&
+          source_detail::same_source(water[index]->source, water[other]->source)) {
+        result.status = SnapshotSourceStatus::DUPLICATE_TEMPERATURE_SOURCE;
+        return result;
+      }
+    }
+  }
+  float heat_w = NAN;
+  const double mean_water_c = water_sum_c / static_cast<double>(water_count);
+  if (values_available) {
+    heat_w = oq_energy::hydronic_heat_power(input.hp1.water_in_c.value, input.hp1.water_out_c.value,
+                                            input.flow_lph.value, kWaterVolumetricHeatCapacityJPerLiterK);
+    if (input.topology == HydronicTopology::DUO_SERIES)
+      heat_w += oq_energy::hydronic_heat_power(input.hp2.water_in_c.value, input.hp2.water_out_c.value,
+                                               input.flow_lph.value, kWaterVolumetricHeatCapacityJPerLiterK);
+    if (!isfinite(heat_w) || fabsf(heat_w) > quality.max_abs_heat_w) {
+      result.status = SnapshotSourceStatus::INVALID_VALUE;
+      return result;
+    }
+  }
   source_detail::MeasurementMeta measurements[5];
   size_t measurement_count = 0;
   SnapshotSourceStatus status =
@@ -413,49 +457,6 @@ inline CalorimetryResult evaluate_calorimetry(const LearningSourceInput& input, 
   status = source_detail::validate_skew(measurements, measurement_count);
   if (status != SnapshotSourceStatus::OK) {
     result.status = status;
-    return result;
-  }
-  if (!isfinite(input.flow_lph.value) || input.flow_lph.value < 0.0f) {
-    result.status = SnapshotSourceStatus::INVALID_VALUE;
-    return result;
-  }
-  if (input.flow_lph.value > kPassiveMaximumFlowLph) {
-    result.status = SnapshotSourceStatus::FLOW_OUT_OF_RANGE;
-    return result;
-  }
-  const auto water_in_range = [&](float value) {
-    return isfinite(value) && value >= quality.water_min_c && value <= quality.water_max_c;
-  };
-  if (!water_in_range(input.hp1.water_in_c.value) || !water_in_range(input.hp1.water_out_c.value) ||
-      (input.topology == HydronicTopology::DUO_SERIES &&
-       (!water_in_range(input.hp2.water_in_c.value) || !water_in_range(input.hp2.water_out_c.value)))) {
-    result.status = SnapshotSourceStatus::INVALID_VALUE;
-    return result;
-  }
-  const SourceIdentity temperature_sources[] = {input.hp1.water_in_c.source, input.hp1.water_out_c.source,
-                                                input.hp2.water_in_c.source, input.hp2.water_out_c.source};
-  const size_t temperature_count = input.topology == HydronicTopology::DUO_SERIES ? 4 : 2;
-  for (size_t left = 0; left < temperature_count; ++left)
-    for (size_t right = left + 1; right < temperature_count; ++right)
-      if (source_detail::same_source(temperature_sources[left], temperature_sources[right])) {
-        result.status = SnapshotSourceStatus::DUPLICATE_TEMPERATURE_SOURCE;
-        return result;
-      }
-  double water_sum_c = static_cast<double>(input.hp1.water_in_c.value) + input.hp1.water_out_c.value;
-  size_t water_count = 2;
-  if (input.topology == HydronicTopology::DUO_SERIES) {
-    water_sum_c += static_cast<double>(input.hp2.water_in_c.value) + input.hp2.water_out_c.value;
-    water_count = 4;
-  }
-  float heat_w = oq_energy::hydronic_heat_power(input.hp1.water_in_c.value, input.hp1.water_out_c.value,
-                                                input.flow_lph.value, kWaterVolumetricHeatCapacityJPerLiterK);
-  if (input.topology == HydronicTopology::DUO_SERIES)
-    heat_w += oq_energy::hydronic_heat_power(input.hp2.water_in_c.value, input.hp2.water_out_c.value,
-                                             input.flow_lph.value, kWaterVolumetricHeatCapacityJPerLiterK);
-  const double mean_water_c = water_sum_c / static_cast<double>(water_count);
-  if (!isfinite(heat_w) || !isfinite(mean_water_c) || !isfinite(static_cast<float>(mean_water_c)) ||
-      fabsf(heat_w) > quality.max_abs_heat_w) {
-    result.status = SnapshotSourceStatus::INVALID_VALUE;
     return result;
   }
   result.status = SnapshotSourceStatus::OK;
@@ -484,12 +485,9 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
 
   uint32_t unknown_operation_reasons = INVALID_NONE;
   if (!input.operation.control_mode_valid) unknown_operation_reasons |= INVALID_CONTROL_MODE;
-  if (!input.operation.active_limit_valid) unknown_operation_reasons |= INVALID_ACTIVE_LIMIT;
+  if (purpose == SnapshotPurpose::THERMAL_DYNAMIC && !input.operation.active_limit_valid)
+    unknown_operation_reasons |= INVALID_ACTIVE_LIMIT;
   if (!input.operation.service_or_ota_valid) unknown_operation_reasons |= INVALID_SERVICE_OR_OTA;
-  if (purpose == SnapshotPurpose::STRUCTURAL_BATCH) {
-    if (!input.operation.setpoint_recovery_valid) unknown_operation_reasons |= INVALID_SETPOINT_RECOVERY;
-    if (!input.operation.comfort_acceptable_valid) unknown_operation_reasons |= INVALID_CONTROL_MODE;
-  }
   if (unknown_operation_reasons != INVALID_NONE)
     return failure(input, SnapshotSourceStatus::OPERATIONAL_CONTEXT_UNKNOWN, unknown_operation_reasons);
   const uint32_t all_operation_reasons =
@@ -501,52 +499,63 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
     return failure(input, SnapshotSourceStatus::CONTEXT_REVISION_MISMATCH, all_operation_reasons);
   if (input.operation.control_mode != LearningControlMode::HEATING)
     return failure(input, SnapshotSourceStatus::CONTROL_MODE_BLOCKED, INVALID_CONTROL_MODE);
-  if (input.operation.active_limit) return failure(input, SnapshotSourceStatus::ACTIVE_LIMIT, INVALID_ACTIVE_LIMIT);
+  if (purpose == SnapshotPurpose::THERMAL_DYNAMIC && input.operation.active_limit)
+    return failure(input, SnapshotSourceStatus::ACTIVE_LIMIT, INVALID_ACTIVE_LIMIT);
   if (input.operation.service_or_ota)
     return failure(input, SnapshotSourceStatus::SERVICE_OR_OTA_ACTIVE, INVALID_SERVICE_OR_OTA);
-  if (purpose == SnapshotPurpose::STRUCTURAL_BATCH && input.operation.setpoint_recovery)
-    return failure(input, SnapshotSourceStatus::SETPOINT_RECOVERY_ACTIVE, INVALID_SETPOINT_RECOVERY);
-  if (purpose == SnapshotPurpose::STRUCTURAL_BATCH && !input.operation.comfort_acceptable)
-    return failure(input, SnapshotSourceStatus::COMFORT_UNACCEPTABLE, INVALID_CONTROL_MODE);
 
   MeasurementMeta measurements[kMaxSourceMeasurements];
   size_t measurement_count = 0;
-  SnapshotSourceStatus status = append_measurement(input.room_c, input.monotonic_ms, measurements, measurement_count);
-  if (status == SnapshotSourceStatus::OK)
-    status = append_measurement(input.setpoint_c, input.monotonic_ms, measurements, measurement_count);
-  if (status == SnapshotSourceStatus::OK)
-    status = append_measurement(input.outside_c, input.monotonic_ms, measurements, measurement_count);
-  if (status == SnapshotSourceStatus::OK)
-    status = append_measurement(input.flow_lph, input.monotonic_ms, measurements, measurement_count);
-  if (status == SnapshotSourceStatus::OK)
-    status = append_heat_pump(input.hp1, PhysicalUnit::HP1, input.monotonic_ms, measurements, measurement_count);
+  // Operating state must be complete and current, even while a scalar sensor
+  // briefly disappears. A stale room value must not hide active boiler heat.
+  SnapshotSourceStatus status =
+      append_heat_pump_operation(input.hp1, PhysicalUnit::HP1, input.monotonic_ms, measurements, measurement_count);
   if (status == SnapshotSourceStatus::OK && input.topology == HydronicTopology::DUO_SERIES)
-    status = append_heat_pump(input.hp2, PhysicalUnit::HP2, input.monotonic_ms, measurements, measurement_count);
+    status =
+        append_heat_pump_operation(input.hp2, PhysicalUnit::HP2, input.monotonic_ms, measurements, measurement_count);
   if (status == SnapshotSourceStatus::OK)
     status = append_measurement(input.boiler_heat, input.monotonic_ms, measurements, measurement_count,
                                 input.boiler_heat.value == BoilerHeatState::NO_HEAT);
-  if (status != SnapshotSourceStatus::OK) return failure(input, status, reasons_for_status(status));
-
-  if (!finite_measurement(input.room_c) || !finite_measurement(input.setpoint_c) ||
-      !finite_measurement(input.outside_c) || input.room_c.value < quality.room_min_c ||
-      input.room_c.value > quality.room_max_c || input.setpoint_c.value < quality.setpoint_min_c ||
-      input.setpoint_c.value > quality.setpoint_max_c || input.outside_c.value < quality.outside_min_c ||
-      input.outside_c.value > quality.outside_max_c)
-    return failure(input, SnapshotSourceStatus::INVALID_VALUE, INVALID_ESSENTIAL_SOURCE);
-  status = validate_heat_pump_state(input.hp1);
+  if (status == SnapshotSourceStatus::OK) status = validate_skew(measurements, measurement_count);
+  if (status == SnapshotSourceStatus::OK) status = validate_heat_pump_state(input.hp1, purpose);
   if (status == SnapshotSourceStatus::OK && input.topology == HydronicTopology::DUO_SERIES)
-    status = validate_heat_pump_state(input.hp2);
+    status = validate_heat_pump_state(input.hp2, purpose);
   if (status != SnapshotSourceStatus::OK) return failure(input, status, reasons_for_status(status));
   if (input.boiler_heat.value == BoilerHeatState::HEAT_ACTIVE)
     return failure(input, SnapshotSourceStatus::BOILER_ACTIVE, INVALID_BOILER_HEAT);
   if (input.boiler_heat.value != BoilerHeatState::NO_HEAT)
     return failure(input, SnapshotSourceStatus::BOILER_UNKNOWN, INVALID_ESSENTIAL_SOURCE | INVALID_BOILER_HEAT);
 
-  status = validate_skew(measurements, measurement_count);
-  if (status != SnapshotSourceStatus::OK) return failure(input, status, reasons_for_status(status));
+  // Inspect every available scalar; missing/stale data must not conceal a
+  // simultaneous invalid value, identity or timing contract on another field.
+  const auto consider = [&](SnapshotSourceStatus next) {
+    if (next != SnapshotSourceStatus::OK &&
+        (status == SnapshotSourceStatus::OK || (scalar_gap_status(status) && !scalar_gap_status(next))))
+      status = next;
+  };
+  const auto scalar = [&](const PhysicalMeasurement<float>& value, float low, float high) {
+    consider(validate_available_value(value, low, high));
+    consider(append_measurement(value, input.monotonic_ms, measurements, measurement_count));
+  };
+  scalar(input.room_c, quality.room_min_c, quality.room_max_c);
+  scalar(input.setpoint_c, quality.setpoint_min_c, quality.setpoint_max_c);
+  scalar(input.outside_c, quality.outside_min_c, quality.outside_max_c);
+  consider(append_measurement(input.flow_lph, input.monotonic_ms, measurements, measurement_count));
+  const auto water = [&](const HeatPumpRawMeasurements& hp, PhysicalUnit unit) {
+    consider(append_unit_measurement(hp.water_in_c, unit, input.monotonic_ms, measurements, measurement_count));
+    consider(append_unit_measurement(hp.water_out_c, unit, input.monotonic_ms, measurements, measurement_count));
+  };
+  water(input.hp1, PhysicalUnit::HP1);
+  if (input.topology == HydronicTopology::DUO_SERIES) water(input.hp2, PhysicalUnit::HP2);
+  consider(validate_skew(measurements, measurement_count));
   const CalorimetryResult calorimetry =
       prepared_calorimetry == nullptr ? evaluate_calorimetry(input, quality) : *prepared_calorimetry;
-  if (!calorimetry.valid) return failure(input, calorimetry.status, reasons_for_status(calorimetry.status));
+  if (!calorimetry.valid) consider(calorimetry.status);
+  if (status != SnapshotSourceStatus::OK) {
+    auto result = failure(input, status, reasons_for_status(status));
+    result.may_bridge_daily_gap = purpose == SnapshotPurpose::STRUCTURAL_BATCH && scalar_gap_status(status);
+    return result;
+  }
 
   SnapshotBuildResult result;
   result.status = SnapshotSourceStatus::OK;
@@ -574,7 +583,7 @@ inline SourceObserveResult observe_source_input(SegmentAccumulator& state, const
     result.aggregate.status = LearningStatus::TIME_DISCONTINUITY;
     return result;
   }
-  result.aggregate = observe_snapshot(state, result.source.snapshot, quality);
+  result.aggregate = observe_snapshot(state, result.source.snapshot, quality, result.source.may_bridge_daily_gap);
   return result;
 }
 

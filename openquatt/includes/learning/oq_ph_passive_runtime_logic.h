@@ -48,6 +48,7 @@ struct PassiveRuntimeDiagnostics {
   uint32_t evidence_reset_count = 0;
   uint32_t fit_restart_count = 0;
   LearningStatus last_batch_status = LearningStatus::COLLECTING;
+  LearningStatus last_batch_rejection = LearningStatus::OK;
   ThermalWindowStatus last_thermal_window_status = ThermalWindowStatus::COLLECTING;
   ThermalUpdateStatus last_thermal_update_status = ThermalUpdateStatus::INVALID_CONFIGURATION;
 };
@@ -84,10 +85,8 @@ struct PassiveTickInput {
   bool context_valid = false;
   bool active_line_valid = false;
   HouseLine active_line;
-  bool reference_context_valid = false;
-  float reference_room_c = NAN;
-  float reference_setpoint_c = NAN;
   bool batch_snapshot_available = false;
+  bool may_bridge_daily_gap = false;
   LearningSnapshot batch_snapshot;
   bool dynamic_snapshot_available = false;
   LearningSnapshot dynamic_snapshot;
@@ -117,8 +116,6 @@ struct PassiveRuntimeStorage {
   bool fit_pending = false;
   bool fit_inputs_bound = false;
   HouseLine fit_active_line;
-  float fit_reference_room_c = NAN;
-  float fit_reference_setpoint_c = NAN;
   AdviceResult batch_result;
   ThermalModelState thermal_state;
   PassiveRuntimeDiagnostics diagnostics;
@@ -146,10 +143,7 @@ inline bool same_context_bytes(const PassiveRuntimeStorage& state, const Passive
 }
 
 inline bool valid_runtime_config(const PassiveRuntimeConfig& config) {
-  FitConfig fit = config.fit;
-  fit.reference_room_c = 0.5f * (config.quality.room_min_c + config.quality.room_max_c);
-  fit.reference_setpoint_c = 0.5f * (config.quality.setpoint_min_c + config.quality.setpoint_max_c);
-  return valid_quality_config(config.quality) && valid_fit_config(fit) &&
+  return valid_quality_config(config.quality) && valid_fit_config(config.fit) &&
          thermal_window_detail::valid_config(config.thermal_window, config.quality) &&
          valid_thermal_model_config(config.thermal_model) &&
          isfinite(config.validation.max_heat_loss_difference_fraction) &&
@@ -165,12 +159,12 @@ inline void cancel_fit(PassiveRuntimeStorage& state) {
   state.fit_pending = false;
   state.fit_inputs_bound = false;
   state.fit_active_line = {};
-  state.fit_reference_room_c = NAN;
-  state.fit_reference_setpoint_c = NAN;
   state.batch_result = {};
 }
 
-inline void clear_transient_collection(PassiveRuntimeStorage& state) {
+inline void clear_transient_collection(PassiveRuntimeStorage& state, LearningStatus rejection = LearningStatus::OK) {
+  if (state.batch_accumulator.active && rejection != LearningStatus::OK)
+    state.diagnostics.last_batch_rejection = rejection;
   reset_segment(state.batch_accumulator);
   state.thermal_accumulator = {};
   cancel_fit(state);
@@ -207,17 +201,13 @@ inline void invalidate_dynamic(PassiveRuntimeStorage& state, uint64_t now_monoto
 
 inline void start_fit(PassiveRuntimeStorage& state, const PassiveTickInput& input) {
   cancel_fit(state);
-  FitConfig fit = state.config.fit;
-  fit.reference_room_c = input.reference_room_c;
-  fit.reference_setpoint_c = input.reference_setpoint_c;
-  const LearningStatus fit_status = begin_advice_fit(state.records, state.record_count, input.now_epoch_s,
-                                                     input.active_line, state.config.quality, fit, state.fit_workspace);
+  const LearningStatus fit_status =
+      begin_advice_fit(state.records, state.record_count, input.now_epoch_s, input.active_line, state.config.quality,
+                       state.config.fit, state.fit_workspace);
   state.fit_running = fit_status == LearningStatus::FIT_IN_PROGRESS;
   state.fit_pending = false;
   state.fit_inputs_bound = true;
   state.fit_active_line = input.active_line;
-  state.fit_reference_room_c = input.reference_room_c;
-  state.fit_reference_setpoint_c = input.reference_setpoint_c;
   state.batch_result = state.fit_workspace.result;
   if (state.fit_running && state.diagnostics.fit_restart_count != UINT32_MAX) ++state.diagnostics.fit_restart_count;
 }
@@ -244,23 +234,24 @@ inline PassiveRuntimeStatus initialize_passive_runtime(PassiveRuntimeStorage& st
 }
 
 // These are the only entry points, besides tick(), that change learner state.
-inline void pause_passive_runtime(PassiveRuntimeStorage& state, uint64_t now_ms) {
-  passive_runtime_detail::clear_transient_collection(state);
+inline void pause_passive_runtime(PassiveRuntimeStorage& state, uint64_t now_ms,
+                                  LearningStatus rejection = LearningStatus::SEGMENT_INELIGIBLE) {
+  passive_runtime_detail::clear_transient_collection(state, rejection);
   passive_runtime_detail::invalidate_dynamic(state, now_ms);
   state.opted_in = false;
   state.status = PassiveRuntimeStatus::PAUSED;
 }
 
-// A changed assessment policy can invalidate a fit or an unfinished window,
-// without changing the physical observations already stored in records[].
+// A changed assessment policy restarts evaluation, not physical collection.
 inline void refresh_passive_evaluation(PassiveRuntimeStorage& state, const PassiveRuntimeConfig& config) {
   state.config = config;
   if (!passive_runtime_detail::valid_runtime_config(config)) {
-    passive_runtime_detail::clear_transient_collection(state);
+    passive_runtime_detail::clear_transient_collection(state, LearningStatus::INVALID_CONFIGURATION);
     state.status = PassiveRuntimeStatus::INVALID_CONFIGURATION;
     return;
   }
-  passive_runtime_detail::clear_transient_collection(state);
+  passive_runtime_detail::cancel_fit(state);
+  state.fit_pending = state.record_count > 0;
   state.status = state.opted_in ? PassiveRuntimeStatus::COLLECTING : PassiveRuntimeStatus::PAUSED;
 }
 
@@ -318,7 +309,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   }
   if (state.diagnostics.tick_count != UINT32_MAX) ++state.diagnostics.tick_count;
   if (!valid_context(input.context)) {
-    clear_transient_collection(state);
+    clear_transient_collection(state, LearningStatus::INVALID_MEASUREMENT);
     state.thermal_state.recent_data_valid = false;
     state.blocked = true;
     state.status = PassiveRuntimeStatus::INVALID_INPUT;
@@ -328,13 +319,13 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   // this function, but an early call still pauses safely instead of permanently
   // blocking the owner or assigning synthetic wall-clock time to records.
   if (input.now_monotonic_ms == 0 || input.now_epoch_s == 0) {
-    clear_transient_collection(state);
+    clear_transient_collection(state, LearningStatus::TIME_DISCONTINUITY);
     state.status = PassiveRuntimeStatus::PAUSED;
     return state.status;
   }
   const bool generation_decreased = input.context.context_revision < state.context_revision;
   if (generation_decreased) {
-    clear_transient_collection(state);
+    clear_transient_collection(state, LearningStatus::MIXED_CONTEXT);
     state.thermal_state.recent_data_valid = false;
     state.blocked = true;
     state.status = PassiveRuntimeStatus::STALE_CONTEXT;
@@ -342,7 +333,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   }
   const bool generations_changed = input.context.context_revision != state.context_revision;
   if (!generations_changed && !same_context_bytes(state, input.context)) {
-    clear_transient_collection(state);
+    clear_transient_collection(state, LearningStatus::MIXED_CONTEXT);
     state.thermal_state.recent_data_valid = false;
     state.blocked = true;
     state.status = PassiveRuntimeStatus::STALE_CONTEXT;
@@ -355,7 +346,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   const LearningStatus prune_status = prune_expired_records(buffer, input.now_epoch_s);
   state.record_count = buffer.count;
   if (prune_status != LearningStatus::OK) {
-    clear_transient_collection(state);
+    clear_transient_collection(state, LearningStatus::TIME_DISCONTINUITY);
     state.thermal_state.recent_data_valid = false;
     state.blocked = true;
     state.status = PassiveRuntimeStatus::TIME_DISCONTINUITY;
@@ -364,7 +355,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   if (oldest_record_expired) state.fit_pending = state.record_count > 0;
 
   if (generations_changed) {
-    clear_transient_collection(state);
+    clear_transient_collection(state, LearningStatus::MIXED_CONTEXT);
     bind_context(state, input.context);
     // Revision separates unfinished intervals, not the retained house history.
     for (size_t i = 0; i < state.record_count; ++i) state.records[i].context_revision = state.context_revision;
@@ -378,7 +369,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   }
   if ((state.last_monotonic_ms != 0 && input.now_monotonic_ms <= state.last_monotonic_ms) ||
       (state.last_epoch_s != 0 && input.now_epoch_s < state.last_epoch_s)) {
-    clear_transient_collection(state);
+    clear_transient_collection(state, LearningStatus::TIME_DISCONTINUITY);
     state.thermal_state.recent_data_valid = false;
     state.blocked = true;
     state.status = PassiveRuntimeStatus::TIME_DISCONTINUITY;
@@ -389,22 +380,19 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
   state.opted_in = input.opted_in;
 
   if (!input.opted_in) {
-    clear_transient_collection(state);
+    clear_transient_collection(state, LearningStatus::SEGMENT_INELIGIBLE);
     invalidate_dynamic(state, input.now_monotonic_ms);
     state.status = PassiveRuntimeStatus::PAUSED;
     return state.status;
   }
-  if (!input.context_valid || !input.active_line_valid || !valid_house_line(input.active_line) ||
-      !input.reference_context_valid || !isfinite(input.reference_room_c) || !isfinite(input.reference_setpoint_c)) {
-    clear_transient_collection(state);
+  if (!input.context_valid || !input.active_line_valid || !valid_house_line(input.active_line)) {
+    clear_transient_collection(state, LearningStatus::INVALID_MEASUREMENT);
     invalidate_dynamic(state, input.now_monotonic_ms);
     state.status = PassiveRuntimeStatus::PAUSED;
     return state.status;
   }
   if (state.fit_inputs_bound && (state.fit_active_line.heat_loss_w_per_k != input.active_line.heat_loss_w_per_k ||
-                                 state.fit_active_line.zero_power_temp_c != input.active_line.zero_power_temp_c ||
-                                 state.fit_reference_room_c != input.reference_room_c ||
-                                 state.fit_reference_setpoint_c != input.reference_setpoint_c)) {
+                                 state.fit_active_line.zero_power_temp_c != input.active_line.zero_power_temp_c)) {
     cancel_fit(state);
     state.fit_pending = state.record_count > 0;
   }
@@ -414,12 +402,16 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
                                    snapshot_matches_tick(input.batch_snapshot, input) &&
                                    validate_snapshot(input.batch_snapshot, state.config.quality) == LearningStatus::OK;
   if (!input.batch_snapshot_available || !snapshot_matches_tick(input.batch_snapshot, input)) {
+    if (state.batch_accumulator.active) state.diagnostics.last_batch_rejection = LearningStatus::INVALID_MEASUREMENT;
     reset_segment(state.batch_accumulator);
     state.diagnostics.last_batch_status = LearningStatus::INVALID_MEASUREMENT;
     if (state.diagnostics.rejected_batch_observations != UINT32_MAX) ++state.diagnostics.rejected_batch_observations;
   } else {
-    const ObserveResult observed =
-        observe_snapshot(state.batch_accumulator, input.batch_snapshot, state.config.quality);
+    const bool batch_was_active = state.batch_accumulator.active;
+    const ObserveResult observed = observe_snapshot(state.batch_accumulator, input.batch_snapshot, state.config.quality,
+                                                    input.may_bridge_daily_gap);
+    if (batch_was_active && observed.status != LearningStatus::COLLECTING && !observed.has_record)
+      state.diagnostics.last_batch_rejection = observed.status;
     state.diagnostics.last_batch_status = observed.status;
     if (observed.has_record) {
       cancel_fit(state);
@@ -428,6 +420,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
           append_record(buffer, observed.record, input.now_epoch_s, state.config.quality);
       state.record_count = buffer.count;
       state.diagnostics.last_batch_status = append_status;
+      state.diagnostics.last_batch_rejection = append_status;
       if (append_status == LearningStatus::OK) {
         appended_record = true;
         state.fit_pending = true;
@@ -442,10 +435,7 @@ inline PassiveRuntimeStatus tick_passive_runtime(PassiveRuntimeStorage& state, c
     }
   }
 
-  const bool dynamic_current_valid =
-      input.dynamic_snapshot_available && snapshot_matches_tick(input.dynamic_snapshot, input) &&
-      validate_snapshot(input.dynamic_snapshot, state.config.quality) == LearningStatus::OK;
-  state.current_observation_valid = batch_current_valid && dynamic_current_valid;
+  state.current_observation_valid = batch_current_valid;
   if (!input.dynamic_snapshot_available || !snapshot_matches_tick(input.dynamic_snapshot, input)) {
     invalidate_dynamic(state, input.now_monotonic_ms);
     state.diagnostics.last_thermal_window_status = ThermalWindowStatus::INVALID_MEASUREMENT;

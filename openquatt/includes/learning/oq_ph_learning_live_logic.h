@@ -12,6 +12,12 @@
 
 namespace oq_power_house::learning {
 
+inline bool source_configuration_available(const oq_sources::ResolvedLearningSource sources[4]) {
+  for (size_t index = 0; index < 4; ++index)
+    if (sources[index].configuration_generation == 0) return false;
+  return true;
+}
+
 // Resolvers remember intermediate route changes, even if the selected route is
 // back to A at the next learner tick. These counters are never persisted.
 inline bool observe_source_revisions(uint32_t previous[4], const oq_sources::ResolvedLearningSource sources[4]) {
