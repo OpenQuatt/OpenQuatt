@@ -71,7 +71,7 @@ class NvsPersistenceContractTest(unittest.TestCase):
                 self.assertEqual(len(matching), 1)
                 self.assertEqual(matching[0]["priority"], -100)
                 self.assertIn('erase_esphome_blob_if_size(306736601U, 1U', NVS_CLEANUP)
-                self.assertIn('erase_esphome_blob_if_size(2881445393U, 4U', NVS_CLEANUP)
+                self.assertIn('erase_esphome_blob_if_size(2881445393U, 1U', NVS_CLEANUP)
                 night_day_id = "oq_cooling_fallback_night_min_last_day_key"
                 globals_by_id = {str(item["id"]): item for item in config["globals"]}
                 self.assertFalse(globals_by_id[night_day_id]["restore_value"])

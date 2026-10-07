@@ -132,9 +132,9 @@ inline void retire_openquatt_preferences(esphome::EntityBase* air_purge) {
   oq_nvs_cleanup::erase_esphome_preferences(retired_cycling_alert_preferences, "session compressor cycling alerts");
   // Removed RAM log switch: FNV-1 object ID of "RAM log history".
   oq_nvs_cleanup::erase_esphome_blob_if_size(306736601U, 1U, "legacy RAM log history switch");
-  // Restoring global oq_cm_frost_prev: retain the guard when a key has
+  // Restoring bool oq_cm_frost_prev was a one-byte blob: retain the guard when a key has
   // an unexpected type/size. Keep this in the merge-safe shared boot path.
-  oq_nvs_cleanup::erase_esphome_blob_if_size(2881445393U, 4U, "legacy frost hysteresis");
+  oq_nvs_cleanup::erase_esphome_blob_if_size(2881445393U, 1U, "legacy frost hysteresis");
   // oq_cooling_fallback_night_min_last_day_key now only deduplicates within
   // this boot. Keep the separate persistent night-minimum temperature.
   oq_nvs_cleanup::erase_esphome_blob_if_size(1275799272U, 4U, "session cooling night date");

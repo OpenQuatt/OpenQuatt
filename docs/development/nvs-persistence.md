@@ -98,7 +98,7 @@ offset en bronbinding.
 
 De voormalige `oq_ram_log_history_switch` (`esphome/306736601`, één byte) kan
 nog drie entries gebruiken. RAM-loghistorie staat al permanent aan. De oude
-vorststatus `oq_cm_frost_prev` (`esphome/2881445393`, vier bytes) kan eveneens
+vorststatus `oq_cm_frost_prev` (`esphome/2881445393`, één byte) kan eveneens
 drie entries gebruiken. Beide keys worden met type- en lengtecontrole in de
 gedeelde bootactie opgeruimd. De oude afzonderlijke vorsthook viel bij
 package-samenvoeging uit de Q Duo WiFi-configuratie weg.
@@ -220,9 +220,10 @@ Dit was een rustige CM0-persistentietest: gelijktijdige HA/web/API/MQTT/bus/OTA-
 belasting en stack-watermarks zijn niet gemeten. Hieruit volgt geen bewezen
 runtime-geheugenmarge voor een release.
 
-De gemeten 169 beschikbare entries gelden voor deze testcontroller met zijn
-huidige records en historie. Ze vervangen de volledige-bezettingsschatting van
-45 entries voor Q Duo niet; de budgetgate van 100 blijft FAIL.
+De gemeten 169 beschikbare entries gelden voor de testcontroller met de
+records en firmware van die eerdere HIL-run. Ze vervangen de huidige
+volledige-bezettingsschatting van 60 vrije entries voor Q Duo niet; de
+budgetgate van 100 blijft FAIL.
 
 ## Vervolgontwerp voor gebundelde opslag
 
@@ -250,7 +251,7 @@ feature gescheiden. Alle waarden blijven persistent.
 | Compressor-start warning limits 2h en 72h | 2 | 6 | 3 | 3 |
 
 Deze vier clusters leveren theoretisch samen 35 entries op: Q Duo zou daarmee
-van 45 naar 80 nominaal vrij gaan. Ze halen op zichzelf de marge van 100 dus
+van 60 naar 95 nominaal vrij gaan. Ze halen op zichzelf de marge van 100 dus
 nog niet. Power House, PID en Flow hebben invloed op de regeling; hun volledige
 configuratie moet vóór de eerste controlcyclus beschikbaar zijn. Begin een
 prototype met de twee diagnostische grenzen, en beoordeel controlclusters

@@ -34,7 +34,7 @@ class SupervisorySafetyContractTest(unittest.TestCase):
             self.assertIn(marker, RUNTIME)
         frost_global = SUPERVISOR.split("id: oq_cm_frost_prev", 1)[1].split("# Pre/Postflow", 1)[0]
         self.assertIn("restore_value: false", frost_global)
-        self.assertIn("erase_esphome_blob_if_size(2881445393U, 4U", NVS_CLEANUP)
+        self.assertIn("erase_esphome_blob_if_size(2881445393U, 1U", NVS_CLEANUP)
         self.assertIn("frost_initialized", LOGIC)
         self.assertIn("config.frost_off_c", LOGIC)
         self.assertIn("id: oq_lowflow_fault_active", SUPERVISOR)
