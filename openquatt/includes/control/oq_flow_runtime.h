@@ -64,8 +64,6 @@ class Runtime {
   }
 
   void tick(const TickConfig& config) {
-    migrate_cooling_settings_();
-
     const int cm_code = id(oq_control_mode_code);
     const int task_code = id(oq_commissioning_task_code);
     const bool want_manual = id(oq_flow_control_mode).active_index().value_or(0) == 1;
@@ -184,18 +182,6 @@ class Runtime {
   }
 
  private:
-  void migrate_cooling_settings_() {
-    if (id(oq_flow_cooling_settings_migrated) || isnan(id(oq_flow_setpoint_lph).state)) return;
-    const float setpoint_lph = id(oq_flow_setpoint_lph).state;
-    auto call = id(oq_cooling_flow_setpoint_lph).make_call();
-    call.set_value(setpoint_lph);
-    call.perform();
-    id(oq_flow_last_good_pwm_cooling) = id(oq_flow_last_good_pwm);
-    id(oq_flow_cooling_settings_migrated) = true;
-    ESP_LOGI("flow", "Initialized cooling flow settings from current flow setpoint: sp=%.0f L/h last_good=%d",
-             setpoint_lph, (int)id(oq_flow_last_good_pwm_cooling));
-  }
-
   void start_auto_(const TickConfig& config, const char* reason) {
     const int cm_code = id(oq_control_mode_code);
     const bool cooling_target = cm_code == 5;

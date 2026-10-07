@@ -147,7 +147,6 @@ class Runtime {
     const std::string option =
         id(water_supply_source).has_state() ? id(water_supply_source).current_option() : std::string();
     const auto source = supply_source(option, ha_entity_id);
-    migrate_legacy_calibration();
     if (selected_supply_hold_.has_value() && !selected_supply_hold_.matches_source(source)) clear_supply_hold();
 
     bool calibration_required = false;
@@ -702,39 +701,6 @@ class Runtime {
         return oq_supply_calibration::load_record(id(oq_water_supply_temp_calibration_ha_input_record));
       default:
         return {};
-    }
-  }
-
-  static void migrate_legacy_calibration() {
-    if (!id(water_supply_temp_calibration_offset).has_state()) return;
-    const int32_t code = id(oq_water_supply_temp_calibration_source_code);
-    switch (code) {
-      case oq_supply_calibration::SOURCE_LOCAL_PT1000:
-        oq_supply_calibration::migrate_legacy_record(id(oq_water_supply_temp_calibration_pt1000_record), code,
-                                                     id(oq_water_supply_temp_calibration_source_fingerprint),
-                                                     id(oq_water_supply_temp_calibration_checksum),
-                                                     id(water_supply_temp_calibration_offset).state);
-        break;
-      case oq_supply_calibration::SOURCE_LOCAL_DS18B20:
-        oq_supply_calibration::migrate_legacy_record(id(oq_water_supply_temp_calibration_ds18b20_record), code,
-                                                     id(oq_water_supply_temp_calibration_source_fingerprint),
-                                                     id(oq_water_supply_temp_calibration_checksum),
-                                                     id(water_supply_temp_calibration_offset).state);
-        break;
-      case oq_supply_calibration::SOURCE_CIC:
-        oq_supply_calibration::migrate_legacy_record(id(oq_water_supply_temp_calibration_cic_record), code,
-                                                     id(oq_water_supply_temp_calibration_source_fingerprint),
-                                                     id(oq_water_supply_temp_calibration_checksum),
-                                                     id(water_supply_temp_calibration_offset).state);
-        break;
-      case oq_supply_calibration::SOURCE_HA_INPUT:
-        oq_supply_calibration::migrate_legacy_record(id(oq_water_supply_temp_calibration_ha_input_record), code,
-                                                     id(oq_water_supply_temp_calibration_source_fingerprint),
-                                                     id(oq_water_supply_temp_calibration_checksum),
-                                                     id(water_supply_temp_calibration_offset).state);
-        break;
-      default:
-        break;
     }
   }
 

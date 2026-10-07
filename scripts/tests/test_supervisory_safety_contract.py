@@ -7,6 +7,7 @@ SUPERVISOR = (ROOT / "openquatt/oq_supervisory_controlmode.yaml").read_text()
 SUPERVISOR_RUNTIME = (ROOT / "openquatt/includes/control/oq_supervisory_state_runtime.h").read_text()
 LOGIC = (ROOT / "openquatt/includes/control/oq_supervisory_safety_logic.h").read_text()
 RUNTIME = (ROOT / "openquatt/includes/control/oq_supervisory_safety_runtime.h").read_text()
+NVS_CLEANUP = (ROOT / "openquatt/includes/storage/oq_nvs_cleanup.h").read_text()
 HOST_TEST = (ROOT / "tests/host/supervisory_safety_logic_test.cpp").read_text()
 
 
@@ -33,7 +34,7 @@ class SupervisorySafetyContractTest(unittest.TestCase):
             self.assertIn(marker, RUNTIME)
         frost_global = SUPERVISOR.split("id: oq_cm_frost_prev", 1)[1].split("# Pre/Postflow", 1)[0]
         self.assertIn("restore_value: false", frost_global)
-        self.assertIn("2881445393U", SUPERVISOR)
+        self.assertIn("erase_esphome_blob_if_size(2881445393U, 1U", NVS_CLEANUP)
         self.assertIn("frost_initialized", LOGIC)
         self.assertIn("config.frost_off_c", LOGIC)
         self.assertIn("id: oq_lowflow_fault_active", SUPERVISOR)

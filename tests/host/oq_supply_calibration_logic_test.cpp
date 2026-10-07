@@ -65,26 +65,6 @@ int main() {
   assert(!record_matches(interrupted_record, cic_b));
   assert(calibration_required(interrupted_record, cic_b));
 
-  uint32_t migrated_storage[kRecordStorageWords]{};
-  assert(migrate_legacy_record(migrated_storage, SOURCE_CIC, cic_a.fingerprint, checksum, offset));
-  assert(record_matches(load_record(migrated_storage), cic_a));
-  assert(!migrate_legacy_record(migrated_storage, SOURCE_CIC, cic_a.fingerprint, checksum, offset));
-  const CalibrationRecord migrated_once = load_record(migrated_storage);
-  assert(!migrate_legacy_record(migrated_storage, SOURCE_CIC, cic_b.fingerprint,
-                                record_checksum(SOURCE_CIC, cic_b.fingerprint, -0.18f), -0.18f));
-  assert(load_record(migrated_storage).fingerprint == migrated_once.fingerprint);
-  assert(load_record(migrated_storage).checksum == migrated_once.checksum);
-  assert(load_record(migrated_storage).offset_c == migrated_once.offset_c);
-  assert(record_matches(load_record(migrated_storage), cic_b));
-
-  uint32_t invalid_storage[kRecordStorageWords]{};
-  assert(!migrate_legacy_record(invalid_storage, SOURCE_CIC, cic_a.fingerprint, checksum ^ 1U, offset));
-  assert(!record_present(load_record(invalid_storage)));
-
-  uint32_t recover_storage[kRecordStorageWords]{cic_b.fingerprint, 0U, offset_bits(-0.22f)};
-  assert(migrate_legacy_record(recover_storage, SOURCE_CIC, cic_a.fingerprint, checksum, offset));
-  assert(record_matches(load_record(recover_storage), cic_a));
-
   CalibrationRecord corrupt_record{cic_a.fingerprint, checksum ^ 1U, offset};
   assert(record_present(corrupt_record));
   assert(!record_matches(corrupt_record, cic_a));
