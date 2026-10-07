@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 920" role="img" aria-labelledby="title desc">
   <title id="title">Kamercorrectie op Power House-huisvraag</title>
-  <desc id="desc">Conceptuele grafiek zonder opgebouwde comfortcorrectie, met setpoint 20,0 graden, normale koude grens 19,9 graden en temperatuurreactie 3000 watt per kelvin. Extra opwarming onder 19,9 graden, vlakke directe correctie tot het setpoint en warme tegensturing boven 20,0 graden. Comfort memory kan extra opwarming langer laten doorwerken, ook boven het setpoint.</desc>
+  <desc id="desc">Conceptuele grafiek zonder opgebouwde comfortcorrectie, met setpoint 20,0 graden, normale koude grens 19,9 graden en temperatuurreactie 3000 watt per kelvin. Extra opwarming onder 19,9 graden, vlakke directe correctie tot de warme grens 20,3 graden en warmte terugnemen boven 20,3 graden. Comfort memory kan extra opwarming langer laten doorwerken, ook boven het setpoint.</desc>
   <defs>
     <linearGradient id="cardBg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#ffffff"/>
@@ -50,7 +50,7 @@
 
   <text x="54" y="68" class="small-kicker">Kamercorrectie op Power House-huisvraag</text>
   <text x="54" y="116" class="body">Conceptueel, zonder opgebouwde comfortcorrectie: onder de koude comfortgrens vraagt Power House extra warmte.</text>
-  <text x="54" y="152" class="body">Tot het setpoint blijft de directe correctie vlak; daarboven neemt de regeling warmte terug. Comfort memory kan de extra</text>
+  <text x="54" y="152" class="body">Tot de warme grens (20,3 °C) blijft de directe correctie vlak; daarboven neemt de regeling warmte terug. Comfort memory kan de extra</text>
   <text x="54" y="188" class="body">opwarming langer laten doorwerken, ook boven het setpoint. De comfortmarges zijn geen vaste compressor-start- of stoptemperaturen.</text>
 
   <g transform="translate(54 226)">
@@ -71,20 +71,22 @@
 
   <g transform="translate(0 0)">
     <rect x="170" y="338" width="610" height="316" rx="44" fill="url(#belowBg)"/>
-    <rect x="780" y="338" width="53" height="316" rx="26" fill="url(#calmBg)"/>
-    <rect x="833" y="338" width="685" height="316" rx="44" fill="url(#aboveBg)"/>
+    <rect x="780" y="338" width="213" height="316" rx="26" fill="url(#calmBg)"/>
+    <rect x="993" y="338" width="525" height="316" rx="44" fill="url(#aboveBg)"/>
 
     <line x1="170" y1="338" x2="170" y2="653" class="axis"/>
     <line x1="170" y1="495" x2="1518" y2="495" class="axis"/>
     <line x1="833" y1="338" x2="833" y2="653" class="axis axis-dashed"/>
 
-    <path d="M 170 360 L 780 495 L 833 495 L 1518 653" class="curve"/>
+    <path d="M 170 360 L 780 495 L 993 495 L 1518 653" class="curve"/>
 
     <line x1="780" y1="464" x2="780" y2="526" class="marker-below"/>
     <line x1="833" y1="460" x2="833" y2="530" class="marker-setpoint"/>
 
     <circle cx="780" cy="495" r="18" class="point-core point-below"/>
     <circle cx="833" cy="495" r="20" class="point-core point-setpoint"/>
+    <line x1="993" y1="464" x2="993" y2="526" class="marker-above"/>
+    <circle cx="993" cy="495" r="18" class="point-core point-above"/>
 
     <text x="148" y="345" class="chart-label">meer warmte</text>
     <text x="148" y="631" class="chart-label-soft">minder warmte</text>
@@ -93,6 +95,7 @@
 
     <text x="740" y="742" text-anchor="end" class="tick">19,9 °C</text>
     <text x="833" y="742" text-anchor="middle" class="tick">20,0 °C</text>
+    <text x="993" y="742" text-anchor="middle" class="tick">20,3 °C</text>
   </g>
 
   <g transform="translate(54 786)">
@@ -103,11 +106,11 @@
   <g transform="translate(550 786)">
     <rect width="500" height="72" rx="22" fill="#e5e7eb" fill-opacity="0.72" stroke="#cbd5e1" stroke-width="2"/>
     <text x="250" y="40" text-anchor="middle" class="zone-title">vlakke directe kamercorrectie</text>
-    <text x="250" y="61" text-anchor="middle" class="zone-meta">19,9 °C – 20,0 °C</text>
+    <text x="250" y="61" text-anchor="middle" class="zone-meta">19,9 °C – 20,3 °C</text>
   </g>
   <g transform="translate(1066 786)">
     <rect width="480" height="72" rx="22" fill="#ffedd5" fill-opacity="0.78" stroke="#fed7aa" stroke-width="2"/>
     <text x="240" y="40" text-anchor="middle" class="zone-title">warme tegensturing</text>
-    <text x="240" y="61" text-anchor="middle" class="zone-meta">boven 20,0 °C</text>
+    <text x="240" y="61" text-anchor="middle" class="zone-meta">boven 20,3 °C</text>
   </g>
 </svg>

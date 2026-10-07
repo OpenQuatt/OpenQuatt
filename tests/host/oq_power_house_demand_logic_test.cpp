@@ -132,11 +132,57 @@ void test_demand_slew_and_limits() {
   warm.room_c = 22.0f;
   assert(decide_demand(warm, tuning(), {3000, 1U, 0.1f}).next.comfort_memory_c < 0.1f);
 }
+void test_comfort_warm_edge_and_recovery_boundary() {
+  // No prior tick: inspect the requested watts before slew delays the change.
+  // At 20 C desired, 3000 W house need and 3000 W/K room reaction.
+  struct Case {
+    float above_c, room_c, memory_c, expected_w;
+  };
+  const Case cases[] = {
+      {0.3f, 19.8f, 0.0f, 3300.0f},  {0.3f, 20.0f, 0.0f, 3000.0f},   {0.3f, 20.3f, 0.0f, 3000.0f},
+      {0.3f, 20.4f, 0.0f, 2700.0f},  {0.3f, 21.3f, 0.0f, 0.0f},      {1.0f, 20.3f, 0.0f, 3000.0f},
+      {1.0f, 21.0f, 0.0f, 3000.0f},  {1.0f, 21.1f, 0.0f, 2700.0f},   {0.0f, 20.0f, 0.2f, 3000.0f},
+      {0.0f, 20.05f, 0.2f, 2850.0f}, {0.05f, 20.05f, 0.2f, 3000.0f}, {0.05f, 20.1f, 0.2f, 2850.0f},
+      {0.3f, 20.05f, 0.2f, 3150.0f}, {0.3f, 20.4f, 0.2f, 2700.0f},
+  };
+  for (const auto& test : cases) {
+    auto in = input();
+    in.room_c = test.room_c;
+    auto cfg = tuning();
+    cfg.comfort_above_c = test.above_c;
+    const auto out = decide_demand(in, cfg, {3000, 0, test.memory_c});
+    assert(out.valid && near(out.requested_w, test.expected_w));
+  }
+  // Zero below-margin lets recovery reach past the warm edge unless bounded.
+  const float narrow_above[] = {0.0f, 0.05f};
+  for (float above : narrow_above) {
+    auto in = input();
+    auto cfg = tuning();
+    cfg.comfort_below_c = 0.0f;
+    cfg.comfort_above_c = above;
+    in.room_c = in.setpoint_c + above;
+    const auto out = decide_demand(in, cfg, {3000, 0, 0.08f});
+    assert(out.valid && near(out.contributions.room_feedback_w, 0.0f));
+    assert(near(out.requested_w, 3000.0f));
+  }
+  // A live change moves the braking edge without rewriting the room setpoint.
+  auto in = input();
+  in.room_c = 20.6f;
+  auto cfg = tuning();
+  const auto braking = decide_demand(in, cfg, {});
+  assert(near(braking.requested_w, 2100.0f));
+  cfg.comfort_above_c = 1.0f;
+  assert(near(decide_demand(in, cfg, {}).requested_w, 3000.0f));
+  assert(in.setpoint_c == 20.0f);
+  in.water_limit_factor = 0.5f;
+  assert(near(decide_demand(in, cfg, {}).requested_w, 1500.0f));
+}
 }  // namespace
 int main() {
   test_model_and_feedforward();
   test_cache_and_cadence_rollover();
   test_demand_finite_contract();
   test_demand_slew_and_limits();
+  test_comfort_warm_edge_and_recovery_boundary();
   return 0;
 }

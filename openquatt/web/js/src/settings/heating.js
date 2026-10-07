@@ -361,11 +361,10 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
   export function renderPowerHouseAdvancedField() {
     const fields = [
       renderSettingsNumberField("phKp", t("settingsHeating.phKpTitle"), t("settingsHeating.phKpCopy"), "", { unitOverride: "W/K" }),
-      renderSettingsNumberField("phComfortAbove", t("settingsHeating.phComfortAboveTitle"), t("settingsHeating.phComfortAboveCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("settingsHeating.phComfortAboveDirection"))}</p>` }),
       renderPowerHouseResponseProfilesField(),
     ].filter(Boolean);
 
-    if (!fields.length && !hasEntity("phComfortBelow") && !hasEntity("phRunExtension")) {
+    if (!fields.length && !hasEntity("phComfortBelow") && !hasEntity("phComfortAbove") && !hasEntity("phRunExtension")) {
       return "";
     }
 
@@ -382,6 +381,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
           </div>
           <div class="oq-settings-grid">
             ${renderSettingsNumberField("phComfortBelow", t("settingsHeating.phComfortBelowTitle"), t("settingsHeating.phComfortBelowCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("settingsHeating.phComfortBelowDirection"))}</p>` })}
+            ${renderSettingsNumberField("phComfortAbove", t("settingsHeating.phComfortAboveTitle"), t("settingsHeating.phComfortAboveCopy"), "", { footerMarkup: `<p class="oq-run-extension-note">${escapeHtml(t("settingsHeating.phComfortAboveDirection"))}</p>` })}
           </div>
           <div data-oq-power-house-comfort-thresholds>${renderPowerHouseComfortThresholds()}</div>
         </section>
@@ -407,11 +407,12 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     const configurable = hasEntity("phRunExtensionRestartCooldown");
     const cooldown = configurable ? numeric("phRunExtensionRestartCooldown") : 0.2;
     const coldEdge = setpoint - numeric("phComfortBelow");
+    const warmEdge = setpoint + numeric("phComfortAbove");
     const stop = Number.isFinite(setpoint) && Number.isFinite(margin) ? setpoint + margin : NaN;
     const configuredRestart = stop - cooldown;
     // Older firmware still uses its fixed 0.2 K threshold without the new cold-edge guard.
     const restart = configurable ? Math.max(configuredRestart, coldEdge) : configuredRestart;
-    return { setpoint, margin, cooldown, stop, configuredRestart, coldEdge, restart, limited: restart > configuredRestart };
+    return { setpoint, margin, cooldown, stop, configuredRestart, coldEdge, warmEdge, restart, limited: restart > configuredRestart };
   }
 
   const RUN_EXTENSION_STATUS_COPY = {
@@ -436,14 +437,16 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
   export function renderPowerHouseComfortThresholds() {
     const model = getRunExtensionThresholds();
     const active = getRunExtensionThresholds(false);
-    const preview = !Object.is(model.setpoint, active.setpoint) || !Object.is(model.coldEdge, active.coldEdge);
+    const preview = ["setpoint", "coldEdge", "warmEdge"].some((key) => !Object.is(model[key], active[key]));
     return `
       <p class="oq-run-extension-note">${escapeHtml(t(preview ? "runExtension.preview" : "runExtension.confirmed"))}</p>
       <div class="oq-run-extension-thresholds">
         <div><span>${escapeHtml(t("runExtension.desired"))}</span><strong>${escapeHtml(formatRunExtensionTemp(model.setpoint))}</strong><small>${escapeHtml(t("settingsHeating.desiredSource"))}</small></div>
         <div><span>${escapeHtml(t("settingsHeating.coldEdgeTitle"))}</span><strong>${escapeHtml(formatRunExtensionTemp(model.coldEdge))}</strong><small>${escapeHtml(t("settingsHeating.coldEdgeCopy"))}</small></div>
+        ${hasEntity("phComfortAbove") ? `<div><span>${escapeHtml(t("settingsHeating.warmEdgeTitle"))}</span><strong>${escapeHtml(formatRunExtensionTemp(model.warmEdge))}</strong><small>${escapeHtml(t("settingsHeating.warmEdgeCopy"))}</small></div>` : ""}
       </div>
       ${preview ? `<p class="oq-run-extension-note">${escapeHtml(t("settingsHeating.activeColdEdge", { value: formatRunExtensionTemp(active.coldEdge) }))}</p>` : ""}
+      ${preview && hasEntity("phComfortAbove") ? `<p class="oq-run-extension-note">${escapeHtml(t("settingsHeating.activeWarmEdge", { value: formatRunExtensionTemp(active.warmEdge) }))}</p>` : ""}
     `;
   }
 

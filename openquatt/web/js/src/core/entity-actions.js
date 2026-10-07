@@ -371,7 +371,7 @@ function updateFrequencyRangeControl(input) {
           }
         }
       }
-      if (["roomSetpoint", "phComfortBelow", "phRunExtensionStopMargin", "phRunExtensionRestartCooldown"].includes(field)) {
+      if (["roomSetpoint", "phComfortBelow", "phComfortAbove", "phRunExtensionStopMargin", "phRunExtensionRestartCooldown"].includes(field)) {
         patchRunExtensionThresholds();
       }
     }

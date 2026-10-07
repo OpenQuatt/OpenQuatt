@@ -274,10 +274,12 @@ test("comfortbediening scheidt dagelijkse keuzes en behouden geavanceerde afstel
   assert.match(markup, /Op temperatuur houden/);
   const [daily, advanced] = markup.split('<details class="oq-settings-advanced"');
   assert.match(daily, /Afkoeling onder gewenste temperatuur/);
+  assert.match(daily, /Afremmen boven gewenste temperatuur/);
+  assert.match(daily, /21,3 °C/);
   assert.match(daily, /20,8 °C/);
-  assert.doesNotMatch(daily, /Comfort boven setpoint|Temperatuurreactie|Reactieprofiel|oq-ph-concept/);
+  assert.doesNotMatch(daily, /Temperatuurreactie|Reactieprofiel|oq-ph-concept/);
   assert.match(advanced, /data-oq-settings-advanced="power-house">/);
-  assert.match(advanced, /Comfort boven setpoint/);
+  assert.doesNotMatch(advanced, /Afremmen boven gewenste temperatuur|data-oq-field="phComfortAbove"/);
   assert.match(advanced, /Temperatuurreactie/);
   assert.match(advanced, /Power House responsprofiel/);
   assert.deepEqual(state.entities, before);
@@ -337,6 +339,32 @@ test("afkoelmarge geeft ook zonder doorverwarmen een actuele koude-grensvoorvert
     assert.match(comfort.innerHTML, /<strong>—<\/strong>/);
     assert.equal(state.entities.phComfortBelow.value, 0.15);
   } finally { state.root = previousRoot; }
+});
+
+test("bovenmarge toont afremmen zonder doorverwarmen en bewaart bevestigde waarde tijdens invoer", () => {
+  resetSettingsState({ roomSetpoint: numberEntity(20), phComfortBelow: numberEntity(0.2), phComfortAbove: numberEntity(0.3), phRunExtension: switchEntity(false) });
+  assert.match(renderPowerHouseComfortThresholds(), /Warmte terugnemen boven/);
+  assert.match(renderPowerHouseComfortThresholds(), /20,3 °C/);
+  assert.doesNotMatch(renderPowerHouseRunExtensionField(), /data-oq-field="phRunExtensionStopMargin"/);
+  const comfort = { innerHTML: "" };
+  const previousRoot = state.root;
+  state.root = { querySelector(selector) { return selector === "[data-oq-power-house-comfort-thresholds]" ? comfort : null; } };
+  try {
+    const input = { dataset: { oqField: "phComfortAbove" }, type: "number", value: "1" };
+    handleInput({ target: input });
+    assert.match(comfort.innerHTML, /21,0 °C/);
+    assert.match(comfort.innerHTML, /Voorbeeld van je wijziging — nog niet bevestigd/);
+    assert.match(comfort.innerHTML, /Met je huidige instelling begint warmte terugnemen boven 20,3 °C/);
+    assert.equal(state.entities.phComfortAbove.value, 0.3);
+    setLocale("en", { persist: false });
+    patchRunExtensionThresholds();
+    assert.match(comfort.innerHTML, /Reduce heat above/);
+    assert.match(comfort.innerHTML, /21\.0 °C/);
+    assert.match(comfort.innerHTML, /heat reduction starts above 20\.3 °C/);
+    input.value = "";
+    handleInput({ target: input });
+    assert.match(comfort.innerHTML, /<strong>—<\/strong>/);
+  } finally { state.root = previousRoot; setLocale("nl", { persist: false }); }
 });
 
 test("live status blijft actueel tijdens invoer zonder de voorvertoning te bevestigen", () => {
