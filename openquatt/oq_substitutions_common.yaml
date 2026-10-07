@@ -231,7 +231,7 @@ oq_flow_pwm_max: "850"                                # Upper pump iPWM bound du
 oq_flow_autotune_min_step: "5"                        # Minimum iPWM step size for the step test.
 oq_flow_autotune_ss_window: "3"                       # Rolling-window size for steady-state estimation [samples].
 oq_flow_autotune_settle_s: "30"                       # Minimum settle time on baseline PWM before applying the step [s].
-oq_flow_autotune_stable_band_lph: "12.0"              # Max flow spread in baseline window to qualify as stable [L/h].
+oq_flow_autotune_stable_band_lph: "30.0"              # Max flow spread in baseline window to qualify as stable [L/h].
 oq_flow_autotune_tau_fallback_s: "30.0"               # Fallback time constant when t63 is invalid [s].
 oq_flow_autotune_lambda_min_s: "10.0"                 # Minimum IMC lambda for conservative PI tuning [s].
 

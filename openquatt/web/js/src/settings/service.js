@@ -89,6 +89,51 @@ import { formatNumber, t } from "../i18n/index.js";
     return reason ? `${label}: ${reasons[reason.toUpperCase()] || reason}` : label;
   }
 
+  function getAutotuneGainValue(key) {
+    const raw = getEntityValue(key);
+    return !hasEntity(key) || raw == null || String(raw).trim() === ""
+      ? "—"
+      : formatNumber(getEntityNumericValue(key), { maximumFractionDigits: 5 });
+  }
+
+  export function getAutotuneTerminalStatus(status) {
+    const raw = String(status || "").trim();
+    const upper = raw.toUpperCase();
+    if (upper === "ABORTED" || upper === "ABORT") return t("settingsService.phaseAborted");
+    if (!/^(ABORTED:|ABORT:|FAILED|REFUSED|APPLY_FAILED)/.test(upper)) return "";
+    const label = upper.startsWith("REFUSED")
+      ? t("settingsService.autotuneRefused")
+      : upper.startsWith("ABORT")
+        ? t("settingsService.phaseAborted")
+        : t("settingsService.autotuneFailed");
+    const reason = raw.includes(":") ? raw.slice(raw.indexOf(":") + 1).trim() : "";
+    const reasons = {
+      "NO_STEADY_STATE": t("settingsService.autotuneNoSteadyState"),
+      "NO_BASELINE_FLOW": t("settingsService.autotuneNoBaselineFlow"),
+      "FLOW_INVALID": t("settingsService.autotuneFlowInvalid"),
+      "INVALID_GAIN": t("settingsService.autotuneInvalidGain"),
+      "NOT CM100": t("settingsService.autotuneNotCm100"),
+      "BUSY": t("settingsService.autotuneBusy"),
+      "STEP_HEADROOM": t("settingsService.autotuneStepHeadroom"),
+      "VALIDATION_BASELINE": t("settingsService.autotuneValidationBaseline"),
+      "INVALID_VALIDATION_STATE": t("settingsService.autotuneInvalidValidation"),
+      "INVALID_VALIDATION_STEP": t("settingsService.autotuneInvalidValidation"),
+    };
+    return reason ? `${label}: ${reasons[reason.toUpperCase()] || reason}` : label;
+  }
+
+  export function getAutotuneFailureAdvice(status) {
+    const upper = String(status || "").trim().toUpperCase();
+    if (upper.includes("NO_STEADY_STATE")) return t("settingsService.autotuneSteadyAdvice");
+    if (/NO_BASELINE_FLOW|FLOW_INVALID/.test(upper)) return t("settingsService.autotuneFlowAdvice");
+    if (/INVALID_GAIN|STEP_HEADROOM/.test(upper)) return t("settingsService.autotuneResponseAdvice");
+    if (upper.includes("VALIDATION_BASELINE")) return t("settingsService.autotuneValidationAdvice");
+    if (upper.includes("NOT CM100")) return t("settingsService.autotuneWait");
+    if (upper.includes("BUSY")) return t("settingsService.autotuneBusyAdvice");
+    if (upper === "ABORTED" || upper === "ABORT") return t("settingsService.autotuneStoppedAdvice");
+    return t("settingsService.autotuneFailureAdvice");
+  }
+
   export function isBoilerTestResultReady(status) {
     return /DONE|APPLIED|CONFIRM_REQUIRED/.test(String(status || "").trim().toUpperCase());
   }
@@ -607,8 +652,8 @@ import { formatNumber, t } from "../i18n/index.js";
       (hpWaterCalibrationActive || hpWaterCalibrationPending || hpWaterCalibrationTaskLocked || isCommissioningTaskStatusActive(hpWaterCalibrationStatus));
     const hpWaterCalibrationResultReady = /DONE|APPLIED/.test(String(hpWaterCalibrationStatus || "").toUpperCase());
     const hpWaterCalibrationApplied = /APPLIED/.test(String(hpWaterCalibrationStatus || "").toUpperCase());
-    const flowKpSuggested = getSettingsStatValue("flowKpSuggested", { decimals: 5, trimTrailingZeros: true });
-    const flowKiSuggested = getSettingsStatValue("flowKiSuggested", { decimals: 5, trimTrailingZeros: true });
+    const flowKpSuggested = getAutotuneGainValue("flowKpSuggested");
+    const flowKiSuggested = getAutotuneGainValue("flowKiSuggested");
     const boilerResultReady = isBoilerTestResultReady(boilerStatus);
     const boilerResultApplied = /APPLIED/.test(String(boilerStatus || "").toUpperCase());
     const boilerConfirmationRequired = /CONFIRM_REQUIRED/.test(String(boilerStatus || "").toUpperCase());
@@ -628,13 +673,17 @@ import { formatNumber, t } from "../i18n/index.js";
       if (boilerResultReady) return t("settingsService.readyToApply");
       return cm100Ready ? t("settingsService.readyToStart") : t("settingsService.waitCm100");
     })();
-    const autotuneStatusDisplay = cm100Ready
-      ? (autotuneTaskWaitingForCm100
-        ? t("settingsService.waitCm100")
-        : (autotuneTaskRunning
-          ? autotuneProgress.phase
-          : (autotuneResultReady ? t("settingsService.readyToApply") : t("settingsService.readyToStart"))))
-      : t("settingsService.waitCm100");
+    const autotuneStarting = state.busyAction === "flowAutotuneStart";
+    const autotuneTerminalStatus = autotuneStarting ? "" : getAutotuneTerminalStatus(autotuneStatus);
+    const autotuneStatusDisplay = autotuneStarting
+      ? t("settingsService.phasePrep")
+      : autotuneTerminalStatus || (cm100Ready
+        ? (autotuneTaskWaitingForCm100
+          ? t("settingsService.waitCm100")
+          : (autotuneTaskRunning
+            ? autotuneProgress.phase
+            : (autotuneResultReady ? t("settingsService.readyToApply") : t("settingsService.readyToStart"))))
+        : t("settingsService.waitCm100"));
     const airPurgeTerminalStatus = state.busyAction === "airPurgeStart"
       ? ""
       : getAirPurgeTerminalStatus(airPurgeStatus);
@@ -882,7 +931,9 @@ import { formatNumber, t } from "../i18n/index.js";
           copy: t("settingsService.autotuneCopy"),
           subcopy: t("settingsService.autotuneSubcopy"),
           status: autotuneStatusDisplay,
-          statusCopy: autotuneTaskWaitingForCm100
+          statusCopy: autotuneTerminalStatus
+            ? getAutotuneFailureAdvice(autotuneStatus)
+            : autotuneTaskWaitingForCm100
             ? t("settingsService.autotuneWait")
             : (autotuneTaskRunning
               ? t("settingsService.autotuneRunning")
@@ -901,8 +952,10 @@ import { formatNumber, t } from "../i18n/index.js";
             ${state.entities.flowAutotuneApply ? renderNamedActionButton("flowAutotuneApply", t("settingsService.applyBtn"), "oq-helper-button oq-helper-button--ghost", autotuneBusy || autotuneApplyDisabled) : ""}
           `,
           metrics: `
-            ${renderSettingsStaticField("flowKpSuggested", t("settingsService.kpSuggested"), t("settingsService.kpCopy"), flowKpSuggested, "oq-settings-field--compact")}
-            ${renderSettingsStaticField("flowKiSuggested", t("settingsService.kiSuggested"), t("settingsService.kiCopy"), flowKiSuggested, "oq-settings-field--compact")}
+            ${renderSettingsStaticField("flowKp", t("settingsService.kpCurrent"), t("settingsService.currentGainsCopy"), getAutotuneGainValue("flowKp"), "oq-settings-field--compact")}
+            ${renderSettingsStaticField("flowKi", t("settingsService.kiCurrent"), t("settingsService.currentGainsCopy"), getAutotuneGainValue("flowKi"), "oq-settings-field--compact")}
+            ${renderSettingsStaticField("flowKpSuggested", t("settingsService.kpSuggested"), t("settingsService.kpCopy"), autotuneResultReady && !autotuneStarting ? flowKpSuggested : "—", "oq-settings-field--compact")}
+            ${renderSettingsStaticField("flowKiSuggested", t("settingsService.kiSuggested"), t("settingsService.kiCopy"), autotuneResultReady && !autotuneStarting ? flowKiSuggested : "—", "oq-settings-field--compact")}
           `,
         }),
       },

@@ -103,6 +103,22 @@ inline int clamp_ipwm(int value, int min_ipwm, int max_ipwm) {
   return value;
 }
 
+// Replay the bounded response against the confirmed endpoint, not an intermediate window.
+inline float response_t63_s(const float* samples, uint8_t count, float baseline, float settled, int sample_time_s) {
+  if (!isfinite(baseline) || !isfinite(settled) || !(settled > baseline) || sample_time_s <= 0) return NAN;
+  const float threshold = baseline + 0.632f * (settled - baseline);
+  float previous = baseline;
+  for (uint8_t i = 0; i < count; ++i) {
+    const float current = samples[i];
+    if (current >= threshold && previous < threshold) {
+      const float fraction = (threshold - previous) / (current - previous);
+      return ((float)i + fraction) * (float)sample_time_s;
+    }
+    previous = current;
+  }
+  return NAN;
+}
+
 class FlowAutotuneRuntime {
  public:
   bool busy() const { return state_ != STATE_IDLE; }
@@ -120,6 +136,7 @@ class FlowAutotuneRuntime {
     step1_pwm_step_ = 850;
     clear_window();
     ss_confirm_cnt_ = 0;
+    response_count_ = 0;
     saved_kp_ = NAN;
     saved_ki_ = NAN;
     seed_kp_ = NAN;
@@ -174,6 +191,7 @@ class FlowAutotuneRuntime {
     sync_external_idle();
     if (id(oq_flow_autotune_abort)) {
       id(oq_flow_autotune_abort) = false;
+      if (state_ != STATE_ABORT) publish("ABORTED");
       state_ = STATE_ABORT;
     }
 
@@ -229,6 +247,10 @@ class FlowAutotuneRuntime {
   float w1_{NAN};
   float w2_{NAN};
   int ss_confirm_cnt_{0};
+  float step_window_[6]{};
+  uint8_t step_window_count_{0};
+  float response_samples_[32]{};
+  uint8_t response_count_{0};
   float saved_kp_{NAN};
   float saved_ki_{NAN};
   float seed_kp_{NAN};
@@ -260,10 +282,12 @@ class FlowAutotuneRuntime {
     w0_ = NAN;
     w1_ = NAN;
     w2_ = NAN;
+    step_window_count_ = 0;
   }
 
   void clear_open_loop_memory() {
     t_s_ = 0;
+    response_count_ = 0;
     clear_window();
     ss_confirm_cnt_ = 0;
     pv0_ = NAN;
@@ -295,6 +319,33 @@ class FlowAutotuneRuntime {
   bool steady_window(float spread_limit_lph, float slope_limit_lph) const {
     return window_ready() && window_spread() <= spread_limit_lph && fabsf(w1_ - w0_) <= slope_limit_lph &&
            fabsf(w2_ - w1_) <= slope_limit_lph;
+  }
+
+  // A wider noise band alone can mistake a sustained ramp for a plateau.
+  // Compare averaged halves over six observations (50 s with the normal 10 s cadence).
+  bool flow_plateau(float pv, float spread_limit_lph) {
+    for (int i = 0; i < 5; ++i) step_window_[i] = step_window_[i + 1];
+    step_window_[5] = pv;
+    if (step_window_count_ < 6) ++step_window_count_;
+    if (step_window_count_ < 6) return false;
+    float low = step_window_[0];
+    float high = low;
+    for (float value : step_window_) {
+      low = fminf(low, value);
+      high = fmaxf(high, value);
+    }
+    const float first_mean = (step_window_[0] + step_window_[1] + step_window_[2]) / 3.0f;
+    const float last_mean = (step_window_[3] + step_window_[4] + step_window_[5]) / 3.0f;
+    bool rising = false;
+    bool falling = false;
+    for (int i = 1; i < 6; ++i) {
+      const float delta = step_window_[i] - step_window_[i - 1];
+      rising = rising || delta > 0.001f;
+      falling = falling || delta < -0.001f;
+    }
+    // Allow a nearly settled monotonic tail within meter noise, but reject sustained one-way drift.
+    const bool one_way_drift = rising != falling && high - low > 4.5f;
+    return !one_way_drift && high - low <= spread_limit_lph && fabsf(last_mean - first_mean) <= 10.0f;
   }
 
   bool baseline_ready(const RuntimeConfig& cfg) const {
@@ -388,7 +439,8 @@ class FlowAutotuneRuntime {
     }
 
     push_window(pv);
-    if (baseline_ready(cfg)) {
+    const bool plateau = flow_plateau(pv, cfg.stable_band_lph);
+    if (plateau && baseline_ready(cfg)) {
       const int u_step = step_size(cfg, second_step, pwm0);
       const int step1_u = pwm0 - clamp_runtime_ipwm(cfg, step1_pwm_step_);
       if (u_step < cfg.min_step || (second_step && u_step <= step1_u)) {
@@ -403,6 +455,7 @@ class FlowAutotuneRuntime {
       pwm_step_ = clamp_runtime_ipwm(cfg, pwm0 - u_step);
       id(oq_flow_autotune_pwm) = pwm_step_;
       clear_window();
+      response_count_ = 0;
       ss_confirm_cnt_ = 0;
       t_s_ = 0;
       state_ = second_step ? STATE_STEP2 : STATE_STEP1;
@@ -431,28 +484,28 @@ class FlowAutotuneRuntime {
       return false;
     }
 
+    if (response_count_ >= sizeof(response_samples_) / sizeof(response_samples_[0])) {
+      ESP_LOGW("quatt.cm100.autotune", "Response history full; sample time=%ds", cfg.sample_time_s);
+      abort_with("FAILED: INVALID_GAIN");
+      return false;
+    }
+    response_samples_[response_count_++] = pv;
     push_window(pv);
-    if (steady_window(6.0f, 2.0f)) {
+    const bool quiet_window = steady_window(30.0f, 15.0f);
+    const bool plateau = flow_plateau(pv, 30.0f);
+    if (quiet_window && plateau) {
       pv_ss_ = window_mean();
       if (ss_confirm_cnt_ < 255) ss_confirm_cnt_++;
     } else {
       ss_confirm_cnt_ = 0;
     }
 
-    if (!isnan(pv_ss_) && isnan(pv63_time_s_)) {
-      const float dpv = pv_ss_ - pv0_;
-      const float pv63 = pv0_ + 0.632f * dpv;
-      if ((dpv >= 0.0f && pv >= pv63) || (dpv < 0.0f && pv <= pv63)) {
-        pv63_time_s_ = (float)t_s_;
-      }
-    }
-
-    const bool early_done = !isnan(pv_ss_) && !isnan(pv63_time_s_) && ss_confirm_cnt_ >= 2;
+    const bool early_done = ss_confirm_cnt_ >= 2;
     if (!early_done && t_s_ < cfg.duration_s) {
       t_s_ += cfg.sample_time_s;
       return false;
     }
-    if (isnan(pv_ss_)) {
+    if (isnan(pv_ss_) || ss_confirm_cnt_ < 2) {
       abort_with("ABORT: NO_STEADY_STATE");
       return false;
     }
@@ -463,6 +516,7 @@ class FlowAutotuneRuntime {
       abort_with("FAILED: INVALID_GAIN");
       return false;
     }
+    pv63_time_s_ = response_t63_s(response_samples_, response_count_, pv0_, pv_ss_, cfg.sample_time_s);
     *tau_s = pv63_time_s_;
     if (isnan(*tau_s) || *tau_s < (float)cfg.sample_time_s) {
       *tau_s = cfg.tau_fallback_s;
@@ -479,8 +533,8 @@ class FlowAutotuneRuntime {
     float tau_s = NAN;
     if (!update_open_loop_measure(cfg, pv, flow_valid, pwm0, pwm_step, &gain, &tau_s)) {
       if (state_ == STATE_ABORT) {
-        ESP_LOGW("quatt.cm100.autotune", "Autotune step%d ended in abort/fail (pv=%.1f t=%ds)", second_step ? 2 : 1, pv,
-                 t);
+        ESP_LOGW("quatt.cm100.autotune", "Autotune step%d ended: %s (pv=%.1f t=%ds)", second_step ? 2 : 1,
+                 id(oq_flow_autotune_status_value).c_str(), pv, t);
       }
       return;
     }
@@ -499,10 +553,10 @@ class FlowAutotuneRuntime {
       return;
     }
 
-    start_validation(cfg, pv0, gain, tau_s, pwm0, pwm_step);
+    start_validation(cfg, gain, tau_s, pwm0, pwm_step);
   }
 
-  void start_validation(const RuntimeConfig& cfg, float pv0, float k2, float tau2, int pwm0, int pwm_step2) {
+  void start_validation(const RuntimeConfig& cfg, float k2, float tau2, int pwm0, int pwm_step2) {
     const float k1 = step1_k_;
     const float tau1 = step1_tau_;
     const float du1 = (float)(pwm0 - clamp_runtime_ipwm(cfg, step1_pwm_step_));
@@ -787,9 +841,10 @@ class FlowAutotuneRuntime {
     validate_confirm_cnt_ = 0;
     validate_settle_ready_ = false;
     validate_pre_overshoot_ = false;
-    ESP_LOGW("quatt.cm100.autotune", "Autotune aborted; restoring last PWM=%d", (int)id(oq_flow_last_pwm));
+    ESP_LOGW("quatt.cm100.autotune", "Autotune ended: %s; restoring last PWM=%d",
+             id(oq_flow_autotune_status_value).c_str(), (int)id(oq_flow_last_pwm));
     release_commissioning();
-    publish("ABORTED");
+    // Preserve the terminal reason published by abort_with() or the explicit stop request.
     reset();
   }
 };
