@@ -29,6 +29,18 @@ inline bool observe_source_revisions(uint32_t previous[4], const oq_sources::Res
   return changed;
 }
 
+// First source resolution during boot is not a change of an observed route.
+// Subsequent generations still catch A -> B -> A while another source is absent.
+inline bool observe_valid_source_revisions(uint32_t previous[4], const oq_sources::ResolvedLearningSource sources[4]) {
+  bool changed = false;
+  for (size_t index = 0; index < 4; ++index) {
+    if (!sources[index].valid) continue;
+    changed = changed || (previous[index] != 0 && previous[index] != sources[index].configuration_generation);
+    previous[index] = sources[index].configuration_generation;
+  }
+  return changed;
+}
+
 // These are measurement cadence limits, independent of selected-value holds.
 constexpr MeasurementTimingContract kHpLearningTiming{45000, 30000};
 constexpr MeasurementTimingContract kRoomLearningTiming{120000, 30000};
@@ -108,6 +120,27 @@ inline bool live_measurement_fresh(const PhysicalMeasurement<T>& measurement, ui
   return measurement.valid && measurement.source_generation != 0U && measurement.received_monotonic_ms != 0U &&
          measurement.received_monotonic_ms <= now_ms && measurement.timing.max_age_ms != 0U &&
          now_ms - measurement.received_monotonic_ms <= measurement.timing.max_age_ms;
+}
+
+// Positive operating evidence must invalidate boot recovery even before SNTP.
+// Missing boot receipts alone are not evidence of an unsafe operating phase.
+inline bool known_daily_restart_interruption(const LearningSourceInput& input, bool boiler_heat_observed) {
+  if (boiler_heat_observed ||
+      (input.operation.control_mode_valid && input.operation.control_mode != LearningControlMode::HEATING) ||
+      (input.operation.service_or_ota_valid && input.operation.service_or_ota))
+    return true;
+  const HeatPumpRawMeasurements* pumps[]{&input.hp1, &input.hp2};
+  for (const auto* hp : pumps) {
+    if (!hp->present || !live_measurement_fresh(hp->mode, input.monotonic_ms)) continue;
+    const bool daily_defrost = hp->mode.value == HeatPumpMode::COOLING &&
+                               live_measurement_fresh(hp->defrost_active, input.monotonic_ms) &&
+                               hp->defrost_active.value;
+    if (hp->mode.value != HeatPumpMode::OFF && hp->mode.value != HeatPumpMode::HEATING && !daily_defrost) return true;
+    if (hp->mode.value == HeatPumpMode::OFF && live_measurement_fresh(hp->compressor_active, input.monotonic_ms) &&
+        hp->compressor_active.value)
+      return true;
+  }
+  return false;
 }
 
 template <typename T>

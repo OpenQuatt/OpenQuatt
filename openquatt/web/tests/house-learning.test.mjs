@@ -155,6 +155,27 @@ test("kort dagmeetgat houdt voortgang vast en hervatting toont opnieuw verzamele
   assert.doesNotMatch(resumed, /Wacht kort op meetwaarde|Dagmeting blijft kort behouden/);
 });
 
+test("dagherstel toont opgeslagen voortgang en ondersteunt beide talen", () => {
+  const payload = statusPayload({ enabled: true, daily_record_count: 0,
+    collection: { batch_active: false, batch_restore_pending: true, batch_resume_status: "waiting_for_sources",
+      batch_elapsed_s: 64800, batch_target_s: 86400, batch_missing_energy_uncertainty_wh: 0 },
+  });
+  const waiting = normalizeHouseLearningStatus(payload);
+  assert.equal(waiting.collection.batch.restorePending, true);
+  assert.equal(waiting.collection.batch.missingEnergyUncertaintyWh, 0);
+  assert.match(renderHouseLearningStatusMarkup(waiting), /Dagmeting herstellen[\s\S]*18:00:00 \/ 24:00:00/);
+  const resumed = { ...payload, collection: { ...payload.collection, batch_active: true,
+    batch_restore_pending: false, batch_resume_status: "restored", batch_elapsed_s: 64890 } };
+  assert.match(renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(resumed)), /Hervat na OTA of herstart/);
+  assert.match(renderHouseLearningStatusMarkup(waiting), /Bij OTA of een normale herstart wordt de lopende dag opgeslagen/);
+  setLocale("en", { persist: false, applyDocument: false, notify: false });
+  assert.match(renderHouseLearningStatusMarkup(waiting), /Restoring daily measurement[\s\S]*18:00:00 \/ 24:00:00/);
+  assert.match(renderHouseLearningStatusMarkup(normalizeHouseLearningStatus(resumed)), /Resumed after OTA or restart/);
+  for (const override of [{ enabled: false }, { tick_epoch: 1 }]) {
+    assert.doesNotMatch(renderHouseLearningStatusMarkup(normalizeHouseLearningStatus({ ...payload, ...override })), /Restoring daily measurement/);
+  }
+});
+
 test("oude wachtstatus zonder meetgat claimt geen behouden dag en actuele status blijft nodig", () => {
   const payload = statusPayload({
     enabled: true, status: "blocked", daily_record_count: 0,

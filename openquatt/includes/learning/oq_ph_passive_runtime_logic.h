@@ -77,6 +77,50 @@ struct PassiveRuntimeSummary {
   PassiveRuntimeDiagnostics diagnostics;
 };
 
+enum class DailyResumeDecision { WAIT, RESTORE, DISCARD };
+
+inline DailyResumeDecision daily_resume_decision(bool enabled, bool valid_observation, uint32_t now_epoch_s,
+                                                 uint32_t checkpoint_epoch_s, bool may_wait_for_source = false) {
+  if (!enabled || checkpoint_epoch_s == 0) return DailyResumeDecision::DISCARD;
+  if (now_epoch_s == 0) return DailyResumeDecision::WAIT;
+  if (now_epoch_s < checkpoint_epoch_s ||
+      static_cast<uint64_t>(now_epoch_s - checkpoint_epoch_s) * 1000ULL > kDailyMaximumGapMs)
+    return DailyResumeDecision::DISCARD;
+  if (!valid_observation && !may_wait_for_source) return DailyResumeDecision::DISCARD;
+  return valid_observation ? DailyResumeDecision::RESTORE : DailyResumeDecision::WAIT;
+}
+
+// Web OTA does not notify ERROR/ABORT when a client silently disconnects.
+// Progress renews this lease; a missing callback cannot pause learning forever.
+inline bool ota_notification_current(uint64_t last_notification_ms, uint64_t now_ms) {
+  return now_ms >= last_notification_ms && now_ms - last_notification_ms <= kDailyMaximumGapMs;
+}
+
+struct OtaCollectionPause {
+  const void* owner = nullptr;
+  uint64_t notification_ms = 0;
+
+  void started(const void* component, uint64_t now_ms) {
+    owner = component;
+    notification_ms = now_ms;
+  }
+  void progress(const void* component, uint64_t now_ms) {
+    if (owner == component) notification_ms = now_ms;
+  }
+  void failed(const void* component) {
+    if (owner == component) owner = nullptr;
+  }
+  bool active(uint64_t now_ms) {
+    if (owner != nullptr && !ota_notification_current(notification_ms, now_ms)) owner = nullptr;
+    return owner != nullptr;
+  }
+};
+
+inline bool daily_resume_succeeded(LearningStatus status) {
+  return status == LearningStatus::COLLECTING || status == LearningStatus::SEGMENT_READY ||
+         status == LearningStatus::OK;
+}
+
 struct PassiveTickInput {
   PassiveContextView context;
   uint64_t now_monotonic_ms = 0;

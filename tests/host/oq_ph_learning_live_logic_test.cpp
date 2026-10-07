@@ -321,6 +321,50 @@ void test_diagnostic_heat_rejects_incoherent_inputs() {
   assert(zero.valid && zero.heat_to_water_w == 0.0f);
 }
 
+void test_delayed_initial_resolution_does_not_look_like_a_route_change() {
+  uint32_t valid_revisions[4]{};
+  oq_sources::ResolvedLearningSource sources[4];
+  for (auto& source : sources) source.configuration_generation = 1;
+  assert(!observe_valid_source_revisions(valid_revisions, sources));
+  sources[0] = selected_source(oq_sources::LearningSourceRoute::HA_ROOM, 20.0f, 2);
+  assert(!observe_valid_source_revisions(valid_revisions, sources));
+  sources[1] = selected_source(oq_sources::LearningSourceRoute::OPENTHERM_SETPOINT, 20.0f, 2);
+  assert(!observe_valid_source_revisions(valid_revisions, sources));
+  sources[0].valid = false;
+  sources[0].configuration_generation = 3;
+  assert(!observe_valid_source_revisions(valid_revisions, sources));
+  sources[0].valid = true;
+  sources[0].configuration_generation = 4;  // Includes intermediate A -> B -> A.
+  assert(observe_valid_source_revisions(valid_revisions, sources));
+}
+
+void test_positive_unsafe_evidence_during_sntp_startup_prevents_recovery() {
+  auto input = diagnostic_input();
+  input.epoch_s = 0;  // SNTP is not ready; positive evidence remains meaningful.
+  input.operation.control_mode_valid = false;
+  assert(!known_daily_restart_interruption(input, false));
+  assert(known_daily_restart_interruption(input, true));
+  input.operation.control_mode_valid = true;
+  input.operation.control_mode = LearningControlMode::HEATING;
+  assert(!known_daily_restart_interruption(input, false));
+  input.operation.control_mode = LearningControlMode::UNKNOWN;
+  assert(known_daily_restart_interruption(input, false));
+  input.operation.control_mode = LearningControlMode::HEATING;
+  input.hp1.mode = physical_measurement(HeatPumpMode::COOLING, 2099, PhysicalUnit::HP1);
+  assert(known_daily_restart_interruption(input, false));
+  input.hp1.defrost_active = physical_measurement(true, 2118, PhysicalUnit::HP1);
+  assert(!known_daily_restart_interruption(input, false));  // Signed daily defrost remains valid.
+  input.hp1.defrost_active.received_monotonic_ms = kNowMs - kHpLearningTiming.max_age_ms - 1;
+  assert(known_daily_restart_interruption(input, false));
+  input.hp1.mode.received_monotonic_ms = kNowMs - kHpLearningTiming.max_age_ms - 1;
+  assert(!known_daily_restart_interruption(input, false));
+  input.hp1.mode = physical_measurement(HeatPumpMode::OFF, 2099, PhysicalUnit::HP1);
+  input.hp1.compressor_active = physical_measurement(true, 2103, PhysicalUnit::HP1);
+  assert(known_daily_restart_interruption(input, false));
+  input.hp1.compressor_active.value = false;
+  assert(!known_daily_restart_interruption(input, false));
+}
+
 }  // namespace
 
 int main() {
@@ -339,6 +383,8 @@ int main() {
   assert(oq_power_house::learning::observe_source_revisions(revisions, sources));
   assert(!oq_power_house::learning::observe_source_revisions(revisions, sources));
 
+  test_positive_unsafe_evidence_during_sntp_startup_prevents_recovery();
+  test_delayed_initial_resolution_does_not_look_like_a_route_change();
   test_compile_time_topology_maps_single_and_duo();
   sources[0].configuration_generation = 0;
   assert(!source_configuration_available(sources));

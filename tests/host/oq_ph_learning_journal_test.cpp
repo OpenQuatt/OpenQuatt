@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <initializer_list>
 #include <math.h>
 #include <string.h>
 
@@ -47,6 +48,35 @@ void write_u32(uint8_t* bytes, size_t offset, uint32_t value) {
 
 void repair_crc(uint8_t* bytes, size_t size) {
   write_u32(bytes, size - kLearningJournalCrcBytes, learning_journal_crc32(bytes, size - kLearningJournalCrcBytes));
+}
+
+// Schemas 4/5/6 precede the daily tail. Keep their original declared size and CRC.
+void legacy_schema(uint8_t* bytes, size_t& size, uint16_t schema, uint16_t algorithm = 4) {
+  size -= kLearningJournalDailyBytes;
+  if (schema == 4) size -= kLearningJournalThermalBytes;
+  write_u16(bytes, 4, schema);
+  write_u16(bytes, 20, algorithm);
+  write_u32(bytes, 8, static_cast<uint32_t>(size));
+  repair_crc(bytes, size);
+}
+
+SegmentAccumulator daily_checkpoint(uint32_t start_epoch, uint32_t duration_s = 4200) {
+  SegmentAccumulator state;
+  LearningSnapshot snapshot;
+  snapshot.monotonic_ms = 7000;
+  snapshot.epoch_s = start_epoch;
+  snapshot.context_revision = 1;
+  snapshot.room_c = snapshot.setpoint_c = 20;
+  snapshot.outside_c = -5;
+  snapshot.heat_to_water_w = 4200;
+  snapshot.mean_water_c = 31;
+  for (uint32_t elapsed = 0; elapsed <= duration_s; elapsed += 60) {
+    snapshot.monotonic_ms = 7000ULL + elapsed * 1000ULL;
+    snapshot.epoch_s = start_epoch + elapsed;
+    assert(!observe_snapshot(state, snapshot, QualityConfig{}).has_record);
+  }
+  assert(valid_daily_checkpoint(state, QualityConfig{}));
+  return state;
 }
 
 PassiveRuntimeStorage populated(uint32_t now_epoch_s) {
@@ -134,9 +164,7 @@ void test_previous_64_record_capacity_restores_without_reset() {
   size_t size = 0;
   assert(encode_learning_journal(passive_runtime_dataset(original), original.config.quality, 1, now, bytes,
                                  sizeof(bytes), size) == LearningJournalStatus::OK);
-  write_u16(bytes, 4, 5);
-  write_u16(bytes, 20, 3);
-  repair_crc(bytes, size);
+  legacy_schema(bytes, size, 5, 3);
   const auto metadata = inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality);
   assert(metadata.status == LearningJournalStatus::OK && metadata.record_count == 64U);
   PassiveRuntimeStorage restored;
@@ -285,10 +313,8 @@ void test_schema_five_legacy_layout_and_thermal_survive_upgrade() {
   size_t size = 0;
   assert(encode_learning_journal({&legacy, 1, context()}, config().quality, 3, now, bytes, sizeof(bytes), size,
                                  &thermal, now) == LearningJournalStatus::OK);
-  // Schema 6 preserves each legacy record and the schema-5 thermal tail byte for byte.
-  write_u16(bytes, 4, 5);
-  write_u16(bytes, 20, 3);
-  repair_crc(bytes, size);
+  // Schema 7 preserves each legacy record and the schema-5 thermal tail byte for byte.
+  legacy_schema(bytes, size, 5, 3);
   const auto metadata = inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality);
   assert(metadata.status == LearningJournalStatus::OK && metadata.schema_version == 5);
   LearningJournalRecords view{{bytes, size}, metadata.context_size, metadata.record_count};
@@ -310,7 +336,7 @@ void test_schema_five_legacy_layout_and_thermal_survive_upgrade() {
   size_t upgraded_size = 0;
   assert(encode_learning_journal({&restored, 1, context()}, config().quality, 4, now, upgraded, sizeof(upgraded),
                                  upgraded_size, &thermal, now) == LearningJournalStatus::OK);
-  assert(upgraded_size == size && upgraded[4] == 6);
+  assert(upgraded_size == size + kLearningJournalDailyBytes && upgraded[4] == 7);
   const size_t records_offset = kLearningJournalHeaderBytes + sizeof(kContext);
   assert(memcmp(bytes + records_offset, upgraded + records_offset,
                 kLearningJournalRecordBytes + kLearningJournalThermalBytes) == 0);
@@ -324,6 +350,7 @@ void test_schema_six_mixed_records_signed_profile_and_thermal_round_trip() {
   size_t size = 0;
   assert(encode_learning_journal({records, 2, context()}, config().quality, 8, now, bytes, sizeof(bytes), size,
                                  &thermal, now) == LearningJournalStatus::OK);
+  legacy_schema(bytes, size, 6);
   assert(size == kLearningJournalHeaderBytes + sizeof(kContext) + 2 * 52U + kLearningJournalThermalBytes + 4U);
   const auto metadata = inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality);
   assert(metadata.status == LearningJournalStatus::OK && metadata.schema_version == 6);
@@ -343,6 +370,17 @@ void test_schema_six_mixed_records_signed_profile_and_thermal_round_trip() {
   assert(restored.accepted_samples == thermal.accepted_samples &&
          restored.theta_loss_scaled == thermal.theta_loss_scaled);
   assert(thermal_epoch == now && !restored.recent_data_valid);
+  assert(!view.has_daily_checkpoint() && view.daily_checkpoint_epoch() == 0 && view.daily_checkpoint_elapsed_s() == 0);
+  SegmentAccumulator absent;
+  assert(!view.restore_daily(absent, context(), config().quality));
+  uint8_t upgraded[kLearningJournalMaxBytes];
+  size_t upgraded_size = 0;
+  assert(encode_learning_journal({records, 2, context()}, config().quality, 9, now, upgraded, sizeof(upgraded),
+                                 upgraded_size, &thermal, now) == LearningJournalStatus::OK);
+  assert(upgraded_size == size + kLearningJournalDailyBytes && upgraded[4] == 7);
+  const size_t records_offset = kLearningJournalHeaderBytes + sizeof(kContext);
+  assert(memcmp(bytes + records_offset, upgraded + records_offset,
+                2 * kLearningJournalRecordBytes + kLearningJournalThermalBytes) == 0);
 
   uint8_t changed[kLearningJournalMaxBytes];
   memcpy(changed, bytes, size);
@@ -376,11 +414,7 @@ void test_schema_four_records_migrate_without_thermal_state() {
   assert(encode_learning_journal(passive_runtime_dataset(state), state.config.quality, 1, now, bytes, sizeof(bytes),
                                  size) == LearningJournalStatus::OK);
   // Schema 4 had the identical record layout and CRC, without the thermal tail.
-  size -= kLearningJournalThermalBytes;
-  write_u16(bytes, 4, 4);
-  write_u16(bytes, 20, 2);
-  write_u32(bytes, 8, size);
-  repair_crc(bytes, size);
+  legacy_schema(bytes, size, 4, 2);
   constexpr uint8_t new_source[] = {9};
   const auto metadata =
       inspect_learning_journal({bytes, size}, new_source, sizeof(new_source), now, state.config.quality);
@@ -392,9 +426,183 @@ void test_schema_four_records_migrate_without_thermal_state() {
   assert(!view.restore_thermal(thermal, ThermalModelConfig{}, 100, 1, epoch));
 }
 
+void test_daily_checkpoint_round_trip_requires_exact_context_and_remaps_clocks() {
+  constexpr uint32_t now = 20000U * 86400U + 4200U;
+  auto completed = record(now - 4200U - 4U * 3600U, -5);
+  auto daily = daily_checkpoint(now - 4200U);
+  daily.missing_energy_uncertainty_ws = 4567.5;
+  const auto thermal = learned_thermal_model();
+  uint8_t bytes[kLearningJournalMaxBytes];
+  size_t size = 0;
+  assert(encode_learning_journal({&completed, 1, context()}, config().quality, 2, now, bytes, sizeof(bytes), size,
+                                 &thermal, now, &daily) == LearningJournalStatus::OK);
+  const auto metadata = inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality);
+  assert(metadata.status == LearningJournalStatus::OK && metadata.schema_version == 7);
+  LearningJournalRecords view{{bytes, size}, metadata.context_size, metadata.record_count};
+  assert(view.has_daily_checkpoint() && view.daily_checkpoint_epoch() == now);
+  SegmentAccumulator restored;
+  assert(view.restore_daily(restored, context(7), config().quality));
+  assert(restored.active && restored.restart_pending && restored.source_gap_pending);
+  assert(restored.context_revision == 7 && restored.carried_duration_ms == 4200000);
+  assert(restored.start_monotonic_ms == 1 && restored.last_monotonic_ms == 1 && restored.last_gap_observation_ms == 1);
+  assert(restored.start_epoch_s == daily.start_epoch_s && restored.last_epoch_s == daily.last_epoch_s);
+  assert(restored.room_start_c == daily.room_start_c && restored.last_room_c == daily.last_room_c);
+  assert(restored.last_setpoint_c == daily.last_setpoint_c && restored.last_outside_c == daily.last_outside_c);
+  assert(restored.last_heat_w == daily.last_heat_w && restored.water_start_c == daily.water_start_c);
+  assert(restored.water_end_c == daily.water_end_c && restored.room_min_c == daily.room_min_c);
+  assert(restored.room_max_c == daily.room_max_c && restored.setpoint_min_c == daily.setpoint_min_c);
+  assert(restored.setpoint_max_c == daily.setpoint_max_c &&
+         restored.integrated_duration_s == daily.integrated_duration_s);
+  assert(restored.missing_energy_uncertainty_ws == daily.missing_energy_uncertainty_ws);
+  assert(restored.room_integral == daily.room_integral && restored.setpoint_integral == daily.setpoint_integral);
+  assert(restored.outside_integral == daily.outside_integral && restored.heat_integral == daily.heat_integral);
+  assert(restored.hour_effective_integral == daily.hour_effective_integral && restored.trend_w == daily.trend_w);
+  assert(restored.trend_wt == daily.trend_wt && restored.trend_wtt == daily.trend_wtt);
+  assert(restored.trend_wr == daily.trend_wr && restored.trend_wtr == daily.trend_wtr);
+  assert(memcmp(restored.hourly_effective_outside_c, daily.hourly_effective_outside_c,
+                sizeof(daily.hourly_effective_outside_c)) == 0);
+  constexpr uint8_t changed[] = {9, 8, 7, 6, 5, 4, 3, 2, 0};
+  assert(inspect_learning_journal({bytes, size}, changed, sizeof(changed), now, config().quality).status ==
+         LearningJournalStatus::OK);
+  assert(!view.restore_daily(restored, {changed, sizeof(changed), 9}, config().quality));
+  assert(!view.restore_daily(restored, {kContext, sizeof(kContext) - 1U, 9}, config().quality));
+  assert(restored.context_revision == 7);  // Failure leaves the consumer unchanged.
+  assert(view[0].mean_heat_w == completed.mean_heat_w);
+  ThermalModelState restored_thermal;
+  uint32_t thermal_epoch = 0;
+  assert(view.restore_thermal(restored_thermal, config().thermal_model, 500, 9, thermal_epoch));
+  assert(restored_thermal.accepted_samples == thermal.accepted_samples && thermal_epoch == now);
+}
+
+void test_max_capacity_checkpoint_fits_slot_and_old_layouts_cannot_read_new_tail() {
+  constexpr uint32_t now = 20000U * 86400U + 4200U;
+  uint8_t max_context[kMaxPassiveContextBytes]{};
+  SegmentRecord records[kMaxSegmentRecords];
+  for (size_t i = 0; i < kMaxSegmentRecords; ++i)
+    records[i] = daily_record(now - 4200U - static_cast<uint32_t>(kMaxSegmentRecords - i - 1U) * 86400U);
+  const auto daily = daily_checkpoint(now - 4200U);
+  const auto thermal = learned_thermal_model();
+  uint8_t bytes[8192];
+  size_t size = 0;
+  assert(encode_learning_journal({records, kMaxSegmentRecords, {max_context, sizeof(max_context), 1}}, config().quality,
+                                 1, now, bytes, sizeof(bytes), size, &thermal, now,
+                                 &daily) == LearningJournalStatus::OK);
+  assert(size == kLearningJournalMaxBytes && size == 8120U);
+  const auto metadata =
+      inspect_learning_journal({bytes, size}, max_context, sizeof(max_context), now, config().quality);
+  assert(metadata.status == LearningJournalStatus::OK && metadata.record_count == kMaxSegmentRecords);
+  LearningJournalRecords view{{bytes, size}, metadata.context_size, metadata.record_count};
+  SegmentAccumulator restored;
+  assert(view.restore_daily(restored, {max_context, sizeof(max_context), 1}, config().quality));
+  assert(restored.heat_integral == daily.heat_integral);
+  // The old schema length contract rejects schema7 tails, even with repaired CRC.
+  for (uint16_t old_schema : {uint16_t{4}, uint16_t{5}, uint16_t{6}}) {
+    write_u16(bytes, 4, old_schema);
+    repair_crc(bytes, size);
+    assert(inspect_learning_journal({bytes, size}, max_context, sizeof(max_context), now, config().quality).status ==
+           LearningJournalStatus::INVALID_LENGTH);
+  }
+}
+
+void test_invalid_day_never_encodes_as_valid_or_overlaps_completed_records() {
+  constexpr uint32_t now = 20000U * 86400U + 4200U;
+  auto completed = record(now - 4200U - 4U * 3600U, -5);
+  auto daily = daily_checkpoint(now - 4200U);
+  uint8_t bytes[kLearningJournalMaxBytes];
+  size_t size = 123;
+  auto encode = [&](const SegmentAccumulator& candidate, uint32_t created = now) {
+    return encode_learning_journal({&completed, 1, context()}, config().quality, 1, created, bytes, sizeof(bytes), size,
+                                   nullptr, 0, &candidate);
+  };
+  assert(encode(daily, now - 1U) == LearningJournalStatus::INVALID_ARGUMENT && size == 0);
+  auto invalid = daily;
+  invalid.context_revision = 2;
+  assert(encode(invalid) == LearningJournalStatus::INVALID_ARGUMENT && size == 0);
+  invalid = daily;
+  invalid.heat_integral = NAN;
+  assert(encode(invalid) == LearningJournalStatus::INVALID_ARGUMENT && size == 0);
+  invalid = daily;
+  --invalid.start_epoch_s;
+  assert(encode(invalid) == LearningJournalStatus::INVALID_RECORD && size == 0);
+  assert(encode(daily) == LearningJournalStatus::OK);
+  const size_t daily_offset = size - kLearningJournalCrcBytes - kLearningJournalDailyBytes;
+  write_u32(bytes, daily_offset, 2);  // Only 0/1 are valid serialized active flags.
+  repair_crc(bytes, size);
+  assert(inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality).status ==
+         LearningJournalStatus::INVALID_RECORD);
+  SegmentAccumulator inactive;
+  assert(encode(inactive) == LearningJournalStatus::OK);
+  for (size_t i = daily_offset; i < daily_offset + kLearningJournalDailyBytes; ++i) assert(bytes[i] == 0);
+  bytes[daily_offset + 4U] = 1;  // Inactive tails must be entirely zero.
+  repair_crc(bytes, size);
+  assert(inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality).status ==
+         LearningJournalStatus::INVALID_RECORD);
+}
+
+void test_current_quality_can_reject_day_without_discarding_records_or_thermal() {
+  constexpr uint32_t now = 20000U * 86400U + 4200U;
+  const auto completed = record(now - 4200U - 4U * 3600U, -5);
+  auto daily = daily_checkpoint(now - 4200U);
+  daily.last_heat_w = 5000;  // A valid endpoint under the original configuration.
+  const auto thermal = learned_thermal_model();
+  uint8_t bytes[kLearningJournalMaxBytes];
+  size_t size = 0;
+  assert(encode_learning_journal({&completed, 1, context()}, config().quality, 2, now, bytes, sizeof(bytes), size,
+                                 &thermal, now, &daily) == LearningJournalStatus::OK);
+  auto strict = config().quality;
+  strict.max_abs_heat_w = 4500;
+  const auto metadata = inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, strict);
+  assert(metadata.status == LearningJournalStatus::OK);
+  LearningJournalRecords view{{bytes, size}, metadata.context_size, metadata.record_count};
+  SegmentAccumulator restored;
+  assert(!view.restore_daily(restored, context(), strict));
+  assert(view.has_daily_checkpoint() && view.daily_checkpoint_start_epoch() == daily.start_epoch_s);
+  assert(view[0].mean_heat_w == completed.mean_heat_w);
+  ThermalModelState restored_thermal;
+  uint32_t thermal_epoch = 0;
+  assert(view.restore_thermal(restored_thermal, config().thermal_model, 500, 1, thermal_epoch));
+  assert(restored_thermal.accepted_samples == thermal.accepted_samples && thermal_epoch == now);
+  constexpr uint8_t changed[] = {1};
+  assert(inspect_learning_journal({bytes, size}, changed, sizeof(changed), now, strict).status ==
+         LearningJournalStatus::OK);
+  assert(!view.restore_daily(restored, {changed, sizeof(changed), 1}, strict));
+}
+
+void test_daily_checkpoint_elapsed_reads_saved_progress_and_bounds_conversion() {
+  constexpr uint32_t now = 20000U * 86400U + 3600U;
+  const auto daily = daily_checkpoint(now - 3600U, 3600U);
+  uint8_t bytes[kLearningJournalMaxBytes];
+  size_t size = 0;
+  assert(encode_learning_journal({nullptr, 0, context()}, config().quality, 1, now, bytes, sizeof(bytes), size, nullptr,
+                                 0, &daily) == LearningJournalStatus::OK);
+  const auto metadata = inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality);
+  assert(metadata.status == LearningJournalStatus::OK);
+  LearningJournalRecords view{{bytes, size}, metadata.context_size, metadata.record_count};
+  assert(view.daily_checkpoint_elapsed_s() == 3600U);
+  const size_t duration_offset = size - kLearningJournalCrcBytes - kLearningJournalDailyBytes + 68U;
+  for (double invalid : {-1.0, 86400.0, static_cast<double>(NAN), static_cast<double>(INFINITY)}) {
+    learning_journal_detail::Writer writer{bytes, size};
+    writer.position = duration_offset;
+    learning_journal_detail::write_double(writer, invalid);
+    assert(view.daily_checkpoint_elapsed_s() == 0);
+  }
+  learning_journal_detail::Writer writer{bytes, size};
+  writer.position = duration_offset;
+  learning_journal_detail::write_double(writer, 86399.999);
+  assert(view.daily_checkpoint_elapsed_s() == 86399U);
+  assert(encode_learning_journal({nullptr, 0, context()}, config().quality, 1, now, bytes, sizeof(bytes), size) ==
+         LearningJournalStatus::OK);
+  assert(view.daily_checkpoint_elapsed_s() == 0);
+}
+
 }  // namespace
 
 int main() {
+  test_daily_checkpoint_elapsed_reads_saved_progress_and_bounds_conversion();
+  test_current_quality_can_reject_day_without_discarding_records_or_thermal();
+  test_daily_checkpoint_round_trip_requires_exact_context_and_remaps_clocks();
+  test_max_capacity_checkpoint_fits_slot_and_old_layouts_cannot_read_new_tail();
+  test_invalid_day_never_encodes_as_valid_or_overlaps_completed_records();
   test_schema_five_legacy_layout_and_thermal_survive_upgrade();
   test_schema_six_mixed_records_signed_profile_and_thermal_round_trip();
   test_previous_64_record_capacity_restores_without_reset();

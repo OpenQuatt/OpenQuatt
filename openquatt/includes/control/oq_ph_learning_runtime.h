@@ -9,6 +9,7 @@
 
 #include "esp_heap_caps.h"
 #include "esp_partition.h"
+#include "esphome/components/ota/ota_backend.h"
 #include "OpenQuattFlashLayout.h"
 #include "PsramBuffer.h"
 #include "../boiler/oq_otb_telemetry.h"
@@ -56,9 +57,17 @@ struct RuntimeStorage {
   PassiveRuntimeConfig config;
   oq_sources::ResolvedLearningSource sources[4];
   uint32_t source_revisions[4]{};
+  uint32_t valid_source_revisions[4]{};
   uint8_t context[kMaxPassiveContextBytes]{};
   size_t context_size = 0;
   LearningJournalStore journal;
+  // Slot bytes stay immutable while the first valid post-boot sample is awaited.
+  LearningJournalRecords pending_daily;
+  bool daily_restore_pending = false;
+  bool restart_prepared = false;
+  OtaCollectionPause ota_pause;
+  bool daily_restore_allowed = true;
+  const char* daily_resume_status = "none";
   uint32_t thermal_epoch = 0;
   char json[kExportJsonBufferSize]{};
   DiagnosticRow rows[kMaxExportDiagnosticRows];
@@ -71,14 +80,51 @@ struct RuntimeStorage {
   uint64_t max_tick_us = 0;
 };
 
-class Runtime {
+class Runtime : public esphome::ota::OTAGlobalStateListener {
  public:
   void pause(LearningStatus rejection = LearningStatus::SEGMENT_INELIGIBLE) {
     if (!storage_) return;
     auto& state = storage_[0];
+    state.daily_restore_pending = false;
+    state.daily_restore_allowed = false;
+    state.restart_prepared = false;
     pause_diagnostic_capture(state.diagnostic_capture);
     if (state.learner.initialized) pause_passive_runtime(state.learner, oq_sources::monotonic_ms(), rejection);
     publish_paused_status_(state);
+  }
+
+  // Called synchronously on the main loop, before polling pauses or shutdown
+  // changes physical outputs. No task, internal-heap allocation or retry loop.
+  void prepare_restart() {
+    if (!storage_) return;
+    auto& state = storage_[0];
+    if (state.restart_prepared) return;
+    if (state.reset_requested) tick();  // A pending explicit reset wins over persistence.
+    const auto clock = id(oq_time).now();
+    if (state.daily_restore_pending || !state.learner.initialized || state.reset_requested || !clock.is_valid()) return;
+    save_checkpoint_(state, clock.timestamp, oq_sources::monotonic_ms(), true);
+    // Keep the RAM prefix even if storage failed; a failed OTA can resume it.
+    state.restart_prepared = true;
+    if (state.journal.loaded && state.learner.batch_accumulator.active) state.daily_restore_allowed = true;
+    state.learner.thermal_accumulator = {};
+    state.learner.thermal_state.recent_data_valid = false;
+  }
+
+  void on_ota_global_state(esphome::ota::OTAState ota_state, float, uint8_t,
+                           esphome::ota::OTAComponent* component) override {
+    if (!storage_) return;
+    auto& state = storage_[0];
+    // Web uploads defer these notifications to the main loop. Their image
+    // writes may already run, but the flash driver serializes our separate
+    // data-partition write. No learner memory is read from the HTTP task.
+    if (ota_state == esphome::ota::OTA_STARTED) {
+      prepare_restart();
+      state.ota_pause.started(component, oq_sources::monotonic_ms());
+    } else if (ota_state == esphome::ota::OTA_IN_PROGRESS) {
+      state.ota_pause.progress(component, oq_sources::monotonic_ms());
+    } else if (ota_state == esphome::ota::OTA_ERROR || ota_state == esphome::ota::OTA_ABORT) {
+      state.ota_pause.failed(component);
+    }
   }
 
   void request_reset() {
@@ -114,6 +160,7 @@ class Runtime {
     if (!storage_ && !setup_()) return;
     auto& state = storage_[0];
     const uint64_t now_ms = oq_sources::monotonic_ms();
+    if (state.restart_prepared && (state.ota_pause.active(now_ms) || id(oq_runtime_polling_paused).state)) return;
     const auto clock = id(oq_time).now();
     const uint32_t epoch = clock.is_valid() ? clock.timestamp : 0;
     capture_(state, now_ms, epoch);
@@ -125,17 +172,31 @@ class Runtime {
     // configuration/valid-route changes still interrupt unfinished intervals.
     const bool context_valid = state.context_size > 0 && source_configuration_available(state.sources);
     const bool sources_changed = context_valid && observe_source_revisions(state.source_revisions, state.sources);
+    const bool valid_sources_changed =
+        context_valid && observe_valid_source_revisions(state.valid_source_revisions, state.sources);
+    const bool context_bytes_changed =
+        context_valid && (state.context_size != state.learner.context_size ||
+                          memcmp(state.context, state.learner.context_bytes, state.context_size) != 0);
+    // While waiting for boot sources, their first resolution must not rebind
+    // the learner and erase a checkpoint restored in this same tick. Real
+    // configuration changes and changes of already observed routes still do.
+    const bool startup_resolution = (!state.journal.loaded || state.daily_restore_pending) &&
+                                    !state.measurement_context_changed && !context_bytes_changed &&
+                                    !valid_sources_changed;
     const bool context_changed =
         state.learner.initialized &&
-        (state.measurement_context_changed || sources_changed ||
-         (context_valid && (state.context_size != state.learner.context_size ||
-                            memcmp(state.context, state.learner.context_bytes, state.context_size) != 0)));
+        (state.measurement_context_changed || context_bytes_changed || (sources_changed && !startup_resolution));
+    if (context_changed) {
+      state.daily_restore_pending = false;
+      state.daily_restore_allowed = false;
+    }
     if (context_changed && ++state.context_revision == 0) state.context_revision = 1;
     input.context_revision = state.context_revision;
     input.operation.captured_context_revision = state.context_revision;
     PassiveContextView context{state.context, state.context_size, state.context_revision};
     const bool reset_processed = state.reset_requested;
     if (reset_processed) {
+      state.daily_restore_pending = false;
       reset_passive_runtime(state.learner);
       state.journal.reset(
           [&state]() { return erase_slots_(state.partition); },
@@ -162,6 +223,10 @@ class Runtime {
               },
               records, now_ms)) {
         restore_passive_records(state.learner, records, epoch);
+        state.pending_daily = records;
+        state.daily_restore_pending = enabled && state.daily_restore_allowed && records.has_daily_checkpoint();
+        if (records.has_daily_checkpoint() && !state.daily_restore_allowed) state.daily_resume_status = "discarded";
+        if (state.daily_restore_pending) state.daily_resume_status = "waiting_for_sources";
         if (records.restore_thermal(state.learner.thermal_state, state.config.thermal_model, now_ms,
                                     state.context_revision, state.thermal_epoch)) {
           state.learner.diagnostics.accepted_thermal_intervals = state.learner.thermal_state.accepted_samples;
@@ -192,24 +257,54 @@ class Runtime {
     tick.batch_snapshot = batch.snapshot;
     tick.dynamic_snapshot_available = dynamic.has_snapshot;
     tick.dynamic_snapshot = dynamic.snapshot;
+    const bool valid_daily_observation =
+        enabled && context_valid && tick.active_line_valid && tick.batch_snapshot_available &&
+        validate_snapshot(tick.batch_snapshot, state.config.quality) == LearningStatus::OK;
+    if (state.daily_restore_pending) {
+      const auto decision =
+          daily_resume_decision(enabled && state.daily_restore_allowed && !reset_processed, valid_daily_observation,
+                                epoch, state.pending_daily.daily_checkpoint_epoch(), batch.may_bridge_daily_gap);
+      if (decision != DailyResumeDecision::WAIT) {
+        const bool restored =
+            decision == DailyResumeDecision::RESTORE &&
+            state.pending_daily.restore_daily(state.learner.batch_accumulator, context, state.config.quality);
+        state.daily_resume_status = restored ? "resuming" : "discarded";
+        state.daily_restore_pending = false;
+      }
+    }
+    if (state.restart_prepared) {
+      const auto decision =
+          daily_resume_decision(enabled && state.daily_restore_allowed, valid_daily_observation, epoch,
+                                state.learner.batch_accumulator.last_epoch_s, batch.may_bridge_daily_gap);
+      if (decision == DailyResumeDecision::WAIT) return;
+      state.restart_prepared = false;
+      if (decision == DailyResumeDecision::RESTORE) {
+        state.learner.batch_accumulator.restart_pending = true;
+        state.daily_resume_status = "resuming";
+      } else {
+        reset_segment(state.learner.batch_accumulator);
+      }
+    }
+    const bool resume_attempt = state.learner.batch_accumulator.restart_pending;
+    const uint32_t daily_start_before = state.learner.batch_accumulator.start_epoch_s;
     const uint32_t thermal_samples_before = state.learner.thermal_state.accepted_samples;
     // The paused tick still prunes expired records before checkpointing.
     if (state.learner.initialized) tick_passive_runtime(state.learner, tick);
+    if (resume_attempt) {
+      const auto result = state.learner.diagnostics.last_batch_status;
+      state.daily_resume_status = daily_resume_succeeded(result) ? "restored" : "discarded";
+    } else if (strcmp(state.daily_resume_status, "restored") == 0 &&
+               daily_start_before != state.learner.batch_accumulator.start_epoch_s) {
+      state.daily_resume_status = "none";
+    }
     if (state.learner.thermal_state.accepted_samples > thermal_samples_before) state.thermal_epoch = epoch;
     const auto diagnostic_capture = diagnostic_capture_decision(state.diagnostic_capture, enabled && !reset_processed);
     if (diagnostic_capture.capture)
       capture_diagnostics_(state, dynamic, calorimetry, epoch, diagnostic_capture.use_previous);
     const bool persistence_window_safe = input.operation.service_or_ota_valid && !input.operation.service_or_ota;
-    if (state.learner.initialized && !state.learner.blocked && epoch != 0 && persistence_window_safe)
-      state.journal.save(
-          passive_runtime_dataset(state.learner), state.config.quality, epoch, now_ms,
-          state.learner.diagnostics.accepted_batch_records,
-          [&state](size_t slot) { return erase_slot_(state.partition, slot); },
-          [&state](size_t slot, const uint8_t* data, size_t size) {
-            return esp_partition_write(state.partition, slot_offset_(slot), data, size) == ESP_OK;
-          },
-          [&state](size_t slot, uint8_t* data, size_t size) { return read_slot_(state.partition, slot, data, size); },
-          &state.learner.thermal_state, state.thermal_epoch);
+    if (state.learner.initialized && !state.learner.blocked && epoch != 0 && persistence_window_safe &&
+        !state.daily_restore_pending)
+      save_checkpoint_(state, epoch, now_ms, false);
     state.summary = passive_runtime_summary(state.learner, now_ms);
     publish_(state, enabled, epoch);
     const uint64_t elapsed = static_cast<uint64_t>(esp_timer_get_time()) - started_us;
@@ -219,6 +314,21 @@ class Runtime {
  private:
   esphome::openquatt_common::PsramObjectArray<RuntimeStorage, 1> storage_;
   bool allocation_attempted_ = false;
+
+  bool save_checkpoint_(RuntimeStorage& state, uint32_t epoch, uint64_t now_ms, bool force) {
+    if (state.learner.batch_accumulator.active &&
+        !valid_daily_checkpoint(state.learner.batch_accumulator, state.config.quality))
+      return false;
+    return state.journal.save(
+        passive_runtime_dataset(state.learner), state.config.quality, epoch, now_ms,
+        state.learner.diagnostics.accepted_batch_records,
+        [&state](size_t slot) { return erase_slot_(state.partition, slot); },
+        [&state](size_t slot, const uint8_t* data, size_t size) {
+          return esp_partition_write(state.partition, slot_offset_(slot), data, size) == ESP_OK;
+        },
+        [&state](size_t slot, uint8_t* data, size_t size) { return read_slot_(state.partition, slot, data, size); },
+        &state.learner.thermal_state, state.thermal_epoch, &state.learner.batch_accumulator, force);
+  }
 
   template <typename T>
   void watch_measurement_number_(T& entity) {
@@ -248,6 +358,7 @@ class Runtime {
       return false;
     }
     auto& state = storage_[0];
+    esphome::ota::get_global_ota_callback()->add_global_state_listener(this);
     state.partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "openquatt_data");
     state.journal.setup(state.partition != nullptr &&
                         OpenQuattFlashLayout::HOUSE_LEARNING_END_OFFSET <= state.partition->size);
@@ -357,8 +468,13 @@ class Runtime {
 #endif
     op.service_or_ota_valid = true;
     op.service_or_ota = cm >= 98 || id(oq_commissioning_active) || id(oq_hp_water_calibration_active) ||
-                        id(oq_runtime_polling_paused).state ||
-                        (id(oq_ota_phase_code) >= 1 && id(oq_ota_phase_code) <= 3);
+                        id(oq_runtime_polling_paused).state;
+    const bool boiler_heat_observed =
+        id(oq_boiler_output_request) || id(boiler_relay).state || applied_ot_command_active ||
+        (live_measurement_fresh(boiler_telemetry, now_ms) && boiler_telemetry.value == BoilerHeatState::HEAT_ACTIVE);
+    if (known_daily_restart_interruption(in, boiler_heat_observed)) state.daily_restore_allowed = false;
+    // Manifest preparation (phase 1) still has fresh measurements. The actual
+    // polling pause, not an early UI phase, marks the OTA measurement boundary.
     state.config.thermal_model.initial_heat_loss_w_per_k =
         thermal_initial_heat_loss_prior(active_line_().heat_loss_w_per_k, state.config.thermal_model);
   }
@@ -647,9 +763,9 @@ class Runtime {
         "\"thermal_active\":%s,\"thermal_elapsed_s\":%llu,\"thermal_target_s\":%llu,\"thermal_intervals\":%u,"
         "\"batch_last_rejection\":",
         batch_active ? "true" : "false", collecting_enabled && batch_window.source_gap_pending ? "true" : "false",
-        collecting_enabled && batch_window.active
-            ? (batch_window.last_monotonic_ms - batch_window.start_monotonic_ms) / 1000ULL
-            : 0ULL,
+        state.daily_restore_pending ? static_cast<unsigned long long>(state.pending_daily.daily_checkpoint_elapsed_s())
+        : collecting_enabled && batch_window.active ? segment_elapsed_ms(batch_window) / 1000ULL
+                                                    : 0ULL,
         kSegmentDurationMs / 1000ULL, thermal_active ? "true" : "false",
         thermal_active ? (thermal_window.last.monotonic_ms - thermal_window.first.monotonic_ms) / 1000ULL : 0ULL,
         state.config.thermal_window.target_duration_ms / 1000ULL, state.learner.diagnostics.accepted_thermal_intervals);
@@ -657,6 +773,11 @@ class Runtime {
       json.add("null");
     else
       json.add("\"%s\"", learning_status_name(state.learner.diagnostics.last_batch_rejection));
+    json.add(
+        ",\"batch_restore_pending\":%s,\"batch_resume_status\":\"%s\","
+        "\"batch_missing_energy_uncertainty_wh\":",
+        state.daily_restore_pending ? "true" : "false", state.daily_resume_status);
+    json.number(state.daily_restore_pending ? NAN : batch_window.missing_energy_uncertainty_ws / 3600.0);
     json.add(
         "},\"control_mode\":%d,\"context_revision\":%u,\"journal_status\":\"%s\","
         "\"model_validation_status\":\"%s\",\"sources\":{",
