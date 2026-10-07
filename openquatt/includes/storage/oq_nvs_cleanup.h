@@ -130,6 +130,11 @@ inline void retire_openquatt_preferences(esphome::EntityBase* air_purge) {
       3948348002U,  // oq_compressor_cycling_alert_hp2_peak_72h_value
   }};
   oq_nvs_cleanup::erase_esphome_preferences(retired_cycling_alert_preferences, "session compressor cycling alerts");
+  // Removed RAM log switch: FNV-1 object ID of "RAM log history".
+  oq_nvs_cleanup::erase_esphome_blob_if_size(306736601U, 1U, "legacy RAM log history switch");
+  // Restoring global oq_cm_frost_prev: retain the guard when a key has
+  // an unexpected type/size. Keep this in the merge-safe shared boot path.
+  oq_nvs_cleanup::erase_esphome_blob_if_size(2881445393U, 4U, "legacy frost hysteresis");
   // FNV-1("openquatt_api_security_store"): retired 40-byte custom
   // API security blob. Native ESPHome Noise PSK (88491486) stays intact.
   oq_nvs_cleanup::erase_esphome_blob_if_size(1156115452U, 40U, "legacy API security store");

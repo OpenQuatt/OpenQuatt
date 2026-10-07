@@ -22,11 +22,6 @@ globals:
   - {id: oq_water_supply_temp_current_source_fingerprint, type: uint32_t, restore_value: false, initial_value: '0'}
   - {id: oq_water_supply_temp_current_source_ready, type: bool, restore_value: false, initial_value: 'false'}
 
-  # Legacy single-record storage retained for one-time migration and safe downgrade.
-  - {id: oq_water_supply_temp_calibration_source_code, type: int32_t, restore_value: true, initial_value: '0'}
-  - {id: oq_water_supply_temp_calibration_source_fingerprint, type: uint32_t, restore_value: true, initial_value: '0'}
-  - {id: oq_water_supply_temp_calibration_checksum, type: uint32_t, restore_value: true, initial_value: '0'}
-
   # Each physical/configured source has an independent fail-closed record.
   - {id: oq_water_supply_temp_calibration_pt1000_record, type: 'uint32_t[3]', restore_value: true, initial_value: '{0, 0, 0}'}
   - {id: oq_water_supply_temp_calibration_ds18b20_record, type: 'uint32_t[3]', restore_value: true, initial_value: '{0, 0, 0}'}

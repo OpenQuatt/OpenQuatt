@@ -92,6 +92,7 @@ void reset() {
 int main() {
   assert(fnv1("openquatt_crash_telemetry_record")==CRASH);
   assert(fnv1("openquatt_api_security_store")==OLD_API);
+  assert(fnv1("ram_log_history")==306736601U);
   const auto state=std::to_string(fnv1("openquatt_crash_telemetry_state"));
   reset(); namespace_exists=false;
   assert(cleanup() && !namespace_exists && write_opens==0);
@@ -133,12 +134,25 @@ int main() {
   records[std::to_string(CRASH)]={2812};
   records[std::to_string(OLD_API)]={40}; records[std::to_string(NOISE)]={32};
   records[state]={56}; records["current-setting"]={4};
+  records["306736601"]={1}; records["2881445393"]={4};
   oq_nvs_cleanup::retire_openquatt_preferences(&air);
-  assert(handles==0 && records.size()==3 && commits==4);
+  assert(handles==0 && records.size()==3 && commits==6);
   assert(records.contains(std::to_string(NOISE)) && records.contains(state));
   assert(records.contains("current-setting"));
   oq_nvs_cleanup::retire_openquatt_preferences(&air);
-  assert(handles==0 && records.size()==3 && commits==4);
+  assert(handles==0 && records.size()==3 && commits==6);
+  // Unexpected records under the retired keys are preserved by the boot path.
+  records["306736601"]={4}; records["2881445393"]={4,false};
+  oq_nvs_cleanup::retire_openquatt_preferences(&air);
+  assert(handles==0 && records.size()==5 && commits==6);
+  // Single-key retries use the same failure boundaries as the old cleanup.
+  reset(); records["306736601"]={1}; records["2881445393"]={4};
+  erase_error=3;
+  assert(!cleanup(306736601U,1) && !cleanup(2881445393U,4));
+  assert(records.size()==2 && commits==0);
+  erase_error=0;
+  assert(cleanup(306736601U,1) && cleanup(2881445393U,4));
+  assert(records.empty() && commits==2);
 }
 '''
         with tempfile.TemporaryDirectory(prefix="openquatt-nvs-cleanup-") as directory:

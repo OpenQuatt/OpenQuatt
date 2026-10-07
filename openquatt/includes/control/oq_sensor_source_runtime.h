@@ -10,6 +10,7 @@
 #include "oq_schedule_runtime.h"
 #include "../sources/oq_resolved_learning_source.h"
 #include "oq_supply_calibration_logic.h"
+#include "../storage/oq_supply_calibration_migration.h"
 #include "oq_supply_hold_logic.h"
 
 namespace oq_sensor_source {
@@ -147,7 +148,7 @@ class Runtime {
     const std::string option =
         id(water_supply_source).has_state() ? id(water_supply_source).current_option() : std::string();
     const auto source = supply_source(option, ha_entity_id);
-    migrate_legacy_calibration();
+    migrate_legacy_calibration(now_ms);
     if (selected_supply_hold_.has_value() && !selected_supply_hold_.matches_source(source)) clear_supply_hold();
 
     bool calibration_required = false;
@@ -705,38 +706,49 @@ class Runtime {
     }
   }
 
-  static void migrate_legacy_calibration() {
-    if (!id(water_supply_temp_calibration_offset).has_state()) return;
-    const int32_t code = id(oq_water_supply_temp_calibration_source_code);
-    switch (code) {
+  void migrate_legacy_calibration(uint32_t now_ms) {
+    if (legacy_calibration_migration_done_ || !id(water_supply_temp_calibration_offset).has_state()) return;
+    if (legacy_calibration_migration_attempted_ && now_ms - legacy_calibration_migration_last_ms_ < 30000U) return;
+    legacy_calibration_migration_attempted_ = true;
+    legacy_calibration_migration_last_ms_ = now_ms;
+    using namespace oq_supply_calibration_migration;
+    NvsStorage storage(&id(water_supply_temp_calibration_offset));
+    uint32_t code = 0U;
+    const ReadResult code_result = storage.read_word(kLegacySourceKey, code);
+    if (code_result == ReadResult::ERROR) return;
+    if (code_result != ReadResult::FOUND) {
+      legacy_calibration_migration_done_ = true;
+      return;
+    }
+    uint32_t fingerprint = 0U;
+    uint32_t checksum = 0U;
+    const ReadResult fingerprint_result = storage.read_word(kLegacyFingerprintKey, fingerprint);
+    const ReadResult checksum_result = storage.read_word(kLegacyChecksumKey, checksum);
+    uint32_t empty[oq_supply_calibration::kRecordStorageWords]{};
+    uint32_t (*target)[oq_supply_calibration::kRecordStorageWords] = &empty;
+    switch (static_cast<int32_t>(code)) {
       case oq_supply_calibration::SOURCE_LOCAL_PT1000:
-        oq_supply_calibration::migrate_legacy_record(id(oq_water_supply_temp_calibration_pt1000_record), code,
-                                                     id(oq_water_supply_temp_calibration_source_fingerprint),
-                                                     id(oq_water_supply_temp_calibration_checksum),
-                                                     id(water_supply_temp_calibration_offset).state);
+        target = &id(oq_water_supply_temp_calibration_pt1000_record);
         break;
       case oq_supply_calibration::SOURCE_LOCAL_DS18B20:
-        oq_supply_calibration::migrate_legacy_record(id(oq_water_supply_temp_calibration_ds18b20_record), code,
-                                                     id(oq_water_supply_temp_calibration_source_fingerprint),
-                                                     id(oq_water_supply_temp_calibration_checksum),
-                                                     id(water_supply_temp_calibration_offset).state);
+        target = &id(oq_water_supply_temp_calibration_ds18b20_record);
         break;
       case oq_supply_calibration::SOURCE_CIC:
-        oq_supply_calibration::migrate_legacy_record(id(oq_water_supply_temp_calibration_cic_record), code,
-                                                     id(oq_water_supply_temp_calibration_source_fingerprint),
-                                                     id(oq_water_supply_temp_calibration_checksum),
-                                                     id(water_supply_temp_calibration_offset).state);
+        target = &id(oq_water_supply_temp_calibration_cic_record);
         break;
       case oq_supply_calibration::SOURCE_HA_INPUT:
-        oq_supply_calibration::migrate_legacy_record(id(oq_water_supply_temp_calibration_ha_input_record), code,
-                                                     id(oq_water_supply_temp_calibration_source_fingerprint),
-                                                     id(oq_water_supply_temp_calibration_checksum),
-                                                     id(water_supply_temp_calibration_offset).state);
+        target = &id(oq_water_supply_temp_calibration_ha_input_record);
         break;
       default:
         break;
     }
+    const Result result = migrate(storage, *target, code, fingerprint_result, fingerprint, checksum_result, checksum);
+    legacy_calibration_migration_done_ = result != Result::RETRY;
   }
+
+  bool legacy_calibration_migration_done_{false};
+  bool legacy_calibration_migration_attempted_{false};
+  uint32_t legacy_calibration_migration_last_ms_{0U};
 
   static oq_supply_calibration::SourceIdentity supply_source(const std::string& option, const char* ha_entity_id) {
     std::string local_source;

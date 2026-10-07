@@ -42,6 +42,40 @@ Controleer API-beveiliging afzonderlijk bij zo'n historische downgrade.
 Teruggewonnen legacyruimte telt niet nogmaals als verlaging van de hieronder
 berekende huidige dataset.
 
+## Aanvullende legacycleanup
+
+De drie oude globals `oq_water_supply_temp_calibration_source_code`,
+`oq_water_supply_temp_calibration_source_fingerprint` en
+`oq_water_supply_temp_calibration_checksum` worden niet meer aangemaakt of
+bij een nieuwe kalibratie bijgewerkt. Dit verlaagt de huidige dataset met negen
+entries. De vier brongebonden kalibratierecords en de offsetnumber blijven behouden.
+
+Bij upgrade leest de migratie oude keys rechtstreeks uit NVS. Een geldig
+brongebonden record in RAM blijft leidend. Bij ongeldig RAM wordt eerst een
+geldig bestaand bronrecord uit NVS hersteld. Alleen als beide ontbreken of
+ongeldig zijn, wordt een geldig oud record met de duurzaam opgeslagen offset
+geïmporteerd. Opruimen gebeurt pas nadat het
+nieuwe record is opgeslagen en rechtstreeks uit NVS is teruggelezen en
+geverifieerd. Bij tijdelijke opslagfouten volgt na minimaal 30 seconden een
+nieuwe poging. Onverwachte typen en groottes blijven behouden. Ongeldige
+legacygegevens worden alleen opgeruimd als een geldig brongebonden record
+duurzaam is geverifieerd; anders blijven ze staan. Ook drie oude nulwaarden
+zonder kalibratie kunnen worden opgeruimd.
+De oude broncode wordt als laatste gewist, zodat cleanup na een onderbroken
+boot kan worden afgemaakt. Er komt geen permanente migratievlag bij.
+
+De voormalige `oq_ram_log_history_switch` (`esphome/306736601`, één byte) kan
+nog drie entries gebruiken. RAM-loghistorie staat al permanent aan. De oude
+vorststatus `oq_cm_frost_prev` (`esphome/2881445393`, vier bytes) kan eveneens
+drie entries gebruiken. Beide keys worden met type- en lengtecontrole in de
+gedeelde bootactie opgeruimd. De oude afzonderlijke vorsthook viel bij
+package-samenvoeging uit de Q Duo WiFi-configuratie weg.
+
+Downgrade naar firmware met uitsluitend het oude kalibratieformaat bewaart de
+brongebonden aanvoerkalibratie niet gegarandeerd. Een upgrade vanaf dat oude
+formaat blijft ondersteund. De 61 gemeten WiFi-driverentries, PHY-opslag en
+keys met onbewezen herkomst vallen buiten deze cleanup.
+
 ## Budgetberekening
 
 Een NVS-pagina bevat 126 entries. Van de zes pagina's blijft één beschikbaar
@@ -62,15 +96,16 @@ achtergebleven legacykeys kunnen meer ruimte kosten. Dit is geen bovengrens.
 | Q Duo WiFi | Entity entries | Custom | Systeem | Totaal | Nominaal vrij |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Vóór deze sessiestatuswijziging | 460 | 64 | 88 | 612 | 18 |
-| Na deze sessiestatuswijziging | 433 | 64 | 88 | 585 | 45 |
+| Na de sessiestatuswijziging | 433 | 64 | 88 | 585 | 45 |
+| Na uitfasering van de drie kalibratieglobals | 424 | 64 | 88 | 576 | 54 |
 
 De bestaande grens `REQUIRED_AVAILABLE_ENTRIES = 100` blijft behouden.
 Daarom geeft de gecorrigeerde checker voor dit profiel FAIL. Alle waarden zijn
 berekeningen bij volledige bezetting, geen apparaatmetingen. Blobvervanging
-schrijft nieuwe chunks voordat de oude worden vrijgegeven; 45 vrije entries
+schrijft nieuwe chunks voordat de oude worden vrijgegeven; 54 vrije entries
 zijn minder dan de minimaal 62 voor een gewijzigde volledige PHY-blob.
-De huidige Q Single WiFi-configuratie telt 424 entity-entries, 55 custom en
-88 systeem: 567 totaal, nominaal 63 vrij. Ook dat profiel haalt de marge niet.
+De huidige Q Single WiFi-configuratie telt 415 entity-entries, 55 custom en
+88 systeem: 558 totaal, nominaal 72 vrij. Ook dat profiel haalt de marge niet.
 
 ## Meting op de testcontroller
 
