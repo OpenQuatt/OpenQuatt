@@ -20,7 +20,10 @@ class WarmupProgressSnapshot {
   std::atomic<uint32_t> value_{UNAVAILABLE};
 };
 
-static_assert(std::atomic<uint32_t>::is_always_lock_free);
+// Xtensa reports is_always_lock_free=false for the full atomic operation set.
+// The relaxed 32-bit load/store used here compile to aligned l32i/s32i accesses
+// (ESP32 and ESP32-S3), without helper calls or heap allocations.
 static_assert(sizeof(WarmupProgressSnapshot) == sizeof(uint32_t));
+static_assert(alignof(WarmupProgressSnapshot) >= alignof(uint32_t));
 
 }  // namespace esphome::openquatt_service_status

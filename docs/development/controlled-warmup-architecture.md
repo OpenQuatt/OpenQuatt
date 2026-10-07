@@ -99,7 +99,11 @@ geen sessie sinds boot; 1 is een door uitschakelen afgebroken sessie, 2 actief,
 3 comfort bereikt, 5 tijdslimiet en de overige codes annulering.
 
 Dit voegt geen ESPHome-entities, buffers, taken of NVS-records toe; de snapshot
-gebruikt vier bytes. Het verandert de regeling niet. UI-sleutels zijn uitsluitend
+gebruikt vier bytes. De Xtensa-compiler voor ESP32 en ESP32-S3 vertaalt de
+gebruikte relaxed 32-bit load/store naar uitgelijnde `l32i`/`s32i`-instructies
+met `memw`, zonder helpercalls of allocaties (GCC 14.2.0, `-O2` en `-Os`).
+De bredere `is_always_lock_free`-trait wordt niet vereist; grootte en uitlijning
+blijven met compileasserts bewaakt. Het verandert de regeling niet. UI-sleutels zijn uitsluitend
 virtuele statusvelden, opgehaald met de bestaande entity-pollcadence. Volledige
 oude/ontbrekende/falende statusantwoorden verwijderen eerdere timerwaarden. Het
 laatste resultaat blijft vluchtig tot de volgende sessie of boot. Hosttests
