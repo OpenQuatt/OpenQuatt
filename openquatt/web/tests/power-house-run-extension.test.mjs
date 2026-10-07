@@ -62,7 +62,7 @@ test("run-extension copy and temperatures follow locale changes without changing
     assert.match(markup, /Extended heating at minimum output/);
     assert.match(markup, /21\.0 °C/);
     assert.match(markup, /20\.8 °C/);
-    assert.match(markup, /Waiting periods may delay the start/);
+    assert.match(markup, /must stay off for a minimum time/);
     assert.doesNotMatch(markup, /Langer doorverwarmen|Uitgeschakeld/);
     assert.deepEqual(getRunExtensionThresholds(), before);
   } finally {
@@ -97,7 +97,7 @@ test("switch aanwezig toont de card, OFF verbergt stop-margin", () => {
   resetSettingsState({ phRunExtension: switchEntity(false) });
   const markup = renderPowerHouseRunExtensionField();
   assert.match(markup, /Langer doorverwarmen/);
-  assert.match(markup, /Inschakelen start een stilstaande warmtepomp niet zelfstandig/);
+  assert.match(markup, /Een stilstaande warmtepomp wordt door deze schakelaar niet gestart/);
   assert.doesNotMatch(markup, /Stopgrens boven gewenste temperatuur/);
 });
 
@@ -112,7 +112,7 @@ test("ON toont stop-margin en afgeleide stop/herstart", () => {
   assert.match(markup, /Stopgrens boven gewenste temperatuur/);
   assert.match(markup, /21,0 °C/);
   assert.match(markup, /20,8 °C/);
-  assert.match(markup, /Wacht op een verwarmingsrun/);
+  assert.match(markup, /Wacht tot de warmtepomp verwarmt/);
   assert.doesNotMatch(markup, /Uitgeschakeld/);
 });
 
@@ -166,13 +166,13 @@ test("configureerbare herstart toont de effectieve koude comfortgrens met voorbe
   assert.equal(thresholds.restart.toFixed(1), "20.8");
   assert.equal(thresholds.limited, true);
   const markup = renderPowerHouseRunExtensionField();
-  assert.match(markup, /Afkoeling vóór opnieuw verwarmen/);
-  assert.match(markup, /21,7 °C min 0,2 °C/);
-  assert.match(markup, /je invoer komt uit op 20,5 °C.*20,8 °C/);
+  assert.match(markup, /Afkoeling na stoppen/);
+  assert.match(markup, /21,7 °C en je stelt hier 0,2 °C afkoeling in/);
+  assert.match(markup, /Je gekozen afkoeling komt uit op 20,5 °C.*20,8 °C/);
   assert.match(markup, /data-info-id="phRunExtensionRestartCooldown"/);
   setLocale("en", { persist: false });
   try {
-    assert.match(renderPowerHouseRunExtensionField(), /Cooling before heating again/);
+    assert.match(renderPowerHouseRunExtensionField(), /Cooling after stopping/);
     assert.match(renderPowerHouseRunExtensionField(), /20\.5 °C.*20\.8 °C/);
   } finally { setLocale("nl", { persist: false }); }
 });
@@ -241,8 +241,8 @@ test("input en live patches houden herstartvoorvertoning actueel zonder de invoe
     const input = { dataset: { oqField: "phRunExtensionRestartCooldown" }, type: "number", value: "1.2" };
     handleInput({ target: input });
     assert.match(preview.innerHTML, /20,5 °C.*20,8 °C/s);
-    assert.match(preview.innerHTML, /Voorvertoning — wijziging nog niet bevestigd/);
-    assert.match(preview.innerHTML, /Nog bevestigd: stop aanvragen bij 21,7 °C.*21,5 °C/);
+    assert.match(preview.innerHTML, /Voorbeeld van je wijziging — nog niet bevestigd/);
+    assert.match(preview.innerHTML, /Huidige instellingen: stopgrens 21,7 °C.*21,5 °C/);
     assert.equal(input.value, "1.2");
     state.entities.roomSetpoint.value = 22;
     patchRunExtensionThresholds();
@@ -250,7 +250,7 @@ test("input en live patches houden herstartvoorvertoning actueel zonder de invoe
     input.value = "";
     handleInput({ target: input });
     assert.ok(Number.isNaN(getRunExtensionThresholds().restart));
-    assert.doesNotMatch(preview.innerHTML, /je invoer komt uit op/);
+    assert.doesNotMatch(preview.innerHTML, /Je gekozen afkoeling komt uit op/);
     state.inputDrafts = {};
     state.drafts = {};
     state.entities.roomSetpoint.value = "";
@@ -273,7 +273,7 @@ test("comfortbediening scheidt dagelijkse keuzes en behouden geavanceerde afstel
   assert.match(markup, /Power House — comfort/);
   assert.match(markup, /Op temperatuur houden/);
   const [daily, advanced] = markup.split('<details class="oq-settings-advanced"');
-  assert.match(daily, /Reageren op afkoeling/);
+  assert.match(daily, /Afkoeling onder gewenste temperatuur/);
   assert.match(daily, /20,8 °C/);
   assert.doesNotMatch(daily, /Comfort boven setpoint|Temperatuurreactie|Reactieprofiel|oq-ph-concept/);
   assert.match(advanced, /data-oq-settings-advanced="power-house">/);
@@ -286,9 +286,9 @@ test("comfortbediening scheidt dagelijkse keuzes en behouden geavanceerde afstel
   setLocale("en", { persist: false });
   try {
     const english = renderPowerHouseAdvancedField();
-    assert.match(english, /Maintain temperature|Respond to cooling/);
+    assert.match(english, /Maintain temperature|Cooling below desired temperature/);
     assert.match(english, /20\.8 °C/);
-    assert.doesNotMatch(english, /Op temperatuur houden|Reageren op afkoeling/);
+    assert.doesNotMatch(english, /Op temperatuur houden|Afkoeling onder gewenste temperatuur/);
   } finally { setLocale("nl", { persist: false }); }
 });
 
@@ -301,22 +301,22 @@ test("voorvertoning verandert bevestigde grenzen en actuele aanvraag niet", () =
     phRunExtensionRestartCooldown: numberEntity(0.7),
     phRunExtensionStatus: { value: "warm_restart", state: "warm_restart" },
   });
-  assert.match(renderPowerHouseRunExtensionField(), /Met de bevestigde instellingen/);
+  assert.match(renderPowerHouseRunExtensionField(), /Berekend met je huidige instellingen/);
   state.inputDrafts.phRunExtensionStopMargin = "0.9";
   state.drafts.phRunExtensionStopMargin = 0.9;
   let markup = renderPowerHouseRunExtensionField();
-  assert.match(markup, /Voorvertoning — wijziging nog niet bevestigd/);
+  assert.match(markup, /Voorbeeld van je wijziging — nog niet bevestigd/);
   assert.match(markup, /21,9 °C/);
   assert.match(markup, /21,2 °C/);
-  assert.match(markup, /Nog bevestigd: stop aanvragen bij 21,7 °C.*21,0 °C/);
+  assert.match(markup, /Huidige instellingen: stopgrens 21,7 °C.*21,0 °C/);
   assert.match(markup, /Herstart aangevraagd/);
   assert.equal(getRunExtensionThresholds(false).stop, 21.7);
   state.entities.phRunExtensionStopMargin.value = 0.9;
   state.inputDrafts = {};
   state.drafts = {};
   markup = renderPowerHouseRunExtensionField();
-  assert.match(markup, /Met de bevestigde instellingen/);
-  assert.doesNotMatch(markup, /Voorvertoning|Nog bevestigd/);
+  assert.match(markup, /Berekend met je huidige instellingen/);
+  assert.doesNotMatch(markup, /Voorbeeld van je wijziging|Huidige instellingen:/);
 });
 
 test("afkoelmarge geeft ook zonder doorverwarmen een actuele koude-grensvoorvertoning", () => {
@@ -329,8 +329,8 @@ test("afkoelmarge geeft ook zonder doorverwarmen een actuele koude-grensvoorvert
     const input = { dataset: { oqField: "phComfortBelow" }, type: "number", value: "0.25" };
     handleInput({ target: input });
     assert.match(comfort.innerHTML, /20,75 °C/);
-    assert.match(comfort.innerHTML, /Voorvertoning — wijziging nog niet bevestigd/);
-    assert.match(comfort.innerHTML, /Nog bevestigde koude grens: 20,85 °C/);
+    assert.match(comfort.innerHTML, /Voorbeeld van je wijziging — nog niet bevestigd/);
+    assert.match(comfort.innerHTML, /Met je huidige instelling ligt de grens voor extra warmte bij 20,85 °C/);
     assert.equal(input.value, "0.25");
     input.value = "";
     handleInput({ target: input });
@@ -363,8 +363,8 @@ test("live status blijft actueel tijdens invoer zonder de voorvertoning te beves
     state.entities.phRunExtensionStatus.state = "comfort_stop";
     patchRunExtensionThresholds();
     assert.equal(status.textContent, "Stop aangevraagd");
-    assert.match(preview.innerHTML, /Voorvertoning — wijziging nog niet bevestigd/);
-    assert.match(preview.innerHTML, /Nog bevestigd: stop aanvragen bij 21,7 °C.*21,5 °C/);
+    assert.match(preview.innerHTML, /Voorbeeld van je wijziging — nog niet bevestigd/);
+    assert.match(preview.innerHTML, /Huidige instellingen: stopgrens 21,7 °C.*21,5 °C/);
     assert.equal(input.value, "0.7");
     setLocale("en", { persist: false });
     patchRunExtensionThresholds();
