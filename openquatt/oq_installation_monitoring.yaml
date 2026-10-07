@@ -7,6 +7,12 @@
 # user explicitly acknowledges them or the controller restarts.
 # ==============================================================================
 
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_compressor_limits]
+
 globals:
   - id: oq_compressor_cycling_alert_latched
     type: bool
@@ -72,29 +78,17 @@ button:
       - lambda: |-
           id(oq_incident_manager).acknowledge_all_cleared();
 
-number:
-  - platform: template
+openquatt_compressor_limits:
+  id: oq_compressor_warning_limits
+  warning_limit_2h:
     id: oq_compressor_starts_warning_limit_2h
     name: "Compressor starts 2h warning limit"
     internal: true
-    optimistic: true
-    restore_value: true
-    initial_value: 6
-    min_value: 1
-    max_value: 20
-    step: 1
     mode: slider
-
-  - platform: template
+  warning_limit_72h:
     id: oq_compressor_starts_warning_limit_72h
     name: "Compressor starts 72h warning limit"
     internal: true
-    optimistic: true
-    restore_value: true
-    initial_value: 40
-    min_value: 1
-    max_value: 120
-    step: 1
     mode: slider
 
 sensor:

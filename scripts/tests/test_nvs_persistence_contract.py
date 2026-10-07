@@ -121,8 +121,13 @@ class NvsPersistenceContractTest(unittest.TestCase):
     def test_operational_state_and_user_warning_limits_remain_persistent(self) -> None:
         for entity_id in ("oq_flow_last_good_pwm", "oq_flow_last_good_pwm_cooling"):
             self.assertIn("restore_value: true", yaml_entry(FLOW_CONTROL, entity_id))
-        for entity_id in ("oq_compressor_starts_warning_limit_2h", "oq_compressor_starts_warning_limit_72h"):
-            self.assertIn("restore_value: true", yaml_entry(INSTALLATION_MONITORING, entity_id))
+        self.assertIn("openquatt_compressor_limits:", INSTALLATION_MONITORING)
+        self.assertIn("id: oq_compressor_starts_warning_limit_2h", INSTALLATION_MONITORING)
+        self.assertIn("id: oq_compressor_starts_warning_limit_72h", INSTALLATION_MONITORING)
+        self.assertEqual(
+            check_nvs_budget.estimate_custom_preferences({"openquatt_compressor_limits": {}}),
+            {"openquatt_compressor_limits": 3},
+        )
         for entity_id in ("oq_system_thermal_energy_daily", "oq_system_thermal_energy_cumulative"):
             self.assertIn("restore: true", yaml_entry(ENERGY, entity_id))
         self.assertIn("id: oq_heating_curve_pid", HEATING_CURVE)

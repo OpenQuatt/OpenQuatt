@@ -36,6 +36,7 @@ CUSTOM_PREFERENCE_LAYOUTS = (
     ("openquatt_debug_recorder", 2, 1),
     ("openquatt_odu_settings", 16, 1),
     ("openquatt_odu_defrost", 16, 2),
+    ("openquatt_compressor_limits", 16, 1),
 )
 PHY_CALIBRATION_BYTES = 1904  # esp_phy_calibration_data_t, ESP-IDF 5.5.5.
 
@@ -102,6 +103,12 @@ def estimate_entity_preferences(config: Any) -> tuple[dict[str, int], dict[str, 
     for item in config.get("switch", []):
         if str(item.get("restore_mode", "")).startswith("RESTORE"):
             _add(entries, keys, "switches", 1)
+        # The OT enabled entity is nested in its platform configuration.
+        # Include it when comparing the old/new warning-limit population.
+        if item.get("platform") == "openquatt_ot_slave":
+            enabled = item.get("enabled", {})
+            if str(enabled.get("restore_mode", "")).startswith("RESTORE"):
+                _add(entries, keys, "switches", 1)
 
     for item in config.get("datetime", []):
         if item.get("restore_value") is True:

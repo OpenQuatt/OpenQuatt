@@ -116,7 +116,7 @@ voor garbage collection: 630 entries voor live records. Een blob kost
 doorgaans drie; een native klein NVS-getal kost één.
 
 `scripts/check_nvs_budget.py` telt geconfigureerde componentinstances. Custom
-records kosten 64 entries voor Q Duo en 55 voor Q Single. Daaronder vallen ook
+records kosten 67 entries voor Q Duo en 58 voor Q Single. Daaronder vallen ook
 de defrostprofielen, debug-recorderkeuze en het restart-handoffrecord.
 
 Voor de huidige Q-configuratie wordt 88 entries systeemopslag begroot:
@@ -132,18 +132,19 @@ achtergebleven legacykeys kunnen meer ruimte kosten. Dit is geen bovengrens.
 | Na uitfasering van de drie kalibratieglobals | 427 | 64 | 88 | 579 | 51 |
 | Na verplaatsing van de nachtminimumdatum naar RAM | 424 | 64 | 88 | 576 | 54 |
 | Na uitfasering van de twee migratievlaggen | 418 | 64 | 88 | 570 | 60 |
+| Met nieuwe Power House restart cooldown | 421 | 64 | 88 | 573 | 57 |
+| Na bundeling van beide compressorwaarschuwingsgrenzen | 415 | 67 | 88 | 570 | 60 |
 
 De Q Duo-tabel bevat ook de drie entries van de geneste switch
-`oq_ot_slave_enabled`. Die ontbreekt momenteel in de entitytelling van de
-checker; daarom ligt zijn schatting drie entries lager dan deze inventaris.
+`oq_ot_slave_enabled`. De checker telt deze geneste entity nu ook mee.
 
 De bestaande grens `REQUIRED_AVAILABLE_ENTRIES = 100` blijft behouden.
 Daarom geeft de gecorrigeerde checker voor dit profiel FAIL. Alle waarden zijn
 berekeningen bij volledige bezetting, geen apparaatmetingen. Blobvervanging
 schrijft nieuwe chunks voordat de oude worden vrijgegeven; 60 vrije entries
 zijn minder dan de minimaal 62 voor een gewijzigde volledige PHY-blob.
-Voor Q Single WiFi begroot de checker 406 entity-entries, 55 custom en
-88 systeem: 549 totaal, nominaal 81 vrij. Ook dat profiel haalt de marge niet.
+De Single-begroting moet bij vervolgstappen opnieuw uit de actuele configuratie
+worden bepaald. Ook de kleine bundelproef lost het totale ruimtetekort niet op.
 
 ## Meting op de testcontroller
 
@@ -225,7 +226,56 @@ records en firmware van die eerdere HIL-run. Ze vervangen de huidige
 volledige-bezettingsschatting van 60 vrije entries voor Q Duo niet; de
 budgetgate van 100 blijft FAIL.
 
-## Vervolgontwerp voor gebundelde opslag
+## Proef: gebundelde compressorwaarschuwingsgrenzen
+
+`openquatt_compressor_limits` bewaart uitsluitend
+`oq_compressor_starts_warning_limit_2h` en
+`oq_compressor_starts_warning_limit_72h` samen in `esphome/oq_cycle_limits`.
+IDs, namen, sliderstap en grenzen blijven gelijk: 1–20 met default 6 en
+1–120 met default 40. Dit zijn diagnostische waarschuwingsgrenzen; startlimieten,
+actuatoraansturing en de overige instellingen gebruiken hun bestaande opslag.
+
+Het record is 16 bytes: magic (4), schemaversie (2), lengte (2), beide floats
+(8). Het kost drie entries in plaats van zes. Een aparte migratievlag of
+ESPHome-corewijziging is niet nodig. NVS verzorgt de blob-CRC.
+
+Bij boot wordt eerst de bundel rechtstreeks uit NVS gelezen. Ontbreekt die,
+dan worden de twee oude TemplateNumber-blobs gelezen via dezelfde entityhash
+(inclusief eventuele device ID). Ontbrekende individuele keys krijgen hun
+bestaande default; onleesbare, verkeerd getypeerde of ongeldige waarden blokkeren
+de overzetting. Na een geslaagde write, commit en exacte raw readback worden
+alleen de oude vier-byte blobs verwijderd. Een herstart vóór die write herhaalt
+de import; daarna blijft de bundel autoritatief, ook tijdens gedeeltelijke cleanup.
+Voor deze eerste write zijn tijdelijk drie extra entries nodig.
+
+De component herstelt vóór de diagnostische intervalcallbacks. De actuele
+waarden en NVS blijven eigendom van de main task. Andere taken schrijven alleen
+naar twee vaste slots onder een korte `portMUX`-lock. Main-task setters blijven
+synchroon; off-task wijzigingen worden op de volgende loop verwerkt. Er komen
+geen worker task, groeiende callbackwachtrij of lange buffers bij.
+
+Writes worden samengevoegd: `write_interval` is standaard 60 s en bepaalt ook
+de retryperiode. Gewijzigde waarden worden bij gecontroleerde shutdown/OTA
+nogmaals opgeslagen; de mailbox sluit eerst en verwerkt alle geaccepteerde
+requests. Bij harde stroomuitval kunnen wijzigingen sinds de laatste geslaagde
+write vervallen. Een opslagfout geeft componentstatus/logging en behoudt de
+pending waarden voor een volgende poging. Acceptatie van een setter bewijst
+dus geen duurzame opslag.
+
+Een aanwezige bundel met onbekend schema, verkeerde lengte of ongeldige waarden
+blijft staan. De waarschuwingen gebruiken dan defaults, setters worden geweigerd
+en de component meldt een restorefout; stale legacywaarden worden niet geïmporteerd.
+Factory reset wist ook deze key. Downgrade wordt niet ondersteund: oudere firmware
+kan na cleanup voor deze twee grenzen terugvallen op defaults.
+
+Hosttests injecteren volle NVS, open-/type-/lengte-/commit-/readback-/erasefouten,
+herstarts rond de migratie, callbackinterleavings, off-task bursts en shutdown
+zonder tussenliggende loop. Een factory-resettest controleert dat shutdown
+geen gewiste data herschrijft. OTA/reboot en interne heap/stackmarges moeten
+nog op de testcontroller worden bevestigd; eerdere HIL-metingen hierboven
+behoren niet bij deze bundelproef.
+
+## Vervolgontwerp voor overige gebundelde opslag
 
 Bundel alleen waarden met dezelfde eigenaar en lifecycle. Acht 4-byte waarden
 kosten afzonderlijk circa 24 entries; een kale 32-byte blob circa 3. Met een
@@ -245,17 +295,15 @@ feature gescheiden. Alle waarden blijven persistent.
 
 | Cluster | Huidige number-preferences | Losse entries | Gebundeld | Mogelijke winst |
 | --- | ---: | ---: | ---: | ---: |
-| Power House `ph_kp_w_per_k`, beide comfortbanden, demand rise/fall en run-extension stop margin | 6 | 18 | 4 | 14 |
+| Power House `ph_kp_w_per_k`, beide comfortbanden, demand rise/fall en run-extension stop margin/restart cooldown | 7 | 21 | 4 | 17 |
 | Heating Curve PID `heating_curve_pid_kp`, `heating_curve_pid_ki`, `heating_curve_pid_kd` | 3 | 9 | 3 | 6 |
 | Flow setpoint, cooling flow setpoint, manual iPWM en Flow PI Kp/Ki | 5 | 15 | 3 | 12 |
-| Compressor-start warning limits 2h en 72h | 2 | 6 | 3 | 3 |
 
-Deze vier clusters leveren theoretisch samen 35 entries op: Q Duo zou daarmee
+Deze drie vervolgclusters leveren theoretisch samen 35 entries op: Q Duo zou daarmee
 van 60 naar 95 nominaal vrij gaan. Ze halen op zichzelf de marge van 100 dus
 nog niet. Power House, PID en Flow hebben invloed op de regeling; hun volledige
-configuratie moet vóór de eerste controlcyclus beschikbaar zijn. Begin een
-prototype met de twee diagnostische grenzen, en beoordeel controlclusters
-afzonderlijk voordat ze dezelfde opslagroute gebruiken.
+configuratie moet vóór de eerste controlcyclus beschikbaar zijn. Beoordeel deze
+controlclusters afzonderlijk na de proef met de twee diagnostische grenzen.
 
 Een mogelijke OpenQuatt-component houdt het complete record in RAM, herstelt
 het vóór de afhankelijke entities en schrijft alleen bij echte wijzigingen.

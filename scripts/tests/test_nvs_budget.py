@@ -23,11 +23,11 @@ def q_config(hp_count: int = 2) -> dict:
 class NvsBudgetTest(unittest.TestCase):
     def test_custom_budget_tracks_configured_components_and_hp_instances(self) -> None:
         self.assertEqual(sum(budget.estimate_custom_preferences({}).values()), 0)
-        self.assertEqual(sum(budget.estimate_custom_preferences(q_config(1)).values()), 55)
-        self.assertEqual(sum(budget.estimate_custom_preferences(q_config(2)).values()), 64)
+        self.assertEqual(sum(budget.estimate_custom_preferences(q_config(1)).values()), 58)
+        self.assertEqual(sum(budget.estimate_custom_preferences(q_config(2)).values()), 67)
         config = q_config()
         del config["openquatt_debug_recorder"]
-        self.assertEqual(sum(budget.estimate_custom_preferences(config).values()), 61)
+        self.assertEqual(sum(budget.estimate_custom_preferences(config).values()), 64)
         self.assertEqual(budget.estimate_custom_preferences({"openquatt_odu_defrost": []}), {})
 
     def test_phy_noise_factory_reset_and_namespaces_are_not_hidden_in_margin(self) -> None:
@@ -66,9 +66,19 @@ class NvsBudgetTest(unittest.TestCase):
             ), contextlib.redirect_stdout(io.StringIO()) as output:
                 result = budget.check_config(Path("unused.yaml"))
             self.assertEqual(result, 1)
-            self.assertIn("estimated=585 available=45 required=100", output.getvalue())
+            self.assertIn("estimated=588 available=42 required=100", output.getvalue())
             self.assertIn("NVS budget: FAIL", output.getvalue())
             self.assertEqual(budget.REQUIRED_AVAILABLE_ENTRIES, 100)
+
+    def test_warning_bundle_saves_three_entries_with_nested_ot_switch_counted(self) -> None:
+        old = {"number": [{"restore_value": True}, {"restore_value": True}]}
+        old["switch"] = [{"platform": "openquatt_ot_slave", "enabled": {"restore_mode": "RESTORE_DEFAULT_ON"}}]
+        new = {"openquatt_compressor_limits": {}, "switch": old["switch"]}
+        old_entries, _ = budget.estimate_entity_preferences(old)
+        new_entries, _ = budget.estimate_entity_preferences(new)
+        self.assertEqual(old_entries["switches"], 3)
+        self.assertEqual(sum(old_entries.values()), 9)
+        self.assertEqual(sum(new_entries.values()) + sum(budget.estimate_custom_preferences(new).values()), 6)
 
 
 if __name__ == "__main__":
