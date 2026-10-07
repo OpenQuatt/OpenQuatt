@@ -523,13 +523,17 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
 
   export function patchControlledWarmupField(root) {
     const statusNode = root.querySelector("[data-oq-warmup-status]");
-    if (!statusNode) return;
+    if (!statusNode) return true;
+    const { enabled } = getSettingsSwitchModel("warmupEnabled");
+    const section = root.querySelector("[data-oq-warmup-enabled]");
+    const structureMatches = section?.dataset.oqWarmupEnabled === String(enabled);
     const { status, readings } = getControlledWarmupDisplayModel();
     if (statusNode.textContent !== status) statusNode.textContent = status;
     readings.forEach(([key, , reading]) => {
       const node = root.querySelector(`[data-oq-warmup-reading="${key}"]`);
       if (node && node.textContent !== reading) node.textContent = reading;
     });
+    return structureMatches;
   }
 
   export function renderControlledWarmupField() {
@@ -543,7 +547,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
       </div>
     `);
     return `
-      <section class="oq-settings-subpanel oq-run-extension" aria-label="${escapeHtml(t("warmup.title"))}">
+      <section class="oq-settings-subpanel oq-run-extension" data-oq-warmup-enabled="${enabled}" aria-label="${escapeHtml(t("warmup.title"))}">
         <div class="oq-run-extension-intro">
           <div class="oq-settings-subpanel-head">
             <h4>${escapeHtml(t("warmup.title"))}</h4>

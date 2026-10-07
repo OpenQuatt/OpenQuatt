@@ -76,6 +76,7 @@ function syncFrequencyRangeControl(control) {
   }
 
   export function renderSettingsGroupContent() {
+    state.warmupSettingsRenderPending = false;
     const activeGroup = SETTINGS_GROUP_IDS.has(state.settingsGroup) ? state.settingsGroup : SETTINGS_GROUPS[0].id;
     const sections = activeGroup === "installation"
       ? [
@@ -273,7 +274,7 @@ function syncFrequencyRangeControl(control) {
     });
 
     patchHouseLearningSettingsStatus();
-    patchControlledWarmupField(stack);
+    state.warmupSettingsRenderPending = !patchControlledWarmupField(stack);
     patchRunExtensionThresholds();
 
     const generationStatus = stack.querySelector('button[data-oq-action="open-generation-modal"]')?.closest(".oq-settings-quickstart-status");

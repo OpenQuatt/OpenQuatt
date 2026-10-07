@@ -1456,6 +1456,8 @@ import { fetchWithTimeout } from "./browser-utils.js";
         return;
       }
       if (state.appView === "settings") {
+        if (state.warmupSettingsRenderPending
+            && (state.warmupSettingsPointerActive || document.activeElement?.closest?.("button, [data-oq-action]"))) return;
         const nextSettingsSignature = getSettingsRenderSignature();
         if (nextSettingsSignature !== state.settingsRenderSignature) {
           if (!state.focusedField) {
@@ -1469,7 +1471,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
           }
           return;
         }
-        if (state.focusedField) {
+        if (state.focusedField && !state.warmupSettingsRenderPending) {
           state.settingsRenderSignature = nextSettingsSignature;
         }
         return;

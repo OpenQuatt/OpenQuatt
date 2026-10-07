@@ -24,6 +24,8 @@ const bundle = await build({
       export { getSettingsRenderSignature } from "../js/src/core/render-signatures.js";
       export { setLocale } from "../js/src/i18n/index.js";
       export { commitSelect } from "../js/src/core/entity-write-actions.js";
+      export { handleFocusChange, handlePointerDown, handlePointerUp, handleClick } from "../js/src/core/entity-actions.js";
+      export { renderSettingsGroupContent } from "../js/src/settings/core.js";
       export { setRenderCallback } from "../js/src/core/render-scheduler.js";
     `,
     resolveDir: fileURLToPath(new URL(".", import.meta.url)),
@@ -39,7 +41,7 @@ const bundle = await build({
   }],
   write: false,
 });
-const { state, ENTITY_DEFS, SETTINGS_GROUPS, getSelectEntityOptions, getSettingsChoiceModel, getSettingsSelectModel, getSettingsSwitchModel, renderSettingsChoiceOption, renderSettingsCompactSwitchControl, renderSettingsSelectField, renderSettingsSwitchField, renderSettingsOptionCardsField, patchSettingsSelectControl, renderSettingsStorageSelectRow, renderControlledWarmupField, renderHeatingStrategyExplainCards, patchSettingsDom, getSettingsGroupHydrationKeys, syncEntities, getHeaderRenderSignature, getSettingsRenderSignature, setLocale, commitSelect, setRenderCallback } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
+const { state, ENTITY_DEFS, SETTINGS_GROUPS, getSelectEntityOptions, getSettingsChoiceModel, getSettingsSelectModel, getSettingsSwitchModel, renderSettingsChoiceOption, renderSettingsCompactSwitchControl, renderSettingsSelectField, renderSettingsSwitchField, renderSettingsOptionCardsField, patchSettingsSelectControl, renderSettingsStorageSelectRow, renderControlledWarmupField, renderHeatingStrategyExplainCards, patchSettingsDom, getSettingsGroupHydrationKeys, syncEntities, getHeaderRenderSignature, getSettingsRenderSignature, setLocale, commitSelect, handleFocusChange, handlePointerDown, handlePointerUp, handleClick, renderSettingsGroupContent, setRenderCallback } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
 const initial = structuredClone(state);
 
 test.beforeEach(() => {
@@ -84,11 +86,13 @@ function mount({ selects = [], choices = [], switches = [], pills = [], inputs =
   const groups = SETTINGS_GROUPS.map(({ id }) => node({ groupId: id }));
   const nav = { querySelectorAll: () => groups };
   const stack = node();
+  const section = node({ oqWarmupEnabled: warmupMarkup.match(/data-oq-warmup-enabled="([^"]+)"/)?.[1] || "" });
   const status = node();
   status.textContent = warmupMarkup.match(/data-oq-warmup-status>([^<]*)<\/span>/)?.[1] || "";
   const readings = Object.fromEntries([...warmupMarkup.matchAll(/data-oq-warmup-reading="([^"]+)">([^<]*)<\/strong>/g)]
     .map(([, key, text]) => [key, { ...node(), textContent: text }]));
-  stack.querySelector = selector => selector === "[data-oq-warmup-status]" && warmupMarkup ? status
+  stack.querySelector = selector => selector === "[data-oq-warmup-enabled]" && warmupMarkup ? section
+    : selector === "[data-oq-warmup-status]" && warmupMarkup ? status
     : readings[selector.match(/^\[data-oq-warmup-reading="([^"]+)"\]$/)?.[1]] || null;
   const collections = {
     "[data-oq-settings-field]": [card],
@@ -420,4 +424,157 @@ test("a failed select request restores both controls and releases their busy sta
   assert.equal(choice.getAttribute("aria-pressed"), "false");
   assert.equal(choice.disabled, false);
   assert.match(state.controlError, /connection lost/);
+});
+
+
+test("external warmup toggles defer structural rendering until blur without losing drafts", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const enabled of [false, true]) {
+      for (const locale of ["nl", "en"]) {
+        setLocale(locale, { persist: false });
+        state.settingsGroup = "heating";
+        state.warmupSettingsRenderPending = false;
+        state.entities = {
+          strategy: { value: "Power House" }, setupComplete: { value: true },
+          warmupEnabled: { value: enabled }, warmupStep: { value: 0.1 },
+        };
+        state.optionalMissingEntities = {};
+        for (const key of getSettingsGroupHydrationKeys()) {
+          if (!ENTITY_DEFS[key]?.optional && !state.entities[key]) state.entities[key] = {};
+          if (ENTITY_DEFS[key]?.optional && !state.entities[key]) state.optionalMissingEntities[key] = Date.now();
+        }
+        Object.assign(state, {
+          complete: true, lastEntitySyncAt: Date.now(), lastEntitySyncSuccessAt: Date.now(),
+          lastStaticEntitySyncAt: Date.now(), focusedField: "phKp", inputDrafts: { phKp: "1234" },
+        });
+        state.headerRenderSignature = getHeaderRenderSignature();
+        state.settingsRenderSignature = getSettingsRenderSignature();
+        const originalSignature = state.settingsRenderSignature;
+        const input = node({ oqField: "phKp" });
+        Object.assign(input, { type: "number", value: "1234", selectionStart: 1, selectionEnd: 3 });
+        document.activeElement = input;
+        mount({ inputs: [input], warmupMarkup: renderControlledWarmupField() });
+        let renders = 0;
+        let currentMarkup = "";
+        setRenderCallback(() => {
+          renders++;
+          currentMarkup = renderSettingsGroupContent();
+          state.settingsRenderSignature = getSettingsRenderSignature();
+          mount({ inputs: [input], warmupMarkup: renderControlledWarmupField() });
+        });
+        let remoteEnabled = !enabled;
+        globalThis.fetch = async (url, options) => {
+          assert.equal(url, "/openquatt/entities");
+          const keys = new URLSearchParams(options.body).get("entities").split("\n").map(line => line.split("\t")[0]);
+          return { ok: true, json: async () => ({
+            entities: Object.fromEntries(keys.filter(key => state.entities[key]).map(key =>
+              [key, key === "warmupEnabled" ? { value: remoteEnabled } : state.entities[key]])),
+            missing: keys.filter(key => !state.entities[key] && ENTITY_DEFS[key]?.optional),
+          }) };
+        };
+        await syncEntities();
+        assert.equal(state.entities.warmupEnabled.value, !enabled);
+        assert.equal(renders, 0);
+        assert.equal(state.warmupSettingsRenderPending, true);
+        assert.equal(state.settingsRenderSignature, originalSignature);
+        assert.equal(input.value, "1234");
+        assert.equal(input.selectionStart, 1);
+        assert.equal(input.selectionEnd, 3);
+        assert.equal(state.inputDrafts.phKp, "1234");
+        // A second poll cannot consume the pending structural change.
+        await syncEntities();
+        assert.equal(renders, 0);
+        assert.equal(state.warmupSettingsRenderPending, true);
+        // Moving to another input must keep the render deferred.
+        document.activeElement = node({ oqField: "phComfortAbove" });
+        handleFocusChange({ type: "focusout", target: input });
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.equal(renders, 0);
+        document.activeElement = null;
+        handleFocusChange({ type: "focusout", target: input });
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.equal(renders, 1);
+        assert.equal(state.warmupSettingsRenderPending, false);
+        assert.equal(state.inputDrafts.phKp, "1234");
+        assert.equal(/data-oq-field="warmupStep"/.test(currentMarkup), !enabled);
+        handleFocusChange({ type: "focusout", target: input });
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.equal(renders, 1);
+        // An external toggle back before blur needs no structural render.
+        state.focusedField = "phKp";
+        document.activeElement = input;
+        remoteEnabled = enabled;
+        await syncEntities();
+        assert.equal(state.warmupSettingsRenderPending, true);
+        remoteEnabled = !enabled;
+        await syncEntities();
+        assert.equal(state.warmupSettingsRenderPending, false);
+        document.activeElement = null;
+        handleFocusChange({ type: "focusout", target: input });
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.equal(renders, 1);
+      }
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    setLocale("nl", { persist: false });
+    setRenderCallback(null);
+  }
+});
+
+
+test("pending warmup rendering waits for pointerup and the following navigation click", async () => {
+  state.settingsGroup = "heating";
+  state.focusedField = "phKp";
+  state.warmupSettingsRenderPending = true;
+  let renders = 0;
+  let removedButton = false;
+  setRenderCallback(() => { renders++; removedButton = true; renderSettingsGroupContent(); });
+  const button = node({ oqAction: "select-settings-group", groupId: "cooling" });
+  button.closest = selector => selector === '[data-oq-action]' || selector === "button, [data-oq-action]" ? button : null;
+  document.activeElement = button;
+  handlePointerDown({ target: button });
+  handleFocusChange({ type: "focusout", target: node({ oqField: "phKp" }) });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(renders, 0);
+  assert.equal(removedButton, false);
+  handlePointerUp();
+  // The browser dispatches the click after pointerup, before the queued task.
+  assert.equal(removedButton, false);
+  state.loadingEntities = true;
+  handleClick({ target: button });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(state.settingsGroup, "cooling");
+  assert.equal(renders, 1);
+  assert.equal(state.warmupSettingsPointerActive, false);
+  assert.equal(state.warmupSettingsRenderPending, false);
+  // A pointer action without navigation still flushes the queued change.
+  state.settingsGroup = "heating";
+  state.warmupSettingsRenderPending = true;
+  document.activeElement = null;
+  handlePointerDown({ target: node() });
+  handlePointerUp();
+  assert.equal(renders, 1);
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(renders, 2);
+});
+
+
+test("Tab focus on a settings button is retained while a warmup render is pending", async () => {
+  state.settingsGroup = "heating";
+  state.warmupSettingsRenderPending = true;
+  let renders = 0;
+  setRenderCallback(() => { renders++; renderSettingsGroupContent(); });
+  const button = node();
+  button.closest = selector => selector === "button, [data-oq-action]" ? button : null;
+  document.activeElement = button;
+  handleFocusChange({ type: "focusout", target: node({ oqField: "phKp" }) });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(renders, 0);
+  assert.equal(state.warmupSettingsRenderPending, true);
+  document.activeElement = null;
+  handleFocusChange({ type: "focusout", target: button });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(renders, 1);
 });
