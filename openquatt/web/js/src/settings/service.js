@@ -662,6 +662,7 @@ import { formatNumber, t } from "../i18n/index.js";
     const boilerResultQualityRaw = getSettingsTextStatValue("boilerPowerTestResultQuality");
     const boilerResultQualityDenied = String(boilerResultQualityRaw || "").toUpperCase().includes("REJECTED:");
     const autotuneResultReady = /DONE|APPLIED/.test(String(autotuneStatus || "").toUpperCase());
+    const autotuneResultApplied = /^APPLIED\b/i.test(autotuneStatus);
     const autotuneTestingGains = autotuneTaskRunning && /^(VALIDATION_RECOVER|VALIDATION_RETRY|VALIDATING)/i.test(autotuneStatus);
     const boilerStatusDisplay = (() => {
       const upper = String(boilerStatus || "").toUpperCase();
@@ -685,7 +686,7 @@ import { formatNumber, t } from "../i18n/index.js";
           ? t("settingsService.waitCm100")
           : (autotuneTaskRunning
             ? autotuneProgress.phase
-            : (autotuneResultReady ? t("settingsService.readyToApply") : t("settingsService.readyToStart"))))
+            : (autotuneResultApplied ? t("settingsService.autotuneApplied") : autotuneResultReady ? t("settingsService.readyToApply") : t("settingsService.readyToStart"))))
         : t("settingsService.waitCm100"));
     const airPurgeTerminalStatus = state.busyAction === "airPurgeStart"
       ? ""
@@ -940,7 +941,9 @@ import { formatNumber, t } from "../i18n/index.js";
             ? t("settingsService.autotuneWait")
             : (autotuneTaskRunning
               ? (autotuneTestingGains ? t("settingsService.autotuneTestingGains") : t("settingsService.autotuneRunning"))
-              : (cm100Ready ? t("settingsService.autotuneReady") : t("settingsService.autotuneStartFirst"))),
+              : (autotuneResultReady && !autotuneStarting
+                ? (autotuneResultApplied ? t("settingsService.autotuneAppliedCopy") : t("settingsService.autotuneResultCopy"))
+                : (cm100Ready ? t("settingsService.autotuneReady") : t("settingsService.autotuneStartFirst")))),
           progressTask: "autotune",
           actions: `
             ${state.entities.flowAutotuneStart || state.entities.flowAutotuneAbort ? renderNamedToggleActionButton({

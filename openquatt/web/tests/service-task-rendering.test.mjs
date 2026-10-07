@@ -188,6 +188,34 @@ test("autotune shows current gains and hides old suggestions until a result is r
   assert.doesNotMatch(getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard(), /0,03|0,0008/);
 });
 
+test("autotune result copy explains applying the proposal and distinguishes an applied result", () => {
+  for (const [locale, resultCopy, appliedStatus, appliedCopy, idleCopy] of [
+    ["nl", "Bekijk de voorgestelde Kp/Ki en kies Toepassen", "Voorstel toegepast", "zijn toegepast als regelinstellingen", "Start de autotune wanneer je wilt"],
+    ["en", "Review the suggested Kp/Ki and select Apply", "Suggestion applied", "have been applied as controller settings", "Start autotune whenever you like"],
+  ]) {
+    setLocale(locale, { persist: false, applyDocument: false, notify: false });
+    for (const wire of ["DONE (CLOSED-LOOP)", "DONE (LIMITED)", "DONE (CLAMPED)"]) {
+      state.entities.flowAutotuneStatus = { state: wire };
+      const card = getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard();
+      assert.ok(card.includes(resultCopy));
+      assert.ok(!card.includes(idleCopy));
+    }
+    state.entities.flowAutotuneStatus = { state: "APPLIED" };
+    const task = getSettingsServiceModel().tasks.find(task => task.key === "autotune");
+    assert.equal(task.status, appliedStatus);
+    assert.ok(task.renderCard().includes(appliedCopy));
+    assert.ok(!task.renderCard().includes(resultCopy));
+    for (const wire of ["IDLE", "ABORTED"]) {
+      state.entities.flowAutotuneStatus = { state: wire };
+      assert.ok(!getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard().includes(resultCopy));
+    }
+    state.entities.flowAutotuneStatus = { state: "DONE (CLOSED-LOOP)" };
+    state.busyAction = "flowAutotuneStart";
+    assert.ok(!getSettingsServiceModel().tasks.find(task => task.key === "autotune").renderCard().includes(resultCopy));
+    state.busyAction = "";
+  }
+});
+
 test("autotune missing or empty gains are unavailable while a real zero remains valid", () => {
   for (const locale of ["nl", "en"]) {
     setLocale(locale, { persist: false, applyDocument: false, notify: false });
