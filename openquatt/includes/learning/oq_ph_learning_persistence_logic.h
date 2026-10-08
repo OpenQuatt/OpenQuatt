@@ -170,6 +170,51 @@ struct LearningJournalStore {
   }
 };
 
+// A one-use software-restart grant, separate from fallible flash invalidation.
+// Keep this POD uninitialized in RTC memory; a boot consumes it before collecting.
+struct DailyRestartTicket {
+  uint32_t magic;
+  uint32_t sequence;
+  uint32_t checkpoint_epoch;
+  uint32_t journal_crc;
+
+  void clear() volatile { magic = 0; }
+
+  bool matches(uint32_t saved_sequence, const LearningJournalRecords& records) const {
+    if (magic != 0x4F514452U || sequence != saved_sequence || !records.has_daily_checkpoint() ||
+        checkpoint_epoch != records.daily_checkpoint_epoch() || records.slot.size < kLearningJournalCrcBytes)
+      return false;
+    learning_journal_detail::Reader reader{records.slot.bytes, records.slot.size};
+    reader.position = records.slot.size - kLearningJournalCrcBytes;
+    return journal_crc == learning_journal_detail::read_u32(reader) && reader.ok;
+  }
+
+  DailyRestartTicket consume(bool software_restart) volatile {
+    const DailyRestartTicket result = software_restart && magic == 0x4F514452U
+                                          ? DailyRestartTicket{magic, sequence, checkpoint_epoch, journal_crc}
+                                          : DailyRestartTicket{};
+    clear();
+    return result;
+  }
+
+  void arm(const LearningJournalStore& store, bool verified_write) volatile {
+    clear();
+    if (!verified_write || !store.available || store.active_slot < 0 || store.active_slot > 1 ||
+        store.persisted_daily_checkpoint_epoch == 0)
+      return;
+    learning_journal_detail::Reader reader{store.bytes[store.active_slot], kLearningJournalMaxBytes};
+    reader.position = 8;
+    const size_t size = learning_journal_detail::read_u32(reader);
+    if (!reader.ok || size < kLearningJournalCrcBytes || size > reader.size) return;
+    reader.position = size - kLearningJournalCrcBytes;
+    journal_crc = learning_journal_detail::read_u32(reader);
+    sequence = store.sequence;
+    checkpoint_epoch = store.persisted_daily_checkpoint_epoch;
+    if (reader.ok) magic = 0x4F514452U;
+  }
+};
+static_assert(sizeof(DailyRestartTicket) == 16U, "Daily restart grant must stay small");
+
 }  // namespace oq_power_house::learning
 
 #endif  // OQ_PH_LEARNING_CORE_AVAILABLE

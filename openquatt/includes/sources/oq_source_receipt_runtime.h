@@ -34,6 +34,14 @@ struct LocalOutsideSelection {
   RawFloatReceipt hp1_receipt;
   RawFloatReceipt hp2_receipt;
 
+  bool invalid_received(const RawFloatReceipt& primary, const RawFloatReceipt& secondary = {}) const {
+    const bool first = primary.received && !primary.valid;
+    const bool second = secondary.received && !secondary.valid;
+    if (route == LocalOutsideRoute::HP1) return first;
+    if (route == LocalOutsideRoute::HP2) return second;
+    return first || second;
+  }
+
   void observe(LocalOutsideRoute next_route, LocalOutsideOperation next_operation, bool next_valid,
                const RawFloatReceipt& next_hp1_receipt, const RawFloatReceipt& next_hp2_receipt = {}) {
     route = next_route;

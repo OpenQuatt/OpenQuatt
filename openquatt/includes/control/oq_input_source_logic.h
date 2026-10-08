@@ -24,10 +24,11 @@ enum class Source : uint8_t {
 struct NumericSample {
   float value = NAN;
   bool valid = false;
+  bool invalid_received = false;
 };
 
 inline NumericSample numeric_sample(bool enabled, bool has_state, float value) {
-  return {value, enabled && has_state && isfinite(value)};
+  return {value, enabled && has_state && isfinite(value), has_state && !isfinite(value)};
 }
 
 constexpr float ROOM_SETPOINT_MIN_C = 5.0f;
@@ -38,7 +39,7 @@ inline bool room_setpoint_usable(float value) {
 }
 
 inline NumericSample room_setpoint_sample(bool enabled, bool has_state, float value) {
-  return {value, enabled && has_state && room_setpoint_usable(value)};
+  return {value, enabled && has_state && room_setpoint_usable(value), has_state && !room_setpoint_usable(value)};
 }
 
 struct BinarySample {
@@ -149,6 +150,7 @@ struct NumericSelection {
   Source route = Source::NONE;
   bool valid = false;
   bool held = false;
+  bool invalid_received = false;
 };
 
 struct HoldState {
@@ -189,25 +191,28 @@ inline NumericSelection select_direct(Source selected, const NumericSources& sou
       hold.remember(sample.value, now_ms, selected);
     else
       hold.reset();
-    return {sample.value, selected, true, false};
+    return {sample.value, selected, true, false, sample.invalid_received};
   }
   if (hold_ha && selected == Source::HA && hold.available(selected, now_ms, hold_ms)) {
-    return {hold.value, selected, true, true};
+    return {hold.value, selected, true, true, sample.invalid_received};
   }
-  return {NAN, selected, false, false};
+  return {NAN, selected, false, false, sample.invalid_received};
 }
 
 inline NumericSelection select_lowest_outside(const NumericSources& sources) {
   NumericSelection selected;
   const auto take = [&](Source route, const NumericSample& sample) {
     if (sample.valid && (!selected.valid || sample.value < selected.value)) {
-      selected = {sample.value, route, true, false};
+      selected = {sample.value, route, true, false, sample.invalid_received};
     }
   };
   take(Source::HA, sources.ha);
   take(Source::OUTDOOR, sources.outdoor);
   take(Source::API, sources.api);
   take(Source::MQTT, sources.mqtt);
+  if (!selected.valid)
+    selected.invalid_received = sources.ha.invalid_received || sources.outdoor.invalid_received ||
+                                sources.api.invalid_received || sources.mqtt.invalid_received;
   return selected;
 }
 
@@ -309,10 +314,12 @@ struct FlowSelection {
   FlowRoute route = FlowRoute::NONE;
   bool valid = false;
   FlowAggregateOperation aggregate_operation = FlowAggregateOperation::NONE;
+  bool invalid_received = false;
 };
 
 inline FlowSelection flow_sample(const NumericSample& sample, FlowRoute route) {
-  return {sample.valid ? sample.value : NAN, route, sample.valid};
+  return {sample.valid ? sample.value : NAN, route, sample.valid, FlowAggregateOperation::NONE,
+          sample.invalid_received};
 }
 
 inline FlowAggregateOperation observed_flow_aggregate_operation(const FlowInputs& input) {

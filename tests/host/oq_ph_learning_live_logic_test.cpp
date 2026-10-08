@@ -486,9 +486,172 @@ void test_boot_missing_operation_does_not_hide_hard_scalar_failure() {
   }
 }
 
+void test_pre_sntp_scalar_failures_remain_rejected_after_values_recover() {
+  for (int fault = 0; fault < 10; ++fault) {
+    auto input = boot_input();
+    input.epoch_s = 0;
+    missing_boot_receipt(input.hp1.mode);
+    if (fault == 0) input.hp2.water_out_c.value = 100.0f;
+    if (fault == 1) input.flow_lph.value = kPassiveMaximumFlowLph + 1.0f;
+    if (fault == 2) input.room_c.provenance = MeasurementProvenance::REPUBLISHED;
+    if (fault == 3) input.hp2.water_out_c.source = input.hp2.water_in_c.source;
+    if (fault == 4) input.hp2.water_out_c.value = 80.0f;  // Excessive calculated heat.
+    if (fault == 5) input.room_c.value = NAN;
+    if (fault == 6) input.setpoint_c.value = QualityConfig{}.setpoint_max_c + 1;
+    if (fault == 7) input.outside_c.value = QualityConfig{}.outside_min_c - 1;
+    if (fault == 8) input.hp2.water_out_c.valid = false;  // Received, unlike a missing startup receipt.
+    if (fault == 9) input.hp2.water_out_c.source.unit = PhysicalUnit::HP1;
+    bool recovery_allowed = true;
+    if (daily_restart_interruption_reason(input, false) != nullptr) recovery_allowed = false;
+    assert(!recovery_allowed);
+    input = boot_input();
+    assert(daily_restart_interruption_reason(input, false) == nullptr);
+    assert(!recovery_allowed);
+  }
+}
+
+void test_missing_or_stale_startup_scalars_do_not_block_recovery() {
+  auto input = boot_input();
+  input.epoch_s = 0;
+  missing_boot_receipt(input.room_c);
+  missing_boot_receipt(input.hp2.water_out_c);
+  assert(daily_restart_interruption_reason(input, false) == nullptr);
+  input = boot_input();
+  input.epoch_s = 0;
+  input.hp2.water_out_c.received_monotonic_ms = kNowMs - kHpLearningTiming.max_age_ms - 1;
+  assert(daily_restart_interruption_reason(input, false) == nullptr);
+}
+
+void test_selected_source_adapter_distinguishes_absence_from_received_invalid() {
+  using namespace oq_input_source;
+  auto input = boot_input();
+  input.epoch_s = 0;
+  NumericSources sources;
+  HoldState hold;
+  const auto adapt = [](const NumericSelection& selected, oq_sources::LearningSourceRoute route) {
+    return resolved_learning_measurement(
+        oq_sources::selected_source(selected.value, selected.valid, route, 4U,
+                                    oq_sources::LearningSourceProvenance::SELECTED_VALUE, {},
+                                    selected.invalid_received),
+        kNowMs);
+  };
+  const auto missing = select_outside(Source::AUTO, sources, kNowMs, 0, hold);
+  assert(missing.route == Source::NONE);
+  input.outside_c = adapt(missing, oq_sources::LearningSourceRoute::NONE);
+  assert(input.outside_c.received_monotonic_ms == 0U);
+  assert(daily_restart_interruption_reason(input, false) == nullptr);
+  sources.ha = numeric_sample(false, false, NAN);
+  input.room_c =
+      adapt(select_direct(Source::HA, sources, true, kNowMs, 0, hold), oq_sources::LearningSourceRoute::HA_ROOM);
+  assert(daily_restart_interruption_reason(input, false) == nullptr);
+  sources.ha = numeric_sample(false, true, NAN);  // Received NaN, not the startup default.
+  input.room_c =
+      adapt(select_direct(Source::HA, sources, true, kNowMs, 0, hold), oq_sources::LearningSourceRoute::HA_ROOM);
+  assert(strcmp(daily_restart_interruption_reason(input, false), "invalid_measurement") == 0);
+  sources.ha = numeric_sample(true, true, 20.0f);
+  select_direct(Source::HA, sources, true, kNowMs - 1000, 10000, hold);
+  sources.ha = numeric_sample(false, true, NAN);
+  const auto held_invalid = select_direct(Source::HA, sources, true, kNowMs, 10000, hold);
+  assert(held_invalid.valid && held_invalid.held && held_invalid.value == 20.0f);  // Controls unchanged.
+  input.room_c = adapt(held_invalid, oq_sources::LearningSourceRoute::HA_ROOM);
+  assert(strcmp(daily_restart_interruption_reason(input, false), "invalid_measurement") == 0);
+  sources.outdoor = numeric_sample(true, true, 7.0f);
+  const auto fallback = select_outside(Source::AUTO, sources, kNowMs, 0, hold);
+  assert(fallback.valid && fallback.route == Source::OUTDOOR && !fallback.invalid_received);
+  input.outside_c = adapt(fallback, oq_sources::LearningSourceRoute::OUTSIDE_AGGREGATE);
+  sources.ha = numeric_sample(false, true, 20.0f);  // Stale/unavailable but finite is only a gap.
+  input.room_c =
+      adapt(select_direct(Source::HA, sources, true, kNowMs, 0, hold), oq_sources::LearningSourceRoute::HA_ROOM);
+  assert(daily_restart_interruption_reason(input, false) == nullptr);
+  sources.ha = room_setpoint_sample(true, true, 100.0f);
+  input.setpoint_c =
+      adapt(select_direct(Source::HA, sources, true, kNowMs, 0, hold), oq_sources::LearningSourceRoute::HA_SETPOINT);
+  assert(strcmp(daily_restart_interruption_reason(input, false), "invalid_measurement") == 0);
+}
+
+void test_auto_and_flow_keep_invalid_evidence_without_inventing_startup_receipts() {
+  using namespace oq_input_source;
+  auto input = boot_input();
+  input.epoch_s = 0;
+  oq_sources::RawFloatReceipt receipt;
+  NumericSources sources;
+  sources.outdoor = numeric_sample(true, true, NAN);  // Derived template can already have state.
+  sources.outdoor.invalid_received = receipt.invalid_value_received();
+  HoldState hold;
+  auto outside = select_outside(Source::AUTO, sources, kNowMs, 0, hold);
+  assert(!outside.valid && !outside.invalid_received);
+  receipt.observe(NAN, kNowMs, false);
+  sources.outdoor.invalid_received = receipt.invalid_value_received();
+  outside = select_outside(Source::AUTO, sources, kNowMs, 0, hold);
+  assert(!outside.valid && outside.invalid_received);
+  input.outside_c = resolved_learning_measurement(
+      oq_sources::selected_source(outside.value, outside.valid, oq_sources::LearningSourceRoute::NONE, 4U,
+                                  oq_sources::LearningSourceProvenance::SELECTED_VALUE, {}, outside.invalid_received),
+      kNowMs);
+  assert(strcmp(daily_restart_interruption_reason(input, false), "invalid_measurement") == 0);
+  sources.api = numeric_sample(true, true, 7.0f);
+  outside = select_outside(Source::AUTO, sources, kNowMs, 0, hold);
+  assert(outside.valid && outside.route == Source::API && !outside.invalid_received);
+  input = boot_input();
+  input.epoch_s = 0;
+  FlowInputs flow;
+  flow.selected = Source::OUTDOOR;
+  flow.q_hardware = true;
+  flow.controller_mode = ControllerFlowMode::LOCAL;
+  flow.controller = numeric_sample(true, false, NAN);
+  auto selected = select_flow(flow);
+  assert(!selected.valid && !selected.invalid_received);
+  flow.controller = numeric_sample(true, true, NAN);
+  selected = select_flow(flow);
+  assert(!selected.valid && selected.invalid_received);
+  input.flow_lph = resolved_learning_measurement(
+      oq_sources::selected_source(selected.value, selected.valid, oq_sources::LearningSourceRoute::CONTROLLER_FLOW, 4U,
+                                  oq_sources::LearningSourceProvenance::SELECTED_VALUE, {}, selected.invalid_received),
+      kNowMs);
+  assert(strcmp(daily_restart_interruption_reason(input, false), "invalid_measurement") == 0);
+  receipt.observe(1000.0f, kNowMs, true);
+  receipt.invalidate();  // Availability changed, but no bad numeric sample was received.
+  assert(!receipt.invalid_value_received());
+}
+
+void test_filtered_outside_fault_checks_only_selected_contributors() {
+  oq_sources::RawFloatReceipt first, second;
+  first.observe(7.0f, kNowMs - 1000, true);
+  second.observe(8.0f, kNowMs - 1000, true);
+  oq_sources::LocalOutsideSelection local;
+  local.observe(oq_sources::LocalOutsideRoute::HP1, oq_sources::LocalOutsideOperation::NONE, true, first, second);
+  first.observe(120.0f, kNowMs, false);  // The clamp retains the earlier 7 C sensor state.
+  oq_input_source::NumericSources sources;
+  sources.outdoor = oq_input_source::numeric_sample(true, true, 7.0f);
+  sources.outdoor.invalid_received = local.invalid_received(first, second);
+  oq_input_source::HoldState hold;
+  auto selected = oq_input_source::select_outside(oq_input_source::Source::AUTO, sources, kNowMs, 0, hold);
+  assert(selected.valid && selected.value == 7.0f && selected.invalid_received);
+  auto input = boot_input();
+  input.epoch_s = 0;
+  input.outside_c = resolved_learning_measurement(
+      oq_sources::selected_source(selected.value, selected.valid, oq_sources::LearningSourceRoute::OUTSIDE_AGGREGATE,
+                                  4U, oq_sources::LearningSourceProvenance::SELECTED_VALUE, {},
+                                  selected.invalid_received),
+      kNowMs);
+  assert(strcmp(daily_restart_interruption_reason(input, false), "invalid_measurement") == 0);
+  local.route = oq_sources::LocalOutsideRoute::HP2;
+  assert(!local.invalid_received(first, second));  // Bad HP1 does not contribute.
+  local.route = oq_sources::LocalOutsideRoute::COMPOSITE;
+  assert(local.invalid_received(first, second));
+  sources.ha = oq_input_source::numeric_sample(true, true, 5.0f);
+  selected = oq_input_source::select_outside(oq_input_source::Source::AUTO, sources, kNowMs, 0, hold);
+  assert(selected.valid && selected.route == oq_input_source::Source::HA && !selected.invalid_received);
+}
+
 }  // namespace
 
 int main() {
+  test_filtered_outside_fault_checks_only_selected_contributors();
+  test_auto_and_flow_keep_invalid_evidence_without_inventing_startup_receipts();
+  test_selected_source_adapter_distinguishes_absence_from_received_invalid();
+  test_pre_sntp_scalar_failures_remain_rejected_after_values_recover();
+  test_missing_or_stale_startup_scalars_do_not_block_recovery();
   // A -> B -> A between learner ticks retains the same durable route but must
   // break collection through the resolver's revision, once per observed change.
   uint32_t revisions[4]{};
