@@ -48,6 +48,39 @@ function setup(t, fetchImplementation) {
   globalThis.fetch = fetchImplementation;
 }
 
+test("login fields preserve password-manager attributes, escaping and write locks", t => {
+  setup(t, () => { throw new Error("rendering must not request"); });
+  const value = 'draft"&<>';
+  state.authDraftUsername = value;
+  state.authDraftCurrentPassword = value;
+  state.authDraftNewPassword = value;
+  state.authDraftConfirmPassword = value;
+  const fields = [
+    ["currentPassword", "password", "current-password", null],
+    ["username", "text", "username", 32],
+    ["newPassword", "password", "new-password", 64],
+    ["confirmPassword", "password", "new-password", 64],
+  ];
+  for (const lock of ["none", "authBusy", "busy", "pending_reboot", "authWriteUncertain"]) {
+    state.authBusy = lock === "authBusy";
+    state.authWriteUncertain = lock === "authWriteUncertain";
+    state.authStatus = status({ busy: lock === "busy", pending_reboot: lock === "pending_reboot" });
+    const html = renderLoginModal();
+    for (const [field, type, autocomplete, maxlength] of fields) {
+      const input = html.match(new RegExp(`<input\\s[^>]*data-oq-auth-field="${field}"[^>]*>`))?.[0];
+      assert.ok(input, field);
+      assert.ok(input.includes(`type="${type}"`), field);
+      assert.ok(input.includes(`autocomplete="${autocomplete}"`), field);
+      assert.ok(input.includes('value="draft&quot;&amp;&lt;&gt;"'), field);
+      if (maxlength === null) assert.doesNotMatch(input, /maxlength=/);
+      else assert.ok(input.includes(`maxlength="${maxlength}"`), field);
+      assert.equal(/\sdisabled(?:\s|>)/.test(input), lock !== "none", `${field}: ${lock}`);
+    }
+  }
+  state.authStatus = status({ enabled: false });
+  assert.doesNotMatch(renderLoginModal(), /data-oq-auth-field=/, "initial login requires recovery");
+});
+
 for (const disable of [false, true]) {
   test(`login ${disable ? "disable" : "change"} confirms persistence before claiming success`, async t => {
     let posts = 0;

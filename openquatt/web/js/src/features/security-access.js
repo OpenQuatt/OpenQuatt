@@ -137,6 +137,15 @@ import { t } from "../i18n/index.js";
     });
   }
 
+  function renderLoginField(label, field, value, autocomplete, maxlength, disabled) {
+    return `<label class="oq-helper-modal-auth-field">
+      <span>${escapeHtml(label)}</span>
+      <input class="oq-helper-input" type="${autocomplete === "username" ? "text" : "password"}"
+        autocomplete="${autocomplete}" ${maxlength ? `maxlength="${maxlength}"` : ""}
+        data-oq-auth-field="${field}" value="${escapeHtml(value)}" ${disabled ? "disabled" : ""}>
+    </label>`;
+  }
+
   export function renderLoginModal() {
     const authStatus = state.authStatus || {};
     const authEnabled = authStatus.enabled === true;
@@ -157,56 +166,11 @@ import { t } from "../i18n/index.js";
         ${authFormIntro}
         <div class="oq-helper-modal-auth-stack">
           ${authEnabled
-            ? `
-              <label class="oq-helper-modal-auth-field">
-                <span>${escapeHtml(t("securityAccess.loginCurrentPass"))}</span>
-                <input
-                  class="oq-helper-input"
-                  type="password"
-                  autocomplete="current-password"
-                  data-oq-auth-field="currentPassword"
-                  value="${escapeHtml(state.authDraftCurrentPassword)}"
-                  ${writeBlocked ? "disabled" : ""}
-                >
-              </label>
-            `
+            ? renderLoginField(t("securityAccess.loginCurrentPass"), "currentPassword", state.authDraftCurrentPassword, "current-password", 0, writeBlocked)
             : ""}
-          <label class="oq-helper-modal-auth-field">
-            <span>${escapeHtml(t("securityAccess.loginNewUser"))}</span>
-            <input
-              class="oq-helper-input"
-              type="text"
-              autocomplete="username"
-              maxlength="32"
-              data-oq-auth-field="username"
-              value="${escapeHtml(state.authDraftUsername)}"
-              ${writeBlocked ? "disabled" : ""}
-            >
-          </label>
-          <label class="oq-helper-modal-auth-field">
-            <span>${escapeHtml(t("securityAccess.loginNewPass"))}</span>
-            <input
-              class="oq-helper-input"
-              type="password"
-              autocomplete="new-password"
-              maxlength="64"
-              data-oq-auth-field="newPassword"
-              value="${escapeHtml(state.authDraftNewPassword)}"
-              ${writeBlocked ? "disabled" : ""}
-            >
-          </label>
-          <label class="oq-helper-modal-auth-field">
-            <span>${escapeHtml(t("securityAccess.loginRepeatPass"))}</span>
-            <input
-              class="oq-helper-input"
-              type="password"
-              autocomplete="new-password"
-              maxlength="64"
-              data-oq-auth-field="confirmPassword"
-              value="${escapeHtml(state.authDraftConfirmPassword)}"
-              ${writeBlocked ? "disabled" : ""}
-            >
-          </label>
+          ${renderLoginField(t("securityAccess.loginNewUser"), "username", state.authDraftUsername, "username", 32, writeBlocked)}
+          ${renderLoginField(t("securityAccess.loginNewPass"), "newPassword", state.authDraftNewPassword, "new-password", 64, writeBlocked)}
+          ${renderLoginField(t("securityAccess.loginRepeatPass"), "confirmPassword", state.authDraftConfirmPassword, "new-password", 64, writeBlocked)}
         </div>
       `
       : `

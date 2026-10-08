@@ -26,6 +26,10 @@ class WebAuthMiddlewareTest(unittest.TestCase):
 
     def compile_and_run(self, name, component=False, recovery=False, wifi=False):
         spec = importlib.util.find_spec("esphome")
+        self.assertIsNotNone(
+            spec,
+            "Install the pinned test dependency: python3 -m pip install -r .github/requirements-esphome.txt",
+        )
         upstream = Path(spec.submodule_search_locations[0]) / "components/web_server_base"
         with tempfile.TemporaryDirectory(prefix="openquatt-auth-test-") as directory:
             binary = Path(directory) / name
