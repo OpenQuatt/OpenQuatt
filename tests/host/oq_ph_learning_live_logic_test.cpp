@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <math.h>
+#include <string.h>
 
 #define OQ_PH_LEARNING_HOST_TEST 1
 #include "../../openquatt/includes/learning/oq_ph_learning_live_logic.h"
@@ -344,14 +345,17 @@ void test_positive_unsafe_evidence_during_sntp_startup_prevents_recovery() {
   input.operation.control_mode_valid = false;
   assert(!known_daily_restart_interruption(input, false));
   assert(known_daily_restart_interruption(input, true));
+  assert(strcmp(daily_restart_interruption_reason(input, true), "boiler_heat") == 0);
   input.operation.control_mode_valid = true;
   input.operation.control_mode = LearningControlMode::HEATING;
   assert(!known_daily_restart_interruption(input, false));
   input.operation.control_mode = LearningControlMode::UNKNOWN;
   assert(known_daily_restart_interruption(input, false));
+  assert(strcmp(daily_restart_interruption_reason(input, false), "control_mode") == 0);
   input.operation.control_mode = LearningControlMode::HEATING;
   input.hp1.mode = physical_measurement(HeatPumpMode::COOLING, 2099, PhysicalUnit::HP1);
   assert(known_daily_restart_interruption(input, false));
+  assert(strcmp(daily_restart_interruption_reason(input, false), "hp_mode") == 0);
   input.hp1.defrost_active = physical_measurement(true, 2118, PhysicalUnit::HP1);
   assert(!known_daily_restart_interruption(input, false));  // Signed daily defrost remains valid.
   input.hp1.defrost_active.received_monotonic_ms = kNowMs - kHpLearningTiming.max_age_ms - 1;
@@ -361,8 +365,10 @@ void test_positive_unsafe_evidence_during_sntp_startup_prevents_recovery() {
   input.hp1.mode = physical_measurement(HeatPumpMode::OFF, 2099, PhysicalUnit::HP1);
   input.hp1.compressor_active = physical_measurement(true, 2103, PhysicalUnit::HP1);
   assert(known_daily_restart_interruption(input, false));
+  assert(strcmp(daily_restart_interruption_reason(input, false), "off_compressor_active") == 0);
   input.hp1.compressor_active.value = false;
   assert(!known_daily_restart_interruption(input, false));
+  assert(daily_restart_interruption_reason(input, false) == nullptr);
 }
 
 LearningSourceInput boot_input() {
@@ -439,6 +445,8 @@ void test_boot_missing_first_receipt_never_hides_unsafe_or_malformed_operation()
     assert(!daily_boot_sources_pending(input, batch));
     input.epoch_s = 0;  // The permanent runtime latch must see faults before UTC is ready.
     assert(known_daily_restart_interruption(input, false));
+    const char* expected = fault == 0 ? "hp_mode" : fault == 1 ? "off_compressor_active" : "invalid_operating_receipt";
+    assert(strcmp(daily_restart_interruption_reason(input, false), expected) == 0);
   }
   auto boiler = boot_input();
   missing_boot_receipt(boiler.hp1.mode);
@@ -448,6 +456,7 @@ void test_boot_missing_first_receipt_never_hides_unsafe_or_malformed_operation()
   service.boiler_heat.value = BoilerHeatState::NO_HEAT;
   service.operation.service_or_ota = true;
   assert(known_daily_restart_interruption(service, false));
+  assert(strcmp(daily_restart_interruption_reason(service, false), "service_or_ota") == 0);
   assert(!daily_boot_sources_pending(service, build_learning_snapshot(service, QualityConfig{})));
 }
 

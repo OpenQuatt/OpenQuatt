@@ -159,23 +159,29 @@ inline bool boot_operating_receipts_invalid(const LearningSourceInput& input) {
 
 // Positive operating evidence must invalidate boot recovery even before SNTP.
 // Missing boot receipts alone are not evidence of an unsafe operating phase.
-inline bool known_daily_restart_interruption(const LearningSourceInput& input, bool boiler_heat_observed) {
-  if (boiler_heat_observed || boot_operating_receipts_invalid(input) ||
-      (input.operation.control_mode_valid && input.operation.control_mode != LearningControlMode::HEATING) ||
-      (input.operation.service_or_ota_valid && input.operation.service_or_ota))
-    return true;
+inline const char* daily_restart_interruption_reason(const LearningSourceInput& input, bool boiler_heat_observed) {
+  if (boiler_heat_observed) return "boiler_heat";
+  if (boot_operating_receipts_invalid(input)) return "invalid_operating_receipt";
+  if (input.operation.control_mode_valid && input.operation.control_mode != LearningControlMode::HEATING)
+    return "control_mode";
+  if (input.operation.service_or_ota_valid && input.operation.service_or_ota) return "service_or_ota";
   const HeatPumpRawMeasurements* pumps[]{&input.hp1, &input.hp2};
   for (const auto* hp : pumps) {
     if (!hp->present || !live_measurement_fresh(hp->mode, input.monotonic_ms)) continue;
     const bool daily_defrost = hp->mode.value == HeatPumpMode::COOLING &&
                                live_measurement_fresh(hp->defrost_active, input.monotonic_ms) &&
                                hp->defrost_active.value;
-    if (hp->mode.value != HeatPumpMode::OFF && hp->mode.value != HeatPumpMode::HEATING && !daily_defrost) return true;
+    if (hp->mode.value != HeatPumpMode::OFF && hp->mode.value != HeatPumpMode::HEATING && !daily_defrost)
+      return "hp_mode";
     if (hp->mode.value == HeatPumpMode::OFF && live_measurement_fresh(hp->compressor_active, input.monotonic_ms) &&
         hp->compressor_active.value)
-      return true;
+      return "off_compressor_active";
   }
-  return false;
+  return nullptr;
+}
+
+inline bool known_daily_restart_interruption(const LearningSourceInput& input, bool boiler_heat_observed) {
+  return daily_restart_interruption_reason(input, boiler_heat_observed) != nullptr;
 }
 
 // Only a pending boot checkpoint may wait for initial operating receipts. Every

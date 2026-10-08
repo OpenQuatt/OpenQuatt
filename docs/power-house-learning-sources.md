@@ -122,5 +122,8 @@ De status toont de gekozen bronroute, geldigheid, blokkaderedenen, voortgang en
 geheugendiagnostiek. `collection.batch_restore_pending`, `batch_resume_status` en
 `batch_missing_energy_uncertainty_wh` tonen dagherstel en de onzekerheid van
 meetgaten (onbekend zolang het checkpoint nog niet hersteld is).
+`collection.batch_source_status` toont afzonderlijk de geldigheid voor de dagmeting;
+`batch_resume_reason` bewaart de reden waarom het laatste dagherstel werd afgewezen.
+De gecombineerde `source_status` kan daarnaast een beperking van het 1R1C-model tonen.
 Een bronroute verklaart welke bestaande controlwaarde is gebruikt;
 zij is geen extra meetinstelling.

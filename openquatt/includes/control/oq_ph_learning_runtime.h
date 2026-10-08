@@ -68,6 +68,8 @@ struct RuntimeStorage {
   OtaCollectionPause ota_pause;
   bool daily_restore_allowed = true;
   const char* daily_resume_status = "none";
+  const char* daily_resume_reason = "none";
+  SnapshotSourceStatus batch_source_status = SnapshotSourceStatus::OK;
   uint32_t thermal_epoch = 0;
   char json[kExportJsonBufferSize]{};
   DiagnosticRow rows[kMaxExportDiagnosticRows];
@@ -86,6 +88,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     if (!storage_) return;
     auto& state = storage_[0];
     state.daily_restore_pending = false;
+    if (state.daily_restore_allowed)
+      state.daily_resume_reason = rejection == LearningStatus::MIXED_CONTEXT ? "context_changed" : "paused";
     state.daily_restore_allowed = false;
     state.restart_prepared = false;
     pause_diagnostic_capture(state.diagnostic_capture);
@@ -105,7 +109,10 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     save_checkpoint_(state, clock.timestamp, oq_sources::monotonic_ms(), true);
     // Keep the RAM prefix even if storage failed; a failed OTA can resume it.
     state.restart_prepared = true;
-    if (state.journal.loaded && state.learner.batch_accumulator.active) state.daily_restore_allowed = true;
+    if (state.journal.loaded && state.learner.batch_accumulator.active) {
+      state.daily_restore_allowed = true;
+      state.daily_resume_reason = "none";
+    }
     state.learner.thermal_accumulator = {};
     state.learner.thermal_state.recent_data_valid = false;
   }
@@ -188,6 +195,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         (state.measurement_context_changed || context_bytes_changed || (sources_changed && !startup_resolution));
     if (context_changed) {
       state.daily_restore_pending = false;
+      if (state.daily_restore_allowed) state.daily_resume_reason = "context_changed";
       state.daily_restore_allowed = false;
     }
     if (context_changed && ++state.context_revision == 0) state.context_revision = 1;
@@ -238,6 +246,7 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     const auto calorimetry = evaluate_calorimetry(input, state.config.quality);
     const auto batch =
         build_learning_snapshot(input, state.config.quality, SnapshotPurpose::STRUCTURAL_BATCH, &calorimetry);
+    state.batch_source_status = batch.status;
     const auto dynamic =
         build_learning_snapshot(input, state.config.quality, SnapshotPurpose::THERMAL_DYNAMIC, &calorimetry);
     state.source_diagnostics = combined_snapshot_diagnostics(batch, dynamic);
@@ -270,6 +279,15 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
             decision == DailyResumeDecision::RESTORE &&
             state.pending_daily.restore_daily(state.learner.batch_accumulator, context, state.config.quality);
         state.daily_resume_status = restored ? "resuming" : "discarded";
+        if (restored)
+          state.daily_resume_reason = "none";
+        else if (state.daily_restore_allowed)
+          state.daily_resume_reason =
+              decision == DailyResumeDecision::RESTORE ? "checkpoint_invalid"
+              : epoch < state.pending_daily.daily_checkpoint_epoch() ||
+                      epoch - state.pending_daily.daily_checkpoint_epoch() > kDailyMaximumGapMs / 1000U
+                  ? "checkpoint_expired"
+                  : snapshot_source_status_name(batch.status);
         ESP_LOGI("oq_learning", "Daily checkpoint %s: source=%s, recovery_allowed=%d", state.daily_resume_status,
                  snapshot_source_status_name(batch.status), state.daily_restore_allowed);
         state.daily_restore_pending = false;
@@ -296,6 +314,8 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     if (resume_attempt) {
       const auto result = state.learner.diagnostics.last_batch_status;
       state.daily_resume_status = daily_resume_succeeded(result) ? "restored" : "discarded";
+      if (!daily_resume_succeeded(result) && strcmp(state.daily_resume_reason, "none") == 0)
+        state.daily_resume_reason = learning_status_name(result);
     } else if (strcmp(state.daily_resume_status, "restored") == 0 &&
                daily_start_before != state.learner.batch_accumulator.start_epoch_s) {
       state.daily_resume_status = "none";
@@ -475,7 +495,10 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     const bool boiler_heat_observed =
         id(oq_boiler_output_request) || id(boiler_relay).state || applied_ot_command_active ||
         (live_measurement_fresh(boiler_telemetry, now_ms) && boiler_telemetry.value == BoilerHeatState::HEAT_ACTIVE);
-    if (known_daily_restart_interruption(in, boiler_heat_observed)) state.daily_restore_allowed = false;
+    if (const char* reason = daily_restart_interruption_reason(in, boiler_heat_observed)) {
+      if (state.daily_restore_allowed) state.daily_resume_reason = reason;
+      state.daily_restore_allowed = false;
+    }
     // Manifest preparation (phase 1) still has fresh measurements. The actual
     // polling pause, not an early UI phase, marks the OTA measurement boundary.
     state.config.thermal_model.initial_heat_loss_w_per_k =
@@ -778,8 +801,10 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
       json.add("\"%s\"", learning_status_name(state.learner.diagnostics.last_batch_rejection));
     json.add(
         ",\"batch_restore_pending\":%s,\"batch_resume_status\":\"%s\","
+        "\"batch_source_status\":\"%s\",\"batch_resume_reason\":\"%s\","
         "\"batch_missing_energy_uncertainty_wh\":",
-        state.daily_restore_pending ? "true" : "false", state.daily_resume_status);
+        state.daily_restore_pending ? "true" : "false", state.daily_resume_status,
+        snapshot_source_status_name(state.batch_source_status), state.daily_resume_reason);
     json.number(state.daily_restore_pending ? NAN : batch_window.missing_energy_uncertainty_ws / 3600.0);
     json.add(
         "},\"control_mode\":%d,\"context_revision\":%u,\"journal_status\":\"%s\","
