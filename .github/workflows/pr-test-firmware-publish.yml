@@ -38,9 +38,10 @@ jobs:
         run: |
           # A rerun can leave older copies behind. Pin the newest nonexpired ID
           # instead of downloading an ambiguous name; validate its contents below.
+          set -o pipefail
           ARTIFACT_ID="$(gh api --paginate --slurp \
-            "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/artifacts?per_page=100" \
-            --jq '[.[].artifacts[] | select(.name == "pr-test-firmware-meta" and .expired == false)] | max_by(.id) | .id // empty')"
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/artifacts?per_page=100" | \
+            jq -r '[.[].artifacts[] | select(.name == "pr-test-firmware-meta" and .expired == false)] | max_by(.id) | .id // empty')"
           if [[ -z "${ARTIFACT_ID}" ]]; then
             echo "No test-firmware metadata found; publication was not requested."
             echo "found=false" >> "${GITHUB_OUTPUT}"
@@ -193,9 +194,10 @@ jobs:
             echo "Latest source build attempt is not successful." >&2
             exit 1
           fi
+          set -o pipefail
           ARTIFACT_IDS="$(gh api --paginate --slurp \
-            "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/artifacts?per_page=100" \
-            --jq "[.[].artifacts[] | select(.expired == false and (.name | startswith(\"openquatt-\") and endswith(\"-pr-${PR_NUMBER}\")))] | group_by(.name) | map(max_by(.id)) | map(.id | tostring) | join(\",\")")"
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/artifacts?per_page=100" | \
+            jq -r "[.[].artifacts[] | select(.expired == false and (.name | startswith(\"openquatt-\") and endswith(\"-pr-${PR_NUMBER}\")))] | group_by(.name) | map(max_by(.id)) | map(.id | tostring) | join(\",\")")"
           if [[ ! "${ARTIFACT_IDS}" =~ ^[1-9][0-9]*(,[1-9][0-9]*)*$ ]]; then
             echo "Missing or invalid firmware artifact IDs." >&2
             exit 1
