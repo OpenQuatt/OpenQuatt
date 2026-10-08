@@ -157,11 +157,42 @@ inline bool boot_operating_receipts_invalid(const LearningSourceInput& input) {
           input.boiler_heat.value == BoilerHeatState::UNKNOWN);
 }
 
-// Positive operating evidence must invalidate boot recovery even before SNTP.
+inline bool boot_scalar_receipts_invalid(const LearningSourceInput& input, const QualityConfig& quality) {
+  const auto invalid = [&](const PhysicalMeasurement<float>& value, float low, float high, PhysicalUnit unit,
+                           bool require_unit) {
+    return (!value.valid && value.received_monotonic_ms != 0U &&
+            value.provenance == MeasurementProvenance::SELECTED_VALUE) ||
+           source_detail::validate_available_value(value, low, high) != SnapshotSourceStatus::OK ||
+           boot_receipt_hard_failure(value, input.monotonic_ms, unit, false, require_unit);
+  };
+  if (!valid_quality_config(quality) ||
+      invalid(input.room_c, quality.room_min_c, quality.room_max_c, PhysicalUnit::SYSTEM, false) ||
+      invalid(input.setpoint_c, quality.setpoint_min_c, quality.setpoint_max_c, PhysicalUnit::SYSTEM, false) ||
+      invalid(input.outside_c, quality.outside_min_c, quality.outside_max_c, PhysicalUnit::SYSTEM, false) ||
+      invalid(input.flow_lph, 0.0f, kPassiveMaximumFlowLph, PhysicalUnit::SYSTEM, false))
+    return true;
+  const HeatPumpRawMeasurements* pumps[]{&input.hp1, &input.hp2};
+  const PhysicalUnit units[]{PhysicalUnit::HP1, PhysicalUnit::HP2};
+  for (size_t index = 0; index < 2; ++index) {
+    if (!pumps[index]->present) continue;
+    if (invalid(pumps[index]->water_in_c, quality.water_min_c, quality.water_max_c, units[index], true) ||
+        invalid(pumps[index]->water_out_c, quality.water_min_c, quality.water_max_c, units[index], true))
+      return true;
+  }
+  const auto calorimetry = evaluate_calorimetry(input, quality);
+  // Startup can lack topology/receipts; only an observed hard calorimetry error
+  // is sticky. Missing/stale/skewed samples may still recover normally.
+  return !calorimetry.valid && calorimetry.status != SnapshotSourceStatus::INVALID_CONFIGURATION &&
+         !source_detail::scalar_gap_status(calorimetry.status);
+}
+
+// Positive operating or scalar evidence invalidates boot recovery even before SNTP.
 // Missing boot receipts alone are not evidence of an unsafe operating phase.
-inline const char* daily_restart_interruption_reason(const LearningSourceInput& input, bool boiler_heat_observed) {
+inline const char* daily_restart_interruption_reason(const LearningSourceInput& input, bool boiler_heat_observed,
+                                                     const QualityConfig& quality = QualityConfig{}) {
   if (boiler_heat_observed) return "boiler_heat";
   if (boot_operating_receipts_invalid(input)) return "invalid_operating_receipt";
+  if (boot_scalar_receipts_invalid(input, quality)) return "invalid_measurement";
   if (input.operation.control_mode_valid && input.operation.control_mode != LearningControlMode::HEATING)
     return "control_mode";
   if (input.operation.service_or_ota_valid && input.operation.service_or_ota) return "service_or_ota";
@@ -180,8 +211,9 @@ inline const char* daily_restart_interruption_reason(const LearningSourceInput& 
   return nullptr;
 }
 
-inline bool known_daily_restart_interruption(const LearningSourceInput& input, bool boiler_heat_observed) {
-  return daily_restart_interruption_reason(input, boiler_heat_observed) != nullptr;
+inline bool known_daily_restart_interruption(const LearningSourceInput& input, bool boiler_heat_observed,
+                                             const QualityConfig& quality = QualityConfig{}) {
+  return daily_restart_interruption_reason(input, boiler_heat_observed, quality) != nullptr;
 }
 
 // Only a pending boot checkpoint may wait for initial operating receipts. Every
@@ -190,8 +222,10 @@ inline bool known_daily_restart_interruption(const LearningSourceInput& input, b
 inline bool daily_boot_sources_pending(const LearningSourceInput& input, const SnapshotBuildResult& batch,
                                        const QualityConfig& quality = QualityConfig{}) {
   if (!valid_quality_config(quality) || !source_detail::scalar_gap_status(batch.status) ||
-      known_daily_restart_interruption(input, live_measurement_fresh(input.boiler_heat, input.monotonic_ms) &&
-                                                  input.boiler_heat.value == BoilerHeatState::HEAT_ACTIVE))
+      known_daily_restart_interruption(input,
+                                       live_measurement_fresh(input.boiler_heat, input.monotonic_ms) &&
+                                           input.boiler_heat.value == BoilerHeatState::HEAT_ACTIVE,
+                                       quality))
     return false;
   source_detail::MeasurementMeta metadata[kMaxSourceMeasurements];
   size_t count = 0;
@@ -354,11 +388,14 @@ inline PhysicalMeasurement<float> resolved_learning_measurement(const oq_sources
                                                                 uint64_t now_ms) {
   PhysicalMeasurement<float> result;
   result.value = source.value;
-  result.valid = source.valid && isfinite(source.value) && source.route != oq_sources::LearningSourceRoute::NONE &&
-                 source.configuration_generation != 0U && now_ms != 0U;
+  result.valid = source.valid && !source.invalid_received && isfinite(source.value) &&
+                 source.route != oq_sources::LearningSourceRoute::NONE && source.configuration_generation != 0U &&
+                 now_ms != 0U;
   result.source = {PhysicalSourceKind::CONTROL_CONTRACT, static_cast<uint32_t>(source.route), PhysicalUnit::SYSTEM};
   result.source_generation = source.configuration_generation;
-  result.received_monotonic_ms = now_ms;
+  // Selected-value contracts have no physical timestamp. Do not invent receipt
+  // evidence for a source that is merely absent during startup.
+  result.received_monotonic_ms = source.valid || source.invalid_received ? now_ms : 0U;
   result.timing = live_detail::selected_timing(source.route);
   result.provenance = MeasurementProvenance::SELECTED_VALUE;
   return result;

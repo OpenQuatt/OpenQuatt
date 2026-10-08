@@ -500,11 +500,15 @@ void test_daily_crc_corruption_and_failed_clear_restore_the_previous_checkpoint(
   assert(save_day(store, flash, record, &daily, daily.last_epoch_s, 1000, 1, false, &thermal));
   const auto progressed = daily_checkpoint(1200);
   assert(save_day(store, flash, record, &progressed, progressed.last_epoch_s, 1001, 1, true, &thermal));
+  DailyRestartTicket rtc{};
+  rtc.arm(store, true);
+  const auto boot_ticket = rtc.consume(true);
   const size_t byte =
       kLearningJournalHeaderBytes + sizeof(kContext) + kLearningJournalRecordBytes + kLearningJournalThermalBytes + 20U;
   flash.bytes[store.active_slot][byte] ^= 1;
   LearningJournalStore reboot;
   assert(load(reboot, flash, view, progressed.last_epoch_s));
+  assert(!boot_ticket.matches(reboot.sequence, view));  // CRC fallback must not revive another grant.
   assert(view.daily_checkpoint_epoch() == daily.last_epoch_s && view[0].mean_heat_w == record.mean_heat_w);
   ThermalModelState restored_model;
   uint32_t epoch = 0;
@@ -552,9 +556,101 @@ void test_discard_and_reseed_same_epoch_clears_old_day_once_before_periodic_chec
   assert(restored.start_epoch_s == forced_replacement.start_epoch_s && restored.integrated_duration_s == 0);
 }
 
+void test_restart_ticket_is_one_use_and_bound_to_verified_day() {
+  Flash flash;
+  LearningJournalStore store;
+  LearningJournalRecords view;
+  assert(!load(store, flash, view));
+  const auto day = daily_checkpoint();
+  assert(save_day(store, flash, sample(), &day, day.last_epoch_s, 1000, 1, true));
+  DailyRestartTicket rtc{};
+  rtc.arm(store, true);
+  const auto boot = rtc.consume(true);
+  LearningJournalStore reboot;
+  assert(load(reboot, flash, view, day.last_epoch_s));
+  assert(boot.matches(reboot.sequence, view));
+  assert(!rtc.consume(true).matches(reboot.sequence, view));
+  assert(!boot.matches(reboot.sequence + 1, view));
+  auto corrupt = boot;
+  corrupt.journal_crc ^= 1;
+  assert(!corrupt.matches(reboot.sequence, view));
+  corrupt = boot;
+  ++corrupt.checkpoint_epoch;
+  assert(!corrupt.matches(reboot.sequence, view));
+  rtc.arm(store, true);
+  assert(!rtc.consume(false).matches(reboot.sequence, view));  // Power loss, reset or crash.
+  rtc.arm(store, false);
+  assert(!rtc.consume(true).matches(reboot.sequence, view));
+  rtc.arm(store, true);
+  rtc.clear();  // An aborted OTA cannot leave a grant for a later reset.
+  assert(!rtc.consume(true).matches(reboot.sequence, view));
+}
+
+void test_failed_day_invalidation_cannot_reuse_previous_restart_ticket() {
+  for (auto fault : {Fault::ERASE, Fault::TORN_WRITE, Fault::LOST_ACK, Fault::READ}) {
+    Flash flash;
+    LearningJournalStore store;
+    LearningJournalRecords view;
+    assert(!load(store, flash, view));
+    const auto day = daily_checkpoint();
+    const auto record = sample();
+    const auto thermal = learned_model();
+    assert(save_day(store, flash, record, &day, day.last_epoch_s, 1000, 1, true, &thermal));
+    DailyRestartTicket rtc{};
+    rtc.arm(store, true);
+    const auto first_boot = rtc.consume(true);
+    LearningJournalStore running;
+    assert(load(running, flash, view, day.last_epoch_s));
+    assert(first_boot.matches(running.sequence, view));
+    flash.fault = fault;
+    assert(!save_day(running, flash, record, nullptr, day.last_epoch_s + 30, 1001, 1, false, &thermal));
+    // The planned-restart save also fails: it must not arm from the old slot.
+    const bool saved = save_day(running, flash, record, nullptr, day.last_epoch_s + 31, 1002, 1, true, &thermal);
+    rtc.arm(running, saved);
+    const auto next_boot = rtc.consume(true);
+    flash.fault = Fault::NONE;
+    LearningJournalStore reboot;
+    assert(load(reboot, flash, view, day.last_epoch_s + 60));
+    assert(!next_boot.matches(reboot.sequence, view));
+    assert(view.record_count == 1 && view[0].mean_heat_w == record.mean_heat_w);
+    ThermalModelState model;
+    uint32_t epoch = 0;
+    assert(view.restore_thermal(model, ThermalModelConfig{}, 1000, 1, epoch));
+    assert(model.accepted_samples == thermal.accepted_samples);
+  }
+}
+
+void test_ota_retry_rearms_only_the_verified_checkpoint() {
+  Flash flash;
+  LearningJournalStore store;
+  LearningJournalRecords view;
+  assert(!load(store, flash, view));
+  const auto day = daily_checkpoint();
+  const bool saved = save_day(store, flash, sample(), &day, day.last_epoch_s, 1000, 1, true);
+  assert(saved);
+  DailyRestartTicket rtc{};
+  rtc.arm(store, saved);  // First OTA START prepares the prefix.
+  rtc.clear();            // ERROR/ABORT leaves RAM prepared, but revokes the grant.
+  const auto writes = flash.writes;
+  rtc.arm(store, saved);  // Retry START reuses only the verified prefix.
+  const auto boot = rtc.consume(true);
+  assert(flash.writes == writes);
+  LearningJournalStore reboot;
+  assert(load(reboot, flash, view, day.last_epoch_s));
+  assert(boot.matches(reboot.sequence, view));
+  // Boot consumes even if learner setup never runs and this boot crashes.
+  // A subsequent software reset must not rediscover the original grant.
+  assert(!rtc.consume(true).matches(reboot.sequence, view));
+  rtc.arm(store, false);  // Neither retry nor shutdown can promote a failed write.
+  assert(!rtc.consume(true).matches(reboot.sequence, view));
+}
+
 }  // namespace
 
 int main() {
+  test_ota_retry_rearms_only_the_verified_checkpoint();
+  test_restart_ticket_is_one_use_and_bound_to_verified_day();
+  test_failed_day_invalidation_cannot_reuse_previous_restart_ticket();
   test_discard_and_reseed_same_epoch_clears_old_day_once_before_periodic_checkpoint();
   test_daily_progress_uses_fifteen_minutes_and_history_alone_still_uses_hour();
   test_daily_active_to_inactive_is_cleared_immediately_once_and_reset_clears_markers();
