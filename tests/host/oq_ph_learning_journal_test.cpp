@@ -510,28 +510,28 @@ void test_invalid_day_never_encodes_as_valid_or_overlaps_completed_records() {
   auto daily = daily_checkpoint(now - 4200U);
   uint8_t bytes[kLearningJournalMaxBytes];
   size_t size = 123;
-  auto encode = [&](const SegmentAccumulator& candidate, uint32_t created = now) {
+  auto encode = [&](const SegmentAccumulator& candidate, uint32_t created) {
     return encode_learning_journal({&completed, 1, context()}, config().quality, 1, created, bytes, sizeof(bytes), size,
                                    nullptr, 0, &candidate);
   };
   assert(encode(daily, now - 1U) == LearningJournalStatus::INVALID_ARGUMENT && size == 0);
   auto invalid = daily;
   invalid.context_revision = 2;
-  assert(encode(invalid) == LearningJournalStatus::INVALID_ARGUMENT && size == 0);
+  assert(encode(invalid, now) == LearningJournalStatus::INVALID_ARGUMENT && size == 0);
   invalid = daily;
   invalid.heat_integral = NAN;
-  assert(encode(invalid) == LearningJournalStatus::INVALID_ARGUMENT && size == 0);
+  assert(encode(invalid, now) == LearningJournalStatus::INVALID_ARGUMENT && size == 0);
   invalid = daily;
   --invalid.start_epoch_s;
-  assert(encode(invalid) == LearningJournalStatus::INVALID_RECORD && size == 0);
-  assert(encode(daily) == LearningJournalStatus::OK);
+  assert(encode(invalid, now) == LearningJournalStatus::INVALID_RECORD && size == 0);
+  assert(encode(daily, now) == LearningJournalStatus::OK);
   const size_t daily_offset = size - kLearningJournalCrcBytes - kLearningJournalDailyBytes;
   write_u32(bytes, daily_offset, 2);  // Only 0/1 are valid serialized active flags.
   repair_crc(bytes, size);
   assert(inspect_learning_journal({bytes, size}, kContext, sizeof(kContext), now, config().quality).status ==
          LearningJournalStatus::INVALID_RECORD);
   SegmentAccumulator inactive;
-  assert(encode(inactive) == LearningJournalStatus::OK);
+  assert(encode(inactive, now) == LearningJournalStatus::OK);
   for (size_t i = daily_offset; i < daily_offset + kLearningJournalDailyBytes; ++i) assert(bytes[i] == 0);
   bytes[daily_offset + 4U] = 1;  // Inactive tails must be entirely zero.
   repair_crc(bytes, size);
