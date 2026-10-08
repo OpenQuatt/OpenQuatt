@@ -70,6 +70,12 @@ jobs:
           node-version-file: '.node-version'
           cache: npm
 
+      - name: Install web build dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build embedded web bundles
+        run: npm run build:web
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
