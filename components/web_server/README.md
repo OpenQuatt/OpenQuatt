@@ -21,7 +21,9 @@ merge commit `9309cf96b9710ad81d3e01a07a6f76637ba117a1`
 ([ESPHome #17800](https://github.com/esphome/esphome/pull/17800)).
 Compared with 2026.9.0, the C++ changes cover the SSE close lifecycle and URL
 storage (`std::string` to `StringRef`). The local `/events` string literal has
-the required lifetime. Its Python configuration is unchanged. Other components and
+the required lifetime and is explicitly wrapped in `StringRef` in `web_server.h`
+because the 2026.9.0 conversion constructor is explicit.
+Its Python configuration is unchanged. Other components and
 the local auth/recovery overrides remain on the existing baseline.
 
 Stalled streams close after 20 seconds without send progress. HTTPD owns the
