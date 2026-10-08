@@ -32,25 +32,25 @@ watertemperatuursensoren via het servicemenu kan de meetnauwkeurigheid verbetere
 
 ## Wanneer een record ontstaat
 
-Een learning-record vereist:
+Voor beide leerroutes zijn geldige geselecteerde waarden voor kamer, setpoint,
+buiten en flow nodig, met bruikbare water- en HP-statusmetingen voor de calorimetrie.
+De regeling moet in verwarmingsmodus staan, zonder service, OTA of actuele
+ketelwarmte. Een geldige bron is dus niet hetzelfde als een volledig learning-record:
+de vermogensmeting en bedrijfstoestand moeten ook bruikbaar zijn.
 
-- geldige geselecteerde waarden voor kamer, setpoint, buiten en flow;
-- voldoende bruikbare water- en HP-statusmetingen voor de calorimetrie;
-- verwarming zonder actieve begrenzing, service of OTA;
-- geen actuele ketelwarmte tijdens CM0, CM1 of CM2;
-- een stabiel setpoint en passende comfortstatus voor de structurele batch-fit.
+De woninglijn verzamelt volledige perioden van 24 uur. Normale CM0/CM1-pauzes,
+setpointwijzigingen en normale ontdooicycli tellen mee. Geldig nuldebiet levert nul
+watervermogen; bij pompuitloop blijft het gemeten vermogen, inclusief een eventuele
+negatieve waarde, meetellen. De compressor hoeft niet continu te draaien en er is
+geen eis van een constant setpoint of een stabiele watertemperatuur. Na de volledige
+dag wordt nog wel grove kamertemperatuurdrift gecontroleerd; zo'n dag kan worden
+afgewezen. Bestaande vieruursrecords behouden hun oorspronkelijke kwaliteitscontrole.
 
-Een geldige bron is dus niet hetzelfde als een volledig learning-record. De eerste stap
-accepteert de bestaande controlwaarde; de volgende stappen toetsen alleen voorwaarden
-die nodig zijn om werkelijk vermogen en thermisch gedrag te berekenen.
-
-Normale CM0/CM1-pauzes tellen mee in de verstreken meetduur. Geldig nuldebiet
-levert nul watervermogen; bij pompuitloop blijft het gemeten vermogen, inclusief
-een eventuele negatieve waarde, meetellen. De compressor hoeft niet vier uur
-ononderbroken te draaien. Ontbrekende metingen worden nooit vervangen door nul.
-
-De dynamische 1R1C-route kan een observatie gebruiken wanneer de structurele batch-fit
-nog wacht op setpoint-herstel. Beide routes blijven passief.
+De dynamische 1R1C-route verwerkt kortere perioden van opwarmen en afkoelen. Deze
+route sluit actieve begrenzing en beschermingsfasen uit; dat onderbreekt niet
+vanzelf de dagmeting voor de woninglijn. Beide routes blijven passief.
+Ontbrekende metingen worden nooit vervangen door nul. De voorwaarden voor korte
+meetonderbrekingen en hervatten na een herstart staan hieronder.
 
 ## Context en opslag
 
