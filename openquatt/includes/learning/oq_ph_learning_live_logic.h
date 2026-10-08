@@ -29,6 +29,18 @@ inline bool observe_source_revisions(uint32_t previous[4], const oq_sources::Res
   return changed;
 }
 
+// First source resolution during boot is not a change of an observed route.
+// Subsequent generations still catch A -> B -> A while another source is absent.
+inline bool observe_valid_source_revisions(uint32_t previous[4], const oq_sources::ResolvedLearningSource sources[4]) {
+  bool changed = false;
+  for (size_t index = 0; index < 4; ++index) {
+    if (!sources[index].valid) continue;
+    changed = changed || (previous[index] != 0 && previous[index] != sources[index].configuration_generation);
+    previous[index] = sources[index].configuration_generation;
+  }
+  return changed;
+}
+
 // These are measurement cadence limits, independent of selected-value holds.
 constexpr MeasurementTimingContract kHpLearningTiming{45000, 30000};
 constexpr MeasurementTimingContract kRoomLearningTiming{120000, 30000};
@@ -108,6 +120,108 @@ inline bool live_measurement_fresh(const PhysicalMeasurement<T>& measurement, ui
   return measurement.valid && measurement.source_generation != 0U && measurement.received_monotonic_ms != 0U &&
          measurement.received_monotonic_ms <= now_ms && measurement.timing.max_age_ms != 0U &&
          now_ms - measurement.received_monotonic_ms <= measurement.timing.max_age_ms;
+}
+
+template <typename T>
+inline bool boot_receipt_hard_failure(const PhysicalMeasurement<T>& measurement, uint64_t now_ms, PhysicalUnit unit,
+                                      bool allow_control_contract = false, bool require_unit = true) {
+  if (!measurement.valid && measurement.received_monotonic_ms == 0) return false;
+  // A received invalid physical value is evidence, unlike a receipt not yet seen.
+  if (!measurement.valid && measurement.provenance == MeasurementProvenance::PHYSICAL_RECEIPT) return true;
+  auto available = measurement;
+  // Check metadata of an unavailable control contract without accepting its value.
+  available.valid = true;
+  if (require_unit && available.source.unit != unit) return true;
+  source_detail::MeasurementMeta metadata[1];
+  size_t count = 0;
+  const auto status = source_detail::append_measurement(available, now_ms, metadata, count, allow_control_contract);
+  return status != SnapshotSourceStatus::OK && status != SnapshotSourceStatus::SOURCE_STALE;
+}
+
+inline bool boot_operating_receipts_invalid(const LearningSourceInput& input) {
+  const HeatPumpRawMeasurements* pumps[]{&input.hp1, &input.hp2};
+  const PhysicalUnit units[]{PhysicalUnit::HP1, PhysicalUnit::HP2};
+  for (size_t index = 0; index < 2; ++index) {
+    const auto& hp = *pumps[index];
+    if (!hp.present) continue;
+    if (boot_receipt_hard_failure(hp.mode, input.monotonic_ms, units[index]) ||
+        boot_receipt_hard_failure(hp.compressor_active, input.monotonic_ms, units[index]) ||
+        boot_receipt_hard_failure(hp.defrost_active, input.monotonic_ms, units[index]) ||
+        boot_receipt_hard_failure(hp.valve_transition_active, input.monotonic_ms, units[index]) ||
+        boot_receipt_hard_failure(hp.oil_return_active, input.monotonic_ms, units[index]))
+      return true;
+  }
+  return boot_receipt_hard_failure(input.boiler_heat, input.monotonic_ms, PhysicalUnit::SYSTEM,
+                                   input.boiler_heat.value == BoilerHeatState::NO_HEAT) ||
+         (live_measurement_fresh(input.boiler_heat, input.monotonic_ms) &&
+          input.boiler_heat.value == BoilerHeatState::UNKNOWN);
+}
+
+// Positive operating evidence must invalidate boot recovery even before SNTP.
+// Missing boot receipts alone are not evidence of an unsafe operating phase.
+inline const char* daily_restart_interruption_reason(const LearningSourceInput& input, bool boiler_heat_observed) {
+  if (boiler_heat_observed) return "boiler_heat";
+  if (boot_operating_receipts_invalid(input)) return "invalid_operating_receipt";
+  if (input.operation.control_mode_valid && input.operation.control_mode != LearningControlMode::HEATING)
+    return "control_mode";
+  if (input.operation.service_or_ota_valid && input.operation.service_or_ota) return "service_or_ota";
+  const HeatPumpRawMeasurements* pumps[]{&input.hp1, &input.hp2};
+  for (const auto* hp : pumps) {
+    if (!hp->present || !live_measurement_fresh(hp->mode, input.monotonic_ms)) continue;
+    const bool daily_defrost = hp->mode.value == HeatPumpMode::COOLING &&
+                               live_measurement_fresh(hp->defrost_active, input.monotonic_ms) &&
+                               hp->defrost_active.value;
+    if (hp->mode.value != HeatPumpMode::OFF && hp->mode.value != HeatPumpMode::HEATING && !daily_defrost)
+      return "hp_mode";
+    if (hp->mode.value == HeatPumpMode::OFF && live_measurement_fresh(hp->compressor_active, input.monotonic_ms) &&
+        hp->compressor_active.value)
+      return "off_compressor_active";
+  }
+  return nullptr;
+}
+
+inline bool known_daily_restart_interruption(const LearningSourceInput& input, bool boiler_heat_observed) {
+  return daily_restart_interruption_reason(input, boiler_heat_observed) != nullptr;
+}
+
+// Only a pending boot checkpoint may wait for initial operating receipts. Every
+// available field is checked, so an early missing HP1 field cannot hide HP2 faults.
+// The caller still requires a complete valid snapshot within the original deadline.
+inline bool daily_boot_sources_pending(const LearningSourceInput& input, const SnapshotBuildResult& batch,
+                                       const QualityConfig& quality = QualityConfig{}) {
+  if (!valid_quality_config(quality) || !source_detail::scalar_gap_status(batch.status) ||
+      known_daily_restart_interruption(input, live_measurement_fresh(input.boiler_heat, input.monotonic_ms) &&
+                                                  input.boiler_heat.value == BoilerHeatState::HEAT_ACTIVE))
+    return false;
+  source_detail::MeasurementMeta metadata[kMaxSourceMeasurements];
+  size_t count = 0;
+  const auto scalar = [&](const PhysicalMeasurement<float>& value, float low, float high, PhysicalUnit unit,
+                          bool require_unit) {
+    if (!value.valid) return true;
+    if (source_detail::validate_available_value(value, low, high) != SnapshotSourceStatus::OK ||
+        boot_receipt_hard_failure(value, input.monotonic_ms, unit, false, require_unit))
+      return false;
+    const auto status = source_detail::append_measurement(value, input.monotonic_ms, metadata, count);
+    return status == SnapshotSourceStatus::OK || status == SnapshotSourceStatus::SOURCE_STALE;
+  };
+  if (!scalar(input.room_c, quality.room_min_c, quality.room_max_c, PhysicalUnit::SYSTEM, false) ||
+      !scalar(input.setpoint_c, quality.setpoint_min_c, quality.setpoint_max_c, PhysicalUnit::SYSTEM, false) ||
+      !scalar(input.outside_c, quality.outside_min_c, quality.outside_max_c, PhysicalUnit::SYSTEM, false) ||
+      !scalar(input.flow_lph, 0.0f, kPassiveMaximumFlowLph, PhysicalUnit::SYSTEM, false))
+    return false;
+  const PhysicalMeasurement<float>* water[]{&input.hp1.water_in_c, &input.hp1.water_out_c, &input.hp2.water_in_c,
+                                            &input.hp2.water_out_c};
+  const size_t water_count = input.topology == HydronicTopology::DUO_SERIES ? 4 : 2;
+  for (size_t index = 0; index < water_count; ++index) {
+    const auto& value = *water[index];
+    if (!scalar(value, quality.water_min_c, quality.water_max_c, index < 2 ? PhysicalUnit::HP1 : PhysicalUnit::HP2,
+                true))
+      return false;
+  }
+  const auto calorimetry = evaluate_calorimetry(input, quality);
+  if (!calorimetry.valid && !source_detail::scalar_gap_status(calorimetry.status)) return false;
+  const auto skew = source_detail::validate_skew(metadata, count);
+  return skew == SnapshotSourceStatus::OK || skew == SnapshotSourceStatus::TIME_SKEW;
 }
 
 template <typename T>

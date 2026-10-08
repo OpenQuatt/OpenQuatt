@@ -88,8 +88,9 @@ function collectionCard(label, phase, status, waitingNote = "") {
   const target = duration(phase.targetSeconds);
   const progress = elapsed && target ? `${elapsed} / ${target}` : elapsed || target || t("houseLearning.status.timeUnknown");
   const intervals = Number.isFinite(phase.intervals) ? ` · ${t("houseLearning.status.intervalsCompleted", { count: formatNumber(phase.intervals) })}` : "";
+  if (phase.restorePending) return [label, t("houseLearning.status.restoringDay"), `${progress} · ${t("houseLearning.status.restoringDayCopy")}`, true, "orange"];
   if (phase.gapPending) return [label, t("houseLearning.status.waitShortMeasurement"), `${progress} · ${t("houseLearning.status.dailyGapHeld")}`, true, "orange"];
-  if (phase.active) return [label, t("houseLearning.status.collecting"), `${progress}${intervals}`, true, "green"];
+  if (phase.active) return [label, t("houseLearning.status.collecting"), `${progress}${intervals}${phase.resumeStatus === "restored" ? ` · ${t("houseLearning.status.dayRestored")}` : ""}`, true, "green"];
   return [label, t("houseLearning.status.waiting"), waitingNote || (elapsed && target ? `${progress}${intervals} · ${t("houseLearning.status.waitValidMeasurementLower")}` : t("houseLearning.status.waitValidMeasurement")), true, "orange"];
 }
 
@@ -216,7 +217,7 @@ export function renderHouseLearningStatusMarkup(status = state.houseLearningStat
   const historyNote = legacyCount > 0
     ? `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.cards.legacyRecords", { count: formatNumber(legacyCount) }))}</p>`
     : "";
-  const collectionNote = dailyCollection ? `<p class="oq-settings-action-note">${escapeHtml(t("houseLearning.status.dailyWindowCopy"))}</p>` : "";
+  const collectionNote = dailyCollection ? `<p class="oq-settings-action-note">${escapeHtml(t(status.collection?.batch?.resumeStatus != null ? "houseLearning.status.dailyRestartWindowCopy" : "houseLearning.status.dailyWindowCopy"))}</p>` : "";
   const batchDiagnosticCards = [
     [t("houseLearning.cards.batchHeatLossH"), metric(status.hBatch, "W/K"), t(dailyCollection ? "houseLearning.cards.batchHeatLossCopy" : "houseLearning.cards.stableBatchPeriodsCopy")],
     [t("houseLearning.cards.batchStartTemperature"), metric(status.t0Batch, "°C"), t("houseLearning.cards.batchStartTemperatureCopy")],
