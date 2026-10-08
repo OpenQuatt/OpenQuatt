@@ -45,7 +45,8 @@ kon blijven; dat bewijst geen begrensd opwarmvermogen. Vier instellingen zijn
 publiek: enabled, trigger, stap en staptijd. Maximum offset (0,5 K) en duur (8 uur)
 zijn compile-time constanten. De runtime kent geen strategiecodes; de adapter en
 mode-callback bewaken uitsluitend automatische Power House-regeling. Twee publieke
-meetwaarden tonen actieve sessie en effectief doel. Stopredenen blijven intern.
+meetwaarden tonen actieve sessie en effectief doel. Sessiestatus en verstreken
+duur zijn daarnaast beschikbaar via de service-API (zie sessiediagnostiek).
 
 Bij de standaardinstellingen geeft 17→20,5 °C een verhoging van 3,5 °C en start
 opwarming; 19→20,5 °C is precies 1,5 °C en start niet. Bij 18,0 °C gemeten wordt
@@ -152,9 +153,16 @@ gereproduceerd; de historische oorzaak is niet bewezen.
 
 De PR blijft draft voor beoordeling van deze meetgrenzen. De HIL-reeks gebruikte
 de oudere dev-basis met een NVS-eis van 126 entries: dev had 111 entries vrij,
-de kandidaat 108. Na de rebase op dev `8483e0c3`, inclusief de documentatieopbouw
-van #793, slaagt de configuratie-/NVS-controle voor Q WiFi Duo: 108 entries vrij
+de kandidaat 108. Bij de historische rebase op dev `8483e0c3`, inclusief de documentatieopbouw
+van #793, slaagde de configuratie-/NVS-controle voor Q WiFi Duo: 108 entries vrij
 bij de inmiddels door dev verlaagde eis van 100. Dit is geen nieuwe hardwareproef
 of bewijs dat de heapbevinding is opgelost. Geen fysieke koude powercycle of
 echte achtuursduurproef uitgevoerd; alleen de opwarmklok is in een private build
 ×96 versneld. Host- en harnesstests vervangen hardwarebewijs niet.
+
+Na samenvoeging met dev `3b9074be` op 7 oktober slaagt de ESPHome-configuratie,
+maar faalt de actuele NVS-budgetcontrole: 573 van 630 entries geschat gebruikt,
+57 vrij bij een eis van 100. De bijgewerkte estimator telt ook systeemrecords;
+de eerdere PASS is daarom geen actuele budgetkwalificatie. De warmup-instellingen
+gebruiken één blob van drie entries. De HIL-resultaten van 6 oktober gelden voor
+productbron `4830dece`, niet voor deze latere samenvoeging. De PR blijft draft.
