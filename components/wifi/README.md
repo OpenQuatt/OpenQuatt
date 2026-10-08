@@ -1,6 +1,6 @@
 # OpenQuatt Wi-Fi compatibility patch
 
-ESP32-bronnen uit ESPHome **2026.9.0** (`esphome/components/wifi`), onder de
+ESP32-bronnen uit ESPHome **2026.10.0b1** (`esphome/components/wifi`), tagcommit `33cf262616960c9549252f79ec540d19996715d4`, onder de
 upstream MIT-licentie: zie `../web_server_base/LICENSE-MIT`. Formatting volgt
 de repository; niet-ESP32 platformimplementaties zijn niet meegenomen.
 

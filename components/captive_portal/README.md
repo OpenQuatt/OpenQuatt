@@ -1,6 +1,7 @@
 # OpenQuatt captive portal compatibility patch
 
-ESP32-bronnen uit ESPHome **2026.9.0** (`esphome/components/captive_portal`),
+ESP32-bronnen uit ESPHome **2026.10.0b1** (`esphome/components/captive_portal`),
+tagcommit `33cf262616960c9549252f79ec540d19996715d4`,
 onder de upstream MIT-licentie: zie `../web_server_base/LICENSE-MIT`.
 
 Enige functionele wijzigingen: de API-key provisioningtimer sluit de portal/DNS
