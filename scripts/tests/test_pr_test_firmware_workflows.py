@@ -86,7 +86,7 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
         self.assertIn("artifact-ids: ${{ steps.firmware.outputs.artifact_ids }}", PUBLISH_WORKFLOW)
 
     def run_artifact_selection(
-        self, step_name: str, pages: list[dict], source_run: dict,
+        self, step_name: str, pages: list[dict], source_run: dict, *, api_failure: bool = False,
     ) -> tuple[subprocess.CompletedProcess, dict[str, str]]:
         step = PUBLISH_WORKFLOW.split(f"      - name: {step_name}\n", 1)[1]
         shell = textwrap.dedent(step.split("        run: |\n", 1)[1].split("\n      - name:", 1)[0])
@@ -98,19 +98,24 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
             gh = root / "gh"
             gh.write_text(
                 '#!/bin/bash\n'
+                'if [[ "$*" == *"--slurp"* && "$*" == *"--jq"* ]]; then\n'
+                '  echo "--slurp is not supported with --jq" >&2; exit 1\n'
+                'fi\n'
                 'if [[ "$*" == *"/artifacts?"* ]]; then\n'
-                '  exec jq -r "${@: -1}" "${ARTIFACT_FIXTURE}"\n'
+                '  if [[ "${API_FAILURE}" == "true" ]]; then exit 1; fi\n'
+                '  exec cat "${ARTIFACT_FIXTURE}"\n'
                 'else\n'
                 '  exec cat "${RUN_FIXTURE}"\n'
                 'fi\n'
             )
             gh.chmod(0o755)
             result = subprocess.run(
-                ["bash", "-e", "-o", "pipefail", "-c", shell],
+                ["bash", "-e", "-c", shell],
                 env={
                     **os.environ,
                     "PATH": f"{root}{os.pathsep}{os.environ['PATH']}",
                     "ARTIFACT_FIXTURE": str(root / "artifacts.json"),
+                    "API_FAILURE": "true" if api_failure else "false",
                     "RUN_FIXTURE": str(root / "run.json"),
                     "GITHUB_OUTPUT": str(root / "outputs"),
                     "GITHUB_REPOSITORY": "OpenQuatt/OpenQuatt",
@@ -177,6 +182,17 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertEqual({}, outputs)
         self.assertIn("Missing or invalid firmware artifact IDs", result.stderr)
+
+    @unittest.skipUnless(shutil.which("jq"), "workflow shell tests require jq")
+    def test_artifact_api_failure_does_not_publish_or_skip_as_missing_metadata(self) -> None:
+        for step in ("Find build metadata artifact", "Select current firmware artifacts"):
+            with self.subTest(step=step):
+                result, outputs = self.run_artifact_selection(
+                    step, [{"artifacts": []}], {"status": "completed", "conclusion": "success"},
+                    api_failure=True,
+                )
+                self.assertNotEqual(0, result.returncode)
+                self.assertEqual({}, outputs)
 
     def test_latest_attempt_is_checked_inside_publish_lock_and_before_release_mutation(self) -> None:
         publish_job = PUBLISH_WORKFLOW.split("  publish-pr-test-release:\n", 1)[1].split("  delete-pr-test-release:", 1)[0]
