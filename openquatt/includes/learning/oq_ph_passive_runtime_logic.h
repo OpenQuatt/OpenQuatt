@@ -90,7 +90,7 @@ inline DailyResumeDecision daily_resume_decision(bool enabled, bool valid_observ
   return valid_observation ? DailyResumeDecision::RESTORE : DailyResumeDecision::WAIT;
 }
 
-// Web OTA does not notify ERROR/ABORT when a client silently disconnects.
+// Some OTA implementations can miss ERROR/ABORT on a silent disconnect.
 // Progress renews this lease; a missing callback cannot pause learning forever.
 inline bool ota_notification_current(uint64_t last_notification_ms, uint64_t now_ms) {
   return now_ms >= last_notification_ms && now_ms - last_notification_ms <= kDailyMaximumGapMs;
