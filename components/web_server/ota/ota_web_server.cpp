@@ -1,9 +1,15 @@
+#ifndef OQ_WEB_OTA_HOST_TEST
 #include "ota_web_server.h"
+#endif
 #ifdef USE_WEBSERVER_OTA
 
+#include <new>
+
+#ifndef OQ_WEB_OTA_HOST_TEST
 #include "esphome/components/ota/ota_backend_factory.h"
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
+#endif
 
 #ifdef USE_CAPTIVE_PORTAL
 #include "esphome/components/captive_portal/captive_portal.h"
@@ -70,8 +76,65 @@ class OTARequestHandler : public AsyncWebHandler {
   bool ota_success_{false};
 
  private:
+#ifdef USE_ESP32
+  struct UploadSession {
+    OTARequestHandler* owner;
+  };
+  UploadSession* bind_upload_session_(AsyncWebServerRequest* request);
+  bool owns_upload_session_(AsyncWebServerRequest* request) const;
+  static void close_upload_session_(void* context);
+  UploadSession* active_session_{nullptr};
+#endif
+  void abort_upload_();
   ota::OTABackendPtr ota_backend_{nullptr};
 };
+
+#ifdef USE_ESP32
+OTARequestHandler::UploadSession* OTARequestHandler::bind_upload_session_(AsyncWebServerRequest* request) {
+  httpd_req_t* raw = *request;
+  if (raw->sess_ctx != nullptr) {
+    // Session contexts may belong to SSE or another handler. Never replace them.
+    if (raw->free_ctx != close_upload_session_) return nullptr;
+    auto* session = static_cast<UploadSession*>(raw->sess_ctx);
+    return session->owner == this ? session : nullptr;
+  }
+  auto* session = new (std::nothrow) UploadSession{this};
+  if (session == nullptr) return nullptr;
+  raw->sess_ctx = session;
+  raw->free_ctx = close_upload_session_;
+  return session;
+}
+
+bool OTARequestHandler::owns_upload_session_(AsyncWebServerRequest* request) const {
+  httpd_req_t* raw = *request;
+  return this->active_session_ != nullptr && raw->sess_ctx == this->active_session_ &&
+         raw->free_ctx == close_upload_session_;
+}
+
+void OTARequestHandler::close_upload_session_(void* context) {
+  auto* session = static_cast<UploadSession*>(context);
+  // IDF invokes free_ctx on its HTTPD task after the request handler returns.
+  // An old socket closing must not abort a newer upload on another socket.
+  if (session->owner->active_session_ == session) {
+    ESP_LOGW(TAG, "OTA upload connection closed before completion; aborting upload");
+    session->owner->abort_upload_();
+  }
+  delete session;
+}
+#endif
+
+void OTARequestHandler::abort_upload_() {
+#ifdef USE_ESP32
+  this->active_session_ = nullptr;
+#endif
+  if (!this->ota_backend_) return;
+  this->ota_backend_->abort();
+  this->ota_backend_.reset();
+  this->ota_success_ = false;
+#ifdef USE_OTA_STATE_LISTENER
+  this->parent_->notify_state_deferred_(ota::OTA_ABORT, 0.0f, 0);
+#endif
+}
 
 void OTARequestHandler::report_ota_progress_(AsyncWebServerRequest* request) {
   const uint32_t now = millis();
@@ -117,6 +180,16 @@ void OTARequestHandler::handleUpload(AsyncWebServerRequest* request, const Platf
   // fires a separate start-marker call with data==nullptr/len==0 before the
   // first real chunk; gate on len>0 so we only trigger once per upload.)
   if (index == 0 && len > 0) {
+#ifdef USE_ESP32
+    // Install close cleanup before announcing START or allocating a backend.
+    // Both cleanup and writes stay on the HTTPD task; only listener events defer.
+    auto* session = this->bind_upload_session_(request);
+    if (session == nullptr) {
+      this->ota_success_ = false;
+      ESP_LOGE(TAG, "Cannot own OTA upload session; refusing upload");
+      return;
+    }
+#endif
     // If a previous upload was interrupted (e.g. client closed the tab, TCP
     // reset) the backend from that session may still be open. Tear it down
     // so flash state doesn't get concatenated with the new image (which can
@@ -124,13 +197,11 @@ void OTARequestHandler::handleUpload(AsyncWebServerRequest* request, const Platf
     // the device once it reboots).
     if (this->ota_backend_) {
       ESP_LOGW(TAG, "New OTA upload received while previous session was still open; aborting previous session");
-      this->ota_backend_->abort();
-#ifdef USE_OTA_STATE_LISTENER
-      // Notify listeners that the previous session was aborted before the new one starts.
-      this->parent_->notify_state_deferred_(ota::OTA_ABORT, 0.0f, 0);
-#endif
-      this->ota_backend_.reset();
+      this->abort_upload_();
     }
+#ifdef USE_ESP32
+    this->active_session_ = session;
+#endif
 
     // Initialize OTA on first call
     this->ota_init_(filename.c_str());
@@ -151,6 +222,9 @@ void OTARequestHandler::handleUpload(AsyncWebServerRequest* request, const Platf
 
     this->ota_backend_ = ota::make_ota_backend();
     if (!this->ota_backend_) {
+#ifdef USE_ESP32
+      this->active_session_ = nullptr;
+#endif
       ESP_LOGE(TAG, "Failed to create OTA backend");
 #ifdef USE_OTA_STATE_LISTENER
       this->parent_->notify_state_deferred_(ota::OTA_ERROR, 0.0f,
@@ -166,6 +240,9 @@ void OTARequestHandler::handleUpload(AsyncWebServerRequest* request, const Platf
     if (error_code != ota::OTA_RESPONSE_OK) {
       ESP_LOGE(TAG, "OTA begin failed: %d", error_code);
       this->ota_backend_.reset();
+#ifdef USE_ESP32
+      this->active_session_ = nullptr;
+#endif
 #ifdef USE_OTA_STATE_LISTENER
       this->parent_->notify_state_deferred_(ota::OTA_ERROR, 0.0f, static_cast<uint8_t>(error_code));
 #endif
@@ -176,6 +253,9 @@ void OTARequestHandler::handleUpload(AsyncWebServerRequest* request, const Platf
   if (!this->ota_backend_) {
     return;
   }
+#ifdef USE_ESP32
+  if (!this->owns_upload_session_(request)) return;
+#endif
 
   // Process data
   if (len > 0) {
@@ -184,6 +264,9 @@ void OTARequestHandler::handleUpload(AsyncWebServerRequest* request, const Platf
       ESP_LOGE(TAG, "OTA write failed: %d", error_code);
       this->ota_backend_->abort();
       this->ota_backend_.reset();
+#ifdef USE_ESP32
+      this->active_session_ = nullptr;
+#endif
 #ifdef USE_OTA_STATE_LISTENER
       this->parent_->notify_state_deferred_(ota::OTA_ERROR, 0.0f, static_cast<uint8_t>(error_code));
 #endif
@@ -216,10 +299,18 @@ void OTARequestHandler::handleUpload(AsyncWebServerRequest* request, const Platf
 #endif
     }
     this->ota_backend_.reset();
+#ifdef USE_ESP32
+    this->active_session_ = nullptr;
+#endif
   }
 }
 
 void OTARequestHandler::handleRequest(AsyncWebServerRequest* request) {
+#ifdef USE_ESP32
+  // A body can exhaust Content-Length without a valid closing multipart boundary.
+  // Do not leave that upload open until a keep-alive socket eventually closes.
+  if (this->owns_upload_session_(request)) this->abort_upload_();
+#endif
   AsyncWebServerResponse* response;
   // Use the ota_success_ flag to determine the actual result
 #ifdef USE_ESP8266
