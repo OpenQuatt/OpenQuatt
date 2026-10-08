@@ -432,14 +432,11 @@ std::string OpenQuattEntities::get_csrf_token() const {
 }
 
 bool OpenQuattEntities::queue_curve_batch(const std::array<float, 6>& values) {
-  auto* base = web_server_base::global_web_server_base;
-  if (!this->curve_batch_available() || base == nullptr || base->is_recovery_active()) return false;
+  if (!this->curve_batch_available() || !openquatt_web_auth::normal_web_access_allowed()) return false;
   bool expected = false;
   if (!this->curve_batch_pending_.compare_exchange_strong(expected, true)) return false;
-  const uint32_t epoch = base->recovery_epoch();
-  this->defer([this, values, epoch]() {
-    auto* current_base = web_server_base::global_web_server_base;
-    if (current_base != nullptr && !current_base->is_recovery_active() && epoch == current_base->recovery_epoch()) {
+  this->defer([this, values]() {
+    if (openquatt_web_auth::normal_web_access_allowed()) {
       for (size_t index = 0; index < values.size(); ++index) {
         if (this->curve_points_[index]->state == values[index]) continue;
         auto call = this->curve_points_[index]->make_call();

@@ -576,7 +576,7 @@ test("normal OTA completes after its target version is inactive and installed", 
   assert.equal(isFirmwareInstallCompletionConfirmed(), true);
 });
 
-for (const scenario of ["slow-new-version", "unchanged-version", "no-update", "timeout", "reset-target", "missing-revision", "invalid-revision", "failed-baseline"]) {
+for (const scenario of ["slow-new-version", "unchanged-version", "no-update", "timeout", "reset-target", "missing-revision", "invalid-revision", "failed-baseline", "failed-baseline-overlap", "reboot", "source-change", "write-source-change", "stale-revision", "wrap-revision", "failed-poll", "failed-poll-overlap", "successful-poll-overlap"]) {
   test(`manual firmware check: ${scenario}`, async (t) => {
     const originalFetch = globalThis.fetch;
     const originalTimeout = window.setTimeout;
@@ -589,7 +589,6 @@ for (const scenario of ["slow-new-version", "unchanged-version", "no-update", "t
     });
     setPrToDevState();
     state.entities.firmwareUpdateTarget = { state: scenario === "reset-target" ? "alternate topology" : "current build" };
-    state.entities.firmwareUpdate.manifest_revision = 0;
     state.controlError = "";
     state.controlNotice = "";
     state.busyAction = "run-firmware-check";
@@ -609,22 +608,48 @@ for (const scenario of ["slow-new-version", "unchanged-version", "no-update", "t
     const oldVersion = state.entities.firmwareUpdate.latest_version;
     const newVersion = scenario === "unchanged-version" ? oldVersion : scenario === "no-update" ? "v0.49.0-pr.555.1321+222bde1" : "v0.54.0-dev.900+3b9074b";
     globalThis.fetch = async (url, options = {}) => {
+      if (url === "/openquatt/firmware/metadata") {
+        assert.equal(options.cache, "no-store");
+        const complete = polls >= 2 && scenario !== "timeout";
+        const baseline = scenario === "stale-revision" ? 5 : scenario === "wrap-revision" ? 0xffffffff : 0;
+        const metadata = { boot_id: complete && scenario === "reboot" ? "0000000000000002" : "0000000000000001",
+          manifest_revision: complete ? scenario === "stale-revision" ? 4 : scenario === "wrap-revision" ? 0 : 1 : baseline };
+        if (scenario === "missing-revision") delete metadata.manifest_revision;
+        if (scenario === "invalid-revision") metadata.manifest_revision = -1;
+        if (scenario === "successful-poll-overlap" && polls >= 3) {
+          // An older background read arrives during revisionAfter. The ready
+          // notice must still display the result this operation proved fresh.
+          state.entities.firmwareUpdate = { ...state.entities.firmwareUpdate, latest_version: oldVersion, value: oldVersion };
+        }
+        return { ok: true, json: async () => metadata };
+      }
       if (url !== "/openquatt/entities") {
         writes.push(url);
+        if (scenario === "write-source-change") {
+          state.entities.firmwareUpdateChannel = { state: "main", value: "main" };
+        }
         return { ok: true };
       }
-      if (scenario === "failed-baseline") return { ok: false, status: 503 };
+      if (scenario.startsWith("failed-baseline")) {
+        if (scenario === "failed-baseline-overlap") state.entities.firmwareUpdate = { ...state.entities.firmwareUpdate };
+        return { ok: false, status: 503 };
+      }
       const keys = new URLSearchParams(options.body).get("entities").split("\n").map((line) => line.split("\t")[0]);
       const isPoll = keys.includes("firmwareUpdateStatus");
       if (isPoll) {
         polls += 1;
         assert.equal(state.updateCheckBusy, true);
       }
+      if (scenario.startsWith("failed-poll") && isPoll) {
+        // A delayed old background refresh/SSE can replace global state while
+        // every request belonging to this manual check fails.
+        if (scenario === "failed-poll-overlap") state.entities.firmwareUpdate = { ...state.entities.firmwareUpdate };
+        return { ok: false, status: 503 };
+      }
       const complete = isPoll && polls >= 3 && scenario !== "timeout";
       const entities = Object.fromEntries(keys.map((key) => [key, { ...(state.entities[key] || {}) }]));
       if (isPoll) {
         entities.firmwareUpdate = {
-          manifest_revision: complete ? 1 : 0,
           state: complete && scenario === "no-update" ? "NO UPDATE" : "UPDATE AVAILABLE",
           current_version: "v0.49.0-pr.555.1321+222bde1",
           latest_version: complete ? newVersion : oldVersion,
@@ -632,14 +657,13 @@ for (const scenario of ["slow-new-version", "unchanged-version", "no-update", "t
           release_url: "https://github.com/OpenQuatt/OpenQuatt/releases/tag/dev-latest",
         };
       }
-      if (scenario === "missing-revision") delete entities.firmwareUpdate.manifest_revision;
-      if (scenario === "invalid-revision") entities.firmwareUpdate.manifest_revision = -1;
+      if (scenario === "source-change" && complete) entities.firmwareUpdateChannel = { state: "main", value: "main" };
       return { ok: true, json: async () => ({ entities, missing: [] }) };
     };
     const operation = triggerFirmwareUpdateCheck();
     await triggerFirmwareUpdateCheck(); // An overlapping click must not start another request.
     await operation;
-    if (scenario === "missing-revision" || scenario === "invalid-revision" || scenario === "failed-baseline") {
+    if (scenario === "missing-revision" || scenario === "invalid-revision" || scenario.startsWith("failed-baseline")) {
       assert.equal(writes.length, 0);
       assert.equal(state.updateCheckBusy, false);
       assert.equal(state.controlNotice, "");
@@ -649,8 +673,8 @@ for (const scenario of ["slow-new-version", "unchanged-version", "no-update", "t
     assert.equal(writes.length, 1);
     assert.match(writes[0], scenario === "reset-target" ? /select.*set/ : /button.*press/);
     assert.equal(state.updateCheckBusy, false);
-    if (scenario === "timeout") {
-      assert.equal(polls, 25);
+    if (["timeout", "reboot", "source-change", "write-source-change", "stale-revision", "failed-poll", "failed-poll-overlap"].includes(scenario)) {
+      assert.equal(polls, scenario === "write-source-change" ? 0 : scenario === "source-change" ? 3 : 25);
       assert.equal(state.controlNotice, "");
       assert.match(state.controlError, /Geen nieuw controleresultaat/);
     } else {
@@ -664,7 +688,7 @@ for (const scenario of ["slow-new-version", "unchanged-version", "no-update", "t
 }
 
 
-for (const phase of ["baseline", "write", "wait", "poll"]) {
+for (const phase of ["baseline", "metadata", "write", "wait", "poll", "metadata-poll"]) {
   test(`closing manual firmware check during ${phase} cancels polling without repeating the write`, async (t) => {
     const originalFetch = globalThis.fetch;
     const originalTimeout = window.setTimeout;
@@ -678,7 +702,6 @@ for (const phase of ["baseline", "write", "wait", "poll"]) {
     });
     setPrToDevState();
     state.entities.firmwareUpdateTarget = { state: "current build" };
-    state.entities.firmwareUpdate.manifest_revision = 0;
     state.controlError = "";
     state.controlNotice = "";
     state.busyAction = "run-firmware-check";
@@ -689,6 +712,7 @@ for (const phase of ["baseline", "write", "wait", "poll"]) {
     let releaseRequest;
     const pending = new Promise((resolve) => { releaseRequest = resolve; });
     let reads = 0;
+    let metadataReads = 0;
     let writes = 0;
     let reconciled = false;
     window.setTimeout = (callback, delay) => {
@@ -703,6 +727,16 @@ for (const phase of ["baseline", "write", "wait", "poll"]) {
       return originalTimeout(callback, delay);
     };
     globalThis.fetch = async (url, options = {}) => {
+      if (url === "/openquatt/firmware/metadata") {
+        reads += 1;
+        metadataReads += 1;
+        if (!reconciled && ((phase === "metadata" && metadataReads === 1)
+          || (phase === "metadata-poll" && metadataReads === 2))) {
+          reachPhase();
+          await pending;
+        }
+        return { ok: true, json: async () => ({ boot_id: "0000000000000001", manifest_revision: reconciled ? 1 : 0 }) };
+      }
       if (url !== "/openquatt/entities") {
         writes += 1;
         if (phase === "write") {
@@ -721,7 +755,6 @@ for (const phase of ["baseline", "write", "wait", "poll"]) {
       const entities = Object.fromEntries(keys.map((key) => [key, { ...(state.entities[key] || {}) }]));
       entities.firmwareUpdate = {
         state: "UPDATE AVAILABLE",
-        manifest_revision: reconciled ? 1 : 0,
         current_version: "v0.49.0-pr.555.1321+222bde1",
         latest_version: "v0.54.0-dev.900+3b9074b",
         value: "v0.54.0-dev.900+3b9074b",
@@ -737,19 +770,19 @@ for (const phase of ["baseline", "write", "wait", "poll"]) {
     // Closing/reopening while an issued request is pending must not allow a second write.
     if (phase !== "wait") {
       await triggerFirmwareUpdateCheck();
-      assert.equal(writes, phase === "baseline" ? 0 : 1);
+      assert.equal(writes, phase === "baseline" || phase === "metadata" ? 0 : 1);
     }
     releaseRequest();
     await operation;
     assert.equal(reads, readsOnClose, "closing must stop additional polls");
-    assert.equal(writes, phase === "baseline" ? 0 : 1);
+    assert.equal(writes, phase === "baseline" || phase === "metadata" ? 0 : 1);
     assert.equal(state.controlError, "", "cancellation is not a failed firmware request");
     assert.equal(state.controlNotice, "", "cancellation must not report success");
     reconciled = true;
     handleFirmwareAction("open-update-modal");
     await hydrateFirmwareUpdateModal();
     assert.equal(state.updateCheckBusy, false);
-    assert.equal(state.entities.firmwareUpdate.manifest_revision, 1);
-    assert.equal(writes, phase === "baseline" ? 0 : 1, "reopening only reads current device state");
+    assert.equal(state.entities.firmwareUpdate.latest_version, "v0.54.0-dev.900+3b9074b");
+    assert.equal(writes, phase === "baseline" || phase === "metadata" ? 0 : 1, "reopening only reads current device state");
   });
 }

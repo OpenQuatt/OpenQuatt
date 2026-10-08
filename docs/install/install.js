@@ -93,7 +93,7 @@ const IMPROV_STATE = {
 const IMPROV_ERROR_MESSAGES = {
   1: "Ongeldig Improv-pakket ontvangen.",
   2: "De module herkende het Improv-commando niet.",
-  3: "Verbinden met dit Wi-Fi-netwerk is niet gelukt.",
+  3: "Verbinden met of opslaan van dit Wi-Fi-netwerk is niet gelukt.",
   254: "Wi-Fi instellen duurde te lang.",
   255: "Onbekende Improv-fout.",
 };

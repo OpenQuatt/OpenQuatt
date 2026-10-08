@@ -18,6 +18,7 @@ CONFIG_SCHEMA = cv.Schema(
 
 
 async def to_code(config):
+    cg.add_define("USE_OPENQUATT_CAPTIVE_PORTAL_ROUTER")
     cg.add_global(openquatt_captive_portal_router_ns.using)
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)

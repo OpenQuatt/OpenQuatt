@@ -40,38 +40,41 @@ form,section{padding:1.5rem 0;border-bottom:1px solid #e5e7eb}#end{margin-top:1.
 <label for="username">Gebruikersnaam</label><input id="username" name="new_username" maxlength="32" required autocomplete="username">
 <label for="password">Nieuw wachtwoord</label><input id="password" name="new_password" type="password" maxlength="64" required autocomplete="new-password">
 <button>Login opslaan</button>
-<small>De nieuwe login wordt actief wanneer je herstel afsluit of het venster verloopt.</small>
+<small>Na gecontroleerde opslag herstart de controller. De nieuwe login wordt bij die boot actief.</small>
 </form><section>
 <h2>Home Assistant opnieuw koppelen</h2>
 <p>Verwijder de opgeslagen API-beveiligingssleutel. Alle API-clients verliezen hun koppeling en de controller herstart. Daarna kan Home Assistant 10 minuten lang opnieuw koppelen. Home Assistant kan dezelfde sleutel opnieuw instellen.</p>
 <button id="api-reset" type="button">API-beveiliging resetten</button></section>
 <section id="wifi" hidden><h2>Wi-Fi opnieuw instellen</h2>
 <p>Wis de opgeslagen Wi-Fi-gegevens en herstart. Verbind daarna met het OpenQuatt access point en stel Wi-Fi opnieuw in. Web-login, API-beveiliging en overige instellingen blijven behouden.</p>
-<p>Dit kan ook zonder browser: houd de herstelknop 10 seconden vast.</p>
+<p>Dit kan ook zonder browser: houd de herstelknop 10 seconden vast en laat hem daarna los.</p>
 <button id="wifi-reset" type="button">Wi-Fi wissen en herstarten</button></section>
 <button id="end" type="button">Herstel afsluiten</button></fieldset>
 </main>
 <script>
-let state,waiting=false,pendingPath='';
+let state,waiting=false,accepted=false,pendingGeneration=0,pendingToken='',readSequence=0;
 const status=document.querySelector('#status'),message=document.querySelector('#message'),actions=document.querySelector('#actions');
 async function refresh(){
+ const sequence=++readSequence;
  try{
-  const response=await fetch('/recovery/status',{cache:'no-store'});
+  const response=await fetch('/recovery/status',{cache:'no-store',signal:AbortSignal.timeout(5000)});
   if(!response.ok)throw Error('Status niet beschikbaar');
-  state=await response.json();actions.disabled=!state.active||state.busy||waiting;
+  const next=await response.json();if(sequence!==readSequence)return;
+  state=next;actions.disabled=!state.active||state.busy||waiting;
   document.querySelector('#wifi').hidden=!state.capabilities.wifi_reset;
   status.textContent=state.active?'Herstel actief · '+Math.ceil(state.expires_in_ms/60000)+' min resterend':'Houd de fysieke herstelknop 5 seconden ingedrukt en laat hem daarna los.';
   if(state.active&&state.button_held&&state.next_threshold_ms&&state.capabilities.wifi_reset)status.textContent+=' · Laat nu los, of houd nog '+Math.ceil(state.next_threshold_ms/1000)+' s vast om Wi-Fi te wissen.';
-  if(waiting&&!state.busy){waiting=false;message.textContent=pendingPath==='/wifi/reset'?'Controller bereikbaar. Stel Wi-Fi in via het OpenQuatt access point.':pendingPath==='/api-security/reset'?'Controller bereikbaar. Controleer de koppeling in Home Assistant.':state.active?'Login opgeslagen. Sluit herstel af om hem te gebruiken.':'Herstel afgesloten. Open de gewone webinterface.';actions.disabled=!state.active;}
-  if(state.error)message.textContent='Herstelactie mislukt. Er is niet herstart. Probeer opnieuw.';
- }catch(error){actions.disabled=true;status.textContent='Geen verbinding. Controleer je netwerk.';}
+  const matches=state.generation===pendingGeneration&&state.csrf_token===pendingToken;
+  if(waiting&&!matches){message.textContent='Controller opnieuw bereikbaar. Controleer de nieuwe login of koppeling; de vorige actie is niet bevestigd.';actions.disabled=true;}
+  if(state.error&&(!waiting||(accepted&&matches&&!state.busy))){waiting=false;message.textContent='Herstelactie mislukt. Controleer de instellingen en kies expliciet een nieuwe actie.';actions.disabled=!state.active||state.busy;}
+ }catch(error){if(sequence!==readSequence)return;actions.disabled=true;status.textContent='Geen verbinding. Controleer je netwerk.';}
 }
 async function post(path,data=new URLSearchParams()){
  if(!state?.active||state.busy||waiting)return;
  data.set('csrf_token',state.csrf_token);data.set('generation',String(state.generation));
  actions.disabled=true;message.textContent='Bezig…';
- try{const response=await fetch(path,{method:'POST',body:data});if(!response.ok)throw Error();waiting=true;pendingPath=path;await refresh();}
- catch(error){message.textContent='Actie niet bevestigd. Controleer de status voordat je opnieuw probeert.';await refresh();}
+ try{++readSequence;waiting=true;accepted=false;pendingGeneration=state.generation;pendingToken=state.csrf_token;const response=await fetch(path,{method:'POST',body:data,signal:AbortSignal.timeout(5000)});++readSequence;if(response.status!==202)throw Error();accepted=true;message.textContent='Verzoek geaccepteerd. Na gecontroleerde opslag volgt een herstart. Controleer daarna de nieuwe login of koppeling.';await refresh();}
+ catch(error){++readSequence;message.textContent='Actie niet bevestigd. Herlaad na het opnieuw verbinden en controleer de status voordat je een nieuwe actie kiest.';await refresh();}
 }
 document.querySelector('#login').onsubmit=event=>{event.preventDefault();const data=new URLSearchParams(new FormData(event.target));document.querySelector('#password').value='';post('/recovery/web-auth',data);};
 document.querySelector('#end').onclick=()=>post('/recovery/end');

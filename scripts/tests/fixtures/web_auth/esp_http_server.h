@@ -2,10 +2,10 @@
 #include <cstddef>
 #include <functional>
 #include <cstdlib>
+#include "nvs.h"
 inline void httpd_resp_set_status(AsyncWebServerRequest& request, const char* status) {
   request.pending_status = std::atoi(status);
 }
-inline constexpr int ESP_OK = 0;
 inline bool test_queue_ok = true;
 inline bool test_close_ok = true;
 inline std::function<void()> test_httpd_work;

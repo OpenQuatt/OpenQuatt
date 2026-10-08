@@ -53,6 +53,9 @@ class OpenQuattIncidentManager : public Component {
   void set_minimum_off_ms(uint32_t value) { this->minimum_off_ms_ = value; }
   void set_polling_paused(binary_sensor::BinarySensor* value) { this->polling_paused_ = value; }
   // Button callbacks only enqueue; state and Modbus queues belong to loop().
+  // Main-loop only: callers may clear credentials immediately before this call.
+  // Do not defer this handoff or run the scheduler between clear and reboot.
+  void restart_now();
   void request_restart() { this->restart_requested_.store(true); }
   void invalidate_restart_credit(uint8_t hp_index);
   bool startup_inhibited(uint8_t hp_index) const;

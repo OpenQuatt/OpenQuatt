@@ -254,6 +254,12 @@ class RuntimeFrequencyRequestHandler : public AsyncWebHandler {
 float OpenQuattOduRuntimeFrequency::get_setup_priority() const { return setup_priority::WIFI - 2.0f; }
 
 void OpenQuattOduRuntimeFrequency::setup() {
+  if (this->web_auth_ != nullptr && !this->web_auth_->add_restart_blocker(this, [](void* context) {
+        return static_cast<OpenQuattOduRuntimeFrequency*>(context)->busy_.load(std::memory_order_acquire);
+      })) {
+    this->mark_failed();
+    return;
+  }
   const bool available = this->controller_ != nullptr && this->eeprom_dump_ != nullptr && this->web_auth_ != nullptr &&
                          web_server_base::global_web_server_base != nullptr;
   this->available_.store(available, std::memory_order_release);
@@ -308,7 +314,6 @@ bool OpenQuattOduRuntimeFrequency::begin_request_(uint32_t& request_token) {
 
 OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::request_load() {
   if (!this->available_.load(std::memory_order_acquire)) return RequestResult::UNAVAILABLE;
-  const uint32_t epoch = web_server_base::global_web_server_base->recovery_epoch();
   uint32_t request_token = 0U;
   if (!this->begin_request_(request_token)) return RequestResult::BUSY;
   bool accepted = false;
@@ -319,7 +324,6 @@ OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::reques
     this->armed_.store(false, std::memory_order_release);
     this->set_status_locked_("Reading compressor frequency table from ODU");
     this->pending_action_ = PendingAction::LOAD;
-    this->request_recovery_epoch_ = epoch;
     this->pending_request_token_ = request_token;
     accepted = true;
   }
@@ -360,7 +364,6 @@ OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::reques
 OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::request_apply(
     const oq_odu_runtime_frequency::RuntimeFrequencyTables& tables) {
   if (!this->available_.load(std::memory_order_acquire)) return RequestResult::UNAVAILABLE;
-  const uint32_t epoch = web_server_base::global_web_server_base->recovery_epoch();
   uint32_t request_token = 0U;
   if (!this->begin_request_(request_token)) return RequestResult::BUSY;
   RequestResult result = RequestResult::ACCEPTED;
@@ -383,7 +386,6 @@ OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::reques
       this->operation_tables_ = tables;
       this->set_status_locked_("Checking whether ODU is safe to modify");
       this->pending_action_ = PendingAction::APPLY;
-      this->request_recovery_epoch_ = epoch;
       this->pending_request_token_ = request_token;
     }
   }
@@ -488,17 +490,14 @@ void OpenQuattOduRuntimeFrequency::loop() {
 
   PendingAction pending = PendingAction::NONE;
   uint32_t pending_request_token = 0U;
-  uint32_t epoch = 0U;
   portENTER_CRITICAL(&this->state_mux_);
   pending = this->pending_action_;
   pending_request_token = this->pending_request_token_;
-  epoch = this->request_recovery_epoch_;
   this->pending_action_ = PendingAction::NONE;
   this->pending_request_token_ = 0U;
   portEXIT_CRITICAL(&this->state_mux_);
 
-  if (pending != PendingAction::NONE && (web_server_base::global_web_server_base->is_recovery_active() ||
-                                         epoch != web_server_base::global_web_server_base->recovery_epoch())) {
+  if (pending != PendingAction::NONE && (!openquatt_web_auth::normal_web_access_allowed())) {
     this->finish_without_write_("Request cancelled by recovery", pending_request_token, false);
     return;
   }
@@ -682,8 +681,7 @@ void OpenQuattOduRuntimeFrequency::begin_write_(uint32_t operation_token) {
     return;
   }
   // The safety read may complete after recovery invalidated this request.
-  if (web_server_base::global_web_server_base->is_recovery_active() ||
-      this->request_recovery_epoch_ != web_server_base::global_web_server_base->recovery_epoch()) {
+  if (!openquatt_web_auth::normal_web_access_allowed()) {
     portEXIT_CRITICAL(&this->state_mux_);
     this->finish_without_write_("Request cancelled by recovery", operation_token, false);
     return;

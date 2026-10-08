@@ -120,7 +120,7 @@ Op `OTT` gedraagt de HCQ zich als OpenTherm-slave tegenover de kamerthermostaat.
 
 De huidige Q-firmware bevat zowel Wi-Fi als Ethernet. De W5500 gebruikt de SPI-pinnen in de tabel; de netwerkvoorkeur wordt tijdens gebruik ingesteld. De oudere Wi-Fi-/Ethernet-bestandsnamen zijn compatibiliteitsnamen voor dezelfde Single- of Duo-firmware.
 
-De gele led brandt wanneer de actieve netwerkverbinding verbonden is. De rode led signaleert een actieve firmware-, sensor-, OpenTherm-, warmtepomp- of veiligheidsfout. Houd de herstelknop vijf seconden ingedrukt en laat hem los om de [herstelpagina](web-app/herstel.md) te activeren voor wachtwoord-, API- of Wi-Fi-herstel. Tien seconden indrukken wist direct de opgeslagen Wi-Fi-gegevens.
+De gele led brandt wanneer de actieve netwerkverbinding verbonden is. De rode led signaleert een actieve firmware-, sensor-, OpenTherm-, warmtepomp- of veiligheidsfout. Houd de herstelknop vijf seconden ingedrukt en laat hem los om na een herstart de [herstelpagina](web-app/herstel.md) te activeren voor wachtwoord-, API- of Wi-Fi-herstel. Tien seconden indrukken en loslaten wist de opgeslagen Wi-Fi-gegevens en herstart.
 
 ## Bronnen in de firmware
 

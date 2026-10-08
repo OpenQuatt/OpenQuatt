@@ -675,6 +675,13 @@ void WiFiComponent::init_preferences_() {
 
 bool WiFiComponent::clear_saved_sta_checked() {
   this->init_preferences_();
+  // Freeze all credential/fast-connect writers for the rest of this boot,
+  // including teardown loops. A partial failure cannot prove rollback.
+  this->credential_reset_started_ = true;
+  this->pending_credentials_ = false;
+  this->provisioning_stopping_ = false;
+  this->provisioning_required_ = true;
+  this->set_provisioning_state_(WiFiProvisioningState::CANCELLED);
   SavedWifiSettings empty{};
   if (!this->pref_.save(&empty)) return false;
   SavedWifiFastConnectSettings empty_fast{};
@@ -689,6 +696,7 @@ bool WiFiComponent::clear_saved_sta_checked() {
 }
 
 void WiFiComponent::start() {
+  this->abort_pending_credentials_();
   ESP_LOGCONFIG(TAG, "Starting");
   this->last_connected_ = millis();
 
@@ -788,6 +796,7 @@ void WiFiComponent::restart_adapter() {
 void WiFiComponent::loop() {
   bool events_processed = this->wifi_loop_();
   const uint32_t now = App.get_loop_component_start_time();
+  if (this->poll_pending_credentials_(now)) return;
   // Connection state can only change when events are processed (ESP-IDF/LibreTiny)
   // or polled (ESP8266/Pico W). Skip the expensive wifi_sta_connect_status_() call
   // when no events arrived and we're already in steady state.
@@ -796,7 +805,7 @@ void WiFiComponent::loop() {
   if (events_processed || !this->connected_) {
     this->update_connected_state_();
   }
-  // Improv can submit credentials after already establishing the connection.
+  // A staged credential-pair is persisted only after the new connection completes.
   if (this->pending_credentials_ && this->is_connected()) this->persist_pending_credentials_();
 
   if (this->has_sta()) {
@@ -902,14 +911,14 @@ void WiFiComponent::loop() {
 #ifdef USE_WIFI_AP
     // Wi-Fi provisioning stays available independently of HA's API key window.
     if (this->has_ap() && !this->ap_setup_) {
-      if (this->ap_timeout_ != 0 &&
-          (now - this->last_connected_ > this->ap_timeout_)
+      if (this->provisioning_required_ || (this->ap_timeout_ != 0 &&
+                                           (now - this->last_connected_ > this->ap_timeout_)
 #ifdef USE_WIFI_AP_EXCLUSIVE
-          // After a pause, or a start that failed, the networks get a full
-          // ap_timeout before the AP is tried again.
-          && now - this->ap_exclusive_changed_ > this->ap_timeout_
+                                           // After a pause, or a start that failed, the networks get a full
+                                           // ap_timeout before the AP is tried again.
+                                           && now - this->ap_exclusive_changed_ > this->ap_timeout_
 #endif
-      ) {
+                                           )) {
         ESP_LOGI(TAG, "Starting fallback AP");
 #ifdef USE_WIFI_AP_EXCLUSIVE
         this->ap_exclusive_changed_ = now;
@@ -1113,6 +1122,7 @@ void WiFiComponent::set_ap(const WiFiAP& ap) {
 void WiFiComponent::init_sta(size_t count) { this->sta_.init(count); }
 void WiFiComponent::add_sta(const WiFiAP& ap) { this->sta_.push_back(ap); }
 void WiFiComponent::clear_sta() {
+  if (this->pending_credentials_) this->abort_pending_credentials_();
   // Clear roaming state - no more configured networks
   this->clear_roaming_state_();
   this->sta_.clear();
@@ -1178,43 +1188,111 @@ void WiFiComponent::save_wifi_sta(const std::string& ssid, const std::string& pa
   this->save_wifi_sta(ssid.c_str(), password.c_str());
 }
 void WiFiComponent::save_wifi_sta(const char* ssid, const char* password) {
-  if (this->provisioning_required_) {
-    // Until first successful provisioning (also after reset), keep the empty
-    // flash record. Bad credentials plus power loss must not hide the AP.
-    const auto* current = this->get_selected_sta_();
-    const bool reuse_connected = this->is_connected_() && current != nullptr && current->get_ssid() == ssid &&
-                                 current->get_password() == password;
-    WiFiAP sta{};
-    sta.set_ssid(ssid);
-    sta.set_password(password);
-    this->set_sta(sta);
-    this->pending_credentials_ = true;
-    // Improv already proved this exact pair. A different pair (even with the
-    // same SSID) must replace any old connection/attempt before it can be saved.
-    if (!reuse_connected) {
-      this->start_connecting(sta);
-      this->update_connected_state_();
-    }
-    return;
+  this->begin_wifi_provisioning(ssid, password);
+}
+
+uint32_t WiFiComponent::begin_wifi_provisioning(const char* ssid, const char* password) {
+  this->init_preferences_();
+  uint32_t generation = (this->get_provisioning_status().generation + 1) & 0x0fffffff;
+  if (generation == 0) generation = 1;
+  this->provisioning_status_.store((generation << 4) | static_cast<uint8_t>(WiFiProvisioningState::CONNECTING),
+                                   std::memory_order_release);
+  this->pending_credentials_ = false;
+  this->provisioning_stopping_ = false;
+  this->provisioning_station_stopped_ = false;
+  this->provisioning_required_ = true;
+  // Reject rather than truncate: the connected pair and stored pair must match exactly.
+  if (this->credential_reset_started_ || ssid == nullptr || password == nullptr || ssid[0] == '\0' ||
+      strlen(ssid) > 32 || strlen(password) > 64 || this->is_disabled()) {
+    this->set_provisioning_state_(WiFiProvisioningState::CONNECT_FAILED);
+    return generation;
   }
-  SavedWifiSettings save{};  // zero-initialized - all bytes set to \0, guaranteeing null termination
-  strncpy(save.ssid, ssid, sizeof(save.ssid) - 1);              // max 32 chars, byte 32 remains \0
-  strncpy(save.password, password, sizeof(save.password) - 1);  // max 64 chars, byte 64 remains \0
-  this->pref_.save(&save);
-  // ensure it's written immediately
-  global_preferences->sync();
+  WiFiAP candidate{};
+  candidate.set_ssid(ssid);
+  candidate.set_password(password);
+  this->set_sta(candidate);
+  this->pending_credentials_ = true;
+  this->provisioning_stopping_ = true;
+  this->provisioning_station_stopped_ = false;
+  this->provisioning_stop_started_ = millis();
+  this->state_ = WIFI_COMPONENT_STATE_OFF;
+  // Even the same SSID/password is tested afresh. A STOP acknowledgement fences
+  // the old connection and queued IP events before installing the new pair.
+  if (!this->stop_sta_for_provisioning_()) {
+    this->pending_credentials_ = false;
+    this->provisioning_stopping_ = false;
+    this->set_provisioning_state_(WiFiProvisioningState::CONNECT_FAILED);
+  }
+  this->connected_ = false;
+  return generation;
+}
 
-  WiFiAP sta{};
-  sta.set_ssid(ssid);
-  sta.set_password(password);
-  this->set_sta(sta);
+bool WiFiComponent::poll_pending_credentials_(uint32_t now) {
+  if (this->provisioning_stopping_) {
+    if (this->provisioning_station_stopped_) {
+      this->start_pending_credentials_();
+    } else if (now - this->provisioning_stop_started_ > 3000) {
+      this->pending_credentials_ = false;
+      this->provisioning_stopping_ = false;
+      this->set_provisioning_state_(WiFiProvisioningState::CONNECT_FAILED);
+      ESP_LOGE(TAG, "WiFi station stop was not acknowledged; credentials not saved");
+    }
+    // Never restart the station before STOP and earlier queued events were drained.
+    return true;
+  }
+  return false;
+}
 
-  // Trigger connection attempt (exits cooldown if needed, no-op if already connecting/connected)
-  this->connect_soon_();
+void WiFiComponent::abort_pending_credentials_() {
+  if (!this->pending_credentials_ && !this->provisioning_stopping_) return;
+  this->pending_credentials_ = false;
+  this->provisioning_stopping_ = false;
+  this->set_provisioning_state_(WiFiProvisioningState::CANCELLED);
+}
+
+void WiFiComponent::start_pending_credentials_() {
+  if (!this->provisioning_stopping_ || !this->provisioning_station_stopped_) return;
+  this->provisioning_stopping_ = false;
+  if (!this->has_sta()) return;
+  this->start_connecting(this->sta_[0]);
+  this->update_connected_state_();
+}
+
+void WiFiComponent::cancel_wifi_provisioning(uint32_t generation) {
+  if (generation != this->get_provisioning_status().generation || !this->pending_credentials_) return;
+  this->pending_credentials_ = false;
+  this->set_provisioning_state_(WiFiProvisioningState::CANCELLED);
+  // Retain the proven flash record. Restore it in RAM when available, without
+  // treating an uncertain partial-write outcome as a successful provisioning.
+  SavedWifiSettings saved{};
+  if (this->pref_.load(&saved) && saved.ssid[0] != '\0') {
+    saved.ssid[sizeof(saved.ssid) - 1] = '\0';
+    saved.password[sizeof(saved.password) - 1] = '\0';
+    WiFiAP previous{};
+    previous.set_ssid(saved.ssid);
+    previous.set_password(saved.password);
+    this->set_sta(previous);
+  } else {
+    this->clear_sta();
+  }
+  // If a stop is still in flight, its acknowledgement also fences the restore.
+  if (!this->provisioning_stopping_) {
+    this->provisioning_stopping_ = true;
+    this->provisioning_station_stopped_ = false;
+    this->provisioning_stop_started_ = millis();
+    this->state_ = WIFI_COMPONENT_STATE_OFF;
+    if (!this->stop_sta_for_provisioning_()) {
+      this->provisioning_stopping_ = false;
+      this->set_provisioning_state_(WiFiProvisioningState::CONNECT_FAILED);
+    }
+  }
+  this->connected_ = false;
 }
 
 void WiFiComponent::persist_pending_credentials_() {
-  if (!this->pending_credentials_ || this->sta_.empty()) return;
+  if (this->credential_reset_started_ || !this->pending_credentials_ || this->provisioning_stopping_ ||
+      this->sta_.empty() || !this->is_connected())
+    return;
   char connected_ssid[SSID_BUFFER_SIZE];
   if (this->sta_[0].get_ssid() != this->wifi_ssid_to(connected_ssid)) return;
   this->pending_credentials_ = false;  // One attempt; a new submit explicitly retries.
@@ -1224,20 +1302,23 @@ void WiFiComponent::persist_pending_credentials_() {
   SavedWifiSettings verified{};
   if (!this->pref_.save(&candidate) || !global_preferences->sync() || !this->pref_.load(&verified) ||
       memcmp(&candidate, &verified, sizeof(candidate)) != 0) {
+    this->set_provisioning_state_(WiFiProvisioningState::STORAGE_FAILED);
     ESP_LOGE(TAG, "WiFi credentials could not be persisted; keeping provisioning AP available");
     return;
   }
   this->provisioning_required_ = false;
+  this->set_provisioning_state_(WiFiProvisioningState::SAVED);
   this->stop_provisioning_ap_();
 }
 
 void WiFiComponent::stop_provisioning_ap_() {
 #ifdef USE_WIFI_AP
   if (!this->has_ap() || this->provisioning_required_) return;
+  if (!this->wifi_mode_({}, false)) return;
+  this->ap_setup_ = false;
 #ifdef USE_CAPTIVE_PORTAL
   if (this->is_captive_portal_active_()) captive_portal::global_captive_portal->end();
 #endif
-  this->wifi_mode_({}, false);
 #endif
 }
 
@@ -1468,6 +1549,7 @@ void WiFiComponent::enable() {
 }
 
 void WiFiComponent::disable() {
+  this->abort_pending_credentials_();
   if (this->state_ == WIFI_COMPONENT_STATE_DISABLED) return;
 
   ESP_LOGD(TAG, "Disabling");
@@ -1763,6 +1845,8 @@ void WiFiComponent::check_connecting_finished(uint32_t now) {
     // Reset to initial phase on successful connection (don't log transition, just reset state)
     this->retry_phase_ = WiFiRetryPhase::INITIAL_CONNECT;
     this->num_retried_ = 0;
+    this->state_ = WIFI_COMPONENT_STATE_STA_CONNECTED;
+    this->update_connected_state_();
     if (this->pending_credentials_)
       this->persist_pending_credentials_();
     else
@@ -2440,7 +2524,7 @@ bool WiFiComponent::load_fast_connect_settings_(WiFiAP& params) {
 }
 
 void WiFiComponent::save_fast_connect_settings_(const bssid_t& bssid, uint8_t channel) {
-  if (this->provisioning_required_) return;
+  if (this->provisioning_required_ || this->credential_reset_started_) return;
   // selected_sta_index_ is always valid here (called only after successful connection)
   // Fallback to 0 is defensive programming for robustness
   int8_t ap_index = this->selected_sta_index_ >= 0 ? this->selected_sta_index_ : 0;

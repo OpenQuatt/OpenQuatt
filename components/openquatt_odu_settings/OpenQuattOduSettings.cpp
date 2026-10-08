@@ -219,6 +219,12 @@ class OduSettingsRequestHandler : public AsyncWebHandler {
 float OpenQuattOduSettings::get_setup_priority() const { return setup_priority::WIFI - 2.0f; }
 
 void OpenQuattOduSettings::setup() {
+  if (this->web_auth_ != nullptr && !this->web_auth_->add_restart_blocker(this, [](void* context) {
+        return static_cast<OpenQuattOduSettings*>(context)->busy_.load(std::memory_order_acquire);
+      })) {
+    this->mark_failed();
+    return;
+  }
   const bool available = this->controller_ != nullptr && this->eeprom_dump_ != nullptr && this->web_auth_ != nullptr &&
                          global_preferences != nullptr && web_server_base::global_web_server_base != nullptr;
   this->available_.store(available, std::memory_order_release);
@@ -321,12 +327,10 @@ OpenQuattOduSettings::RequestResult OpenQuattOduSettings::request_load() {
   if (!this->available_.load(std::memory_order_acquire) || !this->online_.load(std::memory_order_acquire)) {
     return RequestResult::UNAVAILABLE;
   }
-  const uint32_t epoch = web_server_base::global_web_server_base->recovery_epoch();
   uint32_t request_token = 0U;
   if (!this->begin_request_(request_token)) return RequestResult::BUSY;
   portENTER_CRITICAL(&this->state_mux_);
   this->pending_action_ = PendingAction::LOAD;
-  this->pending_recovery_epoch_ = epoch;
   this->pending_request_token_ = request_token;
   this->set_status_locked_("LOAD_REQUESTED");
   portEXIT_CRITICAL(&this->state_mux_);
@@ -340,7 +344,6 @@ OpenQuattOduSettings::RequestResult OpenQuattOduSettings::request_save(const oq_
     return RequestResult::UNAVAILABLE;
   }
   if (!this->identity_ready_.load(std::memory_order_acquire)) return RequestResult::IDENTITY_REQUIRED;
-  const uint32_t epoch = web_server_base::global_web_server_base->recovery_epoch();
   uint32_t request_token = 0U;
   if (!this->begin_request_(request_token)) return RequestResult::BUSY;
 
@@ -354,7 +357,6 @@ OpenQuattOduSettings::RequestResult OpenQuattOduSettings::request_save(const oq_
       this->pending_profile_ =
           oq_odu::make_bottom_plate_profile(settings, this->variant_, this->control_board_item_, auto_reapply);
       this->pending_action_ = PendingAction::SAVE;
-      this->pending_recovery_epoch_ = epoch;
       this->pending_request_token_ = request_token;
       this->set_status_locked_("SAVE_REQUESTED");
       result = RequestResult::ACCEPTED;
@@ -402,7 +404,8 @@ bool OpenQuattOduSettings::token_matches_(uint32_t operation_token) const {
 
 void OpenQuattOduSettings::loop() {
   if (!this->busy_.load(std::memory_order_acquire)) {
-    if ((this->auto_reapply_.load(std::memory_order_acquire) ||
+    if (!this->web_auth_->restart_requested() &&
+        (this->auto_reapply_.load(std::memory_order_acquire) ||
          this->manual_apply_pending_.load(std::memory_order_acquire)) &&
         this->online_.load(std::memory_order_acquire) && this->identity_ready_.load(std::memory_order_acquire) &&
         this->profile_available_.load(std::memory_order_acquire) && this->reconcile_due_ms_ != 0U &&
@@ -414,18 +417,15 @@ void OpenQuattOduSettings::loop() {
 
   PendingAction pending = PendingAction::NONE;
   uint32_t request_token = 0U;
-  uint32_t epoch = 0U;
   portENTER_CRITICAL(&this->state_mux_);
   pending = this->pending_action_;
   request_token = this->pending_request_token_;
-  epoch = this->pending_recovery_epoch_;
   this->pending_action_ = PendingAction::NONE;
   this->pending_request_token_ = 0U;
   portEXIT_CRITICAL(&this->state_mux_);
 
   if (pending != PendingAction::NONE) {
-    if (pending != PendingAction::RECONCILE && (web_server_base::global_web_server_base->is_recovery_active() ||
-                                                epoch != web_server_base::global_web_server_base->recovery_epoch())) {
+    if (pending != PendingAction::RECONCILE && (!openquatt_web_auth::normal_web_access_allowed())) {
       this->finish_operation_("RECOVERY_CANCELLED", request_token);
       return;
     }
@@ -525,9 +525,7 @@ void OpenQuattOduSettings::handle_settings_read_(const oq_odu::BottomPlateSettin
   this->actual_ = settings;
   this->loaded_.store(true, std::memory_order_release);
   const Operation operation = this->operation_;
-  if (operation == Operation::APPLY &&
-      (web_server_base::global_web_server_base->is_recovery_active() ||
-       this->pending_recovery_epoch_ != web_server_base::global_web_server_base->recovery_epoch())) {
+  if (operation == Operation::APPLY && (!openquatt_web_auth::normal_web_access_allowed())) {
     this->manual_apply_pending_.store(false, std::memory_order_release);
     portEXIT_CRITICAL(&this->state_mux_);
     this->finish_operation_("RECOVERY_CANCELLED", operation_token);

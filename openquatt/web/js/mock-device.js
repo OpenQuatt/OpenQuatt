@@ -40,6 +40,7 @@
     complete: true,
     tick: 0,
     autoAnimate: true,
+    firmwareManifestRevision: 0,
     incidentSimulation: {
       scenario: "none",
       phaseIndex: 0,
@@ -118,6 +119,10 @@
       source: "bootstrap-open",
       csrfToken: "",
       recoveryUntil: 0,
+      busy: false,
+      pendingReboot: false,
+      generation: 0,
+      pending: null,
     },
     apiSecurity: {
       transportActive: false,
@@ -947,6 +952,10 @@
       username: String(state.auth.username || ""),
       source: String(state.auth.source || ""),
       csrf_token: String(state.auth.csrfToken || ""),
+      busy: state.auth.busy,
+      pending_reboot: state.auth.pendingReboot,
+      generation: state.auth.generation,
+      error: "",
     };
   }
 
@@ -1474,7 +1483,22 @@
   }
 
   function handleAuthStatus() {
+    if (state.auth.busy) {
+      state.auth.busy = false;
+      state.auth.pendingReboot = true;
+    }
     return makeAuthResponse(200, getAuthStatusPayload());
+  }
+
+  function queueAuthChange(pending) {
+    if (state.auth.busy || state.auth.pendingReboot) {
+      return makeAuthResponse(409, { ok: false, error: "busy" });
+    }
+    // Preview keeps active credentials unchanged, mirroring one firmware boot.
+    state.auth.pending = pending;
+    state.auth.generation = (state.auth.generation + 1) >>> 0;
+    state.auth.busy = true;
+    return makeAuthResponse(202, { accepted: true, generation: state.auth.generation });
   }
 
   function handleAuthChange(init) {
@@ -1498,16 +1522,7 @@
       return makeAuthResponse(400, { ok: false, error: "missing_fields" });
     }
 
-    state.auth.enabled = true;
-    state.auth.username = newUsername;
-    state.auth.password = newPassword;
-    state.auth.source = "runtime-credentials";
-    state.auth.recoveryUntil = 0;
-    refreshAuthToken();
-    return makeAuthResponse(200, {
-      ok: true,
-      status: getAuthStatusPayload(),
-    });
+    return queueAuthChange({ enabled: true, username: newUsername, password: newPassword });
   }
 
   function handleAuthDisable(init) {
@@ -1523,16 +1538,7 @@
       return makeAuthResponse(403, { ok: false, error: "invalid_current_password" });
     }
 
-    state.auth.enabled = false;
-    state.auth.username = "";
-    state.auth.password = "";
-    state.auth.source = "runtime-disabled";
-    state.auth.recoveryUntil = 0;
-    refreshAuthToken();
-    return makeAuthResponse(200, {
-      ok: true,
-      status: getAuthStatusPayload(),
-    });
+    return queueAuthChange({ enabled: false, username: "", password: "" });
   }
 
   function getApiSecurityStatusPayload() {
@@ -1968,8 +1974,8 @@
     });
     setEntity("sensor", "Lifetime energiehistorie grootte", { value: state.energyHistoryStoredKiB, uom: "kB" });
     setEntity("sensor", "Lifetime energiehistorie schrijfacties", { value: state.energyHistoryWrites });
+    state.firmwareManifestRevision = 0;
     setEntity("update", "Firmware Update", {
-      manifest_revision: 0,
       state: "up_to_date",
       value: "up_to_date",
       current_version: MOCK_DEV_VERSION,
@@ -4016,7 +4022,7 @@
       const currentVersion = String(getEntity("text_sensor", "OpenQuatt Version")?.value || MOCK_STABLE_VERSION);
       const latestVersion = value === "main" ? MOCK_STABLE_VERSION : MOCK_DEV_VERSION;
       if (updateEntity) {
-        updateEntity.manifest_revision = ((updateEntity.manifest_revision || 0) + 1) >>> 0;
+        state.firmwareManifestRevision = (state.firmwareManifestRevision + 1) >>> 0;
         updateEntity.current_version = currentVersion;
         updateEntity.latest_version = latestVersion;
         updateEntity.release_url = getMockReleaseUrl(value);
@@ -4049,7 +4055,7 @@
         : state.installation;
       const targetLabel = `Heatpump Controller Q ${targetTopology === "duo" ? "Duo" : "Single"} ${targetConnection === "eth" ? "Ethernet" : "Wi-Fi"}`;
       if (updateEntity) {
-        updateEntity.manifest_revision = ((updateEntity.manifest_revision || 0) + 1) >>> 0;
+        state.firmwareManifestRevision = (state.firmwareManifestRevision + 1) >>> 0;
         updateEntity.current_version = currentVersion;
         updateEntity.latest_version = latestVersion;
         updateEntity.release_url = getMockReleaseUrl(channel);
@@ -5071,7 +5077,7 @@
       setText("text_sensor", "Firmware Update Status", "Idle");
       setNumber("Firmware Update Progress", 0, "%");
       if (updateEntity) {
-        updateEntity.manifest_revision = ((updateEntity.manifest_revision || 0) + 1) >>> 0;
+        state.firmwareManifestRevision = (state.firmwareManifestRevision + 1) >>> 0;
         updateEntity.current_version = currentVersion;
         updateEntity.latest_version = latestVersion;
         updateEntity.release_url = getMockReleaseUrl(channel);
@@ -5993,6 +5999,9 @@
       }
       if (url.pathname.endsWith("/openquatt/entities") && String(init?.method || "GET").toUpperCase() === "POST") {
         return handleBulkEntities(init || {});
+      }
+      if (url.pathname.endsWith("/openquatt/firmware/metadata") && method === "GET") {
+        return mockResponse(200, { boot_id: "0000000000000001", manifest_revision: state.firmwareManifestRevision });
       }
       if (url.pathname === "/update" && String(init?.method || "GET").toUpperCase() === "POST") {
         handleUpdateInstall("Firmware Update");

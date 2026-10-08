@@ -70,6 +70,22 @@ jobs:
           node-version-file: '.node-version'
           cache: npm
 
+      - name: Install web build dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build embedded web bundles
+        run: npm run build:web
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: .github/requirements-esphome.txt
+
+      - name: Install ESPHome test dependency
+        run: python3 -m pip install -r .github/requirements-esphome.txt
+
       - name: Run Python contract tests
         run: npm run check:python-contracts
 

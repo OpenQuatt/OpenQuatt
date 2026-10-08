@@ -1073,6 +1073,8 @@ import { fetchWithTimeout } from "./browser-utils.js";
         if (ENTITY_DEFS[key]?.domain === "time"
             && (state.savingTimeFields.has(key) || state.timeWriteRevision !== timeWriteRevision)) return;
         if (Object.prototype.hasOwnProperty.call(entities, key)) {
+          // Capture this request's payloads.
+          if (options.snapshot) options.snapshot[key] = entities[key];
           if (state.optionalMissingEntities) {
             delete state.optionalMissingEntities[key];
           }
@@ -1111,10 +1113,6 @@ import { fetchWithTimeout } from "./browser-utils.js";
       ...(previous || {}),
       ...(payload || {}),
     };
-    if (key === "firmwareUpdate") {
-      // Revision is live confirmation metadata, never a cached capability from older firmware.
-      next.manifest_revision = payload?.manifest_revision;
-    }
     const isSelect = ENTITY_DEFS[key]?.domain === "select";
     if (!isSelect) {
       return next;

@@ -37,7 +37,7 @@ class Modbus20269ContractTest(unittest.TestCase):
         # Retain the 2026.9 Modbus API contract on the reviewed 2026.10 beta.
         self.assertEqual(REQUIREMENTS.strip(), "esphome==2026.10.0b1")
         self.assertIn("min_version: 2026.10.0b1", BASE_COMMON)
-        web_base = (ROOT / "components/web_server_base/__init__.py").read_text()
+        web_base = (ROOT / "components/openquatt_web_auth/__init__.py").read_text()
         self.assertIn('if __version__ != "2026.10.0b1":', web_base)
 
     def test_regular_online_polling_is_10s_and_offline_probe_is_30s(self) -> None:

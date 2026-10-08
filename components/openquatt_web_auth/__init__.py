@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.const import CONF_ID
+from esphome.const import CONF_ID, __version__
 
 CONF_BOOTSTRAP_USERNAME = "bootstrap_username"
 CONF_BOOTSTRAP_PASSWORD = "bootstrap_password"
@@ -10,7 +10,16 @@ openquatt_web_auth_ns = cg.esphome_ns.namespace("openquatt_web_auth")
 OpenQuattWebAuth = openquatt_web_auth_ns.class_("OpenQuattWebAuth", cg.Component)
 
 
-CONFIG_SCHEMA = cv.Schema(
+DEPENDENCIES = ["esp32", "web_server_base"]
+
+
+def validate_version(config):
+    if __version__ != "2026.10.0b1":
+        raise cv.Invalid("OpenQuatt boot auth requires reviewed ESPHome 2026.10.0b1; review listener and preferences contracts before upgrading")
+    return config
+
+
+CONFIG_SCHEMA = cv.All(cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(OpenQuattWebAuth),
         cv.Required(CONF_BOOTSTRAP_USERNAME): cv.All(cv.string_strict, cv.Length(min=1, max=32)),
@@ -19,7 +28,7 @@ CONFIG_SCHEMA = cv.Schema(
         ),
         cv.Optional(CONF_DEFAULT_AUTH_ENABLED, default=True): cv.boolean,
     }
-).extend(cv.COMPONENT_SCHEMA)
+).extend(cv.COMPONENT_SCHEMA), validate_version)
 
 
 async def to_code(config):
