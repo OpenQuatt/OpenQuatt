@@ -66,6 +66,10 @@ krijgt iedere 15 minuten een checkpoint; zonder dagprogressie blijft de grens vo
 nieuwe modelgegevens eenmaal per uur. Vlak vóór een normale herstart of OTA wordt
 extra opgeslagen. Een afgebroken schrijfoperatie laat het vorige geldige slot intact;
 een opslagfout wordt gemeld en leidt deze boot niet tot herhaalde schrijfpogingen.
+Dat geldt ook als het verwijderen van een vervallen dagcheckpoint mislukt: na een
+volgende boot kan het oudere checkpoint nog leesbaar zijn en binnen de normale
+hervatgrens alsnog worden gebruikt. Een eerdere, niet opgeslagen afwijzing is dan
+niet bekend. Afgeronde historie wordt niet gewist om dit te voorkomen; leren blijft passief.
 
 Schema 7 voegt het dagcheckpoint toe; schema 4/5/6 blijven leesbaar. Oude firmware
 kan schema 7 niet lezen. De eerste OTA vanuit firmware zonder dagcheckpoint kan de
@@ -73,8 +77,11 @@ bestaande RAM-dag nog niet bewaren. Afgeronde metingen blijven bij de upgrade be
 Herstel vereist geldige UTC en een ondersteund schema en algoritmeversie.
 
 De opgeslagen dag wacht na de boot op geldige UTC, ontbrekende geselecteerde
-meetwaarden en dezelfde meetcontext. Een waargenomen ongeldige of onbekende
-bedrijfstoestand breekt dit herstel af; latere verbetering herstelt die dag niet alsnog.
+meetwaarden en dezelfde meetcontext. Tijdens de eerste bronopstart na een boot mag
+het checkpoint kort wachten op nog ontbrekende bedrijfstelemetrie; dit zijn geen
+geldige metingen en de grens van 120 seconden wordt niet verlengd. Een daadwerkelijk
+waargenomen ongeldige bedrijfstoestand of ontvangen ongeldige bedrijfstelemetrie
+breekt het herstel af; latere verbetering herstelt die dag niet alsnog.
 De hele onderbreking vanaf het laatste opgeslagen geldige meetpunt tot
 de eerste geldige nieuwe meting mag maximaal 120 seconden zijn, inclusief upload,
 herstart en het beschikbaar komen van de bronnen. De ontbrekende warmte wordt

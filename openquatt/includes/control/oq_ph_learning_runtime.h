@@ -261,14 +261,17 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
         enabled && context_valid && tick.active_line_valid && tick.batch_snapshot_available &&
         validate_snapshot(tick.batch_snapshot, state.config.quality) == LearningStatus::OK;
     if (state.daily_restore_pending) {
-      const auto decision =
-          daily_resume_decision(enabled && state.daily_restore_allowed && !reset_processed, valid_daily_observation,
-                                epoch, state.pending_daily.daily_checkpoint_epoch(), batch.may_bridge_daily_gap);
+      const auto decision = daily_resume_decision(
+          enabled && state.daily_restore_allowed && !reset_processed, valid_daily_observation, epoch,
+          state.pending_daily.daily_checkpoint_epoch(),
+          batch.may_bridge_daily_gap || daily_boot_sources_pending(input, batch, state.config.quality));
       if (decision != DailyResumeDecision::WAIT) {
         const bool restored =
             decision == DailyResumeDecision::RESTORE &&
             state.pending_daily.restore_daily(state.learner.batch_accumulator, context, state.config.quality);
         state.daily_resume_status = restored ? "resuming" : "discarded";
+        ESP_LOGI("oq_learning", "Daily checkpoint %s: source=%s, recovery_allowed=%d", state.daily_resume_status,
+                 snapshot_source_status_name(batch.status), state.daily_restore_allowed);
         state.daily_restore_pending = false;
       }
     }

@@ -144,6 +144,28 @@ void test_restore_waits_for_real_clock_and_fresh_sources() {
   assert(daily_resume_decision(true, true, kEpoch + 60, 0) == DailyResumeDecision::DISCARD);
 }
 
+void test_boot_waits_for_initial_operating_receipts() {
+  LearningSourceInput input;
+  input.monotonic_ms = 30000;
+  input.epoch_s = kEpoch + 60;
+  input.context_revision = 1;
+  input.topology = HydronicTopology::SINGLE;
+  input.hp1.present = true;
+  input.operation.captured_monotonic_ms = input.monotonic_ms;
+  input.operation.captured_context_revision = input.context_revision;
+  input.operation.control_mode_valid = input.operation.service_or_ota_valid = true;
+  input.operation.control_mode = LearningControlMode::HEATING;
+  const auto batch = build_learning_snapshot(input, QualityConfig{});
+  assert(batch.status == SnapshotSourceStatus::MISSING_MEASUREMENT);
+  assert(!batch.may_bridge_daily_gap);  // A running day still cannot bridge unknown operation.
+  assert(!known_daily_restart_interruption(input, false));
+  const bool boot_pending = daily_boot_sources_pending(input, batch);
+  assert(boot_pending);
+  assert(daily_resume_decision(true, false, input.epoch_s, kEpoch, boot_pending) == DailyResumeDecision::WAIT);
+  assert(daily_resume_decision(true, false, kEpoch + 121, kEpoch, boot_pending) == DailyResumeDecision::DISCARD);
+  assert(daily_resume_decision(false, false, input.epoch_s, kEpoch, boot_pending) == DailyResumeDecision::DISCARD);
+}
+
 void test_observed_invalid_operation_never_waits_for_recovery() {
   // A missing scalar with known operating state may wait; boiler/cooling or
   // unknown operating state must discard even if the next value recovers.
@@ -329,5 +351,6 @@ int main() {
   test_restart_does_not_reset_existing_uncertainty_or_hide_omitted_ticks();
   test_corrupt_checkpoint_is_not_resumed();
   test_restore_waits_for_real_clock_and_fresh_sources();
+  test_boot_waits_for_initial_operating_receipts();
   test_observed_invalid_operation_never_waits_for_recovery();
 }
