@@ -122,14 +122,18 @@
         "openquatt/oq_flow_control.yaml",
         "openquatt/oq_heating_curve_strategy.yaml",
         "openquatt/oq_power_house_strategy.yaml",
-        "openquatt/oq_thermal_request_control.yaml"
+        "openquatt/oq_thermal_request_control.yaml",
+        "openquatt/oq_warmup.yaml",
+        "openquatt/includes/control/oq_warmup_*.h"
       ],
       "docs_any_of": [
         "docs/verwarmen-en-koelen.md",
         "docs/power-house.md",
         "docs/water-temperature-control.md",
         "docs/regelgedrag-van-openquatt.md",
-        "docs/problemen-oplossen.md"
+        "docs/problemen-oplossen.md",
+        "docs/web-app/instellingen.md",
+        "docs/dagelijks/verwarmen.md"
       ]
     },
     {

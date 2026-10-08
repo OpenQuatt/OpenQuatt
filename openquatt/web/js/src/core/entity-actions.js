@@ -147,6 +147,20 @@ function updateFrequencyRangeControl(input) {
     }
   }
 
+  function renderPendingWarmupSettings() {
+    if (!state.focusedField
+        && !document.activeElement?.closest?.("button, [data-oq-action]")
+        && !state.settingsInteractionLock
+        && !state.warmupSettingsPointerActive
+        && !state.systemModal
+        && state.warmupSettingsRenderPending
+        && state.appView === "settings"
+        && state.settingsGroup === "heating") {
+      state.warmupSettingsRenderPending = false;
+      render();
+    }
+  }
+
   export function handleFocusChange(event) {
     handleTimeInputFocus(event);
     handleHouseLearningChartPointerMove(event);
@@ -154,6 +168,7 @@ function updateFrequencyRangeControl(input) {
       const active = document.activeElement;
       state.focusedField = active && active.dataset ? active.dataset.oqField || active.dataset.oqCurvePointInput || "" : "";
       state.settingsInteractionLock = Boolean(active && active.closest && active.closest(".oq-ph-concept-hotspot"));
+      renderPendingWarmupSettings();
       if (!state.focusedField
           && state.incidentMonitoringRenderPending
           && state.appView === "settings"
@@ -682,6 +697,7 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handlePointerDown(event) {
+    state.warmupSettingsPointerActive = state.appView === "settings" && state.settingsGroup === "heating";
     handleHouseLearningChartPointerMove(event);
     const replayScrubber = event.target.closest("[data-oq-control-replay-scrub]");
     if (replayScrubber) {
@@ -718,6 +734,11 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handlePointerUp() {
+    if (state.warmupSettingsPointerActive) {
+      state.warmupSettingsPointerActive = false;
+      // The click following pointerup must finish before replacing the root.
+      window.setTimeout(renderPendingWarmupSettings, 0);
+    }
     if (state.controlReplayScrubbing) {
       state.controlReplayScrubbing = false;
       return;

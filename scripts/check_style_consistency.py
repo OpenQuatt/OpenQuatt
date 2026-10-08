@@ -219,6 +219,7 @@ NESTED_KEY_ORDER_RULES = {
     ),
     ("openquatt/packages/20_strategies.yaml", "packages"): (
         "oq_strategy_manager",
+        "oq_warmup",
         "oq_cooling_strategy",
         "oq_heating_curve_strategy",
         "oq_power_house_strategy",

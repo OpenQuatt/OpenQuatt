@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 globalThis.__OQ_PREVIEW__ = false;
-globalThis.window = { location: { pathname: "/" }, localStorage: { getItem: () => null } };
+globalThis.window = { location: { pathname: "/" }, localStorage: { getItem: () => null }, setTimeout, clearTimeout };
 const bundle = await build({
   bundle: true,
   define: { __OQ_PREVIEW__: "false" },
@@ -13,13 +13,19 @@ const bundle = await build({
   stdin: {
     contents: `
       export { state } from "../js/src/core/state.js";
-      export { SETTINGS_GROUPS } from "../js/src/core/config.js";
+      export { ENTITY_DEFS, SETTINGS_GROUPS } from "../js/src/core/config.js";
       export { getSelectEntityOptions, getSettingsChoiceModel, getSettingsSelectModel, getSettingsSwitchModel } from "../js/src/settings/field-models.js";
       export { renderSettingsChoiceOption, renderSettingsCompactSwitchControl, renderSettingsSelectField, renderSettingsSwitchField, renderSettingsOptionCardsField, patchSettingsSelectControl } from "../js/src/settings/controls.js";
       export { renderSettingsStorageSelectRow } from "../js/src/settings/storage.js";
-      export { renderHeatingStrategyExplainCards } from "../js/src/settings/heating.js";
+      export { renderControlledWarmupField, renderHeatingStrategyExplainCards } from "../js/src/settings/heating.js";
       export { patchSettingsDom } from "../js/src/settings/core.js";
+      export { getSettingsGroupHydrationKeys, syncEntities } from "../js/src/core/entity-sync.js";
+      export { getHeaderRenderSignature } from "../js/src/core/header-render-controls.js";
+      export { getSettingsRenderSignature } from "../js/src/core/render-signatures.js";
+      export { setLocale } from "../js/src/i18n/index.js";
       export { commitSelect } from "../js/src/core/entity-write-actions.js";
+      export { handleFocusChange, handlePointerDown, handlePointerUp, handleClick } from "../js/src/core/entity-actions.js";
+      export { renderSettingsGroupContent } from "../js/src/settings/core.js";
       export { setRenderCallback } from "../js/src/core/render-scheduler.js";
     `,
     resolveDir: fileURLToPath(new URL(".", import.meta.url)),
@@ -35,7 +41,7 @@ const bundle = await build({
   }],
   write: false,
 });
-const { state, SETTINGS_GROUPS, getSelectEntityOptions, getSettingsChoiceModel, getSettingsSelectModel, getSettingsSwitchModel, renderSettingsChoiceOption, renderSettingsCompactSwitchControl, renderSettingsSelectField, renderSettingsSwitchField, renderSettingsOptionCardsField, patchSettingsSelectControl, renderSettingsStorageSelectRow, renderHeatingStrategyExplainCards, patchSettingsDom, commitSelect, setRenderCallback } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
+const { state, ENTITY_DEFS, SETTINGS_GROUPS, getSelectEntityOptions, getSettingsChoiceModel, getSettingsSelectModel, getSettingsSwitchModel, renderSettingsChoiceOption, renderSettingsCompactSwitchControl, renderSettingsSelectField, renderSettingsSwitchField, renderSettingsOptionCardsField, patchSettingsSelectControl, renderSettingsStorageSelectRow, renderControlledWarmupField, renderHeatingStrategyExplainCards, patchSettingsDom, getSettingsGroupHydrationKeys, syncEntities, getHeaderRenderSignature, getSettingsRenderSignature, setLocale, commitSelect, handleFocusChange, handlePointerDown, handlePointerUp, handleClick, renderSettingsGroupContent, setRenderCallback } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
 const initial = structuredClone(state);
 
 test.beforeEach(() => {
@@ -74,12 +80,20 @@ function node(dataset = {}) {
   };
 }
 
-function mount({ selects = [], choices = [], switches = [], pills = [] } = {}) {
+function mount({ selects = [], choices = [], switches = [], pills = [], inputs = [], warmupMarkup = "" } = {}) {
   const card = node({ oqSettingsField: "strategy" });
-  card.querySelectorAll = selector => selector === "select[data-oq-field]" ? selects : [];
+  card.querySelectorAll = selector => selector === "select[data-oq-field]" ? selects : selector === "input[data-oq-field]" ? inputs : [];
   const groups = SETTINGS_GROUPS.map(({ id }) => node({ groupId: id }));
   const nav = { querySelectorAll: () => groups };
   const stack = node();
+  const section = node({ oqWarmupEnabled: warmupMarkup.match(/data-oq-warmup-enabled="([^"]+)"/)?.[1] || "" });
+  const status = node();
+  status.textContent = warmupMarkup.match(/data-oq-warmup-status>([^<]*)<\/span>/)?.[1] || "";
+  const readings = Object.fromEntries([...warmupMarkup.matchAll(/data-oq-warmup-reading="([^"]+)">([^<]*)<\/strong>/g)]
+    .map(([, key, text]) => [key, { ...node(), textContent: text }]));
+  stack.querySelector = selector => selector === "[data-oq-warmup-enabled]" && warmupMarkup ? section
+    : selector === "[data-oq-warmup-status]" && warmupMarkup ? status
+    : readings[selector.match(/^\[data-oq-warmup-reading="([^"]+)"\]$/)?.[1]] || null;
   const collections = {
     "[data-oq-settings-field]": [card],
     "[data-select-key]": choices,
@@ -87,8 +101,99 @@ function mount({ selects = [], choices = [], switches = [], pills = [] } = {}) {
     "[data-oq-switch-pill]": pills,
   };
   stack.querySelectorAll = selector => collections[selector] || [];
-  state.root = { querySelector: selector => selector === ".oq-settings-group-nav" ? nav : selector === ".oq-settings-group-stack" ? stack : null };
+  state.root = { querySelector: selector => selector === ".oq-settings-group-nav" ? nav : selector === ".oq-settings-group-stack" ? stack : null, querySelectorAll: () => [] };
+  return { status, readings };
 }
+
+test("focused settings polls patch live warmup status and targets while preserving the input draft and cursor", async () => {
+  const originalFetch = globalThis.fetch;
+  let renders = 0;
+  setRenderCallback(() => { renders++; });
+  state.settingsGroup = "heating";
+  state.entities = {
+    strategy: { value: "Power House" }, setupComplete: { value: true },
+    warmupEnabled: { value: true }, warmupActive: { value: false },
+    roomTemp: { value: 18.06 }, roomSetpoint: { value: 20.5 }, warmupEffectiveTarget: { value: 18.1 },
+    warmupTrigger: { value: 1.5 },
+  };
+  for (const key of getSettingsGroupHydrationKeys()) {
+    if (!ENTITY_DEFS[key]?.optional && !state.entities[key]) state.entities[key] = {};
+    if (ENTITY_DEFS[key]?.optional && !state.entities[key]) state.optionalMissingEntities[key] = Date.now();
+  }
+  state.complete = true;
+  state.lastEntitySyncAt = Date.now();
+  state.lastEntitySyncSuccessAt = Date.now();
+  state.lastStaticEntitySyncAt = Date.now();
+  state.headerRenderSignature = getHeaderRenderSignature();
+  state.focusedField = "warmupTrigger";
+  state.inputDrafts.warmupTrigger = "1.8";
+  const input = node({ oqField: "warmupTrigger" });
+  Object.assign(input, { type: "number", value: "1.8", selectionStart: 1, selectionEnd: 2 });
+  document.activeElement = input;
+  const { status, readings } = mount({ inputs: [input], warmupMarkup: renderControlledWarmupField() });
+  assert.equal(status.textContent, "Niet actief");
+  assert.equal(readings.warmupEffectiveTarget.textContent, "18,10 °C");
+  state.settingsRenderSignature = getSettingsRenderSignature();
+  const previousSignature = state.settingsRenderSignature;
+  assert.equal(readings.roomTemp.textContent, "18,06 °C");
+  let deviceValues = { roomTemp: { value: 18.07 }, warmupActive: { value: true }, warmupEffectiveTarget: { value: 18.4 }, roomSetpoint: { value: 21 } };
+  const requested = new Set();
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "/openquatt/entities");
+    assert.equal(options.method, "POST");
+    const keys = new URLSearchParams(options.body).get("entities").split("\n").map(line => line.split("\t")[0]);
+    keys.forEach(key => requested.add(key));
+    return { ok: true, json: async () => ({
+      entities: Object.fromEntries(keys.filter(key => deviceValues[key] || state.entities[key] || !ENTITY_DEFS[key]?.optional)
+        .map(key => [key, deviceValues[key] || state.entities[key] || {}])),
+      missing: keys.filter(key => !deviceValues[key] && !state.entities[key] && ENTITY_DEFS[key]?.optional),
+    }) };
+  };
+  try {
+    await syncEntities();
+    assert.equal(state.controlError, "");
+    assert.equal(state.entities.warmupActive.value, true);
+    assert.equal(state.headerRenderSignature, getHeaderRenderSignature());
+    assert.equal(renders, 0);
+    assert.notEqual(state.settingsRenderSignature, previousSignature);
+    assert.equal(state.settingsRenderSignature, getSettingsRenderSignature());
+    assert.equal(status.textContent, "Opwarmen in stappen");
+    assert.equal(readings.roomTemp.textContent, "18,07 °C");
+    assert.equal(readings.roomSetpoint.textContent, "21,00 °C");
+    assert.equal(readings.warmupEffectiveTarget.textContent, "18,40 °C");
+    for (const key of ["warmupActive", "warmupEffectiveTarget", "roomSetpoint", "roomTemp"]) assert.ok(requested.has(key));
+
+    deviceValues = { roomTemp: { value: 18.08 } };
+    await syncEntities();
+    assert.equal(readings.roomTemp.textContent, "18,08 °C");
+    assert.equal(readings.warmupEffectiveTarget.textContent, "18,40 °C");
+    assert.equal(renders, 0);
+
+    setLocale("en", { persist: false });
+    state.headerRenderSignature = getHeaderRenderSignature();
+    deviceValues = { roomTemp: { value: null, state: null }, warmupActive: { value: null, state: null }, warmupEffectiveTarget: { value: null, state: null } };
+    await syncEntities();
+    assert.equal(status.textContent, "Status unknown");
+    assert.equal(readings.warmupEffectiveTarget.textContent, "—");
+    assert.equal(readings.roomTemp.textContent, "—");
+    assert.equal(readings.roomSetpoint.textContent, "21.00 °C");
+
+    deviceValues = { warmupEnabled: { value: false }, warmupActive: { value: false }, warmupEffectiveTarget: { value: 21 } };
+    await syncEntities();
+    assert.equal(status.textContent, "Disabled");
+    assert.equal(readings.warmupEffectiveTarget.textContent, "21.00 °C");
+    assert.equal(renders, 0);
+    assert.equal(document.activeElement, input);
+    assert.equal(state.focusedField, "warmupTrigger");
+    assert.equal(input.value, "1.8");
+    assert.deepEqual([input.selectionStart, input.selectionEnd], [1, 2]);
+    assert.equal(state.inputDrafts.warmupTrigger, "1.8");
+    assert.equal(state.entities.warmupTrigger.value, 1.5);
+  } finally {
+    globalThis.fetch = originalFetch;
+    setLocale("nl", { persist: false });
+  }
+});
 
 test("select fields retain firmware options and hide missing entities", () => {
   assert.equal(getSettingsSelectModel("missing").available, false);
@@ -319,4 +424,157 @@ test("a failed select request restores both controls and releases their busy sta
   assert.equal(choice.getAttribute("aria-pressed"), "false");
   assert.equal(choice.disabled, false);
   assert.match(state.controlError, /connection lost/);
+});
+
+
+test("external warmup toggles defer structural rendering until blur without losing drafts", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const enabled of [false, true]) {
+      for (const locale of ["nl", "en"]) {
+        setLocale(locale, { persist: false });
+        state.settingsGroup = "heating";
+        state.warmupSettingsRenderPending = false;
+        state.entities = {
+          strategy: { value: "Power House" }, setupComplete: { value: true },
+          warmupEnabled: { value: enabled }, warmupStep: { value: 0.1 },
+        };
+        state.optionalMissingEntities = {};
+        for (const key of getSettingsGroupHydrationKeys()) {
+          if (!ENTITY_DEFS[key]?.optional && !state.entities[key]) state.entities[key] = {};
+          if (ENTITY_DEFS[key]?.optional && !state.entities[key]) state.optionalMissingEntities[key] = Date.now();
+        }
+        Object.assign(state, {
+          complete: true, lastEntitySyncAt: Date.now(), lastEntitySyncSuccessAt: Date.now(),
+          lastStaticEntitySyncAt: Date.now(), focusedField: "phKp", inputDrafts: { phKp: "1234" },
+        });
+        state.headerRenderSignature = getHeaderRenderSignature();
+        state.settingsRenderSignature = getSettingsRenderSignature();
+        const originalSignature = state.settingsRenderSignature;
+        const input = node({ oqField: "phKp" });
+        Object.assign(input, { type: "number", value: "1234", selectionStart: 1, selectionEnd: 3 });
+        document.activeElement = input;
+        mount({ inputs: [input], warmupMarkup: renderControlledWarmupField() });
+        let renders = 0;
+        let currentMarkup = "";
+        setRenderCallback(() => {
+          renders++;
+          currentMarkup = renderSettingsGroupContent();
+          state.settingsRenderSignature = getSettingsRenderSignature();
+          mount({ inputs: [input], warmupMarkup: renderControlledWarmupField() });
+        });
+        let remoteEnabled = !enabled;
+        globalThis.fetch = async (url, options) => {
+          assert.equal(url, "/openquatt/entities");
+          const keys = new URLSearchParams(options.body).get("entities").split("\n").map(line => line.split("\t")[0]);
+          return { ok: true, json: async () => ({
+            entities: Object.fromEntries(keys.filter(key => state.entities[key]).map(key =>
+              [key, key === "warmupEnabled" ? { value: remoteEnabled } : state.entities[key]])),
+            missing: keys.filter(key => !state.entities[key] && ENTITY_DEFS[key]?.optional),
+          }) };
+        };
+        await syncEntities();
+        assert.equal(state.entities.warmupEnabled.value, !enabled);
+        assert.equal(renders, 0);
+        assert.equal(state.warmupSettingsRenderPending, true);
+        assert.equal(state.settingsRenderSignature, originalSignature);
+        assert.equal(input.value, "1234");
+        assert.equal(input.selectionStart, 1);
+        assert.equal(input.selectionEnd, 3);
+        assert.equal(state.inputDrafts.phKp, "1234");
+        // A second poll cannot consume the pending structural change.
+        await syncEntities();
+        assert.equal(renders, 0);
+        assert.equal(state.warmupSettingsRenderPending, true);
+        // Moving to another input must keep the render deferred.
+        document.activeElement = node({ oqField: "phComfortAbove" });
+        handleFocusChange({ type: "focusout", target: input });
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.equal(renders, 0);
+        document.activeElement = null;
+        handleFocusChange({ type: "focusout", target: input });
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.equal(renders, 1);
+        assert.equal(state.warmupSettingsRenderPending, false);
+        assert.equal(state.inputDrafts.phKp, "1234");
+        assert.equal(/data-oq-field="warmupStep"/.test(currentMarkup), !enabled);
+        handleFocusChange({ type: "focusout", target: input });
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.equal(renders, 1);
+        // An external toggle back before blur needs no structural render.
+        state.focusedField = "phKp";
+        document.activeElement = input;
+        remoteEnabled = enabled;
+        await syncEntities();
+        assert.equal(state.warmupSettingsRenderPending, true);
+        remoteEnabled = !enabled;
+        await syncEntities();
+        assert.equal(state.warmupSettingsRenderPending, false);
+        document.activeElement = null;
+        handleFocusChange({ type: "focusout", target: input });
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.equal(renders, 1);
+      }
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    setLocale("nl", { persist: false });
+    setRenderCallback(null);
+  }
+});
+
+
+test("pending warmup rendering waits for pointerup and the following navigation click", async () => {
+  state.settingsGroup = "heating";
+  state.focusedField = "phKp";
+  state.warmupSettingsRenderPending = true;
+  let renders = 0;
+  let removedButton = false;
+  setRenderCallback(() => { renders++; removedButton = true; renderSettingsGroupContent(); });
+  const button = node({ oqAction: "select-settings-group", groupId: "cooling" });
+  button.closest = selector => selector === '[data-oq-action]' || selector === "button, [data-oq-action]" ? button : null;
+  document.activeElement = button;
+  handlePointerDown({ target: button });
+  handleFocusChange({ type: "focusout", target: node({ oqField: "phKp" }) });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(renders, 0);
+  assert.equal(removedButton, false);
+  handlePointerUp();
+  // The browser dispatches the click after pointerup, before the queued task.
+  assert.equal(removedButton, false);
+  state.loadingEntities = true;
+  handleClick({ target: button });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(state.settingsGroup, "cooling");
+  assert.equal(renders, 1);
+  assert.equal(state.warmupSettingsPointerActive, false);
+  assert.equal(state.warmupSettingsRenderPending, false);
+  // A pointer action without navigation still flushes the queued change.
+  state.settingsGroup = "heating";
+  state.warmupSettingsRenderPending = true;
+  document.activeElement = null;
+  handlePointerDown({ target: node() });
+  handlePointerUp();
+  assert.equal(renders, 1);
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(renders, 2);
+});
+
+
+test("Tab focus on a settings button is retained while a warmup render is pending", async () => {
+  state.settingsGroup = "heating";
+  state.warmupSettingsRenderPending = true;
+  let renders = 0;
+  setRenderCallback(() => { renders++; renderSettingsGroupContent(); });
+  const button = node();
+  button.closest = selector => selector === "button, [data-oq-action]" ? button : null;
+  document.activeElement = button;
+  handleFocusChange({ type: "focusout", target: node({ oqField: "phKp" }) });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(renders, 0);
+  assert.equal(state.warmupSettingsRenderPending, true);
+  document.activeElement = null;
+  handleFocusChange({ type: "focusout", target: button });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(renders, 1);
 });

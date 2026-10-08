@@ -8,7 +8,7 @@
 #include "oq_heating_supply_target_logic.h"
 #include "oq_input_source_logic.h"
 #include "oq_schedule_runtime.h"
-#include "../sources/oq_resolved_learning_source.h"
+#include "../sources/oq_resolved_control_input.h"
 #include "oq_supply_calibration_logic.h"
 #include "oq_supply_hold_logic.h"
 
@@ -20,6 +20,14 @@ class Runtime {
   oq_sources::ResolvedLearningSource resolved_room_setpoint() const { return this->resolved_setpoint_; }
   oq_sources::ResolvedLearningSource resolved_outside_temperature() const { return this->resolved_outside_; }
   oq_sources::ResolvedLearningSource resolved_flow_rate() const { return this->resolved_flow_; }
+
+  // One coherent selected snapshot, with live producer currentness. Transport
+  // details stay here; consumers must not inspect receipts or entity caches.
+  oq_sources::RoomControlSnapshot room_control_snapshot(bool ot_room_fresh, bool ot_setpoint_fresh,
+                                                        uint32_t ha_stale_s) const {
+    return {this->room_control_input_(false, ot_room_fresh, ha_stale_s),
+            this->room_control_input_(true, ot_setpoint_fresh, ha_stale_s)};
+  }
 
   // Register this on every source-selector and CIC URL on_value callback. It
   // records even A->B->A changes that occur between periodic sensor updates and
@@ -574,6 +582,27 @@ class Runtime {
       default:
         return LearningSourceRoute::NONE;
     }
+  }
+
+  oq_sources::ResolvedControlInput room_control_input_(bool setpoint, bool ot_fresh, uint32_t ha_stale_s) const {
+    const auto& resolved = setpoint ? this->resolved_setpoint_ : this->resolved_room_;
+    const bool configured = setpoint ? id(room_setpoint_source).has_state() : id(room_temp_source).has_state();
+    if (!configured) return {};
+    const auto source =
+        parse_source(setpoint ? id(room_setpoint_source).current_option() : id(room_temp_source).current_option());
+    const auto producer = oq_input_source::sample_for(source, room_sources(ot_fresh, setpoint));
+    bool current = producer.valid;
+    if (!setpoint && source == oq_input_source::Source::HA) {
+      current = current && ha_live_valid(id(room_temp_valid_ha), id(thermostat_room_temp_ha),
+                                         static_cast<uint32_t>(millis()), ha_stale_s);
+    }
+    if (source == oq_input_source::Source::CIC) {
+      const auto receipt =
+          setpoint ? id(cic_component).room_setpoint_receipt() : id(cic_component).room_temperature_receipt();
+      current = current && oq_sources::current_receipt_matches(receipt, producer.value);
+    }
+    const float published = setpoint ? id(room_setpoint_selected).state : id(room_temp_selected).state;
+    return oq_sources::control_input(resolved, published, current);
   }
 
   static oq_sources::ResolvedLearningSource resolve_room(const oq_input_source::NumericSelection& selected,

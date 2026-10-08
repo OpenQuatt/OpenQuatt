@@ -105,6 +105,26 @@ Kies eerder stooklijnregeling als:
 
 Twijfel je? Begin dan met de strategie die het meest logisch voelt, en wissel niet te snel heen en weer. Eerst kijken hoe het systeem zich over langere tijd gedraagt is meestal verstandiger dan direct finetunen.
 
+## Geleidelijk opwarmen na nachtverlaging
+
+Bij `Power House` kun je na nachtverlaging of langere afwezigheid geleidelijk
+opwarmen. De functie staat standaard uit. Je thermostaat blijft de gewenste
+eindtemperatuur bepalen; dit werkt ook met andere thermostaten dan Tado.
+
+Zet de functie aan vóór je de thermostaat hoger zet. Bijvoorbeeld: van 17 naar
+20,5 °C is een verhoging van 3,5 °C en overschrijdt de standaardstartgrens van
+1,5 °C. Bij een gemeten kamertemperatuur van 18 °C wordt het eerste tussendoel
+18,1 °C. Zodra de kamer dat bereikt, volgt de volgende stap. Wordt het tussendoel
+na 45 minuten nog niet gehaald, dan wordt de stap groter.
+
+Alleen inschakelen terwijl de thermostaat al op 20,5 °C staat, zet de bestaande
+opwarming niet alsnog om in stappen. Binnen de comfortband van het einddoel neemt
+de normale regeling weer over. Opwarmen kan langer duren; een energiebesparing
+is niet gegarandeerd. De stooklijn gebruikt deze functie niet.
+
+Zie [Geleidelijk opwarmen instellen](../web-app/instellingen.md#geleidelijk-opwarmen-na-nachtverlaging)
+voor de bediening, instellingen en voorbeelden.
+
 ## `Single` en `Duo`
 
 Bij `Single` is er een warmtepomp. Bij `Duo` zijn het er twee.

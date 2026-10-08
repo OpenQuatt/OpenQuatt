@@ -8,6 +8,7 @@
 #include "esphome/components/web_server/web_server.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 #include "esphome/core/component.h"
+#include "warmup_progress_snapshot.h"
 
 namespace esphome {
 namespace openquatt_service_status {
@@ -20,6 +21,7 @@ class OpenQuattServiceStatus : public Component {
   using StringGlobal = globals::GlobalsComponent<std::string>;
 
   void set_web_server(web_server::WebServer* web_server) { this->web_server_ = web_server; }
+  void set_warmup_progress(uint8_t status, uint32_t elapsed_s) { this->warmup_progress_.publish(status, elapsed_s); }
 
   void set_control_mode_code(IntGlobal* value) { this->control_mode_code_ = value; }
   void set_commissioning_active(BoolGlobal* value) { this->commissioning_active_ = value; }
@@ -93,6 +95,7 @@ class OpenQuattServiceStatus : public Component {
   void write_status(httpd_req_t* req) const;
 
  protected:
+  WarmupProgressSnapshot warmup_progress_;
   web_server::WebServer* web_server_{nullptr};
   IntGlobal* control_mode_code_{nullptr};
   BoolGlobal* commissioning_active_{nullptr};

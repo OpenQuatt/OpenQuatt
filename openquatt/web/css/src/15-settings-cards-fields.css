@@ -441,6 +441,11 @@
 }
 
 @media (max-width: 600px) {
+  .oq-run-extension-thresholds,
+  .oq-run-extension-thresholds.oq-warmup-readings {
+    grid-template-columns: 1fr;
+  }
+
   .oq-ph-comfort {
     padding: 0;
     border: 0;

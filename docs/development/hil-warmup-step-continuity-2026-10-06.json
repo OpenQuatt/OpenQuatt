@@ -1,0 +1,348 @@
+{
+  "schemaVersion": 1,
+  "source": "4830dece770b677f6888eef574dcc7ff3db3f09c",
+  "base": "8483e0c31893744f6c76ef78d0ac3cb8120d295f",
+  "builds": {
+    "duo": {
+      "sha256": "3709c7b93a4799709d3452c1fcac530bf9247ae9214a0dedb2d62bef502c61ad",
+      "size": 2440288,
+      "configHash": "0x57f4228d",
+      "configSha": "dc1d32ebd401c75eb3d5bea62393189424b7badba972e5a626b2af075eaf45ae",
+      "source": "4830dece770b677f6888eef574dcc7ff3db3f09c"
+    },
+    "single": {
+      "sha256": "c415626d5c491c7dc0dffaacac1eab7ed46fbb601c8a9edadcdd2029addc1867",
+      "size": 2397808,
+      "configHash": "0xb3fe1313",
+      "configSha": "b488bd50a7efe7eab5526a38992ec5111190f5ee28fa87cd528f691f293085e8",
+      "source": "4830dece770b677f6888eef574dcc7ff3db3f09c"
+    }
+  },
+  "verdicts": [
+    {
+      "phase": "duo-room-20.10",
+      "samples": 7,
+      "verdict": "PASS"
+    },
+    {
+      "phase": "duo-old-stop-20.11",
+      "samples": 41,
+      "verdict": "PASS"
+    },
+    {
+      "phase": "duo-step-20.17",
+      "samples": 7,
+      "verdict": "PASS"
+    },
+    {
+      "phase": "duo-step-20.28",
+      "samples": 7,
+      "verdict": "PASS"
+    },
+    {
+      "phase": "duo-step-20.39",
+      "samples": 7,
+      "verdict": "PASS"
+    },
+    {
+      "phase": "single-room-20.10",
+      "samples": 7,
+      "verdict": "PASS"
+    },
+    {
+      "phase": "single-old-stop-20.11",
+      "samples": 7,
+      "verdict": "PASS"
+    },
+    {
+      "phase": "single-step-20.17",
+      "samples": 7,
+      "verdict": "PASS"
+    },
+    {
+      "phase": "single-step-20.28",
+      "samples": 7,
+      "verdict": "PASS"
+    },
+    {
+      "phase": "single-step-20.39",
+      "samples": 7,
+      "verdict": "PASS"
+    },
+    {
+      "phase": "duo-comfort-handoff",
+      "verdict": "PASS",
+      "old_stop_run_age_s": 369.7579998970032,
+      "note": "Exact lower boundary allows existing ordinary recovery; not a stable-off claim."
+    },
+    {
+      "phase": "single-running-hp-timeout-5min",
+      "verdict": "FAIL_CONTINUITY_PROBE",
+      "note": "Settings changed during existing session; cancellation/postflow precedes new raise. Kept as separate observed stop, not a clean running-entry test."
+    },
+    {
+      "phase": "single-isolated-running-timeout-5min",
+      "verdict": "PASS",
+      "observed_delay_s": 311.26599979400635
+    },
+    {
+      "phase": "single-water-limit-active",
+      "verdict": "PASS",
+      "samples": 15,
+      "scope": "Sampled output and last three settled requests; reentry limited to minimum-off blocking."
+    },
+    {
+      "phase": "single-permission-off-water-released",
+      "verdict": "PASS",
+      "samples": 8,
+      "scope": "Sampled output and last three settled requests; reentry limited to minimum-off blocking."
+    },
+    {
+      "phase": "single-permission-reentry-minoff",
+      "verdict": "PASS",
+      "samples": 7,
+      "scope": "Sampled output and last three settled requests; reentry limited to minimum-off blocking."
+    },
+    {
+      "phase": "single-lower-goal-cancel",
+      "verdict": "PASS",
+      "scope": "Owner cancellation/no replay with heating permission off, not a compressor-interruption test."
+    },
+    {
+      "phase": "single-disable-cancel",
+      "verdict": "PASS",
+      "scope": "Owner cancellation/no replay with heating permission off, not a compressor-interruption test."
+    },
+    {
+      "phase": "single-enable-no-replay",
+      "verdict": "PASS",
+      "scope": "Owner cancellation/no replay with heating permission off, not a compressor-interruption test."
+    },
+    {
+      "phase": "single-source-cancel",
+      "verdict": "PASS",
+      "scope": "Owner cancellation/no replay with heating permission off, not a compressor-interruption test."
+    },
+    {
+      "phase": "single-source-return-no-replay",
+      "verdict": "PASS",
+      "scope": "Owner cancellation/no replay with heating permission off, not a compressor-interruption test."
+    },
+    {
+      "phase": "single-mode-cancel",
+      "verdict": "PASS",
+      "scope": "Owner cancellation/no replay with heating permission off, not a compressor-interruption test."
+    },
+    {
+      "phase": "single-mode-return-no-replay",
+      "verdict": "PASS",
+      "scope": "Owner cancellation/no replay with heating permission off, not a compressor-interruption test."
+    },
+    {
+      "phase": "single-restart-no-replay",
+      "verdict": "PASS",
+      "before_uptime_h": 0.700438,
+      "after_uptime_h": 0.017189,
+      "scope": "Active session before restart with CH off; settings persisted and same fresh inputs do not resume session. Not an active-compressor reboot test."
+    },
+    {
+      "phase": "final-duo-safe-idle",
+      "verdict": "PASS",
+      "at": "2026-10-06T18:16:08.953Z",
+      "scope": "Verified both applied outputs/modes/frequencies zero; service and fixture flags off; ordinary test parameters restored. Runner returned released=true and exited 0; lablock absence separately checked."
+    }
+  ],
+  "measurements": {
+    "file": "hil-warmup-step-continuity-2026-10-06.csv",
+    "sha256": "61f3dc3218aad8f6f69a5abbe0bb6daaa5cfa04bd49b23799960abb00d0711b8",
+    "rows": 545
+  },
+  "restartProof": {
+    "before-restart": {
+      "at": "2026-10-06T18:11:44.271Z",
+      "label": "before-restart",
+      "uptime": 0.700438,
+      "version": "2026.9.0 (config hash 0xb3fe1313)",
+      "topology": "single",
+      "warmupEnabled": true,
+      "step": "0.1",
+      "stepTime": "5",
+      "trigger": "1.5",
+      "comfort": "0.20",
+      "reaction": "3000",
+      "waterLimit": "60.0",
+      "waterSource": "HA input",
+      "override": "Auto",
+      "heating": false,
+      "cm": "CM0",
+      "active": true,
+      "goal": 24,
+      "room": 20.39,
+      "hp1": 0,
+      "minRuntime": "300",
+      "roomSource": "API input",
+      "mode": "Power House"
+    },
+    "after-restart": {
+      "at": "2026-10-06T18:13:44.830Z",
+      "label": "after-restart",
+      "uptime": 0.017189,
+      "version": "2026.9.0 (config hash 0xb3fe1313)",
+      "topology": "single",
+      "warmupEnabled": true,
+      "step": "0.1",
+      "stepTime": "5",
+      "trigger": "1.5",
+      "comfort": "0.20",
+      "reaction": "3000",
+      "waterLimit": "60.0",
+      "waterSource": "HA input",
+      "override": "Auto",
+      "heating": false,
+      "cm": "CM0",
+      "active": false,
+      "goal": 24,
+      "room": 20.39,
+      "hp1": 0,
+      "minRuntime": "300",
+      "roomSource": "API input",
+      "mode": "Power House"
+    }
+  },
+  "finalSettings": {
+    "at": "2026-10-06T18:16:29.138Z",
+    "label": "final-duo",
+    "uptime": 0.033782,
+    "version": "2026.9.0 (config hash 0x57f4228d)",
+    "topology": "duo",
+    "warmupEnabled": true,
+    "step": "0.1",
+    "stepTime": "45",
+    "trigger": "1.5",
+    "comfort": "0.10",
+    "reaction": "3000",
+    "waterLimit": "60.0",
+    "waterSource": "HA input",
+    "override": "Force CM0",
+    "heating": false,
+    "cm": "CM0",
+    "active": false,
+    "goal": 18,
+    "room": 20.39,
+    "hp1": 0,
+    "minRuntime": "300",
+    "roomSource": "API input",
+    "mode": "Power House"
+  },
+  "finalState": {
+    "label": "idle-verification",
+    "topology": "duo",
+    "cm": "CM0",
+    "room": 20.39,
+    "goal": 18,
+    "active": false,
+    "target": 18,
+    "req": 0,
+    "house": 0,
+    "intent": 0,
+    "first": "none",
+    "latch": false,
+    "pmin": "NA",
+    "hp1": 0,
+    "hp2": 0,
+    "flow": 0,
+    "water": 30,
+    "heat": false
+  },
+  "finalAt": "2026-10-06T18:16:08.953Z",
+  "finalSimulator": {
+    "ODU 1 manual telemetry override": false,
+    "ODU 2 manual telemetry override": false,
+    "ODU 1 force no flow": false,
+    "ODU 2 force no flow": false,
+    "ODU 1 defrost": false,
+    "ODU 2 defrost": false,
+    "OpenQuatt Simulator Version": "v0.5.0",
+    "OpenQuatt Simulator Contract": "openquatt-modbus-opentherm-v2"
+  },
+  "finalFrequency": {
+    "HP1 - Compressor frequency": 0,
+    "HP2 - Compressor frequency": 0
+  },
+  "finalService": {
+    "cm100Active": false,
+    "boilerPowerTestActive": false,
+    "airPurgeActive": false,
+    "manualFlowActive": false,
+    "manualHpActive": false,
+    "hpWaterCalibrationActive": false
+  },
+  "lablockAbsentAfterSuccessfulRunnerExit": true,
+  "privateEvidence": [
+    {
+      "file": "events.jsonl",
+      "size": 404159,
+      "sha256": "e1450c387683c96a5923c8d3baf6dbcfa2a2852f83eaf8bbe54dda40d54ec188"
+    },
+    {
+      "file": "controller-logstream.txt",
+      "size": 26207,
+      "sha256": "e27c4219fbcc5926fe1b210fe0504d3db7c0c75c5756127fb31216f96a535a96"
+    },
+    {
+      "file": "compressor-feedback.jsonl",
+      "size": 4739,
+      "sha256": "f2a59b55465189adb9f43df39df2c9ce7a8e7795fa49d28f57c46cdcf9412b0a"
+    },
+    {
+      "file": "feedback-extra.jsonl",
+      "size": 510,
+      "sha256": "d16610aac6a575fd8907256ec8613b322aac9f396befdb65c78558effae31ec1"
+    },
+    {
+      "file": "build-seals.json",
+      "size": 592,
+      "sha256": "e7adc2c10ee2970c6b77fc71c1d194254d27799b7b49f93132ee71f25137294c"
+    },
+    {
+      "file": "helper-seals.json",
+      "size": 345,
+      "sha256": "792a65243a16d8f65a1d5b12fb537003d275bea6ccd09b9360133d3d0971590f"
+    },
+    {
+      "file": "verify_trace.py",
+      "size": 11775,
+      "sha256": "705982aaacd6a0861cc1f92f45417c0f972921eabbccb9d94867064af81f8c39"
+    },
+    {
+      "file": "before-restart.json",
+      "size": 536,
+      "sha256": "9ec84d325525da536a167e50723d6b494327bab331c73a5178c9752e9399b82a"
+    },
+    {
+      "file": "after-restart.json",
+      "size": 536,
+      "sha256": "a07857c453a7756172d7b8108497b47bed2f3674a2f4b092b015be83fae507a4"
+    },
+    {
+      "file": "final-duo.json",
+      "size": 535,
+      "sha256": "2d51dd5dde053943ea389fd6ed60da1c5f2aa8b2851f22cefeeeb39fbaaa9ed4"
+    },
+    {
+      "file": "final-lab.json",
+      "size": 1089,
+      "sha256": "7b9e8884c7894c2d72b5474070bba3b67e4e09383ee6e48661c3c03598f8e493"
+    }
+  ],
+  "limitations": [
+    "Nominal control HIL, no runtime heap qualification.",
+    "First Duo post-OTA identity verified in tool output, not original journal; final Duo sealed binary and post-OTA identity are journaled.",
+    "Single old-stop hold itself shorter than minimum runtime; running-entry timeout independently exceeds minimum runtime.",
+    "Warmup settings-change probe failed continuity after intentional session cancellation; retained separately.",
+    "Water input was HA input, not physical PT1000/ODU sensing.",
+    "Source switch used an unavailable HA room input, not two simultaneously valid sources.",
+    "Cancellation/reboot owner tests run with CH permission off.",
+    "No HIL defrost, ten-minute stale expiry, eight-hour expiry, or completed restart after guard minimum-off."
+  ]
+}

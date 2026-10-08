@@ -1,0 +1,168 @@
+# Geleidelijk opwarmen v1
+
+De source resolver levert een coherent `RoomControlSnapshot`: geselecteerde
+waarde, validiteit, actuele producer/link, held-status en configuration generation.
+CIC-receipts en de 0,001 °C-publicatietolerantie blijven in de sourcelaag.
+Een geldige producer mag één sensorupdate vóór de selected cache lopen; een
+ontbrekend veld maakt currentness direct onwaar. HA-kamertemperatuur gebruikt
+de live ingress-heartbeat; het setpoint blijft stateful.
+
+`Runtime::update(Input, Settings)` is het enige pad dat de toestandmachine
+evalueert. De 1s interval in `oq_warmup.yaml` is de eigenaar, ook in standby,
+koelen en service. Strategieën en diagnostiek lezen pure getters. De YAML-tick
+maakt alleen de inputadapter; stappen, edges en timers blijven pure C++.
+
+Power House kan de nieuwe thermostaatwaarde vóór de volgende 1s-update lezen.
+De pure `control_target`-getter houdt bij een voldoende grote verhoging dan
+tijdelijk het vorige doel aan en onderdrukt fast-start. Bijvoorbeeld: 17→20 °C
+blijft vóór de update op 17 °C begrensd; de update start vervolgens bij een
+kamertemperatuur van 17 °C met een tussendoel van 17,1 °C. Getters starten geen
+sessie en veranderen geen timers. Uitschakelen of invalidation heft deze
+voorlopige begrenzing meteen op; de volgende update legt een nieuwe baseline vast.
+
+Callbacks vragen invalidation aan: het oude resultaat is onmiddellijk verborgen,
+maar alleen de volgende update reset de state en legt een nieuwe baseline vast.
+Dit bewaart bron-/moduswisselingen die tussen twee ticks plaatsvinden.
+
+| Callback | Reden |
+|---|---|
+| Room/setpoint source | Generations detecteren ook A→B→A; invalidation verbergt daarnaast het oude target vóór de volgende tick. |
+| Heating enable source | Permission-source identity zit niet in room/setpoint generations; wisselen mag geen bestaande sessie behouden. |
+| External heat demand source | Externe demand bypass; ook Disabled→extern→Disabled tussen ticks reset de baseline. |
+| Heating mode switch | Power House→stooklijn→Power House tussen ticks mag geen sessie hervatten. |
+| Enabled en drie nummerinstellingen | Elke expliciete wijziging reset baseline; aanzetten speelt geen oude verhoging af. |
+| OpenQuatt Enabled en CM override | Ook uit→aan en Auto→Force CM0→Auto tussen ticks annuleren de sessie. |
+| CM100, manual HP, manual flow en quick flow | Elke expliciete start/stop annuleert de sessie, ook wanneer de serviceaanvraag wordt geweigerd of vóór de volgende tick alweer stopt. |
+| Boot | Opgeslagen instellingen toepassen; sessie en vorige setpoint zijn nooit persistent. |
+
+De heating-supply-source callback is verwijderd: v1 werkt alleen met Power House
+en die selector bestuurt uitsluitend de stooklijn. Normale mode-detection stopt
+bij CM buiten 0..3, handbediening, koelen of uitgeschakelde OpenQuatt.
+
+V1 ondersteunt uitsluitend Power House. De oorspronkelijke stooklijnintegratie
+wijzigde hoofdzakelijk ruimte-stop/herstartgrenzen, terwijl het waterdoel gelijk
+kon blijven; dat bewijst geen begrensd opwarmvermogen. Vier instellingen zijn
+publiek: enabled, trigger, stap en staptijd. Maximum offset (0,5 K) en duur (8 uur)
+zijn compile-time constanten. De runtime kent geen strategiecodes; de adapter en
+mode-callback bewaken uitsluitend automatische Power House-regeling. Twee publieke
+meetwaarden tonen actieve sessie en effectief doel. Sessiestatus en verstreken
+duur zijn daarnaast beschikbaar via de service-API (zie sessiediagnostiek).
+
+Bij de standaardinstellingen geeft 17→20,5 °C een verhoging van 3,5 °C en start
+opwarming; 19→20,5 °C is precies 1,5 °C en start niet. Bij 18,0 °C gemeten wordt
+het eerste tussendoel 18,1 °C. Zodra dit is bereikt, volgt direct de volgende
+stap. De 45 minuten zijn een termijn om het tussendoel te halen, geen vaste
+wachttijd: is de kamer na 45 minuten nog 18,0 °C, dan groeit de stap van 0,1 naar
+0,2 °C en wordt het doel 18,2 °C. Alleen inschakelen terwijl de thermostaat al op
+20,5 °C staat start niets; een nieuwe voldoende grote verhoging is nodig.
+
+Het bestaande zes-float opslagblok blijft compatibel om een NVS-migratie te
+vermijden. Validatie van het volledige blok blijft fail-closed; slots 4/5 worden
+na geldige restore genormaliseerd naar de vaste limieten.
+
+Power House gebruikt het effectieve target voor room feedback. Heat intent krijgt
+het echte target voor gebruikersedges; tussenstappen zijn geen thermostaatverhoging.
+Tijdens warmup bevestigt een gestopte HP de warmtevraag onder het tussendoel via
+de normale 10s-confirmatie. De comfortband wordt daarvoor niet nogmaals van het
+tussendoel afgetrokken. De minimum-power recovery blijft vervolgens actief tot
+`requested_setpoint_c - room_resume_delta_c`, ook als Power House het bereiken van
+een tussendoel vóór de volgende 1s-warmuptick ziet. Een al draaiende HP mag deze
+recovery direct gebruiken met geldige bronnen en warmtetoestemming; dit is geen
+nieuwe start en omzeilt de downstream guards niet. Bij verlaten van de limiter
+worden recovery en startbevestiging gewist, zodat normaal regelen geen oude
+warmup-floor erft. Een onafhankelijk gestopte HP verliest het warmup-runrecht;
+een herstart moet de warmtevraag opnieuw bevestigen. Buiten warmup blijft de
+bestaande halve restartband gelden.
+`control_target` verbergt de limiter ook direct bij een lager actueel setpoint,
+zonder de sessie in een getter te muteren. Alleen `update` legt die overgang vast.
+De extra session-scope bool past in de bestaande 20 B heat-intent state; er komen
+geen controlbuffers, taken of opslagvelden bij.
+Tijdens en direct na warmup wordt comfort memory gereset. Run extension blijft
+op het echte target werken. Permission, dispatch en boiler support blijven downstream.
+
+De regressiesimulatie `tests/host/warmup_heat_intent_test.cpp` gebruikt de echte
+warmup-runtime, inputadapter, heat intent, Power House demand en low-load helpers.
+De bestaande floor-glue wordt in de fixture nagebootst; fysieke terugmelding,
+dispatch en minimum on/off timing blijven hardwaretestscope. Het
+[HIL-scenario](hil-warmup-step-continuity.md) is op 6 oktober uitgevoerd op
+bron `4830dece`. Dat verslag kwalificeert niet de latere samenvoeging met
+`dev`, waaronder de comfort- en herstartwijzigingen uit #788.
+
+## Sessiediagnostiek in de web-app
+
+De loop bewaart alleen de laatste eindstatus en vaste sessieduur (acht bytes in
+de runtime). De bestaande service-statuscomponent ontvangt elke owner-tick één
+atomair 32-bit woord: statuscode in de bovenste byte en verstreken seconden in
+de onderste 24 bits. HTTP leest dat woord eenmaal en streamt `warmupStatus` en
+`warmupElapsed` via `/openquatt/service/status`. Het leest geen mutable controlstate.
+De codes 0–9 uit `oq_warmup::Status` zijn een vast wirecontract. Code 0 betekent
+geen sessie sinds boot; 1 is een door uitschakelen afgebroken sessie, 2 actief,
+3 comfort bereikt, 5 tijdslimiet en de overige codes annulering.
+
+Dit voegt geen ESPHome-entities, buffers, taken of NVS-records toe; de snapshot
+gebruikt vier bytes. De Xtensa-compiler voor ESP32 en ESP32-S3 vertaalt de
+gebruikte relaxed 32-bit load/store naar uitgelijnde `l32i`/`s32i`-instructies
+met `memw`, zonder helpercalls of allocaties (GCC 14.2.0, `-O2` en `-Os`).
+De bredere `is_always_lock_free`-trait wordt niet vereist; grootte en uitlijning
+blijven met compileasserts bewaakt. Het verandert de regeling niet. UI-sleutels zijn uitsluitend
+virtuele statusvelden, opgehaald met de bestaande entity-pollcadence. Volledige
+oude/ontbrekende/falende statusantwoorden verwijderen eerdere timerwaarden. Het
+laatste resultaat blijft vluchtig tot de volgende sessie of boot. Hosttests
+controleren rollover, alle eindroutes, herstart en coherente HTTP-snapshots;
+deze uitbreiding is nog niet afzonderlijk op HIL gekwalificeerd.
+
+## Releasekwalificatie
+
+Volgens de [werkafspraak bij #761](https://github.com/OpenQuatt/OpenQuatt/blob/9d39292e9fba7c316df0187169bd321402c0e30d/hil-archive-761/README.md)
+is gericht desktop-HIL-bewijs een reviewvoorwaarde voor deze controlwijziging.
+De bestaande basisharness blijft behouden. Nieuwe scenario's worden pas permanent
+opgenomen na herhaald gebruik voor een stabiel contract. De tijdelijke warmup-
+en HA/CIC/MQTT-scenario's, fixtures en overlays zijn daarom buiten `dev`
+[gearchiveerd](https://github.com/OpenQuatt/OpenQuatt/blob/99b30ff75336384b39872956dc7fadbc1b7c9baa/hil-archive-786-787/README.md).
+Het generieke source-contract en de compacte host-/web-/contracttests blijven
+bij de feature. Dit archief is geen nieuwe hardware-PASS.
+
+Kies voor de actuele firmware de kleinste relevante HIL-proef en leg
+controller-SHA/config-hash/binary-SHA256, simulatorversie/SHA/profielen,
+instellingen, assertions, failure boundaries, eindtoestand en duurzame
+geredigeerde rapporten/logs met checksums bij de PR vast.
+
+De [actuele HIL-resultaten van 5 oktober](hil-controlled-warmup-2026-10-05.md)
+vergelijken dev `63f468d1` met productbron `715a108c`: vijf echte inputroutes,
+instellingopslag na reboot, automatische stop en een afzonderlijke timerproef.
+De normale firmware is na afloop teruggezet; testinstrumentatie blijft buiten Git.
+
+De eerdere heapcijfers en de nieuwe stresswaarden zijn sommen van afzonderlijke
+regio-watermarks. IDF kan die minima op verschillende momenten hebben gemeten;
+1.300 B bewijst daarom geen gelijktijdige globale vrije heap van 1.300 B.
+De HIL gebruikt INTERNAL|8BIT; standaard Debug Heap Min Free gebruikt INTERNAL.
+Vergelijk die meetwaarden niet rechtstreeks. Actuele heap en largest block zijn
+steekproeven; subsecondpieken blijven een meetgrens.
+
+Een lichte proef met één paginaoverdracht, native HA en TLS geeft watermarksommen
+34.632→27.704 B, bemonsterde actuele heap 73.303→69.071 B en grootste interne
+block 31.744 B bij beide. De zwaardere herhaalde downloads zijn een stresstest,
+geen dagelijks-gebruikprofiel. Geen nieuwe controlallocaties of crashes gevonden;
+de precieze allocatieverdeling en alle mogelijke netwerkcombinaties zijn niet
+gekwalificeerd. De beperkte normale proef bevat geen actieve opwarmsessie.
+
+Beide actuele permission-withdrawal-proeven stoppen fysiek na circa 340 s en
+logisch na circa 350 s. Dit past bij 300 s minimumlooptijd plus de bestaande
+60s-Power-House-cadence en terugmelding. De eerdere tienminutenafwijking is niet
+gereproduceerd; de historische oorzaak is niet bewezen.
+
+De PR blijft draft voor beoordeling van deze meetgrenzen. De HIL-reeks gebruikte
+de oudere dev-basis met een NVS-eis van 126 entries: dev had 111 entries vrij,
+de kandidaat 108. Bij de historische rebase op dev `8483e0c3`, inclusief de documentatieopbouw
+van #793, slaagde de configuratie-/NVS-controle voor Q WiFi Duo: 108 entries vrij
+bij de inmiddels door dev verlaagde eis van 100. Dit is geen nieuwe hardwareproef
+of bewijs dat de heapbevinding is opgelost. Geen fysieke koude powercycle of
+echte achtuursduurproef uitgevoerd; alleen de opwarmklok is in een private build
+×96 versneld. Host- en harnesstests vervangen hardwarebewijs niet.
+
+Na samenvoeging met dev `3b9074be` op 7 oktober slaagt de ESPHome-configuratie,
+maar faalt de actuele NVS-budgetcontrole: 573 van 630 entries geschat gebruikt,
+57 vrij bij een eis van 100. De bijgewerkte estimator telt ook systeemrecords;
+de eerdere PASS is daarom geen actuele budgetkwalificatie. De warmup-instellingen
+gebruiken één blob van drie entries. De HIL-resultaten van 6 oktober gelden voor
+productbron `4830dece`, niet voor deze latere samenvoeging. De PR blijft draft.
