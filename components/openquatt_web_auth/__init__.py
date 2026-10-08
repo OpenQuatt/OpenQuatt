@@ -22,7 +22,6 @@ CONFIG_SCHEMA = cv.Schema(
 ).extend(cv.COMPONENT_SCHEMA)
 
 
-
 async def to_code(config):
     cg.add_global(openquatt_web_auth_ns.using)
     var = cg.new_Pvariable(config[CONF_ID])
