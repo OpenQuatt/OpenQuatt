@@ -13,3 +13,27 @@ actions already queued for the main loop, even after recovery ends.
 
 The version gate lives in the accompanying `web_server_base` override. When
 upgrading ESPHome, compare this small functional patch against the new upstream.
+
+## Temporary SSE lifecycle test fix
+
+`openquatt/oq_web_access.yaml` selects only `web_server_idf` from ESPHome
+merge commit `9309cf96b9710ad81d3e01a07a6f76637ba117a1`
+([ESPHome #17800](https://github.com/esphome/esphome/pull/17800)).
+Compared with 2026.9.0, the C++ changes cover the SSE close lifecycle and URL
+storage (`std::string` to `StringRef`). The local `/events` string literal has
+the required lifetime. Its Python configuration is unchanged. Other components and
+the local auth/recovery overrides remain on the existing baseline.
+
+Stalled streams close after 20 seconds without send progress. HTTPD owns the
+shutdown, verifies session identity, and retains the response while close work
+is queued. Queue failures retry; queued work must never release its lifetime
+pin merely because a timeout elapsed. ESPHome 2026.9.0 recommends ESP-IDF 5.5.5;
+the upstream fix requires separate queue-work validation with older SDKs.
+
+This is a candidate fix for repeated lwIP/heap crashes, not a proven diagnosis.
+Test stalled/non-reading clients, abrupt disconnects, repeated reconnects,
+multiple streams and Wi-Fi reconnects with normal controller/API/MQTT load.
+Compare baseline and candidate internal free/minimum heap, largest block,
+PSRAM and task-stack watermarks; check HTTP/SSE recovery and session headroom.
+Remove the pin after upgrading to and validating an ESPHome release containing
+the fix. Hardware validation is still required before release.
