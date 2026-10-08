@@ -1,4 +1,5 @@
 import { invokeActionMap } from "../core/action-router.js";
+import { fetchWithTimeout } from "../core/browser-utils.js";
 import { LOGIN_MODAL_AUTH_STATUS_REFRESH_INTERVAL_MS } from "../core/config.js";
 import { state } from "../core/state.js";
 import { shouldRefreshSupplementaryStatus } from "../core/supplementary-refresh.js";
@@ -13,6 +14,10 @@ import { t } from "../i18n/index.js";
       String(status.username || ""),
       String(status.source || ""),
       String(status.csrf_token || ""),
+      status.busy ? "busy" : "idle",
+      status.pending_reboot ? "restart" : "active",
+      String(status.error || ""),
+      String(status.generation ?? ""),
     ].join(":");
   }
 
@@ -41,36 +46,62 @@ import { t } from "../i18n/index.js";
     return state.systemModal === "api-security" || isSystemSettingsGroupActive();
   }
 
+  let authStatusRequestSequence = 0;
+
+  function matchesPendingAuthJob(status) {
+    return status.generation === state.authPendingGeneration && status.csrf_token === state.authPendingBootToken;
+  }
+
+  async function readAuthStatus() {
+    const sequence = ++authStatusRequestSequence;
+    const status = await fetchWithTimeout("/auth/status", { cache: "no-store" }, 2000,
+      t("securityAccess.loginUncertain"), async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        return {
+          enabled: Boolean(payload.enabled),
+          setup_window_active: Boolean(payload.setup_window_active),
+          username: String(payload.username || ""),
+          source: String(payload.source || ""),
+          csrf_token: String(payload.csrf_token || ""),
+          busy: payload.busy === true,
+          pending_reboot: payload.pending_reboot === true,
+          error: String(payload.error || ""),
+          generation: Number.isInteger(payload.generation) && payload.generation >= 0 && payload.generation <= 0xffffffff
+            ? payload.generation : null,
+        };
+      });
+    return { status, sequence };
+  }
+
+  function applyAuthStatus({ status, sequence }) {
+    if (sequence !== authStatusRequestSequence) return false;
+    const previous = state.authStatus || {};
+    const previousSignature = getAuthStatusSignature(previous);
+    state.authStatus = status;
+    // Keep form drafts through job changes.
+    if (previous.enabled !== status.enabled || previous.username !== status.username || previous.source !== status.source) {
+      syncAuthDraftsFromStatus();
+    }
+    if (matchesPendingAuthJob(status) && (status.pending_reboot || status.error)) {
+      state.authWriteUncertain = false;
+    }
+    if (state.systemModal === "login" && !state.authBusy && !state.authWriteUncertain) {
+      state.authError = status.error ? t("securityAccess.loginPersistFailed") : "";
+    }
+    return previousSignature !== getAuthStatusSignature(status);
+  }
+
   export async function refreshAuthStatus(options = {}) {
     if (!shouldRefreshSupplementaryStatus(state.lastAuthStatusRefreshAt, options)) {
       return false;
     }
     state.lastAuthStatusRefreshAt = Date.now();
+    const sequence = authStatusRequestSequence + 1;
     try {
-      const response = await fetch("/auth/status", { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const payload = await response.json();
-      const nextStatus = {
-        enabled: Boolean(payload.enabled),
-        setup_window_active: Boolean(payload.setup_window_active),
-        username: String(payload.username || ""),
-        source: String(payload.source || ""),
-        csrf_token: String(payload.csrf_token || ""),
-      };
-      const previousSignature = getAuthStatusSignature();
-      const nextSignature = getAuthStatusSignature(nextStatus);
-      state.authStatus = nextStatus;
-      if (previousSignature !== nextSignature) {
-        syncAuthDraftsFromStatus();
-      }
-      if (state.systemModal === "login") {
-        state.authError = "";
-      }
-      return previousSignature !== nextSignature;
+      return applyAuthStatus(await readAuthStatus());
     } catch (error) {
-      if (state.systemModal === "login") {
+      if (sequence === authStatusRequestSequence && state.systemModal === "login" && !state.authBusy && !state.authWriteUncertain) {
         state.authError = t("securityAccess.authLoadFail", { error: error.message });
       }
       return false;
@@ -165,6 +196,7 @@ import { t } from "../i18n/index.js";
 
   export async function commitWebAuthChanges() {
     const status = state.authStatus || {};
+    if (state.authBusy || status.busy || status.pending_reboot || state.authWriteUncertain) return;
     const authEnabled = status.enabled === true;
     const setupWindowActive = status.setup_window_active === true;
     const currentPassword = String(state.authDraftCurrentPassword || "");
@@ -198,48 +230,13 @@ import { t } from "../i18n/index.js";
       return;
     }
 
-    state.authBusy = true;
-    state.authError = "";
-    state.authNotice = "";
-    render();
-
-    try {
-      const params = new URLSearchParams();
-      params.set("csrf_token", status.csrf_token);
-      params.set("current_password", currentPassword);
-      params.set("new_username", newUsername);
-      params.set("new_password", newPassword);
-
-      const response = await fetch("/auth/change", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-        body: params.toString(),
-      });
-      const payload = await response.json().catch(() => ({ ok: false, error: "invalid_response" }));
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || `HTTP ${response.status}`);
-      }
-      await refreshAuthStatus({ force: true });
-      state.authDraftCurrentPassword = "";
-      state.authDraftNewPassword = "";
-      state.authDraftConfirmPassword = "";
-      state.authDraftUsername = String(state.authStatus?.username || newUsername).trim();
-      state.authNotice = authEnabled
-        ? t("securityAccess.loginChanged")
-        : t("securityAccess.loginOn");
-      state.authError = "";
-      render();
-    } catch (error) {
-      state.authError = t("securityAccess.saveFailed", { error: error.message });
-      render();
-    } finally {
-      state.authBusy = false;
-      render();
-    }
+    return commitAuthMutation("/auth/change", new URLSearchParams({ csrf_token: status.csrf_token,
+      current_password: currentPassword, new_username: newUsername, new_password: newPassword }));
   }
 
   export async function commitDisableWebAuth() {
     const status = state.authStatus || {};
+    if (state.authBusy || status.busy || status.pending_reboot || state.authWriteUncertain) return;
     if (!status.enabled) {
       state.authNotice = t("securityAccess.alreadyOff");
       state.authError = "";
@@ -259,40 +256,87 @@ import { t } from "../i18n/index.js";
       return;
     }
 
+    return commitAuthMutation("/auth/disable", new URLSearchParams({ csrf_token: status.csrf_token,
+      current_password: currentPassword }));
+  }
+
+  async function commitAuthMutation(path, params) {
     state.authBusy = true;
     state.authError = "";
     state.authNotice = "";
     render();
 
     try {
-      const params = new URLSearchParams();
-      params.set("csrf_token", status.csrf_token);
-      params.set("current_password", currentPassword);
-
-      const response = await fetch("/auth/disable", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-        body: params.toString(),
-      });
-      const payload = await response.json().catch(() => ({ ok: false, error: "invalid_response" }));
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || `HTTP ${response.status}`);
-      }
-      await refreshAuthStatus({ force: true });
-      state.authDraftCurrentPassword = "";
-      state.authDraftNewPassword = "";
-      state.authDraftConfirmPassword = "";
-      state.authDraftUsername = "";
-      state.authNotice = t("securityAccess.loginOff");
+      await submitAuthMutation(path, params);
+      state.authNotice = t("securityAccess.loginPendingReboot");
       state.authError = "";
       render();
     } catch (error) {
-      state.authError = t("securityAccess.disableFailed", { error: error.message });
+      state.authNotice = "";
+      state.authError = state.authWriteUncertain ? t("securityAccess.loginUncertain")
+        : path === "/auth/disable" ? t("securityAccess.disableFailed", { error: error.message })
+          : t("securityAccess.saveFailed", { error: error.message });
       render();
     } finally {
       state.authBusy = false;
       render();
     }
+  }
+
+  async function submitAuthMutation(path, params) {
+    ++authStatusRequestSequence; // Invalidate older reads.
+    state.authPendingGeneration = null;
+    state.authPendingBootToken = params.get("csrf_token");
+    state.authWriteUncertain = true;
+    const accepted = await fetchWithTimeout(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+      body: params.toString(),
+    }, 5000, t("securityAccess.loginUncertain"), async (response) => {
+      const payload = await response.json();
+      if (!response.ok && payload.error && !payload.accepted) {
+        state.authWriteUncertain = false;
+        throw new Error(payload.error);
+      }
+      if (response.status !== 202 || payload.accepted !== true
+        || !Number.isInteger(payload.generation) || payload.generation < 0 || payload.generation > 0xffffffff) {
+        throw new Error(t("securityAccess.loginUncertain"));
+      }
+      return payload.generation;
+    });
+    state.authPendingGeneration = accepted;
+    state.authDraftCurrentPassword = "";
+    state.authDraftNewPassword = "";
+    state.authDraftConfirmPassword = "";
+    state.authNotice = t("securityAccess.loginQueued");
+    render();
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      if (attempt) await new Promise(resolve => window.setTimeout(resolve, 100));
+      let result;
+      try {
+        result = await readAuthStatus();
+      } catch (error) {
+        const cached = state.authStatus || {};
+        if (matchesPendingAuthJob(cached) && cached.pending_reboot) return;
+        if (matchesPendingAuthJob(cached) && cached.error) {
+          state.authWriteUncertain = false;
+          throw new Error(t("securityAccess.loginPersistFailed"));
+        }
+        state.authWriteUncertain = true;
+        throw error;
+      }
+      applyAuthStatus(result);
+      if (!matchesPendingAuthJob(result.status)) throw new Error(t("securityAccess.loginUncertain"));
+      if (result.status.error) {
+        state.authWriteUncertain = false;
+        throw new Error(t("securityAccess.loginPersistFailed"));
+      }
+      if (result.status.pending_reboot) {
+        state.authWriteUncertain = false;
+        return;
+      }
+    }
+    throw new Error(t("securityAccess.loginUncertain"));
   }
 
   async function resetCredentials(wifi) {

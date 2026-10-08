@@ -74,8 +74,7 @@ void CaptivePortal::handle_wifisave(AsyncWebServerRequest* request) {
   // Defer save to main loop thread to avoid NVS operations from HTTP thread
   this->defer([ssid, psk]() { wifi::global_wifi_component->save_wifi_sta(ssid.c_str(), psk.c_str()); });
 #endif
-  request->send(200, ESPHOME_F("text/plain"),
-                ESPHOME_F("Connecting. New settings are saved after a successful connection."));
+  request->send(200, ESPHOME_F("text/plain"), ESPHOME_F("Saved. Connecting..."));
 }
 
 void CaptivePortal::setup() {
@@ -85,6 +84,10 @@ void CaptivePortal::setup() {
   // until WiFiComponent ends the portal after a successful STA connection.
 }
 void CaptivePortal::start() {
+#ifdef USE_OPENQUATT_CAPTIVE_PORTAL_ROUTER
+  // Publish policy before init can start the HTTP listener on its other task.
+  openquatt_captive_portal_router::set_portal_routes_active(true);
+#endif
   this->base_->init();
   if (!this->initialized_) {
     this->base_->add_handler_without_auth(this);

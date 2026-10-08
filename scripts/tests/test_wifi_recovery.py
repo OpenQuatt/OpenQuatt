@@ -12,31 +12,47 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 CPP = (ROOT / "components/wifi/wifi_component.cpp").read_text()
 HEADER = (ROOT / "components/wifi/wifi_component.h").read_text()
+IDF = (ROOT / "components/wifi/wifi_component_esp_idf.cpp").read_text()
 
 
-def method(signature):
-    start = CPP.index(signature)
-    end = CPP.index("{", start)
+def method(signature, source=CPP):
+    start = source.index(signature)
+    end = source.index("{", start)
     depth = 1
     while depth:
         end += 1
-        depth += (CPP[end] == "{") - (CPP[end] == "}")
-    return CPP[start:end + 1]
+        depth += (source[end] == "{") - (source[end] == "}")
+    return source[start:end + 1]
+
+
+def production_fixture():
+    declarations = HEADER.split("struct SavedWifiSettings", 1)[1].split("enum WiFiComponentState", 1)[0]
+    methods = "\n".join(method(signature) for signature in (
+        "void WiFiComponent::init_preferences_()",
+        "bool WiFiComponent::clear_saved_sta_checked()",
+        "void WiFiComponent::save_wifi_sta(const char",
+        "uint32_t WiFiComponent::begin_wifi_provisioning",
+        "void WiFiComponent::cancel_wifi_provisioning",
+        "void WiFiComponent::start_pending_credentials_",
+        "bool WiFiComponent::poll_pending_credentials_",
+        "void WiFiComponent::abort_pending_credentials_",
+        "void WiFiComponent::persist_pending_credentials_()",
+        "void WiFiComponent::stop_provisioning_ap_()",
+    ))
+    methods += "\n" + method("bool WiFiComponent::stop_sta_for_provisioning_", IDF)
+    status = HEADER.split("  enum class WiFiProvisioningState", 1)[1].split("  void save_wifi_sta", 1)[0]
+    status = "  enum class WiFiProvisioningState" + status
+    status += "\n" + method("void set_provisioning_state_", HEADER)
+    fixture = (Path(__file__).parent / "fixtures/wifi_recovery.cpp").read_text()
+    source = fixture.replace("// PRODUCTION_RECORDS", "struct SavedWifiSettings" + declarations)
+    source = source.replace("// PRODUCTION_METHODS", methods)
+    source = source.replace("// PRODUCTION_STATUS", status)
+    return source
 
 
 class WifiRecoveryTest(unittest.TestCase):
     def test_actual_storage_methods(self):
-        declarations = HEADER.split("struct SavedWifiSettings", 1)[1].split("enum WiFiComponentState", 1)[0]
-        methods = "\n".join(method(signature) for signature in (
-            "void WiFiComponent::init_preferences_()",
-            "bool WiFiComponent::clear_saved_sta_checked()",
-            "void WiFiComponent::save_wifi_sta(const char",
-            "void WiFiComponent::persist_pending_credentials_()",
-            "void WiFiComponent::stop_provisioning_ap_()",
-        ))
-        fixture = (Path(__file__).parent / "fixtures/wifi_recovery.cpp").read_text()
-        source = fixture.replace("// PRODUCTION_RECORDS", "struct SavedWifiSettings" + declarations)
-        source = source.replace("// PRODUCTION_METHODS", methods)
+        source = production_fixture()
         with tempfile.TemporaryDirectory(prefix="oq-wifi-test-") as directory:
             source_path = Path(directory) / "test.cpp"
             source_path.write_text(source)
@@ -57,7 +73,7 @@ class WifiRecoveryTest(unittest.TestCase):
         self.assertNotIn("make_preference", start)
         self.assertIn("save.ssid[0] != '\\0'", start)
         fast = method("void WiFiComponent::save_fast_connect_settings_")
-        self.assertIn("if (this->provisioning_required_) return;", fast)
+        self.assertIn("if (this->provisioning_required_ || this->credential_reset_started_) return;", fast)
         portal = (ROOT / "components/captive_portal/captive_portal.cpp").read_text()
         for source in (CPP, portal):
             self.assertNotIn("add_on_closed_callback", source)

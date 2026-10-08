@@ -12,6 +12,13 @@
 #include "esphome/core/preferences.h"
 #include "esphome/components/web_server_base/web_server_base.h"
 
+#ifdef USE_OPENQUATT_CAPTIVE_PORTAL_ROUTER
+namespace esphome::openquatt_captive_portal_router {
+void set_portal_routes_active(bool active);
+bool portal_routes_active();
+}  // namespace esphome::openquatt_captive_portal_router
+#endif
+
 namespace esphome::captive_portal {
 
 class CaptivePortal final : public AsyncWebHandler, public Component {
@@ -34,6 +41,9 @@ class CaptivePortal final : public AsyncWebHandler, public Component {
   void start();
   bool is_active() const { return this->active_; }
   void end() {
+#ifdef USE_OPENQUATT_CAPTIVE_PORTAL_ROUTER
+    openquatt_captive_portal_router::set_portal_routes_active(false);
+#endif
     this->active_ = false;
     this->disable_loop();  // Stop processing DNS requests
     this->base_->deinit();
@@ -47,10 +57,11 @@ class CaptivePortal final : public AsyncWebHandler, public Component {
     // Handle all GET requests when captive portal is active
     // This allows us to respond with the portal page for any URL,
     // triggering OS captive portal detection
-    if (!this->active_ || request->method() != HTTP_GET) return false;
-    char url_buffer[AsyncWebServerRequest::URL_BUF_SIZE];
-    const auto url = request->url_to(url_buffer);
-    return url != "/recovery" && url != "/recovery/status";
+#ifdef USE_OPENQUATT_CAPTIVE_PORTAL_ROUTER
+    return openquatt_captive_portal_router::portal_routes_active() && request->method() == HTTP_GET;
+#else
+    return this->active_ && request->method() == HTTP_GET;
+#endif
   }
 
   void handle_config(AsyncWebServerRequest* request);

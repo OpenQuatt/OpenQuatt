@@ -59,7 +59,7 @@ Gebruik [Herstelpagina gebruiken](web-app/herstel.md#herstelpagina-gebruiken) vo
 - de API-sleutel wissen en Home Assistant opnieuw koppelen;
 - Wi-Fi-gegevens wissen en je netwerk opnieuw instellen.
 
-De knop **5 seconden** indrukken en loslaten opent het herstelvenster; **10 seconden** indrukken wist direct Wi-Fi. Deze acties zijn geen factory reset. Is de controller niet bereikbaar, begin dan bij [Wi-Fi opnieuw instellen](web-app/herstel.md#wi-fi-opnieuw-instellen) of controleer de Ethernetverbinding.
+De knop **5 seconden** indrukken en loslaten herstart naar het herstelvenster; **10 seconden** indrukken en loslaten wist Wi-Fi en herstart. Deze acties zijn geen factory reset. Is de controller niet bereikbaar, begin dan bij [Wi-Fi opnieuw instellen](web-app/herstel.md#wi-fi-opnieuw-instellen) of controleer de Ethernetverbinding.
 
 ## Controller terugzetten naar fabrieksinstellingen
 

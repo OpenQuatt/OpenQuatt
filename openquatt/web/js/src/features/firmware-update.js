@@ -1,4 +1,5 @@
 import { hasEntity } from "../core/app-shared.js";
+import { fetchWithTimeout } from "../core/browser-utils.js";
 import { FIRMWARE_MODAL_KEYS, FIRMWARE_OTA_START_QUIET_MS, FIRMWARE_RELEASE_URLS } from "../core/config.js";
 import { getEntityValue } from "../core/entity-store.js";
 import { refreshEntities } from "../core/entity-sync.js";
@@ -959,9 +960,31 @@ import { t } from "../i18n/index.js";
     });
   }
 
-  export function getFirmwareManifestRevision(entity = getFirmwareUpdateEntity()) {
-    const revision = entity?.manifest_revision;
-    return Number.isInteger(revision) && revision >= 0 && revision <= 0xffffffff ? String(revision) : "";
+  export async function getFirmwareManifestRevision() {
+    return fetchWithTimeout("/openquatt/firmware/metadata", { cache: "no-store" }, 5000,
+      t("firmware.checkTimeout"), async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const metadata = await response.json();
+        const revision = metadata?.manifest_revision;
+        const bootId = metadata?.boot_id;
+        return typeof bootId === "string" && /^[0-9a-f]{16}$/.test(bootId)
+          && Number.isInteger(revision) && revision >= 0 && revision <= 0xffffffff
+          ? `${bootId}:${revision}` : "";
+      });
+  }
+
+  export function getFirmwareManifestSource(entities = state.entities) {
+    return JSON.stringify(["firmwareUpdateChannel", "firmwareUpdateTarget"].map(key =>
+      entities[key]?.value ?? entities[key]?.state ?? ""));
+  }
+
+  function isNewFirmwareManifestRevision(revision, baseline) {
+    const [bootId, sequence] = revision.split(":");
+    const [baselineBootId, baselineSequence] = baseline.split(":");
+    if (!bootId || bootId !== baselineBootId) return false;
+    const delta = (Number(sequence) - Number(baselineSequence)) >>> 0;
+    // Bounded checks allow uint32 wrap while rejecting older revisions.
+    return delta > 0 && delta < 0x80000000;
   }
 
   export function beginFirmwareOtaQuietWindow(durationMs = FIRMWARE_OTA_START_QUIET_MS) {
@@ -1039,21 +1062,31 @@ import { t } from "../i18n/index.js";
   export async function pollFirmwareUpdateState(options = {}) {
     const expectedBuildLabel = String(options.expectedBuildLabel || "").trim();
     const afterCheckRevision = String(options.afterCheckRevision || "");
+    const expectedSource = options.expectedSource ?? getFirmwareManifestSource();
     const attempts = afterCheckRevision ? 25 : 6;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       options.signal?.throwIfAborted();
+      if (afterCheckRevision && getFirmwareManifestSource() !== expectedSource) return false;
       await wait(attempt === 0 ? 900 : 1200, options.signal);
       options.signal?.throwIfAborted();
-      await refreshEntities(FIRMWARE_MODAL_KEYS, "all", { forceMissing: true });
+      const revisionBefore = afterCheckRevision ? await getFirmwareManifestRevision() : "";
       options.signal?.throwIfAborted();
-      const entityAligned = isFirmwareEntityAlignedWithChannel();
-      const targetAligned = !expectedBuildLabel || isFirmwareUpdateEntityForBuild(expectedBuildLabel);
-      const knownTarget = hasKnownFirmwareTargetVersion();
-      const checking = isFirmwareUpdateChecking();
-      const status = getUpdateStatus();
-      const revision = getFirmwareManifestRevision();
-      const freshResult = !afterCheckRevision || (revision && revision !== afterCheckRevision);
-      if (freshResult && entityAligned && targetAligned && (knownTarget || (!checking && status !== t("firmwareUpdate.statusNotChecked")))) {
+      const snapshot = {};
+      await refreshEntities(FIRMWARE_MODAL_KEYS, "all", { forceMissing: true, snapshot });
+      options.signal?.throwIfAborted();
+      const revision = afterCheckRevision ? await getFirmwareManifestRevision() : "";
+      options.signal?.throwIfAborted();
+      if (afterCheckRevision && getFirmwareManifestSource() !== expectedSource) return false;
+      const entity = snapshot.firmwareUpdate;
+      if (!entity) continue;
+      const entityAligned = isFirmwareEntityAlignedWithChannel(entity,
+        snapshot.firmwareUpdateChannel?.value ?? snapshot.firmwareUpdateChannel?.state);
+      const targetAligned = !expectedBuildLabel || isFirmwareUpdateEntityForBuild(expectedBuildLabel, entity);
+      const freshResult = !afterCheckRevision || (revision && revision === revisionBefore
+        && getFirmwareManifestSource(snapshot) === expectedSource
+        && isNewFirmwareManifestRevision(revision, afterCheckRevision));
+      if (freshResult && entityAligned && targetAligned && getFirmwareLatestVersion(entity)) {
+        state.entities.firmwareUpdate = { ...state.entities.firmwareUpdate, ...entity };
         return true;
       }
     }

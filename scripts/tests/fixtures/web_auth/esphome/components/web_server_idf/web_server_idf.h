@@ -74,6 +74,7 @@ class AsyncWebServerRequest {
     response_body = body;
   }
   bool authenticate(const char* user, const char* pass) {
+    if (user == nullptr || pass == nullptr || *user == '\0') return true;
     if (paired_only) return std::string(user) == pass;
     return username == user && password == pass;
   }

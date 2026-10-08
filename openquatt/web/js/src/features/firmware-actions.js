@@ -10,7 +10,7 @@ import { armOtaRefresh, awaitOtaEvidence, beginDeviceReconnect, clearOtaRefresh 
 import { clearQuickStartSetupInstall, state, storeQuickStartSetupInstall } from "../core/state.js";
 import { getFirmwareBuildConnection, getFirmwareConnectionLabel, getFirmwareTopologyLabel, getInstallationTopology } from "./device-context.js";
 import { formatNumber, t } from "../i18n/index.js";
-import { beginFirmwareOtaQuietWindow, clearFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareManifestRevision, getFirmwareRunningChannelLabel, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasFirmwareTestLegacyCapability, hasFirmwareTestManifestCapability, hasKnownFirmwareTargetVersion, isFirmwareChannelTransition, isFirmwareDowngradeAvailable, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, isQuickStartSetupFirmwareCurrent, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection, wait } from "./firmware-update.js";
+import { beginFirmwareOtaQuietWindow, clearFirmwareOtaQuietWindow, getFirmwareBuildSwitchModel, getFirmwareConnectionSwitchModel, getFirmwareCurrentVersion, getFirmwareLatestVersion, getFirmwareManifestRevision, getFirmwareManifestSource, getFirmwareRunningChannelLabel, getFirmwareTestAssetUrls, getFirmwareTestPrNumber, getFirmwareTestTargetModel, getFirmwareTopologySwitchModel, getFirmwareUpdateEntity, hasFirmwareTestLegacyCapability, hasFirmwareTestManifestCapability, hasKnownFirmwareTargetVersion, isFirmwareChannelTransition, isFirmwareDowngradeAvailable, isFirmwareEntityAlignedWithChannel, isFirmwareUpdateEntityForBuild, isQuickStartSetupFirmwareCurrent, pollFirmwareInstallState, pollFirmwareUpdateState, primeFirmwareInstallProgressHints, primeFirmwareUpdateState, resetFirmwareInstallUiState, resetFirmwareManualUploadSelection, resetFirmwareTestSelection, wait } from "./firmware-update.js";
 import { render } from "../core/render-scheduler.js";
 
   export async function requestFirmwareOta(path, options) {
@@ -50,13 +50,15 @@ import { render } from "../core/render-scheduler.js";
     render();
 
     try {
-      const entityBeforeRefresh = state.entities.firmwareUpdate;
-      await refreshEntities(["firmwareUpdate", "firmwareUpdateTarget"], "all", { forceMissing: true });
+      const snapshot = {};
+      await refreshEntities(["firmwareUpdate", "firmwareUpdateTarget", "firmwareUpdateChannel"], "all", { forceMissing: true, snapshot });
       controller.signal.throwIfAborted();
-      const afterCheckRevision = getFirmwareManifestRevision();
-      if (!afterCheckRevision || state.entities.firmwareUpdate === entityBeforeRefresh) {
+      const afterCheckRevision = await getFirmwareManifestRevision();
+      controller.signal.throwIfAborted();
+      if (!afterCheckRevision || !snapshot.firmwareUpdate || !snapshot.firmwareUpdateTarget || !snapshot.firmwareUpdateChannel) {
         throw new Error(t("firmware.checkTimeout"));
       }
+      const expectedSource = getFirmwareManifestSource({ ...snapshot, firmwareUpdateTarget: { value: "current build" } });
       primeFirmwareUpdateState();
       if (hasEntity("firmwareUpdateTarget") && getEntityValue("firmwareUpdateTarget") !== "current build") {
         // Changing the target already starts a check in firmware.
@@ -69,9 +71,9 @@ import { render } from "../core/render-scheduler.js";
           throw new Error(`HTTP ${response.status}`);
         }
       }
-      // Do not abort an issued write: closing only cancels UI polling. Reopening hydrates live state.
+      // Closing cancels UI polling; an issued write stays active.
       controller.signal.throwIfAborted();
-      const ready = await pollFirmwareUpdateState({ afterCheckRevision, signal: controller.signal });
+      const ready = await pollFirmwareUpdateState({ afterCheckRevision, expectedSource, signal: controller.signal });
       if (!ready) {
         throw new Error(t("firmware.checkTimeout"));
       }

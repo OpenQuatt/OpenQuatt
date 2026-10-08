@@ -500,6 +500,18 @@ class WiFiComponent final : public Component {
 
   void set_passive_scan(bool passive) { this->passive_scan_ = passive; }
 
+  enum class WiFiProvisioningState : uint8_t { IDLE, CONNECTING, SAVED, STORAGE_FAILED, CANCELLED, CONNECT_FAILED };
+  struct WiFiProvisioningStatus {
+    uint32_t generation;
+    WiFiProvisioningState state;
+  };
+  // Mutations belong to the main loop; this bounded snapshot may be read by HTTPD.
+  WiFiProvisioningStatus get_provisioning_status() const {
+    const uint32_t packed = this->provisioning_status_.load(std::memory_order_acquire);
+    return {packed >> 4, static_cast<WiFiProvisioningState>(packed & 0x0f)};
+  }
+  uint32_t begin_wifi_provisioning(const char* ssid, const char* password);
+  void cancel_wifi_provisioning(uint32_t generation);
   void save_wifi_sta(const std::string& ssid, const std::string& password);
   void save_wifi_sta(const char* ssid, const char* password);
   void save_wifi_sta(StringRef ssid, StringRef password) { this->save_wifi_sta(ssid.c_str(), password.c_str()); }
@@ -902,9 +914,22 @@ class WiFiComponent final : public Component {
   void init_preferences_();
   bool preferences_initialized_{false};
   void persist_pending_credentials_();
+  void start_pending_credentials_();
+  bool poll_pending_credentials_(uint32_t now);
+  void abort_pending_credentials_();
+  bool stop_sta_for_provisioning_();
+  void set_provisioning_state_(WiFiProvisioningState state) {
+    const uint32_t generation = this->get_provisioning_status().generation;
+    this->provisioning_status_.store((generation << 4) | static_cast<uint8_t>(state), std::memory_order_release);
+  }
+  std::atomic<uint32_t> provisioning_status_{0};
+  uint32_t provisioning_stop_started_{0};
+  bool provisioning_stopping_{false};
+  bool provisioning_station_stopped_{false};
   void stop_provisioning_ap_();
   bool provisioning_required_{false};
   bool pending_credentials_{false};
+  bool credential_reset_started_{false};
   ESPPreferenceObject fast_connect_pref_;
 #ifdef USE_WIFI_CONNECT_TRIGGER
   Trigger<> connect_trigger_;

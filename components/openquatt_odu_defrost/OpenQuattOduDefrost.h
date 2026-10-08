@@ -98,6 +98,8 @@ class OpenQuattOduDefrost : public Component, public modbus::ModbusClientDevice 
   bool action_pending_{false};
   bool loading_{false}, trigger_after_load_{false}, trigger_ready_{false}, reserved_{false};
   bool save_after_load_{false}, save_ready_{false}, save_writing_{false}, save_verifying_{false};
+  bool forced_write_pending_{false};
+  uint32_t forced_write_ms_{0};
   int save_desired_{-1}, save_expected_{-1}, save_write_{-1};
   bool pending_auto_reapply_{false}, save_auto_reapply_{false}, reconcile_{false}, profile_available_{false};
   uint16_t control_board_item_{0};

@@ -8,6 +8,8 @@ import { t } from "../i18n/index.js";
     if (!authStatus) {
       return t("securityAccess.webLoading");
     }
+    if (authStatus.pending_reboot) return t("securityAccess.loginRestarting");
+    if (authStatus.busy || state.authBusy) return t("securityAccess.loginSaving");
     if (authStatus.enabled) {
       return authStatus.setup_window_active ? t("securityAccess.webSetupWindow") : t("securityAccess.webSecured");
     }
@@ -34,6 +36,8 @@ import { t } from "../i18n/index.js";
     if (!authStatus) {
       return t("securityAccess.webDetailLoading");
     }
+    if (authStatus.pending_reboot) return t("securityAccess.loginPendingReboot");
+    if (authStatus.busy) return t("securityAccess.loginQueued");
     if (authStatus.enabled) {
       return authStatus.setup_window_active
         ? t("securityAccess.webDetailSetup")
@@ -137,9 +141,10 @@ import { t } from "../i18n/index.js";
     const authStatus = state.authStatus || {};
     const authEnabled = authStatus.enabled === true;
     const canEdit = authEnabled;
+    const writeBlocked = state.authBusy || authStatus.busy || authStatus.pending_reboot || state.authWriteUncertain;
     const usernameValue = authEnabled ? String(authStatus.username || "").trim() : "";
     const noticeMarkup = state.authNotice
-      ? `<div class="oq-helper-modal-success oq-helper-modal-success--compact" aria-live="polite"><strong>${escapeHtml(t("securityAccess.loginSaved"))}</strong><span>${escapeHtml(state.authNotice)}</span></div>`
+      ? `<div class="${authStatus.pending_reboot ? "oq-helper-modal-success oq-helper-modal-success--compact" : "oq-helper-modal-note"}" aria-live="polite"><strong>${escapeHtml(authStatus.pending_reboot ? t("securityAccess.loginSaved") : t("securityAccess.loginQueuedTitle"))}</strong><span>${escapeHtml(state.authNotice)}</span></div>`
       : "";
     const errorMarkup = state.authError
       ? `<div class="oq-helper-modal-note oq-helper-modal-note--error" aria-live="assertive">${escapeHtml(state.authError)}</div>`
@@ -161,7 +166,7 @@ import { t } from "../i18n/index.js";
                   autocomplete="current-password"
                   data-oq-auth-field="currentPassword"
                   value="${escapeHtml(state.authDraftCurrentPassword)}"
-                  ${state.authBusy ? "disabled" : ""}
+                  ${writeBlocked ? "disabled" : ""}
                 >
               </label>
             `
@@ -175,7 +180,7 @@ import { t } from "../i18n/index.js";
               maxlength="32"
               data-oq-auth-field="username"
               value="${escapeHtml(state.authDraftUsername)}"
-              ${state.authBusy ? "disabled" : ""}
+              ${writeBlocked ? "disabled" : ""}
             >
           </label>
           <label class="oq-helper-modal-auth-field">
@@ -187,7 +192,7 @@ import { t } from "../i18n/index.js";
               maxlength="64"
               data-oq-auth-field="newPassword"
               value="${escapeHtml(state.authDraftNewPassword)}"
-              ${state.authBusy ? "disabled" : ""}
+              ${writeBlocked ? "disabled" : ""}
             >
           </label>
           <label class="oq-helper-modal-auth-field">
@@ -199,7 +204,7 @@ import { t } from "../i18n/index.js";
               maxlength="64"
               data-oq-auth-field="confirmPassword"
               value="${escapeHtml(state.authDraftConfirmPassword)}"
-              ${state.authBusy ? "disabled" : ""}
+              ${writeBlocked ? "disabled" : ""}
             >
           </label>
         </div>
@@ -228,12 +233,12 @@ import { t } from "../i18n/index.js";
           </div>
           ${authFormMarkup}`,
       actions: `
-        <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${state.authBusy ? "disabled" : ""}>${escapeHtml(t("header.done"))}</button>
+        <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal">${escapeHtml(t("header.done"))}</button>
         ${authEnabled
-              ? `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="disable-web-auth" ${state.authBusy ? "disabled" : ""}>${escapeHtml(t("securityAccess.loginDisable"))}</button>`
+              ? `<button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="disable-web-auth" ${writeBlocked ? "disabled" : ""}>${escapeHtml(t("securityAccess.loginDisable"))}</button>`
               : ""}
         ${canEdit
-              ? `<button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="save-web-auth" ${state.authBusy ? "disabled" : ""}>${escapeHtml(authEnabled ? t("securityAccess.loginSave") : t("securityAccess.loginSaveNew"))}</button>`
+              ? `<button class="oq-helper-button oq-helper-button--primary" type="button" data-oq-action="save-web-auth" ${writeBlocked ? "disabled" : ""}>${escapeHtml(authEnabled ? t("securityAccess.loginSave") : t("securityAccess.loginSaveNew"))}</button>`
               : ""}`,
     });
   }

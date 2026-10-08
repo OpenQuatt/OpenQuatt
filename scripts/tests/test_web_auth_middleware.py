@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import importlib.util
 import subprocess
 import sys
 import tempfile
@@ -12,7 +13,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "web_auth"
 
 class WebAuthMiddlewareTest(unittest.TestCase):
     def test_runtime_auth_transitions_and_concurrent_credentials(self):
-        self.compile_and_run("middleware_test")
+        self.compile_and_run("middleware_test", component=True)
 
     def test_component_state_and_storage_failures(self):
         self.compile_and_run("component_test", component=True)
@@ -24,9 +25,11 @@ class WebAuthMiddlewareTest(unittest.TestCase):
         self.compile_and_run("recovery_test", component=True, recovery=True, wifi=True)
 
     def compile_and_run(self, name, component=False, recovery=False, wifi=False):
+        spec = importlib.util.find_spec("esphome")
+        upstream = Path(spec.submodule_search_locations[0]) / "components/web_server_base"
         with tempfile.TemporaryDirectory(prefix="openquatt-auth-test-") as directory:
             binary = Path(directory) / name
-            command = [os.environ.get("CXX", "c++"), "-std=c++17", "-pthread",
+            command = [os.environ.get("CXX", "c++"), "-std=c++20", "-pthread",
                        "-Wall", "-Wextra", "-Werror"]
             if wifi:
                 command.append("-DUSE_WIFI")
@@ -40,13 +43,13 @@ class WebAuthMiddlewareTest(unittest.TestCase):
             # Expose the real component at ESPHome's generated include location.
             include_root = Path(directory) / "esphome/components"
             include_root.mkdir(parents=True)
-            (include_root / "web_server_base").symlink_to(ROOT / "components/web_server_base")
+            (include_root / "web_server_base").symlink_to(upstream)
             (include_root / "openquatt_web_auth").symlink_to(ROOT / "components/openquatt_web_auth")
             command.extend([
-                "-I", str(FIXTURES), "-I", str(ROOT / "components/web_server_base"),
+                "-I", str(FIXTURES), "-I", str(upstream),
                 "-I", directory, "-I", str(ROOT / "components/openquatt_web_auth"),
                 str(FIXTURES / f"{name}.cpp"),
-                str(ROOT / "components/web_server_base/web_server_base.cpp"),
+                str(upstream / "web_server_base.cpp"),
                 "-o", str(binary),
             ])
             if component:

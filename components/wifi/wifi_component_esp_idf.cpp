@@ -306,6 +306,18 @@ bool WiFiComponent::wifi_mode_(optional<bool> sta, optional<bool> ap) {
 
 bool WiFiComponent::wifi_sta_pre_setup_() { return this->wifi_mode_(true, {}); }
 
+bool WiFiComponent::stop_sta_for_provisioning_() {
+  wifi_mode_t mode = WIFI_MODE_NULL;
+  if (s_wifi_started && esp_wifi_get_mode(&mode) != ESP_OK) return false;
+  if (mode != WIFI_MODE_STA && mode != WIFI_MODE_APSTA) {
+    // No station to fence; drain already queued events before the next loop starts it.
+    this->provisioning_station_stopped_ = true;
+    return true;
+  }
+  // Keep the AP/DNS surface available while fencing the old STA and DHCP events.
+  return this->wifi_mode_(false, {});
+}
+
 bool WiFiComponent::wifi_apply_output_power_(float output_power) {
   int8_t val = static_cast<int8_t>(output_power * 4);
   return esp_wifi_set_max_tx_power(val) == ESP_OK;
@@ -807,6 +819,12 @@ void WiFiComponent::wifi_process_event_(IDFWiFiEvent* data) {
     ESP_LOGV(TAG, "STA stop");
     s_sta_started = false;
     s_sta_connecting = false;
+    s_sta_connected = false;
+    this->got_ipv4_address_ = false;
+#if USE_NETWORK_IPV6
+    this->num_ipv6_addresses_ = 0;
+#endif
+    if (this->provisioning_stopping_) this->provisioning_station_stopped_ = true;
 
   } else if (data->event_base == WIFI_EVENT && data->event_id == WIFI_EVENT_STA_AUTHMODE_CHANGE) {
     const auto& it = data->data.sta_authmode_change;

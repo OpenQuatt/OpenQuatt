@@ -120,6 +120,18 @@ class Handler : public AsyncWebHandler {
 }  // namespace
 
 void OpenQuattOduDefrost::setup() {
+  if (auth_ == nullptr || !auth_->add_restart_blocker(this, [](void* context) {
+        auto* self = static_cast<OpenQuattOduDefrost*>(context);
+        // Main-loop caller: operation fields are confined to this owner.
+        portENTER_CRITICAL(&self->mux_);
+        const bool pending = self->action_pending_;
+        portEXIT_CRITICAL(&self->mux_);
+        return pending || self->loading_ || self->trigger_ready_ || self->save_ready_ || self->save_writing_ ||
+               self->save_verifying_ || self->forced_write_pending_;
+      })) {
+    this->mark_failed();
+    return;
+  }
   set_parent(controller_->hub());
   set_address(controller_->device_address());
   if (global_preferences != nullptr) {
@@ -173,6 +185,7 @@ bool OpenQuattOduDefrost::supports_mode(int mode) const {
 }
 
 bool OpenQuattOduDefrost::enqueue(Action action) {
+  if (!openquatt_web_auth::normal_web_access_allowed()) return false;
   portENTER_CRITICAL(&mux_);
   const bool accepted = !action_pending_ && !snapshot_.busy;
   if (accepted) {
@@ -184,6 +197,7 @@ bool OpenQuattOduDefrost::enqueue(Action action) {
 }
 
 bool OpenQuattOduDefrost::enqueue_save(int desired, int expected, bool auto_reapply) {
+  if (!openquatt_web_auth::normal_web_access_allowed()) return false;
   portENTER_CRITICAL(&mux_);
   const bool accepted = !action_pending_ && !snapshot_.busy;
   if (accepted) {
@@ -213,7 +227,14 @@ void OpenQuattOduDefrost::loop() {
     save_auto_reapply = pending_auto_reapply_;
   }
   portEXIT_CRITICAL(&mux_);
-  if (action == Action::NONE && profile_available_ && consent_authorized_ &&
+  if (action != Action::NONE && !openquatt_web_auth::normal_web_access_allowed()) {
+    portENTER_CRITICAL(&mux_);
+    action_pending_ = false;
+    portEXIT_CRITICAL(&mux_);
+    reject("RECOVERY_CANCELLED");
+    action = Action::NONE;
+  }
+  if (!auth_->restart_requested() && action == Action::NONE && profile_available_ && consent_authorized_ &&
       oq_defrost::profile_reconcile_ready(profile_, profile_state_, variant_, control_board_item_, snapshot.online,
                                           snapshot.fresh, snapshot.identity, busy(), request_pending) &&
       reconcile_due_ms_ != 0U && static_cast<int32_t>(millis() - reconcile_due_ms_) >= 0) {
@@ -273,6 +294,11 @@ void OpenQuattOduDefrost::loop() {
     clear_tx_queue_for_device();
     save_ready_ = save_writing_ = save_verifying_ = false;
     fail_("WRITE_UNCERTAIN");
+  }
+  if (forced_write_pending_ && millis() - forced_write_ms_ >= 30000U) {
+    clear_tx_queue_for_device();
+    forced_write_pending_ = false;
+    cycle.result = "WRITE_UNCERTAIN";
   }
 }
 
@@ -358,6 +384,11 @@ void OpenQuattOduDefrost::finish_profile_(bool verified) {
   if (profile_available_ && consent_authorized_) reconcile_due_ms_ = millis() + 60000U;
 }
 bool OpenQuattOduDefrost::take_trigger() {
+  if (trigger_ready_ && !openquatt_web_auth::normal_web_access_allowed()) {
+    trigger_ready_ = false;
+    reject("RECOVERY_CANCELLED");
+    return false;
+  }
   // Finish all previously accepted traffic before the single forced command.
   auto* hub = controller_->hub();
   if (hub == nullptr || !hub->tx_buffer_empty() || hub->tx_blocked()) return false;
@@ -366,6 +397,11 @@ bool OpenQuattOduDefrost::take_trigger() {
   return value;
 }
 bool OpenQuattOduDefrost::take_save(int& desired, int& expected) {
+  if (save_ready_ && !reconcile_ && !openquatt_web_auth::normal_web_access_allowed()) {
+    save_ready_ = false;
+    reject("RECOVERY_CANCELLED");
+    return false;
+  }
   auto* hub = controller_->hub();
   if (hub == nullptr || !hub->tx_buffer_empty() || hub->tx_blocked()) return false;
   if (!save_ready_) return false;
@@ -375,12 +411,19 @@ bool OpenQuattOduDefrost::take_save(int& desired, int& expected) {
   return true;
 }
 bool OpenQuattOduDefrost::send_forced_once(uint32_t now) {
+  if (!openquatt_web_auth::normal_web_access_allowed()) {
+    reject("RECOVERY_CANCELLED");
+    return false;
+  }
   // Called only by the actuator after its current guards. ModbusClientDevice
   // deliberately does not retry this non-idempotent write on a lost response.
   clear_tx_queue_for_address();
   cycle.mode_seen = cycle.bit_seen = false;  // Only post-command polls may confirm acceptance/completion.
   cycle.request(now);
+  forced_write_pending_ = true;
+  forced_write_ms_ = now;
   if (!write_single_register(3999U, 4U)) {
+    forced_write_pending_ = false;
     cycle.phase = oq_defrost::Phase::RESYNC;
     reject("WRITE_FAILED");
     return false;
@@ -389,6 +432,10 @@ bool OpenQuattOduDefrost::send_forced_once(uint32_t now) {
   return true;
 }
 bool OpenQuattOduDefrost::send_mode_once(int desired, uint32_t now) {
+  if (!reconcile_ && !openquatt_web_auth::normal_web_access_allowed()) {
+    reject("RECOVERY_CANCELLED");
+    return false;
+  }
   // Single defrost-mode write without retry; readback must prove success.
   if (!oq_defrost::is_supported_defrost_mode(desired, variant_)) {
     reject("INVALID_MODE");
@@ -497,9 +544,13 @@ void OpenQuattOduDefrost::on_read_holding_registers(uint16_t address, std::span<
   if (!trigger_ready_ && !save_ready_) release();
 }
 void OpenQuattOduDefrost::on_response(std::span<const uint8_t> request, std::span<const uint8_t> response) {
+  if (request.size() == 5 && request[0] == 0x06 && request[1] == 0x0f && request[2] == 0x9f)
+    forced_write_pending_ = false;
   modbus::ModbusClientDevice::on_response(request, response);
 }
-void OpenQuattOduDefrost::on_not_sent(std::span<const uint8_t>) {
+void OpenQuattOduDefrost::on_not_sent(std::span<const uint8_t> request) {
+  if (request.size() == 5 && request[0] == 0x06 && request[1] == 0x0f && request[2] == 0x9f)
+    forced_write_pending_ = false;
   if (loading_)
     fail_("READ_FAILED");
   else if (save_writing_ || save_verifying_) {

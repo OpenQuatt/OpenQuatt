@@ -611,6 +611,8 @@ void OpenQuattIncidentManager::invalidate_restart_credit_(UnitState& unit) {
   unit.restart_guard.invalidate();
 }
 
+void OpenQuattIncidentManager::restart_now() { this->perform_restart_(millis()); }
+
 void OpenQuattIncidentManager::perform_restart_(uint32_t now_ms) {
   // Runs synchronously on the ESPHome loop. No controller/strategy loop can
   // enqueue another start between this snapshot and safe_reboot().
@@ -1037,7 +1039,6 @@ oq_incidents::StartFailureResetResult OpenQuattIncidentManager::retry_start_fail
 
 OpenQuattIncidentManager::DeferredActionQueueResult OpenQuattIncidentManager::defer_start_failure_retry(
     uint8_t hp_index, uint32_t request_id) {
-  const uint32_t epoch = web_server_base::global_web_server_base->recovery_epoch();
   UnitState* unit = this->unit_(hp_index);
   if (unit == nullptr) return DeferredActionQueueResult::INVALID;
   const DeferredActionQueueResult queue_result =
@@ -1045,9 +1046,8 @@ OpenQuattIncidentManager::DeferredActionQueueResult OpenQuattIncidentManager::de
   if (queue_result != DeferredActionQueueResult::ACCEPTED) {
     return queue_result;
   }
-  this->defer([this, unit, hp_index, request_id, epoch]() {
-    if (web_server_base::global_web_server_base->is_recovery_active() ||
-        epoch != web_server_base::global_web_server_base->recovery_epoch()) {
+  this->defer([this, unit, hp_index, request_id]() {
+    if (!openquatt_web_auth::normal_web_access_allowed()) {
       this->record_action_result_(*unit, "start_failure_retry", "recovery_cancelled", false, millis(), request_id);
       this->publish_snapshot_(millis());
       return;
@@ -1175,7 +1175,6 @@ bool OpenQuattIncidentManager::confirm_odu_power_cycle(uint8_t hp_index, uint32_
 
 OpenQuattIncidentManager::DeferredActionQueueResult OpenQuattIncidentManager::defer_odu_power_cycle_confirmation(
     uint8_t hp_index, uint32_t request_id) {
-  const uint32_t epoch = web_server_base::global_web_server_base->recovery_epoch();
   UnitState* unit = this->unit_(hp_index);
   if (unit == nullptr) return DeferredActionQueueResult::INVALID;
   const DeferredActionQueueResult queue_result =
@@ -1183,9 +1182,8 @@ OpenQuattIncidentManager::DeferredActionQueueResult OpenQuattIncidentManager::de
   if (queue_result != DeferredActionQueueResult::ACCEPTED) {
     return queue_result;
   }
-  this->defer([this, unit, hp_index, request_id, epoch]() {
-    if (web_server_base::global_web_server_base->is_recovery_active() ||
-        epoch != web_server_base::global_web_server_base->recovery_epoch()) {
+  this->defer([this, unit, hp_index, request_id]() {
+    if (!openquatt_web_auth::normal_web_access_allowed()) {
       this->record_action_result_(*unit, "confirm_odu_power_cycle", "recovery_cancelled", false, millis(), request_id);
       this->publish_snapshot_(millis());
       return;

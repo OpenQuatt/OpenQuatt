@@ -44,7 +44,7 @@ esphome:
             if (id(oq_firmware_update).state != esphome::update::UPDATE_STATE_INSTALLING
                 && !id(oq_firmware_target_install_active)
                 && !id(oq_firmware_update).status_has_error()) {
-              esphome::web_server::WebServer::record_firmware_manifest_publication();
+              id(oq_firmware_metadata).record_manifest_publication();
             }
             const uint32_t request_generation = id(oq_fw_check_request_generation);
             if (request_generation == 0 || id(oq_fw_check_completed_generation) == request_generation) {

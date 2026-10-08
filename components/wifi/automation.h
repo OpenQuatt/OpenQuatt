@@ -55,9 +55,14 @@ class WiFiConfigureAction final : public Action<Ts...>, public Component {
     auto password = this->password_.value(x...);
     // Avoid multiple calls
     if (this->connecting_) return;
+    this->save_requested_ = this->save_.value(x...);
+    if (this->save_requested_ && (ssid.find('\0') != std::string::npos || password.find('\0') != std::string::npos)) {
+      this->error_trigger_.trigger();
+      return;
+    }
     // If already connected to the same AP, do nothing
     char ssid_buf[SSID_BUFFER_SIZE];
-    if (strcmp(global_wifi_component->wifi_ssid_to(ssid_buf), ssid.c_str()) == 0) {
+    if (!this->save_requested_ && strcmp(global_wifi_component->wifi_ssid_to(ssid_buf), ssid.c_str()) == 0) {
       // Callback to notify the user that the connection was successful
       this->connect_trigger_.trigger();
       return;
@@ -67,6 +72,16 @@ class WiFiConfigureAction final : public Action<Ts...>, public Component {
     this->new_sta_.set_password(password);
     // Save the current STA
     this->old_sta_ = global_wifi_component->get_sta();
+    if (this->save_requested_) {
+      this->connecting_ = true;
+      this->provisioning_generation_ = global_wifi_component->begin_wifi_provisioning(ssid.c_str(), password.c_str());
+      this->set_timeout("wifi-connect-timeout", this->connection_timeout_.value(x...), [this]() {
+        global_wifi_component->cancel_wifi_provisioning(this->provisioning_generation_);
+        this->connecting_ = false;
+        this->error_trigger_.trigger();
+      });
+      return;
+    }
     // Disable WiFi
     global_wifi_component->disable();
     // Set the state to connecting
@@ -74,18 +89,14 @@ class WiFiConfigureAction final : public Action<Ts...>, public Component {
     // Store the new STA so once the WiFi is enabled, it will connect to it
     // This is necessary because the WiFiComponent will raise an error and fallback to the saved STA
     // if trying to connect to a new STA while already connected to another one
-    if (this->save_.value(x...)) {
-      global_wifi_component->save_wifi_sta(new_sta_.get_ssid(), new_sta_.get_password());
-    } else {
-      global_wifi_component->set_sta(new_sta_);
-    }
+    global_wifi_component->set_sta(new_sta_);
     // Enable WiFi
     global_wifi_component->enable();
     // Set timeout for the connection
     this->set_timeout("wifi-connect-timeout", this->connection_timeout_.value(x...), [this, x...]() {
       // If the timeout is reached, stop connecting and revert to the old AP
       global_wifi_component->disable();
-      global_wifi_component->save_wifi_sta(old_sta_.get_ssid(), old_sta_.get_password());
+      global_wifi_component->set_sta(old_sta_);
       global_wifi_component->enable();
       // Start a timeout for the fallback if the connection to the old AP fails
       this->set_timeout("wifi-fallback-timeout", this->connection_timeout_.value(x...), [this]() {
@@ -100,6 +111,20 @@ class WiFiConfigureAction final : public Action<Ts...>, public Component {
 
   void loop() override {
     if (!this->connecting_) return;
+    if (this->save_requested_) {
+      const auto status = global_wifi_component->get_provisioning_status();
+      if (status.generation == this->provisioning_generation_ &&
+          status.state == WiFiComponent::WiFiProvisioningState::CONNECTING)
+        return;
+      this->cancel_timeout("wifi-connect-timeout");
+      this->connecting_ = false;
+      if (status.generation == this->provisioning_generation_ &&
+          status.state == WiFiComponent::WiFiProvisioningState::SAVED)
+        this->connect_trigger_.trigger();
+      else
+        this->error_trigger_.trigger();
+      return;
+    }
     if (global_wifi_component->is_connected()) {
       // The WiFi is connected, stop the timeout and reset the connecting flag
       this->cancel_timeout("wifi-connect-timeout");
@@ -118,6 +143,8 @@ class WiFiConfigureAction final : public Action<Ts...>, public Component {
 
  protected:
   bool connecting_{false};
+  bool save_requested_{false};
+  uint32_t provisioning_generation_{0};
   WiFiAP new_sta_;
   WiFiAP old_sta_;
   Trigger<> connect_trigger_;

@@ -6,12 +6,15 @@ namespace esphome {
 inline std::vector<uint8_t> test_saved;
 inline bool test_save_ok = true;
 inline bool test_sync_ok = true;
+inline bool test_load_ok = true;
+inline bool test_readback_corrupt = false;
 class ESPPreferenceObject {
  public:
   template <class T>
   bool load(T* value) {
-    if (test_saved.size() != sizeof(T)) return false;
+    if (!test_load_ok || test_saved.size() != sizeof(T)) return false;
     std::memcpy(value, test_saved.data(), sizeof(T));
+    if (test_readback_corrupt) reinterpret_cast<uint8_t*>(value)[0] ^= 1;
     return true;
   }
   template <class T>
@@ -24,6 +27,7 @@ class ESPPreferenceObject {
 };
 class ESPPreferences {
  public:
+  uint32_t nvs_handle{1};
   template <class T>
   ESPPreferenceObject make_preference(uint32_t, bool) {
     return {};

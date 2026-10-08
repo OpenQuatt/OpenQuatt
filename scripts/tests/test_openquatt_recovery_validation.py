@@ -47,9 +47,13 @@ class RecoveryValidationTest(unittest.TestCase):
         with self.assertRaisesRegex(Invalid, "runtime-provisioned API key"):
             self.validate_config({"api": {"encryption": {"key": "compiled"}}, "wifi": {"ap": {}}, "captive_portal": {}})
 
-    def test_captive_portal_does_not_claim_recovery_routes(self):
-        header = CAPTIVE_PORTAL_HEADER.read_text()
-        self.assertIn('url != "/recovery" && url != "/recovery/status"', header)
+    def test_recovery_guard_is_registered_before_portal_setup(self):
+        cpp = (ROOT / "components/openquatt_recovery/OpenQuattRecovery.cpp").read_text()
+        header = (ROOT / "components/openquatt_recovery/OpenQuattRecovery.h").read_text()
+        self.assertIn("setup_priority::WIFI + 3.0f", header)
+        self.assertIn("add_handler_without_auth(this)", cpp)
+        self.assertIn('url == "/recovery/status"', cpp)
+        self.assertIn("this->recovery_boot_ || !this->auth_->ready()", cpp)
 
 
 if __name__ == "__main__":

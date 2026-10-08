@@ -50,7 +50,7 @@ WIFI_ETH_PROFILE = (
 class ESPHomeCompatibilityContractTest(unittest.TestCase):
     def test_captive_portal_router_registers_before_web_server(self) -> None:
         self.assertIn(
-            "return setup_priority::WIFI + 0.5f;", CAPTIVE_PORTAL_ROUTER_CPP
+            "return setup_priority::WIFI + 2.0f;", CAPTIVE_PORTAL_ROUTER_CPP
         )
         self.assertIn(
             "add_handler_without_auth(this);", CAPTIVE_PORTAL_ROUTER_CPP
@@ -59,12 +59,12 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
             (
                 "wifi",
                 WIFI_PROFILE,
-                "components: [wifi, captive_portal, openquatt_captive_portal_router]",
+                "components: [wifi, improv_serial, captive_portal, openquatt_captive_portal_router]",
             ),
             (
                 "wifi_eth",
                 WIFI_ETH_PROFILE,
-                "components: [wifi, captive_portal, openquatt_network, openquatt_captive_portal_router]",
+                "components: [wifi, improv_serial, captive_portal, openquatt_network, openquatt_captive_portal_router]",
             ),
         )
         for profile_name, profile, component_declaration in profiles:
@@ -72,20 +72,13 @@ class ESPHomeCompatibilityContractTest(unittest.TestCase):
                 self.assertIn(component_declaration, profile)
                 self.assertIn("openquatt_captive_portal_router:", profile)
 
-    def test_captive_portal_router_delegates_existing_portal_routes(self) -> None:
-        self.assertIn("portal->canHandle(request)", CAPTIVE_PORTAL_ROUTER_CPP)
-        self.assertIn("portal->handleRequest(request)", CAPTIVE_PORTAL_ROUTER_CPP)
-
-    def test_captive_portal_router_only_handles_root_requests(self) -> None:
-        self.assertIn("request->url_to(url_buffer)", CAPTIVE_PORTAL_ROUTER_CPP)
-        self.assertIn('== "/";', CAPTIVE_PORTAL_ROUTER_CPP)
-
-    def test_web_auth_updates_owned_credentials_atomically(self) -> None:
-        self.assertIn("set_auth_credentials(storage.username, storage.password)", WEB_AUTH_CPP)
-        self.assertIn('set_auth_credentials("recovery", password.c_str())', WEB_AUTH_CPP)
-        self.assertNotIn("set_auth_username(", WEB_AUTH_CPP)
-        self.assertNotIn("set_auth_password(", WEB_AUTH_CPP)
-        self.assertIn("request_is_authenticated(request, true)", WEB_AUTH_HEADER)
+    def test_full_web_component_overrides_are_removed(self) -> None:
+        self.assertFalse((ROOT / "components/web_server").exists())
+        self.assertFalse((ROOT / "components/web_server_base").exists())
+        self.assertIn("set_auth_username(this->boot_username_)", WEB_AUTH_CPP)
+        self.assertIn("set_auth_password(this->boot_password_)", WEB_AUTH_CPP)
+        self.assertNotIn("set_auth_credentials", WEB_AUTH_CPP)
+        self.assertIn("boot_username_[USERNAME_MAX_LEN + 1]", WEB_AUTH_HEADER)
 
     def test_modbus_spacing_is_owned_by_the_hub(self) -> None:
         self.assertIn(

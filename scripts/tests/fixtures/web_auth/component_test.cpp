@@ -1,125 +1,105 @@
-#include <atomic>
 #include <cassert>
-#include <thread>
 #include <future>
 #include <chrono>
-
 #include "OpenQuattWebAuth.h"
-
+#include "nvs.h"
+#include "esphome/core/helpers.h"
 using namespace esphome;
 
 int main() {
   web_server_base::WebServerBase base;
   web_server_base::global_web_server_base = &base;
   openquatt_web_auth::OpenQuattWebAuth auth;
-  auth.set_default_auth_enabled(false);
+  auth.set_bootstrap_username("admin");
+  auth.set_bootstrap_password("secret");
+  assert(!auth.request_is_authenticated(nullptr));
   auth.setup();
   base.init();
   auto* route = base.get_server()->handlers[0];
-
   AsyncWebServerRequest request;
-  request.headers["Host"] = "openquatt.local";
-  request.headers["Origin"] = "http://openquatt.local";
+  request.username = "admin";
+  request.password = "secret";
   request.verb = HTTP_POST;
   request.url = "/auth/change";
-  request.arguments = {{"new_username", "admin"}, {"new_password", "secret"}, {"csrf_token", auth.get_csrf_token()}};
+  request.headers = {{"Host", "openquatt.local"}, {"Origin", "http://openquatt.local"}};
+  request.arguments = {{"current_password", "secret"},
+                       {"new_username", "next"},
+                       {"new_password", "replacement"},
+                       {"csrf_token", auth.get_csrf_token()}};
+  const auto original = test_saved;
+  request.headers["Origin"] = "http://foreign.example";
   route->handleRequest(&request);
-  assert(request.response_code == 409);  // open LAN is not an administrator or setup window
-  assert(!auth.request_is_authenticated_admin(&request));
-  auth.begin_recovery_guard("random-ram-secret");
-  assert(auth.set_runtime_credentials("admin", "secret"));
-  request.username = "admin";
-  request.password = "secret";
-  assert(!auth.request_is_authenticated_admin(&request));  // stored login does not lift recovery
-  auth.end_recovery_guard();
-  request.username.clear();
-  request.password.clear();
-  request.arguments["csrf_token"] = auth.get_csrf_token();
+  assert(request.response_code == 409 && test_saved == original);
+  request.headers["Origin"] = "http://openquatt.local";
+  request.arguments["current_password"] = "incorrect";
   route->handleRequest(&request);
-  assert(request.challenged);
-  const auto username_snapshot = auth.get_active_username();
-  assert(username_snapshot == "admin");
-  assert(auth.is_auth_enabled());
-  // Knowing only current_password without Digest authentication is insufficient.
+  assert(request.response_code == 409 && test_saved == original);
   request.arguments["current_password"] = "secret";
-  request.arguments["new_password"] = "replacement";
-  route->handleRequest(&request);
-  assert(request.challenged);
-  assert(auth.verify_current_password("secret"));
-
-  request.username = "admin";
-  request.password = "secret";
-  request.challenged = false;
-  request.arguments["csrf_token"] = auth.get_csrf_token();
   test_save_ok = false;
   route->handleRequest(&request);
-  assert(request.response_code == 500);
-  assert(auth.verify_current_password("secret"));
-  assert(auth.request_is_authenticated_admin(&request));
+  assert(request.response_code == 202 && test_saved == original);  // HTTP never writes NVS
+  auth.loop();
+  assert(!auth.pending_reboot() && auth.verify_current_password("secret"));
   test_save_ok = true;
   test_sync_ok = false;
   route->handleRequest(&request);
-  assert(request.response_code == 500);
-  assert(auth.verify_current_password("secret"));
+  assert(request.response_code == 202);
+  auth.loop();
+  // Native sync failure may leave the disk changed. The running pair is immutable.
+  assert(test_saved != original && !auth.pending_reboot());
+  assert(auth.request_is_authenticated_admin(&request));
   test_sync_ok = true;
+  test_readback_corrupt = true;
   route->handleRequest(&request);
-  assert(request.response_code == 200);
-  assert(!auth.request_is_authenticated_admin(&request));
-  assert(auth.verify_current_password("replacement"));
-
-  request.password = "replacement";
-  request.url = "/auth/disable";
-  request.arguments["current_password"] = "replacement";
-  request.headers["Origin"] = "http://foreign.example";
+  auth.loop();
+  assert(!auth.pending_reboot());
+  test_readback_corrupt = false;
   route->handleRequest(&request);
-  assert(request.response_code == 409 && auth.is_auth_enabled());
-  request.headers["Origin"] = "http://openquatt.local";
-  request.arguments["csrf_token"] = "stale-token";
+  assert(request.response_code == 202);
+  request.arguments["new_password"] = "must-not-overwrite-queued-job";
   route->handleRequest(&request);
-  assert(request.response_code == 409 && auth.is_auth_enabled());
-  request.arguments["csrf_token"] = auth.get_csrf_token();
-  request.arguments["current_password"] = "incorrect";
-  route->handleRequest(&request);
-  assert(request.response_code == 409 && auth.is_auth_enabled());
-  request.arguments["current_password"] = "replacement";
-  route->handleRequest(&request);
-  assert(request.response_code == 200 && !auth.is_auth_enabled());
-  assert(!auth.request_is_authenticated_admin(&request));
-  assert(auth.set_runtime_credentials("admin", "replacement"));
-
-  // HTTP status reads race with physical recovery/expiry on the main loop.
-  // Each response must observe one coherent component state.
-  std::atomic<bool> done{false};
-  std::thread writer([&]() {
-    for (int i = 0; i < 2000; ++i) {
-      auth.begin_recovery_guard("random-ram-secret");
-      auth.end_recovery_guard();
-      assert(auth.set_runtime_credentials("admin", "replacement"));
-    }
-    done.store(true);
-  });
+  assert(request.response_code == 500);
+  auth.loop();
+  assert(auth.pending_reboot() && auth.verify_current_password("secret"));
   AsyncWebServerRequest status;
   status.username = "admin";
-  status.password = "replacement";
-  do {
-    status.response_body.clear();
-    route->handleRequest(&status);
-    if (!status.response_body.empty()) {
-      const bool enabled = status.response_body.find("\"enabled\":true") != std::string::npos;
-      const bool empty_username = status.response_body.find("\"username\":\"\"") != std::string::npos;
-      assert(enabled != empty_username);
-    }
-    (void)auth.get_csrf_token();
-    (void)auth.get_credential_source();
-  } while (!done.load());
-  writer.join();
-  assert(username_snapshot == "admin");
-  assert(auth.set_open_access());
+  status.password = "secret";
   status.before_send = [&]() {
-    auto main_loop_read = std::async(std::launch::async, [&]() { return auth.get_active_username(); });
-    assert(main_loop_read.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
+    auto read = std::async(std::launch::async, [&]() { return auth.get_active_username(); });
+    assert(read.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
   };
-  route->handleRequest(&status);  // socket writes cannot retain the component-state lock
-  assert(auth.get_active_username().empty());
-  assert(username_snapshot == "admin");
+  route->handleRequest(&status);
+  assert(status.response_body.find("\"pending_reboot\":true") != std::string::npos);
+  assert(auth.get_active_username() == "admin");
+
+  // CPU reset constructs a new snapshot from durable storage.
+  web_server_base::WebServerBase next_base;
+  web_server_base::global_web_server_base = &next_base;
+  openquatt_web_auth::OpenQuattWebAuth next;
+  next.setup();
+  request.username = "next";
+  request.password = "replacement";
+  assert(next.request_is_authenticated_admin(&request));
+  assert(next.set_open_access());
+  assert(next.request_is_authenticated_admin(&request));  // unchanged until another boot
+  openquatt_web_auth::OpenQuattWebAuth open;
+  open.setup();
+  request.username.clear();
+  request.password.clear();
+  assert(open.request_is_authenticated(&request));
+  assert(!open.request_is_authenticated_admin(&request));
+
+  // Corrupt or unavailable existing storage may never fall back to open policy.
+  test_saved[0] ^= 1;
+  openquatt_web_auth::OpenQuattWebAuth corrupt;
+  corrupt.set_default_auth_enabled(false);
+  corrupt.setup();
+  assert(!corrupt.ready() && !corrupt.request_is_authenticated(&request));
+  test_saved.clear();
+  test_probe_ok = false;
+  openquatt_web_auth::OpenQuattWebAuth unavailable;
+  unavailable.set_default_auth_enabled(false);
+  unavailable.setup();
+  assert(!unavailable.ready() && !unavailable.request_is_authenticated(&request));
+  test_probe_ok = true;
 }

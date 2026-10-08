@@ -6,15 +6,15 @@ De herstelpagina is een afzonderlijke pagina op de controller voor als je niet m
 
 | Probleem | Actie op de herstelpagina | Gevolg |
 | --- | --- | --- |
-| Gebruikersnaam of wachtwoord van de webinterface vergeten | [Web-login herstellen](#web-login-herstellen) | Sla een nieuwe gebruikersnaam en wachtwoord op; die gelden zodra je herstel afsluit of het venster verloopt. |
+| Gebruikersnaam of wachtwoord van de webinterface vergeten | [Web-login herstellen](#web-login-herstellen) | Sla een nieuwe gebruikersnaam en wachtwoord op; na gecontroleerde opslag herstart de controller en gelden ze bij de nieuwe boot. |
 | Home Assistant kan niet koppelen door een onbekende of afwijkende API-sleutel | [API-beveiliging resetten](#api-beveiliging-resetten) | Wis alleen de ESPHome API-sleutel en herstart; koppel daarna binnen 10 minuten opnieuw. |
 | Opgeslagen Wi-Fi-gegevens werken niet meer | [Wi-Fi opnieuw instellen](#wi-fi-opnieuw-instellen) | Wis alleen de Wi-Fi-gegevens en herstart; stel daarna je netwerk opnieuw in via het OpenQuatt access point. |
 
 ## Herstelpagina openen
 
-1. Houd op de Heatpump Controller Q de **linker van de twee knoppen 5 seconden** vast en laat hem los. Houd hem niet tot 10 seconden vast: daarmee wis je direct de Wi-Fi-gegevens.
+1. Houd op de Heatpump Controller Q de **linker van de twee knoppen 5 seconden** vast en laat hem los. De controller herstart naar herstel. Houd hem niet tot 10 seconden vast: bij loslaten wordt dan Wi-Fi gewist en volgt een herstart.
 2. Open `http://openquatt.local/recovery` of `http://<IP-adres>/recovery`. Gebruik bij een aangepaste apparaatnaam de bijbehorende hostnaam.
-3. Kies de herstelactie die bij je probleem past. Het herstelvenster blijft maximaal **10 minuten** open.
+3. Kies de herstelactie die bij je probleem past. Het herstelvenster duurt **10 minuten**. Bij een opslag- of afhandelingsfout blijft de beperkte herstelboot actief totdat je expliciet een nieuwe actie kiest; er volgt dan geen automatische timeoutreboot.
 
 Zonder actief herstelvenster toont de pagina hoe je de fysieke knop moet bedienen. Het openen van de pagina of het activeren van het venster wist op zichzelf geen instellingen. Zit de knop bij opstarten al ingedrukt, laat hem dan eerst los voordat je deze stappen uitvoert.
 
@@ -24,7 +24,7 @@ Zonder actief herstelvenster toont de pagina hoe je de fysieke knop moet bediene
 
 Tijdens herstel is de gewone webinterface afgeschermd. Verschijnt daar een browser-inlogvenster, annuleer het en open rechtstreeks `/recovery`.
 
-Kies **Herstel afsluiten** om terug te gaan naar de normale webinterface, of wacht tot het herstelvenster verloopt. Open daarna de gewone controllerpagina zonder `/recovery`. Na een API- of Wi-Fi-reset via de herstelpagina komt het herstelvenster na de herstart nog één keer terug; sluit het ook dan af zodra je klaar bent.
+Kies **Herstel afsluiten** om de controller naar de normale webinterface te herstarten, of wacht tot het herstelvenster verloopt; ook dan volgt een herstart. Open daarna de gewone controllerpagina zonder `/recovery`. Na een API- of Wi-Fi-reset via de herstelpagina komt het herstelvenster na de herstart nog één keer terug; sluit het ook dan af zodra je klaar bent.
 
 > [!NOTE]
 > Het herstelvenster en het Home Assistant-koppelvenster duren allebei 10 minuten, maar zijn verschillende functies. Het herstelvenster geeft toegang tot de herstelacties. Na een API-reset begint bij de herstart het venster om Home Assistant opnieuw te koppelen. Het Wi-Fi-instelvenster blijft beschikbaar totdat nieuwe Wi-Fi-gegevens werken en zijn opgeslagen.
@@ -35,9 +35,9 @@ Gebruik de herstelpagina op een vertrouwd lokaal netwerk: tijdens het fysiek geo
 
 1. [Open de herstelpagina](#herstelpagina-openen) met de fysieke knop.
 2. Sla binnen het herstelvenster een nieuwe gebruikersnaam en wachtwoord op. Bewaar deze gegevens.
-3. Kies **Herstel afsluiten** en open de gewone webinterface zonder `/recovery`.
+3. Wacht op de herstart na het opslaan en open de gewone webinterface zonder `/recovery`.
 
-De nieuwe gegevens gelden zodra je herstel afsluit of het venster verloopt. Andere instellingen blijven behouden. Bij een opslagfout blijft de bestaande login behouden; lees de melding en probeer opnieuw. Sla je niets op, dan blijft de eerdere login of open toegang gelden.
+De nieuwe gegevens gelden bij de volgende boot. Andere instellingen blijven behouden. Bij een opslagfout wordt niet automatisch herstart; herstel blijft beperkt en je kunt expliciet een nieuwe actie kiezen. Een mislukte opslag kan flash al gedeeltelijk veranderd hebben. Sla je niets op, dan blijft de eerdere login of open toegang gelden.
 
 ### Zo controleer je dat het gelukt is
 
@@ -49,7 +49,7 @@ Gebruik deze reset als Home Assistant niet meer kan verbinden doordat de opgesla
 
 **Via de herstelpagina**
 
-1. Houd op de Heatpump Controller Q de linker knop **5 seconden** ingedrukt en laat hem los. Daarmee open je het herstelvenster van 10 minuten.
+1. Houd op de Heatpump Controller Q de linker knop **5 seconden** ingedrukt en laat hem los. Na de herstart opent het herstelvenster van 10 minuten.
 2. Open `http://openquatt.local/recovery` of `http://<IP-adres>/recovery`. Hiervoor hoef je niet in te loggen op de webinterface.
 3. Kies **API-beveiliging resetten** en bevestig het wissen van de sleutel en het herstarten van de controller.
 4. Wacht tot de controller opnieuw bereikbaar is. De herstelpagina wordt na deze herstart nog één keer beschikbaar. Sluit het herstel af wanneer je klaar bent.
@@ -77,7 +77,7 @@ Meldt OpenQuatt dat het wissen niet is gelukt? De controller herstart dan niet a
 
 Kies met een ingestelde web-login **Connectiviteit → Wi-Fi wissen en herstarten**,
 of gebruik de fysieke herstelpagina na 5 seconden indrukken. Zonder browser kan
-het ook: houd de herstelknop **10 seconden** vast. Laat hem bij 5 seconden los
+het ook: houd de herstelknop **10 seconden** vast en laat hem daarna los. Laat hem bij 5 seconden los
 als je alleen web-login/API wilt herstellen. Een knop die bij opstart al vastzit
 moet eerst losgelaten worden.
 
