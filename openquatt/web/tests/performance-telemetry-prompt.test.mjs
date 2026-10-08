@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 
 const session = new Map();
 globalThis.__OQ_PREVIEW__ = false;
@@ -149,4 +150,65 @@ test("a late bulk poll cannot overwrite consent or reopen the invitation after s
   assert.equal(state.entities.performanceTelemetryEnabled.value, true);
   assert.equal(state.entities.performanceTelemetryPromptHandled.value, true);
   syncPerformanceTelemetryPrompt(); assert.equal(state.systemModal, "");
+});
+
+
+test("a later fresh poll confirms a persisted refusal after immediate reads fail", async () => {
+  reset(); syncPerformanceTelemetryPrompt();
+  let posts = 0;
+  globalThis.fetch = async (_url, options) => {
+    if (options.method === "POST") { posts++; return { ok: true }; }
+    throw new Error("offline");
+  };
+  handlePerformanceTelemetryPromptAction("decline-performance-telemetry-prompt");
+  while (state.performanceTelemetryPromptBusy) await new Promise((done) => setTimeout(done, 20));
+  assert.equal(posts, 1);
+  assert.ok(state.performanceTelemetryPromptError);
+  syncPerformanceTelemetryPrompt();
+  assert.equal(state.systemModal, "performance-telemetry-prompt");
+  const { refreshEntities } = await import("../js/src/core/entity-sync.js");
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ entities: {
+    performanceTelemetryEnabled: { value: false }, performanceTelemetryChoiceConfigured: { value: true },
+    performanceTelemetryPromptHandled: { value: true },
+  } }) });
+  await refreshEntities(["performanceTelemetryEnabled", "performanceTelemetryChoiceConfigured", "performanceTelemetryPromptHandled"]);
+  syncPerformanceTelemetryPrompt();
+  assert.equal(state.systemModal, "");
+  assert.equal(state.performanceTelemetryPromptError, "");
+  assert.equal(posts, 1);
+});
+
+test("Quick Start refreshes the handled status before setup completion can invite", async () => {
+  reset(); state.complete = false; state.currentStep = "performance-telemetry";
+  state.entities.performanceTelemetryChoiceConfigured.value = false;
+  const source = await readFile(new URL("../js/src/features/quickstart-actions.js", import.meta.url), "utf8");
+  const start = source.indexOf("export async function initializeQuickStartPerformanceTelemetryChoice()");
+  const end = source.indexOf("export async function", start + 1);
+  const { shouldInitializeQuickStartPerformanceTelemetryChoice, waitForPerformanceTelemetryChoiceConfirmation } = await import("../js/src/core/performance-telemetry-domain.js");
+  const { getEntityValue } = await import("../js/src/core/entity-store.js");
+  const { refreshEntities } = await import("../js/src/core/entity-sync.js");
+  let posts = 0, release;
+  const delayed = new Promise((resolve) => { release = resolve; });
+  globalThis.fetch = async () => ({ ok: true, json: async () => {
+    await delayed;
+    return { entities: { performanceTelemetryEnabled: { value: false },
+      performanceTelemetryChoiceConfigured: { value: false }, performanceTelemetryPromptHandled: { value: false } } };
+  } });
+  const oldPoll = refreshEntities(["performanceTelemetryEnabled", "performanceTelemetryChoiceConfigured", "performanceTelemetryPromptHandled"]);
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ entities: {
+    performanceTelemetryEnabled: { value: false }, performanceTelemetryChoiceConfigured: { value: true },
+    performanceTelemetryPromptHandled: { value: true },
+  } }) });
+  const dependencies = { state, shouldInitializeQuickStartPerformanceTelemetryChoice, waitForPerformanceTelemetryChoiceConfirmation,
+    hasEntity: (key) => !!state.entities[key], getEntityValue, refreshEntities,
+    setQuickStartSwitch: async () => { posts++; }, render: () => syncPerformanceTelemetryPrompt(), t: (key) => key };
+  const run = new Function(...Object.keys(dependencies), source.slice(start, end).replace("export ", "") + "return initializeQuickStartPerformanceTelemetryChoice();");
+  await run(...Object.values(dependencies));
+  assert.equal(posts, 1);
+  release(); await oldPoll;
+  assert.equal(state.entities.performanceTelemetryPromptHandled.value, true);
+  assert.equal(state.entities.performanceTelemetryChoiceConfigured.value, true);
+  state.complete = true; state.quickStartModalOpen = false;
+  syncPerformanceTelemetryPrompt(); assert.equal(state.systemModal, "");
+  assert.equal(state.controlError, "");
 });

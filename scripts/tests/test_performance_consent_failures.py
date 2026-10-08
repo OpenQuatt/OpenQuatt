@@ -44,7 +44,7 @@ struct Backend {
   Storage durable{1, 2, 1, 1};
   Storage queued = durable;
   bool fail_save{false}, fail_sync{false}, pending{false};
-  int saves{0};
+  int saves{0}, fail_sync_count{0};
   bool save(const Storage* value) {
     ++saves;
     if (fail_save) return false;
@@ -53,7 +53,7 @@ struct Backend {
     return true;
   }
   bool sync() {
-    if (fail_sync) return false;
+    if (fail_sync || fail_sync_count-- > 0) return false;
     if (pending) durable = queued;
     pending = false;
     return true;
@@ -87,7 +87,7 @@ struct OpenQuattPerformanceTelemetry {
   Sensor* choice_configured_sensor_ = &sensor;
   Sensor prompt_sensor;
   Sensor* prompt_handled_sensor_ = &prompt_sensor;
-  std::atomic<bool> enabled_{true}, choice_configured_{true}, prompt_handled_{true};
+  std::atomic<bool> enabled_{true}, choice_configured_{true}, prompt_handled_{false};
   bool published{true};
   int resets{0};
   void publish_state(bool value) { published = value; }
@@ -176,6 +176,27 @@ int main() {
     OpenQuattPerformanceTelemetry reboot;
     reboot.apply_storage_(backend.durable);
     assert(!reboot.enabled_ && reboot.choice_configured_ && reboot.prompt_handled_);
+  }
+  // An earlier refusal survives identity failure, failed saves and sync failure,
+  // including a successful fallback and a later flush followed by reboot.
+  for (int failure : {0, 1, 2, 3}) {
+    backend = Backend{};
+    backend.durable = backend.queued = {1, 2, 0, 3};
+    OpenQuattPerformanceTelemetry component;
+    component.apply_storage_(backend.durable);
+    component.transport.id_available = failure != 0;
+    backend.fail_save = failure == 1;
+    backend.fail_sync = failure == 2;
+    backend.fail_sync_count = failure == 3 ? 1 : 0;
+    component.write_state(true);
+    assert(!component.enabled_ && !component.choice_configured_);
+    assert(component.prompt_handled_ && component.prompt_sensor.state);
+    backend.fail_save = backend.fail_sync = false;
+    assert(backend.sync());
+    OpenQuattPerformanceTelemetry reboot;
+    reboot.apply_storage_(backend.durable);
+    assert(!reboot.enabled_ && reboot.prompt_handled_ && reboot.prompt_sensor.state);
+    if (failure == 2 || failure == 3) assert(backend.durable.choice_configured == 2);
   }
   // Failed opt-in must not escape later via somebody else's global sync.
   backend = Backend{};

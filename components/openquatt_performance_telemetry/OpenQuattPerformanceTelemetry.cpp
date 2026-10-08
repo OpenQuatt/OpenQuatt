@@ -170,6 +170,7 @@ bool OpenQuattPerformanceTelemetry::setup_complete_() const {
 
 void OpenQuattPerformanceTelemetry::write_state(bool state) {
   const bool current = this->enabled_.load();
+  const bool previously_handled = this->prompt_handled_.load();
   if (!state && this->transport_ != nullptr) {
     // The transport gate is closed before data and preferences are touched.
     this->transport_->cancel_external_publish();
@@ -178,9 +179,9 @@ void OpenQuattPerformanceTelemetry::write_state(bool state) {
     ESP_LOGE(TAG, "Could not create an anonymous installation ID; performance telemetry remains disabled");
     this->enabled_.store(false);
     this->choice_configured_.store(false);
-    this->prompt_handled_.store(false);
+    this->prompt_handled_.store(previously_handled);
     if (this->choice_configured_sensor_ != nullptr) this->choice_configured_sensor_->publish_state(false);
-    if (this->prompt_handled_sensor_ != nullptr) this->prompt_handled_sensor_->publish_state(false);
+    if (this->prompt_handled_sensor_ != nullptr) this->prompt_handled_sensor_->publish_state(previously_handled);
     if (this->transport_ != nullptr) this->transport_->cancel_external_publish();
     this->publish_state(false);
     this->reset_collection_();
@@ -198,13 +199,14 @@ void OpenQuattPerformanceTelemetry::write_state(bool state) {
     // save() may have queued an opt-in even when sync() failed. Replace it
     // with a fail-closed value before another component can flush preferences.
     storage.enabled = 0U;
-    storage.choice_configured = 0U;
+    // Keep an earlier acknowledgement while revoking unconfirmed consent.
+    storage.choice_configured = previously_handled ? PROMPT_HANDLED : 0U;
     if (!this->save_storage_(storage)) {
       ESP_LOGE(TAG, "Could not persist fail-closed fallback; consent remains unconfirmed");
     }
     this->choice_configured_.store(false);
-    this->prompt_handled_.store(false);
-    if (this->prompt_handled_sensor_ != nullptr) this->prompt_handled_sensor_->publish_state(false);
+    this->prompt_handled_.store(previously_handled);
+    if (this->prompt_handled_sensor_ != nullptr) this->prompt_handled_sensor_->publish_state(previously_handled);
     if (this->choice_configured_sensor_ != nullptr) this->choice_configured_sensor_->publish_state(false);
     if (this->transport_ != nullptr) this->transport_->cancel_external_publish();
     this->enabled_.store(false);

@@ -27,8 +27,9 @@ export function syncPerformanceTelemetryPrompt() {
     || (state.quickStartModalOpen && (state.complete !== true || state.quickStartModalMode === "generation"));
   if (state.systemModal === MODAL) {
     if (blocked || (!state.performanceTelemetryPromptBusy
-      && (enabled === true || (!state.performanceTelemetryPromptError && handled === true)))) {
+      && (enabled === true || handled === true))) {
       state.systemModal = "";
+      if (enabled === true || handled === true) state.performanceTelemetryPromptError = "";
     }
     return;
   }
