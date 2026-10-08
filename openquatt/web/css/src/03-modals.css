@@ -842,3 +842,38 @@
   .oq-advice-redesign .change-note { width: 100%; }
   .oq-advice-redesign .button { flex: 1 1 auto; }
 }
+
+.oq-performance-prompt {
+  width: min(100%, 680px);
+}
+
+.oq-performance-prompt .oq-helper-modal-head > div { min-width: 0; }
+.oq-performance-prompt .oq-helper-modal-close { flex-shrink: 0; }
+.oq-performance-prompt .oq-helper-modal-title { overflow-wrap: anywhere; }
+
+.oq-performance-prompt-invite {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin: 20px 0;
+  padding: 20px;
+  border: 1px solid var(--oq-helper-modal-callout-border);
+  border-radius: var(--oq-helper-radius-lg);
+  background: var(--oq-helper-modal-callout-background);
+}
+
+.oq-performance-prompt-icon {
+  display: flex;
+  flex: 0 0 40px;
+  color: var(--oq-helper-accent);
+}
+
+.oq-performance-prompt-icon svg { width: 40px; height: 40px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.oq-performance-prompt-invite h3 { margin: 0 0 8px; color: var(--oq-helper-modal-callout-title); }
+.oq-performance-prompt-invite p { margin: 0; line-height: 1.55; }
+
+@media (max-width: 600px) {
+  .oq-performance-prompt .oq-helper-modal-title { font-size: 1.45rem; }
+  .oq-performance-prompt-invite { padding: 14px; gap: 12px; }
+  .oq-performance-prompt .oq-helper-modal-actions { flex-direction: column; align-items: stretch; }
+}

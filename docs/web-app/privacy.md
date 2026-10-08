@@ -22,6 +22,26 @@ Deze opsomming gaat over het uurbericht. Voor de inhoud en verwerking van crashr
 
 Tijdens een nieuwe Quick Start kun je deze keuzes al maken voordat je afrondt. Gebruiksstatistieken worden pas na afronden verzonden. Bestaande installaties krijgen zonder opgeslagen keuze geen automatische toestemming; na migratie van de eerste telemetryversie kan opnieuw inschakelen nodig zijn.
 
+## Eenmalige uitnodiging voor prestatiedata
+
+Bestaande gebruikers krijgen bij het openen van de web-app een uitnodiging om
+warmtepompprestaties te delen voor het verbeteren van de vermogens- en COP-modellen.
+De popup verschijnt alleen als delen uitstaat, de controllerstatus bekend is en de
+uitnodiging nog niet is afgehandeld. Wie al deelt, krijgt geen popup. Tijdens Quick
+Start, updates, herverbinden of een andere dialog wordt de vraag niet getoond.
+
+- **Inschakelen — ik help mee** zet delen aan en onthoudt je keuze.
+- **Niet inschakelen** laat delen uit en voorkomt dat de vraag terugkomt.
+- **Later**, het kruisje, Escape en klikken buiten de popup stellen de vraag uit
+  voor deze tabsessie, ook na herladen. Bij een nieuwe tabsessie kan de vraag terugkomen.
+
+Een definitieve keuze wordt op de controller bewaard en geldt voor alle browsers,
+ook na herstart en OTA-update. De popup sluit pas na bevestiging van de opgeslagen
+keuze. Uitstellen schrijft niets naar de controller. Als browseropslag niet beschikbaar
+is, geldt het uitstel tot het herladen van de pagina. Onder **Welke gegevens worden
+gedeeld?** vind je uitleg over de metingen, het verzendinterval en het bron-IP-adres.
+Je kunt delen later altijd wijzigen via **Instellingen → Systeem**.
+
 ## Wat gebeurt er daarna?
 
 Bij ingeschakelde gebruiksstatistieken verstuurt OpenQuatt na afronden vrijwel direct en daarna ongeveer ieder uur een bericht. Uitzetten stopt nieuwe uurberichten; er wordt geen wachtrij voor later opgebouwd. Uitzetten verwijdert niet automatisch eerder ontvangen berichten uit de loggingserver. Het installatie-ID blijft bewaard wanneer je delen uitzet of de firmware bijwerkt.
@@ -35,3 +55,10 @@ Open de gekozen instelling opnieuw en controleer de getoonde aan/uit-stand. Cont
 ## Technische details
 
 Zie [Gegevens delen: technische naslag](../gegevens-delen-technisch.md) voor de exacte velden, het installatie-ID, migratie en verzendgedrag van het uurbericht. Zie [MQTT inputbronnen](../mqtt.md) voor het verschil tussen deze centrale verzending en je eigen MQTT-koppeling.
+
+De popupstatus gebruikt één bit in het bestaande 8-byte NVS-record van de
+prestatiedatakeuze, zonder extra NVS-key. Eén interne statusentiteit maakt dit
+uitleesbaar. Bij upgrade blijft de bestaande toestemming behouden; bestaande
+uit-keuzes krijgen de uitnodiging eenmaal. Een fabrieksreset wist de status.
+Downgrade naar firmware met de oude opslagindeling zet delen uit en wist de keuze
+en popupstatus; na opnieuw upgraden kan de uitnodiging terugkomen.

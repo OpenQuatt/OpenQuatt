@@ -21,6 +21,10 @@ openquatt_performance_telemetry:
     id: oq_performance_telemetry_choice_configured
     name: "Performance model validation choice configured"
     internal: true
+  prompt_handled:
+    id: oq_performance_telemetry_prompt_handled
+    name: "Performance model validation prompt handled"
+    internal: true
   generation_select: hp_generation
   outside_temp_sensor: outside_temp_selected
   flow_sensor: flow_rate_selected

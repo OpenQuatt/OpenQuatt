@@ -1,3 +1,4 @@
+import { syncPerformanceTelemetryPrompt } from "../features/performance-telemetry-prompt.js";
 import { renderAppNav, syncDocumentTheme, syncDocumentTitle } from "../core/app-shared.js";
 import { LOGO_MARKUP } from "../core/embedded-assets.js";
 import { getSettingsRenderSignature } from "../core/render-signatures.js";
@@ -192,6 +193,7 @@ export function renderSettingsView() {
       return;
     }
 
+    syncPerformanceTelemetryPrompt();
     const focusedSettingsField = captureFocusedSettingsField();
     const modalContinuity = captureModalContinuity(state.root);
     const oduEepromLauncher = state.root.querySelector('[data-oq-action="open-odu-eeprom-dump-modal"]');

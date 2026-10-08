@@ -1,3 +1,4 @@
+import { renderPerformanceTelemetryPrompt } from "./performance-telemetry-prompt.js";
 import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon } from "../core/config.js";
 import { formatOpenQuattResumeDateTime, getEntityValue, getOpenQuattPauseDraftValue, hasOpenQuattResumeSchedule } from "../core/entity-store.js";
@@ -443,6 +444,9 @@ import { render } from "../core/render-scheduler.js";
   });
 
   export function renderSystemModal() {
+    if (state.systemModal === "performance-telemetry-prompt") {
+      return renderPerformanceTelemetryPrompt();
+    }
     if (state.systemModal === "login") {
       return renderLoginModal();
     }
