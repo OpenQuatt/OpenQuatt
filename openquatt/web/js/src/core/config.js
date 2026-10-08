@@ -98,6 +98,7 @@
     ["houseLearningReset", DOMAIN_BUTTON, "Power House Learning Reset"],
     ["performanceTelemetryEnabled", DOMAIN_SWITCH, "Performance model validation"],
     ["performanceTelemetryChoiceConfigured", DOMAIN_BINARY_SENSOR, "Performance model validation choice configured"],
+    ["performanceTelemetryPromptHandled", DOMAIN_BINARY_SENSOR, "Performance model validation prompt handled"],
     ["hpGeneration", DOMAIN_SELECT, "Quatt Hybrid version", false],
     ["electricalCurrentLimit", DOMAIN_NUMBER, "Electrical current limit"],
     ["strategy", DOMAIN_SELECT, "Heating Control Mode", false],
@@ -1665,6 +1666,9 @@
   export const FIRMWARE_MODAL_KEYS = [...FIRMWARE_ENTITY_KEYS, ...FIRMWARE_TEST_ENTITY_KEYS, ...FIRMWARE_TEST_LEGACY_ENTITY_KEYS, "installFirmwareUpdateTarget", "projectVersionText", "releaseChannelText", "installationTopology", "hardwareProfileText", "connectionText", "preferredConnection"];
   export const TOPOLOGY_HINT_KEYS = ["hp2ExcludeMinHz", "hp2Power", "hp2WaterOut"];
   export const HEADER_ENTITY_KEYS = [
+    "performanceTelemetryEnabled",
+    "performanceTelemetryChoiceConfigured",
+    "performanceTelemetryPromptHandled",
     "status",
     "uptime",
     "uptimeReadable",

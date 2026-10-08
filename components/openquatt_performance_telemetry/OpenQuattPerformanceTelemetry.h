@@ -25,6 +25,7 @@ class OpenQuattPerformanceTelemetry : public switch_::Switch, public Component {
   void set_clock(time::RealTimeClock* value) { this->clock_ = value; }
   void set_setup_complete_sensor(binary_sensor::BinarySensor* value) { this->setup_complete_sensor_ = value; }
   void set_choice_configured_sensor(binary_sensor::BinarySensor* value) { this->choice_configured_sensor_ = value; }
+  void set_prompt_handled_sensor(binary_sensor::BinarySensor* value) { this->prompt_handled_sensor_ = value; }
   void set_generation_select(select::Select* value) { this->generation_select_ = value; }
   void set_outside_temp_sensor(sensor::Sensor* value) { this->outside_temp_sensor_ = value; }
   void set_flow_sensor(sensor::Sensor* value) { this->flow_sensor_ = value; }
@@ -64,7 +65,9 @@ class OpenQuattPerformanceTelemetry : public switch_::Switch, public Component {
 
  protected:
   static constexpr uint32_t STORAGE_MAGIC = 0x4F515054UL;  // OQPT
-  static constexpr uint16_t STORAGE_VERSION = 1U;
+  static constexpr uint16_t STORAGE_VERSION = 2U;
+  static constexpr uint8_t CHOICE_CONFIGURED = 1U;
+  static constexpr uint8_t PROMPT_HANDLED = 2U;
   static constexpr size_t RECORDS_PER_BATCH = 15U;
   static constexpr size_t RECORD_STORAGE_COUNT = RECORDS_PER_BATCH * 2U;
   static constexpr size_t PAYLOAD_CAPACITY = 4096U;
@@ -82,6 +85,8 @@ class OpenQuattPerformanceTelemetry : public switch_::Switch, public Component {
     uint8_t enabled;
     uint8_t choice_configured;
   };
+
+  static_assert(sizeof(Storage) == 8U, "Preserve the existing NVS record size");
 
   struct HpSources {
     sensor::Sensor* working_mode{nullptr};
@@ -165,6 +170,7 @@ class OpenQuattPerformanceTelemetry : public switch_::Switch, public Component {
   time::RealTimeClock* clock_{nullptr};
   binary_sensor::BinarySensor* setup_complete_sensor_{nullptr};
   binary_sensor::BinarySensor* choice_configured_sensor_{nullptr};
+  binary_sensor::BinarySensor* prompt_handled_sensor_{nullptr};
   select::Select* generation_select_{nullptr};
   sensor::Sensor* outside_temp_sensor_{nullptr};
   sensor::Sensor* flow_sensor_{nullptr};
@@ -186,6 +192,7 @@ class OpenQuattPerformanceTelemetry : public switch_::Switch, public Component {
   uint8_t consecutive_failures_{0U};
   std::atomic<bool> enabled_{false};
   std::atomic<bool> choice_configured_{false};
+  std::atomic<bool> prompt_handled_{false};
   std::atomic<bool> publish_in_flight_{false};
   bool pending_publish_allowed_{false};
   int64_t next_publish_us_{0};

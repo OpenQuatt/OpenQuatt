@@ -842,3 +842,67 @@
   .oq-advice-redesign .change-note { width: 100%; }
   .oq-advice-redesign .button { flex: 1 1 auto; }
 }
+
+.oq-performance-prompt {
+  width: min(100%, 680px);
+}
+
+.oq-performance-prompt .oq-helper-modal-head > div { min-width: 0; }
+.oq-performance-prompt .oq-helper-modal-close { flex-shrink: 0; }
+.oq-performance-prompt .oq-helper-modal-title { overflow-wrap: anywhere; }
+
+.oq-performance-prompt-invite {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin: 20px 0;
+  padding: 20px;
+  border: 1px solid var(--oq-helper-modal-callout-border);
+  border-radius: var(--oq-helper-radius-lg);
+  background: var(--oq-helper-modal-callout-background);
+}
+
+.oq-performance-prompt-icon {
+  display: flex;
+  flex: 0 0 40px;
+  color: var(--oq-helper-accent);
+}
+
+.oq-performance-prompt-icon svg { width: 40px; height: 40px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.oq-performance-prompt-invite h3 { margin: 0 0 8px; color: var(--oq-helper-modal-callout-title); }
+.oq-performance-prompt-invite p { margin: 0; line-height: 1.55; }
+
+/* The disclosure lives in a narrow dialog, independent of the page width. */
+.oq-performance-prompt .oq-usage-consent-details { padding: 0; }
+.oq-performance-prompt .oq-usage-consent-details > summary { padding: 14px 16px; }
+.oq-performance-prompt .oq-usage-consent-details-body {
+  padding: 16px;
+  border-top: 1px solid var(--oq-helper-line);
+}
+.oq-performance-prompt .oq-usage-facts-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+.oq-performance-prompt .oq-usage-facts-grid > .oq-usage-disclosure-column { padding: 0; }
+.oq-performance-prompt .oq-usage-disclosure-column-head h4 { margin: 0; }
+.oq-performance-prompt .oq-usage-disclosure-column ul { gap: 12px; }
+.oq-performance-prompt .oq-usage-disclosure-column li {
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 16px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.oq-performance-prompt .oq-usage-facts {
+  margin-top: 0;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--oq-helper-line);
+  border-left: none;
+}
+
+@media (max-width: 600px) {
+  .oq-performance-prompt .oq-helper-modal-title { font-size: 1.45rem; }
+  .oq-performance-prompt-invite { padding: 14px; gap: 12px; }
+  .oq-performance-prompt .oq-usage-consent-details-body { padding: 14px; }
+  .oq-performance-prompt .oq-usage-disclosure-column li { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  .oq-performance-prompt .oq-helper-modal-actions { flex-direction: column; align-items: stretch; }
+}
