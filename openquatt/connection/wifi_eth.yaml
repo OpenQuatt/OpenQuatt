@@ -39,7 +39,7 @@ improv_serial:
   next_url: "http://{{ip_address}}/"
 
 external_components:
-  # ESPHome 2026.10.0b1 compatibility backport; see openquatt_network/README.md.
+  # ESPHome 2026.10.0b2-compatible lifecycle backport; see openquatt_network/README.md.
   - source:
       type: git
       url: https://github.com/jeroen85/esphome.git

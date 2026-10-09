@@ -1,6 +1,6 @@
 # Beperkte fysieke recovery
 
-Fase 2 van #421, op ESPHome 2026.10.0b1. Houd de gedebouncete herstelknop 5 seconden
+Fase 2 van #421, op ESPHome 2026.10.0b2. Houd de gedebouncete herstelknop 5 seconden
 ingedrukt en laat hem los. `/recovery` is een zelfstandige pagina zonder SPA,
 entities of logs. Het venster duurt 10 minuten; alleen daar kan een nieuwe
 web-login worden opgeslagen. Normale routes blijven met een willekeurige

@@ -11,7 +11,7 @@ esphome:
   project:
     name: ${project_name}
     version: ${project_version}
-  min_version: 2026.10.0b1
+  min_version: 2026.10.0b2
   name_add_mac_suffix: false
   includes:
     - ${oq_cpp_headers_dir}

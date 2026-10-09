@@ -27,9 +27,9 @@ def _consume_web_server_base_sockets(config: ConfigType) -> ConfigType:
 
 
 def _validate_version(config: ConfigType) -> ConfigType:
-    if __version__ != "2026.10.0b1":
+    if __version__ != "2026.10.0b2":
         raise cv.Invalid(
-            "OpenQuatt web_server_base compatibility override requires ESPHome 2026.10.0b1; "
+            "OpenQuatt web_server_base compatibility override requires ESPHome 2026.10.0b2; "
             "review the upstream auth changes before updating this override."
         )
     if not CORE.is_esp32:
