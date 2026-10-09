@@ -1387,6 +1387,7 @@
     "curveModifier",
     "curveRoomTrim",
     "curveEffectiveTarget",
+    "heatingSupplyTargetActiveSource",
   ];
   export const EXCLUDED_FREQUENCY_KEYS = [
     "hp1ExcludeMinHz", "hp1ExcludeMaxHz", "hp2ExcludeMinHz", "hp2ExcludeMaxHz",
