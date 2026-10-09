@@ -1115,7 +1115,8 @@ import { t } from "../i18n/index.js";
   export function getSettingsBackupFilename(snapshot = buildSettingsBackupSnapshot()) {
     const stamp = String(snapshot.exported_at || new Date().toISOString())
       .replace(/[:.]/g, "-")
-      .replace(/T/, "_");
+      .replace(/T/, "_")
+      .replace(/Z$/, "Z");
     const installation = String(snapshot.source?.installation || "OpenQuatt").replace(/\s+/g, "-").toLowerCase();
     return `${installation}-settings-backup-${stamp}.json`;
   }
