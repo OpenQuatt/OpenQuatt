@@ -104,7 +104,7 @@ inline Decision evaluate(const Input& input, State state) {
   // A confirmed room-demand start is only promoted to recovery after an HP
   // actually starts. This prevents the minimum-output floor from becoming a
   // permanent below-setpoint mode while retaining the successful start until
-  // the room has moved clearly out of its restart band.
+  // the room has reached its requested temperature.
   if (!state.room_recovery_active) {
     if (state.room_start_armed && input.compressor_active) {
       state.room_start_armed = false;
@@ -115,8 +115,7 @@ inline Decision evaluate(const Input& input, State state) {
       state.room_start_armed = false;
     }
   }
-  const float recovery_release_c = input.setpoint_c - 0.5f * input.room_resume_delta_c;
-  if (state.room_recovery_active && input.room_c >= recovery_release_c) state.room_recovery_active = false;
+  if (state.room_recovery_active && input.room_c >= input.setpoint_c) state.room_recovery_active = false;
 
   out.fast_start =
       !input.compressor_active && !state.room_recovery_active && (state.setpoint_raise_active || room_confirmed);

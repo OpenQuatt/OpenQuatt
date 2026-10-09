@@ -116,6 +116,12 @@ Bij aanhoudend te koud zijn bouwt de regeling een kleine herstelcorrectie (*comf
 
 De directe berekening gebruikt `min(setpoint + memory − comfort below, warme grens)` als koude correctiegrens. Op of boven de warme grens is geen positieve kamercorrectie mogelijk; erboven wordt warmte teruggenomen. De gewenste temperatuur blijft ongewijzigd. Bij ondermarge **0,1 °C** en opgebouwde verschuiving **0,2 °C** kan bij **21,05 °C** en setpoint **21,0 °C** dus nog positieve correctie bestaan. Bij ondermarge **0,2 °C** en hetzelfde maximum is dat boven het setpoint niet mogelijk.
 
+#### Kamerherstel tot de gewenste temperatuur
+
+Na een bevestigde start doordat de kamer onder de koude grens zit, ondersteunt Power House de herstelrun met het laagste geschikte warmtepompvermogen tot de gemeten kamertemperatuur het setpoint bereikt. Bij een setpoint van **20,0 °C** en ondermarge **0,1 °C** kan de startvraag vanaf **19,9 °C** ontstaan; de minimumondersteuning blijft vervolgens ook bij **19,96 °C** actief tot **20,0 °C**.
+
+Daarna neemt de gewone vermogensregeling het over. Het setpoint bereiken is geen harde stop: bij voldoende warmtevraag kan de warmtepomp blijven draaien. Dit kamerherstel werkt ook met **Langer doorverwarmen** uit. Die aparte optie ondersteunt lage warmtevraag tot een hogere stoptemperatuur. Waterbegrenzing en veiligheidsvoorwaarden blijven leidend; een setpointverlaging, ingetrokken warmtetoestemming of ongeldige kamerdata kan het herstel eerder beëindigen.
+
 #### Rekenvoorbeeld van warmtevraag
 
 Illustratief: setpoint **21,0 °C**, ondermarge **0,2 °C**, bovenmarge **0,3 °C**, woningbehoefte **2.400 W**, temperatuurreactie **3.000 W/K**. De tabel toont de berekening vóór verdere vertraging en begrenzing, niet het onmiddellijk geleverde vermogen.
