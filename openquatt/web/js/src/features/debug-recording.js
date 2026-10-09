@@ -575,8 +575,7 @@ export function getDebugRecordingFilename(bundle) {
   const exportedAt = bundle?.exported_at || (bundle?.exported_at_ms ? new Date(Number(bundle.exported_at_ms)).toISOString() : new Date().toISOString());
   const stamp = String(exportedAt)
     .replace(/[:.]/g, "-")
-    .replace(/T/, "_")
-    .replace(/Z$/, "Z");
+    .replace(/T/, "_");
   const installation = String(bundle?.source?.installation || "OpenQuatt").replace(/\s+/g, "-").toLowerCase();
   return `${installation}-debug-recording-${stamp}.oqdebug.json`;
 }
