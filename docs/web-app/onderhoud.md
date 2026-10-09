@@ -20,7 +20,7 @@ Maak een backup voordat je grotere wijzigingen doet of voordat je een factory-up
 
 De backup bevat de instellingen die de web-app beheert, inclusief de vier warmtepompoffsets en iedere geldige aanvoeroffset die per bron is opgeslagen. De MQTT-configuratie wordt ook meegenomen, maar het MQTT-wachtwoord nooit. Bij restore vergelijkt OpenQuatt de backup met de huidige installatie, zodat je verschillen kunt controleren voordat je ze terugzet.
 
-Externe invoerwaarden die je live aanlevert, zoals een warmtevraag, een aanvoertarget of een kamertemperatuur via MQTT of de API, zijn geen instellingen en gaan niet mee in de backup. De gekozen bron blijft wel bewaard: na een restore staan `Externe warmtevraag (Power House)` en `Aanvoertarget (stooklijn)` weer op dezelfde bron, zonder dat er een verouderde vraag of target wordt teruggezet.
+Externe invoerwaarden die je live aanlevert via MQTT of de API zijn geen instellingen en gaan niet mee in de backup. Dit geldt ook voor buitentemperatuur, kamertemperatuur, kamersetpoint, dauwpunt en toestemming voor verwarmen of koelen. De gekozen bronnen blijven wel bewaard, zodat na restore nieuwe invoer via dezelfde koppeling kan binnenkomen. Live API-invoerwaarden uit oudere backups worden overgeslagen en als niet-herstelde velden gemeld; ze worden niet opnieuw geldig gemaakt.
 
 De kalibratiewaarden worden op dezelfde manier als de overige instellingen hersteld, vóór de opgeslagen aanvoerbron wordt geselecteerd. Kalibreer na restore opnieuw als de controller of een temperatuursensor fysiek is vervangen; een gewone bron- of CIC-URL-wijziging verwijdert een geldige kalibratie niet.
 

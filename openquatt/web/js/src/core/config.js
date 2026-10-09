@@ -2060,6 +2060,14 @@
     "otLinkProblem",
     "otbChCommand",
     "otbControlSetpointCommand",
+    // Live API inputs are runtime state, not persisted settings. Restoring a
+    // default or stale value would mark it freshly valid.
+    "apiInputOutsideTemperature",
+    "apiInputRoomTemperature",
+    "apiInputRoomSetpoint",
+    "apiInputHeatingEnable",
+    "apiInputCoolingEnable",
+    "apiInputCoolingDewPoint",
     // A live power request rather than a persisted setting: restoring it
     // would re-assert a stale demand and mark it freshly valid.
     "apiInputExternalHeatDemand",
@@ -2136,12 +2144,6 @@
         "externalHeatDemandSource",
         "heatingSupplyTargetSource",
         "heatingCurveModifierSource",
-        "apiInputOutsideTemperature",
-        "apiInputRoomTemperature",
-        "apiInputRoomSetpoint",
-        "apiInputHeatingEnable",
-        "apiInputCoolingEnable",
-        "apiInputCoolingDewPoint",
       ],
     },
     {
