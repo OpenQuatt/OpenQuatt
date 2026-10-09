@@ -26,7 +26,7 @@ jobs:
       base_sha: ${{ steps.gate.outputs.base_sha }}
       head_sha: ${{ steps.gate.outputs.head_sha }}
       pr_number: ${{ steps.gate.outputs.pr_number }}
-      should_publish: ${{ steps.metadata.outputs.found }}
+      should_publish: ${{ steps.gate.outputs.should_publish }}
       short_sha: ${{ steps.gate.outputs.short_sha }}
       version: ${{ steps.gate.outputs.version }}
     steps:
@@ -125,22 +125,34 @@ jobs:
           fi
 
           PR_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          if ! jq -e '
+            (.state == "open" or .state == "closed") and
+            (.labels | type == "array" and all(.[]; .name | type == "string")) and
+            (.head.sha | type == "string" and test("^[0-9a-f]{40}$")) and
+            (.base.ref | type == "string" and length > 0)
+          ' <<< "${PR_JSON}" >/dev/null; then
+            echo "Invalid current PR response." >&2
+            exit 1
+          fi
           BASE_SHA="$(jq -er '.base.sha | select(type == "string")' <<< "${PR_JSON}")"
           if [[ ! "${BASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
             echo "PR #${PR_NUMBER} has an invalid base SHA." >&2
             exit 1
           fi
           if [[ "$(jq -r '.state' <<< "${PR_JSON}")" != "open" ]]; then
-            echo "PR #${PR_NUMBER} is no longer open." >&2
-            exit 1
+            echo "::notice::PR #${PR_NUMBER} is no longer open; skipping test publication."
+            echo "should_publish=false" >> "${GITHUB_OUTPUT}"
+            exit 0
           fi
           if ! jq -e '.labels | any(.name == "test-firmware")' <<< "${PR_JSON}" >/dev/null; then
-            echo "PR #${PR_NUMBER} no longer has the test-firmware label." >&2
-            exit 1
+            echo "::notice::PR #${PR_NUMBER} no longer has the test-firmware label; skipping test publication."
+            echo "should_publish=false" >> "${GITHUB_OUTPUT}"
+            exit 0
           fi
           if [[ "$(jq -r '.head.sha' <<< "${PR_JSON}")" != "${HEAD_SHA}" ]]; then
-            echo "PR #${PR_NUMBER} has moved since this firmware was built." >&2
-            exit 1
+            echo "::notice::PR #${PR_NUMBER} has moved since this firmware was built; skipping test publication."
+            echo "should_publish=false" >> "${GITHUB_OUTPUT}"
+            exit 0
           fi
           if [[ "$(jq -r '.head.repo.full_name' <<< "${PR_JSON}")" != "${HEAD_REPOSITORY}" ]]; then
             echo "PR #${PR_NUMBER} head repository does not match the build metadata." >&2
@@ -151,8 +163,9 @@ jobs:
             exit 1
           fi
           if [[ "$(jq -r '.base.ref' <<< "${PR_JSON}")" != "${BASE_REF}" ]]; then
-            echo "PR #${PR_NUMBER} base branch changed since this firmware was built." >&2
-            exit 1
+            echo "::notice::PR #${PR_NUMBER} base branch changed; skipping test publication."
+            echo "should_publish=false" >> "${GITHUB_OUTPUT}"
+            exit 0
           fi
 
           echo "base_ref=${BASE_REF}" >> "${GITHUB_OUTPUT}"
@@ -161,6 +174,7 @@ jobs:
           echo "pr_number=${PR_NUMBER}" >> "${GITHUB_OUTPUT}"
           echo "short_sha=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "should_publish=true" >> "${GITHUB_OUTPUT}"
 
   publish-pr-test-release:
     runs-on: ubuntu-latest
@@ -242,18 +256,32 @@ jobs:
             exit 1
           fi
           PR_JSON="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          if ! jq -e '
+            (.state == "open" or .state == "closed") and
+            (.labels | type == "array" and all(.[]; .name | type == "string")) and
+            (.head.sha | type == "string" and test("^[0-9a-f]{40}$")) and
+            (.base.ref | type == "string" and length > 0)
+          ' <<< "${PR_JSON}" >/dev/null; then
+            echo "Invalid current PR response." >&2
+            exit 1
+          fi
           if [[ "$(jq -r '.state' <<< "${PR_JSON}")" != "open" ]] || \
              ! jq -e '.labels | any(.name == "test-firmware")' <<< "${PR_JSON}" >/dev/null || \
              [[ "$(jq -r '.head.sha' <<< "${PR_JSON}")" != "${HEAD_SHA}" ]] || \
              [[ "$(jq -r '.base.ref' <<< "${PR_JSON}")" != "${BASE_REF}" ]]; then
-            echo "PR publication gate changed while assets were prepared." >&2
-            exit 1
+            echo "::notice::PR publication gate changed while assets were prepared; skipping test publication."
+            exit 0
           fi
 
           git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head"
-          if [[ "$(git rev-parse FETCH_HEAD)" != "${HEAD_SHA}" ]]; then
-            echo "Fetched PR head does not match the built commit." >&2
+          FETCHED_HEAD_SHA="$(git rev-parse FETCH_HEAD)"
+          if [[ ! "${FETCHED_HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Fetched PR head is invalid." >&2
             exit 1
+          fi
+          if [[ "${FETCHED_HEAD_SHA}" != "${HEAD_SHA}" ]]; then
+            echo "::notice::PR head moved while fetching the built commit; skipping test publication."
+            exit 0
           fi
 
           TAG="pr-${PR_NUMBER}"

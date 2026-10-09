@@ -200,6 +200,174 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
         release_step = publish_job.split("      - name: Publish current PR test release\n", 1)[1]
         self.assertLess(release_step.index(".conclusion == \"success\""), release_step.index("gh release delete"))
 
+    def run_pr_publication_gate(
+        self, step_name: str, *, state: str = "open", labels: list | None = None,
+        head_sha: str = "1234567890abcdef1234567890abcdef12345678", base_ref: str = "dev",
+        metadata_changes: dict | None = None, api_failure: bool = False,
+        fetched_sha: str = "1234567890abcdef1234567890abcdef12345678",
+        source_run: dict | None = None, malformed_pr: bool = False, upload_failure: bool = False,
+    ) -> tuple[subprocess.CompletedProcess, dict[str, str], str]:
+        built_sha = "1234567890abcdef1234567890abcdef12345678"
+        version = "v0.55.0-pr.786.1+1234567"
+        metadata = {
+            "pr_number": 786, "head_sha": built_sha, "head_repository": "OpenQuatt/OpenQuatt",
+            "base_ref": "dev", "base_version": "v0.55.0", "release_channel": "dev",
+            "run_number": 1, "version": version,
+        }
+        metadata.update(metadata_changes or {})
+        pr = {
+            "state": state, "labels": [{"name": "test-firmware"}] if labels is None else labels,
+            "head": {"sha": head_sha, "repo": {"full_name": "OpenQuatt/OpenQuatt"}},
+            "base": {"sha": "a" * 40, "ref": base_ref, "repo": {"full_name": "OpenQuatt/OpenQuatt"}},
+        }
+        step = PUBLISH_WORKFLOW.split(f"      - name: {step_name}\n", 1)[1]
+        shell = textwrap.dedent(re.split(
+            r"\n(?:      - name: |  [a-z][a-z0-9-]*:\n)",
+            step.split("        run: |\n", 1)[1], maxsplit=1,
+        )[0])
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for name, content in (
+                ("metadata.json", json.dumps(metadata)),
+                ("pr.json", "{" if malformed_pr else json.dumps(pr)),
+                ("run.json", json.dumps(source_run or {"status": "completed", "conclusion": "success"})),
+                ("outputs", ""), ("calls", ""),
+            ):
+                (root / name).write_text(content)
+            (root / "dist").mkdir()
+            (root / "dist/test.firmware.ota.bin").write_bytes(b"test firmware")
+            gh = root / "gh"
+            gh.write_text(
+                '#!/bin/bash\n'
+                'printf "gh %s\\n" "$*" >> "${CALLS}"\n'
+                'if [[ "$1" == "api" ]]; then\n'
+                '  if [[ "${API_FAILURE}" == "true" ]]; then exit 1; fi\n'
+                '  if [[ "$*" == *"/pulls/"* ]]; then exec cat "${PR_FIXTURE}"; fi\n'
+                '  exec cat "${RUN_FIXTURE}"\n'
+                'fi\n'
+                'if [[ "$1 $2" == "release upload" && "${UPLOAD_FAILURE}" == "true" ]]; then exit 1; fi\n'
+                'if [[ "$1 $2" == "release view" && "$*" == *"--json assets"* ]]; then echo 1; fi\n'
+            )
+            gh.chmod(0o755)
+            git = root / "git"
+            git.write_text(
+                '#!/bin/bash\n'
+                'printf "git %s\\n" "$*" >> "${CALLS}"\n'
+                'if [[ "$1" == "rev-parse" ]]; then echo "${FETCHED_SHA}"; fi\n'
+            )
+            git.chmod(0o755)
+            result = subprocess.run(
+                ["bash", "-e", "-c", shell], cwd=root,
+                env={
+                    **os.environ, "PATH": f"{root}{os.pathsep}{os.environ['PATH']}",
+                    "META_FILE": str(root / "metadata.json"), "PR_FIXTURE": str(root / "pr.json"),
+                    "RUN_FIXTURE": str(root / "run.json"), "CALLS": str(root / "calls"),
+                    "GITHUB_OUTPUT": str(root / "outputs"), "GITHUB_REPOSITORY": "OpenQuatt/OpenQuatt",
+                    "SOURCE_HEAD_REPOSITORY": "OpenQuatt/OpenQuatt", "SOURCE_HEAD_SHA": built_sha,
+                    "SOURCE_RUN_NUMBER": "1", "SOURCE_WORKFLOW_PATH": ".github/workflows/pr-test-firmware.yml",
+                    "SOURCE_RUN_ID": "12345", "PR_NUMBER": "786", "HEAD_SHA": built_sha,
+                    "BASE_REF": "dev", "SHORT_SHA": built_sha[:7], "VERSION": version,
+                    "API_FAILURE": "true" if api_failure else "false", "FETCHED_SHA": fetched_sha,
+                    "UPLOAD_FAILURE": "true" if upload_failure else "false",
+                }, capture_output=True, text=True,
+            )
+            outputs = dict(line.split("=", 1) for line in (root / "outputs").read_text().splitlines())
+            return result, outputs, (root / "calls").read_text()
+
+    def assert_no_publication_mutations(self, calls: str) -> None:
+        for command in ("gh release delete", "gh release create", "gh release upload", "git tag", "git push"):
+            self.assertNotIn(command, calls)
+
+    @unittest.skipUnless(shutil.which("jq"), "workflow shell tests require jq")
+    def test_current_pr_gate_explicitly_authorizes_publication(self) -> None:
+        result, outputs, calls = self.run_pr_publication_gate("Validate build and current PR state")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("true", outputs.get("should_publish"))
+        self.assertEqual("786", outputs["pr_number"])
+        self.assert_no_publication_mutations(calls)
+        self.assertIn("should_publish: ${{ steps.gate.outputs.should_publish }}", PUBLISH_WORKFLOW)
+
+    @unittest.skipUnless(shutil.which("jq"), "workflow shell tests require jq")
+    def test_obsolete_prs_skip_at_both_publication_gates_without_writes(self) -> None:
+        for step in ("Validate build and current PR state", "Publish current PR test release"):
+            for change in ({"state": "closed"}, {"labels": []}, {"head_sha": "b" * 40}, {"base_ref": "main"}):
+                with self.subTest(step=step, change=change):
+                    result, outputs, calls = self.run_pr_publication_gate(step, **change)
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    if step == "Validate build and current PR state":
+                        self.assertEqual({"should_publish": "false"}, outputs)
+                    self.assert_no_publication_mutations(calls)
+
+    @unittest.skipUnless(shutil.which("jq"), "workflow shell tests require jq")
+    def test_metadata_errors_still_fail_even_after_pr_closed(self) -> None:
+        for changes in (
+            {"head_sha": "b" * 40}, {"head_repository": "other/repo"},
+            {"base_version": "invalid"}, {"base_ref": "feature"}, {"release_channel": "main"},
+            {"run_number": 2}, {"version": "v0.55.0"},
+        ):
+            with self.subTest(changes=changes):
+                result, outputs, calls = self.run_pr_publication_gate(
+                    "Validate build and current PR state", state="closed", metadata_changes=changes,
+                )
+                self.assertNotEqual(0, result.returncode)
+                self.assertNotEqual("true", outputs.get("should_publish"))
+                self.assert_no_publication_mutations(calls)
+
+    @unittest.skipUnless(shutil.which("jq"), "workflow shell tests require jq")
+    def test_invalid_pr_responses_and_api_errors_are_not_benign_skips(self) -> None:
+        for step in ("Validate build and current PR state", "Publish current PR test release"):
+            for change in (
+                {"api_failure": True}, {"malformed_pr": True}, {"state": "unknown"},
+                {"labels": [{"wrong": "label"}]}, {"head_sha": "invalid"},
+            ):
+                with self.subTest(step=step, change=change):
+                    result, outputs, calls = self.run_pr_publication_gate(step, **change)
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertNotEqual("true", outputs.get("should_publish"))
+                    self.assert_no_publication_mutations(calls)
+
+    @unittest.skipUnless(shutil.which("jq"), "workflow shell tests require jq")
+    def test_head_moving_during_fetch_skips_but_invalid_fetch_fails(self) -> None:
+        result, _, calls = self.run_pr_publication_gate("Publish current PR test release", fetched_sha="b" * 40)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assert_no_publication_mutations(calls)
+        result, _, calls = self.run_pr_publication_gate("Publish current PR test release", fetched_sha="invalid")
+        self.assertNotEqual(0, result.returncode)
+        self.assert_no_publication_mutations(calls)
+
+    @unittest.skipUnless(shutil.which("jq"), "workflow shell tests require jq")
+    def test_current_publication_and_partial_upload_cleanup_still_work(self) -> None:
+        result, _, calls = self.run_pr_publication_gate("Publish current PR test release")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("gh release create pr-786", calls)
+        self.assertIn("gh release upload pr-786", calls)
+        self.assertEqual(1, calls.count("gh release delete pr-786"))
+        result, _, calls = self.run_pr_publication_gate("Publish current PR test release", upload_failure=True)
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(2, calls.count("gh release delete pr-786"))
+
+    @unittest.skipUnless(shutil.which("jq"), "workflow shell tests require jq")
+    def test_unsuccessful_latest_build_still_fails_before_any_release_write(self) -> None:
+        for status, conclusion in (("completed", "failure"), ("completed", "cancelled"), ("in_progress", None)):
+            with self.subTest(status=status, conclusion=conclusion):
+                result, _, calls = self.run_pr_publication_gate(
+                    "Publish current PR test release", state="closed",
+                    source_run={"status": status, "conclusion": conclusion},
+                )
+                self.assertNotEqual(0, result.returncode)
+                self.assert_no_publication_mutations(calls)
+
+    def test_close_and_unlabel_cleanup_jobs_remain_independent_of_publish_gate(self) -> None:
+        for job in ("delete-pr-test-release", "remove-merged-pr-test-label"):
+            block = PUBLISH_WORKFLOW.split(f"  {job}:\n", 1)[1]
+            header = block.split("    steps:", 1)[0]
+            self.assertNotIn("needs:", header)
+            self.assertIn("github.event_name == 'pull_request_target'", header)
+            self.assertIn("github.event.action == 'closed'", header)
+        delete_job = PUBLISH_WORKFLOW.split("  delete-pr-test-release:\n", 1)[1]
+        self.assertIn("github.event.action == 'unlabeled'", delete_job)
+        self.assertIn("group: pr-test-firmware-${{ github.event.pull_request.number }}", delete_job)
+
     def test_untrusted_build_has_read_only_repository_access(self) -> None:
         self.assertIn("permissions:\n  contents: read", BUILD_WORKFLOW)
         self.assertNotIn("contents: write", BUILD_WORKFLOW)
@@ -244,7 +412,7 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
         self.assertIn('BASE_REF="$(jq -er \'.base_ref', PUBLISH_WORKFLOW)
         self.assertIn('RELEASE_CHANNEL="$(jq -er \'.release_channel', PUBLISH_WORKFLOW)
         self.assertIn('[[ "${RELEASE_CHANNEL}" != "${BASE_REF}" ]]', PUBLISH_WORKFLOW)
-        self.assertIn("base branch changed since this firmware was built", PUBLISH_WORKFLOW)
+        self.assertIn("base branch changed; skipping test publication", PUBLISH_WORKFLOW)
         self.assertIn("base_ref: ${{ steps.gate.outputs.base_ref }}", PUBLISH_WORKFLOW)
         self.assertIn("BASE_REF: ${{ needs.validate-pr-test-build.outputs.base_ref }}", PUBLISH_WORKFLOW)
         self.assertGreaterEqual(PUBLISH_WORKFLOW.count(".base.ref"), 2)
@@ -254,7 +422,7 @@ class PrTestFirmwareWorkflowTests(unittest.TestCase):
         self.assertIn("pull_request_target:", PUBLISH_WORKFLOW)
         self.assertIn("run-id: ${{ github.event.workflow_run.id }}", PUBLISH_WORKFLOW)
         self.assertIn("path: ${{ runner.temp }}/firmware", PUBLISH_WORKFLOW)
-        self.assertIn("should_publish: ${{ steps.metadata.outputs.found }}", PUBLISH_WORKFLOW)
+        self.assertIn("should_publish: ${{ steps.gate.outputs.should_publish }}", PUBLISH_WORKFLOW)
         self.assertGreaterEqual(PUBLISH_WORKFLOW.count(".head.sha"), 2)
         self.assertGreaterEqual(PUBLISH_WORKFLOW.count('any(.name == "test-firmware")'), 2)
         self.assertNotIn("github.event.pull_request.head.sha", PUBLISH_WORKFLOW)
