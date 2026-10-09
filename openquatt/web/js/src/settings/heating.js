@@ -122,14 +122,31 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
   function renderCurveTargetBreakdown() {
     if (!hasEntity("curveBaseTarget")) return "";
     const rows = [
-      [t("settingsHeating.baseTargetLabel"), "curveBaseTarget", "°C"],
-      [t("settingsHeating.modifierLabel"), "curveModifier", "°C"],
-      [t("settingsHeating.roomTrimLabel"), "curveRoomTrim", "°C"],
-      [t("settingsHeating.effectiveTargetLabel"), "curveEffectiveTarget", "°C"],
+      [t("settingsHeating.baseTargetLabel"), "curveBaseTarget", false],
+      [t("settingsHeating.modifierLabel"), "curveModifier", true],
+      [t("settingsHeating.roomTrimLabel"), "curveRoomTrim", true],
+      [t("settingsHeating.effectiveTargetLabel"), "curveEffectiveTarget", false],
     ];
+    const external = getEntityValue("heatingSupplyTargetActiveSource") === "external";
+    const profile = state.entities.curveControlProfile;
+    const step = { Comfort: 0.25, Balanced: 0.5, Stable: 1 }[profile?.value ?? profile?.state];
+    const notes = [external
+      ? t("settingsHeating.targetExternalNote")
+      : Number.isFinite(step)
+        ? t("settingsHeating.targetRoundingNote", { step: formatNumber(step, { maximumFractionDigits: 2 }) })
+        : t("settingsHeating.targetRoundingUnknownNote")];
+    const limit = getSimpleCurvePreviewLimit();
+    if (limit !== null) notes.push(t("settingsHeating.targetLimitNote", { limit: formatNumber(limit, { maximumFractionDigits: 1 }) }));
     return `<div class="oq-simple-curve-breakdown">
-      ${rows.map(([label, key, unit]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(formatNumericState(getEntityNumericValue(key), 1, unit))}</strong></div>`).join("")}
-    </div>`;
+      ${rows.map(([label, key, signed]) => {
+        const raw = getEntityValue(key);
+        const value = hasEntity(key) && raw !== "" ? Number(raw) : Number.NaN;
+        const text = Number.isFinite(value)
+          ? `${formatNumber(value, { maximumFractionDigits: 1, signDisplay: signed ? "exceptZero" : "auto" })} °C`
+          : "—";
+        return `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(text)}</strong></div>`;
+      }).join("")}
+    </div><p class="oq-simple-curve-target-note">${escapeHtml(notes.join(" "))}</p>`;
   }
 
   export function renderHeatingCurveAdvancedFields() {
