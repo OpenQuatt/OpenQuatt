@@ -208,7 +208,8 @@ class RecorderConfigurationRuntimeTest(unittest.TestCase):
                                      str(source), "-o", str(binary)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             result = subprocess.run([str(binary)], capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout[:1000])
+            return result.stdout
 
     def test_capture_changes_missing_pool_pressure_and_eviction_single_and_duo(self):
         layouts = "\n".join(re.search(pattern, HEADER, re.S).group(0) for pattern in [
@@ -233,13 +234,12 @@ class RecorderConfigurationRuntimeTest(unittest.TestCase):
             self.compile_and_run(fixture, duo)
 
     def test_http_start_capture_is_deferred_to_loop_with_stop_restart_and_lock_contention(self):
-        for signature in ["bool OpenQuattDebugRecorder::start(",
-                          "void OpenQuattDebugRecorder::start_rolling_locked_(",
+        for signature in ["void OpenQuattDebugRecorder::start_rolling_locked_(",
                           "bool OpenQuattDebugRecorder::start_rolling(",
                           "bool OpenQuattDebugRecorder::restart_rolling(",
                           "bool OpenQuattDebugRecorder::set_enabled("]:
             self.assertNotIn("capture_sample_()", body(signature))
-        # Only loop() may call capture, including the final manual sample.
+        # Only loop() may call capture, for every rolling lifecycle entry.
         loop = body("void OpenQuattDebugRecorder::loop(")
         self.assertEqual(SOURCE.count("this->capture_sample_();"), loop.count("this->capture_sample_();"))
         fixture = r'''
@@ -251,9 +251,9 @@ uint32_t now = 0;
 uint32_t millis() { return now; }
 class OpenQuattDebugRecorder {
  public:
-  bool active_{false}, rolling_{false}, enabled_{true}, lock_available{true}, in_loop{false};
+  bool active_{false}, enabled_{true}, lock_available{true}, in_loop{false};
   uint64_t recording_id_{0}, started_monotonic_ms_{0}, stopped_monotonic_ms_{0}, last_sample_monotonic_ms_{0};
-  uint32_t duration_s_{0}, count_{0};
+  uint32_t count_{0};
   int source_state{0}, captured_state{-1}, reads{0};
   static constexpr uint32_t SAMPLE_INTERVAL_MS = 10000;
   bool lock_state_(int = 1) { return lock_available; }
@@ -262,13 +262,12 @@ class OpenQuattDebugRecorder {
   bool activate_pending_configuration_() { return true; }
   uint64_t current_time_ms_() { return now; }
   uint64_t monotonic_ms_(uint32_t value) { return value; }
-  uint32_t sanitize_duration_s_(uint32_t value) { return value; }
   void track_millis_(uint32_t) {}
   void clear_() { count_ = 0; last_sample_monotonic_ms_ = 0; }
   void capture_sample_() {
     assert(in_loop); captured_state = source_state; reads++; count_++; last_sample_monotonic_ms_ = now;
   }
-  bool start(uint32_t);
+  bool start_rolling();
   void start_rolling_locked_();
   void loop();
   void stop();
@@ -276,7 +275,7 @@ class OpenQuattDebugRecorder {
 };
 '''
         fixture += "\n".join(body(signature) for signature in [
-            "bool OpenQuattDebugRecorder::start(", "void OpenQuattDebugRecorder::start_rolling_locked_(",
+            "bool OpenQuattDebugRecorder::start_rolling(", "void OpenQuattDebugRecorder::start_rolling_locked_(",
             "void OpenQuattDebugRecorder::loop(", "void OpenQuattDebugRecorder::stop(",
         ])
         fixture += r'''
@@ -289,11 +288,14 @@ int main() {
   r.start_rolling_locked_(); r.stop(); r.tick(); assert(r.reads == 2 && r.count_ == 0);
   r.start_rolling_locked_(); r.lock_available = false; r.tick(); assert(r.reads == 2);
   r.source_state = 2; r.lock_available = true; r.tick(); assert(r.reads == 3 && r.captured_state == 2);
-  r.stop(); assert(r.start(1)); assert(r.reads == 3);
+  r.stop(); assert(r.start_rolling()); assert(r.reads == 3);
   r.source_state = 3; r.tick(); assert(r.reads == 4 && r.captured_state == 3);
-  now = 11000; r.tick(); assert(r.reads == 5 && !r.active_);
-  r.tick(); assert(r.reads == 5);
-  r.enabled_ = false; assert(!r.start(1)); r.tick(); assert(r.reads == 5);
+  // Rolling continues well beyond the removed one-hour timer.
+  for (now = 20000; now <= 8 * 3600 * 1000; now += 10000) r.tick();
+  assert(r.active_ && r.reads > 2800);
+  r.stop(); const int before = r.reads;
+  r.enabled_ = false; assert(!r.start_rolling()); r.tick(); assert(r.reads == before);
+
 }
 '''
         self.compile_and_run(fixture)

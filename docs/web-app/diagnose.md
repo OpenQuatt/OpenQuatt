@@ -37,9 +37,11 @@ Tijdelijke PSRAM-historie is op alle ondersteunde profielen standaard aan en wor
 De Systeemrecorder bewaart continu recente systeemgegevens, dus je hoeft een opname niet vooraf te starten:
 
 1. Open **Diagnostiek → Systeemrecorder**.
-2. Kies het venster dat het probleem afdekt: laatste 15, 30 of 60 minuten, of alles wat beschikbaar is.
+2. Kies het venster dat het probleem afdekt: laatste 15, 30 of 60 minuten, 2 of 6 uur, of alles wat beschikbaar is.
 3. Download het diagnosebestand.
 4. Voeg het gedownloade `.oqdebug.json`-bestand toe aan je Discord-vraag of GitHub-issue. Via **Open analyser** kun je het bestand zelf alvast bekijken op OpenHeatPumps; er wordt niets automatisch verzonden.
+
+De recorder gebruikt een ringbuffer van 2 MiB in PSRAM en neemt elke 10 seconden een sample. Met de volledige standaardveldenset past er ongeveer 7 uur en 19 minuten historie in; de beschikbare duur staat in de popup. De recorder blijft doorlopen en vervangt de oudste samples zodra de buffer vol is. Uitschakelen bewaart de huidige historie nog tot een herstart van het apparaat; **Nieuwe opname** wist de historie. Na een apparaatherstart begint de historie opnieuw.
 
 De opname wordt lokaal in het apparaatgeheugen opgeslagen en niets wordt automatisch verzonden. Deel het bestand alleen binnen het supportverzoek waarvoor je het hebt gemaakt.
 

@@ -1419,6 +1419,8 @@
     { minutes: 15, label: "15 min" },
     { minutes: 30, label: "30 min" },
     { minutes: 60, label: "60 min" },
+    { minutes: 120, labelKey: "debugRecording.range2h" },
+    { minutes: 360, labelKey: "debugRecording.range6h" },
     { minutes: 0, label: "Alles", labelKey: "debugRecording.rangeAll" },
   ];
   export const SYSTEM_RECORDER_ANALYSER_URL = "https://openheatpumps.nl";

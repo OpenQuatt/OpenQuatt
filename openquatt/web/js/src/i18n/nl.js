@@ -3878,6 +3878,8 @@ export default {
     hubUnavailable: "Systeemrecorder niet beschikbaar op deze firmware",
     rangeAll: "Alles",
     rangeFull: "Volledige beschikbare historie · {duration}",
+    range2h: "2 uur",
+    range6h: "6 uur",
     rangeLast: "Laatste {minutes} minuten",
     introPre: "De Systeemrecorder bewaart continu recente systeemgegevens voor diagnose en analyse. De gegevens blijven lokaal op het apparaat en worden niet automatisch verzonden. Een geëxporteerd diagnosebestand kun je verder bekijken met de",
     introLink: "OpenHeatPumps analyser",

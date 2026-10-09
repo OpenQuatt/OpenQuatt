@@ -3878,6 +3878,8 @@ export default {
     hubUnavailable: "System recorder not available on this firmware",
     rangeAll: "All",
     rangeFull: "Full available history · {duration}",
+    range2h: "2 hours",
+    range6h: "6 hours",
     rangeLast: "Last {minutes} minutes",
     introPre: "The system recorder continuously keeps recent system data for diagnosis and analysis. The data stays locally on the device and is not sent automatically. You can further inspect an exported diagnostic file with the",
     introLink: "OpenHeatPumps analyser",

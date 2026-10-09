@@ -241,6 +241,35 @@ test("oude start-route respecteert de opt-out", async () => {
   assert.equal(after.active, false);
 });
 
+test("tijdgebonden start is verwijderd en laat de rolling historie intact", async () => {
+  const mock = await loadMockRecorder();
+  const csrf = await mockCsrf(mock);
+  const before = (await mock.getStatus()).body;
+  const result = await mock.post("/openquatt/debug-recording/start?duration_s=900", { csrf_token: csrf });
+  assert.equal(result.status, 410);
+  assert.equal(result.body.error, "timed_recording_removed");
+  const after = (await mock.getStatus()).body;
+  assert.equal(after.active, true);
+  assert.equal(after.mode, "rolling");
+  assert.equal(after.recording_id, before.recording_id);
+  assert.equal(after.sample_count, before.sample_count);
+  assert.equal(after.buffer_size, 2 * 1024 * 1024);
+  assert.equal(Object.hasOwn(after, "duration_s"), false);
+  assert.equal(Object.hasOwn(after, "remaining_s"), false);
+});
+
+test("2 en 6 uur export blijven zelfstandige vensters, begrensd tot beschikbare historie", async () => {
+  const mock = await loadMockRecorder();
+  const twoHours = (await mock.call("/openquatt/debug-recording/download-range?last_minutes=120")).body;
+  const sixHours = (await mock.call("/openquatt/debug-recording/download-range?last_minutes=360")).body;
+  assert.equal(twoHours.recording.duration_s, 7200);
+  assert.equal(twoHours.samples.length, 721);
+  assert.deepEqual(twoHours.samples[0], [0, []]);
+  assert.ok(sixHours.recording.duration_s >= twoHours.recording.duration_s);
+  assert.ok(sixHours.recording.duration_s < 21600);
+  assert.deepEqual(sixHours.samples[0], [0, []]);
+});
+
 test("dubbel inschakelen is idempotent en wist niets", async () => {
   const mock = await loadMockRecorder();
   const csrf = await mockCsrf(mock);
