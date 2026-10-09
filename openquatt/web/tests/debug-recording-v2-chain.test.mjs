@@ -106,7 +106,8 @@ test("startsnapshot bevat tabellen, hash en instellingen eenmalig in initial", (
   for (const key of TAIL_KEYS) {
     assert.ok(DEBUG_RECORDING_KEYS.includes(key), `debugset mist ${key}`);
   }
-  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(-TAIL_KEYS.length), TAIL_KEYS);
+  const chainStart = DEBUG_RECORDING_KEYS.indexOf(CHAIN_KEYS[0]);
+  assert.deepEqual(DEBUG_RECORDING_KEYS.slice(chainStart, chainStart + TAIL_KEYS.length), TAIL_KEYS);
   assert.match(powerHouse, /id: oq_debug_static_snapshot/);
   assert.match(powerHouse, /name: "Debug static snapshot"/);
   assert.match(powerHouse, /hp1/);

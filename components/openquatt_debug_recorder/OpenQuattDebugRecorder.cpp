@@ -1,4 +1,5 @@
 #include "OpenQuattDebugRecorder.h"
+#include "debug_configuration_json.h"
 
 #include <algorithm>
 #include <array>
@@ -559,6 +560,7 @@ uint8_t OpenQuattDebugRecorder::value_size_for_type_(FieldType type) {
       return 1;
     case FieldType::TEXT_SENSOR:
     case FieldType::SELECT:
+    case FieldType::CONFIGURATION_SNAPSHOT:
       return 2;
     default:
       return 4;
@@ -568,6 +570,10 @@ uint8_t OpenQuattDebugRecorder::value_size_for_type_(FieldType type) {
 bool OpenQuattDebugRecorder::event_type_(FieldType type) {
   return type == FieldType::BINARY_SENSOR || type == FieldType::SWITCH || type == FieldType::TEXT_SENSOR ||
          type == FieldType::SELECT;
+}
+
+bool OpenQuattDebugRecorder::string_type_(FieldType type) {
+  return type == FieldType::TEXT_SENSOR || type == FieldType::SELECT || type == FieldType::CONFIGURATION_SNAPSHOT;
 }
 
 uint32_t OpenQuattDebugRecorder::read_value_(const uint8_t* sample, const DebugField& field) {
@@ -673,6 +679,7 @@ void OpenQuattDebugRecorder::clear_() {
   this->last_sample_monotonic_ms_ = 0;
   this->total_change_count_ = 0;
   this->total_event_count_ = 0;
+  this->configuration_snapshot_overflow_ = false;
   this->clear_strings_();
 }
 
@@ -807,7 +814,7 @@ void OpenQuattDebugRecorder::release_sample_strings_(const uint8_t* sample) {
   }
   for (size_t field_index = 0; field_index < this->field_count_; ++field_index) {
     const DebugField& field = this->fields_[field_index];
-    if (field.type != FieldType::TEXT_SENSOR && field.type != FieldType::SELECT) {
+    if (!string_type_(field.type)) {
       continue;
     }
     const uint32_t value = read_value_(sample, field);
@@ -819,6 +826,8 @@ void OpenQuattDebugRecorder::release_sample_strings_(const uint8_t* sample) {
 
 uint32_t OpenQuattDebugRecorder::capture_value_(const DebugField& field) {
   switch (field.type) {
+    case FieldType::CONFIGURATION_SNAPSHOT:
+      return this->capture_configuration_();
     case FieldType::SYSTEM_UPTIME_MS:
       return millis();
     case FieldType::SYSTEM_FREE_HEAP:
@@ -881,6 +890,109 @@ uint32_t OpenQuattDebugRecorder::capture_value_(const DebugField& field) {
   }
 }
 
+bool OpenQuattDebugRecorder::configure_configuration_fields_() {
+  struct ConfigurationField {
+    const char* key;
+    const char* domain;
+    const char* name;
+  };
+  static constexpr ConfigurationField kConfigurationFields[] = {
+#define OQ_DEBUG_RECORDER_CONFIGURATION_FIELD(key, domain, name) {key, domain, name},
+#include "debug_recorder_default_fields.h"
+#undef OQ_DEBUG_RECORDER_CONFIGURATION_FIELD
+  };
+  static_assert(sizeof(kConfigurationFields) / sizeof(kConfigurationFields[0]) <= CONFIGURATION_FIELD_CAPACITY);
+  this->configuration_field_count_ = 0;
+  for (const auto& entry : kConfigurationFields) {
+    DebugField& field = this->configuration_fields_[this->configuration_field_count_++];
+    field = DebugField{};
+    if (!copy_text(field.key, sizeof(field.key), entry.key, std::strlen(entry.key)) ||
+        !copy_text(field.name, sizeof(field.name), entry.name, std::strlen(entry.name))) {
+      return false;
+    }
+    // Shared HP2 settings can exist on Single, but they do not describe a
+    // physical HP2 there. Export the capability explicitly rather than defaults.
+#if !OQ_TOPOLOGY_DUO
+    if (std::strncmp(entry.key, "hp2", 3) == 0) continue;
+#endif
+    if (std::strcmp(entry.domain, "number") == 0) {
+      field.type = FieldType::NUMBER;
+#ifdef USE_NUMBER
+      field.source = find_entity_in(App.get_numbers(), entry.name);
+#endif
+    } else if (std::strcmp(entry.domain, "switch") == 0) {
+      field.type = FieldType::SWITCH;
+#ifdef USE_SWITCH
+      field.source = find_entity_in(App.get_switches(), entry.name);
+#endif
+    } else if (std::strcmp(entry.domain, "select") == 0) {
+      field.type = FieldType::SELECT;
+#ifdef USE_SELECT
+      field.source = find_entity_in(App.get_selects(), entry.name);
+#endif
+    } else {
+      return false;
+    }
+  }
+  return this->configuration_field_count_ > 0;
+}
+
+uint32_t OpenQuattDebugRecorder::capture_configuration_() {
+  ConfigurationJsonWriter writer(this->configuration_scratch_.data(), this->configuration_scratch_.size());
+  writer.write_literal("{\"v\":1,\"values\":{");
+  for (size_t index = 0; index < this->configuration_field_count_; ++index) {
+    const DebugField& field = this->configuration_fields_[index];
+    if (index > 0) writer.write_char(',');
+    writer.write_string(field.key, std::strlen(field.key));
+    writer.write_char(':');
+    bool written = false;
+    if (field.source != nullptr) {
+      switch (field.type) {
+#ifdef USE_NUMBER
+        case FieldType::NUMBER: {
+          auto* entity = static_cast<number::Number*>(field.source);
+          written = writer.write_float(entity->has_state() ? entity->state : NAN);
+          break;
+        }
+#endif
+#ifdef USE_SWITCH
+        case FieldType::SWITCH:
+          written = writer.write_bool(static_cast<switch_::Switch*>(field.source)->state);
+          break;
+#endif
+#ifdef USE_SELECT
+        case FieldType::SELECT: {
+          auto* entity = static_cast<select::Select*>(field.source);
+          if (entity->has_state()) {
+            const StringRef option = entity->current_option();
+            written = writer.write_string(option.c_str(), option.size());
+          }
+          break;
+        }
+#endif
+        default:
+          break;
+      }
+    }
+    if (!written && writer.ok()) writer.write_literal("null");
+  }
+  writer.write_literal("},\"unavailable\":[");
+  bool first = true;
+  for (size_t index = 0; index < this->configuration_field_count_; ++index) {
+    const DebugField& field = this->configuration_fields_[index];
+    if (field.source != nullptr) continue;
+    if (!first) writer.write_char(',');
+    writer.write_string(field.key, std::strlen(field.key));
+    first = false;
+  }
+  writer.write_literal("]}");
+  if (!writer.ok()) {
+    this->configuration_snapshot_overflow_ = true;
+    return MISSING_VALUE;
+  }
+  return this->intern_string_(this->configuration_scratch_.data(), writer.size());
+}
+
 bool OpenQuattDebugRecorder::configure(const std::string& entities, bool reset) {
   if (!this->lock_state_()) {
     return false;
@@ -910,7 +1022,8 @@ bool OpenQuattDebugRecorder::configure(const std::string& entities, bool reset) 
         !add_system_field("freeHeap", "B", FieldType::SYSTEM_FREE_HEAP) ||
         !add_system_field("freePsram", "B", FieldType::SYSTEM_FREE_PSRAM) ||
         !add_system_field("minFreeHeap", "B", FieldType::SYSTEM_MIN_FREE_HEAP) ||
-        !add_system_field("largestFreeHeapBlock", "B", FieldType::SYSTEM_LARGEST_FREE_HEAP_BLOCK)) {
+        !add_system_field("largestFreeHeapBlock", "B", FieldType::SYSTEM_LARGEST_FREE_HEAP_BLOCK) ||
+        !add_system_field("configurationSnapshot", "", FieldType::CONFIGURATION_SNAPSHOT)) {
       return fail();
     }
   } else if (!this->configuration_pending_) {
@@ -1031,7 +1144,8 @@ bool OpenQuattDebugRecorder::configure_default_schema_() {
       !add_system_field("freeHeap", "B", FieldType::SYSTEM_FREE_HEAP) ||
       !add_system_field("freePsram", "B", FieldType::SYSTEM_FREE_PSRAM) ||
       !add_system_field("minFreeHeap", "B", FieldType::SYSTEM_MIN_FREE_HEAP) ||
-      !add_system_field("largestFreeHeapBlock", "B", FieldType::SYSTEM_LARGEST_FREE_HEAP_BLOCK)) {
+      !add_system_field("largestFreeHeapBlock", "B", FieldType::SYSTEM_LARGEST_FREE_HEAP_BLOCK) ||
+      !add_system_field("configurationSnapshot", "", FieldType::CONFIGURATION_SNAPSHOT)) {
     this->abort_pending_configuration_();
     return false;
   }
@@ -1206,7 +1320,7 @@ void OpenQuattDebugRecorder::capture_sample_() {
     const DebugField& field = this->fields_[index];
     const uint32_t value = this->capture_value_(field);
     write_value_(sample, field, value);
-    if ((field.type == FieldType::TEXT_SENSOR || field.type == FieldType::SELECT) && value != MISSING_VALUE) {
+    if (string_type_(field.type) && value != MISSING_VALUE) {
       this->retain_string_(value);
     }
     if (previous != nullptr && read_value_(previous, field) != value) {
@@ -1252,7 +1366,8 @@ bool OpenQuattDebugRecorder::start(uint32_t duration_s) {
   this->started_monotonic_ms_ = this->monotonic_ms_(millis());
   this->stopped_monotonic_ms_ = 0;
   this->clear_();
-  this->capture_sample_();
+  // HTTP callers only reset recorder-owned state. The next App-loop iteration
+  // captures the first sample, where entity publishers share the same thread.
   this->unlock_state_();
   return true;
 }
@@ -1266,7 +1381,7 @@ void OpenQuattDebugRecorder::start_rolling_locked_() {
   this->started_monotonic_ms_ = this->monotonic_ms_(millis());
   this->stopped_monotonic_ms_ = 0;
   this->clear_();
-  this->capture_sample_();
+  // Initial capture belongs to loop(), including HTTP restart/enable paths.
 }
 
 bool OpenQuattDebugRecorder::start_rolling() {
@@ -1428,8 +1543,10 @@ void OpenQuattDebugRecorder::setup() {
                          this->string_entries_.allocate_external(STRING_ENTRY_CAPACITY) &&
                          this->string_buckets_.allocate_external(STRING_BUCKET_CAPACITY) &&
                          this->string_compaction_order_.allocate_external(STRING_ENTRY_CAPACITY) &&
-                         this->string_data_.allocate_external(STRING_DATA_BYTES);
-  if (!allocated || !this->available_()) {
+                         this->string_data_.allocate_external(STRING_DATA_BYTES) &&
+                         this->configuration_fields_.allocate_external(CONFIGURATION_FIELD_CAPACITY) &&
+                         this->configuration_scratch_.allocate_external(CONFIGURATION_SCRATCH_BYTES);
+  if (!allocated || !this->available_() || !this->configure_configuration_fields_()) {
     this->samples_.release();
     this->fields_.release();
     this->pending_fields_.release();
@@ -1437,6 +1554,8 @@ void OpenQuattDebugRecorder::setup() {
     this->string_buckets_.release();
     this->string_compaction_order_.release();
     this->string_data_.release();
+    this->configuration_fields_.release();
+    this->configuration_scratch_.release();
     ESP_LOGE(TAG, "Failed to allocate debug recording storage in PSRAM");
   } else {
     this->clear_strings_();
@@ -1483,7 +1602,7 @@ void OpenQuattDebugRecorder::loop() {
     }
     this->active_ = false;
     this->stopped_monotonic_ms_ = now_ms;
-  } else if (this->last_sample_monotonic_ms_ == 0 || now_ms - this->last_sample_monotonic_ms_ >= SAMPLE_INTERVAL_MS) {
+  } else if (this->count_ == 0 || now_ms - this->last_sample_monotonic_ms_ >= SAMPLE_INTERVAL_MS) {
     this->capture_sample_();
   }
   this->unlock_state_();
@@ -1520,6 +1639,7 @@ bool OpenQuattDebugRecorder::capture_snapshot_(RecordingSnapshot* snapshot) cons
   snapshot->active = this->active_;
   snapshot->rolling = this->rolling_;
   snapshot->string_overflow = this->string_overflow_;
+  snapshot->configuration_snapshot_overflow = this->configuration_snapshot_overflow_;
   snapshot->recording_id = this->recording_id_;
   snapshot->exported_at_ms = this->current_time_ms_();
   snapshot->started_at_ms = this->started_time_ms_();
@@ -1554,6 +1674,7 @@ void OpenQuattDebugRecorder::write_status(httpd_req_t* req) const {
     bool rolling{false};
     bool configuration_pending{false};
     bool string_overflow{false};
+    bool configuration_snapshot_overflow{false};
     uint64_t recording_id{0};
     uint32_t duration_s{0};
     uint32_t elapsed_s{0};
@@ -1585,6 +1706,7 @@ void OpenQuattDebugRecorder::write_status(httpd_req_t* req) const {
   status.rolling = this->rolling_;
   status.configuration_pending = this->configuration_pending_;
   status.string_overflow = this->string_overflow_;
+  status.configuration_snapshot_overflow = this->configuration_snapshot_overflow_;
   status.recording_id = this->recording_id_;
   status.duration_s = this->duration_s_;
   status.elapsed_s = this->elapsed_s_();
@@ -1616,7 +1738,8 @@ void OpenQuattDebugRecorder::write_status(httpd_req_t* req) const {
   httpd_resp_set_hdr(req, "Cache-Control", "no-store");
   constexpr size_t persistent_storage_bytes =
       BUFFER_BYTES + 2U * FIELD_CAPACITY * sizeof(DebugField) + STRING_ENTRY_CAPACITY * sizeof(StringEntry) +
-      STRING_BUCKET_CAPACITY * sizeof(uint16_t) + STRING_ENTRY_CAPACITY * sizeof(uint16_t) + STRING_DATA_BYTES;
+      STRING_BUCKET_CAPACITY * sizeof(uint16_t) + STRING_ENTRY_CAPACITY * sizeof(uint16_t) + STRING_DATA_BYTES +
+      CONFIGURATION_FIELD_CAPACITY * sizeof(DebugField) + CONFIGURATION_SCRATCH_BYTES;
   const bool ok =
       writer.write_literal(R"({"ok":true,"available":)") && writer.write_bool(status.available) &&
       writer.write_literal(R"(,"enabled":)") && writer.write_bool(status.enabled) &&
@@ -1652,9 +1775,10 @@ void OpenQuattDebugRecorder::write_status(httpd_req_t* req) const {
       writer.write_uint32(static_cast<uint32_t>(status.pending_missing_field_count)) &&
       writer.write_literal(R"(,"string_count":)") && writer.write_uint32(static_cast<uint32_t>(status.string_count)) &&
       writer.write_literal(R"(,"string_overflow":)") && writer.write_bool(status.string_overflow) &&
-      writer.write_literal(R"(,"event_count":)") && writer.write_uint32(status.event_count) &&
-      writer.write_literal(R"(,"buffer_size":)") && writer.write_uint32(static_cast<uint32_t>(BUFFER_BYTES)) &&
-      writer.write_literal(R"(,"storage_size":)") &&
+      writer.write_literal(R"(,"configuration_snapshot_overflow":)") &&
+      writer.write_bool(status.configuration_snapshot_overflow) && writer.write_literal(R"(,"event_count":)") &&
+      writer.write_uint32(status.event_count) && writer.write_literal(R"(,"buffer_size":)") &&
+      writer.write_uint32(static_cast<uint32_t>(BUFFER_BYTES)) && writer.write_literal(R"(,"storage_size":)") &&
       writer.write_uint32(static_cast<uint32_t>(persistent_storage_bytes)) &&
       writer.write_literal(R"(,"estimated_size":)") && writer.write_uint32(status.estimated_size) &&
       writer.write_literal(R"(,"buffer":")") && writer.write_literal(status.available ? "psram" : "unavailable") &&
@@ -1757,7 +1881,8 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
       case FieldType::SWITCH:
         return writer.write_bool(value != 0);
       case FieldType::TEXT_SENSOR:
-      case FieldType::SELECT: {
+      case FieldType::SELECT:
+      case FieldType::CONFIGURATION_SNAPSHOT: {
         const StringEntry* entry = snapshot.string_at(value);
         return entry != nullptr && writer.write_json_string(snapshot.string_data.data() + entry->offset, entry->length);
       }
@@ -1792,6 +1917,8 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
             writer.write_uint32(static_cast<uint32_t>(snapshot.missing_field_count)) &&
             writer.write_literal(R"(,"event_count":)") && writer.write_uint32(export_event_count) &&
             writer.write_literal(R"(,"string_overflow":)") && writer.write_bool(snapshot.string_overflow) &&
+            writer.write_literal(R"(,"configuration_snapshot_overflow":)") &&
+            writer.write_bool(snapshot.configuration_snapshot_overflow) &&
             writer.write_literal(R"(,"storage":"psram"},"columns":[)");
   if (!ok) {
     ESP_LOGW(TAG, "Failed to start debug recording response");

@@ -43,6 +43,12 @@ De Systeemrecorder bewaart continu recente systeemgegevens, dus je hoeft een opn
 
 De opname wordt lokaal in het apparaatgeheugen opgeslagen en niets wordt automatisch verzonden. Deel het bestand alleen binnen het supportverzoek waarvoor je het hebt gemaakt.
 
+Bij **Langer doorverwarmen** bevat de opname de aan/uitstand, de stopgrens boven de gewenste temperatuur en de afkoeling voor een warme herstart. Deze instellingen staan samen met gekozen temperatuurbronnen en compressorbegrenzingen in een configuratiesnapshot. Het bestand bewaart de startsituatie en wijzigingen die bij volgende samples worden waargenomen; de sampleperiode is 10 seconden.
+
+De cyclusstatus wordt afzonderlijk opgenomen, bijvoorbeeld doorverwarmen, comfortstop of wachten op warme herstart. Ook het basisvermogen, de doorverwarmvloer, de herstelcorrectie en de laatst berekende stop- en herstarttemperatuur worden bewaard. De ingestelde afkoeling is een temperatuurverschil in °C; de effectieve herstartgrens houdt ook rekening met de comfortondergrens. De regelstatus en berekende grenzen beschrijven de laatst gepubliceerde evaluatie en kunnen kort achterlopen op een zojuist gewijzigde instelling.
+
+Niet-beschikbare instellingen worden expliciet als ontbrekend vastgelegd. De configuratiesnapshot bevat geen wachtwoorden, tokens of live API-ingangwaarden. Dit diagnosebestand is bedoeld om het gedrag te verklaren; het wijzigen of herstellen van instellingen gebeurt via de normale bediening.
+
 Vanuit de OpenHeatPumps-analyser kun je met een deep link terug naar de Systeemrecorder-popup: `http://<device-ip>/?view=settings&section=system&modal=systeemrecorder` (kort: `http://<device-ip>/#systeemrecorder`). De popup opent dan automatisch.
 
 ## Verder

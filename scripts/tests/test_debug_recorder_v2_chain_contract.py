@@ -160,7 +160,7 @@ class DebugRecorderV2ChainContractTest(unittest.TestCase):
         header_capacity = int(re.search(r"FIELD_CAPACITY = (\d+)", RECORDER_HEADER).group(1))
         header_system = int(re.search(r"SYSTEM_FIELD_COUNT = (\d+)", RECORDER_HEADER).group(1))
         self.assertEqual(header_capacity, 272)
-        self.assertEqual(header_system, 5)
+        self.assertEqual(header_system, 6)
         self.assertLessEqual(243, header_capacity - header_system)
 
     def test_power_input_diagnostics_include_model_ids_and_quality(self) -> None:

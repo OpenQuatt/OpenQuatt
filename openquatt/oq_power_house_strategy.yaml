@@ -476,6 +476,27 @@ sensor:
     lambda: |-
       return (float) id(oq_ph_run_ext_state_code);
 
+  - platform: template
+    id: oq_ph_run_ext_comfort_stop_sensor
+    name: "Power House run extension comfort stop"
+    internal: true
+    unit_of_measurement: "°C"
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: 5s
+    lambda: |-
+      return oq_power_house_runtime::runtime().run_extension_comfort_stop_c();
+  - platform: template
+    id: oq_ph_run_ext_warm_restart_sensor
+    name: "Power House run extension warm restart"
+    internal: true
+    unit_of_measurement: "°C"
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: 5s
+    lambda: |-
+      return oq_power_house_runtime::runtime().run_extension_warm_restart_c();
+
 interval:
   - interval: ${oq_heat_loop_tick_s}s
     startup_delay: 4000ms

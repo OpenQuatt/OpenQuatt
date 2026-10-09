@@ -573,6 +573,12 @@
     ["phRunExtensionStopMargin", DOMAIN_NUMBER, "Power House run extension stop margin"],
     ["phRunExtensionRestartCooldown", DOMAIN_NUMBER, "Power House run extension restart cooldown"],
     ["phRunExtensionStatus", DOMAIN_TEXT_SENSOR, "Power House run extension status"],
+    ["phRunExtensionBasePower", DOMAIN_SENSOR, "Power House run extension base power"],
+    ["phRunExtensionFloorPower", DOMAIN_SENSOR, "Power House run extension floor power"],
+    ["phRunExtensionState", DOMAIN_SENSOR, "Power House run extension state"],
+    ["phComfortMemory", DOMAIN_SENSOR, "Power House – comfort memory"],
+    ["phRunExtensionComfortStop", DOMAIN_SENSOR, "Power House run extension comfort stop"],
+    ["phRunExtensionWarmRestart", DOMAIN_SENSOR, "Power House run extension warm restart"],
     ["lowLoadDynamicThresholds", DOMAIN_TEXT_SENSOR, "Low-load dynamic thresholds"],
     ["lowLoadDynamicOffFactor", DOMAIN_NUMBER, "Low-load dynamic OFF factor"],
     ["lowLoadDynamicOnFactor", DOMAIN_NUMBER, "Low-load dynamic ON factor"],
@@ -1416,6 +1422,26 @@
     { minutes: 0, label: "Alles", labelKey: "debugRecording.rangeAll" },
   ];
   export const SYSTEM_RECORDER_ANALYSER_URL = "https://openheatpumps.nl";
+  // Firmware-owned configuration snapshot, independent of settings backups.
+  // Only non-sensitive persisted settings; live inputs and credentials stay out.
+  export const DEBUG_CONFIGURATION_KEYS = [
+    "phRunExtension",
+    "phRunExtensionStopMargin",
+    "phRunExtensionRestartCooldown",
+    "roomTempSource",
+    "roomSetpointSource",
+    "outsideTempSource",
+    "minRuntime",
+    "maxWater",
+    "electricalCurrentLimit",
+    "hpGeneration",
+    "dayMaxHz",
+    "silentMaxHz",
+    "hp1ExcludeMinHz",
+    "hp1ExcludeMaxHz",
+    "hp2ExcludeMinHz",
+    "hp2ExcludeMaxHz",
+  ];
   export const DEBUG_RECORDING_KEYS = [
     "projectVersionText",
     "releaseChannelText",
@@ -1660,6 +1686,15 @@
     "hp2FourWay",
     "boilerCommandHeatRequest",
     "boilerRelayTargetState",
+    "phRunExtensionStatus",
+    "phRunExtensionBasePower",
+    "phRunExtensionFloorPower",
+    "phRunExtensionState",
+    "phComfortMemory",
+    "phRunExtensionComfortStop",
+    "phRunExtensionWarmRestart",
+    "roomTempEffectiveSource",
+    "roomSetpointEffectiveSource",
   ];
   export const FIRMWARE_ENTITY_KEYS = ["firmwareUpdate", "firmwareUpdateChannel", "firmwareUpdateTarget", "firmwareUpdateProgress", "firmwareUpdateStatus"];
   export const FIRMWARE_TEST_ENTITY_KEYS = ["firmwareTestManifestUrl", "installFirmwareTestManifest"];
