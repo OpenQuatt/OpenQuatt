@@ -1,4 +1,4 @@
-# OpenQuatt
+# OpenQuatt [![Discord](https://img.shields.io/badge/chat-Discord-44cc11)](https://discord.com/channels/1176602554885492786/1464174190788874427) [![Release](https://img.shields.io/github/v/release/OpenQuatt/OpenQuatt?label=release&color=007ec6)](https://github.com/OpenQuatt/OpenQuatt/releases/latest)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/openquatt-logo-horizontal-dark.svg" />

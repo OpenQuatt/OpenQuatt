@@ -2009,6 +2009,7 @@
     setEntity("binary_sensor", "Usage statistics choice configured", { value: false, state: false });
     setEntity("switch", "Performance model validation", { value: false, state: false });
     setEntity("binary_sensor", "Performance model validation choice configured", { value: false, state: false });
+    setEntity("binary_sensor", "Performance model validation prompt handled", { value: false, state: false });
     setEntity("text_sensor", "Usage statistics installation ID", { value: "7df1c1f8-fc47-4ac8-b0d7-94d8c42d772f", state: "7df1c1f8-fc47-4ac8-b0d7-94d8c42d772f" });
     setEntity("text", "CIC - Feed URL", { value: "http://192.168.2.117:8080/beta/feed/data.json", state: "http://192.168.2.117:8080/beta/feed/data.json" });
     setEntity("switch", "OpenTherm Enabled", { value: false, state: false });
@@ -4146,6 +4147,7 @@
       return;
     }
     if (name === "Performance model validation") {
+      setEntity("binary_sensor", "Performance model validation prompt handled", { value: true, state: true });
       setEntity("binary_sensor", "Performance model validation choice configured", { value: true, state: true });
     }
     if (name === "Boiler assist enabled" && !enabled) {

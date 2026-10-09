@@ -12,6 +12,7 @@ CONF_TRANSPORT = "transport"
 CONF_CLOCK = "clock"
 CONF_SETUP_COMPLETE_SENSOR = "setup_complete_sensor"
 CONF_CHOICE_CONFIGURED = "choice_configured"
+CONF_PROMPT_HANDLED = "prompt_handled"
 CONF_GENERATION_SELECT = "generation_select"
 CONF_OUTSIDE_TEMP_SENSOR = "outside_temp_sensor"
 CONF_FLOW_SENSOR = "flow_sensor"
@@ -53,6 +54,7 @@ CONFIG_SCHEMA = switch.switch_schema(
         cv.Required(CONF_CLOCK): cv.use_id(time.RealTimeClock),
         cv.Required(CONF_SETUP_COMPLETE_SENSOR): cv.use_id(binary_sensor.BinarySensor),
         cv.Required(CONF_CHOICE_CONFIGURED): binary_sensor.binary_sensor_schema(),
+        cv.Optional(CONF_PROMPT_HANDLED): binary_sensor.binary_sensor_schema(),
         cv.Required(CONF_GENERATION_SELECT): cv.use_id(select.Select),
         cv.Required(CONF_OUTSIDE_TEMP_SENSOR): cv.use_id(sensor.Sensor),
         cv.Required(CONF_FLOW_SENSOR): cv.use_id(sensor.Sensor),
@@ -83,6 +85,9 @@ async def to_code(config):
 
     choice_configured = await binary_sensor.new_binary_sensor(config[CONF_CHOICE_CONFIGURED])
     cg.add(var.set_choice_configured_sensor(choice_configured))
+    if CONF_PROMPT_HANDLED in config:
+        prompt_handled = await binary_sensor.new_binary_sensor(config[CONF_PROMPT_HANDLED])
+        cg.add(var.set_prompt_handled_sensor(prompt_handled))
     cg.add(var.set_firmware_version(config[CONF_FIRMWARE_VERSION]))
     cg.add(var.set_topology(config[CONF_TOPOLOGY]))
 

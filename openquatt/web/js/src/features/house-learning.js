@@ -30,11 +30,16 @@ const errorDetail = (error, timeoutToken, timeoutKey) => error?.translationKey
   : error?.message || String(error);
 const collectionPhase = (collection, prefix) => {
   const keys = ["active", "elapsed_s", "target_s", "intervals"].map((suffix) => `${prefix}_${suffix}`);
-  if (prefix === "batch") keys.push("batch_gap_pending");
+  if (prefix === "batch") keys.push("batch_gap_pending", "batch_restore_pending", "batch_resume_status");
   if (!keys.some((key) => Object.hasOwn(collection, key))) return null;
   return {
     active: collection[`${prefix}_active`] === true,
     ...(prefix === "batch" ? { gapPending: collection.batch_gap_pending === true } : {}),
+    ...(prefix === "batch" && Object.hasOwn(collection, "batch_resume_status") ? {
+      restorePending: collection.batch_restore_pending === true,
+      resumeStatus: typeof collection.batch_resume_status === "string" ? collection.batch_resume_status : "unknown",
+      missingEnergyUncertaintyWh: numberOrNull(collection.batch_missing_energy_uncertainty_wh),
+    } : {}),
     elapsedSeconds: numberOrNull(collection[`${prefix}_elapsed_s`]),
     targetSeconds: numberOrNull(collection[`${prefix}_target_s`]),
     intervals: numberOrNull(collection[`${prefix}_intervals`]),

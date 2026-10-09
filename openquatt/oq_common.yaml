@@ -108,6 +108,9 @@ ota:
     on_begin:
       then:
         - lambda: |-
+            #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+            oq_ph_learning::runtime().prepare_restart();
+            #endif
             id(oq_runtime_polling_paused).publish_state(true);
             ESP_LOGI("oq_fw", "Runtime polling paused for OTA.");
             id(oq_ota_phase_code) = 1;
@@ -153,6 +156,9 @@ ota:
       then:
         - lambda: |-
             id(oq_http_ota_begin_observed) = true;
+            #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+            oq_ph_learning::runtime().prepare_restart();
+            #endif
             id(oq_runtime_polling_paused).publish_state(true);
             ESP_LOGI("oq_fw", "Runtime polling paused for OTA.");
             id(oq_ota_phase_code) = 1;
@@ -525,6 +531,9 @@ script:
                 id(oq_firmware_target_install_active) = true;
                 id(oq_firmware_target_install_attempt) = 1;
                 id(oq_http_ota_begin_observed) = false;
+                #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+                oq_ph_learning::runtime().prepare_restart();
+                #endif
                 id(oq_runtime_polling_paused).publish_state(true);
                 ESP_LOGI("oq_fw", "Runtime polling paused before deferred OTA.");
                 id(oq_firmware_update_status).publish_state("Starting");
@@ -761,6 +770,9 @@ script:
                 id(oq_firmware_update).set_source_url(url.c_str());
                 id(oq_firmware_target_install_attempt) = 1;
                 id(oq_http_ota_begin_observed) = false;
+                #if defined(OQ_POWER_HOUSE_LEARNING_TARGET) && OQ_POWER_HOUSE_LEARNING_TARGET == 1
+                oq_ph_learning::runtime().prepare_restart();
+                #endif
                 id(oq_runtime_polling_paused).publish_state(true);
                 ESP_LOGI("oq_fw", "Runtime polling paused before deferred PR test OTA.");
                 id(oq_firmware_update_status).publish_state("Starting");

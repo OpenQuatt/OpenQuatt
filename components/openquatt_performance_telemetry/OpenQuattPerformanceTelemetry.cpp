@@ -124,13 +124,24 @@ void OpenQuattPerformanceTelemetry::dump_config() {
   ESP_LOGCONFIG(TAG, "OpenQuatt performance model validation:");
   ESP_LOGCONFIG(TAG, "  Enabled: %s", YESNO(this->enabled_.load()));
   ESP_LOGCONFIG(TAG, "  Choice configured: %s", YESNO(this->choice_configured_.load()));
+  ESP_LOGCONFIG(TAG, "  Prompt handled: %s", YESNO(this->prompt_handled_.load()));
   ESP_LOGCONFIG(TAG, "  Topology: %s", this->topology_.c_str());
   ESP_LOGCONFIG(TAG, "  Record storage: %u records in PSRAM", static_cast<unsigned>(RECORD_STORAGE_COUNT));
 }
 
 bool OpenQuattPerformanceTelemetry::load_storage_(Storage* storage) {
-  return storage != nullptr && this->pref_.load(storage) && storage->magic == STORAGE_MAGIC &&
-         storage->version == STORAGE_VERSION && storage->enabled <= 1U && storage->choice_configured <= 1U;
+  if (storage == nullptr || !this->pref_.load(storage) || storage->magic != STORAGE_MAGIC || storage->enabled > 1U) {
+    return false;
+  }
+  if (storage->version == 1U) {
+    if (storage->choice_configured > 1U) return false;
+    // Legacy choices retain their consent. The separate invitation has not
+    // been handled yet; an existing opt-in suppresses it in the web UI.
+    storage->version = STORAGE_VERSION;
+  } else if (storage->version != STORAGE_VERSION || storage->choice_configured > (CHOICE_CONFIGURED | PROMPT_HANDLED)) {
+    return false;
+  }
+  return storage->enabled == 0U || (storage->choice_configured & CHOICE_CONFIGURED) != 0U;
 }
 
 bool OpenQuattPerformanceTelemetry::save_storage_(const Storage& storage) {
@@ -140,10 +151,14 @@ bool OpenQuattPerformanceTelemetry::save_storage_(const Storage& storage) {
 bool OpenQuattPerformanceTelemetry::apply_storage_(const Storage& storage) {
   const bool enabled = storage.enabled != 0U;
   this->enabled_.store(enabled);
-  this->choice_configured_.store(storage.choice_configured != 0U);
+  this->choice_configured_.store((storage.choice_configured & CHOICE_CONFIGURED) != 0U);
+  this->prompt_handled_.store((storage.choice_configured & PROMPT_HANDLED) != 0U);
   this->publish_state(enabled);
   if (this->choice_configured_sensor_ != nullptr) {
-    this->choice_configured_sensor_->publish_state(storage.choice_configured != 0U);
+    this->choice_configured_sensor_->publish_state(this->choice_configured_.load());
+  }
+  if (this->prompt_handled_sensor_ != nullptr) {
+    this->prompt_handled_sensor_->publish_state(this->prompt_handled_.load());
   }
   return true;
 }
@@ -155,13 +170,21 @@ bool OpenQuattPerformanceTelemetry::setup_complete_() const {
 
 void OpenQuattPerformanceTelemetry::write_state(bool state) {
   const bool current = this->enabled_.load();
+  const bool previously_handled = this->prompt_handled_.load();
   if (!state && this->transport_ != nullptr) {
     // The transport gate is closed before data and preferences are touched.
     this->transport_->cancel_external_publish();
   }
   if (state && (this->transport_ == nullptr || !this->transport_->ensure_installation_id_for_external())) {
     ESP_LOGE(TAG, "Could not create an anonymous installation ID; performance telemetry remains disabled");
+    this->enabled_.store(false);
+    this->choice_configured_.store(false);
+    this->prompt_handled_.store(previously_handled);
+    if (this->choice_configured_sensor_ != nullptr) this->choice_configured_sensor_->publish_state(false);
+    if (this->prompt_handled_sensor_ != nullptr) this->prompt_handled_sensor_->publish_state(previously_handled);
+    if (this->transport_ != nullptr) this->transport_->cancel_external_publish();
     this->publish_state(false);
+    this->reset_collection_();
     return;
   }
 
@@ -170,17 +193,20 @@ void OpenQuattPerformanceTelemetry::write_state(bool state) {
     storage = {STORAGE_MAGIC, STORAGE_VERSION, static_cast<uint8_t>(current ? 1U : 0U), 0U};
   }
   storage.enabled = state ? 1U : 0U;
-  storage.choice_configured = 1U;
+  storage.choice_configured = CHOICE_CONFIGURED | PROMPT_HANDLED;
   if (!this->save_storage_(storage)) {
     ESP_LOGE(TAG, "Could not persist performance telemetry preference");
     // save() may have queued an opt-in even when sync() failed. Replace it
     // with a fail-closed value before another component can flush preferences.
     storage.enabled = 0U;
-    storage.choice_configured = 0U;
+    // Keep an earlier acknowledgement while revoking unconfirmed consent.
+    storage.choice_configured = previously_handled ? PROMPT_HANDLED : 0U;
     if (!this->save_storage_(storage)) {
       ESP_LOGE(TAG, "Could not persist fail-closed fallback; consent remains unconfirmed");
     }
     this->choice_configured_.store(false);
+    this->prompt_handled_.store(previously_handled);
+    if (this->prompt_handled_sensor_ != nullptr) this->prompt_handled_sensor_->publish_state(previously_handled);
     if (this->choice_configured_sensor_ != nullptr) this->choice_configured_sensor_->publish_state(false);
     if (this->transport_ != nullptr) this->transport_->cancel_external_publish();
     this->enabled_.store(false);

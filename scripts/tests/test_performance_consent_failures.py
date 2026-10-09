@@ -20,6 +20,7 @@ class PerformanceConsentFailureTest(unittest.TestCase):
         source = SOURCE.read_text()
         methods = []
         for signature in (
+            "bool OpenQuattPerformanceTelemetry::load_storage_",
             "bool OpenQuattPerformanceTelemetry::save_storage_",
             "bool OpenQuattPerformanceTelemetry::apply_storage_",
             "void OpenQuattPerformanceTelemetry::write_state",
@@ -43,7 +44,7 @@ struct Backend {
   Storage durable{1, 2, 1, 1};
   Storage queued = durable;
   bool fail_save{false}, fail_sync{false}, pending{false};
-  int saves{0};
+  int saves{0}, fail_sync_count{0};
   bool save(const Storage* value) {
     ++saves;
     if (fail_save) return false;
@@ -52,7 +53,7 @@ struct Backend {
     return true;
   }
   bool sync() {
-    if (fail_sync) return false;
+    if (fail_sync || fail_sync_count-- > 0) return false;
     if (pending) durable = queued;
     pending = false;
     return true;
@@ -61,33 +62,37 @@ struct Backend {
 Backend* global_preferences = &backend;
 struct Preference {
   bool save(const Storage* storage) { return backend.save(storage); }
+  bool load(Storage* storage) {
+    *storage = backend.pending ? backend.queued : backend.durable;
+    return true;
+  }
 };
 struct Sensor {
   bool state{true};
   void publish_state(bool value) { state = value; }
 };
 struct Transport {
-  bool blocked{false};
-  bool ensure_installation_id_for_external() { return true; }
+  bool blocked{false}, id_available{true};
+  bool ensure_installation_id_for_external() { return id_available; }
   void cancel_external_publish() { blocked = true; }
 };
 struct OpenQuattPerformanceTelemetry {
   static constexpr uint32_t STORAGE_MAGIC = 1;
   static constexpr uint16_t STORAGE_VERSION = 2;
+  static constexpr uint8_t CHOICE_CONFIGURED = 1, PROMPT_HANDLED = 2;
   Preference pref_;
   Transport transport;
   Transport* transport_ = &transport;
   Sensor sensor;
   Sensor* choice_configured_sensor_ = &sensor;
-  std::atomic<bool> enabled_{true}, choice_configured_{true};
+  Sensor prompt_sensor;
+  Sensor* prompt_handled_sensor_ = &prompt_sensor;
+  std::atomic<bool> enabled_{true}, choice_configured_{true}, prompt_handled_{false};
   bool published{true};
   int resets{0};
   void publish_state(bool value) { published = value; }
   void reset_collection_() { ++resets; }
-  bool load_storage_(Storage* value) {
-    *value = backend.pending ? backend.queued : backend.durable;
-    return true;
-  }
+  bool load_storage_(Storage* value);
   bool save_storage_(const Storage& storage);
   bool apply_storage_(const Storage& storage);
   void write_state(bool state);
@@ -95,6 +100,59 @@ struct OpenQuattPerformanceTelemetry {
 '''
         cases = r'''
 int main() {
+  static_assert(sizeof(Storage) == 8);
+  // Every legacy OFF state migrates without consent or invitation acknowledgement.
+  for (uint8_t enabled : {0, 1}) {
+    for (uint8_t choice : {0, 1}) {
+      backend = Backend{};
+      backend.durable = backend.queued = {1, 1, enabled, choice};
+      OpenQuattPerformanceTelemetry component;
+      Storage storage{};
+      assert(component.load_storage_(&storage) == (enabled == 0 || choice != 0));
+      if (enabled != 0 && choice == 0) continue;
+      assert(storage.version == 2 && storage.choice_configured == choice);
+      assert(backend.saves == 0 && backend.durable.version == 1);
+      component.apply_storage_(storage);
+      assert(component.enabled_ == (enabled != 0));
+      assert(component.choice_configured_ == (choice != 0));
+      assert(!component.prompt_handled_ && !component.prompt_sensor.state);
+    }
+  }
+  // Reject corruption and future formats; a popup bit alone is never consent.
+  for (Storage invalid : {Storage{0, 2, 0, 0}, Storage{1, 3, 0, 0},
+                          Storage{1, 2, 2, 1}, Storage{1, 2, 0, 4},
+                          Storage{1, 1, 0, 3}, Storage{1, 2, 1, 2}}) {
+    backend = Backend{};
+    backend.durable = backend.queued = invalid;
+    OpenQuattPerformanceTelemetry component;
+    Storage storage{};
+    assert(!component.load_storage_(&storage));
+  }
+  for (uint8_t choice : {0, 1, 2, 3}) {
+    backend = Backend{};
+    backend.durable = backend.queued = {1, 2, 0, choice};
+    OpenQuattPerformanceTelemetry component;
+    Storage storage{};
+    assert(component.load_storage_(&storage));
+    component.apply_storage_(storage);
+    assert(component.choice_configured_ == ((choice & 1) != 0));
+    assert(component.prompt_handled_ == ((choice & 2) != 0));
+  }
+  // An old firmware rejects v2 and resets OFF rather than misreading bit1 as consent.
+  for (uint8_t enabled : {0, 1}) {
+    const Storage updated{1, 2, enabled, 3};
+    const bool legacy_accepts = updated.magic == 1 && updated.version == 1 &&
+                                updated.enabled <= 1 && updated.choice_configured <= 1;
+    assert(!legacy_accepts);
+  }
+  // Missing installation identity must not confirm either consent or the prompt.
+  backend = Backend{};
+  OpenQuattPerformanceTelemetry unavailable;
+  unavailable.transport.id_available = false;
+  unavailable.write_state(true);
+  assert(!unavailable.enabled_ && !unavailable.choice_configured_ && !unavailable.prompt_handled_);
+  assert(!unavailable.sensor.state && !unavailable.prompt_sensor.state);
+  assert(unavailable.transport.blocked && backend.saves == 0);
   // A durable opt-in must not make a failed opt-out look confirmed.
   for (bool fail_save : {false, true}) {
     backend = Backend{};
@@ -104,6 +162,7 @@ int main() {
     component.write_state(false);
     assert(!component.enabled_ && !component.published);
     assert(!component.choice_configured_ && !component.sensor.state);
+    assert(!component.prompt_handled_ && !component.prompt_sensor.state);
     assert(component.transport.blocked && component.resets == 1);
     assert(backend.durable.enabled == 1);
     // The repeated OFF action must really write, even though RAM is OFF.
@@ -111,11 +170,33 @@ int main() {
     backend.fail_save = backend.fail_sync = false;
     component.write_state(false);
     assert(backend.saves > previous_saves);
-    assert(backend.durable.enabled == 0 && backend.durable.choice_configured == 1);
+    assert(backend.durable.enabled == 0 && backend.durable.choice_configured == 3);
     assert(component.choice_configured_ && component.sensor.state);
+    assert(component.prompt_handled_ && component.prompt_sensor.state);
     OpenQuattPerformanceTelemetry reboot;
     reboot.apply_storage_(backend.durable);
-    assert(!reboot.enabled_ && reboot.choice_configured_);
+    assert(!reboot.enabled_ && reboot.choice_configured_ && reboot.prompt_handled_);
+  }
+  // An earlier refusal survives identity failure, failed saves and sync failure,
+  // including a successful fallback and a later flush followed by reboot.
+  for (int failure : {0, 1, 2, 3}) {
+    backend = Backend{};
+    backend.durable = backend.queued = {1, 2, 0, 3};
+    OpenQuattPerformanceTelemetry component;
+    component.apply_storage_(backend.durable);
+    component.transport.id_available = failure != 0;
+    backend.fail_save = failure == 1;
+    backend.fail_sync = failure == 2;
+    backend.fail_sync_count = failure == 3 ? 1 : 0;
+    component.write_state(true);
+    assert(!component.enabled_ && !component.choice_configured_);
+    assert(component.prompt_handled_ && component.prompt_sensor.state);
+    backend.fail_save = backend.fail_sync = false;
+    assert(backend.sync());
+    OpenQuattPerformanceTelemetry reboot;
+    reboot.apply_storage_(backend.durable);
+    assert(!reboot.enabled_ && reboot.prompt_handled_ && reboot.prompt_sensor.state);
+    if (failure == 2 || failure == 3) assert(backend.durable.choice_configured == 2);
   }
   // Failed opt-in must not escape later via somebody else's global sync.
   backend = Backend{};
@@ -124,16 +205,16 @@ int main() {
   component.apply_storage_(backend.durable);
   backend.fail_sync = true;
   component.write_state(true);
-  assert(!component.enabled_ && !component.choice_configured_);
+  assert(!component.enabled_ && !component.choice_configured_ && !component.prompt_handled_);
   assert(backend.pending && backend.queued.enabled == 0);
   backend.fail_sync = false;
   assert(backend.sync());
   OpenQuattPerformanceTelemetry reboot;
   reboot.apply_storage_(backend.durable);
-  assert(!reboot.enabled_ && !reboot.choice_configured_);
+  assert(!reboot.enabled_ && !reboot.choice_configured_ && !reboot.prompt_handled_);
   component.write_state(true);
-  assert(component.enabled_ && component.choice_configured_);
-  assert(backend.durable.enabled == 1 && backend.durable.choice_configured == 1);
+  assert(component.enabled_ && component.choice_configured_ && component.prompt_handled_);
+  assert(backend.durable.enabled == 1 && backend.durable.choice_configured == 3);
 }
 '''
         self.compile_and_run(harness + "\n".join(methods) + cases)

@@ -32,6 +32,8 @@ struct RawFloatReceipt {
 
   void invalidate() { valid = false; }
 
+  bool invalid_value_received() const { return received && !isfinite(value); }
+
   bool fresh(uint64_t now_ms, uint64_t max_age_ms) const {
     return received && valid && max_age_ms > 0 && now_ms >= received_ms && (now_ms - received_ms) <= max_age_ms;
   }

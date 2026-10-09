@@ -79,7 +79,7 @@ void test_power_house_room_confirmation() {
   assert(out.active && out.reason == ROOM_DEMAND);
 }
 
-void test_room_recovery_requires_a_real_room_demand_start_and_has_hysteresis() {
+void test_room_recovery_requires_a_real_room_demand_start_and_reaches_setpoint() {
   auto cold = input(1000, 19.8f, 20.0f);
   cold.room_confirm_ms = 10000;
   auto out = evaluate(cold, {});
@@ -93,7 +93,7 @@ void test_room_recovery_requires_a_real_room_demand_start_and_has_hysteresis() {
   assert(out.active && !out.fast_start && out.room_recovery_active && out.reason == ROOM_RECOVERY);
 
   // The recovery holds across the original restart boundary (19.9 C), then
-  // releases halfway through the 0.1 K restart band (19.95 C).
+  // releases only when the requested room temperature (20.0 C) is reached.
   cold.now_ms = 13000;
   cold.room_c = 19.92f;
   out = evaluate(cold, out.next);
@@ -101,10 +101,30 @@ void test_room_recovery_requires_a_real_room_demand_start_and_has_hysteresis() {
   cold.now_ms = 14000;
   cold.room_c = 19.95f;
   out = evaluate(cold, out.next);
-  assert(!out.room_recovery_active && !out.fast_start && out.reason == NONE);
+  assert(out.active && out.room_recovery_active && out.reason == ROOM_RECOVERY);
+  cold.now_ms = 15000;
+  cold.room_c = 19.95703f;  // Recorded sample that previously released recovery too early.
+  out = evaluate(cold, out.next);
+  assert(out.active && out.room_recovery_active && !out.fast_start);
+  cold.now_ms = 16000;
+  cold.room_c = 19.999f;
+  out = evaluate(cold, out.next);
+  assert(out.active && out.room_recovery_active);
+  cold.now_ms = 17000;
+  cold.room_c = 20.0f;
+  out = evaluate(cold, out.next);
+  assert(!out.active && !out.room_recovery_active && !out.fast_start && out.reason == NONE);
+  cold.now_ms = 18000;
+  cold.room_c = 20.01f;
+  out = evaluate(cold, out.next);
+  assert(!out.active && !out.room_recovery_active);
+  cold.now_ms = 19000;
+  cold.room_c = 19.95703f;
+  out = evaluate(cold, out.next);
+  assert(!out.active && !out.room_recovery_active && !out.next.room_start_armed);
 
   // A room sample may move above the restart boundary while the compressor is
-  // starting. An already armed start must still recover until 19.95 C.
+  // starting. An already armed start must still recover until the setpoint.
   auto start_edge = input(1000, 19.89f, 20.0f);
   out = evaluate(start_edge, {});
   assert(out.next.room_start_armed);
@@ -148,10 +168,26 @@ void test_room_recovery_does_not_attach_to_an_existing_run_and_fails_closed() {
   out = evaluate(cold, out.next);
   assert(out.room_recovery_active);
 
-  cold.room_fresh = false;
+  // All input gates still cancel recovery in the newly retained temperature band.
+  cold.room_c = 19.95703f;
   cold.now_ms = 3000;
   out = evaluate(cold, out.next);
-  assert(!out.active && !out.room_recovery_active && !out.next.initialized);
+  assert(out.room_recovery_active);
+  const auto recovery = out.next;
+  for (int gate = 0; gate < 6; ++gate) {
+    auto invalid = cold;
+    if (gate == 0) invalid.room_fresh = false;
+    if (gate == 1) invalid.setpoint_fresh = false;
+    if (gate == 2) invalid.heating_enable_valid = false;
+    if (gate == 3) invalid.heating_enabled = false;
+    if (gate == 4) invalid.strategy_active = false;
+    if (gate == 5) invalid.room_c = NAN;
+    out = evaluate(invalid, recovery);
+    assert(!out.active && !out.room_recovery_active && !out.next.initialized);
+  }
+  cold.setpoint_source = 2;
+  out = evaluate(cold, recovery);
+  assert(!out.active && !out.room_recovery_active && !out.next.room_start_armed);
 }
 }  // namespace
 
@@ -159,7 +195,7 @@ int main() {
   test_thermostat_examples();
   test_source_freshness_and_enable_fail_closed();
   test_power_house_room_confirmation();
-  test_room_recovery_requires_a_real_room_demand_start_and_has_hysteresis();
+  test_room_recovery_requires_a_real_room_demand_start_and_reaches_setpoint();
   test_room_recovery_does_not_attach_to_an_existing_run_and_fails_closed();
   return 0;
 }

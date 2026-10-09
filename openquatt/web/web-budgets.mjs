@@ -5,8 +5,9 @@ export const WEB_BUNDLE_BUDGETS = [
   {
     file: "js/openquatt-app.js",
     // Includes passive learning, trend goals, the curve editor and air-purge status.
-    // With daily-learning UI and legacy compatibility: ~1.298 MB raw / 361 kB gzip on Node 24.19.0.
-    raw: 1_310_000,
+    // With daily-learning UI and legacy compatibility, plus the performance invitation.
+    // dev baseline: 1,308,178 B; invitation adds ~7.5 kB raw / ~2.6 kB gzip on Node 24.14.1.
+    raw: 1_320_000,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

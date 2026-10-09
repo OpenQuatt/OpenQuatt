@@ -1,3 +1,4 @@
+import { handlePerformanceTelemetryPromptAction, handlePerformanceTelemetryPromptKeyDown } from "../features/performance-telemetry-prompt.js";
 import { patchFrequencyLimitWarnings } from "../features/frequency-limits.js";
 import { hasEntity } from "./app-shared.js";
 import { ENTITY_DEFS } from "./config.js";
@@ -40,6 +41,7 @@ import { updateCurvePointDraft, updateSimpleCurveDraft } from "./simple-curve.js
 import { patchRunExtensionThresholds, renderSimpleCurvePreview } from "../settings/heating.js";
 
 const actionDelegates = [
+  handlePerformanceTelemetryPromptAction,
   handleViewAction,
   handleControlReplayAction,
   handleQuickStartAction,
@@ -378,6 +380,7 @@ function updateFrequencyRangeControl(input) {
   }
 
   export function handleKeyDown(event) {
+    if (handlePerformanceTelemetryPromptKeyDown(event)) return;
     if (event.key === "Enter" && event.target.type === "time") {
       event.preventDefault();
       event.target.blur();
@@ -605,6 +608,10 @@ function updateFrequencyRangeControl(input) {
         shouldRender = true;
       }
       if (modalBackdrop && event.target === modalBackdrop) {
+        if (state.systemModal === "performance-telemetry-prompt") {
+          handlePerformanceTelemetryPromptAction("defer-performance-telemetry-prompt");
+          return;
+        }
         if (modalBackdrop.dataset.oqModal === "quickstart-forced") {
           return;
         }

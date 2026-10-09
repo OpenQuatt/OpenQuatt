@@ -178,6 +178,7 @@ import { formatNumber, t } from "../i18n/index.js";
       return;
     }
 
+    state.performanceTelemetryPromptWriteRevision += 1;
     state.busyAction = "switch-performanceTelemetryEnabled";
     state.controlNotice = "";
     state.controlError = "";
@@ -190,6 +191,7 @@ import { formatNumber, t } from "../i18n/index.js";
           await refreshEntities([
             "performanceTelemetryEnabled",
             "performanceTelemetryChoiceConfigured",
+            "performanceTelemetryPromptHandled",
           ], "all");
           return [getEntityValue("performanceTelemetryEnabled"), getEntityValue("performanceTelemetryChoiceConfigured")];
         },
@@ -203,6 +205,7 @@ import { formatNumber, t } from "../i18n/index.js";
     } catch (error) {
       state.controlError = t("quickStartActions.choiceNotConfirmed", { message: error.message });
     } finally {
+      state.performanceTelemetryPromptWriteRevision += 1;
       state.busyAction = "";
       render();
     }

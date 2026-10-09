@@ -1,3 +1,4 @@
+import { syncPerformanceTelemetryPrompt } from "../features/performance-telemetry-prompt.js";
 import { FREQUENCY_MINIMUM_KEYS } from "./config.js";
 import { patchFrequencyLimitWarnings } from "../features/frequency-limits.js";
 import { t } from "../i18n/index.js";
@@ -1012,6 +1013,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
   export async function refreshEntities(keys, detail = "state", options = {}) {
     const now = Date.now();
     const timeWriteRevision = state.timeWriteRevision;
+    const performancePromptWriteRevision = state.performanceTelemetryPromptWriteRevision;
     const forceMissing = options.forceMissing === true;
     const refreshKeys = keys.filter((key) =>
       forceMissing || SERVICE_STATUS_ENTITY_KEYS.has(key) || !isKnownOptionalMissingEntity(key, now)
@@ -1069,6 +1071,9 @@ import { fetchWithTimeout } from "./browser-utils.js";
       const missing = new Set(Array.isArray(payload?.missing) ? payload.missing : []);
 
       chunk.keys.forEach((key) => {
+        // A poll started before/during a prompt write must not restore unhandled consent.
+        if (["performanceTelemetryEnabled", "performanceTelemetryChoiceConfigured", "performanceTelemetryPromptHandled"].includes(key)
+            && (state.performanceTelemetryPromptBusy || state.performanceTelemetryPromptWriteRevision !== performancePromptWriteRevision)) return;
         // A poll started before/during a time write must not restore the old time.
         if (ENTITY_DEFS[key]?.domain === "time"
             && (state.savingTimeFields.has(key) || state.timeWriteRevision !== timeWriteRevision)) return;
@@ -1281,6 +1286,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
     try {
       let usageTelemetryPreviewChanged = false;
       const reconnectModeBefore = state.deviceReconnectMode;
+      const systemModalBefore = state.systemModal;
       const probe = shouldRefreshConnectivityProbe(now, options)
         ? await refreshConnectivityProbe()
         : { ok: true, message: "" };
@@ -1367,6 +1373,11 @@ import { fetchWithTimeout } from "./browser-utils.js";
       }
       if (!shouldDeferSupplementary && shouldRefreshOduSettingsSurface()) {
         await refreshOduSettingsStatuses();
+      }
+      syncPerformanceTelemetryPrompt();
+      if (systemModalBefore !== state.systemModal) {
+        render();
+        return;
       }
       const nextHeaderSignature = getHeaderRenderSignature();
       if (shouldDeferSupplementary && !state.nativeOpen) {

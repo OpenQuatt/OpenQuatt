@@ -66,6 +66,7 @@ struct ResolvedLearningSource {
   SourceConfigurationKey configuration;
   uint32_t configuration_generation = 0;
   bool valid = false;
+  bool invalid_received = false;
   LearningSourceProvenance provenance = LearningSourceProvenance::UNKNOWN;
 };
 
@@ -199,13 +200,14 @@ inline ResolvedLearningSource physical_source(LearningSourceRoute route, const R
 inline ResolvedLearningSource selected_source(
     float value, bool selected_valid, LearningSourceRoute route, uint32_t configuration_generation,
     LearningSourceProvenance provenance = LearningSourceProvenance::SELECTED_VALUE,
-    const SourceConfigurationKey& configuration = {}) {
+    const SourceConfigurationKey& configuration = {}, bool invalid_received = false) {
   ResolvedLearningSource result;
   result.value = selected_valid && isfinite(value) ? value : NAN;
   result.route = route;
   result.configuration = configuration;
   result.configuration_generation = configuration_generation;
   result.valid = selected_valid && isfinite(value);
+  result.invalid_received = invalid_received;
   result.provenance = result.valid ? provenance : LearningSourceProvenance::UNKNOWN;
   return result;
 }

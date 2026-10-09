@@ -14,6 +14,9 @@ constexpr double kDailyMissingHeatBudgetW = 100.0;
 struct SegmentAccumulator {
   bool active = false;
   bool source_gap_pending = false;
+  bool restart_pending = false;
+  // Time collected in earlier boots; boot-local clocks are never persisted.
+  uint64_t carried_duration_ms = 0;
   uint64_t last_gap_observation_ms = 0;
   double missing_energy_uncertainty_ws = 0.0;
   uint64_t start_monotonic_ms = 0;
@@ -54,6 +57,58 @@ struct ObserveResult {
 
 inline void reset_segment(SegmentAccumulator& state) { state = {}; }
 
+inline uint64_t segment_elapsed_ms(const SegmentAccumulator& state) {
+  return state.carried_duration_ms + state.last_monotonic_ms - state.start_monotonic_ms;
+}
+
+// Validate the compact checkpoint, not the final day's learning quality. Room
+// drift is evaluated only when a complete 24-hour record is available.
+inline bool valid_daily_checkpoint(const SegmentAccumulator& state, const QualityConfig& config) {
+  if (!valid_quality_config(config) || !state.active || state.context_revision == 0 || state.start_epoch_s == 0 ||
+      state.last_epoch_s < state.start_epoch_s || !isfinite(state.integrated_duration_s) ||
+      state.integrated_duration_s < 0.0 || state.integrated_duration_s >= 86400.0 ||
+      !isfinite(state.missing_energy_uncertainty_ws) || state.missing_energy_uncertainty_ws < 0.0 ||
+      state.missing_energy_uncertainty_ws > kDailyMissingHeatBudgetW * 86400.0)
+    return false;
+  const double utc_span = state.last_epoch_s - state.start_epoch_s;
+  if (fabs(utc_span - state.integrated_duration_s) > config.utc_tolerance_s + 1.0) return false;
+  LearningSnapshot endpoint;
+  endpoint.monotonic_ms = 1;
+  endpoint.epoch_s = state.last_epoch_s;
+  endpoint.context_revision = state.context_revision;
+  endpoint.room_c = state.last_room_c;
+  endpoint.setpoint_c = state.last_setpoint_c;
+  endpoint.outside_c = state.last_outside_c;
+  endpoint.heat_to_water_w = state.last_heat_w;
+  endpoint.mean_water_c = state.water_end_c;
+  if (validate_snapshot(endpoint, config) != LearningStatus::OK || !isfinite(state.room_start_c) ||
+      state.room_start_c < config.room_min_c || state.room_start_c > config.room_max_c ||
+      !isfinite(state.water_start_c) || state.water_start_c < config.water_min_c ||
+      state.water_start_c > config.water_max_c || !isfinite(state.room_min_c) || !isfinite(state.room_max_c) ||
+      state.room_min_c < config.room_min_c || state.room_max_c > config.room_max_c ||
+      state.room_min_c > fminf(state.room_start_c, state.last_room_c) ||
+      state.room_max_c < fmaxf(state.room_start_c, state.last_room_c) || !isfinite(state.setpoint_min_c) ||
+      !isfinite(state.setpoint_max_c) || state.setpoint_min_c < config.setpoint_min_c ||
+      state.setpoint_max_c > config.setpoint_max_c || state.setpoint_min_c > state.last_setpoint_c ||
+      state.setpoint_max_c < state.last_setpoint_c)
+    return false;
+  const double sums[]{state.room_integral,
+                      state.setpoint_integral,
+                      state.outside_integral,
+                      state.heat_integral,
+                      state.hour_effective_integral,
+                      state.trend_w,
+                      state.trend_wt,
+                      state.trend_wtt,
+                      state.trend_wr,
+                      state.trend_wtr};
+  for (double value : sums)
+    if (!isfinite(value)) return false;
+  for (float value : state.hourly_effective_outside_c)
+    if (!isfinite(value)) return false;
+  return fabs(state.trend_w - state.integrated_duration_s) < 0.001;
+}
+
 namespace detail {
 
 inline void seed_segment(SegmentAccumulator& state, const LearningSnapshot& snapshot) {
@@ -92,7 +147,7 @@ inline bool coherent_time(const SegmentAccumulator& state, const LearningSnapsho
   const uint64_t mismatch_ms = epoch_delta_ms > delta_ms ? epoch_delta_ms - delta_ms : delta_ms - epoch_delta_ms;
   if (mismatch_ms > static_cast<uint64_t>(config.utc_tolerance_s) * 1000ULL + 999ULL) return false;
   if (snapshot.epoch_s < state.start_epoch_s) return false;
-  const uint64_t span_ms = snapshot.monotonic_ms - state.start_monotonic_ms;
+  const uint64_t span_ms = state.carried_duration_ms + snapshot.monotonic_ms - state.start_monotonic_ms;
   const uint64_t epoch_span_ms = static_cast<uint64_t>(snapshot.epoch_s - state.start_epoch_s) * 1000ULL;
   const uint64_t span_mismatch_ms = epoch_span_ms > span_ms ? epoch_span_ms - span_ms : span_ms - epoch_span_ms;
   return span_mismatch_ms <= static_cast<uint64_t>(config.utc_tolerance_s) * 1000ULL + 999ULL;
@@ -114,8 +169,9 @@ inline void update_last(SegmentAccumulator& state, const LearningSnapshot& snaps
 
 inline void integrate_interval(SegmentAccumulator& state, const LearningSnapshot& snapshot) {
   const double dt_s = static_cast<double>(snapshot.monotonic_ms - state.last_monotonic_ms) / 1000.0;
-  const double start_s = static_cast<double>(state.last_monotonic_ms - state.start_monotonic_ms) / 1000.0;
-  const double stop_s = static_cast<double>(snapshot.monotonic_ms - state.start_monotonic_ms) / 1000.0;
+  const double start_s = static_cast<double>(segment_elapsed_ms(state)) / 1000.0;
+  const double stop_s =
+      static_cast<double>(state.carried_duration_ms + snapshot.monotonic_ms - state.start_monotonic_ms) / 1000.0;
   const double mid_s = start_s + 0.5 * dt_s;
   const double room = 0.5 * (static_cast<double>(state.last_room_c) + snapshot.room_c);
   const double outside = 0.5 * (static_cast<double>(state.last_outside_c) + snapshot.outside_c);
@@ -168,7 +224,7 @@ inline SegmentRecord make_record(const SegmentAccumulator& state) {
   SegmentRecord record;
   record.start_epoch_s = state.start_epoch_s;
   record.end_epoch_s = state.last_epoch_s;
-  record.duration_s = static_cast<uint32_t>((state.last_monotonic_ms - state.start_monotonic_ms) / 1000ULL);
+  record.duration_s = static_cast<uint32_t>(segment_elapsed_ms(state) / 1000ULL);
   record.context_revision = state.context_revision;
   if (!(state.integrated_duration_s > 0.0)) return record;
   const double inverse_duration = 1.0 / state.integrated_duration_s;
@@ -205,8 +261,11 @@ inline SegmentRecord make_record(const SegmentAccumulator& state) {
 
 }  // namespace detail
 
-inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningSnapshot& snapshot,
-                                      const QualityConfig& config, bool may_bridge_daily_gap = false) {
+namespace detail {
+
+inline ObserveResult observe_snapshot_core(SegmentAccumulator& state, const LearningSnapshot& snapshot,
+                                           const QualityConfig& config, bool may_bridge_daily_gap,
+                                           bool resuming_restart = false) {
   ObserveResult result;
   if (!valid_quality_config(config)) {
     result.status = LearningStatus::INVALID_CONFIGURATION;
@@ -227,7 +286,7 @@ inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningS
   // Only explicit observations with a known operating state can hold a day.
   // A completely missing tick still obeys the normal interval limit.
   if (!timestamp_valid || snapshot.monotonic_ms <= last_observation_ms ||
-      snapshot.monotonic_ms - last_observation_ms > config.max_interval_ms ||
+      (!resuming_restart && snapshot.monotonic_ms - last_observation_ms > config.max_interval_ms) ||
       !detail::coherent_time(state, snapshot, config, state.source_gap_pending ? kDailyMaximumGapMs : 0)) {
     reset_segment(state);
     if (measurement_status == LearningStatus::OK) detail::seed_segment(state, snapshot);
@@ -253,7 +312,7 @@ inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningS
     return result;
   }
 
-  const uint64_t boundary_ms = state.start_monotonic_ms + kSegmentDurationMs;
+  const uint64_t boundary_ms = state.start_monotonic_ms + kSegmentDurationMs - state.carried_duration_ms;
   double remaining_uncertainty_ws = 0.0;
   if (state.source_gap_pending) {
     // Conditional bound on missing signed heat, assuming |heat| remains below
@@ -287,6 +346,35 @@ inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningS
   detail::seed_segment(state, boundary);
   state.missing_energy_uncertainty_ws = remaining_uncertainty_ws;
   if (snapshot.monotonic_ms > boundary_ms) detail::integrate_interval(state, snapshot);
+  return result;
+}
+
+}  // namespace detail
+
+inline ObserveResult observe_snapshot(SegmentAccumulator& state, const LearningSnapshot& snapshot,
+                                      const QualityConfig& config, bool may_bridge_daily_gap = false) {
+  if (!state.restart_pending) return detail::observe_snapshot_core(state, snapshot, config, may_bridge_daily_gap);
+  state.restart_pending = false;
+  // The first fully valid post-boot observation bounds the *whole* interval
+  // since the saved endpoint, including upload, reboot and source warm-up.
+  if (!valid_daily_checkpoint(state, config) || validate_snapshot(snapshot, config) != LearningStatus::OK ||
+      snapshot.epoch_s <= state.last_epoch_s ||
+      static_cast<uint64_t>(snapshot.epoch_s - state.last_epoch_s) * 1000ULL > kDailyMaximumGapMs) {
+    reset_segment(state);
+    auto result = detail::observe_snapshot_core(state, snapshot, config, false);
+    result.status = LearningStatus::TIME_DISCONTINUITY;
+    return result;
+  }
+  LearningSnapshot resumed = snapshot;
+  resumed.monotonic_ms =
+      state.last_monotonic_ms + static_cast<uint64_t>(snapshot.epoch_s - state.last_epoch_s) * 1000ULL;
+  state.source_gap_pending = true;
+  state.last_gap_observation_ms = state.last_monotonic_ms;
+  auto result = detail::observe_snapshot_core(state, resumed, config, false, true);
+  if (state.active) {
+    state.carried_duration_ms = segment_elapsed_ms(state);
+    state.start_monotonic_ms = state.last_monotonic_ms = snapshot.monotonic_ms;
+  }
   return result;
 }
 
