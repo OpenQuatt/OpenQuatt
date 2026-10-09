@@ -1836,7 +1836,7 @@ void OpenQuattDebugRecorder::write_recording_export_(httpd_req_t* req, uint32_t 
       case FieldType::TIME_HHMM: {
         if (value >= 24U * 60U) return writer.write_literal("null");
         char text[6];
-        std::snprintf(text, sizeof(text), "%02u:%02u", static_cast<unsigned>(value / 60U),
+        std::snprintf(text, sizeof(text), "%02u:%02u", static_cast<unsigned>((value / 60U) % 24U),
                       static_cast<unsigned>(value % 60U));
         return writer.write_json_string(text, 5);
       }

@@ -236,6 +236,15 @@ int main() {
   }
   r.clock.valid = false; assert(r.capture_value_(r.fields_[0]) == r.MISSING_VALUE);
   assert(r.string_count_ == previous_strings && !locked);
+  // Export formatting keeps five characters through midnight/end-of-day;
+  // invalid encoded minutes remain null rather than wrapping to a valid time.
+  for (uint32_t minutes : {0U, 545U, 754U, 1439U, 1440U, 65534U}) {
+    r.clear_(); r.clock.valid = true; r.tick(2000);
+    r.write_value_(r.writable_sample_at_(0), r.fields_[0], minutes);
+    httpd_req_t req; r.write_recording(&req, 0);
+    assert(req.status == HTTPD_200 && !r.export_in_progress_);
+    std::cout << "clock-" << minutes << '\t' << req.response << '\n';
+  }
 }
 '''
 
@@ -293,6 +302,10 @@ class RecorderRetentionRuntimeTest(unittest.TestCase):
         self.assertEqual(empty["initial"], [])
         self.assertEqual(empty["samples"], [])
         self.assertEqual(empty["recording"]["duration_s"], 0)
+        for minutes, expected in [(0, "00:00"), (545, "09:05"), (754, "12:34"),
+                                  (1439, "23:59"), (1440, None), (65534, None)]:
+            initial = dict(json.loads(exports[f"clock-{minutes}"])["initial"])
+            self.assertEqual(initial[0], expected)
 
 
 if __name__ == "__main__":
