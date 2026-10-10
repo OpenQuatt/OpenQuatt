@@ -1,7 +1,7 @@
 import { formatOverviewStatValue, getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive, isTrendHistoryEnabled } from "../core/app-shared.js";
 import { COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS, STRATEGY_OPTION_POWER_HOUSE } from "../core/config.js";
 import { isCurveMode } from "../core/domain-helpers.js";
-import { formatOpenQuattResumeDateTime, getEntityValue, hasOpenQuattResumeSchedule, parseDeviceClockMinutes } from "../core/entity-store.js";
+import { formatOpenQuattResumeDateTime, getEntityValue, hasOpenQuattResumeSchedule, parseDeviceClockMinutes, parseLooseNumber } from "../core/entity-store.js";
 import { getOverviewControlsRenderSignature, getRenderSignature } from "../core/render-signatures.js";
 import { formatDurationFromMinutes, formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
@@ -251,11 +251,17 @@ import { renderStatCard } from "./stat-card.js";
     return Number.NaN;
   }
 
+  export function getOverviewHeatingCapacity() {
+    const entity = state.entities.hpCapacity;
+    const numeric = entity ? parseLooseNumber(entity.value ?? entity.state) : Number.NaN;
+    return Number.isFinite(numeric) && numeric >= 0 ? numeric : Number.NaN;
+  }
+
   export function getPowerHouseOverviewModel() {
     const requested = getPowerHouseRequestedPower();
     const house = getEntityNumericValue("phouseHouse");
     const delivered = getEntityNumericValue("totalHeat");
-    const capacity = getEntityNumericValue("hpCapacity");
+    const capacity = getOverviewHeatingCapacity();
     const roomCorrection = Number.isNaN(requested) || Number.isNaN(house) ? Number.NaN : requested - house;
 
     let statusTitle = t("overview.phBuildingTitle");
@@ -279,7 +285,7 @@ import { renderStatCard } from "./stat-card.js";
       requestedText: formatNumericState(requested, 0, "W"),
       houseText: formatNumericState(house, 0, "W"),
       correctionText: formatSignedPower(roomCorrection),
-      capacityText: formatOverviewStatValue("hpCapacity"),
+      capacityText: formatNumericState(getOverviewHeatingCapacity(), 0, "W"),
       statusTitle,
       statusCopy,
     };
@@ -339,7 +345,7 @@ import { renderStatCard } from "./stat-card.js";
       targetCopy,
       supplyText: formatOverviewStatValue("supplyTemp"),
       deltaText: formatSignedTemperature(targetDelta),
-      capacityText: formatOverviewStatValue("hpCapacity"),
+      capacityText: formatNumericState(getOverviewHeatingCapacity(), 0, "W"),
       statusTitle,
       statusCopy,
     };

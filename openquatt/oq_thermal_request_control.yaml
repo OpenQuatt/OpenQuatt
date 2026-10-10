@@ -568,7 +568,11 @@ sensor:
     accuracy_decimals: 0
     update_interval: ${oq_diagnostic_update_interval_s}s
     lambda: |-
-      return id(oq_P_hp_cap_w);
+      // Shared read-only estimate; strategy-local capacity stays private to control.
+      return oq_heating_capacity::current_estimate(
+          (uint32_t) ${oq_hp_min_off_s} * 1000UL,
+          (uint32_t) ${oq_hp_water_temp_stale_s} * 1000UL,
+          ${oq_defrost_power_factor});
 
   - platform: template
     id: oq_hp_deficit_w_sensor

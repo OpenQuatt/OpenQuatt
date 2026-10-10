@@ -42,6 +42,22 @@ De web-app heeft zes hoofdschermen.
 
 Voor dagelijks kijken is `Overzicht` meestal genoeg. Ga pas naar `Instellingen` als je bewust iets wilt veranderen.
 
+## Warmtecapaciteit op het overzicht
+
+**Geschatte beschikbare warmtecapaciteit** toont bij Power House én
+Stooklijnregeling het geschatte maximale thermische vermogen van de beschikbare
+warmtepomp(en). De berekening gebruikt de actuele buiten- en aanvoertemperatuur,
+het bevestigde warmtepompmodel, de frequentiegrenzen en de elektrische piekgrens.
+Een geblokkeerde warmtepomp telt niet mee; tijdens ontdooien geldt een
+modelcorrectie. De waarde kan daardoor veranderen zonder dat de warmtevraag verandert.
+
+Dit is een modelschatting, geen meting van het geleverde vermogen of garantie op
+het startmoment. Vraagregeling, waterbeveiligingen en startvoorwaarden blijven
+bepalen wat werkelijk wordt geleverd. Ontbreken benodigde model-, frequentie-
+of temperatuurgegevens, dan staat er **—**. **0 W** betekent dat de berekening
+met geldige gegevens geen beschikbare capaciteit vindt. De sensornaam
+`HP capacity (W)` blijft gelijk; bij koelen is deze verwarmingsschatting niet beschikbaar.
+
 ## Wat wil je doen?
 
 | Onderwerp | Handleiding |
