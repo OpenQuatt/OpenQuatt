@@ -173,10 +173,44 @@ test("run extension requires confirmed active heating and preserves protection a
     { phRunExtensionStatus: undefined }, { phRunExtensionStatus: "normal" },
     { phRunExtensionStatus: "comfort_stop" }, { phRunExtensionStatus: "blocked" },
     { phRunExtensionStatus: "wait_warm_restart" }, { strategyActiveCode: 2 },
-    { hp1Mode: "Standby" }, { hp1Defrost: true }, { controlModeLabel: "CM98" },
+    { hp1Mode: "Standby" }, { hp1Mode: "Cooling" },
+    { hp1Mode: "Unknown", hp1Freq: 2 }, { hp1Mode: undefined, hp1Freq: 2 }, { hp1Defrost: true }, { controlModeLabel: "CM98" },
     { controlModeLabel: "CM4" }, { coolingRequestActive: true }, { stickyActive: true },
   ]) {
     setup({ ...active, ...patch });
     assert.notEqual(current([hp1]).primaryReason, "run_extension", JSON.stringify(patch));
+  }
+});
+
+
+test("run extension preserves duo operation and resumes for the remaining heating pump", () => {
+  const hp1 = { title: "HP1", keys: { mode: "hp1Mode", freq: "hp1Freq", defrost: "hp1Defrost" } };
+  const hp2 = { title: "HP2", keys: { mode: "hp2Mode", freq: "hp2Freq", defrost: "hp2Defrost" } };
+  setup({ strategyActiveCode: 3, phRunExtension: true, phRunExtensionStatus: "extending" });
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale);
+    for (const [first, second] of [["Heating", "Heating"], ["Heating", "Cooling"], ["Cooling", "Heating"]]) {
+      state.entities.hp1Mode = value(first);
+      state.entities.hp2Mode = value(second);
+      const model = current([hp1, hp2]);
+      assert.equal(model.hp1Running, true);
+      assert.equal(model.hp2Running, true);
+      assert.equal(model.primaryReason, "better_heat");
+      assert.match(model.title, /Duo/);
+      assert.doesNotMatch(model.copy, /Langer doorverwarmen|Extended heating/);
+    }
+    const duoSignature = signature(current([hp1, hp2]));
+    for (const [first, second] of [["Heating", "Standby"], ["Standby", "Heating"]]) {
+      state.entities.hp1Mode = value(first);
+      state.entities.hp2Mode = value(second);
+      const model = current([hp1, hp2]);
+      assert.equal(model.primaryReason, "run_extension");
+      assert.notEqual(signature(model), duoSignature);
+    }
+    for (const [first, second] of [["Cooling", "Standby"], ["Standby", "Cooling"]]) {
+      state.entities.hp1Mode = value(first);
+      state.entities.hp2Mode = value(second);
+      assert.notEqual(current([hp1, hp2]).primaryReason, "run_extension");
+    }
   }
 });

@@ -959,7 +959,8 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       severity = "limited";
       primaryReason = "defrost_hold";
       sinceLabel = t("controlReplay.curDefrostSince");
-    } else if ((hp1Running || hp2Running)
+    } else if (!duoActive
+      && heatPumpPanels.some((panel) => getEntityStateText(panel.keys.mode, "") === "Heating")
       && getControlWorkingBlockingNumber("strategyActiveCode") === 3
       && getControlWorkingBlockingFlag("phRunExtension") === true
       && getEntityStateText("phRunExtensionStatus", "").trim().toLowerCase() === "extending") {

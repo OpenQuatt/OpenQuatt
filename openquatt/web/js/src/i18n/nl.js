@@ -3275,7 +3275,7 @@ export default {
     curWaitRemaining: "Nog {minutes} min",
     curWaitActive: "Wachttijd actief",
     curOneHp: "Eén warmtepomp actief",
-    curRunExtensionCopy: "De warmtepomp blijft op minimumvermogen verwarmen omdat ‘Langer doorverwarmen’ aan staat bij Power House.",
+    curRunExtensionCopy: "De warmtepomp blijft op minimumvermogen verwarmen omdat ‘Langer doorverwarmen’ aan staat.",
     curRunExtensionExpectTemp: "Bij {temperature} °C wordt stoppen aangevraagd. Minimale looptijd en veiligheidsgrenzen blijven gelden.",
     curRunExtensionExpect: "Bij de stopgrens wordt stoppen aangevraagd. Minimale looptijd en veiligheidsgrenzen blijven gelden.",
     runExtensionCheck1: "Langer doorverwarmen staat aan",

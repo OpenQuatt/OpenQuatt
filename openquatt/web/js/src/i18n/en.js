@@ -3275,7 +3275,7 @@ export default {
     curWaitRemaining: "{minutes} min left",
     curWaitActive: "Waiting time active",
     curOneHp: "One heat pump active",
-    curRunExtensionCopy: "The heat pump keeps heating at minimum output because ‘Extended heating’ is enabled in Power House.",
+    curRunExtensionCopy: "The heat pump keeps heating at minimum output because ‘Extended heating’ is enabled.",
     curRunExtensionExpectTemp: "A stop is requested at {temperature} °C. Minimum run time and safety limits still apply.",
     curRunExtensionExpect: "A stop is requested at the configured limit. Minimum run time and safety limits still apply.",
     runExtensionCheck1: "Extended heating is enabled",
