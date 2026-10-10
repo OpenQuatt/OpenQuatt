@@ -158,7 +158,7 @@ test("active run extension explains the configured choice and live stop temperat
   const unknown = current([hp1]);
   assert.equal(unknown.primaryReason, "run_extension");
   assert.doesNotMatch(unknown.expectation, /NaN|0 °C|undefined/);
-  assert.match(unknown.expectation, /configured stop temperature/);
+  assert.match(unknown.expectation, /configured limit/);
   const hydration = getOverviewLikeHydrationKeys("control", { forceFast: true });
   for (const key of ["phRunExtension", "phRunExtensionStatus", "phRunExtensionComfortStop"]) {
     assert.ok(hydration.includes(key), key);
