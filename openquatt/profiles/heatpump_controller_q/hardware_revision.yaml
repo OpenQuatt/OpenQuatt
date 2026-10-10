@@ -7,8 +7,6 @@
 # ==============================================================================
 
 esphome:
-  includes:
-    - ${openquatt_root}/profiles/heatpump_controller_q_hardware_revision.h
   on_boot:
     priority: -100
     then:

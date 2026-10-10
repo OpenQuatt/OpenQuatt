@@ -16,7 +16,7 @@ function usage() {
 
 Mutating run:
   node scripts/hil/run-v2-performance.mjs --controller URL --simulator URL \\
-    --device HOST --test-config configs/hil/issue_667_v2_performance_duo_wifi.yaml \\
+    --device HOST --test-config scripts/hil/configs/v2_performance_duo.yaml \\
     --restore-config configs/heatpump_controller_q/duo_hil.yaml --stage all --apply
 
 Stages: smoke, power, performance, all. All generic HIL runner safety and recovery

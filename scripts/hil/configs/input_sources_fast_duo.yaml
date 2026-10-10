@@ -34,7 +34,7 @@ substitutions:
   oq_hp_min_off_s: "10"
 
 packages:
-  hil_testcontroller_q_duo: !include ../heatpump_controller_q/duo_hil.yaml
+  hil_testcontroller_q_duo: !include base_duo.yaml
 
 text_sensor:
   - platform: template

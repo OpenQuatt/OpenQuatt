@@ -96,10 +96,11 @@ Het HIL-testfirmware bouwt altijd op
 HIL-run nooit de productie-hostname `openquatt.local` claimt. Gebruik daarom
 `openquatt-test.local` als `--device` en `duo_hil.yaml` als `--restore-config`.
 
-De HIL-overlays includen daarom `duo_hil.yaml` en nooit rechtstreeks `duo.yaml`: dat
-entrypoint draagt de productie-identiteit en zou op een netwerk met een echte
-productiecontroller een mDNS-conflict veroorzaken. `configs/hil/` mag alleen
-naar `duo_hil.yaml` (of een shim daarop zoals `duo_wifi_hil.yaml`) verwijzen.
+De scenario-overlays staan bij de runners in `scripts/hil/configs/`. Hun gedeelde
+`base_duo.yaml` include neemt `duo_hil.yaml` over en past alleen de relatieve
+bronpaden en het buildpad aan deze mapdiepte aan. De overlays mogen nooit
+rechtstreeks `duo.yaml` includen: dat draagt de productie-identiteit en zou
+een mDNS-conflict met een echte productiecontroller veroorzaken.
 
 ## Read-only rooktest
 
@@ -135,7 +136,7 @@ node scripts/hil/run-input-sources.mjs \
   --controller http://openquatt-test.local \
   --simulator http://SIMULATOR-IP \
   --device openquatt-test.local \
-  --test-config configs/hil/input_sources_fast_duo_wifi.yaml \
+  --test-config scripts/hil/configs/input_sources_fast_duo.yaml \
   --restore-config configs/heatpump_controller_q/duo_hil.yaml \
   --stage all \
   --apply
@@ -237,7 +238,7 @@ waarna de normale integratie nieuwe API-waarden moet aanleveren.
 ```bash
 npm run check:hil
 python3 scripts/dev.py validate --config-only \
-  --config configs/hil/input_sources_fast_duo_wifi.yaml
+  --config scripts/hil/configs/input_sources_fast_duo.yaml
 python3 scripts/dev.py validate --config-only \
   --config configs/heatpump_controller_q/duo_hil.yaml
 ```
@@ -260,7 +261,7 @@ node scripts/hil/run-v2-performance.mjs \
   --controller http://openquatt-test.local \
   --simulator http://SIMULATOR-IP \
   --device openquatt-test.local \
-  --test-config configs/hil/issue_667_v2_performance_duo_wifi.yaml \
+  --test-config scripts/hil/configs/v2_performance_duo.yaml \
   --restore-config configs/heatpump_controller_q/duo_hil.yaml \
   --stage all \
   --apply

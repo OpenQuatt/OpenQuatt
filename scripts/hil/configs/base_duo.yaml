@@ -1,0 +1,14 @@
+# ==============================================================================
+# OpenQuatt - HIL TEST ONLY: Shared Q Duo scenario base
+# ==============================================================================
+# Paths are relative to scenario entrypoints in scripts/hil/configs/.
+# The dedicated testcontroller retains its hostname, project and preferences.
+substitutions:
+  openquatt_root: "../../../openquatt"
+  components_root: "../../../components"
+
+esphome:
+  build_path: ../../../../.esphome/build/heatpump_controller_q_duo_hil
+
+packages:
+  hil_testcontroller_q_duo: !include ../../../configs/heatpump_controller_q/duo_hil.yaml

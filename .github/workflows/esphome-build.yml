@@ -114,15 +114,15 @@ jobs:
       - name: Validate HIL test overlays
         if: ${{ matrix.target.id == 'heatpump_controller_q_duo' }}
         run: |
-          esphome config configs/hil/input_sources_fast_duo_wifi.yaml
-          esphome config configs/hil/issue_667_v2_performance_duo_wifi.yaml
+          esphome config scripts/hil/configs/input_sources_fast_duo.yaml
+          esphome config scripts/hil/configs/v2_performance_duo.yaml
 
       - name: Assert HIL overlays keep the testcontroller identity
         if: ${{ matrix.target.id == 'heatpump_controller_q_duo' }}
         run: |
           set -euo pipefail
-          for overlay in configs/hil/input_sources_fast_duo_wifi.yaml \
-                          configs/hil/issue_667_v2_performance_duo_wifi.yaml; do
+          for overlay in scripts/hil/configs/input_sources_fast_duo.yaml \
+                          scripts/hil/configs/v2_performance_duo.yaml; do
             # duo.yaml carries the production device_name "openquatt"; an
             # overlay that includes it would republish openquatt.local and
             # collide with a real production controller.

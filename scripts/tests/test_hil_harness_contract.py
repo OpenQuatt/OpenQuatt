@@ -4,8 +4,9 @@ import unittest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-PROFILE = (ROOT / "configs/hil/input_sources_fast_duo_wifi.yaml").read_text()
-V2_PROFILE = (ROOT / "configs/hil/issue_667_v2_performance_duo_wifi.yaml").read_text()
+PROFILE = (ROOT / "scripts/hil/configs/input_sources_fast_duo.yaml").read_text()
+V2_PROFILE = (ROOT / "scripts/hil/configs/v2_performance_duo.yaml").read_text()
+HIL_BASE = (ROOT / "scripts/hil/configs/base_duo.yaml").read_text()
 HIL_CONTROLLER = (ROOT / "configs/heatpump_controller_q/duo_hil.yaml").read_text()
 HIL_CONTROLLER_COMPAT = (ROOT / "configs/heatpump_controller_q/duo_wifi_hil.yaml").read_text()
 RUNNER = (ROOT / "scripts/hil/run-input-sources.mjs").read_text()
@@ -26,7 +27,7 @@ class HilHarnessContractTest(unittest.TestCase):
     def test_fast_profile_is_explicitly_test_only(self):
         self.assertIn("HIL TEST ONLY", PROFILE)
         self.assertIn(
-            "!include ../heatpump_controller_q/duo_hil.yaml", PROFILE
+            "!include base_duo.yaml", PROFILE
         )
         self.assertIn('name: "HIL Test Profile"', PROFILE)
         self.assertIn('return {"input-sources-fast-v1"};', PROFILE)
@@ -38,8 +39,11 @@ class HilHarnessContractTest(unittest.TestCase):
         # controller, which collides with a real production controller on the
         # same network. Both HIL overlays must build on the HIL testcontroller
         # entrypoint instead.
-        for profile in (PROFILE, V2_PROFILE):
+        for profile in (PROFILE, V2_PROFILE, HIL_BASE):
             self.assertNotIn("heatpump_controller_q/duo.yaml", profile)
+        self.assertIn('!include ../../../configs/heatpump_controller_q/duo_hil.yaml', HIL_BASE)
+        self.assertIn('openquatt_root: "../../../openquatt"', HIL_BASE)
+        self.assertIn('components_root: "../../../components"', HIL_BASE)
         self.assertIn('device_name: "openquatt-test"', HIL_CONTROLLER)
         self.assertIn('project_name: "openquatt.test"', HIL_CONTROLLER)
         self.assertIn("openquatt-test.local", DOCS)
@@ -102,7 +106,7 @@ class HilHarnessContractTest(unittest.TestCase):
     def test_issue_667_profile_and_runner_are_test_only(self):
         self.assertIn("HIL TEST ONLY", V2_PROFILE)
         self.assertIn("issue-667-v2-performance-v1", V2_PROFILE)
-        self.assertIn("!include ../heatpump_controller_q/duo_hil.yaml", V2_PROFILE)
+        self.assertIn("!include base_duo.yaml", V2_PROFILE)
         self.assertIn("HIL HP1 Power Input quality", V2_PROFILE)
         self.assertIn("HIL Low-load Pmin", V2_PROFILE)
         self.assertIn("id(cic_component).stop_poller();", V2_PROFILE)
@@ -152,7 +156,7 @@ class HilHarnessContractTest(unittest.TestCase):
         )
         self.assertIn("Validate HIL test overlays", ESPHOME_BUILD_WORKFLOW)
         self.assertIn(
-            "esphome config configs/hil/input_sources_fast_duo_wifi.yaml",
+            "esphome config scripts/hil/configs/input_sources_fast_duo.yaml",
             ESPHOME_BUILD_WORKFLOW,
         )
 

@@ -1,11 +1,11 @@
 # ==============================================================================
-# OpenQuatt - HIL TEST ONLY: issue #667 V2 performance / Q Duo
+# OpenQuatt - HIL TEST ONLY: V2 performance / Q Duo
 # ==============================================================================
 # Exposes only the otherwise-internal observations required by the deterministic
 # simulator scenario. Production timing and control limits remain unchanged.
 
 packages:
-  production_hil_q_duo: !include ../heatpump_controller_q/duo_hil.yaml
+  hil_testcontroller_q_duo: !include base_duo.yaml
 
 globals:
   - id: oq_hil_hp1_power_input_sample_count

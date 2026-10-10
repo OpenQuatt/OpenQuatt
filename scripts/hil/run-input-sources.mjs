@@ -52,7 +52,7 @@ function usage() {
 Mutating run:
   node scripts/hil/run-input-sources.mjs --controller URL --simulator URL \\
     --device openquatt-test.local \\
-    --test-config configs/hil/input_sources_fast_duo_wifi.yaml \\
+    --test-config scripts/hil/configs/input_sources_fast_duo.yaml \\
     --restore-config configs/heatpump_controller_q/duo_hil.yaml \\
     --stage all --apply
 

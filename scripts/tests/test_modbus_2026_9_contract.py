@@ -9,7 +9,7 @@ SUBSTITUTIONS = (ROOT / "openquatt" / "oq_substitutions_common.yaml").read_text(
 HUB = (ROOT / "openquatt" / "oq_common.yaml").read_text()
 BASE_COMMON = (ROOT / "openquatt" / "base" / "common.yaml").read_text()
 REQUIREMENTS = (ROOT / ".github" / "requirements-esphome.txt").read_text()
-DUO_PACKAGES = (ROOT / "openquatt" / "topology" / "duo_packages.yaml").read_text()
+DUO_PACKAGES = (ROOT / "openquatt" / "topology" / "duo.yaml").read_text()
 
 
 def yaml_block(source: str, start: str, end: str) -> str:

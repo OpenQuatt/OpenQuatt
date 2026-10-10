@@ -14,9 +14,6 @@ external_components:
     components: [opentherm]
 
 esphome:
-  includes:
-    - ../../openquatt/includes/boiler/oq_boiler_transport_logic.h
-    - ../../openquatt/includes/boiler/oq_otb_connection_state.h
   on_boot:
     priority: -100
     then:

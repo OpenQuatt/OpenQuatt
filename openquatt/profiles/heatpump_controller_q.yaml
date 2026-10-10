@@ -44,15 +44,22 @@ substitutions:
   hpcq_status_led_red_pin: "GPIO2"                      # Red status LED output.
   hpcq_status_led_inverted: "false"                     # Set true when the board LED is active-low.
 
+  main_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/latest/download/openquatt-heatpump-controller-q-${oq_topology}-ota.manifest.json"
+  dev_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/download/dev-latest/openquatt-heatpump-controller-q-${oq_topology}-ota.manifest.json"
+  # Default update source follows main; release/PR CI may override release_manifest_url explicitly.
+  release_manifest_url: "${main_release_manifest_url}"
+  alternate_topology_main_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/latest/download/openquatt-heatpump-controller-q-${alternate_topology}-ota.manifest.json"
+  alternate_topology_dev_release_manifest_url: "https://github.com/OpenQuatt/OpenQuatt/releases/download/dev-latest/openquatt-heatpump-controller-q-${alternate_topology}-ota.manifest.json"
+
 esphome:
   build_flags:
     - -DOQ_POWER_HOUSE_LEARNING_TARGET=1
 
 packages:
   oq_power_house_learning: !include ../oq_power_house_learning.yaml
-  oq_hardware_revision: !include heatpump_controller_q_hardware_revision.yaml
-  oq_status_leds: !include heatpump_controller_q_status_leds.yaml
-  oq_cic_compatibility: !include heatpump_controller_q_cic_compatibility.yaml
+  oq_hardware_revision: !include heatpump_controller_q/hardware_revision.yaml
+  oq_status_leds: !include heatpump_controller_q/status_leds.yaml
+  oq_cic_compatibility: !include heatpump_controller_q/cic_compatibility.yaml
   oq_aux_relay_control: !include ../oq_aux_relay_control.yaml
   oq_sensor_source_selects_opentherm: !include ../oq_sensor_source_selects_opentherm.yaml
   oq_ot_slave: !include
@@ -60,6 +67,7 @@ packages:
     vars:
       ot_secondary_present: "${ot_secondary_present}"
   oq_boiler_opentherm: !include ../oq_boiler_opentherm.yaml
+  oq_q_local_sensors: !include heatpump_controller_q/local_sensors.yaml
 
 openquatt_usage_telemetry:
   cic_compatibility_switch: cic_compatibility_enable
@@ -72,193 +80,11 @@ psram:
   speed: 80MHz
   ignore_not_found: false
 
-select:
-  - platform: template
-    id: oq_local_supply_temp_source
-    name: "Local Water Supply Temp Source"
-    icon: mdi:thermometer-check
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    options:
-      - PT1000
-      - DS18B20
-    initial_option: PT1000
-    on_value:
-      - lambda: |-
-          // PT1000 and DS18B20 are separate calibration identities.
-          if (!id(oq_water_supply_temp_current_source_ready) ||
-              !id(water_supply_source).has_state() ||
-              id(water_supply_source).current_option() != "Local") {
-            return;
-          }
-          const int32_t selected = x == "PT1000"
-              ? oq_supply_calibration::SOURCE_LOCAL_PT1000
-              : oq_supply_calibration::SOURCE_LOCAL_DS18B20;
-          if (id(oq_water_supply_temp_current_source_code) == selected) return;
-
-          id(oq_water_supply_temp_current_source_ready) = false;
-          if (id(oq_hp_water_calibration_active)) id(oq_hp_water_calibration_abort) = true;
-          // Refresh the local proxy first so the old physical source cannot be cached under the new identity.
-          id(water_supply_temp_esp).update();
-          id(water_supply_temp_selected).update();
-
-  - platform: template
-    id: oq_q_flow_source
-    name: "Q Flow Source"
-    icon: mdi:source-branch
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    options:
-      - Auto
-      - Local
-      - Outdoor unit
-    initial_option: Auto
-
-  - platform: template
-    id: oq_controller_flow_meter
-    name: "Controller Flow Meter"
-    icon: mdi:waves
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    options:
-      # Huba Control is the Quatt-installed meter: keep it first and as default.
-      - Huba Control
-      - Custom
-    initial_option: Huba Control
-    on_value:
-      - lambda: |-
-          // Reapply calibration even if the pulse rate has not changed.
-          const float pulses_per_minute = id(flow_rate_controller).get_raw_state();
-          if (!isnan(pulses_per_minute)) {
-            id(flow_rate_controller).publish_state(pulses_per_minute);
-          }
-
-number:
-  - platform: template
-    id: oq_custom_flow_pulses_per_liter
-    name: "Custom Flow Meter Pulses Per Liter"
-    icon: mdi:counter
-    entity_category: config
-    unit_of_measurement: "pulses/L"
-    mode: box
-    min_value: 1
-    max_value: 10000
-    step: 0.1
-    restore_value: true
-    optimistic: true
-    initial_value: 476
-    on_value:
-      - lambda: |-
-          if (id(oq_controller_flow_meter).current_option() != "Custom") return;
-          // Reapply calibration even if the pulse rate has not changed.
-          const float pulses_per_minute = id(flow_rate_controller).get_raw_state();
-          if (!isnan(pulses_per_minute)) {
-            id(flow_rate_controller).publish_state(pulses_per_minute);
-          }
-
-spi:
-  - id: oq_hpcq_pt1000_spi
-    mosi_pin: ${hpcq_pt1000_mosi_pin}
-    miso_pin: ${hpcq_pt1000_miso_pin}
-    clk_pin: ${hpcq_pt1000_clk_pin}
-    interface: spi3
-
-sensor:
-  - platform: max31865
-    id: water_supply_temp_pt1000
-    name: "Water Supply Temp (PT1000)"
-    icon: mdi:thermometer
-    unit_of_measurement: "°C"
-    device_class: temperature
-    state_class: measurement
-    accuracy_decimals: 2
-    # Poll explicitly below so a disconnected probe cannot flood logs.
-    update_interval: never
-    spi_id: oq_hpcq_pt1000_spi
-    cs_pin: ${hpcq_pt1000_cs_pin}
-    reference_resistance: ${hpcq_pt1000_reference_resistance_ohm}
-    rtd_nominal_resistance: ${hpcq_pt1000_nominal_resistance_ohm}
-    rtd_wires: ${hpcq_pt1000_rtd_wires}
-    mains_filter: "50 Hz"
-    filters:
-      - lambda: |-
-          if (isnan(x)) return x;
-          if (x < -10.0f || x > 100.0f) return NAN;
-          return x;
-
-  - platform: pulse_meter
-    id: flow_rate_controller
-    name: "Controller Flow"
-    icon: mdi:waves
-    unit_of_measurement: "L/h"
-    device_class: volume_flow_rate
-    state_class: measurement
-    accuracy_decimals: 1
-    timeout: 5s
-    internal_filter_mode: PULSE
-    internal_filter: 100us
-    pin:
-      number: ${hpcq_flow_pin}
+# Keep the UART RX input at idle HIGH during brief RS485 receiver turn-off gaps.
+uart:
+  - id: !extend uart_bus
+    rx_pin:
+      number: ${uart_rx_pin}
       mode:
         input: true
         pullup: true
-    filters:
-      - lambda: |-
-          float lph = NAN;
-          if (id(oq_controller_flow_meter).current_option() == "Custom") {
-            lph = oq_flow_meter::linear_lph(x, id(oq_custom_flow_pulses_per_liter).state);
-          } else {
-            // Preserve the existing Huba Control conversion and substitutions.
-            // pulse_meter publishes pulses/minute. Convert to Hz first:
-            // Qv[l/min] = Kf * f[Hz] + Q0, then convert to l/h.
-            const float hz = x / 60.0f;
-            const float lpm =
-              (static_cast<float>(${hpcq_flow_kf_lpm_per_hz}) * hz)
-              + static_cast<float>(${hpcq_flow_q0_lpm});
-            if (isfinite(lpm)) lph = lpm * 60.0f;
-          }
-          const bool valid = isfinite(lph);
-          const float accepted_lph = valid ? (lph > 0.0f ? lph : 0.0f) : NAN;
-          oq_sources::controller_flow.observe(accepted_lph, oq_sources::monotonic_ms(), valid);
-          return accepted_lph;
-      - throttle_average: 10s
-      # #648: pulse_meter publishes 0 once after 5 s without pulses. That
-      # single zero can be averaged with older non-zero values and then no
-      # further input arrives, leaving a stale non-zero average forever.
-      # Fail to 0 L/h when the averaged output itself goes quiet.
-      - timeout:
-          timeout: 15s
-          value: !lambda return 0.0f;
-
-interval:
-  - interval: 5s
-    startup_delay: 1s
-    then:
-      - lambda: |-
-          static bool read_attempted = false;
-          static bool repeated_fault_logs_suppressed = false;
-          static bool max31865_log_level_managed = false;
-          // Keep the PT1000 live for diagnostics when DS18B20 is selected.
-          const bool reading_valid =
-              id(water_supply_temp_pt1000).has_state() &&
-              !isnan(id(water_supply_temp_pt1000).state);
-          // Log the first failed read, then keep retrying silently until recovery.
-          if (read_attempted && !reading_valid &&
-              !repeated_fault_logs_suppressed &&
-              esphome::logger::global_logger != nullptr) {
-            esphome::logger::global_logger->set_log_level(
-                "max31865", ESPHOME_LOG_LEVEL_NONE);
-            repeated_fault_logs_suppressed = true;
-            max31865_log_level_managed = true;
-          } else if (reading_valid && max31865_log_level_managed &&
-                     esphome::logger::global_logger != nullptr) {
-            esphome::logger::global_logger->set_log_level(
-                "max31865", esphome::logger::global_logger->get_log_level());
-            repeated_fault_logs_suppressed = false;
-          }
-
-          read_attempted = true;
-          id(water_supply_temp_pt1000).update();
