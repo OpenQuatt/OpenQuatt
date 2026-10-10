@@ -117,3 +117,20 @@ test("cooling start protection uses published countdown and clears after release
   state.entities.coolingStartBlockReason = value("Ready");
   assert.doesNotMatch(reasons(off).join(" "), /herstartbeveiliging/);
 });
+
+test("single and duo current explanations follow available panels in both locales", () => {
+  const hp1 = { title: "HP1", keys: { mode: "hp1Mode", freq: "hp1Freq", defrost: "hp1Defrost" } };
+  const hp2 = { title: "HP2", keys: { mode: "hp2Mode", freq: "hp2Freq", defrost: "hp2Defrost" } };
+  setup({ hp1Mode: "Heating", hp2Mode: "Standby" });
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale);
+    const single = current([hp1]);
+    assert.equal(single.hp1Running, true);
+    assert.equal(single.hp2Available, false);
+    assert.doesNotMatch(single.copy + single.expectation + card(single), /HP2|andere warmtepomp|extra warmtepomp|other heat pump|additional heat pump/);
+    const duo = current([hp1, hp2]);
+    assert.equal(duo.hp2Available, true);
+    assert.match(duo.copy, /andere warmtepomp|other heat pump/);
+    assert.match(card(duo), /HP2/);
+  }
+});
