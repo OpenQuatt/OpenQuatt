@@ -17,6 +17,27 @@ class LearningProfileContractTest(unittest.TestCase):
         self.assertGreaterEqual(endpoint_kib, writer_kib)
         self.assertIn("REQUEST_BUFFER_SIZE = EXPORT_BUFFER_SIZE", endpoint)
 
+    def test_source_changes_are_not_physical_context_boundaries(self):
+        runtime = (ROOT / "openquatt/includes/control/oq_ph_learning_runtime.h").read_text()
+        context_builder = runtime.split("void build_context_(RuntimeStorage& state)", 1)[1].split(
+            "static size_t slot_offset_", 1
+        )[0]
+        for source in (
+            "room_temp_source", "room_setpoint_source", "outside_temp_source", "flow_source",
+            "oq_duo_outdoor_flow_mode", "oq_q_flow_source",
+        ):
+            self.assertNotIn(f"watch_measurement_select_(id({source}))", runtime)
+            self.assertNotIn(source, context_builder)
+        self.assertNotIn("cic_feed_url", context_builder)
+        self.assertNotIn("id(cic_feed_url).add_on_state_callback", runtime)
+        self.assertNotIn("watch_source_select_", runtime)
+        self.assertNotIn("observe_source_revisions(", runtime)
+        self.assertNotIn("observe_valid_source_revisions(", runtime)
+        self.assertIn("watch_measurement_select_(id(hp_generation))", runtime)
+        self.assertIn("watch_measurement_select_(id(oq_controller_flow_meter))", runtime)
+        self.assertIn("watch_measurement_number_(id(hp1_water_in_temp_offset))", runtime)
+        self.assertIn("kLearningMeasurementContextMarker", context_builder)
+
     def test_only_q_enables_the_passive_core(self):
         enabled = []
         for profile in sorted((ROOT / "openquatt/profiles").glob("*.yaml")):
