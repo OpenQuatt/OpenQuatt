@@ -1823,6 +1823,9 @@
     ...HP_PANEL_ENTITY_KEYS,
   ];
   export const CONTROL_REPLAY_STATE_KEYS = [
+    "phRunExtension",
+    "phRunExtensionStatus",
+    "phRunExtensionComfortStop",
     "strategyActiveCode",
     "strategyRequestActive",
     "strategyWaterTripActive",

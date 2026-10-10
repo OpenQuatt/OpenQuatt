@@ -400,6 +400,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
 
   const CONTROL_WORKING_REASON_METAS = createControlWorkingReasonMetas([
 ["frequency_cap_below_minimum", "controlReplay.reasonFrequencyCapBelowMinimum", "controlReplay.reasonFrequencyCapBelowMinimumCopy", "controlReplay.reasonFrequencyCapBelowMinimumCheck1", "controlReplay.reasonFrequencyCapBelowMinimumCheck2"],
+["run_extension", "runExtension.extending", "controlReplay.curRunExtensionCopy", "controlReplay.runExtensionCheck1", "controlReplay.runExtensionCheck2"],
 ["keep_current", "controlReplay.reasonKeepCurrent", "controlReplay.reasonKeepCurrentCopy", "controlReplay.reasonKeepCurrentCheck1", "controlReplay.reasonKeepCurrentCheck2", "controlReplay.reasonKeepCurrentCheck3"],
 ["hold_active", "controlReplay.reasonHoldActive", "controlReplay.reasonHoldActiveCopy", "controlReplay.reasonHoldActiveCheck1", "controlReplay.reasonHoldActiveCheck2", "controlReplay.reasonHoldActiveCheck3"],
 ["defrost_hold", "controlReplay.reasonDefrostHold", "controlReplay.reasonDefrostHoldCopy", "controlReplay.reasonDefrostHoldCheck1", "controlReplay.reasonDefrostHoldCheck2", "controlReplay.reasonDefrostHoldCheck3"],
@@ -958,6 +959,18 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       severity = "limited";
       primaryReason = "defrost_hold";
       sinceLabel = t("controlReplay.curDefrostSince");
+    } else if (!duoActive
+      && heatPumpPanels.some((panel) => getEntityStateText(panel.keys.mode, "") === "Heating")
+      && getControlWorkingBlockingNumber("strategyActiveCode") === 3
+      && getControlWorkingBlockingFlag("phRunExtension") === true
+      && getEntityStateText("phRunExtensionStatus", "").trim().toLowerCase() === "extending") {
+      title = t("runExtension.extending");
+      copy = t("controlReplay.curRunExtensionCopy");
+      const stop = getControlWorkingBlockingNumber("phRunExtensionComfortStop");
+      expectation = Number.isFinite(stop)
+        ? t("controlReplay.curRunExtensionExpectTemp", { temperature: formatNumber(stop, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) })
+        : t("controlReplay.curRunExtensionExpect");
+      primaryReason = "run_extension";
     } else if (duoActive) {
       title = t("controlReplay.curDuoTitle");
       copy = t("controlReplay.curDuoCopy");
