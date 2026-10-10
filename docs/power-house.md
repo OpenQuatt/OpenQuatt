@@ -64,6 +64,14 @@ Praktisch merk je dan:
 - sneller terugnemen als de ruimte wegdrijft;
 - minder kans dat het systeem te lang blijft doorduwen.
 
+## Na een herstart of firmware-update
+
+Power House wacht maximaal twee minuten vanaf de herstart op geldige inputs voor de warmtevraag, waaronder buitentemperatuur, kamertemperatuur en setpoint. Tijdens het wachten is de warmtevraag onbekend en geeft Power House geen compressor- of ketelhulpvraag door. Ontbrekende inputs worden niet als vorige warmtevraag van 0 W opgeslagen.
+
+De eerste geldige berekening begint daardoor direct bij de actuele woningbehoefte plus kamercorrectie. Daarna gelden de normale opbouw- en afbouwtijd. Blijven inputs na twee minuten ongeldig, dan vraagt Power House veilig 0 W en meldt `input_timeout` als strategie-status. Zodra de inputs alsnog geldig worden, kan de regeling starten. Inputuitval tijdens een bestaande regeling houdt het normale veilige stop- en herstelgedrag.
+
+De compressorbeveiligingen blijven actief. Een firmware-update kan de ODU daarom nog steeds stoppen; de verplichte bevestiging van stilstand en minimale stilstandtijd blijven gelden.
+
 ## Waar kijkt Power House vooral naar?
 
 De kern bestaat uit vijf onderdelen.

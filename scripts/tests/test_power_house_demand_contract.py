@@ -5,7 +5,7 @@ class PowerHouseDemandContractTest(unittest.TestCase):
     def test_delegation_and_line_budget(self) -> None:
         yaml = FILES[0].read_text()
         text = FILES[1].read_text()
-        positions = [text.index(marker) for marker in ("observe_protection(", "decide_cadence(", "decide_demand(", "decide_dispatch(")]
+        positions = [text.index(marker) for marker in ("observe_protection(", "decide_cadence(", "decide_startup_demand(", "decide_dispatch(")]
         self.assertEqual(positions, sorted(positions))
         self.assertIn("id(oq_ph_request_last_loop_ms) = now_ms == 0 ? UINT32_MAX : now_ms;", text)
         self.assertIn("oq_power_house_runtime::runtime().tick", yaml)
@@ -55,4 +55,17 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         for marker in ("filter_demand(", "oq_demand_filter_ramp_up", "now_ms > id(oq_ph_request_last_loop_ms)", "fminf(requested_w", "struct DuoCandidate"):
             self.assertNotIn(marker, text)
             self.assertNotIn(marker, yaml)
-        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 3800)
+        # Boot acquisition adds a one-shot input deadline and explicit invalid outputs.
+        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 3840)
+
+    def test_startup_wait_clears_shared_outputs_before_adopting_demand(self) -> None:
+        text = FILES[1].read_text()
+        self.assertLess(text.index("decide_startup_demand("), text.index("this->demand_state_ = demand.next;"))
+        self.assertLess(text.index("this->publish_startup_wait_("), text.index("this->demand_state_ = demand.next;"))
+        wait = text[text.index("void publish_startup_wait_("):text.index("static bool near_(")]
+        for marker in ("oq_ph_request_hp1_level", "oq_ph_request_hp2_level", "oq_demand_raw",
+                       "oq_strategy_requested_power_w", "oq_strategy_heat_request_active) = false",
+                       "oq_strategy_output_valid) = false", "waiting_inputs", "input_timeout"):
+            self.assertIn(marker, wait)
+        reset = text[text.index("void reset()"):text.index("std::string run_extension_status()")]
+        self.assertNotIn("startup_phase_", reset)
