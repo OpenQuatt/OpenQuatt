@@ -1446,7 +1446,11 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      return oq_energy::instant_ratio_or_nan(id(${hp_id}_heat_power).state, id(${hp_id}_power_input).state, 5.0f);
+      const auto operating = oq_energy_runtime::heating_cop_state(
+          oq_sources::${hp_id}, id(${hp_id}_is_online), oq_sources::monotonic_ms(),
+          static_cast<uint64_t>(${oq_power_measurement_stale_s}) * 1000ULL);
+      return oq_energy::heating_cop_or_nan(
+          id(${hp_id}_heat_power).state, id(${hp_id}_power_input).state, 5.0f, operating);
 
   - platform: template
     id: ${hp_id}_eer

@@ -1,5 +1,5 @@
 import { syncPerformanceTelemetryPrompt } from "../features/performance-telemetry-prompt.js";
-import { FREQUENCY_MINIMUM_KEYS } from "./config.js";
+import { FREQUENCY_MINIMUM_KEYS, HP_PANEL_CONFIGS } from "./config.js";
 import { patchFrequencyLimitWarnings } from "../features/frequency-limits.js";
 import { t } from "../i18n/index.js";
 import { getSetupCompleteState, isTrendHistoryEnabled, renderAppSummary } from "./app-shared.js";
@@ -402,7 +402,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
   }
 
   export function getEnergyViewEntityKeys() {
-    const keys = new Set();
+    const keys = new Set(HP_PANEL_CONFIGS.flatMap(({ keys }) => [keys.mode, keys.freq, keys.defrost]));
     OVERVIEW_ENERGY_COLUMN_CONFIGS.forEach((column) => {
       if (column.counterResetKey) {
         keys.add(column.counterResetKey);

@@ -14,7 +14,14 @@ const { state } = await import("../js/src/core/state.js");
 const { handleShellAction } = await import("../js/src/features/shell-actions.js");
 
 function setEntities(entities) {
-  state.entities = entities;
+  state.lastKnownInstallationTopology = "";
+  state.entities = {
+    installationTopology: { value: entities.hp2Freq ? "duo" : "single" },
+    hp1Mode: { value: "Heating" },
+    hp1Defrost: { value: false },
+    ...(entities.hp2Freq ? { hp2Mode: { value: "Standby" }, hp2Defrost: { value: false } } : {}),
+    ...entities,
+  };
   state.drafts = {};
 }
 

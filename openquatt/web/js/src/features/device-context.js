@@ -1,6 +1,5 @@
-import { hasEntity } from "../core/app-shared.js";
 import { TOPOLOGY_HINT_KEYS } from "../core/config.js";
-import { getEntityValue, isDeviceTimeValid } from "../core/entity-store.js";
+import { getEntityValue, hasEntity, isDeviceTimeValid } from "../core/entity-store.js";
 import { formatDurationFromMinutes } from "../core/formatting.js";
 import { state } from "../core/state.js";
 import { formatDate, formatTime, t } from "../i18n/index.js";

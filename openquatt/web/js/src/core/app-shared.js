@@ -1,5 +1,6 @@
-import { APP_VIEWS, renderOqIcon } from "./config.js";
+import { APP_VIEWS, HP_PANEL_CONFIGS, renderOqIcon } from "./config.js";
 import { isCurveMode } from "./domain-helpers.js";
+import { getInstallationTopology } from "../features/device-context.js";
 import { formatValue, getEntityValue, hasEntity } from "./entity-store.js";
 import { formatNumericState } from "./formatting.js";
 import { escapeHtml } from "./html.js";
@@ -69,6 +70,40 @@ export { hasEntity } from "./entity-store.js";
     return normalized.includes("cop") || normalized.includes("eer");
   }
 
+  export function getLiveHeatingCopValue(key) {
+    const total = key === "totalCop";
+    const panels = total
+      ? HP_PANEL_CONFIGS.slice(0, getInstallationTopology() === "duo" ? 2 : 1)
+      : HP_PANEL_CONFIGS.filter((panel) => panel.keys.cop === key);
+    if (!panels.length || (total && !getInstallationTopology())) return Number.NaN;
+    let heating = false;
+    for (const { keys } of panels) {
+      const mode = String(getEntityValue(keys.mode) || "");
+      const rawFrequency = getEntityValue(keys.freq);
+      const frequency = rawFrequency !== "" && rawFrequency != null ? getEntityNumericValue(keys.freq) : Number.NaN;
+      const defrost = getBinaryEntityState(keys.defrost);
+      if (!["Standby", "Cooling", "Heating", "Defrost"].includes(mode) || !Number.isFinite(frequency) || frequency < 0 || frequency > 120 || defrost === null) return Number.NaN;
+      if (mode === "Defrost" || defrost) return Number.NaN;
+      if (mode === "Heating") {
+        heating ||= frequency > 0;
+      }
+    }
+    if (!heating) return Number.NaN;
+    if (hasEntity(key)) {
+      // Firmware unavailability is authoritative; never reconstruct a COP that
+      // its start/defrost/telemetry gates deliberately suppressed.
+      const value = getEntityNumericValue(key);
+      return Number.isFinite(value) && value > 0 ? value : Number.NaN;
+    }
+    if (!total) return Number.NaN;
+    const output = getEntityNumericValue("totalHeat");
+    const inputKey = hasEntity("heatingPowerInput") ? "heatingPowerInput" : "totalPower";
+    const input = hasEntity(inputKey) ? getEntityNumericValue(inputKey) : Number.NaN;
+    return Number.isFinite(output) && output > 0 && Number.isFinite(input) && input >= 10.0
+      ? output / input
+      : Number.NaN;
+  }
+
   export function getDerivedEfficiencyValue(key) {
     const normalized = String(key || "");
     if (normalized === "totalEer") {
@@ -80,12 +115,7 @@ export { hasEntity } from "./entity-store.js";
         : NaN;
     }
     if (normalized === "totalCop") {
-      const output = getEntityNumericValue("totalHeat");
-      const input = getEntityNumericValue("heatingPowerInput");
-      const fallbackInput = Number.isNaN(input) ? getEntityNumericValue("totalPower") : input;
-      return (!Number.isNaN(output) && !Number.isNaN(fallbackInput) && fallbackInput >= 5.0)
-        ? output / fallbackInput
-        : NaN;
+      return getLiveHeatingCopValue(normalized);
     }
     return NaN;
   }
@@ -138,6 +168,9 @@ export { hasEntity } from "./entity-store.js";
   }
 
   export function formatOverviewStatValue(key) {
+    if (key === "totalCop") {
+      return formatNumericState(getLiveHeatingCopValue(key), 1);
+    }
     const entity = state.entities[key];
     const derived = getDerivedEfficiencyValue(key);
     if (!entity) {

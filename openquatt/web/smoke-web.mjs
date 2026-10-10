@@ -21,6 +21,8 @@ const cssSources = resolveCssSources(webDir);
 
 const allowedBareImports = new Set(["virtual:embedded-assets"]);
 const boundaryAllowedEdges = new Set([
+  // Live COP uses the shared installation-topology data helper.
+  "core/app-shared.js -> features/device-context.js",
   // The entity event/sync owners drive invitation actions and reconcile its live controller status.
   "core/entity-actions.js -> features/performance-telemetry-prompt.js",
   "core/entity-sync.js -> features/performance-telemetry-prompt.js",

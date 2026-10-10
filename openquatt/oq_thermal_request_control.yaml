@@ -391,7 +391,10 @@ sensor:
     accuracy_decimals: 2
     update_interval: 10s
     lambda: |-
-      return oq_energy::instant_ratio_or_nan(id(oq_total_heat_power).state, id(oq_total_power_input).state, ${oq_cop_min_input_w});
+      return oq_energy_runtime::total_cop(
+          oq_sources::monotonic_ms(),
+          static_cast<uint64_t>(${oq_power_measurement_stale_s}) * 1000ULL,
+          ${oq_cop_min_input_w});
 
   - platform: template
     id: oq_total_eer

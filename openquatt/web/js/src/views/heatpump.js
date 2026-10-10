@@ -1,4 +1,4 @@
-import { getEntityDisplayUnit, getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
+import { getEntityDisplayUnit, getEntityNumericValue, getEntityStateText, getLiveHeatingCopValue, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { HP_PANEL_CONFIGS } from "../core/config.js";
 import { getEntityValue } from "../core/entity-store.js";
 import { formatFailures, formatWarningFailures } from "../core/failure-format.js";
@@ -399,7 +399,7 @@ import { renderStatCard } from "./stat-card.js";
     const heatText = formatNumericState(thermalValue, 0, "W");
     const efficiencyValue = mode === t("heatpump.modeCooling")
       ? ((!Number.isNaN(powerValue) && powerValue >= 5.0 && !Number.isNaN(coolingValue)) ? (coolingValue / powerValue) : Number.NaN)
-      : getEntityNumericValue(keys.cop);
+      : getLiveHeatingCopValue(keys.cop);
     const efficiencyText = formatNumericState(efficiencyValue, 1);
     const efficiencyLabel = mode === t("heatpump.modeCooling") ? t("overview.topCopEer") : t("overview.topCop");
     const heatLabel = mode === t("heatpump.modeCooling") ? t("heatpump.heatCoolLabel") : t("heatpump.heatWarmLabel");
