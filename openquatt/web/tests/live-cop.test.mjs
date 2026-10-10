@@ -29,6 +29,21 @@ function setup(overrides = {}) {
   };
 }
 
+test("CM1 suppresses live COP despite positive retained heating samples", () => {
+  for (const label of ["CM1", "CM1 - Preflow/Postflow", "CM1 - Voorloop/naloop"]) {
+    setup({ controlModeLabel: { value: label } });
+    assert.equal(formatOverviewStatValue("totalCop"), "—");
+    assert.ok(Number.isNaN(getLiveHeatingCopValue("hp1Cop")));
+    assert.ok(Number.isNaN(getOverviewTrendSeriesCurrentValue({ currentKey: "totalCop" }, { cop: 6 })));
+    delete state.entities.totalCop;
+    assert.ok(Number.isNaN(getDerivedEfficiencyValue("totalCop")));
+  }
+  for (const label of ["CM2 - Heating", "CM3 - Heating", "CM100 - Commissioning"]) {
+    setup({ controlModeLabel: { value: label } });
+    assert.equal(formatOverviewStatValue("totalCop"), "5.0");
+  }
+});
+
 test("start with pump consumption and negative heat never displays a negative COP", () => {
   for (const value of [-6.5, 0, NaN, "nan", "", null, Infinity]) {
     setup({ hp1Freq: { value: 0 }, totalHeat: { value: -233 }, totalPower: { value: 36 }, heatingPowerInput: { value: 36 }, totalCop: { value } });
@@ -98,7 +113,7 @@ test("Duo permits one heating compressor but suppresses partial telemetry or def
 test("direct energy/results navigation keeps live COP operating telemetry hydrated", () => {
   for (const view of ["energy", "results"]) {
     const keys = getOverviewLikeHydrationKeys(view);
-    for (const key of ["hp1Mode", "hp1Freq", "hp1Defrost", "hp2Mode", "hp2Freq", "hp2Defrost"]) {
+    for (const key of ["controlModeLabel", "hp1Mode", "hp1Freq", "hp1Defrost", "hp2Mode", "hp2Freq", "hp2Defrost"]) {
       assert.ok(keys.includes(key), `${view} must hydrate ${key}`);
     }
   }

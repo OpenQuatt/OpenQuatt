@@ -71,6 +71,7 @@ export { hasEntity } from "./entity-store.js";
   }
 
   export function getLiveHeatingCopValue(key) {
+    if (/^CM1(?:\s|$)/.test(String(getEntityValue("controlModeLabel") || "").trim())) return Number.NaN;
     const total = key === "totalCop";
     const panels = total
       ? HP_PANEL_CONFIGS.slice(0, getInstallationTopology() === "duo" ? 2 : 1)

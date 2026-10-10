@@ -22,6 +22,7 @@ inline bool v2_power_quality_contract_active() {
 
 inline oq_energy::HeatingCopState heating_cop_state(const oq_sources::HeatPumpReceipts& receipts, bool online,
                                                     uint64_t now_ms, uint64_t stale_ms) {
+  if (id(oq_control_mode_code) == 1) return {};
   return {receipts.working_mode.value, receipts.compressor_frequency.value, receipts.defrost.value,
           online && receipts.working_mode.fresh(now_ms, stale_ms) &&
               receipts.compressor_frequency.fresh(now_ms, stale_ms) && receipts.defrost.fresh(now_ms, stale_ms) &&

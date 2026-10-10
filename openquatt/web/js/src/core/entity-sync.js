@@ -402,7 +402,7 @@ import { fetchWithTimeout } from "./browser-utils.js";
   }
 
   export function getEnergyViewEntityKeys() {
-    const keys = new Set(HP_PANEL_CONFIGS.flatMap(({ keys }) => [keys.mode, keys.freq, keys.defrost]));
+    const keys = new Set(["controlModeLabel", ...HP_PANEL_CONFIGS.flatMap(({ keys }) => [keys.mode, keys.freq, keys.defrost])]);
     OVERVIEW_ENERGY_COLUMN_CONFIGS.forEach((column) => {
       if (column.counterResetKey) {
         keys.add(column.counterResetKey);

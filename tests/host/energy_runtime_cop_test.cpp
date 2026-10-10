@@ -16,6 +16,7 @@ struct Generation {
 };
 
 Generation test_hp_generation;
+int test_oq_control_mode_code = 2;
 bool test_hp1_odu_generation_detection_complete = true;
 int test_hp1_generation_variant_code = 1;
 bool test_hp1_is_online = true;
@@ -65,6 +66,14 @@ int main() {
   test_hp1_power_input.state = 600.0f;
   test_hp1_heat_power.state = 3000.0f;
   assert(oq_energy_runtime::total_cop(now, age, 10.0f) == 5.0f);
+  // CM1 suppresses COP even while the last operating samples still indicate heating.
+  test_oq_control_mode_code = 1;
+  const auto cm1_state = oq_energy_runtime::heating_cop_state(oq_sources::hp1, true, now, age);
+  assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 5.0f, cm1_state)));
+  assert(isnan(oq_energy_runtime::total_cop(now, age, 10.0f)));
+  test_oq_control_mode_code = 3;
+  assert(oq_energy_runtime::total_cop(now, age, 10.0f) == 5.0f);
+  test_oq_control_mode_code = 2;
   assert(isnan(oq_energy_runtime::total_cop(now + 1, age, 10.0f)));
   observe(oq_sources::hp1, 2.0f, 30.0f, 0.0f, now);
   test_hp1_is_online = false;
