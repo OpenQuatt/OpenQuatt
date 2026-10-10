@@ -52,6 +52,16 @@ vanzelf de dagmeting voor de woninglijn. Beide routes blijven passief.
 Ontbrekende metingen worden nooit vervangen door nul. De voorwaarden voor korte
 meetonderbrekingen en hervatten na een herstart staan hieronder.
 
+Bij stoppen kan werkmodusregister `2099` al uitstand melden terwijl
+compressorfrequentie `2103` nog boven nul staat. Als alle overige metingen en
+bedrijfsinformatie geldig zijn, behoudt een lopende dag deze korte overgang.
+De overgang telt niet als geldige vermogensmeting: de bestaande interpolatie en
+het onzekerheidsbudget gelden zodra consistente metingen terugkeren. Het hele
+interval tussen de geldige meetpunten mag maximaal 120 seconden duren. Een andere
+gelijktijdige meetfout of een te lange overgang onderbreekt de dag wel. Deze
+uitzondering start geen nieuwe dag met tegenstrijdige gegevens; de 1R1C-route en
+de strengere bedrijfstoestandcontrole bij herstel na boot blijven ongewijzigd.
+
 ## Context en opslag
 
 Automatische en handmatige bronwissels voor kamer, setpoint, buiten en flow laten

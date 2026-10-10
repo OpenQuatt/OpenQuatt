@@ -301,8 +301,12 @@ inline ObserveResult observe_snapshot_core(SegmentAccumulator& state, const Lear
   }
 
   if (measurement_status != LearningStatus::OK) {
-    if (may_bridge_daily_gap && snapshot.invalid_reasons != INVALID_NONE &&
-        (snapshot.invalid_reasons & ~(INVALID_ESSENTIAL_SOURCE | INVALID_SOURCE_STALE)) == 0) {
+    // The source builder grants this contract only for scalar gaps or a fully
+    // observed OFF/nonzero-frequency stop transition, never unknown operation.
+    const bool scalar_gap = snapshot.invalid_reasons != INVALID_NONE &&
+                            (snapshot.invalid_reasons & ~(INVALID_ESSENTIAL_SOURCE | INVALID_SOURCE_STALE)) == 0;
+    const bool stop_transition = snapshot.invalid_reasons == INVALID_CONTROL_MODE;
+    if (may_bridge_daily_gap && (scalar_gap || stop_transition)) {
       state.source_gap_pending = true;
       state.last_gap_observation_ms = snapshot.monotonic_ms;
       return result;  // Do not integrate missing values or advance the valid endpoint.
