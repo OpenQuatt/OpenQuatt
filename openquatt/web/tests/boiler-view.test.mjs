@@ -607,21 +607,18 @@ test("DHW permission follows a current OT thermostat status and fails open", () 
   assert.ok(SETTINGS_GROUP_KEY_MAP.integrations.includes("otThermostatDhwEnable"));
 });
 
-test("thermostat slave reports only real flame state, never HP activity as flame", () => {
+test("thermostat slave shows HP heating for both boiler transports and preserves real DHW flame", () => {
   assert.match(
     otSlaveYaml,
-    /const bool slave_flame_on\s*=\s*\n\s*otb_selected \? boiler_flame_on : false;/,
+    /oq_ot_display::flame_on\(hp_display, otb_selected, boiler_flame_on, boiler_on\)/,
   );
   assert.match(otSlaveYaml, /set_slave_flame_on\(slave_flame_on\);/);
   assert.doesNotMatch(otSlaveYaml, /otb_selected \? boiler_flame_on : ch_active/);
 });
 
-test("issue 668: R1 thermostat path reports no invented telemetry", () => {
-  assert.match(otSlaveYaml, /set_slave_rel_mod_level\(NAN\)/);
+test("issue 668: R1 thermostat path keeps unknown pressure and DHW invalid", () => {
   assert.match(otSlaveYaml, /set_slave_ch_pressure\(NAN\)/);
   assert.match(otSlaveYaml, /set_slave_t_dhw\(NAN\)/);
-  assert.match(otSlaveYaml, /set_slave_max_capacity\(NAN\)/);
-  assert.match(otSlaveYaml, /set_slave_min_modulation\(NAN\)/);
   assert.doesNotMatch(otSlaveYaml, /set_slave_ch_pressure\(1\.5f\)/);
   assert.doesNotMatch(otSlaveYaml, /set_slave_t_dhw\(40\.0f\)/);
   assert.doesNotMatch(otSlaveYaml, /oq_demand_filtered\) \* 5\.0f/);
@@ -636,11 +633,12 @@ test("issue 668: R1 thermostat path reports no invented telemetry", () => {
   );
 });
 
-test("issue 668: thermostat forwards real OTB capacity and handles stale links as invalid", () => {
-  assert.match(otSlaveYaml, /id\(otb_max_capacity\)\.state\s*\n?\s*: NAN/);
-  assert.match(otSlaveYaml, /id\(otb_min_modulation\)\.state\s*\n?\s*: NAN/);
-  assert.match(otSlaveYaml, /set_slave_max_capacity\(/);
-  assert.match(otSlaveYaml, /set_slave_min_modulation\(/);
+test("thermostat capacity and modulation consistently describe the HPs, independent of OTB telemetry", () => {
+  assert.match(otSlaveYaml, /oq_ot_display::current_display\(/);
+  assert.match(otSlaveYaml, /set_slave_max_capacity\(hp_display\.max_capacity_kw\)/);
+  assert.match(otSlaveYaml, /set_slave_min_modulation\(hp_display\.min_modulation_percent\)/);
+  assert.match(otSlaveYaml, /set_slave_rel_mod_level\(hp_display\.modulation_percent\)/);
+  assert.doesNotMatch(otSlaveYaml, /id\(otb_(max_capacity|min_modulation|relative_modulation)\)/);
   assert.match(otSlaveYaml, /set_slave_max_t_set\(NAN\)/);
   assert.match(otSlaveYaml, /set_slave_t_outside\(NAN\)/);
   assert.doesNotMatch(otSlaveCpp, /responseData = 0x1400;/);

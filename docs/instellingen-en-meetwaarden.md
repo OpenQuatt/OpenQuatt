@@ -42,6 +42,46 @@ Voor flowdiagnose zijn er wel twee compile-time constanten die je soms in discus
 
 Die bepalen wanneer OpenQuatt een flowafwijking serieus genoeg vindt. Voor normale gebruikers zijn dit zelden de eerste knoppen om aan te raken.
 
+## Terugmelding aan een OpenTherm-thermostaat
+
+OpenQuatt presenteert zich aan de thermostaat als een virtuele warmtebron. Het
+vlammetje betekent **warmtebron actief**: een warmtepomp verwarmt, een
+OpenTherm-ketel meldt een echte vlam (ook bij tapwater), of de R1-keteluitgang is
+actief. Alleen watercirculatie, preflow/postflow en koeling geven geen
+warmtepompvlammetje. Warmtepompactiviteit vereist een online buitenunit met een
+geldige bedrijfsmodus en compressorfrequentie, maximaal
+`oq_hp_water_temp_stale_s` oud (standaard 60 seconden).
+
+De OpenTherm-velden voor capaciteit en modulatie beschrijven altijd het
+**warmtepompdeel**, zowel met een R1- als een OT-ketelaansluiting:
+
+- Maximale capaciteit: de som van de modelreferenties van de gedetecteerde
+  buitenunits bij **A7/W35** (7 °C buiten, 35 °C aanvoer), telkens het hoogste
+  beschikbare modelpunt. De OT-overdracht rondt
+  deze waarde af op hele kW. Dit is een vaste referentie; actuele begrenzingen
+  en weersomstandigheden wijzigen deze capaciteit niet.
+- Minimale modulatie: het kleinste modelvermogen van één draaiende buitenunit
+  bij A7/W35 als percentage van die gezamenlijke referentiecapaciteit.
+- Actuele modulatie: het geschatte verwarmingsvermogen bij de gemeten
+  compressorfrequenties, actuele buiten- en systeemaanvoertemperatuur, gedeeld
+  door dezelfde referentiecapaciteit en begrensd op 0–100%. Dit gebruikt het
+  vermogensmodel, niet een lineair percentage van het compressorlevel.
+  Bij ontdooien geldt de bestaande `oq_defrost_power_factor`; het vlammetje
+  blijft de actieve verwarmingscyclus aangeven.
+
+In CM3 geeft het percentage uitsluitend het warmtepompdeel weer. In CM4 staat
+het bij bevestigde stilstand van de warmtepompen op 0%, terwijl het vlammetje
+ketelbedrijf kan tonen. De echte OT-ketelmodulatie en -capaciteit blijven als
+`OTB - Relative Modulation` en `OTB - Maximum Boiler Capacity` beschikbaar in
+OpenQuatt/Home Assistant.
+
+Ontbrekende detectie, verouderde terugmelding of een onbruikbare
+modelvoorspelling levert `DATA_INVALID` op voor de betreffende numerieke
+waarde. Een bekende referentiecapaciteit blijft bij communicatieverlies
+beschikbaar; de actuele modulatie wordt ongeldig en de warmtepompactiviteitsbits
+vallen weg. Ontbrekende druk- en tapwatermetingen blijven ongeldig. De
+thermostaat bepaalt zelf welke gegevens en pictogrammen hij toont.
+
 ## Welke runtime-instellingen zijn het belangrijkst?
 
 ### 1. Basisbediening en begrenzing

@@ -154,11 +154,6 @@ interval:
                               && !isnan(id(otb_return_water_temp).state)
                           ? id(otb_return_water_temp).state
                           : NAN);
-                  id(oq_ot_slave_hub).set_slave_rel_mod_level(
-                      otb_available && id(otb_relative_modulation).has_state()
-                              && !isnan(id(otb_relative_modulation).state)
-                          ? id(otb_relative_modulation).state
-                          : NAN);
                   id(oq_ot_slave_hub).set_slave_ch_pressure(
                       otb_available && id(otb_ch_pressure).has_state()
                               && !isnan(id(otb_ch_pressure).state)
@@ -169,20 +164,10 @@ interval:
                               && !isnan(id(otb_dhw_temp).state)
                           ? id(otb_dhw_temp).state
                           : NAN);
-                  id(oq_ot_slave_hub).set_slave_max_capacity(
-                      otb_available && id(otb_max_capacity).has_state()
-                              && !isnan(id(otb_max_capacity).state)
-                          ? id(otb_max_capacity).state
-                          : NAN);
-                  id(oq_ot_slave_hub).set_slave_min_modulation(
-                      otb_available && id(otb_min_modulation).has_state()
-                              && !isnan(id(otb_min_modulation).state)
-                          ? id(otb_min_modulation).state
-                          : NAN);
                 } else {
                   // R1 / on-off: only expose real measurements. Unknown
                   // telemetry stays NAN so the slave answers DATA_INVALID.
-                  // No invented pressure, DHW, modulation or capacity.
+                  // No invented pressure or DHW values.
                   id(oq_ot_slave_hub).set_slave_t_boiler(
                       id(water_supply_temp_selected).has_state() &&
                               !isnan(id(water_supply_temp_selected).state)
@@ -193,12 +178,17 @@ interval:
                               !isnan(id(hp1_water_in_temp).state)
                           ? id(hp1_water_in_temp).state
                           : NAN);
-                  id(oq_ot_slave_hub).set_slave_rel_mod_level(NAN);
                   id(oq_ot_slave_hub).set_slave_ch_pressure(NAN);
                   id(oq_ot_slave_hub).set_slave_t_dhw(NAN);
-                  id(oq_ot_slave_hub).set_slave_max_capacity(NAN);
-                  id(oq_ot_slave_hub).set_slave_min_modulation(NAN);
                 }
+                // Capacity/modulation consistently describe the HP installation,
+                // including when the independent boiler transport is OpenTherm.
+                const auto hp_display = oq_ot_display::current_display(
+                    (uint64_t) ${oq_hp_water_temp_stale_s} * 1000ULL,
+                    ${oq_defrost_power_factor});
+                id(oq_ot_slave_hub).set_slave_max_capacity(hp_display.max_capacity_kw);
+                id(oq_ot_slave_hub).set_slave_min_modulation(hp_display.min_modulation_percent);
+                id(oq_ot_slave_hub).set_slave_rel_mod_level(hp_display.modulation_percent);
                 if (id(max_water_temp_limit_c).has_state() && !isnan(id(max_water_temp_limit_c).state)) {
                   id(oq_ot_slave_hub).set_slave_max_t_set(id(max_water_temp_limit_c).state);
                 } else {
@@ -213,25 +203,9 @@ interval:
                 auto is_active_problem = [](auto *binary) -> bool {
                   return binary != nullptr && binary->has_state() && binary->state;
                 };
-                auto is_active_mode = [](int level, auto *mode_sensor, int target_mode) -> bool {
-                  return level > 0 &&
-                         mode_sensor != nullptr &&
-                         mode_sensor->has_state() &&
-                         !isnan(mode_sensor->state) &&
-                         (static_cast<int>(roundf(mode_sensor->state)) == target_mode);
-                };
-
-                const bool hp1_heating_active = is_active_mode(id(hp1_last_applied_level), id(hp1_working_mode), 2);
-                const bool hp2_heating_active =
-                    (${ot_secondary_present} != 0) &&
-                    is_active_mode(id(${secondary_last_applied_level_id}), id(${secondary_working_mode_id}), 2);
-                const bool hp1_cooling_active = is_active_mode(id(hp1_last_applied_level), id(hp1_working_mode), 1);
-                const bool hp2_cooling_active =
-                    (${ot_secondary_present} != 0) &&
-                    is_active_mode(id(${secondary_last_applied_level_id}), id(${secondary_working_mode_id}), 1);
                 const bool boiler_on = id(boiler_active).has_state() && id(boiler_active).state;
-                const bool ch_active = hp1_heating_active || hp2_heating_active || boiler_on;
-                const bool cooling_active = hp1_cooling_active || hp2_cooling_active;
+                const bool ch_active = hp_display.heating_active || boiler_on;
+                const bool cooling_active = hp_display.cooling_active;
                 const bool boiler_dhw_present =
                     otb_available && id(otb_dhw_present).has_state() &&
                     id(otb_dhw_present).state;
@@ -240,10 +214,10 @@ interval:
                     id(otb_dhw_active).state;
                 const bool boiler_flame_on =
                     otb_available && id(otb_flame_on).has_state() && id(otb_flame_on).state;
-                // Flame only on real flame state (OTB). HP/CH activity
-                // is not a flame; R1 therefore never reports flame_on.
+                // Thermostat flame icon means an active heat source: HP heating,
+                // a real OTB flame (including DHW), or an energised R1 relay.
                 const bool slave_flame_on =
-                    otb_selected ? boiler_flame_on : false;
+                    oq_ot_display::flame_on(hp_display, otb_selected, boiler_flame_on, boiler_on);
 
                 const bool hp1_fault = is_active_problem(id(hp1_ot_fault_active));
                 const bool hp2_fault =
