@@ -1,6 +1,0 @@
-# ==============================================================================
-# OpenQuatt - Heatpump Controller Q Duo WiFi compatibility entrypoint
-# ==============================================================================
-# The released WiFi and Ethernet assets are aliases of the same topology firmware.
-packages:
-  unified_q_duo: !include duo.yaml

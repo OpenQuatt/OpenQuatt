@@ -35,10 +35,21 @@ Duo already contains it. A direct `substitutions: !include` of a topology file
 must also become a package include. Hard-coded Q profile-fragment paths must
 use the new `profiles/heatpump_controller_q/` subdirectory.
 
-The historical `single_wifi.yaml`, `single_eth.yaml`, `duo_wifi.yaml` and
-`duo_eth.yaml` paths remain aliases of these two unified release targets.
-`duo_hil.yaml` has a separate testcontroller identity; scenario overlays live
-under `scripts/hil/configs/` and are excluded from `build_targets.yaml`.
+Only `single.yaml`, `duo.yaml` and `duo_hil.yaml` remain under
+`configs/heatpump_controller_q/`. Each firmware supports both WiFi and Ethernet;
+select the preferred connection at runtime. The historical YAML aliases have
+been removed. Update custom includes and saved commands as follows:
+
+| Removed entrypoints | Canonical entrypoint |
+| --- | --- |
+| `single_wifi.yaml`, `single_eth.yaml` | `single.yaml` |
+| `duo_wifi.yaml`, `duo_eth.yaml` | `duo.yaml` |
+| `duo_wifi_hil.yaml` | `duo_hil.yaml` |
+
+Historical release-artifact aliases remain available for existing download and
+OTA paths. `duo_hil.yaml` has a separate testcontroller identity; scenario
+overlays live under `scripts/hil/configs/` and are excluded from
+`build_targets.yaml`.
 
 Each entrypoint includes:
 

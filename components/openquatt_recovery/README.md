@@ -73,6 +73,6 @@ echte recoverycomponent tegen kleine adapters en injecteert opslag-/autorisatief
 `bash scripts/run_host_regression_tests.sh` test onder andere knopdrempels,
 stuck-at-boot, deadline, millis-wrap en exclusieve acties.
 
-Firmware: `esphome compile configs/heatpump_controller_q/duo_wifi.yaml`.
+Firmware: `esphome compile configs/heatpump_controller_q/duo.yaml`.
 Hardware-/netwerk-interleavings en interne heap/stackmarges moeten vóór merge
 nog op de HIL worden gemeten; een geslaagde compile bewijst die niet.

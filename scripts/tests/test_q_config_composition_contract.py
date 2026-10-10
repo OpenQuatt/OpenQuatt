@@ -16,7 +16,6 @@ DUO_TOPOLOGY = (ROOT / "openquatt" / "topology" / "duo.yaml").read_text()
 Q_PROFILE = (ROOT / "openquatt" / "profiles" / "heatpump_controller_q.yaml").read_text()
 NETWORK_PROFILE = (ROOT / "openquatt" / "connection" / "wifi_eth.yaml").read_text()
 HIL_DUO = (ROOT / "configs" / "heatpump_controller_q" / "duo_hil.yaml").read_text()
-HIL_DUO_COMPAT = (ROOT / "configs" / "heatpump_controller_q" / "duo_wifi_hil.yaml").read_text()
 
 
 def yaml_scalar(text: str, key: str) -> str:
@@ -149,11 +148,8 @@ class QConfigCompositionContractTest(unittest.TestCase):
                     )
                     self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_hil_build_has_canonical_unified_entrypoint_and_wifi_shim(self) -> None:
+    def test_hil_build_has_canonical_unified_entrypoint(self) -> None:
         self.assertIn('openquatt_q_duo: !include duo.yaml', HIL_DUO)
-        self.assertNotIn('!include duo_wifi.yaml', HIL_DUO)
-        self.assertIn('!include duo_hil.yaml', HIL_DUO_COMPAT)
-        self.assertNotIn('flash_write_interval: 1s', HIL_DUO_COMPAT)
 
 
 if __name__ == "__main__":
