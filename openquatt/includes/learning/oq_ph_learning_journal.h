@@ -157,7 +157,7 @@ inline bool daily_context_matches(const uint8_t* stored, size_t stored_size, con
   old.position = prefix_size;
   if (read_u32(old) == kLearningMeasurementContextMarker) return false;
   old.position = prefix_size + legacy_source_keys_size;
-  const auto string_length = [](Reader& reader) {
+  const auto string_length = [](Reader& reader) -> uint32_t {
     const uint32_t length = read_u32(reader);
     if (!reader.ok || length > reader.size - reader.position) {
       reader.ok = false;
