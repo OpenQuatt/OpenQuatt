@@ -325,6 +325,6 @@ eerdere featureversie, nu bovenop `dev`: 919000 → 925000. CSS blijft raw gelij
 De nieuwe previewreset was geautomatiseerd gecontroleerd; de browsermatrix en Safari/iOS waren
 nog niet afgevinkt. De OTA-smoke-test bevestigt de nieuwe bronketen en één dynamische learning-sample.
 
-De config-only projectwrapper heeft drie bestaande stijlmeldingen in `configs/hil/input_sources_fast_duo_wifi.yaml`
+De config-only projectwrapper heeft drie bestaande stijlmeldingen in `scripts/hil/configs/input_sources_fast_duo.yaml`
 en `openquatt/oq_common.yaml`. Directe ESPHome-validatie blijft beschikbaar. Echte stroomonderbrekingen,
 herstel op de controller en geheugen-/timingbelasting zijn nog niet op de vereenvoudigde build getest.

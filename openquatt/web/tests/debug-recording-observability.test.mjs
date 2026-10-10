@@ -417,7 +417,7 @@ test("issue 746 legt flowbron en pompdiagnostiek volledig vast", async () => {
     readFile(new URL("../../oq_sensor_sources.yaml", import.meta.url), "utf8"),
     readFile(new URL("../../oq_flow_control.yaml", import.meta.url), "utf8"),
     readFile(new URL("../../oq_cic.yaml", import.meta.url), "utf8"),
-    readFile(new URL("../../profiles/heatpump_controller_q.yaml", import.meta.url), "utf8"),
+    readFile(new URL("../../profiles/heatpump_controller_q/local_sensors.yaml", import.meta.url), "utf8"),
     readFile(new URL("../../oq_HP_io.yaml", import.meta.url), "utf8"),
   ]);
 

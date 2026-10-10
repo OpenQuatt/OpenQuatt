@@ -1,5 +1,10 @@
+import os
 from pathlib import Path
 import re
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
 
 
@@ -8,8 +13,6 @@ SINGLE_TARGET = (ROOT / "configs" / "heatpump_controller_q" / "single.yaml").rea
 DUO_TARGET = (ROOT / "configs" / "heatpump_controller_q" / "duo.yaml").read_text()
 SINGLE_TOPOLOGY = (ROOT / "openquatt" / "topology" / "single.yaml").read_text()
 DUO_TOPOLOGY = (ROOT / "openquatt" / "topology" / "duo.yaml").read_text()
-SINGLE_TOPOLOGY_PACKAGE = (ROOT / "openquatt" / "topology" / "single_package.yaml").read_text()
-DUO_TOPOLOGY_PACKAGE = (ROOT / "openquatt" / "topology" / "duo_package.yaml").read_text()
 Q_PROFILE = (ROOT / "openquatt" / "profiles" / "heatpump_controller_q.yaml").read_text()
 NETWORK_PROFILE = (ROOT / "openquatt" / "connection" / "wifi_eth.yaml").read_text()
 HIL_DUO = (ROOT / "configs" / "heatpump_controller_q" / "duo_hil.yaml").read_text()
@@ -50,7 +53,7 @@ class QConfigCompositionContractTest(unittest.TestCase):
             ):
                 self.assertNotRegex(target, yaml_key_pattern(key))
 
-        for package in (SINGLE_TOPOLOGY_PACKAGE, DUO_TOPOLOGY_PACKAGE):
+        for package in (SINGLE_TOPOLOGY, DUO_TOPOLOGY):
             self.assertNotRegex(package, yaml_key_pattern("oq_topology_build_flag"))
 
     def test_hardware_and_network_have_single_owners(self) -> None:
@@ -61,14 +64,13 @@ class QConfigCompositionContractTest(unittest.TestCase):
         self.assertIn('oq_connection: "auto"', NETWORK_PROFILE)
         self.assertIn('oq_connection_text_internal: "false"', NETWORK_PROFILE)
 
-    def test_topology_package_owns_expanded_manifest_routing(self) -> None:
+    def test_q_profile_owns_expanded_manifest_routing(self) -> None:
         for package, topology_config, topology, alternate in (
-            (SINGLE_TOPOLOGY_PACKAGE, SINGLE_TOPOLOGY, "single", "duo"),
-            (DUO_TOPOLOGY_PACKAGE, DUO_TOPOLOGY, "duo", "single"),
+            (Q_PROFILE, SINGLE_TOPOLOGY, "single", "duo"),
+            (Q_PROFILE, DUO_TOPOLOGY, "duo", "single"),
         ):
             self.assertEqual(yaml_scalar(topology_config, "oq_topology"), topology)
-            self.assertEqual(yaml_scalar(package, "alternate_topology"), alternate)
-            self.assertIn(f'!include {topology}.yaml', package)
+            self.assertEqual(yaml_scalar(topology_config, "alternate_topology"), alternate)
 
             main_url = yaml_scalar(package, "main_release_manifest_url").replace(
                 "${oq_topology}", topology
@@ -103,6 +105,49 @@ class QConfigCompositionContractTest(unittest.TestCase):
                 yaml_scalar(package, "release_manifest_url"),
                 "${main_release_manifest_url}",
             )
+
+    def test_grouped_headers_are_not_also_included_as_files(self) -> None:
+        grouped_header = re.compile(r"^\s+-\s+[^\n]*(?:\$\{openquatt_root\}|(?:\.\./)+openquatt)/includes/[^\n]+\.(?:h|hpp|tcc)\s*$", re.MULTILINE)
+        for path in (ROOT / "openquatt").rglob("*.yaml"):
+            self.assertNotRegex(path.read_text(), grouped_header, str(path.relative_to(ROOT)))
+
+    def test_usage_telemetry_detects_hardware_header_in_generated_layout(self) -> None:
+        telemetry = (ROOT / "components/openquatt_usage_telemetry/OpenQuattUsageTelemetry.cpp").read_text()
+        conditional_include = re.search(
+            r"#if __has_include\([^\n]+\)\n.*?#endif", telemetry, re.DOTALL
+        )
+        self.assertIsNotNone(conditional_include)
+        compiler = os.environ.get("CXX", "c++")
+        sdk_flags = (["-isystem", "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1"]
+                     if sys.platform == "darwin" else [])
+        with tempfile.TemporaryDirectory() as directory:
+            src = Path(directory)
+            (src / "esp_efuse.h").write_text(
+                "#pragma once\n#include <cstdint>\n"
+                "using esp_err_t = int;\nconstexpr esp_err_t ESP_OK = 0;\n"
+                "inline esp_err_t esp_efuse_read_field_blob(const void*, void*, unsigned) { return ESP_OK; }\n"
+            )
+            (src / "esp_efuse_table.h").write_text(
+                "#pragma once\ninline constexpr const void* ESP_EFUSE_USER_DATA = nullptr;\n"
+            )
+            for available in (False, True):
+                with self.subTest(header_available=available):
+                    if available:
+                        shutil.copytree(ROOT / "openquatt/includes/hardware", src / "includes/hardware")
+                    expectation = (
+                        "#ifndef OPENQUATT_HAS_Q_HARDWARE_REVISION\n#error Missing Q hardware revision\n#endif\n"
+                        "int main() { return oq_hardware::read_hardware_revision_efuse().error; }\n"
+                        if available else
+                        "#ifdef OPENQUATT_HAS_Q_HARDWARE_REVISION\n#error Unexpected Q hardware revision\n#endif\n"
+                        "int main() { return 0; }\n"
+                    )
+                    result = subprocess.run(
+                        [compiler, *sdk_flags, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                         "-fsyntax-only", "-x", "c++", "-I", str(src), "-"],
+                        input=conditional_include.group(0) + "\n" + expectation,
+                        text=True, capture_output=True, check=False,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_hil_build_has_canonical_unified_entrypoint_and_wifi_shim(self) -> None:
         self.assertIn('openquatt_q_duo: !include duo.yaml', HIL_DUO)

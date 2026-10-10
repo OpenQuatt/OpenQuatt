@@ -3,7 +3,7 @@
 # ==============================================================================
 packages:
   oq_cic_compatibility_hp2: !include
-    file: ../oq_cic_compatibility_server.yaml
+    file: ../../oq_cic_compatibility_server.yaml
     vars:
       cic_compat_hp_id: "hp2"
       cic_compat_label: "HP2"

@@ -5,7 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 HP_IO = (ROOT / "openquatt/oq_HP_io.yaml").read_text()
-Q_PROFILE = (ROOT / "openquatt/profiles/heatpump_controller_q.yaml").read_text()
+Q_PROFILE = (ROOT / "openquatt/profiles/heatpump_controller_q/local_sensors.yaml").read_text()
 RAW_RECEIPT = (ROOT / "openquatt/includes/sources/oq_raw_receipt.h").read_text()
 RECEIPT_RUNTIME = (ROOT / "openquatt/includes/sources/oq_source_receipt_runtime.h").read_text()
 COMMON_BASE = (ROOT / "openquatt/base/common.yaml").read_text()

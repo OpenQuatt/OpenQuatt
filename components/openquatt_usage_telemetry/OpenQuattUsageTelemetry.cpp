@@ -11,8 +11,8 @@
 #include "esp_heap_caps.h"
 #include "esp_memory_utils.h"
 #include "freertos/idf_additions.h"
-#if __has_include("heatpump_controller_q_hardware_revision.h")
-#include "heatpump_controller_q_hardware_revision.h"
+#if __has_include("includes/hardware/heatpump_controller_q_hardware_revision.h")
+#include "includes/hardware/heatpump_controller_q_hardware_revision.h"
 #define OPENQUATT_HAS_Q_HARDWARE_REVISION
 #endif
 #include "esp_system.h"

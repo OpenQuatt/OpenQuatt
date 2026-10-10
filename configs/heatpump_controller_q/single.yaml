@@ -10,17 +10,8 @@ esphome:
 
 packages:
   openquatt_substitutions_common: !include ../../openquatt/oq_substitutions_common_package.yaml
-  openquatt_topology_single_substitutions: !include ../../openquatt/topology/single_package.yaml
+  openquatt_topology_single: !include ../../openquatt/topology/single.yaml
   openquatt_profile_heatpump_controller_q: !include ../../openquatt/profiles/heatpump_controller_q.yaml
   openquatt_base_common: !include ../../openquatt/base/common.yaml
   openquatt_connection_wifi_eth: !include ../../openquatt/connection/wifi_eth.yaml
   openquatt_packages_common: !include ../../openquatt/oq_packages_common.yaml
-
-# Keep the UART RX input at idle HIGH during brief RS485 receiver turn-off gaps.
-uart:
-  - id: !extend uart_bus
-    rx_pin:
-      number: ${uart_rx_pin}
-      mode:
-        input: true
-        pullup: true

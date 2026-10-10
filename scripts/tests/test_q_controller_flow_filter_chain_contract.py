@@ -4,7 +4,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 Q_PROFILE = (
-    ROOT / "openquatt" / "profiles" / "heatpump_controller_q.yaml"
+    ROOT / "openquatt" / "profiles" / "heatpump_controller_q" / "local_sensors.yaml"
 ).read_text()
 
 

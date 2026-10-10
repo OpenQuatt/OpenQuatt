@@ -35,9 +35,9 @@ modbus:
     role: server
 
 packages:
-  oq_cic_compatibility: !include ../oq_cic_compatibility.yaml
+  oq_cic_compatibility: !include ../../oq_cic_compatibility.yaml
   oq_cic_compatibility_hp1: !include
-    file: ../oq_cic_compatibility_server.yaml
+    file: ../../oq_cic_compatibility_server.yaml
     vars:
       cic_compat_hp_id: "hp1"
       cic_compat_label: "HP1"
