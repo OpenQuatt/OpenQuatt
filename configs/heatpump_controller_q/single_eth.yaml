@@ -1,6 +1,0 @@
-# ==============================================================================
-# OpenQuatt - Heatpump Controller Q Single Ethernet compatibility entrypoint
-# ==============================================================================
-# The released WiFi and Ethernet assets are aliases of the same topology firmware.
-packages:
-  unified_q_single: !include single.yaml

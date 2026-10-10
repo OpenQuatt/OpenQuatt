@@ -60,7 +60,7 @@ class NvsPersistenceContractTest(unittest.TestCase):
         from esphome.core import CORE
 
         # Raw YAML assertions cannot detect hooks replaced by later packages.
-        for target in ("duo_wifi.yaml", "duo_hil.yaml", "single_wifi.yaml"):
+        for target in ("duo.yaml", "duo_hil.yaml", "single.yaml"):
             with self.subTest(target=target):
                 CORE.reset()
                 CORE.config_path = ROOT / "configs/heatpump_controller_q" / target

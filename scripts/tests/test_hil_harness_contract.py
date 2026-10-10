@@ -8,7 +8,6 @@ PROFILE = (ROOT / "scripts/hil/configs/input_sources_fast_duo.yaml").read_text()
 V2_PROFILE = (ROOT / "scripts/hil/configs/v2_performance_duo.yaml").read_text()
 HIL_BASE = (ROOT / "scripts/hil/configs/base_duo.yaml").read_text()
 HIL_CONTROLLER = (ROOT / "configs/heatpump_controller_q/duo_hil.yaml").read_text()
-HIL_CONTROLLER_COMPAT = (ROOT / "configs/heatpump_controller_q/duo_wifi_hil.yaml").read_text()
 RUNNER = (ROOT / "scripts/hil/run-input-sources.mjs").read_text()
 SCENARIO = (ROOT / "tests/hil/scenarios/input-sources.mjs").read_text()
 SESSION = (ROOT / "scripts/hil/session.mjs").read_text()
@@ -31,7 +30,7 @@ class HilHarnessContractTest(unittest.TestCase):
         )
         self.assertIn('name: "HIL Test Profile"', PROFILE)
         self.assertIn('return {"input-sources-fast-v1"};', PROFILE)
-        self.assertNotIn("input_sources_fast_duo_wifi.yaml", TARGETS)
+        self.assertNotIn("scripts/hil/configs/input_sources_fast_duo.yaml", TARGETS)
 
     def test_hil_overlays_never_claim_the_production_identity(self):
         # duo.yaml carries the production device_name "openquatt". An overlay
@@ -112,12 +111,11 @@ class HilHarnessContractTest(unittest.TestCase):
         self.assertIn("id(cic_component).stop_poller();", V2_PROFILE)
         self.assertIn("id(cic_component).start_poller();", V2_PROFILE)
         self.assertIn("flash_write_interval: 1s", HIL_CONTROLLER)
-        self.assertIn("!include duo_hil.yaml", HIL_CONTROLLER_COMPAT)
         self.assertIn("openquatt-modbus-opentherm-v2", V2_RUNNER)
         self.assertIn("v2PerformanceScenario", V2_RUNNER)
         self.assertIn("configs/heatpump_controller_q/duo_hil.yaml", V2_RUNNER)
         self.assertNotIn("192.168.", V2_RUNNER)
-        self.assertNotIn("issue_667_v2_performance_duo_wifi.yaml", TARGETS)
+        self.assertNotIn("scripts/hil/configs/v2_performance_duo.yaml", TARGETS)
 
     def test_hil_scenarios_are_domain_oriented_and_selective(self):
         normalized_policy = " ".join(SCENARIO_POLICY.split())

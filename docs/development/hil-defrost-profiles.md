@@ -12,8 +12,8 @@ manual-defrost-, flow- en CM1-stopresultaten bewijzen dit contract niet.
 - Leg kandidaatcommit, firmware/config-hash, simulatorversie, actieve én pending
   ODU-profielen/adressen, controllerinstellingen en beide defroststatussen vast.
   Verifieer testcontroller `openquatt-test`; productie blijft buiten scope.
-- Gebruik `duo_hil.yaml` voor de labidentiteit. De normale Q WiFi Duo-config is
-  `configs/heatpump_controller_q/duo_wifi.yaml`; flash die niet met de
+- Gebruik `duo_hil.yaml` voor de labidentiteit. De normale Q Duo-config voor
+  WiFi en Ethernet is `configs/heatpump_controller_q/duo.yaml`; flash die niet met de
   productie-hostname op deze bench. OTA, controller-/simulatorreboot en een
   eventuele NVS-reset vereisen toestemming voor de concrete run.
 - Controleer op de draaiende simulator exact

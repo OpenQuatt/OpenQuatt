@@ -1,7 +1,0 @@
-# ==============================================================================
-# OpenQuatt - HCQ desktop HIL Duo WiFi compatibility entrypoint
-# ==============================================================================
-# The HIL firmware is a unified WiFi + Ethernet build. Keep this historical
-# path as a compatibility shim for local scripts and saved commands.
-packages:
-  openquatt_q_duo_hil: !include duo_hil.yaml
