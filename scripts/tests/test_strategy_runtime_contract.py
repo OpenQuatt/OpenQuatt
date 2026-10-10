@@ -46,7 +46,7 @@ class StrategyRuntimeContractTest(unittest.TestCase):
     def test_runtime_owns_lifecycle_and_side_effects(self) -> None:
         required = {
             "heating_curve": ("write_pid_output", "strategy_tick", "dispatch_tick", "integral_reset_required"),
-            "power_house": ("set_response_profile", "decide_demand", "decide_dispatch", "void reset()"),
+            "power_house": ("set_response_profile", "decide_startup_demand", "decide_dispatch", "void reset()"),
             "cooling": ("demand_tick", "dispatch_tick", "publish_limiter_event_", "minimum_off_remaining_s"),
             "strategy": ("switch_heating_mode", "reset_shared_", "local_outside_temperature"),
         }
@@ -87,7 +87,8 @@ class StrategyRuntimeContractTest(unittest.TestCase):
         # base/effective demand, comfort stop and house-deficit semantics.
         # Measured 1464 lines after combining the external curve modifier
         # with dev's confirmed-stop transition to CM0.
-        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1470)
+        # Boot input acquisition adds explicit invalid outputs and a one-shot deadline.
+        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1515)
         self.assertLessEqual(len(HEAT_INTENT_RUNTIME.splitlines()), 90)
         # The selector now returns source provenance alongside its value; keep it local.
         self.assertLessEqual(len(LOGIC.splitlines()), 75)

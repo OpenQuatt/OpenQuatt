@@ -54,6 +54,15 @@ struct DemandDecision {
   bool valid = false;
   DemandContributions contributions;
 };
+constexpr uint32_t kStartupInputWaitMs = 120000U;
+enum class StartupPhase : uint8_t { WAITING_INPUTS, INPUT_TIMEOUT, READY };
+
+inline StartupPhase update_startup_phase(StartupPhase phase, uint32_t now_ms, bool inputs_valid) {
+  if (phase == StartupPhase::READY || inputs_valid) return StartupPhase::READY;
+  if (phase == StartupPhase::INPUT_TIMEOUT || now_ms >= kStartupInputWaitMs) return StartupPhase::INPUT_TIMEOUT;
+  return StartupPhase::WAITING_INPUTS;
+}
+
 inline float clamp_power(float value, float low, float high) {
   if (value < low) return low;
   if (value > high) return high;
@@ -175,6 +184,20 @@ inline DemandDecision decide_demand(const DemandInput& in, const DemandTuning& t
   const float watts =
       valid_reference ? modelled_house_power_w(in.zero_power_c, in.cold_c, in.outside_c, in.rated_w) : NAN;
   return decide_demand_with_power(in, tuning, state, watts, house_envelope_from_legacy(in.rated_w));
+}
+
+// Boot acquisition must not turn missing inputs into a previous 0 W demand.
+// A timeout requests a safe stop; even late first inputs still start from the
+// current house need. After the first valid tick, normal input-loss handling wins.
+inline DemandDecision decide_startup_demand(const DemandInput& in, const DemandTuning& tuning, const DemandState& state,
+                                            StartupPhase& phase) {
+  auto out = decide_demand(in, tuning, state);
+  phase = update_startup_phase(phase, in.now_ms, out.valid);
+  if (phase != StartupPhase::READY) {
+    out.next = state;
+    out.requested_w = phase == StartupPhase::WAITING_INPUTS ? NAN : 0.0f;
+  }
+  return out;
 }
 
 // Pure entry point for evaluating a separately supplied line. Runtime activation
