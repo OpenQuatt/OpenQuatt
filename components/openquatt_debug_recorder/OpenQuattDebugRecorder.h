@@ -29,7 +29,6 @@ class OpenQuattDebugRecorder : public Component {
   float get_setup_priority() const override;
 
   bool configure(const std::string& entities, bool reset);
-  bool start(uint32_t duration_s);
   bool start_rolling();
   bool restart_rolling();
   void stop();
@@ -48,22 +47,23 @@ class OpenQuattDebugRecorder : public Component {
 
  protected:
   static constexpr uint32_t SAMPLE_INTERVAL_MS = 10000;
-  static constexpr uint32_t DEFAULT_DURATION_S = 15 * 60;
-  static constexpr uint32_t MIN_DURATION_S = 60;
-  static constexpr uint32_t MAX_DURATION_S = 60 * 60;
-  static constexpr size_t BUFFER_BYTES = 1024U * 1024U;
+  // The full default schema retains over six hours at the 10-second interval.
+  static constexpr size_t BUFFER_BYTES = 2U * 1024U * 1024U;
   // 272 keeps the >= 12 spare field slots the debug-recording contract
   // requires after adding the defrost/R1 target-control fields. Both field
   // tables live in PSRAM, so this costs 2 x 16 x sizeof(DebugField) external
   // bytes and no internal DRAM.
   static constexpr size_t FIELD_CAPACITY = 272;
-  static constexpr size_t SYSTEM_FIELD_COUNT = 5;
+  // Five memory/time fields plus one firmware-owned configuration column.
+  static constexpr size_t SYSTEM_FIELD_COUNT = 6;
+  static constexpr size_t CONFIGURATION_FIELD_CAPACITY = 16;
+  static constexpr size_t CONFIGURATION_SCRATCH_BYTES = 1024;
   static constexpr size_t FIELD_KEY_BYTES = 40;
   static constexpr size_t FIELD_NAME_BYTES = 48;
   static constexpr size_t FIELD_UNIT_BYTES = 24;
-  static constexpr size_t STRING_ENTRY_CAPACITY = 1024;
-  static constexpr size_t STRING_BUCKET_CAPACITY = 256;
-  static constexpr size_t STRING_DATA_BYTES = 64U * 1024U;
+  static constexpr size_t STRING_ENTRY_CAPACITY = 4096;
+  static constexpr size_t STRING_BUCKET_CAPACITY = 1024;
+  static constexpr size_t STRING_DATA_BYTES = 256U * 1024U;
   static constexpr size_t SAMPLE_HEADER_BYTES = 8;
   static constexpr uint32_t MISSING_VALUE = UINT32_MAX;
   static constexpr uint16_t INVALID_STRING_INDEX = UINT16_MAX;
@@ -75,7 +75,9 @@ class OpenQuattDebugRecorder : public Component {
     BINARY_SENSOR,
     SWITCH,
     TEXT_SENSOR,
+    TIME_HHMM,
     SELECT,
+    CONFIGURATION_SNAPSHOT,
     SYSTEM_UPTIME_MS,
     SYSTEM_FREE_HEAP,
     SYSTEM_FREE_PSRAM,
@@ -108,14 +110,12 @@ class OpenQuattDebugRecorder : public Component {
     PsramBuffer<char> string_data{};
     bool available{false};
     bool active{false};
-    bool rolling{false};
     bool string_overflow{false};
+    bool configuration_snapshot_overflow{false};
     uint64_t recording_id{0};
     uint64_t exported_at_ms{0};
     uint64_t started_at_ms{0};
     uint64_t ended_at_ms{0};
-    uint32_t duration_s{0};
-    uint32_t retained_duration_s{0};
     uint32_t retention_capacity_s{0};
     uint32_t event_count{0};
     size_t count{0};
@@ -125,7 +125,7 @@ class OpenQuattDebugRecorder : public Component {
     size_t missing_field_count{0};
     size_t string_data_used{0};
 
-    bool allocate();
+    bool allocate(size_t sample_bytes, size_t fields_count, size_t string_bytes);
     const uint8_t* sample_at(size_t index) const;
     const StringEntry* string_at(uint32_t index) const;
   };
@@ -139,12 +139,15 @@ class OpenQuattDebugRecorder : public Component {
   PsramBuffer<uint16_t> string_buckets_{};
   PsramBuffer<uint16_t> string_compaction_order_{};
   PsramBuffer<char> string_data_{};
+  PsramBuffer<DebugField> configuration_fields_{};
+  PsramBuffer<char> configuration_scratch_{};
+  size_t configuration_field_count_{0};
+  bool configuration_snapshot_overflow_{false};
   // enabled_ is the persistent user preference (default on). active_ reports
   // whether sampling is actually running. available_() reports whether the
   // recorder is technically usable (PSRAM allocation succeeded).
   bool enabled_{true};
   bool active_{false};
-  bool rolling_{false};
   bool configuration_pending_{false};
   bool string_overflow_{false};
   mutable bool export_in_progress_{false};
@@ -154,7 +157,6 @@ class OpenQuattDebugRecorder : public Component {
   // millis() wrap with monotonic sample offsets.
   uint64_t started_monotonic_ms_{0};
   uint64_t stopped_monotonic_ms_{0};
-  uint32_t duration_s_{DEFAULT_DURATION_S};
   uint64_t last_sample_monotonic_ms_{0};
   uint32_t last_millis_32_{0};
   uint32_t millis_wrap_count_{0};
@@ -182,7 +184,9 @@ class OpenQuattDebugRecorder : public Component {
            static_cast<bool>(this->string_entries_) && this->string_entries_.is_external() &&
            static_cast<bool>(this->string_buckets_) && this->string_buckets_.is_external() &&
            static_cast<bool>(this->string_compaction_order_) && this->string_compaction_order_.is_external() &&
-           static_cast<bool>(this->string_data_) && this->string_data_.is_external();
+           static_cast<bool>(this->string_data_) && this->string_data_.is_external() &&
+           static_cast<bool>(this->configuration_fields_) && this->configuration_fields_.is_external() &&
+           static_cast<bool>(this->configuration_scratch_) && this->configuration_scratch_.is_external();
   }
   bool lock_state_(TickType_t wait_ticks = portMAX_DELAY) const;
   void unlock_state_() const;
@@ -194,6 +198,8 @@ class OpenQuattDebugRecorder : public Component {
   // field list, resolving entities by name. Missing entities are counted and
   // skipped, so partial topologies still record.
   bool configure_default_schema_();
+  bool configure_configuration_fields_();
+  uint32_t capture_configuration_();
   // Starts rolling recording; caller must hold the state lock and the field
   // configuration must already be active.
   void start_rolling_locked_();
@@ -210,11 +216,9 @@ class OpenQuattDebugRecorder : public Component {
   uint64_t started_time_ms_() const;
   uint64_t ended_time_ms_() const;
   uint32_t elapsed_s_() const;
-  uint32_t remaining_s_() const;
   uint32_t retained_duration_s_() const;
   uint32_t retention_capacity_s_() const;
   uint32_t estimated_size_() const;
-  uint32_t sanitize_duration_s_(uint32_t duration_s) const;
   void clear_();
   void clear_strings_();
   void abort_pending_configuration_();
@@ -226,6 +230,7 @@ class OpenQuattDebugRecorder : public Component {
   void retain_string_(uint32_t index);
   void release_sample_strings_(const uint8_t* sample);
   static uint8_t value_size_for_type_(FieldType type);
+  static bool string_type_(FieldType type);
   static bool event_type_(FieldType type);
   static uint32_t read_value_(const uint8_t* sample, const DebugField& field);
   static void write_value_(uint8_t* sample, const DebugField& field, uint32_t value);
@@ -237,7 +242,7 @@ class OpenQuattDebugRecorder : public Component {
   static void write_sample_header_(uint8_t* sample, uint32_t offset_s, uint16_t change_count, uint16_t event_count);
   uint8_t* writable_sample_at_(size_t physical_index);
   const uint8_t* sample_at_(size_t index) const;
-  bool capture_snapshot_(RecordingSnapshot* snapshot) const;
+  bool capture_snapshot_(RecordingSnapshot* snapshot, uint32_t last_minutes) const;
   void write_recording_export_(httpd_req_t* req, uint32_t last_minutes) const;
   void rotate_csrf_token_();
 };

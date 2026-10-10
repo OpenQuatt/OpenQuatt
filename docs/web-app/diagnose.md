@@ -37,11 +37,19 @@ Tijdelijke PSRAM-historie is op alle ondersteunde profielen standaard aan en wor
 De Systeemrecorder bewaart continu recente systeemgegevens, dus je hoeft een opname niet vooraf te starten:
 
 1. Open **Diagnostiek → Systeemrecorder**.
-2. Kies het venster dat het probleem afdekt: laatste 15, 30 of 60 minuten, of alles wat beschikbaar is.
+2. Kies het venster dat het probleem afdekt: laatste 15, 30 of 60 minuten, 2 of 6 uur, of alles wat beschikbaar is.
 3. Download het diagnosebestand.
 4. Voeg het gedownloade `.oqdebug.json`-bestand toe aan je Discord-vraag of GitHub-issue. Via **Open analyser** kun je het bestand zelf alvast bekijken op OpenHeatPumps; er wordt niets automatisch verzonden.
 
+De recorder gebruikt een ringbuffer van 2 MiB in PSRAM en neemt elke 10 seconden een sample. Met de volledige standaardveldenset past er ongeveer 7 uur en 19 minuten historie in; de beschikbare duur staat in de popup. De recorder blijft doorlopen en vervangt de oudste samples zodra de buffer vol is. Uitschakelen bewaart de huidige historie nog tot een herstart van het apparaat; **Nieuwe opname** wist de historie. Na een apparaatherstart begint de historie opnieuw.
+
 De opname wordt lokaal in het apparaatgeheugen opgeslagen en niets wordt automatisch verzonden. Deel het bestand alleen binnen het supportverzoek waarvoor je het hebt gemaakt.
+
+Bij **Langer doorverwarmen** bevat de opname de aan/uitstand, de stopgrens boven de gewenste temperatuur en de afkoeling voor een warme herstart. Deze instellingen staan samen met gekozen temperatuurbronnen en compressorbegrenzingen in een configuratiesnapshot. Het bestand bewaart de startsituatie en wijzigingen die bij volgende samples worden waargenomen; de sampleperiode is 10 seconden.
+
+De cyclusstatus wordt afzonderlijk opgenomen, bijvoorbeeld doorverwarmen, comfortstop of wachten op warme herstart. Ook het basisvermogen, de doorverwarmvloer, de herstelcorrectie en de laatst berekende stop- en herstarttemperatuur worden bewaard. De ingestelde afkoeling is een temperatuurverschil in °C; de effectieve herstartgrens houdt ook rekening met de comfortondergrens. De regelstatus en berekende grenzen beschrijven de laatst gepubliceerde evaluatie en kunnen kort achterlopen op een zojuist gewijzigde instelling.
+
+Niet-beschikbare instellingen worden expliciet als ontbrekend vastgelegd. De configuratiesnapshot bevat geen wachtwoorden, tokens of live API-ingangwaarden. Dit diagnosebestand is bedoeld om het gedrag te verklaren; het wijzigen of herstellen van instellingen gebeurt via de normale bediening.
 
 Vanuit de OpenHeatPumps-analyser kun je met een deep link terug naar de Systeemrecorder-popup: `http://<device-ip>/?view=settings&section=system&modal=systeemrecorder` (kort: `http://<device-ip>/#systeemrecorder`). De popup opent dan automatisch.
 

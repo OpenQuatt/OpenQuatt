@@ -56,7 +56,8 @@ class PowerHouseDemandContractTest(unittest.TestCase):
             self.assertNotIn(marker, text)
             self.assertNotIn(marker, yaml)
         # Boot acquisition adds a one-shot input deadline and explicit invalid outputs.
-        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 3840)
+        # Recorder diagnostics add 21 YAML lines; retain the existing 10-line margin.
+        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 3862)
 
     def test_startup_wait_clears_shared_outputs_before_adopting_demand(self) -> None:
         text = FILES[1].read_text()

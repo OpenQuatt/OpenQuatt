@@ -91,7 +91,7 @@ class DebugRecorderDefaultSchemaContractTest(unittest.TestCase):
         self.assertNotIn('writer.write_uint32(snapshot.duration_s)', RECORDER_SOURCE)
 
     def test_partial_event_count_skips_window_initial(self) -> None:
-        self.assertIn("for (size_t index = 1; index < export_count; ++index)", RECORDER_SOURCE)
+        self.assertIn("if (index > 0) snapshot->event_count += sample_event_count_(sample);", RECORDER_SOURCE)
 
     def test_set_enabled_is_idempotent(self) -> None:
         setter = RECORDER_SOURCE[RECORDER_SOURCE.index("bool OpenQuattDebugRecorder::set_enabled"):]
@@ -124,7 +124,7 @@ class DebugRecorderDefaultSchemaContractTest(unittest.TestCase):
         self.assertNotIn("static_cast<uint64_t>(millis())", RECORDER_SOURCE)
 
     def test_start_routes_refuse_opt_out(self) -> None:
-        for name in ("bool OpenQuattDebugRecorder::start(uint32_t", "bool OpenQuattDebugRecorder::start_rolling()"):
+        for name in ("bool OpenQuattDebugRecorder::start_rolling()", "bool OpenQuattDebugRecorder::restart_rolling()"):
             fn = RECORDER_SOURCE[RECORDER_SOURCE.index(name):]
             fn = fn[: fn.index("\n}\n")]
             self.assertIn("!this->enabled_", fn)

@@ -26,14 +26,14 @@ class StrategyRuntimeContractTest(unittest.TestCase):
     def test_yaml_is_a_compact_runtime_contract(self) -> None:
         calls = {
             "curve": ("oq_heating_curve_runtime::runtime()", 8),
-            "power_house": ("oq_power_house_runtime::runtime()", 4),
+            "power_house": ("oq_power_house_runtime::runtime()", 6),
             "cooling": ("oq_cooling_runtime::runtime()", 3),
             "manager": ("oq_strategy_runtime::runtime()", 3),
         }
         for name, (marker, expected) in calls.items():
             self.assertEqual(YAMLS[name].count(marker), expected)
-        # Measured 1694 lines with the persistent run-extension restart cooldown entity.
-        self.assertLessEqual(sum(len(source.splitlines()) for source in YAMLS.values()), 1705)
+        # Measured 1715 lines with the two cached run-extension diagnostic sensors.
+        self.assertLessEqual(sum(len(source.splitlines()) for source in YAMLS.values()), 1726)
         for implementation_marker in (
             "DispatchState dispatch_state",
             "publish_cooling_limiter_event",

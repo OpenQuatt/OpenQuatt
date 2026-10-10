@@ -13,25 +13,20 @@ const [header, source, psramBuffer] = await Promise.all([
 
 test("packed rows vergroten de retentie van de volledige dev-debugset", () => {
   const widths = { binary_sensor: 1, switch: 1, text_sensor: 2, select: 2, sensor: 4, number: 4 };
-  const rowBytes = 8 + (5 * 4) + DEBUG_RECORDING_KEYS.reduce(
+  const rowBytes = 8 + (5 * 4) + 2 + DEBUG_RECORDING_KEYS.reduce(
     (total, key) => total + widths[ENTITY_DEFS[key].domain],
     0,
   );
-  const capacity = Math.floor((1024 * 1024) / rowBytes);
+  const capacity = Math.floor((2 * 1024 * 1024) / rowBytes);
 
-  assert.equal(rowBytes, 763);
-  assert.equal(capacity, 1374);
-  // Issue #649 voegt drie velden toe (ingestelde bron, geselecteerde waarde,
-  // actieve tak) en issue #642 twee diagnosevelden (gepubliceerde
-  // startblokkade + resterende tijd). De V2 Power Input-keten voegt per HP
-  // acht compacte kolommen toe
-  // (4x sensor, 3x binary, 1x text = +21 B/rij). Issue #720 voegt één
-  // compacte text-state toe (+2 B/rij). Issue #746 voegt dertien flow- en
-  // pompdiagnostiekkolommen toe (4x select, 1x number, 6x sensor, 1x text
-  // = +42 B/rij). De R1-doelregeling voegt twee 4-way-valvekolommen en twee
-  // ketelkolommen toe (3x binary, 1x text = +5 B/rij). De retentie blijft met
-  // ~3,8 uur ruim boven de maximaal instelbare opnameduur van 1 uur.
-  assert.ok((capacity - 1) * 10 >= 3.5 * 60 * 60);
+  assert.equal(rowBytes, 795);
+  assert.equal(capacity, 2637);
+  // Full default schema: 7 h 19 min 20 s. Optional missing fields can only
+  // increase this capacity; custom schemas still report their actual capacity.
+  assert.equal((capacity - 1) * 10, 26360);
+  assert.ok((capacity - 1) * 10 > 6 * 60 * 60);
+  assert.match(header, /BUFFER_BYTES = 2U \* 1024U \* 1024U/);
+  assert.doesNotMatch(header, /MAX_DURATION_S|MIN_DURATION_S|DEFAULT_DURATION_S/);
   assert.match(header, /PsramBuffer<uint8_t> samples_/);
   assert.match(source, /value_size_for_type_/);
   assert.match(source, /sample_row_bytes/);

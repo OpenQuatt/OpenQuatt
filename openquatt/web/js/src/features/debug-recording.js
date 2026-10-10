@@ -236,6 +236,7 @@ export function getDebugRecordingChromeSignature(status = state.debugRecordingDe
     Boolean(status?.active),
     isDebugRecordingRolling(status),
     status?.string_overflow === true,
+    status?.configuration_snapshot_overflow === true,
   ].join("|");
 }
 
@@ -316,13 +317,11 @@ export function applyDebugRecordingDeviceUnavailableStatus() {
     available: false,
     enabled: false,
     active: false,
-    mode: "manual",
-    rolling: false,
+    mode: "rolling",
+    rolling: true,
     storage: "unavailable",
     interval_s: 0,
-    duration_s: 0,
     elapsed_s: 0,
-    remaining_s: 0,
     sample_count: 0,
     sample_capacity: 0,
     estimated_size: 0,
@@ -692,7 +691,8 @@ export function renderDebugRecordingModal() {
   const available = isSystemRecorderAvailable();
   const sampleCount = getDebugRecordingSampleCount();
   const busy = state.debugRecordingBusy;
-  const stringOverflow = state.debugRecordingDeviceStatus?.string_overflow === true;
+  const stringOverflow = state.debugRecordingDeviceStatus?.string_overflow === true
+    || state.debugRecordingDeviceStatus?.configuration_snapshot_overflow === true;
   const retainedMs = getDebugRecordingRetainedDurationMs();
   const downloadRange = getDebugRecordingDownloadRange();
   const hasRecording = sampleCount > 0;
@@ -716,7 +716,7 @@ export function renderDebugRecordingModal() {
     kicker: t("debugRecording.modalKicker"),
     title: t("debugRecording.modalTitle"),
     copy: "",
-    className: "oq-debug-recording-modal",
+    className: "oq-debug-recording-modal oq-helper-modal--scrollable",
     closeAction: "close-system-modal",
     closeLabel: t("debugRecording.modalClose"),
     body: `
