@@ -19,7 +19,7 @@ class EnergyLogicContractTest(unittest.TestCase):
         self.assertEqual(HP_IO.count("oq_energy::hp_input_power_for_variant("), 1)
         self.assertEqual(HP_IO.count("oq_energy::hp_heating_power("), 1)
         self.assertEqual(HP_IO.count("oq_energy::hp_cooling_power("), 1)
-        self.assertEqual(HP_IO.count("oq_energy::instant_ratio_or_nan("), 2)
+        self.assertEqual(HP_IO.count("oq_energy::instant_ratio_or_nan("), 1)
         self.assertIn("id(${hp_id}_pump_relay).has_state(),", HP_IO)
         self.assertIn("pump_relay_known && in.pump_relay_running", LOGIC)
         self.assertIn("id(${hp_id}_odu_generation_detection_complete)", HP_IO)
@@ -73,7 +73,11 @@ class EnergyLogicContractTest(unittest.TestCase):
 
     def test_energy_ratios_share_the_tested_guards(self) -> None:
         self.assertEqual(ENERGY.count("oq_energy::ratio_or_nan("), 4)
-        self.assertEqual(REQUEST.count("oq_energy::instant_ratio_or_nan("), 2)
+        self.assertEqual(REQUEST.count("oq_energy::instant_ratio_or_nan("), 1)
+        self.assertEqual(HP_IO.count("oq_energy::heating_cop_or_nan("), 1)
+        self.assertEqual(REQUEST.count("oq_energy_runtime::total_cop("), 1)
+        self.assertIn("receipts.compressor_frequency.fresh(now_ms, stale_ms)", RUNTIME)
+        self.assertIn("receipts.defrost.fresh(now_ms, stale_ms)", RUNTIME)
         self.assertIn("input < minimum_input", LOGIC)
         self.assertIn("fabsf(input) < minimum_abs_input", LOGIC)
 

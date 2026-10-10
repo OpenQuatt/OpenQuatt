@@ -10,6 +10,8 @@ Gebruik **Energie** om actuele prestaties te bekijken en **Resultaten** om perio
 | COP | Verhouding tussen geleverde warmte en elektrisch verbruik bij verwarmen |
 | EER | Vergelijkbare verhouding bij koelen |
 
+De actuele COP toont `—` in CM1 (voorloop/naloop), tijdens opstart en ontdooien, of als bedrijfstelemetrie ontbreekt of verouderd is. Buiten CM1 verschijnt COP zodra de compressor bij verwarmen draait en de gemeten warmteafgifte positief is. Negatief thermisch vermogen blijft zichtbaar en telt mee in de netto energiebalans.
+
 Vergelijk dezelfde periode en let op verschillen in buitentemperatuur en gebruik. Eén kort moment vertelt weinig over de prestaties van een hele dag.
 
 ## Resultaten

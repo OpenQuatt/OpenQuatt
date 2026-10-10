@@ -1,4 +1,4 @@
-import { formatOverviewStatValue, getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive, isTrendHistoryEnabled } from "../core/app-shared.js";
+import { formatOverviewStatValue, getEntityNumericValue, getEntityStateText, getLiveHeatingCopValue, hasEntity, isEntityActive, isTrendHistoryEnabled } from "../core/app-shared.js";
 import { COOLING_SCHEDULE_EFFECTIVE_SOURCE_KEY, COOLING_SCHEDULE_SOURCE_KEY, COOLING_SCHEDULE_TIME_KEYS, STRATEGY_OPTION_POWER_HOUSE } from "../core/config.js";
 import { isCurveMode } from "../core/domain-helpers.js";
 import { formatOpenQuattResumeDateTime, getEntityValue, hasOpenQuattResumeSchedule, parseDeviceClockMinutes, parseLooseNumber } from "../core/entity-store.js";
@@ -1440,6 +1440,9 @@ import { renderStatCard } from "./stat-card.js";
   }
 
   export function getOverviewTrendSeriesCurrentValue(series, fallbackSample) {
+    if (series?.currentKey === "totalCop") {
+      return getLiveHeatingCopValue("totalCop");
+    }
     const trendEntityValue = (key) => {
       const raw = hasEntity(key) ? getEntityValue(key) : null;
       if (raw == null || raw === "") {

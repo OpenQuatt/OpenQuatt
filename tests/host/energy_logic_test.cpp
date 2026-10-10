@@ -100,5 +100,46 @@ int main() {
   assert(isnan(oq_energy::instant_ratio_or_nan(10.0f, 4.999f, 5.0f)));
   assert(oq_energy::instant_ratio_or_nan(10.0f, 5.0f, 5.0f) == 2.0f);
   assert(oq_energy::instant_ratio_or_nan(10.0f, -5.0f, 5.0f) == -2.0f);
+  const oq_energy::HeatingCopState running{2.0f, 30.0f, 0.0f, true};
+  const oq_energy::HeatingCopState pumping{2.0f, 0.0f, 0.0f, true};
+  const oq_energy::HeatingCopState standby{0.0f, 0.0f, 0.0f, true};
+  assert(isnan(oq_energy::heating_cop_or_nan(-233.0f, 36.0f, 10.0f, pumping)));
+  assert(isnan(oq_energy::heating_cop_or_nan(233.0f, 36.0f, 10.0f, pumping)));
+  assert(isnan(oq_energy::heating_cop_or_nan(-233.0f, 36.0f, 10.0f, running)));
+  assert(isnan(oq_energy::heating_cop_or_nan(0.0f, 36.0f, 10.0f, running)));
+  assert(isnan(oq_energy::heating_cop_or_nan(233.0f, 36.0f, 10.0f, standby)));
+  assert(near(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, running), 5.0f));
+  assert(oq_energy::heating_cop_or_nan(100.0f, 10.0f, 10.0f, running) == 10.0f);
+  for (const float output : {NAN, INFINITY, -INFINITY})
+    assert(isnan(oq_energy::heating_cop_or_nan(output, 36.0f, 10.0f, running)));
+  for (const float input : {NAN, INFINITY, -INFINITY, -36.0f, 0.0f, 9.999f})
+    assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, input, 10.0f, running)));
+  auto invalid = running;
+  invalid.fresh = false;
+  assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, invalid)));
+  invalid = running;
+  invalid.defrost = 1.0f;
+  assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, invalid)));
+  invalid.defrost = NAN;
+  assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, invalid)));
+  invalid = running;
+  invalid.working_mode = 4.0f;
+  assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, invalid)));
+  for (const float hz : {NAN, INFINITY, -1.0f, 121.0f}) {
+    invalid = running;
+    invalid.compressor_hz = hz;
+    assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, invalid)));
+  }
+  assert(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, running, standby, true) == 5.0f);
+  assert(oq_energy::heating_cop_or_nan(2767.0f, 636.0f, 10.0f, running, pumping, true) > 4.0f);
+  assert(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, standby, running, true) == 5.0f);
+  assert(isnan(oq_energy::heating_cop_or_nan(233.0f, 36.0f, 10.0f, pumping, standby, true)));
+  assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, running, {}, true)));
+  invalid = running;
+  invalid.working_mode = 4.0f;
+  assert(isnan(oq_energy::heating_cop_or_nan(3000.0f, 600.0f, 10.0f, running, invalid, true)));
+  // The signed thermal measurement and energy-ratio helpers retain real losses.
+  assert(oq_energy::hp_heating_power(2.0f, 25.0f, 20.0f, 360.0f, 4186.0f) < 0.0f);
+  assert(oq_energy::ratio_or_nan(-1.0f, 0.5f, 0.01f) == -2.0f);
   return 0;
 }

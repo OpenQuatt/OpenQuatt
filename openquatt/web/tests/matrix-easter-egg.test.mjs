@@ -14,7 +14,14 @@ const { state } = await import("../js/src/core/state.js");
 const { handleShellAction } = await import("../js/src/features/shell-actions.js");
 
 function setEntities(entities) {
-  state.entities = entities;
+  state.lastKnownInstallationTopology = "";
+  state.entities = {
+    installationTopology: { value: entities.hp2Freq ? "duo" : "single" },
+    hp1Mode: { value: "Heating" },
+    hp1Defrost: { value: false },
+    ...(entities.hp2Freq ? { hp2Mode: { value: "Standby" }, hp2Defrost: { value: false } } : {}),
+    ...entities,
+  };
   state.drafts = {};
 }
 
@@ -140,7 +147,7 @@ test("matrix snapshot leest boilerActive en control mode", () => {
     controlModeLabel: { state: "CM1" },
   });
   const snapshot = matrix.readMatrixSnapshot();
-  assert.equal(snapshot.cop, 5.6);
+  assert.ok(Number.isNaN(snapshot.cop));
   assert.equal(snapshot.hz, 23);
   assert.equal(snapshot.boilerActive, true);
   assert.equal(snapshot.boilerOff, false);
@@ -328,7 +335,7 @@ test("matrix takeover toont echte live data met ODU en control mode", () => {
   assert.ok(joined.includes("ODU LINK") && joined.includes("ONLINE"));
   assert.ok(joined.includes("HP1") && joined.includes("23 Hz"));
   assert.ok(joined.includes("HP2") && joined.includes("23 Hz"));
-  assert.ok(joined.includes("COP") && joined.includes("5.4"));
+  assert.ok(joined.includes("COP") && !joined.includes("5.4"));
   assert.ok(joined.includes("FLOW") && joined.includes("16.8"));
   assert.ok(joined.includes("CONTROL MODE") && joined.includes("CM1"));
   assert.ok(lines.length >= 5 && lines.length <= 6);

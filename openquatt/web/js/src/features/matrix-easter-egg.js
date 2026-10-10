@@ -41,12 +41,7 @@ export function registerMatrixVersionTap(now = Date.now()) {
 }
 
 export function readMatrixSnapshot() {
-  let cop = getEntityNumericValue("totalCop");
-  if (Number.isNaN(cop)) cop = getDerivedEfficiencyValue("totalCop");
-  if (Number.isNaN(cop)) {
-    const uc = [getEntityNumericValue("hp1Cop"), getEntityNumericValue("hp2Cop")].filter((v) => !Number.isNaN(v));
-    cop = uc.length ? Math.max(...uc) : Number.NaN;
-  }
+  const cop = getDerivedEfficiencyValue("totalCop");
   const hz1 = getEntityNumericValue("hp1Freq");
   const hz2 = getEntityNumericValue("hp2Freq");
   const hz = [hz1, hz2].filter((v) => !Number.isNaN(v) && v > 0);
