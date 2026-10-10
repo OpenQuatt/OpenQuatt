@@ -271,7 +271,7 @@ PACKAGE_GROUP_BY_KEY = {
     "wifi": 0,
     "captive_portal": 0,
     "improv_serial": 0,
-    "esp32_improv": 0,
+    "improv_ble": 0,
     "http_request": 0,
     "uart": 0,
     "modbus": 0,

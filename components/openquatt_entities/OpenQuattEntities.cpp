@@ -15,7 +15,7 @@ namespace esphome {
 namespace openquatt_entities {
 
 using openquatt_common::PsramBuffer;
-using EntityJsonGenerator = json::SerializationBuffer<> (*)(web_server::WebServer*, void*);
+using EntityJsonGenerator = void (*)(web_server::WebServer*, void*, json::JsonBuilder&);
 
 static const char* const TAG = "openquatt.entities";
 
@@ -478,7 +478,9 @@ void OpenQuattEntities::write_entities(httpd_req_t* req, const std::string& deta
 
     const EntityJsonGenerator generator =
         detail_all || payload.state_generator == nullptr ? payload.all_generator : payload.state_generator;
-    auto data = generator(this->web_server_, payload.source);
+    json::JsonBuilder builder;
+    generator(this->web_server_, payload.source, builder);
+    auto data = builder.serialize();
 
     if (!first_entity && !writer.write_char(',')) {
       break;

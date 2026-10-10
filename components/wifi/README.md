@@ -1,6 +1,6 @@
 # OpenQuatt Wi-Fi compatibility patch
 
-ESP32-bronnen uit ESPHome **2026.9.0** (`esphome/components/wifi`), onder de
+ESP32-bronnen uit ESPHome **2026.10.0b2** (`esphome/components/wifi`), tagcommit `2affc04e6247dfd97966765099f55230b92b70cd`, onder de
 upstream MIT-licentie: zie `../web_server_base/LICENSE-MIT`. Formatting volgt
 de repository; niet-ESP32 platformimplementaties zijn niet meegenomen.
 
@@ -28,3 +28,6 @@ dan volgt geen succes/reboot. Een readback is geen power-cut-test.
 
 Bij een ESPHome-upgrade opnieuw vergelijken met upstream. HIL moet AP/DNS,
 Improv, stroomonderbreking, Ethernetvoorkeur en interne heap/stackmarges toetsen.
+
+The upstream component sources are identical between 2026.10.0b1 and
+2026.10.0b2; the existing local patches are retained.

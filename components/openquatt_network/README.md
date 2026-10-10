@@ -9,8 +9,15 @@ The generic Ethernet lifecycle implementation belongs to ESPHome. The lifecycle
 fix is proposed in [ESPHome PR #19734](https://github.com/esphome/esphome/pull/19734).
 The profile pins a compatibility backport in `openquatt/connection/wifi_eth.yaml`;
 OpenQuatt does not vendor an Ethernet component. The backport uses ESPHome
-2026.9.0 Python/codegen and the upstream lifecycle C++ fix. Pinning current
-ESPHome `dev` directly would mix incompatible codegen APIs with 2026.9.0.
+2026.10.0b1 Python/codegen and the upstream lifecycle C++ fix, including
+`on_disconnect` before a deferred restart. The [pinned commit](https://github.com/jeroen85/esphome/commit/6d8b057caec23d8c5216460554b921e3aed420ba)
+is based on the exact beta tag and preserves its PSRAM RX path, W5500 SPI driver
+and PHY changes. Pinning current ESPHome `dev` directly would mix unreviewed
+changes with the selected release.
+
+The Ethernet component sources are identical in 2026.10.0b1 and
+2026.10.0b2. The reviewed b1-based lifecycle backport is therefore retained
+unchanged with the b2 runtime; no moving upstream branch is introduced.
 
 Remove the external pin only when the configured ESPHome release includes the
 lifecycle fix and `is_driver_stopped()`, after reviewing the existing component
@@ -23,8 +30,13 @@ of the reported lwIP crash.
 
 `scripts/tests/test_ethernet_lifecycle.py` executes production OpenQuatt manager
 methods against mocked public Ethernet API states. Generic driver lifecycle
-tests belong upstream. Hardware validation must still check actual IDF event
-ordering and repeated interface transitions.
+tests belong upstream. The backport includes failure-injection tests for rejected
+stop/start calls, delayed or missing STOP delivery, cancelled restart requests
+and disconnect-action reentrancy, with automation triggers enabled and disabled.
+Those host checks and an independent cold review do not establish actual IDF
+event interleavings or PSRAM allocation margin. Hardware validation must still
+check actual event ordering, repeated interface transitions and internal heap /
+largest-block margin under simultaneous network load.
 
 ### DNS after inactive-interface DHCP startup
 
