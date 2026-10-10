@@ -343,7 +343,8 @@ inline SnapshotSourceStatus validate_heat_pump_state(const HeatPumpRawMeasuremen
   if (heat_pump.mode.value != HeatPumpMode::OFF && heat_pump.mode.value != HeatPumpMode::HEATING &&
       !(heat_pump.mode.value == HeatPumpMode::COOLING && daily_defrost))
     return SnapshotSourceStatus::INVALID_MODE;
-  if (heat_pump.mode.value == HeatPumpMode::OFF && heat_pump.compressor_active.value)
+  if (heat_pump.mode.value == HeatPumpMode::OFF && heat_pump.compressor_active.value &&
+      purpose != SnapshotPurpose::STRUCTURAL_BATCH)
     return SnapshotSourceStatus::INCONSISTENT_ACTIVITY;
   if (purpose == SnapshotPurpose::THERMAL_DYNAMIC &&
       (heat_pump.defrost_active.value || heat_pump.valve_transition_active.value || heat_pump.oil_return_active.value))
@@ -526,6 +527,12 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
   if (input.boiler_heat.value != BoilerHeatState::NO_HEAT)
     return failure(input, SnapshotSourceStatus::BOILER_UNKNOWN, INVALID_ESSENTIAL_SOURCE | INVALID_BOILER_HEAT);
 
+  // Mode 2099 can report OFF before frequency 2103 reaches zero at shutdown.
+  // Only a complete, otherwise valid daily observation may hold this transition.
+  const bool stopping =
+      (input.hp1.mode.value == HeatPumpMode::OFF && input.hp1.compressor_active.value) ||
+      (input.hp2.present && input.hp2.mode.value == HeatPumpMode::OFF && input.hp2.compressor_active.value);
+
   // Inspect every available scalar; missing/stale data must not conceal a
   // simultaneous invalid value, identity or timing contract on another field.
   const auto consider = [&](SnapshotSourceStatus next) {
@@ -553,7 +560,16 @@ inline SnapshotBuildResult build_learning_snapshot(const LearningSourceInput& in
   if (!calorimetry.valid) consider(calorimetry.status);
   if (status != SnapshotSourceStatus::OK) {
     auto result = failure(input, status, reasons_for_status(status));
-    result.may_bridge_daily_gap = purpose == SnapshotPurpose::STRUCTURAL_BATCH && scalar_gap_status(status);
+    result.may_bridge_daily_gap =
+        purpose == SnapshotPurpose::STRUCTURAL_BATCH && !stopping && scalar_gap_status(status);
+    return result;
+  }
+
+  if (stopping) {
+    auto result = failure(input, SnapshotSourceStatus::INCONSISTENT_ACTIVITY, INVALID_CONTROL_MODE);
+    // No heat is accepted until consistent telemetry returns. The accumulator
+    // applies its existing 120 s valid-to-valid limit and missing-energy budget.
+    result.may_bridge_daily_gap = purpose == SnapshotPurpose::STRUCTURAL_BATCH;
     return result;
   }
 

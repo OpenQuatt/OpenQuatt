@@ -398,7 +398,7 @@ void test_daily_defrost_and_combined_diagnostics() {
   assert_failed(build(input), SnapshotSourceStatus::BOILER_ACTIVE);
 }
 
-void test_only_scalar_gaps_can_hold_a_daily_measurement() {
+void test_unknown_operation_cannot_hold_a_daily_measurement() {
   auto missing = valid_input(HydronicTopology::DUO_SERIES);
   missing.room_c.valid = false;
   assert(build(missing).may_bridge_daily_gap);
@@ -461,6 +461,88 @@ void test_only_scalar_gaps_can_hold_a_daily_measurement() {
   assert(state.missing_energy_uncertainty_ws > 0.0);
 }
 
+void test_stop_transition_finishes_a_day_with_heating_pauses() {
+  SegmentAccumulator state;
+  QualityConfig quality;
+  unsigned completed = 0;
+  for (uint32_t second = 0; second <= 86400; second += 10) {
+    auto input = valid_input(HydronicTopology::DUO_SERIES);
+    retime(input, kNowMs + second * 1000ULL);
+    input.epoch_s = kEpochS + second;
+    const uint32_t phase = second % (6 * 3600);
+    if (phase >= 4 * 3600 && phase < 5 * 3600) {
+      input.hp1.mode.value = input.hp2.mode.value = HeatPumpMode::OFF;
+      // Each stop has one mixed mode/frequency observation, then a normal pause.
+      input.hp1.compressor_active.value = input.hp2.compressor_active.value = phase == 4 * 3600;
+      input.flow_lph.value = 0.0f;
+    }
+    const auto observed = observe_source_input(state, input, quality);
+    assert(state.active && (second == 86400 || state.start_epoch_s == kEpochS));
+    if (!observed.source.measurement_valid) {
+      assert(observed.source.status == SnapshotSourceStatus::INCONSISTENT_ACTIVITY);
+      assert(observed.source.may_bridge_daily_gap && state.source_gap_pending);
+      // A transition is not integrated as valid zero heat.
+      assert(state.last_epoch_s == input.epoch_s - 10);
+    }
+    if (observed.aggregate.has_record) {
+      ++completed;
+      assert(observed.aggregate.record.duration_s == 86400);
+      assert(observed.aggregate.record.mean_heat_w > 0);
+    }
+    if (second == 86390) assert(state.missing_energy_uncertainty_ws > 0);
+    // A completed day seeds its successor at the shared boundary.
+    if (second == 86400) assert(state.start_epoch_s == kEpochS + 86400);
+  }
+  assert(completed == 1);
+}
+
+void test_stop_transition_is_bounded_and_cannot_seed_a_day() {
+  for (uint32_t resume_second : {120U, 130U}) {
+    SegmentAccumulator state;
+    auto input = valid_input();
+    observe_source_input(state, input, QualityConfig{});
+    input.hp1.mode.value = HeatPumpMode::OFF;
+    for (uint32_t second = 10; second < resume_second; second += 10) {
+      retime(input, kNowMs + second * 1000ULL);
+      input.epoch_s = kEpochS + second;
+      observe_source_input(state, input, QualityConfig{});
+    }
+    input.hp1.compressor_active.value = false;
+    retime(input, kNowMs + resume_second * 1000ULL);
+    input.epoch_s = kEpochS + resume_second;
+    observe_source_input(state, input, QualityConfig{});
+    assert(state.active && !state.source_gap_pending);
+    assert(state.start_epoch_s == kEpochS + (resume_second == 120 ? 0 : resume_second));
+    assert((state.missing_energy_uncertainty_ws > 0) == (resume_second == 120));
+  }
+  SegmentAccumulator empty;
+  auto input = valid_input();
+  input.hp1.mode.value = HeatPumpMode::OFF;
+  observe_source_input(empty, input, QualityConfig{});
+  assert(!empty.active);
+}
+
+void test_stop_transition_never_hides_other_errors_or_enters_1r1c() {
+  auto stopping = valid_input(HydronicTopology::DUO_SERIES);
+  stopping.hp1.mode.value = HeatPumpMode::OFF;
+  assert(build(stopping).may_bridge_daily_gap);
+  const auto dynamic = build_learning_snapshot(stopping, QualityConfig{}, SnapshotPurpose::THERMAL_DYNAMIC);
+  assert(!dynamic.measurement_valid && !dynamic.may_bridge_daily_gap);
+  for (unsigned fault = 0; fault < 8; ++fault) {
+    auto input = stopping;
+    if (fault == 0) input.hp2.mode.value = HeatPumpMode::COOLING;
+    if (fault == 1) input.boiler_heat.value = BoilerHeatState::HEAT_ACTIVE;
+    if (fault == 2) input.hp2.compressor_active.valid = false;
+    if (fault == 3) input.hp2.mode.received_monotonic_ms = kNowMs - 2000;
+    if (fault == 4) input.hp2.water_out_c.value = 100;
+    if (fault == 5) input.room_c.valid = false;
+    if (fault == 6) input.operation.control_mode = LearningControlMode::OTHER;
+    if (fault == 7) input.operation.service_or_ota = true;
+    const auto result = build(input);
+    assert(!result.measurement_valid && !result.may_bridge_daily_gap);
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -477,6 +559,9 @@ int main() {
   test_invalid_raw_event_restarts_aggregate();
   test_dynamic_learning_keeps_temperature_response_but_not_hidden_heat();
   test_daily_defrost_and_combined_diagnostics();
-  test_only_scalar_gaps_can_hold_a_daily_measurement();
+  test_unknown_operation_cannot_hold_a_daily_measurement();
+  test_stop_transition_finishes_a_day_with_heating_pauses();
+  test_stop_transition_is_bounded_and_cannot_seed_a_day();
+  test_stop_transition_never_hides_other_errors_or_enters_1r1c();
   return 0;
 }

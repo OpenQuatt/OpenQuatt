@@ -271,9 +271,24 @@ void test_hard_faults_and_context_or_clock_changes_reset() {
   assert(!observe_snapshot(state, unstamped, quality, true).has_record);
   assert(!state.active && !state.source_gap_pending);
 }
+
+void test_stop_transition_requires_the_explicit_unmixed_contract() {
+  SegmentAccumulator state;
+  QualityConfig quality;
+  observe_snapshot(state, snapshot(0), quality);
+  observe_snapshot(state, missing(60, INVALID_CONTROL_MODE), quality, true);
+  assert(state.active && state.source_gap_pending && state.integrated_duration_s == 0.0);
+  observe_snapshot(state, snapshot(120), quality, true);
+  assert(state.active && !state.source_gap_pending && state.start_epoch_s == kEpoch);
+  assert(state.integrated_duration_s == 120.0 && state.missing_energy_uncertainty_ws > 0.0);
+
+  observe_snapshot(state, missing(180, INVALID_CONTROL_MODE), quality);
+  assert(!state.active && !state.source_gap_pending);
+}
 }  // namespace
 
 int main() {
+  test_stop_transition_requires_the_explicit_unmixed_contract();
   static_assert(kDailyMaximumGapMs == 120000U);
   static_assert(kDailyMissingHeatBudgetW == 100.0f);
   test_explicit_120_second_gap_keeps_signed_energy();
