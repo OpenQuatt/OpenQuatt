@@ -69,7 +69,7 @@ Eén eigenaar in de ESPHome-mainloop beheert records en fitworkspace in PSRAM. T
 De actuele geselecteerde waarden blijven leidend voor bronkeuze. De learner neemt de waarde en
 geldigheid van die bestaande resolver over; hij voert geen tweede, afwijkende herkomstcontrole uit.
 OpenTherm, CiC, Home Assistant, API input en MQTT kunnen daardoor allemaal learning-bronnen zijn
-wanneer de regelaar ze geldig verklaart. Een routewijziging maakt wel een nieuwe meetcontext. Zie
+wanneer de regelaar ze geldig verklaart. Automatische en handmatige bronwissels onderbreken lopende metingen niet. Zie
 [broncontract](power-house-learning-sources.md).
 
 Passief leren introduceert geen hydraulisch installatieprofiel. De bestaande geselecteerde waarden

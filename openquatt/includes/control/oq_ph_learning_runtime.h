@@ -76,8 +76,6 @@ struct RuntimeStorage {
   PassiveRuntimeSummary summary;
   PassiveRuntimeConfig config;
   oq_sources::ResolvedLearningSource sources[4];
-  uint32_t source_revisions[4]{};
-  uint32_t valid_source_revisions[4]{};
   uint8_t context[kMaxPassiveContextBytes]{};
   size_t context_size = 0;
   LearningJournalStore journal;
@@ -207,25 +205,14 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     build_context_(state);
     const bool enabled = id(oq_ph_learning_enabled).state;
     auto& input = state.input;
-    // Configuration ownership remains valid during a temporary missing value.
-    // Snapshot validation decides whether to hold or interrupt the day. Real
-    // configuration/valid-route changes still interrupt unfinished intervals.
+    // Selected values and routes may change during a day. Only calibration or
+    // hardware changes alter the physical measurement context.
     const bool context_valid = state.context_size > 0 && source_configuration_available(state.sources);
-    const bool sources_changed = context_valid && observe_source_revisions(state.source_revisions, state.sources);
-    const bool valid_sources_changed =
-        context_valid && observe_valid_source_revisions(state.valid_source_revisions, state.sources);
     const bool context_bytes_changed =
         context_valid && (state.context_size != state.learner.context_size ||
                           memcmp(state.context, state.learner.context_bytes, state.context_size) != 0);
-    // While waiting for boot sources, their first resolution must not rebind
-    // the learner and erase a checkpoint restored in this same tick. Real
-    // configuration changes and changes of already observed routes still do.
-    const bool startup_resolution = (!state.journal.loaded || state.daily_restore_pending) &&
-                                    !state.measurement_context_changed && !context_bytes_changed &&
-                                    !valid_sources_changed;
     const bool context_changed =
-        state.learner.initialized &&
-        (state.measurement_context_changed || context_bytes_changed || (sources_changed && !startup_resolution));
+        state.learner.initialized && (state.measurement_context_changed || context_bytes_changed);
     if (context_changed) {
       state.daily_restore_pending = false;
       if (state.daily_restore_allowed) state.daily_resume_reason = "context_changed";
@@ -426,14 +413,10 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     state.partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "openquatt_data");
     state.journal.setup(state.partition != nullptr &&
                         OpenQuattFlashLayout::HOUSE_LEARNING_END_OFFSET <= state.partition->size);
-    watch_measurement_select_(id(room_temp_source));
-    watch_measurement_select_(id(room_setpoint_source));
-    watch_measurement_select_(id(outside_temp_source));
-    watch_measurement_select_(id(flow_source));
-    watch_measurement_select_(id(oq_duo_outdoor_flow_mode));
+    // Source choices use the normal selected-sensor refresh. Do not clear their
+    // live caches between a select event and that refresh: it would invent a gap.
     watch_measurement_select_(id(hp_generation));
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-    watch_measurement_select_(id(oq_q_flow_source));
     watch_measurement_select_(id(oq_controller_flow_meter));
     watch_measurement_number_(id(oq_custom_flow_pulses_per_liter));
 #endif
@@ -452,7 +435,6 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     watch_measurement_number_(id(hp2_water_in_temp_offset));
     watch_measurement_number_(id(hp2_water_out_temp_offset));
 #endif
-    id(cic_feed_url).add_on_state_callback([this](const std::string&) { this->measurement_context_changed(); });
     return true;
   }
 
@@ -565,22 +547,11 @@ class Runtime : public esphome::ota::OTAGlobalStateListener {
     u32(kLearningAlgorithmVersion);
     u32(static_cast<uint32_t>(state.input.topology));
     u32(OQ_HARDWARE_HEATPUMP_CONTROLLER_Q);
-    for (const auto& source : state.sources) {
-      // Runtime route changes are tracked by source generations. Persist only
-      // configuration here so ordinary pump stops do not change the context.
-      u32(source.configuration.selected);
-      u32(source.configuration.auxiliary_a);
-      u32(source.configuration.auxiliary_b);
-    }
-    str(id(room_temp_source).current_option());
-    str(id(room_setpoint_source).current_option());
-    str(id(outside_temp_source).current_option());
-    str(id(flow_source).current_option());
-    str(id(oq_duo_outdoor_flow_mode).current_option());
+    // Keep source selection out of persisted ownership as well as live ticks.
+    // The marker distinguishes this compact context from legacy source layouts.
+    u32(kLearningMeasurementContextMarker);
     str(id(hp_generation).current_option());
-    str(id(cic_feed_url).state);
 #if OQ_HARDWARE_HEATPUMP_CONTROLLER_Q
-    str(id(oq_q_flow_source).current_option());
     str(id(oq_controller_flow_meter).current_option());
     f32(id(oq_custom_flow_pulses_per_liter).state);
 #endif

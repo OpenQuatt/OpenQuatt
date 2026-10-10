@@ -54,9 +54,15 @@ meetonderbrekingen en hervatten na een herstart staan hieronder.
 
 ## Context en opslag
 
-Een wijziging van een geselecteerde bronroute, waterkalibratie of andere fysieke
-meetcontext start een nieuwe `context_revision` en onderbreekt alleen lopende
-meetintervallen. Afgeronde records en het 1R1C-model blijven behouden.
+Automatische en handmatige bronwissels voor kamer, setpoint, buiten en flow laten
+de lopende dagmeting en het 1R1C-interval doorlopen. Ook een wissel tussen een
+actuele en geldig vastgehouden waarde is geen nieuwe meetcontext. De learner
+gebruikt vanaf de volgende normale bronselectie de nieuwe geselecteerde waarde;
+ontbrekende of ongeldige metingen blijven onder de normale meetgat- en
+kwaliteitscontroles vallen.
+Waterkalibratie, flowmeterkalibratie of een wijziging van de hardwaremeetcontext
+start wel een nieuwe `context_revision` en onderbreekt lopende meetintervallen.
+Afgeronde records en het 1R1C-model blijven behouden.
 Een wijziging van regel- of beoordelingsinstellingen herbeoordeelt bestaande records
 zonder de fysieke metingen te wissen.
 
@@ -102,10 +108,12 @@ leerdata blijven behouden. Een mislukte opslag vóór de geplande herstart geeft
 geen hervatbevestiging en begint eveneens een nieuwe dag.
 Tijdens verzamelen zijn maximaal 96 periodieke checkpointwrites per dag nodig, plus
 geplande herstarts/OTA; het journal blijft beperkt tot de bestaande twee 8 KiB-slots.
-Bij automatische bronkeuze wordt alleen de selectorconfiguratie opgeslagen, niet
-de effectieve bronroute van de vorige boot. Identieke selectie garandeert daarom
-geen identieke effectieve route over een herstart; echte routewijzigingen die deze
-boot al zijn waargenomen verhinderen herstel wel.
+Het dagcheckpoint is gekoppeld aan hardware en meetkalibratie, niet aan de
+bronkeuze. Een andere automatische of handmatige bronkeuze verhindert herstel dus
+niet. Bestaande schema-7-checkpoints met broninstellingen in hun meetcontext blijven
+hervatbaar wanneer de fysieke meetcontext gelijk is; schema en CRC veranderen niet.
+De overige voorwaarden voor hervatten, waaronder de RTC-bevestiging en meetgatgrens,
+blijven gelden.
 Een afgebroken webupload mag het leren niet blijvend pauzeren: zonder nieuwe
 OTA-voortgangsmelding vervalt de interne pauze na circa twee minuten.
 De normale controllerpauze voor native/HTTP-request OTA blijft onafhankelijk gelden.

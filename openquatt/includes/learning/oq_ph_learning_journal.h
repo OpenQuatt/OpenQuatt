@@ -14,7 +14,8 @@
 
 namespace oq_power_house::learning {
 
-constexpr uint32_t kLearningJournalMagic = 0x4F514C4AU;  // OQLJ
+constexpr uint32_t kLearningJournalMagic = 0x4F514C4AU;              // OQLJ
+constexpr uint32_t kLearningMeasurementContextMarker = 0x4D435458U;  // MCTX
 // Schema 7 appends a bounded daily checkpoint after the unchanged thermal tail.
 constexpr uint16_t kLearningJournalSchemaVersion = 7;
 constexpr size_t kLearningJournalHeaderBytes = 32;
@@ -132,6 +133,64 @@ inline uint32_t read_u32(Reader& reader) {
   for (uint8_t shift = 0; shift < 32U; shift += 8U)
     value |= static_cast<uint32_t>(reader.bytes[reader.position++]) << shift;
   return value;
+}
+
+// Schema 7 already stores the physical fields, but older firmware interleaves
+// them with selector settings. Read that layout without changing the slot or CRC.
+inline bool daily_context_matches(const uint8_t* stored, size_t stored_size, const uint8_t* expected,
+                                  size_t expected_size) {
+  if (stored == nullptr || expected == nullptr || stored_size > kMaxPassiveContextBytes ||
+      expected_size > kMaxPassiveContextBytes)
+    return false;
+  if (stored_size == expected_size && memcmp(stored, expected, expected_size) == 0) return true;
+  constexpr size_t prefix_size = 3U * sizeof(uint32_t);  // algorithm, topology, hardware
+  constexpr size_t legacy_source_keys_size = 4U * 3U * sizeof(uint32_t);
+  if (stored_size < prefix_size + legacy_source_keys_size || expected_size < prefix_size + 4U ||
+      memcmp(stored, expected, prefix_size) != 0)
+    return false;
+  Reader old{stored, stored_size};
+  Reader current{expected, expected_size};
+  if (read_u32(current) != kLearningAlgorithmVersion) return false;
+  read_u32(current);
+  const uint32_t q_hardware = read_u32(current);
+  if (q_hardware > 1U || read_u32(current) != kLearningMeasurementContextMarker) return false;
+  old.position = prefix_size;
+  if (read_u32(old) == kLearningMeasurementContextMarker) return false;
+  old.position = prefix_size + legacy_source_keys_size;
+  const auto string_length = [](Reader& reader) -> uint32_t {
+    const uint32_t length = read_u32(reader);
+    if (!reader.ok || length > reader.size - reader.position) {
+      reader.ok = false;
+      return 0U;
+    }
+    return length;
+  };
+  const auto skip_string = [&](Reader& reader) {
+    const uint32_t length = string_length(reader);
+    if (reader.ok) reader.position += length;
+  };
+  for (unsigned index = 0; index < 5U; ++index) skip_string(old);
+  const uint32_t old_generation_size = string_length(old);
+  const uint32_t generation_size = string_length(current);
+  if (!old.ok || !current.ok || old_generation_size != generation_size ||
+      memcmp(old.bytes + old.position, current.bytes + current.position, generation_size) != 0)
+    return false;
+  old.position += old_generation_size;
+  current.position += generation_size;
+  skip_string(old);  // CiC endpoint
+  if (q_hardware) {
+    skip_string(old);  // Q Flow Source
+    const uint32_t old_meter_size = string_length(old);
+    const uint32_t meter_size = string_length(current);
+    if (!old.ok || !current.ok || old_meter_size != meter_size ||
+        memcmp(old.bytes + old.position, current.bytes + current.position, meter_size) != 0)
+      return false;
+    old.position += old_meter_size;
+    current.position += meter_size;
+  }
+  // Calibration floats remain exact, including flow pulses/liter on Q hardware.
+  return old.ok && current.ok && old.size - old.position == current.size - current.position &&
+         memcmp(old.bytes + old.position, current.bytes + current.position, current.size - current.position) == 0;
 }
 
 inline float read_float(Reader& reader) {
@@ -384,7 +443,7 @@ inline LearningJournalStatus parse_metadata(const LearningJournalSlotView& slot,
   }
   crc ^= 0xFFFFFFFFU;
   if (stored_crc != crc) return LearningJournalStatus::CORRUPT;
-  // Sources/offsets are collection boundaries, not ownership of retained data.
+  // Calibration is a collection boundary, not ownership of retained data.
   // Legacy schema-4 contexts remain readable after changing selected sources.
   reader.position = kLearningJournalHeaderBytes + metadata.context_size;
   uint32_t previous_end_epoch_s = 0;
@@ -588,9 +647,9 @@ struct LearningJournalRecords {
 
   bool restore_daily(SegmentAccumulator& output, const PassiveContextView& context,
                      const QualityConfig& quality) const {
-    if (!has_daily_checkpoint() || context.bytes == nullptr || context.size != context_size ||
-        context.context_revision == 0 ||
-        memcmp(slot.bytes + kLearningJournalHeaderBytes, context.bytes, context_size) != 0)
+    if (!has_daily_checkpoint() || context.context_revision == 0 ||
+        !learning_journal_detail::daily_context_matches(slot.bytes + kLearningJournalHeaderBytes, context_size,
+                                                        context.bytes, context.size))
       return false;
     learning_journal_detail::Reader reader{slot.bytes, slot.size};
     reader.position = kLearningJournalHeaderBytes + context_size + record_count * kLearningJournalRecordBytes +
