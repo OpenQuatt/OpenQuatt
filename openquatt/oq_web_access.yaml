@@ -6,6 +6,13 @@
 # ==============================================================================
 
 external_components:
+  # Temporary ESPHome #17800 SSE lifecycle fix on the 2026.9.0 baseline.
+  # Pin the reviewed merge commit; remove after a validated ESPHome upgrade.
+  - source:
+      type: git
+      url: https://github.com/esphome/esphome.git
+      ref: 9309cf96b9710ad81d3e01a07a6f76637ba117a1
+    components: [web_server_idf]
   - source:
       type: local
       path: ${external_components_path}
