@@ -1,9 +1,14 @@
 # NVS capaciteit en persistentie
 
-De huidige Q-firmware gebruikt een NVS-partitie van 24 KiB. Sessiestatus in RAM
-houden en oude keys opruimen geeft ruimte terug. De berekende volledige bezetting
-blijft echter onder de projectmarge van 100 vrije entries. Een cleanup alleen
-maakt die marge dus niet aantoonbaar voldoende voor nieuwe functies.
+De Q-firmware gebruikt nu een NVS-partitie van 64 KiB. Bestaande apparaten met
+de bekende 24 KiB-indeling migreren bij de eerste boot van deze firmware, ook
+na een gewone HTTP OTA. Appslots en `openquatt_data` blijven op dezelfde plaats.
+Zie [de migratie en het testtraject](nvs-partition-migration.md) voor het
+herstelcontract en de nog uit te voeren HCQ-tests.
+
+De onderstaande inventaris en metingen beschrijven de eerdere 24 KiB-situatie.
+Sessiestatus in RAM houden en oude keys opruimen gaf ruimte terug, maar de
+berekende volledige bezetting bleef onder de marge van 100 vrije entries.
 
 ## Huidige besparing
 
@@ -110,8 +115,10 @@ keys met onbewezen herkomst vallen buiten deze cleanup.
 
 ## Budgetberekening
 
-Een NVS-pagina bevat 126 entries. Van de zes pagina's blijft één beschikbaar
-voor garbage collection: 630 entries voor live records. Een blob kost
+Een NVS-pagina bevat 126 entries. Bij 64 KiB zijn er zestien pagina's; één
+blijft beschikbaar voor garbage collection: 1.890 entries voor live records,
+1.260 meer dan bij de eerdere 24 KiB. De historische tabel hieronder gebruikt
+nog de eerdere capaciteit van 630 entries. Een blob kost
 `1 + aantal_chunks + ceil(bytes / 32)` entries. Kleine ESPHome-blobs kosten
 doorgaans drie; een native klein NVS-getal kost één.
 
@@ -138,12 +145,15 @@ De Q Duo-tabel bevat ook de drie entries van de geneste switch
 checker; daarom ligt zijn schatting drie entries lager dan deze inventaris.
 
 De bestaande grens `REQUIRED_AVAILABLE_ENTRIES = 100` blijft behouden.
-Daarom geeft de gecorrigeerde checker voor dit profiel FAIL. Alle waarden zijn
-berekeningen bij volledige bezetting, geen apparaatmetingen. Blobvervanging
-schrijft nieuwe chunks voordat de oude worden vrijgegeven; 60 vrije entries
-zijn minder dan de minimaal 62 voor een gewijzigde volledige PHY-blob.
-Voor Q Single WiFi begroot de checker 406 entity-entries, 55 custom en
-88 systeem: 549 totaal, nominaal 81 vrij. Ook dat profiel haalt de marge niet.
+Bij de historische 24 KiB-indeling gaf de checker voor dit profiel FAIL.
+Met de 64 KiB-CSV begroot hij voor Q Duo 570 gebruikte en 1.320 vrije entries;
+voor Q Single 552 gebruikte en 1.338 vrije entries. Beide halen nu de marge.
+Alle waarden zijn berekeningen bij volledige bezetting, geen apparaatmetingen.
+Blobvervanging schrijft nieuwe chunks voordat de oude worden vrijgegeven;
+de eerdere 60 vrije entries waren minder dan de minimaal 62 voor een gewijzigde
+volledige PHY-blob. De eerdere Q Single WiFi-inventaris begrootte 406 entity-
+entries, 55 custom en 88 systeem: 549 totaal, nominaal 81 vrij bij 24 KiB.
+Ook dat profiel haalde toen de marge niet.
 
 ## Meting op de testcontroller
 

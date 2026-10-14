@@ -1,0 +1,11 @@
+# ==============================================================================
+# OpenQuatt - Q NVS partition migration before ESPHome preferences
+# ==============================================================================
+# HTTP/native app OTA both run this same on-device migration.
+external_components:
+  - source:
+      type: local
+      path: ${external_components_path}
+    components: [openquatt_partition_migration]
+
+openquatt_partition_migration:
