@@ -78,7 +78,8 @@ number:
     entity_category: config
     on_value:
       - lambda: |-
-          if (id(oq_warmup_settings_ready)) id(oq_warmup_settings)[1] = x;
+          if (!id(oq_warmup_settings_ready) || id(oq_warmup_settings)[1] == x) return;
+          id(oq_warmup_settings)[1] = x;
           oq_warmup_runtime::runtime().invalidate(oq_warmup::Status::SETTINGS_CHANGED);
 
   - platform: template
@@ -95,7 +96,8 @@ number:
     entity_category: config
     on_value:
       - lambda: |-
-          if (id(oq_warmup_settings_ready)) id(oq_warmup_settings)[2] = x;
+          if (!id(oq_warmup_settings_ready) || id(oq_warmup_settings)[2] == x) return;
+          id(oq_warmup_settings)[2] = x;
           oq_warmup_runtime::runtime().invalidate(oq_warmup::Status::SETTINGS_CHANGED);
 
   - platform: template
@@ -112,7 +114,8 @@ number:
     entity_category: config
     on_value:
       - lambda: |-
-          if (id(oq_warmup_settings_ready)) id(oq_warmup_settings)[3] = x;
+          if (!id(oq_warmup_settings_ready) || id(oq_warmup_settings)[3] == x) return;
+          id(oq_warmup_settings)[3] = x;
           oq_warmup_runtime::runtime().invalidate(oq_warmup::Status::SETTINGS_CHANGED);
 
 # Invalidate immediately between ticks. The source resolver records generations,

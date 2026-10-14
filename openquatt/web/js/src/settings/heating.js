@@ -544,7 +544,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
 
   export function patchControlledWarmupField(root) {
     const statusNode = root.querySelector("[data-oq-warmup-status]");
-    if (!statusNode) return true;
+    if (!statusNode) return isCurveMode() || !hasEntity("warmupEnabled");
     const { enabled } = getSettingsSwitchModel("warmupEnabled");
     const section = root.querySelector("[data-oq-warmup-enabled]");
     const structureMatches = section?.dataset.oqWarmupEnabled === String(enabled);

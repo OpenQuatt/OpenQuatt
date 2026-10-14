@@ -181,3 +181,14 @@ test("live boost patches preserve the fixed target and input drafts in both loca
     setLocale("nl", { persist: false });
   }
 });
+
+
+test("absent warmup markup is expected for curve mode and old firmware", () => {
+  const root = { querySelector: () => null };
+  reset({ strategy: { value: "Power House" } });
+  assert.equal(patchControlledWarmupField(root), true);
+  reset({ ...enabledEntities(), strategy: { value: "Water Temperature Control (heating curve)" } });
+  assert.equal(patchControlledWarmupField(root), true);
+  reset({ ...enabledEntities(), strategy: { value: "Power House" } });
+  assert.equal(patchControlledWarmupField(root), false);
+});

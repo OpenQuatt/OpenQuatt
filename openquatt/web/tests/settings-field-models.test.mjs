@@ -578,3 +578,90 @@ test("Tab focus on a settings button is retained while a warmup render is pendin
   await new Promise(resolve => setTimeout(resolve, 5));
   assert.equal(renders, 1);
 });
+
+
+test("late warmup entity hydration defers structural rendering until blur without losing drafts", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const enabled of [false, true]) {
+      for (const locale of ["nl", "en"]) {
+        setLocale(locale, { persist: false });
+        state.settingsGroup = "heating";
+        state.warmupSettingsRenderPending = false;
+        state.entities = {
+          strategy: { value: "Power House" }, setupComplete: { value: true },
+          warmupStep: { value: 0.1 },
+        };
+        state.optionalMissingEntities = {};
+        for (const key of getSettingsGroupHydrationKeys()) {
+          if (!ENTITY_DEFS[key]?.optional && !state.entities[key]) state.entities[key] = {};
+          if (ENTITY_DEFS[key]?.optional && !state.entities[key]) state.optionalMissingEntities[key] = Date.now();
+        }
+        Object.assign(state, {
+          complete: true, lastEntitySyncAt: Date.now(), lastEntitySyncSuccessAt: Date.now(),
+          lastStaticEntitySyncAt: Date.now(), focusedField: "phKp", inputDrafts: { phKp: "1234" },
+        });
+        state.headerRenderSignature = getHeaderRenderSignature();
+        state.settingsRenderSignature = getSettingsRenderSignature();
+        const originalSignature = state.settingsRenderSignature;
+        const input = node({ oqField: "phKp" });
+        Object.assign(input, { type: "number", value: "1234", selectionStart: 1, selectionEnd: 3 });
+        document.activeElement = input;
+        mount({ inputs: [input], warmupMarkup: renderControlledWarmupField() });
+        let renders = 0;
+        let currentMarkup = "";
+        setRenderCallback(() => {
+          renders++;
+          currentMarkup = renderSettingsGroupContent();
+          state.settingsRenderSignature = getSettingsRenderSignature();
+          mount({ inputs: [input], warmupMarkup: renderControlledWarmupField() });
+        });
+        let remoteEnabled = enabled;
+        globalThis.fetch = async (url, options) => {
+          assert.equal(url, "/openquatt/entities");
+          const keys = new URLSearchParams(options.body).get("entities").split("\n").map(line => line.split("\t")[0]);
+          return { ok: true, json: async () => ({
+            entities: Object.fromEntries(keys.filter(key => key === "warmupEnabled" || state.entities[key]).map(key =>
+              [key, key === "warmupEnabled" ? { value: remoteEnabled } : state.entities[key]])),
+            missing: keys.filter(key => key !== "warmupEnabled" && !state.entities[key] && ENTITY_DEFS[key]?.optional),
+          }) };
+        };
+        delete state.optionalMissingEntities.warmupEnabled;
+        await syncEntities();
+        assert.equal(state.entities.warmupEnabled.value, enabled);
+        assert.equal(renders, 0);
+        assert.equal(state.warmupSettingsRenderPending, true);
+        assert.equal(state.settingsRenderSignature, originalSignature);
+        assert.equal(input.value, "1234");
+        assert.equal(input.selectionStart, 1);
+        assert.equal(input.selectionEnd, 3);
+        assert.equal(state.inputDrafts.phKp, "1234");
+        // A second poll cannot consume the pending structural change.
+        await syncEntities();
+        assert.equal(renders, 0);
+        assert.equal(state.warmupSettingsRenderPending, true);
+        // Moving to another input must keep the render deferred.
+        document.activeElement = node({ oqField: "phComfortAbove" });
+        handleFocusChange({ type: "focusout", target: input });
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.equal(renders, 0);
+        document.activeElement = null;
+        handleFocusChange({ type: "focusout", target: input });
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.equal(renders, 1);
+        assert.equal(state.warmupSettingsRenderPending, false);
+        assert.equal(state.inputDrafts.phKp, "1234");
+        assert.equal(/data-oq-field="warmupStep"/.test(currentMarkup), enabled);
+        assert.match(currentMarkup, /data-oq-warmup-status/);
+        handleFocusChange({ type: "focusout", target: input });
+        await new Promise(resolve => setTimeout(resolve, 5));
+        assert.equal(renders, 1);
+
+      }
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    setLocale("nl", { persist: false });
+    setRenderCallback(null);
+  }
+});
