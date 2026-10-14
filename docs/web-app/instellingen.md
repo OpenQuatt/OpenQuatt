@@ -75,9 +75,10 @@ thermostaatverhoging nodig om weer te starten.
 
 De functie stopt zodra de gemeten kamertemperatuur het echte thermostaatdoel
 bereikt, ook als de kamer eerder al binnen de comfortband ligt. Tijdens het
-opwarmen zie je **Kamertemperatuur**, **Volgende stap** en **Gewenste temperatuur**.
-**Boost actief** verschijnt alleen bij een positieve boost. Onder **Regeldetails**
-staat de berekende regeltemperatuur (**OpenQuatt regelt op**) met uitleg.
+opwarmen zie je de status, **Kamertemperatuur** en **Gewenste temperatuur**.
+Onder **Opwarmdetails** staan **Volgende stap**, een eventuele **Boost actief**,
+de berekende regeltemperatuur (**OpenQuatt regelt op**) en de looptijd met uitleg.
+De boost verschijnt alleen bij een positieve waarde.
 Zonder actieve sessie toont het blok dat het klaarstaat voor een nieuwe
 thermostaatverhoging; de volgende stap en boost zijn dan verborgen. Bij uitschakelen
 blijven alleen de schakelaar en de korte uitleg over normaal regelen over.

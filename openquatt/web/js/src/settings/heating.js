@@ -602,17 +602,16 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
         ${enabled ? `
           <div class="oq-run-extension-thresholds oq-warmup-readings">
             ${reading(readings[0])}
-            ${reading(readings[1], ` data-oq-warmup-visible="step"${visible.active ? "" : " hidden"}`)}
             ${reading(readings[2])}
           </div>
-          <div class="oq-run-extension-summary" data-oq-warmup-visible="boost"${visible.boost ? "" : " hidden"}>
-            <div class="oq-run-extension-thresholds">${reading(readings[3])}</div>
-            <p class="oq-run-extension-note">${escapeHtml(t("warmup.boostCopy"))}</p>
-          </div>
-          <p class="oq-run-extension-note" data-oq-warmup-visible="progress"${visible.progress ? "" : " hidden"} data-oq-warmup-progress>${escapeHtml(progress)}</p>
           <div data-oq-warmup-visible="details"${visible.active ? "" : " hidden"}>
             ${renderSettingsAdvancedDisclosure("warmup", t("warmup.details"), "", `
-              <div class="oq-run-extension-thresholds">${reading(readings[4])}</div>
+              <div class="oq-run-extension-thresholds">
+                ${reading(readings[1], ` data-oq-warmup-visible="step"${visible.active ? "" : " hidden"}`)}
+                ${reading(readings[3], ` data-oq-warmup-visible="boost"${visible.boost ? "" : " hidden"}`)}
+                ${reading(readings[4])}
+              </div>
+              <p class="oq-run-extension-note" data-oq-warmup-visible="progress"${visible.progress ? "" : " hidden"} data-oq-warmup-progress>${escapeHtml(progress)}</p>
               <p class="oq-run-extension-note" data-oq-warmup-details-copy>${escapeHtml(detailsCopy)}</p>
               <p class="oq-run-extension-note">${escapeHtml(t("warmup.limits"))}</p>
             `)}

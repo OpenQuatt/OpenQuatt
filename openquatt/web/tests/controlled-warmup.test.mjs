@@ -210,7 +210,7 @@ test("absent warmup markup is expected for curve mode and old firmware", () => {
 });
 
 
-test("warmup progress has a primary next step, optional boost and collapsed control details", () => {
+test("warmup keeps room and desired temperature primary and collapses step, boost and duration", () => {
   try {
     for (const locale of ["nl", "en"]) {
       setLocale(locale, { persist: false });
@@ -220,6 +220,10 @@ test("warmup progress has a primary next step, optional boost and collapsed cont
       assert.match(markup, /data-oq-warmup-visible="boost">/);
       assert.match(markup, /data-oq-settings-advanced="warmup">/);
       const detailsAt = markup.indexOf('data-oq-settings-advanced="warmup"');
+      assert.ok(markup.indexOf('data-oq-warmup-reading="roomTemp"') < detailsAt);
+      assert.ok(markup.indexOf('data-oq-warmup-reading="warmupIntermediateTarget"') > detailsAt);
+      assert.ok(markup.indexOf('data-oq-warmup-reading="warmupBoost"') > detailsAt);
+      assert.ok(markup.indexOf('data-oq-warmup-progress') > detailsAt);
       assert.ok(markup.indexOf('data-oq-warmup-reading="warmupEffectiveTarget"') > detailsAt);
       assert.ok(markup.indexOf('data-oq-warmup-reading="roomSetpoint"') < detailsAt);
       state.entities.warmupBoost = number(0);
