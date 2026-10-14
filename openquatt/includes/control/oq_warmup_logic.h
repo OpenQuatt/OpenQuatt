@@ -130,7 +130,9 @@ inline State evaluate(const Input& in, const Settings& settings, State state) {
     state.step_started_ms = in.now_ms;
     state.target_c = std::min(in.requested_c, in.room_c + settings.step_c);
   } else if (state.active) {
-    if (in.room_c >= state.target_c) {
+    // Decimal measurements can round just below room_c + step_c (e.g. 18.3).
+    // Apply tolerance only to intermediate progress, not the thermostat goal.
+    if (in.room_c >= state.target_c - 0.0001f) {
       state.offset_c = 0.0f;
       state.target_c = std::min(in.requested_c, in.room_c + settings.step_c);
       state.step_started_ms = in.now_ms;

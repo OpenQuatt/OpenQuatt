@@ -85,6 +85,50 @@ static void test_trigger_and_comfort_boundaries() {
   assert(state.offset_c == 0.0f);
 }
 
+static void test_independent_decimal_step_inputs() {
+  const Settings settings;
+  auto in = input();
+  in.room_c = 18.0f;
+  auto state = evaluate(in, settings, {});
+  in.requested_c = 22.0f;
+  in.now_ms += 1000;
+  state = evaluate(in, settings, state);
+  assert(state.active);
+  const auto started_ms = state.started_ms;
+
+  // Independent decimal measurements reproduce the HIL 18.3 boundary;
+  // assigning state.target_c to room_c would hide the rounding difference.
+  for (const float room_c : {18.1f, 18.2f, 18.3f, 18.4f}) {
+    const float target_c = state.target_c;
+    const auto step_started_ms = state.step_started_ms;
+    in.room_c = room_c - 0.001f;
+    in.now_ms += 1000;
+    state = evaluate(in, settings, state);
+    assert(state.target_c == target_c && state.step_started_ms == step_started_ms);
+
+    in.now_ms = step_started_ms + settings.step_ms;
+    state = evaluate(in, settings, state);
+    assert(state.offset_c > 0.0f && state.target_c == target_c);
+    in.room_c = room_c;
+    in.now_ms += 1000;
+    state = evaluate(in, settings, state);
+    assert(state.active && state.offset_c == 0.0f);
+    assert(std::fabs(state.target_c - (room_c + settings.step_c)) < 0.0001f);
+    assert(state.step_started_ms == in.now_ms && state.started_ms == started_ms);
+    ++in.now_ms;
+    const auto repeated = evaluate(in, settings, state);
+    assert(repeated.target_c == state.target_c && repeated.step_started_ms == state.step_started_ms);
+  }
+
+  // Intermediate tolerance must not relax the full thermostat-goal boundary.
+  in.room_c = std::nextafter(in.requested_c, 0.0f);
+  state = evaluate(in, settings, state);
+  assert(state.active && state.target_c == in.requested_c);
+  in.room_c = in.requested_c;
+  state = evaluate(in, settings, state);
+  assert(!state.active && state.status == Status::COMFORT_REACHED);
+}
+
 static void test_target_changes_and_interruption() {
   Settings settings;
   auto in = input();
@@ -265,6 +309,7 @@ static void test_persisted_settings_fail_closed() {
 }
 
 int main() {
+  test_independent_decimal_step_inputs();
   test_boost_power_response_and_target_cap();
   test_delayed_heating_permission_does_not_authorize_heat();
   test_persisted_settings_fail_closed();
