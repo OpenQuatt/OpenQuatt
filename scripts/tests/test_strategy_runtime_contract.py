@@ -91,8 +91,9 @@ class StrategyRuntimeContractTest(unittest.TestCase):
         # Issue #784 adds the warmup target to Power House and heat intent.
         # Boot input acquisition adds explicit invalid outputs and a one-shot deadline.
         # Include physical-frequency candidates and bounded historical stop diagnostics.
-        # Merged runtime: 1644 lines, versus 1628 on dev; preserve the seven-line margin.
-        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1651)
+        # Includes the heating-curve Duo floor gate and warmup adapter.
+        # Merged runtime: 1655 lines, versus 1639 on dev; preserve the seven-line margin.
+        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1662)
         self.assertLessEqual(len(HEAT_INTENT_RUNTIME.splitlines()), 90)
         # The selector now returns source provenance alongside its value; keep it local.
         self.assertLessEqual(len(LOGIC.splitlines()), 75)
