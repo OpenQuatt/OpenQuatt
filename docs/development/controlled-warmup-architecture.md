@@ -99,10 +99,7 @@ op het echte target werken. Permission, dispatch en boiler support blijven downs
 De regressiesimulatie `tests/host/warmup_heat_intent_test.cpp` gebruikt de echte
 warmup-runtime, inputadapter, heat intent, Power House demand en low-load helpers.
 De bestaande floor-glue wordt in de fixture nagebootst; fysieke terugmelding,
-dispatch en minimum on/off timing blijven hardwaretestscope. Het
-[HIL-scenario](hil-warmup-step-continuity.md) is op 6 oktober uitgevoerd op
-bron `4830dece`. Dat verslag kwalificeert niet de latere samenvoeging met
-`dev`, waaronder de comfort- en herstartwijzigingen uit #788.
+dispatch en minimum on/off timing blijven hardwaretestscope.
 
 ## Sessiediagnostiek in de web-app
 
@@ -124,64 +121,20 @@ blijven met compileasserts bewaakt. Het verandert de regeling niet. UI-sleutels 
 virtuele statusvelden, opgehaald met de bestaande entity-pollcadence. Volledige
 oude/ontbrekende/falende statusantwoorden verwijderen eerdere timerwaarden. Het
 laatste resultaat blijft vluchtig tot de volgende sessie of boot. Hosttests
-controleren rollover, alle eindroutes, herstart en coherente HTTP-snapshots;
-deze uitbreiding is nog niet afzonderlijk op HIL gekwalificeerd.
+controleren rollover, alle eindroutes, herstart en coherente HTTP-snapshots.
 
 ## Releasekwalificatie
 
-Volgens de [werkafspraak bij #761](https://github.com/OpenQuatt/OpenQuatt/blob/9d39292e9fba7c316df0187169bd321402c0e30d/hil-archive-761/README.md)
-is gericht desktop-HIL-bewijs een reviewvoorwaarde voor deze controlwijziging.
-De bestaande basisharness blijft behouden. Nieuwe scenario's worden pas permanent
-opgenomen na herhaald gebruik voor een stabiel contract. De tijdelijke warmup-
-en HA/CIC/MQTT-scenario's, fixtures en overlays zijn daarom buiten `dev`
-[gearchiveerd](https://github.com/OpenQuatt/OpenQuatt/blob/99b30ff75336384b39872956dc7fadbc1b7c9baa/hil-archive-786-787/README.md).
-Het generieke source-contract en de compacte host-/web-/contracttests blijven
-bij de feature. Dit archief is geen nieuwe hardware-PASS.
+Hosttests vervangen geen hardwarebewijs voor terugmelding, dispatch en minimum
+on/off timing. Kies voor de actuele firmware de kleinste relevante HIL-proef.
+Bewaar HIL-verslagen, ruwe meetdata, logs en testfirmware buiten de repository;
+verwijs vanuit de PR naar het bijbehorende bewijs. Leg daarin bron-SHA,
+binary-SHA256, controller- en simulatoridentiteit, instellingen, assertions,
+meetgrenzen en eindtoestand vast.
 
-Kies voor de actuele firmware de kleinste relevante HIL-proef en leg
-controller-SHA/config-hash/binary-SHA256, simulatorversie/SHA/profielen,
-instellingen, assertions, failure boundaries, eindtoestand en duurzame
-geredigeerde rapporten/logs met checksums bij de PR vast.
-
-De [actuele HIL-resultaten van 5 oktober](hil-controlled-warmup-2026-10-05.md)
-vergelijken dev `63f468d1` met productbron `715a108c`: vijf echte inputroutes,
-instellingopslag na reboot, automatische stop en een afzonderlijke timerproef.
-De normale firmware is na afloop teruggezet; testinstrumentatie blijft buiten Git.
-
-De eerdere heapcijfers en de nieuwe stresswaarden zijn sommen van afzonderlijke
-regio-watermarks. IDF kan die minima op verschillende momenten hebben gemeten;
-1.300 B bewijst daarom geen gelijktijdige globale vrije heap van 1.300 B.
-De HIL gebruikt INTERNAL|8BIT; standaard Debug Heap Min Free gebruikt INTERNAL.
-Vergelijk die meetwaarden niet rechtstreeks. Actuele heap en largest block zijn
-steekproeven; subsecondpieken blijven een meetgrens.
-
-Een lichte proef met één paginaoverdracht, native HA en TLS geeft watermarksommen
-34.632→27.704 B, bemonsterde actuele heap 73.303→69.071 B en grootste interne
-block 31.744 B bij beide. De zwaardere herhaalde downloads zijn een stresstest,
-geen dagelijks-gebruikprofiel. Geen nieuwe controlallocaties of crashes gevonden;
-de precieze allocatieverdeling en alle mogelijke netwerkcombinaties zijn niet
-gekwalificeerd. De beperkte normale proef bevat geen actieve opwarmsessie.
-
-Beide actuele permission-withdrawal-proeven stoppen fysiek na circa 340 s en
-logisch na circa 350 s. Dit past bij 300 s minimumlooptijd plus de bestaande
-60s-Power-House-cadence en terugmelding. De eerdere tienminutenafwijking is niet
-gereproduceerd; de historische oorzaak is niet bewezen.
-
-De PR blijft draft voor beoordeling van deze meetgrenzen. De HIL-reeks gebruikte
-de oudere dev-basis met een NVS-eis van 126 entries: dev had 111 entries vrij,
-de kandidaat 108. Bij de historische rebase op dev `8483e0c3`, inclusief de documentatieopbouw
-van #793, slaagde de configuratie-/NVS-controle voor Q WiFi Duo: 108 entries vrij
-bij de inmiddels door dev verlaagde eis van 100. Dit is geen nieuwe hardwareproef
-of bewijs dat de heapbevinding is opgelost. Geen fysieke koude powercycle of
-echte achtuursduurproef uitgevoerd; alleen de opwarmklok is in een private build
-×96 versneld. Host- en harnesstests vervangen hardwarebewijs niet.
-
-Na samenvoeging met dev `3b9074be` op 7 oktober slaagt de ESPHome-configuratie,
-maar faalt de actuele NVS-budgetcontrole: 573 van 630 entries geschat gebruikt,
-57 vrij bij een eis van 100. De bijgewerkte estimator telt ook systeemrecords;
-de eerdere PASS is daarom geen actuele budgetkwalificatie. De warmup-instellingen
-gebruiken één blob van drie entries. De HIL-resultaten van 6 oktober gelden voor
-productbron `4830dece`, niet voor deze latere samenvoeging. De PR blijft draft.
+De generieke HIL-harness en blijvende host-/web-/contracttests horen wel bij de
+code. Geheugenkwalificatie vereist representatieve runtimebelasting met actuele
+en minimale interne heap, grootste vrije block en relevante stack-watermarks.
 
 ## Testerfeedback 14 oktober 2026
 
@@ -190,5 +143,4 @@ Home Assistant-sensoren en webweergave. De boost gebruikt het bestaande
 runtime-offsetveld; de grootte van de runtime verandert niet en de NVS-layout
 blijft behouden. Twee extra ESPHome-sensorobjecten en hun API-/webregistratie
 hebben wel geheugenimpact; die is nog niet op representatieve hardware gemeten.
-De historische HIL-verslagen kwalificeren deze nieuwe boost- en eindgrenslogica
-niet. De bestaande heap/P1- en NVS-kwalificatiepunten blijven open.
+De bestaande heap/P1- en NVS-kwalificatiepunten blijven open.
