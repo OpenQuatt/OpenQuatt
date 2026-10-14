@@ -59,7 +59,7 @@ test("old firmware, boot and malformed progress never invent durations", () => {
   delete state.entities.warmupElapsed;
   assert.equal(getWarmupProgressText(), "");
   state.entities = { warmupEnabled: { value: true }, warmupActive: { value: true } };
-  assert.match(renderControlledWarmupField(), /Opwarmen in stappen/);
+  assert.match(renderControlledWarmupField(), /Bezig/);
   assert.match(renderOverviewSummaryShell("Power House"), /data-oq-overview-warmup hidden/);
 });
 
@@ -112,7 +112,8 @@ test("switch-off records cancellation and hides editable tuning, retaining the r
   setProgress(1, 6000);
   state.entities.warmupEnabled = { value: false };
   assert.match(renderOverviewSummaryShell("Power House"), /afgebroken na 1 uur en 40 minuten/);
-  assert.match(renderControlledWarmupField(), /afgebroken na 1 uur en 40 minuten/);
+  assert.match(renderControlledWarmupField(), /Uitgeschakeld/);
+  assert.doesNotMatch(renderControlledWarmupField(), /data-oq-warmup-progress/);
   assert.doesNotMatch(renderControlledWarmupField(), /data-oq-field="warmupStep"/);
 });
 

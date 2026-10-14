@@ -365,6 +365,10 @@
   flex: 1 1 360px;
 }
 
+[data-oq-warmup-visible][hidden] {
+  display: none;
+}
+
 .oq-run-extension-status {
   padding: 6px 10px;
   border-radius: 999px;

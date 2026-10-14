@@ -89,11 +89,18 @@ function mount({ selects = [], choices = [], switches = [], pills = [], inputs =
   const section = node({ oqWarmupEnabled: warmupMarkup.match(/data-oq-warmup-enabled="([^"]+)"/)?.[1] || "" });
   const status = node();
   status.textContent = warmupMarkup.match(/data-oq-warmup-status>([^<]*)<\/span>/)?.[1] || "";
+  const visibility = Object.fromEntries([...warmupMarkup.matchAll(/data-oq-warmup-visible="([^"]+)"([^>]*)>/g)]
+    .map(([, key, attributes]) => [key, { ...node(), hidden: /\bhidden\b/.test(attributes) }]));
+  const detailsCopy = node();
+  const progress = node();
   const readings = Object.fromEntries([...warmupMarkup.matchAll(/data-oq-warmup-reading="([^"]+)">([^<]*)<\/strong>/g)]
     .map(([, key, text]) => [key, { ...node(), textContent: text }]));
   stack.querySelector = selector => selector === "[data-oq-warmup-enabled]" && warmupMarkup ? section
     : selector === "[data-oq-warmup-status]" && warmupMarkup ? status
-    : readings[selector.match(/^\[data-oq-warmup-reading="([^"]+)"\]$/)?.[1]] || null;
+    : selector === "[data-oq-warmup-details-copy]" ? detailsCopy
+    : selector === "[data-oq-warmup-progress]" ? progress
+    : visibility[selector.match(/^\[data-oq-warmup-visible="([^"]+)"\]$/)?.[1]]
+    || readings[selector.match(/^\[data-oq-warmup-reading="([^"]+)"\]$/)?.[1]] || null;
   const collections = {
     "[data-oq-settings-field]": [card],
     "[data-select-key]": choices,
@@ -102,7 +109,7 @@ function mount({ selects = [], choices = [], switches = [], pills = [], inputs =
   };
   stack.querySelectorAll = selector => collections[selector] || [];
   state.root = { querySelector: selector => selector === ".oq-settings-group-nav" ? nav : selector === ".oq-settings-group-stack" ? stack : null, querySelectorAll: () => [] };
-  return { status, readings };
+  return { status, readings, visibility, detailsCopy, progress };
 }
 
 test("focused settings polls patch live warmup status and targets while preserving the input draft and cursor", async () => {
@@ -130,8 +137,11 @@ test("focused settings polls patch live warmup status and targets while preservi
   const input = node({ oqField: "warmupTrigger" });
   Object.assign(input, { type: "number", value: "1.8", selectionStart: 1, selectionEnd: 2 });
   document.activeElement = input;
-  const { status, readings } = mount({ inputs: [input], warmupMarkup: renderControlledWarmupField() });
-  assert.equal(status.textContent, "Niet actief");
+  const { status, readings, visibility } = mount({ inputs: [input], warmupMarkup: renderControlledWarmupField() });
+  assert.equal(status.textContent, "Klaar voor een nieuwe thermostaatverhoging");
+  assert.equal(visibility.step.hidden, true);
+  assert.equal(visibility.details.hidden, true);
+  assert.equal(visibility.boost.hidden, true);
   assert.equal(readings.warmupEffectiveTarget.textContent, "18,10 °C");
   state.settingsRenderSignature = getSettingsRenderSignature();
   const previousSignature = state.settingsRenderSignature;
@@ -157,7 +167,9 @@ test("focused settings polls patch live warmup status and targets while preservi
     assert.equal(renders, 0);
     assert.notEqual(state.settingsRenderSignature, previousSignature);
     assert.equal(state.settingsRenderSignature, getSettingsRenderSignature());
-    assert.equal(status.textContent, "Opwarmen in stappen");
+    assert.equal(status.textContent, "Bezig");
+    assert.equal(visibility.step.hidden, false);
+    assert.equal(visibility.details.hidden, false);
     assert.equal(readings.roomTemp.textContent, "18,07 °C");
     assert.equal(readings.roomSetpoint.textContent, "21,00 °C");
     assert.equal(readings.warmupEffectiveTarget.textContent, "18,40 °C");
@@ -174,6 +186,8 @@ test("focused settings polls patch live warmup status and targets while preservi
     deviceValues = { roomTemp: { value: null, state: null }, warmupActive: { value: null, state: null }, warmupEffectiveTarget: { value: null, state: null } };
     await syncEntities();
     assert.equal(status.textContent, "Status unknown");
+    assert.equal(visibility.step.hidden, true);
+    assert.equal(visibility.details.hidden, true);
     assert.equal(readings.warmupEffectiveTarget.textContent, "—");
     assert.equal(readings.roomTemp.textContent, "—");
     assert.equal(readings.roomSetpoint.textContent, "21.00 °C");
@@ -181,6 +195,9 @@ test("focused settings polls patch live warmup status and targets while preservi
     deviceValues = { warmupEnabled: { value: false }, warmupActive: { value: false }, warmupEffectiveTarget: { value: 21 } };
     await syncEntities();
     assert.equal(status.textContent, "Disabled");
+    assert.equal(visibility.step.hidden, true);
+    assert.equal(visibility.boost.hidden, true);
+    assert.equal(visibility.details.hidden, true);
     assert.equal(readings.warmupEffectiveTarget.textContent, "21.00 °C");
     assert.equal(renders, 0);
     assert.equal(document.activeElement, input);

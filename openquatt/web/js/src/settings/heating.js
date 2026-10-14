@@ -525,21 +525,27 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
 
   function getControlledWarmupDisplayModel() {
     const { enabled } = getSettingsSwitchModel("warmupEnabled");
-    const active = getEntityValue("warmupActive");
-    const status = getWarmupProgressText() || (!enabled ? t("warmup.disabled") :
-      t(active === true ? "warmup.warming" : active === false ? "warmup.idle" : "warmup.unknown"));
-    const value = (key) => {
+    const active = enabled && getEntityValue("warmupActive") === true;
+    const status = !enabled ? t("warmup.disabled") : active ? t("warmup.warming") :
+      t(getEntityValue("warmupActive") === false ? "warmup.idle" : "warmup.unknown");
+    const value = (key, sign = false) => {
       const numeric = hasEntity(key) ? parseLooseNumber(getEntityValue(key)) : NaN;
-      return Number.isFinite(numeric) ? `${formatNumber(numeric, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} °C` : "—";
+      return Number.isFinite(numeric) ? `${sign && numeric > 0 ? "+" : ""}${formatNumber(numeric, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} °C` : "—";
     };
     const readings = [
       ["roomTemp", t("warmup.roomTemperature"), value("roomTemp")],
       ["warmupIntermediateTarget", t("warmup.target"), value("warmupIntermediateTarget")],
-      ["warmupBoost", t("warmup.boost"), value("warmupBoost")],
-      ["warmupEffectiveTarget", t("warmup.effectiveTarget"), value("warmupEffectiveTarget")],
       ["roomSetpoint", t("warmup.finalTarget"), value("roomSetpoint")],
+      ["warmupBoost", t("warmup.boostActive"), value("warmupBoost", true)],
+      ["warmupEffectiveTarget", t("warmup.effectiveTarget"), value("warmupEffectiveTarget")],
     ];
-    return { status, readings };
+    const runningProgress = parseLooseNumber(getEntityValue("warmupStatus")) === 2;
+    const progress = enabled && (active ? runningProgress : getEntityValue("warmupActive") === false && !runningProgress)
+      ? getWarmupProgressText() : "";
+    const detailsCopy = t("warmup.detailsCopy", { target: value("warmupIntermediateTarget"), boost: value("warmupBoost") });
+    return { status, readings, progress, detailsCopy, visible: {
+      active, boost: active && parseLooseNumber(getEntityValue("warmupBoost")) > 0, progress: Boolean(progress),
+    } };
   }
 
   export function patchControlledWarmupField(root) {
@@ -548,19 +554,28 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     const { enabled } = getSettingsSwitchModel("warmupEnabled");
     const section = root.querySelector("[data-oq-warmup-enabled]");
     const structureMatches = section?.dataset.oqWarmupEnabled === String(enabled);
-    const { status, readings } = getControlledWarmupDisplayModel();
+    const { status, readings, progress, detailsCopy, visible } = getControlledWarmupDisplayModel();
     if (statusNode.textContent !== status) statusNode.textContent = status;
     readings.forEach(([key, , reading]) => {
       const node = root.querySelector(`[data-oq-warmup-reading="${key}"]`);
       if (node && node.textContent !== reading) node.textContent = reading;
     });
+    for (const name of ["step", "details", "boost", "progress"]) {
+      const node = root.querySelector(`[data-oq-warmup-visible="${name}"]`);
+      if (node) node.hidden = !visible[name === "step" || name === "details" ? "active" : name];
+    }
+    for (const [selector, text] of [["[data-oq-warmup-progress]", progress], ["[data-oq-warmup-details-copy]", detailsCopy]]) {
+      const node = root.querySelector(selector);
+      if (node && node.textContent !== text) node.textContent = text;
+    }
     return structureMatches;
   }
 
   export function renderControlledWarmupField() {
     if (!hasEntity("warmupEnabled")) return "";
     const { enabled, busy } = getSettingsSwitchModel("warmupEnabled");
-    const { status, readings } = getControlledWarmupDisplayModel();
+    const { status, readings, progress, detailsCopy, visible } = getControlledWarmupDisplayModel();
+    const reading = ([key, label, value], attributes = "") => `<div${attributes}><span>${escapeHtml(label)}</span><strong data-oq-warmup-reading="${key}">${escapeHtml(value)}</strong></div>`;
     const switchField = renderSettingsFieldCard("warmupEnabled", t("warmup.allow"), t("warmup.allowCopy"), `
       <div class="oq-settings-compact-switch-field">
         ${renderSettingsCompactSwitchControl("warmupEnabled", t("warmup.allow"), enabled, busy, t("common.on"), t("common.off"))}
@@ -584,8 +599,25 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
             renderSettingsNumberField("warmupStepTime", t("warmup.stepTime"), t("warmup.stepTimeCopy")),
           ].join("") : ""}
         </div>
-        ${enabled ? `<div class="oq-run-extension-thresholds oq-warmup-readings">${readings.map(([key, label, reading]) => `<div><span>${escapeHtml(label)}</span><strong data-oq-warmup-reading="${key}">${escapeHtml(reading)}</strong></div>`).join("")}</div>` : ""}
-        ${enabled ? `<p class="oq-run-extension-note">${escapeHtml(t("warmup.limits"))}</p>` : ""}
+        ${enabled ? `
+          <div class="oq-run-extension-thresholds oq-warmup-readings">
+            ${reading(readings[0])}
+            ${reading(readings[1], ` data-oq-warmup-visible="step"${visible.active ? "" : " hidden"}`)}
+            ${reading(readings[2])}
+          </div>
+          <div class="oq-run-extension-summary" data-oq-warmup-visible="boost"${visible.boost ? "" : " hidden"}>
+            <div class="oq-run-extension-thresholds">${reading(readings[3])}</div>
+            <p class="oq-run-extension-note">${escapeHtml(t("warmup.boostCopy"))}</p>
+          </div>
+          <p class="oq-run-extension-note" data-oq-warmup-visible="progress"${visible.progress ? "" : " hidden"} data-oq-warmup-progress>${escapeHtml(progress)}</p>
+          <div data-oq-warmup-visible="details"${visible.active ? "" : " hidden"}>
+            ${renderSettingsAdvancedDisclosure("warmup", t("warmup.details"), "", `
+              <div class="oq-run-extension-thresholds">${reading(readings[4])}</div>
+              <p class="oq-run-extension-note" data-oq-warmup-details-copy>${escapeHtml(detailsCopy)}</p>
+              <p class="oq-run-extension-note">${escapeHtml(t("warmup.limits"))}</p>
+            `)}
+          </div>
+        ` : ""}
       </section>
     `;
   }

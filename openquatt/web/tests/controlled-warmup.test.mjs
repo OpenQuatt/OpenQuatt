@@ -44,12 +44,12 @@ test("Power House exposes warmup; Heating Curve hides it", () => {
     assert.match(markup, /Geleidelijk opwarmen/);
     assert.match(markup, /data-oq-warmup-reading="roomTemp">18,06 °C/);
     assert.match(markup, /data-oq-warmup-reading="warmupEffectiveTarget">18,20 °C/);
-    assert.match(markup, /Einddoel/);
+    assert.match(markup, /Gewenste temperatuur/);
     assert.match(markup, /Het tussendoel blijft 18,1 °C/);
     assert.match(markup, /data-oq-warmup-reading="warmupIntermediateTarget">18,10 °C/);
-    assert.match(markup, /data-oq-warmup-reading="warmupBoost">0,10 °C/);
+    assert.match(markup, /data-oq-warmup-reading="warmupBoost">\+0,10 °C/);
     assert.match(markup, /data-oq-warmup-reading="roomSetpoint">20,50 °C/);
-    assert.match(markup, /Opwarmen in stappen/);
+    assert.match(markup, /Bezig/);
     assert.match(markup, /data-oq-field="warmupStep"/);
     assert.match(markup, /na 8 uur/);
     assert.doesNotMatch(markup, /data-oq-field="warmupMax/);
@@ -64,10 +64,10 @@ test("locale switching translates status and numeric presentation without writes
     setLocale("en", { persist: false });
     const markup = renderControlledWarmupField();
     assert.match(markup, /Gradual warmup/);
-    assert.match(markup, /Warming up in steps/);
+    assert.match(markup, /In progress/);
     assert.match(markup, /data-oq-warmup-reading="roomTemp">18\.06 °C/);
     assert.match(markup, /data-oq-warmup-reading="warmupEffectiveTarget">18\.20 °C/);
-    assert.match(markup, /Final target/);
+    assert.match(markup, /Desired temperature/);
     assert.match(markup, /maximum boost is 0.5/);
     assert.match(markup, /intermediate target stays at 18\.1 °C/);
     assert.match(markup, /data-oq-warmup-reading="roomSetpoint">20\.50 °C/);
@@ -81,7 +81,7 @@ test("locale switching translates status and numeric presentation without writes
 
 test("inactive limiter has neutral copy without inventing a cause", () => {
   reset({ ...enabledEntities(), warmupActive: { value: false, state: false } });
-  assert.match(renderControlledWarmupField(), /Niet actief/);
+  assert.match(renderControlledWarmupField(), /Klaar voor een nieuwe thermostaatverhoging/);
   assert.doesNotMatch(renderControlledWarmupField(), /Wacht op een setpointverhoging/);
 });
 
@@ -163,6 +163,9 @@ test("live boost patches preserve the fixed target and input drafts in both loca
       const nodes = new Map([
         ["[data-oq-warmup-status]", { textContent: "" }],
         ["[data-oq-warmup-enabled]", { dataset: { oqWarmupEnabled: "true" } }],
+        ...["step", "boost", "details", "progress"].map((name) => [`[data-oq-warmup-visible="${name}"]`, { hidden: false }]),
+        ["[data-oq-warmup-details-copy]", { textContent: "" }],
+        ["[data-oq-warmup-progress]", { textContent: "" }],
         ...["warmupIntermediateTarget", "warmupBoost", "warmupEffectiveTarget"].map((key) =>
           [`[data-oq-warmup-reading="${key}"]`, { textContent: "" }]),
       ]);
@@ -174,8 +177,20 @@ test("live boost patches preserve the fixed target and input drafts in both loca
       state.entities.warmupEffectiveTarget = number(18.3);
       assert.equal(patchControlledWarmupField(root), true);
       assert.equal(fixedNode.textContent, fixed);
-      assert.equal(nodes.get('[data-oq-warmup-reading="warmupBoost"]').textContent, locale === "nl" ? "0,20 °C" : "0.20 °C");
+      assert.equal(nodes.get('[data-oq-warmup-reading="warmupBoost"]').textContent, locale === "nl" ? "+0,20 °C" : "+0.20 °C");
       assert.equal(nodes.get('[data-oq-warmup-reading="warmupEffectiveTarget"]').textContent, locale === "nl" ? "18,30 °C" : "18.30 °C");
+      assert.equal(state.inputDrafts.warmupStep, "0.2");
+      assert.equal(nodes.get('[data-oq-warmup-visible="boost"]').hidden, false);
+      state.entities.warmupBoost = number(0);
+      patchControlledWarmupField(root);
+      assert.equal(nodes.get('[data-oq-warmup-visible="boost"]').hidden, true);
+      state.entities.warmupActive = { value: false };
+      state.entities.warmupBoost = number(0.2);
+      patchControlledWarmupField(root);
+      for (const name of ["step", "boost", "details"]) assert.equal(nodes.get(`[data-oq-warmup-visible="${name}"]`).hidden, true);
+      state.entities.warmupActive = { value: true };
+      patchControlledWarmupField(root);
+      for (const name of ["step", "boost", "details"]) assert.equal(nodes.get(`[data-oq-warmup-visible="${name}"]`).hidden, false);
       assert.equal(state.inputDrafts.warmupStep, "0.2");
     }
   } finally {
@@ -192,4 +207,36 @@ test("absent warmup markup is expected for curve mode and old firmware", () => {
   assert.equal(patchControlledWarmupField(root), true);
   reset({ ...enabledEntities(), strategy: { value: "Power House" } });
   assert.equal(patchControlledWarmupField(root), false);
+});
+
+
+test("warmup progress has a primary next step, optional boost and collapsed control details", () => {
+  try {
+    for (const locale of ["nl", "en"]) {
+      setLocale(locale, { persist: false });
+      reset(enabledEntities());
+      let markup = renderControlledWarmupField();
+      assert.match(markup, /data-oq-warmup-visible="step">/);
+      assert.match(markup, /data-oq-warmup-visible="boost">/);
+      assert.match(markup, /data-oq-settings-advanced="warmup">/);
+      const detailsAt = markup.indexOf('data-oq-settings-advanced="warmup"');
+      assert.ok(markup.indexOf('data-oq-warmup-reading="warmupEffectiveTarget"') > detailsAt);
+      assert.ok(markup.indexOf('data-oq-warmup-reading="roomSetpoint"') < detailsAt);
+      state.entities.warmupBoost = number(0);
+      assert.match(renderControlledWarmupField(), /data-oq-warmup-visible="boost" hidden/);
+      state.entities.warmupActive = { value: false };
+      state.entities.warmupBoost = number(0.3);
+      markup = renderControlledWarmupField();
+      for (const name of ["step", "boost", "details"]) assert.match(markup, new RegExp(`data-oq-warmup-visible="${name}" hidden`));
+      state.entities.warmupStatus = { value: 2 };
+      state.entities.warmupElapsed = { value: 2700 };
+      assert.match(renderControlledWarmupField(), /data-oq-warmup-visible="progress" hidden/);
+      state.entities.warmupActive = { value: true };
+      markup = renderControlledWarmupField();
+      assert.match(markup, /data-oq-warmup-visible="progress" data-oq-warmup-progress>/);
+      assert.match(markup, /45 (?:minuten|minutes)/);
+      state.settingsAdvancedOpen.warmup = true;
+      assert.match(renderControlledWarmupField(), /data-oq-settings-advanced="warmup" open/);
+    }
+  } finally { setLocale("nl", { persist: false }); }
 });

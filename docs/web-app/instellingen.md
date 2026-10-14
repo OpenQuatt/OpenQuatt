@@ -74,9 +74,14 @@ Bij afkoelen blijft het tussendoel staan. De boost is maximaal 0,5 °C; na maxim
 thermostaatverhoging nodig om weer te starten.
 
 De functie stopt zodra de gemeten kamertemperatuur het echte thermostaatdoel
-bereikt, ook als de kamer eerder al binnen de comfortband ligt. Je ziet de status,
-kamertemperatuur, vast tussendoel, boost, regeldoel en thermostaatdoel. De
-meetwaarden zijn ook diagnostische Home Assistant-entiteiten: **Controlled warmup
+bereikt, ook als de kamer eerder al binnen de comfortband ligt. Tijdens het
+opwarmen zie je **Kamertemperatuur**, **Volgende stap** en **Gewenste temperatuur**.
+**Boost actief** verschijnt alleen bij een positieve boost. Onder **Regeldetails**
+staat de berekende regeltemperatuur (**OpenQuatt regelt op**) met uitleg.
+Zonder actieve sessie toont het blok dat het klaarstaat voor een nieuwe
+thermostaatverhoging; de volgende stap en boost zijn dan verborgen. Bij uitschakelen
+blijven alleen de schakelaar en de korte uitleg over normaal regelen over.
+De meetwaarden blijven ook diagnostische Home Assistant-entiteiten: **Controlled warmup
 intermediate target**, **Controlled warmup boost** en **Controlled warmup effective
 target**. Buiten een sessie is het tussendoel onbekend en de boost nul; het
 regeldoel volgt de thermostaat. Temperaturen verschijnen met twee decimalen;
