@@ -1996,6 +1996,8 @@
     setEntity("switch", "OpenQuatt Enabled", { value: true, state: true });
     setEntity("switch", "Controlled warmup enabled", { value: false, state: false });
     setEntity("binary_sensor", "Controlled warmup active", { value: false, state: false });
+    setEntity("sensor", "Controlled warmup intermediate target", { value: null, state: "unknown", uom: "°C" });
+    setEntity("sensor", "Controlled warmup boost", { value: 0, uom: "°C" });
     setEntity("sensor", "Controlled warmup effective target", { value: 20.5, uom: "°C" });
     setEntity("sensor", "Controlled warmup status", { value: 0 });
     setEntity("sensor", "Controlled warmup elapsed", { value: 0, uom: "s" });

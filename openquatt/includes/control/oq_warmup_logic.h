@@ -48,7 +48,7 @@ struct State {
   uint32_t setpoint_source = 0;
   float last_requested_c = NAN;
   float target_c = NAN;
-  float offset_c = 0.0f;
+  float offset_c = 0.0f;  // Temporary boost; the fixed step target is separate.
   uint32_t started_ms = 0;
   uint32_t step_started_ms = 0;
   Status status = Status::IDLE;
@@ -112,7 +112,7 @@ inline State evaluate(const Input& in, const Settings& settings, State state) {
 
   const float change_c = in.requested_c - state.last_requested_c;
   state.last_requested_c = in.requested_c;
-  const bool comfortable = in.room_c >= in.requested_c - in.comfort_below_c;
+  const bool comfortable = in.room_c >= in.requested_c;
   if (state.active && change_c < -0.0001f) {
     state.active = false;
     state.status = Status::SETPOINT_LOWERED;
@@ -122,21 +122,21 @@ inline State evaluate(const Input& in, const Settings& settings, State state) {
   } else if (state.active && static_cast<uint32_t>(in.now_ms - state.started_ms) >= MAX_DURATION_MS) {
     state.active = false;
     state.status = Status::TIME_LIMIT;
-  } else if (!state.active && change_c > settings.trigger_c + 0.0001f && !comfortable) {
+  } else if (!state.active && change_c > 0.0001f && in.requested_c - in.room_c > settings.trigger_c + 0.0001f) {
     state.active = true;
     state.status = Status::WARMING;
-    state.offset_c = settings.step_c;
+    state.offset_c = 0.0f;
     state.started_ms = in.now_ms;
     state.step_started_ms = in.now_ms;
-    state.target_c = std::min(in.requested_c, in.room_c + state.offset_c);
+    state.target_c = std::min(in.requested_c, in.room_c + settings.step_c);
   } else if (state.active) {
     if (in.room_c >= state.target_c) {
-      state.target_c = std::min(in.requested_c, in.room_c + state.offset_c);
+      state.offset_c = 0.0f;
+      state.target_c = std::min(in.requested_c, in.room_c + settings.step_c);
       state.step_started_ms = in.now_ms;
     } else if (static_cast<uint32_t>(in.now_ms - state.step_started_ms) >= settings.step_ms) {
       state.offset_c = std::min(MAX_OFFSET_C, state.offset_c + settings.step_c);
-      // Cooling during a step must not move the fixed target backwards.
-      state.target_c = std::min(in.requested_c, std::max(state.target_c, in.room_c + state.offset_c));
+      // Keep the completion target fixed. Only the effective request grows.
       state.step_started_ms = in.now_ms;
     }
   }
@@ -148,7 +148,7 @@ inline State evaluate(const Input& in, const Settings& settings, State state) {
 }
 
 inline float effective_target(const State& state, float requested_c) {
-  return state.active ? std::min(state.target_c, requested_c) : requested_c;
+  return state.active ? std::min(state.target_c + state.offset_c, requested_c) : requested_c;
 }
 
 }  // namespace oq_warmup

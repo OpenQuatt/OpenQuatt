@@ -177,6 +177,29 @@ binary_sensor:
 
 sensor:
   - platform: template
+    id: oq_warmup_intermediate_target
+    name: "Controlled warmup intermediate target"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 5s
+    lambda: |-
+        return oq_warmup_runtime::runtime().intermediate_target();
+
+  - platform: template
+    id: oq_warmup_boost
+    name: "Controlled warmup boost"
+    unit_of_measurement: "°C"
+    state_class: measurement
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: 5s
+    lambda: |-
+        return oq_warmup_runtime::runtime().offset();
+
+  - platform: template
     id: oq_warmup_effective_target
     name: "Controlled warmup effective target"
     unit_of_measurement: "°C"

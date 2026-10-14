@@ -65,8 +65,9 @@ class Runtime {
       return;
     }
 
-    const auto warmup = oq_warmup_runtime::runtime().control_target(
-        id(room_setpoint_selected).state, id(oq_warmup_trigger_c).state, id(oq_warmup_enabled).state);
+    const auto warmup =
+        oq_warmup_runtime::runtime().control_target(id(room_setpoint_selected).state, id(oq_warmup_trigger_c).state,
+                                                    id(oq_warmup_enabled).state, id(room_temp_selected).state);
     const float effective_target_c = warmup.effective_c;
     const bool warming = warmup.limited;
     if (id(oq_strategy_output_source_code) != 3) this->dispatch_state_ = {};

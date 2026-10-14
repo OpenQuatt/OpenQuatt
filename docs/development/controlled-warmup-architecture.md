@@ -13,7 +13,7 @@ koelen en service. Strategieën en diagnostiek lezen pure getters. De YAML-tick
 maakt alleen de inputadapter; stappen, edges en timers blijven pure C++.
 
 Power House kan de nieuwe thermostaatwaarde vóór de volgende 1s-update lezen.
-De pure `control_target`-getter houdt bij een voldoende grote verhoging dan
+De pure `control_target`-getter houdt bij een nieuwe verhoging met voldoende verschil tot de gemeten kamer dan
 tijdelijk het vorige doel aan en onderdrukt fast-start. Bijvoorbeeld: 17→20 °C
 blijft vóór de update op 17 °C begrensd; de update start vervolgens bij een
 kamertemperatuur van 17 °C met een tussendoel van 17,1 °C. Getters starten geen
@@ -42,19 +42,34 @@ bij CM buiten 0..3, handbediening, koelen of uitgeschakelde OpenQuatt.
 V1 ondersteunt uitsluitend Power House. De oorspronkelijke stooklijnintegratie
 wijzigde hoofdzakelijk ruimte-stop/herstartgrenzen, terwijl het waterdoel gelijk
 kon blijven; dat bewijst geen begrensd opwarmvermogen. Vier instellingen zijn
-publiek: enabled, trigger, stap en staptijd. Maximum offset (0,5 K) en duur (8 uur)
+publiek: enabled, trigger, stap en staptijd. Maximum boost (0,5 K) en duur (8 uur)
 zijn compile-time constanten. De runtime kent geen strategiecodes; de adapter en
-mode-callback bewaken uitsluitend automatische Power House-regeling. Twee publieke
-meetwaarden tonen actieve sessie en effectief doel. Sessiestatus en verstreken
+mode-callback bewaken uitsluitend automatische Power House-regeling. Vier publieke
+meetwaarden tonen actieve sessie, vast tussendoel, boost en effectief doel. Sessiestatus en verstreken
 duur zijn daarnaast beschikbaar via de service-API (zie sessiediagnostiek).
 
-Bij de standaardinstellingen geeft 17→20,5 °C een verhoging van 3,5 °C en start
-opwarming; 19→20,5 °C is precies 1,5 °C en start niet. Bij 18,0 °C gemeten wordt
-het eerste tussendoel 18,1 °C. Zodra dit is bereikt, volgt direct de volgende
-stap. De 45 minuten zijn een termijn om het tussendoel te halen, geen vaste
-wachttijd: is de kamer na 45 minuten nog 18,0 °C, dan groeit de stap van 0,1 naar
-0,2 °C en wordt het doel 18,2 °C. Alleen inschakelen terwijl de thermostaat al op
-20,5 °C staat start niets; een nieuwe voldoende grote verhoging is nodig.
+Bij de standaardinstellingen start een nieuwe thermostaatverhoging naar 20,5 °C
+bij 18,0 °C gemeten kamer (2,5 °C verschil); bij 19,0 °C is het verschil precies
+1,5 °C en start de functie niet. De verhoging zelf hoeft niet meer dan 1,5 °C te
+zijn. Een eerste waarde na boot, enable, reconnect of invalidation legt alleen
+een baseline vast; een nieuwe positieve setpoint-edge blijft nodig. Dit voorkomt
+onmiddellijk herstarten na timeout of onderbreking bij een blijvend koud huis.
+
+Het eerste vaste tussendoel is kamer + ingestelde stap, begrensd op het echte
+doel. Boost (`State::offset_c`) begint op nul. Bij timeout blijft het tussendoel
+staan, boost groeit met één stap tot 0,5 °C en de staptimer start opnieuw. Het
+effectieve doel is `min(thermostaatdoel, tussendoel + boost)`. Bij bereiken of
+overschrijden van het vaste tussendoel wordt boost nul en volgt direct een nieuw
+tussendoel vanaf de gemeten kamer. Een late tick haalt geen gemiste boosts in.
+De sessie eindigt bij bereiken van het volledige thermostaatdoel of na acht uur;
+de comfortband is geen sessie-eindgrens meer. Verlagen annuleert direct.
+
+Een boost kan binnen de Power House-comfortband nog nul room feedback geven.
+Daarna verhoogt deze de ruimtecorrectie via de bestaande W/K-reactie; slew,
+minimumvermogen, waterlimieten en dispatch blijven leidend. Een boost garandeert
+geen specifieke frequentiestap of extra vermogen op ieder werkpunt. De hosttest
+controleert de deadband en vervolgens een hogere warmtevraag; fysieke respons
+vraagt nieuwe HIL-kwalificatie.
 
 Het bestaande zes-float opslagblok blijft compatibel om een NVS-migratie te
 vermijden. Validatie van het volledige blok blijft fail-closed; slots 4/5 worden
@@ -62,10 +77,10 @@ na geldige restore genormaliseerd naar de vaste limieten.
 
 Power House gebruikt het effectieve target voor room feedback. Heat intent krijgt
 het echte target voor gebruikersedges; tussenstappen zijn geen thermostaatverhoging.
-Tijdens warmup bevestigt een gestopte HP de warmtevraag onder het tussendoel via
+Tijdens warmup bevestigt een gestopte HP de warmtevraag onder het effectieve regeldoel via
 de normale 10s-confirmatie. De comfortband wordt daarvoor niet nogmaals van het
-tussendoel afgetrokken. De minimum-power recovery blijft vervolgens actief tot
-`requested_setpoint_c - room_resume_delta_c`, ook als Power House het bereiken van
+effectieve regeldoel afgetrokken. De minimum-power recovery blijft vervolgens actief tot
+`requested_setpoint_c`, ook als Power House het bereiken van
 een tussendoel vóór de volgende 1s-warmuptick ziet. Een al draaiende HP mag deze
 recovery direct gebruiken met geldige bronnen en warmtetoestemming; dit is geen
 nieuwe start en omzeilt de downstream guards niet. Bij verlaten van de limiter
@@ -167,3 +182,13 @@ maar faalt de actuele NVS-budgetcontrole: 573 van 630 entries geschat gebruikt,
 de eerdere PASS is daarom geen actuele budgetkwalificatie. De warmup-instellingen
 gebruiken één blob van drie entries. De HIL-resultaten van 6 oktober gelden voor
 productbron `4830dece`, niet voor deze latere samenvoeging. De PR blijft draft.
+
+## Testerfeedback 14 oktober 2026
+
+Vast tussendoel en boost zijn gescheiden, inclusief afzonderlijke native
+Home Assistant-sensoren en webweergave. De boost gebruikt het bestaande
+runtime-offsetveld; de grootte van de runtime verandert niet en de NVS-layout
+blijft behouden. Twee extra ESPHome-sensorobjecten en hun API-/webregistratie
+hebben wel geheugenimpact; die is nog niet op representatieve hardware gemeten.
+De historische HIL-verslagen kwalificeren deze nieuwe boost- en eindgrenslogica
+niet. De bestaande heap/P1- en NVS-kwalificatiepunten blijven open.

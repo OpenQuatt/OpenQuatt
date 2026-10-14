@@ -53,39 +53,34 @@ extra internettoegang bij. De schakelaar staat standaard uit en is ook bedienbaa
 via Home Assistant en de API.
 
 Open **Instellingen → Verwarmen → Geleidelijk opwarmen** en zet de functie aan
-vóór de thermostaat vanuit de nachtstand omhoog gaat. De kamer moet nog onder de
-comfortband van het einddoel liggen. Herstarten of een bron opnieuw verbinden
-start geen nieuwe opwarmsessie.
-
-Bij een startgrens van 1,5 °C begint geleidelijk opwarmen bijvoorbeeld wanneer
-de thermostaat van 17 naar 20,5 °C gaat: een verhoging van 3,5 °C.
-Staat de thermostaat al op 20,5 °C wanneer je de functie aanzet? Dan verwarmt
-OpenQuatt gewoon verder naar 20,5 °C. Die opwarming wordt niet alsnog in kleine
-stappen uitgevoerd. 20,5 °C is een voorbeeld, geen vaste startgrens.
-De gewenste temperatuur is de instelling op je thermostaat; de gemeten
-kamertemperatuur kan daarvan afwijken.
+vóór je de thermostaat hoger zet. Na een nieuwe verhoging start de functie als
+het gewenste doel meer dan de startgrens boven de gemeten kamertemperatuur ligt.
+De grootte van de thermostaatverhoging zelf is niet de startgrens. Alleen
+inschakelen, herstarten of opnieuw verbinden start geen sessie voor een eerdere
+verhoging. Dit voorkomt ook direct opnieuw starten na een onderbreking of timeout.
 
 | Instelling | Standaard | Betekenis |
 |---|---|---|
-| Start bij verhoging groter dan | 1,5 °C | Thermostaat van 17 naar 20,5 °C: +3,5 °C, dus een start. Van 19 naar 20,5 °C: precies +1,5 °C, dus geen start. |
-| Temperatuurstap | 0,1 °C | Bij 18,0 °C gemeten wordt het eerste tussendoel 18,1 °C. Zodra dat is bereikt, volgt de volgende stap direct. |
-| Tijd per stap | 45 min | Is 18,1 °C na 45 minuten nog niet bereikt en meet de kamer nog 18,0 °C, dan groeit de stap naar 0,2 °C en wordt het tussendoel 18,2 °C. |
+| Start bij kamerverschil groter dan | 1,5 °C | Kamer 18,0 °C, nieuw doel 20,5 °C: verschil 2,5 °C, dus een start. Kamer 19,0 °C: precies 1,5 °C verschil, dus geen start. |
+| Temperatuurstap | 0,1 °C | Kamer 18,0 °C: vast tussendoel 18,1 °C. Na bereiken volgt direct een nieuwe stap en wordt de boost nul. |
+| Tijd per stap | 45 min | Tussendoel nog niet bereikt? Boost stijgt met 0,1 °C; het tussendoel blijft vast staan. De timer begint opnieuw. |
 
-De maximale opwarmstap is vast 0,5 °C; na maximaal 8 uur neemt de normale regeling over.
+Het **regeldoel** is tussendoel plus boost, begrensd op de thermostaattemperatuur.
+Bij 18,1 °C tussendoel en 0,1 °C boost wordt dit 18,2 °C. Je hoeft alleen 18,1 °C
+te bereiken om de stap af te ronden: bij bereiken wordt de boost nul en het
+volgende tussendoel de dan gemeten kamertemperatuur plus de ingestelde stap.
+Bij afkoelen blijft het tussendoel staan. De boost is maximaal 0,5 °C; na maximaal
+8 uur neemt de normale regeling over. Na een onderbreking is een nieuwe
+thermostaatverhoging nodig om weer te starten.
 
-Elk tussendoel blijft vast staan tot het bereikt is of de tijd per stap verloopt.
-Na bereiken schuift het verder; het komt nooit boven de gewenste temperatuur.
-Dit is dus geen vaste verhoging van 0,1 °C per 45 minuten: bij sneller bereiken
-volgt de volgende stap eerder, bij te langzaam opwarmen groeit de stap.
-De toegepaste opwarmstap bepaalt een nieuw tussendoel op basis van de kamertemperatuur.
-Een bestaand tussendoel daalt niet bij afkoelen; de werkelijke afstand tot de kamer
-kan daardoor groter worden dan de ingestelde maximale opwarmstap.
-Binnen de comfortband neemt de normale regeling weer over. Je ziet hier ook
-**Opwarmen in stappen**, de actuele kamertemperatuur, het tussendoel en het einddoel
-van je thermostaat. Deze drie temperaturen worden met twee decimalen weergegeven.
-Bijvoorbeeld: bij 18,06 °C gemeten is een tussendoel van 18,10 °C nog niet bereikt,
-hoewel beide bij afronden op één decimaal 18,1 °C zouden lijken. Meer decimalen in
-de weergave maken de sensor zelf niet nauwkeuriger en veranderen de regeling niet.
+De functie stopt zodra de gemeten kamertemperatuur het echte thermostaatdoel
+bereikt, ook als de kamer eerder al binnen de comfortband ligt. Je ziet de status,
+kamertemperatuur, vast tussendoel, boost, regeldoel en thermostaatdoel. De
+meetwaarden zijn ook diagnostische Home Assistant-entiteiten: **Controlled warmup
+intermediate target**, **Controlled warmup boost** en **Controlled warmup effective
+target**. Buiten een sessie is het tussendoel onbekend en de boost nul; het
+regeldoel volgt de thermostaat. Temperaturen verschijnen met twee decimalen;
+de weergave maakt de sensor zelf niet nauwkeuriger.
 
 Bij **Live regeling** op het overzicht en in het opwarmblok zie je de sessieduur
 uitgeschreven, bijvoorbeeld **Geleidelijk opwarmen is 1 uur en 35 minuten bezig.
@@ -101,7 +96,7 @@ statusinformatie toont de app geen geschatte duur.
 Een verlaging van de gewenste temperatuur, uitschakelen, ongeldige bronwaarden of
 een wijziging van bronnen, instellingen of regelmodus beëindigt het opwarmen.
 Een verdere verhoging tijdens opwarmen past het einddoel aan. Na beëindigen is een
-nieuwe voldoende grote setpointverhoging nodig; de normale bron- en
+nieuwe setpointverhoging met voldoende kamerverschil nodig; de normale bron- en
 veiligheidsvoorwaarden blijven gelden.
 Bij CIC moeten kamertemperatuur en setpoint in het nieuwste feedantwoord staan.
 Een oude waarde die nog zichtbaar is, houdt de opwarmsessie niet actief.
@@ -111,11 +106,11 @@ Stooklijn, externe vermogensvragen, koelen en handbediening vallen erbuiten.
 Een lager tussendoel vermindert de ruimtegebonden warmtevraag van Power House.
 Warmtetoestemming, wachttijden, waterlimieten en beveiligingen blijven leidend.
 Een tussendoel is geen stopgrens: tijdens opwarmen blijft de minimale warmtevraag
-behouden tot de kamer binnen de comfortband van het echte einddoel komt.
+behouden tot de kamer het echte thermostaatdoel bereikt.
 Bijvoorbeeld: kamer 20,06 °C, stap 0,1 °C en einddoel 22 °C geven eerst een tussendoel
 van 20,16 °C. De regeling laat de minimale warmtevraag niet al bij 20,11 °C los.
 Bij bereiken van het tussendoel schuift dat verder zonder daarvoor een stop en
-herstart te vragen. Met een comfortband van 0,1 °C eindigt het opwarmen bij 21,9 °C.
+herstart te vragen. De comfortband verandert deze eindgrens niet: de sessie eindigt bij 22,0 °C.
 Ook als de comfortband groter is dan de stap, kan de warmtepomp na de normale
 startbevestiging opwarmen. Een al draaiende warmtepomp hoeft daarvoor niet eerst
 te stoppen. Het minimaal beschikbare warmtepompvermogen blijft de ondergrens;

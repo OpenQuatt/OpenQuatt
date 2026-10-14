@@ -533,7 +533,9 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     };
     const readings = [
       ["roomTemp", t("warmup.roomTemperature"), value("roomTemp")],
-      ["warmupEffectiveTarget", t("warmup.target"), value("warmupEffectiveTarget")],
+      ["warmupIntermediateTarget", t("warmup.target"), value("warmupIntermediateTarget")],
+      ["warmupBoost", t("warmup.boost"), value("warmupBoost")],
+      ["warmupEffectiveTarget", t("warmup.effectiveTarget"), value("warmupEffectiveTarget")],
       ["roomSetpoint", t("warmup.finalTarget"), value("roomSetpoint")],
     ];
     return { status, readings };

@@ -31,20 +31,21 @@ static void test_fixed_target_and_acceleration() {
   assert(std::fabs(state.target_c - 17.1f) < 0.0001f);
   in.now_ms = state.step_started_ms + settings.step_ms;
   state = evaluate(in, settings, state);
-  assert(std::fabs(state.offset_c - 0.2f) < 0.0001f);
-  assert(std::fabs(state.target_c - 17.25f) < 0.0001f);
+  assert(std::fabs(state.offset_c - 0.1f) < 0.0001f);
+  assert(std::fabs(state.target_c - 17.1f) < 0.0001f);
+  assert(std::fabs(effective_target(state, in.requested_c) - 17.2f) < 0.0001f);
   in.room_c = state.target_c;
   in.now_ms += 1000;
   state = evaluate(in, settings, state);
-  assert(std::fabs(state.target_c - 17.45f) < 0.0001f);
-  assert(std::fabs(state.offset_c - 0.2f) < 0.0001f);
+  assert(std::fabs(state.target_c - 17.2f) < 0.0001f);
+  assert(state.offset_c == 0.0f);
   for (int i = 0; i < 6; ++i) {
     const float old_target = state.target_c;
     in.now_ms += settings.step_ms;
     if (i == 3) in.room_c -= 1.0f;
     state = evaluate(in, settings, state);
     assert(state.active);
-    assert(state.target_c >= old_target);
+    assert(state.target_c == old_target);
     assert(state.offset_c <= MAX_OFFSET_C);
   }
   in.now_ms = state.started_ms + MAX_DURATION_MS - 1;
@@ -66,15 +67,19 @@ static void test_trigger_and_comfort_boundaries() {
   state = evaluate(in, settings, state);
   assert(!state.active);  // Strictly greater, not >=.
   in.requested_c = 20.0f;
-  in.room_c = 19.8f;
+  in.room_c = 19.0f;
   state = evaluate(in, settings, state);
-  assert(!state.active);  // Already inside real comfort band.
+  assert(!state.active);  // Insufficient room gap despite a new raise.
   in = input();
-  state = start(in);
+  in.requested_c = 19.9f;
+  state = evaluate(in, settings, {});
+  in.requested_c = 20.0f;
+  state = evaluate(in, settings, state);
+  assert(state.active);  // Small raise, but room gap exceeds the threshold.
   in.room_c = 19.799f;
   state = evaluate(in, settings, state);
   assert(state.active && state.target_c <= in.requested_c);
-  in.room_c = 19.8f;
+  in.room_c = 20.0f;
   state = evaluate(in, settings, state);
   assert(!state.active && state.status == Status::COMFORT_REACHED);
   assert(state.offset_c == 0.0f);
@@ -137,7 +142,7 @@ static void test_rollover_and_invalid_settings() {
   const Settings settings;
   in.now_ms += settings.step_ms;
   state = evaluate(in, settings, state);
-  assert(state.active && std::fabs(state.offset_c - 0.2f) < 0.0001f);
+  assert(state.active && std::fabs(state.offset_c - 0.1f) < 0.0001f);
   in.now_ms = state.started_ms + MAX_DURATION_MS;
   state = evaluate(in, settings, state);
   assert(!state.active && state.status == Status::TIME_LIMIT);
@@ -210,6 +215,37 @@ static void test_delayed_heating_permission_does_not_authorize_heat() {
   assert(!decision.setpoint_raise_edge);
 }
 
+static void test_boost_power_response_and_target_cap() {
+  auto in = input();
+  Settings settings{1.5f, 0.1f, 300000U};
+  auto state = start(in, settings);
+  const float fixed_target = state.target_c;
+  oq_power_house::DemandInput demand{1000, 5, -10, 18, 10000, 17, fixed_target, NAN, 1, false};
+  oq_power_house::DemandTuning tuning{0, 2000, 0.2f, 0.3f, 8, 3, 20};
+  const auto baseline = oq_power_house::decide_demand(demand, tuning, {});
+  for (int i = 1; i <= 8; ++i) {
+    in.now_ms += settings.step_ms;
+    state = evaluate(in, settings, state);
+    assert(state.target_c == fixed_target);  // Timeout never raises the completion bar.
+    assert(std::fabs(state.offset_c - std::min(0.5f, i * 0.1f)) < 0.0001f);
+    demand.setpoint_c = effective_target(state, in.requested_c);
+    const auto boosted = oq_power_house::decide_demand(demand, tuning, {});
+    if (i >= 2) assert(boosted.requested_w > baseline.requested_w);
+    assert(effective_target(state, 17.15f) == 17.15f);  // Clamp even between owner ticks.
+  }
+  // Overshoot the fixed target, but never require reaching the boosted target.
+  in.room_c = fixed_target + 0.01f;
+  state = evaluate(in, settings, state);
+  assert(state.active && state.offset_c == 0.0f);
+  assert(std::fabs(state.target_c - (in.room_c + settings.step_c)) < 0.0001f);
+  in.room_c = 19.9f;
+  state = evaluate(in, settings, state);
+  assert(state.active && state.target_c == 20.0f);  // Comfort band does not end warmup.
+  in.room_c = 20.01f;
+  state = evaluate(in, settings, state);
+  assert(!state.active && state.status == Status::COMFORT_REACHED);
+}
+
 static void test_persisted_settings_fail_closed() {
   for (int index = 0; index < 6; ++index) {
     float saved[6] = {1, 2, 0.2f, 60, 1, 12};
@@ -229,6 +265,7 @@ static void test_persisted_settings_fail_closed() {
 }
 
 int main() {
+  test_boost_power_response_and_target_cap();
   test_delayed_heating_permission_does_not_authorize_heat();
   test_persisted_settings_fail_closed();
   test_fixed_target_and_acceleration();

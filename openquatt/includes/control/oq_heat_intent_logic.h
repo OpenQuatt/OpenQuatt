@@ -116,10 +116,9 @@ inline Decision evaluate(const Input& input, State state) {
 
   // An intermediate target is a step-completion point, not a new comfort band.
   // In particular a 0.1 C step must still request heat with a 0.2 C comfort band.
-  out.room_condition =
-      input.controlled_warmup
-          ? input.room_c < input.setpoint_c && input.room_c < observed_setpoint_c - input.room_resume_delta_c
-          : input.room_c <= room_cold_edge_c(input.setpoint_c, input.room_resume_delta_c);
+  out.room_condition = input.controlled_warmup
+                           ? input.room_c < input.setpoint_c && input.room_c < observed_setpoint_c
+                           : input.room_c <= room_cold_edge_c(input.setpoint_c, input.room_resume_delta_c);
   if (out.room_condition) {
     if (input.room_confirm_ms == 0) {
       state.room_confirm_since_ms = 0;
@@ -139,8 +138,7 @@ inline Decision evaluate(const Input& input, State state) {
   // Ordinary recovery retains a confirmed room-demand start until the setpoint.
   // Warmup may also retain an already running HP: it needs no new compressor start and
   // must survive the pending-raise/step handoff before the 1s owner tick.
-  const bool warmup_recovery =
-      input.controlled_warmup && input.room_c < observed_setpoint_c - input.room_resume_delta_c;
+  const bool warmup_recovery = input.controlled_warmup && input.room_c < observed_setpoint_c;
   if (!state.room_recovery_active) {
     if (input.compressor_active && (state.room_start_armed || warmup_recovery)) {
       state.room_start_armed = false;
@@ -153,9 +151,8 @@ inline Decision evaluate(const Input& input, State state) {
   }
   // Keep minimum viable heating through intermediate steps, also when the
   // consumer runs before the 1s warmup owner has advanced the next target.
-  // Release at real comfort; ordinary recovery releases at the full setpoint.
-  const float recovery_release_c =
-      input.controlled_warmup ? observed_setpoint_c - input.room_resume_delta_c : input.setpoint_c;
+  // Release at the real thermostat target; ordinary recovery releases at the full setpoint.
+  const float recovery_release_c = input.controlled_warmup ? observed_setpoint_c : input.setpoint_c;
   if (state.room_recovery_active && input.room_c >= recovery_release_c) state.room_recovery_active = false;
 
   out.fast_start =

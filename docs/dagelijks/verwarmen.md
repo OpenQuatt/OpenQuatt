@@ -111,16 +111,18 @@ Bij `Power House` kun je na nachtverlaging of langere afwezigheid geleidelijk
 opwarmen. De functie staat standaard uit. Je thermostaat blijft de gewenste
 eindtemperatuur bepalen; dit werkt ook met andere thermostaten dan Tado.
 
-Zet de functie aan vóór je de thermostaat hoger zet. Bijvoorbeeld: van 17 naar
-20,5 °C is een verhoging van 3,5 °C en overschrijdt de standaardstartgrens van
-1,5 °C. Bij een gemeten kamertemperatuur van 18 °C wordt het eerste tussendoel
-18,1 °C. Zodra de kamer dat bereikt, volgt de volgende stap. Wordt het tussendoel
-na 45 minuten nog niet gehaald, dan wordt de stap groter.
+Zet de functie aan vóór je de thermostaat hoger zet. Bij een nieuw doel van
+20,5 °C en een gemeten kamer van 18 °C is het verschil 2,5 °C: groter dan de
+standaardstartgrens van 1,5 °C. Het eerste vaste tussendoel wordt 18,1 °C.
+Na bereiken volgt direct een nieuwe stap. Wordt het tussendoel na 45 minuten
+niet gehaald, dan groeit een aparte boost; het tussendoel blijft staan.
+Na iedere behaalde stap wordt de boost nul. Het regeldoel blijft begrensd op
+de thermostaattemperatuur.
 
-Alleen inschakelen terwijl de thermostaat al op 20,5 °C staat, zet de bestaande
-opwarming niet alsnog om in stappen. Binnen de comfortband van het einddoel neemt
-de normale regeling weer over. Opwarmen kan langer duren; een energiebesparing
-is niet gegarandeerd. De stooklijn gebruikt deze functie niet.
+Alleen inschakelen start geen sessie voor een eerdere thermostaatverhoging.
+Bij bereiken van het echte thermostaatdoel of na 8 uur neemt de normale regeling
+over. Opwarmen kan langer duren; een energiebesparing is niet gegarandeerd.
+De stooklijn gebruikt deze functie niet.
 
 Zie [Geleidelijk opwarmen instellen](../web-app/instellingen.md#geleidelijk-opwarmen-na-nachtverlaging)
 voor de bediening, instellingen en voorbeelden.

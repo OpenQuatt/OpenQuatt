@@ -73,7 +73,7 @@ struct Simulation {
     if (owner_first) warmup.update(input, settings);
     entities.room_temp_selected.state = entities.api_input_room_temperature.state = room;
     entities.room_setpoint_selected.state = entities.api_input_room_setpoint.state = requested;
-    const auto target = warmup.control_target(requested, settings.trigger_c, input.enabled);
+    const auto target = warmup.control_target(requested, settings.trigger_c, input.enabled, input.room_c);
     const auto decision = oq_heat_intent_runtime::evaluate(now, compressor, input.comfort_below_c, 10000, false, false,
                                                            intent_state, target.effective_c, fixed && target.limited);
     intent_state = decision.next;
@@ -84,7 +84,7 @@ struct Simulation {
   oq_heat_intent::Decision tick(uint32_t now, float room, float requested = 22, bool owner_first = true,
                                 bool fixed = true) {
     const auto decision = intent(now, room, requested, owner_first, fixed);
-    const auto target = warmup.control_target(requested, settings.trigger_c, input.enabled);
+    const auto target = warmup.control_target(requested, settings.trigger_c, input.enabled, input.room_c);
     if (compressor && fast_floor_w > 0) demand_state.last_w = std::max(demand_state.last_w, fast_floor_w);
     if (target.limited) demand_state.comfort_memory_c = 0;
     const oq_power_house::DemandInput demand_input{now, 19.62f,       -10,  18, 10000, room, target.effective_c,
@@ -158,7 +158,7 @@ void test_existing_run_and_both_owner_orderings() {
     sim.warmup.update(sim.input, sim.settings);
     assert(std::fabs(sim.warmup.effective_target() - 20.26796875f) < 0.00001f);
     // Comfort releases even if PH sees the last intermediate target first.
-    const float comfort = 22.0f - sim.input.comfort_below_c;
+    const float comfort = 22.0f;
     decision = sim.tick(182000, comfort, 22, owner_first);
     assert(!decision.room_recovery_active && !decision.fast_start && !sim.compressor);
     sim.warmup.update(sim.input, sim.settings);
@@ -175,7 +175,7 @@ void test_step_comfort_matrix_and_noise() {
       sim.tick(62000, sim.input.room_c);
       assert(sim.compressor);
       uint32_t now = 122000;
-      const float comfort = 22 - below;
+      const float comfort = 22;
       int steps = 0;
       for (float room = 17.03125f; room < comfort; room += 0.03125f) {
         const float old_target = sim.warmup.effective_target();
@@ -324,9 +324,9 @@ void test_warmup_handoff_to_adjustable_run_extension() {
       assert(!result.force_comfort_stop && !result.warm_restart_intent);
       assert(result.comfort_stop_c == 22.7f);
     }
-    sim.tick(sim.input.now_ms + 60000, 21.8f);
+    sim.tick(sim.input.now_ms + 60000, 22.0f);
     assert(!sim.warmup.active() && !sim.intent_state.room_recovery_active);
-    in.room_c = 21.8f;
+    in.room_c = 22.0f;
     in.base_requested_w = 0;
     result = extension::evaluate(in, tuning, state);
     assert(result.floor_active && !result.force_comfort_stop);
