@@ -56,9 +56,9 @@ class PowerHouseDemandContractTest(unittest.TestCase):
             self.assertNotIn(marker, text)
             self.assertNotIn(marker, yaml)
         # Boot acquisition adds a one-shot input deadline and explicit invalid outputs.
-        # Recorder diagnostics add 21 YAML lines; warmup adds 14 runtime lines.
-        # Measured 3874 combined lines; retain the existing 10-line margin.
-        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 3884)
+        # Include physical-frequency candidates, historical stop diagnostics and warmup.
+        # Merged sources: 3940 lines, versus 3925 on dev; preserve the five-line margin.
+        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 3945)
 
     def test_startup_wait_clears_shared_outputs_before_adopting_demand(self) -> None:
         text = FILES[1].read_text()

@@ -31,6 +31,20 @@ Tijdelijke PSRAM-historie is op alle ondersteunde profielen standaard aan en wor
 
 `Beslislog` laat zien welke regelkeuze OpenQuatt maakte en welke signalen daarbij meespeelden. Gebruik dit scherm vooral om een onverwachte omschakeling of begrenzing te verklaren. De functie is nog beta; combineer de uitleg daarom met de actuele waarden in `Diagnose`.
 
+Bij een verwarmstop staat een korte reden, zoals **kamer warm genoeg**, **weinig
+warmte nodig** of **water warm genoeg**. Daarbij staat alleen de temperatuur of het
+vermogen dat die stop verklaart. **Kamer was al warm genoeg** betekent dat het besluit
+eerder viel, ook als de kamer bij het stoppen alweer iets is afgekoeld.
+
+Klik op de stop om te zien waarom de pomp stopt en wanneer hij weer kan starten.
+De volledige meetwaarden staan onder **Details voor support**: de warmtevraag,
+het laatst gemeten warmtepompvermogen en de gebruikte temperatuur- of vermogensgrenzen.
+De waarden horen bij het besluit; het pompvermogen is de laatst beschikbare meting
+vóór de stopopdracht. Ontbrekende waarden blijven onbekend. Oudere records krijgen
+geen achteraf ingevulde meetwaarden.
+Na een stop kan de kamer nog opwarmen door opgeslagen warmte en kan de circulatiepomp
+nalopen. Dat telt niet als een nieuwe compressorstart of extra stop.
+
 
 ## Systeemrecorder voor support
 

@@ -129,7 +129,7 @@ test("translation calls reference catalogue keys and production UI has no hardco
 
   for (const file of files) {
     const source = await readFile(file, "utf8");
-    const relativeFile = path.relative(sourceRoot, file);
+    const relativeFile = path.relative(sourceRoot, file).split(path.sep).join("/");
     const ast = parse(source, { ecmaVersion: "latest", sourceType: "module" });
     walk(ast, (node, parent, parentKey) => {
       if (node.type === "CallExpression" && node.callee?.type === "Identifier" && node.callee.name === "t") {

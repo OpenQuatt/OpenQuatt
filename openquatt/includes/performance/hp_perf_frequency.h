@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstddef>
 
-#include "../odu/oq_odu_generation.h"
+#include "../odu/oq_odu_compressor_levels.h"
 #include "hp_perf_map.h"
 
 namespace oq_perf {
@@ -117,23 +117,23 @@ inline float interp_power_el_w_hz(float frequency_hz, float Tamb, float Tsup, fl
 
 template <typename FrequencyContext>
 inline CandidatePrediction predict_candidate(const FrequencyContext& frequency, oq_odu::Variant variant, bool hp1,
-                                             int control_level, float Tamb, float Tsup,
+                                             int physical_level, float Tamb, float Tsup,
                                              bool allow_low_supply_boundary_estimate = false) {
   CandidatePrediction result;
   if (variant == oq_odu::Variant::UNKNOWN) return result;
-  if (control_level < 0 || control_level > 10) return result;
-  if (control_level == 0) {
+  if (physical_level < 0 || physical_level > oq_odu::EXTENDED_PHYSICAL_LEVEL_MAX) return result;
+  if (physical_level == 0) {
     result.runtime_frequency_hz = 0;
     result.runtime_frequency_known = true;
     result.frequency_policy_allowed = true;
     result.performance = predict_heating_hz(variant, 0.0f, Tamb, Tsup);
     return result;
   }
-  const int frequency_hz = frequency.automatic_frequency_hz(hp1, 2, control_level);
+  const int frequency_hz = frequency.automatic_frequency_hz(hp1, 2, physical_level);
   if (frequency_hz <= 0) return result;
   result.runtime_frequency_hz = frequency_hz;
   result.runtime_frequency_known = true;
-  result.frequency_policy_allowed = frequency.frequency_allowed(hp1, 2, control_level);
+  result.frequency_policy_allowed = frequency.frequency_allowed(hp1, 2, physical_level);
   result.performance =
       predict_heating_hz(variant, static_cast<float>(frequency_hz), Tamb, Tsup, allow_low_supply_boundary_estimate);
   return result;

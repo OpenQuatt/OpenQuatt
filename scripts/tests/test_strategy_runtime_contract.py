@@ -33,6 +33,7 @@ class StrategyRuntimeContractTest(unittest.TestCase):
         for name, (marker, expected) in calls.items():
             self.assertEqual(YAMLS[name].count(marker), expected)
         # Measured 1715 lines with the two cached run-extension diagnostic sensors.
+        # Bounded physical-frequency candidates replace the ten-slot dispatch.
         self.assertLessEqual(sum(len(source.splitlines()) for source in YAMLS.values()), 1726)
         for implementation_marker in (
             "DispatchState dispatch_state",
@@ -89,7 +90,9 @@ class StrategyRuntimeContractTest(unittest.TestCase):
         # with dev's confirmed-stop transition to CM0.
         # Issue #784 adds the warmup target to Power House and heat intent.
         # Boot input acquisition adds explicit invalid outputs and a one-shot deadline.
-        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1515)
+        # Include physical-frequency candidates and bounded historical stop diagnostics.
+        # Merged runtime: 1644 lines, versus 1628 on dev; preserve the seven-line margin.
+        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1651)
         self.assertLessEqual(len(HEAT_INTENT_RUNTIME.splitlines()), 90)
         # The selector now returns source provenance alongside its value; keep it local.
         self.assertLessEqual(len(LOGIC.splitlines()), 75)

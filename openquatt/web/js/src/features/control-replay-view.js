@@ -1,4 +1,5 @@
 import { describeFrequencyLimit } from "./frequency-limits.js";
+import { attachHeatingStopSnapshots, getHeatingStopCopy, getHeatingStopReasonMeta, getHeatingStopSupportValues } from "./control-replay-heating-stops.js";
 import { getEntityNumericValue, getEntityStateText, hasEntity, isEntityActive } from "../core/app-shared.js";
 import { renderOqIcon } from "../core/config.js";
 import { parseLooseNumber } from "../core/entity-store.js";
@@ -6,6 +7,7 @@ import { getCoolingStartBlockModel } from "../settings/cooling.js";
 import { escapeHtml } from "../core/html.js";
 import { getRenderSignature } from "../core/render-signatures.js";
 import { state } from "../core/state.js";
+import { getInstallationTopology } from "./device-context.js";
 import { setViewPatchControls } from "../core/view-patch-controls.js";
 import { getControlReplayIncidentDisplaySeverity, getControlReplayIncidentEventCopy, getControlReplayIncidentModeAfterEvent, getControlReplayIncidentModeTransition, getControlReplayIncidentReasonMeta } from "./control-replay-incidents.js";
 import { formatWorkingMode, getHeatPumpPanels } from "../views/heatpump.js";
@@ -462,6 +464,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
   function getControlWorkingReasonMeta(reasonCode) {
     return resolveControlWorkingReasonMeta(
       CONTROL_WORKING_REASON_METAS[reasonCode]
+      || getHeatingStopReasonMeta(reasonCode)
       || getControlReplayIncidentReasonMeta(reasonCode)
       || CONTROL_WORKING_REASON_FALLBACK,
     );
@@ -575,8 +578,9 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
 
   function getControlWorkingOptimizerModel(target) {
     const reasonCode = target?.reasonCode || target?.primaryReason || "keep_current";
-    const source = target?.source || "HP1 + HP2";
-    if (reasonCode === "better_heat") {
+    const hasHp2 = target?.hp2Available ?? (getInstallationTopology() === "duo" || String(target?.source || "").includes("HP2"));
+    const source = target?.source || (hasHp2 ? "HP1 + HP2" : "HP1");
+    if (hasHp2 && reasonCode === "better_heat") {
       return {
         title: t("controlReplay.optSystemChoice"),
         verdict: t("controlReplay.optTwoHpActive"),
@@ -594,7 +598,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
         verdict: t("controlReplay.optOneHpEnough"),
         summary: t("controlReplay.optOneHpEnoughCopy"),
         rows: [
-          { option: t("controlReplay.optTwoHp"), result: t("controlReplay.optNoLongerNeeded"), code: "less_power", detail: t("controlReplay.optTogetherTooMuch"), tone: "muted" },
+          ...(hasHp2 ? [{ option: t("controlReplay.optTwoHp"), result: t("controlReplay.optNoLongerNeeded"), code: "less_power", detail: t("controlReplay.optTogetherTooMuch"), tone: "muted" }] : []),
           { option: source, result: t("controlReplay.optStaysActive"), code: "less_power", detail: t("controlReplay.optOneHpCovers"), tone: "selected" },
         ],
       };
@@ -603,10 +607,10 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       return {
         title: t("controlReplay.optSystemChoice"),
         verdict: t("controlReplay.optStarted", { source }),
-        summary: t("controlReplay.optHpEqual"),
+        summary: t(hasHp2 ? "controlReplay.optHpEqual" : "controlReplay.evHpEqualCopy"),
         rows: [
-          { option: "HP1", result: source === "HP1" ? t("controlReplay.optChosen") : t("controlReplay.optNotNow"), code: "runtime_lead", detail: t("controlReplay.optFitsBalance"), tone: source === "HP1" ? "selected" : "muted" },
-          { option: "HP2", result: source === "HP2" ? t("controlReplay.optChosen") : t("controlReplay.optNotNow"), code: "runtime_lead", detail: t("controlReplay.optEqualLessGood"), tone: source === "HP2" ? "selected" : "muted" },
+          { option: "HP1", result: source === "HP1" ? t("controlReplay.optChosen") : t("controlReplay.optNotNow"), code: "runtime_lead", detail: t(hasHp2 ? "controlReplay.optFitsBalance" : "controlReplay.evHpEqualCopy"), tone: source === "HP1" ? "selected" : "muted" },
+          ...(hasHp2 ? [{ option: "HP2", result: source === "HP2" ? t("controlReplay.optChosen") : t("controlReplay.optNotNow"), code: "runtime_lead", detail: t("controlReplay.optEqualLessGood"), tone: source === "HP2" ? "selected" : "muted" }] : []),
         ],
       };
     }
@@ -668,7 +672,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
         verdict: t("controlReplay.optBoilerSupports"),
         summary: t("controlReplay.optBoilerBase"),
         rows: [
-          { option: t("controlReplay.optOnlyHps"), result: t("controlReplay.optTooLittleReserve"), code: "better_heat", detail: t("controlReplay.optDemandHigh"), tone: "muted" },
+          { option: t(hasHp2 ? "controlReplay.optOnlyHps" : "controlReplay.optOneHp"), result: t("controlReplay.optTooLittleReserve"), code: "better_heat", detail: t("controlReplay.optDemandHigh"), tone: "muted" },
           { option: t("controlReplay.optBoiler"), result: t("controlReplay.optTempExtra"), code: "boiler_assist", detail: t("controlReplay.optBoilerExtra"), tone: "selected" },
           { option: t("controlReplay.optAfterPeak"), result: t("controlReplay.optBackToHp"), code: "less_power", detail: t("controlReplay.optHpTakeOver"), tone: "muted" },
         ],
@@ -1007,7 +1011,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       supplyTemp: formatControlReplayNumber("supplyTemp", 1, "°C", "—"),
       flow: formatControlReplayNumber("flowSelected", 0, "L/h", "—"),
       hp1Starts: getControlReplayCounterValue("hp1CompressorStarts24h", "—"),
-      hp2Starts: getControlReplayCounterValue("hp2CompressorStarts24h", hp2Panel ? "—" : t("controlReplay.cardNotApplicable")),
+      hp2Starts: hp2Panel ? getControlReplayCounterValue("hp2CompressorStarts24h", "—") : t("controlReplay.cardNotApplicable"),
       hp1Hours: formatControlReplayRuntimeHours("hp1RuntimeHours", "—"),
       hp2Hours: hp2Panel ? formatControlReplayRuntimeHours("hp2RuntimeHours", "—") : t("controlReplay.curNa"),
       cooling: coolingContext,
@@ -1215,6 +1219,8 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     const subject = getDecisionSubjectLabel(event?.subject);
     const reasonCode = String(event?.reason || "unknown");
     const isCoolingModeEvent = Number(event?._oq_context_cm ?? event?.cm) === 5;
+    const heatingStopCopy = !isCoolingModeEvent && getHeatingStopCopy(event, subject);
+    if (heatingStopCopy) return heatingStopCopy;
     const activeCoolingSource = event?._oq_active_cooling_source || t("controlReplay.subjHp");
     const activeHeatingSource = event?._oq_active_heating_source || t("controlReplay.subjHp");
     const coolingStopReason = String(event?._oq_cooling_stop_reason || (reasonCode === "dew_stop" ? "dew_stop" : ""));
@@ -1721,7 +1727,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
   function mapDecisionEventToControlWorkingItem(event, selectedWindow, nowMs) {
     const eventType = String(event?.event_type || "");
     const reasonCode = String(event?.reason || "unknown");
-    if (!eventType || eventType === "boot_marker" || event?._oq_hidden) {
+    if (!eventType || eventType === "boot_marker" || eventType === "heating_stop_context" || event?._oq_hidden) {
       return null;
     }
     if ((eventType === "defrost_seen_start" || eventType === "defrost_seen_clear") && Number(event?._oq_context_cm ?? event?.cm) === 5) {
@@ -1750,6 +1756,8 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
       time: formatDecisionLogTimeLabel(event, selectedWindow, nowMs),
       title: copy.title,
       summary: copy.summary,
+      snapshotSummary: copy.snapshotSummary || "",
+      heatingStop: Boolean(copy.heatingStop),
       detailTitle: t("controlReplay.evDetailWhy"),
       detail: copy.detail,
       next: copy.next,
@@ -2083,7 +2091,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
   }
 
   function enrichControlWorkingDecisionLogEvents(events) {
-    const sorted = [...events].sort(compareDecisionEvents);
+    const sorted = attachHeatingStopSnapshots([...events].sort(compareDecisionEvents));
     const activeSourceCm = { HP1: 0, HP2: 0 };
     const defrostOpen = { HP1: false, HP2: false };
     let activeTopologyCm = 0;
@@ -2805,15 +2813,15 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
         <span class="oq-working-entry-body">
           <span class="oq-working-entry-title">
             <strong>${escapeHtml(item.title)}</strong>
-            ${renderControlWorkingModeBadge(item)}
+            ${item.heatingStop ? "" : renderControlWorkingModeBadge(item)}
             ${item.count ? `<em>${escapeHtml(item.count)}</em>` : ""}
           </span>
-          <span class="oq-working-entry-summary">${escapeHtml(item.summary)}</span>
+          <span class="oq-working-entry-summary">${escapeHtml(item.snapshotSummary || item.summary)}</span>
           <span class="oq-working-entry-meta">
             <span>${escapeHtml(item.source)}</span>
-            ${modeMetaLabel ? `<span class="oq-working-entry-meta-mode">${escapeHtml(modeMetaLabel)}</span>` : ""}
-            <span>${escapeHtml(item.reasonLabel || getControlWorkingReasonLabel(item.reasonCode))}</span>
-            ${item.duration ? `<span>${escapeHtml(t("controlReplay.entryDuration", { value: item.duration }))}</span>` : ""}
+            ${!item.heatingStop && modeMetaLabel ? `<span class="oq-working-entry-meta-mode">${escapeHtml(modeMetaLabel)}</span>` : ""}
+            ${item.heatingStop ? "" : `<span>${escapeHtml(item.reasonLabel || getControlWorkingReasonLabel(item.reasonCode))}</span>`}
+            ${!item.heatingStop && item.duration ? `<span>${escapeHtml(t("controlReplay.entryDuration", { value: item.duration }))}</span>` : ""}
           </span>
         </span>
         <span class="oq-working-entry-status">${escapeHtml(status.label)}</span>
@@ -2832,38 +2840,45 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     const optimizer = getControlWorkingOptimizerModel(item);
     const modeMetaLabel = getControlWorkingModeMetaLabel(item);
     const checks = Array.isArray(item.checks) ? item.checks : reason.checks;
+    const supportValues = item.heatingStop ? getHeatingStopSupportValues(item.rawDecisionEvent) : [];
     return `
       <aside class="oq-working-detail oq-working-detail--${escapeHtml(status.tone)}">
         <div>
           <span class="oq-working-eyebrow">${t("controlReplay.detailSelected")}</span>
-          <h3>${escapeHtml(item.title)}${renderControlWorkingModeBadge(item)}</h3>
+          <h3>${escapeHtml(item.title)}${item.heatingStop ? "" : renderControlWorkingModeBadge(item)}</h3>
           <p>${escapeHtml(item.summary)}</p>
         </div>
-        <div class="oq-working-detail-block">
+        ${item.heatingStop && item.snapshotSummary ? `<div class="oq-working-detail-block">
+          <strong>${t("heatingStops.atStop")}</strong>
+          <span>${escapeHtml(item.snapshotSummary)}</span>
+        </div>` : ""}
+        ${item.heatingStop ? "" : `<div class="oq-working-detail-block">
           <strong>${t("controlReplay.detailWhy")}</strong>
           <span>${escapeHtml(item.detail)}</span>
         </div>
         <div class="oq-working-detail-block">
           <strong>${t("controlReplay.detailNormal")}</strong>
           <span>${escapeHtml(reasonSummary)}</span>
-        </div>
+        </div>`}
         <div class="oq-working-detail-block">
           <strong>${t("controlReplay.detailNext")}</strong>
           <span>${escapeHtml(item.next)}</span>
         </div>
+        ${item.heatingStop ? `<p>${escapeHtml(item.detail)}</p>` : ""}
         ${renderControlWorkingOptimizer(optimizer)}
         ${checks.length ? `
           <div class="oq-working-checks" aria-label="${t("controlReplay.detailFactors")}">
             ${checks.map((check) => `<span>${renderOqIcon("shield", "oq-working-reason-icon")} ${escapeHtml(check)}</span>`).join("")}
           </div>
         ` : ""}
-        <div class="oq-working-pill-row">
+        ${item.heatingStop ? "" : `<div class="oq-working-pill-row">
           ${renderControlWorkingPill(status.label, status.tone, "shield")}
           ${renderControlWorkingPill(reasonLabel, "info", "target")}
           ${renderControlWorkingPill(item.source, "context")}
-        </div>
+        </div>`}
         <details class="oq-working-support" data-replay-support-item="${escapeHtml(item.id)}"${state.controlReplaySupportDetailsItemId === item.id ? " open" : ""}>
           <summary data-oq-action="toggle-control-replay-support-details">${t("controlReplay.detailSupport")}</summary>
+          ${supportValues.map((value) => `<p>${escapeHtml(value)}</p>`).join("")}
           <dl>
             <div><dt>${t("controlReplay.detailRecord")}</dt><dd>${escapeHtml(getControlWorkingKindLabel(item.kind))}</dd></div>
             <div><dt>${t("controlReplay.detailSource")}</dt><dd>${escapeHtml(item.source)}</dd></div>
@@ -2951,6 +2966,7 @@ import { formatDate, formatNumber, formatTime, getIntlLocale, optionLabel, t } f
     const reason = getControlWorkingReasonMeta(current.primaryReason);
     const optimizer = getControlWorkingOptimizerModel({
       primaryReason: current.primaryReason,
+      hp2Available: current.hp2Available,
       source: current.hp1Running && current.hp2Running ? "HP1 + HP2" : current.hp1Running ? "HP1" : current.hp2Running ? "HP2" : t("controlReplay.statusNoSource"),
     });
     const isCoolingGuard = Boolean(current.coolingProtection);

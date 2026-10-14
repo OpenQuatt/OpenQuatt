@@ -133,7 +133,11 @@ class DefrostContractTest(unittest.TestCase):
         self.assertIn("portENTER_CRITICAL(&mux_)", SERVICE)
 
     def test_final_write_gates_cover_both_actuators(self):
-        self.assertEqual(IO.count("normal_write_allowed(value, hard_stop)"), 2)
+        self.assertIn("oq_command_runtime::guarded_write(${hp_index} == 1, 3999, value)", IO)
+        self.assertIn("oq_command_runtime::guarded_write(${hp_index} == 1, 1999, value)", IO)
+        gate = (ROOT / "openquatt/includes/control/oq_compressor_command_runtime.h").read_text()
+        self.assertIn("normal_write_allowed(value, fault)", gate)
+        self.assertIn("cycle.telemetry_fault(millis())", gate)
         self.assertIn("cycle.observe_bit(x, millis())", IO)
         self.assertIn("cycle.observe_mode(x, millis())", IO)
         self.assertIn("->offline();", IO)
@@ -141,8 +145,9 @@ class DefrostContractTest(unittest.TestCase):
         self.assertIn("clear_tx_queue_for_address();", SERVICE)
         self.assertIn("hub->tx_buffer_empty()", SERVICE)
         self.assertIn("cycle.mode_seen = cycle.bit_seen = false", SERVICE)
-        self.assertIn("stop_pending || defrost->cycle.telemetry_fault", RUNTIME)
-        self.assertIn("incident.must_stop || defrost->cycle.telemetry_fault", RUNTIME)
+        self.assertIn("stop_pending || this->defrost_safety_stop_(is_hp1)", RUNTIME)
+        self.assertIn("safe_stop_write_retry_due(safety_stop", RUNTIME)
+        self.assertIn("safety_stop || id(oq_incident_manager).startup_inhibited", RUNTIME)
 
     def test_forced_mode_never_enters_normal_select_options(self):
         options = IO[IO.index('"Standby": 0'):IO.index("write_lambda:", IO.index('"Standby": 0'))]
@@ -197,7 +202,7 @@ class DefrostContractTest(unittest.TestCase):
         runtime = (ROOT / "openquatt/includes/control/oq_thermal_actuator_runtime.h").read_text()
         self.assertIn("FRESH_MS = 30000U", logic)
         self.assertIn("now - mode_ms > 90000U || now - bit_ms > 90000U", logic)
-        hold = runtime[runtime.index("if (!this->defrost_safety_stop_(is_hp1) &&"):]
+        hold = runtime[runtime.index("if (!safety_stop &&"):]
         hold = hold[:hold.index("uint32_t& last_safe_write_ms")]
         self.assertIn("!defrost->cycle.fresh(", hold)
         self.assertIn("defrost->holding()", hold)

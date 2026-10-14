@@ -66,6 +66,11 @@ class OpenQuattOduDefrost : public Component, public modbus::ModbusClientDevice 
   bool send_forced_once(uint32_t now);
   bool send_mode_once(int desired, uint32_t now);
   bool normal_write_allowed(int value, bool safety_stop);
+  // Only the accepted single-shot service command may bypass the normal hold.
+  bool forced_write_pending(uint32_t now) const {
+    return forced_write_pending_ && cycle.phase == oq_defrost::Phase::WAITING && cycle.manual && !cycle.interrupted &&
+           now - cycle.requested_ms <= oq_defrost::FRESH_MS;
+  }
   bool loaded() const { return parameters_.loaded; }
   bool automatic() const { return parameters_.automatic(); }
   int current_mode() const { return parameters_.loaded ? parameters_.mode() : -1; }
@@ -96,6 +101,7 @@ class OpenQuattOduDefrost : public Component, public modbus::ModbusClientDevice 
   Snapshot snapshot_{};
   Action pending_{Action::NONE};
   bool action_pending_{false};
+  bool forced_write_pending_{false};
   bool loading_{false}, trigger_after_load_{false}, trigger_ready_{false}, reserved_{false};
   bool save_after_load_{false}, save_ready_{false}, save_writing_{false}, save_verifying_{false};
   int save_desired_{-1}, save_expected_{-1}, save_write_{-1};

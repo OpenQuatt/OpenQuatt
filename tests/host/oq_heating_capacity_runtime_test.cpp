@@ -38,6 +38,8 @@ FakeSensor hp1_excluded_frequency_min_hz{0}, hp1_excluded_frequency_max_hz{0};
 FakeSensor hp2_excluded_frequency_min_hz{0}, hp2_excluded_frequency_max_hz{0};
 FakeSensor oq_system_supply_temp{35}, outside_temp_selected{7};
 FakeSensor hp1_water_out_temp{35}, hp2_water_out_temp{35};
+FakeSensor hp1_water_in_temp_offset{0}, hp2_water_in_temp_offset{0};
+bool hp1_runtime_frequency_revalidation_required = false, hp2_runtime_frequency_revalidation_required = false;
 FakeSensor hp1_4_way_valve{0}, hp2_4_way_valve{0};
 float oq_power_limit_soft_w = 10000, oq_power_limit_peak_w = 12000;
 float oq_P_hp_cap_w = 0;
@@ -49,12 +51,15 @@ bool hp1_is_online = true, hp2_is_online = true;
 bool hp1_odu_generation_detection_complete = true, hp2_odu_generation_detection_complete = true;
 uint8_t hp1_generation_variant_code = static_cast<uint8_t>(oq_odu::Variant::V1_5);
 uint8_t hp2_generation_variant_code = static_cast<uint8_t>(oq_odu::Variant::V1_5);
-bool oq_cold_start_session_active = false, oq_cold_start_hp_blocked = false;
+bool oq_cold_start_session_active = true, oq_cold_start_hp_blocked = false;
 oq_odu::RuntimeFrequencySnapshotStorage hp1_runtime_frequency_snapshot_storage{};
 oq_odu::RuntimeFrequencySnapshotStorage hp2_runtime_frequency_snapshot_storage{};
 uint32_t test_now_ms = 900000;
 uint32_t millis() { return test_now_ms; }
 
+namespace oq_sources {
+inline uint64_t monotonic_ms() { return test_now_ms; }
+}  // namespace oq_sources
 #define id(value) value
 #include "../../openquatt/includes/diagnostics/oq_heating_capacity_runtime.h"
 #undef id
@@ -71,6 +76,12 @@ void initialize_frequency() {
     snapshot.heating.hz[level] = static_cast<uint8_t>(oq_perf::V1_HEATING_FREQUENCIES_HZ[level - 1]);
   hp1_runtime_frequency_snapshot_storage = oq_odu::encode_runtime_frequency_snapshot(snapshot);
   hp2_runtime_frequency_snapshot_storage = hp1_runtime_frequency_snapshot_storage;
+  oq_sources::hp1.outside.observe(7, test_now_ms, true);
+  oq_sources::hp1.water_in.observe(30, test_now_ms, true);
+#if OQ_TOPOLOGY_DUO
+  oq_sources::hp2.outside.observe(7, test_now_ms, true);
+  oq_sources::hp2.water_in.observe(30, test_now_ms, true);
+#endif
 }
 }  // namespace
 
@@ -200,6 +211,7 @@ int main() {
         oq_odu::encode_runtime_frequency_snapshot(snapshot);
     assert(capacity() > 0);
     // At 7/35, the 80/85/90 Hz V2-old points are masked; lower levels remain usable.
+    oq_cold_start_session_active = false;
     oq_system_supply_temp.state = 12;
     assert(std::isnan(capacity()));
     oq_cold_start_session_active = true;

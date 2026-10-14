@@ -14,7 +14,7 @@ inline uint32_t minimum_off_remaining_ms(uint32_t now_ms, uint32_t last_stop_ms,
 }
 
 constexpr bool valid_level_command(int control_level, int physical_level) {
-  return control_level > 0 && control_level <= 10 && physical_level > 0 && physical_level <= 20;
+  return control_level > 0 && control_level <= 20 && physical_level > 0 && physical_level <= 20;
 }
 
 // Retained defrost writes continue an active command. A zero command must go

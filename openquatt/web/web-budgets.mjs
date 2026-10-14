@@ -6,9 +6,11 @@ export const WEB_BUNDLE_BUDGETS = [
     file: "js/openquatt-app.js",
     // Includes passive learning, trend goals, the curve editor and air-purge status.
     // With daily-learning UI and legacy compatibility, plus the performance invitation.
-    // Includes controlled warmup, deferred UI updates and controller-backed durations.
-    // Merged with dev 46178e88: 1,330,236 B raw; gzip growth +3,260 B on Node 24.14.1.
-    raw: 1_335_000,
+    // Includes topology-aware Single rendering and historical heating-stop reasons from dev.
+    // Controlled warmup adds its controls, diagnostics and controller-backed durations.
+    // Merged dev 1d97bef7: 1,341,385 B raw versus dev 1,330,911 B on Node 24.14.1.
+    // Warmup gzip growth is +3,340 B; the relative gzip growth limit remains unchanged.
+    raw: 1_345_000,
     gzipBaselineCeiling: 362_000,
   },
   // Includes passive-learning cards and the curve editor: ~207.9 kB raw.

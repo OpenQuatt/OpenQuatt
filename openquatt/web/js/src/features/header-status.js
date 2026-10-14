@@ -8,7 +8,7 @@ import { renderModalShell } from "../core/modal-shell.js";
 import { getEntitySignatureFragment } from "../core/render-signatures.js";
 import { state } from "../core/state.js";
 import { getDebugRecordingHubStatusLabel, renderDebugRecordingHeaderStatus, renderDebugRecordingModal } from "./debug-recording.js";
-import { formatDeviceClock, formatUptimeFromMeta, getDeviceIpAddress, getInstallationLabel } from "./device-context.js";
+import { formatDeviceClock, formatUptimeFromMeta, getDeviceIpAddress, getInstallationLabel, getRuntimeCounterResetKey } from "./device-context.js";
 import { getFirmwareUpdateEntity, getUpdateStatus, isFirmwareUpdateAvailable } from "./firmware-update.js";
 import { renderMqttModal, renderMqttSensorsModal } from "./mqtt.js";
 import { renderOduEepromDumpModal } from "./odu-eeprom-dump.js";
@@ -613,9 +613,9 @@ import { render } from "../core/render-scheduler.js";
     }
 
     if (state.systemModal === "runtime-reset-confirm") {
-      const duo = hasEntity("resetRuntimeCountersHp1Hp2");
-      const key = duo ? "resetRuntimeCountersHp1Hp2" : "resetRuntimeCountersHp1";
-      const busy = state.busyAction === key;
+      const key = getRuntimeCounterResetKey();
+      const duo = key === "resetRuntimeCountersHp1Hp2";
+      const busy = Boolean(key) && state.busyAction === key;
       return renderModalShell({
         modalId: "system",
         titleId: "oq-runtime-reset-modal-title",
@@ -629,7 +629,7 @@ import { render } from "../core/render-scheduler.js";
           ${state.controlError ? `<p class="oq-helper-error" role="alert">${escapeHtml(state.controlError)}</p>` : ""}
           <div class="oq-helper-modal-actions">
             <button class="oq-helper-button oq-helper-button--ghost" type="button" data-oq-action="close-system-modal" ${busy ? "disabled" : ""}>${escapeHtml(t("common.cancel"))}</button>
-            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-runtime-reset" ${busy ? "disabled" : ""}>${busy ? escapeHtml(t("system.runtimeBusy")) : escapeHtml(t("system.runtimeConfirm"))}</button>
+            <button class="oq-helper-button oq-helper-button--warning" type="button" data-oq-action="confirm-runtime-reset" ${busy || !key ? "disabled" : ""}>${busy ? escapeHtml(t("system.runtimeBusy")) : escapeHtml(t("system.runtimeConfirm"))}</button>
           </div>
         `,
       });

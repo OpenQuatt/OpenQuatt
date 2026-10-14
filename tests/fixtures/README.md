@@ -42,4 +42,14 @@ De bestaande hosttestrunner neemt de test automatisch mee:
 ./scripts/run_host_regression_tests.sh
 ```
 
+Een snelle controle van de bestaande EEPROM-fixtures kan ook zonder C++-build:
+
+```sh
+npm run check:odu-eeprom-fixtures
+```
+
+Die controle bewaakt de 512 low-bytewoorden, opgeslagen en berekende CRC, en beide behouden runtime-CRC-afwijkingen. De regressietests draaien mee met `npm run check:python-contracts`.
+
+Vaste SHA256-referenties in de validator bewaken de bestaande EEPROM-woorddata en de twee gereconstrueerde runtime-captures. Daardoor wordt ook een andere CRC-geldige dump afgewezen. Deze hashes zijn uitsluitend afgeleid van de al aanwezige fixtureheaders; commentaar en equivalente C++-getalliterals veranderen de woorddata niet. Bij een bedoelde datawijziging moeten de betreffende referenties in dezelfde PR worden bijgewerkt; de check genereert ze niet automatisch opnieuw.
+
 Dit zijn referenties van afzonderlijke units op afzonderlijke meetmomenten, geen universele fabriekstabellen. De firmware blijft parameters van de aangesloten ODU lezen. De defrosttests bewaken de huidige diagnostische interpretatie; ze voorspellen geen autonome ODU-defroststart en bewijzen geen onbekende tijdseenheden. De betekenis en eenheid van de minimumflowwaarde blijven buiten deze tests en deze wijziging.

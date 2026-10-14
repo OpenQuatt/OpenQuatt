@@ -7,6 +7,7 @@ import { invokeActionMap } from "../core/action-router.js";
 import { render } from "../core/render-scheduler.js";
 import { state } from "../core/state.js";
 import { syncUrlAppView } from "../core/navigation.js";
+import { getRuntimeCounterResetKey } from "./device-context.js";
 import { clearDebugRecordingDevicePollTimer, scheduleDebugRecordingDeviceStatusPoll } from "./debug-recording.js";
 import { refreshAuthStatus, stopLoginAuthStatusPolling } from "./security-actions.js";
 import { clearSettingsBackupDraft } from "./storage-history.js";
@@ -97,13 +98,12 @@ const systemActionHandlers = {
     render();
   },
   "confirm-runtime-reset": () => {
-    const key = hasEntity("resetRuntimeCountersHp1Hp2")
-      ? "resetRuntimeCountersHp1Hp2"
-      : hasEntity("resetRuntimeCountersHp1") ? "resetRuntimeCountersHp1" : "";
+    const key = getRuntimeCounterResetKey();
     if (!key) {
       closeSystemModal();
       return;
     }
+    if (state.busyAction === key) return;
     return triggerNamedButton(key, {
       successNotice: t("system.runtimeResetDone"),
       errorPrefix: t("system.runtimeResetFail"),

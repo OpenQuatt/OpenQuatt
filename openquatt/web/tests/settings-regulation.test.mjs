@@ -17,6 +17,7 @@ const { commitSelect, disableRange, getNumberSettingValidationError } = await im
 const { SETTINGS_GROUP_KEY_MAP, getSettingsGroupHydrationKeys, getSettingsRefreshKeys } = await import("../js/src/core/entity-sync.js");
 const { handleSystemAction } = await import("../js/src/features/system-actions.js");
 const { renderControlModeOverrideBanner, renderSystemModal } = await import("../js/src/features/header-status.js");
+const { setLocale, t } = await import("../js/src/i18n/index.js");
 const { getCoolingScheduleStatus, renderSettingsCoolingSection } = await import("../js/src/settings/cooling.js");
 const {
   renderHeatingCurveAdvancedFields,
@@ -845,8 +846,12 @@ test("Single toont één compacte draaitijd zonder Duo-balans", () => {
   assert.match(markup, /data-oq-action="open-runtime-reset-confirm"/);
 });
 
-test("runtime-reset kiest de beschikbare Duo-knop zonder klikfout", async () => {
+for (const topology of ["single", "duo"]) test(`runtime-reset volgt ${topology} bij achtergebleven knoppen van de andere topologie`, async () => {
   resetSettingsState({
+    installationTopology: { value: topology, state: topology },
+    hp1RuntimeHours: numberEntity(2854, "h"),
+    hp2RuntimeHours: numberEntity(2761, "h"),
+    resetRuntimeCountersHp1: { value: "", state: "" },
     resetRuntimeCountersHp1Hp2: { value: "", state: "" },
   });
   state.systemModal = "runtime-reset-confirm";
@@ -854,21 +859,80 @@ test("runtime-reset kiest de beschikbare Duo-knop zonder klikfout", async () => 
   const originalFetch = globalThis.fetch;
   const originalLocation = globalThis.window.location;
   globalThis.window.location = { pathname: "/" };
+  let finishRequest;
   globalThis.fetch = async (url) => {
     requests.push(String(url));
-    return { ok: true };
+    return new Promise((resolve) => { finishRequest = resolve; });
   };
 
   try {
+    for (const locale of ["nl", "en"]) {
+      setLocale(locale);
+      const markup = renderSystemModal();
+      assert.ok(markup.includes(t(topology === "duo" ? "system.runtimeTitleBoth" : "system.runtimeTitleSingle")));
+      assert.equal(markup.includes(t("system.runtimeDuoSuffix")), topology === "duo");
+    }
     assert.equal(handleSystemAction("confirm-runtime-reset", {}), true);
+    assert.equal(state.busyAction, topology === "duo" ? "resetRuntimeCountersHp1Hp2" : "resetRuntimeCountersHp1");
+    assert.match(renderSystemModal(), /data-oq-action="confirm-runtime-reset" disabled/);
+    assert.match(renderSettingsCounterServiceSection(), /data-oq-action="open-runtime-reset-confirm"[^>]* disabled/);
+    assert.equal(handleSystemAction("confirm-runtime-reset", {}), true);
+    assert.equal(requests.length, 1);
+    assert.match(requests[0], topology === "duo"
+      ? /Reset%20Runtime%20Counters%20\(HP1%2BHP2\)\/press$/
+      : /Reset%20Runtime%20Counters%20\(HP1\)\/press$/);
+    finishRequest({ ok: true });
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(state.controlError, "");
+    assert.equal(state.busyAction, "");
     assert.equal(state.systemModal, "");
-    assert.equal(requests.length, 1);
-    assert.match(requests[0], /Reset%20Runtime%20Counters%20\(HP1%2BHP2\)\/press$/);
   } finally {
+    finishRequest?.({ ok: true });
     globalThis.fetch = originalFetch;
     globalThis.window.location = originalLocation;
+    setLocale("nl");
+  }
+});
+
+test("runtime-reset handles missing Single controls and an HP1-only Duo fallback consistently", () => {
+  resetSettingsState({
+    installationTopology: { value: "single", state: "single" },
+    resetRuntimeCountersHp1Hp2: { value: "", state: "" },
+  });
+  state.systemModal = "runtime-reset-confirm";
+  assert.doesNotMatch(renderSettingsCounterServiceSection(), /data-oq-action="open-runtime-reset-confirm"/);
+  assert.match(renderSystemModal(), /data-oq-action="confirm-runtime-reset" disabled/);
+  assert.ok(!renderSystemModal().includes(t("system.runtimeBusy")));
+
+  resetSettingsState({
+    installationTopology: { value: "duo", state: "duo" },
+    resetRuntimeCountersHp1: { value: "", state: "" },
+  });
+  state.systemModal = "runtime-reset-confirm";
+  assert.ok(renderSystemModal().includes(t("system.runtimeTitleSingle")));
+  assert.ok(!renderSystemModal().includes(t("system.runtimeDuoSuffix")));
+  state.busyAction = "resetRuntimeCountersHp1";
+  assert.match(renderSystemModal(), /data-oq-action="confirm-runtime-reset" disabled/);
+});
+
+test("failed Single runtime-reset keeps the modal open and re-enables confirmation", async () => {
+  resetSettingsState({
+    installationTopology: { value: "single", state: "single" },
+    resetRuntimeCountersHp1: { value: "", state: "" },
+    resetRuntimeCountersHp1Hp2: { value: "", state: "" },
+  });
+  state.systemModal = "runtime-reset-confirm";
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 500 });
+  try {
+    handleSystemAction("confirm-runtime-reset", {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(state.busyAction, "");
+    assert.equal(state.systemModal, "runtime-reset-confirm");
+    assert.match(renderSystemModal(), /role="alert"[^>]*>[^<]*HTTP 500/);
+    assert.doesNotMatch(renderSystemModal(), /data-oq-action="confirm-runtime-reset" disabled/);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 

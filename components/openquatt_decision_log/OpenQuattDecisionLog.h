@@ -5,6 +5,7 @@
 
 #include <esp_http_server.h>
 #include "OpenQuattFlashLayout.h"
+#include "OpenQuattHeatingStop.h"
 #include "OpenQuattUrgentFlushPolicy.h"
 #include "esp_partition.h"
 #include <freertos/FreeRTOS.h>
@@ -53,6 +54,7 @@ enum EventType : uint8_t {
   EVENT_BOILER_FALLBACK_STOP = 29,
   EVENT_HP_START_CONFIRMED = 30,
   EVENT_HP_STOP_CONFIRMED = 31,
+  EVENT_HEATING_STOP_CONTEXT = 32,
 };
 
 enum Subject : uint8_t {

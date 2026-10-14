@@ -9,15 +9,18 @@
 
 namespace oq_odu {
 
-inline constexpr int MODEL_LEVEL_MAX = 10;
 inline constexpr int LEGACY_PHYSICAL_LEVEL_MAX = 10;
 inline constexpr int EXTENDED_PHYSICAL_LEVEL_MAX = 20;
 
-// The V2 performance model remains a ten-level model in step 1. Its heating
-// anchors are resolved against the validated runtime frequency table instead
-// of a fixed physical F-level table.
-inline constexpr std::array<uint8_t, 11> V2_HEATING_MODEL_FREQUENCIES_HZ = {
+// Automatic heating uses physical table entries; the model domain remains 90 Hz.
+inline constexpr int MAX_AUTOMATIC_HEATING_FREQUENCY_HZ = 90;
+// Reference axes are used only to normalize feedback into the existing demand
+// scale, never to restrict or translate the automatic heating candidates.
+inline constexpr std::array<uint8_t, 11> V2_HEATING_DEMAND_REFERENCE_HZ = {
     0, 20, 26, 30, 48, 55, 61, 72, 80, 85, 90,
+};
+inline constexpr std::array<uint8_t, 11> V1_HEATING_DEMAND_REFERENCE_HZ = {
+    0, 30, 39, 49, 55, 61, 67, 72, 79, 85, 90,
 };
 
 enum class CompressorLevelProfile : uint8_t {
@@ -75,61 +78,66 @@ inline const char* compressor_level_profile_label(CompressorLevelProfile profile
 }
 
 inline int physical_level_limit(bool configured_v2, const RuntimeFrequencySnapshot& snapshot, int mode_code) {
-  return configured_v2 && has_extended_frequency_table(snapshot, mode_code) ? EXTENDED_PHYSICAL_LEVEL_MAX
-                                                                            : LEGACY_PHYSICAL_LEVEL_MAX;
+  (void)configured_v2;
+  if (snapshot.variant != Variant::UNKNOWN && has_valid_frequency_table(snapshot, mode_code)) {
+    const auto& table = frequency_table_for_mode(snapshot, mode_code);
+    if (validate_frequency_table(table)) return static_cast<int>(table.level_count) - 1;
+  }
+  return LEGACY_PHYSICAL_LEVEL_MAX;
 }
 
-inline bool automatic_v2_heating_mapping_available(bool configured_v2, const RuntimeFrequencySnapshot& snapshot) {
-  const bool detected_v2 = snapshot.variant == Variant::V2_OLD_MODEL || snapshot.variant == Variant::V2_NEW_MODEL;
-  return configured_v2 && detected_v2 && snapshot.heating.valid;
+inline int automatic_level_limit(bool configured_v2, const RuntimeFrequencySnapshot& snapshot, int mode_code) {
+  if (mode_code == 1)
+    return std::min(LEGACY_PHYSICAL_LEVEL_MAX, physical_level_limit(configured_v2, snapshot, mode_code));
+  if (mode_code != 2 || snapshot.variant == Variant::UNKNOWN || !has_valid_frequency_table(snapshot, mode_code))
+    return 0;
+  const auto& table = snapshot.heating;
+  if (!validate_frequency_table(table)) return 0;
+  int maximum = 0;
+  for (size_t level = 1; level < table.level_count; ++level) {
+    if (table.hz[level] > MAX_AUTOMATIC_HEATING_FREQUENCY_HZ) break;
+    maximum = static_cast<int>(level);
+  }
+  return maximum;
 }
 
 inline LevelCommand resolve_automatic_level(bool configured_v2, const RuntimeFrequencySnapshot& snapshot, int mode_code,
-                                            int model_level) {
-  const int bounded_model = std::max(0, std::min(MODEL_LEVEL_MAX, model_level));
-  if (bounded_model == 0) return {};
-
-  // Step 1 deliberately preserves automatic cooling, non-V2 layouts and the
-  // F0-F10 fallback while no valid V2 heating table is available.
-  if (mode_code != 2 || !automatic_v2_heating_mapping_available(configured_v2, snapshot)) {
-    return {bounded_model, bounded_model};
-  }
-
-  const int requested_frequency = V2_HEATING_MODEL_FREQUENCIES_HZ[static_cast<size_t>(bounded_model)];
-  const int physical_level =
-      resolve_nearest_physical_level(snapshot.heating, requested_frequency, V2_HEATING_MODEL_FREQUENCIES_HZ.back());
-  if (physical_level <= 0) return {};
-  return {bounded_model, physical_level};
+                                            int physical_level) {
+  if (physical_level <= 0 || physical_level > automatic_level_limit(configured_v2, snapshot, mode_code)) return {};
+  // The optimizer selected this physical entry and evaluated its actual Hz.
+  // Never remap an accepted request to another table entry at the actuator.
+  return {physical_level, physical_level};
 }
 
 inline LevelCommand resolve_manual_level(bool configured_v2, const RuntimeFrequencySnapshot& snapshot, int mode_code,
                                          int requested_physical_level) {
-  const int bounded_physical =
+  const int physical =
       std::max(0, std::min(physical_level_limit(configured_v2, snapshot, mode_code), requested_physical_level));
-  return {std::min(MODEL_LEVEL_MAX, bounded_physical), bounded_physical};
+  return {physical, physical};
 }
 
-inline int model_level_for_physical_heating_level(bool configured_v2, const RuntimeFrequencySnapshot& snapshot,
-                                                  int physical_level) {
-  const int bounded_physical = std::max(0, std::min(EXTENDED_PHYSICAL_LEVEL_MAX, physical_level));
-  if (!automatic_v2_heating_mapping_available(configured_v2, snapshot)) {
-    return std::min(MODEL_LEVEL_MAX, bounded_physical);
-  }
-
-  const int physical_frequency = frequency_for_physical_level(snapshot.heating, bounded_physical);
-  if (physical_frequency <= 0) return 0;
-
-  int nearest_model_level = 0;
-  int nearest_delta = 256;
-  for (size_t model_level = 0; model_level < V2_HEATING_MODEL_FREQUENCIES_HZ.size(); ++model_level) {
-    const int delta_signed = physical_frequency - V2_HEATING_MODEL_FREQUENCIES_HZ[model_level];
-    const int delta = delta_signed < 0 ? -delta_signed : delta_signed;
-    if (delta < nearest_delta) {
-      nearest_delta = delta;
-      nearest_model_level = static_cast<int>(model_level);
+inline int normalized_heating_demand_level(bool configured_v2, const RuntimeFrequencySnapshot& snapshot,
+                                           int physical_level) {
+  (void)configured_v2;
+  if (physical_level <= 0) return 0;
+  // Preserve active/off semantics while a table is being reacquired. Only a
+  // minimal demand indication is known; do not invent its operating frequency.
+  if (snapshot.variant == Variant::UNKNOWN || !snapshot.heating.valid || !validate_frequency_table(snapshot.heating))
+    return 1;
+  const int frequency = frequency_for_physical_level(snapshot.heating, physical_level);
+  if (frequency <= 0) return 1;
+  const bool v2 = snapshot.variant == Variant::V2_OLD_MODEL || snapshot.variant == Variant::V2_NEW_MODEL;
+  const auto& axis = v2 ? V2_HEATING_DEMAND_REFERENCE_HZ : V1_HEATING_DEMAND_REFERENCE_HZ;
+  int selected = 0;
+  int delta = 256;
+  for (size_t level = 1; level < axis.size(); ++level) {
+    const int distance = std::abs(frequency - axis[level]);
+    if (distance < delta) {
+      selected = static_cast<int>(level);
+      delta = distance;
     }
   }
-  return nearest_model_level;
+  return selected;
 }
 
 inline RetainedLevel resolve_retained_level(bool hold_active, bool cooling_mode_active, int selected_physical_level,
@@ -137,24 +145,14 @@ inline RetainedLevel resolve_retained_level(bool hold_active, bool cooling_mode_
                                             const RuntimeFrequencySnapshot& snapshot) {
   if (!hold_active || cooling_mode_active) return {};
 
-  const bool selected_level_differs_from_last_command =
-      selected_physical_level > 0 && selected_physical_level != previous_physical_level;
   int physical_level = selected_physical_level > 0 ? selected_physical_level : previous_physical_level;
   const int physical_max = physical_level_limit(configured_v2, snapshot, 2);
   physical_level = std::max(0, std::min(physical_max, physical_level));
   if (physical_level <= 0 && previous_control_level <= 0) return {};
 
-  int control_level = std::max(0, std::min(MODEL_LEVEL_MAX, previous_control_level));
-  // During defrost an ODU can retain its physical level while a runtime guard
-  // briefly commands another level. Prefer that readback over the stale logical
-  // state so a retained F17 remains model level 10 instead of becoming level 1.
-  if ((control_level <= 0 || selected_level_differs_from_last_command) && physical_level > 0) {
-    control_level = model_level_for_physical_heating_level(configured_v2, snapshot, physical_level);
-  }
-  if (physical_level <= 0 && control_level > 0) {
-    physical_level = resolve_automatic_level(configured_v2, snapshot, 2, control_level).physical_level;
-  }
-  return {control_level, physical_level};
+  // Requests, readbacks and retained commands share the physical level domain.
+  if (physical_level <= 0) physical_level = std::max(0, std::min(physical_max, previous_control_level));
+  return {physical_level, physical_level};
 }
 
 inline RetainedLevel update_retained_level_snapshot(const RetainedLevel& retained, bool hold_active,

@@ -4,6 +4,7 @@ import { formatFailures, formatWarningFailures } from "./failure-format.js";
 import { formatNumericState } from "./formatting.js";
 import { combineInstallationMonitoringModel } from "./incident-monitoring.js";
 import { state } from "./state.js";
+import { getInstallationTopology } from "../features/device-context.js";
 import { getLocale, t } from "../i18n/index.js";
 
 export function isInstallationMonitoringBinaryActive(key) {
@@ -34,6 +35,7 @@ export function isInstallationMonitoringFailureActive(key) {
 }
 
 export function getInstallationMonitoringModel() {
+  const hasHp2 = getInstallationTopology() === "duo";
   const problems = [];
   const incidentMonitoringStale = Boolean(state.incidentMonitoringError);
   const structuredIncidentMonitoringAvailable = Boolean(
@@ -41,7 +43,7 @@ export function getInstallationMonitoringModel() {
   );
   const cyclingActive = isInstallationMonitoringBinaryActive("compressorCyclingWarning2h")
     || isInstallationMonitoringBinaryActive("compressorCyclingWarning72h")
-    || isInstallationMonitoringBinaryActive("alternatingCompressorStartsWarning");
+    || (hasHp2 && isInstallationMonitoringBinaryActive("alternatingCompressorStartsWarning"));
   const cyclingAlertLatched = isInstallationMonitoringBinaryActive("compressorCyclingAlertLatched");
   const cicPollingEnabled = isInstallationMonitoringIntegrationEnabled("cicPollingEnabled");
   const otEnabled = isInstallationMonitoringIntegrationEnabled("otEnabled");
@@ -60,11 +62,11 @@ export function getInstallationMonitoringModel() {
   };
   addBinaryProblem("compressorCyclingWarning2h", t("monitoring.cycling2h"));
   addBinaryProblem("compressorCyclingWarning72h", t("monitoring.cycling72h"));
-  addBinaryProblem("alternatingCompressorStartsWarning", t("monitoring.alternating"));
+  if (hasHp2) addBinaryProblem("alternatingCompressorStartsWarning", t("monitoring.alternating"));
   addBinaryProblem("lowflowFaultActive", t("monitoring.lowflow"));
   addBinaryProblem("pt1000ReadProblem", t("monitoring.pt1000"));
   addBinaryProblem("waterSupplyTempFallbackActive", t("monitoring.supplyFallback"));
-  addBinaryProblem("flowMismatch", t("monitoring.flowMismatch"));
+  if (hasHp2) addBinaryProblem("flowMismatch", t("monitoring.flowMismatch"));
   const otbState = String(getEntityValue("otbConnectionState") || "");
   if (isInstallationMonitoringBinaryActive("auxHeatSourcePresent")
       && getEntityValue("boilerConnection") === "OpenTherm"
@@ -105,7 +107,7 @@ export function getInstallationMonitoringModel() {
   if (!structuredIncidentMonitoringAvailable && isInstallationMonitoringFailureActive("hp1Failures")) {
     problems.push({ key: "hp1Failures", label: t("monitoring.hpFailurePrefix", { label: t("incidents.hp1Label"), text: getInstallationMonitoringWarningFailureText("hp1Failures") }) });
   }
-  if (!structuredIncidentMonitoringAvailable && isInstallationMonitoringFailureActive("hp2Failures")) {
+  if (hasHp2 && !structuredIncidentMonitoringAvailable && isInstallationMonitoringFailureActive("hp2Failures")) {
     problems.push({ key: "hp2Failures", label: t("monitoring.hpFailurePrefix", { label: t("incidents.hp2Label"), text: getInstallationMonitoringWarningFailureText("hp2Failures") }) });
   }
   const activeProblemCount = problems.length;

@@ -8,7 +8,7 @@
 #include "oq_hp_candidate_logic.h"
 
 namespace oq_power_house_dispatch {
-constexpr int kMaxLevel = 10;
+constexpr int kMaxLevel = 20;
 constexpr uint32_t kTopologyHoldMs = 180000, kDefrostHoldMs = 180000, kOilReturnHoldMs = 120000;
 // clang-format off
 enum class Reason : uint8_t {
@@ -30,7 +30,17 @@ inline const char* request_reason_name(int code) {
 }
 struct LevelEstimate {
   bool allowed = false, thermal_valid = false, electrical_valid = false;
+  uint8_t frequency_hz = 0;
   float thermal_w = 0.0f, electrical_w = 0.0f;
+  LevelEstimate() = default;
+  LevelEstimate(bool allowed, bool thermal_valid, bool electrical_valid, float thermal_w, float electrical_w,
+                uint8_t frequency_hz = 0)
+      : allowed(allowed),
+        thermal_valid(thermal_valid),
+        electrical_valid(electrical_valid),
+        frequency_hz(frequency_hz),
+        thermal_w(thermal_w),
+        electrical_w(electrical_w) {}
 };
 struct HpInput {
   oq_hp_candidate::HpCandidateState candidate;
@@ -107,7 +117,7 @@ struct Candidate {
   bool valid = false;
   int hp1_level = 0, hp2_level = 0;
   float thermal_w = 0.0f, electrical_w = 0.0f, error_w = 0.0f, over_soft_w = 0.0f;
-  int level_moves = 0, active_count = 0;
+  int level_moves = 0, active_count = 0, balance_gap = 0;
   bool single_on_lead = false;
 };
 inline int topology(int hp1_level, int hp2_level) { return (hp1_level > 0 ? 1 : 0) + (hp2_level > 0 ? 1 : 0); }
@@ -192,6 +202,8 @@ inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& t
   result.over_soft_w = std::max(0.0f, result.electrical_w - tuning.soft_limit_w);
   result.level_moves =
       std::abs(result.hp1_level - applied_level(in.hp1)) + std::abs(result.hp2_level - applied_level(in.hp2));
+  result.balance_gap = std::abs(static_cast<int>(in.hp1.levels[result.hp1_level].frequency_hz) -
+                                static_cast<int>(in.hp2.levels[result.hp2_level].frequency_hz));
   return result;
 }
 inline bool better_candidate(const Candidate& a, const Candidate& b) {
@@ -199,8 +211,8 @@ inline bool better_candidate(const Candidate& a, const Candidate& b) {
   if (std::fabs(a.electrical_w - b.electrical_w) > 1.0f) return a.electrical_w < b.electrical_w;
   if (std::fabs(a.error_w - b.error_w) > 1.0f) return a.error_w < b.error_w;
   if (a.level_moves != b.level_moves) return a.level_moves < b.level_moves;
-  const int a_balance = std::abs(a.hp1_level - a.hp2_level);
-  const int b_balance = std::abs(b.hp1_level - b.hp2_level);
+  const int a_balance = a.balance_gap;
+  const int b_balance = b.balance_gap;
   if (a.active_count == 2 && b.active_count == 2 && a_balance != b_balance) return a_balance < b_balance;
   if (a.active_count == 1 && b.active_count == 1 && a_balance == b_balance && a.single_on_lead != b.single_on_lead)
     return a.single_on_lead;
@@ -382,10 +394,19 @@ inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchT
     }
     if (chosen.valid && chosen.active_count == 1 && applied_level(in.hp1) <= 0 && applied_level(in.hp2) <= 0 &&
         !in.hp1.defrost && !in.hp2.defrost && !valve_defrost) {
-      const int level = chosen.hp1_level > 0 ? chosen.hp1_level : chosen.hp2_level;
-      const auto lead = make_candidate(in, tuning, in.lead_hp1 ? level : 0, in.lead_hp1 ? 0 : level, target_w);
-      const auto lag = make_candidate(in, tuning, in.lead_hp1 ? 0 : level, in.lead_hp1 ? level : 0, target_w);
-      if (lead.valid && lag.valid) chosen = lead, reason = Reason::RUNTIME_LEAD;
+      // Stand numbers are local to each HP. Re-evaluate the lead's own
+      // entries rather than copying the other HP's numeric stand.
+      Candidate lead;
+      for (int level = 1; level <= kMaxLevel; ++level) {
+        const auto candidate = make_candidate(in, tuning, in.lead_hp1 ? level : 0, in.lead_hp1 ? 0 : level, target_w);
+        if (candidate.valid && candidate.error_w <= chosen.error_w + keep_margin_w &&
+            candidate.electrical_w <= chosen.electrical_w + power_margin_w &&
+            candidate.over_soft_w <= chosen.over_soft_w + 1.0f &&
+            (!lead.valid || candidate.error_w < lead.error_w ||
+             (candidate.error_w == lead.error_w && better_candidate(candidate, lead))))
+          lead = candidate;
+      }
+      if (lead.valid) chosen = lead, reason = Reason::RUNTIME_LEAD;
     }
     if (chosen.valid) {
       const auto suspect = oq_hp_candidate::preserve_active_topology_during_suspect(

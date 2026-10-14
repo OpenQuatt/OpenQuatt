@@ -17,6 +17,9 @@ esphome:
     priority: -100
     then:
       - lambda: |-
+          // Live gate for normal control writes, including queued retries.
+          oq_temperature_runtime::maximum_age_ms = ${oq_hp_water_temp_stale_s}ULL * 1000ULL;
+          id(mod_bus).set_command_guard(oq_command_runtime::queued_address);
           oq_nvs_cleanup::log_stats("boot");
           oq_nvs_cleanup::retire_openquatt_preferences(id(oq_air_purge_return_to_auto));
           // Always start from a clean paused state after reboot or OTA.

@@ -191,6 +191,9 @@ class Runtime {
   }
 
   int defrost_hold_(bool is_hp1, const oq_frequency_runtime::Context& frequency) const {
+    // A global safety stop must not turn an inactive request back into a
+    // positive defrost hold after the minimum-runtime hold was rejected.
+    if (id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active)) return 0;
     const bool defrost = is_hp1 ? id(hp1_4_way_valve).state : OQ_REQUEST_SECONDARY_ID(4_way_valve).state;
     const int previous_physical =
         is_hp1 ? id(hp1_last_commanded_physical_level) : OQ_REQUEST_SECONDARY_ID(last_commanded_physical_level);
@@ -215,7 +218,8 @@ class Runtime {
   }
 
   int allowed_(bool is_hp1, int mode_code, int level, const oq_frequency_runtime::Context& frequency) const {
-    return frequency.pick_allowed_level(is_hp1, mode_code, level, 1, oq_odu::MODEL_LEVEL_MAX);
+    return frequency.pick_allowed_level(is_hp1, mode_code, level, 1,
+                                        frequency.automatic_level_limit(is_hp1, mode_code));
   }
 
   void publish_optimizer_reason_(const char* reason) {
@@ -235,8 +239,9 @@ class Runtime {
     const bool manual = strategy_code == oq_request::STRATEGY_MANUAL_HP;
     const auto request = oq_request::make_published_request(
         mode_code, hp1_level, hp2_level, strategy_code,
-        manual ? this->physical_limit_(true, mode_code, frequency) : oq_odu::MODEL_LEVEL_MAX,
-        manual ? this->physical_limit_(false, mode_code, frequency) : oq_odu::MODEL_LEVEL_MAX);
+        manual ? this->physical_limit_(true, mode_code, frequency) : frequency.automatic_level_limit(true, mode_code),
+        manual ? this->physical_limit_(false, mode_code, frequency)
+               : frequency.automatic_level_limit(false, mode_code));
     id(oq_request_mode_code) = request.mode_code;
     id(oq_request_hp1_level) = request.hp1_level;
     id(oq_request_hp2_level) = request.hp2_level;
@@ -460,11 +465,15 @@ class Runtime {
           static_cast<uint32_t>((id(oq_curve_regime_code) == 1 ? tuning.recovery_up_hold_s : tuning.steady_up_hold_s)) *
           1000UL;
       const uint32_t down_hold_ms = static_cast<uint32_t>(tuning.steady_down_hold_s) * 1000UL;
-      hp1_level = oq_request::limit_level_slew(hp1_level, id(hp1_last_applied_level), mode.cooling, config.now_ms,
-                                               id(hp1_last_level_change_ms), up_hold_ms, down_hold_ms);
+      const auto slew = [&](bool hp1, int level, int previous, uint32_t last_change_ms) {
+        return mode.cooling ? oq_request::limit_level_slew(level, previous, true, config.now_ms, last_change_ms,
+                                                           up_hold_ms, down_hold_ms)
+                            : frequency.limit_heating_slew(hp1, level, previous, config.now_ms, last_change_ms,
+                                                           up_hold_ms, down_hold_ms);
+      };
+      hp1_level = slew(true, hp1_level, id(hp1_last_applied_level), id(hp1_last_level_change_ms));
 #if OQ_TOPOLOGY_DUO
-      hp2_level = oq_request::limit_level_slew(hp2_level, OQ_REQUEST_SECONDARY_ID(last_applied_level), mode.cooling,
-                                               config.now_ms, id(hp2_last_level_change_ms), up_hold_ms, down_hold_ms);
+      hp2_level = slew(false, hp2_level, OQ_REQUEST_SECONDARY_ID(last_applied_level), id(hp2_last_level_change_ms));
       oq_request::limit_duo_to_one_change(hp1_level, hp2_level, id(hp1_last_applied_level),
                                           OQ_REQUEST_SECONDARY_ID(last_applied_level), lead_is_hp1);
 #endif

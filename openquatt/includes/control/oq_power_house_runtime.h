@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include "esphome/components/openquatt_decision_log/OpenQuattHeatingStop.h"
 
 #include "../performance/hp_perf_frequency.h"
 #include "oq_compressor_frequency_runtime.h"
@@ -211,7 +212,7 @@ class Runtime {
       result.defrost = defrost;
       result.valve_defrost = valve_defrost;
       result.levels[0] = {true, true, true, 0.0f, 0.0f};
-      for (int level = 1; level <= oq_power_house_dispatch::kMaxLevel; ++level) {
+      for (int level = 1; level <= frequency.automatic_level_limit(hp1, 2); ++level) {
         const auto prediction = oq_perf::predict_candidate(frequency, frequency.performance_variant(hp1), hp1, level,
                                                            outside_c, supply_c, allow_low_supply_boundary_estimate);
         const bool allowed = prediction.frequency_policy_allowed;
@@ -220,7 +221,8 @@ class Runtime {
         if (valve_defrost && std::isfinite(thermal_w)) thermal_w *= defrost_factor;
         const bool thermal_valid = std::isfinite(thermal_w) && thermal_w >= 0.0f;
         const bool electrical_valid = std::isfinite(electrical_w) && electrical_w >= 0.0f;
-        result.levels[level] = {allowed, thermal_valid, electrical_valid, thermal_w, electrical_w};
+        result.levels[level] = {allowed,   thermal_valid, electrical_valid,
+                                thermal_w, electrical_w,  static_cast<uint8_t>(prediction.runtime_frequency_hz)};
         bool& model_available = hp1 ? hp1_model_available : hp2_model_available;
         bool& runnable_candidate = hp1 ? hp1_runnable_candidate : hp2_runnable_candidate;
         model_available |= prediction.runtime_frequency_known && prediction.performance.available;
@@ -320,6 +322,9 @@ class Runtime {
     const auto run_ext_decision = oq_power_house_run_extension::evaluate(
         run_ext_input, {stop_margin_c, id(ph_run_extension_restart_cooldown_c).state, room_resume_delta_c},
         this->run_extension_state_);
+    const bool comfort_was_active =
+        this->run_extension_state_.phase == oq_power_house_run_extension::Phase::COMFORT_STOP ||
+        this->run_extension_state_.phase == oq_power_house_run_extension::Phase::WAIT_WARM_RESTART;
     if (run_ext_decision.next.phase != this->last_run_ext_phase_) {
       ESP_LOGI("quatt.strategy", "ph run extension %s -> %s (room %.2f stop %.2f restart %.2f base %.0f floor %.0f)",
                oq_power_house_run_extension::phase_name(this->last_run_ext_phase_),
@@ -415,6 +420,26 @@ class Runtime {
     id(oq_strategy_requested_power_w) = requested_w;
     id(oq_strategy_supply_target_temp) = NAN;
     id(oq_strategy_heat_request_active) = capped_demand > 0;
+    namespace stop = esphome::openquatt_decision_log::heating_stop;
+    const uint8_t stop_reason =
+        !demand.valid                            ? esphome::openquatt_decision_log::REASON_HEATING_INPUT_INVALID
+        : id(oq_water_temp_limit_factor) <= 0.0f ? esphome::openquatt_decision_log::REASON_HEATING_WATER_LIMIT
+        : run_ext_decision.force_comfort_stop    ? stop::comfort_reason(comfort_was_active)
+        : raw_demand > 0 && capped_demand <= 0   ? esphome::openquatt_decision_log::REASON_HEATING_ELECTRICAL_LIMIT
+                                                 : esphome::openquatt_decision_log::REASON_PH_DEMAND_ZERO;
+    if ((capped_demand <= 0 || this->stop_snapshot_.reason != esphome::openquatt_decision_log::REASON_PH_LOW_LOAD) &&
+        stop::begin_capture(this->stop_snapshot_, now_ms, stop_reason, capped_demand <= 0)) {
+      auto& stop_snapshot = this->stop_snapshot_;
+      stop_snapshot.base_w = demand.valid ? stop::encode(base_requested_w) : stop::UNKNOWN_VALUE;
+      stop_snapshot.effective_w = demand.valid ? stop::encode(requested_w) : stop::UNKNOWN_VALUE;
+      stop_snapshot.room_c = room_inputs_valid ? stop::encode(room_c, 100.0f) : stop::UNKNOWN_VALUE;
+      if (run_ext_decision.force_comfort_stop) {
+        stop_snapshot.room_stop_c = stop::encode(run_ext_decision.comfort_stop_c, 100.0f);
+        stop_snapshot.room_restart_c = stop::encode(run_ext_decision.warm_restart_c, 100.0f);
+      }
+      if (stop_reason == esphome::openquatt_decision_log::REASON_HEATING_WATER_LIMIT)
+        stop_snapshot.supply_c = stop::encode(id(oq_system_supply_temp).state, 100.0f);
+    }
     id(oq_strategy_hp_expected_power_w) = dispatch.expected_w;
     id(oq_strategy_hp_max_power_w) = dispatch.capacity_w;
     id(oq_strategy_hp_saturated) = house_saturated;
@@ -429,6 +454,7 @@ class Runtime {
   }
 
   void reset() {
+    this->stop_snapshot_ = {};
     this->dispatch_state_ = {};
     this->last_optimizer_reason_.clear();
     this->intent_state_ = {};
@@ -468,12 +494,29 @@ class Runtime {
   }
 
   float run_extension_base_w() const { return this->run_ext_base_w_; }
+  const esphome::openquatt_decision_log::heating_stop::Snapshot& stop_snapshot() const { return this->stop_snapshot_; }
+  void record_low_load_stop(uint32_t now_ms, bool raw_request, bool latched, float power_w, float off_w, float on_w) {
+    namespace stop = esphome::openquatt_decision_log::heating_stop;
+    if (raw_request && !latched &&
+        stop::begin_capture(this->stop_snapshot_, now_ms, esphome::openquatt_decision_log::REASON_PH_LOW_LOAD, true)) {
+      auto& current = this->stop_snapshot_;
+      current.base_w = stop::encode(this->run_ext_base_w_);
+      current.effective_w = stop::encode(power_w);
+      // For low-load stops the WATER record carries watt thresholds, not temperatures.
+      current.supply_stop_c = stop::encode(off_w);
+      current.supply_restart_c = stop::encode(on_w);
+    } else if (raw_request && latched &&
+               this->stop_snapshot_.reason == esphome::openquatt_decision_log::REASON_PH_LOW_LOAD) {
+      this->stop_snapshot_ = {};
+    }
+  }
   float run_extension_floor_w() const { return this->run_ext_floor_w_; }
   float run_extension_effective_w() const { return this->run_ext_effective_w_; }
   float run_extension_comfort_stop_c() const { return this->run_ext_comfort_stop_c_; }
   float run_extension_warm_restart_c() const { return this->run_ext_warm_restart_c_; }
 
  private:
+  esphome::openquatt_decision_log::heating_stop::Snapshot stop_snapshot_;
   void publish_startup_wait_(uint32_t now_ms, float requested_w) {
     // No stale strategy request or boiler-assist output may survive acquisition.
     // The independent actuator/incident safety gates keep owning compressor stops.
