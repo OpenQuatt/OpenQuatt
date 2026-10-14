@@ -144,6 +144,7 @@ test("warmup switch provides locale labels for live patches and preserves its co
         assert.match(markup, new RegExp('data-off-label="' + off + '"'));
         assert.match(markup, new RegExp('aria-label="' + title + ': ' + (enabled ? on : off) + '"'));
         assert.match(markup, /data-on-copy="[^"]+" data-off-copy="[^"]+"/);
+        assert.equal(markup.includes('class="oq-run-extension-note"'), enabled);
         assert.doesNotMatch(markup, /data-(?:on|off)-label="null"/);
       }
     } finally {

@@ -585,7 +585,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
           ].join("") : ""}
         </div>
         ${enabled ? `<div class="oq-run-extension-thresholds oq-warmup-readings">${readings.map(([key, label, reading]) => `<div><span>${escapeHtml(label)}</span><strong data-oq-warmup-reading="${key}">${escapeHtml(reading)}</strong></div>`).join("")}</div>` : ""}
-        <p class="oq-run-extension-note">${escapeHtml(t("warmup.limits"))}</p>
+        ${enabled ? `<p class="oq-run-extension-note">${escapeHtml(t("warmup.limits"))}</p>` : ""}
       </section>
     `;
   }
