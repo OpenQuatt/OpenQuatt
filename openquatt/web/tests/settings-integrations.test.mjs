@@ -596,6 +596,7 @@ test("dagelijks koelvenster blijft als lokale toestemmingsbron beschikbaar", () 
 
 test("secundaire bronselecties blijven alleen zichtbaar wanneer hun hoofdkeuze ze gebruikt", () => {
   setSourceSelectionState(true);
+  state.entities.installationTopology = { value: "duo", state: "duo" };
 
   let markup = renderFocusedSource("water-supply");
   assert.match(getSelectMarkup(markup, "localWaterSupplyTempSource"), /<option value="PT1000" selected>/);

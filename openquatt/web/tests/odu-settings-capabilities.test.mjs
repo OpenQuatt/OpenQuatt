@@ -6,7 +6,7 @@ import vm from "node:vm";
 // Exercise the actual feature with isolated browser/transport dependencies.
 // This does not replace the integrated odu-settings tests or a hardware test.
 const feature = await readFile(new URL("../js/src/features/odu-settings.js", import.meta.url), "utf8");
-const source = feature.replace(/^import .*;\n/gm, "").replace(/^export /gm, "");
+const source = feature.replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, "");
 
 function harness() {
   const state = { busyAction: "", oduSettingsDrafts: {}, oduSettingsStatuses: {}, oduSettingsError: "" };

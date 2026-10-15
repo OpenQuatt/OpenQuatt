@@ -35,7 +35,9 @@ inline float estimate(const FrequencyContext& frequency, bool duo, float outside
       return false;
     bool allowed_frequency = false;
     bool modeled_candidate = false;
-    for (int level = 1; level <= oq_power_house_dispatch::kMaxLevel; ++level) {
+    const int maximum = frequency.automatic_level_limit(is_hp1, 2);
+    if (maximum <= 0) return false;
+    for (int level = 1; level <= maximum; ++level) {
       const auto prediction =
           oq_perf::predict_candidate(frequency, frequency.performance_variant(is_hp1), is_hp1, level, outside_c,
                                      supply_c, allow_low_supply_boundary_estimate);
@@ -49,7 +51,12 @@ inline float estimate(const FrequencyContext& frequency, bool duo, float outside
       if (!prediction.usable_for_running_optimization()) continue;
       modeled_candidate = true;
       const float thermal_w = prediction.performance.pth_w * (valve_defrost ? defrost_factor : 1.0f);
-      output.levels[level] = {true, true, true, thermal_w, prediction.performance.pel_w};
+      output.levels[level] = {true,
+                              true,
+                              true,
+                              thermal_w,
+                              prediction.performance.pel_w,
+                              static_cast<uint8_t>(prediction.runtime_frequency_hz)};
     }
     return !allowed_frequency || modeled_candidate;
   };

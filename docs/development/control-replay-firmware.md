@@ -68,6 +68,49 @@ Belangrijk:
 
 ## Event-types
 
+### Historische context van verwarmstops
+
+Nieuwe automatische verwarmstops gebruiken append-only reason-codes 75–90 uit
+`components/openquatt_decision_log/OpenQuattHeatingStop.h`. Ze onderscheiden
+Power House-vraag nul, laaglast, comfortstop en vastgehouden comfortstop;
+stooklijn-waterstop, stooklijn-laaglast en duo→single; ongeldige regelinputs,
+elektrische begrenzing, geen toegestane kandidaat en centrale stopbeveiligingen.
+Een centrale pauze zonder vastgelegde specifieke oorzaak blijft generiek; bestaande
+override-, vorst- en vraag-beëindigd-codes behouden hun wirewaarden.
+Een optimalisatiekeuze betekent niet noodzakelijk dat de warmtevraag is gedaald.
+
+Een `source_stop` met `FLAG_RAW_VALUE_VALID` krijgt direct ervoor drie
+`heating_stop_context`-records, met dezelfde bron, reden en mode. De bestaande
+24-byte flashrecords, versie en ringbuffer blijven ongewijzigd. `source_stop`
+houdt `value_a` als vorige compressorstand. De context gebruikt:
+
+| `flags` | `value_a` | `value_b` | `threshold_a` |
+| --- | --- | --- | --- |
+| 1: vermogen | Basisregelvraag W | Effectieve regelvraag W | Laatst gemeten HP-warmtevermogen vóór stop W |
+| 2: kamer | Kamer bij beslissing °C × 100 | Herstartgrens °C × 100 | Stopvoorwaarde °C × 100 |
+| 3: water | Aanvoer bij beslissing °C × 100 | Waterherstartgrens °C × 100 | Waterstopgrens °C × 100 |
+
+Voor `ph_low_load` bevat record 3 de laaglast-startgrens en stopgrens in W;
+`value_a` is onbekend. `duration_s` op alle contextrecords is de leeftijd van de
+oorspronkelijke beslissing bij het uitsturen van de stopopdracht, verzadigd op 65535 s.
+`INT16_MIN` betekent onbekend; overige waarden verzadigen op ±32767 en worden in
+de UI als grenswaarden weergegeven. Een basisregelvraag omvat reeds de geselecteerde
+huis-/externe vraag en kamercorrectie; hij is niet de onbewerkte HouseLine.
+
+De eerste stopbeslissing blijft behouden tijdens uitgestelde stops en wordt
+ingetrokken zodra de strategie opnieuw warmte vraagt. Latere centrale beveiligingen
+gaan voor en krijgen hun eigen context. Koelstops en handmatige bediening behouden
+hun bestaande contract. De UI koppelt uitsluitend drie opeenvolgende contextrecords
+met passende sequence, bron, reden, mode en leeftijd. Bij afgebroken historie of
+tussenliggende events blijven de waarden onbekend. Contextrecords zijn niet zichtbaar
+als losse beslissingen en verhogen geen stop-/starttellers. Herstartvoorwaarden zijn
+uitleg bij een stop en genereren geen extra stoprecords.
+
+Een verwarmstop gebruikt hierdoor vier archiefrecords in plaats van één. De vaste
+capaciteit van 5120 records blijft gelden; bij veel gebeurtenissen kan de effectieve
+historieduur korter worden dan de maximale zeven dagen. Er zijn twee vaste
+strategiesnapshots van maximaal 24 bytes, zonder nieuwe heapallocaties.
+
 ### Huidige eventset
 
 | Event type | Subject | Doel in UI | Bron |
@@ -203,7 +246,7 @@ is de primaire reden `candidate_in_rest` of voorlopig `min_rest_active`, niet
 | Waarom draait er een warmtepomp? | `source_start` | `runtime_lead` / `keep_current` | "De vraag past bij een warmtepomp. De regelaar koos de beschikbare bron die het beste past bij draaiuren en wachttijd." |
 | Waarom juist HP1 of HP2? | `source_start` | `runtime_lead` | "HP1 en HP2 zijn gelijkwaardig. Deze bron had op dit moment de gunstigste draaiurenbalans en was vrij." |
 | Waarom draaien beide warmtepompen? | `topology_change` to duo | `better_heat` | "De vraag bleef hoog. Twee warmtepompen leveren rustiger vermogen dan een pomp op hoge belasting." |
-| Waarom stopt een warmtepomp? | `source_stop` / `topology_change` to single | `less_power` | "De vraag nam af. Een warmtepomp kan de resterende vraag weer dragen." |
+| Waarom stopt een warmtepomp? | `source_stop` / `topology_change` to single | `less_power` | "De gekozen broncombinatie gebruikt minder elektriciteit bij voldoende warmteproductie." |
 | Waarom start de andere pomp nog niet? | `candidate_blocked` | `candidate_in_rest` / `candidate_unavailable` / `no_candidate` | "Er is vraag, maar starten is nog niet verstandig door rusttijd of bescherming." |
 | Waarom blijft dezelfde pomp draaien? | `decision_hold` | `hold_active` | "Wisselen zou nu weinig voordeel geven en kan extra starts/stops veroorzaken." |
 | Waarom ontdooit hij? | `defrost_seen_start` | `defrost_hold` | "De buitenunit ontdooit kort. Dit is normaal bij koud en vochtig weer." |

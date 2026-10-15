@@ -9,7 +9,7 @@ import { renderLowFlowDiagnosis } from "../core/lowflow-diagnosis.js";
 import { renderNumberInputControl } from "../core/number-controls.js";
 import { state } from "../core/state.js";
 import { getDebugRecordingStatusCopy, getDebugRecordingStatusLabel } from "../features/debug-recording.js";
-import { formatDiagnosticsDateTime, formatUptimeFromMeta, getDeviceIpAddress, getInstallationLabel } from "../features/device-context.js";
+import { formatDiagnosticsDateTime, formatUptimeFromMeta, getDeviceIpAddress, getInstallationLabel, getInstallationTopology } from "../features/device-context.js";
 import { getUpdateStatus } from "../features/firmware-update.js";
 import { getConnectivityStatus, getEspTemperatureLabel } from "../features/header-status.js";
 import { getOduGenerationChoiceMeta, getOduGenerationDetectionModel, renderOduGenerationDetectionStatus } from "../features/odu-generation-ui.js";
@@ -387,13 +387,14 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
     if (!monitoring.cyclingAlertLatched) {
       return "";
     }
-    const alternating = isInstallationMonitoringBinaryActive("compressorCyclingAlertAlternating");
+    const hasHp2 = getInstallationTopology() === "duo";
+    const alternating = hasHp2 && isInstallationMonitoringBinaryActive("compressorCyclingAlertAlternating");
     const hp1Peak2h = getInstallationMonitoringCount("compressorCyclingAlertHp1Peak2h");
     const hp1Peak72h = getInstallationMonitoringCount("compressorCyclingAlertHp1Peak72h");
-    const hp2Peak2h = hasEntity("compressorCyclingAlertHp2Peak2h")
+    const hp2Peak2h = hasHp2 && hasEntity("compressorCyclingAlertHp2Peak2h")
       ? getInstallationMonitoringCount("compressorCyclingAlertHp2Peak2h")
       : "";
-    const hp2Peak72h = hasEntity("compressorCyclingAlertHp2Peak72h")
+    const hp2Peak72h = hasHp2 && hasEntity("compressorCyclingAlertHp2Peak72h")
       ? getInstallationMonitoringCount("compressorCyclingAlertHp2Peak72h")
       : "";
     return `
@@ -435,7 +436,7 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
   }
 
   export function renderInstallationMonitoringCompressorUnit(title, prefix) {
-    if (!hasEntity(`${prefix}CompressorStarts2h`)) {
+    if ((prefix === "hp2" && getInstallationTopology() !== "duo") || !hasEntity(`${prefix}CompressorStarts2h`)) {
       return "";
     }
     return `<tr><th scope="row">${escapeHtml(title)}</th>
@@ -445,6 +446,7 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
   }
 
   export function renderSettingsInstallationMonitoringSection() {
+    const hasHp2 = getInstallationTopology() === "duo";
     const monitoring = getInstallationMonitoringModel();
     syncInstallationMonitoringDetailsState(monitoring);
     const structuredIncidentMonitoringAvailable = Boolean(monitoring.incidentMonitoring?.available);
@@ -456,7 +458,7 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
         value: isInstallationMonitoringBinaryActive("lowflowFaultActive") ? t("settingsInstallation.flowFault") : t("settingsInstallation.flowOk"),
         active: isInstallationMonitoringBinaryActive("lowflowFaultActive"),
       }) : "",
-      hasEntity("flowMismatch") ? renderInstallationMonitoringStatusRow({
+      hasHp2 && hasEntity("flowMismatch") ? renderInstallationMonitoringStatusRow({
         label: t("settingsInstallation.flowDuoLabel"),
         value: isInstallationMonitoringBinaryActive("flowMismatch") ? t("settingsInstallation.flowDuoFault") : t("settingsInstallation.flowDuoOk"),
         active: isInstallationMonitoringBinaryActive("flowMismatch"),
@@ -484,7 +486,7 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
         value: getInstallationMonitoringFailureText("hp1Failures"),
         active: isInstallationMonitoringFailureActive("hp1Failures"),
       }) : "",
-      hasEntity("hp2Failures") ? renderInstallationMonitoringStatusRow({
+      hasHp2 && hasEntity("hp2Failures") ? renderInstallationMonitoringStatusRow({
         label: t("incidents.hp2Label"),
         value: getInstallationMonitoringFailureText("hp2Failures"),
         active: isInstallationMonitoringFailureActive("hp2Failures"),
@@ -494,7 +496,7 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
     const compressorLimit72h = getEntityNumericValue("compressorStarts72hWarningLimit");
     const compressorWarningActive = isInstallationMonitoringBinaryActive("compressorCyclingWarning2h")
       || isInstallationMonitoringBinaryActive("compressorCyclingWarning72h")
-      || isInstallationMonitoringBinaryActive("alternatingCompressorStartsWarning")
+      || (hasHp2 && isInstallationMonitoringBinaryActive("alternatingCompressorStartsWarning"))
       || monitoring.cyclingAlertLatched;
     const hydraulicPanel = hydraulicRows ? `
       <article class="oq-settings-monitoring-card">
@@ -1176,7 +1178,7 @@ import { formatDateTime, formatNumber, t } from "../i18n/index.js";
             <h4>${escapeHtml(t("settingsInstallation.compressorExclTitle"))}</h4>
             <p>${escapeHtml(t("settingsInstallation.compressorExclCopy"))}</p>
           </div>
-          <div class="oq-settings-hp-columns${hasEntity("hp2ExcludeMinHz") ? "" : " oq-settings-hp-columns--single"}">
+          <div class="oq-settings-hp-columns${getInstallationTopology() === "duo" ? "" : " oq-settings-hp-columns--single"}">
             ${hpGroups}
           </div>
         </div>

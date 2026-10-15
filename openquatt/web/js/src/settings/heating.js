@@ -4,6 +4,7 @@ import { isCurveMode, isManualFlowMode } from "../core/domain-helpers.js";
 import { getCurveFallbackSuggestion, getEntityValue } from "../core/entity-store.js";
 import { getHeatingEnableAdvice } from "../core/heating-strategy-matrix.js";
 import { state } from "../core/state.js";
+import { getInstallationTopology } from "../features/device-context.js";
 import { getSettingsSelectModel } from "./field-models.js";
 import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField } from "./controls.js";
 import { formatNumericState } from "../core/formatting.js";
@@ -522,6 +523,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
   }
 
   export function renderSettingsHeatPumpLimiterCard(title, hpPrefix) {
+    if (hpPrefix === "hp2" && getInstallationTopology() !== "duo") return "";
     const firstFrequencyKey = `${hpPrefix}ExcludeMinHz`;
     const fields = renderSettingsFrequencyRangeField(
       firstFrequencyKey,

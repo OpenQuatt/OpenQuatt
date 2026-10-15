@@ -283,6 +283,7 @@ void OpenQuattOduDefrost::release() {
   }
 }
 void OpenQuattOduDefrost::offline() {
+  forced_write_pending_ = false;
   portENTER_CRITICAL(&mux_);
   pending_ = Action::NONE;
   action_pending_ = false;
@@ -380,7 +381,9 @@ bool OpenQuattOduDefrost::send_forced_once(uint32_t now) {
   clear_tx_queue_for_address();
   cycle.mode_seen = cycle.bit_seen = false;  // Only post-command polls may confirm acceptance/completion.
   cycle.request(now);
+  forced_write_pending_ = true;
   if (!write_single_register(3999U, 4U)) {
+    forced_write_pending_ = false;
     cycle.phase = oq_defrost::Phase::RESYNC;
     reject("WRITE_FAILED");
     return false;
@@ -424,6 +427,7 @@ bool OpenQuattOduDefrost::normal_write_allowed(int value, bool safety_stop) {
       clear_tx_queue_for_device();
       loading_ = trigger_ready_ = false;
       save_after_load_ = save_ready_ = save_writing_ = save_verifying_ = false;
+      forced_write_pending_ = false;
       cycle.safety_stop();
       finish_profile_(false);
       release();
@@ -497,9 +501,13 @@ void OpenQuattOduDefrost::on_read_holding_registers(uint16_t address, std::span<
   if (!trigger_ready_ && !save_ready_) release();
 }
 void OpenQuattOduDefrost::on_response(std::span<const uint8_t> request, std::span<const uint8_t> response) {
+  if (request.size() == 5 && request[0] == 6 && request[1] == 0x0F && request[2] == 0x9F && request[3] == 0 &&
+      request[4] == 4)
+    forced_write_pending_ = false;
   modbus::ModbusClientDevice::on_response(request, response);
 }
 void OpenQuattOduDefrost::on_not_sent(std::span<const uint8_t>) {
+  forced_write_pending_ = false;
   if (loading_)
     fail_("READ_FAILED");
   else if (save_writing_ || save_verifying_) {

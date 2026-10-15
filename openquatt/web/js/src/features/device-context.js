@@ -90,6 +90,12 @@ import { formatDate, formatTime, t } from "../i18n/index.js";
     return generation ? `Quatt Hybrid ${generation}` : "Quatt Hybrid";
   }
 
+  export function getRuntimeCounterResetKey() {
+    return getInstallationTopology() === "duo" && hasEntity("resetRuntimeCountersHp1Hp2")
+      ? "resetRuntimeCountersHp1Hp2"
+      : hasEntity("resetRuntimeCountersHp1") ? "resetRuntimeCountersHp1" : "";
+  }
+
   export function getFirmwareDeviceLabel() {
     return "OpenQuatt";
   }

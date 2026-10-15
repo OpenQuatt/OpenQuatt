@@ -6,6 +6,7 @@ import { renderNumberInputControl } from "../core/number-controls.js";
 import { formatSettingsNumberValue, getSettingsTemperatureValue, renderSettingsNumberField, renderSettingsSection, renderSettingsSystemRow } from "./controls.js";
 import { escapeHtml } from "../core/html.js";
 import { t } from "../i18n/index.js";
+import { getInstallationTopology } from "../features/device-context.js";
 
   export function getHpWaterRawValue(rawKey, finalKey, offsetKey) {
     const finalValue = getEntityNumericValue(finalKey);
@@ -84,7 +85,8 @@ import { t } from "../i18n/index.js";
       { label: t("settingsWater.hp1WaterOut"), rawKey: "hp1WaterOutRaw", offsetKey: "hp1WaterOutOffset", finalKey: "hp1WaterOut" },
       { label: t("settingsWater.hp2WaterIn"), rawKey: "hp2WaterInRaw", offsetKey: "hp2WaterInOffset", finalKey: "hp2WaterIn" },
       { label: t("settingsWater.hp2WaterOut"), rawKey: "hp2WaterOutRaw", offsetKey: "hp2WaterOutOffset", finalKey: "hp2WaterOut" },
-    ].filter((row) => hasEntity(row.offsetKey) && hasEntity(row.finalKey));
+    ].filter((row) => (getInstallationTopology() === "duo" || !row.finalKey.startsWith("hp2"))
+      && hasEntity(row.offsetKey) && hasEntity(row.finalKey));
     const hasSupplyCorrection = hasEntity("supplyTemp") && hasEntity("waterSupplyCalibrationOffset");
 
     if (!rows.length && !hasSupplyCorrection) {

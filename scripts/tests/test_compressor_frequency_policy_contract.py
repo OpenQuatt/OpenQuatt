@@ -79,8 +79,8 @@ class CompressorFrequencyPolicyContractTest(unittest.TestCase):
         self.assertIn('"hp1ExcludeMinHz", "hp1ExcludeMaxHz", "hp2ExcludeMinHz", "hp2ExcludeMaxHz"', WEB_CONFIG)
 
     def test_strategies_only_offer_allowed_runtime_frequencies(self) -> None:
-        self.assertEqual(STRATEGY_RUNTIMES.count("oq_frequency_runtime::capture()"), 3)
-        self.assertEqual(STRATEGY_RUNTIMES.count("oq_perf::predict_candidate("), 2)
+        self.assertEqual(STRATEGY_RUNTIMES.count("oq_frequency_runtime::capture()"), 4)
+        self.assertEqual(STRATEGY_RUNTIMES.count("oq_perf::predict_candidate("), 3)
         self.assertEqual(STRATEGY_RUNTIMES.count("frequency.frequency_allowed("), 1)
         self.assertIn("const auto boosted = make_candidate(", DISPATCH)
         self.assertIn("estimate.allowed", DISPATCH)
@@ -88,7 +88,7 @@ class CompressorFrequencyPolicyContractTest(unittest.TestCase):
 
     def test_runtime_inputs_are_captured_once_per_control_callback(self) -> None:
         control_sources = STRATEGIES + STRATEGY_RUNTIMES + REQUEST_RUNTIME + ACTUATOR
-        self.assertEqual(control_sources.count("oq_frequency_runtime::capture()"), 5)
+        self.assertEqual(control_sources.count("oq_frequency_runtime::capture()"), 6)
         for inline_adapter in (
             "auto runtime_frequency_snapshot",
             "auto excluded_frequency_range",

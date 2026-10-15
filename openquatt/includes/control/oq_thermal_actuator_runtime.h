@@ -13,11 +13,15 @@
 #include "oq_cooling_start_status.h"
 #include "oq_defrost_logic.h"
 #include "oq_incident_actuator_logic.h"
+#include "oq_heating_curve_runtime.h"
+#include "oq_power_house_runtime.h"
+#include "oq_supervisory_state_runtime.h"
 #include "oq_thermal_actuator_logic.h"
 #include "oq_thermal_request_logic.h"
 #include "../odu/oq_odu_compressor_levels.h"
 #include "../service/oq_service_status.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
+#include "oq_compressor_command_runtime.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_thermal_actuator_runtime {
@@ -60,6 +64,7 @@ class Runtime {
   void tick(const TickConfig& config) {
     for (auto& limit : this->start_limits_) limit.expire(config.now_ms);
     this->last_minimum_flow_lph_ = config.minimum_flow_lph;
+    oq_command_runtime::minimum_defrost_flow_lph = config.minimum_flow_lph;
     const float cooling_off_state = id(cooling_minimum_off_time).state;
     int cooling_off_s = !isfinite(cooling_off_state) ? 600 : static_cast<int>(lroundf(cooling_off_state));
     const int cooling_off_floor_s = oq_cooling::cooling_minimum_off_floor_s(config.cooling_minimum_off_min_s);
@@ -133,9 +138,9 @@ class Runtime {
                                  cycle.service_guards[0], cycle.service_guards[1], config.now_ms,
                                  config.minimum_flow_lph);
     }
-    this->record_transition(true, hp1_applied, config.now_ms, config.dt_ms);
+    this->record_transition(true, hp1_applied, config.now_ms, config.dt_ms, hp1_was_cooling);
 #if OQ_TOPOLOGY_DUO
-    this->record_transition(false, hp2_applied, config.now_ms, config.dt_ms);
+    this->record_transition(false, hp2_applied, config.now_ms, config.dt_ms, hp2_was_cooling);
 #endif
     this->publish_cooling_start_status_();
   }
@@ -250,7 +255,8 @@ class Runtime {
                           bool manual_service_active) const {
     if (id(oq_incident_manager).startup_inhibited(is_hp1 ? 1U : 2U)) return 0;
     int mode_code = active && request_thermal_active ? request_mode_code : 0;
-    if (manual_service_active && id(oq_manual_hp_mode_allowed)) {
+    // A selected manual mode is intent, not permission to energize an F0/blocked output.
+    if (active && manual_service_active && id(oq_manual_hp_mode_allowed)) {
       const int manual_mode = is_hp1 ? id(oq_manual_hp1_mode_code) : id(oq_manual_hp2_mode_code);
       if (manual_mode > 0) mode_code = manual_mode;
     }
@@ -271,7 +277,9 @@ class Runtime {
     if (is_hp1) {
       const auto index = id(hp1_compressor_level).active_index();
       const int current = index.has_value() ? static_cast<int>(index.value()) : -1;
-      if (current != physical_level || (physical_level == 0 && force_write)) {
+      if (current != physical_level || id(hp1_compressor_command_revalidation_required) ||
+          (physical_level == 0 && force_write)) {
+        id(hp1_compressor_command_revalidation_required) = false;
         auto call = id(hp1_compressor_level).make_call();
         call.set_option(level_options[physical_level]);
         if (physical_level > 0) id(oq_incident_manager).invalidate_restart_credit(1U);
@@ -283,7 +291,9 @@ class Runtime {
 #if OQ_TOPOLOGY_DUO
     const auto index = id(hp2_compressor_level).active_index();
     const int current = index.has_value() ? static_cast<int>(index.value()) : -1;
-    if (current != physical_level || (physical_level == 0 && force_write)) {
+    if (current != physical_level || id(hp2_compressor_command_revalidation_required) ||
+        (physical_level == 0 && force_write)) {
+      id(hp2_compressor_command_revalidation_required) = false;
       auto call = id(hp2_compressor_level).make_call();
       call.set_option(level_options[physical_level]);
       if (physical_level > 0) id(oq_incident_manager).invalidate_restart_credit(2U);
@@ -379,7 +389,7 @@ class Runtime {
     this->last_manual_guard_status_ = status;
   }
 
-  void record_transition(bool is_hp1, int new_level, uint32_t now_ms, uint32_t dt_ms) {
+  void record_transition(bool is_hp1, int new_level, uint32_t now_ms, uint32_t dt_ms, bool was_cooling = false) {
     int& previous = is_hp1 ? id(hp1_last_applied_level) : OQ_ACTUATOR_SECONDARY_ID(last_applied_level);
     this->start_limits_[is_hp1 ? 0 : 1].record_transition(previous, new_level, now_ms);
     if (previous != new_level) {
@@ -391,7 +401,7 @@ class Runtime {
       this->emit_transition_(is_hp1, true, new_level);
     } else if (previous > 0 && new_level == 0) {
       this->set_last_stop_ms_(is_hp1, now_ms);
-      this->emit_transition_(is_hp1, false, previous);
+      this->emit_transition_(is_hp1, false, previous, was_cooling);
     }
 
     if (new_level > 0 && dt_ms > 0 && this->measured_thermal_mode_(is_hp1)) {
@@ -432,7 +442,7 @@ class Runtime {
   }
 
   int apply_level_(bool is_hp1, int requested, bool was_cooling, Cycle& cycle) {
-    constexpr int MAX_LEVEL = 10;
+    const int MAX_LEVEL = cycle.frequency.automatic_level_limit(is_hp1, cycle.request_mode_code);
     const int maximum = cycle.manual_service_active
                             ? oq_odu::physical_level_limit(cycle.frequency.configured_v2,
                                                            cycle.frequency.snapshot(is_hp1), cycle.request_mode_code)
@@ -443,25 +453,25 @@ class Runtime {
     const uint8_t hp_index = is_hp1 ? 1U : 2U;
     const auto incident = id(oq_incident_manager).get_outputs(hp_index);
     auto* defrost = is_hp1 ? &id(hp1_odu_defrost) : &OQ_ACTUATOR_SECONDARY_ID(odu_defrost);
+    const bool stop_pending = incident.run_state == oq_incidents::RunState::STOPPING ||
+                              incident.run_state == oq_incidents::RunState::STOP_UNCONFIRMED;
+    // STOPPING may outlive its global cause without must_stop; finish the physical stop before defrost.
+    const bool safety_stop = stop_pending || this->defrost_safety_stop_(is_hp1);
     if (defrost->cycle.telemetry_fault(cycle.config.now_ms)) requested = level = 0;
     // Preserve the current command while the ODU owns the cycle. Hard safety
     // stops remain authoritative; ordinary demand changes wait for completion.
-    if (!this->defrost_safety_stop_(is_hp1) &&
+    if (!safety_stop &&
         (!defrost->cycle.fresh(cycle.config.now_ms) || defrost->holding() || defrost->cycle.observed_active()))
       return previous;
     uint32_t& last_safe_write_ms = this->last_safe_stop_write_ms(is_hp1);
-    const bool stop_pending = incident.run_state == oq_incidents::RunState::STOPPING ||
-                              incident.run_state == oq_incidents::RunState::STOP_UNCONFIRMED;
-    const bool force_safe_write = oq_incident_actuator::safe_stop_write_retry_due(
-        stop_pending || defrost->cycle.telemetry_fault(cycle.config.now_ms), cycle.config.now_ms, last_safe_write_ms,
-        10000U);
+    const bool force_safe_write =
+        oq_incident_actuator::safe_stop_write_retry_due(safety_stop, cycle.config.now_ms, last_safe_write_ms, 10000U);
 
     // Contract order: incident stop -> defrost hold -> cooling rest -> per-HP rest -> start quota
     // -> valid mode -> frequency policy -> start/stop registration -> physical write.
     const auto incident_guard =
         oq_incident_actuator::decide({level, previous, incident.available_for_start,
-                                      incident.must_stop || defrost->cycle.telemetry_fault(cycle.config.now_ms) ||
-                                          id(oq_incident_manager).startup_inhibited(hp_index)});
+                                      safety_stop || id(oq_incident_manager).startup_inhibited(hp_index)});
     const bool may_retain =
         oq_thermal_actuator::may_retain_command(previous, incident_guard.bypass_runtime_and_defrost_holds);
     if (!may_retain) this->clear_retained_level(is_hp1);
@@ -505,9 +515,9 @@ class Runtime {
     this->publish_defrost_hold_start(is_hp1, defrost_hold, retained, requested);
     if (defrost_hold) {
       char reason[96];
-      snprintf(reason, sizeof(reason), "defrost hold at model level %d / physical F%d", retained.control_level,
+      snprintf(reason, sizeof(reason), "defrost hold at requested F%d / physical F%d", retained.control_level,
                retained.physical_level);
-      this->service_guard_(cycle, is_hp1) = "ontdooihold op modelstand " + std::to_string(retained.control_level);
+      this->service_guard_(cycle, is_hp1) = "ontdooihold op compressorstand " + std::to_string(retained.control_level);
       this->log_block_change(is_hp1, reason);
       this->apply_active_mode_hold(is_hp1, retained, cycle.request_mode_option);
       this->publish_optimizer_reason("defrost_protect_hold");
@@ -563,7 +573,19 @@ class Runtime {
     const bool use_frequency_policy = !cycle.manual_service_active;
     if (applied > 0 && use_frequency_policy) {
       cap_hz = cycle.frequency.cap_hz;
-      applied = cycle.frequency.pick_allowed_level(is_hp1, expected_mode, applied, 1, MAX_LEVEL);
+      // A policy fallback may not undo bounded continuation's no-increase
+      // verdict when the incident manager has withdrawn the HP's availability.
+      const int policy_maximum = incident.available_for_start ? MAX_LEVEL : std::min(MAX_LEVEL, previous);
+      applied = cycle.frequency.pick_allowed_level(is_hp1, expected_mode, applied, 1, policy_maximum);
+    }
+
+    if (applied > 0 && cycle.manual_service_active) {
+      applied = cycle.frequency.pick_temperature_level(is_hp1, expected_mode, applied);
+      if (applied == 0) {
+        block_reason = "temperature envelope blocks manual heating request";
+        candidate_reason = openquatt_decision_log::REASON_CANDIDATE_UNAVAILABLE;
+        this->service_guard_(cycle, is_hp1) = "temperatuurbegrenzing blokkeert handmatige verwarming";
+      }
     }
 
     oq_odu::LevelCommand command{};
@@ -629,7 +651,8 @@ class Runtime {
             this->set_mode(is_hp1, false, force_safe_write, cycle.request_mode_code, cycle.request_thermal_active,
                            cycle.manual_service_active);
           });
-      if (register_initial_stop || force_safe_write) last_safe_write_ms = cycle.config.now_ms;
+      // Do not slide the retry deadline on each running readback when cached-zero writes are no-ops.
+      if (previous > 0 || register_incident_stop || force_safe_write) last_safe_write_ms = cycle.config.now_ms;
     }
 
     if (applied == 0 && level > 0) {
@@ -762,9 +785,11 @@ class Runtime {
 
   bool defrost_safety_stop_(bool is_hp1) const {
     const uint8_t hp = is_hp1 ? 1U : 2U;
+    const auto incident = id(oq_incident_manager).get_outputs(hp);
     const auto& cycle = (is_hp1 ? id(hp1_odu_defrost) : OQ_ACTUATOR_SECONDARY_ID(odu_defrost)).cycle;
-    return id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) ||
-           id(oq_incident_manager).get_outputs(hp).must_stop || cycle.telemetry_fault(millis());
+    return id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) || incident.must_stop ||
+           incident.run_state == oq_incidents::RunState::STOPPING ||
+           incident.run_state == oq_incidents::RunState::STOP_UNCONFIRMED || cycle.telemetry_fault(millis());
   }
   void update_defrost_(bool is_hp1, uint32_t now) {
     auto* service = is_hp1 ? &id(hp1_odu_defrost) : &OQ_ACTUATOR_SECONDARY_ID(odu_defrost);
@@ -865,7 +890,10 @@ class Runtime {
     auto* service = is_hp1 ? &id(hp1_odu_defrost) : &OQ_ACTUATOR_SECONDARY_ID(odu_defrost);
     if (!service->normal_write_allowed(std::strcmp(option, "Standby") == 0 ? 0 : 1, this->defrost_safety_stop_(is_hp1)))
       return;
-    force_write = force_write || service->cycle.phase == oq_defrost::Phase::RESYNC;
+    force_write = force_write ||
+                  (is_hp1 ? id(hp1_compressor_command_revalidation_required)
+                          : OQ_ACTUATOR_SECONDARY_ID(compressor_command_revalidation_required)) ||
+                  service->cycle.phase == oq_defrost::Phase::RESYNC;
     const bool active_mode = std::strcmp(option, "Cooling") == 0 || std::strcmp(option, "Heating") == 0;
     if (is_hp1) {
       if (force_write || id(hp1_set_working_mode).current_option() != option) {
@@ -956,15 +984,72 @@ class Runtime {
     (is_hp1 ? id(hp1_last_stop_ms) : OQ_ACTUATOR_SECONDARY_ID(last_stop_ms)) = now_ms;
   }
 
-  void emit_transition_(bool is_hp1, bool starting, int level) const {
+  void emit_transition_(bool is_hp1, bool starting, int level, bool was_cooling = false) const {
+    uint8_t reason = this->transition_reason(starting);
+    uint8_t flags = 0;
+    const bool heating = !was_cooling && !oq_manual_hp::owns_control() &&
+                         (id(oq_heat_mode_code) == 1 || id(oq_strategy_output_source_code) == 3);
+    if (!starting && heating) {
+      namespace stop = openquatt_decision_log::heating_stop;
+      const uint32_t now_ms = static_cast<uint32_t>(millis());
+      const bool curve = id(oq_heat_mode_code) == 1;
+      auto snapshot = curve ? oq_heating_curve_runtime::runtime().stop_snapshot()
+                            : oq_power_house_runtime::runtime().stop_snapshot();
+      auto* defrost = is_hp1 ? &id(hp1_odu_defrost) : &OQ_ACTUATOR_SECONDARY_ID(odu_defrost);
+      const bool source_unavailable =
+          id(oq_incident_manager).get_outputs(is_hp1 ? 1U : 2U).must_stop || defrost->cycle.telemetry_fault(now_ms);
+      const bool water_limit = id(oq_water_temp_hard_trip_active) || id(oq_water_temp_limit_factor) <= 0.0f;
+      const bool disabled =
+          !id(oq_enabled).state || !id(heating_enable_valid).state || !id(heating_enable_selected).state;
+      uint8_t central_reason = oq_supervisory_state_runtime::runtime().heating_gate_reason();
+      const bool central_pause = id(oq_control_mode_code) != 2 && id(oq_control_mode_code) != 3;
+      if (central_reason == 0 && central_pause && id(oq_strategy_heat_request_active) && snapshot.reason == 0 &&
+          (curve || id(oq_lowload_heat_latch)))
+        central_reason = openquatt_decision_log::REASON_HEATING_CENTRAL_PAUSE;
+      reason = stop::reason_for_stop(
+          {source_unavailable, id(oq_lowflow_fault_active), water_limit, disabled, id(oq_strategy_heat_request_active),
+           curve, !curve && !id(oq_lowload_heat_latch), id(oq_power_cap_f) <= 0 && id(oq_demand_raw) > 0,
+           curve && (is_hp1 ? id(oq_curve_dispatch_hp2_level) : id(oq_curve_dispatch_hp1_level)) > 0, snapshot.reason,
+           curve ? oq_heating_curve_runtime::runtime().dispatch_stop_reason()
+                 : static_cast<uint8_t>(id(oq_ph_request_reason_code)),
+           central_reason});
+      // A later safety cause supersedes the pending comfort/demand decision.
+      // Its snapshot must not carry the old decision's temperatures or limits.
+      const bool superseded =
+          (source_unavailable || disabled || id(oq_lowflow_fault_active) || water_limit || central_reason != 0) &&
+          snapshot.reason != reason;
+      if (snapshot.reason == 0 || superseded) {
+        snapshot = {};
+        snapshot.captured_ms = now_ms;
+        snapshot.room_c = stop::encode(id(room_temp_selected).state, 100.0f);
+        snapshot.supply_c = stop::encode(id(oq_system_supply_temp).state, 100.0f);
+        if (!curve && !superseded) {
+          snapshot.base_w = stop::encode(oq_power_house_runtime::runtime().run_extension_base_w());
+          snapshot.effective_w = stop::encode(id(oq_strategy_requested_power_w));
+        }
+      }
+      const uint8_t subject = is_hp1 ? openquatt_decision_log::SUBJECT_HP1 : openquatt_decision_log::SUBJECT_HP2;
+      const uint16_t age_s = stop::age_seconds(now_ms, snapshot.captured_ms);
+      const auto context = [&](uint8_t kind, int16_t a, int16_t b, int16_t threshold) {
+        id(oq_decision_log)
+            .emit(openquatt_decision_log::EVENT_HEATING_STOP_CONTEXT, subject, reason,
+                  openquatt_decision_log::SEVERITY_NORMAL, static_cast<uint8_t>(id(oq_control_mode_code)),
+                  openquatt_decision_log::STATE_ACTIVE, openquatt_decision_log::STATE_IDLE, a, b, threshold, age_s,
+                  kind);
+      };
+      const float measured_w = is_hp1 ? id(hp1_heat_power).state : OQ_ACTUATOR_SECONDARY_ID(heat_power).state;
+      context(stop::POWER, snapshot.base_w, snapshot.effective_w, stop::encode(measured_w));
+      context(stop::ROOM, snapshot.room_c, snapshot.room_restart_c, snapshot.room_stop_c);
+      context(stop::WATER, snapshot.supply_c, snapshot.supply_restart_c, snapshot.supply_stop_c);
+      flags = openquatt_decision_log::FLAG_RAW_VALUE_VALID;
+    }
     id(oq_decision_log)
         .emit(starting ? openquatt_decision_log::EVENT_SOURCE_START : openquatt_decision_log::EVENT_SOURCE_STOP,
-              is_hp1 ? openquatt_decision_log::SUBJECT_HP1 : openquatt_decision_log::SUBJECT_HP2,
-              this->transition_reason(starting), openquatt_decision_log::SEVERITY_NORMAL,
-              static_cast<uint8_t>(id(oq_control_mode_code)),
+              is_hp1 ? openquatt_decision_log::SUBJECT_HP1 : openquatt_decision_log::SUBJECT_HP2, reason,
+              openquatt_decision_log::SEVERITY_NORMAL, static_cast<uint8_t>(id(oq_control_mode_code)),
               starting ? openquatt_decision_log::STATE_IDLE : openquatt_decision_log::STATE_ACTIVE,
               starting ? openquatt_decision_log::STATE_ACTIVE : openquatt_decision_log::STATE_IDLE,
-              static_cast<int16_t>(level), 0, 0);
+              static_cast<int16_t>(level), 0, 0, 0, flags);
   }
 
   std::string last_optimizer_reason_;

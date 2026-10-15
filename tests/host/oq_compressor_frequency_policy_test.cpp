@@ -80,9 +80,9 @@ int main() {
   v2.variant = oq_odu::Variant::V2_NEW_MODEL;
   v2.cooling = make_v2_cooling_table();
   v2.heating = make_v2_heating_table();
-  assert(automatic_frequency_hz(true, v2, 2, 4) == 48);
-  assert(automatic_frequency_hz(true, v2, 2, 8) == 82);
-  assert(automatic_frequency_hz(true, v2, 2, 10) == 90);
+  assert(automatic_frequency_hz(true, v2, 2, 4) == 36);
+  assert(automatic_frequency_hz(true, v2, 2, 8) == 52);
+  assert(automatic_frequency_hz(true, v2, 2, 17) == 90);
   assert(automatic_frequency_hz(true, v2, 1, 10) == 46);
   assert(minimum_automatic_frequency_hz(true, v2, 2) == automatic_frequency_hz(true, v2, 2, 1));
   assert(minimum_automatic_frequency_hz(true, v2, 1) == automatic_frequency_hz(true, v2, 1, 1));
@@ -96,7 +96,7 @@ int main() {
 
   auto hp2_source = runtime_edited;
   const oq_frequency_runtime::Context runtime{
-      false, v1, hp2_source, 67, {}, {60, 68},
+      false, v1, hp2_source, 67, {}, {60, 68}, oq_odu::Variant::UNKNOWN, oq_odu::Variant::UNKNOWN, false,
   };
   hp2_source.heating.hz[6] = 100;
   assert(runtime.automatic_frequency_hz(true, 2, 6) == 67);
@@ -142,8 +142,12 @@ int main() {
   assert(pick_allowed_level(false, v1, 2, 10, 1, 10, 67, none) == 6);
   assert(pick_allowed_level(false, v1, 2, 6, 1, 10, 120, excluded) == 4);
   assert(pick_allowed_level(false, v1, 2, 1, 1, 10, 120, {30, 30}) == 2);
-  assert(pick_allowed_level(true, v2, 2, 8, 1, 10, 80, none) == 7);
+  assert(pick_allowed_level(true, v2, 2, 15, 1, 20, 80, none) == 14);
   assert(pick_allowed_level(false, unknown, 2, 6, 1, 10, 120, none) == 0);
   assert(pick_allowed_level(false, v1, 2, 6, 1, 10, 0, none) == 0);
+  assert(pick_allowed_level(true, v2, 2, 20, 1, 20, 120, none) == 17);
+  assert(automatic_frequency_hz(true, v2, 2, 18) == -1);
+  assert(pick_allowed_level(true, v2, 2, 5, 1, 20, 90, none) == 5);
+  assert(pick_allowed_level(true, v2, 2, 5, 1, 20, 90, {36, 45}) == 3);
   return 0;
 }

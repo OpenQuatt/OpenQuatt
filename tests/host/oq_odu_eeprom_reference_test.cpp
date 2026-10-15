@@ -31,7 +31,6 @@ struct Reference {
   oq_odu::Variant variant;
   std::array<uint8_t, 21> cooling_hz;
   std::array<uint8_t, 21> heating_hz;
-  std::array<int, 11> heating_mapping;
   oq_odu::CompressorLevelProfile profile;
   int defrost_mode;
   std::array<float, 7> mode4_delta_k;
@@ -39,7 +38,6 @@ struct Reference {
 
 constexpr std::array<uint8_t, 21> LEGACY_COOLING_HZ = {0, 30, 36, 42, 47, 52, 56, 61, 66, 71, 74};
 constexpr std::array<uint8_t, 21> LEGACY_HEATING_HZ = {0, 30, 39, 49, 55, 61, 67, 72, 79, 85, 90};
-constexpr std::array<int, 11> LEGACY_HEATING_MAPPING = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
 const std::array<Reference, 4> REFERENCES = {{
     {"V1 (normalized cooling baseline)",
@@ -52,7 +50,6 @@ const std::array<Reference, 4> REFERENCES = {{
      oq_odu::Variant::V1,
      LEGACY_COOLING_HZ,
      LEGACY_HEATING_HZ,
-     LEGACY_HEATING_MAPPING,
      oq_odu::CompressorLevelProfile::UNKNOWN,
      0,
      {}},
@@ -66,7 +63,6 @@ const std::array<Reference, 4> REFERENCES = {{
      oq_odu::Variant::V1_5,
      LEGACY_COOLING_HZ,
      LEGACY_HEATING_HZ,
-     LEGACY_HEATING_MAPPING,
      oq_odu::CompressorLevelProfile::UNKNOWN,
      0,
      {12, 11, 11, 10, 9, 7, 6}},
@@ -80,7 +76,6 @@ const std::array<Reference, 4> REFERENCES = {{
      oq_odu::Variant::V2_OLD_MODEL,
      {0, 30, 36, 42, 46, 48, 52, 56, 61, 66, 71},
      {0, 20, 26, 30, 48, 55, 61, 72, 80, 85, 90},
-     LEGACY_HEATING_MAPPING,
      oq_odu::CompressorLevelProfile::V2_LEGACY,
      4,
      {12, 11, 10, 10, 9, 6, 5}},
@@ -94,7 +89,6 @@ const std::array<Reference, 4> REFERENCES = {{
      oq_odu::Variant::V2_NEW_MODEL,
      {0, 20, 26, 30, 34, 36, 38, 40, 42, 44, 46, 48, 52, 54, 56, 58, 60, 64, 66, 68, 71},
      {0, 20, 26, 30, 36, 40, 45, 48, 52, 55, 60, 65, 68, 72, 76, 82, 85, 90, 95, 102, 110},
-     {0, 1, 2, 3, 7, 9, 10, 13, 15, 16, 17},
      oq_odu::CompressorLevelProfile::V2_EXTENDED,
      4,
      {8, 11, 9, 9, 8, 7, 6}},
@@ -183,9 +177,17 @@ void check_frequency_tables(const Reference& reference, oq_odu::Variant variant)
   for (int level = 0; level <= 10; ++level) {
     const auto heating_command = oq_odu::resolve_automatic_level(configured_v2, snapshot, 2, level);
     assert(heating_command.control_level == level);
-    assert(heating_command.physical_level == reference.heating_mapping[static_cast<size_t>(level)]);
+    assert(heating_command.physical_level == level);
     assert(oq_odu::resolve_automatic_level(configured_v2, snapshot, 1, level).physical_level == level);
   }
+
+  const int maximum = oq_odu::automatic_level_limit(configured_v2, snapshot, 2);
+  assert(maximum == (extended ? 17 : 10));
+  for (int physical = 1; physical <= maximum; ++physical) {
+    assert(oq_odu::resolve_automatic_level(configured_v2, snapshot, 2, physical).physical_level == physical);
+    assert(snapshot.heating.hz[physical] <= 90);
+  }
+  assert(oq_odu::resolve_automatic_level(configured_v2, snapshot, 2, maximum + 1).physical_level == 0);
 
   const auto profile = oq_odu::compressor_level_profile(snapshot);
   assert(profile == reference.profile);
@@ -198,7 +200,7 @@ void check_frequency_tables(const Reference& reference, oq_odu::Variant variant)
     assert(oq_odu::has_extended_frequency_table(snapshot, mode) == extended);
     assert(oq_odu::physical_level_limit(configured_v2, snapshot, mode) == (extended ? 20 : 10));
     assert(oq_odu::resolve_manual_level(configured_v2, snapshot, mode, 20).physical_level == (extended ? 20 : 10));
-    assert(oq_odu::resolve_manual_level(false, snapshot, mode, 20).physical_level == 10);
+    assert(oq_odu::resolve_manual_level(false, snapshot, mode, 20).physical_level == (extended ? 20 : 10));
   }
 }
 

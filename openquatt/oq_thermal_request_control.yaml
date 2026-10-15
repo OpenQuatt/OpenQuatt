@@ -462,8 +462,8 @@ sensor:
       #endif
 
   # V2/Power-House debug chain (recorder-only, no control behavior change).
-  # Requested/applied use the 0..10 model/control domain; physical F-level is
-  # already recorded via "HPx compressor level" (0..20, register 1999) and
+  # Requested/applied use the physical stand domain (0..20); ODU readback is
+  # recorded via "HPx compressor level" (register 1999) and
   # measured Hz via "HPx - Compressor frequency". Table frequency resolves the
   # last commanded physical F-level through the validated heating runtime
   # table. All return NAN when unavailable; never invent values. HP2 returns
