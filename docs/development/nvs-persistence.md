@@ -3,8 +3,8 @@
 De Q-firmware gebruikt nu een NVS-partitie van 64 KiB. Bestaande apparaten met
 de bekende 24 KiB-indeling migreren bij de eerste boot van deze firmware, ook
 na een gewone HTTP OTA. Appslots en `openquatt_data` blijven op dezelfde plaats.
-Zie [de migratie en het testtraject](nvs-partition-migration.md) voor het
-herstelcontract, de HCQ-testresultaten en de resterende validatie.
+De migratiecontrole draait vóór ESPHome preferences; onbekende of corrupte
+indelingen vereisen USB-herstel.
 
 De onderstaande inventaris en metingen beschrijven de eerdere 24 KiB-situatie.
 Sessiestatus in RAM houden en oude keys opruimen gaf ruimte terug, maar de
