@@ -137,12 +137,6 @@ int main() {
     snapshot.variant=oq_odu::Variant::V2_NEW_MODEL; snapshot.heating.valid=true; snapshot.heating.level_count=21;
     snapshot.heating.hz={0,20,26,30,36,40,45,48,52,55,60,65,68,72,76,82,85,90,95,102,110};
     (hp1 ? hp1_runtime_frequency_snapshot_storage : hp2_runtime_frequency_snapshot_storage)=oq_odu::encode_runtime_frequency_snapshot(snapshot);
-    #if OQ_TOPOLOGY_DUO
-    auto& source=hp1 ? oq_sources::hp1 : oq_sources::hp2;
-    #else
-    auto& source=oq_sources::hp1;
-    #endif
-    source.outside.observe(-15,test_now_ms,true); source.water_in.observe(32.5,test_now_ms,true);
     oq_day_max_frequency_hz.state=90;
     runtime.set_mode(hp1,true,true,2,true,true);
     assert(select.option=="Heating"); assert(policy.remaining_ms(test_now_ms)==240000);

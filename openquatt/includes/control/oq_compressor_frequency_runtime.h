@@ -3,7 +3,6 @@
 #include <math.h>
 
 #include "oq_compressor_frequency_policy.h"
-#include "oq_compressor_temperature_runtime.h"
 #include "oq_thermal_request_logic.h"
 
 namespace oq_frequency_runtime {
@@ -17,17 +16,6 @@ struct Context {
   oq_frequency_policy::FrequencyRange hp2_excluded{};
   oq_odu::Variant hp1_variant{oq_odu::Variant::UNKNOWN};
   oq_odu::Variant hp2_variant{oq_odu::Variant::UNKNOWN};
-
-  // Default contexts fail closed. Isolated frequency-only host tests explicitly
-  // disable the temperature layer; production capture always enforces it.
-  bool temperature_enforced{true};
-  oq_temperature::Evaluation hp1_temperature{};
-  oq_temperature::Evaluation hp2_temperature{};
-
-  bool temperature_allowed(bool is_hp1, int mode_code, int level) const {
-    return mode_code != 2 ||
-           (!temperature_enforced ? true : (is_hp1 ? hp1_temperature : hp2_temperature).allows(level));
-  }
 
   const oq_odu::RuntimeFrequencySnapshot& snapshot(bool is_hp1) const { return is_hp1 ? hp1_snapshot : hp2_snapshot; }
 
@@ -46,34 +34,13 @@ struct Context {
   }
 
   bool frequency_allowed(bool is_hp1, int mode_code, int level) const {
-    return temperature_allowed(is_hp1, mode_code, level) &&
-           oq_frequency_policy::frequency_allowed(automatic_frequency_hz(is_hp1, mode_code, level), cap_hz,
+    return oq_frequency_policy::frequency_allowed(automatic_frequency_hz(is_hp1, mode_code, level), cap_hz,
                                                   excluded_range(is_hp1));
   }
 
   int pick_allowed_level(bool is_hp1, int mode_code, int requested_level, int min_level, int max_level) const {
-    if (requested_level <= 0) return 0;
-    min_level = std::max(1, min_level);
-    max_level = std::min(automatic_level_limit(is_hp1, mode_code), max_level);
-    if (min_level > max_level) return 0;
-    requested_level = std::max(min_level, std::min(max_level, requested_level));
-    if (frequency_allowed(is_hp1, mode_code, requested_level)) return requested_level;
-    for (int level = requested_level - 1; level >= min_level; --level)
-      if (frequency_allowed(is_hp1, mode_code, level)) return level;
-    // Temperature removal of a low stand must not itself command more heat.
-    // The demand selector can choose a higher allowed entry on its next cycle.
-    if (mode_code == 2 && temperature_enforced && !temperature_allowed(is_hp1, mode_code, requested_level)) return 0;
-    for (int level = requested_level + 1; level <= max_level; ++level)
-      if (frequency_allowed(is_hp1, mode_code, level)) return level;
-    return 0;
-  }
-
-  int pick_temperature_level(bool is_hp1, int mode_code, int requested_level) const {
-    if (requested_level <= 0) return 0;
-    if (mode_code != 2) return requested_level;
-    for (int level = std::min(requested_level, oq_odu::EXTENDED_PHYSICAL_LEVEL_MAX); level >= 1; --level)
-      if (temperature_allowed(is_hp1, mode_code, level)) return level;
-    return 0;
+    return oq_frequency_policy::pick_allowed_level(configured_v2, snapshot(is_hp1), mode_code, requested_level,
+                                                   min_level, max_level, cap_hz, excluded_range(is_hp1));
   }
 
   int limit_heating_slew(bool is_hp1, int requested, int previous, uint32_t now_ms, uint32_t last_change_ms,
@@ -132,13 +99,6 @@ inline Context capture() {
       hp2_excluded,
       hp1_variant,
       hp2_variant,
-      true,
-      oq_temperature_runtime::capture(true, hp1_snapshot),
-#if OQ_TOPOLOGY_DUO
-      oq_temperature_runtime::capture(false, hp2_snapshot),
-#else
-      {},
-#endif
   };
 }
 #endif

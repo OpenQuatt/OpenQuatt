@@ -146,16 +146,10 @@ Voor de meeste gebruikers is deze volgorde beter:
 Zie [Instellingen aanpassen](../web-app/instellingen.md) voor de bediening in de web-app en [Dagelijkse controle](controleren.md) voor normaal gebruik.
 
 
-### Temperatuurbegrenzing
+### Temperatuurbegrenzing en handbediening
+
+De buitenunit voert zijn eigen temperatuurafhankelijke frequentiebegrenzing en beveiligingen uit volgens de ODU-configuratie. De gerealiseerde compressorfrequentie kan daardoor lager zijn dan de gevraagde stand. OpenQuatt kopieert deze ODU-plafonds niet naar een tweede temperatuur-envelop. Het bereik van een prestatietabel is geen zelfstandige bedrijfsgrens: boven 12 °C buitenlucht wordt V1/V1.5 niet door zo'n extra envelop geblokkeerd.
+
+OpenQuatt behoudt zijn bestaande flow-, vorst-, waterovertemperatuur-, incident-, start/stop- en defrostbewaking. Dag-/stiltegrenzen en frequentie-uitsluitingen blijven bij automatisch bedrijf gelden. Prestatietabellen worden gebruikt voor vermogensschatting en standkeuze; ontbrekende modelgegevens kunnen de beschikbare modelkandidaten beperken.
 
 Ook bij handbediening blijft een warmtepomp in Standby zolang de compressorvraag nul is of een startbewaking de vraag tegenhoudt. Het selecteren van Heating of Cooling geeft op zichzelf geen startvrijgave en wist geen verdiende minimale stilstandtijd.
-
-OpenQuatt begrenst normale verwarming ook per warmtepomp op de actuele lokale buitenlucht en de gekalibreerde waterinlaat plus **2,5 °C**. Deze grens gebruikt de lokale meetontvangst zonder extra CiC-filter of vertraging. Dit geldt eveneens voor handmatige verwarming. Het fysieke standnummer wordt via de ingelezen frequentietabel beoordeeld; de centrale cv-aanvoer en een buitenwaarde uit Home Assistant bepalen deze veiligheidsgrens niet.
-
-Voor het V1-profiel geldt boven 33 °C modelwater maximaal 79 Hz. Voor V2 geldt maximaal 90 Hz tot en met 37,5 °C, 72 Hz tot en met 52,5 °C en daarboven 55 Hz. De buitenluchtmaskers kunnen verder beperken; 20 en 26 Hz zijn bij V2 alleen toegestaan van 5 tot 14 °C. Tussenfrequenties vereisen geldige omliggende meetpunten.
-
-Bij normale verwarming buiten een actieve defrosthold wordt een ongeldig geworden stand meteen verlaagd of gestopt. Een gezonde, door de ODU beheerde defrostcyclus behoudt zijn bestaande hold; een technische veiligheidsstop houdt voorrang. Tabelpunten komen pas terug wanneer de temperatuur meer dan 0,20 °C aan de geldige zijde van hun opgeslagen grens ligt. De waterplafonds zelf hebben geen extra hysterese. Een ruimere grens schakelt de compressor niet automatisch hoger.
-
-Dit is een conservatief profiel op basis van CiC 4.2.0, geen volledige kopie van alle CiC-bedrijfsmodi. Buiten de bewezen dekking worden geen verwarmingsstanden toegestaan: V1 buitenlucht −15 tot 12 °C en modelwater maximaal 55 °C; V2 buitenlucht −15 tot 44,99 °C en modelwater maximaal 54,99 °C. Lage modelwatertemperaturen mogen uitsluitend tijdens de bestaande vrijgegeven koude-startsessie tegen het onderste tabelsteunpunt worden beoordeeld. Ontbrekende, ongeldige of meer dan 60 seconden oude lokale metingen blokkeren verwarming; pomp-, vorst-, incident- en defrostbewaking blijven verantwoordelijk voor de bedrijfsvolgorde.
-
-Per HP zijn het temperatuurprofiel, modelwater, waterfrequentieplafond, het toegestane F-levelmasker en de begrenzingsredenen beschikbaar als diagnostische entities. Bit `n` van het masker betekent dat `Fn` temperatuurtechnisch toegestaan is; dag-/stiltegrenzen en andere bewaking kunnen die stand alsnog weigeren. Verouderde actieve Modbus-opdrachten worden ook vóór verzending en retries geweigerd. Een al verzonden transactie kan niet worden teruggenomen.

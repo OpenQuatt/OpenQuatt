@@ -81,8 +81,6 @@ int main() {
     assert(!runtime.defrost_safety_stop_(hp==0));
     for (auto gate:gates[hp]) { assert(!gate(0)); assert(!gate(17)); assert(!gate(2)); }
     service.cycle.observe_bit(false,clock_ms); service.cycle.phase=oq_defrost::Phase::IDLE;
-    auto& src=hp==0?oq_sources::hp1:oq_sources::hp2;
-    src.outside.observe(-15,clock_ms,true); src.water_in.observe(32.5,clock_ms,true);
     (hp==0?hp1_compressor_level:hp2_compressor_level).selected=8;
     for (auto gate:gates[hp]) assert(gate(0)==0);
     assert(gates[hp][0](2)==2); assert(gates[hp][1](8)==8);
@@ -102,7 +100,6 @@ int main() {
   hp1_runtime_frequency_snapshot_storage=hp2_runtime_frequency_snapshot_storage=oq_odu::encode_runtime_frequency_snapshot(snapshot);
 """
         main = main.replace("int main() {", "int main() {" + setup)
-        main = main.replace("auto& engine=", "oq_sources::hp1.outside.observe(-15,clock_ms,true); oq_sources::hp1.water_in.observe(32.5,clock_ms,true);\n    oq_sources::hp2.outside.observe(-15,clock_ms,true); oq_sources::hp2.water_in.observe(32.5,clock_ms,true);\n    auto& engine=")
         unit = fixture_prefix(real_incidents=True) + "\n#define clock_ms test_now_ms\n#define OQ_ACTUATOR_SECONDARY_ID(x) hp2_##x\nstruct Runtime {\n" + safety.group() + "\n} runtime;\n" + gates + "\n" + main
         compiler = shutil.which("clang++") or shutil.which("g++")
         self.assertIsNotNone(compiler)

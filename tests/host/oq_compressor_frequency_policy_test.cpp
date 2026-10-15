@@ -96,7 +96,7 @@ int main() {
 
   auto hp2_source = runtime_edited;
   const oq_frequency_runtime::Context runtime{
-      false, v1, hp2_source, 67, {}, {60, 68}, oq_odu::Variant::UNKNOWN, oq_odu::Variant::UNKNOWN, false,
+      false, v1, hp2_source, 67, {}, {60, 68},
   };
   hp2_source.heating.hz[6] = 100;
   assert(runtime.automatic_frequency_hz(true, 2, 6) == 67);
