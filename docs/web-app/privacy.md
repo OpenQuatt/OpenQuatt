@@ -11,6 +11,8 @@ Je kiest afzonderlijk of je gebruiksstatistieken en prestatiemetingen deelt. Ope
 
 Het uurbericht met gebruiksstatistieken bevat geen wachtwoorden, Wi-Fi-netwerknaam, lokale IP-adressen, ingestelde temperaturen of gewone logregels. De installatie krijgt een willekeurig ID om berichten van dezelfde installatie te herkennen. De loggingserver ziet technisch het bron-IP-adres van een verbinding; OpenQuatt slaat dit IP-adres niet op.
 
+Bij de Q-controller bevat het uurbericht ook de hardwarerevisie, batch en het printserienummer als die bekend zijn. Het serienummer geldt alleen binnen de batch; waarde 0 betekent onbekend en wordt als `null` verstuurd. Deze hardwaregegevens kunnen berichten aan dezelfde fysieke print koppelen, ook na een fabrieksreset die het willekeurige installatie-ID vervangt.
+
 Deze opsomming gaat over het uurbericht. Voor de inhoud en verwerking van crashrapporten zie [Retained crashtelemetrie](../crash-telemetry.md). Prestatiemetingen zijn een afzonderlijke keuze en bevatten juist wel verwarmingsmetingen.
 
 ## Delen aan- of uitzetten

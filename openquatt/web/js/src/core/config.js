@@ -71,6 +71,7 @@
     ["installationTopology", DOMAIN_TEXT_SENSOR, "OpenQuatt Installation Topology"],
     ["hardwareProfileText", DOMAIN_TEXT_SENSOR, "OpenQuatt Hardware Profile"],
     ["hardwareRevisionText", DOMAIN_TEXT_SENSOR, "OpenQuatt Hardware Revision"],
+    ["hardwareSerial", DOMAIN_SENSOR, "OpenQuatt Hardware Serial"],
     ["connectionText", DOMAIN_TEXT_SENSOR, "OpenQuatt Connection"],
     ["preferredConnection", DOMAIN_SELECT, "Preferred Connection"],
     ["hp1Generation", DOMAIN_TEXT_SENSOR, "HP1 - ODU generation"],

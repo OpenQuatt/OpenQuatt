@@ -2,8 +2,8 @@
 # OpenQuatt - Heatpump Controller Q-edition hardware revision
 # ==============================================================================
 #
-# Reads the Q-controller hardware revision from the first 14 USER_DATA eFuse
-# bits and publishes it once for logging and debug recordings.
+# Reads the Q-controller hardware revision and batch-local serial from the first
+# 24 USER_DATA eFuse bits. Serial zero means unknown.
 # ==============================================================================
 
 esphome:
@@ -17,12 +17,14 @@ esphome:
             ESP_LOGE("quatt.hardware", "Failed to read hardware revision eFuse: %s",
                      esp_err_to_name(revision.error));
             id(oq_hardware_revision_text).publish_state("Read error");
+            id(oq_hardware_serial).publish_state(NAN);
             return;
           }
 
           if (!revision.programmed) {
             ESP_LOGW("quatt.hardware", "Hardware revision eFuse is not programmed");
             id(oq_hardware_revision_text).publish_state("Not programmed");
+            id(oq_hardware_serial).publish_state(NAN);
             return;
           }
 
@@ -33,10 +35,14 @@ esphome:
                    static_cast<unsigned>(revision.minor),
                    static_cast<unsigned>(revision.batch));
           id(oq_hardware_revision_text).publish_state(revision_text);
-          ESP_LOGI("quatt.hardware", "Hardware revision: %u.%u, batch %u (raw=0x%04X)",
+          id(oq_hardware_serial).publish_state(revision.serial == 0U ? NAN : revision.serial);
+          char serial_text[6];
+          snprintf(serial_text, sizeof(serial_text), "%u", static_cast<unsigned>(revision.serial));
+          ESP_LOGI("quatt.hardware", "Hardware revision: %u.%u, batch %u, serial %s (raw=0x%06X)",
                    static_cast<unsigned>(revision.major),
                    static_cast<unsigned>(revision.minor),
                    static_cast<unsigned>(revision.batch),
+                   revision.serial == 0U ? "unknown" : serial_text,
                    static_cast<unsigned>(revision.raw));
 
 text_sensor:
@@ -44,4 +50,12 @@ text_sensor:
     id: oq_hardware_revision_text
     name: "OpenQuatt Hardware Revision"
     internal: true
+    update_interval: never
+
+sensor:
+  - platform: template
+    id: oq_hardware_serial
+    name: "OpenQuatt Hardware Serial"
+    internal: true
+    accuracy_decimals: 0
     update_interval: never

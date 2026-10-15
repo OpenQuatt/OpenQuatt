@@ -16,6 +16,7 @@ Het bericht bevat uitsluitend:
 - uptime;
 - firmwareversie en releasekanaal;
 - hardwareprofiel en, als beschikbaar, hardwarerevisie;
+- `hardware_serial`: het serienummer van de Q-controllerprint binnen de batch (1–1023), of `null` bij waarde 0, ontbrekende programmering, een uitleesfout of een ander hardwareprofiel;
 - `Single` of `Duo` en `Wi-Fi` of `Ethernet`;
 - `quatt_hybrid_generation_config`: `v1`, `v1_5` of `v2` volgens de ingestelde Quatt Hybrid-versie;
 - `flow_source_config`: `cic`, `controller_local` of `outdoor_unit`, afgeleid uit de algemene en (bij Q) Q-specifieke flowselectie;

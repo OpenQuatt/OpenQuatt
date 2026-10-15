@@ -42,6 +42,7 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
     releaseChannelText: "dev",
     hardwareProfileText: "heatpump_controller_q",
     hardwareRevisionText: "1.0 (batch 42)",
+    hardwareSerial: 137,
     installationTopology: "duo",
     connectionText: "WiFi",
     preferredConnection: "Automatic",
@@ -89,6 +90,7 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
     release_channel: "dev",
     hardware_profile: "heatpump_controller_q",
     hardware_revision: "1.0 (batch 42)",
+    hardware_serial: 137,
     topology: "duo",
     connection: "wifi",
     connection_preference: "auto",
@@ -146,6 +148,25 @@ test("usage telemetry preview maps live entity values to the wire contract", () 
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("modbusRecoveredResponseCount"));
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("modbusOfflineCount"));
   assert.ok(!USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("webServerLogHistoryEnabled"));
+});
+
+test("Q-board serial preview uses null for unknown, invalid or unsupported hardware", () => {
+  for (const [hardwareSerial, expected] of [
+    [1, 1], [137, 137], ["1023", 1023], [0, null], ["0", null],
+    [undefined, null], [null, null], [NaN, null], ["unknown", null],
+    [-1, null], [1024, null], [1.5, null],
+  ]) {
+    const preview = createUsageTelemetryPreview({ hardwareProfileText: "heatpump_controller_q", hardwareSerial });
+    assert.equal(preview.hardware_serial, expected);
+  }
+  assert.equal(createUsageTelemetryPreview({ hardwareProfileText: "ci_c", hardwareSerial: 137 }).hardware_serial, null);
+  assert.ok(USAGE_TELEMETRY_PREVIEW_ENTITY_KEYS.includes("hardwareSerial"));
+  assert.equal(ENTITY_DEFS.hardwareSerial.name, "OpenQuatt Hardware Serial");
+  for (const locale of ["nl", "en"]) {
+    setLocale(locale, { persist: false });
+    assert.match(t("usage.inPlatformCopy"), locale === "nl" ? /printserienummer binnen de batch/ : /serial number within its batch/);
+  }
+  setLocale("nl", { persist: false });
 });
 
 test("passive learning telemetry contains only the optional switch state", () => {

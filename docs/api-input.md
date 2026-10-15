@@ -85,7 +85,7 @@ curl --digest -u "gebruikersnaam:wachtwoord" -X POST -H "Content-Length: 0" "htt
 
 Een API-inputbron wordt pas geldig nadat je de bijbehorende endpoint hebt aangeroepen. Template-startwaarden na boot tellen niet mee als echte input.
 
-De geldigheidsduur is:
+De standaardgeldigheidsduur vanaf de laatste API-invoer is:
 
 - koelingsdauwpunt: 15 minuten;
 - buitentemperatuur: 30 minuten;
@@ -97,7 +97,9 @@ De geldigheidsduur is:
 - warmtetoestemming: blijft geldig tot herstart of nieuwe waarde;
 - koeltoestemming: blijft geldig tot herstart of nieuwe waarde.
 
-Stuur temperatuurwaarden daarom periodiek opnieuw, bijvoorbeeld elke minuut of telkens wanneer de bronwaarde verandert. Waarden buiten de geldige range worden niet als bruikbare bron gebruikt.
+Stuur waarden met een vervaltijd periodiek opnieuw, bijvoorbeeld elke minuut, en zodra de bronwaarde verandert. Alleen bij een wijziging versturen is niet genoeg: ook een ongewijzigde waarde moet opnieuw binnenkomen om geldig te blijven. Elke nieuwe invoer van dezelfde geldige waarde start de timer opnieuw, zonder het target of de offset te veranderen. Zo kan een aanvoertarget of stooklijn-offset langdurig gelijk blijven.
+
+API-invoer heeft geen aparte heartbeat. De centrale Home Assistant-heartbeat houdt API-invoer niet geldig. Waarden buiten de geldige range worden niet als bruikbare bron gebruikt.
 
 ## Bronselectie
 
@@ -112,7 +114,9 @@ Bij `Buitentemperatuur` gebruikt `Auto` de laagste geldige waarde uit buitenunit
 
 Bij `Warmtevraag` is `Disabled` de standaard. Kies je `API input`, dan gebruikt `Power House` jouw waarde in plaats van de eigen vermogensschatting, zolang die geldig is. Verloopt de waarde, dan valt de regeling terug op het huismodel en niet op nul.
 
-Bij `Aanvoertarget` is `Heating curve` de standaard. Kies je `API input`, dan gebruikt de stooklijnregeling jouw aanvoertemperatuur in plaats van het eigen stooklijntarget (inclusief kamertrim), zolang die geldig is. Verloopt de waarde, dan valt de regeling terug op de stooklijn. Zie [Water Temperature Control](water-temperature-control.md#extern-aanvoertarget-optioneel).
+Bij `Aanvoertarget` is `Heating curve` de standaard. Kies je `API input`, dan gebruikt de stooklijnregeling jouw aanvoertemperatuur in plaats van het eigen stooklijntarget (inclusief kamertrim), zolang die geldig is. Verloopt de waarde, dan valt de regeling automatisch terug op de lokale stooklijn inclusief kamertrim. Hiervoor is geen `Auto`-optie nodig. Zie [Water Temperature Control](water-temperature-control.md#extern-aanvoertarget-optioneel).
+
+Bij `Stooklijn-offset` vervalt de API-correctie na 15 minuten zonder nieuwe invoer en geldt weer 0 °C correctie. De lokale stooklijn blijft actief; een absoluut extern aanvoertarget heeft voorrang op de stooklijn inclusief offset.
 
 Bij `Warmtetoestemming` en `Koeltoestemming` telt API-invoer alleen mee als de waarde geldig is. Handmatige koeltoestemming blijft daarnaast een override.
 

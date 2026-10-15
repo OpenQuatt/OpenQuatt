@@ -1933,6 +1933,9 @@
     syncMockOduIdentityEntities(1);
     setEntity("text_sensor", "OpenQuatt Hardware Profile", { state: state.hardware, value: state.hardware });
     setEntity("text_sensor", "OpenQuatt Hardware Revision", { state: "1.0 (batch 42)", value: "1.0 (batch 42)" });
+    if (state.hardware === "heatpump_controller_q") {
+      setEntity("sensor", "OpenQuatt Hardware Serial", { state: 137, value: 137 });
+    }
     const activeConnection = state.connection === "eth" ? "Ethernet" : "WiFi";
     setEntity("text_sensor", "OpenQuatt Connection", { state: activeConnection, value: activeConnection });
     setEntity("select", "Preferred Connection", {
