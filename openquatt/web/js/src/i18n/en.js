@@ -2591,7 +2591,7 @@ export default {
     inSoftware: "Software",
     inSoftwareCopy: "Version and release channel",
     inPlatform: "Platform",
-    inPlatformCopy: "Hardware profile, revision and Q-board serial number within its batch (when known), setup, active connection, connection mode and Wi-Fi signal",
+    inPlatformCopy: "Hardware profile, revision, Q-board serial number within its batch (if known), setup, active connection, mode and Wi-Fi signal",
     inConfig: "Configuration",
     inConfigCopy: "Quatt Hybrid version, heating strategy, flow source and control sources",
     inStatus: "System status",

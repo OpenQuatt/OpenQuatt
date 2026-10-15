@@ -2591,7 +2591,7 @@ export default {
     inSoftware: "Software",
     inSoftwareCopy: "Versie en releasekanaal",
     inPlatform: "Platform",
-    inPlatformCopy: "Hardwareprofiel, revisie en Q-printserienummer binnen de batch (indien bekend), opstelling, actieve verbinding, verbindingsmodus en wifi-signaal",
+    inPlatformCopy: "Hardwareprofiel, revisie, Q-printserienummer binnen de batch (indien bekend), opstelling, actieve verbinding, modus en wifi-signaal",
     inConfig: "Configuratie",
     inConfigCopy: "Quatt Hybrid-versie, verwarmingsstrategie, flowbron en regelbronnen",
     inStatus: "Systeemstatus",
