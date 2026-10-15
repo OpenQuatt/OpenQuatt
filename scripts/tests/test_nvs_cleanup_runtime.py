@@ -36,11 +36,27 @@ int nvs_get_stats(const char*, nvs_stats_t*);
 '''
         harness = r'''
 #include <cassert>
+#include <cstdarg>
 #include <map>
 #include <string>
+#include <vector>
 #include "openquatt/includes/storage/oq_nvs_cleanup.h"
 struct Record { size_t length; bool blob=true; };
 std::map<std::string, Record> records;
+std::vector<std::string> log_lines;
+esp_partition_t actual_partition{65536};
+bool partition_missing=false;
+int stats_error=0;
+void test_log(const char*, const char* format, ...) {
+  char line[256]; va_list args; va_start(args,format);
+  std::vsnprintf(line,sizeof(line),format,args); va_end(args);
+  log_lines.emplace_back(line);
+}
+const esp_partition_t* esp_partition_find_first(int type, int subtype, const char* label) {
+  assert(type==ESP_PARTITION_TYPE_DATA && subtype==ESP_PARTITION_SUBTYPE_DATA_NVS);
+  assert(std::string(label)=="nvs");
+  return partition_missing ? nullptr : &actual_partition;
+}
 bool namespace_exists=true;
 int open_read_error=0, open_write_error=0, read_error=0, erase_error=0, commit_error=0;
 int handles=0, readonly_opens=0, write_opens=0, erases=0, commits=0;
@@ -73,7 +89,7 @@ int nvs_erase_key(int handle, const char* key) {
 }
 int nvs_commit(int handle) { assert(handle==2); ++commits; return commit_error; }
 void nvs_close(int) { --handles; assert(handles==0); }
-int nvs_get_stats(const char* partition, nvs_stats_t*) { assert(partition==nullptr); return ESP_OK; }
+int nvs_get_stats(const char* partition, nvs_stats_t*) { assert(partition==nullptr); return stats_error; }
 constexpr uint32_t CRASH=752195988U, OLD_API=1156115452U, NOISE=88491486U;
 uint32_t fnv1(const char* text) {
   uint32_t hash=2166136261U;
@@ -88,8 +104,18 @@ void reset() {
   records.clear(); namespace_exists=true;
   open_read_error=open_write_error=read_error=erase_error=commit_error=0;
   readonly_opens=write_opens=erases=commits=handles=0;
+  log_lines.clear(); partition_missing=false; stats_error=0; actual_partition.size=65536;
 }
 int main() {
+  reset(); actual_partition.size=24576; oq_nvs_cleanup::log_stats("boot");
+  assert(log_lines.back().find("size=24 KiB")!=std::string::npos);
+  actual_partition.size=65536; oq_nvs_cleanup::log_stats("boot");
+  assert(log_lines.back().find("size=64 KiB")!=std::string::npos);
+  partition_missing=true; oq_nvs_cleanup::log_stats("boot");
+  assert(log_lines.back()=="NVS partition unavailable at boot");
+  stats_error=3; oq_nvs_cleanup::log_stats("boot");
+  assert(log_lines.back()=="NVS stats unavailable at boot: stub");
+  assert(write_opens==0 && erases==0 && commits==0);
   assert(fnv1("openquatt_crash_telemetry_record")==CRASH);
   assert(fnv1("openquatt_api_security_store")==OLD_API);
   assert(fnv1("ram_log_history")==306736601U);
@@ -177,6 +203,12 @@ int main() {
             temp = Path(directory)
             (temp / "nvs.h").write_text(nvs_stub)
             (temp / "nvs_flash.h").write_text('#pragma once\n#include "nvs.h"\n')
+            (temp / "esp_partition.h").write_text(
+                "#pragma once\n#include <cstdint>\n"
+                "constexpr int ESP_PARTITION_TYPE_DATA=1, ESP_PARTITION_SUBTYPE_DATA_NVS=2;\n"
+                "struct esp_partition_t { uint32_t size; };\n"
+                "const esp_partition_t* esp_partition_find_first(int, int, const char*);\n"
+            )
             core = temp / "esphome/core"
             core.mkdir(parents=True)
             (core / "entity_base.h").write_text(
@@ -184,7 +216,7 @@ int main() {
                 "unsigned get_preference_hash() { return 123; } }; }\n"
             )
             (core / "log.h").write_text(
-                "#pragma once\ntemplate<typename... T> void test_log(T...) {}\n"
+                "#pragma once\nvoid test_log(const char*, const char*, ...);\n"
                 "#define ESP_LOGW(...) test_log(__VA_ARGS__)\n"
                 "#define ESP_LOGE(...) test_log(__VA_ARGS__)\n"
                 "#define ESP_LOGI(...) test_log(__VA_ARGS__)\n"
