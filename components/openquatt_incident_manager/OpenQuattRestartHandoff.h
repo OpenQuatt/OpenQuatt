@@ -15,6 +15,8 @@ class OpenQuattIncidentManager;
 // the caller must restart immediately: an existing record could not be consumed.
 bool initialize_restart_handoff(uint32_t minimum_off_ms);
 bool restart_handoff_storage_ready();
+bool boot_resume_eligible();
+void arm_boot_resume();
 uint32_t restored_off_credit_ms(uint8_t hp_index);
 bool arm_restart_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms);
 bool arm_completed_ota_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms);

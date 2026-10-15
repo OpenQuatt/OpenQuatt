@@ -19,6 +19,16 @@ esphome:
       - lambda: |-
           // Live gate for normal control writes, including queued retries.
           oq_temperature_runtime::maximum_age_ms = ${oq_hp_water_temp_stale_s}ULL * 1000ULL;
+          oq_boot_resume_runtime::minimum_flow_lph = (float) ${oq_cm_min_flow_lph};
+          oq_boot_resume_runtime::read_sources = [](uint64_t now) {
+            const auto& sources = oq_sensor_source::runtime();
+            const auto flow = sources.resolved_flow_rate();
+            const bool fresh = flow.valid && flow.receipt.fresh(now, oq_boot_resume::TELEMETRY_FRESH_MS) &&
+                (flow.composite_operation == oq_sources::LearningCompositeOperation::NONE ||
+                 flow.secondary_receipt.fresh(now, oq_boot_resume::TELEMETRY_FRESH_MS));
+            return oq_boot_resume_runtime::Sources{sources.heating_enable_valid(), sources.heating_enable_value(),
+                                                   fresh, flow.value};
+          };
           id(mod_bus).set_command_guard(oq_command_runtime::queued_address);
           oq_nvs_cleanup::log_stats("boot");
           oq_nvs_cleanup::retire_openquatt_preferences(id(oq_air_purge_return_to_auto));

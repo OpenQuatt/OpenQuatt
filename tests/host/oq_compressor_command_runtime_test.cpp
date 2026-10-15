@@ -8,6 +8,7 @@
 #include <string>
 
 #include "../../openquatt/includes/control/oq_defrost_logic.h"
+#include "../../openquatt/includes/control/oq_hp_boot_resume.h"
 #include "../../openquatt/includes/odu/oq_odu_frequency_table.h"
 #include "../../openquatt/includes/incidents/oq_hp_incident_engine.h"
 
@@ -42,6 +43,12 @@ struct FakeIncidentOutput {
 struct FakeIncidentManager {
   std::array<FakeIncidentOutput, 2> outputs{};
   std::array<bool, 2> inhibited{};
+  std::array<oq_boot_resume::Policy, 2> boot{};
+  bool boot_resume_pending(unsigned hp, uint32_t now) const { return boot[hp - 1].pending(now); }
+  int boot_resume_level(unsigned hp) const { return boot[hp - 1].level(); }
+  int update_boot_resume(unsigned hp, bool abort, bool safety, bool inputs, bool adopt, uint32_t now) {
+    return boot[hp - 1].update(now, abort || outputs[hp - 1].must_stop, safety, inputs, adopt);
+  }
   FakeIncidentOutput get_outputs(unsigned hp) const { return outputs[hp - 1]; }
   bool startup_inhibited(unsigned hp) const { return inhibited[hp - 1]; }
 };
@@ -56,6 +63,7 @@ struct FakeDefrostService {
   uint32_t forced_deadline{10000}, sample_ms{1000};
   unsigned normal_write_calls{0}, queue_clear_calls{0};
   bool automatic() const { return automatic_enabled; }
+  bool loaded() const { return true; }
   bool holding() const { return hold; }
   bool busy() const { return busy_value; }
   bool forced_write_pending(uint32_t now) const { return forced_owned && now <= forced_deadline; }
@@ -123,6 +131,8 @@ std::string oq_commissioning_status_value{};
 int oq_commissioning_task_code{};
 int oq_control_mode_code{};
 FakeSensor oq_day_max_frequency_hz{};
+FakeSensor oq_enabled{1};
+int oq_strategy_active_code{3};
 bool oq_flow_autotune_abort{};
 bool oq_flow_autotune_active{};
 bool oq_flow_autotune_req{};
@@ -251,7 +261,106 @@ void reset() {
 #endif
   oq_temperature_runtime::policies[0].reset();
   oq_temperature_runtime::policies[1].reset();
+  oq_boot_resume_runtime::minimum_flow_lph = 700;
+  oq_boot_resume_runtime::read_sources = [](uint64_t) {
+    return oq_boot_resume_runtime::Sources{true, true, true, 1000};
+  };
   assert(queued(true, 3999, 4));  // Every gate test starts from a currently authorized pending request.
+}
+
+void boot_reads_hold_all_writes_and_abort_on_safety_loss() {
+  reset();
+  auto& boot = oq_incident_manager.boot[0];
+  boot.begin(true, test_now_ms);
+  for (const auto address : {1999, 3999, 2006, 2010, 2015}) {
+    assert(!queued(true, address, 0));
+    assert(!oq_command_runtime::guarded_write(true, address, 0));
+  }
+#if OQ_TOPOLOGY_DUO
+  assert(queued(false, 2010, 0));
+#endif
+  const std::array<uint8_t, 5> read{3, 7, 207, 0, 1};
+  assert(oq_command_runtime::queued_command(true, read.data(), read.size()));
+  assert(boot.pending(test_now_ms));
+  oq_water_temp_hard_trip_active = true;
+  assert(queued(true, 3999, 0));
+  assert(boot.stop_required(test_now_ms));
+  assert(!queued(true, 3999, 2));
+  reset();
+  oq_incident_manager.boot[0].begin(true, test_now_ms);
+  oq_boot_resume_runtime::read_sources = [](uint64_t) {
+    return oq_boot_resume_runtime::Sources{true, false, true, 1000};
+  };
+  oq_boot_resume_runtime::update(true);
+  assert(oq_incident_manager.boot[0].stop_required(test_now_ms));
+  reset();
+  oq_incident_manager.boot[0].begin(true, test_now_ms);
+  oq_boot_resume_runtime::read_sources = nullptr;
+  assert(oq_boot_resume_runtime::update(true, true, true) == 0);
+  assert(oq_incident_manager.boot[0].pending(test_now_ms));
+  test_now_ms += oq_boot_resume::SAFETY_ACQUISITION_MS;
+  assert(oq_boot_resume_runtime::update(true, true, true) == 0);
+  assert(oq_incident_manager.boot[0].stop_required(test_now_ms));
+}
+
+void prepare_running_boot() {
+  reset();
+  oq_incident_manager.boot[0].begin(true, test_now_ms);
+  for (auto command : {std::pair<uint16_t, float>{3999, 2}, {1999, 17}, {2099, 2}, {2103, 60}})
+    oq_incident_manager.boot[0].observe(command.first, command.second, test_now_ms);
+  auto& raw = oq_sources::hp1;
+  raw.working_mode.observe(2, test_now_ms, true);
+  raw.compressor_frequency.observe(60, test_now_ms, true);
+  raw.water_out.observe(35, test_now_ms, true);
+  raw.defrost.observe(0, test_now_ms, true);
+  raw.status_2119.observe(0, test_now_ms, true);
+  assert(oq_boot_resume_runtime::capture(true).ready);
+  assert(!oq_boot_resume_runtime::capture(true).abort);
+}
+
+void boot_adoption_requires_live_safety_and_comfort() {
+  prepare_running_boot();
+  assert(oq_boot_resume_runtime::update(true, true, false) == 0);  // Comfort still missing.
+  assert(oq_incident_manager.boot[0].pending(test_now_ms));
+  assert(oq_boot_resume_runtime::update(true, true, true) == 17);
+  assert(!oq_incident_manager.boot[0].pending(test_now_ms));
+
+  for (int fault = 0; fault < 8; ++fault) {
+    prepare_running_boot();
+    assert(oq_boot_resume_runtime::update(true, true, false) == 0);
+    switch (fault) {
+      case 0:
+        oq_sources::hp1.defrost.observe(1, test_now_ms, true);
+        break;
+      case 1:
+        oq_sources::hp1.status_2119.observe(8, test_now_ms, true);
+        break;
+      case 2:
+        oq_sources::hp1.water_out.observe(NAN, test_now_ms, false);
+        break;
+      case 3:
+        oq_boot_resume_runtime::read_sources = [](uint64_t) {
+          return oq_boot_resume_runtime::Sources{true, true, true, 699};
+        };
+        break;
+      case 4:
+        oq_boot_resume_runtime::read_sources = [](uint64_t) {
+          return oq_boot_resume_runtime::Sources{false, false, true, 1000};
+        };
+        break;
+      case 5:
+        test_now_ms += oq_boot_resume::TELEMETRY_FRESH_MS + 1;
+        break;
+      case 6:
+        hp1_odu_generation_revalidation_required = true;
+        break;
+      case 7:
+        oq_incident_manager.outputs[0].must_stop = true;
+        break;
+    }
+    assert(oq_boot_resume_runtime::update(true, true, true) == 0);
+    assert(oq_incident_manager.boot[0].stop_required(test_now_ms));
+  }
 }
 
 void forced_defrost_requires_live_ownership_and_gates() {
@@ -472,6 +581,8 @@ void queued_heating_mode_rechecks_user_frequency_constraints() {
 }  // namespace
 
 int main() {
+  boot_reads_hold_all_writes_and_abort_on_safety_loss();
+  boot_adoption_requires_live_safety_and_comfort();
   forced_defrost_requires_live_ownership_and_gates();
   queued_safety_zero_is_readonly_and_temperature_independent();
   queued_heating_rechecks_selected_level_and_current_temperature();

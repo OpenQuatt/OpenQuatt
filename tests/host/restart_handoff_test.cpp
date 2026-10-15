@@ -317,7 +317,56 @@ void test_invalid_credit_bounds_fail_closed() {
 
 }  // namespace
 
+void test_boot_resume_intent_is_exact_and_one_shot() {
+  namespace handoff = esphome::openquatt_incident_manager::restart_handoff;
+  const auto context = matching_context(make_record());
+  auto marker = handoff::make_boot_resume_marker(context);
+  assert(handoff::consume_boot_resume_marker(marker, context));
+  assert(!handoff::consume_boot_resume_marker(marker, context));
+  for (int fault = 0; fault < 9; ++fault) {
+    auto next = context;
+    marker = handoff::make_boot_resume_marker(context);
+    switch (fault) {
+      case 0:
+        next.software_reset = false;
+        break;  // Power loss, crash, watchdog.
+      case 1:
+        next.running_partition_matches_boot = false;
+        break;
+      case 2:
+        next.image_valid = false;
+        next.image_pending_verify = true;
+        break;
+      case 3:
+        ++next.boot_partition_address;
+        break;  // OTA / rollback.
+      case 4:
+        next.image_hash[0] ^= 1;
+        break;  // Same slot, different image.
+      case 5:
+        marker.magic ^= 1;
+        break;
+      case 6:
+        ++marker.version;
+        break;
+      case 7:
+        marker.checksum ^= 1;
+        break;
+      case 8:
+        next = {};
+        break;  // Missing boot context still consumes intent.
+    }
+    assert(!handoff::consume_boot_resume_marker(marker, next));
+    assert(!handoff::consume_boot_resume_marker(marker, context));
+  }
+  auto pending = context;
+  pending.image_pending_verify = true;
+  marker = handoff::make_boot_resume_marker(pending);
+  assert(!handoff::consume_boot_resume_marker(marker, context));
+}
+
 int main() {
+  test_boot_resume_intent_is_exact_and_one_shot();
   test_only_exact_controlled_reboot_restores_credit();
   test_pending_ota_boot_uses_same_exact_handoff_policy();
   test_corrupt_or_partial_arm_never_restores_credit();

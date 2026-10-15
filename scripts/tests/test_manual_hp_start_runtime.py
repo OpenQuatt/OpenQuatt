@@ -42,6 +42,12 @@ def fixture_prefix(real_incidents=False):
   oq_incidents::HpIncidentEngine engines[2]{oq_incidents::HpIncidentEngine{}, oq_incidents::HpIncidentEngine{}};
   auto get_outputs(unsigned hp) const { return engines[hp-1].outputs(); }
   bool startup_inhibited(unsigned) const { return false; }
+  std::array<oq_boot_resume::Policy, 2> boot{};
+  bool boot_resume_pending(unsigned hp, uint32_t now) const { return boot[hp-1].pending(now); }
+  int boot_resume_level(unsigned hp) const { return boot[hp-1].level(); }
+  int update_boot_resume(unsigned hp, bool abort, bool safety, bool inputs, bool adopt, uint32_t now) {
+    return boot[hp-1].update(now, abort || engines[hp-1].outputs().must_stop, safety, inputs, adopt);
+  }
 };""")
     else:
         prefix = prefix.replace('struct FakeIncidentManager {', """#include "openquatt/includes/control/oq_hp_restart_guard.h"

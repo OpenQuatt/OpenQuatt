@@ -86,6 +86,40 @@ struct BootContext {
   uint8_t image_hash[kImageHashSize]{};
 };
 
+// Volatile intent only: no HP commands, elapsed runtime or comfort values.
+struct BootResumeMarker {
+  uint32_t magic;
+  uint16_t version, reserved;
+  uint32_t partition_address;
+  uint8_t image_hash[kImageHashSize];
+  uint32_t checksum;
+};
+static_assert(sizeof(BootResumeMarker) == 48U);
+constexpr uint32_t kBootResumeMagic = 0x4F514252UL;  // OQBR
+
+inline BootResumeMarker make_boot_resume_marker(const BootContext& context) {
+  BootResumeMarker marker{};
+  if (!context.running_partition_matches_boot || !context.image_valid || context.image_pending_verify ||
+      !has_image_hash(context.image_hash))
+    return marker;
+  marker.magic = kBootResumeMagic;
+  marker.version = 1U;
+  marker.partition_address = context.boot_partition_address;
+  std::memcpy(marker.image_hash, context.image_hash, kImageHashSize);
+  marker.checksum = checksum(&marker, offsetof(BootResumeMarker, checksum));
+  return marker;
+}
+
+inline bool consume_boot_resume_marker(BootResumeMarker& marker, const BootContext& context) {
+  const BootResumeMarker consumed = marker;
+  marker = {};  // Consume on every boot, including mismatch and failed context.
+  return consumed.magic == kBootResumeMagic && consumed.version == 1U && consumed.reserved == 0U &&
+         consumed.checksum == checksum(&consumed, offsetof(BootResumeMarker, checksum)) && context.software_reset &&
+         context.running_partition_matches_boot && context.image_valid && !context.image_pending_verify &&
+         has_image_hash(context.image_hash) && context.boot_partition_address == consumed.partition_address &&
+         std::memcmp(context.image_hash, consumed.image_hash, kImageHashSize) == 0;
+}
+
 enum class StorageReadResult : uint8_t { ABSENT, PRESENT, ERROR };
 
 inline bool may_restore_credit(const Record& record, const BootContext& context) {

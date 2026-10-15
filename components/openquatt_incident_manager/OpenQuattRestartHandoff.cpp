@@ -5,6 +5,7 @@
 #include "OpenQuattIncidentManager.h"
 #include "OpenQuattRestartHandoffPolicy.h"
 #include "esp_app_desc.h"
+#include "esp_attr.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
 #include "nvs.h"
@@ -22,6 +23,8 @@ constexpr const char* NVS_NAMESPACE = "openquatt";
 constexpr const char* NVS_KEY = "oq_restart_v1";
 
 bool storage_ready{false};
+bool resume_eligible{false};
+RTC_NOINIT_ATTR restart_handoff::BootResumeMarker resume_marker;
 uint32_t restored_credit_ms[2]{0U, 0U};
 uint32_t configured_minimum_off_ms{0U};
 
@@ -175,12 +178,24 @@ bool persist_target_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms, uint
 
 bool initialize_restart_handoff(uint32_t minimum_off_ms) {
   storage_ready = false;
+  resume_eligible = false;
   restored_credit_ms[0] = 0U;
   restored_credit_ms[1] = 0U;
   configured_minimum_off_ms = 0U;
 
   BootContext context{};
   const bool context_available = capture_boot_context(minimum_off_ms, &context);
+  // Consume before NVS open or any other early return. A failed/mismatched
+  // boot cannot replay a previously planned restart on a subsequent boot.
+  const bool planned_restart = restart_handoff::consume_boot_resume_marker(resume_marker, context);
+  __sync_synchronize();
+  esp_ota_img_states_t image_state = ESP_OTA_IMG_UNDEFINED;
+  const auto* running = esp_ota_get_running_partition();
+  // First OTA boots, rollback, power loss and crashes take the normal safe path.
+  // An undefined OTA state is deliberately insufficient for run adoption.
+  resume_eligible = planned_restart && context_available && context.software_reset &&
+                    context.running_partition_matches_boot && running != nullptr &&
+                    esp_ota_get_state_partition(running, &image_state) == ESP_OK && image_state == ESP_OTA_IMG_VALID;
   nvs_handle_t handle{};
   if (!open_storage(&handle)) return false;
   NvsStorage storage(handle);
@@ -203,6 +218,15 @@ bool initialize_restart_handoff(uint32_t minimum_off_ms) {
 }
 
 bool restart_handoff_storage_ready() { return storage_ready; }
+
+bool boot_resume_eligible() { return storage_ready && resume_eligible; }
+
+void arm_boot_resume() {
+  BootContext context{};
+  capture_boot_context(configured_minimum_off_ms, &context);
+  resume_marker = restart_handoff::make_boot_resume_marker(context);
+  __sync_synchronize();
+}
 
 uint32_t restored_off_credit_ms(uint8_t hp_index) {
   if (!storage_ready || hp_index < 1U || hp_index > 2U) return 0U;

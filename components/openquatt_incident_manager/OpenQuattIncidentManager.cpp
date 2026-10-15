@@ -533,6 +533,7 @@ void OpenQuattIncidentManager::setup() {
   for (size_t slot = 0U; slot < this->units_().size(); ++slot) {
     UnitState& unit = this->units_()[slot];
     unit.last_link_round_ms = now_ms;
+    unit.boot_resume.begin(unit.configured && boot_resume_eligible(), now_ms);
     unit.restart_guard.configure(this->minimum_off_ms_, LINK_ROUND_TIMEOUT_MS);
     const uint32_t restored_credit_ms = restored_off_credit_ms(static_cast<uint8_t>(slot + 1U));
     unit.restart_guard.restore_credit(restored_credit_ms, true);
@@ -596,6 +597,55 @@ bool OpenQuattIncidentManager::startup_inhibited(uint8_t hp_index) const {
   return unit == nullptr || !unit->startup_released;
 }
 
+void OpenQuattIncidentManager::observe_boot_readback(uint8_t hp_index, uint16_t address, float value, uint32_t now_ms) {
+  UnitState* unit = this->unit_(hp_index);
+  if (unit != nullptr) unit->boot_resume.observe(address, value, now_ms);
+}
+
+bool OpenQuattIncidentManager::boot_resume_pending(uint8_t hp_index, uint32_t now_ms) const {
+  const UnitState* unit = this->unit_(hp_index);
+  return unit != nullptr && unit->boot_resume.pending(now_ms);
+}
+
+int OpenQuattIncidentManager::boot_resume_level(uint8_t hp_index) const {
+  const UnitState* unit = this->unit_(hp_index);
+  return unit == nullptr ? 0 : unit->boot_resume.level();
+}
+
+bool OpenQuattIncidentManager::boot_protection_hold(uint8_t hp_index, uint32_t now_ms) const {
+  const UnitState* unit = this->unit_(hp_index);
+  return unit != nullptr && unit->boot_resume.protection_hold(now_ms);
+}
+
+int OpenQuattIncidentManager::update_boot_resume(uint8_t hp_index, bool abort, bool safety_ready, bool inputs_ready,
+                                                 bool allow_resume, uint32_t now_ms) {
+  UnitState* unit = this->unit_(hp_index);
+  if (unit == nullptr) return 0;
+  const auto technical = unit->engine.outputs();
+  abort = abort || this->restarting_ || !restart_handoff_storage_ready() ||
+          (unit->transport_seen && !unit->transport_online) || technical.must_stop || technical.fault_active ||
+          technical.protection_active ||
+          (unit->runtime_frequency_mapping_observed && !unit->runtime_frequency_mapping_valid) ||
+          (this->manual_reset_persistence_.fault_mask() & (1U << hp_slot_(hp_index))) != 0U ||
+          (this->polling_paused_ != nullptr && this->polling_paused_->has_state() && this->polling_paused_->state);
+  safety_ready = safety_ready && unit->runtime_frequency_mapping_valid && unit->transport_online &&
+                 technical.available_for_start && technical.running_confirmed &&
+                 this->manual_reset_persistence_.ready() && unit->boot_resume.readback_ready(now_ms) &&
+                 unit->initialization_fault_snapshot_count >= INITIALIZATION_FAULT_SNAPSHOT_COUNT &&
+                 elapsed_ms_(now_ms, unit->last_link_round_ms) <= LINK_ROUND_TIMEOUT_MS;
+  const bool was_pending = unit->boot_resume.pending(now_ms);
+  const int level = unit->boot_resume.update(now_ms, abort, safety_ready, inputs_ready, allow_resume);
+  if (level > 0) {
+    unit->startup_released = true;
+    unit->expected_mode = unit->active_command_mode = 2U;
+    invalidate_restart_credit_(*unit);
+    ESP_LOGI(TAG, "HP%u resumed existing heating cycle at F%d", hp_index, level);
+  } else if (was_pending && !unit->boot_resume.pending(now_ms)) {
+    ESP_LOGI(TAG, "HP%u boot acquisition ended; normal safe stop/start guards apply", hp_index);
+  }
+  return level;
+}
+
 uint32_t OpenQuattIncidentManager::minimum_off_remaining_ms(uint8_t hp_index, uint32_t now_ms) const {
   const UnitState* unit = this->unit_(hp_index);
   return unit == nullptr ? this->minimum_off_ms_ : unit->restart_guard.remaining_ms(now_ms);
@@ -635,6 +685,7 @@ void OpenQuattIncidentManager::perform_restart_(uint32_t now_ms) {
            saved ? "saved" : "conservative fallback");
   // Even a failed write may have changed flash. Never resume normal control
   // here; the next boot consumes any possible record before enabling services.
+  arm_boot_resume();
   App.safe_reboot();
 }
 
@@ -804,6 +855,7 @@ void OpenQuattIncidentManager::observe_runtime_frequency_mapping(uint8_t hp_inde
 void OpenQuattIncidentManager::observe_working_mode(uint8_t hp_index, float working_mode, uint32_t now_ms) {
   UnitState* unit = this->unit_(hp_index);
   if (unit == nullptr) return;
+  unit->boot_resume.observe(2099U, working_mode, now_ms);
   if (!std::isfinite(working_mode)) {
     unit->working_mode_valid = false;
     invalidate_restart_credit_(*unit);
@@ -819,6 +871,7 @@ void OpenQuattIncidentManager::observe_working_mode(uint8_t hp_index, float work
 void OpenQuattIncidentManager::observe_compressor_frequency(uint8_t hp_index, float frequency_hz, uint32_t now_ms) {
   UnitState* unit = this->unit_(hp_index);
   if (unit == nullptr) return;
+  unit->boot_resume.observe(2103U, frequency_hz, now_ms);
   if (!std::isfinite(frequency_hz) || frequency_hz < 0.0F) {
     unit->compressor_frequency_valid = false;
     invalidate_restart_credit_(*unit);
@@ -930,13 +983,15 @@ void OpenQuattIncidentManager::process_fault_snapshot_(UnitState& unit, size_t s
   observation.words = unit.fault_words;
   observation.fresh = unit.fault_pending;
   unit.engine.observe_fault_words(observation);
+  // The boot acquisition needs two complete live snapshots on every boot,
+  // including controllers whose manual-reset storage was already initialized.
+  if (complete && unit.initialization_fault_snapshot_count < INITIALIZATION_FAULT_SNAPSHOT_COUNT) {
+    ++unit.initialization_fault_snapshot_count;
+  }
   if (complete && this->manual_reset_persistence_.initialization_pending()) {
     const uint8_t hp_mask = static_cast<uint8_t>(1U << slot);
     if ((unit.fault_words[1U] & (1U << 4U)) != 0U) {
       this->initialization_manual_reset_mask_ |= hp_mask;
-    }
-    if (unit.initialization_fault_snapshot_count < INITIALIZATION_FAULT_SNAPSHOT_COUNT) {
-      ++unit.initialization_fault_snapshot_count;
     }
     bool all_snapshots_complete = true;
     for (const UnitState& candidate : this->units_()) {
@@ -1850,7 +1905,8 @@ oq_incidents::DerivedOutputs OpenQuattIncidentManager::outputs_for_slot_(size_t 
   if (outputs.run_state == oq_incidents::RunState::STOPPED || !unit.startup_released) {
     outputs.available_for_start = outputs.available_for_start && unit.restart_guard.can_start(millis());
   }
-  if (!unit.runtime_frequency_mapping_valid) {
+  if (!unit.runtime_frequency_mapping_valid &&
+      (unit.runtime_frequency_mapping_observed || !unit.boot_resume.pending(millis()))) {
     // A missing or interrupted mapping is a control-safety condition. The
     // actuator receives this only through the incident-manager outputs, so a
     // policy lookup never becomes an untracked compressor stop.
@@ -1874,7 +1930,8 @@ oq_incidents::DerivedOutputs OpenQuattIncidentManager::outputs_for_slot_(size_t 
       outputs.protection_state = oq_incidents::ProtectionState::FAULT_ACTIVE;
     }
   }
-  if (this->restarting_ || !restart_handoff_storage_ready()) {
+  if (this->restarting_ || !restart_handoff_storage_ready() ||
+      (unit.boot_resume.stop_required(millis()) && !unit.startup_released)) {
     outputs.available_for_start = false;
     outputs.must_stop = true;
   }

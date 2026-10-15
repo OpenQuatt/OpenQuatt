@@ -43,6 +43,8 @@ struct TickConfig {
   int minimum_off_s;
   int cooling_minimum_off_min_s;
   float minimum_flow_lph;
+  bool room_temperature_fresh;
+  bool room_setpoint_fresh;
 };
 
 class Runtime {
@@ -65,6 +67,17 @@ class Runtime {
     for (auto& limit : this->start_limits_) limit.expire(config.now_ms);
     this->last_minimum_flow_lph_ = config.minimum_flow_lph;
     oq_command_runtime::minimum_defrost_flow_lph = config.minimum_flow_lph;
+    oq_boot_resume_runtime::minimum_flow_lph = config.minimum_flow_lph;
+    const bool inputs_ready = oq_heat_intent_runtime::room_temperature_fresh(config.room_temperature_fresh) &&
+                              oq_heat_intent_runtime::room_setpoint_fresh(config.room_setpoint_fresh) &&
+                              id(oq_strategy_output_valid) &&
+                              (id(oq_strategy_active_code) == 2 || id(oq_strategy_active_code) == 3) &&
+                              id(oq_strategy_output_source_code) == id(oq_strategy_active_code) &&
+                              static_cast<uint32_t>(config.now_ms - id(oq_strategy_output_updated_ms)) <= 30000U;
+    this->resume_boot_cycle_(true, inputs_ready, config.now_ms);
+#if OQ_TOPOLOGY_DUO
+    this->resume_boot_cycle_(false, inputs_ready, config.now_ms);
+#endif
     const float cooling_off_state = id(cooling_minimum_off_time).state;
     int cooling_off_s = !isfinite(cooling_off_state) ? 600 : static_cast<int>(lroundf(cooling_off_state));
     const int cooling_off_floor_s = oq_cooling::cooling_minimum_off_floor_s(config.cooling_minimum_off_min_s);
@@ -413,6 +426,18 @@ class Runtime {
   }
 
  private:
+  void resume_boot_cycle_(bool hp1, bool inputs_ready, uint32_t now) {
+    const int level = oq_boot_resume_runtime::update(hp1, true, inputs_ready);
+    if (level <= 0) return;
+    // This is continuation, not a new start or a new quota entry. Start the
+    // minimum-runtime clock conservatively now; pre-reboot runtime is unknown.
+    (hp1 ? id(hp1_last_applied_level) : OQ_ACTUATOR_SECONDARY_ID(last_applied_level)) = level;
+    (hp1 ? id(hp1_last_commanded_physical_level) : OQ_ACTUATOR_SECONDARY_ID(last_commanded_physical_level)) = level;
+    (hp1 ? id(hp1_last_real_heat_start_ms) : id(hp2_last_real_heat_start_ms)) = now;
+    (hp1 ? id(hp1_prev_heating_mode_active) : id(hp2_prev_heating_mode_active)) = true;
+    (hp1 ? id(hp1_last_level_change_ms) : id(hp2_last_level_change_ms)) = now;
+  }
+
   void publish_frequency_limit_block_(bool is_hp1, const Cycle& cycle) {
     const int cm = id(oq_control_mode_code);
     const int requested = is_hp1 ? id(oq_request_hp1_level) : id(oq_request_hp2_level);
@@ -456,7 +481,26 @@ class Runtime {
     const bool stop_pending = incident.run_state == oq_incidents::RunState::STOPPING ||
                               incident.run_state == oq_incidents::RunState::STOP_UNCONFIRMED;
     // STOPPING may outlive its global cause without must_stop; finish the physical stop before defrost.
-    const bool safety_stop = stop_pending || this->defrost_safety_stop_(is_hp1);
+    oq_boot_resume_runtime::update(is_hp1);
+    if (id(oq_incident_manager).boot_resume_pending(hp_index, cycle.config.now_ms)) return previous;
+    // A protection cycle starting AFTER adoption retains the existing ODU
+    // ownership path below. The extra boot hold only covers normal heating.
+    const auto& raw = is_hp1 ? oq_sources::hp1
+#if OQ_TOPOLOGY_DUO
+                             : oq_sources::hp2;
+#else
+                             : oq_sources::hp1;
+#endif
+    const bool oil_return = raw.status_2119.valid && (static_cast<uint16_t>(raw.status_2119.value) & 0x0008U) != 0U;
+    const bool boot_hold = id(oq_incident_manager).boot_protection_hold(hp_index, cycle.config.now_ms) &&
+                           !defrost->cycle.observed_active() && !defrost->holding() && !oil_return;
+    const auto boot_safety = boot_hold ? oq_boot_resume_runtime::capture(is_hp1) : oq_boot_resume_runtime::Safety{};
+    const bool safety_stop =
+        stop_pending || this->defrost_safety_stop_(is_hp1) || (boot_hold && (boot_safety.abort || !boot_safety.ready));
+    // Unknown defrost/oil-return tails are reconstructed as a conservative
+    // three-minute hold. Safety/permission loss always ends this hold.
+    if (boot_hold && previous > 0 && !safety_stop && cycle.frequency.frequency_allowed(is_hp1, 2, previous))
+      return previous;
     if (defrost->cycle.telemetry_fault(cycle.config.now_ms)) requested = level = 0;
     // Preserve the current command while the ODU owns the cycle. Hard safety
     // stops remain authoritative; ordinary demand changes wait for completion.

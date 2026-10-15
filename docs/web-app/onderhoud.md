@@ -50,6 +50,16 @@ Bij de Heatpump Controller Q kun je de opstelling (`Single` of `Duo`) en netwerk
 Als de verbinding voor de firmwaredownload niet kan worden geopend, probeert OpenQuatt dit eenmaal automatisch opnieuw. Mislukt ook die poging of wordt de installatie afgebroken, dan stopt de voortgang en kun je de setupwissel opnieuw starten.
 
 
+## Doorverwarmen na herstart
+
+Bij een geplande softwareherstart kan OpenQuatt een bestaande verwarmingscyclus per buitenunit overnemen. De eerste versie geldt voor normaal verwarmen met dezelfde bevestigde firmware. Een koude start, crash, rollback, eerste start na OTA, koelen of actieve defrost/oil return gebruikt het normale veilige opstartpad.
+
+Tijdens het uitlezen blijven de bestaande pomp- en compressorinstellingen behouden. Binnen 45 seconden moeten actuele veiligheidsgegevens, voldoende flow en geldige toestemming voor verwarmen beschikbaar zijn. Daarna mag OpenQuatt tot maximaal 120 seconden vanaf de opstartfase wachten op kamertemperatuur, setpoint en een geldige regeling. De deadline wordt niet verlengd. Een veiligheidsfout of expliciet ingetrokken toestemming beëindigt de overname direct. Bij mislukken volgt een stop met de normale minimale uit-tijd vanaf bevestigde stilstand.
+
+De overname vereist zowel een draaiende compressor als uitgelezen verwarmingsopdrachten op R3999 en R1999. Een al stoppende compressor wordt niet opnieuw gestart. Na overname begint de minimale draaitijd conservatief opnieuw en blijft de bestaande stand maximaal drie minuten behouden voor mogelijk gemiste defrost-/oil-return-naloop; veiligheidsgrenzen blijven leidend.
+
+De normale Modbus-reads dienen als keepalive. In één onderzochte ODU-firmwarebackup is de communicatie-watchdog nominaal circa 120 seconden. Ook reads resetten die watchdog, waardoor deze geen begrenzing voor de opstartfase biedt; OpenQuatt bewaakt daarvoor een eigen deadline. De fysieke stoptijd en andere ODU-firmwareversies zijn hiermee niet bevestigd.
+
 ## Systeem
 
 Hier vind je beheerfuncties:

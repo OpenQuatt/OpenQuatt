@@ -26,7 +26,7 @@ int main() {
   assert(oq_command_guard::allows(range.data(), range.size(), gate));
   range[5] = 4;
   assert(!oq_command_guard::allows(range.data(), range.size(), gate));
-  const std::array<uint8_t, 5> unrelated{6, 7, 214, 0, 1};
+  const std::array<uint8_t, 5> unrelated{6, 7, 215, 0, 1};
   assert(oq_command_guard::allows(unrelated.data(), unrelated.size(), gate));
   const std::array<uint8_t, 5> read{3, 7, 207, 0, 1};
   assert(oq_command_guard::allows(read.data(), read.size(), gate));

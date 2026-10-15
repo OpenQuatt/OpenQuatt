@@ -40,6 +40,14 @@ class LowflowDefrostRuntimeTest(unittest.TestCase):
 #include "openquatt/includes/odu/oq_odu_compressor_levels.h"
 #include "openquatt/includes/incidents/oq_hp_incident_engine.h"
 #define OQ_TOPOLOGY_DUO 1
+#include "openquatt/includes/sources/oq_source_receipt_runtime.h"
+// This regression exercises the established safety chain after ordinary boot.
+// Active boot acquisition is executed in oq_compressor_command_runtime_test.
+namespace oq_boot_resume_runtime {
+struct Safety { bool abort=false, ready=false; };
+inline void update(bool) {}
+inline Safety capture(bool) { return {}; }
+}
 #define id(x) x
 #define OQ_REQUEST_SECONDARY_ID(x) hp2_##x
 #define OQ_ACTUATOR_SECONDARY_ID(x) hp2_##x
@@ -62,6 +70,7 @@ struct Context {
   oq_odu::RuntimeFrequencySnapshot table;
   const auto& snapshot(bool) const { return table; }
   int automatic_level_limit(bool, int) const { return 17; }
+  bool frequency_allowed(bool, int, int) const { return true; }
   int pick_temperature_level(bool, int, int level) const { return level; }
   int pick_allowed_level(bool, int, int level, int, int) const { return level; }
 };
@@ -93,6 +102,8 @@ struct IncidentManager {
   bool startup[2]={false,false};
   Incident get_outputs(int i) const { return hp[i-1]; }
   bool startup_inhibited(int i) const { return startup[i-1]; }
+  bool boot_resume_pending(int, uint32_t) const { return false; }
+  bool boot_protection_hold(int, uint32_t) const { return false; }
   uint32_t minimum_off_remaining_ms(int, uint32_t) const { return 240000; }
   bool request_start(int, uint8_t, uint32_t) { events.push_back("start"); return true; }
   void request_stop(int i, uint32_t) {
