@@ -9,6 +9,8 @@
 #include "../performance/hp_perf_frequency.h"
 #include "oq_compressor_frequency_runtime.h"
 #include "oq_heat_intent_runtime.h"
+#include "oq_boot_resume_runtime.h"
+#include "esphome/components/openquatt_incident_manager/OpenQuattRestartHandoff.h"
 #include "oq_power_house_demand_logic.h"
 #include "oq_power_house_dispatch_logic.h"
 #include "oq_power_house_run_extension_logic.h"
@@ -114,6 +116,7 @@ class Runtime {
       this->demand_state_.last_w = std::max(this->demand_state_.last_w, this->fast_floor_w_);
       this->fast_floor_w_ = 0.0f;
     }
+    this->restore_boot_demand_(demand_input, demand_tuning, config);
     const auto previous_startup_phase = this->startup_phase_;
     const auto demand =
         oq_power_house::decide_startup_demand(demand_input, demand_tuning, this->demand_state_, this->startup_phase_);
@@ -440,6 +443,18 @@ class Runtime {
              dispatch.owner_hp, static_cast<int>(dispatch.reason));
   }
 
+  esphome::openquatt_incident_manager::restart_handoff::PowerHouseResumeState restart_state() const {
+    if (id(oq_strategy_active_code) != 3 || this->startup_phase_ != oq_power_house::StartupPhase::READY ||
+        (id(hp1_last_applied_level) <= 0
+#if OQ_TOPOLOGY_DUO
+         && id(hp2_last_applied_level) <= 0
+#endif
+         ))
+      return {};
+    return {this->demand_state_.last_w, this->demand_state_.comfort_memory_c,
+            this->run_extension_state_.last_setpoint_c};
+  }
+
   void reset() {
     this->stop_snapshot_ = {};
     this->dispatch_state_ = {};
@@ -502,6 +517,37 @@ class Runtime {
   float run_extension_warm_restart_c() const { return this->run_ext_warm_restart_c_; }
 
  private:
+  void restore_boot_demand_(const oq_power_house::DemandInput& input, const oq_power_house::DemandTuning& tuning,
+                            const TickConfig& config) {
+    if (this->boot_demand_checked_) return;
+    const bool pending = id(oq_incident_manager).boot_resume_pending(1U, input.now_ms)
+#if OQ_TOPOLOGY_DUO
+                         || id(oq_incident_manager).boot_resume_pending(2U, input.now_ms)
+#endif
+        ;
+    if (pending && (!oq_power_house::decide_demand(input, tuning, this->demand_state_).valid ||
+                    !oq_heat_intent_runtime::room_temperature_fresh(config.ot_room_temperature_fresh) ||
+                    !oq_heat_intent_runtime::room_setpoint_fresh(config.ot_room_setpoint_fresh) ||
+                    !((id(oq_incident_manager).boot_resume_safety_ready(1U, input.now_ms) &&
+                       oq_boot_resume_runtime::capture(true).ready)
+#if OQ_TOPOLOGY_DUO
+                      || (id(oq_incident_manager).boot_resume_safety_ready(2U, input.now_ms) &&
+                          oq_boot_resume_runtime::capture(false).ready)
+#endif
+                          )))
+      return;
+    this->boot_demand_checked_ = true;
+    esphome::openquatt_incident_manager::restart_handoff::PowerHouseResumeState saved{};
+    if (!esphome::openquatt_incident_manager::take_power_house_resume(&saved) ||
+        !esphome::openquatt_incident_manager::restart_handoff::may_restore_power_house(saved, pending, input.room_c,
+                                                                                       input.setpoint_c))
+      return;
+    // New uptime domain: the first fresh calculation starts at the saved demand,
+    // then the existing slew, comfort bounds and current safety inputs take over.
+    this->demand_state_ = {saved.last_w, input.now_ms - 1U, saved.comfort_memory_c};
+    ESP_LOGI("quatt.strategy", "Power House demand memory restored after planned restart");
+  }
+  bool boot_demand_checked_{false};
   esphome::openquatt_decision_log::heating_stop::Snapshot stop_snapshot_;
   void publish_startup_wait_(uint32_t now_ms, float requested_w) {
     // No stale strategy request or boiler-assist output may survive acquisition.

@@ -131,7 +131,11 @@ std::string oq_commissioning_status_value{};
 int oq_commissioning_task_code{};
 int oq_control_mode_code{};
 FakeSensor oq_day_max_frequency_hz{};
-FakeSensor oq_enabled{1};
+struct FakeSwitch {
+  bool state{true};
+  bool has_state() const { return false; }  // Match ESPHome Switch, including a restored ON state.
+};
+FakeSwitch oq_enabled{};
 int oq_strategy_active_code{3};
 bool oq_flow_autotune_abort{};
 bool oq_flow_autotune_active{};
@@ -211,6 +215,7 @@ bool queued(bool is_hp1, uint16_t address, uint16_t value) {
 }
 
 void reset() {
+  oq_enabled.state = true;
   test_now_ms = 1000;
   oq_water_temp_hard_trip_active = oq_lowflow_fault_active = false;
   oq_commissioning_active = oq_manual_hp_active = false;
@@ -325,7 +330,7 @@ void boot_adoption_requires_live_safety_and_comfort() {
   assert(oq_boot_resume_runtime::update(true, true, true) == 17);
   assert(!oq_incident_manager.boot[0].pending(test_now_ms));
 
-  for (int fault = 0; fault < 8; ++fault) {
+  for (int fault = 0; fault < 9; ++fault) {
     prepare_running_boot();
     assert(oq_boot_resume_runtime::update(true, true, false) == 0);
     switch (fault) {
@@ -356,6 +361,9 @@ void boot_adoption_requires_live_safety_and_comfort() {
         break;
       case 7:
         oq_incident_manager.outputs[0].must_stop = true;
+        break;
+      case 8:
+        oq_enabled.state = false;
         break;
     }
     assert(oq_boot_resume_runtime::update(true, true, true) == 0);

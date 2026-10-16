@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "esphome/core/component.h"
+#include "OpenQuattRestartHandoffPolicy.h"
 #ifdef USE_OTA_STATE_LISTENER
 #include "esphome/components/ota/ota_backend.h"
 #endif
@@ -17,6 +18,9 @@ bool initialize_restart_handoff(uint32_t minimum_off_ms);
 bool restart_handoff_storage_ready();
 bool boot_resume_eligible();
 void arm_boot_resume();
+using PowerHouseResumeReader = restart_handoff::PowerHouseResumeState (*)();
+void set_power_house_resume_reader(PowerHouseResumeReader reader);
+bool take_power_house_resume(restart_handoff::PowerHouseResumeState* state);
 uint32_t restored_off_credit_ms(uint8_t hp_index);
 bool arm_restart_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms);
 bool arm_completed_ota_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms);

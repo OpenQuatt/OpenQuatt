@@ -492,7 +492,8 @@ class Runtime {
                              : oq_sources::hp1;
 #endif
     const bool oil_return = raw.status_2119.valid && (static_cast<uint16_t>(raw.status_2119.value) & 0x0008U) != 0U;
-    const bool boot_hold = id(oq_incident_manager).boot_protection_hold(hp_index, cycle.config.now_ms) &&
+    // Use live time: the tick snapshot can predate adoption and underflow this hold's unsigned elapsed time.
+    const bool boot_hold = id(oq_incident_manager).boot_protection_hold(hp_index, millis()) &&
                            !defrost->cycle.observed_active() && !defrost->holding() && !oil_return;
     const auto boot_safety = boot_hold ? oq_boot_resume_runtime::capture(is_hp1) : oq_boot_resume_runtime::Safety{};
     const bool safety_stop =

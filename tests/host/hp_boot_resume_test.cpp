@@ -2,6 +2,7 @@
 #include "openquatt/includes/control/oq_hp_restart_guard.h"
 #include "openquatt/includes/control/oq_thermal_actuator_logic.h"
 #include "openquatt/includes/control/oq_compressor_command_guard.h"
+#include "openquatt/includes/incidents/oq_hp_incident_engine.h"
 #include <array>
 #include <cassert>
 #include <cstdint>
@@ -16,7 +17,43 @@ static void observe_running(Policy& p, uint32_t now, int level = 7) {
   p.observe(2103, 40, now);
 }
 
+static void bootstrap_safety_precedes_existing_link_release() {
+  Policy boot;
+  boot.begin(true, 0);
+  oq_incidents::HpIncidentEngine engine;
+  for (uint32_t now = 10000; now <= 70000; now += 10000) {
+    oq_incidents::RunObservation run;
+    run.now_ms = now;
+    run.fresh = run.mode_matches_request = run.compressor_frequency_valid = true;
+    run.compressor_frequency_hz = 40;
+    engine.observe_run(run);
+    engine.observe_link_round(now, true);
+    observe_running(boot, now);
+    const auto out = engine.outputs();
+    assert(out.running_confirmed && !out.must_stop);
+    const int adopted = boot.update(now, out.must_stop, boot.readback_ready(now), true, out.available_for_start);
+    if (now < 70000) {
+      assert(!out.available_for_start && adopted == 0 && boot.pending(now));
+    } else {
+      assert(out.available_for_start && adopted == 7 && !boot.pending(now));
+    }
+  }
+  // A real communication loss retains the existing must-stop during recovery.
+  engine.observe_link_round(80000, false);
+  engine.observe_link_round(100000, false);
+  engine.observe_link_round(120000, false);
+  engine.observe_link_round(130000, true);
+  const auto recovering = engine.outputs();
+  assert(recovering.must_stop && !recovering.available_for_start);
+  Policy interrupted;
+  interrupted.begin(true, 130000);
+  observe_running(interrupted, 130000);
+  assert(interrupted.update(130000, recovering.must_stop, true, true, recovering.available_for_start) == 0);
+  assert(interrupted.stop_required(130000));
+}
+
 int main() {
+  bootstrap_safety_precedes_existing_link_release();
   Policy cold;
   cold.begin(false, 0);
   observe_running(cold, 10000);

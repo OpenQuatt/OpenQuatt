@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -86,38 +87,67 @@ struct BootContext {
   uint8_t image_hash[kImageHashSize]{};
 };
 
-// Volatile intent only: no HP commands, elapsed runtime or comfort values.
+// Volatile same-image intent and numeric Power House memory. Never CM or HP commands.
+struct PowerHouseResumeState {
+  float last_w;
+  float comfort_memory_c;
+  float setpoint_c;
+};
+inline bool valid_power_house_resume(const PowerHouseResumeState& state) {
+  return std::isfinite(state.last_w) && state.last_w >= 0.0f && state.last_w <= 50000.0f &&
+         std::isfinite(state.comfort_memory_c) && state.comfort_memory_c >= 0.0f && state.comfort_memory_c <= 0.20f &&
+         std::isfinite(state.setpoint_c) && state.setpoint_c >= 5.0f && state.setpoint_c <= 35.0f;
+}
+inline bool may_restore_power_house(const PowerHouseResumeState& state, bool running_acquisition, float room_c,
+                                    float setpoint_c) {
+  return running_acquisition && valid_power_house_resume(state) && std::isfinite(room_c) && std::isfinite(setpoint_c) &&
+         std::fabs(setpoint_c - state.setpoint_c) <= 0.01f;
+}
 struct BootResumeMarker {
   uint32_t magic;
-  uint16_t version, reserved;
+  uint16_t version, flags;
   uint32_t partition_address;
   uint8_t image_hash[kImageHashSize];
+  PowerHouseResumeState power_house;
   uint32_t checksum;
 };
-static_assert(sizeof(BootResumeMarker) == 48U);
+static_assert(sizeof(BootResumeMarker) == 60U);
 constexpr uint32_t kBootResumeMagic = 0x4F514252UL;  // OQBR
 
-inline BootResumeMarker make_boot_resume_marker(const BootContext& context) {
+inline BootResumeMarker make_boot_resume_marker(const BootContext& context,
+                                                const PowerHouseResumeState& power_house = {}) {
   BootResumeMarker marker{};
   if (!context.running_partition_matches_boot || !context.image_valid || context.image_pending_verify ||
       !has_image_hash(context.image_hash))
     return marker;
   marker.magic = kBootResumeMagic;
-  marker.version = 1U;
+  marker.version = 2U;
+  if (valid_power_house_resume(power_house)) {
+    marker.flags = 1U;
+    marker.power_house = power_house;
+  }
   marker.partition_address = context.boot_partition_address;
   std::memcpy(marker.image_hash, context.image_hash, kImageHashSize);
   marker.checksum = checksum(&marker, offsetof(BootResumeMarker, checksum));
   return marker;
 }
 
-inline bool consume_boot_resume_marker(BootResumeMarker& marker, const BootContext& context) {
+inline bool consume_boot_resume_marker(BootResumeMarker& marker, const BootContext& context,
+                                       PowerHouseResumeState* power_house = nullptr) {
   const BootResumeMarker consumed = marker;
   marker = {};  // Consume on every boot, including mismatch and failed context.
-  return consumed.magic == kBootResumeMagic && consumed.version == 1U && consumed.reserved == 0U &&
-         consumed.checksum == checksum(&consumed, offsetof(BootResumeMarker, checksum)) && context.software_reset &&
-         context.running_partition_matches_boot && context.image_valid && !context.image_pending_verify &&
-         has_image_hash(context.image_hash) && context.boot_partition_address == consumed.partition_address &&
-         std::memcmp(context.image_hash, consumed.image_hash, kImageHashSize) == 0;
+  const bool eligible = consumed.magic == kBootResumeMagic && consumed.version == 2U && (consumed.flags & ~1U) == 0U &&
+                        consumed.checksum == checksum(&consumed, offsetof(BootResumeMarker, checksum)) &&
+                        context.software_reset && context.running_partition_matches_boot && context.image_valid &&
+                        !context.image_pending_verify && has_image_hash(context.image_hash) &&
+                        context.boot_partition_address == consumed.partition_address &&
+                        std::memcmp(context.image_hash, consumed.image_hash, kImageHashSize) == 0;
+  if (power_house != nullptr) {
+    *power_house = eligible && consumed.flags == 1U && valid_power_house_resume(consumed.power_house)
+                       ? consumed.power_house
+                       : PowerHouseResumeState{};
+  }
+  return eligible;
 }
 
 enum class StorageReadResult : uint8_t { ABSENT, PRESENT, ERROR };

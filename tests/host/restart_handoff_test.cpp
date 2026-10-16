@@ -1,3 +1,5 @@
+#include <initializer_list>
+#include "openquatt/includes/control/oq_power_house_demand_logic.h"
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -365,7 +367,47 @@ void test_boot_resume_intent_is_exact_and_one_shot() {
   assert(!handoff::consume_boot_resume_marker(marker, context));
 }
 
+void test_power_house_memory_roundtrip_and_current_inputs() {
+  namespace h = esphome::openquatt_incident_manager::restart_handoff;
+  const auto context = matching_context(make_record());
+  const h::PowerHouseResumeState saved{1500.0f, 0.20f, 23.0f};
+  auto marker = h::make_boot_resume_marker(context, saved);
+  h::PowerHouseResumeState restored{};
+  assert(h::consume_boot_resume_marker(marker, context, &restored));
+  assert(h::valid_power_house_resume(restored));
+  assert(h::may_restore_power_house(restored, true, 23.05f, 23.0f));
+  assert(!h::may_restore_power_house(restored, false, 23.05f, 23.0f));
+  assert(!h::may_restore_power_house(restored, true, 23.05f, 22.0f));
+  assert(!h::may_restore_power_house(restored, true, NAN, 23.0f));
+  // Reproduce an above-setpoint cycle carried by demand/comfort memory.
+  oq_power_house::DemandInput input{60000U, 3.0f, -10.0f, 16.0f, 6000.0f, 23.05f, 23.0f, 0.0f, 1.0f, true};
+  oq_power_house::DemandTuning tuning{0.5f, 3000.0f, 0.1f, 0.3f, 10.0f, 5.0f, 20};
+  const auto lost = oq_power_house::decide_demand(input, tuning, {});
+  const oq_power_house::DemandState retained{restored.last_w, input.now_ms - 1U, restored.comfort_memory_c};
+  const auto resumed = oq_power_house::decide_demand(input, tuning, retained);
+  assert(lost.valid && lost.requested_w == 0.0f);
+  assert(resumed.valid && resumed.requested_w > 1499.0f && resumed.next.comfort_memory_c > 0.19f);
+  input.water_limit_factor = 0.0f;
+  assert(oq_power_house::decide_demand(input, tuning, retained).requested_w == 0.0f);
+  assert(!h::consume_boot_resume_marker(marker, context, &restored));
+  assert(!h::valid_power_house_resume(restored));
+  auto ota = context;
+  ota.image_hash[0] ^= 1U;
+  marker = h::make_boot_resume_marker(context, saved);
+  assert(!h::consume_boot_resume_marker(marker, ota, &restored));
+  assert(!h::valid_power_house_resume(restored));
+  marker = h::make_boot_resume_marker(context, saved);
+  marker.power_house.last_w += 1.0f;  // Corrupt numeric memory invalidates the intent checksum too.
+  assert(!h::consume_boot_resume_marker(marker, context, &restored));
+  for (const auto bad : {h::PowerHouseResumeState{NAN, 0.1f, 23}, {1500, 0.21f, 23}, {1500, 0.1f, NAN}}) {
+    marker = h::make_boot_resume_marker(context, bad);
+    assert(h::consume_boot_resume_marker(marker, context, &restored));
+    assert(!h::valid_power_house_resume(restored));
+  }
+}
+
 int main() {
+  test_power_house_memory_roundtrip_and_current_inputs();
   test_boot_resume_intent_is_exact_and_one_shot();
   test_only_exact_controlled_reboot_restores_credit();
   test_pending_ota_boot_uses_same_exact_handoff_policy();

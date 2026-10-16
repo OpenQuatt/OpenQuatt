@@ -36,6 +36,7 @@ class LowflowDefrostRuntimeTest(unittest.TestCase):
 #include <vector>
 #include "openquatt/includes/control/oq_thermal_request_logic.h"
 #include "openquatt/includes/control/oq_thermal_actuator_logic.h"
+#include "openquatt/includes/control/oq_hp_boot_resume.h"
 #include "openquatt/includes/control/oq_incident_actuator_logic.h"
 #include "openquatt/includes/odu/oq_odu_compressor_levels.h"
 #include "openquatt/includes/incidents/oq_hp_incident_engine.h"
@@ -46,7 +47,7 @@ class LowflowDefrostRuntimeTest(unittest.TestCase):
 namespace oq_boot_resume_runtime {
 struct Safety { bool abort=false, ready=false; };
 inline void update(bool) {}
-inline Safety capture(bool) { return {}; }
+inline Safety capture(bool) { return {false, true}; }
 }
 #define id(x) x
 #define OQ_REQUEST_SECONDARY_ID(x) hp2_##x
@@ -103,7 +104,8 @@ struct IncidentManager {
   Incident get_outputs(int i) const { return hp[i-1]; }
   bool startup_inhibited(int i) const { return startup[i-1]; }
   bool boot_resume_pending(int, uint32_t) const { return false; }
-  bool boot_protection_hold(int, uint32_t) const { return false; }
+  oq_boot_resume::Policy boot[2];
+  bool boot_protection_hold(int i, uint32_t now) const { return boot[i-1].protection_hold(now); }
   uint32_t minimum_off_remaining_ms(int, uint32_t) const { return 240000; }
   bool request_start(int, uint8_t, uint32_t) { events.push_back("start"); return true; }
   void request_stop(int i, uint32_t) {
@@ -235,6 +237,32 @@ int main() {
     (hp?hp1_odu_defrost:hp2_odu_defrost).cycle.fault=true;
     assert(a.apply_level_(hp,17,false,c)==0);
     assert((events==std::vector<std::string>{"clear","stop","mode0-force","level0-force"}));
+  }
+  // Adoption can happen after the tick snapshot, including across millis wrap.
+  // Execute the real actuator with CM1's zero request: its first hold must not
+  // underflow and fall through to a physical stop. Safety still wins.
+  for(bool hp : {true,false}) for(uint32_t tick : {100000U, UINT32_MAX}) {
+    reset(); ActuatorRuntime a; Cycle c; c.frequency=f; c.config.now_ms=tick;
+    const auto slot=hp?0:1;
+    a.retained[slot]={};
+    auto& defrost=hp?hp1_odu_defrost:hp2_odu_defrost;
+    defrost.cycle.active=defrost.hold=false;
+    clock_ms=tick+1U;
+    auto& boot=oq_incident_manager.boot[slot];
+    boot.begin(true,tick-1000U);
+    boot.observe(3999,2,clock_ms); boot.observe(1999,17,clock_ms);
+    boot.observe(2099,2,clock_ms); boot.observe(2103,40,clock_ms);
+    assert(boot.update(clock_ms,false,true,true,true)==17);
+    assert(a.apply_level_(hp,0,false,c)==17 && events.empty());
+    oq_lowflow_fault_active=true;
+    assert(a.apply_level_(hp,0,false,c)==0);
+    assert((events==std::vector<std::string>{"clear","stop","mode0-force","level0-force"}));
+    oq_lowflow_fault_active=false; events.clear();
+    oq_incident_manager.hp[slot]={};
+    clock_ms+=oq_boot_resume::PROTECTION_HOLD_MS;
+    c.config.now_ms=clock_ms;
+    assert(a.apply_level_(hp,0,false,c)==0); // The hold expires at its real boundary.
+    assert(!events.empty());
   }
   // Execute the real engine: repeated notification cannot rebase its stop
   // watchdog. Normal STOPPING does not imply its revalidation pending flag.

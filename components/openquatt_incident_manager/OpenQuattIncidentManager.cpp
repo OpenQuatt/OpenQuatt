@@ -612,6 +612,22 @@ int OpenQuattIncidentManager::boot_resume_level(uint8_t hp_index) const {
   return unit == nullptr ? 0 : unit->boot_resume.level();
 }
 
+bool OpenQuattIncidentManager::boot_resume_safety_ready(uint8_t hp_index, uint32_t now_ms) const {
+  const UnitState* unit = this->unit_(hp_index);
+  if (unit == nullptr || !unit->boot_resume.pending(now_ms) || this->restarting_ || !restart_handoff_storage_ready() ||
+      (this->manual_reset_persistence_.fault_mask() & (1U << hp_slot_(hp_index))) != 0U ||
+      (this->polling_paused_ != nullptr && this->polling_paused_->has_state() && this->polling_paused_->state))
+    return false;
+  const auto technical = unit->engine.outputs();
+  const bool link_acquired = technical.link_state == oq_incidents::LinkState::HEALTHY ||
+                             technical.link_state == oq_incidents::LinkState::RECOVERING;
+  return link_acquired && !technical.must_stop && !technical.fault_active && !technical.protection_active &&
+         unit->runtime_frequency_mapping_valid && unit->transport_online && technical.running_confirmed &&
+         this->manual_reset_persistence_.ready() && unit->boot_resume.readback_ready(now_ms) &&
+         unit->initialization_fault_snapshot_count >= INITIALIZATION_FAULT_SNAPSHOT_COUNT &&
+         elapsed_ms_(now_ms, unit->last_link_round_ms) <= LINK_ROUND_TIMEOUT_MS;
+}
+
 bool OpenQuattIncidentManager::boot_protection_hold(uint8_t hp_index, uint32_t now_ms) const {
   const UnitState* unit = this->unit_(hp_index);
   return unit != nullptr && unit->boot_resume.protection_hold(now_ms);
@@ -628,20 +644,26 @@ int OpenQuattIncidentManager::update_boot_resume(uint8_t hp_index, bool abort, b
           (unit->runtime_frequency_mapping_observed && !unit->runtime_frequency_mapping_valid) ||
           (this->manual_reset_persistence_.fault_mask() & (1U << hp_slot_(hp_index))) != 0U ||
           (this->polling_paused_ != nullptr && this->polling_paused_->has_state() && this->polling_paused_->state);
-  safety_ready = safety_ready && unit->runtime_frequency_mapping_valid && unit->transport_online &&
-                 technical.available_for_start && technical.running_confirmed &&
-                 this->manual_reset_persistence_.ready() && unit->boot_resume.readback_ready(now_ms) &&
-                 unit->initialization_fault_snapshot_count >= INITIALIZATION_FAULT_SNAPSHOT_COUNT &&
-                 elapsed_ms_(now_ms, unit->last_link_round_ms) <= LINK_ROUND_TIMEOUT_MS;
+  const bool sources_ready = safety_ready;
+  safety_ready = safety_ready && this->boot_resume_safety_ready(hp_index, now_ms);
   const bool was_pending = unit->boot_resume.pending(now_ms);
-  const int level = unit->boot_resume.update(now_ms, abort, safety_ready, inputs_ready, allow_resume);
+  // Bootstrap link recovery deliberately takes at least 60 s. Live safety
+  // must be complete within 45 s, but adoption still waits for that existing
+  // recovery gate. A recovery after link loss remains a must-stop above.
+  const int level = unit->boot_resume.update(now_ms, abort, safety_ready, inputs_ready,
+                                             allow_resume && technical.available_for_start);
   if (level > 0) {
     unit->startup_released = true;
     unit->expected_mode = unit->active_command_mode = 2U;
     invalidate_restart_credit_(*unit);
     ESP_LOGI(TAG, "HP%u resumed existing heating cycle at F%d", hp_index, level);
   } else if (was_pending && !unit->boot_resume.pending(now_ms)) {
-    ESP_LOGI(TAG, "HP%u boot acquisition ended; normal safe stop/start guards apply", hp_index);
+    ESP_LOGI(TAG,
+             "HP%u boot acquisition ended: abort=%u sources=%u readback=%u mapping=%u online=%u available=%u "
+             "running=%u snapshots=%u inputs=%u; normal safe stop/start guards apply",
+             hp_index, abort, sources_ready, unit->boot_resume.readback_ready(now_ms),
+             unit->runtime_frequency_mapping_valid, unit->transport_online, technical.available_for_start,
+             technical.running_confirmed, unit->initialization_fault_snapshot_count, inputs_ready);
   }
   return level;
 }
@@ -1902,7 +1924,11 @@ oq_incidents::DerivedOutputs OpenQuattIncidentManager::outputs_for_slot_(size_t 
       (!this->manual_reset_persistence_.ready() || (this->manual_reset_persistence_.fault_mask() & hp_mask) != 0U);
   outputs = apply_persistence_safety_gate(outputs, persistence_blocks);
   const UnitState& unit = this->units_()[slot];
-  if (outputs.run_state == oq_incidents::RunState::STOPPED || !unit.startup_released) {
+  // A confirmed running boot candidate is continuation, not a new start.
+  // Otherwise Power House cannot produce valid output before adoption, while
+  // adoption itself waits for valid strategy output. Pending writes stay gated.
+  const bool acquiring_running = unit.boot_resume.pending(millis()) && outputs.running_confirmed;
+  if (outputs.run_state == oq_incidents::RunState::STOPPED || (!unit.startup_released && !acquiring_running)) {
     outputs.available_for_start = outputs.available_for_start && unit.restart_guard.can_start(millis());
   }
   if (!unit.runtime_frequency_mapping_valid &&

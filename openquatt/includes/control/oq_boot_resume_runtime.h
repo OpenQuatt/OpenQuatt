@@ -1,6 +1,7 @@
 #pragma once
 
 #include "oq_hp_boot_resume.h"
+#include "oq_hp_boot_resume_flow.h"
 #include "oq_compressor_frequency_runtime.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
 
@@ -56,17 +57,17 @@ inline Safety capture(bool hp1) {
   const int level = id(oq_incident_manager).boot_resume_level(hp1 ? 1U : 2U);
   const auto frequency = oq_frequency_runtime::capture();
   const bool level_allowed = frequency.frequency_allowed(hp1, 2, level);
-  const bool enabled = id(oq_enabled).has_state() && id(oq_enabled).state;
+  // ESPHome Switch::publish_state() does not set EntityBase::has_state().
+  const bool enabled = id(oq_enabled).state;
   const bool controls = enabled && !id(oq_commissioning_active) && !oq_manual_hp::owns_control() &&
                         id(oq_control_mode_code) != 5 && id(oq_strategy_active_code) != 1;
   const bool invalid_measurement = (raw.water_in.received && !raw.water_in.valid) ||
                                    (raw.water_out.received && !raw.water_out.valid) ||
                                    (raw.outside.received && !raw.outside.valid);
   const bool explicit_abort =
-      invalid_measurement || (id(oq_enabled).has_state() && !id(oq_enabled).state) || id(oq_commissioning_active) ||
-      oq_manual_hp::owns_control() || id(oq_control_mode_code) == 5 || id(oq_strategy_active_code) == 1 ||
-      (service.loaded() && !service.automatic()) || (permission_valid && !permission_on) ||
-      id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) ||
+      invalid_measurement || !id(oq_enabled).state || id(oq_commissioning_active) || oq_manual_hp::owns_control() ||
+      id(oq_control_mode_code) == 5 || id(oq_strategy_active_code) == 1 || (service.loaded() && !service.automatic()) ||
+      (permission_valid && !permission_on) || id(oq_water_temp_hard_trip_active) || id(oq_lowflow_fault_active) ||
       (flow_fresh && std::isfinite(minimum_flow_lph) && !flow_ok) ||
       (raw.defrost.fresh(now, fresh_ms) && raw.defrost.value != 0.0f) ||
       (raw.status_2119.fresh(now, fresh_ms) && (static_cast<uint16_t>(raw.status_2119.value) & 0x0008U) != 0U) ||
