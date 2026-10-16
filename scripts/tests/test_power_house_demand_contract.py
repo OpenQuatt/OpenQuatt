@@ -1,6 +1,6 @@
 import pathlib, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-FILES = (ROOT / "openquatt/oq_power_house_strategy.yaml", ROOT / "openquatt/includes/control/oq_power_house_runtime.h", ROOT / "openquatt/includes/control/oq_power_house_demand_logic.h", ROOT / "tests/host/oq_power_house_demand_logic_test.cpp", ROOT / "openquatt/includes/control/oq_power_house_dispatch_logic.h", ROOT / "tests/host/oq_power_house_dispatch_logic_test.cpp", ROOT / "openquatt/oq_thermal_request_control.yaml", ROOT / "scripts/tests/test_compressor_frequency_policy_contract.py", ROOT / "scripts/tests/test_electrical_input_limit_contract.py", ROOT / "openquatt/includes/control/oq_power_house_run_extension_logic.h", ROOT / "tests/host/oq_power_house_run_extension_logic_test.cpp", pathlib.Path(__file__))
+FILES = (ROOT / "openquatt/oq_power_house_strategy.yaml", ROOT / "openquatt/includes/control/oq_power_house_runtime.h", ROOT / "openquatt/includes/control/oq_power_house_demand_logic.h", ROOT / "tests/host/oq_power_house_demand_logic_test.cpp", ROOT / "openquatt/includes/control/oq_power_house_dispatch_logic.h", ROOT / "tests/host/oq_power_house_dispatch_logic_test.cpp", ROOT / "openquatt/oq_thermal_request_control.yaml", ROOT / "scripts/tests/test_compressor_frequency_policy_contract.py", ROOT / "scripts/tests/test_electrical_input_limit_contract.py", ROOT / "openquatt/includes/control/oq_power_house_run_extension_logic.h", ROOT / "tests/host/oq_power_house_run_extension_logic_test.cpp", pathlib.Path(__file__), ROOT / "openquatt/includes/control/oq_compressor_movement_logic.h", ROOT / "tests/host/compressor_movement_dispatch_test.cpp")
 class PowerHouseDemandContractTest(unittest.TestCase):
     def test_delegation_and_line_budget(self) -> None:
         yaml = FILES[0].read_text()
@@ -56,10 +56,9 @@ class PowerHouseDemandContractTest(unittest.TestCase):
             self.assertNotIn(marker, text)
             self.assertNotIn(marker, yaml)
         # Boot acquisition adds a one-shot input deadline and explicit invalid outputs.
-        # Recorder diagnostics add 21 YAML lines; retain the existing 10-line margin.
-        # Include physical-frequency candidates and bounded historical stop diagnostics.
-        # One-shot same-image demand-memory capture/restore is part of this feature.
-        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 3972)
+        # Recorder diagnostics remain included alongside runtime and focused regressions.
+        # Include shared Duo Hz movement and its regression alongside boot-memory capture/restore.
+        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 4124)
 
     def test_startup_wait_clears_shared_outputs_before_adopting_demand(self) -> None:
         text = FILES[1].read_text()

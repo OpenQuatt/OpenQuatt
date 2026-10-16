@@ -89,10 +89,10 @@ class StrategyRuntimeContractTest(unittest.TestCase):
         # Measured 1464 lines after combining the external curve modifier
         # with dev's confirmed-stop transition to CM0.
         # Boot input acquisition adds explicit invalid outputs and a one-shot deadline.
-        # Include physical-frequency candidates and bounded historical stop diagnostics.
+        # Include the seven runtime lines wiring Duo Hz movement into the captured context.
         # The heating-curve duo floor gate adds the single-owner ramp check (logic in its own header).
         # Bounded Power House boot-memory capture/restore adds 46 runtime lines.
-        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1685)
+        self.assertLessEqual(sum(len(source.splitlines()) for source in RUNTIMES.values()), 1692)
         self.assertLessEqual(len(HEAT_INTENT_RUNTIME.splitlines()), 90)
         # The selector now returns source provenance alongside its value; keep it local.
         self.assertLessEqual(len(LOGIC.splitlines()), 75)

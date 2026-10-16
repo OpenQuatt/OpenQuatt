@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "oq_hp_candidate_logic.h"
+#include "oq_compressor_movement_logic.h"
 
 namespace oq_power_house_dispatch {
 constexpr int kMaxLevel = 20;
@@ -118,6 +119,7 @@ struct Candidate {
   int hp1_level = 0, hp2_level = 0;
   float thermal_w = 0.0f, electrical_w = 0.0f, error_w = 0.0f, over_soft_w = 0.0f;
   int level_moves = 0, active_count = 0, balance_gap = 0;
+  int modulation_hz = -1, starts = 0, stops = 0;
   bool single_on_lead = false;
 };
 inline int topology(int hp1_level, int hp2_level) { return (hp1_level > 0 ? 1 : 0) + (hp2_level > 0 ? 1 : 0); }
@@ -202,6 +204,14 @@ inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& t
   result.over_soft_w = std::max(0.0f, result.electrical_w - tuning.soft_limit_w);
   result.level_moves =
       std::abs(result.hp1_level - applied_level(in.hp1)) + std::abs(result.hp2_level - applied_level(in.hp2));
+  const int previous_hp1 = applied_level(in.hp1), previous_hp2 = applied_level(in.hp2);
+  result.starts = (previous_hp1 == 0 && result.hp1_level > 0) + (previous_hp2 == 0 && result.hp2_level > 0);
+  result.stops = (previous_hp1 > 0 && result.hp1_level == 0) + (previous_hp2 > 0 && result.hp2_level == 0);
+  result.modulation_hz = oq_compressor_movement::modulation_hz(
+      {oq_compressor_movement::frequency(previous_hp1, in.hp1.levels[previous_hp1].frequency_hz),
+       oq_compressor_movement::frequency(previous_hp2, in.hp2.levels[previous_hp2].frequency_hz)},
+      {oq_compressor_movement::frequency(result.hp1_level, in.hp1.levels[result.hp1_level].frequency_hz),
+       oq_compressor_movement::frequency(result.hp2_level, in.hp2.levels[result.hp2_level].frequency_hz)});
   result.balance_gap = std::abs(static_cast<int>(in.hp1.levels[result.hp1_level].frequency_hz) -
                                 static_cast<int>(in.hp2.levels[result.hp2_level].frequency_hz));
   return result;
@@ -210,7 +220,10 @@ inline bool better_candidate(const Candidate& a, const Candidate& b) {
   if (std::fabs(a.over_soft_w - b.over_soft_w) > 1.0f) return a.over_soft_w < b.over_soft_w;
   if (std::fabs(a.electrical_w - b.electrical_w) > 1.0f) return a.electrical_w < b.electrical_w;
   if (std::fabs(a.error_w - b.error_w) > 1.0f) return a.error_w < b.error_w;
-  if (a.level_moves != b.level_moves) return a.level_moves < b.level_moves;
+  if (a.starts != b.starts) return a.starts < b.starts;
+  if (a.stops != b.stops) return a.stops < b.stops;
+  if (a.modulation_hz >= 0 && b.modulation_hz >= 0 && a.modulation_hz != b.modulation_hz)
+    return a.modulation_hz < b.modulation_hz;
   const int a_balance = a.balance_gap;
   const int b_balance = b.balance_gap;
   if (a.active_count == 2 && b.active_count == 2 && a_balance != b_balance) return a_balance < b_balance;
