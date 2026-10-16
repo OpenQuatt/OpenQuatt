@@ -180,6 +180,7 @@ NESTED_KEY_ORDER_RULES = {
     ("openquatt/topology/duo.yaml", "packages"): (
         "heatpump2",
         "hp2_odu_runtime_frequency_table",
+        "performance_model_observer",
     ),
     ("openquatt/packages/10_runtime.yaml", "packages"): (
         "oq_common",

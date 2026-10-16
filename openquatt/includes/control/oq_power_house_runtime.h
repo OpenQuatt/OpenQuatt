@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../performance/oq_performance_observer_context.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -376,6 +378,11 @@ class Runtime {
     };
     const auto dispatch =
         oq_power_house_dispatch::decide_dispatch(dispatch_input, dispatch_tuning, this->dispatch_state_);
+#if OQ_TOPOLOGY_DUO
+    if (oq_performance_observer::ph_hook != nullptr)
+      oq_performance_observer::ph_hook(dispatch_input, dispatch_tuning, this->dispatch_state_, dispatch,
+                                       {outside_c, supply_c});
+#endif
     id(oq_ph_request_hp1_level) = dispatch.hp1_level;
     id(oq_ph_request_hp2_level) = dispatch.hp2_level;
     id(oq_ph_request_owner_hp) = dispatch.owner_hp;

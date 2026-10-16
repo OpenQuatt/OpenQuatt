@@ -1,0 +1,258 @@
+# ==============================================================================
+# OpenQuatt - HIL TEST ONLY: water performance and Duo series predictions
+# ==============================================================================
+# Original Modbus receipts and existing maps; no control or persistent writes.
+packages:
+  hil_observations: !include v2_performance_duo.yaml
+
+esphome:
+  build_path: ../../../../.esphome/build/water_performance_hil
+
+switch:
+  - platform: template
+    id: oq_hil_water_shadow_enabled
+    name: "HIL Water Shadow Enable"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+
+  - platform: template
+    id: oq_hil_water_shadow_common_flow
+    name: "HIL Water Shadow Common Flow Confirmed"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+
+select:
+  - platform: template
+    id: oq_hil_water_shadow_order
+    name: "HIL Water Shadow Hydraulic Order"
+    optimistic: true
+    restore_value: false
+    initial_option: Unknown
+    options: [Unknown, HP1 first, HP2 first]
+
+  - platform: template
+    id: oq_hil_water_shadow_fault
+    name: "HIL Water Shadow Snapshot Fault"
+    optimistic: true
+    restore_value: false
+    initial_option: None
+    options: [None, Freeze receipts, Outlet invalid, Receipt skew, Transient, No convergence]
+
+number:
+  - platform: template
+    id: oq_hil_water_shadow_hz1
+    name: "HIL Water Shadow Candidate HP1"
+    unit_of_measurement: Hz
+    optimistic: true
+    restore_value: false
+    min_value: 0
+    max_value: 120
+    step: 0.1
+    initial_value: 30
+
+  - platform: template
+    id: oq_hil_water_shadow_hz2
+    name: "HIL Water Shadow Candidate HP2"
+    unit_of_measurement: Hz
+    optimistic: true
+    restore_value: false
+    min_value: 0
+    max_value: 120
+    step: 0.1
+    initial_value: 30
+
+script:
+  - id: oq_hil_water_shadow_update
+    mode: single
+    then:
+      - lambda: |-
+          auto &state = oq_water_shadow::probe_state();
+          ++state.sequence;
+          if (!id(oq_hil_water_shadow_enabled).state) {
+            state.result = {};
+            state.result.series.status = oq_water_shadow::Status::DISABLED;
+            state.captured_once = false;
+            state.calculation_us = 0;
+            return;
+          }
+          const auto begin_us = esp_timer_get_time();
+          const uint64_t now_ms = oq_sources::monotonic_ms();
+          const auto fault = id(oq_hil_water_shadow_fault).current_option();
+          if (fault != "Freeze receipts" || !state.captured_once) {
+            oq_water_shadow::Snapshot frame;
+            frame.now_ms = now_ms;
+            // This research fixture uses the physical HP1 outside and flow
+            // receipts explicitly. It does not re-stamp selected/held values.
+            frame.outside = oq_sources::hp1.outside;
+            frame.flow = oq_sources::hp1.flow;
+            frame.inlet = {oq_sources::hp1.water_in, oq_sources::hp2.water_in};
+            frame.outlet = {oq_sources::hp1.water_out, oq_sources::hp2.water_out};
+            frame.frequency = {oq_sources::hp1.compressor_frequency, oq_sources::hp2.compressor_frequency};
+            // Calibrate the raw value from the same receipt, never a delayed
+            // template.state associated with a newer raw receipt timestamp.
+            frame.inlet[0].value += id(hp1_water_in_temp_offset).state;
+            frame.outlet[0].value += id(hp1_water_out_temp_offset).state;
+            frame.inlet[1].value += id(hp2_water_in_temp_offset).state;
+            frame.outlet[1].value += id(hp2_water_out_temp_offset).state;
+            frame.online = {id(hp1_is_online), id(hp2_is_online)};
+            const std::array<const oq_sources::HeatPumpReceipts *, 2> receipts{
+                &oq_sources::hp1, &oq_sources::hp2};
+            for (unsigned hp = 0; hp < 2; ++hp) {
+              const auto &raw = *receipts[hp];
+              frame.heating[hp] = raw.working_mode.value == 2.0f;
+              frame.transient[hp] = !oq_water_shadow::stationary_context(
+                  raw.working_mode, raw.defrost, raw.status_2108, raw.status_2119, now_ms);
+              const uint64_t oldest_context = std::min({raw.working_mode.received_ms,
+                  raw.defrost.received_ms, raw.status_2108.received_ms, raw.status_2119.received_ms});
+              frame.context_valid_until_ms[hp] = oldest_context + oq_water_shadow::Limits{}.water_age_ms;
+            }
+            state.captured = frame;
+            state.captured_once = true;
+          }
+          auto frame = state.captured;
+          frame.now_ms = now_ms;
+          frame.order_confirmed = id(oq_hil_water_shadow_order).current_option() != "Unknown";
+          frame.hp1_upstream = id(oq_hil_water_shadow_order).current_option() == "HP1 first";
+          frame.common_flow_confirmed = id(oq_hil_water_shadow_common_flow).state;
+          oq_water_shadow::Limits limits;
+          if (fault == "Outlet invalid") frame.outlet[0].valid = false;
+          if (fault == "Receipt skew") {
+            const uint64_t old_ms = frame.outlet[0].received_ms;
+            frame.outlet[0].received_ms = old_ms > 20000 ? old_ms - 20000 : 0;
+          }
+          if (fault == "Transient") frame.transient[0] = true;
+          if (fault == "No convergence") limits.maximum_iterations = 1;
+          const auto frequency = oq_frequency_runtime::capture();
+          const std::array<oq_odu::Variant, 2> variants{
+              frequency.performance_variant(true), frequency.performance_variant(false)};
+          const std::array<float, 2> candidates{
+              id(oq_hil_water_shadow_hz1).state, id(oq_hil_water_shadow_hz2).state};
+          state.result = oq_water_shadow::probe(frame, candidates, id(oq_system_supply_temp).state, variants, limits);
+          state.calculation_us = static_cast<uint32_t>(esp_timer_get_time() - begin_us);
+          state.loop_stack_free_bytes = uxTaskGetStackHighWaterMark(nullptr);
+
+button:
+  - platform: template
+    name: "HIL Water Shadow Evaluate"
+    on_press:
+      - script.execute: oq_hil_water_shadow_update
+
+  - platform: template
+    name: "HIL Water Shadow Benchmark"
+    on_press:
+      - lambda: |-
+          // Start an immutable grid job; subsequent loop steps evaluate one pair.
+          auto &state = oq_water_shadow::probe_state();
+          auto &grid = oq_water_shadow::grid_probe_state();
+          grid = {};
+          state.grid_pairs = 0;
+          state.grid_valid_pairs = 0;
+          state.grid_us = 0;
+          if (!id(oq_hil_water_shadow_enabled).state || !state.captured_once ||
+              id(oq_hil_water_shadow_fault).current_option() != "None") return;
+          const auto frequency = oq_frequency_runtime::capture();
+          grid.variants = {frequency.performance_variant(true), frequency.performance_variant(false)};
+          if (grid.variants[0] == oq_odu::Variant::UNKNOWN || grid.variants[1] == oq_odu::Variant::UNKNOWN) return;
+          auto frame = state.captured;
+          frame.now_ms = oq_sources::monotonic_ms();
+          frame.order_confirmed = id(oq_hil_water_shadow_order).current_option() != "Unknown";
+          frame.hp1_upstream = id(oq_hil_water_shadow_order).current_option() == "HP1 first";
+          frame.common_flow_confirmed = id(oq_hil_water_shadow_common_flow).state;
+          oq_water_shadow::GridAxes axes;
+          for (unsigned hp = 0; hp < 2; ++hp) {
+            axes.count[hp] = 1;
+            for (int level = 1; level <= frequency.automatic_level_limit(hp == 0, 2); ++level) {
+              const int hz = frequency.automatic_frequency_hz(hp == 0, 2, level);
+              if (frequency.frequency_allowed(hp == 0, 2, level) && hz > 0 && hz <= 90)
+                axes.hz[hp][axes.count[hp]++] = static_cast<uint8_t>(hz);
+            }
+          }
+          grid.frame_sequence = state.sequence;
+          grid.hp1_upstream = frame.hp1_upstream;
+          grid.policy_fingerprint = oq_water_shadow::grid_policy_fingerprint(frequency);
+          grid.started_us = esp_timer_get_time();
+          grid.job.begin(frame, axes);
+          state.loop_stack_free_bytes = uxTaskGetStackHighWaterMark(nullptr);
+
+interval:
+  - interval: 25ms
+    then:
+      - lambda: |-
+          // Bound main-loop work to one pair and use the job's frozen variants.
+          auto &grid = oq_water_shadow::grid_probe_state();
+          if (!grid.job.running) return;
+          const auto begin_us = esp_timer_get_time();
+          auto &state = oq_water_shadow::probe_state();
+          const auto order = id(oq_hil_water_shadow_order).current_option();
+          const auto frequency = oq_frequency_runtime::capture();
+          if (!id(oq_hil_water_shadow_enabled).state ||
+              id(oq_hil_water_shadow_fault).current_option() != "None" || order == "Unknown" ||
+              !id(oq_hil_water_shadow_common_flow).state ||
+              (order == "HP1 first") != grid.hp1_upstream ||
+              oq_water_shadow::grid_policy_fingerprint(frequency) != grid.policy_fingerprint) {
+            grid.job.cancel();
+            return;
+          }
+          const auto model = [&](unsigned hp, float hz, float outside, float outlet) {
+            const auto point = oq_perf::predict_heating_hz(grid.variants[hp], hz, outside, outlet);
+            return oq_water_shadow::ModelPoint{point.pth_w, point.pel_w, point.available,
+                                               point.low_supply_boundary_estimate};
+          };
+          grid.job.step(oq_sources::monotonic_ms(), model);
+          grid.elapsed_us = static_cast<uint32_t>(esp_timer_get_time() - grid.started_us);
+          if (grid.job.complete) {
+            state.grid_pairs = grid.job.pairs;
+            state.grid_valid_pairs = grid.job.valid_pairs;
+          }
+          state.loop_stack_free_bytes = uxTaskGetStackHighWaterMark(nullptr);
+          const auto duration_us = static_cast<uint32_t>(esp_timer_get_time() - begin_us);
+          grid.work_us += duration_us;
+          grid.maximum_step_us = std::max(grid.maximum_step_us, duration_us);
+          if (grid.job.complete) state.grid_us = grid.work_us;
+
+  - interval: 5s
+    then:
+      - script.execute: oq_hil_water_shadow_update
+
+text_sensor:
+  - id: !extend oq_hil_test_profile
+    lambda: |-
+      return {"water-performance-observer-v3"};
+
+  - platform: template
+    name: "HIL Water Shadow Report"
+    update_interval: 2s
+    lambda: |-
+      // Publish bounded diagnostics without writing the control state.
+      auto &state = oq_water_shadow::probe_state();
+      const auto &grid = oq_water_shadow::grid_probe_state();
+      const auto &r = state.result;
+      char buffer[768];
+      const int length = snprintf(buffer, sizeof(buffer),
+          "seq=%u own1=%s own2=%s series=%s p1=%.2f p2=%.2f b1=%.2f b2=%.2f "
+          "q1=%.2f q2=%.2f out1=%.3f out2=%.3f sum=%.2f pel=%.2f err1=%.3f err2=%.3f "
+          "move=%u starts=%u stops=%u swap=%u topology=%u delta=%.2f us=%u stack=%u "
+          "grid_us=%u pairs=%u valid_pairs=%u tin1=%.3f tin2=%.3f tout1=%.3f tout2=%.3f "
+          "hz1=%.1f hz2=%.1f flow=%.1f outside=%.2f "
+          "grid_done=%u grid_running=%u grid_status=%s grid_max_us=%u grid_elapsed_us=%u grid_solves=%u grid_seq=%u",
+          static_cast<unsigned>(state.sequence), oq_water_shadow::status_name(r.observed[0].status),
+          oq_water_shadow::status_name(r.observed[1].status), oq_water_shadow::status_name(r.series.status),
+          r.observed[0].thermal_w, r.observed[1].thermal_w, r.shared_thermal_w[0], r.shared_thermal_w[1],
+          r.series.unit[0].thermal_w, r.series.unit[1].thermal_w,
+          r.series.unit[0].outlet_c, r.series.unit[1].outlet_c, r.series.thermal_w, r.series.electrical_w,
+          r.series.unit[0].balance_error_w, r.series.unit[1].balance_error_w,
+          static_cast<unsigned>(r.transition.valid), r.transition.starts, r.transition.stops,
+          static_cast<unsigned>(r.transition.owner_swap), static_cast<unsigned>(r.transition.topology_change),
+          r.transition.modulation_hz, static_cast<unsigned>(state.calculation_us),
+          static_cast<unsigned>(state.loop_stack_free_bytes), static_cast<unsigned>(state.grid_us),
+          state.grid_pairs, state.grid_valid_pairs,
+          state.captured.inlet[0].value, state.captured.inlet[1].value,
+          state.captured.outlet[0].value, state.captured.outlet[1].value,
+          state.captured.frequency[0].value, state.captured.frequency[1].value,
+          state.captured.flow.value, state.captured.outside.value,
+          static_cast<unsigned>(grid.job.complete), static_cast<unsigned>(grid.job.running),
+          oq_water_shadow::status_name(grid.job.status), static_cast<unsigned>(grid.maximum_step_us),
+          static_cast<unsigned>(grid.elapsed_us), grid.job.unit_solves, static_cast<unsigned>(grid.frame_sequence));
+      state.loop_stack_free_bytes = uxTaskGetStackHighWaterMark(nullptr);
+      if (length < 0 || static_cast<size_t>(length) >= sizeof(buffer)) return {"report_overflow"};
+      return std::string(buffer, static_cast<size_t>(length));
