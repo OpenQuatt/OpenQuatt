@@ -12,8 +12,8 @@ class HeatingCurveDemandContractTest(unittest.TestCase):
         for old_inline in ("recovery_reenter_min_f", "above_stop_band", "restart_bypass_delta_c", "maintain_cap = demand_max"):
             self.assertNotIn(old_inline, YAML)
         self.assertLess(RUNTIME.index("id(oq_curve_oil_return_hold_until_ms) = oil_return.hold_until_ms"), RUNTIME.index("if (demand.valid)"))
-        paths = ("openquatt/oq_heating_curve_strategy.yaml", "openquatt/includes/control/oq_heating_curve_runtime.h", "openquatt/includes/control/oq_heating_curve_logic.h", "tests/host/heating_curve_restart_logic_test.cpp", "scripts/tests/test_electrical_input_limit_contract.py", "scripts/tests/test_heating_curve_demand_contract.py")
-        # Include physical-frequency candidates and bounded historical stop diagnostics.
-        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 2020)
+        paths = ("openquatt/oq_heating_curve_strategy.yaml", "openquatt/includes/control/oq_heating_curve_runtime.h", "openquatt/includes/control/oq_heating_curve_logic.h", "openquatt/includes/control/oq_compressor_movement_logic.h", "tests/host/compressor_movement_dispatch_test.cpp", "tests/host/heating_curve_restart_logic_test.cpp", "scripts/tests/test_electrical_input_limit_contract.py", "scripts/tests/test_heating_curve_demand_contract.py")
+        # Include shared Duo Hz movement and its regression; retain the existing margin.
+        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 2180)
 if __name__ == "__main__":
     unittest.main()
