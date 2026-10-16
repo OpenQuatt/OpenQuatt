@@ -1,7 +1,5 @@
 #pragma once
 
-#include "../performance/oq_performance_observer_context.h"
-
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -334,58 +332,174 @@ class Runtime {
     };
     build_power(true, hp1_power, hp1_model_available);
     build_power(false, hp2_power, hp2_model_available);
-    oq_curve_duo::Input comparison;
-    comparison.now_ms = now_ms;
-    comparison.lead_last_start_ms = lead_is_hp1 ? id(hp1_last_start_ms) : id(hp2_last_start_ms);
-    comparison.loop_ms = config.loop_ms;
-    comparison.capped = capped;
-    comparison.previous_capped = previous_capped;
-    comparison.previous_hp1 = id(hp1_last_applied_level);
-    comparison.previous_hp2 = id(hp2_last_applied_level);
-    comparison.single_owner = id(oq_curve_single_owner_hp);
-    comparison.demand_u = demand_u;
-    comparison.dispatch_u = dispatch_u;
-    comparison.temperature_error_c = temperature_error_c;
-    comparison.demand_active = demand_active;
-    comparison.heat_phase = heat_phase;
-    comparison.lead_hp1 = lead_is_hp1;
-    comparison.hp1 = hp1_candidate;
-    comparison.hp2 = hp2_candidate;
-    comparison.hp1_model_available = hp1_model_available;
-    comparison.hp2_model_available = hp2_model_available;
-    comparison.hp1_valve_defrost = hp1_valve_defrost;
-    comparison.hp2_valve_defrost = hp2_valve_defrost;
-    comparison.dual_on_hold_min = std::max(1, static_cast<int>(std::lround(id(oq_dual_hp_enable_hold_min).state)));
-    comparison.dual_off_hold_min = std::max(1, static_cast<int>(std::lround(id(oq_dual_hp_disable_hold_min).state)));
-    comparison.tuning = tuning;
-    for (int level = 0; level <= level_cap; ++level) {
-      comparison.hz[0][level] =
-          std::max(0, oq_odu::frequency_for_physical_level(frequency.snapshot(true).heating, level));
-      comparison.hz[1][level] =
-          std::max(0, oq_odu::frequency_for_physical_level(frequency.snapshot(false).heating, level));
+    const auto level_power_w = [&](bool hp1, int level) {
+      return level >= 0 && level <= level_cap ? (hp1 ? hp1_power : hp2_power)[level] : NAN;
+    };
+    const auto level_hz = [&](bool hp1, int level) {
+      return oq_odu::frequency_for_physical_level(frequency.snapshot(hp1).heating, level);
+    };
+    const auto maximum_level = [&](bool hp1) {
+      if ((hp1 && !hp1_available) || (!hp1 && !hp2_available)) return 0;
+      for (int level = frequency.automatic_level_limit(hp1, 2); level >= 1; --level) {
+        const float power_w = level_power_w(hp1, level);
+        if (std::isfinite(power_w) && power_w > 0.0f) return level;
+      }
+      return 0;
+    };
+    const int previous_hp1 = id(hp1_last_applied_level);
+    const int previous_hp2 = id(hp2_last_applied_level);
+    const auto candidate = [&](int candidate_hp1, int candidate_hp2, float target_power_w) {
+      if ((candidate_hp1 > 0 && !hp1_available) || (candidate_hp2 > 0 && !hp2_available))
+        return oq_curve::invalid_dispatch_candidate();
+      const float hp1_power_w = level_power_w(true, candidate_hp1);
+      const float hp2_power_w = level_power_w(false, candidate_hp2);
+      if (!std::isfinite(hp1_power_w) || !std::isfinite(hp2_power_w)) return oq_curve::invalid_dispatch_candidate();
+      const float power_w = hp1_power_w + hp2_power_w;
+      return oq_curve::DispatchCandidate{
+          true,
+          candidate_hp1,
+          candidate_hp2,
+          power_w,
+          std::fabs(power_w - target_power_w),
+          (candidate_hp1 > 0 ? 1 : 0) + (candidate_hp2 > 0 ? 1 : 0),
+          std::abs(level_hz(true, candidate_hp1) - level_hz(false, candidate_hp2)),
+          oq_compressor_movement::modulation_hz(
+              {oq_compressor_movement::frequency(previous_hp1, level_hz(true, previous_hp1)),
+               oq_compressor_movement::frequency(previous_hp2, level_hz(false, previous_hp2))},
+              {oq_compressor_movement::frequency(candidate_hp1, level_hz(true, candidate_hp1)),
+               oq_compressor_movement::frequency(candidate_hp2, level_hz(false, candidate_hp2))})};
+    };
+
+    int single_owner = oq_curve::pick_single_owner(demand_active, id(oq_curve_single_owner_hp), previous_hp1 > 0,
+                                                   previous_hp2 > 0, lead_is_hp1);
+    if (single_owner == 1 && !hp1_available)
+      single_owner = hp2_available ? 2 : 0;
+    else if (single_owner == 2 && !hp2_available)
+      single_owner = hp1_available ? 1 : 0;
+    const int hp1_max = maximum_level(true);
+    const int hp2_max = maximum_level(false);
+    const int owner_max = single_owner == 2 ? hp2_max : hp1_max;
+    const float owner_capacity_w = level_power_w(single_owner != 2, owner_max);
+    float duo_capacity_w = std::isfinite(owner_capacity_w) ? owner_capacity_w : 0.0f;
+    float duo_floor_w = NAN;
+    for (int first = 1; first <= hp1_max; ++first)
+      for (int second = 1; second <= hp2_max; ++second) {
+        const auto item = candidate(first, second, 0.0f);
+        if (!item.valid) continue;
+        duo_capacity_w = std::max(duo_capacity_w, item.power_w);
+        duo_floor_w = std::fmin(duo_floor_w, item.power_w);  // fmin ignores the initial NAN
+      }
+
+    const bool demand_rundown = capped < previous_capped;
+    const float target_power_w =
+        demand_active ? oq_curve::phase_target_power_w(heat_phase, demand_u, owner_capacity_w, duo_capacity_w) : 0.0f;
+    oq_curve::DispatchCandidate best_single;
+    if (demand_active)
+      for (int level = 1; level <= owner_max; ++level) {
+        const auto item = candidate(single_owner == 1 ? level : 0, single_owner == 2 ? level : 0, target_power_w);
+        if (oq_curve::better_dispatch_candidate(item, best_single, previous_hp1, previous_hp2, true))
+          best_single = item;
+      }
+    oq_curve::DispatchCandidate best_duo;
+    if (demand_active)
+      for (int first = 1; first <= hp1_max; ++first)
+        for (int second = 1; second <= hp2_max; ++second) {
+          const auto item = candidate(first, second, target_power_w);
+          if (oq_curve::better_dispatch_candidate(item, best_duo, previous_hp1, previous_hp2, true)) best_duo = item;
+        }
+
+    const int dual_on_hold_min = std::max(1, static_cast<int>(std::lround(id(oq_dual_hp_enable_hold_min).state)));
+    const int dual_off_hold_min = std::max(1, static_cast<int>(std::lround(id(oq_dual_hp_disable_hold_min).state)));
+    const float dt_min = static_cast<float>(config.loop_ms) / 60000.0f;
+    const uint32_t lead_last_start_ms = lead_is_hp1 ? id(hp1_last_start_ms) : id(hp2_last_start_ms);
+    const bool startup_grace = oq_curve::elapsed_window_active(
+        now_ms, lead_last_start_ms, static_cast<uint32_t>(std::max(0, tuning.dual_startup_grace_s)) * 1000UL);
+    const float duo_enable_margin_w = heat_phase ? 700.0f : 450.0f;
+    constexpr float duo_disable_margin_w = 250.0f;
+    const float duo_enable_min_u = heat_phase ? 0.90f : 0.80f;
+    const float duo_disable_max_u = heat_phase ? 0.70f : 0.55f;
+    const bool single_saturated =
+        best_single.valid && owner_capacity_w > 0.0f && best_single.power_w >= 0.90f * owner_capacity_w;
+    const bool duo_better =
+        best_duo.valid && best_single.valid && best_duo.error_w + duo_enable_margin_w < best_single.error_w;
+    const bool single_sufficient =
+        best_single.valid && (!best_duo.valid || best_single.error_w <= best_duo.error_w + duo_disable_margin_w);
+    const bool owner_hp1 = single_owner != 2;
+    const int owner_level = owner_hp1 ? previous_hp1 : previous_hp2;
+    const bool floor_reached =
+        oq_curve::duo_floor_reached({owner_level, owner_hp1 ? best_single.hp1_level : best_single.hp2_level,
+                                     (owner_hp1 ? hp1_candidate : hp2_candidate).available_for_start &&
+                                         !(owner_hp1 ? hp1_valve_defrost : hp2_valve_defrost),
+                                     level_power_w(owner_hp1, owner_level), duo_floor_w});
+    const bool dual_defrost = demand_active && hp1_valve_defrost && hp2_valve_defrost;
+    const bool emergency_dual = demand_active && best_duo.valid && heat_phase && !startup_grace && !demand_rundown &&
+                                single_saturated && duo_better && std::isfinite(temperature_error_c) &&
+                                temperature_error_c >= tuning.dual_emergency_temp_err_c && dispatch_u >= 0.95f;
+    id(oq_dual_hp_emergency_hold_elapsed_accum_min) =
+        emergency_dual ? id(oq_dual_hp_emergency_hold_elapsed_accum_min) + dt_min : 0.0f;
+    const bool forced_capacity = id(oq_dual_hp_emergency_hold_elapsed_accum_min) >=
+                                 static_cast<float>(std::max(1, tuning.dual_emergency_hold_min));
+    const bool dual_on = demand_active && best_duo.valid && !startup_grace && !demand_rundown &&
+                         (forced_capacity || dual_defrost ||
+                          (duo_better && floor_reached && dispatch_u >= duo_enable_min_u &&
+                           (heat_phase ? single_saturated : !single_sufficient) &&
+                           (!std::isfinite(temperature_error_c) || temperature_error_c >= -0.05f)));
+    const bool dual_off =
+        !demand_active || !best_duo.valid || (!id(oq_dual_hp_enabled) && !dual_on) ||
+        (single_sufficient && dispatch_u <= duo_disable_max_u &&
+         (!std::isfinite(temperature_error_c) || temperature_error_c <= tuning.dual_disable_temp_err_max_c));
+    if (!demand_active) {
+      oq_request::reset_dual_hold_state(id(oq_dual_hp_enabled), id(oq_dual_hp_enable_hold_elapsed_accum_min),
+                                        id(oq_dual_hp_disable_hold_elapsed_accum_min),
+                                        id(oq_dual_hp_emergency_hold_elapsed_accum_min));
+    } else {
+      id(oq_dual_hp_enable_hold_elapsed_accum_min) =
+          dual_on ? id(oq_dual_hp_enable_hold_elapsed_accum_min) + dt_min : 0.0f;
+      id(oq_dual_hp_disable_hold_elapsed_accum_min) =
+          dual_off ? id(oq_dual_hp_disable_hold_elapsed_accum_min) + dt_min : 0.0f;
+      if (!id(oq_dual_hp_enabled) && id(oq_dual_hp_enable_hold_elapsed_accum_min) >= dual_on_hold_min) {
+        id(oq_dual_hp_enabled) = true;
+        id(oq_dual_hp_disable_hold_elapsed_accum_min) = 0.0f;
+      } else if (id(oq_dual_hp_enabled) && id(oq_dual_hp_disable_hold_elapsed_accum_min) >= dual_off_hold_min) {
+        id(oq_dual_hp_enabled) = false;
+        id(oq_dual_hp_enable_hold_elapsed_accum_min) = 0.0f;
+      }
     }
-    const oq_curve_duo::State previous_state{id(oq_dual_hp_enabled), id(oq_dual_hp_enable_hold_elapsed_accum_min),
-                                             id(oq_dual_hp_disable_hold_elapsed_accum_min),
-                                             id(oq_dual_hp_emergency_hold_elapsed_accum_min)};
-    const auto decision = oq_curve_duo::decide(comparison, previous_state, [&](int first, int second) {
-      const float value = hp1_power[first] + hp2_power[second];
-      return oq_power_house_dispatch::PairPower{value, NAN, std::isfinite(value)};
-    });
-    id(oq_dual_hp_enabled) = decision.next.dual_enabled;
-    id(oq_dual_hp_enable_hold_elapsed_accum_min) = decision.next.on_min;
-    id(oq_dual_hp_disable_hold_elapsed_accum_min) = decision.next.off_min;
-    id(oq_dual_hp_emergency_hold_elapsed_accum_min) = decision.next.emergency_min;
-    id(oq_curve_single_owner_hp) = decision.single_owner;
-    id(oq_curve_capacity_mode_code) = decision.capacity_mode;
-    hp1_level = decision.hp1_level;
-    hp2_level = decision.hp2_level;
-    owner = decision.owner;
-    if (decision.single_branch)
-      this->dispatch_stop_reason_ = esphome::openquatt_decision_log::heating_stop::curve_single_reason(
-          decision.regular_single_stop, decision.duo_valid);
-    if (oq_performance_observer::curve_hook != nullptr)
-      oq_performance_observer::curve_hook(comparison, previous_state, {hp1_power, hp2_power}, decision,
-                                          {id(outside_temp_selected).state, target_c});
+    const bool dual_enabled =
+        demand_active && best_duo.valid && (forced_capacity || dual_defrost || id(oq_dual_hp_enabled));
+    if (!demand_active) {
+      id(oq_curve_capacity_mode_code) = 0;
+    } else if (dual_enabled) {
+      id(oq_curve_single_owner_hp) = 0;
+      hp1_level = best_duo.hp1_level;
+      hp2_level = best_duo.hp2_level;
+      id(oq_curve_capacity_mode_code) = 2;
+    } else {
+      id(oq_curve_single_owner_hp) = single_owner;
+      owner = single_owner;
+      hp1_level = best_single.valid ? best_single.hp1_level : 0;
+      hp2_level = best_single.valid ? best_single.hp2_level : 0;
+      id(oq_curve_capacity_mode_code) = best_single.valid && (hp1_level > 0 || hp2_level > 0) ? 1 : 0;
+      const bool regular_single_stop =
+          previous_hp1 > 0 && previous_hp2 > 0 && single_sufficient && dispatch_u <= duo_disable_max_u &&
+          (!std::isfinite(temperature_error_c) || temperature_error_c <= tuning.dual_disable_temp_err_max_c) &&
+          id(oq_dual_hp_disable_hold_elapsed_accum_min) >= dual_off_hold_min;
+      this->dispatch_stop_reason_ =
+          esphome::openquatt_decision_log::heating_stop::curve_single_reason(regular_single_stop, best_duo.valid);
+    }
+    const bool active_model_missing = (previous_hp1 > 0 && !hp1_candidate.must_stop && !hp1_model_available) ||
+                                      (previous_hp2 > 0 && !hp2_candidate.must_stop && !hp2_model_available);
+    const bool idle_model_missing =
+        previous_hp1 <= 0 && previous_hp2 <= 0 && !hp1_model_available && !hp2_model_available;
+    if (demand_active && (active_model_missing || (!best_single.valid && !best_duo.valid && idle_model_missing))) {
+      const auto model_hold =
+          oq_hp_candidate::preserve_active_topology_without_model(true, hp1_candidate, hp2_candidate);
+      hp1_level = model_hold.hp1_level;
+      hp2_level = model_hold.hp2_level;
+      owner = model_hold.owner_hp;
+      id(oq_curve_capacity_mode_code) = model_hold.capacity_mode;
+      id(oq_curve_single_owner_hp) = owner;
+    }
 #else
     oq_request::reset_dual_runtime_state(id(oq_dual_hp_enabled), id(oq_dual_hp_enable_hold_elapsed_accum_min),
                                          id(oq_dual_hp_disable_hold_elapsed_accum_min),
@@ -426,7 +540,6 @@ class Runtime {
     id(oq_curve_capacity_mode_code) = hp1_level > 0 ? 1 : 0;
 #endif
 
-#if !OQ_TOPOLOGY_DUO
     const auto suspect_hold = oq_hp_candidate::preserve_active_topology_during_suspect(
         {hp1_level, hp2_level, hp1_candidate, hp2_candidate, demand_active});
     if (suspect_hold.active) {
@@ -436,7 +549,6 @@ class Runtime {
       id(oq_curve_capacity_mode_code) = suspect_hold.capacity_mode;
       id(oq_curve_single_owner_hp) = owner;
     }
-#endif
     id(oq_curve_request_total_level) = hp1_level + hp2_level;
     id(oq_curve_request_owner_hp) = owner;
     id(oq_curve_dispatch_hp1_level) = hp1_level;

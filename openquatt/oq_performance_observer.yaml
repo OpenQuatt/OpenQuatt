@@ -1,8 +1,7 @@
 # ==============================================================================
-# OpenQuatt - Observer voor eigen ODU-temperaturen en vaste Duo-serieschakeling
+# OpenQuatt - Duo performance observer
 # ==============================================================================
-# Observation only: never used by actuator, safety, demand or source selection.
-# Explicitly enabled per boot. No NVS preference or telemetry upload is added.
+# Observation only; never used by actuator or demand selection.
 switch:
   - platform: template
     id: oq_performance_observer_enabled
@@ -10,31 +9,12 @@ switch:
     entity_category: diagnostic
     optimistic: true
     restore_mode: ALWAYS_OFF
-    turn_on_action:
-      - lambda: |-
-          oq_performance_observer::runtime().request(true);
-    turn_off_action:
-      - lambda: |-
-          oq_performance_observer::runtime().request(false);
 
 text_sensor:
   - platform: template
     id: oq_performance_observer_report
     name: "Performance Model Observer Report"
     internal: true
-    update_interval: 5s
+    update_interval: 10s
     lambda: |-
-      return oq_performance_observer::runtime().report();
-
-  - platform: template
-    name: "Performance Model Observer Status"
-    entity_category: diagnostic
-    update_interval: 5s
-    lambda: |-
-      return oq_performance_observer::runtime().summary();
-
-interval:
-  - interval: 25ms
-    then:
-      - lambda: |-
-          oq_performance_observer::runtime().tick((uint32_t) ${oq_hp_min_off_s} * 1000UL);
+      return oq_performance_observer::report(id(oq_performance_observer_enabled).state);

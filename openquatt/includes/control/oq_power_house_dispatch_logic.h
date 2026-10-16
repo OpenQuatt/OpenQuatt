@@ -173,12 +173,8 @@ inline bool electrical_limits_valid(const DispatchTuning& tuning) {
   return std::isfinite(tuning.soft_limit_w) && std::isfinite(tuning.peak_limit_w) && tuning.soft_limit_w >= 0.0f &&
          tuning.peak_limit_w >= tuning.soft_limit_w;
 }
-struct PairPower {
-  float thermal_w = NAN, electrical_w = NAN;
-  bool valid = false;
-};
 inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& tuning, int hp1_level, int hp2_level,
-                                float target_w, const PairPower* pair = nullptr) {
+                                float target_w) {
   Candidate result;
   result.hp1_level = hp1_level;
   result.hp2_level = in.duo ? hp2_level : 0;
@@ -192,7 +188,6 @@ inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& t
     if (level <= 0) return true;
     if (!hp_may_serve(hp)) return false;
     const auto& estimate = hp.levels[level];
-    if (pair != nullptr) return estimate.allowed;
     if (!estimate.allowed || !estimate.thermal_valid || !estimate.electrical_valid ||
         !std::isfinite(estimate.thermal_w) || !std::isfinite(estimate.electrical_w) || estimate.thermal_w < 0.0f ||
         estimate.electrical_w < 0.0f)
@@ -201,11 +196,6 @@ inline Candidate make_candidate(const DispatchInput& in, const DispatchTuning& t
     result.electrical_w += estimate.electrical_w;
     return true;
   };
-  if (pair != nullptr) {
-    if (!pair->valid || pair->thermal_w < 0.0f || pair->electrical_w < 0.0f) return result;
-    result.thermal_w = pair->thermal_w;
-    result.electrical_w = pair->electrical_w;
-  }
   if (!add_hp(in.hp1, result.hp1_level) || !add_hp(in.hp2, result.hp2_level) || !std::isfinite(result.thermal_w) ||
       !std::isfinite(result.electrical_w) || result.electrical_w > tuning.peak_limit_w)
     return result;
@@ -241,43 +231,40 @@ inline bool better_candidate(const Candidate& a, const Candidate& b) {
     return a.single_on_lead;
   return a.hp1_level != b.hp1_level ? a.hp1_level < b.hp1_level : a.hp2_level < b.hp2_level;
 }
-template <typename Factory>
-inline Candidate pick_topology_using(const DispatchInput& in, float target_w, int active_count, float tie_band_w,
-                                     Factory make) {
+inline Candidate pick_topology(const DispatchInput& in, const DispatchTuning& tuning, float target_w, int active_count,
+                               float tie_band_w) {
   Candidate chosen;
   float best_error_w = INFINITY;
   for (int hp1 = 0; hp1 <= kMaxLevel; ++hp1)
     for (int hp2 = 0; hp2 <= (in.duo ? kMaxLevel : 0); ++hp2) {
-      const auto candidate = make(hp1, hp2, target_w);
+      const auto candidate = make_candidate(in, tuning, hp1, hp2, target_w);
       if (candidate.valid && candidate.active_count == active_count)
         best_error_w = std::min(best_error_w, candidate.error_w);
     }
   for (int hp1 = 0; hp1 <= kMaxLevel; ++hp1)
     for (int hp2 = 0; hp2 <= (in.duo ? kMaxLevel : 0); ++hp2) {
-      const auto candidate = make(hp1, hp2, target_w);
+      const auto candidate = make_candidate(in, tuning, hp1, hp2, target_w);
       if (candidate.valid && candidate.active_count == active_count && candidate.error_w <= best_error_w + tie_band_w &&
           (!chosen.valid || better_candidate(candidate, chosen)))
         chosen = candidate;
     }
   return chosen;
 }
-template <typename Factory>
-inline float dispatch_capacity_using(const DispatchInput& in, const DispatchTuning& tuning, Factory make) {
+inline float dispatch_capacity(const DispatchInput& in, const DispatchTuning& tuning) {
   if (!in.performance_valid || !electrical_limits_valid(tuning)) return 0.0f;
   float capacity_w = 0.0f;
   for (int hp1 = 0; hp1 <= kMaxLevel; ++hp1)
     for (int hp2 = 0; hp2 <= (in.duo ? kMaxLevel : 0); ++hp2) {
-      const auto candidate = make(hp1, hp2, 0.0f);
+      const auto candidate = make_candidate(in, tuning, hp1, hp2, 0.0f);
       if (candidate.valid && candidate.thermal_w > capacity_w) capacity_w = candidate.thermal_w;
     }
   return capacity_w;
 }
-template <typename Factory>
-inline DispatchDecision decide_dispatch_using(const DispatchInput& in, const DispatchTuning& tuning,
-                                              const DispatchState& state, Factory make) {
+inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchTuning& tuning,
+                                        const DispatchState& state) {
   DispatchDecision out;
   const bool request_valid = std::isfinite(in.requested_w) && in.requested_w >= 0.0f;
-  out.capacity_w = in.performance_valid ? dispatch_capacity_using(in, tuning, make) : NAN;
+  out.capacity_w = in.performance_valid ? dispatch_capacity(in, tuning) : NAN;
   out.deficit_w = request_valid && in.performance_valid ? std::max(0.0f, in.requested_w - out.capacity_w) : NAN;
   out.saturated = in.demand_level > 0 && std::isfinite(out.deficit_w) && out.deficit_w > 0.0f;
   if (in.demand_level <= 0) {
@@ -325,7 +312,7 @@ inline DispatchDecision decide_dispatch_using(const DispatchInput& in, const Dis
     float best_cost = INFINITY;
     bool active_candidate = false;
     for (int level = 0; level <= kMaxLevel; ++level) {
-      const auto candidate = make(level, 0, target_w);
+      const auto candidate = make_candidate(in, tuning, level, 0, target_w);
       if (!candidate.valid) continue;
       active_candidate |= level > 0;
       const float penalty = std::isfinite(tuning.over_soft_penalty_per_w) && tuning.over_soft_penalty_per_w >= 0.0f
@@ -351,8 +338,8 @@ inline DispatchDecision decide_dispatch_using(const DispatchInput& in, const Dis
         std::isfinite(tuning.topology_heat_advantage_w) && tuning.topology_heat_advantage_w >= 0.0f
             ? tuning.topology_heat_advantage_w
             : 450.0f;
-    const Candidate single = pick_topology_using(in, target_w, 1, tie_band_w, make);
-    const Candidate duo = pick_topology_using(in, target_w, 2, tie_band_w, make);
+    const Candidate single = pick_topology(in, tuning, target_w, 1, tie_band_w);
+    const Candidate duo = pick_topology(in, tuning, target_w, 2, tie_band_w);
     Candidate best;
     const bool have_best = single.valid || duo.valid;
     if (single.valid && duo.valid) {
@@ -363,7 +350,7 @@ inline DispatchDecision decide_dispatch_using(const DispatchInput& in, const Dis
       best = single;
     else if (duo.valid)
       best = duo;
-    const Candidate current = make(applied_level(in.hp1), applied_level(in.hp2), target_w);
+    const Candidate current = make_candidate(in, tuning, applied_level(in.hp1), applied_level(in.hp2), target_w);
     const bool valve_defrost = in.hp1.valve_defrost || in.hp2.valve_defrost;
     if (valve_defrost && topology(current.hp1_level, current.hp2_level) == 1 && single.valid && have_best &&
         best.active_count == 2)
@@ -410,7 +397,7 @@ inline DispatchDecision decide_dispatch_using(const DispatchInput& in, const Dis
       for (int step = boost_steps; step > 0; --step) {
         const int hp1 = in.hp2.valve_defrost ? std::min(kMaxLevel, chosen.hp1_level + step) : chosen.hp1_level;
         const int hp2 = in.hp1.valve_defrost ? std::min(kMaxLevel, chosen.hp2_level + step) : chosen.hp2_level;
-        const auto boosted = make(hp1, hp2, target_w);
+        const auto boosted = make_candidate(in, tuning, hp1, hp2, target_w);
         if (boosted.valid && (hp1 > chosen.hp1_level || hp2 > chosen.hp2_level)) {
           chosen = boosted;
           reason = Reason::DEFROST_BOOST;
@@ -424,7 +411,7 @@ inline DispatchDecision decide_dispatch_using(const DispatchInput& in, const Dis
       // entries rather than copying the other HP's numeric stand.
       Candidate lead;
       for (int level = 1; level <= kMaxLevel; ++level) {
-        const auto candidate = make(in.lead_hp1 ? level : 0, in.lead_hp1 ? 0 : level, target_w);
+        const auto candidate = make_candidate(in, tuning, in.lead_hp1 ? level : 0, in.lead_hp1 ? 0 : level, target_w);
         if (candidate.valid && candidate.error_w <= chosen.error_w + keep_margin_w &&
             candidate.electrical_w <= chosen.electrical_w + power_margin_w &&
             candidate.over_soft_w <= chosen.over_soft_w + 1.0f &&
@@ -443,31 +430,13 @@ inline DispatchDecision decide_dispatch_using(const DispatchInput& in, const Dis
           if (hp.candidate.must_stop || previous <= 0) return 0;
           return proposed > 0 ? proposed : previous;
         };
-        const auto retained =
-            make(retained_level(in.hp1, chosen.hp1_level), retained_level(in.hp2, chosen.hp2_level), target_w);
+        const auto retained = make_candidate(in, tuning, retained_level(in.hp1, chosen.hp1_level),
+                                             retained_level(in.hp2, chosen.hp2_level), target_w);
         if (retained.valid) chosen = retained, reason = Reason::KEEP_CURRENT;
       }
     }
     finish(chosen, reason);
   }
   return out;
-}
-
-inline Candidate pick_topology(const DispatchInput& in, const DispatchTuning& tuning, float target_w, int active_count,
-                               float tie_band_w) {
-  return pick_topology_using(in, target_w, active_count, tie_band_w, [&](int first, int second, float target) {
-    return make_candidate(in, tuning, first, second, target);
-  });
-}
-inline float dispatch_capacity(const DispatchInput& in, const DispatchTuning& tuning) {
-  return dispatch_capacity_using(in, tuning, [&](int first, int second, float target) {
-    return make_candidate(in, tuning, first, second, target);
-  });
-}
-inline DispatchDecision decide_dispatch(const DispatchInput& in, const DispatchTuning& tuning,
-                                        const DispatchState& state) {
-  return decide_dispatch_using(in, tuning, state, [&](int first, int second, float target) {
-    return make_candidate(in, tuning, first, second, target);
-  });
 }
 }  // namespace oq_power_house_dispatch

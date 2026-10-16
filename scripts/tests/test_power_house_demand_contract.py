@@ -57,8 +57,8 @@ class PowerHouseDemandContractTest(unittest.TestCase):
             self.assertNotIn(marker, yaml)
         # Boot acquisition adds a one-shot input deadline and explicit invalid outputs.
         # Recorder diagnostics remain included alongside runtime and focused regressions.
-        # Include shared Duo Hz movement and the observer hook/factory integration.
-        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 4125)
+        # Include shared Duo Hz movement and its regression; retain the existing margin.
+        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 4083)
 
     def test_startup_wait_clears_shared_outputs_before_adopting_demand(self) -> None:
         text = FILES[1].read_text()

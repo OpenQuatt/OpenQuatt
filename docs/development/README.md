@@ -9,6 +9,5 @@ bijdragers. Ze zijn bewust geen onderdeel van de gebruikerssite.
 - [Heating strategy template](heating-strategy-template.yaml): kopieerbaar YAML-startpunt.
 - [Beslislog: contract en vragenmatrix](control-replay-firmware.md): eventcontract tussen firmware en web-app.
 - [Hardware-in-the-loop-tests](hil-testing.md): veiligheidscontract en HIL-runs.
-- [Performance Model Observer](performance-model-observer.md): eigen ODU-Tout en volledige gekoppelde Duo-kandidaatkeuzes.
-- [Eigen watertemperaturen en Duo-voorspellingen](water-performance-shadow.md): observerende proef, HIL-resultaten en vervolgstappen.
+- [Performance Model Observer](performance-model-observer.md): eigen ODU-Tout en een gekoppelde voorspelling van het actuele Duo-frequentiepaar.
 - [Release process](releaseproces.md): branches, builds en releases.
