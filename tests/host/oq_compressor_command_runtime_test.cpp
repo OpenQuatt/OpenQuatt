@@ -266,6 +266,7 @@ void reset() {
 #endif
   oq_temperature_runtime::policies[0].reset();
   oq_temperature_runtime::policies[1].reset();
+  oq_boot_resume_runtime::ota_hold_reader = nullptr;
   oq_boot_resume_runtime::minimum_flow_lph = 700;
   oq_boot_resume_runtime::read_sources = [](uint64_t) {
     return oq_boot_resume_runtime::Sources{true, true, true, 1000};
@@ -282,7 +283,9 @@ void boot_reads_hold_all_writes_and_abort_on_safety_loss() {
     assert(!oq_command_runtime::guarded_write(true, address, 0));
   }
 #if OQ_TOPOLOGY_DUO
-  assert(queued(false, 2010, 0));
+  assert(!queued(false, 2010, 0));
+  assert(!queued(false, 2015, 0));
+  assert(queued(false, 2006, 0));
 #endif
   const std::array<uint8_t, 5> read{3, 7, 207, 0, 1};
   assert(oq_command_runtime::queued_command(true, read.data(), read.size()));
@@ -306,6 +309,54 @@ void boot_reads_hold_all_writes_and_abort_on_safety_loss() {
   test_now_ms += oq_boot_resume::SAFETY_ACQUISITION_MS;
   assert(oq_boot_resume_runtime::update(true, true, true) == 0);
   assert(oq_incident_manager.boot[0].stop_required(test_now_ms));
+}
+
+void ota_hold_blocks_writes_but_keeps_reads_and_releases_for_safety() {
+  reset();
+  oq_boot_resume_runtime::ota_hold_reader = [](uint8_t hp, uint32_t) { return hp == 1; };
+  for (const auto address : {1999, 3999, 2006, 2010, 2015}) {
+    assert(!queued(true, address, 0));
+    assert(!oq_command_runtime::guarded_write(true, address, 0));
+  }
+  const std::array<uint8_t, 5> read{3, 7, 207, 0, 1};
+  assert(oq_command_runtime::queued_command(true, read.data(), read.size()));
+#if OQ_TOPOLOGY_DUO
+  assert(!queued(false, 2010, 0));
+  assert(!queued(false, 2015, 0));
+  assert(queued(false, 2006, 0));
+#endif
+  oq_boot_resume_runtime::ota_hold_reader = [](uint8_t, uint32_t) { return false; };
+  oq_water_temp_hard_trip_active = true;
+  assert(queued(true, 3999, 0));
+  assert(!queued(true, 3999, 2));
+  reset();
+}
+
+void shared_pump_hold_expires_and_releases_on_permission_loss() {
+#if OQ_TOPOLOGY_DUO
+  for (bool running_hp1 : {true, false}) {
+    for (bool lose_permission : {true, false}) {
+      reset();
+      auto& boot = oq_incident_manager.boot[running_hp1 ? 0 : 1];
+      boot.begin(true, test_now_ms);
+      for (uint16_t address : {2010, 2015}) {
+        assert(!queued(!running_hp1, address, 0));
+        assert(!oq_command_runtime::guarded_write(!running_hp1, address, 0));
+      }
+      assert(queued(!running_hp1, 3999, 0));  // The stopped peer may still receive a compressor stop.
+      if (lose_permission) {
+        oq_boot_resume_runtime::read_sources = [](uint64_t) {
+          return oq_boot_resume_runtime::Sources{true, false, true, 1000};
+        };
+      } else {
+        test_now_ms += oq_boot_resume::SAFETY_ACQUISITION_MS;
+      }
+      assert(queued(!running_hp1, 2010, 0));
+      assert(queued(!running_hp1, 2015, 0));
+      assert(boot.stop_required(test_now_ms));
+    }
+  }
+#endif
 }
 
 void prepare_running_boot() {
@@ -591,6 +642,8 @@ void queued_heating_mode_rechecks_user_frequency_constraints() {
 int main() {
   boot_reads_hold_all_writes_and_abort_on_safety_loss();
   boot_adoption_requires_live_safety_and_comfort();
+  ota_hold_blocks_writes_but_keeps_reads_and_releases_for_safety();
+  shared_pump_hold_expires_and_releases_on_permission_loss();
   forced_defrost_requires_live_ownership_and_gates();
   queued_safety_zero_is_readonly_and_temperature_independent();
   queued_heating_rechecks_selected_level_and_current_temperature();

@@ -52,8 +52,8 @@ class ThermalActuatorRuntimeContractTest(unittest.TestCase):
                  "scripts/tests/test_thermal_actuator_runtime_contract.py", "scripts/tests/test_v2_compressor_level_contract.py",
                  "scripts/tests/test_compressor_frequency_policy_contract.py", "openquatt/includes/control/oq_hp_boot_resume.h",
                  "openquatt/includes/control/oq_boot_resume_runtime.h", "tests/host/hp_boot_resume_test.cpp")
-        # Includes bounded boot acquisition and its regression tests.
-        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 2200)
+        # Includes bounded boot acquisition, OTA holds and their regression tests.
+        self.assertLessEqual(sum(len((ROOT / path).read_text().splitlines()) for path in paths), 2210)
 
     def test_start_quota_covers_retained_writes_and_final_transitions(self) -> None:
         actuator = RUNTIME[RUNTIME.index("int apply_level_"):RUNTIME.index("int previous_applied_")]

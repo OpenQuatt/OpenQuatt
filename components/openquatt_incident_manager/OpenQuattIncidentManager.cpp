@@ -533,7 +533,7 @@ void OpenQuattIncidentManager::setup() {
   for (size_t slot = 0U; slot < this->units_().size(); ++slot) {
     UnitState& unit = this->units_()[slot];
     unit.last_link_round_ms = now_ms;
-    unit.boot_resume.begin(unit.configured && boot_resume_eligible(), now_ms);
+    unit.boot_resume.begin(unit.configured && boot_resume_eligible(static_cast<uint8_t>(slot + 1U)), now_ms);
     unit.restart_guard.configure(this->minimum_off_ms_, LINK_ROUND_TIMEOUT_MS);
     const uint32_t restored_credit_ms = restored_off_credit_ms(static_cast<uint8_t>(slot + 1U));
     unit.restart_guard.restore_credit(restored_credit_ms, true);
@@ -628,6 +628,14 @@ bool OpenQuattIncidentManager::boot_resume_safety_ready(uint8_t hp_index, uint32
          elapsed_ms_(now_ms, unit->last_link_round_ms) <= LINK_ROUND_TIMEOUT_MS;
 }
 
+bool OpenQuattIncidentManager::ota_resume_candidate(uint8_t hp_index, uint32_t now_ms) const {
+  const auto* unit = this->unit_(hp_index);
+  if (unit == nullptr || this->startup_inhibited(hp_index)) return false;
+  const auto out = this->get_outputs(hp_index);
+  return out.link_state == oq_incidents::LinkState::HEALTHY && out.available_for_start && out.running_confirmed &&
+         !out.must_stop && !out.fault_active && !out.protection_active && unit->boot_resume.readback_ready(now_ms);
+}
+
 bool OpenQuattIncidentManager::boot_protection_hold(uint8_t hp_index, uint32_t now_ms) const {
   const UnitState* unit = this->unit_(hp_index);
   return unit != nullptr && unit->boot_resume.protection_hold(now_ms);
@@ -650,8 +658,9 @@ int OpenQuattIncidentManager::update_boot_resume(uint8_t hp_index, bool abort, b
   // Bootstrap link recovery deliberately takes at least 60 s. Live safety
   // must be complete within 45 s, but adoption still waits for that existing
   // recovery gate. A recovery after link loss remains a must-stop above.
-  const int level = unit->boot_resume.update(now_ms, abort, safety_ready, inputs_ready,
-                                             allow_resume && technical.available_for_start);
+  const int level =
+      unit->boot_resume.update(now_ms, abort, safety_ready, inputs_ready,
+                               allow_resume && technical.available_for_start && boot_resume_image_confirmed());
   if (level > 0) {
     unit->startup_released = true;
     unit->expected_mode = unit->active_command_mode = 2U;
@@ -684,6 +693,10 @@ void OpenQuattIncidentManager::invalidate_restart_credit_(UnitState& unit) {
 }
 
 void OpenQuattIncidentManager::perform_restart_(uint32_t now_ms) {
+  if (!restart_handoff_storage_ready()) {
+    ESP_LOGE(TAG, "Restart refused while handoff storage is unavailable");
+    return;
+  }
   // Runs synchronously on the ESPHome loop. No controller/strategy loop can
   // enqueue another start between this snapshot and safe_reboot().
   this->restarting_ = true;
@@ -707,7 +720,6 @@ void OpenQuattIncidentManager::perform_restart_(uint32_t now_ms) {
            saved ? "saved" : "conservative fallback");
   // Even a failed write may have changed flash. Never resume normal control
   // here; the next boot consumes any possible record before enabling services.
-  arm_boot_resume();
   App.safe_reboot();
 }
 

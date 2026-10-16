@@ -20,6 +20,18 @@ esphome:
           esphome::openquatt_incident_manager::set_power_house_resume_reader([]() {
             return oq_power_house_runtime::runtime().restart_state();
           });
+          oq_boot_resume_runtime::ota_hold_reader = esphome::openquatt_incident_manager::ota_cycle_hold;
+          esphome::openquatt_incident_manager::set_ota_resume_guard_reader([]() {
+            const uint32_t now = millis();
+            uint8_t mask = 0U;
+            if (id(oq_incident_manager).ota_resume_candidate(1U, now) && oq_boot_resume_runtime::capture(true).ready)
+              mask |= 1U;
+            #if OQ_TOPOLOGY_DUO
+            if (id(oq_incident_manager).ota_resume_candidate(2U, now) && oq_boot_resume_runtime::capture(false).ready)
+              mask |= 2U;
+            #endif
+            return mask;
+          });
           // Live gate for normal control writes, including queued retries.
           oq_temperature_runtime::maximum_age_ms = ${oq_hp_water_temp_stale_s}ULL * 1000ULL;
           oq_boot_resume_runtime::minimum_flow_lph = (float) ${oq_cm_min_flow_lph};

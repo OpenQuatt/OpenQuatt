@@ -1,5 +1,12 @@
 # HIL-resultaat: verwarmingscyclus na geplande herstart, 16 oktober 2026
 
+> Historische meting van firmware `2eba4115-memory4` (commit `6335f7a0`).
+> Deze firmware gebruikte nog een RTC-marker van 60 B en ondersteunde uitsluitend
+> geplande herstarts met hetzelfde image. De latere NVS-overdracht van 76 B en
+> OTA-continuïteit zijn hiermee niet gevalideerd; zie het [OTA-vervolgrapport](hil-ota-continuity-result-2026-10-16.md).
+> Het toenmalige NVS-budget was 570/630; de uitbreiding gebruikt 571/630 geschatte
+> entries (59 beschikbaar tegenover 100 vereist).
+
 Gerichte test voor [PR #852](https://github.com/OpenQuatt/OpenQuatt/pull/852),
 op de aparte `openquatt-test`-controller en de gecombineerde desktopsimulator.
 Geen productieapparatuur. Tijden hieronder zijn UTC.

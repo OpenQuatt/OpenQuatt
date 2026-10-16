@@ -61,6 +61,7 @@ class OpenQuattIncidentManager : public Component {
   bool boot_resume_pending(uint8_t hp_index, uint32_t now_ms) const;
   int boot_resume_level(uint8_t hp_index) const;
   bool boot_resume_safety_ready(uint8_t hp_index, uint32_t now_ms) const;
+  bool ota_resume_candidate(uint8_t hp_index, uint32_t now_ms) const;
   bool boot_protection_hold(uint8_t hp_index, uint32_t now_ms) const;
   int update_boot_resume(uint8_t hp_index, bool abort, bool safety_ready, bool inputs_ready, bool allow_resume,
                          uint32_t now_ms);

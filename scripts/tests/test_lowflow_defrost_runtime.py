@@ -47,6 +47,7 @@ class LowflowDefrostRuntimeTest(unittest.TestCase):
 namespace oq_boot_resume_runtime {
 struct Safety { bool abort=false, ready=false; };
 inline void update(bool) {}
+inline bool ota_hold(bool) { return false; }
 inline Safety capture(bool) { return {false, true}; }
 }
 #define id(x) x

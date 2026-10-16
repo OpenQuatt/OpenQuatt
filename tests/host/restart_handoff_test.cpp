@@ -17,8 +17,10 @@ using esphome::openquatt_incident_manager::restart_handoff::may_grant_after_dura
 using esphome::openquatt_incident_manager::restart_handoff::may_restore_credit;
 using esphome::openquatt_incident_manager::restart_handoff::persist_record;
 using esphome::openquatt_incident_manager::restart_handoff::Record;
+using esphome::openquatt_incident_manager::restart_handoff::ResumeState;
 using esphome::openquatt_incident_manager::restart_handoff::StorageReadResult;
 using esphome::openquatt_incident_manager::restart_handoff::valid_record;
+namespace handoff = esphome::openquatt_incident_manager::restart_handoff;
 
 constexpr uint32_t MINIMUM_OFF_MS = 240000U;
 
@@ -35,8 +37,13 @@ struct FakeStorage {
   bool write_commit_ok{true};
   bool write_readback_stale{false};
   uint32_t erase_calls{0U};
+  const ResumeState* exposed_resume{nullptr};
 
   StorageReadResult read(Record* target) const {
+    if (exposed_resume != nullptr) {
+      assert(exposed_resume->hp_mask == 0U);
+      assert(!handoff::valid_power_house_resume(exposed_resume->power_house));
+    }
     if (load_error || target == nullptr) return StorageReadResult::ERROR;
     if (transient_read_errors > 0U) {
       --transient_read_errors;
@@ -87,6 +94,7 @@ BootContext matching_context(const Record& record) {
   context.software_reset = true;
   context.running_partition_matches_boot = true;
   context.image_valid = true;
+  context.image_confirmed = true;
   context.minimum_off_ms = record.minimum_off_ms;
   context.config_hash = record.config_hash;
   context.boot_partition_address = record.boot_partition_address;
@@ -317,69 +325,357 @@ void test_invalid_credit_bounds_fail_closed() {
   assert(!valid_record(record));
 }
 
-}  // namespace
+Record make_resume_record(uint8_t mask = 3U, uint8_t state = handoff::kRecordArmed) {
+  Record record = make_record();
+  record.state = state;
+  record.resume_mask = mask;
+  if ((mask & 1U) != 0U) record.hp1_credit_ms = 0U;
+  if ((mask & 2U) != 0U) record.hp2_credit_ms = 0U;
+  record.power_house = {1500.0f, 0.20f, 23.0f};
+  finalize_record(&record);
+  return record;
+}
 
-void test_boot_resume_intent_is_exact_and_one_shot() {
-  namespace handoff = esphome::openquatt_incident_manager::restart_handoff;
-  const auto context = matching_context(make_record());
-  auto marker = handoff::make_boot_resume_marker(context);
-  assert(handoff::consume_boot_resume_marker(marker, context));
-  assert(!handoff::consume_boot_resume_marker(marker, context));
+ResumeState poisoned_resume() { return {3U, {49999.0f, 0.20f, 35.0f}}; }
+
+void assert_no_resume(const ResumeState& resume) {
+  assert(resume.hp_mask == 0U);
+  assert(!handoff::valid_power_house_resume(resume.power_house));
+}
+
+void test_journal_resume_is_per_hp_durable_and_one_shot() {
+  for (uint8_t mask : {1U, 2U, 3U}) {
+    for (uint8_t state : {handoff::kRecordArmed, handoff::kRecordCompletedOta}) {
+      FakeStorage storage{};
+      const Record record = make_resume_record(mask, state);
+      const auto context = matching_context(record);
+      assert(valid_record(record) && handoff::may_restore_running(record, context));
+      assert(persist_record(storage, record));
+      uint32_t hp1 = 99U, hp2 = 99U;
+      auto resume = poisoned_resume();
+      storage.exposed_resume = &resume;  // Every direct read, including erase verification, must see no permit yet.
+      assert(consume_record(storage, context, &hp1, &hp2, &resume));
+      assert(storage.erase_calls == 1U && !storage.present);
+      assert(hp1 == record.hp1_credit_ms && hp2 == record.hp2_credit_ms);
+      assert(resume.hp_mask == mask);
+      assert(std::memcmp(&resume.power_house, &record.power_house, sizeof(record.power_house)) == 0);
+      assert(consume_record(storage, context, &hp1, &hp2, &resume));
+      assert(hp1 == 0U && hp2 == 0U);
+      assert_no_resume(resume);
+    }
+  }
+}
+
+void test_resume_requires_exact_current_boot_context() {
+  const Record record = make_resume_record();
   for (int fault = 0; fault < 9; ++fault) {
-    auto next = context;
-    marker = handoff::make_boot_resume_marker(context);
+    auto context = matching_context(record);
     switch (fault) {
       case 0:
-        next.software_reset = false;
-        break;  // Power loss, crash, watchdog.
+        context.software_reset = false;
+        break;  // Power loss, crash or watchdog reset.
       case 1:
-        next.running_partition_matches_boot = false;
+        context.running_partition_matches_boot = false;
         break;
       case 2:
-        next.image_valid = false;
-        next.image_pending_verify = true;
-        break;
+        context.boot_partition_address++;
+        break;  // Rollback or another selected slot.
       case 3:
-        ++next.boot_partition_address;
-        break;  // OTA / rollback.
+        context.image_hash[0] ^= 1U;
+        break;  // Another image in the same slot.
       case 4:
-        next.image_hash[0] ^= 1;
-        break;  // Same slot, different image.
+        context.config_hash = configuration_hash(MINIMUM_OFF_MS, false);
+        break;
       case 5:
-        marker.magic ^= 1;
+        context.minimum_off_ms--;
+        context.config_hash = configuration_hash(context.minimum_off_ms, true);
         break;
       case 6:
-        ++marker.version;
+        context.image_valid = context.image_confirmed = false;
         break;
       case 7:
-        marker.checksum ^= 1;
+        context = {};
         break;
       case 8:
-        next = {};
-        break;  // Missing boot context still consumes intent.
+        context.config_hash = configuration_hash(MINIMUM_OFF_MS, true, true);
+        break;  // Another controller hardware profile.
     }
-    assert(!handoff::consume_boot_resume_marker(marker, next));
-    assert(!handoff::consume_boot_resume_marker(marker, context));
+    FakeStorage storage{};
+    storage.present = true;
+    storage.record = record;
+    uint32_t hp1 = 99U, hp2 = 99U;
+    auto resume = poisoned_resume();
+    assert(!handoff::may_restore_running(record, context));
+    assert(consume_record(storage, context, &hp1, &hp2, &resume));
+    assert(!storage.present && storage.erase_calls == 1U && hp1 == 0U && hp2 == 0U);
+    assert_no_resume(resume);
+    assert(consume_record(storage, matching_context(record), &hp1, &hp2, &resume));
+    assert_no_resume(resume);  // Rejected context must still consume, not defer a later replay.
   }
-  auto pending = context;
-  pending.image_pending_verify = true;
-  marker = handoff::make_boot_resume_marker(pending);
-  assert(!handoff::consume_boot_resume_marker(marker, context));
+}
+
+void test_only_completed_ota_can_resume_pending_first_boot() {
+  for (uint8_t state : {handoff::kRecordArmed, handoff::kRecordCompletedOta}) {
+    const Record record = make_resume_record(3U, state);
+    auto context = matching_context(record);
+    context.image_confirmed = context.image_valid = false;
+    context.image_pending_verify = true;  // Also covers NEW as decoded by capture_boot_context.
+    const bool ota = state == handoff::kRecordCompletedOta;
+    assert(handoff::may_restore_running(record, context) == ota);
+    FakeStorage storage{};
+    storage.present = true;
+    storage.record = record;
+    uint32_t hp1 = 99U, hp2 = 99U;
+    auto resume = poisoned_resume();
+    assert(consume_record(storage, context, &hp1, &hp2, &resume));
+    assert(hp1 == 0U && hp2 == 0U && !storage.present);
+    if (ota)
+      assert(resume.hp_mask == 3U && handoff::valid_power_house_resume(resume.power_house));
+    else
+      assert_no_resume(resume);
+
+    context.image_pending_verify = false;
+    context.image_valid = true;  // An undefined/unconfirmed image is insufficient, even after successful OTA.
+    assert(!handoff::may_restore_running(record, context));
+  }
+}
+
+void test_resume_legacy_partial_corrupt_and_conflicting_records_fail_closed() {
+  for (int fault = 0; fault < 8; ++fault) {
+    FakeStorage storage{};
+    storage.present = true;
+    storage.record = make_resume_record();
+    const auto context = matching_context(storage.record);
+    switch (fault) {
+      case 0:
+        storage.record.version = 1U;
+        break;  // Legacy journal format.
+      case 1:
+        storage.record.state = 0U;
+        break;  // Partial/unarmed record.
+      case 2:
+        storage.record.resume_mask = 4U;
+        break;
+      case 3:
+        storage.record.hp1_credit_ms = 1U;
+        break;  // A running HP cannot inherit off-time credit.
+      case 4:
+        storage.record.hp2_credit_ms = 1U;
+        break;
+      case 5:
+        storage.record.magic ^= 1U;
+        break;
+      case 6:
+        std::memset(storage.record.image_hash, 0, sizeof(storage.record.image_hash));
+        break;
+      case 7:
+        storage.record.power_house.last_w += 1.0f;
+        break;
+    }
+    if (fault != 7) finalize_record(&storage.record);  // Numeric corruption must also fail its existing checksum.
+    assert(!valid_record(storage.record));
+    uint32_t hp1 = 99U, hp2 = 99U;
+    auto resume = poisoned_resume();
+    assert(consume_record(storage, context, &hp1, &hp2, &resume));
+    assert(!storage.present && hp1 == 0U && hp2 == 0U);
+    assert_no_resume(resume);
+  }
+}
+
+void test_resume_consume_failure_injection_exposes_no_state() {
+  const auto record = make_resume_record();
+  const auto context = matching_context(record);
+  for (int fault = 0; fault < 5; ++fault) {
+    FakeStorage storage{};
+    storage.present = true;
+    storage.record = record;
+    switch (fault) {
+      case 0:
+        storage.erase_error = true;
+        break;
+      case 1:
+        storage.erase_commit_ok = false;
+        break;
+      case 2:
+        storage.erase_readback_stale = true;
+        break;
+      case 3:
+        storage.erase_not_found = true;
+        break;
+      case 4:
+        storage.load_error = true;
+        break;  // Includes an unreadable old-size NVS blob.
+    }
+    uint32_t hp1 = 99U, hp2 = 99U;
+    auto resume = poisoned_resume();
+    storage.exposed_resume = &resume;
+    assert(!consume_record(storage, context, &hp1, &hp2, &resume));
+    assert(storage.erase_calls == 1U && hp1 == 0U && hp2 == 0U);
+    assert_no_resume(resume);
+  }
+  FakeStorage ambiguous{};
+  ambiguous.present = true;
+  ambiguous.record = record;
+  ambiguous.transient_read_errors = 1U;
+  uint32_t hp1 = 99U, hp2 = 99U;
+  auto resume = poisoned_resume();
+  assert(consume_record(ambiguous, context, &hp1, &hp2, &resume));
+  assert(!ambiguous.present && hp1 == 0U && hp2 == 0U);
+  assert_no_resume(resume);  // Erase proof retires an ambiguous record; it does not authorize its unseen contents.
+}
+
+void test_cold_and_crash_consume_retries_keep_the_original_reset_context() {
+  for (uint8_t state : {handoff::kRecordArmed, handoff::kRecordCompletedOta}) {
+    const auto record = make_resume_record(1U, state);
+    auto context = matching_context(record);
+    context.software_reset = false;  // POWERON, PANIC and watchdog resets are all ineligible.
+    if (state == handoff::kRecordCompletedOta) {
+      context.image_confirmed = context.image_valid = false;
+      context.image_pending_verify = true;
+    }
+    for (int fault = 0; fault < 4; ++fault) {
+      FakeStorage storage{};
+      storage.present = true;
+      storage.record = record;
+      switch (fault) {
+        case 0:
+          storage.erase_error = true;
+          break;
+        case 1:
+          storage.erase_commit_ok = false;
+          break;
+        case 2:
+          storage.erase_readback_stale = true;
+          break;
+        case 3:
+          storage.load_error = true;
+          break;
+      }
+      uint32_t hp1 = 99U, hp2 = 99U;
+      auto resume = poisoned_resume();
+      storage.exposed_resume = &resume;
+      assert(!consume_record(storage, context, &hp1, &hp2, &resume));
+      assert(hp1 == 0U && hp2 == 0U);
+      assert_no_resume(resume);
+
+      storage.erase_error = storage.erase_readback_stale = storage.load_error = false;
+      storage.erase_commit_ok = true;
+      // Retry within the same boot: never replace the original reset reason
+      // with the ESP_RST_SW that an automatic reboot would have manufactured.
+      assert(consume_record(storage, context, &hp1, &hp2, &resume));
+      assert(!storage.present && hp1 == 0U && hp2 == 0U);
+      assert_no_resume(resume);
+      context.software_reset = true;
+      assert(consume_record(storage, context, &hp1, &hp2, &resume));
+      assert_no_resume(resume);  // A later planned restart cannot replay the rejected record.
+      context.software_reset = false;
+    }
+  }
+}
+
+void test_incomplete_boot_consume_denies_subsequent_software_restarts() {
+  for (uint8_t state : {handoff::kRecordArmed, handoff::kRecordCompletedOta}) {
+    for (bool original_software_reset : {false, true}) {
+      for (int fault = 0; fault < 3; ++fault) {
+        FakeStorage storage{};
+        storage.present = true;
+        storage.record = make_resume_record(1U, state);
+        volatile uint32_t marker = 0U;
+        assert(handoff::begin_boot_consume(marker));
+        assert(marker == handoff::kConsumeIncomplete);
+        auto original = matching_context(storage.record);
+        original.software_reset = original_software_reset;
+        uint32_t hp1 = 0U, hp2 = 0U;
+        ResumeState resume{};
+        storage.exposed_resume = &resume;
+        if (fault == 1) storage.erase_commit_ok = false;
+        if (fault == 2) storage.load_error = true;
+        // A failed NVS open cannot enter consume_record at all.
+        if (fault != 0) assert(!consume_record(storage, original, &hp1, &hp2, &resume));
+        assert_no_resume(resume);
+
+        // Recovery, a failed-manager fallback or any other SW reboot must not
+        // requalify the record left by this incomplete boot.
+        auto retry = matching_context(storage.record);
+        const bool previous_complete = handoff::begin_boot_consume(marker);
+        assert(!previous_complete);
+        if (!previous_complete) retry.software_reset = false;
+        storage.erase_commit_ok = true;
+        storage.load_error = false;
+        assert(consume_record(storage, retry, &hp1, &hp2, &resume));
+        assert(!storage.present && hp1 == 0U && hp2 == 0U);
+        assert_no_resume(resume);
+        handoff::finish_boot_consume(marker);
+        assert(marker == 0U);
+
+        // The deny marker does not permanently disable a later, newly armed
+        // and durably consumed planned handoff.
+        storage.record = make_resume_record(1U, state);
+        storage.present = true;
+        assert(handoff::begin_boot_consume(marker));
+        assert(consume_record(storage, matching_context(storage.record), &hp1, &hp2, &resume));
+        assert(resume.hp_mask == 1U && hp1 == 0U && hp2 == storage.record.hp2_credit_ms);
+        handoff::finish_boot_consume(marker);
+        assert(marker == 0U);
+      }
+    }
+  }
+}
+
+void test_resume_failed_persistence_and_retry_cannot_bypass_consume() {
+  const auto record = make_resume_record();
+  const auto context = matching_context(record);
+  for (int fault = 0; fault < 3; ++fault) {
+    FakeStorage storage{};
+    switch (fault) {
+      case 0:
+        storage.write_ok = false;
+        break;
+      case 1:
+        storage.write_commit_ok = false;
+        break;
+      case 2:
+        storage.write_readback_stale = true;
+        break;
+    }
+    assert(!persist_record(storage, record));
+    uint32_t hp1 = 99U, hp2 = 99U;
+    auto resume = poisoned_resume();
+    storage.exposed_resume = &resume;
+    storage.erase_commit_ok = false;
+    const bool first_consume = consume_record(storage, context, &hp1, &hp2, &resume);
+    assert(first_consume == !storage.present);
+    assert(hp1 == 0U && hp2 == 0U);
+    assert_no_resume(resume);
+    storage.erase_commit_ok = true;
+    assert(consume_record(storage, context, &hp1, &hp2, &resume));
+    assert(!storage.present);
+    // A reported failed write may nevertheless have left a valid visible record.
+    // Its contents are usable only after the later durable erase/readback succeeds.
+    if (fault == 1)
+      assert(resume.hp_mask == 3U);
+    else
+      assert_no_resume(resume);
+    assert(consume_record(storage, context, &hp1, &hp2, &resume));
+    assert_no_resume(resume);
+  }
 }
 
 void test_power_house_memory_roundtrip_and_current_inputs() {
-  namespace h = esphome::openquatt_incident_manager::restart_handoff;
-  const auto context = matching_context(make_record());
-  const h::PowerHouseResumeState saved{1500.0f, 0.20f, 23.0f};
-  auto marker = h::make_boot_resume_marker(context, saved);
-  h::PowerHouseResumeState restored{};
-  assert(h::consume_boot_resume_marker(marker, context, &restored));
-  assert(h::valid_power_house_resume(restored));
-  assert(h::may_restore_power_house(restored, true, 23.05f, 23.0f));
-  assert(!h::may_restore_power_house(restored, false, 23.05f, 23.0f));
-  assert(!h::may_restore_power_house(restored, true, 23.05f, 22.0f));
-  assert(!h::may_restore_power_house(restored, true, NAN, 23.0f));
-  // Reproduce an above-setpoint cycle carried by demand/comfort memory.
+  FakeStorage storage{};
+  const auto record = make_resume_record();
+  const auto context = matching_context(record);
+  assert(persist_record(storage, record));
+  ResumeState resume{};
+  uint32_t hp1 = 0U, hp2 = 0U;
+  assert(consume_record(storage, context, &hp1, &hp2, &resume));
+  const auto& restored = resume.power_house;
+  assert(handoff::valid_power_house_resume(restored));
+  assert(handoff::may_restore_power_house(restored, resume.hp_mask != 0U, 23.05f, 23.0f));
+  assert(!handoff::may_restore_power_house(restored, false, 23.05f, 23.0f));
+  assert(!handoff::may_restore_power_house(restored, true, 23.05f, 22.0f));
+  assert(!handoff::may_restore_power_house(restored, true, NAN, 23.0f));
+  // Reproduce an above-setpoint cycle carried by demand/comfort memory, using the real demand calculation.
   oq_power_house::DemandInput input{60000U, 3.0f, -10.0f, 16.0f, 6000.0f, 23.05f, 23.0f, 0.0f, 1.0f, true};
   oq_power_house::DemandTuning tuning{0.5f, 3000.0f, 0.1f, 0.3f, 10.0f, 5.0f, 20};
   const auto lost = oq_power_house::decide_demand(input, tuning, {});
@@ -389,26 +685,38 @@ void test_power_house_memory_roundtrip_and_current_inputs() {
   assert(resumed.valid && resumed.requested_w > 1499.0f && resumed.next.comfort_memory_c > 0.19f);
   input.water_limit_factor = 0.0f;
   assert(oq_power_house::decide_demand(input, tuning, retained).requested_w == 0.0f);
-  assert(!h::consume_boot_resume_marker(marker, context, &restored));
-  assert(!h::valid_power_house_resume(restored));
-  auto ota = context;
-  ota.image_hash[0] ^= 1U;
-  marker = h::make_boot_resume_marker(context, saved);
-  assert(!h::consume_boot_resume_marker(marker, ota, &restored));
-  assert(!h::valid_power_house_resume(restored));
-  marker = h::make_boot_resume_marker(context, saved);
-  marker.power_house.last_w += 1.0f;  // Corrupt numeric memory invalidates the intent checksum too.
-  assert(!h::consume_boot_resume_marker(marker, context, &restored));
-  for (const auto bad : {h::PowerHouseResumeState{NAN, 0.1f, 23}, {1500, 0.21f, 23}, {1500, 0.1f, NAN}}) {
-    marker = h::make_boot_resume_marker(context, bad);
-    assert(h::consume_boot_resume_marker(marker, context, &restored));
-    assert(!h::valid_power_house_resume(restored));
+  input.water_limit_factor = 1.0f;
+  input.rated_w = 750.0f;
+  const auto current_limit = oq_power_house::decide_demand(input, tuning, retained);
+  assert(current_limit.valid && current_limit.requested_w <= 750.0f);
+  input.room_c = NAN;
+  assert(!oq_power_house::decide_demand(input, tuning, retained).valid);
+  assert(consume_record(storage, context, &hp1, &hp2, &resume));
+  assert_no_resume(resume);
+
+  for (const auto bad : {handoff::PowerHouseResumeState{NAN, 0.1f, 23}, {1500, 0.21f, 23}, {1500, 0.1f, NAN}}) {
+    storage.record = make_resume_record();
+    storage.record.power_house = bad;
+    finalize_record(&storage.record);
+    storage.present = true;
+    assert(consume_record(storage, context, &hp1, &hp2, &resume));
+    assert(resume.hp_mask == 3U);  // Invalid optional memory cannot create valid numeric state.
+    assert(!handoff::valid_power_house_resume(resume.power_house));
   }
 }
 
+}  // namespace
+
 int main() {
   test_power_house_memory_roundtrip_and_current_inputs();
-  test_boot_resume_intent_is_exact_and_one_shot();
+  test_journal_resume_is_per_hp_durable_and_one_shot();
+  test_resume_requires_exact_current_boot_context();
+  test_only_completed_ota_can_resume_pending_first_boot();
+  test_resume_legacy_partial_corrupt_and_conflicting_records_fail_closed();
+  test_resume_consume_failure_injection_exposes_no_state();
+  test_cold_and_crash_consume_retries_keep_the_original_reset_context();
+  test_incomplete_boot_consume_denies_subsequent_software_restarts();
+  test_resume_failed_persistence_and_retry_cannot_bypass_consume();
   test_only_exact_controlled_reboot_restores_credit();
   test_pending_ota_boot_uses_same_exact_handoff_policy();
   test_corrupt_or_partial_arm_never_restores_credit();

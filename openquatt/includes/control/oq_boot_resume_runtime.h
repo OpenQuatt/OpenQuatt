@@ -8,6 +8,8 @@
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_boot_resume_runtime {
 inline float minimum_flow_lph = NAN;
+inline bool (*ota_hold_reader)(uint8_t hp, uint32_t now) = nullptr;
+inline bool ota_hold(bool hp1) { return ota_hold_reader != nullptr && ota_hold_reader(hp1 ? 1U : 2U, millis()); }
 struct Sources {
   bool permission_valid{false}, permission_on{false}, flow_fresh{false};
   float flow_lph{NAN};

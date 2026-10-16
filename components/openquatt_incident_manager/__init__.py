@@ -60,7 +60,7 @@ CONFIG_SCHEMA = cv.Schema(
 async def to_code(config):
     # Consume before safe_mode's generated early return, not in Component::setup().
     initialize = openquatt_incident_manager_ns.initialize_restart_handoff(config[CONF_MINIMUM_OFF_TIME])
-    cg.add(cg.RawExpression(f"if (!{initialize}) {{ esphome::arch_restart(); return; }}"))
+    cg.add(initialize)
     CORE.add_job(_runtime_to_code, config)
 
 

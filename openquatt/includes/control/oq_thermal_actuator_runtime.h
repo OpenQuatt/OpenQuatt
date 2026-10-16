@@ -475,6 +475,7 @@ class Runtime {
     int level = std::max(0, std::min(maximum, requested));
     requested = level;
     const int previous = this->previous_applied_(is_hp1);
+    if (oq_boot_resume_runtime::ota_hold(is_hp1)) return previous;
     const uint8_t hp_index = is_hp1 ? 1U : 2U;
     const auto incident = id(oq_incident_manager).get_outputs(hp_index);
     auto* defrost = is_hp1 ? &id(hp1_odu_defrost) : &OQ_ACTUATOR_SECONDARY_ID(odu_defrost);
