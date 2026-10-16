@@ -77,19 +77,25 @@ inline bool guarded_write(bool hp1, uint16_t address, int value, bool queued = f
   if (active_mode == 1) return true;  // Cooling has its own existing safety path.
   const auto snapshot = oq_odu::decode_runtime_frequency_snapshot(
       hp1 ? id(hp1_runtime_frequency_snapshot_storage) : OQ_COMMAND_SECONDARY_ID(runtime_frequency_snapshot_storage));
-  const auto temperature = oq_temperature_runtime::capture(hp1, snapshot);
+  // Preserve mapping/identity validation independently of any temperature model.
+  const bool online = hp1 ? id(hp1_is_online) : OQ_COMMAND_SECONDARY_ID(is_online);
+  const bool identity =
+      hp1 ? id(hp1_odu_generation_detection_complete) : OQ_COMMAND_SECONDARY_ID(odu_generation_detection_complete);
+  const bool revalidating = hp1 ? id(hp1_runtime_frequency_revalidation_required)
+                                : OQ_COMMAND_SECONDARY_ID(runtime_frequency_revalidation_required);
+  const int variant = hp1 ? id(hp1_generation_variant_code) : OQ_COMMAND_SECONDARY_ID(generation_variant_code);
+  if (!online || !identity || revalidating || oq_odu::confirmed_variant(identity, variant) != snapshot.variant ||
+      snapshot.variant == oq_odu::Variant::UNKNOWN || !snapshot.heating.valid ||
+      !oq_odu::validate_frequency_table(snapshot.heating))
+    return false;
   if (address == 3999) {
-    if (temperature.allowed_levels == 0) return false;
     if (!queued) return true;
-    if (!selected.has_value() || selected.value() == 0 || !temperature.allows(static_cast<int>(selected.value())))
-      return false;
-    // A queued heating-mode write must also respect the current automatic
-    // frequency cap/exclusion of its optimistic selected stand.
+    if (!selected.has_value() || selected.value() == 0) return false;
     value = static_cast<int>(selected.value());
   }
-  if (!temperature.allows(value)) return false;
-  // Manual service keeps its own user-frequency policy, but not an exception
-  // to the temperature envelope or the normal-heating 90 Hz safety ceiling.
+  if (value <= 0 || value >= snapshot.heating.level_count) return false;
+  // Manual service keeps its existing user-frequency policy. Temperature
+  // dependent frequency regulation remains owned by the ODU.
   if (oq_manual_hp::owns_control()) return true;
   const auto& cap = id(oq_silent_active).state ? id(oq_silent_max_frequency_hz) : id(oq_day_max_frequency_hz);
   const auto& excluded_min =

@@ -73,7 +73,6 @@ struct Context {
   const auto& snapshot(bool) const { return table; }
   int automatic_level_limit(bool, int) const { return 17; }
   bool frequency_allowed(bool, int, int) const { return true; }
-  int pick_temperature_level(bool, int, int level) const { return level; }
   int pick_allowed_level(bool, int, int level, int, int) const { return level; }
 };
 }

@@ -32,8 +32,6 @@ esphome:
             #endif
             return mask;
           });
-          // Live gate for normal control writes, including queued retries.
-          oq_temperature_runtime::maximum_age_ms = ${oq_hp_water_temp_stale_s}ULL * 1000ULL;
           oq_boot_resume_runtime::minimum_flow_lph = (float) ${oq_cm_min_flow_lph};
           oq_boot_resume_runtime::read_sources = [](uint64_t now) {
             const auto& sources = oq_sensor_source::runtime();
@@ -57,6 +55,7 @@ esphome:
             return oq_boot_resume_runtime::Sources{sources.heating_enable_valid(), sources.heating_enable_value(),
                                                    fresh, flow.value};
           };
+          // Keep technical-stop and defrost gates live for queued control writes/retries.
           id(mod_bus).set_command_guard(oq_command_runtime::queued_address);
           oq_nvs_cleanup::log_stats("boot");
           oq_nvs_cleanup::retire_openquatt_preferences(id(oq_air_purge_return_to_auto));

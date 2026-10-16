@@ -6,6 +6,8 @@
 #include "../service/tasks/oq_manual_hp_logic.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
+#include "../sources/oq_source_receipt_runtime.h"
+
 namespace oq_boot_resume_runtime {
 inline float minimum_flow_lph = NAN;
 inline bool (*ota_hold_reader)(uint8_t hp, uint32_t now) = nullptr;

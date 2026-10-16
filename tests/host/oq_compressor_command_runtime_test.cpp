@@ -264,8 +264,6 @@ void reset() {
   oq_sources::hp2.outside.observe(-7, test_now_ms, true);
   oq_sources::hp2.water_in.observe(32.5, test_now_ms, true);
 #endif
-  oq_temperature_runtime::policies[0].reset();
-  oq_temperature_runtime::policies[1].reset();
   oq_boot_resume_runtime::ota_hold_reader = nullptr;
   oq_boot_resume_runtime::minimum_flow_lph = 700;
   oq_boot_resume_runtime::read_sources = [](uint64_t) {
@@ -550,7 +548,7 @@ void queued_safety_zero_is_readonly_and_temperature_independent() {
   assert(!queued(true, 1999, 0));  // Ordinary stop cannot override the ODU hold.
 }
 
-void queued_heating_rechecks_selected_level_and_current_temperature() {
+void queued_heating_rechecks_selected_level_and_frequency_policy() {
   reset();
   assert(queued(true, 1999, 17));
   assert(queued(true, 3999, 2));
@@ -567,15 +565,15 @@ void queued_heating_rechecks_selected_level_and_current_temperature() {
   assert(!queued(true, 3999, 2));
   reset();
   assert(queued(true, 1999, 17));
-  oq_sources::hp1.water_in.observe(36, test_now_ms, true);  // Model38.5: cap falls90->72Hz.
+  oq_silent_active.state = 1;
+  oq_silent_max_frequency_hz.state = 72;  // An independently configured user cap changes before dispatch.
   assert(!queued(true, 1999, 17));
   assert(!queued(true, 3999, 2));
   hp1_compressor_level.selected = 13;
   assert(queued(true, 1999, 13));
   assert(queued(true, 3999, 2));
 #if OQ_TOPOLOGY_DUO
-  assert(queued(false, 1999, 17));
-  assert(!hp2_compressor_command_revalidation_required);
+  assert(!queued(false, 1999, 17));  // The silent cap is shared; both HPs obey it.
 #endif
   reset();
   oq_manual_hp_active = true;
@@ -583,13 +581,22 @@ void queued_heating_rechecks_selected_level_and_current_temperature() {
   oq_commissioning_task_code = oq_commissioning::TASK_MANUAL_HP;
   oq_day_max_frequency_hz.state = 30;
   assert(queued(true, 1999, 17));  // Genuine manual ownership bypasses the user cap only.
-  oq_sources::hp1.water_in.observe(36, test_now_ms, true);
-  assert(!queued(true, 1999, 17));
+  hp1_compressor_level.selected = 20;
+  assert(queued(true, 1999, 20));  // Manual service retains its validated physical range above 90 Hz.
   reset();
   hp1_runtime_frequency_revalidation_required = true;
   assert(!queued(true, 1999, 17));
   reset();
-  oq_sources::hp1.water_in.observe(NAN, test_now_ms, false);
+  hp1_is_online = false;
+  assert(!queued(true, 1999, 17));
+  reset();
+  hp1_odu_generation_detection_complete = false;
+  assert(!queued(true, 1999, 17));
+  reset();
+  hp1_generation_variant_code = static_cast<int>(oq_odu::Variant::V1);
+  assert(!queued(true, 1999, 17));
+  reset();
+  hp1_runtime_frequency_snapshot_storage.fill(0);
   assert(!queued(true, 1999, 17));
   reset();
   const auto pdu = command(1999, 17);
@@ -600,6 +607,30 @@ void queued_heating_rechecks_selected_level_and_current_temperature() {
   assert(oq_command_runtime::queued_address(2, pdu.data(), pdu.size()));
 #endif
   assert(oq_command_runtime::queued_address(42, pdu.data(), pdu.size()));
+}
+
+void queued_positive_commands_lose_permission_after_a_technical_stop() {
+  for (const bool hp1 : {true, false}) {
+#if !OQ_TOPOLOGY_DUO
+    if (!hp1) continue;
+#endif
+    for (int fault = 0; fault < 5; ++fault) {
+      reset();
+      const auto level = command(1999, 17), mode = command(3999, 2);
+      assert(oq_command_runtime::queued_command(hp1, level.data(), level.size()));
+      assert(oq_command_runtime::queued_command(hp1, mode.data(), mode.size()));
+      if (fault == 0) oq_lowflow_fault_active = true;
+      if (fault == 1) oq_water_temp_hard_trip_active = true;
+      auto& incident = oq_incident_manager.outputs[hp1 ? 0 : 1];
+      if (fault == 2) incident.must_stop = true;
+      if (fault == 3) incident.run_state = oq_incidents::RunState::STOPPING;
+      if (fault == 4) incident.run_state = oq_incidents::RunState::STOP_UNCONFIRMED;
+      assert(!oq_command_runtime::queued_command(hp1, level.data(), level.size()));
+      assert(!oq_command_runtime::queued_command(hp1, mode.data(), mode.size()));
+      assert(queued(hp1, 1999, 0));
+      assert(queued(hp1, 3999, 0));
+    }
+  }
 }
 
 void queued_heating_mode_rechecks_user_frequency_constraints() {
@@ -632,9 +663,9 @@ void queued_heating_mode_rechecks_user_frequency_constraints() {
   hp1_excluded_frequency_max_hz.state = 90;
   assert(queued(true, 3999, 2));  // The same established manual exception applies to mode and level.
   assert(queued(true, 1999, 17));
-  oq_sources::hp1.water_in.observe(36, test_now_ms, true);
-  assert(!queued(true, 3999, 2));
-  assert(!queued(true, 1999, 17));
+  hp1_compressor_level.selected = 20;
+  assert(queued(true, 3999, 2));
+  assert(queued(true, 1999, 20));
 }
 
 }  // namespace
@@ -646,7 +677,8 @@ int main() {
   shared_pump_hold_expires_and_releases_on_permission_loss();
   forced_defrost_requires_live_ownership_and_gates();
   queued_safety_zero_is_readonly_and_temperature_independent();
-  queued_heating_rechecks_selected_level_and_current_temperature();
+  queued_heating_rechecks_selected_level_and_frequency_policy();
+  queued_positive_commands_lose_permission_after_a_technical_stop();
   queued_heating_mode_rechecks_user_frequency_constraints();
   return 0;
 }
