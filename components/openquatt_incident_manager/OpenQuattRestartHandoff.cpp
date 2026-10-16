@@ -264,12 +264,14 @@ bool boot_resume_eligible(uint8_t hp_index) {
 }
 
 bool boot_resume_image_confirmed() {
-  esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
-  const auto* running = esp_ota_get_running_partition();
-  return running != nullptr && esp_ota_get_state_partition(running, &state) == ESP_OK && state == ESP_OTA_IMG_VALID;
+  BootContext context{};
+  return capture_boot_context(configured_minimum_off_ms, &context) &&
+         restart_handoff::may_adopt_running_image(restored_resume, context);
 }
 
 void set_ota_resume_guard_reader(OtaResumeGuardReader reader) { ota_guard_reader = reader; }
+
+uint8_t current_running_resume_mask() { return ota_guard_reader == nullptr ? 0U : ota_guard_reader() & 3U; }
 
 bool ota_cycle_hold(uint8_t hp_index, uint32_t now_ms) {
   return ota_handoff != nullptr && ota_handoff->cycle_hold(hp_index, now_ms);
@@ -290,7 +292,7 @@ uint32_t restored_off_credit_ms(uint8_t hp_index) {
   return restored_credit_ms[hp_index - 1U];
 }
 
-bool arm_restart_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms) {
+bool arm_restart_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms, uint8_t resume_mask) {
   if (!valid_handoff_credit(hp1_credit_ms, hp2_credit_ms)) return false;
   if (!confirm_pending_image_for_controlled_restart()) return false;
 
@@ -301,13 +303,9 @@ bool arm_restart_handoff(uint32_t hp1_credit_ms, uint32_t hp2_credit_ms) {
     return false;
   }
 
-#if OQ_TOPOLOGY_DUO
-  uint8_t resume_mask = 3U;
-#else
-  uint8_t resume_mask = 1U;
+#if !OQ_TOPOLOGY_DUO
+  resume_mask &= 1U;
 #endif
-  if (hp1_credit_ms != 0U) resume_mask &= ~1U;
-  if (hp2_credit_ms != 0U) resume_mask &= ~2U;
   const auto power_house =
       power_house_reader == nullptr ? restart_handoff::PowerHouseResumeState{} : power_house_reader();
   const bool persisted = persist_target_handoff(hp1_credit_ms, hp2_credit_ms, context.boot_partition_address,
@@ -441,6 +439,9 @@ void OpenQuattOtaHandoff::on_ota_global_state(ota::OTAState state, float progres
       return;
     }
     if (!this->ota_active_) return;
+    // Deferred web completion can precede the next main-loop guard check.
+    // Native/download OTA blocks the loop and retains its short-transfer bound.
+    if (this->background_ota_ != nullptr && component == this->background_ota_) this->loop();
     const uint8_t resume_mask = this->ota_resume_.complete(reinterpret_cast<uintptr_t>(component), millis());
     const bool saved = arm_completed_ota_handoff(this->ota_hp1_credit_ms_, this->ota_hp2_credit_ms_, resume_mask,
                                                  this->ota_power_house_);

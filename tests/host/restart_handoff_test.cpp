@@ -336,10 +336,11 @@ Record make_resume_record(uint8_t mask = 3U, uint8_t state = handoff::kRecordArm
   return record;
 }
 
-ResumeState poisoned_resume() { return {3U, {49999.0f, 0.20f, 35.0f}}; }
+ResumeState poisoned_resume() { return {3U, true, {49999.0f, 0.20f, 35.0f}}; }
 
 void assert_no_resume(const ResumeState& resume) {
   assert(resume.hp_mask == 0U);
+  assert(!resume.completed_ota);
   assert(!handoff::valid_power_house_resume(resume.power_house));
 }
 
@@ -358,6 +359,7 @@ void test_journal_resume_is_per_hp_durable_and_one_shot() {
       assert(storage.erase_calls == 1U && !storage.present);
       assert(hp1 == record.hp1_credit_ms && hp2 == record.hp2_credit_ms);
       assert(resume.hp_mask == mask);
+      assert(resume.completed_ota == (state == handoff::kRecordCompletedOta));
       assert(std::memcmp(&resume.power_house, &record.power_house, sizeof(record.power_house)) == 0);
       assert(consume_record(storage, context, &hp1, &hp2, &resume));
       assert(hp1 == 0U && hp2 == 0U);
@@ -435,8 +437,17 @@ void test_only_completed_ota_can_resume_pending_first_boot() {
       assert_no_resume(resume);
 
     context.image_pending_verify = false;
-    context.image_valid = true;  // An undefined/unconfirmed image is insufficient, even after successful OTA.
-    assert(!handoff::may_restore_running(record, context));
+    context.image_valid = true;  // UNDEFINED/NOT_FOUND is accepted only for same-image planned restarts.
+    assert(handoff::may_restore_running(record, context) == !ota);
+    storage.present = true;
+    storage.record = record;
+    assert(consume_record(storage, context, &hp1, &hp2, &resume));
+    assert(resume.hp_mask == (ota ? 0U : 3U));
+    if (!ota) assert(handoff::may_adopt_running_image(resume, context));
+    ResumeState ota_resume{3U, true, {}};
+    assert(!handoff::may_adopt_running_image(ota_resume, context));
+    context.image_confirmed = true;
+    assert(handoff::may_adopt_running_image(ota_resume, context));
   }
 }
 

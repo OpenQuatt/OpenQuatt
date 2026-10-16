@@ -40,6 +40,7 @@ inline bool may_restore_power_house(const PowerHouseResumeState& state, bool run
 }
 struct ResumeState {
   uint8_t hp_mask{0U};
+  bool completed_ota{false};
   PowerHouseResumeState power_house{};
 };
 
@@ -177,7 +178,12 @@ inline bool may_restore_credit(const Record& record, const BootContext& context)
 
 inline bool may_restore_running(const Record& record, const BootContext& context) {
   return may_restore_credit(record, context) && record.resume_mask != 0U &&
-         (context.image_confirmed || (record.state == kRecordCompletedOta && context.image_pending_verify));
+         ((record.state == kRecordArmed && context.image_valid) || context.image_confirmed ||
+          (record.state == kRecordCompletedOta && context.image_pending_verify));
+}
+
+inline bool may_adopt_running_image(const ResumeState& resume, const BootContext& context) {
+  return resume.completed_ota ? context.image_confirmed : context.image_valid;
 }
 
 // A matching record is still unsafe until its deletion has been committed and
@@ -212,6 +218,7 @@ inline bool consume_record(Storage& storage, const BootContext& context, uint32_
   *hp2_credit_ms = record.hp2_credit_ms;
   if (resume != nullptr && may_restore_running(record, context)) {
     resume->hp_mask = record.resume_mask;
+    resume->completed_ota = record.state == kRecordCompletedOta;
     if (valid_power_house_resume(record.power_house)) resume->power_house = record.power_house;
   }
   return true;

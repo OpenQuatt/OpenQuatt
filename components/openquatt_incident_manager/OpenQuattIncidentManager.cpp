@@ -699,6 +699,11 @@ void OpenQuattIncidentManager::perform_restart_(uint32_t now_ms) {
   }
   // Runs synchronously on the ESPHome loop. No controller/strategy loop can
   // enqueue another start between this snapshot and safe_reboot().
+  const bool polling_active =
+      this->polling_paused_ != nullptr && this->polling_paused_->has_state() && !this->polling_paused_->state;
+  // Snapshot confirmed running units before restarting_ closes the live gates.
+  // Zero off-time credit alone never proves that a heating cycle is running.
+  const uint8_t resume_mask = polling_active ? current_running_resume_mask() : 0U;
   this->restarting_ = true;
   std::array<uint32_t, 2U> credit{};
   for (uint8_t hp = 1U; hp <= this->configured_hp_count(); ++hp) {
@@ -714,7 +719,7 @@ void OpenQuattIncidentManager::perform_restart_(uint32_t now_ms) {
       credit[hp - 1U] = unit->restart_guard.snapshot_credit_ms(now_ms);
     }
   }
-  const bool saved = arm_restart_handoff(credit[0], credit[1]);
+  const bool saved = arm_restart_handoff(credit[0], credit[1], resume_mask);
   ESP_LOGI(TAG, "Controlled restart: confirmed off-time credit HP1=%us HP2=%us (%s)",
            static_cast<unsigned>(credit[0] / 1000U), static_cast<unsigned>(credit[1] / 1000U),
            saved ? "saved" : "conservative fallback");
