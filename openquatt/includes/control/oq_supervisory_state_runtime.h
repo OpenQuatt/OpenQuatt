@@ -220,13 +220,21 @@ class Runtime {
       const oq_hp_candidate::HpCandidateState hp2_candidate;
 #endif
       const bool allow_low_supply_boundary_estimate = id(oq_cold_start_session_active) && !id(oq_cold_start_hp_blocked);
+      const auto model = oq_water_performance::capture(frequency, supply_c,
+                                                       id(hp1_4_way_valve).state || id(hp1_defrost).state
+#if OQ_TOPOLOGY_DUO
+                                                           || id(hp2_4_way_valve).state || id(hp2_defrost).state
+#endif
+      );
       const auto include_minimum = [&](bool hp1, const oq_hp_candidate::HpCandidateState& candidate) {
         if (!oq_hp_candidate::may_serve_candidate(candidate)) return;
         for (int level = 1; level <= frequency.automatic_level_limit(hp1, 2); ++level) {
           const auto prediction = oq_perf::predict_candidate(frequency, frequency.performance_variant(hp1), hp1, level,
                                                              outside_c, supply_c, allow_low_supply_boundary_estimate);
-          if (!prediction.usable_for_running_optimization()) continue;
-          const float power_w = prediction.performance.pth_w;
+          if (!prediction.frequency_policy_allowed) continue;
+          const auto power = model.unit(hp1, level);
+          if (!power.valid() || power.thermal_w <= 0) continue;
+          const float power_w = power.thermal_w;
           live_minimum_power_w =
               std::isfinite(live_minimum_power_w) ? std::min(live_minimum_power_w, power_w) : power_w;
         }

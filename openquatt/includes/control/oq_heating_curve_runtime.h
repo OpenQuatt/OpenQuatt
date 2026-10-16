@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../performance/oq_water_performance_runtime.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -318,6 +320,8 @@ class Runtime {
     const int previous_capped = id(oq_demand_filtered_prev);
     bool hp1_model_available = false;
     bool hp2_model_available = false;
+    const auto model = oq_water_performance::capture(
+        frequency, target_c, hp1_valve_defrost || hp2_valve_defrost || id(hp1_defrost).state || id(hp2_defrost).state);
     std::array<float, level_cap + 1> hp1_power{}, hp2_power{};
     const auto build_power = [&](bool hp1, auto& powers, bool& model_available) {
       powers.fill(NAN);
@@ -326,8 +330,10 @@ class Runtime {
         const auto prediction =
             oq_perf::predict_candidate(frequency, frequency.performance_variant(hp1), hp1, level,
                                        id(outside_temp_selected).state, target_c, allow_low_supply_boundary_estimate);
-        model_available |= prediction.runtime_frequency_known && prediction.performance.available;
-        if (prediction.usable_for_running_optimization()) powers[level] = prediction.performance.pth_w;
+        const auto power = model.unit(hp1, level);
+        model_available |= prediction.runtime_frequency_known && power.valid();
+        if (prediction.frequency_policy_allowed && power.valid() && power.thermal_w > 0)
+          powers[level] = power.thermal_w;
       }
     };
     build_power(true, hp1_power, hp1_model_available);
@@ -351,10 +357,14 @@ class Runtime {
     const auto candidate = [&](int candidate_hp1, int candidate_hp2, float target_power_w) {
       if ((candidate_hp1 > 0 && !hp1_available) || (candidate_hp2 > 0 && !hp2_available))
         return oq_curve::invalid_dispatch_candidate();
+      if ((candidate_hp1 > 0 && !frequency.frequency_allowed(true, 2, candidate_hp1)) ||
+          (candidate_hp2 > 0 && !frequency.frequency_allowed(false, 2, candidate_hp2)))
+        return oq_curve::invalid_dispatch_candidate();
       const float hp1_power_w = level_power_w(true, candidate_hp1);
       const float hp2_power_w = level_power_w(false, candidate_hp2);
-      if (!std::isfinite(hp1_power_w) || !std::isfinite(hp2_power_w)) return oq_curve::invalid_dispatch_candidate();
-      const float power_w = hp1_power_w + hp2_power_w;
+      const float power_w =
+          model.coupled ? model.pair(candidate_hp1, candidate_hp2).thermal_w : hp1_power_w + hp2_power_w;
+      if (!std::isfinite(power_w)) return oq_curve::invalid_dispatch_candidate();
       return oq_curve::DispatchCandidate{
           true,
           candidate_hp1,
@@ -382,8 +392,10 @@ class Runtime {
     const float owner_capacity_w = level_power_w(single_owner != 2, owner_max);
     float duo_capacity_w = std::isfinite(owner_capacity_w) ? owner_capacity_w : 0.0f;
     float duo_floor_w = NAN;
-    for (int first = 1; first <= hp1_max; ++first)
-      for (int second = 1; second <= hp2_max; ++second) {
+    const int hp1_pair_max = model.coupled ? frequency.automatic_level_limit(true, 2) : hp1_max;
+    const int hp2_pair_max = model.coupled ? frequency.automatic_level_limit(false, 2) : hp2_max;
+    for (int first = 1; first <= hp1_pair_max; ++first)
+      for (int second = 1; second <= hp2_pair_max; ++second) {
         const auto item = candidate(first, second, 0.0f);
         if (!item.valid) continue;
         duo_capacity_w = std::max(duo_capacity_w, item.power_w);
@@ -402,8 +414,8 @@ class Runtime {
       }
     oq_curve::DispatchCandidate best_duo;
     if (demand_active)
-      for (int first = 1; first <= hp1_max; ++first)
-        for (int second = 1; second <= hp2_max; ++second) {
+      for (int first = 1; first <= hp1_pair_max; ++first)
+        for (int second = 1; second <= hp2_pair_max; ++second) {
           const auto item = candidate(first, second, target_power_w);
           if (oq_curve::better_dispatch_candidate(item, best_duo, previous_hp1, previous_hp2, true)) best_duo = item;
         }
@@ -487,6 +499,8 @@ class Runtime {
       this->dispatch_stop_reason_ =
           esphome::openquatt_decision_log::heating_stop::curve_single_reason(regular_single_stop, best_duo.valid);
     }
+    if (model.coupled && (previous_hp1 > 0 || previous_hp2 > 0) && model.pair(previous_hp1, previous_hp2).valid())
+      hp1_model_available = hp2_model_available = true;
     const bool active_model_missing = (previous_hp1 > 0 && !hp1_candidate.must_stop && !hp1_model_available) ||
                                       (previous_hp2 > 0 && !hp2_candidate.must_stop && !hp2_model_available);
     const bool idle_model_missing =
@@ -509,15 +523,18 @@ class Runtime {
     std::array<float, level_cap + 1> powers{};
     powers.fill(NAN);
     const float target_c = this->effective_supply_target(id(oq_supply_target_temp).state);
+    const auto model =
+        oq_water_performance::capture(frequency, target_c, id(hp1_4_way_valve).state || id(hp1_defrost).state);
     float capacity_w = 0.0f;
     bool model_available = false;
     for (int level = 1; level <= frequency.automatic_level_limit(true, 2); ++level) {
       const auto prediction =
           oq_perf::predict_candidate(frequency, frequency.performance_variant(true), true, level,
                                      id(outside_temp_selected).state, target_c, allow_low_supply_boundary_estimate);
-      model_available |= prediction.runtime_frequency_known && prediction.performance.available;
-      if (prediction.usable_for_running_optimization()) {
-        powers[level] = prediction.performance.pth_w;
+      const auto power = model.unit(true, level);
+      model_available |= prediction.runtime_frequency_known && power.valid();
+      if (prediction.frequency_policy_allowed && power.valid() && power.thermal_w > 0) {
+        powers[level] = power.thermal_w;
         capacity_w = std::max(capacity_w, powers[level]);
       }
     }

@@ -1,5 +1,5 @@
 # ==============================================================================
-# OpenQuatt - Compact Q Duo performance HIL
+# OpenQuatt - Q Duo water-performance control HIL
 # ==============================================================================
 # Retains the existing HIL telemetry and CIC fixture.
 packages:
@@ -8,4 +8,33 @@ packages:
 text_sensor:
   - id: !extend oq_hil_test_profile
     lambda: |-
-      return {"water-performance-compact-v1"};
+      return {"water-performance-control-v1"};
+
+sensor:
+  - platform: template
+    name: "HIL Predicted HP Power"
+    internal: true
+    update_interval: 2s
+    lambda: |-
+      return id(oq_strategy_hp_expected_power_w);
+
+  - platform: template
+    name: "HIL Requested HP1 Level"
+    internal: true
+    update_interval: 2s
+    lambda: |-
+      return id(oq_heat_mode_code) == 1 ? id(oq_curve_dispatch_hp1_level) : id(oq_ph_request_hp1_level);
+
+  - platform: template
+    name: "HIL Requested HP2 Level"
+    internal: true
+    update_interval: 2s
+    lambda: |-
+      return id(oq_heat_mode_code) == 1 ? id(oq_curve_dispatch_hp2_level) : id(oq_ph_request_hp2_level);
+
+  - platform: template
+    name: "HIL Loop Stack Free"
+    internal: true
+    update_interval: 5s
+    lambda: |-
+      return static_cast<float>(uxTaskGetStackHighWaterMark(nullptr));

@@ -217,7 +217,7 @@ void test_allowed_entry_slew_and_suspect_filter() {
 
 int main() {
   static_assert(sizeof(LevelEstimate) == 12);
-  static_assert(sizeof(DispatchInput) <= 544);
+  static_assert(sizeof(DispatchInput) <= 560);
   test_fixture_chain();
   test_extra_points_and_limits();
   test_future_v1_and_asymmetric_duo();

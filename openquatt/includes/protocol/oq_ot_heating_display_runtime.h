@@ -11,13 +11,23 @@ namespace oq_ot_display {
 inline Display current_display(uint64_t stale_ms, float defrost_factor) {
   const auto hp1_variant =
       oq_odu::confirmed_variant(id(hp1_odu_generation_detection_complete), id(hp1_generation_variant_code));
-  const HeatPump hp1{hp1_variant, id(hp1_is_online), oq_sources::hp1.working_mode, oq_sources::hp1.compressor_frequency,
-                     oq_sources::hp1.defrost};
+  HeatPump hp1{hp1_variant,
+               id(hp1_is_online),
+               oq_sources::hp1.working_mode,
+               oq_sources::hp1.compressor_frequency,
+               oq_sources::hp1.defrost,
+               oq_sources::hp1.water_out};
+  hp1.water_out.value += id(hp1_water_out_temp_offset).state;
 #if OQ_TOPOLOGY_DUO
   const auto hp2_variant =
       oq_odu::confirmed_variant(id(hp2_odu_generation_detection_complete), id(hp2_generation_variant_code));
-  const HeatPump hp2{hp2_variant, id(hp2_is_online), oq_sources::hp2.working_mode, oq_sources::hp2.compressor_frequency,
-                     oq_sources::hp2.defrost};
+  HeatPump hp2{hp2_variant,
+               id(hp2_is_online),
+               oq_sources::hp2.working_mode,
+               oq_sources::hp2.compressor_frequency,
+               oq_sources::hp2.defrost,
+               oq_sources::hp2.water_out};
+  hp2.water_out.value += id(hp2_water_out_temp_offset).state;
 #else
   const HeatPump hp2;
 #endif
