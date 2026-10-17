@@ -51,7 +51,7 @@ oq_odu::RuntimeFrequencySnapshot snapshot(const std::array<uint16_t, 512>& words
 
 oq_frequency_runtime::Context context(const oq_odu::RuntimeFrequencySnapshot& hp1,
                                       const oq_odu::RuntimeFrequencySnapshot& hp2) {
-  return {false, hp1, hp2, 120, {}, {}, hp1.variant, hp2.variant, false};
+  return {false, hp1, hp2, 120, {}, {}, hp1.variant, hp2.variant};
 }
 
 HpInput modeled_hp(const oq_frequency_runtime::Context& frequency, bool hp1, int previous = 0, float supply = 35,
@@ -217,7 +217,7 @@ void test_allowed_entry_slew_and_suspect_filter() {
 
 int main() {
   static_assert(sizeof(LevelEstimate) == 12);
-  static_assert(sizeof(DispatchInput) <= 544);
+  static_assert(sizeof(DispatchInput) <= 560);
   test_fixture_chain();
   test_extra_points_and_limits();
   test_future_v1_and_asymmetric_duo();

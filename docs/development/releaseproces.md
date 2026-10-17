@@ -1,7 +1,7 @@
 # Release Process
 
 This project uses GitHub Actions for automated validation, firmware compilation, and release asset publishing.
-Style and documentation consistency are validated locally via `./scripts/validate_local.sh`. The current style scope is documented in `CONTRIBUTING.md`.
+Style and documentation consistency are validated locally via `python3 scripts/dev.py validate`. The current style scope is documented in `CONTRIBUTING.md`.
 
 ## Branch Model
 

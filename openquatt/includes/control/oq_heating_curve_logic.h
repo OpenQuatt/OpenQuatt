@@ -7,6 +7,8 @@
 #include <stdint.h>
 #include <string>
 
+#include "oq_compressor_movement_logic.h"
+
 namespace oq_curve {
 
 struct ControlProfileTuning {
@@ -91,6 +93,7 @@ struct DispatchCandidate {
   float error_w = 1.0e9f;
   int active_hp_count = 0;
   int balance_gap = 0;
+  int modulation_hz = -1;
 };
 
 struct OutsideEmaState {
@@ -426,6 +429,12 @@ inline float power_capped_demand_u(float demand, int cap_f, int max_f) {
   return std::max(0.0f, std::min({demand, (float)cap_f, (float)max_f})) / (float)max_f;
 }
 
+inline bool update_demand_rundown(int capped, int& previous_capped) {
+  const bool decreasing = capped < previous_capped;
+  previous_capped = capped;
+  return decreasing;
+}
+
 inline float phase_target_power_w(bool heat_phase, float capped_demand_u, float single_cap_w, float duo_cap_w) {
   if (!isfinite(capped_demand_u) || capped_demand_u <= 0.0f) return 0.0f;
   const float single_target_w = isfinite(single_cap_w) ? (single_cap_w * capped_demand_u) : 0.0f;
@@ -442,7 +451,7 @@ inline int pick_single_owner(bool demand_active, int stored_owner_hp, bool prev_
 }
 
 inline bool better_dispatch_candidate(const DispatchCandidate& candidate, const DispatchCandidate& best,
-                                      int prev_hp1_level, int prev_hp2_level) {
+                                      int prev_hp1_level, int prev_hp2_level, bool use_frequency_movement = false) {
   if (!candidate.valid) return false;
   if (!best.valid) return true;
   if (fabsf(candidate.error_w - best.error_w) > 50.0f) return candidate.error_w < best.error_w;
@@ -453,9 +462,19 @@ inline bool better_dispatch_candidate(const DispatchCandidate& candidate, const 
       ((prev_hp1_level == 0) && (best.hp1_level > 0) ? 1 : 0) + ((prev_hp2_level == 0) && (best.hp2_level > 0) ? 1 : 0);
   if (candidate_starts != best_starts) return candidate_starts < best_starts;
 
-  const int candidate_moves = abs(candidate.hp1_level - prev_hp1_level) + abs(candidate.hp2_level - prev_hp2_level);
-  const int best_moves = abs(best.hp1_level - prev_hp1_level) + abs(best.hp2_level - prev_hp2_level);
-  if (candidate_moves != best_moves) return candidate_moves < best_moves;
+  if (!use_frequency_movement) {
+    const int candidate_moves = abs(candidate.hp1_level - prev_hp1_level) + abs(candidate.hp2_level - prev_hp2_level);
+    const int best_moves = abs(best.hp1_level - prev_hp1_level) + abs(best.hp2_level - prev_hp2_level);
+    if (candidate_moves != best_moves) return candidate_moves < best_moves;
+  } else {
+    const int candidate_stops = ((prev_hp1_level > 0) && (candidate.hp1_level == 0) ? 1 : 0) +
+                                ((prev_hp2_level > 0) && (candidate.hp2_level == 0) ? 1 : 0);
+    const int best_stops = ((prev_hp1_level > 0) && (best.hp1_level == 0) ? 1 : 0) +
+                           ((prev_hp2_level > 0) && (best.hp2_level == 0) ? 1 : 0);
+    if (candidate_stops != best_stops) return candidate_stops < best_stops;
+    if (candidate.modulation_hz >= 0 && best.modulation_hz >= 0 && candidate.modulation_hz != best.modulation_hz)
+      return candidate.modulation_hz < best.modulation_hz;
+  }
 
   if (candidate.active_hp_count != best.active_hp_count) {
     return candidate.active_hp_count < best.active_hp_count;

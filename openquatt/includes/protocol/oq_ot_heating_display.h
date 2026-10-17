@@ -16,6 +16,7 @@ struct HeatPump {
   oq_sources::RawFloatReceipt working_mode{};
   oq_sources::RawFloatReceipt compressor_frequency{};
   oq_sources::RawFloatReceipt defrost{};
+  oq_sources::RawFloatReceipt water_out{};
 };
 
 struct Display {
@@ -101,6 +102,7 @@ inline float current_power(const HeatPump& hp, uint64_t now_ms, uint64_t stale_m
   const bool defrost_mode = hp.working_mode.value == 4.0f;
   if (!defrost_mode && (!hp.defrost.fresh(now_ms, stale_ms) || (hp.defrost.value != 0.0f && hp.defrost.value != 1.0f)))
     return NAN;
+  supply_c = hp.water_out.fresh(now_ms, stale_ms) ? hp.water_out.value : NAN;
   if (!std::isfinite(outside_c) || !std::isfinite(supply_c)) return NAN;
   const float watts =
       power_at_frequency(hp.variant, hp.compressor_frequency.value, outside_c, supply_c, boundary_estimate);

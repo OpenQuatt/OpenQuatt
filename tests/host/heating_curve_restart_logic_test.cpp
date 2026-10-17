@@ -49,6 +49,20 @@ void test_reset_and_power_cap() {
   assert(power_capped_demand_u(6.0f, 8, 20) == 0.3f && power_capped_demand_u(18.0f, 0, 20) == 0);
   assert(power_capped_demand_u(NAN, 8, 20) == 0 && power_capped_demand_u(INFINITY, 8, 20) == 0);
 }
+void test_capped_demand_rundown() {
+  int previous_capped = 0;
+  // A stable electrical cap must not keep restarting the Duo enable hold.
+  for (int tick = 0; tick < 8; ++tick) assert(!update_demand_rundown(std::min(18, 16), previous_capped));
+  // A tighter cap is a real reduction, but only for the transition itself.
+  assert(update_demand_rundown(std::min(18, 15), previous_capped));
+  assert(!update_demand_rundown(std::min(18, 15), previous_capped));
+  assert(!update_demand_rundown(std::min(17, 15), previous_capped));
+  // Falling demand below the cap and a full stop still count as rundown.
+  assert(update_demand_rundown(std::min(14, 15), previous_capped));
+  assert(update_demand_rundown(0, previous_capped));
+  assert(!update_demand_rundown(0, previous_capped));
+  assert(!update_demand_rundown(std::min(18, 16), previous_capped));
+}
 void test_oil_return_hold_and_rollover() {
   auto out = update_oil_return_hold(100U, true, 0, 180000U);
   assert(out.mask_active && out.hold_until_ms == 180100U);
@@ -212,6 +226,7 @@ void test_outside_filter_target_and_cadence_rollover() {
 int main() {
   test_restart_matrix();
   test_reset_and_power_cap();
+  test_capped_demand_rundown();
   test_oil_return_hold_and_rollover();
   test_invalid_inputs_fail_closed();
   test_stop_confirmation_and_rollover();

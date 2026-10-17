@@ -38,9 +38,8 @@ FakeSensor hp1_excluded_frequency_min_hz{0}, hp1_excluded_frequency_max_hz{0};
 FakeSensor hp2_excluded_frequency_min_hz{0}, hp2_excluded_frequency_max_hz{0};
 FakeSensor oq_system_supply_temp{35}, outside_temp_selected{7};
 FakeSensor hp1_water_out_temp{35}, hp2_water_out_temp{35};
-FakeSensor hp1_water_in_temp_offset{0}, hp2_water_in_temp_offset{0};
-bool hp1_runtime_frequency_revalidation_required = false, hp2_runtime_frequency_revalidation_required = false;
-FakeSensor hp1_4_way_valve{0}, hp2_4_way_valve{0};
+FakeSensor hp1_water_in_temp_offset{0}, hp1_water_out_temp_offset{0}, hp2_water_out_temp_offset{0};
+FakeSensor hp1_4_way_valve{0}, hp2_4_way_valve{0}, hp1_defrost{0}, hp2_defrost{0};
 float oq_power_limit_soft_w = 10000, oq_power_limit_peak_w = 12000;
 float oq_P_hp_cap_w = 0;
 int oq_control_mode_code = 2, oq_heat_mode_code = 0;
@@ -51,15 +50,15 @@ bool hp1_is_online = true, hp2_is_online = true;
 bool hp1_odu_generation_detection_complete = true, hp2_odu_generation_detection_complete = true;
 uint8_t hp1_generation_variant_code = static_cast<uint8_t>(oq_odu::Variant::V1_5);
 uint8_t hp2_generation_variant_code = static_cast<uint8_t>(oq_odu::Variant::V1_5);
-bool oq_cold_start_session_active = true, oq_cold_start_hp_blocked = false;
+bool oq_cold_start_session_active = false, oq_cold_start_hp_blocked = false;
 oq_odu::RuntimeFrequencySnapshotStorage hp1_runtime_frequency_snapshot_storage{};
 oq_odu::RuntimeFrequencySnapshotStorage hp2_runtime_frequency_snapshot_storage{};
 uint32_t test_now_ms = 900000;
 uint32_t millis() { return test_now_ms; }
-
 namespace oq_sources {
 inline uint64_t monotonic_ms() { return test_now_ms; }
 }  // namespace oq_sources
+
 #define id(value) value
 #include "../../openquatt/includes/diagnostics/oq_heating_capacity_runtime.h"
 #undef id
@@ -76,12 +75,6 @@ void initialize_frequency() {
     snapshot.heating.hz[level] = static_cast<uint8_t>(oq_perf::V1_HEATING_FREQUENCIES_HZ[level - 1]);
   hp1_runtime_frequency_snapshot_storage = oq_odu::encode_runtime_frequency_snapshot(snapshot);
   hp2_runtime_frequency_snapshot_storage = hp1_runtime_frequency_snapshot_storage;
-  oq_sources::hp1.outside.observe(7, test_now_ms, true);
-  oq_sources::hp1.water_in.observe(30, test_now_ms, true);
-#if OQ_TOPOLOGY_DUO
-  oq_sources::hp2.outside.observe(7, test_now_ms, true);
-  oq_sources::hp2.water_in.observe(30, test_now_ms, true);
-#endif
 }
 }  // namespace
 
@@ -180,6 +173,28 @@ int main() {
   hp1_4_way_valve.state = 0;
   near(capacity(), max);  // Invalid -> valid recovers immediately, without retained state.
 
+  // A V1/V1.5 performance-axis endpoint is not an actuator permission boundary.
+  // Automatic capacity remains available above 12 C, using the existing model.
+  for (const auto variant : {oq_odu::Variant::V1, oq_odu::Variant::V1_5}) {
+    auto snapshot = oq_odu::decode_runtime_frequency_snapshot(hp1_runtime_frequency_snapshot_storage);
+    snapshot.variant = variant;
+    hp1_generation_variant_code = hp2_generation_variant_code = static_cast<uint8_t>(variant);
+    hp1_runtime_frequency_snapshot_storage = hp2_runtime_frequency_snapshot_storage =
+        oq_odu::encode_runtime_frequency_snapshot(snapshot);
+    for (const float ambient : {12.0f, 12.01f, 20.0f, 12.0f}) {
+      outside_temp_selected.state = ambient;
+      assert(capacity() > 0);
+      const auto frequency = oq_frequency_runtime::capture();
+      assert(frequency.pick_allowed_level(true, 2, 8, 1, 10) == 8);
+#if OQ_TOPOLOGY_DUO
+      assert(frequency.pick_allowed_level(false, 2, 8, 1, 10) == 8);
+#endif
+    }
+  }
+  initialize_frequency();
+  hp1_generation_variant_code = hp2_generation_variant_code = static_cast<uint8_t>(oq_odu::Variant::V1_5);
+  outside_temp_selected.state = 7;
+
   // Partly masked model rows and out-of-map frequencies retain valid lower levels.
   outside_temp_selected.state = 12;
   assert(capacity() > 0);
@@ -211,7 +226,6 @@ int main() {
         oq_odu::encode_runtime_frequency_snapshot(snapshot);
     assert(capacity() > 0);
     // At 7/35, the 80/85/90 Hz V2-old points are masked; lower levels remain usable.
-    oq_cold_start_session_active = false;
     oq_system_supply_temp.state = 12;
     assert(std::isnan(capacity()));
     oq_cold_start_session_active = true;
@@ -221,6 +235,16 @@ int main() {
     oq_cold_start_session_active = oq_cold_start_hp_blocked = false;
     oq_system_supply_temp.state = 35;
   }
+
+  // A coupled model remains known when the electrical peak excludes all active levels.
+  oq_sources::hp1.water_in.observe(30, test_now_ms, true);
+  oq_sources::hp1.flow.observe(870.144f, test_now_ms, true);
+  outside_temp_selected.state = -7;
+  assert(capacity() > 0);
+  oq_power_limit_soft_w = oq_power_limit_peak_w = 0;
+  near(capacity(), 0);
+  oq_power_limit_soft_w = 10000;
+  oq_power_limit_peak_w = 12000;
 
   assert(std::isnan(oq_heating_capacity::fresh_outlet(100, 60000, true, 0, true, 35)));
   near(oq_heating_capacity::fresh_outlet(100, 60000, true, UINT32_MAX - 100, true, 35), 35);
