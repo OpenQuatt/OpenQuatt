@@ -9,7 +9,7 @@ import { updateEnergyHistoryState } from "../core/feature-state.js";
 import { setEntityBackupValue, verifyEntityBackupSelectState, verifyEntityBackupSwitchState } from "../core/entity-backup.js";
 import { formatValue, getEntityValue, normalizeDateTimeValue, normalizeTimeValue, parseLooseNumber } from "../core/entity-store.js";
 import { refreshEntities, syncEntities } from "../core/entity-sync.js";
-import { buildSettingsBackupMqttConfig, collectUnknownSettingsBackupItems, isSettingsBackupMqttSourceSelection, normalizeSettingsBackupMqttConfig, normalizeSettingsBackupOduProfiles, SETTINGS_BACKUP_MIN_SCHEMA_VERSION, SETTINGS_BACKUP_MQTT_INPUT_KEYS, SETTINGS_BACKUP_MQTT_RETAINED_KEYS, settingsBackupMqttNeedsPassword } from "../core/settings-backup-domain.js";
+import { buildSettingsBackupMqttConfig, collectUnknownSettingsBackupItems, isSettingsBackupMqttSourceSelection, migrateLegacySettingsBackupSettings, normalizeSettingsBackupMqttConfig, normalizeSettingsBackupOduProfiles, SETTINGS_BACKUP_MIN_SCHEMA_VERSION, SETTINGS_BACKUP_MQTT_INPUT_KEYS, SETTINGS_BACKUP_MQTT_RETAINED_KEYS, settingsBackupMqttNeedsPassword } from "../core/settings-backup-domain.js";
 import { DEFAULT_TREND_WINDOW_HOURS, state } from "../core/state.js";
 import { ENERGY_HISTORY_VIEW_KEYS, getSettingsStorageRefreshKeys, SETTINGS_STORAGE_KEYS, TREND_HISTORY_VIEW_KEYS } from "../core/storage-history-keys.js";
 import { setStorageHistoryControls } from "../core/storage-history-controls.js";
@@ -1316,7 +1316,7 @@ import { t } from "../i18n/index.js";
       throw new Error(t("storageHistory.unknownBackupVersion"));
     }
 
-    const settings = parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {};
+    const settings = migrateLegacySettingsBackupSettings(parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {});
     const mqtt = schemaVersion >= 2 ? normalizeSettingsBackupMqttConfig(parsed.mqtt) : null;
     const oduBottomPlate = schemaVersion >= 3 ? normalizeSettingsBackupOduProfiles(parsed.odu_bottom_plate) : {};
     const snapshot = {

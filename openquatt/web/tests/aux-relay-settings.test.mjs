@@ -3,10 +3,16 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 globalThis.__OQ_PREVIEW__ = false;
-globalThis.window = { localStorage: { getItem: () => null } };
+globalThis.window = {
+  clearTimeout: globalThis.clearTimeout,
+  localStorage: { getItem: () => null },
+  location: { pathname: "/" },
+  setTimeout: globalThis.setTimeout,
+};
 globalThis.document = { activeElement: null };
 const { state } = await import("../js/src/core/state.js");
-const { AUX_RELAY_SETTING_KEYS, ENTITY_DEFS } = await import("../js/src/core/config.js");
+const { AUX_RELAY_SETTING_KEYS, ENTITY_DEFS, SETTINGS_BACKUP_SCHEMA_VERSION } = await import("../js/src/core/config.js");
+const { parseSettingsBackupPayload } = await import("../js/src/features/storage-history.js");
 
 // Keep the real renderer; the aux relay section does not use embedded images.
 const installationUrl = new URL("../js/src/settings/installation.js", import.meta.url);
@@ -54,6 +60,25 @@ test("aux relay backup restore applies run-on settings before the function", () 
   }
   assert.equal(ENTITY_DEFS.auxRunOnMode.name, "Aux Relay Run-on");
   assert.equal(ENTITY_DEFS.auxRunOnTime.name, "Aux Relay Run-on Time");
+});
+
+test("legacy backups without run-on restore the aux relay function with run-on disabled", () => {
+  const parse = (installation) => parseSettingsBackupPayload(JSON.stringify({
+    schema_version: SETTINGS_BACKUP_SCHEMA_VERSION,
+    settings: { installation },
+  })).settings.installation;
+
+  const legacy = parse({ auxRelayFunction: "Heating demand", auxWaitForSupplyTemp: false });
+  assert.equal(legacy.auxRunOnMode, "Disabled");
+  assert.ok(!Object.prototype.hasOwnProperty.call(legacy, "auxRunOnTime"));
+  assert.equal(legacy.auxRelayFunction, "Heating demand");
+
+  const current = parse({ auxRelayFunction: "Heating demand", auxRunOnMode: "Fixed time", auxRunOnTime: 600 });
+  assert.equal(current.auxRunOnMode, "Fixed time");
+  assert.equal(current.auxRunOnTime, 600);
+
+  // Without a restored function the controller's run-on stays untouched, like any other absent setting.
+  assert.ok(!Object.prototype.hasOwnProperty.call(parse({ hpGeneration: "V1" }), "auxRunOnMode"));
 });
 
 test("aux relay run-on fields follow the selected function and run-on mode", () => {
