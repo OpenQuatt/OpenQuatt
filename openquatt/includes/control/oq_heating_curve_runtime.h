@@ -13,6 +13,7 @@
 #include "oq_compressor_frequency_runtime.h"
 #include "oq_heat_intent_runtime.h"
 #include "oq_heating_curve_duo_floor_logic.h"
+#include "oq_heating_curve_duo_hold_logic.h"
 #include "oq_heating_curve_logic.h"
 #include "oq_heating_supply_target_logic.h"
 #include "oq_hp_candidate_logic.h"
@@ -258,6 +259,11 @@ class Runtime {
       this->reset_request_(0);
       return;
     }
+    const bool hold_allowed = id(oq_control_mode_code) == 2 || id(oq_control_mode_code) == 3;
+    // Inactive/manual control also clears the public hold state in the request
+    // runtime. Clear our clock state before the cadence gate so it cannot carry
+    // time from those modes into the next automatic request.
+    if (!hold_allowed) this->reset_dual_holds_();
     const uint32_t now_ms = static_cast<uint32_t>(millis());
     auto hp1_candidate =
         oq_hp_candidate::candidate_state(id(oq_incident_manager).get_outputs(1), id(hp1_last_applied_level));
@@ -421,7 +427,6 @@ class Runtime {
 
     const int dual_on_hold_min = std::max(1, static_cast<int>(std::lround(id(oq_dual_hp_enable_hold_min).state)));
     const int dual_off_hold_min = std::max(1, static_cast<int>(std::lround(id(oq_dual_hp_disable_hold_min).state)));
-    const float dt_min = static_cast<float>(config.loop_ms) / 60000.0f;
     const uint32_t lead_last_start_ms = lead_is_hp1 ? id(hp1_last_start_ms) : id(hp2_last_start_ms);
     const bool startup_grace = oq_curve::elapsed_window_active(
         now_ms, lead_last_start_ms, static_cast<uint32_t>(std::max(0, tuning.dual_startup_grace_s)) * 1000UL);
@@ -447,9 +452,9 @@ class Runtime {
                                 single_saturated && duo_better && std::isfinite(temperature_error_c) &&
                                 temperature_error_c >= tuning.dual_emergency_temp_err_c && dispatch_u >= 0.95f;
     id(oq_dual_hp_emergency_hold_elapsed_accum_min) =
-        emergency_dual ? id(oq_dual_hp_emergency_hold_elapsed_accum_min) + dt_min : 0.0f;
-    const bool forced_capacity = id(oq_dual_hp_emergency_hold_elapsed_accum_min) >=
-                                 static_cast<float>(std::max(1, tuning.dual_emergency_hold_min));
+        this->duo_holds_.emergency.update(hold_allowed && emergency_dual, now_ms) / 60000.0f;
+    const bool forced_capacity =
+        this->duo_holds_.emergency.ready(static_cast<uint32_t>(std::max(1, tuning.dual_emergency_hold_min)) * 60000UL);
     const bool dual_on = demand_active && best_duo.valid && !startup_grace && !demand_rundown &&
                          (forced_capacity || dual_defrost ||
                           (duo_better && floor_reached && dispatch_u >= duo_enable_min_u &&
@@ -460,19 +465,20 @@ class Runtime {
         (single_sufficient && dispatch_u <= duo_disable_max_u &&
          (!std::isfinite(temperature_error_c) || temperature_error_c <= tuning.dual_disable_temp_err_max_c));
     if (!demand_active) {
-      oq_request::reset_dual_hold_state(id(oq_dual_hp_enabled), id(oq_dual_hp_enable_hold_elapsed_accum_min),
-                                        id(oq_dual_hp_disable_hold_elapsed_accum_min),
-                                        id(oq_dual_hp_emergency_hold_elapsed_accum_min));
+      this->reset_dual_holds_();
     } else {
       id(oq_dual_hp_enable_hold_elapsed_accum_min) =
-          dual_on ? id(oq_dual_hp_enable_hold_elapsed_accum_min) + dt_min : 0.0f;
+          this->duo_holds_.enable.update(hold_allowed && dual_on, now_ms) / 60000.0f;
       id(oq_dual_hp_disable_hold_elapsed_accum_min) =
-          dual_off ? id(oq_dual_hp_disable_hold_elapsed_accum_min) + dt_min : 0.0f;
-      if (!id(oq_dual_hp_enabled) && id(oq_dual_hp_enable_hold_elapsed_accum_min) >= dual_on_hold_min) {
+          this->duo_holds_.disable.update(hold_allowed && dual_off, now_ms) / 60000.0f;
+      if (!id(oq_dual_hp_enabled) && this->duo_holds_.enable.ready(static_cast<uint32_t>(dual_on_hold_min) * 60000UL)) {
         id(oq_dual_hp_enabled) = true;
+        this->duo_holds_.disable.reset();
         id(oq_dual_hp_disable_hold_elapsed_accum_min) = 0.0f;
-      } else if (id(oq_dual_hp_enabled) && id(oq_dual_hp_disable_hold_elapsed_accum_min) >= dual_off_hold_min) {
+      } else if (id(oq_dual_hp_enabled) &&
+                 this->duo_holds_.disable.ready(static_cast<uint32_t>(dual_off_hold_min) * 60000UL)) {
         id(oq_dual_hp_enabled) = false;
+        this->duo_holds_.enable.reset();
         id(oq_dual_hp_enable_hold_elapsed_accum_min) = 0.0f;
       }
     }
@@ -494,7 +500,7 @@ class Runtime {
       const bool regular_single_stop =
           previous_hp1 > 0 && previous_hp2 > 0 && single_sufficient && dispatch_u <= duo_disable_max_u &&
           (!std::isfinite(temperature_error_c) || temperature_error_c <= tuning.dual_disable_temp_err_max_c) &&
-          id(oq_dual_hp_disable_hold_elapsed_accum_min) >= dual_off_hold_min;
+          this->duo_holds_.disable.ready(static_cast<uint32_t>(dual_off_hold_min) * 60000UL);
       this->dispatch_stop_reason_ =
           esphome::openquatt_decision_log::heating_stop::curve_single_reason(regular_single_stop, best_duo.valid);
     }
@@ -597,6 +603,7 @@ class Runtime {
   void reset_request_(int owner) {
     this->dispatch_snapshot_initialized_ = false;
     this->previous_capped_demand_ = 0;
+    this->duo_holds_ = {};
     oq_curve::reset_request_state(id(oq_curve_request_last_loop_ms), id(oq_curve_request_total_level),
                                   id(oq_curve_request_owner_hp), id(oq_curve_dispatch_hp1_level),
                                   id(oq_curve_dispatch_hp2_level), id(oq_curve_capacity_mode_code));
@@ -604,6 +611,12 @@ class Runtime {
                                          id(oq_dual_hp_disable_hold_elapsed_accum_min),
                                          id(oq_dual_hp_emergency_hold_elapsed_accum_min), id(oq_curve_single_owner_hp),
                                          id(oq_duo_request_hold_until_ms), owner);
+  }
+  void reset_dual_holds_() {
+    this->duo_holds_ = {};
+    oq_request::reset_dual_hold_state(id(oq_dual_hp_enabled), id(oq_dual_hp_enable_hold_elapsed_accum_min),
+                                      id(oq_dual_hp_disable_hold_elapsed_accum_min),
+                                      id(oq_dual_hp_emergency_hold_elapsed_accum_min));
   }
 
   void log_demand_transition_(uint32_t now_ms, float room_c, float room_setpoint_c, bool oil_return_mask_active,
@@ -647,6 +660,7 @@ class Runtime {
   bool last_hp1_available_{false};
   bool last_hp2_available_{false};
   int previous_capped_demand_{0};
+  oq_curve::DuoHoldState duo_holds_;
 };
 
 inline Runtime& runtime() {
