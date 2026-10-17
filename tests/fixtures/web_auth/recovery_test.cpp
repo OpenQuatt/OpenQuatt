@@ -11,6 +11,8 @@
 #include "esphome/components/wifi/wifi_component.h"
 #endif
 
+#include "web_server_lifetime.h"
+
 using namespace esphome;
 
 class Recovery : public openquatt_recovery::OpenQuattRecovery {
@@ -20,10 +22,11 @@ class Recovery : public openquatt_recovery::OpenQuattRecovery {
   void handoff() { prepare_reboot_handoff_(); }
 };
 
-int main() {
+static void run_scenario() {
   api::APIServer api;
   api::global_api_server = &api;
   web_server_base::WebServerBase base;
+  WebServerLifetime server_lifetime(base);
   web_server_base::global_web_server_base = &base;
   openquatt_web_auth::OpenQuattWebAuth auth;
   auth.set_default_auth_enabled(false);
@@ -258,4 +261,10 @@ int main() {
   physical_reboot.handleRequest(&request);
   assert(request.response_code == 403);
 #endif
+}
+
+int main() {
+  run_scenario();
+  assert(AsyncWebHandler::live_handlers.empty());
+  assert(AsyncWebServer::live_servers == 0);
 }

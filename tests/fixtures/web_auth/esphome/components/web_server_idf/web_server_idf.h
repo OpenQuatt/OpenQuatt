@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -82,7 +83,13 @@ class AsyncWebServerRequest {
 
 class AsyncWebHandler {
  public:
-  virtual ~AsyncWebHandler() = default;
+  // Track stack and heap handlers; stack instances leave this registry before
+  // WebServerLifetime releases the firmware-lifetime heap handlers.
+  inline static std::vector<AsyncWebHandler*> live_handlers;
+  AsyncWebHandler() { live_handlers.push_back(this); }
+  virtual ~AsyncWebHandler() {
+    live_handlers.erase(std::remove(live_handlers.begin(), live_handlers.end(), this), live_handlers.end());
+  }
   virtual bool canHandle(AsyncWebServerRequest*) const { return true; }
   virtual void handleRequest(AsyncWebServerRequest*) {}
   virtual void handleUpload(AsyncWebServerRequest*, const std::string&, size_t, uint8_t*, size_t, bool) {}
@@ -92,7 +99,9 @@ class AsyncWebHandler {
 
 class AsyncWebServer {
  public:
-  explicit AsyncWebServer(uint16_t) {}
+  inline static size_t live_servers{0};
+  explicit AsyncWebServer(uint16_t) { ++live_servers; }
+  ~AsyncWebServer() { --live_servers; }
   void begin() {}
   void end() {}
   void* get_server() { return this; }

@@ -89,6 +89,11 @@ CI installs the pinned ESPHome version so integration tests actually execute.
 The Python runner builds the web assets before discovery because real ESPHome
 package composition validates their file paths, including on a fresh checkout.
 ASan and UBSan run in a separate required job before firmware builds.
+The web CI job builds both the PR and its exact base commit with their locked
+dependencies before comparing gzip sizes. Generated bundles stay untracked.
+To reproduce a comparison locally, build the base in a separate checkout and set
+`OPENQUATT_WEB_BUNDLE_BASE_DIR` to its `openquatt/web` directory when running
+`npm run check:web`. A missing baseline fails rather than skipping the comparison.
 
 ## Keeping tests useful
 

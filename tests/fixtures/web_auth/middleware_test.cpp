@@ -4,6 +4,8 @@
 
 #include "web_server_base.h"
 
+#include "web_server_lifetime.h"
+
 using esphome::web_server_base::WebServerBase;
 
 class Handler : public AsyncWebHandler {
@@ -24,8 +26,9 @@ static void invoke_all(AsyncWebHandler* handler, AsyncWebServerRequest* request)
   handler->handleBody(request, nullptr, 0, 0, 0);
 }
 
-int main() {
+static void run_scenario() {
   WebServerBase base;
+  WebServerLifetime server_lifetime(base);
   // A queued web action stays invalid after recovery closes; a new action may run.
   const auto before_recovery = base.recovery_epoch();
   base.set_recovery_active(true);
@@ -111,4 +114,10 @@ int main() {
     assert(base.request_is_authenticated(&reader, true));
   } while (!done.load());
   writer.join();
+}
+
+int main() {
+  run_scenario();
+  assert(AsyncWebHandler::live_handlers.empty());
+  assert(AsyncWebServer::live_servers == 0);
 }

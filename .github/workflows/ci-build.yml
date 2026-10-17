@@ -107,6 +107,18 @@ jobs:
       - name: Install web build dependencies
         run: npm ci --ignore-scripts
 
+      - name: Build exact PR base bundles for size comparison
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          baseline_root="${RUNNER_TEMP}/openquatt-web-baseline"
+          mkdir -p "${baseline_root}"
+          git archive "${BASE_SHA}" | tar -x -C "${baseline_root}"
+          npm ci --ignore-scripts --prefix "${baseline_root}"
+          npm run build:web --prefix "${baseline_root}"
+          echo "OPENQUATT_WEB_BUNDLE_BASE_DIR=${baseline_root}/openquatt/web" >> "${GITHUB_ENV}"
+
       - name: Build and test web bundles
         env:
           OPENQUATT_WEB_BUNDLE_BASE_REF: ${{ github.event.pull_request.base.sha }}

@@ -6,10 +6,13 @@
 
 #include "OpenQuattWebAuth.h"
 
+#include "web_server_lifetime.h"
+
 using namespace esphome;
 
-int main() {
+static void run_scenario() {
   web_server_base::WebServerBase base;
+  WebServerLifetime server_lifetime(base);
   web_server_base::global_web_server_base = &base;
   openquatt_web_auth::OpenQuattWebAuth auth;
   auth.set_default_auth_enabled(false);
@@ -122,4 +125,10 @@ int main() {
   route->handleRequest(&status);  // socket writes cannot retain the component-state lock
   assert(auth.get_active_username().empty());
   assert(username_snapshot == "admin");
+}
+
+int main() {
+  run_scenario();
+  assert(AsyncWebHandler::live_handlers.empty());
+  assert(AsyncWebServer::live_servers == 0);
 }
