@@ -225,6 +225,7 @@ class OpenQuattOduSettings {
   }
 };
 }  // namespace openquatt_odu_settings
+inline oq_odu::Variant test_variant = oq_odu::Variant::V2_NEW_MODEL;
 namespace openquatt_odu_defrost {
 class OpenQuattOduDefrost {
  public:
@@ -232,7 +233,7 @@ class OpenQuattOduDefrost {
     ++revocations;
     return profile_sync_ok;
   }
-  oq_odu::Variant variant() const { return oq_odu::Variant::V2_NEW_MODEL; }
+  oq_odu::Variant variant() const { return test_variant; }
 };
 }  // namespace openquatt_odu_defrost
 namespace openquatt_web_auth {

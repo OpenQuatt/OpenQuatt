@@ -19,6 +19,8 @@ test("EEPROM status fails closed for missing capabilities and never infers persi
   assert.equal(empty.available, false);
   assert.equal(empty.baseline, false);
   assert.equal(empty.coldSeen, false);
+  assert.equal(empty.powerCycleSafe, false);
+  assert.equal(empty.legacy, false);
   const pending = normalizeEepromWriteStatus({ state: 6, result: "POWER_CYCLE_REQUIRED", crc: 123, holding: true });
   assert.equal(pending.result, "POWER_CYCLE_REQUIRED");
   assert.equal(pending.holding, true);
@@ -99,4 +101,67 @@ test("a concurrent download cannot authorize commit without the complete review 
   await flush();
   assert.equal(writes, 0);
   assert.match(renderEepromWriteModal(), /data-eeprom-action="commit"[^>]*disabled/);
+});
+
+test("legacy backups disclose HP binding and uncertain writers require a read-only status check", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; state.systemModal = ""; timers.clear(); });
+  setLocale("nl");
+  const writes = [];
+  let remote = { hp: 1, available: true, baseline: true, legacy: true, state: 5, generation: 30, holding: true, result: "COMMIT_FAILED", csrf_token: "token" };
+  globalThis.fetch = async (url, options) => {
+    if (options?.method === "POST") {
+      writes.push(url);
+      assert.match(url, /\/check-writer$/);
+      remote = { ...remote, result: "WRITER_ACTIVE", power_cycle_safe: false };
+    }
+    return { ok: true, json: async () => remote };
+  };
+  handleEepromWriteAction("open-odu-eeprom-write");
+  await flush();
+  let markup = renderEepromWriteModal();
+  assert.match(markup, /geen serienummer/);
+  assert.match(markup, /HP-aansluiting/);
+  assert.match(markup, /Houd de buitenunit onder spanning/);
+  assert.match(markup, /data-eeprom-action="check-writer"/);
+  assert.doesNotMatch(markup, /data-eeprom-action="verify"/);
+  assert.doesNotMatch(markup, /Maak uitsluitend deze buitenunit/);
+  handleEepromWriteAction("odu-eeprom-write-run", { dataset: { hp: "1", eepromAction: "check-writer" } });
+  await flush(); await flush();
+  assert.equal(writes.length, 1);
+  assert.match(renderEepromWriteModal(), /Schrijven is nog niet aantoonbaar gestopt/);
+  // A fresh backend confirmation changes the instructions, without a commit retry.
+  remote = { ...remote, power_cycle_safe: true, result: "POWER_CYCLE_REQUIRED" };
+  handleEepromWriteAction("open-odu-eeprom-write");
+  await flush();
+  markup = renderEepromWriteModal();
+  assert.match(markup, /data-eeprom-action="verify"[^>]*disabled/);
+  assert.doesNotMatch(markup, /data-eeprom-action="check-writer"/);
+  assert.equal(writes.length, 1);
+  setLocale("en");
+  assert.match(renderEepromWriteModal(), /provides no serial number/);
+  assert.match(renderEepromWriteModal(), /HP connection/);
+  setLocale("nl");
+});
+
+test("an already interrupted uncertain job can be verified only with fresh disconnect evidence and consent", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; state.systemModal = ""; timers.clear(); });
+  const actions = [];
+  globalThis.fetch = async (url, options) => {
+    if (options?.method === "POST") actions.push(url);
+    return { ok: true, json: async () => ({ hp: 1, available: true, baseline: true, state: 4, generation: 31, holding: true, cold_seen: true }) };
+  };
+  handleEepromWriteAction("open-odu-eeprom-write");
+  await flush();
+  assert.match(renderEepromWriteModal(), /data-eeprom-action="verify"[^>]*disabled/);
+  const button = { dataset: { hp: "1", eepromAction: "verify" } };
+  handleEepromWriteAction("odu-eeprom-write-run", button);
+  await flush();
+  assert.equal(actions.length, 0);
+  updateEepromWriteDraft({ dataset: { oqEepromWriteHp: "1", eepromField: "cold" }, checked: true, closest: () => null });
+  handleEepromWriteAction("odu-eeprom-write-run", button);
+  await flush(); await flush();
+  assert.equal(actions.length, 1);
+  assert.match(actions[0], /\/verify$/);
 });

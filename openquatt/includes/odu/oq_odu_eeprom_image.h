@@ -62,13 +62,32 @@ inline void finalize_record(Record& record) {
   record.bytes = sizeof(record);
   record.checksum = checksum(record);
 }
+inline bool legacy_identity(oq_odu::Variant variant) {
+  return variant == oq_odu::Variant::V1 || variant == oq_odu::Variant::V1_5;
+}
+inline bool supported_firmware(const Identity& identity) {
+  if (identity.hp < 1U || identity.hp > 2U) return false;
+  switch (static_cast<oq_odu::Variant>(identity.variant)) {
+    case oq_odu::Variant::V1:
+      return identity.board == oq_odu::CONTROL_BOARD_ITEM_V1 && identity.program == 0x0119U;
+    case oq_odu::Variant::V1_5:
+      return identity.board == oq_odu::CONTROL_BOARD_ITEM_V1_5_OR_V2_OLD_MODEL && identity.program == 0x011EU;
+    case oq_odu::Variant::V2_OLD_MODEL:
+      return identity.board == oq_odu::CONTROL_BOARD_ITEM_V1_5_OR_V2_OLD_MODEL && identity.program == 0x0122U;
+    case oq_odu::Variant::V2_NEW_MODEL:
+      return identity.board == oq_odu::CONTROL_BOARD_ITEM_V2_NEW_MODEL && identity.program == 0x0201U;
+    default:
+      return false;
+  }
+}
+inline bool serial_bound(const Identity& identity) {
+  for (const auto word : identity.serial)
+    if (word != 0U && word != 0xFFFFU) return true;
+  return false;
+}
 inline bool valid_identity(const Identity& identity) {
-  bool meaningful = false;
-  for (const auto word : identity.serial) meaningful |= word != 0U && word != 0xFFFFU;
-  // Only the STM8 V2 2.1 application examined in CiC 4.15.0 is admitted.
-  return identity.hp >= 1U && identity.hp <= 2U && meaningful &&
-         identity.variant == static_cast<uint8_t>(oq_odu::Variant::V2_NEW_MODEL) &&
-         identity.board == oq_odu::CONTROL_BOARD_ITEM_V2_NEW_MODEL && identity.program == 0x0201U;
+  return supported_firmware(identity) &&
+         (legacy_identity(static_cast<oq_odu::Variant>(identity.variant)) || serial_bound(identity));
 }
 inline bool same_identity(const Identity& a, const Identity& b) {
   return a.board == b.board && a.program == b.program && a.variant == b.variant && a.hp == b.hp && a.serial == b.serial;
@@ -128,11 +147,13 @@ inline bool prepare(Record& record, const Image& source, uint8_t groups, bool re
   // The generic editor ceiling (120 Hz) is not an ODU hardware rating. Keep
   // persistent tables inside the original unit's observed frequency envelope.
   const uint16_t first_addresses[]{3001U, 3012U};
-  const uint16_t last_addresses[]{3069U, 3059U};
+  const size_t maximum_level = variant == oq_odu::Variant::V2_NEW_MODEL ? 20U : 10U;
+  const uint16_t last_addresses[]{static_cast<uint16_t>(maximum_level == 20U ? 3069U : 3010U),
+                                  static_cast<uint16_t>(maximum_level == 20U ? 3059U : 3021U)};
   for (size_t mode = 0U; mode < 2U; ++mode) {
     const uint8_t minimum = record.original[first_addresses[mode] - IMAGE_ADDRESS];
     const uint8_t maximum = record.original[last_addresses[mode] - IMAGE_ADDRESS];
-    for (size_t index = 1U; index <= 20U; ++index) {
+    for (size_t index = 1U; index <= maximum_level; ++index) {
       const uint16_t address = index <= 10U ? static_cast<uint16_t>((mode == 0U ? 3000U : 3011U) + index)
                                             : static_cast<uint16_t>((mode == 0U ? 3060U : 3050U) + index - 11U);
       const uint8_t frequency = candidate[address - IMAGE_ADDRESS];

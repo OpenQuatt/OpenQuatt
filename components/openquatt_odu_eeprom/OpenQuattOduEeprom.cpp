@@ -91,6 +91,8 @@ class Handler : public AsyncWebHandler {
         command = Action::CANCEL;
       else if (action == "restore")
         command = Action::RESTORE;
+      else if (action == "check-writer")
+        command = Action::CHECK_WRITER;
       uint32_t generation = 0U, groups = 0U;
       if (command == Action::NONE || !number(request->arg("generation"), generation) ||
           !number(request->arg("groups"), groups) || groups > oq_eeprom::ALL ||
@@ -280,6 +282,9 @@ void OpenQuattOduEeprom::publish_(const char* result) {
     next.state = static_cast<uint8_t>(record.state);
     next.groups = record.groups;
     next.supported = oq_eeprom::valid_identity(record.identity);
+    next.legacy = oq_eeprom::legacy_identity(static_cast<oq_odu::Variant>(record.identity.variant));
+    next.power_cycle_safe =
+        power_cycle_safe_ || record.state == State::WAIT_BASELINE || record.state == State::WAIT_VERIFY;
     next.baseline = record.state != State::WAIT_BASELINE && record.state != State::CANCELLED;
     next.crc = oq_eeprom::stored_crc(record.candidate);
     if (record.state == State::PREPARED)
@@ -301,6 +306,7 @@ void OpenQuattOduEeprom::finish_(const char* result) {
 }
 void OpenQuattOduEeprom::fail_(const char* result) {
   clear_tx_queue_for_device();
+  if (modification_started_ && !worker_may_run_) power_cycle_safe_ = true;
   if (modification_started_ && valid_record_ && !storage_bad_) {
     if (!persist_(State::UNCERTAIN)) result = "STORAGE_FAILED";
   }
@@ -362,8 +368,10 @@ void OpenQuattOduEeprom::loop() {
   }
   if (pending != Action::NONE) {
     action_ = pending;
-    modification_started_ = data_mode_ = false;
-    if (web_server_base::global_web_server_base->is_recovery_active() || !oq_eeprom::safe(millis()) || !reserve_()) {
+    modification_started_ = false;
+    data_mode_ = action_ == Action::CHECK_WRITER;
+    if (web_server_base::global_web_server_base->is_recovery_active() || !oq_eeprom::safe(millis(), hp_, data_mode_) ||
+        !reserve_()) {
       finish_("SAFETY_BLOCKED");
       return;
     }
@@ -388,7 +396,7 @@ void OpenQuattOduEeprom::loop() {
         (action_ == Action::CAPTURE && (state != State::WAIT_BASELINE || !cold_ready_())) ||
         ((action_ == Action::PREPARE || action_ == Action::RESTORE) && state != State::BASELINE) ||
         (action_ == Action::COMMIT && (state != State::PREPARED || expected_generation_ != record_().generation)) ||
-        (action_ == Action::VERIFY &&
+        ((action_ == Action::VERIFY || action_ == Action::CHECK_WRITER) &&
          (state != State::WAIT_VERIFY && state != State::UNCERTAIN && state != State::WRITING)) ||
         (action_ == Action::VERIFY && !cold_ready_())) {
       finish_("INVALID_STATE");
@@ -428,8 +436,15 @@ void OpenQuattOduEeprom::advance_() {
   auto& record = record_();
   switch (step_) {
     case Step::IDENTITY:
+      if (!oq_eeprom::supported_firmware(identity_)) {
+        fail_("UNSUPPORTED");
+        return;
+      }
       step_ = Step::SERIAL;
-      request_read_(11219U, 20U);
+      if (oq_eeprom::legacy_identity(static_cast<oq_odu::Variant>(identity_.variant)))
+        advance_();  // Legacy applications have no usable serial block.
+      else
+        request_read_(11219U, 20U);
       break;
     case Step::SERIAL:
       if (!oq_eeprom::valid_identity(identity_)) {
@@ -439,6 +454,11 @@ void OpenQuattOduEeprom::advance_() {
       if (valid_record_ && record.state != State::CANCELLED && !oq_eeprom::same_identity(identity_, record.identity)) {
         fail_("IDENTITY_MISMATCH");
         return;
+      }
+      if (action_ == Action::CHECK_WRITER) {
+        step_ = Step::CHECK_WRITER;
+        request_read_(4003U, 1U);
+        break;
       }
       if (action_ == Action::BEGIN_BACKUP) {
         const uint32_t generation = record.generation;
@@ -465,6 +485,11 @@ void OpenQuattOduEeprom::advance_() {
       offset_ = 0U;
       step_ = Step::READ;
       request_read_(oq_eeprom::IMAGE_ADDRESS, 125U);
+      break;
+    case Step::CHECK_WRITER:
+      // Status 6 may be reported while subsequent chunks are still scheduled.
+      power_cycle_safe_ = !worker_may_run_ || frame_[0] == 4U || frame_[0] == 7U;
+      finish_(power_cycle_safe_ ? "POWER_CYCLE_REQUIRED" : "WRITER_ACTIVE");
       break;
     case Step::COMMIT_READY:
       // A prior completion (4) cannot establish completion of our new job.
@@ -499,20 +524,24 @@ void OpenQuattOduEeprom::advance_() {
     case Step::COMMIT: {
       constexpr uint16_t addresses[]{3999U, 4001U, 4002U, 4000U};
       constexpr uint16_t values[]{5U, 0x0632U, 3U, 0x0102U};
-      if (++commit_index_ < 4U)
+      if (++commit_index_ < 4U) {
+        // The ODU can schedule its worker on 4002=3, before 4000 is sent.
+        if (addresses[commit_index_] == 4002U) worker_may_run_ = true;
         request_write_(addresses[commit_index_], values[commit_index_]);
-      else {
+      } else {
         step_ = Step::POLL;
         next_ms_ = millis() + 500U;
       }
       break;
     }
     case Step::POLL:
-      if (frame_[0] == 2U || frame_[0] == 6U) {
+      if (frame_[0] == 2U || frame_[0] == 6U || frame_[0] == 7U) {
+        if (frame_[0] == 7U) power_cycle_safe_ = true;
         fail_("COMMIT_FAILED");
         return;
       }
       if (frame_[0] == 4U) {
+        power_cycle_safe_ = true;
         step_ = Step::READ_FINAL;
         offset_ = 0U;
         request_read_(oq_eeprom::IMAGE_ADDRESS, 125U);
@@ -599,6 +628,10 @@ void OpenQuattOduEeprom::image_read_done_() {
       fail_("STORAGE_FAILED");
       return;
     }
+    // Only a validated new transaction can establish that our worker has not
+    // been dispatched. A rejected request must not weaken an uncertain job.
+    worker_may_run_ = false;
+    power_cycle_safe_ = false;
     modification_started_ = true;
     step_ = Step::WRITE;
     offset_ = 0U;
@@ -651,7 +684,7 @@ void OpenQuattOduEeprom::on_response(std::span<const uint8_t> request, std::span
         for (size_t i = 0; i < 20U; ++i) identity_.serial[i] = word(payload, i);
       } else if (step_ == Step::GUARD) {
         response_ok_ = word(payload, 0U) == 0U && word(payload, 4U) == 0U;
-      } else if (step_ == Step::POLL || step_ == Step::COMMIT_READY)
+      } else if (step_ == Step::POLL || step_ == Step::COMMIT_READY || step_ == Step::CHECK_WRITER)
         frame_[0] = word(payload, 0U);
       else
         for (size_t i = 0; i < count_; ++i) {
@@ -696,16 +729,17 @@ void OpenQuattOduEeprom::write_status(httpd_req_t* request, bool download) {
     httpd_resp_sendstr(request, R"({"error":"backup_unavailable"})");
     return;
   }
-  char buffer[512];
+  char buffer[640];
   const std::string token = download ? std::string{} : csrf();
   std::snprintf(
       buffer, sizeof(buffer),
-      R"({"hp":%u,"available":%s,"busy":%s,"supported":%s,"baseline":%s,"cold_seen":%s,"holding":%s,"details_ready":%s,"state":%u,"groups":%u,"changes":%u,"reverted":%u,"crc":%u,"generation":%lu,"result":"%s","csrf_token":"%s")",
+      R"({"hp":%u,"available":%s,"busy":%s,"supported":%s,"baseline":%s,"cold_seen":%s,"holding":%s,"details_ready":%s,"legacy":%s,"power_cycle_safe":%s,"state":%u,"groups":%u,"changes":%u,"reverted":%u,"crc":%u,"generation":%lu,"result":"%s","csrf_token":"%s")",
       hp_, snapshot.available ? "true" : "false", snapshot.busy ? "true" : "false",
       snapshot.supported ? "true" : "false", snapshot.baseline ? "true" : "false",
       snapshot.cold_seen ? "true" : "false", snapshot.holding ? "true" : "false", details ? "true" : "false",
-      snapshot.state, snapshot.groups, snapshot.changes, snapshot.reverted, snapshot.crc,
-      static_cast<unsigned long>(snapshot.generation), snapshot.result, token.c_str());
+      snapshot.legacy ? "true" : "false", snapshot.power_cycle_safe ? "true" : "false", snapshot.state, snapshot.groups,
+      snapshot.changes, snapshot.reverted, snapshot.crc, static_cast<unsigned long>(snapshot.generation),
+      snapshot.result, token.c_str());
   httpd_resp_sendstr_chunk(request, buffer);
   if (details && snapshot.state == static_cast<uint8_t>(State::PREPARED)) {
     httpd_resp_sendstr_chunk(request, R"(,"diff":[)");
@@ -725,8 +759,9 @@ void OpenQuattOduEeprom::write_status(httpd_req_t* request, bool download) {
     const auto& identity = record_().identity;
     std::snprintf(
         buffer, sizeof(buffer),
-        R"(,"format":"openquatt-odu-eeprom-backup-v1","original_crc":%u,"identity":{"board":%u,"program":%u,"variant":%u,"hp":%u,"serial":[)",
-        oq_eeprom::stored_crc(record_().original), identity.board, identity.program, identity.variant, identity.hp);
+        R"(,"format":"openquatt-odu-eeprom-backup-v1","original_crc":%u,"identity":{"board":%u,"program":%u,"variant":%u,"hp":%u,"binding":"%s","serial":[)",
+        oq_eeprom::stored_crc(record_().original), identity.board, identity.program, identity.variant, identity.hp,
+        oq_eeprom::serial_bound(identity) ? "serial" : "hp-slot");
     httpd_resp_sendstr_chunk(request, buffer);
     for (size_t i = 0; i < identity.serial.size(); ++i) {
       std::snprintf(buffer, sizeof(buffer), "%s%u", i == 0U ? "" : ",", identity.serial[i]);

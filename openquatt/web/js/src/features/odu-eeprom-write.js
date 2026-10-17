@@ -24,7 +24,7 @@ const RESULT_KEYS = {
   INVALID_IMAGE: "oduEepromWrite.invalidImage", STALE: "oduEepromWrite.stale", CANCELLED: "oduEepromWrite.cancelled",
   READ_FAILED: "oduEepromWrite.readFailed", READBACK_FAILED: "oduEepromWrite.readbackFailed",
   WRITE_UNCERTAIN: "oduEepromWrite.uncertain", COMMIT_FAILED: "oduEepromWrite.commitFailed",
-  COMMIT_NOT_IDLE: "oduEepromWrite.commitNotIdle",
+  COMMIT_NOT_IDLE: "oduEepromWrite.commitNotIdle", WRITER_ACTIVE: "oduEepromWrite.writerActive",
   RECOVERY_REQUIRED: "oduEepromWrite.recoveryRequired", OFFLINE: "oduEepromWrite.offline", TIMEOUT: "oduEepromWrite.uncertain",
 };
 const open = () => state.systemModal === "odu-eeprom-write";
@@ -34,7 +34,7 @@ const draft = (hp) => drafts[hp] ||= { groups: 0, consent: false, cold: false };
 export function normalizeEepromWriteStatus(payload = {}) {
   return {
     hp: payload.hp === 2 ? 2 : 1, available: payload.available === true, busy: payload.busy === true,
-    baseline: payload.baseline === true, coldSeen: payload.cold_seen === true, holding: payload.holding === true,
+    baseline: payload.baseline === true, legacy: payload.legacy === true, powerCycleSafe: payload.power_cycle_safe === true, coldSeen: payload.cold_seen === true, holding: payload.holding === true,
     state: Number(payload.state || 0), generation: Number(payload.generation || 0),
     result: String(payload.result || "STORAGE_UNAVAILABLE"), csrf: String(payload.csrf_token || ""),
     detailsReady: payload.details_ready === true && Array.isArray(payload.diff) && payload.diff.length > 0 && payload.diff.every((row) => [row.address, row.stored, row.runtime, row.target].every(Number.isInteger)),
@@ -151,7 +151,11 @@ function renderHp(hp) {
   let body = "";
   if (!status || !status.available) body = `<p>${escapeHtml(t("oduEepromWrite.unavailable"))}</p>`;
   else if (status.busy) body = `<p role="status">${escapeHtml(t("common.busy"))}</p>`;
-  else if (status.state === 1 || [4, 5, 6].includes(status.state)) {
+  else if ([4, 5].includes(status.state) && !status.powerCycleSafe) {
+    body = `<p role="status">${escapeHtml(t("oduEepromWrite.keepPowered"))}</p>
+      <div class="oq-helper-modal-actions">${actionButton(hp, "check-writer", "oduEepromWrite.checkWriter", disabled, true)}</div>
+      ${status.coldSeen ? `${checked("cold", "oduEepromWrite.coldConfirm")}<div class="oq-helper-modal-actions">${actionButton(hp, "verify", "oduEepromWrite.readAfterRestart", disabled || !choice.cold)}</div>` : ""}`;
+  } else if (status.state === 1 || [4, 5, 6].includes(status.state)) {
     body = `<p>${escapeHtml(t("oduEepromWrite.coldInstructions"))}</p>${checked("cold", "oduEepromWrite.coldConfirm")}
       <div class="oq-helper-modal-actions">${actionButton(hp, status.state === 1 ? "capture" : "verify", "oduEepromWrite.readAfterRestart", disabled || !choice.cold || !status.coldSeen, true)}
       ${status.state === 1 ? actionButton(hp, "cancel", "common.cancel", disabled) : ""}</div>`;
@@ -163,7 +167,7 @@ function renderHp(hp) {
     body = `<div class="oq-settings-odu-fields">${[[1, "oduEepromWrite.bottom"], [2, "oduEepromWrite.defrost"], [4, "oduEepromWrite.frequency"]].map(([group, key]) => `<label class="oq-settings-odu-auto"><input id="oq-eeprom-${hp}-group-${group}" type="checkbox" data-oq-eeprom-write-hp="${hp}" data-eeprom-group="${group}" ${choice.groups & group ? "checked" : ""} ${disabled ? "disabled" : ""}><span>${escapeHtml(t(key))}</span></label>`).join("")}</div>
       <div class="oq-helper-modal-actions">${actionButton(hp, "prepare", "oduEepromWrite.prepare", disabled || !choice.groups, true)}${actionButton(hp, "restore", "oduEepromWrite.restore", disabled)}</div>`;
   } else body = `<p>${escapeHtml(t("oduEepromWrite.firstBackup"))}</p>${actionButton(hp, "begin-backup", "oduEepromWrite.beginBackup", disabled || status.result === "UNSUPPORTED", true)}`;
-  return `<article class="oq-odu-eeprom-device" data-eeprom-write-panel="${hp}"><div class="oq-odu-eeprom-device-head"><h4>HP${hp}</h4><span class="oq-odu-eeprom-state">${escapeHtml(t(RESULT_KEYS[status?.result] || "oduEepromWrite.unavailable"))}</span></div>${status?.holding ? `<p role="status">${escapeHtml(t("oduEepromWrite.controlHold"))}</p>` : ""}${body}${status?.baseline ? `<div class="oq-helper-modal-actions"><button type="button" class="oq-helper-button oq-helper-button--ghost" data-oq-action="odu-eeprom-write-download" data-hp="${hp}" ${busy ? "disabled" : ""}>${escapeHtml(t("oduEepromWrite.download"))}</button></div>` : ""}</article>`;
+  return `<article class="oq-odu-eeprom-device" data-eeprom-write-panel="${hp}"><div class="oq-odu-eeprom-device-head"><h4>HP${hp}</h4><span class="oq-odu-eeprom-state">${escapeHtml(t(RESULT_KEYS[status?.result] || "oduEepromWrite.unavailable"))}</span></div>${status?.legacy ? `<p>${escapeHtml(t("oduEepromWrite.legacyBinding"))}</p>` : ""}${status?.holding ? `<p role="status">${escapeHtml(t("oduEepromWrite.controlHold"))}</p>` : ""}${body}${status?.baseline ? `<div class="oq-helper-modal-actions"><button type="button" class="oq-helper-button oq-helper-button--ghost" data-oq-action="odu-eeprom-write-download" data-hp="${hp}" ${busy ? "disabled" : ""}>${escapeHtml(t("oduEepromWrite.download"))}</button></div>` : ""}</article>`;
 }
 export function renderEepromWriteModal() {
   return renderModalShell({

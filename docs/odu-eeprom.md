@@ -1,9 +1,18 @@
 # Instellingen permanent bewaren in de buitenunit
 
-**Experimenteel:** permanent schrijven is beperkt tot de V2 met control-board-item
-`0x1037`, PCB-programma `0x0201` en een uitleesbaar serienummer. Het vereist een
-werkelijke NVS-partitie van minimaal 64 KiB. De Q-uitbreiding staat in
-[PR #847](https://github.com/OpenQuatt/OpenQuatt/pull/847). De module vergroot of
+**Experimenteel:** permanent schrijven ondersteunt de vier bekende uitvoeringen:
+
+| Buitenunit | Control-board-item / PCB-programma | Frequentietabellen | Backupbinding |
+|---|---|---|---|
+| V1 | `0x0037 / 0x0119` | F0–F10 | HP-aansluiting en model/firmware |
+| V1.5 | `0x0E37 / 0x011E` | F0–F10 | HP-aansluiting en model/firmware |
+| V2 old | `0x0E37 / 0x0122` | F0–F10 | Inclusief serienummer |
+| V2 new | `0x1037 / 0x0201` | F0–F20 | Inclusief serienummer |
+
+Andere firmwarecombinaties worden geweigerd. Het vereist een werkelijke
+NVS-partitie van minimaal 64 KiB. De Q-uitbreiding uit
+[PR #847](https://github.com/OpenQuatt/OpenQuatt/pull/847) is opgenomen in `dev`.
+De EEPROM-module vergroot of
 migreert zelf geen partities. De hardwarevrijgave staat nog open; zie het
 [ontwikkel- en testplan](development/odu-eeprom-opslag.md).
 
@@ -32,6 +41,11 @@ instellingen vervangen. Er wordt nooit automatisch opnieuw naar EEPROM geschreve
 4. Alleen een volledige, geldige uitlezing van dezelfde buitenunit wordt als
    oorspronkelijke backup bewaard. Download deze backup ook naar je computer.
    Hij bevat identiteit, de oorspronkelijke 512 bytes en de oorspronkelijke CRC.
+
+V1 en V1.5 leveren geen bruikbaar serienummer. De UI meldt daarom expliciet dat
+de backup bij de betreffende HP-aansluiting en model-/firmware-identiteit hoort.
+Verplaats of vervang de buitenunit niet zolang je deze backup gebruikt: twee
+gelijke oudere units zijn hiermee niet uniek van elkaar te onderscheiden.
 
 De gewone EEPROM-export leest het **runtime-shadowgeheugen**. Na tijdelijke
 wijzigingen is die export geen bewezen kopie van de oorspronkelijke EEPROM.
@@ -76,7 +90,17 @@ zetten; ook dat vereist de afzonderlijke bevestiging en herstartcontrole.
 
 Bij een onzekere of gedeeltelijk uitgevoerde schrijfopdracht blijft de normale
 aansturing geblokkeerd, ook na een herstart van OpenQuatt. OpenQuatt hervat of
-herhaalt de commit niet automatisch. Laat een onverwachte of corrupte inhoud
+herhaalt de commit niet automatisch. **Houd de buitenunit onder spanning** zolang
+de UI niet heeft vastgesteld dat de writer is gestopt. Kies **Schrijfstatus
+controleren**; deze actie leest uitsluitend de identiteit en schrijfstatus en
+herhaalt geen write. Een foutstatus kan optreden terwijl verdere EEPROM-chunks
+nog worden geschreven. Alleen status `4` (afgerond) of `7` (CRC geweigerd vóór
+schrijven), of een in dezelfde controllersessie bewezen nog niet gestarte writer,
+geven daarna de instructie voor een spanningsonderbreking. Status `0` of `6`
+bewijst na een onzekere opdracht geen stilstaande writer. Na een herstart van
+OpenQuatt wordt die kennis niet verondersteld. Als de buitenunit al werkelijk
+spanningsloos is geweest, blijft uitlezen met disconnectbewijs en expliciete
+bevestiging mogelijk. Laat een onverwachte of corrupte inhoud
 onderzoeken; een backup wordt nooit automatisch over een onbekende buitenunit
 geschreven. Herstel vanuit een willekeurig geüpload EEPROM-bestand wordt niet
 ondersteund.

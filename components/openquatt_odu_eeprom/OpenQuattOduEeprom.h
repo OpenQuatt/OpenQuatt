@@ -13,7 +13,7 @@ namespace esphome::openquatt_odu_eeprom {
 
 class OpenQuattOduEeprom : public Component, public modbus::ModbusClientDevice {
  public:
-  enum class Action : uint8_t { NONE, BEGIN_BACKUP, CAPTURE, PREPARE, COMMIT, VERIFY, CANCEL, RESTORE };
+  enum class Action : uint8_t { NONE, BEGIN_BACKUP, CAPTURE, PREPARE, COMMIT, VERIFY, CANCEL, RESTORE, CHECK_WRITER };
   void set_controller(modbus_controller::ModbusController* value) { controller_ = value; }
   void set_eeprom_dump(openquatt_odu_eeprom_dump::OpenQuattOduEepromDump* value) { dump_ = value; }
   void set_settings(openquatt_odu_settings::OpenQuattOduSettings* value) { settings_ = value; }
@@ -40,6 +40,7 @@ class OpenQuattOduEeprom : public Component, public modbus::ModbusClientDevice {
     SERIAL,
     GUARD,
     COMMIT_READY,
+    CHECK_WRITER,
     READ,
     WRITE,
     READ_STAGED,
@@ -49,6 +50,7 @@ class OpenQuattOduEeprom : public Component, public modbus::ModbusClientDevice {
   };
   struct Status {
     bool available{false}, busy{false}, supported{false}, baseline{false}, cold_seen{false}, holding{false};
+    bool legacy{false}, power_cycle_safe{false};
     uint8_t state{0U}, groups{0U};
     uint16_t changes{0U}, reverted{0U}, crc{0U};
     uint32_t generation{0U};
@@ -77,6 +79,7 @@ class OpenQuattOduEeprom : public Component, public modbus::ModbusClientDevice {
   bool waiting_{false}, response_{false}, response_ok_{false}, writing_{false}, reserved_{false};
   bool cold_seen_{false}, cold_confirmed_{false}, valid_record_{false}, storage_bad_{false};
   bool modification_started_{false}, data_mode_{false};
+  bool worker_may_run_{true}, power_cycle_safe_{false};
   bool downloading_{false};
   std::atomic<bool> offline_pending_{false};
   oq_eeprom::Record& record_() { return records_[0]; }

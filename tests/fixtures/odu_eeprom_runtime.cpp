@@ -1,5 +1,9 @@
 #include "components/openquatt_odu_eeprom/OpenQuattOduEeprom.cpp"
 #include <iostream>
+#include "tests/fixtures/v1_eeprom.h"
+#include "tests/fixtures/v1_5_eeprom.h"
+#include "tests/fixtures/v2_old_amh6_eeprom.h"
+#include "tests/fixtures/v2_new_amh6_eeprom.h"
 
 using namespace esphome;
 using namespace esphome::openquatt_odu_eeprom;
@@ -12,6 +16,7 @@ struct Device : OpenQuattOduEeprom {
   const oq_eeprom::Record& record() { return record_(); }
   bool busy() const { return status_.busy; }
   bool available() const { return status_.available; }
+  bool power_cycle_safe() const { return status_.power_cycle_safe; }
 };
 factory_reset::FactoryResetComponent reset_counter;
 modbus_controller::ModbusController controller;
@@ -20,7 +25,9 @@ openquatt_odu_settings::OpenQuattOduSettings settings;
 openquatt_odu_defrost::OpenQuattOduDefrost defrost;
 openquatt_web_auth::OpenQuattWebAuth auth;
 oq_eeprom::Image stored{}, shadow{};
-uint16_t mode = 0U, program = 0x0201U, serial = 123U;
+uint16_t mode = 0U, program = 0x0201U, board = 0x1037U, serial = 123U;
+unsigned serial_reads = 0U;
+uint16_t commit_result = 4U;
 unsigned writes = 0U, commits = 0U;
 bool commit_works = true;
 uint16_t lose_address = 0U;
@@ -58,7 +65,11 @@ void reset() {
   lose_address = write_status = 0U;
   mode = 0U;
   program = 0x0201U;
+  board = 0x1037U;
   serial = 123U;
+  serial_reads = 0U;
+  commit_result = 4U;
+  test_variant = oq_odu::Variant::V2_NEW_MODEL;
   test_now = 1000U;
   web_server_base::test_server = {};
   stored = {};
@@ -83,11 +94,15 @@ void respond(const modbus::Request& request) {
   const uint16_t value = uint16_t(pdu[3]) << 8U | pdu[4];
   std::vector<uint8_t> response;
   if (pdu[0] == 3U) {
+    if (address == 11219U) {
+      ++serial_reads;
+      assert(!oq_eeprom::legacy_identity(test_variant));
+    }
     response = {3U, static_cast<uint8_t>(value * 2U)};
     for (size_t index = 0; index < value; ++index) {
       uint16_t word = 0U;
       if (address == 2114U)
-        word = index == 13U ? 0x1037U : index == 8U ? program : 0U;
+        word = index == 13U ? board : index == 8U ? program : 0U;
       else if (address == 11219U)
         word = index == 0U ? serial : 0U;
       else if (address == 2099U)
@@ -106,9 +121,11 @@ void respond(const modbus::Request& request) {
       for (size_t index = 0; index < value; ++index) shadow.at(address - 2999U + index) = pdu.at(7U + index * 2U);
     } else if (address == 3999U)
       mode = value;
-    else if (address == 4000U) {
+    else if (address == 4001U)
+      write_status = 1U;
+    else if (address == 4002U) {
       ++commits;
-      write_status = 4U;
+      write_status = commit_result;
       if (commit_works) stored = shadow;
     }
     response.assign(pdu.begin(), pdu.begin() + 5);
@@ -199,6 +216,7 @@ int main() {
   assert(http_output.find("private-csrf-token") == std::string::npos);
   assert(http_output.find("\"original_crc\":") != std::string::npos &&
          http_output.find("\"identity\":") != std::string::npos);
+  assert(http_output.find("\"binding\":\"serial\"") != std::string::npos);
 
   reset();
   Device stale_status;
@@ -244,6 +262,7 @@ int main() {
   oq_eeprom::hold_mask.store(0U);
   attach(rebooted);
   assert(oq_eeprom::holding() && rebooted.state() == State::UNCERTAIN && reset_counter.failed);
+  assert(!rebooted.power_cycle_safe());
   for (unsigned i = 0; i < 20U; ++i) rebooted.loop();
   assert(modbus::requests.empty() && commits == 1U);
   cold_boot(rebooted);
@@ -391,6 +410,132 @@ int main() {
   assert(!oq_eeprom::factory_reset_allowed());
   attach(secondary, 2U);
   assert(oq_eeprom::factory_reset_allowed());
+
+  for (const auto variant :
+       {oq_odu::Variant::V1, oq_odu::Variant::V1_5, oq_odu::Variant::V2_OLD_MODEL, oq_odu::Variant::V2_NEW_MODEL}) {
+    reset();
+    test_variant = variant;
+    const std::array<uint16_t, 512>* reference = nullptr;
+    if (variant == oq_odu::Variant::V1) {
+      board = 0x0037U;
+      program = 0x0119U;
+      reference = &oq_test::v1::EEPROM_WORDS;
+    }
+    if (variant == oq_odu::Variant::V1_5) {
+      board = 0x0E37U;
+      program = 0x011EU;
+      reference = &oq_test::v1_5::EEPROM_WORDS;
+    }
+    if (variant == oq_odu::Variant::V2_OLD_MODEL) {
+      board = 0x0E37U;
+      program = 0x0122U;
+      reference = &oq_test::v2_old_amh6::EEPROM_WORDS;
+    }
+    if (variant == oq_odu::Variant::V2_NEW_MODEL) {
+      board = 0x1037U;
+      program = 0x0201U;
+      reference = &oq_test::v2_new_amh6::EEPROM_WORDS;
+    }
+    for (size_t index = 0; index < stored.size(); ++index) stored[index] = reference->at(index);
+    assert(oq_eeprom::valid_crc(stored));
+    shadow = stored;
+    Device model;
+    attach(model);
+    backup(model);
+    const auto original = stored;
+    prepare(model);
+    command(model, OpenQuattOduEeprom::Action::COMMIT);
+    assert(model.state() == State::WAIT_VERIFY && model.power_cycle_safe());
+    cold_boot(model);
+    command(model, OpenQuattOduEeprom::Action::VERIFY, 0U, true);
+    assert(model.result() == "VERIFIED" && model.record().original == original);
+    assert((serial_reads == 0U) == oq_eeprom::legacy_identity(variant));
+    assert(oq_eeprom::serial_bound(model.record().identity) == !oq_eeprom::legacy_identity(variant));
+    http_output.clear();
+    model.write_status(nullptr, true);
+    assert(http_output.find(oq_eeprom::legacy_identity(variant) ? "\"binding\":\"hp-slot\""
+                                                                : "\"binding\":\"serial\"") != std::string::npos);
+    // Persist the defrost method separately on every generation.
+    shadow[276] = shadow[276] == 3U ? 1U : 3U;
+    command(model, OpenQuattOduEeprom::Action::PREPARE, oq_eeprom::DEFROST);
+    assert(model.state() == State::PREPARED);
+    command(model, OpenQuattOduEeprom::Action::COMMIT);
+    cold_boot(model);
+    command(model, OpenQuattOduEeprom::Action::VERIFY, 0U, true);
+    assert(model.result() == "VERIFIED" && model.record().original == original);
+    // Persist one valid frequency change, using F10 on old layouts and F20 on new.
+    const auto last = variant == oq_odu::Variant::V2_NEW_MODEL ? 3069U : 3010U;
+    shadow[last - 2999U]--;
+    command(model, OpenQuattOduEeprom::Action::PREPARE, oq_eeprom::FREQUENCY);
+    assert(model.state() == State::PREPARED);
+    if (variant != oq_odu::Variant::V2_NEW_MODEL) {
+      for (size_t address = 3050U; address <= 3069U; ++address)
+        assert(model.record().candidate[address - 2999U] == original[address - 2999U]);
+    }
+    command(model, OpenQuattOduEeprom::Action::COMMIT);
+    cold_boot(model);
+    command(model, OpenQuattOduEeprom::Action::VERIFY, 0U, true);
+    assert(model.result() == "VERIFIED");
+    command(model, OpenQuattOduEeprom::Action::RESTORE);
+    assert(model.state() == State::PREPARED && model.record().candidate == original);
+    command(model, OpenQuattOduEeprom::Action::CANCEL);
+    // Old extension locations are unrelated parameters and remain forbidden.
+    auto record = model.record();
+    auto runtime = record.baseline;
+    runtime[3050U - 2999U] ^= 1U;
+    if (variant != oq_odu::Variant::V2_NEW_MODEL)
+      assert(!oq_eeprom::prepare(record, runtime, oq_eeprom::FREQUENCY, false));
+    if (variant == oq_odu::Variant::V1) {
+      runtime = record.baseline;
+      runtime[237] = 3U;
+      assert(!oq_eeprom::prepare(record, runtime, oq_eeprom::BOTTOM, false));
+      runtime = record.baseline;
+      runtime[276] = 4U;
+      assert(!oq_eeprom::prepare(record, runtime, oq_eeprom::DEFROST, false));
+    }
+  }
+
+  reset();
+  Device early_commit;
+  attach(early_commit);
+  backup(early_commit);
+  prepare(early_commit);
+  lose_address = 4002U;
+  command(early_commit, OpenQuattOduEeprom::Action::COMMIT);
+  assert(early_commit.state() == State::UNCERTAIN && commits == 1U && writes == 8U && !early_commit.power_cycle_safe());
+  command(early_commit, OpenQuattOduEeprom::Action::CHECK_WRITER);
+  assert(early_commit.power_cycle_safe() && early_commit.result() == "POWER_CYCLE_REQUIRED" && writes == 8U);
+  cold_boot(early_commit);
+  command(early_commit, OpenQuattOduEeprom::Action::VERIFY, 0U, true);
+  assert(early_commit.result() == "VERIFIED");
+
+  reset();
+  Device failed_writer;
+  attach(failed_writer);
+  backup(failed_writer);
+  prepare(failed_writer);
+  commit_result = 6U;
+  command(failed_writer, OpenQuattOduEeprom::Action::COMMIT);
+  assert(failed_writer.state() == State::UNCERTAIN && !failed_writer.power_cycle_safe());
+  const unsigned prior_writes = writes;
+  // A rejected repeated COMMIT must not mark the previous worker as unstarted.
+  mode = 0U;
+  command(failed_writer, OpenQuattOduEeprom::Action::COMMIT);
+  assert(failed_writer.result() == "INVALID_STATE" && !failed_writer.power_cycle_safe());
+  for (const uint16_t status : {0U, 1U, 2U, 3U, 6U}) {
+    write_status = status;
+    command(failed_writer, OpenQuattOduEeprom::Action::CHECK_WRITER);
+    assert(!failed_writer.power_cycle_safe() && failed_writer.result() == "WRITER_ACTIVE" && writes == prior_writes);
+  }
+  // After controller reboot even a formerly pre-dispatch failure is unknown.
+  Device writer_reboot;
+  attach(writer_reboot);
+  mode = write_status = 0U;  // A safety stop may clear status without stopping the worker.
+  command(writer_reboot, OpenQuattOduEeprom::Action::CHECK_WRITER);
+  assert(!writer_reboot.power_cycle_safe() && writer_reboot.result() == "WRITER_ACTIVE" && writes == prior_writes);
+  write_status = 7U;
+  command(failed_writer, OpenQuattOduEeprom::Action::CHECK_WRITER);
+  assert(failed_writer.power_cycle_safe() && writes == prior_writes);
 
   std::cout << "EEPROM production runtime: PASS\n";
 }

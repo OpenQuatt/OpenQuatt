@@ -2,9 +2,13 @@
 
 De EEPROM-service bewaart bodemplaatinstellingen, de ontdooimethode en beide
 frequentietabellen via een afzonderlijke ODU-commit. De
-[gebruikersprocedure](../odu-eeprom.md) beschrijft de UI. De eerste implementatie
-is experimenteel voor V2 `0x1037` / `0x0201`; V1, V1.5, V2 met andere firmware,
-ontbrekend serienummer en onbekende indelingen kunnen niet schrijven.
+[gebruikersprocedure](../odu-eeprom.md) beschrijft de UI. De implementatie is
+experimenteel voor V1, V1.5, V2 old en V2 new met de hieronder bewezen
+board-/programma-ID's. Onbekende combinaties en indelingen kunnen niet schrijven.
+V2 vereist een uitleesbaar serienummer. V1/V1.5 slaan de ontbrekende serialblock-read
+over en binden de backup aan HP-slot en exacte board-/programma-/variantidentiteit.
+De UI en download (`identity.binding = "hp-slot"`) maken deze zwakkere binding
+expliciet; een gelijk exemplaar op hetzelfde slot is niet uniek te onderscheiden.
 
 ## Eigenaars en opslag
 
@@ -15,8 +19,10 @@ ontbrekend serienummer en onbekende indelingen kunnen niet schrijven.
   onveranderlijke backup; zij kopieert geen groot record naar interne RAM.
 - `oq_odu_eeprom_image.h` bezit bytecodering, CRC, toegestane registergroepen en
   kandidaatvalidatie. Bodemplaat gebruikt `3236–3238`, defrost alleen `3275`,
-  frequenties `3000–3021` en de V2-uitbreiding `3050–3069`. In de uitbreiding
+  frequenties `3000–3021` en uitsluitend voor V2 new de uitbreiding `3050–3069`. In de uitbreiding
   staan eerst verwarmen F11–F20 en daarna koelen F11–F20.
+  Bij V1, V1.5 en V2 old blijven die uitbreidingsadressen onbekende, onveranderlijke
+  parameters. De oorspronkelijke frequentiegrenzen gelden per generatie en modus.
 - `oq_odu_eeprom_maintenance.h` deelt een kleine controlblokkering en een exact
   begrensde permit voor het ene uitgaande schrijf-frame. De actuele actuator
   levert per HP verse veiligheidsvoorwaarden aan. Gewone mode-/niveaucommando's,
@@ -36,11 +42,13 @@ De native NVS-namespace `oq_eeprom` gebruikt per HP twee alternatieve blobs
 (`hp1a/hp1b`, `hp2a/hp2b`). Een versie-1-record van 2116 bytes bevat generatie,
 fase, geselecteerde groepen, board-/firmware-/seriële identiteit, oorspronkelijke
 backup, laatste bevestigde opgeslagen image, bronimage, kandidaat en checksum.
-De oorspronkelijke backup blijft behouden na latere wijzigingen.
+De oorspronkelijke backup blijft behouden na latere wijzigingen. De uitbreiding
+naar alle vier varianten wijzigt de recordindeling of versie niet; bestaande
+V2-new-records blijven leesbaar zonder migratie.
 
 Schrijven vereist daadwerkelijk minimaal 64 KiB NVS en vóór iedere recordwrite
 minimaal 100 beschikbare entries plus ruimte voor het nieuwe blobrecord. Dit
-bouwt voort op [PR #847](https://github.com/OpenQuatt/OpenQuatt/pull/847), zonder
+bouwt voort op de in `dev` opgenomen [PR #847](https://github.com/OpenQuatt/OpenQuatt/pull/847), zonder
 zelf partitietabellen te wijzigen. De budgetchecker telt maximaal 139 entries
 voor Single en 277 voor Duo, inclusief namespace. De oude 24 KiB-configuratie
 kan deze nieuwe records niet aanmaken.
@@ -90,8 +98,11 @@ annulering behandeld.
    Eerst volgt volledige teruglezing; alleen een exacte kandidaat met geldige
    CRC mag naar de commitfase.
 6. De FC06-reeks is achtereenvolgens `3999=5`, `4001=0x0632`, `4002=3`,
-   `4000=0x0102`. Daarna wordt `4003` gepolld. `2/6` zijn foutuitkomsten;
-   `4` leidt naar volledige teruglezing en `WAIT_VERIFY`. De ODU-schrijfmodus
+   `4000=0x0102`. **`4002=3` kan de worker al starten, vóór de laatste write of
+   haar ACK.** Daarna wordt `4003` gepolld. `2/6/7` zijn foutuitkomsten;
+   `4` leidt naar volledige teruglezing en `WAIT_VERIFY`. Status `7` is een
+   CRC-weigering vóór het schrijven. Status `6` kan verdere chunkwrites laten
+   doorgaan en bewijst geen stilstaande writer. De ODU-schrijfmodus
    wordt niet met een ongedocumenteerd commando verlaten. Gewone aansturing
    blijft geblokkeerd.
 7. `VERIFY` vereist opnieuw een sinds de job waargenomen disconnect en de
@@ -111,23 +122,66 @@ oude duurzaam opgeslagen `WRITING` moet eerst opnieuw worden vastgesteld. Een
 ongeldige of verloren slotwrite kan geen oude automatische toestemming herstellen.
 Generaties lopen ook na annuleren en opnieuw voorbereiden door.
 
+`CHECK_WRITER` leest uitsluitend de opnieuw gecontroleerde identiteit en een
+verse `4003`; het schrijft of hervat niets. De UI adviseert bij `UNCERTAIN` of
+hersteld `WRITING` pas een spanningsonderbreking na status `4` of `7`, of als de
+live state machine zeker weet dat `4002` nog niet verstuurd kon zijn. Bij boot
+begint deze kennis conservatief als onbekend. `0/1/2/3/6` geven dan geen vrijgave:
+een veiligheidsstop kan status `0` zetten zonder de worker te stoppen. Afgewezen
+of dubbele opdrachten mogen deze kennis niet afzwakken. De indicatie is vluchtig;
+het duurzame journaal blijft in zijn herstelstatus en de controlblokkering blijft
+staan tot coldverify. Een al werkelijk uitgevoerde spanningsonderbreking kan met
+disconnectbewijs en gebruikersbevestiging alsnog worden gecontroleerd.
+
 ## Protocolbewijs en open vrijgavecriteria
 
-De commitreeks, 512-byte-overdracht en statusinterpretatie komen uit de eerdere
+De commitreeks en 512-byte-overdracht komen uit de eerdere
 statische analyse van CiC 4.15.0 `cic-modbus-odu`, met EEPROM-functies bij
-`0xa1edc`, `0xa2124` en `0xa2308`. Die analyse is geen bewijs van uitvoering of
-persistentie op een fysieke ODU. De strikte idle-0-voorwaarde is een aanvullende
+`0xa1edc`, `0xa2124` en `0xa2308`. Daarnaast zijn de vier lokale STM8-ODU-images
+afzonderlijk gedisassembleerd en onafhankelijk vergeleken. Onderstaande adressen
+zijn flashadressen na normalisatie van S19/BIN naar basis `0x8000`:
+
+| Variant | Board / programma | Handler `4000–4003` | EEPROM-worker | CRC-routine |
+|---|---|---|---|---|
+| V1 | `0037 / 0119` | `0x1b405` | `0x17709` | `0xd802` |
+| V1.5 | `0e37 / 011e` | `0x1ab01` | `0x1525e` | `0x1ea05` |
+| V2 old | `0e37 / 0122` | `0x223d0` | `0x18e7f` | `0xc865` |
+| V2 new | `1037 / 0201` | `0x231e5` | `0x198a8` | `0xd773` |
+
+De handlers hebben dezelfde instructies na normalisatie van lokale adressen en
+workerflags; de CRC-routines zijn bytegelijk. Alle workers schrijven 16 bytes per
+chunk tot 512, wissen daarna cursor en workerflag en melden `4`. De passwordcheck
+gebruikt `0x0632`; fout password geeft `2`, fout unitnummer geeft `6`.
+`4002=3` reset de cursor niet: herhaling na een onderbreking is niet veilig bewezen.
+De board-/programma-ID's zijn gecontroleerd via daadwerkelijke initialisatie en
+de Modbus-readmapping, niet uit alleen de bestandsnamen afgeleid.
+
+SHA-256 van de oorspronkelijke lokale bronbestanden (geen firmware opgenomen):
+
+| Bestand | SHA-256 |
+|---|---|
+| `ODU v1_0.s19` | `750970a74fdd99e8580042a4d2df6eea6d7650dc6acd34202c40b9d75f5fc325` |
+| `ODU v1_5.s19` | `7385e65aae836876530cbc2ab5662493a1345c81dc3b2c00ec52c3c9eccdf30b` |
+| `ODU v2_old.bin` | `b836a81c6338bae2ae02bbba48d8bf321c738cd1a833fd7019d4ceb49d99dd42` |
+| `ODU v2_new.bin` | `d4e2abf1570b13a7927a4ba4319b4225f6b03d7d0ccb56c6b40d8db8a974dddb` |
+
+Dit bewijst dezelfde methode in deze vier concrete firmwareversies. Het bewijst
+geen maximale schrijftijd, persistentie of brownoutgedrag op een fysieke ODU.
+Boot-reparatie/backupworkers zijn niet volledig getraceerd. Een eventueel andere
+MCU/firmware, zoals een ontbrekend GD32-image, valt buiten dit bewijs. De strikte
+idle-0-voorwaarde vóór onze nieuwe transactie is een aanvullende
 veiligheidseis van deze implementatie en moet op de toegelaten firmware worden
 bevestigd.
 
 Voor vrijgave zijn vereist:
 
-- [ ] V2-identiteit en de idle-0-, voltooiings-4- en fout-2/6-semantiek fysiek bevestigen.
-- [ ] Betekenis van `4000/4002`, schrijfduur en veilig moment voor stroomonderbreking bevestigen.
+- [ ] Voor alle vier varianten identiteit, idle-0, voltooiings-4 en fout-2/6/7 fysiek bevestigen.
+- [ ] Workerstart op `4002`, schrijfduur, boot-reparatie en veilig moment voor stroomonderbreking bevestigen.
 - [ ] Eerst originele volledige backup en herstel op een geschikte test-ODU bewijzen.
 - [ ] Bodemplaat, defrostmethode en beide frequentietabellen na echte spanningsuitval behouden.
 - [ ] Geïnjecteerde onderbrekingen vóór/tijdens staging, commit en beide journalwrites testen.
-- [ ] Verloren ACK, stale bron/status, dubbele requests, andere seriële identiteit en Duo-overlap testen.
+- [ ] Verloren ACK op `4002/4000`, status `0/6` tijdens actieve worker, stale bron/status, dubbele requests en Duo-overlap testen.
+- [ ] V2-serienummerwisseling en de expliciete beperkingen van V1/V1.5-HP-slotbinding toetsen.
 - [ ] Verse installatie, herstart tijdens elke fase, OTA/recovery en onleesbare/volle NVS controleren.
 - [ ] Werkelijke 64 KiB-NVS na #847 bevestigen en capaciteit bij volledige vulling toetsen.
 - [ ] Baseline/kandidaat meten op interne vrije heap, minimum sinds boot, grootste blok,
@@ -156,4 +210,9 @@ De hostfixture compileert de productie-state-machine met een gescheiden
 duurzame NVS-store en Modbus-ODU-shadow. Zij test onder meer geen fysieke opslag
 ondanks succesvolle ACK/readback, verloren commit-ACK zonder retry,
 herstart/herstel, oude voltooiingsstatus, stale bron, opslagfouten, identiteit en
-PSRAM-uitval. Deze tests vervangen geen hardwarevrijgave.
+PSRAM-uitval. Met de bestaande geschoonde referentiebeelden test zij bodemplaat,
+defrost, generatiegebonden frequenties en coldverify voor alle vier varianten,
+inclusief behoud van onbekende oude uitbreidingsadressen en de legacybinding.
+Verloren ACK op `4002` wordt als al mogelijk gepersisteerd gemodelleerd; de
+read-only controle houdt `0/1/2/3/6` en onbekende rebootstatus geblokkeerd.
+Deze tests vervangen geen hardwarevrijgave.
