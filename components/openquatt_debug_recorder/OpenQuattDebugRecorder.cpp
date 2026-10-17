@@ -1408,24 +1408,43 @@ void OpenQuattDebugRecorder::stop() {
   this->unlock_state_();
 }
 
-bool OpenQuattDebugRecorder::load_enabled_preference_() {
+bool OpenQuattDebugRecorder::initialize_enabled_preference_() {
   if (global_preferences == nullptr) {
+    return false;
+  }
+  // ESP32 make_preference allocates a backend that ESPPreferenceObject only
+  // borrows. Reuse one handle, including when PSRAM setup could not load it.
+  if (!this->enabled_preference_initialized_) {
+    this->enabled_pref_ = global_preferences->make_preference<RecorderEnabledStorage>(ENABLED_STORAGE_KEY, true);
+    this->enabled_preference_initialized_ = true;
+  }
+  return true;
+}
+
+bool OpenQuattDebugRecorder::load_enabled_preference_() {
+  if (!this->initialize_enabled_preference_()) {
+    this->enabled_preference_dirty_ = true;
     return true;
   }
-  this->enabled_pref_ = global_preferences->make_preference<RecorderEnabledStorage>(ENABLED_STORAGE_KEY, true);
   RecorderEnabledStorage stored{};
   if (!this->enabled_pref_.load(&stored) || stored.magic != ENABLED_STORAGE_MAGIC) {
     // First boot / no preference yet: default on, without writing to flash.
+    // A failed read also cannot confirm storage, so an explicit unchanged
+    // request must persist that default before acknowledging it.
+    this->enabled_preference_dirty_ = true;
     return true;
   }
+  this->enabled_preference_dirty_ = false;
   return stored.enabled != 0;
 }
 
 bool OpenQuattDebugRecorder::save_enabled_preference_() {
-  if (global_preferences == nullptr) {
-    return true;
+  // ESP32 sync can partially write this key before another key fails. Until
+  // save AND sync succeed, even an unchanged retry must persist the value.
+  this->enabled_preference_dirty_ = true;
+  if (!this->initialize_enabled_preference_()) {
+    return false;
   }
-  this->enabled_pref_ = global_preferences->make_preference<RecorderEnabledStorage>(ENABLED_STORAGE_KEY, true);
   RecorderEnabledStorage stored{};
   stored.magic = ENABLED_STORAGE_MAGIC;
   stored.enabled = this->enabled_ ? 1 : 0;
@@ -1439,6 +1458,7 @@ bool OpenQuattDebugRecorder::save_enabled_preference_() {
     ESP_LOGW(TAG, "Failed to sync systeemrecorder preference");
     return false;
   }
+  this->enabled_preference_dirty_ = false;
   return true;
 }
 
@@ -1449,9 +1469,11 @@ bool OpenQuattDebugRecorder::set_enabled(bool enabled) {
   if (enabled == this->enabled_) {
     // Idempotent: repeating the current value must never wipe the buffer.
     // A fresh recording is only started by an explicit restart or by the
-    // Uit → Aan transition below.
+    // Uit → Aan transition below. A prior persistence failure may have
+    // changed flash, so only a confirmed retry can acknowledge this value.
+    const bool saved = !this->enabled_preference_dirty_ || this->save_enabled_preference_();
     this->unlock_state_();
-    return true;
+    return saved;
   }
   const bool previous = this->enabled_;
   this->enabled_ = enabled;
@@ -1509,6 +1531,9 @@ void OpenQuattDebugRecorder::setup() {
     return;
   }
 
+  // The user's preference also governs status and explicit retries when
+  // recording storage is unavailable; load it independently of PSRAM setup.
+  this->enabled_ = this->load_enabled_preference_();
   const bool allocated = this->samples_.allocate_external(BUFFER_BYTES) &&
                          this->fields_.allocate_external(FIELD_CAPACITY) &&
                          this->pending_fields_.allocate_external(FIELD_CAPACITY) &&
@@ -1535,7 +1560,6 @@ void OpenQuattDebugRecorder::setup() {
     // and start rolling without any web app involvement, unless the user
     // explicitly opted out. A recorder failure must never block the normal
     // controller operation.
-    this->enabled_ = this->load_enabled_preference_();
     if (!this->lock_state_()) {
       ESP_LOGW(TAG, "Systeemrecorder synchronization unavailable; recorder idle");
     } else {

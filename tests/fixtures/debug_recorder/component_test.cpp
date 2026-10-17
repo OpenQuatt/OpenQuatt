@@ -37,6 +37,7 @@ class Recorder : public OpenQuattDebugRecorder {
   using OpenQuattDebugRecorder::string_overflow_;
   using OpenQuattDebugRecorder::unlock_state_;
 
+  bool active() const { return active_; }
   bool buffers_empty() const {
     return !samples_ && !fields_ && !pending_fields_ && !string_entries_ && !string_buckets_ &&
            !string_compaction_order_ && !string_data_ && !configuration_fields_ && !configuration_scratch_;
@@ -261,14 +262,19 @@ void lifecycle() {
   env.preferences.fail_sync = true;
   assert(!recorder.set_enabled(false) && recorder.enabled() && recorder.recording_id_ == id);
   env.preferences.fail_sync = false;
+  auto failed_sync_reboot = env.preferences.cold_boot();
+  global_preferences = &failed_sync_reboot;
   Recorder after_failed_sync;
   after_failed_sync.setup();
   assert(after_failed_sync.enabled());
+  global_preferences = &env.preferences;
   assert(recorder.set_enabled(false) && !recorder.enabled());
   env.tick(recorder, 40);
   assert(recorder.count_ == 0 && !recorder.start_rolling() && !recorder.restart_rolling());
   const auto saves = env.preferences.saves;
   assert(recorder.set_enabled(false) && env.preferences.saves == saves);
+  auto reboot_preferences = env.preferences.cold_boot();
+  global_preferences = &reboot_preferences;
   Recorder reboot;
   reboot.setup();
   assert(!reboot.enabled() && reboot.count_ == 0);
@@ -287,6 +293,7 @@ void lifecycle() {
   assert(reboot.set_enabled(true));
   env.tick(reboot, 1);
   assert(reboot.last_sample_monotonic_ms_ > UINT32_MAX);
+  global_preferences = &env.preferences;
 }
 
 void configuration() {
@@ -461,6 +468,208 @@ void retention() {
   }
 }
 
+void preference_failures() {
+  const uint32_t recorder_key = fnv1_hash("openquatt_debug_recorder_enabled");
+  constexpr uint32_t other_key = 0x12345678;
+  struct Storage {
+    uint8_t magic, enabled;
+  };
+  for (bool previous : {false, true}) {
+    for (bool own_key_failure : {false, true}) {
+      Environment env;
+      Recorder recorder;
+      recorder.setup();
+      if (previous) {
+        assert(recorder.set_enabled(false));
+        assert(recorder.set_enabled(true));
+      }
+      for (uint32_t seconds : {0U, 10U, 20U}) env.tick(recorder, seconds);
+      if (!previous) assert(recorder.set_enabled(false));
+      assert(recorder.count_ == 3 && recorder.enabled() == previous && recorder.active() == previous);
+      const auto recording_id = recorder.recording_id_;
+      const auto last_sample = recorder.last_sample_monotonic_ms_;
+      std::vector<uint8_t> samples;
+      for (size_t i = 0; i < recorder.count_; ++i) {
+        const auto* row = recorder.sample_at_(i);
+        samples.insert(samples.end(), row, row + recorder.sample_stride_);
+      }
+      const auto unchanged = [&]() {
+        assert(recorder.enabled() == previous && recorder.active() == previous);
+        assert(recorder.count_ == 3 && recorder.recording_id_ == recording_id);
+        assert(recorder.last_sample_monotonic_ms_ == last_sample);
+        for (size_t i = 0; i < recorder.count_; ++i) {
+          assert(std::memcmp(samples.data() + i * recorder.sample_stride_, recorder.sample_at_(i),
+                             recorder.sample_stride_) == 0);
+        }
+      };
+      const auto request_enabled = [&](bool enabled) {
+        auto request = env.request("enabled");
+        request.arguments["csrf_token"] = recorder.get_csrf_token();
+        request.arguments["enabled"] = enabled ? "1" : "0";
+        env.dispatch(request);
+        return request;
+      };
+      auto other = env.preferences.make_preference<uint32_t>(other_key, true);
+      const uint32_t other_value = 42;
+      const auto queue_failure = [&]() {
+        env.preferences.failed_write_key = own_key_failure ? recorder_key : other_key;
+        if (!own_key_failure) assert(other.save(&other_value));
+      };
+      queue_failure();
+      auto failed = request_enabled(!previous);
+      assert(failed.response.status == "500" && env.preferences.pending.empty());
+      unchanged();
+      // Aggregate sync failure is not rollback: our key may already be durable.
+      assert(env.preferences.durable.at(recorder_key)[1] ==
+             static_cast<uint8_t>(own_key_failure ? previous : !previous));
+      for (unsigned retry = 0; retry < 2; ++retry) {
+        queue_failure();  // Real ESP32 sync discards failed keys, so requeue the unrelated failure.
+        auto repeated = request_enabled(own_key_failure ? !previous : previous);
+        assert(repeated.response.status == "500" && env.preferences.pending.empty());
+        unchanged();
+      }
+      env.preferences.failed_write_key.reset();
+      const auto attempts = env.preferences.save_attempts;
+      const auto syncs = env.preferences.syncs;
+      auto recovered = request_enabled(previous);
+      assert(recovered.response.status == HTTPD_200);
+      assert(env.preferences.save_attempts == attempts + 1 && env.preferences.syncs == syncs + 1);
+      unchanged();
+      const auto clean_saves = env.preferences.saves;
+      const auto clean_syncs = env.preferences.syncs;
+      assert(request_enabled(previous).response.status == HTTPD_200);
+      assert(env.preferences.saves == clean_saves && env.preferences.syncs == clean_syncs);
+      unchanged();
+      if (previous) assert(request_enabled(false).response.status == HTTPD_200);
+      assert(env.preferences.make_counts.at(recorder_key) == 1);
+      assert(!recorder.enabled() && !recorder.active() && recorder.count_ == 3);
+      assert(recorder.recording_id_ == recording_id);
+      emit_status(
+          (std::string("preference-") + (previous ? "on-" : "off-") + (own_key_failure ? "own" : "other")).c_str(),
+          recorder);
+      auto reboot_preferences = env.preferences.cold_boot();
+      assert(reboot_preferences.pending.empty());
+      global_preferences = &reboot_preferences;
+      Recorder reboot;
+      reboot.setup();
+      assert(!reboot.enabled() && !reboot.active() && reboot.count_ == 0);
+      global_preferences = &env.preferences;
+    }
+  }
+  // A second component in the same process sees pending values; a cold boot
+  // must discard that queue and recover only what actually reached NVS.
+  {
+    Environment env;
+    Recorder recorder;
+    recorder.setup();
+    assert(recorder.set_enabled(false));
+    auto preference = env.preferences.make_preference<Storage>(recorder_key, true);
+    const Storage pending{0xa7, 1};
+    assert(preference.save(&pending));
+    Recorder same_process;
+    same_process.setup();
+    assert(same_process.enabled());
+    auto reboot_preferences = env.preferences.cold_boot();
+    global_preferences = &reboot_preferences;
+    Recorder reboot;
+    reboot.setup();
+    assert(!reboot.enabled());
+    global_preferences = &env.preferences;
+  }
+  for (bool failed_save : {false, true}) {
+    Environment env;
+    App = Application{};  // A disabled cold boot with no resolved recording entities has no active schema.
+    auto preference = env.preferences.make_preference<Storage>(recorder_key, true);
+    const Storage disabled{0xa7, 0};
+    assert(preference.save(&disabled) && env.preferences.sync());
+    Recorder recorder;
+    recorder.setup();
+    assert(recorder.available_() && !recorder.enabled() && recorder.field_count_ == 0);
+    if (failed_save)
+      env.preferences.fail_save_at = env.preferences.save_attempts + 2;
+    else
+      env.preferences.fail_sync_at = env.preferences.syncs + 2;
+    auto enable = env.request("enabled");
+    enable.arguments["csrf_token"] = recorder.get_csrf_token();
+    enable.arguments["enabled"] = "1";
+    env.dispatch(enable);
+    assert(enable.response.status == "500" && !recorder.enabled() && !recorder.active());
+    // Enabling persisted, schema activation failed, and the compensating
+    // disable failed too. Runtime rollback alone cannot undo the flash write.
+    assert(env.preferences.durable.at(recorder_key)[1] == 1);
+    env.preferences.fail_save_at = env.preferences.fail_sync_at = 0;
+    auto disable = env.request("enabled");
+    disable.arguments["csrf_token"] = recorder.get_csrf_token();
+    disable.arguments["enabled"] = "0";
+    const auto attempts = env.preferences.save_attempts;
+    env.dispatch(disable);
+    assert(disable.response.status == HTTPD_200 && env.preferences.save_attempts == attempts + 1);
+    assert(recorder.recording_id_ == 0 && recorder.count_ == 0 && !recorder.active());
+    assert(env.preferences.make_counts.at(recorder_key) == 2);  // Seed handle plus one component handle.
+    emit_status(failed_save ? "schema-compensation-save" : "schema-compensation-sync", recorder);
+    auto reboot_preferences = env.preferences.cold_boot();
+    global_preferences = &reboot_preferences;
+    Recorder reboot;
+    reboot.setup();
+    assert(!reboot.enabled() && !reboot.active());
+    global_preferences = &env.preferences;
+  }
+  for (bool previous : {false, true}) {
+    Environment env;
+    auto preference = env.preferences.make_preference<Storage>(recorder_key, true);
+    const Storage stored{0xa7, static_cast<uint8_t>(previous)};
+    assert(preference.save(&stored) && env.preferences.sync());
+    recorder_test::fail_allocation_at = 1;
+    Recorder recorder;
+    recorder.setup();
+    assert(!recorder.available_() && recorder.enabled() == previous);
+    assert(env.preferences.make_counts.at(recorder_key) == 2);
+    for (bool enabled : {!previous, previous, true, false, true, false}) {
+      assert(recorder.set_enabled(enabled) && recorder.enabled() == enabled);
+      assert(!recorder.active() && recorder.count_ == 0 && recorder.recording_id_ == 0);
+      assert(env.preferences.make_counts.at(recorder_key) == 2);
+    }
+    auto reboot_preferences = env.preferences.cold_boot();
+    global_preferences = &reboot_preferences;
+    recorder_test::reset_allocation_faults();
+    recorder_test::fail_allocation_at = 1;
+    Recorder reboot;
+    reboot.setup();
+    assert(!reboot.available_() && !reboot.enabled());
+    assert(reboot_preferences.make_counts.at(recorder_key) == 1);
+    global_preferences = &env.preferences;
+  }
+  {
+    Environment env;
+    global_preferences = nullptr;
+    Recorder recorder;
+    recorder.setup();
+    assert(recorder.enabled() && env.preferences.make_counts.empty());
+    assert(!recorder.set_enabled(true));  // A default with no storage is not confirmed persistence.
+    global_preferences = &env.preferences;
+    const auto recording_id = recorder.recording_id_;
+    assert(recorder.set_enabled(true));  // First successful save initializes exactly one lazy handle.
+    assert(env.preferences.make_counts.at(recorder_key) == 1 && recorder.recording_id_ == recording_id);
+    assert(recorder.set_enabled(false) && recorder.set_enabled(true));
+    assert(env.preferences.make_counts.at(recorder_key) == 1);
+  }
+  {
+    Environment env;
+    Recorder recorder;
+    recorder.setup();
+    env.tick(recorder, 0);
+    const auto recording_id = recorder.recording_id_;
+    global_preferences = nullptr;
+    assert(!recorder.set_enabled(false));
+    assert(!recorder.set_enabled(true));  // An unchanged dirty value also needs real storage.
+    assert(recorder.enabled() && recorder.active() && recorder.count_ == 1 && recorder.recording_id_ == recording_id);
+    global_preferences = &env.preferences;
+    assert(recorder.set_enabled(true));
+    assert(recorder.count_ == 1 && recorder.recording_id_ == recording_id);
+    assert(env.preferences.make_counts.at(recorder_key) == 1);
+  }
+}
+
 void http_boundaries() {
   Environment env;
   Recorder recorder;
@@ -544,6 +753,8 @@ int main(int argc, char** argv) {
     retention();
   else if (scenario == "http")
     http_boundaries();
+  else if (scenario == "preference-failures")
+    preference_failures();
   else
     return 2;
 }

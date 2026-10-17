@@ -482,16 +482,11 @@ export async function setSystemRecorderEnabled(enabled) {
       : t("debugRecording.disabledNotice");
     scheduleDebugRecordingDeviceStatusPoll();
   } catch (error) {
-    const reconciled = await reconcileDebugRecordingMutation(
-      (status) => (status?.enabled !== false) === enabled,
-    );
-    if (reconciled) {
-      state.debugRecordingNotice = enabled
-        ? t("debugRecording.enabledReconciled")
-        : t("debugRecording.disabledReconciled");
-    } else {
-      state.debugRecordingError = t(enabled ? "debugRecording.enableFailed" : "debugRecording.disableFailed", { error: error.message || String(error) });
-    }
+    // Runtime state cannot confirm that the preference reached flash after
+    // partial persistence or a lost response. Only an explicit retry may
+    // confirm the stored value; keep status polling without claiming success.
+    state.debugRecordingError = t(enabled ? "debugRecording.enableFailed" : "debugRecording.disableFailed", { error: error.message || String(error) });
+    scheduleDebugRecordingDeviceStatusPoll(4000);
   } finally {
     state.debugRecordingBusy = false;
     render();

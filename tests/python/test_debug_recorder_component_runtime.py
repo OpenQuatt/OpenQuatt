@@ -120,6 +120,21 @@ class RecorderComponentRuntimeTest(unittest.TestCase):
                                           (1439, "23:59"), (1440, None), (65534, None)]:
                     self.assertEqual(self.initial(json.loads(output[f"clock-{minutes}"]))["timeNowHhmm"], expected)
 
+    def test_partial_sync_and_failed_compensation_require_durable_retries(self):
+        for duo in self.binaries:
+            with self.subTest(duo=duo):
+                output = self.scenario("preference-failures", duo)
+                for previous in ["off", "on"]:
+                    for failed_key in ["own", "other"]:
+                        status = json.loads(output[f"preference-{previous}-{failed_key}"])
+                        self.assertFalse(status["enabled"] or status["active"])
+                        self.assertEqual(status["sample_count"], 3)
+                for failure in ["save", "sync"]:
+                    status = json.loads(output[f"schema-compensation-{failure}"])
+                    self.assertFalse(status["enabled"] or status["active"])
+                    self.assertEqual(status["sample_count"], 0)
+                    self.assertEqual(status["recording_id"], 0)
+
     def test_registered_handler_methods_same_origin_csrf_and_failed_persistence(self):
         for duo in self.binaries:
             with self.subTest(duo=duo):

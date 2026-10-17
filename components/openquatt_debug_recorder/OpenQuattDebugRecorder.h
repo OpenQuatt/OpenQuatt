@@ -38,7 +38,8 @@ class OpenQuattDebugRecorder : public Component {
   // reboot or restart. Enabling starts a new rolling recording.
   // Returns false when the preference could not be persisted; the in-memory
   // state is then left untouched so a failed opt-out is never reported as
-  // successful.
+  // successful. A failed sync may already have changed flash; an unchanged
+  // retry must confirm persistence before reporting success again.
   bool set_enabled(bool enabled);
   bool enabled() const { return this->enabled_; }
   const std::string& get_csrf_token() const { return this->csrf_token_; }
@@ -147,6 +148,8 @@ class OpenQuattDebugRecorder : public Component {
   // whether sampling is actually running. available_() reports whether the
   // recorder is technically usable (PSRAM allocation succeeded).
   bool enabled_{true};
+  bool enabled_preference_dirty_{false};
+  bool enabled_preference_initialized_{false};
   bool active_{false};
   bool configuration_pending_{false};
   bool string_overflow_{false};
@@ -192,6 +195,7 @@ class OpenQuattDebugRecorder : public Component {
   void unlock_state_() const;
   bool begin_export_() const;
   void end_export_() const;
+  bool initialize_enabled_preference_();
   bool load_enabled_preference_();
   bool save_enabled_preference_();
   // Builds the firmware-owned default recording schema from the generated

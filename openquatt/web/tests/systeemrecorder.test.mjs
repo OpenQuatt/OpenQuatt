@@ -613,6 +613,61 @@ test("stille poll rendert wel opnieuw bij een toestandswissel", async (t) => {
   assert.equal(state.debugRecordingActive, false);
 });
 
+for (const enabled of [false, true]) {
+  for (const failure of ["persistence_failed", "antwoord verloren"]) {
+    test(`onbevestigde recorderwaarde ${enabled} blijft een fout na ${failure}, ook bij passende runtime`, async (t) => {
+      const restoreTimers = seedFeatureStatus({ enabled, active: enabled });
+      const originalFetch = window.fetch;
+      t.after(() => {
+        window.fetch = originalFetch;
+        state.debugRecordingDevicePollTimer = null;
+        restoreTimers();
+      });
+      let confirmed = false;
+      let posts = 0;
+      const delays = [];
+      window.setTimeout = (_callback, delay) => {
+        delays.push(delay);
+        return 7;
+      };
+      window.fetch = async (_url, options = {}) => {
+        if (options.method === "POST") {
+          posts += 1;
+          if (!confirmed) {
+            if (failure === "antwoord verloren") throw new Error(failure);
+            return { ok: false, status: 500, json: async () => ({ ok: false, error: failure }) };
+          }
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ...state.debugRecordingDeviceStatus, enabled, active: enabled }),
+        };
+      };
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await setSystemRecorderEnabled(enabled);
+        assert.equal(state.debugRecordingNotice, "", "runtime is geen bewijs van duurzame opslag");
+        assert.match(state.debugRecordingError, /kon niet worden bevestigd.*Probeer opnieuw/);
+        assert.equal(state.debugRecordingBusy, false);
+        const { refreshDebugRecordingDeviceStatus } = await import("../js/src/features/debug-recording.js");
+        await refreshDebugRecordingDeviceStatus({ silent: true });
+        assert.equal(state.debugRecordingNotice, "");
+        assert.match(state.debugRecordingError, /kon niet worden bevestigd/);
+      }
+      assert.equal(posts, 2, "geen automatische opslagretry");
+      assert.ok(delays.includes(4000), "status blijft na een fout begrensd verversen");
+
+      confirmed = true;
+      await setSystemRecorderEnabled(enabled);
+      assert.equal(posts, 3);
+      assert.equal(state.debugRecordingError, "");
+      assert.match(state.debugRecordingNotice, enabled ? /ingeschakeld/ : /uitgeschakeld/);
+      if (enabled) assert.doesNotMatch(state.debugRecordingNotice, /nieuwe opname|buffer.*gewist/i);
+    });
+  }
+}
+
 test("een verloren restartantwoord wordt via status gereconcilieerd", async (t) => {
   const restoreTimers = seedFeatureStatus({ active: true, rolling: true, recording_id: 41, sample_count: 60 });
   const originalFetch = window.fetch;

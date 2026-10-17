@@ -21,12 +21,33 @@ blocking calls are not replaced with unconditional success.
 | `configuration` | Single/Duo capabilities, deduplication, immutable previous values, missing source state, real string-pool pressure, eviction/compaction and scratch failure |
 | `retention` | Six-hour minimum with the real default schema, sixteen-hour ring rollover, timestamp ranges, immutable snapshots, restart/append/retry interleavings, all snapshot/writer allocation failures, overlapping exports, aborted HTTP, empty recording and HH:MM boundaries |
 | `http` | Registered production handler, methods/path boundaries, origin/CSRF rejection before mutation, obsolete timed start, deferred restart, persistence failure and range-argument overflow |
+| `preference-failures` | Both toggle directions, own/other-key write failures, repeated failed HTTP retries, write-free clean idempotency, unchanged history/lifecycle, failed schema compensation, missing storage, PSRAM-unavailable preference loading, one lazy preference handle, pending-first reads and explicit cold reboot |
 
 The first three behaviours and the retention/export assertions replace the
 former configuration/retention source-extraction harnesses. Capacity and column
 indices come from the actual default schema, rather than a reconstructed class
 with a hardcoded stride. Jitter samples respect the production ten-second
 sampling gate; range membership still uses timestamps rather than row counts.
+
+The preference adapter models the pinned ESPHome 2026.9 ESP32 backend:
+`save()` queues by key, `load()` consults pending before durable storage, and
+`sync()` writes each changed key independently. Successful writes survive a
+failure of another key; all pending entries are cleared even on failure.
+`cold_boot()` creates a fresh manager with only durable data. Constructing a
+second component with the same manager is explicitly tested as a pending read,
+rather than being treated as a reboot.
+
+A failed persistence request (`500`) does not promise transactional flash
+rollback. The recorder preserves its prior runtime state and marks persistence
+uncertain. An unchanged retry must save and sync that state successfully before
+it can return success, without resetting the recording. Ordinary unchanged
+requests remain write-free. Missing/corrupt preference reads retain default-on
+setup without a flash write; an explicit request must then confirm persistence.
+The preference is loaded before PSRAM allocation, so unavailable recording
+storage still reports the stored user choice. One lazy preference handle is
+reused across all toggles and retries: ESP32 preference handles borrow backend
+objects allocated by `make_preference()`. The tests cover the same uncertainty
+when schema activation fails and the compensating preference write also fails.
 
 Run from the repository root with the pinned Python environment active:
 
@@ -36,5 +57,6 @@ python3 scripts/run_tests.py python --pattern 'test_debug_recorder_*.py'
 
 These tests establish host component behaviour. They do not reproduce ESP32
 PSRAM placement, heap/stack margins, the FreeRTOS scheduler or actual HTTPD
-transport timing. Those properties require physical HIL qualification. No
-firmware source or test-only production seam is needed for this fixture.
+transport timing or flash hardware failure behaviour. Those properties require
+physical HIL qualification. The fixture requires no test-only production seam;
+the small dirty-retry fix protects the persistence invariant it exposed.

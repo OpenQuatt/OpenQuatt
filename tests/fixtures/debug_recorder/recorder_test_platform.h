@@ -219,6 +219,7 @@ class ESPPreferences;
 class ESPPreferenceObject {
  public:
   ESPPreferences* owner{nullptr};
+  uint32_t key{0};
   template <typename T>
   bool load(T* value) const;
   template <typename T>
@@ -227,31 +228,60 @@ class ESPPreferenceObject {
 class ESPPreferences {
  public:
   bool fail_save{false}, fail_sync{false};
-  size_t saves{0}, syncs{0};
-  std::vector<uint8_t> durable, pending;
+  size_t saves{0}, save_attempts{0}, syncs{0};
+  size_t fail_save_at{0}, fail_sync_at{0};
+  std::optional<uint32_t> failed_write_key;
+  std::map<uint32_t, std::vector<uint8_t>> durable, pending;
+  std::map<uint32_t, size_t> make_counts;
   template <typename T>
-  ESPPreferenceObject make_preference(uint32_t, bool) {
-    return {this};
+  ESPPreferenceObject make_preference(uint32_t key, bool) {
+    ++make_counts[key];
+    return {this, key};
   }
   bool sync() {
     ++syncs;
-    if (fail_sync) return false;
-    durable = pending;
-    return true;
+    bool failed = false;
+    for (const auto& [key, value] : pending) {
+      const auto stored = durable.find(key);
+      if (stored != durable.end() && stored->second == value) continue;
+      if (fail_sync || fail_sync_at == syncs || (failed_write_key && *failed_write_key == key)) {
+        failed = true;
+        continue;
+      }
+      durable[key] = value;
+    }
+    // ESPHome 2026.9 ESP32 preferences: successful nvs_set_blob writes remain
+    // durable, failed keys are discarded too, and sync reports aggregate failure.
+    pending.clear();
+    return !failed;
+  }
+  ESPPreferences cold_boot() const {
+    ESPPreferences reboot;
+    reboot.durable = durable;
+    return reboot;
   }
 };
 template <typename T>
 bool ESPPreferenceObject::load(T* value) const {
-  if (owner == nullptr || owner->durable.size() != sizeof(T)) return false;
-  std::memcpy(value, owner->durable.data(), sizeof(T));
+  if (owner == nullptr) return false;
+  // The real ESP32 backend reads queued values before consulting NVS.
+  const auto queued = owner->pending.find(key);
+  const auto stored = owner->durable.find(key);
+  const auto* bytes = queued != owner->pending.end()   ? &queued->second
+                      : stored != owner->durable.end() ? &stored->second
+                                                       : nullptr;
+  if (bytes == nullptr || bytes->size() != sizeof(T)) return false;
+  std::memcpy(value, bytes->data(), sizeof(T));
   return true;
 }
 template <typename T>
 bool ESPPreferenceObject::save(const T* value) const {
-  if (owner == nullptr || owner->fail_save) return false;
+  if (owner == nullptr) return false;
+  ++owner->save_attempts;
+  if (owner->fail_save || owner->fail_save_at == owner->save_attempts) return false;
   ++owner->saves;
   const auto* data = reinterpret_cast<const uint8_t*>(value);
-  owner->pending.assign(data, data + sizeof(T));
+  owner->pending[key].assign(data, data + sizeof(T));
   return true;
 }
 inline ESPPreferences* global_preferences{nullptr};
