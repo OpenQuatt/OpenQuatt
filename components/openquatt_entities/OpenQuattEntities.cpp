@@ -1,5 +1,6 @@
 #include "OpenQuattEntities.h"
 
+#include "OpenQuattHttpStatus.h"
 #include <algorithm>
 #include <cerrno>
 #include <cmath>
@@ -374,7 +375,8 @@ class CurveBatchRequestHandler : public AsyncWebHandler {
       return;
     }
     if (!this->parent_->curve_batch_available()) {
-      request->send(503, "application/json", R"({"ok":false,"error":"unavailable"})");
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::SERVICE_UNAVAILABLE,
+                                         R"({"ok":false,"error":"unavailable"})");
       return;
     }
 

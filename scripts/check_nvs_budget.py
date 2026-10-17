@@ -138,7 +138,7 @@ def estimate_custom_preferences(config: Any) -> dict[str, int]:
     if component_instances(config, "openquatt_incident_manager"):
         # Restart handoff lives in its own namespace, separate from the three
         # incident reset records in the ESPHome namespace.
-        entries["restart handoff"] = blob_entries(64)
+        entries["restart handoff"] = blob_entries(76)
     return entries
 
 

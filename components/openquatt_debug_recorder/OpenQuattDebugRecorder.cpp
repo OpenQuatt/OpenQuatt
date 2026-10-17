@@ -1,6 +1,7 @@
 #include "OpenQuattDebugRecorder.h"
 #include "debug_configuration_json.h"
 
+#include "OpenQuattHttpStatus.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -308,7 +309,8 @@ class OpenQuattDebugRecorderRequestHandler : public AsyncWebHandler {
     request->url_to(url_buf);
     const bool mutation = request->method() == HTTP_POST;
     if (mutation && (!this->passes_same_origin_(request) || !this->passes_csrf_(request))) {
-      request->send(403, "application/json", R"({"ok":false,"error":"forbidden"})");
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::FORBIDDEN,
+                                         R"({"ok":false,"error":"forbidden"})");
       return;
     }
 
@@ -326,7 +328,8 @@ class OpenQuattDebugRecorderRequestHandler : public AsyncWebHandler {
       // Explicitly reject obsolete timed clients; never turn a finite request
       // into an unbounded recording. Custom schemas still use rolling start.
       if (parse_uint_arg(request, "rolling", 0) != 1) {
-        request->send(410, "application/json", R"({"ok":false,"error":"timed_recording_removed"})");
+        openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::GONE,
+                                           R"({"ok":false,"error":"timed_recording_removed"})");
         return;
       }
       if (!this->parent_->enabled()) {

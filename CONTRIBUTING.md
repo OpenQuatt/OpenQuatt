@@ -125,7 +125,7 @@ Use the project helper for normal local checks:
 JavaScript dependencies are installed with lifecycle scripts disabled. The repository
 `.npmrc` sets `ignore-scripts=true`, and CI also passes `--ignore-scripts`
 explicitly. Do not bypass this for normal builds. The dependency-policy contract in
-`scripts/tests/test_npm_install_policy_contract.py` fails when a new lockfile package
+`tests/python/test_npm_install_policy_contract.py` fails when a new lockfile package
 advertises an install script; review that package before updating the expected set.
 
 For C/C++ source files, install the exact version from `.clang-format-version` and use the repository formatting commands. The cross-platform `uv` tool installer provides the pinned binary:

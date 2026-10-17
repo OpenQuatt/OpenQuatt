@@ -28,7 +28,7 @@ PHY writes/restart. Cleanup can allow retry after a real STOP acknowledgement;
 otherwise Ethernet recovery requires reboot. This does not identify the cause
 of the reported lwIP crash.
 
-`scripts/tests/test_ethernet_lifecycle.py` executes production OpenQuatt manager
+`tests/python/test_ethernet_lifecycle.py` executes production OpenQuatt manager
 methods against mocked public Ethernet API states. Generic driver lifecycle
 tests belong upstream. The backport includes failure-injection tests for rejected
 stop/start calls, delayed or missing STOP delivery, cancelled restart requests
@@ -52,7 +52,7 @@ the operation; DHCP renewal and failover are serialized with the repair. The
 repair uses no persistent allocation and leaves driver STOP/PHY guards intact.
 It is compiled only with `CONFIG_ESP_NETIF_SET_DNS_PER_DEFAULT_NETIF`.
 
-Run `python3 -m unittest discover -s scripts/tests -p 'test_network_dns_recovery.py'`
+Run `python3 -m unittest tests.python.test_network_dns_recovery`
 for the startup-order, renewal, failover, unavailable-state and retry regression
 checks. These host checks establish the repair logic; physical network/OTA
 validation is still required to confirm the reported device failure mechanism.

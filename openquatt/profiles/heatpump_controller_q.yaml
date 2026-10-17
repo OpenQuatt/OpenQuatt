@@ -56,6 +56,7 @@ esphome:
     - -DOQ_POWER_HOUSE_LEARNING_TARGET=1
 
 packages:
+  oq_partition_migration: !include ../oq_partition_migration.yaml
   oq_power_house_learning: !include ../oq_power_house_learning.yaml
   oq_hardware_revision: !include heatpump_controller_q/hardware_revision.yaml
   oq_status_leds: !include heatpump_controller_q/status_leds.yaml

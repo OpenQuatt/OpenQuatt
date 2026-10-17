@@ -11,7 +11,8 @@ template <typename Allowed>
 inline bool allows(const uint8_t* pdu, size_t size, Allowed allowed) {
   if (size == 0) return false;
   const auto check = [&](uint16_t address, uint16_t value) {
-    return (address != 1999 && address != 3999) || allowed(address, value);
+    return (address != 1999 && address != 3999 && address != 2006 && address != 2010 && address != 2015) ||
+           allowed(address, value);
   };
   if (pdu[0] == 6) return size == 5 && check(word(pdu + 1), word(pdu + 3));
   if (pdu[0] != 16) return pdu[0] != 23;  // No read/write-multiple bypass.

@@ -1,6 +1,7 @@
 #include "OpenQuattLogHistory.h"
 #include "OpenQuattCrashTimeBreadcrumb.h"
 
+#include "OpenQuattHttpStatus.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -402,11 +403,13 @@ class OpenQuattLogHistoryRequestHandler : public AsyncWebHandler {
     request->url_to(url_buf);
     if (url_path_matches(url_buf, "/openquatt/logs/clear")) {
       if (!this->passes_same_origin_(request) || !this->passes_csrf_(request)) {
-        request->send(403, "application/json", R"({"ok":false,"error":"forbidden"})");
+        openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::FORBIDDEN,
+                                           R"({"ok":false,"error":"forbidden"})");
         return;
       }
       if (!this->parent_->storage_available()) {
-        request->send(503, "application/json", R"({"ok":false,"available":false,"error":"psram_unavailable"})");
+        openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::SERVICE_UNAVAILABLE,
+                                           R"({"ok":false,"available":false,"error":"psram_unavailable"})");
         return;
       }
       this->parent_->clear_history();

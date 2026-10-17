@@ -1,5 +1,6 @@
 #include "OpenQuattEnergyHistory.h"
 
+#include "OpenQuattHttpStatus.h"
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -249,7 +250,8 @@ class OpenQuattEnergyHistoryRequestHandler : public AsyncWebHandler {
 
   void handleRequest(AsyncWebServerRequest* request) override {
     if (!this->parent_->runtime_storage_ready()) {
-      request->send(503, "application/json", R"({"ok":false,"error":"psram_unavailable"})");
+      openquatt_common::send_http_status(*request, openquatt_common::HttpStatus::SERVICE_UNAVAILABLE,
+                                         R"({"ok":false,"error":"psram_unavailable"})");
       return;
     }
     switch (route_(request)) {

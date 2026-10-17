@@ -70,8 +70,22 @@ jobs:
           node-version-file: '.node-version'
           cache: npm
 
-      - name: Run Python contract tests
-        run: npm run check:python-contracts
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: .github/requirements-esphome.txt
+
+      - name: Install pinned test dependencies
+        run: python3 -m pip install -r .github/requirements-esphome.txt
+
+      - name: Run Python tests (no skipped requirements)
+        # Package-composition tests validate the real generated web assets.
+        # The runner builds them after this deterministic dependency install.
+        run: |
+          npm ci --ignore-scripts
+          npm run check:python-contracts
 
   validate-web-settings-backup:
     runs-on: ubuntu-latest
@@ -93,7 +107,21 @@ jobs:
       - name: Install web build dependencies
         run: npm ci --ignore-scripts
 
+      - name: Build exact PR base bundles for size comparison
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          baseline_root="${RUNNER_TEMP}/openquatt-web-baseline"
+          mkdir -p "${baseline_root}"
+          git archive "${BASE_SHA}" | tar -x -C "${baseline_root}"
+          npm ci --ignore-scripts --prefix "${baseline_root}"
+          npm run build:web --prefix "${baseline_root}"
+          echo "OPENQUATT_WEB_BUNDLE_BASE_DIR=${baseline_root}/openquatt/web" >> "${GITHUB_ENV}"
+
       - name: Build and test web bundles
+        env:
+          OPENQUATT_WEB_BUNDLE_BASE_REF: ${{ github.event.pull_request.base.sha }}
         run: npm run check:web
 
       - name: Run web smoke checks
@@ -117,8 +145,36 @@ jobs:
       - name: Compile and run host regression tests
         run: ./scripts/run_host_regression_tests.sh
 
+  test-sanitizers:
+    runs-on: ubuntu-latest
+    env:
+      CXX: clang++
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.node-version'
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: .github/requirements-esphome.txt
+
+      - name: Install pinned test dependencies
+        run: python3 -m pip install -r .github/requirements-esphome.txt
+
+      - name: Check host tests and Python C++ harnesses with ASan and UBSan
+        run: |
+          npm ci --ignore-scripts
+          npm run check:sanitizers
+
   validate-and-compile:
-    needs: [cpp-format, docs-consistency, python-contracts, validate-web-settings-backup, host-regression-tests]
+    needs: [cpp-format, docs-consistency, python-contracts, validate-web-settings-backup, host-regression-tests, test-sanitizers]
     uses: ./.github/workflows/esphome-build.yml
     with:
       artifact_suffix: firmware-${{ github.sha }}

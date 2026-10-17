@@ -68,7 +68,7 @@ Zie `../wifi/README.md` voor de minimale ESPHome-patches en opslaggrenzen.
 
 ## Validatie
 
-`python3 -m unittest scripts.tests.test_web_auth_middleware` compileert ook de
+`python3 -m unittest tests.python.test_web_auth_middleware` compileert ook de
 echte recoverycomponent tegen kleine adapters en injecteert opslag-/autorisatiefouten.
 `bash scripts/run_host_regression_tests.sh` test onder andere knopdrempels,
 stuck-at-boot, deadline, millis-wrap en exclusieve acties.
