@@ -142,7 +142,8 @@ niet om een onzekere schrijfopdracht te omzeilen.
 ## Gerichte controles
 
 ```sh
-python3 -m unittest scripts.tests.test_odu_eeprom_runtime scripts.tests.test_nvs_budget
+python3 scripts/run_tests.py python --pattern 'test_odu_eeprom_runtime.py'
+python3 scripts/run_tests.py python --pattern 'test_nvs_budget.py'
 node --test openquatt/web/tests/odu-eeprom-write.test.mjs
 npm run check:cpp-format
 npm run check:web

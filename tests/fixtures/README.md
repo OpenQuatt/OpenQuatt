@@ -1,4 +1,12 @@
-# ODU-referentiedata
+# Testfixtures
+
+De `*_eeprom.h`-bestanden bevatten de hieronder beschreven ODU-referentiedata.
+`ethernet_lifecycle.cpp`, `wifi_recovery.cpp`, `network_dns_recovery.cpp` en
+`web_auth/` leveren periferiestubs voor de runtimeharnassen in `tests/python/`.
+Die harnassen compileren de betreffende productiecode met de gedeelde
+compilerondersteuning in `tests/support/cpp.py`.
+
+## ODU-referentiedata
 
 Iedere fixture bevat 512 EEPROM-woorden en de voor generatieherkenning gebruikte ruwe identity-blokken. Bronformaat: `openquatt-odu-eeprom-v1`, schema 1, `runtime_eeprom_shadow`. Serienummers en niet gebruikte extended identity-velden zijn weggelaten. De oorspronkelijke uploads zijn niet gewijzigd.
 
