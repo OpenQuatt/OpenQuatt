@@ -3,6 +3,29 @@
   gap: 16px;
 }
 
+.oq-odu-eeprom-diff {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.oq-odu-eeprom-diff table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.oq-odu-eeprom-diff th,
+.oq-odu-eeprom-diff td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--oq-helper-line);
+  text-align: start;
+}
+
+.oq-odu-eeprom-diff td {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .oq-odu-eeprom-shell {
   display: grid;
   gap: 16px;

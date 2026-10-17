@@ -105,6 +105,10 @@ teruggelezen om te controleren of ze zijn overgenomen.
 
 De fysieke EEPROM van de buitenunit blijft daarbij ongewijzigd.
 
+De afzonderlijke experimentele functie [Permanent bewaren in buitenunit](odu-eeprom.md)
+heeft een eigen backup, bevestiging en controle na spanningsonderbreking. Zij
+verandert het gedrag van **Opslaan en toepassen** niet.
+
 Met **Na herstart opnieuw toepassen** bewaart OpenQuatt het profiel en biedt het
 na een herstart opnieuw aan dezelfde herkende buitenunit aan. Zonder die optie
 valt de buitenunit na een herstart terug op zijn eigen opgeslagen waarden.

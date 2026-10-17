@@ -1,4 +1,5 @@
 #include "OpenQuattOduRuntimeFrequency.h"
+#include "includes/odu/oq_odu_eeprom_maintenance.h"
 
 #include <algorithm>
 #include <charconv>
@@ -359,6 +360,7 @@ OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::reques
 
 OpenQuattOduRuntimeFrequency::RequestResult OpenQuattOduRuntimeFrequency::request_apply(
     const oq_odu_runtime_frequency::RuntimeFrequencyTables& tables) {
+  if (oq_eeprom::holding()) return RequestResult::BUSY;
   if (!this->available_.load(std::memory_order_acquire)) return RequestResult::UNAVAILABLE;
   const uint32_t epoch = web_server_base::global_web_server_base->recovery_epoch();
   uint32_t request_token = 0U;

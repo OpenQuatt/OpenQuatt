@@ -13,7 +13,7 @@ import check_nvs_budget as budget  # noqa: E402
 
 
 def q_config(hp_count: int = 2) -> dict:
-    config = {component: {} for component, _, _ in budget.CUSTOM_PREFERENCE_LAYOUTS}
+    config = {component: {} for component, _, _ in budget.CUSTOM_PREFERENCE_LAYOUTS if component != "openquatt_odu_eeprom"}
     config["openquatt_odu_settings"] = [{} for _ in range(hp_count)]
     config["openquatt_odu_defrost"] = [{} for _ in range(hp_count)]
     config.update(wifi={}, api={"encryption": {}}, safe_mode={}, factory_reset={"resets_required": 3})
@@ -21,6 +21,9 @@ def q_config(hp_count: int = 2) -> dict:
 
 
 class NvsBudgetTest(unittest.TestCase):
+    def test_eeprom_counts_both_journal_slots_per_hp_and_its_namespace(self) -> None:
+        self.assertEqual(sum(budget.estimate_custom_preferences({"openquatt_odu_eeprom": [{}]}).values()), 139)
+        self.assertEqual(sum(budget.estimate_custom_preferences({"openquatt_odu_eeprom": [{}, {}]}).values()), 277)
     def test_custom_budget_tracks_configured_components_and_hp_instances(self) -> None:
         self.assertEqual(sum(budget.estimate_custom_preferences({}).values()), 0)
         self.assertEqual(sum(budget.estimate_custom_preferences(q_config(1)).values()), 56)

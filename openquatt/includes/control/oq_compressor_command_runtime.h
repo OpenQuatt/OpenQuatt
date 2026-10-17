@@ -3,6 +3,7 @@
 #include "oq_boot_resume_runtime.h"
 #include "oq_compressor_frequency_runtime.h"
 #include "../service/tasks/oq_manual_hp_logic.h"
+#include "../odu/oq_odu_eeprom_maintenance.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_command_runtime {
@@ -35,6 +36,7 @@ inline bool guarded_write(bool hp1, uint16_t address, int value, bool queued = f
                          incident.run_state == oq_incidents::RunState::STOP_UNCONFIRMED;
   auto& service = hp1 ? id(hp1_odu_defrost) : OQ_COMMAND_SECONDARY_ID(odu_defrost);
   const bool fault = hard_stop || service.cycle.telemetry_fault(millis());
+  if (oq_eeprom::holding() && !(value == 0 && fault)) return false;
   if (queued && address == 3999 && value == 4) {
     const bool online = hp1 ? id(hp1_is_online) : OQ_COMMAND_SECONDARY_ID(is_online);
     const bool identity =
@@ -115,7 +117,42 @@ inline bool queued_command(bool hp1, const uint8_t* pdu, size_t size) {
          : OQ_COMMAND_SECONDARY_ID(compressor_command_revalidation_required)) = true;
   return allowed;
 }
+inline bool eeprom_runtime_clear(bool hp1) {
+  const unsigned hp = hp1 ? 1U : 2U;
+  const auto incident = id(oq_incident_manager).get_outputs(hp);
+  const auto& service = hp1 ? id(hp1_odu_defrost) : OQ_COMMAND_SECONDARY_ID(odu_defrost);
+  const float hz = hp1 ? id(hp1_compressor_frequency).state : OQ_COMMAND_SECONDARY_ID(compressor_frequency).state;
+  return !oq_boot_resume_runtime::ota_hold(hp1) && !id(oq_incident_manager).boot_resume_pending(hp, millis()) &&
+         !id(oq_water_temp_hard_trip_active) && !id(oq_lowflow_fault_active) && !incident.must_stop &&
+         incident.run_state != oq_incidents::RunState::STOPPING &&
+         incident.run_state != oq_incidents::RunState::STOP_UNCONFIRMED && !incident.running_confirmed &&
+         !id(oq_commissioning_active) && !id(oq_runtime_polling_paused).state &&
+         !esphome::web_server_base::global_web_server_base->is_recovery_active() &&
+         (hp1 ? id(hp1_is_online) : OQ_COMMAND_SECONDARY_ID(is_online)) &&
+         (hp1 ? id(hp1_odu_generation_detection_complete) && !id(hp1_odu_generation_revalidation_required)
+              : OQ_COMMAND_SECONDARY_ID(odu_generation_detection_complete) &&
+                    !OQ_COMMAND_SECONDARY_ID(odu_generation_revalidation_required)) &&
+         service.cycle.fresh(millis()) && !service.cycle.observed_active() && !service.cycle.manual &&
+         (service.cycle.mode == 0 ||
+          (oq_eeprom::permit.writing_mode && oq_eeprom::permit.hp == hp && service.cycle.mode == 5)) &&
+         service.sample_fresh(0, millis()) && std::isfinite(hz) && hz == 0.0f;
+}
 inline bool queued_address(uint8_t address, const uint8_t* pdu, size_t size) {
+  if (oq_eeprom::holding() && size > 0U && (pdu[0] == 6U || pdu[0] == 16U)) {
+    if (oq_eeprom::permitted_write(address, pdu, size, millis())) {
+      const bool clear = eeprom_runtime_clear(true)
+#if OQ_TOPOLOGY_DUO
+                         && eeprom_runtime_clear(false)
+#endif
+          ;
+      if (!clear) ++oq_eeprom::stop_epoch;
+      return clear;
+    }
+    // Only the ordinary guarded safety-stop route may interrupt this job.
+    if (size != 5U || pdu[0] != 6U || pdu[3] != 0U || pdu[4] != 0U ||
+        ((uint16_t(pdu[1]) << 8U | pdu[2]) != 1999U && (uint16_t(pdu[1]) << 8U | pdu[2]) != 3999U))
+      return false;
+  }
   if (address == id(hp1).device_address()) return queued_command(true, pdu, size);
 #if OQ_TOPOLOGY_DUO
   if (address == id(hp2).device_address()) return queued_command(false, pdu, size);

@@ -39,6 +39,7 @@ class OpenQuattOduSettings : public Component {
   void notify_odu_offline();
   RequestResult request_load();
   RequestResult request_save(const oq_odu::BottomPlateSettings& settings, bool auto_reapply);
+  bool revoke_auto_reapply();
 
   bool request_is_authenticated(AsyncWebServerRequest* request) const {
     return this->web_auth_ != nullptr && this->web_auth_->request_is_authenticated(request);

@@ -45,6 +45,7 @@ class OpenQuattOduDefrost : public Component, public modbus::ModbusClientDevice 
   bool enqueue(Action action);
   bool enqueue_save(int desired, int expected, bool auto_reapply);
   bool supports_mode(int mode) const;
+  bool revoke_auto_reapply();
   oq_odu::Variant variant() const;
   void write_status(httpd_req_t* req);
 

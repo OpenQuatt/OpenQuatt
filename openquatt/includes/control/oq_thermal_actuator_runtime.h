@@ -1,4 +1,5 @@
 #pragma once
+#include "../odu/oq_odu_eeprom_maintenance.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -864,6 +865,17 @@ class Runtime {
         service->cycle.mode,
         incident.running_confirmed && !id(oq_incident_manager).startup_inhibited(hp) ? measured_hz : NAN,
         service->cycle.observed_active()};
+    oq_eeprom::safety[hp - 1U] = {guard.online,
+                                  guard.fresh,
+                                  guard.identity,
+                                  service->sample_fresh(0, now) && std::isfinite(measured_hz) && measured_hz == 0.0f &&
+                                      !incident.running_confirmed,
+                                  !oq_boot_resume_runtime::ota_hold(is_hp1) &&
+                                      !id(oq_incident_manager).boot_resume_pending(hp, now) &&
+                                      !this->defrost_safety_stop_(is_hp1) && !id(oq_commissioning_active) &&
+                                      !service->cycle.observed_active() && !service->cycle.manual,
+                                  service->cycle.mode,
+                                  now};
     const char* refusal = oq_defrost::refusal(guard);
     if (trigger) {
       if (std::strcmp(refusal, "READY") == 0) {

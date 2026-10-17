@@ -36,6 +36,7 @@ CUSTOM_PREFERENCE_LAYOUTS = (
     ("openquatt_debug_recorder", 2, 1),
     ("openquatt_odu_settings", 16, 1),
     ("openquatt_odu_defrost", 16, 2),
+    ("openquatt_odu_eeprom", 2116, 2),
 )
 PHY_CALIBRATION_BYTES = 1904  # esp_phy_calibration_data_t, ESP-IDF 5.5.5.
 
@@ -131,6 +132,8 @@ def component_instances(config: Any, component: str) -> int:
 
 def estimate_custom_preferences(config: Any) -> dict[str, int]:
     entries = {}
+    if component_instances(config, "openquatt_odu_eeprom"):
+        entries["ODU EEPROM namespace"] = 1
     for component, payload_bytes, blobs_per_instance in CUSTOM_PREFERENCE_LAYOUTS:
         count = component_instances(config, component)
         if count:
