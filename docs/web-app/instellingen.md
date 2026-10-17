@@ -35,6 +35,10 @@ Bij een nieuwe warmtevraag controleert OpenQuatt na het starten van de circulati
 
 Gebruik dit deel vooral tijdens de eerste inrichting of als je installatie later verandert.
 
+#### Hulprelais (R2)
+
+Alleen op de Heatpump Controller Q-edition. Bij `Hulprelais (R2)` kies je wat R2 volgt: warmtevraag, koelvraag, beide of externe bediening. Optioneel wacht R2 op een geschikte aanvoertemperatuur. Met `Nadraaien` blijft R2 na afloop van de vraag nog even aan: een vaste tijd, of tot het aanvoerwater de uitschakelgrens van de startdrempel en hysterese passeert, uiterlijk na de maximale nadraaitijd. Zie [Hulprelais R2](../instellingen-en-meetwaarden.md#6-hulprelais-r2-alleen-heatpump-controller-q-edition) voor de details.
+
 ### Verwarmen
 
 Hier kies en verfijn je de verwarmingsstrategie:

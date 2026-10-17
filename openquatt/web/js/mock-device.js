@@ -37,6 +37,11 @@
     oduWriteState: "scenario",
     auxTempGateOn: false,
     auxRelayLastMode: 0,
+    auxRelayOn: false,
+    auxRelayLastFunction: "Disabled",
+    auxRunOnActive: false,
+    auxRunOnMode: 0,
+    auxRunOnStartedMs: 0,
     complete: true,
     tick: 0,
     autoAnimate: true,
@@ -1871,8 +1876,11 @@
     const heatingActive = cmLabel.startsWith("CM2") || cmLabel.startsWith("CM3") || cmLabel.startsWith("CM4");
     const coolingActive = cmLabel.startsWith("CM5");
     const modeCode = coolingActive ? 1 : (heatingActive ? 2 : 0);
+    const previousMode = state.auxRelayLastMode;
+    const functionUnchanged = auxFunction === state.auxRelayLastFunction;
+    state.auxRelayLastFunction = auxFunction;
     if (modeCode !== state.auxRelayLastMode) {
-      state.auxTempGateOn = false;
+      state.auxTempGateOn = state.auxRunOnActive && functionUnchanged && modeCode === state.auxRunOnMode;
       state.auxRelayLastMode = modeCode;
     }
 
@@ -1920,6 +1928,39 @@
       }
       relayOn = state.auxTempGateOn;
     }
+
+    const runOnMode = String(getEntity("select", "Aux Relay Run-on")?.value || "Disabled");
+    const runOnSeconds = Number(getEntity("number", "Aux Relay Run-on Time")?.value ?? 300);
+    const demandFunction = auxFunction !== "Disabled" && auxFunction !== "External control";
+    if (relayOn || !demandFunction || !functionUnchanged || modeCode !== 0 || runOnMode === "Disabled" || !(runOnSeconds > 0)) {
+      state.auxRunOnActive = false;
+    } else {
+      const now = Date.now();
+      if (!state.auxRunOnActive && state.auxRelayOn && previousMode !== 0) {
+        state.auxRunOnActive = true;
+        state.auxRunOnMode = previousMode;
+        state.auxRunOnStartedMs = now;
+      }
+      if (state.auxRunOnActive) {
+        let finished = now - state.auxRunOnStartedMs >= runOnSeconds * 1000;
+        if (!finished && runOnMode === "Until supply temp") {
+          const hysteresis = Number(getEntity("number", "Aux Relay Temp Hysteresis")?.value ?? 2);
+          if (Number.isNaN(supplyTemp)) {
+            finished = true;
+          } else if (state.auxRunOnMode === 2) {
+            finished = supplyTemp <= Number(getEntity("number", "Aux Relay Heating Start Temp")?.value ?? 30) - hysteresis;
+          } else {
+            finished = supplyTemp >= Number(getEntity("number", "Aux Relay Cooling Start Temp")?.value ?? 18) + hysteresis;
+          }
+        }
+        if (finished) state.auxRunOnActive = false;
+      }
+      if (state.auxRunOnActive) {
+        relayOn = true;
+        status = "Run-on active";
+      }
+    }
+    state.auxRelayOn = relayOn;
 
     setBinary("Aux relay active", relayOn);
     setText("text_sensor", "Aux relay status", status);
@@ -2180,6 +2221,11 @@
       state: "Disabled",
       option: ["Disabled", "Heating demand", "Cooling demand", "Heating or cooling demand", "External control"],
     });
+    setEntity("select", "Aux Relay Run-on", {
+      value: "Disabled",
+      state: "Disabled",
+      option: ["Disabled", "Fixed time", "Until supply temp"],
+    });
     setEntity("select", "Outdoor Unit Flow Mode", {
       value: "Local aggregate HP1/HP2",
       state: "Local aggregate HP1/HP2",
@@ -2289,6 +2335,7 @@
       ["Aux Relay Heating Start Temp", 30, 20, 60, 0.5, "°C"],
       ["Aux Relay Cooling Start Temp", 18, 8, 25, 0.5, "°C"],
       ["Aux Relay Temp Hysteresis", 2, 0.5, 5, 0.5, "°C"],
+      ["Aux Relay Run-on Time", 300, 10, 3600, 10, "s"],
       ["Curve Tsupply @ -20°C", 48, 20, 70, 0.5, "°C"],
       ["Curve Tsupply @ -10°C", 43, 20, 70, 0.5, "°C"],
       ["Curve Tsupply @ 0°C", 38, 20, 70, 0.5, "°C"],

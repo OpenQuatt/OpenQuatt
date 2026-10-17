@@ -83,14 +83,6 @@ Belangrijke beperkingen voor deze fase:
 - OpenTherm-aansturing van de ketel via `OTB` is alleen beschikbaar op de Heatpump Controller Q-edition.
 - OpenQuatt is geen officiële Quatt-helpdesk of individuele installatieservice.
 
-## Roadmap
-
-Compacte roadmap:
-
-- CV-assist in Heating Curve;
-- handmatig ketel-only gebruik;
-- verdere uitbreiding van storingsafhandeling.
-
 ## Documentatie
 
 Belangrijkste pagina's voor gebruikers:
