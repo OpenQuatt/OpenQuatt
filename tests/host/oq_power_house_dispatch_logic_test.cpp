@@ -40,6 +40,56 @@ void expect_safe(const DispatchDecision& out, const DispatchInput& in, const Dis
   }
   assert(isfinite(cfg.peak_limit_w) && electrical_w <= cfg.peak_limit_w);
 }
+void test_actuator_hold_constrains_owner_swap() {
+  for (bool hp1_running : {false, true}) {
+    auto in = input(true);
+    in.requested_w = 2000.0f;
+    in.hp1.levels = in.hp2.levels = {};
+    auto& running = hp1_running ? in.hp1 : in.hp2;
+    auto& idle = hp1_running ? in.hp2 : in.hp1;
+    running.candidate.previous_applied_level = 1;
+    running.levels[1] = {true, true, true, 2500.0f, 400.0f, 30};
+    idle.levels[1] = {true, true, true, 2000.0f, 200.0f, 30};
+    const int running_owner = hp1_running ? 1 : 2;
+
+    // Reproduce the restart report: the apparently better idle HP replaces
+    // a running owner that the downstream actuator will refuse to stop.
+    assert(decide_dispatch(in, tuning(), {}).owner_hp != running_owner);
+    running.stop_inhibited = true;
+    auto out = decide_dispatch(in, tuning(), {});
+    assert(out.owner_hp == running_owner && out.expected_w == 2500.0f);
+    assert(topology(out.hp1_level, out.hp2_level) == 1);
+    expect_safe(out, in, tuning());
+
+    // A real capacity deficit can still start the peer while the owner runs.
+    in.requested_w = 4500.0f;
+    out = decide_dispatch(in, tuning(), {});
+    assert(out.hp1_level == 1 && out.hp2_level == 1 && out.expected_w == 4500.0f);
+    expect_safe(out, in, tuning());
+
+    // A safety stop overrides the hold; removing demand never starts a unit.
+    in.requested_w = 2000.0f;
+    running.candidate.must_stop = true;
+    out = decide_dispatch(in, tuning(), {});
+    assert(out.owner_hp != running_owner && topology(out.hp1_level, out.hp2_level) == 1);
+    expect_safe(out, in, tuning());
+    running.candidate.must_stop = false;
+    in.demand_level = 0;
+    out = decide_dispatch(in, tuning(), {});
+    assert(out.hp1_level == 0 && out.hp2_level == 0);
+
+    // Expiry restores the existing optimizer without a new timer or latch.
+    in.demand_level = 3;
+    running.stop_inhibited = false;
+    assert(decide_dispatch(in, tuning(), {}).owner_hp != running_owner);
+
+    // A stale hold flag cannot turn a stopped HP into a mandatory start.
+    running.candidate.previous_applied_level = 0;
+    running.stop_inhibited = true;
+    out = decide_dispatch(in, tuning(), {});
+    assert(out.owner_hp != running_owner && topology(out.hp1_level, out.hp2_level) == 1);
+  }
+}
 void test_timing_and_matrix() {
   auto state = observe_protection({}, {UINT32_MAX - 4U, true, false, false, 3, 0});
   state = observe_protection(state, {UINT32_MAX - 2U, false, false, false, 3, 0});
@@ -247,6 +297,7 @@ void test_duo_holds_and_boost() {
 }
 }  // namespace
 int main() {
+  test_actuator_hold_constrains_owner_swap();
   test_timing_and_matrix();
   test_performance_supply_fallback();
   test_single_and_failures();

@@ -19,6 +19,9 @@ class PowerHouseDemandContractTest(unittest.TestCase):
         dispatch_test = FILES[5].read_text()
         self.assertIn("select_performance_supply(", dispatch_logic)
         self.assertIn("test_performance_supply_fallback", dispatch_test)
+        for marker in ("result.stop_inhibited =", "boot_protection_hold(", "min_runtime_window_active("):
+            self.assertIn(marker, text)
+        self.assertIn("test_actuator_hold_constrains_owner_swap", dispatch_test)
         # #608 run extension: base house need stays apart from effective HP target.
         self.assertIn("oq_power_house_run_extension::evaluate(", text)
         self.assertIn("run_ext_input.inputs_valid = demand.valid && room_inputs_valid;", text)
@@ -57,8 +60,9 @@ class PowerHouseDemandContractTest(unittest.TestCase):
             self.assertNotIn(marker, yaml)
         # Boot acquisition adds a one-shot input deadline and explicit invalid outputs.
         # Recorder diagnostics remain included alongside runtime and focused regressions.
+        # +96 lines cover acquisition-aware candidates, fixed boot levels and focused regressions.
         # Include shared Duo Hz movement and its regression alongside boot-memory capture/restore.
-        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 4149)
+        self.assertLessEqual(sum(len(path.read_text().splitlines()) for path in FILES), 4245)
 
     def test_startup_wait_clears_shared_outputs_before_adopting_demand(self) -> None:
         text = FILES[1].read_text()

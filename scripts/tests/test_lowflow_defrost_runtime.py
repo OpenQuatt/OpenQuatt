@@ -34,6 +34,7 @@ class LowflowDefrostRuntimeTest(unittest.TestCase):
 #include <cstdio>
 #include <string>
 #include <vector>
+#include "openquatt/includes/control/oq_power_house_dispatch_logic.h"
 #include "openquatt/includes/control/oq_thermal_request_logic.h"
 #include "openquatt/includes/control/oq_thermal_actuator_logic.h"
 #include "openquatt/includes/control/oq_hp_boot_resume.h"
@@ -103,10 +104,11 @@ struct IncidentManager {
   bool startup[2]={false,false};
   Incident get_outputs(int i) const { return hp[i-1]; }
   bool startup_inhibited(int i) const { return startup[i-1]; }
-  bool boot_resume_pending(int, uint32_t) const { return false; }
   oq_boot_resume::Policy boot[2];
+  bool boot_resume_pending(int i, uint32_t now) const { return boot[i-1].pending(now); }
+  uint32_t rest_ms[2]={240000,240000};
   bool boot_protection_hold(int i, uint32_t now) const { return boot[i-1].protection_hold(now); }
-  uint32_t minimum_off_remaining_ms(int, uint32_t) const { return 240000; }
+  uint32_t minimum_off_remaining_ms(int i, uint32_t) const { return rest_ms[i-1]; }
   bool request_start(int, uint8_t, uint32_t) { events.push_back("start"); return true; }
   void request_stop(int i, uint32_t) {
     events.push_back("stop"); auto& incident=hp[i-1];
@@ -141,10 +143,13 @@ struct Cycle {
 struct ActuatorRuntime {
   int previous[2]={17,17}, physical[2]={17,17};
   uint32_t safe_write[2]={0,0};
-  bool confirmation[2]={false,false};
+  bool confirmation[2]={false,false}, allow_active_writes=false;
   std::string guard;
   oq_odu::RetainedLevel retained[2]={{17,17},{17,17}};
-  struct Limit { uint32_t remaining_ms(uint32_t) const { return 3600000; } } start_limits_[2];
+  struct Limit {
+    uint32_t remaining=3600000;
+    uint32_t remaining_ms(uint32_t) const { return remaining; }
+  } start_limits_[2];
   int previous_applied_(bool hp) const { return previous[hp?0:1]; }
   uint32_t& last_safe_stop_write_ms(bool hp) { return safe_write[hp?0:1]; }
   void clear_retained_level(bool hp) { retained[hp?0:1]={}; events.push_back("clear"); }
@@ -158,12 +163,14 @@ struct ActuatorRuntime {
   void publish_optimizer_reason(const char*) {}
   bool& cooling_confirmation_pending_(bool hp) { return confirmation[hp?0:1]; }
   void set_mode(bool, bool active, bool force, int, bool, bool) {
-    assert(!active); events.push_back(force?"mode0-force":"mode0");
+    assert(!active || allow_active_writes);
+    events.push_back(active?"mode-active":(force?"mode0-force":"mode0"));
   }
   template<class... T> void publish_candidate_blocked(T...) {}
   template<class... T> void note_cooling_start_refuse_(T...) {}
   void write_level(bool hp, int level, bool force) {
-    assert(level==0); events.push_back(force?"level0-force":"level0");
+    assert(level==0 || allow_active_writes);
+    events.push_back(level>0?"level-active":(force?"level0-force":"level0"));
     if(force || physical[hp?0:1]!=level) physical[hp?0:1]=level;
   }
   // ACTUATOR_METHODS
@@ -264,6 +271,145 @@ int main() {
     assert(a.apply_level_(hp,0,false,c)==0); // The hold expires at its real boundary.
     assert(!events.empty());
   }
+  using namespace oq_power_house_dispatch;
+  const DispatchTuning tuning{9000,10000,5,150,450,6,1};
+  auto capture_boot = [](DispatchInput in) {
+    const bool pending[2]={oq_incident_manager.boot[0].pending(in.now_ms),
+                           oq_incident_manager.boot[1].pending(in.now_ms)};
+    for(int slot : {0,1}) {
+      auto& hp=slot==0?in.hp1:in.hp2;
+      const auto& boot=oq_incident_manager.boot[slot];
+      hp.candidate=candidate_during_boot_resume(hp.candidate,pending[slot],boot.level(),pending[0] || pending[1]);
+      const bool held=boot.protection_hold(in.now_ms);
+      hp.stop_inhibited=pending[slot] || held;
+      hp.fixed_level=pending[slot]?boot.level():(held?applied_level(hp):0);
+    }
+    return in;
+  };
+  // Real readback precedes software adoption in either Duo direction. The
+  // economically better idle peer must never receive a stale start request.
+  for(bool hp1_running : {false,true}) {
+    reset();
+    hp1_odu_defrost.cycle.active=hp1_odu_defrost.hold=false;
+    hp2_odu_defrost.cycle.active=hp2_odu_defrost.hold=false;
+    oq_incident_manager.rest_ms[0]=oq_incident_manager.rest_ms[1]=0;
+    const int slot=hp1_running?0:1, peer=1-slot;
+    auto& idle_incident=oq_incident_manager.hp[peer];
+    idle_incident.running_confirmed=false; idle_incident.stop_confirmed=true;
+    idle_incident.run_state=oq_incidents::RunState::STOPPED;
+    ActuatorRuntime a; Cycle c; c.frequency=f; a.allow_active_writes=true;
+    a.previous[0]=a.previous[1]=0; a.physical[slot]=1; a.physical[peer]=0;
+    a.retained[0]=a.retained[1]={};
+    a.start_limits_[0].remaining=a.start_limits_[1].remaining=0;
+    DispatchInput in{clock_ms,3,2000.0f,true,true,true,{},{},nullptr,nullptr};
+    in.hp1.candidate.available_for_start=in.hp2.candidate.available_for_start=true;
+    auto& running=hp1_running?in.hp1:in.hp2;
+    auto& idle=hp1_running?in.hp2:in.hp1;
+    running.levels[1]={true,true,true,2500,400,30};
+    idle.levels[1]={true,true,true,2000,200,30};
+    const auto unobserved=decide_dispatch(in,tuning,{});
+    assert(unobserved.output_valid && unobserved.owner_hp==peer+1);
+    auto& boot=oq_incident_manager.boot[slot];
+    boot.begin(true,clock_ms-1000);
+    boot.observe(3999,2,clock_ms); boot.observe(1999,1,clock_ms);
+    boot.observe(2099,2,clock_ms); boot.observe(2103,30,clock_ms);
+    assert(boot.pending(clock_ms) && a.previous[slot]==0);
+    const auto captured=capture_boot(in);
+    assert(!captured.hp1.candidate.available_for_start && !captured.hp2.candidate.available_for_start);
+    const auto requested=decide_dispatch(captured,tuning,{});
+    assert(requested.output_valid && requested.owner_hp==slot+1);
+    assert((hp1_running?requested.hp2_level:requested.hp1_level)==0);
+    const int adopted=boot.update(clock_ms,false,true,true,true);
+    assert(adopted==1); a.previous[slot]=adopted;
+    a.previous[0]=a.apply_level_(true,requested.hp1_level,false,c);
+    a.previous[1]=a.apply_level_(false,requested.hp2_level,false,c);
+    assert(a.previous[slot]==1 && a.previous[peer]==0);
+    assert(a.physical[slot]==1 && a.physical[peer]==0);
+    assert(std::find(events.begin(),events.end(),"start")==events.end());
+    // A hard incident overrides both the fixed level and stop inhibition.
+    running.candidate.previous_applied_level=1; running.candidate.must_stop=true;
+    oq_incident_manager.hp[slot].must_stop=true; events.clear();
+    const auto stopped=decide_dispatch(capture_boot(in),tuning,{});
+    assert(stopped.output_valid && stopped.owner_hp==peer+1);
+    assert(a.apply_level_(hp1_running,hp1_running?stopped.hp1_level:stopped.hp2_level,false,c)==0 &&
+           a.physical[slot]==0);
+    assert(a.apply_level_(!hp1_running,hp1_running?stopped.hp2_level:stopped.hp1_level,false,c)==1 &&
+           a.physical[peer]==1);
+    assert(std::count(events.begin(),events.end(),"start")==1);
+  }
+  // An unknown pending level blocks idle starts until abort or acquisition
+  // expiry releases the one-shot policy; neither path leaves a topology lock.
+  for(bool hp1_running : {false,true}) for(bool abort : {false,true}) {
+    reset();
+    const int slot=hp1_running?0:1, peer=1-slot;
+    auto& boot=oq_incident_manager.boot[slot]; boot.begin(true,clock_ms);
+    DispatchInput in{clock_ms,3,2000.0f,true,true,true,{},{},nullptr,nullptr};
+    in.hp1.candidate.available_for_start=in.hp2.candidate.available_for_start=true;
+    (hp1_running?in.hp1:in.hp2).levels[1]={true,true,true,2500,400,30};
+    (hp1_running?in.hp2:in.hp1).levels[1]={true,true,true,2000,200,30};
+    assert(boot.level()==0 && boot.pending(clock_ms));
+    const auto unknown=decide_dispatch(capture_boot(in),tuning,{});
+    assert(unknown.hp1_level==0 && unknown.hp2_level==0);
+    if(abort) assert(boot.update(clock_ms,true,true,true,true)==0);
+    else clock_ms+=oq_boot_resume::INPUT_ACQUISITION_MS;
+    assert(!boot.pending(clock_ms) && boot.stop_required(clock_ms));
+    in.now_ms=clock_ms;
+    const auto released=decide_dispatch(capture_boot(in),tuning,{});
+    assert(released.output_valid && released.owner_hp==peer+1);
+    hp1_odu_defrost.cycle.active=hp1_odu_defrost.hold=false;
+    hp2_odu_defrost.cycle.active=hp2_odu_defrost.hold=false;
+    oq_incident_manager.rest_ms[0]=oq_incident_manager.rest_ms[1]=0;
+    ActuatorRuntime a; Cycle c; c.frequency=f; c.config.now_ms=clock_ms;
+    a.allow_active_writes=true; a.previous[0]=a.previous[1]=0;
+    a.physical[0]=a.physical[1]=0; a.retained[0]=a.retained[1]={};
+    a.start_limits_[0].remaining=a.start_limits_[1].remaining=0;
+    assert(a.apply_level_(!hp1_running,hp1_running?released.hp2_level:released.hp1_level,false,c)==1 &&
+           a.physical[peer]==1);
+    assert(std::count(events.begin(),events.end(),"start")==1);
+  }
+  // The optimizer must score the boot-held F1 that the actuator will apply,
+  // allowing the idle HP to supply the 2000 W missing from the held owner.
+  reset();
+  hp1_odu_defrost.cycle.active=hp1_odu_defrost.hold=false;
+  hp2_odu_defrost.cycle.active=hp2_odu_defrost.hold=false;
+  oq_incident_manager.rest_ms[0]=oq_incident_manager.rest_ms[1]=0;
+  oq_incident_manager.hp[0].running_confirmed=false;
+  oq_incident_manager.hp[0].stop_confirmed=true;
+  oq_incident_manager.hp[0].run_state=oq_incidents::RunState::STOPPED;
+  auto& boot=oq_incident_manager.boot[1]; boot.begin(true,clock_ms-1000);
+  boot.observe(3999,2,clock_ms); boot.observe(1999,1,clock_ms);
+  boot.observe(2099,2,clock_ms); boot.observe(2103,30,clock_ms);
+  assert(boot.update(clock_ms,false,true,true,true)==1);
+  DispatchInput in{clock_ms,3,4500.0f,true,true,true,{},{},nullptr,nullptr};
+  in.hp1.candidate.available_for_start=in.hp2.candidate.available_for_start=true;
+  in.hp2.candidate.previous_applied_level=1; in.hp2.stop_inhibited=true;
+  in.hp1.levels[1]={true,true,true,2000,200,30};
+  in.hp2.levels[1]={true,true,true,2500,400,30};
+  in.hp2.levels[2]={true,true,true,4500,600,40};
+  const auto fictitious=decide_dispatch(in,tuning,{});
+  assert(fictitious.hp1_level==0 && fictitious.hp2_level==2 && fictitious.expected_w==4500);
+  const auto held=capture_boot(in);
+  assert(held.hp2.fixed_level==1);
+  const auto feasible=decide_dispatch(held,tuning,{});
+  assert(feasible.output_valid && feasible.hp1_level==1 && feasible.hp2_level==1 && feasible.expected_w==4500);
+  ActuatorRuntime a; Cycle c; c.frequency=f; a.allow_active_writes=true;
+  a.previous[0]=a.physical[0]=0; a.previous[1]=a.physical[1]=1;
+  a.retained[0]=a.retained[1]={};
+  a.start_limits_[0].remaining=a.start_limits_[1].remaining=0;
+  a.previous[0]=a.apply_level_(true,feasible.hp1_level,false,c);
+  a.previous[1]=a.apply_level_(false,feasible.hp2_level,false,c);
+  assert(a.previous[0]==1 && a.previous[1]==1 && a.physical[0]==1 && a.physical[1]==1);
+  assert(in.hp1.levels[a.previous[0]].thermal_w+in.hp2.levels[a.previous[1]].thermal_w==feasible.expected_w);
+  assert(std::count(events.begin(),events.end(),"start")==1);
+  clock_ms+=oq_boot_resume::PROTECTION_HOLD_MS; c.config.now_ms=clock_ms;
+  in.now_ms=clock_ms; in.requested_w=6500; in.hp1.candidate.previous_applied_level=1;
+  const auto expired=capture_boot(in); assert(expired.hp2.fixed_level==0);
+  const auto modulated=decide_dispatch(expired,tuning,{});
+  assert(modulated.output_valid && modulated.hp1_level==1 && modulated.hp2_level==2 && modulated.expected_w==6500);
+  events.clear();
+  assert(a.apply_level_(true,modulated.hp1_level,false,c)==1);
+  assert(a.apply_level_(false,modulated.hp2_level,false,c)==2 && a.physical[1]==2);
+  assert(std::find(events.begin(),events.end(),"start")==events.end());
   // Execute the real engine: repeated notification cannot rebase its stop
   // watchdog. Normal STOPPING does not imply its revalidation pending flag.
   oq_incidents::HpIncidentEngine engine;

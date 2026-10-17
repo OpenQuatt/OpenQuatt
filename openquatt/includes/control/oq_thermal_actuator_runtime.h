@@ -436,6 +436,7 @@ class Runtime {
     (hp1 ? id(hp1_last_real_heat_start_ms) : id(hp2_last_real_heat_start_ms)) = now;
     (hp1 ? id(hp1_prev_heating_mode_active) : id(hp2_prev_heating_mode_active)) = true;
     (hp1 ? id(hp1_last_level_change_ms) : id(hp2_last_level_change_ms)) = now;
+    id(oq_ph_request_last_loop_ms) = 0;  // Re-score the adopted topology on the next strategy tick.
   }
 
   void publish_frequency_limit_block_(bool is_hp1, const Cycle& cycle) {
