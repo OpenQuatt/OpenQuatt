@@ -81,7 +81,6 @@ Belangrijke beperkingen voor deze fase:
 - OpenQuatt is bedoeld voor Quatt Hybrid `Single` en `Duo`, niet voor Quatt All-Electric, Quatt Chill of Quatt HomeBattery.
 - Alleen de Heatpump Controller Q-edition wordt ondersteund.
 - OpenTherm-aansturing van de ketel via `OTB` is alleen beschikbaar op de Heatpump Controller Q-edition.
-- Normale hybride ketelondersteuning in de stooklijnregeling en handmatig ketel-only gebruik staan op de roadmap. Gerichte ketelovername bij warmtepompuitval is een afzonderlijke, optionele functie.
 - OpenQuatt is geen officiële Quatt-helpdesk of individuele installatieservice.
 
 ## Roadmap

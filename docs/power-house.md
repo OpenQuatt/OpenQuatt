@@ -147,7 +147,7 @@ Dezelfde actuele kamertemperatuur kan dus een andere vraag geven na een eerdere 
 
 #### Wijziging van de bovenmarge
 
-Deze PR herstelt de warme correctiegrens op `setpoint + comfort above`. De vorige regeling begon boven het oorspronkelijke setpoint met warmte terugnemen. De bovenmarge heeft daardoor opnieuw een rechtstreeks merkbaar effect, ook als langer doorverwarmen uitstaat. Bestaande waarden en entitynamen blijven behouden; met een positieve bovenmarge wordt later afgeremd. Deze update is dus ook een wijziging van het gewone regelgedrag.
+De warme correctiegrens ligt op `setpoint + comfort above`. Een positieve bovenmarge stelt het begin van de directe negatieve kamercorrectie dus uit, ook als langer doorverwarmen uitstaat. Comfort memory en langer doorverwarmen hebben daarnaast hun eigen voorwaarden; de bovenmarge is geen garantie voor een bepaalde overschrijding.
 
 ### 3. Reactiesnelheid
 
@@ -379,3 +379,4 @@ Controleer daarna pas of de afstelling zelf te scherp of te slap is.
 - [Regelgedrag van OpenQuatt](regelgedrag-van-openquatt.md)
 - [Instellingen en meetwaarden](instellingen-en-meetwaarden.md)
 - [Problemen oplossen](problemen-oplossen.md)
+- [Verwarmingsregeling voor ontwikkelaars](development/verwarmingsregeling.md)
