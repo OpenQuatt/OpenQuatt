@@ -9,4 +9,9 @@ bijdragers. Ze zijn bewust geen onderdeel van de gebruikerssite.
 - [Heating strategy template](heating-strategy-template.yaml): kopieerbaar YAML-startpunt.
 - [Beslislog: contract en vragenmatrix](control-replay-firmware.md): eventcontract tussen firmware en web-app.
 - [Hardware-in-the-loop-tests](hil-testing.md): veiligheidscontract en HIL-runs.
+- [Defrostprofielen testen](hil-defrost-profiles.md): herbruikbaar HIL-testplan.
+- [NVS capaciteit en persistentie](nvs-persistence.md): opslagbudget, migratie en herstel.
+- [Netwerkdiagnostiek](netwerkdiagnostiek.md): DNS-herstel en socketbegroting.
+- [Power House Auto-Tuning](power-house-autotuning-development.md): implementatie en Adaptive-roadmap.
+- [Power House-learningbronnen](power-house-learning-sources.md): meetbroncontract.
 - [Release process](releaseproces.md): branches, builds en releases.

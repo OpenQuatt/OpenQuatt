@@ -46,6 +46,13 @@ been removed. Update custom includes and saved commands as follows:
 | `duo_wifi.yaml`, `duo_eth.yaml` | `duo.yaml` |
 | `duo_wifi_hil.yaml` | `duo_hil.yaml` |
 
+Custom entrypoints must also replace the removed connection packages
+`openquatt/connection/wifi.yaml`, `openquatt/connection/eth.yaml` and
+`openquatt/connection/wifi_w5500_power_down.yaml` with
+`openquatt/connection/wifi_eth.yaml`. This package owns both interfaces and their
+runtime selection, including W5500 power management. Do not retain the former
+separate SPI power-down component alongside it.
+
 Historical release-artifact aliases remain available for existing download and
 OTA paths. `duo_hil.yaml` has a separate testcontroller identity; scenario
 overlays live under `scripts/hil/configs/` and are excluded from
