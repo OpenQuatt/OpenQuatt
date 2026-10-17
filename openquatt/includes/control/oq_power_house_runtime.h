@@ -16,6 +16,7 @@
 #include "oq_power_house_dispatch_logic.h"
 #include "oq_thermal_request_logic.h"
 #include "oq_power_house_run_extension_logic.h"
+#include "oq_warmup_runtime.h"
 
 #if defined(OQ_TOPOLOGY_DUO)
 namespace oq_power_house_runtime {
@@ -70,6 +71,11 @@ class Runtime {
       return;
     }
 
+    const auto warmup =
+        oq_warmup_runtime::runtime().control_target(id(room_setpoint_selected).state, id(oq_warmup_trigger_c).state,
+                                                    id(oq_warmup_enabled).state, id(room_temp_selected).state);
+    const float effective_target_c = warmup.effective_c;
+    const bool warming = warmup.limited;
     if (id(oq_strategy_output_source_code) != 3) this->dispatch_state_ = {};
     const bool hp1_valve_defrost = id(hp1_4_way_valve).state;
     const bool hp1_oil_return = id(hp1_prot_oil_return).state;
@@ -96,7 +102,7 @@ class Runtime {
         id(house_zero_power_temp_c).state,
         id(house_rated_power_w).state,
         id(room_temp_selected).state,
-        id(room_setpoint_selected).state,
+        effective_target_c,
         id(external_heat_demand_selected).state,
         id(oq_water_temp_limit_factor),
         id(external_heat_demand_selected).has_state(),
@@ -120,8 +126,11 @@ class Runtime {
       this->fast_floor_w_ = 0.0f;
     }
     this->restore_boot_demand_(demand_input, demand_tuning, config);
+    // Temporary targets must not build comfort memory for the final target.
+    if (warming || this->was_warming_) this->demand_state_.comfort_memory_c = 0.0f;
+    this->was_warming_ = warming;
     const auto previous_startup_phase = this->startup_phase_;
-    const auto demand =
+    auto demand =
         oq_power_house::decide_startup_demand(demand_input, demand_tuning, this->demand_state_, this->startup_phase_);
     if (this->startup_phase_ != previous_startup_phase) {
       ESP_LOGI("quatt.strategy", "Power House startup inputs %s after %us",
@@ -133,14 +142,15 @@ class Runtime {
       return;
     }
     id(oq_ph_request_last_loop_ms) = now_ms == 0 ? UINT32_MAX : now_ms;
+    if (warming) demand.next.comfort_memory_c = 0.0f;
     this->demand_state_ = demand.next;
     float requested_w = demand.requested_w;
     float next_last_w = demand.next.last_w;
     int raw_demand = demand.raw_demand;
     const float room_resume_delta_c = std::max(0.0f, demand_tuning.comfort_below_c);
-    const auto intent = oq_heat_intent_runtime::evaluate(now_ms, applied_total > 0, room_resume_delta_c, 10000UL,
-                                                         config.ot_room_temperature_fresh,
-                                                         config.ot_room_setpoint_fresh, this->intent_state_);
+    const auto intent = oq_heat_intent_runtime::evaluate(
+        now_ms, applied_total > 0, room_resume_delta_c, 10000UL, config.ot_room_temperature_fresh,
+        config.ot_room_setpoint_fresh, this->intent_state_, effective_target_c, warming);
     this->intent_state_ = intent.next;
     // An interrupted recovery re-enters through the normal confirmed path.
     id(oq_ph_fast_intent_code) = intent.fast_start ? static_cast<int>(intent.reason) : 0;
@@ -289,8 +299,9 @@ class Runtime {
 #if OQ_TOPOLOGY_DUO
     include_minimum(dispatch_input.hp2);
 #endif
-    // A room recovery follows a room-demand start only; keep the minimum-output
-    // floor until the room reaches its setpoint. Releasing this floor lets normal
+    // Ordinary room recovery retains a room-demand start until the full setpoint.
+    // Controlled warmup also retains an existing run through intermediate steps,
+    // until real comfort or session cancellation. Releasing this floor lets normal
     // demand take over; it does not force a stop at the setpoint.
     if ((intent.fast_start || intent.room_recovery_active) && std::isfinite(minimum_viable_w) &&
         id(oq_water_temp_limit_factor) >= 0.999f) {
@@ -313,6 +324,8 @@ class Runtime {
     const int base_raw_demand = raw_demand;
     const float base_last_w = next_last_w;
     const float room_c = id(room_temp_selected).state;
+    // Run extension follows the real comfort goal, avoiding an artificial
+    // stop/warm-restart latch at every intermediate target. Its floor is Pmin.
     const float setpoint_c = id(room_setpoint_selected).state;
     const bool run_ext_enabled = id(ph_run_extension_enabled).state;
     float stop_margin_c = 0.5f;
@@ -497,6 +510,7 @@ class Runtime {
     this->last_optimizer_reason_.clear();
     this->intent_state_ = {};
     this->demand_state_ = {};
+    this->was_warming_ = false;
     this->fast_floor_w_ = 0.0f;
     this->run_extension_state_ = {};
     this->run_ext_enabled_ = false;
@@ -618,6 +632,7 @@ class Runtime {
   }
 
   oq_power_house_dispatch::DispatchState dispatch_state_;
+  bool was_warming_ = false;
   oq_heat_intent::State intent_state_;
   oq_power_house::DemandState demand_state_;
   float fast_floor_w_{0.0f};

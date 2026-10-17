@@ -189,6 +189,8 @@ export function createSettingsState() {
     },
     settingsInteractionLock: false,
     settingsRenderSignature: "",
+    warmupSettingsRenderPending: false,
+    warmupSettingsPointerActive: false,
     settingsBackupDraft: null,
     settingsBackupMqttPassword: "",
     settingsBackupRestoreResult: null,

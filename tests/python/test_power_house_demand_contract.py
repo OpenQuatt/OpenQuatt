@@ -46,6 +46,17 @@ class PowerHouseDemandContractTest(unittest.TestCase):
             self.assertNotIn(marker, text)
             self.assertNotIn(marker, yaml)
 
+    def test_boot_restore_cannot_reintroduce_warmup_comfort_memory(self) -> None:
+        # Restoring after the warmup reset would feed saved comfort memory into
+        # the current demand calculation, even if demand.next is cleared later.
+        text = RUNTIME
+        restore = text.index("this->restore_boot_demand_(demand_input, demand_tuning, config);")
+        clear = text.index("if (warming || this->was_warming_) this->demand_state_.comfort_memory_c = 0.0f;")
+        calculate = text.index("oq_power_house::decide_startup_demand(")
+        self.assertLess(restore, clear)
+        self.assertLess(clear, calculate)
+        self.assertIn("if (warming) demand.next.comfort_memory_c = 0.0f;", text)
+
     def test_startup_wait_clears_shared_outputs_before_adopting_demand(self) -> None:
         text = RUNTIME
         self.assertLess(text.index("decide_startup_demand("), text.index("this->demand_state_ = demand.next;"))

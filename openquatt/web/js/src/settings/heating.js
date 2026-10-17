@@ -1,12 +1,13 @@
 import { getEntityNumericValue, hasEntity } from "../core/app-shared.js";
 import { STRATEGY_OPTION_CURVE, STRATEGY_OPTION_POWER_HOUSE } from "../core/config.js";
 import { isCurveMode, isManualFlowMode } from "../core/domain-helpers.js";
-import { getCurveFallbackSuggestion, getEntityValue } from "../core/entity-store.js";
+import { getCurveFallbackSuggestion, getEntityValue, parseLooseNumber } from "../core/entity-store.js";
 import { getHeatingEnableAdvice } from "../core/heating-strategy-matrix.js";
 import { state } from "../core/state.js";
 import { getInstallationTopology } from "../features/device-context.js";
-import { getSettingsSelectModel } from "./field-models.js";
-import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField } from "./controls.js";
+import { getWarmupProgressText } from "../features/warmup-progress.js";
+import { getSettingsSelectModel, getSettingsSwitchModel } from "./field-models.js";
+import { getSettingsTextStatValue, renderSettingsAdvancedDisclosure, renderSettingsCompactSwitchControl, renderSettingsSwitchCopy, renderSettingsChoiceOption, renderSettingsFieldCard, renderSettingsFrequencyRangeField, renderSettingsMiniNumberField, renderSettingsNumberField, renderSettingsSection, renderSettingsSelectField, renderSettingsSwitchField } from "./controls.js";
 import { formatNumericState } from "../core/formatting.js";
 import { escapeHtml } from "../core/html.js";
 import { formatNumber, t } from "../i18n/index.js";
@@ -522,6 +523,104 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
     `;
   }
 
+  function getControlledWarmupDisplayModel() {
+    const { enabled } = getSettingsSwitchModel("warmupEnabled");
+    const active = enabled && getEntityValue("warmupActive") === true;
+    const status = !enabled ? t("warmup.disabled") : active ? t("warmup.warming") :
+      t(getEntityValue("warmupActive") === false ? "warmup.idle" : "warmup.unknown");
+    const value = (key, sign = false) => {
+      const numeric = hasEntity(key) ? parseLooseNumber(getEntityValue(key)) : NaN;
+      return Number.isFinite(numeric) ? `${sign && numeric > 0 ? "+" : ""}${formatNumber(numeric, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} °C` : "—";
+    };
+    const readings = [
+      ["roomTemp", t("warmup.roomTemperature"), value("roomTemp")],
+      ["warmupIntermediateTarget", t("warmup.target"), value("warmupIntermediateTarget")],
+      ["roomSetpoint", t("warmup.finalTarget"), value("roomSetpoint")],
+      ["warmupBoost", t("warmup.boostActive"), value("warmupBoost", true)],
+      ["warmupEffectiveTarget", t("warmup.effectiveTarget"), value("warmupEffectiveTarget")],
+    ];
+    const runningProgress = parseLooseNumber(getEntityValue("warmupStatus")) === 2;
+    const progress = enabled && (active ? runningProgress : getEntityValue("warmupActive") === false && !runningProgress)
+      ? getWarmupProgressText() : "";
+    const detailsCopy = t("warmup.detailsCopy", { target: value("warmupIntermediateTarget"), boost: value("warmupBoost") });
+    return { status, readings, progress, detailsCopy, visible: {
+      active, boost: active && parseLooseNumber(getEntityValue("warmupBoost")) > 0, progress: Boolean(progress),
+    } };
+  }
+
+  export function patchControlledWarmupField(root) {
+    const statusNode = root.querySelector("[data-oq-warmup-status]");
+    if (!statusNode) return isCurveMode() || !hasEntity("warmupEnabled");
+    const { enabled } = getSettingsSwitchModel("warmupEnabled");
+    const section = root.querySelector("[data-oq-warmup-enabled]");
+    const structureMatches = section?.dataset.oqWarmupEnabled === String(enabled);
+    const { status, readings, progress, detailsCopy, visible } = getControlledWarmupDisplayModel();
+    if (statusNode.textContent !== status) statusNode.textContent = status;
+    readings.forEach(([key, , reading]) => {
+      const node = root.querySelector(`[data-oq-warmup-reading="${key}"]`);
+      if (node && node.textContent !== reading) node.textContent = reading;
+    });
+    for (const name of ["step", "details", "boost", "progress"]) {
+      const node = root.querySelector(`[data-oq-warmup-visible="${name}"]`);
+      if (node) node.hidden = !visible[name === "step" || name === "details" ? "active" : name];
+    }
+    for (const [selector, text] of [["[data-oq-warmup-progress]", progress], ["[data-oq-warmup-details-copy]", detailsCopy]]) {
+      const node = root.querySelector(selector);
+      if (node && node.textContent !== text) node.textContent = text;
+    }
+    return structureMatches;
+  }
+
+  export function renderControlledWarmupField() {
+    if (!hasEntity("warmupEnabled")) return "";
+    const { enabled, busy } = getSettingsSwitchModel("warmupEnabled");
+    const { status, readings, progress, detailsCopy, visible } = getControlledWarmupDisplayModel();
+    const reading = ([key, label, value], attributes = "") => `<div${attributes}><span>${escapeHtml(label)}</span><strong data-oq-warmup-reading="${key}">${escapeHtml(value)}</strong></div>`;
+    const switchField = renderSettingsFieldCard("warmupEnabled", t("warmup.allow"), t("warmup.allowCopy"), `
+      <div class="oq-settings-compact-switch-field">
+        ${renderSettingsCompactSwitchControl("warmupEnabled", t("warmup.allow"), enabled, busy, t("common.on"), t("common.off"))}
+        ${renderSettingsSwitchCopy("warmupEnabled", enabled, t("warmup.on"), t("warmup.off"))}
+      </div>
+    `);
+    return `
+      <section class="oq-settings-subpanel oq-run-extension" data-oq-warmup-enabled="${enabled}" aria-label="${escapeHtml(t("warmup.title"))}">
+        <div class="oq-run-extension-intro">
+          <div class="oq-settings-subpanel-head">
+            <h4>${escapeHtml(t("warmup.title"))}</h4>
+            <p>${escapeHtml(t("warmup.copy"))}</p>
+          </div>
+          <span class="oq-run-extension-status" data-oq-warmup-status>${escapeHtml(status)}</span>
+        </div>
+        <div class="oq-settings-grid">
+          ${switchField}
+          ${enabled ? [
+            renderSettingsNumberField("warmupTrigger", t("warmup.trigger"), t("warmup.triggerCopy")),
+            renderSettingsNumberField("warmupStep", t("warmup.step"), t("warmup.stepCopy")),
+            renderSettingsNumberField("warmupStepTime", t("warmup.stepTime"), t("warmup.stepTimeCopy")),
+          ].join("") : ""}
+        </div>
+        ${enabled ? `
+          <div class="oq-run-extension-thresholds oq-warmup-readings">
+            ${reading(readings[0])}
+            ${reading(readings[2])}
+          </div>
+          <div data-oq-warmup-visible="details"${visible.active ? "" : " hidden"}>
+            ${renderSettingsAdvancedDisclosure("warmup", t("warmup.details"), "", `
+              <div class="oq-run-extension-thresholds">
+                ${reading(readings[1], ` data-oq-warmup-visible="step"${visible.active ? "" : " hidden"}`)}
+                ${reading(readings[3], ` data-oq-warmup-visible="boost"${visible.boost ? "" : " hidden"}`)}
+                ${reading(readings[4])}
+              </div>
+              <p class="oq-run-extension-note" data-oq-warmup-visible="progress"${visible.progress ? "" : " hidden"} data-oq-warmup-progress>${escapeHtml(progress)}</p>
+              <p class="oq-run-extension-note" data-oq-warmup-details-copy>${escapeHtml(detailsCopy)}</p>
+              <p class="oq-run-extension-note">${escapeHtml(t("warmup.limits"))}</p>
+            `)}
+          </div>
+        ` : ""}
+      </section>
+    `;
+  }
+
   export function renderSettingsHeatPumpLimiterCard(title, hpPrefix) {
     if (hpPrefix === "hp2" && getInstallationTopology() !== "duo") return "";
     const firstFrequencyKey = `${hpPrefix}ExcludeMinHz`;
@@ -627,6 +726,7 @@ import { getCurvePointDraft, getSimpleCurveDraft } from "../core/simple-curve.js
         ${renderHeatingStrategyExplainCards()}
         ${renderHeatingEnableStrategyAdvice()}
         ${strategyContent}
+        ${!isCurveMode() ? renderControlledWarmupField() : ""}
       `,
     );
   }
