@@ -151,7 +151,7 @@ bool OpenQuattOduEeprom::load_() {
     size_t bytes = sizeof(records_[slot]);
     const esp_err_t result = nvs_get_blob(handle, slot_key_(slot), &records_[slot], &bytes);
     if (result == ESP_ERR_NVS_NOT_FOUND)
-      std::memset(&records_[slot], 0xFF, sizeof(records_[slot]));
+      std::fill_n(reinterpret_cast<unsigned char*>(&records_[slot]), sizeof(records_[slot]), 0xFFU);
     else if (result != ESP_OK || bytes != sizeof(records_[slot]))
       readable = false;
   }

@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <type_traits>
 
 #include "oq_odu_bottom_plate_settings.h"
 #include "../control/oq_defrost_logic.h"
@@ -32,6 +33,7 @@ struct Record {
   Image original{}, baseline{}, source{}, candidate{};
   uint32_t checksum{0U};
 };
+static_assert(std::is_trivially_copyable_v<Record>, "EEPROM journal requires a byte-copyable record");
 static_assert(sizeof(Record) < 4096U, "EEPROM journal must fit one flash sector");
 
 inline uint16_t crc(const Image& image) {
